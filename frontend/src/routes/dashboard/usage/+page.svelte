@@ -6,7 +6,9 @@
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import {
+		ActivityIndicator,
 		Alert,
+		AnimatedNumber,
 		EmptyState,
 		PageHeader,
 		PageShell,
@@ -174,7 +176,7 @@
 		<!-- Spark trend cards — 24h 추세 (3-row: 현재값 + 그래프 + min/max) -->
 		<div class="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
 		{#if trendLoading}
-			<div class="text-[var(--color-ink-3)] text-xs">{t('usage.loadingTrend')}</div>
+			<ActivityIndicator label={t('usage.loadingTrend')} class="sm:col-span-4" />
 		{/if}
 			{#each [
 				{ label: t('usage.vcpuTrend', { range: trendRange }),    unit: '%',     color: 'var(--color-accent)',      key: 'vcpu'    as const },
@@ -196,7 +198,7 @@
 						<p class="text-xs uppercase tracking-wide text-[var(--color-ink-3)]">{card.label}</p>
 						{#if current !== null}
 							<span class="text-xl font-semibold tabular-nums text-[var(--color-ink-0)]">
-								{current.toFixed(1)}<span class="text-xs text-[var(--color-ink-3)] ml-0.5">{displayUnit}</span>
+								<AnimatedNumber value={current} format={(n) => n.toFixed(1)} /><span class="text-xs text-[var(--color-ink-3)] ml-0.5">{displayUnit}</span>
 							</span>
 						{/if}
 					</div>
@@ -238,8 +240,8 @@
 								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium">{t('usage.status')}</th>
 							</tr>
 						</thead>
-						<tbody>
-							{#each data.top_instances as inst, i}
+						<tbody class="motion-stagger">
+							{#each data.top_instances as inst, i (inst.id)}
 								<tr class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors">
 									<td class="py-2.5 text-ink-2 font-mono">{i + 1}</td>
 									<td class="py-2.5">

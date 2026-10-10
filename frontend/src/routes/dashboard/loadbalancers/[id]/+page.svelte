@@ -6,6 +6,7 @@
 	import LoadBalancerHeader from '$lib/components/dashboard/loadbalancers/id/LoadBalancerHeader.svelte';
 	import LbListenerSection from '$lib/components/dashboard/loadbalancers/id/LbListenerSection.svelte';
 	import LbPoolSection from '$lib/components/dashboard/loadbalancers/id/LbPoolSection.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	const ctrl = createLoadbalancerDetailController({
 		lbId: () => $page.params.id!,
@@ -18,7 +19,7 @@
 
 <div class="max-w-4xl mx-auto px-4 py-8 text-ink-1">
 	{#if ctrl.loading}
-		<div class="text-ink-2">{t('lb.state.loading')}</div>
+		<ActivityIndicator label={t('lb.state.loading')} />
 	{:else if ctrl.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{ctrl.error}</div>
 	{:else if ctrl.lb}

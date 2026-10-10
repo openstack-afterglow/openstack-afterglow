@@ -25,4 +25,9 @@ describe('UsageRing', () => {
 
 		expect(view.getByRole('meter').getAttribute('data-tone')).toBe('warning');
 	});
+
+	it.each([[-1, 1], [25, 0.75], [130, 0]])('matches visible ring extent to clamped %s percent', (percent, offset) => {
+		const view = render(UsageRing, { percent, label: '사용률', valueText: `${percent}%` });
+		expect(view.container.querySelector('.fill')?.getAttribute('stroke-dashoffset')).toBe(String(offset));
+	});
 });

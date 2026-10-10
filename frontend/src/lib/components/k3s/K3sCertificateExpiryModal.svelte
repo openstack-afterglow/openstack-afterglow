@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { api } from '$lib/api/client';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 	import type { CertificateExpiryResponse, CertificateInfo } from '$lib/types/k3s';
 	import K3sRotateProgressModal from './K3sRotateProgressModal.svelte';
 
@@ -61,7 +63,7 @@
 <div class="fixed inset-0 z-50 flex items-center justify-center">
 	<button class="absolute inset-0 bg-surface-scrim/60" onclick={onclose} aria-label={t('certificateExpiry.close')} tabindex="-1"></button>
 
-	<div class="relative bg-surface-canvas border border-line rounded-lg w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)] max-h-[85vh] overflow-y-auto">
+	<div class="motion-enter relative bg-surface-canvas border border-line rounded-lg w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)] max-h-[85vh] overflow-y-auto">
 		<div class="flex items-center justify-between px-5 py-4 border-b border-line">
 			<h2 class="text-sm font-semibold text-ink-0">{t('certificateExpiry.title', { name: clusterName })}</h2>
 			<button onclick={onclose} class="text-ink-2 hover:text-ink-0 transition-colors text-lg leading-none">&times;</button>
@@ -69,7 +71,7 @@
 
 		<div class="p-5 space-y-4">
 			{#if loading}
-				<p class="text-ink-2 text-sm text-center py-6">{t('certificateExpiry.loading')}</p>
+				<div class="text-ink-2 text-sm text-center py-6"><ActivityIndicator label={t('certificateExpiry.loading')} /></div>
 			{:else if error}
 				<p class="text-red-400 text-sm">{error}</p>
 			{:else if data}
@@ -131,7 +133,7 @@
 			>
 				{t('certificateExpiry.refresh')}
 			</button>
-			{#if masterCount >= 3}
+			{#if masterCount >= 3 && $k3sPermissions.administerClusters}
 				<button
 					onclick={() => (showRotateModal = true)}
 					class="text-xs px-3 py-1.5 rounded-lg bg-action-warm hover:bg-action-warm-hover text-action-on-warm transition-colors"

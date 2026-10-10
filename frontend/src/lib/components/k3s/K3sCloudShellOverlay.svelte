@@ -1,10 +1,14 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/drover';
   import RichText from '$lib/i18n/RichText.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import { prefersReducedMotion } from '$lib/utils/motion';
   import { onDestroy, onMount, tick } from 'svelte';
   import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
   import { createShellTicket } from '$lib/api/k3sResources';
   import { auth } from '$lib/stores/auth';
+  import { k3sPermissions } from '$lib/stores/k3sPermissions';
+  import { projectPermissions } from '$lib/stores/servicePermissions';
   import { getBaseUrl } from '$lib/api/client';
   import '@xterm/xterm/css/xterm.css';
   import { resolvedTheme } from '$lib/stores/theme';
@@ -23,6 +27,7 @@
   let connecting = $state(false);
   let errorMsg = $state('');
   let idleTimedOut = $state(false);
+  let disposed = false;
 
   // K8s exec v4.channel.k8s.io 채널 ID
   const CH_STDIN = 0;
@@ -36,11 +41,17 @@
   });
 
   onDestroy(() => {
+    disposed = true;
     closeAll();
   });
 
+  // Pending permission reloads (token refresh) only pause input; a loaded grant set without the leaf closes the session.
+  $effect(() => {
+    if ($projectPermissions.permissions && !$k3sPermissions.workloads) { closeAll(); s.closeShell(); }
+  });
+
   function sendResize(cols: number, rows: number) {
-    if (ws?.readyState !== WebSocket.OPEN) return;
+    if (!$k3sPermissions.workloads || ws?.readyState !== WebSocket.OPEN) return;
     const resizeJson = JSON.stringify({ Width: cols, Height: rows });
     const encoded = new TextEncoder().encode(resizeJson);
     const frame = new Uint8Array(1 + encoded.length);
@@ -62,15 +73,16 @@
   });
 
   async function initTerminal() {
-    if (!terminalEl) return;
+    if (disposed || !$k3sPermissions.workloads || !terminalEl) return;
     const { Terminal } = await import('@xterm/xterm');
     const { FitAddon } = await import('@xterm/addon-fit');
+    if (disposed || !$k3sPermissions.workloads || !terminalEl) return;
 
     terminal = new Terminal({
       theme: getTerminalTheme(),
       fontFamily: 'var(--font-mono)',
       fontSize: 13,
-      cursorBlink: true,
+      cursorBlink: !prefersReducedMotion(),
       convertEol: true,
     });
     localizeTerminal(terminal);
@@ -80,7 +92,7 @@
     fitAddon.fit();
 
     terminal.onData((data) => {
-      if (ws?.readyState === WebSocket.OPEN) {
+      if ($k3sPermissions.workloads && ws?.readyState === WebSocket.OPEN) {
         const encoded = new TextEncoder().encode(data);
         const frame = new Uint8Array(1 + encoded.length);
         frame[0] = CH_STDIN;
@@ -101,7 +113,10 @@
   }
 
   async function connectWs() {
-    if (connecting || !terminal || !s.cluster) return;
+    if (disposed || !$k3sPermissions.workloads || connecting || !terminal || !s.cluster) return;
+    const userId = $auth.userId;
+    const projectId = $auth.projectId;
+    const clusterId = s.cluster.id;
     connecting = true;
     errorMsg = '';
     idleTimedOut = false;
@@ -120,6 +135,7 @@
       terminal?.write(`\r\n\x1b[31m${t('cloudShell.terminalTicketFailed')}\x1b[0m\r\n`);
       return;
     }
+    if (disposed || !terminal || $auth.userId !== userId || $auth.projectId !== projectId || s.cluster?.id !== clusterId) { connecting = false; return; }
 
     const baseUrl = getBaseUrl();
     const proto = baseUrl.startsWith('https') ? 'wss:' : 'ws:';
@@ -199,7 +215,7 @@
 
 {#snippet clusterName(text: string)}<span class="text-warm-text">{text}</span>{/snippet}
 
-<div class="fixed inset-0 z-50 bg-surface-canvas flex flex-col">
+<div class="motion-fade fixed inset-0 z-50 bg-surface-canvas flex flex-col">
   <!-- 헤더 -->
   <div class="flex items-center justify-between px-4 py-2 border-b border-line shrink-0">
     <div class="flex items-center gap-3">
@@ -207,12 +223,9 @@
         <RichText segments={t.rich('cloudShell.title', { name: s.cluster?.name ?? '' })} tags={{ name: clusterName }} />
       </span>
       {#if connected}
-        <span class="text-xs text-green-400 flex items-center gap-1">
-          <span class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse inline-block"></span>
-          {t('cloudShell.connected')}
-        </span>
+        <ActivityIndicator variant="pulse" tone="success" size="xs" label={t('cloudShell.connected')} class="text-xs" />
       {:else if connecting}
-        <span class="text-xs text-yellow-400">{t('cloudShell.connecting')}</span>
+        <ActivityIndicator size="xs" label={t('cloudShell.connecting')} class="text-xs" />
       {:else}
         <span class="text-xs text-ink-2">{t('cloudShell.disconnected')}</span>
       {/if}

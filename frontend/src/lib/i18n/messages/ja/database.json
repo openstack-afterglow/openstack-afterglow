@@ -25,6 +25,8 @@
 	"actions.create": "作成",
 	"databases.empty": "データベースがありません",
 	"state.deleting": "削除中...",
+	"state.restarting": "再起動中…",
+	"connection.detaching": "接続を解除中…",
 	"actions.deleteInstance": "インスタンスを削除",
 	"labels.datastore": "データストア",
 	"labels.volumeSize": "ボリュームサイズ",

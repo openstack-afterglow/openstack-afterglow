@@ -1,4 +1,7 @@
 {
+	"permissions.required": "所需权限：{leaf}",
+	"permissions.loading": "正在加载项目权限…",
+	"apiKeys.scopes": "API 范围（仅限当前权限）",
 	"settings.sections.usage": "用量",
 	"settings.sections.apiKeys": "API 密钥",
 	"settings.sections.memory": "记忆",

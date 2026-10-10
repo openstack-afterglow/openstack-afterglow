@@ -2,6 +2,8 @@
 	"actions.delete": "删除",
 	"actions.deleting": "正在删除...",
 	"actions.creating": "正在创建...",
+	"storageCard.extending": "正在扩容…",
+	"detail.loading": "正在加载文件存储详情",
 	"errors.server": "服务器错误",
 	"errors.create": "创建失败",
 	"errors.loadWithStatus": "加载失败（{status}）",

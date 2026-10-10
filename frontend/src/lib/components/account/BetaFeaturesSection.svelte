@@ -11,7 +11,7 @@
 	] as const;
 </script>
 
-<section class="bg-surface-base border border-line rounded-xl p-5">
+<section class="motion-fade bg-surface-base border border-line rounded-xl p-5">
 	<div class="mb-5">
 		<p class="text-sm font-semibold text-ink-0">{t('beta.title')}</p>
 		<p class="text-xs text-ink-2 mt-1">

@@ -9,29 +9,35 @@ nav_order: 12
 > 태그: `projects`, `invitations`
 > 기본 경로: `/api/v1/projects`, `/api/v1/invitations`
 
-사용자가 직접(셀프서비스) 프로젝트를 만들고, 이메일로 멤버를 초대하고, 프로젝트
-관리자(manager)를 지정하는 기능을 제공합니다.
+사용자가 프로젝트를 만들고, 이메일로 일반 구성원을 초대하며, 현재 Keystone 역할 ID와
+상속 그래프를 기준으로 프로젝트 소유권·관리 권한·서비스별 권한을 위임합니다.
 
 ---
 
 ## 셀프서비스 권한 모델
 
-Afterglow는 Keystone role 위에 앱 수준의 **프로젝트 매니저(manager)** 개념을 둡니다.
-manager 정보는 앱 DB(`project_roles` 테이블)에 저장됩니다.
+- **현재 Keystone 권한** — 역할 카탈로그·직접 상속 DAG·유효 프로젝트 할당을 다시 조회합니다. 같은 이름의 도메인 역할, 오래된 JWT 역할 배열, 앱 DB의 기존 `project_roles` 행은 권한 근거가 아닙니다. 조회 실패는 `503`이며 오래된 권한으로 대체하지 않습니다.
+- **기존 프로젝트 계층 유지** — `project_owner → project_admin → project_member → project_reader`, `project_member → member`, `project_reader → reader`. 기존 역할 ID·할당을 재사용하며 서비스 권한은 이 계층에 자동 연결하지 않습니다.
+- **프로젝트 생성** — 생성자에게 기존 `project_owner`를 명시적으로 할당합니다. 소유권 할당에 실패하면 새 프로젝트 삭제를 보상 시도합니다. 필요한 계층을 임의 생성하거나 DB manager를 등록하지 않습니다.
+- **소유자와 관리자** — 현재 `project_owner` 또는 `project_admin`은 멤버·초대·허용된 서비스 역할을 관리합니다. 소유권 및 `project_admin` 부여·회수는 소유자만 가능합니다. 마지막 유효 소유자를 제거하는 변경은 `409`입니다.
+- **직접 역할만 교체** — 안전한 전역 프로젝트/서비스 역할의 정확한 ID를 선택합니다. 그룹·도메인 상속과 편집 불가 기존 할당은 유지합니다. 직접 제거할 수 없는 그룹/상속 멤버를 삭제하지 않습니다.
+- **서비스 권한 분리** — Waygate·Lumen·Drover·Palimpsest의 `admin/editor/user/reader` 부모와 독립 세부 권한은 실제 Keystone inference edge로만 확장합니다. 서비스 역할에 OpenStack `admin`·`manager` 권한을 연결할 수 없습니다. 프로젝트 소유권 자체도 서비스 사용 권한이 아닙니다.
+- **명시적 이전** — 기존 DB 관리자 기록의 이전은 시스템 관리자가 대상 소유자를 지정해 실행합니다. 조회·로그인·프로젝트 전환이 이를 자동 수행하지 않습니다.
+- 콘솔의 멤버·초대 목록은 현재 auth/project에만 속합니다. 다른 프로젝트로 전환하면 이전 행·액션·feedback을 즉시 비우고 늦은 응답·mutation 결과를 차단합니다. 동일 scope의 재조회는 기존 행을 유지합니다. 계정 MCP token·OAuth grant·발급 직후 secret도 같은 scope 경계를 사용하며, 확인 dialog가 열린 뒤 scope가 바뀌면 기존 폐기 요청을 제출하지 않습니다.
 
-- **프로젝트 생성** — 인증된 사용자는 누구나 프로젝트를 만들 수 있습니다. Keystone에
-  프로젝트가 생성되고, 생성자에게 Keystone `member` role이 부여되며, 앱 DB에
-  생성자를 `manager`로 등록합니다.
-- **manager 권한** — 멤버 조회, 초대 생성/조회/취소, 매니저 승격/해제는 **해당
-  프로젝트의 manager만** 수행할 수 있습니다(`require_project_manager`). 시스템
-  관리자는 이 검사를 bypass합니다. manager가 아니면 403입니다.
-- **마지막 매니저 보호** — 프로젝트에는 최소 1명의 manager가 필요합니다. 마지막
-  매니저는 해제할 수 없습니다(409).
+### 서비스 등급과 명시적 운영 cutover
+
+일반 사용자에게 `member`만 있다는 이유로 네 서비스를 허용하지 않습니다. 시스템 관리자가 [역할 프리셋](admin.md#역할-관리-roles)을 미리보고 명시적으로 적용한 뒤, 프로젝트 owner/admin이 필요한 서비스 부모 또는 세부 역할 ID를 부여합니다. 기존 core/project ID·할당은 교체하지 않으며 GET/login/startup은 역할/edge/manager 이전을 실행하지 않습니다. Native 서비스 directory credential은 현재 enabled user/project, 전역 역할 metadata, inference graph와 유효 할당을 읽을 수 있어야 합니다. 읽기 실패 시 권한을 넓히거나 tenant `admin`/`manager`를 부여하는 fallback은 없습니다.
+
+Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connect_user`는 본인에게 할당된 enabled client `.conf`/QR만 허용합니다. `waygate-clients_editor`와 `waygate-gateways_editor`는 각각 생성·편집, `waygate-clients_admin`과 `waygate-gateways_admin`은 삭제/폐기, `waygate-routing_admin`은 네트워크 연결·보안 routing 액션입니다. Export/import는 client-admin과 routing-admin을 함께 요구하며 다른 사용자의 할당된 private profiles를 export하지 않습니다. Owner가 미지정인 legacy client는 connect-only 사용자에게 공개하지 않고 editor/admin이 명시적으로 한 번 소유자를 지정합니다. 플랫폼 resource policy는 verified system-admin 전용입니다.
+
+다른 서비스의 독립 leaf·credential 경계는 [Lumen](chat.md#lumen-서비스-세부-권한), [Drover](k3s.md#drover-서비스-권한과-자격-등급), [Palimpsest](../palimpsest.md#프로젝트-package-서비스-등급)를 따릅니다. Runtime은 실제 현재 graph만 읽으므로 부모를 유지한 채 leaf edge를 제거해도 해당 권한이 회수됩니다.
+
 
 ### 초대 흐름
 
 ```
-매니저가 이메일로 초대 생성
+프로젝트 소유자/관리자가 이메일로 초대 생성
   → (해당 이메일의 Keystone 사용자 존재 시) 초대 메일 발송, status=pending
   → (Keystone 사용자 없음)                     status=no_user (메일 미발송)
 피초대자가 초대 링크 접속 (GET /invitations/{token})
@@ -49,19 +55,21 @@ manager 정보는 앱 DB(`project_roles` 테이블)에 저장됩니다.
 
 ## 엔드포인트 목록
 
-### 프로젝트 (manager 권한)
+### 프로젝트와 역할 관리
 
 | 메서드 | 경로 | 인증 | 설명 |
 |--------|------|------|------|
-| `POST` | `/api/v1/projects` | 필요 | 프로젝트 생성 (생성자가 manager) |
+| `POST` | `/api/v1/projects` | 필요 | 프로젝트 생성, 생성자에게 기존 `project_owner` 할당 |
 | `GET` | `/api/v1/projects/current/permissions` | 필요 | 현재 프로젝트에 대한 역할 및 실효 권한 조회 |
 | `GET` | `/api/v1/projects/{project_id}/permissions` | 필요 | 지정 프로젝트에 대한 역할 및 실효 권한 조회 |
-| `GET` | `/api/v1/projects/{project_id}/members` | manager | 프로젝트 멤버 목록 |
-| `POST` | `/api/v1/projects/{project_id}/invitations` | manager | 이메일 초대 생성 |
-| `GET` | `/api/v1/projects/{project_id}/invitations` | manager | 초대 목록 조회 |
-| `DELETE` | `/api/v1/projects/{project_id}/invitations/{invitation_id}` | manager | 초대 취소 (pending만) |
-| `POST` | `/api/v1/projects/{project_id}/managers/{user_id}` | manager | 멤버를 manager로 승격 |
-| `DELETE` | `/api/v1/projects/{project_id}/managers/{user_id}` | manager | manager 해제 |
+| `GET` | `/api/v1/projects/{project_id}/members` | 프로젝트 owner/admin | 직접·유효·그룹·상속 멤버 조회 |
+| `GET` | `/api/v1/projects/{project_id}/assignable-roles` | 프로젝트 owner/admin | 안전한 역할 ID 카탈로그와 호출자 소유권 |
+| `PUT` | `/api/v1/projects/{project_id}/members/{user_id}/roles` | 프로젝트 owner/admin | 관리 가능한 직접 역할 교체; `{ "role_ids": ["role-id"] }` |
+| `DELETE` | `/api/v1/projects/{project_id}/members/{user_id}` | 프로젝트 owner/admin | 관리 가능한 직접 역할만 제거 |
+| `POST` | `/api/v1/projects/{project_id}/members/migrate-legacy-managers` | 시스템 관리자 | `{ "owner_user_id": "user-id" }`로 명시적 기존 DB 관리자 이전 |
+| `POST` | `/api/v1/projects/{project_id}/invitations` | 프로젝트 owner/admin | 일반 프로젝트 역할 이메일 초대 |
+| `GET` | `/api/v1/projects/{project_id}/invitations` | 프로젝트 owner/admin | 초대 목록 조회 |
+| `DELETE` | `/api/v1/projects/{project_id}/invitations/{invitation_id}` | 프로젝트 owner/admin | pending 초대 취소 |
 
 ### 초대 응답 (피초대자)
 
@@ -75,7 +83,9 @@ manager 정보는 앱 DB(`project_roles` 테이블)에 저장됩니다.
 
 ## GET /api/v1/projects/current/permissions
 
-현재 활성 프로젝트 컨텍스트에 대한 호출자의 역할 및 실효 권한(`can_write`, `is_reader`, `is_manager` 등)을 조회합니다.
+현재 활성 프로젝트의 `is_owner`, `is_manager`, `service_permissions`와 OpenStack 읽기·쓰기 권한을 조회합니다. UI는 현재 `service_permissions`의 정확한 세부 권한을 사용하며 `can_write`로 서비스 권한을 추측하지 않습니다. 확인 중·장애·프로젝트 전환 중에는 액션을 비활성화합니다.
+
+일반 사용자 응답의 `roles`는 표시용입니다. 시스템 전용·분류 불가 역할 이름은 숨깁니다. 서버 서비스 authorization은 이 표시용 배열이나 JWT의 과거 부모 역할이 아니라 현재 검증한 전역 역할 ID·유효 할당·DAG를 사용합니다. `is_manager`는 현재 프로젝트 owner/admin에 해당하며 DB manager를 의미하지 않습니다.
 
 ### 응답 (200 OK)
 
@@ -85,6 +95,8 @@ manager 정보는 앱 DB(`project_roles` 테이블)에 저장됩니다.
   "user_id": "u-456",
   "roles": ["reader"],
   "is_system_admin": false,
+  "is_owner": false,
+  "service_permissions": { "waygate": [], "lumen": [], "drover": [], "palimpsest": [] },
   "is_manager": false,
   "is_reader": true,
   "can_read": true,
@@ -102,7 +114,7 @@ manager 정보는 앱 DB(`project_roles` 테이블)에 저장됩니다.
 
 ## POST /api/v1/projects
 
-인증된 사용자가 프로젝트를 생성합니다. 생성자는 자동으로 manager가 됩니다.
+인증된 사용자가 프로젝트를 생성하며 생성자에게 기존 `project_owner`를 할당합니다.
 
 ### 요청 본문
 
@@ -134,15 +146,15 @@ manager 정보는 앱 DB(`project_roles` 테이블)에 저장됩니다.
 |-----------|------|
 | `401` | 유효하지 않거나 만료된 토큰 |
 | `422` | 프로젝트 이름 누락 |
-| `500` | 프로젝트 생성 실패 (Keystone/DB 실패 시 보상 삭제 수행) |
+| `503` | 현재 역할 카탈로그/계층 검증 불가; 초기 소유권 할당 실패 시 새 프로젝트 삭제를 보상 시도 |
 
 ---
 
 ## GET /api/v1/projects/{project_id}/members
 
-프로젝트 멤버 목록을 반환합니다. Keystone에 직접 role이 할당된 사용자와, 요청자
-본인이 속한 그룹의 멤버를 확장해서 함께 반환합니다. 각 멤버에는 manager 뱃지가
-붙습니다.
+프로젝트의 직접 할당·그룹·상속 유효 멤버를 반환합니다. `is_owner`와 `is_manager`는
+현재 역할 그래프에서 계산하며, 역할 교체는 `direct_role_ids` 중 안전한 카탈로그의
+관리 가능한 역할만 대상으로 합니다. `effective_role_ids`를 직접 할당으로 복사하지 않습니다.
 
 ### 응답 (200 OK)
 
@@ -154,6 +166,10 @@ manager 정보는 앱 DB(`project_roles` 테이블)에 저장됩니다.
       "username": "user-name",
       "email": "user@example.com",
       "is_manager": true,
+      "is_owner": false,
+      "roles": ["project_admin", "project_member", "member", "project_reader", "reader"],
+      "direct_role_ids": ["project-admin-role-id"],
+      "effective_role_ids": ["project-admin-role-id", "project-member-role-id", "native-member-role-id", "project-reader-role-id", "native-reader-role-id"],
       "source": "direct"
     },
     {
@@ -170,16 +186,18 @@ manager 정보는 앱 DB(`project_roles` 테이블)에 저장됩니다.
 
 | 필드 | 설명 |
 |------|------|
-| `source` | `direct`(직접 할당) 또는 `group`(그룹 멤버십 경유) |
-| `is_manager` | 앱 DB 기준 manager 여부 |
-| `group_name` | `source=group`일 때만 포함 |
+| `source` | `direct`, `group`, `inherited`, `mixed`; 그룹/상속 권한은 직접 교체·제거 불가 |
+| `is_owner`, `is_manager` | 현재 유효 `project_owner`, owner/admin 여부 |
+| `roles`, `effective_role_ids` | 현재 유효 이름·ID; 직접 할당과 구분 |
+| `direct_role_ids` | 사용자의 직접 프로젝트 할당 ID |
+| `group_name` | 그룹 경유 할당의 그룹 표시명 |
 
 ### 오류 응답
 
 | 상태 코드 | 설명 |
 |-----------|------|
-| `403` | manager 권한 없음 |
-| `500` | 멤버 목록 조회 실패 |
+| `403` | 현재 프로젝트 관리 권한 없음 |
+| `503` | 현재 멤버십·역할 카탈로그 조회 실패 |
 
 ---
 
@@ -193,14 +211,16 @@ manager 정보는 앱 DB(`project_roles` 테이블)에 저장됩니다.
 ```json
 {
   "email": "string (필수)",
-  "keystone_role": "member (선택)"
+  "keystone_role": "project_member (선택)"
 }
 ```
 
 | 필드 | 타입 | 필수 | 설명 |
 |------|------|------|------|
 | `email` | string | 예 | 초대할 이메일 주소 |
-| `keystone_role` | string | 아니오 | 수락 시 부여할 Keystone role (기본 `member`) |
+| `keystone_role` | `project_member` 또는 `project_reader` | 아니오 | 기본 `project_member`; 소유자·관리자·서비스 역할·native `admin`/`manager`는 `422` |
+
+이 두 역할 외의 권한을 요청하는 기존 초대도 수락 시 `403`으로 거부하며 임의로 이전하지 않습니다. 서비스 역할은 초대 수락 후 관리 화면에서 정확한 역할 ID로 따로 위임합니다.
 
 ### 응답 (201 Created)
 
@@ -222,7 +242,7 @@ manager 정보는 앱 DB(`project_roles` 테이블)에 저장됩니다.
 
 | 상태 코드 | 설명 |
 |-----------|------|
-| `403` | manager 권한 없음 |
+| `403` | 현재 프로젝트 관리 권한 없음 |
 
 ---
 
@@ -240,7 +260,7 @@ manager 정보는 앱 DB(`project_roles` 테이블)에 저장됩니다.
       "invited_email": "user@example.com",
       "invited_by_name": "inviter-name",
       "status": "pending",
-      "keystone_role": "member",
+      "keystone_role": "project_member",
       "expires_at": "2026-01-08T00:00:00Z",
       "accepted_at": null,
       "created_at": "2026-01-01T00:00:00Z"
@@ -265,43 +285,19 @@ manager 정보는 앱 DB(`project_roles` 테이블)에 저장됩니다.
 
 | 상태 코드 | 설명 |
 |-----------|------|
-| `403` | manager 권한 없음 |
+| `403` | 현재 프로젝트 관리 권한 없음 |
 | `404` | 초대를 찾을 수 없음 |
 | `409` | 취소할 수 없는 상태 (pending이 아님) |
 
 ---
 
-## POST /api/v1/projects/{project_id}/managers/{user_id}
+## 역할 교체·제거와 기존 관리자 이전
 
-프로젝트 멤버를 manager로 승격합니다. 이미 manager이면 멱등적으로 동작합니다.
+`PUT /projects/{project_id}/members/{user_id}/roles`는 `assignable-roles`가 반환한 정확한 ID 목록을 받습니다. 관리자에게 허용되지 않는 소유자/관리자 전환, 시스템 전용 역할, native `admin`·`manager`로 이어지는 역할은 거부합니다. 기존 편집 불가 직접 역할과 그룹·도메인 상속은 유지합니다. `DELETE /members/{user_id}`도 같은 정책으로 관리 가능한 직접 역할만 제거하며 마지막 유효 소유자를 제거하지 않습니다.
 
-### 응답
+기존 `/managers/{user_id}` 승격·해제 경로는 제거했습니다. DB manager 행은 조회 권한이 아닙니다. 시스템 관리자의 `POST /projects/{project_id}/members/migrate-legacy-managers`만 명시한 소유자와 기존 대상자를 안전한 역할 계층으로 이전하고 DB 기록을 정리합니다. 호출 전에 현재 역할 카탈로그·할당을 검토하고, 실패 시 결과를 확인한 뒤 재실행합니다. 이 변경은 운영 데이터나 역할을 자동 수정하지 않습니다.
 
-`204 No Content`.
-
-### 오류 응답
-
-| 상태 코드 | 설명 |
-|-----------|------|
-| `403` | manager 권한 없음 |
-
----
-
-## DELETE /api/v1/projects/{project_id}/managers/{user_id}
-
-manager 권한을 해제합니다. 마지막 manager는 해제할 수 없습니다.
-
-### 응답
-
-`204 No Content`.
-
-### 오류 응답
-
-| 상태 코드 | 설명 |
-|-----------|------|
-| `403` | manager 권한 없음 |
-| `404` | 해당 사용자가 이 프로젝트의 manager가 아님 |
-| `409` | 마지막 manager는 해제 불가 |
+주요 실패: `403` 권한·안전 경계 위반, `409` 마지막 소유자/동시 변경 충돌, `503` Keystone 카탈로그·할당 검증 불가. 오류를 오래된 역할이나 DB manager로 대체하지 않습니다.
 
 ---
 

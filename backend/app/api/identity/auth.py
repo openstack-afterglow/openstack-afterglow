@@ -13,6 +13,7 @@ from app.api.deps import (
     _check_session_timeout,
     cache_mode,
     get_token_info,
+    has_project_write_permission,
     invalidate_token_cache,
 )
 from app.config import get_settings
@@ -21,6 +22,7 @@ from app.rate_limit import limiter
 from app.services import activity as activity_svc
 from app.services import cache, jwt_service, keystone, login_guard, session_store
 from app.services.cache import cached_call, keys, ttl_fast, ttl_normal, ttl_static
+from app.services.identity_roles import visible_role_names
 from app.services.recent_projects import get_recent_project_ids, record_project_access
 
 _logger = logging.getLogger(__name__)
@@ -70,6 +72,8 @@ async def _build_token_response(
     os: str = "",
 ) -> TokenResponse:
     """Keystone 토큰으로 JWT access+refresh 쌍을 발급하고 TokenResponse를 반환."""
+    public_roles = await visible_role_names(roles, is_system_admin)
+    can_write = has_project_write_permission({"roles": roles, "is_system_admin": is_system_admin})
     refresh_str, r_jti, r_exp = jwt_service.sign_refresh(user_id)
     access_str, _, a_exp = jwt_service.sign_access(
         user_id=user_id,
@@ -99,9 +103,10 @@ async def _build_token_response(
         user_id=user_id,
         username=username,
         expires_at=exp_dt.isoformat(),
-        roles=roles,
+        roles=public_roles,
         default_project_id=default_project_id,
         is_system_admin=is_system_admin,
+        can_write=can_write,
         auth_method=auth_method,
     )
 
@@ -221,8 +226,9 @@ async def me(token_info: dict = Depends(get_token_info)):
         username=token_info["username"],
         project_id=token_info["project_id"],
         project_name=token_info["project_name"],
-        roles=token_info["roles"],
+        roles=await visible_role_names(token_info["roles"], token_info.get("is_system_admin", False)),
         is_system_admin=token_info.get("is_system_admin", False),
+        can_write=has_project_write_permission(token_info),
         auth_method=token_info.get("auth_method", "password"),
     )
 

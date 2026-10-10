@@ -1,7 +1,9 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/drover';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import { untrack } from 'svelte';
   import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
+  import { k3sPermissions } from '$lib/stores/k3sPermissions';
   import K3sResourceEditor from './K3sResourceEditor.svelte';
   import K3sYamlView from './K3sYamlView.svelte';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -18,12 +20,13 @@
 
   $effect(() => {
     const ns = s.selectedNamespace;
-    if (!ns) return;
+    if (!ns || !$k3sPermissions.workloads) return;
     loadError = '';
     untrack(() => s.loadConfigMaps()).catch(() => { loadError = t('configMaps.loadFailed'); });
   });
 
   async function handleCreate(data: Record<string, string>) {
+    if (!$k3sPermissions.workloads) return;
     if (!newName.trim()) { createError = t('configMaps.nameRequired'); return; }
     saving = true;
     createError = '';
@@ -39,7 +42,7 @@
   }
 
   async function handleEdit(data: Record<string, string>) {
-    if (!editingCm) return;
+    if (!$k3sPermissions.workloads || !editingCm) return;
     saving = true;
     try {
       await s.saveConfigMap(editingCm.name, data, false);
@@ -50,6 +53,7 @@
   }
 
   async function handleDelete(name: string) {
+    if (!$k3sPermissions.workloads) return;
     if (!(await confirmDialog(t('configMaps.confirmDelete', { name })))) return;
     await s.deleteCm(name);
   }
@@ -60,11 +64,12 @@
     <h3 class="text-xs text-ink-2 uppercase tracking-wide">ConfigMaps</h3>
     <button
       onclick={() => { showCreate = !showCreate; newName = ''; createError = ''; }}
+      disabled={!$k3sPermissions.workloads || !s.selectedNamespace}
       class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
     >{showCreate ? t('configMaps.close') : t('configMaps.create')}</button>
   </div>
 
-  {#if showCreate}
+  {#if showCreate && $k3sPermissions.workloads}
     <div class="mb-3 bg-surface-sunken rounded-lg p-3">
       <input
         bind:value={newName}
@@ -100,13 +105,14 @@
             <div class="flex gap-1 shrink-0">
               <button
                 onclick={() => { editingCm = { name: cm.name, data: { ...cm.data } }; }}
+                disabled={!$k3sPermissions.workloads || !s.selectedNamespace}
                 class="text-xs text-ink-2 hover:text-ink-1 px-2 py-1 border border-line-2 hover:border-line-2 rounded transition-colors"
               >{t('configMaps.edit')}</button>
               <button
                 onclick={() => handleDelete(cm.name)}
-                disabled={s.cmActioning === actionKey}
+                disabled={!$k3sPermissions.workloads || !s.selectedNamespace || s.cmActioning === actionKey}
                 class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3 disabled:border-line-2 disabled:cursor-not-allowed"
-              >{s.cmActioning === actionKey ? t('configMaps.deleting') : t('configMaps.delete')}</button>
+              >{#if s.cmActioning === actionKey}<ActivityIndicator size="xs" label={t('configMaps.deleting')} />{:else}{t('configMaps.delete')}{/if}</button>
             </div>
           </div>
           <K3sYamlView
@@ -118,7 +124,7 @@
   {/if}
 </div>
 
-{#if editingCm}
+{#if editingCm && $k3sPermissions.workloads}
   <K3sResourceEditor
     title={t('configMaps.editTitle', { name: editingCm.name })}
     mode="configmap"

@@ -6,6 +6,7 @@
   import { bootFromVolume } from '$lib/stores/volumesController.svelte';
   import ActionMenu from '$lib/components/ui/ActionMenu.svelte';
   import Button from '$lib/components/ui/Button.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import VolumeOperationItems from '$lib/components/volume/VolumeOperationItems.svelte';
   import type { Volume } from '$lib/types/volume';
 
@@ -33,7 +34,7 @@
     <Button onclick={() => s.openAttachModal()} size="sm">{t('volumeActions.attach')}</Button>
   {/if}
   <Button onclick={() => s.deleteVolume()} disabled={!s.canDelete} size="sm" variant="danger-outline" title={s.volume!.attachments.length > 0 ? t('volumeActions.attachedDeleteUnavailable') : undefined}>
-    {s.deleting ? t('volumeActions.deleting') : t('volumeActions.delete')}
+    {#if s.deleting}<ActivityIndicator size="xs" tone="danger" />{/if}{s.deleting ? t('volumeActions.deleting') : t('volumeActions.delete')}
   </Button>
   <span class="text-sm text-ink-2">{t('volumeActions.actions')}</span>
   <ActionMenu open={menuOpen} onopen={() => menuOpen = true} onclose={() => menuOpen = false} ariaLabel={t('volumeActions.namedActions', { name: s.volume!.name || s.volume!.id })}>

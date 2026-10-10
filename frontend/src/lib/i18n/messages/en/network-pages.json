@@ -222,6 +222,7 @@
 	"loadBalancers.error.server": "Server error",
 	"loadBalancers.breadcrumb": "NETWORK / LOADBALANCERS",
 	"loadBalancers.title": "Load balancer",
+	"loadBalancers.loading": "Loading load balancer list...",
 	"loadBalancers.actions.create": "+ Create load balancer",
 	"loadBalancers.empty.title": "No load balancers",
 	"loadBalancers.empty.create": "Create your first load balancer →",

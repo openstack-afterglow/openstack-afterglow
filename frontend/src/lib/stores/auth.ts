@@ -31,6 +31,7 @@ export interface AuthState {
 	availableProjects: Project[];
 	roles: string[];
 	isSystemAdmin: boolean;
+	canWrite?: boolean;            // verified capability; role names may be hidden
 	federated: boolean;             // true = OIDC/외부 로그인 (패스워드 변경 불가)
 }
 
@@ -215,18 +216,15 @@ export function getMockupProfile(): MockupProfileId | null {
 
 export const isLoggedIn = derived(auth, ($auth) => $auth.token !== null);
 export const isAdmin = derived(auth, ($auth) => $auth.isSystemAdmin === true);
-export const isReader = derived(
-	auth,
-	($auth) =>
-		!$auth.isSystemAdmin &&
-		$auth.roles.some((r) => r.toLowerCase() === 'reader') &&
-		!$auth.roles.some((r) => ['admin', 'member'].includes(r.toLowerCase()))
-);
 export const canWrite = derived(
 	auth,
 	($auth) =>
 		$auth.isSystemAdmin === true ||
-		$auth.roles.some((r) => ['admin', 'member'].includes(r.toLowerCase()))
+		($auth.canWrite ?? $auth.roles.some((r) => ['admin', 'member'].includes(r.toLowerCase())))
+);
+export const isReader = derived(
+	[auth, canWrite],
+	([$auth, $canWrite]) => !$canWrite && $auth.roles.some((r) => r.toLowerCase() === 'reader')
 );
 
 export function setAuth(data: Partial<AuthState> & { token: string }) {

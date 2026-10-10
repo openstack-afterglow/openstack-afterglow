@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { NetworkInfo } from '$lib/types/networks';
 	import type { ProjectName } from '$lib/types/adminPort';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -118,7 +119,7 @@
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => { open = false; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('portCreateModal.cancel')}</button>
-				<button onclick={handleCreate} disabled={creating || !form.network_id} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{creating ? t('portCreateModal.creating') : t('portCreateModal.create')}</button>
+				<button aria-busy={creating} onclick={handleCreate} disabled={creating || !form.network_id} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if creating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('portCreateModal.creating')}</span>{:else}{t('portCreateModal.create')}{/if}</button>
 			</div>
 		</div>
 	</div>

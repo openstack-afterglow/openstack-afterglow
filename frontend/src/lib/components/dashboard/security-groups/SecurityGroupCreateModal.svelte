@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/network-resources';
-		import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	let {
 		open = $bindable(),
@@ -40,14 +41,14 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		use:dialogFocus={{ enabled: true, onEscape: () => (open = false) }}
-		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
+		class="motion-fade fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={() => { open = false; }}
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
 	>
 		<div
-			class="bg-surface-sunken border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4"
+			class="motion-pop bg-surface-sunken border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
@@ -79,9 +80,10 @@
 				<button
 					onclick={handleCreate}
 					disabled={submitting || !form.name.trim()}
-					class="flex-1 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm py-2 rounded transition-colors"
+					aria-busy={submitting}
+					class="flex-1 inline-flex items-center justify-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm py-2 rounded transition-colors"
 				>
-					{submitting ? t('securityGroup.create.creating') : t('securityGroup.create.submit')}
+					{#if submitting}<ActivityIndicator size="xs" tone="ink" />{/if}{submitting ? t('securityGroup.create.creating') : t('securityGroup.create.submit')}
 				</button>
 				<button
 					onclick={() => { open = false; }}

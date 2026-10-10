@@ -1,0 +1,9 @@
+## Implementation Tasks
+
+- [x] Read failed migration logs, compare plain/private-env-file Compose database resolution, and preserve local config/key/index hashes and schema ledgers without contacting remote databases.
+- [x] Add real Compose configuration regression coverage for hostile `.env` and shell database overrides, including API, worker and migration/bootstrap services, and record a failing-before result (four cases/14 consumers, five TAP entries; removed two incidental copy/path assertions after a macOS realpath mismatch).
+- [x] Restore literal local database destinations in all five shared development environment anchors; keep production/minimal Compose and private settings unchanged.
+- [x] Build and execute affected API/worker images for linux/arm64 and linux/amd64 using canonical Compose build definitions (10 build targets, 20 native settings/architecture runs).
+- [x] Back up local databases, recover migrations and the API/worker stack without deleting volumes, verify readiness and database destination settings, and compare existing migration ledger rows (canonical services:up passed; all four one-off commands exit0; original Drover4/Waygate6/Lumen26 ledger rows unchanged).
+- [x] Verify the public frontend and reachable authenticated read-only service paths; report unavailable credentials/model/conversation or remote-state verification separately (actual Chromium dashboard, summary/quotas200; full smoke failed on Palimpsest discovery403; other native permission403/Hub validator503 preserved; no role writes or fake context/model setup).
+- [x] Update deployment/architecture/changelog documentation after runtime proof, synchronize the main specification, validate and archive the change, and verify scoped architecture evidence without modifying the shared index (10 main specs passed; isolated staged guard passed for HEAD plus scoped snapshots; real index and shared review block preserved; full root gate not claimed).

@@ -43,6 +43,14 @@ waygate = {{ afterglow_service_waygate_enabled | bool | lower }}
 palimpsest = {{ afterglow_service_palimpsest_enabled | bool | lower }}
 chat = {{ afterglow_service_chat_enabled | bool | lower }}
 mcp = {{ afterglow_service_mcp_enabled | bool | lower }}
+{% if afterglow_service_palimpsest_enabled | bool and afterglow_service_palimpsest_internal_url %}
+palimpsest_internal_url = {{ afterglow_service_palimpsest_internal_url | to_json }}
+{% endif %}
+
+{% if afterglow_mcp_public_url %}
+[mcp]
+public_url = {{ afterglow_mcp_public_url | to_json }}
+{% endif %}
 
 [cloud_shell]
 service_project_id = "{{ afterglow_cloud_shell_project_id }}"
@@ -67,7 +75,6 @@ callback_base_url = "{{ afterglow_instance_health_callback_base_url }}"
 [k3s]
 kubeconfig_encryption_key = "{{ afterglow_kubeconfig_encryption_key | default('') }}"
 gpu_admission_token = "{{ afterglow_k3s_gpu_admission_token | default('') }}"
-# provisioning_token is injected as K3S_PROVISIONING_TOKEN from the secret environment.
 
 [union]
 layer_store_rw_share_id = "{{ afterglow_share_layer_store_rw_id }}"

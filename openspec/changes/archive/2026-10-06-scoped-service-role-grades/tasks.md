@@ -1,0 +1,14 @@
+## Implementation Tasks
+
+- [x] Preserve existing project_owner/project_admin/project_member/project_reader and native core IDs/assignments while defining the service action contract.
+- [x] Enforce area_grade custom-role names and whitespace-to-hyphen normalization in backend and creation/rename UI.
+- [x] Implement explicit idempotent role preset preview/application with safe parent/leaf inference links, no admin/manager path and partial-failure reporting.
+- [x] Replace DB manager authority with current effective Keystone project roles; support owner/admin delegation, direct/effective member roles, invitations, last-owner protection, removal and explicit legacy-manager migration.
+- [x] Expose service capability projection and native-equivalent Afterglow BFF authorization, independent of OpenStack can_write.
+- [x] Implement role preset/naming UI, project member grade/leaf editing and capability-aware service controls.
+- [x] Complete repo-local Waygate companion: metadata vs assigned client download, editor create/update, admin destructive/security operations and persisted owner isolation.
+- [x] Complete repo-local Lumen companion: independent text/media/tools permissions, reduced editor/admin controls, key issue-time scope attenuation and current-owner use-time authority.
+- [x] Complete repo-local Drover companion: native action policy, strict system authority and actual reduced-grade Kubernetes credentials/exec without admin credential fallback.
+- [x] Complete repo-local Palimpsest companion: inventory/download/publish/key role boundaries and current-owner key authority without widening global builder privileges.
+- [x] Exercise actual local HTTP native/BFF authorization, role reuse/idempotence/normalization/escalation, downgrade, owner protection and browser role/control flows; run relevant existing regression selectors and project gates after integration. Executed evidence: HTTP24, real Chromium, final backend4112/contract154 and UI252 plus separate final71. Full gate was attempted but is NOT passing: shared-index unresolved merge, separate existing full UI/JS failures and unrelated VM-history I001; docs/testing.md records these limits. Isolated HEAD+120-current-role-file architecture guard passed; real index/shared stamp remain unchanged.
+- [x] After smoke proof, update affected architecture/API/operator/design docs and changelogs, record exact evidence/limits and archive each completed change without touching the shared Git index or deploying. Root, Waygate, Drover and Palimpsest requirements were synchronized to main specs; Lumen rapid had no delta specs. CLI archived all five completed changes under each repository's openspec/changes/archive/2026-10-06-* paths. The root archive's self-referential final archive checkbox was completed only after the move, not before it.

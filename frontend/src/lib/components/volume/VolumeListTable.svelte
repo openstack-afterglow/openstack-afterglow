@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/volume';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import type { Volume } from '$lib/types/volume';
 	import { formatStorage } from '$lib/utils/format';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import ActionMenu from '$lib/components/ui/ActionMenu.svelte';
 	import VolumeOperationItems from '$lib/components/volume/VolumeOperationItems.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	let {
 		volumes,
 		selectedVolumeId,
@@ -64,7 +66,7 @@
 	const selectedSelectableCount = $derived([...selectedIds].filter((id) => selectableIds.has(id)).length);
 </script>
 
-<div class="bg-[#0B1220] border border-line rounded-lg overflow-hidden">
+<div class="motion-stagger bg-[#0B1220] border border-line rounded-lg overflow-hidden">
 	<div class="{volumeGridClass} px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
 		<div><SelectionCheckbox checked={selectableIds.size > 0 && selectedSelectableCount === selectableIds.size} indeterminate={selectedSelectableCount > 0 && selectedSelectableCount < selectableIds.size} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel={t('listTable.selectAll')} /></div>
 		<div>{t('listTable.name')}</div>
@@ -107,6 +109,7 @@
 						<span class="block font-mono text-xs truncate">{vol.id}</span>
 					{/if}
 					<div class="text-xs text-ink-2 font-mono truncate">{vol.id.slice(0, 8)}…</div>
+					{#if deleting === vol.id}<span class="inline-flex items-center gap-1 text-xs text-state-danger-text"><ActivityIndicator size="xs" tone="danger" />{t('operationItems.deleting')}</span>{/if}
 				</div>
 			</button>
 			<!-- 크기 -->
@@ -137,7 +140,7 @@
 				{/if}
 			</div>
 			<!-- 자동 백업 토글 -->
-			<div class="hidden lg:flex justify-center" onclick={(e) => e.stopPropagation()} role="none">
+			<div class="hidden lg:flex flex-col items-center justify-center gap-1" onclick={(e) => e.stopPropagation()} role="none">
 				<button
 					onclick={(e) => { e.stopPropagation(); onToggleAutoBackup(vol.id); }}
 					disabled={autoBackupToggling === vol.id}
@@ -146,6 +149,7 @@
 				>
 					<span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-surface-base shadow ring-0 transition duration-200 ease-in-out {autoBackupConfigs.has(vol.id) ? 'translate-x-4' : 'translate-x-0'}"></span>
 				</button>
+				{#if autoBackupToggling === vol.id}<span class="inline-flex items-center gap-1 text-xs text-ink-2"><ActivityIndicator size="xs" tone="ink" />{tc('state.processing')}</span>{/if}
 			</div>
 			<!-- 액션 드롭다운 -->
 			<div class="flex justify-end" role="none">

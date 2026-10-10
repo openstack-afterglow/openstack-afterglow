@@ -146,10 +146,25 @@ describe('AdminProjectAccessModal', () => {
 		));
 	});
 
+	it('announces saving the reader role on a group until the request settles', async () => {
+		const request = Promise.withResolvers<unknown>();
+		mocks.post.mockReturnValueOnce(request.promise);
+		renderModal();
+		await fireEvent.click(await screen.findByRole('button', { name: '[그룹] AGENT 권한' }));
+		const dialog = screen.getByRole('dialog', { name: '[그룹] AGENT — 세부 권한' });
+		await fireEvent.click(within(dialog).getByRole('checkbox', { name: 'reader' }));
+		expect(within(dialog).getByRole('status').textContent).toContain('저장 중...');
+		members.push({ user_id: 'group:g1', user_name: '[그룹] AGENT', role_id: 'r-reader', role_name: 'reader', type: 'group', group_id: 'g1' });
+		request.resolve({ status: 'assigned' });
+		await waitFor(() => expect(within(dialog).queryByText('저장 중...')).toBeNull());
+		expect(within(dialog).getByRole('checkbox', { name: 'reader' })).toMatchObject({ checked: true, disabled: true });
+	});
+
 	it('fails closed when the reader role is missing', async () => {
 		roles = defaultRoles.filter((role) => role.name !== 'reader');
 		renderModal();
-		await screen.findByRole('status');
+		const warning = await screen.findByText('reader 역할을 찾을 수 없어 멤버를 추가할 수 없습니다. Keystone 역할 목록을 확인하세요.');
+		expect(warning.closest('[role="status"]')).toBeTruthy();
 		expect((screen.getByRole('button', { name: 'dustywindow reader로 추가' }) as HTMLButtonElement).disabled).toBe(true);
 	});
 

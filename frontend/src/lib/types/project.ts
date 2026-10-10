@@ -16,13 +16,30 @@ export interface ProjectMember {
 	group_id?: string;
 }
 
-export interface ProjectManagerMember {
+export interface ProjectAccessMember {
 	user_id: string;
 	username: string;
 	email: string;
+	is_owner: boolean;
 	is_manager: boolean;
-	source?: 'direct' | 'group';
+	roles: string[];
+	direct_role_ids: string[];
+	effective_role_ids: string[];
+	source?: 'direct' | 'group' | 'mixed' | 'inherited';
 	group_name?: string;
+}
+
+export interface AssignableProjectRole {
+	id: string;
+	name: string;
+	description?: string;
+	area: string | null;
+	grade: string | null;
+}
+
+export interface AssignableProjectRoles {
+	roles: AssignableProjectRole[];
+	is_owner: boolean;
 }
 
 export interface ProjectInvitation {

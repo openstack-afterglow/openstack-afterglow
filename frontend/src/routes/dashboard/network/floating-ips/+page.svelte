@@ -8,6 +8,7 @@
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
   import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
@@ -157,6 +158,7 @@
         <div></div>
       </div>
 
+      <div class="motion-stagger">
       {#each fips as fip (fip.id)}
         <div class="resource-selection-surface grid grid-cols-[1fr_160px_1fr_140px_90px] px-5 py-3.5 border-b border-line last:border-b-0 items-center hover:bg-surface-sunken/20 transition-colors" data-selected={selection.has(fip.id)}>
           <div class="flex items-center gap-2">
@@ -185,13 +187,15 @@
             <button
               onclick={() => deleteFip(fip.id, fip.floating_ip_address)}
               disabled={deleting === fip.id}
-              class="text-xs text-red-400 hover:text-red-300 transition-colors disabled:opacity-40"
+              aria-busy={deleting === fip.id}
+              class="inline-flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors disabled:opacity-40"
             >
-              {deleting === fip.id ? t('floatingIps.actions.processing') : t('floatingIps.actions.release')}
+              {#if deleting === fip.id}<ActivityIndicator size="xs" tone="danger" />{/if}{deleting === fip.id ? t('floatingIps.actions.processing') : t('floatingIps.actions.release')}
             </button>
           </div>
         </div>
       {/each}
+      </div>
 
       {#if fips.length === 0}
         <div class="text-ink-2 text-sm text-center py-12">{t('floatingIps.empty')}</div>

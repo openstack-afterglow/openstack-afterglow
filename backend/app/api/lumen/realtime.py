@@ -10,7 +10,7 @@ from uuid import UUID
 
 import httpx
 import websockets
-from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field
 from websockets.exceptions import ConnectionClosed
 
@@ -18,6 +18,7 @@ from app.api.cloud_shell import _origin_allowed
 from app.api.deps import get_token_info
 from app.config import get_settings
 from app.services import service_proxy, ws_ticket
+from app.services.service_authorization import authorize_service_request
 
 router = APIRouter()
 _MAX_FRAME_BYTES = 64 * 1024
@@ -35,9 +36,11 @@ class SessionRequest(BaseModel):
 @router.post("/realtime/sessions", status_code=201)
 async def create_session(
     payload: SessionRequest,
+    request: Request,
     idempotency_key: UUID = Header(alias="Idempotency-Key"),
     principal: dict = Depends(get_token_info),
 ):
+    await authorize_service_request("lumen", request, "/v1/chat/realtime/sessions")
     logical_project = principal["project_id"]
     connection_project = principal.get("connection_project_id") or logical_project
     endpoint = await asyncio.to_thread(

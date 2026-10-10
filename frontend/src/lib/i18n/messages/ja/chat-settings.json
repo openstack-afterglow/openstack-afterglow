@@ -1,4 +1,7 @@
 {
+	"permissions.required": "必要な権限: {leaf}",
+	"permissions.loading": "プロジェクト権限を読み込み中…",
+	"apiKeys.scopes": "APIスコープ（現在の権限に制限）",
 	"settings.sections.usage": "使用量",
 	"settings.sections.apiKeys": "APIキー",
 	"settings.sections.memory": "メモリー",

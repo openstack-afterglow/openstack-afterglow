@@ -222,6 +222,7 @@
 	"loadBalancers.error.server": "サーバーエラー",
 	"loadBalancers.breadcrumb": "ネットワーク / ロードバランサー",
 	"loadBalancers.title": "ロードバランサー",
+	"loadBalancers.loading": "ロードバランサー一覧を読み込み中...",
 	"loadBalancers.actions.create": "+ ロードバランサーを作成",
 	"loadBalancers.empty.title": "ロードバランサーはありません",
 	"loadBalancers.empty.create": "最初のロードバランサーを作成 →",

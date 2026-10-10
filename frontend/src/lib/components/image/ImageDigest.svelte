@@ -2,7 +2,7 @@
 	import { t } from '$lib/i18n/ns/images-keys';
 	import type { ImageInfo } from '$lib/types/compute';
 
-	let { image }: { image: ImageInfo } = $props();
+	let { image, showId = true, compact = false }: { image: ImageInfo; showId?: boolean; compact?: boolean } = $props();
 	const digest = $derived.by(() => {
 		const algorithm = image.os_hash_algo?.toLowerCase();
 		const value = image.os_hash_value?.toLowerCase();
@@ -15,10 +15,13 @@
 <div class="grid min-w-0 gap-0.5 font-mono text-xs text-ink-2">
 	{#if digest}
 		<code class="truncate" title={`${digest.algorithm}: ${digest.value}`} aria-label={`${digest.algorithm}: ${digest.value}`}>
-			{digest.algorithm} {digest.value.slice(0, 12)}…{digest.value.slice(-8)}
+			{#if compact}{digest.value.slice(0, 8)}{:else}{digest.algorithm} {digest.value.slice(0, 12)}…{digest.value.slice(-8)}{/if}
 		</code>
 	{:else}
-		<span>{image.status === 'saving' || image.status === 'queued' ? t('digest.calculatingHash') : t('digest.noHash')}</span>
+		{@const label = image.status === 'saving' || image.status === 'queued' ? t('digest.calculatingHash') : t('digest.noHash')}
+		<span class:truncate={compact} title={compact ? label : undefined}>{label}</span>
 	{/if}
-	<code title={image.id} aria-label={t('digest.imageId', { id: image.id })}>ID {image.id.slice(0, 8)}</code>
+	{#if showId}
+		<code title={image.id} aria-label={t('digest.imageId', { id: image.id })}>ID {image.id.slice(0, 8)}</code>
+	{/if}
 </div>

@@ -9,13 +9,13 @@
 {#if dialogState.open}
 	<div
 		use:dialogFocus={{ enabled: dialogState.open, onEscape: dialogState.reject }}
-		class="confirm-overlay material-scrim"
+		class="confirm-overlay material-scrim motion-fade"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="confirm-dialog-message"
 		tabindex="-1"
 	>
-		<div class="confirm-frame">
+		<div class="confirm-frame motion-pop">
 			<Card surface="modal" padding="lg">
 				<p id="confirm-dialog-message" class="confirm-message">{dialogState.message}</p>
 				<div class="confirm-actions">

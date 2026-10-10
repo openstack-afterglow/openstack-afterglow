@@ -12,6 +12,7 @@
 		clusterId: () => 'cluster',
 		token: () => 'synthetic-token',
 		projectId: () => 'project',
+		userId: () => 'synthetic-user',
 		adminMode: () => admin,
 	});
 	provideK3sClusterDetailController(controller);

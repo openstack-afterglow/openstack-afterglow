@@ -20,6 +20,7 @@
 </script>
 
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { AdminVolumeStatusSummary as Summary } from '$lib/types/volume';
 	import { getStatusStyle } from '$lib/config/statusColors';
 
@@ -48,7 +49,10 @@
 	}
 </script>
 
-<section class="volume-status-summary" aria-label={t('volumeList.statusCounts')}>
+{#if loading}
+	<ActivityIndicator size="sm" label={t('volumeList.statusLoading')} class="mb-2" />
+{/if}
+<section class="volume-status-summary" aria-label={t('volumeList.statusCounts')} aria-busy={loading}>
 	<button
 		type="button"
 		class="status-card status-card-total"
@@ -57,7 +61,11 @@
 		onclick={() => onSelect('')}
 	>
 		<span class="status-card-label">{t('volumeList.all')}</span>
-		<span class="status-card-count">{loading ? '…' : (summary?.total ?? 0)}</span>
+		{#if loading}
+			<span class="motion-skeleton h-5 w-8 rounded" aria-hidden="true"></span>
+		{:else}
+			<span class="status-card-count">{summary?.total ?? 0}</span>
+		{/if}
 	</button>
 
 	{#each statusRows as row}
@@ -71,7 +79,11 @@
 			onclick={() => onSelect(row.status)}
 		>
 			<span class="status-card-label">{volumeStatusLabel(row.status)}</span>
-			<span class="status-card-count">{loading ? '…' : row.count}</span>
+			{#if loading}
+				<span class="motion-skeleton h-5 w-8 rounded" aria-hidden="true"></span>
+			{:else}
+				<span class="status-card-count">{row.count}</span>
+			{/if}
 		</button>
 	{/each}
 </section>

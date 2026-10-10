@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/object-storage';
+	import { t as commonT } from '$lib/i18n/ns/common';
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
-	import { ActionMenu, FileIcon, SelectionCheckbox } from '$lib/components/ui';
+	import { ActionMenu, ActivityIndicator, FileIcon, SelectionCheckbox } from '$lib/components/ui';
 	import { formatDate, formatObjectSize, shortContentType } from '$lib/utils/format';
 	import { observeVisible } from '$lib/utils/observeVisible';
 	import type { SwiftObject } from '$lib/types/objectStorage';
@@ -12,6 +13,8 @@
 	const label = $derived(fullPath ? obj.name : (s.baseName(obj.name) || obj.name));
 	const thumb = $derived(s.thumbnailUrl(obj));
 	const previewable = $derived(s.isPreviewable(obj.content_type));
+	const downloadPreparing = $derived(s.downloading === obj.name);
+	const downloadPendingLabel = $derived(`${t('views.fileCard.download')}: ${commonT('state.processing')}`);
 	let menuOpen = $state(false);
 
 	function activate() {
@@ -43,6 +46,7 @@
 	role="button"
 	tabindex="0"
 	aria-label={t('views.fileCard.ariaLabel', { name: label })}
+	aria-busy={downloadPreparing}
 	onclick={onCardClick}
 	ondblclick={activate}
 	onkeydown={onKeydown}
@@ -71,8 +75,19 @@
 			{/if}
 			<button
 				onclick={() => { menuOpen = false; s.downloadObject(obj.name); }}
-				class="w-full px-3 py-1.5 text-left text-[13px] text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0"
-			>{t('views.fileCard.download')}</button>
+				disabled={downloadPreparing}
+				aria-busy={downloadPreparing}
+				class="w-full px-3 py-1.5 text-left text-[13px] text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 disabled:cursor-default"
+			>
+				{#if downloadPreparing}
+					<span class="inline-flex items-center gap-1.5">
+						<ActivityIndicator variant="download" size="xs" />
+						{downloadPendingLabel}
+					</span>
+				{:else}
+					{t('views.fileCard.download')}
+				{/if}
+			</button>
 			<button
 				onclick={() => { menuOpen = false; s.showMeta(obj.name); }}
 				class="w-full px-3 py-1.5 text-left text-[13px] text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0"
@@ -92,7 +107,7 @@
 		</ActionMenu>
 	</div>
 
-	<div class="flex aspect-[4/3] items-center justify-center overflow-hidden bg-surface-sunken">
+	<div class="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-surface-sunken">
 		{#if thumb}
 			<img src={thumb} alt="" loading="lazy" decoding="async" class="h-full w-full object-cover" />
 		{:else}
@@ -101,6 +116,11 @@
 				contentType={obj.content_type}
 				class="[&_svg]:h-12 [&_svg]:w-12"
 			/>
+		{/if}
+		{#if downloadPreparing}
+			<div class="motion-fade absolute inset-x-0 bottom-0 flex justify-center border-t border-line bg-surface-base px-2 py-1.5 text-xs text-ink-1">
+				<ActivityIndicator variant="download" size="xs" label={downloadPendingLabel} />
+			</div>
 		{/if}
 	</div>
 

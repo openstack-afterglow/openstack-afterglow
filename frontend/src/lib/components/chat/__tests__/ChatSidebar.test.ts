@@ -1,3 +1,4 @@
+import './lumenPermissionFixture';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -70,11 +71,17 @@ describe('ChatSidebar search palette', () => {
 		expect(screen.queryByPlaceholderText('대화 검색')).toBeNull();
 	});
 
-	it('shows a spinner and unseen indicator for inactive running conversations', () => {
-		renderSidebar(new Set(['conv-1']), 'conv-2');
+	it('labels running conversations and removes unseen state when the conversation is opened', async () => {
+		const view = renderSidebar(new Set(['conv-1']), 'conv-2');
 
-		expect(document.querySelector('.run-spinner')).toBeTruthy();
+		expect(screen.getByRole('status').textContent?.trim()).toBe('응답 생성 중');
+		expect(screen.getByRole('button', { name: /OpenStack 네트워크 점검.*응답 생성 중/ })).toBeTruthy();
 		expect(screen.getByLabelText('확인하지 않은 실행 중 대화')).toBeTruthy();
+		await view.rerender({ activeConvId: 'conv-1' });
+		expect(screen.getByRole('status').textContent?.trim()).toBe('응답 생성 중');
+		expect(screen.queryByLabelText('확인하지 않은 실행 중 대화')).toBeNull();
+		await view.rerender({ runningConversationIds: new Set() });
+		expect(screen.queryByRole('status')).toBeNull();
 	});
 
 	it('opens with Ctrl+I and closes with Escape', async () => {

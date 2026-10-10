@@ -10,6 +10,7 @@
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
   import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
+  import Alert from '$lib/components/ui/Alert.svelte';
   import PrebuiltLibraryGrid from '$lib/components/file-storage/manage/PrebuiltLibraryGrid.svelte';
   import FileStorageManageGrid from '$lib/components/file-storage/manage/FileStorageManageGrid.svelte';
 
@@ -102,10 +103,10 @@
   </PageHeader>
 
   {#if error}
-    <div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>
+    <Alert tone="danger" class="mb-4">{error}</Alert>
   {/if}
   {#if message}
-    <div class="bg-green-900/40 border border-green-700 text-green-300 rounded-lg px-4 py-3 text-sm mb-4">{message}</div>
+    <Alert tone="success" class="mb-4">{message}</Alert>
   {/if}
 
   {#if loading}

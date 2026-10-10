@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-system';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import NotionTargetFormFields from './NotionTargetFormFields.svelte';
@@ -85,7 +86,7 @@
 		{/if}
 		<button onclick={saveEdit} disabled={saving}
 			class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors">
-			{saving ? t('notion.edit.saving') : t('notion.actions.save')}
+			{#if saving}<ActivityIndicator size="xs" tone="ink" class="mr-1.5" />{/if}{saving ? t('notion.edit.saving') : t('notion.actions.save')}
 		</button>
 	</div>
 {/if}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t as tr } from '$lib/i18n/ns/database';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { DbInstance } from '$lib/types/database';
 
 	let {
@@ -53,7 +54,7 @@
 		{:else}
 			<button onclick={onEnableRoot} disabled={enablingRoot}
 				class="text-xs text-warm-text border border-action-warm hover:border-action-warm px-3 py-1.5 rounded transition-colors">
-				{enablingRoot ? tr('state.enablingRoot') : tr('actions.enableRoot')}
+				{#if enablingRoot}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.enablingRoot')}</span></span>{:else}{tr('actions.enableRoot')}{/if}
 			</button>
 		{/if}
 	</div>

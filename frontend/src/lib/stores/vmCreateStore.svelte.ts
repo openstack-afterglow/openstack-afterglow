@@ -355,6 +355,62 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	let progress = $state(0);
 	let progressMessage = $state('');
 	let elapsedSeconds = $state<number | null>(null);
+	let stepElapsedSeconds = $state<Record<string, number>>({});
+	let progressClock: ReturnType<typeof setInterval> | null = null;
+	let elapsedAnchorAt: number | null = null;
+	let elapsedAnchorSeconds = 0;
+	let timedStep: string | null = null;
+	let stepStartedAt = 0;
+	let stepElapsedBefore = 0;
+
+	function updateDeploymentClock(now = performance.now()) {
+		if (elapsedAnchorAt === null) return;
+		elapsedSeconds = elapsedAnchorSeconds + (now - elapsedAnchorAt) / 1000;
+		if (timedStep !== null) {
+			stepElapsedSeconds[timedStep] = stepElapsedBefore + (now - stepStartedAt) / 1000;
+		}
+	}
+
+	function stopDeploymentClock() {
+		updateDeploymentClock();
+		clearInterval(progressClock ?? undefined);
+		progressClock = null;
+		elapsedAnchorAt = null;
+		timedStep = null;
+	}
+
+	function startDeploymentClock() {
+		stopDeploymentClock();
+		elapsedAnchorAt = performance.now();
+		elapsedAnchorSeconds = 0;
+		elapsedSeconds = 0;
+		stepElapsedSeconds = {};
+		progressClock = setInterval(updateDeploymentClock, 1000);
+	}
+
+	function reportProgress(data: ProgressMessage) {
+		const now = performance.now();
+		updateDeploymentClock(now);
+		// Server elapsed time may advance the total, but never rewind a live clock.
+		if (typeof data.elapsed_seconds === 'number' && Number.isFinite(data.elapsed_seconds)
+			&& data.elapsed_seconds > (elapsedSeconds ?? 0)) {
+			elapsedAnchorSeconds = data.elapsed_seconds;
+			elapsedAnchorAt = now;
+			elapsedSeconds = data.elapsed_seconds;
+		}
+		if (data.step !== currentStep || timedStep === null) {
+			timedStep = data.step === 'completed' || data.step === 'failed' ? null : data.step;
+			if (timedStep !== null) {
+				stepStartedAt = now;
+				stepElapsedBefore = stepElapsedSeconds[timedStep] ?? 0;
+				stepElapsedSeconds[timedStep] = stepElapsedBefore;
+			}
+		}
+		currentStep = data.step;
+		progress = data.progress;
+		progressMessage = data.message;
+		if (data.step === 'completed' || data.step === 'failed') stopDeploymentClock();
+	}
 
 	// Admin state
 	let adminProjects = $state<ProjectInfo[]>([]);
@@ -1289,6 +1345,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		currentStep = 'manila_preparing';
 		progress = 0;
 		progressMessage = t('deploy.starting');
+		startDeploymentClock();
 
 		const baseUrl = getBaseUrl();
 		const authState = get(auth);
@@ -1326,9 +1383,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 					: { artifact_ids: w.layerArtifactIds }),
 			};
 			try {
-				currentStep = 'server_creating';
-				progress = 60;
-				progressMessage = t('deploy.squashfs');
+				reportProgress({ step: 'server_creating', progress: 60, message: t('deploy.squashfs') });
 				const response = await fetchWithAuth('/api/v1/libraries/squashfs/consume', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -1340,18 +1395,17 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 					const text = await response.text();
 					throw new ApiError(response.status, text || response.statusText);
 				}
-				currentStep = 'completed';
-				progress = 100;
-				progressMessage = t('deploy.completed');
+				reportProgress({ step: 'completed', progress: 100, message: t('deploy.completed') });
 				toast.success(t('toast.created'));
 				// 완료 보고는 root layout 의 Toast 가 이어받는다. 타이머로 사용자를 이동시키지 않는다 (WCAG 2.2.1).
 				if (!destroyed) {
 					resetWizard();
 					closeWizard();
-					goto('/dashboard');
+					goto('/dashboard/compute/instances');
 				}
 				return;
 			} catch (e) {
+				stopDeploymentClock();
 				if (destroyed) return;
 				deployError = e instanceof ApiError
 					? t('deploy.failed', { message: e.message })
@@ -1397,10 +1451,9 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		if (mockStream) {
 			for await (const data of mockStream) {
 				if (destroyed) return;
-				currentStep = data.step;
-				progress = data.progress;
-				progressMessage = data.message;
+				reportProgress(data);
 			}
+			stopDeploymentClock();
 			toast.success(t('toast.created'));
 			// 완료 보고는 root layout 의 Toast 가 이어받는다. 타이머로 사용자를 이동시키지 않는다 (WCAG 2.2.1).
 			if (!destroyed) {
@@ -1408,7 +1461,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				adminSelectedProjectId = null;
 				adminSelectedProjectName = null;
 				closeWizard();
-				goto(opts.adminMode() ? '/admin/instances' : '/dashboard');
+				goto(opts.adminMode() ? '/admin/instances' : '/dashboard/compute/instances');
 			}
 			return;
 		}
@@ -1443,12 +1496,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 					if (line.startsWith('data: ')) {
 						try {
 							const data = JSON.parse(line.slice(6)) as ProgressMessage;
-							currentStep = data.step;
-							progress = data.progress;
-							progressMessage = data.message;
-							if (data.elapsed_seconds !== undefined && data.elapsed_seconds !== null) {
-								elapsedSeconds = data.elapsed_seconds;
-							}
+							reportProgress(data);
 							if (data.step === 'completed') {
 								toast.success(t('toast.created'));
 								// 완료 보고는 root layout 의 Toast 가 이어받는다. 타이머로 사용자를 이동시키지 않는다 (WCAG 2.2.1).
@@ -1457,7 +1505,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 									adminSelectedProjectId = null;
 									adminSelectedProjectName = null;
 									closeWizard();
-									goto(opts.adminMode() ? '/admin/instances' : '/dashboard');
+									goto(opts.adminMode() ? '/admin/instances' : '/dashboard/compute/instances');
 								}
 								return;
 							}
@@ -1477,6 +1525,8 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				? t('deploy.failed', { message: e.message })
 				: t('deploy.connectionError', { message: e instanceof Error ? e.message : t('deploy.unknownError') });
 			deploying = false;
+		} finally {
+			stopDeploymentClock();
 		}
 	}
 
@@ -1502,6 +1552,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		destroyed = true;
 		initialized = false;
 		projectLoadController.abort();
+		stopDeploymentClock();
 		deployController?.abort();
 		deployController = null;
 		loadGeneration += 1;
@@ -1579,6 +1630,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		get visibleTotalSteps() { return visibleTotalSteps; },
 		get visibleStepIndex() { return visibleStepIndex; },
 		get elapsedSeconds() { return elapsedSeconds; },
+		get stepElapsedSeconds() { return stepElapsedSeconds; },
 		// Admin state
 		get adminProjects() { return adminProjects; },
 		get adminProjectsLoading() { return adminProjectsLoading; },

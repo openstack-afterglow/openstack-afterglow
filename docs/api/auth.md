@@ -72,6 +72,9 @@ OIDC·서비스 HTTP client의 TLS verify/설정 CA·hostname 검증은 유지�
 | `GET` | `/api/v1/auth/gitlab/enabled` | 없음 | GitLab OIDC 활성화 여부 |
 | `GET` | `/api/v1/auth/gitlab/authorize` | 없음 | GitLab OAuth2 인증 URL |
 | `POST` | `/api/v1/auth/gitlab/callback` | 없음 | GitLab 콜백: code로 JWT 발급 (10회/분) |
+| `GET/POST` | `/api/v1/auth/mcp-tokens` | 필요 | 현재 사용자·프로젝트의 개인 MCP 키 조회/발급 (MCP 활성화 필요) |
+| `POST` | `/api/v1/auth/mcp-tokens/verify` | 필요·동일 사이트 | 본인 개인 키로 공개 MCP 초기화·도구 목록 확인 (6회/분) |
+| `DELETE` | `/api/v1/auth/mcp-tokens/{id}` | 필요·동일 사이트 | 본인 키 회수 |
 
 ---
 
@@ -93,6 +96,7 @@ OIDC·서비스 HTTP client의 TLS verify/설정 CA·hostname 검증은 유지�
   "roles": ["member", "reader"],
   "default_project_id": "uuid-string",
   "is_system_admin": false,
+  "can_write": true,
   "auth_method": "password"
 }
 ```
@@ -106,9 +110,10 @@ OIDC·서비스 HTTP client의 TLS verify/설정 CA·hostname 검증은 유지�
 | `user_id` | string | 사용자 UUID |
 | `username` | string | 사용자 이름 |
 | `expires_at` | string | access JWT 만료 시각 (ISO 8601) |
-| `roles` | array[string] | 현재 프로젝트에서의 역할 목록 |
+| `roles` | array[string] | 표시용 프로젝트 역할 이름. 일반 사용자에게 `admin`·`manager` 및 이들을 상속하는 사용자 정의 역할은 노출하지 않음 |
 | `default_project_id` | string | 사용자 기본 프로젝트 UUID (없으면 `""`) |
 | `is_system_admin` | boolean | 시스템 관리자 여부 |
+| `can_write` | boolean | 숨기기 전 검증된 역할로 계산한 프로젝트 쓰기 권한. 프론트엔드는 표시용 이름에서 이를 재추론하지 않음 |
 | `auth_method` | string | `password` 또는 `federated` |
 
 ### UserInfo
@@ -121,9 +126,12 @@ OIDC·서비스 HTTP client의 TLS verify/설정 CA·hostname 검증은 유지�
   "project_name": "project-name",
   "roles": ["member", "reader"],
   "is_system_admin": false,
+  "can_write": true,
   "auth_method": "password"
 }
 ```
+
+`roles`는 authorization 입력이 아니라 public projection입니다. 시스템 관리자는 전체 이름을 받으며, 일반 사용자의 분류 불가 사용자 정의 이름은 숨깁니다. 분류 cache에 새 외부 역할이 없으면 한 번 갱신하고 metadata 장애는 로그인·`/me`를 실패시키지 않습니다. 서버는 원래 Keystone 검증 결과와 별도의 프로젝트 소유권을 계속 검사하며, 이름 숨김이 실제 `can_write`를 바꾸지 않습니다.
 
 ### ProjectInfo
 
@@ -381,3 +389,26 @@ Keystone가 token authentication에서 반환하는 `404 Failed to validate toke
 ```
 
 응답은 [TokenResponse](#tokenresponse) (`auth_method`는 `federated`). 인증 실패 시 401.
+
+## 개인 MCP 키와 접속 확인
+
+사용자 화면은 `/dashboard/account`의 **외부 AI 접근**, 연결 안내는 공개 `/docs/mcp`다. MCP 개인 키는 브라우저 access JWT나 Lumen 추론 API 키와 다르다. 발급 사용자·프로젝트에 묶이며 `read` 또는 명시적으로 선택한 `manage`와 제한된 Keystone application credential을 사용한다. 평문 키는 발급 응답 한 번만 반환한다. 목록에는 prefix만 포함되고 서버는 해시를 저장한다. 기본 만료 30일·최대 90일은 운영자의 `mcp.default_grant_ttl_days`/`mcp.max_grant_ttl_days` 정책을 따른다.
+
+`POST /api/v1/auth/mcp-tokens/verify`는 유효한 브라우저 JWT와 현재 프로젝트, 허용 Origin 및 `Sec-Fetch-Site: same-site|same-origin`을 요구한다. JSON 본문은 정확히 `{"token":"<personal MCP key>"}`이며 1 KiB로 제한한다. URL 필드는 허용하지 않는다. 키의 종류·활성 상태·사용자·프로젝트 소유권을 먼저 검증한 후에만 운영자가 설정한 공개 리소스로 요청한다.
+
+검사는 실제 Streamable HTTP SDK로 `initialize` → `notifications/initialized` → 모든 `tools/list` 페이지를 수행하며 `tools/call`은 실행하지 않는다. TLS 인증서를 검증하고 redirect·환경 proxy를 사용하지 않는다. 전체 20초, 응답 2 MiB, 50페이지·5,000도구 한도로 제한한다. 성공 JSON은 `endpoint`, `protocol_version`, `server_name`, `server_version`, `tool_count`만 포함한다. 발급 창 종료·로그인/프로젝트 변경·component 해제는 화면의 비밀과 pending 결과를 폐기한다. 클립보드·저장한 파일은 사용자가 별도로 정리한다.
+
+| 상태 | 코드·의미 |
+|---|---|
+| 200 | 초기화와 전체 도구 목록 확인; 실제 OpenStack 조회/변경 또는 다른 AI 클라이언트 성공 증거는 아님 |
+| 400 | `invalid_request`(잘못된 본문), `invalid_token`(잘못된·만료·회수·다른 사용자/프로젝트 키); 외부 접속 없이 거부 |
+| 403 | 동일 사이트 browser guard 거부 |
+| 404 | MCP 비활성화 |
+| 429 | 분당 6회 제한 |
+| 503 | `not_configured`(리소스 설정 불가) 또는 authority storage 불가 |
+| 502 | `rejected`, `redirect`, `protocol`; 안전한 일반 메시지만 반환 |
+| 504 | `unavailable`; DNS·TLS·연결 실패 또는 timeout |
+
+검사 함수의 응답은 `Cache-Control: no-store`이며 audit action은 `mcp_grant.verify`다. 원문 키나 upstream 오류 본문을 결과·감사에 기록하지 않는다.
+
+외부 클라이언트에는 계정 화면의 **인증 JSON 복사** 또는 클라이언트별 개인 Bearer/OAuth 설정을 사용한다. 명시한 `mcp.public_url` 자체가 리소스이며 origin-only URL은 루트 `/`를 유지한다. 미설정 시만 `<public_api_base>/api/v1/mcp`로 대체한다. Root 리소스는 `/.well-known/oauth-protected-resource`와 `/oauth/{register,authorize,token,revoke}`를 사용한다. 전용 MCP 호스트의 DNS·정상 TLS·백엔드 routing과 Afterglow 서버의 outbound 접근은 운영자 준비 사항이다. `https://mcp.cloud.dmslab.re.kr` 예시는 운영 연결 성공 증거가 아니다. Lumen에서 외부 MCP를 등록하는 outbound 설정에 이 개인 키를 공유하지 않는다.

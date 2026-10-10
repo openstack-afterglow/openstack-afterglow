@@ -1,5 +1,6 @@
 import { t } from '$lib/i18n/ns/chat-studio';
 import { api, ApiError, fetchWithAuth } from './client';
+import { requireLumenCapability } from './lumenAccess';
 import { uploadChatAttachment } from './chatAttachments';
 import type { AvailableModel } from './chatTree';
 import { parseAudioTranscript, type AudioTranscript } from './audioTranscript';
@@ -58,6 +59,7 @@ export const audioStudioApi = {
 	models: (kind: AudioKind, scope: AudioScope) => api.get<AudioModel[]>(`/api/v1/chat/models?model_kind=${kind}`, scope.token, scope.projectId, { refresh: true }),
 	capabilities: (kind: AudioKind, id: number, scope: AudioScope) => api.get<AudioCapabilities>(`/api/v1/chat/capabilities?model_id=${id}&model_kind=${kind}`, scope.token, scope.projectId, { refresh: true }),
 	async speech(request: SpeechRequest, scope: AudioScope, idempotencyKey: string, signal?: AbortSignal): Promise<Blob> {
+		requireLumenCapability('lumen-audio_user', scope.token, scope.projectId);
 		const response = await checked(await fetchWithAuth('/api/v1/chat/audio/speech', {
 			method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
 			body: JSON.stringify(request), signal
@@ -68,6 +70,7 @@ export const audioStudioApi = {
 	},
 	upload: (file: File, scope: AudioScope, signal?: AbortSignal) => uploadChatAttachment(file, { ...scope, signal }),
 	async transcribe(request: TranscriptionRequest, scope: AudioScope, intentKey: string, signal?: AbortSignal): Promise<AudioTranscript> {
+		requireLumenCapability('lumen-audio_user', scope.token, scope.projectId);
 		const response = await checked(await fetchWithAuth('/api/v1/chat/audio/transcriptions', {
 			method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': intentKey },
 			body: JSON.stringify(request), signal

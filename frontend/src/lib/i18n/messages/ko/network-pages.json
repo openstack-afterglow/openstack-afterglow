@@ -222,6 +222,7 @@
 	"loadBalancers.error.server": "서버 오류",
 	"loadBalancers.breadcrumb": "NETWORK / LOADBALANCERS",
 	"loadBalancers.title": "로드밸런서",
+	"loadBalancers.loading": "로드밸런서 목록을 불러오는 중...",
 	"loadBalancers.actions.create": "+ 로드밸런서 생성",
 	"loadBalancers.empty.title": "로드밸런서가 없습니다",
 	"loadBalancers.empty.create": "첫 로드밸런서를 생성하세요 →",

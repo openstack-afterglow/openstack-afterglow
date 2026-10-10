@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { uploadQueue, type UploadJob } from '$lib/stores/uploadQueue';
-	import { Pill } from '$lib/components/ui';
+	import { ActivityIndicator, AnimatedNumber, Pill, ProgressTrack } from '$lib/components/ui';
 	import { t } from '$lib/i18n/ns/object-storage';
+	import { enter, reflow } from '$lib/utils/motion';
 
 	let jobs = $state<UploadJob[]>([]);
 	let collapsed = $state(false);
@@ -19,6 +20,7 @@
 	const activeCount = $derived(jobs.filter((j) => j.status === 'uploading').length);
 	const totalLoaded = $derived(jobs.reduce((s, j) => s + j.loaded, 0));
 	const totalBytes = $derived(jobs.reduce((s, j) => s + j.total, 0));
+	const aggregatePercent = $derived(totalBytes > 0 ? Math.round(totalLoaded / totalBytes * 100) : 0);
 
 	function formatBytes(n: number): string {
 		if (n >= 1073741824) return `${(n / 1073741824).toFixed(1)} GB`;
@@ -50,6 +52,7 @@
 		if (j.status === 'success') return t('uploadDock.status.success');
 		if (j.status === 'error') return t('uploadDock.status.error');
 		if (j.status === 'canceled') return t('uploadDock.status.canceled');
+		if (j.loaded === 0) return t('uploadDock.preparing');
 		const pct = j.total > 0 ? Math.round((j.loaded / j.total) * 100) : 0;
 		return t('uploadDock.progress', { percent: pct, speed: formatBytes(speed(j)), time: formatTime(remaining(j)) });
 	}
@@ -66,17 +69,20 @@
 </script>
 
 {#if visible}
-	<div class="fixed bottom-4 right-4 z-40 w-80 shadow-[var(--shadow-overlay-compact)] rounded-xl overflow-hidden border border-line-2 bg-surface-base">
+	<div class="motion-enter fixed bottom-4 right-4 z-40 w-80 max-w-[calc(100vw-2rem)] shadow-[var(--shadow-overlay-compact)] rounded-xl overflow-hidden border border-line-2 bg-surface-base">
 		<!-- 헤더 -->
 		<button
 			onclick={() => (collapsed = !collapsed)}
-			class="w-full flex items-center justify-between px-4 py-3 bg-surface-sunken hover:bg-gray-750 transition-colors"
+			aria-expanded={!collapsed}
+			aria-controls="upload-dock-jobs"
+			class="w-full flex items-center justify-between gap-2 px-4 py-3 bg-surface-sunken hover:bg-surface-selected transition-colors"
 		>
 			<span class="text-sm font-medium text-ink-0">
 				{#if activeCount > 0}
-					{t('uploadDock.uploading', { count: activeCount, loaded: formatBytes(totalLoaded), total: formatBytes(totalBytes) })}
+					<ActivityIndicator variant="upload" size="xs" label={t('uploadDock.uploadingCount', { count: activeCount })} />
+					<span class="block mt-1 text-xs text-ink-2">{formatBytes(totalLoaded)} / {formatBytes(totalBytes)} · <AnimatedNumber value={aggregatePercent} format={(n) => `${Math.round(n)}%`} /></span>
 				{:else}
-					{t('uploadDock.complete')}
+					{t('uploadDock.results')}
 				{/if}
 			</span>
 			<svg
@@ -88,50 +94,48 @@
 		</button>
 
 		<!-- 작업 목록 -->
-		{#if !collapsed}
-			<div class="max-h-64 overflow-y-auto divide-y divide-line">
+			<div id="upload-dock-jobs" hidden={collapsed} class="max-h-64 overflow-y-auto divide-y divide-line">
 				{#each jobs as j (j.id)}
-					<div class="px-4 py-3">
-						<div class="flex items-start justify-between gap-2 mb-1.5">
+					<div class="px-4 py-3" in:enter animate:reflow aria-busy={j.status === 'uploading'}>
+						<!-- 44px close targets overlap the row padding (negative margins) so they do not stretch the row. -->
+						<div class="flex items-center justify-between gap-2 mb-1.5">
 							<div class="flex items-center gap-1.5 min-w-0 flex-1">
 								{#if j.kind === 'image'}
-									<span class="shrink-0 text-xs px-1.5 py-0.5 rounded bg-purple-900/40 border border-purple-800 text-purple-300">{t('uploadDock.image')}</span>
+									<span class="shrink-0 text-xs px-1.5 py-0.5 rounded bg-surface-selected border border-line text-accent">{t('uploadDock.image')}</span>
 								{/if}
 								<span class="text-xs text-ink-1 truncate" title={j.name}>{j.name}</span>
 							</div>
 							{#if j.status === 'uploading'}
 								<button
 									onclick={() => uploadQueue.cancel(j.id)}
-									class="shrink-0 text-ink-2 hover:text-red-400 transition-colors text-xs"
+									class="shrink-0 -my-3.5 -mr-3 min-h-11 min-w-11 text-ink-2 hover:text-state-danger-text transition-colors text-xs"
 									title={t('uploadDock.cancel')}
+									aria-label={t('uploadDock.cancelNamed', { name: j.name })}
 								>{t('uploadDock.closeSymbol')}</button>
 							{:else}
 								<button
 									onclick={() => uploadQueue.remove(j.id)}
-									class="shrink-0 text-ink-2 hover:text-ink-2 transition-colors text-xs"
+									class="shrink-0 -my-3.5 -mr-3 min-h-11 min-w-11 text-ink-2 hover:text-ink-0 transition-colors text-xs"
 									title={t('uploadDock.close')}
+									aria-label={t('uploadDock.closeNamed', { name: j.name })}
 								>{t('uploadDock.closeSymbol')}</button>
 							{/if}
 						</div>
 
-						{#if j.status === 'uploading'}
-							<div class="bg-surface-sunken rounded-full h-1.5 mb-1 overflow-hidden">
-								<div
-									class="bg-indigo-500 h-1.5 rounded-full transition-all duration-300"
-									style="width: {j.total > 0 ? Math.round((j.loaded / j.total) * 100) : 0}%"
-								></div>
-							</div>
-						{:else if j.status === 'error'}
-							<div class="bg-surface-sunken rounded-full h-1.5 mb-1 overflow-hidden">
-								<div class="bg-red-500 h-1.5 rounded-full w-full"></div>
-							</div>
-						{:else}
-							<div class="bg-surface-sunken rounded-full h-1.5 mb-1 overflow-hidden">
-								<div class="bg-green-500 h-1.5 rounded-full w-full transition-all"></div>
-							</div>
-						{/if}
+						<ProgressTrack
+							value={j.status === 'uploading' && j.loaded === 0 ? null : j.status === 'success' ? 100 : j.total > 0 ? j.loaded / j.total * 100 : 0}
+							active={j.status === 'uploading'}
+							tone={j.status === 'error' ? 'danger' : j.status === 'success' ? 'success' : j.status === 'canceled' ? 'neutral' : 'accent'}
+							label={t('uploadDock.progressLabel', { name: j.name })}
+							valueText={statusLabel(j)}
+							size="xs"
+							class="mb-1"
+						/>
 
 						<div class="flex items-center gap-2">
+							{#if j.status === 'success'}
+								<svg class="motion-pop h-4 w-4 shrink-0 text-state-success-text" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 4 4L19 6" /></svg>
+							{/if}
 							<div class="text-xs {j.status === 'error' ? 'text-state-danger-text' : j.status === 'success' ? 'text-state-success-text' : 'text-ink-2'}">
 								{#if j.status === 'error'}
 									{j.error ?? t('uploadDock.failed')}
@@ -146,6 +150,5 @@
 					</div>
 				{/each}
 			</div>
-		{/if}
 	</div>
 {/if}

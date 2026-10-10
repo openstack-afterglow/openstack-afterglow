@@ -11,6 +11,7 @@
 	import ListenerSection from '$lib/components/dashboard/loadbalancers/ListenerSection.svelte';
 	import PoolSection from '$lib/components/dashboard/loadbalancers/PoolSection.svelte';
 	import { t } from '$lib/i18n/ns/network-pages';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	const ctrl = createNetworkLoadbalancerDetailController({
 		lbId: () => $page.params.id!,
@@ -45,7 +46,7 @@
 	</div>
 
 	{#if ctrl.loading}
-		<div class="text-ink-2">{t('loadBalancerDetail.loading')}</div>
+		<ActivityIndicator label={t('loadBalancerDetail.loading')} />
 	{:else if ctrl.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{ctrl.error}</div>
 	{:else if ctrl.lb}

@@ -108,8 +108,8 @@
 
 {#if $sidebarOpen}
 	<div use:dialogFocus={{ enabled: true, onEscape: () => sidebarOpen.close(), initialFocus: '#app-navigation-close' }} role="dialog" aria-modal="true" aria-label={t('accessibility.allMenu')} tabindex="-1" class="fixed inset-0 z-[var(--z-modal)]">
-		<button type="button" onclick={() => sidebarOpen.close()} tabindex="-1" aria-hidden="true" data-navigation-backdrop class="absolute inset-0 cursor-default bg-surface-scrim-soft"></button>
-		<aside id="app-navigation-menu" aria-label={rootHref === '/admin' ? t('accessibility.adminNavigation') : t('accessibility.userNavigation')} class="relative flex h-[100dvh] w-[min(var(--app-sidebar-width),100vw)] flex-col bg-surface-base shadow-[var(--shadow-restraint)]">
+		<button type="button" onclick={() => sidebarOpen.close()} tabindex="-1" aria-hidden="true" data-navigation-backdrop class="motion-fade absolute inset-0 cursor-default bg-surface-scrim-soft"></button>
+		<aside id="app-navigation-menu" aria-label={rootHref === '/admin' ? t('accessibility.adminNavigation') : t('accessibility.userNavigation')} class="motion-enter relative flex h-[100dvh] w-[min(var(--app-sidebar-width),100vw)] flex-col bg-surface-base shadow-[var(--shadow-restraint)]">
 			<div class="flex h-[var(--app-header-height)] shrink-0 items-center gap-2 border-b border-line px-3 sm:gap-3 md:px-6">
 				<button id="app-navigation-close" type="button" onclick={() => sidebarOpen.close()} aria-label={t('accessibility.closeAllMenu')} class="-ml-2 flex size-11 shrink-0 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8">
 					<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 6 12 12M6 18 18 6" /></svg>
@@ -144,10 +144,10 @@
 										<svg class="size-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={section.icon} /></svg>
 										<span class="truncate">{section.label}</span>
 									</span>
-									<svg class="size-3.5 shrink-0 transition-transform" class:rotate-90={!!expanded[section.prefix]} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m9 5 7 7-7 7" /></svg>
+									<svg class="nav-chevron size-3.5 shrink-0" class:rotate-90={!!expanded[section.prefix]} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m9 5 7 7-7 7" /></svg>
 								</button>
 								{#if expanded[section.prefix]}
-									<div class="ml-4 space-y-0.5">
+									<div class="motion-fade ml-4 space-y-0.5">
 										{#each section.items as item (item.href)}
 											<a href={item.href} onclick={selectPage} aria-current={current?.item.href === item.href ? 'page' : undefined} class="nav-item" class:nav-active={current?.item.href === item.href}>{item.label}</a>
 										{/each}
@@ -173,7 +173,7 @@
 		color: var(--color-ink-2);
 		font-size: 0.8125rem;
 		font-weight: 500;
-		transition: color var(--motion-duration-fast), background-color var(--motion-duration-fast);
+		transition: color var(--motion-duration-fast) var(--motion-ease-standard), background-color var(--motion-duration-fast) var(--motion-ease-standard);
 	}
 	.nav-item:hover:not(.nav-active) {
 		color: var(--color-ink-0);
@@ -196,6 +196,9 @@
 		margin-inline: auto;
 		justify-content: center;
 		padding: 0.375rem;
+	}
+	.nav-chevron {
+		transition: transform var(--motion-duration-fast) var(--motion-ease-standard);
 	}
 	@media (pointer: coarse) {
 		.nav-item, #app-navigation-close {

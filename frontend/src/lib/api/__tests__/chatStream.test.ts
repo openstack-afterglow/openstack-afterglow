@@ -1,3 +1,6 @@
+import '../../components/chat/__tests__/lumenPermissionFixture';
+// Transport framing tests isolate authorization; lumenPermissions tests exercise admission.
+vi.mock('../lumenAccess', () => ({ requireLumenCapability: vi.fn() }));
 import { describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { auth } from '$lib/stores/auth';

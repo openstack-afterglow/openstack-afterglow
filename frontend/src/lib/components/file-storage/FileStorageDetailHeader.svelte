@@ -1,15 +1,14 @@
 <script lang="ts">
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-	import { useFileStorageDetailController } from '$lib/stores/fileStorageDetailController.svelte';
 
 	interface Props {
 		onClose?: () => void;
 		ar: { active: boolean; intervalSeconds: number; intervalOptions: number[] };
 		onManualRefresh: () => Promise<void>;
+		refreshing: boolean;
 	}
 
-	let { onClose, ar, onManualRefresh }: Props = $props();
-	const s = useFileStorageDetailController();
+	let { onClose, ar, onManualRefresh, refreshing }: Props = $props();
 </script>
 
 <div class="flex items-center justify-between mb-4">
@@ -18,7 +17,7 @@
 		bind:active={ar.active}
 		bind:intervalSeconds={ar.intervalSeconds}
 		intervalOptions={ar.intervalOptions}
-		refreshing={s.loading}
+		{refreshing}
 		onManualRefresh={onManualRefresh}
 	/>
 </div>

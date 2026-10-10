@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -79,7 +80,7 @@
 			</div>
 			<div class="flex justify-end gap-3 mt-5">
 				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('volumeExtend.cancel')}</button>
-				<button onclick={confirmExtend} disabled={extending || newSize <= volume.size} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{extending ? t('volumeExtend.extending') : t('volumeExtend.extend')}</button>
+				<button onclick={confirmExtend} disabled={extending || newSize <= volume.size} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if extending}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('volumeExtend.extending')}</span></span>{:else}{t('volumeExtend.extend')}{/if}</button>
 			</div>
 		</div>
 	</div>

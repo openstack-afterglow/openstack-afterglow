@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/chat-studio';
+	import { untrack } from 'svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { ToolActivityItem } from '$lib/api/chatToolActivity';
 	import ToolCallCard from './ToolCallCard.svelte';
 
@@ -7,8 +9,10 @@
 		category: string;
 		items: ToolActivityItem[];
 		active?: boolean;
+		animate?: boolean;
 	}
-	let { category, items, active = false }: Props = $props();
+	let { category, items, active = false, animate = false }: Props = $props();
+	const initialIds = untrack(() => new Set(items.map((item) => item.id ?? item.name)));
 	let open = $state(false);
 	let wasActive = false;
 
@@ -22,7 +26,11 @@
 
 <details class="tool-category" bind:open>
 	<summary>
-		<span class:active={running} class="category-dot" aria-hidden="true"></span>
+		{#if running && !open}
+			<ActivityIndicator variant="spinner" size="xs" label={t('toolCategoryGroup.running')} />
+		{:else}
+			<span class="category-dot" aria-hidden="true"></span>
+		{/if}
 		<span class="category-title">{category}</span>
 		<span class="category-count">{t('toolCategoryGroup.count', { count: items.length })}</span>
 		<svg class="chevron" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -31,7 +39,7 @@
 	</summary>
 	<div class="tool-list">
 		{#each items as item (item.id ?? item.name)}
-			<ToolCallCard {item} />
+			<div class:motion-enter={animate && !initialIds.has(item.id ?? item.name)}><ToolCallCard {item} {animate} /></div>
 		{/each}
 	</div>
 </details>
@@ -60,10 +68,6 @@
 		height: 0.4rem;
 		border-radius: 50%;
 		background: var(--color-state-info);
-	}
-	.category-dot.active {
-		background: var(--color-warm);
-		box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-warm) 20%, transparent);
 	}
 	.category-title {
 		font-weight: 600;

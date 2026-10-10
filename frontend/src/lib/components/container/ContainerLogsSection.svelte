@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/containers-shell';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { useContainerDetailController } from '$lib/stores/containerDetailController.svelte';
 
 	const s = useContainerDetailController();
@@ -18,7 +19,7 @@
 		<div class="px-4 pb-4">
 			<div class="flex justify-end mb-2">
 				<button onclick={s.fetchLogs} disabled={s.logsLoading} class="text-xs text-warm-text hover:text-warm-text-hover disabled:opacity-40">
-					{s.logsLoading ? t('container.fetching') : t('container.refresh')}
+					{#if s.logsLoading}<ActivityIndicator size="xs" label={t('container.fetching')} />{:else}{t('container.refresh')}{/if}
 				</button>
 			</div>
 			{#if s.logs}

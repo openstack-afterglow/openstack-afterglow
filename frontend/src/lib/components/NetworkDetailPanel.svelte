@@ -6,6 +6,7 @@
 	import NetworkBasicInfoSection from '$lib/components/network/NetworkBasicInfoSection.svelte';
 	import NetworkSubnetsSection from '$lib/components/network/NetworkSubnetsSection.svelte';
 	import NetworkRoutersSection from '$lib/components/network/NetworkRoutersSection.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	interface Props {
 		networkId: string;
@@ -37,9 +38,10 @@
 <div class="flex flex-col h-full">
 	<NetworkDetailHeader {ar} {onClose} />
 
-	<div class="flex-1 overflow-y-auto p-5 space-y-4">
+	<!-- loading은 네트워크가 바뀔 때만 켜지므로(자동 새로고침은 유지) 섹션 진입은 최초 도착에서만 재생된다. -->
+	<div class="motion-stagger flex-1 overflow-y-auto p-5 space-y-4">
 		{#if s.loading}
-			<div class="text-ink-2 text-sm">{t('network.state.loading')}</div>
+			<ActivityIndicator label={t('network.state.loading')} />
 		{:else if s.error}
 			<div class="text-red-400 text-sm">{s.error}</div>
 		{:else if s.network}

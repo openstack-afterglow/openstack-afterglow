@@ -20,6 +20,13 @@ EXPECTED_ROOT_ROUTES = frozenset(
         "/{mcp_path:path}/oauth/authorize",
         "/{mcp_path:path}/oauth/token",
         "/{mcp_path:path}/oauth/revoke",
+        # Origin-root MCP resource only: Helm routes exact "/", /oauth and /.well-known of a
+        # dedicated MCP host to the backend. Shared web hosts keep /oauth on the frontend consent page.
+        "/.well-known/oauth-protected-resource",
+        "/oauth/register",
+        "/oauth/authorize",
+        "/oauth/token",
+        "/oauth/revoke",
     }
 )
 INGRESS_MANIFESTS = (

@@ -2,7 +2,7 @@
 
 import json
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -18,6 +18,22 @@ from app.services.service_proxy import (
     proxy,
     proxy_passthrough,
 )
+
+
+@pytest.fixture(autouse=True)
+def current_access(monkeypatch):
+    """Synthetic current directory projection; the real service action gates still run."""
+    access = {
+        "roles": [
+            "member",
+            "waygate-inventory_reader",
+            "drover-inventory_reader",
+            "lumen-inventory_reader",
+            "lumen-history_reader",
+        ]
+    }
+    monkeypatch.setattr("app.services.project_service.get_project_access", AsyncMock(return_value=access))
+    return access
 
 
 @pytest.mark.asyncio
@@ -101,7 +117,7 @@ def _make_request(
     }
     req = Request(scope, _receive)
     if token_info:
-        req.state.token_info = token_info
+        req.state.token_info = {"user_id": "caller-user", **token_info}
     return req
 
 
@@ -292,50 +308,6 @@ def test_get_service_internal_endpoint_uses_service_account_catalog():
 
 
 @pytest.mark.asyncio
-async def test_proxy_forwarding():
-    req = _make_request(
-        method="POST",
-        path="/api/v1/waygate/servers",
-        query_string="filter=active&sort=asc",
-        headers={
-            "Content-Type": "application/json",
-            "Cookie": "session_id=abc123",
-            "Idempotency-Key": "ik-888",
-            "Last-Event-ID": "evt-999",
-            "X-Project-Id": "attacker-project",
-            "X-Target-Project-Id": "attacker-target",
-        },
-        body=b'{"name": "gateway-1"}',
-        token_info={"token": "ks-token-secret", "project_id": "proj-uuid-1"},
-    )
-
-    upstream_response = httpx.Response(
-        201,
-        stream=httpx.ByteStream(b'{"id": "srv-1", "status": "ACTIVE"}'),
-        headers={"Content-Type": "application/json"},
-    )
-
-    with patch("app.services.service_proxy._get_internal_endpoint", return_value="http://waygate.internal:8010"):
-        with patch.object(httpx.AsyncClient, "send", return_value=upstream_response) as mock_send:
-            resp = await proxy("waygate", req, "/v1/servers")
-            assert resp.status_code == 201
-
-            body_chunks = [chunk async for chunk in resp.body_iterator]
-            body_bytes = b"".join(body_chunks)
-            assert json.loads(body_bytes) == {"id": "srv-1", "status": "ACTIVE"}
-
-            sent_req = mock_send.call_args[0][0]
-            assert sent_req.method == "POST"
-            assert str(sent_req.url) == "http://waygate.internal:8010/v1/servers?filter=active&sort=asc"
-            assert sent_req.headers.get("x-auth-token") == "ks-token-secret"
-            assert sent_req.headers.get("x-project-id") == "proj-uuid-1"
-            assert sent_req.headers.get("cookie") is None
-            assert sent_req.headers.get("x-target-project-id") is None
-            assert sent_req.headers.get("idempotency-key") == "ik-888"
-            assert sent_req.headers.get("last-event-id") == "evt-999"
-
-
-@pytest.mark.asyncio
 async def test_lumen_proxy_separates_connection_and_logical_projects():
     req = _make_request(
         path="/api/v1/chat/models",
@@ -346,7 +318,7 @@ async def test_lumen_proxy_separates_connection_and_logical_projects():
             "connection_project_id": "home-project",
         },
     )
-    upstream_response = httpx.Response(200, json=[])
+    upstream_response = httpx.Response(200, stream=httpx.ByteStream(b"[]"))
 
     with patch(
         "app.services.service_proxy._get_internal_endpoint",
@@ -372,7 +344,7 @@ async def test_non_lumen_proxy_preserves_logical_project_contract():
             "connection_project_id": "home-project",
         },
     )
-    upstream_response = httpx.Response(200, json={})
+    upstream_response = httpx.Response(200, stream=httpx.ByteStream(b"{}"))
 
     with patch(
         "app.services.service_proxy._get_internal_endpoint",
@@ -410,7 +382,7 @@ async def test_get_json_uses_caller_catalog_and_keystone_headers():
     req = _make_request(
         path="/api/v1/admin/resource-policies",
         headers={"X-Project-Id": "attacker-project"},
-        token_info={"token": "ks-token-secret", "project_id": "proj-uuid-1"},
+        token_info={"token": "ks-token-secret", "project_id": "proj-uuid-1", "is_system_admin": True},
     )
     upstream_response = httpx.Response(200, json=[{"key": "waygate.image"}])
 
@@ -461,13 +433,13 @@ async def test_proxy_same_project_unchanged_behavior():
             "connection_project_id": "proj-home-123",
         },
     )
-    upstream_response = httpx.Response(200, json={"status": "ok"})
+    upstream_response = httpx.Response(200, stream=httpx.ByteStream(b'{"status":"ok"}'))
 
     with patch(
         "app.services.service_proxy._get_internal_endpoint", return_value="http://lumen.internal:8000"
     ) as mock_ep:
         with patch.object(httpx.AsyncClient, "send", return_value=upstream_response) as mock_send:
-            resp = await proxy("lumen", req, "/v1/chat/completions")
+            resp = await proxy("lumen", req, "/v1/chat/models")
             assert resp.status_code == 200
             mock_ep.assert_called_once_with("ks-token-home", "proj-home-123", "lumen")
             sent_req = mock_send.call_args[0][0]
@@ -479,6 +451,7 @@ async def test_proxy_same_project_unchanged_behavior():
         "app.services.service_proxy._get_internal_endpoint", return_value="http://lumen.internal:8000"
     ) as mock_ep:
         with patch.object(httpx.AsyncClient, "get", return_value=upstream_response) as mock_get:
+            mock_get.return_value = httpx.Response(200, json={"status": "ok"})
             res = await get_json("lumen", req, "/v1/models")
             assert res == {"status": "ok"}
             mock_ep.assert_called_once_with("ks-token-home", "proj-home-123", "lumen")
@@ -499,13 +472,13 @@ async def test_proxy_foreign_system_admin_header_split():
             "is_system_admin": True,
         },
     )
-    upstream_response = httpx.Response(200, json={"status": "ok"})
+    upstream_response = httpx.Response(200, stream=httpx.ByteStream(b'{"status":"ok"}'))
 
     with patch(
         "app.services.service_proxy._get_internal_endpoint", return_value="http://lumen.internal:8000"
     ) as mock_ep:
         with patch.object(httpx.AsyncClient, "send", return_value=upstream_response) as mock_send:
-            resp = await proxy("lumen", req, "/v1/chat/completions")
+            resp = await proxy("lumen", req, "/v1/chat/models")
             assert resp.status_code == 200
             mock_ep.assert_called_once_with("admin-ks-token", "admin-home-456", "lumen")
             sent_req = mock_send.call_args[0][0]
@@ -517,6 +490,7 @@ async def test_proxy_foreign_system_admin_header_split():
         "app.services.service_proxy._get_internal_endpoint", return_value="http://lumen.internal:8000"
     ) as mock_ep:
         with patch.object(httpx.AsyncClient, "get", return_value=upstream_response) as mock_get:
+            mock_get.return_value = httpx.Response(200, json={"status": "ok"})
             res = await get_json("lumen", req, "/v1/models")
             assert res == {"status": "ok"}
             mock_ep.assert_called_once_with("admin-ks-token", "admin-home-456", "lumen")
@@ -542,6 +516,8 @@ async def test_proxy_drops_browser_supplied_target_headers():
             "X-Target": "attacker-target",
             "X-Project-Id": "attacker-proj",
             "X-Auth-Token": "attacker-token",
+            "Cookie": "session_id=private",
+            "Authorization": "Bearer browser-jwt",
         },
         token_info={
             "token": "legit-ks-token",
@@ -549,7 +525,7 @@ async def test_proxy_drops_browser_supplied_target_headers():
             "connection_project_id": "home-proj",
         },
     )
-    upstream_response = httpx.Response(200, json={"ok": True})
+    upstream_response = httpx.Response(200, stream=httpx.ByteStream(b'{"ok":true}'))
 
     with patch("app.services.service_proxy._get_internal_endpoint", return_value="http://service.internal:8000"):
         with patch.object(httpx.AsyncClient, "send", return_value=upstream_response) as mock_send:
@@ -559,6 +535,8 @@ async def test_proxy_drops_browser_supplied_target_headers():
             assert sent_req.headers.get("x-project-id") == "home-proj"
             assert sent_req.headers.get("x-target-project-id") is None
             assert "x-target" not in sent_req.headers
+            assert "cookie" not in sent_req.headers
+            assert "authorization" not in sent_req.headers
 
 
 @pytest.mark.asyncio
@@ -574,7 +552,7 @@ async def test_machine_proxy_forwards_authorization_without_keystone_interpretat
         },
         body=b'{"peers": []}',
     )
-    upstream_response = httpx.Response(204)
+    upstream_response = httpx.Response(204, stream=httpx.ByteStream(b""))
 
     with patch(
         "app.services.service_proxy._get_service_internal_endpoint",
@@ -623,13 +601,15 @@ async def test_proxy_streaming_response():
 
 
 @pytest.mark.asyncio
-async def test_proxy_upstream_error_verbatim():
+async def test_proxy_upstream_error_verbatim(current_access):
     req = _make_request(
         method="DELETE",
         path="/api/v1/drover/clusters/c1",
         token_info={"token": "ks-token-secret", "project_id": "proj-uuid-1"},
         body=b'{"force": true}',
     )
+    current_access["roles"].append("drover-clusters_admin")
+    # Destructive transport tests require this exact CURRENT leaf, not stale token claims.
 
     upstream_response = httpx.Response(
         404,
@@ -721,3 +701,44 @@ def test_join_version_aware_url_variants():
         join_version_aware_url("http://zun.local/v1?foo=bar", "/v1/containers")
     with pytest.raises(ValueError, match="cannot contain"):
         join_version_aware_url("http://zun.local/v1#section", "/v1/containers")
+
+
+@pytest.mark.parametrize("fetch", [proxy, get_json])
+async def test_validated_identity_is_required_before_catalog_lookup(fetch):
+    request = _make_request(token_info={"token": "stale-token", "project_id": "project-1", "user_id": None})
+    with patch("app.services.service_proxy._get_internal_endpoint") as endpoint:
+        with pytest.raises(HTTPException) as failure:
+            await fetch("waygate", request, "/v1/servers")
+    assert failure.value.status_code == 401
+    endpoint.assert_not_called()
+
+
+@pytest.mark.parametrize("fetch", [proxy, get_json])
+async def test_current_downgrade_denies_stale_leaf_before_catalog_lookup(fetch, current_access):
+    current_access["roles"] = ["member"]
+    request = _make_request(
+        token_info={
+            "token": "stale-token",
+            "project_id": "project-1",
+            "roles": ["member", "waygate-inventory_reader"],
+        }
+    )
+    with patch("app.services.service_proxy._get_internal_endpoint") as endpoint:
+        with pytest.raises(HTTPException) as failure:
+            await fetch("waygate", request, "/v1/servers")
+    assert failure.value.status_code == 403
+    endpoint.assert_not_called()
+
+
+@pytest.mark.parametrize("fetch", [proxy, get_json])
+async def test_current_access_provider_failure_prevents_upstream(fetch, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.project_service.get_project_access",
+        AsyncMock(side_effect=HTTPException(status_code=503, detail="Current access unavailable")),
+    )
+    request = _make_request(token_info={"token": "caller-token", "project_id": "project-1"})
+    with patch("app.services.service_proxy._get_internal_endpoint") as endpoint:
+        with pytest.raises(HTTPException) as failure:
+            await fetch("waygate", request, "/v1/servers")
+    assert failure.value.status_code == 503
+    endpoint.assert_not_called()

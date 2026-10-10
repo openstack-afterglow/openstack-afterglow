@@ -9,7 +9,7 @@
 	import type { BetaFeatures } from '$lib/stores/betaFeatures';
 	import { isMockupPathAllowed } from '$lib/mockup/contracts';
 	import ConsoleNavigation from '$lib/components/ConsoleNavigation.svelte';
-	import { adminNavSections, navIcons } from '$lib/config/nav';
+	import { adminNavSections, documentationNavItem, navIcons } from '$lib/config/nav';
 
 	type BetaFeatureKey = keyof BetaFeatures;
 	const mockupAdminActive = $derived($page.data.mockup?.active === true && $page.data.mockup.profile === 'admin');
@@ -48,7 +48,7 @@
 					href="/dashboard"
 					aria-label={t('mode.adminCurrent')}
 					title={t('mode.switchToUser')}
-					class="nav-item nav-active flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors"
+					class="nav-item nav-active flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors duration-[var(--motion-duration-fast)] ease-[var(--motion-ease-standard)]"
 				>
 					<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z"></path></svg>
 					{t('mode.admin')}
@@ -61,7 +61,7 @@
 <ConsoleNavigation
 	rootHref="/admin"
 	rootLabel={tn('sections.overview')}
-	overviewItems={[{ label: tn('items.overview'), labelKey: 'items.overview', href: '/admin', icon: navIcons.overview, service: null }]}
+	overviewItems={[{ label: tn('items.overview'), labelKey: 'items.overview', href: '/admin', icon: navIcons.overview, service: null }, documentationNavItem]}
 	sections={adminNavSections}
 	{isItemVisible}
 	{isSectionVisible}

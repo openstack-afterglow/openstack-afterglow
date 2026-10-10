@@ -36,7 +36,7 @@ from app.services.recipe_blocks import (
     squashfs_system_apt_layer,
     squashfs_uv_layer,
 )
-from app.services.ssh_access import normalize_github_username
+from app.services.ssh_access import github_ssh_metadata, normalize_github_username
 from app.utils.ssh_keys import validate_ssh_public_key
 
 _logger = logging.getLogger(__name__)
@@ -2078,6 +2078,7 @@ async def run_layer_consume(
                 "base_image_id": profile_base_image_id,
                 "afterglow_managed": "true",
                 **({"union_upper_volume_id": upper_volume_id} if root_mode else {}),
+                **github_ssh_metadata(github_username),
             },
         )
         server_id = server.id

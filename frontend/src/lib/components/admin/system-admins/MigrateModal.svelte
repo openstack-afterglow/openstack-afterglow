@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -98,12 +99,12 @@
 				<button onclick={onClose} disabled={migrating} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">
 					{t('migrate.cancel')}
 				</button>
-				<button
+				<button aria-busy={migrating}
 					onclick={migrate}
 					disabled={migrating}
 					class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg disabled:opacity-30"
 				>
-					{migrating ? t('migrate.migrating') : t('migrate.start')}
+					{#if migrating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('migrate.migrating')}</span>{:else}{t('migrate.start')}{/if}
 				</button>
 			</div>
 		{/if}

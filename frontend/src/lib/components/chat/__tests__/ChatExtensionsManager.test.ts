@@ -1,3 +1,4 @@
+import { grantLumen } from './lumenPermissionFixture';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '$lib/stores/auth';
@@ -22,6 +23,15 @@ vi.mock('$lib/stores/toast', () => ({ toast: mocks.toast }));
 import ChatExtensionsManager from '../ChatExtensionsManager.svelte';
 
 describe('ChatExtensionsManager MCP OAuth', () => {
+	it('separates MCP editing from destruction and tool execution', async () => {
+		grantLumen('lumen-mcp_editor');
+		render(ChatExtensionsManager, { base: '/api/v1/chat', only: 'mcp' });
+		await screen.findByText('Notion');
+		expect(screen.getByRole('button', { name: '+ MCP 서버 추가' }).hasAttribute('disabled')).toBe(false);
+		expect(screen.getByRole('button', { name: '삭제' }).hasAttribute('disabled')).toBe(true);
+		grantLumen('lumen-tools_user');
+		await waitFor(() => expect(screen.getByRole('button', { name: '+ MCP 서버 추가' }).hasAttribute('disabled')).toBe(true));
+	});
 	beforeEach(() => {
 		vi.clearAllMocks();
 		auth.set({
@@ -72,6 +82,7 @@ describe('ChatExtensionsManager MCP OAuth', () => {
 	});
 
 	it('submits the write-only static OAuth client only from the administrator form', async () => {
+		auth.update((state) => ({ ...state, isSystemAdmin: true }));
 		render(ChatExtensionsManager, { base: '/api/v1/chat/admin', only: 'mcp' });
 
 		await fireEvent.input(screen.getByPlaceholderText('이름'), { target: { value: 'GitHub' } });

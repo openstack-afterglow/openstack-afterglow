@@ -21,6 +21,7 @@
 	let flavors = $state<Flavor[]>([]);
 	let loading = $state(true);
 	let refreshing = $state(false);
+	let deletingId = $state<string | null>(null);
 	let pageSize = $state(20);
 	let error = $state('');
 
@@ -75,11 +76,14 @@
 
 	async function deleteFlavor(id: string) {
 		if (!await confirmDialog(t('flavors.delete.confirm'))) return;
+		deletingId = id;
 		try {
 			await api.delete(`/api/v1/admin/flavors/${id}`, token, projectId);
 			await load();
 		} catch (e) {
 			toast.error(t('flavors.delete.failed', { error: e instanceof ApiError ? e.message : t('flavors.error') }));
+		} finally {
+			deletingId = null;
 		}
 	}
 
@@ -157,6 +161,7 @@
 			totalUnfiltered={flavors.length}
 			{pageSize}
 			{refreshing}
+			{deletingId}
 			onManage={(f) => (selectedFlavor = f)}
 			onDelete={deleteFlavor}
 		/>

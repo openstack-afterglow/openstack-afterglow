@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api/client';
 	import MetricsPanel from '$lib/components/instance/MetricsPanel.svelte';
+	import { ActivityIndicator } from '$lib/components/ui';
 
 	interface AdminInstance {
 		id: string;
@@ -87,7 +88,7 @@
 
 		<div class="overflow-y-auto flex-1">
 			{#if loadingInstances && instanceList.length === 0}
-				<div class="p-4 text-ink-2 text-sm text-center">{t('monitoring.instances.loadingList')}</div>
+				<div class="p-4 flex justify-center"><ActivityIndicator label={t('monitoring.instances.loadingList')} /></div>
 			{:else if filtered.length === 0}
 				<div class="p-4 text-ink-2 text-sm text-center" data-tour="admin-monitoring-list-ready">
 					{search ? t('monitoring.instances.noResults') : t('monitoring.instances.empty')}
@@ -122,7 +123,7 @@
 					disabled={loadingInstances}
 					class="w-full py-2.5 text-xs text-warm-text hover:text-warm-text-hover disabled:text-ink-3 transition-colors"
 				>
-					{loadingInstances ? t('monitoring.loading') : t('monitoring.instances.loadMore')}
+					{#if loadingInstances}<ActivityIndicator size="xs" tone="ink" class="mr-1.5" />{/if}{loadingInstances ? t('monitoring.loading') : t('monitoring.instances.loadMore')}
 				</button>
 			{/if}
 		</div>
@@ -135,7 +136,7 @@
 	<!-- 오른쪽: MetricsPanel -->
 	<div class="flex-1 min-w-0 overflow-y-auto {selectedInst ? 'block' : 'hidden md:block'}">
 		{#if selectedInst}
-			<div class="bg-surface-base border border-line rounded-xl p-5">
+			<div class="motion-fade bg-surface-base border border-line rounded-xl p-5">
 				<button
 					onclick={() => (selectedInst = null)}
 					class="md:hidden mb-3 text-sm text-warm-text hover:text-warm-text-hover flex items-center gap-1"

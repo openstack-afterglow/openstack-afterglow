@@ -2,6 +2,8 @@
 	"actions.delete": "Delete",
 	"actions.deleting": "Deleting...",
 	"actions.creating": "Creating...",
+	"storageCard.extending": "Extending…",
+	"detail.loading": "Loading file storage details",
 	"errors.server": "Server error",
 	"errors.create": "Creation failed",
 	"errors.loadWithStatus": "Failed to load ({status})",

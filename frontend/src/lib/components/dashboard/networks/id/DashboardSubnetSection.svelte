@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/network-resources';
 	import type { SubnetDetail } from '$lib/types/networks';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	let {
 		subnets,
@@ -44,7 +45,7 @@
 	</div>
 
 	{#if showSubnetForm}
-		<div class="mb-4 bg-surface-sunken rounded-lg p-4 space-y-3">
+		<div class="motion-enter mb-4 bg-surface-sunken rounded-lg p-4 space-y-3">
 			<div class="grid grid-cols-2 gap-3">
 				<div>
 					<label class="block text-xs text-ink-2 mb-1">{t('network.subnets.optionalName')}
@@ -90,9 +91,10 @@
 				<button
 					onclick={handleAdd}
 					disabled={addingSubnet}
-					class="text-sm px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm rounded transition-colors"
+					aria-busy={addingSubnet}
+					class="inline-flex items-center gap-1.5 text-sm px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm rounded transition-colors"
 				>
-					{addingSubnet ? t('network.subnets.adding') : t('network.subnets.add')}
+					{#if addingSubnet}<ActivityIndicator size="xs" tone="ink" />{/if}{addingSubnet ? t('network.subnets.adding') : t('network.subnets.add')}
 				</button>
 			</div>
 		</div>

@@ -3,8 +3,14 @@
 {{- $defaultMcpPublicURL := printf "%s/api/v1/mcp" (trimSuffix "/" $publicApiBase) -}}
 {{- $mcpPublicURL := default $defaultMcpPublicURL .Values.mcp.publicUrl -}}
 {{- $parsedMcpURL := urlParse $mcpPublicURL -}}
-{{- $mcpPath := default "/api/v1/mcp" (trimSuffix "/" $parsedMcpURL.path) -}}
+{{- /* Ingress hosts are DNS names, not URL authorities (which may include a port). */ -}}
+{{- $mcpHost := lower (regexReplaceAll ":[0-9]+$" $parsedMcpURL.host "") -}}
+{{- /* An explicit URL is the exact resource; a bare origin is served at "/". */ -}}
+{{- $mcpPath := default "/" (regexReplaceAll "/+$" $parsedMcpURL.path "") -}}
 {{- $mcpEnabled := and .Values.services.mcp $mcpPublicURL -}}
+{{- if and $mcpEnabled (eq $mcpPath "/") (or (eq $mcpHost .Values.ingress.host) (has $mcpHost .Values.ingress.apiHosts)) -}}
+{{- fail "mcp.publicUrl at an origin root requires a dedicated host; it cannot share the web or API host" -}}
+{{- end -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -24,9 +30,8 @@ spec:
         - {{ . }}
         {{- end }}
         {{- if $mcpEnabled }}
-        {{- $mcpURL := urlParse $mcpPublicURL }}
-        {{- if and (ne $mcpURL.host $.Values.ingress.host) (not (has $mcpURL.host $.Values.ingress.apiHosts)) }}
-        - {{ $mcpURL.host }}
+        {{- if and (ne $mcpHost $.Values.ingress.host) (not (has $mcpHost $.Values.ingress.apiHosts)) }}
+        - {{ $mcpHost }}
         {{- end }}
         {{- end }}
       secretName: {{ .Values.ingress.tlsSecretName }}
@@ -36,8 +41,7 @@ spec:
       http:
         paths:
           {{- if $mcpEnabled }}
-          {{- $mcpURL := urlParse $mcpPublicURL }}
-          {{- if eq $mcpURL.host $.Values.ingress.host }}
+          {{- if eq $mcpHost $.Values.ingress.host }}
           - path: {{ $mcpPath | quote }}
             pathType: Prefix
             backend:
@@ -74,8 +78,7 @@ spec:
       http:
         paths:
           {{- if $mcpEnabled }}
-          {{- $mcpURL := urlParse $mcpPublicURL }}
-          {{- if eq $mcpURL.host . }}
+          {{- if eq $mcpHost . }}
           - path: {{ $mcpPath | quote }}
             pathType: Prefix
             backend:
@@ -115,12 +118,28 @@ spec:
                   number: 3080
     {{- end }}
     {{- if $mcpEnabled }}
-    {{- $mcpURL := urlParse $mcpPublicURL }}
-    {{- if and (ne $mcpURL.host $.Values.ingress.host) (not (has $mcpURL.host $.Values.ingress.apiHosts)) }}
-    # Public Streamable HTTP MCP resource and OAuth discovery endpoints.
-    - host: {{ $mcpURL.host }}
+    {{- if and (ne $mcpHost $.Values.ingress.host) (not (has $mcpHost $.Values.ingress.apiHosts)) }}
+    # Public Streamable HTTP MCP resource and OAuth discovery endpoints only; the
+    # rest of the backend API is never published on the dedicated MCP host.
+    - host: {{ $mcpHost }}
       http:
         paths:
+          {{- if eq $mcpPath "/" }}
+          - path: "/"
+            pathType: Exact
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+          - path: /oauth
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+          {{- else }}
           - path: {{ $mcpPath | quote }}
             pathType: Prefix
             backend:
@@ -128,6 +147,7 @@ spec:
                 name: backend
                 port:
                   number: 8000
+          {{- end }}
           - path: /.well-known
             pathType: Prefix
             backend:

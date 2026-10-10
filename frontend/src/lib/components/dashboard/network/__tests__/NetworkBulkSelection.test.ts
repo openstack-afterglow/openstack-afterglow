@@ -1,3 +1,4 @@
+vi.mock('$lib/stores/servicePermissions', () => ({ serviceCapabilities: writable<(leaf: string) => boolean>(() => false) }));
 vi.mock('$lib/api/client', () => ({
   api: {
     get: vi.fn(async (path: string) => path === '/api/v1/loadbalancers'
@@ -22,6 +23,8 @@ vi.mock('$lib/api/waygate', () => ({
 }));
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
+import { writable, type Writable } from 'svelte/store';
+import { serviceCapabilities } from '$lib/stores/servicePermissions';
 import { auth } from '$lib/stores/auth';
 import NetworksTableCard from '../networks/NetworksTableCard.svelte';
 import FloatingIpCard from '../networks/FloatingIpCard.svelte';
@@ -144,6 +147,7 @@ describe('network bulk selection controls', () => {
   });
 
   it('renders Waygate server selection controls', async () => {
+    (serviceCapabilities as Writable<(leaf: string) => boolean>).set((leaf) => leaf === 'waygate-gateways_admin');
     auth.set({
       token: 'token',
       refreshToken: null,

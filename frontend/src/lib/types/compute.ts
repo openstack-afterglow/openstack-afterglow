@@ -21,6 +21,8 @@ export interface Instance {
   image_id?: string | null;
   flavor_id?: string | null;
   key_name?: string | null;
+  ssh_access_mode?: 'github' | null;
+  github_login?: string | null;
   host?: string | null;  // 현재 하이퍼바이저 호스트 (관리자 스코프에서만 채워짐)
 }
 

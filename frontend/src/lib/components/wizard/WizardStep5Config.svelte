@@ -49,7 +49,8 @@
 	let githubLookupError = $state('');
 	let githubHistory = $state<GithubSshHistoryEntry[]>([]);
 	let githubLookupTimer: ReturnType<typeof setTimeout> | undefined;
-	let githubVerifiedFor = '';
+	let githubLookupFor = '';
+	let githubLookupGeneration = 0;
 	let githubHistoryRequested = false;
 	let githubPendingFor = '';
 
@@ -72,13 +73,20 @@
 		}
 	}
 
-	async function verifyGithubUsername(username: string) {
+	function isCurrentGithubLookup(username: string, generation: number): boolean {
+		const current = get(wizard);
+		return generation === githubLookupGeneration
+			&& current.sshAccessMode === 'github'
+			&& s.githubSshEligible
+			&& githubKey(current.githubUsername) === githubKey(username);
+	}
+
+	async function verifyGithubUsername(username: string, generation: number) {
 		const { token, projectId } = get(auth);
-		if (!token) return;
+		if (!token || !isCurrentGithubLookup(username, generation)) return;
 		githubPendingFor = githubKey(username);
 		githubLookupStatus = 'loading';
 		githubLookupError = '';
-		if (get(wizard).githubProfile) wizard.update(w => ({ ...w, githubProfile: null }));
 		try {
 			const profile = await api.post<GithubSshProfile>(
 				'/api/v1/instances/github-users/lookup',
@@ -86,37 +94,61 @@
 				token,
 				projectId ?? undefined,
 			);
-			if (githubKey(get(wizard).githubUsername) !== githubKey(username)) return;
-			githubVerifiedFor = githubKey(profile.login);
+			if (!isCurrentGithubLookup(username, generation)) return;
+			if (githubKey(profile.login) !== githubKey(username) || !profile.has_public_keys) {
+				githubLookupStatus = 'error';
+				githubLookupError = t('config.github.lookupFailed');
+				return;
+			}
 			githubLookupStatus = 'valid';
 			wizard.update(w => ({ ...w, githubUsername: profile.login, githubProfile: profile }));
 			await loadGithubHistory();
 		} catch (error) {
-			if (githubKey(get(wizard).githubUsername) !== githubKey(username)) return;
+			if (!isCurrentGithubLookup(username, generation)) return;
 			githubLookupStatus = 'error';
 			githubLookupError = error instanceof ApiError ? error.message : t('config.github.lookupFailed');
 		} finally {
-			if (githubPendingFor === githubKey(username)) githubPendingFor = '';
+			if (generation === githubLookupGeneration) githubPendingFor = '';
 		}
 	}
 
 	function selectGithubHistoryEntry(login: string) {
-		wizard.update(w => ({ ...w, githubUsername: login, githubProfile: null }));
+		wizard.update(w => ({
+			...w,
+			githubUsername: login,
+			githubProfile: githubKey(w.githubUsername) === githubKey(login)
+				&& githubKey(w.githubProfile?.login ?? '') === githubKey(login)
+				&& w.githubProfile?.has_public_keys
+				? w.githubProfile : null,
+		}));
 	}
 
 	$effect(() => {
 		const username = $wizard.githubUsername.trim();
 		const enabled = $wizard.sshAccessMode === 'github' && s.githubSshEligible;
+		const key = enabled && isValidGithubUsername(username) ? githubKey(username) : '';
 		clearTimeout(githubLookupTimer);
-		if (!enabled || !isValidGithubUsername(username)) {
-			githubVerifiedFor = '';
+		if (key !== githubLookupFor) {
+			githubLookupFor = key;
+			githubLookupGeneration += 1;
+			githubPendingFor = '';
 			githubLookupStatus = 'idle';
 			githubLookupError = '';
+		}
+		if (!key) {
 			if ($wizard.githubProfile) wizard.update(w => ({ ...w, githubProfile: null }));
 			return;
 		}
-		if (githubVerifiedFor === githubKey(username) || githubPendingFor === githubKey(username)) return;
-		githubLookupTimer = setTimeout(() => void verifyGithubUsername(username), 400);
+		const profile = $wizard.githubProfile;
+		if (profile?.has_public_keys && githubKey(profile.login) === key) {
+			githubLookupStatus = 'valid';
+			githubLookupError = '';
+			return;
+		}
+		if (profile) wizard.update(w => ({ ...w, githubProfile: null }));
+		if (githubPendingFor === key) return;
+		const generation = githubLookupGeneration;
+		githubLookupTimer = setTimeout(() => void verifyGithubUsername(username, generation), 400);
 		return () => clearTimeout(githubLookupTimer);
 	});
 
@@ -126,7 +158,10 @@
 		}
 	});
 
-	onDestroy(() => clearTimeout(githubLookupTimer));
+	onDestroy(() => {
+		clearTimeout(githubLookupTimer);
+		githubLookupGeneration += 1;
+	});
 
 
 	async function loadCloudInitLibrary() {

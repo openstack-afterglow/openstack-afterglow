@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/chat-settings';
+	import { serviceCapabilities } from '$lib/stores/servicePermissions';
+	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { untrack } from 'svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -64,7 +66,7 @@
 		selectedId = initialWorkspaceId;
 		mode = 'detail';
 	});
-	const canSubmit = $derived(form.name.trim().length > 0 && !saving);
+	const canSubmit = $derived($serviceCapabilities('lumen-chat_user') && form.name.trim().length > 0 && !saving);
 
 	const filtered = $derived.by(() => {
 		const q = query.trim().toLowerCase();
@@ -104,12 +106,14 @@
 		mode = 'detail';
 	}
 	function openCreate() {
+		if (!$serviceCapabilities('lumen-chat_user')) return;
 		createDialogOpen = true;
 	}
 	function closeCreate() {
 		createDialogOpen = false;
 	}
 	async function createProject(name: string): Promise<boolean> {
+		if (!$serviceCapabilities('lumen-chat_user')) return false;
 		return onCreate({ name });
 	}
 	function backToGrid() {
@@ -132,6 +136,7 @@
 	}
 
 	async function removeSelected() {
+		if (!$serviceCapabilities('lumen-history_editor')) return;
 		if (!selected) return;
 		const ok = await onDelete(selected);
 		if (ok) backToGrid();
@@ -139,6 +144,8 @@
 </script>
 
 <div class="projects">
+	<LumenPermissionNotice leaf="lumen-chat_user" />
+	<LumenPermissionNotice leaf="lumen-history_editor" />
 	{#if mode === 'grid'}
 		<header class="head">
 			<h1 class="title">{t('projects.title')}</h1>
@@ -147,7 +154,7 @@
 					<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" stroke-linecap="round" /></svg>
 					<input type="text" placeholder={t('projects.search')} bind:value={query} />
 				</div>
-				<Button variant="accent" size="sm" onclick={openCreate}>{t('projects.newProject')}</Button>
+				<Button variant="accent" size="sm" disabled={!$serviceCapabilities('lumen-chat_user')} onclick={openCreate}>{t('projects.newProject')}</Button>
 			</div>
 		</header>
 
@@ -158,7 +165,7 @@
 				description={t('projects.empty.description')}
 			>
 				{#snippet cta()}
-					<Button variant="accent" size="sm" onclick={openCreate}>{t('projects.empty.create')}</Button>
+					<Button variant="accent" size="sm" disabled={!$serviceCapabilities('lumen-chat_user')} onclick={openCreate}>{t('projects.empty.create')}</Button>
 				{/snippet}
 			</EmptyState>
 		{:else if filtered.length === 0}
@@ -191,7 +198,7 @@
 			</button>
 			<h1 class="title truncate">{selected.name}</h1>
 			<div class="head-actions">
-				<Button variant="accent" size="sm" onclick={() => onNewInProject(selected.id)}>
+				<Button variant="accent" size="sm" disabled={!$serviceCapabilities('lumen-chat_user')} onclick={() => onNewInProject(selected.id)}>
 					{t('projects.newChat')}
 				</Button>
 			</div>
@@ -230,6 +237,7 @@
 								<button
 									type="button"
 									class="conv-unassign"
+									disabled={!$serviceCapabilities('lumen-chat_user')}
 									onclick={() => onAssign(conv, null)}
 									title={t('projects.unassign')}
 									aria-label={t('projects.unassign')}
@@ -250,7 +258,7 @@
 								const id = e.currentTarget.value;
 								if (!id) return;
 								const conv = conversations.find((c) => c.id === id);
-								if (conv && selected) onAssign(conv, selected.id);
+								if ($serviceCapabilities('lumen-chat_user') && conv && selected) onAssign(conv, selected.id);
 								e.currentTarget.value = '';
 							}}
 						>
@@ -264,7 +272,7 @@
 			</section>
 
 			<section class="block">
-				<Button variant="danger-outline" size="sm" onclick={removeSelected}>{t('projects.delete')}</Button>
+				<Button variant="danger-outline" size="sm" disabled={!$serviceCapabilities('lumen-history_editor')} onclick={removeSelected}>{t('projects.delete')}</Button>
 				<p class="muted danger-hint">{t('projects.deleteHint')}</p>
 			</section>
 		</div>

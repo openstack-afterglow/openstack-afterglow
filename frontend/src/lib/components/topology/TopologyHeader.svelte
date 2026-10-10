@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/topology';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { formatBps } from './topologyHelpers.ts';
 	import type { TopologyTraffic } from './types.ts';
 
@@ -37,10 +38,8 @@
 				</div>
 			{/if}
 			{#if traffic?.ts}
-				<div class="flex items-center gap-1.5">
-					<span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-					Live
-				</div>
+				<!-- 트래픽 폴링이 표본을 돌려주는 동안의 실시간 상태. reduced-motion 이면 멈춘 점으로 남는다. -->
+				<ActivityIndicator variant="pulse" tone="success" size="xs" label={t('header.live')} />
 			{/if}
 		</div>
 	{/if}

@@ -1,8 +1,10 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { createVmCreateStore } from '../vmCreateStore.svelte';
 
 	let { adminMode = false }: { adminMode?: boolean } = $props();
 	const store = createVmCreateStore({ adminMode: () => adminMode });
+	onDestroy(() => store.destroy());
 </script>
 
 <button data-testid="init" onclick={() => store.init()}>init</button>
@@ -30,3 +32,7 @@
 <span data-testid="refresh-error">{store.flavorRefreshError ?? 'none'}</span>
 <span data-testid="background-refreshing">{store.flavorBackgroundRefreshing ? 'refreshing' : 'idle'}</span>
 <span data-testid="background-refresh-error">{store.flavorBackgroundRefreshError ?? 'none'}</span>
+<span data-testid="deploying">{store.deploying ? 'deploying' : 'idle'}</span>
+<span data-testid="deploy-step">{store.currentStep}</span>
+<span data-testid="elapsed">{store.elapsedSeconds ?? 'none'}</span>
+<span data-testid="step-elapsed">{JSON.stringify(store.stepElapsedSeconds)}</span>

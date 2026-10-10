@@ -4,15 +4,18 @@ import asyncio
 import hashlib
 import logging
 import secrets
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlparse
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db import ProjectInvitation, ProjectRole
-from app.services import activity, cache
+from app.services import activity, cache, identity_roles, keystone
 from app.services.cache import keys
+from app.services.service_permissions import ROLE_PRESETS, SERVICE_ROLE_GRADES
 
 _logger = logging.getLogger(__name__)
 
@@ -25,9 +28,8 @@ async def create_project_for_user(
     description: str,
     user_id: str,
     username: str,
-    session: AsyncSession,
 ) -> dict:
-    """Keystone 프로젝트 생성 + 생성자를 manager로 등록."""
+    """Create a project and explicitly grant its creator the existing owner role."""
     from app.config import get_settings
     from app.services import keystone
 
@@ -45,31 +47,15 @@ async def create_project_for_user(
     project = await asyncio.to_thread(_create_keystone_project)
     project_id = project["id"]
 
-    # 2. 생성자에게 Keystone member role 할당
+    # Grant the existing safe project hierarchy; never infer ownership from DB rows.
     try:
-        await asyncio.to_thread(_assign_keystone_role_by_name, project_id, user_id, "member")
+        await _grant_project_role(project_id, user_id, "project_owner", require_hierarchy=True)
     except Exception:
-        _logger.warning("Keystone member role 할당 실패 — 프로젝트 보상 삭제 시작", exc_info=True)
+        _logger.warning("Project owner assignment failed; compensating project creation", exc_info=True)
         await _compensate_delete_keystone_project(project_id)
-        raise HTTPException(status_code=500, detail="프로젝트 생성 중 오류가 발생했습니다")
+        raise
 
-    # 3. afterglow DB에 manager 레코드 삽입
-    try:
-        role_record = ProjectRole(
-            project_id=project_id,
-            user_id=user_id,
-            role="manager",
-            granted_by=user_id,
-        )
-        session.add(role_record)
-        await session.commit()
-    except Exception:
-        _logger.warning("project_roles DB 삽입 실패 — 프로젝트 보상 삭제 시작", exc_info=True)
-        await session.rollback()
-        await _compensate_delete_keystone_project(project_id)
-        raise HTTPException(status_code=500, detail="프로젝트 생성 중 오류가 발생했습니다")
-
-    # 4. (best-effort) monitoring SG 자동 생성
+    # (best-effort) monitoring SG 자동 생성
     try:
         if settings.monitoring_auto_sg_enabled and settings.monitoring_scrape_cidr:
             from app.services import neutron
@@ -114,7 +100,7 @@ async def create_project_for_user(
 
 
 async def _compensate_delete_keystone_project(project_id: str) -> None:
-    """Keystone 프로젝트 생성 후 DB 실패 시 보상 삭제."""
+    """Compensate failed initial owner assignment by deleting the new project."""
     from app.services import keystone
 
     try:
@@ -129,21 +115,6 @@ async def _compensate_delete_keystone_project(project_id: str) -> None:
         _logger.error("보상 트랜잭션 실패: Keystone 프로젝트 삭제 불가 (%s)", project_id, exc_info=True)
 
 
-# ─── 관리자 확인 ──────────────────────────────────────────────────────────────
-
-
-async def is_project_manager(project_id: str, user_id: str, session: AsyncSession) -> bool:
-    """project_roles 테이블에서 manager 여부 확인."""
-    result = await session.execute(
-        select(ProjectRole).where(
-            ProjectRole.project_id == project_id,
-            ProjectRole.user_id == user_id,
-            ProjectRole.role == "manager",
-        )
-    )
-    return result.scalar_one_or_none() is not None
-
-
 # ─── 초대 ─────────────────────────────────────────────────────────────────────
 
 
@@ -154,9 +125,13 @@ async def create_invitation(
     invited_by: str,
     invited_by_name: str,
     session: AsyncSession,
+    keystone_role: str = "project_member",
 ) -> dict:
     """초대 생성 + 이메일 발송 (이메일 열거 방지: 항상 201 반환)."""
     from app.config import get_settings
+
+    if keystone_role not in {"project_member", "project_reader"}:
+        raise HTTPException(status_code=403, detail="초대에는 일반 프로젝트 역할만 사용할 수 있습니다")
 
     settings = get_settings()
     expiry_days = settings.smtp_invitation_token_expiry_days
@@ -178,6 +153,7 @@ async def create_invitation(
         invited_by=invited_by,
         invited_by_name=invited_by_name,
         token_hash=token_hash,
+        keystone_role=keystone_role,
         status=status,
         expires_at=expires_at,
         created_at=now,
@@ -254,9 +230,14 @@ async def accept_invitation(
     if inv.invited_email.lower() != accepting_email.lower():
         raise HTTPException(status_code=403, detail="이 초대는 다른 이메일 주소로 발송되었습니다")
 
+    if inv.keystone_role not in {"project_member", "project_reader"}:
+        raise HTTPException(status_code=403, detail="이 초대의 역할은 시스템 관리자 검토가 필요합니다")
+
     # Keystone role 할당
     try:
-        await asyncio.to_thread(_assign_keystone_role_by_name, inv.project_id, accepting_user_id, inv.keystone_role)
+        await _grant_project_role(inv.project_id, accepting_user_id, inv.keystone_role, require_hierarchy=True)
+    except HTTPException:
+        raise
     except Exception:
         _logger.error("초대 수락 Keystone role 할당 실패", exc_info=True)
         raise HTTPException(status_code=500, detail="프로젝트 멤버 등록 중 오류가 발생했습니다")
@@ -293,18 +274,6 @@ async def decline_invitation(plaintext_token: str, session: AsyncSession) -> dic
     inv.status = "declined"
     await session.commit()
     return {"status": "declined"}
-
-
-def _assign_keystone_role_by_name(project_id: str, user_id: str, role_name: str) -> None:
-    """role 이름으로 Keystone role 할당 (keystoneclient admin 크리덴셜 사용)."""
-    from app.services import keystone
-
-    ks = keystone._get_admin_ks_client()
-    roles = ks.roles.list(name=role_name)
-    if not roles:
-        raise RuntimeError(f"Keystone role '{role_name}'을 찾을 수 없습니다")
-    role_id = roles[0].id
-    ks.roles.grant(role_id, user=user_id, project=project_id)
 
 
 async def _find_keystone_user_by_email(email: str) -> dict | None:
@@ -375,57 +344,476 @@ async def _get_project_name(project_id: str) -> str:
         return project_id
 
 
-# ─── 매니저 관리 ──────────────────────────────────────────────────────────────
+# Keystone project membership. ProjectRole is intentionally used only by the
+# explicit legacy migration below; it never participates in authorization.
+_PROJECT_GRADES = {
+    "project_owner": "owner",
+    "project_admin": "admin",
+    "project_member": "member",
+    "project_reader": "reader",
+}
 
 
-async def promote_to_manager(
-    project_id: str,
-    target_user_id: str,
-    granted_by: str,
-    session: AsyncSession,
-) -> None:
-    """프로젝트 멤버를 manager로 승격."""
-    existing = await session.execute(
-        select(ProjectRole).where(
-            ProjectRole.project_id == project_id,
-            ProjectRole.user_id == target_user_id,
-            ProjectRole.role == "manager",
-        )
-    )
-    if existing.scalar_one_or_none():
-        return  # 이미 manager
-
-    role = ProjectRole(
-        project_id=project_id,
-        user_id=target_user_id,
-        role="manager",
-        granted_by=granted_by,
-    )
-    session.add(role)
-    await session.commit()
+async def _provider_call(fn, *args, **kwargs):
+    try:
+        return await asyncio.to_thread(fn, *args, **kwargs)
+    except Exception as exc:
+        raise identity_roles._provider_error(exc) from exc
 
 
-async def demote_manager(
-    project_id: str,
-    target_user_id: str,
-    session: AsyncSession,
-) -> None:
-    """manager 해제 — 마지막 1인 보호."""
-    result = await session.execute(
-        select(ProjectRole).where(
-            ProjectRole.project_id == project_id,
-            ProjectRole.role == "manager",
-        )
-    )
-    managers = result.scalars().all()
+def _assignment_rows(ks, project_id, *, effective=False):
+    query = {"project": project_id}
+    if effective:
+        query["effective"] = True
+    rows = list(ks.role_assignments.list(**query))
+    for row in rows:
+        scope = identity_roles._field(row, "scope", {})
+        if identity_roles._field(identity_roles._field(scope, "project", {}), "id") != project_id:
+            raise identity_roles._unavailable("Keystone returned assignments outside the requested project")
+        if not isinstance(_principal(row, "role"), str) or not _principal(row, "role"):
+            raise identity_roles._unavailable("Malformed project role assignment")
+        for kind in ("user", "group"):
+            principal_id = _principal(row, kind)
+            if principal_id is not None and (not isinstance(principal_id, str) or not principal_id):
+                raise identity_roles._unavailable("Malformed project assignment principal")
+        if effective and not _principal(row, "user"):
+            raise identity_roles._unavailable("Effective project assignment did not resolve its user")
+        if not effective and not (_principal(row, "user") or _principal(row, "group")):
+            raise identity_roles._unavailable("Project assignment did not resolve its principal")
+    return rows
 
-    if len(managers) <= 1:
-        raise HTTPException(status_code=409, detail="프로젝트에는 최소 1명의 관리자가 필요합니다")
 
-    for m in managers:
-        if m.user_id == target_user_id:
-            await session.delete(m)
-            await session.commit()
+def _principal(row, key):
+    return identity_roles._field(identity_roles._field(row, key, {}), "id")
+
+
+def _expanded_role_ids(rows, catalog, user_id):
+    by_id = {role["id"]: role for role in catalog}
+    canonical = {row["name"] for row in ROLE_PRESETS} | {"admin", "manager", "member", "reader"}
+    bindings = {}
+    for role in catalog:
+        folded = role["name"].casefold()
+        if role["domain_id"] is None and folded in canonical:
+            bindings.setdefault(folded, []).append(role)
+    result, active = set(), set()
+
+    def visit(rid):
+        if rid not in by_id:
+            raise identity_roles._unavailable("Assigned role graph references an unknown role")
+        if rid in active:
+            raise identity_roles._unavailable("Assigned role graph contains a cycle")
+        if rid in result:
             return
+        role = by_id[rid]
+        name = role["name"]
+        if name.casefold() in canonical:
+            matches = bindings.get(name.casefold(), ())
+            if name != name.casefold() or role["domain_id"] is not None or len(matches) != 1 or matches[0]["id"] != rid:
+                raise identity_roles._unavailable("Effective authority must bind a unique canonical global role ID")
+        active.add(rid)
+        for child in role["implied_role_ids"]:
+            visit(child)
+        active.remove(rid)
+        result.add(rid)
 
-    raise HTTPException(status_code=404, detail="해당 사용자는 이 프로젝트의 관리자가 아닙니다")
+    for row in rows:
+        if _principal(row, "user") == user_id:
+            visit(_principal(row, "role"))
+    return result
+
+
+def _access(rows, catalog, user_id):
+    ids = _expanded_role_ids(rows, catalog, user_id)
+    names = sorted(role["name"] for role in catalog if role["id"] in ids)
+    if {"project_owner", "project_admin"} & set(names):
+        safe = _managed_roles(catalog)
+        for name in {"project_owner", "project_admin"} & set(names):
+            matches = [row for row in catalog if row["domain_id"] is None and row["name"] == name]
+            if len(matches) != 1 or matches[0]["id"] not in safe:
+                raise identity_roles._unavailable("Project management role graph is unsafe")
+    return {
+        "is_owner": "project_owner" in names,
+        "is_manager": bool({"project_owner", "project_admin"} & set(names)),
+        "roles": names,
+    }
+
+
+async def get_project_access(project_id: str, user_id: str) -> dict:
+    """Uncached trusted effective assignments are the sole management authority.
+
+    Provider/graph failures are errors, never stale DB or token-role fallbacks.
+    """
+    ks = await _provider_call(keystone._get_admin_ks_client)
+    catalog = await _provider_call(identity_roles._trusted_catalog)
+    rows = await _provider_call(_assignment_rows, ks, project_id, effective=True)
+    return _access(rows, catalog, user_id)
+
+
+@asynccontextmanager
+async def _membership_write(project_id):
+    # Identity management uses the configured admin project, not a newly created
+    # tenant where the service user has no assignment yet. Target scope is always
+    # supplied explicitly to the trusted role-assignment API.
+    conn = await _provider_call(keystone.get_admin_project_connection)
+    try:
+        async with identity_roles._graph_lock(conn) as lease:
+            ks = await _provider_call(keystone._get_admin_ks_client)
+            catalog = await _provider_call(identity_roles.load_catalog, conn)
+            effective = await _provider_call(_assignment_rows, ks, project_id, effective=True)
+            direct = await _provider_call(_assignment_rows, ks, project_id)
+            yield lease, ks, catalog, effective, direct
+    finally:
+        await asyncio.to_thread(conn.close)
+
+
+def _check_scope(project_id, token_info):
+    if token_info.get("is_system_admin") is not True and token_info.get("project_id") != project_id:
+        raise HTTPException(status_code=403, detail="Membership changes require the current project")
+
+
+def _authorize(project_id, token_info, effective, catalog):
+    _check_scope(project_id, token_info)
+    access = _access(effective, catalog, token_info["user_id"])
+    if not access["is_manager"] and token_info.get("is_system_admin") is not True:
+        raise HTTPException(status_code=403, detail="Project management role required")
+    return access
+
+
+def _direct_ids(rows, user_id):
+    return {
+        _principal(row, "role")
+        for row in rows
+        if _principal(row, "user") == user_id
+        and not identity_roles._field(identity_roles._field(row, "scope", {}), "OS-INHERIT:inherited_to")
+    }
+
+
+def _group_ids(row):
+    group_id = _principal(row, "group")
+    if group_id:
+        return {group_id}
+    membership = identity_roles._field(identity_roles._field(row, "links", {}), "membership")
+    if not membership:
+        return set()
+    if not isinstance(membership, str):
+        raise identity_roles._unavailable("Malformed effective group assignment")
+    parts = urlparse(membership).path.split("/")
+    if "groups" not in parts or parts.index("groups") + 1 >= len(parts):
+        raise identity_roles._unavailable("Malformed effective group assignment")
+    return {parts[parts.index("groups") + 1]}
+
+
+def _inherited_assignment(row):
+    scope = identity_roles._field(row, "scope", {})
+    links = identity_roles._field(row, "links", {})
+    assignment = identity_roles._field(links, "assignment", "") or ""
+    if not isinstance(assignment, str):
+        raise identity_roles._unavailable("Malformed inherited assignment source")
+    return bool(
+        identity_roles._field(scope, "OS-INHERIT:inherited_to")
+        or "/domains/" in assignment
+        or "/OS-INHERIT/" in assignment
+    )
+
+
+async def _member(ks, user_id, catalog, effective, direct):
+    effective_ids = _expanded_role_ids(effective, catalog, user_id)
+    direct_ids = _direct_ids(direct, user_id)
+    if not direct_ids <= {row["id"] for row in catalog}:
+        raise identity_roles._unavailable("Direct assignment role is absent from the current catalog")
+    user = await _provider_call(ks.users.get, user_id)
+    groups = set()
+    inherited = False
+    for row in effective:
+        if _principal(row, "user") == user_id:
+            groups.update(_group_ids(row))
+            inherited = inherited or _inherited_assignment(row)
+    group_names = []
+    for gid in sorted(groups):
+        group = await _provider_call(ks.groups.get, gid)
+        group_names.append(identity_roles._field(group, "name") or gid)
+    access = _access(effective, catalog, user_id)
+    source = (
+        "mixed"
+        if direct_ids and (groups or inherited)
+        else "direct"
+        if direct_ids
+        else "group"
+        if groups
+        else "inherited"
+    )
+    result = {
+        "user_id": user_id,
+        "username": identity_roles._field(user, "name") or "",
+        "email": identity_roles._field(user, "email") or "",
+        "source": source,
+        **access,
+        "direct_role_ids": sorted(direct_ids),
+        "effective_role_ids": sorted(effective_ids),
+    }
+    if group_names:
+        result["group_name"] = ", ".join(group_names)
+    return result
+
+
+async def list_members(project_id, token_info):
+    _check_scope(project_id, token_info)
+    ks = await _provider_call(keystone._get_admin_ks_client)
+    catalog = await _provider_call(identity_roles._trusted_catalog)
+    effective = await _provider_call(_assignment_rows, ks, project_id, effective=True)
+    _authorize(project_id, token_info, effective, catalog)
+    direct = await _provider_call(_assignment_rows, ks, project_id)
+    users = {_principal(row, "user") for row in effective + direct}
+    users.discard(None)
+    return {"items": [await _member(ks, uid, catalog, effective, direct) for uid in sorted(users)]}
+
+
+def _managed_roles(catalog):
+    """Only exact global preset identities with non-elevating real descendants."""
+    definitions = {row["name"]: row for row in ROLE_PRESETS}
+    by_id = {row["id"]: row for row in catalog}
+    by_name = {}
+    for row in catalog:
+        if row["domain_id"] is None:
+            by_name.setdefault(row["name"].casefold(), []).append(row)
+    result = {}
+    for name, definition in definitions.items():
+        matches = by_name.get(name, [])
+        if not matches:
+            continue
+        if len(matches) != 1 or matches[0]["name"] != name:
+            raise identity_roles._unavailable("Managed role binding is ambiguous")
+        row = matches[0]
+        area, grade = definition["area"], definition["grade"]
+        if name in _PROJECT_GRADES:
+            order = ["project_owner", "project_admin", "project_member", "project_reader"]
+            allowed = set(order[order.index(name) :]) | {"member", "reader"}
+            if name == "project_reader":
+                allowed.discard("member")
+        else:
+            grades = SERVICE_ROLE_GRADES.get(area, {})
+            order = ["admin", "editor", "user", "reader"]
+            if grade not in order or grade not in grades:
+                continue
+            if name != f"{area}_{grade}":
+                # Fine-grained grants may acquire their own service's read-only
+                # discovery bundle, never another use/write capability.
+                allowed = {name}
+                if grade != "reader":
+                    allowed.add(f"{area}_reader")
+                    allowed.update(grades.get("reader", ()))
+            else:
+                lower = order[order.index(grade) :]
+                allowed = {f"{area}_{level}" for level in lower}
+                allowed.update(leaf for level in lower for leaf in grades.get(level, ()))
+        descendant_ids = row["inherited_role_ids"]
+        descendants = {by_id[rid]["name"] for rid in descendant_ids}
+        cyclic = any(
+            rid == row["id"] or row["id"] in by_id[rid]["inherited_role_ids"] for rid in row["implied_role_ids"]
+        )
+        if row["system_only"] or cyclic or not descendants <= allowed:
+            continue
+        # Reject a domain-specific/duplicate descendant, even when its label is safe.
+        if any(
+            by_id[rid]["domain_id"] is not None or len(by_name.get(by_id[rid]["name"], ())) != 1
+            for rid in descendant_ids
+        ):
+            continue
+        result[row["id"]] = {**row, "area": area, "grade": grade}
+    return result
+
+
+def _required_project_role(catalog, name, *, require_hierarchy=False):
+    managed = _managed_roles(catalog)
+    matches = [row for row in managed.values() if row["name"] == name]
+    if len(matches) != 1:
+        raise HTTPException(status_code=409, detail="Apply the safe project role preset before assigning membership")
+    row = matches[0]
+    if require_hierarchy:
+        order = ["project_owner", "project_admin", "project_member", "project_reader"]
+        expected = set(order[order.index(name) + 1 :]) | {"reader"}
+        if name != "project_reader":
+            expected.add("member")
+        by_id = {item["id"]: item for item in catalog}
+        descendants = {by_id[rid]["name"] for rid in row["inherited_role_ids"]}
+        if not expected <= descendants:
+            raise HTTPException(status_code=409, detail="Project role hierarchy is incomplete")
+    return row
+
+
+async def assignable_roles(project_id, token_info):
+    _check_scope(project_id, token_info)
+    ks = await _provider_call(keystone._get_admin_ks_client)
+    catalog = await _provider_call(identity_roles._trusted_catalog)
+    effective = await _provider_call(_assignment_rows, ks, project_id, effective=True)
+    access = _authorize(project_id, token_info, effective, catalog)
+    roles = _managed_roles(catalog).values()
+    return {
+        "roles": [row for row in roles if access["is_owner"] or row["name"] not in {"project_owner", "project_admin"}],
+        "is_owner": access["is_owner"],
+    }
+
+
+def _ensure_owner_remains(project_id, user_id, catalog, effective, direct, desired):
+    by_id = {row["id"]: row for row in catalog}
+    retained = _direct_ids(direct, user_id) - set(_managed_roles(catalog)) | desired
+    if any(
+        by_id[rid]["name"] == "project_owner"
+        or any(by_id[child]["name"] == "project_owner" for child in by_id[rid]["inherited_role_ids"])
+        for rid in retained
+    ):
+        return
+    for row in effective:
+        uid = _principal(row, "user")
+        if not uid or not _access([row], catalog, uid)["is_owner"]:
+            continue
+        if uid != user_id or _group_ids(row) or _inherited_assignment(row):
+            return
+    raise HTTPException(status_code=409, detail="The last effective project owner cannot be removed")
+
+
+def _validate_reader_roles(catalog, effective_ids):
+    by_id = {row["id"]: row for row in catalog}
+    names = {by_id[rid]["name"] for rid in effective_ids}
+    write_roles = set()
+    for area, grades in SERVICE_ROLE_GRADES.items():
+        for grade in ("user", "editor", "admin"):
+            write_roles.add(f"{area}_{grade}")
+            write_roles.update(grades.get(grade, ()))
+    if names & write_roles and "member" not in names:
+        raise HTTPException(
+            status_code=409,
+            detail="Write-service roles require effective native member membership, not reader membership",
+        )
+
+
+@identity_roles._complete_mutation
+async def replace_member_roles(project_id, user_id, role_ids, token_info, *, remove=False):
+    _check_scope(project_id, token_info)
+    async with _membership_write(project_id) as (lease, ks, catalog, effective, direct):
+        access = _authorize(project_id, token_info, effective, catalog)
+        target = _access(effective, catalog, user_id)
+        if not target["roles"]:
+            raise HTTPException(status_code=404, detail="User is not an effective member of this project")
+        if target["is_owner"] and not access["is_owner"]:
+            raise HTTPException(status_code=403, detail="Only an owner may edit another owner's assignments")
+        managed = _managed_roles(catalog)
+        direct_ids = _direct_ids(direct, user_id)
+        if not direct_ids <= {row["id"] for row in catalog}:
+            raise identity_roles._unavailable("Direct assignment role is absent from the current catalog")
+        current = direct_ids & set(managed)
+        requested = set(role_ids)
+        if len(role_ids) != len(requested) or not requested <= set(managed) | direct_ids:
+            raise HTTPException(
+                status_code=422, detail="Select unique safe assignable role IDs; unrelated grants are read-only"
+            )
+        # The full direct selection may include immutable existing native/custom
+        # grants. They are neither added nor removed by this managed replacement.
+        desired = requested & set(managed)
+        for rid in desired:
+            if managed[rid]["name"] in _PROJECT_GRADES:
+                _required_project_role(catalog, managed[rid]["name"], require_hierarchy=True)
+        protected = {rid for rid, row in managed.items() if row["name"] in {"project_owner", "project_admin"}}
+        if not access["is_owner"] and (desired ^ current) & protected:
+            raise HTTPException(status_code=403, detail="Only an owner may change project owner/admin grants")
+        if target["is_owner"] and (current - desired) & protected:
+            _ensure_owner_remains(project_id, user_id, catalog, effective, direct, desired)
+        # Simulate effective grants without the direct grants being replaced. Group
+        # and inherited roles remain immutable and count toward reader restrictions.
+        remaining = []
+        for row in effective:
+            if _principal(row, "user") != user_id:
+                continue
+            if _group_ids(row) or _inherited_assignment(row):
+                remaining.append(row)
+        projected = _expanded_role_ids(remaining, catalog, user_id)
+        by_id = {row["id"]: row for row in catalog}
+        for rid in desired | (_direct_ids(direct, user_id) - set(managed)):
+            projected.add(rid)
+            projected.update(by_id[rid]["inherited_role_ids"])
+        if not remove:
+            _validate_reader_roles(catalog, projected)
+        await identity_roles._session_ready({user_id} if current - desired else ())
+        changed = False
+        try:
+            for rid in sorted(desired - current):
+                changed = True
+                await identity_roles._write(lease, ks.roles.grant, rid, user=user_id, project=project_id)
+            for rid in sorted(current - desired):
+                changed = True
+                await identity_roles._write(lease, ks.roles.revoke, rid, user=user_id, project=project_id)
+        finally:
+            if changed:
+                await cache.invalidate(keys.user_key(user_id, "projects"))
+                await identity_roles._applied(
+                    None,
+                    catalog,
+                    None,
+                    {user_id} if current - desired else (),
+                    token_info,
+                    "project_member_remove" if remove else "project_member_roles",
+                    {"project_id": project_id, "user_id": user_id},
+                )
+        fresh_effective = await _provider_call(_assignment_rows, ks, project_id, effective=True)
+        fresh_direct = await _provider_call(_assignment_rows, ks, project_id)
+        return await _member(ks, user_id, catalog, fresh_effective, fresh_direct)
+
+
+@identity_roles._complete_mutation
+async def _grant_project_role(project_id, user_id, name, *, require_hierarchy=False):
+    async with _membership_write(project_id) as (lease, ks, catalog, effective, direct):
+        role = _required_project_role(catalog, name, require_hierarchy=require_hierarchy)
+        await _provider_call(ks.users.get, user_id)
+        if role["id"] not in _direct_ids(direct, user_id):
+            await identity_roles._write(lease, ks.roles.grant, role["id"], user=user_id, project=project_id)
+        await cache.invalidate(keys.user_key(user_id, "projects"))
+
+
+@identity_roles._complete_mutation
+async def migrate_legacy_managers(project_id, owner_user_id, token_info, session):
+    if token_info.get("is_system_admin") is not True:
+        raise HTTPException(status_code=403, detail="Verified system administrator required for legacy migration")
+    if not owner_user_id:
+        raise HTTPException(status_code=422, detail="Choose owner_user_id explicitly")
+    async with _membership_write(project_id) as (lease, ks, catalog, effective, direct):
+        owner = _required_project_role(catalog, "project_owner", require_hierarchy=True)
+        admin = _required_project_role(catalog, "project_admin", require_hierarchy=True)
+        result = await session.execute(
+            select(ProjectRole)
+            .where(ProjectRole.project_id == project_id, ProjectRole.role == "manager")
+            .with_for_update()
+        )
+        rows = list(result.scalars().all())
+        if not rows:
+            raise HTTPException(status_code=409, detail="No legacy manager rows remain to migrate")
+        users = {row.user_id for row in rows} | {owner_user_id}
+        for uid in sorted(users):
+            await _provider_call(ks.users.get, uid)
+            if not _access(effective, catalog, uid)["roles"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Every migrated manager and the chosen owner must be a verified effective project member",
+                )
+        for uid in sorted(users):
+            role = owner if uid == owner_user_id else admin
+            if role["id"] not in _direct_ids(direct, uid):
+                await identity_roles._write(lease, ks.roles.grant, role["id"], user=uid, project=project_id)
+        verified = await _provider_call(_assignment_rows, ks, project_id, effective=True)
+        for uid in users:
+            access = _access(verified, catalog, uid)
+            if not access["is_manager"] or (uid == owner_user_id and not access["is_owner"]):
+                raise identity_roles._unavailable(
+                    "Migration assignments could not be verified; legacy rows were retained"
+                )
+        await lease.assert_owned()
+        for row in rows:
+            await session.delete(row)
+        await session.commit()
+        for uid in users:
+            await cache.invalidate(keys.user_key(uid, "projects"))
+        return {
+            "project_id": project_id,
+            "owner_user_id": owner_user_id,
+            "migrated_user_ids": sorted({row.user_id for row in rows}),
+            "deleted_legacy_rows": len(rows),
+        }

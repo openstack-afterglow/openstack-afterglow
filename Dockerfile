@@ -247,6 +247,88 @@ ENV PORT=3080
 
 CMD ["node", "scripts/run-with-file-log.mjs", "node", "build"]
 
+# ── Native OCI-root VM: no container engine inside the guest ─────────────────
+# BuildKit produces the filesystem; Palimpsest's Linux amd64/KVM stage-1 boots it.
+# The existing frontend/backend/worker targets remain independent deliverables.
+FROM node:22-bookworm-slim AS native-node
+FROM oven/bun:1 AS native-frontend-dependencies
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/bun.lock ./
+RUN bun install --production --frozen-lockfile
+
+FROM backend-builder AS native-dependencies
+RUN uv sync --frozen --no-dev --no-install-project --group worker
+
+FROM backend AS native-vm
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends mariadb-server mariadb-client redis-server \
+    && rm -rf /var/lib/apt/lists/* /var/lib/mysql/* \
+    && install -d -m 0700 -o appuser -g appuser /var/lib/afterglow \
+    && install -d -m 0755 -o appuser -g appuser /app/logs \
+    && ln -s /var/lib/afterglow/afterglow.conf /app/afterglow.conf
+COPY --from=native-dependencies /app/.venv /app/.venv
+COPY --from=native-node /usr/local/bin/node /usr/local/bin/node
+COPY --from=native-frontend-dependencies /app/frontend/node_modules /app/frontend/node_modules
+COPY --from=frontend-builder /app/build /app/frontend/build
+COPY frontend/package.json /app/frontend/package.json
+COPY frontend/scripts/ /app/frontend/scripts/
+ENV PORT=3080 HOST=0.0.0.0
+USER appuser
+ENTRYPOINT ["/app/.venv/bin/python", "/app/scripts/native_vm.py"]
+CMD []
+
+# ── Native cloud VM: conventional Nova/KVM disk root derived from native-vm ───
+# Debian linux/amd64 only. Adds the same-distro kernel + initramfs, BIOS GRUB
+# modules, systemd as PID 1, cloud-init, sshd and afterglow-native.service
+# (the native supervisor as appuser). Still no container engine in the guest.
+# Build with --platform linux/amd64 --output type=tar; then
+# scripts/export_native_cloud.py writes the BIOS-bootable raw disk. This is the
+# OCI root plus declared bootability additions, not the protected OCI-root
+# stage-1 path. The image ENTRYPOINT is unused when the disk boots /sbin/init.
+FROM native-vm AS native-cloud-vm
+USER root
+ARG DEBIAN_FRONTEND=noninteractive
+RUN test "$(dpkg --print-architecture)" = amd64 \
+    && install -d -m 0755 /etc/initramfs-tools/conf.d \
+    && printf 'RESUME=none\n' > /etc/initramfs-tools/conf.d/afterglow-native-cloud \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        linux-image-amd64 initramfs-tools grub-pc-bin grub2-common \
+        systemd systemd-sysv systemd-resolved systemd-timesyncd dbus udev kmod \
+        cloud-init cloud-guest-utils netcat-openbsd openssh-server sudo \
+        e2fsprogs xfsprogs fdisk util-linux iproute2 iputils-ping procps ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && test "$(find /boot -maxdepth 1 -name 'vmlinuz-*' -type f | wc -l)" = 1 \
+    && kernel="$(basename "$(find /boot -maxdepth 1 -name 'vmlinuz-*' -type f)" | sed 's/^vmlinuz-//')" \
+    && test -s "/boot/initrd.img-${kernel}" \
+    && test -f /usr/lib/grub/i386-pc/boot.img \
+    && test -f /usr/lib/grub/i386-pc/modinfo.sh \
+    && command -v mount.ceph >/dev/null \
+    && test -x /usr/bin/python3 \
+    && test -n "$(find "/usr/lib/modules/${kernel}" -name 'ceph.ko*' -print -quit)"
+COPY --chmod=0644 backend/scripts/native-cloud/afterglow-native.service /etc/systemd/system/afterglow-native.service
+COPY --chmod=0755 backend/scripts/native-cloud/afterglow-native-prepare /usr/local/libexec/afterglow-native-prepare
+COPY --chmod=0644 backend/scripts/native-cloud/95_afterglow_native.cfg /etc/cloud/cloud.cfg.d/95_afterglow_native.cfg
+COPY --chmod=0644 backend/scripts/native-cloud/ssh-host-keys.conf /etc/systemd/system/ssh.service.d/afterglow-host-keys.conf
+COPY --chmod=0644 backend/scripts/native-cloud/grub-default.cfg /etc/default/grub.d/afterglow-native-cloud.cfg
+# The supervisor owns MariaDB/Redis as appuser; the distro system services
+# would collide with it. No machine identity, host keys or cloud-init instance
+# state is baked: each booted disk generates its own.
+RUN systemctl disable mariadb.service redis-server.service \
+    && systemctl mask mariadb.service redis-server.service \
+    && systemctl enable systemd-networkd.service systemd-resolved.service systemd-timesyncd.service \
+        ssh.service afterglow-native.service \
+    && install -d -m 0700 -o root -g root /etc/afterglow \
+    && rm -f /usr/sbin/policy-rc.d /etc/ssh/ssh_host_* /var/lib/systemd/random-seed /var/lib/systemd/credential.secret \
+    && rm -rf /var/lib/cloud/* /var/log/cloud-init*.log \
+    && : > /etc/machine-id \
+    && if [ -e /var/lib/dbus/machine-id ] && [ ! -L /var/lib/dbus/machine-id ]; then rm -f /var/lib/dbus/machine-id; fi \
+    && test -L /app/afterglow.conf \
+    && test "$(readlink /app/afterglow.conf)" = /var/lib/afterglow/afterglow.conf \
+    && test -z "$(ls -A /var/lib/afterglow)"
+USER appuser
+
 # ── Frontend 개발 스테이지 (docker-compose.override.yml에서 사용) ────────────
 # Frontend 개발 스테이지
 # 볼륨 마운트 시 소스코드 실시간 반영, 아닐 경우 이미지 내 소스 사용

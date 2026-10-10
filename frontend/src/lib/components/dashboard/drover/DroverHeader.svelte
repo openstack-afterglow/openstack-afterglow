@@ -4,6 +4,7 @@
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import type { AutoRefreshController } from '$lib/utils/autoRefresh.svelte';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 
 	let {
 		showDeleted = $bindable(),
@@ -44,6 +45,7 @@
 		/>
 		<button
 			data-tour="drover-create-open"
+			disabled={!$k3sPermissions.editClusters}
 			onclick={onOpenCreate}
 			onpointerenter={onOpenCreateIntent}
 			onfocus={onOpenCreateIntent}

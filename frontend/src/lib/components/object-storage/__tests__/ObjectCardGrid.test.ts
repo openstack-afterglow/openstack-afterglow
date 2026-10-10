@@ -30,7 +30,9 @@ vi.mock('$lib/api/client', () => ({
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: vi.fn(async () => true) }));
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ObjectBrowserStore } from '$lib/stores/objectBrowser.svelte';
 import ObjectCardGridHarness from './ObjectCardGridHarness.svelte';
 
 const createObjectURL = vi.fn(() => 'blob:thumb');
@@ -136,6 +138,45 @@ describe('ObjectCardGrid', () => {
 		for (const card of cards) {
 			const img = within(card).queryByRole('presentation');
 			expect(img?.getAttribute('src')).not.toBe('blob:stale');
+		}
+	});
+
+	it('fades cards in on first arrival only, never on refresh or filter typing', async () => {
+		const rootListing = listing[''];
+		let store!: ObjectBrowserStore;
+		render(ObjectCardGridHarness, { onstore: (s: ObjectBrowserStore) => { store = s; } });
+		const card = (name: string) => screen.getByRole('button', { name });
+		const entering = (name: string) => card(name).parentElement!.classList.contains('motion-fade');
+		try {
+			await screen.findByRole('button', { name: '폴더 docs' });
+			expect(entering('폴더 docs')).toBe(true);
+			expect(entering('파일 photo.png')).toBe(true);
+
+			// A manual refresh swaps in the skeleton and remounts every card.
+			const before = card('파일 photo.png');
+			await store.refreshAll();
+			await tick();
+			expect(card('파일 photo.png')).not.toBe(before);
+			expect(entering('파일 photo.png')).toBe(false);
+			expect(entering('폴더 docs')).toBe(false);
+
+			store.filterText = 'bundle';
+			await waitFor(() => expect(screen.queryByRole('button', { name: '파일 photo.png' })).toBeNull());
+			store.filterText = '';
+			await screen.findByRole('button', { name: '파일 photo.png' });
+			expect(entering('파일 photo.png')).toBe(false);
+
+			// Polling that brings a genuinely new object animates only that card.
+			listing[''] = [
+				...rootListing,
+				{ name: 'report.csv', bytes: 512, content_type: 'text/csv', last_modified: '2026-09-03T00:00:00Z', etag: 'e-csv' },
+			];
+			await store.refreshAll({ silent: true });
+			await screen.findByRole('button', { name: '파일 report.csv' });
+			expect(entering('파일 report.csv')).toBe(true);
+			expect(entering('파일 bundle.zip')).toBe(false);
+		} finally {
+			listing[''] = rootListing;
 		}
 	});
 });

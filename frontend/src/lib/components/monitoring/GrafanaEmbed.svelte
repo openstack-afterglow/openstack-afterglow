@@ -77,7 +77,8 @@
 			.map(([k, v]) => `var-${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
 			.join('&');
 		const timeParams = `from=${range}&to=now`;
-		const common = `orgId=1&theme=dark&kiosk&${timeParams}${varParams ? '&' + varParams : ''}`;
+		// Grafana handles branding inside the cross-origin frame; avoid its sticky kiosk footer.
+		const common = `orgId=1&theme=dark&kiosk&hideLogo=1&${timeParams}${varParams ? '&' + varParams : ''}`;
 		if (panelId !== undefined) {
 			return `${base}/d-solo/${uid}/_?panelId=${panelId}&${common}`;
 		}

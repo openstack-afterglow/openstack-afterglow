@@ -144,7 +144,7 @@
   <div
     bind:this={menuEl}
     id={menuId}
-    class="action-menu"
+    class="action-menu motion-pop"
     role="group"
     aria-label={t('actionMenu.options', { label })}
     style:left={pos ? `${pos.left}px` : '-9999px'}

@@ -77,6 +77,20 @@ const motionTokenNames = [
 	'--motion-ease-standard',
 	'--motion-ease-out',
 	'--motion-ease-in-out',
+	'--motion-duration-spin',
+	'--motion-duration-shimmer',
+	'--motion-duration-stagger',
+	'--motion-ease-emphasized',
+	'--motion-ease-overshoot',
+	'--motion-sheen',
+	'--motion-skeleton-highlight',
+];
+
+// 반복 loop의 정지 frame을 보장하려면 새 duration도 reduced-motion 블록에서 0으로 수렴해야 한다.
+const reducedMotionDurationDeclarations = [
+	'--motion-duration-spin: 0.01ms',
+	'--motion-duration-shimmer: 0.01ms',
+	'--motion-duration-stagger: 0ms',
 ];
 
 // 시맨틱 톤은 채움용 값과 글자용 값을 따로 갖는다. 채움 값을 글자에 쓰면 라이트에서 AA 미달이다.
@@ -115,6 +129,9 @@ const motionDurationExports = [
 	'panel: 200',
 	'data: 500',
 	'statusPulse: 1400',
+	'spin: 800',
+	'shimmer: 1600',
+	'stagger: 40',
 	"REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'",
 ];
 
@@ -132,6 +149,13 @@ const motionCssVars = [
 	"easeStandard: 'var(--motion-ease-standard)'",
 	"easeOut: 'var(--motion-ease-out)'",
 	"easeInOut: 'var(--motion-ease-in-out)'",
+	"durationSpin: 'var(--motion-duration-spin)'",
+	"durationShimmer: 'var(--motion-duration-shimmer)'",
+	"durationStagger: 'var(--motion-duration-stagger)'",
+	"easeEmphasized: 'var(--motion-ease-emphasized)'",
+	"easeOvershoot: 'var(--motion-ease-overshoot)'",
+	"sheen: 'var(--motion-sheen)'",
+	"skeletonHighlight: 'var(--motion-skeleton-highlight)'",
 ];
 
 const requiredUiExports = [
@@ -148,6 +172,11 @@ const requiredUiExports = [
 	'UsageBar',
 	'StatusChip',
 	'Pill',
+	'ProgressTrack',
+	'StepProgress',
+	'ProvisionPipeline',
+	'ActivityIndicator',
+	'AnimatedNumber',
 ];
 
 describe('design system source contracts', () => {
@@ -299,6 +328,8 @@ describe('design system source contracts', () => {
 		expect(layoutSource).toContain('animation-delay: 0ms !important');
 		expect(layoutSource).toContain('animation-iteration-count: 1 !important');
 		expect(layoutSource).toContain('transition-delay: 0ms !important');
+		const reducedBlock = layoutSource.slice(layoutSource.indexOf('@media (prefers-reduced-motion: reduce)'));
+		for (const declaration of reducedMotionDurationDeclarations) expect(reducedBlock).toContain(declaration);
 	});
 
 	it('documents interaction ownership and UsageBar edge-case behavior', () => {

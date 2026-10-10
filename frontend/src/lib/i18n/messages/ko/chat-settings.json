@@ -1,4 +1,7 @@
 {
+	"permissions.required": "필요한 권한: {leaf}",
+	"permissions.loading": "프로젝트 권한을 불러오는 중…",
+	"apiKeys.scopes": "API 범위 (현재 권한으로 제한)",
 	"settings.sections.usage": "사용량",
 	"settings.sections.apiKeys": "API 키",
 	"settings.sections.memory": "메모리",

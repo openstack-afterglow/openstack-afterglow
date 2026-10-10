@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
@@ -116,7 +117,7 @@
 	/>
 
 	{#if loading}
-		<div class="text-ink-2 text-sm">{t('networksPage.loading')}</div>
+		<div class="text-ink-2 text-sm"><ActivityIndicator size="sm" label={t('networksPage.loading')} /></div>
 	{:else}
 		<AdminNetworkTable
 			{networks}

@@ -222,6 +222,7 @@
 	"loadBalancers.error.server": "服务器错误",
 	"loadBalancers.breadcrumb": "网络 / 负载均衡器",
 	"loadBalancers.title": "负载均衡器",
+	"loadBalancers.loading": "正在加载负载均衡器列表...",
 	"loadBalancers.actions.create": "+ 创建负载均衡器",
 	"loadBalancers.empty.title": "没有负载均衡器",
 	"loadBalancers.empty.create": "创建第一个负载均衡器 →",

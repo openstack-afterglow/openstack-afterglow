@@ -15,7 +15,7 @@
 	let { tone = 'danger', title, class: className = '', children, actions }: Props = $props();
 </script>
 
-<div class="alert alert-{tone} {className}" role={tone === 'danger' ? 'alert' : 'status'}>
+<div class="alert motion-enter alert-{tone} {className}" role={tone === 'danger' ? 'alert' : 'status'}>
 	<div class="alert-body">
 		{#if title}
 			<p class="alert-title">{title}</p>

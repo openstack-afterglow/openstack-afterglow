@@ -157,6 +157,8 @@ class InstanceInfo(BaseModel):
     union_upper_volume_id: str | None = None
     scheduling: str | None = None  # "standard" | "ha"
     key_name: str | None = None
+    ssh_access_mode: Literal["github"] | None = None
+    github_login: str | None = None
     user_id: str | None = None
     project_id: str | None = None
     fault: dict | None = None  # OpenStack 서버 fault: {"message": "...", "code": 500, "created": "..."}

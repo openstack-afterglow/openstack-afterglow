@@ -149,6 +149,7 @@
 	"tabs.snapshots": "스냅샷 {count}",
 	"tabs.resources": "볼륨 리소스",
 	"detailPanel.backToList": "← 볼륨 목록",
+	"detailPanel.loading": "볼륨 정보를 불러오는 중",
 	"attachModal.title": "인스턴스에 볼륨 연결",
 	"attachModal.instanceLabel": "인스턴스 선택",
 	"attachModal.instancePlaceholder": "-- 선택 --",

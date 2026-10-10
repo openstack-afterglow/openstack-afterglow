@@ -2,8 +2,10 @@
 	import { uploadQueue } from '$lib/stores/uploadQueue';
 	import { parseImageReference, sanitizeImageFilename } from '$lib/utils/imageReference';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { ActivityIndicator } from '$lib/components/ui';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/images-keys';
+	import { t as objectStorageT } from '$lib/i18n/ns/object-storage';
 	import RichText from '$lib/i18n/RichText.svelte';
 
 	interface Props {
@@ -137,14 +139,14 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		use:dialogFocus={{ enabled: true, onEscape: () => close() }}
-		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
+		class="motion-fade fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={close}
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
 	>
 		<div
-			class="bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-6 w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)]"
+			class="motion-pop bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-6 w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
@@ -163,6 +165,9 @@
 				onclick={() => (document.getElementById('image-file-input') as HTMLInputElement)?.click()}
 				onkeydown={(e) => e.key === 'Enter' && (document.getElementById('image-file-input') as HTMLInputElement)?.click()}
 			>
+				{#if dropActive}
+					<div class="motion-pop mb-3"><ActivityIndicator variant="upload" label={objectStorageT('views.dragOverlay.dropFiles')} /></div>
+				{/if}
 				{#if file}
 					<div class="text-sm text-[var(--color-ink-0)] font-medium">{file.name}</div>
 					<div class="text-xs text-[var(--color-ink-3)] mt-1">{formatBytes(file.size)}</div>

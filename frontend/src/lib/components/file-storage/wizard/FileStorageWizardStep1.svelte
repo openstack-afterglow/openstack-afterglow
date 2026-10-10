@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { useFsWizard } from '$lib/stores/fileStorageWizardStore.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
+	import { ActivityIndicator, Alert, Button, ProgressTrack } from '$lib/components/ui';
 
 	const s = useFsWizard();
 </script>
@@ -69,11 +70,11 @@
 		</div>
 	</div>
 </div>
-{#if s.wizardError}<div class="mt-4 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{s.wizardError}</div>{/if}
+{#if s.wizardError}<Alert tone="danger" class="mt-4">{s.wizardError}</Alert>{/if}
+{#if s.creating}<ProgressTrack value={null} active label={t('wizard.mutation.createFileStorage')} class="mt-4" />{/if}
 <div class="flex justify-end gap-3 mt-6">
 	<button onclick={s.closeWizard} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('wizard.actions.cancel')}</button>
-	<button onclick={s.goStep2} disabled={s.creating}
-		class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors">
-		{s.creating ? t('wizard.actions.creating') : (!s.dhssEnabled || s.fsForm.share_proto === 'CEPHFS') ? t('wizard.actions.create') : t('wizard.actions.next')}
-	</button>
+	<Button onclick={s.goStep2} disabled={s.creating} ariaBusy={s.creating}>
+		{#if s.creating}<ActivityIndicator size="xs" tone="ink" />{t('wizard.actions.creating')}{:else}{(!s.dhssEnabled || s.fsForm.share_proto === 'CEPHFS') ? t('wizard.actions.create') : t('wizard.actions.next')}{/if}
+	</Button>
 </div>

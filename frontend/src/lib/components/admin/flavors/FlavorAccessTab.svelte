@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-compute';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { toast } from '$lib/stores/toast';
@@ -33,6 +34,7 @@
 	let accessLoading = $state(false);
 	let accessError = $state('');
 	let addingId = $state<string | null>(null);
+	let removingId = $state<string | null>(null);
 	let projectSearch = $state('');
 	let allProjects = $state<{ id: string; name: string }[]>([]);
 	let accessMode = $state<'manual' | 'gpu_quota'>('manual');
@@ -110,6 +112,7 @@
 	}
 
 	async function removeAccess(pid: string) {
+		removingId = pid;
 		try {
 			await api.delete(
 				`/api/v1/admin/flavors/${flavor.id}/access/${pid}`,
@@ -119,6 +122,8 @@
 			await loadAccess();
 		} catch {
 			accessError = t('flavors.access.removeFailed');
+		} finally {
+			removingId = null;
 		}
 	}
 
@@ -184,6 +189,9 @@
 				ariaLabel={t('flavors.access.visibilityLabel')}
 				fullWidth
 			/>
+			{#if visibilitySaving}
+				<ActivityIndicator size="xs" label={t('flavors.access.visibilitySaving')} class="mt-2" />
+			{/if}
 		</div>
 	</div>
 </div>
@@ -222,6 +230,9 @@
 					{t('flavors.access.quotaMode')}
 				</button>
 			</div>
+			{#if modeSaving}
+				<ActivityIndicator size="xs" label={t('flavors.access.modeSaving')} class="mt-2" />
+			{/if}
 			<p class="mt-2 text-xs text-[var(--color-ink-2)] leading-normal">
 				{accessMode === 'gpu_quota'
 					? t('flavors.access.quotaHelp')
@@ -252,11 +263,7 @@
 								class="text-xs px-2 py-0.5 bg-action-warm hover:bg-action-warm-hover disabled:opacity-60 disabled:cursor-not-allowed text-action-on-warm rounded ml-2 flex items-center gap-1"
 							>
 								{#if addingId === p.id}
-									<svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-										<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-										<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-									</svg>
-									{t('flavors.access.adding')}
+									<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('flavors.access.adding')}</span></span>
 								{:else}
 									{t('flavors.access.add')}
 								{/if}
@@ -274,7 +281,7 @@
 
 	<div class="text-sm text-ink-2 mb-2">{t('flavors.access.projects')}</div>
 	{#if accessLoading}
-		<div class="text-ink-2 text-sm">{t('flavors.loading')}</div>
+		<ActivityIndicator size="sm" label={t('flavors.loading')} />
 	{:else if accessList.length === 0}
 		<div class="text-ink-2 text-sm">{t('flavors.access.empty')}</div>
 	{:else}
@@ -287,7 +294,11 @@
 							<div class="text-xs text-ink-2 font-mono">{a.project_id.slice(0, 12)}</div>
 						{/if}
 					</div>
-					<button onclick={() => removeAccess(a.project_id)} class="text-red-400 hover:text-red-300 text-xs">{t('flavors.access.remove')}</button>
+					<button onclick={() => removeAccess(a.project_id)} disabled={removingId === a.project_id} class="text-state-danger-text hover:text-state-danger-text/90 text-xs">
+						{#if removingId === a.project_id}
+							<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('flavors.access.removing')}</span></span>
+						{:else}{t('flavors.access.remove')}{/if}
+					</button>
 				</div>
 			{/each}
 		</div>

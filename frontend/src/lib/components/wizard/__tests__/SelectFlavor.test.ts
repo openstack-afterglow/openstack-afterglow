@@ -48,7 +48,7 @@ const quota = {
 	gigabytes: { limit: 500, in_use: 100 },
 };
 
-function renderFlavors(props: Partial<{ adminMode: boolean; flavors: FlavorOption[]; selectedId: string | null; selectedName: string | null; refreshing: boolean; refreshError: string | null; backgroundRefreshing: boolean; backgroundRefreshError: string | null }> = {}) {
+function renderFlavors(props: Partial<{ adminMode: boolean; flavors: FlavorOption[]; selectedId: string | null; selectedName: string | null; quota: typeof quota; bootVolumeSizeGb: number; refreshing: boolean; refreshError: string | null; backgroundRefreshing: boolean; backgroundRefreshError: string | null }> = {}) {
 	const onSelect = vi.fn();
 	const onRefresh = vi.fn().mockResolvedValue(true);
 	const result = render(SelectFlavor, {
@@ -58,7 +58,8 @@ function renderFlavors(props: Partial<{ adminMode: boolean; flavors: FlavorOptio
 		selectedName: props.selectedName ?? null,
 		onSelect,
 		onRefresh,
-		quota,
+		quota: props.quota ?? quota,
+		bootVolumeSizeGb: props.bootVolumeSizeGb,
 		refreshing: props.refreshing ?? false,
 		refreshError: props.refreshError ?? null,
 		backgroundRefreshing: props.backgroundRefreshing ?? false,
@@ -90,6 +91,93 @@ describe('SelectFlavor', () => {
 
 		screen.getByRole('button', { name: 'cpu.1c_1g 플레이버 선택' }).click();
 		expect(onSelect).toHaveBeenCalledWith('cpu-1', 'cpu.1c_1g');
+	});
+
+	it('separates existing and selected resource allocations', () => {
+		const { container } = renderFlavors({ flavors: [flavorWith('cpu', 'cpu.2c_4g')], selectedId: 'cpu' });
+		const tracks = [...container.querySelectorAll<HTMLElement>('.quota-track')];
+		expect(tracks).toHaveLength(4);
+		const usedWidths = ['20%', '25%', '12.5%', '20%'];
+		const deltaWidths = ['10%', '12.5%', '12.5%', '4%'];
+		const values = ['2 → 3 / 10', '4 → 6 / 16', '4GB → 8GB / 32GB', '100GB → 120GB / 500GB'];
+		tracks.forEach((track, index) => {
+			const used = track.querySelector<HTMLElement>('.quota-used')!;
+			const delta = track.querySelector<HTMLElement>('.quota-delta')!;
+			expect(used.style.width).toBe(usedWidths[index]);
+			expect(delta.style.left).toBe(usedWidths[index]);
+			expect(delta.style.width).toBe(deltaWidths[index]);
+			expect(track.parentElement?.textContent?.replace(/\s+/g, ' ').trim()).toContain(values[index]);
+		});
+	});
+
+	it('uses the configured root volume size instead of the flavor disk', () => {
+		const { container } = renderFlavors({ flavors: [flavorWith('cpu', 'cpu.2c_4g')], selectedId: 'cpu', bootVolumeSizeGb: 80 });
+		const disk = container.querySelectorAll<HTMLElement>('.quota-track')[3];
+		expect(disk.querySelector<HTMLElement>('.quota-delta')!.style.width).toBe('16%');
+		expect(disk.parentElement?.textContent?.replace(/\s+/g, ' ').trim()).toContain('100GB → 180GB / 500GB');
+	});
+
+	it('does not allocate a new root disk when booting from an existing volume', () => {
+		const { container } = renderFlavors({ flavors: [flavorWith('cpu', 'cpu.2c_4g')], selectedId: 'cpu', bootVolumeSizeGb: 0 });
+		const disk = container.querySelectorAll<HTMLElement>('.quota-track')[3];
+		expect(disk.querySelector<HTMLElement>('.quota-delta')!.style.width).toBe('0%');
+		expect(disk.parentElement?.textContent?.replace(/\s+/g, ' ').trim()).toContain('100GB / 500GB');
+		expect(disk.parentElement?.textContent).not.toContain('→');
+	});
+
+	it('shows no added usage when no flavor is selected', () => {
+		const { container } = renderFlavors({ flavors: [flavorWith('cpu', 'cpu.2c_4g')] });
+		for (const delta of container.querySelectorAll<HTMLElement>('.quota-delta')) {
+			expect(delta.style.width).toBe('0%');
+		}
+	});
+
+	it.each([0, 2])('keeps zero-limit quota widths finite with %s existing usage', (inUse) => {
+		const zeroQuota = {
+			instances: { limit: 0, in_use: inUse },
+			cores: { limit: 0, in_use: inUse },
+			ram: { limit: 0, in_use: inUse },
+			gigabytes: { limit: 0, in_use: inUse },
+		};
+		const { container } = renderFlavors({ flavors: [flavorWith('cpu', 'cpu.2c_4g')], selectedId: 'cpu', quota: zeroQuota });
+		const tracks = [...container.querySelectorAll<HTMLElement>('.quota-track')];
+		expect(tracks).toHaveLength(4);
+		tracks.forEach(track => {
+			const used = track.querySelector<HTMLElement>('.quota-used')!;
+			const delta = track.querySelector<HTMLElement>('.quota-delta')!;
+			expect(used.style.width).toBe(inUse > 0 ? '100%' : '0%');
+			expect(delta.style.left).toBe(inUse > 0 ? '100%' : '0%');
+			expect(delta.style.width).toBe(inUse === 0 ? '100%' : '0%');
+		});
+	});
+
+	it('clamps over-limit bars without clamping the displayed quota values', () => {
+		const overQuota = {
+			instances: { limit: 1, in_use: 2 },
+			cores: { limit: 1, in_use: 4 },
+			ram: { limit: 1024, in_use: 4096 },
+			gigabytes: { limit: 50, in_use: 100 },
+		};
+		const { container } = renderFlavors({ flavors: [flavorWith('cpu', 'cpu.2c_4g')], selectedId: 'cpu', quota: overQuota });
+		const tracks = [...container.querySelectorAll<HTMLElement>('.quota-track')];
+		const values = ['2 → 3 / 1', '4 → 6 / 1', '4GB → 8GB / 1GB', '100GB → 120GB / 50GB'];
+		tracks.forEach((track, index) => {
+			expect(track.querySelector<HTMLElement>('.quota-used')!.style.width).toBe('100%');
+			expect(track.querySelector<HTMLElement>('.quota-delta')!.style.width).toBe('0%');
+			expect(track.parentElement?.textContent?.replace(/\s+/g, ' ').trim()).toContain(values[index]);
+		});
+	});
+
+	it('does not invent percentage fills for unlimited quotas', () => {
+		const unlimitedQuota = {
+			instances: { limit: -1, in_use: 2 },
+			cores: { limit: -1, in_use: 4 },
+			ram: { limit: -1, in_use: 4096 },
+			gigabytes: { limit: -1, in_use: 100 },
+		};
+		const { container } = renderFlavors({ flavors: [flavorWith('cpu', 'cpu.2c_4g')], selectedId: 'cpu', quota: unlimitedQuota });
+		expect(container.querySelector('.quota-used')).toBeNull();
+		expect(container.querySelector('.quota-delta')).toBeNull();
 	});
 
 	it('distinguishes quota, same-host capacity, and unchecked blocks and disables each', async () => {

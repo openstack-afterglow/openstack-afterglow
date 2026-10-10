@@ -5,8 +5,9 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
-	import { Alert, Card, EmptyState, PageHeader, PageShell } from '$lib/components/ui';
+	import { ActivityIndicator, Alert, Card, EmptyState, PageHeader, PageShell } from '$lib/components/ui';
 	import { formatIsoDateTime } from '$lib/utils/format';
+	import { prefersReducedMotion } from '$lib/utils/motion';
 	import type { AnnouncementUser, AnnouncementSeverity } from '$lib/types/announcements';
 	import type { DashboardAlert, DashboardOverviewQuotas } from '$lib/types/quotas';
 
@@ -41,7 +42,10 @@
 		}
 		expandedId = id;
 		requestAnimationFrame(() => {
-			document.getElementById(`announcement-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+			document.getElementById(`announcement-${id}`)?.scrollIntoView({
+				block: 'center',
+				behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+			});
 		});
 	}
 
@@ -128,7 +132,7 @@
 
 	{#if quotaLoading}
 		<Card padding="lg" class="mb-4">
-			<p class="text-xs text-[var(--color-ink-3)]">{t('notifications.loadingQuota')}</p>
+			<ActivityIndicator label={t('notifications.loadingQuota')} />
 		</Card>
 	{:else if quotaAlerts.length > 0}
 		<Card padding="lg" class="mb-4">
@@ -180,7 +184,7 @@
 								><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
 							</button>
 							{#if expandedId === a.id}
-								<div class="ml-5 mb-3.5 rounded-lg px-4 py-3" style="background: var(--color-surface-sunken);">
+								<div class="motion-enter ml-5 mb-3.5 rounded-lg px-4 py-3" style="background: var(--color-surface-sunken);">
 									<p class="text-xs text-[var(--color-ink-1)] whitespace-pre-wrap leading-relaxed">{a.body}</p>
 									<dl class="mt-3 pt-3 border-t border-[var(--color-line)] grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
 										<dt class="text-[var(--color-ink-3)]">{t('notifications.sender')}</dt>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { SecurityGroup, SecurityGroupRuleDraft } from '$lib/types/securityGroup';
 	import { t } from '$lib/i18n/ns/network-pages';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	let {
 		ruleForm = $bindable(),
@@ -29,7 +30,7 @@
 	const control = 'w-full bg-surface-sunken border border-line-2 rounded-md px-2 py-1.5 text-sm text-ink-1 focus:border-action-warm focus:outline-none';
 </script>
 
-<div class="border-t border-line bg-surface-base p-3 md:p-4" data-testid="inline-rule-form">
+<div class="motion-enter border-t border-line bg-surface-base p-3 md:p-4" data-testid="inline-rule-form">
 	<p class="text-sm font-medium text-ink-0 mb-3">{originalRuleId ? t('addRule.copyTitle') : t('addRule.newTitle')}</p>
 	{#if originalRuleId}
 		<p class="text-xs text-ink-2 mb-3">{t('addRule.copyHelp')}</p>
@@ -90,7 +91,7 @@
 		{#if originalRuleId}
 			<button type="button" onclick={onRemoveOriginal} disabled={adding} class="text-xs text-state-danger-text border border-state-danger rounded-md px-3 py-1.5 disabled:opacity-50">{t('addRule.removeOriginal')}</button>
 		{/if}
-		<button type="button" onclick={onAdd} disabled={adding || !canAdd} class="text-xs bg-action-warm text-action-on-warm rounded-md px-3 py-1.5 disabled:opacity-50">{adding ? t('addRule.adding') : t('addRule.add')}</button>
+		<button type="button" onclick={onAdd} disabled={adding || !canAdd} aria-busy={adding} class="inline-flex items-center gap-1.5 text-xs bg-action-warm text-action-on-warm rounded-md px-3 py-1.5 disabled:opacity-50">{#if adding}<ActivityIndicator size="xs" tone="ink" />{/if}{adding ? t('addRule.adding') : t('addRule.add')}</button>
 		<button type="button" onclick={onCancel} class="text-xs text-ink-2 border border-line-2 rounded-md px-3 py-1.5">{t('addRule.cancel')}</button>
 	</div>
 	{#if !canAdd}<p class="text-xs text-ink-2 mt-2">{t('addRule.quotaHelp')}</p>{/if}

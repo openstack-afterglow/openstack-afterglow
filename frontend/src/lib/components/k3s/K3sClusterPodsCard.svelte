@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { untrack } from 'svelte';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 	import { SectionHeader } from '$lib/components/ui';
 	import K3sPodLogOverlay from './K3sPodLogOverlay.svelte';
 	import type { PodInfo } from '$lib/types/k3s';
@@ -39,7 +41,7 @@
 	<SectionHeader title="Pod" meta={t('pods.count', { count: s.pods.length })} />
 
 	{#if loading}
-		<div class="mt-4 text-sm text-ink-2 text-center py-6">{t('pods.loading')}</div>
+		<div class="mt-4 text-sm text-ink-2 text-center py-6"><ActivityIndicator label={t('pods.loading')} /></div>
 	{:else if loadError}
 		<div class="mt-4 text-sm text-red-400">{loadError}</div>
 	{:else if s.pods.length === 0}
@@ -73,13 +75,14 @@
 								<div class="flex items-center justify-end gap-1.5">
 									<button
 										onclick={() => { viewingLogPod = pod; }}
+										disabled={!$k3sPermissions.credentials}
 										class="px-2 py-1 rounded text-xs bg-surface-sunken text-ink-2 hover:bg-surface-selected transition-colors"
 									>{t('pods.logs')}</button>
 									<button
 										onclick={() => s.removePod(pod.name)}
-										disabled={!!s.workloadActioning}
+										disabled={!$k3sPermissions.workloads || !!s.workloadActioning}
 										class="px-2 py-1 rounded text-xs bg-red-900/40 text-red-300 hover:bg-red-900/70 disabled:opacity-40 transition-colors"
-									>{actioning ? t('pods.deleting') : t('pods.delete')}</button>
+									>{#if actioning}<ActivityIndicator size="xs" label={t('pods.deleting')} />{:else}{t('pods.delete')}{/if}</button>
 								</div>
 							</td>
 						</tr>

@@ -5,6 +5,7 @@
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
   import { t } from '$lib/i18n/ns/volume';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
   let { snapshots, deleting, selectedIds, selectableIds, selectionDisabled, onToggleSelect, onToggleAll, onDelete }: {
     snapshots: VolumeSnapshot[]; deleting: string | null; selectedIds: ReadonlySet<string>;
@@ -29,7 +30,7 @@
         <th class="text-right py-3">{t('snapshotsTable.actions')}</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody class="motion-stagger">
       {#each snapshots as snap (snap.id)}
         <tr class="resource-selection-surface border-b border-line/50 hover:bg-surface-sunken/50 transition-colors" data-selected={selectedIds.has(snap.id)}>
           <td class="py-3 pr-3"><SelectionCheckbox checked={selectedIds.has(snap.id)} disabled={selectionDisabled} onclick={() => onToggleSelect(snap.id)} ariaLabel={t('snapshotsTable.selectSnapshot', { name: snap.name || snap.id })} /></td>
@@ -43,9 +44,9 @@
             <button
               onclick={() => onDelete(snap.id, snap.name)}
               disabled={deleting === snap.id}
-              class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
+              class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
             >
-              {deleting === snap.id ? t('snapshotsTable.deleting') : t('snapshotsTable.delete')}
+              {#if deleting === snap.id}<ActivityIndicator size="xs" tone="danger" />{/if}{deleting === snap.id ? t('snapshotsTable.deleting') : t('snapshotsTable.delete')}
             </button>
           </td>
         </tr>

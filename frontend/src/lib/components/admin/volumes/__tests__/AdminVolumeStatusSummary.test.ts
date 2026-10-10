@@ -51,4 +51,18 @@ describe('AdminVolumeStatusSummary', () => {
 		expect(onSelect).toHaveBeenCalledWith('');
 		expect(onSelect).toHaveBeenCalledTimes(2);
 	});
+
+	it('announces loading without presenting a fabricated zero, then shows real counts', async () => {
+		const props = { summary: null, activeStatus: '', loading: true, onSelect: vi.fn() };
+		const view = render(AdminVolumeStatusSummary, props);
+
+		expect(screen.getByRole('status').textContent).toContain('볼륨 상태 불러오는 중…');
+		expect(screen.getByRole('region', { name: '볼륨 상태별 개수' }).getAttribute('aria-busy')).toBe('true');
+		expect(screen.queryByRole('button', { name: '전체 0' })).toBeNull();
+
+		await view.rerender({ ...props, loading: false, summary: mixedSummary });
+		expect(screen.queryByRole('status')).toBeNull();
+		expect(screen.getByRole('button', { name: '전체 12' })).toBeTruthy();
+		expect(screen.getByRole('region', { name: '볼륨 상태별 개수' }).getAttribute('aria-busy')).toBe('false');
+	});
 });

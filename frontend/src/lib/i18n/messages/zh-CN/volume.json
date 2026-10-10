@@ -149,6 +149,7 @@
 	"tabs.snapshots": "快照 {count}",
 	"tabs.resources": "卷资源",
 	"detailPanel.backToList": "← 卷列表",
+	"detailPanel.loading": "正在加载卷信息",
 	"attachModal.title": "将卷挂载到实例",
 	"attachModal.instanceLabel": "选择实例",
 	"attachModal.instancePlaceholder": "-- 选择 --",

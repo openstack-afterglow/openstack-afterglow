@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
 	import { fetchWithAuth } from '$lib/api/client';
+	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import ProgressTrack from '$lib/components/ui/ProgressTrack.svelte';
+	import StepProgress from '$lib/components/ui/StepProgress.svelte';
 
 	interface ProgressMsg {
 		step: string;
@@ -24,16 +30,31 @@
 	let messages = $state<ProgressMsg[]>([]);
 	let done = $state(false);
 	let failed = $state(false);
+	/** The stream closed cleanly without a completed/failed event: the outcome is unknown, not a failure. */
+	let unreported = $state(false);
 	let progress = $state(0);
-
-	$effect(() => {
-		void startRotation();
+	const rotationSteps = $derived([
+		{ id: 'rotate_discover', label: t('rotateProgress.steps.discover') },
+		{ id: 'rotate_server', label: t('rotateProgress.steps.server') },
+		{ id: 'rotate_verify', label: t('rotateProgress.steps.verify') },
+	]);
+	const currentStep = $derived.by(() => {
+		for (let i = messages.length - 1; i >= 0; i--) {
+			if (rotationSteps.some((step) => step.id === messages[i].step)) return messages[i].step;
+		}
+		return null;
 	});
+	const rotationStatus = $derived(failed ? 'failed' : done ? 'done' : 'running');
+
+	// Destructive POST: start once on mount. Token/prop refreshes must never re-run it.
+	onMount(() => { void startRotation(); });
 
 	async function startRotation() {
+		if (!get(k3sPermissions).administerClusters) { onclose(); return; }
 		messages = [];
 		done = false;
 		failed = false;
+		unreported = false;
 		progress = 0;
 
 		try {
@@ -88,11 +109,17 @@
 					}
 				}
 			}
+			if (!done) {
+				unreported = true;
+				done = true;
+			}
 		} catch (e) {
+			// 스트림 도중 끊겨도 앞선 단계 이력을 남겨 실패가 마지막 보고 단계에 표시되게 한다.
 			messages = [
+				...messages,
 				{
 					step: 'failed',
-					progress: 0,
+					progress,
 					message: e instanceof Error ? e.message : t('rotateProgress.connectionError'),
 					error: 'network',
 				},
@@ -124,7 +151,7 @@
 <div class="fixed inset-0 z-[60] flex items-center justify-center">
 	<button class="absolute inset-0 bg-surface-scrim/70" onclick={() => done && onclose()} aria-label={t('rotateProgress.close')} tabindex="-1"></button>
 
-	<div class="relative bg-surface-canvas border border-line rounded-lg w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)] max-h-[85vh] flex flex-col">
+	<div class="motion-enter relative bg-surface-canvas border border-line rounded-lg w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)] max-h-[85vh] flex flex-col">
 		<div class="flex items-center justify-between px-5 py-4 border-b border-line shrink-0">
 			<h2 class="text-sm font-semibold text-ink-0">{t('rotateProgress.title', { name: clusterName })}</h2>
 			{#if done}
@@ -134,23 +161,23 @@
 
 		<!-- 진행률 바 -->
 		<div class="px-5 pt-4 shrink-0">
-			<div class="h-1.5 bg-surface-sunken rounded-full overflow-hidden">
-				<div
-					class="h-full transition-all duration-500 rounded-full {failed ? 'bg-red-500' : done ? 'bg-green-500' : 'bg-action-warm'}"
-					style="width: {progress}%"
-				></div>
-			</div>
+			{#if unreported}
+				<p class="mb-4 text-xs text-ink-1" role="status">{t('rotateProgress.unreported')}</p>
+			{:else}
+				<StepProgress steps={rotationSteps} current={currentStep} status={rotationStatus} label={t('rotateProgress.title', { name: clusterName })} class="mb-4" />
+			{/if}
+			<ProgressTrack value={messages.length ? progress : null} label={t('rotateProgress.title', { name: clusterName })} tone={failed ? 'danger' : unreported ? 'neutral' : done ? 'success' : 'accent'} active={!done} />
 			<p class="text-xs text-ink-2 mt-1 text-right">{progress}%</p>
 		</div>
 
 		<!-- 로그 -->
 		<div class="flex-1 overflow-y-auto px-5 py-3 space-y-1.5 min-h-0">
-			{#each messages as msg}
-				<div class="flex items-start gap-2 text-xs">
+			{#each messages as msg, i (i)}
+				<div class="motion-fade flex items-start gap-2 text-xs">
 					<span class="shrink-0 px-1.5 py-0.5 rounded text-xs font-mono
-						{msg.step === 'completed' ? 'bg-green-900/40 text-green-400' :
-						 msg.step === 'failed' ? 'bg-red-900/40 text-red-400' :
-						 msg.step === 'rotate_server' ? 'bg-surface-selected/40 text-warm-text' :
+						{msg.step === 'completed' ? 'bg-state-success/15 text-state-success-text' :
+						 msg.step === 'failed' ? 'bg-state-danger/15 text-state-danger-text' :
+						 msg.step === 'rotate_server' ? 'bg-surface-selected/40 text-accent' :
 						 'bg-surface-sunken text-ink-2'}">
 						{stepLabel(msg.step)}
 					</span>
@@ -164,10 +191,7 @@
 				{/if}
 			{/each}
 			{#if !done}
-				<div class="flex items-center gap-2 text-xs text-ink-2">
-					<span class="inline-block w-2 h-2 bg-action-warm rounded-full animate-pulse"></span>
-					{t('rotateProgress.running')}
-				</div>
+				<ActivityIndicator size="xs" label={t('rotateProgress.running')} class="text-xs" />
 			{/if}
 		</div>
 

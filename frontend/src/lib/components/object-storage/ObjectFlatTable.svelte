@@ -1,13 +1,32 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/object-storage';
+	import { t as commonT } from '$lib/i18n/ns/common';
+	import { untrack } from 'svelte';
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import FileIcon from '$lib/components/ui/FileIcon.svelte';
 	import { formatObjectSize, formatDate, shortContentType } from '$lib/utils/format';
+	import { createArrivals } from './arrivals';
+
+	// Rows fade in only the first time their name renders in this container (initial load, a newly
+	// entered prefix, an upload). Manual refresh, polling and filter typing remount rows that were
+	// already shown — including rows of previously visited prefixes — without replaying the entrance.
+	// Pass a parent-owned tracker so it also survives view switches that unmount this table.
+	let { arrivals = createArrivals() }: { arrivals?: ReturnType<typeof createArrivals> } = $props();
 
 	const s = useObjectBrowser();
+	const downloadPendingLabel = $derived(`${t('views.flatTable.download')}: ${commonT('state.processing')}`);
 
 	let tableRef = $state<HTMLTableElement | null>(null);
+
+	let arrivalContainer = untrack(() => s.containerName);
+	$effect.pre(() => {
+		const name = s.containerName;
+		if (name === arrivalContainer) return;
+		arrivalContainer = name;
+		arrivals.reset();
+	});
 </script>
 
 {#if s.loading}
@@ -64,8 +83,13 @@
 				{#each s.filteredObjects as obj (obj.name)}
 					{@const isDir = s.isDirectory(obj)}
 					{@const relName = s.displayName(obj.name)}
+					{@const downloadPreparing = s.downloading === obj.name}
+					{@const order = arrivals.next(obj.name)}
 					<tr
-						class="group border-b border-line/50 hover:bg-surface-sunken/30 transition-colors cursor-pointer {s.selected.has(obj.name) ? 'bg-indigo-950/20' : ''}"
+						class="resource-selection-surface group border-b border-line/50 hover:bg-surface-sunken/30 transition-colors cursor-pointer"
+						class:motion-fade={order !== null}
+						style:--motion-index={order}
+						data-selected={s.selected.has(obj.name)}
 						onclick={(e) => {
 							const target = e.target as HTMLElement;
 							if (target.closest('button, input, a, label')) return;
@@ -93,15 +117,26 @@
 						</td>
 						<td class="py-3 px-4 text-ink-2 text-xs whitespace-nowrap">{isDir ? t('views.flatTable.unavailable') : formatDate(obj.last_modified)}</td>
 						<td class="py-3 px-4 text-right">
-							<div class="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+							<div class="flex items-center justify-end gap-0.5 transition-opacity {downloadPreparing ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}">
 								{#if !isDir && s.isPreviewable(obj.content_type)}
 									<button onclick={() => s.openPreview(obj)} title={t('views.flatTable.preview')} class="p-1.5 text-ink-2 hover:text-ink-0 hover:bg-surface-selected rounded transition-colors">
 										<svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/></svg>
 									</button>
 								{/if}
 								{#if !isDir}
-									<button onclick={() => s.downloadObject(obj.name)} title={t('views.flatTable.download')} class="p-1.5 text-ink-2 hover:text-ink-0 hover:bg-surface-selected rounded transition-colors">
-										<svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+									<button
+										onclick={() => s.downloadObject(obj.name)}
+										disabled={downloadPreparing}
+										aria-busy={downloadPreparing}
+										aria-label={downloadPreparing ? downloadPendingLabel : t('views.flatTable.download')}
+										title={downloadPreparing ? downloadPendingLabel : t('views.flatTable.download')}
+										class="p-1.5 text-ink-2 hover:text-ink-0 hover:bg-surface-selected rounded transition-colors disabled:cursor-default"
+									>
+										{#if downloadPreparing}
+											<ActivityIndicator variant="download" size="sm" />
+										{:else}
+											<svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+										{/if}
 									</button>
 								{/if}
 								<button onclick={() => s.openRename(obj.name)} title={t('views.flatTable.rename')} class="p-1.5 text-ink-2 hover:text-ink-0 hover:bg-surface-selected rounded transition-colors">

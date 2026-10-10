@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -101,7 +102,7 @@
 	</PageHeader>
 
 	{#if loading}
-		<div class="text-ink-2 text-sm">{t('routersPage.loading')}</div>
+		<div class="text-ink-2 text-sm"><ActivityIndicator size="sm" label={t('routersPage.loading')} /></div>
 	{:else}
 		<AdminRoutersTable {routers} onEdit={(r) => { editRouter = r; }} onDelete={(r) => { deleteRouter = r; }} />
 		<div class="mt-3 text-xs text-ink-2">{t('routersPage.summary.total', { count: routers.length })}</div>

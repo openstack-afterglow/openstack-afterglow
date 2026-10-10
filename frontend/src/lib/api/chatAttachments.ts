@@ -3,6 +3,7 @@
  * and signed URLs never cross the browser boundary.
  */
 import { fetchWithAuth } from './client';
+import { requireLumenCapability } from './lumenAccess';
 import { t } from '$lib/i18n/ns/chat-settings';
 
 /** Backend asset metadata plus local upload state. */
@@ -72,6 +73,7 @@ export async function uploadChatAttachment(
 	file: File,
 	{ token, projectId, signal }: UploadOptions = {}
 ): Promise<AttachmentRef> {
+	requireLumenCapability('lumen-assets_editor', token, projectId);
 	const form = new FormData();
 	form.append('file', file);
 

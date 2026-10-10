@@ -251,12 +251,12 @@ describe('administrator Dockerfile lint', () => {
         await studio();
         await fireEvent.click(screen.getByRole('button', { name: '작업 #42 상세' }));
         const selected = screen.getByRole('region', { name: '선택한 Dockerfile 작업' });
-        expect(within(selected).getByRole('progressbar').getAttribute('value')).toBe('35');
+        expect(within(selected).getByRole('progressbar').getAttribute('aria-valuenow')).toBe('35');
         expect(within(selected).getByText('Build: #8')).toBeTruthy();
         expect(within(selected).getByText(/소비 VM: #19 · bootstrapping \(auto-vm · flavor-1\)/)).toBeTruthy();
         job = { ...job, status: 'error', progress_pct: 60, error_message: 'builder failed' };
         await vi.advanceTimersByTimeAsync(10_000);
-        expect(within(selected).getByRole('progressbar').getAttribute('value')).toBe('60');
+        expect(within(selected).getByRole('progressbar').getAttribute('aria-valuenow')).toBe('60');
         expect(within(selected).getByText('builder failed')).toBeTruthy();
         mocks.get.mockRejectedValue(new Error('offline'));
         await fireEvent.click(screen.getByRole('button', { name: '새로고침' }));

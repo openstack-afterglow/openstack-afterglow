@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { writable } from 'svelte/store';
+import type { Writable } from 'svelte/store';
+import { serviceCapabilities } from '$lib/stores/servicePermissions';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { auth, clearAuth, setAuth } from '$lib/stores/auth';
 
@@ -37,6 +40,11 @@ vi.mock('$lib/stores/imageDetailController.svelte', () => ({
 	useImageDetailController: () => mockController,
 }));
 
+
+vi.mock('$lib/stores/servicePermissions', () => ({ serviceCapabilities: writable<(leaf: string) => boolean>(() => false) }));
+const capabilityLeaves = {
+	set(leaves: string[]) { (serviceCapabilities as Writable<(leaf: string) => boolean>).set(leaf => leaves.includes(leaf)); },
+};
 import ImageExportSection from '../ImageExportSection.svelte';
 
 describe('ImageExportSection', () => {
@@ -56,6 +64,7 @@ describe('ImageExportSection', () => {
 		});
 		mockController.image = { id: 'img-123', name: 'Ubuntu 22.04' };
 		api.get.mockResolvedValue([]);
+		capabilityLeaves.set(['palimpsest-inventory_reader', 'palimpsest-publish_editor', 'palimpsest-download_user']);
 	});
 
 	afterEach(() => {
@@ -405,5 +414,45 @@ describe('ImageExportSection', () => {
 		await fireEvent.click(downloadBtn);
 
 		expect(screen.getByText('다운로드 토큰 발급에 실패했습니다.')).toBeTruthy();
+	});
+
+	it('keeps export and download denied while permissions are pending or failed', async () => {
+		capabilityLeaves.set([]);
+		render(ImageExportSection);
+		await vi.advanceTimersByTimeAsync(0);
+		expect((screen.getByRole('button', { name: '내보내기' }) as HTMLButtonElement).disabled).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: '내보내기' }));
+		expect(api.get).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		{ leaf: 'palimpsest-inventory_reader', exportAllowed: false, downloadAllowed: false },
+		{ leaf: 'palimpsest-download_user', exportAllowed: false, downloadAllowed: true },
+		{ leaf: 'palimpsest-publish_editor', exportAllowed: true, downloadAllowed: false },
+		{ leaf: 'palimpsest-keys_admin', exportAllowed: false, downloadAllowed: false },
+	])('separates export and content download for $leaf', async ({ leaf, exportAllowed, downloadAllowed }) => {
+		capabilityLeaves.set(['palimpsest-inventory_reader', leaf]);
+		api.get.mockResolvedValueOnce([{ id: 'job-1', source_image_id: 'img-123', target_disk_format: 'qcow2', status: 'complete', progress_pct: 100 }]);
+		render(ImageExportSection);
+		await vi.advanceTimersByTimeAsync(0);
+		expect((screen.getByRole('button', { name: '내보내기' }) as HTMLButtonElement).disabled).toBe(!exportAllowed);
+		expect((screen.getByRole('button', { name: '다운로드' }) as HTMLButtonElement).disabled).toBe(!downloadAllowed);
+	});
+
+	it('drops a pending download ticket after capability downgrade', async () => {
+		api.get.mockResolvedValueOnce([{ id: 'job-1', source_image_id: 'img-123', target_disk_format: 'qcow2', status: 'complete', progress_pct: 100 }]);
+		const pending = Promise.withResolvers<{ url: string; expires_in: number }>();
+		api.post.mockReturnValueOnce(pending.promise);
+		const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+		render(ImageExportSection);
+		await vi.advanceTimersByTimeAsync(0);
+		await fireEvent.click(screen.getByRole('button', { name: '다운로드' }));
+		capabilityLeaves.set(['palimpsest-inventory_reader']);
+		await vi.advanceTimersByTimeAsync(0);
+		pending.resolve({ url: '/ticket-must-not-open', expires_in: 60 });
+		await vi.advanceTimersByTimeAsync(0);
+		expect(click).not.toHaveBeenCalled();
+		expect((screen.getByRole('button', { name: '다운로드' }) as HTMLButtonElement).disabled).toBe(true);
 	});
 });

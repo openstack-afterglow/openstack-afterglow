@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/network-resources';
   import { auth } from '$lib/stores/auth';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import {
@@ -43,9 +44,10 @@
   <LoadBalancerDetailHeader {ar} {onClose} />
 
   {#if s.loading}
-    <div class="space-y-4">
+    <div class="space-y-4" role="status" aria-busy="true">
+      <span class="sr-only">{t('lb.detail.loading')}</span>
       {#each [1, 2, 3] as _}
-        <div class="h-16 bg-surface-sunken rounded-lg animate-pulse"></div>
+        <div class="motion-skeleton h-16 rounded-lg" aria-hidden="true"></div>
       {/each}
     </div>
   {:else if s.error}

@@ -149,6 +149,7 @@
 	"tabs.snapshots": "Snapshots {count}",
 	"tabs.resources": "Volume resources",
 	"detailPanel.backToList": "← Volume list",
+	"detailPanel.loading": "Loading volume information",
 	"attachModal.title": "Attach volume to instance",
 	"attachModal.instanceLabel": "Select instance",
 	"attachModal.instancePlaceholder": "-- Select --",

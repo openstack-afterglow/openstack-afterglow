@@ -6,6 +6,7 @@
 	import { toast } from '$lib/stores/toast';
 	import { t } from '$lib/i18n/ns/instance';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import { ActivityIndicator, StatusChip } from '$lib/components/ui';
 
 	const s = useInstanceDetailController();
 
@@ -258,7 +259,7 @@
 	</div>
 
 	{#if showForm}
-		<div class="mb-4 bg-surface-sunken rounded-lg p-4">
+		<div class="motion-enter mb-4 bg-surface-sunken rounded-lg p-4">
 			<div class="grid grid-cols-1 gap-3 mb-3">
 				<div>
 					<label for="attachment-storage" class="block text-xs text-ink-2 mb-1">{t('storageAttachments.storageLabel')}</label>
@@ -274,7 +275,7 @@
 						{/each}
 					</select>
 					{#if catalogStatus === 'loading'}
-						<p class="text-xs text-ink-2 mt-1">{t('storageAttachments.catalogLoading')}</p>
+						<ActivityIndicator class="mt-1" label={t('storageAttachments.catalogLoading')} />
 					{:else if catalogStatus === 'error'}
 						<p class="catalog-message">{t('storageAttachments.catalogRetry')}</p>
 					{:else if catalogStatus === 'loaded' && availableStorages.length === 0}
@@ -305,14 +306,14 @@
 				disabled={catalogStatus === 'loading' || attaching || !selectedStorageId || !mountPoint.trim()}
 				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm rounded-lg transition-colors"
 			>
-				{attaching ? t('storageAttachments.attaching') : t('storageAttachments.attach')}
+				{#if attaching}<ActivityIndicator size="xs" label={t('storageAttachments.attaching')} />{:else}{t('storageAttachments.attach')}{/if}
 			</button>
 		</div>
 	{/if}
 
 	{#if lastMountInfo}
-		<div class="mb-4 bg-green-900/20 border border-green-700/50 rounded-lg p-4">
-			<p class="text-xs text-green-400 font-medium mb-2">{t('storageAttachments.attachedInstructions')}</p>
+		<div class="motion-enter mb-4 bg-surface-sunken border border-line-2 rounded-lg p-4">
+			<p role="status" class="text-xs text-state-success-text font-medium mb-2">{t('storageAttachments.attachedInstructions')}</p>
 			{#if lastMountInfo.keyring_file}
 				<p class="text-[10.5px] text-ink-2 mb-1.5">
 					<RichText segments={t.rich('storageAttachments.keyringHelp', { keyringFile: lastMountInfo.keyring_file })} classes={{ code: 'text-ink-2' }} />
@@ -331,7 +332,7 @@
 	{/if}
 
 	{#if loading}
-		<p class="text-sm text-ink-2">{t('storageAttachments.loading')}</p>
+		<ActivityIndicator label={t('storageAttachments.loading')} />
 	{:else if attachments.length === 0}
 		<p class="text-sm text-ink-2">{t('storageAttachments.empty')}</p>
 	{:else}
@@ -344,7 +345,7 @@
 							{#if att.share_proto}
 								<span class="text-xs text-ink-2 font-mono px-1.5 py-0.5 rounded bg-surface-selected">{att.share_proto}</span>
 							{/if}
-							<span class="text-xs px-1.5 py-0.5 rounded font-mono {att.status === 'available' ? 'text-green-400 bg-green-900/20' : 'text-ink-2 bg-surface-selected'}">{att.status}</span>
+							<StatusChip status={att.status} />
 						</div>
 					</div>
 					<button
@@ -352,7 +353,7 @@
 						disabled={detaching === att.file_storage_id}
 						class="shrink-0 text-xs text-red-400/70 hover:text-red-400 disabled:text-ink-3 transition-colors"
 					>
-						{detaching === att.file_storage_id ? t('storageAttachments.detaching') : t('storageAttachments.detach')}
+						{#if detaching === att.file_storage_id}<ActivityIndicator size="xs" label={t('storageAttachments.detaching')} />{:else}{t('storageAttachments.detach')}{/if}
 					</button>
 				</div>
 			{/each}

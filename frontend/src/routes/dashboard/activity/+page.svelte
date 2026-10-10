@@ -74,12 +74,19 @@
 
 	// Derived KPI values
 	const kpi = $derived(data?.kpi ?? { total: 0, success: 0, failed: 0, last_24h: 0, unique_users: 0 });
-	const successRate = $derived(kpi.total > 0 ? `${Math.round((kpi.success / kpi.total) * 100)}` : '—');
+	const successRate = $derived(kpi.total > 0 ? Math.round((kpi.success / kpi.total) * 100) : '—');
 	const hourDist = $derived(data?.hour_distribution ?? Array(24).fill(0));
 	const recentActions = $derived(data?.recent_actions ?? []);
 
 	// Bar chart derived values
 	const maxHour = $derived(Math.max(...hourDist) || 1);
+	const BAR_MAX_PX = 72;
+
+	/** Bars scale from the bottom of a fixed 72px column; empty hours keep a 1px baseline, active ones at least 2px. */
+	function barScale(val: number): number {
+		const minPx = val > 0 ? 2 : 1;
+		return Math.max(Math.round((val / maxHour) * BAR_MAX_PX), minPx) / BAR_MAX_PX;
+	}
 
 	function barColor(idx: number, val: number): string {
 		if (val === 0) return 'color-mix(in oklab, var(--color-ink-3) 25%, transparent)';
@@ -162,8 +169,8 @@
 				{#each hourDist as val, i}
 					<div class="flex-1 flex flex-col justify-end">
 						<div
-							class="w-full rounded-sm transition-all"
-							style="height: {Math.round((val / maxHour) * 72)}px; min-height: {val > 0 ? 2 : 1}px; background: {barColor(i, val)};"
+							class="hour-bar w-full rounded-sm"
+							style="transform: scaleY({barScale(val)}); background: {barColor(i, val)};"
 						></div>
 					</div>
 				{/each}
@@ -197,8 +204,8 @@
 								<th class="text-left pb-2 font-medium">{t('activity.result')}</th>
 							</tr>
 						</thead>
-						<tbody class="divide-y divide-line/60">
-							{#each recentActions as action}
+						<tbody class="motion-stagger divide-y divide-line/60">
+							{#each recentActions as action (action.id)}
 								{@const badge = actionBadgeStyle(action.action)}
 								<tr class="hover:bg-surface-sunken/30 transition-colors">
 									<td class="py-2.5 pr-4 text-[var(--color-ink-3)] text-xs tabular-nums whitespace-nowrap">
@@ -228,3 +235,13 @@
 		</div>
 	{/if}
 </PageShell>
+
+<style>
+	/* Hour bars grow from the baseline once, then ease to new counts on refresh. */
+	.hour-bar {
+		height: 72px;
+		transform-origin: center bottom;
+		animation: motion-grow-y var(--motion-duration-data) var(--motion-ease-emphasized) backwards;
+		transition: transform var(--motion-duration-data) var(--motion-ease-emphasized), background-color var(--motion-duration-base) var(--motion-ease-standard);
+	}
+</style>

@@ -27,8 +27,12 @@ vi.mock('$lib/api/client', () => ({
 	},
 }));
 vi.mock('$lib/stores/auth', () => ({
-	auth: writable({ token: 'token-1', projectId: 'project-1' }),
+	auth: writable({ token: 'token-1', projectId: 'project-1', userId: 'user-1' }),
 }));
+vi.mock('$lib/stores/servicePermissions', () => ({ serviceCapabilities: writable<(leaf: string) => boolean>((leaf) => [
+	'waygate-inventory_reader', 'waygate-connect_user', 'waygate-clients_editor',
+	'waygate-clients_admin', 'waygate-gateways_editor', 'waygate-gateways_admin', 'waygate-routing_admin',
+].includes(leaf)) }));
 vi.mock('$lib/config/site', () => ({
 	siteConfig: writable({ services: { waygate: true } }),
 }));
@@ -71,6 +75,7 @@ const client = {
 	id: 'client-1',
 	server_id: 'server-1',
 	project_id: 'project-1',
+	owner_user_id: 'user-1',
 	name: 'operator-laptop',
 	enabled: true,
 	public_key: 'client-public-key',
@@ -263,7 +268,7 @@ describe('Waygate dashboard', () => {
 
 		await vi.waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
 			'/api/v1/waygate/servers/server-1/clients',
-			{ name: 'phone', dns: '9.9.9.9, 1.1.1.1', mtu: 1280, persistent_keepalive: 0 },
+			{ name: 'phone', dns: '9.9.9.9, 1.1.1.1', mtu: 1280, persistent_keepalive: 0, owner_user_id: 'user-1' },
 			'token-1',
 			'project-1'
 		));

@@ -167,6 +167,7 @@
 	"loadbalancersPage.toast.deleteFailed": "{count, plural, one {Failed to delete # load balancer.} other {Failed to delete # load balancers.}}",
 	"loadbalancersPage.breadcrumb": "NETWORK / LOADBALANCERS",
 	"loadbalancersPage.title": "Load balancers",
+	"loadbalancersPage.loading": "Loading load balancers...",
 	"loadbalancersPage.empty": "No load balancers",
 	"loadbalancersPage.emptyIcon": "⚖️",
 	"loadbalancersPage.selection.all": "Select all load balancers",

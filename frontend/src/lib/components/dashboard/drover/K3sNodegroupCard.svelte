@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover-pages';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import type { K3sNodegroup } from '$lib/types/k3s';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 
 	let {
 		nodegroup,
@@ -38,7 +41,9 @@
 	);
 </script>
 
-{#snippet countSnippet(text: string)}<span class="text-ink-0">{text}</span>{/snippet}
+{#snippet nodeCountSnippet(text: string)}<span class="text-ink-0"><AnimatedNumber value={nodegroup.node_count} format={(value) => String(Math.round(value))} /></span>{/snippet}
+{#snippet vmCountSnippet(text: string)}<span class="text-ink-0"><AnimatedNumber value={runningVms} format={(value) => String(Math.round(value))} /></span>{/snippet}
+{#snippet vmTotalSnippet(text: string)}<span class="text-ink-0">{text}</span>{/snippet}
 
 <div class="bg-surface-sunken/50 border border-line-2 rounded-lg p-3 space-y-2">
 	<div class="flex items-center justify-between">
@@ -55,18 +60,18 @@
 					<span class="text-xs bg-emerald-900/50 text-emerald-300 border border-emerald-700/60 rounded px-1.5 py-0.5 leading-none">GPU {gpuCount}</span>
 				{/if}
 				{#if inFlight > 0}
-					<span class="text-xs text-yellow-400 animate-pulse">{t('nodegroup.provisioning', { count: inFlight })}</span>
+					<ActivityIndicator variant="pulse" size="xs" label={t('nodegroup.provisioning', { count: inFlight })} class="text-xs" />
 				{/if}
 			{/if}
 		</div>
 		<div class="flex items-center gap-1">
-			{#if onEdit && !nodegroup.is_default}
+			{#if onEdit && !nodegroup.is_default && $k3sPermissions.editClusters}
 				<button
 					onclick={() => onEdit?.(nodegroup)}
 					class="text-xs text-ink-2 hover:text-warm-text-hover px-2 py-1 rounded transition-colors"
 				>{t('actions.edit')}</button>
 			{/if}
-			{#if onDelete && !nodegroup.is_default}
+			{#if onDelete && !nodegroup.is_default && $k3sPermissions.administerClusters}
 				<button
 					onclick={() => onDelete?.(nodegroup)}
 					class="text-xs text-ink-2 hover:text-red-400 px-2 py-1 rounded transition-colors"
@@ -76,9 +81,9 @@
 	</div>
 
 	<div class="flex items-center gap-4 text-xs text-ink-2">
-		<span><RichText segments={t.rich('nodegroup.nodeCount', { count: nodegroup.node_count })} tags={{ count: countSnippet }} /></span>
+		<span><RichText segments={t.rich('nodegroup.nodeCount', { count: nodegroup.node_count })} tags={{ count: nodeCountSnippet }} /></span>
 		{#if nodegroup.vms.length > 0}
-			<span><RichText segments={t.rich('nodegroup.vmCount', { running: runningVms, total: nodegroup.vms.length })} tags={{ count: countSnippet }} /></span>
+			<span><RichText segments={t.rich('nodegroup.vmCount', { running: runningVms, total: nodegroup.vms.length })} tags={{ running: vmCountSnippet, total: vmTotalSnippet }} /></span>
 		{/if}
 		{#if nodegroup.flavor_id}
 			<span class="font-mono truncate max-w-32">{nodegroup.flavor_id.slice(0, 12)}...</span>

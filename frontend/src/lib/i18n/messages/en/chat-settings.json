@@ -1,4 +1,7 @@
 {
+	"permissions.required": "Required permission: {leaf}",
+	"permissions.loading": "Loading project permissions…",
+	"apiKeys.scopes": "API scopes (limited to your current permissions)",
 	"settings.sections.usage": "Usage",
 	"settings.sections.apiKeys": "API keys",
 	"settings.sections.memory": "Memory",

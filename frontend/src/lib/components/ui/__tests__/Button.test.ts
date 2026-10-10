@@ -83,4 +83,15 @@ describe('Button', () => {
 		await fireEvent.pointerEnter(screen.getByRole('button', { name: 'Focus' }));
 		expect(onintent).toHaveBeenCalledOnce();
 	});
+
+	it.each([undefined, '/download'])('exposes busy state without disabling %s actions', async (href) => {
+		const view = render(Button, { href, children: textSnippet('Download') });
+		const action = view.getByRole(href ? 'link' : 'button', { name: 'Download' });
+		expect(action.hasAttribute('aria-busy')).toBe(false);
+		await view.rerender({ href, ariaBusy: true, children: textSnippet('Download') });
+		expect(action.getAttribute('aria-busy')).toBe('true');
+		expect(action.hasAttribute('disabled')).toBe(false);
+		await view.rerender({ href, ariaBusy: false, children: textSnippet('Download') });
+		expect(action.getAttribute('aria-busy')).toBe('false');
+	});
 });

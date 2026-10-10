@@ -6,6 +6,11 @@
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import Field from '$lib/components/ui/Field.svelte';
+	import TextInput from '$lib/components/ui/TextInput.svelte';
+	import StatusChip from '$lib/components/ui/StatusChip.svelte';
+	import HypervisorRemovalReview from './HypervisorRemovalReview.svelte';
+	import type { RemovalInspection, RemovalApproval, RemovalResult } from './removal';
 
 	export interface HypervisorDetail {
 		id: string;
@@ -18,7 +23,12 @@
 		host_ip: string;
 		host_time: string;
 		uptime: string;
+		uptime_observed_at?: string | null;
 		service_host: string;
+		service_id?: string;
+		service_updated_at?: string | null;
+		service_state?: string | null;
+		forced_down?: boolean | null;
 		vcpus: number;
 		vcpus_used: number;
 		vcpus_allowed: number;
@@ -60,14 +70,16 @@
 	let intent = $state<'enable' | 'disable' | 'migrate' | 'evacuate' | null>(null);
 	let reason = $state('');
 	let fenced = $state(false);
-	function choose(next: typeof intent) { intent = next; reason = ''; fenced = false; }
+	function choose(next: typeof intent) {
+		if (pending && next !== null) return;
+		intent = next; reason = ''; fenced = false;
+	}
 
 	let {
 		detail,
 		loading,
 		projectNameMap,
 		gpus = [],
-		onClose,
 		onMigrate,
 		onOpenDetail,
 		pending = false,
@@ -75,12 +87,18 @@
 		result = null,
 		onSchedule,
 		onRelocate,
+		inspection = null,
+		removalResult = null,
+		approvalRevision = 0,
+		invalidReason = '',
+		detailError = '',
+		onCheckRemoval,
+		onRemove,
 	}: {
 		detail: HypervisorDetail | null;
 		loading: boolean;
 		projectNameMap: Map<string, string>;
 		gpus?: GpuDevice[];
-		onClose: () => void;
 		onMigrate: (serverId: string, serverName: string, type: 'live' | 'cold') => void;
 		onOpenDetail: (serverId: string, projectId: string) => void;
 		pending?: boolean;
@@ -88,6 +106,13 @@
 		result?: HostRelocationResult | null;
 		onSchedule: (enabled: boolean, reason?: string) => Promise<boolean>;
 		onRelocate: (mode: 'migrate' | 'evacuate', fenced: boolean) => Promise<boolean>;
+		inspection?: RemovalInspection | null;
+		removalResult?: RemovalResult | null;
+		approvalRevision?: number;
+		invalidReason?: string;
+		detailError?: string;
+		onCheckRemoval: () => Promise<void>;
+		onRemove: (approval: RemovalApproval) => Promise<void>;
 	} = $props();
 
 	async function submitIntent() {
@@ -98,18 +123,25 @@
 			: await onRelocate(current, fenced);
 		if (accepted) choose(null);
 	}
+
+	let lastOperationStatus: string | undefined;
+	$effect(() => {
+		const status = JSON.stringify([detail?.id, detail?.state, detail?.status, detail?.service_state, detail?.forced_down, detail?.running_vms, detail?.servers.map((server) => [server.id, server.status])]);
+		if (lastOperationStatus !== undefined && status !== lastOperationStatus) choose(null);
+		lastOperationStatus = status;
+	});
 </script>
 
-<div class="w-96 border-l border-line bg-surface-canvas flex flex-col overflow-hidden flex-shrink-0">
+<div class="w-full min-w-0 bg-surface-canvas flex flex-col">
 	<div class="flex items-center justify-between px-4 py-3 border-b border-line">
-		<h2 class="text-sm font-semibold text-ink-0 truncate">{detail?.hypervisor_hostname ?? t('hypervisors.loading')}</h2>
-		<button onclick={onClose} class="text-ink-2 hover:text-ink-0 text-lg leading-none">×</button>
+		<h2 class="text-sm font-semibold text-ink-0 truncate">{detail?.hypervisor_hostname ?? (loading ? t('hypervisors.loading') : t('hypervisors.detail.title'))}</h2>
 	</div>
+	{#if detailError}<div class="p-4"><Alert tone="danger">{detailError} {t('hypervisors.detail.retryHelp')}</Alert></div>{/if}
 
 	{#if loading}
 		<div class="p-4"><LoadingSkeleton variant="table" rows={4} /></div>
 	{:else if detail}
-		<div class="flex-1 overflow-y-auto p-4 space-y-4">
+		<div class="min-w-0 p-4 space-y-4">
 			<!-- 기본 정보 -->
 			<div class="bg-surface-base border border-line rounded-xl p-4">
 				<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">{t('hypervisors.detail.basicInfo')}</h3>
@@ -128,6 +160,14 @@
 						<dd class="text-ink-2 text-right break-all">{detail.disabled_reason}</dd>
 					</div>
 					{/if}
+					<div class="flex justify-between gap-4">
+						<dt class="text-ink-2">{t('hypervisors.detail.serviceId')}</dt>
+						<dd class="font-mono text-right break-all">{detail.service_id || t('hypervisors.detail.unavailable')}</dd>
+					</div>
+					<div class="flex justify-between gap-4">
+						<dt class="text-ink-2">{t('hypervisors.detail.serviceUpdatedAt')}</dt>
+						<dd class="text-right break-all">{detail.service_updated_at || t('hypervisors.detail.unavailable')}</dd>
+					</div>
 					<div class="flex justify-between">
 						<dt class="text-ink-2">{t('hypervisors.detail.hostIp')}</dt>
 						<dd class="text-ink-2 font-mono">{detail.host_ip || '-'}</dd>
@@ -138,10 +178,14 @@
 						<dd class="text-ink-2 font-mono">{detail.host_time}</dd>
 					</div>
 					{/if}
-					{#if detail.uptime}
 					<div class="flex justify-between gap-4">
-						<dt class="text-ink-2 flex-shrink-0">{t('hypervisors.detail.uptime')}</dt>
-						<dd class="text-ink-2 text-right text-xs leading-relaxed break-all">{detail.uptime}</dd>
+						<dt class="text-ink-2 flex-shrink-0">{t(detail.uptime_observed_at ? 'hypervisors.removal.lastObservedUptime' : 'hypervisors.detail.uptimeRaw')}</dt>
+						<dd class="text-ink-2 text-right text-xs leading-relaxed break-all">{detail.uptime || t('hypervisors.detail.uptimeUnavailable')}</dd>
+					</div>
+					{#if detail.uptime && detail.uptime_observed_at}
+					<div class="flex justify-between gap-4">
+						<dt class="text-ink-2 flex-shrink-0">{t('hypervisors.detail.uptimeObservedAt')}</dt>
+						<dd class="text-ink-2 text-right font-mono break-all">{detail.uptime_observed_at}</dd>
 					</div>
 					{/if}
 					<div class="flex justify-between">
@@ -184,8 +228,9 @@
 					<div class="border border-line rounded-lg p-3 space-y-3 text-xs" role="group" aria-label={t('hypervisors.operations.confirmLabel')}>
 						{#if intent === 'disable'}
 							<p>{t('hypervisors.operations.disableConfirm')}</p>
-							<label class="block text-ink-2" for="host-disable-reason">{t('hypervisors.operations.requiredReason')}</label>
-							<input id="host-disable-reason" class="w-full bg-surface-sunken border border-line rounded-md p-2 text-ink-0" bind:value={reason} disabled={pending} />
+							<Field for="host-disable-reason" label={t('hypervisors.operations.requiredReason')} required>
+								<TextInput id="host-disable-reason" bind:value={reason} disabled={pending} />
+							</Field>
 						{:else if intent === 'enable'}
 							<p>{t('hypervisors.operations.enableConfirm')}</p>
 						{:else if intent === 'migrate'}
@@ -216,6 +261,16 @@
 					</div>
 				{/if}
 			</section>
+
+			<HypervisorRemovalReview
+				{inspection}
+				result={removalResult}
+				{approvalRevision}
+				{invalidReason}
+				{pending}
+				onCheck={onCheckRemoval}
+				{onRemove}
+			/>
 
 			<!-- 리소스 현황 -->
 			<div class="bg-surface-base border border-line rounded-xl p-4">
@@ -284,11 +339,11 @@
 									<div class="text-xs text-ink-2">{projectNameMap.get(s.project_id) || s.project_id.slice(0, 8)} · {s.flavor}</div>
 								</div>
 								<div class="flex items-center gap-1 ml-2 flex-shrink-0">
-									<span class="text-xs {s.status === 'ACTIVE' ? 'text-green-400' : s.status === 'ERROR' ? 'text-red-400' : 'text-ink-2'}">{s.status}</span>
+									<StatusChip status={s.status} />
 									{#if s.status === 'ACTIVE'}
-										<button onclick={() => onMigrate(s.id, s.name, 'live')} class="px-1.5 py-0.5 text-xs bg-cyan-900/30 hover:bg-cyan-900/60 text-cyan-400 rounded">{t('hypervisors.detail.move')}</button>
+										<Button variant="outline" size="sm" disabled={pending} onclick={() => onMigrate(s.id, s.name, 'live')}>{t('hypervisors.detail.move')}</Button>
 									{:else if s.status === 'SHUTOFF'}
-										<button onclick={() => onMigrate(s.id, s.name, 'cold')} class="px-1.5 py-0.5 text-xs bg-teal-900/30 hover:bg-teal-900/60 text-teal-400 rounded">{t('hypervisors.detail.move')}</button>
+										<Button variant="outline" size="sm" disabled={pending} onclick={() => onMigrate(s.id, s.name, 'cold')}>{t('hypervisors.detail.move')}</Button>
 									{/if}
 								</div>
 							</div>

@@ -13,7 +13,7 @@
   let { logs, logsLoading, ar, onManualRefresh }: Props = $props();
 </script>
 
-<div class="bg-surface-base border border-line rounded-xl p-4">
+<div class="bg-surface-base border border-line rounded-xl p-4" aria-busy={logsLoading}>
   <div class="flex items-center justify-between mb-3">
     <div class="text-xs text-ink-2">{t('instances.logs.title')}</div>
     <AutoRefreshControl

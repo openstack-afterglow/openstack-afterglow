@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import get_os_conn, get_token_info
 from app.config import get_settings
 from app.database import get_session_factory
+from app.rate_limit import limiter
+from app.services import activity
 from app.services.activity import _audit_ctx
 from app.services.mcp_control_plane.authority import (
     McpAuthorityError,
@@ -24,6 +28,10 @@ from app.services.mcp_control_plane.authority import (
     personal_token_grant_id,
     revoke_grant,
     set_lumen_selection,
+)
+from app.services.mcp_control_plane.verification import (
+    McpConnectionCheckError,
+    verify_personal_mcp_connection,
 )
 
 router = APIRouter()
@@ -155,6 +163,99 @@ async def create_mcp_token(
     )
     _mark_transactional_audit()
     return response
+
+
+class McpConnectionCheckView(BaseModel):
+    endpoint: str
+    protocol_version: str
+    server_name: str
+    server_version: str
+    tool_count: int
+
+
+_VERIFY_MAX_BODY_BYTES = 1024
+_VERIFY_NO_STORE = {"Cache-Control": "no-store", "Pragma": "no-cache"}
+_VERIFY_FAILURES: dict[str, tuple[int, str]] = {
+    "invalid_request": (400, "MCP connection check request is invalid"),
+    "invalid_token": (400, "MCP personal key is invalid, expired, revoked, or not owned by this project"),
+    "not_configured": (503, "MCP public endpoint is not configured"),
+    "rejected": (502, "MCP endpoint rejected the personal key"),
+    "redirect": (502, "MCP endpoint redirected; redirects are not followed"),
+    "unavailable": (504, "MCP endpoint is unreachable or did not respond in time"),
+    "protocol": (502, "MCP endpoint returned an invalid MCP response"),
+}
+
+
+async def _verification_token(request: Request) -> str | None:
+    """Parse ``{"token": str}`` without ever echoing the submitted value."""
+    if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
+        return None
+    body = b""
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > _VERIFY_MAX_BODY_BYTES:
+            return None
+    try:
+        payload = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or set(payload) != {"token"} or not isinstance(payload["token"], str):
+        return None
+    return payload["token"]
+
+
+async def _audit_verification(token_info: dict, *, status_code: int, failure: str | None) -> None:
+    holder = _audit_ctx.get() or {}
+    await activity.record(
+        project_id=token_info["project_id"],
+        user_id=token_info["user_id"],
+        username=token_info.get("username", ""),
+        resource_type="mcp_grant",
+        action="mcp_grant.verify",
+        status="failed" if failure else "success",
+        error_message=_VERIFY_FAILURES[failure][1] if failure else None,
+        request_id=holder.get("request_id"),
+        service=holder.get("service"),
+        source="afterglow",
+        page=holder.get("page"),
+        http_status=status_code,
+    )
+
+
+@router.post("/mcp-tokens/verify", response_model=McpConnectionCheckView)
+@limiter.limit("6/minute")
+async def verify_mcp_token_connection(request: Request, token_info: dict = Depends(get_token_info)):
+    """Prove a saved personal key works at the public MCP resource (read-only handshake)."""
+    try:
+        _require_browser_mutation(request)
+        _session_factory()
+    except HTTPException as exc:
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=_VERIFY_NO_STORE)
+    raw_token = await _verification_token(request)
+    failure: str | None = "invalid_request" if raw_token is None else None
+    result = None
+    if raw_token is not None:
+        try:
+            result = await verify_personal_mcp_connection(
+                raw_token, owner_user_id=token_info["user_id"], owner_project_id=token_info["project_id"]
+            )
+        except McpConnectionCheckError as exc:
+            failure = exc.reason
+    if failure is not None or result is None:
+        failure = failure or "protocol"
+        status_code, detail = _VERIFY_FAILURES[failure]
+        await _audit_verification(token_info, status_code=status_code, failure=failure)
+        # Returned directly: the global handler would replace 5xx details and drop no-store.
+        return JSONResponse({"detail": detail, "code": failure}, status_code=status_code, headers=_VERIFY_NO_STORE)
+    await _audit_verification(token_info, status_code=200, failure=None)
+    view = McpConnectionCheckView(
+        endpoint=result.endpoint,
+        protocol_version=result.protocol_version,
+        server_name=result.server_name,
+        server_version=result.server_version,
+        tool_count=result.tool_count,
+    )
+    return JSONResponse(view.model_dump(), headers=_VERIFY_NO_STORE)
 
 
 @router.delete("/mcp-tokens/lumen-default", response_model=McpLumenSelectionResponse)

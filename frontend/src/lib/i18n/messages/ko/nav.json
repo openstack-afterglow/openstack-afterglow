@@ -15,6 +15,8 @@
 	"sections.system": "시스템",
 	"sections.identity": "Identity",
 	"sections.overview": "개요",
+	"sections.documentation": "문서",
+	"items.documentation": "Docs · 사용 가이드",
 	"items.overview": "개요",
 	"items.usage": "사용량",
 	"items.usageReport": "사용량 리포트",

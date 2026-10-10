@@ -167,6 +167,7 @@
 	"loadbalancersPage.toast.deleteFailed": "{count} 个负载均衡器删除失败。",
 	"loadbalancersPage.breadcrumb": "网络 / 负载均衡器",
 	"loadbalancersPage.title": "负载均衡器",
+	"loadbalancersPage.loading": "正在加载负载均衡器...",
 	"loadbalancersPage.empty": "没有负载均衡器",
 	"loadbalancersPage.emptyIcon": "⚖️",
 	"loadbalancersPage.selection.all": "选择所有负载均衡器",

@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
-"""afterglow.conf → K8s configmap.yaml + secret.yaml + grafana-deployment.yaml 변환기.
+"""afterglow.conf → K8s configmap/secret/ingress/grafana 매니페스트 변환기.
 
 afterglow.conf(및 오버라이드)을 읽어
-deploy/k8s/{secret.yaml, configmap.yaml, grafana-deployment.yaml}을 자동 생성합니다.
+deploy/k8s/{secret.yaml, configmap.yaml, ingress.yaml, grafana-deployment.yaml}을 자동 생성합니다.
 `--namespace`는 해당 환경 프로필(deploy/afterglow-prod.conf 또는
 deploy/afterglow-dev.conf)을 항상 먼저 적용합니다. `--override`는 추가 오버라이드입니다.
 
 grafana-deployment.yaml 은 anonymous 인증으로 동작하는 Grafana Deployment 매니페스트로,
 iframe 임베드를 위해 GF_SECURITY_ALLOW_EMBEDDING 이 활성화되어 있습니다.
 Afterglow 앱 인증이 실질적인 접근 게이트 역할을 합니다.
+
+ingress.yaml 은 frontend/public API origin의 기존 /api, /.well-known, frontend fallback과
+별도 API host의 /v1(Lumen)을 보존합니다. services.mcp=true이면 mcp.public_url의 host에
+정확한 resource 경로 및 OAuth descendants와 /.well-known을 backend로 전달합니다.
+미설정 resource는 public_api_base + /api/v1/mcp이며 rewrite/redirect는 사용하지 않습니다.
+루트 resource는 전용 host에서 Exact /, Prefix /oauth, Prefix /.well-known만 노출합니다.
+web/API host와 공유하는 루트 resource는 생성 전에 거부합니다. 정적 overlay 대신 생성한
+ingress.yaml을 적용해야 설정된 MCP 경로가 반영됩니다.
 
 사용법:
     python3 generate_k8s.py --config /path/to/afterglow.conf
@@ -299,7 +307,6 @@ def render_secret(cfg: dict, namespace: str = "afterglow") -> str:
 
     enc_key = k3s.get("kubeconfig_encryption_key", "")
     token = k3s.get("gpu_admission_token", "")
-    provisioning_token = k3s.get("provisioning_token", "")
     lines.extend(
         [
             "",
@@ -307,7 +314,6 @@ def render_secret(cfg: dict, namespace: str = "afterglow") -> str:
             '  # 생성: python3 -c "import secrets; print(secrets.token_hex(32))"',
             f"  K3S_KUBECONFIG_ENCRYPTION_KEY: {_yaml_str(enc_key)}",
             f"  K3S_GPU_ADMISSION_TOKEN: {_yaml_str(token)}",
-            f"  K3S_PROVISIONING_TOKEN: {_yaml_str(provisioning_token)}",
         ]
     )
 
@@ -653,7 +659,6 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append("[k3s]")
     lines.append("# kubeconfig_encryption_key is injected as K3S_KUBECONFIG_ENCRYPTION_KEY from secret.yaml")
     lines.append("# gpu_admission_token is injected as K3S_GPU_ADMISSION_TOKEN from secret.yaml")
-    lines.append("# provisioning_token is injected as K3S_PROVISIONING_TOKEN from secret.yaml")
     lines.append("")
     # [worker_runtime] (non-secret runtime manager config)
     wr_workers = worker_runtime.get("workers", {})
@@ -682,7 +687,7 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"logs_mount = {_toml_str(wr_docker.get('logs_mount', '/app/logs'))}")
     lines.append(f"logs_host_path = {_toml_str(wr_docker.get('logs_host_path', ''))}")
     lines.append(
-        f"env_allowlist = {_toml_str(wr_docker.get('env_allowlist', 'AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,K3S_KUBECONFIG_ENCRYPTION_KEY,K3S_GPU_ADMISSION_TOKEN,K3S_PROVISIONING_TOKEN,PROMETHEUS_PASSWORD,GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY'))}"
+        f"env_allowlist = {_toml_str(wr_docker.get('env_allowlist', 'AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,K3S_KUBECONFIG_ENCRYPTION_KEY,K3S_GPU_ADMISSION_TOKEN,PROMETHEUS_PASSWORD,GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY'))}"
     )
     lines.append("")
     lines.append("[worker_runtime.kubernetes]")
@@ -895,6 +900,90 @@ def render_configmap(cfg: dict, namespace: str = "afterglow") -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# ingress.yaml 렌더링
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def render_ingress(cfg: dict, namespace: str = "afterglow") -> str:
+    """Render host-bound MCP routes without rewriting paths or replacing the web fallback."""
+    public_api_base = _derive_public_api_base_for_k8s(cfg)
+    frontend_origin = (
+        _origin_of(cfg.get("app", {}).get("frontend_base_url"))
+        or _configured_cors_origin(cfg.get("cors", {}))
+        or public_api_base
+    )
+    frontend_host = urlparse(frontend_origin).hostname
+    api_host = urlparse(public_api_base).hostname
+    # Each tuple is (path, pathType, service, port). Kubernetes Prefix is element-aware.
+    web_paths = [
+        ("/.well-known", "Prefix", "backend", 8000),
+        ("/api", "Prefix", "backend", 8000),
+        ("/", "Prefix", "frontend", 3080),
+    ]
+    routes = {frontend_host: list(web_paths)}
+    if api_host != frontend_host:
+        routes[api_host] = [("/v1", "Prefix", "lumen", 8012), *web_paths]
+
+    if cfg.get("services", {}).get("mcp", False):
+        resource = cfg.get("mcp", {}).get("public_url") or f"{public_api_base}/api/v1/mcp"
+        parsed = urlparse(resource)
+        mcp_host = parsed.hostname
+        mcp_path = parsed.path.rstrip("/") or "/"
+        if not mcp_host:
+            raise ValueError("mcp.public_url requires an absolute URL with a host")
+        if mcp_path == "/" and mcp_host in routes:
+            raise ValueError("mcp.public_url at an origin root requires a dedicated host; it cannot share the web or API host")
+        mcp_paths = (
+            [("/", "Exact", "backend", 8000), ("/oauth", "Prefix", "backend", 8000)]
+            if mcp_path == "/"
+            else [(mcp_path, "Prefix", "backend", 8000)]
+        )
+        if mcp_host in routes:
+            # The existing /.well-known and /api routes already cover discovery and the fallback.
+            for route in reversed(mcp_paths):
+                if route not in routes[mcp_host]:
+                    routes[mcp_host].insert(0, route)
+        else:
+            routes[mcp_host] = [*mcp_paths, ("/.well-known", "Prefix", "backend", 8000)]
+
+    profile = "dev" if namespace == "afterglow-dev" else "prod"
+    lines = [
+        "apiVersion: networking.k8s.io/v1",
+        "kind: Ingress",
+        "metadata:",
+        "  name: afterglow-ingress",
+        f"  namespace: {namespace}",
+        "  annotations:",
+        '    kubernetes.io/ingress.class: "traefik"',
+        "    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure",
+        f"    traefik.ingress.kubernetes.io/service.serverstransport: {namespace}-backend-long-timeout@kubernetescrd",
+        f'    cert-manager.io/cluster-issuer: "letsencrypt-{profile}-traefik"',
+        "spec:",
+        "  tls:",
+        "    - hosts:",
+        *(f"        - {_yaml_str(host)}" for host in routes),
+        "      secretName: afterglow-tls",
+        "  rules:",
+    ]
+    for host, paths in routes.items():
+        lines.extend([f"    - host: {_yaml_str(host)}", "      http:", "        paths:"])
+        for path, path_type, service, port in paths:
+            lines.extend(
+                [
+                    f"          - path: {_yaml_str(path)}",
+                    f"            pathType: {path_type}",
+                    "            backend:",
+                    "              service:",
+                    f"                name: {service}",
+                    "                port:",
+                    f"                  number: {port}",
+                ]
+            )
+    lines.append("")
+    return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # grafana-deployment.yaml 렌더링
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -998,7 +1087,7 @@ def write_atomic(path: Path, content: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="afterglow.conf → K8s configmap.yaml + secret.yaml + grafana-deployment.yaml 변환기"
+        description="afterglow.conf → K8s configmap/secret/ingress/grafana 매니페스트 변환기"
     )
     parser.add_argument(
         "--config",
@@ -1063,6 +1152,7 @@ def main() -> None:
         secret_content = render_secret(cfg, args.namespace)
         configmap_content = render_configmap(cfg, args.namespace)
         grafana_deployment_content = render_grafana_deployment(cfg, args.namespace)
+        ingress_content = render_ingress(cfg, args.namespace)
     except ValueError as exc:
         print(f"{red('오류')}: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -1080,12 +1170,17 @@ def main() -> None:
         print("# grafana-deployment.yaml")
         print("─" * 60)
         print(grafana_deployment_content)
+        print("─" * 60)
+        print("# ingress.yaml")
+        print("─" * 60)
+        print(ingress_content)
         return
 
     # 파일 쓰기
     secret_path = output_dir / "secret.yaml"
     configmap_path = output_dir / "configmap.yaml"
     grafana_deployment_path = output_dir / "grafana-deployment.yaml"
+    ingress_path = output_dir / "ingress.yaml"
 
     write_atomic(secret_path, secret_content)
     print(f"  {green('✓')} {secret_path}")
@@ -1096,6 +1191,9 @@ def main() -> None:
     write_atomic(grafana_deployment_path, grafana_deployment_content)
     print(f"  {green('✓')} {grafana_deployment_path}")
 
+    write_atomic(ingress_path, ingress_content)
+    print(f"  {green('✓')} {ingress_path}")
+
     print()
     print(f"{green('완료!')} K8s 매니페스트가 생성되었습니다.")
     print()
@@ -1105,6 +1203,7 @@ def main() -> None:
     print("  적용 방법:")
     print(f"    kubectl apply -f {secret_path}")
     print(f"    kubectl apply -f {configmap_path}")
+    print(f"    kubectl apply -f {ingress_path}")
     print(f"    # grafana-deployment.yaml is Helm/ArgoCD-managed; do not apply it directly: {grafana_deployment_path}")
     print(f"    kubectl rollout restart deployment -n {args.namespace}")
 

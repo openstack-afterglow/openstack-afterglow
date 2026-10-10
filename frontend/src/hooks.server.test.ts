@@ -105,6 +105,36 @@ describe('frontend health', () => {
 	});
 });
 
+describe('public service documentation', () => {
+	it.each(['/docs', '/docs/nova', '/docs/lumen?tutorial=on', '/docs/waygate?tutorial=admin'])(
+		'serves %s without a session or tutorial redirect', async (path) => {
+			const { handle } = await loadHandle();
+			const request = createRequest(`http://frontend.example.com${path}`);
+			const response = await handle({ event: request.event, resolve: request.resolve });
+			expect(response.status).toBe(200);
+			expect(response.headers.get('Location')).toBeNull();
+			expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+		},
+	);
+
+	it.each(['/docsevil', '/docs-admin'])('does not exempt near-prefix %s from authentication', async (path) => {
+		const { handle } = await loadHandle();
+		const request = createRequest(`http://frontend.example.com${path}`);
+		const response = await handle({ event: request.event, resolve: request.resolve });
+		expect(response.status).toBe(302);
+		expect(response.headers.get('Location')).toBe('/login');
+	});
+
+	it.each([false, true])('preserves missing-document 404 with a session=%s', async (signedIn) => {
+		const { handle } = await loadHandle();
+		const { event } = createNavRequest('http://frontend.example.com/docs/unknown', {
+			cookies: signedIn ? { afterglow_session: 'active-session' } : {},
+		});
+		const response = await handle({ event, resolve: async () => new Response('missing document', { status: 404 }) });
+		expect(response.status).toBe(404);
+	});
+});
+
 describe('hooks.server mockup gating', () => {
 	it('redirects logged-out protected routes to /login when mockup mode is off', async () => {
 		const { handle } = await loadHandle();

@@ -1,12 +1,17 @@
 <script lang="ts">
 	import { useFsWizard } from '$lib/stores/fileStorageWizardStore.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
+	import { ActivityIndicator, Alert, Button } from '$lib/components/ui';
 
 	const s = useFsWizard();
 </script>
 
 <div class="flex items-center gap-2 mb-4">
-	<span class="w-5 h-5 rounded-full bg-green-900/50 border border-green-600 flex items-center justify-center text-green-400 text-xs">✓</span>
+	<span class="motion-pop w-5 h-5 rounded-full border border-[var(--color-state-success)] bg-[color-mix(in_oklab,var(--color-state-success)_14%,transparent)] flex items-center justify-center text-[var(--color-state-success-text)]" aria-hidden="true">
+		<svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<path class="motion-draw" pathLength="1" d="M3.5 8.5l3 3 6-7" />
+		</svg>
+	</span>
 	<h2 class="text-base font-semibold text-ink-0">{t('wizard.access.created', { name: s.createdFs!.name })}</h2>
 </div>
 
@@ -43,12 +48,11 @@
 				</select>
 			</label>
 		</div>
-		<button onclick={s.addAccessRule} disabled={s.addingRule || !s.ruleForm.access_to.trim()}
-			class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm rounded-lg transition-colors whitespace-nowrap mb-[1px]">
-			{s.addingRule ? t('wizard.actions.adding') : t('wizard.actions.add')}
-		</button>
+		<Button variant="accent" class="whitespace-nowrap mb-[1px]" onclick={s.addAccessRule} disabled={s.addingRule || !s.ruleForm.access_to.trim()} ariaBusy={s.addingRule}>
+			{#if s.addingRule}<ActivityIndicator size="xs" tone="ink" />{t('wizard.actions.adding')}{:else}{t('wizard.actions.add')}{/if}
+		</Button>
 	</div>
-	{#if s.ruleError}<div class="mt-2 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{s.ruleError}</div>{/if}
+	{#if s.ruleError}<Alert tone="danger" class="mt-2">{s.ruleError}</Alert>{/if}
 </div>
 
 {#if s.accessRules.length > 0}

@@ -1,5 +1,6 @@
 import { t } from '$lib/i18n/ns/chat-studio';
 import { api, ApiError, fetchWithAuth } from './client';
+import { requireLumenCapability } from './lumenAccess';
 import { downloadChatAsset, uploadChatAttachment } from './chatAttachments';
 import type { AvailableModel } from './chatTree';
 
@@ -56,6 +57,7 @@ export const imageStudioApi = {
 	models: (scope: ImageApiScope) => api.get<ImageModel[]>('/api/v1/chat/models?model_kind=image', scope.token, scope.projectId, { refresh: true }),
 	capabilities: (modelId: number, scope: ImageApiScope) => api.get<ImageCapabilities>(`/api/v1/chat/capabilities?model_id=${encodeURIComponent(modelId)}&model_kind=image`, scope.token, scope.projectId, { refresh: true }),
 	async submit(kind: 'generations' | 'edits', request: ImageRequest | ImageEditRequest, scope: ImageApiScope, idempotencyKey: string, signal?: AbortSignal): Promise<ImageRunDescriptor> {
+		requireLumenCapability('lumen-images_user', scope.token, scope.projectId);
 		const response = await fetchWithAuth(`/api/v1/chat/images/${kind}`, {
 			method: 'POST',
 			credentials: 'include',

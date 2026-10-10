@@ -2,8 +2,9 @@
 	import { t } from '$lib/i18n/ns/images-keys';
 	import { useImageDetailController } from '$lib/stores/imageDetailController.svelte';
 	import { auth } from '$lib/stores/auth';
+	import { serviceCapabilities } from '$lib/stores/servicePermissions';
 	import { api, ApiError, getBaseUrl } from '$lib/api/client';
-	import { Card, Field, SelectInput, Button, StatusChip, Alert } from '$lib/components/ui';
+	import { Card, Field, SelectInput, Button, StatusChip, Alert, ActivityIndicator, ProgressTrack } from '$lib/components/ui';
 
 	interface ImageExportJob {
 		id: string;
@@ -17,6 +18,9 @@
 	}
 
 	const s = useImageDetailController();
+	const canInventory = $derived($serviceCapabilities('palimpsest-inventory_reader'));
+	const canPublish = $derived($serviceCapabilities('palimpsest-publish_editor'));
+	const canDownload = $derived($serviceCapabilities('palimpsest-download_user'));
 
 	let selectedFormat = $state('qcow2');
 	let exportJob = $state<ImageExportJob | null>(null);
@@ -36,6 +40,12 @@
 	const NONTERMINAL_STATUSES = ['queued', 'downloading', 'converting', 'finalizing'];
 
 	const isNonTerminal = $derived(exportJob ? NONTERMINAL_STATUSES.includes(exportJob.status) : false);
+	const phaseText = $derived(exportJob ? ({
+		queued: t('exportSection.phase.queued'),
+		downloading: t('exportSection.phase.downloading'),
+		converting: t('exportSection.phase.converting'),
+		finalizing: t('exportSection.phase.finalizing'),
+	} as Record<string, string>)[exportJob.status] ?? exportJob.status : '');
 
 	let currentController: AbortController | null = null;
 	let pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -51,7 +61,7 @@
 	function schedulePoll(jobId: string, imageId: string, token: string, projectId: string | undefined, gen: number) {
 		clearPoll();
 		pollTimer = setTimeout(async () => {
-			if (gen !== generation || imageId !== s.image?.id) return;
+			if (!canInventory || gen !== generation || imageId !== s.image?.id) return;
 			try {
 				const updated = await api.get<ImageExportJob>(
 					`/api/v1/palimpsest/hub/image-exports/${jobId}`,
@@ -113,7 +123,7 @@
 		exporting = false;
 		downloading = false;
 
-		if (!imageId || !token) return;
+		if (!imageId || !token || !canInventory) return;
 
 		const controller = new AbortController();
 		currentController = controller;
@@ -130,7 +140,7 @@
 		const imageId = s.image?.id;
 		const token = $auth.token;
 		const projectId = $auth.projectId ?? undefined;
-		if (!imageId || !token) return;
+		if (!imageId || !token || !projectId || !canPublish) return;
 
 		actionError = '';
 		exporting = true;
@@ -143,7 +153,7 @@
 				token,
 				projectId
 			);
-			if (thisGen !== generation || imageId !== s.image?.id) return;
+			if (!canPublish || thisGen !== generation || imageId !== s.image?.id) return;
 			exportJob = res;
 			if (NONTERMINAL_STATUSES.includes(res.status)) {
 				schedulePoll(res.id, imageId, token, projectId, thisGen);
@@ -159,13 +169,13 @@
 	}
 
 	async function handleDownload() {
-		if (!exportJob || exportJob.status !== 'complete') return;
+		if (!canDownload || !exportJob || exportJob.status !== 'complete') return;
 		const token = $auth.token;
 		const imageId = s.image?.id;
 		const exportId = exportJob.id;
 		const thisGen = generation;
 		const projectId = $auth.projectId ?? undefined;
-		if (!token) return;
+		if (!token || !projectId) return;
 
 		downloading = true;
 		actionError = '';
@@ -177,7 +187,7 @@
 				token,
 				projectId
 			);
-			if (thisGen !== generation || imageId !== s.image?.id || exportId !== exportJob?.id) return;
+			if (!canDownload || thisGen !== generation || imageId !== s.image?.id || exportId !== exportJob?.id) return;
 			const url = res.url;
 			const absoluteUrl = url.startsWith('http') ? url : `${getBaseUrl()}${url}`;
 			const a = document.createElement('a');
@@ -187,6 +197,7 @@
 			a.click();
 			a.remove();
 		} catch (err: unknown) {
+			if (thisGen !== generation || imageId !== s.image?.id || exportId !== exportJob?.id) return;
 			actionError = err instanceof ApiError ? err.message : { key: 'exportSection.downloadTokenFailed' };
 		} finally {
 			if (thisGen === generation) downloading = false;
@@ -208,7 +219,7 @@
 				<SelectInput
 					id="export-disk-format"
 					bind:value={selectedFormat}
-					disabled={exporting || isNonTerminal}
+					disabled={!canPublish || exporting || isNonTerminal}
 				>
 					{#each FORMAT_OPTIONS as opt}
 						<option value={opt.value}>{opt.label}</option>
@@ -221,6 +232,15 @@
 					<span>{t('exportSection.progress')}</span>
 					<span class="font-mono">{exportJob.progress_pct}%</span>
 				</div>
+				<ProgressTrack
+					value={exportJob.progress_pct}
+					label={`${t('exportSection.title')} · ${t('exportSection.progress')}`}
+					active={isNonTerminal && !exportJob.error_message}
+					tone={exportJob.status === 'error' || exportJob.error_message ? 'danger' : exportJob.status === 'complete' ? 'success' : 'accent'}
+				/>
+				{#if isNonTerminal}
+					<ActivityIndicator variant={exportJob.status === 'downloading' ? 'download' : exportJob.status === 'queued' ? 'dots' : 'spinner'} label={phaseText} />
+				{/if}
 			{/if}
 
 			{#if exportJob?.status === 'error' || exportJob?.error_message}
@@ -239,7 +259,7 @@
 				<Button
 					variant="primary"
 					onclick={handleExport}
-					disabled={exporting || isNonTerminal}
+					disabled={!canPublish || exporting || isNonTerminal}
 				>
 					{exporting ? t('exportSection.exporting') : isNonTerminal ? t('exportSection.processing') : t('exportSection.export')}
 				</Button>
@@ -248,9 +268,14 @@
 					<Button
 						variant="accent"
 						onclick={handleDownload}
-						disabled={downloading}
+						disabled={!canDownload || downloading}
+						ariaBusy={downloading}
 					>
-						{downloading ? t('exportSection.preparingDownload') : t('exportSection.download')}
+						{#if downloading}
+							<ActivityIndicator variant="download" label={t('exportSection.preparingDownload')} />
+						{:else}
+							{t('exportSection.download')}
+						{/if}
 					</Button>
 				{/if}
 			</div>

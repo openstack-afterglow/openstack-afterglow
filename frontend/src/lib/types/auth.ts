@@ -14,5 +14,6 @@ export interface LoginResponse {
   roles?: string[];
   default_project_id?: string;
   is_system_admin?: boolean;
+  can_write?: boolean;
   refresh_token?: string;
 }

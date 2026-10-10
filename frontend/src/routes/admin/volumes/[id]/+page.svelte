@@ -99,9 +99,9 @@
 		<a href="/admin/volumes" class="text-ink-2 hover:text-ink-0 text-sm transition-colors">{t('volumeDetail.back')}</a>
 	</div>
 	{#if loading}
-		<div class="animate-pulse space-y-4">
-			<div class="h-8 bg-surface-sunken rounded w-64"></div>
-			<div class="h-40 bg-surface-sunken rounded"></div>
+		<div class="space-y-4" role="status" aria-busy="true" aria-label={t('volumeDetail.loadingInfo')}>
+			<div class="h-8 motion-skeleton rounded w-64"></div>
+			<div class="h-40 motion-skeleton rounded"></div>
 		</div>
 	{:else if error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>

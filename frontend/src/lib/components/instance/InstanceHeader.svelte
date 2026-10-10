@@ -2,6 +2,9 @@
 	import DetailHeader from '$lib/components/ui/DetailHeader.svelte';
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import { t } from '$lib/i18n/ns/instance';
+	import RichText from '$lib/i18n/RichText.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
+	import { ActivityIndicator, AnimatedNumber, ProgressTrack } from '$lib/components/ui';
 
 	interface Props {
 		adminProjectId: string | null;
@@ -15,6 +18,16 @@
 	let { adminProjectId, canMutate, onOpenMigrateModal, onOpenPasswordModal, onOpenResizeModal, onOpenEvacuateModal }: Props = $props();
 
 	const s = useInstanceDetailController();
+	let migrationRequest = $state<'complete' | 'abort' | null>(null);
+	async function requestMigrationControl(kind: 'complete' | 'abort') {
+		migrationRequest = kind;
+		try {
+			if (kind === 'complete') await s.forceCompleteMigration();
+			else await s.abortMigration();
+		} finally {
+			migrationRequest = null;
+		}
+	}
 
 	const btn = {
 		base: 'text-sm px-3 py-1.5 rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
@@ -42,14 +55,16 @@
 		{/if}
 		{#if adminProjectId && s.instance!.status === 'MIGRATING' && s.migrationStatus?.migration}
 			{@const mig = s.migrationStatus.migration}
-			<div class="p-3 rounded-lg bg-cyan-900/20 border border-cyan-800/40 text-cyan-300 text-sm max-w-xl">
-				<div class="font-medium mb-1 text-xs text-cyan-400">{t('header.migrationInProgress')}</div>
+			<div class="p-3 rounded-lg bg-surface-sunken border border-line-2 text-ink-1 text-sm max-w-xl">
+				<ActivityIndicator variant="pulse" label={t('header.migrationInProgress')} />
 				<div class="text-xs opacity-90">
 					{mig.source ?? '?'} → {mig.dest ?? '?'}
 					{#if mig.memory_percent !== null && mig.memory_percent !== undefined}
-						{t('header.migrationMemory', { percent: mig.memory_percent })}
+						{#snippet memoryPercent(text: string)}<AnimatedNumber value={mig.memory_percent!} format={(value) => String(value === mig.memory_percent ? value : Number(value.toFixed(3)))} />{/snippet}
+						<RichText segments={t.rich('header.migrationMemory', { percent: mig.memory_percent })} tags={{ percent: memoryPercent }} />
 					{/if}
 				</div>
+				<ProgressTrack value={mig.memory_percent ?? null} label={t('header.migrationInProgress')} active />
 			</div>
 		{/if}
 		{#if adminProjectId && s.migrationStatus?.error && s.instance!.status !== 'ACTIVE'}
@@ -72,10 +87,7 @@
 						class="{btn.base} {btn.gray}"
 					>
 						{#if s.consoleOpening}
-							<span class="inline-flex items-center gap-1.5">
-								<span class="w-3 h-3 rounded-full border border-line-2 border-t-gray-200 animate-spin" aria-hidden="true"></span>
-								{t('header.consolePreparing')}
-							</span>
+							<span class="inline-flex items-center gap-1.5"><ActivityIndicator size="xs" />{t('header.consolePreparing')}</span>
 						{:else}
 							{t('header.openConsole')}
 						{/if}
@@ -85,12 +97,12 @@
 							onclick={() => s.performAction('stop')}
 							disabled={!!s.actioning}
 							class="{btn.base} {btn.yellow}"
-						>{s.actioning === 'stop' ? t('header.stopping') : t('header.stop')}</button>
+						>{#if s.actioning === 'stop'}<ActivityIndicator size="xs" label={t('header.stopping')} />{:else}{t('header.stop')}{/if}</button>
 						<button
 							onclick={() => s.performAction('reboot')}
 							disabled={!!s.actioning}
 							class="{btn.base} {btn.blue}"
-						>{s.actioning === 'reboot' ? t('header.rebooting') : t('header.reboot')}</button>
+						>{#if s.actioning === 'reboot'}<ActivityIndicator size="xs" label={t('header.rebooting')} />{:else}{t('header.reboot')}{/if}</button>
 					{/if}
 				{/if}
 				{#if canMutate && s.instance!.status === 'SHUTOFF'}
@@ -98,40 +110,40 @@
 						onclick={() => s.performAction('start')}
 						disabled={!!s.actioning}
 						class="{btn.base} {btn.green}"
-					>{s.actioning === 'start' ? t('header.starting') : t('header.start')}</button>
+					>{#if s.actioning === 'start'}<ActivityIndicator size="xs" label={t('header.starting')} />{:else}{t('header.start')}{/if}</button>
 				{/if}
 				{#if canMutate && (s.instance!.status === 'ACTIVE' || s.instance!.status === 'SHUTOFF')}
 					<button
 						onclick={() => s.performAction('shelve')}
 						disabled={!!s.actioning}
 						class="{btn.base} {btn.purple}"
-					>{s.actioning === 'shelve' ? t('header.shelving') : t('header.shelve')}</button>
+					>{#if s.actioning === 'shelve'}<ActivityIndicator size="xs" label={t('header.shelving')} />{:else}{t('header.shelve')}{/if}</button>
 				{/if}
 				{#if canMutate && (s.instance!.status === 'SHELVED_OFFLOADED' || s.instance!.status === 'SHELVED')}
 					<button
 						onclick={() => s.performAction('unshelve')}
 						disabled={!!s.actioning}
 						class="{btn.base} {btn.green}"
-					>{s.actioning === 'unshelve' ? t('header.unshelving') : t('header.unshelve')}</button>
+					>{#if s.actioning === 'unshelve'}<ActivityIndicator size="xs" label={t('header.unshelving')} />{:else}{t('header.unshelve')}{/if}</button>
 				{/if}
 				{#if canMutate && s.instance!.status === 'VERIFY_RESIZE'}
 					<button
 						onclick={s.confirmResize}
 						disabled={!!s.actioning}
 						class="{btn.base} {btn.orange}"
-					>{s.actioning === 'confirm-resize' ? t('header.confirming') : t('header.confirmResize')}</button>
+					>{#if s.actioning === 'confirm-resize'}<ActivityIndicator size="xs" label={t('header.confirming')} />{:else}{t('header.confirmResize')}{/if}</button>
 					<button
 						onclick={s.revertResize}
 						disabled={!!s.actioning}
 						class="{btn.base} {btn.yellow}"
-					>{s.actioning === 'revert-resize' ? t('header.canceling') : t('header.revert')}</button>
+					>{#if s.actioning === 'revert-resize'}<ActivityIndicator size="xs" label={t('header.canceling')} />{:else}{t('header.revert')}{/if}</button>
 				{/if}
 				{#if canMutate && !adminProjectId}
 					<button
 						onclick={s.deleteInstance}
 						disabled={s.deleting}
 						class="{btn.base} {btn.red}"
-					>{s.deleting ? t('header.deleting') : t('header.delete')}</button>
+					>{#if s.deleting}<ActivityIndicator size="xs" label={t('header.deleting')} />{:else}{t('header.delete')}{/if}</button>
 				{/if}
 			</div>
 			{#if s.consoleOpening || s.consoleOpenError}
@@ -150,13 +162,15 @@
 				<div class="flex items-center gap-2 flex-wrap justify-end">
 					{#if s.instance!.status === 'MIGRATING'}
 						<button
-							onclick={s.forceCompleteMigration}
+							onclick={() => requestMigrationControl('complete')}
+							disabled={migrationRequest !== null}
 							class="{btn.base} {btn.cyan}"
-						>{t('header.forceComplete')}</button>
+						>{#if migrationRequest === 'complete'}<ActivityIndicator size="xs" label={`${t('header.forceComplete')} · ${tc('state.processing')}`} />{:else}{t('header.forceComplete')}{/if}</button>
 						<button
-							onclick={s.abortMigration}
+							onclick={() => requestMigrationControl('abort')}
+							disabled={migrationRequest !== null}
 							class="{btn.base} {btn.yellow}"
-						>{t('header.abortMigration')}</button>
+						>{#if migrationRequest === 'abort'}<ActivityIndicator size="xs" label={`${t('header.abortMigration')} · ${tc('state.processing')}`} />{:else}{t('header.abortMigration')}{/if}</button>
 					{:else}
 						{#if s.instance!.status === 'ACTIVE'}
 							<button
@@ -187,12 +201,12 @@
 						disabled={s.passwordPrecheckLoading || !s.passwordPrecheck?.supported}
 						title={s.passwordPrecheck?.reason ?? (s.passwordPrecheckLoading ? t('header.checking') : '')}
 						class="{btn.base} {btn.amber}"
-					>{s.passwordPrecheckLoading ? t('header.checking') : t('header.changePassword')}</button>
+					>{#if s.passwordPrecheckLoading}<ActivityIndicator size="xs" label={t('header.checking')} />{:else}{t('header.changePassword')}{/if}</button>
 					<button
 						onclick={s.deleteInstance}
 						disabled={s.deleting}
 						class="{btn.base} {btn.red}"
-					>{s.deleting ? t('header.deleting') : t('header.delete')}</button>
+					>{#if s.deleting}<ActivityIndicator size="xs" label={t('header.deleting')} />{:else}{t('header.delete')}{/if}</button>
 				</div>
 			{/if}
 			{#if canMutate && (s.instance!.status === 'ACTIVE' || s.instance!.status === 'SHUTOFF')}

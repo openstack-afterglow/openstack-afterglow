@@ -10,7 +10,8 @@ from fastapi import FastAPI, Request
 
 from app.api.palimpsest import hub, package_keys, packages
 from app.config import get_settings
-from app.services import service_proxy
+from app.services import identity_roles, keystone, service_proxy
+from app.services.service_permissions import ROLE_IMPLICATIONS, ROLE_PRESETS
 
 PROJECT = "11111111111141118111111111111111"
 FOREIGN = "22222222222242228222222222222222"
@@ -20,6 +21,23 @@ NAMESPACE = "p-" + PROJECT
 DIGEST = "sha256:" + "a" * 64
 KEY = "ppk_v1_" + KEY_ID + "." + "A" * 43
 BASE = "/api/v1/palimpsest"
+INVENTORY = "palimpsest-inventory_reader"
+DOWNLOAD = "palimpsest-download_user"
+PUBLISH = "palimpsest-publish_editor"
+KEYS_EDITOR = "palimpsest-keys_editor"
+KEYS_ADMIN = "palimpsest-keys_admin"
+PACKAGE_LEAVES = [INVENTORY, DOWNLOAD, PUBLISH, KEYS_EDITOR, KEYS_ADMIN]
+LEGACY_ACTIONS = [
+    ("GET", "layers", INVENTORY),
+    ("GET", "layers/" + DIGEST + "/blob", DOWNLOAD),
+    ("POST", "image-exports", PUBLISH),
+    ("DELETE", f"image-exports/{KEY_ID}", PUBLISH),
+    ("GET", "images", INVENTORY),
+    ("PATCH", f"uploads/{KEY_ID}", PUBLISH),
+    ("POST", "bundles", DOWNLOAD),
+    ("GET", "health", INVENTORY),
+    ("GET", "", INVENTORY),
+]
 
 
 @pytest.fixture
@@ -30,6 +48,12 @@ async def package_client(monkeypatch):
     app.include_router(hub.router, prefix=BASE + "/hub")
     monkeypatch.setattr(get_settings(), "service_palimpsest_enabled", True)
     monkeypatch.setattr(get_settings(), "service_palimpsest_internal_url", "https://hub.invalid/v1")
+    names = ["admin", "manager", "member", "reader", *(row["name"] for row in ROLE_PRESETS)]
+    rows = [{"id": "id-" + name, "name": name} for name in names]
+    edges = [
+        {"prior_role": {"id": "id-" + prior}, "implies": [{"id": "id-" + implied}]}
+        for prior, implied in ROLE_IMPLICATIONS
+    ]
 
     async def identity(request: Request):
         info = {"project_id": PROJECT, "user_id": USER, "token": "original-subject"}
@@ -43,7 +67,13 @@ async def package_client(monkeypatch):
             "project_name": "Project",
             "namespace": NAMESPACE,
             "package_authority": "packages.invalid:8443",
-            "capabilities": {"packages_read": True, "packages_write": True, "keys_issue": True},
+            "capabilities": {
+                "packages_read": True,
+                "packages_download": True,
+                "packages_write": True,
+                "keys_issue": True,
+                "keys_revoke": True,
+            },
         },
         payload={"project_id": PROJECT, "namespace": NAMESPACE, "items": [], "next_cursor": None},
         status=200,
@@ -52,28 +82,38 @@ async def package_client(monkeypatch):
         paths=[],
         actors=[],
         bodies=[],
-        package_writes=0,
     )
+    state.grants = ["member", *PACKAGE_LEAVES]
+    state.catalog = identity_roles._catalog(rows, edges)
+    state.assignment_user_id = USER
+    state.assignment_queries = []
+    state.is_system_admin = False
+    state.has_system_admin_role = False
+
+    def assignments(**query):
+        assert set(query) == {"project", "effective"}
+        assert query["effective"] is True
+        state.assignment_queries.append(dict(query))
+        return [
+            {
+                "user": {"id": state.assignment_user_id},
+                "role": {"id": "id-" + name},
+                "scope": {"project": {"id": query["project"]}},
+            }
+            for name in state.grants
+        ]
+
+    # Keep get_project_access and its role-ID/implication checks real.
+    provider = SimpleNamespace(role_assignments=SimpleNamespace(list=assignments))
+    monkeypatch.setattr(keystone, "_get_admin_ks_client", lambda: provider)
+    monkeypatch.setattr(identity_roles, "_trusted_catalog", lambda: state.catalog)
+    monkeypatch.setattr(keystone, "_is_system_admin", lambda *_: state.is_system_admin)
+    monkeypatch.setattr(keystone, "_has_system_admin_role", lambda *_: state.has_system_admin_role)
 
     async def upstream(request: httpx.Request):
         state.paths.append(request.url.path)
         state.actors.append(dict(request.headers))
         state.bodies.append(await request.aread())
-        if request.headers.get("authorization") == "Bearer " + KEY:
-            assertion = request.headers.get("x-project-id")
-            if assertion is not None and assertion != PROJECT:
-                return httpx.Response(
-                    403,
-                    json={
-                        "error": {
-                            "code": "PROJECT_SCOPE_MISMATCH",
-                            "message": "project assertion does not match package key",
-                            "request_id": "hub-scope-conflict",
-                        }
-                    },
-                )
-            if request.method in {"POST", "PATCH", "PUT", "DELETE"}:
-                state.package_writes += 1
         if request.url.path == "/v1/projects/current":
             return httpx.Response(200, json=state.context)
         if request.url.path.endswith("/download"):
@@ -266,19 +306,26 @@ async def test_key_offset_conflict_retains_status_error_and_acknowledged_offset(
     assert "x-auth-token" not in state.actors[0]
 
 
-async def test_key_project_assertion_mismatch_denies_hub_write(package_client):
+async def test_key_gateway_preserves_project_assertion_and_native_denial(package_client):
     client, state, _ = package_client
+    state.status = 403
+    state.payload = {
+        "error": {
+            "code": "PROJECT_SCOPE_MISMATCH",
+            "message": "project assertion does not match package key",
+            "request_id": "hub-scope-conflict",
+        }
+    }
     path = BASE + f"/hub/projects/{NAMESPACE}/uploads/{KEY_ID}"
     headers = {"authorization": "Bearer " + KEY, "x-project-id": FOREIGN, "upload-offset": "0"}
-    response = await client.patch(path, content=b"must-not-commit", headers=headers)
+    response = await client.patch(path, content=b"asserted-chunk", headers=headers)
     assert response.status_code == 403
-    assert response.json()["error"]["code"] == "PROJECT_SCOPE_MISMATCH"
-    assert response.json()["error"]["request_id"] == "hub-scope-conflict"
-    assert state.package_writes == 0
-    headers["x-project-id"] = PROJECT
-    response = await client.patch(path, content=b"owned-write", headers=headers)
-    assert response.status_code == 200
-    assert state.package_writes == 1
+    assert response.json() == state.payload
+    assert state.paths == [f"/v1/projects/{NAMESPACE}/uploads/{KEY_ID}"]
+    assert state.bodies == [b"asserted-chunk"]
+    assert state.actors[0]["x-project-id"] == FOREIGN
+    assert state.actors[0]["authorization"] == "Bearer " + KEY
+    assert "x-auth-token" not in state.actors[0]
 
 
 @pytest.mark.parametrize("assertions", [(PROJECT, FOREIGN), (FOREIGN, PROJECT), (PROJECT, PROJECT)])
@@ -289,7 +336,7 @@ async def test_key_duplicate_project_assertions_deny_before_hub(package_client, 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "AUTH_REQUIRED"
     assert state.paths == []
-    assert state.package_writes == 0
+    assert state.bodies == []
 
 
 async def test_credential_redirect_is_not_exposed_or_followed(package_client):
@@ -391,6 +438,7 @@ async def test_federated_64hex_owner_can_issue_owned_key(package_client, browser
     session, _ = browser_session
     federated_user = "f" * 64
     session["user_id"] = federated_user
+    state.assignment_user_id = federated_user
     jwt, _, _ = jwt_service.sign_access(federated_user, "federated", PROJECT, "Project", "session-id")
     state.status = 201
     state.payload = {
@@ -588,47 +636,41 @@ async def test_legacy_jwt_native_routes_deny_before_exchange_or_hub(
     assert state.paths == []
 
 
-@pytest.mark.parametrize(
-    "method,path",
-    [
-        ("GET", "layers"),
-        ("GET", "layers/" + DIGEST + "/blob"),
-        ("POST", "image-exports"),
-        ("DELETE", "image-exports/export-1"),
-        ("GET", "images"),
-        ("PATCH", "uploads/session-1"),
-        ("POST", "bundles"),
-        ("GET", "builds"),
-        ("GET", "health"),
-        ("GET", ""),
-    ],
-)
+@pytest.fixture
+def legacy_browser_session(package_client, browser_session, monkeypatch):
+    from app.api import deps
+
+    _, state, _ = package_client
+
+    async def validate(token, project_id):
+        assert token == "original-subject"
+        return {
+            "token": token,
+            "project_id": project_id,
+            "user_id": USER,
+            # Deliberately stale token leaves must not replace current assignments.
+            "roles": ["member", *PACKAGE_LEAVES],
+            "is_system_admin": state.is_system_admin,
+        }
+
+    monkeypatch.setattr(deps, "_cached_validate", AsyncMock(side_effect=validate))
+    monkeypatch.setattr("app.services.recent_projects.record_project_access", AsyncMock())
+    return browser_session
+
+
+@pytest.mark.parametrize("method,path,leaf", LEGACY_ACTIONS)
 @pytest.mark.parametrize("asserted_project", [None, FOREIGN])
 async def test_legacy_jwt_hub_surface_retains_caller_identity(
     package_client,
-    browser_session,
-    monkeypatch,
+    legacy_browser_session,
     method,
     path,
+    leaf,
     asserted_project,
 ):
-    from app.api import deps
-
     client, state, _ = package_client
-    _, jwt = browser_session
-
-    async def validate(_token, project_id):
-        return {
-            "token": "original-subject",
-            "project_id": project_id,
-            "user_id": USER,
-            "roles": ["member"],
-            "is_system_admin": False,
-        }
-
-    monkeypatch.setattr(deps, "_cached_validate", validate)
-    monkeypatch.setattr("app.services.recent_projects.record_project_access", AsyncMock())
-    state.status = 200
+    _, jwt = legacy_browser_session
+    state.grants = ["member", leaf]
     headers = {"authorization": "Bearer " + jwt}
     if asserted_project is not None:
         headers["x-project-id"] = asserted_project
@@ -638,6 +680,93 @@ async def test_legacy_jwt_hub_surface_retains_caller_identity(
     assert state.actors[0]["x-auth-token"] == "original-subject"
     assert state.actors[0]["x-project-id"] == (asserted_project or PROJECT)
     assert "authorization" not in state.actors[0]
+    assert state.assignment_queries == [{"project": asserted_project or PROJECT, "effective": True}]
+
+
+@pytest.mark.parametrize("method,path,leaf", LEGACY_ACTIONS)
+@pytest.mark.parametrize("asserted_project", [None, FOREIGN])
+async def test_legacy_jwt_missing_action_denies_before_hub(
+    package_client, legacy_browser_session, method, path, leaf, asserted_project
+):
+    client, state, _ = package_client
+    _, jwt = legacy_browser_session
+    # Every nonreader leaf implies inventory via the current graph, so removing
+    # inventory authority means removing all service grants. For other actions,
+    # unrelated leaves must not replace the missing exact action.
+    state.grants = (
+        ["member"] if leaf == INVENTORY else ["member", *[other for other in PACKAGE_LEAVES if other != leaf]]
+    )
+    headers = {"authorization": "Bearer " + jwt}
+    if asserted_project is not None:
+        headers["x-project-id"] = asserted_project
+    response = await client.request(method, BASE + "/hub/" + path, headers=headers)
+    assert response.status_code == 403
+    expected_detail = (
+        "Current Palimpsest service authority is required"
+        if path in {"", "health"}
+        else f"서비스 권한이 필요합니다: {leaf}"
+    )
+    assert response.json() == {"detail": expected_detail}
+    assert state.paths == []
+    assert state.assignment_queries == [{"project": asserted_project or PROJECT, "effective": True}]
+
+
+@pytest.mark.parametrize(
+    "system_flag,system_grant,expected_status",
+    [(False, False, 403), (False, True, 403), (True, False, 403), (True, True, 200)],
+)
+@pytest.mark.parametrize("asserted_project", [None, FOREIGN])
+async def test_legacy_jwt_builds_require_flag_and_current_system_grant(
+    package_client, legacy_browser_session, system_flag, system_grant, expected_status, asserted_project
+):
+    client, state, _ = package_client
+    _, jwt = legacy_browser_session
+    # Neither project admin nor every Palimpsest leaf confers builder authority.
+    state.grants = ["admin", "member", *PACKAGE_LEAVES]
+    state.is_system_admin = system_flag
+    state.has_system_admin_role = system_grant
+    headers = {"authorization": "Bearer " + jwt}
+    if asserted_project is not None:
+        headers["x-project-id"] = asserted_project
+    response = await client.get(BASE + "/hub/builds", headers=headers)
+    assert response.status_code == expected_status
+    if expected_status == 403:
+        assert response.json() == {"detail": "Verified system administrator authority is required"}
+        assert state.paths == []
+    else:
+        assert state.paths == ["/v1/builds"]
+        assert state.actors[0]["x-auth-token"] == "original-subject"
+        assert state.actors[0]["x-project-id"] == (asserted_project or PROJECT)
+        assert "authorization" not in state.actors[0]
+
+
+@pytest.mark.parametrize("method,path", [("DELETE", "image-exports/export-1"), ("PATCH", "uploads/session-1")])
+async def test_legacy_jwt_unclassified_identifiers_deny_before_hub(
+    package_client, legacy_browser_session, method, path
+):
+    client, state, _ = package_client
+    _, jwt = legacy_browser_session
+    response = await client.request(method, BASE + "/hub/" + path, headers={"authorization": "Bearer " + jwt})
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Unknown Palimpsest browser operation"}
+    assert state.paths == []
+
+
+async def test_legacy_jwt_publish_revocation_uses_current_catalog(package_client, legacy_browser_session):
+    client, state, _ = package_client
+    _, jwt = legacy_browser_session
+    state.grants = ["member", "palimpsest_editor"]
+    path = BASE + f"/hub/uploads/{KEY_ID}"
+    headers = {"authorization": "Bearer " + jwt}
+    response = await client.patch(path, headers=headers, content=b"allowed-chunk")
+    assert response.status_code == 200
+    parent = next(row for row in state.catalog if row["name"] == "palimpsest_editor")
+    parent["implied_role_ids"].remove("id-" + PUBLISH)
+    response = await client.patch(path, headers=headers, content=b"revoked-chunk")
+    assert response.status_code == 403
+    assert response.json() == {"detail": f"서비스 권한이 필요합니다: {PUBLISH}"}
+    assert state.paths == [f"/v1/uploads/{KEY_ID}"]
+    assert state.bodies == [b"allowed-chunk"]
 
 
 async def test_browser_jwt_and_keystone_header_are_ambiguous(package_client, browser_session):

@@ -1,8 +1,10 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/account';
+  import { t as tc } from '$lib/i18n/ns/common';
   import { auth, logoutInProgress, setAuth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
   import { cloudShell } from '$lib/stores/cloudShell.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
   interface Project {
     id: string;
@@ -56,6 +58,7 @@
         username: string;
         roles: string[];
         is_system_admin: boolean;
+        can_write: boolean;
       }>('/api/v1/auth/token/project', { project_id: proj.id }, currentToken);
 
       if ($logoutInProgress || !$auth.token) return;
@@ -70,6 +73,7 @@
         projectName: resp.project_name,
         roles: resp.roles ?? [],
         isSystemAdmin: !!resp.is_system_admin,
+        canWrite: resp.can_write,
       });
 
       api.post('/api/v1/networks/ensure-default', {}, resp.token, resp.project_id).catch(() => {});
@@ -115,8 +119,10 @@
   });
 </script>
 
-<div class="bg-surface-base border border-line rounded-xl p-5">
+<div class="motion-fade bg-surface-base border border-line rounded-xl p-5">
   <h3 class="text-sm font-semibold text-ink-0 mb-4">{t('projects.title')}</h3>
+  {#if switching}<ActivityIndicator label={tc('state.processing')} />{/if}
+  {#if settingDefault}<ActivityIndicator label={tc('state.processing')} />{/if}
 
   {#if error}
     <div class="text-red-400 text-xs mb-2">{error}</div>
@@ -126,9 +132,10 @@
   {/if}
 
   {#if loading}
-    <div class="space-y-2">
+    <ActivityIndicator label={tc('state.loading')} />
+    <div class="space-y-2 mt-2" aria-hidden="true">
       {#each [1, 2] as _}
-        <div class="h-8 bg-surface-sunken rounded animate-pulse"></div>
+        <div class="h-8 motion-skeleton rounded"></div>
       {/each}
     </div>
   {:else if projects.length === 0}
@@ -159,11 +166,6 @@
             {/if}
             {#if isActive}
               <span class="text-xs text-warm-text font-medium px-1.5 py-0.5 rounded bg-action-warm/15 border border-action-warm/30">{t('projects.active')}</span>
-            {:else if switching}
-              <svg class="w-3.5 h-3.5 text-ink-2 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-              </svg>
             {/if}
             {#if isDefault}
               <button

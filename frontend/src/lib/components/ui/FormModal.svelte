@@ -4,6 +4,7 @@
 	import Card from './Card.svelte';
 	import Modal from './Modal.svelte';
 	import { t } from '$lib/i18n/ns/common';
+	import ActivityIndicator from './ActivityIndicator.svelte';
 
 	interface Props {
 		open: boolean;
@@ -43,12 +44,13 @@
 			<h2 id={titleId} class="form-modal-title">{title}</h2>
 			{@render children()}
 			<div class="form-modal-actions">
+				{#if submitting}<ActivityIndicator size="xs" label={t('state.processing')} />{/if}
 				{#if actions}
 					{@render actions()}
 				{:else}
 					<Button onclick={close} variant="secondary" disabled={submitting}>{cancelLabel ?? t('actions.cancel')}</Button>
 					{#if onSubmit}
-						<Button onclick={onSubmit} disabled={submitting} variant="primary">{submitting ? t('state.processing') : submitLabel ?? t('actions.confirm')}</Button>
+						<Button onclick={onSubmit} disabled={submitting} ariaBusy={submitting} variant="primary">{submitLabel ?? t('actions.confirm')}</Button>
 					{/if}
 				{/if}
 			</div>

@@ -10,6 +10,7 @@ import type {
 	WaygateNetworkAttachment,
 	WaygateNetworkAttachRequest,
 	WaygateImportResult,
+	WaygateExportResult,
 } from '$lib/types/waygate';
 
 const BASE = '/api/v1/waygate/servers';
@@ -147,8 +148,8 @@ export async function exportServer(
 	passphrase: string,
 	token: string | undefined,
 	projectId: string | undefined
-): Promise<unknown> {
-	return api.post<unknown>(`${BASE}/${serverId}/export`, { passphrase }, token, projectId);
+): Promise<WaygateExportResult> {
+	return api.post<WaygateExportResult>(`${BASE}/${serverId}/export`, { passphrase }, token, projectId);
 }
 
 export async function importServer(

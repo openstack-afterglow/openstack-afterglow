@@ -149,6 +149,7 @@
 	"tabs.snapshots": "スナップショット{count}",
 	"tabs.resources": "ボリュームリソース",
 	"detailPanel.backToList": "← ボリューム一覧",
+	"detailPanel.loading": "ボリューム情報を読み込み中",
 	"attachModal.title": "インスタンスにボリュームを接続",
 	"attachModal.instanceLabel": "インスタンスを選択",
 	"attachModal.instancePlaceholder": "-- 選択 --",

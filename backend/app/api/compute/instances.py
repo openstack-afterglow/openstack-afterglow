@@ -72,6 +72,7 @@ from app.services.cache import (
 from app.services.cache import invalidation as cache_invalidation
 from app.services.resource_policies import ResourcePolicyValidationError
 from app.services.resource_policy_store import ResourcePolicyStorageUnavailable
+from app.services.ssh_access import github_ssh_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -640,6 +641,7 @@ async def create_instance(
             _health_id if resolved_libs else "",
             _health_token,
         )
+        meta.update(github_ssh_metadata(req.github_username))
 
         if data_mounts_info:
             meta[_DATA_SHARE_METADATA_KEY] = ",".join(dm["file_storage_id"] for dm in data_mounts_info)
@@ -958,6 +960,7 @@ async def create_instance_async(
                 _sse_health_id if resolved_libs else "",
                 _sse_health_token,
             )
+            meta.update(github_ssh_metadata(req.github_username))
 
             if data_mounts_info:
                 meta[_DATA_SHARE_METADATA_KEY] = ",".join(dm["file_storage_id"] for dm in data_mounts_info)

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -266,7 +267,7 @@
 			<div class="bg-surface-base border border-line rounded-lg p-4">
 				<p class="text-xs font-semibold text-ink-2 mb-2">{t('userPage.recentChanges')}</p>
 				{#if loadingActivity}
-					<p class="text-xs text-ink-2">{t('userPage.loading')}</p>
+					<p class="text-xs text-ink-2"><ActivityIndicator size="xs" label={t('userPage.loading')} /></p>
 				{:else if activityLog.length === 0}
 					<p class="text-xs text-ink-2">{t('userPage.noChanges')}</p>
 				{:else}

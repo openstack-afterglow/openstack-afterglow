@@ -211,6 +211,82 @@ sys.exit(main())
 	}
 }
 
+function runPalimpsestEndpointFixture(vars, endpoints = {}) {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kolla-hub-endpoint-"))
+	const script = `import json, os, pathlib, re, shutil, subprocess, sys, tomllib, yaml
+root, scratch = map(pathlib.Path, sys.argv[1:3])
+role = root / 'deploy/kolla/ansible/roles/afterglow'
+fixture = scratch / 'ansible/roles/afterglow'
+for directory in ('tasks', 'defaults', 'templates'):
+    (fixture / directory).mkdir(parents=True)
+for filename in ('main.yml', 'validate_palimpsest_endpoint.yml'):
+    shutil.copyfile(role / 'tasks' / filename, fixture / 'tasks' / filename)
+shutil.copyfile(role / 'defaults/main.yml', fixture / 'defaults/main.yml')
+names = ('Config | Render generated Afterglow base layer', 'Config | Render final Kolla configuration override')
+tasks = [task for task in yaml.safe_load((role / 'tasks/config.yml').read_text()) if task['name'] in names]
+assert len(tasks) == 2
+# Only host ownership is sandboxed; lifecycle dispatch, URL guard, destinations and templates are real.
+for task in tasks:
+    task['become'] = False
+    task['no_log'] = False
+    task['ansible.builtin.template'].pop('owner')
+    task['ansible.builtin.template'].pop('group')
+(fixture / 'tasks/config.yml').write_text(yaml.safe_dump(tasks))
+for filename in ('afterglow.conf.j2', 'afterglow.kolla.conf.j2'):
+    template = (role / 'templates' / filename).read_text()
+    section = re.search(r'\\[services\\]\\n.*?(?=\\n\\[|\\Z)', template, re.S).group()
+    (fixture / 'templates' / filename).write_text(section)
+play = [{'hosts': 'afterglow', 'gather_facts': False, 'roles': ['afterglow']}]
+(scratch / 'ansible/site.yml').write_text(yaml.safe_dump(play))
+endpoints = json.loads(sys.argv[4])
+hosts = list(endpoints) or ['localhost']
+(scratch / 'multinode').write_text('[afterglow]\\n' + ''.join(host + ' ansible_connection=local\\n' for host in hosts))
+(scratch / 'host_vars').mkdir()
+for host in hosts:
+    (scratch / host).mkdir()
+    host_vars = {'afterglow_runtime_config_dir': str(scratch / host)}
+    if host in endpoints:
+        host_vars['afterglow_service_palimpsest_internal_url'] = endpoints[host]
+    (scratch / 'host_vars' / (host + '.yml')).write_text(yaml.safe_dump(host_vars))
+(scratch / 'globals.yml').write_text('{}\\n')
+(scratch / 'passwords.yml').write_text('{}\\n')
+(scratch / 'invoke.py').write_text('import os, sys\\nfrom kolla_ansible import utils\\n'
+    + 'utils.get_data_files_path = lambda *parts: os.path.join(os.getcwd(), *parts)\\n'
+    + "sys.argv = ['kolla-ansible', 'genconfig', '-i', 'multinode'] + sys.argv[1:]\\n"
+    + 'from kolla_ansible.cmd.kolla_ansible import main\\nsys.exit(main())\\n')
+variables = {'ansible_python_interpreter': sys.executable,
+    'afterglow_generated_config_name': 'afterglow.conf',
+    'afterglow_kolla_config_name': 'afterglow.kolla.conf', **json.loads(sys.argv[3])}
+os.environ['KOLLA_CONFIG_PATH'] = str(scratch)
+result = subprocess.run([sys.executable, str(scratch / 'invoke.py'), '-e', json.dumps(variables)],
+    cwd=scratch, capture_output=True, text=True)
+rendered = {}
+if all((scratch / hosts[0] / name).exists() for name in ('afterglow.conf', 'afterglow.kolla.conf')):
+    for filename in ('afterglow.conf', 'afterglow.kolla.conf'):
+        rendered[filename] = tomllib.loads((scratch / hosts[0] / filename).read_text())['services']
+    rendered['effective'] = {**rendered['afterglow.conf'],
+        'palimpsest_internal_url': 'https://operator.example.test', **rendered['afterglow.kolla.conf']}
+print(json.dumps({'status': result.returncode, 'rendered': rendered,
+    'emitted': [name for name in ('afterglow.conf', 'afterglow.kolla.conf') if (scratch / hosts[0] / name).exists()],
+    'emitted_by_host': {host: [name for name in ('afterglow.conf', 'afterglow.kolla.conf') if (scratch / host / name).exists()] for host in hosts},
+    'output': result.stdout + result.stderr}))
+`
+	try {
+		fs.writeFileSync(path.join(dir, "ansible.cfg"), "[defaults]\nforks=1\nretry_files_enabled=False\n")
+		const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("ANSIBLE_") && !key.startsWith("KOLLA_")))
+		const result = spawnSync(path.join(runtime, "python"), ["-c", script, root, dir, JSON.stringify({
+			enable_afterglow: true, afterglow_service_palimpsest_enabled: true, ...vars,
+		}), JSON.stringify(endpoints)], {
+			encoding: "utf8", timeout: 30000,
+			env: { ...env, PATH: `${runtime}${path.delimiter}${process.env.PATH}`, ANSIBLE_CONFIG: path.join(dir, "ansible.cfg"), ANSIBLE_LOCAL_TEMP: path.join(dir, "tmp"),
+				OBJC_DISABLE_INITIALIZE_FORK_SAFETY: "YES" },
+		})
+		assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}\n${result.error || ""}`)
+		return JSON.parse(result.stdout)
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true })
+	}
+}
 function expectSuccess(result, selected, haproxy = true, lifecycle = "deploy") {
 	assert.equal(result.status, 0, result.output)
 	assert.deepEqual(new Set(result.evidence.map(row => row.label.split(":")[0])),
@@ -545,3 +621,46 @@ for (const [firstTargetMode, modeVars] of [
 		expectSelection(result, ["fixture.invalid/afterglow_backend:latest", "fixture.invalid/afterglow_frontend:latest"])
 	})
 }
+
+for (const [scenario, vars, expected] of [
+	["configured public URL", { palimpsest_public_endpoint_url: "https://hub.example.test" }, "https://hub.example.test"],
+	["separate trusted BFF URL", { palimpsest_public_endpoint_url: "https://hub.example.test",
+		afterglow_service_palimpsest_internal_url: "https://private.example.test/v1" }, "https://private.example.test/v1"],
+	["unset public URL with public routing enabled", { palimpsest_public_haproxy_enabled: true }, undefined],
+	["explicit empty override", { palimpsest_public_endpoint_url: "https://hub.example.test",
+		afterglow_service_palimpsest_internal_url: "" }, undefined],
+	["integration disabled", { afterglow_service_palimpsest_enabled: false,
+		afterglow_service_palimpsest_internal_url: "http://unused.example.test" }, undefined],
+]) {
+	test(`Palimpsest ${scenario} preserves effective TOML precedence`, () => {
+		const result = runPalimpsestEndpointFixture(vars)
+		assert.equal(result.status, 0, result.output)
+		for (const layer of ["afterglow.conf", "afterglow.kolla.conf"]) {
+			assert.equal(result.rendered[layer].palimpsest_internal_url, expected)
+		}
+		assert.equal(result.rendered.effective.palimpsest_internal_url, expected ?? "https://operator.example.test")
+	})
+}
+
+for (const url of ["http://hub.example.test", "https:///hub", "https://user:password@hub.example.test",
+	"https://hub.example.test?token=fixture", "https://hub.example.test#fragment"]) {
+	test(`Palimpsest native genconfig rejects ${url} before emitting configuration`, () => {
+		const result = runPalimpsestEndpointFixture({ afterglow_service_palimpsest_internal_url: url })
+		assert.notEqual(result.status, 0, result.output)
+		assert.match(result.output, /must be a trusted HTTPS endpoint/)
+		assert.deepEqual(result.rendered, {})
+		assert.deepEqual(result.emitted, [], result.output)
+	})
+}
+
+test("Palimpsest native genconfig validates a later host's endpoint before emitting configuration", () => {
+	const result = runPalimpsestEndpointFixture({}, {
+		"controller-a": "https://hub.example.test",
+		"controller-b": "http://insecure.example.test",
+	})
+	assert.notEqual(result.status, 0, result.output)
+	assert.match(result.output, /must be a trusted HTTPS endpoint/)
+	assert.deepEqual(result.emitted_by_host["controller-b"], [], result.output)
+	assert.deepEqual(result.emitted_by_host["controller-a"], ["afterglow.conf", "afterglow.kolla.conf"], result.output)
+	assert.equal(result.rendered["afterglow.kolla.conf"].palimpsest_internal_url, "https://hub.example.test")
+})

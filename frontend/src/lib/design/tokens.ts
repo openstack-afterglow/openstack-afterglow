@@ -93,6 +93,13 @@ export const MOTION_CSS_VAR = {
 	easeStandard: 'var(--motion-ease-standard)',
 	easeOut: 'var(--motion-ease-out)',
 	easeInOut: 'var(--motion-ease-in-out)',
+	durationSpin: 'var(--motion-duration-spin)',
+	durationShimmer: 'var(--motion-duration-shimmer)',
+	durationStagger: 'var(--motion-duration-stagger)',
+	easeEmphasized: 'var(--motion-ease-emphasized)',
+	easeOvershoot: 'var(--motion-ease-overshoot)',
+	sheen: 'var(--motion-sheen)',
+	skeletonHighlight: 'var(--motion-skeleton-highlight)',
 } as const;
 
 export const MOTION_DURATION_MS = {
@@ -101,7 +108,19 @@ export const MOTION_DURATION_MS = {
 	panel: 200,
 	data: 500,
 	statusPulse: 1400,
+	spin: 800,
+	shimmer: 1600,
+	stagger: 40,
 } as const;
+
+/** Web Animations take an easing string, not a CSS variable; these mirror the layout.css curves. */
+export const MOTION_EASING = {
+	emphasized: 'cubic-bezier(0.2, 0, 0, 1)',
+	overshoot: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+} as const;
+
+/** `.motion-stagger` and `staggerDelay()` stop adding delay after this many items. */
+export const MOTION_STAGGER_LIMIT = 8;
 
 export const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)' as const;
 

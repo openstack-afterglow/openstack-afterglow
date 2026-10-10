@@ -4,7 +4,6 @@
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
   import type { LoadBalancer } from '$lib/types/loadbalancer';
-  import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
   import SlidePanel from '$lib/components/SlidePanel.svelte';
   import LoadBalancerDetailPanel from '$lib/components/LoadBalancerDetailPanel.svelte';
@@ -111,16 +110,17 @@
   {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 
   {#if loading}
-    <div class="flex flex-col gap-3.5">
+    <div class="flex flex-col gap-3.5" role="status" aria-busy="true">
+      <span class="sr-only">{t('loadBalancers.loading')}</span>
       {#each [1, 2, 3] as _}
-        <div class="bg-surface-base border border-line rounded-lg p-5 animate-pulse">
+        <div class="bg-surface-base border border-line rounded-lg p-5" aria-hidden="true">
           <div class="flex items-center gap-4">
-            <div class="w-10 h-10 rounded-lg bg-surface-sunken"></div>
+            <div class="motion-skeleton w-10 h-10 rounded-lg"></div>
             <div class="flex-1">
-              <div class="h-4 w-32 bg-surface-sunken rounded mb-2"></div>
-              <div class="h-3 w-48 bg-surface-sunken rounded"></div>
+              <div class="motion-skeleton h-4 w-32 rounded mb-2"></div>
+              <div class="motion-skeleton h-3 w-48 rounded"></div>
             </div>
-            <div class="h-6 w-16 bg-surface-sunken rounded-full"></div>
+            <div class="motion-skeleton h-6 w-16 rounded-full"></div>
           </div>
         </div>
       {/each}
@@ -132,7 +132,7 @@
       <a href="/dashboard/network/loadbalancers/new" class="text-warm-text hover:text-warm-text-hover text-sm mt-2 inline-block">{t('loadBalancers.empty.create')}</a>
     </div>
   {:else}
-    <div class="flex flex-col gap-3.5">
+    <div class="motion-stagger flex flex-col gap-3.5">
     <div class="flex justify-end mb-3">
       <SelectionToolbar
         label={t('loadBalancers.title')}

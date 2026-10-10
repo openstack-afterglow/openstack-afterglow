@@ -1,5 +1,7 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/containers-shell';
+  import { t as tc } from '$lib/i18n/ns/common';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
   import type { ZunContainer } from '$lib/types/zunContainer';
@@ -76,6 +78,7 @@
             <td class="containers-table__meta py-3 pr-6 text-xs">{c.created_at?.slice(0, 10) ?? '-'}</td>
             <td class="py-3">
               <div class="flex items-center gap-2">
+                {#if actionTarget === c.uuid}<ActivityIndicator size="xs" label={tc('state.processing')} class="text-xs" />{/if}
                 {#if c.status === 'Running'}
                   <button onclick={() => onStop(c.uuid)} disabled={actionTarget === c.uuid} class="containers-table__action containers-table__stop text-xs disabled:opacity-40 transition-colors">{t('instances.actions.stop')}</button>
                 {:else if c.status === 'Stopped' || c.status === 'Created'}

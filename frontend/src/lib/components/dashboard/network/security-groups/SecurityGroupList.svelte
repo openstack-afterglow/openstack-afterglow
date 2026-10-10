@@ -37,7 +37,7 @@
 		onToggle={onToggleAll}
 	/>
 </div>
-<div class="flex flex-col gap-2">
+<div class="motion-stagger flex flex-col gap-2">
 	{#each groups as sg (sg.id)}
 		<article
 			class="resource-selection-surface p-3.5 rounded-lg border transition-colors {selectedSg === sg.id ? 'bg-action-warm/10 border-action-warm' : 'bg-[#0B1220] border-line hover:border-line-2'}"

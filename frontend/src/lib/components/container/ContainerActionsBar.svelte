@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/containers-shell';
+	import { t as tc } from '$lib/i18n/ns/common';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { useContainerDetailController } from '$lib/stores/containerDetailController.svelte';
 
 	const s = useContainerDetailController();
@@ -18,6 +20,9 @@
 		{s.container?.status}
 	</span>
 	<div class="flex items-center gap-2">
+		{#if s.actioning}
+			<ActivityIndicator size="xs" label={tc('state.processing')} />
+		{/if}
 		{#if s.container?.status === 'Running'}
 			<button onclick={() => s.handleAction('stop')} disabled={s.actioning}
 				class="px-3 py-1 text-xs text-orange-400 border border-orange-800 hover:bg-orange-900/30 rounded-md transition-colors disabled:opacity-40">

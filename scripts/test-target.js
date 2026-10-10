@@ -55,6 +55,7 @@ const targets = {
 			selectors: [
 				"tests/test_auth_endpoints.py",
 				"tests/test_auth_jwt.py",
+				"tests/test_role_visibility.py",
 				"tests/test_auth_security.py",
 				"tests/test_jwt_session_timeout.py",
 				"tests/test_session_device.py",
@@ -86,7 +87,11 @@ const targets = {
 				"tests/test_admin_write.py",
 				"tests/test_admin_identity.py",
 				"tests/test_admin_identity_inventory.py",
+				"tests/test_admin_hypervisor_removal.py",
 				"tests/test_project_self_service.py",
+				"tests/test_identity_roles.py",
+				"tests/test_role_visibility.py",
+				"tests/test_rbac_project_roles.py",
 				"tests/test_database_owner_check.py",
 				"tests/test_file_storage_owner_check.py",
 				"tests/test_network_owner_check.py",
@@ -95,6 +100,12 @@ const targets = {
 				"tests/test_secrets_admin.py",
 				"tests/test_endpoint_inventory.py",
 				"tests/test_api_v1_legacy_compat.py"
+			]
+		},
+		frontend: {
+			selectors: [
+				"src/lib/components/admin/roles/__tests__/catalog.test.ts",
+				"src/routes/admin/roles/__tests__/page.boundaries.test.ts"
 			]
 		}
 	},
@@ -185,18 +196,29 @@ const targets = {
 				"tests/test_admin_instances.py",
 				"tests/test_admin_instances_health.py",
 				"tests/test_admin_instance_recovery.py",
+				"tests/test_admin_host_control.py",
+				"tests/test_admin_hypervisor_removal.py",
+				"tests/test_hypervisor_removal.py",
 				"tests/test_admin_resize.py",
-				"tests/test_instance_resize.py"
+				"tests/test_instance_resize.py",
+				"tests/test_vm_github_ssh_history.py",
+				"tests/test_nova_metadata.py",
+				"tests/test_github_ssh_access.py"
 			]
 		},
 		frontend: {
 			selectors: [
 				"src/lib/components/instance/__tests__",
 				"src/lib/components/wizard/__tests__/SelectFlavor.test.ts",
+				"src/lib/components/wizard/__tests__/SelectImage.test.ts",
+				"src/lib/components/wizard/__tests__/WizardStep5Config.test.ts",
+				"src/lib/components/wizard/__tests__/VmDeployProgress.test.ts",
 				"src/lib/stores/__tests__/vmCreateStore.test.ts",
 				"src/lib/stores/__tests__/vmCreateStoreLoad.test.ts",
 				"src/lib/stores/__tests__/vmCreateStoreRealClient.test.ts",
+				"src/lib/stores/__tests__/vmCreateStoreProgress.test.ts",
 				"src/lib/components/admin/__tests__/AdminInstanceTable.test.ts",
+				"src/routes/admin/hypervisors/__tests__",
 				"src/lib/stores/__tests__/instanceDetailController.resize.test.ts"
 			]
 		}

@@ -1,3 +1,4 @@
+import { grantLumen, pendingLumen } from './lumenPermissionFixture';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
@@ -148,6 +149,46 @@ beforeEach(() => {
 });
 
 describe('ChatPanel', () => {
+	it('sends chat-only text with tool defaults explicitly disabled', async () => {
+		grantLumen('lumen-chat_user');
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		await fireEvent.click(screen.getByTitle('저장되지 않는 임시 채팅'));
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Text only' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await waitFor(() => expect(mocks.createRun).toHaveBeenCalled());
+		expect(mocks.createRun.mock.calls[0][1].features.tool_policy).toMatchObject({ mode: 'none', enabled_tool_ids: [], enabled_mcp_ids: [] });
+	});
+
+	it('does not send while permissions are pending or failed', async () => {
+		pendingLumen();
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		expect(screen.getByRole('button', { name: '전송' }).hasAttribute('disabled')).toBe(true);
+		pendingLumen('Permission service unavailable');
+		await tick();
+		expect(screen.getAllByRole('alert').some((item) => item.textContent?.includes('Permission service unavailable'))).toBe(true);
+		expect(mocks.createRun).not.toHaveBeenCalled();
+	});
+	it('marks both locally sent user and assistant messages for one-shot entrance', async () => {
+		const finish = Promise.withResolvers<void>();
+		mocks.followRun.mockImplementation(async function* () {
+			await finish.promise;
+			yield event(1, 'run.completed', { status: 'completed', message_id: null });
+		});
+		const { container } = render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		await fireEvent.click(screen.getByTitle('저장되지 않는 임시 채팅'));
+		expect(container.querySelectorAll('[data-history-message-id].motion-enter')).toHaveLength(0);
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: '새 메시지' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await waitFor(() => expect(container.querySelectorAll('[data-history-message-id].motion-enter')).toHaveLength(2));
+		expect(container.querySelector('.chat-end')?.textContent).toContain('새 메시지');
+		expect(container.querySelector('.chat-start')?.textContent).toContain('응답을 준비하는 중');
+		finish.resolve();
+		await waitFor(() => expect(screen.queryByRole('button', { name: '생성 중단' })).toBeNull());
+	});
+
 	it('refreshes an opened picker after invalidation without replacing a valid selection', async () => {
 		const fallback = mocks.get.getMockImplementation()!;
 		let catalog = [{ id: 1, model_name: 'model-1', display_name: 'Model 1' }];

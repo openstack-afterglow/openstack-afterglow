@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -132,7 +133,7 @@
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('volumeTransfer.cancel')}</button>
-				<button onclick={confirmTransfer} disabled={transferring || !transferProjectId} class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{transferring ? t('volumeTransfer.transferring') : t('volumeTransfer.transfer')}</button>
+				<button onclick={confirmTransfer} disabled={transferring || !transferProjectId} class="px-4 py-2 bg-accent hover:bg-accent/90 text-surface-canvas text-sm font-medium rounded-lg disabled:opacity-30">{#if transferring}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('volumeTransfer.transferring')}</span></span>{:else}{t('volumeTransfer.transfer')}{/if}</button>
 			</div>
 		</div>
 	</div>

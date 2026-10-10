@@ -98,9 +98,9 @@
 	<VolumeDetailHeader {ar} />
 
 	{#if s.loading && !s.volume}
-		<div class="space-y-3">
+		<div class="space-y-3" role="status" aria-busy="true" aria-label={t('detailPanel.loading')}>
 			{#each [1, 2, 3] as _}
-				<div class="h-12 bg-surface-sunken rounded-lg animate-pulse"></div>
+				<div class="motion-skeleton h-12 rounded-lg"></div>
 			{/each}
 		</div>
 	{:else}
@@ -108,15 +108,17 @@
 			<div class="text-red-400 text-sm bg-red-900/20 border border-red-800 rounded-lg px-4 py-3 mb-4">{s.error}</div>
 		{/if}
 		{#if s.volume}
-			<VolumeInfoCard />
-			<VolumeAttachmentsList />
-			{#if $betaFeatures.volumeSnapshots}<VolumeSnapshotsSection />{/if}
-			<VolumeActions
-				onExtend={(vol) => extendTarget = vol}
-				onBackup={(vol) => backupTarget = vol}
-				onSnapshot={(vol) => snapshotTarget = vol}
-				onTransfer={(vol) => transferTarget = vol}
-			/>
+			<div class="motion-stagger">
+				<VolumeInfoCard />
+				<VolumeAttachmentsList />
+				{#if $betaFeatures.volumeSnapshots}<VolumeSnapshotsSection />{/if}
+				<VolumeActions
+					onExtend={(vol) => extendTarget = vol}
+					onBackup={(vol) => backupTarget = vol}
+					onSnapshot={(vol) => snapshotTarget = vol}
+					onTransfer={(vol) => transferTarget = vol}
+				/>
+			</div>
 		{/if}
 	{/if}
 </div>

@@ -11,14 +11,17 @@ if TYPE_CHECKING:
 import asyncio
 import logging
 
+from anyio import CancelScope
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info, require_admin
 from app.config import get_settings
-from app.services import activity, keystone, manila, session_store
+from app.services import activity, identity_roles, keystone, manila, session_store
 from app.services import login_guard as _login_guard
 from app.services.cache import cached_call, invalidate, ttl_slow
+from app.services.project_deletion import inspect_project_resources
+from app.services.service_permissions import normalize_role_name, preset_preview
 
 _logger = logging.getLogger(__name__)
 
@@ -523,12 +526,66 @@ async def update_project(
         raise
 
 
+async def _settled_project_deletion_call(call, *args):
+    # get_os_conn closes the request connection in finally. Let read-only
+    # workers settle before cancellation unwinds that dependency. In DELETE,
+    # cancellation during inspection must never schedule a Keystone mutation.
+    worker = asyncio.create_task(asyncio.to_thread(call, *args))
+    try:
+        return await asyncio.shield(worker)
+    except asyncio.CancelledError:
+        # FastAPI middleware uses AnyIO level cancellation, so a second
+        # asyncio.shield alone can be cancelled again before the worker settles.
+        with CancelScope(shield=True):
+            while not worker.done():
+                try:
+                    await asyncio.shield(worker)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    break
+            if not worker.cancelled():
+                worker.exception()
+        raise
+
+
+@router.get("/projects/{project_id}/deletion-check", dependencies=[Depends(require_admin)])
+async def get_project_deletion_check(
+    project_id: str,
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    """Fresh resource proof, never backed by cached counts or quota usage."""
+    return await _settled_project_deletion_call(inspect_project_resources, conn, project_id)
+
+
 @router.delete("/projects/{project_id}", dependencies=[Depends(require_admin)], status_code=204)
 async def delete_project(
     project_id: str,
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """프로젝트 삭제."""
+    """Delete only after a fresh, complete, empty target-project inventory."""
+
+    check = await _settled_project_deletion_call(inspect_project_resources, conn, project_id)
+    if any(item["status"] == "unavailable" for item in check["resources"]):
+        error = HTTPException(
+            status_code=503,
+            detail={
+                "code": "project_resource_check_failed",
+                "message": "Project resource inventory could not be verified. No project was deleted.",
+                "check": check,
+            },
+        )
+        error._afterglow_safe_public_detail = True
+        raise error
+    if not check["can_delete"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "project_has_resources",
+                "message": "The project still owns cloud resources. No project was deleted.",
+                "check": check,
+            },
+        )
 
     def _delete():
         try:
@@ -539,7 +596,7 @@ async def delete_project(
             raise HTTPException(status_code=400, detail="프로젝트 삭제 실패")
 
     try:
-        await asyncio.to_thread(_delete)
+        await _settled_project_deletion_call(_delete)
         await invalidate("afterglow:admin:projects")
         await invalidate("afterglow:admin:project_names")
     except HTTPException:
@@ -1029,23 +1086,11 @@ async def update_group(
 @router.delete("/groups/{group_id}", dependencies=[Depends(require_admin)], status_code=204)
 async def delete_group(
     group_id: str,
+    token_info: dict = Depends(get_token_info),
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """그룹 삭제."""
-
-    def _delete():
-        try:
-            conn.identity.delete_group(group_id, ignore_missing=True)
-        except Exception as e:
-            _logger.warning("그룹 삭제 실패: %s", e)
-
-            raise HTTPException(status_code=400, detail="그룹 삭제 실패")
-
-    try:
-        await asyncio.to_thread(_delete)
-        await invalidate("afterglow:admin:groups")
-    except HTTPException:
-        raise
+    await identity_roles.change_group_membership(conn, token_info, group_id, delete=True)
+    await invalidate("afterglow:admin:groups")
 
 
 @router.get("/groups/{group_id}/users", dependencies=[Depends(require_admin)])
@@ -1083,46 +1128,20 @@ async def list_group_users(
 async def add_user_to_group(
     group_id: str,
     user_id: str,
+    token_info: dict = Depends(get_token_info),
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """그룹에 사용자 추가."""
-
-    def _add():
-        try:
-            conn.identity.add_user_to_group(user_id, group_id)
-        except Exception as e:
-            _logger.warning("그룹 멤버 추가 실패: %s", e)
-
-            raise HTTPException(status_code=400, detail="그룹 멤버 추가 실패")
-
-    try:
-        await asyncio.to_thread(_add)
-    except HTTPException:
-        raise
+    await identity_roles.change_group_membership(conn, token_info, group_id, user_id=user_id)
 
 
 @router.delete("/groups/{group_id}/users/{user_id}", dependencies=[Depends(require_admin)], status_code=204)
 async def remove_user_from_group(
     group_id: str,
     user_id: str,
+    token_info: dict = Depends(get_token_info),
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """그룹에서 사용자 제거."""
-
-    def _remove():
-        try:
-            conn.identity.remove_user_from_group(user_id, group_id)
-        except Exception as e:
-            _logger.warning("그룹 멤버 제거 실패: %s", e)
-
-            raise HTTPException(status_code=400, detail="그룹 멤버 제거 실패")
-
-    try:
-        await asyncio.to_thread(_remove)
-        # 그룹 멤버십 변경 시 해당 사용자의 모든 세션 무효화
-        await session_store.revoke_user_sessions(user_id)
-    except HTTPException:
-        raise
+    await identity_roles.change_group_membership(conn, token_info, group_id, user_id=user_id, remove=True)
 
 
 # ============================================================================
@@ -1131,28 +1150,23 @@ async def remove_user_from_group(
 
 
 @router.get("/roles", dependencies=[Depends(require_admin)])
-async def list_roles(conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)):
-    """역할 목록."""
+async def list_roles(conn: openstack.connection.Connection = Depends(get_os_conn)):
+    """Fresh real implication graph; provider failures must never become an empty list."""
+    return await asyncio.to_thread(identity_roles.load_catalog, conn)
 
-    def _list():
-        roles = []
-        try:
-            for r in conn.identity.roles():
-                roles.append(
-                    {
-                        "id": r.id,
-                        "name": r.name or "",
-                        "domain_id": getattr(r, "domain_id", None),
-                    }
-                )
-        except Exception:
-            pass
-        return roles
 
-    try:
-        return await cached_call("afterglow:admin:roles", ttl_slow(), _list, enabled=cm.enabled, refresh=cm.refresh)
-    except Exception:
-        raise HTTPException(status_code=500, detail="역할 목록 조회 실패")
+@router.get("/roles/presets", dependencies=[Depends(require_admin)])
+async def role_presets():
+    """Read-only requested hierarchy; preview never seeds Keystone roles."""
+    return preset_preview()
+
+
+@router.post("/roles/presets/apply", dependencies=[Depends(require_admin)])
+async def apply_role_presets(
+    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    return await identity_roles.apply_role_presets(conn, token_info)
 
 
 class AssignRoleRequest(BaseModel):
@@ -1167,36 +1181,9 @@ async def assign_role(
     token_info: dict = Depends(get_token_info),
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """역할 할당."""
-
-    def _assign():
-        try:
-            conn.identity.assign_project_role_to_user(req.project_id, req.user_id, req.role_id)
-            return {"status": "assigned"}
-        except Exception as e:
-            _logger.warning("역할 할당 실패: %s", e)
-            raise HTTPException(status_code=400, detail="역할 할당 실패")
-
-    try:
-        result = await asyncio.to_thread(_assign)
-    except HTTPException:
-        raise
-
-    _, admin_role_id = await asyncio.to_thread(keystone._resolve_admin_ids)
-    is_admin_role = admin_role_id is not None and req.role_id == admin_role_id
-    if is_admin_role:
-        await session_store.revoke_user_sessions(req.user_id)
-    await activity.record(
-        project_id=token_info["project_id"],
-        user_id=token_info["user_id"],
-        username=token_info.get("username", ""),
-        resource_type="identity",
-        action="admin_role_grant" if is_admin_role else "role_grant",
-        status="success",
-        resource_id=req.user_id,
-        extra={"role_id": req.role_id, "target_project_id": req.project_id},
+    return await identity_roles.change_project_assignment(
+        conn, token_info, req.project_id, req.role_id, user_id=req.user_id
     )
-    return result
 
 
 @router.delete("/roles/assign", dependencies=[Depends(require_admin)])
@@ -1207,36 +1194,9 @@ async def revoke_role(
     token_info: dict = Depends(get_token_info),
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """역할 회수."""
-
-    def _revoke():
-        try:
-            conn.identity.unassign_project_role_from_user(project_id, user_id, role_id)
-            return {"status": "revoked"}
-        except Exception as e:
-            _logger.warning("역할 회수 실패: %s", e)
-            raise HTTPException(status_code=400, detail="역할 회수 실패")
-
-    try:
-        result = await asyncio.to_thread(_revoke)
-    except HTTPException:
-        raise
-
-    _, admin_role_id = await asyncio.to_thread(keystone._resolve_admin_ids)
-    is_admin_role = admin_role_id is not None and role_id == admin_role_id
-    if is_admin_role:
-        await session_store.revoke_user_sessions(user_id)
-    await activity.record(
-        project_id=token_info["project_id"],
-        user_id=token_info["user_id"],
-        username=token_info.get("username", ""),
-        resource_type="identity",
-        action="admin_role_revoke" if is_admin_role else "role_revoke",
-        status="success",
-        resource_id=user_id,
-        extra={"role_id": role_id, "target_project_id": project_id},
+    return await identity_roles.change_project_assignment(
+        conn, token_info, project_id, role_id, user_id=user_id, remove=True
     )
-    return result
 
 
 class AssignGroupRoleRequest(BaseModel):
@@ -1248,23 +1208,12 @@ class AssignGroupRoleRequest(BaseModel):
 @router.post("/roles/assign-group", dependencies=[Depends(require_admin)])
 async def assign_group_role(
     req: AssignGroupRoleRequest,
+    token_info: dict = Depends(get_token_info),
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """그룹에 프로젝트 역할 할당."""
-
-    def _assign():
-        try:
-            conn.identity.assign_project_role_to_group(req.project_id, req.group_id, req.role_id)
-            return {"status": "assigned"}
-        except Exception as e:
-            _logger.warning("그룹 역할 할당 실패: %s", e)
-
-            raise HTTPException(status_code=400, detail="그룹 역할 할당 실패")
-
-    try:
-        return await asyncio.to_thread(_assign)
-    except HTTPException:
-        raise
+    return await identity_roles.change_project_assignment(
+        conn, token_info, req.project_id, req.role_id, group_id=req.group_id
+    )
 
 
 @router.delete("/roles/assign-group", dependencies=[Depends(require_admin)])
@@ -1272,23 +1221,91 @@ async def revoke_group_role(
     group_id: str = Query(...),
     project_id: str = Query(...),
     role_id: str = Query(...),
+    token_info: dict = Depends(get_token_info),
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """그룹에서 프로젝트 역할 회수."""
+    return await identity_roles.change_project_assignment(
+        conn, token_info, project_id, role_id, group_id=group_id, remove=True
+    )
 
-    def _revoke():
-        try:
-            conn.identity.unassign_project_role_from_group(project_id, group_id, role_id)
-            return {"status": "revoked"}
-        except Exception as e:
-            _logger.warning("그룹 역할 회수 실패: %s", e)
 
-            raise HTTPException(status_code=400, detail="그룹 역할 회수 실패")
+def _normalize_role_input(value):
+    # Normalize before ConfigDict strips strings, retaining boundary whitespace
+    # as hyphens. Legacy unchanged names are handled by the service after lookup.
+    if isinstance(value, str) and "_" in value:
+        return normalize_role_name(value)
+    return value
 
-    try:
-        return await asyncio.to_thread(_revoke)
-    except HTTPException:
-        raise
+
+class CreateRoleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=255)
+    description: str = Field(default="", max_length=4096)
+    domain_id: str | None = Field(default=None, min_length=1, max_length=255)
+
+    _normalize_name = field_validator("name", mode="before")(_normalize_role_input)
+
+
+class UpdateRoleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=4096)
+
+    _normalize_name = field_validator("name", mode="before")(_normalize_role_input)
+
+
+@router.post("/roles", dependencies=[Depends(require_admin)], status_code=201)
+async def create_identity_role(
+    req: CreateRoleRequest,
+    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    return await identity_roles.create_role(conn, token_info, req.model_dump(exclude_none=True))
+
+
+# Keep these dynamic role routes after /roles/assign and /roles/assign-group.
+@router.patch("/roles/{role_id}", dependencies=[Depends(require_admin)])
+async def update_identity_role(
+    role_id: str,
+    req: UpdateRoleRequest,
+    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    attrs = req.model_dump(exclude_unset=True)
+    if not attrs or any(value is None for value in attrs.values()):
+        raise HTTPException(status_code=422, detail="Supply non-null role metadata")
+    return await identity_roles.update_role(conn, token_info, role_id, attrs)
+
+
+@router.delete("/roles/{role_id}", dependencies=[Depends(require_admin)])
+async def delete_identity_role(
+    role_id: str,
+    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    return await identity_roles.delete_role(conn, token_info, role_id)
+
+
+@router.put("/roles/{prior_role_id}/implies/{implied_role_id}", dependencies=[Depends(require_admin)])
+async def create_role_implication(
+    prior_role_id: str,
+    implied_role_id: str,
+    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    return await identity_roles.change_edge(conn, token_info, prior_role_id, implied_role_id)
+
+
+@router.delete("/roles/{prior_role_id}/implies/{implied_role_id}", dependencies=[Depends(require_admin)])
+async def delete_role_implication(
+    prior_role_id: str,
+    implied_role_id: str,
+    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    return await identity_roles.change_edge(conn, token_info, prior_role_id, implied_role_id, remove=True)
 
 
 # ============================================================================

@@ -8,9 +8,14 @@ backend afterglow-public_back
     server afterglow-public-router 127.0.0.1:{{ afterglow_public_haproxy_router_port }} check
 
 # This loopback frontend preserves the external Host and X-Forwarded-Proto
-# headers, then dispatches API traffic to the existing Kolla-managed backends.
+# headers, then dispatches API, MCP transport/OAuth and discovery to the backend.
 frontend afterglow-public-router_front
     mode http
     bind 127.0.0.1:{{ afterglow_public_haproxy_router_port }}
     use_backend afterglow-api_back if { path_beg /api/ }
+    acl is_mcp path /mcp
+    acl is_mcp path_beg /mcp/
+    acl is_well_known path_beg /.well-known/
+    use_backend afterglow-api_back if is_mcp
+    use_backend afterglow-api_back if is_well_known
     default_backend afterglow-frontend_back

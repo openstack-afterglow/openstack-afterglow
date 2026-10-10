@@ -1,9 +1,11 @@
 <script lang="ts">
 	import type { ImageInfo } from '$lib/types/compute';
+	import { createImageCatalog, currentImagesByReference, imageReferenceParts, imageUploadInstant } from '$lib/stores/imageCatalog.svelte';
+	import { imageReferenceMatchesQuery } from '$lib/utils/imageReference';
+	import { formatSize } from '$lib/utils/format';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { TableShell } from '$lib/components/ui';
 	import ImageDigest from '$lib/components/image/ImageDigest.svelte';
-	import { currentImagesByReference } from '$lib/stores/imageCatalog.svelte';
-	import { imageReferenceMatchesQuery, parseImageReference } from '$lib/utils/imageReference';
-	import type { ImageReferenceParts } from '$lib/utils/imageReference';
 	import { t } from '$lib/i18n/ns/vm-wizard';
 	import RichText from '$lib/i18n/RichText.svelte';
 	let { images, selectedId, onSelect }: {
@@ -15,23 +17,18 @@
 	let activeDistro = $state<string | null>(null);
 	const OTHER_DISTRO = '__other__';
 
-	function referenceParts(image: ImageInfo): ImageReferenceParts {
-		if (image.repository) {
-			const tag = image.tag ?? 'latest';
-			return { repository: image.repository, tag, name: `${image.repository}:${tag}` };
-		}
-		try {
-			return parseImageReference(image.name);
-		} catch {
-			const tag = image.tag ?? 'latest';
-			return { repository: image.name, tag, name: `${image.name}:${tag}` };
-		}
+	function referenceName(image: ImageInfo): string {
+		const { repository, tag } = imageReferenceParts(image);
+		return `${repository}:${tag}`;
 	}
 
-	function selectionName(image: ImageInfo, reference: ImageReferenceParts): string {
+	function selectionName(image: ImageInfo): string {
 		const sourceName = image.name.trim();
-		return sourceName && sourceName !== reference.repository ? sourceName : reference.name;
+		return sourceName && sourceName !== imageReferenceParts(image).repository ? sourceName : referenceName(image);
 	}
+	const chooserId = $props.id();
+	let expandedRepository = $state<string | null | undefined>(undefined);
+	let tagSearch = $state('');
 	let searchTerm = $state('');
 	let filtersOpen = $state(false);
 	const activeFilterCount = $derived((searchTerm.trim() ? 1 : 0) + (activeDistro === null ? 0 : 1));
@@ -87,6 +84,21 @@
 	const filteredImages = $derived(
 		distroFiltered.filter((image) => imageReferenceMatchesQuery(image, searchTerm))
 	);
+	const catalog = createImageCatalog(() => filteredImages, () => images);
+	const repositoryGroups = $derived(catalog.repositoryGroups);
+	const selectedImage = $derived(images.find(image => image.id === selectedId));
+	const openRepository = $derived(expandedRepository === undefined
+		? selectedImage ? imageReferenceParts(selectedImage).repository : null
+		: expandedRepository);
+	const openGroup = $derived(repositoryGroups.find(group => group.repository === openRepository));
+	const tagQuery = $derived(tagSearch.trim().toLowerCase());
+	const visibleTags = $derived(openGroup?.tags.filter(tag => tag.tag.toLowerCase().includes(tagQuery)) ?? []);
+	const uploadFormatter = $derived(new Intl.DateTimeFormat(intlLocale(), {
+		year: 'numeric', month: '2-digit', day: '2-digit',
+		hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+	}));
+
+	const repositoryTotal = $derived(new Set(currentImages.map(image => imageReferenceParts(image).repository)).size);
 
 	function distroLabel(d: string): string {
 		return d === OTHER_DISTRO ? t('image.distro.other') : distroLabels[d] ?? d;
@@ -100,23 +112,15 @@
 		return distroColors[distro ?? ''] ?? 'bg-[var(--color-state-neutral)]';
 	}
 
-	function formatDate(dateStr: string | null): string {
-		if (!dateStr) return '';
-		return dateStr.slice(0, 10);
+	function toggleRepository(repository: string): void {
+		if (openRepository === repository) {
+			expandedRepository = null;
+		} else {
+			expandedRepository = repository;
+			tagSearch = '';
+		}
 	}
 
-	function distroDescription(img: ImageInfo): string {
-		const parts: string[] = [];
-		const reference = referenceParts(img);
-		const label = distroLabels[img.os_distro ?? ''] ?? '';
-		if (label) {
-			const m = `${img.name} ${reference.repository} ${reference.tag}`.match(/(\d{2}\.\d{2})/);
-			if (m) parts.push(`${label} ${m[1]} LTS`);
-			else parts.push(label);
-		}
-		if (img.os_type) parts.push(img.os_type);
-		return parts.join(' · ') || reference.name;
-	}
 </script>
 
 <div class="mb-4 flex items-center justify-between">
@@ -166,10 +170,10 @@
 						: 'bg-[var(--color-surface-raised)] text-[var(--color-ink-2)] hover:bg-[var(--color-surface-base)]'}"
 				>
 					{#snippet countBadge(text: string)}<span class="font-mono text-[10.5px] opacity-70">{text}</span>{/snippet}
-					<RichText segments={t.rich('image.filters.all', { count: currentImages.length })} tags={{ count: countBadge }} />
+					<RichText segments={t.rich('image.filters.all', { count: repositoryTotal })} tags={{ count: countBadge }} />
 				</button>
 				{#each distros as d}
-					{@const count = currentImages.filter(i => (i.os_distro ?? OTHER_DISTRO) === d).length}
+					{@const count = new Set(currentImages.filter(image => (image.os_distro ?? OTHER_DISTRO) === d).map(image => imageReferenceParts(image).repository)).size}
 					<button
 						onclick={() => activeDistro = d}
 						class="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-all {activeDistro === d
@@ -186,8 +190,7 @@
 	<section aria-label={t('image.previous.label')} class="mb-4 rounded-xl border border-[var(--color-line-2)] bg-[var(--color-surface-sunken)] p-4 text-sm text-[var(--color-ink-1)]">
 		<p class="mb-2 font-semibold">{t('image.previous.title')}</p>
 		{#if previousSelected}
-			<p class="font-mono">{referenceParts(previousSelected).name} · {previousSelected.status}</p>
-			<ImageDigest image={previousSelected} />
+			<p class="font-mono">{referenceName(previousSelected)}</p>
 		{:else}
 			<p>{t('image.previous.missing')}</p>
 		{/if}
@@ -196,68 +199,120 @@
 	</section>
 {/if}
 
-<!-- 이미지 카드 그리드 -->
-<div class="grid grid-cols-1 @lg/panel:grid-cols-2 @3xl/panel:grid-cols-3 gap-3">
-	{#each filteredImages as img}
-		{@const reference = referenceParts(img)}
-		<button
-			type="button"
-			disabled={img.status !== 'active'}
-			onclick={() => onSelect(img.id, selectionName(img, reference))}
-			aria-label={img.status === 'active' ? t('image.selectLabel', { name: reference.name }) : t('image.unselectableLabel', { name: reference.name, status: img.status })}
-			class="relative text-left p-4 rounded-xl border transition-all enabled:hover:-translate-y-px enabled:hover:shadow-md disabled:cursor-not-allowed {selectedId === img.id
-				? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10 ring-1 ring-[var(--color-accent)]/30'
-				: 'border-[var(--color-line)] bg-[var(--color-surface-raised)] enabled:hover:border-[var(--color-line-2)]'}"
-		>
-			<!-- 선택 체크마크 (우측 상단 pill) -->
-			{#if selectedId === img.id}
-				<div class="absolute top-3.5 right-3.5 w-5 h-5 bg-[var(--color-accent)] rounded-full flex items-center justify-center">
-					<svg class="w-3 h-3 text-[var(--color-action-on-accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+<div role="list" aria-label={t('image.repositoryListLabel')} class="grid grid-cols-1 @lg/panel:grid-cols-2 @3xl/panel:grid-cols-3 gap-3">
+	{#each repositoryGroups as group (group.repository)}
+		{@const image = group.latest}
+		{@const expanded = openRepository === group.repository}
+		{@const panelId = `${chooserId}-tags-${encodeURIComponent(group.repository)}`}
+		<div role="listitem" class="min-w-0 rounded-xl border transition-colors {expanded
+			? 'col-span-full border-[var(--color-accent)] bg-[var(--color-surface-selected)]'
+			: 'border-[var(--color-line)] bg-[var(--color-surface-raised)] hover:border-[var(--color-line-2)]'}">
+			<button
+				type="button"
+				onclick={() => toggleRepository(group.repository)}
+				aria-label={t('image.repositoryLabel', { name: group.repository })}
+				aria-controls={panelId}
+				aria-expanded={expanded}
+				class="w-full min-w-0 rounded-xl p-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+			>
+				<div class="flex items-center gap-3">
+					{#if logoPath(image.os_distro ?? null)}
+						<img src={logoPath(image.os_distro ?? null)} alt="" class="h-12 w-12 flex-shrink-0 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-1 object-contain" />
+					{:else}
+						<div aria-hidden="true" class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg {avatarColor(image.os_distro ?? null)} text-sm font-bold text-[var(--color-action-on-accent)]">
+							{avatarLetter(group.repository)}
+							</div>
+					{/if}
+					<div class="min-w-0 flex-1">
+						<p class="break-all font-mono text-sm font-semibold text-[var(--color-ink-0)]">{group.repository}</p>
+						<p class="mt-1 text-xs text-[var(--color-ink-2)]">{[distroLabel(image.os_distro ?? OTHER_DISTRO), image.os_type].filter(Boolean).join(' · ')}</p>
+						<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('image.tagCount', { count: group.tags.length })}</p>
+						{#if selectedImage && imageReferenceParts(selectedImage).repository === group.repository}
+							<p class="mt-1 truncate text-xs text-[var(--color-ink-2)]" title={imageReferenceParts(selectedImage).tag}>{t('image.selectedTag', { tag: imageReferenceParts(selectedImage).tag })}</p>
+						{/if}
+					</div>
+					{#if group.images.some(image => image.id === selectedId)}
+						<svg class="h-4 w-4 shrink-0 text-[var(--color-accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+						</svg>
+					{/if}
+					<svg class="h-4 w-4 shrink-0 text-[var(--color-ink-2)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d={expanded ? 'm6 15 6-6 6 6' : 'm6 9 6 6 6-6'} />
 					</svg>
 				</div>
-			{/if}
-
-			<!-- 아바타 + 이름 -->
-			<div class="mb-2 flex items-center gap-3">
-				{#if logoPath(img.os_distro ?? null)}
-					<img
-						src={logoPath(img.os_distro ?? null)}
-						alt={img.os_distro ?? ''}
-						class="h-16 w-16 flex-shrink-0 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-1 object-contain"
+			</button>
+			{#if expanded}
+				<section id={panelId} aria-label={t('image.tagsTitle', { name: group.repository })} class="min-w-0 border-t border-[var(--color-line)] p-3 @lg/panel:p-4">
+					<p class="mb-3 text-xs text-[var(--color-ink-2)]">{t('image.tagsHelp')}</p>
+					<label for={`${panelId}-search`} class="sr-only">{t('image.tagSearchLabel', { name: group.repository })}</label>
+					<input
+						id={`${panelId}-search`}
+						type="search"
+						bind:value={tagSearch}
+						placeholder={t('image.tagSearchPlaceholder')}
+						class="mb-3 w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-3 py-2 text-sm text-[var(--color-ink-1)] outline-none placeholder:text-[var(--color-ink-3)] focus:border-[var(--color-line-2)]"
 					/>
-				{:else}
-					<div class="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-xl border border-[var(--color-ink-0)]/10 {avatarColor(img.os_distro ?? null)} text-sm font-bold text-[var(--color-action-on-accent)]">
-						{avatarLetter(img.name)}
-					</div>
-				{/if}
-				<div class="min-w-0 flex-1">
-					<div class="font-semibold text-[var(--color-ink-0)] text-[13.5px] font-mono truncate leading-tight">{reference.repository}</div>
-					<div class="text-xs text-[var(--color-ink-3)] truncate mt-0.5">{distroDescription(img)}</div>
-				</div>
-			</div>
-
-			<!-- 메타 -->
-			<div class="flex items-center gap-2 text-xs text-[var(--color-ink-3)] font-mono pt-2 mt-2 border-t border-[var(--color-line)]">
-				<span class="px-1.5 py-0.5 bg-[var(--color-surface-sunken)] border border-[var(--color-line)] rounded text-[var(--color-ink-2)] text-xs">{t('image.tag', { tag: reference.tag })}</span>
-				<span>{t('image.currentStatus', { status: img.status })}</span>
-				{#if img.disk_format}
-					<span class="px-1.5 py-0.5 bg-[var(--color-surface-sunken)] border border-[var(--color-line)] rounded text-[var(--color-ink-2)] text-xs lowercase">{img.disk_format}</span>
-				{/if}
-				{#if img.min_disk}
-					<span>{img.min_disk} GB</span>
-				{/if}
-				{#if img.created_at}
-					<span class="ml-auto">{formatDate(img.created_at)}</span>
-				{/if}
-			</div>
-			<ImageDigest image={img} />
-		</button>
+					{#if visibleTags.length > 0}
+						<TableShell density="compact">
+							<div class="min-w-[39rem]">
+								<div class="tag-row bg-[var(--color-surface-sunken)] px-3 py-2 text-xs font-medium text-[var(--color-ink-2)]" aria-hidden="true">
+									<span>{t('image.columns.tag')}</span>
+									<span>{t('image.columns.hash')}</span>
+									<span>{t('image.columns.uploadedAt')}</span>
+									<span class="text-right">{t('image.columns.size')}</span>
+								</div>
+								<ul class="m-0 list-none p-0">
+									{#each visibleTags as tag (tag.tag)}
+										{@const image = tag.current}
+										{@const instant = imageUploadInstant(image)}
+										<li class="border-t border-[var(--color-line)]">
+											<button
+												type="button"
+												disabled={image.status !== 'active'}
+												onclick={() => onSelect(image.id, selectionName(image))}
+												aria-label={image.status === 'active' ? t('image.selectLabel', { name: referenceName(image) }) : t('image.unselectableLabel', { name: referenceName(image), status: image.status })}
+												aria-pressed={selectedId === image.id}
+												title={image.status === 'active' ? tag.tag : t('image.inactiveReason', { status: image.status })}
+												class="tag-row min-h-11 w-full px-3 py-2 text-left text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] disabled:cursor-not-allowed {selectedId === image.id
+													? 'bg-[var(--color-surface-selected)]'
+													: 'bg-[var(--color-surface-base)] enabled:hover:bg-[var(--color-surface-sunken)]'}"
+											>
+												<span class="flex min-w-0 items-center gap-2 text-[var(--color-ink-1)]" title={tag.tag}>
+													<span class="min-w-0 truncate font-mono text-sm">{tag.tag}</span>
+													{#if selectedId === image.id}
+														<svg class="h-4 w-4 shrink-0 text-[var(--color-accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+													{/if}
+													{#if image.status !== 'active'}<span class="shrink-0 text-xs text-[var(--color-ink-2)]">{image.status}</span>{/if}
+												</span>
+												<ImageDigest {image} showId={false} compact />
+												<span class="whitespace-nowrap text-xs tabular-nums text-[var(--color-ink-2)]">
+													{#if instant === null}-{:else}<time datetime={image.created_at ?? undefined} title={image.created_at ?? undefined}>{uploadFormatter.format(Math.trunc(instant / 1000))}</time>{/if}
+												</span>
+												<span class="whitespace-nowrap text-right text-xs tabular-nums text-[var(--color-ink-2)]">{formatSize(image.size ?? null)}</span>
+											</button>
+										</li>
+									{/each}
+								</ul>
+							</div>
+						</TableShell>
+					{:else}
+						<p role="status" class="py-6 text-center text-sm text-[var(--color-ink-2)]">{t('image.tagSearchEmpty')}</p>
+					{/if}
+				</section>
+			{/if}
+		</div>
 	{/each}
 
-	{#if filteredImages.length === 0}
-		<div class="col-span-3 text-center py-10 text-[var(--color-ink-3)] text-sm">
-			{t('image.empty')}
-		</div>
+	{#if repositoryGroups.length === 0}
+		<p class="col-span-full py-10 text-center text-sm text-[var(--color-ink-2)]">{t('image.empty')}</p>
 	{/if}
 </div>
+
+<style>
+	.tag-row {
+		display: grid;
+		grid-template-columns: minmax(18rem, 1fr) 4.5rem 9rem 4rem;
+		align-items: center;
+		column-gap: 0.5rem;
+	}
+</style>

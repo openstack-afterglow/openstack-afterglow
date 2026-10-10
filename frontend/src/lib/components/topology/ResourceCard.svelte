@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/topology';
 	import { onMount } from 'svelte';
+	import StatusDot, { statusDotTone } from './StatusDot.svelte';
 	import type { ItemRow, LBItem } from './types.ts';
 
 	interface Props {
@@ -33,11 +34,8 @@
 		return '0';
 	}
 
-	function statusDot(status: string): string {
-		if (status === 'ACTIVE') return 'bg-green-400';
-		if (status === 'ERROR' || status === 'SHUTOFF') return 'bg-red-400';
-		return 'bg-yellow-400 animate-pulse';
-	}
+	const status = $derived(row?.status ?? lbItem?.lb.provisioning_status ?? '');
+	const statusTone = $derived(statusDotTone(status));
 
 	const ifaceRows = $derived.by(() => {
 		if (!row) return [];
@@ -73,7 +71,7 @@
 >
 	<!-- Header -->
 	<div class="flex items-center gap-2 px-3 py-2">
-		<span class="w-2 h-2 rounded-full flex-shrink-0 {statusDot(row?.status ?? lbItem?.lb.provisioning_status ?? '')}"></span>
+		<StatusDot {status} />
 
 		{#if row?.type === 'router'}
 			<svg class="w-4 h-4 flex-shrink-0 text-warm-text" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -97,6 +95,13 @@
 		</span>
 
 		<div class="flex items-center gap-1 flex-shrink-0">
+			<!-- 상태는 점 색·숨쉬기만으로 전하지 않는다: 정상(ACTIVE)이 아니면 글자로도 보인다 -->
+			<span
+				class="text-xs font-mono"
+				class:sr-only={statusTone === 'success'}
+				class:text-state-danger-text={statusTone === 'danger'}
+				class:text-state-warning-text={statusTone === 'warning'}
+			>{status || t('card.noStatus')}</span>
 			{#if hasFloating}
 				<span class="text-xs px-1 rounded bg-orange-900/40 text-orange-400 font-mono">✦</span>
 			{/if}

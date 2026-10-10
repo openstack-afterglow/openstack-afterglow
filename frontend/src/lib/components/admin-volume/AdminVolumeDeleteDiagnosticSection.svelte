@@ -2,6 +2,7 @@
 	import { t } from '$lib/i18n/ns/admin-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { useAdminVolumeDetailController } from '$lib/stores/adminVolumeDetailController.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	const s = useAdminVolumeDetailController();
 
@@ -53,11 +54,11 @@
 		</div>
 		<button
 			type="button"
-			class="diagnostic-secondary-action px-3 py-1.5 rounded text-xs disabled:opacity-50"
+			class="diagnostic-secondary-action inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs disabled:opacity-50"
 			disabled={s.diagnosticLoading}
 			onclick={() => s.fetchDeleteDiagnostic({ refresh: true })}
 		>
-			{s.diagnosticLoading ? t('diagnostic.running') : t('diagnostic.runAgain')}
+			{#if s.diagnosticLoading}<ActivityIndicator size="xs" tone="ink" />{/if}{s.diagnosticLoading ? t('diagnostic.running') : t('diagnostic.runAgain')}
 		</button>
 	</div>
 
@@ -66,7 +67,7 @@
 	{/if}
 
 	{#if s.diagnosticLoading && !s.deleteDiagnostic}
-		<div class="diagnostic-muted text-sm">{t('diagnostic.loading')}</div>
+		<ActivityIndicator label={t('diagnostic.loading')} />
 	{/if}
 
 	{#if s.deleteDiagnostic}
@@ -157,11 +158,11 @@
 			{#if s.deleteDiagnostic.recovery_available}
 				<button
 					type="button"
-					class="diagnostic-danger-action w-full px-4 py-2 rounded text-sm font-medium disabled:opacity-50"
+					class="diagnostic-danger-action inline-flex w-full items-center justify-center gap-1.5 px-4 py-2 rounded text-sm font-medium disabled:opacity-50"
 					disabled={s.recovering}
 					onclick={runRecovery}
 				>
-					{s.recovering ? t('diagnostic.recovering') : t('diagnostic.runRecovery')}
+					{#if s.recovering}<ActivityIndicator size="xs" tone="ink" />{/if}{s.recovering ? t('diagnostic.recovering') : t('diagnostic.runRecovery')}
 				</button>
 			{/if}
 		</div>

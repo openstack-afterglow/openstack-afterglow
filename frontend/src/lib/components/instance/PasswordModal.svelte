@@ -3,6 +3,7 @@
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import { t } from '$lib/i18n/ns/instance';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	interface Props {
 		onClose: () => void;
@@ -15,6 +16,7 @@
 	let newPassword = $state('');
 	let confirmPassword = $state('');
 	let passwordError = $state('');
+	let submitting = $state(false);
 
 	async function handleSetPassword() {
 		if (newPassword !== confirmPassword) {
@@ -26,11 +28,16 @@
 			return;
 		}
 		passwordError = '';
-		const err = await s.doSetPassword(newPassword);
-		if (err) {
-			passwordError = err;
-		} else {
-			onClose();
+		submitting = true;
+		try {
+			const err = await s.doSetPassword(newPassword);
+			if (err) {
+				passwordError = err;
+			} else {
+				onClose();
+			}
+		} finally {
+			submitting = false;
 		}
 	}
 </script>
@@ -84,10 +91,10 @@
 			<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('password.cancel')}</button>
 			<button
 				onclick={handleSetPassword}
-				disabled={s.passwordPrecheckLoading || !newPassword || !confirmPassword}
+				disabled={submitting || s.passwordPrecheckLoading || !newPassword || !confirmPassword}
 				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg disabled:opacity-30"
 			>
-				{s.passwordPrecheckLoading ? t('password.changing') : t('password.submit')}
+				{#if submitting}<ActivityIndicator size="xs" label={t('password.changing')} />{:else if s.passwordPrecheckLoading}<ActivityIndicator size="xs" label={t('header.checking')} />{:else}{t('password.submit')}{/if}
 			</button>
 		</div>
 	</div>

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { Cluster } from '$lib/types/cluster';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
@@ -55,7 +56,7 @@
 					<td class="k3s-table__meta py-3 pr-6 text-xs">{c.node_count}</td>
 					<td class="k3s-table__meta py-3 pr-6 text-xs font-mono">{c.api_address ?? t('overview.notAvailable')}</td>
 					<td class="k3s-table__meta py-3 pr-6 text-xs">{c.created_at?.slice(0, 10) ?? t('overview.notAvailable')}</td>
-					<td class="py-3"><button onclick={() => onDelete(c.id, c.name)} disabled={deleting === c.id || selectionDisabled} class="k3s-table__delete text-xs disabled:opacity-40 transition-colors">{deleting === c.id ? t('overview.table.deleting') : t('overview.table.delete')}</button></td>
+					<td class="py-3"><button onclick={() => onDelete(c.id, c.name)} disabled={deleting === c.id || selectionDisabled} class="k3s-table__delete text-xs disabled:opacity-40 transition-colors">{#if deleting === c.id}<ActivityIndicator size="xs" label={t('overview.table.deleting')} />{:else}{t('overview.table.delete')}{/if}</button></td>
 				</tr>
 			{/each}
 		</tbody>

@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { tick, type Snippet } from 'svelte';
 	import { t } from '$lib/i18n/ns/chat-panel';
+	import { serviceCapabilities } from '$lib/stores/servicePermissions';
+	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import type { ContextState, ModelCapabilities } from '$lib/api/chatContracts';
 	import { effortLabel, effortOptionsFor } from '$lib/api/chatEffort';
@@ -15,6 +17,7 @@
 	import ModelCapabilityBadges from './ModelCapabilityBadges.svelte';
 	import UsageRing from '$lib/components/ui/UsageRing.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import ChatContextPanel from './ChatContextPanel.svelte';
 
 	export type ComposerCommand = {
@@ -113,25 +116,25 @@
 	const searchGate = $derived(modelCaps?.feature_gates?.web_search);
 	const hasNativeSearch = $derived(Boolean(modelCaps?.web_search) && searchGate?.mode === 'native');
 	const searchRequired = $derived(Boolean(modelCaps?.web_search_required));
-	const searchAvailable = $derived(searchGate?.available === true && searchGate?.pricing_available === true);
+	const searchAvailable = $derived($serviceCapabilities('lumen-tools_user') && searchGate?.available === true && searchGate?.pricing_available === true);
 	const searchTitle = $derived(!searchAvailable
 		? t('input.searchUnavailable')
 		: searchRequired ? t('input.searchRequired') : t('input.searchDescription'));
 
 	// The backend disables these gates when the scanned S3/ClamAV pipeline is unavailable.
 	const canAttachImage = $derived(
-		Boolean(modelCaps?.vision) && (modelCaps?.feature_gates?.image_input?.available ?? true)
+		$serviceCapabilities('lumen-chat_user') && $serviceCapabilities('lumen-assets_editor') && Boolean(modelCaps?.vision) && (modelCaps?.feature_gates?.image_input?.available ?? true)
 	);
 	const canAttachDocument = $derived(
-		Boolean(modelCaps?.feature_gates?.document_input?.available)
+		$serviceCapabilities('lumen-chat_user') && $serviceCapabilities('lumen-assets_editor') && Boolean(modelCaps?.feature_gates?.document_input?.available)
 	);
 	const canAttach = $derived(canAttachImage || canAttachDocument);
 	// tool_call 지원 + 사용 가능한 tool/MCP 가 있을 때만 도구 선택 노출.
 	const canUseTools = $derived(
-		Boolean(modelCaps?.tool_call) && availableTools.length + availableMcp.length > 0
+		$serviceCapabilities('lumen-tools_user') && Boolean(modelCaps?.tool_call) && availableTools.length + availableMcp.length > 0
 	);
 	// 스킬은 프롬프트 주입이라 tool_call 없이도 사용 가능.
-	const canUseSkills = $derived(availableSkills.length > 0);
+	const canUseSkills = $derived($serviceCapabilities('lumen-tools_user') && availableSkills.length > 0);
 	const hasPlus = $derived(canAttach || canUseTools || canUseSkills);
 
 	type ComposerQuickAction = {
@@ -194,7 +197,7 @@
 			const actions = quickActions.filter((action) =>
 				`${action.name} ${action.description}`.toLocaleLowerCase().includes(normalized)
 			);
-			const agents = availableAgents
+			const agents = ($serviceCapabilities('lumen-tools_user') ? availableAgents : [])
 				.filter((agent) => agent.name.toLocaleLowerCase().includes(normalized))
 				.map((agent) => ({ kind: 'agent' as const, id: agent.id, name: agent.name }));
 			return [...actions, ...agents].slice(0, 7);
@@ -207,7 +210,7 @@
 			)
 			.slice(0, 7)
 			.map((command) => ({ kind: 'command' as const, ...command }));
-		const skillShortcuts = availableSkills
+		const skillShortcuts = (canUseSkills ? availableSkills : [])
 			.filter((skill) => skill.name.toLocaleLowerCase().includes(normalized))
 			.slice(0, 5)
 			.map((skill) => ({ kind: 'skill' as const, id: skill.id, name: skill.name }));
@@ -298,22 +301,25 @@
 		return selected === null ? true : selected.includes(id);
 	}
 	function toggleTool(id: number) {
+		if (!canUseTools) return;
 		const cur = selectedToolIds ?? availableTools.map((tool) => tool.id);
 		selectedToolIds = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
 	}
 	function toggleMcp(id: number) {
+		if (!canUseTools) return;
 		const cur = selectedMcpIds ?? availableMcp.map((m) => m.id);
 		selectedMcpIds = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
 	}
 	// 스킬은 opt-in — 빈 목록에서 시작해 선택 시 추가.
 	function toggleSkill(id: number) {
+		if (!canUseSkills) return;
 		selectedSkillIds = selectedSkillIds.includes(id)
 			? selectedSkillIds.filter((x) => x !== id)
 			: [...selectedSkillIds, id];
 	}
 
 	async function addFiles(files: FileList | File[]) {
-		if (!canAttach) return;
+		if (disabled || !canAttach) return;
 		for (const file of Array.from(files)) {
 			const image = isChatImageMime(file.type);
 			const document = isChatDocumentMime(file.type);
@@ -410,7 +416,7 @@
 		effortOpen = false;
 	}
 
-	const canSend = $derived(!disabled && !sendDisabled && !streaming && value.trim().length > 0);
+	const canSend = $derived($serviceCapabilities('lumen-chat_user') && (!searchRequired || $serviceCapabilities('lumen-tools_user')) && !disabled && !sendDisabled && !streaming && value.trim().length > 0);
 
 	const format = $derived(new Intl.NumberFormat(intlLocale()));
 	const knownContext = $derived(
@@ -423,6 +429,7 @@
 			contextState.utilization !== null
 			&& contextState.breakdown?.complete !== false
 	);
+	const contextBusy = $derived(contextPhase === 'compacting' || (contextLoading && !knownContext));
 	const contextPercent = $derived(
 		Math.max(0, Math.round((contextState?.utilization ?? 0) * 100))
 	);
@@ -498,10 +505,13 @@
 
 
 <div class="composer">
+	<LumenPermissionNotice leaf="lumen-chat_user" />
+	<LumenPermissionNotice leaf="lumen-tools_user" />
+	<LumenPermissionNotice leaf="lumen-assets_editor" />
 	<input
 		bind:this={fileInput}
 		type="file"
-		accept="image/jpeg,image/png,image/webp,application/pdf"
+		accept={canAttachImage ? 'image/jpeg,image/png,image/webp,application/pdf' : 'application/pdf'}
 		multiple
 		hidden
 		onchange={onFilePick}
@@ -563,18 +573,20 @@
 		{#if attachments.length}
 			<div class="chips">
 				{#each attachments as a (a.previewUrl ?? a.assetId ?? a.name)}
-					<div class="chip" class:uploading={a.status === 'uploading'}>
-						{#if a.previewUrl}
-							<img src={a.previewUrl} alt={a.name} />
-						{:else}
-							<span class="chip-name">{a.name}</span>
-						{/if}
+					<div class="attachment-chip" aria-busy={a.status === 'uploading'}>
+						<div class="chip" class:uploading={a.status === 'uploading'}>
+							{#if a.previewUrl}
+								<img src={a.previewUrl} alt={a.name} />
+							{:else}
+								<span class="chip-name">{a.name}</span>
+							{/if}
+							<button type="button" class="chip-x" title={t('input.remove')} aria-label={t('input.removeAttachment')} onclick={() => removeAttachment(a)}>
+								<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" /></svg>
+							</button>
+						</div>
 						{#if a.status === 'uploading'}
-							<span class="chip-spin"></span>
+							<ActivityIndicator variant="upload" size="xs" label={t('input.uploading')} />
 						{/if}
-						<button type="button" class="chip-x" title={t('input.remove')} aria-label={t('input.removeAttachment')} onclick={() => removeAttachment(a)}>
-							<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" /></svg>
-						</button>
 					</div>
 				{/each}
 			</div>
@@ -685,8 +697,8 @@
 						aria-live="polite"
 						aria-atomic="true"
 					>
-						{#if contextPhase === 'compacting' || (contextLoading && !knownContext)}
-							<span class="context-spinner" aria-hidden="true"></span>
+						{#if contextBusy}
+							<ActivityIndicator size="sm" label={contextStatus} />
 						{:else if knownContext}
 							<button
 								type="button"
@@ -715,7 +727,9 @@
 								onclick={toggleContextDetails}
 							><span class="context-reason-icon">?</span></button>
 						{/if}
-						<span class="context-status-text">{contextStatus}</span>
+						{#if !contextBusy}
+							<span class="context-status-text">{contextStatus}</span>
+						{/if}
 					</div>
 				{/if}
 
@@ -746,6 +760,7 @@
 				{/if}
 
 				{#if streaming}
+					<ActivityIndicator variant="dots" size="xs" label={t('sidebar.generatingResponse')} />
 					<button type="button" class="send stop" onclick={onStop} title={t('input.stopGeneration')} aria-label={t('input.stopGeneration')}>
 						<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg>
 					</button>
@@ -894,7 +909,7 @@
 		gap: 0.32rem;
 		min-width: 0;
 		color: var(--color-ink-2);
-		font-size: 0.72rem;
+		font-size: 0.75rem;
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
 	}
@@ -903,7 +918,6 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
-	.context-spinner,
 	.context-reason-icon {
 		display: inline-flex;
 		width: 1.125rem;
@@ -929,12 +943,6 @@
 	.context-meter:focus-visible {
 		outline: none;
 		box-shadow: var(--focus-ring);
-	}
-	.context-spinner {
-		border: 2px solid var(--color-line-2);
-		border-top-color: currentColor;
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
 	}
 	.context-reason-icon {
 		padding: 0;
@@ -967,9 +975,12 @@
 	}
 	.tb-right {
 		display: flex;
+		flex-wrap: wrap;
+		min-width: 0;
+		max-width: 100%;
 		align-items: center;
 		gap: 0.4rem;
-		flex-shrink: 0;
+		flex-shrink: 1;
 		margin-left: auto;
 	}
 	.input-wrap.drag-over {
@@ -981,6 +992,13 @@
 		flex-wrap: wrap;
 		gap: 0.4rem;
 		padding: 0.15rem 0.2rem 0;
+	}
+	.attachment-chip {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.25rem;
+		max-width: 100%;
 	}
 	.chip {
 		position: relative;
@@ -999,22 +1017,6 @@
 	}
 	.chip.uploading img {
 		opacity: 0.5;
-	}
-	.chip-spin {
-		position: absolute;
-		inset: 50% auto auto 50%;
-		width: 1rem;
-		height: 1rem;
-		margin: -0.5rem 0 0 -0.5rem;
-		border-radius: 50%;
-		border: 2px solid var(--color-line-2);
-		border-top-color: var(--color-accent);
-		animation: spin 0.8s linear infinite;
-	}
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
 	}
 	.chip-x {
 		position: absolute;

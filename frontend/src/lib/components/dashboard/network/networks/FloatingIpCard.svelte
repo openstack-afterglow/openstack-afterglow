@@ -58,7 +58,7 @@
   {#if floatingIps.length === 0}
     <div class="text-center py-8 text-ink-2 text-sm">{t('floatingIpCard.empty')}</div>
   {:else}
-    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+    <div class="motion-stagger grid grid-cols-2 sm:grid-cols-3 gap-2.5">
       {#each floatingIps as fip (fip.id)}
         <div
           class="resource-selection-surface bg-[#0B1220] border border-line rounded-lg p-3 flex items-center gap-3"

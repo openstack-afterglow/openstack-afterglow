@@ -1,6 +1,22 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { expect, it, vi } from 'vitest';
 import ExecutionTimeline from '../ExecutionTimeline.svelte';
+import type { RunActivityItem } from '$lib/api/chatRunReducer';
+
+it('enters streamed steps and pops live completion without replaying stored history', async () => {
+	const running: RunActivityItem = { id: 'context:1', kind: 'context', seq: 1, createdAt: '2026-07-26T00:00:00Z', phase: 'compacting', cause: 'automatic', beforeTokens: 12000, afterTokens: null };
+	const done: RunActivityItem = { ...running, id: 'context:2', seq: 2, phase: 'compacted', afterTokens: 7000 };
+	const view = render(ExecutionTimeline, { items: [], active: true });
+	await view.rerender({ items: [running] });
+	expect(view.container.querySelector('li.motion-enter')).toBeTruthy();
+	expect(view.container.querySelectorAll('.activity')).toHaveLength(1);
+	await view.rerender({ items: [running, done] });
+	expect(view.container.querySelectorAll('.activity')).toHaveLength(0);
+	expect(view.container.querySelector('.timeline-check.motion-pop')).toBeTruthy();
+	view.unmount();
+	const stored = render(ExecutionTimeline, { items: [running, done], active: false });
+	expect(stored.container.querySelector('.motion-enter, .motion-pop, .activity')).toBeNull();
+});
 
 it('shows user-facing tasks while hiding backend lifecycle stages', async () => {
 	const { getByText, queryByText } = render(ExecutionTimeline, {

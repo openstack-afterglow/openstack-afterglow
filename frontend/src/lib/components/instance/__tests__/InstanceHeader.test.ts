@@ -128,3 +128,31 @@ describe('InstanceHeader resize access', () => {
 		expect(screen.queryByRole('button', { name: '되돌리기' })).toBeNull();
 	});
 });
+
+describe('InstanceHeader operation attribution', () => {
+	it('only marks the requested action as working and retains the instance status', () => {
+		renderHeader({ actioning: 'stop' });
+		expect(screen.getByRole('status').textContent?.trim()).toBe('정지 중...');
+		expect(screen.getByRole('button', { name: '정지 중...' }).hasAttribute('disabled')).toBe(true);
+		expect(screen.queryByText('재부팅 중...')).toBeNull();
+		expect(screen.getByText('ACTIVE')).toBeTruthy();
+	});
+
+	it('keeps a migration control request busy until its promise settles', async () => {
+		let resolve!: () => void;
+		mockAbortMigration.mockReturnValueOnce(new Promise<void>((done) => { resolve = done; }));
+		renderHeader({ instance: { ...activeInstance, status: 'MIGRATING' } }, { adminProjectId: 'project-a' });
+		const abort = screen.getByRole('button', { name: '마이그레이션 중단' });
+		const complete = screen.getByRole('button', { name: '강제 완료' });
+		await fireEvent.click(abort);
+		expect(mockAbortMigration).toHaveBeenCalledTimes(1);
+		expect(abort.contains(screen.getByRole('status'))).toBe(true);
+		expect(abort.hasAttribute('disabled')).toBe(true);
+		expect(complete.hasAttribute('disabled')).toBe(true);
+		resolve();
+		await screen.findByRole('button', { name: '마이그레이션 중단' });
+		expect(abort.hasAttribute('disabled')).toBe(false);
+		expect(complete.hasAttribute('disabled')).toBe(false);
+		expect(screen.queryByRole('status')).toBeNull();
+	});
+});

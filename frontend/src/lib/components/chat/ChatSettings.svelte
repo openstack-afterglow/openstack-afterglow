@@ -3,6 +3,8 @@
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
+	import { serviceCapabilities } from '$lib/stores/servicePermissions';
+	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -101,7 +103,7 @@
 	let draft = $state('');
 	let saving = $state(false);
 	let loadedMemoryScope = $state('');
-	const canSubmit = $derived(draft.trim().length > 0 && !saving);
+	const canSubmit = $derived($serviceCapabilities('lumen-history_editor') && draft.trim().length > 0 && !saving);
 
 	async function loadMemories() {
 		if (!token) return;
@@ -148,6 +150,7 @@
 	});
 
 	function startEdit(m: Memory) {
+		if (!$serviceCapabilities('lumen-history_editor')) return;
 		editingId = m.id;
 		draft = m.content;
 	}
@@ -179,6 +182,7 @@
 	}
 
 	async function toggleActive(m: Memory) {
+		if (!$serviceCapabilities('lumen-history_editor')) return;
 		if (!token) return;
 		try {
 			await api.patch(`/api/v1/chat/memories/${m.id}`, { is_active: !m.is_active }, token, projectId);
@@ -191,6 +195,7 @@
 	async function removeMemory(m: Memory) {
 		if (!token) return;
 		if (!(await confirmDialog(t('settings.memory.deleteConfirm')))) return;
+		if (!$serviceCapabilities('lumen-history_editor')) return;
 		try {
 			await api.delete(`/api/v1/chat/memories/${m.id}`, token, projectId);
 			if (editingId === m.id) cancelEdit();
@@ -267,7 +272,9 @@
 							{t('settings.memory.description')}
 						</p>
 						{#if memLoading}
-							<div class="memory-document skeleton" aria-label={t('settings.memory.documentLoading', { filename: 'memory.md' })}></div>
+							<div class="memory-document motion-skeleton" role="status" aria-label={t('settings.memory.documentLoading', { filename: 'memory.md' })}>
+								<span class="sr-only">{t('settings.memory.documentLoading', { filename: 'memory.md' })}</span>
+							</div>
 						{:else if memoryDocument}
 							<div class="memory-document">
 								<div class="memory-document-head">
@@ -282,6 +289,7 @@
 						{/if}
 						<div class="divider"></div>
 						<h4 class="memory-manage-title">{t('settings.memory.manageTitle')}</h4>
+						<LumenPermissionNotice leaf="lumen-history_editor" />
 						<p class="sec-desc">{t('settings.memory.manageDescription')}</p>
 						<form
 							class="composer"
@@ -325,6 +333,7 @@
 											<button
 												type="button"
 												class="act"
+												disabled={!$serviceCapabilities('lumen-history_editor')}
 												onclick={() => toggleActive(m)}
 												title={m.is_active ? t('settings.memory.deactivate') : t('settings.memory.activate')}
 												aria-label={m.is_active ? t('settings.memory.deactivate') : t('settings.memory.activate')}
@@ -335,10 +344,10 @@
 													<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" /></svg>
 												{/if}
 											</button>
-											<button type="button" class="act" onclick={() => startEdit(m)} title={t('settings.memory.edit')} aria-label={t('settings.memory.edit')}>
+											<button disabled={!$serviceCapabilities('lumen-history_editor')} type="button" class="act" onclick={() => startEdit(m)} title={t('settings.memory.edit')} aria-label={t('settings.memory.edit')}>
 												<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" stroke-linecap="round" stroke-linejoin="round" /></svg>
 											</button>
-											<button type="button" class="act danger" onclick={() => removeMemory(m)} title={t('settings.memory.delete')} aria-label={t('settings.memory.delete')}>
+											<button disabled={!$serviceCapabilities('lumen-history_editor')} type="button" class="act danger" onclick={() => removeMemory(m)} title={t('settings.memory.delete')} aria-label={t('settings.memory.delete')}>
 												<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" stroke-linecap="round" stroke-linejoin="round" /></svg>
 											</button>
 										</div>
@@ -508,7 +517,7 @@
 		border-radius: 0.65rem;
 		background: var(--color-surface-base);
 	}
-	.memory-document.skeleton {
+	.memory-document.motion-skeleton {
 		min-height: 10rem;
 		background: var(--color-surface-sunken);
 	}

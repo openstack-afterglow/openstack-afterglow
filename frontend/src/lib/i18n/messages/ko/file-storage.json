@@ -2,6 +2,8 @@
 	"actions.delete": "삭제",
 	"actions.deleting": "삭제 중...",
 	"actions.creating": "생성 중...",
+	"storageCard.extending": "증설 중…",
+	"detail.loading": "파일 스토리지 정보를 불러오는 중",
 	"errors.server": "서버 오류",
 	"errors.create": "생성 실패",
 	"errors.loadWithStatus": "조회 실패 ({status})",

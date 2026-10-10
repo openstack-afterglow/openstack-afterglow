@@ -4,6 +4,8 @@
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import { formatIsoDateTime } from '$lib/utils/format';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
+	import ProgressTrack from '$lib/components/ui/ProgressTrack.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	let {
 		fs, quotaLimit, copiedExport, deleting, selected = false, selectable = true, selectionDisabled = false,
@@ -14,6 +16,12 @@
 		onOpenDetail: (id: string) => void; onCopyExport: (path: string, id: string) => void;
 		onDelete: (id: string, name: string) => void; onToggleSelect: () => void;
 	} = $props();
+	const progressing = $derived(fs.status === 'creating' || fs.status === 'extending');
+	const progressPct = $derived.by(() => {
+		const match = fs.progress?.match(/^(\d+(?:\.\d+)?)%$/);
+		return match ? Number(match[1]) : null;
+	});
+	const progressText = $derived(fs.progress || (fs.status === 'extending' ? t('storageCard.extending') : t('actions.creating')));
 </script>
 
 <article class="resource-selection-surface bg-surface-base border border-line rounded-lg p-5" data-selected={selected}>
@@ -46,19 +54,16 @@
 			<span>{t('storageCard.allocatedSize')}</span>
 			<span class="text-ink-0 font-medium">{fs.size} GB</span>
 		</div>
-		<div class="h-1.5 bg-surface-sunken rounded-full overflow-hidden">
-			<div class="h-full rounded-full transition-all" style="width: {quotaLimit > 0 ? Math.min(100, Math.round(fs.size / quotaLimit * 100)) : 0}%; background: var(--gradient-usage)"></div>
-		</div>
+		{#if Number.isFinite(quotaLimit) && quotaLimit > 0}
+			<ProgressTrack value={(fs.size / quotaLimit) * 100} label={`${fs.name || fs.id} · ${t('storageCard.allocatedSize')}`} />
+		{/if}
 	</div>
 
-	<!-- creating 상태일 때 progress 표시 -->
-	{#if fs.status === 'creating' && fs.progress}
-		{@const pct = (() => { const m = fs.progress.match(/^(\d+(?:\.\d+)?)%$/); return m ? parseFloat(m[1]) : 0; })()}
+	<!-- 생성·확장 작업은 측정값이 없더라도 실제 작업 상태를 표시한다. -->
+	{#if progressing}
 		<div class="mt-3 flex items-center gap-2">
-			<div class="flex-1 h-1 bg-surface-sunken rounded-full overflow-hidden">
-				<div class="h-full rounded-full bg-yellow-500 transition-all" style="width: {pct}%"></div>
-			</div>
-			<span class="text-xs text-yellow-400 shrink-0">{fs.progress}</span>
+			<ProgressTrack value={progressPct} label={`${fs.name || fs.id} · ${t('info.progress')}`} valueText={progressText} active size="xs" class="flex-1" />
+			<span class="text-xs text-state-warning shrink-0">{progressText}</span>
 		</div>
 	{/if}
 
@@ -71,7 +76,7 @@
 		<button
 			onclick={(e) => { e.stopPropagation(); onDelete(fs.id, fs.name); }}
 			disabled={deleting === fs.id}
-			class="text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 text-red-400 hover:text-red-300 disabled:text-ink-3 disabled:border-line-2 transition-colors"
-		>{deleting === fs.id ? t('storageCard.deleting') : t('storageCard.delete')}</button>
+			class="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 text-red-400 hover:text-red-300 disabled:text-ink-3 disabled:border-line-2 transition-colors"
+		>{#if deleting === fs.id}<ActivityIndicator size="xs" tone="danger" />{/if}{deleting === fs.id ? t('storageCard.deleting') : t('storageCard.delete')}</button>
 	</div>
 </article>

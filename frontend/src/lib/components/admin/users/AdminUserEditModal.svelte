@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import type { User } from '$lib/types/common';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
@@ -154,7 +155,7 @@
         <div class="flex items-center justify-between mb-2">
           <p class="text-xs font-medium text-ink-2">{t('userEdit.sessionsTitle')}</p>
           {#if loadingSessions}
-            <span class="text-xs text-ink-2">{t('userEdit.loading')}</span>
+            <span class="text-xs text-ink-2"><ActivityIndicator size="xs" label={t('userEdit.loading')} /></span>
           {:else}
             <span class="text-xs text-ink-2">{t('userEdit.sessionCount', { count: sessions.length })}</span>
           {/if}
@@ -202,7 +203,7 @@
               <button
                 onclick={revokeAllSessions}
                 disabled={revoking}
-                class="px-3 py-1.5 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-ink-0 text-xs rounded-lg transition-colors"
+                class="px-3 py-1.5 bg-[var(--color-state-danger)]/10 hover:bg-[var(--color-state-danger)]/20 disabled:opacity-50 text-[var(--color-state-danger-text)] text-xs rounded-lg transition-colors"
               >{revoking ? t('userEdit.revoking') : t('userEdit.confirm')}</button>
               <button
                 onclick={() => { showRevokeConfirm = false; }}
@@ -211,17 +212,17 @@
             </div>
           </div>
         {:else}
-          <button
+          <button aria-busy={revoking}
             onclick={() => { showRevokeConfirm = true; }}
             disabled={revoking}
-            class="w-full px-3 py-2 bg-red-900/40 hover:bg-red-900/70 border border-red-800/60 text-red-300 text-xs rounded-lg transition-colors disabled:opacity-50"
-          >{t('userEdit.revokeAll')}</button>
+            class="w-full px-3 py-2 bg-[var(--color-state-danger)]/10 hover:bg-[var(--color-state-danger)]/20 border border-[var(--color-state-danger)]/30 text-[var(--color-state-danger-text)] text-xs rounded-lg transition-colors disabled:opacity-50"
+          >{#if revoking}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('userEdit.revoking')}</span>{:else}{t('userEdit.revokeAll')}{/if}</button>
         {/if}
       </div>
 
       <div class="flex justify-end gap-3 mt-4">
         <button onclick={() => { user = null; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('userEdit.cancel')}</button>
-        <button onclick={submit} disabled={updating} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{updating ? t('userEdit.updating') : t('userEdit.update')}</button>
+        <button aria-busy={updating} onclick={submit} disabled={updating} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if updating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('userEdit.updating')}</span>{:else}{t('userEdit.update')}{/if}</button>
       </div>
     </div>
   </div>

@@ -22,6 +22,7 @@ from app.services import cinder, cloudinit, keystone, neutron, nova, vm_cloud_in
 from app.services import instance_orchestration as instance_orch
 from app.services import libraries as lib_svc
 from app.services.instance_names import ensure_unique_instance_name
+from app.services.ssh_access import github_ssh_metadata
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -333,6 +334,7 @@ async def admin_create_instance_async(
                 _sse_health_id if resolved_libs else "",
                 _sse_health_token,
             )
+            meta.update(github_ssh_metadata(req.github_username))
             server = await asyncio.to_thread(
                 nova.create_server,
                 conn,

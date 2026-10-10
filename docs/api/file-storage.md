@@ -17,6 +17,8 @@ Manila 공유 파일 시스템(CephFS/NFS)을 관리합니다.
 
 > **공유 백업 미지원:** 이 경로는 공유 생성·조회·접근 관리를 제공하며 share-backup 생성·복원 API는 제공하지 않습니다. 운영 Manila의 실험적 share-backup API(2.80+, experimental header)는 확인됐으나 `manila-data`의 독립 NFS 백업 저장소와 데이터 노드 access IP가 설정되지 않았습니다. 현재 기본 NFS backup driver는 native CEPHFS 공유를 mount할 수도 없습니다. 저장소·드라이버 준비와 실제 생성·복원 검증 전에는 File Storage 공유 스냅샷을 백업으로 간주하지 마세요.
 
+콘솔 직접 상세의 접근 규칙과 복사 가능한 CephX key는 share ID·auth token·project에 귀속됩니다. 다른 share 또는 인증 scope로 전환하면 이전 규칙을 즉시 숨기고 새 조회 전까지 revoke 액션을 제공하지 않습니다. 같은 scope의 background refresh는 기존 행을 유지하며, 오래된 응답·확인 결과가 새로운 share에 적용되지는 않습니다.
+
 ---
 
 ## 인증 헤더

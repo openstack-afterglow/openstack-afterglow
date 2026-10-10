@@ -1,5 +1,7 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/drover';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import { k3sPermissions } from '$lib/stores/k3sPermissions';
   import {
     toConfigMapYaml,
     toSecretEditYaml,
@@ -57,6 +59,7 @@
   let liveError = $derived(validate(yamlText));
 
   async function handleSave() {
+    if (!$k3sPermissions.workloads || (mode === 'secret' && secretType !== 'Opaque' && !$k3sPermissions.adminCredentials)) return;
     parseError = '';
     try {
       const data =
@@ -76,7 +79,7 @@
   role="presentation"
 >
   <div
-    class="bg-surface-base border border-line-2 rounded-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
+    class="motion-enter bg-surface-base border border-line-2 rounded-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
     onclick={(e) => e.stopPropagation()}
     role="presentation"
   >
@@ -89,6 +92,7 @@
       <textarea
         bind:value={yamlText}
         spellcheck={false}
+        disabled={!$k3sPermissions.workloads || (mode === 'secret' && secretType !== 'Opaque' && !$k3sPermissions.adminCredentials)}
         class="w-full h-72 bg-surface-canvas border border-line-2 text-ink-1 text-xs rounded-lg px-3 py-3 font-mono focus:outline-none focus:border-action-warm resize-y leading-relaxed"
         placeholder={mode === 'secret'
           ? 'stringData:\n  KEY: value'
@@ -107,10 +111,10 @@
       <button onclick={onClose} class="text-xs text-ink-2 hover:text-ink-2 px-3 py-1.5">{t('resourceEditor.cancel')}</button>
       <button
         onclick={handleSave}
-        disabled={saving || !!liveError}
+        disabled={!$k3sPermissions.workloads || (mode === 'secret' && secretType !== 'Opaque' && !$k3sPermissions.adminCredentials) || saving || !!liveError}
         class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2 disabled:cursor-not-allowed"
       >
-        {saving ? t('resourceEditor.saving') : t('resourceEditor.save')}
+        {#if saving}<ActivityIndicator size="xs" label={t('resourceEditor.saving')} />{:else}{t('resourceEditor.save')}{/if}
       </button>
     </div>
   </div>

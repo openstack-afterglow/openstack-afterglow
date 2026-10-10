@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/chat-panel';
+	import { untrack } from 'svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { downloadChatAsset } from '$lib/api/chatAttachments';
 	import { formatToolArgs, type ToolActivityItem } from '$lib/api/chatToolActivity';
 	import { taskLabelForTool } from '$lib/api/chatTaskLabels';
@@ -8,10 +10,13 @@
 
 	interface Props {
 		item: ToolActivityItem;
+		animate?: boolean;
 	}
-	let { item }: Props = $props();
+	let { item, animate = true }: Props = $props();
 
 	let open = $state(false);
+	let sawRunning = $state(untrack(() => item.running));
+	$effect(() => { if (item.running) sawRunning = true; });
 	const argsText = $derived(formatToolArgs(item.args));
 	const hasDetail = $derived(Boolean(argsText) || Boolean(item.result) || Boolean(item.errorCode) || Boolean(item.files?.length));
 	const taskName = $derived(taskLabelForTool(item.name));
@@ -63,11 +68,11 @@
 		aria-expanded={open}
 	>
 		{#if item.running}
-			<span class="spinner" aria-hidden="true"></span>
+			<ActivityIndicator variant="spinner" size="xs" />
+		{:else if item.status === 'failed'}
+			<svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke-linecap="round" /></svg>
 		{:else}
-			<svg class="ic" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
-				<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-2.5 2.5-2.5z" stroke-linejoin="round" />
-			</svg>
+			<svg class="ic" class:motion-pop={animate && sawRunning} viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 4 4L19 6" stroke-linecap="round" stroke-linejoin="round" /></svg>
 		{/if}
 		<span class="tool-name">{taskName}</span>
 		<span class="tool-status">{statusLabel}</span>
@@ -107,9 +112,13 @@
 								onclick={() => downloadFile(file)}
 								aria-label={t('toolCall.downloadFile', { name: file.name })}
 							>
-								<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-									<path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" stroke-linecap="round" stroke-linejoin="round" />
-								</svg>
+								{#if downloadingAssetId === file.assetId}
+									<ActivityIndicator variant="download" size="xs" label={t('toolCall.downloading')} />
+								{:else}
+									<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+										<path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" stroke-linecap="round" stroke-linejoin="round" />
+									</svg>
+								{/if}
 								<span class="file-name">{file.name}</span>
 								<span class="file-size">{formatBytes(file.sizeBytes)}</span>
 							</button>
@@ -136,6 +145,8 @@
 		font-size: 0.76rem;
 	}
 	.tool-head {
+		position: relative;
+		overflow: hidden;
 		display: flex;
 		align-items: center;
 		gap: 0.45rem;
@@ -261,18 +272,18 @@
 		font-size: 0.68rem;
 		overflow-wrap: anywhere;
 	}
-	.spinner {
-		flex-shrink: 0;
-		width: 0.8rem;
-		height: 0.8rem;
-		border-radius: 50%;
-		border: 2px solid var(--color-line-2);
-		border-top-color: var(--color-accent);
-		animation: spin 0.8s linear infinite;
+	.tool-head::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		opacity: 0;
+		background: linear-gradient(90deg, transparent, var(--motion-sheen), transparent);
 	}
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
+	@media (prefers-reduced-motion: no-preference) {
+		.running .tool-head::after {
+			opacity: 0.45;
+			animation: motion-sweep var(--motion-duration-shimmer) var(--motion-ease-in-out) infinite;
 		}
 	}
 </style>

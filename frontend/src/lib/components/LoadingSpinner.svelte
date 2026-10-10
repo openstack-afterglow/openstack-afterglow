@@ -49,12 +49,15 @@
 		content: var(--loader-frames);
 		display: inline-block;
 		white-space: pre;
-		animation: af-loader 1s steps(6) infinite;
+		animation: af-loader var(--motion-duration-spin) steps(6) infinite;
 	}
 	@keyframes af-loader {
 		100% { transform: translateY(-100%); }
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.af-loader::before { animation: none; }
+		.af-loader::before {
+			content: "Loading...";
+			animation: none;
+		}
 	}
 </style>

@@ -2,6 +2,7 @@
 	import { t } from '$lib/i18n/ns/file-storage';
 	import Button from '$lib/components/ui/Button.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { useFileStorageDetailController } from '$lib/stores/fileStorageDetailController.svelte';
 
 	const s = useFileStorageDetailController();
@@ -52,7 +53,7 @@
 					</label>
 				</div>
 				<Button onclick={() => s.addAccessRule()} disabled={s.addingRule || !s.ruleForm.access_to.trim()} size="sm">
-					{s.addingRule ? t('accessRules.adding') : t('accessRules.add')}
+					{#if s.addingRule}<ActivityIndicator size="xs" tone="ink" />{/if}{s.addingRule ? t('accessRules.adding') : t('accessRules.add')}
 				</Button>
 			</div>
 			{#if s.ruleError}<p class="text-red-400 text-xs mt-2">{s.ruleError}</p>{/if}
@@ -60,7 +61,7 @@
 	{/if}
 
 	{#if s.accessLoading}
-		<p class="text-ink-2 text-sm text-center py-4">{t('accessRules.loading')}</p>
+		<div class="flex justify-center py-4"><ActivityIndicator label={t('accessRules.loading')} /></div>
 	{:else if s.accessError}
 		<div class="flex items-center gap-2 py-3 px-3 bg-red-900/20 border border-red-800/50 rounded-md">
 			<span class="text-red-400 text-xs">{s.accessError}</span>
@@ -79,7 +80,7 @@
 						<th class="text-right py-2"></th>
 					</tr>
 				</thead>
-				<tbody>
+				<tbody class="motion-stagger">
 					{#each s.accessRules as rule (rule.id)}
 						<tr class="border-b border-line/50">
 							<td class="py-2 pr-4 font-mono text-xs text-ink-2">{rule.access_to ?? '-'}</td>
@@ -108,9 +109,9 @@
 								<button
 									onclick={() => s.revokeAccessRule(rule.id)}
 									disabled={s.revokingId === rule.id}
-									class="text-xs text-red-400 hover:text-red-300 disabled:opacity-40 transition-colors"
+									class="inline-flex items-center gap-1 text-xs text-red-400 hover:text-red-300 disabled:opacity-40 transition-colors"
 								>
-									{s.revokingId === rule.id ? t('accessRules.deleting') : t('accessRules.delete')}
+									{#if s.revokingId === rule.id}<ActivityIndicator size="xs" tone="danger" />{/if}{s.revokingId === rule.id ? t('accessRules.deleting') : t('accessRules.delete')}
 								</button>
 							</td>
 						</tr>

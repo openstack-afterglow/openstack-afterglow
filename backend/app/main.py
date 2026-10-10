@@ -343,6 +343,7 @@ _AUDIT_PREFIX_MAP: list[tuple[str, str]] = [
     ("/api/v1/palimpsest", "palimpsest_layer"),
     ("/api/v1/admin/images", "image"),
     ("/api/v1/admin/instances", "instance"),
+    ("/api/v1/admin/hypervisors", "hypervisor"),
     ("/api/v1/admin/volumes", "volume"),
     ("/api/v1/admin/networks", "network"),
     ("/api/v1/admin/floating-ips", "floating_ip"),
@@ -442,7 +443,9 @@ _CORS_ALLOW_METHODS = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
 
 
 def _is_mcp_no_cors_path(path: str) -> bool:
-    return any(path == resource_path or path.startswith(f"{resource_path}/oauth/") for resource_path in mcp_paths())
+    return any(
+        path == resource_path or path.startswith(f"{resource_path.rstrip('/')}/oauth/") for resource_path in mcp_paths()
+    )
 
 
 def _get_allowed_origins() -> set[str]:
@@ -508,7 +511,9 @@ async def activity_audit_middleware(request: Request, call_next):
         if not mapped or streaming:
             return
         outcome = "failed" if status_code >= 400 else "started" if status_code == 202 else "success"
-        if holder.get("recorded_status") == outcome or (outcome == "started" and holder["logged"]):
+        recorded_status = holder.get("recorded_status")
+        # A failed business result may deliberately use a 2xx HTTP response.
+        if recorded_status == "failed" or recorded_status == outcome or (outcome == "started" and holder["logged"]):
             return
 
         info = getattr(request.state, "token_info", None)

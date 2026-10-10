@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
+from fastapi import FastAPI
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 import app.main as _main_module
+import app.services.activity as _activity_module
 from app.main import _resource_for_path, activity_audit_middleware
-from app.services.activity import _audit_ctx
 
 # ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
 
@@ -123,40 +125,71 @@ async def test_auto_log_created_when_no_manual_log():
     assert kw["status"] == "success"
 
 
+@pytest.fixture
+def recorded_activity_rows(monkeypatch):
+    rows = []
+
+    class Session:
+        def __init__(self):
+            self.pending = []
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return None
+
+        def add(self, row):
+            self.pending.append(row)
+
+        async def commit(self):
+            rows.extend(self.pending)
+            self.pending.clear()
+
+    monkeypatch.setattr(_activity_module, "is_db_available", lambda: True)
+    monkeypatch.setattr(_activity_module, "get_session_factory", lambda: Session)
+    return rows
+
+
 @pytest.mark.asyncio
-async def test_auto_log_suppressed_when_manual_log_present():
-    """명시적인 성공 기록이 있을 때 집계 중복 행을 만들지 않는다."""
-    req = _make_request("PATCH", "/api/v1/instances/inst-1", _DEFAULT_TOKEN_INFO)
+@pytest.mark.parametrize(
+    ("explicit_status", "http_status", "expected_statuses"),
+    [
+        ("success", 200, ["success"]),
+        ("failed", 200, ["failed"]),
+        ("failed", 202, ["failed"]),
+        (None, 403, ["failed"]),
+        ("started", 503, ["started", "failed"]),
+    ],
+)
+async def test_authoritative_audit_outcomes_through_http(
+    recorded_activity_rows, explicit_status, http_status, expected_statuses
+):
+    application = FastAPI()
+    application.middleware("http")(activity_audit_middleware)
 
-    async def call_next(r):
-        holder = _audit_ctx.get()
-        if holder is not None:
-            holder["logged"] = True
-            holder["recorded_status"] = "success"
-        return JSONResponse({"ok": True}, status_code=200)
+    @application.post("/api/v1/admin/hypervisors/compute-a/remove")
+    async def remove(request: Request):
+        request.state.token_info = _DEFAULT_TOKEN_INFO.copy()
+        if explicit_status is not None:
+            await _activity_module.record(
+                **_DEFAULT_TOKEN_INFO,
+                resource_type="hypervisor",
+                resource_id="compute-a",
+                action="hypervisor.remove",
+                status=explicit_status,
+            )
+        return JSONResponse({"status": "removal_unverified", "verified": False}, status_code=http_status)
 
-    with patch.object(_main_module, "_record_activity", new=AsyncMock()) as mock_rec:
-        resp = await activity_audit_middleware(req, call_next)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=application), base_url="http://audit.test"
+    ) as client:
+        response = await client.post("/api/v1/admin/hypervisors/compute-a/remove")
 
-    assert resp.status_code == 200
-    mock_rec.assert_not_awaited()  # 중복 방지: 자동 로그 미생성
-
-
-@pytest.mark.asyncio
-async def test_started_event_does_not_hide_terminal_failure():
-    req = _make_request("POST", "/api/v1/instances", _DEFAULT_TOKEN_INFO)
-
-    async def call_next(r):
-        holder = _audit_ctx.get()
-        holder["logged"] = True
-        holder["recorded_status"] = "started"
-        r.state.audit_error = "인스턴스 배치 시도 횟수 초과"
-        return JSONResponse({"detail": "인스턴스 배치 시도 횟수 초과"}, status_code=503)
-
-    with patch.object(_main_module, "_record_activity", new=AsyncMock()) as mock_rec:
-        await activity_audit_middleware(req, call_next)
-    assert mock_rec.call_args.kwargs["status"] == "failed"
-    assert mock_rec.call_args.kwargs["error_message"] == "인스턴스 배치 시도 횟수 초과"
+    assert response.status_code == http_status
+    assert [row.status for row in recorded_activity_rows] == expected_statuses
+    assert all(row.request_id == response.headers["X-Request-Id"] for row in recorded_activity_rows)
+    assert all(row.action == "hypervisor.remove" for row in recorded_activity_rows)
 
 
 @pytest.mark.asyncio

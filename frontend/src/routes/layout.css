@@ -237,6 +237,16 @@
   --motion-ease-standard: ease;
   --motion-ease-out: ease-out;
   --motion-ease-in-out: ease-in-out;
+  --motion-duration-spin: 800ms;
+  --motion-duration-shimmer: 1600ms;
+  --motion-duration-stagger: 40ms;
+  --motion-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --motion-ease-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Highlight swept across an in-flight fill; light on both themes because fills are saturated. */
+  --motion-sheen: rgb(255 255 255 / 32%);
+  /* Band swept across a skeleton block. The sunken placeholder is lighter than raised surfaces in
+     dark mode, so the band is a faint white there and a strong white on the light theme. */
+  --motion-skeleton-highlight: rgb(255 255 255 / 6%);
 }
 
 :root[data-console-sidebar="hidden"] {
@@ -496,6 +506,7 @@ body {
   --shadow-overlay-compact: 0 2px 4px -1px rgb(0 0 0 / 0.05), 0 16px 32px -8px rgb(0 0 0 / 0.12);
   --material-chrome-alpha: 85%;
   --material-overlay-alpha: 90%;
+  --motion-skeleton-highlight: rgb(255 255 255 / 75%);
   /* 포커스 링의 바깥 테두리는 line-2(3.72:1)가 아니라 ink-2 로 올려 6.40:1 을 확보한다.
      링은 표면 위 2px 스페이서를 건너뛰므로 경계선보다 높은 대비가 필요하다. 다크 정의는 건드리지 않는다. */
   --focus-ring: 0 0 0 2px var(--color-surface-base), 0 0 0 4px var(--color-ink-2);
@@ -986,6 +997,129 @@ body {
   }
 }
 
+/* ============================================================
+   Shared motion vocabulary — DESIGN.md › Motion.
+   Entrances fill `backwards`: once they finish nothing stays applied, so a fixed descendant gets its
+   viewport containing block back and a later inline transform is not overridden. Loops come to rest
+   on their base style because the reduced-motion block below runs every animation once for 0.01ms;
+   each looping element's base style is therefore its meaningful static frame.
+   ============================================================ */
+@keyframes motion-enter {
+  from { opacity: 0; transform: translate(var(--motion-enter-x, 0), var(--motion-enter-offset, 0.375rem)); }
+}
+@keyframes motion-fade {
+  from { opacity: 0; }
+}
+@keyframes motion-pop {
+  from { opacity: 0; transform: scale(0.94); }
+}
+@keyframes motion-grow-x {
+  from { transform: scaleX(0); }
+}
+@keyframes motion-grow-y {
+  from { transform: scaleY(0); }
+}
+@keyframes motion-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes motion-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+@keyframes motion-indeterminate {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(340%); }
+}
+@keyframes motion-breathe {
+  0%, 100% { opacity: 0.35; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1); }
+}
+@keyframes motion-ripple {
+  from { opacity: 0.55; transform: scale(1); }
+  to { opacity: 0; transform: scale(2.2); }
+}
+@keyframes motion-travel-x {
+  from { opacity: 0; transform: translateX(0); }
+  15%, 85% { opacity: 1; }
+  to { opacity: 0; transform: translateX(100%); }
+}
+@keyframes motion-travel-y {
+  from { opacity: 0; transform: translateY(0); }
+  15%, 85% { opacity: 1; }
+  to { opacity: 0; transform: translateY(100%); }
+}
+@keyframes motion-rise {
+  from { opacity: 0; transform: translateY(30%); }
+  35%, 65% { opacity: 1; }
+  to { opacity: 0; transform: translateY(-30%); }
+}
+@keyframes motion-sink {
+  from { opacity: 0; transform: translateY(-30%); }
+  35%, 65% { opacity: 1; }
+  to { opacity: 0; transform: translateY(30%); }
+}
+@keyframes motion-bars {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+/* SVG paint, never geometry: draw-in needs pathLength="1"; flow marches one 2+8 dash period. */
+@keyframes motion-draw {
+  from { stroke-dashoffset: 1; }
+}
+@keyframes motion-flow {
+  to { stroke-dashoffset: -10; }
+}
+
+.motion-enter,
+.motion-stagger > * {
+  animation: motion-enter var(--motion-duration-panel) var(--motion-ease-emphasized) backwards;
+  animation-delay: calc(var(--motion-duration-stagger) * var(--motion-index, 0));
+}
+.motion-fade {
+  animation: motion-fade var(--motion-duration-panel) var(--motion-ease-out) backwards;
+  animation-delay: calc(var(--motion-duration-stagger) * var(--motion-index, 0));
+}
+.motion-pop {
+  animation: motion-pop var(--motion-duration-panel) var(--motion-ease-overshoot) backwards;
+  animation-delay: calc(var(--motion-duration-stagger) * var(--motion-index, 0));
+}
+/* Stagger caps at eight steps (MOTION_STAGGER_LIMIT) so a long list never waits more than a beat. */
+.motion-stagger > :nth-child(2) { --motion-index: 1; }
+.motion-stagger > :nth-child(3) { --motion-index: 2; }
+.motion-stagger > :nth-child(4) { --motion-index: 3; }
+.motion-stagger > :nth-child(5) { --motion-index: 4; }
+.motion-stagger > :nth-child(6) { --motion-index: 5; }
+.motion-stagger > :nth-child(7) { --motion-index: 6; }
+.motion-stagger > :nth-child(8) { --motion-index: 7; }
+.motion-stagger > :nth-child(n + 9) { --motion-index: 8; }
+.motion-draw {
+  stroke-dasharray: 1;
+  animation: motion-draw var(--motion-duration-data) var(--motion-ease-emphasized) backwards;
+  animation-delay: calc(var(--motion-duration-stagger) * var(--motion-index, 0));
+}
+.motion-flow {
+  stroke-dasharray: 2 8;
+  animation: motion-flow var(--motion-duration-shimmer) linear infinite;
+}
+.motion-spin {
+  animation: motion-spin var(--motion-duration-spin) linear infinite;
+}
+.motion-skeleton {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background-color: var(--color-surface-sunken);
+}
+.motion-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--motion-skeleton-highlight), transparent);
+  animation: motion-sweep var(--motion-duration-shimmer) var(--motion-ease-in-out) infinite;
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     --motion-duration-fast: 0.01ms;
@@ -993,6 +1127,9 @@ body {
     --motion-duration-panel: 0.01ms;
     --motion-duration-data: 0.01ms;
     --motion-duration-status-pulse: 0.01ms;
+    --motion-duration-spin: 0.01ms;
+    --motion-duration-shimmer: 0.01ms;
+    --motion-duration-stagger: 0ms;
     --default-transition-duration: 0.01ms;
     --default-animation-duration: 0.01ms;
   }

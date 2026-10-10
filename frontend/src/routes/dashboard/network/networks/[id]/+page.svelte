@@ -191,6 +191,7 @@
 	async function saveSubnet(subnetId: string, form: { name: string; gateway: string; dhcp: boolean }): Promise<boolean> {
 		if (!canManageNetwork) return false;
 		editSubnetError = '';
+		savingSubnet = true;
 		try {
 			await api.put(
 				`/api/v1/networks/subnets/${subnetId}`,

@@ -2,6 +2,8 @@
 	import { goto } from '$app/navigation';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
+	import { serviceCapabilities } from '$lib/stores/servicePermissions';
+	import { chatRequestPermission, permissionReason, textOnlyToolPolicy } from '$lib/api/lumenPermissions';
 	import { onChatModelsInvalidated } from '$lib/stores/chatModels';
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -56,6 +58,7 @@
 	import type { Workspace, WorkspacePayload } from '$lib/api/chatWorkspaces';
 	import ChatSidebar from './ChatSidebar.svelte';
 	import ChatWindow from './ChatWindow.svelte';
+	import { freshMessageEntrance, type MessageEntrance } from './messageMotion';
 	import ChatInput, { type ComposerCommand } from './ChatInput.svelte';
 	import ModelCapabilityBadges from './ModelCapabilityBadges.svelte';
 	import AgentPicker from './AgentPicker.svelte';
@@ -98,6 +101,7 @@
 		toolItems?: ToolActivityItem[];
 		reasoning?: string | null;
 		activityItems?: RunActivityItem[];
+		sessionEntrance?: MessageEntrance;
 	};
 
 	type AgentActivity = {
@@ -126,6 +130,8 @@
 	let { projectRoute = undefined, initialWorkspaceId = null }: Props = $props();
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
+	const canChat = $derived($serviceCapabilities('lumen-chat_user'));
+	const canTools = $derived($serviceCapabilities('lumen-tools_user'));
 
 	let conversations = $state<Conversation[]>([]);
 	let newlyCreatedConversationId = $state<string | null>(null);
@@ -174,6 +180,7 @@
 		features.tool_policy.enabled_tool_ids =
 			selectedToolIds === null ? null : selectedToolIds.map(String);
 		features.tool_policy.enabled_mcp_ids = selectedMcpIds;
+		if (!canTools) textOnlyToolPolicy(features);
 		return features;
 	}
 	let selectionGeneration = 0;
@@ -564,7 +571,7 @@
 	function tempId(): string {
 		return `tmp-${tmpSeq++}`;
 	}
-	function newAssistantDraft(model: string | null): DisplayMessage {
+	function newAssistantDraft(model: string | null, fresh = true): DisplayMessage {
 		return {
 			id: tempId(),
 			conversation_id: activeConvId ?? '',
@@ -574,6 +581,7 @@
 			model_name: model,
 			created_at: null,
 			streaming: true,
+			sessionEntrance: fresh ? freshMessageEntrance() : undefined,
 			toolItems: [],
 			reasoning: ''
 		};
@@ -1108,6 +1116,7 @@
 
 	// --- 프로젝트(workspace) CRUD (프로젝트 뷰에서 호출) ---
 	async function createWorkspace(payload: WorkspacePayload): Promise<boolean> {
+		if (!canChat) return false;
 		if (!token || !projectId) return false;
 		try {
 			await api.post('/api/v1/chat/workspaces', payload, token, projectId);
@@ -1120,6 +1129,7 @@
 		}
 	}
 	async function updateWorkspace(id: number, payload: WorkspacePayload): Promise<boolean> {
+		if (!canChat) return false;
 		if (!token || !projectId) return false;
 		try {
 			await api.patch(`/api/v1/chat/workspaces/${id}`, payload, token, projectId);
@@ -1136,6 +1146,7 @@
 		if (!(await confirmDialog(t('panel.dialog.deleteProject', { name: w.name }))))
 			return false;
 		try {
+			if (!$serviceCapabilities('lumen-history_editor')) return false;
 			await api.delete(`/api/v1/chat/workspaces/${w.id}`, token, projectId);
 			await loadWorkspaces();
 			await loadConversations();
@@ -1154,6 +1165,7 @@
 
 	// 대화를 프로젝트에 배정/해제하고 로컬 목록을 낙관적으로 갱신(사이드바 재그룹핑).
 	async function assignWorkspace(conv: Conversation, workspaceId: number | null) {
+		if (!canChat) return;
 		if (!token || !projectId || conv.workspace_id === workspaceId) return;
 		const prev = conv.workspace_id;
 		localMutationEpoch += 1;
@@ -1178,6 +1190,7 @@
 	}
 
 	function bindAgent(agent: Agent) {
+		if (!canChat || !canTools) return;
 		activeAgent = agent;
 		// 에이전트가 모델을 소유 → 상단 셀렉터에도 반영(모델이 목록에 있으면)
 		if (agent.model_name && models.some((m) => m.model_name === agent.model_name)) {
@@ -1459,6 +1472,7 @@
 	});
 
 	async function startManualCompaction() {
+		if (!canChat || (activeAgent && !canTools)) return;
 		if (!token || !projectId || streaming || manualCompacting || destroyed) return;
 		const hasScope = Boolean(activeConvId || (tempMode && tempThreadId));
 		if (!hasScope) return;
@@ -1576,6 +1590,7 @@
 	}
 
 	async function ensureConversation(): Promise<string | null> {
+		if (!canChat) return null;
 		if (activeConvId) return activeConvId;
 		if (!token || !projectId) return null;
 		const wsId = pendingWorkspaceId;
@@ -1880,6 +1895,10 @@
 	): Promise<boolean> {
 		const generation = streamGeneration;
 		try {
+			const denied = chatRequestPermission(body, $serviceCapabilities);
+			if (denied) throw new Error(permissionReason(denied));
+			const modelId = (body as { model_id?: string } | null)?.model_id;
+			if (!canTools && models.find((model) => model.model_name === modelId)?.capabilities?.web_search_required) throw new Error(permissionReason('lumen-tools_user'));
 			const descriptor = await createChatRun(path, body, { token, projectId, idempotencyKey });
 			if (destroyed || generation !== streamGeneration) return false;
 			currentRun = descriptor;
@@ -1936,7 +1955,7 @@
 				return;
 			}
 
-			const draft = newAssistantDraft(activeConv?.model_name ?? selectedModel);
+			const draft = newAssistantDraft(activeConv?.model_name ?? selectedModel, false);
 			invalidateContextPreview();
 			streaming = true;
 			currentRun = descriptor;
@@ -1963,6 +1982,7 @@
 	}
 
 	async function resolveToolApproval(approval: PendingToolApproval, decision: 'approve' | 'deny') {
+		if (!canChat || !canTools) return;
 		if (!token || !projectId || resolvingToolApprovalId) return;
 		resolvingToolApprovalId = approval.callId;
 		try {
@@ -1989,6 +2009,11 @@
 
 	// --- 전송 ---
 	async function send() {
+		if (!canChat) return;
+		if (activeAgent && !canTools) {
+			error = permissionReason('lumen-tools_user');
+			return;
+		}
 		const text = input.trim();
 		if (!text || streaming || !token || !projectId) return;
 		if (!selectedModel) {
@@ -2021,6 +2046,7 @@
 			endStream();
 			const failedUserMsg: DisplayMessage = {
 				id: tempId(),
+				sessionEntrance: freshMessageEntrance(),
 				conversation_id: '',
 				role: 'user',
 				parent_id: null,
@@ -2053,6 +2079,7 @@
 
 		const userMsg: DisplayMessage = {
 			id: tempId(),
+			sessionEntrance: freshMessageEntrance(),
 			conversation_id: convId,
 			role: 'user',
 			parent_id: activeLeafId,
@@ -2112,6 +2139,7 @@
 	) {
 		const userMsg: DisplayMessage = {
 			id: tempId(),
+			sessionEntrance: freshMessageEntrance(),
 			conversation_id: '',
 			role: 'user',
 			parent_id: null,
@@ -2148,6 +2176,7 @@
 
 	// --- 재생성 ---
 	async function regenerate(messageId: string, modelName: string) {
+		if (!canChat) return;
 		if (streaming || tempMode || !activeConvId || !token || !projectId) return;
 		const conversationId = activeConvId;
 		error = null;
@@ -2184,6 +2213,7 @@
 	}
 
 	async function retryFailedTurn(messageId: string) {
+		if (!canChat) return;
 		if (streaming || tempMode || !token || !projectId) return;
 		if (failedSubmission?.message.id === messageId) {
 			const submission = failedSubmission;
@@ -2274,6 +2304,7 @@
 
 	// --- 버전 전환 ---
 	async function switchVersion(messageId: string, direction: -1 | 1) {
+		if (!canChat) return;
 		if (streaming || historyLoading || tempMode || !activeConvId || !token || !projectId) return;
 		const message = allMessages.find((candidate) => candidate.id === messageId);
 		const siblingId = direction === -1 ? message?.branch?.previous_id : message?.branch?.next_id;
@@ -2298,6 +2329,7 @@
 
 	// --- 분기 ---
 	async function fork(messageId: string) {
+		if (!canChat) return;
 		if (streaming || tempMode || !activeConvId || !token || !projectId) return;
 		treeLoading = true;
 		try {
@@ -2319,10 +2351,12 @@
 
 	// --- 삭제 ---
 	async function deleteConversation(conv: Conversation) {
+		if (!$serviceCapabilities('lumen-history_editor')) return;
 		if (streaming || !token || !projectId) return;
 		const label = conv.title?.trim();
 		const message = label ? t('panel.dialog.deleteNamedConversation', { name: label }) : t('panel.dialog.deleteConversation');
 		if (!(await confirmDialog(message))) return;
+		if (!$serviceCapabilities('lumen-history_editor')) return;
 		try {
 			await api.delete(`/api/v1/chat/conversations/${conv.id}`, token, projectId);
 			localMutationEpoch += 1;
@@ -2454,7 +2488,7 @@
 			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5" /><path d="M10 4v16" /></svg>
 		</button>
 		<span class="rail-divider" aria-hidden="true"></span>
-		<button type="button" class="rail-action" onclick={newConversation} title={t('panel.navigation.newChat')} aria-label={t('panel.navigation.newChat')}>
+		<button type="button" class="rail-action" disabled={!canChat} onclick={newConversation} title={t('panel.navigation.newChat')} aria-label={t('panel.navigation.newChat')}>
 			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" stroke-linecap="round" stroke-linejoin="round" /></svg>
 		</button>
 	</nav>
@@ -2502,7 +2536,7 @@
 					<AgentPicker
 						{agents}
 						{activeAgent}
-						disabled={streaming}
+						disabled={streaming || !canTools || !canChat}
 						onBind={bindAgent}
 						onUnbind={unbindAgent}
 						onManage={() => (agentManagerOpen = true)}
@@ -2515,9 +2549,9 @@
 			</div>
 			<div class="head-right">
 					{@render historyToggle()}
-					<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/images')} title={t('panel.studio.openImages')}>{t('panel.studio.images')}</button>
-					<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/audio')} title={t('panel.studio.openAudio')}>{t('panel.studio.audio')}</button>
-					<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/realtime')} title={t('panel.studio.openRealtime')}>{t('panel.studio.realtime')}</button>
+					{#if $serviceCapabilities('lumen-images_user')}<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/images')} title={t('panel.studio.openImages')}>{t('panel.studio.images')}</button>{/if}
+					{#if $serviceCapabilities('lumen-audio_user')}<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/audio')} title={t('panel.studio.openAudio')}>{t('panel.studio.audio')}</button>
+					<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/realtime')} title={t('panel.studio.openRealtime')}>{t('panel.studio.realtime')}</button>{/if}
 					<button type="button" class="sources-btn" onclick={() => (sourcesOpen = !sourcesOpen)} aria-haspopup="dialog" aria-expanded={sourcesOpen} aria-controls="chat-sources-panel" title={t('panel.sources.show')}>
 						<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" stroke-linecap="round" stroke-linejoin="round" /></svg>
 						{t('panel.sources.count', { count: countFormatter.format(allCitations.length) })}
@@ -2527,7 +2561,7 @@
 						type="button"
 						class="temp-btn"
 						class:active={tempMode}
-						disabled={tempToggleLocked}
+						disabled={tempToggleLocked || !canChat}
 						onclick={toggleTempChat}
 						title={tempToggleLocked ? t('panel.temporary.locked') : t('panel.temporary.unsaved')}
 						aria-pressed={tempMode}
@@ -2546,6 +2580,7 @@
 
 		<div class="chat-workspace" class:empty-workspace={isEmpty} class:temp-mode={tempMode}>
 		<ChatWindow
+			actionsDisabled={!canChat}
 			activePath={displayPath}
 			{metricsById}
 			{models}
@@ -2578,7 +2613,7 @@
 		{#each pendingToolApprovals as approval (approval.runId + approval.callId)}
 			<ChatToolApproval
 				{approval}
-				busy={resolvingToolApprovalId === approval.callId}
+				busy={resolvingToolApprovalId === approval.callId || !canTools || !canChat}
 				onDecision={(callId, decision) => void resolveToolApproval(approval, decision)}
 			/>
 		{/each}
@@ -2593,12 +2628,13 @@
 					bind:selectedToolIds
 					bind:selectedMcpIds
 					bind:selectedSkillIds
-					{availableTools}
-					{availableMcp}
-					{availableSkills}
-					availableAgents={agents}
+					availableTools={canTools ? availableTools : []}
+					availableMcp={canTools ? availableMcp : []}
+					availableSkills={canTools ? availableSkills : []}
+					availableAgents={canTools ? agents : []}
 					onSelectAgent={(agentId) => {
-						activeAgent = agents.find((agent) => agent.id === agentId) ?? activeAgent;
+						const agent = agents.find((agent) => agent.id === agentId);
+						if (agent) bindAgent(agent);
 					}}
 					{token}
 					{projectId}
@@ -2614,7 +2650,8 @@
 					contextBeforeTokens={contextBeforeTokens}
 					contextAfterTokens={contextAfterTokens}
 					contextError={contextError}
-					sendDisabled={manualCompacting || contextPhase === 'compacting'}
+					disabled={!canChat}
+					sendDisabled={!canChat || manualCompacting || contextPhase === 'compacting'}
 					onSend={send}
 					onStop={stop}
 				>
@@ -2623,7 +2660,7 @@
 							<ConversationWorkspacePicker
 								{workspaces}
 								currentWorkspaceId={currentWorkspaceId}
-								disabled={streaming}
+								disabled={streaming || !canChat}
 								onChange={changeConversationWorkspace}
 								onCreateProject={createProject}
 							/>

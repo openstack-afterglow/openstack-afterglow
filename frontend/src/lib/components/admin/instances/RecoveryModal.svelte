@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import type { RecoveryAnalysis, RecoveryResult } from '$lib/types/adminInstance';
@@ -92,11 +93,7 @@
 			<!-- 로딩 -->
 			{#if phase === 'loading'}
 				<div class="flex items-center gap-3 text-ink-2 text-sm py-8 justify-center">
-					<svg class="animate-spin w-5 h-5 text-warm-text" fill="none" viewBox="0 0 24 24">
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-					</svg>
-					{t('instances.recovery.analyzing')}
+					<ActivityIndicator size="sm" label={t('instances.recovery.analyzing')} />
 				</div>
 
 			<!-- 오류 -->
@@ -240,11 +237,7 @@
 				</button>
 			{:else if phase === 'executing'}
 				<div class="flex items-center gap-2 text-ink-2 text-sm">
-					<svg class="animate-spin w-4 h-4 text-warm-text" fill="none" viewBox="0 0 24 24">
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-					</svg>
-					{t('instances.recovery.executing')}
+					<ActivityIndicator size="sm" label={t('instances.recovery.executing')} />
 				</div>
 				<div></div>
 			{:else}

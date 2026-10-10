@@ -3,6 +3,10 @@ import { EXT_COLORS, SHR_COLORS, INT_COLORS, LANE_W, LANE_GAP, LANE_PAD, SIDEBAR
 
 export interface ConnectionSpec {
 	key: string; netId: string; color: string; opacity: number; width: number;
+	/** 사이드바 카드 순서(진입 cascade 단계의 기준) */
+	order: number;
+	/** 이 연결에서 0 이 아닌 트래픽이 실측됐는지. 계측 없음·0 bps 는 false 다. */
+	flowing: boolean;
 }
 
 export interface LBCurve {
@@ -224,8 +228,18 @@ export function createTopologyDerivedController(opts: TopologyDerivedControllerO
 		return { rx, tx };
 	});
 
+	/** 사이드바에 그려지는 순서(라우터 → 로드밸런서 → 인스턴스). 카드와 연결선이 같은 단계로 함께 들어온다. */
+	const sidebarOrder = $derived.by(() => {
+		const m = new Map<string, number>();
+		for (const r of routerRows) m.set(r.id, m.size);
+		for (const { lb } of filteredLbItems) m.set(lb.id, m.size);
+		for (const r of instanceRows) m.set(r.id, m.size);
+		return m;
+	});
+
 	const connections = $derived.by((): ConnectionSpec[] => {
 		const result: ConnectionSpec[] = [];
+		const t = opts.traffic();
 		for (const row of filteredRows) {
 			const allNets = [
 				...row.connectedNetIds,
@@ -244,13 +258,20 @@ export function createTopologyDerivedController(opts: TopologyDerivedControllerO
 					color,
 					opacity: isFloating ? ei.opacity * 0.6 : ei.opacity,
 					width: isFloating ? 1.5 : ei.width,
+					order: sidebarOrder.get(row.id) ?? 0,
+					flowing: !isFloating && bpsPair !== undefined && bpsPair.rx_bps + bpsPair.tx_bps > 0,
 				});
 			}
 		}
 		for (const { lb, vipNetId } of filteredLbItems) {
 			if (vipNetId) {
 				const color = netColors.get(vipNetId) ?? '#06b6d4';
-				result.push({ key: `lb|${lb.id}|${vipNetId}`, netId: vipNetId, color, opacity: 0.75, width: 2 });
+				const lbRate = t?.load_balancers?.[lb.id];
+				result.push({
+					key: `lb|${lb.id}|${vipNetId}`, netId: vipNetId, color, opacity: 0.75, width: 2,
+					order: sidebarOrder.get(lb.id) ?? 0,
+					flowing: lbRate !== undefined && lbRate.rx_bps + lbRate.tx_bps > 0,
+				});
 			}
 		}
 		return result;
@@ -303,6 +324,7 @@ export function createTopologyDerivedController(opts: TopologyDerivedControllerO
 		get netColors() { return netColors; },
 		get filteredRows() { return filteredRows; },
 		get filteredLbItems() { return filteredLbItems; },
+		get sidebarOrder() { return sidebarOrder; },
 		get routerRows() { return routerRows; },
 		get instanceRows() { return instanceRows; },
 		get instNetBps() { return instNetBps; },

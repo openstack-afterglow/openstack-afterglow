@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { createAdminGroupsController } from '$lib/stores/adminGroupsController.svelte';
@@ -73,6 +74,7 @@
 		<Button variant="ghost" size="sm" disabled={!hasFilters} onclick={() => { search = ''; filterDomain = ''; }}>{t('groupPage.reset')}</Button>
 	</ResourceToolbar>
 	<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-2 mb-3">
+		{#if ctrl.loading}<ActivityIndicator size="xs" />{/if}
 		<span aria-live="polite">{ctrl.loading ? t('groupPage.loading') : ctrl.error ? t('groupPage.resultsUnavailable') : t('groupPage.results', { shown: filteredGroups.length.toLocaleString(intlLocale()), total: ctrl.groups.length.toLocaleString(intlLocale()) })}</span>
 		<span>{t('groupPage.sortNotice')}</span>
 	</div>

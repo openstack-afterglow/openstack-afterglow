@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t as tr } from '$lib/i18n/ns/admin-compute';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -43,6 +44,7 @@
 	let newSpecKey = $state('');
 	let newSpecValue = $state('');
 	let specSaving = $state(false);
+	let deletingSpecKey = $state<string | null>(null);
 	let specError = $state('');
 	let editingSpecKey = $state<string | null>(null);
 	let editingSpecValue = $state('');
@@ -165,6 +167,7 @@
 	}
 
 	async function deleteExtraSpec(key: string) {
+		deletingSpecKey = key;
 		specError = '';
 		try {
 			await api.delete(
@@ -178,6 +181,8 @@
 			onChanged();
 		} catch (e) {
 			specError = e instanceof ApiError ? e.message : tr('flavors.specs.deleteFailed');
+		} finally {
+			deletingSpecKey = null;
 		}
 	}
 </script>
@@ -205,7 +210,7 @@
 								if (e.key === 'Escape') cancelEditSpec();
 							}}
 						/>
-						<button onclick={saveEditSpec} disabled={specSaving} class="text-green-400 hover:text-green-300 text-xs shrink-0">{tr('flavors.specs.save')}</button>
+						<button onclick={saveEditSpec} disabled={specSaving} class="text-state-success-text hover:text-state-success-text/90 text-xs shrink-0">{#if specSaving}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('flavors.specs.saving')}</span></span>{:else}{tr('flavors.specs.save')}{/if}</button>
 						<button onclick={cancelEditSpec} class="text-ink-2 hover:text-ink-2 text-xs shrink-0">{tr('flavors.cancel')}</button>
 					</div>
 				{:else}
@@ -218,7 +223,11 @@
 							<span class="text-ink-2 mx-2">=</span>
 							<span class="text-xs text-ink-2 font-mono break-all">{v}</span>
 						</button>
-						<button onclick={() => deleteExtraSpec(k)} class="ml-2 text-red-400 hover:text-red-300 text-xs shrink-0">{tr('flavors.delete.action')}</button>
+						<button onclick={() => deleteExtraSpec(k)} disabled={deletingSpecKey === k} class="ml-2 text-state-danger-text hover:text-state-danger-text/90 text-xs shrink-0">
+							{#if deletingSpecKey === k}
+								<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('flavors.delete.pending')}</span></span>
+							{:else}{tr('flavors.delete.action')}{/if}
+						</button>
 					</div>
 				{/if}
 			</div>
@@ -310,6 +319,6 @@
 		disabled={specSaving || !newSpecKey.trim() || (currentTemplate?.valueType === 'gpu_alias' && gpuAliasOptions.length > 0 && !gpuAlias)}
 		class="w-full px-3 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm rounded-lg disabled:opacity-30"
 	>
-		{specSaving ? tr('flavors.specs.saving') : tr('flavors.specs.addEdit')}
+		{#if specSaving}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('flavors.specs.saving')}</span></span>{:else}{tr('flavors.specs.addEdit')}{/if}
 	</button>
 </div>

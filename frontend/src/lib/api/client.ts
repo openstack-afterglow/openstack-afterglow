@@ -1,8 +1,9 @@
 import { browser } from '$app/environment';
 import { get } from 'svelte/store';
 import { siteConfig } from '$lib/config/site';
-import { auth, authRecovery, logoutInProgress } from '$lib/stores/auth';
+import { auth, authRecovery, logoutInProgress, type AuthState } from '$lib/stores/auth';
 import { ApiError } from '$lib/api/errors';
+import { isDocsPath } from '$lib/docs/paths';
 import { t } from '$lib/i18n/ns/shared';
 import {
 	getActiveMockupProfile,
@@ -121,9 +122,9 @@ async function handleUnauthorized(): Promise<void> {
 		]);
 		if (get(logoutInProgress) || get(auth).token !== rejectedToken) return;
 		clearAuth();
-		if (!AUTH_PUBLIC_PATHS.has(window.location.pathname)) await goto('/login', { replaceState: true });
+		if (!AUTH_PUBLIC_PATHS.has(window.location.pathname) && !isDocsPath(window.location.pathname)) await goto('/login', { replaceState: true });
 	} catch {
-		if (!get(logoutInProgress)) window.location.replace('/login');
+		if (!get(logoutInProgress) && !AUTH_PUBLIC_PATHS.has(window.location.pathname) && !isDocsPath(window.location.pathname)) window.location.replace('/login');
 	} finally {
 		setTimeout(() => { _redirectingTo401 = false; }, 1000);
 	}
@@ -134,7 +135,7 @@ async function handleUnauthorized(): Promise<void> {
  * 동시 호출은 하나의 Promise로 합산(coalescing).
  */
 /** localStorage에 영속화된 인증 상태를 직접 읽는다 (탭 간 race 대비 최신값 확인용). */
-function _readPersistedAuth(): { token?: string; refreshToken?: string; accessExpiresAt?: number } | null {
+function _readPersistedAuth(): Partial<AuthState> | null {
 	try {
 		if (typeof localStorage === 'undefined') return null;
 		const raw = localStorage.getItem('afterglow_auth');
@@ -195,6 +196,9 @@ async function tryRefresh({ allowDuringRevocation = false }: { allowDuringRevoca
 				token: persisted.token,
 				refreshToken: persisted.refreshToken ?? state.refreshToken,
 				accessExpiresAt: persisted.accessExpiresAt ?? null,
+				roles: persisted.roles ?? state.roles,
+				isSystemAdmin: persisted.isSystemAdmin ?? state.isSystemAdmin,
+				canWrite: persisted.canWrite,
 			});
 			_refreshSettledFailure = null;
 			return persisted.token;
@@ -250,6 +254,9 @@ async function tryRefresh({ allowDuringRevocation = false }: { allowDuringRevoca
 					token: winner.token,
 					refreshToken: winner.refreshToken ?? null,
 					accessExpiresAt: winner.accessExpiresAt ?? null,
+					roles: winner.roles ?? state.roles,
+					isSystemAdmin: winner.isSystemAdmin ?? state.isSystemAdmin,
+					canWrite: winner.canWrite,
 				});
 				_refreshSettledFailure = null;
 				return winner.token;
@@ -299,6 +306,9 @@ async function tryRefresh({ allowDuringRevocation = false }: { allowDuringRevoca
 			accessExpiresAt: data.expires_at
 				? Math.floor(new Date(data.expires_at).getTime() / 1000)
 				: null,
+			roles: data.roles ?? state.roles,
+			isSystemAdmin: data.is_system_admin ?? state.isSystemAdmin,
+			canWrite: data.can_write,
 		});
 		_refreshSettledFailure = null;
 		return refreshedToken;
@@ -474,16 +484,18 @@ async function request<T>(
 
 	if (!res.ok) {
 		let detail = res.statusText;
+		let code: string | undefined;
 		try {
 			const body = await res.json();
 			detail = formatErrorDetail(body, res.statusText);
+			if (typeof body?.code === 'string') code = body.code;
 		} catch {
 			detail = await res.text().catch(() => res.statusText);
 		}
 		if (res.status === 403 && path.includes('/admin')) {
 			void handleAdminForbidden();
 		}
-		throw new ApiError(res.status, detail);
+		throw new ApiError(res.status, detail, code);
 	}
 
 	if (res.status === 204) return undefined as T;

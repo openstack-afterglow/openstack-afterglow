@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-network';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { AdminNetwork } from '$lib/types/networks';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 
@@ -65,8 +66,8 @@
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('adminNetworkEditModal.cancel')}</button>
-				<button onclick={save} disabled={saving} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">
-					{saving ? t('adminNetworkEditModal.saving') : t('adminNetworkEditModal.save')}
+				<button aria-busy={saving} onclick={save} disabled={saving} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">
+					{#if saving}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('adminNetworkEditModal.saving')}</span>{:else}{t('adminNetworkEditModal.save')}{/if}
 				</button>
 			</div>
 		</div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -75,7 +76,7 @@
 			{/if}
 			<div class="flex justify-end gap-3">
 				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('volumeDelete.cancel')}</button>
-				<button onclick={confirmDelete} disabled={deleting} class="px-4 py-2 bg-red-600 hover:bg-red-500 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{deleting ? t('volumeDelete.deleting') : t('volumeDelete.delete')}</button>
+				<button onclick={confirmDelete} disabled={deleting} class="px-4 py-2 bg-state-danger hover:bg-state-danger/90 text-surface-canvas text-sm font-medium rounded-lg disabled:opacity-30">{#if deleting}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('volumeDelete.deleting')}</span></span>{:else}{t('volumeDelete.delete')}{/if}</button>
 			</div>
 		</div>
 	</div>

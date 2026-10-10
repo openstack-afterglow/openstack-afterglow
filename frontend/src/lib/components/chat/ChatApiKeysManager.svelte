@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
+	import { serviceCapabilities } from '$lib/stores/servicePermissions';
+	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -14,6 +16,7 @@
 	import type { ChatUsage } from '$lib/api/chatTree';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/chat-settings';
+	import { t as commonT } from '$lib/i18n/ns/common';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
@@ -21,6 +24,17 @@
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
+	const scopeOptions = [
+		['models:read', 'lumen-inventory_reader'],
+		['compat:completions:write', 'lumen-chat_user'],
+		['compat:images:write', 'lumen-images_user'],
+		['compat:audio:write', 'lumen-audio_user'],
+		['compat:realtime:write', 'lumen-audio_user'],
+		['native:tools:execute', 'lumen-tools_user']
+	] as const;
+	let selectedScopes = $state<string[]>(['models:read', 'compat:completions:write']);
+	const allowedScopes = $derived(scopeOptions.filter(([, leaf]) => $serviceCapabilities(leaf)).map(([scope]) => scope));
+	const requestedScopes = $derived(selectedScopes.filter((scope) => allowedScopes.some((allowed) => allowed === scope)));
 
 	let keys = $state<ApiKey[]>([]);
 	let loading = $state(true);
@@ -185,10 +199,13 @@ claude` : '');
 		`$env:LUMEN_CODEX_BASE_URL=${powershellQuote(sdkBases.codex)}; $env:LUMEN_ANTHROPIC_BASE_URL=${powershellQuote(sdkBases.anthropic)}; irm ${powershellQuote(`${installOrigin}/install/lumen.ps1`)} | iex` : '');
 
 	async function load() {
-		if (!token) return;
+		if (!token || !$serviceCapabilities('lumen-keys_editor')) { keys = []; loading = false; return; }
+		const requestToken = token;
+		const requestProject = projectId;
 		loading = true;
 		try {
-			keys = await api.get<ApiKey[]>('/api/v1/chat/api-keys', token, projectId);
+			const result = await api.get<ApiKey[]>('/api/v1/chat/api-keys', requestToken, requestProject);
+			if (requestToken === token && requestProject === projectId && $serviceCapabilities('lumen-keys_editor')) keys = result;
 		} catch {
 			toast.error(t('apiKeys.toast.loadFailed'));
 		} finally {
@@ -197,14 +214,18 @@ claude` : '');
 	}
 
 	async function create() {
+		if (!$serviceCapabilities('lumen-keys_editor') || requestedScopes.length === 0) return;
+		const requestToken = token;
+		const requestProject = projectId;
 		creating = true;
 		try {
 			const res = await api.post<{ key: string; key_prefix: string }>(
 				'/api/v1/chat/api-keys',
-				{ name: name.trim() },
+				{ name: name.trim(), scopes: requestedScopes },
 				token,
 				projectId
 			);
+			if (requestToken !== token || requestProject !== projectId || !$serviceCapabilities('lumen-keys_editor')) return;
 			issued = { key: res.key, key_prefix: res.key_prefix };
 			name = '';
 			await load();
@@ -216,7 +237,10 @@ claude` : '');
 	}
 
 	async function revoke(id: number) {
+		const requestToken = token;
+		const requestProject = projectId;
 		if (!(await confirmDialog(t('apiKeys.revokeConfirm')))) return;
+		if (!$serviceCapabilities('lumen-resources_admin') || requestToken !== token || requestProject !== projectId) return;
 		try {
 			await api.delete(`/api/v1/chat/api-keys/${id}`, token, projectId);
 			await load();
@@ -278,6 +302,7 @@ claude` : '');
 	}
 
 	async function saveName(key: ApiKey) {
+		if (!$serviceCapabilities('lumen-keys_editor')) return;
 		const nextName = nameDraft.trim();
 		nameError = nextName ? '' : t('apiKeys.validation.nameRequired');
 		if (!token || nameError) return;
@@ -295,6 +320,7 @@ claude` : '');
 	}
 
 	async function saveLimits(key: ApiKey) {
+		if (!$serviceCapabilities('lumen-keys_editor')) return;
 		const monthlyCeiling = tightestCeiling([
 			[key.system_monthly_credit_limit, t('apiKeys.ceiling.userQuota')],
 			[key.admin_monthly_credit_limit, t('apiKeys.ceiling.adminLimit')]
@@ -342,7 +368,11 @@ claude` : '');
 	}
 
 	$effect(() => {
-		if (token) void load();
+		void [token, projectId, $auth.userId];
+		keys = [];
+		issued = null;
+		stopEditing();
+		void load();
 	});
 
 	$effect(() => {
@@ -358,6 +388,8 @@ claude` : '');
 </script>
 
 <section>
+	<LumenPermissionNotice leaf="lumen-keys_editor" />
+	<LumenPermissionNotice leaf="lumen-resources_admin" />
 	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('apiKeys.title')}</h3>
 	<p class="mb-2 text-xs text-[var(--color-ink-3)]">
 		{t('apiKeys.description')}
@@ -369,14 +401,22 @@ claude` : '');
 	{/if}
 
 	<div class="{cardCls} mb-4 p-5">
+		<fieldset class="mb-3 flex flex-wrap gap-3">
+			<legend class="mb-2 text-xs">{t('apiKeys.scopes')}</legend>
+			{#each scopeOptions as [scope, leaf]}
+				<label class="text-xs"><input type="checkbox" bind:group={selectedScopes} value={scope} disabled={!$serviceCapabilities(leaf) || !$serviceCapabilities('lumen-keys_editor')} /> {scope}</label>
+			{/each}
+		</fieldset>
 		<div class="flex flex-col gap-3 sm:flex-row">
 			<input class={inputCls} placeholder={t('apiKeys.namePlaceholder')} bind:value={name} />
-			<Button onclick={create} disabled={creating}>{creating ? t('apiKeys.creating') : t('apiKeys.create')}</Button>
+			<Button onclick={create} disabled={creating || !$serviceCapabilities('lumen-keys_editor') || requestedScopes.length === 0}>{creating ? t('apiKeys.creating') : t('apiKeys.create')}</Button>
 		</div>
 	</div>
 
 	{#if loading}
-		<div class="{cardCls} h-16 animate-pulse"></div>
+		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={commonT('state.loadingNamed', { name: t('apiKeys.title') })}>
+			<span class="sr-only">{commonT('state.loadingNamed', { name: t('apiKeys.title') })}</span>
+		</div>
 	{:else if keys.length === 0}
 		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('apiKeys.empty')}</p>
 	{:else}
@@ -398,9 +438,9 @@ claude` : '');
 						</div>
 						{#if k.is_active}
 							<div class="flex shrink-0 flex-wrap gap-1">
-								<Button variant="ghost" size="sm" onclick={() => editName(k)}>{t('apiKeys.rename')}</Button>
-								<Button variant="ghost" size="sm" onclick={() => editLimits(k)}>{t('apiKeys.setLimits')}</Button>
-								<Button variant="danger-outline" size="sm" onclick={() => revoke(k.id)}>{t('apiKeys.revoke')}</Button>
+								<Button variant="ghost" size="sm" disabled={!$serviceCapabilities('lumen-keys_editor')} onclick={() => editName(k)}>{t('apiKeys.rename')}</Button>
+								<Button variant="ghost" size="sm" disabled={!$serviceCapabilities('lumen-keys_editor')} onclick={() => editLimits(k)}>{t('apiKeys.setLimits')}</Button>
+								<Button variant="danger-outline" size="sm" disabled={!$serviceCapabilities('lumen-resources_admin')} onclick={() => revoke(k.id)}>{t('apiKeys.revoke')}</Button>
 							</div>
 						{/if}
 					</div>
@@ -416,7 +456,7 @@ claude` : '');
 							<div class="flex flex-col gap-2 sm:flex-row">
 								<TextInput ariaLabel={t('apiKeys.nameLabel')} maxlength={100} bind:value={nameDraft} />
 								<div class="flex justify-end gap-2">
-									<Button variant="accent" size="sm" type="submit" disabled={savingEdit}>{t('apiKeys.save')}</Button>
+									<Button variant="accent" size="sm" type="submit" disabled={savingEdit || !$serviceCapabilities('lumen-keys_editor')}>{t('apiKeys.save')}</Button>
 									<Button variant="ghost" size="sm" type="button" onclick={stopEditing}>{t('apiKeys.cancel')}</Button>
 								</div>
 							</div>
@@ -457,7 +497,7 @@ claude` : '');
 								</Field>
 							</div>
 							<div class="mt-3 flex justify-end gap-2">
-								<Button variant="accent" size="sm" type="submit" disabled={savingEdit}>{t('apiKeys.save')}</Button>
+								<Button variant="accent" size="sm" type="submit" disabled={savingEdit || !$serviceCapabilities('lumen-keys_editor')}>{t('apiKeys.save')}</Button>
 								<Button variant="ghost" size="sm" type="button" onclick={stopEditing}>{t('apiKeys.cancel')}</Button>
 							</div>
 						</form>

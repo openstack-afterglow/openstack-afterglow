@@ -4,6 +4,7 @@
 	import { apiMut } from '$lib/api/mutations';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/volume';
+	import { ActivityIndicator, Alert, Button, ProgressTrack } from '$lib/components/ui';
 
 	let {
 		open = $bindable(false),
@@ -47,13 +48,13 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		use:dialogFocus={{ enabled: true, onEscape: () => close() }}
-		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
+		class="motion-fade fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={close}
 		role="dialog" aria-modal="true" tabindex="-1"
 	>
 		<div
 			data-tour="volume-create-form"
-			class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
+			class="motion-pop bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
@@ -71,16 +72,17 @@
 				</div>
 			</div>
 			{#if createError}
-				<div class="mt-4 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{createError}</div>
+				<Alert tone="danger" class="mt-4">{createError}</Alert>
 			{/if}
+			{#if creating}<ProgressTrack value={null} active label={t('createModal.mutationLabel')} class="mt-4" />{/if}
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={close} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('createModal.cancel')}</button>
-				<button
-					data-tour="volume-create-submit"
+				<Button
+					dataTour="volume-create-submit"
 					onclick={createVolume}
 					disabled={creating || !form.name.trim() || form.size_gb < 1}
-					class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
-				>{creating ? t('createModal.creating') : t('createModal.create')}</button>
+					ariaBusy={creating}
+				>{#if creating}<ActivityIndicator size="xs" tone="ink" />{t('createModal.creating')}{:else}{t('createModal.create')}{/if}</Button>
 			</div>
 		</div>
 	</div>

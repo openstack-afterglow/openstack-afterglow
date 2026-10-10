@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { toast } from '$lib/stores/toast';
 	import { t } from '$lib/i18n/ns/common';
+	import { enter, fadeMotion, reflow } from '$lib/utils/motion';
 </script>
 
 {#if $toast.length > 0}
@@ -12,6 +13,9 @@
 	{#each $toast as item (item.id)}
 		<div
 			class="toast-item toast-{item.type} flex items-start gap-3 px-4 py-3 rounded-xl border text-sm shadow-[var(--shadow-overlay-compact)] pointer-events-auto"
+			in:enter|global={{ x: 24, y: 0 }}
+			out:fadeMotion|global
+			animate:reflow
 			role={item.type === 'error' ? 'alert' : 'status'}
 			aria-live={item.type === 'error' ? 'assertive' : 'polite'}
 			aria-atomic="true"
@@ -20,7 +24,7 @@
 			onfocusin={() => toast.pause(item.id, 'focus')}
 			onfocusout={() => toast.resume(item.id, 'focus')}
 		>
-			<span class="toast-icon flex-shrink-0 font-bold text-base leading-none mt-0.5" aria-hidden="true">
+			<span class="toast-icon motion-pop flex-shrink-0 font-bold text-base leading-none mt-0.5" aria-hidden="true">
 				{#if item.type === 'success'}✓{:else if item.type === 'error'}✕{:else if item.type === 'warning'}⚠{:else}ℹ{/if}
 			</span>
 			<div class="flex-1 min-w-0">

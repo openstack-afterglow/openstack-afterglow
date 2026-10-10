@@ -24,12 +24,8 @@
   }: Props = $props();
 
   const r = $derived((size - stroke) / 2);
-  const circ = $derived(2 * Math.PI * r);
-  const pct = $derived(max > 0 ? Math.min(100, (value / max) * 100) : 0);
-  const dash = $derived(circ * pct / 100);
-  const gap = $derived(circ - dash);
+  const pct = $derived(max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0);
   const cx = $derived(size / 2);
-  const offset = $derived(circ * 0.25); // start at top
 </script>
 
 <div class="donut-wrap {className}" style="width:{size}px;height:{size}px">
@@ -43,6 +39,8 @@
       stroke-width={stroke}
     />
     <circle
+      class="donut-fill"
+      pathLength="1"
       cx={cx}
       cy={cx}
       r={r}
@@ -50,9 +48,9 @@
       stroke={color}
       stroke-width={stroke}
       stroke-linecap="round"
-      stroke-dasharray="{dash} {gap}"
-      stroke-dashoffset={offset}
-      transform="rotate(-90 {cx} {cx})"
+      stroke-dasharray="1"
+      stroke-dashoffset={1 - pct / 100}
+      transform="rotate(-180 {cx} {cx})"
     />
   </svg>
   {#if center}
@@ -68,6 +66,10 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+  }
+  .donut-fill {
+    animation: motion-draw var(--motion-duration-data) var(--motion-ease-emphasized) backwards;
+    transition: stroke-dashoffset var(--motion-duration-data) var(--motion-ease-emphasized);
   }
   .donut-center {
     position: absolute;

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/file-storage';
 	import type { AccessRule } from '$lib/types/fileStorage';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	let {
 		shareProto, accessRules, accessLoading,
@@ -75,9 +76,9 @@
 				<button
 					onclick={handleAdd}
 					disabled={addingRule || !ruleForm.access_to.trim()}
-					class="px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm rounded transition-colors"
+					class="inline-flex items-center gap-1.5 px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm rounded transition-colors"
 				>
-					{addingRule ? t('accessRules.adding') : t('accessRules.add')}
+					{#if addingRule}<ActivityIndicator size="xs" tone="ink" />{/if}{addingRule ? t('accessRules.adding') : t('accessRules.add')}
 				</button>
 			</div>
 			{#if addError}<p class="text-red-400 text-xs mt-2">{addError}</p>{/if}
@@ -85,7 +86,7 @@
 	{/if}
 
 	{#if accessLoading}
-		<p class="text-ink-2 text-sm text-center py-4">{t('accessRules.loading')}</p>
+		<div class="flex justify-center py-4"><ActivityIndicator label={t('accessRules.loading')} /></div>
 	{:else if accessRules.length === 0}
 		<p class="text-ink-2 text-sm text-center py-4">{t('accessRules.empty')}</p>
 	{:else}
@@ -100,7 +101,7 @@
 						<th class="text-right py-2"></th>
 					</tr>
 				</thead>
-				<tbody>
+				<tbody class="motion-stagger">
 					{#each accessRules as rule (rule.id)}
 						<tr class="border-b border-line/50">
 							<td class="py-2 pr-4 font-mono text-xs text-ink-2">{rule.access_to ?? '-'}</td>
@@ -129,9 +130,9 @@
 								<button
 									onclick={() => onRevoke(rule.id)}
 									disabled={revokingId === rule.id}
-									class="text-xs text-red-400 hover:text-red-300 disabled:opacity-40 transition-colors"
+									class="inline-flex items-center gap-1 text-xs text-red-400 hover:text-red-300 disabled:opacity-40 transition-colors"
 								>
-									{revokingId === rule.id ? t('accessRules.deleting') : t('accessRules.delete')}
+									{#if revokingId === rule.id}<ActivityIndicator size="xs" tone="danger" />{/if}{revokingId === rule.id ? t('accessRules.deleting') : t('accessRules.delete')}
 								</button>
 							</td>
 						</tr>

@@ -5,6 +5,8 @@
 	import StatTile from '$lib/components/ui/StatTile.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import RichText from '$lib/i18n/RichText.svelte';
 
@@ -304,6 +306,7 @@
 	const models = $derived(data?.by_model ?? []);
 	const users = $derived(userRows);
 	const chartPoints = $derived(filledSeries(timeSeries));
+	// Filters reload and remount this chart: keep its data bars static, without draw/entrance motion.
 	const maxHourlyTokens = $derived(Math.max(1, ...chartPoints.map((point) => point.total_tokens)));
 	const maxModelTokens = $derived(Math.max(1, ...models.map((m) => m.total_tokens)));
 	const hasData = $derived((overview?.request_count ?? 0) > 0);
@@ -340,7 +343,7 @@
 				<option value={project.id}>{adminIdentityLabel(project.name, project.id)}</option>
 			{/each}
 		</select>
-		{#if loading}<span class="text-xs text-[var(--color-ink-3)]">{t('adminStats.loading')}</span>{/if}
+		{#if loading}<ActivityIndicator size="xs" label={t('adminStats.loading')} class="text-xs text-ink-2" />{/if}
 	</div>
 
 	{#if error}
@@ -352,7 +355,7 @@
 	{/if}
 
 	{#if !loading && !hasData}
-		<EmptyState headline={t('adminStats.emptyTitle')} description={t('adminStats.emptyDescription')} />
+		<EmptyState headline={t('adminStats.emptyTitle')} description={t('adminStats.emptyDescription')} class="[&_.motion-enter]:animate-none" />
 	{:else if overview}
 		<!-- KPI 카드 -->
 		<div class="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
@@ -390,11 +393,11 @@
 				</div>
 			</div>
 			{#if loadingTimeSeries}
-				<p class="text-sm text-[var(--color-ink-3)]">{t('adminStats.chartLoading', { granularity: chartGranularityLabel })}</p>
+				<ActivityIndicator label={t('adminStats.chartLoading', { granularity: chartGranularityLabel })} class="text-sm text-ink-2" />
 			{:else if timeSeriesError}
 				<p class="text-sm text-[var(--color-state-danger)]">{timeSeriesError}</p>
 			{:else if timeSeries.length === 0}
-				<p class="text-sm text-[var(--color-ink-3)]">{t('adminStats.chartEmpty', { granularity: chartGranularityLabel })}</p>
+				<EmptyState headline={t('adminStats.chartEmpty', { granularity: chartGranularityLabel })} class="py-4 [&_.motion-enter]:animate-none" />
 			{:else}
 				<div class="overflow-x-auto pb-1">
 					<div class="flex h-48 min-w-[42rem] items-end gap-px">
@@ -446,7 +449,7 @@
 		<section class="mb-8">
 			<h3 class="mb-3 text-sm font-semibold text-[var(--color-ink-1)]">{t('adminStats.modelUsage')}</h3>
 			{#if models.length === 0}
-				<p class="text-sm text-[var(--color-ink-3)]">{t('adminStats.modelEmpty')}</p>
+				<EmptyState headline={t('adminStats.modelEmpty')} class="py-4 [&_.motion-enter]:animate-none" />
 			{:else}
 				<TableShell>
 					<table>
@@ -468,11 +471,8 @@
 								<tr>
 									<td class="text-sm font-medium text-[var(--color-ink-1)]">{m.model_name}</td>
 									<td class="w-32">
-										<div class="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-sunken)]">
-											<div
-												class="h-full rounded-full bg-[var(--color-accent)]"
-												style="width: {(m.total_tokens / maxModelTokens) * 100}%"
-											></div>
+										<div class="h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken" role="meter" aria-label={t('adminStats.modelShareLabel', { model: m.model_name })} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round((m.total_tokens / maxModelTokens) * 100)} aria-valuetext={t('adminStats.tokenCount', { count: fmtInt(m.total_tokens) })}>
+											<div class="h-full origin-left rounded-full bg-accent" style:transform={`scaleX(${m.total_tokens / maxModelTokens})`}></div>
 										</div>
 									</td>
 									<td class="text-right text-sm text-[var(--color-ink-2)]">{fmtInt(m.prompt_tokens)}</td>
@@ -497,7 +497,7 @@
 				<RichText segments={t.rich('adminStats.userUsageTitle')} tags={{ note: userUsageNote }} />
 			</h3>
 			{#if users.length === 0}
-				<p class="text-sm text-[var(--color-ink-3)]">{t('adminStats.userEmpty')}</p>
+				<EmptyState headline={t('adminStats.userEmpty')} class="py-4 [&_.motion-enter]:animate-none" />
 			{:else}
 				<TableShell>
 					<table>
@@ -531,13 +531,9 @@
 				</TableShell>
 				{#if hasMoreUsers}
 					<div class="mt-3 flex justify-center">
-						<button
-							onclick={loadMoreUsers}
-							disabled={loadingMore}
-							class="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-4 py-1.5 text-sm text-[var(--color-ink-2)] transition-colors hover:text-[var(--color-ink-0)] disabled:opacity-60"
-						>
-							{loadingMore ? t('adminStats.loading') : t('adminStats.loadMore')}
-						</button>
+						<Button variant="secondary" size="sm" onclick={loadMoreUsers} disabled={loadingMore} ariaBusy={loadingMore}>
+							{#if loadingMore}<ActivityIndicator size="xs" tone="ink" />{/if}{loadingMore ? t('adminStats.loading') : t('adminStats.loadMore')}
+						</Button>
 					</div>
 				{/if}
 			{/if}

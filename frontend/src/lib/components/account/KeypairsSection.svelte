@@ -1,11 +1,13 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/account';
+  import { t as tc } from '$lib/i18n/ns/common';
   import { untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { toast } from '$lib/stores/toast';
   import { dialogFocus } from '$lib/utils/dialogFocus';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
   interface Keypair {
     name: string;
@@ -114,7 +116,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
 		use:dialogFocus={{ enabled: true, onEscape: () => (showModal = false) }} class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50" onclick={() => showModal = false} role="dialog" aria-modal="true" tabindex="-1">
-    <div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none">
+    <div class="motion-pop bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none">
       {#if createdPrivateKey}
         <h2 class="text-lg font-semibold text-ink-0 mb-3">{t('keypairs.privateKey')}</h2>
         <p class="text-sm text-yellow-300 mb-3">{t('keypairs.privateWarning')}</p>
@@ -141,14 +143,14 @@
         {#if createError}<div class="mt-3 text-red-400 text-xs">{createError}</div>{/if}
         <div class="flex justify-end gap-3 mt-6">
           <button onclick={() => showModal = false} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('keypairs.cancel')}</button>
-          <button onclick={createKeypair} disabled={creating} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{creating ? t('keypairs.creating') : t('keypairs.createAction')}</button>
+          <button onclick={createKeypair} disabled={creating} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{#if creating}<ActivityIndicator size="xs" label={t('keypairs.creating')} />{:else}{t('keypairs.createAction')}{/if}</button>
         </div>
       {/if}
     </div>
   </div>
 {/if}
 
-<div class="bg-surface-base border border-line rounded-xl p-5">
+<div class="motion-fade bg-surface-base border border-line rounded-xl p-5">
   <div class="flex items-center justify-between mb-4">
     <h3 class="text-sm font-semibold text-ink-0">{t('keypairs.title')}</h3>
     <button onclick={() => showModal = true} class="text-xs px-3 py-1.5 bg-surface-selected hover:bg-surface-selected text-ink-0 rounded-lg transition-colors">{t('keypairs.add')}</button>
@@ -159,9 +161,10 @@
   {/if}
 
   {#if loading}
-    <div class="space-y-2">
+    <ActivityIndicator label={tc('state.loading')} />
+    <div class="space-y-2 mt-2" aria-hidden="true">
       {#each [1, 2] as _}
-        <div class="h-10 bg-surface-sunken rounded animate-pulse"></div>
+        <div class="h-10 motion-skeleton rounded"></div>
       {/each}
     </div>
   {:else if keypairs.length === 0}
@@ -182,7 +185,7 @@
           <div>
             <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-violet-900/25 border border-violet-800 text-violet-400">{kp.type}</span>
           </div>
-          <div class="flex gap-1 justify-end">
+          <div class="flex flex-wrap gap-1 justify-end">
             <button
               onclick={() => copyFingerprint(kp.fingerprint)}
               class="text-xs px-1.5 py-1 rounded bg-surface-sunken hover:bg-surface-selected text-ink-2 border border-line-2 transition-colors"
@@ -190,8 +193,8 @@
             <button
               onclick={() => deleteKeypair(kp.name)}
               disabled={deleting === kp.name}
-              class="text-xs px-1.5 py-1 rounded text-red-400 border border-red-900 hover:bg-red-950/40 disabled:text-ink-3 disabled:border-line-2 transition-colors"
-            >{deleting === kp.name ? '...' : t('keypairs.delete')}</button>
+              class="text-xs px-1.5 py-1 rounded text-state-danger-text border border-line-2 hover:bg-surface-selected disabled:text-ink-3 transition-colors"
+            >{#if deleting === kp.name}<ActivityIndicator size="xs" label={tc('state.processing')} />{:else}{t('keypairs.delete')}{/if}</button>
           </div>
         </div>
       {/each}

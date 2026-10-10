@@ -167,6 +167,7 @@
 	"loadbalancersPage.toast.deleteFailed": "{count}개 로드밸런서 삭제에 실패했습니다.",
 	"loadbalancersPage.breadcrumb": "NETWORK / LOADBALANCERS",
 	"loadbalancersPage.title": "로드밸런서",
+	"loadbalancersPage.loading": "로드밸런서를 불러오는 중...",
 	"loadbalancersPage.empty": "로드밸런서가 없습니다",
 	"loadbalancersPage.emptyIcon": "⚖️",
 	"loadbalancersPage.selection.all": "로드밸런서 전체 선택",

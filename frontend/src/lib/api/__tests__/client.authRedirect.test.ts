@@ -86,6 +86,40 @@ describe('unauthorized API redirect', () => {
 		expect(replace).not.toHaveBeenCalled();
 	});
 
+	it.each(['/docs', '/docs/mcp'])('clears a rejected session without leaving public documentation at %s', async (pathname) => {
+		window.location.pathname = pathname;
+		const { api, ApiError } = await import('../client');
+
+		await expect(api.get('/api/v1/announcements/unread-count', 'expired-token', 'project')).rejects.toBeInstanceOf(ApiError);
+		await vi.waitFor(() => expect(clearAuth).toHaveBeenCalledOnce());
+		expect(goto).not.toHaveBeenCalled();
+		expect(replace).not.toHaveBeenCalled();
+	});
+
+	it('does not treat a similarly prefixed protected path as public documentation', async () => {
+		window.location.pathname = '/docs-private';
+		const { api, ApiError } = await import('../client');
+
+		await expect(api.get('/api/v1/protected', 'expired-token', 'project')).rejects.toBeInstanceOf(ApiError);
+		await vi.waitFor(() => expect(goto).toHaveBeenCalledWith('/login', { replaceState: true }));
+	});
+
+	it('does not redirect a docs reader when an earlier announcement request fails after navigation', async () => {
+		session.value.refreshToken = null;
+		const response = Promise.withResolvers<Response>();
+		mockFetch.mockReturnValueOnce(response.promise);
+		const { api, ApiError } = await import('../client');
+		const request = api.get('/api/v1/announcements/unread-count', 'expired-token', 'project');
+		await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+
+		window.location.pathname = '/docs/mcp';
+		response.resolve(Response.json({ detail: 'expired' }, { status: 401 }));
+		await expect(request).rejects.toBeInstanceOf(ApiError);
+		await vi.waitFor(() => expect(clearAuth).toHaveBeenCalledOnce());
+		expect(goto).not.toHaveBeenCalled();
+		expect(replace).not.toHaveBeenCalled();
+	});
+
 	it('clears a rejected background refresh without waiting for a protected request', async () => {
 		const { refreshSession } = await import('../client');
 		await expect(refreshSession()).resolves.toBeNull();

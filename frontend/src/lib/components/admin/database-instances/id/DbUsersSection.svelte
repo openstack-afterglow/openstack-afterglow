@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t as tr } from '$lib/i18n/ns/database';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { DbUser } from '$lib/types/database';
 
 	let {
@@ -49,7 +50,7 @@
 			{#if addError}<p class="text-red-400 text-xs">{addError}</p>{/if}
 			<button onclick={handleAdd} disabled={creating || !newUser.name.trim() || !newUser.password}
 				class="text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
-				{creating ? tr('state.creating') : tr('actions.create')}
+				{#if creating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.creating')}</span></span>{:else}{tr('actions.create')}{/if}
 			</button>
 		</div>
 	{/if}
@@ -67,7 +68,7 @@
 					</div>
 					<button onclick={() => onDelete(u.name)} disabled={deletingUser === u.name}
 						class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
-						{deletingUser === u.name ? '...' : tr('actions.delete')}
+						{#if deletingUser === u.name}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.deleting')}</span></span>{:else}{tr('actions.delete')}{/if}
 					</button>
 				</div>
 			{/each}

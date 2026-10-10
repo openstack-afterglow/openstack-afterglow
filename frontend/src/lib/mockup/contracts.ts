@@ -1,3 +1,5 @@
+import { isDocsPath } from '$lib/docs/paths';
+
 // 사용자에게 노출되는 이름은 "튜토리얼"이다: URL은 ?tutorial=on|admin|off.
 // (내부 심볼의 Mockup 접두어는 가상 데이터 레이어를 가리키는 구현 용어로 유지한다.)
 export type MockupProfileId = 'on' | 'admin';
@@ -89,6 +91,7 @@ export function buildMockupSession(profile: MockupProfileId): MockupSession {
 }
 
 export function isMockupPathAllowed(profile: MockupProfileId, pathname: string): boolean {
+	if (isDocsPath(pathname)) return true;
 	if (PROFILE_ALLOWED_PATHS[profile].includes(pathname)) return true;
 	// 튜토리얼은 대시보드 전체를 실제와 동일하게 탐색할 수 있다.
 	return profile === 'on' && pathname.startsWith('/dashboard/');

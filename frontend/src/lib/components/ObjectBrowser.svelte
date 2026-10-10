@@ -18,6 +18,7 @@
 	import MoveModal from '$lib/components/object-storage/MoveModal.svelte';
 	import { PageShell, Tabs } from '$lib/components/ui';
 	import { t } from '$lib/i18n/ns/object-storage';
+	import { createArrivals } from '$lib/components/object-storage/arrivals';
 
 	interface Props {
 		mode: 'user' | 'admin';
@@ -29,6 +30,19 @@
 	let { mode, containerName, token, projectId }: Props = $props();
 
 	let showTrash = $state(false);
+	const gridArrivals = createArrivals();
+	const flatArrivals = createArrivals();
+	const treeArrivals = createArrivals();
+	let arrivalContainer = untrack(() => containerName);
+	let arrivalProject = untrack(() => projectId);
+	$effect.pre(() => {
+		if (containerName === arrivalContainer && projectId === arrivalProject) return;
+		arrivalContainer = containerName;
+		arrivalProject = projectId;
+		gridArrivals.reset();
+		flatArrivals.reset();
+		treeArrivals.reset();
+	});
 
 	const s = createObjectBrowserStore({
 		mode: () => mode,
@@ -67,14 +81,19 @@
 		return false;
 	}
 
+	// While the upload dialog is open it owns drag-and-drop: the page overlay stays hidden and a
+	// drop bubbling up from the dialog is not enqueued twice. preventDefault still runs so a file
+	// dropped beside the dialog never makes the browser navigate to it.
 	function onWindowDragEnter(e: DragEvent) {
 		if (!hasFiles(e)) return;
 		e.preventDefault();
+		if (s.showUpload) return;
 		s.dragActive = true;
 	}
 	function onWindowDragOver(e: DragEvent) {
 		if (!hasFiles(e)) return;
 		e.preventDefault();
+		if (s.showUpload) return;
 		s.dragActive = true;
 	}
 	function onWindowDragLeave(e: DragEvent) {
@@ -87,6 +106,7 @@
 		if (!hasFiles(e)) return;
 		e.preventDefault();
 		s.dragActive = false;
+		if (s.showUpload) return;
 		s.handleDrop(e);
 	}
 </script>
@@ -145,11 +165,11 @@
 		<div class="flex flex-col gap-4 lg:flex-row lg:gap-6">
 			<div class="flex-1 min-w-0 relative">
 				{#if mode !== 'user'}
-					<ObjectFlatTable />
+					<ObjectFlatTable arrivals={flatArrivals} />
 				{:else if s.viewMode === 'grid'}
-					<ObjectCardGrid />
+					<ObjectCardGrid arrivals={gridArrivals} />
 				{:else}
-					<ObjectTreeTable />
+					<ObjectTreeTable arrivals={treeArrivals} />
 				{/if}
 			</div>
 			<ObjectMetaPanel />

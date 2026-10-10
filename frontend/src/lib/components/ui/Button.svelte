@@ -27,6 +27,7 @@
 		ariaLabel?: string;
 		ariaPressed?: boolean;
 		ariaExpanded?: boolean;
+		ariaBusy?: boolean;
 		title?: string;
 		dataTour?: string;
 		class?: string;
@@ -46,6 +47,7 @@
 		ariaLabel,
 		ariaPressed,
 		ariaExpanded,
+		ariaBusy,
 		title,
 		dataTour,
 		class: className = '',
@@ -74,6 +76,7 @@
 		rel={anchorRel}
 		aria-label={ariaLabel}
 		aria-disabled={disabled}
+		aria-busy={ariaBusy}
 		tabindex={disabled ? -1 : undefined}
 		data-tour={dataTour}
 		{title}
@@ -85,7 +88,7 @@
 		{@render children()}
 	</a>
 {:else}
-	<button {type} {disabled} aria-label={ariaLabel} aria-pressed={ariaPressed} aria-expanded={ariaExpanded} data-tour={dataTour} {title} {onclick} onpointerenter={handleIntent} onfocus={handleIntent} class="btn btn-{variant} btn-{size} {className}">
+	<button {type} {disabled} aria-label={ariaLabel} aria-pressed={ariaPressed} aria-expanded={ariaExpanded} aria-busy={ariaBusy} data-tour={dataTour} {title} {onclick} onpointerenter={handleIntent} onfocus={handleIntent} class="btn btn-{variant} btn-{size} {className}">
 		{@render children()}
 	</button>
 {/if}

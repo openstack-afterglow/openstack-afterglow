@@ -21,6 +21,7 @@
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	let { lint, loading, requestError }: { lint: DockerfileLintResponse | null; loading: boolean; requestError: string } = $props();
 	let copiedRef = $state('');
@@ -46,7 +47,7 @@
 	<div class="flex flex-wrap items-center justify-between gap-2">
 		<h3 class="font-semibold text-ink-0">{t('lint.title')}</h3>
 		{#if loading}
-			<Pill tone="neutral">{t('lint.checking')}</Pill>
+			<ActivityIndicator size="xs" label={t('lint.checking')} />
 		{:else if requestError}
 			<Pill tone="danger">{t('lint.failed')}</Pill>
 		{:else if lint?.diagnostics.length}

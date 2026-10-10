@@ -2,6 +2,7 @@
 	import { t } from '$lib/i18n/ns/images-keys';
 	import { useImageDetailController } from '$lib/stores/imageDetailController.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	const s = useImageDetailController();
 </script>
@@ -17,7 +18,7 @@
 			onkeydown={(e) => e.key === 'Enter' && s.addMember()}
 		/>
 		<Button onclick={() => s.addMember()} disabled={s.addingMember || !s.newMemberId.trim()} size="sm">
-			{s.addingMember ? t('membersSection.adding') : t('membersSection.add')}
+			{#if s.addingMember}<ActivityIndicator size="xs" label={t('membersSection.adding')} />{:else}{t('membersSection.add')}{/if}
 		</Button>
 	</div>
 
@@ -26,7 +27,7 @@
 	{/if}
 
 	{#if s.loadingMembers}
-		<p class="text-ink-2 text-xs">{t('membersSection.loading')}</p>
+		<ActivityIndicator label={t('membersSection.loading')} />
 	{:else if s.members.length === 0}
 		<p class="text-ink-2 text-xs">{t('membersSection.empty')}</p>
 	{:else}
@@ -42,7 +43,7 @@
 						disabled={s.removingMember === m.member_id}
 						class="text-xs px-2 py-1 text-red-400 hover:text-red-300 disabled:text-ink-3 transition-colors"
 					>
-						{s.removingMember === m.member_id ? t('membersSection.deleting') : t('membersSection.delete')}
+						{#if s.removingMember === m.member_id}<ActivityIndicator size="xs" label={t('membersSection.deleting')} />{:else}{t('membersSection.delete')}{/if}
 					</button>
 				</div>
 			{/each}

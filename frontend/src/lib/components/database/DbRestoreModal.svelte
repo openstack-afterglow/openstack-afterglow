@@ -5,6 +5,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import type { DbFlavor, DbBackup } from '$lib/types/database';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	interface Props {
 		open: boolean;
@@ -137,9 +138,9 @@
 				<button
 					onclick={handleSubmit}
 					disabled={submitting}
-					class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
+					class="inline-flex items-center gap-1.5 px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
 				>
-					{submitting ? tr('state.restoring') : tr('actions.startRestore')}
+					{#if submitting}<ActivityIndicator size="xs" tone="ink" />{/if}{submitting ? tr('state.restoring') : tr('actions.startRestore')}
 				</button>
 			</div>
 		</div>

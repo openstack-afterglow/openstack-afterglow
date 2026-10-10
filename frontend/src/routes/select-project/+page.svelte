@@ -8,6 +8,7 @@
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import CreateProjectModal from '$lib/components/projects/CreateProjectModal.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { cloudShell } from '$lib/stores/cloudShell.svelte';
 
 	import { postAuthDestination } from '$lib/utils/mcpConsent';
@@ -72,6 +73,7 @@
 				username: string;
 				roles: string[];
 				is_system_admin: boolean;
+				can_write: boolean;
 			}>('/api/v1/auth/token/project', { project_id: proj.id }, token);
 
 			if ($logoutInProgress || !$auth.token) return;
@@ -85,6 +87,7 @@
 				projectName: resp.project_name,
 				roles: resp.roles ?? [],
 				isSystemAdmin: !!resp.is_system_admin,
+				canWrite: resp.can_write,
 			});
 			goto(postAuthDestination('/dashboard'));
 		} catch (e) {
@@ -179,8 +182,13 @@
 
 	<!-- 본문 -->
 	<div class="max-w-6xl mx-auto px-6 py-10">
-		<div class="flex items-center justify-between mb-6">
-			<h1 class="text-lg font-semibold text-ink-0">{t('selectProject.title')}</h1>
+		<div class="flex items-center justify-between gap-4 mb-6">
+			<div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
+				<h1 class="text-lg font-semibold text-ink-0">{t('selectProject.title')}</h1>
+				{#if switching}
+					<ActivityIndicator label={t('selectProject.switching')} class="motion-fade" />
+				{/if}
+			</div>
 			<button
 				onclick={openCreateProject}
 				class="flex items-center gap-1.5 px-3 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg transition-colors"
@@ -193,17 +201,20 @@
 		</div>
 
 		{#if loading}
-			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+			{#if !switching}
+				<ActivityIndicator label={t('selectProject.loading')} class="mb-4" />
+			{/if}
+			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" aria-hidden="true">
 				{#each [1, 2, 3, 4, 5] as _}
-					<div class="h-28 bg-surface-sunken rounded-xl animate-pulse"></div>
+					<div class="h-28 motion-skeleton rounded-xl"></div>
 				{/each}
 			</div>
 		{:else if error}
-			<div class="text-red-400 text-sm">{error}</div>
+			<div class="text-state-danger text-sm motion-fade">{error}</div>
 		{:else if projects.length === 0}
-			<div class="text-ink-2 text-sm text-center py-16">{t('selectProject.empty')}</div>
+			<div class="text-ink-2 text-sm text-center py-16 motion-fade">{t('selectProject.empty')}</div>
 		{:else}
-			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 motion-stagger">
 				{#each projects as proj (proj.id)}
 					<button
 						onclick={() => selectProject(proj)}

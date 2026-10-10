@@ -247,8 +247,9 @@ zun_websocket_origin = "wss://zun-ws.example.com"
 
 [mcp]
 # Inbound consumer MCP control plane. Keep services.mcp=false until the Stage 2 publish gate passes.
-# 외부 MCP 클라이언트가 접속하는 정확한 Streamable HTTP resource URL. 비우거나 도메인만
-# 지정하면 public_api_base(또는 지정 도메인) + /api/v1/mcp 을 사용한다. 별도 경로를 쓸 때 전체 URL을 지정한다.
+# 외부 MCP 클라이언트가 접속하는 정확한 Streamable HTTP resource URL. 비우면 public_api_base +
+# /api/v1/mcp 을 사용한다. 지정한 URL은 그대로 resource 가 되며, 도메인만 지정하면(예:
+# https://mcp.example.com) 전용 호스트의 루트(/)에서 제공한다. 루트 resource 는 웹/API 와 다른 호스트가 필요하다.
 public_url = ""
 # 로그인(로컬 또는 OIDC) 후 표시할 Afterglow OAuth 승인 페이지 URL. 비우면
 # frontend_base_url + /oauth/mcp/authorize 를 사용한다. 클라이언트의 redirect_uri는
@@ -283,8 +284,6 @@ callback_base_url = ""         # e.g. http://10.0.0.1:8000
 kubeconfig_encryption_key = "" # 32-byte hex; generate: openssl rand -hex 32
 # Shared token for internal K3s GPU admission endpoint (/api/v1/internal/k3s/gpu-admission).
 gpu_admission_token = ""
-# Dedicated token for Drover Stampede provisioning intents (secret.yaml/environment only).
-provisioning_token = ""
 [worker_runtime]
 # Background worker runtime manager.
 # Default static mode preserves the current fixed Compose/Kubernetes/Kolla worker manifests
@@ -320,7 +319,7 @@ gpu_config_mount = "/app/config.gpu.toml"
 gpu_config_host_path = ""         # optional host path for config.gpu.toml
 logs_mount = "/app/logs"
 logs_host_path = ""               # optional host path for worker logs
-env_allowlist = "AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,K3S_KUBECONFIG_ENCRYPTION_KEY,K3S_GPU_ADMISSION_TOKEN,K3S_PROVISIONING_TOKEN,PROMETHEUS_PASSWORD,GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY"
+env_allowlist = "AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,K3S_KUBECONFIG_ENCRYPTION_KEY,K3S_GPU_ADMISSION_TOKEN,PROMETHEUS_PASSWORD,GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY"
 
 [worker_runtime.kubernetes]
 namespace = "afterglow"

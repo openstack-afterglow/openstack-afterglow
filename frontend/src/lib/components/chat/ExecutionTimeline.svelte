@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/chat-studio';
+	import { untrack } from 'svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import { activityIsRunning, visibleActivityItems } from './chatActivityPresentation';
 	import type { RunActivityItem } from '$lib/api/chatRunReducer';
 	import type { ToolActivityItem } from '$lib/api/chatToolActivity';
 	import { taskLabelForContext, taskLabelForStage } from '$lib/api/chatTaskLabels';
@@ -9,36 +12,21 @@
 	interface Props {
 		items: RunActivityItem[];
 		active?: boolean;
+		animate?: boolean;
 	}
-	let { items, active = false }: Props = $props();
+	let { items, active = false, animate = active }: Props = $props();
 
 	type TimelineEntry =
 		| { kind: 'item'; item: Exclude<RunActivityItem, { kind: 'tool' }> }
 		| { kind: 'tool-group'; id: string; category: string; items: Extract<RunActivityItem, { kind: 'tool' }>[] };
 	let open = $state(false);
+	const initialIds = untrack(() => new Set(items.map((item) => item.id)));
+	const initialDone = untrack(() => new Set(items.filter((item) => !activityIsRunning(item, items, active)).map((item) => item.id)));
 	$effect(() => {
 		if (active) open = true;
 	});
 
-	const orderedItems = $derived([...items].sort((left, right) => left.seq - right.seq));
-	const taskItems = $derived(
-		orderedItems.filter((item) => {
-			if (item.kind === 'context') return active || item.phase === 'compacted';
-			if (item.kind === 'tool' || item.kind === 'reasoning') return true;
-			if (item.kind !== 'stage') return false;
-			if (item.stage === 'awaiting_input') return true;
-			return (
-				item.stage === 'tool_execution' &&
-				item.toolName !== null &&
-				!orderedItems.some(
-					(candidate) =>
-						candidate.kind === 'tool' &&
-						candidate.name === item.toolName &&
-						candidate.seq > item.seq
-				)
-			);
-		})
-	);
+	const taskItems = $derived(visibleActivityItems(items, active));
 
 	function stageLabel(item: Extract<RunActivityItem, { kind: 'stage' }>): string {
 		return taskLabelForStage(item.stage, item.toolName) ?? t('executionTimeline.preparing');
@@ -49,8 +37,7 @@
 	}
 
 	function isLive(item: RunActivityItem): boolean {
-		if (!active) return false;
-		return item.kind === 'stage' || (item.kind === 'context' && item.phase === 'compacting') || (item.kind === 'tool' && item.status === 'running');
+		return activityIsRunning(item, items, active);
 	}
 
 	function toolItem(item: Extract<RunActivityItem, { kind: 'tool' }>): ToolActivityItem {
@@ -107,7 +94,11 @@
 {#if entries.length}
 	<details class="execution-timeline" bind:open>
 		<summary aria-label={t('executionTimeline.openHistory')}>
-			<span class="summary-mark" aria-hidden="true"></span>
+			{#if active && !open && taskItems.some((item) => isLive(item))}
+				<ActivityIndicator variant="orbit" size="xs" label={t('executionTimeline.inProgress')} />
+			{:else}
+				<span class="summary-mark" aria-hidden="true"></span>
+			{/if}
 			<span class="summary-title">{t('executionTimeline.history')}</span>
 			<span class="summary-count">{t('executionTimeline.steps', { count: taskItems.length })}</span>
 			<svg class="summary-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -116,21 +107,26 @@
 		</summary>
 		<ol aria-label={t('executionTimeline.history')}>
 			{#each entries as entry (entry.kind === 'tool-group' ? entry.id : entry.item.id)}
-				<li class:live={entry.kind === 'tool-group' ? entry.items.some((item) => isLive(item)) : isLive(entry.item)}>
-					<span class="timeline-dot" aria-hidden="true"></span>
+				<li class:motion-enter={animate && active && !(entry.kind === 'tool-group' ? initialIds.has(entry.items[0].id) : initialIds.has(entry.item.id))} class:live={entry.kind === 'tool-group' ? entry.items.some((item) => isLive(item)) : isLive(entry.item)}>
+					{#if entry.kind === 'item' && !isLive(entry.item) && (entry.item.kind === 'context' || entry.item.kind === 'stage')}
+						<svg class="timeline-check" class:motion-pop={animate && active && !initialDone.has(entry.item.id)} viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg>
+					{:else}
+						<span class="timeline-dot" aria-hidden="true"></span>
+					{/if}
 					<div class="timeline-entry">
 						{#if entry.kind === 'tool-group'}
 							<ToolCategoryGroup
 								category={entry.category}
 								items={entry.items.map(toolItem)}
 								active={active && entry.items.some((item) => item.status === 'running')}
+								{animate}
 							/>
 						{:else if entry.item.kind === 'context'}
-							<p class="stage-label">{contextLabel(entry.item)}</p>
+							<p class="stage-label">{#if isLive(entry.item)}<ActivityIndicator variant="orbit" size="xs" /> {/if}{contextLabel(entry.item)}</p>
 						{:else if entry.item.kind === 'stage'}
-							<p class="stage-label">{stageLabel(entry.item)}</p>
+							<p class="stage-label">{#if isLive(entry.item)}<ActivityIndicator size="xs" /> {/if}{stageLabel(entry.item)}</p>
 						{:else}
-							<ThinkingBlock text={entry.item.text} active={entry.item.active} />
+							<ThinkingBlock text={entry.item.text} active={active && entry.item.active} {animate} />
 						{/if}
 					</div>
 				</li>
@@ -177,7 +173,7 @@
 	.summary-chevron {
 		margin-left: auto;
 		color: var(--color-ink-2);
-		transition: transform 0.15s ease;
+		transition: transform var(--motion-duration-fast) var(--motion-ease-standard);
 	}
 	details[open] .summary-chevron {
 		transform: rotate(180deg);
@@ -197,6 +193,7 @@
 		padding-bottom: 0;
 	}
 	.timeline-dot {
+		/* Mark position is layout-owned; only the check glyph pops in place. */
 		position: absolute;
 		left: -0.26rem;
 		top: 0.47rem;
@@ -204,12 +201,22 @@
 		height: 0.44rem;
 		border: 2px solid var(--color-surface-sunken);
 	}
+	.timeline-check {
+		position: absolute;
+		left: -0.4rem;
+		top: 0.4rem;
+		color: var(--color-state-success);
+		background: var(--color-surface-sunken);
+	}
 	li.live .timeline-dot {
-		background: var(--color-warm);
-		box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-warm) 20%, transparent);
+		background: var(--color-accent);
+		box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-accent) 20%, transparent);
 	}
 	.stage-label {
 		margin: 0.27rem 0;
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
 		color: var(--color-ink-2);
 		font-size: 0.76rem;
 	}

@@ -1,19 +1,21 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import { formatNumber } from '$lib/utils/format';
+	import { AnimatedNumber } from '$lib/components/ui';
 	import type { Overview } from '$lib/types/adminOverview';
 
 	let { overview }: { overview: Overview } = $props();
+	const count = (n: number) => formatNumber(Math.round(n));
 </script>
 
-<div class="flex flex-col gap-px overflow-hidden rounded-lg border border-line bg-line">
+<div class="motion-enter flex flex-col gap-px overflow-hidden rounded-lg border border-line bg-line">
 	<a href="/admin/containers" class="flex items-center gap-3 bg-surface-base p-4 transition-colors hover:bg-surface-selected">
 		<div class="flex size-8 shrink-0 items-center justify-center text-warm-text">
 			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
 		</div>
 		<div>
 			<div class="text-xs font-medium tracking-tight text-ink-2">{t('overview.services.containers')}</div>
-			<div class="text-[28px] font-bold text-ink-0 leading-none">{formatNumber(overview.containers_count ?? 0)}</div>
+			<div class="text-[28px] font-bold text-ink-0 leading-none"><AnimatedNumber value={overview.containers_count ?? 0} format={count} /></div>
 		</div>
 	</a>
 	<a href="/admin/file-storage" class="flex items-center gap-3 bg-surface-base p-4 transition-colors hover:bg-surface-selected">
@@ -22,7 +24,7 @@
 		</div>
 		<div>
 			<div class="text-xs font-medium tracking-tight text-ink-2">{t('overview.services.fileStorage')}</div>
-			<div class="text-[28px] font-bold text-ink-0 leading-none">{formatNumber(overview.file_storage_count ?? 0)}</div>
+			<div class="text-[28px] font-bold text-ink-0 leading-none"><AnimatedNumber value={overview.file_storage_count ?? 0} format={count} /></div>
 		</div>
 	</a>
 	<a href="/admin/database-instances" class="flex items-center gap-3 bg-surface-base p-4 transition-colors hover:bg-surface-selected">
@@ -31,7 +33,7 @@
 		</div>
 		<div>
 			<div class="text-xs font-medium tracking-tight text-ink-2">{t('overview.services.database')}</div>
-			<div class="text-[28px] font-bold text-ink-0 leading-none">{formatNumber(overview.database_instances_count ?? 0)}</div>
+			<div class="text-[28px] font-bold text-ink-0 leading-none"><AnimatedNumber value={overview.database_instances_count ?? 0} format={count} /></div>
 		</div>
 	</a>
 	<a href="/admin/object-storage" class="flex items-center gap-3 bg-surface-base p-4 transition-colors hover:bg-surface-selected">
@@ -40,7 +42,7 @@
 		</div>
 		<div>
 			<div class="text-xs font-medium tracking-tight text-ink-2">{t('overview.services.objectStorage')}</div>
-			<div class="text-[28px] font-bold text-ink-0 leading-none">{formatNumber(overview.object_storage_containers_count ?? 0)}</div>
+			<div class="text-[28px] font-bold text-ink-0 leading-none"><AnimatedNumber value={overview.object_storage_containers_count ?? 0} format={count} /></div>
 		</div>
 	</a>
 </div>

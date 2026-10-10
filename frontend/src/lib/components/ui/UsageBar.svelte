@@ -60,13 +60,15 @@
 	{/if}
 	<div class="usage-track" class:usage-track-unlimited={isUnlimited}>
 		{#if !isUnlimited}
-			<div class="usage-fill usage-fill-{tone}" style={`width: ${pct}%`}></div>
+			<div class="usage-fill usage-fill-{tone}" style={`transform: scaleX(${pct / 100})`}></div>
 		{/if}
 	</div>
 </div>
 
 <style>
-	.usage-bar { width: 100%; }
+	@layer components {
+		.usage-bar { width: 100%; min-width: 0; }
+	}
 	.usage-meta {
 		display: flex;
 		align-items: baseline;
@@ -110,7 +112,10 @@
 	.usage-fill {
 		height: 100%;
 		border-radius: inherit;
-		transition: width var(--motion-duration-base) var(--motion-ease-standard);
+		width: 100%;
+		transform-origin: left;
+		animation: motion-grow-x var(--motion-duration-data) var(--motion-ease-emphasized) backwards;
+		transition: transform var(--motion-duration-data) var(--motion-ease-emphasized);
 	}
 	.usage-fill-accent { --usage-tone: var(--color-accent); background: var(--gradient-usage); }
 	.usage-fill-warning { --usage-tone: var(--color-state-warning); background: var(--gradient-usage-warning); }

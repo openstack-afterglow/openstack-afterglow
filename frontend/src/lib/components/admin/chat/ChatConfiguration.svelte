@@ -2,7 +2,7 @@
 	import { t } from '$lib/i18n/ns/admin-chat';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -10,6 +10,8 @@
 	import { invalidateChatModels } from '$lib/stores/chatModels';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import ChatExtensionsManager from '$lib/components/chat/ChatExtensionsManager.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
@@ -202,7 +204,7 @@
 	type CachePriceErrors = Partial<Record<CachePriceKey, string>>;
 	type CachePriceValues = Record<CachePriceKey, string | null>;
 
-	// Cache prices are optional and independent of each other and of the input/output pair rule.
+	// Cache prices are optional and independent of each other and of text input/output rates.
 	let CACHE_PRICE_FIELDS: { key: CachePriceKey; label: string; slug: string }[] = $derived([
 		{ key: 'cache_read_price_per_million', label: t('configuration.cacheRead'), slug: 'read' },
 		{ key: 'cache_write_price_per_million', label: t('configuration.cacheWriteFiveMinutes'), slug: 'write-5m' },
@@ -374,6 +376,7 @@
 	let deviceAttempt = $state<DeviceAuthAttempt | null>(null);
 	let authError = $state('');
 	let authBusy = $state(false);
+	let authCancelling = $state(false);
 	let claudeToken = $state('');
 	let claudeExpiry = $state('');
 	let authSessionGeneration = $state(0);
@@ -410,9 +413,11 @@
 	let capSuggestedInputLimit = $state<number | null>(null);
 	let capSaving = $state(false);
 	let capError = $state('');
-	let editingModelOrder = $state<Model | null>(null);
-	let editModelOrder = $state('0');
-	let modelOrderAttempted = $state(false);
+	let draggedModelId = $state<number | null>(null);
+	let modelDropTarget = $state<{ id: number; edge: 'before' | 'after' } | null>(null);
+	let modelDragAllowedId: number | null = null;
+	let modelOrderGeneration = 0;
+	let modelOrderStatus = $state('');
 	let modelOrderSaving = $state(false);
 	let modelOrderSaveError = $state('');
 
@@ -451,8 +456,10 @@
 	const selectedVisibleIds = $derived(visibleModels.filter((model) => selectedModelIds[model.id]).map((model) => model.id));
 	const selectedCount = $derived(selectedVisibleIds.length);
 	const allModelsSelected = $derived(visibleModels.length > 0 && selectedCount === visibleModels.length);
+	const modelOrderBusy = $derived(loading || modelOrderSaving || deletingBulk);
 	function changeRegisteredProvider() {
 		selectedModelIds = {};
+		resetModelDrag();
 	}
 
 	// Discovery is advisory: only administrator-entered price pairs can authorize activation.
@@ -596,7 +603,7 @@
 		const input = entry.inputPrice.trim();
 		const output = entry.outputPrice.trim();
 		if (!input && !output) return undefined;
-		if ((entry.kind === 'text' && (!input || !output)) || [input, output].some((value) => value && !CACHE_PRICE_PATTERN.test(value))) return t('pricing.reviewRateError');
+		if ([input, output].some((value) => value && !CACHE_PRICE_PATTERN.test(value))) return t('pricing.reviewRateError');
 		return undefined;
 	}
 
@@ -721,6 +728,7 @@
 	async function load({ freshBilling = false }: { freshBilling?: boolean } = {}) {
 		if (!token) return;
 		const generation = ++loadGeneration;
+		resetModelDrag();
 		const requestToken = token;
 		const requestProjectId = projectId;
 		++billingRequestGeneration;
@@ -826,30 +834,131 @@
 		}
 	}
 
-	function openModelOrderEditor(model: Model) {
-		editingModelOrder = model;
-		editModelOrder = String(model.sort_order ?? 0);
-		modelOrderAttempted = false;
-		modelOrderSaveError = '';
+	function resetModelDrag() {
+		if (draggedModelId !== null && !modelOrderSaving) modelOrderStatus = '';
+		draggedModelId = null;
+		modelDragAllowedId = null;
+		modelDropTarget = null;
 	}
 
-	async function saveModelOrder() {
-		modelOrderAttempted = true;
-		if (!editingModelOrder || modelOrderSaving || orderError(editModelOrder)) return;
+	function modelSiblings(model: Model) {
+		return visibleModels.filter((row) => row.provider_id === model.provider_id);
+	}
+	function handleModelPointerDown(event: PointerEvent | MouseEvent, model: Model) {
+		const target = event.target instanceof Element ? event.target : null;
+		if (event.button === 0 && !target?.closest('button, input, select, textarea, a, [contenteditable="true"]')) {
+			modelDragAllowedId = model.id;
+		} else {
+			modelDragAllowedId = null;
+		}
+	}
+
+
+	function startModelDrag(event: DragEvent, model: Model) {
+		const target = event.target instanceof Element ? event.target : null;
+		if (
+			modelOrderBusy ||
+			modelDragAllowedId !== model.id ||
+			modelSiblings(model).length < 2 ||
+			!event.dataTransfer ||
+			Boolean(target?.closest('button, input, select, textarea, a, [contenteditable="true"]'))
+		) {
+			event.preventDefault();
+			return;
+		}
+		modelDragAllowedId = null;
+		event.dataTransfer.setData('text/plain', String(model.id));
+		draggedModelId = model.id;
+		modelDropTarget = null;
+		modelOrderStatus = t('pricing.modelDragging', { name: displayModelTitle(model) });
+	}
+
+	function modelDropEdge(event: DragEvent): 'before' | 'after' {
+		const targetElement = (event.currentTarget ?? event.target) as HTMLElement | null;
+		const rect = targetElement?.getBoundingClientRect?.();
+		if (!rect || rect.height <= 0) {
+			return typeof event.clientY === 'number' && event.clientY < 0 ? 'before' : 'after';
+		}
+		return event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+	}
+
+	function allowModelDrop(event: DragEvent, target: Model) {
+		const source = models.find((row) => row.id === draggedModelId);
+		if (modelOrderBusy || !source || source.id === target.id || source.provider_id !== target.provider_id) {
+			modelDropTarget = null;
+			return;
+		}
+		event.preventDefault();
+		if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+		modelDropTarget = { id: target.id, edge: modelDropEdge(event) };
+	}
+
+	function dropModel(event: DragEvent, target: Model) {
+		const source = models.find((row) => row.id === draggedModelId);
+		const edge = modelDropTarget?.id === target.id ? modelDropTarget.edge : modelDropEdge(event);
+		resetModelDrag();
+		if (modelOrderBusy || !source || source.provider_id !== target.provider_id) return;
+		event.preventDefault();
+		void reorderModel(source, target, edge);
+	}
+
+	function moveModel(model: Model, direction: 'up' | 'down') {
+		const siblings = modelSiblings(model);
+		const index = siblings.findIndex((row) => row.id === model.id);
+		const target = siblings[index + (direction === 'up' ? -1 : 1)];
+		if (target) void reorderModel(model, target, direction === 'up' ? 'before' : 'after', direction);
+	}
+
+	async function reorderModel(source: Model, target: Model, edge: 'before' | 'after', focusMove?: 'up' | 'down') {
+		if (!token || modelOrderBusy || source.id === target.id || source.provider_id !== target.provider_id) return;
+		const siblings = modelSiblings(source);
+		if (!siblings.some((row) => row.id === source.id) || !siblings.some((row) => row.id === target.id)) return;
+		const visibleIds = new Set(siblings.map((row) => row.id));
+		const reordered = siblings.filter((row) => row.id !== source.id).map((row) => row.id);
+		reordered.splice(reordered.indexOf(target.id) + (edge === 'after' ? 1 : 0), 0, source.id);
+		const expectedIds = models.filter((row) => row.provider_id === source.provider_id).map((row) => row.id);
+		// Permute only visible slots: kind-filtered models keep their place in the provider catalog.
+		let visibleIndex = 0;
+		const orderedIds = expectedIds.map((id) => visibleIds.has(id) ? reordered[visibleIndex++] : id);
+		if (orderedIds.every((id, index) => id === expectedIds[index])) return;
+		const previousModels = models;
+		const byId = new Map(models.map((row) => [row.id, row]));
+		const orderedModels = orderedIds.map((id, sort_order) => ({ ...byId.get(id)!, sort_order }));
+		let providerIndex = 0;
+		models = models.map((row) => row.provider_id === source.provider_id ? orderedModels[providerIndex++] : row);
 		const requestToken = token, requestProjectId = projectId;
+		const generation = ++modelOrderGeneration;
+		const current = () => generation === modelOrderGeneration && requestToken === token && requestProjectId === projectId && !destroyed;
 		modelOrderSaving = true;
 		modelOrderSaveError = '';
+		modelOrderStatus = t('pricing.modelOrderSaving');
+		resetModelDrag();
 		try {
-			await api.patch(`/api/v1/chat/admin/models/${editingModelOrder.id}`, { sort_order: Number(editModelOrder.trim()) }, requestToken, requestProjectId);
-			if (requestToken !== token || requestProjectId !== projectId || destroyed) return;
+			await api.post('/api/v1/chat/admin/models/reorder', {
+				provider_id: source.provider_id, expected_model_ids: expectedIds, model_ids: orderedIds
+			}, requestToken, requestProjectId);
+			if (!current()) return;
 			invalidateChatModels();
-			editingModelOrder = null;
 			await load();
+			if (!current()) return;
+			modelOrderStatus = t('pricing.modelOrderSaved');
 			toast.success(t('pricing.modelOrderSaved'));
-		} catch (e) {
-			if (requestToken === token && requestProjectId === projectId && !destroyed) modelOrderSaveError = metadataSaveError(e);
+		} catch (caught) {
+			if (!current()) return;
+			models = previousModels;
+			modelOrderSaveError = caught instanceof ApiError && caught.status === 409
+				? t('pricing.modelOrderConflict')
+				: t('pricing.modelOrderSaveFailed', { status: caught instanceof ApiError ? ` (${caught.status})` : '' });
+			modelOrderStatus = t('pricing.modelOrderFailed');
+			await load();
 		} finally {
-			modelOrderSaving = false;
+			if (current()) {
+				modelOrderSaving = false;
+				if (focusMove) {
+					await tick();
+					if (current()) document.querySelector<HTMLButtonElement>(`[data-model-id="${source.id}"] [data-model-move="${focusMove}"] button:not(:disabled), [data-model-id="${source.id}"] [data-model-move] button:not(:disabled)`)?.focus();
+				}
+			}
 		}
 	}
 
@@ -987,6 +1096,7 @@
 		authScopeToken = token;
 		authScopeProjectId = projectId;
 		authBusy = false;
+		authCancelling = false;
 	}
 
 	function openSubscriptionAuth(provider: Provider) {
@@ -1088,6 +1198,7 @@
 		const attemptId = deviceAttempt.attempt_id;
 		invalidateAuthSession();
 		authBusy = true;
+		authCancelling = true;
 		authError = '';
 		try {
 			await api.delete(
@@ -1102,6 +1213,7 @@
 			authError = t('configuration.theAuthenticationRequestOnTheServerMayRemainActive', { v0: subscriptionErrorMessage(e) });
 		} finally {
 			authBusy = false;
+			authCancelling = false;
 		}
 	}
 
@@ -1195,10 +1307,10 @@
 		if (!cachePricingAvailable) { mCachePrices = emptyCachePriceInputs(); mCacheErrors = {}; }
 		const cache = parseCachePrices(mCachePrices);
 		mCacheErrors = cache.errors;
-		const prices = pricePayload(mInputPrice, mOutputPrice, mKind);
+		const prices = pricePayload(mInputPrice, mOutputPrice);
 		const message = pricingError(mKind, mPricing);
 		if (message) toast.error(message);
-		if (prices === undefined || Object.keys(cache.errors).length || message) return;
+		if (Object.keys(cache.errors).length || message) return;
 		const pricing = pricingPayload(mPricing);
 		const requestToken = token, requestProjectId = projectId, providerId = mProviderId;
 		const body = {
@@ -1248,14 +1360,8 @@
 		return fraction ? `${grouped}${decimal}${fraction}` : grouped;
 	}
 
-	function pricePayload(input: string, output: string, kind: ModelKind): { input_price_per_million: string | null; output_price_per_million: string | null } | undefined {
-		const normalizedInput = input.trim() || null;
-		const normalizedOutput = output.trim() || null;
-		if (kind === 'text' && (normalizedInput === null) !== (normalizedOutput === null)) {
-			toast.error(t('configuration.enterBothInputAndOutputPricesOrLeaveBoth'));
-			return undefined;
-		}
-		return { input_price_per_million: normalizedInput, output_price_per_million: normalizedOutput };
+	function pricePayload(input: string, output: string): { input_price_per_million: string | null; output_price_per_million: string | null } {
+		return { input_price_per_million: input.trim() || null, output_price_per_million: output.trim() || null };
 	}
 
 	function openPriceEditor(model: Model) {
@@ -1276,13 +1382,10 @@
 		const cache = cachePricingSupported(model) ? changedCachePrices(editCachePrices, cachePriceInputsFrom(model)) : { values: {}, errors: {} };
 		editCacheErrors = cache.errors;
 		// Untouched text prices stay absent so a media/cache edit does not invalidate models.dev metadata.
-		const pairChanged = editInputPrice.trim() !== (model.input_price_per_million ?? '') || editOutputPrice.trim() !== (model.output_price_per_million ?? '');
-		const kind = model.model_kind ?? 'text';
-		const changedPrices = pairChanged ? pricePayload(editInputPrice, editOutputPrice, kind) : {};
-		const prices = kind === 'text' || changedPrices === undefined ? changedPrices : Object.fromEntries(
-			Object.entries(changedPrices).filter(([key, value]) => value !== (model[key as keyof Model] ?? null))
+		const prices = Object.fromEntries(
+			Object.entries(pricePayload(editInputPrice, editOutputPrice)).filter(([key, value]) => value !== (model[key as keyof Model] ?? null))
 		);
-		if (prices === undefined || Object.keys(cache.errors).length) return;
+		if (Object.keys(cache.errors).length) return;
 		const pricing = pricingPayload(editPricing, model.media_pricing);
 		const body = { ...prices, ...cache.values, ...(!pricingEquals(pricing ?? {}, model.media_pricing ?? {}) ? { media_pricing: pricing } : {}) };
 		if (!Object.keys(body).length) { editingPrice = null; return; }
@@ -1710,9 +1813,8 @@
 	}
 
 	$effect(() => {
-		if (token) void load();
+		if (token) untrack(() => void load());
 	});
-
 
 	const unsubscribeAuthScope = auth.subscribe((state) => {
 		const nextToken = state.token ?? undefined;
@@ -1726,7 +1828,11 @@
 			registeredKind = '';
 			editingPrice = null;
 			editingProvider = null;
-			editingModelOrder = null;
+			++modelOrderGeneration;
+			modelOrderSaving = false;
+			modelOrderSaveError = '';
+			modelOrderStatus = '';
+			resetModelDrag();
 		}
 		if (
 			authModalOpen &&
@@ -1824,24 +1930,24 @@
 			{/if}
 			{#if providerCreateError}<Alert tone="danger" class="mt-3">{providerCreateError}</Alert>{/if}
 			<div class="mt-3 flex justify-end">
-				<Button onclick={addProvider} disabled={addingProvider}>
-					{addingProvider ? t('configuration.adding') : t('configuration.addProvider')}
+				<Button onclick={addProvider} disabled={addingProvider} ariaBusy={addingProvider}>
+					{#if addingProvider}<ActivityIndicator size="xs" tone="ink" />{/if}{addingProvider ? t('configuration.adding') : t('configuration.addProvider')}
 				</Button>
 			</div>
 		</div>
 
 		{#if loading}
-			<div class="{cardCls} h-20 animate-pulse"></div>
+			<div class="{cardCls} h-20 motion-skeleton" role="status" aria-busy="true" aria-label={t('configuration.loadingProviders')}><span class="sr-only">{t('configuration.loadingProviders')}</span></div>
 		{:else if providers.length === 0}
-			<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('configuration.noProvidersRegistered')}</p>
+			<EmptyState headline={t('configuration.noProvidersRegistered')} class="py-4 [&_.motion-enter]:animate-none" />
 		{:else}
 			<div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
 				<div>
 					<h4 class="text-sm font-semibold text-[var(--color-ink-1)]">{t('configuration.usageAndCreditStatus')}</h4>
 					<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('configuration.theLumenLedgerIsShownSeparatelyFromOfficialProvider')}</p>
 				</div>
-				<Button variant="outline" size="sm" disabled={billingLoading} onclick={() => void loadProviderBilling({ fresh: true })}>
-					{billingLoading ? t('configuration.fetching') : t('configuration.refreshAll')}
+				<Button variant="outline" size="sm" disabled={billingLoading} ariaBusy={billingLoading} onclick={() => void loadProviderBilling({ fresh: true })}>
+					{#if billingLoading}<ActivityIndicator size="xs" tone="ink" />{/if}{billingLoading ? t('configuration.fetching') : t('configuration.refreshAll')}
 				</Button>
 			</div>
 			{#if billingError}
@@ -1910,7 +2016,7 @@
 							</div>
 
 							{#if billingLoading && !billing}
-								<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('configuration.fetchingUsageAndBillingStatus')}</p>
+								<ActivityIndicator size="xs" label={t('configuration.fetchingUsageAndBillingStatus')} class="mt-2 text-xs text-ink-2" />
 							{:else if !billing}
 								<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('configuration.noBillingStatusToDisplayUseRefreshAllTo')}</p>
 							{:else}
@@ -2049,6 +2155,10 @@
 				</Field>
 				{#if providerEditError}<Alert tone="danger">{providerEditError}</Alert>{/if}
 			</div>
+			{#snippet actions()}
+				<Button variant="secondary" disabled={providerSaving} onclick={() => (editingProvider = null)}>{t('configuration.cancel')}</Button>
+				<Button onclick={saveProviderMetadata} disabled={providerSaving} ariaBusy={providerSaving}>{#if providerSaving}<ActivityIndicator size="xs" tone="ink" />{/if}{providerSaving ? t('configuration.saving') : t('configuration.save')}</Button>
+			{/snippet}
 		</FormModal>
 
 		<FormModal
@@ -2074,6 +2184,10 @@
 					<TextInput id="provider-billing-admin-key" type="password" placeholder={billingKeyProvider?.has_billing_admin_key ? t('configuration.newKeyOrLeaveBlankToRemove') : t('configuration.adminApiKey')} bind:value={billingAdminKey} />
 				</Field>
 			</div>
+			{#snippet actions()}
+				<Button variant="secondary" disabled={billingKeyBusy} onclick={closeBillingKeyModal}>{t('configuration.cancel')}</Button>
+				<Button onclick={saveBillingAdminKey} disabled={billingKeyBusy} ariaBusy={billingKeyBusy}>{#if billingKeyBusy}<ActivityIndicator size="xs" tone="ink" />{/if}{billingKeyBusy ? t('configuration.saving') : billingKeyProvider?.has_billing_admin_key ? t('configuration.changeKey') : t('configuration.setKey')}</Button>
+			{/snippet}
 		</FormModal>
 
 		<Modal bind:open={authModalOpen} onClose={closeSubscriptionAuth} ariaLabel={t('configuration.subscriptionAuthentication')}>
@@ -2103,7 +2217,7 @@
 								{t('configuration.startingTheConnectionDisplaysAnOpenaiAuthenticationPageAnd')}
 							</p>
 							<div class="flex flex-wrap justify-end gap-2">
-								<Button onclick={startDeviceAuth} disabled={authBusy}>{authBusy ? t('configuration.starting') : t('configuration.connectChatgpt')}</Button>
+								<Button onclick={startDeviceAuth} disabled={authBusy} ariaBusy={authBusy}>{#if authBusy}<ActivityIndicator size="xs" tone="ink" />{/if}{authBusy ? t('configuration.starting') : t('configuration.connectChatgpt')}</Button>
 							</div>
 						{:else}
 							<div class="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-4">
@@ -2116,15 +2230,11 @@
 												: 'warning'}
 										dot
 									>
-										{deviceAttempt.status === 'pending'
-											? t('configuration.awaitingAuthentication')
-											: deviceAttempt.status === 'connected'
-												? t('configuration.connected')
-												: deviceAttempt.status === 'expired'
-													? t('configuration.authenticationExpired')
-													: deviceAttempt.status === 'cancelled'
-														? t('configuration.authenticationCanceled')
-														: t('configuration.authenticationError')}
+										{#if deviceAttempt.status === 'pending'}
+											<ActivityIndicator variant="dots" size="xs" label={t('configuration.awaitingAuthentication')} />
+										{:else}
+											{deviceAttempt.status === 'connected' ? t('configuration.connected') : deviceAttempt.status === 'expired' ? t('configuration.authenticationExpired') : deviceAttempt.status === 'cancelled' ? t('configuration.authenticationCanceled') : t('configuration.authenticationError')}
+										{/if}
 									</Pill>
 									<span class="text-xs text-[var(--color-ink-3)]">{t('configuration.deviceCredentialExpiry', { v0: new Date(deviceAttempt.expires_at).toLocaleString(intlLocale()) })}</span>
 								</div>
@@ -2145,12 +2255,12 @@
 							</div>
 							<div class="flex flex-wrap justify-end gap-2">
 								{#if deviceAttempt.status === 'pending'}
-									<Button variant="secondary" onclick={pollCurrentDeviceAuth} disabled={authBusy}>
-										{authBusy ? t('configuration.checking') : t('configuration.checkNow')}
+									<Button variant="secondary" onclick={pollCurrentDeviceAuth} disabled={authBusy} ariaBusy={authBusy && !authCancelling}>
+										{#if authBusy && !authCancelling}<ActivityIndicator size="xs" tone="ink" />{/if}{authBusy && !authCancelling ? t('configuration.checking') : t('configuration.checkNow')}
 									</Button>
-									<Button variant="danger-outline" onclick={cancelDeviceAuth} disabled={authBusy}>{t('configuration.cancelAuthentication')}</Button>
+									<Button variant="danger-outline" onclick={cancelDeviceAuth} disabled={authBusy} ariaBusy={authCancelling}>{#if authCancelling}<ActivityIndicator size="xs" tone="ink" />{/if}{authCancelling ? t('configuration.cancelling') : t('configuration.cancelAuthentication')}</Button>
 								{:else if deviceAttempt.status !== 'connected'}
-									<Button onclick={startDeviceAuth} disabled={authBusy}>{t('configuration.reconnect')}</Button>
+									<Button onclick={startDeviceAuth} disabled={authBusy} ariaBusy={authBusy}>{#if authBusy}<ActivityIndicator size="xs" tone="ink" />{/if}{authBusy ? t('configuration.starting') : t('configuration.reconnect')}</Button>
 								{/if}
 							</div>
 						{/if}
@@ -2174,8 +2284,8 @@
 						</Field>
 						<div class="flex flex-wrap justify-end gap-2">
 							<Button variant="secondary" href="https://support.anthropic.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan">{t('configuration.officialGuidance')}</Button>
-							<Button onclick={saveClaudeSubscription} disabled={authBusy || !claudeToken.trim()}>
-								{authBusy ? t('configuration.saving') : authProvider.has_credentials ? t('configuration.replaceToken') : t('configuration.registerSubscriptionToken')}
+							<Button onclick={saveClaudeSubscription} disabled={authBusy || !claudeToken.trim()} ariaBusy={authBusy}>
+								{#if authBusy}<ActivityIndicator size="xs" tone="ink" />{/if}{authBusy ? t('configuration.saving') : authProvider.has_credentials ? t('configuration.replaceToken') : t('configuration.registerSubscriptionToken')}
 							</Button>
 						</div>
 					</div>
@@ -2206,9 +2316,10 @@
 							if (!mProviderId) return toast.error(t('configuration.selectAProvider'));
 							void discover(mProviderId);
 						}}
-						disabled={!mProviderId}
+						disabled={!mProviderId || discovering}
+						ariaBusy={discovering}
 					>
-						{t('configuration.loadModels')}
+						{#if discovering}<ActivityIndicator size="xs" tone="ink" />{/if}{discovering ? t('configuration.fetching') : t('configuration.loadModels')}
 					</Button>
 					<Button
 						variant="secondary"
@@ -2228,12 +2339,12 @@
 					<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
 						<p class="text-sm font-semibold text-[var(--color-ink-1)]">{t('configuration.discoveredCandidates', { v0: providerName(discoverId) })}</p>
 						<div class="flex gap-2">
-							<Button variant="secondary" size="sm" onclick={retryDiscovery} disabled={discovering || registeringBulk}>{t('configuration.fetchAgain')}</Button>
+							<Button variant="secondary" size="sm" onclick={retryDiscovery} disabled={discovering || registeringBulk} ariaBusy={discovering}>{#if discovering}<ActivityIndicator size="xs" tone="ink" />{/if}{discovering ? t('configuration.fetching') : t('configuration.fetchAgain')}</Button>
 							<Button variant="ghost" size="sm" onclick={resetDiscovery}>{t('configuration.closeDiscovery')}</Button>
 						</div>
 					</div>
 					{#if discovering}
-						<p class="text-sm text-[var(--color-ink-2)]">{t('configuration.loadingModelList')}</p>
+						<ActivityIndicator label={t('configuration.loadingModelList')} class="text-sm text-ink-2" />
 					{:else if discoveryError}
 						<Alert tone="warning">{discoveryError}</Alert>
 					{:else if discovery}
@@ -2286,7 +2397,7 @@
 										</span>
 									</label>
 								{:else}
-									<p class="px-2 py-1 text-sm text-[var(--color-ink-2)]">{t('configuration.noUnregisteredModelsMatchTheFilters')}</p>
+									<EmptyState headline={t('configuration.noUnregisteredModelsMatchTheFilters')} class="py-4 [&_.motion-enter]:animate-none" />
 								{/each}
 							</div>
 							<div class="mt-3 flex justify-end">
@@ -2345,53 +2456,78 @@
 			</div>
 			{/if}
 			<div class="mt-3 flex justify-end">
-				<Button onclick={addModel} disabled={addingModel || providers.length === 0 || (mKind !== 'text' && !!mProviderId && !mediaProviderSupported(mProviderId))}>
-					{addingModel ? t('configuration.adding') : t('configuration.addModel')}
+				<Button onclick={addModel} disabled={addingModel || providers.length === 0 || (mKind !== 'text' && !!mProviderId && !mediaProviderSupported(mProviderId))} ariaBusy={addingModel}>
+					{#if addingModel}<ActivityIndicator size="xs" tone="ink" />{/if}{addingModel ? t('configuration.adding') : t('configuration.addModel')}
 				</Button>
 			</div>
 		</div>
 
 		<div class="mb-3">
 			<Field label={t('pricing.registeredProviderFilter')} for="registered-model-provider" help={t('pricing.registeredProviderHelp')}>
-				<SelectInput id="registered-model-provider" bind:value={registeredProviderId} onchange={changeRegisteredProvider} disabled={deletingBulk}>
+				<SelectInput id="registered-model-provider" bind:value={registeredProviderId} onchange={changeRegisteredProvider} disabled={deletingBulk || modelOrderSaving}>
 					<option value="">{t('pricing.allProviders')}</option>
 					{#each providers as provider (provider.id)}<option value={String(provider.id)}>{provider.name}</option>{/each}
 				</SelectInput>
 			</Field>
 			<Field label={t('pricing.registeredKindFilter')} for="registered-model-kind">
-				<SelectInput id="registered-model-kind" value={registeredKind} disabled={deletingBulk} onchange={(event) => { registeredKind = (event.target as HTMLSelectElement).value as typeof registeredKind; selectedModelIds = {}; }}>
+				<SelectInput id="registered-model-kind" value={registeredKind} disabled={deletingBulk || modelOrderSaving} onchange={(event) => { registeredKind = (event.target as HTMLSelectElement).value as typeof registeredKind; selectedModelIds = {}; resetModelDrag(); }}>
 					<option value="">{t('pricing.allKinds')}</option>
 					{#each Object.entries(MEDIA_LABELS) as [kind, label]}<option value={kind}>{label}</option>{/each}
 				</SelectInput>
 			</Field>
 			<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('pricing.registeredCount', { visible: formatNumber(visibleModels.length), total: formatNumber(models.length) })}</p>
+			<p id="model-reorder-help" class="mt-1 text-xs text-[var(--color-ink-2)]">{t('pricing.modelReorderHelp')}</p>
+			<p role="status" aria-live="polite" class="mt-1 text-xs text-[var(--color-ink-2)]">{modelOrderStatus}</p>
+			{#if modelOrderSaveError}<Alert tone="danger" class="mt-2">{modelOrderSaveError}</Alert>{/if}
 		</div>
 		{#if loading}
-			<div class="{cardCls} h-20 animate-pulse"></div>
+			<div class="{cardCls} h-20 motion-skeleton" role="status" aria-busy="true" aria-label={t('configuration.loadingModels')}><span class="sr-only">{t('configuration.loadingModels')}</span></div>
 		{:else if visibleModels.length === 0}
-			<p class="px-1 text-sm text-[var(--color-ink-2)]">{registeredProviderId ? t('pricing.providerEmpty') : t('configuration.noModelsRegistered')}</p>
+			<EmptyState headline={registeredProviderId ? t('pricing.providerEmpty') : t('configuration.noModelsRegistered')} class="py-4 [&_.motion-enter]:animate-none" />
 		{:else}
 			<div class="mb-2 flex items-center justify-between gap-3 px-1">
 				<label class="flex cursor-pointer items-center gap-2 text-xs text-[var(--color-ink-2)]">
 					<input
 						type="checkbox"
 						checked={allModelsSelected}
-						disabled={deletingBulk}
+						disabled={deletingBulk || modelOrderSaving}
 						onchange={(e) => toggleAllModels(e.currentTarget.checked)}
 					/>
 					{t('configuration.selectAllWithCount', { v0: selectedCount > 0 ? ` (${formatNumber(selectedCount)})` : '' })}
 				</label>
 				{#if selectedCount > 0}
-					<Button variant="danger-outline" size="sm" onclick={deleteSelectedModels} disabled={deletingBulk}>
-						{deletingBulk ? t('configuration.deleting') : t('configuration.deleteSelected', { v0: formatNumber(selectedCount) })}
+					<Button variant="danger-outline" size="sm" onclick={deleteSelectedModels} disabled={deletingBulk || modelOrderSaving} ariaBusy={deletingBulk}>
+						{#if deletingBulk}<ActivityIndicator size="xs" tone="ink" />{/if}{deletingBulk ? t('configuration.deleting') : t('configuration.deleteSelected', { v0: formatNumber(selectedCount) })}
 					</Button>
 				{/if}
 			</div>
-			<div class="space-y-2">
+			<ul class="space-y-2" aria-label={t('pricing.registeredModelOrder')} aria-busy={modelOrderSaving}>
 				{#each visibleModels as m (m.id)}
-					<div class="{cardCls} flex flex-col items-stretch gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" data-model-id={m.id}>
+					{@const siblings = modelSiblings(m)}
+					{@const siblingIndex = siblings.findIndex((row) => row.id === m.id)}
+					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+					<li
+						class="{cardCls} model-card flex flex-col items-stretch gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+						data-model-id={m.id}
+						draggable={!modelOrderBusy && siblings.length > 1}
+						data-dragging={draggedModelId === m.id}
+						data-drop-edge={modelDropTarget?.id === m.id ? modelDropTarget.edge : undefined}
+						aria-describedby="model-reorder-help"
+						ondragstart={(event) => startModelDrag(event, m)}
+						onpointerdown={(event) => handleModelPointerDown(event, m)}
+						onmousedown={(event) => handleModelPointerDown(event, m)}
+						ondragover={(event) => allowModelDrop(event, m)}
+						ondragleave={(event) => { if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) modelDropTarget = null; }}
+						ondrop={(event) => dropModel(event, m)}
+						ondragend={resetModelDrag}
+					>
 						<div class="flex min-w-0 items-start gap-3">
-							<input class="mt-0.5 shrink-0" type="checkbox" disabled={deletingBulk} bind:checked={selectedModelIds[m.id]} aria-label={t('configuration.selectModel', { v0: m.display_name || publicModelName(m) })} />
+							<div class="flex shrink-0 flex-col items-center text-[var(--color-ink-3)]" role="group" aria-label={t('pricing.moveModelOrder', { name: displayModelTitle(m) })}>
+								<svg class="mb-1 h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="5" r="1.5" /><circle cx="15" cy="5" r="1.5" /><circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" /><circle cx="9" cy="19" r="1.5" /><circle cx="15" cy="19" r="1.5" /></svg>
+								<span data-model-move="up"><Button variant="ghost" size="xs" class="!h-11 !w-11 !p-0" ariaLabel={t('pricing.moveModelUp', { name: displayModelTitle(m) })} title={t('pricing.moveUp')} disabled={modelOrderBusy || siblingIndex === 0} onclick={() => moveModel(m, 'up')}><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m6 12 6-6 6 6M12 6v12" /></svg></Button></span>
+								<span data-model-move="down"><Button variant="ghost" size="xs" class="!h-11 !w-11 !p-0" ariaLabel={t('pricing.moveModelDown', { name: displayModelTitle(m) })} title={t('pricing.moveDown')} disabled={modelOrderBusy || siblingIndex === siblings.length - 1} onclick={() => moveModel(m, 'down')}><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m6 12 6 6 6-6M12 6v12" /></svg></Button></span>
+							</div>
+							<input class="mt-0.5 shrink-0" type="checkbox" disabled={deletingBulk || modelOrderSaving} bind:checked={selectedModelIds[m.id]} aria-label={t('configuration.selectModel', { v0: m.display_name || publicModelName(m) })} />
 							<div class="min-w-0 flex-1">
 							<div class="flex flex-wrap items-center gap-2">
 								<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{displayModelTitle(m)}</span>
@@ -2448,35 +2584,23 @@
 						</div>
 						<div class="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 border-t border-[var(--color-line)] pt-3 text-xs sm:shrink-0 sm:border-t-0 sm:pt-0">
 							{#if (m.model_kind ?? 'text') === 'text'}
-								<button class={rowActionCls} onclick={() => setTitleModel(m)}>
+								<button class={rowActionCls} disabled={modelOrderSaving} onclick={() => setTitleModel(m)}>
 									{m.is_title_model ? t('configuration.unassignTitleModel') : t('configuration.assignTitleModel')}
 								</button>
 							{/if}
-							<Button variant="outline" size="sm" onclick={() => openModelOrderEditor(m)}>{t('pricing.editOrder')}</Button>
-							<button class={rowActionCls} onclick={() => openPriceEditor(m)}>{t('configuration.editPricing')}</button>
-							{#if (m.model_kind ?? 'text') === 'text'}<Button variant="ghost" size="xs" onclick={() => openCapabilityEditor(m)}>{t('configuration.editCapabilities')}</Button>{/if}
-							<button class={rowActionCls} onclick={() => toggleModel(m)}>{m.is_active ? t('configuration.deactivate') : t('configuration.activate')}</button>
-							<button class="text-[var(--color-state-danger)] transition-opacity hover:opacity-80" onclick={() => deleteModel(m.id)}>{t('configuration.delete')}</button>
+							<button class={rowActionCls} disabled={modelOrderSaving} onclick={() => openPriceEditor(m)}>{t('configuration.editPricing')}</button>
+							{#if (m.model_kind ?? 'text') === 'text'}<Button variant="ghost" size="xs" disabled={modelOrderSaving} onclick={() => openCapabilityEditor(m)}>{t('configuration.editCapabilities')}</Button>{/if}
+							<button class={rowActionCls} disabled={modelOrderSaving} onclick={() => toggleModel(m)}>{m.is_active ? t('configuration.deactivate') : t('configuration.activate')}</button>
+							<button class="text-[var(--color-state-danger)] transition-opacity hover:opacity-80" disabled={modelOrderSaving} onclick={() => deleteModel(m.id)}>{t('configuration.delete')}</button>
 						</div>
-					</div>
+					</li>
 				{/each}
-			</div>
+			</ul>
 		{/if}
 	</section>
 	{/if}
 
 	{#if section === 'models'}
-	<FormModal open={editingModelOrder !== null} title={t('pricing.modelOrder')} onClose={() => { if (!modelOrderSaving) editingModelOrder = null; }} onSubmit={saveModelOrder} submitLabel={t('configuration.save')} submitting={modelOrderSaving}>
-		<div class="space-y-4">
-			{#if editingModelOrder}<p class="break-all text-sm text-[var(--color-ink-1)]">{providerName(editingModelOrder.provider_id)} · {displayModelTitle(editingModelOrder)}</p>{/if}
-			<Field label={t('pricing.modelOrder')} for="model-edit-sort-order" required help={ORDER_HELP} error={editModelOrder || modelOrderAttempted ? orderError(editModelOrder) : undefined}>
-				<TextInput id="model-edit-sort-order" inputmode="numeric" bind:value={editModelOrder} required disabled={modelOrderSaving} ariaInvalid={Boolean(orderError(editModelOrder))} />
-			</Field>
-			<p class="text-xs text-[var(--color-ink-2)]">{t('pricing.modelOrderScope')}</p>
-			{#if modelOrderSaveError}<Alert tone="danger">{modelOrderSaveError}</Alert>{/if}
-		</div>
-	</FormModal>
-
 	<Modal open={registrationReview !== null} onClose={() => { if (!registeringBulk) registrationReview = null; }} dismissible={!registeringBulk} ariaLabel={t('configuration.reviewModelRegistration')}>
 		<div class="max-h-[calc(100vh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]" data-testid="model-registration-review">
 			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">{t('configuration.reviewModelRegistration')}</h3>
@@ -2519,8 +2643,8 @@
 				</div>
 				<div class="mt-5 flex flex-wrap justify-end gap-2">
 					<Button variant="secondary" onclick={() => (registrationReview = null)} disabled={registeringBulk}>{t('configuration.cancel')}</Button>
-					<Button onclick={() => registerSelected(false)} disabled={registeringBulk || registrationMode === 'active' || registrationReview.entries.some((entry) => registrationOutcomes[entry.name] !== 'success' && Boolean(reviewPriceError(entry)))}>{registeringBulk ? t('configuration.registering') : t('configuration.saveAsInactive')}</Button>
-					<Button variant="accent" onclick={() => registerSelected(true)} disabled={registeringBulk || registrationMode === 'inactive' || !reviewCanActivate(registrationReview)}>{t('configuration.confirmPricingRegisterAndActivate')}</Button>
+					<Button onclick={() => registerSelected(false)} disabled={registeringBulk || registrationMode === 'active' || registrationReview.entries.some((entry) => registrationOutcomes[entry.name] !== 'success' && Boolean(reviewPriceError(entry)))} ariaBusy={registeringBulk && registrationMode === 'inactive'}>{#if registeringBulk && registrationMode === 'inactive'}<ActivityIndicator size="xs" tone="ink" />{/if}{registeringBulk && registrationMode === 'inactive' ? t('configuration.registering') : t('configuration.saveAsInactive')}</Button>
+					<Button variant="accent" onclick={() => registerSelected(true)} disabled={registeringBulk || registrationMode === 'inactive' || !reviewCanActivate(registrationReview)} ariaBusy={registeringBulk && registrationMode === 'active'}>{#if registeringBulk && registrationMode === 'active'}<ActivityIndicator size="xs" tone="ink" />{/if}{registeringBulk && registrationMode === 'active' ? t('configuration.registeringAndActivating') : t('configuration.confirmPricingRegisterAndActivate')}</Button>
 				</div>
 			{/if}
 		</div>
@@ -2532,7 +2656,7 @@
 			<p class="mt-1 text-sm text-[var(--color-ink-2)]">{MEDIA_LABELS[editingPrice?.model_kind ?? 'text']} · {editingPrice ? displayModelTitle(editingPrice) : ''}</p>
 			{#if editingPrice}
 			<p class="mt-3 text-sm font-semibold text-[var(--color-ink-1)]">{t('pricing.textTokenRates')}</p>
-				<p class="mt-1 text-sm text-[var(--color-ink-2)]">{(editingPrice.model_kind ?? 'text') === 'text' ? t('configuration.manualPricesClearTogether') : t('pricing.mediaTextEditHelp')}</p>
+				<p class="mt-1 text-sm text-[var(--color-ink-2)]">{t('pricing.independentTextEditHelp')}</p>
 			<div class="mt-4 grid gap-3 sm:grid-cols-2">
 				<Field label={t('configuration.input')} for="model-edit-input-price">
 					<TextInput id="model-edit-input-price" inputmode="decimal" placeholder={t('configuration.usd1mTokens')} bind:value={editInputPrice} disabled={priceSaving} />
@@ -2568,7 +2692,7 @@
 			{/if}
 			<div class="mt-5 flex justify-end gap-2">
 				<Button variant="secondary" disabled={priceSaving} onclick={() => (editingPrice = null)}>{t('configuration.cancel')}</Button>
-				<Button onclick={savePrice} disabled={priceSaving}>{priceSaving ? t('configuration.saving') : t('configuration.save')}</Button>
+				<Button onclick={savePrice} disabled={priceSaving} ariaBusy={priceSaving}>{#if priceSaving}<ActivityIndicator size="xs" tone="ink" />{/if}{priceSaving ? t('configuration.saving') : t('configuration.save')}</Button>
 			</div>
 		</div>
 	</Modal>
@@ -2596,7 +2720,7 @@
 				{#if capError}<Alert tone="warning" class="mt-3">{capError}</Alert>{/if}
 				<div class="mt-5 flex justify-end gap-2">
 					<Button variant="secondary" onclick={() => (editingCapabilities = null)} disabled={capSaving}>{t('configuration.cancel')}</Button>
-					<Button onclick={saveCapabilities} disabled={capSaving || Boolean(contextLimitError(capContextLimit))}>{capSaving ? t('configuration.saving') : t('configuration.saveCapabilities')}</Button>
+					<Button onclick={saveCapabilities} disabled={capSaving || Boolean(contextLimitError(capContextLimit))} ariaBusy={capSaving}>{#if capSaving}<ActivityIndicator size="xs" tone="ink" />{/if}{capSaving ? t('configuration.saving') : t('configuration.saveCapabilities')}</Button>
 				</div>
 			{/if}
 		</div>
@@ -2622,21 +2746,23 @@
 				</div>
 				<div aria-live="polite">
 					<label class="mb-1 block text-sm text-[var(--color-ink-2)]" for="models-dev-provider">{t('configuration.pricingProvider')}</label>
-					{#if filteredModelsDevProviders.length > 0}
+					{#if modelsDevLoading && modelsDevProviders.length === 0}
+						<ActivityIndicator label={t('configuration.loadingPricingProviders')} />
+					{:else if filteredModelsDevProviders.length > 0}
 						<select id="models-dev-provider" class={inputCls} bind:value={selectedModelsDevProviderId} onchange={loadModelsDevProvider}>
 							<option value="" disabled>{t('configuration.selectPricingProvider')}</option>
 							{#each filteredModelsDevProviders as provider (provider.id)}<option value={provider.id}>{provider.name} ({formatNumber(provider.model_count)})</option>{/each}
 						</select>
 					{:else if modelsDevProviders.length > 0}
-						<p class="rounded-lg border border-[var(--color-line)] px-3 py-2 text-sm text-[var(--color-ink-3)]">{t('configuration.noPricingProvidersMatchYourSearch')}</p>
+						<EmptyState headline={t('configuration.noPricingProvidersMatchYourSearch')} class="py-4 [&_.motion-enter]:animate-none" />
 					{:else}
-						<p class="rounded-lg border border-[var(--color-line)] px-3 py-2 text-sm text-[var(--color-ink-3)]">{t('configuration.noModelsDevPriceListMatchesARegisteredProvider')}</p>
+						<EmptyState headline={t('configuration.noModelsDevPriceListMatchesARegisteredProvider')} class="py-4 [&_.motion-enter]:animate-none" />
 					{/if}
 				</div>
 				<p class="text-xs text-[var(--color-ink-3)]">{t('configuration.onlyPriceListsMatchingRegisteredProvidersAreShown')}</p>
 			</div>
 			{#if modelsDevLoading}
-				<p class="mt-4 text-sm text-[var(--color-ink-3)]">{t('configuration.loadingPriceList')}</p>
+				<ActivityIndicator label={t('configuration.loadingPriceList')} class="mt-4 text-sm text-ink-2" />
 			{:else}
 				<div class="mt-4 space-y-2">
 					{#each models.filter((model) => model.provider_id === modelsDevProvider?.id && (model.model_kind ?? 'text') === 'text') as model (model.id)}
@@ -2677,8 +2803,8 @@
 			{/if}
 			<div class="mt-5 flex justify-end gap-2">
 				<Button variant="secondary" onclick={() => (modelsDevOpen = false)}>{t('configuration.cancel')}</Button>
-				<Button onclick={importModelsDevPrices} disabled={modelsDevImporting || modelsDevLoading || !selectedModelsDevProviderId}>
-					{modelsDevImporting ? t('configuration.applying') : t('configuration.applySelectedPrices')}
+				<Button onclick={importModelsDevPrices} disabled={modelsDevImporting || modelsDevLoading || !selectedModelsDevProviderId} ariaBusy={modelsDevImporting}>
+					{#if modelsDevImporting}<ActivityIndicator size="xs" tone="ink" />{/if}{modelsDevImporting ? t('configuration.applying') : t('configuration.applySelectedPrices')}
 				</Button>
 			</div>
 		</div>
@@ -2692,3 +2818,20 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	.model-card { position: relative; }
+	.model-card[draggable='true'] { cursor: grab; }
+	.model-card[data-dragging='true'] { opacity: 0.45; }
+	.model-card[data-drop-edge] { border-color: var(--color-accent); }
+	.model-card[data-drop-edge]::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		height: 2px;
+		background: var(--color-accent);
+	}
+	.model-card[data-drop-edge='before']::before { top: -6px; }
+	.model-card[data-drop-edge='after']::before { bottom: -6px; }
+</style>

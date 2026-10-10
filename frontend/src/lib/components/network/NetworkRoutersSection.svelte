@@ -2,13 +2,15 @@
 	import { t } from '$lib/i18n/ns/network-resources';
 	import { useNetworkDetailController } from '$lib/stores/networkDetailController.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 
 	const s = useNetworkDetailController();
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
 	<div class="flex items-center justify-between mb-3">
-		<h3 class="text-xs text-ink-2 uppercase tracking-wide">{t('network.routers.titleCount', { count: s.network!.routers.length })}</h3>
+		<h3 class="text-xs text-ink-2 uppercase tracking-wide"><AnimatedNumber value={s.network!.routers.length} format={(count) => t('network.routers.titleCount', { count: Math.round(count) })} /></h3>
 		{#if s.canManageNetwork}
 			<button
 				onclick={() => s.openRouterConnect()}
@@ -18,7 +20,7 @@
 	</div>
 
 	{#if s.showRouterConnect && s.canManageNetwork}
-		<div class="mb-3 p-3 bg-surface-sunken/60 border border-line-2 rounded-lg space-y-2">
+		<div class="motion-enter mb-3 p-3 bg-surface-sunken/60 border border-line-2 rounded-lg space-y-2">
 			<select bind:value={s.selectedRouterId} class="w-full bg-surface-sunken border border-line-2 rounded px-2 py-1.5 text-xs text-ink-1">
 				<option value="">{t('network.routers.select')}</option>
 				{#each s.managedRouters as r}
@@ -37,8 +39,9 @@
 				<button
 					onclick={() => s.connectRouter()}
 					disabled={!s.selectedRouterId || !s.selectedSubnetId || s.connectingRouter}
-					class="bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm text-xs px-3 py-1.5 rounded transition-colors"
-				>{s.connectingRouter ? t('network.actions.connecting') : t('network.actions.connect')}</button>
+					aria-busy={s.connectingRouter}
+					class="inline-flex items-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm text-xs px-3 py-1.5 rounded transition-colors"
+				>{#if s.connectingRouter}<ActivityIndicator size="xs" tone="ink" />{/if}{s.connectingRouter ? t('network.actions.connecting') : t('network.actions.connect')}</button>
 				<button onclick={() => s.showRouterConnect = false} class="text-ink-2 hover:text-ink-1 text-xs px-2">{t('network.actions.cancel')}</button>
 			</div>
 		</div>

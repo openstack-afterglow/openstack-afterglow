@@ -4,6 +4,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
+	import { ActivityIndicator, Alert, Button, ProgressTrack } from '$lib/components/ui';
 
 	import type { Network, SubnetDetail } from '$lib/types/networks';
 	import { t } from '$lib/i18n/ns/network-pages';
@@ -82,7 +83,7 @@
 
 	<div class="bg-surface-base border border-line-2 rounded-xl p-6 space-y-5">
 		{#if error}
-			<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>
+			<Alert tone="danger">{error}</Alert>
 		{/if}
 
 		<div>
@@ -115,7 +116,7 @@
 			<div>
 				<label for="lb-subnet" class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('loadBalancerCreate.form.subnet.label')}</label>
 				{#if loadingSubnets}
-					<div class="text-ink-2 text-sm">{t('loadBalancerCreate.form.subnet.loading')}</div>
+					<ActivityIndicator label={t('loadBalancerCreate.form.subnet.loading')} />
 				{:else if subnets.length === 0}
 					<div class="text-ink-2 text-sm">{t('loadBalancerCreate.form.subnet.empty')}</div>
 				{:else}
@@ -144,6 +145,7 @@
 			/>
 		</div>
 
+		{#if creating}<ProgressTrack value={null} active label={`${t('loadBalancerCreate.title')} · ${t('loadBalancerCreate.actions.creating')}`} />{/if}
 		<div class="flex justify-end gap-3 pt-2">
 			<button
 				onclick={() => goto('/dashboard/network/loadbalancers')}
@@ -151,13 +153,9 @@
 			>
 				{t('loadBalancerCreate.actions.cancel')}
 			</button>
-			<button
-				onclick={createLb}
-				disabled={creating}
-				class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
-			>
-				{creating ? t('loadBalancerCreate.actions.creating') : t('loadBalancerCreate.actions.create')}
-			</button>
+			<Button onclick={createLb} disabled={creating} ariaBusy={creating}>
+				{#if creating}<ActivityIndicator size="xs" tone="ink" />{t('loadBalancerCreate.actions.creating')}{:else}{t('loadBalancerCreate.actions.create')}{/if}
+			</Button>
 		</div>
 	</div>
 </div>

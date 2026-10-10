@@ -5,6 +5,10 @@
       - kolla_action | default('deploy') in ['precheck', 'pull', 'deploy', 'reconfigure', 'upgrade', 'destroy', 'config', 'config_validate', 'stop', 'deploy-containers', 'check']
     fail_msg: "Unsupported kolla_action '{{ kolla_action | default('deploy') }}' for afterglow"
 
+- name: Validate Palimpsest endpoint before configuration or activation
+  ansible.builtin.include_tasks: validate_palimpsest_endpoint.yml
+  when: kolla_action | default('deploy') in ['precheck', 'config', 'deploy', 'reconfigure', 'upgrade']
+
 - name: Run requested Afterglow lifecycle action
   ansible.builtin.include_tasks: "{{ kolla_action | default('deploy') }}.yml"
   when: kolla_action | default('deploy') in ['precheck', 'pull', 'deploy', 'reconfigure', 'upgrade', 'destroy', 'config']

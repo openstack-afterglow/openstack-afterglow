@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
+import { writable } from 'svelte/store';
+import { authReady, projectSwitching } from '$lib/stores/auth';
 import ModelPage from '../models/+page.svelte';
 
 const get = vi.fn();
@@ -16,9 +18,15 @@ vi.mock('$lib/api/client', () => ({
 vi.mock('$lib/stores/auth', () => {
 	const { readable } = require('svelte/store');
 	return {
-		auth: readable({ token: 'mock-token', projectId: 'test-project', user: { is_admin: true } })
+		auth: readable({ token: 'mock-token', projectId: 'test-project', user: { is_admin: true } }),
+		authReady: writable(true), projectSwitching: writable(false)
 	};
 });
+// Personal extension permissions are unrelated to these admin flows; do not consume API fixtures.
+vi.mock('$lib/stores/servicePermissions', () => ({
+	serviceCapabilities: writable<(leaf: string) => boolean>(() => false),
+	projectPermissions: writable({ permissions: null, loading: false, error: '' })
+}));
 
 const provider = {
 	id: 1,
@@ -193,6 +201,7 @@ const image1Models = [
 describe('admin chat models short name display', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		authReady.set(true); projectSwitching.set(false);
 		get.mockImplementation((path: string) => {
 			if (path === '/api/v1/chat/admin/providers') return Promise.resolve([provider]);
 			if (path === '/api/v1/chat/admin/models') return Promise.resolve(image1Models);

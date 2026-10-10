@@ -355,7 +355,7 @@ async def get_token_info(
 
 
 def require_admin(token_info: dict = Depends(get_token_info)):
-    """시스템 관리자(admin 프로젝트의 admin role 보유자)가 아니면 403 반환."""
+    """검증된 system-admin 권한이 없으면 403 반환 (project role 이름은 근거가 아님)."""
     if not token_info.get("is_system_admin", False):
         raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다")
 
@@ -364,28 +364,25 @@ async def require_project_manager(
     project_id: str,
     token_info: dict = Depends(get_token_info),
 ) -> dict:
-    """현재 프로젝트의 manager가 아니면 403. system admin은 bypass.
-
-    엔드포인트에서 Path 파라미터로 project_id를 직접 전달받아 사용:
-        manager = await require_project_manager(project_id, token_info=Depends(get_token_info))
-    또는 헬퍼 함수로 직접 호출:
-        await check_project_manager(project_id, token_info, session)
-    """
-    if token_info.get("is_system_admin", False):
+    """Require current Keystone project management; legacy DB rows never authorize."""
+    if token_info.get("is_system_admin") is True:
         return token_info
+    if token_info.get("project_id") != project_id:
+        raise HTTPException(status_code=403, detail="프로젝트 관리에는 현재 프로젝트 범위가 필요합니다")
+    from app.services.project_service import get_project_access
 
-    from app.database import get_session_factory
-    from app.services.project_service import is_project_manager
-
-    factory = get_session_factory()
-    if factory is None:
-        raise HTTPException(status_code=503, detail="DB를 사용할 수 없습니다")
-
-    async with factory() as session:
-        if not await is_project_manager(project_id, token_info["user_id"], session):
-            raise HTTPException(status_code=403, detail="프로젝트 관리자 권한이 필요합니다")
-
+    access = await get_project_access(project_id, token_info["user_id"])
+    if not access["is_manager"]:
+        raise HTTPException(status_code=403, detail="프로젝트 관리자 권한이 필요합니다")
     return token_info
+
+
+def has_project_write_permission(token_info: dict) -> bool:
+    """Compute effective write permission before public role-name filtering."""
+    if token_info.get("is_system_admin", False):
+        return True
+    roles = {r.lower() for r in token_info.get("roles", []) if isinstance(r, str)}
+    return bool(roles & {"admin", "member"})
 
 
 def require_project_write(token_info: dict = Depends(get_token_info)) -> dict:
@@ -395,11 +392,7 @@ def require_project_write(token_info: dict = Depends(get_token_info)) -> dict:
     - role에 'admin' 또는 'member'가 포함된 경우: 허용
     - role에 'reader'만 있거나 쓰기 권한이 없는 경우: 403 Forbidden
     """
-    if token_info.get("is_system_admin", False):
-        return token_info
-
-    roles = {r.lower() for r in token_info.get("roles", []) if isinstance(r, str)}
-    if roles & {"admin", "member"}:
+    if has_project_write_permission(token_info):
         return token_info
 
     raise HTTPException(
@@ -414,33 +407,30 @@ async def get_caller_project_permissions(
 ) -> dict:
     """호출자의 특정 프로젝트(또는 현재 컨텍스트)에 대한 실효 권한과 역할을 반환."""
     effective_project_id = project_id or token_info.get("project_id") or ""
-    raw_roles = token_info.get("roles", [])
-    roles = [r.lower() for r in raw_roles if isinstance(r, str)]
-    is_sys_admin = bool(token_info.get("is_system_admin", False))
+    from app.services.project_service import get_project_access
+    from app.services.service_permissions import service_permissions
+
+    access = await get_project_access(effective_project_id, token_info["user_id"])
+    roles = access["roles"]
+    is_sys_admin = token_info.get("is_system_admin") is True
+    principal = {**token_info, "roles": roles}
     role_set = set(roles)
 
-    can_write = is_sys_admin or bool(role_set & {"admin", "member"})
+    can_write = has_project_write_permission(principal)
     is_reader = not can_write and ("reader" in role_set or len(role_set) == 0)
 
-    is_mgr = is_sys_admin
-    if not is_mgr and effective_project_id:
-        from app.database import get_session_factory
-        from app.services.project_service import is_project_manager
+    is_mgr = is_sys_admin or access["is_manager"]
 
-        factory = get_session_factory()
-        if factory is not None:
-            try:
-                async with factory() as session:
-                    is_mgr = await is_project_manager(effective_project_id, token_info["user_id"], session)
-            except Exception:
-                _logger.warning("Failed to check project manager status for permissions", exc_info=True)
+    from app.services.identity_roles import visible_role_names
 
     return {
         "project_id": effective_project_id,
         "user_id": token_info.get("user_id", ""),
-        "roles": roles,
+        "roles": await visible_role_names(roles, is_sys_admin),
         "is_system_admin": is_sys_admin,
         "is_manager": is_mgr,
+        "is_owner": access["is_owner"],
+        "service_permissions": service_permissions(principal),
         "is_reader": is_reader,
         "can_read": True,
         "can_write": can_write,

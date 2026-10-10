@@ -2,6 +2,7 @@
 	import { t } from '$lib/i18n/ns/images-keys';
 	import { useImageDetailController, VISIBILITY_OPTIONS } from '$lib/stores/imageDetailController.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	const s = useImageDetailController();
 </script>
@@ -18,10 +19,10 @@
 			{/each}
 		</select>
 		<Button onclick={() => s.saveVisibility()} disabled={s.savingVisibility || s.visibilityValue === s.image!.visibility}>
-			{s.savingVisibility ? t('visibilitySection.saving') : t('visibilitySection.save')}
+			{#if s.savingVisibility}<ActivityIndicator size="xs" label={t('visibilitySection.saving')} />{:else}{t('visibilitySection.save')}{/if}
 		</Button>
 		{#if s.visibilitySuccess}
-			<span class="text-green-400 text-sm">{t('visibilitySection.saved')}</span>
+			<span role="status" class="motion-pop text-state-success-text text-sm">{t('visibilitySection.saved')}</span>
 		{/if}
 		{#if s.visibilityError}
 			<span class="text-red-400 text-sm">{s.visibilityError}</span>

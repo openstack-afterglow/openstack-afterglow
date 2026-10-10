@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import AnimatedNumber from './AnimatedNumber.svelte';
 
   type Accent = 'blue' | 'cyan' | 'violet' | 'emerald' | 'amber' | 'teal' | 'rose' | 'indigo' | 'admin-tone';
 
@@ -66,7 +67,7 @@
 
   const pct = $derived(
     progress && progress.max > 0
-      ? Math.min(100, Math.round((progress.value / progress.max) * 100))
+      ? Math.max(0, Math.min(100, Math.round((progress.value / progress.max) * 100)))
       : 0
   );
   const progressTone = $derived(
@@ -83,13 +84,13 @@
   <div class="stat-body">
     <div class="stat-label">{label}</div>
     <div class="stat-value-row">
-      <div class="stat-value">{value}</div>
+      <div class="stat-value">{#if typeof value === 'number'}<AnimatedNumber {value} />{:else}{value}{/if}</div>
       {#if displayUnit}<div class="stat-unit">{displayUnit}</div>{/if}
       {#if delta}<div class="stat-delta">{delta}</div>{/if}
     </div>
     {#if progress && progress.max > 0}
       <div class="progress-track">
-        <div class="progress-bar {progressTone}" style="width:{pct}%"></div>
+        <div class="progress-bar {progressTone}" style="transform: scaleX({pct / 100})"></div>
       </div>
     {:else if footer}
       <div class="stat-footer">
@@ -198,7 +199,10 @@
   .progress-bar {
     height: 0.25rem;
     border-radius: 999px;
-    transition: width var(--motion-duration-base) var(--motion-ease-standard);
+    width: 100%;
+    transform-origin: left;
+    animation: motion-grow-x var(--motion-duration-data) var(--motion-ease-emphasized) backwards;
+    transition: transform var(--motion-duration-data) var(--motion-ease-emphasized);
   }
   .icon-chip {
     width: 2.25rem;

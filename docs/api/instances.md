@@ -78,6 +78,8 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `union_upper_volume_id` | string \| null | OverlayFS upper 볼륨 ID |
 | `scheduling` | string \| null | `standard` \| `ha` |
 | `key_name` | string \| null | SSH 키페어 이름 |
+| `ssh_access_mode` | `"github"` \| null | 명시적으로 기록된 GitHub SSH 접근 모드. 기존/키페어 VM은 null |
+| `github_login` | string \| null | 생성 전 검증한 canonical GitHub login (대소문자 보존) |
 | `user_id` / `project_id` | string \| null | 소유 사용자/프로젝트 |
 | `fault` | object \| null | ERROR 상태의 fault 정보 `{message, code, created}` |
 | `host` | string \| null | 하이퍼바이저 호스트 (관리자 스코프에서만 채워짐) |
@@ -714,6 +716,8 @@ Prometheus(node_exporter 우선, 테넌트망 격리 인스턴스는 libvirt-exp
 ## 11. GitHub SSH 사용자 확인
 
 GitHub 공개키 SSH 접근을 선택한 VM 생성 전에 GitHub 사용자 존재와 공개 SSH 키 등록 여부를 확인하고, 사용자별 최근 확인 이력을 유지합니다. 조회는 `https://api.github.com`으로 고정되며 리디렉션을 따르지 않고 10분 캐시를 사용합니다. 키 본문·이름·이메일 등 GitHub 콘텐츠는 저장하지 않고 `github_user_id`/`login`/`verified_at`만 사용자 범위로 보관합니다(최근 20건).
+
+검증된 `github_username`으로 생성한 VM은 동기·SSE·관리자·squashfs consumer 경로 모두 Nova metadata에 `afterglow_ssh_access_mode="github"`, `afterglow_github_login=<canonical login>`을 기록합니다. 키페어·소유자·health·라이브러리 metadata는 기존대로 유지하며 SSH 키 본문이나 개인키는 기록하지 않습니다. `InstanceInfo`를 사용하는 목록·상세·생성 응답은 이를 `ssh_access_mode`와 `github_login`으로 제공합니다(기존 `metadata` 응답도 변경하지 않음). 공통 기본 정보는 두 필드가 모두 있을 때 **GitHub SSH / @login**을 표시하고, 그렇지 않으면 기존 키페어 이름/`-` 표시를 유지합니다. 이전 VM의 누락 metadata를 login으로 추론하지 않으며 cloud-init/user-data를 파싱하지 않습니다.
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|

@@ -7,10 +7,13 @@ import { downloadBlobAs } from '$lib/utils/downloadBlob';
 import type { K3sCluster } from '$lib/types/k3s';
 import type { K3sProgressController } from '$lib/stores/k3sProgress.svelte';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
+import { get } from 'svelte/store';
+import { k3sPermissions } from './k3sPermissions';
 
 export interface K3sClusterListOpts {
   token: () => string | undefined;
   projectId: () => string | undefined;
+  userId: () => string | null | undefined;
   progress: K3sProgressController;
 }
 
@@ -58,6 +61,7 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
     network_id: string; key_name: string; os_type: string; template_id?: string;
     master_count: number; stampede_enabled?: boolean;
   }) {
+    if (!get(k3sPermissions).editClusters) return;
     creating = true;
     createError = '';
     opts.progress.begin('create', t('list.preparingCreate'));
@@ -70,7 +74,7 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
         os_type: form.os_type,
         ...(form.agent_flavor_id ? { agent_flavor_id: form.agent_flavor_id } : {}),
         ...(form.network_id ? { network_id: form.network_id } : {}),
-        ...(form.key_name ? { key_name: form.key_name } : {}),
+        ...(get(k3sPermissions).adminCredentials && form.key_name ? { key_name: form.key_name } : {}),
         ...(form.template_id ? { template_id: form.template_id } : {}),
         ...(form.stampede_enabled ? { stampede_enabled: true } : {}),
       };
@@ -99,7 +103,11 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
   }
 
   async function deleteCluster(id: string, name: string) {
+    if (!get(k3sPermissions).administerClusters) return;
+    const userId = opts.userId();
+    const projectId = opts.projectId();
     if (!(await confirmDialog(t('list.confirmDelete', { name })))) return;
+    if (!get(k3sPermissions).administerClusters || opts.userId() !== userId || opts.projectId() !== projectId) return;
     deleting = id;
     opts.progress.begin('delete');
     try {
@@ -121,12 +129,15 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
   }
 
   async function downloadKubeconfig(id: string, name: string) {
+    const grade = get(k3sPermissions).kubeconfigGrade;
+    if (!grade) return;
+    const userId = opts.userId();
+    const projectId = opts.projectId();
     try {
-      const { blob } = await api.downloadBlob(
-        `/api/v1/k3s/clusters/${id}/kubeconfig`,
-        opts.token(),
-        opts.projectId(),
-      );
+      const { blob } = await api.downloadBlob(`/api/v1/k3s/clusters/${id}/kubeconfig?grade=${grade}`, opts.token(), projectId);
+      // A native-authorized response must not disclose credentials after the requested grade is revoked.
+      const current = get(k3sPermissions);
+      if ((grade === 'editor' ? !current.workloads : !current.credentials) || opts.userId() !== userId || opts.projectId() !== projectId) return;
       downloadBlobAs(blob, `kubeconfig-${name}.yaml`);
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
@@ -161,7 +172,7 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
     get showDeleted() { return showDeleted; },
     set showDeleted(v: boolean) { showDeleted = v; },
     get showModal() { return showModal; },
-    set showModal(v: boolean) { showModal = v; },
+    set showModal(v: boolean) { showModal = v && get(k3sPermissions).editClusters; },
     get creating() { return creating; },
     get createError() { return createError; },
     fetchClusters,

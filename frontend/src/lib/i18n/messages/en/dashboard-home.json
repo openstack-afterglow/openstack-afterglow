@@ -252,7 +252,7 @@
 	"secrets.description.containers": "<highlight>Containers</highlight> are logical groups that bundle multiple secrets. <muted>generic</muted> groups arbitrary secrets, <muted>rsa</muted> groups a public/private key pair, and <muted>certificate</muted> manages a TLS certificate, private key, and chain as a set. They are used for TLS termination on Octavia load balancers and for sharing certificates between services.",
 	"secrets.description.orders": "<highlight>Key orders</highlight> asynchronously request encryption key generation from Barbican. Request a <muted>symmetric key (AES)</muted> or <muted>asymmetric key (RSA)</muted> with the specified bit length, and Barbican securely generates the key in the background and stores it as a secret. Generating keys on the server instead of entering them manually is safer because the keys do not travel over the network.",
 	"secrets.description.quota": "<highlight>Quota</highlight> is the resource limit for this project. <value>∞</value> means unlimited. Contact an administrator to change the limits.",
-	"secrets.tabs.secretsWithCount": "Secrets <count>({count})</count>",
+	"secrets.tabs.secretsWithCount": "Secrets (<count>{count}</count>)",
 	"usageReport.loadFailed": "Failed to load data",
 	"usageReport.breadcrumb": "USAGE REPORT",
 	"usageReport.title": "Period usage & quota forecast",

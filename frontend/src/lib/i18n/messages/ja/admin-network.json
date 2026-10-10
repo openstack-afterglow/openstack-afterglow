@@ -167,6 +167,7 @@
 	"loadbalancersPage.toast.deleteFailed": "{count}件のロードバランサーの削除に失敗しました。",
 	"loadbalancersPage.breadcrumb": "ネットワーク / ロードバランサー",
 	"loadbalancersPage.title": "ロードバランサー",
+	"loadbalancersPage.loading": "ロードバランサーを読み込み中...",
 	"loadbalancersPage.empty": "ロードバランサーがありません",
 	"loadbalancersPage.emptyIcon": "⚖️",
 	"loadbalancersPage.selection.all": "すべてのロードバランサーを選択",

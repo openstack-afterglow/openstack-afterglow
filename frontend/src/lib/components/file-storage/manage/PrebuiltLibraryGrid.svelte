@@ -1,9 +1,13 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/file-storage';
+  import { t as ts } from '$lib/i18n/ns/status';
   import RichText from '$lib/i18n/RichText.svelte';
   import type { FileStorage } from '$lib/types/fileStorage';
   import type { LibraryConfig } from '$lib/types/library';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import ProgressTrack from '$lib/components/ui/ProgressTrack.svelte';
 
   let {
     libraries,
@@ -21,8 +25,9 @@
 {#snippet storageId(text: string)}<span class="font-mono">{text}</span>{/snippet}
 
 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-  {#each libraries as lib}
+  {#each libraries as lib (lib.id)}
     {@const prebuilt = fileStorages.find(s => s.library_name === lib.id && s.metadata?.union_type === 'prebuilt')}
+    {@const serverBuilding = prebuilt?.status.toUpperCase() === 'BUILDING'}
     <div class="bg-surface-base border border-line-2 rounded-xl p-4">
       <div class="flex items-start justify-between mb-2">
         <div>
@@ -41,13 +46,27 @@
           {#if prebuilt.built_at}• {prebuilt.built_at.split('T')[0]}{/if}
         </div>
       {/if}
-      <button
+      {#if building === lib.id || serverBuilding}
+        <div class="mb-3 space-y-2">
+          {#if serverBuilding && building !== lib.id}<ActivityIndicator size="xs" label={ts('building')} />{/if}
+          <ProgressTrack value={null} active label={`${lib.name} · ${t('manage.prebuiltStatus')}`} />
+        </div>
+      {/if}
+      <Button
+        variant={prebuilt ? 'secondary' : 'accent'}
+        size="sm"
+        class="w-full"
         onclick={() => onBuild(lib.id)}
         disabled={building === lib.id || !!prebuilt}
-        class="w-full text-xs py-1.5 rounded-lg border transition-colors {prebuilt ? 'border-line-2 text-ink-2 cursor-not-allowed' : 'border-action-warm text-warm-text hover:bg-surface-selected/20'}"
+        ariaBusy={building === lib.id}
       >
-        {building === lib.id ? t('actions.creating') : prebuilt ? t('prebuiltGrid.built') : t('list.createCta')}
-      </button>
+        {#if building === lib.id}
+          <ActivityIndicator size="xs" tone="ink" />
+          {t('actions.creating')}
+        {:else}
+          {serverBuilding ? ts('building') : prebuilt ? t('prebuiltGrid.built') : t('list.createCta')}
+        {/if}
+      </Button>
     </div>
   {/each}
   {#if libraries.length === 0}

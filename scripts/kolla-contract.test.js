@@ -123,7 +123,7 @@ test("Afterglow resolves the global service project once per play batch", () => 
 	assert.match(lookup, /run_once: true/)
 })
 
-test("Afterglow fails prechecks before restart when K3s API credentials are absent", () => {
+test("Afterglow fails prechecks before restart when the K3s GPU admission credential is absent", () => {
 	const defaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
 	const precheck = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/precheck.yml")
 	const secrets = readRepoFile(
@@ -131,11 +131,23 @@ test("Afterglow fails prechecks before restart when K3s API credentials are abse
 	)
 
 	assert.match(defaults, /^afterglow_k3s_gpu_admission_token: ""$/m)
-	assert.match(defaults, /^afterglow_k3s_provisioning_token: ""$/m)
 	for (const taskFile of [precheck, secrets]) {
 		assert.match(taskFile, /afterglow_k3s_gpu_admission_token \| length >= 32/)
-		assert.match(taskFile, /afterglow_k3s_provisioning_token \| length >= 32/)
 		assert.match(taskFile, /afterglow_service_k3s_enabled \| bool/)
+	}
+})
+
+test("Afterglow Kolla role carries no retired K3s provisioning credential", () => {
+	const templatesDir = "deploy/kolla/ansible/roles/afterglow/templates"
+	const roleFiles = [
+		"deploy/kolla/ansible/roles/afterglow/defaults/main.yml",
+		"deploy/kolla/ansible/roles/afterglow/tasks/precheck.yml",
+		"deploy/kolla/ansible/roles/afterglow/tasks/preconditions_secrets.yml",
+		...fs.readdirSync(path.join(rootDir, templatesDir)).map((name) => `${templatesDir}/${name}`),
+	]
+
+	for (const roleFile of roleFiles) {
+		assert.doesNotMatch(readRepoFile(roleFile), /afterglow_k3s_provisioning_token/, roleFile)
 	}
 })
 
@@ -143,7 +155,7 @@ test("Afterglow checks the Keystone public catalog endpoint from every backend h
 	const precheck = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/precheck.yml")
 	const reachability = precheck.slice(
 		precheck.indexOf("Precheck | Verify Keystone public catalog endpoint from every Afterglow host"),
-		precheck.indexOf("Precheck | Verify K3s internal API credentials"),
+		precheck.indexOf("Precheck | Verify K3s GPU admission credential"),
 	)
 
 	assert.match(reachability, /ansible\.builtin\.uri:/)
@@ -251,9 +263,18 @@ test("Afterglow public hostname is routed by Kolla's external HAProxy frontend",
 	assert.match(router, /backend afterglow-public_back/)
 	assert.match(router, /frontend afterglow-public-router_front/)
 	assert.match(router, /use_backend afterglow-api_back if \{ path_beg \/api\/ \}/)
+	assert.match(router, /acl is_mcp path \/mcp\n/)
+	assert.match(router, /acl is_mcp path_beg \/mcp\/\n/)
+	assert.match(router, /use_backend afterglow-api_back if is_mcp/)
+	assert.match(router, /acl is_well_known path_beg \/\.well-known\//)
+	assert.match(router, /use_backend afterglow-api_back if is_well_known/)
 	assert.match(router, /default_backend afterglow-frontend_back/)
 	assert.match(sample, /^afterglow_public_haproxy_enabled: true$/m)
 	assert.match(sample, /^afterglow_public_haproxy_fqdn: "cloud\.dmslab\.re\.kr"$/m)
+	assert.match(sample, /^afterglow_mcp_public_url: "https:\/\/cloud\.dmslab\.re\.kr\/mcp"$/m)
+	assert.match(defaults, /^afterglow_mcp_public_url: ""$/m)
+	const finalConfig = readRepoFile("deploy/kolla/ansible/roles/afterglow/templates/afterglow.kolla.conf.j2")
+	assert.match(finalConfig, /\{% if afterglow_mcp_public_url %\}\n\[mcp\]\npublic_url = \{\{ afterglow_mcp_public_url \| to_json \}\}\n\{% endif %\}/)
 })
 
 test("Kolla installer safely patches the standard playbook import", () => {

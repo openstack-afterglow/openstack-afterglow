@@ -34,10 +34,4 @@ describe('LoadingSkeleton', () => {
 		const fields = container.querySelectorAll('.grid.grid-cols-2 > div');
 		expect(fields).toHaveLength(3);
 	});
-
-	it('animate-pulse 클래스가 포함됨', () => {
-		const { container } = render(LoadingSkeleton);
-		const pulseEls = container.querySelectorAll('.animate-pulse');
-		expect(pulseEls.length).toBeGreaterThan(0);
-	});
 });

@@ -2,6 +2,7 @@ import { fireEvent, render } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { describe, expect, it, vi } from 'vitest';
 import ChatWindow from '../ChatWindow.svelte';
+import { freshMessageEntrance } from '../messageMotion';
 
 const callbacks = {
 	onCopy: () => {},
@@ -12,6 +13,47 @@ const callbacks = {
 };
 
 describe('ChatWindow', () => {
+	it('animates only fresh sends once, never loaded history, prepend, version switches or remounts', async () => {
+		const history = { id: 'history', conversation_id: 'conversation', parent_id: null, role: 'user' as const, content: '저장된 질문', created_at: null };
+		const view = render(ChatWindow, { activePath: [history], models: [], conversationKey: 'conversation', ...callbacks });
+		const entrances = () => view.container.querySelectorAll('[data-history-message-id].motion-enter');
+		expect(entrances()).toHaveLength(0);
+		const older = { ...history, id: 'older', content: '이전 질문' };
+		await view.rerender({ activePath: [older, history], loadingHistory: true });
+		expect(entrances()).toHaveLength(0);
+		const user = { ...history, id: 'new-user', content: '새 질문', sessionEntrance: freshMessageEntrance() };
+		const reply = { ...history, id: 'draft', role: 'assistant' as const, content: '', streaming: true, sessionEntrance: freshMessageEntrance() };
+		await view.rerender({ activePath: [history, user, reply], loadingHistory: false });
+		expect(entrances()).toHaveLength(2);
+		const replyNode = view.container.querySelector('[data-history-message-id="draft"]');
+		await view.rerender({ activePath: [history, user, { ...reply, id: 'server-reply', content: '답변 토큰' }] });
+		expect(view.container.querySelector('[data-history-message-id="server-reply"]')).toBe(replyNode);
+		for (const node of entrances()) await fireEvent(node, new Event('animationend', { bubbles: true }));
+		expect(entrances()).toHaveLength(0);
+		await view.rerender({ activePath: [{ ...history, id: 'other-version' }] });
+		expect(entrances()).toHaveLength(0);
+		await view.rerender({ activePath: [history, user, reply], conversationKey: 'other-project' });
+		expect(entrances()).toHaveLength(0);
+		view.unmount();
+		const reload = render(ChatWindow, { activePath: [history, user, reply], models: [], ...callbacks });
+		expect(reload.container.querySelectorAll('[data-history-message-id].motion-enter')).toHaveLength(0);
+	});
+
+	it('shows exactly one first-token indicator and suppresses duplicate window activity', async () => {
+		const reply = { id: 'reply', conversation_id: 'conversation', parent_id: null, role: 'assistant' as const, content: '', streaming: true, created_at: null };
+		const view = render(ChatWindow, { activePath: [reply], models: [], ...callbacks });
+		expect(view.getByRole('status').textContent).toContain('응답을 준비하는 중');
+		expect(view.container.querySelectorAll('.activity')).toHaveLength(1);
+		await view.rerender({ activePath: [{ ...reply, reasoning: '답변을 생각합니다' }], agentActivity: { label: '응답 작성 중', startedAt: new Date().toISOString() } });
+		expect(view.getByRole('status').textContent).toContain('추론 중');
+		expect(view.queryByText('응답을 준비하는 중')).toBeNull();
+		expect(view.queryByText('응답 작성 중')).toBeNull();
+		expect(view.container.querySelectorAll('.activity')).toHaveLength(1);
+		await view.rerender({ activePath: [reply] });
+		expect(view.getByRole('status').textContent).toContain('응답 작성 중');
+		expect(view.container.querySelectorAll('.activity')).toHaveLength(1);
+	});
+
 	it('shows safe ordered sources above the corresponding answer while streaming and after reload', async () => {
 		const message = {
 			id: 'answer', conversation_id: 'conversation', parent_id: null,

@@ -17,6 +17,7 @@
 	import WizardStep5Config from '$lib/components/wizard/WizardStep5Config.svelte';
 	import WizardStep6Review from '$lib/components/wizard/WizardStep6Review.svelte';
 	import { Alert, Button } from '$lib/components/ui';
+	import { enter } from '$lib/utils/motion';
 
 	interface Props {
 		adminMode?: boolean;
@@ -28,6 +29,16 @@
 
 	onMount(() => s.init());
 	onDestroy(() => s.destroy());
+
+	/** Horizontal entrance offset of the step body: forward steps arrive from the right, backward from the left. */
+	const STEP_SWAP_OFFSET_PX = 16;
+	let stepDirection = $state<1 | -1>(1);
+	let previousStep: number | null = null;
+	$effect.pre(() => {
+		const step = $wizard.step;
+		if (previousStep !== null && step !== previousStep) stepDirection = step < previousStep ? -1 : 1;
+		previousStep = step;
+	});
 </script>
 
 <SlidePanel onClose={closeWizard} ariaLabel={t('panel.label')} dataTour="wizard-panel" width="w-full md:w-[75vw] max-w-4xl">
@@ -66,45 +77,50 @@
 				</div>
 
 				<div class="mb-8" data-tour="wizard-body">
-					{#if $wizard.step === 1}
-						<WizardStep1Boot />
-					{:else if $wizard.step === 2}
-						<h2 class="mb-1 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-lg font-semibold text-[var(--color-ink-0)]"><span>{t('panel.flavorTitle')}</span><span class="text-sm font-normal text-[var(--color-ink-2)]">{t('panel.flavorSubtitle')}</span></h2>
-						<SelectFlavor
-							{adminMode}
-							flavors={s.flavors}
-							selectedId={$wizard.flavorId}
-							selectedName={$wizard.flavorName}
-							onSelect={s.selectFlavor}
-							quota={s.flavorQuota}
-							refreshing={s.flavorRefreshing}
-							refreshError={s.flavorRefreshError}
-							backgroundRefreshing={s.flavorBackgroundRefreshing}
-							backgroundRefreshError={s.flavorBackgroundRefreshError}
-							onRefresh={s.refreshFlavorOptions}
-						/>
-					{:else if $wizard.step === 3}
-						<WizardStep3Library />
-					{:else if $wizard.step === 4}
-						<h2 class="text-lg font-semibold text-ink-0 mb-4">{t('panel.strategyTitle')} <span class="text-ink-2 text-sm font-normal">{t('panel.strategySubtitle')}</span></h2>
-						<SelectStrategy
-							scheduling={$wizard.scheduling}
-							onSchedulingChange={s.selectScheduling}
-							strategy={$wizard.strategy}
-							hasLibraries={$wizard.libraries.length > 0}
-							hasPrebuilt={s.hasPrebuilt}
-							onStrategyChange={s.selectStrategy}
-							mountProtocol={$wizard.mountProtocol}
-							onProtocolChange={s.selectMountProtocol}
-						/>
-					{:else if $wizard.step === 5}
-						<WizardStep5Config />
-					{:else if $wizard.step === 6}
-						<WizardStep6Review />
-						{#if s.flavorRefreshing}
-							<p class="mt-2 text-sm text-[var(--color-ink-2)]" role="status" aria-live="polite">{t('panel.reviewRefreshing')}</p>
-						{/if}
-					{/if}
+					{#key $wizard.step}
+						<div in:enter={{ x: STEP_SWAP_OFFSET_PX * stepDirection, y: 0 }}>
+							{#if $wizard.step === 1}
+								<WizardStep1Boot />
+							{:else if $wizard.step === 2}
+								<h2 class="mb-1 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-lg font-semibold text-[var(--color-ink-0)]"><span>{t('panel.flavorTitle')}</span><span class="text-sm font-normal text-[var(--color-ink-2)]">{t('panel.flavorSubtitle')}</span></h2>
+								<SelectFlavor
+									{adminMode}
+									flavors={s.flavors}
+									selectedId={$wizard.flavorId}
+									selectedName={$wizard.flavorName}
+									onSelect={s.selectFlavor}
+									quota={s.flavorQuota}
+									bootVolumeSizeGb={$wizard.bootSource === 'volume' ? 0 : $wizard.bootVolumeSizeGb || undefined}
+									refreshing={s.flavorRefreshing}
+									refreshError={s.flavorRefreshError}
+									backgroundRefreshing={s.flavorBackgroundRefreshing}
+									backgroundRefreshError={s.flavorBackgroundRefreshError}
+									onRefresh={s.refreshFlavorOptions}
+								/>
+							{:else if $wizard.step === 3}
+								<WizardStep3Library />
+							{:else if $wizard.step === 4}
+								<h2 class="text-lg font-semibold text-ink-0 mb-4">{t('panel.strategyTitle')} <span class="text-ink-2 text-sm font-normal">{t('panel.strategySubtitle')}</span></h2>
+								<SelectStrategy
+									scheduling={$wizard.scheduling}
+									onSchedulingChange={s.selectScheduling}
+									strategy={$wizard.strategy}
+									hasLibraries={$wizard.libraries.length > 0}
+									hasPrebuilt={s.hasPrebuilt}
+									onStrategyChange={s.selectStrategy}
+									mountProtocol={$wizard.mountProtocol}
+									onProtocolChange={s.selectMountProtocol}
+								/>
+							{:else if $wizard.step === 5}
+								<WizardStep5Config />
+							{:else if $wizard.step === 6}
+								<WizardStep6Review />
+								{#if s.flavorRefreshing}
+									<p class="mt-2 text-sm text-[var(--color-ink-2)]" role="status" aria-live="polite">{t('panel.reviewRefreshing')}</p>
+								{/if}
+							{/if}
+						</div>
+					{/key}
 				</div>
 			{/if}
 		</div>

@@ -12,6 +12,10 @@ vi.mock('$lib/api/client', () => ({
 	},
 }));
 vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token-a', projectId: 'project-a' }) }));
+vi.mock('$lib/stores/servicePermissions', () => ({ serviceCapabilities: writable<(leaf: string) => boolean>((leaf) => [
+	'waygate-inventory_reader', 'waygate-connect_user', 'waygate-clients_editor',
+	'waygate-clients_admin', 'waygate-gateways_editor', 'waygate-gateways_admin', 'waygate-routing_admin',
+].includes(leaf)) }));
 vi.mock('$lib/config/site', () => ({ siteConfig: writable({ services: { waygate: true } }) }));
 vi.mock('$lib/stores/toast', () => ({ toast: { success: vi.fn(), error: mocks.toastError } }));
 // Exercise the real autoRefresh controller, preferences and visibility listeners.
@@ -27,11 +31,13 @@ const catalogPath = '/api/v1/networks';
 const server = (id: string) => ({
 	id: `server-${id}`, project_id: 'project-a', name: `gateway-${id}`, status: 'ACTIVE',
 	tunnel_cidr: '10.240.0.0/24', listen_port: 51820, created_at: '2026-09-20T00:00:00Z',
+	dns: null, persistent_keepalive: 25,
 });
 const client = (name: string) => ({
 	id: name, name, enabled: true, online: false, tunnel_ip: '10.240.0.2',
 	rx_bytes: 100, tx_bytes: 200, last_reported_at: '2026-09-20T00:00:00Z',
 	last_handshake_at: null, created_at: '2026-09-20T00:00:00Z',
+	dns: null, mtu: null,
 	persistent_keepalive: 0, psk_enabled: false,
 });
 const attachment = (networkId: string) => ({
@@ -162,7 +168,10 @@ describe('Waygate visible detail polling', () => {
 		expect(panel().getByText('발급된 클라이언트가 없습니다')).toBe(emptyClients);
 		expect(panel().getByText(/연결된 테넌트 네트워크가 없습니다/)).toBe(emptyNetworks);
 		expect(panel().queryByRole('status', { name: '불러오는 중' })).toBeNull();
-		expect(screen.getByRole('dialog', { name: 'Waygate 서버 상세' }).querySelector('.refresh-icon.animate-spin')).toBeNull();
+		// Background polls of already-loaded lists must not put the detail refresh controls into their busy state.
+		const detailDialog = within(screen.getByRole('dialog', { name: 'Waygate 서버 상세' }));
+		expect(detailDialog.queryAllByTitle('로딩 중…')).toHaveLength(0);
+		for (const refresh of detailDialog.getAllByTitle('지금 새로고침')) expect((refresh as HTMLButtonElement).disabled).toBe(false);
 		nextClients.resolve([]);
 		nextAttachments.resolve([]);
 		await settle();

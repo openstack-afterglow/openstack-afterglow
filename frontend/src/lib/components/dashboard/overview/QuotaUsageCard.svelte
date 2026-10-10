@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/dashboard-home';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import type { DashboardOverviewQuotas } from '$lib/types/quotas';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
@@ -26,9 +27,10 @@
 	{/if}
 
 	{#if pending && !quotas}
-		<div class="space-y-4">
+		<div class="space-y-4" role="status" aria-busy="true">
+			<span class="sr-only">{tc('state.loadingNamed', { name: t('quota.title') })}</span>
 			{#each Array(5) as _}
-				<div class="h-8 bg-[var(--color-surface-sunken)] rounded animate-pulse"></div>
+				<div class="h-8 motion-skeleton rounded"></div>
 			{/each}
 		</div>
 	{:else if error && !quotas}

@@ -8,6 +8,8 @@ nav_order: 40
 
 k3s 프로비저너는 **Magnum 없이** OpenStack Nova VM + cloud-init 만으로 k3s(경량 Kubernetes)를 직접 설치·운영하는 서브시스템입니다. 클러스터 생성/삭제/스케일, kubeconfig 다운로드, HA(embedded-etcd) 부트스트랩, 인증서 회전, 노드그룹, Stampede 오토스케일, Cloud Provider OpenStack 플러그인 배포를 담당합니다.
 
+Drover는 자체적으로 OpenStack 리소스를 프로비저닝하며 매 생성 전에 Afterglow의 `/api/v1/internal/k3s/gpu-admission`을 다시 확인합니다. Afterglow의 내부 K3s API는 GPU admission만 담당합니다.
+
 클러스터 내부 Kubernetes 리소스(Pod/Deployment/ConfigMap/Secret/Cloud Shell 등)를 조회·조작하는 프록시성 API는 별도 문서 [k3s 리소스 관리](k3s-resources.md)를 참고하세요.
 
 > **활성화 조건:** `afterglow.conf [services] k3s = true`
@@ -27,6 +29,24 @@ k3s 프로비저너는 **Magnum 없이** OpenStack Nova VM + cloud-init 만으�
 | Tags | `k3s`, `k3s-health`, `k3s-callback`, `k3s-templates`, `k3s-nodegroups`, `k3s-certificates` 등 |
 
 > 모든 경로는 `/api/v1` 단독 마운트입니다. 예외적으로 `POST /callback` 만 cloud-init baked VM 호환을 위해 레거시 `/api/k3s/callback` 를 함께 유지합니다(신규 레거시 추가 금지).
+
+## Drover 서비스 권한과 자격 등급
+
+Afterglow와 native Drover는 현재 Keystone 유효 할당과 실제 역할 ID inference graph를 각각 검증합니다. `can_write`, 프로젝트 owner/admin 또는 raw `admin`/`manager` 이름만으로 서비스 액션을 허용하지 않습니다. 비읽기 서비스 leaf에는 native `member` 기반 권한도 필요하며, 메타데이터에는 native `reader` 또는 `member`가 필요합니다.
+
+| 세부 역할 | 프로젝트 안에서 허용하는 작업 |
+|---|---|
+| `drover-inventory_reader` | 비밀 없는 클러스터·상태·이벤트 메타데이터 |
+| `drover-access_user` | `grade=user` 읽기 전용 TokenRequest kubeconfig |
+| `drover-clusters_editor` | 클러스터 생성·편집·스케일 |
+| `drover-workloads_editor` | `grade=editor` 및 본인 workload namespace 안의 리소스 편집·exec |
+| `drover-clusters_admin` | 클러스터 삭제·인증서 회전 |
+| `drover-access_admin` | 명시적인 `grade=admin` 전체 자격 및 workload 관리 |
+
+기본 다운로드는 현재 권한에 따른 `user` 또는 `editor`이며, 콘솔은 전체 자격을 별도 확인 액션으로만 요청합니다. Native의 기본 grade는 `user`이므로 workload-only 호출자는 `grade=editor`를 명시해야 합니다. 낮은 등급 발급 실패 시 저장된 administrator 인증서로 대체하지 않습니다. 템플릿·전역 관리자 API는 verified system-admin만 허용합니다.
+
+TokenRequest는 principal 만료로 제한하지만 이미 발급한 bearer는 만료까지 Kubernetes에서 유효할 수 있습니다. 이미 다운로드한 administrator 인증서는 이 역할 변경으로 회수되지 않습니다. 운영 trust 회전은 별도 승인 작업입니다. 로컬 격리 k3s smoke는 실제 RBAC/TokenRequest/admission을 실행했지만, unchanged Cloud Shell 기본 image/PATH의 운영 준비나 실제 OpenStack 삭제·배포를 증명하지 않습니다.
+
 
 ---
 
@@ -261,7 +281,7 @@ Drover 생성 화면은 `is_external` 네트워크만 선택지로 보여줍니�
 
 ## Stampede 오토스케일
 
-클러스터 단위 오토스케일 모드를 제어합니다. 서버 전역 설정 `afterglow.conf [k3s] stampede_enabled` 가 꺼져 있으면 enable 시 `400`.
+클러스터 단위 오토스케일 모드를 제어합니다. 서버 전역 설정 `afterglow.conf [k3s] stampede_enabled` 가 꺼져 있으면 enable 시 `400`. 클러스터에 현재 사용자 자원 권한이 없으면(이전 버전에서 만든 클러스터) enable은 `409`이며 아래 재인가가 먼저 필요합니다.
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
@@ -269,6 +289,20 @@ Drover 생성 화면은 `is_external` 네트워크만 선택지로 보여줍니�
 | `POST` | `/{cluster_id}/stampede/disable` | Stampede 비활성화 (`200`) |
 | `GET` | `/{cluster_id}/stampede` | 클러스터·노드그룹별 Stampede 상태 (in-flight, capacity, quota 등) |
 | `GET` | `/{cluster_id}/stampede/events` | 스케일 이벤트 이력 (최신순, `limit` 1~200 기본 50) |
+
+---
+
+## 클러스터 자원 권한 재인가
+
+Stampede·상태 조정·게스트 클라우드 플러그인은 현재 프로젝트 사용자의 제한된 application credential로 실행됩니다. 응답에는 credential 참조만 있고 secret은 없습니다.
+
+| 메서드 | 경로 | 권한 | 설명 |
+|--------|------|------|------|
+| `GET` | `/{cluster_id}/authorization` | `drover-inventory_reader` | `authorized`, 활성/진행 중 세대, 본인 회수 대기 목록 |
+| `POST` | `/{cluster_id}/authorization` | `drover-clusters_admin` | 호출자 본인의 제한된 credential로 재인가 (`202`, ACTIVE 클러스터만, 다른 변경 진행 중이면 `409`) |
+| `POST` | `/{cluster_id}/authorization/retire` | 본인 소유 | 호출자 소유의 교체된 credential만 삭제 |
+
+**운영 전환(아직 배포하지 않음):** 이전 worker 작업을 drain한 뒤 Drover 004·Waygate 006·Palimpsest export delegation의 additive schema를 적용하고, native provisioning을 지원하는 Drover를 Afterglow보다 먼저 올립니다. 이후 현재 프로젝트 역할을 가진 운영자가 legacy Drover 클러스터를 재인가하고 실제 guest credential rollout과 Stampede를 확인합니다. 운영 Keystone Trust/application-credential 정책, Glance·Barbican·Octavia 역할, Waygate zero-disk용 Cinder quota는 별도 검증 대상입니다. 위임이 없는 이전 queued 작업은 새로 제출해야 합니다. 기존 tenant service/manager 역할과 사용자의 이전 credential 삭제는 별도 승인 및 소유자 회수를 거칩니다. migration 077과 ledger는 보존되며 이전 intent 테이블은 비활성 데이터로 남습니다. 시스템 관리자 home-project token만으로 다른 tenant의 실행 권한이 생기지 않으며 해당 프로젝트 역할과 project-scoped token이 필요합니다.
 
 ---
 

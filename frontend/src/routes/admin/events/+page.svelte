@@ -2,7 +2,7 @@
 	import { onDestroy, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
-	import { Alert, Button, Card, Field, PageHeader, PageShell, Pill, SelectInput, TableShell, TextInput } from '$lib/components/ui';
+	import { ActivityIndicator, Alert, Button, Card, Field, PageHeader, PageShell, Pill, SelectInput, TableShell, TextInput } from '$lib/components/ui';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -252,9 +252,9 @@
 		<h2 class="mb-3 text-base font-semibold text-ink-0">{t('events.failureAnalysis')}</h2>
 		{#if statsError}<Alert tone="danger" title={t('events.statsFailed')}>{statsError}</Alert>{/if}
 		{#if stats && !statsLoading && !statsError}<p class="mb-3 text-sm tabular-nums text-ink-2">{t('events.statsSummary', { total: stats.total, failed: stats.failed, success: stats.success, started: stats.started })}</p>{/if}
-		{#if statsLoading}<p role="status" class="text-sm text-ink-2">{t('events.statsLoading')}</p>
+		{#if statsLoading}<ActivityIndicator label={t('events.statsLoading')} />
 		{:else if !statsError}
-			<div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+			<div class="motion-stagger grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
 				{#each dimensions as dimension}
 					<Card surface="base">
 						<h3 class="mb-3 text-sm font-semibold text-ink-0">{t(dimension.labelKey)}</h3>
@@ -273,7 +273,7 @@
 	<section aria-label={t('events.list')}>
 		<h2 class="mb-3 text-base font-semibold text-ink-0">{t('events.list')}</h2>
 		{#if listError}<Alert tone="danger" title={t('events.listFailed')}>{listError} <Button variant="secondary" size="sm" onclick={retryList}>{t('events.retry')}</Button></Alert>{/if}
-		{#if loading}<p role="status" class="text-sm text-ink-2">{t('events.listLoading')}</p>
+		{#if loading}<ActivityIndicator label={t('events.listLoading')} />
 		{:else if events.length === 0 && !listError}<Card surface="base"><p class="text-sm text-ink-2">{t('events.noEvents')}</p></Card>
 		{:else if events.length > 0}
 			<TableShell>
@@ -284,7 +284,7 @@
 						<td><span class="block max-w-40 truncate" title={row.resource_name || row.resource_type}>{row.resource_name || row.resource_type}</span><span class="block text-ink-2">{row.resource_type}</span></td><td>{row.action}</td><td><Button variant="secondary" size="sm" onclick={() => showDetail(row)} ariaLabel={t('events.viewDetailsAria', { action: row.action, id: row.id })}>{t('events.viewDetails')}</Button></td></tr>
 					{/each}</tbody></table>
 			</TableShell>
-			{#if cursor}<div class="mt-4 flex justify-center"><Button variant="secondary" disabled={moreLoading || !!listError} onclick={loadMore}>{moreLoading ? t('events.loading') : t('events.showMore')}</Button></div>{/if}
+			{#if cursor}<div class="mt-4 flex justify-center"><Button variant="secondary" disabled={moreLoading || !!listError} ariaBusy={moreLoading} onclick={loadMore}>{#if moreLoading}<ActivityIndicator size="xs" tone="ink" />{/if}{moreLoading ? t('events.loading') : t('events.showMore')}</Button></div>{/if}
 		{/if}
 	</section>
 
@@ -292,10 +292,10 @@
 		<SlidePanel onClose={closeDetail} ariaLabel={t('events.detailAria', { id: selected.id })} width="w-full md:w-[60vw] max-w-3xl" resizable={false}>
 			<div class="p-4 md:p-6">
 				<h2 class="mb-4 text-base font-semibold">{t('events.detailTitle', { id: selected.id })}</h2>
-				{#if detailLoading}<p role="status" class="text-sm text-ink-2">{t('events.detailLoading')}</p>{/if}
+				{#if detailLoading}<ActivityIndicator label={t('events.detailLoading')} />{/if}
 				{#if detailError}<Alert tone="danger" title={t('events.detailFailed')}>{detailError} <Button variant="secondary" size="sm" onclick={() => selected && showDetail(selected)}>{t('events.retry')}</Button></Alert>{/if}
 				{#if !detailLoading && !detailError}
-					<dl class="grid grid-cols-1 gap-x-6 gap-y-3 text-sm md:grid-cols-2">
+					<dl class="motion-fade grid grid-cols-1 gap-x-6 gap-y-3 text-sm md:grid-cols-2">
 						{#each detailFields(selected) as field}
 							<div class="min-w-0"><dt class="text-ink-2">{field[0]}</dt><dd class="mt-1 break-all font-mono text-ink-0">{field[1] ?? '—'}</dd></div>
 						{/each}

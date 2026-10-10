@@ -12,6 +12,20 @@ vi.mock('$lib/api/chatRichOutput', () => ({
 import MarkdownMessage from '../MarkdownMessage.svelte';
 
 describe('MarkdownMessage', () => {
+	it('keeps the caret on the stable streaming surface, absent before first content and after completion', async () => {
+		const view = render(MarkdownMessage, { content: '', streaming: true });
+		const body = view.container.querySelector('.md-body');
+		expect(body?.classList.contains('streaming')).toBe(false);
+		await view.rerender({ content: '첫 토큰' });
+		expect(view.container.querySelector('.md-body')).toBe(body);
+		expect(body?.classList.contains('streaming')).toBe(true);
+		await view.rerender({ content: '첫 토큰 다음 토큰' });
+		expect(view.container.querySelector('.md-body')).toBe(body);
+		expect(body?.classList.contains('motion-enter')).toBe(false);
+		await view.rerender({ streaming: false });
+		expect(body?.classList.contains('streaming')).toBe(false);
+	});
+
 	beforeEach(() => {
 		Object.assign(navigator, { clipboard: { writeText: vi.fn(async () => {}) } });
 	});

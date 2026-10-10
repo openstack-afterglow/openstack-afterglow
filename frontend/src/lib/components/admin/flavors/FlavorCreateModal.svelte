@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-compute';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -101,7 +102,7 @@
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={close} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('flavors.cancel')}</button>
 				<button onclick={createFlavor} disabled={creating || !form.name} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">
-					{creating ? t('flavors.create.pending') : t('flavors.create.action')}
+					{#if creating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('flavors.create.pending')}</span></span>{:else}{t('flavors.create.action')}{/if}
 				</button>
 			</div>
 		</div>

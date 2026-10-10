@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Button, Card, Pill } from '$lib/components/ui';
+	import { AnimatedNumber, Button, Card, Pill } from '$lib/components/ui';
 	import ImageVerificationBadge from '$lib/components/image/ImageVerificationBadge.svelte';
 	import { imageReferenceParts, imageUploadTime, imageVerificationStatus, type ImageRepositoryGroup } from '$lib/stores/imageCatalog.svelte';
 	import { OS_EMOJI, OS_LOGOS, osLabel } from '$lib/utils/imageOs';
@@ -44,11 +44,11 @@
 	</div>
 
 	<div class="repository-meta">
-		<Pill tone="accent" dot>{t('repositoryCard.imageCount', { tagCount: group.tags.length, imageCount: group.images.length })}</Pill>
+		<Pill tone="accent" dot><AnimatedNumber value={group.tags.length} format={(value) => t('repositoryCard.imageCount', { tagCount: Math.round(value), imageCount: group.images.length })} /></Pill>
 		<span class="trust-counts">
-			<Pill tone="success" size="xs">{t('repositoryCard.verifiedCount', { count: trustCounts.verified })}</Pill>
-			<Pill tone="warning" size="xs">{t('repositoryCard.unverifiedCount', { count: trustCounts.unverified })}</Pill>
-			<Pill tone="neutral" size="xs">{t('repositoryCard.unavailableCount', { count: trustCounts.unavailable })}</Pill>
+			<Pill tone="success" size="xs"><AnimatedNumber value={trustCounts.verified} format={(value) => t('repositoryCard.verifiedCount', { count: Math.round(value) })} /></Pill>
+			<Pill tone="warning" size="xs"><AnimatedNumber value={trustCounts.unverified} format={(value) => t('repositoryCard.unverifiedCount', { count: Math.round(value) })} /></Pill>
+			<Pill tone="neutral" size="xs"><AnimatedNumber value={trustCounts.unavailable} format={(value) => t('repositoryCard.unavailableCount', { count: Math.round(value) })} /></Pill>
 		</span>
 		<span>{t('repositoryCard.recentUpload')}</span>
 		<code>:{imageReferenceParts(latest).tag}</code>
@@ -67,11 +67,11 @@
 					<Pill tone={image.id === version.current.id ? 'accent' : 'neutral'} size="xs">{image.id === version.current.id ? t('repositoryCard.current') : t('repositoryCard.previous')}</Pill>
 					{#if version.tag === 'latest'}<Pill tone="warm" size="xs">{t('repositoryCard.default')}</Pill>{/if}
 					<ImageVerificationBadge status={imageVerificationStatus(image)} />
-					{#if version.images.length > 1}<span>{t('repositoryCard.uploadCount', { count: version.images.length })}</span>{/if}
+					{#if version.images.length > 1}<span><AnimatedNumber value={version.images.length} format={(value) => t('repositoryCard.uploadCount', { count: Math.round(value) })} /></span>{/if}
 				</button>
 			{/each}
 			{#if group.tags.length > previewTags.length}
-				<span class="more-tags">+{group.tags.length - previewTags.length}</span>
+				<span class="more-tags">+<AnimatedNumber value={group.tags.length - previewTags.length} /></span>
 			{/if}
 		</div>
 	</div>
@@ -83,7 +83,7 @@
 	:global(.repository-card) {
 		display: grid;
 		gap: 1rem;
-		transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+		transition: border-color var(--motion-duration-base) var(--motion-ease-standard), transform var(--motion-duration-base) var(--motion-ease-standard), box-shadow var(--motion-duration-base) var(--motion-ease-standard);
 	}
 	:global(.repository-card:hover) {
 		border-color: var(--color-line-2);

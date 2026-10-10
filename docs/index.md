@@ -36,6 +36,7 @@ Afterglow는 현재 [DMS Cloud 연구 클라우드 제공 콘솔](https://cloud.
 
 | 문서 | 설명 |
 |---|---|
+| [사용자 서비스 가이드](user-guide.md) | 콘솔 `/docs`의 공개 사용자 문서와 서비스별 사용법 |
 | [시작하기](deployment.md) | Docker Compose / Kubernetes 배포 |
 | [kolla-ansible 배포](deployment.md#kolla-ansible-배포) | OpenStack 환경 내 단일 플레이북 배포 |
 | [k3s 클러스터](k3s.md) | k3s 프로비저닝 및 노드 관리 |

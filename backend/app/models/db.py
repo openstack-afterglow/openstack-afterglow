@@ -433,7 +433,7 @@ class LayerProfile(Base):
 
 
 class ProjectRole(Base):
-    """afterglow 자체 프로젝트 관리자 역할 (Keystone role과 별개)."""
+    """Legacy manager migration input only; never a source of project authority."""
 
     __tablename__ = "project_roles"
 
@@ -462,7 +462,7 @@ class ProjectInvitation(Base):
     invited_by_name: Mapped[str] = mapped_column(VARCHAR(255), nullable=False, default="")
     token_hash: Mapped[str] = mapped_column(VARCHAR(64), nullable=False, unique=True)
     status: Mapped[str] = mapped_column(VARCHAR(16), nullable=False, default="pending")
-    keystone_role: Mapped[str] = mapped_column(VARCHAR(64), nullable=False, default="member")
+    keystone_role: Mapped[str] = mapped_column(VARCHAR(64), nullable=False, default="project_member")
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
@@ -679,35 +679,3 @@ class GpuQuotaReservation(Base):
             "expires_at",
         ),
     )
-
-
-class K3sProvisioningIntent(Base):
-    """Durable, non-secret Stampede agent provisioning intent."""
-
-    __tablename__ = "k3s_provisioning_intents"
-
-    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
-    idempotency_key: Mapped[str] = mapped_column(VARCHAR(128), nullable=False, unique=True)
-    project_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False, index=True)
-    cluster_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
-    nodegroup_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
-    name: Mapped[str] = mapped_column(VARCHAR(128), nullable=False)
-    flavor_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
-    image_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
-    network_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
-    resource_metadata: Mapped[dict | None] = mapped_column("metadata", JSON)
-    boot_volume_size_gb: Mapped[int] = mapped_column(INT, nullable=False)
-    volume_availability_zone: Mapped[str] = mapped_column(VARCHAR(128), nullable=False)
-    security_group_id: Mapped[str | None] = mapped_column(VARCHAR(64))
-    config_drive: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, default=False)
-    request_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
-    state: Mapped[str] = mapped_column(VARCHAR(16), nullable=False, default="pending", index=True)
-    error_message: Mapped[str | None] = mapped_column(TEXT)
-    boot_volume_id: Mapped[str | None] = mapped_column(VARCHAR(64))
-    server_id: Mapped[str | None] = mapped_column(VARCHAR(64))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
-    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
-
-    __table_args__ = (Index("idx_k3s_provisioning_intents_project_state", "project_id", "state"),)

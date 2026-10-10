@@ -10,6 +10,7 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
 	import type { AnnouncementAdmin, AnnouncementSeverity, AnnouncementTargetType } from '$lib/types/announcements';
 	import { t } from '$lib/i18n/ns/admin-system';
@@ -225,8 +226,8 @@
 			</div>
 		</div>
 		<div class="flex justify-end mt-5">
-			<Button variant="accent" disabled={ctrl.creating} onclick={handleCreate}>
-				{ctrl.creating ? t('announcements.actions.sending') : t('announcements.actions.send')}
+			<Button variant="accent" disabled={ctrl.creating} ariaBusy={ctrl.creating} onclick={handleCreate}>
+				{#if ctrl.creating}<ActivityIndicator size="xs" tone="ink" />{/if}{ctrl.creating ? t('announcements.actions.sending') : t('announcements.actions.send')}
 			</Button>
 		</div>
 	</Card>

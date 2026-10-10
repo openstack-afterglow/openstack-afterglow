@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -228,8 +229,9 @@
 				<Alert tone="warning" class="mx-5 mt-3">{t('projectAccess.readerMissing')}</Alert>
 			{/if}
 
+			{#if addSaving}<div class="px-5 py-2"><ActivityIndicator size="xs" label={t('projectAccess.addingMember')} /></div>{/if}
 			{#if membersLoading}
-				<div class="text-xs text-ink-2 py-8 text-center">{t('state.loading')}</div>
+				<div class="text-xs text-ink-2 py-8 text-center"><ActivityIndicator size="xs" label={t('state.loading')} /></div>
 			{:else}
 				<div class="flex flex-col md:flex-row flex-1 min-h-0">
 					<div class="md:w-1/2 flex flex-col min-h-0 flex-1 md:flex-none border-b md:border-b-0 md:border-r border-line">
@@ -254,7 +256,7 @@
 											{#if memberUserIds.has(user.id)}<span class="text-xs text-ink-2 ml-1">{t('projectAccess.assigned')}</span>{/if}
 										</div>
 										{#if !memberUserIds.has(user.id)}
-											<Button variant="ghost" size="icon" ariaLabel={t('projectAccess.addAsReaderLabel', { name: user.name })} title={t('projectAccess.addAsReaderTitle')} disabled={!readerRole || addSaving} onclick={() => addAsReader({ id: user.id, type: 'user' })}>+</Button>
+											<Button ariaBusy={addSaving} variant="ghost" size="icon" ariaLabel={t('projectAccess.addAsReaderLabel', { name: user.name })} title={t('projectAccess.addAsReaderTitle')} disabled={!readerRole || addSaving} onclick={() => addAsReader({ id: user.id, type: 'user' })}>+</Button>
 										{/if}
 									</div>
 								{/each}
@@ -266,7 +268,7 @@
 											{#if memberGroupIds.has(group.id)}<span class="text-xs text-ink-2 ml-1">{t('projectAccess.assigned')}</span>{/if}
 										</div>
 										{#if !memberGroupIds.has(group.id)}
-											<Button variant="ghost" size="icon" ariaLabel={t('projectAccess.addAsReaderLabel', { name: group.name })} title={t('projectAccess.addAsReaderTitle')} disabled={!readerRole || addSaving} onclick={() => addAsReader({ id: group.id, type: 'group' })}>+</Button>
+											<Button ariaBusy={addSaving} variant="ghost" size="icon" ariaLabel={t('projectAccess.addAsReaderLabel', { name: group.name })} title={t('projectAccess.addAsReaderTitle')} disabled={!readerRole || addSaving} onclick={() => addAsReader({ id: group.id, type: 'group' })}>+</Button>
 										{/if}
 									</div>
 								{/each}
@@ -294,7 +296,7 @@
 										</div>
 										<div class="flex shrink-0 items-center gap-1">
 											<Button variant="subtle" size="xs" ariaLabel={t('projectAccess.permissionsLabel', { name: principal.name })} onclick={() => { detailPrincipal = principal; detailError = ''; }}>{t('projectAccess.permissions')}</Button>
-											<Button variant="danger-outline" size="xs" ariaLabel={t('projectAccess.removeLabel', { name: principal.name })} disabled={removingKey !== null} onclick={() => removePrincipal(principal)}>{removingKey === principal.key ? t('state.removing') : t('actions.remove')}</Button>
+											<Button ariaBusy={removingKey === principal.key} variant="danger-outline" size="xs" ariaLabel={t('projectAccess.removeLabel', { name: principal.name })} disabled={removingKey !== null} onclick={() => removePrincipal(principal)}>{#if removingKey === principal.key}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('state.removing')}</span>{:else}{t('actions.remove')}{/if}</Button>
 										</div>
 									</div>
 								{/each}
@@ -336,7 +338,7 @@
 							<input type="checkbox" class="rounded border-line-2 bg-surface-sunken" checked={assigned} disabled={locked || roleBusy !== null} onchange={(event) => toggleRole(role, event.currentTarget.checked)} />
 							<span>{role.name}</span>
 						</label>
-						{#if locked}<span class="text-xs text-ink-2">{t('projectAccess.defaultRole')}</span>{:else if roleBusy === role.id}<span class="text-xs text-ink-2">{t('state.saving')}</span>{/if}
+						{#if roleBusy === role.id}<ActivityIndicator size="xs" label={t('state.saving')} />{:else if locked}<span class="text-xs text-ink-2">{t('projectAccess.defaultRole')}</span>{/if}
 					</li>
 				{/each}
 			</ul>

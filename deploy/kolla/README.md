@@ -286,6 +286,56 @@ includes branding, refresh interval, public API/UI origins, service flags,
 public S3/Grafana/chat/GitLab/MCP origins, and no credentials. Kolla-owned final
 values win over both operator inputs.
 
+### Palimpsest Hub endpoint and HAProxy routing
+
+Use one trusted HTTPS origin for the Hub catalog endpoint, HAProxy hostname and
+Afterglow package transport in `/etc/kolla/config/afterglow/globals.yml`:
+
+Configure the BFF integration below. For public routing, copy the complete
+guarded Palimpsest block from `globals.afterglow.sample.yml`.
+
+```yaml
+palimpsest_public_endpoint_url: "https://palimpsest.dmslab.re.kr"
+afterglow_service_palimpsest_enabled: true
+```
+
+The sample derives `palimpsest_public_haproxy_fqdn` only from a valid HTTPS
+origin, and its explicit exposure setting enables routing only when the URL
+exactly matches that hostname (with an optional trailing slash). Invalid
+origins and mismatched overrides therefore disable the sample's public map
+even with the pinned 0.2.3 role. That older role does not provide the newer
+HAProxy-only origin assertion; do not replace the sample predicate with an
+unconditional `true` and assume that assertion exists.
+The exposure toggle remains opt-in. Existing DNS, external HAProxy TLS and a
+certificate covering the hostname are operator prerequisites, not created here.
+
+Afterglow's `afterglow_service_palimpsest_internal_url` defaults to an explicitly
+configured `palimpsest_public_endpoint_url`. When the integration is enabled and
+this value is nonempty, both generated `[services]` layers emit
+`palimpsest_internal_url`. A separate trusted HTTPS BFF endpoint can override
+`afterglow_service_palimpsest_internal_url`. When it is empty or no Hub URL is
+supplied, the role omits this key and preserves the detailed backend operator
+TOML; it never invents an HTTP VIP or catalog fallback. A selected nonempty
+Kolla URL wins over detailed TOML. An explicit `SERVICE_PALIMPSEST_INTERNAL_URL`
+environment variable still wins at application load time.
+
+Install the reviewed Afterglow role and, for hostname derivation without the
+sample expression, the updated independently packaged Palimpsest role. Then
+apply through the normal scoped command:
+
+```bash
+kolla-ansible reconfigure -i multinode --tags palimpsest,afterglow
+```
+
+Keep published API/worker image pins and the Hub volume intact. Routing does not
+upgrade Hub APIs: native project packages require a compatible Hub serving
+`/v1/projects/current`; legacy Hub 0.2.1 returns 404 even with working HAProxy.
+Package public authority (`palimpsest_package_public_origin`, often the Afterglow
+key-gateway origin), reader identity and protected IDs remain separate Hub inputs.
+Verify the generated backend URL, TLS from each backend host, and authenticated
+package context. `/v1/health` alone is not package acceptance.
+
+
 ### Kolla Shared Connection Inputs
 
 Do not duplicate Kolla control-plane topology or administrative credentials in

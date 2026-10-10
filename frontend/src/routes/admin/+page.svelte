@@ -58,8 +58,9 @@
 		}
 		selectedProject = project;
 	}
-	function loadProjectUsage() {
-		projectUsageLoading = true;
+	function loadProjectUsage(opts?: { background?: boolean }) {
+		// Auto-refresh keeps the table in place; only the first load swaps in the skeleton.
+		if (!opts?.background) projectUsageLoading = true;
 		api.get<ProjectUsage[]>('/api/v1/admin/overview/projects', token, projectId)
 			.then(r => { projectUsage = r; })
 			.catch(() => {})
@@ -67,7 +68,7 @@
 	}
 
 	const ar = createAutoRefresh(
-		() => { loadProjectUsage(); },
+		() => { loadProjectUsage({ background: true }); },
 		{ storageKey: 'admin-overview', defaultActive: true, defaultInterval: 60, invokeOnMount: false }
 	);
 
@@ -127,18 +128,20 @@
 
 
 	{#if overviewLoading}
-		<div class="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3">
-			{#each Array(3) as _}
-				<div class="h-[82px] bg-surface-base animate-pulse"></div>
-			{/each}
+		<div class="flex flex-col gap-5" role="status" aria-busy="true" aria-label={t('overview.loading')}>
+			<div class="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3">
+				{#each Array(3) as _}
+					<div class="h-[82px] motion-skeleton"></div>
+				{/each}
+			</div>
+			<div class="motion-skeleton border border-line rounded-lg h-[260px]"></div>
 		</div>
-		<div class="bg-surface-base border border-line rounded-lg p-5 animate-pulse h-[260px]"></div>
 	{:else if overview}
 		<KpiCardRow {overview} />
 
 		<!-- Identity 통계: 사용자/프로젝트/역할/그룹 -->
 		{#if identitySummary}
-			<div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4">
+			<div class="motion-enter grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4">
 				<a href="/admin/users" class="block">
 					<StatTile label={t('overview.identity.users')} value={identitySummary.user_count} unit={t('overview.identity.peopleUnit', { count: identitySummary.user_count })} accent="amber" flat class="h-full">
 						{#snippet icon()}

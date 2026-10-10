@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import type { K3sCluster, K3sInterfaceInfo, K3sNetwork } from '$lib/types/k3s';
+import { writable, type Writable } from 'svelte/store';
+import { serviceCapabilities } from '$lib/stores/servicePermissions';
+vi.mock('$lib/stores/servicePermissions', () => ({ serviceCapabilities: writable<(leaf: string) => boolean>(() => false) }));
 
 type MockController = {
 	cluster: K3sCluster;
@@ -80,6 +83,7 @@ function renderCard(status = 'ACTIVE', interfaces: K3sInterfaceInfo[] = [
 describe('K3sClusterNetworksCard primary network controls', () => {
 	beforeEach(() => {
 		mocks.controller = null;
+		(serviceCapabilities as Writable<(leaf: string) => boolean>).set((leaf) => ['drover-clusters_editor', 'drover-clusters_admin'].includes(leaf));
 	});
 
 	it('hides attach controls for non-ACTIVE clusters', () => {
@@ -103,5 +107,28 @@ describe('K3sClusterNetworksCard primary network controls', () => {
 		expect(detachButtons).toHaveLength(2);
 		expect(detachButtons[0].disabled).toBe(false);
 		expect(detachButtons[1].disabled).toBe(true);
+	});
+	it('shows inventory but disables network mutations for access-only users', async () => {
+		(serviceCapabilities as Writable<(leaf: string) => boolean>).set((leaf) => leaf === 'drover-access_user');
+		renderCard();
+		expect(screen.queryByRole('button', { name: '+ 네트워크 연결' })).toBeNull();
+		for (const button of screen.getAllByRole('button', { name: '제거' }) as HTMLButtonElement[]) {
+			expect(button.disabled).toBe(true);
+			await fireEvent.click(button);
+		}
+		expect(mocks.controller!.detachInterface).not.toHaveBeenCalled();
+	});
+	it('allows editor attach but reserves detach for the administrator leaf', async () => {
+		(serviceCapabilities as Writable<(leaf: string) => boolean>).set((leaf) => leaf === 'drover-clusters_editor');
+		renderCard();
+		await fireEvent.click(screen.getByRole('button', { name: '+ 네트워크 연결' }));
+		const selector = screen.getAllByRole('combobox')[1];
+		await fireEvent.change(selector, { target: { value: 'net-third' } });
+		await fireEvent.click(screen.getByRole('button', { name: '추가' }));
+		expect(mocks.controller!.attachInterface).toHaveBeenCalledWith('server-1', 'net-third');
+		for (const button of screen.getAllByRole('button', { name: '제거' }) as HTMLButtonElement[]) {
+			expect(button.disabled).toBe(true);
+		}
+		expect(mocks.controller!.detachInterface).not.toHaveBeenCalled();
 	});
 });

@@ -7,6 +7,7 @@
 	import RouterInfoSection from '$lib/components/router/RouterInfoSection.svelte';
 	import RouterGatewaySection from '$lib/components/router/RouterGatewaySection.svelte';
 	import RouterInterfacesSection from '$lib/components/router/RouterInterfacesSection.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	interface Props {
 		routerId: string;
@@ -45,7 +46,7 @@
 	<RouterDetailHeader {ar} {onClose} {routerId} />
 
 	{#if s.loading}
-		<div class="text-ink-2 text-sm">{t('router.loading')}</div>
+		<ActivityIndicator label={t('router.loading')} />
 	{:else if s.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{s.error}</div>
 	{:else if s.router}

@@ -1,19 +1,25 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { writable } from 'svelte/store';
 
 const mocks = vi.hoisted(() => {
+	const { writable } = require('svelte/store');
 	class ApiError extends Error {
 		constructor(message: string, public status: number) { super(message); }
 	}
 	return {
 		get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn(),
+		auth: writable({ token: 'token', projectId: 'project' }),
+		authReady: writable(true), projectSwitching: writable(false),
 		confirm: vi.fn(), invalidate: vi.fn(), ApiError
 	};
 });
-vi.mock('$lib/stores/auth', () => {
-	const { readable } = require('svelte/store');
-	return { auth: readable({ token: 'token', projectId: 'project' }) };
-});
+vi.mock('$lib/stores/auth', () => ({ auth: mocks.auth, authReady: mocks.authReady, projectSwitching: mocks.projectSwitching }));
+// Personal extension permissions are unrelated to these admin flows; do not consume API fixtures.
+vi.mock('$lib/stores/servicePermissions', () => ({
+	serviceCapabilities: writable<(leaf: string) => boolean>(() => false),
+	projectPermissions: writable({ permissions: null, loading: false, error: '' })
+}));
 vi.mock('$lib/api/client', () => ({
 	api: { get: mocks.get, post: mocks.post, patch: mocks.patch, delete: mocks.delete },
 	ApiError: mocks.ApiError
@@ -57,19 +63,43 @@ function rowOrder(container: HTMLElement): number[] {
 	return Array.from(container.querySelectorAll('[data-model-id]'), (row) => Number(row.getAttribute('data-model-id')));
 }
 function deferred<T>() {
-	let resolve!: (value: T) => void;
-	const promise = new Promise<T>((done) => { resolve = done; });
-	return { promise, resolve };
+	return Promise.withResolvers<T>();
+}
+
+async function dragEvent(target: HTMLElement, type: string, properties: Record<string, unknown> = {}) {
+	const event = new Event(type, { bubbles: true, cancelable: true });
+	Object.assign(event, properties);
+	await fireEvent(target, event);
+	return event;
+}
+async function startDrag(target: HTMLElement) {
+	await fireEvent.mouseDown(target, { button: 0 });
+	return dragEvent(target, 'dragstart', { dataTransfer: { setData: vi.fn(), effectAllowed: 'none' } });
+}
+async function dragModel(source: HTMLElement, target: HTMLElement, edge: 'before' | 'after') {
+	await startDrag(source);
+	const clientY = edge === 'before' ? -1 : 1;
+	await dragEvent(target, 'dragover', { clientY, dataTransfer: {} });
+	await dragEvent(target, 'drop', { clientY });
+	await dragEvent(source, 'dragend');
 }
 
 beforeEach(() => {
 	vi.resetAllMocks();
+	mocks.auth.set({ token: 'token', projectId: 'project' });
+	mocks.authReady.set(true); mocks.projectSwitching.set(false);
 	providers = [{ ...nim }, { ...empty }, { ...other }];
 	models = [{ ...model }, { ...hidden }, { ...second }];
 	mocks.get.mockImplementation(async (path: string) => {
 		if (path === '/api/v1/chat/admin/providers') return providers.map((row) => ({ ...row }));
 		if (path === '/api/v1/chat/admin/models') return models.map((row) => ({ ...row }));
 		return [];
+	});
+	mocks.post.mockImplementation(async (path: string, body: { provider_id: number; model_ids: number[] }) => {
+		if (path === '/api/v1/chat/admin/models/reorder') {
+			const ranks = new Map(body.model_ids.map((id, index) => [id, index]));
+			models = models.map((row) => row.provider_id === body.provider_id ? { ...row, sort_order: ranks.get(row.id)! } : row);
+		}
 	});
 	mocks.patch.mockImplementation(async (path: string, body: Record<string, unknown>) => {
 		const id = Number(path.split('/').at(-1));
@@ -190,7 +220,7 @@ describe('provider catalog administration', () => {
 		expect((screen.getByLabelText('조회 프로바이더') as HTMLSelectElement).value).toBe('2');
 		expect((screen.getByLabelText('수동 등록 프로바이더') as HTMLSelectElement).value).toBe('2');
 		expect(rowOrder(view.container)).toEqual([71, 70]);
-		for (const action of ['가격 수정', '기능 수정', '순서 수정', '비활성화', '제목요약 해제', '삭제']) {
+		for (const action of ['가격 수정', '기능 수정', 'Nemotron 위로 이동', 'Nemotron 아래로 이동', '비활성화', '제목요약 해제', '삭제']) {
 			expect(within(modelRow(70)).getByRole('button', { name: action })).toBeTruthy();
 		}
 		await fireEvent.click(screen.getByRole('checkbox', { name: '전체 선택' }));
@@ -230,50 +260,91 @@ describe('provider catalog administration', () => {
 		expect((await screen.findByRole('checkbox', { name: 'Nemotron 선택' }) as HTMLInputElement).checked).toBe(false);
 	});
 
-	it('edits model rank with retryable drafts without altering pricing, capabilities, title or activation', async () => {
+	it('drags a whole card before or after another card and retains its non-order configuration after reload', async () => {
 		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
 		expect(rowOrder(view.container)).toEqual([20, 71, 70]);
-		await fireEvent.click(within(modelRow(70)).getByRole('button', { name: '순서 수정' }));
-		const dialog = screen.getByRole('dialog', { name: '모델 표시 순서' });
-		const input = within(dialog).getByRole('textbox', { name: '모델 표시 순서' });
-		for (const value of ['', '-1', '0.5', '2147483648']) {
-			await fireEvent.input(input, { target: { value } });
-			await fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
-			expect(input.getAttribute('aria-invalid')).toBe('true');
-		}
-		expect(mocks.patch).not.toHaveBeenCalled();
-		await fireEvent.input(input, { target: { value: '0' } });
-		mocks.patch.mockRejectedValueOnce(new mocks.ApiError('unsafe upstream details', 409));
-		await fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
-		await within(dialog).findByRole('alert');
-		expect((input as HTMLInputElement).value).toBe('0');
-		expect(rowOrder(view.container)).toEqual([20, 71, 70]);
-		await fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+		await dragModel(modelRow(70), modelRow(71), 'before');
 		await waitFor(() => expect(rowOrder(view.container)).toEqual([20, 70, 71]));
-		expect(screen.queryByRole('dialog')).toBeNull();
+		await waitFor(() => expect(modelRow(70).getAttribute('draggable')).toBe('true'));
 		expect(within(modelRow(70)).getByText(/입력 1.25 · 출력 5 USD/)).toBeTruthy();
 		expect(within(modelRow(70)).getByRole('button', { name: '제목요약 해제' })).toBeTruthy();
 		expect(within(modelRow(70)).getByRole('button', { name: '비활성화' })).toBeTruthy();
+		await dragModel(modelRow(70), modelRow(71), 'after');
+		await waitFor(() => expect(rowOrder(view.container)).toEqual([20, 71, 70]));
+		await waitFor(() => expect(modelRow(70).getAttribute('draggable')).toBe('true'));
+		view.unmount();
+		const reloaded = render(ModelPage);
+		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
+		expect(rowOrder(reloaded.container)).toEqual([20, 71, 70]);
 	});
 
-	it('does not overwrite server-side price or default changes made while the order editor is open', async () => {
-		render(ModelPage);
+	it('permutes kind-filtered visible slots without moving hidden models or another provider', async () => {
+		models.push({ ...model, id: 72, display_name: 'Image', model_name: 'openai/image', model_kind: 'image', sort_order: 5 });
+		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		await fireEvent.click(within(modelRow(70)).getByRole('button', { name: '순서 수정' }));
-		const dialog = screen.getByRole('dialog', { name: '모델 표시 순서' });
-		await fireEvent.input(within(dialog).getByRole('textbox', { name: '모델 표시 순서' }), { target: { value: '2147483647' } });
-		const concurrent = {
-			...model, input_price_per_million: '2', effective_input_price_per_million: '2',
-			cache_read_price_per_million: '0.4', capabilities: { vision: false },
-			is_active: false, is_title_model: false
-		};
-		models = models.map((row) => row.id === 70 ? concurrent : row);
-		await fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+		await fireEvent.change(screen.getByLabelText('등록 모델 종류 필터'), { target: { value: 'text' } });
+		await dragModel(modelRow(70), modelRow(71), 'before');
+		await waitFor(() => expect(modelRow(70).getAttribute('draggable')).toBe('true'));
+		expect(rowOrder(view.container)).toEqual([20, 70, 71]);
+		await fireEvent.change(screen.getByLabelText('등록 모델 종류 필터'), { target: { value: '' } });
+		expect(rowOrder(view.container)).toEqual([20, 70, 72, 71]);
+		expect(models.find((row) => row.id === 20)?.sort_order).toBe(100);
+	});
+
+	it('restores server order after a conflict, keeps concurrent price changes and permits a keyboard/touch retry', async () => {
+		const view = render(ModelPage);
+		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
+		mocks.post.mockImplementationOnce(async () => {
+			models = models.map((row) => row.id === 70 ? { ...row, effective_input_price_per_million: '2', is_active: false, is_title_model: false } : row);
+			throw new mocks.ApiError('unsafe upstream details', 409);
+		});
+		await dragModel(modelRow(70), modelRow(71), 'before');
+		await screen.findByRole('alert');
 		await screen.findByText(/입력 2 · 출력 5 USD/);
-		expect(screen.queryByRole('dialog')).toBeNull();
-		expect(within(modelRow(70)).getByText(/입력 2 · 출력 5 USD/)).toBeTruthy();
-		expect(within(modelRow(70)).getByRole('button', { name: '제목요약 지정' })).toBeTruthy();
+		expect(rowOrder(view.container)).toEqual([20, 71, 70]);
+		expect(screen.queryByText('unsafe upstream details')).toBeNull();
+		await fireEvent.click(within(modelRow(70)).getByRole('button', { name: 'Nemotron 위로 이동' }));
+		await waitFor(() => expect(rowOrder(view.container)).toEqual([20, 70, 71]));
+		await waitFor(() => expect(document.activeElement).toBe(within(modelRow(70)).getByRole('button', { name: 'Nemotron 아래로 이동' })));
+		expect(screen.queryByRole('alert')).toBeNull();
 		expect(within(modelRow(70)).getByRole('button', { name: '활성화' })).toBeTruthy();
+		expect(within(modelRow(70)).getByRole('button', { name: '제목요약 지정' })).toBeTruthy();
+	});
+
+	it('ignores cross-provider drops, drags starting on a control, canceled drags and filter changes mid-drag', async () => {
+		const view = render(ModelPage);
+		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
+		await dragModel(modelRow(70), modelRow(20), 'before');
+		const control = within(modelRow(70)).getByRole('button', { name: '가격 수정' });
+		await fireEvent.mouseDown(control, { button: 0 });
+		expect((await dragEvent(modelRow(70), 'dragstart', { dataTransfer: { setData: vi.fn() } })).defaultPrevented).toBe(true);
+		await startDrag(modelRow(70));
+		await dragEvent(modelRow(70), 'dragend');
+		await dragEvent(modelRow(71), 'drop', { clientY: -1 });
+		await startDrag(modelRow(70));
+		await fireEvent.change(screen.getByLabelText('등록 모델 종류 필터'), { target: { value: 'text' } });
+		await dragEvent(modelRow(71), 'drop', { clientY: -1 });
+		expect(rowOrder(view.container)).toEqual([20, 71, 70]);
+		expect(mocks.post).not.toHaveBeenCalled();
+		await fireEvent.click(control);
+		expect((within(screen.getByRole('dialog')).getByLabelText('입력') as HTMLInputElement).value).toBe('1.25');
+	});
+
+	it('blocks overlapping reorders and discards a late failure after the auth scope changes', async () => {
+		const pending = Promise.withResolvers<void>();
+		mocks.post.mockReturnValueOnce(pending.promise);
+		const view = render(ModelPage);
+		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
+		await dragModel(modelRow(70), modelRow(71), 'before');
+		expect((within(modelRow(70)).getByRole('button', { name: 'Nemotron 아래로 이동' }) as HTMLButtonElement).disabled).toBe(true);
+		expect((screen.getByLabelText('등록 모델 프로바이더 필터') as HTMLSelectElement).disabled).toBe(true);
+		models = [{ ...model, id: 90, display_name: 'Fresh A', sort_order: 0 }, { ...model, id: 91, display_name: 'Fresh B', sort_order: 1 }];
+		mocks.auth.set({ token: 'fresh-token', projectId: 'fresh-project' });
+		await screen.findByRole('checkbox', { name: 'Fresh A 선택' });
+		pending.reject(new mocks.ApiError('old-scope-error', 503));
+		await waitFor(() => expect(rowOrder(view.container)).toEqual([90, 91]));
+		expect(screen.queryByRole('alert')).toBeNull();
+		expect((within(modelRow(90)).getByRole('button', { name: 'Fresh A 아래로 이동' }) as HTMLButtonElement).disabled).toBe(false);
 	});
 });

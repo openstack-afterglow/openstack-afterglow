@@ -1,3 +1,4 @@
+import { grantLumen } from './lumenPermissionFixture';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -5,9 +6,9 @@ import { auth } from '$lib/stores/auth';
 import { t } from '$lib/i18n/ns/chat-settings';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn(), post: vi.fn() }));
 vi.mock('$lib/api/client', () => ({
-	api: { get: mocks.get, patch: mocks.patch },
+	api: { get: mocks.get, patch: mocks.patch, post: mocks.post },
 	ApiError: class ApiError extends Error {}
 }));
 
@@ -49,6 +50,21 @@ function examples(container: HTMLElement): string {
 }
 
 describe('ChatApiKeysManager connection guide', () => {
+	it('issues only selected scopes still allowed by the current grants', async () => {
+		grantLumen('lumen-keys_editor', 'lumen-chat_user');
+		mocks.post.mockResolvedValue({ key: 'one-time-secret', key_prefix: 'prefix' });
+		render(ChatApiKeysManager);
+		await fireEvent.click(screen.getByRole('button', { name: t('apiKeys.create') }));
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/api-keys', { name: '', scopes: ['compat:completions:write'] }, 'browser-token', 'project-1'));
+	});
+	it('permits key editing but not revocation with the keys editor leaf', async () => {
+		grantLumen('lumen-keys_editor');
+		render(ChatApiKeysManager);
+		const rename = await screen.findByRole('button', { name: t('apiKeys.rename') });
+		expect(rename.hasAttribute('disabled')).toBe(false);
+		expect(screen.getByRole('button', { name: t('apiKeys.revoke') }).hasAttribute('disabled')).toBe(true);
+		expect(screen.getByRole('checkbox', { name: 'compat:images:write' }).hasAttribute('disabled')).toBe(true);
+	});
 	beforeEach(() => {
 		vi.resetAllMocks();
 		initLocale('ko');

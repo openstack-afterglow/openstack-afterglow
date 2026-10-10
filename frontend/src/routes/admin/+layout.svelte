@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { isAdmin, auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
@@ -11,6 +11,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import { getLocale } from '$lib/i18n/runtime.svelte';
+	import { isRouteChange, playRouteEntrance } from '$lib/utils/motion';
 
 	$effect(() => {
 		if ($auth.token) void loadTutorialStatuses();
@@ -18,14 +19,14 @@
 
 	// mount 시 /me를 강제 호출해 stale 캐시 우회 — 60s 내 admin 박탈을 즉시 반영
 	onMount(async () => {
-		if (!$auth.token) return;
+		const { token, projectId, userId } = $auth;
+		if (!token) return;
 		try {
-			const me = await api.get<{ is_system_admin: boolean; roles: string[] }>(
-				'/api/v1/auth/me',
-				$auth.token,
-				$auth.projectId ?? undefined,
+			const me = await api.get<{ is_system_admin: boolean; roles: string[]; can_write: boolean }>(
+				'/api/v1/auth/me', token, projectId ?? undefined,
 			);
-			auth.update((s) => ({ ...s, isSystemAdmin: me.is_system_admin === true, roles: me.roles ?? s.roles }));
+			if ($auth.token !== token || $auth.projectId !== projectId || $auth.userId !== userId) return;
+			auth.update((s) => ({ ...s, isSystemAdmin: me.is_system_admin === true, roles: me.roles ?? s.roles, canWrite: me.can_write }));
 		} catch {
 			// 실패 시 기존 상태 유지 — $effect의 isAdmin 감시가 처리
 		}
@@ -34,6 +35,11 @@
 	let { children } = $props();
 	// The in-page k3s shell must not be destroyed when only its interface language changes.
 	const pageLocaleKey = $derived($page.route.id === '/admin/drover' ? $page.route.id : getLocale());
+	let mainEl = $state<HTMLElement | null>(null);
+
+	afterNavigate((nav) => {
+		if (isRouteChange(nav)) playRouteEntrance(mainEl);
+	});
 </script>
 
 {#if $auth.token === null}
@@ -48,7 +54,7 @@
 {:else}
 	<div class="flex h-[100dvh] overflow-hidden">
 		<AdminSidebar />
-		<main id="main-content" tabindex="-1" class="min-w-0 flex-1 overflow-y-auto pt-[var(--app-header-height)] focus:outline-none focus-visible:shadow-[var(--focus-ring)]">
+		<main bind:this={mainEl} id="main-content" tabindex="-1" class="min-w-0 flex-1 overflow-y-auto pt-[var(--app-header-height)] focus:outline-none focus-visible:shadow-[var(--focus-ring)]">
 			{#key pageLocaleKey}
 				{@render children()}
 			{/key}

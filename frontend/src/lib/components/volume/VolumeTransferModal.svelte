@@ -5,6 +5,7 @@
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/volume';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	interface Transfer {
 		id: string;
@@ -200,8 +201,8 @@
 				<button
 					onclick={createTransfer}
 					disabled={loading}
-					class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
-				>{loading ? t('transferModal.creating') : t('transferModal.createTitle')}</button>
+					class="inline-flex items-center gap-1.5 px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
+				>{#if loading}<ActivityIndicator size="xs" tone="ink" />{/if}{loading ? t('transferModal.creating') : t('transferModal.createTitle')}</button>
 			</div>
 
 		{:else if mode === 'create_done' && createdTransfer}
@@ -255,14 +256,14 @@
 				<button
 					onclick={acceptTransfer}
 					disabled={loading || !acceptTransferId.trim() || !acceptAuthKey.trim()}
-					class="px-5 py-2 bg-green-600 hover:bg-green-500 disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors"
-				>{loading ? t('transferModal.accepting') : t('transferModal.acceptTitle')}</button>
+					class="inline-flex items-center gap-1.5 px-5 py-2 bg-green-600 hover:bg-green-500 disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors"
+				>{#if loading}<ActivityIndicator size="xs" tone="ink" />{/if}{loading ? t('transferModal.accepting') : t('transferModal.acceptTitle')}</button>
 			</div>
 
 		{:else if mode === 'list'}
 			<h2 class="text-lg font-semibold text-ink-0 mb-4">{t('transferModal.listTitle')}</h2>
 			{#if loading}
-				<div class="text-center py-6 text-ink-2 text-sm">{t('transferModal.loading')}</div>
+				<div class="flex justify-center py-6"><ActivityIndicator size="sm" label={t('transferModal.loading')} /></div>
 			{:else if errorMsg}
 				<div class="text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{errorMsg}</div>
 			{:else if transfers.length === 0}
@@ -279,8 +280,8 @@
 							<button
 								onclick={() => cancelTransfer(transfer.id)}
 								disabled={cancellingId === transfer.id}
-								class="ml-3 text-xs text-red-400 hover:text-red-300 disabled:text-ink-3 border border-red-900 hover:border-red-700 disabled:border-line-2 px-2 py-1 rounded transition-colors shrink-0"
-							>{cancellingId === transfer.id ? t('transferModal.cancelling') : t('transferModal.cancel')}</button>
+								class="ml-3 inline-flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 disabled:text-ink-3 border border-red-900 hover:border-red-700 disabled:border-line-2 px-2 py-1 rounded transition-colors shrink-0"
+							>{#if cancellingId === transfer.id}<ActivityIndicator size="xs" tone="danger" />{/if}{cancellingId === transfer.id ? t('transferModal.cancelling') : t('transferModal.cancel')}</button>
 						</div>
 					{/each}
 				</div>

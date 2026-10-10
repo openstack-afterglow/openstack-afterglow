@@ -19,7 +19,7 @@
 	} = $props();
 </script>
 
-<div class="border-t border-line-2">
+<div class="motion-enter border-t border-line-2">
 	{#if rules.length === 0}
 		<p class="text-xs text-ink-2 px-4 py-3 italic">{t('securityGroup.rules.empty')}</p>
 	{:else}

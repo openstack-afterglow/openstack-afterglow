@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
@@ -55,11 +56,16 @@
 		/>
 	</Field>
 
-	<Button type="submit" disabled={loading} class="login-submit" size="lg">
-		{loading ? t('loginForm.signingIn') : t('loginForm.signIn')}
-	</Button>
+	<Button type="submit" disabled={loading} class="login-submit" size="lg">{t('loginForm.signIn')}</Button>
 
 	<GitLabLoginButton enabled={gitlabEnabled} loading={gitlabLoading} onClick={onGitlab} />
+
+	{#if loading || gitlabLoading}
+		<ActivityIndicator
+			label={loading ? t('loginForm.signingIn') : t('gitlabLogin.redirecting')}
+			class="login-activity motion-fade"
+		/>
+	{/if}
 </form>
 
 <style>
@@ -71,5 +77,9 @@
 		border-radius: 0.75rem;
 		background: var(--color-surface-raised);
 		padding: 2rem;
+	}
+
+	.login-form :global(.login-activity) {
+		align-self: center;
 	}
 </style>

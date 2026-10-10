@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
 	import type { PodInfo } from '$lib/types/k3s';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -58,7 +59,7 @@
 	aria-modal="true"
 >
 	<div
-		class="bg-surface-canvas border border-line-2 rounded-lg w-[90vw] max-w-4xl max-h-[85vh] flex flex-col shadow-[var(--shadow-restraint)]"
+		class="motion-enter bg-surface-canvas border border-line-2 rounded-lg w-[90vw] max-w-4xl max-h-[85vh] flex flex-col shadow-[var(--shadow-restraint)]"
 		role="none"
 	>
 		<!-- Header -->
@@ -100,7 +101,7 @@
 		<!-- Log body -->
 		<div class="flex-1 overflow-auto p-4">
 			{#if loading}
-				<div class="text-ink-2 text-sm text-center py-8">{t('podLog.loading')}</div>
+				<div class="text-ink-2 text-sm text-center py-8"><ActivityIndicator label={t('podLog.loading')} /></div>
 			{:else if error}
 				<div class="text-red-400 text-sm">{error}</div>
 			{:else if !log}

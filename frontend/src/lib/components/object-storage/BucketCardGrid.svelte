@@ -3,6 +3,7 @@
 	import type { SwiftContainer } from '$lib/types/objectStorage';
 	import { formatStorage } from '$lib/utils/format';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
+	import { createArrivals } from './arrivals';
 
 	let {
 		containers,
@@ -12,6 +13,7 @@
 		selectionDisabled = false,
 		onToggleSelect,
 		onDelete,
+		arrivals = createArrivals(),
 	}: {
 		containers: SwiftContainer[];
 		deleting: string | null;
@@ -20,12 +22,20 @@
 		selectionDisabled?: boolean;
 		onToggleSelect: (name: string) => void;
 		onDelete: (name: string) => Promise<void>;
+		arrivals?: ReturnType<typeof createArrivals>;
 	} = $props();
+
 </script>
 
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
 	{#each containers as c (c.name)}
-		<article class="resource-selection-surface bg-surface-base border border-line rounded-lg p-5" data-selected={selectedIds.has(c.name)}>
+		{@const order = arrivals.next(c.name)}
+		<article
+			class="resource-selection-surface bg-surface-base border border-line rounded-lg p-5"
+			class:motion-enter={order !== null}
+			style:--motion-index={order}
+			data-selected={selectedIds.has(c.name)}
+		>
 			<div class="flex items-center gap-2.5 mb-3">
 				<SelectionCheckbox
 					checked={selectedIds.has(c.name)}

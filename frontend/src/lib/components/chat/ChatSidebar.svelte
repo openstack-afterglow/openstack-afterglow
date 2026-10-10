@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { tick } from 'svelte';
+	import { serviceCapabilities } from '$lib/stores/servicePermissions';
 	import type { Workspace } from '$lib/api/chatWorkspaces';
 	import type { ChatUsage } from '$lib/api/chatTree';
 	import { auth } from '$lib/stores/auth';
 	import Modal from '$lib/components/ui/Modal.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import ChatUserMenu from './ChatUserMenu.svelte';
 	import { t } from '$lib/i18n/ns/chat-panel';
 
@@ -107,12 +109,14 @@
 	let draggingId = $state<string | null>(null);
 	let dropTargetKey = $state<string | null>(null);
 	function onDropTo(workspaceId: number | null) {
+		if (!$serviceCapabilities('lumen-chat_user')) return;
 		const conv = conversations.find((c) => c.id === draggingId);
 		draggingId = null;
 		dropTargetKey = null;
 		if (conv && conv.workspace_id !== workspaceId) onAssign(conv, workspaceId);
 	}
 	function deleteWorkspace(workspaceId: number) {
+		if (!$serviceCapabilities('lumen-history_editor')) return;
 		const workspace = workspaces.find((candidate) => candidate.id === workspaceId);
 		workspaceMenuId = null;
 		if (workspace) onDeleteWorkspace(workspace);
@@ -221,7 +225,7 @@
 		</button>
 	</header>
 	<div class="top">
-		<button type="button" class="new-btn" onclick={onNew}>
+		<button type="button" class="new-btn" disabled={!$serviceCapabilities('lumen-chat_user')} onclick={onNew}>
 			<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" stroke-linecap="round" stroke-linejoin="round" /></svg>
 			{t('sidebar.newChat')}
 		</button>
@@ -353,7 +357,7 @@
 			<button type="button" class="group-action" class:active={workspaceMenuId === g.id} onclick={() => (workspaceMenuId = workspaceMenuId === g.id ? null : g.id)} title={t('sidebar.projectOptions')} aria-label={t('sidebar.projectOptions')} aria-expanded={workspaceMenuId === g.id} data-workspace-menu-trigger>
 				<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /></svg>
 			</button>
-			<button type="button" class="group-action" onclick={() => onNewInWorkspace(g.id!)} title={t('sidebar.newChatInProject')} aria-label={t('sidebar.newChatInProject')}>
+			<button type="button" class="group-action" disabled={!$serviceCapabilities('lumen-chat_user')} onclick={() => onNewInWorkspace(g.id!)} title={t('sidebar.newChatInProject')} aria-label={t('sidebar.newChatInProject')}>
 				<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" stroke-linecap="round" stroke-linejoin="round" /></svg>
 			</button>
 		</div>
@@ -361,7 +365,7 @@
 			<div class="workspace-menu" role="menu">
 				<button type="button" role="menuitem" onclick={() => { workspaceMenuId = null; onOpenWorkspace(g.id!); }}>{t('sidebar.projectSettings')}</button>
 				<button type="button" role="menuitem" onclick={() => { workspaceMenuId = null; onOpenWorkspace(g.id!); }}>{t('sidebar.renameProject')}</button>
-				<button type="button" role="menuitem" class="danger" onclick={() => deleteWorkspace(g.id!)}>{t('sidebar.removeProject')}</button>
+				<button type="button" role="menuitem" class="danger" disabled={!$serviceCapabilities('lumen-history_editor')} onclick={() => deleteWorkspace(g.id!)}>{t('sidebar.removeProject')}</button>
 			</div>
 		{/if}
 	</div>
@@ -385,9 +389,9 @@
 			<span class="item-title">{conversationLabel(conv)}</span>
 			{#if runningConversationIds.has(conv.id)}
 				<span class="run-indicator" title={t('sidebar.generatingResponse')} aria-label={t('sidebar.generatingResponse')}>
-					<span class="run-spinner" aria-hidden="true"></span>
+					<ActivityIndicator size="xs" label={t('sidebar.generatingResponse')} />
 					{#if conv.id !== activeConvId}
-						<span class="unread-dot" aria-label={t('sidebar.unreadRunningConversation')}></span>
+						<span class="unread-dot motion-pop" aria-label={t('sidebar.unreadRunningConversation')}></span>
 					{/if}
 				</span>
 			{/if}
@@ -395,7 +399,7 @@
 		<button
 			type="button"
 			class="del"
-			disabled={busy}
+			disabled={busy || !$serviceCapabilities('lumen-history_editor')}
 			onclick={() => onDelete(conv)}
 			title={t('sidebar.deleteConversation')}
 			aria-label={t('sidebar.deleteConversation')}
@@ -688,7 +692,7 @@
 		padding-right: 0;
 		opacity: 0;
 		white-space: nowrap;
-		transition: width 0.12s ease, padding-right 0.12s ease, opacity 0.12s ease;
+		transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
 	}
 	.group-row:hover .group-actions,
 	.group-row:focus-within .group-actions {
@@ -822,36 +826,20 @@
 	.run-indicator {
 		position: relative;
 		display: inline-flex;
-		flex: 0 0 1rem;
+		flex: 0 0 auto;
 		align-items: center;
 		justify-content: center;
-		width: 1rem;
-		height: 1rem;
-	}
-	.run-spinner {
-		width: 0.72rem;
-		height: 0.72rem;
-		border: 1.5px solid color-mix(in oklab, var(--color-accent) 28%, transparent);
-		border-top-color: var(--color-accent);
-		border-radius: 50%;
-		animation: run-spin 0.8s linear infinite;
 	}
 	.unread-dot {
 		position: absolute;
 		top: -0.1rem;
-		right: -0.1rem;
+		left: 0.5rem;
 		width: 0.34rem;
 		height: 0.34rem;
 		border: 1px solid var(--color-surface-raised);
 		border-radius: 50%;
 		background: var(--color-accent);
 		box-shadow: 0 0 0.35rem color-mix(in oklab, var(--color-accent) 70%, transparent);
-	}
-	@keyframes run-spin {
-		to { transform: rotate(360deg); }
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.run-spinner { animation: none; }
 	}
 	.del {
 		flex-shrink: 0;

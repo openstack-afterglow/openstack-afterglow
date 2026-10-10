@@ -3,6 +3,7 @@
   import type { DbInstance } from '$lib/types/database';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
   let {
     instances,
@@ -50,7 +51,7 @@
         <th class="text-right py-3 px-4 font-medium">{tr('labels.actions')}</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody class="motion-stagger">
       {#each instances as inst (inst.id)}
         <tr class="resource-selection-surface db-instances-table__row transition-colors" data-selected={selectedIds.has(inst.id)}>
           <td class="py-3 px-3"><SelectionCheckbox checked={selectedIds.has(inst.id)} disabled={selectionDisabled || !selectableIds.has(inst.id)} ariaLabel={tr('selection.item', { name: inst.name })} onclick={() => onToggleSelect(inst.id)} /></td>
@@ -61,8 +62,8 @@
           <td class="db-instances-table__selection-count py-3 px-4 text-xs">{inst.created_at ? inst.created_at.slice(0, 10) : '-'}</td>
           <td class="py-3 px-4 text-right">
             <div class="flex justify-end gap-1">
-              <button onclick={() => onRestart(inst.id, inst.name)} disabled={restarting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__restart text-xs px-2 py-1 rounded">{restarting === inst.id ? '...' : tr('actions.restart')}</button>
-              <button onclick={(e) => { e.stopPropagation(); onDelete(inst.id, inst.name); }} disabled={deleting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__delete text-xs px-2 py-1 rounded">{deleting === inst.id ? '...' : tr('actions.delete')}</button>
+              <button onclick={() => onRestart(inst.id, inst.name)} disabled={restarting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__restart inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if restarting === inst.id}<ActivityIndicator size="xs" tone="ink" />{tr('state.restarting')}{:else}{tr('actions.restart')}{/if}</button>
+              <button onclick={(e) => { e.stopPropagation(); onDelete(inst.id, inst.name); }} disabled={deleting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__delete inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if deleting === inst.id}<ActivityIndicator size="xs" tone="danger" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
             </div>
           </td>
         </tr>

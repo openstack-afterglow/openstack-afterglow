@@ -7,14 +7,21 @@
 		container,
 		deletingId,
 		onDelete,
+		entrance = null,
 	}: {
 		container: SwiftContainer;
 		deletingId: string | null;
 		onDelete: (name: string) => Promise<void>;
+		/** Cascade slot when this row arrives for the first time; null renders it in place. */
+		entrance?: number | null;
 	} = $props();
 </script>
 
-<tr class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors {container.is_quarantine ? 'bg-amber-950/20' : ''} {container.is_trash ? 'bg-orange-950/10' : ''} {container.is_deleted ? 'bg-red-950/20' : ''}">
+<tr
+	class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors {container.is_quarantine ? 'bg-state-warning/10' : ''} {container.is_trash ? 'bg-state-neutral/10' : ''} {container.is_deleted ? 'bg-state-danger/10' : ''}"
+	class:motion-fade={entrance !== null}
+	style:--motion-index={entrance}
+>
 	<td class="py-3 px-4">
 		<a
 			href="/admin/object-storage/{encodeURIComponent(container.name)}{container.project_id ? `?project_id=${encodeURIComponent(container.project_id)}` : ''}"

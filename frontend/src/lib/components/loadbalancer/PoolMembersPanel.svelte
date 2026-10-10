@@ -2,6 +2,8 @@
   import { t } from '$lib/i18n/ns/network-resources';
   import { useLoadbalancerDetailController } from '$lib/stores/loadbalancerDetailController.svelte';
   import Button from '$lib/components/ui/Button.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 
   interface Props {
     poolId: string;
@@ -12,6 +14,8 @@
 	const poolId = $derived(_poolId);
 
   const s = useLoadbalancerDetailController();
+  const pending = createPendingAction();
+  const addingMember = $derived(pending.isActive('add', s.saving));
 </script>
 
 <div class="mt-2 ml-4 bg-surface-sunken/30 rounded-lg p-4 border border-line-2" data-pool-id={poolId}>
@@ -46,7 +50,7 @@
         placeholder={t('lb.form.weight')}
         class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1"
       />
-      <Button onclick={() => s.addMember()} disabled={s.saving || !s.memberForm.address} size="sm">{t('lb.actions.add')}</Button>
+      <Button onclick={() => pending.run('add', () => s.addMember())} disabled={s.saving || !s.memberForm.address} ariaBusy={addingMember} size="sm">{#if addingMember}<ActivityIndicator size="xs" tone="ink" />{/if}{addingMember ? t('lb.actions.adding') : t('lb.actions.add')}</Button>
       <button onclick={() => s.toggleAddMember()} class="text-ink-2 hover:text-ink-1 text-sm px-2 text-center rounded border border-line-2">{t('lb.actions.cancel')}</button>
     </div>
   {/if}
@@ -56,13 +60,14 @@
   {:else}
     <div class="space-y-1.5">
       {#each s.selectedPoolMembers as member}
+        {@const removingMember = pending.isActive(`remove:${member.id}`, s.saving)}
         <div class="flex items-center justify-between bg-surface-sunken/50 rounded px-3 py-2">
           <div class="text-xs">
             <span class="text-ink-0 font-mono">{member.address}:{member.protocol_port}</span>
             <span class="ml-2 text-ink-2">{t('lb.members.weight', { weight: member.weight })}</span>
             <span class="ml-2 {member.status === 'ACTIVE' ? 'text-green-400' : 'text-yellow-400'}">{member.status}</span>
           </div>
-          <button onclick={() => s.removeMember(member.id)} disabled={s.saving} class="text-red-400 hover:text-red-300 text-xs">{t('lb.actions.remove')}</button>
+          <button onclick={() => pending.run(`remove:${member.id}`, () => s.removeMember(member.id))} disabled={s.saving} aria-busy={removingMember} class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 text-xs">{#if removingMember}<ActivityIndicator size="xs" tone="danger" />{/if}{removingMember ? t('lb.actions.removing') : t('lb.actions.remove')}</button>
         </div>
       {/each}
     </div>

@@ -70,15 +70,11 @@ function withLabel<T extends object>(key: NavMessage, fields: T): T & { label: s
   return Object.defineProperty({ ...fields, labelKey: key }, 'label', { enumerable: true, get: () => t(key) }) as T & { label: string; labelKey: NavMessage };
 }
 
+export const documentationNavItem: NavItem = withLabel('items.documentation', {
+  href: '/docs', icon: navIcons.document, service: null, topLevel: true,
+});
+
 export const userNavSections: NavSection[] = [
-  {
-    label: 'Palimpsest',
-    prefix: '/palimpsest',
-    icon: navIcons.layers,
-    items: [
-      withLabel('items.projectPackages', { href: '/palimpsest/packages', icon: navIcons.layers, service: null }),
-    ],
-  },
   withLabel('sections.compute', {
     prefix: '/dashboard/compute',
     extraPrefixes: [],
@@ -98,6 +94,19 @@ export const userNavSections: NavSection[] = [
       withLabel('items.volumeSnapshots', { href: '/dashboard/volumes/snapshots', icon: navIcons.snapshot, service: null, beta: 'volumeSnapshots' as const }),
     ],
   }),
+  withLabel('sections.network', {
+    prefix: '/dashboard/network',
+    extraPrefixes: [],
+    icon: 'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9',
+    items: [
+      withLabel('items.networks', { href: '/dashboard/network/networks', icon: navIcons.network, service: null }),
+      withLabel('items.floatingIps', { href: '/dashboard/network/floating-ips', icon: navIcons.floatingIp, service: null }),
+      withLabel('items.routers', { href: '/dashboard/network/routers', icon: navIcons.router, service: null }),
+      withLabel('items.loadBalancers', { href: '/dashboard/network/loadbalancers', icon: navIcons.balance, service: null }),
+      withLabel('items.securityGroups', { href: '/dashboard/network/security-groups', icon: navIcons.shield, service: null }),
+      { label: 'Waygate', href: '/dashboard/network/waygate', icon: navIcons.tunnel, service: 'waygate' },
+    ],
+  }),
   withLabel('sections.fileStorage', {
     prefix: '/dashboard/file-storage',
     extraPrefixes: [],
@@ -110,6 +119,14 @@ export const userNavSections: NavSection[] = [
       withLabel('items.securityServices', { href: '/dashboard/file-storage/security-services', icon: navIcons.shield, service: null, beta: 'fileStorageSecurityServices' as const }),
     ],
   }),
+  {
+    label: 'Palimpsest',
+    prefix: '/palimpsest',
+    icon: navIcons.layers,
+    items: [
+      withLabel('items.projectPackages', { href: '/palimpsest/packages', icon: navIcons.layers, service: null }),
+    ],
+  },
   withLabel('sections.containers', {
     prefix: '/dashboard/containers',
     extraPrefixes: ['/dashboard/drover'],
@@ -158,19 +175,6 @@ export const userNavSections: NavSection[] = [
       { label: 'Lumen', href: '/dashboard/chat', icon: navIcons.chat, service: 'chat' },
       withLabel('items.imageStudio', { href: '/dashboard/chat/images', icon: navIcons.image, service: 'chat' }),
       withLabel('items.audioStudio', { href: '/dashboard/chat/audio', icon: navIcons.audio, service: 'chat' })
-    ],
-  }),
-  withLabel('sections.network', {
-    prefix: '/dashboard/network',
-    extraPrefixes: [],
-    icon: 'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9',
-    items: [
-      withLabel('items.networks', { href: '/dashboard/network/networks', icon: navIcons.network, service: null }),
-      withLabel('items.floatingIps', { href: '/dashboard/network/floating-ips', icon: navIcons.floatingIp, service: null }),
-      withLabel('items.routers', { href: '/dashboard/network/routers', icon: navIcons.router, service: null }),
-      withLabel('items.loadBalancers', { href: '/dashboard/network/loadbalancers', icon: navIcons.balance, service: null }),
-      withLabel('items.securityGroups', { href: '/dashboard/network/security-groups', icon: navIcons.shield, service: null }),
-      { label: 'Waygate', href: '/dashboard/network/waygate', icon: navIcons.tunnel, service: 'waygate' },
     ],
   }),
 ];
@@ -297,7 +301,7 @@ export function isNavSectionActive(section: NavSection, pathname: string): boole
 export function allNavItems(isAdmin: boolean, betaFeatures: BetaFeatures): Array<NavItem & { section: string; sectionKey?: NavMessage }> {
   const sections = isAdmin ? adminNavSections : userNavSections;
   const overview = isAdmin ? [{ label: t('items.overview'), labelKey: 'items.overview' as const, href: '/admin', icon: navIcons.overview, service: null, section: t('sections.overview'), sectionKey: 'sections.overview' as const }] : [];
-  return [...overview, ...sections.flatMap((section) => {
+  return [...overview, { ...documentationNavItem, section: t('sections.documentation'), sectionKey: 'sections.documentation' as const }, ...sections.flatMap((section) => {
     if (section.beta && !betaFeatures[section.beta]) return [];
     return section.items
       .filter((item) => !item.beta || betaFeatures[item.beta])

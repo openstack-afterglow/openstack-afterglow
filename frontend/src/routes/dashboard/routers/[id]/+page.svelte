@@ -11,6 +11,7 @@
 	import RouterGatewaySection from '$lib/components/dashboard/routers/id/RouterGatewaySection.svelte';
 	import RouterInterfacesSection from '$lib/components/dashboard/routers/id/RouterInterfacesSection.svelte';
 	import { toast } from '$lib/stores/toast';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	const id = $derived($page.params.id);
 
@@ -116,9 +117,10 @@
 	}
 </script>
 
-<div class="max-w-4xl mx-auto px-4 py-8 text-ink-1">
+<!-- loading은 첫 조회에만 켜지므로 섹션 진입은 최초 도착에서만 재생된다. -->
+<div class="motion-stagger max-w-4xl mx-auto px-4 py-8 text-ink-1">
 	{#if loading}
-		<div class="text-ink-2">{t('router.loading')}</div>
+		<ActivityIndicator label={t('router.loading')} />
 	{:else if error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>
 	{:else if router}

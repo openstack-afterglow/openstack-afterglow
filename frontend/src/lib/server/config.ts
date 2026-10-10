@@ -82,7 +82,8 @@ function mcpPublicUrl(value: unknown): string {
 	try {
 		const url = new URL(raw);
 		if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) return '';
-		url.pathname = url.pathname.replace(/\/+$/, '') || '/api/v1/mcp';
+		// An explicit URL is the exact MCP resource, including a bare-origin root endpoint.
+		url.pathname = url.pathname.replace(/\/+$/, '');
 		return url.toString().replace(/\/+$/, '');
 	} catch {
 		return '';

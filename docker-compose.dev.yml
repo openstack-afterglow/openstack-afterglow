@@ -2,6 +2,8 @@ name: afterglow-local-services
 
 # Standalone source development and isolated functional-test datastores.
 # The local-services runner validates and supplies private app credentials/keys.
+# Database destinations stay literal: production .env/shell overrides must never
+# redirect development API, worker or migration/bootstrap processes.
 # Empty app inputs allow test-only parsing without cloud credentials; they do not
 # enable insecure application defaults. Select only test services for tests.
 x-local-os: &local-os

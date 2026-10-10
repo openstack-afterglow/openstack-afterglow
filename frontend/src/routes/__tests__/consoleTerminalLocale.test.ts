@@ -60,6 +60,8 @@ vi.mock('$lib/stores/auth', async () => {
 	return {
 		auth: writable({ token: 'synthetic-token', projectId: 'project', userId: 'user', roles: ['admin'], isSystemAdmin: true }),
 		isAdmin: writable(true),
+		authReady: writable(true),
+		projectSwitching: writable(false),
 	};
 });
 vi.mock('$app/stores', async () => {
@@ -69,7 +71,9 @@ vi.mock('$app/stores', async () => {
 vi.mock('$lib/api/client', () => ({
 	ApiError: class extends Error {},
 	api: {
-		get: vi.fn().mockResolvedValue({ id: 'cluster', name: 'Cluster', is_system_admin: true, roles: ['admin'] }),
+		get: vi.fn().mockImplementation(async (path: string) => path === '/api/v1/projects/current/permissions'
+			? { is_owner: false, is_manager: false, can_write: false, service_permissions: { drover: ['drover-inventory_reader', 'drover-workloads_editor'] } }
+			: { id: 'cluster', name: 'Cluster', is_system_admin: true, roles: ['admin'] }),
 		post: vi.fn().mockResolvedValue({ ticket: 'ticket' }),
 	},
 	getBaseUrl: () => 'http://localhost',

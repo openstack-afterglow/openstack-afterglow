@@ -1,4 +1,6 @@
 {
+	"builds.progressLabel": "{name} 构建进度",
+	"buildDetail.progress": "层构建进度",
 	"execution.layersOnly": "仅构建层",
 	"execution.createInstance": "同时创建实例",
 	"mode.editor": "直接编写",

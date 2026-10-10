@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -200,7 +201,7 @@
 	/>
 
 	{#if loading}
-		<div class="text-ink-2 text-sm">{t('portsPage.loading')}</div>
+		<div class="text-ink-2 text-sm"><ActivityIndicator size="sm" label={t('portsPage.loading')} /></div>
 	{:else}
 		<PortsTable
 			ports={filtered}

@@ -1,4 +1,6 @@
 {
+	"builds.progressLabel": "{name} build progress",
+	"buildDetail.progress": "Layer build progress",
 	"execution.layersOnly": "Build layers only",
 	"execution.createInstance": "Also create an instance",
 	"mode.editor": "Write directly",

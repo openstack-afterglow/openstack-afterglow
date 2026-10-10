@@ -6,19 +6,23 @@
 	let {
 		instance,
 		onAction,
+		acting = $bindable(false),
 	}: {
 		instance: Instance;
 		onAction: (kind: 'console' | 'shelve' | 'unshelve' | 'delete', instance: Instance) => Promise<void>;
+		acting?: boolean;
 	} = $props();
 
 	let open = $state(false);
-	let acting = $state(false);
 
 	async function act(kind: 'console' | 'shelve' | 'unshelve' | 'delete') {
 		open = false;
 		acting = true;
-		await onAction(kind, instance);
-		acting = false;
+		try {
+			await onAction(kind, instance);
+		} finally {
+			acting = false;
+		}
 	}
 </script>
 

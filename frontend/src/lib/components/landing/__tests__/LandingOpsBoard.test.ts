@@ -166,7 +166,8 @@ describe('LandingOpsBoard local preview', () => {
 	it('marks exactly the current step panel active with earlier panels done and later panels waiting', async () => {
 		render(LandingOpsBoard);
 		expect(panelStates()).toEqual(['ready', 'waiting', 'waiting', 'waiting']);
-		const fills = () => [...panel('policy').querySelectorAll<HTMLElement>(':not([aria-hidden]) > .meters .usage-fill')].map((fill) => fill.style.width);
+		// Meter fill extent: UsageBar scales its fill horizontally rather than resizing it.
+		const fills = () => [...panel('policy').querySelectorAll<HTMLElement>(':not([aria-hidden]) > .meters .usage-fill')].map((fill) => Number(/scaleX\(([^)]+)\)/.exec(fill.style.transform)?.[1]));
 		const idleFills = fills();
 		expect(idleFills).toHaveLength(2);
 		await start();
@@ -174,7 +175,7 @@ describe('LandingOpsBoard local preview', () => {
 			expect(panelStates()).toEqual(stepStates(step));
 			expect(panelStates().filter((state) => state === 'active')).toHaveLength(1);
 			if (step === 0) expect(fills()).toEqual(idleFills);
-			if (step === 1) expect(fills().every((width, index) => parseFloat(width) > parseFloat(idleFills[index]!))).toBe(true);
+			if (step === 1) expect(fills().every((extent, index) => extent > idleFills[index]!)).toBe(true);
 			await advance();
 		}
 		expect(panelStates()).toEqual(['done', 'done', 'done', 'done']);

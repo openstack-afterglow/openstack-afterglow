@@ -25,6 +25,8 @@
 	"actions.create": "Create",
 	"databases.empty": "No databases",
 	"state.deleting": "Deleting...",
+	"state.restarting": "Restarting…",
+	"connection.detaching": "Disconnecting…",
 	"actions.deleteInstance": "Delete instance",
 	"labels.datastore": "Datastore",
 	"labels.volumeSize": "Volume size",

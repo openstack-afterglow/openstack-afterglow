@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { afterNavigate } from '$app/navigation';
+	import { isRouteChange, playRouteEntrance } from '$lib/utils/motion';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import VmCreatePanel from '$lib/components/VmCreatePanel.svelte';
 	import { auth } from '$lib/stores/auth';
@@ -16,6 +18,11 @@
 			? $page.route.id
 			: getLocale(),
 	);
+	let mainEl = $state<HTMLElement | null>(null);
+
+	afterNavigate((nav) => {
+		if (isRouteChange(nav)) playRouteEntrance(mainEl);
+	});
 
 	// 로그인 사용자의 튜토리얼 이력을 조회해, 미체험 투어 버튼 강조 판정에 사용한다.
 	// 하드 새로고침 시 auth 토큰 복원은 비동기이므로 onMount 일회성이 아니라 토큰이
@@ -32,7 +39,7 @@
 <!-- One viewport-bounded workspace; main is the only content scroll owner. -->
 <div class="flex h-[100dvh] overflow-hidden">
 	<Sidebar />
-	<main id="main-content" tabindex="-1" class="min-w-0 flex-1 overflow-y-auto pt-[var(--app-header-height)] focus:outline-none focus-visible:shadow-[var(--focus-ring)]">
+	<main bind:this={mainEl} id="main-content" tabindex="-1" class="min-w-0 flex-1 overflow-y-auto pt-[var(--app-header-height)] focus:outline-none focus-visible:shadow-[var(--focus-ring)]">
 		{#key pageLocaleKey}
 			{@render children()}
 		{/key}

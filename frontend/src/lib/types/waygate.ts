@@ -36,6 +36,8 @@ export interface WaygateClient {
 	id: string;
 	server_id: string;
 	project_id: string;
+	/** Missing/null legacy ownership never grants a connect-only user profile access. */
+	owner_user_id?: string | null;
 	name: string;
 	enabled: boolean;
 	public_key: string;
@@ -59,13 +61,14 @@ export interface WaygateClient {
 	tx_bytes: number | null;
 }
 
-/** 클라이언트 발급 직후 1회 응답 — 평문 .conf 를 포함한다. */
+/** One-time issuance response; plaintext is omitted when issued for another owner. */
 export interface WaygateClientCreateResult extends WaygateClient {
-	tunnel_conf: string;
+	tunnel_conf: string | null;
 }
 
 export interface WaygateClientCreateRequest {
 	name: string;
+	owner_user_id?: string | null;
 	allowed_ips?: string[];
 	dns?: string | null;
 	mtu?: number | null;
@@ -74,6 +77,7 @@ export interface WaygateClientCreateRequest {
 
 export interface WaygateClientUpdateRequest {
 	name?: string;
+	owner_user_id?: string;
 	enabled?: boolean;
 	dns?: string | null;
 	mtu?: number | null;
@@ -104,6 +108,13 @@ export interface WaygateNetworkAttachRequest {
 }
 
 // 백업 / 마이그레이션 (Phase 3)
+export interface WaygateExportResult {
+	export_scope: 'caller_owned_and_unassigned_profiles';
+	excluded_assigned_client_count: number;
+	excluded_assigned_client_ids: string[];
+	[field: string]: unknown;
+}
+
 export interface WaygateImportResult {
 	imported: number;
 	skipped: { name?: string; reason: string }[];

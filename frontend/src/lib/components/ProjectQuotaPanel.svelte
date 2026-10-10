@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { fly, fade } from 'svelte/transition';
 	import { api, ApiError } from '$lib/api/client';
 	import { MOTION_DURATION_MS } from '$lib/design/tokens';
 	import { motionDuration } from '$lib/utils/motion';
 	import { t } from '$lib/i18n/ns/shared';
 	import { t as tc } from '$lib/i18n/ns/common';
+	import { ActivityIndicator } from '$lib/components/ui';
 
 	interface QuotaItem {
 		limit: number;
@@ -102,7 +102,7 @@
 	}
 
 	function usageGrad(inUse: number, limit: number): string {
-		if (limit <= 0) return '#374151';
+		if (limit <= 0) return 'var(--color-surface-sunken)';
 		const pct = (inUse / limit) * 100;
 		if (pct >= 95) return 'var(--gradient-usage-danger)';
 		if (pct >= 80) return 'var(--gradient-usage-warning)';
@@ -116,8 +116,7 @@
 
 <!-- 오버레이 -->
 <div
-	class="fixed inset-0 bg-surface-scrim-soft z-[var(--z-panel)]"
-	transition:fade={{ duration: motionDuration(MOTION_DURATION_MS.base) }}
+	class="motion-fade fixed inset-0 bg-surface-scrim-soft z-[var(--z-panel)]"
 	role="button"
 	tabindex="0"
 	aria-label={t('quotaPanel.closeOverlay')}
@@ -126,8 +125,7 @@
 ></div>
 
 <!-- 슬라이드 패널 -->
-<div class="fixed right-0 top-0 h-full w-[440px] bg-surface-canvas border-l border-line z-[var(--z-modal)] flex flex-col shadow-[var(--shadow-restraint)]"
-	transition:fly={{ x: 440, duration: motionDuration(MOTION_DURATION_MS.panel), opacity: 1 }}>
+<div class="motion-enter fixed right-0 top-0 h-full w-[440px] bg-surface-canvas border-l border-line z-[var(--z-modal)] flex flex-col shadow-[var(--shadow-restraint)]">
 	<!-- 헤더 -->
 	<div class="flex items-center justify-between px-5 py-4 border-b border-line flex-shrink-0">
 		<div>
@@ -143,7 +141,7 @@
 
 	<div class="flex-1 overflow-y-auto p-5 space-y-5">
 		{#if loading}
-			<div class="text-ink-2 text-sm">{t('quotaPanel.loading')}</div>
+			<ActivityIndicator variant="spinner" size="sm" label={t('quotaPanel.loading')} />
 		{:else if error && !quota}
 			<div class="text-red-400 text-sm">{error}</div>
 		{:else if quota}
@@ -160,8 +158,8 @@
 						{#if (quota.compute.instances?.limit ?? -1) > 0}
 							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
 								<div
-									class="h-full rounded-full transition-all"
-									style="width: {usageBar(quota.compute.instances?.in_use ?? 0, quota.compute.instances?.limit ?? 0)}%; background: {usageGrad(quota.compute.instances?.in_use ?? 0, quota.compute.instances?.limit ?? 0)}"
+									class="quota-fill w-full h-full rounded-full"
+									style="transform: scaleX({usageBar(quota.compute.instances?.in_use ?? 0, quota.compute.instances?.limit ?? 0) / 100}); background: {usageGrad(quota.compute.instances?.in_use ?? 0, quota.compute.instances?.limit ?? 0)}"
 								></div>
 							</div>
 						{/if}
@@ -184,8 +182,8 @@
 						{#if (quota.compute.cores?.limit ?? -1) > 0}
 							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
 								<div
-									class="h-full rounded-full transition-all"
-									style="width: {usageBar(quota.compute.cores?.in_use ?? 0, quota.compute.cores?.limit ?? 0)}%; background: {usageGrad(quota.compute.cores?.in_use ?? 0, quota.compute.cores?.limit ?? 0)}"
+									class="quota-fill w-full h-full rounded-full"
+									style="transform: scaleX({usageBar(quota.compute.cores?.in_use ?? 0, quota.compute.cores?.limit ?? 0) / 100}); background: {usageGrad(quota.compute.cores?.in_use ?? 0, quota.compute.cores?.limit ?? 0)}"
 								></div>
 							</div>
 						{/if}
@@ -207,8 +205,8 @@
 						{#if (quota.compute.ram?.limit ?? -1) > 0}
 							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
 								<div
-									class="h-full rounded-full transition-all"
-									style="width: {usageBar(quota.compute.ram?.in_use ?? 0, quota.compute.ram?.limit ?? 0)}%; background: {usageGrad(quota.compute.ram?.in_use ?? 0, quota.compute.ram?.limit ?? 0)}"
+									class="quota-fill w-full h-full rounded-full"
+									style="transform: scaleX({usageBar(quota.compute.ram?.in_use ?? 0, quota.compute.ram?.limit ?? 0) / 100}); background: {usageGrad(quota.compute.ram?.in_use ?? 0, quota.compute.ram?.limit ?? 0)}"
 								></div>
 							</div>
 						{/if}
@@ -236,8 +234,8 @@
 						{#if (quota.volume.volumes?.limit ?? -1) > 0}
 							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
 								<div
-									class="h-full rounded-full transition-all"
-									style="width: {usageBar(quota.volume.volumes?.in_use ?? 0, quota.volume.volumes?.limit ?? 0)}%; background: {usageGrad(quota.volume.volumes?.in_use ?? 0, quota.volume.volumes?.limit ?? 0)}"
+									class="quota-fill w-full h-full rounded-full"
+									style="transform: scaleX({usageBar(quota.volume.volumes?.in_use ?? 0, quota.volume.volumes?.limit ?? 0) / 100}); background: {usageGrad(quota.volume.volumes?.in_use ?? 0, quota.volume.volumes?.limit ?? 0)}"
 								></div>
 							</div>
 						{/if}
@@ -259,8 +257,8 @@
 						{#if (quota.volume.gigabytes?.limit ?? -1) > 0}
 							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
 								<div
-									class="h-full rounded-full transition-all"
-									style="width: {usageBar(quota.volume.gigabytes?.in_use ?? 0, quota.volume.gigabytes?.limit ?? 0)}%; background: {usageGrad(quota.volume.gigabytes?.in_use ?? 0, quota.volume.gigabytes?.limit ?? 0)}"
+									class="quota-fill w-full h-full rounded-full"
+									style="transform: scaleX({usageBar(quota.volume.gigabytes?.in_use ?? 0, quota.volume.gigabytes?.limit ?? 0) / 100}); background: {usageGrad(quota.volume.gigabytes?.in_use ?? 0, quota.volume.gigabytes?.limit ?? 0)}"
 								></div>
 							</div>
 						{/if}
@@ -292,8 +290,19 @@
 				disabled={saving}
 				class="w-full bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:cursor-not-allowed text-action-on-warm text-sm font-medium py-2 rounded-lg transition-colors"
 			>
-				{saving ? t('quotaPanel.saving') : t('quotaPanel.save')}
+				{#if saving}
+					<ActivityIndicator variant="spinner" tone="ink" size="sm" label={t('quotaPanel.saving')} />
+				{:else}
+					{t('quotaPanel.save')}
+				{/if}
 			</button>
 		</div>
 	{/if}
 </div>
+
+<style>
+	.quota-fill {
+		transform-origin: left;
+		transition: transform var(--motion-duration-base) var(--motion-ease-standard);
+	}
+</style>

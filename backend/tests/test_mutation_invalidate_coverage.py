@@ -115,8 +115,9 @@ EXEMPT_HANDLERS: set[str] = {
     "create_project",
     "create_invitation",
     "revoke_invitation",
-    "promote_manager",
-    "demote_manager",
+    "replace_project_member_roles",
+    "remove_project_member",
+    "migrate_project_legacy_managers",
     "accept_invitation",
     "decline_invitation",
     # Barbican ACL / quota operations — state is owned by the Barbican service.
@@ -184,10 +185,8 @@ EXEMPT_HANDLERS: set[str] = {
     # Realtime session state belongs to Lumen. The BFF creates only an expiring
     # browser WebSocket ticket; neither mutation changes an Afterglow resource cache.
     "create_session",
-    # Internal K3s admission is read-only despite POST. Intent creation mutates
-    # DB-backed orchestration state read directly, not an OpenStack cache.
+    # Internal K3s admission is read-only despite POST.
     "k3s_gpu_admission",
-    "create_k3s_provisioning_intent",
 }
 
 # ---------------------------------------------------------------------------
@@ -196,7 +195,6 @@ EXEMPT_HANDLERS: set[str] = {
 # ---------------------------------------------------------------------------
 INVALIDATING_HELPERS: set[str] = {
     "_simple_action",  # compute/instances.py — start/stop/reboot/shelve/unshelve
-    "_invalidate_provisioning_caches",  # internal_k3s.py — Nova/Cinder submission
     "_invalidate_resized_instance",  # compute/instances.py — owned resize
     "_finish_owned_resize",  # compute/instances.py — owned confirm/revert-resize, delegates to _invalidate_resized_instance
 }

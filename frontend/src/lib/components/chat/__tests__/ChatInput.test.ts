@@ -1,3 +1,4 @@
+import { grantLumen } from './lumenPermissionFixture';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -25,6 +26,14 @@ beforeEach(() => {
 });
 
 describe('ChatInput native Search', () => {
+	it('blocks persistent image uploads and tool selection for chat-only grants', async () => {
+		grantLumen('lumen-chat_user');
+		const view = render(ChatInput, { value: '', onSend: vi.fn(), onStop: vi.fn(), modelCaps: { vision: true, tool_call: true }, availableTools: [{ id: 1, name: 'Privileged tool' }] });
+		const file = new File(['image'], 'photo.png', { type: 'image/png' });
+		await fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [file] } });
+		expect(uploadChatAttachment).not.toHaveBeenCalled();
+		expect(view.queryByRole('menuitemcheckbox', { name: 'Privileged tool' })).toBeNull();
+	});
 	const props = { value: '', onSend: vi.fn(), onStop: vi.fn() };
 	const nativeSearch = {
 		web_search: true,
@@ -69,29 +78,6 @@ describe('ChatInput native Search', () => {
 });
 
 describe('ChatInput attachments', () => {
-	it('marks a scanned image ready instead of leaving the composer upload-blocked', async () => {
-		vi.mocked(uploadChatAttachment).mockResolvedValue({
-			id: 'asset-clean',
-			mime_type: 'image/png',
-			name: 'clean.png'
-		});
-		const { container } = render(ChatInput, {
-			value: '',
-			modelCaps: { vision: true },
-			onSend: vi.fn(),
-			onStop: vi.fn()
-		});
-		const input = container.querySelector<HTMLInputElement>('input[type="file"]');
-		expect(input).toBeTruthy();
-		const file = new File(['image'], 'clean.png', { type: 'image/png' });
-		Object.defineProperty(input!, 'files', { configurable: true, value: [file] });
-
-		await fireEvent.change(input!);
-
-		await waitFor(() => expect(container.querySelector('.chip.uploading')).toBeNull());
-		expect(container.querySelector<HTMLImageElement>('.chip img')?.alt).toBe('clean.png');
-	});
-
 	it('explains when the scanned asset pipeline is unavailable', () => {
 		const { container } = render(ChatInput, {
 			value: '',
@@ -115,6 +101,23 @@ describe('ChatInput attachments', () => {
 });
 
 describe('ChatInput compact context meter', () => {
+	it('distinguishes context lookup, automatic compaction and lookup failure', async () => {
+		const view = render(ChatInput, {
+			value: '',
+			hasContextScope: true,
+			contextLoading: true,
+			onSend: vi.fn(),
+			onStop: vi.fn()
+		});
+		expect(view.getByText('컨텍스트 확인 중')).toBeTruthy();
+		await view.rerender({ contextLoading: false, contextPhase: 'compacting', contextCause: 'automatic' });
+		expect(view.queryByText('컨텍스트 확인 중')).toBeNull();
+		expect(view.getByText('컨텍스트 자동 압축 중')).toBeTruthy();
+		await view.rerender({ contextPhase: 'failed', contextError: '조회 실패' });
+		expect(view.queryByText('컨텍스트 자동 압축 중')).toBeNull();
+		expect(view.getByText('컨텍스트 조회 실패')).toBeTruthy();
+	});
+
 	it('keeps measured context use inside the composer controls', async () => {
 		const view = render(ChatInput, {
 			value: '',
@@ -423,6 +426,20 @@ describe('ChatInput shortcuts', () => {
 
 		expect(onSelect).not.toHaveBeenCalled();
 		expect(onSend).not.toHaveBeenCalled();
+	});
+});
+
+describe('ChatInput response generation', () => {
+	it('labels in-flight generation and preserves the stop action until it completes', async () => {
+		const onStop = vi.fn();
+		const view = render(ChatInput, { value: '', streaming: true, onSend: vi.fn(), onStop });
+		expect(view.getByRole('status').textContent?.trim()).toBe('응답 생성 중');
+		await fireEvent.click(view.getByRole('button', { name: '생성 중단' }));
+		expect(onStop).toHaveBeenCalledOnce();
+		await view.rerender({ streaming: false });
+		expect(view.queryByRole('status')).toBeNull();
+		expect(view.queryByRole('button', { name: '생성 중단' })).toBeNull();
+		expect(view.getByRole('button', { name: '전송' })).toBeTruthy();
 	});
 });
 

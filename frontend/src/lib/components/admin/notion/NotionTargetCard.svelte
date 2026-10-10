@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-system';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+
 	export interface NotionTarget {
 		id: number;
 		label: string;
@@ -93,7 +95,7 @@
 	<div class="flex items-center gap-2 ml-4 shrink-0">
 		<button onclick={onTest} disabled={testing}
 			class="px-3 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-xs rounded-lg transition-colors">
-			{testing ? t('notion.card.syncing') : t('notion.card.syncNow')}
+			{#if testing}<ActivityIndicator size="xs" tone="ink" class="mr-1.5" />{/if}{testing ? t('notion.card.syncing') : t('notion.card.syncNow')}
 		</button>
 		<button onclick={onEdit}
 			class="px-3 py-1.5 border border-line-2 hover:border-line-2 text-ink-2 hover:text-ink-1 text-xs rounded-lg transition-colors">

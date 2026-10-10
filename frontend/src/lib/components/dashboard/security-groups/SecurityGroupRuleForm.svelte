@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/network-resources';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	let {
 		submitting,
 		onSubmit,
@@ -50,7 +51,7 @@
 	}
 </script>
 
-<div class="px-4 pb-3 border-t border-line-2 pt-3 bg-surface-base/30">
+<div class="motion-enter px-4 pb-3 border-t border-line-2 pt-3 bg-surface-base/30">
 	<p class="text-xs text-ink-2 mb-2">{t('securityGroup.ruleForm.title')}</p>
 	<div class="grid grid-cols-2 gap-2 mb-2 md:grid-cols-4">
 		<select
@@ -103,9 +104,10 @@
 		<button
 			onclick={handleSubmit}
 			disabled={submitting}
-			class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3"
+			aria-busy={submitting}
+			class="inline-flex items-center gap-1.5 text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3"
 		>
-			{submitting ? t('securityGroup.ruleForm.adding') : t('securityGroup.ruleForm.add')}
+			{#if submitting}<ActivityIndicator size="xs" tone="ink" />{/if}{submitting ? t('securityGroup.ruleForm.adding') : t('securityGroup.ruleForm.add')}
 		</button>
 		<button
 			onclick={handleCancel}

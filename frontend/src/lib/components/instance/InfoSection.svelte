@@ -9,9 +9,11 @@
 	let { showHost = false }: Props = $props();
 
 	const s = useInstanceDetailController();
+
+	const githubLogin = $derived(s.instance!.ssh_access_mode === 'github' ? s.instance!.github_login : null);
 </script>
 
-<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
+<div class="motion-enter bg-surface-base border border-line rounded-lg p-6 mb-4">
 	<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">{t('info.title')}</h2>
 	<dl class="grid grid-cols-1 @3xl/panel:grid-cols-2 gap-x-8 gap-y-3">
 		<div>
@@ -31,8 +33,8 @@
 			<dd class="text-sm text-ink-2">{s.instance!.flavor_name ?? s.instance!.flavor_id ?? '-'}</dd>
 		</div>
 		<div>
-			<dt class="text-xs text-ink-2 mb-0.5">{t('info.keyPair')}</dt>
-			<dd class="text-sm text-ink-2 font-mono">{s.instance!.key_name ?? '-'}</dd>
+			<dt class="text-xs text-ink-2 mb-0.5">{t(githubLogin ? 'info.githubSsh' : 'info.keyPair')}</dt>
+			<dd class="text-sm text-ink-2 font-mono [overflow-wrap:anywhere]">{#if githubLogin}@{githubLogin}{:else}{s.instance!.key_name ?? '-'}{/if}</dd>
 		</div>
 		{#if showHost && s.instance!.host}
 			<div>

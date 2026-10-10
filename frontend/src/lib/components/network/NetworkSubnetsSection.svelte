@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/network-resources';
 	import Alert from '$lib/components/ui/Alert.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
@@ -38,7 +40,7 @@
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
 	<div class="flex items-center justify-between gap-3 mb-3">
-		<h3 class="text-xs text-ink-2 uppercase tracking-wide">{t('network.subnets.titleCount', { count: s.network!.subnet_details.length })}</h3>
+		<h3 class="text-xs text-ink-2 uppercase tracking-wide"><AnimatedNumber value={s.network!.subnet_details.length} format={(count) => t('network.subnets.titleCount', { count: Math.round(count) })} /></h3>
 		{#if s.canManageNetwork}
 			<Button variant="subtle" size="xs" onclick={() => { void s.toggleSubnetForm(); }}>
 				{s.showSubnetForm ? t('network.actions.close') : t('network.subnets.addToggle')}
@@ -47,7 +49,7 @@
 	</div>
 
 	{#if s.showSubnetForm && s.canManageNetwork}
-		<form class="mb-4 grid gap-3 border border-line-2 rounded-lg p-3" onsubmit={(event) => { event.preventDefault(); void submit(); }}>
+		<form class="motion-enter mb-4 grid gap-3 border border-line-2 rounded-lg p-3" onsubmit={(event) => { event.preventDefault(); void submit(); }}>
 			<Field label={t('network.subnets.name')} for="network-subnet-name" help={t('network.subnets.nameHelp')}>
 				<TextInput id="network-subnet-name" bind:value={form.name} maxlength={255} placeholder={`${s.network!.name}-subnet`} />
 			</Field>
@@ -67,7 +69,7 @@
 			</Field>
 			<label class="flex items-center gap-2 text-xs text-ink-1"><input type="checkbox" bind:checked={form.dhcp} /> {t('network.subnets.enableDhcp')}</label>
 			{#if s.subnetError}<Alert tone="danger" title={t('network.errors.createSubnet')}>{s.subnetError}</Alert>{/if}
-			<div class="flex justify-end"><Button type="submit" variant="primary" size="sm" disabled={s.addingSubnet}>{s.addingSubnet ? t('network.subnets.creating') : t('network.subnets.create')}</Button></div>
+			<div class="flex justify-end"><Button type="submit" variant="primary" size="sm" disabled={s.addingSubnet} ariaBusy={s.addingSubnet}>{#if s.addingSubnet}<ActivityIndicator size="xs" tone="ink" />{/if}{s.addingSubnet ? t('network.subnets.creating') : t('network.subnets.create')}</Button></div>
 		</form>
 	{/if}
 

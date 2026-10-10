@@ -58,6 +58,7 @@ Kubernetes · ArgoCD · kolla-ansible 배포와 상세 설정은 아래 문서�
 
 | 문서 | 내용 |
 |---|---|
+| [사용자 서비스 가이드](docs/user-guide.md) | 콘솔 `/docs` 진입점과 OpenStack·Drover·Waygate·Lumen 등 사용 문서 |
 | [루트 아키텍처](ARCHITECTURE.md) | 현재 ownership·runtime·데이터 경계와 갱신 규칙 |
 | [상세 배포](docs/deployment.md) | Docker Compose · Kubernetes · ArgoCD · kolla-ansible |
 | [k3s 클러스터](docs/k3s.md) | k3s 프로비저닝, 노드 구성, CoreOS 전환 |

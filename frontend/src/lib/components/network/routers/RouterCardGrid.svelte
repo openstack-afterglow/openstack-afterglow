@@ -41,7 +41,7 @@
     onToggle={onToggleAll}
   />
 </div>
-<div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+<div class="motion-stagger grid grid-cols-1 sm:grid-cols-2 gap-3.5">
   {#each routers as router (router.id)}
     <article
       class="resource-selection-surface router-card transition-colors"

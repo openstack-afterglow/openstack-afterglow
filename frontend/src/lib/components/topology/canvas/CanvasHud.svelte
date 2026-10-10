@@ -52,12 +52,14 @@
 		/** 선택된 네트워크(스위치 선택) id. aria-pressed 는 이 값만 반영하고 호버 파생 active 는 시각 강조에만 쓴다. */
 		selectedNetId?: string | null;
 		onselectnet: (netId: string) => void;
+		/** 첫 도착 진입 창. 참이면 존 라벨·배지가 존과 함께 페이드로 들어온다(HUD 는 화면 공간이라 opacity 만). */
+		entering?: boolean;
 	}
 
-	let { labels, badges, badgesHidden, selectedNetId = null, onselectnet }: Props = $props();
+	let { labels, badges, badgesHidden, selectedNetId = null, onselectnet, entering = false }: Props = $props();
 </script>
 
-<div class="hud">
+<div class="hud" class:motion-fade={entering}>
 	{#each labels as l (l.netId)}
 		<button
 			type="button"

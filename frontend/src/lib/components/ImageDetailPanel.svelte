@@ -41,7 +41,7 @@
 	});
 </script>
 
-<div class="flex flex-col h-full">
+<div class="flex flex-col h-full motion-fade" aria-busy={s.loading}>
 	<ImageDetailHeader {onClose} />
 
 	<div class="flex-1 overflow-y-auto px-6 py-5 space-y-4">

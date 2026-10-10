@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
+	import { serviceCapabilities } from '$lib/stores/servicePermissions';
+	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import Modal from '$lib/components/ui/Modal.svelte';
@@ -40,13 +42,17 @@
 
 	async function load() {
 		if (!token) return;
+		const requestToken = token;
+		const requestProject = projectId;
+		const includePrivate = $serviceCapabilities('lumen-agents_editor');
 		loading = true;
 		try {
 			const [ags, ms, ts] = await Promise.all([
-				api.get<Agent[]>('/api/v1/chat/agents', token, projectId),
+				api.get<Agent[]>(`/api/v1/chat/agents${includePrivate ? '?include_private=true' : ''}`, token, projectId),
 				api.get<AgentExtension[]>('/api/v1/chat/mcp-servers', token, projectId),
 				api.get<AgentExtension[]>('/api/v1/chat/custom-tools', token, projectId)
 			]);
+			if (requestToken !== token || requestProject !== projectId || (includePrivate && !$serviceCapabilities('lumen-agents_editor'))) return;
 			agents = ags;
 			mcps = ms;
 			tools = ts;
@@ -67,17 +73,20 @@
 	});
 
 	function startCreate() {
+		if (!$serviceCapabilities('lumen-agents_editor')) return;
 		form = emptyAgentForm();
 		editingId = null;
 		mode = 'form';
 	}
 	function startEdit(a: Agent) {
+		if (!$serviceCapabilities('lumen-agents_editor')) return;
 		form = agentToForm(a);
 		editingId = a.id;
 		mode = 'form';
 	}
 
 	async function submit() {
+		if (!$serviceCapabilities('lumen-agents_editor')) return;
 		if (!token) return;
 		saving = true;
 		try {
@@ -102,6 +111,7 @@
 	async function remove(a: Agent) {
 		if (!token) return;
 		if (!(await confirmDialog(t('agentManager.deleteConfirm', { name: a.name })))) return;
+		if (!$serviceCapabilities('lumen-resources_admin')) return;
 		try {
 			await api.delete(`/api/v1/chat/agents/${a.id}`, token, projectId);
 			await load();
@@ -132,6 +142,8 @@
 		</header>
 
 		<div class="body">
+			<LumenPermissionNotice leaf="lumen-agents_editor" />
+			<LumenPermissionNotice leaf="lumen-resources_admin" />
 			{#if mode === 'form'}
 				<AgentBuilderForm
 					bind:form
@@ -139,7 +151,7 @@
 					{mcps}
 					{tools}
 					editing={editingId !== null}
-					{saving}
+					saving={saving || !$serviceCapabilities('lumen-agents_editor')}
 					onSubmit={submit}
 					onCancel={() => (mode = 'list')}
 				/>
@@ -148,7 +160,7 @@
 			{:else}
 				<div class="list-head">
 					<span class="muted">{t('agentManager.count', { count: agents.length })}</span>
-					<Button variant="accent" size="sm" onclick={startCreate}>{t('agentManager.create')}</Button>
+					<Button variant="accent" size="sm" disabled={!$serviceCapabilities('lumen-agents_editor')} onclick={startCreate}>{t('agentManager.create')}</Button>
 				</div>
 				{#if agents.length === 0}
 					<div class="empty-box">
@@ -176,10 +188,10 @@
 									{#if a.description}<div class="desc truncate">{a.description}</div>{/if}
 								</div>
 								<div class="card-actions">
-									<button type="button" class="act" onclick={() => startEdit(a)} title={t('agentManager.edit')} aria-label={t('agentManager.edit')}>
+									<button type="button" class="act" disabled={!$serviceCapabilities('lumen-agents_editor')} onclick={() => startEdit(a)} title={t('agentManager.edit')} aria-label={t('agentManager.edit')}>
 										<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" stroke-linecap="round" stroke-linejoin="round" /></svg>
 									</button>
-									<button type="button" class="act danger" onclick={() => remove(a)} title={t('agentManager.delete')} aria-label={t('agentManager.delete')}>
+									<button type="button" class="act danger" disabled={!$serviceCapabilities('lumen-resources_admin')} onclick={() => remove(a)} title={t('agentManager.delete')} aria-label={t('agentManager.delete')}>
 										<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" stroke-linecap="round" stroke-linejoin="round" /></svg>
 									</button>
 								</div>

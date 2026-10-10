@@ -674,10 +674,27 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (method === 'GET' && pathname === '/api/v1/share-networks') return [];
 	if (method === 'GET' && pathname === '/api/v1/share-snapshots') return [];
 	if (method === 'GET' && pathname === '/api/v1/security-services') return [];
+	// Explicit tutorial authority fixture; real identities never derive these from member.
+	if (method === 'GET' && pathname === '/api/v1/projects/current/permissions') return {
+		is_owner: true, is_manager: true, can_write: true,
+		service_permissions: {
+			waygate: ['waygate-inventory_reader', 'waygate-connect_user', 'waygate-clients_editor', 'waygate-gateways_editor', 'waygate-clients_admin', 'waygate-gateways_admin', 'waygate-routing_admin'],
+			lumen: ['lumen-inventory_reader', 'lumen-history_reader', 'lumen-chat_user', 'lumen-images_user', 'lumen-audio_user', 'lumen-tools_user', 'lumen-assets_editor', 'lumen-agents_editor', 'lumen-mcp_editor', 'lumen-keys_editor', 'lumen-history_editor', 'lumen-resources_admin'],
+			drover: ['drover-inventory_reader', 'drover-access_user', 'drover-clusters_editor', 'drover-workloads_editor', 'drover-clusters_admin', 'drover-access_admin'],
+			palimpsest: profile === 'admin' ? [] : ['palimpsest-inventory_reader', 'palimpsest-download_user', 'palimpsest-publish_editor', 'palimpsest-keys_editor', 'palimpsest-keys_admin'],
+		},
+	};
+	if (method === 'GET' && /^\/api\/v1\/projects\/[^/]+\/assignable-roles$/.test(pathname)) return {
+		is_owner: true, roles: [
+			{ id: 'mock-role-owner', name: 'project_owner', area: 'project', grade: 'owner' },
+			{ id: 'mock-role-member', name: 'project_member', area: 'project', grade: 'member' },
+			{ id: 'mock-role-reader', name: 'project_reader', area: 'project', grade: 'reader' },
+		],
+	};
 	if (method === 'GET' && /^\/api\/v1\/projects\/[^/]+\/members$/.test(pathname)) {
 		return { items: [
-			{ user_id: 'mock-user-1', username: 'demo-user', email: 'demo@example.com', is_manager: true, source: 'direct' },
-			{ user_id: 'mock-user-2', username: 'sample-researcher', email: 'researcher@example.com', is_manager: false, source: 'direct' },
+			{ user_id: 'mock-user-1', username: 'demo-user', email: 'demo@example.com', is_owner: true, is_manager: true, roles: ['project_owner', 'project_member', 'member'], direct_role_ids: ['mock-role-owner'], effective_role_ids: ['mock-role-owner', 'mock-role-member'], source: 'direct' },
+			{ user_id: 'mock-user-2', username: 'sample-researcher', email: 'researcher@example.com', is_owner: false, is_manager: false, roles: ['project_member', 'member'], direct_role_ids: ['mock-role-member'], effective_role_ids: ['mock-role-member'], source: 'direct' },
 		] };
 	}
 	if (method === 'GET' && /^\/api\/v1\/projects\/[^/]+\/invitations$/.test(pathname)) return { items: [] };
@@ -937,6 +954,18 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	}
 	const k3sClusterId = pathname.match(/^\/api\/v1\/k3s\/clusters\/([^/]+)$/)?.[1];
 	if (method === 'GET' && k3sClusterId) return state.k3sClusters.find((cluster) => cluster.id === k3sClusterId) ?? mockUnsupported();
+	const namespaceClusterId = pathname.match(/^\/api\/v1\/k3s\/clusters\/([^/]+)\/namespaces$/)?.[1];
+	if (method === 'GET' && namespaceClusterId) {
+		if (!state.k3sClusters.some((cluster) => cluster.id === namespaceClusterId)) return mockUnsupported();
+		// Explicit tutorial fixture for the native string-array discovery contract, not a derived namespace.
+		return ['tutorial-workloads'];
+	}
+	const authorityClusterId = pathname.match(/^\/api\/v1\/k3s\/clusters\/([^/]+)\/authorization$/)?.[1];
+	if (method === 'GET' && authorityClusterId) {
+		if (!state.k3sClusters.some((cluster) => cluster.id === authorityClusterId)) return mockUnsupported();
+		// Tutorial clusters model current resource authority; reauthorization stays unsupported in the mockup.
+		return { cluster_id: authorityClusterId, authorized: true, active_generation: 1, staged_generations: [], owner_revocation_required: [], credentials: [] };
+	}
 	if (method === 'GET' && pathname === '/api/v1/admin/k3s-clusters') return state.k3sClusters;
 	const adminK3sClusterId = pathname.match(/^\/api\/v1\/admin\/k3s-clusters\/([^/]+)$/)?.[1];
 	if (method === 'GET' && adminK3sClusterId) return state.k3sClusters.find((cluster) => cluster.id === adminK3sClusterId) ?? mockUnsupported();
@@ -1004,7 +1033,7 @@ export async function maybeMockJson<T>(method: string, path: string, body?: unkn
 export async function maybeMockBlob(method: string, path: string, _token?: string, _projectId?: string): Promise<Blob | typeof symbolNoMatch> {
 	if (!getActiveMockupProfile()) return symbolNoMatch;
 	const normalized = normalizePath(path);
-	if (method.toUpperCase() === 'GET' && /^\/api\/v1\/k3s\/clusters\/[^/]+\/kubeconfig$/.test(normalized)) {
+	if (method.toUpperCase() === 'GET' && /^\/api\/v1\/k3s\/clusters\/[^/]+\/kubeconfig(?:\?grade=(?:user|editor|admin))?$/.test(normalized)) {
 		const content = 'apiVersion: v1\nkind: Config\nclusters:\n- name: afterglow-mockup\ncontexts:\n- name: afterglow-mockup\ncurrent-context: afterglow-mockup\n';
 		const blob = new Blob([content], { type: 'application/x-yaml' }) as Blob & { text?: () => Promise<string> };
 		blob.text ??= async () => content;
@@ -1023,7 +1052,7 @@ export async function maybeMockBlob(method: string, path: string, _token?: strin
 export async function maybeMockHead(path: string, _token?: string, _projectId?: string): Promise<Response | typeof symbolNoMatch> {
 	if (!getActiveMockupProfile()) return symbolNoMatch;
 	const normalized = normalizePath(path);
-	if (/^\/api\/v1\/k3s\/clusters\/[^/]+\/kubeconfig$/.test(normalized)) return new Response(null, { status: 204 });
+	if (/^\/api\/v1\/k3s\/clusters\/[^/]+\/kubeconfig(?:\?grade=(?:user|editor|admin))?$/.test(normalized)) return new Response(null, { status: 204 });
 	if (normalized.startsWith('/api/v1/')) mockUnsupported();
 	return symbolNoMatch;
 }

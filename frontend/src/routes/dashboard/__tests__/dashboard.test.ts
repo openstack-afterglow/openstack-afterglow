@@ -124,7 +124,7 @@ describe('dashboard overview loading', () => {
 		requests.get('/api/v1/dashboard/metrics/trend?range=14d&include_network=false')!.resolve(trend);
 		requests.get('/api/v1/announcements')!.resolve(announcements);
 		await waitFor(() => expect(screen.getByText('최근 동기화', { exact: false })).toBeTruthy());
-		expect([...rendered.container.querySelectorAll('.stat-unit')].some((node) => node.textContent === '/ 0')).toBe(true);
+		expect(screen.getAllByText('/ 0').length).toBeGreaterThan(0);
 		expect(screen.queryByText('Manila Shares')).toBeNull();
 		rendered.unmount();
 	});

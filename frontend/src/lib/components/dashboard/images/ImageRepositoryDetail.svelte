@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Button, Card, Pill, StatusChip } from '$lib/components/ui';
+	import { AnimatedNumber, Button, Card, Pill, StatusChip } from '$lib/components/ui';
 	import { imageUploadTime, imageVerificationStatus, type ImageRepositoryGroup } from '$lib/stores/imageCatalog.svelte';
 	import ImageDigest from '$lib/components/image/ImageDigest.svelte';
 	import type { ImageInfo } from '$lib/types/compute';
@@ -44,13 +44,13 @@
 	</tr>
 {/snippet}
 
-<Card surface="raised" padding="none" class="repository-detail">
+<Card surface="raised" padding="none" class="motion-fade repository-detail">
 	<div class="detail-header">
 		<Button variant="ghost" size="icon" ariaLabel={t('repositoryDetail.back')} onclick={onBack}>‹</Button>
 		<div class="detail-heading">
 			<p class="detail-kicker">{t('repositoryDetail.kicker')}</p>
 			<h2>{group.repository}</h2>
-			<p>{t('repositoryDetail.description', { tagCount: group.tags.length, imageCount: group.images.length })}</p>
+			<p><AnimatedNumber value={group.tags.length} format={(value) => t('repositoryDetail.description', { tagCount: Math.round(value), imageCount: group.images.length })} /></p>
 		</div>
 	</div>
 
@@ -79,7 +79,7 @@
 									if (next.has(version.tag)) next.delete(version.tag); else next.add(version.tag);
 									expandedTags = next;
 								}}>
-								{expandedTags.has(version.tag) ? t('repositoryDetail.collapsePrevious', { count: version.images.length - 1 }) : t('repositoryDetail.showPrevious', { count: version.images.length - 1 })}
+								<AnimatedNumber value={version.images.length - 1} format={(value) => expandedTags.has(version.tag) ? t('repositoryDetail.collapsePrevious', { count: Math.round(value) }) : t('repositoryDetail.showPrevious', { count: Math.round(value) })} />
 							</Button>
 						</td></tr>
 						{#if expandedTags.has(version.tag)}

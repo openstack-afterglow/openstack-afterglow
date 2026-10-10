@@ -5,6 +5,7 @@
 	import InstanceIpCell from './InstanceIpCell.svelte';
 	import InstanceRowActions from './InstanceRowActions.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	const strategyKeys: Record<string, 'row.strategy.prebuilt' | 'row.strategy.dynamic'> = {
 		prebuilt: 'row.strategy.prebuilt',
@@ -30,9 +31,10 @@
 		onAction: (kind: 'console' | 'shelve' | 'unshelve' | 'delete', instance: Instance) => Promise<void>;
 		onToggleSelect: () => void;
 	} = $props();
+	let acting = $state(false);
 </script>
 
-<tr class="instance-row resource-selection-surface" data-selected={selected}>
+<tr class="motion-fade instance-row resource-selection-surface" data-selected={selected}>
 	<td class="text-left">
 		<SelectionCheckbox
 			checked={selected}
@@ -57,7 +59,10 @@
 			<span class="max-w-56 truncate font-medium">{instance.name}</span>
 		</button>
 	</td>
-	<td><StatusChip status={instance.status} class="max-w-full truncate" /></td>
+	<td>
+		<StatusChip status={instance.status} class="max-w-full truncate" />
+		{#if acting}<div class="mt-1"><ActivityIndicator size="xs" label={t('rowActions.processing')} /></div>{/if}
+	</td>
 	<td class="text-xs">
 		<div class="truncate text-ink-2">{instance.image_name ?? t('row.bootFromVolume')}</div>
 		{#if instance.flavor_name}
@@ -78,6 +83,6 @@
 		</div>
 	</td>
 	<td class="text-xs text-ink-2">{instance.union_strategy ? (strategyKeys[instance.union_strategy] ? t(strategyKeys[instance.union_strategy]) : instance.union_strategy) : '—'}</td>
-	<InstanceRowActions {instance} {onAction} />
+	<InstanceRowActions {instance} {onAction} bind:acting />
 </tr>
 
