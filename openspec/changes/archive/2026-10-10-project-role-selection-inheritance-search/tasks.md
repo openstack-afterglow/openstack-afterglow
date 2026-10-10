@@ -7,7 +7,7 @@
 - [x] Initial integrated architecture/design/detailed contracts and project gate backend4,284/frontend2,523+runner9/contracts154/functional35 and Ruff pass, before the subsequently identified external-overlap correction.
 - [x] Actual server role-ID catalog and unchanged local Keystone session: Lumen parent selects15 checked/disabled descendants, removal re-enables, search returns16 Lumen roles, empty feedback and hidden explicit leaf retention pass. Modal containment/overflow0 at390/767/768/1023/1024/1440px; cancel-only/no grant mutation, actual light/dark screenshots. Native SDK authorization/runtime proof is separate.
 - [x] Reproduce overlapping group/domain inheritance failures before correction (HTTP external metadata absent; modal loses inherited child), independently expand existing external assignment rows, migrate all member DTO fixtures and confirm membership50/frontend23 changed-surface regressions.
-- [ ] Qualify corrected final source with typecheck, current-source rebuilt backend/frontend HTTP/browser overlap smoke, full project gate and staged architecture guard; record distinct synthetic fixture and real unchanged identity evidence before archive.
+- [x] Qualify corrected final source with typecheck, current-source rebuilt backend/frontend HTTP/browser overlap smoke, full project gate and staged architecture guard; record distinct synthetic fixture and real unchanged identity evidence before archive.
 
 Production Lumen403 evidence is tracked separately in fix-local-service-authority-debug; never conflate graph UI proof with native service authorization proof.
 
