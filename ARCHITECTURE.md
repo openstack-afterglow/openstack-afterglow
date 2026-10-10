@@ -850,9 +850,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "a695b070404a0824f535c968ee25d6dda41094b2d7cb792c3b80e0f0859f851d",
-  "reviewed_at": "2026-10-05T13:30:55Z",
-  "summary": "Reviewed latest dev34ec462 ordinary i18n merge and1.30.1 metadata; host-context published consumers preserve later-only pins and reject conflicts before registry; route-keyed terminal hosts retain actual xterm/WS while ordinary locale cleanup remains; worker SIGTERM/SIGINT cancels and awaits scheduler/DB cleanup. Real source and compiled16browser cases, native offline Kolla41 and multiarch worker exit0 remain local proof. Test-only cold imports moved to setup/static mocks; actual image identity assertions replace API-call copies without timeouts or product changes. Palimpsest formal publication and all operator/storage/rollout remain held."
+  "source_sha256": "aa867ed391bb2a8036718aad839754991ca9f4e13037e4e1bf35cb6a6fa3df66",
+  "reviewed_at": "2026-10-10T18:39:52Z",
+  "summary": "operator: promote package-owned Kolla roles to immutable sibling release tags"
 }
 ```
 <!-- architecture-review:end -->
