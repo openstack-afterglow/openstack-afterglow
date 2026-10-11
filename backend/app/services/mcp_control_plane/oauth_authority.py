@@ -486,6 +486,7 @@ async def approve_consent_ticket(
                 or grant.status != "pending"
                 or grant.orphan_recovery_nonce is not None
                 or _as_utc(request.expires_at) <= activation_now
+                or grant.expires_at is None
                 or _as_utc(grant.expires_at) <= activation_now
             ):
                 raise McpOAuthAuthorityError("authorization ticket changed before activation")
@@ -585,6 +586,7 @@ async def exchange_authorization_code(
             or oauth_code.used_at is not None
             or _as_utc(oauth_code.expires_at) <= now
             or grant.status != "active"
+            or grant.expires_at is None
             or _as_utc(grant.expires_at) <= now
             or oauth_code.client_id != client_id
             or oauth_code.redirect_uri != redirect_uri
@@ -687,6 +689,7 @@ async def refresh_tokens(
             or family.revoked_at is not None
             or token.generation != family.generation
             or grant.status != "active"
+            or grant.expires_at is None
             or _as_utc(grant.expires_at) <= now
         )
         if replay:
@@ -869,6 +872,7 @@ async def resolve_oauth_access_token(
         or family.revoked_at is not None
         or token.generation != family.generation
         or grant.status != "active"
+        or grant.expires_at is None
         or _as_utc(grant.expires_at) <= now
     ):
         raise McpOAuthAuthorityError("access token is invalid")

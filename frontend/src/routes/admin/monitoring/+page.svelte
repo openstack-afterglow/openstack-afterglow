@@ -48,7 +48,7 @@
 	let refreshRef: (() => void) | undefined;
 </script>
 
-<PageShell class="max-w-7xl">
+<PageShell>
 	<div data-tour="admin-monitoring-header">
 	<PageHeader breadcrumb={t('monitoring.page.breadcrumb')} title={t('monitoring.page.title')}>
 		{#snippet actions()}

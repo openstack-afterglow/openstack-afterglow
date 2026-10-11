@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { createAdminQuotasController } from '$lib/stores/adminQuotasController.svelte';
@@ -18,7 +19,7 @@
 	onMount(() => { ctrl.loadProjects(); ctrl.loadGpuAliases(); ctrl.loadGpuDefaults(); });
 </script>
 
-<div class="p-4 md:p-6 max-w-7xl mx-auto">
+<PageShell>
 	<PageHeader breadcrumb={t('quotaPage.breadcrumb')} title={t('quotaPage.title')} />
 
 	{#if ctrl.loading}
@@ -69,4 +70,4 @@
 				/>
 			{/if}
 	{/if}
-</div>
+</PageShell>

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import uuid
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -68,29 +67,13 @@ async def compute_effective_security_groups(
     conn: openstack.connection.Connection,
     settings,
     project_id: str,
-    resolved_libs: list[str],
     gpu_available: bool,
     base_sgs: list[str],
 ) -> list[str]:
-    """Union egress + node_exporter + dcgm_exporter SG를 결정.
-    개별 SG attach 실패는 warning log 후 계속 (기존 동작과 동일).
-    """
+    """Attach monitoring security groups without changing caller selections."""
     from app.services import neutron
 
     sgs = list(base_sgs)
-
-    if resolved_libs and settings.union_auto_egress_sg_enabled:
-        try:
-            _sg_name = await asyncio.to_thread(
-                neutron.ensure_union_egress_sg,
-                conn,
-                project_id,
-                settings.union_egress_sg_name,
-            )
-            if _sg_name not in sgs:
-                sgs.append(_sg_name)
-        except Exception:
-            logger.warning("Union egress SG 자동 attach 실패, 계속 진행", exc_info=True)
 
     if settings.monitoring_auto_sg_enabled and settings.monitoring_scrape_cidr:
         if "default" not in sgs:
@@ -122,54 +105,6 @@ async def compute_effective_security_groups(
                 logger.warning("dcgm_exporter SG 자동 attach 실패, 계속 진행", exc_info=True)
 
     return sgs
-
-
-def build_instance_meta(
-    resolved_libs: list[str],
-    file_storages: list[dict],
-    upper_volume_id: str | None,
-    scheduling: str,
-    strategy: str,
-    health_id: str,
-    health_token: str,
-) -> dict:
-    """Create Nova metadata while keeping retained Union fields layer-owned."""
-    meta: dict = {"scheduling": scheduling}
-    if scheduling == "ha":
-        meta["HA_Enabled"] = "True"
-    if not resolved_libs:
-        return meta
-
-    meta.update(
-        {
-            "union_libraries": ",".join(resolved_libs),
-            "union_strategy": strategy or "none",
-            "union_share_ids": ",".join(s.get("file_storage_id", "") for s in file_storages),
-            "union_upper_volume_id": upper_volume_id or "none",
-        }
-    )
-    if health_token and health_id:
-        meta["union_health_id"] = health_id
-    return meta
-
-
-async def try_issue_health_token(
-    project_id: str,
-    settings,
-) -> tuple[str, str, str]:
-    """Return a best-effort instance-health report token and callback URL."""
-    report_url = settings.instance_health_callback_base_url or ""
-    if not report_url:
-        return "", "", ""
-    health_id = str(uuid.uuid4())
-    try:
-        from app.services import instance_health as _ih
-
-        token = await _ih.issue_report_token(health_id, project_id)
-        return health_id, report_url, token
-    except Exception:
-        logger.warning("헬스 토큰 발급 실패, 헬스체크 없이 계속", exc_info=True)
-        return "", "", ""
 
 
 async def rollback_instance(

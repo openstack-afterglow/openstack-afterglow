@@ -56,14 +56,17 @@ export const coreGuides: DocGuide[] = [
 						title: '인스턴스 화면에서 생성 마법사 열기',
 						text: ['부팅 소스에서 OS 이미지 또는 기존 부팅 볼륨 중 하나를 선택합니다. 기존 부팅 볼륨 목록에는 bootable이며 available인 볼륨만 표시됩니다. 기존 데이터를 재사용하는 볼륨을 새 빈 디스크로 착각하지 않습니다.'],
 						links: [{ label: '인스턴스', href: '/dashboard/compute/instances' }],
+						screenshots: [{ src: '/docs/screenshots/nova-images.webp', alt: '인스턴스 생성의 부팅 소스에서 OS 이미지를 고르는 영역', caption: '이미지 부팅과 기존 부팅 볼륨을 구분하고 사용할 OS 이미지를 확인하세요.', width: 1440, height: 1000 }],
 					},
 					{
 						title: '플레이버와 필요한 라이브러리 선택',
 						text: ['CPU·RAM과 용도를 기준으로 플레이버를 선택합니다. 선택 불가 사유가 쿼터 부족인지 호스트 용량 부족인지 읽습니다. 기본 OS만 필요하면 라이브러리를 추가하지 않습니다. 라이브러리를 사용하는 경우 prebuilt는 준비된 읽기 전용 공유, dynamic은 VM 전용 공유를 사용하는 방식임을 확인합니다.'],
+						screenshots: [{ src: '/docs/screenshots/nova-flavors.webp', alt: '인스턴스 생성의 플레이버별 CPU·RAM과 선택 가능 여부', caption: 'CPU·RAM 규격과 선택 제한 사유를 읽고 필요한 플레이버를 고르세요.', width: 1440, height: 1000 }],
 					},
 					{
 						title: '설정과 최종 검토',
 						text: ['이름, 네트워크, 보안 그룹, SSH 접근 방식을 지정합니다. 등록 키페어는 보유한 개인키와 짝이 맞아야 합니다. GitHub 사용자 방식은 화면에서 공개키 확인을 마친 지원 대상에만 사용합니다.', '이미지 부팅에서는 부트 볼륨 크기와 VM 삭제 시 함께 삭제/보존 선택을 확인합니다. 기존 부팅 볼륨 재사용은 자동 삭제하지 않습니다. 추가 볼륨이나 cloud-init을 입력했다면 대상과 내용을 재검토한 뒤 VM 생성으로 제출합니다.'],
+						screenshots: [{ src: '/docs/screenshots/nova-settings.webp', alt: '인스턴스 이름·네트워크·보안 그룹·SSH 접근 방식 설정 영역', caption: '이름과 연결할 네트워크·보안 그룹을 대조하고 사용할 SSH 접근 방식을 확인하세요.', width: 1440, height: 1000 }],
 					},
 				],
 			},
@@ -74,6 +77,7 @@ export const coreGuides: DocGuide[] = [
 					{
 						title: '목록과 상세에서 리소스 확인',
 						text: ['진행 화면이 완료되면 인스턴스 목록을 새로고침하고 이름·UUID·상태·이미지/부트 볼륨·플레이버를 확인합니다. 상세의 인터페이스에서 네트워크, 포트 ID, Fixed IP와 FIP, 적용 보안 그룹을 대조합니다.', 'FIP가 필요한데 없다면 올바른 인터페이스의 + FIP를 사용합니다. 이미 FIP가 있다면 중복 할당하지 않습니다. 이 작업도 외부망·라우터·쿼터 조건을 충족해야 합니다.'],
+						screenshots: [{ src: '/docs/screenshots/nova-detail.webp', alt: '기존 인스턴스 상세의 상태와 네트워크 인터페이스 정보', caption: '상태와 인터페이스의 Fixed IP·FIP·보안 그룹을 대조하세요. ACTIVE만으로 SSH 준비 완료를 판단하지 마세요.', width: 1440, height: 1000 }],
 					},
 					{
 						title: '게스트 초기화와 SSH 확인',
@@ -148,14 +152,14 @@ export const coreGuides: DocGuide[] = [
 			{
 				id: 'create-network', title: '2. 네트워크와 서브넷 생성',
 				steps: [
-					{ title: '네트워크 생성', text: ['네트워크 화면에서 네트워크 생성으로 이름을 입력합니다. 서브넷 함께 생성을 선택하면 서브넷 이름·CIDR·게이트웨이·DHCP 활성화를 같이 지정할 수 있습니다. CIDR 예시 10.20.0.0/24는 현재 환경과 겹치지 않을 때만 사용합니다.'], links: [{ label: '네트워크', href: '/dashboard/network/networks' }] },
-					{ title: '서브넷 확인 또는 추가', text: ['생성된 네트워크 상세에서 서브넷의 CIDR·게이트웨이·DHCP를 확인합니다. 서브넷 없이 생성했다면 + 서브넷 추가에서 값을 지정합니다. 게이트웨이를 비우면 Neutron이 선택하므로 생성 결과를 반드시 읽습니다.', '일반적인 DHCP 사용 VM은 DHCP 활성화를 유지합니다. 비활성화했다면 게스트의 정적 IP 설정을 별도로 준비해야 합니다. 라우터 연결을 함께 선택한 경우에도 실제 인터페이스가 생겼는지 확인합니다.'] },
+					{ title: '네트워크 생성', text: ['네트워크 화면에서 네트워크 생성으로 이름을 입력합니다. 서브넷 함께 생성을 선택하면 서브넷 이름·CIDR·게이트웨이·DHCP 활성화를 같이 지정할 수 있습니다. CIDR 예시 10.20.0.0/24는 현재 환경과 겹치지 않을 때만 사용합니다.'], links: [{ label: '네트워크', href: '/dashboard/network/networks' }], screenshots: [{ src: '/docs/screenshots/neutron-network-create.webp', alt: '네트워크 생성의 이름과 함께 생성할 서브넷 설정 폼', caption: '서브넷 함께 생성 선택과 CIDR·게이트웨이·DHCP 입력을 확인하세요.', width: 1440, height: 1000 }] },
+					{ title: '서브넷 확인 또는 추가', text: ['생성된 네트워크 상세에서 서브넷의 CIDR·게이트웨이·DHCP를 확인합니다. 서브넷 없이 생성했다면 + 서브넷 추가에서 값을 지정합니다. 게이트웨이를 비우면 Neutron이 선택하므로 생성 결과를 반드시 읽습니다.', '일반적인 DHCP 사용 VM은 DHCP 활성화를 유지합니다. 비활성화했다면 게스트의 정적 IP 설정을 별도로 준비해야 합니다. 라우터 연결을 함께 선택한 경우에도 실제 인터페이스가 생겼는지 확인합니다.'], screenshots: [{ src: '/docs/screenshots/neutron-subnet.webp', alt: '기존 네트워크 상세의 서브넷 목록과 주소 배정 정보', caption: '서브넷의 CIDR·게이트웨이·DHCP를 읽고 계획한 주소 배정 조건과 대조하세요.', width: 1440, height: 1000 }] },
 				],
 			},
 			{
 				id: 'router', title: '3. 라우터 내부 인터페이스와 외부 게이트웨이',
 				steps: [
-					{ title: '라우터 생성 또는 기존 라우터 선택', text: ['라우터 화면에서 이름을 지정해 생성하거나 현재 프로젝트 소유 라우터를 엽니다. 외부 접속이 필요하면 외부 네트워크를 게이트웨이로 설정합니다. 일반 내부 네트워크를 외부 게이트웨이 대상으로 선택하지 않습니다.'], links: [{ label: '라우터', href: '/dashboard/network/routers' }] },
+					{ title: '라우터 생성 또는 기존 라우터 선택', text: ['라우터 화면에서 이름을 지정해 생성하거나 현재 프로젝트 소유 라우터를 엽니다. 외부 접속이 필요하면 외부 네트워크를 게이트웨이로 설정합니다. 일반 내부 네트워크를 외부 게이트웨이 대상으로 선택하지 않습니다.'], links: [{ label: '라우터', href: '/dashboard/network/routers' }], screenshots: [{ src: '/docs/screenshots/neutron-router-create.webp', alt: '라우터 생성 폼의 이름 입력 영역', caption: '라우터 이름을 확인하세요. 외부 게이트웨이와 내부 인터페이스는 생성 후 상세에서도 대조해야 합니다.', width: 1440, height: 1000 }] },
 					{ title: '서브넷 내부 인터페이스 추가', text: ['라우터 상세의 인터페이스 영역에서 자신의 네트워크와 대상 서브넷을 선택해 추가합니다. 목록에 서브넷 UUID와 인터페이스 IP가 표시되는지 확인합니다. 게스트의 기본 게이트웨이가 실제 라우터 인터페이스 IP와 맞는지도 확인합니다.'] },
 					{ title: '경로 대조', text: ['네트워크 상세의 연결 라우터와 라우터 상세의 외부 게이트웨이를 양쪽에서 확인합니다. 내부 인터페이스만 있으면 외부망 연결이 완성된 것이 아니고, 외부 게이트웨이만 있으면 대상 서브넷이 연결된 것이 아닙니다.'] },
 				],
@@ -168,13 +172,14 @@ export const coreGuides: DocGuide[] = [
 					{ title: '기존 규칙 변경 시 영향 확인', text: ['규칙 편집은 기존 값을 복사하고 명시적으로 제거한 뒤 새 규칙을 만드는 흐름입니다. 두 요청 사이에 정책 공백이나 일시적인 차이가 생길 수 있으므로 접속 유지와 변경 순서를 계획합니다.'] },
 				],
 				callout: { tone: 'warning', title: '빈 CIDR은 안전한 기본값이 아닙니다', text: '대상을 비우면 IPv4는 0.0.0.0/0, IPv6는 ::/0이 됩니다. SSH를 전체 공개하지 말고, 이미 적용된 다른 그룹에도 전체 허용 규칙이 없는지 확인하세요.' },
+				screenshots: [{ src: '/docs/screenshots/neutron-security-rules.webp', alt: '기존 보안 그룹의 규칙 목록과 트래픽 허용 조건', caption: '규칙 목록에서 방향·IP 버전·프로토콜·포트·원격 대상을 읽고 불필요한 전체 허용이 없는지 확인하세요.', width: 1440, height: 1000 }],
 			},
 			{
 				id: 'floating-ip', title: '5. Floating IP 할당·연결·확인',
 				steps: [
 					{ title: '필요 여부부터 판단', text: ['접속자가 VPN/내부망에서 Fixed IP로 접근할 수 있으면 FIP 없이 확인합니다. 외부에서 직접 들어와야 한다면 먼저 라우터 경로와 SG를 준비합니다. Afterglow VM 생성에서 이미 할당된 FIP가 있는지 확인합니다.'] },
 					{ title: '할당과 연결을 구분', text: ['네트워크 화면의 Floating IP 할당은 외부 네트워크에서 주소를 확보하는 작업입니다. 별도 Floating IP 화면은 목록·상태·연결된 Fixed IP·해제를 제공합니다.', '인스턴스 상세에서는 대상 인터페이스의 + FIP로 포트에 주소를 할당·연결할 수 있습니다. 확보한 기존 FIP를 VM에 연결하는 API는 POST /api/v1/networks/floating-ips/{fip_id}/associate이며 요청은 {"instance_id":"대상 VM UUID"}입니다. 임의 포트 연결용 API로 사용하지 않습니다.'] },
-					{ title: '실제 접속 확인', text: ['Floating IP 목록의 연결된 Fixed IP와 인스턴스를 대조하고, 인스턴스 상세에서 해당 포트의 주소와 보안 그룹을 확인합니다. 승인된 원본에서 허용 포트로 접속합니다. ping은 ICMP 허용 여부에 따라 실패하므로 ping 실패만으로 TCP 서비스 장애를 확정하지 않습니다.'] },
+					{ title: '실제 접속 확인', text: ['Floating IP 목록의 연결된 Fixed IP와 인스턴스를 대조하고, 인스턴스 상세에서 해당 포트의 주소와 보안 그룹을 확인합니다. 승인된 원본에서 허용 포트로 접속합니다. ping은 ICMP 허용 여부에 따라 실패하므로 ping 실패만으로 TCP 서비스 장애를 확정하지 않습니다.'], screenshots: [{ src: '/docs/screenshots/neutron-floating-ips.webp', alt: 'Floating IP 목록의 외부 주소와 연결된 Fixed IP·인스턴스 정보', caption: '외부 주소가 연결된 Fixed IP·인스턴스와 맞는지 확인하세요. 목록만으로 실제 접속 성공을 판단하지 마세요.', width: 1440, height: 1000 }] },
 				],
 			},
 			{
@@ -238,12 +243,13 @@ export const coreGuides: DocGuide[] = [
 			{
 				id: 'create-lb', title: '2. VIP 서브넷으로 로드밸런서 생성',
 				steps: [
-					{ title: '생성 화면 입력', text: ['로드밸런서 생성 화면에서 이름, 내부 네트워크, VIP 서브넷과 선택적 설명을 입력하고 생성합니다. 현재 생성 UI의 네트워크 목록은 외부 네트워크를 제외합니다. 외부 provider VIP 직접 생성 기능이 UI에 있다고 가정하지 않습니다.'], links: [{ label: '로드밸런서 생성', href: '/dashboard/network/loadbalancers/new' }] },
+					{ title: '생성 화면 입력', text: ['로드밸런서 생성 화면에서 이름, 내부 네트워크, VIP 서브넷과 선택적 설명을 입력하고 생성합니다. 현재 생성 UI의 네트워크 목록은 외부 네트워크를 제외합니다. 외부 provider VIP 직접 생성 기능이 UI에 있다고 가정하지 않습니다.'], links: [{ label: '로드밸런서 생성', href: '/dashboard/network/loadbalancers/new' }], screenshots: [{ src: '/docs/screenshots/octavia-create.webp', alt: '로드밸런서 생성의 이름·내부 네트워크·VIP 서브넷 선택 폼', caption: 'VIP를 둘 내부 네트워크와 서브넷을 확인하세요. 내부 VIP 선택은 인터넷 공개 설정이 아닙니다.', width: 1440, height: 1000 }] },
 					{ title: 'VIP와 상태 확인', text: ['목록/상세에서 UUID·VIP 주소·프로비저닝 상태·운영 상태를 확인합니다. PENDING_CREATE/PENDING_UPDATE 중에는 다음 변경을 연달아 제출하지 말고 ACTIVE까지 기다립니다. 생성만으로 전달할 리스너와 풀, 멤버가 준비되지는 않습니다.'] },
 				],
 			},
 			{
 				id: 'listener-pool', title: '3. 리스너와 기본 풀을 실제로 연결',
+				screenshots: [{ src: '/docs/screenshots/octavia-list.webp', alt: '기존 로드밸런서 상세의 리스너·풀과 ACTIVE·ONLINE 상태', caption: '기존 TCP 리스너와 풀의 실제 화면입니다. 문서의 HTTP 예시와 프로토콜이 다르며, ACTIVE·ONLINE만으로 리스너의 기본 풀 연결이나 실제 요청 성공을 확인할 수는 없습니다.', width: 1440, height: 1000 }],
 				steps: [
 					{ title: 'HTTP 리스너 생성', text: ['상세의 리스너 추가에서 이름, HTTP, 포트 80을 지정해 생성하고 리스너 UUID를 기록합니다. TLS 인증서·TLS 종료 설정 UI가 제공된다고 가정하지 않습니다. 이 절차는 평문 HTTP 예시입니다.'] },
 					{ title: '리스너에 연결된 풀 생성', text: ['현재 상세 UI의 풀 추가는 프로토콜·알고리즘·이름만 전송하고 listener_id를 전송하지 않습니다. UI에서 리스너와 풀을 각각 만들었다고 전달 경로가 자동 연결되지는 않습니다.', '인증된 API로 POST /api/v1/loadbalancers/{lb_id}/pools를 호출하고 아래 요청의 listener_id를 앞에서 기록한 UUID로 교체합니다. API 주소의 lb_id도 자신의 로드밸런서 UUID로 바꿉니다. 이 예시는 아직 풀을 만들지 않은 리스너에 새 풀을 연결하는 작업이며 기존 풀에 대한 수정 API 예시가 아닙니다.'], command: { label: '리스너 연결을 포함하는 풀 생성 요청 본문', code: '{\n  "name": "web-pool",\n  "protocol": "HTTP",\n  "lb_algorithm": "ROUND_ROBIN",\n  "listener_id": "<LISTENER_UUID_FROM_PREVIOUS_STEP>"\n}' } },
@@ -331,8 +337,8 @@ export const coreGuides: DocGuide[] = [
 			{
 				id: 'create', title: '2. 빈 볼륨 생성과 상태 확인',
 				steps: [
-					{ title: '이름과 크기 입력', text: ['볼륨 목록에서 볼륨 생성으로 이름과 크기(GB)를 입력합니다. 현재 일반 생성 UI는 이름·크기를 받으므로 임의 볼륨 타입·암호화·AZ 선택 기능을 전제하지 않습니다. API 크기 범위는 1–16384GB이며 실제 생성은 쿼터와 백엔드 조건에 제한됩니다.'], links: [{ label: '볼륨 목록', href: '/dashboard/volumes' }] },
-					{ title: '생성 완료 확인', text: ['목록을 새로고침해 available까지 기다리고 이름·UUID·크기·타입·연결 정보가 예상대로인지 확인합니다. 요청 성공만으로 바로 사용할 수 있다고 판단하지 않습니다.'] },
+					{ title: '이름과 크기 입력', text: ['볼륨 목록에서 볼륨 생성으로 이름과 크기(GB)를 입력합니다. 현재 일반 생성 UI는 이름·크기를 받으므로 임의 볼륨 타입·암호화·AZ 선택 기능을 전제하지 않습니다. API 크기 범위는 1–16384GB이며 실제 생성은 쿼터와 백엔드 조건에 제한됩니다.'], links: [{ label: '볼륨 목록', href: '/dashboard/volumes' }], screenshots: [{ src: '/docs/screenshots/cinder-create.webp', alt: '새 볼륨 생성 폼의 이름과 크기 입력 영역', caption: '볼륨 이름과 크기(GB)를 확인하고 프로젝트의 남은 용량 쿼터와 대조하세요.', width: 1440, height: 1000 }] },
+					{ title: '생성 완료 확인', text: ['목록을 새로고침해 available까지 기다리고 이름·UUID·크기·타입·연결 정보가 예상대로인지 확인합니다. 요청 성공만으로 바로 사용할 수 있다고 판단하지 않습니다.'], screenshots: [{ src: '/docs/screenshots/cinder-volumes.webp', alt: '볼륨 목록의 크기·상태·인스턴스 연결 정보', caption: '대상 볼륨의 크기·상태·연결 정보를 읽으세요. available과 in-use를 구분하고 게스트 마운트는 별도로 확인하세요.', width: 1440, height: 1000 }] },
 				],
 			},
 			{
@@ -354,7 +360,7 @@ export const coreGuides: DocGuide[] = [
 				id: 'backup-snapshot', title: '5. 스냅샷과 백업의 용도·일관성',
 				paragraphs: ['볼륨 스냅샷은 현재 구성에서 원본과 같은 Ceph 풀에 있는 시점 복제본입니다. 빠른 시점 보존 수단이지 그 풀의 장애와 삭제 위험을 피하는 독립 백업이 아닙니다. Cinder 백업은 backup 서비스의 저장소로 데이터를 복사하지만, 실제 저장소·복구 가능성·장애 도메인은 운영 설정과 복원 시험으로 확인해야 합니다.'],
 				steps: [
-					{ title: '일관성 확보 후 백업', text: ['DB/애플리케이션의 쓰기를 중지하거나 승인된 일관성 확보 절차를 수행합니다. 볼륨 메뉴의 백업 생성 또는 볼륨 백업 화면에서 원본 볼륨·백업 이름·설명·증분 여부를 지정합니다. 첫 기준 백업에는 증분을 선택하지 않습니다.', 'in-use 볼륨에 백업 메뉴가 보여도 현재 API 요청에는 연결 중 백업을 강제하는 force 필드가 없습니다. 필요하면 안전하게 분리해 available로 만든 뒤 백업하고, 연결 상태에서 하위 서비스가 거부한 요청을 성공으로 해석하지 않습니다.'], links: [{ label: '볼륨 백업', href: '/dashboard/volumes/backups' }] },
+					{ title: '일관성 확보 후 백업', text: ['DB/애플리케이션의 쓰기를 중지하거나 승인된 일관성 확보 절차를 수행합니다. 볼륨 메뉴의 백업 생성 또는 볼륨 백업 화면에서 원본 볼륨·백업 이름·설명·증분 여부를 지정합니다. 첫 기준 백업에는 증분을 선택하지 않습니다.', 'in-use 볼륨에 백업 메뉴가 보여도 현재 API 요청에는 연결 중 백업을 강제하는 force 필드가 없습니다. 필요하면 안전하게 분리해 available로 만든 뒤 백업하고, 연결 상태에서 하위 서비스가 거부한 요청을 성공으로 해석하지 않습니다.'], links: [{ label: '볼륨 백업', href: '/dashboard/volumes/backups' }], screenshots: [{ src: '/docs/screenshots/cinder-backup-create.webp', alt: '볼륨 선택·백업 이름·설명·증분 여부를 지정하는 제출 전 백업 생성 폼', caption: '원본 볼륨과 증분 여부를 검토하는 제출 전 화면입니다. 첫 기준 백업에서는 증분을 선택하지 않으며 이 캡처에서는 백업을 생성하지 않았습니다.', width: 1440, height: 1000 }] },
 					{ title: '스냅샷 생성', text: ['볼륨 스냅샷 베타 기능을 활성화한 경우 스냅샷 생성에서 이름·설명을 지정하고 원본 UUID를 확인합니다. in-use 강제 스냅샷(force)은 쓰기 중 데이터의 애플리케이션 일관성을 보장하지 않습니다. 생성 후 available인지 확인합니다.'], links: [{ label: '볼륨 스냅샷', href: '/dashboard/volumes/snapshots' }] },
 				],
 				callout: { tone: 'warning', title: '블록 복사만으로 DB 백업이 완성되지 않습니다', text: '게스트 메모리·진행 중 트랜잭션·여러 볼륨의 동시 일관성은 자동 보장되지 않습니다. 원본에 쓰기가 남아 있으면 crash-consistent 수준일 수 있으므로 서비스별 복구 절차도 준비하세요.' },
@@ -362,7 +368,7 @@ export const coreGuides: DocGuide[] = [
 			{
 				id: 'restore', title: '6. 백업을 새 볼륨으로 복원하고 데이터 확인',
 				steps: [
-					{ title: '백업 available 확인 후 복원', text: ['볼륨 백업 화면에서 원본 볼륨 UUID·백업 시점·크기를 확인하고 available인 백업의 복원을 선택합니다. 현재 UI 복원은 새 볼륨을 만드는 흐름입니다. API는 기존 volume_id를 지정하면 덮어쓸 수 있으므로 테스트 복원에 기존 운영 볼륨 ID를 넣지 않습니다.'] },
+					{ title: '백업 available 확인 후 복원', text: ['볼륨 백업 화면에서 원본 볼륨 UUID·백업 시점·크기를 확인하고 available인 백업의 복원을 선택합니다. 현재 UI 복원은 새 볼륨을 만드는 흐름입니다. API는 기존 volume_id를 지정하면 덮어쓸 수 있으므로 테스트 복원에 기존 운영 볼륨 ID를 넣지 않습니다.'], screenshots: [{ src: '/docs/screenshots/cinder-backups.webp', alt: '볼륨 백업 목록에 백업이 없을 때 표시되는 빈 상태와 백업 생성 버튼', caption: '현재 프로젝트에 백업이 없는 실제 화면입니다. 사용할 수 있는 백업이 있을 때 원본·시점·크기와 available 상태를 확인한 뒤 복원을 진행하세요.', width: 1440, height: 1000 }] },
 					{ title: '복원 볼륨의 실제 상태 확인', text: ['복원 결과의 volume_id를 기록하고 볼륨 목록에서 새 볼륨이 available이 될 때까지 확인합니다. 복원 응답/화면 완료 문구만으로 데이터 복구를 확정하지 않습니다.'] },
 					{ title: '데이터 또는 부팅 검증', text: ['데이터 볼륨은 검증 VM에 연결해 파일시스템·필요한 파일·애플리케이션 복구를 확인합니다. bootable 부트 볼륨이면 볼륨 메뉴의 이 볼륨으로 VM 부팅 또는 인스턴스 마법사의 기존 부팅 볼륨으로 선택합니다.', 'OverlayFS Upper 복원은 일반 부트 볼륨 복원과 다릅니다. 원본과 같은 라이브러리 구성이 있어야 파일 가시성이 재현될 수 있으며, 데이터 볼륨을 Upper나 OS 부트로 무조건 사용하지 않습니다.'] },
 				],
@@ -424,9 +430,9 @@ export const coreGuides: DocGuide[] = [
 			{
 				id: 'create', title: '2. 파일 스토리지 생성과 결과 확인',
 				steps: [
-					{ title: '기본 정보 선택', text: ['파일 스토리지 화면의 생성 마법사에서 이름·크기(GB)·Share Type·프로토콜(CephFS 또는 NFS)을 지정합니다. 타입이 한 프로토콜만 지원하면 해당 프로토콜만 선택됩니다. 메타데이터는 필요한 경우에만 추가하며 소유권 추적용 값을 임의 조작하지 않습니다.'], links: [{ label: '파일 스토리지', href: '/dashboard/file-storage' }] },
+					{ title: '기본 정보 선택', text: ['파일 스토리지 화면의 생성 마법사에서 이름·크기(GB)·Share Type·프로토콜(CephFS 또는 NFS)을 지정합니다. 타입이 한 프로토콜만 지원하면 해당 프로토콜만 선택됩니다. 메타데이터는 필요한 경우에만 추가하며 소유권 추적용 값을 임의 조작하지 않습니다.'], links: [{ label: '파일 스토리지', href: '/dashboard/file-storage' }], screenshots: [{ src: '/docs/screenshots/manila-create.webp', alt: '파일 스토리지 생성의 이름·크기·Share Type·프로토콜 선택 영역', caption: 'Share Type이 지원하는 프로토콜과 크기를 확인하세요. NFS 네트워크 조건은 다음 단계에서 따로 대조합니다.', width: 1440, height: 1000 }] },
 					{ title: 'NFS 네트워크 조건 확인', text: ['DHSS=True이며 Share 네트워크 기능이 활성화되어 네트워크 단계가 표시되면, 준비된 Share Network를 선택하거나 Neutron 네트워크·서브넷으로 새 Share Network를 생성합니다.', '현재 UI는 DHSS=False 또는 베타 비활성화 시 네트워크 단계를 숨길 수 있지만 현재 NFS 생성 API는 tenant share network를 요구합니다. 이 조합에서 선택을 보낼 수 없거나 422가 발생하면 생성이 가능하다고 가정하지 않습니다. 운영자에게 타입·UI 노출·API 조건 정합성을 확인하고, 승인된 API 경로에서는 유효한 share_network_id를 지정해야 합니다.'], links: [{ label: 'Share 네트워크', href: '/dashboard/file-storage/networks', description: '베타 기능 활성화 시 노출' }] },
-					{ title: 'available과 export 확인', text: ['생성 요청 후 목록/상세에서 share UUID·프로토콜·크기·available 상태·Export Locations를 확인합니다. 생성 마법사의 접근 설정 단계에서 규칙을 추가하거나 나중에 상세에서 추가할 수 있습니다. 건너뛰기를 눌러도 이미 생성된 share가 삭제되는 것은 아닙니다.'] },
+					{ title: 'available과 export 확인', text: ['생성 요청 후 목록/상세에서 share UUID·프로토콜·크기·available 상태·Export Locations를 확인합니다. 생성 마법사의 접근 설정 단계에서 규칙을 추가하거나 나중에 상세에서 추가할 수 있습니다. 건너뛰기를 눌러도 이미 생성된 share가 삭제되는 것은 아닙니다.'], screenshots: [{ src: '/docs/screenshots/manila-shares.webp', alt: '파일 스토리지 목록의 생성 버튼과 공유가 없는 프로젝트의 빈 상태', caption: '공유가 없는 프로젝트의 실제 목록입니다. 생성 후에는 대상 공유의 프로토콜·크기·상태와 상세의 Export Locations를 확인하세요. available만으로 마운트 성공을 판단하지 마세요.', width: 1440, height: 1000 }] },
 				],
 			},
 			{

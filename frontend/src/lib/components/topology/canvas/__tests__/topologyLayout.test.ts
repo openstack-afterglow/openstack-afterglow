@@ -167,13 +167,13 @@ describe('autoLayout 존 겹침 불변식', () => {
 	function perNetRouterData(n: number): TopologyData {
 		const networks: TopologyData['networks'] = [
 			{ id: 'net-pub', name: 'public', status: 'ACTIVE', is_external: true, is_shared: false, project_id: null,
-				subnet_details: [{ id: 'sn-pub', name: 'pub', cidr: '203.0.113.0/24', gateway_ip: '203.0.113.1', dhcp_enabled: false }] },
+				subnet_details: [{ id: 'sn-pub', name: 'pub', cidr: '203.0.113.0/24', ip_version: 4, gateway_ip: '203.0.113.1', dhcp_enabled: false }] },
 		];
 		const routers: TopologyData['routers'] = [];
 		const instances: TopologyData['instances'] = [];
 		for (let i = 0; i < n; i++) {
 			networks.push({ id: `net-t${i}`, name: `tenant-${i}`, status: 'ACTIVE', is_external: false, is_shared: false, project_id: 'p',
-				subnet_details: [{ id: `sn-t${i}`, name: `t${i}`, cidr: `10.${i}.0.0/24`, gateway_ip: `10.${i}.0.1`, dhcp_enabled: true }] });
+				subnet_details: [{ id: `sn-t${i}`, name: `t${i}`, cidr: `10.${i}.0.0/24`, ip_version: 4, gateway_ip: `10.${i}.0.1`, dhcp_enabled: true }] });
 			routers.push({ id: `rtr-${i}`, name: `r-${i}`, status: 'ACTIVE', external_gateway_network_id: 'net-pub',
 				external_gateway_ips: [`203.0.113.${10 + i}`], interface_ips: [{ ip_address: `10.${i}.0.1`, subnet_id: `sn-t${i}` }],
 				is_distributed: false, is_ha: false, connected_subnet_ids: [`sn-t${i}`], dvr_subnet_ids: [], project_id: 'p' });
@@ -226,7 +226,7 @@ describe('autoLayout 존 겹침 불변식', () => {
 	it('provider 망만 연결된 라우터는 어떤 tenant 존에도 갇히지 않는다', () => {
 		const data = perNetRouterData(4);
 		data.networks.push({ id: 'net-shared', name: 'shared-net', status: 'ACTIVE', is_external: false, is_shared: true, project_id: null,
-			subnet_details: [{ id: 'sn-shared', name: 'shared', cidr: '198.51.100.0/24', gateway_ip: '198.51.100.1', dhcp_enabled: true }] });
+			subnet_details: [{ id: 'sn-shared', name: 'shared', cidr: '198.51.100.0/24', ip_version: 4, gateway_ip: '198.51.100.1', dhcp_enabled: true }] });
 		data.routers.push({ id: 'rtr-shared', name: 'shared-only', status: 'ACTIVE', external_gateway_network_id: null,
 			external_gateway_ips: [], interface_ips: [{ ip_address: '198.51.100.1', subnet_id: 'sn-shared' }],
 			is_distributed: false, is_ha: false, connected_subnet_ids: ['sn-shared'], dvr_subnet_ids: [], project_id: 'p' });

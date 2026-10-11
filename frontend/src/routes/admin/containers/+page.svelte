@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/admin-system';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -56,7 +57,7 @@
 	onMount(load);
 </script>
 
-<div class="p-4 md:p-6 max-w-7xl mx-auto">
+<PageShell>
 	<div data-tour="admin-containers-header">
 	<PageHeader breadcrumb={t('containers.breadcrumb')} title={t('containers.title')}>
 		{#snippet actions()}
@@ -115,7 +116,7 @@
 		</div>
 	{/if}
 	</div>
-</div>
+</PageShell>
 
 {#if selectedContainerId}
 	<SlidePanel onClose={() => (selectedContainerId = null)} ariaLabel={t('containers.details')} width="w-full md:w-[480px]" dataTour="admin-containers-detail">

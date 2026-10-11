@@ -1,6 +1,7 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/account';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
+  import PageShell from '$lib/components/ui/PageShell.svelte';
   import ProfileSection from '$lib/components/account/ProfileSection.svelte';
   import PasswordSection from '$lib/components/account/PasswordSection.svelte';
   import KeypairsSection from '$lib/components/account/KeypairsSection.svelte';
@@ -10,7 +11,7 @@
   import McpAccessSection from '$lib/components/account/McpAccessSection.svelte';
 </script>
 
-<div class="p-4 md:p-6 max-w-5xl">
+<PageShell>
   <div class="flex items-center gap-3 mb-4">
     <a
       href="/dashboard"
@@ -47,4 +48,4 @@
       <ActivitySection />
     </div>
   </div>
-</div>
+</PageShell>

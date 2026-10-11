@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -87,7 +88,7 @@
 <AdminRouterEditModal bind:router={editRouter} onUpdate={updateRouter} />
 <AdminRouterDeleteModal bind:router={deleteRouter} onConfirm={deleteRouterFn} />
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<PageShell>
 	<PageHeader breadcrumb={t('routersPage.breadcrumb')} title={t('routersPage.title')}>
 		{#snippet actions()}
 			<button onclick={openCreate} onpointerenter={prefetchExternalNetworks} onfocus={prefetchExternalNetworks} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('routersPage.actions.create')}</button>
@@ -107,4 +108,4 @@
 		<AdminRoutersTable {routers} onEdit={(r) => { editRouter = r; }} onDelete={(r) => { deleteRouter = r; }} />
 		<div class="mt-3 text-xs text-ink-2">{t('routersPage.summary.total', { count: routers.length })}</div>
 	{/if}
-</div>
+</PageShell>

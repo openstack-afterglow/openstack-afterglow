@@ -380,3 +380,19 @@ The original browser session start is retained across refresh and project rescop
 JWT credentials persist only in tab sessionStorage. Legacy localStorage credentials are discarded, requiring one login after upgrade; new tabs authenticate independently. Browser tab duplication can copy sessionStorage. SvelteKit nonce/hash CSP removes script unsafe-inline but does not make JavaScript-readable credentials HttpOnly. MCP refresh requires the issuing client_id even when omitted previously. One-time PAT issuance responses use no-store/no-cache.
 
 MCP timeout/cancellation fences new provider mutations after final ownership reads and retains the SDK worker, connection and concurrency slot until completion. Already-sent cloud requests cannot be rolled back. UUID-owned concurrency members do not auto-expire: crashed worker/release failures retain capacity until an operator verifies all related workers are drained/dead before clearing stale state. Poll/cleanup marks expired mutation leases unknown without resending, and a fresh key cannot duplicate identical unresolved arguments within the same grant/source/tool.
+
+## MCP project provisioning tools
+
+Personal MCP and delegated Lumen calls share canonical registry `2026-10-11.2`. The following tools require an explicitly approved `manage` grant with `mcp:write`; read-only grants cannot discover or dispatch them. Optional `project_id` must be approved and selects that project's restricted application credential. Default Lumen cloud access remains read-only.
+
+| Tool | Required inputs | Optional inputs and bounds | Accepted result |
+|---|---|---|---|
+| `afterglow_vm_create` | `name`, `image_id`, `flavor_id`, `network_id` | Name: 1–63 characters, alphanumeric first, then alphanumeric/`_`/`-`. `boot_volume_size_gb`: default50, integer1–16384. Optional owned `key_name` and `availability_zone` without a host override. `delete_boot_volume_on_termination`: defaultfalse | Safe server ID/name/current status/timestamps and `requested_action: "create"`; not ACTIVE or guest readiness |
+| `afterglow_volume_create` | `name`, integer `size_gb` | Nonblank name1–255 characters, size1–16384GiB, optional `availability_zone` | Empty Cinder volume ID/name/current status/size/timestamp and `requested_action: "create"`; `creating` is not ready |
+| `afterglow_vm_network_attach` | `server_id`, `network_id` | Exact-project ACTIVE/SHUTOFF server and owned or explicitly shared network. No existing `port_id`, fixed IP or security-group overrides | Verified server/network/new port IDs, MAC and `requested_action: "attach_network"`; not guest configuration or data-plane proof |
+
+MCP mutation calls require `idempotency_key`. Completed identical requests replay the stored result. Lumen `/api/v1/mcp/lumen/preview` does not create resources; `/execute` uses a separate key through the same ledger. Grant, target, resource state and SDK deadline are revalidated immediately before dispatch. An uncertain outcome stays `unknown`; a fresh key cannot resend identical unresolved arguments within the same grant/source/tool. Inspect the actual provider outcome instead of retrying blindly.
+
+VM creation reuses project flavor quota, host-capacity and GPU admission plus name uniqueness. It validates active image visibility/minimum disk/RAM, network eligibility and optional keypair ownership from the Nova response. Image-to-volume boot mapping supports zero-disk flavors. Boot volumes are retained unless `delete_boot_volume_on_termination=true` is explicitly requested. Inputs exclude user data, passwords and arbitrary provider attributes; outputs exclude application credentials, private keys and `adminPass`.
+
+These are local-source additions. MCP handshake/discovery, live cloud provisioning and production deployment are separate evidence boundaries.

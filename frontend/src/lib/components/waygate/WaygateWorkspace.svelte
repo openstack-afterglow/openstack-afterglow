@@ -14,7 +14,7 @@
 	{#if $scope}
 		<WaygateProjectWorkspace scope={$scope} {admin} />
 	{:else}
-		<div class="p-4 md:p-8">
+		<div>
 			<PageHeader breadcrumb={admin ? t('workspace.breadcrumb.admin') : t('workspace.breadcrumb.network')} title={admin ? t('workspace.adminTitle') : 'Waygate'} />
 			<Alert tone="info">{t('workspace.selectProject')}</Alert>
 		</div>

@@ -278,7 +278,7 @@
 	}
 </script>
 
-<PageShell max="7xl">
+<PageShell>
 	<LumenPermissionNotice leaves={['lumen-audio_user']} />
 	<div class="studio">
 		<header class="header"><div><p class="muted">{t('realtimeVoice.breadcrumb')}</p><h1>{t('realtimeVoice.title')}</h1><p class="muted">{t('realtimeVoice.description')}</p></div><Button href="/dashboard/chat" variant="secondary">{t('realtimeVoice.textChat')}</Button></header>

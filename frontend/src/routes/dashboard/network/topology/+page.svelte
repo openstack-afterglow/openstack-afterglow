@@ -372,7 +372,7 @@
 	onDestroy(cancelIntent);
 </script>
 
-<PageShell class="max-w-screen-2xl">
+<PageShell>
 	<PageHeader breadcrumb={t('topology.breadcrumb')} title={t('topology.title')}>
 		{#snippet actions()}
 			<ToggleGroup value={view} options={viewOptions} onchange={onViewChange} ariaLabel={t('topology.viewLabel')} />

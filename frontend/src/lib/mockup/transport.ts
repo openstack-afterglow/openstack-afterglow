@@ -7,6 +7,7 @@ import { MOCK_MCP_CONSENT_TICKET, MOCKUP_QUERY_KEY, MOCKUP_SESSION_KEY, MOCKUP_S
 import type { MockupProfileId } from '$lib/mockup/contracts';
 import { cloneMockup, getMockupState } from '$lib/mockup/state';
 import type { K3sSseProgressMessage } from '$lib/api/k3sSseStream';
+import { RESOURCE_CATEGORIES, type ProjectResourceInventory, type ResourceCategory, type ResourceInventory, type ResourceItem, type ResourceTotal, type UserDashboardSummary } from '$lib/types/userDashboard';
 import { isTourId } from '$lib/tutorial/tours';
 import { t } from '$lib/i18n/ns/tutorial';
 
@@ -231,6 +232,67 @@ function networkDetail(id: string): Record<string, unknown> | null {
 	};
 }
 
+function userInventoryFixture(profile: MockupProfileId, projectId?: string): UserDashboardSummary {
+	const state = getMockupState();
+	const userId = buildMockAuth(profile, '/dashboard').userId!;
+	const services = { ...get(siteConfig).services, ...MOCKUP_SERVICE_OVERRIDES };
+	const paths: Partial<Record<ResourceCategory, string>> = {
+		instances: '/api/v1/instances', volumes: '/api/v1/volumes', floating_ips: '/api/v1/networks/floating-ips',
+		networks: '/api/v1/networks', routers: '/api/v1/routers', security_groups: '/api/v1/security-groups',
+		load_balancers: '/api/v1/loadbalancers', images: '/api/v1/images', keypairs: '/api/v1/keypairs',
+		database_instances: '/api/v1/database-instances', database_backups: '/api/v1/database-instances/backups',
+		k3s_clusters: '/api/v1/k3s/clusters', containers: '/api/v1/containers', magnum_clusters: '/api/v1/clusters',
+		shares: '/api/v1/file-storage', share_snapshots: '/api/v1/share-snapshots', share_networks: '/api/v1/share-networks',
+		security_services: '/api/v1/security-services', buckets: '/api/v1/object-storage', volume_snapshots: '/api/v1/volume-snapshots',
+	};
+	const gates: Partial<Record<ResourceCategory, keyof typeof services>> = {
+		database_instances: 'trove', database_backups: 'trove', k3s_clusters: 'k3s', waygate_gateways: 'waygate',
+		containers: 'zun', magnum_clusters: 'magnum', shares: 'manila', share_snapshots: 'manila',
+		share_networks: 'manila', security_services: 'manila', buckets: 'swift', secrets: 'barbican',
+	};
+	const routes: Record<ResourceCategory, string> = {
+		instances: '/dashboard/compute/instances', volumes: '/dashboard/volumes', floating_ips: '/dashboard/network/floating-ips',
+		networks: '/dashboard/network/networks', subnets: '/dashboard/network/networks', routers: '/dashboard/network/routers',
+		security_groups: '/dashboard/network/security-groups', load_balancers: '/dashboard/network/loadbalancers',
+		images: '/dashboard/compute/images', keypairs: '/dashboard/compute/keypairs', database_instances: '/dashboard/database/instances',
+		database_backups: '/dashboard/database/backups', k3s_clusters: '/dashboard/drover', waygate_gateways: '/dashboard/network/waygate',
+		containers: '/dashboard/containers/instances', magnum_clusters: '/dashboard/containers/clusters', shares: '/dashboard/file-storage',
+		share_snapshots: '/dashboard/file-storage/snapshots', share_networks: '/dashboard/file-storage/networks',
+		security_services: '/dashboard/file-storage/security-services', buckets: '/dashboard/object-storage/buckets',
+		volume_snapshots: '/dashboard/volumes/snapshots', volume_backups: '/dashboard/volumes/backups', packages: '/palimpsest/packages', secrets: '/dashboard/secrets',
+	};
+	const projects: ProjectResourceInventory[] = state.projects.map(project => {
+		const resources = Object.fromEntries(RESOURCE_CATEGORIES.map(category => {
+			const gate = gates[category];
+			if (gate && !services[gate]) return [category, { state: 'disabled', count: null, items: [], error: 'service_disabled' }];
+			let rows: Record<string, unknown>[] = [];
+			if (project.id === state.selectedProjectId || category === 'keypairs') {
+				if (category === 'subnets') rows = state.topology.networks.filter(net => net.project_id === project.id).flatMap(net => net.subnet_details.map(subnet => ({ ...subnet, network_id: net.id })));
+				else if (paths[category]) rows = jsonFixture('GET', paths[category]!, undefined, profile, project.id) as Record<string, unknown>[];
+			}
+			const items: ResourceItem[] = rows.filter(row => !row.project_id || row.project_id === project.id).map(row => {
+				const id = String(row.id ?? row.uuid ?? row.name);
+				const personal = ['instances', 'volumes', 'keypairs'].includes(category);
+				const item: ResourceItem = { id, name: String(row.name ?? row.floating_ip_address ?? id), status: String(row.status ?? row.provisioning_status ?? ''), project_id: project.id, project_name: project.name, owner_scope: personal ? 'user' : 'project', owner_id: personal ? userId : project.id, href: routes[category] };
+				if (['instances', 'volumes', 'networks', 'routers', 'load_balancers', 'database_instances', 'k3s_clusters', 'containers', 'magnum_clusters', 'shares', 'buckets'].includes(category)) item.href += '/' + encodeURIComponent(id);
+				if (category === 'subnets') item.href += '/' + encodeURIComponent(String(row.network_id));
+				if (category === 'instances') { item.vcpus = null; item.ram_mb = null; item.flavor_name = String(row.flavor_name ?? ''); }
+				if (category === 'volumes') item.size = typeof row.size === 'number' ? row.size : null;
+				return item;
+			});
+			return [category, { state: 'ready', count: items.length, items }];
+		})) as Record<ResourceCategory, ResourceInventory>;
+		return { project_id: project.id, project_name: project.name, resources, usage: { vcpus: resources.instances.count ? null : 0, ram_mb: resources.instances.count ? null : 0, storage_gb: resources.volumes.items.reduce((sum, item) => sum + (item.size ?? 0), 0) } };
+	});
+	const resources = Object.fromEntries(RESOURCE_CATEGORIES.map(category => {
+		const values = projects.map(project => project.resources[category]);
+		const ready = values.filter(value => value.state === 'ready');
+		const count = category === 'keypairs' ? new Set(ready.flatMap(value => value.items.map(item => item.owner_id + ':' + item.name))).size : ready.reduce((sum, value) => sum + value.count, 0);
+		return [category, ready.length === values.length ? { state: 'ready', count, known_count: count } : { state: 'disabled', count: null, known_count: count }];
+	})) as Record<ResourceCategory, ResourceTotal>;
+	return { user_id: userId, current_project_id: projectId ?? state.selectedProjectId, projects, totals: { resources, usage: { vcpus: null, ram_mb: null, storage_gb: projects.reduce((sum, project) => sum + (project.usage.storage_gb ?? 0), 0) } } };
+}
+
 function jsonFixture(method: string, normalized: string, body: unknown, profile: MockupProfileId, requestProjectId?: string): unknown | typeof symbolNoMatch {
 	const state = getMockupState();
 	const [pathname, query = ''] = normalized.split('?');
@@ -248,6 +310,12 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (method === 'GET' && pathname === '/api/v1/tutorials/status') {
 		return { statuses: state.tutorialStatuses };
 	}
+	if (method === 'GET' && pathname === '/api/v1/user-dashboard/summary') return userInventoryFixture(profile, requestProjectId);
+	if (method === 'GET' && pathname === '/api/v1/profile/activity') {
+		const before = Number(params.get('before_id') || Infinity);
+		const limit = Math.min(200, Math.max(1, Number(params.get('limit') || 10)));
+		return Array.from({ length: 43 }, (_, index) => ({ id: 43 - index, created_at: new Date(Date.parse(NOW_ISO) - index * 60000).toISOString(), project_id: requestProjectId ?? state.selectedProjectId, user_id: buildMockAuth(profile, '/dashboard').userId, username: 'demo-user', resource_type: index % 2 ? 'instance' : 'auth', resource_id: null, resource_name: index % 2 ? 'sample-project-alpha' : 'auth', action: index % 2 ? 'instance.create' : 'login', status: 'success', error_message: null, extra: null })).filter(row => row.id < before && (!params.get('resource_type') || row.resource_type === params.get('resource_type')) && (!params.get('action') || row.action.includes(params.get('action')!))).slice(0, limit);
+	}
 	const tutorialStatusMatch = pathname.match(/^\/api\/v1\/tutorials\/([^/]+)\/status$/);
 	if (method === 'POST' && tutorialStatusMatch) {
 		const tourId = tutorialStatusMatch[1];
@@ -258,26 +326,38 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	}
 
 	if (method === 'GET' && pathname === '/api/v1/auth/mcp-projects') return state.projects.map(({ id, name }) => ({ id, name }));
-	if (method === 'GET' && pathname === '/api/v1/auth/mcp-tokens') return state.mcpAccess.personalTokens.map((record) => ({ ...record, is_lumen_default: record.status === 'active' && record.id === state.mcpAccess.lumenDefaults[requestProjectId ?? state.selectedProjectId] }));
+	if (method === 'GET' && pathname === '/api/v1/auth/mcp-tokens') return state.mcpAccess.personalTokens.filter((record) => record.status !== 'revoked' && !record.revoked_at).map((record) => ({ ...record, is_lumen_default: record.status === 'active' && record.id === state.mcpAccess.lumenDefaults[requestProjectId ?? state.selectedProjectId] }));
 	if (method === 'GET' && ['/api/v1/chat/custom-tools', '/api/v1/chat/mcp-servers', '/api/v1/chat/skills'].includes(pathname)) return [];
-	if (method === 'GET' && pathname === '/api/v1/chat/cloud-tools') {
+	if (pathname === '/api/v1/chat/cloud-tools' && ['GET', 'POST', 'DELETE'].includes(method)) {
 		const project = state.projects.find((item) => item.id === (requestProjectId ?? state.selectedProjectId));
 		if (!project) mockUnsupported();
+		if (method === 'DELETE') {
+			delete state.mcpAccess.cloudApprovals[project.id];
+			delete state.mcpAccess.lumenDefaults[project.id];
+		} else if (method === 'POST') {
+			const access = (body as { access_level?: unknown } | null)?.access_level;
+			if (access !== 'read' && access !== 'manage') mockUnsupported();
+			state.mcpAccess.cloudApprovals[project.id] = { access_level: access, expires_at: new Date(Date.parse(NOW_ISO) + 30 * 86400000).toISOString() };
+			delete state.mcpAccess.lumenDefaults[project.id];
+		}
 		const selected = state.mcpAccess.personalTokens.find((record) => record.status === 'active' && record.id === state.mcpAccess.lumenDefaults[project.id]);
+		const approved = state.mcpAccess.cloudApprovals[project.id];
 		return {
-			enabled: true,
-			access_level: selected?.access_level ?? 'read',
+			available: true,
+			enabled: Boolean(selected || approved),
+			access_level: selected?.access_level ?? approved?.access_level ?? 'read',
 			project_id: project.id,
 			project_name: project.name,
-			tool_count: 24,
+			tool_count: selected || approved ? 24 : 0,
 			source: selected ? 'personal_token' : 'lumen',
-			allowed_projects: selected?.projects ?? [{ id: project.id, name: project.name }],
+			allowed_projects: selected?.projects ?? (approved ? [{ id: project.id, name: project.name }] : []),
 			selection_name: selected?.name ?? null,
+			expires_at: selected ? selected.expires_at : approved?.expires_at ?? null,
 		};
 	}
-	if (method === 'GET' && pathname === '/api/v1/auth/mcp-oauth/grants') return state.mcpAccess.oauthGrants;
+	if (method === 'GET' && pathname === '/api/v1/auth/mcp-oauth/grants') return state.mcpAccess.oauthGrants.filter((record) => record.status !== 'revoked');
 	if (method === 'POST' && pathname === '/api/v1/auth/mcp-tokens') {
-		const payload = body as { name?: unknown; access_level?: unknown; expires_at?: unknown; project_scope?: unknown; project_ids?: unknown } | null;
+		const payload = body as { name?: unknown; access_level?: unknown; expires_at?: unknown; non_expiring?: unknown; project_scope?: unknown; project_ids?: unknown } | null;
 		const name = typeof payload?.name === 'string' ? payload.name.trim() : '';
 		const accessLevel = payload?.access_level;
 		if (!name || (accessLevel !== 'read' && accessLevel !== 'manage')) mockUnsupported();
@@ -298,7 +378,7 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 			status: 'active' as const,
 			visible_prefix: `mcp_mock_${id.slice(-4)}_`,
 			issued_at: NOW_ISO,
-			expires_at: typeof payload?.expires_at === 'string' && !Number.isNaN(Date.parse(payload.expires_at)) ? payload.expires_at : MOCK_EXPIRES_AT_ISO,
+			expires_at: payload?.non_expiring === true ? null : typeof payload?.expires_at === 'string' && !Number.isNaN(Date.parse(payload.expires_at)) ? payload.expires_at : new Date(Date.parse(NOW_ISO) + 30 * 24 * 60 * 60 * 1000).toISOString(),
 			last_used_at: null,
 			revoked_at: null,
 			is_lumen_default: false,
@@ -862,7 +942,7 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		const payload = body as { name?: string; subnet?: { name?: string; cidr?: string; gateway_ip?: string | null; enable_dhcp?: boolean } } | null;
 		const id = `mock-net-${state.topology.networks.length + 1}`;
 		const subnet = payload?.subnet?.cidr
-			? [{ id: `${id}-subnet`, name: payload.subnet.name || `${payload.name || 'network'}-subnet`, cidr: payload.subnet.cidr, gateway_ip: payload.subnet.gateway_ip ?? null, dhcp_enabled: payload.subnet.enable_dhcp ?? true }]
+			? [{ id: `${id}-subnet`, name: payload.subnet.name || `${payload.name || 'network'}-subnet`, cidr: payload.subnet.cidr, ip_version: payload.subnet.cidr.includes(':') ? 6 : 4, gateway_ip: payload.subnet.gateway_ip ?? null, dhcp_enabled: payload.subnet.enable_dhcp ?? true }]
 			: [];
 		state.topology.networks.push({ id, name: payload?.name || id, status: 'ACTIVE', is_external: false, is_shared: false, project_id: state.selectedProjectId, subnet_details: subnet });
 		return { id, name: payload?.name || id, status: 'ACTIVE', subnets: subnet.map((item) => item.id), cidrs: subnet.map((item) => item.cidr) };
@@ -872,7 +952,7 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		const network = state.topology.networks.find((item) => item.id === networkSubnet);
 		const payload = body as { name?: string; cidr?: string; gateway_ip?: string | null; enable_dhcp?: boolean } | null;
 		if (!network || network.project_id !== state.selectedProjectId || !payload?.cidr) return mockUnsupported();
-		const subnet = { id: `${network.id}-subnet-${network.subnet_details.length + 1}`, name: payload.name || `${network.name}-subnet`, cidr: payload.cidr, gateway_ip: payload.gateway_ip ?? null, dhcp_enabled: payload.enable_dhcp ?? true };
+		const subnet = { id: `${network.id}-subnet-${network.subnet_details.length + 1}`, name: payload.name || `${network.name}-subnet`, cidr: payload.cidr, ip_version: payload.cidr.includes(':') ? 6 : 4, gateway_ip: payload.gateway_ip ?? null, dhcp_enabled: payload.enable_dhcp ?? true };
 		network.subnet_details.push(subnet);
 		return subnet;
 	}

@@ -12,8 +12,8 @@ const mockTenantNet: TopologyNetwork = {
 	project_id: 'proj-1',
 	mtu: 1450,
 	subnet_details: [
-		{ id: 'sub-1', name: 'app-sub-1', cidr: '10.10.1.0/24', gateway_ip: '10.10.1.1', dhcp_enabled: true },
-		{ id: 'sub-2', name: 'app-sub-2', cidr: '10.10.2.0/24', gateway_ip: '10.10.2.1', dhcp_enabled: true },
+		{ id: 'sub-1', name: 'app-sub-1', cidr: '10.10.1.0/24', ip_version: 4, gateway_ip: '10.10.1.1', dhcp_enabled: true },
+		{ id: 'sub-2', name: 'app-sub-2', cidr: '10.10.2.0/24', ip_version: 4, gateway_ip: '10.10.2.1', dhcp_enabled: true },
 	],
 };
 
@@ -26,7 +26,7 @@ const mockExternalNet: TopologyNetwork = {
 	project_id: null,
 	mtu: 1500,
 	subnet_details: [
-		{ id: 'sub-pub', name: 'pub-sub', cidr: '203.0.113.0/24', gateway_ip: '203.0.113.1', dhcp_enabled: false },
+		{ id: 'sub-pub', name: 'pub-sub', cidr: '203.0.113.0/24', ip_version: 4, gateway_ip: '203.0.113.1', dhcp_enabled: false },
 	],
 };
 
@@ -211,6 +211,7 @@ describe('TopologyLinkModal', () => {
 					id: 'sub-created-1',
 					name: 'already-created-sub',
 					cidr: '10.99.0.0/24',
+					ip_version: 4,
 					gateway_ip: '10.99.0.1',
 					dhcp_enabled: true,
 				},

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t as tr } from '$lib/i18n/ns/database';
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
@@ -21,7 +22,7 @@
 	onMount(ctrl.loadAll);
 </script>
 
-<div class="p-4 md:p-8 max-w-4xl">
+<PageShell>
 	<div class="flex items-center gap-2 mb-2">
 		<a href="/admin/database-instances" class="text-ink-2 hover:text-ink-2 text-sm">{tr('instances.title')}</a>
 		<span class="text-ink-2">/</span>
@@ -68,4 +69,4 @@
 			onRestore={ctrl.restoreBackup}
 		/>
 	{/if}
-</div>
+</PageShell>

@@ -16,9 +16,9 @@ export const gettingStarted: DocGuide = {
 		{
 			id: 'sign-in', title: '로그인하고 프로젝트 선택하기',
 			steps: [
-				{ title: '콘솔에 로그인', text: ['상단의 콘솔 접속을 누르고 사용자 도메인·사용자 이름·비밀번호를 입력합니다. 사용자 도메인은 운영자에게 받은 값을 사용합니다. GitLab 버튼이 보이면 해당 조직의 연동 로그인도 사용할 수 있습니다.'], links: [{ label: '로그인 화면', href: '/login' }] },
-				{ title: '작업할 프로젝트 선택', text: ['최근 프로젝트 선택 화면에서 프로젝트 이름과 ID를 확인하고 선택합니다. 목록이 비어 있으면 운영자에게 프로젝트 멤버십을 요청합니다. 다른 프로젝트의 자원은 현재 프로젝트 목록에 나타나지 않습니다.'], links: [{ label: '프로젝트 선택', href: '/select-project' }] },
-				{ title: '현재 범위와 사용량 확인', text: ['대시보드에 프로젝트 이름이 표시되는지 확인합니다. 상단 프로젝트 선택기로 작업 범위를 바꿀 수 있습니다. 생성 전에 개요와 사용량에서 인스턴스·vCPU·RAM·볼륨·Floating IP 등 필요한 쿼터를 확인합니다.'], links: [{ label: '프로젝트 사용량', href: '/dashboard/usage' }] },
+				{ title: '콘솔에 로그인', text: ['상단의 콘솔 접속을 누르고 사용자 도메인·사용자 이름·비밀번호를 입력합니다. 사용자 도메인은 운영자에게 받은 값을 사용합니다. GitLab 버튼이 보이면 해당 조직의 연동 로그인도 사용할 수 있습니다.'], screenshots: [{ src: '/docs/screenshots/getting-started-login.webp', width: 1440, height: 1000, alt: '도메인·사용자명·비밀번호 입력란과 GitLab 로그인 버튼', caption: '운영자가 제공한 도메인을 확인하고 로그인합니다. 이 캡처의 사용자명·비밀번호는 비어 있습니다.' }], links: [{ label: '로그인 화면', href: '/login' }] },
+				{ title: '작업할 프로젝트 선택', text: ['최근 프로젝트 선택 화면에서 프로젝트 이름과 ID를 확인하고 선택합니다. 목록이 비어 있으면 운영자에게 프로젝트 멤버십을 요청합니다. 다른 프로젝트의 자원은 현재 프로젝트 목록에 나타나지 않습니다.'], screenshots: [{ src: '/docs/screenshots/getting-started-project.webp', width: 1440, height: 1000, alt: '대시보드 상단에서 펼친 프로젝트 선택 메뉴', caption: '상단 프로젝트 선택기로 작업 범위를 확인하고 전환합니다. 프로젝트 이름과 계정 정보는 캡처에서 가렸습니다.' }], links: [{ label: '프로젝트 선택', href: '/select-project' }] },
+				{ title: '현재 범위와 사용량 확인', text: ['대시보드에 프로젝트 이름이 표시되는지 확인합니다. 상단 프로젝트 선택기로 작업 범위를 바꿀 수 있습니다. 생성 전에 개요와 사용량에서 인스턴스·vCPU·RAM·볼륨·Floating IP 등 필요한 쿼터를 확인합니다.'], screenshots: [{ src: '/docs/screenshots/getting-started-usage.webp', width: 1440, height: 1000, alt: '프로젝트 개요의 자원 수와 vCPU·메모리·스토리지 쿼터 사용률', caption: '개요의 자원 수와 쿼터 사용률을 먼저 확인합니다. 그래프의 실제 사용률과 생성 한도인 쿼터는 서로 다릅니다.' }], links: [{ label: '프로젝트 사용량', href: '/dashboard/usage' }] },
 			],
 			callout: { tone: 'info', title: '역할과 기능 활성화는 서로 다릅니다', text: '읽기 권한만 있는 계정은 조회할 수 있어도 생성·수정·삭제할 수 없습니다. 메뉴가 없으면 서비스 활성화와 일부 기능의 Beta 설정도 확인하세요. 관리자 모드가 보인다는 이유만으로 모든 프로젝트 작업이 허용되는 것은 아닙니다.' },
 		},

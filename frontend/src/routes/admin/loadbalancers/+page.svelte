@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -84,7 +85,7 @@
 	});
 </script>
 
-<div class="bulk-selection-page p-4 md:p-8 max-w-7xl mx-auto">
+<PageShell class="bulk-selection-page">
 	<PageHeader breadcrumb={t('loadbalancersPage.breadcrumb')} title={t('loadbalancersPage.title')}>
 		{#snippet actions()}
 			<AutoRefreshControl
@@ -197,7 +198,7 @@
 			<div class="mt-4 text-xs text-ink-2">{t('loadbalancersPage.summary.total', { count: loadbalancers.length })}</div>
 		</div>
 	{/if}
-</div>
+</PageShell>
 
 <BulkSelectionOverlay
 	count={selectedCount}

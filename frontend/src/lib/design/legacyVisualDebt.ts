@@ -689,18 +689,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 66,
 		tokens: ["bg-blue-500","bg-blue-600","bg-gray-700","bg-gray-800","bg-gray-800/30","bg-gray-800/50","bg-gray-800/60","bg-gray-900","bg-purple-900/30","border-blue-700","border-blue-800","border-blue-900","border-gray-700","border-gray-800","border-red-700","border-red-900","text-blue-300","text-blue-400","text-gray-200","text-gray-400","text-gray-500","text-gray-600","text-green-400","text-purple-300","text-red-300","text-red-400","text-yellow-400"],
 	},
-	"frontend/src/lib/components/dashboard/my-resources/InstancesPreviewCard.svelte": {
-		count: 11,
-		tokens: ["bg-blue-500/15","bg-gray-900","border-blue-500/30","border-gray-800","text-blue-300","text-blue-400","text-gray-500","text-gray-600"],
-	},
-	"frontend/src/lib/components/dashboard/my-resources/ProjectUsageTable.svelte": {
-		count: 19,
-		tokens: ["bg-[#0B1220]","bg-gray-800/20","bg-gray-900","border-gray-800","text-amber-400","text-blue-400","text-cyan-400","text-emerald-400","text-gray-500","text-gray-600","text-red-400","text-violet-400"],
-	},
-	"frontend/src/lib/components/dashboard/my-resources/VolumesPreviewCard.svelte": {
-		count: 11,
-		tokens: ["bg-cyan-500/15","bg-gray-900","border-cyan-500/30","border-gray-800","text-cyan-300","text-cyan-400","text-gray-500","text-gray-600"],
-	},
 	"frontend/src/lib/components/dashboard/network/networks/FloatingIpCard.svelte": {
 		count: 10,
 		tokens: ["bg-[#0B1220]","bg-blue-500","bg-blue-600","bg-gray-700","bg-gray-900","border-gray-800","text-gray-500","text-gray-600"],
@@ -1553,14 +1541,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 38,
 		tokens: ["bg-blue-600","bg-blue-700","bg-blue-900/20","bg-gray-600","bg-gray-700","bg-gray-800","bg-gray-900","bg-green-600","bg-orange-600","bg-purple-600","bg-red-600","bg-red-700","bg-sky-600","bg-teal-600","border-blue-500","border-gray-500","border-gray-600","border-gray-700","border-gray-800","text-gray-200","text-gray-400","text-gray-500","text-gray-600"],
 	},
-	"frontend/src/lib/components/wizard/SelectLibraries.svelte": {
-		count: 35,
-		tokens: ["bg-blue-500","bg-blue-900/10","bg-gray-800","bg-gray-900","bg-green-900/30","bg-red-900/30","bg-yellow-900/20","bg-yellow-900/30","border-blue-500","border-gray-500","border-gray-600","border-gray-700","border-gray-800","border-green-800","border-red-800","border-yellow-700","border-yellow-800","text-gray-400","text-gray-500","text-gray-700","text-green-400","text-orange-400","text-red-400","text-yellow-300","text-yellow-400"],
-	},
-	"frontend/src/lib/components/wizard/SelectStrategy.svelte": {
-		count: 60,
-		tokens: ["bg-blue-500","bg-blue-900/15","bg-blue-900/30","bg-blue-900/40","bg-gray-800","bg-gray-900","bg-yellow-900/20","border-blue-500","border-blue-600","border-blue-800","border-gray-500","border-gray-600","border-gray-700","border-gray-800","border-yellow-800","text-blue-300","text-blue-400","text-gray-400","text-gray-500","text-yellow-400"],
-	},
 	"frontend/src/lib/components/wizard/VmDeployProgress.svelte": {
 		count: 5,
 		tokens: ["bg-gray-900","border-gray-700","text-gray-400","text-gray-500","text-gray-600"],
@@ -1576,10 +1556,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 	"frontend/src/lib/components/wizard/WizardStep1Boot.svelte": {
 		count: 21,
 		tokens: ["bg-blue-700","bg-blue-900/20","bg-gray-800","bg-gray-900","border-blue-500","border-gray-500","border-gray-700","text-blue-400","text-gray-200","text-gray-400","text-gray-500","text-gray-600","text-green-400"],
-	},
-	"frontend/src/lib/components/wizard/WizardStep3Library.svelte": {
-		count: 39,
-		tokens: ["bg-blue-600/20","bg-blue-950/20","bg-gray-800","bg-gray-900","bg-gray-950/30","bg-gray-950/50","border-blue-500","border-blue-900/60","border-gray-600","border-gray-700","border-gray-800","border-gray-900","text-blue-100","text-blue-200/70","text-blue-600","text-gray-300","text-gray-400","text-gray-500","text-red-300"],
 	},
 	"frontend/src/lib/components/wizard/WizardStep5Config.svelte": {
 		count: 88,

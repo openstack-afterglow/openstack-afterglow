@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
@@ -285,7 +286,7 @@
 	onDestroy(() => { resultBoundary += 1; loadGeneration += 1; statusSummaryGeneration += 1; nextPrefetch.cancel(); });
 </script>
 
-<div class="bulk-selection-page p-4 md:p-6 pb-28 md:pb-32 max-w-7xl mx-auto">
+<PageShell class="bulk-selection-page">
 	<div data-tour="admin-storage-header">
 	<PageHeader breadcrumb={t('volumeList.breadcrumb')} title={t('volumeList.title')}>
 		{#snippet actions()}
@@ -402,7 +403,7 @@
 		busy={bulkDeleting}
 		onClear={() => selection.clear()}
 	/>
-</div>
+</PageShell>
 
 {#if selectedVolumeId}
 	<AdminVolumeDetailSlide

@@ -983,16 +983,16 @@ export const api = {
 			request<T>(path, { method: 'PUT', body: JSON.stringify(body) }, token, projectId, { baseUrl: scope.baseUrl })
 		);
 	},
-	patch: <T>(path: string, body: unknown, token?: string, projectId?: string) => {
+	patch: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: { signal?: AbortSignal }) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>
-			request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }, token, projectId, { baseUrl: scope.baseUrl })
+			request<T>(path, { method: 'PATCH', body: JSON.stringify(body), signal: opts?.signal }, token, projectId, { baseUrl: scope.baseUrl })
 		);
 	},
-	delete: <T>(path: string, token?: string, projectId?: string) => {
+	delete: <T>(path: string, token?: string, projectId?: string, opts?: { signal?: AbortSignal }) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>
-			request<T>(path, { method: 'DELETE' }, token, projectId, { baseUrl: scope.baseUrl })
+			request<T>(path, { method: 'DELETE', signal: opts?.signal }, token, projectId, { baseUrl: scope.baseUrl })
 		);
 	},
 

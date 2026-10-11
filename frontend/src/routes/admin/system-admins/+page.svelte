@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -93,7 +94,7 @@
 	onMount(load);
 </script>
 
-<div class="p-4 md:p-6 max-w-7xl mx-auto">
+<PageShell>
 	<PageHeader breadcrumb={t('systemPage.breadcrumb')} title={t('systemPage.title')}>
 		{#snippet actions()}
 			<button
@@ -134,7 +135,7 @@
 				<SystemAdminTable {admins} onRevoked={load} />
 			{/if}
 	{/if}
-</div>
+</PageShell>
 
 {#if showGrant}
 	<SystemAdminGrantModal onClose={() => (showGrant = false)} onGranted={load} />

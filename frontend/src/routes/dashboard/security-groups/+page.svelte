@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/network-resources';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { auth } from '$lib/stores/auth';
@@ -82,7 +83,7 @@
 	});
 </script>
 
-<div class="max-w-5xl mx-auto px-6 py-8">
+<PageShell>
 	<div class="flex items-center justify-between mb-6">
 		<div>
 			<div class="flex items-center gap-2 text-sm text-ink-2 mb-1">
@@ -121,6 +122,6 @@
 			{/each}
 		</div>
 	{/if}
-</div>
+</PageShell>
 
 <SecurityGroupCreateModal bind:open={showSgModal} onCreate={createSecurityGroup} />

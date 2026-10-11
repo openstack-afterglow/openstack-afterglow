@@ -437,6 +437,192 @@ async def test_oauth_revocation_blocks_access_and_refresh(issued_refresh):
     assert rejected.status_code == 400
 
 
+@pytest.mark.parametrize("source", ["personal_token", "oauth"])
+@pytest.mark.parametrize("expired", [False, True], ids=["active", "expired"])
+@pytest.mark.parametrize("cleanup_fails", [False, True], ids=["cleanup-confirmed", "cleanup-pending"])
+async def test_browser_revocation_removes_access_but_preserves_tombstone(
+    issued_refresh, monkeypatch, source, expired, cleanup_fails
+):
+    from app.api.deps import get_os_conn, get_token_info
+    from app.api.identity import mcp_access
+    from app.main import app
+    from app.services.mcp_control_plane import authority
+    from app.services.mcp_control_plane.crypto import encrypt_application_credential
+    from app.services.mcp_control_plane.oauth_authority import McpOAuthAuthorityError, resolve_oauth_access_token
+
+    factory = issued_refresh.factory
+    now = datetime.now(UTC)
+    raw_token = "mcp-afgl-" + uuid4().hex
+    async with factory() as session, session.begin():
+        oauth_grant = await session.get(McpDelegatedGrant, issued_refresh.grant_id)
+        owner = oauth_grant.owner_user_id
+        if source == "oauth":
+            grant = oauth_grant
+        else:
+            grant = McpDelegatedGrant(
+                id=str(uuid4()),
+                owner_user_id=owner,
+                owner_project_id="project",
+                upstream_credential_name="personal-" + str(uuid4()),
+                display_name="Personal test",
+                source=source,
+                access_level="read",
+                status="active",
+                expires_at=now + timedelta(days=30),
+            )
+            session.add(grant)
+        grant.application_credential_id = "credential-" + grant.id
+        grant.credential_ciphertext = encrypt_application_credential(
+            "synthetic-secret", grant_id=grant.id, owner_user_id=owner, owner_project_id="project"
+        )
+        if expired:
+            grant.status = "expired"
+            grant.expires_at = now - timedelta(days=1)
+            grant.revoked_at = now - timedelta(hours=1)
+        await session.flush()
+        grant_id, credential_id, epoch = grant.id, grant.application_credential_id, grant.credential_epoch
+        if source == "personal_token":
+            token = McpPersonalToken(
+                id=str(uuid4()),
+                grant_id=grant_id,
+                visible_prefix=raw_token[:20],
+                token_hash=authority._token_hash(raw_token),
+            )
+            session.add(token)
+            session.add(McpLumenSelection(owner_user_id=owner, owner_project_id="project", grant_id=grant_id))
+            record_id = token.id
+        else:
+            record_id = grant_id
+
+    remote = {credential_id}
+
+    class Identity:
+        def delete_application_credential(self, user, value, **kwargs):
+            assert user == owner
+            if cleanup_fails:
+                raise RuntimeError("synthetic provider unavailable")
+            remote.discard(value)
+
+        def find_application_credential(self, user, value, **kwargs):
+            assert user == owner
+            return SimpleNamespace(id=value) if value in remote else None
+
+    caller = {"user_id": owner, "project_id": "project", "username": "owner"}
+    monkeypatch.setitem(app.dependency_overrides, get_token_info, lambda: caller)
+    monkeypatch.setitem(
+        app.dependency_overrides, get_os_conn, lambda: SimpleNamespace(_afterglow_user_id=owner, identity=Identity())
+    )
+    monkeypatch.setattr(mcp_access, "_session_factory", lambda: factory)
+    monkeypatch.setattr(
+        mcp_access,
+        "get_settings",
+        lambda: SimpleNamespace(
+            service_mcp_enabled=True,
+            frontend_base_url="https://app.example.test",
+            public_api_base="https://api.example.test",
+            cors_origin_list=(),
+        ),
+    )
+    path = "/api/v1/auth/" + ("mcp-tokens" if source == "personal_token" else "mcp-oauth/grants")
+    headers = {"Origin": "https://app.example.test", "Sec-Fetch-Site": "same-site"}
+    client = issued_refresh.client
+    listed = await client.get(path)
+    assert listed.status_code == 200
+    assert {record["id"] for record in listed.json()} == {record_id}
+    revoked = await client.delete(f"{path}/{record_id}", headers=headers)
+    assert revoked.status_code == 204
+    assert (await client.get(path)).json() == []
+    assert (await client.delete(f"{path}/{record_id}", headers=headers)).status_code == 204
+    assert (await client.get(path)).json() == []
+    async with factory() as session:
+        tombstone = await session.get(McpDelegatedGrant, grant_id)
+        assert tombstone.status == "revoked"
+        assert tombstone.credential_epoch == epoch + 1
+        assert tombstone.revoked_at is not None
+        assert tombstone.cleanup_pending is cleanup_fails
+        assert bool(tombstone.application_credential_id) is cleanup_fails
+        actions = set(await session.scalars(select(ActivityLog.action).where(ActivityLog.resource_id == grant_id)))
+        assert actions == (
+            {"mcp_grant.revoke"} if cleanup_fails else {"mcp_grant.revoke", "mcp_grant.cleanup_confirmed"}
+        )
+        if source == "personal_token":
+            assert (await session.get(McpPersonalToken, record_id)).revoked_at is not None
+            assert await session.get(McpLumenSelection, {"owner_user_id": owner, "owner_project_id": "project"}) is None
+            assert (
+                await session.get(McpOwnerLock, {"owner_user_id": owner, "owner_project_id": "project"})
+            ).lumen_selection_generation == 1
+    async with factory() as session, session.begin():
+        if source == "personal_token":
+            with pytest.raises(authority.McpGrantNotFoundError):
+                await authority.resolve_personal_token(session, raw_token)
+        else:
+            with pytest.raises(McpOAuthAuthorityError):
+                await resolve_oauth_access_token(
+                    session, raw_token=issued_refresh.access_token, resource=_URLS.resource
+                )
+    if source == "oauth":
+        assert (await refresh(issued_refresh, client_id=issued_refresh.client_id)).status_code == 400
+    assert remote == ({credential_id} if cleanup_fails else set())
+
+
+@pytest.mark.parametrize("source", ["personal_token", "oauth"])
+async def test_browser_access_lists_omit_revocations_without_crossing_owner_scope(issued_refresh, monkeypatch, source):
+    from app.api.deps import get_token_info
+    from app.api.identity import mcp_access
+    from app.main import app
+    from app.services.mcp_control_plane.authority import _token_hash
+
+    factory = issued_refresh.factory
+    owner = "list-owner-" + str(uuid4())
+    expected = set()
+    async with factory() as session, session.begin():
+        for status, user, project, token_revoked in (
+            ("active", owner, "project", False),
+            ("expired", owner, "project", False),
+            ("revoked", owner, "project", False),
+            ("active", "foreign-" + str(uuid4()), "project", False),
+            ("active", owner, "foreign-project", False),
+            *(([("expired", owner, "project", True)]) if source == "personal_token" else []),
+        ):
+            grant_id = str(uuid4())
+            grant = McpDelegatedGrant(
+                id=grant_id,
+                owner_user_id=user,
+                owner_project_id=project,
+                upstream_credential_name="listing-" + grant_id,
+                display_name=status,
+                source=source,
+                access_level="read",
+                status=status,
+                expires_at=datetime.now(UTC) + timedelta(days=30),
+            )
+            session.add(grant)
+            await session.flush()
+            record_id = grant_id
+            if source == "personal_token":
+                record_id = str(uuid4())
+                session.add(
+                    McpPersonalToken(
+                        id=record_id,
+                        grant_id=grant_id,
+                        visible_prefix="mcp-afgl-test",
+                        token_hash=_token_hash(grant_id),
+                        revoked_at=datetime.now(UTC) if token_revoked else None,
+                    )
+                )
+            if status != "revoked" and user == owner and project == "project" and not token_revoked:
+                expected.add(record_id)
+    caller = {"user_id": owner, "project_id": "project", "username": "owner"}
+    monkeypatch.setitem(app.dependency_overrides, get_token_info, lambda: caller)
+    monkeypatch.setattr(mcp_access, "_session_factory", lambda: factory)
+    monkeypatch.setattr(mcp_access, "get_settings", lambda: SimpleNamespace(service_mcp_enabled=True))
+    path = "/api/v1/auth/" + ("mcp-tokens" if source == "personal_token" else "mcp-oauth/grants")
+    response = await issued_refresh.client.get(path)
+    assert response.status_code == 200
+    assert {record["id"] for record in response.json()} == expected
+    assert {record["status"] for record in response.json()} == {"active", "expired"}
+
+
 @pytest.fixture
 async def oauth_consent(issued_refresh, monkeypatch):
     from app.services import k3s_crypto, keystone

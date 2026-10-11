@@ -76,11 +76,12 @@ Returns the project's instance list. Each item's `flavor_name`/`image_name` is r
 | `union_strategy` | string \| null | `prebuilt` \| `dynamic` |
 | `union_share_ids` | array[string] | Attached Manila share IDs |
 | `union_upper_volume_id` | string \| null | OverlayFS upper volume ID |
-| `scheduling` | string \| null | `standard` \| `ha` |
 | `key_name` | string \| null | SSH keypair name |
 | `user_id` / `project_id` | string \| null | Owning user/project |
 | `fault` | object \| null | Fault info in the ERROR state `{message, code, created}` |
 | `host` | string \| null | Hypervisor host (populated only in admin scope) |
+
+The `union_*` response fields only read historical VM metadata. Ordinary VM creation no longer offers library/SquashFS consumption or HA deployment options; new plain/GPU/data-mount VMs do not create Union metadata. Administrator Palimpsest build/import/runtime deployment and the file-storage administration catalog at `/api/v1/libraries` remain independent.
 
 ### GET /api/v1/instances/availability-zones
 
@@ -105,7 +106,7 @@ Returns the details of a specific instance.
 
 ### POST /api/v1/instances
 
-Creates an instance synchronously. Waits for the response until all steps (Manila → boot volume → upper volume → cloud-init → Nova server → Floating IP) complete. **Rate limit: 5/min.**
+Creates an instance synchronously. Waits for boot-source preparation, optional data mounts, cloud-init, Nova and Floating IP setup to complete. **Rate limit: 5/min.**
 
 **Request body** (`CreateInstanceRequest`)
 
@@ -114,9 +115,6 @@ Creates an instance synchronously. Waits for the response until all steps (Manil
   "name": "my-vm",
   "image_id": "uuid-string",
   "flavor_id": "uuid-string",
-  "libraries": ["python311", "pytorch"],
-  "strategy": "prebuilt",
-  "scheduling": "standard",
   "network_id": "uuid-string",
   "key_name": "my-key",
   "admin_pass": "string(8-128)",
@@ -134,29 +132,19 @@ Creates an instance synchronously. Waits for the response until all steps (Manil
 | `image_id` | string | Conditional | Glance image UUID. **Mutually exclusive** with `boot_volume_id`; one of the two is required |
 | `boot_volume_id` | string | Conditional | Reuse an existing boot volume. Mutually exclusive with `image_id`. Only `available` + `bootable` volumes allowed |
 | `flavor_id` | string | Yes | Nova flavor UUID |
-| `libraries` | array[string] | No | List of library IDs to install. Dependencies are auto-expanded by the server |
-| `strategy` | string | No | `prebuilt` \| `dynamic`. **Meaningful only when `libraries` is present** (otherwise Union Mount is not configured) |
-| `scheduling` | string | No | `standard` (default) \| `ha` |
 | `network_id` | string | No | Network UUID to attach. When omitted, the default network is determined automatically |
 | `key_name` | string | No | SSH keypair name |
 | `admin_pass` | string | No | Admin password (8–128 chars) |
 | `availability_zone` | string | No | Availability zone. When omitted, the server default AZ |
-| `security_groups` | array[string] | No | List of security group names. The server adds required SGs depending on libraries/GPU |
+| `security_groups` | array[string] | No | Security group names. The server adds the required GPU-monitoring SG |
 | `boot_volume_size_gb` | integer | No | Boot volume size (GB, 1–16384). When omitted, the server config default |
 | `delete_boot_volume_on_termination` | boolean | No | Delete the boot volume together on instance deletion (forced false when reusing an existing volume) |
-| `existing_upper_volume_id` | string | No | Reuse an existing upper volume during recovery (requires `available`) |
 | `additional_volume_ids` | array[string] | No | List of existing volume UUIDs to attach right after creation |
 | `new_volumes` | array | No | List of volumes `{name, size_gb}` to newly create and attach |
 | `data_mounts` | array | No | Directly mount an existing Manila share `{file_storage_id, mount_point, read_only}` |
 
 > `data_mounts[].mount_point` allows only absolute paths under `/mnt`, `/data`, `/srv`, `/home`; `..`/`.` segments and system paths such as `/opt`·`/etc`·`/usr`·`/var` are rejected. Mounting an NFS share requires `network_id` (for subnet CIDR resolution).
 
-**Strategy descriptions**
-
-| Strategy | Description |
-|----------|-------------|
-| `prebuilt` | Adds an access rule to a read-only share (CephFS/NFS) prebuilt by an admin. Fast and storage-efficient. Fails if there is no prebuilt share for the library. |
-| `dynamic` | Creates a new VM-dedicated read-write share. Fully isolated but takes longer to create. |
 
 **Response (201 Created)** — the created Nova server object
 
@@ -466,7 +454,7 @@ Detaches and deletes all Floating IPs attached to the instance (best-effort).
 
 ## 8. Admin Password Reset
 
-Resets the guest admin account password via the QEMU Guest Agent (QGA). **Both endpoints are system-admin-only** (`require_admin`).
+Sends Nova `changePassword` for the guest's image-defined/default administrator account. **Both endpoints require project write access and either the verified system administrator or the instance's native Nova creator**. A non-system administrator must match `server.user_id` and `server.project_id` to their authenticated user and current project. Same-project membership, a project-admin role, and editable instance metadata do not prove creator ownership.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -484,7 +472,7 @@ Resets the guest admin account password via the QEMU Guest Agent (QGA). **Both e
 | `os_admin_user` | string \| null | Guest admin account name (based on image metadata) |
 | `server_status` | string | Current Nova status |
 
-> Conditions for `supported=true`: the instance must be in the `ACTIVE` state **and** the image metadata must have `hw_qemu_guest_agent=yes` set so that QGA is enabled.
+> `supported=true` requires an `ACTIVE` server and `hw_qemu_guest_agent` enabled (`yes`, `true`, or `1`) on its boot image. These metadata checks do not prove that QGA is currently running or that guest password changes are supported. For volume boot, the precheck uses the volume matching Nova's root device; when that privileged field is absent, it accepts only one unambiguous bootable Cinder volume. It never guesses that `/dev/vda` is the root disk.
 
 ### POST /api/v1/instances/{server_id}/admin-password
 
@@ -498,14 +486,17 @@ Resets the guest admin account password via the QEMU Guest Agent (QGA). **Both e
 |-------|------|----------|-------------|
 | `new_password` | string | Yes | New admin password (8–128 chars) |
 
-**Response**: `204 No Content`
+**Response**: `204 No Content` — Nova accepted the request. This does not prove that the guest applied the password or that RDP/SSH login succeeds.
 
 **Errors**
+- `403 Forbidden` — missing project write access, neither verified system administrator nor actual creator, wrong creator project, or native Nova policy denial
 - `404 Not Found` — instance does not exist
-- `409 Conflict` — not in the `ACTIVE` state / QGA not enabled / Nova password change conflict
-- `500 Internal Server Error` — change request failed
+- `409 Conflict` — not `ACTIVE`, QGA not enabled, ambiguous boot image, or Nova password change conflict
+- `422 Unprocessable Entity` — malformed request or password outside 8–128 characters; password input is not echoed
+- `400`, `401`, `501`, `503` — mapped provider request/authentication/driver/availability failure
+- `502 Bad Gateway` — unexpected upstream failure; raw provider errors are not returned
 
-> The QGA daemon must actually be running inside the guest for it to take effect. Reset attempts are recorded in the audit log.
+The guest's QGA service and driver support are required. Nova targets the image's `os_admin_user` or the driver's OS default; this endpoint cannot choose an arbitrary guest username. Check Windows with its console/RDP or Linux with its console/SSH; Linux SSH password authentication is a separate policy. A request accepted by Nova is not reported as a completed guest password change. Passwords are held in `SecretStr`, excluded from response/error details, and omitted from audit payloads; only the attempt outcome is audited. The user detail offers the action only for the current user's instance, and the administrator detail only for a verified system administrator. Unsupported instances show the reason, and closing the dialog clears its inputs.
 
 ---
 

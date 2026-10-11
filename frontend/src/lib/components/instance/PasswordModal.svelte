@@ -1,9 +1,9 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
-	import Modal from '$lib/components/ui/Modal.svelte';
+	import { Alert, Button, Field, FormModal, TextInput } from '$lib/components/ui';
 	import { t } from '$lib/i18n/ns/instance';
 	import RichText from '$lib/i18n/RichText.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	interface Props {
 		onClose: () => void;
@@ -17,23 +17,41 @@
 	let confirmPassword = $state('');
 	let passwordError = $state('');
 	let submitting = $state(false);
+	const componentId = $props.id();
+	let disposed = false;
+	onDestroy(() => {
+		disposed = true;
+		newPassword = '';
+		confirmPassword = '';
+	});
+
+	function onPasswordKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			void handleSetPassword();
+		}
+	}
 
 	async function handleSetPassword() {
+		if (submitting || s.passwordPrecheckLoading || !s.passwordPrecheck?.supported || !s.canChangePassword) return;
 		if (newPassword !== confirmPassword) {
 			passwordError = t('password.mismatch');
 			return;
 		}
-		if (newPassword.length < 8) {
-			passwordError = t('password.tooShort');
+		if (newPassword.length < 8 || newPassword.length > 128) {
+			passwordError = t('password.invalidLength');
 			return;
 		}
 		passwordError = '';
 		submitting = true;
 		try {
 			const err = await s.doSetPassword(newPassword);
+			if (disposed) return;
 			if (err) {
 				passwordError = err;
 			} else {
+				newPassword = '';
+				confirmPassword = '';
 				onClose();
 			}
 		} finally {
@@ -44,58 +62,56 @@
 
 {#snippet instanceName(text: string)}<span class="text-ink-0">{text}</span>{/snippet}
 {#snippet accountName(text: string)}<span class="text-warm-text">{text}</span>{/snippet}
-{#snippet sshNotice(text: string)}<span class="text-ink-2 font-medium">{text}</span>{/snippet}
-{#snippet keypairsLink(text: string)}<a href="/dashboard/compute/keypairs" class="text-cyan-400 hover:underline">{text}</a>{/snippet}
 
-<Modal open={true} onClose={onClose} labelledBy="instance-password-title">
-	<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]">
-		<h3 id="instance-password-title" class="text-ink-0 font-semibold text-lg mb-1">{t('password.title')}</h3>
-		<p class="text-ink-2 text-sm mb-4"><RichText segments={t.rich('password.instance', { name: s.instance?.name ?? '' })} tags={{ resource: instanceName }} /></p>
-		{#if s.passwordPrecheck?.os_admin_user}
-			<p class="text-xs text-ink-2 mb-4"><RichText segments={t.rich('password.targetAccount', { account: s.passwordPrecheck.os_admin_user })} tags={{ account: accountName }} /></p>
-		{:else}
-			<p class="text-xs text-ink-2 mb-4"><RichText segments={t.rich('password.automaticAccount')} classes={{ code: 'text-warm-text' }} /></p>
-		{/if}
-		<div class="bg-yellow-900/20 border border-yellow-800/40 rounded-lg p-3 mb-4 text-xs text-yellow-300">
-			{t('password.guestAgentNotice')}
-		</div>
-		<div class="space-y-3 mb-4">
-			<div>
-				<label class="block text-sm text-ink-2 mb-1" for="new-password">{t('password.newPassword')}</label>
-				<input
-					id="new-password"
-					type="password"
-					bind:value={newPassword}
-					placeholder={t('password.newPasswordPlaceholder')}
-					class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
-				/>
-			</div>
-			<div>
-				<label class="block text-sm text-ink-2 mb-1" for="confirm-password">{t('password.confirmPassword')}</label>
-				<input
-					id="confirm-password"
-					type="password"
-					bind:value={confirmPassword}
-					placeholder={t('password.confirmPasswordPlaceholder')}
-					class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
-				/>
-			</div>
-		</div>
-		{#if passwordError}
-			<p class="text-red-400 text-sm mb-3">{passwordError}</p>
-		{/if}
-		<div class="bg-surface-sunken/60 border border-line-2/40 rounded-lg p-3 mb-4 text-xs text-ink-2">
-			<RichText segments={t.rich('password.sshKeyNotice')} tags={{ notice: sshNotice, keypairs: keypairsLink }} />
-		</div>
-		<div class="flex justify-end gap-3">
-			<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('password.cancel')}</button>
-			<button
-				onclick={handleSetPassword}
-				disabled={submitting || s.passwordPrecheckLoading || !newPassword || !confirmPassword}
-				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg disabled:opacity-30"
-			>
-				{#if submitting}<ActivityIndicator size="xs" label={t('password.changing')} />{:else if s.passwordPrecheckLoading}<ActivityIndicator size="xs" label={t('header.checking')} />{:else}{t('password.submit')}{/if}
-			</button>
-		</div>
+<FormModal open={true} title={t('password.title')} {onClose} {submitting}>
+	<p class="text-ink-2 text-sm mb-4"><RichText segments={t.rich('password.instance', { name: s.instance?.name ?? '' })} tags={{ resource: instanceName }} /></p>
+	{#if s.passwordPrecheck?.os_admin_user}
+		<p class="text-xs text-ink-2 mb-4"><RichText segments={t.rich('password.targetAccount', { account: s.passwordPrecheck.os_admin_user })} tags={{ account: accountName }} /></p>
+	{:else}
+		<p class="text-xs text-ink-2 mb-4"><RichText segments={t.rich('password.automaticAccount')} classes={{ code: 'text-ink-0' }} /></p>
+	{/if}
+	<Alert tone="warning" class="mb-4">{t('password.guestAgentNotice')}</Alert>
+	<div class="space-y-3 mb-4">
+		<Field label={t('password.newPassword')} for={`${componentId}-new-password`} required>
+			<TextInput
+				id={`${componentId}-new-password`}
+				type="password"
+				autocomplete="new-password"
+				ariaLabel={t('password.newPassword')}
+				required
+				bind:value={newPassword}
+				maxlength={128}
+				disabled={submitting}
+				placeholder={t('password.newPasswordPlaceholder')}
+				onkeydown={onPasswordKeydown}
+			/>
+		</Field>
+		<Field label={t('password.confirmPassword')} for={`${componentId}-confirm-password`} required>
+			<TextInput
+				id={`${componentId}-confirm-password`}
+				type="password"
+				autocomplete="new-password"
+				ariaLabel={t('password.confirmPassword')}
+				required
+				bind:value={confirmPassword}
+				maxlength={128}
+				disabled={submitting}
+				placeholder={t('password.confirmPasswordPlaceholder')}
+				onkeydown={onPasswordKeydown}
+			/>
+		</Field>
 	</div>
-</Modal>
+	{#if passwordError || s.passwordPrecheckReason || s.passwordPrecheckError}
+		<Alert>{passwordError || s.passwordPrecheckReason || s.passwordPrecheckError}</Alert>
+	{/if}
+	{#snippet actions()}
+		<Button onclick={onClose} variant="secondary" disabled={submitting}>{t('password.cancel')}</Button>
+		<Button
+			onclick={handleSetPassword}
+			disabled={submitting || !s.canChangePassword || s.instance?.status !== 'ACTIVE' || s.passwordPrecheckLoading || !s.passwordPrecheck?.supported || !newPassword || !confirmPassword}
+			ariaBusy={submitting}
+		>
+			{submitting ? t('password.changing') : t('password.submit')}
+		</Button>
+	{/snippet}
+</FormModal>

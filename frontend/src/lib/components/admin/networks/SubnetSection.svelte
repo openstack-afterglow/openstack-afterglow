@@ -2,6 +2,8 @@
 	import { t } from '$lib/i18n/ns/admin-network';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { SubnetDetail } from '$lib/types/networks';
+	import { Button } from '$lib/components/ui';
+	import SubnetIpInventory from './SubnetIpInventory.svelte';
 
 	let {
 		subnets,
@@ -29,6 +31,13 @@
 	let subnetForm = $state({ name: '', cidr: '10.0.0.0/24', gateway: '', dhcp: true });
 	let editingSubnetId = $state<string | null>(null);
 	let editSubnetForm = $state({ name: '', gateway: '', dhcp: true });
+	let expandedSubnetIds = $state<string[]>([]);
+
+	function toggleInventory(id: string) {
+		expandedSubnetIds = expandedSubnetIds.includes(id)
+			? expandedSubnetIds.filter((expanded) => expanded !== id)
+			: [...expandedSubnetIds, id];
+	}
 
 	function startEditSubnet(subnet: SubnetDetail) {
 		editingSubnetId = subnet.id;
@@ -122,7 +131,7 @@
 
 	{#if subnets.length > 0}
 		<div class="space-y-3">
-			{#each subnets as subnet}
+			{#each subnets as subnet (subnet.id)}
 				{#if editingSubnetId === subnet.id}
 					<div class="bg-surface-sunken rounded-lg p-4 space-y-3">
 						<div class="grid grid-cols-2 gap-3">
@@ -168,9 +177,9 @@
 						</div>
 					</div>
 				{:else}
-					<div class="bg-surface-sunken/50 rounded-lg p-4">
-						<div class="flex items-start justify-between mb-3">
-							<div>
+					<div class="min-w-0 bg-surface-sunken/50 rounded-lg p-4">
+						<div class="flex flex-wrap items-start justify-between gap-3 mb-3">
+							<div class="min-w-0">
 								<h3 class="text-sm font-medium text-ink-0">
 									<a
 										href="/admin/subnets/{subnet.id}"
@@ -179,7 +188,7 @@
 										{subnet.name || t('subnetSection.unnamed')}
 									</a>
 								</h3>
-								<span class="text-xs text-ink-2 font-mono">{subnet.id}</span>
+								<span class="text-xs text-ink-2 font-mono break-all">{subnet.id}</span>
 							</div>
 							<div class="flex items-center gap-1">
 								<button
@@ -214,9 +223,24 @@
 							</div>
 							<div>
 								<dt class="text-xs text-ink-2 mb-0.5">{t('subnetSection.ipVersion')}</dt>
-								<dd class="text-sm text-ink-2">IPv4</dd>
+								<dd class="text-sm text-ink-2">IPv{subnet.ip_version}</dd>
 							</div>
 						</dl>
+						<div class="mt-4">
+							<Button
+								variant="outline"
+								size="sm"
+								ariaExpanded={expandedSubnetIds.includes(subnet.id)}
+								onclick={() => toggleInventory(subnet.id)}
+							>
+								{expandedSubnetIds.includes(subnet.id) ? t('subnetSection.hideInventory') : t('subnetSection.showInventory')}
+							</Button>
+						</div>
+						{#if expandedSubnetIds.includes(subnet.id)}
+							<div id={`subnet-inventory-${subnet.id}`} class="min-w-0 mt-4">
+								<SubnetIpInventory subnetId={subnet.id} />
+							</div>
+						{/if}
 					</div>
 				{/if}
 			{/each}

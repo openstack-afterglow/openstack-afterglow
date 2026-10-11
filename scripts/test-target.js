@@ -18,6 +18,14 @@ function expandChatBackendSelectors() {
 		.sort();
 }
 
+function expandMcpBackendSelectors() {
+	return fs
+		.readdirSync(path.join(backendDir, "tests"), { withFileTypes: true })
+		.filter((entry) => entry.isFile() && /^test_mcp_.*\.py$/.test(entry.name))
+		.map((entry) => `tests/${entry.name}`)
+		.sort();
+}
+
 function expandDbBackendSelectors() {
 	const testsDir = path.join(backendDir, "tests");
 	return fs
@@ -48,6 +56,14 @@ function expandChatFrontendSelectors() {
 }
 
 const targets = {
+	mcp: {
+		description: "Consumer MCP registry, delegated authority, SDK adapters and HTTP transport",
+		liveServices: "none",
+		backend: {
+			selectors: expandMcpBackendSelectors,
+			extraArgs: ["-m", "not db and not contract"]
+		}
+	},
 	auth: {
 		description: "Login/logout, token, session, site-config auth surfaces",
 		liveServices: "none",
@@ -116,6 +132,7 @@ const targets = {
 			selectors: [
 				"tests/test_afterglow_conf_config.py",
 				"tests/contracts/test_ingress_root_path_coverage.py",
+				"tests/contracts/test_proxy_scheme.py",
 				"tests/test_config_insecure_guard.py",
 				"tests/test_config_keystone_url.py",
 				"tests/test_config_layer_images.py",
@@ -188,9 +205,9 @@ const targets = {
 				"tests/test_instance_metrics_summary.py",
 				"tests/test_instance_password.py",
 				"tests/test_instance_boot_from_volume.py",
-				"tests/test_instance_existing_upper.py",
 				"tests/test_instance_scheduling.py",
 				"tests/test_instances_data_mounts.py",
+				"tests/test_data_mount_subnet_cidrs.py",
 				"tests/test_instances_no_libraries.py",
 				"tests/test_bulk_instance_action.py",
 				"tests/test_admin_instances.py",
@@ -212,13 +229,17 @@ const targets = {
 				"src/lib/components/wizard/__tests__/SelectFlavor.test.ts",
 				"src/lib/components/wizard/__tests__/SelectImage.test.ts",
 				"src/lib/components/wizard/__tests__/WizardStep5Config.test.ts",
+				"src/lib/components/wizard/__tests__/WizardStep6Review.test.ts",
+				"src/lib/components/wizard/__tests__/WizardFooter.test.ts",
+				"src/lib/components/wizard/__tests__/WizardStepper.test.ts",
+				"src/lib/stores/__tests__/wizard.test.ts",
 				"src/lib/components/wizard/__tests__/VmDeployProgress.test.ts",
-				"src/lib/stores/__tests__/vmCreateStore.test.ts",
 				"src/lib/stores/__tests__/vmCreateStoreLoad.test.ts",
 				"src/lib/stores/__tests__/vmCreateStoreRealClient.test.ts",
 				"src/lib/stores/__tests__/vmCreateStoreProgress.test.ts",
 				"src/lib/components/admin/__tests__/AdminInstanceTable.test.ts",
 				"src/routes/admin/hypervisors/__tests__",
+				"src/lib/stores/__tests__/instanceDetailController.password.test.ts",
 				"src/lib/stores/__tests__/instanceDetailController.resize.test.ts"
 			]
 		}
@@ -285,7 +306,6 @@ const targets = {
 				"tests/test_ephemeral_build_orchestration.py",
 				"tests/test_ephemeral_builder_vm.py",
 				"tests/test_ephemeral_mount.py",
-				"tests/test_prebuilt_nfs_auto_grant.py",
 				"tests/test_smoke_mount_heat.py",
 				"tests/test_smoke_mount_tofu.py",
 				"tests/test_config_layer_images.py"
@@ -294,8 +314,7 @@ const targets = {
 		frontend: {
 			selectors: [
 				"src/routes/admin/libraries/__tests__/dockerfile-lint.test.ts",
-				"src/lib/components/admin/libraries/__tests__/DockerfileLintPanel.test.ts",
-				"src/lib/components/wizard/__tests__/vm-create-squashfs-beta.test.ts"
+				"src/lib/components/admin/libraries/__tests__/DockerfileLintPanel.test.ts"
 			]
 		}
 	},
@@ -394,6 +413,7 @@ const targets = {
 				"tests/contracts/test_service_sdk_dependency_sources.py",
 				"tests/contracts/test_mcp_stage2_adapters.py",
 				"tests/contracts/test_ingress_root_path_coverage.py",
+				"tests/contracts/test_proxy_scheme.py",
 				"tests/contracts/test_k3s_shell_proxy.py",
 				"tests/contracts/test_mcp_lumen_bridge.py"
 			],

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PageShell from '$lib/components/ui/PageShell.svelte';
   import { t } from '$lib/i18n/ns/network-pages';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { untrack } from 'svelte';
@@ -132,7 +133,7 @@
 </script>
 <RouterCreateModal bind:open={showModal} {externalNetworks} onCreate={createRouter} />
 
-<div class="bulk-selection-page p-4 md:p-8">
+<PageShell class="bulk-selection-page">
   <PageHeader breadcrumb={t('routers.breadcrumb')} title={t('routers.title')}>
     {#snippet actions()}
       <AutoRefreshControl
@@ -163,7 +164,7 @@
       onOpen={openRouterPanel}
     />
   {/if}
-</div>
+</PageShell>
 
 <BulkSelectionOverlay
   count={selection.count}

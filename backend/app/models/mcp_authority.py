@@ -16,7 +16,7 @@ from sqlalchemy import (
     Index,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.mysql import MEDIUMTEXT
+from sqlalchemy.dialects.mysql import DATETIME, MEDIUMTEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -56,8 +56,11 @@ class McpDelegatedGrant(Base):
     application_credential_id: Mapped[str | None] = mapped_column(VARCHAR(128))
     credential_ciphertext: Mapped[str | None] = mapped_column(MEDIUMTEXT)
     credential_epoch: Mapped[int] = mapped_column(BIGINT, nullable=False, default=1)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True).with_variant(DATETIME(fsp=6), "mysql").with_variant(DATETIME(fsp=6), "mariadb")
+    )
     issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cleanup_pending: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, default=False)
     cleanup_last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -72,6 +75,7 @@ class McpDelegatedGrant(Base):
         CheckConstraint("access_level IN ('read', 'manage')", name="chk_mcp_grant_access"),
         CheckConstraint("project_scope IN ('current', 'selected', 'all')", name="chk_mcp_grant_project_scope"),
         CheckConstraint("status IN ('pending', 'active', 'revoked', 'expired')", name="chk_mcp_grant_status"),
+        CheckConstraint("expires_at IS NOT NULL OR source = 'personal_token'", name="chk_mcp_grant_expiry"),
         Index("idx_mcp_grants_owner_status", "owner_user_id", "owner_project_id", "status"),
         Index("idx_mcp_grants_expiry", "expires_at", "status"),
     )

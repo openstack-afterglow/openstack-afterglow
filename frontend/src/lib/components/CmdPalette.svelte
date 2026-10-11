@@ -22,8 +22,6 @@
   }
 
   const MOCKUP_BETA_FEATURES: BetaFeatures = {
-    libraryConsume: true,
-    haDeploy: true,
     keyManager: true,
     volumeSnapshots: true,
     fileStorageSnapshots: true,

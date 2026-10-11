@@ -217,6 +217,7 @@
   /* Overlay stacking */
   /* Application geometry */
   --app-header-height: 3rem;
+  --app-content-max-width: 80rem;
   --app-sidebar-width: 15rem;
   --app-sidebar-collapsed-width: 3.5rem;
   --app-sidebar-offset: var(--app-sidebar-width);

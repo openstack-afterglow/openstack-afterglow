@@ -449,7 +449,6 @@
 <style>
 	.landing-page {
 		--landing-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-		--landing-container: 80rem;
 		--landing-gutter: 1rem;
 		--landing-nav-height: 10rem;
 		min-height: 100%;
@@ -470,7 +469,7 @@
 	.landing-page :global(img) { display: block; max-width: 100%; }
 	.landing-page :global(a) { color: inherit; }
 	.landing-page h1, .landing-page h2, .landing-page h3, .landing-page p, .landing-page blockquote { margin: 0; }
-	.landing-page .container { width: min(var(--landing-container), calc(100% - var(--landing-gutter) * 2)); margin-inline: auto; }
+	.landing-page .container { box-sizing: border-box; width: 100%; max-width: var(--app-content-max-width); margin-inline: auto; padding-inline: var(--landing-gutter); }
 	.landing-page :global(a:focus-visible), .landing-page :global(button:focus-visible) { outline: none; box-shadow: var(--focus-ring); }
 
 	.skip-link { position: fixed; top: 0.75rem; left: 1rem; z-index: var(--z-toast); display: inline-flex; min-height: 2.75rem; align-items: center; padding: 0 0.875rem; border: 1px solid var(--color-warm); border-radius: 0.5rem; background: var(--color-ink-0); color: var(--color-surface-canvas); font-weight: 700; text-decoration: none; transform: translateY(-160%); transition: transform var(--motion-duration-fast) var(--landing-ease); }
@@ -619,7 +618,7 @@
 	:global(.landing-page.reveal-enabled.reveal-ready) [data-reveal] { transition: opacity 600ms var(--landing-ease), transform 600ms var(--landing-ease); }
 
 	@media (min-width: 768px) {
-		.landing-page { --landing-gutter: 2rem; --landing-nav-height: 7rem; }
+		.landing-page { --landing-gutter: 1.5rem; --landing-nav-height: 7rem; }
 		.nav { grid-template-areas: 'brand cta locale' 'links links links'; grid-template-columns: minmax(0, 1fr) auto auto; }
 		.nav-links { justify-content: center; }
 		.hero { padding: 5rem 0 2rem; }

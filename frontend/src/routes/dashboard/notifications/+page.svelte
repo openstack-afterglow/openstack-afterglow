@@ -113,7 +113,7 @@
 
 </script>
 
-<PageShell max="5xl">
+<PageShell>
 	<div class="flex items-center gap-3 mb-4">
 		<a
 			href="/dashboard"

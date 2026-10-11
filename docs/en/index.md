@@ -26,7 +26,7 @@ Afterglow currently runs as the [DMS Cloud research-cloud delivery console](http
 | VM, GPU, vCPU, and storage | Nova VM creation with project quotas, images, networks, and keypairs |
 | Kubernetes clusters | cloud-init-based k3s control-plane and worker-node configuration, with state and workload tracking |
 | Shared data space | Manila CephFS/NFS shares and snapshots |
-| AI/ML libraries | Store squashfs/NFS content-addressable immutable layer chains on Manila shares and compose them with OverlayFS in consumer VMs for reuse |
+| AI/ML libraries | Administrator Palimpsest layer build/consume and project packages; current source no longer offers library/squashfs consumption in the ordinary VM wizard |
 | Operations | Projects, users, roles, quotas, Grafana, Prometheus, and audit logs |
 
 The browser's SvelteKit application calls the configured FastAPI `/api/v1` API base directly; SvelteKit is the UI/auth shell, not an API relay. The backend talks to OpenStack services through `openstacksdk`, while Redis provides cache and session support. The current architecture source of truth is the [root `ARCHITECTURE.md`](https://github.com/openstack-afterglow/openstack-afterglow/blob/main/ARCHITECTURE.md); see the [Palimpsest layer documentation](../palimpsest.md) for detailed flows.

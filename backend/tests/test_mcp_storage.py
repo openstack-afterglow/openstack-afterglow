@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.services.mcp_control_plane import sdk, storage
 from app.services.mcp_control_plane.storage import (
     McpStorageError,
     get_project_backup,
@@ -15,9 +16,11 @@ from app.services.mcp_control_plane.storage import (
     list_project_volumes,
     preview_project_backup_delete,
     preview_project_snapshot_delete,
+    preview_project_volume_create,
     preview_project_volume_delete,
     request_project_backup_delete,
     request_project_snapshot_delete,
+    request_project_volume_create,
     request_project_volume_delete,
 )
 
@@ -433,3 +436,271 @@ async def test_snapshot_and_backup_delete_revalidate_owned_parent_without_force(
         ("get_volume", "volume-a"),
         ("delete_backup", ("backup-a", {"ignore_missing": False, "force": False})),
     ]
+
+
+class _VolumeCreateStore:
+    """A principal-owned store with asynchronous creation and native tenant omission."""
+
+    def __init__(self, *, include_owner=False):
+        self.project_id = "project-a"
+        self.include_owner = include_owner
+        self.records = {}
+        self.calls = []
+
+    def create_volume(self, *, name, size, **attributes):
+        self.calls.append(("create", attributes))
+        volume_id = f"volume-{len(self.records) + 1}"
+        record = {
+            "id": volume_id,
+            "name": name,
+            "size": size,
+            "status": "creating",
+            "project_id": self.project_id,
+            "created_at": "2026-10-11T00:00:00Z",
+            "availability_zone": attributes.get("availability_zone", "native-default"),
+            "encryption_key_id": "secret-key",
+            "volume_image_metadata": {"password": "secret-password"},
+            "metadata": {"token": "secret-token"},
+        }
+        self.records[volume_id] = record
+        response = dict(record)
+        if not self.include_owner:
+            response.pop("project_id")
+        return response
+
+    def get_volume(self, volume_id):
+        self.calls.append(("get", volume_id))
+        return self.records.get(volume_id)
+
+    def wait_for_status(self, *_args, **_kwargs):
+        self.calls.append(("wait", None))
+        raise AssertionError("creation must not wait for readiness")
+
+    def delete_volume(self, *_args, **_kwargs):
+        self.calls.append(("delete", None))
+        raise AssertionError("creation must not roll back an uncertain result")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size_gb", [1, 16384])
+async def test_volume_create_preview_validates_without_provider_access(size_gb):
+    class NoProviderAccess:
+        def __getattr__(self, _name):
+            raise AssertionError("preview must not access a provider")
+
+    result = await preview_project_volume_create(
+        NoProviderAccess(),
+        project_id="project-a",
+        name="x" * 255,
+        size_gb=size_gb,
+        availability_zone="z" * 255,
+    )
+
+    assert result == {"name": "x" * 255, "size_gb": size_gb, "availability_zone": "z" * 255}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", [preview_project_volume_create, request_project_volume_create])
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        {"name": ""},
+        {"name": " \t\n"},
+        {"name": "x" * 256},
+        {"name": None},
+        {"name": 1},
+        {"size_gb": 0},
+        {"size_gb": -1},
+        {"size_gb": 16385},
+        {"size_gb": True},
+        {"size_gb": False},
+        {"size_gb": "20"},
+        {"size_gb": 20.0},
+        {"size_gb": None},
+        {"availability_zone": ""},
+        {"availability_zone": " \t\n"},
+        {"availability_zone": "z" * 256},
+        {"availability_zone": True},
+        {"availability_zone": 1},
+    ],
+)
+async def test_volume_create_invalid_inputs_never_touch_provider(operation, invalid):
+    store = _VolumeCreateStore()
+    arguments = {"name": "data-a", "size_gb": 20, "availability_zone": None, **invalid}
+
+    with pytest.raises(McpStorageError):
+        await operation(SimpleNamespace(block_storage=store), project_id="project-a", **arguments)
+
+    assert store.records == {}
+    assert store.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("include_owner", [False, True])
+@pytest.mark.parametrize("availability_zone", [None, "zone-a"])
+@pytest.mark.parametrize("size_gb", [1, 16384])
+async def test_volume_create_accepts_one_owned_async_resource_without_waiting(
+    include_owner, availability_zone, size_gb
+):
+    store = _VolumeCreateStore(include_owner=include_owner)
+    conn = SimpleNamespace(block_storage=store)
+    arguments = {"project_id": "project-a", "name": "data-a", "size_gb": size_gb}
+    if availability_zone is not None:
+        arguments["availability_zone"] = availability_zone
+
+    preview = await preview_project_volume_create(conn, **arguments)
+    assert store.calls == []
+    assert preview == {"name": "data-a", "size_gb": size_gb, "availability_zone": availability_zone}
+    result = await request_project_volume_create(conn, **arguments)
+
+    assert result == {
+        "id": "volume-1",
+        "name": "data-a",
+        "status": "creating",
+        "size_gb": size_gb,
+        "created_at": "2026-10-11T00:00:00Z",
+        "requested_action": "create",
+    }
+    assert len(store.records) == 1
+    created = store.records["volume-1"]
+    assert created["project_id"] == "project-a"
+    assert created["size"] == size_gb
+    assert created["status"] == "creating"
+    assert created["availability_zone"] == (availability_zone or "native-default")
+    assert store.calls == [
+        ("create", {} if availability_zone is None else {"availability_zone": availability_zone}),
+        *([] if include_owner else [("get", "volume-1")]),
+    ]
+    assert "secret" not in repr(result)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"project_id": "project-b"},
+        {"project_id": ""},
+        {"project_id": True},
+        {"project_id": "project-a", "os-vol-tenant-attr:tenant_id": "project-b"},
+        {"id": None},
+        {"id": ""},
+        {"id": "  "},
+        {"status": None},
+        {"status": 202},
+        {"size": True},
+        {"size": "20"},
+        {"size": -1},
+        {"name": {"password": "secret-password"}},
+        {"created_at": {"password": "secret-password"}},
+    ],
+)
+async def test_volume_create_rejects_unproven_or_malformed_response_without_deleting(fields):
+    class Store(_VolumeCreateStore):
+        def create_volume(self, **attributes):
+            return {**super().create_volume(**attributes), **fields}
+
+    store = Store(include_owner=True)
+    with pytest.raises(McpStorageError) as failure:
+        await request_project_volume_create(
+            SimpleNamespace(block_storage=store), project_id="project-a", name="data-a", size_gb=20
+        )
+
+    assert "secret" not in str(failure.value)
+    assert len(store.records) == 1
+    assert store.calls == [("create", {})]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"project_id": None},
+        {"project_id": "project-b"},
+        {"os-vol-tenant-attr:tenant_id": "project-b"},
+        {"id": "unrelated-volume"},
+        {"status": None},
+        {"size": False},
+    ],
+)
+async def test_volume_create_owner_lookup_cannot_invent_or_replace_created_record(fields):
+    class Store(_VolumeCreateStore):
+        def get_volume(self, volume_id):
+            return {**super().get_volume(volume_id), **fields}
+
+    store = Store()
+    with pytest.raises(McpStorageError):
+        await request_project_volume_create(
+            SimpleNamespace(block_storage=store), project_id="project-a", name="data-a", size_gb=20
+        )
+
+    assert len(store.records) == 1
+    assert store.calls == [("create", {}), ("get", "volume-1")]
+
+
+@pytest.mark.asyncio
+async def test_volume_create_missing_lookup_leaves_created_volume_untouched():
+    class Store(_VolumeCreateStore):
+        def get_volume(self, volume_id):
+            super().get_volume(volume_id)
+            return None
+
+    store = Store()
+    with pytest.raises(McpStorageError, match="not found"):
+        await request_project_volume_create(
+            SimpleNamespace(block_storage=store), project_id="project-a", name="data-a", size_gb=20
+        )
+
+    assert len(store.records) == 1
+    assert store.calls == [("create", {}), ("get", "volume-1")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_stage", ["create", "get"])
+async def test_volume_create_sanitizes_upstream_failures_without_retry_or_rollback(failure_stage):
+    class Store(_VolumeCreateStore):
+        def create_volume(self, **attributes):
+            response = super().create_volume(**attributes)
+            if failure_stage == "create":
+                raise RuntimeError("secret-password at https://user:secret-token@provider.invalid")
+            return response
+
+        def get_volume(self, volume_id):
+            super().get_volume(volume_id)
+            raise RuntimeError("secret-password at https://user:secret-token@provider.invalid")
+
+    store = Store()
+    with pytest.raises(McpStorageError, match="Cinder volume creation is unavailable") as failure:
+        await request_project_volume_create(
+            SimpleNamespace(block_storage=store), project_id="project-a", name="data-a", size_gb=20
+        )
+
+    assert "secret" not in str(failure.value)
+    assert "provider.invalid" not in str(failure.value)
+    assert len(store.records) == 1
+    assert store.calls == [("create", {}), *([] if failure_stage == "create" else [("get", "volume-1")])]
+
+
+@pytest.mark.asyncio
+async def test_volume_create_fences_deadline_after_final_worker_validation(monkeypatch):
+    store = _VolumeCreateStore()
+    prepare = storage._prepare_volume_create
+    validations = []
+
+    def expire_after_validation(**arguments):
+        result = prepare(**arguments)
+        validations.append(result)
+        call = sdk._current_call.get()
+        assert call is not None
+        call.deadline = 0
+        return result
+
+    monkeypatch.setattr(storage, "_prepare_volume_create", expire_after_validation)
+    with sdk.sdk_deadline(60):
+        with pytest.raises(McpStorageError, match="creation is unavailable"):
+            await request_project_volume_create(
+                SimpleNamespace(block_storage=store), project_id="project-a", name="data-a", size_gb=20
+            )
+
+    assert validations == [{"name": "data-a", "size_gb": 20, "availability_zone": None}]
+    assert store.records == {}
+    assert store.calls == []

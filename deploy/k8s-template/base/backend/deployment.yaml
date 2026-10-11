@@ -46,12 +46,18 @@ spec:
               "uvloop",
               "--http",
               "httptools",
+              "--proxy-headers",
             ]
           ports:
             - containerPort: 8000
           env:
             - name: AFTERGLOW_ENV
               value: "production"
+            - name: FORWARDED_ALLOW_IPS
+              valueFrom:
+                configMapKeyRef:
+                  name: afterglow-config
+                  key: FORWARDED_ALLOW_IPS
             - name: REDIS_URL
               valueFrom:
                 configMapKeyRef:

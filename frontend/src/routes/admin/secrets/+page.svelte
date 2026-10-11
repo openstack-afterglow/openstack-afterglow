@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/admin-system';
 	import { t as tc } from '$lib/i18n/ns/common';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
@@ -143,9 +144,9 @@
 </script>
 
 {#if !keyManagerEnabled}
-	<div class="p-4 md:p-8">
+	<PageShell>
 		<BetaFeatureGate title={t('secrets.betaTitle')} />
-	</div>
+	</PageShell>
 {:else}
 <FormModal
 	bind:open={showSetQuota}
@@ -181,7 +182,7 @@
 	</div>
 </FormModal>
 
-<div class="p-4 md:p-8">
+<PageShell>
 	<div data-tour="admin-key-manager-header">
 	<PageHeader breadcrumb={t('secrets.breadcrumb')} title={t('secrets.title')}>
 		{#snippet actions()}
@@ -241,5 +242,5 @@
 		</div>
 	{/if}
 	</div>
-</div>
+</PageShell>
 {/if}

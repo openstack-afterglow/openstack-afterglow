@@ -21,7 +21,6 @@ const driverHarness = vi.hoisted(() => {
 vi.mock('driver.js', () => ({ driver: driverHarness.driver }));
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { setBetaFeature } from '$lib/stores/betaFeatures';
 import { sidebarOpen } from '$lib/stores/sidebar';
 import { refreshTourAnchor, startTour, stopTour } from '../engine';
 import { clearPersistedTour, readPersistedTour, waitForElement } from '../engine';
@@ -110,57 +109,78 @@ describe('tour definitions', () => {
 		expect(tenant?.steps[1].readyElement).toBe('[data-tour="waygate-ready"]');
 	});
 
-	it('vm-create 투어는 libraryConsume 베타에 따라 라이브러리 단계를 넣고 뺀다', () => {
-		try {
-			setBetaFeature('libraryConsume', false);
-			const withoutLib = getTour('vm-create')!;
-			expect(withoutLib.steps).toHaveLength(6);
-			expect(withoutLib.steps.some((step) => step.title.includes('라이브러리'))).toBe(false);
-
-			setBetaFeature('libraryConsume', true);
-			const withLib = getTour('vm-create')!;
-			expect(withLib.steps).toHaveLength(7);
-			const libStep = withLib.steps.find((step) => step.title.includes('라이브러리'));
-			expect(libStep).toBeTruthy();
-			// 위저드가 실제로 해당 단계를 노출하지 않으면(비 Ubuntu 이미지) 런타임에 건너뛴다
-			expect(libStep!.skipIf).toBeTypeOf('function');
-			expect(libStep!.skipIf!()).toBe(true); // 스텝퍼가 없는 DOM에서는 건너뛴다
-		} finally {
-			setBetaFeature('libraryConsume', false);
-		}
+	it('vm-create 투어는 일반 VM 단계만 안내한다', () => {
+		const tour = getTour('vm-create')!;
+		expect(tour.steps).toHaveLength(6);
+		expect(tour.steps.some((step) => /라이브러리|전략|베타|\bHA\b/.test(`${step.title} ${step.description}`))).toBe(false);
+		expect(tour.steps.filter((step) => step.wizardStep !== undefined).map((step) => step.wizardStep)).toEqual([1, 2, 5, 6]);
 	});
 
 	it('vm-create 투어는 raw 위저드 단계와 팝오버 진행 방식을 매핑한다', () => {
-		try {
-			setBetaFeature('libraryConsume', true);
-			const tour = getTour('vm-create')!;
-			const expected = [
-				{ title: '이미지 선택', wizardStep: 1, advanceOn: 'wizard' },
-				{ title: '플레이버 선택', wizardStep: 2, advanceOn: 'wizard' },
-				{ title: '라이브러리 (베타)', wizardStep: 3, advanceOn: 'wizard' },
-				{ title: '기본 설정 확인', wizardStep: 5, advanceOn: 'wizard' },
-				{ title: '배포', wizardStep: 6, advanceOn: 'click' },
-			] as const;
+		const tour = getTour('vm-create')!;
+		const expected = [
+			{ title: '이미지 선택', wizardStep: 1, advanceOn: 'wizard' },
+			{ title: '플레이버 선택', wizardStep: 2, advanceOn: 'wizard' },
+			{ title: '기본 설정 확인', wizardStep: 5, advanceOn: 'wizard' },
+			{ title: '배포', wizardStep: 6, advanceOn: 'click' },
+		] as const;
 
-			for (const mapping of expected) {
-				const step = tour.steps.find((candidate) => candidate.title === mapping.title);
-				expect(step).toMatchObject({
-					wizardStep: mapping.wizardStep,
-					advanceOn: mapping.advanceOn,
-				});
-				expect(step?.backElement).toBeUndefined();
-			}
-
-			const imageStep = tour.steps.find((step) => step.title === '이미지 선택');
-			expect(imageStep?.cancelElement).toBe('[data-tour="wizard-cancel"]');
-			expect(imageStep?.readyElement).toBe('[data-tour="wizard-body"]');
-			const deployStep = tour.steps.find((step) => step.title === '배포');
-			expect(deployStep?.advanceElement).toBe('[data-tour="wizard-next"]');
-		} finally {
-			setBetaFeature('libraryConsume', false);
+		for (const mapping of expected) {
+			const step = tour.steps.find((candidate) => candidate.title === mapping.title);
+			expect(step).toMatchObject({
+				wizardStep: mapping.wizardStep,
+				advanceOn: mapping.advanceOn,
+			});
+			expect(step?.backElement).toBeUndefined();
+			expect(step?.cancelElement).toBe('[data-tour="wizard-cancel"]');
 		}
+
+		const imageStep = tour.steps.find((step) => step.title === '이미지 선택');
+		expect(imageStep?.readyElement).toBe('[data-tour="wizard-body"]');
+		const deployStep = tour.steps.find((step) => step.title === '배포');
+		expect(deployStep?.advanceElement).toBe('[data-tour="wizard-next"]');
 	});
 
+});
+
+describe('VM tour engine behavior', () => {
+	it('tracks steps 1, 2, 5, 6 in both directions and finishes after deployment', async () => {
+		document.body.innerHTML = `
+			<div data-tour="wizard-panel"><div data-tour="wizard-body"></div></div>
+			<button data-tour="wizard-next">deploy</button>
+			<button data-tour="wizard-cancel">cancel</button>
+			<div data-tour="dashboard-recent"></div>
+		`;
+		await startTour('vm-create', 1);
+		expect(readPersistedTour()).toEqual({ tourId: 'vm-create', stepIndex: 1 });
+
+		const sequence = [
+			[2, 2, '플레이버 선택'],
+			[5, 3, '기본 설정 확인'],
+			[6, 4, '배포'],
+			[5, 3, '기본 설정 확인'],
+			[2, 2, '플레이버 선택'],
+			[1, 1, '이미지 선택'],
+			[6, 4, '배포'],
+		] as const;
+		for (const [wizardStep, stepIndex, title] of sequence) {
+			const highlights = driverHarness.highlight.mock.calls.length;
+			window.dispatchEvent(new CustomEvent('afterglow:wizard-step', { detail: { step: wizardStep } }));
+			await vi.waitFor(() => expect(driverHarness.highlight).toHaveBeenCalledTimes(highlights + 1));
+			expect(readPersistedTour()).toEqual({ tourId: 'vm-create', stepIndex });
+			expect(driverHarness.highlight).toHaveBeenLastCalledWith(expect.objectContaining({
+				popover: expect.objectContaining({ title: expect.stringContaining(title), showButtons: ['close'] }),
+			}));
+		}
+
+		document.querySelector<HTMLButtonElement>('[data-tour="wizard-next"]')!.click();
+		await vi.waitFor(() => expect(driverHarness.highlight).toHaveBeenLastCalledWith(
+			expect.objectContaining({ element: '[data-tour="dashboard-recent"]' }),
+		));
+		expect(readPersistedTour()).toEqual({ tourId: 'vm-create', stepIndex: 5 });
+		driverHarness.options().onNextClick();
+		expect(readPersistedTour()).toBeNull();
+	});
 });
 
 

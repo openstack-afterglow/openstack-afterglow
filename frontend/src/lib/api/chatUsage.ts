@@ -53,6 +53,7 @@ export interface ApiKey {
 	last_used_at: string | null;
 	created_at: string | null;
 	revoked_at: string | null;
+	expires_at: string | null;
 	owner_monthly_credit_limit: string | null;
 	admin_monthly_credit_limit: string | null;
 	system_monthly_credit_limit: string | null;
@@ -62,6 +63,13 @@ export interface ApiKey {
 	system_weekly_credit_limit: string | null;
 	effective_weekly_credit_limit: string | null;
 	week_credited_cost: string;
+}
+
+export interface ApiKeyIssuancePolicy {
+	monthly_credit_limit: string | null;
+	weekly_credit_limit: string | null;
+	allowed_scopes: string[];
+	scope_capabilities: Record<string, string[]>;
 }
 
 export type UsageMetric = 'total_tokens' | 'credited_cost' | 'request_count';

@@ -1,4 +1,4 @@
-"""libraries=[] 시 Manila·upper 볼륨 미호출 회귀 테스트 (sync + SSE)."""
+"""Ordinary sync/SSE create avoids library side effects while retaining GPU/data mounts."""
 
 import base64
 import json
@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.compute import InstanceInfo
+from app.models.compute import FlavorInfo, InstanceInfo
 from app.services import cloudinit
 from app.services.resource_policies import ResourcePolicyValidationError
 
@@ -16,7 +16,7 @@ pytestmark = pytest.mark.usefixtures("available_flavor_capacity")
 
 @pytest.fixture(autouse=True)
 def _resolve_default_placement_policies(monkeypatch):
-    """Keep no-library flow tests independent of placement policy storage."""
+    """Keep ordinary create tests independent of placement storage and compute quota."""
 
     async def resolve_zones(_conn, _requested_zone):
         return "", ""
@@ -25,14 +25,18 @@ def _resolve_default_placement_policies(monkeypatch):
         "app.api.compute.instances.instance_orch.resolve_availability_zones",
         resolve_zones,
     )
+    monkeypatch.setattr(
+        "app.services.nova.get_project_quota",
+        lambda *_args: {
+            "instances": {"limit": 10, "in_use": 0},
+            "cores": {"limit": 64, "in_use": 0},
+            "ram": {"limit": 131072, "in_use": 0},
+        },
+    )
 
 
-def _make_flavor(is_gpu: bool = False):
-    f = MagicMock()
-    f.id = "flavor-1"
-    f.is_gpu = is_gpu
-    f.extra_specs = {}
-    return f
+def _make_flavor() -> FlavorInfo:
+    return FlavorInfo(id="flavor-1", name="m1.medium", vcpus=2, ram=4096, disk=20, extra_specs={})
 
 
 def _make_volume(vol_id: str = "vol-1"):
@@ -68,7 +72,6 @@ PAYLOAD = {
     "name": "test-no-libs",
     "image_id": "img-abc",
     "flavor_id": "flavor-1",
-    "libraries": [],
     "network_id": "net-1",
     "key_name": "mykey",
     "boot_volume_size_gb": 50,
@@ -97,8 +100,8 @@ async def test_async_placement_policy_failure_returns_safe_503(client):
 
 
 @pytest.mark.asyncio
-async def test_sync_no_libraries_skips_manila_and_upper(client, mock_conn):
-    """sync: libraries=[] 이면 Manila share·upper 볼륨을 생성하지 않는다."""
+async def test_sync_ordinary_create_skips_library_side_effects(client, mock_conn):
+    """Ordinary sync create must not provision library shares or upper volumes."""
     with (
         patch("app.api.compute.instances.nova.list_flavors", return_value=[_make_flavor()]),
         patch(
@@ -118,11 +121,6 @@ async def test_sync_no_libraries_skips_manila_and_upper(client, mock_conn):
             new_callable=AsyncMock,
             return_value=[],
         ),
-        patch(
-            "app.api.compute.instances.instance_orch.try_issue_health_token",
-            new_callable=AsyncMock,
-            return_value=("", "", ""),
-        ) as mock_health_token,
         patch("app.api.compute.instances.rec", new_callable=AsyncMock),
         patch("app.api.compute.instances.invalidate", new_callable=AsyncMock),
         patch(
@@ -137,14 +135,17 @@ async def test_sync_no_libraries_skips_manila_and_upper(client, mock_conn):
     assert resp.status_code == 201, resp.text
     mock_manila.assert_not_called()
     mock_upper.assert_not_called()
-    mock_health_token.assert_not_called()
-    metadata = mock_create_server.call_args.kwargs["metadata"]
-    assert not any(key.startswith("union_") for key in metadata)
+    create_kwargs = mock_create_server.call_args.kwargs
+    assert create_kwargs["boot_volume_id"] == "boot-vol"
+    assert create_kwargs["delete_boot_volume_on_termination"] is False
+    assert create_kwargs["key_name"] == "mykey"
+    assert create_kwargs["userdata"] is None
+    assert not any(key.startswith("union_") for key in create_kwargs["metadata"])
 
 
 @pytest.mark.asyncio
-async def test_sse_no_libraries_skips_manila_and_upper(client, mock_conn):
-    """SSE: libraries=[] 이면 Manila share·upper 볼륨을 생성하지 않는다."""
+async def test_sse_ordinary_create_skips_library_side_effects(client, mock_conn):
+    """Ordinary SSE create must not provision library shares or upper volumes."""
     with (
         patch("app.api.compute.instances.nova.list_flavors", return_value=[_make_flavor()]),
         patch(
@@ -164,11 +165,6 @@ async def test_sse_no_libraries_skips_manila_and_upper(client, mock_conn):
             new_callable=AsyncMock,
             return_value=[],
         ),
-        patch(
-            "app.api.compute.instances.instance_orch.try_issue_health_token",
-            new_callable=AsyncMock,
-            return_value=("", "", ""),
-        ) as mock_health_token,
         patch("app.api.compute.instances.rec", new_callable=AsyncMock),
         patch("app.api.compute.instances.invalidate", new_callable=AsyncMock),
         patch(
@@ -184,13 +180,17 @@ async def test_sse_no_libraries_skips_manila_and_upper(client, mock_conn):
     assert "text/event-stream" in resp.headers.get("content-type", "")
     mock_manila.assert_not_called()
     mock_upper.assert_not_called()
-    mock_health_token.assert_not_called()
-    metadata = mock_create_server.call_args.kwargs["metadata"]
-    assert not any(key.startswith("union_") for key in metadata)
+    create_kwargs = mock_create_server.call_args.kwargs
+    assert create_kwargs["boot_volume_id"] == "boot-vol"
+    assert create_kwargs["delete_boot_volume_on_termination"] is False
+    assert create_kwargs["key_name"] == "mykey"
+    assert create_kwargs["userdata"] is None
+    assert not any(key.startswith("union_") for key in create_kwargs["metadata"])
 
     events = [json.loads(line[6:]) for line in resp.text.splitlines() if line.startswith("data: ")]
     steps = [e.get("step") for e in events]
     assert "completed" in steps, f"completed 이벤트 없음: {steps}"
+    assert "manila_preparing" not in steps
 
 
 @pytest.mark.asyncio
@@ -218,11 +218,6 @@ async def test_sse_gpu_only_generates_gpu_userdata_without_layer_state(client, m
             return_value=[],
         ),
         patch(
-            "app.api.compute.instances.instance_orch.try_issue_health_token",
-            new_callable=AsyncMock,
-            return_value=("health-id", "https://health.example", "health-token"),
-        ) as mock_health_token,
-        patch(
             "app.api.compute.instances.cloudinit.generate_userdata", wraps=cloudinit.generate_userdata
         ) as mock_generate,
         patch("app.api.compute.instances.rec", new_callable=AsyncMock),
@@ -236,7 +231,6 @@ async def test_sse_gpu_only_generates_gpu_userdata_without_layer_state(client, m
 
     assert resp.status_code == 200, resp.text
     mock_generate.assert_called_once()
-    mock_health_token.assert_not_called()
     create_kwargs = mock_create_server.call_args.kwargs
     rendered = base64.b64decode(create_kwargs["userdata"]).decode()
     assert "datacenter-gpu-manager-exporter" in rendered
@@ -245,7 +239,7 @@ async def test_sse_gpu_only_generates_gpu_userdata_without_layer_state(client, m
 
 
 @pytest.mark.asyncio
-async def test_sync_data_mount_only_has_no_layer_health_or_metadata(client, mock_conn):
+async def test_sync_data_mount_only_has_no_library_userdata_or_metadata(client, mock_conn):
     mount_info = {
         "file_storage_id": "share-data",
         "share_proto": "NFS",
@@ -273,12 +267,9 @@ async def test_sync_data_mount_only_has_no_layer_health_or_metadata(client, mock
             new_callable=AsyncMock,
             return_value=[],
         ),
-        patch("app.api.compute.instances._prepare_data_mounts", new_callable=AsyncMock, return_value=[mount_info]),
         patch(
-            "app.api.compute.instances.instance_orch.try_issue_health_token",
-            new_callable=AsyncMock,
-            return_value=("health-id", "https://health.example", "health-token"),
-        ) as mock_health_token,
+            "app.api.compute.instances._prepare_data_mounts", new_callable=AsyncMock, return_value=[mount_info]
+        ) as mock_prepare_data_mounts,
         patch("app.api.compute.instances.rec", new_callable=AsyncMock),
         patch("app.api.compute.instances.invalidate", new_callable=AsyncMock),
         patch(
@@ -289,7 +280,12 @@ async def test_sync_data_mount_only_has_no_layer_health_or_metadata(client, mock
         resp = await client.post("/api/v1/instances", json=payload)
 
     assert resp.status_code == 201, resp.text
-    mock_health_token.assert_not_called()
+    mock_prepare_data_mounts.assert_awaited_once()
+    prepare_args = mock_prepare_data_mounts.call_args.args
+    assert prepare_args[0] is mock_conn
+    assert prepare_args[1][0].file_storage_id == "share-data"
+    assert prepare_args[1][0].mount_point == "/mnt/data"
+    assert prepare_args[2:] == ("test-no-libs", [], "net-1")
     create_kwargs = mock_create_server.call_args.kwargs
     rendered = base64.b64decode(create_kwargs["userdata"]).decode()
     assert "afterglow-data-mounts.service" in rendered

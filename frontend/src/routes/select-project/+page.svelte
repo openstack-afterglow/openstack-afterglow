@@ -9,6 +9,7 @@
 	import { toast } from '$lib/stores/toast';
 	import CreateProjectModal from '$lib/components/projects/CreateProjectModal.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { cloudShell } from '$lib/stores/cloudShell.svelte';
 
 	import { postAuthDestination } from '$lib/utils/mcpConsent';
@@ -163,7 +164,7 @@
 <main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas text-ink-0">
 	<!-- 상단 알림 바 -->
 	<div class="border-b border-line bg-[#0B1220]">
-		<div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+		<PageShell class="flex items-center justify-between gap-4">
 			<div class="flex items-center gap-2 text-sm text-ink-2">
 				<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -177,11 +178,11 @@
 			>
 				{t('selectProject.logout')}
 			</button>
-		</div>
+		</PageShell>
 	</div>
 
 	<!-- 본문 -->
-	<div class="max-w-6xl mx-auto px-6 py-10">
+	<PageShell>
 		<div class="flex items-center justify-between gap-4 mb-6">
 			<div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
 				<h1 class="text-lg font-semibold text-ink-0">{t('selectProject.title')}</h1>
@@ -240,7 +241,7 @@
 				{/each}
 			</div>
 		{/if}
-	</div>
+	</PageShell>
 </main>
 
 {#if showCreateModal && !mockupActive}

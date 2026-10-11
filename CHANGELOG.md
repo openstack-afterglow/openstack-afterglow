@@ -7,6 +7,68 @@
 
 ## [Unreleased]
 
+### 완료 세션 dev 통합과 MCP 경계 수정 (not deployed)
+- 로컬 checkpoint와 upstream `dev`의 HTTPS proxy trust 수정을 정상 merge로 보존한다. 추가 version bump·tag·main PR/merge·운영 배포는 포함하지 않는다.
+- 선택 개인 MCP grant의 기본 실행 target을 cloud catalogue에 그대로 표시한다. Lumen preview/read/mutation은 기존 공용 Redis grant budget과 concurrency admission을 적용하고 SDK worker drain 뒤에만 slot을 회수한다. 한도429와 coordination 장애503은 provider/원장 진입 전에 거부한다.
+- MCP 승인·비활성화·OAuth 시작을 원래 인증 scope에 묶고 계정/프로젝트 전환·설정 종료 때 취소한다. 늦은401의 새 계정 승인 replay와 unmount 뒤 OAuth 이동을 막으며 네 언어의 기본 위임 설명을 실제 access chip과 모순되지 않게 중립화했다.
+- 과거 세션별 gate 실패와 local/synthetic/native/운영 증거는 `docs/testing.md`에서 최종 통합 검증과 분리한다. 형제 Lumen·Drover source는 이 Afterglow commit에 포함하지 않는다.
+- 사용자 보고의 dev 실패는 image build가 아니라 외부 DB 연결 timeout이었다. 승인된 QA bridge subnet 충돌을 기존 세 datastore container/data를 보존해 해소하고 TCP·SELECT-only 인증을 확인했다. 운영 migration/bootstrap 재실행·배포는 하지 않았으며 pending schema와 snapshot/양방향 호환성 한계는 배포·테스트 가이드에 남긴다.
+- Unix installer의 PTY 테스트 드라이버가 세션 종료 뒤 EOF를 반복 drain하던 무한루프를 수정했다. EOF를 종료 경계로 처리하고 이미 종료한 keeper에는 release를 쓰지 않는다. 실제 piped installer의 invalid-arity·파일 보존·echo 복원 회귀를 유지하며 제품 installer와 timeout·suite 선택은 바꾸지 않았다.
+
+
+### 계정 MCP·전체 리소스·콘솔 폭 정리 (local, not deployed)
+- 계정의 OAuth/API 키를 좌우 선택으로 분리하고 선택한 방식의 설정·목록만 표시한다. 키 이름·권한 폼을 간결하게 묶고1일/1주/1달/3달/6달/1년/만료 없음/직접 선택, 각 전체 `mcp.json` 복사와10/15/20개 최근 활동 paging을 제공한다.
+- 개인 키의 실제 무기한 lifetime을 migration085의 nullable expiry로 구현한다. 유한 만료는 MariaDB microsecond와 UTC timezone을 보존하고 OAuth/내부 위임·역할·owner/project·폐기 경계는 유지한다. 평문 키/실제 JSON은 발급 직후 한 번만 표시한다.
+- 내 리소스를25종으로 확대해 DB·Drover·Waygate·파일/객체 스토리지·패키지·비밀 metadata를 포함한다. 전체 pagination, 현재 권한-before-cache, package namespace, 사용자 범위 keypair 중복 제거와 미확인null/부분 합계를 적용한다. Native Drover SQL outage가 Redis 빈 목록으로 숨지 않도록 형제 source도503/cooldown 복구로 수정했다.
+- 일반 VM의 공개 squashfs/library consume와 비동작 HA 옵션·호출 경로를 제거한다. 일반 이미지/볼륨·SSH·GPU·data mount와 독립 관리자 Palimpsest·파일 스토리지 카탈로그는 보존한다. 모든 콘솔 외부 콘텐츠를 단일80rem centered PageShell로 통일하고 내부 모달·본문 폭은 유지한다.
+- 실제 Chromium·loopback SDK/native HTTP·격리 MariaDB/Redis 검증과 전체 gate의 동시 작업 blocker는 `docs/testing.md`에 분리 기록한다. 운영 DB/IAM·실제 자원 생성·배포는 수행하지 않았다.
+
+### Lumen MCP 명시적 승인·API 키 발급 모달 (local, not deployed)
+- Afterglow MCP를 항상 표시하되 기본 비활성으로 두고 현재 프로젝트의 read/manage 동의 후에만 내부 위임을 만든다. 조회·채팅·취소는 발급하지 않으며 실제 provider 쓰기 역할, legacy consent 거부와 disable/clear/PAT 선택의 늦은 approval fence를 유지한다. 관리자 승인 remote MCP는 owner/config opt-in과 기존 별도 OAuth를 사용하며 직접 등록을 보존한다.
+- 폐기 키는 기본 숨김이고 전체/활성 목록을 전환한다. 새 키 모달에서 대상 프로젝트·이름·만료·허용 전체/선택/읽기 권한·월 한도를 한 번에 지정한다. 현재 target permissions/issuance-policy와 quota를 확인하고 한 POST로 발급하며 비검증·거부·actor/project/ABA 전환에 평문 secret을 표시하지 않는다. 기존 이름/한도/폐기·연결 안내를 유지한다.
+- Afterglow086은 nullable consent, native026은 owner activation이며 consent backfill은 없다. Key expiry는 native013을 재사용한다. Canonical arm64/amd64 local build, 실제 Chromium과 로컬 HTTP/SQL/Redis 검증 및 동시 작업의 gate·production snapshot/양방향 writer-schema·mixed-version 미검증은 `docs/testing.md`에 분리 기록한다. 운영 DB/IAM·paid provider·publish·deploy는 수행하지 않았다.
+
+### 사용자 가이드 실제 화면 추가 (local docs, not deployed)
+- 15개 공개 가이드의 세부 절차에 실제 인증된 콘솔의 WebP 42장을 추가했다. 공통 figure의 네 언어 alt·caption·한국어 화면/개인정보 가림 안내, 원본 새 탭 링크와 반응형·lazy 이미지 표시를 제공하며 그림 설명도 기존 검색에 포함한다.
+- 공개 이미지 자체에서 계정·프로젝트·자원 ID/IP·대화 제목·키 이름을 제거했다. 접근 거부·베타 제한·빈 목록과 기존 TCP 구성은 실제 상태대로 설명한다. 자원 생성/삭제·키 발급·비밀 조회·유료 호출·운영 배포는 하지 않았다.
+- 로컬 Chromium 60개 가이드/언어 경로의 168개 figure, 네 언어·두 테마·6개 폭의 48개 반응형 조건과 실제 원본 링크 클릭을 확인했다. 발견한 시각 문제와 전체 frontend check·gate의 검증 경계는 `docs/user-guide-visual-review.md`와 OpenSpec 완료 기록에 남긴다.
+
+### 프로젝트 멤버 권한 영역별 편집 (local, not deployed)
+- 모든 서비스 권한을 세로로 나열하던 창을 영역 우선 탐색으로 바꿨다. Tablet/desktop은 좌측 영역·우측 권한, mobile은 영역 선택 상자·권한 목록을 사용하며 제목·검색·취소·저장은 고정하고 본문만 스크롤한다. 유효 역할 snapshot은 개수 요약 뒤 접어 표시한다.
+- 이름·ID·설명의 전체 검색, 영역별 직접 선택/상속 개수, 검색 결과 영역 fallback과 검색 해제 시 원래 영역 복원을 제공한다. 다른 영역·검색에 숨긴 direct/legacy ID, 현재 서버 transitive closure·외부 상속과 owner/admin·group/inherited-only·busy 제한을 유지한다.
+- 네 locale과 기존 역할/계정 회귀를 이관했다. Current-source Chromium56조건, canonical arm64/amd64 compiled Chromium112조건과 direct-only PUT200→목록 refresh→편집 재진입, 전체 gate를 검증했다. 합성 identity/API·격리 source 및 PowerShell36개 skip·기존 DocCodeBlock warning의 경계는 `docs/testing.md`에 기록하며 운영 IAM·DB·배포는 변경하지 않았다.
+
+### 인스턴스 비밀번호 미지원 안내 구분 (local, not deployed)
+- 일반 사용자 인스턴스 상세에서는 QEMU Guest Agent·이미지 메타데이터 등 상세 사유 대신 “지원되지 않는 인스턴스입니다.”를 표시한다. 버튼 툴팁과 이미 열린 비밀번호 창에도 같은 안내를 적용하며 관리자 상세의 정확한 사유는 유지한다.
+- 사용자/관리자 화면 모드로 표시만 구분한다. 원래 사전점검 응답·지원 판정·변경 권한·비활성화 조건·요청은 유지하며 조회 중/오류를 미지원으로 오인하지 않는다. 네 locale을 동기화했고 검증과 동시 작업의 전체 gate 한계는 `docs/testing.md`에 기록한다.
+
+### MCP 개인 토큰·OAuth 폐기 목록 갱신 (local, not deployed)
+- 계정 화면에서 폐기 성공 뒤에도 남던 개인 토큰·OAuth 연결을 목록 API에서 제외한다. 아직 폐기하지 않은 만료 항목은 유지하고 명시적으로 폐기하면 `revoked`로 전환한다. 기존 화면의 목록 재조회로 항목·개수·빈 상태가 갱신되며 tutorial도 같은 계약을 따른다.
+- Tombstone·감사 기록·upstream cleanup 재시도와 사용자/프로젝트 격리를 보존한다. 반복 폐기, Lumen 기본 선택 해제, 접근·OAuth refresh 거부를 실제 SQL 회귀로 검증했다. 신규 schema/migration·router·응답 field·설정·의존성은 없다.
+- 로컬 검증과 합성 identity/Keystone·운영 미검증 경계는 `docs/testing.md`에 기록한다. 운영 credential/DB 변경·이미지 발행·운영 배포는 수행하지 않았다.
+
+### MCP 인스턴스·볼륨 생성과 VM 네트워크 연결 (local, not deployed)
+- Canonical MCP/Lumen registry에 `afterglow_vm_create`, `afterglow_volume_create`, `afterglow_vm_network_attach`를 추가했다. 명시적 manage/write·승인 target-project restricted credential, strict 입력, non-mutating preview, 현재 권한·리소스·deadline 재검증과 기존 durable replay/unknown 원장을 사용한다. Lumen 기본 read-only 권한은 확대하지 않는다.
+- VM은 기존 이름·flavor quota/host/GPU admission과 image/network/본인 keypair 검증을 재사용하고 image→volume boot로 disk=0 flavor를 지원한다. Boot volume은 기본 보존·삭제 연동은 opt-in이다. 빈 볼륨은1–16384GiB, network attach는 owned ACTIVE/SHUTOFF VM에 owned/shared network의 새 port만 연결한다. 응답은 안전한 ID/status/MAC만 반환하고 ready/data-plane 성공을 주장하지 않는다.
+- 설치된 openstacksdk가 caller keypair owner를 응답 resource에 보충해 누락된 owner를 증명처럼 만드는 경계를 실제 Nova HTTP로 재현·수정했다. Exact309·MCP target428개와 실제 TCP/MCP/Lumen/SDK/MariaDB/Redis14개 scenario가 통과했다. 새 schema·설정·의존성·UI·실제 OpenStack provisioning·운영 배포는 없으며 전체 gate 결과와 합성 한계는 `docs/testing.md`에 기록한다.
+
+### Lumen 상단 Studio·실시간 음성 바로가기 제거 (local, not deployed)
+- 텍스트 채팅 상단의 이미지 Studio·오디오 Studio·실시간 음성 버튼을 markup에서 제거했다. 모델·에이전트·기록·출처·임시 채팅과 기존 Studio 사이드바/전체 메뉴/command palette 목적지·직접 route는 유지한다.
+- 사용되지 않는 버튼 전용 번역 키 여섯 개를 ko/en/ja/zh-CN에서 삭제했다. 새 설정·의존성·backend·DB·인가 변경은 없다.
+- 실제 current-source Chromium에서 네 locale × light/dark × 390/767/768/1023/1024/1440/1568px 56조건의 버튼 부재·상단 컨트롤 경계·수평 넘침0을 확인했다. 모델·에이전트·출처·임시 채팅, mobile 기록 Escape·Studio drawer 탐색 및 Studio/sidebar·realtime 직접 route를 확인했다. Identity/API는 합성이며 provider 실행·운영 배포는 하지 않았다. i18n check·scan 통과, Svelte check0errors/기존 DocCodeBlock 접근성 warning1; 전체 test:gate와 commit/push는 실행하지 않았다.
+
+### 인스턴스 생성자·시스템 관리자 게스트 비밀번호 변경 (local, not deployed)
+- 기존 Nova `changePassword` 경로를 검증된 시스템 관리자 또는 프로젝트 쓰기 권한이 있는 인스턴스 생성자에게 허용한다. 생성자는 수정 가능한 metadata가 아닌 Nova `user_id`와 현재 프로젝트로 검증한다. 동일 프로젝트의 타인·일반 프로젝트 admin은 거부하며 일반 사용자 상세에는 본인 생성 인스턴스만, 관리자 상세에는 검증된 시스템 관리자만 버튼을 표시한다.
+- ACTIVE/QGA 사전점검과 별도 제출 busy·비밀번호 확인·8–128자 제한·창 종료 시 입력 제거를 제공한다. Nova 정책/드라이버 실패를 성공으로 처리하지 않고 비밀번호·upstream 원문을 응답/감사 기록에 남기지 않는다. 요청 접수는 게스트 적용이 아니며 콘솔·RDP·SSH와 별도 Linux SSH 정책 확인을 안내한다. 네 locale을 동기화했다.
+- Windows SCSI 볼륨 부팅에서 `/dev/vda` 데이터 디스크의 잘못된 QGA/계정 정보를 사용하던 문제를 실제 SDK HTTP와 네 실패 회귀로 재현했다. Nova 루트 장치가 있으면 해당 볼륨, 숨겨진 응답이면 유일한 Cinder bootable 볼륨을 사용하고 모호하면 미지원으로 처리한다.
+- 검증은 `docs/testing.md`의 별도 receipt에 기록한다. 신규 DB schema·설정·의존성·운영 VM 비밀번호 변경·이미지 발행·운영 배포는 없다.
+
+### 관리자 네트워크·서브넷 IP 조사 (local, not deployed)
+- 네트워크 목록에 외부·공유·내부 AND 필터, 이름/전체 ID/소유 프로젝트/현재 언어 유형의 정규화 검색, 초기화와 필터 결과 수를 추가했다. 프로젝트 이름과 전체 ID를 함께 표시하고 이름 조회 실패는 경고와 ID로 구분한다. 첫 inventory 장애를 0개로 표시하지 않으며 후속 장애는 기존 목록을 유지한다.
+- 네트워크 상세의 각 서브넷에서 IP 조사를 독립적으로 펼칠 수 있고 독립 서브넷 상세도 같은 UI를 사용한다. 실제 IP 버전, 인스턴스·라우터·DHCP 연결과 원래 ID·프로젝트·binding host, 20행 독립 IP/포트 pagination을 제공한다. 인증/대상 전환 뒤 늦은 응답과 부분 metadata 실패를 구분한다.
+- 풀 범위의 합집합·고유 할당·미할당 gateway 예약·잔여·풀 밖 할당을 정확한 10진 문자열/BigInt로 전달·표시한다. Off-subnet/link-local gateway를 허용하고 IPv6 자동 주소 방식의 잔여는 해당 없음으로 표시한다. 실제 native 관리자 문맥 또는 필수 Neutron 데이터가 없으면 실패하며 용량을 추정하거나 서비스 계정으로 승격하지 않는다.
+- 로컬 canonical arm64/amd64 API·frontend와 worker crypto smoke, 실제 SDK→합성 cloud HTTP 및 Chromium 검증 범위·실패 후 환경 수정·최종 gate는 `docs/testing.md`에 기록한다. 신규 DB schema·설정·의존성·운영 IAM/리소스 변경과 운영 배포는 없다.
+
 ### 누적 dev checkpoint 검증 (local, not deployed)
 - 사용자 요청 시점에 확정한147개 경로의 누적 source를 private 설정 없이 독립 snapshot에서 qualification했다. 기존1.30.11을 유지하며 서비스별 Compose DB 선택·custom 역할 경계·사용자 권한 조회·auth/MCP 변경과 OpenSpec를 함께 기록한다. 검증 중 추가된 별도의 진행 중 네트워크 작업은 보존하고 이번 checkpoint에서 제외한다. 버전 bump·push·tag·배포·운영 IAM/DB 변경은 없다.
 - 제거된 private ledger-helper 구현 테스트를 삭제하고 기존 consumer generation fence 회귀를 유지했다. OAuth DB fixture를 현재 caller-token `/auth/projects`와 native credential 정리 계약에 맞췄으며, helper 호출 횟수 대신 credential 생성 중 만료를 유발하여 revocation·키/암호문 폐기와 remote cleanup을 검증한다. Included Python의 gate-rejected imports/format만 정상화했다.
@@ -27,7 +89,7 @@
 ### MCP 다중 프로젝트 위임 및 Lumen 기본 클라우드 도구 (local, not deployed)
 - 개인 MCP 토큰과 OAuth 연결에 `read`·`manage` 권한 수준과 `current`·`selected`·`all` 프로젝트 범위를 구현했다. 마이그레이션 084는 기존 단일 프로젝트 레코드를 `project_scope='current'`로 보존하며 신규 자식 테이블 `mcp_project_credentials`를 통해 대상 프로젝트별 독립 Keystone application credential을 AEAD 암호화하여 격리 저장한다.
 - 인가 권위 검증(`GET /api/v1/auth/mcp-projects`)으로 현재 멤버십 목록을 가져오며 빈 선택을 400으로 차단한다. OAuth 동의 화면(`/oauth/mcp/authorize`)은 클라이언트의 `mcp:write` 요청을 안전한 읽기 전용으로 축소(attenuation)하여 제안하고 `mcp:write`가 없으면 관리 권한을 비활성화한다. 승인된 제한은 토큰 교환 및 refresh 회전 전반에서 불변으로 유지된다.
-- Lumen 채팅의 기존 Tools 메뉴에 기본 클라우드 도구(VM/네트워크/볼륨/스토리지/K3s 등 안전한 조회)를 내장 항목으로 제공한다. 모델의 `tool_call` 지원과 `lumen-tools_user` 권한으로 실행을 인가하며, 완료 요청 시 현재 프로젝트에 바인딩된 내부 읽기 전용 위임을 지연(lazy) 생성하고 사용자 명시 `lumen-default` 토큰 설정을 보존한다.
+- Lumen 채팅의 기존 Tools 메뉴에 기본 클라우드 도구(VM/네트워크/볼륨/스토리지/K3s 등 안전한 조회)를 내장 항목으로 제공한다. 모델의 `tool_call` 지원과 `lumen-tools_user` 권한으로 실행을 인가하며 사용자 명시 `lumen-default` 토큰 설정을 보존한다. 이 단계의 lazy 내부 위임 생성은 위 **Lumen MCP 명시적 승인·API 키 발급 모달** 변경으로 대체했다. 현재 조회·채팅 접수는 발급하지 않고 current-project read/manage 명시 승인만 발급한다. 아래 lazy smoke는 당시 source의 역사적 receipt다.
 - 대상 실행 및 변경 원장(ledger)은 요청 리소스의 소유 프로젝트를 위임 허용 목록과 대조하여 대상 프로젝트 전용 자격 증명으로만 dispatch한다. 변경 작업은 실행 전 non-mutating preview로 영향도를 검증하고 변경 원장에 상태를 기록한다. 프론트엔드는 토큰·사용자·프로젝트·ABA 경계에서 이전 응답 게시를 차단하며 목록 새로고침 실패 시 기존 선택을 폐기하고 안전한 재선택을 강제한다. 한국어·영어·일본어·중국어 카탈로그를 동기화했다.
 - 검증: 프론트엔드 계정/OAuth/채팅 114개 테스트, 백엔드 권한/런타임/OAuth/컨슈머 98개 테스트 통과. Svelte check 0 errors (기존 warning 1), i18n check 0 errors / 0 warnings (37개 네임스페이스 / 9,489개 메시지), i18n scan 0개 라인 통과. 실제 Uvicorn·Lumen 어댑터·SDK HTTP smoke에서 8개 시나리오(기본 카탈로그, lazy 내부 위임 및 실제 SDK 조회, 다중 선택 프로젝트 격리, 홈 프로젝트 제외 서브셋의 기본 실행, 명시적 관리 권한 보존, 가입 전/탈퇴 프로젝트 거부, OAuth 코드 교환 및 refresh 권한 축소 불변성, 전체 타깃 토큰 일괄 폐기) 전원 성공. 실제 Docker 빌드(canonical Dockerfile)로 arm64/amd64 백엔드·프론트엔드·워커 이미지 빌드 및 `x86_64`/`aarch64` 실행 검증. 실제 Chromium 헤드리스 브라우저에서 계정 화면의 권한/프로젝트 범위 선택, Alpha/Beta 선택 토큰 발급 및 저장된 제한 표시 확인, OAuth 동의 화면에서 권한 축소 제안, 빈 프로젝트 선택 차단 경고 및 승인 리다이렉트 흐름 확인. Architecture guard stamp 검증 완료.
 
@@ -38,6 +100,13 @@
 - 후속 확인: compiled production preview에서도 권한과 세션 동시 표시 및 JavaScript 오류 없음 확인. HEAD+해당 source/test/locale 9파일의 격리 index에서 architecture guard staged digest/review를 통과했다(`b497410c191653a04e0e559a3494ca67d1b5005d2063ad5dba5865d8c4460b61`, 2,531 files). 실제 index·공유 architecture review block을 보존했다.
 - **상속 응답 최종 수정/정정** — 최초 검증은 provenance link만 포함해 실제 effective scope의 `OS-INHERIT:inherited_to="projects"`를 누락했다. 이 marker와 대상 project가 함께 있는 정상 응답을 거부하던 길이 검사를 범위 키 1개 및 marker의 별도 검증으로 교체했다. 실제 SDK·Keystone loopback HTTP 회귀는 수정 전 503을 재현했고 수정 후 200·대상 프로젝트·암시 역할을 확인했다. 잘못된 marker/범위/unknown metadata는 계속 503으로 거부한다. 최종 권한/identity 167, access 276, scoped Ruff와 실제 Uvicorn HTTP smoke 통과. 최종 격리 architecture digest/review 통과(`943f2b28c4eb3e4cf984e02b219200f2f0a22dce9e7ba386fa2c9e76aa0f3c55`, 2,531 files). 앞의 161 및 `b497…`은 이 후속 수정 전 기록이며, 전체 gate·운영 acceptance·배포를 주장하지 않는다.
 
+## [1.30.12] - 2026-10-11
+
+### Fixed
+- **HTTPS 요청의 HTTP 리다이렉트 방지** — Kolla Uvicorn이 controller-origin `X-Forwarded-Proto: https`를 무시해 `/api/v1/admin/version/` 등 slash 정규화307의 Location을 HTTP로 만들던 원인을 수정했다. Loopback과 실제 loadbalancer API IP만 신뢰하고 기존307·method/body/query·인증 경계를 유지한다.
+- Kubernetes 두 생성기(`generate_k8s.py`, `setup.py`)와 Helm backend도 기존 `trusted_proxies`/`trustedProxies`를 Uvicorn `FORWARDED_ALLOW_IPS`에 전달한다. Ingress peer 범위는 운영자가 명시하며 기본 신뢰를 전체 네트워크로 확대하지 않는다.
+- 초기 세 배포 경로의 소비자 계약12개는 수정 전 HTTPS6개 실패·HTTP/위조6개 통과했다. 최종 네 경로의 redirect16개와 인증 전환4개가 통과했다. 실제 backend arm64·amd64 이미지의 Uvicorn HTTP에서 trusted HTTPS·direct HTTP·untrusted 위조와 query 보존을 확인했다. 로컬 probe는 lifespan을 끈 transport 검증이며 운영 startup·인증 acceptance와 구분한다.
+- Uvicorn이 실제 client IP를 반영한 뒤 기존 proxy IP로 발급된 session은 subnet 바인딩에 따라 재로그인이 필요할 수 있다. 새로 바인딩된 session의 정상 인증과 비신뢰 peer의 헤더 위조 거부를 검증했으며 token IP binding을 완화하지 않았다.
 
 ## [1.30.11] - 2026-10-10
 

@@ -1,7 +1,7 @@
 import re
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
 
 class IpAddress(BaseModel):
@@ -155,7 +155,6 @@ class InstanceInfo(BaseModel):
     union_strategy: str | None = None  # "prebuilt" | "dynamic"
     union_share_ids: list[str] = []
     union_upper_volume_id: str | None = None
-    scheduling: str | None = None  # "standard" | "ha"
     key_name: str | None = None
     ssh_access_mode: Literal["github"] | None = None
     github_login: str | None = None
@@ -169,9 +168,6 @@ class CreateInstanceRequest(BaseModel):
     name: str | None = None
     image_id: str | None = None
     flavor_id: str
-    libraries: list[str] = []
-    strategy: str | None = None  # "prebuilt" | "dynamic" | None (no libraries)
-    scheduling: Literal["standard", "ha"] = "standard"
     network_id: str | None = None
     key_name: str | None = None
     github_username: str | None = None
@@ -184,7 +180,6 @@ class CreateInstanceRequest(BaseModel):
     delete_boot_volume_on_termination: bool = False
     additional_volume_ids: list[str] = []
     new_volumes: list["NewVolumeRequest"] = []
-    existing_upper_volume_id: str | None = None
     boot_volume_id: str | None = None  # 기존 부팅 볼륨 재사용 (image_id 와 상호 배타)
     data_mounts: list["DataMountSpec"] = []  # 기존 Manila share 직접 마운트 목록
 
@@ -317,7 +312,13 @@ class UpdateSecurityGroupsRequest(BaseModel):
 
 
 class AdminPasswordRequest(BaseModel):
-    new_password: str = Field(min_length=8, max_length=128)
+    new_password: SecretStr = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password", mode="before")
+    @classmethod
+    def mask_password_input(cls, value):
+        # Keep validation errors from echoing a short/long plaintext password.
+        return SecretStr(value) if isinstance(value, str) else value
 
 
 class AdminPasswordPrecheck(BaseModel):

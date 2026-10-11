@@ -3,11 +3,10 @@
 	import RichText from '$lib/i18n/RichText.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 
-	let { imageDisplay, flavorDisplay, libCount, step, totalSteps, canPrev, canNext,
+	let { imageDisplay, flavorDisplay, step, totalSteps, canPrev, canNext,
 		onCancel, onPrev, onNext, onDeploy }: {
 		imageDisplay?: string | null;
 		flavorDisplay?: string | null;
-		libCount?: number;
 		step: number;
 		totalSteps: number;
 		canPrev: boolean;
@@ -29,9 +28,6 @@
 		{/if}
 		{#if flavorDisplay}
 			<span class="pick"><RichText segments={t.rich('footer.flavor', { name: flavorDisplay })} classes={{ strong: 'text-ink-2 font-mono font-medium' }} /></span>
-		{/if}
-		{#if libCount && libCount > 0}
-			<span class="pick"><RichText segments={t.rich('footer.libraries', { count: libCount })} classes={{ strong: 'text-ink-2 font-mono font-medium' }} /></span>
 		{/if}
 	</div>
 

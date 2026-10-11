@@ -190,13 +190,15 @@ for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGQUIT, signal.SIGTERM, signal
 status = child.wait()
 os.write(int(sys.argv[2]), json.dumps({'status': status,
     'echoRestored': termios.tcgetattr(1) == original}).encode())
-os.read(int(sys.argv[3]), 1)
+if sys.argv[4] == '0':
+    os.read(int(sys.argv[3]), 1)
 '''
 def session():
     os.setsid()
     fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
 child = subprocess.Popen(['python3', '-c', owner_source, json.dumps(request['command']),
-                          str(status_write), str(release_read)],
+                          str(status_write), str(release_read),
+                          str(int(request.get('endOwnerAfterStatus', False)))],
                          stdin=subprocess.PIPE, stdout=slave, stderr=slave,
                          env=request['env'], preexec_fn=session,
                          pass_fds=(status_write, release_read))
@@ -239,11 +241,17 @@ try:
             completion = json.loads(os.read(status_read, 4096))
         if time.monotonic() > deadline:
             raise TimeoutError('PTY interaction timed out: ' + output.decode(errors='replace'))
+    if request.get('endOwnerAfterStatus', False):
+        child.wait(timeout=2)
     while select.select([master], [], [], 0)[0]:
-        output.extend(os.read(master, 65536))
+        chunk = os.read(master, 65536)
+        if not chunk:
+            break
+        output.extend(chunk)
     result = {**completion, 'output': output.decode('utf-8', errors='replace'),
               'keyEcho': key_echo, 'answered': index, 'failure': None}
-    os.write(release_write, b'1')
+    if child.poll() is None:
+        os.write(release_write, b'1')
     child.wait(timeout=2)
 finally:
     if child.poll() is None:
@@ -301,6 +309,7 @@ function install(f, options = {}) {
 		env: f.env,
 		script: installer,
 		actions: options.actions ?? actions(options.optIn),
+		endOwnerAfterStatus: options.endOwnerAfterStatus ?? false,
 	}
 	const result = spawnSync("python3", ["-c", ptyDriver], {
 		input: JSON.stringify(request), env: f.env, encoding: "utf8", timeout: 20000, maxBuffer: 1024 * 1024,
@@ -607,6 +616,16 @@ test("unsafe URLs and wrong invocation arity reject without echoing inputs or mu
 		assert.equal(install(f, { bases: urls, actions: [] }).status, 1)
 		assert.deepEqual(snapshot(f.home), before)
 	}
+})
+
+test("invalid invocation preserves files and tty settings when the session ends before output drain", (t) => {
+	const f = fixture(t, existingConfig)
+	const before = snapshot(f.home)
+	const result = install(f, { bases: [bases[0]], actions: [], endOwnerAfterStatus: true })
+	assert.equal(result.status, 1)
+	assert.equal(result.answered, 0)
+	assert.equal(result.echoRestored, true)
+	assert.deepEqual(snapshot(f.home), before)
 })
 
 

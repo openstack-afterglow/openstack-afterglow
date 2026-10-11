@@ -876,6 +876,7 @@ def render_configmap(cfg: dict, namespace: str = "afterglow") -> str:
         f'  APP_REDIS_URL: "{REDIS_K8S}"',
         f'  APP_ORIGIN: "{app_origin}"',
         f'  PUBLIC_API_BASE: "{public_api_base}"',
+        f"  FORWARDED_ALLOW_IPS: {_toml_str(cfg.get('app', {}).get('trusted_proxies', '127.0.0.1/32,::1/128'))}",
         f'  PUBLIC_S3_BASE: "{public_s3_base}"',
         f'  APP_GRAFANA_BASE: "{app_grafana_base}"',
         "  afterglow.conf: |",

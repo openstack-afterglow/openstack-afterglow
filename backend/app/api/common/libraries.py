@@ -1,3 +1,5 @@
+"""Library catalog used by retained file-storage management."""
+
 from __future__ import annotations
 
 import asyncio
@@ -8,10 +10,9 @@ if TYPE_CHECKING:
     import openstack
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
 
 from app.api.deps import get_os_conn, get_token_info
-from app.models.storage import FileStorageInfo, LibraryConfig
+from app.models.storage import LibraryConfig
 from app.services import libraries as lib_svc
 from app.services import manila
 from app.services.keystone import get_service_project_connection
@@ -61,41 +62,3 @@ async def list_libraries(
             )
         )
     return result
-
-
-@router.get("/file-storages", response_model=list[FileStorageInfo])
-async def list_prebuilt_file_storages(token_info: dict = Depends(get_token_info)):
-    """사전 빌드된 라이브러리 파일 스토리지 목록.
-    service conn + include_public=True로 조회해 인증된 사용자라면 누구나 조회 가능하게 한다.
-    """
-    try:
-        svc_conn = await asyncio.to_thread(get_service_project_connection)
-        return await asyncio.to_thread(
-            manila.list_file_storages,
-            svc_conn,
-            {"union_type": "prebuilt"},
-            include_public=True,
-        )
-    except Exception:
-        _logger.warning("prebuilt file-storage 목록을 조회할 수 없습니다", exc_info=True)
-        return []
-
-
-class ValidateLibrariesRequest(BaseModel):
-    library_ids: list[str]
-    ubuntu_version: str | None = None
-
-
-class ValidateLibrariesResponse(BaseModel):
-    compatible: bool
-    messages: list[str]
-
-
-@router.post("/validate", response_model=ValidateLibrariesResponse)
-async def validate_libraries(
-    req: ValidateLibrariesRequest,
-    _conn: openstack.connection.Connection = Depends(get_os_conn),
-):
-    """선택된 라이브러리 조합의 호환성 검증."""
-    messages = lib_svc.validate_compatibility(req.library_ids, req.ubuntu_version)
-    return ValidateLibrariesResponse(compatible=len(messages) == 0, messages=messages)

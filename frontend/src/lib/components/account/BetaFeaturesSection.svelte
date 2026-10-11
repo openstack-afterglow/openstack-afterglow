@@ -21,36 +21,6 @@
 
 	<div class="space-y-6">
 		<div class="space-y-4">
-			<label class="flex items-start justify-between gap-4 rounded-lg border border-line bg-surface-canvas/40 px-4 py-3">
-				<span>
-					<span class="block text-sm font-medium text-ink-1">{t('beta.libraryLabel')}</span>
-					<span class="block text-xs text-ink-2 mt-1">{t('beta.libraryDescription')}</span>
-				</span>
-				<input
-					type="checkbox"
-					aria-label={t('beta.libraryLabel')}
-					class="mt-1 h-4 w-4 rounded border-line-2 bg-surface-sunken text-blue-600 focus:ring-line-2"
-					checked={$betaFeatures.libraryConsume}
-					onchange={(event) => setBetaFeature('libraryConsume', event.currentTarget.checked)}
-				/>
-			</label>
-
-			<label class="flex items-start justify-between gap-4 rounded-lg border border-line bg-surface-canvas/40 px-4 py-3">
-				<span>
-					<span class="block text-sm font-medium text-ink-1">{t('beta.haLabel')}</span>
-					<span class="block text-xs text-ink-2 mt-1">{t('beta.haDescription')}</span>
-				</span>
-				<input
-					type="checkbox"
-					aria-label={t('beta.haLabel')}
-					class="mt-1 h-4 w-4 rounded border-line-2 bg-surface-sunken text-blue-600 focus:ring-line-2"
-					checked={$betaFeatures.haDeploy}
-					onchange={(event) => setBetaFeature('haDeploy', event.currentTarget.checked)}
-				/>
-			</label>
-		</div>
-
-		<div class="space-y-4">
 			<div>
 				<p class="text-sm font-semibold text-ink-0">{t('beta.validatingTitle')}</p>
 				<p class="beta-feature-description text-xs mt-1">{t('beta.validatingDescription')}</p>

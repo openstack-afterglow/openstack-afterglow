@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { untrack } from 'svelte';
@@ -148,7 +149,7 @@
 	}
 </script>
 
-<div class="p-4 md:p-6 max-w-4xl mx-auto">
+<PageShell>
 	<div class="mb-6">
 		<a href="/dashboard" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">{t('detail.back')}</a>
 	</div>
@@ -178,4 +179,4 @@
 			<FileStorageMetadata metadata={fileStorage.metadata} />
 		</div>
 	{/if}
-</div>
+</PageShell>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { auth, canWrite } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api/client';
@@ -62,9 +63,8 @@
 	let summaryCpuAvg = $state<number | null>(null);
 	let summaryMemAvg = $state<number | null>(null);
 
-	async function loadSummary(iid: string) {
+	async function loadSummary(iid: string, projectId: string | undefined) {
 		const token = $auth.token;
-		const projectId = adminProjectId ?? $auth.projectId ?? undefined;
 		if (!token) return;
 		try {
 			const resp = await api.get<{
@@ -83,9 +83,15 @@
 	}
 
 	$effect(() => {
-		if (!instanceId || !$auth.token) return;
-		s.fetchInstance(instanceId);
-		void loadSummary(instanceId);
+		const id = instanceId;
+		const token = $auth.token;
+		const projectId = adminProjectId ?? $auth.projectId ?? undefined;
+		showPasswordModal = false;
+		if (!id || !token) return;
+		untrack(() => {
+			void s.fetchInstance(id);
+			void loadSummary(id, projectId);
+		});
 	});
 
 	async function openMigrateModal(type: 'live' | 'cold') {
@@ -96,7 +102,9 @@
 	}
 
 	function openPasswordModal() {
-		showPasswordModal = true;
+		if (s.canChangePassword && !s.passwordPrecheckLoading && s.passwordPrecheck?.supported && s.instance?.status === 'ACTIVE') {
+			showPasswordModal = true;
+		}
 	}
 
 	async function openResizeModal(preselectId?: string) {
@@ -112,7 +120,7 @@
 	}
 </script>
 
-<div class="p-8 motion-fade" aria-busy={s.loading && !s.instance}>
+<div class="{onClose ? 'p-8' : ''} motion-fade" aria-busy={s.loading && !s.instance}>
 	<div class="mb-6 flex items-center justify-between">
 		<!-- SlidePanel 안(onClose 전달)에서는 닫기를 SlidePanel 이 그린다(`[data-slide-panel-close]`).
 		     여기서 또 그리면 헤더에 닫기 컨트롤이 두 개 보인다. 단독 라우트에서만 목록 백링크를 둔다. -->
@@ -190,7 +198,7 @@
 {#if showMigrateModal}
 	<MigrateModal type={migrateType} onClose={() => { showMigrateModal = false; }} />
 {/if}
-{#if showPasswordModal}
+{#if showPasswordModal && s.canChangePassword}
 	<PasswordModal onClose={() => { showPasswordModal = false; }} />
 {/if}
 {#if showResizeModal && $canWrite}

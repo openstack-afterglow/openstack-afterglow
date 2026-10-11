@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
@@ -165,7 +166,7 @@
 
 </script>
 
-<div class="p-4 md:p-6 max-w-7xl mx-auto">
+<PageShell>
 	<div data-tour="admin-system-header">
 	<PageHeader breadcrumb={t('services.page.breadcrumb')} title={t('services.page.title')}>
 		{#snippet actions()}
@@ -202,4 +203,4 @@
 		{storagePools}
 		{loadingMap}
 	/>
-</div>
+</PageShell>

@@ -38,7 +38,8 @@ export const platformGuides: DocGuide[] = [
 						text: [
 							'Drover 클러스터 생성 모달을 엽니다. 템플릿이 있으면 선택한 뒤 복사된 OS·에이전트 수·플레이버를 다시 확인합니다. 이름은 비워 자동 생성하거나 영문·숫자로 시작하는 63자 이하의 영문·숫자·하이픈·언더스코어 조합으로 입력합니다.',
 							'OS와 에이전트(worker) 수 0–10을 선택합니다. 에이전트 플레이버를 비우면 관리자 기본값을 사용합니다. 서버(control plane) 플레이버와 보안 그룹을 직접 고르는 생성 UI는 제공되지 않습니다.'
-						]
+						],
+						screenshots: [{ src: '/docs/screenshots/drover-create.webp', alt: 'Drover 첫 클러스터 생성 폼의 기본 구성 입력 영역', caption: '이름·OS·에이전트 수와 플레이버 선택 항목을 확인하세요. 생성 버튼은 구성을 검토한 뒤 제출하는 동작입니다.', width: 1440, height: 1000 }]
 					},
 					{
 						title: '초기 네트워크와 키페어를 선택합니다',
@@ -72,7 +73,8 @@ export const platformGuides: DocGuide[] = [
 					'워커 VM 생성 수와 요청한 수를 비교하고 실제 노드 Ready를 확인합니다. VM이 존재한다는 사실만으로 k3s join 성공을 판정하지 않습니다.',
 					'헬스가 미확인 또는 UNKNOWN이면 데이터 수집 여부와 검사 시각을 확인합니다. 반복 클릭 대신 자동 새로고침 또는 수동 갱신으로 후속 상태를 기다립니다.',
 					'워크로드·Pod·Service 화면을 사용할 때는 대상 namespace를 먼저 선택합니다. 클러스터 준비와 애플리케이션 준비도 서로 다릅니다.'
-				]
+				],
+				screenshots: [{ src: '/docs/screenshots/drover-clusters.webp', alt: 'Drover 기존 클러스터 목록과 상태 확인 영역', caption: '클러스터 목록에서 대상 이름과 상태를 대조한 뒤 상세를 여세요. 목록의 상태만으로 실제 노드 Ready를 판단하지 마세요.', width: 1440, height: 1000 }]
 			},
 			{
 				id: 'connect',
@@ -195,14 +197,16 @@ export const platformGuides: DocGuide[] = [
 						text: [
 							'+ Waygate 서버 생성에서 이름과 기본 DNS·PersistentKeepalive를 지정하고 생성합니다. 이름을 비우면 자동 생성됩니다. DNS는 최대 두 값을 쉼표로 구분하며 비우면 설정 파일에서 DNS 행을 생략합니다. Keepalive는 0–65535초이고 0은 비활성화입니다.',
 							'생성 응답은 작업 접수입니다. 목록을 갱신하며 CREATING → PROVISIONING → ACTIVE 전이를 확인합니다. ERROR이면 상세 사유를 확인하고 중복 게이트웨이를 만들기 전에 기존 작업을 확인합니다.'
-						]
+						],
+						screenshots: [{ src: '/docs/screenshots/waygate-create.webp', alt: 'Waygate 게이트웨이 생성 폼의 이름·DNS·Keepalive 입력란', caption: '이름과 기본 DNS·PersistentKeepalive 입력란을 확인하세요. 생성 버튼은 게이트웨이 준비 완료가 아니라 생성 요청을 제출합니다.', width: 1440, height: 1000 }]
 					},
 					{
 						title: 'ACTIVE와 엔드포인트 정보를 확인합니다',
 						text: [
 							'서버 상세에서 상태, 엔드포인트 IP:포트, 터널 CIDR, 서버 공개키와 마지막 상태 보고를 확인합니다. 클라이언트 발급과 네트워크 연결은 ACTIVE에서 진행합니다.',
 							'ACTIVE는 에이전트의 공개키 등록을 포함한 서버 준비 상태입니다. 내 기기의 VPN 연결이나 내부 VM에 대한 실제 접근 성공을 뜻하지는 않습니다.'
-						]
+						],
+						screenshots: [{ src: '/docs/screenshots/waygate-list.webp', alt: 'Waygate 서버 목록의 상태·엔드포인트·연결 네트워크 확인 영역', caption: '목록에서 서버 상태와 연결 네트워크를 먼저 확인한 뒤 상세를 여세요. ACTIVE는 내 기기의 VPN 연결 성공을 보장하지 않습니다. 주소와 자원 이름은 캡처에서 가렸습니다.', width: 1440, height: 1000 }]
 					}
 				]
 			},
@@ -215,7 +219,8 @@ export const platformGuides: DocGuide[] = [
 						text: [
 							'서버 상세의 + 네트워크 연결에서 프로젝트가 볼 수 있는 non-external 테넌트 네트워크를 고릅니다. 서브넷이 여러 개면 접속하려는 IPv4 서브넷을 선택합니다. 하나면 자동 선택되며 서브넷이 없으면 연결할 수 없습니다.',
 							'연결 목록에서 네트워크 UUID, 선택한 서브넷의 CIDR과 상태를 확인합니다. 네트워크 이름 확인 불가 표시는 이름 조회 실패일 수 있으므로 UUID를 기준으로 대상을 대조합니다.'
-						]
+						],
+						screenshots: [{ src: '/docs/screenshots/waygate-detail.webp', alt: '기존 Waygate 게이트웨이의 설정과 네트워크 연결 개요', caption: '게이트웨이 설정과 네트워크 연결 영역에서 대상과 연결 상태를 확인하세요. 네트워크 연결 버튼과 기기별 클라이언트 발급은 별도 작업입니다.', width: 1440, height: 1000 }]
 					},
 					{
 						title: '경로 겹침을 확인하고 기기 설정을 갱신합니다',
@@ -363,14 +368,16 @@ export const platformGuides: DocGuide[] = [
 						text: [
 							'모델 선택창에서 활성 모델과 공개 API ID, 기능 배지를 확인합니다. 이미지 입력·검색·추론 강도 등은 모델 capability에 따라 제공됩니다. 모델 이름이 비슷하다는 이유로 다른 프로토콜이나 기능까지 지원한다고 가정하지 않습니다.',
 							'Search는 지원과 실행 gate·가격이 준비된 native 검색만 선택합니다. 추론 강도 없음도 지원이 명시된 모델에서만 표시됩니다. 에이전트가 선택되어 있으면 에이전트가 모델을 관리하므로 일반 모델 선택이 잠길 수 있습니다.'
-						]
+						],
+						screenshots: [{ src: '/docs/screenshots/lumen-models.webp', alt: 'Lumen 모델 브라우저의 모델 목록과 기능 확인 영역', caption: '모델 목록에서 사용할 모델과 지원 기능을 확인하세요. 모델 이름만으로 이미지 입력·검색·추론 옵션 지원을 판단하지 마세요.', width: 1440, height: 1000 }]
 					},
 					{
 						title: '사용량과 쿼터를 확인합니다',
 						text: [
 							'설정 → 사용량(/dashboard/chat/settings?section=usage)에서 본인 크레딧·월/주간 한도와 웹/API 사용량을 확인합니다. API 키로 쓴 비용도 본인 지갑의 사용자 쿼터에서 차감됩니다.',
 							'사용자 쿼터 상향은 관리자 작업입니다. API 키의 개인 한도를 비운다고 사용자·관리자 한도를 없애지는 않습니다. 작성창의 context 점유율은 이번 모델 입력 예산이고 누적 청구 토큰이나 크레딧 잔액과는 다른 값입니다.'
-						]
+						],
+						screenshots: [{ src: '/docs/screenshots/lumen-usage.webp', alt: 'Lumen 개인 사용량과 월간 쿼터 확인 영역', caption: '내 사용량에서 월간 토큰·크레딧·요청 수와 월간 쿼터, 웹/API 구분을 확인하세요. 이 화면은 프로젝트 전체 사용량이 아니라 본인 사용량입니다.', width: 1440, height: 1000 }]
 					}
 				],
 				links: [{ label: '내 사용량', href: '/dashboard/chat/settings?section=usage' }]
@@ -384,7 +391,8 @@ export const platformGuides: DocGuide[] = [
 						text: [
 							'새 채팅을 시작하고 활성 모델을 선택합니다. 첫 메시지를 입력하고 전송합니다. 저장 대화는 기록에서 다시 열 수 있으며, 필요한 경우 채팅 프로젝트(workspace)로 분류합니다.',
 							'기록을 남기지 않을 목적이라면 대화를 시작하기 전에 임시 채팅을 선택합니다. 시작된 대화에서 임시 모드를 바꿀 수는 없습니다. 임시는 영구 기록 목록에 저장되지 않는 모드이지 즉시 모든 서버 데이터가 사라지는 약속은 아닙니다.'
-						]
+						],
+						screenshots: [{ src: '/docs/screenshots/lumen-chat.webp', alt: '모델 선택기가 있는 Lumen 새 채팅의 빈 작성창', caption: '새 채팅의 모델 선택기와 메시지 입력란을 확인하세요. 모델 선택과 메시지 전송은 별도 동작이며 전송 전에 프로젝트와 임시 채팅 여부를 확인합니다.', width: 1440, height: 1000 }]
 					},
 					{
 						title: '실행 결과와 승인 요청을 확인합니다',
@@ -411,7 +419,8 @@ export const platformGuides: DocGuide[] = [
 						text: [
 							'/dashboard/chat/images에서 이미지 모델, 지원되는 크기·품질·이미지 수와 준비 상태를 확인하고 프롬프트를 입력합니다. 스타일 선택은 표시된 스타일 지시문을 프롬프트 끝에 추가하는 기능입니다.',
 							'입력 이미지 없이 이미지 만들기를 누르면 생성 경로를 사용합니다. PNG/JPEG/WebP를 첨부하면 업로드·검사 완료 후 입력 asset과 프롬프트를 edits 경로로 보냅니다. 참고해서 새로 만들기와 원본 수정의 의도는 프롬프트에 명확히 적습니다.'
-						]
+						],
+						screenshots: [{ src: '/docs/screenshots/lumen-images.webp', alt: 'Lumen Image Studio의 초기 프롬프트 작성 영역', caption: '이미지 모델·옵션과 프롬프트 입력란을 확인하세요. 참고 이미지 첨부 여부에 따라 요청 경로가 달라지므로 생성 전에 입력과 준비 상태를 검토합니다.', width: 1440, height: 1000 }]
 					},
 					{
 						title: '작업 상태와 실제 출력을 확인합니다',
@@ -432,7 +441,8 @@ export const platformGuides: DocGuide[] = [
 						text: [
 							'/dashboard/chat/audio의 텍스트 → 음성에서 텍스트와 TTS 모델을 선택합니다. 선택 모델 capability가 제공하는 목소리·출력 형식만 고르고 준비 상태를 확인한 뒤 음성 생성을 누릅니다.',
 							'결과 플레이어에서 재생을 확인하고 음성 다운로드를 사용합니다. 화면에 보이는 오디오 결과를 로컬 저장이 완료된 파일로 착각하지 말고 필요한 결과는 명시적으로 내려받습니다.'
-						]
+						],
+						screenshots: [{ src: '/docs/screenshots/lumen-audio.webp', alt: 'Lumen Audio Studio의 초기 입력과 작업 선택 영역', caption: '텍스트 → 음성과 음성 → 텍스트 작업을 구분하고 입력·모델 선택 영역을 확인하세요. 실행 전에 선택 모델의 지원 옵션과 준비 상태를 검토합니다.', width: 1440, height: 1000 }]
 					},
 					{
 						title: '파일 또는 녹음을 텍스트로 변환합니다',
@@ -458,7 +468,8 @@ export const platformGuides: DocGuide[] = [
 						text: [
 							'설정 → API 키(/dashboard/chat/settings?section=apikeys)에서 이름을 입력하고 + 새 API 키 발급을 누릅니다. 발급된 전체 값을 안전한 자격 증명 저장소로 복사합니다. 이후 목록의 prefix나 대시보드 로그인 JWT를 API 키 대신 쓰지 않습니다.',
 							'키의 한도 설정에서 필요에 맞게 월·주간 크레딧 한도를 낮춥니다. 이 한도는 사용자·관리자 상한을 넘을 수 없으며 비워두기는 개인 제한 해제일 뿐 상위 제한 우회가 아닙니다.'
-						]
+						],
+						screenshots: [{ src: '/docs/screenshots/lumen-api-keys.webp', alt: '전체 키 값을 표시하지 않는 Lumen API 키 관리 영역', caption: 'API 키 관리에서 발급 진입점과 기존 키의 한도·폐기 관리 영역을 확인하세요. 목록의 prefix는 API 인증에 사용할 전체 키 값이 아닙니다.', width: 1440, height: 1000 }]
 					},
 					{
 						title: '설정 페이지의 연결 방법을 사용합니다',
@@ -548,6 +559,7 @@ export const platformGuides: DocGuide[] = [
 					'내 접근 키는 현재 프로젝트에서 인증된 본인 소유 키만 표시합니다. 프로젝트 소유자·관리자라는 이유로 다른 사용자의 키를 대신 조회·관리할 수는 없습니다.',
 					'일반 사용자는 서버 빌더에서 임의 RUN을 실행하는 관리자 경로를 사용할 수 없습니다. 서비스 배포·공개 origin·읽기 쉬운 namespace 바인딩은 운영자 설정입니다.'
 				],
+				screenshots: [{ src: '/docs/screenshots/palimpsest-access.webp', alt: 'Palimpsest 패키지 페이지의 관리자·서비스 identity 접근 거부 안내', caption: '현재 관리자 identity가 패키지 접근을 승인할 수 없어 표시된 실제 화면입니다. 일반 프로젝트 사용자 계정과 프로젝트·접근 권한을 확인하세요. 패키지 목록이나 키 발급 성공 화면이 아닙니다.', width: 1440, height: 1000 }],
 				links: [{ label: '프로젝트 패키지 · 내 접근 키', href: '/palimpsest/packages' }]
 			},
 			{
@@ -579,7 +591,7 @@ export const platformGuides: DocGuide[] = [
 						text: [
 							'패키지 탭에서 namespace/name, 유형, 태그가 가리키는 digest, 플랫폼과 최근 게시 정보를 확인합니다. 패키지 더 보기로 다음 목록을 읽고 상세 / 이력으로 버전 목록을 엽니다.',
 							'표에서는 digest가 축약될 수 있습니다. 정확한 값을 사용할 때는 상세의 전체 sha256 값 또는 참조 복사를 사용합니다. 최신 버전 크기 확인 불가는 0바이트라는 뜻이 아니라 메타데이터 조회 실패입니다.'
-						]
+						],
 					},
 					{
 						title: '실제로 사용할 버전을 선택합니다',
@@ -600,7 +612,7 @@ export const platformGuides: DocGuide[] = [
 							'내 접근 키 → 키 발급에서 이름을 입력합니다. 정확한 패키지 이름을 1–32개 지정하거나 모든 프로젝트 패키지를 명시적으로 선택합니다. 아직 게시하지 않은 이름도 지정할 수 있습니다.',
 							'이름은 namespace를 제외한 소문자 패키지 이름(예: team/image)이며 쉼표 또는 공백으로 구분합니다. 와일드카드·태그·중복은 허용하지 않고 하위 패키지는 별도 이름입니다. 모든 프로젝트 패키지는 앞으로 만들어질 패키지까지 포함하므로 필요한 경우에만 선택합니다.',
 							'만료 기간은 1–90일로 지정합니다. 키는 자동 갱신되지 않습니다. 소비만 하는 기기에는 패키지 읽기만, 게시에는 패키지 읽기와 쓰기를 선택합니다.'
-						]
+						],
 					},
 					{
 						title: '패키지와 캐시 권한을 별도로 선택합니다',

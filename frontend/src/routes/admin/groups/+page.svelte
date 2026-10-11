@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -47,7 +48,7 @@
 	onMount(ctrl.load);
 </script>
 
-<div class="p-4 md:p-6 max-w-7xl mx-auto">
+<PageShell>
 	<PageHeader breadcrumb={t('groupPage.breadcrumb')} title={t('groupPage.title')}>
 		{#snippet actions()}
 			<button onclick={() => { ctrl.showCreate = true; ctrl.createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('groupPage.create')}</button>
@@ -109,7 +110,7 @@
 			</div>
 		</div>
 	{/if}
-</div>
+</PageShell>
 
 <GroupCreateModal bind:open={ctrl.showCreate} creating={ctrl.creating} error={ctrl.createError} onCreate={ctrl.createGroup} />
 <GroupEditModal bind:target={ctrl.editGroup} updating={ctrl.updating} error={ctrl.editError} onSave={ctrl.updateGroup} />

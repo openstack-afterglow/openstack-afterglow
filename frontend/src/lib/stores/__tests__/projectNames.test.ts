@@ -151,4 +151,30 @@ describe('projectNames store', () => {
 		await projectNames.load('token', 'new-project');
 		expect(apiGet).toHaveBeenCalledTimes(3);
 	});
+
+	it('distinguishes a successful empty directory from failure without breaking map-only callers', async () => {
+		apiGet.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([]);
+		const { projectNames } = await loadStore();
+		await expect(projectNames.loadResult('token', 'project', 'user')).resolves.toEqual({ names: new Map(), failed: true });
+		await expect(projectNames.loadResult('token', 'project', 'user')).resolves.toEqual({ names: new Map(), failed: false });
+		await projectNames.loadResult('token', 'project', 'user');
+		expect(apiGet).toHaveBeenCalledTimes(2);
+	});
+
+	it('coalesces owner requests per user scope and fences a previous user with the same token and project', async () => {
+		const old = deferred<ProjectName[]>();
+		apiGet.mockReturnValueOnce(old.promise).mockResolvedValueOnce([{ id: 'new', name: 'Current Owner' }]);
+		const { projectNames } = await loadStore();
+		const pending = projectNames.loadResult('token', 'project', 'old-user');
+		const duplicate = projectNames.loadResult('token', 'project', 'old-user');
+		expect(apiGet).toHaveBeenCalledOnce();
+		const current = await projectNames.loadResult('token', 'project', 'new-user');
+		expect(current.names.get('new')).toBe('Current Owner');
+		old.resolve([{ id: 'old', name: 'Old Owner' }]);
+		const [first, second] = await Promise.all([pending, duplicate]);
+		expect(first.names).not.toBe(second.names);
+		expect(get(projectNames)).toEqual(new Map([['new', 'Current Owner']]));
+		await projectNames.loadResult('token', 'project', 'new-user');
+		expect(apiGet).toHaveBeenCalledTimes(2);
+	});
 });

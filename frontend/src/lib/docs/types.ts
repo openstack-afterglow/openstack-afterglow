@@ -9,11 +9,21 @@ export interface DocCommand {
 	code: string;
 }
 
+/** Public full-resolution local asset; alt/caption are localized, dimensions are intrinsic pixels. */
+export interface DocScreenshot {
+	src: string;
+	alt: string;
+	caption: string;
+	width: number;
+	height: number;
+}
+
 export interface DocStep {
 	title: string;
 	text: string[];
 	command?: DocCommand;
 	links?: DocLink[];
+	screenshots?: DocScreenshot[];
 }
 
 export interface DocSection {
@@ -29,6 +39,7 @@ export interface DocSection {
 		text: string;
 	};
 	links?: DocLink[];
+	screenshots?: DocScreenshot[];
 }
 
 export interface DocGuide {

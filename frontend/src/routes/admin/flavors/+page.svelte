@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { onMount } from 'svelte';
@@ -101,7 +102,7 @@
 	});
 </script>
 
-<div class="p-4 md:p-6 max-w-7xl mx-auto">
+<PageShell>
 	<PageHeader breadcrumb={t('flavors.breadcrumb')} title={t('flavors.title')}>
 		{#snippet actions()}
 			<button
@@ -166,7 +167,7 @@
 			onDelete={deleteFlavor}
 		/>
 	{/if}
-</div>
+</PageShell>
 
 <FlavorCreateModal bind:open={showCreate} onCreated={load} />
 

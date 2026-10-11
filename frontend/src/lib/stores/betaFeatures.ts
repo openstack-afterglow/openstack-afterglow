@@ -2,8 +2,6 @@ import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 
 export interface BetaFeatures {
-	libraryConsume: boolean;
-	haDeploy: boolean;
 	keyManager: boolean;
 	volumeSnapshots: boolean;
 	fileStorageSnapshots: boolean;
@@ -12,8 +10,6 @@ export interface BetaFeatures {
 }
 
 export const DEFAULT_BETA_FEATURES: BetaFeatures = {
-	libraryConsume: false,
-	haDeploy: false,
 	keyManager: false,
 	volumeSnapshots: false,
 	fileStorageSnapshots: false,
@@ -22,8 +18,6 @@ export const DEFAULT_BETA_FEATURES: BetaFeatures = {
 };
 
 const STORAGE_KEYS: Record<keyof BetaFeatures, string> = {
-	libraryConsume: 'afterglow.beta.libraryConsume',
-	haDeploy: 'afterglow.beta.haDeploy',
 	keyManager: 'afterglow.beta.keyManager',
 	volumeSnapshots: 'afterglow.beta.volumeSnapshots',
 	fileStorageSnapshots: 'afterglow.beta.fileStorageSnapshots',

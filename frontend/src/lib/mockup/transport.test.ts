@@ -82,7 +82,11 @@ describe('mockup transport', () => {
 		const token = 'mock-token-tutorial-scoped';
 		await maybeMockJson('DELETE', '/api/v1/auth/mcp-tokens/lumen-default', undefined, token, 'mock-project-1');
 		const builtIn = await maybeMockJson('GET', '/api/v1/chat/cloud-tools', undefined, token, 'mock-project-2');
-		expect(builtIn).toMatchObject({ enabled: true, source: 'lumen', access_level: 'read', project_id: 'mock-project-2', allowed_projects: [{ id: 'mock-project-2', name: 'sample-project-beta' }], selection_name: null });
+		expect(builtIn).toMatchObject({ available: true, enabled: false, source: 'lumen', allowed_projects: [], tool_count: 0 });
+		await maybeMockJson('POST', '/api/v1/chat/cloud-tools', { access_level: 'read' }, token, 'mock-project-2');
+		expect(await maybeMockJson('GET', '/api/v1/chat/cloud-tools', undefined, token, 'mock-project-2')).toMatchObject({ enabled: true, access_level: 'read', allowed_projects: [{ id: 'mock-project-2', name: 'sample-project-beta' }] });
+		await maybeMockJson('DELETE', '/api/v1/chat/cloud-tools', undefined, token, 'mock-project-2');
+		expect(await maybeMockJson('GET', '/api/v1/chat/cloud-tools', undefined, token, 'mock-project-2')).toMatchObject({ enabled: false, allowed_projects: [] });
 		expect(builtIn).not.toHaveProperty('id');
 		const issued = await maybeMockJson<{ id: string }>('POST', '/api/v1/auth/mcp-tokens', { name: 'Operations', access_level: 'manage', project_scope: 'all', project_ids: [] }, token, 'mock-project-1') as { id: string };
 		await maybeMockJson('PUT', `/api/v1/auth/mcp-tokens/${issued.id}/lumen-default`, {}, token, 'mock-project-1');
@@ -122,6 +126,37 @@ describe('mockup transport', () => {
 		await api.put(`/api/v1/auth/mcp-tokens/${issued.id}/lumen-default`, {}, token, project);
 		expect(await api.get('/api/v1/chat/cloud-tools', token, project, { refresh: true })).toMatchObject({ project_id: 'mock-project-1', source: 'personal_token', selection_name: 'Scoped tutorial', allowed_projects: [{ id: 'mock-project-2', name: 'sample-project-beta' }] });
 		expect(await api.post(`/api/v1/auth/mcp-oauth/consents/${MOCK_MCP_CONSENT_TICKET}/approve`, { access_level: 'read', project_scope: 'all', project_ids: [] }, token, project, { signal: new AbortController().signal, cache: 'no-store', suppressAuthRedirect: true })).toEqual({ redirect_uri: '/dashboard/account?tutorial=on' });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		{ lifetime: 'never', expiration: { non_expiring: true }, expectedExpiry: null },
+		{ lifetime: 'finite', expiration: { expires_at: '2027-07-09T00:00:00.000Z' }, expectedExpiry: '2027-07-09T00:00:00.000Z' },
+		{ lifetime: 'legacy default', expiration: {}, expectedExpiry: '2026-08-08T00:00:00.000Z' },
+	])('preserves $lifetime MCP expiry through the tutorial API consumer', async ({ expiration, expectedExpiry }) => {
+		// Module-boundary test: the real API consumer uses fresh local tutorial state.
+		const { api } = await import('$lib/api/client');
+		const token = 'mock-token-tutorial-scoped';
+		const project = 'mock-project-1';
+		const approved = await api.post<{ expires_at: string | null }>('/api/v1/chat/cloud-tools', { access_level: 'read' }, token, project);
+		expect(approved.expires_at).not.toBeNull();
+		const issued = await api.post<{ id: string; token: string; expires_at: string | null; issued_at: string }>(
+			'/api/v1/auth/mcp-tokens',
+			{ name: 'Tutorial expiry', access_level: 'read', project_scope: 'selected', project_ids: [project], ...expiration },
+			token,
+			project,
+			{ signal: new AbortController().signal, cache: 'no-store', suppressAuthRedirect: true },
+		);
+		expect(issued.expires_at).toBe(expectedExpiry);
+		expect(issued.token).toMatch(/^sk-afgl-mock-/);
+		const saved = await api.get<Record<string, unknown>[]>('/api/v1/auth/mcp-tokens', token, project, { refresh: true });
+		const record = saved.find((item) => item.id === issued.id);
+		expect(record).toMatchObject({ expires_at: expectedExpiry, status: 'active' });
+		expect(record).not.toHaveProperty('token');
+		await api.put(`/api/v1/auth/mcp-tokens/${issued.id}/lumen-default`, {}, token, project);
+		expect(await api.get('/api/v1/chat/cloud-tools', token, project, { refresh: true })).toMatchObject({
+			source: 'personal_token', selection_name: 'Tutorial expiry', expires_at: expectedExpiry,
+		});
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
@@ -189,11 +224,8 @@ describe('mockup transport', () => {
 			'mock-project-1',
 		)) as Array<Record<string, unknown>>;
 
-		expect(updatedTokens.find((record) => record.id === created.id)).toMatchObject({
-			status: 'revoked',
-			is_lumen_default: false,
-		});
-		expect(grants).toContainEqual(expect.objectContaining({ grant_id: 'mock-mcp-oauth-grant-desktop', status: 'revoked' }));
+		expect(updatedTokens.some((record) => record.id === created.id)).toBe(false);
+		expect(grants.some((record) => record.grant_id === 'mock-mcp-oauth-grant-desktop')).toBe(false);
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 

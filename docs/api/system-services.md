@@ -268,7 +268,7 @@ Bundled SVG 사용과 관리자 업로드 허용 형식은 별개입니다. 관�
 > 태그: `user-dashboard`
 > 기본 경로: `/api/v1/user-dashboard`
 
-로그인 사용자가 소속된 **모든 프로젝트**의 인스턴스/볼륨/네트워크/FIP를 병렬로 집계합니다.
+현재 Keystone membership으로 확인한 프로젝트마다25종 사용자 inventory를 독립 조회합니다. 관리자 전체 목록이나 서비스 계정으로 권한을 확대하지 않습니다.
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
@@ -276,37 +276,23 @@ Bundled SVG 사용과 관리자 업로드 허용 형식은 별개입니다. 관�
 
 ### GET /api/v1/user-dashboard/summary
 
-사용자가 소속된 각 프로젝트를 병렬 조회해, 프로젝트별 리소스와 전체 합계를 반환합니다. 프로젝트 목록 조회 실패 시 `500`, 개별 프로젝트 조회 실패는 해당 프로젝트에 `error: true`로 표시하고 계속 진행합니다.
+사용자의 현재 membership을 조회한 뒤 프로젝트별 caller-scoped 자격과 현재 서비스 leaf 권한으로 조회합니다. Membership 거부는403, 조회 장애는503입니다. 개별 서비스의 거부·비활성·장애는 해당 category 상태로 반환하고 나머지 inventory는 계속 제공합니다. 기본 조회는 cache를 우회하며 `?cache=true`는 저장된 snapshot을 사용할 수 있고 `?refresh=true`는 새 조회 결과로 snapshot을 갱신합니다. 지원되지 않는 `no_cache`/`refresh_cache` query는 사용하지 않습니다.
 
 **응답 (200 OK)**
 
-```json
-{
-  "current_project_id": "...",
-  "projects": [
-    {
-      "project_id": "...",
-      "project_name": "...",
-      "instances": [ { "id": "...", "name": "...", "status": "ACTIVE", "flavor_name": "...", "vcpus": 2, "ram_mb": 4096, "created_at": "..." } ],
-      "volumes": [ { "id": "...", "name": "...", "status": "...", "size": 10, "volume_type": "...", "created_at": "..." } ],
-      "instance_count": 1,
-      "volume_count": 1,
-      "storage_gb": 10,
-      "vcpus": 2,
-      "ram_mb": 4096,
-      "network_count": 1,
-      "fip_count": 0
-    }
-  ],
-  "totals": {
-    "instances": 1, "volumes": 1, "storage_gb": 10,
-    "vcpus": 2, "ram_mb": 4096, "networks": 1, "floating_ips": 0
-  }
-}
-```
-
 | 필드 | 타입 | 설명 |
 |------|------|------|
-| `current_project_id` | string | 현재 스코프된 프로젝트 UUID |
-| `projects` | array | 프로젝트별 리소스 요약 |
-| `totals` | object | 전 프로젝트 합계 |
+| `user_id` | string | 현재 사용자 UUID; UI snapshot 소유자 |
+| `current_project_id` | string | 현재 scoped 프로젝트 UUID |
+| `projects[]` | object | `project_id`, `project_name`, `resources`, `usage` |
+| `projects[].resources[category]` | object | `state`, `count`, `items`, 선택적 안전한 `error` |
+| `state` | enum | `ready`, `disabled`, `denied`, `failed` |
+| `count` | number 또는 null | 모든 페이지를 끝까지 읽은 `ready`만 정확한 수; 나머지는null |
+| `items[]` | object | `id`, `name`, `status`, `project_id`, `project_name`, `owner_scope`, `owner_id`, `href`; VM/볼륨의 선택적 안전한 사용량 메타데이터 |
+| `usage` | object | `vcpus`, `ram_mb`, `storage_gb`; 증명할 수 없는 값은null |
+| `totals.resources[category]` | object | `state`, `count`, `known_count`; 일부만 확인되면`partial`·null과 확인된 부분 합계 |
+| `totals.usage` | object | 프로젝트별 사용량의 합계; 미확인 사용량을0으로 대체하지 않음 |
+
+Category는 `instances`, `volumes`, `floating_ips`, `networks`, `subnets`, `routers`, `security_groups`, `load_balancers`, `images`, `keypairs`, `database_instances`, `database_backups`, `k3s_clusters`, `waygate_gateways`, `containers`, `magnum_clusters`, `shares`, `share_snapshots`, `share_networks`, `security_services`, `buckets`, `volume_snapshots`, `volume_backups`, `packages`, `secrets`입니다. 이미지·볼륨·스냅샷처럼 관계가 있는 자원을 하나의 고유 자원 총합으로 더하지 않습니다. Keypair는 사용자 범위로 합계에서 중복 제거합니다.
+
+네이티브/SDK pagination은 끝까지 읽고 continuation 오류·순환 시 정확한 count를 주장하지 않습니다. Swift는 버킷 목록·account aggregate, Barbican은 secret metadata만 읽으며 객체 본문·secret payload·kubeconfig·키는 반환하지 않습니다. Package native context와 namespace를 cache보다 먼저 재검증하고 cache는 사용자·프로젝트·역할 fingerprint에 묶습니다. 다른 프로젝트 item의 `href`는 해당 프로젝트로 전환한 뒤 사용해야 합니다.

@@ -1,8 +1,11 @@
 <script lang="ts">
-	import { auth } from '$lib/stores/auth';
+	import { onMount, untrack } from 'svelte';
+	import { derived } from 'svelte/store';
+	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { serviceCapabilities } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
+	import ChatMcpCatalogue, { type ApprovedMcpServer } from './ChatMcpCatalogue.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -14,19 +17,13 @@
 	// only: 특정 섹션만 렌더('mcp' | 'tools' | 'skills'). 미지정 시 전부.
 	let { base, only }: { base: string; only?: 'mcp' | 'tools' | 'skills' } = $props();
 
-	interface McpServer {
-		id: number;
+	interface McpServer extends ApprovedMcpServer {
 		scope: string;
-		name: string;
 		transport: string;
-		url: string | null;
 		has_headers?: boolean;
-		auth_mode?: 'none' | 'oauth' | 'admin';
-		oauth_scopes?: string[];
 		has_oauth_client?: boolean;
 		has_oauth_client_secret?: boolean;
 		load_policy?: 'preloaded' | 'on_demand';
-		is_active: boolean;
 	}
 	interface McpOAuthStatus {
 		required: boolean;
@@ -59,6 +56,7 @@
 	let tools = $state<CustomTool[]>([]);
 	let skills = $state<Skill[]>([]);
 	let loading = $state(true);
+	let loadGeneration = 0;
 
 	const isAdmin = $derived(base.includes('/admin'));
 	const canMcp = $derived(isAdmin ? $auth.isSystemAdmin === true : $serviceCapabilities('lumen-mcp_editor'));
@@ -142,17 +140,18 @@
 		const requestProject = projectId;
 		const includePrivate = !isAdmin && canAssets;
 		loading = true;
+		const generation = ++loadGeneration;
 		try {
 			const [ms, ts, ss] = await Promise.all([
 				api.get<McpServer[]>(`${base}/mcp-servers`, token, projectId),
 				api.get<CustomTool[]>(`${base}/custom-tools`, token, projectId),
 				api.get<Skill[]>(`${base}/skills${includePrivate ? '?include_private=true' : ''}`, token, projectId)
 			]);
-			if (requestToken !== token || requestProject !== projectId || (includePrivate && !canAssets)) return;
+			if (generation !== loadGeneration || requestToken !== token || requestProject !== projectId || (includePrivate && !canAssets)) return;
 			mcps = ms;
 			tools = ts;
 			skills = ss;
-			oauthStatus = isAdmin
+			const statuses = isAdmin
 				? {}
 				: Object.fromEntries(
 						await Promise.all(
@@ -160,14 +159,15 @@
 								.filter((mcp) => mcp.auth_mode === 'oauth')
 								.map(async (mcp) => [
 									mcp.id,
-									await api.get<McpOAuthStatus>(`${base}/mcp-servers/${mcp.id}/oauth`, token, projectId)
+									await api.get<McpOAuthStatus>(`${base}/mcp-servers/${mcp.id}/oauth`, requestToken, requestProject)
 								] as const)
 						)
 					);
+			if (generation === loadGeneration && requestToken === token && requestProject === projectId) oauthStatus = statuses;
 		} catch {
-			toast.error(t('extensions.loadFailed'));
+			if (generation === loadGeneration) toast.error(t('extensions.loadFailed'));
 		} finally {
-			loading = false;
+			if (generation === loadGeneration) loading = false;
 		}
 	}
 
@@ -324,8 +324,19 @@
 		}
 	}
 
+	onMount(() => derived([auth, authReady, projectSwitching], ([actor, ready, switching]) =>
+		ready && !switching && actor.token && actor.projectId && actor.userId
+			? `${actor.token}\u0000${actor.userId}\u0000${actor.projectId}` : null
+	).subscribe(() => {
+		++loadGeneration;
+		mcps = [];
+		tools = [];
+		skills = [];
+		oauthStatus = {};
+	}));
 	$effect(() => {
-		if (token) void load();
+		void [token, projectId, $auth.userId, canAssets];
+		if (token && $authReady && !$projectSwitching) untrack(() => void load());
 	});
 
 	const inputCls =
@@ -337,7 +348,7 @@
 
 {#if !isAdmin}
 	<LumenPermissionNotice leaves={only === 'mcp'
-		? ['lumen-mcp_editor', 'lumen-resources_admin']
+		? ['lumen-tools_user', 'lumen-mcp_editor', 'lumen-resources_admin']
 		: only
 			? ['lumen-assets_editor', 'lumen-resources_admin']
 			: ['lumen-mcp_editor', 'lumen-assets_editor', 'lumen-resources_admin']} />
@@ -346,6 +357,9 @@
 <!-- MCP 서버 -->
 {#if !only || only === 'mcp'}
 <section class="mb-8">
+	{#if !isAdmin}
+		<ChatMcpCatalogue servers={mcps.filter((mcp) => mcp.scope === 'global')} {loading} {oauthStatus} onChanged={load} />
+	{/if}
 	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.mcp.title')}</h3>
 	<p class="mb-3 text-xs text-[var(--color-ink-3)]">{t('extensions.mcp.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
 	<div class="{cardCls} mb-4 p-5">
@@ -404,11 +418,11 @@
 		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={t('extensions.mcp.loading')}>
 			<span class="sr-only">{t('extensions.mcp.loading')}</span>
 		</div>
-	{:else if mcps.length === 0}
+	{:else if mcps.filter((mcp) => isAdmin || mcp.scope !== 'global').length === 0}
 		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('extensions.mcp.empty')}</p>
 	{:else}
 		<div class="space-y-2">
-			{#each mcps as m (m.id)}
+			{#each mcps.filter((mcp) => isAdmin || mcp.scope !== 'global') as m (m.id)}
 				<div class={cardCls}>
 					<div class="flex items-center justify-between gap-3 px-4 py-3">
 						<div class="min-w-0">

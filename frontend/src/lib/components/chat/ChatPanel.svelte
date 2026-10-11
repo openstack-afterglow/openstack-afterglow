@@ -1157,7 +1157,7 @@
 		// Keep catalogue requests sequential to avoid exhausting the chat DB pool.
 		for (const [path, publish] of [
 			['/api/v1/chat/custom-tools', (items: { id: number; name: string }[]) => { availableTools = items; }],
-			['/api/v1/chat/mcp-servers', (items: { id: number; name: string }[]) => { availableMcp = items; }],
+			['/api/v1/chat/mcp-servers?active_only=true', (items: { id: number; name: string }[]) => { availableMcp = items; }],
 			['/api/v1/chat/skills', (items: { id: number; name: string }[]) => { availableSkills = items; }],
 		] as const) {
 			if (!current()) return;
@@ -2606,9 +2606,6 @@
 			</div>
 			<div class="head-right">
 					{@render historyToggle()}
-					{#if $serviceCapabilities('lumen-images_user')}<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/images')} title={t('panel.studio.openImages')}>{t('panel.studio.images')}</button>{/if}
-					{#if $serviceCapabilities('lumen-audio_user')}<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/audio')} title={t('panel.studio.openAudio')}>{t('panel.studio.audio')}</button>
-					<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/realtime')} title={t('panel.studio.openRealtime')}>{t('panel.studio.realtime')}</button>{/if}
 					<button type="button" class="sources-btn" onclick={() => (sourcesOpen = !sourcesOpen)} aria-haspopup="dialog" aria-expanded={sourcesOpen} aria-controls="chat-sources-panel" title={t('panel.sources.show')}>
 						<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" stroke-linecap="round" stroke-linejoin="round" /></svg>
 						{t('panel.sources.count', { count: countFormatter.format(allCitations.length) })}
@@ -2761,7 +2758,9 @@
 <style>
 	.chat-shell {
 		display: flex;
-		height: calc(100dvh - var(--app-header-height));
+		flex: 1;
+		min-height: 0;
+		height: auto;
 		width: 100%;
 		overflow: hidden;
 		background: var(--color-surface-base);

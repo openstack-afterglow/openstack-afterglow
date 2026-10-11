@@ -120,7 +120,7 @@ describe('SelectImage', () => {
 		expect(tagButton('fedora:40')).toBeTruthy();
 	});
 
-	it('keeps the actual source image name for version-aware library validation', async () => {
+	it('keeps the actual source image name when selecting a displayed repository tag', async () => {
 		const onSelect = vi.fn();
 		render(SelectImage, {
 			images: [{ ...images[0], id: 'ubuntu-source-name', name: 'ubuntu-24.04-server', tag: 'latest' }],

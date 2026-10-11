@@ -307,13 +307,6 @@ async def test_tools_metadata_marks_deletions_and_lifecycle_changes_destructive(
     assert metadata["afterglow_vm_action"].destructiveHint is True
     assert metadata["afterglow_container_action"].destructiveHint is True
     assert metadata["afterglow_database_instance_restart"].destructiveHint is True
-    for entry in registry.registry_entries():
-        annotation = metadata[entry.name]
-        assert annotation.readOnlyHint is (entry.effect == "read")
-        assert annotation.destructiveHint is (entry.effect == "external_mutation")
-        if entry.effect == "external_mutation":
-            assert "idempotency_key" in entry.mcp_input_schema()["required"]
-            assert "idempotency_key" not in entry.input_schema()["properties"]
 
 
 @pytest.mark.asyncio

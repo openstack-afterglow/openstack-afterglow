@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PageShell from '$lib/components/ui/PageShell.svelte';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
@@ -93,7 +94,7 @@
   });
 </script>
 
-<div class="bulk-selection-page p-4 md:p-8">
+<PageShell class="bulk-selection-page">
   <PageHeader breadcrumb={t('loadBalancers.breadcrumb')} title={t('loadBalancers.title')}>
     {#snippet actions()}
       <AutoRefreshControl
@@ -184,7 +185,7 @@
       {/each}
     </div>
   {/if}
-</div>
+</PageShell>
 <BulkSelectionOverlay
   count={selectedCount}
   ariaLabel={t('loadBalancers.bulk.ariaLabel')}

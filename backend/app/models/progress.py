@@ -6,7 +6,6 @@ from pydantic import BaseModel
 class ProgressStep(str, Enum):
     MANILA_PREPARING = "manila_preparing"
     BOOT_VOLUME_CREATING = "boot_volume_creating"
-    UPPER_VOLUME_CREATING = "upper_volume_creating"
     USERDATA_GENERATING = "userdata_generating"
     SERVER_CREATING = "server_creating"
     ATTACHING_VOLUME = "attaching_volume"

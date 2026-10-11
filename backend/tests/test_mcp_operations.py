@@ -27,7 +27,8 @@ def test_reconcile_preserves_terminal_and_read_invocations(status, key):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("invalidated", ["project_removed", "revoked", "expired", "pat_revoked", "selection"])
-async def test_operation_poll_locks_home_and_rechecks_saved_target(monkeypatch, invalidated):
+@pytest.mark.parametrize("non_expiring", [False, True])
+async def test_operation_poll_locks_home_and_rechecks_saved_target(monkeypatch, invalidated, non_expiring):
     from app.models.mcp_authority import McpDelegatedGrant, McpPersonalToken, McpToolInvocation
     from app.services.mcp_control_plane import authentication, operations
 
@@ -38,7 +39,7 @@ async def test_operation_poll_locks_home_and_rechecks_saved_target(monkeypatch, 
         owner_project_id="A",
         source="personal_token",
         status="active",
-        expires_at=now + timedelta(hours=1),
+        expires_at=None if non_expiring else now + timedelta(hours=1),
         credential_epoch=1,
         access_level="read",
         approved_projects=[{"id": "B", "name": "Beta", "roles": ["reader"], "can_write": False}],

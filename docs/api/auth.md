@@ -390,11 +390,33 @@ Keystone가 token authentication에서 반환하는 `404 Failed to validate toke
 
 응답은 [TokenResponse](#tokenresponse) (`auth_method`는 `federated`). 인증 실패 시 401.
 
+## MCP 프로젝트 리소스 생성·네트워크 연결
+
+다음 세 도구는 개인 MCP와 Lumen 위임의 같은 canonical registry(`2026-10-11.2`)를 사용한다. 명시적으로 승인된 `manage`/`mcp:write` grant에만 노출·실행되며 `read` grant는 호출 이름을 직접 지정해도 거부한다. 선택적 `project_id`는 승인된 프로젝트만 지정할 수 있고 해당 프로젝트의 restricted application credential로 실행한다. 기본 Lumen 읽기 전용 권한은 확대하지 않는다.
+
+| 도구 | 필수 입력 | 선택 입력·제한 | 접수 결과 |
+|---|---|---|---|
+| `afterglow_vm_create` | `name`, `image_id`, `flavor_id`, `network_id` | VM 이름 1–63자·영숫자로 시작·영숫자/`_`/`-`만 허용. `boot_volume_size_gb` 기본50·1–16384GiB, `key_name`, host 지정을 허용하지 않는 `availability_zone`, `delete_boot_volume_on_termination` 기본false | 안전한 server ID·이름·현재 status·timestamp와 `requested_action: "create"`; ACTIVE/guest readiness 보장 아님 |
+| `afterglow_volume_create` | `name`, 정수 `size_gb` | 공백 아닌 이름 1–255자, 1–16384GiB, 선택 `availability_zone` | 빈 Cinder volume ID·이름·현재 status·size·timestamp와 `requested_action: "create"`; `creating`은 사용 가능 상태 아님 |
+| `afterglow_vm_network_attach` | `server_id`, `network_id` | 대상 프로젝트의 ACTIVE/SHUTOFF server와 owned 또는 명시적으로 shared network만 허용. 기존 `port_id`·fixed IP·security group override는 받지 않음 | 검증된 server/network/new port ID·MAC과 `requested_action: "attach_network"`; guest 내부 설정·통신 성공 보장 아님 |
+
+MCP 변경 호출은 `idempotency_key`를 함께 보내며 같은 key/arguments의 완료 결과는 재사용한다. Lumen `/api/v1/mcp/lumen/preview`는 리소스를 만들지 않고 `/execute`가 별도 key로 원장을 사용한다. 실행 직전에 grant·대상·리소스 상태와 SDK deadline을 다시 검증한다. 결과가 불확실하면 `unknown`으로 남기며 동일 grant/source/tool/arguments는 새 key로도 자동 재전송하지 않는다. 실제 provider 상태를 확인해야 한다.
+
+VM 생성은 기존 프로젝트 flavor quota·host capacity·GPU admission과 이름 중복 규칙을 재사용한다. Active Glance image의 공개/공유/owner 가시성·min disk/RAM과 network를 검증하고 선택 keypair의 owner는 Nova 응답으로 증명해야 한다. Nova image→volume boot mapping으로 disk=0 flavor도 지원하며 boot volume은 기본 보존한다. 삭제 연동은 `delete_boot_volume_on_termination=true`를 명시할 때만 적용한다. `user_data`·비밀번호·임의 provider 속성을 받지 않고 응답에도 application credential, private key, `adminPass`를 포함하지 않는다.
+
+이 계약은 로컬 source의 추가 기능이다. MCP handshake/tools discovery 성공과 실제 cloud provisioning 또는 운영 배포 성공은 별개다.
+
 ## 개인 MCP 키와 공개 연결 확인
 
-사용자 화면은 `/dashboard/account`의 **외부 AI 접근**, 연결 안내는 공개 `/docs/mcp`다. MCP 개인 키는 브라우저 access JWT나 Lumen 추론 API 키와 다르다. 발급 사용자·프로젝트에 묶이며 `read` 또는 명시적으로 선택한 `manage`와 제한된 Keystone application credential을 사용한다. 평문 키는 발급 응답 한 번만 반환하고 `Cache-Control: no-store`/`Pragma: no-cache`로 캐싱을 금지한다. 목록에는 prefix만 포함되고 서버는 해시를 저장한다. 기본 만료 30일·최대 90일은 운영자의 `mcp.default_grant_ttl_days`/`mcp.max_grant_ttl_days` 정책을 따른다.
+사용자 화면은 `/dashboard/account`의 **외부 AI 접근**, 연결 안내는 공개 `/docs/mcp`다. 나란한 OAuth/API 키 선택지에서 선택한 방식의 setup와 저장된 연결/키 목록만 표시한다. 각 `mcp.json`은 전체 복사 버튼을 제공한다. MCP 개인 키는 브라우저 access JWT나 Lumen 추론 API 키와 다르다. 발급 사용자·승인 프로젝트와 restricted Keystone application credential에 묶이며 `read` 또는 명시적 `manage`를 사용한다. 평문 키는 발급 응답 한 번만 반환하고 `Cache-Control: no-store`/`Pragma: no-cache`로 캐싱을 금지한다. 목록에는 prefix만 포함되고 서버는 해시를 저장한다.
 
-`GET /api/v1/auth/mcp-tokens`는 현재 로그인 사용자·프로젝트의 저장된 metadata만 반환합니다. `POST /api/v1/auth/mcp-tokens`는 `{name, access_level: "read"|"manage", expires_at?: ISO timestamp}`를 받고 `201`에서 한 번만 평문 `token`을 반환합니다. 무기한 키가 아닙니다. 서버는 발급 당시 user/project 및 역할 snapshot에 묶인 **restricted** Keystone application credential을 사용합니다. 만료 입력의 offset은 UTC로 정규화하고 upstream Keystone에 microsecond를 보존하는 `Z` timestamp를 전달합니다. 클라이언트는 만료를 비우거나 유효한 미래 ISO 시각을 보냅니다.
+`GET /api/v1/auth/mcp-tokens`는 현재 로그인 사용자·프로젝트의 저장된 metadata만 반환합니다. `POST /api/v1/auth/mcp-tokens`는 `{name, access_level: "read"|"manage", expires_at?: ISO timestamp, non_expiring?: boolean, project_scope?, project_ids?}`를 받고 `201`에서 한 번만 평문 `token`을 반환합니다. 개인 키의 finite 최대 기간은 `max(366일, mcp.max_grant_ttl_days)`이며 만료 field를 모두 생략한 API 요청은 기존 서버 기본 기간을 사용합니다. 명시적 `non_expiring: true`는 만료 없는 개인 키를 만들고 응답/목록의 `expires_at`은 `null`입니다. 미래 `expires_at`과 `non_expiring: true`의 동시 입력, 문자열 boolean, 과거·naive timestamp는 거부합니다. Finite expiry는 UTC `Z` timestamp로 Keystone에 전달하며 무기한 credential에는 expiry를 보내지 않습니다. OAuth/내부 Lumen 위임은 기존 finite TTL 정책을 유지합니다.
+
+UI는 기본1달과1일·1주일·3달·6달·1년·만료 없음·직접 선택을 제공합니다. 일·주는 UTC elapsed time, 월·년은 UTC calendar arithmetic으로 target month-end를 보정하고 현지 custom 시각은 UTC로 변환합니다. Finite POST는 실제 `expires_at`만, 만료 없음은 `non_expiring: true`만 보냅니다. 무기한도 현재 멤버십·역할·user/project binding·revocation·credential epoch·dispatch 한계를 우회하지 않습니다.
+
+`GET /api/v1/auth/mcp-tokens`와 `GET /api/v1/auth/mcp-oauth/grants`는 명시적으로 폐기된 항목을 제외합니다. 아직 폐기하지 않은 만료 항목은 표시하여 사용자가 폐기할 수 있습니다. `DELETE /api/v1/auth/mcp-tokens/{token_id}`와 `DELETE /api/v1/auth/mcp-oauth/grants/{grant_id}`는 본인·현재 프로젝트 소유 항목만 `204`로 폐기하며, 만료 항목도 `revoked`로 전환합니다. 반복 폐기는 같은 결과를 유지합니다. 계정 화면은 성공 뒤 두 목록을 다시 조회하므로 항목·개수·빈 상태가 즉시 갱신되고 새로고침 뒤에도 유지됩니다.
+
+폐기는 물리적 행 삭제가 아닙니다. Grant/token tombstone·감사 기록과 upstream credential 정리 재시도를 보존하고, 선택된 Lumen 기본 토큰은 해제합니다. Upstream 정리가 실패해도 로컬 폐기는 유지되어 접근·OAuth refresh가 거부되고 해당 항목은 사용자 목록에 다시 나타나지 않습니다.
 
 MCP의 cloud tool은 이 application credential의 원래 scope로 인증하며 별도 project scope를 요청하지 않습니다. Keystone token의 user/project가 저장된 grant principal과 정확히 일치해야 provider에 요청하고, 다른 owner/project 또는 unscoped 응답은 거부합니다. Manager/admin/browser credential로 fallback하지 않습니다. 연결 확인의 handshake·tools/list 성공은 실제 cloud `tools/call` 성공과 별개의 증거입니다.
 

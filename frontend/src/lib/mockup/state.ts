@@ -26,7 +26,7 @@ interface MockMcpAccessRecord {
 	status: 'active' | 'revoked';
 	visible_prefix: string | null;
 	issued_at: string | null;
-	expires_at: string;
+	expires_at: string | null;
 	last_used_at: string | null;
 	revoked_at: string | null;
 	is_lumen_default: boolean;
@@ -40,6 +40,7 @@ interface MockupState {
 		personalTokens: MockMcpAccessRecord[];
 		oauthGrants: MockMcpAccessRecord[];
 		lumenDefaults: Record<string, string>;
+		cloudApprovals: Record<string, { access_level: 'read' | 'manage'; expires_at: string }>;
 	};
 	instances: Instance[];
 	volumes: Volume[];
@@ -143,9 +144,9 @@ function seedState(): MockupState {
 	];
 
 	const networks = [
-		{ id: 'mock-net-private', name: 'sample-private', status: 'ACTIVE', is_external: false, is_shared: false, project_id: PROJECT_ID, mtu: 1450, subnet_details: [{ id: 'mock-subnet-private', name: 'sample-private-subnet', cidr: '192.0.2.0/24', gateway_ip: '192.0.2.1', dhcp_enabled: true }] },
-		{ id: 'mock-net-data', name: 'sample-data', status: 'ACTIVE', is_external: false, is_shared: true, project_id: PROJECT_ID, mtu: 1450, subnet_details: [{ id: 'mock-subnet-data', name: 'sample-data-subnet', cidr: '198.51.100.0/24', gateway_ip: '198.51.100.1', dhcp_enabled: true }] },
-		{ id: 'mock-net-public', name: 'sample-external', status: 'ACTIVE', is_external: true, is_shared: true, project_id: null, mtu: 1500, subnet_details: [{ id: 'mock-subnet-public', name: 'sample-external-subnet', cidr: '203.0.113.0/24', gateway_ip: '203.0.113.1', dhcp_enabled: false }] },
+		{ id: 'mock-net-private', name: 'sample-private', status: 'ACTIVE', is_external: false, is_shared: false, project_id: PROJECT_ID, mtu: 1450, subnet_details: [{ id: 'mock-subnet-private', name: 'sample-private-subnet', cidr: '192.0.2.0/24', ip_version: 4, gateway_ip: '192.0.2.1', dhcp_enabled: true }] },
+		{ id: 'mock-net-data', name: 'sample-data', status: 'ACTIVE', is_external: false, is_shared: true, project_id: PROJECT_ID, mtu: 1450, subnet_details: [{ id: 'mock-subnet-data', name: 'sample-data-subnet', cidr: '198.51.100.0/24', ip_version: 4, gateway_ip: '198.51.100.1', dhcp_enabled: true }] },
+		{ id: 'mock-net-public', name: 'sample-external', status: 'ACTIVE', is_external: true, is_shared: true, project_id: null, mtu: 1500, subnet_details: [{ id: 'mock-subnet-public', name: 'sample-external-subnet', cidr: '203.0.113.0/24', ip_version: 4, gateway_ip: '203.0.113.1', dhcp_enabled: false }] },
 	];
 
 	const routers = [
@@ -231,6 +232,7 @@ function seedState(): MockupState {
 		tutorialStatuses: {},
 		mcpAccess: {
 			lumenDefaults: { [PROJECT_ID]: 'mock-mcp-token-lumen' },
+			cloudApprovals: {},
 			personalTokens: [
 				{
 					id: 'mock-mcp-token-lumen',

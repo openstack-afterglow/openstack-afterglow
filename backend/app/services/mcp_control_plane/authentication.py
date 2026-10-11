@@ -12,14 +12,15 @@ from app.models.mcp_authority import McpLumenSelection, McpPersonalToken
 from app.services.mcp_control_plane.authority import (
     McpAuthorityError,
     McpGrantNotFoundError,
-    _as_utc,
+    McpGrantStateError,
     _lock_grant,
-    _now,
     default_grant_project,
+    grant_is_expired,
     grant_scopes,
     lock_owner,
     resolve_personal_token,
     validate_grant_project,
+    validate_lumen_grant,
 )
 from app.services.mcp_control_plane.oauth import McpOAuthUrls
 from app.services.mcp_control_plane.oauth_authority import McpOAuthAuthorityError, resolve_oauth_access_token
@@ -86,7 +87,7 @@ async def lock_principal_grant(session, principal: McpPrincipal, *, write: bool 
     )
     if (
         grant.status != "active"
-        or _as_utc(grant.expires_at) <= _now()
+        or grant_is_expired(grant)
         or grant.credential_epoch != principal.credential_epoch
         or "mcp:read" not in principal.scopes
         or (write and not principal.can_write)
@@ -98,6 +99,12 @@ async def lock_principal_grant(session, principal: McpPrincipal, *, write: bool 
         or (principal.source != "lumen" and principal.source != grant.source)
     ):
         raise McpAuthenticationError("MCP grant source changed before dispatch")
+    try:
+        validate_lumen_grant(grant, principal.project_id)
+        if principal.source == "lumen":
+            validate_lumen_grant(grant, principal.selection_project_id or principal.anchor_project_id)
+    except McpGrantStateError as exc:
+        raise McpAuthenticationError("Lumen MCP consent is unavailable before dispatch") from exc
     if grant.source == "personal_token":
         token = await session.scalar(
             select(McpPersonalToken).where(McpPersonalToken.grant_id == grant.id).with_for_update()

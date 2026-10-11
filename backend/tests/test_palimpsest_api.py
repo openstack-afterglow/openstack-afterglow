@@ -82,10 +82,13 @@ async def test_second_generation_union_surface_stays_removed():
     for gone_orm in ("UnionLayer", "UnionTemplate", "UnionUserMount"):
         assert not hasattr(db_models, gone_orm), f"{gone_orm} ORM 이 되살아났다"
 
-    # 3세대(= Palimpsest 코어) 표면은 그대로여야 한다
+    # Admin builds/consumes and the Palimpsest layer API remain owned surfaces.
     paths = {route.path for route in app.routes}
     assert any(p.startswith("/api/v1/admin/libraries") for p in paths)
-    assert any(p.startswith("/api/v1/libraries/squashfs") for p in paths)
+    assert "/api/v1/admin/libraries/consume" in paths
+    assert "/api/v1/palimpsest/layers" in paths
+    assert "/api/v1/libraries" in paths
+    assert not any(p.startswith("/api/v1/libraries/") for p in paths)
 
 
 # ---------------------------------------------------------------------------

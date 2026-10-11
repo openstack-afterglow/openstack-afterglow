@@ -101,7 +101,7 @@ beforeEach(() => {
 		if (path === '/api/v1/chat/workspaces') return [];
 		if (path === '/api/v1/chat/agents') return [];
 		if (path === '/api/v1/chat/tools') return [];
-		if (path === '/api/v1/chat/mcp-servers') return [];
+		if (path === '/api/v1/chat/mcp-servers?active_only=true') return [];
 		if (path === '/api/v1/chat/runs?active=true') return [];
 		if (path.includes('/messages')) {
 			return { messages: [], tree_nodes: [], active_leaf_id: null, has_more: false, next_before_id: null };

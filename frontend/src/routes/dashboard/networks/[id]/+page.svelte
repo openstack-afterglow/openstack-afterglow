@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/network-resources';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { page } from '$app/stores';
@@ -95,7 +96,7 @@
 	}
 </script>
 
-<div class="p-4 md:p-6 max-w-5xl mx-auto">
+<PageShell>
 	<div class="mb-6">
 		<a href="/dashboard" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">
 			{t('network.page.backDashboard')}
@@ -127,4 +128,4 @@
 			<DashboardRouterTable routers={network.routers} />
 		{/if}
 	{/if}
-</div>
+</PageShell>

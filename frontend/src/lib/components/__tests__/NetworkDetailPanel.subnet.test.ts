@@ -84,7 +84,7 @@ describe('NetworkDetailPanel subnet creation', () => {
 		mocks.get.mockImplementation((path: string) => Promise.resolve(
 			path === '/api/v1/routers'
 				? [{ id: 'router-1', name: 'edge', status: 'ACTIVE', project_id: 'project-1', external_gateway_network_id: null, connected_subnet_ids: [] }]
-				: { ...network, subnet_details: [{ id: 'sub-1', name: 'sub-1', cidr: '10.10.0.0/24', gateway_ip: '10.10.0.1', dhcp_enabled: true }] },
+				: { ...network, subnet_details: [{ id: 'sub-1', name: 'sub-1', cidr: '10.10.0.0/24', ip_version: 4, gateway_ip: '10.10.0.1', dhcp_enabled: true }] },
 		));
 		render(NetworkDetailPanel, { networkId: network.id, apiBase: '/api/v1/networks', projectId: 'project-1' });
 		await fireEvent.click(await screen.findByRole('button', { name: '+ 연결' }));

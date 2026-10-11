@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/drover-pages';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -96,7 +97,7 @@
 	</SlidePanel>
 {/if}
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<PageShell>
 	<PageHeader breadcrumb="DROVER" title={t('cluster.title')}>
 		{#snippet actions()}
 			<AutoRefreshControl
@@ -177,4 +178,4 @@
 			</table>
 		</TableShell>
 	{/if}
-</div>
+</PageShell>

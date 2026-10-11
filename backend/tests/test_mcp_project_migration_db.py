@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.services.mcp_control_plane.authority import approved_project_metadata
@@ -99,3 +99,55 @@ async def test_internal_source_and_additional_credential_foreign_key(migrated_au
             )
         await conn.execute(text(f"DELETE FROM `{grants}` WHERE id='internal'"))
         assert (await conn.execute(text(f"SELECT COUNT(*) FROM `{credentials}`"))).scalar_one() == 0
+
+
+@pytest.fixture
+async def migrated_personal_expiry():
+    url = os.environ.get("AFTERGLOW_TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("AFTERGLOW_TEST_DATABASE_URL is required")
+    suffix = uuid4().hex[:12]
+    table = f"mcp_expiry_{suffix}"
+    sql = (Path(__file__).parents[1] / "migrations" / "085_mcp_personal_token_expiry.sql").read_text(encoding="utf-8")
+    sql = sql.replace("mcp_delegated_grants", table).replace("chk_mcp_grant_expiry", f"chk_expiry_{suffix}")
+    statements = [
+        part.strip()
+        for part in "\n".join(line for line in sql.splitlines() if not line.lstrip().startswith("--")).split(";")
+        if part.strip()
+    ]
+    engine = create_async_engine(url)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    f"CREATE TABLE `{table}` (id CHAR(36) PRIMARY KEY, source VARCHAR(20) NOT NULL, expires_at DATETIME(6) NOT NULL)"
+                )
+            )
+            await conn.execute(
+                text(f"INSERT INTO `{table}` VALUES ('legacy', 'personal_token', '2027-01-31 12:34:56.123456')")
+            )
+            for _ in range(2):
+                for statement in statements:
+                    await conn.execute(text(statement))
+        yield engine, table
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(text(f"DROP TABLE IF EXISTS `{table}`"))
+        await engine.dispose()
+
+
+@pytest.mark.parametrize("source", ["personal_token", "oauth", "lumen"])
+async def test_expiry_migration_preserves_legacy_and_only_allows_unbounded_personal(migrated_personal_expiry, source):
+    engine, table = migrated_personal_expiry
+    async with engine.begin() as conn:
+        legacy = (await conn.execute(text(f"SELECT expires_at FROM `{table}` WHERE id='legacy'"))).scalar_one()
+        assert legacy.isoformat() == "2027-01-31T12:34:56.123456"
+        insert = text(f"INSERT INTO `{table}` VALUES ('new', :source, NULL)")
+        if source == "personal_token":
+            await conn.execute(insert, {"source": source})
+            assert (await conn.execute(text(f"SELECT expires_at FROM `{table}` WHERE id='new'"))).scalar_one() is None
+        else:
+            with pytest.raises(OperationalError) as failure:
+                await conn.execute(insert, {"source": source})
+            assert failure.value.orig.args[0] == 4025  # MariaDB CHECK violation
+            assert (await conn.execute(text(f"SELECT COUNT(*) FROM `{table}` WHERE id='new'"))).scalar_one() == 0

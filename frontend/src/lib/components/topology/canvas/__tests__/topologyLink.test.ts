@@ -117,6 +117,7 @@ describe('topologyLink 연결 규칙', () => {
 			id: 'sn-multi-2',
 			name: 'multi-net-subnet-2',
 			cidr: '10.0.1.0/24',
+			ip_version: 4,
 			gateway_ip: '10.0.1.1',
 			dhcp_enabled: true
 		});

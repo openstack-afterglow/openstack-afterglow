@@ -79,34 +79,12 @@
 		</span>
 		<button onclick={() => s.goTo(2)} class="review-edit-btn mt-0.5">{t('review.edit')}</button>
 	</div>
-	<!-- 라이브러리 -->
-	{#if $wizard.libraries.length > 0}
-	<div class="grid grid-cols-[140px_1fr_auto] gap-4 items-center px-4 py-3.5 border-b border-line">
-		<span class="text-xs text-ink-2 font-medium">{t('review.libraries')}</span>
-		<span class="flex flex-wrap gap-1.5">
-			{#each $wizard.libraries as lib}
-				<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-selected/30 border border-action-warm text-warm-text font-mono text-xs">{lib}</span>
-			{/each}
-		</span>
-		<button onclick={() => s.goTo(3)} class="review-edit-btn">{t('review.edit')}</button>
-	</div>
-	{/if}
 	<!-- SSH 접근 -->
 	<div class="grid grid-cols-[140px_1fr_auto] gap-4 items-center px-4 py-3.5 border-b border-line">
 		<span class="text-xs text-ink-2 font-medium">{t('review.ssh.label')}</span>
 		<span class="text-sm text-ink-0 font-mono">{reviewSshAccess}</span>
 		<button onclick={() => s.goTo(5)} class="review-edit-btn">{t('review.edit')}</button>
 	</div>
-	{#if s.visibleStepIds.includes(4)}
-	<!-- 전략 -->
-	<div class="grid grid-cols-[140px_1fr_auto] gap-4 items-center px-4 py-3.5 border-b border-line">
-		<span class="text-xs text-ink-2 font-medium">{t('review.strategy.label')}</span>
-		<span class="text-sm text-ink-0">
-			{t('review.strategy.summary', { scheduling: $wizard.scheduling, strategy: $wizard.strategy || 'none' })}
-		</span>
-		<button onclick={() => s.goTo(4)} class="review-edit-btn">{t('review.edit')}</button>
-	</div>
-	{/if}
 	<!-- 네트워크 -->
 	<div class="grid grid-cols-[140px_1fr_auto] gap-4 items-center px-4 py-3.5 border-b border-line">
 		<span class="text-xs text-ink-2 font-medium">{t('review.network.label')}</span>
@@ -142,15 +120,6 @@
 	</div>
 	{/if}
 </div>
-
-{#if $wizard.libraries.length > 0}
-	<div class="p-3 rounded-lg bg-yellow-900/20 border border-yellow-700/40 text-yellow-300 text-xs flex items-start gap-2 mb-4">
-		<svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-		</svg>
-		<span>{t('review.overlayNotice')}</span>
-	</div>
-{/if}
 
 <!-- deploy banner -->
 <div class="flex items-center gap-3.5 px-4 py-3.5 rounded-lg bg-blue-950/30 border border-action-warm/50 mb-4">

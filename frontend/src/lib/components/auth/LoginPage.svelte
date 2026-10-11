@@ -6,6 +6,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import LoginBrandHeader from '$lib/components/auth/LoginBrandHeader.svelte';
 	import LoginForm from '$lib/components/auth/LoginForm.svelte';
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import type { LoginResponse } from '$lib/types/auth';
 	import { resolvePostLoginProject } from '$lib/utils/authFlow';
 	import { postAuthDestination } from '$lib/utils/mcpConsent';
@@ -92,6 +93,7 @@
 	<div class="login-locale">
 		<LocaleSelect id="login-locale" variant="labelled" />
 	</div>
+	<PageShell class="self-center">
 	<div class="login-shell motion-stagger">
 		<LoginBrandHeader />
 		<LoginForm
@@ -106,27 +108,28 @@
 			onGitlab={loginWithGitlab}
 		/>
 	</div>
+	</PageShell>
 </div>
 
 <style>
 	.login-page {
-		min-height: 100vh;
+		min-height: 100dvh;
 		display: grid;
 		grid-template-rows: auto 1fr;
 		justify-items: center;
-		padding: 1rem;
 		background: var(--color-surface-canvas);
 		color: var(--color-ink-0);
 	}
 
 	.login-locale {
 		justify-self: end;
-		margin-bottom: 1rem;
+		margin: 1rem;
 	}
 
 	.login-shell {
 		width: 100%;
 		max-width: 28rem;
+		margin-inline: auto;
 		align-self: center;
 	}
 </style>

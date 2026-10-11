@@ -12,6 +12,8 @@
 <button data-testid="step-two" onclick={() => store.goTo(2)}>step two</button>
 <button data-testid="step-five" onclick={() => store.goTo(5)}>step five</button>
 <button data-testid="step-six" onclick={() => store.goTo(6)}>step six</button>
+<button data-testid="select-image" onclick={() => store.selectImage('image-1', 'Ubuntu 24.04')}>select image</button>
+<button data-testid="previous" onclick={() => store.prevStep()}>previous</button>
 <button data-testid="project-a" onclick={() => store.selectAdminProject('project-a', 'Project A')}>project a</button>
 <button data-testid="project-b" onclick={() => store.selectAdminProject('project-b', 'Project B')}>project b</button>
 <button data-testid="select-first-flavor" onclick={() => store.flavors[0] && store.selectFlavor(store.flavors[0].id, store.flavors[0].name)}>select flavor</button>

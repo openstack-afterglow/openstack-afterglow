@@ -6,18 +6,19 @@ const member: ProjectAccessMember = { user_id: 'u', username: 'User', email: '',
 const roles: AssignableProjectRole[] = [
 	{ id: 'admin', name: 'project_admin', area: 'project', grade: 'admin', implied_role_ids: [], inherited_role_ids: [] },
 	{ id: 'user', name: 'lumen_user', area: 'lumen', grade: 'user', implied_role_ids: ['chat'], inherited_role_ids: ['chat'] },
-	{ id: 'chat', name: 'lumen-chat_user', area: 'lumen-chat', grade: 'user', implied_role_ids: [], inherited_role_ids: [] },
-	{ id: 'images', name: 'lumen-images_user', description: 'Visual asset generation', area: 'lumen-images', grade: 'user', implied_role_ids: [], inherited_role_ids: [] },
+	{ id: 'chat', name: 'lumen-chat_user', area: 'lumen', grade: 'user', implied_role_ids: [], inherited_role_ids: [] },
+	{ id: 'images', name: 'lumen-images_user', description: 'Visual asset generation', area: 'lumen', grade: 'user', implied_role_ids: [], inherited_role_ids: [] },
 ];
 afterEach(cleanup);
+const chooseArea = (area: string) => fireEvent.change(screen.getByRole('combobox', { name: '권한 영역' }), { target: { value: area } });
 describe('project member direct and inherited roles', () => {
 	it('selects grade parents and independent leaves without treating inherited roles as direct grants', async () => {
 		const onSave = vi.fn();
 		render(ProjectMemberRolesModal, { member, roles, isOwner: true, busy: false, error: '', onSave, onClose: vi.fn() });
+		await chooseArea('lumen');
 		expect((screen.getByRole('checkbox', { name: /^lumen_user/ }) as HTMLInputElement).checked).toBe(true);
 		expect((screen.getByRole('checkbox', { name: /^lumen-chat_user/ }) as HTMLInputElement).checked).toBe(true);
 		expect((screen.getByRole('checkbox', { name: /^lumen-chat_user/ }) as HTMLInputElement).disabled).toBe(true);
-		expect(screen.getByText(/상속됨 \(읽기 전용\)/)).toBeTruthy();
 		await fireEvent.click(screen.getByRole('checkbox', { name: /^lumen-images_user/ }));
 		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
 		expect(onSave).toHaveBeenCalledWith(['admin', 'user', 'images']);
@@ -26,6 +27,7 @@ describe('project member direct and inherited roles', () => {
 		const onSave = vi.fn();
 		render(ProjectMemberRolesModal, { member, roles, isOwner: false, busy: false, error: '', onSave, onClose: vi.fn() });
 		expect((screen.getByRole('checkbox', { name: /^project_admin/ }) as HTMLInputElement).disabled).toBe(true);
+		await chooseArea('lumen');
 		expect((screen.getByRole('checkbox', { name: /^lumen-images_user/ }) as HTMLInputElement).disabled).toBe(false);
 	});
 	it('filters case-insensitive descriptions and IDs without losing hidden direct selections', async () => {
@@ -43,9 +45,32 @@ describe('project member direct and inherited roles', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
 		expect(onSave).toHaveBeenCalledWith(['admin', 'user', 'images']);
 	});
+	it('preserves hidden direct and legacy grants across area navigation and search fallback, then restores the original area', async () => {
+		const onSave = vi.fn();
+		const catalog: AssignableProjectRole[] = [...roles, { id: 'opaque-id', name: 'lumen-looking', area: 'custom-area', grade: null, implied_role_ids: [], inherited_role_ids: [] }];
+		render(ProjectMemberRolesModal, { member: { ...member, direct_role_ids: ['admin', 'user', 'legacy-id'] }, roles: catalog, isOwner: true, busy: false, error: '', onSave, onClose: vi.fn() });
+		expect(screen.queryByRole('checkbox', { name: /^lumen_user/ })).toBeNull();
+		await chooseArea('custom-area');
+		await fireEvent.click(screen.getByRole('checkbox', { name: /^lumen-looking/ }));
+		await chooseArea('project');
+		await fireEvent.click(screen.getByRole('checkbox', { name: /^project_admin/ }));
+		const search = screen.getByRole('searchbox');
+		await fireEvent.input(search, { target: { value: 'OPAQUE-ID' } });
+		expect((screen.getByRole('checkbox', { name: /^lumen-looking/ }) as HTMLInputElement).checked).toBe(true);
+		expect(screen.queryByRole('checkbox', { name: /^project_admin/ })).toBeNull();
+		await fireEvent.input(search, { target: { value: 'user' } });
+		expect((screen.getByRole('checkbox', { name: /^lumen_user/ }) as HTMLInputElement).checked).toBe(true);
+		await fireEvent.input(search, { target: { value: '' } });
+		expect((screen.getByRole('checkbox', { name: /^project_admin/ }) as HTMLInputElement).checked).toBe(false);
+		expect(screen.queryByRole('checkbox', { name: /^lumen-looking/ })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
+		expect(onSave).toHaveBeenCalledWith(['user', 'legacy-id', 'opaque-id']);
+	});
 	it.each(['group', 'inherited'] as const)('does not offer direct mutation for %s-only membership', async (source) => {
 		const onSave = vi.fn();
 		render(ProjectMemberRolesModal, { member: { ...member, source, direct_role_ids: [], external_role_ids: member.effective_role_ids }, roles, isOwner: true, busy: false, error: '', onSave, onClose: vi.fn() });
+		expect(screen.getAllByRole('checkbox').every(input => (input as HTMLInputElement).disabled)).toBe(true);
+		await chooseArea('lumen');
 		expect(screen.getAllByRole('checkbox').every(input => (input as HTMLInputElement).disabled)).toBe(true);
 		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
 		expect(onSave).not.toHaveBeenCalled();
@@ -65,7 +90,7 @@ describe('server-provided transitive and shared descendants', () => {
 		{ id: 'parent-a', name: 'lumen_admin', area: 'lumen', grade: 'admin', implied_role_ids: ['middle'], inherited_role_ids: ['middle', 'leaf'] },
 		{ id: 'parent-b', name: 'lumen_user', area: 'lumen', grade: 'user', implied_role_ids: ['middle'], inherited_role_ids: ['middle', 'leaf'] },
 		{ id: 'middle', name: 'lumen_reader', area: 'lumen', grade: 'reader', implied_role_ids: ['leaf'], inherited_role_ids: ['leaf'] },
-		{ id: 'leaf', name: 'lumen-history_reader', area: 'lumen-history', grade: 'reader', implied_role_ids: [], inherited_role_ids: [] },
+		{ id: 'leaf', name: 'lumen-history_reader', area: 'lumen', grade: 'reader', implied_role_ids: [], inherited_role_ids: [] },
 		{ id: 'external', name: 'waygate_reader', area: 'waygate', grade: 'reader', implied_role_ids: [], inherited_role_ids: [] },
 	];
 	const graphMember: ProjectAccessMember = {
@@ -85,6 +110,7 @@ describe('server-provided transitive and shared descendants', () => {
 		expect(checkbox(/^lumen_reader/).checked).toBe(false);
 		expect(checkbox(/^lumen-history_reader/).checked).toBe(false);
 		expect(checkbox(/^lumen-history_reader/).disabled).toBe(false);
+		await chooseArea('waygate');
 		expect(checkbox(/^waygate_reader/).checked).toBe(true);
 		expect(checkbox(/^waygate_reader/).disabled).toBe(true);
 		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));

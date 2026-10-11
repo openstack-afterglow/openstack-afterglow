@@ -506,7 +506,7 @@
 	}
 </script>
 
-<PageShell max="7xl">
+<PageShell>
 	<LumenPermissionNotice leaves={['lumen-audio_user']} />
 	<div class="studio">
 		<header class="header">

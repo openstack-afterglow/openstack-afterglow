@@ -1,4 +1,4 @@
-import { get } from 'svelte/store';
+import { fromStore, get } from 'svelte/store';
 import { getContext, setContext } from 'svelte';
 import { auth, canWrite } from '$lib/stores/auth';
 import { api, ApiError } from '$lib/api/client';
@@ -53,6 +53,8 @@ interface MigrationStatus {
 }
 
 export function createInstanceDetailController(opts: InstanceDetailControllerOpts): InstanceDetailController {
+	const identity = fromStore(auth);
+	const writePermission = fromStore(canWrite);
 	// Domain state
 	let instance = $state<Instance | null>(null);
 	let floatingIps = $state<FloatingIpDetail[]>([]);
@@ -78,9 +80,23 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	let consoleOpenMessage = $state('');
 	let consoleOpenError = $state('');
 
-	// Detail actions: password and migration remain admin-only.
+	// Password capability belongs to the selected instance and caller context.
 	let passwordPrecheck = $state<PasswordPrecheck | null>(null);
 	let passwordPrecheckLoading = $state(false);
+	let passwordPrecheckError = $state('');
+	let passwordPrecheckGeneration = 0;
+	const passwordPrecheckReason = $derived(
+		passwordPrecheck?.supported === false && !opts.adminMode()
+			? t('password.unsupportedInstance')
+			: passwordPrecheck?.reason ?? null
+	);
+	const canChangePassword = $derived.by(() => {
+		const caller = identity.current;
+		if (!writePermission.current || !caller.token || !instance || instance.id !== opts.instanceId()) return false;
+		if (opts.adminMode()) return caller.isSystemAdmin === true;
+		return !!caller.userId && instance.user_id === caller.userId
+			&& !!instance.project_id && instance.project_id === opts.effectiveProjectId();
+	});
 	// Resize is available in both writable user and admin detail modes.
 	let resizeFlavors = $state<FlavorOption[]>([]);
 	let resizeFlavorsLoading = $state(false);
@@ -150,6 +166,10 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 	// Core fetch
 	async function fetchInstance(id: string, fetchOpts?: { silent?: boolean; refreshSecurityGroups?: boolean }) {
+		++passwordPrecheckGeneration;
+		passwordPrecheck = null;
+		passwordPrecheckLoading = false;
+		passwordPrecheckError = '';
 		if (fetchOpts?.silent) {
 			refreshing = true;
 		} else {
@@ -217,8 +237,8 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			if (!ownsRequest()) return;
 			instance = loadedInstance;
 			error = '';
+			if (canChangePassword) void fetchPasswordPrecheck(id);
 			if (opts.adminMode()) {
-				void fetchPasswordPrecheck(id);
 				if (loadedInstance.status === 'MIGRATING') {
 					void loadMigrationStatus(id);
 				} else if (migrationStatus?.migration?.status !== 'running') {
@@ -528,32 +548,51 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		}
 	}
 
-	// Admin: password precheck
 	async function fetchPasswordPrecheck(serverId: string) {
+		const generation = ++passwordPrecheckGeneration;
+		passwordPrecheck = null;
+		passwordPrecheckError = '';
+		passwordPrecheckLoading = false;
+		if (!canChangePassword || instance?.id !== serverId) return;
+		const requestToken = tok();
+		const requestProjectId = opts.effectiveProjectId();
+		const ownsRequest = () => generation === passwordPrecheckGeneration
+			&& opts.instanceId() === serverId && opts.effectiveProjectId() === requestProjectId
+			&& tok() === requestToken && canChangePassword;
 		passwordPrecheckLoading = true;
 		try {
-			passwordPrecheck = await api.get<PasswordPrecheck>(
-				`/api/v1/instances/${serverId}/admin-password/precheck`,
-				tok(),
-				ownPid()
+			const result = await api.get<PasswordPrecheck>(
+				`/api/v1/instances/${serverId}/admin-password/precheck`, requestToken, requestProjectId
 			);
-		} catch {
-			passwordPrecheck = null;
+			if (ownsRequest()) passwordPrecheck = result;
+		} catch (e) {
+			if (ownsRequest()) passwordPrecheckError = e instanceof ApiError ? e.message : t('controller.password.precheckFailed');
 		} finally {
-			passwordPrecheckLoading = false;
+			if (ownsRequest()) passwordPrecheckLoading = false;
 		}
 	}
 
-	// Returns error string on failure, null on success
+	// A successful HTTP response means Nova accepted the request, not guest login proof.
 	async function doSetPassword(password: string): Promise<string | null> {
-		if (!instance) return t('controller.password.noInstance');
+		if (!instance || instance.id !== opts.instanceId()) return t('controller.password.noInstance');
+		if (!canChangePassword) return t('controller.password.notAllowed');
+		if (instance.status !== 'ACTIVE' || passwordPrecheckLoading || !passwordPrecheck?.supported) {
+			return passwordPrecheckReason || passwordPrecheckError || t('controller.password.unavailable');
+		}
+		const serverId = instance.id;
+		const requestToken = tok();
+		const requestProjectId = opts.effectiveProjectId();
 		try {
-			await api.post(`/api/v1/instances/${instance.id}/admin-password`, { new_password: password }, tok(), ownPid());
+			await api.post(`/api/v1/instances/${serverId}/admin-password`, { new_password: password }, requestToken, requestProjectId);
+			if (opts.instanceId() === serverId && opts.effectiveProjectId() === requestProjectId && tok() === requestToken) {
+				toast.info(t('controller.password.requestSent'), 8000);
+			}
 			return null;
 		} catch (e) {
 			return e instanceof ApiError ? e.message : t('controller.password.failed');
 		}
 	}
+
 
 	// Admin: migrate
 	async function loadMigrateHosts(type: 'live' | 'cold' = 'live') {
@@ -665,8 +704,11 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		get floatingIpsList() { return floatingIpsList; },
 		get assignedPortIds() { return assignedPortIds; },
 		get availableInterfaces() { return availableInterfaces; },
+		get canChangePassword() { return canChangePassword; },
 		get passwordPrecheck() { return passwordPrecheck; },
+		get passwordPrecheckReason() { return passwordPrecheckReason; },
 		get passwordPrecheckLoading() { return passwordPrecheckLoading; },
+		get passwordPrecheckError() { return passwordPrecheckError; },
 		get resizeFlavors() { return resizeFlavors; },
 		get resizeFlavorsLoading() { return resizeFlavorsLoading; },
 		selectableResizeFlavor,
@@ -743,8 +785,11 @@ export interface InstanceDetailController {
 	readonly floatingIpsList: Instance['ip_addresses'];
 	readonly assignedPortIds: Set<string>;
 	readonly availableInterfaces: PortInfo[];
+	readonly canChangePassword: boolean;
 	readonly passwordPrecheck: PasswordPrecheck | null;
+	readonly passwordPrecheckReason: string | null;
 	readonly passwordPrecheckLoading: boolean;
+	readonly passwordPrecheckError: string;
 	readonly resizeFlavors: FlavorOption[];
 	readonly resizeFlavorsLoading: boolean;
 	readonly resizeLoading: boolean;

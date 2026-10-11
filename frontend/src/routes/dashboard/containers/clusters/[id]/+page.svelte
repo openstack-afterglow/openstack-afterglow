@@ -156,7 +156,7 @@
   });
 </script>
 
-<PageShell class="max-w-5xl">
+<PageShell>
   {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 
   {#if loading}

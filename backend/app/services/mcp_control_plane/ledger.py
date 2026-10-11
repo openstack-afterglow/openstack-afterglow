@@ -18,7 +18,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.database import get_session_factory
 from app.models.mcp_authority import McpToolInvocation
 from app.services.mcp_control_plane.authentication import McpPrincipal, lock_principal_grant
-from app.services.mcp_control_plane.authority import McpAuthorityError, _as_utc, _now, lock_owner
+from app.services.mcp_control_plane.authority import (
+    McpAuthorityError,
+    _as_utc,
+    _now,
+    grant_is_expired,
+    lock_owner,
+)
 from app.services.mcp_control_plane.registry import REGISTRY_VERSION, RegistryEntry
 
 
@@ -82,7 +88,7 @@ def validate_idempotency_key(value: object) -> str:
 def _validate_active_write_grant(grant, principal: McpPrincipal) -> None:
     if (
         grant.status != "active"
-        or _as_utc(grant.expires_at) <= _now()
+        or grant_is_expired(grant)
         or grant.credential_epoch != principal.credential_epoch
         or "mcp:write" not in principal.scopes
     ):

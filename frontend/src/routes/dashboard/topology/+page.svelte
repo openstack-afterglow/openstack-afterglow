@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/topology';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -50,7 +51,7 @@
 	}
 </script>
 
-<div class="p-4 md:p-6 max-w-screen-2xl mx-auto">
+<PageShell>
 	<div class="mb-6 flex items-center justify-between">
 		<div>
 			<a href="/dashboard" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">
@@ -129,4 +130,4 @@
 			<span>{t('summary.floatingIps', { count: _projectFips.length })}</span>
 		</div>
 	{/if}
-</div>
+</PageShell>

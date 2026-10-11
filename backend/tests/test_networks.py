@@ -388,8 +388,10 @@ async def test_ordinary_user_get_network_detail_does_not_contain_provider_keys(c
 
 @pytest.mark.asyncio
 async def test_admin_get_subnet_detail_non_admin_returns_403(non_admin_client):
-    resp = await non_admin_client.get("/api/v1/admin/subnets/sub-1")
+    with patch("app.api.identity.admin.neutron.get_admin_subnet_detail") as get_detail:
+        resp = await non_admin_client.get("/api/v1/admin/subnets/sub-1")
     assert resp.status_code == 403
+    get_detail.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -400,6 +402,7 @@ async def test_admin_get_subnet_detail_success(admin_client):
         AllocationPool,
         DhcpBindingInfo,
         SubnetIpAllocation,
+        SubnetIpUsage,
     )
 
     fake_detail = AdminSubnetDetail(
@@ -412,6 +415,15 @@ async def test_admin_get_subnet_detail_success(admin_client):
         gateway_ip="10.0.0.1",
         ip_version=4,
         dhcp_enabled=True,
+        ip_usage=SubnetIpUsage(
+            total_pool_ips="241",
+            allocated_ips="1",
+            allocated_pool_ips="0",
+            reserved_pool_ips="0",
+            available_pool_ips="241",
+            outside_pool_ips="1",
+            allocation_mode="pool",
+        ),
         allocation_pools=[AllocationPool(start="10.0.0.10", end="10.0.0.250")],
         ports=[
             AdminSubnetPort(
@@ -421,6 +433,7 @@ async def test_admin_get_subnet_detail_success(admin_client):
                 mac_address="fa:16:3e:00:00:01",
                 device_owner="compute:nova",
                 device_id="inst-1",
+                device_name="Application VM",
                 project_id="proj-1",
                 ip_addresses=["10.0.0.5"],
                 binding_host_id="node-1",
@@ -433,6 +446,7 @@ async def test_admin_get_subnet_detail_success(admin_client):
                 port_name="p1",
                 device_owner="compute:nova",
                 device_id="inst-1",
+                device_name="Application VM",
                 project_id="proj-1",
                 binding_host_id="node-1",
             )
@@ -451,6 +465,7 @@ async def test_admin_get_subnet_detail_success(admin_client):
             )
         ],
         dhcp_agent_data_available=True,
+        device_names_available=True,
     )
 
     with patch("app.api.identity.admin.neutron.get_admin_subnet_detail", return_value=fake_detail):
@@ -464,6 +479,18 @@ async def test_admin_get_subnet_detail_success(admin_client):
     assert data["allocations"][0]["ip_address"] == "10.0.0.5"
     assert data["dhcp_bindings"][0]["source"] == "agent"
     assert data["dhcp_agent_data_available"] is True
+    assert data["device_names_available"] is True
+    assert data["ports"][0]["device_name"] == "Application VM"
+    assert data["allocations"][0]["device_name"] == "Application VM"
+    assert data["ip_usage"] == {
+        "total_pool_ips": "241",
+        "allocated_ips": "1",
+        "allocated_pool_ips": "0",
+        "reserved_pool_ips": "0",
+        "available_pool_ips": "241",
+        "outside_pool_ips": "1",
+        "allocation_mode": "pool",
+    }
 
 
 @pytest.mark.asyncio
@@ -484,3 +511,36 @@ async def test_admin_get_subnet_detail_generic_failure(admin_client):
         resp = await admin_client.get("/api/v1/admin/subnets/sub-error")
     assert resp.status_code == 500
     assert resp.json()["detail"] == "내부 서버 오류"
+
+
+@pytest.mark.asyncio
+async def test_admin_subnet_malformed_provider_data_does_not_return_free_capacity(admin_client, mock_conn):
+    from types import SimpleNamespace
+
+    mock_conn.session.auth.get_access.return_value = SimpleNamespace(role_names=["admin"], is_admin_project=True)
+    mock_conn.network.get_subnet.return_value = SimpleNamespace(
+        id="sub-1",
+        name="subnet",
+        network_id="net-1",
+        cidr="10.0.0.0/24",
+        ip_version=4,
+        gateway_ip="10.0.0.1",
+        is_dhcp_enabled=True,
+        allocation_pools=[{"start": "10.0.0.20", "end": "10.0.0.2"}],
+    )
+    resp = await admin_client.get("/api/v1/admin/subnets/sub-1")
+    assert resp.status_code == 500
+    assert "ip_usage" not in resp.json()
+    assert "10.0.0.20" not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_platform_admin_without_native_admin_token_cannot_claim_subnet_capacity(admin_client, mock_conn):
+    from types import SimpleNamespace
+
+    mock_conn.session.auth.get_access.return_value = SimpleNamespace(role_names=["member"], is_admin_project=True)
+    resp = await admin_client.get("/api/v1/admin/subnets/sub-1")
+    assert resp.status_code == 403
+    assert "ip_usage" not in resp.json()
+    mock_conn.network.get_subnet.assert_not_called()
+    mock_conn.network.ports.assert_not_called()

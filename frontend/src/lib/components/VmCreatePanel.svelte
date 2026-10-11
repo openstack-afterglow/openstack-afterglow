@@ -4,7 +4,6 @@
 	import { wizard, closeWizard } from '$lib/stores/wizard';
 	import { createVmCreateStore, provideVmCreate } from '$lib/stores/vmCreateStore.svelte';
 	import SelectFlavor from '$lib/components/wizard/SelectFlavor.svelte';
-	import SelectStrategy from '$lib/components/wizard/SelectStrategy.svelte';
 	import WizardStepper from '$lib/components/wizard/WizardStepper.svelte';
 	import WizardHeader from '$lib/components/wizard/WizardHeader.svelte';
 	import WizardFooter from '$lib/components/wizard/WizardFooter.svelte';
@@ -13,7 +12,6 @@
 	import AdminProjectSelector from '$lib/components/wizard/AdminProjectSelector.svelte';
 	import VmDeployProgress from '$lib/components/wizard/VmDeployProgress.svelte';
 	import WizardStep1Boot from '$lib/components/wizard/WizardStep1Boot.svelte';
-	import WizardStep3Library from '$lib/components/wizard/WizardStep3Library.svelte';
 	import WizardStep5Config from '$lib/components/wizard/WizardStep5Config.svelte';
 	import WizardStep6Review from '$lib/components/wizard/WizardStep6Review.svelte';
 	import { Alert, Button } from '$lib/components/ui';
@@ -72,7 +70,7 @@
 					</Alert>
 				{/if}
 
-				<div data-tour="wizard-stepper" data-tour-library-visible={s.visibleStepIds.includes(3) ? 'true' : 'false'}>
+				<div data-tour="wizard-stepper">
 					<WizardStepper cur={s.visibleStepIndex} totalSteps={s.visibleTotalSteps} stepLabels={s.visibleStepLabels} goTo={s.goToVisible} />
 				</div>
 
@@ -97,20 +95,6 @@
 									backgroundRefreshError={s.flavorBackgroundRefreshError}
 									onRefresh={s.refreshFlavorOptions}
 								/>
-							{:else if $wizard.step === 3}
-								<WizardStep3Library />
-							{:else if $wizard.step === 4}
-								<h2 class="text-lg font-semibold text-ink-0 mb-4">{t('panel.strategyTitle')} <span class="text-ink-2 text-sm font-normal">{t('panel.strategySubtitle')}</span></h2>
-								<SelectStrategy
-									scheduling={$wizard.scheduling}
-									onSchedulingChange={s.selectScheduling}
-									strategy={$wizard.strategy}
-									hasLibraries={$wizard.libraries.length > 0}
-									hasPrebuilt={s.hasPrebuilt}
-									onStrategyChange={s.selectStrategy}
-									mountProtocol={$wizard.mountProtocol}
-									onProtocolChange={s.selectMountProtocol}
-								/>
 							{:else if $wizard.step === 5}
 								<WizardStep5Config />
 							{:else if $wizard.step === 6}
@@ -129,7 +113,6 @@
 			<WizardFooter
 				imageDisplay={$wizard.imageName ?? ($wizard.bootSource === 'volume' ? ($wizard.bootVolumeName ?? null) : null)}
 				flavorDisplay={$wizard.flavorName}
-				libCount={$wizard.libraries.length}
 				step={s.visibleStepIndex}
 				totalSteps={s.visibleTotalSteps}
 				canPrev={s.visibleStepIndex > 1}

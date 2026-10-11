@@ -1,4 +1,4 @@
-"""Project-owned, redacted Cinder read adapters for the consumer MCP registry."""
+"""Project-owned, redacted Cinder adapters for the consumer MCP registry."""
 
 from __future__ import annotations
 
@@ -73,6 +73,51 @@ def _get_volume(conn: Any, *, project_id: str, volume_id: str) -> dict[str, str 
     if volume is None:
         raise McpStorageError("Cinder volume was not found")
     return _safe_volume(volume, project_id=project_id)
+
+
+def _prepare_volume_create(*, name: str, size_gb: int, availability_zone: str | None) -> dict[str, str | int | None]:
+    if not isinstance(name, str) or not name.strip() or len(name) > 255:
+        raise McpStorageError("Cinder volume name must contain 1–255 nonblank characters")
+    if not isinstance(size_gb, int) or isinstance(size_gb, bool) or not 1 <= size_gb <= 16384:
+        raise McpStorageError("Cinder volume size must be an integer from 1 to 16384 GiB")
+    if availability_zone is not None and (
+        not isinstance(availability_zone, str) or not availability_zone.strip() or len(availability_zone) > 255
+    ):
+        raise McpStorageError("Cinder volume availability zone must contain 1–255 nonblank characters")
+    return {"name": name, "size_gb": size_gb, "availability_zone": availability_zone}
+
+
+def _create_volume(
+    conn: Any, *, project_id: str, name: str, size_gb: int, availability_zone: str | None
+) -> dict[str, str | int | None]:
+    # Validate again inside the owned SDK worker, not just during the preview.
+    preview = _prepare_volume_create(name=name, size_gb=size_gb, availability_zone=availability_zone)
+    attributes = {"name": preview["name"], "size": preview["size_gb"]}
+    if preview["availability_zone"] is not None:
+        attributes["availability_zone"] = preview["availability_zone"]
+    check_mutation_dispatch()
+    volume = conn.block_storage.create_volume(**attributes)
+    volume_id = _required_string(volume, "id")
+    if not volume_id.strip():
+        raise McpStorageError("Cinder volume id is malformed")
+    owners = [_field(volume, "project_id"), _field(volume, "os-vol-tenant-attr:tenant_id")]
+    if any(owner is not None and owner != project_id for owner in owners):
+        raise McpStorageError("Cinder volume ownership cannot be proven")
+    if any(owner is not None for owner in owners):
+        safe_volume = _safe_volume(volume, project_id=project_id)
+    else:
+        # Cinder's create response can omit tenant metadata; never infer it from
+        # the credential or clean up a volume after an uncertain output failure.
+        volume = conn.block_storage.get_volume(volume_id)
+        if volume is None:
+            raise McpStorageError("Cinder created volume was not found")
+        owners = [_field(volume, "project_id"), _field(volume, "os-vol-tenant-attr:tenant_id")]
+        if any(owner is not None and owner != project_id for owner in owners):
+            raise McpStorageError("Cinder volume ownership cannot be proven")
+        safe_volume = _safe_volume(volume, project_id=project_id)
+        if safe_volume["id"] != volume_id:
+            raise McpStorageError("Cinder created volume identity cannot be proven")
+    return {**safe_volume, "requested_action": "create"}
 
 
 async def list_project_server_volumes(
@@ -235,6 +280,47 @@ async def get_project_volume(conn: Any, *, project_id: str, volume_id: str) -> d
         raise
     except Exception as exc:
         raise McpStorageError("Cinder volume is unavailable") from exc
+
+
+async def preview_project_volume_create(
+    conn: Any,
+    *,
+    project_id: str,
+    name: str,
+    size_gb: int,
+    availability_zone: str | None = None,
+) -> dict[str, str | int | None]:
+    """Validate bounded creation inputs without reading or writing cloud resources."""
+    try:
+        return await run_sdk(_prepare_volume_create, name=name, size_gb=size_gb, availability_zone=availability_zone)
+    except McpStorageError:
+        raise
+    except Exception as exc:
+        raise McpStorageError("Cinder volume creation is unavailable") from exc
+
+
+async def request_project_volume_create(
+    conn: Any,
+    *,
+    project_id: str,
+    name: str,
+    size_gb: int,
+    availability_zone: str | None = None,
+) -> dict[str, str | int | None]:
+    """Request one creation and return owned metadata, without waiting or rollback."""
+    try:
+        return await run_sdk(
+            _create_volume,
+            conn,
+            project_id=project_id,
+            name=name,
+            size_gb=size_gb,
+            availability_zone=availability_zone,
+        )
+    except McpStorageError:
+        raise
+    except Exception as exc:
+        raise McpStorageError("Cinder volume creation is unavailable") from exc
 
 
 async def preview_project_volume_delete(conn: Any, *, project_id: str, volume_id: str) -> dict[str, str | int | None]:

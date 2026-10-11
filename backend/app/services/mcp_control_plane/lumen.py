@@ -17,11 +17,12 @@ from app.services.mcp_control_plane.authentication import McpPrincipal
 from app.services.mcp_control_plane.authority import (
     McpGrantStateError,
     _as_utc,
-    _now,
     approved_project_metadata,
     default_grant_project,
+    grant_is_expired,
     grant_scopes,
     validate_grant_project,
+    validate_lumen_grant,
 )
 
 
@@ -111,10 +112,11 @@ def _validate_selected_row(
             grant.source == "personal_token"
             and (token is None or token.grant_id != grant.id or token.revoked_at is not None)
         )
-        or _as_utc(grant.expires_at) <= _now()
+        or grant_is_expired(grant)
     ):
         raise McpLumenAuthorityError("Lumen has no active delegated MCP grant")
     try:
+        validate_lumen_grant(grant, project_id)
         validate_grant_project(grant, default_grant_project(grant))
     except McpGrantStateError as exc:
         raise McpLumenAuthorityError("Lumen delegated MCP scope is unavailable") from exc
@@ -220,6 +222,7 @@ async def selected_lumen_metadata(snapshot: LumenGrantSnapshot) -> dict[str, obj
         "source": grant.source,
         "allowed_projects": projects,
         "selection_name": None if grant.source == "lumen" else grant.display_name,
+        "expires_at": _as_utc(grant.expires_at).isoformat() if grant.expires_at is not None else None,
     }
 
 

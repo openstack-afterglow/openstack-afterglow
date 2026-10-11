@@ -6,6 +6,10 @@
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import Pagination from '$lib/components/ui/Pagination.svelte';
+	import SelectInput from '$lib/components/ui/SelectInput.svelte';
+	import TableShell from '$lib/components/ui/TableShell.svelte';
 
 	interface Props {
 		endpoint: string;
@@ -30,11 +34,13 @@
 		extra: Record<string, unknown> | null;
 	}
 
-	const PAGE = 50;
+	let pageSize = $state('10');
+	let cursors = $state<(number | null)[]>([null]);
+	let pageIndex = $state(0);
 
 	let logs = $state<ActivityLog[]>([]);
 	let loading = $state(true);
-	let loadingMore = $state(false);
+	let loadError = $state('');
 	let hasMore = $state(false);
 
 	let filterResourceType = $state('');
@@ -49,19 +55,25 @@
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
-	async function load(reset = true) {
+	async function load(reset = false) {
 		const generation = ++loadGeneration;
 		loadController?.abort();
 		const controller = new AbortController();
 		loadController = controller;
 		const requestToken = token;
 		const requestProjectId = projectId;
-		const params: Record<string, string> = { limit: String(PAGE) };
+		if (!requestToken || !requestProjectId) { logs = []; loading = false; refreshing = false; return; }
+		if (reset) { cursors = [null]; pageIndex = 0; expandedId = null; }
+		const size = Number(pageSize);
+		const cursor = cursors[pageIndex];
+		const params: Record<string, string> = { limit: String(size + 1) };
+		if (cursor != null) params.before_id = String(cursor);
 		if (filterResourceType) params.resource_type = filterResourceType;
 		if (filterAction) params.action = filterAction;
 		if (showUser && filterUserId) params.user_id = filterUserId;
 		if (reset) { loading = true; logs = []; }
 		else refreshing = true;
+		loadError = '';
 		try {
 			const data = await api.get<ActivityLog[]>(
 				`${endpoint}?${new URLSearchParams(params)}`,
@@ -70,8 +82,8 @@
 				{ signal: controller.signal },
 			);
 			if (generation !== loadGeneration || token !== requestToken || projectId !== requestProjectId) return;
-			logs = data;
-			hasMore = data.length === PAGE;
+			logs = data.slice(0, size);
+			hasMore = data.length > size;
 		} catch (error) {
 			if (
 				generation === loadGeneration
@@ -81,6 +93,7 @@
 			) {
 				logs = [];
 				hasMore = false;
+				loadError = t('activity.loadFailed');
 			}
 		} finally {
 			if (generation === loadGeneration && token === requestToken && projectId === requestProjectId) {
@@ -90,24 +103,23 @@
 		}
 	}
 
-	async function loadMore() {
-		if (!hasMore || loadingMore || logs.length === 0) return;
-		loadingMore = true;
-		const lastId = logs[logs.length - 1].id;
-		const params: Record<string, string> = { limit: String(PAGE), before_id: String(lastId) };
-		if (filterResourceType) params.resource_type = filterResourceType;
-		if (filterAction) params.action = filterAction;
-		if (showUser && filterUserId) params.user_id = filterUserId;
-		const qs = new URLSearchParams(params).toString();
-		try {
-			const data = await api.get<ActivityLog[]>(`${endpoint}?${qs}`, token, projectId);
-			logs = [...logs, ...data];
-			hasMore = data.length === PAGE;
-		} catch {
-			// ignore
-		} finally {
-			loadingMore = false;
-		}
+	function previousPage() {
+		if (pageIndex <= 0 || loading || refreshing) return;
+		pageIndex -= 1;
+		loading = true;
+		logs = [];
+		expandedId = null;
+		void load();
+	}
+
+	function nextPage() {
+		if (!hasMore || loading || refreshing || logs.length === 0) return;
+		cursors = [...cursors.slice(0, pageIndex + 1), logs[logs.length - 1].id];
+		pageIndex += 1;
+		loading = true;
+		logs = [];
+		expandedId = null;
+		void load();
 	}
 
 	const ar = createAutoRefresh(() => load(false), {
@@ -121,13 +133,21 @@
 	$effect(() => {
 		void $auth.projectId;
 		void $auth.token;
+		void $auth.userId;
+		void pageSize;
 		void filterResourceType;
 		void filterAction;
 		void filterUserId;
 		void endpoint;
 		loadGeneration += 1;
 		loadController?.abort();
-		const timer = setTimeout(() => void load(), 250);
+		logs = [];
+		hasMore = false;
+		loading = true;
+		loadError = '';
+		cursors = [null];
+		pageIndex = 0;
+		const timer = setTimeout(() => void load(true), 250);
 		return () => {
 			clearTimeout(timer);
 			loadController?.abort();
@@ -192,13 +212,22 @@
 		</div>
 	</div>
 
+	<div class="flex items-center gap-2 text-xs text-ink-2">
+		<label for={`${storageKey}-page-size`}>{t('activity.pageSize')}</label>
+		<SelectInput id={`${storageKey}-page-size`} bind:value={pageSize} class="max-w-28">
+			{#each [10, 15, 20] as count}<option value={String(count)}>{t('activity.pageSizeCount', { count })}</option>{/each}
+		</SelectInput>
+	</div>
+
 	<!-- 테이블 -->
 	{#if loading}
 		<div class="text-ink-2 text-sm py-8 text-center">{t('activity.loading')}</div>
+	{:else if loadError}
+		<Alert tone="danger">{loadError}</Alert>
 	{:else if logs.length === 0}
 		<div class="text-ink-2 text-sm py-8 text-center">{t('activity.empty')}</div>
 	{:else}
-		<div class="overflow-x-auto rounded-lg border border-line">
+		<TableShell density="compact">
 			<table class="w-full text-sm">
 				<thead class="bg-surface-base text-ink-2 text-xs uppercase tracking-wide">
 					<tr>
@@ -240,7 +269,7 @@
 									{/if}
 								</div>
 								{#if expandedId === log.id && log.error_message}
-									<div class="mt-2 text-xs text-red-400 bg-red-950/30 border border-red-900/40 rounded px-2 py-1.5 max-w-xs break-words">
+									<div class="mt-2 text-xs text-state-danger-text bg-state-danger/10 border border-state-danger/30 rounded px-2 py-1.5 max-w-xs break-words">
 										{log.error_message}
 									</div>
 								{/if}
@@ -249,18 +278,10 @@
 					{/each}
 				</tbody>
 			</table>
-		</div>
+		</TableShell>
 
-		{#if hasMore}
-			<div class="text-center pt-2">
-				<button
-					onclick={loadMore}
-					disabled={loadingMore}
-					class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 rounded-lg transition-colors disabled:opacity-50"
-				>
-					{loadingMore ? t('activity.loading') : t('activity.more')}
-				</button>
-			</div>
-		{/if}
+	{/if}
+	{#if !loading && (pageIndex > 0 || logs.length > 0)}
+		<Pagination page={pageIndex + 1} hasPrev={pageIndex > 0 && !refreshing} hasNext={hasMore && !refreshing} onPrev={previousPage} onNext={nextPage} />
 	{/if}
 </div>

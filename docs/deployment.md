@@ -298,6 +298,27 @@ Bootstrap은 설정된 DB에 `create_all`을 실행하므로 누락된 테이블
 생성할 수 있습니다. 과거 실행의 효과는 별도 read-only 운영 검토 대상이며, 복구를 위해
 운영 bootstrap을 다시 실행하거나 migration ledger/credentials를 변경하지 않습니다.
 
+#### 외부 DB timeout과 Docker subnet 겹침
+
+Image build 성공 뒤 migration/bootstrap의 DB connect가 timeout이면 build 실패와
+구분합니다. 먼저 원래 실패 container의 exit/OOM/시각·sanitized DB host와 log를
+보존하고 host TCP와 실제 container TCP를 비교합니다. 현재 `compose config`의
+선택 입력은 이미 생성된 container 입력과 다를 수 있으며 비밀번호·전체 env는
+출력하지 않습니다.
+
+Host는 연결되는데 container가 실패하면 모든 Docker bridge의 IPAM subnet을
+VPN/OpenStack DB route와 비교합니다. 2026-10-11에는 완료된 Lumen QA bridge의
+`172.30.0.0/16`이 외부 DB 대역과 겹쳤습니다. 사용자 승인 뒤 해당 bridge만
+검증된 비중복 대역으로 옮겨 세 기존 datastore의 ID·PID·StartedAt·host port·mount와
+DNS alias를 보존했고, 실제 dev container의 controller/VIP TCP와 SELECT-only 인증을
+확인했습니다. 새 대역은 환경의 모든 Docker/host/VPN route와 비교하여 정하며
+특정 사설 대역을 모든 머신의 안전한 기본값으로 취급하지 않습니다.
+
+네트워크 복구는 schema/writer 호환성 승인이 아닙니다. 운영 URL을 선택한
+`up --build` 재시도는 migration/bootstrap·writer를 실행할 수 있으므로 아래
+snapshot·키·양방향 호환성과 기존 운영 실행 승인을 먼저 충족합니다. 기존 DB·volume을
+삭제하거나 전체 network prune, 타 project 중지, 인증/에러 우회로 복구하지 않습니다.
+
 #### 운영 데이터와 양방향 호환성 평가
 
 외부 DB를 허용하는 이 정책은 과거의 무조건 local-only 정책을 대체합니다. 기존
@@ -472,6 +493,12 @@ HAProxy **3.2**를 기본 실행합니다. 앱 컨테이너는 host port를 열�
 80/443 및 선택 서비스용 TLS listener 8010/8011/8012/8020을 공개합니다. `/api/`,
 `/v1/`, `/.well-known/`, API docs는 backend, 나머지는 frontend로 전달합니다.
 SSE와 WebSocket 연결은 유지하며, 외부 `X-Forwarded-*`는 edge에서 덮어씁니다.
+
+HTTPS 요청의 slash 정규화307이 `Location: http://...`를 반환하면 경로를 고치거나 redirect를 끄지 말고 Uvicorn의 proxy 신뢰 목록을 확인합니다. Kolla는 `--proxy-headers`와 `afterglow_backend_forwarded_allow_ips`로 loopback 및 `loadbalancer` inventory의 API IP만 신뢰합니다. 별도 ingress topology는 실제 proxy peer IP/CIDR만 override하며 host network에서 `*`를 쓰지 않습니다. Prod Compose의 `FORWARDED_ALLOW_IPS=*`는 host port가 없는 private app network에 한정된 기존 계약입니다.
+
+Kubernetes 생성기의 `[app].trusted_proxies`와 Helm의 `app.trustedProxies`는 backend `FORWARDED_ALLOW_IPS`로 전달됩니다. 실제 Ingress peer 범위를 명시해야 하며 기본값은 loopback 전용입니다. 정적 ConfigMap은 해당 환경 변수 key와 인라인 `trusted_proxies`를 함께 맞추고 backend를 rollout합니다. 검증은 공개 HTTPS slash URL의307 Location이 HTTPS인지, query/method가 보존되는지, 정규화 URL의 인증 거부가 유지되는지와 direct HTTP·비신뢰 peer의 위조 헤더 무시를 구분합니다. 공개 `ORIGIN`/OAuth URL은 내부 HTTP service URL과 별개입니다.
+
+운영 주의사항: Uvicorn이 HAProxy 등의 리버스 프록시 IP를 신뢰하게 되면, 프록시가 주입하는 `X-Forwarded-For`가 Uvicorn의 클라이언트 IP로 해석됩니다. 기존에 프록시가 비신뢰 상태여서 프록시 내부 VIP/IP 대역으로 발급되었던 세션 토큰은, `token_ip_binding_mode = "subnet"` 활성화 시 프록시 전환 직후 클라이언트 실제 공인 IP와의 서브넷 불일치로 401(토큰 출처 불일치)이 발생하여 재로그인이 요구될 수 있습니다. 이는 의도된 보안 바인딩 동작입니다.
 
 운영자가 별도 mode 0600 env 파일에 `SECRET_KEY`, `OS_PASSWORD`, `AFTERGLOW_DATABASE_URL`,
 HTTPS `ORIGIN`, HTTPS `PUBLIC_API_BASE`, 절대 경로 `TLS_CERTS_DIR`를 설정합니다.

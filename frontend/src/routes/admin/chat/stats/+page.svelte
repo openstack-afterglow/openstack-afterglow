@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
@@ -316,7 +317,7 @@
 		'rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-base)] px-3 py-1.5 text-sm text-[var(--color-ink-1)] focus:outline-none focus:border-[var(--color-accent)]';
 </script>
 
-<div class="max-w-6xl p-4 md:p-8">
+<PageShell>
 	<PageHeader
 		breadcrumb={t('adminStats.breadcrumb')}
 		title={t('adminStats.title')}
@@ -539,4 +540,4 @@
 			{/if}
 		</section>
 	{/if}
-</div>
+</PageShell>

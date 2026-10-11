@@ -6,7 +6,7 @@
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 </script>
 
-<PageShell class="max-w-7xl app-workspace-height flex flex-col">
+<PageShell class="app-workspace-height flex flex-col">
 	<PageHeader breadcrumb={t('observability.breadcrumb')} title={t('observability.title')} />
 
 	{#if !$auth.projectId}

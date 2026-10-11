@@ -1056,7 +1056,7 @@
 	</div>
 </FormModal>
 
-<div class="bulk-selection-page p-4 md:p-8">
+<div class="bulk-selection-page">
 	<div data-tour="waygate-header">
 	<PageHeader breadcrumb={admin ? t('project.header.adminBreadcrumb') : t('project.header.networkBreadcrumb')} title={admin ? t('project.header.adminTitle') : 'Waygate'}>
 		{#snippet actions()}

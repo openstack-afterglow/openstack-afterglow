@@ -39,6 +39,7 @@ PERSONAL_TOKEN_PREFIX = "mcp-afgl-"
 PERSONAL_TOKEN_BYTES = 32
 DEFAULT_GRANT_LIFETIME = timedelta(days=30)
 MAX_GRANT_LIFETIME = timedelta(days=90)
+MAX_PERSONAL_TOKEN_LIFETIME = timedelta(days=366)
 MAX_ACTIVE_PERSONAL_TOKENS = 10
 MAX_ACTIVE_GRANTS = 20
 PENDING_ORPHAN_RECOVERY_GRACE = timedelta(minutes=15)
@@ -46,6 +47,10 @@ PENDING_ORPHAN_RECOVERY_GRACE = timedelta(minutes=15)
 
 class McpAuthorityError(RuntimeError):
     """Safe domain error; API adapters decide its transport representation."""
+
+
+class McpGrantPrivilegeError(McpAuthorityError):
+    """The requested delegated access exceeds the owner's project privilege."""
 
 
 class McpGrantLimitError(McpAuthorityError):
@@ -65,7 +70,7 @@ class IssuedPersonalToken:
     token: str
     token_id: str
     grant_id: str
-    expires_at: datetime
+    expires_at: datetime | None
     access_level: str
     project_scope: str = "current"
     approved_projects: tuple[dict[str, object], ...] = ()
@@ -142,16 +147,32 @@ def max_grant_lifetime() -> timedelta:
     return timedelta(days=get_settings().mcp_max_grant_ttl_days)
 
 
-def _grant_expiry(*, expires_at: datetime | None, now: datetime) -> datetime:
+def _grant_expiry(*, expires_at: datetime | None, now: datetime, maximum: timedelta | None = None) -> datetime:
     deadline = expires_at or now + default_grant_lifetime()
     if deadline.tzinfo is None:
         raise McpAuthorityError("token expiry must include a timezone")
     deadline = deadline.astimezone(UTC)
     if deadline <= now:
         raise McpAuthorityError("token expiry must be in the future")
-    if deadline > now + max_grant_lifetime():
-        raise McpAuthorityError(f"token expiry may not exceed {get_settings().mcp_max_grant_ttl_days} days")
+    maximum = maximum or max_grant_lifetime()
+    if deadline > now + maximum:
+        raise McpAuthorityError(f"token expiry may not exceed {maximum.days} days")
     return deadline
+
+
+def grant_is_expired(grant: McpDelegatedGrant, *, now: datetime | None = None) -> bool:
+    """Only an explicitly issued personal grant may have no absolute deadline."""
+    if grant.expires_at is None:
+        return grant.source != "personal_token"
+    return _as_utc(grant.expires_at) <= (now or _now())
+
+
+def _personal_token_expiry(*, expires_at: datetime | None, non_expiring: bool, now: datetime) -> datetime | None:
+    if non_expiring:
+        if expires_at is not None:
+            raise McpAuthorityError("non-expiring tokens cannot also specify an expiry")
+        return None
+    return _grant_expiry(expires_at=expires_at, now=now, maximum=max(MAX_PERSONAL_TOKEN_LIFETIME, max_grant_lifetime()))
 
 
 async def lock_owner(session: AsyncSession, *, owner_user_id: str, owner_project_id: str) -> McpOwnerLock:
@@ -288,6 +309,22 @@ def default_grant_project(grant: McpDelegatedGrant) -> str:
     return grant.owner_project_id if grant.owner_project_id in projects else projects[0]
 
 
+def validate_lumen_grant(grant: McpDelegatedGrant, project_id: str) -> None:
+    """Internal Lumen grants require explicit consent to the owner's exact project."""
+    if grant.source != "lumen":
+        return
+    if (
+        getattr(grant, "consented_at", None) is None
+        or grant.owner_project_id != project_id
+        or getattr(grant, "project_scope", None) != "current"
+        or grant_project_ids(grant) != (project_id,)
+        or not getattr(grant, "application_credential_id", None)
+        or not getattr(grant, "credential_ciphertext", None)
+        or getattr(grant, "cleanup_pending", True)
+    ):
+        raise McpGrantStateError("Lumen grant requires explicit consent for the current project")
+
+
 @dataclass(frozen=True)
 class ApprovedProject:
     id: str
@@ -361,7 +398,7 @@ async def _prepare_connection_projects(
             if access_level == "manage" and not can_write:
                 if scoped is not conn:
                     await asyncio.to_thread(scoped.close)
-                raise McpAuthorityError("selected project does not allow management")
+                raise McpGrantPrivilegeError("selected project does not allow management")
             project_name = scoped._afterglow_project_name if project_scope == "current" else project["name"]
             result.append(
                 ApprovedProject(project["id"], project_name, role_snapshot, can_write, scoped, scoped is not conn)
@@ -406,7 +443,7 @@ async def create_grant_credentials(
     owner_project_id: str,
     username: str,
     projects: list[ApprovedProject],
-    expires_at: datetime,
+    expires_at: datetime | None,
 ) -> None:
     """Reserve every deterministic name, drain remote work, and persist before activation."""
     canceled = asyncio.Event()
@@ -557,7 +594,7 @@ def create_restricted_application_credential(
     owner_user_id: str,
     owner_project_id: str,
     upstream_name: str,
-    expires_at: datetime,
+    expires_at: datetime | None,
     roles: object,
 ) -> dict[str, str]:
     """Create one restricted credential through the caller's scoped connection only."""
@@ -571,7 +608,7 @@ def create_restricted_application_credential(
         name=upstream_name,
         description="Afterglow inbound MCP delegated authority",
         roles=_role_snapshot(roles),
-        expires_at=isotime(_as_utc(expires_at), subsecond=True),
+        **({"expires_at": isotime(_as_utc(expires_at), subsecond=True)} if expires_at is not None else {}),
         unrestricted=False,
     )
     credential_id = getattr(created, "id", None)
@@ -639,6 +676,7 @@ async def issue_personal_token(
     display_name: str,
     access_level: str,
     expires_at: datetime | None = None,
+    non_expiring: bool = False,
     project_scope: str = "current",
     project_ids: list[str] | None = None,
 ) -> IssuedPersonalToken:
@@ -646,7 +684,7 @@ async def issue_personal_token(
     now = _now()
     display_name = _validate_display_name(display_name)
     access_level = _validate_access_level(access_level)
-    deadline = _grant_expiry(expires_at=expires_at, now=now)
+    deadline = _personal_token_expiry(expires_at=expires_at, non_expiring=non_expiring, now=now)
     if (
         getattr(conn, "_afterglow_user_id", None) != owner_user_id
         or getattr(conn, "_afterglow_project_id", None) != owner_project_id
@@ -716,11 +754,7 @@ async def issue_personal_token(
             grant = await _lock_grant(
                 session, grant_id=grant_id, owner_user_id=owner_user_id, owner_project_id=owner_project_id
             )
-            if (
-                grant.status != "pending"
-                or grant.orphan_recovery_nonce is not None
-                or _as_utc(grant.expires_at) <= _now()
-            ):
+            if grant.status != "pending" or grant.orphan_recovery_nonce is not None or grant_is_expired(grant):
                 raise McpGrantStateError("MCP grant was changed before activation")
             grant.status = "active"
             grant.issued_at = now
@@ -805,7 +839,7 @@ async def resolve_personal_token(
         or not hmac.compare_digest(row.token_hash, digest)
         or row.revoked_at is not None
         or grant.status != "active"
-        or _as_utc(grant.expires_at) <= now
+        or grant_is_expired(grant, now=now)
     ):
         raise McpGrantNotFoundError("MCP token is inactive")
     await grant_credential_for_project(session, grant, default_grant_project(grant))
@@ -829,9 +863,9 @@ async def revoke_grant(
         grant = await _lock_grant(
             session, grant_id=grant_id, owner_user_id=owner_user_id, owner_project_id=owner_project_id
         )
-        if grant.status not in {"revoked", "expired"}:
+        if grant.status != "revoked":
             grant.status = "revoked"
-            grant.revoked_at = now
+            grant.revoked_at = grant.revoked_at or now
             grant.credential_epoch += 1
         grant.cleanup_pending = bool(grant.application_credential_id) or grant.cleanup_pending
         additional = (
@@ -892,10 +926,11 @@ async def set_lumen_selection(
             if (
                 grant.source not in {"personal_token", "lumen"}
                 or grant.status != "active"
-                or _as_utc(grant.expires_at) <= now
+                or grant_is_expired(grant, now=now)
                 or (grant.source == "personal_token" and (token is None or token.revoked_at is not None))
             ):
                 raise McpGrantStateError("Lumen selection requires active delegated authority")
+            validate_lumen_grant(grant, owner_project_id)
             await grant_credential_for_project(session, grant, default_grant_project(grant))
         selection = await session.get(
             McpLumenSelection,
@@ -936,6 +971,7 @@ def decrypt_grant_secret(
 ) -> str:
     """Refuse moved credentials, out-of-allowlist targets, and inactive authority."""
     target = default_grant_project(grant) if project_id is None else project_id
+    validate_lumen_grant(grant, target)
     validate_grant_project(grant, target)
     if target == grant.owner_project_id:
         if credential is not None:
@@ -947,7 +983,7 @@ def decrypt_grant_secret(
         source = credential
     if (
         grant.status != "active"
-        or _as_utc(grant.expires_at) <= _now()
+        or grant_is_expired(grant)
         or not source.application_credential_id
         or not source.credential_ciphertext
         or (credential is not None and credential.cleanup_pending)
@@ -974,7 +1010,7 @@ def grant_public_view(
         "status": grant.status,
         "visible_prefix": token.visible_prefix if token else None,
         "issued_at": grant.issued_at or (token.issued_at if token else None),
-        "expires_at": grant.expires_at,
+        "expires_at": _as_utc(grant.expires_at) if grant.expires_at is not None else None,
         "last_used_at": token.last_used_at if token else grant.last_used_at,
         "revoked_at": grant.revoked_at,
         "is_lumen_default": is_lumen_default,
@@ -998,6 +1034,8 @@ async def list_personal_tokens(
                 McpDelegatedGrant.owner_user_id == owner_user_id,
                 McpDelegatedGrant.owner_project_id == owner_project_id,
                 McpDelegatedGrant.source == "personal_token",
+                McpDelegatedGrant.status != "revoked",
+                McpPersonalToken.revoked_at.is_(None),
             )
             .order_by(McpPersonalToken.issued_at.desc())
         )
@@ -1015,6 +1053,7 @@ async def list_oauth_grants(
                 McpDelegatedGrant.owner_user_id == owner_user_id,
                 McpDelegatedGrant.owner_project_id == owner_project_id,
                 McpDelegatedGrant.source == "oauth",
+                McpDelegatedGrant.status != "revoked",
             )
             .order_by(McpDelegatedGrant.created_at.desc())
         )
@@ -1244,7 +1283,7 @@ async def mark_expired_grants_for_cleanup(
             grant = await _lock_grant(
                 session, grant_id=grant_id, owner_user_id=owner_user_id, owner_project_id=owner_project_id
             )
-            if grant.status not in {"pending", "active"} or _as_utc(grant.expires_at) > now:
+            if grant.status not in {"pending", "active"} or not grant_is_expired(grant, now=now):
                 continue
             grant.status = "expired"
             grant.revoked_at = now

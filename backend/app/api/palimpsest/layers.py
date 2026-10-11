@@ -1,8 +1,7 @@
 """Palimpsest 레이어 조회 — digest 기반 검색과 부모 체인.
 
-사용자 JWT 로 접근하며 **공개(`is_published`) + 봉인(`is_sealed`)된 레이어만** 노출한다
-(`layer_public._load_published_artifacts` 와 같은 가시성 규칙). 전체 목록은 관리자
-`/api/v1/admin/palimpsest/artifacts` 가 담당한다.
+사용자 JWT 로 접근하며 **공개(`is_published`) + 봉인(`is_sealed`)된 레이어만** 노출한다.
+전체 목록은 관리자 `/api/v1/admin/palimpsest/artifacts` 가 담당한다.
 """
 
 from __future__ import annotations

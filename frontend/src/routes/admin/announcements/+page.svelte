@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { createAdminAnnouncementsController } from '$lib/stores/adminAnnouncementsController.svelte';
@@ -126,7 +127,7 @@
 	}
 </script>
 
-<div class="p-4 md:p-6 max-w-6xl mx-auto">
+<PageShell>
 	<PageHeader breadcrumb={t('announcements.breadcrumb')} title={t('announcements.title')} subtitle={t('announcements.subtitle')} />
 
 	{#if ctrl.error}
@@ -286,4 +287,4 @@
 			</div>
 		{/if}
 	</Card>
-</div>
+</PageShell>

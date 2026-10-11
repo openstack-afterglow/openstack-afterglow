@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/instance';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { page } from '$app/stores';
@@ -48,7 +49,8 @@
 	<title>{t('consoleLog.pageTitle', { id: instanceId.slice(0, 8) })}</title>
 </svelte:head>
 
-<div class="motion-fade min-h-screen bg-surface-canvas text-ink-1 font-mono text-xs" aria-busy={loading}>
+<PageShell class="motion-fade min-h-screen bg-surface-canvas text-ink-1 font-mono text-xs">
+<div aria-busy={loading}>
 	<div class="sticky top-0 bg-surface-base border-b border-line px-4 py-2 flex items-center gap-3 z-10">
 		<span class="text-warm-text font-semibold">{t('consoleLog.title')}</span>
 		<span class="text-ink-2 truncate max-w-md" title={instanceId}>{instanceId}</span>
@@ -86,6 +88,7 @@
 		<pre class="p-4 whitespace-pre-wrap break-all leading-relaxed">{log}</pre>
 	{/if}
 </div>
+</PageShell>
 
 <style>
 	/* 예전에는 body 를 #000 으로 강제해 라이트 테마에서 로그가 1.72:1 로 떨어졌다.

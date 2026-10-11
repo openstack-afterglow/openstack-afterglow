@@ -7,7 +7,7 @@ describe('WizardStepper', () => {
 		const { container } = render(WizardStepper, {
 			cur: 2,
 			totalSteps: 4,
-			stepLabels: ['이미지', '플레이버', '라이브러리', '검토'],
+			stepLabels: ['이미지', '플레이버', '설정', '검토'],
 			goTo: vi.fn(),
 		});
 

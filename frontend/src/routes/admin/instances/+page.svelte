@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onDestroy, onMount } from 'svelte';
@@ -236,7 +237,7 @@
 	onDestroy(() => { loadGeneration += 1; nextPrefetch.cancel(); });
 </script>
 
-<div class="bulk-selection-page p-4 md:p-8 pb-28 md:pb-32 max-w-7xl mx-auto">
+<PageShell class="bulk-selection-page">
 	<div data-tour="admin-compute-header">
 	<PageHeader breadcrumb={t('instances.page.breadcrumb')} title={t('instances.page.title')}>
 		{#snippet actions()}
@@ -343,7 +344,7 @@
 		busy={bulkActioning}
 		onClear={() => selection.clear()}
 	/>
-</div>
+</PageShell>
 
 {#if selectedInstanceId}
 	<SlidePanel onClose={closeDetail} ariaLabel={t('instances.page.detailLabel')} dataTour="admin-compute-detail">

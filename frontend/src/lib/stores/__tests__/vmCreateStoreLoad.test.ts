@@ -84,6 +84,59 @@ describe('VM create option loading boundaries', () => {
 			services: { ...config.services, manila: true },
 		}));
 	});
+	it('takes ordinary image boots through flavor, configuration and review with stale beta preferences', async () => {
+		localStorage.setItem('afterglow.beta.libraryConsume', 'true');
+		localStorage.setItem('afterglow.beta.haDeploy', 'true');
+		api.get.mockImplementation((path: string) => Promise.resolve(
+			path === '/api/v1/images' ? [image] : path.includes('flavors') ? [capacityFlavor('f1')] : [],
+		));
+		render(VmCreateStoreLoadWrapper);
+		await fireEvent.click(screen.getByTestId('init'));
+		await vi.waitFor(() => expect(screen.getByTestId('flavor').textContent).toBe('f1'));
+		await fireEvent.click(screen.getByTestId('select-image'));
+		expect(screen.getByTestId('step').textContent).toBe('2');
+		await fireEvent.click(screen.getByTestId('select-first-flavor'));
+		expect(screen.getByTestId('step').textContent).toBe('5');
+		wizard.update(w => ({ ...w, keyName: 'key-1' }));
+		await vi.waitFor(() => expect(screen.getByTestId('can-next').textContent).toBe('yes'));
+		await fireEvent.click(screen.getByTestId('next'));
+		expect(screen.getByTestId('step').textContent).toBe('6');
+		await fireEvent.click(screen.getByTestId('previous'));
+		expect(screen.getByTestId('step').textContent).toBe('5');
+		await fireEvent.click(screen.getByTestId('previous'));
+		expect(screen.getByTestId('step').textContent).toBe('2');
+		expect(api.get.mock.calls.map(([path]) => path).some(path => path.startsWith('/api/v1/libraries'))).toBe(false);
+	});
+
+	it.each(['image', 'volume'] as const)('submits ordinary %s boot and file storage settings without consumer or HA payloads', async bootSource => {
+		api.get.mockImplementation((path: string) => Promise.resolve(path.includes('flavors') ? [capacityFlavor('f1')] : []));
+		fetchWithAuth.mockResolvedValue(new Response('data: {"step":"completed","progress":100,"message":"done"}\n\n', {
+			headers: { 'Content-Type': 'text/event-stream' },
+		}));
+		wizard.update(w => ({
+			...w, bootSource, imageId: 'image-1', bootVolumeId: 'boot-1', instanceName: 'ordinary',
+			bootVolumeSizeGb: 40, deleteBootVolumeOnTermination: true, keyName: 'key-1', networkId: 'net-1',
+			securityGroups: ['default'], cloudInit: '#cloud-config',
+			dataMounts: [{ fileStorageId: 'share-1', mountPoint: '/data', readOnly: true }],
+		}));
+		render(VmCreateStoreLoadWrapper);
+		await fireEvent.click(screen.getByTestId('init'));
+		await vi.waitFor(() => expect(screen.getByTestId('flavor').textContent).toBe('f1'));
+		await fireEvent.click(screen.getByTestId('select-first-flavor'));
+		await fireEvent.click(screen.getByTestId('deploy'));
+		await vi.waitFor(() => expect(fetchWithAuth).toHaveBeenCalledOnce());
+		const [path, options] = fetchWithAuth.mock.calls[0];
+		expect(path).toBe('/api/v1/instances/async');
+		expect(JSON.parse(options.body)).toEqual({
+			name: 'ordinary', flavor_id: 'f1', network_id: 'net-1', key_name: 'key-1', github_username: null,
+			security_groups: ['default'], userdata: '#cloud-config',
+			data_mounts: [{ file_storage_id: 'share-1', mount_point: '/data', read_only: true }],
+			...(bootSource === 'volume' ? { boot_volume_id: 'boot-1' } : {
+				image_id: 'image-1', boot_volume_size_gb: 40, delete_boot_volume_on_termination: true,
+			}),
+		});
+	});
+
 
 	it('prefetches configuration after boot options settle without delaying step 1', async () => {
 		const images = deferred<typeof image[]>();

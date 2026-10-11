@@ -241,6 +241,7 @@ Recovery는 볼륨별 Redis `NX EX=600` lock을 잡습니다. 같은 볼륨의 �
 | 메서드 | 경로 | 설명 | 요청 본문 |
 |--------|------|------|-----------|
 | `GET` | `/api/v1/admin/networks/{network_id}` | 네트워크 상세 | - |
+| `GET` | `/api/v1/admin/subnets/{subnet_id}` | 서브넷의 IP 사용량·할당·포트·DHCP 배치 | - |
 | `POST` | `/api/v1/admin/networks` | 네트워크 생성 (`201`) | `name`(필수), `is_external`, `is_shared`, `cidr`, `enable_dhcp` |
 | `PUT` | `/api/v1/admin/networks/{network_id}` | 네트워크 수정 | `name`, `is_shared` (선택) |
 | `DELETE` | `/api/v1/admin/networks/{network_id}` | 네트워크 삭제 (`204`) | - |
@@ -255,6 +256,33 @@ Recovery는 볼륨별 Redis `NX EX=600` lock을 잡습니다. 같은 볼륨의 �
 | `DELETE` | `/api/v1/admin/ports/{port_id}` | 포트 삭제 (`204`) | - |
 
 `cidr`을 지정하면 네트워크와 함께 서브넷도 생성됩니다.
+
+### 서브넷 IP 사용량과 연결 대상
+
+`GET /api/v1/admin/all-networks`의 `is_external`, `is_shared`, `project_id`와 기존 `GET /api/v1/admin/projects/names`를 함께 사용한다. 외부와 공유는 독립된 플래그이며 내부는 두 플래그 모두 false인 경우다. 이름 디렉터리가 실패하거나 프로젝트가 목록에 없어도 소유 프로젝트 ID를 보존한다. 네트워크 상세의 `subnet_details[].ip_version`은 실제 Neutron 값이다.
+
+관리자 목록은 외부·공유·내부 조건을 AND로 결합하고 네트워크 이름/전체 ID, 소유 프로젝트 이름/전체 ID 및 현재 언어의 유형 이름을 단어별로 검색한다. 검색은 NFKC·대소문자·주변/반복 공백을 정규화한다. 결과 수와 초기화 동작을 제공하며 inventory 실패와 이름 디렉터리 실패를 구분한다. 네트워크 상세의 각 서브넷에서 IP 조사를 펼칠 수 있고 `/admin/subnets/{subnet_id}`는 같은 조사 UI를 독립 상세로 사용한다. 연결 IP/포트 목록은 각각 20행 pagination 상태를 유지하며 조회 실패는 기존 결과를 경고와 함께 보존한다.
+
+서브넷 상세는 시스템 관리자 인가에 더해 실제 공급자 토큰의 `admin` 역할과 관리자 프로젝트 문맥이 필요하다. 이 문맥을 확인할 수 없으면 Neutron inventory를 읽기 전에 `403`을 반환한다. 플랫폼 관리자 할당만으로 다른 프로젝트의 포트까지 조회했다고 간주하지 않으며 서비스 자격 증명으로 자동 승격하지 않는다.
+
+필수 `ip_usage`의 수량은 모두 **부호 없는 10진 문자열**이다. IPv6 값의 정밀도를 위해 JavaScript `Number`로 변환하지 않는다.
+
+| 필드 | 의미 |
+|---|---|
+| `total_pool_ips` | 양 끝을 포함한 allocation pool 구간의 합집합 크기. 겹치거나 반복된 구간을 중복 계산하지 않는다. CIDR 전체 host 수가 아니다. |
+| `allocated_ips` | 정확히 이 서브넷에 연결된 포트 fixed IP의 정규화된 고유 주소 수. 풀 밖 주소도 포함한다. |
+| `allocated_pool_ips` | 풀 합집합 안에 있는 고유 할당 주소 수. |
+| `reserved_pool_ips` | 풀 안의 게이트웨이가 아직 포트에 할당되지 않았으면 `"1"`, 그렇지 않으면 `"0"`. |
+| `available_pool_ips` | 풀 전체 − 풀 안 할당 − 예약. IPv6 자동 주소 방식에서는 `null`. |
+| `outside_pool_ips` | 고유 할당 주소 중 풀 밖에 있는 수. |
+| `allocation_mode` | `pool`, `slaac`, `dhcpv6-stateless`. IPv6 address mode 또는 RA mode가 자동 주소 방식이면 해당 방식을 사용한다. |
+
+유효한 풀 목록이 비어 있으면 풀 크기는 `"0"`이며 풀 밖 할당은 그대로 반환한다. 게이트웨이는 동일 IP 버전의 off-subnet 주소나 IPv6 link-local 주소도 허용하며 실제 풀 안에 있을 때만 예약한다. 주소 공간을 열거하지 않고 정수 구간을 합친다. CIDR·풀·해당 서브넷의 fixed IP가 잘못되거나 포트 목록의 후속 페이지가 실패하면 오류를 반환하고 남은 용량을 만들어 내지 않는다.
+
+`allocations`와 `ports`는 서로 다른 포트에 같은 IP가 있으면 각각의 연결 관계를 유지한다. `device_owner`, `device_id`, `project_id`, `binding_host_id`를 보존하고 참조된 인스턴스·라우터마다 한 번씩 이름을 조회하여 `device_name`을 추가한다. 이름 조회가 실패하면 `device_names_available=false`이며 원래 ID와 IP 집계는 유지한다.
+
+`dhcp_bindings`는 실제 DHCP agent와 binding host가 일치하는 포트만 연결한다. DHCP scheduler 정보를 읽을 수 없으면 `dhcp_agent_data_available=false`이고 포트에서 확인한 IP·host 배치를 `source="port"`로 보존한다. 이 inventory는 Neutron 주소 할당 상태이며 게스트의 실제 연결성이나 트래픽을 증명하지 않는다.
+
 
 ---
 

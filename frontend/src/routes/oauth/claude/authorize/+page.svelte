@@ -14,6 +14,7 @@
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
@@ -97,6 +98,7 @@
 </svelte:head>
 
 <main class="authorization-page">
+	<PageShell class="flex justify-center">
 	<Card surface="raised" padding="lg" class="authorization-card motion-stagger">
 		<header>
 			<p class="eyebrow">{t('claudeConsent.eyebrow')}</p>
@@ -158,10 +160,11 @@
 			</Alert>
 		{/if}
 	</Card>
+	</PageShell>
 </main>
 
 <style>
-	.authorization-page { display: grid; min-height: 100vh; place-items: center; padding: 1rem; background: var(--color-surface-canvas); }
+	.authorization-page { display: grid; min-height: 100dvh; place-items: center; background: var(--color-surface-canvas); }
 	:global(.authorization-card) { width: min(42rem, 100%); display: grid; gap: 1rem; }
 	header h1 { margin: 0; color: var(--color-ink-0); font-size: 1.5rem; }
 	header p { margin: 0.5rem 0 0; color: var(--color-ink-2); line-height: 1.5; }

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/drover-pages';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { onMount } from 'svelte';
@@ -60,7 +61,7 @@
 	onMount(load);
 </script>
 
-<div class="p-4 md:p-6 max-w-7xl mx-auto">
+<PageShell>
 	<PageHeader breadcrumb={t('templates.breadcrumb')} title={t('templates.title')}>
 		{#snippet actions()}
 			<button
@@ -96,7 +97,7 @@
 				</div>
 			{/if}
 	{/if}
-</div>
+</PageShell>
 
 {#if showCreate}
 	<K3sClusterTemplateModal

@@ -74,6 +74,9 @@ Backend `uv.lock`, frontend Bun·npm lock, root CLI `uv.lock`, operator `uv.lock
 - Concurrency set의 UUID member는 본인 요청만 제거하고 TTL 자동 회수는 없다. Crash/release 실패는 capacity를 fail-closed로 유지한다. 복구 전 해당 grant를 쓰는 모든 worker의 종료/drain을 확인하고 승인된 운영 절차로 잔여 member를 제거한다. 살아 있는 worker가 있는 set의 DEL/TTL은 금지한다. Legacy numeric limiter도 drain/만료 후 새 set으로 전환한다.
 - 만료 mutation lease는 poll과 cleanup에서 unknown으로 바꾸고 key/record를 유지한다. 동일 grant/source/tool/arguments의 unresolved 작업은 새 key로도 다시 claim하지 않는다. 실제 provider 상태 확인 전 자동 재전송이 없으며 다른 grant로 바꾼 retry까지 전역 deduplication하는 것은 아니다.
 - MCP 삭제/lifecycle action은 destructiveHint=true이다. Metadata는 클라이언트 힌트이고 서버 인가·owner 검사·ledger를 대체하지 않는다. 일회성 PAT 발급 응답은 Cache-Control: no-store와 Pragma: no-cache이다.
+- MCP VM/빈 볼륨 생성·VM network 연결은 `mcp:write`와 승인된 target-project 자격만 사용하며 Lumen 기본 read-only grant를 확대하지 않는다. `readOnlyHint=false`/`destructiveHint=false`는 생성 비용이나 리소스 변경이 없다는 뜻이 아니다. Preview는 조회만 하고 최종 dispatch는 grant·리소스·SDK deadline을 다시 검증한다.
+- Nova keypair owner는 provider 응답의 `user_id`로 증명한다. 설치된 SDK의 `get_keypair(user_id=...)`는 GET query가 아니라 resource body에 입력값을 보충하므로 owner 증명에 사용하지 않는다. 누락·타인 owner는 거부하며 private/public key나 `adminPass`를 결과에 포함하지 않는다.
+- VM boot volume은 기본 보존하며 삭제 연동은 명시적 opt-in이다. 입력은 image/flavor/network/크기 등 허용 목록만 사용하고 user data·비밀번호·provider kwargs를 받지 않는다. Network attach는 기존 port를 재사용하지 않고 owned ACTIVE/SHUTOFF parent와 owned/shared network, 새 port의 exact project/network/device binding을 확인한다. 접수 결과는 VM/volume ready나 guest data plane 증거가 아니며 unknown 자동 resend 금지 원장은 세 도구에도 동일하게 적용한다.
 
 ### MCP OAuth와 개인 API 키
 
@@ -81,9 +84,21 @@ Backend `uv.lock`, frontend Bun·npm lock, root CLI `uv.lock`, operator `uv.lock
 - 현재 DCR은 public client(`token_endpoint_auth_method=none`)와 authorization-code·refresh grant 모두를 요구한다. Loopback HTTP callback은 `127.0.0.1` 또는 `[::1]`처럼 IP literal이어야 하며 `localhost`나 arbitrary HTTP callback을 허용하지 않는다. 모든 MCP 제품의 등록 형식과 호환된다는 의미가 아니다.
 - Frontend 동의 ticket은 URL에서 제거해 `sessionStorage`에만 보존한다. Password/GitLab login 뒤 미선택 project를 먼저 선택하고, consent GET/approve/deny는 현재 browser access bearer와 `X-Project-Id`가 있는 scoped session에서만 수행한다. Ticket은 권한이나 access token이 아니다.
 - 승인은 현재 user/project의 restricted Keystone application credential과 grant를 생성한다. Client에는 opaque access/refresh token만 반환하고 upstream credential은 보내지 않는다. 개인 API 키 발급·검증·폐기는 별도 방식으로 유지하며 OAuth JSON에는 Authorization header나 client secret을 포함하지 않는다.
+- 개인 키만 `non_expiring: true`로 실제 무기한 lifetime을 요청할 수 있다. `expires_at`과 동시에 지정하면422이며 일반 키는 명시한 미래 만료를 사용한다. Migration085의 nullable `DATETIME(6)`와 CHECK는 `source='personal_token'`에만NULL을 허용한다. OAuth/내부 위임은 계속 유한 만료다. Keystone 무기한 credential은 `expires_at`을 생략하고 `unrestricted=False`, 실제 역할·owner/project·폐기·cleanup 경계를 유지한다. 유한 시각은 SQL·공개 응답·SDK에서 UTC microsecond를 보존하며 브라우저에 timezone 없는 만료를 반환하지 않는다.
 - Refresh의 필수 `client_id`는 최초 발급 code의 client와 일치해야 한다. 빈 값·다른 client·불명확한 persisted binding은 `invalid_grant`이며 token rotation이나 replay revocation을 일으키지 않는다. `client_id` 생략도 거부하고 올바른 client의 재사용은 기존 family/grant 폐기를 유지한다. Binding은 consumed code row에 남으므로 code expiry·authorization ticket cleanup 뒤에도 유지한다.
 - Access token은 15분, refresh token은 최대 30일이며 둘 다 grant deadline을 넘지 않는다. 계정에서 OAuth 접근을 회수하거나 `/mcp/oauth/revoke`를 호출하면 grant/family와 downstream authority를 기존 내구성 cleanup 경로로 폐기한다. Token·code·ticket·upstream secret은 문서·audit·QA receipt에 기록하지 않는다.
 - SDK 내부 schema cache refresh는 현재 principal에게 허용된 tool schema만 읽으며 cloud 권한을 부여하지 않는다. Client `tools/list`의 page-size·grant-bound cursor와 SDK input/output validation을 유지하고 모든 `tools/call`에서 registry의 현재 principal 권한·strict arguments·mutation ledger를 다시 적용한다. Manage principal의 schema가 cache에 있어도 read grant는 valid mutation을 dispatch할 수 없다. 운영 proof는 HTTP200과 함께 `isError=false` 및 실제 typed tool 결과를 확인한다.
+
+### Lumen MCP opt-in과 ordinary API 키
+
+- Afterglow cloud catalogue GET와 chat admission은 자격을 발급하지 않는다. Same-site browser POST와 현재 `lumen-tools_user`가 명시적 current-project read/manage 승인을 만들며, 실제 provider 역할이 manage를 허용해야 한다. 내부 `consented_at` 없는 legacy grant는 선택과 실행에서 거부한다. 개인 토큰 선택을 조회가 바꾸지 않는다.
+- Catalogue의 `project_id`/`project_name`은 선택된 grant의 기본 실행 target을 따른다. 개인 키가 현재 채팅 프로젝트를 제외한 승인 프로젝트만 가진 경우에도 실행 target을 현재 프로젝트로 덮어쓰지 않는다.
+- Lumen preview는 read budget, execute는 registry effect별 read/mutation budget과 동일한 Redis grant concurrency slot을 사용한다. 한도 초과429·coordination 장애503은 provider/원장 진입 전에 거부하며 slot은 target 재검증·SDK worker/connection drain 뒤 본인 member만 제거한다. Public MCP transport를 통한 호출은 기존 transport guard만 사용하여 중복 획득하지 않는다.
+- Owner generation은 외부 역할 준비 전에 캡처하고 pending reservation·credential activation lock에서 재검사한다. 이후 DELETE·선택 해제가 경쟁을 이기며 뒤늦은 발급은 dispatch되지 않는다. 취소나 credential 생성 결과가 모호하면 기존 tombstone/orphan cleanup 경로로 fail-closed한다.
+- Global remote MCP publication은 실행 권한이 아니다. 사용자/project/config-version opt-in과 현재 OAuth token이 함께 있어야 실행되며 activation generation을 frozen selection fingerprint에 묶어 비활성화/재활성화가 이전 대기 승인을 되살리지 않는다. 헤더·OAuth token·application credential은 browser catalogue에 반환하지 않는다.
+- Browser consent·deactivation·OAuth-start의 POST/PATCH/DELETE는 시작한 인증 scope의 AbortSignal과30초 deadline을 사용한다. Identity/ready/project/ABA 변경과 component unmount가 controller를 취소하고 generation/scope를 폐기하여 늦은401 복구가 새 계정의 승인으로 재전송되거나 종료한 설정에서 OAuth 이동을 시작하지 않는다. 이는 이미 수락된 upstream 효과의 rollback을 보장한다는 뜻이 아니다.
+- Ordinary Lumen 키는 현재 대상 프로젝트의 keys-editor 및 요청 scope ceiling, 사용자 quota 아래에서 이름·scope·월 한도·nullable expiry를 원자 발급한다. Naive/past expiry는 거부하고 현재 키의 active/revoke/expiry와 현재 owner 권한을 다음 요청·새 provider/tool I/O 전에 재검증한다. 완료 checkpoint 회수·정산을 소급 취소하지 않는다. Secret은 한 번만 보이며 권한 확인 중에는 숨기고 확정 거부·actor/project/ABA 전환에서는 폐기한다.
+- Migration086과 native migration026은 backfill로 legacy consent를 만들지 않는다. Schema-before-writer와 API/worker 동시 cutover가 필요하다. 실제 production snapshot·원래 암호화 키·ledger·기존 writer/신규 schema 및 신규 writer/기존 schema의 양방향 호환성·rolling upgrade는 이번 local qualification에 포함하지 않는다.
 
 ### Claude Gateway 승인 shell과 BFF 경계
 

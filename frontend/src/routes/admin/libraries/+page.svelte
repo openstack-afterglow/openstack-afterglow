@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PageShell from '$lib/components/ui/PageShell.svelte';
   import { t } from '$lib/i18n/ns/palimpsest-admin';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
   import RichText from '$lib/i18n/RichText.svelte';
@@ -958,7 +959,7 @@
 
 </script>
 
-<div class="flex flex-col h-full overflow-auto bg-surface-base text-ink-1 p-6">
+<PageShell class="flex flex-col h-full min-h-0 overflow-auto bg-surface-base text-ink-1">
   <div data-tour="admin-library-header">
     <PageHeader title={t('page.title')} breadcrumb="Palimpsest" subtitle={t('page.subtitle')}>
       {#snippet actions()}
@@ -1620,7 +1621,7 @@
       {/if}
     </div>
   {/if}
-</div>
+</PageShell>
 
 <!-- -------------------------------------------------------------------------- -->
 <!-- 빌드 상세 모달                                                              -->

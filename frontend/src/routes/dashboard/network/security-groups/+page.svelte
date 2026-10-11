@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -299,7 +300,7 @@
 	});
 </script>
 
-<div class="bulk-selection-page p-4 md:p-6">
+<PageShell class="bulk-selection-page">
 	<PageHeader breadcrumb={t('securityGroups.breadcrumb')} title={t('securityGroups.title')}>
 		{#snippet actions()}
 			<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} {refreshing} onManualRefresh={forceRefresh} />
@@ -343,7 +344,7 @@
 			{/if}
 		</div>
 	{/if}
-</div>
+</PageShell>
 
 <BulkSelectionOverlay count={selection.count} ariaLabel={t('securityGroups.bulkActions')} actions={[{ key: 'delete', label: t('securityGroups.delete'), tone: 'danger', disabled: partitionBulkIds(selection.ids, selectableIds).eligible.length === 0, onAction: bulkDeleteGroups }]} {busy} onClear={() => selection.clear()} />
 <SecurityGroupCreateModal bind:open={showSgModal} creating={sgCreating} error={sgCreateError} onCreate={createSecurityGroup} />

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PageShell from '$lib/components/ui/PageShell.svelte';
   import { t } from '$lib/i18n/ns/file-storage';
   import { untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
@@ -85,7 +86,7 @@
   });
 </script>
 
-<div class="p-4 md:p-6 max-w-7xl mx-auto">
+<PageShell>
   <PageHeader breadcrumb={t('manage.breadcrumb')} title={t('manage.title')} subtitle={t('manage.subtitle')}>
     {#snippet actions()}
       <label class="flex items-center gap-2 text-xs text-ink-2 cursor-pointer">
@@ -126,4 +127,4 @@
         <FileStorageManageGrid {fileStorages} />
       {/if}
   {/if}
-</div>
+</PageShell>

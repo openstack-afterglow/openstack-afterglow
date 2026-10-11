@@ -1,4 +1,4 @@
-"""Project-owned or explicitly shared Neutron read adapters for consumer MCP."""
+"""Project-visible Neutron adapters and bounded network mutations for consumer MCP."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from itertools import chain
 from typing import Any
 
+from app.services.mcp_control_plane.compute import McpComputeError, _safe_server
 from app.services.mcp_control_plane.sdk import check_mutation_dispatch, run_sdk
 
 _MAX_TEXT = 255
@@ -165,6 +166,97 @@ def _delete_subnet(conn: Any, *, project_id: str, subnet_id: str) -> dict[str, s
     return safe_subnet
 
 
+def validate_project_attachment_network(conn: Any, *, project_id: str, network_id: str) -> dict[str, str]:
+    """Prove attachment authority; external visibility alone is not permission."""
+    network = conn.network.get_network(network_id)
+    if network is None:
+        raise McpNetworkError("Neutron network was not found")
+    if _required_text(network, "id") != network_id:
+        raise McpNetworkError("Neutron network identity cannot be proven")
+    if _field(network, "status") != "ACTIVE":
+        raise McpNetworkError("Neutron network is not active for attachment")
+    if _field(network, "is_admin_state_up") is False or _field(network, "admin_state_up") is False:
+        raise McpNetworkError("Neutron network is administratively disabled")
+    owner_project_id = _field(network, "project_id") or _field(network, "tenant_id")
+    is_shared = _field(network, "is_shared") is True or _field(network, "shared") is True
+    if not is_shared and any(
+        owner is not None and owner != project_id
+        for owner in (_field(network, "project_id"), _field(network, "tenant_id"))
+    ):
+        raise McpNetworkError("Neutron network ownership cannot be proven")
+    if owner_project_id != project_id and not is_shared:
+        raise McpNetworkError("Neutron network ownership or shared attachment authority cannot be proven")
+    return {
+        "network_id": network_id,
+        "network_status": "ACTIVE",
+        "visibility": "owned" if owner_project_id == project_id else "shared",
+    }
+
+
+def _prepare_server_network_attach(conn: Any, *, project_id: str, server_id: str, network_id: str) -> dict[str, str]:
+    server = conn.compute.get_server(server_id)
+    if server is None:
+        raise McpNetworkError("Nova server was not found")
+    if any(
+        owner is not None and owner != project_id
+        for owner in (_field(server, "project_id"), _field(server, "tenant_id"))
+    ):
+        raise McpNetworkError("Nova server ownership cannot be proven")
+    try:
+        safe_server = _safe_server(server, project_id=project_id)
+    except McpComputeError:
+        raise McpNetworkError("Nova server ownership or data cannot be proven") from None
+    if safe_server["id"] != server_id:
+        raise McpNetworkError("Nova server identity cannot be proven")
+    if safe_server["status"] not in {"ACTIVE", "SHUTOFF"}:
+        raise McpNetworkError("Nova server is not in a state that permits network attachment")
+    network = validate_project_attachment_network(conn, project_id=project_id, network_id=network_id)
+    return {"server_id": server_id, "server_status": str(safe_server["status"]), **network}
+
+
+def _attach_server_network(conn: Any, *, project_id: str, server_id: str, network_id: str) -> dict[str, str | None]:
+    _prepare_server_network_attach(conn, project_id=project_id, server_id=server_id, network_id=network_id)
+    check_mutation_dispatch()
+    interface = conn.compute.create_server_interface(server_id, net_id=network_id)
+    interface_network_id = _field(interface, "net_id")
+    sdk_network_id = _field(interface, "network_id")
+    if (
+        (interface_network_id is None and sdk_network_id is None)
+        or (interface_network_id is not None and interface_network_id != network_id)
+        or (sdk_network_id is not None and sdk_network_id != network_id)
+    ):
+        raise McpNetworkError("Nova server interface network identity cannot be proven")
+    port_id = _required_text(interface, "port_id")
+    port = conn.network.get_port(port_id)
+    if port is None:
+        raise McpNetworkError("Neutron attachment port was not found")
+    if _required_text(port, "id") != port_id:
+        raise McpNetworkError("Neutron attachment port identity cannot be proven")
+    owners = (_field(port, "project_id"), _field(port, "tenant_id"))
+    if not any(owner == project_id for owner in owners) or any(
+        owner is not None and owner != project_id for owner in owners
+    ):
+        raise McpNetworkError("Neutron attachment port ownership cannot be proven")
+    if _field(port, "network_id") != network_id or _field(port, "device_id") != server_id:
+        raise McpNetworkError("Neutron attachment port network or server identity cannot be proven")
+    mac_address = _field(port, "mac_address")
+    if mac_address is None:
+        mac_address = _field(interface, "mac_addr")
+    if mac_address is None:
+        mac_address = _field(interface, "mac_address")
+    if mac_address is not None and (
+        not isinstance(mac_address, str) or not mac_address or len(mac_address) > _MAX_TEXT
+    ):
+        raise McpNetworkError("Neutron attachment port MAC address is malformed")
+    return {
+        "server_id": server_id,
+        "network_id": network_id,
+        "port_id": port_id,
+        "mac_address": mac_address,
+        "requested_action": "attach_network",
+    }
+
+
 async def list_project_networks(conn: Any, *, project_id: str, limit: int) -> list[dict[str, str | bool | None]]:
     """List exact-project and explicitly shared networks with no admin bypass."""
     try:
@@ -247,3 +339,39 @@ async def request_project_subnet_delete(conn: Any, *, project_id: str, subnet_id
         raise
     except Exception as exc:
         raise McpNetworkError("Neutron subnet deletion is unavailable") from exc
+
+
+async def preview_project_server_network_attach(
+    conn: Any, *, project_id: str, server_id: str, network_id: str
+) -> dict[str, str]:
+    """Read current attachment eligibility without creating or reusing a port."""
+    try:
+        return await run_sdk(
+            _prepare_server_network_attach,
+            conn,
+            project_id=project_id,
+            server_id=server_id,
+            network_id=network_id,
+        )
+    except McpNetworkError:
+        raise
+    except Exception:
+        raise McpNetworkError("Nova server network attachment is unavailable") from None
+
+
+async def request_project_server_network_attach(
+    conn: Any, *, project_id: str, server_id: str, network_id: str
+) -> dict[str, str | None]:
+    """Revalidate, create one interface, and prove its resulting exact-project port."""
+    try:
+        return await run_sdk(
+            _attach_server_network,
+            conn,
+            project_id=project_id,
+            server_id=server_id,
+            network_id=network_id,
+        )
+    except McpNetworkError:
+        raise
+    except Exception:
+        raise McpNetworkError("Nova server network attachment is unavailable") from None

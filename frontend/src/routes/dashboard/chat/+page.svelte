@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import ChatPanel from '$lib/components/chat/ChatPanel.svelte';
 
 	let {
@@ -8,4 +9,6 @@
 	} = $props();
 </script>
 
-<ChatPanel initialWorkspaceId={data.workspaceId} />
+<PageShell class="app-workspace-height flex min-h-0 flex-col">
+	<ChatPanel initialWorkspaceId={data.workspaceId} />
+</PageShell>

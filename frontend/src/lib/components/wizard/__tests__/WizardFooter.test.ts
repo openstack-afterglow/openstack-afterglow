@@ -11,9 +11,8 @@ describe('WizardFooter', () => {
 		const { container } = render(WizardFooter, {
 			imageDisplay: 'ubuntu:24.04',
 			flavorDisplay: 'cpu.2c_4g',
-			libCount: 1,
 			step: 2,
-			totalSteps: 6,
+			totalSteps: 4,
 			canPrev: true,
 			canNext: true,
 			onCancel,
@@ -35,6 +34,9 @@ describe('WizardFooter', () => {
 		expect(container.querySelector('[data-tour="wizard-cancel"]')?.className).toContain('order-2');
 		expect(container.querySelector('[data-tour="wizard-prev"]')?.className).toContain('order-1');
 		expect(container.querySelector('[data-tour="wizard-next"]')?.className).toContain('order-3');
+		expect(container.querySelectorAll('.pick')).toHaveLength(2);
+		expect(screen.getByText('ubuntu:24.04')).toBeTruthy();
+		expect(screen.getByText('cpu.2c_4g')).toBeTruthy();
 		expect(screen.getByRole('button', { name: '다음 →' })).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: '취소' }));
 		await fireEvent.click(screen.getByRole('button', { name: '← 이전' }));
@@ -47,8 +49,8 @@ describe('WizardFooter', () => {
 	it('uses deploy action on the final step', async () => {
 		const onDeploy = vi.fn();
 		render(WizardFooter, {
-			step: 6,
-			totalSteps: 6,
+			step: 4,
+			totalSteps: 4,
 			canPrev: true,
 			canNext: true,
 			onCancel: vi.fn(),

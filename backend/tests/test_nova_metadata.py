@@ -40,7 +40,7 @@ def test_server_info_defaults_absent_union_metadata_for_layerless_instance():
         name="layerless",
         status="ACTIVE",
         addresses={},
-        metadata={"scheduling": "standard"},
+        metadata={},
         image={"id": "image-1"},
         flavor={"id": "flavor-1"},
         created_at=None,
@@ -147,4 +147,4 @@ def test_github_projection_preserves_owner_health_and_library_metadata():
     assert info.union_strategy == "prebuilt"
     assert info.union_share_ids == ["share-1", "share-2"]
     assert info.union_upper_volume_id == "upper-1"
-    assert info.scheduling == "ha"
+    assert "scheduling" not in info.model_dump()

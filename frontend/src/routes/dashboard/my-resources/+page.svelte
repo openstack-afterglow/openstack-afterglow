@@ -1,146 +1,140 @@
 <script lang="ts">
+	import { onMount, onDestroy } from 'svelte';
+	import { get } from 'svelte/store';
 	import { t } from '$lib/i18n/ns/dashboard-home';
 	import { t as tc } from '$lib/i18n/ns/common';
-	import RichText from '$lib/i18n/RichText.svelte';
-	import { untrack } from 'svelte';
-	import { auth } from '$lib/stores/auth';
+	import { auth, projectSwitching } from '$lib/stores/auth';
+	import type { AuthState } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-	import { Alert, AnimatedNumber, EmptyState, PageHeader, PageShell } from '$lib/components/ui';
+	import { Alert, EmptyState, PageHeader, PageShell } from '$lib/components/ui';
 	import MyResourcesSummary from '$lib/components/dashboard/my-resources/MyResourcesSummary.svelte';
 	import ProjectUsageTable from '$lib/components/dashboard/my-resources/ProjectUsageTable.svelte';
-	import InstancesPreviewCard from '$lib/components/dashboard/my-resources/InstancesPreviewCard.svelte';
-	import VolumesPreviewCard from '$lib/components/dashboard/my-resources/VolumesPreviewCard.svelte';
+	import ResourceInventoryCard from '$lib/components/dashboard/my-resources/ResourceInventoryCard.svelte';
+	import { RESOURCE_CATEGORIES } from '$lib/types/userDashboard';
 	import type { UserDashboardSummary } from '$lib/types/userDashboard';
 
 	let data = $state<UserDashboardSummary | null>(null);
-	let initialLoading = $state(true);
+	let initialLoading = $state(false);
 	let refreshing = $state(false);
-	let error = $state('');
+	let error = $state<string | null>(null);
+	let snapshotOwner = $state('');
+	let active = false;
+	let owner = '';
+	let ownerEpoch = 0;
+	let requestId = 0;
+	let unsubscribeAuth: (() => void) | undefined;
+	let unsubscribeSwitch: (() => void) | undefined;
 
-	const token = $derived($auth.token ?? undefined);
-	const projectId = $derived($auth.projectId ?? undefined);
-
-	const allInstances = $derived(
-		data ? data.projects.flatMap(p => p.instances.map(inst => ({ ...inst, project: p.project_name }))) : []
-	);
-	const allVolumes = $derived(
-		data ? data.projects.flatMap(p => p.volumes.map(vol => ({ ...vol, project: p.project_name }))) : []
-	);
+	function ownerKey(state: AuthState, switching: boolean): string {
+		return !switching && state.token && state.userId && state.projectId
+			? JSON.stringify([state.token, state.userId, state.projectId]) : '';
+	}
+	const currentOwner = $derived(ownerKey($auth, $projectSwitching));
+	// Render-time masking is independent of effect/request scheduling.
+	const visibleData = $derived(currentOwner && snapshotOwner === currentOwner ? data : null);
 
 	async function load(opts?: { refresh?: boolean }) {
-		error = '';
+		const state = get(auth);
+		const capturedOwner = ownerKey(state, get(projectSwitching));
+		if (!active || !capturedOwner || capturedOwner !== owner) return;
+		const epoch = ownerEpoch;
+		const request = ++requestId;
+		const isCurrent = () => active && epoch === ownerEpoch && request === requestId
+			&& capturedOwner === owner && capturedOwner === ownerKey(get(auth), get(projectSwitching));
+		error = null;
+		refreshing = Boolean(opts?.refresh);
 		try {
-			data = await api.get<UserDashboardSummary>('/api/v1/user-dashboard/summary', token, projectId, opts);
-		} catch (e) {
-			error = e instanceof ApiError ? e.message : t('myResources.loadFailed');
+			const response = await api.get<UserDashboardSummary>('/api/v1/user-dashboard/summary', state.token!, state.projectId!, opts);
+			if (!isCurrent()) return;
+			if (response.user_id !== state.userId || response.current_project_id !== state.projectId) {
+				data = null;
+				snapshotOwner = '';
+				error = '';
+				return;
+			}
+			data = response;
+			snapshotOwner = capturedOwner;
+		} catch (cause) {
+			if (!isCurrent()) return;
+			data = null;
+			snapshotOwner = '';
+			error = cause instanceof ApiError ? cause.message : '';
 		} finally {
-			initialLoading = false;
+			if (isCurrent()) {
+				initialLoading = false;
+				refreshing = false;
+			}
 		}
 	}
 
-	async function forceRefresh() {
-		refreshing = true;
-		try {
-			await load({ refresh: true });
-		} finally {
-			refreshing = false;
-		}
+	function syncOwner() {
+		const next = ownerKey(get(auth), get(projectSwitching));
+		if (next === owner) return;
+		owner = next;
+		ownerEpoch++;
+		data = null;
+		snapshotOwner = '';
+		error = null;
+		refreshing = false;
+		initialLoading = Boolean(next);
+		if (next) void load();
 	}
+
+	onMount(() => {
+		active = true;
+		// Synchronous subscriptions catch A→B→A even within one render batch.
+		unsubscribeAuth = auth.subscribe(syncOwner);
+		unsubscribeSwitch = projectSwitching.subscribe(syncOwner);
+	});
+	onDestroy(() => {
+		active = false;
+		ownerEpoch++;
+		requestId++;
+		unsubscribeAuth?.();
+		unsubscribeSwitch?.();
+	});
 
 	const ar = createAutoRefresh(() => load(), {
-		storageKey: 'dashboard-my-resources',
-		invokeOnMount: false,
-		defaultActive: true,
-		defaultInterval: 30,
-		intervalOptions: [10, 15, 30, 60],
-	});
-	$effect(() => {
-		const pid = $auth.projectId;
-		if (!pid) return;
-		untrack(() => load());
+		storageKey: 'dashboard-my-resources', invokeOnMount: false,
+		defaultActive: true, defaultInterval: 30, intervalOptions: [10, 15, 30, 60],
 	});
 </script>
 
-{#snippet floatingIpLink(text: string)}<a href="/dashboard/network/floating-ips" class="text-emerald-400 hover:text-emerald-300 transition-colors">{text}</a>{/snippet}
-
 <PageShell>
-	<div class="flex items-center gap-3 mb-4">
-		<a
-			href="/dashboard"
-			class="inline-flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink-0 transition-colors px-2.5 py-1.5 rounded-md hover:bg-surface-sunken"
-		>
-			<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-			{t('myResources.back')}
-		</a>
-		<span class="text-ink-2">·</span>
-		<a
-			href="/dashboard/account"
-			class="inline-flex items-center gap-1.5 text-xs text-warm-text hover:text-warm-text-hover transition-colors px-2.5 py-1.5 rounded-md hover:bg-action-warm-hover/10"
-		>
-			{t('myResources.account')}
-			<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-		</a>
+	<div class="flex flex-wrap items-center gap-3 mb-4">
+		<a href="/dashboard" class="text-xs text-ink-2 hover:text-ink-0">{t('myResources.back')}</a>
+		<a href="/dashboard/account" class="text-xs text-warm-text hover:text-warm-text-hover">{t('myResources.account')}</a>
 	</div>
-
 	<PageHeader breadcrumb="" title={t('myResources.title')}>
 		{#snippet actions()}
-			<AutoRefreshControl
-			bind:active={ar.active}
-			bind:intervalSeconds={ar.intervalSeconds}
-			intervalOptions={ar.intervalOptions}
-			refreshing={refreshing}
-			onManualRefresh={forceRefresh}
-		/>
+			<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} {refreshing} onManualRefresh={() => load({ refresh: true })} />
 		{/snippet}
 	</PageHeader>
 
-	{#if error}
-		<Alert tone="danger" class="mb-4">{error}</Alert>
+	{#if currentOwner && error !== null}
+		<div data-resource-error><Alert tone="danger" class="mb-4">{error || t('myResources.loadFailed')}</Alert></div>
 	{/if}
-
-	{#if initialLoading}
-		<div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mb-4" role="status" aria-busy="true">
-			<span class="sr-only">{t('myResources.title')} · {tc('state.loading')}</span>
-			{#each [1, 2, 3, 4] as _}
-				<div class="motion-skeleton border border-line rounded-lg h-[82px]"></div>
-			{/each}
+	{#if !currentOwner}
+		<div data-resource-auth-gate><EmptyState headline={t('myResources.selectProject')} /></div>
+	{:else if initialLoading && !visibleData}
+		<div data-resource-loading role="status" aria-busy="true" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+			<span class="sr-only">{tc('state.loading')}</span>
+			{#each [1, 2, 3] as _}<div class="motion-skeleton border border-line rounded-lg h-48" aria-hidden="true"></div>{/each}
 		</div>
-		<div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5" aria-hidden="true">
-			{#each [1, 2, 3, 4] as _}
-				<div class="motion-skeleton border border-line rounded-lg h-48"></div>
-			{/each}
-		</div>
-	{:else if data}
-		<MyResourcesSummary totals={data.totals} />
-		<ProjectUsageTable projects={data.projects} />
-
-		<div class="motion-stagger grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-			<InstancesPreviewCard instances={allInstances} />
-			<VolumesPreviewCard volumes={allVolumes} />
-
-			<!-- Floating IP 카드 -->
-			<div class="bg-surface-base border border-line rounded-lg p-5">
-				<div class="flex items-center gap-2.5 mb-3.5">
-					<div class="w-10 h-10 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
-						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-						</svg>
-					</div>
-					<div class="text-ink-0 font-semibold text-sm">{t('myResources.floatingIp')}</div>
-					<span class="ml-auto text-xs text-ink-2"><AnimatedNumber value={data.totals.floating_ips} format={(value) => t('myResources.floatingIpCount', { count: Math.round(value) })} /></span>
-				</div>
-				<div class="flex flex-col items-center justify-center py-6">
-					<div class="text-xs text-ink-2 text-center leading-relaxed">
-						<RichText segments={t.rich('myResources.floatingIpHelp')} tags={{ link: floatingIpLink }} />
-					</div>
-				</div>
+	{:else if visibleData}
+		<div data-resource-snapshot>
+			<MyResourcesSummary totals={visibleData.totals} />
+			<ProjectUsageTable projects={visibleData.projects} />
+			{#if visibleData.projects.length === 0}
+				<EmptyState headline={t('myResources.noProjects')} description={t('myResources.invitationHelp')} />
+			{/if}
+			<div class="motion-stagger grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+				{#each RESOURCE_CATEGORIES as category (category)}
+					<ResourceInventoryCard {category} projects={visibleData.projects} total={visibleData.totals.resources[category]} currentProjectId={visibleData.current_project_id} />
+				{/each}
 			</div>
 		</div>
-
-		{#if data.projects.length === 0}
-			<EmptyState headline={t('myResources.noProjects')} description={t('myResources.invitationHelp')} />
-		{/if}
 	{/if}
 </PageShell>

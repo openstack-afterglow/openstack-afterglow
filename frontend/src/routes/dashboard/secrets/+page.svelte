@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { toast } from '$lib/stores/toast';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -320,9 +321,9 @@
 {#snippet tabCountText(text: string)}<span class="ml-1 text-xs text-ink-2"><AnimatedNumber value={secrets.length} format={(value) => String(Math.round(value))} /></span>{/snippet}
 
 {#if !keyManagerEnabled}
-	<div class="p-4 md:p-8">
+	<PageShell>
 		<BetaFeatureGate title={t('secrets.beta.title')} />
-	</div>
+	</PageShell>
 {:else}
 <!-- 비밀 생성 모달 -->
 <FormModal
@@ -412,7 +413,7 @@
 	</div>
 </FormModal>
 
-<div class="bulk-selection-page p-4 md:p-8">
+<PageShell class="bulk-selection-page">
 	<PageHeader breadcrumb={t('secrets.page.breadcrumb')} title={t('secrets.page.title')}>
 		{#snippet actions()}
 			<AutoRefreshControl
@@ -670,5 +671,5 @@
 		actions={[{ key: 'delete', label: t('secrets.actions.delete'), tone: 'danger', onAction: runBulkDelete }]}
 		onClear={() => selection.clear()}
 	/>
-</div>
+</PageShell>
 {/if}

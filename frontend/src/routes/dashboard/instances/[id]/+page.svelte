@@ -1,10 +1,11 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { page } from '$app/stores';
 	import InstanceDetailPanel from '$lib/components/InstanceDetailPanel.svelte';
 
 	const instanceId = $derived($page.params.id!);
 </script>
 
-<div class="max-w-4xl mx-auto">
+<PageShell>
 	<InstanceDetailPanel {instanceId} />
-</div>
+</PageShell>

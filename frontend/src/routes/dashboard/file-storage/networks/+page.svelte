@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { untrack } from 'svelte';
@@ -139,10 +140,10 @@
 </script>
 
 {#if !enabled}
-	<div class="p-4 md:p-8"><BetaFeatureGate title={t('networks.beta')} /></div>
+	<PageShell><BetaFeatureGate title={t('networks.beta')} /></PageShell>
 {:else}
 	<ShareNetworkCreateModal bind:open={showModal} {creating} {token} {projectId} onCreate={createNetwork} />
-	<div class="bulk-selection-page p-4 md:p-8">
+	<PageShell class="bulk-selection-page">
 		<PageHeader breadcrumb={t('networks.breadcrumb')} title={t('networks.title')}>
 			{#snippet actions()}
 				<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing || loading} onManualRefresh={forceRefresh} />
@@ -159,5 +160,5 @@
 			<ShareNetworkTable {networks} {deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onDelete={deleteNetwork} />
 			<BulkSelectionOverlay count={selection.count} ariaLabel={t('networks.bulkActions')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 		{/if}
-	</div>
+	</PageShell>
 {/if}

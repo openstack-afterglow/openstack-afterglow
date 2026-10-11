@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -212,7 +213,7 @@
 <AdminUserCreateModal bind:open={showCreate} onCreate={create} />
 <AdminUserEditModal bind:user={editUser} onUpdate={update} />
 
-<div class="p-4 md:p-6 max-w-7xl mx-auto">
+<PageShell>
 	<div data-tour="admin-identity-header">
 		<PageHeader breadcrumb={t('userPage.breadcrumb')} title={t('userPage.title')}>
 		{#snippet actions()}
@@ -343,4 +344,4 @@
 			{/if}
 		</div>
 	{/if}
-</div>
+</PageShell>

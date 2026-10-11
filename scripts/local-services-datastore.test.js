@@ -190,4 +190,3 @@ test("production and standalone Compose require the prefixed Afterglow input wit
 		}
 	});
 });
-

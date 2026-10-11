@@ -6,6 +6,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import type { LoginResponse } from '$lib/types/auth';
 	import { resolvePostLoginProject } from '$lib/utils/authFlow';
 	import { postAuthDestination } from '$lib/utils/mcpConsent';
@@ -66,7 +67,8 @@
 </script>
 
 <main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas flex items-center justify-center">
-	<div class="w-full max-w-md px-4 text-center">
+	<PageShell class="flex justify-center">
+	<div class="w-full max-w-md text-center">
 		{#if loading}
 			<div class="motion-fade">
 				<ActivityIndicator size="lg" label={t('gitlabCallback.processing')} />
@@ -80,4 +82,5 @@
 			</div>
 		{/if}
 	</div>
+	</PageShell>
 </main>

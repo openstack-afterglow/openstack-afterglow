@@ -96,7 +96,7 @@ Prometheus SD (`/api/v1/sd/...`) and the baked paths for VM agents use a separat
 
 | Document | Base Path | Description |
 |------|-----------|------|
-| [Palimpsest layers](api/union.md) | `/api/v1/palimpsest`, `/api/v1/admin/libraries`, `/api/v1/libraries/squashfs` | Layered VM — squashfs layer build/consume, digest search, parent chain. (The old `/api/v1/union` surface was removed.) |
+| [Palimpsest layers](api/union.md) | `/api/v1/palimpsest`, `/api/v1/admin/libraries` | Project packages and administrator layer build/consume, digest search and parent chains. Public `/api/v1/libraries/squashfs` and the old `/api/v1/union` surface were removed. |
 
 ### Containers · Kubernetes
 

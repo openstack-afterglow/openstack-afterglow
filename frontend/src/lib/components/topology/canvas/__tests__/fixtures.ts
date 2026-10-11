@@ -9,7 +9,7 @@ export function mkNet(id: string, name: string, cidr: string, gw: string, o: { e
 	return {
 		id, name, status: 'ACTIVE',
 		is_external: Boolean(o.external), is_shared: Boolean(o.shared), project_id: o.project ?? null,
-		subnet_details: [{ id: 'sn-' + id.replace(/^net-/, ''), name: `${name}-subnet`, cidr, gateway_ip: gw, dhcp_enabled: !o.external }],
+		subnet_details: [{ id: 'sn-' + id.replace(/^net-/, ''), name: `${name}-subnet`, cidr, ip_version: 4, gateway_ip: gw, dhcp_enabled: !o.external }],
 		mtu: o.mtu ?? 1450,
 	};
 }

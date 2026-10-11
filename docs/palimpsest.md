@@ -15,9 +15,9 @@ afterglow에는 역사적으로 레이어 관련 코드가 **세 갈래**로 자
 
 | 세대 | 모델 (`backend/app/models/db.py`) | 주요 코드 | API | 상태 |
 |------|-----------------------------------|-----------|-----|------|
-| 1세대 "library" | `LibraryRecipe`(236) `LibraryBuild`(261) `LibraryCatalog`(694) | `services/library_builder.py`, `library_recipes.py` | `/api/v1/libraries` | VM 생성 위저드가 사용 중 |
+| 1세대 "library" | `LibraryRecipe`(236) `LibraryBuild`(261) `LibraryCatalog`(694) | `services/library_builder.py`, `library_recipes.py` | `/api/v1/libraries` | 독립 파일 스토리지 카탈로그 보존; 일반 VM wizard 소비 선택은 제거 |
 | 2세대 "union" | `UnionLayer`(492) `UnionTemplate`(542) `UnionUserMount`(562) | `services/union_layers.py`, `scripts/layerbuild.py`, `scripts/envmgr-*.sh` | `/api/v1/union` | 코드만 존재, 인프라 미배포 |
-| 3세대 "squashfs" | `LayerBuild`(296) `LayerConsume`(350) `LayerArtifact`(373) `LayerProfile`(469) | `services/layer_build.py`, `layer_builder.py`, `recipe_blocks.py`, `cloud_init_builder.py`, `dockerfile_import.py`, `builder_vm.py`, `manila.py` | `/api/v1/admin/libraries`, `/api/v1/libraries/squashfs` | **실제 배포·운영 중** |
+| 3세대 "squashfs" | `LayerBuild`(296) `LayerConsume`(350) `LayerArtifact`(373) `LayerProfile`(469) | `services/layer_build.py`, `layer_builder.py`, `recipe_blocks.py`, `cloud_init_builder.py`, `dockerfile_import.py`, `builder_vm.py`, `manila.py` | `/api/v1/admin/libraries` | 관리자 빌드·소비 보존; 공개 `/api/v1/libraries/squashfs` 제거 (local source) |
 
 3세대 운영 상태는 기존 squashfs 경로도 포함한다. 아래 4.4의 Dockerfile 전체-root/Cinder-upper 경로는 DMSLab OpenStack에서 루트·단계 빌드, 캐시 재사용, SSH 소비 VM(`afterglow-pal-proof-20260927`, `c8b5e99e-83b5-4199-8f9f-dec2343e759d`), 재부팅 후 overlay/upper 영속성, 임시 빌더 정리까지 검증했다. Afterglow 1.29.0 백엔드·워커·프런트엔드는 Kolla에 배포되었지만, 운영자의 인증된 Dockerfile 빌드·소비 화면과 API는 아직 검증되지 않았다.
 
@@ -27,7 +27,7 @@ afterglow에는 역사적으로 레이어 관련 코드가 **세 갈래**로 자
 |------|------|
 | 3세대 squashfs 파이프라인 | **흡수** — Palimpsest 코어다. 코드 경로와 스토리지 전략을 유지한 채 확장한다 |
 | 2세대 union | **폐기** — `/api/v1/union` 표면과 `union_layers.py`·`layerbuild.py`·`envmgr-*.sh`를 제거한다. 다만 `union.md`의 설계 원칙(content-addressable, single-parent, 3-lock, GC 규칙)과 결정적 해시 개념은 Palimpsest로 이식한다. `union_*` 테이블은 데이터 보존을 위해 남긴다 |
-| 1세대 library | **보존, 범위 밖** — VM 생성 위저드가 쓰는 카탈로그다. 건드리지 않는다 |
+| 1세대 library | 독립 파일 스토리지 카탈로그는 **보존**한다. 일반 VM 생성 위저드의 library 소비 옵션·호출은 제거했다. |
 
 > **읽는 순서**: 이 문서 → `docs/squashfs-layer-pipeline.md`(운영 중인 파이프라인의 상세) → `union.md`
 > (설계 원칙의 출처, 단 구현 현황 서술은 낡았음).

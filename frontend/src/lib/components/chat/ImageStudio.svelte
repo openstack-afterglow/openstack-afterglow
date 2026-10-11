@@ -434,7 +434,7 @@
 	}
 </script>
 
-<PageShell max="7xl">
+<PageShell>
 	<LumenPermissionNotice leaves={['lumen-images_user', 'lumen-assets_editor']} />
 	<div class="studio">
 		<header class="studio-header">
@@ -558,7 +558,7 @@
 </PageShell>
 
 <style>
-	.studio { display: grid; gap: 2rem; width: 100%; max-width: 68rem; margin-inline: auto; padding-block: 1rem 3rem; }
+	.studio { display: grid; gap: 2rem; width: 100%; min-width: 0; }
 	.studio-header { display: grid; justify-items: center; gap: 0.5rem; text-align: center; padding-top: 1.5rem; }
 	.studio-mark { width: 2.5rem; height: 2.5rem; color: var(--color-ink-1); }
 	.studio-header h1 { font-size: 1.25rem; font-weight: 600; line-height: 1.75rem; color: var(--color-ink-0); }

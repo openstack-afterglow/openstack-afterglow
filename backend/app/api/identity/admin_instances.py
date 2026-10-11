@@ -20,7 +20,6 @@ from app.models.compute import CreateInstanceRequest
 from app.models.progress import ProgressMessage, ProgressStep
 from app.services import cinder, cloudinit, keystone, neutron, nova, vm_cloud_init_library
 from app.services import instance_orchestration as instance_orch
-from app.services import libraries as lib_svc
 from app.services.instance_names import ensure_unique_instance_name
 from app.services.ssh_access import github_ssh_metadata
 
@@ -148,16 +147,10 @@ async def admin_create_instance_async(
     대상 프로젝트에 admin 크리덴셜로 스코프된 conn을 사용해 인스턴스를 생성한다.
     키페어는 user-scoped라 admin이 조회 불가 — key_name 미지정 시 콘솔 비밀번호 사용.
     """
-    from app.api.compute.instances import (
-        _prepare_dynamic_file_storage,
-        _prepare_prebuilt_file_storages,
-        _verify_github_ssh,
-    )
+    from app.api.compute.instances import _verify_github_ssh
 
     settings = get_settings()
     req = await _verify_github_ssh(req, token_info=token_info)
-
-    resolved_libs = lib_svc.resolve_with_deps(req.libraries)
 
     conn = await asyncio.to_thread(_make_admin_conn, req.project_id, token_info.get("user_id", ""))
     try:
@@ -204,12 +197,8 @@ async def admin_create_instance_async(
     async def progress_generator():
         import time
 
-        created_file_storage_ids: list[str] = []
-        created_access_ids: list[tuple[str, str]] = []
         boot_volume_id: str | None = None
         boot_volume_was_provided: bool = False
-        upper_volume_id: str | None = None
-        created_upper: bool = False
         server_id: str | None = None
         floating_ip_id: str | None = None
         _start_time = time.monotonic()
@@ -220,34 +209,6 @@ async def admin_create_instance_async(
             return f"data: {msg.model_dump_json()}\n\n"
 
         try:
-            file_storages_info = []
-            _sse_health_id = ""
-            _sse_health_token = ""
-            _sse_report_url = ""
-
-            if resolved_libs:
-                yield send_progress(ProgressStep.MANILA_PREPARING, 0, "파일 스토리지 준비 중...")
-                if req.strategy == "prebuilt":
-                    file_storages_info = await _prepare_prebuilt_file_storages(
-                        conn,
-                        resolved_libs,
-                        req.name,
-                        created_access_ids,
-                        network_id=req.network_id or "",
-                        project_id=req.project_id,
-                    )
-                else:
-                    file_storage_info = await _prepare_dynamic_file_storage(
-                        conn,
-                        req.name,
-                        resolved_libs,
-                        settings,
-                        created_file_storage_ids,
-                        created_access_ids,
-                    )
-                    file_storages_info = [file_storage_info]
-                yield send_progress(ProgressStep.MANILA_PREPARING, 20, "파일 스토리지 준비 완료")
-
             if req.boot_volume_id:
                 yield send_progress(ProgressStep.BOOT_VOLUME_CREATING, 20, "기존 부팅 볼륨 검증 중...")
                 boot_vol = await asyncio.to_thread(cinder.get_volume, conn, req.boot_volume_id)
@@ -277,43 +238,15 @@ async def admin_create_instance_async(
                 )
                 yield send_progress(ProgressStep.BOOT_VOLUME_CREATING, 45, "부트 볼륨 생성 완료")
 
-            if resolved_libs:
-                if req.existing_upper_volume_id:
-                    yield send_progress(ProgressStep.UPPER_VOLUME_CREATING, 45, "기존 upper 볼륨 검증 중...")
-                    upper_volume_id = req.existing_upper_volume_id
-                    upper_vol = await asyncio.to_thread(cinder.get_volume, conn, upper_volume_id)
-                    if upper_vol.status != "available":
-                        raise HTTPException(400, f"upper 볼륨 상태가 available이 아닙니다: {upper_vol.status}")
-                    created_upper = False
-                else:
-                    yield send_progress(ProgressStep.UPPER_VOLUME_CREATING, 45, "Upper 볼륨 생성 중...")
-                    upper_vol = await asyncio.to_thread(
-                        cinder.create_empty_volume,
-                        conn,
-                        name=f"union-upper-{req.name}",
-                        size_gb=settings.upper_volume_size_gb,
-                        availability_zone=volume_availability_zone,
-                    )
-                    upper_volume_id = upper_vol.id
-                    created_upper = True
-                yield send_progress(ProgressStep.UPPER_VOLUME_CREATING, 60, "Upper 볼륨 준비 완료")
-
-            if resolved_libs or gpu_available:
+            if gpu_available:
                 yield send_progress(ProgressStep.USERDATA_GENERATING, 60, "cloud-init 생성 중...")
-                if resolved_libs:
-                    _sse_health_id, _sse_report_url, _sse_health_token = await instance_orch.try_issue_health_token(
-                        req.project_id, settings
-                    )
                 userdata = cloudinit.generate_userdata(
-                    libraries=resolved_libs,
-                    strategy=req.strategy,
-                    file_storages=file_storages_info,
-                    upper_device="/dev/vdb",
+                    libraries=[],
+                    strategy="none",
+                    file_storages=[],
+                    upper_device="",
                     ceph_monitors=settings.ceph_monitors,
                     gpu_available=gpu_available,
-                    instance_id=_sse_health_id if _sse_health_token else "",
-                    report_url=_sse_report_url if _sse_health_token else "",
-                    report_token=_sse_health_token,
                     github_username=req.github_username,
                 )
                 yield send_progress(ProgressStep.USERDATA_GENERATING, 65, "cloud-init 생성 완료")
@@ -325,16 +258,7 @@ async def admin_create_instance_async(
             yield send_progress(ProgressStep.SERVER_CREATING, 65, "Nova 서버 생성 중...")
             _sse_effective_sgs: list[str] | None = list(req.security_groups) if req.security_groups else None
 
-            meta = instance_orch.build_instance_meta(
-                resolved_libs,
-                file_storages_info,
-                upper_volume_id,
-                req.scheduling,
-                req.strategy or "none",
-                _sse_health_id if resolved_libs else "",
-                _sse_health_token,
-            )
-            meta.update(github_ssh_metadata(req.github_username))
+            meta = github_ssh_metadata(req.github_username)
             server = await asyncio.to_thread(
                 nova.create_server,
                 conn,
@@ -356,12 +280,6 @@ async def admin_create_instance_async(
             yield send_progress(ProgressStep.SERVER_CREATING, 95, "Nova 서버 생성 완료")
 
             yield send_progress(ProgressStep.ATTACHING_VOLUME, 95, "볼륨 연결 중...")
-            if upper_volume_id:
-                await asyncio.to_thread(
-                    conn.compute.create_volume_attachment,
-                    server_id,
-                    volume_id=upper_volume_id,
-                )
             for nv in req.new_volumes or []:
                 if not nv.name:
                     continue
@@ -454,9 +372,9 @@ async def admin_create_instance_async(
                 conn,
                 server_id,
                 boot_volume_id if not boot_volume_was_provided else None,
-                upper_volume_id if created_upper else None,
-                created_file_storage_ids,
-                created_access_ids,
+                None,
+                [],
+                [],
                 floating_ip_id,
             )
         finally:

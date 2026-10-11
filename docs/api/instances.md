@@ -76,7 +76,6 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `union_strategy` | string \| null | `prebuilt` \| `dynamic` |
 | `union_share_ids` | array[string] | 연결된 Manila share ID |
 | `union_upper_volume_id` | string \| null | OverlayFS upper 볼륨 ID |
-| `scheduling` | string \| null | `standard` \| `ha` |
 | `key_name` | string \| null | SSH 키페어 이름 |
 | `ssh_access_mode` | `"github"` \| null | 명시적으로 기록된 GitHub SSH 접근 모드. 기존/키페어 VM은 null |
 | `github_login` | string \| null | 생성 전 검증한 canonical GitHub login (대소문자 보존) |
@@ -84,7 +83,7 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `fault` | object \| null | ERROR 상태의 fault 정보 `{message, code, created}` |
 | `host` | string \| null | 하이퍼바이저 호스트 (관리자 스코프에서만 채워짐) |
 
-`union_*` 응답 필드는 retained layer 라이브러리를 선택한 VM에서만 Nova metadata로 저장됩니다. 라이브러리가 없는 plain/GPU/data-mount VM은 해당 metadata key를 만들지 않으며 응답 파서는 누락된 필드를 `[]`/`null`로 반환합니다.
+`union_*` 응답 필드는 기존 VM의 historical metadata를 읽기 위해 유지합니다. 일반 VM 생성은 라이브러리·SquashFS 소비와 HA 배포 옵션을 제공하지 않으며, 새 plain/GPU/data-mount VM은 `union_*` metadata를 생성하지 않습니다.
 
 ### GET /api/v1/instances/availability-zones
 
@@ -109,7 +108,7 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 
 ### POST /api/v1/instances
 
-인스턴스를 동기적으로 생성합니다. 모든 단계(Manila → 부트 볼륨 → upper 볼륨 → cloud-init → Nova 서버 → Floating IP)가 완료될 때까지 응답을 기다립니다. **속도 제한: 5회/분.**
+인스턴스를 동기적으로 생성합니다. 부팅 소스·선택적 데이터 마운트·cloud-init → Nova 서버 → Floating IP 준비가 완료될 때까지 응답을 기다립니다. **속도 제한: 5회/분.**
 
 **요청 본문** (`CreateInstanceRequest`)
 
@@ -118,9 +117,6 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
   "name": "my-vm",
   "image_id": "uuid-string",
   "flavor_id": "uuid-string",
-  "libraries": ["python311", "pytorch"],
-  "strategy": "prebuilt",
-  "scheduling": "standard",
   "network_id": "uuid-string",
   "key_name": "my-key",
   "admin_pass": "string(8-128)",
@@ -138,17 +134,13 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `image_id` | string | 조건부 | Glance 이미지 UUID. `boot_volume_id`와 **상호 배타**이며 둘 중 하나는 필수 |
 | `boot_volume_id` | string | 조건부 | 기존 부팅 볼륨 재사용. `image_id`와 상호 배타. `available` + `bootable` 볼륨만 허용 |
 | `flavor_id` | string | 예 | Nova 플레이버 UUID |
-| `libraries` | array[string] | 아니오 | 설치할 라이브러리 ID 목록. 의존성은 서버가 자동 확장 |
-| `strategy` | string | 아니오 | `prebuilt` \| `dynamic`. **`libraries`가 있을 때만 의미** (없으면 Union Mount 미구성) |
-| `scheduling` | string | 아니오 | `standard`(기본) \| `ha` |
 | `network_id` | string | 아니오 | 연결할 네트워크 UUID. 생략 시 기본 네트워크 자동 결정 |
 | `key_name` | string | 아니오 | SSH 키페어 이름 |
 | `admin_pass` | string | 아니오 | 관리자 비밀번호 (8–128자) |
 | `availability_zone` | string | 아니오 | 가용 영역. 생략 시 서버 기본 AZ |
-| `security_groups` | array[string] | 아니오 | 보안 그룹 이름 목록. libraries/GPU 여부에 따라 서버가 필수 SG를 추가 |
+| `security_groups` | array[string] | 아니오 | 보안 그룹 이름 목록. GPU 모니터링에 필요한 SG는 서버가 추가 |
 | `boot_volume_size_gb` | integer | 아니오 | 부트 볼륨 크기(GB, 1–16384). 생략 시 서버 설정 기본값 |
 | `delete_boot_volume_on_termination` | boolean | 아니오 | 인스턴스 삭제 시 부트 볼륨 동반 삭제 (기존 볼륨 재사용 시 강제 false) |
-| `existing_upper_volume_id` | string | 아니오 | 복구 시 기존 upper 볼륨 재사용 (`available` 필요) |
 | `additional_volume_ids` | array[string] | 아니오 | 생성 직후 연결할 기존 볼륨 UUID 목록 |
 | `new_volumes` | array | 아니오 | 신규 생성·연결할 볼륨 `{name, size_gb}` 목록 |
 | `data_mounts` | array | 아니오 | 기존 Manila share 직접 마운트 `{file_storage_id, mount_point, read_only}` |
@@ -163,23 +155,16 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 
 검사는 GPU 단기 예약·Cinder/Nova mutation 전에 수행됩니다. 확인된 부족은 flavor 종류와 무관하게 409입니다. 운영자 권한·조회·시간 초과·매핑·경계를 정할 수 없는 flavor 제약 또는 기본 compute AZ 정책 때문에 용량을 확인할 수 없으면 flavor 종류와 무관하게 503입니다. 확인되지 않은 용량으로 Nova에 생성을 요청하지 않으므로 이런 장애 동안 Afterglow 생성 경로는 모두 거부됩니다. 단일 NUMA 셀 요청은 호스트 합계로 평가합니다. 합계 부족은 409이고, 합계가 충분하면 `numa_unverified`로 허용해 Nova NUMA filter가 셀과 GPU NUMA 근접성을 최종 판단합니다. 자세한 snapshot 필드는 [플레이버 API](flavors.md#eligibilitycapacity)를 참조하세요.
 
-목록의 `available`은 예약이나 생성 보장이 아닙니다. 목록 이후 다른 VM이 용량을 사용하면 제출 시 결과가 달라지며 최종 allocation은 Nova scheduler가 결정합니다. VM wizard도 제출 직전에 목록을 다시 읽고 부족/미확인으로 막히면 기존 선택을 보존한 채 플레이버 단계로 돌아갑니다. resize 증분 쿼터와 별도 Palimpsest/SquashFS consume API(`/api/v1/libraries/squashfs/consume`)는 이 세 생성 endpoint의 flavor·capacity admission을 사용하지 않으며 이번 변경 범위가 아닙니다.
+목록의 `available`은 예약이나 생성 보장이 아닙니다. 목록 이후 다른 VM이 용량을 사용하면 제출 시 결과가 달라지며 최종 allocation은 Nova scheduler가 결정합니다. VM wizard도 제출 직전에 목록을 다시 읽고 부족/미확인으로 막히면 기존 선택을 보존한 채 플레이버 단계로 돌아갑니다. resize 증분 쿼터와 독립 관리자 Palimpsest build/import/runtime 배포 경로는 별도 계약입니다. 지원하지 않던 공개 SquashFS 소비 API는 제거했습니다.
 
 **cloud-init 및 metadata 경계**
 
-- `libraries`가 실제로 resolve된 경우에만 OverlayFS script/unit, `/etc/profile.d/union-env.sh`, layer health report/token, `union_libraries`·`union_strategy`·`union_share_ids`·`union_upper_volume_id`·`union_health_id` Nova metadata를 생성합니다.
 - plain VM은 typed empty `packages`/`write_files`/`runcmd` cloud-config를 사용합니다. GPU-only와 `data_mounts`-only VM은 각 bootstrap만 유지하고 layer artifact 또는 `union_*` placeholder를 만들지 않습니다.
 - direct data mount lifecycle은 새 `afterglow_data_share_ids` metadata를 사용합니다. 기존 VM 정리를 위해 읽기 경로에서만 과거 `union_data_share_ids`를 fallback으로 허용합니다.
 - GPU VM은 `/opt/afterglow/install_gpu_monitoring.sh`가 NVIDIA CUDA repository의 `datacenter-gpu-manager`와 `datacenter-gpu-manager-exporter` 패키지를 설치하고 vendor `nvidia-dcgm`/`nvidia-dcgm-exporter` unit을 활성화합니다. repository architecture는 `amd64 → x86_64`, `arm64 → sbsa`만 허용하고 그 외에는 설치를 중단합니다.
 
-이 계약은 새로 생성되는 VM의 rendered user-data에 적용되며 기존 guest를 자동 변경하지 않습니다. Palimpsest/SquashFS artifact 생성·외부 consume 경로는 VM의 retained library 선택 여부와 별도입니다.
+이 계약은 새로 생성되는 일반 VM의 rendered user-data에 적용되며 기존 guest를 자동 변경하지 않습니다. 관리자 Palimpsest artifact·Dockerfile build/import·full-root runtime 배포와 `/api/v1/libraries`의 파일 스토리지 관리용 카탈로그는 별도로 유지합니다. 일반 VM 요청에서 `libraries`, `strategy`, `scheduling`, `existing_upper_volume_id`를 보내지 마세요.
 
-**전략 설명**
-
-| 전략 | 설명 |
-|------|------|
-| `prebuilt` | 관리자가 미리 빌드한 read-only share(CephFS/NFS)에 접근 규칙을 추가합니다. 빠르고 스토리지 효율적입니다. 해당 라이브러리의 사전 빌드 share가 없으면 실패합니다. |
-| `dynamic` | VM 전용 read-write share를 새로 생성합니다. 격리가 완전하지만 생성 시간이 더 걸립니다. |
 
 **응답 (201 Created)** — 생성된 Nova 서버 객체
 
@@ -541,7 +526,7 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 
 ## 8. 관리자 패스워드 재설정
 
-QEMU Guest Agent(QGA)를 통해 게스트 관리자 계정의 패스워드를 재설정합니다. **두 엔드포인트 모두 시스템 관리자 전용**(`require_admin`)입니다.
+QEMU Guest Agent(QGA)를 통해 게스트 OS 계정의 비밀번호를 변경합니다. 두 엔드포인트는 **프로젝트 쓰기 권한**에 더해 **검증된 시스템 관리자** 또는 **현재 프로젝트의 Nova `user_id`가 본인인 생성자**만 허용합니다. 같은 프로젝트의 다른 사용자나 프로젝트 `admin` 역할만 가진 사용자는 타인 생성 인스턴스의 비밀번호를 변경할 수 없습니다. 수정 가능한 인스턴스 metadata는 생성자 증거로 사용하지 않습니다.
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
@@ -559,7 +544,7 @@ QEMU Guest Agent(QGA)를 통해 게스트 관리자 계정의 패스워드를 �
 | `os_admin_user` | string \| null | 게스트 관리자 계정명 (이미지 메타데이터 기준) |
 | `server_status` | string | 현재 Nova 상태 |
 
-> `supported=true` 조건: 인스턴스가 `ACTIVE` 상태 **그리고** 이미지 메타데이터에 `hw_qemu_guest_agent=yes`가 설정되어 QGA가 활성화되어 있어야 합니다.
+> `supported=true`는 `ACTIVE` 상태와 이미지 메타데이터의 `hw_qemu_guest_agent=yes/true/1`을 확인한 결과입니다. 게스트에서 QGA가 실행 중인지 또는 실제 비밀번호 변경이 적용되는지는 이 조회로 증명하지 않습니다. 이미지 부팅은 Glance, 볼륨 부팅은 Nova의 루트 장치에 연결된 Cinder 볼륨을 확인합니다. 루트 장치가 숨겨진 일반 사용자 응답은 유일한 bootable 볼륨만 사용하고 모호한 다중 부팅 볼륨은 미지원으로 처리합니다. `/dev/vda`를 루트로 추측하지 않습니다.
 
 ### POST /api/v1/instances/{server_id}/admin-password
 
@@ -573,14 +558,19 @@ QEMU Guest Agent(QGA)를 통해 게스트 관리자 계정의 패스워드를 �
 |------|------|------|------|
 | `new_password` | string | 예 | 새 관리자 비밀번호 (8–128자) |
 
-**응답**: `204 No Content`
+**응답**: `204 No Content` — Nova `changePassword` 요청이 수락되었습니다. 게스트 적용 완료나 로그인 성공을 의미하지 않습니다.
 
 **오류**
-- `404 Not Found` — 인스턴스 없음
-- `409 Conflict` — `ACTIVE` 상태가 아님 / QGA 미활성 / Nova 패스워드 변경 충돌
-- `500 Internal Server Error` — 변경 요청 실패
+- `403 Forbidden` — 생성자/시스템 관리자 또는 프로젝트 쓰기 권한이 없음, Nova 정책 거부
+- `404 Not Found` — 인스턴스 없음 또는 비관리자의 타 프로젝트 인스턴스
+- `409 Conflict` — `ACTIVE` 상태가 아님 / QGA 메타데이터 미활성 / Nova 충돌
+- `422 Unprocessable Entity` — 비밀번호 길이 등 요청 검증 실패
+- `400/401/501/503` — Nova가 해당 요청을 거부하거나 지원하지 않음
+- `502 Bad Gateway` — Nova 조회·변경 요청의 예상치 못한 실패
 
-> 게스트 내부에서 QGA 데몬이 실제로 실행 중이어야 반영됩니다. 재설정 시도는 감사 로그에 기록됩니다.
+비밀번호는 `SecretStr`로 처리하고 응답·오류·감사 기록에 저장하지 않습니다. 감사 로그에는 요청의 성공/실패만 기록합니다. 게스트 계정은 `os_admin_user` 이미지 속성 또는 Nova 드라이버의 OS별 기본값으로 결정하며 임의 계정 선택은 제공하지 않습니다. Windows는 콘솔·RDP, Linux는 콘솔·SSH로 적용을 확인해야 하고 Linux의 SSH 비밀번호 로그인 정책은 별도입니다.
+
+관리자 인스턴스 상세는 검증된 시스템 관리자에게 버튼을 표시하고, 일반 사용자 상세는 생성자 본인에게만 표시합니다. 미지원 사전점검(`supported=false`)이면 버튼을 비활성화하고 일반 사용자 상세의 안내·툴팁·열린 비밀번호 창에는 “지원되지 않는 인스턴스입니다.”를 표시합니다. 관리자 상세에는 QGA 메타데이터·ACTIVE 상태 등 API가 반환한 정확한 사유를 유지합니다. 표시 기준은 상세 화면의 관리자 모드이므로 시스템 관리자가 일반 사용자 상세를 보더라도 일반 안내를 사용합니다. 사전점검 중·조회 오류는 미지원과 구분하고 API 응답과 권한·지원 판정은 바꾸지 않습니다. 새 비밀번호·확인 입력은 창 종료 시 지웁니다.
 
 ---
 

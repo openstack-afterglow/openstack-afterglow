@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.identity import mcp_access
+from app.config import get_settings
 from app.database import Base
 from app.models.activity import ActivityLog
 from app.models.mcp_authority import McpDelegatedGrant, McpLumenSelection, McpPersonalToken, McpProjectCredential
@@ -105,9 +106,8 @@ def project_provider(monkeypatch):
 
     monkeypatch.setattr(projects.keystone, "get_openstack_connection", connect)
     # The helper imports get_settings locally; configure the provider's trusted URL.
-    monkeypatch.setattr(
-        "app.config.get_settings", lambda: SimpleNamespace(os_auth_url="https://keystone.example.test/v3")
-    )
+    settings = get_settings().model_copy(update={"os_auth_url": "https://keystone.example.test/v3"})
+    monkeypatch.setattr("app.config.get_settings", lambda: settings)
     monkeypatch.setattr(k3s_crypto, "get_settings", lambda: SimpleNamespace(k3s_kubeconfig_encryption_key="a" * 64))
     conn = Connection(project_a)
     return SimpleNamespace(
@@ -128,6 +128,22 @@ def project_provider(monkeypatch):
         delays=delays,
         Connection=Connection,
     )
+
+
+async def test_current_authority_preparation_reports_typed_management_refusal(project_provider):
+    provider = project_provider
+    provider.conn.access.role_names = ["reader"]
+    with pytest.raises(authority.McpGrantPrivilegeError, match="management"):
+        await authority._prepare_connection_projects(
+            provider.conn, provider.user, provider.a, ["admin", "member"], "current", None, "manage"
+        )
+    approved = await authority._prepare_connection_projects(
+        provider.conn, provider.user, provider.a, ["admin", "member"], "current", None, "read"
+    )
+    assert len(approved) == 1
+    assert approved[0].roles == [{"name": "reader"}]
+    assert approved[0].can_write is False
+    assert approved[0].owns_connection is False
 
 
 async def test_actual_memberships_and_target_token_roles_ignore_system_admin(project_provider):
@@ -263,6 +279,7 @@ async def test_secondary_ciphertext_is_bound_to_exact_target(project_provider):
         id="grant-id",
         owner_user_id=provider.user,
         owner_project_id=provider.a,
+        source="personal_token",
         access_level="read",
         status="active",
         expires_at=datetime.now(UTC) + timedelta(days=1),
@@ -520,6 +537,113 @@ async def test_expiry_marks_additional_credentials_and_clears_lumen_selection(pr
 
 
 @pytest.mark.db
+async def test_non_expiring_personal_key_survives_cleanup_but_not_revocation(project_owner):
+    owner = project_owner
+    issued = await issue(owner, non_expiring=True)
+    assert issued.expires_at is None
+    assert all("expires_at" not in values for _, _, values in owner.created)
+    await authority.set_lumen_selection(
+        owner.factory,
+        owner_user_id=owner.user,
+        owner_project_id=owner.a,
+        username="fixture-owner",
+        grant_id=issued.grant_id,
+    )
+    future = datetime.now(UTC) + timedelta(days=3660)
+    await authority.mark_expired_grants_for_cleanup(owner.factory, now=future)
+    async with owner.factory() as session, session.begin():
+        grant = await authority.resolve_personal_token(session, issued.token, now=future)
+        assert grant.status == "active" and grant.expires_at is None
+        assert authority.grant_public_view(grant)["expires_at"] is None
+        selection = await session.get(McpLumenSelection, {"owner_user_id": owner.user, "owner_project_id": owner.a})
+        assert selection.grant_id == grant.id
+        assert authority.decrypt_grant_secret(grant) == "secret-" + owner.a
+    await authority.revoke_grant(
+        owner.factory,
+        owner_user_id=owner.user,
+        owner_project_id=owner.a,
+        username="fixture-owner",
+        grant_id=issued.grant_id,
+    )
+    async with owner.factory() as session, session.begin():
+        with pytest.raises(authority.McpGrantNotFoundError):
+            await authority.resolve_personal_token(session, issued.token, now=future)
+        assert await session.get(McpLumenSelection, {"owner_user_id": owner.user, "owner_project_id": owner.a}) is None
+        grant = await session.get(McpDelegatedGrant, issued.grant_id)
+        assert grant.status == "revoked" and grant.credential_epoch == 2 and grant.cleanup_pending
+    assert await cleanup(owner, grant)
+    assert not owner.remote
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("lifetime", ["never", "six_months", "year"])
+async def test_personal_key_http_persists_requested_lifetime_and_rejects_conflicting_fields(
+    project_owner, client, monkeypatch, lifetime
+):
+    from app.api.deps import get_os_conn, get_token_info
+    from app.main import app
+
+    owner = project_owner
+    caller = {"user_id": owner.user, "project_id": owner.a, "username": "fixture-owner", "roles": ["member"]}
+    monkeypatch.setitem(app.dependency_overrides, get_token_info, lambda: caller)
+    monkeypatch.setitem(app.dependency_overrides, get_os_conn, lambda: owner.conn)
+    monkeypatch.setattr(mcp_access, "_session_factory", lambda: owner.factory)
+    monkeypatch.setattr(
+        mcp_access,
+        "get_settings",
+        lambda: SimpleNamespace(
+            service_mcp_enabled=True,
+            frontend_base_url="https://app.example.test",
+            public_api_base="https://api.example.test",
+            cors_origin_list=("https://app.example.test",),
+        ),
+    )
+    deadline = datetime.now(UTC) + timedelta(days=183 if lifetime == "six_months" else 366)
+    lifetime_fields = {"non_expiring": True} if lifetime == "never" else {"expires_at": deadline.isoformat()}
+    payload = {
+        "name": "Desktop",
+        "access_level": "read",
+        "project_scope": "selected",
+        "project_ids": [owner.a, owner.b],
+        **lifetime_fields,
+    }
+    headers = {"Origin": "https://app.example.test", "Sec-Fetch-Site": "same-site"}
+    response = await client.post("/api/v1/auth/mcp-tokens", json=payload, headers=headers)
+    assert response.status_code == 201
+    issued = response.json()
+    assert (
+        issued["expires_at"] is None
+        if lifetime == "never"
+        else (datetime.fromisoformat(issued["expires_at"]) == deadline)
+    )
+    async with owner.factory() as session, session.begin():
+        grant = await authority.resolve_personal_token(session, issued["token"])
+        assert grant.expires_at is None if lifetime == "never" else authority._as_utc(grant.expires_at) == deadline
+        assert authority.grant_project_ids(grant) == (owner.a, owner.b)
+    listed = await client.get("/api/v1/auth/mcp-tokens")
+    assert listed.status_code == 200 and listed.json()[0]["expires_at"] == issued["expires_at"]
+    assert "token" not in listed.json()[0]
+    written = len(owner.created)
+    rejected = await client.post(
+        "/api/v1/auth/mcp-tokens",
+        json={**payload, "non_expiring": True, "expires_at": deadline.isoformat()},
+        headers=headers,
+    )
+    assert rejected.status_code == 422 and len(owner.created) == written
+    invalid_bool = await client.post(
+        "/api/v1/auth/mcp-tokens",
+        json={**payload, "non_expiring": "false"},
+        headers=headers,
+    )
+    assert invalid_bool.status_code == 422 and len(owner.created) == written
+    assert (await client.delete(f"/api/v1/auth/mcp-tokens/{issued['id']}", headers=headers)).status_code == 204
+    async with owner.factory() as session, session.begin():
+        with pytest.raises(authority.McpGrantNotFoundError):
+            await authority.resolve_personal_token(session, issued["token"])
+    assert not owner.remote
+
+
+@pytest.mark.db
 @pytest.mark.parametrize("delayed_project", ["a", "b"], ids=["primary", "additional"])
 async def test_late_cancellation_drains_creation_and_deletes_returned_credential(project_owner, delayed_project):
     owner = project_owner
@@ -559,7 +683,7 @@ async def test_late_cancellation_drains_creation_and_deletes_returned_credential
 @pytest.mark.db
 async def test_internal_lumen_selection_needs_no_pat_but_personal_selection_does(project_owner):
     owner = project_owner
-    issued = await issue(owner)
+    issued = await issue(owner, project_scope="current", project_ids=None)
     async with owner.factory() as session, session.begin():
         grant = await session.get(McpDelegatedGrant, issued.grant_id, with_for_update=True)
         token = await session.scalar(select(McpPersonalToken).where(McpPersonalToken.grant_id == grant.id))
@@ -575,6 +699,17 @@ async def test_internal_lumen_selection_needs_no_pat_but_personal_selection_does
     async with owner.factory() as session, session.begin():
         grant = await session.get(McpDelegatedGrant, issued.grant_id, with_for_update=True)
         grant.source = "lumen"
+    with pytest.raises(authority.McpGrantStateError, match="explicit consent"):
+        await authority.set_lumen_selection(
+            owner.factory,
+            owner_user_id=owner.user,
+            owner_project_id=owner.a,
+            username="fixture-owner",
+            grant_id=issued.grant_id,
+        )
+    async with owner.factory() as session, session.begin():
+        grant = await session.get(McpDelegatedGrant, issued.grant_id, with_for_update=True)
+        grant.consented_at = datetime.now(UTC)
     generation = await authority.set_lumen_selection(
         owner.factory,
         owner_user_id=owner.user,

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -73,7 +74,7 @@
 	});
 </script>
 
-<div class="p-4 md:p-8 max-w-lg">
+<PageShell>
 	<div class="flex items-center gap-4 mb-8">
 		<button onclick={() => goto('/dashboard/network/loadbalancers')} class="text-ink-2 hover:text-ink-0 transition-colors text-sm">
 			{t('loadBalancerCreate.backToList')}
@@ -158,4 +159,4 @@
 			</Button>
 		</div>
 	</div>
-</div>
+</PageShell>

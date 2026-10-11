@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -291,14 +292,14 @@
 	onDestroy(() => { loadGeneration += 1; });
 </script>
 
-<div class="mx-auto min-w-0 max-w-7xl p-4 md:p-6">
+	{#snippet creditRateSecondary(text: string)}<span class="text-[var(--color-ink-3)]">{text}</span>{/snippet}
+<PageShell>
 	<PageHeader
 		breadcrumb={t('adminQuotas.breadcrumb')}
 		title={t('adminQuotas.title')}
 		subtitle={t('adminQuotas.subtitle')}
 	/>
 
-	{#snippet creditRateSecondary(text: string)}<span class="text-[var(--color-ink-3)]">{text}</span>{/snippet}
 	<Alert tone="info" title={t('adminQuotas.creditCostTitle')} class="mb-4">
 		<p>
 			<RichText segments={t.rich('adminQuotas.creditRate', { credits: Number(quotaList.credit_policy.credit_per_usd).toLocaleString(intlLocale()), usd: Number(quotaList.credit_policy.usd_per_credit).toLocaleString(intlLocale(), { maximumFractionDigits: 8 }) })} tags={{ secondary: creditRateSecondary }} />
@@ -403,7 +404,7 @@
 			note={t('adminQuotas.usersShown', { count: users.length })}
 		/>
 	{/if}
-</div>
+</PageShell>
 
 <Modal open={editingRow !== null} onClose={closeEditor} dismissible={!saving} ariaLabel={t('adminQuotas.editorAriaLabel')}>
 	{#if editingRow}

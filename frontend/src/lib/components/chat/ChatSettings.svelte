@@ -380,9 +380,6 @@
 		width: 100%;
 		height: 100%;
 		min-height: 0;
-		max-width: 72rem;
-		margin: 0 auto;
-		padding: clamp(1rem, 2.5vw, 2rem);
 		display: flex;
 		flex-direction: column;
 	}

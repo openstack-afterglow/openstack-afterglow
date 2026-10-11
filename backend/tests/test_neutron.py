@@ -1,5 +1,6 @@
 """neutron.ensure_union_egress_sg + ensure_monitoring_ingress_sg 단위 테스트."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -396,6 +397,7 @@ def test_get_admin_subnet_detail_pools_ports_allocations_agents_ordering():
     from app.services.neutron import get_admin_subnet_detail
 
     conn = MagicMock()
+    conn.session.auth.get_access.return_value = SimpleNamespace(role_names=["admin"], is_admin_project=True)
 
     mock_subnet = MagicMock()
     mock_subnet.id = "sub-1"
@@ -476,6 +478,7 @@ def test_get_admin_subnet_detail_pools_ports_allocations_agents_ordering():
         "is_admin_state_up": True,
     }
     conn.network.network_hosting_dhcp_agents.return_value = [agent1]
+    conn.compute.get_server.side_effect = lambda device_id: SimpleNamespace(id=device_id, name=f"VM {device_id}")
 
     detail = get_admin_subnet_detail(conn, "sub-1")
 
@@ -488,6 +491,16 @@ def test_get_admin_subnet_detail_pools_ports_allocations_agents_ordering():
     assert detail.name == "subnet-main"
     assert detail.network_name == "network-main"
     assert detail.dhcp_agent_data_available is True
+    assert detail.device_names_available is True
+    assert detail.ip_usage.model_dump() == {
+        "total_pool_ips": "112",
+        "allocated_ips": "3",
+        "allocated_pool_ips": "1",
+        "reserved_pool_ips": "0",
+        "available_pool_ips": "111",
+        "outside_pool_ips": "2",
+        "allocation_mode": "pool",
+    }
 
     # 1. Pools ordered by numeric IP
     assert [p.start for p in detail.allocation_pools] == ["192.168.1.10", "192.168.1.100"]
@@ -498,6 +511,8 @@ def test_get_admin_subnet_detail_pools_ports_allocations_agents_ordering():
     assert "port-other" not in port_map
     assert port_map["port-1"].ip_addresses == ["192.168.1.15"]
     assert port_map["port-1"].binding_host_id == "node-compute-1"
+    assert port_map["port-1"].device_name == "VM inst-1"
+    assert conn.compute.get_server.call_count == 2
 
     # 3. Allocations ordered by numeric IP
     alloc_ips = [a.ip_address for a in detail.allocations]
@@ -519,6 +534,7 @@ def test_get_admin_subnet_detail_scheduler_fallback_and_unmatched_dhcp_ports():
     from app.services.neutron import get_admin_subnet_detail
 
     conn = MagicMock()
+    conn.session.auth.get_access.return_value = SimpleNamespace(role_names=["admin"], is_admin_project=True)
 
     mock_subnet = MagicMock()
     mock_subnet.id = "sub-ovn"
@@ -560,6 +576,8 @@ def test_get_admin_subnet_detail_scheduler_fallback_and_unmatched_dhcp_ports():
     assert len(detail.allocations) == 1
     assert detail.allocations[0].ip_address == "10.10.0.2"
     assert detail.allocations[0].binding_host_id == "host-ovn-1"
+    assert detail.ip_usage.available_pool_ips == "0"
+    assert detail.ip_usage.outside_pool_ips == "1"
 
     # Synthesized source='port' DHCP binding
     assert len(detail.dhcp_bindings) == 1
@@ -569,6 +587,352 @@ def test_get_admin_subnet_detail_scheduler_fallback_and_unmatched_dhcp_ports():
     assert binding.host == "host-ovn-1"
     assert binding.ip_addresses == ["10.10.0.2"]
     assert binding.port_ids == ["port-ovn-dhcp"]
+
+
+def _subnet_inventory_conn(**subnet_fields):
+    conn = MagicMock()
+    conn.session.auth.get_access.return_value = SimpleNamespace(role_names=["AdMiN"], is_admin_project=True)
+    subnet = SimpleNamespace(
+        id="sub-1",
+        name="subnet",
+        network_id="net-1",
+        project_id="proj-1",
+        cidr="10.0.0.0/24",
+        ip_version=4,
+        gateway_ip="10.0.0.1",
+        is_dhcp_enabled=True,
+        ipv6_address_mode=None,
+        ipv6_ra_mode=None,
+        allocation_pools=[{"start": "10.0.0.1", "end": "10.0.0.10"}],
+    )
+    for key, value in subnet_fields.items():
+        setattr(subnet, key, value)
+    conn.network.get_subnet.return_value = subnet
+    conn.network.get_network.return_value = SimpleNamespace(id="net-1", name="network")
+    conn.network.ports.return_value = []
+    conn.network.network_hosting_dhcp_agents.return_value = []
+    return conn
+
+
+def _inventory_port(port_id, ips, *, owner="compute:nova", device_id="instance-1"):
+    return {
+        "id": port_id,
+        "name": port_id,
+        "status": "ACTIVE",
+        "mac_address": "fa:16:3e:00:00:01",
+        "device_owner": owner,
+        "device_id": device_id,
+        "project_id": "proj-1",
+        "binding_host_id": "host-1",
+        "fixed_ips": [{"subnet_id": "sub-1", "ip_address": ip} for ip in ips],
+    }
+
+
+@pytest.mark.parametrize(
+    ("gateway", "reserved", "available"),
+    [
+        ("10.0.0.1", "1", "7"),
+        ("10.0.0.2", "0", "8"),
+        ("10.0.0.20", "0", "8"),
+        ("10.1.0.1", "0", "8"),
+        (None, "0", "8"),
+    ],
+)
+def test_subnet_usage_inclusive_union_gateway_and_unique_port_associations(gateway, reserved, available):
+    from app.services.neutron import get_admin_subnet_detail
+
+    conn = _subnet_inventory_conn(
+        gateway_ip=gateway,
+        allocation_pools=[
+            {"start": "10.0.0.3", "end": "10.0.0.9"},
+            {"start": "10.0.0.1", "end": "10.0.0.5"},
+            {"start": "10.0.0.10", "end": "10.0.0.10"},
+            {"start": "10.0.0.1", "end": "10.0.0.5"},
+        ],
+    )
+    compute = _inventory_port("port-1", ["10.0.0.2", "10.0.0.2", "10.0.0.20"])
+    compute["fixed_ips"].append({"subnet_id": "other-subnet", "ip_address": "not-an-ip"})
+    conn.network.ports.return_value = [
+        compute,
+        _inventory_port("port-2", ["10.0.0.2"]),
+        _inventory_port(
+            "router-port", ["10.0.0.10"], owner="network:router_interface_distributed", device_id="router-1"
+        ),
+        _inventory_port("snat-port", ["10.0.0.10"], owner="network:router_centralized_snat", device_id="router-1"),
+        {"id": "other-port", "fixed_ips": [{"subnet_id": "other-subnet", "ip_address": "10.0.0.8"}]},
+    ]
+    conn.compute.get_server.return_value = SimpleNamespace(id="instance-1", name="app VM")
+    conn.network.get_router.return_value = {"id": "router-1", "name": "edge router"}
+
+    detail = get_admin_subnet_detail(conn, "sub-1")
+
+    assert detail.ip_usage.model_dump() == {
+        "total_pool_ips": "10",
+        "allocated_ips": "3",
+        "allocated_pool_ips": "2",
+        "reserved_pool_ips": reserved,
+        "available_pool_ips": available,
+        "outside_pool_ips": "1",
+        "allocation_mode": "pool",
+    }
+    assert [(row.ip_address, row.port_id) for row in detail.allocations] == [
+        ("10.0.0.2", "port-1"),
+        ("10.0.0.2", "port-2"),
+        ("10.0.0.10", "router-port"),
+        ("10.0.0.10", "snat-port"),
+        ("10.0.0.20", "port-1"),
+    ]
+    assert detail.device_names_available is True
+    assert {row.device_name for row in detail.allocations} == {"app VM", "edge router"}
+    assert {port.device_name for port in detail.ports} == {"app VM", "edge router"}
+    conn.compute.get_server.assert_called_once_with("instance-1")
+    conn.network.get_router.assert_called_once_with("router-1")
+
+
+@pytest.mark.parametrize(
+    ("address_mode", "ra_mode", "allocation_mode"),
+    [
+        (None, None, "pool"),
+        ("dhcpv6-stateful", "dhcpv6-stateful", "pool"),
+        ("slaac", "slaac", "slaac"),
+        ("dhcpv6-stateless", "dhcpv6-stateless", "dhcpv6-stateless"),
+        (None, "slaac", "slaac"),
+        (None, "dhcpv6-stateless", "dhcpv6-stateless"),
+    ],
+)
+def test_subnet_usage_huge_ipv6_canonical_duplicates_and_automatic_modes(address_mode, ra_mode, allocation_mode):
+    from app.services.neutron import get_admin_subnet_detail
+
+    conn = _subnet_inventory_conn(
+        cidr="2001:db8::/64",
+        ip_version=6,
+        gateway_ip="2001:0DB8:0:0:0:0:0:1",
+        ipv6_address_mode=address_mode,
+        ipv6_ra_mode=ra_mode,
+        allocation_pools=[{"start": "2001:db8::", "end": "2001:db8::ffff:ffff:ffff:ffff"}],
+    )
+    conn.network.ports.return_value = [
+        _inventory_port("port-1", ["2001:db8::2", "2001:0DB8:0:0:0:0:0:2"], owner="", device_id=""),
+        _inventory_port("port-2", ["2001:db8::2"], owner="", device_id=""),
+    ]
+
+    detail = get_admin_subnet_detail(conn, "sub-1")
+
+    automatic = allocation_mode != "pool"
+    assert detail.ip_usage.model_dump() == {
+        "total_pool_ips": "18446744073709551616",
+        "allocated_ips": "1",
+        "allocated_pool_ips": "1",
+        "reserved_pool_ips": "1",
+        "available_pool_ips": None if automatic else "18446744073709551614",
+        "outside_pool_ips": "0",
+        "allocation_mode": allocation_mode,
+    }
+    assert [row.ip_address for row in detail.allocations] == ["2001:db8::2", "2001:db8::2"]
+    assert detail.gateway_ip == "2001:db8::1"
+    conn.compute.get_server.assert_not_called()
+    conn.network.get_router.assert_not_called()
+
+
+def test_subnet_usage_ipv6_link_local_gateway_preserves_available_pool_capacity():
+    from app.services.neutron import get_admin_subnet_detail
+
+    conn = _subnet_inventory_conn(
+        cidr="2001:db8::/64",
+        ip_version=6,
+        gateway_ip="fe80::1",
+        ipv6_address_mode="dhcpv6-stateful",
+        allocation_pools=[{"start": "2001:db8::2", "end": "2001:db8::5"}],
+    )
+    conn.network.ports.return_value = [_inventory_port("port-1", ["2001:db8::2"], owner="", device_id="")]
+
+    detail = get_admin_subnet_detail(conn, "sub-1")
+
+    assert detail.gateway_ip == "fe80::1"
+    assert detail.ip_usage.model_dump() == {
+        "total_pool_ips": "4",
+        "allocated_ips": "1",
+        "allocated_pool_ips": "1",
+        "reserved_pool_ips": "0",
+        "available_pool_ips": "3",
+        "outside_pool_ips": "0",
+        "allocation_mode": "pool",
+    }
+
+
+def test_subnet_usage_rejects_scoped_ipv6_fixed_ip_instead_of_counting_it():
+    from app.services.neutron import get_admin_subnet_detail
+
+    conn = _subnet_inventory_conn(
+        cidr="2001:db8::/64",
+        ip_version=6,
+        gateway_ip="2001:db8::1",
+        allocation_pools=[{"start": "2001:db8::2", "end": "2001:db8::ffff"}],
+    )
+    conn.network.ports.return_value = [_inventory_port("port-1", ["2001:db8::2%eth0"])]
+    with pytest.raises(ValueError, match="Malformed Neutron subnet IP address"):
+        get_admin_subnet_detail(conn, "sub-1")
+
+
+def test_subnet_usage_empty_pools_retain_outside_allocations():
+    from app.services.neutron import get_admin_subnet_detail
+
+    conn = _subnet_inventory_conn(allocation_pools=[])
+    conn.network.ports.return_value = [_inventory_port("port-1", ["10.0.0.2"], owner="", device_id="")]
+
+    detail = get_admin_subnet_detail(conn, "sub-1")
+
+    assert detail.ip_usage.model_dump() == {
+        "total_pool_ips": "0",
+        "allocated_ips": "1",
+        "allocated_pool_ips": "0",
+        "reserved_pool_ips": "0",
+        "available_pool_ips": "0",
+        "outside_pool_ips": "1",
+        "allocation_mode": "pool",
+    }
+    assert detail.allocations[0].port_id == "port-1"
+
+
+@pytest.mark.parametrize(
+    "subnet_fields",
+    [
+        {"cidr": "not-a-cidr"},
+        {"ip_version": 6},
+        {"gateway_ip": "not-an-address"},
+        {"gateway_ip": "2001:db8::1"},
+        {"gateway_ip": "fe80::1%eth0"},
+        {"allocation_pools": None},
+        {"allocation_pools": [{"start": "10.0.0.2"}]},
+        {"allocation_pools": [{"start": "10.0.0.10", "end": "10.0.0.2"}]},
+        {"allocation_pools": [{"start": "10.0.0.2", "end": "10.1.0.10"}]},
+        {"allocation_pools": [{"start": "2001:db8::1", "end": "2001:db8::2"}]},
+    ],
+)
+def test_subnet_usage_rejects_malformed_authoritative_subnet_data(subnet_fields):
+    from app.services.neutron import get_admin_subnet_detail
+
+    conn = _subnet_inventory_conn(**subnet_fields)
+    with pytest.raises(ValueError):
+        get_admin_subnet_detail(conn, "sub-1")
+
+
+@pytest.mark.parametrize(
+    "fixed_ips",
+    [
+        None,
+        "not-a-list",
+        [{"ip_address": "10.0.0.2"}],
+        [{"subnet_id": "sub-1"}],
+        [{"subnet_id": "sub-1", "ip_address": "not-an-ip"}],
+        [{"subnet_id": "sub-1", "ip_address": "10.1.0.2"}],
+        [{"subnet_id": "sub-1", "ip_address": "2001:db8::2"}],
+        [{"subnet_id": "sub-1", "ip_address": 167772162}],
+    ],
+)
+def test_subnet_usage_rejects_malformed_authoritative_fixed_ips(fixed_ips):
+    from app.services.neutron import get_admin_subnet_detail
+
+    conn = _subnet_inventory_conn()
+    port = _inventory_port("port-1", [])
+    port["fixed_ips"] = fixed_ips
+    conn.network.ports.return_value = [port]
+    with pytest.raises(ValueError):
+        get_admin_subnet_detail(conn, "sub-1")
+
+
+def test_subnet_usage_later_port_page_failure_is_not_partial_free_capacity():
+    from app.services.neutron import get_admin_subnet_detail
+
+    conn = _subnet_inventory_conn()
+
+    def port_pages():
+        yield _inventory_port("port-1", ["10.0.0.2"])
+        raise RuntimeError("second page unavailable")
+
+    conn.network.ports.return_value = port_pages()
+    with pytest.raises(RuntimeError, match="second page unavailable"):
+        get_admin_subnet_detail(conn, "sub-1")
+    conn.compute.get_server.assert_not_called()
+
+
+@pytest.mark.parametrize("router_response", [None, {"id": "wrong-router", "name": "incorrect name"}])
+def test_subnet_name_and_dhcp_outages_preserve_authoritative_inventory(router_response):
+    from app.services.neutron import get_admin_subnet_detail
+
+    conn = _subnet_inventory_conn()
+    conn.network.ports.return_value = [
+        _inventory_port("port-1", ["10.0.0.2", "10.0.0.3"]),
+        _inventory_port("port-2", ["10.0.0.4"]),
+        _inventory_port("router-port", ["10.0.0.1"], owner="network:router_gateway", device_id="router-1"),
+        _inventory_port("dhcp-port", ["10.0.0.5"], owner="network:dhcp", device_id="agent-1"),
+    ]
+    conn.compute.get_server.side_effect = RuntimeError("Nova unavailable")
+    conn.network.get_router.return_value = router_response
+    conn.network.network_hosting_dhcp_agents.side_effect = RuntimeError("scheduler unavailable")
+
+    detail = get_admin_subnet_detail(conn, "sub-1")
+
+    assert detail.ip_usage.allocated_ips == "5"
+    assert detail.ip_usage.available_pool_ips == "5"
+    assert detail.ip_usage.reserved_pool_ips == "0"
+    assert detail.device_names_available is False
+    assert detail.dhcp_agent_data_available is False
+    assert all(row.device_name is None for row in detail.allocations)
+    assert {row.device_id for row in detail.allocations} == {"instance-1", "router-1", "agent-1"}
+    assert detail.dhcp_bindings[0].source == "port"
+    assert detail.dhcp_bindings[0].ip_addresses == ["10.0.0.5"]
+    conn.compute.get_server.assert_called_once_with("instance-1")
+    conn.network.get_router.assert_called_once_with("router-1")
+
+
+@pytest.mark.parametrize(
+    ("roles", "is_admin_project"),
+    [(["member"], True), (["admin"], False), (["project_admin"], True), (None, True)],
+)
+def test_subnet_inventory_rejects_non_native_admin_before_provider_reads(roles, is_admin_project):
+    from openstack.exceptions import HttpException
+
+    from app.services.neutron import get_admin_subnet_detail
+
+    conn = _subnet_inventory_conn()
+    conn.session.auth.get_access.return_value = SimpleNamespace(role_names=roles, is_admin_project=is_admin_project)
+    with pytest.raises(HttpException) as exc:
+        get_admin_subnet_detail(conn, "sub-1")
+    assert exc.value.status_code == 403
+    conn.network.get_subnet.assert_not_called()
+    conn.network.ports.assert_not_called()
+
+
+def test_subnet_inventory_unverified_native_access_is_not_empty_capacity():
+    from openstack.exceptions import HttpException
+
+    from app.services.neutron import get_admin_subnet_detail
+
+    conn = _subnet_inventory_conn()
+    conn.session.auth.get_access.side_effect = RuntimeError("identity unavailable")
+    with pytest.raises(HttpException) as exc:
+        get_admin_subnet_detail(conn, "sub-1")
+    assert exc.value.status_code == 403
+    conn.network.get_subnet.assert_not_called()
+    conn.network.ports.assert_not_called()
+
+
+def test_network_detail_preserves_actual_ipv6_subnet_version():
+    from app.services.neutron import get_admin_network_detail, get_network_detail
+
+    conn = _subnet_inventory_conn(cidr="2001:db8::/64", ip_version=6, gateway_ip="2001:db8::1")
+    conn.network.get_network.return_value = SimpleNamespace(
+        id="net-1",
+        name="network",
+        status="ACTIVE",
+        subnet_ids=["sub-1"],
+        project_id="proj-1",
+        is_router_external=False,
+        is_shared=False,
+    )
+    assert get_network_detail(conn, "net-1").subnet_details[0].ip_version == 6
+    assert get_admin_network_detail(conn, "net-1").subnet_details[0].ip_version == 6
 
 
 # ---------------------------------------------------------------------------
@@ -733,6 +1097,7 @@ def _topology_conn():
     subnet.name = "subnet-1"
     subnet.cidr = "10.0.0.0/24"
     subnet.gateway_ip = "10.0.0.1"
+    subnet.ip_version = 4
     subnet.is_dhcp_enabled = True
     subnet.network_id = "net-1"
     conn.network.subnets.return_value = [subnet]

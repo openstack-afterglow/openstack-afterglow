@@ -522,7 +522,6 @@ describe('ChatInput built-in cloud tools', () => {
 		await fireEvent.click(view.getByRole('button', { name: '추가' }));
 		const item = view.getByRole('menuitem', { name: '클라우드 리소스' });
 		expect(item.getAttribute('aria-disabled')).toBe('true');
-		expect(item.textContent).toContain('현재 프로젝트 · 읽기 전용');
 		expect(item.textContent).toContain('Research (project-1)');
 		expect(view.queryAllByRole('menuitemcheckbox')).toHaveLength(0);
 		expect(item.querySelector('button')).toBeNull();

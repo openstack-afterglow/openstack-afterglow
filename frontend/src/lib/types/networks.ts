@@ -24,6 +24,7 @@ export interface SubnetDetail {
   id: string;
   name: string;
   cidr: string;
+  ip_version: number;
   gateway_ip: string | null;
   dhcp_enabled: boolean;
 }
@@ -39,6 +40,7 @@ export interface SubnetPort {
   mac_address: string;
   device_owner: string;
   device_id: string;
+  device_name: string | null;
   project_id: string | null;
   ip_addresses: string[];
   binding_host_id: string | null;
@@ -50,6 +52,7 @@ export interface SubnetAllocation {
   port_name: string;
   device_owner: string;
   device_id: string;
+  device_name: string | null;
   project_id: string | null;
   binding_host_id: string | null;
 }
@@ -64,6 +67,16 @@ export interface SubnetDhcpBinding {
   source: 'agent' | 'port';
   ip_addresses: string[];
   port_ids: string[];
+}
+
+export interface SubnetIpUsage {
+  total_pool_ips: string;
+  allocated_ips: string;
+  allocated_pool_ips: string;
+  reserved_pool_ips: string;
+  available_pool_ips: string | null;
+  outside_pool_ips: string;
+  allocation_mode: 'pool' | 'slaac' | 'dhcpv6-stateless';
 }
 
 export interface AdminSubnetDetail {
@@ -81,6 +94,8 @@ export interface AdminSubnetDetail {
   allocations: SubnetAllocation[];
   dhcp_bindings: SubnetDhcpBinding[];
   dhcp_agent_data_available: boolean;
+  device_names_available: boolean;
+  ip_usage: SubnetIpUsage;
 }
 
 

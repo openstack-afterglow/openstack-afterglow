@@ -34,6 +34,7 @@ import { resetWizard, wizard } from '$lib/stores/wizard';
 
 import { isSshAccessReady } from '$lib/utils/instanceCreate';
 import type { GithubSshProfile } from '$lib/types/compute';
+import { t } from '$lib/i18n/ns/vm-wizard';
 
 // Step 5's canNext delegates to this same production readiness contract.
 function configCanNext(): boolean {
@@ -49,6 +50,44 @@ function deferredProfile() {
 	});
 	return { promise, resolve, reject };
 }
+
+describe('WizardStep5Config ordinary root disk', () => {
+	beforeEach(() => {
+		vmCreateState.githubSshEligible = false;
+		resetWizard();
+		auth.update(a => ({ ...a, token: null }));
+		wizard.update(w => ({ ...w, bootVolumeSizeGb: 32, deleteBootVolumeOnTermination: false }));
+	});
+
+	it('shows editable size and deletion controls for image boot', async () => {
+		render(WizardStep5Config);
+
+		const size = screen.getByRole('spinbutton', { name: `${t('config.rootDisk.label')} *` }) as HTMLInputElement;
+		const deleteWithVm = screen.getByRole('checkbox', { name: t('config.rootDisk.deleteWithVm') }) as HTMLInputElement;
+		expect(size.id).toBe('boot-volume-size');
+		expect(size.value).toBe('32');
+		expect(size.min).toBe('1');
+		expect(size.max).toBe('16384');
+		expect(deleteWithVm.checked).toBe(false);
+
+		await fireEvent.input(size, { target: { value: '96' } });
+		await fireEvent.click(deleteWithVm);
+		expect(get(wizard).bootVolumeSizeGb).toBe(96);
+		expect(get(wizard).deleteBootVolumeOnTermination).toBe(true);
+	});
+
+	it.each(['existing-root', null])('shows existing volume guidance without size or deletion controls for volume name %s', volumeName => {
+		wizard.update(w => ({ ...w, bootSource: 'volume', bootVolumeId: 'volume-a', bootVolumeName: volumeName }));
+		const { container } = render(WizardStep5Config);
+
+		expect(container.querySelector('#boot-volume-size')).toBeNull();
+		expect(screen.queryByRole('checkbox', { name: t('config.rootDisk.deleteWithVm') })).toBeNull();
+		expect(screen.getByText(volumeName ?? 'volume-a')).toBeTruthy();
+		expect(get(wizard).bootVolumeSizeGb).toBe(32);
+		expect(get(wizard).deleteBootVolumeOnTermination).toBe(false);
+	});
+});
+
 describe('WizardStep5Config cloud-init library', () => {
 	beforeEach(() => {
 		vmCreateState.githubSshEligible = false;

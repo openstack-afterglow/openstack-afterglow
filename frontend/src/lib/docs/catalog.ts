@@ -25,9 +25,11 @@ export function createDocSearchIndex(guides: DocGuide[]): DocSearchIndex {
 				...(guide.externalLinks ?? []).flatMap((link) => [link.label, link.description ?? '']),
 				...guide.sections.flatMap((section) => [
 					section.title, ...(section.paragraphs ?? []), ...(section.bullets ?? []),
+					...(section.screenshots ?? []).flatMap((screenshot) => [screenshot.alt, screenshot.caption ?? '']),
 					...(section.steps ?? []).flatMap((step) => [
 						step.title, ...step.text, step.command?.label ?? '', step.command?.code ?? '',
 						...(step.links ?? []).flatMap((link) => [link.label, link.description ?? '']),
+						...(step.screenshots ?? []).flatMap((screenshot) => [screenshot.alt, screenshot.caption ?? '']),
 					]),
 					...(section.commands ?? []).flatMap((command) => [command.label, command.code]),
 					...(section.links ?? []).flatMap((link) => [link.label, link.description ?? '']),

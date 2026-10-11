@@ -27,12 +27,13 @@ export const mcpGuide: DocGuide = {
 			steps: [
 				{
 					title: '프로젝트와 권한을 선택합니다',
-					text: ['계정 → 외부 AI 접근에서 용도를 알아볼 수 있는 이름을 입력하세요. 기본 read는 조회 권한이며 manage는 조회와 허용된 변경 권한을 포함합니다. 연결 확인과 조회에는 read를 사용하고 실제 변경이 필요한 경우에만 manage를 명시적으로 선택하세요. 클라이언트의 도구 승인도 켜 두세요.']
+					text: ['계정 → 외부 AI 접근에서 OAuth와 API 키 중 API 키를 선택하고 용도를 알아볼 수 있는 이름을 입력하세요. 기본 read는 조회 권한이며 manage는 조회와 허용된 변경 권한을 포함합니다. 연결 확인과 조회에는 read를 사용하고 실제 변경이 필요한 경우에만 manage를 명시적으로 선택하세요. 클라이언트의 도구 승인도 켜 두세요.'],
+					screenshots: [{ src: '/docs/screenshots/mcp-personal-key.webp', width: 1440, height: 1000, alt: '외부 AI 접근의 개인 MCP 키 이름·권한·만료 설정과 접속 확인 입력란', caption: '이름·읽기 권한·만료를 검토하는 발급 전 화면입니다. 키를 발급하지 않았으며 접속 확인 입력란도 비어 있습니다.' }]
 				},
 				{
 					title: '만료일을 정하고 한 번만 표시되는 비밀을 보관합니다',
 					text: [
-						'만료일을 비우면 서버 기본 기간이 적용됩니다. 기본 정책은 30일, 최대 90일이지만 운영자가 mcp.default_grant_ttl_days와 mcp.max_grant_ttl_days를 바꿀 수 있습니다. 서버가 허용하는 미래 만료일을 사용하세요. 무기한 키가 아닙니다.',
+						'만료는 1일·1주일·1달·3달·6달·1년·만료 없음·직접 선택 중 고릅니다. 기본 선택은 1달입니다. 일·주는 UTC 경과 시간, 월·년은 UTC 달력 기준이며 대상 월의 마지막 날로 보정합니다. 직접 선택은 입력한 현지 시각을 미래 UTC 시각으로 변환합니다. 만료 없음은 명시적으로 선택한 개인 키에만 적용되고 OAuth 위임은 유한 만료를 유지합니다. 유출되거나 더 이상 쓰지 않는 키는 만료 여부와 관계없이 폐기하세요.',
 						'발급 직후 창에서 개인 키 또는 실제 Authorization이 포함된 JSON을 복사하세요. 평문은 한 번만 표시되며 창을 닫거나 로그인·프로젝트가 바뀌면 화면에서 지워지고 다시 조회할 수 없습니다. 클립보드나 직접 저장한 파일은 자동으로 지워지지 않으니 직접 정리하세요. 비밀 관리 도구에 보관하고 저장소·공유 설정·스크린샷·지원 요청에 올리지 마세요.'
 					]
 				},
@@ -46,7 +47,7 @@ export const mcpGuide: DocGuide = {
 			id: 'http-config',
 			title: '3. 계정 엔드포인트로 HTTP 설정하기',
 			paragraphs: [
-				'실제 URL은 계정 화면의 MCP 엔드포인트와 복사한 설정을 사용하세요. 아래 https://cloud.dmslab.re.kr/mcp는 설정 형식 예시입니다. 운영자가 DNS·TLS와 서비스를 공개하기 전에는 접속되지 않을 수 있으며 이 문서는 운영 연결 성공을 보증하지 않습니다. <personal key>를 본인 키로 바꾸고 Authorization 값은 Bearer 다음에 공백 한 개를 둡니다.',
+				'실제 URL은 계정 화면의 MCP 엔드포인트와 각 mcp.json의 전체 복사 버튼을 사용하세요. OAuth에는 비밀 없는 JSON을, API 키에는 발급 직후 한 번만 표시되는 실제 키 포함 JSON을 복사합니다. 아래 https://cloud.dmslab.re.kr/mcp는 설정 형식 예시입니다. 운영자가 DNS·TLS와 서비스를 공개하기 전에는 접속되지 않을 수 있으며 이 문서는 운영 연결 성공을 보증하지 않습니다. <personal key>를 본인 키로 바꾸고 Authorization 값은 Bearer 다음에 공백 한 개를 둡니다.',
 				'운영자가 mcp.public_url을 명시하면 그 URL 자체가 리소스입니다. https://cloud.dmslab.re.kr/mcp는 대시보드와 같은 호스트의 /mcp 경로를 사용합니다. https://mcp.example.test처럼 origin만 지정해도 루트 /를 그대로 사용합니다. 명시한 URL에는 /api/v1/mcp를 덧붙이거나 /sse로 바꾸지 마세요. 설정이 없을 때만 공개 API 기본 URL의 /api/v1/mcp가 기본값입니다.'
 			],
 			commands: [
@@ -73,7 +74,8 @@ export const mcpGuide: DocGuide = {
 			steps: [
 				{
 					title: '비밀 없이 MCP URL을 등록하고 OAuth 로그인을 선택합니다',
-					text: ['클라이언트에 HTTP MCP URL만 등록하세요. 개인 키, Authorization 헤더, bearer_token_env_var 또는 client_secret은 넣지 마세요. 기존 개인 키 설정과 구분되는 서버 이름을 사용하고 OAuth 로그인·Authenticate를 선택하세요. Claude Code에서는 /mcp에서 해당 서버를 인증하고 Codex에서는 codex mcp login을 실행합니다. 서버 추가 성공은 인증이나 연결 성공이 아닙니다.']
+					text: ['클라이언트에 HTTP MCP URL만 등록하세요. 개인 키, Authorization 헤더, bearer_token_env_var 또는 client_secret은 넣지 마세요. 기존 개인 키 설정과 구분되는 서버 이름을 사용하고 OAuth 로그인·Authenticate를 선택하세요. Claude Code에서는 /mcp에서 해당 서버를 인증하고 Codex에서는 codex mcp login을 실행합니다. 서버 추가 성공은 인증이나 연결 성공이 아닙니다.'],
+					screenshots: [{ src: '/docs/screenshots/mcp-oauth.webp', width: 1440, height: 1000, alt: '외부 AI 접근의 키 없는 OAuth MCP 설정 JSON과 설정 복사 버튼', caption: 'OAuth에는 MCP URL만 등록합니다. 인증 URL을 MCP URL 대신 넣거나 개인 키·Authorization 헤더를 추가하지 마세요.' }]
 				},
 				{
 					title: '실제 Afterglow 로그인과 프로젝트 선택을 완료합니다',

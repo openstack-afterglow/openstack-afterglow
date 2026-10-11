@@ -1,6 +1,6 @@
-import type { DocCommand, DocGuide, DocSection } from './types';
+import type { DocCommand, DocGuide, DocScreenshot, DocSection } from './types';
 
-/** Structural IDs, URLs, service gates and executable code always come from the source guide. */
+/** Structural IDs, URLs, screenshot paths/dimensions, service gates and executable code come from the source guide. */
 export function translateDocGuide(guide: DocGuide, translations: Readonly<Record<string, string>>): DocGuide {
 	function text(source: string): string {
 		const translated = translations[source];
@@ -16,6 +16,11 @@ export function translateDocGuide(guide: DocGuide, translations: Readonly<Record
 		description: item.description === undefined ? undefined : text(item.description),
 	});
 	const command = (item: DocCommand) => ({ ...item, label: text(item.label) });
+	const screenshot = (item: DocScreenshot): DocScreenshot => ({
+		...item,
+		alt: text(item.alt),
+		caption: text(item.caption),
+	});
 	const section = (item: DocSection): DocSection => ({
 		...item,
 		title: text(item.title),
@@ -27,10 +32,12 @@ export function translateDocGuide(guide: DocGuide, translations: Readonly<Record
 			text: texts(step.text),
 			command: step.command && command(step.command),
 			links: step.links?.map(link),
+			screenshots: step.screenshots?.map(screenshot),
 		})),
 		commands: item.commands?.map(command),
 		callout: item.callout && { ...item.callout, title: text(item.callout.title), text: text(item.callout.text) },
 		links: item.links?.map(link),
+		screenshots: item.screenshots?.map(screenshot),
 	});
 	return {
 		...guide,

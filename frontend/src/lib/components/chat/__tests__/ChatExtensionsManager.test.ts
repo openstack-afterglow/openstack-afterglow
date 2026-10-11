@@ -28,7 +28,7 @@ describe('ChatExtensionsManager MCP OAuth', () => {
 		render(ChatExtensionsManager, { base: '/api/v1/chat', only: 'mcp' });
 		await screen.findByText('Notion');
 		expect(screen.getByRole('button', { name: '+ MCP 서버 추가' }).hasAttribute('disabled')).toBe(false);
-		expect(screen.getByRole('button', { name: '삭제' }).hasAttribute('disabled')).toBe(true);
+		expect(screen.queryByRole('button', { name: '삭제' })).toBeNull();
 		grantLumen('lumen-tools_user');
 		await waitFor(() => expect(screen.getByRole('button', { name: '+ MCP 서버 추가' }).hasAttribute('disabled')).toBe(true));
 	});
@@ -57,7 +57,9 @@ describe('ChatExtensionsManager MCP OAuth', () => {
 						transport: 'http',
 						url: 'https://mcp.notion.com/mcp',
 						auth_mode: 'oauth',
-						is_active: true
+						is_active: true,
+						server_is_active: true,
+						config_version: 1,
 					}
 				]);
 			}
@@ -65,21 +67,26 @@ describe('ChatExtensionsManager MCP OAuth', () => {
 			return Promise.resolve([]);
 		});
 	});
-
-	it('shows a per-user Notion connection action instead of requesting a static token', async () => {
+	it('starts OAuth only after remote consent and keeps a failed connection disabled', async () => {
+		grantLumen('lumen-mcp_editor');
+		mocks.patch.mockResolvedValue({});
+		mocks.post.mockRejectedValue(new Error('Provider is unavailable'));
 		render(ChatExtensionsManager, { base: '/api/v1/chat', only: 'mcp' });
-
-		await waitFor(() => expect(screen.getByRole('button', { name: 'Notion OAuth 연결' })).toBeTruthy());
-		expect(screen.queryByText('Notion Integration Token')).toBeNull();
-		expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/mcp-servers/7/oauth', 'token', 'project-1');
+		const activate = await screen.findByRole('button', { name: 'Notion 활성화' });
+		await fireEvent.click(activate);
+		expect(screen.getByRole('dialog').textContent).toContain('https://mcp.notion.com/mcp');
+		expect(mocks.post).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: '취소' }));
+		expect(mocks.patch).not.toHaveBeenCalled();
+		await fireEvent.click(activate);
+		await fireEvent.click(screen.getByRole('button', { name: '승인하고 활성화' }));
+		await screen.findByRole('alert');
+		expect(screen.getByRole('dialog')).toBeDefined();
+		await fireEvent.click(screen.getByRole('button', { name: '취소' }));
+		expect(screen.getByRole('button', { name: 'Notion 활성화' })).toBeDefined();
 	});
 
-	it('does not request user-scoped OAuth status from the admin route', async () => {
-		render(ChatExtensionsManager, { base: '/api/v1/chat/admin', only: 'mcp' });
 
-		await waitFor(() => expect(screen.getByText('Notion')).toBeTruthy());
-		expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/chat/admin/mcp-servers/7/oauth', 'token', 'project-1');
-	});
 
 	it('submits the write-only static OAuth client only from the administrator form', async () => {
 		auth.update((state) => ({ ...state, isSystemAdmin: true }));
@@ -115,11 +122,4 @@ describe('ChatExtensionsManager MCP OAuth', () => {
 		);
 	});
 
-	it('keeps loading policy controls out of the user-scoped route', async () => {
-		render(ChatExtensionsManager, { base: '/api/v1/chat', only: 'mcp' });
-
-		await waitFor(() => expect(screen.getByText('Notion')).toBeTruthy());
-		expect(screen.queryByLabelText('초기 로딩 정책')).toBeNull();
-		expect(screen.queryByLabelText('Notion 로딩 정책')).toBeNull();
-	});
 });

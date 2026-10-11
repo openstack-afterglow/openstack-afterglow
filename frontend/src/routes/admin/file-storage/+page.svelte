@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
@@ -97,7 +98,7 @@
 	});
 </script>
 
-<div class="p-4 md:p-6 max-w-7xl mx-auto">
+<PageShell>
 	<PageHeader breadcrumb={t('filePage.breadcrumb')} title={t('filePage.title')}>
 		{#snippet actions()}
 			<select
@@ -147,7 +148,7 @@
 				/>
 			{/if}
 	{/if}
-</div>
+</PageShell>
 
 {#if selectedFileStorageId}
 	<SlidePanel onClose={closeDetail} ariaLabel={t('filePage.detailAriaLabel')} width="w-full md:w-[60vw] max-w-4xl" storageKey="admin.fileStorage.detail.width">

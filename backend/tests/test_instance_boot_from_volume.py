@@ -81,10 +81,6 @@ def _make_boot_vol(status: str = "available", bootable: bool = True) -> VolumeIn
     )
 
 
-def _make_upper_vol(status: str = "available") -> VolumeInfo:
-    return VolumeInfo(id="vol-upper-1", name="upper", status=status, size=10, attachments=[])
-
-
 def _make_server() -> InstanceInfo:
     return InstanceInfo(
         id="srv-1",
@@ -97,10 +93,6 @@ def _make_server() -> InstanceInfo:
         ip_addresses=[],
         created_at="2024-01-01T00:00:00Z",
         metadata={},
-        union_libraries=[],
-        union_strategy=None,
-        union_share_ids=[],
-        union_upper_volume_id=None,
         key_name=None,
         user_id="test-user",
     )
@@ -114,38 +106,33 @@ _BASE_PAYLOAD = {
 }
 
 
-_COMMON_PATCHES = [
-    ("app.api.compute.instances.lib_svc.resolve_with_deps", []),
-    ("app.api.compute.instances._prepare_dynamic_file_storage", {}),
-    ("app.api.compute.instances.cinder.create_empty_volume", None),  # 각 테스트에서 개별 override
-    ("app.api.compute.instances.nova.list_flavors", [_make_flavor()]),
-    ("app.api.compute.instances.neutron.list_networks", []),
-    ("app.api.compute.instances.cloudinit.generate_userdata", ""),
-]
-
-
 @pytest.mark.asyncio
 async def test_boot_from_volume_skips_create_volume_from_image(client, mock_conn):
     """boot_volume_id 지정 시 cinder.create_volume_from_image 를 호출하지 않는다."""
     mock_conn.compute.create_volume_attachment = MagicMock(return_value=None)
 
     with (
-        patch("app.api.compute.instances.lib_svc.resolve_with_deps", return_value=[]),
-        patch("app.api.compute.instances._prepare_dynamic_file_storage", return_value={}),
         patch("app.api.compute.instances.cinder.get_volume", return_value=_make_boot_vol()) as mock_get,
         patch("app.api.compute.instances.cinder.create_volume_from_image") as mock_create_img,
-        patch("app.api.compute.instances.cinder.create_empty_volume", return_value=_make_upper_vol()),
+        patch("app.api.compute.instances.cinder.create_empty_volume") as mock_create_empty,
         patch("app.api.compute.instances.cinder.rename_volume", return_value=None),
         patch("app.api.compute.instances.nova.list_flavors", return_value=[_make_flavor()]),
-        patch("app.api.compute.instances.nova.create_server", return_value=_make_server()),
+        patch("app.api.compute.instances.nova.create_server", return_value=_make_server()) as mock_create_srv,
         patch("app.api.compute.instances.neutron.list_networks", return_value=[]),
-        patch("app.api.compute.instances.cloudinit.generate_userdata", return_value=""),
+        patch("app.api.compute.instances.cloudinit.generate_userdata") as mock_generate,
     ):
         resp = await client.post("/api/v1/instances", json=_BASE_PAYLOAD)
 
     assert resp.status_code == 201
     mock_create_img.assert_not_called()
+    mock_create_empty.assert_not_called()
     mock_get.assert_called_once_with(mock_conn, "vol-boot-1")
+    mock_generate.assert_not_called()
+    called_kwargs = mock_create_srv.call_args.kwargs
+    assert called_kwargs["boot_volume_id"] == "vol-boot-1"
+    assert called_kwargs["metadata"] == {}
+    assert called_kwargs["userdata"] is None
+    mock_conn.compute.create_volume_attachment.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -154,11 +141,9 @@ async def test_boot_from_volume_forces_delete_on_termination_false(client, mock_
     mock_conn.compute.create_volume_attachment = MagicMock(return_value=None)
 
     with (
-        patch("app.api.compute.instances.lib_svc.resolve_with_deps", return_value=[]),
-        patch("app.api.compute.instances._prepare_dynamic_file_storage", return_value={}),
         patch("app.api.compute.instances.cinder.get_volume", return_value=_make_boot_vol()),
         patch("app.api.compute.instances.cinder.create_volume_from_image") as mock_create_img,
-        patch("app.api.compute.instances.cinder.create_empty_volume", return_value=_make_upper_vol()),
+        patch("app.api.compute.instances.cinder.create_empty_volume") as mock_create_empty,
         patch("app.api.compute.instances.cinder.rename_volume", return_value=None),
         patch("app.api.compute.instances.nova.list_flavors", return_value=[_make_flavor()]),
         patch("app.api.compute.instances.nova.create_server", return_value=_make_server()) as mock_create_srv,
@@ -170,13 +155,14 @@ async def test_boot_from_volume_forces_delete_on_termination_false(client, mock_
 
     assert resp.status_code == 201
     mock_create_img.assert_not_called()
+    mock_create_empty.assert_not_called()
     # 사용자가 True 를 요청해도 기존 볼륨이라 False 로 강제됨
     called_kwargs = mock_create_srv.call_args.kwargs
     assert called_kwargs["delete_boot_volume_on_termination"] is False
 
 
 @pytest.mark.asyncio
-async def test_boot_from_volume_image_id_and_boot_volume_id_both_returns_400(client, mock_conn):
+async def test_boot_from_volume_image_id_and_boot_volume_id_both_returns_422(client, mock_conn):
     """image_id 와 boot_volume_id 를 동시에 지정하면 422(validation) 를 반환한다."""
     payload = {**_BASE_PAYLOAD, "image_id": "img-1"}
     resp = await client.post("/api/v1/instances", json=payload)
@@ -195,8 +181,6 @@ async def test_boot_from_volume_neither_returns_422(client, mock_conn):
 async def test_boot_from_volume_in_use_returns_400(client, mock_conn):
     """boot_volume_id 가 in-use 상태이면 400 을 반환한다."""
     with (
-        patch("app.api.compute.instances.lib_svc.resolve_with_deps", return_value=[]),
-        patch("app.api.compute.instances._prepare_dynamic_file_storage", return_value={}),
         patch("app.api.compute.instances.cinder.get_volume", return_value=_make_boot_vol(status="in-use")),
     ):
         resp = await client.post("/api/v1/instances", json=_BASE_PAYLOAD)
@@ -209,8 +193,6 @@ async def test_boot_from_volume_in_use_returns_400(client, mock_conn):
 async def test_boot_from_volume_non_bootable_returns_400(client, mock_conn):
     """bootable=False 볼륨은 루트 디스크로 사용할 수 없어 400 을 반환한다."""
     with (
-        patch("app.api.compute.instances.lib_svc.resolve_with_deps", return_value=[]),
-        patch("app.api.compute.instances._prepare_dynamic_file_storage", return_value={}),
         patch("app.api.compute.instances.cinder.get_volume", return_value=_make_boot_vol(bootable=False)),
     ):
         resp = await client.post("/api/v1/instances", json=_BASE_PAYLOAD)

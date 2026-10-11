@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
@@ -387,8 +388,8 @@
 	});
 </script>
 
-<div class="flex h-full">
-<div class="flex-1 min-w-0 p-4 md:p-8 max-w-7xl mx-auto overflow-auto">
+<PageShell class="flex h-full min-h-0">
+<div class="flex-1 min-w-0 overflow-auto">
 	<PageHeader breadcrumb={t('hypervisors.page.breadcrumb')} title={t('hypervisors.page.title')}>
 		{#snippet actions()}
 			<AutoRefreshControl
@@ -459,7 +460,7 @@
 	</SlidePanel>
 	{/key}
 {/if}
-</div>
+</PageShell>
 
 {#if selectedInstanceId}
 	<SlidePanel onClose={closeInstanceDetail} ariaLabel={t('hypervisors.page.instanceDetailLabel')}>

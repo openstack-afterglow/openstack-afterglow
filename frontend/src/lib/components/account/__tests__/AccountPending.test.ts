@@ -185,7 +185,7 @@ describe('account controls follow real pending work', () => {
 	});
 
 	it('re-enables role saving after a rejected mutation and keeps selected grants', async () => {
-		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/assignable-roles') ? { is_owner: true, roles: [{ id: 'chat', name: 'lumen-chat_user', area: 'lumen-chat', grade: 'user', implied_role_ids: [], inherited_role_ids: [] }] } : { items: [{ user_id: 'other', username: 'Other', source: 'direct', is_manager: false, roles: [], direct_role_ids: [], effective_role_ids: [], external_role_ids: [] }] }));
+		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/assignable-roles') ? { is_owner: true, roles: [{ id: 'chat', name: 'lumen-chat_user', area: 'lumen', grade: 'user', implied_role_ids: [], inherited_role_ids: [] }] } : { items: [{ user_id: 'other', username: 'Other', source: 'direct', is_manager: false, roles: [], direct_role_ids: [], effective_role_ids: [], external_role_ids: [] }] }));
 		const pending = deferred<unknown>(); api.put.mockReturnValue(pending.promise);
 		render(ProjectSettingsSection);
 		await fireEvent.click(await screen.findByRole('button', { name: '역할 편집' }));

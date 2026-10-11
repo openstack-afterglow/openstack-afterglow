@@ -18,6 +18,8 @@ Afterglow 백엔드는 독자적인 AI 모델 실행 엔진, LiteLLM 라우팅, 
 
 대시보드 사이드바의 **AI 채팅**에는 `Lumen`(`/dashboard/chat`), `이미지 Studio`(`/dashboard/chat/images`), `오디오 Studio`(`/dashboard/chat/audio`)가 있다. 세 항목 모두 공개 site config의 `services.chat`이 true일 때 노출되며, Studio 경로에서 부모 Lumen 항목을 함께 활성 표시하지 않는다. 이미지 생성·편집과 유한 TTS/STT는 각각 `model_kind=image|tts|stt` 카탈로그를 조회한다. 메뉴 노출이나 컨테이너 health는 provider 키·모델·정확한 가격·asset storage/scanner의 준비 또는 실제 생성 성공을 의미하지 않는다.
 
+Lumen 텍스트 채팅 상단에는 모델·에이전트 선택과 기록·출처·임시 채팅 컨트롤만 둔다. 이미지 Studio·오디오 Studio·실시간 음성 바로가기는 상단에서 제거하며, 기존 Studio 사이드바·전체 메뉴·command palette 목적지와 `/dashboard/chat/realtime` 직접 route, 서비스 인가·API는 변경하지 않는다.
+
 이미지 Studio는 생성/수정 선택 없이 `이미지 만들기`로 요청한다. 첨부가 없으면 `/api/v1/chat/images/generations`에 제출하고, 첨부가 있으면 업로드된 `input_asset_id`와 사용자 `prompt`를 `/api/v1/chat/images/edits`에 함께 보낸다. 참고 이미지로 새 결과를 만드는 요청도 입력 이미지를 받는 `edits` 경로를 사용하며, 참고 생성/원본 수정의 의미는 이미지 모델이 프롬프트와 이미지를 보고 처리한다. 별도 분류 모델·키워드 heuristic·숨겨진 프롬프트 재작성은 없다. 아래의 명시적인 생성·편집 API 계약은 변경하지 않는다.
 
 업로드 중이거나 실패한 첨부는 제출을 막고 미리보기를 유지한다. 모델 준비·입력 가격·provider 오류 뒤에도 첨부를 버리거나 `generations`로 자동 재시도하지 않는다. 사용자가 명시적으로 제거한 경우에만 이미지 없는 생성으로 전환하며 실제 입력 asset ID가 바뀌면 새 idempotency intent를 사용한다. 프로젝트 전환의 업로드·응답 격리와 기존 스타일 지시문·결과 조회·다운로드는 유지한다.
@@ -179,6 +181,23 @@ DeepSeek의 공식 `/user/balance`는 통화별 총 account balance, 구매 충�
 
 ---
 
+## MCP 카탈로그와 명시적 승인
+
+설정의 **MCP 서버 → 승인된 MCP 서버**는 Afterglow MCP를 항상 표시하며 최초 상태는 비활성이다. 열기·조회·취소·채팅 접수만으로 Keystone 자격을 만들지 않는다. **활성화**에서 현재 프로젝트와 `read`(기본) 또는 `manage` 권한을 검토하고 **승인하고 활성화**해야 내부 위임을 만든다. `manage`는 현재 프로젝트의 실제 쓰기 권한이 있어야 하며 기존 개별 도구 실행 승인을 대체하지 않는다.
+
+| 메서드 · 경로 | 계약 |
+|---|---|
+| `GET /api/v1/chat/cloud-tools` | 구성 가능 여부 `available`, 실제 승인 `enabled`, 접근 수준·허용 프로젝트·만료를 조회. 승인 없음은 `enabled=false`, `allowed_projects=[]`, `tool_count=0`. |
+| `POST /api/v1/chat/cloud-tools` | `{access_level:"read"|"manage"}`로 현재 사용자·프로젝트에 명시 승인. 브라우저 같은 사이트 검증과 `lumen-tools_user`를 요구하며 bearer를 반환하지 않음. |
+| `DELETE /api/v1/chat/cloud-tools` | 선택 해제 및 내부 위임 폐기. 뒤늦은 준비·발급이 다시 활성화하지 못하도록 owner generation을 변경. 개인 토큰 자체는 폐기하지 않음. |
+
+권한 거부는 `403`, 승인 중·상태 변경·한도 충돌은 `409`, 구성·authority 장애는 `503`이다. 응답은 no-store/no-cache다. 과거 암묵적 `source="lumen"` grant는 migration086 뒤에도 `consented_at=NULL`이며 새 승인 없이는 선택·실행하지 않는다. 사용자가 계정에서 선택한 개인 토큰은 조회·채팅에서 자동 교체하지 않는다.
+
+관리자 승인 remote MCP는 global publication과 사용자·프로젝트별 활성화가 별개다. `GET /api/v1/chat/mcp-servers`는 카탈로그이며 채팅 picker는 `?active_only=true`로 실행 가능한 행만 읽는다. `PATCH /api/v1/chat/mcp-servers/{id}/activation`에 `{is_active:boolean,config_version:positive integer}`를 보내 표시한 설정 버전을 승인한다. Native `native:mcp:write`/현재 MCP editor 권한이 필요하다. 다른 owner 선택은 공유하지 않고 설정 변경은 재승인을 요구한다. OAuth 서버는 opt-in 뒤 기존 PKCE 연결까지 완료해야 실행되며 연결 대기 중에도 **비활성화**할 수 있다. 직접 사용자 MCP 등록·관리자 global CRUD는 유지한다.
+
+브라우저 승인·비활성화·OAuth 시작 요청은 이를 시작한 token/user/project scope에 속한다. 인증 준비·프로젝트 전환·로그아웃/계정 교체·ABA 또는 설정 화면 종료 때 요청을 취소하고, 늦은401을 새 계정의 승인으로 재전송하거나 종료한 화면에서 OAuth 이동을 시작하지 않는다. 카탈로그의 `project_id`/`project_name`은 선택 grant의 기본 실행 target이며 개인 토큰의 승인 목록에서 현재 chat 프로젝트가 제외되면 그 승인 target을 표시한다. 기본 위임 설명은 접근 수준 중립이고 별도 chip이 실제 `read`/`manage`를 표시한다.
+
+
 ## 위임 MCP 제어면 브릿지 (`/api/v1/mcp/lumen`)
 
 Lumen 서비스가 Afterglow 사용자의 MCP 도구 권한 상태를 검증하고 도구를 실행하기 위해 호출하는 제어면 API입니다.
@@ -188,6 +207,10 @@ Lumen 서비스가 Afterglow 사용자의 MCP 도구 권한 상태를 검증하�
 | `POST /api/v1/mcp/lumen/snapshot` | 사용자/프로젝트 단위 MCP 승인 불투명 스냅샷 조회 |
 | `POST /api/v1/mcp/lumen/preview` | 변개(Mutation) 도구 실행 전 제어면 사전 검증 |
 | `POST /api/v1/mcp/lumen/execute` | 격리된 MCP 도구 단일 실행 및 원장(Ledger) 기록 |
+
+명시적으로 승인한 `manage`/`mcp:write` grant는 같은 registry의 `afterglow_vm_create`, `afterglow_volume_create`, `afterglow_vm_network_attach`도 사용할 수 있다. 기본 승인 선택은 읽기 전용이고 조회·채팅이 이를 자동 확대하지 않는다. Optional `project_id`는 승인된 target만 지정할 수 있고 target-project restricted credential로 실행한다. Preview는 리소스를 만들지 않으며 execute는 별도 `idempotency_key`, 현재 grant/selection generation·target·final SDK deadline 검증과 durable mutation ledger를 적용한다. 완료 재호출은 결과를 재사용하고 불확실한 결과는 `unknown`으로 유지하여 새 key의 같은 작업도 자동 재전송하지 않는다. 도구별 입력·접수/ready 구분은 [MCP 프로젝트 리소스 생성·네트워크 연결](auth.md#mcp-프로젝트-리소스-생성네트워크-연결)을 따른다.
+
+Preview는 provider 변경 없이 기존 grant의 read 호출량과 동시 실행 budget을 사용한다. Execute는 read 또는 external mutation budget을 사용하며 target binding·원장·SDK worker/connection 정리까지 같은 slot을 유지한다. Public MCP와 동일하게 한도 초과는429, Redis coordination 장애는503이며 provider 호출이나 mutation claim 전에 거부한다. 취소·deadline 뒤에도 실제 SDK worker가 drain될 때까지 slot을 자동 회수하지 않는다.
 
 ---
 
@@ -320,7 +343,7 @@ claude
 
 ### API 키와 모델 ID
 
-1. 채팅 화면의 **설정 → API 키** 또는 `/dashboard/chat/settings?section=apikeys` 전용 페이지에서 발급한다. 평문 키는 발급 직후 한 번만 표시한다. 같은 화면에서 키 이름을 바꾸고(`PATCH /api/v1/chat/api-keys/{id}`) 월·주간 한도를 설정한다(`PATCH /api/v1/chat/api-keys/{id}/limits`, 빈 값은 해제). 한도는 본인 쿼터 이하만 저장되고 초과 입력은 요청 전에 인라인 오류로 막는다.
+1. 채팅 화면의 **설정 → API 키 → 새 API 키** 또는 `/dashboard/chat/settings?section=apikeys`에서 발급한다. Modal에서 프로젝트·선택적 이름·만료 없음/30일/90일/직접 날짜·허용된 전체/선택/읽기 전용 권한·월 크레딧 한도를 한 번에 지정한다. 선택 프로젝트의 current permissions와 `GET /api/v1/chat/api-keys/issuance-policy`를 새로 조회하고 같은 프로젝트 header로 한 번의 POST를 보낸다. 원래 프로젝트 권한이나 쿼터를 대상에 재사용하지 않는다. 미래의 timezone-aware `expires_at`만 허용하며 기존 무만료 키는 유지한다. 평문 키는 발급 직후 한 번만 표시한다. 폐기 키는 기본 숨김이며 **전체 보기 / 활성만 보기**로 전환하고 폐기 행의 수정·폐기 액션은 표시하지 않는다. 만료됐지만 미폐기인 키는 만료 상태로 표시한다. 같은 화면의 이름 변경과 월·주간 한도 수정은 유지하며 초과 한도는 인라인 오류로 막는다.
 2. 메시지 작성창의 **모델 선택**에서 원하는 모델 옆의 **ID 복사**를 누른다.
 3. 복사되는 **API ID**는 `api_model_name`이다. 표시 이름, 내부 숫자 ID, 운영용 `model_name`/LiteLLM route가 아니며 따옴표·`model=` 접두사를 포함하지 않는다.
 4. 목록의 **Provider**는 `api_provider`다. 같은 공개 API ID가 여러 provider에 있을 때 SDK 요청의 `provider` 선택자로 사용한다.

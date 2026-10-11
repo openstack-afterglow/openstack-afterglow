@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { HTMLInputAttributes } from 'svelte/elements';
 	interface Props {
 		value?: string;
 		id?: string;
@@ -7,6 +8,7 @@
 		disabled?: boolean;
 		required?: boolean;
 		maxlength?: number;
+		autocomplete?: HTMLInputAttributes['autocomplete'];
 		inputmode?: 'text' | 'decimal' | 'numeric' | 'search' | 'email' | 'url' | 'tel';
 		element?: HTMLInputElement | null;
 		ariaLabel?: string;
@@ -25,6 +27,7 @@
 		disabled = false,
 		required = false,
 		maxlength,
+		autocomplete,
 		inputmode,
 		ariaLabel,
 		ariaDescribedBy,
@@ -46,6 +49,7 @@
 	{disabled}
 	{required}
 	{maxlength}
+	{autocomplete}
 	{inputmode}
 	aria-label={ariaLabel}
 	aria-describedby={describedBy}

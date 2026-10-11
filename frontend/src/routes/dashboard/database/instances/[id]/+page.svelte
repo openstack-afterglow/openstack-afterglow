@@ -11,7 +11,7 @@
 	const projectId = $derived($auth.projectId ?? undefined);
 </script>
 
-<PageShell max="5xl">
+<PageShell>
 	<!-- breadcrumb -->
 	<div class="flex items-center gap-2 mb-4">
 		<a href="/dashboard/database/instances" class="text-ink-2 hover:text-ink-2 text-sm">{tr('instances.title')}</a>

@@ -1,19 +1,15 @@
 from __future__ import annotations
 
-import base64
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
 
 from app.api.compute.instances import _verify_github_ssh
-from app.api.union import layer_public
 from app.models.compute import CreateInstanceRequest
 from app.services import github_ssh, nova
 from tests.conftest import make_mock_conn
-from tests.test_common_libraries_squashfs import _artifact, _FakeScalarResult, _FakeSession
 
 _BASE_PAYLOAD = {
     "name": "github-vm",
@@ -56,34 +52,6 @@ async def test_admin_create_rejects_unverified_github_before_target_connection(a
     assert response.status_code == 503
     make_admin_conn.assert_not_called()
     create_server.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_public_squashfs_consume_rejects_unverified_github_before_database_or_openstack(monkeypatch):
-    error = github_ssh.GitHubSshInvalid("GitHub 계정에 공개 SSH 키가 없습니다.")
-    factory = MagicMock()
-    monkeypatch.setattr(layer_public, "get_session_factory", lambda: factory)
-    verify = AsyncMock(side_effect=error)
-    monkeypatch.setattr(github_ssh, "verify_and_record", verify)
-    run_consume = AsyncMock()
-    monkeypatch.setattr("app.services.layer_build.run_layer_consume", run_consume)
-
-    with pytest.raises(HTTPException) as exc:
-        await layer_public.consume_public_squashfs(
-            layer_public.PublicLayerConsumeRequest(
-                artifact_ids=[1],
-                server_name="github-vm",
-                flavor_id="flavor-1",
-                github_username="octocat",
-            ),
-            conn=MagicMock(_afterglow_project_id="project-a", _afterglow_authenticated_project_id="project-a"),
-            token_info={"project_id": "project-a", "user_id": "user-a"},
-        )
-
-    assert exc.value.status_code == 422
-    verify.assert_awaited_once_with(user_id="user-a", username="octocat")
-    factory.assert_not_called()
-    run_consume.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -201,7 +169,6 @@ async def test_user_creation_persists_ssh_source_in_real_nova_response(
         **_BASE_PAYLOAD,
         "github_username": "octocat" if github_login else None,
         "key_name": key_name,
-        "scheduling": "ha",
     }
     response = await client.post(path, json=payload)
     if path.endswith("/async"):
@@ -210,7 +177,7 @@ async def test_user_creation_persists_ssh_source_in_real_nova_response(
         assert response.status_code == 201, response.text
         server_id = response.json()["id"]
 
-    metadata = {"scheduling": "ha", "HA_Enabled": "True"}
+    metadata = {}
     if github_login:
         metadata.update({"afterglow_ssh_access_mode": "github", "afterglow_github_login": "OctoCat"})
         creation_boundary.verify.assert_awaited_once_with(user_id="test-user-123", username="octocat")
@@ -223,7 +190,7 @@ async def test_user_creation_persists_ssh_source_in_real_nova_response(
     )
     if not path.endswith("/async"):
         _assert_ssh_projection(response.json(), github_login=github_login, key_name=key_name, metadata=metadata)
-        assert response.json()["scheduling"] == "ha"
+        assert "scheduling" not in response.json()
     detail = await client.get(f"/api/v1/instances/{server_id}")
     assert detail.status_code == 200, detail.text
     _assert_ssh_projection(detail.json(), github_login=github_login, key_name=key_name, metadata=metadata)
@@ -253,12 +220,11 @@ async def test_admin_creation_persists_ssh_source_in_target_project(
             "project_id": "target-project-abc",
             "github_username": "octocat" if github_login else None,
             "key_name": key_name,
-            "scheduling": "ha",
         },
     )
     server_id = _completed_instance_id(response)
     get_connection.assert_called_once_with("target-project-abc")
-    metadata = {"scheduling": "ha", "HA_Enabled": "True"}
+    metadata = {}
     if github_login:
         metadata.update({"afterglow_ssh_access_mode": "github", "afterglow_github_login": "OctoCat"})
         creation_boundary.verify.assert_awaited_once_with(user_id="test-user-123", username="octocat")
@@ -275,98 +241,9 @@ async def test_admin_creation_persists_ssh_source_in_target_project(
     detail = await admin_client.get(f"/api/v1/instances/{server_id}")
     assert detail.status_code == 200, detail.text
     assert detail.json()["project_id"] == "target-project-abc"
-    assert detail.json()["scheduling"] == "ha"
+    assert "scheduling" not in detail.json()
     _assert_ssh_projection(detail.json(), github_login=github_login, key_name=key_name, metadata=metadata)
     listing = await admin_client.get("/api/v1/instances")
     assert listing.status_code == 200, listing.text
     assert [info["id"] for info in listing.json()] == [server_id]
     _assert_ssh_projection(listing.json()[0], github_login=github_login, key_name=key_name, metadata=metadata)
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("github_login,key_name", [("OctoCat", None), (None, "existing-keypair")])
-async def test_public_squashfs_creation_persists_ssh_source_with_real_consume_and_nova(
-    client, mock_conn, monkeypatch, creation_boundary, github_login, key_name
-):
-    from app.services import layer_build
-
-    artifact = _artifact(id=1, name="root")
-    added = []
-    results = [_FakeScalarResult(rows=[artifact]), _FakeScalarResult(rows=[artifact])]
-    monkeypatch.setattr(layer_public, "get_session_factory", lambda: lambda: _FakeSession(results, added))
-    share_conn = MagicMock()
-    monkeypatch.setattr(layer_public, "get_service_project_connection", AsyncMock(return_value=share_conn))
-    monkeypatch.setattr(
-        layer_build,
-        "resolve_layer_consume_resource_snapshot",
-        AsyncMock(
-            return_value={
-                "network": {"id": "net-1", "name": "network"},
-                "flavor": {"id": "flavor-1", "name": "small"},
-                "openstack.service_project": {"id": "service", "name": "service"},
-            }
-        ),
-    )
-    mock_conn.image.get_image.return_value = SimpleNamespace(
-        id="img-24",
-        name="ubuntu-24.04",
-        status="active",
-        checksum="sum",
-        os_hash_algo="sha512",
-        os_hash_value="hash",
-    )
-    public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest existing-keypair"
-    mock_conn.compute.get_keypair.return_value = SimpleNamespace(public_key=public_key)
-    update = AsyncMock()
-    monkeypatch.setattr(layer_build, "_update_consume_db", update)
-    monkeypatch.setattr(layer_build.neutron, "create_port", lambda *_args: {"id": "port-1", "fixed_ip": "10.0.0.5"})
-    monkeypatch.setattr(layer_build.manila, "list_access_rules", lambda *_args: [])
-    monkeypatch.setattr(layer_build.manila, "ensure_nfs_access_rule", lambda *_args, **_kwargs: {"access_id": "rule-1"})
-    monkeypatch.setattr(layer_build.manila, "get_export_locations", lambda *_args: ["10.0.0.1:/share"])
-    monkeypatch.setattr(layer_build, "_wait_for_consume_health", AsyncMock(return_value=True))
-    monkeypatch.setattr(layer_public, "invalidate", AsyncMock())
-
-    response = await client.post(
-        "/api/v1/libraries/squashfs/consume",
-        json={
-            "artifact_ids": [1],
-            "server_name": "github-vm",
-            "flavor_id": "flavor-1",
-            "network_id": "net-1",
-            "github_username": "octocat" if github_login else None,
-            "key_name": key_name,
-        },
-    )
-    assert response.status_code == 200, response.text
-    assert response.json() == {"consume_id": 41, "server_id": "server-1", "status": "active", "ready": True}
-    assert len(added) == 1
-    assert added[0].project_id == "test-project-123"
-    assert added[0].artifact_ids == [1]
-    metadata = {
-        "union_type": "layer-consumer",
-        "layer_profile": added[0].profile_name,
-        "ubuntu_base": "ubuntu-24.04",
-        "base_image_id": "img-24",
-        "afterglow_managed": "true",
-    }
-    if github_login:
-        metadata.update({"afterglow_ssh_access_mode": "github", "afterglow_github_login": "OctoCat"})
-        creation_boundary.verify.assert_awaited_once_with(user_id="test-user-123", username="octocat")
-        mock_conn.compute.get_keypair.assert_not_called()
-    else:
-        creation_boundary.verify.assert_not_awaited()
-        mock_conn.compute.get_keypair.assert_called_once_with("existing-keypair")
-    assert creation_boundary.servers["server-1"].metadata == metadata
-    update.assert_any_await(41, server_id="server-1")
-    update.assert_any_await(41, status="active", completed=True)
-    sdk_body = mock_conn.compute.create_server.call_args.kwargs
-    assert "key_name" not in sdk_body  # Squashfs keypairs still become guest authorized keys.
-    rendered = base64.b64decode(sdk_body["user_data"]).decode()
-    assert ("gh:OctoCat" if github_login else public_key) in rendered
-    detail = await client.get("/api/v1/instances/server-1")
-    assert detail.status_code == 200, detail.text
-    _assert_ssh_projection(detail.json(), github_login=github_login, key_name=None, metadata=metadata)
-    listing = await client.get("/api/v1/instances")
-    assert listing.status_code == 200, listing.text
-    assert [info["id"] for info in listing.json()] == ["server-1"]
-    _assert_ssh_projection(listing.json()[0], github_login=github_login, key_name=None, metadata=metadata)

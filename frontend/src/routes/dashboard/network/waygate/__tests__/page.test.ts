@@ -142,6 +142,7 @@ function installApiResponses() {
 						id: 'subnet-app',
 						name: 'app-subnet',
 						cidr: '10.20.0.0/24',
+						ip_version: 4,
 						gateway_ip: '10.20.0.1',
 						dhcp_enabled: true,
 					},

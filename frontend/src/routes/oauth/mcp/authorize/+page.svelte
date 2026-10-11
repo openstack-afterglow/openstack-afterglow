@@ -14,6 +14,7 @@
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
@@ -203,6 +204,7 @@
 </svelte:head>
 
 <main class="consent-page">
+	<PageShell class="flex justify-center">
 	<Card surface="raised" padding="lg" class="consent-card motion-stagger">
 		<header>
 			<p class="eyebrow">{t('mcpConsent.eyebrow')}</p>
@@ -278,10 +280,11 @@
 			<Button variant="secondary" onclick={reload}>{t('mcpConsent.actions.retry')}</Button>
 		{/if}
 	</Card>
+	</PageShell>
 </main>
 
 <style>
-	.consent-page { display: grid; min-height: 100vh; place-items: center; padding: 1rem; background: var(--color-surface-canvas); }
+	.consent-page { display: grid; min-height: 100dvh; place-items: center; background: var(--color-surface-canvas); }
 	:global(.consent-card) { width: min(42rem, 100%); min-width: 0; display: grid; gap: 1rem; }
 	header h1 { margin: 0; color: var(--color-ink-0); font-size: 1.5rem; }
 	header p { margin: 0.5rem 0 0; color: var(--color-ink-2); line-height: 1.5; }

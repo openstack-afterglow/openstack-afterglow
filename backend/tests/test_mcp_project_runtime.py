@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import fakeredis.aioredis
 import pytest
 from fastapi import HTTPException
 
@@ -18,6 +20,7 @@ from app.services.mcp_control_plane import (
     connection,
     crypto,
     ledger,
+    limits,
     lumen,
     registry,
     transport,
@@ -81,7 +84,13 @@ class MemorySession:
 
 
 @pytest.fixture
-def runtime(monkeypatch):
+async def runtime(monkeypatch):
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+
+    async def redis_client():
+        return redis
+
+    monkeypatch.setattr(limits, "_get_redis", redis_client)
     monkeypatch.setattr(crypto, "derive_encryption_subkey", lambda _: b"k" * 32)
     saved = [
         {"id": "a", "name": "Alpha", "roles": ["member"], "can_write": True},
@@ -95,6 +104,9 @@ def runtime(monkeypatch):
         status="active",
         access_level="manage",
         credential_epoch=1,
+        project_scope="selected",
+        consented_at=None,
+        cleanup_pending=False,
         expires_at=datetime.now(UTC) + timedelta(hours=1),
         approved_projects=saved,
         application_credential_id="credential-a",
@@ -145,7 +157,10 @@ def runtime(monkeypatch):
         scopes=frozenset({"mcp:read", "mcp:write"}),
         source="personal_token",
     )
-    return state
+    try:
+        yield state
+    finally:
+        await redis.close()
 
 
 def mutation_entry():
@@ -156,6 +171,120 @@ def mutation_arguments(project_id=None):
     return registry.VmActionArguments(
         server_id="12345678-1234-1234-1234-123456789abc", action="stop", project_id=project_id
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        "implicit",
+        "missing_marker",
+        "selected",
+        "all",
+        "multiple",
+        "foreign_selection",
+        "missing_credential_id",
+        "missing_ciphertext",
+        "cleanup_pending",
+    ],
+)
+async def test_internal_lumen_selection_requires_explicit_exact_current_project_consent(runtime, invalid):
+    runtime.grant.source = "lumen"
+    runtime.grant.project_scope = "current"
+    runtime.grant.consented_at = datetime.now(UTC)
+    runtime.token = None
+    projects = runtime.grant.approved_projects
+    runtime.grant.approved_projects = projects[:1]
+    project_id = "a"
+    if invalid == "implicit":
+        runtime.grant.consented_at = None
+    elif invalid == "missing_marker":
+        del runtime.grant.consented_at
+    elif invalid in {"selected", "all"}:
+        runtime.grant.project_scope = invalid
+    elif invalid == "multiple":
+        runtime.grant.approved_projects = projects
+    elif invalid == "missing_credential_id":
+        runtime.grant.application_credential_id = None
+    elif invalid == "missing_ciphertext":
+        runtime.grant.credential_ciphertext = None
+    elif invalid == "cleanup_pending":
+        runtime.grant.cleanup_pending = True
+    else:
+        project_id = "chat"
+    assert await lumen.selected_lumen_snapshot(user_id="user", project_id=project_id) is None
+    with pytest.raises(lumen.McpLumenAuthorityError):
+        await lumen.resolve_lumen_principal(lumen.LumenGrantSnapshot("grant", "user", project_id, 1, 4))
+    principal = replace(runtime.principal, source="lumen", selection_generation=4, selection_project_id=project_id)
+    with pytest.raises(authentication.McpAuthenticationError, match="consent"):
+        await authentication.lock_principal_grant(MemorySession(runtime), principal)
+
+
+@pytest.mark.asyncio
+async def test_frozen_pre_cutover_lumen_principal_cannot_load_secret_preview_or_execute(runtime):
+    runtime.grant.source = "lumen"
+    runtime.grant.project_scope = "current"
+    runtime.grant.approved_projects = runtime.grant.approved_projects[:1]
+    runtime.token = None
+    # A durable principal issued by the pre-consent writer has valid epochs and
+    # generation, but its persisted grant has no explicit approval marker.
+    frozen = replace(runtime.principal, source="lumen", selection_generation=4, selection_project_id="a")
+    called = AsyncMock(side_effect=AssertionError("implicit authority reached cloud work"))
+    entry = replace(mutation_entry(), handler=called, preview_builder=called)
+    for invoke in (registry.dispatch, registry.build_mutation_preview):
+        with pytest.raises(authentication.McpAuthenticationError, match="consent"):
+            await invoke(registry.ConsumerCloudContext(frozen), entry=entry, arguments=mutation_arguments("a"))
+    with pytest.raises(connection.McpConsumerConnectionError):
+        await connection._load_credential(frozen)
+    with pytest.raises(ledger.McpInvocationError):
+        await ledger.claim_mutation(
+            frozen,
+            entry=entry,
+            arguments={"action": "stop", "project_id": "a"},
+            idempotency_key="pre-cutover",
+            source="lumen",
+        )
+    called.assert_not_awaited()
+    assert runtime.invocations == []
+    assert runtime.credential_reads == []
+
+
+@pytest.mark.asyncio
+async def test_lumen_consent_is_rechecked_at_locked_mutation_dispatch(runtime):
+    runtime.grant.source = "lumen"
+    runtime.grant.project_scope = "current"
+    runtime.grant.approved_projects = runtime.grant.approved_projects[:1]
+    runtime.grant.consented_at = datetime.now(UTC)
+    runtime.token = None
+    frozen = replace(runtime.principal, source="lumen", selection_generation=4, selection_project_id="a")
+    claim = await ledger.claim_mutation(
+        frozen,
+        entry=mutation_entry(),
+        arguments={"action": "stop", "project_id": "a"},
+        idempotency_key="consented-claim",
+        source="lumen",
+    )
+    runtime.grant.consented_at = None
+    with pytest.raises(ledger.McpInvocationError):
+        await ledger.authorize_mutation_dispatch(frozen, invocation_id=claim.invocation_id, source="lumen")
+    assert runtime.invocations[0].status == "claimed"
+
+
+@pytest.mark.asyncio
+async def test_consented_internal_lumen_cannot_target_another_project(runtime):
+    runtime.grant.source = "lumen"
+    runtime.grant.project_scope = "current"
+    runtime.grant.approved_projects = runtime.grant.approved_projects[:1]
+    runtime.grant.consented_at = datetime.now(UTC)
+    runtime.token = None
+    snapshot = lumen.LumenGrantSnapshot("grant", "user", "a", 1, 4)
+    principal = await lumen.resolve_lumen_principal(snapshot)
+    assert principal.project_id == principal.anchor_project_id == principal.selection_project_id == "a"
+    with pytest.raises(authentication.McpAuthenticationError, match="consent"):
+        await authentication.resolve_principal_target(principal, "b", write=True)
+    with pytest.raises(connection.McpConsumerConnectionError):
+        await connection._load_credential(replace(principal, project_id="b"))
+    assert runtime.credential_reads == []
 
 
 @pytest.mark.asyncio
@@ -248,17 +377,18 @@ async def test_mutation_default_target_replays_but_other_project_cannot(runtime)
 @pytest.mark.asyncio
 async def test_internal_lumen_without_pat_fences_selection_at_connection_and_ledger(runtime):
     runtime.grant.source = "lumen"
+    runtime.grant.consented_at = datetime.now(UTC)
+    runtime.grant.project_scope = "current"
+    runtime.grant.approved_projects = runtime.grant.approved_projects[:1]
     runtime.token = None
-    principal = replace(
-        runtime.principal, source="lumen", selection_generation=4, selection_project_id="chat", project_id="b"
-    )
-    assert await connection._load_credential(principal) == ("credential-b", "secret-b")
+    principal = replace(runtime.principal, source="lumen", selection_generation=4, selection_project_id="a")
+    assert await connection._load_credential(principal) == ("credential-a", "secret-a")
     claim = await ledger.claim_mutation(
         principal, entry=mutation_entry(), arguments={"action": "stop"}, idempotency_key="lumen-key", source="lumen"
     )
     assert runtime.token_reads == 0
-    assert {("user", "a"), ("user", "chat")} == set(runtime.locks)
-    assert all(key["owner_project_id"] == "chat" for key in runtime.selection_keys)
+    assert {("user", "a")} == set(runtime.locks)
+    assert all(key["owner_project_id"] == "a" for key in runtime.selection_keys)
     runtime.owner_lock.lumen_selection_generation += 1
     with pytest.raises(connection.McpConsumerConnectionError):
         await connection._load_credential(principal)
@@ -271,11 +401,14 @@ async def test_internal_lumen_without_pat_fences_selection_at_connection_and_led
 @pytest.mark.parametrize("target", ["a", "b"])
 @pytest.mark.parametrize("change", ["selection", "revoked", "expired", "epoch", "pat_revoked"])
 async def test_stale_lumen_snapshot_cannot_execute_any_target(runtime, target, change):
-    snapshot = lumen.LumenGrantSnapshot("grant", "user", "chat", 1, 4)
+    snapshot = lumen.LumenGrantSnapshot("grant", "user", "a", 1, 4)
     if change == "pat_revoked":
         runtime.token.revoked_at = datetime.now(UTC)
     else:
         runtime.grant.source = "lumen"
+        runtime.grant.consented_at = datetime.now(UTC)
+        runtime.grant.project_scope = "current"
+        runtime.grant.approved_projects = runtime.grant.approved_projects[:1]
         runtime.token = None
         if change == "selection":
             runtime.owner_lock.lumen_selection_generation += 1
@@ -300,8 +433,6 @@ async def test_stale_lumen_snapshot_cannot_execute_any_target(runtime, target, c
 
 @pytest.mark.asyncio
 async def test_lumen_snapshot_shape_retains_actor_anchor_not_target(runtime):
-    runtime.grant.source = "lumen"
-    runtime.token = None
     runtime.grant.approved_projects = runtime.grant.approved_projects[1:]
     snapshot = lumen.LumenGrantSnapshot("grant", "user", "chat", 1, 4)
     principal = await lumen.resolve_lumen_principal(snapshot)
@@ -358,8 +489,6 @@ async def test_transport_binds_canonical_target_before_mutation_claim(runtime, m
         finally:
             transport._current_principal.reset(token)
     else:
-        runtime.grant.source = "lumen"
-        runtime.token = None
         monkeypatch.setattr(ledger, "claim_mutation", claim)
         snapshot = lumen.LumenGrantSnapshot("grant", "user", "a", 1, 4)
         await mcp_lumen.execute(
@@ -434,8 +563,6 @@ async def test_unapproved_target_cannot_reach_transport_mutation_replay(runtime,
         finally:
             transport._current_principal.reset(token)
     else:
-        runtime.grant.source = "lumen"
-        runtime.token = None
         monkeypatch.setattr(ledger, "claim_mutation", claim)
         snapshot = lumen.LumenGrantSnapshot("grant", "user", "a", 1, 4)
         with pytest.raises(HTTPException) as rejected:
@@ -473,15 +600,227 @@ async def test_lumen_metadata_uses_revalidated_saved_public_projection(runtime, 
     runtime.grant.display_name = "Selected grant"
     if source == "lumen":
         runtime.token = None
-    snapshot = lumen.LumenGrantSnapshot("grant", "user", "chat", 1, 4)
+        runtime.grant.consented_at = datetime.now(UTC)
+        runtime.grant.project_scope = "current"
+        runtime.grant.approved_projects = runtime.grant.approved_projects[:1]
+    snapshot = lumen.LumenGrantSnapshot("grant", "user", "a" if source == "lumen" else "chat", 1, 4)
     assert await lumen.selected_lumen_metadata(snapshot) == {
         "access_level": "manage",
         "project_id": "a",
         "project_name": "Alpha",
         "source": source,
-        "allowed_projects": [{"id": "a", "name": "Alpha"}, {"id": "b", "name": "Beta"}],
+        "allowed_projects": [
+            {"id": project["id"], "name": project["name"]} for project in runtime.grant.approved_projects
+        ],
         "selection_name": None if source == "lumen" else "Selected grant",
+        "expires_at": runtime.grant.expires_at.isoformat(),
     }
     runtime.owner_lock.lumen_selection_generation += 1
     with pytest.raises(lumen.McpLumenAuthorityError):
         await lumen.selected_lumen_metadata(snapshot)
+
+
+_PROVISIONING_SERVER = "11111111-1111-4111-8111-111111111111"
+_PROVISIONING_NETWORK = "22222222-2222-4222-8222-222222222222"
+_PROVISIONING_IMAGE = "33333333-3333-4333-8333-333333333333"
+
+
+@pytest.fixture
+def provisioning_cloud(runtime, monkeypatch):
+    from app.services.mcp_control_plane import compute
+
+    state = SimpleNamespace(servers={}, volumes={}, ports={}, writes=[], uncertain=False)
+
+    @asynccontextmanager
+    async def cloud(context):
+        project = context.project_id
+
+        def create(kind, value):
+            state.writes.append((kind, project))
+            if state.uncertain:
+                raise TimeoutError("provider-secret: uncertain accepted request")
+            return value
+
+        class Compute:
+            def get_flavor(self, flavor_id, **_kwargs):
+                return {"id": flavor_id, "name": "small", "vcpus": 1, "ram": 2048, "disk": 0, "extra_specs": {}}
+
+            def servers(self, **_kwargs):
+                return [server for server in state.servers.values() if server["project_id"] == project]
+
+            def create_server(self, **body):
+                state.servers[_PROVISIONING_SERVER] = {
+                    "id": _PROVISIONING_SERVER,
+                    "project_id": project,
+                    "name": body["name"],
+                    "status": "BUILD",
+                }
+                return create("vm", {"id": _PROVISIONING_SERVER, "adminPass": "provider-secret"})
+
+            def get_server(self, server_id):
+                return state.servers.get(
+                    server_id, {"id": server_id, "project_id": project, "name": "existing-vm", "status": "SHUTOFF"}
+                )
+
+            def create_server_interface(self, server_id, **body):
+                port = {
+                    "id": "port-new",
+                    "project_id": project,
+                    "network_id": body["net_id"],
+                    "device_id": server_id,
+                    "mac_address": "fa:16:3e:00:00:01",
+                }
+                state.ports[port["id"]] = port
+                return create("interface", {"port_id": port["id"], "net_id": body["net_id"]})
+
+        class Storage:
+            def create_volume(self, **body):
+                volume = {
+                    "id": "volume-new",
+                    "project_id": project,
+                    "name": body["name"],
+                    "size": body["size"],
+                    "status": "creating",
+                    "metadata": {"secret": "provider-secret"},
+                }
+                state.volumes[volume["id"]] = volume
+                return create("volume", volume)
+
+        conn = SimpleNamespace(
+            compute=Compute(),
+            block_storage=Storage(),
+            image=SimpleNamespace(
+                get_image=lambda image_id: {
+                    "id": image_id,
+                    "status": "active",
+                    "visibility": "public",
+                    "min_disk": 1,
+                    "min_ram": 0,
+                }
+            ),
+            network=SimpleNamespace(
+                get_network=lambda network_id: {"id": network_id, "project_id": project, "status": "ACTIVE"},
+                get_port=lambda port_id: state.ports.get(port_id),
+            ),
+        )
+        yield conn
+
+    async def policy(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(registry.ConsumerCloudContext, "openstack_connection", cloud)
+    monkeypatch.setattr(compute.flavor_eligibility, "require_flavor_eligible", policy)
+    monkeypatch.setattr(compute.flavor_eligibility, "admit_flavor", policy)
+    monkeypatch.setattr(compute.flavor_eligibility, "release_admission", policy)
+    return state
+
+
+def provisioning_arguments(tool, project="b"):
+    if tool == "afterglow_vm_create":
+        return {
+            "project_id": project,
+            "name": "consumer-vm",
+            "image_id": _PROVISIONING_IMAGE,
+            "flavor_id": "1",
+            "network_id": _PROVISIONING_NETWORK,
+            "availability_zone": "nova",
+        }
+    if tool == "afterglow_volume_create":
+        return {"project_id": project, "name": "consumer-volume", "size_gb": 10}
+    return {"project_id": project, "server_id": _PROVISIONING_SERVER, "network_id": _PROVISIONING_NETWORK}
+
+
+async def invoke_provisioning(runtime, surface, tool, arguments, key):
+    if surface == "mcp":
+        token = transport._current_principal.set(runtime.principal)
+        try:
+            return await transport._call_tool(tool, {**arguments, "idempotency_key": key})
+        finally:
+            transport._current_principal.reset(token)
+    snapshot = lumen.LumenGrantSnapshot("grant", "user", "a", 1, 4)
+    return await mcp_lumen.execute(
+        mcp_lumen._ExecuteRequest(
+            snapshot=lumen.snapshot_payload(snapshot), name=tool, arguments=arguments, idempotency_key=key
+        ),
+        None,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("surface", ["mcp", "lumen"])
+@pytest.mark.parametrize("tool", ["afterglow_vm_create", "afterglow_volume_create", "afterglow_vm_network_attach"])
+async def test_provisioning_target_binding_and_replay_create_only_one_resource(
+    runtime, provisioning_cloud, surface, tool
+):
+    arguments = provisioning_arguments(tool)
+    result = await invoke_provisioning(runtime, surface, tool, arguments, "provision-key")
+    replay = await invoke_provisioning(runtime, surface, tool, arguments, "provision-key")
+    assert replay == result and "provider-secret" not in str(result)
+    assert len(provisioning_cloud.writes) == 1 and provisioning_cloud.writes[0][1] == "b"
+    assert runtime.invocations[0].status == "succeeded"
+    assert set(runtime.locks) == {("user", "a")}
+    assert (
+        result.get("status")
+        == {"afterglow_vm_create": "BUILD", "afterglow_volume_create": "creating", "afterglow_vm_network_attach": None}[
+            tool
+        ]
+    )
+    with pytest.raises((HTTPException, ledger.McpInvocationError)):
+        await invoke_provisioning(runtime, surface, tool, {**arguments, "project_id": "a"}, "provision-key")
+    assert len(provisioning_cloud.writes) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("surface", ["mcp", "lumen"])
+@pytest.mark.parametrize("tool", ["afterglow_vm_create", "afterglow_volume_create", "afterglow_vm_network_attach"])
+async def test_provisioning_uncertain_outcome_blocks_same_and_new_replay_keys(
+    runtime, provisioning_cloud, surface, tool
+):
+    provisioning_cloud.uncertain = True
+    arguments = provisioning_arguments(tool)
+    for key in ("uncertain-key", "uncertain-key", "different-key"):
+        with pytest.raises((HTTPException, ValueError, ledger.McpInvocationError)) as failure:
+            await invoke_provisioning(runtime, surface, tool, arguments, key)
+        assert "provider-secret" not in str(failure.value)
+    assert len(provisioning_cloud.writes) == 1
+    assert len(runtime.invocations) == 1 and runtime.invocations[0].status == "unknown"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("surface", ["mcp", "lumen"])
+@pytest.mark.parametrize("tool", ["afterglow_vm_create", "afterglow_volume_create", "afterglow_vm_network_attach"])
+@pytest.mark.parametrize("boundary", ["read", "unapproved", "readonly-project"])
+async def test_provisioning_requires_saved_write_authority_for_selected_target(
+    runtime, provisioning_cloud, surface, tool, boundary
+):
+    if boundary == "read":
+        runtime.principal = replace(runtime.principal, scopes=frozenset({"mcp:read"}))
+        runtime.grant.access_level = "read"
+    if boundary == "readonly-project":
+        runtime.grant.approved_projects[1]["can_write"] = False
+    target = "c" if boundary == "unapproved" else "b"
+    with pytest.raises((HTTPException, ValueError, authority.McpGrantStateError)):
+        await invoke_provisioning(runtime, surface, tool, provisioning_arguments(tool, target), "denied-key")
+    assert provisioning_cloud.writes == [] and runtime.invocations == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tool,invalid",
+    [
+        ("afterglow_vm_create", {"adminPass": "provider-secret"}),
+        ("afterglow_vm_create", {"user_data": "arbitrary-script"}),
+        ("afterglow_vm_create", {"boot_volume_size_gb": "50"}),
+        ("afterglow_vm_create", {"delete_boot_volume_on_termination": "false"}),
+        ("afterglow_vm_create", {"availability_zone": "nova:host:node"}),
+        ("afterglow_volume_create", {"size_gb": True}),
+        ("afterglow_volume_create", {"size_gb": 16385}),
+        ("afterglow_volume_create", {"image_id": _PROVISIONING_IMAGE}),
+        ("afterglow_vm_network_attach", {"port_id": "existing-foreign-port"}),
+        ("afterglow_vm_network_attach", {"network_id": "not-a-uuid"}),
+    ],
+)
+async def test_provisioning_strict_arguments_fail_before_ledger_or_provider(runtime, provisioning_cloud, tool, invalid):
+    with pytest.raises(ValueError):
+        await invoke_provisioning(runtime, "mcp", tool, {**provisioning_arguments(tool), **invalid}, "invalid-key")
+    assert provisioning_cloud.writes == [] and runtime.invocations == []

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PageShell from '$lib/components/ui/PageShell.svelte';
   import { t } from '$lib/i18n/ns/containers-shell';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { onMount } from 'svelte';
@@ -80,7 +81,7 @@
   onMount(fetchContainer);
 </script>
 
-<div class="p-4 md:p-8 max-w-3xl">
+<PageShell>
   {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 
   {#if loading}
@@ -118,4 +119,4 @@
       onManualRefresh={fetchLogs}
     />
   {/if}
-</div>
+</PageShell>

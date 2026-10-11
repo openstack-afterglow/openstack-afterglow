@@ -26,10 +26,14 @@ from app.services import k3s_crypto
 from app.services.mcp_control_plane import lumen as mcp_lumen
 from app.services.mcp_control_plane.authority import (
     PERSONAL_TOKEN_PREFIX,
+    McpAuthorityError,
+    McpGrantStateError,
     _as_utc,
     _grant_expiry,
     _new_personal_token,
+    _personal_token_expiry,
     create_restricted_application_credential,
+    decrypt_grant_secret,
     delete_and_confirm_application_credential,
     grant_scopes,
     list_personal_tokens,
@@ -68,6 +72,76 @@ def test_mcp_credential_ciphertext_is_grant_bound_without_legacy_fallback(mcp_ke
         )
 
 
+@pytest.mark.parametrize("source", ["lumen", "personal_token"])
+@pytest.mark.parametrize("consented", [False, True])
+def test_grant_secret_requires_explicit_lumen_consent_without_changing_personal_tokens(mcp_key, source, consented):
+    grant = McpDelegatedGrant(
+        id="grant-a",
+        owner_user_id="user-a",
+        owner_project_id="project-a",
+        source=source,
+        access_level="read",
+        project_scope="current",
+        approved_projects=[{"id": "project-a", "name": "Alpha", "roles": ["reader"], "can_write": False}],
+        status="active",
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+        application_credential_id="credential-a",
+        credential_ciphertext=encrypt_application_credential(
+            "keystone-secret", grant_id="grant-a", owner_user_id="user-a", owner_project_id="project-a"
+        ),
+        consented_at=datetime.now(UTC) if consented else None,
+    )
+    if source == "lumen" and not consented:
+        with pytest.raises(McpGrantStateError, match="explicit consent"):
+            decrypt_grant_secret(grant)
+    else:
+        assert decrypt_grant_secret(grant) == "keystone-secret"
+
+
+@pytest.mark.parametrize("invalid", ["selected", "all", "foreign", "multiple"])
+def test_consented_internal_lumen_secret_still_requires_owner_current_project(mcp_key, invalid):
+    grant = SimpleNamespace(
+        source="lumen",
+        consented_at=datetime.now(UTC),
+        owner_project_id="project-a",
+        project_scope=invalid if invalid in {"selected", "all"} else "current",
+        access_level="read",
+        approved_projects=[{"id": "project-a", "name": "Alpha", "roles": ["reader"], "can_write": False}],
+    )
+    if invalid == "multiple":
+        grant.approved_projects.append({"id": "project-b", "name": "Beta", "roles": ["reader"], "can_write": False})
+    with pytest.raises(McpGrantStateError, match="explicit consent"):
+        decrypt_grant_secret(grant, "project-b" if invalid == "foreign" else "project-a")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expiry", [None, datetime(2027, 1, 1, 12, 34, 56, 123456)])
+async def test_lumen_metadata_exposes_only_normalized_expiry_and_safe_selection(monkeypatch, expiry):
+    grant = SimpleNamespace(
+        source="personal_token",
+        owner_project_id="project-a",
+        access_level="read",
+        approved_projects=None,
+        display_name="Manual read",
+        expires_at=expiry,
+    )
+
+    async def resolve(snapshot):
+        return grant, snapshot
+
+    monkeypatch.setattr(mcp_lumen, "_resolve_snapshot_grant", resolve)
+    snapshot = mcp_lumen.LumenGrantSnapshot("grant-a", "user-a", "project-a", 1, 1)
+    assert await mcp_lumen.selected_lumen_metadata(snapshot) == {
+        "access_level": "read",
+        "project_id": "project-a",
+        "project_name": "project-a",
+        "source": "personal_token",
+        "allowed_projects": [{"id": "project-a", "name": "project-a"}],
+        "selection_name": "Manual read",
+        "expires_at": expiry.replace(tzinfo=UTC).isoformat() if expiry is not None else None,
+    }
+
+
 def test_personal_tokens_have_required_prefix_entropy_and_scopes():
     token = _new_personal_token()
 
@@ -97,7 +171,9 @@ def test_lumen_frozen_snapshot_is_strict_and_opaque():
 
 @pytest.mark.parametrize("microsecond", [0, 123456])
 @pytest.mark.parametrize(
-    "offset", [None, 0, 330, -420], ids=["configured-default", "utc", "positive-offset", "negative-offset"]
+    "offset",
+    [None, 0, 330, -420, "never"],
+    ids=["configured-default", "utc", "positive-offset", "negative-offset", "no-expiration"],
 )
 def test_restricted_credential_creation_uses_exact_scoped_connection(monkeypatch, microsecond, offset):
     import requests
@@ -106,8 +182,10 @@ def test_restricted_credential_creation_uses_exact_scoped_connection(monkeypatch
     from oslo_utils import timeutils
 
     now = datetime(2026, 10, 8, 10, 0, 0, microsecond, tzinfo=UTC)
-    supplied = None if offset is None else (now + timedelta(days=1)).astimezone(timezone(timedelta(minutes=offset)))
-    deadline = _grant_expiry(expires_at=supplied, now=now)
+    supplied = (
+        None if offset in (None, "never") else (now + timedelta(days=1)).astimezone(timezone(timedelta(minutes=offset)))
+    )
+    deadline = _personal_token_expiry(expires_at=supplied, non_expiring=offset == "never", now=now)
     sent = []
 
     def send(_session, request, **kwargs):
@@ -129,11 +207,14 @@ def test_restricted_credential_creation_uses_exact_scoped_connection(monkeypatch
             return response
         sent.append(request)
         credential = json.loads(request.body)["application_credential"]
-        timestamp = credential["expires_at"]
-        # Keystone2025.2 parse_expiration_date adds Z before its installed oslo parser.
-        parsed = timeutils.parse_isotime(timestamp if timestamp.endswith("Z") else timestamp + "Z")
-        assert parsed.astimezone(UTC) == deadline
-        assert timestamp.endswith("Z")
+        if deadline is None:
+            assert "expires_at" not in credential
+        else:
+            timestamp = credential["expires_at"]
+            # Keystone2025.2 parse_expiration_date accepts UTC Z timestamps.
+            parsed = timeutils.parse_isotime(timestamp if timestamp.endswith("Z") else timestamp + "Z")
+            assert parsed.astimezone(UTC) == deadline
+            assert timestamp.endswith("Z")
         assert credential["unrestricted"] is False
         assert credential["roles"] == [{"name": "member"}]
         assert request.method == "POST"
@@ -170,6 +251,37 @@ def test_restricted_credential_creation_uses_exact_scoped_connection(monkeypatch
 
     assert created == {"id": "credential-id", "secret": "credential-secret"}
     assert len(sent) == 1
+
+
+@pytest.mark.parametrize("days", [1, 7, 31, 92, 184, 366])
+def test_personal_key_supports_presets_without_widening_oauth_policy(monkeypatch, days):
+    monkeypatch.setattr(
+        "app.services.mcp_control_plane.authority.get_settings",
+        lambda: SimpleNamespace(mcp_default_grant_ttl_days=30, mcp_max_grant_ttl_days=90),
+    )
+    now = datetime(2028, 1, 31, tzinfo=UTC)
+    deadline = now + timedelta(days=days)
+    assert _personal_token_expiry(expires_at=deadline, non_expiring=False, now=now) == deadline
+    if days > 90:
+        with pytest.raises(McpAuthorityError):
+            _grant_expiry(expires_at=deadline, now=now)
+
+
+@pytest.mark.parametrize("invalid", ["past", "timezone", "over_limit", "conflict"])
+def test_personal_key_rejects_invalid_deadlines(monkeypatch, invalid):
+    monkeypatch.setattr(
+        "app.services.mcp_control_plane.authority.get_settings",
+        lambda: SimpleNamespace(mcp_default_grant_ttl_days=30, mcp_max_grant_ttl_days=90),
+    )
+    now = datetime(2028, 1, 31, tzinfo=UTC)
+    deadlines = {
+        "past": now,
+        "timezone": now.replace(tzinfo=None),
+        "over_limit": now + timedelta(days=367),
+        "conflict": now + timedelta(days=1),
+    }
+    with pytest.raises(McpAuthorityError):
+        _personal_token_expiry(expires_at=deadlines[invalid], non_expiring=invalid == "conflict", now=now)
 
 
 def test_orphan_cleanup_deletes_only_the_exact_deterministic_credential_name():

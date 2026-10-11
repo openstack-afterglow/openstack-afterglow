@@ -231,14 +231,9 @@ async def test_background_tasks_set_populated_on_start_ephemeral_build():
     library_builder._active_builds.clear()
 
 
-# ──────────────────────────────────────────────
-# prebuilt 가시성 — list_libraries
-# ──────────────────────────────────────────────
-
-
 @pytest.mark.asyncio
 async def test_list_libraries_uses_service_conn_with_include_public(admin_client):
-    """GET /api/libraries가 service conn + include_public=True 로 prebuilt share를 조회한다."""
+    """The retained catalog discovers service-owned prebuilt shares."""
     from app.services.manila import FileStorageInfo
 
     fake_share = MagicMock(spec=FileStorageInfo)
@@ -246,25 +241,13 @@ async def test_list_libraries_uses_service_conn_with_include_public(admin_client
     fake_share.id = "share-prebuilt-123"
 
     with (
-        patch(
-            "app.api.common.libraries.get_service_project_connection",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "app.api.common.libraries.manila.list_file_storages",
-            return_value=[fake_share],
-        ) as mock_list,
+        patch("app.api.common.libraries.get_service_project_connection", return_value=MagicMock()),
+        patch("app.api.common.libraries.manila.list_file_storages", return_value=[fake_share]) as mock_list,
     ):
         resp = await admin_client.get("/api/v1/libraries")
 
     assert resp.status_code == 200
-    # include_public=True로 호출됐는지 확인
-    call_kwargs = mock_list.call_args
-    assert call_kwargs.kwargs.get("include_public") is True or (
-        len(call_kwargs.args) >= 4 and call_kwargs.args[3] is True
-    )
-    # python311 라이브러리의 available_prebuilt가 True로 반환됐는지 확인
-    body = resp.json()
-    py311 = next((lib for lib in body if lib["id"] == "python311"), None)
+    assert mock_list.call_args.kwargs["include_public"] is True
+    py311 = next((lib for lib in resp.json() if lib["id"] == "python311"), None)
     if py311:
         assert py311["available_prebuilt"] is True

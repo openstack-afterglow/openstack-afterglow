@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -153,7 +154,7 @@
 	onDestroy(() => { loadGeneration += 1; clearTimeout(searchTimer); nextPrefetch.cancel(); });
 </script>
 
-<div class="p-4 md:p-6 max-w-7xl mx-auto">
+<PageShell>
 	<PageHeader breadcrumb={t('projectPage.breadcrumb')} title={t('projectPage.title')}>
 		{#snippet actions()}
 			<button
@@ -234,7 +235,7 @@
 			onintent={prefetchNext}
 		/>
 	{/if}
-</div>
+</PageShell>
 
 <AdminProjectCreateModal bind:open={showCreate} onCreated={() => resetList()} />
 <AdminProjectEditModal   project={editProject}   onClose={() => (editProject = null)}   onSuccess={() => resetList()} />

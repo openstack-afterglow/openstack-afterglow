@@ -27,6 +27,15 @@ def _resolve_default_placement_policies(monkeypatch):
         resolve_zones,
     )
 
+    monkeypatch.setattr(
+        "app.services.nova.get_project_quota",
+        lambda *_args: {
+            "instances": {"limit": 10, "in_use": 0},
+            "cores": {"limit": 64, "in_use": 0},
+            "ram": {"limit": 131072, "in_use": 0},
+        },
+    )
+
     async def resolve_network(_conn, _settings):
         return None
 
@@ -209,7 +218,6 @@ async def test_cpu_flavor_bypasses_gpu_quota_check():
         name="test-cpu-vm",
         flavor_id="fl-cpu",
         image_id="img-123",
-        libraries=[],
     )
 
     # Direct unit test of require_gpu_quota
@@ -229,8 +237,6 @@ async def test_cpu_flavor_bypasses_gpu_quota_check():
         patch("app.api.compute.instances.nova.create_server", return_value=_make_server()) as mock_nova,
         patch("app.api.compute.instances.neutron.list_networks", return_value=[]),
         patch("app.api.compute.instances.instance_orch.compute_effective_security_groups", AsyncMock(return_value=[])),
-        patch("app.api.compute.instances.instance_orch.build_instance_meta", return_value={}),
-        patch("app.api.compute.instances.instance_orch.try_issue_health_token", AsyncMock(return_value=("", "", ""))),
         patch("app.api.compute.instances.rec", AsyncMock()),
         patch("app.api.compute.instances.invalidate", AsyncMock()),
         patch("app.api.compute.instances.cache_invalidation.invalidate_mutation_count", AsyncMock()),
@@ -268,11 +274,16 @@ async def test_gpu_quota_allow_reaches_mutation_boundary():
         name="test-gpu-vm",
         flavor_id="fl-gpu",
         image_id="img-123",
-        libraries=[],
     )
 
     with (
         patch("app.api.compute.instances.nova.list_flavors", return_value=[gpu_flavor]),
+        patch(
+            "app.services.gpu_quota.get_effective_gpu_quota_status",
+            return_value=[{"gpu_type": "GPUA100", "limit": 1, "in_use": 0, "available": 1}],
+        ),
+        patch("app.services.gpu_quota.reserve_gpu_quota", return_value="reservation-1") as mock_reserve,
+        patch("app.services.gpu_quota.release_gpu_reservation") as mock_release,
         patch("app.services.gpu_quota.check_gpu_quota") as mock_check,
         patch("app.services.instance_names.ensure_unique_instance_name", return_value="test-gpu-vm"),
         patch("app.api.compute.instances._resolve_create_placement", return_value=(req, "nova", "nova")),
@@ -281,8 +292,6 @@ async def test_gpu_quota_allow_reaches_mutation_boundary():
         patch("app.api.compute.instances.nova.create_server", return_value=_make_server()) as mock_nova,
         patch("app.api.compute.instances.neutron.list_networks", return_value=[]),
         patch("app.api.compute.instances.instance_orch.compute_effective_security_groups", AsyncMock(return_value=[])),
-        patch("app.api.compute.instances.instance_orch.build_instance_meta", return_value={}),
-        patch("app.api.compute.instances.instance_orch.try_issue_health_token", AsyncMock(return_value=("", "", ""))),
         patch("app.api.compute.instances.rec", AsyncMock()),
         patch("app.api.compute.instances.invalidate", AsyncMock()),
         patch("app.api.compute.instances.cache_invalidation.invalidate_mutation_count", AsyncMock()),
@@ -294,7 +303,9 @@ async def test_gpu_quota_allow_reaches_mutation_boundary():
             token_info={"token": "t", "project_id": "proj-123"},
         )
         assert result.id == "srv-123"
-        mock_check.assert_called_once_with(conn, "proj-123", {"GPUA100": 1})
+        mock_check.assert_awaited_once_with(conn, "proj-123", {"GPUA100": 1})
+        mock_reserve.assert_awaited_once_with(conn, "proj-123", {"GPUA100": 1})
+        mock_release.assert_awaited_once_with("reservation-1")
         mock_cinder.assert_called_once()
         mock_nova.assert_called_once()
 
@@ -320,7 +331,8 @@ async def test_nonstandard_flavor_name_gpu_quota_checked():
         name="test-nonstandard-vm",
         flavor_id="fl-custom",
         image_id="img-123",
-        libraries=[],
+        network_id="net-1",
+        data_mounts=[{"file_storage_id": "share-data", "mount_point": "/mnt/data"}],
     )
 
     from app.services.gpu_quota import GpuQuotaDenied
@@ -332,7 +344,7 @@ async def test_nonstandard_flavor_name_gpu_quota_checked():
         ) as mock_check,
         patch("app.services.instance_names.ensure_unique_instance_name", return_value="test-nonstandard-vm"),
         patch("app.api.compute.instances._resolve_create_placement", return_value=(req, "nova", "nova")),
-        patch("app.api.compute.instances._prepare_prebuilt_file_storages") as mock_manila,
+        patch("app.api.compute.instances._prepare_data_mounts", new_callable=AsyncMock) as mock_data_mounts,
         patch("app.api.compute.instances.cinder.create_volume_from_image") as mock_cinder,
         patch("app.api.compute.instances.nova.create_server") as mock_nova,
     ):
@@ -345,8 +357,8 @@ async def test_nonstandard_flavor_name_gpu_quota_checked():
             )
         assert exc_info.value.status_code == 409
         assert "H100 GPU quota limit reached" in exc_info.value.detail
-        mock_check.assert_called_once_with(conn, "proj-123", {"NVIDIAH100": 1})
-        mock_manila.assert_not_called()
+        mock_check.assert_awaited_once_with(conn, "proj-123", {"NVIDIAH100": 1})
+        mock_data_mounts.assert_not_awaited()
         mock_cinder.assert_not_called()
         mock_nova.assert_not_called()
 
@@ -371,7 +383,8 @@ async def test_sync_instance_creation_gpu_quota_denial_prevents_mutation():
         name="test-gpu-vm",
         flavor_id="fl-gpu",
         image_id="img-123",
-        libraries=[],
+        network_id="net-1",
+        data_mounts=[{"file_storage_id": "share-data", "mount_point": "/mnt/data"}],
     )
 
     from app.services.gpu_quota import GpuQuotaDenied
@@ -381,7 +394,7 @@ async def test_sync_instance_creation_gpu_quota_denial_prevents_mutation():
         patch("app.services.gpu_quota.check_gpu_quota", side_effect=GpuQuotaDenied("GPU quota limit exceeded")),
         patch("app.services.instance_names.ensure_unique_instance_name", return_value="test-gpu-vm"),
         patch("app.api.compute.instances._resolve_create_placement", return_value=(req, "nova", "nova")),
-        patch("app.api.compute.instances._prepare_prebuilt_file_storages") as mock_manila,
+        patch("app.api.compute.instances._prepare_data_mounts", new_callable=AsyncMock) as mock_data_mounts,
         patch("app.api.compute.instances.cinder.create_volume_from_image") as mock_cinder,
         patch("app.api.compute.instances.nova.create_server") as mock_nova,
     ):
@@ -394,13 +407,13 @@ async def test_sync_instance_creation_gpu_quota_denial_prevents_mutation():
             )
         assert exc_info.value.status_code == 409
         assert "GPU quota limit exceeded" in exc_info.value.detail
-        mock_manila.assert_not_called()
+        mock_data_mounts.assert_not_awaited()
         mock_cinder.assert_not_called()
         mock_nova.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_sync_instance_creation_gpu_quota_malformed_returns_503_and_no_mutation():
+async def test_sync_instance_creation_name_only_gpu_quota_unavailable_returns_503_and_no_mutation():
     from app.api.compute.instances import create_instance
 
     conn = MagicMock()
@@ -418,7 +431,8 @@ async def test_sync_instance_creation_gpu_quota_malformed_returns_503_and_no_mut
         name="test-gpu-vm",
         flavor_id="fl-gpu",
         image_id="img-123",
-        libraries=[],
+        network_id="net-1",
+        data_mounts=[{"file_storage_id": "share-data", "mount_point": "/mnt/data"}],
     )
 
     from app.services.gpu_quota import GpuQuotaUnavailable
@@ -431,7 +445,7 @@ async def test_sync_instance_creation_gpu_quota_malformed_returns_503_and_no_mut
         ),
         patch("app.services.instance_names.ensure_unique_instance_name", return_value="test-gpu-vm"),
         patch("app.api.compute.instances._resolve_create_placement", return_value=(req, "nova", "nova")),
-        patch("app.api.compute.instances._prepare_prebuilt_file_storages") as mock_manila,
+        patch("app.api.compute.instances._prepare_data_mounts", new_callable=AsyncMock) as mock_data_mounts,
         patch("app.api.compute.instances.cinder.create_volume_from_image") as mock_cinder,
         patch("app.api.compute.instances.nova.create_server") as mock_nova,
     ):
@@ -444,7 +458,7 @@ async def test_sync_instance_creation_gpu_quota_malformed_returns_503_and_no_mut
             )
         assert exc_info.value.status_code == 503
         assert "GPU quota 서비스에 접근할 수 없습니다" in exc_info.value.detail
-        mock_manila.assert_not_called()
+        mock_data_mounts.assert_not_awaited()
         mock_cinder.assert_not_called()
         mock_nova.assert_not_called()
 
@@ -470,7 +484,8 @@ async def test_sync_instance_creation_gpu_quota_authority_unavailable_returns_50
         name="test-gpu-vm",
         flavor_id="fl-gpu",
         image_id="img-123",
-        libraries=[],
+        network_id="net-1",
+        data_mounts=[{"file_storage_id": "share-data", "mount_point": "/mnt/data"}],
     )
 
     from app.services.gpu_quota import GpuQuotaUnavailable
@@ -483,7 +498,7 @@ async def test_sync_instance_creation_gpu_quota_authority_unavailable_returns_50
         ),
         patch("app.services.instance_names.ensure_unique_instance_name", return_value="test-gpu-vm"),
         patch("app.api.compute.instances._resolve_create_placement", return_value=(req, "nova", "nova")),
-        patch("app.api.compute.instances._prepare_prebuilt_file_storages") as mock_manila,
+        patch("app.api.compute.instances._prepare_data_mounts", new_callable=AsyncMock) as mock_data_mounts,
         patch("app.api.compute.instances.cinder.create_volume_from_image") as mock_cinder,
         patch("app.api.compute.instances.nova.create_server") as mock_nova,
     ):
@@ -496,7 +511,7 @@ async def test_sync_instance_creation_gpu_quota_authority_unavailable_returns_50
             )
         assert exc_info.value.status_code == 503
         assert "GPU quota 서비스에 접근할 수 없습니다" in exc_info.value.detail
-        mock_manila.assert_not_called()
+        mock_data_mounts.assert_not_awaited()
         mock_cinder.assert_not_called()
         mock_nova.assert_not_called()
 
@@ -517,7 +532,8 @@ async def test_tenant_async_quota_denial_returns_409_before_streaming(client, mo
         "name": "tenant-sse-vm",
         "image_id": "img-123",
         "flavor_id": "fl-gpu",
-        "libraries": [],
+        "network_id": "net-1",
+        "data_mounts": [{"file_storage_id": "share-data", "mount_point": "/mnt/data"}],
         "boot_volume_size_gb": 50,
     }
 
@@ -527,7 +543,7 @@ async def test_tenant_async_quota_denial_returns_409_before_streaming(client, mo
         patch("app.api.compute.instances.nova.list_flavors", return_value=[gpu_flavor]),
         patch("app.services.gpu_quota.check_gpu_quota", side_effect=GpuQuotaDenied("Tenant GPU quota exceeded")),
         patch("app.services.instance_names.ensure_unique_instance_name", return_value="tenant-sse-vm"),
-        patch("app.api.compute.instances._prepare_prebuilt_file_storages") as mock_manila,
+        patch("app.api.compute.instances._prepare_data_mounts", new_callable=AsyncMock) as mock_data_mounts,
         patch("app.api.compute.instances.cinder.create_volume_from_image") as mock_cinder,
         patch("app.api.compute.instances.nova.create_server") as mock_nova,
     ):
@@ -535,7 +551,7 @@ async def test_tenant_async_quota_denial_returns_409_before_streaming(client, mo
 
     assert resp.status_code == 409
     assert resp.json()["detail"] == "Tenant GPU quota exceeded"
-    mock_manila.assert_not_called()
+    mock_data_mounts.assert_not_awaited()
     mock_cinder.assert_not_called()
     mock_nova.assert_not_called()
 
@@ -556,7 +572,8 @@ async def test_tenant_async_quota_unavailable_returns_503_before_streaming(clien
         "name": "tenant-sse-vm",
         "image_id": "img-123",
         "flavor_id": "fl-gpu",
-        "libraries": [],
+        "network_id": "net-1",
+        "data_mounts": [{"file_storage_id": "share-data", "mount_point": "/mnt/data"}],
         "boot_volume_size_gb": 50,
     }
 
@@ -566,7 +583,7 @@ async def test_tenant_async_quota_unavailable_returns_503_before_streaming(clien
         patch("app.api.compute.instances.nova.list_flavors", return_value=[gpu_flavor]),
         patch("app.services.gpu_quota.check_gpu_quota", side_effect=GpuQuotaUnavailable("GPU quota timeout")),
         patch("app.services.instance_names.ensure_unique_instance_name", return_value="tenant-sse-vm"),
-        patch("app.api.compute.instances._prepare_prebuilt_file_storages") as mock_manila,
+        patch("app.api.compute.instances._prepare_data_mounts", new_callable=AsyncMock) as mock_data_mounts,
         patch("app.api.compute.instances.cinder.create_volume_from_image") as mock_cinder,
         patch("app.api.compute.instances.nova.create_server") as mock_nova,
     ):
@@ -574,7 +591,7 @@ async def test_tenant_async_quota_unavailable_returns_503_before_streaming(clien
 
     assert resp.status_code == 503
     assert resp.json()["detail"] == "내부 서버 오류"
-    mock_manila.assert_not_called()
+    mock_data_mounts.assert_not_awaited()
     mock_cinder.assert_not_called()
     mock_nova.assert_not_called()
 
@@ -596,7 +613,6 @@ async def test_admin_async_quota_denial_returns_409_before_streaming(admin_clien
         "image_id": "img-123",
         "flavor_id": "fl-gpu",
         "project_id": "target-proj-abc",
-        "libraries": [],
     }
 
     from app.services.gpu_quota import GpuQuotaDenied
@@ -609,7 +625,6 @@ async def test_admin_async_quota_denial_returns_409_before_streaming(admin_clien
             side_effect=GpuQuotaDenied("Admin target project GPU quota exceeded"),
         ),
         patch("app.services.instance_names.ensure_unique_instance_name", return_value="admin-sse-vm"),
-        patch("app.api.compute.instances._prepare_prebuilt_file_storages") as mock_manila,
         patch("app.api.identity.admin_instances.cinder.create_volume_from_image") as mock_cinder,
         patch("app.api.identity.admin_instances.nova.create_server") as mock_nova,
     ):
@@ -617,7 +632,6 @@ async def test_admin_async_quota_denial_returns_409_before_streaming(admin_clien
 
     assert resp.status_code == 409
     assert resp.json()["detail"] == "Admin target project GPU quota exceeded"
-    mock_manila.assert_not_called()
     mock_cinder.assert_not_called()
     mock_nova.assert_not_called()
 
@@ -639,7 +653,6 @@ async def test_admin_async_quota_unavailable_returns_503_before_streaming(admin_
         "image_id": "img-123",
         "flavor_id": "fl-gpu",
         "project_id": "target-proj-abc",
-        "libraries": [],
     }
 
     from app.services.gpu_quota import GpuQuotaUnavailable
@@ -649,7 +662,6 @@ async def test_admin_async_quota_unavailable_returns_503_before_streaming(admin_
         patch("app.api.identity.admin_instances.nova.list_flavors", return_value=[gpu_flavor]),
         patch("app.services.gpu_quota.check_gpu_quota", side_effect=GpuQuotaUnavailable("Admin connection failed")),
         patch("app.services.instance_names.ensure_unique_instance_name", return_value="admin-sse-vm"),
-        patch("app.api.compute.instances._prepare_prebuilt_file_storages") as mock_manila,
         patch("app.api.identity.admin_instances.cinder.create_volume_from_image") as mock_cinder,
         patch("app.api.identity.admin_instances.nova.create_server") as mock_nova,
     ):
@@ -657,7 +669,6 @@ async def test_admin_async_quota_unavailable_returns_503_before_streaming(admin_
 
     assert resp.status_code == 503
     assert resp.json()["detail"] == "내부 서버 오류"
-    mock_manila.assert_not_called()
     mock_cinder.assert_not_called()
     mock_nova.assert_not_called()
 

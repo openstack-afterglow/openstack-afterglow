@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/drover-pages';
 	import { untrack } from 'svelte';
 	import { auth, authReady } from '$lib/stores/auth';
@@ -78,7 +79,7 @@
 	</SlidePanel>
 {/if}
 
-<div class="p-4 md:p-8">
+<PageShell>
 	<DroverHeader
 		bind:showDeleted={ctrl.showDeleted}
 		{ar}
@@ -105,4 +106,4 @@
 		onOpenCreate={() => { ctrl.showModal = true; }}
 		onOpenCreateIntent={prefetchCreateDependencies}
 	/>
-</div>
+</PageShell>

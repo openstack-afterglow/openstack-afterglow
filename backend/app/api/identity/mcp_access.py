@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import get_os_conn, get_token_info
@@ -42,8 +42,15 @@ class CreateMcpTokenRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     access_level: str = Field(pattern="^(read|manage)$")
     expires_at: datetime | None = None
+    non_expiring: bool = Field(default=False, strict=True)
     project_scope: str = Field(default="current", pattern="^(current|selected|all)$")
     project_ids: list[str] | None = None
+
+    @model_validator(mode="after")
+    def validate_lifetime(self):
+        if self.non_expiring and self.expires_at is not None:
+            raise ValueError("non-expiring tokens cannot also specify an expiry")
+        return self
 
 
 class McpProjectView(BaseModel):
@@ -60,7 +67,7 @@ class McpTokenView(BaseModel):
     status: str
     visible_prefix: str | None
     issued_at: datetime | None
-    expires_at: datetime
+    expires_at: datetime | None
     last_used_at: datetime | None
     revoked_at: datetime | None
     is_lumen_default: bool
@@ -165,6 +172,7 @@ async def create_mcp_token(
             display_name=body.name,
             access_level=body.access_level,
             expires_at=body.expires_at,
+            non_expiring=body.non_expiring,
             project_scope=body.project_scope,
             project_ids=body.project_ids,
         )

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
@@ -70,13 +71,13 @@
 </script>
 
 {#if loading}
-	<div class="p-6">
+	<PageShell>
 		<LoadingSkeleton rows={4} />
-	</div>
+	</PageShell>
 {:else if error}
-	<div class="p-6 text-red-400 text-sm">{error}</div>
+	<PageShell class="text-red-400 text-sm">{error}</PageShell>
 {:else if project}
-	<div class="flex flex-col gap-6 p-6">
+	<PageShell class="flex flex-col gap-6">
 		<PageHeader breadcrumb={t('projectDetail.breadcrumb')} title={project.name} subtitle={t('projectDetail.subtitle')}>
 			{#snippet actions()}
 				<a href="/admin/projects" class="text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('projectDetail.back')}</a>
@@ -175,5 +176,5 @@
 				showUser
 			/>
 		{/if}
-	</div>
+	</PageShell>
 {/if}

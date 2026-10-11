@@ -82,7 +82,7 @@ describe('buildGraph NIC 그룹화와 FIP', () => {
 	it('port_id 가 없으면 네트워크 단위로 묶고 network_id 가 없으면 이름+CIDR 로 해석한다', () => {
 		const data = makeFixture();
 		// 이름이 중복되는 두 네트워크: CIDR 로 구분해야 한다
-		data.networks.push({ ...data.networks[2], id: 'net-web-dup', subnet_details: [{ id: 'sn-web-dup', name: 'dup', cidr: '10.10.7.0/24', gateway_ip: '10.10.7.1', dhcp_enabled: true }] });
+		data.networks.push({ ...data.networks[2], id: 'net-web-dup', subnet_details: [{ id: 'sn-web-dup', name: 'dup', cidr: '10.10.7.0/24', ip_version: 4, gateway_ip: '10.10.7.1', dhcp_enabled: true }] });
 		data.instances.push({
 			id: 'vm-legacy', name: 'legacy', status: 'ACTIVE', project_id: P, network_names: ['web-net'],
 			ip_addresses: [

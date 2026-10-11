@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -138,7 +139,7 @@
 	onMount(load);
 </script>
 
-<div class="p-4 md:p-6 max-w-7xl mx-auto">
+<PageShell>
 	<PageHeader breadcrumb={t('orphanPage.breadcrumb')} title={t('orphanPage.title')}>
 		{#snippet actions()}
 			<AutoRefreshControl
@@ -183,7 +184,7 @@
 		<OrphanShareSection items={shares} bind:selected={selectedShares} onCleanup={() => openConfirm('manila_share')} />
 		<OrphanSecurityGroupSection items={secgroups} bind:selected={selectedSGs} onCleanup={() => openConfirm('security_group')} />
 	{/if}
-</div>
+</PageShell>
 
 <OrphanCleanupModal
 	kind={confirmKind}

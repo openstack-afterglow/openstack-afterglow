@@ -1,77 +1,46 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/dashboard-home';
-	import type { ProjectData } from '$lib/types/userDashboard';
-	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
+	import { TableShell } from '$lib/components/ui';
+	import { RESOURCE_CATEGORIES } from '$lib/types/userDashboard';
+	import type { ProjectResourceInventory } from '$lib/types/userDashboard';
 
-	interface Props {
-		projects: ProjectData[];
-	}
-
-	let { projects }: Props = $props();
-
-	function formatRam(mb: number): string {
-		if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
-		return `${mb} MB`;
-	}
+	let { projects }: { projects: ProjectResourceInventory[] } = $props();
 </script>
 
 {#if projects.length > 0}
-	<div class="motion-enter hidden sm:block bg-surface-base border border-line rounded-lg p-5 mb-5">
-		<div class="text-ink-0 text-[15px] font-semibold mb-3.5">{t('projectUsage.title')}</div>
-		<div class="bg-[#0B1220] border border-line rounded-lg overflow-hidden">
-			<div class="grid grid-cols-[1.5fr_80px_80px_90px_80px_90px] px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
-				<div>{t('projectUsage.project')}</div>
-				<div class="text-right">{t('projectUsage.instances')}</div>
-				<div class="text-right">{t('projectUsage.volumes')}</div>
-				<div class="text-right">{t('projectUsage.storage')}</div>
-				<div class="text-right">vCPU</div>
-				<div class="text-right">RAM</div>
-			</div>
-			{#each projects as p (p.project_id)}
-				<div class="grid grid-cols-[1.5fr_80px_80px_90px_80px_90px] px-4 py-3 text-[13px] items-center border-b border-line last:border-b-0 hover:bg-surface-sunken/20 transition-colors">
-					<div class="min-w-0">
-						<div class="text-ink-0 font-medium truncate">{p.project_name}</div>
-						{#if p.error}
-							<span class="text-xs text-red-400">{t('projectUsage.loadFailed')}</span>
-						{/if}
-					</div>
-					<div class="text-right">
-						{#if p.instance_count > 0}
-							<span class="text-ink-0 font-mono text-xs font-medium"><AnimatedNumber value={p.instance_count} /></span>
-						{:else}
-							<span class="text-ink-2 text-xs">—</span>
-						{/if}
-					</div>
-					<div class="text-right">
-						{#if p.volume_count > 0}
-							<span class="text-ink-0 font-mono text-xs font-medium"><AnimatedNumber value={p.volume_count} /></span>
-						{:else}
-							<span class="text-ink-2 text-xs">—</span>
-						{/if}
-					</div>
-					<div class="text-right">
-						{#if p.storage_gb > 0}
-							<span class="text-ink-0 font-mono text-xs"><AnimatedNumber value={p.storage_gb} /> GB</span>
-						{:else}
-							<span class="text-ink-2 text-xs">—</span>
-						{/if}
-					</div>
-					<div class="text-right">
-						{#if p.vcpus > 0}
-							<span class="text-ink-0 font-mono text-xs"><AnimatedNumber value={p.vcpus} /></span>
-						{:else}
-							<span class="text-ink-2 text-xs">—</span>
-						{/if}
-					</div>
-					<div class="text-right">
-						{#if p.ram_mb > 0}
-							<span class="text-ink-0 font-mono text-xs"><AnimatedNumber value={p.ram_mb} format={(mb) => p.ram_mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`} /></span>
-						{:else}
-							<span class="text-ink-2 text-xs">—</span>
-						{/if}
-					</div>
-				</div>
-			{/each}
+	<section data-project-usage class="min-w-0 mb-5" aria-labelledby="project-usage-title">
+		<h2 id="project-usage-title" class="text-sm font-semibold text-ink-0 mb-3">{t('projectUsage.title')}</h2>
+		<p class="text-xs text-ink-2 mb-3">{t('myResources.keypairContext')}</p>
+		<div data-project-usage-scroll role="region" aria-label={t('myResources.usageScroll')} tabindex="0" class="min-w-0 overflow-x-auto rounded-lg focus-visible:outline-2 focus-visible:outline-accent">
+			<TableShell density="compact" class="min-w-max">
+				<table class="min-w-max">
+					<thead><tr>
+						<th scope="col">{t('projectUsage.project')}</th>
+						{#each RESOURCE_CATEGORIES as category (category)}<th scope="col">{t(`myResources.category.${category}`)}</th>{/each}
+						<th scope="col">{t('myResources.usage.vcpus')}</th>
+						<th scope="col">{t('myResources.usage.ram_mb')}</th>
+						<th scope="col">{t('myResources.usage.storage_gb')}</th>
+					</tr></thead>
+					<tbody>
+						{#each projects as project (project.project_id)}
+							<tr data-usage-project={project.project_id}>
+								<th scope="row" class="text-ink-0">{project.project_name}</th>
+								{#each RESOURCE_CATEGORIES as category (category)}
+									{@const inventory = project.resources[category]}
+									<td data-usage-category={category} data-usage-state={inventory.state} class="tabular-nums whitespace-nowrap">
+									{inventory.state !== 'ready' || inventory.count === null ? t('myResources.unknown') : inventory.count}
+										{#if inventory.state !== 'ready'}<span class="text-ink-2"> · {t(`myResources.state.${inventory.state}`)}</span>{/if}
+									</td>
+								{/each}
+								{#each ['vcpus', 'ram_mb', 'storage_gb'] as metric}
+									{@const value = project.usage[metric as keyof typeof project.usage]}
+									<td data-usage-metric={metric} class="tabular-nums whitespace-nowrap">{value === null ? t('myResources.unknown') : value}</td>
+								{/each}
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</TableShell>
 		</div>
-	</div>
+	</section>
 {/if}

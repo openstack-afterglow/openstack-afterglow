@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import logging as _logging
+from bisect import bisect_right
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -23,6 +24,7 @@ from app.models.storage import (
     RouterInterface,
     SubnetDetail,
     SubnetIpAllocation,
+    SubnetIpUsage,
     TopologyData,
     TopologyNetwork,
     TopologyRouter,
@@ -101,6 +103,7 @@ def _serialize_network_detail(conn: openstack.connection.Connection, n: Any) -> 
                     name=s.name or "",
                     cidr=s.cidr or "",
                     gateway_ip=s.gateway_ip,
+                    ip_version=s.ip_version,
                     dhcp_enabled=bool(s.is_dhcp_enabled),
                 )
             )
@@ -182,27 +185,141 @@ def _ip_address_key(ip_str: str) -> tuple[int, int, str]:
         return (99, 0, str(ip_str))
 
 
+def _resource_field(resource: Any, field: str, default: Any = None) -> Any:
+    return resource.get(field, default) if isinstance(resource, dict) else getattr(resource, field, default)
+
+
+def _subnet_address(
+    value: Any, cidr: ipaddress.IPv4Network | ipaddress.IPv6Network, *, require_membership: bool = True
+) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+    if not isinstance(value, str) or "%" in value:
+        raise ValueError("Malformed Neutron subnet IP address")
+    address = ipaddress.ip_address(value)
+    if address.version != cidr.version:
+        raise ValueError("Neutron subnet IP address has the wrong IP version")
+    if require_membership and address not in cidr:
+        raise ValueError("Neutron subnet IP address does not belong to its CIDR")
+    return address
+
+
+def _subnet_ip_usage(
+    pools: list[AllocationPool],
+    allocated: set[int],
+    gateway: int | None,
+    allocation_mode: str,
+) -> SubnetIpUsage:
+    # Inclusive integer intervals keep even IPv6 /64 pools bounded by provider data size.
+    intervals: list[tuple[int, int]] = []
+    for start, end in sorted((int(ipaddress.ip_address(p.start)), int(ipaddress.ip_address(p.end))) for p in pools):
+        if intervals and start <= intervals[-1][1] + 1:
+            intervals[-1] = (intervals[-1][0], max(intervals[-1][1], end))
+        else:
+            intervals.append((start, end))
+    starts = [start for start, _ in intervals]
+
+    def in_pool(address: int) -> bool:
+        index = bisect_right(starts, address) - 1
+        return index >= 0 and address <= intervals[index][1]
+
+    total = sum(end - start + 1 for start, end in intervals)
+    allocated_pool = sum(in_pool(address) for address in allocated)
+    reserved = int(gateway is not None and gateway not in allocated and in_pool(gateway))
+    return SubnetIpUsage(
+        total_pool_ips=str(total),
+        allocated_ips=str(len(allocated)),
+        allocated_pool_ips=str(allocated_pool),
+        reserved_pool_ips=str(reserved),
+        available_pool_ips=str(total - allocated_pool - reserved) if allocation_mode == "pool" else None,
+        outside_pool_ips=str(len(allocated) - allocated_pool),
+        allocation_mode=allocation_mode,
+    )
+
+
+def _subnet_device_names(conn, ports: list[AdminSubnetPort]) -> tuple[dict[tuple[str, str], str | None], bool]:
+    names: dict[tuple[str, str], str | None] = {}
+    available = True
+    for port in ports:
+        if not port.device_id:
+            continue
+        if port.device_owner.startswith("compute:"):
+            kind = "compute"
+        elif (
+            port.device_owner.startswith("network:router")
+            or port.device_owner == "network:ha_router_replicated_interface"
+        ):
+            kind = "router"
+        else:
+            continue
+        key = (kind, port.device_id)
+        if key in names:
+            continue
+        names[key] = None
+        try:
+            if kind == "compute":
+                device = conn.compute.get_server(port.device_id)
+            else:
+                device = conn.network.get_router(port.device_id)
+            name = _resource_field(device, "name")
+            if _resource_field(device, "id") != port.device_id or not isinstance(name, str):
+                raise ValueError("Referenced Neutron device name unavailable")
+            names[key] = name or None
+        except Exception:
+            available = False
+    return names, available
+
+
 def get_admin_subnet_detail(conn: openstack.connection.Connection, subnet_id: str) -> AdminSubnetDetail:
+    from openstack.exceptions import HttpException
+
+    from app.services.project_deletion import _native_admin
+
+    # Platform administrator assignments do not make this provider token admin-wide.
+    if not _native_admin(conn):
+        raise HttpException(
+            "Native administrator context is required for complete subnet IP inventory", http_status=403
+        )
+
     subnet = conn.network.get_subnet(subnet_id)
     network = conn.network.get_network(subnet.network_id)
 
-    raw_pools = getattr(subnet, "allocation_pools", []) or []
+    cidr_value = _resource_field(subnet, "cidr")
+    if not isinstance(cidr_value, str):
+        raise ValueError("Malformed Neutron subnet CIDR")
+    cidr = ipaddress.ip_network(cidr_value)
+    ip_ver = _resource_field(subnet, "ip_version")
+    if ip_ver not in (4, 6) or ip_ver != cidr.version:
+        raise ValueError("Neutron subnet IP version does not match its CIDR")
+    gw_ip = _resource_field(subnet, "gateway_ip")
+    gateway = _subnet_address(gw_ip, cidr, require_membership=False) if gw_ip is not None else None
+    allocation_mode = "pool"
+    if ip_ver == 6:
+        address_mode = _resource_field(subnet, "ipv6_address_mode")
+        ra_mode = _resource_field(subnet, "ipv6_ra_mode")
+        for mode in (address_mode, ra_mode):
+            if mode not in (None, "", "dhcpv6-stateful", "slaac", "dhcpv6-stateless"):
+                raise ValueError("Malformed Neutron IPv6 address mode")
+        if address_mode in ("slaac", "dhcpv6-stateless"):
+            allocation_mode = address_mode
+        elif ra_mode in ("slaac", "dhcpv6-stateless"):
+            allocation_mode = ra_mode
+
+    raw_pools = _resource_field(subnet, "allocation_pools")
+    if not isinstance(raw_pools, (list, tuple)):
+        raise ValueError("Malformed Neutron allocation pools")
     allocation_pools: list[AllocationPool] = []
-    for p in raw_pools:
-        if isinstance(p, dict):
-            s_ip = p.get("start")
-            e_ip = p.get("end")
-        else:
-            s_ip = getattr(p, "start", None)
-            e_ip = getattr(p, "end", None)
-        if s_ip and e_ip:
-            allocation_pools.append(AllocationPool(start=str(s_ip), end=str(e_ip)))
+    for pool in raw_pools:
+        start = _subnet_address(_resource_field(pool, "start"), cidr)
+        end = _subnet_address(_resource_field(pool, "end"), cidr)
+        if int(start) > int(end):
+            raise ValueError("Neutron allocation pool start exceeds end")
+        allocation_pools.append(AllocationPool(start=str(start), end=str(end)))
     allocation_pools.sort(key=lambda ap: _ip_address_key(ap.start))
 
     raw_ports = list(conn.network.ports(network_id=subnet.network_id))
     subnet_ports: list[AdminSubnetPort] = []
     allocations: list[SubnetIpAllocation] = []
     dhcp_ports: list[tuple[Any, list[str]]] = []
+    allocated_addresses: set[int] = set()
 
     for port in raw_ports:
         port_id = getattr(port, "id", "") or (port.get("id") if isinstance(port, dict) else "")
@@ -226,22 +343,23 @@ def get_admin_subnet_detail(conn: openstack.connection.Connection, subnet_id: st
             or (port.get("binding:host_id") or port.get("binding_host_id") if isinstance(port, dict) else None)
         )
 
-        fixed_ips = getattr(port, "fixed_ips", []) or (port.get("fixed_ips") if isinstance(port, dict) else []) or []
-        subnet_ips: list[str] = []
-        for f in fixed_ips:
-            if isinstance(f, dict):
-                f_sub = f.get("subnet_id")
-                f_ip = f.get("ip_address")
-            else:
-                f_sub = getattr(f, "subnet_id", None)
-                f_ip = getattr(f, "ip_address", None)
-            if f_sub == subnet_id and f_ip:
-                subnet_ips.append(str(f_ip))
+        fixed_ips = _resource_field(port, "fixed_ips")
+        if not isinstance(fixed_ips, (list, tuple)):
+            raise ValueError("Malformed Neutron port fixed IPs")
+        subnet_ips_set: set[str] = set()
+        for fixed_ip in fixed_ips:
+            fixed_subnet = _resource_field(fixed_ip, "subnet_id")
+            if not isinstance(fixed_subnet, str) or not fixed_subnet:
+                raise ValueError("Malformed Neutron fixed IP subnet ID")
+            if fixed_subnet == subnet_id:
+                address = _subnet_address(_resource_field(fixed_ip, "ip_address"), cidr)
+                subnet_ips_set.add(str(address))
+                allocated_addresses.add(int(address))
 
-        if not subnet_ips:
+        if not subnet_ips_set:
             continue
 
-        subnet_ips.sort(key=_ip_address_key)
+        subnet_ips = sorted(subnet_ips_set, key=_ip_address_key)
 
         subnet_ports.append(
             AdminSubnetPort(
@@ -275,6 +393,23 @@ def get_admin_subnet_detail(conn: openstack.connection.Connection, subnet_id: st
 
     subnet_ports.sort(key=lambda p: p.id)
     allocations.sort(key=lambda a: (_ip_address_key(a.ip_address), a.port_id))
+
+    device_names, device_names_available = _subnet_device_names(conn, subnet_ports)
+    for items in (subnet_ports, allocations):
+        for item in items:
+            if item.device_owner.startswith("compute:"):
+                kind = "compute"
+            elif (
+                item.device_owner.startswith("network:router")
+                or item.device_owner == "network:ha_router_replicated_interface"
+            ):
+                kind = "router"
+            else:
+                continue
+            item.device_name = device_names.get((kind, item.device_id))
+    ip_usage = _subnet_ip_usage(
+        allocation_pools, allocated_addresses, int(gateway) if gateway is not None else None, allocation_mode
+    )
 
     dhcp_agent_data_available = True
     agents = []
@@ -391,8 +526,6 @@ def get_admin_subnet_detail(conn: openstack.connection.Connection, subnet_id: st
         or getattr(subnet, "tenant_id", None)
         or (subnet.get("project_id") or subnet.get("tenant_id") if isinstance(subnet, dict) else None)
     )
-    gw_ip = getattr(subnet, "gateway_ip", None) or (subnet.get("gateway_ip") if isinstance(subnet, dict) else None)
-    ip_ver = getattr(subnet, "ip_version", 4) or (subnet.get("ip_version") if isinstance(subnet, dict) else 4) or 4
     dhcp_en = getattr(subnet, "is_dhcp_enabled", None)
     if dhcp_en is None:
         dhcp_en = getattr(subnet, "enable_dhcp", True)
@@ -405,10 +538,12 @@ def get_admin_subnet_detail(conn: openstack.connection.Connection, subnet_id: st
         network_id=network.id if hasattr(network, "id") else network["id"],
         network_name=getattr(network, "name", "") or (network.get("name") if isinstance(network, dict) else "") or "",
         project_id=proj_id,
-        cidr=getattr(subnet, "cidr", "") or (subnet.get("cidr") if isinstance(subnet, dict) else "") or "",
-        gateway_ip=str(gw_ip) if gw_ip else None,
-        ip_version=int(ip_ver),
+        cidr=cidr_value,
+        gateway_ip=str(gateway) if gateway is not None else None,
+        ip_version=ip_ver,
         dhcp_enabled=bool(dhcp_en),
+        ip_usage=ip_usage,
+        device_names_available=device_names_available,
         allocation_pools=allocation_pools,
         ports=subnet_ports,
         allocations=allocations,
@@ -449,6 +584,7 @@ def create_subnet(
         name=s.name or "",
         cidr=s.cidr or "",
         gateway_ip=s.gateway_ip,
+        ip_version=s.ip_version,
         dhcp_enabled=bool(s.is_dhcp_enabled),
     )
 
@@ -477,6 +613,7 @@ def update_subnet(
         name=s.name or "",
         cidr=s.cidr or "",
         gateway_ip=s.gateway_ip,
+        ip_version=s.ip_version,
         dhcp_enabled=bool(s.is_dhcp_enabled),
     )
 
@@ -826,6 +963,7 @@ def get_topology(
             name=s.name or "",
             cidr=s.cidr or "",
             gateway_ip=s.gateway_ip,
+            ip_version=s.ip_version,
             dhcp_enabled=bool(s.is_dhcp_enabled),
         )
         subnet_network_map[s.id] = s.network_id

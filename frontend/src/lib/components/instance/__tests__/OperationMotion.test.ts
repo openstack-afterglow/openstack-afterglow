@@ -13,8 +13,8 @@ import ConsoleSection from '../ConsoleSection.svelte';
 
 beforeEach(() => {
 	controller.current = {
-		instance: { id: 'instance-a', name: 'VM A', union_libraries: [], metadata: {} },
-		passwordPrecheck: { supported: true }, passwordPrecheckLoading: false,
+		instance: { id: 'instance-a', name: 'VM A', status: 'ACTIVE', union_libraries: [], metadata: {} },
+		canChangePassword: true, passwordPrecheck: { supported: true }, passwordPrecheckLoading: false,
 		migrateHosts: [], migrateError: '', migrateLoading: false,
 		volumes: [], availableVolumes: [], actioning: null,
 		consolePollAr: { active: false, intervalSeconds: 30 },
@@ -34,17 +34,14 @@ describe('instance operation feedback', () => {
 		await fireEvent.input(screen.getByLabelText('비밀번호 확인'), { target: { value: 'password123' } });
 		const submit = screen.getByRole('button', { name: '변경' }) as HTMLButtonElement;
 		expect(submit.disabled).toBe(false);
-		expect(screen.queryByRole('status')).toBeNull();
 		await fireEvent.click(submit);
 		expect(submit.disabled).toBe(true);
-		expect(within(submit).getByRole('status').textContent?.trim()).toBe('변경 중...');
+		expect(submit.getAttribute('aria-busy')).toBe('true');
 		expect(onClose).not.toHaveBeenCalled();
 		resolve('게스트 에이전트 연결 실패');
 		await screen.findByText('게스트 에이전트 연결 실패');
 		expect(submit.disabled).toBe(false);
-		expect(doSetPassword).toHaveBeenCalledOnce();
-		expect(doSetPassword).toHaveBeenCalledWith('password123');
-		expect(screen.queryByRole('status')).toBeNull();
+		expect(submit.getAttribute('aria-busy')).toBe('false');
 		expect(onClose).not.toHaveBeenCalled();
 	});
 

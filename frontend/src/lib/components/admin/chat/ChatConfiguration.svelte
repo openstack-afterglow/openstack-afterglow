@@ -1862,7 +1862,7 @@
 	const rowActionCls = 'text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)] transition-colors';
 </script>
 
-<div class="max-w-4xl p-4 md:p-8">
+<div class="min-w-0">
 	<PageHeader
 		breadcrumb={section === 'models' ? t('configuration.aiChatModelSettings') : section === 'tools' ? t('configuration.aiChatToolSettings') : t('configuration.aiChatSettings')}
 		title={section === 'models' ? t('configuration.modelSettings') : section === 'tools' ? t('configuration.toolSettings') : t('configuration.chatSettings')}

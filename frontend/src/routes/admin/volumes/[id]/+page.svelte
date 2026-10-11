@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/admin-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { page } from '$app/stores';
@@ -94,7 +95,7 @@
 	});
 </script>
 
-<div class="p-4 md:p-8 max-w-4xl">
+<PageShell>
 	<div class="flex items-center gap-3 mb-6">
 		<a href="/admin/volumes" class="text-ink-2 hover:text-ink-0 text-sm transition-colors">{t('volumeDetail.back')}</a>
 	</div>
@@ -111,7 +112,7 @@
 		<AdminVolumeAttachmentTable attachments={volume.attachments} />
 		<AdminVolumeMetadataCard metadata={volume.metadata} />
 	{/if}
-</div>
+</PageShell>
 
 <AdminVolumeExtendModal bind:open={showExtend} currentSize={volume?.size ?? 0} {extending} onExtend={extendVolume} />
 <AdminVolumeResetStatusModal bind:open={showReset} {resetting} onReset={resetVolumeStatus} />

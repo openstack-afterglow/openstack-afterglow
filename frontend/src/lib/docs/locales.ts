@@ -56,6 +56,7 @@ const ko = {
 	prerequisites: '시작 전 확인', consoleUsage: '콘솔에서 사용하기', consoleNote: '로그인하고 작업할 프로젝트를 선택하세요. 조회·변경은 현재 프로젝트의 권한과 서비스 설정을 따릅니다.',
 	serviceUnavailable: '이 환경에서 서비스가 비활성화되어 있습니다.', related: '함께 읽기', official: '공식 참고 자료', toc: '이 문서의 목차', inThisArticle: '이 문서에서', breadcrumbs: '문서 경로',
 	copy: '복사', copyLabel: (label: string) => `${label} 복사`, copySuccess: '명령을 복사했습니다.', copyFailure: '복사하지 못했습니다. 아래 명령을 선택해 직접 복사하세요.',
+	screenshotOpen: '원본 이미지 열기 (새 탭)', screenshotOpenLabel: (alt: string) => `${alt} — 원본 이미지 열기 (새 탭)`, screenshotKoreanNote: '실제 한국어 콘솔 화면이며 개인정보·자원 식별자는 가렸습니다.',
 	notFound: '문서를 찾을 수 없습니다', failed: '문서를 열지 못했습니다', errorRecovery: '주소를 확인하거나 문서 홈에서 서비스 이름으로 검색하세요.', goHome: '문서 홈으로 이동',
 	categories: [
 		{ id: 'start', label: '시작하기', description: '계정과 프로젝트를 준비하고 첫 자원을 만듭니다.' },
@@ -81,6 +82,7 @@ export const docsMessages: Record<DocsLocale, typeof ko> = {
 		prerequisites: 'Before you start', consoleUsage: 'Use in the console', consoleNote: 'Sign in and select the project you will work in. Reads and changes follow that project’s permissions and service configuration.',
 		serviceUnavailable: 'This service is disabled in this environment.', related: 'Related guides', official: 'Official references', toc: 'Article contents', inThisArticle: 'In this article', breadcrumbs: 'Documentation breadcrumb',
 		copy: 'Copy', copyLabel: (label: string) => `Copy ${label}`, copySuccess: 'Command copied.', copyFailure: 'Could not copy. Select the command below and copy it manually.',
+		screenshotOpen: 'Open original image (new tab)', screenshotOpenLabel: (alt: string) => `${alt} — Open original image (new tab)`, screenshotKoreanNote: 'Actual Korean-language console screens; personal information and resource identifiers are hidden.',
 		notFound: 'Documentation not found', failed: 'Could not open documentation', errorRecovery: 'Check the address or search for the service on the docs home page.', goHome: 'Go to docs home',
 		categories: [
 			{ id: 'start', label: 'Getting started', description: 'Prepare your account and project, then create your first resource.' },
@@ -103,6 +105,7 @@ export const docsMessages: Record<DocsLocale, typeof ko> = {
 		prerequisites: '始める前に', consoleUsage: 'コンソールで利用する', consoleNote: 'ログインし、作業するプロジェクトを選択してください。参照・変更には、そのプロジェクトの権限とサービス設定が適用されます。',
 		serviceUnavailable: 'この環境ではサービスが無効になっています。', related: '関連ガイド', official: '公式リファレンス', toc: 'この記事の目次', inThisArticle: 'この記事について', breadcrumbs: 'ドキュメントの階層',
 		copy: 'コピー', copyLabel: (label: string) => `${label}をコピー`, copySuccess: 'コマンドをコピーしました。', copyFailure: 'コピーできませんでした。下のコマンドを選択して手動でコピーしてください。',
+		screenshotOpen: '元の画像を開く（新しいタブ）', screenshotOpenLabel: (alt: string) => `${alt} — 元の画像を開く（新しいタブ）`, screenshotKoreanNote: '実際の韓国語コンソール画面です。個人情報とリソース識別子は非表示にしています。',
 		notFound: 'ドキュメントが見つかりません', failed: 'ドキュメントを開けませんでした', errorRecovery: 'アドレスを確認するか、ドキュメント一覧でサービス名を検索してください。', goHome: 'ドキュメント一覧へ',
 		categories: [
 			{ id: 'start', label: 'はじめに', description: 'アカウントとプロジェクトを準備し、最初のリソースを作成します。' },
@@ -125,6 +128,7 @@ export const docsMessages: Record<DocsLocale, typeof ko> = {
 		prerequisites: '开始前确认', consoleUsage: '在控制台中使用', consoleNote: '登录并选择要操作的项目。查询与修改遵循当前项目的权限和服务配置。',
 		serviceUnavailable: '此环境中未启用该服务。', related: '相关指南', official: '官方参考资料', toc: '本文目录', inThisArticle: '本文内容', breadcrumbs: '文档路径',
 		copy: '复制', copyLabel: (label: string) => `复制${label}`, copySuccess: '已复制命令。', copyFailure: '无法复制。请选择下方命令并手动复制。',
+		screenshotOpen: '打开原始图片（新标签页）', screenshotOpenLabel: (alt: string) => `${alt} — 打开原始图片（新标签页）`, screenshotKoreanNote: '这是实际的韩语控制台界面，个人信息和资源标识符已隐藏。',
 		notFound: '找不到文档', failed: '无法打开文档', errorRecovery: '请检查地址，或在文档首页按服务名称搜索。', goHome: '前往文档首页',
 		categories: [
 			{ id: 'start', label: '开始使用', description: '准备账户和项目，然后创建第一个资源。' },

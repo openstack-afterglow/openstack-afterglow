@@ -184,7 +184,6 @@ from app.api.mcp import root_router as mcp_root_router
 from app.api.mcp import router as mcp_router
 from app.api.mcp_lumen import router as mcp_lumen_router
 from app.api.union.layer_ops import router as admin_libraries_router
-from app.api.union.layer_public import router as squashfs_libraries_router
 from app.services.mcp_control_plane.transport import (
     install_mcp_route,
     mcp_paths,
@@ -354,7 +353,6 @@ _AUDIT_PREFIX_MAP: list[tuple[str, str]] = [
     ("/api/v1/admin/worker-runtime", "worker_runtime"),
     ("/api/v1/admin/resource-policies", "resource_policy"),
     ("/api/v1/admin/libraries", "union_layer"),
-    ("/api/v1/libraries/squashfs", "union_layer"),
     ("/api/v1/admin/palimpsest", "palimpsest_layer"),
     ("/api/v1/palimpsest/package-keys", "palimpsest_package_key"),
     ("/api/v1/palimpsest/packages", "palimpsest_package"),
@@ -736,7 +734,6 @@ app.include_router(announcements_router, prefix="/api/v1/announcements", tags=["
 app.include_router(tutorial_status_router, prefix="/api/v1/tutorials", tags=["tutorials"])
 app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboard"])
 app.include_router(metrics_router, prefix="/api/v1/metrics", tags=["metrics"])
-app.include_router(squashfs_libraries_router, prefix="/api/v1/libraries/squashfs", tags=["squashfs-libraries"])
 app.include_router(libraries_router, prefix="/api/v1/libraries", tags=["libraries"])
 app.include_router(sd_targets_router, prefix="/api/v1/sd", tags=["sd-targets"])
 app.include_router(grafana_auth_router, prefix="/api/v1/grafana", tags=["grafana-auth"])

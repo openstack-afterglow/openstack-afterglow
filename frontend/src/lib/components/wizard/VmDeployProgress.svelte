@@ -5,7 +5,6 @@
 	const DEPLOY_STAGE_ICONS: Record<string, string> = {
 		manila_preparing: PROVISION_ICON.sharedFolder,
 		boot_volume_creating: PROVISION_ICON.disk,
-		upper_volume_creating: PROVISION_ICON.layers,
 		userdata_generating: PROVISION_ICON.script,
 		server_creating: PROVISION_ICON.server,
 		attaching_volume: PROVISION_ICON.link,

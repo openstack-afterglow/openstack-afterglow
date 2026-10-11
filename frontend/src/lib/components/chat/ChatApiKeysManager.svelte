@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { auth } from '$lib/stores/auth';
+	import { onMount, onDestroy } from 'svelte';
+	import { auth, projectSwitching } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
-	import { serviceCapabilities } from '$lib/stores/servicePermissions';
+	import { serviceCapabilities, serviceDenials, type ProjectPermissions } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
@@ -11,8 +11,12 @@
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import Tabs from '$lib/components/ui/Tabs.svelte';
+	import FormModal from '$lib/components/ui/FormModal.svelte';
+	import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
+	import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
+	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import { formatCredit, isCreditInput } from '$lib/api/chatQuotas';
-	import type { ApiKey } from '$lib/api/chatUsage';
+	import type { ApiKey, ApiKeyIssuancePolicy } from '$lib/api/chatUsage';
 	import type { ChatUsage } from '$lib/api/chatTree';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/chat-settings';
@@ -23,24 +27,70 @@
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
-	const scopeOptions = [
-		['models:read', 'lumen-inventory_reader'],
-		['compat:completions:write', 'lumen-chat_user'],
-		['compat:images:write', 'lumen-images_user'],
-		['compat:audio:write', 'lumen-audio_user'],
-		['compat:realtime:write', 'lumen-audio_user'],
-		['native:tools:execute', 'lumen-tools_user']
-	] as const;
+	const generationLabels = {
+		'models:read': 'apiKeys.scope.models', 'compat:completions:write': 'apiKeys.scope.chat',
+		'compat:images:write': 'apiKeys.scope.images', 'native:images:write': 'apiKeys.scope.images',
+		'compat:audio:write': 'apiKeys.scope.audio', 'native:audio:write': 'apiKeys.scope.audio',
+		'compat:realtime:write': 'apiKeys.scope.realtime', 'native:realtime:write': 'apiKeys.scope.realtime',
+		'native:tools:execute': 'apiKeys.scope.tools'
+	} as const;
+	const resources = {
+		usage: 'apiKeys.scope.resource.usage', batches: 'apiKeys.scope.resource.batches', files: 'apiKeys.scope.resource.files',
+		conversations: 'apiKeys.scope.resource.conversations', runs: 'apiKeys.scope.resource.runs', assets: 'apiKeys.scope.resource.assets',
+		extensions: 'apiKeys.scope.resource.extensions', memory: 'apiKeys.scope.resource.memory', agents: 'apiKeys.scope.resource.agents', mcp: 'apiKeys.scope.resource.mcp'
+	} as const;
+	const actions = { read: 'apiKeys.scope.action.read', write: 'apiKeys.scope.action.write', delete: 'apiKeys.scope.action.delete', use: 'apiKeys.scope.action.use' } as const;
+	function scopeLabel(scope: string): string {
+		if (scope in generationLabels) return t(generationLabels[scope as keyof typeof generationLabels]);
+		const parts = scope.split(':');
+		const action = parts.at(-1)!;
+		const resource = parts.length === 2 ? parts[0] : parts[1];
+		return resource in resources && action in actions
+			? t('apiKeys.scope.operation', { resource: t(resources[resource as keyof typeof resources]), action: t(actions[action as keyof typeof actions]) }) : scope;
+	}
 	let selectedScopes = $state<string[]>(['models:read', 'compat:completions:write']);
-	const allowedScopes = $derived(scopeOptions.filter(([, leaf]) => $serviceCapabilities(leaf)).map(([scope]) => scope));
-	const requestedScopes = $derived(selectedScopes.filter((scope) => allowedScopes.some((allowed) => allowed === scope)));
+	let permissionMode = $state('all');
+	let formOpen = $state(false);
+	let formProject = $state('');
+	let targetLoading = $state(false);
+	let targetError = $state('');
+	let targetPermissions = $state<(ProjectPermissions & { project_id: string; user_id: string }) | null>(null);
+	let targetQuota = $state<ApiKeyIssuancePolicy | null>(null);
+	let expiry = $state('never');
+	let expiryDate = $state('');
+	let expiryError = $state('');
+	let createMonthlyDraft = $state('');
+	let createMonthlyError = $state('');
+	let showAll = $state(false);
+	const targetLeaves = $derived(new Set(Object.values(targetPermissions?.service_permissions ?? {}).flat()));
+	const targetReady = $derived(!targetLoading && !targetError && !!targetPermissions && !!targetQuota);
+	const allowedScopes = $derived(targetReady ? targetQuota!.allowed_scopes.filter((scope) => targetQuota!.scope_capabilities[scope]?.some((leaf) => targetLeaves.has(leaf))) : []);
+	const requestedScopes = $derived(permissionMode === 'all' ? allowedScopes : permissionMode === 'read-only'
+		? allowedScopes.filter((scope) => scope.endsWith(':read')) : selectedScopes.filter((scope) => allowedScopes.includes(scope)));
+	const canIssue = $derived(!!token && $serviceCapabilities('lumen-keys_editor') && targetReady && targetLeaves.has('lumen-keys_editor') && requestedScopes.length > 0 && (formProject !== projectId || requestedScopes.every((scope) => {
+		return targetQuota!.scope_capabilities[scope]?.some((leaf) => $serviceCapabilities(leaf)) === true;
+	})));
+	const projectOptions = $derived([...new Map([
+		...$auth.availableProjects.map((project) => [project.id, { value: project.id, label: project.name, description: project.id }] as const),
+		...($auth.projectId ? [[$auth.projectId, { value: $auth.projectId, label: $auth.projectName || $auth.projectId, description: $auth.projectId }] as const] : [])
+	]).values()]);
+	let boundaryGeneration = $state(0);
+	let targetGeneration = 0;
+	let listGeneration = 0;
+	let permissionGeneration = 0;
 
 	let keys = $state<ApiKey[]>([]);
+	const visibleKeys = $derived(showAll ? keys : keys.filter((key) => key.is_active));
 	let loading = $state(true);
 	let name = $state('');
 	let creating = $state(false);
 	// 발급 직후 평문 키(1회만). 모달로 표시 후 목록 새로고침.
-	let issued = $state<{ key: string; key_prefix: string } | null>(null);
+	let issued = $state<{ key: string; key_prefix: string; project: string; scopes: string[]; scopeCapabilities: Record<string, string[]> } | null>(null);
+	const issuedVisible = $derived.by(() => {
+		const selection = issued;
+		return !!selection && $serviceCapabilities('lumen-keys_editor') && (selection.project !== projectId || selection.scopes.every((scope) =>
+			selection.scopeCapabilities[scope]?.some((leaf) => $serviceCapabilities(leaf)) === true));
+	});
 	let editingId = $state<number | null>(null);
 	let editing = $state<'name' | 'limits' | null>(null);
 	let nameDraft = $state('');
@@ -198,48 +248,117 @@ claude` : '');
 		`$env:LUMEN_CODEX_BASE_URL=${powershellQuote(sdkBases.codex)}; $env:LUMEN_ANTHROPIC_BASE_URL=${powershellQuote(sdkBases.anthropic)}; irm ${powershellQuote(`${installOrigin}/install/lumen.ps1`)} | iex` : '');
 
 	async function load() {
-		if (!token || !$serviceCapabilities('lumen-keys_editor')) { keys = []; loading = false; return; }
+		const generation = ++listGeneration;
+		if (!token || $projectSwitching || !$serviceCapabilities('lumen-keys_editor')) { keys = []; loading = false; return; }
+		const boundary = boundaryGeneration;
 		const requestToken = token;
 		const requestProject = projectId;
 		loading = true;
 		try {
 			const result = await api.get<ApiKey[]>('/api/v1/chat/api-keys', requestToken, requestProject);
-			if (requestToken === token && requestProject === projectId && $serviceCapabilities('lumen-keys_editor')) keys = result;
+			if (boundary === boundaryGeneration && generation === listGeneration && $serviceCapabilities('lumen-keys_editor')) keys = result;
 		} catch {
-			toast.error(t('apiKeys.toast.loadFailed'));
+			if (boundary === boundaryGeneration && generation === listGeneration) toast.error(t('apiKeys.toast.loadFailed'));
 		} finally {
-			loading = false;
+			if (generation === listGeneration) loading = false;
 		}
 	}
 
-	async function create() {
-		if (!$serviceCapabilities('lumen-keys_editor') || requestedScopes.length === 0) return;
+	function closeCreate() {
+		++targetGeneration;
+		formOpen = false;
+		creating = false;
+		name = '';
+		formProject = '';
+		permissionMode = 'all';
+		selectedScopes = ['models:read', 'compat:completions:write'];
+		expiry = 'never';
+		expiryDate = '';
+		expiryError = '';
+		createMonthlyDraft = '';
+		createMonthlyError = '';
+		targetPermissions = null;
+		targetQuota = null;
+		targetLoading = false;
+		targetError = '';
+	}
+
+	async function chooseProject(value: string) {
+		formProject = value;
+		const generation = ++targetGeneration;
+		const boundary = boundaryGeneration;
 		const requestToken = token;
-		const requestProject = projectId;
+		targetPermissions = null;
+		targetQuota = null;
+		targetError = '';
+		targetLoading = true;
+		createMonthlyError = '';
+		if (!requestToken || !value) { targetLoading = false; return; }
+		try {
+			// X-Project-Id is authenticated and rescoped by the BFF, not a body authority claim.
+			const permissions = await api.get<ProjectPermissions & { project_id: string; user_id: string }>('/api/v1/projects/current/permissions', requestToken, value, { refresh: true });
+			if (generation !== targetGeneration || boundary !== boundaryGeneration) return;
+			if (permissions.project_id !== value || permissions.user_id !== $auth.userId) throw new Error('Permission scope mismatch');
+			targetPermissions = permissions;
+			if (!Object.values(permissions.service_permissions).flat().includes('lumen-keys_editor')) return;
+			const quota = await api.get<ApiKeyIssuancePolicy>('/api/v1/chat/api-keys/issuance-policy', requestToken, value, { refresh: true });
+			if (generation !== targetGeneration || boundary !== boundaryGeneration) return;
+			if (quota.monthly_credit_limit !== null && (!isCreditInput(quota.monthly_credit_limit) || !Number.isFinite(Number(quota.monthly_credit_limit)))) throw new Error('Missing quota');
+			if (!Array.isArray(quota.allowed_scopes) || !quota.scope_capabilities || quota.allowed_scopes.some((scope) => !Array.isArray(quota.scope_capabilities[scope]) || quota.scope_capabilities[scope].length === 0)) throw new Error('Missing scope policy');
+			targetQuota = quota;
+		} catch {
+			if (generation === targetGeneration && boundary === boundaryGeneration) targetError = t('apiKeys.target.failed');
+		} finally {
+			if (generation === targetGeneration && boundary === boundaryGeneration) targetLoading = false;
+		}
+	}
+
+	function openCreate() {
+		closeCreate();
+		formOpen = true;
+		void chooseProject(projectId ?? '');
+	}
+
+	async function create() {
+		if (!canIssue || creating) return;
+		let expiresAt: string | null = null;
+		expiryError = '';
+		if (expiry !== 'never') {
+			const date = expiry === 'custom' ? new Date(`${expiryDate}T00:00:00`) : new Date(Date.now() + Number(expiry) * 86_400_000);
+			if (!Number.isFinite(date.getTime()) || date.getTime() <= Date.now()) { expiryError = t('apiKeys.expiry.invalid'); return; }
+			expiresAt = date.toISOString();
+		}
+		createMonthlyError = limitError(createMonthlyDraft, tightestCeiling([[targetQuota!.monthly_credit_limit, t('apiKeys.ceiling.userQuota')]]));
+		if (createMonthlyError) return;
+		const boundary = boundaryGeneration;
+		const generation = targetGeneration;
+		const permissions = permissionGeneration;
+		const requestToken = token;
+		const requestProject = formProject;
+		const scopes = [...requestedScopes];
+		const scopeCapabilities = targetQuota!.scope_capabilities;
 		creating = true;
 		try {
-			const res = await api.post<{ key: string; key_prefix: string }>(
-				'/api/v1/chat/api-keys',
-				{ name: name.trim(), scopes: requestedScopes },
-				token,
-				projectId
-			);
-			if (requestToken !== token || requestProject !== projectId || !$serviceCapabilities('lumen-keys_editor')) return;
-			issued = { key: res.key, key_prefix: res.key_prefix };
-			name = '';
-			await load();
+			const res = await api.post<{ key: string; key_prefix: string }>('/api/v1/chat/api-keys', {
+				name: name.trim(), scopes, expires_at: expiresAt, monthly_credit_limit: createMonthlyDraft || null
+			}, requestToken, requestProject);
+			if (boundary !== boundaryGeneration || generation !== targetGeneration || permissions !== permissionGeneration || !canIssue) return;
+			closeCreate();
+			issued = { key: res.key, key_prefix: res.key_prefix, project: requestProject, scopes, scopeCapabilities };
+			if (requestProject === projectId) await load();
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : t('apiKeys.toast.createFailed'));
+			if (boundary === boundaryGeneration && generation === targetGeneration) toast.error(e instanceof ApiError ? e.message : t('apiKeys.toast.createFailed'));
 		} finally {
-			creating = false;
+			if (boundary === boundaryGeneration && generation === targetGeneration) creating = false;
 		}
 	}
 
 	async function revoke(id: number) {
+		const boundary = boundaryGeneration;
 		const requestToken = token;
 		const requestProject = projectId;
 		if (!(await confirmDialog(t('apiKeys.revokeConfirm')))) return;
-		if (!$serviceCapabilities('lumen-resources_admin') || requestToken !== token || requestProject !== projectId) return;
+		if (boundary !== boundaryGeneration || !$serviceCapabilities('lumen-resources_admin') || requestToken !== token || requestProject !== projectId || !keys.some((key) => key.id === id && key.is_active)) return;
 		try {
 			await api.delete(`/api/v1/chat/api-keys/${id}`, token, projectId);
 			await load();
@@ -260,6 +379,7 @@ claude` : '');
 	}
 
 	function editName(key: ApiKey) {
+		if (!key.is_active) return;
 		stopEditing();
 		editingId = key.id;
 		editing = 'name';
@@ -267,6 +387,7 @@ claude` : '');
 	}
 
 	function editLimits(key: ApiKey) {
+		if (!key.is_active) return;
 		stopEditing();
 		editingId = key.id;
 		editing = 'limits';
@@ -301,7 +422,7 @@ claude` : '');
 	}
 
 	async function saveName(key: ApiKey) {
-		if (!$serviceCapabilities('lumen-keys_editor')) return;
+		if (!key.is_active || !$serviceCapabilities('lumen-keys_editor')) return;
 		const nextName = nameDraft.trim();
 		nameError = nextName ? '' : t('apiKeys.validation.nameRequired');
 		if (!token || nameError) return;
@@ -319,7 +440,7 @@ claude` : '');
 	}
 
 	async function saveLimits(key: ApiKey) {
-		if (!$serviceCapabilities('lumen-keys_editor')) return;
+		if (!key.is_active || !$serviceCapabilities('lumen-keys_editor')) return;
 		const monthlyCeiling = tightestCeiling([
 			[key.system_monthly_credit_limit, t('apiKeys.ceiling.userQuota')],
 			[key.admin_monthly_credit_limit, t('apiKeys.ceiling.adminLimit')]
@@ -363,16 +484,45 @@ claude` : '');
 	}
 
 	async function copyKey() {
-		if (issued) await copyText(issued.key);
+		if (issued && issuedVisible) await copyText(issued.key);
 	}
 
-	$effect(() => {
-		void [token, projectId, $auth.userId];
+	let identity = '';
+	const unsubscribeAuth = auth.subscribe((state) => {
+		const next = JSON.stringify([state.token, state.userId, state.projectId]);
+		if (next === identity) return;
+		identity = next;
+		++boundaryGeneration;
+		++listGeneration;
 		keys = [];
 		issued = null;
+		showAll = false;
+		closeCreate();
 		stopEditing();
-		void load();
 	});
+	const unsubscribeSwitching = projectSwitching.subscribe((switching) => {
+		if (!switching) return;
+		++boundaryGeneration;
+		++listGeneration;
+		keys = [];
+		issued = null;
+		closeCreate();
+		stopEditing();
+	});
+	const unsubscribeCapabilities = serviceCapabilities.subscribe(() => { ++permissionGeneration; });
+	const unsubscribeDenials = serviceDenials.subscribe((denied) => {
+		if (denied('lumen-keys_editor')) { issued = null; closeCreate(); stopEditing(); }
+		if (issued && issued.project === projectId && issued.scopes.some((scope) => {
+			return issued!.scopeCapabilities[scope]?.every((leaf) => denied(leaf)) === true;
+		})) issued = null;
+	});
+	onDestroy(() => {
+		++boundaryGeneration;
+		++targetGeneration;
+		++listGeneration;
+		unsubscribeAuth(); unsubscribeSwitching(); unsubscribeCapabilities(); unsubscribeDenials();
+	});
+	$effect(() => { void load(); });
 
 	$effect(() => {
 		void loadConnectionGuide(token, projectId);
@@ -398,38 +548,34 @@ claude` : '');
 		</p>
 	{/if}
 
-	<div class="{cardCls} mb-4 p-5">
-		<fieldset class="mb-3 flex flex-wrap gap-3">
-			<legend class="mb-2 text-xs">{t('apiKeys.scopes')}</legend>
-			{#each scopeOptions as [scope, leaf]}
-				<label class="text-xs"><input type="checkbox" bind:group={selectedScopes} value={scope} disabled={!$serviceCapabilities(leaf) || !$serviceCapabilities('lumen-keys_editor')} /> {scope}</label>
-			{/each}
-		</fieldset>
-		<div class="flex flex-col gap-3 sm:flex-row">
-			<input class={inputCls} placeholder={t('apiKeys.namePlaceholder')} bind:value={name} />
-			<Button onclick={create} disabled={creating || !$serviceCapabilities('lumen-keys_editor') || requestedScopes.length === 0}>{creating ? t('apiKeys.creating') : t('apiKeys.create')}</Button>
-		</div>
+	<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+		<Button onclick={openCreate} disabled={!$serviceCapabilities('lumen-keys_editor')}>{t('apiKeys.newKey')}</Button>
+		<Button variant="ghost" size="sm" onclick={() => { showAll = !showAll; }}>
+			{showAll ? t('apiKeys.activeOnly', { count: keys.filter((key) => key.is_active).length }) : t('apiKeys.showAll', { count: keys.length })}
+		</Button>
 	</div>
 
 	{#if loading}
 		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={t('apiKeys.loading')}>
 			<span class="sr-only">{t('apiKeys.loading')}</span>
 		</div>
-	{:else if keys.length === 0}
+	{:else if visibleKeys.length === 0}
 		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('apiKeys.empty')}</p>
 	{:else}
 		<div class="space-y-2">
-			{#each keys as k (k.id)}
+			{#each visibleKeys as k (k.id)}
 				<div class="{cardCls} px-4 py-3">
 					<div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
 						<div class="min-w-0">
 							<div class="flex items-center gap-2">
 								<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{k.name || t('apiKeys.unnamed')}</span>
-								{#if !k.is_active}<span class="rounded bg-[var(--color-line)] px-1.5 py-0.5 text-xs text-[var(--color-ink-3)]">{t('apiKeys.revoked')}</span>{/if}
+								{#if !k.is_active}<span class="rounded bg-line px-1.5 py-0.5 text-xs text-ink-2">{t('apiKeys.revoked')}</span>
+								{:else if k.expires_at && Date.parse(k.expires_at) <= Date.now()}<span class="rounded bg-surface-sunken px-1.5 py-0.5 text-xs text-state-warning-text">{t('apiKeys.expired')}</span>{/if}
 							</div>
 							<div class="mt-0.5 font-mono text-xs text-[var(--color-ink-3)]">
 								{k.key_prefix}…{#if k.last_used_at} · {t('apiKeys.lastUsed', { date: new Date(k.last_used_at).toLocaleString(intlLocale()) })}{:else} · {t('apiKeys.unused')}{/if}
 							</div>
+							<p class="mt-1 text-xs text-ink-2">{k.expires_at ? t('apiKeys.expiresAt', { date: new Date(k.expires_at).toLocaleString(intlLocale()) }) : t('apiKeys.expiry.never')}</p>
 							<div class="mt-1 text-xs tabular-nums text-[var(--color-ink-2)]">
 								{t('apiKeys.usage', { monthlyUsed: formatCredit(k.month_credited_cost, '0'), monthlyLimit: formatCredit(k.effective_monthly_credit_limit), weeklyUsed: formatCredit(k.week_credited_cost, '0'), weeklyLimit: formatCredit(k.effective_weekly_credit_limit) })}
 							</div>
@@ -443,7 +589,7 @@ claude` : '');
 						{/if}
 					</div>
 
-					{#if editingId === k.id && editing === 'name'}
+					{#if k.is_active && editingId === k.id && editing === 'name'}
 						<form
 							class="mt-3 border-t border-[var(--color-line)] pt-3"
 							onsubmit={(event) => {
@@ -460,7 +606,7 @@ claude` : '');
 							</div>
 							{#if nameError}<p class="mt-1 text-xs text-[var(--color-state-danger)]" role="alert">{nameError}</p>{/if}
 						</form>
-					{:else if editingId === k.id && editing === 'limits'}
+					{:else if k.is_active && editingId === k.id && editing === 'limits'}
 						<form
 							class="mt-3 border-t border-[var(--color-line)] pt-3"
 							onsubmit={(event) => {
@@ -668,8 +814,65 @@ claude` : '');
 	</div>
 </section>
 
+<FormModal bind:open={formOpen} title={t('apiKeys.newKey')} onClose={closeCreate} submitting={creating}>
+	<div class="space-y-4">
+		<Field label={t('apiKeys.project')} for="api-key-project">
+			<SearchSelect id="api-key-project" value={formProject} options={projectOptions} onchange={(value) => { void chooseProject(value); }} disabled={creating} />
+		</Field>
+		<Field label={t('apiKeys.nameLabel')} for="api-key-name">
+			<TextInput id="api-key-name" maxlength={100} bind:value={name} placeholder={t('apiKeys.namePlaceholder')} disabled={creating} />
+		</Field>
+		<Field label={t('apiKeys.expiry')} for="api-key-expiry">
+			<SelectInput id="api-key-expiry" bind:value={expiry} disabled={creating}>
+				<option value="never">{t('apiKeys.expiry.never')}</option>
+				<option value="30">{t('apiKeys.expiry.days30')}</option>
+				<option value="90">{t('apiKeys.expiry.days90')}</option>
+				<option value="custom">{t('apiKeys.expiry.custom')}</option>
+			</SelectInput>
+		</Field>
+		{#if expiry === 'custom'}
+			<Field label={t('apiKeys.expiry.date')} for="api-key-expiry-date" error={expiryError}>
+				<input id="api-key-expiry-date" type="date" class={inputCls} bind:value={expiryDate} disabled={creating} aria-invalid={!!expiryError} aria-describedby="api-key-expiry-date-message" />
+			</Field>
+		{/if}
+		<div class="space-y-2">
+			<p class="text-xs font-medium text-ink-1">{t('apiKeys.permissions')}</p>
+			<ToggleGroup value={permissionMode} ariaLabel={t('apiKeys.permissions')} fullWidth options={[
+				{ value: 'all', label: t('apiKeys.permissions.all'), disabled: creating || !targetReady },
+				{ value: 'restricted', label: t('apiKeys.permissions.restricted'), disabled: creating || !targetReady },
+				{ value: 'read-only', label: t('apiKeys.permissions.readOnly'), disabled: creating || !allowedScopes.some((scope) => scope.endsWith(':read')) }
+			]} onchange={(value) => { permissionMode = value; }} />
+			<fieldset class="space-y-2">
+				<legend class="sr-only">{t('apiKeys.scopes')}</legend>
+				{#each allowedScopes as scope (scope)}
+					<label class="flex items-start gap-2 text-xs text-ink-2">
+						<input type="checkbox" checked={requestedScopes.includes(scope)} disabled={creating || permissionMode !== 'restricted' || !targetReady} onchange={(event) => {
+							selectedScopes = event.currentTarget.checked ? [...selectedScopes, scope] : selectedScopes.filter((value) => value !== scope);
+						}} />
+						<span>{scopeLabel(scope)}<code class="block text-xs">{scope}</code></span>
+					</label>
+				{/each}
+			</fieldset>
+		</div>
+		<Field label={t('apiKeys.monthlyLimit')} for="api-key-create-monthly" help={t('apiKeys.monthlyLimitHelp')} error={createMonthlyError}>
+			<TextInput id="api-key-create-monthly" bind:value={createMonthlyDraft} inputmode="decimal" disabled={creating || !targetReady} ariaInvalid={!!createMonthlyError} />
+		</Field>
+		{#if targetReady}
+			<p class="text-xs tabular-nums text-ink-2">{t('apiKeys.quota', { monthly: formatCredit(targetQuota!.monthly_credit_limit), weekly: formatCredit(targetQuota!.weekly_credit_limit) })}</p>
+		{/if}
+		{#if targetLoading}<p role="status" class="text-xs text-ink-2">{t('apiKeys.target.loading')}</p>
+		{:else if targetError}<Alert tone="danger">{targetError}</Alert>
+		{:else if targetPermissions && !targetLeaves.has('lumen-keys_editor')}<Alert tone="warning">{t('apiKeys.target.denied')}</Alert>
+		{:else if targetReady && requestedScopes.length === 0}<Alert tone="warning">{t('apiKeys.target.noScopes')}</Alert>{/if}
+	</div>
+	{#snippet actions()}
+		<Button variant="secondary" onclick={closeCreate} disabled={creating}>{t('apiKeys.cancel')}</Button>
+		<Button onclick={create} disabled={creating || !canIssue} ariaBusy={creating}>{creating ? t('apiKeys.creating') : t('apiKeys.create')}</Button>
+	{/snippet}
+</FormModal>
+
 <!-- 발급 직후 평문 키 1회 표시 모달 -->
-{#if issued}
+{#if issued && issuedVisible}
 	<div
 		use:dialogFocus={{ enabled: true, onEscape: () => (issued = null) }}
 		class="fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim/50 p-4"

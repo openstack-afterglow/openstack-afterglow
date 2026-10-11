@@ -3,6 +3,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import DocCodeBlock from '$lib/components/docs/DocCodeBlock.svelte';
+	import DocScreenshot from '$lib/components/docs/DocScreenshot.svelte';
 	import { siteConfig } from '$lib/config/site';
 	import { docsContentHref, docsHref, docsMessages } from '$lib/docs/locales';
 	import type { DocLink } from '$lib/docs/types';
@@ -54,10 +55,17 @@
 				<h2 id={`${section.id}-title`}>{section.title}</h2>
 				{#each section.paragraphs ?? [] as paragraph}<p>{paragraph}</p>{/each}
 				{#if section.bullets}<ul>{#each section.bullets as bullet}<li>{bullet}</li>{/each}</ul>{/if}
+				{#each section.screenshots ?? [] as screenshot}<DocScreenshot {screenshot} {locale} />{/each}
 				{#if section.steps}
 					<ol class="guide-steps">
 						{#each section.steps as step}
-							<li><h3>{step.title}</h3>{#each step.text as paragraph}<p>{paragraph}</p>{/each}{#if step.command}<DocCodeBlock command={step.command} {locale} />{/if}{#if step.links}{@render links(step.links)}{/if}</li>
+							<li>
+								<h3>{step.title}</h3>
+								{#each step.text as paragraph}<p>{paragraph}</p>{/each}
+								{#each step.screenshots ?? [] as screenshot}<DocScreenshot {screenshot} {locale} />{/each}
+								{#if step.command}<DocCodeBlock command={step.command} {locale} />{/if}
+								{#if step.links}{@render links(step.links)}{/if}
+							</li>
 						{/each}
 					</ol>
 				{/if}

@@ -1,11 +1,12 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/dashboard-home';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import ProjectsSection from '$lib/components/account/ProjectsSection.svelte';
 	import ProjectSettingsSection from '$lib/components/account/ProjectSettingsSection.svelte';
 </script>
 
-<div class="p-4 md:p-6 max-w-5xl">
+<PageShell>
 	<div class="flex items-center gap-3 mb-4">
 		<a
 			href="/dashboard"
@@ -21,4 +22,4 @@
 		<ProjectsSection />
 		<ProjectSettingsSection />
 	</div>
-</div>
+</PageShell>

@@ -30,6 +30,8 @@ export interface ModelCapabilities {
 /** Informational managed tools; never a custom tool ID or tool-policy toggle. */
 export interface CloudToolsCatalogue {
 	enabled: boolean;
+	available?: boolean;
+	expires_at?: string | null;
 	access_level: 'read' | 'manage';
 	project_id: string;
 	project_name: string;

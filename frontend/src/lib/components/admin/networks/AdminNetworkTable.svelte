@@ -4,11 +4,15 @@
 
 	let {
 		networks,
+		ownerNames,
+		emptyMessage,
 		onRowClick,
 		onEdit,
 		onDelete,
 	}: {
 		networks: AdminNetwork[];
+		ownerNames: ReadonlyMap<string, string>;
+		emptyMessage: string;
 		onRowClick: (id: string) => void;
 		onEdit: (n: AdminNetwork) => void;
 		onDelete: (n: AdminNetwork) => void;
@@ -20,6 +24,7 @@
 		<thead>
 			<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
 				<th class="text-left py-2 pr-4">{t('adminNetworkTable.name')}</th>
+				<th class="text-left py-2 pr-4">{t('adminNetworkTable.owner')}</th>
 				<th class="text-left py-2 pr-4">{t('adminNetworkTable.status')}</th>
 				<th class="text-left py-2 pr-4">{t('adminNetworkTable.type')}</th>
 				<th class="text-left py-2 pr-4">{t('adminNetworkTable.subnets')}</th>
@@ -33,6 +38,12 @@
 				>
 					<td class="p-0">
 						<button type="button" onclick={() => onRowClick(n.id)} class="block w-full py-2 pr-4 font-medium text-ink-0 hover:text-warm-text-hover transition-colors text-left" title={n.name || n.id}><span class="max-md:block max-md:max-w-[66vw] max-md:truncate">{n.name || n.id.slice(0, 8)}</span></button>
+					</td>
+					<td class="py-2 pr-4">
+						{#if n.project_id}
+							{#if ownerNames.get(n.project_id) ?? n.project_name}<div class="text-ink-1">{ownerNames.get(n.project_id) ?? n.project_name}</div>{/if}
+							<div class="font-mono text-ink-2 break-all">{n.project_id}</div>
+						{:else}<span class="text-ink-2">-</span>{/if}
 					</td>
 					<td class="py-2 pr-4 {n.status === 'ACTIVE' ? 'text-green-400' : 'text-ink-2'}">{n.status}</td>
 					<td class="py-2 pr-4">
@@ -55,7 +66,9 @@
 					</td>
 				</tr>
 			{/each}
+			{#if networks.length === 0 && emptyMessage}
+				<tr><td colspan="6" class="py-6 text-center text-ink-2">{emptyMessage}</td></tr>
+			{/if}
 		</tbody>
 	</table>
 </div>
-<div class="mt-3 text-xs text-ink-2">{t('adminNetworkTable.total', { count: networks.length })}</div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -170,7 +171,7 @@
 />
 <PortDeleteModal bind:port={deletePort} onConfirm={doDelete} />
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<PageShell>
 	<PageHeader breadcrumb={t('portsPage.breadcrumb')} title={t('portsPage.title')}>
 		{#snippet actions()}
 			<button onclick={() => { showCreate = true; createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('portsPage.actions.create')}</button>
@@ -223,4 +224,4 @@
 			onintent={prefetchNext}
 		/>
 	{/if}
-</div>
+</PageShell>

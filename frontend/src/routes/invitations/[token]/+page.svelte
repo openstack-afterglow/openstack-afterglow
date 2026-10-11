@@ -4,6 +4,7 @@
 	import { auth, isLoggedIn } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import type { InvitationInfo } from '$lib/types/project';
 	import { t } from '$lib/i18n/ns/public-entry';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -81,7 +82,8 @@
 	);
 </script>
 
-<main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas flex items-center justify-center px-4">
+<main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas flex items-center justify-center">
+	<PageShell class="flex justify-center">
 	<div class="w-full max-w-md">
 		<!-- 로고 헤더 -->
 		<div class="text-center mb-8 motion-enter">
@@ -184,4 +186,5 @@
 			</div>
 		{/if}
 	</div>
+	</PageShell>
 </main>

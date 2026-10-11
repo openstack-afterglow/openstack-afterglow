@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { untrack } from 'svelte';
@@ -187,11 +188,11 @@
 </script>
 
 {#if !enabled}
-	<div class="p-4 md:p-8"><BetaFeatureGate title={t('security.beta')} /></div>
+	<PageShell><BetaFeatureGate title={t('security.beta')} /></PageShell>
 {:else}
 	<SecurityServiceCreateModal bind:open={showModal} {creating} error={createError} onSubmit={createService} />
 	<SecurityServiceAttachModal bind:open={showAttachModal} {shareNetworks} {attaching} error={attachError} bind:selectedNetworkId onAttach={attachToNetwork} />
-	<div class="bulk-selection-page p-4 md:p-8">
+	<PageShell class="bulk-selection-page">
 		<PageHeader breadcrumb={t('security.breadcrumb')} title={t('security.title')}>
 			{#snippet actions()}
 				<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing || loading} onManualRefresh={forceRefresh} />
@@ -206,5 +207,5 @@
 			<SecurityServiceTable {services} {deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onAttachClick={openAttachModal} onDelete={deleteService} onCreateClick={() => { showModal = true; }} />
 			<BulkSelectionOverlay count={selection.count} ariaLabel={t('security.bulkActions')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 		{/if}
-	</div>
+	</PageShell>
 {/if}

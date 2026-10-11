@@ -1,51 +1,54 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/dashboard-home';
-	import StatTile from '$lib/components/ui/StatTile.svelte';
-	import type { UserDashboardSummary } from '$lib/types/userDashboard';
+	import { Card, Pill } from '$lib/components/ui';
+	import type { ResourceCategory, UserDashboardSummary } from '$lib/types/userDashboard';
 
-	interface Props {
-		totals: UserDashboardSummary['totals'];
-	}
-
-	let { totals }: Props = $props();
-
-	function formatRam(mb: number): { value: number; unit: string } {
-		if (mb >= 1024) return { value: +(mb / 1024).toFixed(1), unit: 'GB' };
-		return { value: mb, unit: 'MB' };
-	}
-
-	const ram = $derived(formatRam(totals.ram_mb));
+	let { totals }: { totals: UserDashboardSummary['totals'] } = $props();
+	const groups: { id: 'infrastructure' | 'network' | 'logical' | 'storage'; categories: ResourceCategory[] }[] = [
+		{ id: 'infrastructure', categories: ['instances', 'volumes', 'images', 'keypairs', 'volume_snapshots', 'volume_backups'] },
+		{ id: 'network', categories: ['floating_ips', 'networks', 'subnets', 'routers', 'security_groups', 'load_balancers'] },
+		{ id: 'logical', categories: ['database_instances', 'database_backups', 'k3s_clusters', 'waygate_gateways', 'containers', 'magnum_clusters'] },
+		{ id: 'storage', categories: ['shares', 'share_snapshots', 'share_networks', 'security_services', 'buckets', 'packages', 'secrets'] },
+	];
+	const metrics = ['vcpus', 'ram_mb', 'storage_gb'] as const;
 </script>
 
-<div class="mb-5 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3 xl:grid-cols-6">
-	<StatTile label={t('summary.instances')} value={totals.instances} unit={t('summary.items', { count: totals.instances })} accent="blue" flat>
-		{#snippet icon()}
-			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/></svg>
-		{/snippet}
-	</StatTile>
-	<StatTile label={t('summary.volumes')} value={totals.volumes} unit={t('summary.items', { count: totals.volumes })} accent="cyan" flat>
-		{#snippet icon()}
-			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
-		{/snippet}
-	</StatTile>
-	<StatTile label={t('summary.storage')} value={totals.storage_gb} unit="GB" accent="violet" flat>
-		{#snippet icon()}
-			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/></svg>
-		{/snippet}
-	</StatTile>
-	<StatTile label="vCPU" value={totals.vcpus} unit={t('summary.cores', { count: totals.vcpus })} accent="emerald" flat>
-		{#snippet icon()}
-			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/></svg>
-		{/snippet}
-	</StatTile>
-	<StatTile label="RAM" value={ram.value} unit={ram.unit} accent="amber" flat>
-		{#snippet icon()}
-			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
-		{/snippet}
-	</StatTile>
-	<StatTile label={t('summary.floatingIp')} value={totals.floating_ips} unit={t('summary.items', { count: totals.floating_ips })} accent="rose" flat>
-		{#snippet icon()}
-			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
-		{/snippet}
-	</StatTile>
-</div>
+<section data-resource-summary class="space-y-3 mb-5" aria-label={t('myResources.summaryTitle')}>
+	<p class="text-xs text-ink-2">{t('myResources.countingHelp')}</p>
+	<div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+		{#each groups as group (group.id)}
+			<Card surface="base">
+				<h2 class="text-sm font-semibold mb-3">{t(`myResources.group.${group.id}`)}</h2>
+				<dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+					{#each group.categories as category (category)}
+						{@const total = totals.resources[category]}
+						<div data-total-category={category} data-total-state={total.state} class="flex flex-wrap items-center justify-between gap-2 text-xs border-b border-line pb-2">
+							<dt class="text-ink-1">{t(`myResources.category.${category}`)}</dt>
+							<dd class="flex items-center gap-2 tabular-nums">
+								<span data-total-count>{total.state !== 'ready' || total.count === null ? t('myResources.unknown') : total.count}</span>
+								{#if total.state !== 'ready'}
+									<Pill tone={total.state === 'failed' ? 'danger' : total.state === 'denied' || total.state === 'partial' ? 'warning' : 'neutral'}>{t(`myResources.state.${total.state}`)}</Pill>
+								{/if}
+								{#if total.state === 'partial'}
+									<span data-known-count class="text-ink-2">{t('myResources.knownCount', { count: total.known_count })}</span>
+								{/if}
+							</dd>
+						</div>
+					{/each}
+				</dl>
+			</Card>
+		{/each}
+	</div>
+	<Card surface="base">
+		<dl class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+			{#each metrics as metric}
+				{@const value = totals.usage[metric]}
+				<div data-total-usage={metric} class="flex justify-between gap-2">
+					<dt class="text-ink-2">{t(`myResources.usage.${metric}`)}</dt>
+					<dd class="tabular-nums">{value === null ? t('myResources.unknown') : value}</dd>
+				</div>
+			{/each}
+		</dl>
+		<p class="text-xs text-ink-2 mt-2">{t('myResources.usageHelp')}</p>
+	</Card>
+</section>

@@ -505,26 +505,35 @@ def change_server_password(
 def get_server_image_meta(conn: openstack.connection.Connection, server_id: str) -> dict:
     """서버의 부트 이미지 메타데이터 조회.
     Returns: {"qga_enabled": bool, "os_admin_user": str|None, "image_id": str|None, "image_name": str|None}
-    볼륨 부팅 인스턴스는 cinder volume_image_metadata에서 fallback.
+    볼륨 부팅은 Nova 루트 장치 또는 유일한 Cinder bootable 볼륨의 메타데이터를 사용한다.
     """
-    from app.services import cinder  # 순환 임포트 방지
 
     s = conn.compute.get_server(server_id)
     image_id = s.image.get("id") if isinstance(s.image, dict) else None
 
     if not image_id:
-        # 볼륨 부팅: /dev/vda 볼륨의 image_metadata에서 조회
+        # root_device_name은 관리자에게만 노출될 수 있다. 장치명으로 루트를 추측하지 않는다.
         try:
+            root_device = getattr(s, "root_device_name", None)
+            boot_volume = None
             for att in conn.compute.volume_attachments(server_id):
-                if getattr(att, "device", "") == "/dev/vda":
-                    meta = cinder.get_volume_image_metadata(conn, att.volume_id)
-                    if meta:
-                        return {
-                            "qga_enabled": str(meta.get("hw_qemu_guest_agent", "")).lower() in ("yes", "true", "1"),
-                            "os_admin_user": meta.get("os_admin_user"),
-                            "image_id": meta.get("image_id"),
-                            "image_name": image_reference_fields(meta.get("image_name"))[0] or None,
-                        }
+                if root_device and getattr(att, "device", None) != root_device:
+                    continue
+                volume = conn.block_storage.get_volume(att.volume_id)
+                if not root_device and volume.is_bootable is not True:
+                    continue
+                if boot_volume is not None:
+                    boot_volume = None
+                    break
+                boot_volume = volume
+            meta = getattr(boot_volume, "volume_image_metadata", None)
+            if isinstance(meta, dict) and meta:
+                return {
+                    "qga_enabled": str(meta.get("hw_qemu_guest_agent", "")).lower() in ("yes", "true", "1"),
+                    "os_admin_user": meta.get("os_admin_user"),
+                    "image_id": meta.get("image_id"),
+                    "image_name": image_reference_fields(meta.get("image_name"))[0] or None,
+                }
         except Exception:
             pass
         return {"qga_enabled": False, "os_admin_user": None, "image_id": None, "image_name": None}
@@ -791,7 +800,6 @@ def _server_to_info(s) -> InstanceInfo:
         union_upper_volume_id=(
             meta.get("union_upper_volume_id") if meta.get("union_upper_volume_id") not in {None, "", "none"} else None
         ),
-        scheduling=meta.get("scheduling"),
         key_name=getattr(s, "key_name", None),
         ssh_access_mode="github" if meta.get(SSH_ACCESS_MODE_METADATA_KEY) == "github" else None,
         github_login=meta.get(GITHUB_LOGIN_METADATA_KEY) or None,

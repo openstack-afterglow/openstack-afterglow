@@ -4,7 +4,7 @@
 	import { t } from '$lib/i18n/ns/instance';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { t as tc } from '$lib/i18n/ns/common';
-	import { ActivityIndicator, AnimatedNumber, ProgressTrack } from '$lib/components/ui';
+	import { ActivityIndicator, AnimatedNumber, Button, ProgressTrack } from '$lib/components/ui';
 
 	interface Props {
 		adminProjectId: string | null;
@@ -39,11 +39,22 @@
 		cyan: 'text-cyan-400 hover:text-cyan-300 border-cyan-900 hover:border-cyan-700',
 		teal: 'text-teal-400 hover:text-teal-300 border-teal-900 hover:border-teal-700',
 		violet: 'text-violet-400 hover:text-violet-300 border-violet-900 hover:border-violet-700',
-		amber: 'text-warm-text hover:text-warm-text-hover border-action-warm hover:border-action-warm',
 		orange: 'text-orange-400 hover:text-orange-300 border-orange-900 hover:border-orange-700',
 		red: 'text-red-400 hover:text-red-300 border-red-900 hover:border-red-700',
 	};
 </script>
+
+{#snippet passwordAction()}
+	<Button
+		onclick={onOpenPasswordModal}
+		disabled={!!s.actioning || s.instance?.status !== 'ACTIVE' || s.passwordPrecheckLoading || !s.passwordPrecheck?.supported}
+		title={s.passwordPrecheckReason ?? (s.passwordPrecheckLoading ? t('header.checking') : s.passwordPrecheckError)}
+		variant="outline"
+		size="sm"
+	>
+		{#if s.passwordPrecheckLoading}<ActivityIndicator size="xs" label={t('header.checking')} />{:else}{t('header.changePassword')}{/if}
+	</Button>
+{/snippet}
 
 <DetailHeader title={s.instance!.name} status={s.instance!.status} size="lg">
 	{#snippet meta()}
@@ -196,12 +207,7 @@
 						disabled={!!s.actioning}
 						class="{btn.base} {btn.orange}"
 					>{t('header.evacuate')}</button>
-					<button
-						onclick={onOpenPasswordModal}
-						disabled={s.passwordPrecheckLoading || !s.passwordPrecheck?.supported}
-						title={s.passwordPrecheck?.reason ?? (s.passwordPrecheckLoading ? t('header.checking') : '')}
-						class="{btn.base} {btn.amber}"
-					>{#if s.passwordPrecheckLoading}<ActivityIndicator size="xs" label={t('header.checking')} />{:else}{t('header.changePassword')}{/if}</button>
+					{#if s.canChangePassword}{@render passwordAction()}{/if}
 					<button
 						onclick={s.deleteInstance}
 						disabled={s.deleting}
@@ -209,10 +215,16 @@
 					>{#if s.deleting}<ActivityIndicator size="xs" label={t('header.deleting')} />{:else}{t('header.delete')}{/if}</button>
 				</div>
 			{/if}
-			{#if canMutate && (s.instance!.status === 'ACTIVE' || s.instance!.status === 'SHUTOFF')}
+			{#if canMutate && (s.canChangePassword || s.instance!.status === 'ACTIVE' || s.instance!.status === 'SHUTOFF')}
 				<div class="flex items-center gap-2 flex-wrap justify-end">
-					<button onclick={() => onOpenResizeModal()} disabled={!!s.actioning} class="{btn.base} {btn.violet}">{t('header.resize')}</button>
+					{#if !adminProjectId && s.canChangePassword}{@render passwordAction()}{/if}
+					{#if s.instance!.status === 'ACTIVE' || s.instance!.status === 'SHUTOFF'}
+						<button onclick={() => onOpenResizeModal()} disabled={!!s.actioning} class="{btn.base} {btn.violet}">{t('header.resize')}</button>
+					{/if}
 				</div>
+			{/if}
+			{#if s.canChangePassword && !s.passwordPrecheckLoading && (s.passwordPrecheckReason || s.passwordPrecheckError)}
+				<p class="max-w-md text-xs text-ink-2">{s.passwordPrecheckReason || s.passwordPrecheckError}</p>
 			{/if}
 		</div>
 	{/snippet}

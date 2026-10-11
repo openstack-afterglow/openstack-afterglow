@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/network-resources';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
@@ -17,7 +18,7 @@
 	$effect(() => { if ($auth.projectId) ctrl.fetchAll(); });
 </script>
 
-<div class="max-w-4xl mx-auto px-4 py-8 text-ink-1">
+<PageShell class="text-ink-1">
 	{#if ctrl.loading}
 		<ActivityIndicator label={t('lb.state.loading')} />
 	{:else if ctrl.error}
@@ -57,4 +58,4 @@
 			onRemoveMember={ctrl.removeMember}
 		/>
 	{/if}
-</div>
+</PageShell>

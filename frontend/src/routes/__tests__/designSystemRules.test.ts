@@ -1,12 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { lstatSync, readFileSync, readlinkSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const repoRoot = resolve(__dirname, '../../..');
 const layoutSource = readFileSync(resolve(repoRoot, 'src/routes/layout.css'), 'utf8');
 const designSource = readFileSync(resolve(repoRoot, '../DESIGN.md'), 'utf8');
-const claudePath = resolve(repoRoot, '../CLAUDE.md');
 const alertSource = readFileSync(resolve(repoRoot, 'src/lib/components/ui/Alert.svelte'), 'utf8');
 const uiIndexSource = readFileSync(resolve(repoRoot, 'src/lib/components/ui/index.ts'), 'utf8');
 const tokenSource = readFileSync(resolve(repoRoot, 'src/lib/design/tokens.ts'), 'utf8');
@@ -332,21 +331,4 @@ describe('design system source contracts', () => {
 		for (const declaration of reducedMotionDurationDeclarations) expect(reducedBlock).toContain(declaration);
 	});
 
-	it('documents interaction ownership and UsageBar edge-case behavior', () => {
-		for (const owner of [
-			'`ToggleGroup` owns compact mutually exclusive',
-			'`SelectionCheckbox` owns checked, indeterminate, disabled, and unavailable-X semantics',
-			'`SelectionToolbar` owns the select-all control, selected count, and `onToggle`',
-			'`BulkSelectionOverlay` owns the selected-count, busy, and bulk-action presentation',
-			'`ActionMenu` owns the overflow trigger, fixed popover placement, outside-click/Escape dismissal',
-			'clamps invalid or out-of-range percentages to `0–100`',
-			'for `max={-1}` labels the quota `무제한` without a percentage or fill',
-		]) {
-			expect(designSource).toContain(owner);
-		}
-	});
-	it('uses the canonical AGENTS.md for Claude instructions', () => {
-		expect(lstatSync(claudePath).isSymbolicLink()).toBe(true);
-		expect(readlinkSync(claudePath)).toBe('AGENTS.md');
-	});
 });

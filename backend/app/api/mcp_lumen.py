@@ -15,7 +15,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import get_settings
-from app.services.mcp_control_plane import ledger, lumen, registry
+from app.services.mcp_control_plane import ledger, limits, lumen, registry
+from app.services.mcp_control_plane.authentication import McpPrincipal
 
 router = APIRouter()
 
@@ -98,12 +99,17 @@ async def preview(body: _PreviewRequest, _: None = Depends(_require_lumen_servic
     if entry is None or entry.effect == "read" or not entry.allowed_for(principal):
         raise HTTPException(status_code=404, detail="MCP mutation tool is unavailable")
     try:
-        parsed = registry.parse_entry_arguments(entry, body.arguments)
-        principal, parsed = await registry.bind_entry_target(principal, entry=entry, arguments=parsed)
-        preview_plan = await registry.build_mutation_preview(
-            registry.ConsumerCloudContext(principal=principal), entry=entry, arguments=parsed
-        )
-        return preview_plan.model_dump(mode="json")
+        async with limits.grant_call_slot(principal, effect="read"):
+            parsed = registry.parse_entry_arguments(entry, body.arguments)
+            principal, parsed = await registry.bind_entry_target(principal, entry=entry, arguments=parsed)
+            preview_plan = await registry.build_mutation_preview(
+                registry.ConsumerCloudContext(principal=principal), entry=entry, arguments=parsed
+            )
+            return preview_plan.model_dump(mode="json")
+    except limits.McpRateLimitUnavailable as exc:
+        raise HTTPException(status_code=503, detail="MCP rate limiting is unavailable") from exc
+    except limits.McpRateLimitExceeded as exc:
+        raise HTTPException(status_code=429, detail="MCP request limit exceeded") from exc
     except HTTPException:
         raise
     except Exception as exc:
@@ -124,6 +130,18 @@ async def execute(body: _ExecuteRequest, _: None = Depends(_require_lumen_servic
     entry = registry.entry_by_name(body.name)
     if entry is None or not entry.allowed_for(principal):
         raise HTTPException(status_code=404, detail="MCP tool is unavailable")
+    try:
+        async with limits.grant_call_slot(principal, effect=entry.effect):
+            return await _execute_tool(principal, entry=entry, body=body)
+    except limits.McpRateLimitUnavailable as exc:
+        raise HTTPException(status_code=503, detail="MCP rate limiting is unavailable") from exc
+    except limits.McpRateLimitExceeded as exc:
+        raise HTTPException(status_code=429, detail="MCP request limit exceeded") from exc
+
+
+async def _execute_tool(
+    principal: McpPrincipal, *, entry: registry.RegistryEntry, body: _ExecuteRequest
+) -> dict[str, Any]:
     try:
         parsed = registry.parse_entry_arguments(entry, body.arguments)
         principal, parsed = await registry.bind_entry_target(principal, entry=entry, arguments=parsed)

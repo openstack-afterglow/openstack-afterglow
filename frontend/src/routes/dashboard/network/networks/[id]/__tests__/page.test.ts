@@ -43,7 +43,7 @@ const ownedNetwork: NetworkDetail = {
 	is_shared: false,
 	project_id: 'project-1',
 	subnet_details: [
-		{ id: 'sub-1', name: 'subnet-1', cidr: '10.0.0.0/24', gateway_ip: '10.0.0.1', dhcp_enabled: true },
+		{ id: 'sub-1', name: 'subnet-1', cidr: '10.0.0.0/24', ip_version: 4, gateway_ip: '10.0.0.1', dhcp_enabled: true },
 	],
 	routers: [
 		{ id: 'router-foreign', name: 'foreign-router', status: 'ACTIVE', project_id: 'other-project', external_gateway_network_id: null, connected_subnet_ids: ['sub-1'] },

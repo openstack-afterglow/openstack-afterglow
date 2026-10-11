@@ -14,11 +14,10 @@ nav_order: 30
 > - 관리자 백필·전체 조회 → **`/api/v1/admin/palimpsest/...`**
 > - 도메인 정의와 digest 규칙 → **[`docs/palimpsest.md`](../palimpsest.md)**
 >
-> `/api/v1/admin/libraries` 와 `/api/v1/libraries/squashfs` 절은 **현행 유효**하다
-> (Palimpsest 코어인 squashfs 파이프라인).
+> `/api/v1/admin/libraries`의 관리자 build/import/consume 경로는 유지합니다. 지원하지 않던 일반 사용자 `/api/v1/libraries/squashfs` 조회·consume 경로와 VM wizard 옵션은 제거했습니다. 파일 스토리지 관리에 쓰이는 별도 `/api/v1/libraries` 카탈로그는 유지합니다.
 
-> 태그: `admin-libraries`, `squashfs-libraries`
-> 기본 경로: `/api/v1/admin/libraries`, `/api/v1/libraries/squashfs`
+> 태그: `admin-libraries`
+> 기본 경로: `/api/v1/admin/libraries`
 > 인증: `Authorization: Bearer <access_token>` · `X-Project-Id`(선택, rescope용)
 
 Afterglow의 플래그십 기능인 **레이어 기반 환경 플랫폼** API입니다. 도커 이미지처럼 패키지·툴체인 단위 레이어를 중앙(CephFS)에 저장하고, VM 부팅 시 base 디스크 위에 OverlayFS로 합성하여 사용합니다. 컨테이너가 아니라 VM 내부에서 직접 마운트하는 방식이며, 저장소 공유는 Manila(CephFS/NFS) share로 이뤄집니다.
@@ -29,7 +28,6 @@ Afterglow의 플래그십 기능인 **레이어 기반 환경 플랫폼** API입
 |------------|--------|------|----------------|--------|------|
 | **Union 레이어** | `/api/v1/union` | `union/layers.py` | `sha256:<64hex>` (content-addressable) | CephFS + OverlayFS | `union.md` 설계 문서 구현. seal/fork/snapshot, single-parent 상속, 템플릿. |
 | **squashfs 라이브러리 (관리자)** | `/api/v1/admin/libraries` | `union/layer_ops.py` | 정수 artifact ID | squashfs NFS share | 빌드/소비 파이프라인. `kind` 계약(uv→python→pip), 프로필, 공개 설정. **전 엔드포인트 관리자 전용.** |
-| **공개 squashfs 카탈로그** | `/api/v1/libraries/squashfs` | `union/layer_public.py` | 정수 artifact ID | squashfs NFS share | 봉인·공개된 artifact/프로필을 일반 사용자가 조회·소비. |
 
 > **주의:** `sha256` content-addressable 모델(Union 레이어)과 정수 artifact 모델(squashfs 라이브러리)은 별개입니다. `POST /api/v1/admin/libraries/build`가 만드는 artifact는 sha256 content-addressable 레이어가 아닙니다.
 
@@ -41,7 +39,6 @@ Afterglow의 플래그십 기능인 **레이어 기반 환경 플랫폼** API입
 2. [엔드포인트 목록](#엔드포인트-목록)
 3. [상세 — Union 레이어 (`/api/v1/union`)](#상세--union-레이어-apiv1union)
 4. [상세 — squashfs 라이브러리 (`/api/v1/admin/libraries`)](#상세--squashfs-라이브러리-apiv1adminlibraries)
-5. [상세 — 공개 squashfs 카탈로그 (`/api/v1/libraries/squashfs`)](#상세--공개-squashfs-카탈로그-apiv1librariessquashfs)
 
 ---
 
@@ -153,14 +150,6 @@ stateDiagram-v2
 
 Dockerfile import 응답·상세의 `artifact_ids`는 `dockerfile-root`에서 마지막 delta까지 root→child 순서다. 선택적 `consumer`로 생성된 consume 레코드도 같은 순서를 유지해 부모 링크·봉인을 검사한다. 소비 VM의 NFS manifest에 기록할 때만 child→root OverlayFS 순서로 뒤집는다.
 작업 응답의 `dockerfile_digest`는 생성 당시 Dockerfile의 SHA-256이며, 이전 임포트 기록에는 `null`이다. 관리자 작업 상세는 digest가 있는 완료 작업에만 artifact 소비 버튼을 제공하고, 이전 기록은 읽기 전용으로 남긴다. 서버는 버튼의 표시 여부에 의존하지 않고 요청 시 실제 첫 artifact의 `dockerfile-root` 종류와 전체 봉인된 계보를 다시 확인한다.
-
-### 공개 squashfs 카탈로그 (`/api/v1/libraries/squashfs`)
-
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| `GET` | `/api/v1/libraries/squashfs/artifacts` | 공개·봉인된 artifact 목록 |
-| `GET` | `/api/v1/libraries/squashfs/profiles` | 공개된 프로필 목록 |
-| `POST` | `/api/v1/libraries/squashfs/consume` | 공개 artifact/프로필로 VM 소비 인스턴스 생성 |
 
 ---
 
@@ -644,52 +633,3 @@ squashfs 레이어 빌드를 시작합니다(백그라운드 태스크). 레이�
 | `GET /imports` · `GET /imports/{id}` | 임포트 작업 목록/상세 |
 
 ---
-
-## 상세 — 공개 squashfs 카탈로그 (`/api/v1/libraries/squashfs`)
-
-일반 사용자(`get_token_info`, 관리자 아님도 가능)가 **공개·봉인된** artifact/프로필을 조회하고 소비 인스턴스를 만듭니다.
-
-### GET /api/v1/libraries/squashfs/artifacts
-
-공개(`is_published`)이면서 봉인(`is_sealed`)된 artifact 목록을 반환합니다. base image가 해석되지 않는 artifact는 제외됩니다.
-
-**응답 (200 OK)**: artifact 배열 (`id`, `name`, `kind`, `python_version`, `pip_packages`, `apt_packages`, `ubuntu_base`, `base_image_*`, `parent_id`, `created_at`)
-
-**오류 응답**: `503 Service Unavailable` — DB 미초기화
-
-### GET /api/v1/libraries/squashfs/profiles
-
-공개된 프로필 목록을 반환합니다. 각 프로필의 레이어가 모두 공개·봉인이고 단일 base로 해석될 때만 포함됩니다.
-
-**응답 (200 OK)**: 프로필 배열 (`id`, `name`, `layers`, `artifacts`, `base_image`, `created_at`, `updated_at`)
-
-### POST /api/v1/libraries/squashfs/consume
-
-공개 artifact 또는 공개 프로필로 소비 인스턴스를 생성합니다. 프로젝트 스코프(`project_id`)가 필요합니다.
-
-| 파라미터 | 위치 | 타입 | 필수 | 기본값 | 설명 |
-|----------|------|------|------|--------|------|
-| `profile_name` | body | string \| null | 조건부 | `null` | 공개 프로필 이름 |
-| `artifact_ids` | body | array[integer] \| null | 조건부 | `null` | 공개 artifact ID 목록 (양수, 중복 제거) |
-| `flavor_id` | body | string | 예 | — | Nova 플레이버 |
-| `server_name` | body | string \| null | 아니오 | `null` | 정규화된 인스턴스 이름 |
-| `image_id` | body | string \| null | 아니오 | `null` | base 이미지 UUID |
-| `network_id` | body | string \| null | 아니오 | `null` | 네트워크 UUID |
-| `key_name` | body | string \| null | 아니오 | `null` | 키페어 이름 |
-| `ssh_public_key` | body | string \| null | 아니오 | `null` | SSH 공개키 |
-| `ssh_username` | body | string \| null | 아니오 | `null` | SSH 사용자명. `root` 금지 |
-
-**파라미터 의존성**
-- `profile_name`과 `artifact_ids` 중 **정확히 하나**만 지정해야 합니다.
-- `artifact_ids` 지정 시 부모 체인을 자동 해석하며, 단일 parent chain·단일 base·모든 조상 공개·봉인이어야 합니다.
-- `ssh_username`은 `key_name` 또는 `ssh_public_key`와 함께 지정해야 합니다.
-
-**응답 (200 OK)**: `{ "consume_id": <int>, "server_id": "<uuid>", "status": "active" }`
-
-**오류 응답**
-- `401 Unauthorized` — 프로젝트 스코프 없음
-- `400 Bad Request` — base image 불일치, lineage 위반, 키페어 조회 실패 등
-- `404 Not Found` — 공개 프로필/artifact 없음
-- `409 Conflict` — parent chain 사이클, 이름 중복 모호
-- `500 Internal Server Error` — 소비 생성 실패
-- `503 Service Unavailable` — DB 미초기화

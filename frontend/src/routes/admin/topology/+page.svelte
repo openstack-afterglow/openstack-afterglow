@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/topology';
 	import { onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -108,7 +109,7 @@
 	});
 </script>
 
-<div class="p-4 md:p-6 max-w-screen-2xl mx-auto">
+<PageShell>
 	<div data-tour="admin-network-header">
 	<PageHeader breadcrumb={t('topology.breadcrumb')} title={t('topology.title')}>
 		{#snippet actions()}
@@ -191,7 +192,7 @@
 		</div>
 		</div>
 	{/if}
-</div>
+</PageShell>
 
 {#if ctrl.selectedInstanceId}
 	<SlidePanel onClose={() => ctrl.selectedInstanceId = null} ariaLabel={t('topology.instanceDetailLabel')}>

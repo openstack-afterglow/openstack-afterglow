@@ -66,15 +66,6 @@ _BASE_PAYLOAD = {
     "project_id": "target-project-abc",
 }
 
-_COMMON_PATCHES = [
-    ("app.api.identity.admin_instances.lib_svc.resolve_with_deps", []),
-    ("app.api.identity.admin_instances.nova.list_flavors", []),
-    ("app.api.identity.admin_instances.neutron.list_networks", []),
-    ("app.api.identity.admin_instances.cloudinit.generate_userdata", ""),
-    ("app.api.compute.instances._prepare_dynamic_file_storage", {}),
-    ("app.api.compute.instances._prepare_prebuilt_file_storages", []),
-]
-
 
 # ---------------------------------------------------------------------------
 # 권한 검사
@@ -190,7 +181,6 @@ async def test_admin_create_instance_calls_admin_conn(admin_client):
             "app.api.identity.admin_instances.keystone.get_admin_connection_for_project",
             return_value=mock_conn,
         ) as mock_get_conn,
-        patch("app.api.identity.admin_instances.lib_svc.resolve_with_deps", return_value=[]),
         patch("app.api.identity.admin_instances.nova.list_flavors", return_value=[_make_flavor("flavor-1")]),
         patch(
             "app.api.identity.admin_instances.cinder.get_volume",
@@ -199,19 +189,12 @@ async def test_admin_create_instance_calls_admin_conn(admin_client):
         patch("app.api.identity.admin_instances.cinder.create_volume_from_image") as mock_create_img,
         patch("app.api.identity.admin_instances.nova.create_server", return_value=_make_server()) as mock_create_server,
         patch("app.api.identity.admin_instances.neutron.list_networks", return_value=[]),
-        patch("app.api.compute.instances._prepare_dynamic_file_storage", return_value={}),
-        patch(
-            "app.api.identity.admin_instances.instance_orch.try_issue_health_token",
-            new_callable=AsyncMock,
-            return_value=("health-id", "https://health.example", "health-token"),
-        ) as mock_health_token,
     ):
         resp = await admin_client.post("/api/v1/admin/instances/async", json=_BASE_PAYLOAD)
 
     assert resp.status_code == 200
     mock_get_conn.assert_called_once_with("target-project-abc")
     mock_create_img.assert_called_once()  # image_id로 부팅 볼륨 생성
-    mock_health_token.assert_not_called()
     metadata = mock_create_server.call_args.kwargs["metadata"]
     assert not any(key.startswith("union_") for key in metadata)
 
@@ -231,13 +214,11 @@ async def test_admin_create_instance_from_image_sse(admin_client):
             "app.api.identity.admin_instances.keystone.get_admin_connection_for_project",
             return_value=mock_conn,
         ),
-        patch("app.api.identity.admin_instances.lib_svc.resolve_with_deps", return_value=[]),
         patch("app.api.identity.admin_instances.nova.list_flavors", return_value=[_make_flavor()]),
         patch("app.api.identity.admin_instances.cinder.create_volume_from_image", return_value=boot_vol),
         patch("app.api.identity.admin_instances.cinder.rename_volume", return_value=None),
         patch("app.api.identity.admin_instances.nova.create_server", return_value=_make_server()),
         patch("app.api.identity.admin_instances.neutron.list_networks", return_value=[]),
-        patch("app.api.compute.instances._prepare_dynamic_file_storage", return_value={}),
     ):
         resp = await admin_client.post(
             "/api/v1/admin/instances/async",
@@ -258,7 +239,6 @@ async def test_admin_create_instance_boot_from_volume(admin_client):
             "app.api.identity.admin_instances.keystone.get_admin_connection_for_project",
             return_value=mock_conn,
         ),
-        patch("app.api.identity.admin_instances.lib_svc.resolve_with_deps", return_value=[]),
         patch("app.api.identity.admin_instances.nova.list_flavors", return_value=[_make_flavor()]),
         patch(
             "app.api.identity.admin_instances.cinder.get_volume",
@@ -266,7 +246,6 @@ async def test_admin_create_instance_boot_from_volume(admin_client):
         ) as mock_get_vol,
         patch("app.api.identity.admin_instances.nova.create_server", return_value=_make_server()),
         patch("app.api.identity.admin_instances.neutron.list_networks", return_value=[]),
-        patch("app.api.compute.instances._prepare_dynamic_file_storage", return_value={}),
     ):
         resp = await admin_client.post(
             "/api/v1/admin/instances/async",
@@ -298,7 +277,6 @@ async def test_admin_create_instance_no_keypair_allowed(admin_client):
             "app.api.identity.admin_instances.keystone.get_admin_connection_for_project",
             return_value=mock_conn,
         ),
-        patch("app.api.identity.admin_instances.lib_svc.resolve_with_deps", return_value=[]),
         patch("app.api.identity.admin_instances.nova.list_flavors", return_value=[_make_flavor()]),
         patch("app.api.identity.admin_instances.cinder.create_volume_from_image", return_value=boot_vol),
         patch("app.api.identity.admin_instances.cinder.rename_volume", return_value=None),
@@ -307,7 +285,6 @@ async def test_admin_create_instance_no_keypair_allowed(admin_client):
             return_value=_make_server(),
         ) as mock_create_srv,
         patch("app.api.identity.admin_instances.neutron.list_networks", return_value=[]),
-        patch("app.api.compute.instances._prepare_dynamic_file_storage", return_value={}),
     ):
         resp = await admin_client.post(
             "/api/v1/admin/instances/async",
@@ -327,7 +304,6 @@ async def test_admin_gpu_only_has_userdata_without_layer_health_or_metadata(admi
     admission = SimpleNamespace(gpu_requested={"GPU": 1})
     settings = SimpleNamespace(
         boot_volume_size_gb=50,
-        upper_volume_size_gb=50,
         ceph_monitors="",
         instance_health_callback_base_url="https://health.example",
     )
@@ -338,7 +314,6 @@ async def test_admin_gpu_only_has_userdata_without_layer_health_or_metadata(admi
             "app.api.identity.admin_instances.keystone.get_admin_connection_for_project",
             return_value=mock_conn,
         ),
-        patch("app.api.identity.admin_instances.lib_svc.resolve_with_deps", return_value=[]),
         patch("app.api.identity.admin_instances.nova.list_flavors", return_value=[_make_flavor("flavor-1")]),
         patch("app.services.flavor_eligibility.admit_flavor", new_callable=AsyncMock, return_value=admission),
         patch("app.services.flavor_eligibility.release_admission", new_callable=AsyncMock),
@@ -349,12 +324,6 @@ async def test_admin_gpu_only_has_userdata_without_layer_health_or_metadata(admi
         patch("app.api.identity.admin_instances.cinder.rename_volume", return_value=None),
         patch("app.api.identity.admin_instances.nova.create_server", return_value=_make_server()) as mock_create_server,
         patch("app.api.identity.admin_instances.neutron.list_networks", return_value=[]),
-        patch("app.api.compute.instances._prepare_dynamic_file_storage", return_value={}),
-        patch(
-            "app.api.identity.admin_instances.instance_orch.try_issue_health_token",
-            new_callable=AsyncMock,
-            return_value=("health-id", "https://health.example", "health-token"),
-        ) as mock_health_token,
         patch(
             "app.services.instance_health.issue_report_token",
             new_callable=AsyncMock,
@@ -369,7 +338,6 @@ async def test_admin_gpu_only_has_userdata_without_layer_health_or_metadata(admi
 
     assert resp.status_code == 200, resp.text
     mock_generate.assert_called_once()
-    mock_health_token.assert_not_called()
     mock_direct_health_token.assert_not_called()
     create_kwargs = mock_create_server.call_args.kwargs
     assert create_kwargs["userdata"] is not None

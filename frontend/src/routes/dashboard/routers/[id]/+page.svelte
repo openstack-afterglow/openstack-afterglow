@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/network-resources';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { page } from '$app/stores';
@@ -118,7 +119,7 @@
 </script>
 
 <!-- loading은 첫 조회에만 켜지므로 섹션 진입은 최초 도착에서만 재생된다. -->
-<div class="motion-stagger max-w-4xl mx-auto px-4 py-8 text-ink-1">
+<PageShell class="motion-stagger text-ink-1">
 	{#if loading}
 		<ActivityIndicator label={t('router.loading')} />
 	{:else if error}
@@ -147,4 +148,4 @@
 			onRemove={removeInterface}
 		/>
 	{/if}
-</div>
+</PageShell>

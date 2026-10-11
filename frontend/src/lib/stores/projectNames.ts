@@ -7,30 +7,38 @@ import type { MockupProfileId } from '$lib/mockup/contracts';
 export interface ProjectNamesScope {
 	token?: string;
 	projectId?: string;
+	userId?: string;
 	mockProfile: MockupProfileId | null;
 	mockRevision: number;
 }
 
+
+export interface ProjectNamesResult {
+	names: ReadonlyMap<string, string>;
+	failed: boolean;
+}
 const nameMap = writable<Map<string, string>>(new Map());
 let generation = 0;
 let currentScope: ProjectNamesScope | null = null;
 let currentScopeKey: string | null = null;
 let settledValue: Map<string, string> | null = null;
-let inFlight: { scopeKey: string; promise: Promise<Map<string, string>> } | null = null;
+let inFlight: { scopeKey: string; promise: Promise<ProjectNamesResult> } | null = null;
 
 function scopeKey(scope: ProjectNamesScope): string {
 	return JSON.stringify([
 		scope.token ?? null,
 		scope.projectId ?? null,
+		scope.userId ?? null,
 		scope.mockProfile,
 		scope.mockRevision,
 	]);
 }
 
-function scope(token?: string, projectId?: string): ProjectNamesScope {
+function scope(token?: string, projectId?: string, userId?: string): ProjectNamesScope {
 	return {
 		token,
 		projectId,
+		userId,
 		mockProfile: getActiveMockupProfile(),
 		mockRevision: getMockupRevision(),
 	};
@@ -42,12 +50,12 @@ function clearInFlight(requestGeneration: number, requestedScopeKey: string): vo
 	}
 }
 
-async function load(token?: string, projectId?: string): Promise<ReadonlyMap<string, string>> {
-	const requestedScope = scope(token, projectId);
+async function loadResult(token?: string, projectId?: string, userId?: string): Promise<ProjectNamesResult> {
+	const requestedScope = scope(token, projectId, userId);
 	const requestedScopeKey = scopeKey(requestedScope);
-	if (currentScopeKey === requestedScopeKey && settledValue) return new Map(settledValue);
+	if (currentScopeKey === requestedScopeKey && settledValue) return { names: new Map(settledValue), failed: false };
 	if (inFlight?.scopeKey === requestedScopeKey) {
-		return inFlight.promise.then((value) => new Map(value));
+		return inFlight.promise.then((value) => ({ ...value, names: new Map(value.names) }));
 	}
 
 	generation += 1;
@@ -69,20 +77,24 @@ async function load(token?: string, projectId?: string): Promise<ReadonlyMap<str
 			if (
 				generation === requestGeneration
 				&& currentScopeKey === requestedScopeKey
-				&& scopeKey(scope(token, projectId)) === requestedScopeKey
+				&& scopeKey(scope(token, projectId, userId)) === requestedScopeKey
 			) {
 				settledValue = loaded;
 				nameMap.set(new Map(loaded));
 			}
-			return loaded;
+			return { names: loaded, failed: false };
 		} catch {
-			return new Map<string, string>();
+			return { names: new Map<string, string>(), failed: true };
 		} finally {
 			clearInFlight(requestGeneration, requestedScopeKey);
 		}
 	})();
 	inFlight = { scopeKey: requestedScopeKey, promise };
-	return promise.then((value) => new Map(value));
+	return promise.then((value) => ({ ...value, names: new Map(value.names) }));
+}
+
+async function load(token?: string, projectId?: string): Promise<ReadonlyMap<string, string>> {
+	return (await loadResult(token, projectId)).names;
 }
 
 function invalidate(targetScope?: ProjectNamesScope): void {
@@ -99,6 +111,7 @@ function invalidate(targetScope?: ProjectNamesScope): void {
 export const projectNames = {
 	subscribe: nameMap.subscribe,
 	load,
+	loadResult,
 	scope,
 	invalidate,
 };

@@ -254,6 +254,7 @@ class SubnetDetail(BaseModel):
     name: str
     cidr: str
     gateway_ip: str | None = None
+    ip_version: int = 4
     dhcp_enabled: bool = True
 
 
@@ -328,6 +329,7 @@ class AdminSubnetPort(BaseModel):
     mac_address: str
     device_owner: str
     device_id: str
+    device_name: str | None = None
     project_id: str | None = None
     ip_addresses: list[str] = []
     binding_host_id: str | None = None
@@ -339,6 +341,7 @@ class SubnetIpAllocation(BaseModel):
     port_name: str
     device_owner: str
     device_id: str
+    device_name: str | None = None
     project_id: str | None = None
     binding_host_id: str | None = None
 
@@ -355,6 +358,16 @@ class DhcpBindingInfo(BaseModel):
     port_ids: list[str] = []
 
 
+class SubnetIpUsage(BaseModel):
+    total_pool_ips: str = Field(pattern=r"^(0|[1-9][0-9]*)$", strict=True)
+    allocated_ips: str = Field(pattern=r"^(0|[1-9][0-9]*)$", strict=True)
+    allocated_pool_ips: str = Field(pattern=r"^(0|[1-9][0-9]*)$", strict=True)
+    reserved_pool_ips: str = Field(pattern=r"^(0|[1-9][0-9]*)$", strict=True)
+    available_pool_ips: str | None = Field(pattern=r"^(0|[1-9][0-9]*)$", strict=True)
+    outside_pool_ips: str = Field(pattern=r"^(0|[1-9][0-9]*)$", strict=True)
+    allocation_mode: Literal["pool", "slaac", "dhcpv6-stateless"]
+
+
 class AdminSubnetDetail(BaseModel):
     id: str
     name: str
@@ -365,11 +378,13 @@ class AdminSubnetDetail(BaseModel):
     gateway_ip: str | None = None
     ip_version: int
     dhcp_enabled: bool
+    ip_usage: SubnetIpUsage
     allocation_pools: list[AllocationPool] = []
     ports: list[AdminSubnetPort] = []
     allocations: list[SubnetIpAllocation] = []
     dhcp_bindings: list[DhcpBindingInfo] = []
     dhcp_agent_data_available: bool = True
+    device_names_available: bool = True
 
 
 class CreateVolumeRequest(BaseModel):

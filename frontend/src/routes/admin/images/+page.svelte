@@ -170,7 +170,7 @@
 	onDestroy(() => { loadGeneration += 1; });
 </script>
 
-<PageShell max="7xl" class="space-y-4">
+<PageShell class="space-y-4">
 	<PageHeader breadcrumb={t('images.breadcrumb')} title={t('images.title')}>
 		{#snippet actions()}<Button variant="primary" onclick={() => showUploadModal = true}>{t('images.upload')}</Button>{/snippet}
 	</PageHeader>

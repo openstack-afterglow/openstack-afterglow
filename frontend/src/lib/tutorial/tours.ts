@@ -1,6 +1,5 @@
 import { tick } from 'svelte';
 import { get } from 'svelte/store';
-import { betaFeatures } from '$lib/stores/betaFeatures';
 import { sidebarOpen } from '$lib/stores/sidebar';
 import { t } from '$lib/i18n/ns/tutorial';
 
@@ -112,14 +111,9 @@ const TOUR_META: Record<TourId, { label: string; summary: string }> = {
 	},
 };
 
-/**
- * VM 생성 투어 — 위저드 표시 단계에 맞춰 동적으로 구성한다.
- * 라이브러리 단계는 libraryConsume 베타가 켜져 있을 때만 포함되고,
- * (베타가 켜져 있어도) 위저드가 해당 단계를 노출하지 않으면(비 Ubuntu 이미지 등)
- * skipIf 로 런타임에 건너뛴다.
- */
+/** VM 생성 투어 — 일반 위저드의 raw 단계 1, 2, 5, 6을 따라 진행한다. */
 function vmCreateSteps(): TourStep[] {
-	const steps: TourStep[] = [
+	return [
 		{
 			element: '[data-tour="vm-create-open"]',
 			route: '/dashboard',
@@ -151,21 +145,6 @@ function vmCreateSteps(): TourStep[] {
 			wizardStep: 2,
 			cancelElement: '[data-tour="wizard-cancel"]',
 		},
-	];
-	if (get(betaFeatures).libraryConsume) {
-		steps.push({
-			element: '[data-tour="wizard-panel"]',
-			get title() { return t('tours.vmCreate.step4.title'); },
-			get description() { return t('tours.vmCreate.step4.description'); },
-			advanceOn: 'wizard',
-			wizardStep: 3,
-			cancelElement: '[data-tour="wizard-cancel"]',
-			// Ubuntu 계열 이미지가 아니면 위저드가 이 단계를 숨긴다 — 스텝퍼에 없으면 투어도 건너뛴다
-			skipIf: () =>
-				document.querySelector<HTMLElement>('[data-tour="wizard-stepper"]')?.dataset.tourLibraryVisible !== 'true',
-		});
-	}
-	steps.push(
 		{
 			element: '[data-tour="wizard-panel"]',
 			get title() { return t('tours.vmCreate.step5.title'); },
@@ -189,8 +168,7 @@ function vmCreateSteps(): TourStep[] {
 			get description() { return t('tours.vmCreate.step7.description'); },
 			waitTimeoutMs: 20000,
 		},
-	);
-	return steps;
+	];
 }
 
 function volumeSteps(): TourStep[] {

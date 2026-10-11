@@ -33,7 +33,8 @@ export const additionalGuides: DocGuide[] = [
 				steps: [
 					{
 						title: '필터로 후보 찾기',
-						text: ['repository, tag, OS 배포판, 검증 필터나 검색으로 후보를 좁히세요. 결과가 없으면 필터를 초기화하고 현재 프로젝트를 다시 확인하세요.']
+						text: ['repository, tag, OS 배포판, 검증 필터나 검색으로 후보를 좁히세요. 결과가 없으면 필터를 초기화하고 현재 프로젝트를 다시 확인하세요.'],
+						screenshots: [{ src: '/docs/screenshots/glance-catalog.webp', alt: 'Glance 이미지 카탈로그의 repository·tag 그룹과 검색·필터 영역', caption: '검색과 필터로 후보를 좁히고 repository별 tag를 살펴보세요.', width: 1440, height: 1000 }]
 					},
 					{
 						title: '이름보다 UUID와 해시 확인하기',
@@ -60,7 +61,8 @@ export const additionalGuides: DocGuide[] = [
 					},
 					{
 						title: '실제 형식과 공개 범위 선택하기',
-						text: ['현재 업로드 UI의 Disk Format 선택지는 raw, qcow2, vmdk, vdi, vhd, vhdx, iso, ami입니다. 기본값은 raw이므로 파일의 실제 형식과 일치하도록 바꾸세요. OS Distro는 선택 항목입니다.', '가시성은 비공개(private) 또는 공유(shared)를 선택합니다. 일반 사용자 업로드 폼은 public/community를 제공하지 않습니다. 먼저 비공개로 검토하고 필요한 프로젝트에만 공유하세요.']
+						text: ['현재 업로드 UI의 Disk Format 선택지는 raw, qcow2, vmdk, vdi, vhd, vhdx, iso, ami입니다. 기본값은 raw이므로 파일의 실제 형식과 일치하도록 바꾸세요. OS Distro는 선택 항목입니다.', '가시성은 비공개(private) 또는 공유(shared)를 선택합니다. 일반 사용자 업로드 폼은 public/community를 제공하지 않습니다. 먼저 비공개로 검토하고 필요한 프로젝트에만 공유하세요.'],
+						screenshots: [{ src: '/docs/screenshots/glance-upload.webp', alt: '파일·이름·디스크 형식·가시성을 지정하는 빈 이미지 업로드 폼', caption: '파일의 실제 디스크 형식과 가시성을 확인한 뒤 업로드를 시작하세요.', width: 1440, height: 1000 }]
 					},
 					{
 						title: '전송과 이미지 상태를 따로 확인하기',
@@ -127,11 +129,13 @@ export const additionalGuides: DocGuide[] = [
 				steps: [
 					{
 						title: '서비스와 계정 범위 확인하기',
-						text: ['Object Storage → 버킷을 엽니다. 메뉴의 서비스 gate는 swift입니다. 서비스가 비활성화되면 메뉴가 숨겨지고 관련 API가 등록되지 않습니다. Swift/RGW 버킷은 현재 프로젝트 계정 범위에서 다룹니다.']
+						text: ['Object Storage → 버킷을 엽니다. 메뉴의 서비스 gate는 swift입니다. 서비스가 비활성화되면 메뉴가 숨겨지고 관련 API가 등록되지 않습니다. Swift/RGW 버킷은 현재 프로젝트 계정 범위에서 다룹니다.'],
+						screenshots: [{ src: '/docs/screenshots/object-storage-buckets.webp', alt: 'Object Storage 버킷 목록과 버킷 생성·새로고침 영역', caption: '현재 프로젝트의 버킷 목록을 확인하고 생성·새로고침 위치를 찾으세요.', width: 1440, height: 1000 }]
 					},
 					{
 						title: '버킷 만들기',
-						text: ['+ 버킷 생성을 눌러 이름을 입력하세요. 이름 형식 또는 예약어에 대한 오류가 나오면 안내에 맞게 수정하세요. 생성 후 목록을 새로고침하여 이름을 확인하고 버킷을 열어 파일 화면으로 이동하세요. 계정 통계는 별도로 조회되므로 통계 오류만으로 버킷이 없다고 판단하지 마세요.']
+						text: ['+ 버킷 생성을 눌러 이름을 입력하세요. 이름 형식 또는 예약어에 대한 오류가 나오면 안내에 맞게 수정하세요. 생성 후 목록을 새로고침하여 이름을 확인하고 버킷을 열어 파일 화면으로 이동하세요. 계정 통계는 별도로 조회되므로 통계 오류만으로 버킷이 없다고 판단하지 마세요.'],
+						screenshots: [{ src: '/docs/screenshots/object-storage-create.webp', alt: '버킷 이름 입력란과 생성 버튼이 있는 빈 버킷 생성 폼', caption: '버킷 이름 입력란과 생성 버튼을 확인하세요.', width: 1440, height: 1000 }]
 					}
 				]
 			},
@@ -145,7 +149,8 @@ export const additionalGuides: DocGuide[] = [
 					},
 					{
 						title: '파일을 전송 대기열에 등록하기',
-						text: ['파일 업로드에서 파일 여러 개를 선택하거나 파일을 끌어놓은 뒤 업로드하세요. 선택한 파일은 현재 폴더 경로로 전송됩니다. 이 UI는 파일 선택·다중 파일 업로드를 제공하며 로컬 폴더 전체의 재귀 업로드를 보장하지 않습니다.']
+						text: ['파일 업로드에서 파일 여러 개를 선택하거나 파일을 끌어놓은 뒤 업로드하세요. 선택한 파일은 현재 폴더 경로로 전송됩니다. 이 UI는 파일 선택·다중 파일 업로드를 제공하며 로컬 폴더 전체의 재귀 업로드를 보장하지 않습니다.'],
+						screenshots: [{ src: '/docs/screenshots/object-storage-upload.webp', alt: '기존 버킷 안의 파일 화면과 파일 업로드 영역', caption: '대상 버킷과 현재 경로를 확인하고 파일 업로드 영역을 여세요.', width: 1440, height: 1000 }]
 					},
 					{
 						title: '저장 결과 확인하기',
@@ -229,11 +234,13 @@ export const additionalGuides: DocGuide[] = [
 				steps: [
 					{
 						title: 'DB 생성 폼 열기',
-						text: ['Database → DB 인스턴스에서 + 인스턴스 생성을 누르세요. Database 메뉴는 trove 서비스 gate를 사용합니다. DB 백업도 같은 서비스 범위이며 별도의 브라우저 베타 선호로 제한되지 않습니다.']
+						text: ['Database → DB 인스턴스에서 + 인스턴스 생성을 누르세요. Database 메뉴는 trove 서비스 gate를 사용합니다. DB 백업도 같은 서비스 범위이며 별도의 브라우저 베타 선호로 제한되지 않습니다.'],
+						screenshots: [{ src: '/docs/screenshots/trove-list.webp', alt: 'Trove DB 인스턴스 목록과 인스턴스 생성 진입 버튼', caption: 'DB 인스턴스 목록에서 인스턴스 생성 버튼을 찾으세요.', width: 1440, height: 1000 }]
 					},
 					{
 						title: '상세 정보 입력하기',
-						text: ['이름, 데이터스토어, 버전, DB 플레이버와 볼륨 크기를 지정하세요. 초기 선택값을 그대로 승인하지 말고 애플리케이션의 엔진·버전 호환성과 CPU/RAM·저장 공간을 확인하세요. 가용 영역과 볼륨 타입은 환경에서 제공되는 선택지를 사용하세요.']
+						text: ['이름, 데이터스토어, 버전, DB 플레이버와 볼륨 크기를 지정하세요. 초기 선택값을 그대로 승인하지 말고 애플리케이션의 엔진·버전 호환성과 CPU/RAM·저장 공간을 확인하세요. 가용 영역과 볼륨 타입은 환경에서 제공되는 선택지를 사용하세요.'],
+						screenshots: [{ src: '/docs/screenshots/trove-create.webp', alt: '이름·데이터스토어·버전·플레이버·볼륨 크기를 지정하는 DB 생성 초기 폼', caption: '데이터스토어·버전과 플레이버·볼륨 크기를 검토하고 초기 선택값을 확인하세요.', width: 1440, height: 1000 }]
 					},
 					{
 						title: '네트워킹과 DB 접근 설정하기',
@@ -354,6 +361,7 @@ export const additionalGuides: DocGuide[] = [
 					'Key Manager → 비밀 관리는 /dashboard/secrets에서 엽니다. 현재 메뉴와 페이지는 keyManager 베타 gate를 사용하며, 메뉴 자체에 barbican 서비스 gate는 지정되어 있지 않습니다. 실제 API 사용에는 별도로 운영자의 Barbican 서비스 활성화가 필요합니다. 베타 설정을 켰다고 서비스가 설치·연결되는 것은 아닙니다.',
 					'이 가이드는 화면에서 직접 등록·조회·삭제하는 비밀을 다룹니다. 모든 SSH 키나 다른 서비스의 provider 키가 Barbican에 자동 저장된다고 가정하지 마세요. 각 키를 관리하는 서비스와 실제 저장·참조 방식을 별도로 확인하세요.'
 				],
+				screenshots: [{ src: '/docs/screenshots/barbican-beta.webp', alt: 'Key Manager 진입 시 표시되는 베타 기능 활성화 안내 화면', caption: '베타 기능 설정에서 Key Manager를 활성화한 뒤 비밀 관리 화면을 다시 여세요.', width: 1440, height: 1000 }],
 				callout: {
 					tone: 'warning',
 					title: '저장은 자동 연결이 아닙니다',

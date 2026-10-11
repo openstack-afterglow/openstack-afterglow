@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -84,7 +85,7 @@
 	onMount(load);
 </script>
 
-<div class="p-4 md:p-6 max-w-7xl mx-auto">
+<PageShell>
 	<PageHeader breadcrumb={t('floatingIpsPage.breadcrumb')} title={t('floatingIpsPage.title')}>
 		{#snippet actions()}
 			<button onclick={openCreate} onpointerenter={prefetchExternalNetworks} onfocus={prefetchExternalNetworks} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('floatingIpsPage.actions.create')}</button>
@@ -138,7 +139,7 @@
 			<span>{t('floatingIpsPage.summary.unassigned', { count: fips.filter(f => !f.port_id).length })}</span>
 		</div>
 	{/if}
-</div>
+</PageShell>
 
 <!-- 생성 모달 -->
 <Modal bind:open={showCreate} ariaLabel={t('floatingIpsPage.createDialog.title')}>

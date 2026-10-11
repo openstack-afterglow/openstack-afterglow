@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { untrack } from 'svelte';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
@@ -31,7 +32,7 @@
 	$effect(() => { ctrl.loadPoolMembers(); });
 </script>
 
-<div class="max-w-4xl mx-auto px-4 py-8 text-ink-1">
+<PageShell class="text-ink-1">
 	<div class="flex items-center justify-between mb-6">
 		<button onclick={() => goto('/dashboard/network/loadbalancers')} class="text-sm text-ink-2 hover:text-ink-1 inline-flex items-center gap-1">
 			{t('loadBalancerDetail.backToList')}
@@ -74,4 +75,4 @@
 			onRemoveMember={ctrl.removeMember}
 		/>
 	{/if}
-</div>
+</PageShell>

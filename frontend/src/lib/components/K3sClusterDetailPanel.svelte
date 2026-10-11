@@ -110,7 +110,7 @@
     <K3sInstanceViewerOverlay />
   {/if}
 
-  <div class="p-6">
+  <div class={onClose ? 'p-6' : ''}>
     <div class="mb-5 flex items-center justify-between">
       <!-- SlidePanel 안에서는 닫기를 SlidePanel 이 그린다(`[data-slide-panel-close]`).
            단독 라우트에서만 목록 백링크를 둔다. -->

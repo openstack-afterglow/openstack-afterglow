@@ -209,8 +209,6 @@ GPU 스펙은 기존 `parse_gpu_demand`의 alias/이름 규칙을 재사용합�
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | `GET` | `/api/v1/libraries` | 라이브러리 카탈로그 목록 |
-| `GET` | `/api/v1/libraries/shares` | 사전 빌드된 Manila share 목록 |
-| `POST` | `/api/v1/libraries/validate` | 라이브러리 호환성 검증 |
 
 ### GET /api/v1/libraries
 
@@ -250,44 +248,6 @@ Afterglow 라이브러리 카탈로그를 반환합니다. 각 라이브러리�
 | `depends_on` | array[string] | 의존하는 다른 라이브러리 ID |
 | `file_storage_id` | string\|null | 사전 빌드된 share UUID. 없으면 `null` |
 | `available_prebuilt` | boolean | 사전 빌드 share 사용 가능 여부 |
-
-### GET /api/v1/libraries/shares
-
-사전 빌드된 Manila share 목록을 반환합니다. 관리자가 빌드한 라이브러리 share를 확인할 수 있습니다.
-
-**응답 (200 OK)** — 배열
-
-### POST /api/v1/libraries/validate
-
-라이브러리 조합의 호환성을 검증합니다. Ubuntu 버전, Python 버전 충돌 등을 감지합니다.
-
-**요청 본문**
-
-```json
-{
-  "library_ids": ["python311", "pytorch"]
-}
-```
-
-| 필드 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| `library_ids` | array[string] | 예 | 검증할 라이브러리 ID 목록 |
-
-**응답 (200 OK)**
-
-```json
-{
-  "valid": true,
-  "conflicts": [],
-  "warnings": []
-}
-```
-
-| 필드 | 타입 | 설명 |
-|------|------|------|
-| `valid` | boolean | 호환성 검증 통과 여부 |
-| `conflicts` | array | 충돌 목록 (빈 배열이면 문제 없음) |
-| `warnings` | array | 경고 목록 (빈 배열이면 문제 없음) |
 
 ---
 

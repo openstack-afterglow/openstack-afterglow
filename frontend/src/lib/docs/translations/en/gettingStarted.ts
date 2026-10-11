@@ -1,4 +1,6 @@
 const translations: Record<string, string> = {
+	'도메인·사용자명·비밀번호 입력란과 GitLab 로그인 버튼': 'Domain, username and password fields, with the GitLab sign-in button',
+	'운영자가 제공한 도메인을 확인하고 로그인합니다. 이 캡처의 사용자명·비밀번호는 비어 있습니다.': 'Check the domain supplied by your operator before signing in. The username and password are empty in this capture.',
 	'시작하기': 'Getting started',
 	'첫 프로젝트에서 연구 환경 준비하기': 'Prepare a research environment in your first project',
 	'로그인과 프로젝트 선택부터 가상 머신, 네트워크, 데이터 저장소를 고르는 기준까지 안내합니다.': 'Learn how to sign in, select a project, and choose virtual machines, networks, and data storage for your work.',
@@ -55,6 +57,10 @@ const translations: Record<string, string> = {
 	'작업이 막혔을 때': 'When you are blocked',
 	'메뉴 또는 자원이 보이지 않음': 'A menu or resource is missing',
 	'현재 프로젝트와 로그인 계정을 확인합니다. 다른 프로젝트로 전환했거나 운영자가 서비스를 비활성화했을 수 있습니다. Beta 항목은 사용자 설정에 따라 숨겨집니다.': 'Check your current project and signed-in account. You may have switched projects, or an operator may have disabled the service. Beta items can be hidden by user settings.',
+	'대시보드 상단에서 펼친 프로젝트 선택 메뉴': 'Project selection menu opened in the dashboard header',
+	'상단 프로젝트 선택기로 작업 범위를 확인하고 전환합니다. 프로젝트 이름과 계정 정보는 캡처에서 가렸습니다.': 'Check and switch your working scope with the header project selector. Project names and account details are hidden in this capture.',
+	'프로젝트 개요의 자원 수와 vCPU·메모리·스토리지 쿼터 사용률': 'Resource counts and vCPU, memory and storage quota usage in the project overview',
+	'개요의 자원 수와 쿼터 사용률을 먼저 확인합니다. 그래프의 실제 사용률과 생성 한도인 쿼터는 서로 다릅니다.': 'Check resource counts and quota usage in the overview first. Actual utilization in the graphs is different from the quota that limits creation.',
 	'권한 또는 쿼터 오류': 'Permission or quota errors',
 	'현재 프로젝트에서 쓰기 권한이 있는지, 해당 자원의 쿼터와 현재 사용량이 얼마인지 확인합니다. 필요한 변경은 운영자에게 요청하며 반복 제출로 우회하지 않습니다.': 'Check that you have write permissions in the current project, and review the quota and current usage for the resource. Ask your operator for any required changes; do not attempt to bypass restrictions by repeatedly submitting requests.',
 	'생성 실패 또는 연결 불가': 'Creation failure or connection failure',

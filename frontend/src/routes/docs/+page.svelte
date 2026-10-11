@@ -63,7 +63,7 @@
 </div>
 
 <style>
-	.docs-index { max-width: 64rem; margin-inline: auto; }
+	.docs-index { min-width: 0; }
 	.intro { padding: 1rem 0 2.5rem; border-bottom: 1px solid var(--color-line); }
 	.eyebrow { margin: 0 0 1rem; color: var(--color-warm-text); font-size: 0.75rem; font-weight: 600; }
 	h1 { margin: 0; color: var(--color-ink-0); font-family: var(--font-display); font-size: clamp(1.875rem, 4vw, 3rem); font-weight: 500; line-height: 1.3; letter-spacing: -0.03em; word-break: keep-all; }

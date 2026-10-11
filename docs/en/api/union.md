@@ -8,8 +8,10 @@ nav_order: 30
 
 # Union Layers API
 
-> Tags: `union`, `admin-libraries`, `squashfs-libraries`
-> Base paths: `/api/v1/union`, `/api/v1/admin/libraries`, `/api/v1/libraries/squashfs`
+> The historical `/api/v1/union` endpoints below have been removed. Administrator Palimpsest and `/api/v1/admin/libraries` build/import/consume remain supported. The unsupported regular-user `/api/v1/libraries/squashfs` catalog/consume paths and VM wizard options have also been removed. The independent `/api/v1/libraries` catalog used by file-storage administration remains.
+>
+> Tags: `admin-libraries`
+> Base path: `/api/v1/admin/libraries`
 > Authentication: `Authorization: Bearer <access_token>` · `X-Project-Id` (optional, for rescope)
 
 The API for Afterglow's flagship feature — the **layer-based environment platform**. Like Docker images, it stores package/toolchain layers centrally (on CephFS) and composes them onto a base disk with OverlayFS at VM boot time. Rather than containers, layers are mounted directly inside the VM, and storage sharing is done through Manila (CephFS/NFS) shares.
@@ -20,7 +22,6 @@ This API consists of **two subsystems with different path prefixes**. The two sy
 |------------|--------|--------|------------------|---------|-------------|
 | **Union layers** | `/api/v1/union` | `union/layers.py` | `sha256:<64hex>` (content-addressable) | CephFS + OverlayFS | Implements the `union.md` design document. seal/fork/snapshot, single-parent inheritance, templates. |
 | **squashfs libraries (admin)** | `/api/v1/admin/libraries` | `union/layer_ops.py` | integer artifact ID | squashfs NFS share | Build/consume pipeline. `kind` contract (uv→python→pip), profiles, publication settings. **All endpoints are admin-only.** |
-| **Public squashfs catalog** | `/api/v1/libraries/squashfs` | `union/layer_public.py` | integer artifact ID | squashfs NFS share | Lets regular users browse and consume sealed, published artifacts/profiles. |
 
 > **Note:** The `sha256` content-addressable model (Union layers) and the integer artifact model (squashfs libraries) are separate. The artifact created by `POST /api/v1/admin/libraries/build` is not a sha256 content-addressable layer.
 
@@ -32,7 +33,6 @@ This API consists of **two subsystems with different path prefixes**. The two sy
 2. [Endpoint List](#endpoint-list)
 3. [Detail — Union Layers (`/api/v1/union`)](#detail--union-layers-apiv1union)
 4. [Detail — squashfs Libraries (`/api/v1/admin/libraries`)](#detail--squashfs-libraries-apiv1adminlibraries)
-5. [Detail — Public squashfs Catalog (`/api/v1/libraries/squashfs`)](#detail--public-squashfs-catalog-apiv1librariessquashfs)
 
 ---
 
@@ -137,14 +137,6 @@ stateDiagram-v2
 | `GET` | `/api/v1/admin/libraries/profiles/{profile_name}` | Profile detail |
 | `PATCH` | `/api/v1/admin/libraries/profiles/{profile_name}/publication` | Set profile public/private |
 | `DELETE` | `/api/v1/admin/libraries/profiles/{profile_name}` | Delete a profile (only when no active consume) |
-
-### Public squashfs catalog (`/api/v1/libraries/squashfs`)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/v1/libraries/squashfs/artifacts` | List public, sealed artifacts |
-| `GET` | `/api/v1/libraries/squashfs/profiles` | List published profiles |
-| `POST` | `/api/v1/libraries/squashfs/consume` | Create a VM consume instance from a public artifact/profile |
 
 ---
 
@@ -628,52 +620,3 @@ Retrieves the consume instance list/detail. The detail includes live Nova status
 | `GET /imports` · `GET /imports/{id}` | List/detail of import jobs |
 
 ---
-
-## Detail — Public squashfs Catalog (`/api/v1/libraries/squashfs`)
-
-Regular users (`get_token_info`, non-admins allowed) browse **public, sealed** artifacts/profiles and create consume instances.
-
-### GET /api/v1/libraries/squashfs/artifacts
-
-Returns the list of artifacts that are public (`is_published`) and sealed (`is_sealed`). Artifacts whose base image cannot be resolved are excluded.
-
-**Response (200 OK)**: array of artifacts (`id`, `name`, `kind`, `python_version`, `pip_packages`, `apt_packages`, `ubuntu_base`, `base_image_*`, `parent_id`, `created_at`)
-
-**Error responses**: `503 Service Unavailable` — DB not initialized
-
-### GET /api/v1/libraries/squashfs/profiles
-
-Returns the list of published profiles. A profile is included only when all its layers are public and sealed and resolve to a single base.
-
-**Response (200 OK)**: array of profiles (`id`, `name`, `layers`, `artifacts`, `base_image`, `created_at`, `updated_at`)
-
-### POST /api/v1/libraries/squashfs/consume
-
-Creates a consume instance from a public artifact or a public profile. Requires a project scope (`project_id`).
-
-| Parameter | In | Type | Required | Default | Description |
-|-----------|-----|------|----------|---------|-------------|
-| `profile_name` | body | string \| null | Conditional | `null` | Public profile name |
-| `artifact_ids` | body | array[integer] \| null | Conditional | `null` | List of public artifact IDs (positive, deduplicated) |
-| `flavor_id` | body | string | Yes | — | Nova flavor |
-| `server_name` | body | string \| null | No | `null` | Normalized instance name |
-| `image_id` | body | string \| null | No | `null` | Base image UUID |
-| `network_id` | body | string \| null | No | `null` | Network UUID |
-| `key_name` | body | string \| null | No | `null` | Keypair name |
-| `ssh_public_key` | body | string \| null | No | `null` | SSH public key |
-| `ssh_username` | body | string \| null | No | `null` | SSH username. `root` not allowed |
-
-**Parameter dependencies**
-- **Exactly one** of `profile_name` and `artifact_ids` must be specified.
-- When `artifact_ids` is specified, the parent chain is resolved automatically; it must be a single parent chain, a single base, and all ancestors must be public and sealed.
-- `ssh_username` must be specified together with `key_name` or `ssh_public_key`.
-
-**Response (200 OK)**: `{ "consume_id": <int>, "server_id": "<uuid>", "status": "active" }`
-
-**Error responses**
-- `401 Unauthorized` — no project scope
-- `400 Bad Request` — base image mismatch, lineage violation, keypair lookup failure, etc.
-- `404 Not Found` — public profile/artifact does not exist
-- `409 Conflict` — parent chain cycle, ambiguous name duplication
-- `500 Internal Server Error` — consume creation failed
-- `503 Service Unavailable` — DB not initialized

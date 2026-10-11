@@ -16,7 +16,7 @@ from hashlib import sha256
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.config import get_settings
 from app.database import get_session_factory
@@ -28,9 +28,11 @@ from app.services.mcp_control_plane.compute import (
     list_project_server_interfaces,
     list_project_servers,
     preview_project_server_action,
+    preview_project_server_create,
     preview_project_server_delete,
     project_server_overview,
     request_project_server_action,
+    request_project_server_create,
     request_project_server_delete,
 )
 from app.services.mcp_control_plane.connection import McpConsumerConnectionError
@@ -73,8 +75,10 @@ from app.services.mcp_control_plane.network import (
     list_project_networks,
     list_project_subnets,
     preview_project_network_delete,
+    preview_project_server_network_attach,
     preview_project_subnet_delete,
     request_project_network_delete,
+    request_project_server_network_attach,
     request_project_subnet_delete,
 )
 from app.services.mcp_control_plane.object_storage import (
@@ -94,9 +98,11 @@ from app.services.mcp_control_plane.storage import (
     list_project_volumes,
     preview_project_backup_delete,
     preview_project_snapshot_delete,
+    preview_project_volume_create,
     preview_project_volume_delete,
     request_project_backup_delete,
     request_project_snapshot_delete,
+    request_project_volume_create,
     request_project_volume_delete,
 )
 from app.services.mcp_control_plane.waygate import (
@@ -105,7 +111,7 @@ from app.services.mcp_control_plane.waygate import (
     list_project_waygate_servers,
 )
 
-REGISTRY_VERSION = "2026-10-11.1"
+REGISTRY_VERSION = "2026-10-11.2"
 
 
 class McpDomainArguments(BaseModel):
@@ -401,6 +407,133 @@ class VmSummaryOutput(McpDomainOutput):
     updated_at: str | None
 
 
+class VmCreateArguments(McpDomainArguments):
+    name: str = Field(min_length=1, max_length=63, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$")
+    image_id: UUID = Field(strict=False, description="Active owned, public, community or accepted shared Glance image.")
+    flavor_id: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z0-9._-]+$")
+    network_id: UUID = Field(strict=False, description="Active project-owned or explicitly shared Neutron network.")
+    boot_volume_size_gb: int = Field(
+        default=50, ge=1, le=16384, description="Root volume GiB; must satisfy image min_disk."
+    )
+    delete_boot_volume_on_termination: bool = False
+    key_name: str | None = Field(default=None, min_length=1, max_length=255)
+    availability_zone: str | None = Field(default=None, min_length=1, max_length=255, pattern=r"^[^:]+$")
+
+    @field_validator("key_name", "availability_zone")
+    @classmethod
+    def reject_blank_text(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("Creation selections must not be blank")
+        return value
+
+
+class VmCreateOutput(VmSummaryOutput):
+    requested_action: Literal["create"]
+
+
+async def _vm_create_preview(context: ConsumerCloudContext, arguments: VmCreateArguments) -> McpMutationPreview:
+    try:
+        async with context.openstack_connection() as conn:
+            plan = await preview_project_server_create(
+                conn,
+                project_id=context.project_id,
+                user_id=context.user_id,
+                **arguments.model_dump(exclude={"project_id", "image_id", "network_id"}),
+                image_id=str(arguments.image_id),
+                network_id=str(arguments.network_id),
+            )
+    except (McpComputeError, McpConsumerConnectionError) as exc:
+        raise ValueError("MCP VM creation is unavailable") from exc
+    fingerprint = sha256(
+        json.dumps({"project_id": context.project_id, **plan}, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return McpMutationPreview(
+        resource_identity=f"nova-server:new:{context.project_id}:{plan['name']}",
+        current_state=None,
+        intended_transition="create",
+        dependent_resources=[
+            f"glance-image:{plan['image_id']}",
+            f"nova-flavor:{plan['flavor_id']}",
+            f"neutron-network:{plan['network_id']}",
+        ],
+        destructive=False,
+        estimated_effect=f"create one VM with a {plan['boot_volume_size_gb']} GiB boot volume",
+        fingerprint=fingerprint,
+    )
+
+
+async def _vm_create(context: ConsumerCloudContext, arguments: VmCreateArguments) -> VmCreateOutput:
+    try:
+        async with context.openstack_connection() as conn:
+            server = await request_project_server_create(
+                conn,
+                project_id=context.project_id,
+                user_id=context.user_id,
+                **arguments.model_dump(exclude={"project_id", "image_id", "network_id"}),
+                image_id=str(arguments.image_id),
+                network_id=str(arguments.network_id),
+            )
+    except (McpComputeError, McpConsumerConnectionError) as exc:
+        raise ValueError("MCP VM creation is unavailable") from exc
+    return VmCreateOutput.model_validate(server)
+
+
+class VmNetworkAttachArguments(McpDomainArguments):
+    server_id: UUID = Field(strict=False)
+    network_id: UUID = Field(strict=False)
+
+
+class VmNetworkAttachOutput(McpDomainOutput):
+    server_id: str
+    network_id: str
+    port_id: str
+    mac_address: str | None
+    requested_action: Literal["attach_network"]
+
+
+async def _vm_network_attach_preview(
+    context: ConsumerCloudContext, arguments: VmNetworkAttachArguments
+) -> McpMutationPreview:
+    try:
+        async with context.openstack_connection() as conn:
+            plan = await preview_project_server_network_attach(
+                conn,
+                project_id=context.project_id,
+                server_id=str(arguments.server_id),
+                network_id=str(arguments.network_id),
+            )
+    except (McpNetworkError, McpConsumerConnectionError) as exc:
+        raise ValueError("MCP VM network attachment is unavailable") from exc
+    fingerprint = sha256(
+        json.dumps({"project_id": context.project_id, **plan}, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return McpMutationPreview(
+        resource_identity=f"nova-server:{plan['server_id']}",
+        current_state=plan["server_status"],
+        intended_transition="attach_network",
+        dependent_resources=[f"neutron-network:{plan['network_id']}"],
+        destructive=False,
+        estimated_effect="create one project-owned network interface",
+        fingerprint=fingerprint,
+    )
+
+
+async def _vm_network_attach(
+    context: ConsumerCloudContext, arguments: VmNetworkAttachArguments
+) -> VmNetworkAttachOutput:
+    try:
+        async with context.openstack_connection() as conn:
+            interface = await request_project_server_network_attach(
+                conn,
+                project_id=context.project_id,
+                server_id=str(arguments.server_id),
+                network_id=str(arguments.network_id),
+            )
+    except (McpNetworkError, McpConsumerConnectionError) as exc:
+        raise ValueError("MCP VM network attachment is unavailable") from exc
+    return VmNetworkAttachOutput.model_validate(interface)
+
+
 class VmListOutput(McpDomainOutput):
     servers: list[VmSummaryOutput]
 
@@ -578,6 +711,64 @@ class VolumeSummaryOutput(McpDomainOutput):
     status: str
     size_gb: int
     created_at: str | None
+
+
+class VolumeCreateArguments(McpDomainArguments):
+    name: str = Field(min_length=1, max_length=255)
+    size_gb: int = Field(ge=1, le=16384)
+    availability_zone: str | None = Field(default=None, min_length=1, max_length=255)
+
+    @field_validator("name", "availability_zone")
+    @classmethod
+    def reject_blank_text(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("Creation selections must not be blank")
+        return value
+
+
+class VolumeCreateOutput(VolumeSummaryOutput):
+    requested_action: Literal["create"]
+
+
+async def _volume_create_preview(context: ConsumerCloudContext, arguments: VolumeCreateArguments) -> McpMutationPreview:
+    try:
+        async with context.openstack_connection() as conn:
+            plan = await preview_project_volume_create(
+                conn,
+                project_id=context.project_id,
+                name=arguments.name,
+                size_gb=arguments.size_gb,
+                availability_zone=arguments.availability_zone,
+            )
+    except (McpStorageError, McpConsumerConnectionError) as exc:
+        raise ValueError("MCP volume creation is unavailable") from exc
+    fingerprint = sha256(
+        json.dumps({"project_id": context.project_id, **plan}, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return McpMutationPreview(
+        resource_identity=f"cinder-volume:new:{context.project_id}:{plan['name']}",
+        current_state=None,
+        intended_transition="create",
+        dependent_resources=[],
+        destructive=False,
+        estimated_effect=f"create one {plan['size_gb']} GiB empty volume",
+        fingerprint=fingerprint,
+    )
+
+
+async def _volume_create(context: ConsumerCloudContext, arguments: VolumeCreateArguments) -> VolumeCreateOutput:
+    try:
+        async with context.openstack_connection() as conn:
+            volume = await request_project_volume_create(
+                conn,
+                project_id=context.project_id,
+                name=arguments.name,
+                size_gb=arguments.size_gb,
+                availability_zone=arguments.availability_zone,
+            )
+    except (McpStorageError, McpConsumerConnectionError) as exc:
+        raise ValueError("MCP volume creation is unavailable") from exc
+    return VolumeCreateOutput.model_validate(volume)
 
 
 class VolumeListOutput(McpDomainOutput):
@@ -1589,6 +1780,32 @@ _ENTRIES: tuple[RegistryEntry, ...] = (
         handler=_quota_get,
     ),
     RegistryEntry(
+        name="afterglow_vm_create",
+        description="Request creation of one VM with an image-backed boot volume in the selected project; acceptance is not guest readiness.",
+        arguments=VmCreateArguments,
+        output=VmCreateOutput,
+        minimum_scope="mcp:write",
+        effect="external_mutation",
+        service_flag=None,
+        timeout_seconds=30,
+        result_max_bytes=16 * 1024,
+        handler=_vm_create,
+        preview_builder=_vm_create_preview,
+    ),
+    RegistryEntry(
+        name="afterglow_vm_network_attach",
+        description="Attach one owned or explicitly shared network to an owned ACTIVE or SHUTOFF VM using a new project-owned port.",
+        arguments=VmNetworkAttachArguments,
+        output=VmNetworkAttachOutput,
+        minimum_scope="mcp:write",
+        effect="external_mutation",
+        service_flag=None,
+        timeout_seconds=30,
+        result_max_bytes=16 * 1024,
+        handler=_vm_network_attach,
+        preview_builder=_vm_network_attach_preview,
+    ),
+    RegistryEntry(
         name="afterglow_vm_list",
         description="List bounded safe metadata for Nova servers owned by the current project.",
         arguments=VmListArguments,
@@ -1663,6 +1880,19 @@ _ENTRIES: tuple[RegistryEntry, ...] = (
         result_max_bytes=64 * 1024,
         handler=_vm_delete,
         preview_builder=_vm_delete_preview,
+    ),
+    RegistryEntry(
+        name="afterglow_volume_create",
+        description="Request creation of one empty 1–16384 GiB Cinder volume in the selected project without waiting or retrying.",
+        arguments=VolumeCreateArguments,
+        output=VolumeCreateOutput,
+        minimum_scope="mcp:write",
+        effect="external_mutation",
+        service_flag=None,
+        timeout_seconds=30,
+        result_max_bytes=16 * 1024,
+        handler=_volume_create,
+        preview_builder=_volume_create_preview,
     ),
     RegistryEntry(
         name="afterglow_volume_list",

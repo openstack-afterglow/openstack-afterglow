@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PageShell from '$lib/components/ui/PageShell.svelte';
   import { t } from '$lib/i18n/ns/containers-shell';
   import RichText from '$lib/i18n/RichText.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -143,7 +144,7 @@
 
 <K3sClusterCreateModal bind:open={showModal} {templates} onCreate={createCluster} />
 
-<div class="bulk-selection-page p-4 md:p-8">
+<PageShell class="bulk-selection-page">
   <PageHeader breadcrumb={t('clusters.list.breadcrumb')} title={t('clusters.list.title')}>
     {#snippet actions()}
       <AutoRefreshControl
@@ -186,4 +187,4 @@
     />
     <BulkSelectionOverlay count={selection.count} ariaLabel={t('clusters.bulk.ariaLabel')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
   {/if}
-</div>
+</PageShell>

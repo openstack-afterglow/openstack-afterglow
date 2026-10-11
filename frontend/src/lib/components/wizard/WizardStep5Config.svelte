@@ -407,11 +407,7 @@ function applyCloudInitPreset(event: Event) {
 </div>
 
 <!-- 루트 디스크 -->
-{#if $wizard.squashfsMode}
-<div class="mb-4 p-3 rounded-lg bg-surface-selected/20 border border-action-warm/40 text-warm-text text-xs">
-	{t('config.rootDisk.squashfsHelp')}
-</div>
-{:else if $wizard.bootSource === 'image'}
+{#if $wizard.bootSource === 'image'}
 <div class="grid grid-cols-1 @lg/panel:grid-cols-2 gap-3.5 mb-4">
 	<div>
 		<label for="boot-volume-size" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">

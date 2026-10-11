@@ -45,15 +45,6 @@ export interface WizardState {
 	bootVolumeName: string | null;
 	flavorId: string | null;
 	flavorName: string | null;
-	libraries: string[];
-	strategy: 'prebuilt' | 'dynamic' | null;
-	scheduling: 'standard' | 'ha';
-	mountProtocol: 'CEPHFS' | 'NFS';
-	templateName: string | null;
-	templateVersion: number | null;
-	squashfsMode: 'profile' | 'artifacts' | null;
-	layerProfileName: string | null;
-	layerArtifactIds: number[];
 	instanceName: string;
 	networkId: string | null;
 	networkName: string | null;
@@ -82,15 +73,6 @@ const initial: WizardState = {
 	bootVolumeName: null,
 	flavorId: null,
 	flavorName: null,
-	libraries: [],
-	strategy: null,
-	scheduling: 'standard',
-	mountProtocol: 'NFS',
-	templateName: null,
-	templateVersion: null,
-	squashfsMode: null,
-	layerProfileName: null,
-	layerArtifactIds: [],
 	instanceName: '',
 	networkId: null,
 	networkName: null,

@@ -38,7 +38,7 @@
 		status: string;
 		visible_prefix: string | null;
 		issued_at: string | null;
-		expires_at: string;
+		expires_at: string | null;
 		last_used_at: string | null;
 		revoked_at: string | null;
 		is_lumen_default: boolean;
@@ -84,6 +84,14 @@
 	const mcpUrl = $derived($siteConfig.mcp_url || `${getBaseUrl().replace(/\/+$/, '')}/api/v1/mcp`);
 	const oauthAuthorizeUrl = $derived(`${mcpUrl.replace(/\/+$/, '')}/oauth/authorize`);
 
+	type AccessMethod = 'oauth' | 'api';
+	type Lifetime = '1d' | '1w' | '1m' | '3m' | '6m' | '1y' | 'never' | 'custom';
+	type CopyTarget = 'oauth' | 'setup' | 'token' | 'config';
+	let method = $state<AccessMethod>('oauth');
+	let methodSequence = 0;
+	let lifetime = $state<Lifetime>('1m');
+	let copyStates = $state<Partial<Record<CopyTarget, 'copied' | 'failed'>>>({});
+	const copySequences: Record<CopyTarget, number> = { oauth: 0, setup: 0, token: 0, config: 0 };
 	let tokens = $state<McpAccessRecord[]>([]);
 	let oauthGrants = $state<McpAccessRecord[]>([]);
 	let actionError = $state('');
@@ -94,8 +102,10 @@
 	let expiresAt = $state('');
 	let issuedToken = $state<string | null>(null);
 	let showIssuedToken = $state(false);
-	let copied = $state<'token' | 'config' | null>(null);
-	let oauthConfigCopied = $state(false);
+	function clearCopies() {
+		for (const target of ['oauth', 'setup', 'token', 'config'] as const) copySequences[target] += 1;
+		copyStates = {};
+	}
 	let verificationToken = $state('');
 	let verifying = $state(false);
 	let verificationSource = $state<'issued' | 'saved' | null>(null);
@@ -166,11 +176,11 @@
 	}
 
 	function ownsToken(owner: AccessScope, record: McpAccessRecord) {
-		return isCurrentScope(owner) && collectionScope === owner && tokens.includes(record);
+		return method === 'api' && isCurrentScope(owner) && collectionScope === owner && tokens.includes(record);
 	}
 
 	function ownsGrant(owner: AccessScope, record: McpAccessRecord) {
-		return isCurrentScope(owner) && collectionScope === owner && oauthGrants.includes(record);
+		return method === 'oauth' && isCurrentScope(owner) && collectionScope === owner && oauthGrants.includes(record);
 	}
 
 	function reset() {
@@ -192,11 +202,11 @@
 		mutatingId = null;
 		tokenName = 'Lumen';
 		accessLevel = 'read';
+		lifetime = '1m';
 		expiresAt = '';
 		issuedToken = null;
 		showIssuedToken = false;
-		copied = null;
-		oauthConfigCopied = false;
+		clearCopies();
 		clearVerification();
 	}
 
@@ -262,6 +272,7 @@
 		collectionScope = null;
 		tokens = [];
 		oauthGrants = [];
+		loadError = '';
 		loading = true;
 		// A reload invalidates both the editable project snapshot and pending issuance.
 		invalidateIssuance();
@@ -293,13 +304,49 @@
 		}
 	}
 
+	function selectMethod(next: AccessMethod) {
+		if (method === next) return;
+		methodSequence += 1;
+		method = next;
+		invalidateIssuance();
+		issuedToken = null;
+		showIssuedToken = false;
+		clearVerification();
+		clearCopies();
+		actionError = '';
+	}
+
+	function expirationPayload(now: Date): { non_expiring: true } | { expires_at: string } | null {
+		if (lifetime === 'never') return { non_expiring: true };
+		const expiry = lifetime === 'custom' ? new Date(expiresAt) : new Date(now.getTime());
+		if (lifetime === '1d' || lifetime === '1w') {
+			expiry.setUTCDate(expiry.getUTCDate() + (lifetime === '1d' ? 1 : 7));
+		} else if (lifetime !== 'custom') {
+			const months = { '1m': 1, '3m': 3, '6m': 6, '1y': 12 }[lifetime];
+			// UTC calendar arithmetic preserves time and clamps the day to the target month-end.
+			const day = expiry.getUTCDate();
+			expiry.setUTCDate(1);
+			expiry.setUTCMonth(expiry.getUTCMonth() + months);
+			const monthEnd = new Date(expiry.getTime());
+			monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1, 0);
+			expiry.setUTCDate(Math.min(day, monthEnd.getUTCDate()));
+		}
+		if (!Number.isFinite(expiry.getTime()) || expiry.getTime() <= now.getTime()) return null;
+		return { expires_at: expiry.toISOString() };
+	}
+
 	function submitToken(owner: AccessScope, event: SubmitEvent) {
 		event.preventDefault();
 		void createToken(owner);
 	}
 
 	async function createToken(owner: AccessScope) {
-		if (!isCurrentScope(owner) || creating || !tokenName.trim() || !validProjectSelection) return;
+		if (!isCurrentScope(owner) || method !== 'api' || creating || !tokenName.trim() || !validProjectSelection) return;
+		const expiration = expirationPayload(new Date());
+		if (!expiration) {
+			actionError = t('mcp.invalidExpiry');
+			return;
+		}
 		const request = ++issuanceSequence;
 		const projectRequest = loadSequence;
 		const current = () => isCurrentScope(owner) && request === issuanceSequence && projectRequest === loadSequence;
@@ -316,7 +363,7 @@
 					access_level: accessLevel,
 					project_scope: projectScope,
 					project_ids: projectScope === 'all' ? [] : [...selectedProjectIds],
-					expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
+					...expiration,
 				},
 				owner.token,
 				owner.projectId,
@@ -326,9 +373,10 @@
 			issuanceController = null;
 			issuedToken = issued.token;
 			showIssuedToken = true;
-			copied = null;
+			clearCopies();
 			clearVerification();
 			tokenName = 'Lumen';
+			lifetime = '1m';
 			expiresAt = '';
 			await loadAccessFor(owner);
 		} catch (error) {
@@ -343,41 +391,31 @@
 		if (!isCurrentScope(owner) || issuedToken !== secret) return;
 		issuedToken = null;
 		showIssuedToken = false;
-		copied = null;
+		clearCopies();
 		clearVerification();
 	}
 
-	async function copyIssuedToken(owner: AccessScope, secret: string | null) {
-		if (!isCurrentScope(owner) || !secret || issuedToken !== secret) return;
+	async function copyContent(target: CopyTarget, owner: AccessScope, secret: string | null = null) {
+		const secretTarget = target === 'token' || target === 'config';
+		if (!isCurrentScope(owner) || (secretTarget && (!secret || issuedToken !== secret))) return;
+		if (method !== (target === 'oauth' ? 'oauth' : 'api')) return;
+		const content = () => target === 'oauth' ? oauthConfig : target === 'setup' ? setupConfig
+			: target === 'config' ? connectionConfig(secret!) : secret!;
+		const text = content();
+		const selected = methodSequence;
+		const request = ++copySequences[target];
+		const current = () => isCurrentScope(owner) && selected === methodSequence && request === copySequences[target]
+			&& (!secretTarget || issuedToken === secret) && content() === text;
+		copyStates[target] = undefined;
 		try {
-			await navigator.clipboard.writeText(secret);
-			if (isCurrentScope(owner) && issuedToken === secret) copied = 'token';
+			await navigator.clipboard.writeText(text);
+			if (current()) copyStates[target] = 'copied';
 		} catch {
-			if (isCurrentScope(owner) && issuedToken === secret) actionError = t('mcp.copyFailed');
-		}
-	}
-
-	async function copyIssuedConfig(owner: AccessScope, secret: string | null) {
-		if (!isCurrentScope(owner) || !secret || issuedToken !== secret) return;
-		try {
-			await navigator.clipboard.writeText(connectionConfig(secret));
-			if (isCurrentScope(owner) && issuedToken === secret) copied = 'config';
-		} catch {
-			if (isCurrentScope(owner) && issuedToken === secret) actionError = t('mcp.copyFailed');
-		}
-	}
-
-	async function copyOAuthConfig(owner: AccessScope) {
-		if (!isCurrentScope(owner)) return;
-		try {
-			await navigator.clipboard.writeText(oauthConfig);
-			if (isCurrentScope(owner)) oauthConfigCopied = true;
-		} catch {
-			if (isCurrentScope(owner)) actionError = t('mcp.copyFailed');
+			if (current()) copyStates[target] = 'failed';
 		}
 	}
 	async function verifyConnection(owner: AccessScope, secret: string | null, source: 'issued' | 'saved') {
-		if (!isCurrentScope(owner) || !secret?.trim() || verifying) return;
+		if (!isCurrentScope(owner) || method !== 'api' || !secret?.trim() || verifying) return;
 		if (source === 'issued' && secret !== issuedToken) return;
 		const request = ++verificationSequence;
 		const controller = new AbortController();
@@ -413,13 +451,14 @@
 
 	async function selectLumenDefault(owner: AccessScope, record: McpAccessRecord) {
 		if (!isCurrentScope(owner) || !ownsToken(owner, record) || mutatingId !== null) return;
+		const selected = methodSequence;
 		mutatingId = record.id;
 		actionError = '';
 		try {
 			await api.put(`/api/v1/auth/mcp-tokens/${encodeURIComponent(record.id)}/lumen-default`, {}, owner.token, owner.projectId);
 			if (isCurrentScope(owner) && collectionScope === owner) await loadAccessFor(owner);
 		} catch (error) {
-			if (isCurrentScope(owner) && collectionScope === owner) actionError = errorMessage(error, t('mcp.selectFailed'));
+			if (isCurrentScope(owner) && collectionScope === owner && selected === methodSequence) actionError = errorMessage(error, t('mcp.selectFailed'));
 		} finally {
 			if (isCurrentScope(owner)) mutatingId = null;
 		}
@@ -427,13 +466,14 @@
 
 	async function clearLumenDefault(owner: AccessScope, record: McpAccessRecord) {
 		if (!isCurrentScope(owner) || !ownsToken(owner, record) || !record.is_lumen_default || mutatingId !== null) return;
+		const selected = methodSequence;
 		mutatingId = 'lumen-default';
 		actionError = '';
 		try {
 			await api.delete('/api/v1/auth/mcp-tokens/lumen-default', owner.token, owner.projectId);
 			if (isCurrentScope(owner) && collectionScope === owner) await loadAccessFor(owner);
 		} catch (error) {
-			if (isCurrentScope(owner) && collectionScope === owner) actionError = errorMessage(error, t('mcp.clearFailed'));
+			if (isCurrentScope(owner) && collectionScope === owner && selected === methodSequence) actionError = errorMessage(error, t('mcp.clearFailed'));
 		} finally {
 			if (isCurrentScope(owner)) mutatingId = null;
 		}
@@ -441,15 +481,16 @@
 
 	async function revokeToken(owner: AccessScope, record: McpAccessRecord) {
 		if (!isCurrentScope(owner) || !ownsToken(owner, record) || mutatingId !== null) return;
+		const selected = methodSequence;
 		if (!(await confirmDialog(t('mcp.revokeConfirm', { name: record.name })))) return;
-		if (!isCurrentScope(owner) || !ownsToken(owner, record) || mutatingId !== null) return;
+		if (!isCurrentScope(owner) || selected !== methodSequence || !ownsToken(owner, record) || mutatingId !== null) return;
 		mutatingId = record.id;
 		actionError = '';
 		try {
 			await api.delete(`/api/v1/auth/mcp-tokens/${encodeURIComponent(record.id)}`, owner.token, owner.projectId);
 			if (isCurrentScope(owner) && collectionScope === owner) await loadAccessFor(owner);
 		} catch (error) {
-			if (isCurrentScope(owner) && collectionScope === owner) actionError = errorMessage(error, t('mcp.revokeFailed'));
+			if (isCurrentScope(owner) && collectionScope === owner && selected === methodSequence) actionError = errorMessage(error, t('mcp.revokeFailed'));
 		} finally {
 			if (isCurrentScope(owner)) mutatingId = null;
 		}
@@ -457,15 +498,16 @@
 
 	async function revokeOAuthGrant(owner: AccessScope, record: McpAccessRecord) {
 		if (!isCurrentScope(owner) || !ownsGrant(owner, record) || mutatingId !== null) return;
+		const selected = methodSequence;
 		if (!(await confirmDialog(t('mcp.revokeOAuthConfirm', { name: record.name })))) return;
-		if (!isCurrentScope(owner) || !ownsGrant(owner, record) || mutatingId !== null) return;
+		if (!isCurrentScope(owner) || selected !== methodSequence || !ownsGrant(owner, record) || mutatingId !== null) return;
 		mutatingId = record.id;
 		actionError = '';
 		try {
 			await api.delete(`/api/v1/auth/mcp-oauth/grants/${encodeURIComponent(record.grant_id)}`, owner.token, owner.projectId);
 			if (isCurrentScope(owner) && collectionScope === owner) await loadAccessFor(owner);
 		} catch (error) {
-			if (isCurrentScope(owner) && collectionScope === owner) actionError = errorMessage(error, t('mcp.revokeOAuthFailed'));
+			if (isCurrentScope(owner) && collectionScope === owner && selected === methodSequence) actionError = errorMessage(error, t('mcp.revokeOAuthFailed'));
 		} finally {
 			if (isCurrentScope(owner)) mutatingId = null;
 		}
@@ -479,6 +521,12 @@
 	$effect(() => {
 		const owner = scope;
 		if (isCurrentScope(owner)) untrack(() => void loadAccessFor(owner));
+	});
+
+	$effect(() => {
+		// Changing the resource invalidates feedback and pending copies for the old JSON.
+		mcpUrl;
+		untrack(clearCopies);
 	});
 </script>
 
@@ -519,6 +567,17 @@
 	</div>
 {/snippet}
 
+{#snippet jsonBlock(owner: AccessScope, target: CopyTarget, json: string, label: string, copyLabel: string, secret: string | null = null)}
+	<div class="config-block" data-mcp-config={target}>
+		<div class="config-header">
+			<strong>mcp.json</strong>
+			<Button variant="outline" size="sm" onclick={copyContent.bind(null, target, owner, secret)}>{copyStates[target] === 'copied' ? t('mcp.copied') : copyLabel}</Button>
+		</div>
+		<pre class="mcp-code" role="region" aria-label={label}>{json}</pre>
+		{#if copyStates[target] === 'failed'}<p class="copy-error" role="alert">{t('mcp.copyFailed')}</p>{/if}
+	</div>
+{/snippet}
+
 {#if mcpEnabled && isCurrentScope(scope)}
 	{@const owner = scope}
 	<Card class="mcp-access motion-fade" surface="raised" padding="lg">
@@ -535,18 +594,27 @@
 		<p class="endpoint"><span>{t('mcp.endpoint')}</span><code>{mcpUrl}</code></p>
 		<Button href={docsHref('mcp', getLocale(), $page.url)} variant="link" size="sm">{t('mcp.docs')}</Button>
 
+		<div class="method-selection" role="group" aria-label={t('mcp.method')}>
+			<Button class="method-card" variant={method === 'oauth' ? 'secondary' : 'outline'} ariaPressed={method === 'oauth'} onclick={() => selectMethod('oauth')}>{t('mcp.methodOAuth')}</Button>
+			<Button class="method-card" variant={method === 'api' ? 'secondary' : 'outline'} ariaPressed={method === 'api'} onclick={() => selectMethod('api')}>{t('mcp.methodApiKey')}</Button>
+		</div>
+
+		{#if method === 'oauth'}
 		<section aria-labelledby="mcp-oauth-setup-heading" class="connection-section">
 			<h3 id="mcp-oauth-setup-heading">{t('mcp.oauthSetupTitle')}</h3>
 			<p>{t('mcp.oauthSetupHelp')}</p>
 			<p class="endpoint"><span>{t('mcp.oauthAuthorizeEndpoint')}</span><code>{oauthAuthorizeUrl}</code></p>
-			<pre class="mcp-code" role="region" aria-label={t('mcp.oauthConfig')}>{oauthConfig}</pre>
+			{@render jsonBlock(owner, 'oauth', oauthConfig, t('mcp.oauthConfig'), t('mcp.copyOAuthConfig'))}
 			<p>{t('mcp.oauthClientSecretHelp')}</p>
-			<div><Button variant="outline" size="sm" onclick={copyOAuthConfig.bind(null, owner)}>{oauthConfigCopied ? t('mcp.copied') : t('mcp.copyOAuthConfig')}</Button></div>
 		</section>
+		{/if}
+
+		{#if method === 'api'}
 
 		<Alert tone="warning" title={t('mcp.onceTitle')}>
 			{#snippet children()}{t('mcp.onceHelp')}{/snippet}
 		</Alert>
+		{/if}
 
 		{#if loadError}
 			<Alert tone="danger" title={t('mcp.loadErrorTitle')}>
@@ -560,25 +628,43 @@
 		{/if}
 
 		{#if mutatingId}<ActivityIndicator label={tc('state.processing')} />{/if}
+		{#if method === 'api'}
 		<form class="token-form" onsubmit={submitToken.bind(null, owner)}>
 			<Field label={t('mcp.name')} for="mcp-token-name" required>
 				{#snippet children()}
-					<input id="mcp-token-name" class="control" bind:value={tokenName} maxlength="100" autocomplete="off" />
+					<input id="mcp-token-name" class="control" bind:value={tokenName} maxlength="100" autocomplete="off" disabled={creating} />
 				{/snippet}
 			</Field>
-			<Field label={t('mcp.permission')} for="mcp-token-access" help={t('mcp.permissionHelp')}>
+			<Field label={t('mcp.permission')} for="mcp-token-access">
 				{#snippet children()}
-					<select id="mcp-token-access" class="control" bind:value={accessLevel} disabled={creating}>
+					<select id="mcp-token-access" class="control" bind:value={accessLevel} disabled={creating} aria-describedby="mcp-permission-help">
 						<option value="read">{t('mcp.read')}</option>
 						<option value="manage">{t('mcp.manage')}</option>
 					</select>
 				{/snippet}
 			</Field>
+			<p class="permission-help" id="mcp-permission-help">{t('mcp.permissionHelp')}</p>
 			<Field label={t('mcp.expiry')} for="mcp-token-expiry" help={t('mcp.expiryHelp')}>
 				{#snippet children()}
-					<input id="mcp-token-expiry" class="control" type="datetime-local" bind:value={expiresAt} />
+					<select id="mcp-token-expiry" class="control" bind:value={lifetime} disabled={creating} onchange={() => { expiresAt = ''; actionError = ''; }}>
+						<option value="1d">{t('mcp.expiry1d')}</option>
+						<option value="1w">{t('mcp.expiry1w')}</option>
+						<option value="1m">{t('mcp.expiry1m')}</option>
+						<option value="3m">{t('mcp.expiry3m')}</option>
+						<option value="6m">{t('mcp.expiry6m')}</option>
+						<option value="1y">{t('mcp.expiry1y')}</option>
+						<option value="never">{t('mcp.expiryNever')}</option>
+						<option value="custom">{t('mcp.expiryCustom')}</option>
+					</select>
 				{/snippet}
 			</Field>
+			{#if lifetime === 'custom'}
+				<Field label={t('mcp.customExpiry')} for="mcp-token-custom-expiry">
+					{#snippet children()}
+						<input id="mcp-token-custom-expiry" class="control" type="datetime-local" bind:value={expiresAt} disabled={creating} oninput={() => { actionError = ''; }} />
+					{/snippet}
+				</Field>
+			{/if}
 			<div class="project-selection">
 				<Field label={t('mcp.projects')} for="mcp-token-project-scope" help={t('mcp.projectsHelp')}>
 					{#snippet children()}
@@ -613,7 +699,7 @@
 		<section aria-labelledby="mcp-setup-heading" class="connection-section">
 			<h3 id="mcp-setup-heading">{t('mcp.setupTitle')}</h3>
 			<p>{t('mcp.setupHelp')}</p>
-			<pre class="mcp-code" role="region" aria-label={t('mcp.config')}>{setupConfig}</pre>
+			{@render jsonBlock(owner, 'setup', setupConfig, t('mcp.config'), t('mcp.copySetupConfig'))}
 		</section>
 
 		<section aria-labelledby="mcp-verify-heading" class="connection-section">
@@ -639,7 +725,7 @@
 			</div>
 			{#if loading && tokens.length === 0}
 				<div class="empty"><ActivityIndicator label={t('mcp.loadingAccess')} /></div>
-			{:else if tokens.length === 0}
+			{:else if !loadError && tokens.length === 0}
 				<p class="empty">{t('mcp.emptyTokens')}</p>
 			{:else}
 				<div class="records">
@@ -647,7 +733,7 @@
 						<div class="record">
 							<div class="record-main">
 								<div class="record-title"><strong>{record.name}</strong><StatusChip status={record.status} /></div>
-								<p>{t('mcp.recordDetails', { prefix: record.visible_prefix ?? t('mcp.noPrefix'), access: record.access_level === 'manage' ? t('mcp.manage') : t('mcp.read'), lastUsed: formatDate(record.last_used_at), expires: formatDate(record.expires_at) })}</p>
+								<p>{t('mcp.recordDetails', { prefix: record.visible_prefix ?? t('mcp.noPrefix'), access: record.access_level === 'manage' ? t('mcp.manage') : t('mcp.read'), lastUsed: formatDate(record.last_used_at), expires: record.expires_at ? formatDate(record.expires_at) : t('mcp.expiryNever') })}</p>
 								{@render savedRestrictions(record)}
 								{#if record.is_lumen_default}<p class="default-note">{t('mcp.lumenDefault')}</p>{/if}
 							</div>
@@ -664,10 +750,15 @@
 				</div>
 			{/if}
 		</section>
+		{/if}
+
+		{#if method === 'oauth'}
 
 		<section aria-labelledby="mcp-oauth-grants-heading">
 			<div class="subheading"><h3 id="mcp-oauth-grants-heading">{t('mcp.oauth')}</h3><span><AnimatedNumber value={oauthGrants.length} format={(n) => t('mcp.count', { count: Math.round(n) })} /></span></div>
-			{#if !loading && oauthGrants.length === 0}
+			{#if loading}
+				<div class="empty"><ActivityIndicator label={t('mcp.loadingAccess')} /></div>
+			{:else if !loadError && oauthGrants.length === 0}
 				<p class="empty">{t('mcp.emptyOAuth')}</p>
 			{:else if oauthGrants.length > 0}
 				<div class="records">
@@ -684,6 +775,7 @@
 				</div>
 			{/if}
 		</section>
+		{/if}
 	</Card>
 
 	<Modal open={showIssuedToken} onClose={dismissIssuedToken.bind(null, owner, issuedToken)} ariaLabel={t('mcp.newToken')}>
@@ -694,12 +786,12 @@
 				<pre class="mcp-code">{issuedToken}</pre>
 				<h3>{t('mcp.config')}</h3>
 				<p>{t('mcp.configSecretWarning')}</p>
-				<pre class="mcp-code" role="region" aria-label={t('mcp.config')}>{issuedConfig}</pre>
+				{@render jsonBlock(owner, 'config', issuedConfig, t('mcp.config'), t('mcp.copyConfig'), issuedToken)}
 			{/if}
+			{#if copyStates.token === 'failed'}<p class="copy-error" role="alert">{t('mcp.copyFailed')}</p>{/if}
 			{#if verificationSource === 'issued'}{@render connectionFeedback()}{/if}
 			<div class="dialog-actions">
-				<Button variant="outline" onclick={copyIssuedToken.bind(null, owner, issuedToken)}>{copied === 'token' ? t('mcp.copied') : t('mcp.copy')}</Button>
-				<Button variant="outline" onclick={copyIssuedConfig.bind(null, owner, issuedToken)}>{copied === 'config' ? t('mcp.copied') : t('mcp.copyConfig')}</Button>
+				<Button variant="outline" onclick={copyContent.bind(null, 'token', owner, issuedToken)}>{copyStates.token === 'copied' ? t('mcp.copied') : t('mcp.copy')}</Button>
 				<Button variant="outline" onclick={verifyConnection.bind(null, owner, issuedToken, 'issued')} disabled={verifying}>
 					{#if verifying}<ActivityIndicator size="xs" label={t('mcp.verifying')} />{:else}{t('mcp.verify')}{/if}
 				</Button>
@@ -710,7 +802,7 @@
 {/if}
 
 <style>
-	:global(.mcp-access) { display: grid; gap: 1rem; }
+	:global(.mcp-access) { display: grid; gap: 1rem; min-width: 0; }
 	.section-heading, .subheading, .record, .record-title, .record-actions, .dialog-actions { display: flex; align-items: center; }
 	.section-heading, .subheading, .record { justify-content: space-between; gap: 1rem; }
 	.section-heading h2, .subheading h3, :global(.issued-token-dialog h2) { margin: 0; color: var(--color-ink-0); }
@@ -719,8 +811,16 @@
 	.endpoint { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.5rem; margin: 0; color: var(--color-ink-2); font-size: 0.75rem; }
 	.endpoint span { font-weight: 600; }
 	.endpoint code { color: var(--color-ink-1); overflow-wrap: anywhere; }
-	.token-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(9rem, 0.7fr) minmax(10rem, 0.8fr); gap: 0.75rem; align-items: end; padding: 1rem; border: 1px solid var(--color-line); border-radius: var(--radius-lg); background: var(--color-surface-sunken); }
-	.control { box-sizing: border-box; width: 100%; min-height: 2.5rem; padding: 0.5rem 0.625rem; border: 1px solid var(--color-line-2); border-radius: 0.5rem; background: var(--color-surface-base); color: var(--color-ink-0); font: inherit; }
+	.method-selection { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; min-width: 0; }
+	.method-selection :global(.method-card) { width: 100%; min-width: 0; min-height: 3.5rem; white-space: normal; overflow-wrap: anywhere; }
+	.method-selection :global([aria-pressed='true']) { border-color: var(--color-accent); box-shadow: inset 0 0 0 1px var(--color-accent); }
+	.config-block { min-width: 0; display: grid; gap: 0.5rem; }
+	.config-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; color: var(--color-ink-1); font-size: 0.8125rem; }
+	.config-header :global(button) { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+	.copy-error { color: var(--color-state-danger-text); font-size: 0.8125rem; margin: 0; }
+	.permission-help { grid-column: 1 / -1; margin: 0; color: var(--color-ink-2); font-size: 0.8125rem; line-height: 1.5; }
+	.token-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; align-items: start; min-width: 0; padding: 1rem; border: 1px solid var(--color-line); border-radius: var(--radius-lg); background: var(--color-surface-sunken); }
+	.control { box-sizing: border-box; width: 100%; min-width: 0; min-height: 2.5rem; padding: 0.5rem 0.625rem; border: 1px solid var(--color-line-2); border-radius: 0.5rem; background: var(--color-surface-base); color: var(--color-ink-0); font: inherit; }
 	.control:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 	.token-submit { padding-bottom: 0.0625rem; }
 	.project-selection, .token-submit { grid-column: 1 / -1; min-width: 0; }
@@ -742,7 +842,7 @@
 	.record-title { gap: 0.5rem; flex-wrap: wrap; }
 	.record-title strong { color: var(--color-ink-0); font-size: 0.875rem; }
 	.record-actions { flex-wrap: wrap; justify-content: flex-end; }
-	:global(.issued-token-dialog) { width: min(44rem, calc(100vw - 2rem)); display: grid; gap: 0.875rem; }
+	:global(.issued-token-dialog) { box-sizing: border-box; width: min(44rem, calc(100vw - 2rem)); max-width: 100%; min-width: 0; display: grid; gap: 0.875rem; }
 	:global(.issued-token-dialog h3), .connection-section h3 { margin: 0; color: var(--color-ink-0); font-size: 0.875rem; }
 	.connection-section { min-width: 0; display: grid; gap: 0.75rem; }
 	.connection-section p { margin: 0; color: var(--color-ink-2); font-size: 0.8125rem; line-height: 1.5; }
@@ -752,6 +852,6 @@
 	.verification-result p { margin: 0; overflow-wrap: anywhere; }
 	.verification-result p + p { margin-top: 0.5rem; }
 	.dialog-actions { justify-content: flex-end; flex-wrap: wrap; gap: 0.5rem; }
-	@media (min-width: 48rem) and (max-width: 63.999rem) { .token-form { grid-template-columns: 1fr 1fr; } }
+	.dialog-actions :global(button) { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 	@media (max-width: 47.999rem) { .token-form { grid-template-columns: minmax(0, 1fr); } .section-heading { align-items: flex-start; } .record { align-items: flex-start; flex-direction: column; } .record-actions { justify-content: flex-start; } }
 </style>

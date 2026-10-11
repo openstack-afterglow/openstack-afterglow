@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PageShell from '$lib/components/ui/PageShell.svelte';
   import { t } from '$lib/i18n/ns/containers-shell';
   import { goto } from '$app/navigation';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -193,7 +194,7 @@
   onCreate={createContainer}
 />
 
-<div class="bulk-selection-page p-4 md:p-8">
+<PageShell class="bulk-selection-page">
   <PageHeader breadcrumb={t('instances.list.breadcrumb')} title={t('instances.list.title')}>
     {#snippet actions()}
       <AutoRefreshControl
@@ -237,4 +238,4 @@
       onClear={() => selection.clear()}
     />
   {/if}
-</div>
+</PageShell>

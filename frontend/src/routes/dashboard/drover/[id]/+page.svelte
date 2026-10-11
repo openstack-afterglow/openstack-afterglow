@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PageShell from '$lib/components/ui/PageShell.svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import K3sClusterDetailPanel from '$lib/components/K3sClusterDetailPanel.svelte';
@@ -23,8 +24,10 @@
   }
 </script>
 
+<PageShell class="h-full">
 <K3sClusterDetailPanel
   clusterId={clusterId ?? ''}
   initialTab={initialTab}
   onTabChange={handleTabChange}
 />
+</PageShell>

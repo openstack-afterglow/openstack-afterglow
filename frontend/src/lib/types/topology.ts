@@ -2,6 +2,7 @@ import type { FloatingIpInfo } from '$lib/types/networks';
 
 export interface SubnetDetail {
 	id: string; name: string; cidr: string;
+	ip_version: number;
 	gateway_ip: string | null; dhcp_enabled: boolean;
 }
 export interface TopologyNetwork {

@@ -90,7 +90,7 @@
 	});
 </script>
 
-<div class="p-6">
+<div class={onClose ? 'p-6' : ''}>
 	<!-- SlidePanel 안(onClose 전달)에서는 닫기를 SlidePanel 이 그린다. 단독 라우트에서만 목록 백링크를 둔다. -->
 	{#if !onClose}
 		<a href="/dashboard/volumes" class="mb-4 inline-block text-ink-2 hover:text-ink-1 text-sm transition-colors">{t('detailPanel.backToList')}</a>

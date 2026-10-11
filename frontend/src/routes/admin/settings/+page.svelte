@@ -9,7 +9,7 @@
 	const projectId = $derived($auth.projectId ?? undefined);
 </script>
 
-<PageShell max="7xl">
+<PageShell>
 	<PageHeader
 		breadcrumb={t('settings.breadcrumb')}
 		title={t('settings.title')}

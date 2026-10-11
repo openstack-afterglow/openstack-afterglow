@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/object-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { onMount } from 'svelte';
@@ -91,7 +92,7 @@
 
 <BucketCreateModal bind:open={showModal} onCreate={createContainer} />
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<PageShell>
 	<PageHeader breadcrumb={t('buckets.adminPage.breadcrumb')} title={t('buckets.adminPage.title')}>
 		{#snippet actions()}
 			<button
@@ -138,4 +139,4 @@
 			<TrashNotice />
 		{/if}
 	{/if}
-</div>
+</PageShell>

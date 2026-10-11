@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/admin-system';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -123,7 +124,7 @@
 
 {#snippet integrations(text: string)}<a href="https://www.notion.so/profile/integrations" target="_blank" class="text-warm-text hover:text-warm-text-hover">{text}</a>{/snippet}
 
-<div class="p-4 md:p-8 max-w-3xl">
+<PageShell>
 	<PageHeader breadcrumb={t('notion.page.breadcrumb')} title={t('notion.page.title')} subtitle={t('notion.page.subtitle')}>
 		{#snippet actions()}
 			<button
@@ -209,7 +210,7 @@
 			<li>{t('notion.setup.multipleTargets')}</li>
 		</ol>
 	</div>
-</div>
+</PageShell>
 
 <style>
 	.global-gate {

@@ -84,6 +84,7 @@ describe('Topology page cable connect flow', () => {
 					id: 'sub-new-1',
 					name: 'empty-net-subnet',
 					cidr: '10.88.0.0/24',
+					ip_version: 4,
 					gateway_ip: null,
 					dhcp_enabled: true,
 				};

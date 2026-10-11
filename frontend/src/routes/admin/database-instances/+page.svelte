@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t as tr } from '$lib/i18n/ns/database';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -81,7 +82,7 @@
 
 <DbCreatePanel bind:open={showCreatePanel} onCreated={load} />
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<PageShell>
 	<PageHeader breadcrumb={tr('breadcrumbs.admin')} title={tr('instances.title')}>
 		{#snippet actions()}
 			<button onclick={() => (showCreatePanel = true)}
@@ -151,4 +152,4 @@
 		</div>
 	{/if}
 
-</div>
+</PageShell>
