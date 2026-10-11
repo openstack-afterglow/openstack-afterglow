@@ -1,0 +1,54 @@
+{
+  "scope": "Isolated temporary index rooted at HEAD plus five current chat source files; actual checkout/index and existing review marker preserved. Not full shared-tree gate qualification.",
+  "baselineHead": "d17dd84484f9783cad8b12ee0372a25e555ea525",
+  "sourceFiles": [
+    {
+      "path": "frontend/src/routes/dashboard/chat/+page.svelte",
+      "sha256": "c4a81c12de19535eee7c527b3030e674b1789da89a4a718604f90552c28b9390",
+      "gitBlob": "811b791c8b5389e2a80d419ca256ee34a7ea8961"
+    },
+    {
+      "path": "frontend/src/routes/dashboard/chat/projects/+page.svelte",
+      "sha256": "8af653d2391ac600d4179500475a42637ea9f30554298fad8b52f5565ba72dbd",
+      "gitBlob": "65b7f5c9fc451918caf74f9d59b58b0474139c21"
+    },
+    {
+      "path": "frontend/src/routes/dashboard/chat/projects/[id]/+page.svelte",
+      "sha256": "47007dfae869beea4b3ad4c8b49c3e4394c27c7aef52137e2a7c75a06bb7b0fc",
+      "gitBlob": "cf1da52296746ce59a4d012351c74b6d601ddc9a"
+    },
+    {
+      "path": "frontend/src/lib/components/chat/ChatPanel.svelte",
+      "sha256": "61531c81dc5ca3b0b78295669662281577eb648eb28f8fe354cd19cb84c57aa9",
+      "gitBlob": "ecb13bde5f12b390bd5cd4c62fcacddf960f133d"
+    },
+    {
+      "path": "frontend/src/lib/components/chat/ChatWindow.svelte",
+      "sha256": "1d6a745d704b1b14d1b635ffaee04c56a75b1b624a2da703b230e3e8d3586407",
+      "gitBlob": "87e5dd8e5756be24047a8f2ee25574c59232f7e1"
+    }
+  ],
+  "stamp": {
+    "cmd": [
+      "python3",
+      "scripts/check_architecture.py",
+      "--staged",
+      "--stamp",
+      "--summary",
+      "Chat route full-bleed exception, shared 80rem transcript/composer bounds and safe empty-workspace scroll; frontend CSS/markup only, no API/auth/schema/service ownership change. Scope is HEAD plus five inspected chat files; shared index and review marker untouched."
+    ],
+    "exit": 0,
+    "stdout": "stamped staged source_sha256=437992ae2c0baa32534efe7704a982f6f9f162977ee76205181b6c306018057a files=2601",
+    "stderr": ""
+  },
+  "check": {
+    "cmd": [
+      "python3",
+      "scripts/check_architecture.py",
+      "--staged"
+    ],
+    "exit": 0,
+    "stdout": "checked staged source_sha256=437992ae2c0baa32534efe7704a982f6f9f162977ee76205181b6c306018057a files=2601",
+    "stderr": ""
+  }
+}

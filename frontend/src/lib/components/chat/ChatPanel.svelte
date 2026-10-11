@@ -2922,7 +2922,7 @@
 		margin-inline: 0;
 	}
 	.chat-workspace :global(.composer) {
-		width: min(100%, 64rem);
+		width: min(100%, var(--app-content-max-width));
 		margin-inline: auto;
 	}
 	.chat-workspace.temp-mode {
@@ -2930,12 +2930,13 @@
 	}
 	.chat-workspace.empty-workspace {
 		align-items: center;
-		justify-content: center;
-		padding: 1rem;
+		justify-content: safe center;
+		padding: 1rem 0;
+		overflow-y: auto;
 	}
 	.chat-workspace.empty-workspace :global(.window),
 	.chat-workspace.empty-workspace .composer-anchor {
-		width: min(100%, 42rem);
+		width: min(100%, var(--app-content-max-width));
 		flex: 0 0 auto;
 	}
 	.chat-workspace.empty-workspace :global(.window) {
@@ -2943,7 +2944,7 @@
 	}
 	.chat-workspace.empty-workspace :global(.window .scroll) {
 		flex: none;
-		padding: 0;
+		padding: 0 1rem;
 		overflow: visible;
 	}
 	.chat-workspace.empty-workspace :global(.window .welcome) {

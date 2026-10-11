@@ -363,13 +363,15 @@
 		flex: 1;
 		min-height: 0;
 		overflow-y: auto;
-		padding: 1.5rem 1rem;
+		scrollbar-gutter: stable both-edges;
+		padding: 1.5rem 0;
 	}
 	.stream {
 		display: flex;
 		flex-direction: column;
 		gap: 1.25rem;
-		max-width: 52rem;
+		max-width: var(--app-content-max-width);
+		padding-inline: 1rem;
 		margin: 0 auto;
 	}
 	.history-nav {
@@ -473,7 +475,8 @@
 		font-variant-numeric: tabular-nums;
 	}
 	.error-bar {
-		margin: 0 1rem 0.75rem;
+		width: min(calc(100% - 2rem), calc(var(--app-content-max-width) - 2rem));
+		margin: 0 auto 0.75rem;
 		padding: 0.55rem 0.8rem;
 		border-radius: 0.5rem;
 		font-size: 0.8rem;

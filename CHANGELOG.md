@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Lumen 채팅 작업 영역 폭 복원 (local, not deployed)
+- 채팅·채팅 프로젝트의 외부 PageShell 제한을 제거해 기록 sidebar·toolbar·canvas가 가용 작업 영역 전체를 채운다. 대화 기록 본문과 입력창만 공통80rem 최대 폭을 사용하고 긴 기록의 스크롤바가 두 영역의 중심축을 어긋나게 하지 않는다.
+- 낮은 화면에서 새 대화의 welcome·입력·프로젝트 선택이 잘리지 않도록 workspace 내부 스크롤을 유지한다. 일반 페이지·Studio·설정·API·권한·provider 호출·배포는 변경하지 않는다.
+
 ### 완료 세션 dev 통합과 MCP 경계 수정 (not deployed)
 - 로컬 checkpoint와 upstream `dev`의 HTTPS proxy trust 수정을 정상 merge로 보존한다. 추가 version bump·tag·main PR/merge·운영 배포는 포함하지 않는다.
 - 선택 개인 MCP grant의 기본 실행 target을 cloud catalogue에 그대로 표시한다. Lumen preview/read/mutation은 기존 공용 Redis grant budget과 concurrency admission을 적용하고 SDK worker drain 뒤에만 slot을 회수한다. 한도429와 coordination 장애503은 provider/원장 진입 전에 거부한다.

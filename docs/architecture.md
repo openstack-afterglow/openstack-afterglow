@@ -65,6 +65,8 @@ Zun exec upstream은 binary subprotocol이고 Afterglow WebSocket은 terminal in
 
 Afterglow browser는 Lumen message graph를 소유하지 않고 active-path page projection만 소비합니다. `ChatPanel`은 40-message page를 최대 3개 유지하고 `before_cursor`/`after_cursor`를 opaque하게 BFF에 돌려줍니다. **처음/이전/다음/최신**은 explicit one-request actions이며 `ChatWindow`가 visible message anchor offset을 보존합니다. Selection generation, mutation epoch, conversation, token과 project guard가 늦은 response를 차단합니다. 409 stale cursor는 alert와 단 한 번의 latest reload로 복구합니다. Old window run completion은 badge만 표시하고 send는 live edge를 먼저 불러옵니다.
 
+채팅·채팅 프로젝트 3개 route는 외부 `PageShell` 없이 전역 header 아래의 전체 workspace를 채운다. `ChatPanel`은 sidebar/rail·toolbar·canvas의 가용 폭을 유지하고, `ChatWindow.stream`과 composer만 `--app-content-max-width`(80rem)에 맞춰 가운데 정렬한다. Transcript의 양쪽 stable scrollbar gutter는 중심축 이동을 막으며 저장된 대화는 transcript만 스크롤하고 composer를 하단에 둔다. 새 대화는 welcome/composer가 높이에 맞을 때 중앙에 두고 짧은 viewport에서는 workspace 내부 스크롤로 모두 접근한다. 일반 설정·이미지/오디오 Studio의 PageShell 계약과 history/API·권한·전송 동작은 바꾸지 않는다.
+
 Branch version control은 message에 포함된 `branch.previous_id`/`next_id`를 사용해 authenticated BFF의 active-leaf PATCH에 `descend=true`를 보냅니다. Parent graph reconstruction, cursor signing/revision, active-path transaction과 history persistence는 Lumen 소유입니다.
 
 Claude Code는 discovery의 Gateway base에서 public OAuth device issuance/poll을 하고 Afterglow `/oauth/claude/authorize`는 login-safe approval shell만 소유합니다. Code는 session-scoped marker/storage에 보존하되 URL에서 제거합니다. 실제 approve/deny는 bearer/project-authenticated `/api/v1/chat/claude-gateway/authorize` BFF가 Lumen `/v1/claude-gateway/authorize`로 전달합니다. Afterglow는 발급 credential/device code를 DB에 저장하거나 Claude compatibility request를 실행하지 않습니다. Settings의 connection helper는 discovery URL만 사용하고 24시간 만료 뒤 재연결을 안내합니다.

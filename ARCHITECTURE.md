@@ -45,7 +45,9 @@ Image Studio의 사후 실제 Chromium 점검에서 `lumen-images_user` 확정 �
 
 Drover SQL 설정이 있으나 breaker가 열렸으면 native `/v1/clusters`는 warm cache·cache bypass·refresh 모두503이고 Redis의 성공 빈 목록으로 대체하지 않는다. SQL connection 오류에만 breaker를 열며 실제 cooldown 뒤 SQL 조회로 복구한다. DB 미설정 legacy store만 Redis 경로를 유지한다. 이 native 수정은 형제 Drover source에 포함하며 배포된 서비스를 고쳤다는 뜻이 아니다.
 
-Frontend의 외부 콘텐츠 폭·padding 소유자는 단일 `PageShell`이다. `layout.css --app-content-max-width:80rem`, `width:100%`, `min-width:0`, auto 양쪽 margin과 mobile1rem/tablet-desktop1.5rem padding을 dashboard/admin/계정/리소스·직접 detail/workspace에 적용한다. 개별 route의max/dense와 중복 outer padding은 제거하며 모달·본문·chat transcript의 내부 가독성 제한은 유지한다. 프로젝트 표의 넓이는 named keyboard-scroll region에 가둔다. 로컬/합성 검증과 운영·schema cutover 미검증 범위는 `docs/testing.md`의 계정·리소스 검증 기록을 따른다.
+Frontend의 일반 데이터·설정 페이지 외부 콘텐츠 폭·padding 소유자는 단일 `PageShell`이다. `layout.css --app-content-max-width:80rem`, `width:100%`, `min-width:0`, auto 양쪽 margin과 mobile1rem/tablet-desktop1.5rem padding을 dashboard/admin/계정/리소스·직접 detail에 적용한다. Lumen 채팅·채팅 프로젝트 3개 route는 full-bleed 예외로 전역 header/service navigation을 제외한 workspace 전체를 채운다. Sidebar/rail·toolbar·canvas에 외부 상한·padding을 두지 않고 transcript/composer만 공통80rem에 맞춘다. 저장된 대화는 transcript가 스크롤하고 composer는 하단에 유지되며, 새 대화가 짧은 높이에 맞지 않으면 welcome/composer 묶음을 내부 스크롤한다. 일반 route의 중복 outer padding은 제거하고 모달·본문·프로젝트 설정 form의 내부 가독성 제한은 유지한다. 프로젝트 표의 넓이는 named keyboard-scroll region에 가둔다. 로컬/합성 검증과 운영·schema cutover 미검증 범위는 `docs/testing.md`를 따른다.
+
+채팅 full-bleed 검토는 외부 workspace와 내부 readable content의 CSS/markup 소유권만 정정한다. 기존 history projection·권한·API·DB·서비스/배포 topology는 그대로다. HEAD+chat source5파일의 격리 index에서 architecture stamp와 staged guard를 통과했으며 실제 공유 index/review marker는 보존했다. 현재 source·compiled Chromium 증거와 이전 전체 gate/운영 검증의 분리 경계는 [`docs/testing.md`](docs/testing.md#lumen-채팅-전체-작업-영역-복원-검증-2026-10-12-local-only)를 따른다.
 
 계정·리소스 final architecture 검토는 private 설정/DB data/다른 worktree를 제외한 current-source snapshot에서 working와 staged guard가 같은 `source_sha256=d3768d2de0ad659d9c97a0afa77df6cdc1353339978c6ac9faa3e2b407bda4ed`/2601files로 통과했다. Source 정지 시점의 동시 WIP도 포함하는 snapshot이며 scope-only/full integration 성공으로 포장하지 않는다. 전체 gate는 동시 Lumen mutation coverage1건에서 중단됐고 최종 test-only HTTP 회귀 교체는 exact87개로 따로 검증했다. Compiled UI·native SQL/SDK 증거와 운영/mixed-version 미검증은 `docs/testing.md`에 구분했다. 실제 공유 index·review marker는 보존했다.
 
@@ -1133,9 +1135,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "936a2135eb61d0b4f93f7dbb1b03ba4e482d29e5d1258ceb6206f009b2592b34",
-  "reviewed_at": "2026-10-11T17:42:43Z",
-  "summary": "Integrated completed dev sessions and upstream bounded proxy trust; reviewed inventory/VM/network/password consumers, MCP expiry/consent/target admission and cancellation fences. Local full gate/API/browser/native proofs remain separately scoped. Installer PTY EOF completion now stops final drain and avoids releasing an exited keeper; deterministic failing-before/passing-after terminal-revocation regression and Linux smoke verified, test-harness-only no application structure impact. Approved QA bridge relocation is host-only; current production snapshot/schema/writer qualification remains blocked, no production migrations or deployment."
+  "source_sha256": "437992ae2c0baa32534efe7704a982f6f9f162977ee76205181b6c306018057a",
+  "reviewed_at": "2026-10-11T18:49:16Z",
+  "summary": "Reviewed and committed the completed full-bleed chat workspace cutover with its archived compiled Chromium proof. The five source files match their runtime receipts; bounded 80rem transcript/composer and safe short-height scrolling change only CSS/markup. The exact full-source digest passed unmodified test:gate in the private-config-free qualification checkout with separately owned loopback stores; the shared private TOML collection failure remains recorded. No API/auth/schema/service ownership/version/deployment change. New concurrent Windows work is separate and preserved."
 }
 ```
 <!-- architecture-review:end -->

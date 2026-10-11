@@ -61,3 +61,15 @@ lang: ko
 - 관련 기존 문서 검증은 3개 파일·36개 테스트가 통과했다. `i18n:check`·`i18n:scan`과 production build 결과는 해당 OpenSpec 완료 기록에 남긴다.
 - 전체 frontend type check에는 공유 작업의 MCP 접근 테스트·관리자 채팅 quota·내 리소스 번역 타입 오류가 관찰되었다. 이번 문서 renderer의 새 타입 오류는 보고되지 않았지만 전체 check 통과로 표기하지 않는다. 기존 `DocCodeBlock`과 `ProjectUsageTable`의 비대화형 `tabindex` 경고도 숨기지 않는다.
 - 전체 `npm run test:gate`·운영 배포·실제 자원 생성/삭제·키 발급/회수·비밀 조회·설정/QR 다운로드·유료 모델 호출은 수행하지 않았다. 실제 캡처와 로컬 문서 검증을 그러한 작업의 성공 증거로 대체하지 않는다.
+
+## 후속 채팅 폭 복원 점검 (2026-10-12, local-only)
+
+위 네 건과 실제 가이드 캡처는 당시 관찰 기록으로 보존한다. 이후 사용자 제공 화면에 따라 채팅 레이아웃만 수정하며, 이 절의 Chromium 화면은 합성 identity/API를 사용한 로컬 실행 증거다. 운영 캡처를 합성 화면으로 교체하지 않는다.
+
+| ID · 우선순위 | 화면·재현 조건 | 관찰한 문제와 사용자 영향 | 근거 | 조치 · 상태 |
+|---|---|---|---|---|
+| VIS-05 · 중간 | 사용자 제공 Lumen 채팅 화면 및 현재 source | 외부 `PageShell`의 가운데 정렬·80rem 상한·padding에 채팅 기록 sidebar와 대화 배경까지 묶여 가용 작업 영역 양옆이 비었다. | 사용자 첨부 화면과 채팅·프로젝트 3개 route의 wrapper. | 외부 wrapper는 full-bleed 작업 영역으로 복원하고 transcript/composer만 공통80rem으로 제한했다. **로컬 수정·검증 완료, 미배포**. |
+| VIS-06 · 중간 | 로컬 새 채팅, 844×390 landscape | 중앙 정렬된 welcome/composer 묶음이 남은 높이보다 커지면 아이콘이 toolbar 쪽으로 올라가고 하단 프로젝트 선택이 잘린다. | `restore-chat-full-viewport`의 수정 전 Chromium 관찰 기록과 수정 후 capture·실제 element bounds. | 높이가 부족할 때 묶음을 workspace 내부에서 스크롤하고 충분할 때만 중앙 정렬한다. **로컬 수정·검증 완료, 미배포**. |
+
+최종 production build를 실제 Chromium에서 새/저장 대화·4locale·두 테마·모바일/넓은 화면·짧은 높이·프로젝트 route의42조건으로 확인했다. 입력/drawer·scroll proof와 미실행 범위는 [`docs/testing.md`](testing.md#lumen-채팅-전체-작업-영역-복원-검증-2026-10-12-local-only), 화면과 수치는 [archived evidence](../openspec/changes/archive/2026-10-11-restore-chat-full-viewport/evidence/)에 보존한다.
+

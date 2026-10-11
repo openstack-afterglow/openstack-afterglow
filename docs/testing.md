@@ -6,6 +6,25 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## Lumen 채팅 전체 작업 영역 복원 검증 (2026-10-12, local-only)
+
+`restore-chat-full-viewport`는 사용자 제공 화면을 기준으로 채팅·채팅 프로젝트의 외부 `PageShell` 제한을 제거하고 내부 transcript/composer만 공통80rem에 맞춘 markup/CSS 수정이다. 앞선 공통 shell 검증은 당시 기록으로 유지하며 채팅의 현재 계약은 full-bleed 예외다. 일반 설정·Studio·API·인증·DB·서비스 소유권은 바꾸지 않는다.
+
+| 실행본 | 실제 Chromium 조건 | 관측 결과 |
+|---|---|---|
+| 로컬 source Vite | 새/저장 대화 × light/dark × 390/767/768/1023/1024/1280/1440/1920/2560px 및 844×390·960×500, 총44조건 | 문서 가로 overflow0. 저장 대화의 독립 기록 scroll·하단 composer, 새 대화의 높이 부족 시 내부 scroll. |
+| 최종 adapter-node production build | 새/저장 대화 ×4locale ×light/dark ×390/2560px32조건, 짧은 높이/2x device scale4조건, 프로젝트 목록/상세 ×390/768/2560px6조건, 총42조건 | 문서 가로 overflow0·workspace 경계 일치·내부80rem 상한. 넓은 저장 대화의 transcript/composer 중심 오차0. |
+
+- 실제32개 저장 메시지에서 wheel로 기록만 이동하고 입력창·외부 page 위치는 유지됐다. 두 줄 입력과 Shift+Enter, mobile history의 Escape/outside dismissal, draft 보존·trigger focus 복원을 확인했다. 전역 서비스 navigation과 채팅 history 각각 펼침/접힘4조합도 확인했다.
+- 844×390 새 대화에서 관찰한 welcome/프로젝트 선택 잘림은 safe centering과 workspace 내부 scroll로 수정했다. 960×500의 deviceScaleFactor2는 실제2x 렌더링 증거이며 browser-native200% zoom으로 표현하지 않는다.
+- `npm --prefix frontend run build` exit0, Vite8.2.2·frontend1.30.12. 기존 `DocCodeBlock`·`ProjectUsageTable`의 noninteractive tabindex 경고2종은 유지됐다. 전체 type check·`npm run test:gate`는 이 수정에서 실행하지 않았고 이전 세션의 gate를 이번 수정 성공으로 소급하지 않는다.
+- Identity/API는 합성 fixture다. 최종 compiled 실행의 JS exception0·미지원 API 응답0·자원 mutation0을 관측했다. 화면 전환 중 context-preview 취소와 embedded font request diagnostics는 별도로 보존하며, 최종 `document.fonts`는 loaded/error0이었다. 실제 Keystone 권한·provider/과금·운영 배포 성공 증거가 아니다.
+- Architecture guard는 HEAD+현재 chat source5파일의 임시 index에서 stamp와 `--staged`를 통과했다(`437992ae2c0baa32534efe7704a982f6f9f162977ee76205181b6c306018057a`, source2601files). 실제 공유 index/review marker를 보존하고 전체 동시 WIP의 qualification으로 확대하지 않는다. GBrain은 PATH의 CLI 부재로 sync하지 않았다.
+
+영구 증거: [`source-browser.json`](../openspec/changes/archive/2026-10-11-restore-chat-full-viewport/evidence/source-browser.json), [`compiled-browser.json`](../openspec/changes/archive/2026-10-11-restore-chat-full-viewport/evidence/compiled-browser.json), [`architecture.json`](../openspec/changes/archive/2026-10-11-restore-chat-full-viewport/evidence/architecture.json). 같은 디렉터리의 WebP는 합성 로컬 화면이며 기존 운영 가이드 캡처를 대체하지 않는다. 보관 경로는 CLI가 출력한 날짜를 사용한다.
+
+후속 **전체 변경 커밋 qualification**은 구현 소유 세션과 별도다. 공유 checkout의 첫 `npm run test:gate`는 비공개 `afterglow.conf`의 `TOMLDecodeError`(line10,column9)로 backend collection 전에 exit4였다(`artifact://509`). 설정을 수정·복사하지 않고 현재 의도된 변경의 exact tree `4c4c050ca830ab9ee81c9c8e9217e6910a4fe16a`를 기존 격리 checkout에 설치했다. 별도 소유 `afterglow-remaining-commit-gate-bkjlix`의 loopback MariaDB/PostgreSQL/Redis만 원래 runner override로 제공한 전체 `npm run test:gate`는 exit0이었다(`artifact://515`): orchestration175, Kolla Node27/Python11, Unix installer20, backend5003, frontend342files/2914와 runner9, contract174, functional118/23deselected, Ruff check·format574files. 기존 PowerShell36skip·두 frontend tabindex 경고와 backend 경고는 숨기지 않는다. Source fingerprint는 위 scoped proof와 같은 `437992ae2c0baa32534efe7704a982f6f9f162977ee76205181b6c306018057a`/2601files이며 chat source5파일도 compiled-browser receipt와 byte-identical이다. 임시 index credential scan은 no leaks였고 private env/config/key·기존 다른 datastore/volume·운영 DB/IAM/배포는 변경하지 않았다. 이 결과는 snapshot 이후 동시 작업이나 운영 acceptance를 인증하지 않는다.
+
 ## 완료 세션 dev 통합 검증 (2026-10-11, local-only)
 
 `integrate-completed-sessions-dev-ci`는 완료 세션들의 source·tests·docs·공개 screenshot을 private 입력 없이 `/private/tmp/afterglow-dev-integration-20261011.bkJlix/repo`의 local `dev`에 통합했다. Local checkpoint `7f2572197747bb80e09255879836b415b0d96edd`와 upstream `97209ed4a412feacb03fb7b0d64508721817d51a`의 ancestry를 모두 보존한다. 아래 과거 작업별 실패/성공 기록은 당시 범위로 유지하며 현재 통합 성공으로 소급 변경하지 않는다.
