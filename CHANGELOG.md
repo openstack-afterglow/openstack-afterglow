@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+## [1.30.13] - 2026-10-12
+
+### Fixed
+- **K3s GPU admission의 인증·대상 project 분리** — 서비스 인증은 기존 DB policy `openstack.service_project`로 고정하고 요청 project를 flavor public/private access 확인과 GPU quota/usage에 명시 전달한다. 비공유 flavor는400, metadata/access/authority 조회 불가는503으로 거부하며 empty extra specs를 명시 조회한다. 서비스 password의 tenant scope·membership 추가·admin fallback은 없다.
+- 기존 GPU/PCI alias·Afterglow DB default/project quota·미설정/0 거부·-1 무제한·부족409/fail-closed503과 native Drover provisioning을 유지한다. Quota·reservation·schema·capacity를 변경하지 않는다.
+- **검증 경계** — Focused64·K3s16/9·instances548/209 및 최종 `test:gate`(backend4431/frontend2569/contract174/functional35, Ruff check·format), working stamp/staged architecture check가 통과했다. 실제 DB·Keystone·Nova의 candidate ASGI에서 지정 target GPU admission200/`gpu_required=true`와 auth401·malformed400·schema422, 독립 tenant visibility를 확인하고 DB를 정상 종료했다. 배포된 endpoint proof는 아니며 artifact·rollout·deployed HTTP acceptance는 [검증 기록](docs/testing.md#gpu-admission-service-scope-2026-10-12)과 [OpenSpec](openspec/changes/gpu-admission-service-scope/tasks.md)에 pending이다.
+
 ## [1.30.12] - 2026-10-11
 
 ### Fixed

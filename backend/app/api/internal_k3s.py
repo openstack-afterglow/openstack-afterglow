@@ -8,16 +8,16 @@ import logging
 import re
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+from openstack.exceptions import ResourceNotFound
 from pydantic import BaseModel
 
 from app.config import get_settings
-from app.services import nova
 from app.services.gpu_inventory import (
     GpuQuotaDenied,
     GpuQuotaUnavailable,
     require_gpu_quota,
 )
-from app.services.keystone import get_admin_connection_for_project
+from app.services.resource_policy_store import get_service_project_connection
 
 _logger = logging.getLogger(__name__)
 
@@ -51,6 +51,25 @@ def _require_gpu_admission_token(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+def _get_project_flavor(conn, project_id: str, flavor_id: str):
+    """Read native visibility for the target project, not the admin token's scope."""
+    try:
+        flavor = conn.compute.get_flavor(flavor_id)
+    except ResourceNotFound:
+        return None
+    if flavor is None:
+        return None
+    if flavor.is_public is not True:
+        access = list(conn.compute.get_flavor_access(flavor_id))
+        if not any((entry.get("tenant_id") or entry.get("project_id")) == project_id for entry in access):
+            return None
+    # Older Nova microversions omit specs from flavor details. Do not mistake a
+    # metadata failure for a CPU flavor (or swallow it as a missing flavor).
+    if not flavor.extra_specs:
+        flavor = conn.compute.fetch_flavor_extra_specs(flavor)
+    return flavor
+
+
 @router.post("/gpu-admission", response_model=GpuAdmissionResponse)
 async def k3s_gpu_admission(
     req: GpuAdmissionRequest,
@@ -64,43 +83,22 @@ async def k3s_gpu_admission(
         raise HTTPException(status_code=400, detail="Invalid project_id or flavor_id")
 
     try:
-        conn = await asyncio.to_thread(get_admin_connection_for_project, project_id)
+        conn = await get_service_project_connection()
     except Exception as exc:
-        _logger.error(
-            "Failed to connect to OpenStack for project %s: %s",
-            project_id,
-            exc,
-            exc_info=True,
-        )
+        _logger.error("GPU admission service connection unavailable")
         raise HTTPException(status_code=503, detail="OpenStack service connection unavailable") from exc
-
-    conn._afterglow_project_id = project_id
 
     try:
         try:
-            flavors = await asyncio.to_thread(nova.list_flavors, conn)
+            flavor = await asyncio.to_thread(_get_project_flavor, conn, project_id, flavor_id)
         except Exception as exc:
-            _logger.error(
-                "Failed to list flavors for project %s: %s",
-                project_id,
-                exc,
-                exc_info=True,
-            )
+            _logger.error("GPU admission flavor visibility or metadata unavailable")
             raise HTTPException(status_code=503, detail="OpenStack compute service unavailable") from exc
-
-        flavor = next(
-            (
-                f
-                for f in flavors
-                if getattr(f, "id", None) == flavor_id or (isinstance(f, dict) and f.get("id") == flavor_id)
-            ),
-            None,
-        )
         if flavor is None:
             raise HTTPException(status_code=400, detail="Flavor not found")
 
         try:
-            gpu_required = await require_gpu_quota(conn, flavor)
+            gpu_required = await require_gpu_quota(conn, flavor, project_id=project_id)
         except GpuQuotaDenied as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except GpuQuotaUnavailable as exc:
@@ -108,7 +106,7 @@ async def k3s_gpu_admission(
         except HTTPException:
             raise
         except Exception as exc:
-            _logger.error("Unexpected error checking GPU quota: %s", exc, exc_info=True)
+            _logger.error("GPU quota decision failed")
             raise HTTPException(status_code=503, detail="GPU quota decision failed") from exc
 
         return {"gpu_required": bool(gpu_required)}

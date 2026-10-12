@@ -10,7 +10,7 @@ nav_order: 40
 
 The k3s provisioner is a subsystem that installs and operates k3s (lightweight Kubernetes) directly using only OpenStack Nova VMs + cloud-init, **without Magnum**. It handles cluster create/delete/scale, kubeconfig download, HA (embedded-etcd) bootstrap, certificate rotation, node groups, Stampede autoscale, and Cloud Provider OpenStack plugin deployment.
 
-Drover provisions OpenStack resources natively and re-checks Afterglow's `/api/v1/internal/k3s/gpu-admission` before each create. Afterglow's internal K3s API handles GPU admission only.
+Drover provisions OpenStack resources natively and re-checks Afterglow's `/api/v1/internal/k3s/gpu-admission` before each GPU worker create. Afterglow's internal K3s API handles GPU admission only; it grants neither Nova creation authority nor a capacity reservation.
 
 For the proxy-style API that queries/manipulates Kubernetes resources inside the cluster (Pod/Deployment/ConfigMap/Secret/Cloud Shell, etc.), see the separate document [k3s Resource Management](k3s-resources.md).
 
@@ -31,6 +31,27 @@ For the proxy-style API that queries/manipulates Kubernetes resources inside the
 | Tags | `k3s`, `k3s-health`, `k3s-callback`, `k3s-templates`, `k3s-nodegroups`, `k3s-certificates`, etc. |
 
 > All paths are `/api/v1` single-mount. As an exception, only `POST /callback` also keeps the legacy `/api/k3s/callback` for cloud-init baked VM compatibility (adding new legacy routes is prohibited).
+
+## Internal GPU admission: authentication scope versus target project
+
+`POST /api/v1/internal/k3s/gpu-admission` is a Drover-only boundary using `X-Afterglow-K3s-Admission-Token`, not a browser Bearer. Never record the token in documentation, command arguments or logs. The JSON body is `{"project_id":"<target-project-id>","flavor_id":"<nova-flavor-id>"}`. Both strings are stripped and must match `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`.
+
+- **Fixed authentication project:** only the DB resource policy `openstack.service_project` supplies the ID to `resource_policy_store.get_service_project_connection()`. The service password is never authenticated in the requested tenant project, and no tenant membership is added. Missing policy or DB/Keystone failure returns 503, without an admin-project or environment fallback.
+- **Target flavor visibility:** administrative lookup visibility is not target-project access. Public flavors are accepted; private flavors require the requested project in the native `get_flavor_access` entries (`tenant_id` or `project_id`). Missing or unshared flavors return 400. Empty specs trigger explicit `fetch_flavor_extra_specs`; lookup failures, including metadata 404, return 503 rather than treating the flavor as CPU-only.
+- **Target quota and usage:** the request project is passed explicitly to `require_gpu_quota(conn, flavor, project_id=project_id)`. If authentication scope differs, usage queries Nova `servers(details=True, all_projects=True, project_id=project_id)` and checks every server's actual project ownership. Other projects are excluded; unknown cross-project ownership returns 503. Service/admin-project usage is never substituted.
+- **Unchanged authority:** existing GPU/PCI alias classification and normalization and Afterglow DB quotas remain authoritative. Project overrides replace matching `__default__` limits; absent/zero limits deny and -1 means unlimited. GPU admission checks current usage plus the requested count. This endpoint changes no quota reservation, DB schema, membership or Placement capacity. Admission does not prove Nova scheduling or GPU allocatable readiness.
+
+| Outcome | HTTP / body |
+|---|---|
+| GPU admitted | 200 / `{"gpu_required":true}` |
+| Visible non-GPU flavor | 200 / `{"gpu_required":false}` |
+| Missing, incorrect or unconfigured admission token | 401 |
+| Invalid string ID / missing or unshared flavor | 400 |
+| Invalid JSON schema (missing field or wrong type) | 422 |
+| Real GPU quota exhausted | 409 |
+| Policy, authentication, visibility, metadata, DB quota or Nova usage unavailable | 503 (fail closed) |
+
+Sources: `_get_project_flavor` and `k3s_gpu_admission` in [`internal_k3s.py`](../../../backend/app/api/internal_k3s.py), `get_service_project_connection` in [`resource_policy_store.py`](../../../backend/app/services/resource_policy_store.py), `require_gpu_quota` in [`gpu_inventory.py`](../../../backend/app/services/gpu_inventory.py), and `get_effective_gpu_quotas`, `_get_project_gpu_usage` and `check_gpu_quota` in [`gpu_quota.py`](../../../backend/app/services/gpu_quota.py). Focused64 regressions and related K3s/instances targets are **test-passed**. Candidate in-process ASGI returned200 against real providers; replacing the running API and deployed HTTP acceptance remain separate gates in the [verification record and protected native smoke](../../testing.md#gpu-admission-service-scope-2026-10-12).
 
 ---
 

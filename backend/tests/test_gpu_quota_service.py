@@ -1,6 +1,7 @@
 """Deterministic unit tests for Afterglow local GPU quota authority service."""
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -186,34 +187,61 @@ async def test_check_gpu_quota_pass_and_denied():
     await engine.dispose()
 
 
-def _gpu_server(project_id: str = "p1", **flavor: Any) -> MagicMock:
-    server = MagicMock()
-    server.project_id = project_id
-    server.status = "ACTIVE"
-    server.flavor = flavor
-    return server
+def _gpu_server(project_id: str | None = "p1", *, tenant_id: str | None = None, **flavor: Any) -> SimpleNamespace:
+    return SimpleNamespace(project_id=project_id, tenant_id=tenant_id, status="ACTIVE", flavor=flavor)
 
 
 @pytest.mark.asyncio
-async def test_gpu_usage_uses_project_scoped_listing_for_own_project():
+async def test_gpu_usage_own_scope_trusts_ownerless_servers_but_excludes_explicit_foreign_owners():
     mock_conn = MagicMock()
     mock_conn._afterglow_authenticated_project_id = "p1"
+    mock_conn._afterglow_project_id = "service-project"
     mock_conn.compute.servers.return_value = [
-        _gpu_server(original_name="gpu.3090", extra_specs={"pci_passthrough:alias": "RTX-3090:1"})
+        _gpu_server(original_name="gpu.3090", extra_specs={"pci_passthrough:alias": "RTX-3090:1"}),
+        _gpu_server(None, original_name="gpu.3090", extra_specs={"pci_passthrough:alias": "RTX-3090:2"}),
+        _gpu_server(None, tenant_id="p1", extra_specs={"pci_passthrough:alias": "H100:1"}),
+        _gpu_server("p2", extra_specs={"pci_passthrough:alias": "RTX-3090:50"}),
+        _gpu_server(None, tenant_id="p2", id="foreign-legacy-flavor"),
     ]
 
-    assert await get_project_gpu_usage(mock_conn, "p1") == {"RTX3090": 1}
+    assert await get_project_gpu_usage(mock_conn, "p1") == {"RTX3090": 3, "H100": 1}
     mock_conn.compute.servers.assert_called_once_with(details=True)
+    mock_conn.compute.get_flavor.assert_not_called()
+    assert mock_conn._afterglow_authenticated_project_id == "p1"
 
 
 @pytest.mark.asyncio
-async def test_gpu_usage_uses_all_projects_listing_for_foreign_project():
+async def test_gpu_usage_foreign_scope_counts_only_target_owners_even_if_nova_returns_other_projects():
     mock_conn = MagicMock()
-    mock_conn._afterglow_authenticated_project_id = "admin"
-    mock_conn.compute.servers.return_value = []
+    mock_conn._afterglow_authenticated_project_id = "service-project"
+    mock_conn._afterglow_project_id = "p1"
+    mock_conn.compute.servers.return_value = [
+        _gpu_server(extra_specs={"pci_passthrough:alias": "RTX3090:2"}),
+        _gpu_server(None, tenant_id="p1", extra_specs={"pci_passthrough:alias": "RTX3090:1"}),
+        _gpu_server("service-project", extra_specs={"pci_passthrough:alias": "RTX3090:50"}),
+        _gpu_server("p2", extra_specs={"pci_passthrough:alias": "H100:50"}),
+        _gpu_server(None, tenant_id="p2", id="foreign-legacy-flavor"),
+    ]
 
-    assert await get_project_gpu_usage(mock_conn, "p1") == {}
+    assert await get_project_gpu_usage(mock_conn, "p1") == {"RTX3090": 3}
     mock_conn.compute.servers.assert_called_once_with(details=True, all_projects=True, project_id="p1")
+    mock_conn.compute.get_flavor.assert_not_called()
+    assert mock_conn._afterglow_authenticated_project_id == "service-project"
+
+
+@pytest.mark.asyncio
+async def test_gpu_usage_foreign_scope_missing_owner_fails_closed_instead_of_returning_partial_usage():
+    mock_conn = MagicMock()
+    mock_conn._afterglow_authenticated_project_id = "service-project"
+    mock_conn.compute.servers.return_value = [
+        _gpu_server(extra_specs={"pci_passthrough:alias": "RTX3090:1"}),
+        _gpu_server(None, extra_specs={"pci_passthrough:alias": "RTX3090:2"}),
+    ]
+
+    with pytest.raises(GpuQuotaUnavailable, match="ownership is unavailable"):
+        await get_project_gpu_usage(mock_conn, "p1")
+    mock_conn.compute.servers.assert_called_once_with(details=True, all_projects=True, project_id="p1")
+    assert mock_conn._afterglow_authenticated_project_id == "service-project"
 
 
 @pytest.mark.asyncio

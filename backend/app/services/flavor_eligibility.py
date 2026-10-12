@@ -340,7 +340,7 @@ async def admit_flavor(
     """Require eligibility and reserve custom GPU headroom before mutation."""
     from app.services.gpu_inventory import require_gpu_quota
 
-    gpu_available = await require_gpu_quota(conn, flavor)
+    gpu_available = await require_gpu_quota(conn, flavor, project_id=project_id)
     eligibility = await require_flavor_eligible(
         conn,
         project_id,
