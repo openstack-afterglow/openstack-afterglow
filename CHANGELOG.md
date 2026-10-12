@@ -12,7 +12,7 @@
 ### Changed
 - 실제 운영 backend `v1.30.13`의 K3s GPU admission service/target-project 분리를 승인된 Afterglow 통합 결과와 정상 merge한다. Frontend/worker의 기존 `v1.30.12` 기준도 함께 보존하며 미완료 Palimpsest/block source·SQL088/089·sibling/operator dependency 변경은 포함하지 않는다.
 - Windows native Nova adminPass/ConfigDrive, 이미지 서비스 설정·최소 부트 디스크, 인스턴스/Manila lifecycle·offline extension·명시적 force backup, MCP 권한/명시 동의/클라이언트 관측, 전체 채팅 작업 영역·랜딩·언어 메뉴 등 아래 구현 기록을 이 patch의 source에 통합한다.
-- 배포는 immutable version image·복구 가능한 운영 snapshot·SQL084–087 호환성·canonical multinode Kolla·실제 공개 화면 검증을 조건으로 한다. 이 pre-publication 기록은 아직 운영 cutover 성공 증거가 아니며 최종 receipt는 `docs/testing.md`와 release OpenSpec에 별도로 남긴다.
+- 불변 `v1.30.14` image를 발행하고 old API·Notion worker6개를 멈춘 cold backup/실제 격리 restore 뒤 SQL084–087만 적용했다. Canonical multinode Kolla로 세 controller의 API/frontend/worker9개를 같은 revision·digest로 재구성했으며 원래 key/config/volume과 기존 비대상 container624개를 보존했다. 최종 운영 auth/UI·관측 증거와 guest/RDP·유료 inference 미검증 경계는 `docs/testing.md`와 release OpenSpec receipt에 별도로 남긴다.
 
 아래 `local, not deployed` 항목은 각 구현 당시 검증 범위를 보존한 기록이며 새 릴리스의 운영 검증으로 소급 해석하지 않는다.
 

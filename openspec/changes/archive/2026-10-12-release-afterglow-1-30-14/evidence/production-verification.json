@@ -1,0 +1,1201 @@
+{
+  "release": "v1.30.14",
+  "revision": "3572268ab3ccd27daea5a134b3c46ba8f1c9dc29",
+  "sourceQualification": "local-verification.json",
+  "coldRecovery": "cold-recovery.json",
+  "postRolloutGate": {
+    "command": "AFTERGLOW_TEST_PROJECT_NAME=afterglow-prod-release-v13014-receipt npm run test:gate",
+    "exitCode": 0,
+    "sourceSha256": "22c8c7f1f76dc459b1a293790a71b727eac89ffd6f473cb5edd10b9ab2ab2280",
+    "sourceFiles": 2615,
+    "backendUnit": 5795,
+    "frontendUnit": 3300,
+    "frontendFiles": 350,
+    "contracts": 174,
+    "functional": 128,
+    "functionalDeselected": 23,
+    "ruffFiles": 586,
+    "disposableDatastoresRemoved": true,
+    "log": "~/.local/share/afterglow-proofs/afterglow-prod-rollout-20261013-26tEUU/post-rollout-test-gate.log"
+  },
+  "ciphertextCounter": {
+    "phase": "cold",
+    "reportedOriginalCiphertextRows": 10,
+    "fixtureIdExcluded": true,
+    "counterSource": "restored-orm-smoke.py:73-80",
+    "sourceSha256": "3272b55a54b4457420673d47686e8b0cc2abed15f48a3735bd60bd0c4e8b0895",
+    "hotCount11IncludesFixture": true
+  },
+  "migration": {
+    "ok": true,
+    "completed_at": "2026-10-12T18:48:16.607468+00:00",
+    "statements": [
+      {
+        "file": "084_mcp_project_delegation.sql",
+        "sha256": "ea5f9c0a61fbc060a16512c1c5c582458315df01041bed9d929b45ef1e8d63a2",
+        "statement": 1,
+        "elapsed_ms": 111.26
+      },
+      {
+        "file": "084_mcp_project_delegation.sql",
+        "sha256": "ea5f9c0a61fbc060a16512c1c5c582458315df01041bed9d929b45ef1e8d63a2",
+        "statement": 2,
+        "elapsed_ms": 112.01
+      },
+      {
+        "file": "084_mcp_project_delegation.sql",
+        "sha256": "ea5f9c0a61fbc060a16512c1c5c582458315df01041bed9d929b45ef1e8d63a2",
+        "statement": 3,
+        "elapsed_ms": 182.23
+      },
+      {
+        "file": "084_mcp_project_delegation.sql",
+        "sha256": "ea5f9c0a61fbc060a16512c1c5c582458315df01041bed9d929b45ef1e8d63a2",
+        "statement": 4,
+        "elapsed_ms": 60.12
+      },
+      {
+        "file": "085_mcp_personal_token_expiry.sql",
+        "sha256": "64fe3575c77d52ce3ac4819359d21523599f8358e314d347b7488d8c738a4147",
+        "statement": 1,
+        "elapsed_ms": 148.97
+      },
+      {
+        "file": "085_mcp_personal_token_expiry.sql",
+        "sha256": "64fe3575c77d52ce3ac4819359d21523599f8358e314d347b7488d8c738a4147",
+        "statement": 2,
+        "elapsed_ms": 116.79
+      },
+      {
+        "file": "085_mcp_personal_token_expiry.sql",
+        "sha256": "64fe3575c77d52ce3ac4819359d21523599f8358e314d347b7488d8c738a4147",
+        "statement": 3,
+        "elapsed_ms": 202.78
+      },
+      {
+        "file": "086_mcp_lumen_explicit_consent.sql",
+        "sha256": "76a4965657dd476c01e81bc4019625e24f2db92d260360a7f6bf25fc7fd54753",
+        "statement": 1,
+        "elapsed_ms": 98.63
+      },
+      {
+        "file": "087_mcp_client_observations.sql",
+        "sha256": "f95b6da886a4238ac1141010132e745ee1cb4ddce5fc8c8b75d79b9359075920",
+        "statement": 1,
+        "elapsed_ms": 100.41
+      }
+    ],
+    "old_grant_fields_unchanged": true,
+    "all_table_row_counts_unchanged": true,
+    "tables": 90,
+    "rows": 2285,
+    "no_authority_or_consent_backfill": true,
+    "columns": [
+      "approved_projects\tlongtext\tYES",
+      "client_observations\tlongtext\tYES",
+      "consented_at\tdatetime(6)\tYES",
+      "expires_at\tdatetime(6)\tYES",
+      "project_scope\tvarchar(20)\tNO"
+    ],
+    "grant_create": "mcp_delegated_grants\tCREATE TABLE `mcp_delegated_grants` (\\n  `id` char(36) NOT NULL,\\n  `owner_user_id` varchar(64) NOT NULL,\\n  `owner_project_id` varchar(64) NOT NULL,\\n  `upstream_credential_name` varchar(128) NOT NULL,\\n  `display_name` varchar(100) NOT NULL,\\n  `source` varchar(20) NOT NULL,\\n  `access_level` varchar(10) NOT NULL,\\n  `project_scope` varchar(20) NOT NULL DEFAULT 'current',\\n  `approved_projects` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`approved_projects`)),\\n  `status` varchar(10) NOT NULL,\\n  `application_credential_id` varchar(128) DEFAULT NULL,\\n  `credential_ciphertext` mediumtext DEFAULT NULL,\\n  `credential_epoch` bigint(20) NOT NULL,\\n  `expires_at` datetime(6) DEFAULT NULL,\\n  `issued_at` datetime DEFAULT NULL,\\n  `revoked_at` datetime DEFAULT NULL,\\n  `cleanup_pending` tinyint(1) NOT NULL,\\n  `cleanup_last_attempt_at` datetime DEFAULT NULL,\\n  `orphan_recovery_after` datetime DEFAULT NULL,\\n  `orphan_recovery_nonce` char(36) DEFAULT NULL,\\n  `last_used_at` datetime DEFAULT NULL,\\n  `created_at` datetime NOT NULL,\\n  `updated_at` datetime NOT NULL,\\n  `consented_at` datetime(6) DEFAULT NULL,\\n  `client_observations` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`client_observations`)),\\n  PRIMARY KEY (`id`),\\n  UNIQUE KEY `upstream_credential_name` (`upstream_credential_name`),\\n  KEY `idx_mcp_grants_owner_status` (`owner_user_id`,`owner_project_id`,`status`),\\n  KEY `idx_mcp_grants_expiry` (`expires_at`,`status`),\\n  CONSTRAINT `chk_mcp_grant_access` CHECK (`access_level` in ('read','manage')),\\n  CONSTRAINT `chk_mcp_grant_status` CHECK (`status` in ('pending','active','revoked','expired')),\\n  CONSTRAINT `chk_mcp_grant_source` CHECK (`source` in ('personal_token','oauth','lumen')),\\n  CONSTRAINT `chk_mcp_grant_project_scope` CHECK (`project_scope` in ('current','selected','all')),\\n  CONSTRAINT `chk_mcp_grant_expiry` CHECK (`expires_at` is not null or `source` = 'personal_token')\\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci\n",
+    "child_create": "mcp_project_credentials\tCREATE TABLE `mcp_project_credentials` (\\n  `grant_id` char(36) NOT NULL,\\n  `project_id` varchar(64) NOT NULL,\\n  `upstream_credential_name` varchar(128) NOT NULL,\\n  `application_credential_id` varchar(128) DEFAULT NULL,\\n  `credential_ciphertext` mediumtext DEFAULT NULL,\\n  `cleanup_pending` tinyint(1) NOT NULL DEFAULT 1,\\n  PRIMARY KEY (`grant_id`,`project_id`),\\n  UNIQUE KEY `upstream_credential_name` (`upstream_credential_name`),\\n  CONSTRAINT `mcp_project_credentials_ibfk_1` FOREIGN KEY (`grant_id`) REFERENCES `mcp_delegated_grants` (`id`) ON DELETE CASCADE\\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci\n",
+    "ledger_not_rewritten": true,
+    "historical_migrations_not_replayed": true
+  },
+  "kolla": [
+    {
+      "action": "pull",
+      "limit": null,
+      "started_at": "2026-10-12T18:37:13.526128+00:00",
+      "ended_at": "2026-10-12T18:38:54.522290+00:00",
+      "returncode": 0,
+      "recap": [
+        "dms-compute1               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute10              : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute11              : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute12              : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute13              : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute2               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute3               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute5               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute6               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute7               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute8               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute9               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-controller1            : ok=22   changed=1    unreachable=0    failed=0    skipped=8    rescued=0    ignored=0   ",
+        "dms-controller2            : ok=12   changed=1    unreachable=0    failed=0    skipped=13   rescued=0    ignored=0   ",
+        "dms-controller3            : ok=12   changed=1    unreachable=0    failed=0    skipped=13   rescued=0    ignored=0   ",
+        "dms-deployment             : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   "
+      ],
+      "failure_lines": 0,
+      "last_task": "TASK [Reconcile Kolla HAProxy after plugin route changes] **********************",
+      "canonical_inventory": "/etc/kolla/multinode",
+      "service_tags": [
+        "afterglow"
+      ]
+    },
+    {
+      "action": "prechecks",
+      "limit": null,
+      "started_at": "2026-10-12T18:38:54.793358+00:00",
+      "ended_at": "2026-10-12T18:39:35.222603+00:00",
+      "returncode": 0,
+      "recap": [
+        "dms-compute1               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute10              : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute11              : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute12              : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute13              : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute2               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute3               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute5               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute6               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute7               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute8               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute9               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-controller1            : ok=38   changed=1    unreachable=0    failed=0    skipped=9    rescued=0    ignored=0   ",
+        "dms-controller2            : ok=15   changed=0    unreachable=0    failed=0    skipped=13   rescued=0    ignored=0   ",
+        "dms-controller3            : ok=15   changed=0    unreachable=0    failed=0    skipped=13   rescued=0    ignored=0   ",
+        "dms-deployment             : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   "
+      ],
+      "failure_lines": 0,
+      "last_task": "TASK [Reconcile Kolla HAProxy after plugin route changes] **********************",
+      "canonical_inventory": "/etc/kolla/multinode",
+      "service_tags": [
+        "afterglow"
+      ]
+    },
+    {
+      "action": "genconfig",
+      "limit": null,
+      "started_at": "2026-10-12T18:48:17.085765+00:00",
+      "ended_at": "2026-10-12T18:49:19.846252+00:00",
+      "returncode": 0,
+      "recap": [
+        "dms-compute1               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute10              : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute11              : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute12              : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute13              : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute2               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute3               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute5               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute6               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute7               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute8               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-compute9               : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   ",
+        "dms-controller1            : ok=57   changed=3    unreachable=0    failed=0    skipped=22   rescued=0    ignored=0   ",
+        "dms-controller2            : ok=38   changed=1    unreachable=0    failed=0    skipped=20   rescued=0    ignored=0   ",
+        "dms-controller3            : ok=38   changed=1    unreachable=0    failed=0    skipped=20   rescued=0    ignored=0   ",
+        "dms-deployment             : ok=4    changed=0    unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   "
+      ],
+      "failure_lines": 0,
+      "last_task": "TASK [Reconcile Kolla HAProxy after plugin route changes] **********************",
+      "canonical_inventory": "/etc/kolla/multinode",
+      "service_tags": [
+        "afterglow"
+      ]
+    },
+    {
+      "action": "reconfigure",
+      "limit": "dms-controller1",
+      "started_at": "2026-10-12T18:49:19.877364+00:00",
+      "ended_at": "2026-10-12T18:51:47.181166+00:00",
+      "returncode": 0,
+      "recap": [
+        "dms-controller1            : ok=98   changed=7    unreachable=0    failed=0    skipped=26   rescued=0    ignored=0   "
+      ],
+      "failure_lines": 0,
+      "last_task": "TASK [service-check-containers : Include tasks] ********************************",
+      "canonical_inventory": "/etc/kolla/multinode",
+      "service_tags": [
+        "afterglow"
+      ]
+    },
+    {
+      "action": "reconfigure",
+      "limit": "dms-controller2",
+      "started_at": "2026-10-12T18:51:50.171388+00:00",
+      "ended_at": "2026-10-12T18:54:25.271387+00:00",
+      "returncode": 0,
+      "recap": [
+        "dms-controller2            : ok=98   changed=7    unreachable=0    failed=0    skipped=26   rescued=0    ignored=0   "
+      ],
+      "failure_lines": 0,
+      "last_task": "TASK [service-check-containers : Include tasks] ********************************",
+      "canonical_inventory": "/etc/kolla/multinode",
+      "service_tags": [
+        "afterglow"
+      ]
+    },
+    {
+      "action": "reconfigure",
+      "limit": "dms-controller3",
+      "started_at": "2026-10-12T18:54:28.049630+00:00",
+      "ended_at": "2026-10-12T18:56:43.618772+00:00",
+      "returncode": 0,
+      "recap": [
+        "dms-controller3            : ok=98   changed=7    unreachable=0    failed=0    skipped=26   rescued=0    ignored=0   "
+      ],
+      "failure_lines": 0,
+      "last_task": "TASK [service-check-containers : Include tasks] ********************************",
+      "canonical_inventory": "/etc/kolla/multinode",
+      "service_tags": [
+        "afterglow"
+      ]
+    }
+  ],
+  "rollout": {
+    "ok": true,
+    "revision": "3572268ab3ccd27daea5a134b3c46ba8f1c9dc29",
+    "version": "1.30.14",
+    "completed_at": "2026-10-12T18:56:45.900190+00:00",
+    "controllers": [
+      {
+        "host": "dms-controller1",
+        "at": "2026-10-12T18:51:50.107918+00:00",
+        "images": [
+          {
+            "name": "afterglow_backend",
+            "id": "18a67ccb8ed66b275793c9ff66935e840c0fe14fcf6e8db422407e3649cd84e0",
+            "image": "ghcr.io/openstack-afterglow/afterglow-api@sha256:c5e705e8a4cb05a7ff71520ff572b066879725b5e7a2f9305c6cd1270132e991",
+            "image_id": "sha256:c81eeff3b1f7d72f869d228d166f4fbfa988d002cbba1816f312192d931cc516",
+            "revision": "3572268ab3ccd27daea5a134b3c46ba8f1c9dc29",
+            "health": "healthy",
+            "restart_count": 0
+          },
+          {
+            "name": "afterglow_frontend",
+            "id": "daca53ac86e0271f3ffeae5273e78452eaa2a1585f6e659d8656a7110cf1f44d",
+            "image": "ghcr.io/openstack-afterglow/afterglow@sha256:2c47a6c979554368e60a1301a88d22a79b24a2676e74b19c9a635a9b505a8817",
+            "image_id": "sha256:b069ad0e3f6fe17abd7513e6cc0cb95421ae4db8119fd8d4d4b18975ea87cb59",
+            "revision": "3572268ab3ccd27daea5a134b3c46ba8f1c9dc29",
+            "health": "healthy",
+            "restart_count": 0
+          },
+          {
+            "name": "afterglow_notion_worker",
+            "id": "8412b23315dab81592334d4fcbaf9579621e11c2b0e9d1afa31bc4280c55267c",
+            "image": "ghcr.io/openstack-afterglow/afterglow-worker@sha256:921afdea1dc1675e93163c9ec43ebc9418932f632ada91565a9672e032f94910",
+            "image_id": "sha256:7ca87deb8a6f1f4ecac0e553cb460d4f95fac3609d9ee0e6a8690620f6386b5e",
+            "revision": "3572268ab3ccd27daea5a134b3c46ba8f1c9dc29",
+            "health": null,
+            "restart_count": 0
+          }
+        ],
+        "unchanged_non_afterglow_containers": 241
+      },
+      {
+        "host": "dms-controller2",
+        "at": "2026-10-12T18:54:28.025010+00:00",
+        "images": [
+          {
+            "name": "afterglow_backend",
+            "id": "a677c217144221b8e5cc68c79b13c155d323011a3b4f8a76157011150ded11aa",
+            "image": "ghcr.io/openstack-afterglow/afterglow-api@sha256:c5e705e8a4cb05a7ff71520ff572b066879725b5e7a2f9305c6cd1270132e991",
+            "image_id": "sha256:c81eeff3b1f7d72f869d228d166f4fbfa988d002cbba1816f312192d931cc516",
+            "revision": "3572268ab3ccd27daea5a134b3c46ba8f1c9dc29",
+            "health": "healthy",
+            "restart_count": 0
+          },
+          {
+            "name": "afterglow_frontend",
+            "id": "15ef727776828aa7c618c65bd9fc1bcd388f56ea1544f755ecd5033647b86560",
+            "image": "ghcr.io/openstack-afterglow/afterglow@sha256:2c47a6c979554368e60a1301a88d22a79b24a2676e74b19c9a635a9b505a8817",
+            "image_id": "sha256:b069ad0e3f6fe17abd7513e6cc0cb95421ae4db8119fd8d4d4b18975ea87cb59",
+            "revision": "3572268ab3ccd27daea5a134b3c46ba8f1c9dc29",
+            "health": "healthy",
+            "restart_count": 0
+          },
+          {
+            "name": "afterglow_notion_worker",
+            "id": "4669a41f00da9e8191043796952a79b71b8cc7641befeea59fc197ace55c09e1",
+            "image": "ghcr.io/openstack-afterglow/afterglow-worker@sha256:921afdea1dc1675e93163c9ec43ebc9418932f632ada91565a9672e032f94910",
+            "image_id": "sha256:7ca87deb8a6f1f4ecac0e553cb460d4f95fac3609d9ee0e6a8690620f6386b5e",
+            "revision": "3572268ab3ccd27daea5a134b3c46ba8f1c9dc29",
+            "health": null,
+            "restart_count": 0
+          }
+        ],
+        "unchanged_non_afterglow_containers": 233
+      },
+      {
+        "host": "dms-controller3",
+        "at": "2026-10-12T18:56:45.899324+00:00",
+        "images": [
+          {
+            "name": "afterglow_backend",
+            "id": "89aaa8fd905a8dfdff0f56624b8ed8d54fb4baea95e5dab10a47239926b3546d",
+            "image": "ghcr.io/openstack-afterglow/afterglow-api@sha256:c5e705e8a4cb05a7ff71520ff572b066879725b5e7a2f9305c6cd1270132e991",
+            "image_id": "sha256:c81eeff3b1f7d72f869d228d166f4fbfa988d002cbba1816f312192d931cc516",
+            "revision": "3572268ab3ccd27daea5a134b3c46ba8f1c9dc29",
+            "health": "healthy",
+            "restart_count": 0
+          },
+          {
+            "name": "afterglow_frontend",
+            "id": "cf387bf26005f7c63f4529a438fc204714655ac6cbccd9bd3e78b6857cbb5465",
+            "image": "ghcr.io/openstack-afterglow/afterglow@sha256:2c47a6c979554368e60a1301a88d22a79b24a2676e74b19c9a635a9b505a8817",
+            "image_id": "sha256:b069ad0e3f6fe17abd7513e6cc0cb95421ae4db8119fd8d4d4b18975ea87cb59",
+            "revision": "3572268ab3ccd27daea5a134b3c46ba8f1c9dc29",
+            "health": "healthy",
+            "restart_count": 0
+          },
+          {
+            "name": "afterglow_notion_worker",
+            "id": "7520456ab681b5eed9125dcf3902a771f913d009607f1a7c69f0f6c61395a673",
+            "image": "ghcr.io/openstack-afterglow/afterglow-worker@sha256:921afdea1dc1675e93163c9ec43ebc9418932f632ada91565a9672e032f94910",
+            "image_id": "sha256:7ca87deb8a6f1f4ecac0e553cb460d4f95fac3609d9ee0e6a8690620f6386b5e",
+            "revision": "3572268ab3ccd27daea5a134b3c46ba8f1c9dc29",
+            "health": null,
+            "restart_count": 0
+          }
+        ],
+        "unchanged_non_afterglow_containers": 150
+      }
+    ]
+  },
+  "observation": {
+    "complete": true,
+    "ok": true,
+    "started_at": "2026-10-12T19:19:11.634841+00:00",
+    "ended_at": "2026-10-12T19:24:24.177894+00:00",
+    "samples": [
+      [
+        {
+          "host": "dms-controller1",
+          "at": "2026-10-12T19:19:11.634841+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "18a67ccb8ed66b275793c9ff66935e840c0fe14fcf6e8db422407e3649cd84e0",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "daca53ac86e0271f3ffeae5273e78452eaa2a1585f6e659d8656a7110cf1f44d",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "8412b23315dab81592334d4fcbaf9579621e11c2b0e9d1afa31bc4280c55267c",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        },
+        {
+          "host": "dms-controller2",
+          "at": "2026-10-12T19:19:11.567569+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "a677c217144221b8e5cc68c79b13c155d323011a3b4f8a76157011150ded11aa",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "15ef727776828aa7c618c65bd9fc1bcd388f56ea1544f755ecd5033647b86560",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "4669a41f00da9e8191043796952a79b71b8cc7641befeea59fc197ace55c09e1",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        },
+        {
+          "host": "dms-controller3",
+          "at": "2026-10-12T19:19:11.474967+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "89aaa8fd905a8dfdff0f56624b8ed8d54fb4baea95e5dab10a47239926b3546d",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "cf387bf26005f7c63f4529a438fc204714655ac6cbccd9bd3e78b6857cbb5465",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "7520456ab681b5eed9125dcf3902a771f913d009607f1a7c69f0f6c61395a673",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "host": "dms-controller1",
+          "at": "2026-10-12T19:20:13.446826+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "18a67ccb8ed66b275793c9ff66935e840c0fe14fcf6e8db422407e3649cd84e0",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "daca53ac86e0271f3ffeae5273e78452eaa2a1585f6e659d8656a7110cf1f44d",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "8412b23315dab81592334d4fcbaf9579621e11c2b0e9d1afa31bc4280c55267c",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        },
+        {
+          "host": "dms-controller2",
+          "at": "2026-10-12T19:20:13.498225+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "a677c217144221b8e5cc68c79b13c155d323011a3b4f8a76157011150ded11aa",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "15ef727776828aa7c618c65bd9fc1bcd388f56ea1544f755ecd5033647b86560",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "4669a41f00da9e8191043796952a79b71b8cc7641befeea59fc197ace55c09e1",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        },
+        {
+          "host": "dms-controller3",
+          "at": "2026-10-12T19:20:13.074626+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "89aaa8fd905a8dfdff0f56624b8ed8d54fb4baea95e5dab10a47239926b3546d",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "cf387bf26005f7c63f4529a438fc204714655ac6cbccd9bd3e78b6857cbb5465",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "7520456ab681b5eed9125dcf3902a771f913d009607f1a7c69f0f6c61395a673",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "host": "dms-controller1",
+          "at": "2026-10-12T19:21:15.404074+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "18a67ccb8ed66b275793c9ff66935e840c0fe14fcf6e8db422407e3649cd84e0",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "daca53ac86e0271f3ffeae5273e78452eaa2a1585f6e659d8656a7110cf1f44d",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "8412b23315dab81592334d4fcbaf9579621e11c2b0e9d1afa31bc4280c55267c",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        },
+        {
+          "host": "dms-controller2",
+          "at": "2026-10-12T19:21:15.345471+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "a677c217144221b8e5cc68c79b13c155d323011a3b4f8a76157011150ded11aa",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "15ef727776828aa7c618c65bd9fc1bcd388f56ea1544f755ecd5033647b86560",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "4669a41f00da9e8191043796952a79b71b8cc7641befeea59fc197ace55c09e1",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        },
+        {
+          "host": "dms-controller3",
+          "at": "2026-10-12T19:21:15.009347+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "89aaa8fd905a8dfdff0f56624b8ed8d54fb4baea95e5dab10a47239926b3546d",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "cf387bf26005f7c63f4529a438fc204714655ac6cbccd9bd3e78b6857cbb5465",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "7520456ab681b5eed9125dcf3902a771f913d009607f1a7c69f0f6c61395a673",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "host": "dms-controller1",
+          "at": "2026-10-12T19:22:17.247353+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "18a67ccb8ed66b275793c9ff66935e840c0fe14fcf6e8db422407e3649cd84e0",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "daca53ac86e0271f3ffeae5273e78452eaa2a1585f6e659d8656a7110cf1f44d",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "8412b23315dab81592334d4fcbaf9579621e11c2b0e9d1afa31bc4280c55267c",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        },
+        {
+          "host": "dms-controller2",
+          "at": "2026-10-12T19:22:17.264858+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "a677c217144221b8e5cc68c79b13c155d323011a3b4f8a76157011150ded11aa",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "15ef727776828aa7c618c65bd9fc1bcd388f56ea1544f755ecd5033647b86560",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "4669a41f00da9e8191043796952a79b71b8cc7641befeea59fc197ace55c09e1",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        },
+        {
+          "host": "dms-controller3",
+          "at": "2026-10-12T19:22:16.960724+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "89aaa8fd905a8dfdff0f56624b8ed8d54fb4baea95e5dab10a47239926b3546d",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "cf387bf26005f7c63f4529a438fc204714655ac6cbccd9bd3e78b6857cbb5465",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "7520456ab681b5eed9125dcf3902a771f913d009607f1a7c69f0f6c61395a673",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "host": "dms-controller1",
+          "at": "2026-10-12T19:23:19.169112+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "18a67ccb8ed66b275793c9ff66935e840c0fe14fcf6e8db422407e3649cd84e0",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "daca53ac86e0271f3ffeae5273e78452eaa2a1585f6e659d8656a7110cf1f44d",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "8412b23315dab81592334d4fcbaf9579621e11c2b0e9d1afa31bc4280c55267c",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        },
+        {
+          "host": "dms-controller2",
+          "at": "2026-10-12T19:23:19.299992+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "a677c217144221b8e5cc68c79b13c155d323011a3b4f8a76157011150ded11aa",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "15ef727776828aa7c618c65bd9fc1bcd388f56ea1544f755ecd5033647b86560",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "4669a41f00da9e8191043796952a79b71b8cc7641befeea59fc197ace55c09e1",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        },
+        {
+          "host": "dms-controller3",
+          "at": "2026-10-12T19:23:18.847402+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "89aaa8fd905a8dfdff0f56624b8ed8d54fb4baea95e5dab10a47239926b3546d",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "cf387bf26005f7c63f4529a438fc204714655ac6cbccd9bd3e78b6857cbb5465",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "7520456ab681b5eed9125dcf3902a771f913d009607f1a7c69f0f6c61395a673",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        }
+      ],
+      [
+        {
+          "host": "dms-controller1",
+          "at": "2026-10-12T19:24:21.152884+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "18a67ccb8ed66b275793c9ff66935e840c0fe14fcf6e8db422407e3649cd84e0",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "daca53ac86e0271f3ffeae5273e78452eaa2a1585f6e659d8656a7110cf1f44d",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "8412b23315dab81592334d4fcbaf9579621e11c2b0e9d1afa31bc4280c55267c",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        },
+        {
+          "host": "dms-controller2",
+          "at": "2026-10-12T19:24:21.175753+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "a677c217144221b8e5cc68c79b13c155d323011a3b4f8a76157011150ded11aa",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "15ef727776828aa7c618c65bd9fc1bcd388f56ea1544f755ecd5033647b86560",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "4669a41f00da9e8191043796952a79b71b8cc7641befeea59fc197ace55c09e1",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        },
+        {
+          "host": "dms-controller3",
+          "at": "2026-10-12T19:24:20.843986+00:00",
+          "containers": [
+            {
+              "name": "afterglow_backend",
+              "id": "89aaa8fd905a8dfdff0f56624b8ed8d54fb4baea95e5dab10a47239926b3546d",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_frontend",
+              "id": "cf387bf26005f7c63f4529a438fc204714655ac6cbccd9bd3e78b6857cbb5465",
+              "running": true,
+              "health": "healthy",
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            },
+            {
+              "name": "afterglow_notion_worker",
+              "id": "7520456ab681b5eed9125dcf3902a771f913d009607f1a7c69f0f6c61395a673",
+              "running": true,
+              "health": null,
+              "restart_count": 0,
+              "docker_output_error_markers": 0
+            }
+          ]
+        }
+      ]
+    ],
+    "key_preservation": [
+      {
+        "host": "dms-controller1",
+        "name": "afterglow_backend",
+        "original_db_redis_keys_and_session_secret_preserved": true
+      },
+      {
+        "host": "dms-controller1",
+        "name": "afterglow_notion_worker",
+        "original_db_redis_keys_and_session_secret_preserved": true
+      },
+      {
+        "host": "dms-controller2",
+        "name": "afterglow_backend",
+        "original_db_redis_keys_and_session_secret_preserved": true
+      },
+      {
+        "host": "dms-controller2",
+        "name": "afterglow_notion_worker",
+        "original_db_redis_keys_and_session_secret_preserved": true
+      },
+      {
+        "host": "dms-controller3",
+        "name": "afterglow_backend",
+        "original_db_redis_keys_and_session_secret_preserved": true
+      },
+      {
+        "host": "dms-controller3",
+        "name": "afterglow_notion_worker",
+        "original_db_redis_keys_and_session_secret_preserved": true
+      }
+    ],
+    "unrelated_preservation": [
+      {
+        "host": "dms-controller1",
+        "unchanged_existing_non_afterglow_containers": 241
+      },
+      {
+        "host": "dms-controller2",
+        "unchanged_existing_non_afterglow_containers": 233
+      },
+      {
+        "host": "dms-controller3",
+        "unchanged_existing_non_afterglow_containers": 150
+      }
+    ],
+    "limitations": [
+      "Notion worker has no Docker healthcheck",
+      "Docker stdout/stderr error markers are not complete application-file or external error-rate telemetry",
+      "No forced Notion synchronization, guest/RDP test or paid model invocation"
+    ]
+  },
+  "failedProbes": [
+    {
+      "ok": false,
+      "step": "independent-tenant-visibility",
+      "error_type": "Unauthorized",
+      "at": "2026-10-12T19:19:07.700596+00:00"
+    },
+    {
+      "ok": false,
+      "step": "deployed-http",
+      "error_type": "ConnectError",
+      "at": "2026-10-12T19:27:58.308675+00:00",
+      "reason": "Probe used Settings.backend_port=8020; deployed Docker healthchecks establish the real listener at18020. No application configuration or IAM was changed."
+    }
+  ],
+  "mcp": {
+    "capabilities": {
+      "registry_version": "2026-10-11.2",
+      "enabled_domains": [
+        "compute",
+        "containers",
+        "database",
+        "file_storage",
+        "k3s",
+        "network",
+        "object_storage",
+        "storage",
+        "waygate"
+      ]
+    },
+    "overview": {
+      "total_instances": 21,
+      "active_instances": 21,
+      "shutoff_instances": 0,
+      "error_instances": 0
+    }
+  },
+  "authenticatedAccount": {
+    "scope": "real configured service account; not ordinary test-tenant acceptance",
+    "checks": [
+      {
+        "path": "/api/v1/auth/me",
+        "status": 200,
+        "cacheControl": null,
+        "items": null
+      },
+      {
+        "path": "/api/v1/instances",
+        "status": 200,
+        "cacheControl": null,
+        "items": 0
+      },
+      {
+        "path": "/api/v1/auth/mcp-tokens",
+        "status": 200,
+        "cacheControl": "no-store",
+        "items": 0
+      },
+      {
+        "path": "/api/v1/auth/mcp-oauth/grants",
+        "status": 200,
+        "cacheControl": "no-store",
+        "items": 0
+      },
+      {
+        "path": "/api/v1/auth/mcp-projects",
+        "status": 200,
+        "cacheControl": "no-store",
+        "items": 1
+      }
+    ]
+  },
+  "limitations": [
+    "Independent test-tenant authentication is unverified: configured service credential rescope returned Unauthorized; no NativeTenantExec device is registered",
+    "Notion worker running/revision/restarts checked; no Docker healthcheck or forced external sync acceptance",
+    "No VM/volume/network creation/deletion, guest/RDP login, paid model invocation or full-provider acceptance",
+    "New MCP consumer restart crosses the image-only rollback boundary; no historical migration or invocation ledger rewrite"
+  ],
+  "nativeAdmission": {
+    "ok": true,
+    "step": "complete",
+    "service_project": "dc73b4e609414046bf9c07014e1927a6",
+    "target_project": "99f2f82cb2d14788a0723af31c16dab0",
+    "flavor_id": "fe5a5a4c-a568-481d-982b-469967f64808",
+    "private_flavor": true,
+    "shared_to_target": true,
+    "independent_tenant": {
+      "verified": false,
+      "error_type": "Unauthorized",
+      "receipt": "native-gpu-admission.json",
+      "reason": "no independently authorized test-project credential or NativeTenantExec device available"
+    },
+    "alias": "RTX3060LHR",
+    "requested": 1,
+    "quota": [
+      {
+        "project_id": "99f2f82cb2d14788a0723af31c16dab0",
+        "gpu_type": "RTX3060LHR",
+        "limit": -1,
+        "in_use": 0,
+        "available": -1
+      }
+    ],
+    "checks": [
+      {
+        "case": "gpu-positive",
+        "target": "dms-controller1",
+        "status": 200,
+        "gpu_required": true
+      },
+      {
+        "case": "gpu-positive",
+        "target": "dms-controller2",
+        "status": 200,
+        "gpu_required": true
+      },
+      {
+        "case": "gpu-positive",
+        "target": "dms-controller3",
+        "status": 200,
+        "gpu_required": true
+      },
+      {
+        "case": "gpu-positive",
+        "target": "public-https",
+        "status": 200,
+        "gpu_required": true
+      },
+      {
+        "case": "missing-token",
+        "status": 401
+      },
+      {
+        "case": "wrong-token",
+        "status": 401
+      },
+      {
+        "case": "malformed-project",
+        "status": 400
+      },
+      {
+        "case": "malformed-flavor",
+        "status": 400
+      },
+      {
+        "case": "missing-flavor",
+        "status": 422
+      },
+      {
+        "case": "wrong-id-type",
+        "status": 422
+      },
+      {
+        "case": "existing-unshared-private-flavor",
+        "status": 400
+      }
+    ],
+    "policy_quota_access_unchanged": true,
+    "resource_mutations": 0,
+    "paid_inference_calls": 0,
+    "at": "2026-10-12T19:30:34.153398+00:00"
+  },
+  "browser": {
+    "scope": "Real production Chromium and first-party Keystone-backed login as configured service account; no request interception or synthetic identity",
+    "paths": [
+      "/",
+      "/login",
+      "/dashboard",
+      "/dashboard/account"
+    ],
+    "accountReads": [
+      {
+        "path": "/api/v1/auth/me",
+        "status": 200,
+        "cacheControl": null,
+        "items": null
+      },
+      {
+        "path": "/api/v1/instances",
+        "status": 200,
+        "cacheControl": null,
+        "items": 0
+      },
+      {
+        "path": "/api/v1/auth/mcp-tokens",
+        "status": 200,
+        "cacheControl": "no-store",
+        "items": 0
+      },
+      {
+        "path": "/api/v1/auth/mcp-oauth/grants",
+        "status": 200,
+        "cacheControl": "no-store",
+        "items": 0
+      },
+      {
+        "path": "/api/v1/auth/mcp-projects",
+        "status": 200,
+        "cacheControl": "no-store",
+        "items": 1
+      }
+    ],
+    "desktop": {
+      "width": 1440,
+      "overflow": 0
+    },
+    "mobile": {
+      "width": 390,
+      "overflow": 0,
+      "nonExpiringSelected": true
+    },
+    "applicationPageErrors": 0,
+    "personalTokenForm": "selected non-expiring draft only; no token issued or revoked",
+    "screenshots": [
+      "after-home.png",
+      "after-login.png",
+      "after-dashboard.png",
+      "after-account-mcp-desktop.png",
+      "after-account-mcp-mobile.png"
+    ],
+    "cleanup": {
+      "realVerificationSessionLoggedOut": true,
+      "ownedChromiumProcessStopped": true,
+      "ownedCompiledFrontendProcessStopped": true,
+      "remotePostdeployProbeRemoved": true,
+      "verificationMethodRetained": "~/.local/share/afterglow-proofs/afterglow-prod-rollout-20261013-26tEUU/postdeploy-verify.py"
+    },
+    "limits": [
+      "Earlier Google Fonts request blocked by client inspection; not an application JS error",
+      "Live smoke did not qualify all locales, explicit theme persistence, guest/RDP or ordinary test-tenant authentication"
+    ]
+  }
+}

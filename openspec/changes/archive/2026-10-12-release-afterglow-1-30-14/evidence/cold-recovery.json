@@ -1,0 +1,247 @@
+{
+  "snapshotPhase": "cold",
+  "allOldConsumersStopped": 6,
+  "legacyKeyedMutations": 0,
+  "legacyUnresolvedMutations": 0,
+  "pendingCredentials": 0,
+  "sql": {
+    "receipt": "/etc/kolla/.afterglow-rollout-backups/1.30.14/restore-qualification-20261012T184804Z.json",
+    "db_image": "mariadb@sha256:7db29378d4fdab73f8123bbc2b48905c90d1a4b00cf848b028f1e81e623257f2",
+    "application_image": "ghcr.io/openstack-afterglow/afterglow-api@sha256:9ac44c15fd9dc96535ffcea3ef07251f7d08b5c38298f3fbd047b6a90eb04d53",
+    "candidate_image": "ghcr.io/openstack-afterglow/afterglow-api@sha256:c5e705e8a4cb05a7ff71520ff572b066879725b5e7a2f9305c6cd1270132e991",
+    "snapshot_phase": "cold",
+    "network": "none",
+    "storage": "tmpfs-only",
+    "production_mutations": 0,
+    "provider_dispatches": 0,
+    "runtime": [
+      {
+        "mode": "old-seed",
+        "finite_singleton_committed": true,
+        "provider_calls": 0
+      },
+      {
+        "mode": "old-bounded-read-write",
+        "legacy_resolve_list_decrypt_last_used_durable": true,
+        "provider_calls": 0
+      },
+      {
+        "mode": "new-old-schema-negative",
+        "db_error": 1054,
+        "no_provider_dispatch": true
+      },
+      {
+        "mode": "old-bounded-read-write",
+        "legacy_resolve_list_decrypt_last_used_durable": true,
+        "provider_calls": 0
+      },
+      {
+        "mode": "new-legacy-and-new-state",
+        "legacy_home_scope_preserved": true,
+        "original_ciphertext_decrypted": 10,
+        "unbounded_personal_durable": true,
+        "child_scope_crypto_and_write_denial": true,
+        "client_observation_cap_durable": 10,
+        "provider_calls": 0
+      },
+      {
+        "mode": "old-unbounded-negative",
+        "old_reader_incompatible_with_null_expiry": true,
+        "provider_calls": 0
+      },
+      {
+        "mode": "old-seed",
+        "finite_singleton_committed": true,
+        "provider_calls": 0
+      },
+      {
+        "mode": "old-bounded-read-write",
+        "legacy_resolve_list_decrypt_last_used_durable": true,
+        "provider_calls": 0
+      }
+    ],
+    "migrations": [
+      {
+        "id": "084-mcp-project-delegation",
+        "sha256": "ea5f9c0a61fbc060a16512c1c5c582458315df01041bed9d929b45ef1e8d63a2",
+        "repetition": 1,
+        "statement": 1,
+        "elapsed_ms": 61.37
+      },
+      {
+        "id": "084-mcp-project-delegation",
+        "sha256": "ea5f9c0a61fbc060a16512c1c5c582458315df01041bed9d929b45ef1e8d63a2",
+        "repetition": 1,
+        "statement": 2,
+        "elapsed_ms": 61.52
+      },
+      {
+        "id": "084-mcp-project-delegation",
+        "sha256": "ea5f9c0a61fbc060a16512c1c5c582458315df01041bed9d929b45ef1e8d63a2",
+        "repetition": 1,
+        "statement": 3,
+        "elapsed_ms": 61.99
+      },
+      {
+        "id": "084-mcp-project-delegation",
+        "sha256": "ea5f9c0a61fbc060a16512c1c5c582458315df01041bed9d929b45ef1e8d63a2",
+        "repetition": 1,
+        "statement": 4,
+        "elapsed_ms": 60.25
+      },
+      {
+        "id": "085-mcp-personal-token-expiry",
+        "sha256": "64fe3575c77d52ce3ac4819359d21523599f8358e314d347b7488d8c738a4147",
+        "repetition": 1,
+        "statement": 1,
+        "elapsed_ms": 61.99
+      },
+      {
+        "id": "085-mcp-personal-token-expiry",
+        "sha256": "64fe3575c77d52ce3ac4819359d21523599f8358e314d347b7488d8c738a4147",
+        "repetition": 1,
+        "statement": 2,
+        "elapsed_ms": 65.04
+      },
+      {
+        "id": "085-mcp-personal-token-expiry",
+        "sha256": "64fe3575c77d52ce3ac4819359d21523599f8358e314d347b7488d8c738a4147",
+        "repetition": 1,
+        "statement": 3,
+        "elapsed_ms": 61.85
+      },
+      {
+        "id": "086-mcp-lumen-explicit-consent",
+        "sha256": "76a4965657dd476c01e81bc4019625e24f2db92d260360a7f6bf25fc7fd54753",
+        "repetition": 1,
+        "statement": 1,
+        "elapsed_ms": 61.49
+      },
+      {
+        "id": "087-mcp-client-observations",
+        "sha256": "f95b6da886a4238ac1141010132e745ee1cb4ddce5fc8c8b75d79b9359075920",
+        "repetition": 1,
+        "statement": 1,
+        "elapsed_ms": 62.14
+      },
+      {
+        "id": "084-mcp-project-delegation",
+        "sha256": "ea5f9c0a61fbc060a16512c1c5c582458315df01041bed9d929b45ef1e8d63a2",
+        "repetition": 2,
+        "statement": 1,
+        "elapsed_ms": 63.82
+      },
+      {
+        "id": "084-mcp-project-delegation",
+        "sha256": "ea5f9c0a61fbc060a16512c1c5c582458315df01041bed9d929b45ef1e8d63a2",
+        "repetition": 2,
+        "statement": 2,
+        "elapsed_ms": 60.55
+      },
+      {
+        "id": "084-mcp-project-delegation",
+        "sha256": "ea5f9c0a61fbc060a16512c1c5c582458315df01041bed9d929b45ef1e8d63a2",
+        "repetition": 2,
+        "statement": 3,
+        "elapsed_ms": 63.42
+      },
+      {
+        "id": "084-mcp-project-delegation",
+        "sha256": "ea5f9c0a61fbc060a16512c1c5c582458315df01041bed9d929b45ef1e8d63a2",
+        "repetition": 2,
+        "statement": 4,
+        "elapsed_ms": 62.91
+      },
+      {
+        "id": "085-mcp-personal-token-expiry",
+        "sha256": "64fe3575c77d52ce3ac4819359d21523599f8358e314d347b7488d8c738a4147",
+        "repetition": 2,
+        "statement": 1,
+        "elapsed_ms": 61.54
+      },
+      {
+        "id": "085-mcp-personal-token-expiry",
+        "sha256": "64fe3575c77d52ce3ac4819359d21523599f8358e314d347b7488d8c738a4147",
+        "repetition": 2,
+        "statement": 2,
+        "elapsed_ms": 63.99
+      },
+      {
+        "id": "085-mcp-personal-token-expiry",
+        "sha256": "64fe3575c77d52ce3ac4819359d21523599f8358e314d347b7488d8c738a4147",
+        "repetition": 2,
+        "statement": 3,
+        "elapsed_ms": 62.19
+      },
+      {
+        "id": "086-mcp-lumen-explicit-consent",
+        "sha256": "76a4965657dd476c01e81bc4019625e24f2db92d260360a7f6bf25fc7fd54753",
+        "repetition": 2,
+        "statement": 1,
+        "elapsed_ms": 60.52
+      },
+      {
+        "id": "087-mcp-client-observations",
+        "sha256": "f95b6da886a4238ac1141010132e745ee1cb4ddce5fc8c8b75d79b9359075920",
+        "repetition": 2,
+        "statement": 1,
+        "elapsed_ms": 60.83
+      }
+    ],
+    "checks": [
+      {
+        "expected_rejection": 4025
+      },
+      {
+        "expected_rejection": 4025
+      },
+      {
+        "expected_rejection": 4025
+      },
+      {
+        "expected_rejection": 4025
+      },
+      {
+        "expected_rejection": 1452
+      },
+      {
+        "expected_rejection": 1062
+      }
+    ],
+    "restored_tables": 90,
+    "restored_total_rows": 2285,
+    "snapshot_sql_sha256": "3f4d4d8f1debd3afd42680d8dad025c0dd39aa4fe08ea9694090c40ab31ad4ce",
+    "engine": "10.11.19-MariaDB-ubu2204\tutf8mb3\tutf8mb3_general_ci\tSTRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION",
+    "old_fields_ciphertext_deadlines_unchanged": true,
+    "new_fields_legacy_default_without_authority_backfill": true,
+    "new_state_preserved_on_ddl_reapply": true,
+    "pristine_restore_tables_rows_and_original_grants_match": true,
+    "completed_at": "2026-10-12T18:48:04.470695+00:00",
+    "ok": true,
+    "owned_container_removed": true
+  },
+  "redis": {
+    "phase": "cold",
+    "db": 5,
+    "captured_keys": 129,
+    "restored_surviving_keys": 128,
+    "already_expired_keys_skipped": 1,
+    "logical_values_match": true,
+    "ttls_preserved_without_resurrection": true,
+    "encrypted_sha256": "0adf69647d8a2b24f3f8de2380d1a1dcfcbd7cb939dd6ac1a29c0fd1c7157aac",
+    "plaintext_sha256": "18f9f45c690dd6ded091de8c3f80b8f830e0b9193c9d6295e3463f3f128eecf8",
+    "network": "none",
+    "image": "valkey/valkey@sha256:ac32d5e70f29e2be83384f5173180911b666c79a0e91ac0d074de5771638ed91",
+    "production_mutations": 0,
+    "created_at": "2026-10-12T18:47:30.154937+00:00",
+    "ok": true,
+    "owned_restore_container_removed": true
+  },
+  "limits": [
+    "Only a disposable clone was seeded with synthetic grants",
+    "The hot 11-decryption count included the synthetic fixture. The cold runtime separately reports 10 original ciphertext rows, with fixture G explicitly excluded by restored-orm-smoke.py lines73-80",
+    "No provider or cloud action was dispatched during restore proof",
+    "Old raw grant projection acceptsNULL; the actual old resolver fails withAttributeError",
+    "Image-only downgrade after new-only durable state remains unsafe"
+  ]
+}
