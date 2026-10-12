@@ -49,7 +49,7 @@ Drover는 자체적으로 OpenStack 리소스를 프로비저닝하며 매 GPU �
 | 실제 GPU quota 부족 | 409 |
 | 정책·인증·가시성·metadata·DB quota·Nova usage 확인 불가 | 503 (fail closed) |
 
-소스: [`internal_k3s.py`](../../backend/app/api/internal_k3s.py)의 `_get_project_flavor`·`k3s_gpu_admission`, [`resource_policy_store.py`](../../backend/app/services/resource_policy_store.py)의 `get_service_project_connection`, [`gpu_inventory.py`](../../backend/app/services/gpu_inventory.py)의 `require_gpu_quota`, [`gpu_quota.py`](../../backend/app/services/gpu_quota.py)의 `get_effective_gpu_quotas`·`_get_project_gpu_usage`·`check_gpu_quota`. Focused64개와 관련 K3s/instances target은 **test-passed**이며 실제 providers에 연결한 candidate ASGI200도 확인했습니다. Running API 교체·deployed HTTP acceptance는 별도 [검증 기록과 보호된 native smoke](../testing.md#gpu-admission-service-scope-2026-10-12)로 구분합니다.
+소스: [`internal_k3s.py`](../../backend/app/api/internal_k3s.py)의 `_get_project_flavor`·`k3s_gpu_admission`, [`resource_policy_store.py`](../../backend/app/services/resource_policy_store.py)의 `get_service_project_connection`, [`gpu_inventory.py`](../../backend/app/services/gpu_inventory.py)의 `require_gpu_quota`, [`gpu_quota.py`](../../backend/app/services/gpu_quota.py)의 `get_effective_gpu_quotas`·`_get_project_gpu_usage`·`check_gpu_quota`. Focused64개와 관련 K3s/instances target은 **test-passed**다. Immutable1.30.13 backend의 운영 순차 배포와 실제 공개 HTTPS200/`gpu_required=true`, auth401·invalid-ID400·schema422·기존 비공유 flavor400은 별도 [tagged artifact·rollout·native 검증 기록](../testing.md#tagged-artifact-backend-only-rollout-and-deployed-http)에 기록했다. Admission 성공은 GPU VM/Pod·Stampede acceptance가 아니다.
 
 ## Drover 서비스 권한과 자격 등급
 

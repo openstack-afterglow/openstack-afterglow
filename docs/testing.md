@@ -8,7 +8,7 @@ nav_order: 8
 
 ## GPU admission service scope (2026-10-12)
 
-기준은 `9cbfecad419b7d6c64e3a21b06a0cd80b1f44f93`(`v1.30.12` peeled commit)이며 canonical `npm version 1.30.13 --no-git-tag-version`/`version:check`로 patch manifests를 동기화했다. Focused36+14+14, K3s backend16/frontend9와 instances backend548/frontend209가 **test-passed**다. 최종 `npm run test:gate`도 통과했다: backend unit4431, frontend2569/334 files, contract174, functional35(9 deselected), Ruff check·561 files format check. Working architecture stamp와 staged check는 source SHA256 `33260ee0e5fe8c357dd4d3fe658313680068e01318be0cee78694fbc506f0a0e`/2531 files로 통과했다. 아래 별도 receipt는 실제 immutable artifact·backend-only rollout·deployed HTTP acceptance를 기록한다. [Checklist](../openspec/changes/gpu-admission-service-scope/tasks.md)는 실제 완료된 단계만 기록한다.
+기준은 `9cbfecad419b7d6c64e3a21b06a0cd80b1f44f93`(`v1.30.12` peeled commit)이며 canonical `npm version 1.30.13 --no-git-tag-version`/`version:check`로 patch manifests를 동기화했다. Focused36+14+14, K3s backend16/frontend9와 instances backend548/frontend209가 **test-passed**다. 최종 `npm run test:gate`도 통과했다: backend unit4431, frontend2569/334 files, contract174, functional35(9 deselected), Ruff check·561 files format check. Working architecture stamp와 staged check는 source SHA256 `33260ee0e5fe8c357dd4d3fe658313680068e01318be0cee78694fbc506f0a0e`/2531 files로 통과했다. 아래 별도 receipt는 실제 immutable artifact·backend-only rollout·deployed HTTP acceptance를 기록한다. [Archived checklist](../openspec/changes/archive/2026-10-12-gpu-admission-service-scope/tasks.md)는 실제 완료된 단계만 기록한다.
 
 Parent가 이미 관측한 수정 전503은 재현 근거로 보존한다. 이를 확인하려고 같은 실패를 다시 실행하지 않는다. 아래 native 계획의 대상 acceptance는 **HTTP200과 `gpu_required=true`**다. 실제409는 quota fail-closed 증거일 뿐 acceptance 통과가 아니며 실측 headroom 부족을 blocker로 보고한다.
 
