@@ -1,104 +1,142 @@
 <script lang="ts">
-	import { auth } from '$lib/stores/auth';
+	import { untrack } from 'svelte';
+	import { auth, canWrite } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import type { Volume } from '$lib/types/volume';
-	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/volume';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import { Alert, Button, Field, FormModal, TextInput } from '$lib/components/ui';
+	import { toast } from '$lib/stores/toast';
 
-	let { volume, onclose, onsuccess }: {
+	let { volume, projectId, onclose, onsuccess }: {
 		volume: Volume | null;
+		projectId: string | undefined;
 		onclose: () => void;
 		onsuccess: () => void;
 	} = $props();
 
-	let newSize = $state(0);
+	const inputId = $props.id();
+	const maxSize = 2147483647;
+	let newSize = $state('');
 	let extending = $state(false);
 	let error = $state('');
+	let invalidated = $state(false);
+	let session = $state<{ id: string; projectId: string; token: string } | null>(null);
+	let targetId: string | null = null;
+	let generation = 0;
 
-	$effect(() => {
-		if (volume) {
-			newSize = volume.size + 10;
-			error = '';
-		}
+	$effect.pre(() => {
+		const id = volume?.id ?? null;
+		const size = volume?.size;
+		const token = $auth.token;
+		const scope = projectId;
+		const writable = $canWrite;
+		untrack(() => {
+			if (id !== targetId) {
+				targetId = id;
+				generation++;
+				newSize = String(Math.min((size ?? 0) + 10, maxSize));
+				error = '';
+				extending = false;
+				session = id && token && scope ? { id, projectId: scope, token } : null;
+				invalidated = !session || !writable;
+			} else if (!writable || !session || session.token !== token || session.projectId !== scope) {
+				generation++;
+				invalidated = true;
+			}
+		});
 	});
 
+	function eligible(target: Volume | null): target is Volume {
+		return !!target && Number.isSafeInteger(target.size) && target.size > 0 && target.size < maxSize
+			&& Array.isArray(target.attachments)
+			&& ((target.status === 'available' && target.attachments.length === 0)
+				|| (target.status === 'in-use' && target.attachments.length > 0));
+	}
+	const sizeValid = $derived(!!volume && Number.isSafeInteger(Number(newSize))
+		&& Number(newSize) > volume.size && Number(newSize) <= maxSize);
+	const ready = $derived(!invalidated && !!session && $canWrite && !!$auth.token
+		&& session.token === $auth.token && session.projectId === projectId && eligible(volume));
+
+	function close() { if (!extending) onclose(); }
+	function ownsRequest(scope: NonNullable<typeof session>, requestGeneration: number) {
+		return requestGeneration === generation && !invalidated && $canWrite
+			&& volume?.id === scope.id && projectId === scope.projectId && $auth.token === scope.token;
+	}
+
 	async function confirmExtend() {
-		if (!volume) return;
-		if (newSize <= volume.size) {
-			error = t('extendModal.sizeTooSmall', { newSize, currentSize: volume.size });
+		const target = volume;
+		const scope = session;
+		if (!target || !scope || extending || !ready) return;
+		const requestedSize = Number(newSize);
+		if (!sizeValid) {
+			error = t('extendModal.invalidSize', { maxSize });
 			return;
 		}
+		const requestGeneration = generation;
 		extending = true;
 		error = '';
 		try {
-			await api.post(
-				`/api/v1/volumes/${volume.id}/extend`,
-				{ new_size: newSize },
-				$auth.token ?? undefined,
-				$auth.projectId ?? undefined,
+			const current = await api.get<Volume>(`/api/v1/volumes/${encodeURIComponent(scope.id)}`, scope.token, scope.projectId, { refresh: true });
+			if (!ownsRequest(scope, requestGeneration)) return;
+			if (current.id !== scope.id || !eligible(current) || current.size !== target.size) {
+				error = t('extendModal.targetUnavailable');
+				return;
+			}
+			for (const attachment of current.attachments) {
+				const serverId = attachment.server_id;
+				if (typeof serverId !== 'string' || !serverId) {
+					error = t('extendModal.offlineRequired');
+					return;
+				}
+				const server = await api.get<{ id: string; project_id?: string; status: string }>(
+					`/api/v1/instances/${encodeURIComponent(serverId)}`, scope.token, scope.projectId, { refresh: true },
+				);
+				if (!ownsRequest(scope, requestGeneration)) return;
+				if (server.id !== serverId || server.project_id !== scope.projectId || server.status !== 'SHUTOFF') {
+					error = t('extendModal.offlineRequired');
+					return;
+				}
+			}
+			if (!ownsRequest(scope, requestGeneration) || !eligible(volume) || volume.size !== current.size) return;
+			const accepted = await api.post<Volume>(
+				`/api/v1/volumes/${encodeURIComponent(scope.id)}/extend`,
+				{ new_size: requestedSize }, scope.token, scope.projectId,
 			);
+			if (!ownsRequest(scope, requestGeneration)) return;
+			toast.info(t('extendModal.accepted', { size: accepted.size, status: accepted.status }));
 			onsuccess();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : t('extendModal.extendFailed');
+			if (ownsRequest(scope, requestGeneration)) error = e instanceof ApiError ? e.message : t('extendModal.extendFailed');
 		} finally {
-			extending = false;
+			if (volume?.id === scope.id && requestGeneration === generation) extending = false;
+			else if (volume?.id === scope.id && invalidated) extending = false;
 		}
 	}
 </script>
 
 {#if volume}
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
-	use:dialogFocus={{ enabled: true, onEscape: () => onclose() }}
-	class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
-	onclick={onclose}
-	role="dialog"
-	aria-modal="true"
-	tabindex="-1"
->
-	<div
-		class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
-		onclick={(e) => e.stopPropagation()}
-		role="none"
-	>
-		<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('extendModal.title')}</h2>
-		<div class="space-y-4">
-			<div>
-				<div class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('extendModal.volumeLabel')}</div>
-				<div class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-2 text-sm">
-					{volume.name || volume.id.slice(0, 8)} <span class="text-ink-2">{t('extendModal.statusSummary', { status: volume.status })}</span>
-				</div>
-			</div>
-			<div>
-				<div class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('extendModal.currentSizeLabel')}</div>
-				<div class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-2 text-sm font-mono">
-					{t('extendModal.currentSize', { size: volume.size })}
-				</div>
-			</div>
-			<div>
-				<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">
-					{t('extendModal.newSizeLabel', { minSize: volume.size + 1 })}
-					<input
-						bind:value={newSize}
-						type="number"
-						min={volume.size + 1}
-						step="10"
-						class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm mt-1.5"
-					/>
-				</label>
-			</div>
-		</div>
-		{#if error}<div class="mt-4 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{error}</div>{/if}
-		<div class="flex justify-end gap-3 mt-6">
-			<button onclick={onclose} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('extendModal.cancel')}</button>
-			<button
-				onclick={confirmExtend}
-				disabled={extending || newSize <= volume.size}
-				class="inline-flex items-center gap-1.5 px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
-			>{#if extending}<ActivityIndicator size="xs" tone="ink" />{/if}{extending ? t('extendModal.extending') : t('extendModal.extend')}</button>
-		</div>
-	</div>
-</div>
+	<FormModal open={true} title={t('extendModal.title')} submitting={extending} onClose={close}>
+		<form onsubmit={(event) => { event.preventDefault(); void confirmExtend(); }} class="space-y-4">
+			<Field label={t('extendModal.volumeLabel')}>
+				<p class="text-sm text-ink-1 break-all">{volume.name || volume.id} {t('extendModal.statusSummary', { status: volume.status })}</p>
+			</Field>
+			<Field label={t('extendModal.currentSizeLabel')}>
+				<p class="text-sm font-mono text-ink-1">{t('extendModal.currentSize', { size: volume.size })}</p>
+			</Field>
+			<Alert tone="warning">{t('extendModal.offlineRequired')}</Alert>
+			<Alert tone="info">{t('extendModal.guestBoundary')}</Alert>
+			<Field label={t('extendModal.newSizeLabel', { minSize: volume.size + 1 })} for={inputId} help={t('extendModal.noShrink')} required>
+				<TextInput id={inputId} type="number" inputmode="numeric" bind:value={newSize} disabled={extending || !ready} required ariaInvalid={!sizeValid} />
+			</Field>
+			{#if invalidated}<Alert tone="warning">{t('extendModal.scopeChanged')}</Alert>
+			{:else if !eligible(volume)}<Alert tone="warning">{t('extendModal.targetUnavailable')}</Alert>{/if}
+			{#if error}<Alert tone="danger">{error}</Alert>{/if}
+		</form>
+		{#snippet actions()}
+			<Button variant="secondary" onclick={close} disabled={extending}>{t('extendModal.cancel')}</Button>
+			<Button onclick={confirmExtend} disabled={extending || !ready || !sizeValid} ariaBusy={extending}>
+				{extending ? t('extendModal.extending') : t('extendModal.extend')}
+			</Button>
+		{/snippet}
+	</FormModal>
 {/if}

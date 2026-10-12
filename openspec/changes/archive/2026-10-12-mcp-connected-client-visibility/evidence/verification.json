@@ -1,0 +1,118 @@
+{
+  "change": "mcp-connected-client-visibility",
+  "qualification": "local only, not deployed",
+  "tests": {
+    "focused_backend": 93,
+    "real_db_observation_migration_oauth": 42,
+    "named_mcp_backend": 519,
+    "named_mcp_backend_deselected": 100,
+    "named_account_frontend": 163,
+    "account_mock_frontend": 189,
+    "final_account_mock_catalog_frontend": 193
+  },
+  "final_gate": {
+    "command": "npm run test:gate",
+    "exit_code": 0,
+    "architecture_passed": true,
+    "orchestration": 175,
+    "kolla_node": 27,
+    "image_refs_python": 11,
+    "unix_installer": 20,
+    "powershell_skipped_runtime_missing": 36,
+    "backend_unit": 5673,
+    "frontend_unit": 3177,
+    "frontend_files": 347,
+    "frontend_log_runner": 9,
+    "consumer_contract": 174,
+    "real_functional": 128,
+    "functional_deselected": 23,
+    "ruff_files": 585,
+    "raw_log": "test-gate-final.log",
+    "original_artifact": "artifact://347",
+    "source_sha256": "271bcad166abcdee6507d2c14d1e69d10429615ed5ccbfffd9b6de55fda9a5d9"
+  },
+  "extra_checks": {
+    "svelte_files": 2359,
+    "svelte_errors": 0,
+    "svelte_existing_warnings": 3,
+    "i18n_errors": 0,
+    "i18n_warnings": 0,
+    "i18n_namespaces": 37,
+    "i18n_source_messages": 9397,
+    "scan_files": 986,
+    "scan_hardcoded_korean": 0,
+    "changed_python_ruff_files": 11
+  },
+  "migration": {
+    "applied_to": "unique owned afterglow_mcp_native schema",
+    "prerequisites": [
+      63,
+      84,
+      85,
+      86
+    ],
+    "new_migration": 87,
+    "applications": 2,
+    "preserved_legacy_grant_id": "11111111-0000-4000-8000-000000000001",
+    "preserved_name": "Existing connection",
+    "preserved_status": "active",
+    "client_observations": null,
+    "public_client_observations": [],
+    "shared_db_mutated": false,
+    "real_db_regressions_passed": true
+  },
+  "original_screen_diagnosis": {
+    "evidence": "read-only existing local backend log",
+    "mysql_error": 1054,
+    "missing_column": "mcp_delegated_grants.project_scope",
+    "cause": "pre084 database versus current ORM reader",
+    "ui_error_isolation_is_schema_repair": false,
+    "shared_database_migrated": false
+  },
+  "public_observation_fields": [
+    "client_name",
+    "client_version",
+    "product",
+    "kind",
+    "identity_source",
+    "browser",
+    "os",
+    "first_seen_at",
+    "last_seen_at"
+  ],
+  "native_clean_scenarios": 9,
+  "native_clean_sdk_initializations": 18,
+  "compiled_final_conditions": 224,
+  "preserved_previous_work": [
+    "Windows initial password/GPU",
+    "instance lifecycle/storage"
+  ],
+  "failure_history": [
+    "Initial full gate: old SimpleNamespace grant fixture missing client_observations; corrected fixture",
+    "Full frontend catalog guard: read :raw paging footers accidentally copied into precise allowlist; removed four invalid entries; guard unchanged",
+    "Gate docs: source snapshot became stale after guard data correction; stamped owned candidate only",
+    "Throwaway native expectations corrected to JSON-RPC error body, semantic identity selection rather than array position, explicit generic-bot precedence, same-site browser mutation headers, and public-client OAuth refresh without browser Authorization"
+  ],
+  "limits": [
+    "Identity/browser/profile/membership/upstream Keystone cleanup synthetic",
+    "Self-report/User-Agent identity spoofable and never authorization evidence",
+    "No physical device/session inventory or online proof",
+    "AMD64 via Docker Desktop emulation",
+    "No production migration/deploy, live IAM, third-party product authenticity, remote cleanup, provider mutation or paid inference",
+    "No commit/push; shared private config/index/review marker preserved",
+    "Optional GBrain sync unavailable"
+  ],
+  "archive": {
+    "path": "openspec/changes/archive/2026-10-12-mcp-connected-client-visibility",
+    "schema": "rapid",
+    "tasks_complete": true,
+    "no_delta_spec_warning_nonblocking": true
+  },
+  "cleanup": {
+    "owned_containers_removed": 5,
+    "owned_network_removed": 1,
+    "owned_browser_native_service_scratch_removed": true,
+    "volume_deletion": false,
+    "durable_proof_retained": true
+  }
+}

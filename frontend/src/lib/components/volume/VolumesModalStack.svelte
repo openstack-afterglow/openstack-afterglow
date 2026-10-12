@@ -11,6 +11,7 @@
 		transferVolumeName,
 		showTransfer,
 		extendTarget,
+		projectId,
 		backupTarget,
 		snapshotTarget,
 		renameTarget,
@@ -30,6 +31,7 @@
 		transferVolumeName: string;
 		showTransfer: boolean;
 		extendTarget: Volume | null;
+		projectId: string | undefined;
 		backupTarget: Volume | null;
 		snapshotTarget: Volume | null;
 		renameTarget: Volume | null;
@@ -64,6 +66,7 @@
 
 <VolumeExtendModal
 	volume={extendTarget}
+	{projectId}
 	onclose={onCloseExtend}
 	onsuccess={onExtendSuccess}
 />

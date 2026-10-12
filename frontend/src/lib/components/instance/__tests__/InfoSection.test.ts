@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/svelte';
+import { tick } from 'svelte';
+import { fromStore, writable } from 'svelte/store';
+import type { Writable } from 'svelte/store';
 import type { Instance } from '$lib/types/compute';
 import type { InstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 import { initLocale } from '$lib/i18n/runtime.svelte';
@@ -24,16 +27,21 @@ const sampleInstance = {
 	key_name: 'my-keypair',
 	host: 'compute-node-01',
 } as Instance;
+let controllerState: Writable<InstanceDetailController>;
 
 function renderInfoSection(props?: { showHost?: boolean }, overrides: Partial<InstanceDetailController> = {}) {
-	mockControllerRef.current = {
+	controllerState = writable({
 		instance: sampleInstance,
 		formatDate: (d: string) => d,
 		ownerDisplay: null,
 		fixedIpsList: [],
 		floatingIpsList: [],
 		...overrides,
-	} as unknown as InstanceDetailController;
+	} as unknown as InstanceDetailController);
+	const state = fromStore(controllerState);
+	mockControllerRef.current = new Proxy(state.current, {
+		get: (_target, key) => state.current[key as keyof InstanceDetailController],
+	});
 
 	return render(InfoSection, props);
 }
@@ -113,5 +121,53 @@ describe('InfoSection SSH access', () => {
 		expect(screen.getByText('키페어').nextElementSibling?.textContent).toBe('-');
 		expect(screen.queryByText('GitHub SSH')).toBeNull();
 		expect(screen.queryByText('@OctoCat')).toBeNull();
+	});
+});
+
+describe('InfoSection Windows OS contract', () => {
+	it.each([
+		{ status: 'ACTIVE', os_type: 'windows', canChangePassword: false, image_name: 'Ubuntu 24.04', ssh_access_mode: null },
+		{ status: 'ACTIVE', os_type: ' WINDOWS ', canChangePassword: true, image_name: 'Windows Server', ssh_access_mode: 'github' },
+		{ status: 'SHUTOFF', os_type: '\tWiNdOwS\n', canChangePassword: false, image_name: null, ssh_access_mode: 'github' },
+		{ status: 'SHUTOFF', os_type: 'windows', canChangePassword: true, image_name: null, ssh_access_mode: null },
+	] as const)('hides both SSH identities for authoritative Windows metadata %#', fields => {
+		renderInfoSection(undefined, {
+			instance: { ...sampleInstance, name: 'linux-vm', status: fields.status, os_type: fields.os_type, image_name: fields.image_name, image_id: null, ssh_access_mode: fields.ssh_access_mode, github_login: 'OctoCat' },
+			canChangePassword: fields.canChangePassword,
+			passwordPrecheckLoading: true,
+		});
+		expect(screen.queryByText('키페어')).toBeNull();
+		expect(screen.queryByText('my-keypair')).toBeNull();
+		expect(screen.queryByText('GitHub SSH')).toBeNull();
+		expect(screen.queryByText('@OctoCat')).toBeNull();
+		if (fields.image_name === null) expect(screen.getByText('볼륨에서 부팅')).toBeTruthy();
+	});
+
+	it.each(['linux', ' LINUX ', null, undefined, ''])('does not infer Windows from instance/image names when os_type is %s', os_type => {
+		renderInfoSection(undefined, {
+			instance: { ...sampleInstance, name: 'Windows Server', image_name: 'Windows Server 2025', os_type, status: 'SHUTOFF' },
+			canChangePassword: false,
+			passwordPrecheckLoading: true,
+		});
+		expect(screen.getByText('키페어').nextElementSibling?.textContent).toBe('my-keypair');
+	});
+
+	it('updates SSH presentation from ACTIVE Linux to volume-backed SHUTOFF Windows and back for a reader', async () => {
+		renderInfoSection(undefined, {
+			instance: { ...sampleInstance, os_type: 'linux', ssh_access_mode: 'github', github_login: 'OctoCat' },
+			canChangePassword: false,
+		});
+		expect(screen.getByText('GitHub SSH').nextElementSibling?.textContent).toBe('@OctoCat');
+		controllerState.update(s => ({ ...s, instance: { ...s.instance!, os_type: ' Windows ', status: 'SHUTOFF', image_id: null, image_name: null } }));
+		await tick();
+		expect(screen.queryByText('GitHub SSH')).toBeNull();
+		expect(screen.queryByText('키페어')).toBeNull();
+		expect(screen.getByText('볼륨에서 부팅')).toBeTruthy();
+		controllerState.update(s => ({ ...s, instance: { ...s.instance!, os_type: 'linux' } }));
+		await tick();
+		expect(screen.getByText('GitHub SSH').nextElementSibling?.textContent).toBe('@OctoCat');
+		controllerState.update(s => ({ ...s, instance: { ...s.instance!, ssh_access_mode: null, github_login: null } }));
+		await tick();
+		expect(screen.getByText('키페어').nextElementSibling?.textContent).toBe('my-keypair');
 	});
 });

@@ -67,7 +67,7 @@
 		void fetchVolumes();
 	}
 
-	async function createBackup(form: { volume_id: string; name: string; description: string; incremental: boolean }): Promise<string | true> {
+	async function createBackup(form: { volume_id: string; name: string; description: string; incremental: boolean; force: boolean }): Promise<string | true> {
 		try { await api.post('/api/v1/volumes/backups', form, $auth.token ?? undefined, $auth.projectId ?? undefined); await fetchBackups(); return true; }
 		catch (e) { return e instanceof ApiError ? e.message : t('backupsPage.createFailed'); }
 	}

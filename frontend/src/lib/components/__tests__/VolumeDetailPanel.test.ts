@@ -18,7 +18,7 @@ vi.mock('$lib/api/client', () => {
 });
 vi.mock('$lib/stores/wizard', () => ({ wizard: { update: mocks.wizardUpdate }, openWizard: mocks.openWizard }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: mocks.confirm }));
-vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project-a' }) }));
+vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project-a' }), canWrite: writable(true) }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: () => ({ active: false, intervalSeconds: 15, intervalOptions: [10, 15, 30, 60] }),
 }));
@@ -51,7 +51,7 @@ function routeGets(volume: Volume, instanceNames: Record<string, string>) {
 		const match = path.match(/^\/api\/v1\/instances\/(.+)$/);
 		if (match) {
 			const name = instanceNames[decodeURIComponent(match[1])];
-			return name ? Promise.resolve({ id: match[1], name }) : Promise.reject(new ApiError(404, 'not found'));
+			return name ? Promise.resolve({ id: match[1], name, status: 'SHUTOFF', project_id: 'project-a' }) : Promise.reject(new ApiError(404, 'not found'));
 		}
 		return Promise.reject(new Error(`unexpected GET ${path}`));
 	});
@@ -226,10 +226,10 @@ describe('VolumeDetailPanel', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '이전' }));
 	});
 
-	it('keeps attached-volume deletion disabled and submits resize with the selected project', async () => {
+	it('keeps attached deletion disabled and preflights stopped owning servers before a scoped expansion', async () => {
 		const volume = attachedVolume({ attachments: [{ server_id: 'server-a' }] });
 		routeGets(volume, { 'server-a': 'web-01' });
-		mocks.post.mockResolvedValue({});
+		mocks.post.mockResolvedValue({ ...volume, status: 'extending' });
 		const onChanged = vi.fn();
 		render(VolumeDetailPanel, { props: { volumeId: 'vol-1', onChanged } });
 		await openVolumeMenu();
@@ -240,6 +240,7 @@ describe('VolumeDetailPanel', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '용량 확장' }));
 		await fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: '확장' }));
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/volumes/vol-1/extend', { new_size: 30 }, 'token', 'project-a'));
+		expect(instanceGetCount('server-a')).toBeGreaterThanOrEqual(2);
 		await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
 	});
 

@@ -1,0 +1,17 @@
+{
+  "base_head": "249a937ed031d33a2fa883c37eb90c4aabacd17f",
+  "source_overlays": [
+    "frontend/src/lib/i18n/LocaleSelect.svelte",
+    "frontend/src/lib/i18n/LocaleSelect.test.ts",
+    "frontend/src/routes/docs/+layout.svelte"
+  ],
+  "review": {
+    "schema_version": 1,
+    "source_sha256": "7f750f0c54907a6e1254b78458c5457fb3ed3f9d7134eec52047c8b2107c1dc8",
+    "reviewed_at": "2026-10-12T14:55:26Z",
+    "summary": "Scoped unify-locale-dropdowns: shared native disclosure, viewport-clamped themed choices, app locale/cookie/focus and independent docs URL links; only three explicit source overlays. No backend/auth/schema/config/deployment impact; shared index and review marker not touched."
+  },
+  "guard_stdout": "checked staged source_sha256=7f750f0c54907a6e1254b78458c5457fb3ed3f9d7134eec52047c8b2107c1dc8 files=2602\n",
+  "shared_index_mutated_by_this_change": false,
+  "shared_review_marker_mutated_by_this_change": false
+}

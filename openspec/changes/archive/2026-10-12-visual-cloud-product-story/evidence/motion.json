@@ -1,0 +1,23 @@
+{
+  "records": {
+    "before": {
+      "encoded_width": 1200,
+      "encoded_height": 750,
+      "encoded_frames": 146,
+      "duration_seconds": 4.866016,
+      "changed_frames": 45,
+      "bytes": 675996,
+      "nominal_rate": "30/1"
+    },
+    "after": {
+      "encoded_width": 1440,
+      "encoded_height": 900,
+      "encoded_frames": 390,
+      "duration_seconds": 13.0,
+      "changed_frames": 198,
+      "bytes": 1487951,
+      "nominal_rate": "30/1"
+    }
+  },
+  "qualification": "Before and after are actual visual recordings of different designs/interactions and encoded resolutions, not a matched performance comparison. Nominal30fps is not runtime fps."
+}

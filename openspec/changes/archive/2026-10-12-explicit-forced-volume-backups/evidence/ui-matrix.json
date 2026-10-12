@@ -1,0 +1,2133 @@
+{
+  "boundary": "final conditional consistency wording; current-source Vite; synthetic identity and Cinder; real native SDK/loopback HTTP",
+  "conditions": [
+    {
+      "kind": "selector",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 320,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 16,
+        "right": 304,
+        "top": 105.75,
+        "bottom": 794.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 320,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 16,
+        "right": 304,
+        "top": 104.75,
+        "bottom": 795.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 390,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 21.506439208984375,
+        "right": 368.4935607910156,
+        "top": 145.41705322265625,
+        "bottom": 754.5829467773438
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 390,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 16,
+        "right": 374,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 767,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 164.6776885986328,
+        "right": 602.3223419189453,
+        "top": 152.53842163085938,
+        "bottom": 747.4615173339844
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 767,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 159.5,
+        "right": 607.5,
+        "top": 144.5,
+        "bottom": 755.5
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 768,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 168.80172729492188,
+        "right": 599.1982421875,
+        "top": 157.46484375,
+        "bottom": 742.53515625
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 768,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 160,
+        "right": 608,
+        "top": 144.5,
+        "bottom": 755.5
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 1023,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 294.38507080078125,
+        "right": 728.6149291992188,
+        "top": 154.85940551757812,
+        "bottom": 745.1406555175781
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 1023,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 287.5,
+        "right": 735.5,
+        "top": 144.5,
+        "bottom": 755.5
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 1024,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 294.8826904296875,
+        "right": 729.1173095703125,
+        "top": 154.85614013671875,
+        "bottom": 745.1438598632812
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 1024,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 288,
+        "right": 736,
+        "top": 144.5,
+        "bottom": 755.5
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 1440,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 502.86090087890625,
+        "right": 937.1390991210938,
+        "top": 154.8265380859375,
+        "bottom": 745.1734619140625
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 1440,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 496,
+        "right": 944,
+        "top": 144.5,
+        "bottom": 755.5
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ko",
+      "theme": "light",
+      "width": 320,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 19.3349609375,
+        "right": 300.6650390625,
+        "top": 113.72265625,
+        "bottom": 786.27734375
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ko",
+      "theme": "light",
+      "width": 320,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 16,
+        "right": 304,
+        "top": 104.75,
+        "bottom": 795.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ko",
+      "theme": "light",
+      "width": 390,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 17.967926025390625,
+        "right": 372.0320739746094,
+        "top": 139.20486450195312,
+        "bottom": 760.7951965332031
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ko",
+      "theme": "light",
+      "width": 390,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 16,
+        "right": 374,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ko",
+      "theme": "light",
+      "width": 767,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 166.37135314941406,
+        "right": 600.6286773681641,
+        "top": 154.84075927734375,
+        "bottom": 745.1592407226562
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ko",
+      "theme": "light",
+      "width": 767,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 159.5,
+        "right": 607.5,
+        "top": 144.5,
+        "bottom": 755.5
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ko",
+      "theme": "light",
+      "width": 768,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 166.8933563232422,
+        "right": 601.1066131591797,
+        "top": 154.87066650390625,
+        "bottom": 745.1293334960938
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ko",
+      "theme": "light",
+      "width": 768,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 160,
+        "right": 608,
+        "top": 144.5,
+        "bottom": 755.5
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ko",
+      "theme": "light",
+      "width": 1023,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 296.29876708984375,
+        "right": 726.7012329101562,
+        "top": 157.4608154296875,
+        "bottom": 742.5391845703125
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ko",
+      "theme": "light",
+      "width": 1023,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 287.5,
+        "right": 735.5,
+        "top": 144.5,
+        "bottom": 755.5
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ko",
+      "theme": "light",
+      "width": 1024,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 294.88006591796875,
+        "right": 729.1199340820312,
+        "top": 154.85260009765625,
+        "bottom": 745.1473999023438
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ko",
+      "theme": "light",
+      "width": 1024,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 288,
+        "right": 736,
+        "top": 144.5,
+        "bottom": 755.5
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ko",
+      "theme": "light",
+      "width": 1440,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 502.8763732910156,
+        "right": 937.1236572265625,
+        "top": 154.84756469726562,
+        "bottom": 745.1524963378906
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ko",
+      "theme": "light",
+      "width": 1440,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 496,
+        "right": 944,
+        "top": 144.5,
+        "bottom": 755.5
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "en",
+      "theme": "dark",
+      "width": 320,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 20.426116943359375,
+        "right": 299.5738830566406,
+        "top": 99.12677001953125,
+        "bottom": 800.8732299804688
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "en",
+      "theme": "dark",
+      "width": 320,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 16,
+        "right": 304,
+        "top": 87,
+        "bottom": 813
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "en",
+      "theme": "dark",
+      "width": 390,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 21.494598388671875,
+        "right": 368.5054016113281,
+        "top": 125.76785278320312,
+        "bottom": 774.2322082519531
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "en",
+      "theme": "dark",
+      "width": 390,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 16,
+        "right": 374,
+        "top": 114.5,
+        "bottom": 785.5
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "en",
+      "theme": "dark",
+      "width": 767,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 166.37765502929688,
+        "right": 600.622314453125,
+        "top": 145.398681640625,
+        "bottom": 754.601318359375
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "en",
+      "theme": "dark",
+      "width": 767,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 159.5,
+        "right": 607.5,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "en",
+      "theme": "dark",
+      "width": 768,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 165.19056701660156,
+        "right": 602.8094635009766,
+        "top": 143.0318603515625,
+        "bottom": 756.9681396484375
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "en",
+      "theme": "dark",
+      "width": 768,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 160,
+        "right": 608,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "en",
+      "theme": "dark",
+      "width": 1023,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 296.3019714355469,
+        "right": 726.697998046875,
+        "top": 148.09829711914062,
+        "bottom": 751.9017639160156
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "en",
+      "theme": "dark",
+      "width": 1023,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 287.5,
+        "right": 735.5,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "en",
+      "theme": "dark",
+      "width": 1024,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 294.8746337890625,
+        "right": 729.1253662109375,
+        "top": 145.3944091796875,
+        "bottom": 754.6055908203125
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "en",
+      "theme": "dark",
+      "width": 1024,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 288,
+        "right": 736,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "en",
+      "theme": "dark",
+      "width": 1440,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 496.58050537109375,
+        "right": 943.4195556640625,
+        "top": 136.56436157226562,
+        "bottom": 763.4356994628906
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "en",
+      "theme": "dark",
+      "width": 1440,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 496,
+        "right": 944,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "en",
+      "theme": "light",
+      "width": 320,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 19.34130859375,
+        "right": 300.65869140625,
+        "top": 96.39968872070312,
+        "bottom": 803.6003723144531
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "en",
+      "theme": "light",
+      "width": 320,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 16,
+        "right": 304,
+        "top": 87,
+        "bottom": 813
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "en",
+      "theme": "light",
+      "width": 390,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 21.505050659179688,
+        "right": 368.4949188232422,
+        "top": 125.787353515625,
+        "bottom": 774.212646484375
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "en",
+      "theme": "light",
+      "width": 390,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 16,
+        "right": 374,
+        "top": 114.5,
+        "bottom": 785.5
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "en",
+      "theme": "light",
+      "width": 767,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 168.3091278076172,
+        "right": 598.6908416748047,
+        "top": 148.10833740234375,
+        "bottom": 751.8916625976562
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "en",
+      "theme": "light",
+      "width": 767,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 159.5,
+        "right": 607.5,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "en",
+      "theme": "light",
+      "width": 768,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 168.8079071044922,
+        "right": 599.1920623779297,
+        "top": 148.10662841796875,
+        "bottom": 751.8933715820312
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "en",
+      "theme": "light",
+      "width": 768,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 160,
+        "right": 608,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "en",
+      "theme": "light",
+      "width": 1023,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 294.375732421875,
+        "right": 728.624267578125,
+        "top": 145.39593505859375,
+        "bottom": 754.6040649414062
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "en",
+      "theme": "light",
+      "width": 1023,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 287.5,
+        "right": 735.5,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "en",
+      "theme": "light",
+      "width": 1024,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 293.1771240234375,
+        "right": 730.8228759765625,
+        "top": 143.01296997070312,
+        "bottom": 756.9870910644531
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "en",
+      "theme": "light",
+      "width": 1024,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 288,
+        "right": 736,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "en",
+      "theme": "light",
+      "width": 1440,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 504.7930908203125,
+        "right": 935.2069091796875,
+        "top": 148.08584594726562,
+        "bottom": 751.9142150878906
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "en",
+      "theme": "light",
+      "width": 1440,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 496,
+        "right": 944,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ja",
+      "theme": "dark",
+      "width": 320,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 21.671432495117188,
+        "right": 298.3285369873047,
+        "top": 79.4427490234375,
+        "bottom": 820.5572509765625
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ja",
+      "theme": "dark",
+      "width": 320,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 16,
+        "right": 304,
+        "top": 43.25,
+        "bottom": 856.75
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ja",
+      "theme": "dark",
+      "width": 390,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 17.14068603515625,
+        "right": 372.85931396484375,
+        "top": 107.94375610351562,
+        "bottom": 792.0563049316406
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ja",
+      "theme": "dark",
+      "width": 390,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 16,
+        "right": 374,
+        "top": 104.75,
+        "bottom": 795.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ja",
+      "theme": "dark",
+      "width": 767,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 168.3289031982422,
+        "right": 598.6710662841797,
+        "top": 148.13607788085938,
+        "bottom": 751.8638610839844
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ja",
+      "theme": "dark",
+      "width": 767,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 159.5,
+        "right": 607.5,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ja",
+      "theme": "dark",
+      "width": 768,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 165.17710876464844,
+        "right": 602.8228607177734,
+        "top": 143.01296997070312,
+        "bottom": 756.9870910644531
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ja",
+      "theme": "dark",
+      "width": 768,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 160,
+        "right": 608,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ja",
+      "theme": "dark",
+      "width": 1023,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 294.37506103515625,
+        "right": 728.6249389648438,
+        "top": 145.39501953125,
+        "bottom": 754.60498046875
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ja",
+      "theme": "dark",
+      "width": 1023,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 287.5,
+        "right": 735.5,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ja",
+      "theme": "dark",
+      "width": 1024,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 296.8113708496094,
+        "right": 727.1885986328125,
+        "top": 148.11148071289062,
+        "bottom": 751.8885803222656
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ja",
+      "theme": "dark",
+      "width": 1024,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 288,
+        "right": 736,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ja",
+      "theme": "dark",
+      "width": 1440,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 501.187744140625,
+        "right": 938.812255859375,
+        "top": 143.02786254882812,
+        "bottom": 756.9721984863281
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ja",
+      "theme": "dark",
+      "width": 1440,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 496,
+        "right": 944,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ja",
+      "theme": "light",
+      "width": 320,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 19.337158203125,
+        "right": 300.662841796875,
+        "top": 73.18966674804688,
+        "bottom": 826.8102722167969
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ja",
+      "theme": "light",
+      "width": 320,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 16,
+        "right": 304,
+        "top": 43.25,
+        "bottom": 856.75
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ja",
+      "theme": "light",
+      "width": 390,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 21.494598388671875,
+        "right": 368.5054016113281,
+        "top": 116.317138671875,
+        "bottom": 783.682861328125
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ja",
+      "theme": "light",
+      "width": 390,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 16,
+        "right": 374,
+        "top": 104.75,
+        "bottom": 795.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ja",
+      "theme": "light",
+      "width": 767,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 164.6898193359375,
+        "right": 602.3101806640625,
+        "top": 143.03082275390625,
+        "bottom": 756.9691772460938
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ja",
+      "theme": "light",
+      "width": 767,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 159.5,
+        "right": 607.5,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ja",
+      "theme": "light",
+      "width": 768,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 166.8680877685547,
+        "right": 601.1318817138672,
+        "top": 145.38525390625,
+        "bottom": 754.61474609375
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ja",
+      "theme": "light",
+      "width": 768,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 160,
+        "right": 608,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ja",
+      "theme": "light",
+      "width": 1023,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 294.363525390625,
+        "right": 728.636474609375,
+        "top": 145.37884521484375,
+        "bottom": 754.6211547851562
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ja",
+      "theme": "light",
+      "width": 1023,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 287.5,
+        "right": 735.5,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ja",
+      "theme": "light",
+      "width": 1024,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 294.89227294921875,
+        "right": 729.1077270507812,
+        "top": 145.41915893554688,
+        "bottom": 754.5807800292969
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ja",
+      "theme": "light",
+      "width": 1024,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 288,
+        "right": 736,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "ja",
+      "theme": "light",
+      "width": 1440,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 502.8646240234375,
+        "right": 937.1353759765625,
+        "top": 145.38037109375,
+        "bottom": 754.61962890625
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "ja",
+      "theme": "light",
+      "width": 1440,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 496,
+        "right": 944,
+        "top": 134.75,
+        "bottom": 765.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 320,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 21.662384033203125,
+        "right": 298.3376159667969,
+        "top": 148.10696411132812,
+        "bottom": 751.8930969238281
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 320,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 16,
+        "right": 304,
+        "top": 124.75,
+        "bottom": 775.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 390,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 21.494766235351562,
+        "right": 368.50526428222656,
+        "top": 154.84725952148438,
+        "bottom": 745.1526794433594
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 390,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 16,
+        "right": 374,
+        "top": 144.5,
+        "bottom": 755.5
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 767,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 168.30419921875,
+        "right": 598.69580078125,
+        "top": 166.83499145507812,
+        "bottom": 733.1650695800781
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 767,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 159.5,
+        "right": 607.5,
+        "top": 154.25,
+        "bottom": 745.75
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 768,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 166.89227294921875,
+        "right": 601.1077270507812,
+        "top": 164.31918334960938,
+        "bottom": 735.6807556152344
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 768,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 160,
+        "right": 608,
+        "top": 154.25,
+        "bottom": 745.75
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 1023,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 292.68487548828125,
+        "right": 730.3150634765625,
+        "top": 162.072509765625,
+        "bottom": 737.927490234375
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 1023,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 287.5,
+        "right": 735.5,
+        "top": 154.25,
+        "bottom": 745.75
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 1024,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 296.81805419921875,
+        "right": 727.1820068359375,
+        "top": 166.85321044921875,
+        "bottom": 733.1467895507812
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 1024,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 288,
+        "right": 736,
+        "top": 154.25,
+        "bottom": 745.75
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 1440,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 502.8846435546875,
+        "right": 937.1153564453125,
+        "top": 164.30914306640625,
+        "bottom": 735.6908569335938
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 1440,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": false,
+      "overflow": 0,
+      "panel": {
+        "left": 496,
+        "right": 944,
+        "top": 154.25,
+        "bottom": 745.75
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 320,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 20.426116943359375,
+        "right": 299.5738830566406,
+        "top": 145.40908813476562,
+        "bottom": 754.5909729003906
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 320,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 16,
+        "right": 304,
+        "top": 124.75,
+        "bottom": 775.25
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 390,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 18.963211059570312,
+        "right": 371.0368194580078,
+        "top": 150.540771484375,
+        "bottom": 749.459228515625
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 390,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 16,
+        "right": 374,
+        "top": 144.5,
+        "bottom": 755.5
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 767,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 164.6693572998047,
+        "right": 602.3306121826172,
+        "top": 162.05209350585938,
+        "bottom": 737.9478454589844
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 767,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 159.5,
+        "right": 607.5,
+        "top": 154.25,
+        "bottom": 745.75
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 768,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 166.88485717773438,
+        "right": 601.1151123046875,
+        "top": 164.30941772460938,
+        "bottom": 735.6905212402344
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 768,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 160,
+        "right": 608,
+        "top": 154.25,
+        "bottom": 745.75
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 1023,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 296.3076477050781,
+        "right": 726.6923828125,
+        "top": 166.83953857421875,
+        "bottom": 733.1604614257812
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 1023,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 287.5,
+        "right": 735.5,
+        "top": 154.25,
+        "bottom": 745.75
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 1024,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 293.1818542480469,
+        "right": 730.818115234375,
+        "top": 162.06854248046875,
+        "bottom": 737.9314575195312
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 1024,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 288,
+        "right": 736,
+        "top": 154.25,
+        "bottom": 745.75
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "selector",
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 1440,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 502.88897705078125,
+        "right": 937.1109619140625,
+        "top": 164.31488037109375,
+        "bottom": 735.6851196289062
+      },
+      "scrollable": false,
+      "footerReachable": true
+    },
+    {
+      "kind": "inline",
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 1440,
+      "uncheckedBlocked": true,
+      "checkedEnabled": true,
+      "withdrawnBlocked": true,
+      "light": true,
+      "overflow": 0,
+      "panel": {
+        "left": 496,
+        "right": 944,
+        "top": 154.25,
+        "bottom": 745.75
+      },
+      "scrollable": false,
+      "footerReachable": true
+    }
+  ]
+}

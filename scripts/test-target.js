@@ -62,6 +62,9 @@ const targets = {
 		backend: {
 			selectors: expandMcpBackendSelectors,
 			extraArgs: ["-m", "not db and not contract"]
+		},
+		frontend: {
+			selectors: ["src/lib/components/account/__tests__/McpAccessSection.test.ts"]
 		}
 	},
 	auth: {
@@ -204,9 +207,15 @@ const targets = {
 				"tests/test_instance_metrics.py",
 				"tests/test_instance_metrics_summary.py",
 				"tests/test_instance_password.py",
+				"tests/test_instance_operating_system.py",
+				"tests/test_windows_instance_password.py",
+				"tests/test_admin_instance_password.py",
+				"tests/test_instance_password_validation.py",
+				"tests/test_windows_image_metadata.py",
 				"tests/test_instance_boot_from_volume.py",
 				"tests/test_instance_scheduling.py",
 				"tests/test_instances_data_mounts.py",
+				"tests/test_instance_storage_delete.py",
 				"tests/test_data_mount_subnet_cidrs.py",
 				"tests/test_instances_no_libraries.py",
 				"tests/test_bulk_instance_action.py",
@@ -237,9 +246,16 @@ const targets = {
 				"src/lib/stores/__tests__/vmCreateStoreLoad.test.ts",
 				"src/lib/stores/__tests__/vmCreateStoreRealClient.test.ts",
 				"src/lib/stores/__tests__/vmCreateStoreProgress.test.ts",
+				"src/lib/stores/__tests__/vmCreatePassword.test.ts",
+				"src/lib/utils/__tests__/instanceCreate.test.ts",
 				"src/lib/components/admin/__tests__/AdminInstanceTable.test.ts",
 				"src/routes/admin/hypervisors/__tests__",
 				"src/lib/stores/__tests__/instanceDetailController.password.test.ts",
+				"src/lib/stores/__tests__/instanceDetailController.actions.test.ts",
+				"src/lib/components/__tests__/InstanceDetailPanel.lifecycle.test.ts",
+				"src/lib/components/instance/list/__tests__/InstancesTable.test.ts",
+				"src/routes/dashboard/compute/instances/__tests__",
+				"src/routes/admin/instances/__tests__",
 				"src/lib/stores/__tests__/instanceDetailController.resize.test.ts"
 			]
 		}
@@ -283,6 +299,8 @@ const targets = {
 				"src/lib/components/admin/file-storage/__tests__",
 				"src/lib/components/volume/__tests__/VolumeSummaryCards.test.ts",
 				"src/lib/components/volume/__tests__/VolumeBulkSelection.test.ts",
+				"src/lib/components/volume/__tests__/VolumeExtendModal.test.ts",
+				"src/lib/components/volume/__tests__/VolumeBackupConsent.test.ts",
 				"src/lib/api/__tests__/client.upload.test.ts"
 			]
 		}

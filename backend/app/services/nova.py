@@ -382,7 +382,7 @@ def delete_server(conn: openstack.connection.Connection, server_id: str) -> None
         # 이미 삭제됐거나 존재하지 않으면 무시 (404 ResourceNotFound, 409 Conflict)
         err_str = str(e).lower()
         if "404" in err_str or "not found" in err_str or "409" in err_str or "conflict" in err_str:
-            _logger.debug("delete_server %s: already gone or conflict, ignoring (%s)", server_id, e)
+            _logger.debug("delete_server %s: already gone or conflict, ignoring", server_id)
             return
         raise
 
@@ -504,7 +504,7 @@ def change_server_password(
 
 def get_server_image_meta(conn: openstack.connection.Connection, server_id: str) -> dict:
     """서버의 부트 이미지 메타데이터 조회.
-    Returns: {"qga_enabled": bool, "os_admin_user": str|None, "image_id": str|None, "image_name": str|None}
+    Returns: qga_enabled, os_admin_user, image_id, image_name, os_type.
     볼륨 부팅은 Nova 루트 장치 또는 유일한 Cinder bootable 볼륨의 메타데이터를 사용한다.
     """
 
@@ -531,27 +531,32 @@ def get_server_image_meta(conn: openstack.connection.Connection, server_id: str)
                 return {
                     "qga_enabled": str(meta.get("hw_qemu_guest_agent", "")).lower() in ("yes", "true", "1"),
                     "os_admin_user": meta.get("os_admin_user"),
+                    "os_type": meta.get("os_type").strip().lower() or None
+                    if isinstance(meta.get("os_type"), str)
+                    else None,
                     "image_id": meta.get("image_id"),
                     "image_name": image_reference_fields(meta.get("image_name"))[0] or None,
                 }
         except Exception:
             pass
-        return {"qga_enabled": False, "os_admin_user": None, "image_id": None, "image_name": None}
+        return {"qga_enabled": False, "os_admin_user": None, "image_id": None, "image_name": None, "os_type": None}
 
     try:
         img = conn.image.get_image(image_id)
         props = dict(img.properties or {})
         qga = props.get("hw_qemu_guest_agent") or getattr(img, "hw_qemu_guest_agent", None)
         admin_user = props.get("os_admin_user") or getattr(img, "os_admin_user", None)
+        os_type = props.get("os_type") or getattr(img, "os_type", None)
         return {
             "qga_enabled": str(qga or "").lower() in ("yes", "true", "1"),
             "os_admin_user": admin_user,
+            "os_type": os_type.strip().lower() or None if isinstance(os_type, str) else None,
             "image_id": image_id,
             "image_name": image_reference_fields(getattr(img, "name", None))[0] or None,
         }
     except Exception:
         _logger.warning("이미지 메타 조회 실패 server=%s image=%s", server_id, image_id, exc_info=True)
-        return {"qga_enabled": False, "os_admin_user": None, "image_id": image_id, "image_name": None}
+        return {"qga_enabled": False, "os_admin_user": None, "image_id": image_id, "image_name": None, "os_type": None}
 
 
 def extract_cpu_model(h: dict) -> str | None:

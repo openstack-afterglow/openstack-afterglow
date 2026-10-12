@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { authReady, clearAuth, projectSwitching, setAuth, setProject } from '$lib/stores/auth';
 import { siteConfig } from '$lib/config/site';
 import { t } from '$lib/i18n/ns/account';
-import { initLocale } from '$lib/i18n/runtime.svelte';
+import { initLocale, intlLocale } from '$lib/i18n/runtime.svelte';
 
 const { api, ApiError, confirmDialog, getBaseUrl } = vi.hoisted(() => ({
 	api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
@@ -20,6 +20,7 @@ vi.mock('$app/stores', async () => {
 });
 
 import McpAccessSection from '../McpAccessSection.svelte';
+import type { McpClientObservation } from '../McpAccessSection.svelte';
 
 const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
 const scopedPostOptions = { signal: expect.any(AbortSignal), suppressAuthRedirect: true, cache: 'no-store' };
@@ -50,6 +51,7 @@ const activeToken = {
 	last_used_at: null,
 	revoked_at: null,
 	is_lumen_default: true,
+	client_observations: [] as McpClientObservation[],
 };
 
 const availableProjects = [
@@ -135,6 +137,139 @@ describe('McpAccessSection', () => {
 		clearAuth();
 		siteConfig.update((config) => ({ ...config, services: { ...config.services, mcp: false } }));
 	});
+
+	it.each((['ko', 'en', 'ja', 'zh-CN'] as const).flatMap((locale) => (['oauth', 'api'] as const).map((method) => [locale, method] as const)))('renders grant-owned escaped client details and credential-wide removal in %s via %s', async (locale, selected) => {
+		initLocale(locale);
+		const hostile = '<img src=x onerror="window.clientLeak=1">';
+		const observed = {
+			client_name: hostile, client_version: '<script>private()</script>', product: 'Claimed product', kind: 'agent',
+			identity_source: 'client_info', browser: 'Browser 123', os: 'OS 14',
+			first_seen_at: '2026-07-01T00:00:00Z', last_seen_at: '2026-07-08T00:00:00Z',
+		} satisfies McpClientObservation;
+		const unknown: McpClientObservation = { client_name: null, client_version: null, product: null, kind: 'unknown', identity_source: 'unknown', browser: null, os: null, first_seen_at: null, last_seen_at: null };
+		const record = { ...activeToken, name: 'Shared credential', source: selected === 'oauth' ? 'oauth' : 'personal_token', client_observations: [observed, unknown], token: 'must-not-render-secret' };
+		let rows = [record];
+		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/mcp-projects') ? availableProjects : path.includes('oauth') === (selected === 'oauth') ? rows : []));
+		api.delete.mockImplementation(() => { rows = []; return Promise.resolve(); });
+		render(McpAccessSection);
+		if (selected === 'api') await selectMethod('api');
+		await screen.findByText(record.name);
+		const observations = screen.getByRole('group', { name: t('mcp.observations') });
+		expect(within(observations).getByText(t('mcp.observationHelp'))).toBeTruthy();
+		const summary = within(observations).getByText(t('mcp.observationCount', { count: 2 }));
+		const details = summary.closest('details')!;
+		expect(details.open).toBe(false);
+		await fireEvent.click(summary);
+		expect(details.open).toBe(true);
+		expect(within(details).getByText(hostile)).toBeTruthy();
+		expect(details.textContent).toContain(observed.client_version);
+		expect(within(details).getByText(t('mcp.clientInference', { product: observed.product, kind: t('mcp.clientKind.agent') }))).toBeTruthy();
+		expect(within(details).getByText(t('mcp.clientEvidence', { source: t('mcp.clientSource.client_info') }))).toBeTruthy();
+		expect(within(details).getByText(t('mcp.clientPlatform', { browser: observed.browser, os: observed.os }))).toBeTruthy();
+		expect(details.querySelector('img,script')).toBeNull();
+		expect(within(details).getByText(t('mcp.unknownClient'))).toBeTruthy();
+		expect(within(details).getByText(t('mcp.clientEvidence', { source: t('mcp.clientSource.unknown') }))).toBeTruthy();
+		expect(within(details).getByText(t('mcp.clientPlatform', { browser: t('mcp.unknown'), os: t('mcp.unknown') }))).toBeTruthy();
+		const date = (value: string) => new Intl.DateTimeFormat(intlLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+		expect(within(details).getByText(t('mcp.clientDates', { first: date(observed.first_seen_at), last: date(observed.last_seen_at) }))).toBeTruthy();
+		expect(document.body.textContent).not.toContain('must-not-render-secret');
+		await screen.findByText(t('mcp.count', { count: 1 }));
+		await fireEvent.click(screen.getByRole('button', { name: t(selected === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') }));
+		await waitFor(() => expect(api.delete).toHaveBeenCalledExactlyOnceWith(selected === 'oauth' ? '/api/v1/auth/mcp-oauth/grants/grant-1' : '/api/v1/auth/mcp-tokens/token-1', 'token', 'project'));
+		expect(confirmDialog).toHaveBeenCalledExactlyOnceWith(t(selected === 'oauth' ? 'mcp.revokeOAuthConfirm' : 'mcp.revokeConfirm', { name: record.name }));
+		await screen.findByText(t(selected === 'oauth' ? 'mcp.emptyOAuth' : 'mcp.emptyTokens'));
+		expect(screen.queryByRole('group', { name: t('mcp.observations') })).toBeNull();
+	});
+
+	it('shows no observation separately from an unknown observed client and caps displayed signatures at ten', async () => {
+		await renderApi();
+		const noObservation = await screen.findByText(t('mcp.noObservations'));
+		expect(noObservation.closest('[role="group"]')?.querySelector('details')).toBeNull();
+		const observations = Array.from({ length: 11 }, (_, index): McpClientObservation => ({ client_name: `Observed ${index}`, client_version: null, product: null, kind: 'unknown', identity_source: 'unknown', browser: null, os: null, first_seen_at: null, last_seen_at: null }));
+		api.get.mockImplementation((path: string) => Promise.resolve(accountResponse(path, [{ ...activeToken, client_observations: observations }])));
+		await fireEvent.click(screen.getByRole('button', { name: t('mcp.refresh') }));
+		const summary = await screen.findByText(t('mcp.observationCount', { count: 10 }));
+		await fireEvent.click(summary);
+		expect(within(summary.closest('details')!).getAllByRole('listitem')).toHaveLength(10);
+		expect(screen.queryByText('Observed 10')).toBeNull();
+		expect(screen.queryByText(t('mcp.noObservations'))).toBeNull();
+		expect(screen.getByText(t('mcp.count', { count: 1 }))).toBeTruthy();
+	});
+	it.each(['oauth', 'api'] as const)('shows selected %s records even while the other list is pending and then fails', async (selected) => {
+		const other = deferred<typeof activeToken[]>();
+		const record = { ...activeToken, name: 'Selected credential', source: selected === 'oauth' ? 'oauth' : 'personal_token' };
+		api.get.mockImplementation((path: string) => path.endsWith('/mcp-projects') ? Promise.resolve(availableProjects)
+			: path.includes('oauth') === (selected === 'oauth') ? Promise.resolve([record]) : other.promise);
+		render(McpAccessSection);
+		if (selected === 'api') await selectMethod('api');
+		await screen.findByText(record.name);
+		expect(screen.getByRole('button', { name: t(selected === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') }).hasAttribute('disabled')).toBe(false);
+		await act(async () => { other.reject(new Error('Unselected private failure')); });
+		expect(screen.getByText(record.name)).toBeTruthy();
+		expect(screen.queryByText(t('mcp.loadFailed'))).toBeNull();
+		expect(screen.queryByRole('button', { name: t('mcp.retryList') })).toBeNull();
+		await selectMethod(selected === 'oauth' ? 'api' : 'oauth');
+		await screen.findByRole('button', { name: t('mcp.retryList') });
+		expect(screen.queryByText(t('mcp.count', { count: 0 }))).toBeNull();
+	});
+
+	it.each(['oauth', 'api'] as const)('keeps a selected %s load error truthful and retries inline without stale actions', async (selected) => {
+		let failing = false;
+		const record = { ...activeToken, name: 'Current credential' };
+		api.get.mockImplementation((path: string) => path.endsWith('/mcp-projects') ? Promise.resolve(availableProjects)
+			: path.includes('oauth') === (selected === 'oauth')
+				? failing ? Promise.reject(new Error('Private own-list error')) : Promise.resolve([record]) : Promise.resolve([]));
+		render(McpAccessSection);
+		if (selected === 'api') await selectMethod('api');
+		await screen.findByText(record.name);
+		const oldAction = screen.getByRole('button', { name: t(selected === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') });
+		failing = true;
+		await fireEvent.click(screen.getByRole('button', { name: t('mcp.refresh') }));
+		const retry = await screen.findByRole('button', { name: t('mcp.retryList') });
+		expect(screen.getByText(t('mcp.loadFailed'))).toBeTruthy();
+		expect(screen.queryByText(record.name)).toBeNull();
+		expect(screen.queryByText(t('mcp.count', { count: 0 }))).toBeNull();
+		expect(screen.queryByText(t(selected === 'oauth' ? 'mcp.emptyOAuth' : 'mcp.emptyTokens'))).toBeNull();
+		await fireEvent.click(oldAction);
+		expect(confirmDialog).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+		if (selected === 'api') {
+			const create = screen.getByRole('button', { name: t('mcp.create') });
+			expect(create.hasAttribute('disabled')).toBe(true);
+			await fireEvent.submit(create.closest('form')!);
+			expect(api.post).not.toHaveBeenCalled();
+		}
+		failing = false;
+		await fireEvent.click(retry);
+		await screen.findByText(record.name);
+		expect(screen.queryByRole('button', { name: t('mcp.retryList') })).toBeNull();
+	});
+
+	it.each(['oauth', 'api'] as const)('invalidates a pending %s removal dialog on own-record refresh, project ABA, token or user change', async (selected) => {
+		for (const boundary of ['refresh', 'project', 'token', 'user'] as const) {
+			const confirmation = deferred<boolean>();
+			confirmDialog.mockReturnValue(confirmation.promise);
+			let generation = 'Old';
+			api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/mcp-projects') ? availableProjects
+				: path.includes('oauth') === (selected === 'oauth') ? [{ ...activeToken, name: `${generation} credential` }] : []));
+			render(McpAccessSection);
+			if (selected === 'api') await selectMethod('api');
+			await screen.findByText('Old credential');
+			await fireEvent.click(screen.getByRole('button', { name: t(selected === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') }));
+			generation = 'Fresh';
+			if (boundary === 'refresh') await fireEvent.click(screen.getByRole('button', { name: t('mcp.refresh') }));
+			else if (boundary === 'project') { setProject('other', 'Other project'); setProject('project', 'Project'); }
+			else if (boundary === 'token') setAuth({ token: 'fresh-token' });
+			else setAuth({ token: 'token', userId: 'fresh-user' });
+			await screen.findByText('Fresh credential');
+			await act(async () => { confirmation.resolve(true); });
+			expect(api.delete).not.toHaveBeenCalled();
+			expect(screen.getByText('Fresh credential')).toBeTruthy();
+			cleanup();
+			setAuth({ token: 'token', userId: 'user', projectId: 'project' });
+		}
+	});
+
 
 	it.each(['ko', 'en', 'ja', 'zh-CN'] as const)('opens the MCP guide in the account language %s', async (locale) => {
 		initLocale(locale);

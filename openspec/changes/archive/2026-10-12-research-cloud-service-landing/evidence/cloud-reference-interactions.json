@@ -1,0 +1,973 @@
+[
+  {
+    "name": "nhn",
+    "initial": {
+      "url": "https://www.nhncloud.com/kr",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "buttons": [
+        {
+          "text": "소개",
+          "aria": null,
+          "class": "max-[1480px]:px-12 max-[1480px]:text-[16px] text-white hover:text-blue-300 flex h-full items-center px-18 transition-colors"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "flex h-186 min-w-328"
+        },
+        {
+          "text": "솔루션",
+          "aria": null,
+          "class": "max-[1480px]:px-12 max-[1480px]:text-[16px] text-white hover:text-blue-300 flex h-full items-center px-18 transition-colors"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "submenu-btn text-body-4.5 group flex w-full items-center py-8 text-left hover:cursor-pointer hover:text-blue-700 text-blue-700"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "submenu-btn text-body-4.5 group flex w-full items-center py-8 text-left hover:cursor-pointer hover:text-blue-700"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "submenu-btn text-body-4.5 group flex w-full items-center py-8 text-left hover:cursor-pointer hover:text-blue-700"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "flex h-186 min-w-328"
+        },
+        {
+          "text": "서비스",
+          "aria": null,
+          "class": "max-[1480px]:px-12 max-[1480px]:text-[16px] text-white hover:text-blue-300 flex h-full items-center px-18 transition-colors"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "submenu-btn text-body-4.5 group flex w-full items-center py-8 text-left hover:cursor-pointer hover:text-blue-700 text-blue-700"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "submenu-btn text-body-4.5 group flex w-full items-center py-8 text-left hover:cursor-pointer hover:text-blue-700"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "submenu-btn text-body-4.5 group flex w-full items-center py-8 text-left hover:cursor-pointer hover:text-blue-700"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "submenu-btn text-body-4.5 group flex w-full items-center py-8 text-left hover:cursor-pointer hover:text-blue-700"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "submenu-btn text-body-4.5 group flex w-full items-center py-8 text-left hover:cursor-pointer hover:text-blue-700"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "submenu-btn text-body-4.5 group flex w-full items-center py-8 text-left hover:cursor-pointer hover:text-blue-700"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "submenu-btn text-body-4.5 group flex w-full items-center py-8 text-left hover:cursor-pointer hover:text-blue-700"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "submenu-btn text-body-4.5 group flex w-full items-center py-8 text-left hover:cursor-pointer hover:text-blue-700"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "submenu-btn text-body-4.5 group flex w-full items-center py-8 text-left hover:cursor-pointer hover:text-blue-700"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "submenu-btn text-body-4.5 group flex w-full items-center py-8 text-left hover:cursor-pointer hover:text-blue-700"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "submenu-btn text-body-4.5 group flex w-full items-center py-8 text-left hover:cursor-pointer hover:text-blue-700"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "submenu-btn text-body-4.5 group flex w-full items-center py-8 text-left hover:cursor-pointer hover:text-blue-700"
+        }
+      ],
+      "transforms": [
+        {
+          "class": "",
+          "style": "position: absolute; z-index: -1; bottom: 0px; left: 0px; right: 0px; transform: translateY(100%);"
+        },
+        {
+          "class": "relative mx-auto mt-16 flex w-full max-w-2560 flex-col gap-16 px-16 desktop:flex-row desktop:w-full desktop:min-w-1280 desktop:px-60",
+          "style": "opacity:0;transform:translateY(5px);transition:opacity 0.7s ease-out, transform 0.7s ease-out;"
+        },
+        {
+          "class": "bottom-banner-swiper swiper desktop:w-auto desktop:flex-1 rounded-12 relative w-full swiper-initialized swiper-horizontal swiper-backface-hidden",
+          "style": "opacity:0;transform:translateY(5px);transition:opacity 0.7s ease-out, transform 0.7s ease-out;"
+        },
+        {
+          "class": "rounded-12 relative z-[-1] flex flex-shrink-0 flex-col bg-[linear-gradient(110deg,#C8DEFF_5.3%,#D0FCFF_104%)] p-24 h-140 desktop:p-32 desktop:h-348 desktop:w-348 cursor-pointer",
+          "style": "opacity:0;transform:translateY(5px);transition:opacity 0.7s ease-out, transform 0.7s ease-out;"
+        },
+        {
+          "class": "rounded-12 flex bg-gray-150 flex-shrink-0 flex-col p-18 overflow-x-auto desktop:h-348 desktop:w-348 desktop:px-32 desktop:py-24 desktop:items-center desktop:justify-center",
+          "style": "opacity:0;transform:translateY(5px);transition:opacity 0.7s ease-out, transform 0.7s ease-out;"
+        },
+        {
+          "class": "px-16 desktop:p-0 desktop:text-center",
+          "style": "opacity:0;transform:translateY(5px);transition:opacity 0.7s ease-out, transform 0.7s ease-out;"
+        },
+        {
+          "class": "",
+          "style": "opacity:0;transform:translateY(5px);transition:opacity 0.7s ease-out, transform 0.7s ease-out;"
+        },
+        {
+          "class": "group flex w-full items-center justify-between gap-16 border-b border-b-gray-250 pt-20 pb-20 cursor-pointer desktop:w-620 desktop:p-0 desktop:gap-20",
+          "style": "opacity:0;transform:translateY(5px);transition:opacity 0.7s ease-out, transform 0.7s ease-out;"
+        }
+      ],
+      "motions": [
+        {
+          "tag": "BODY",
+          "class": "font-pretendard text-gray-900 antialiased min-h-screen",
+          "duration": "0.3s, 0.3s",
+          "property": "background-color, color",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "NAV",
+          "class": "desktop:block hidden sticky top-0 z-(--zIndex-gnb) min-w-1400",
+          "duration": "0.3s",
+          "property": "background-color",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "BUTTON",
+          "class": "max-[1480px]:px-12 max-[1480px]:text-[16px] text-white hover:text-blue-300 flex h-full items-center px-18 transition-colors",
+          "duration": "0.15s",
+          "property": "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "BUTTON",
+          "class": "max-[1480px]:px-12 max-[1480px]:text-[16px] text-white hover:text-blue-300 flex h-full items-center px-18 transition-colors",
+          "duration": "0.15s",
+          "property": "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "BUTTON",
+          "class": "max-[1480px]:px-12 max-[1480px]:text-[16px] text-white hover:text-blue-300 flex h-full items-center px-18 transition-colors",
+          "duration": "0.15s",
+          "property": "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "BUTTON",
+          "class": "max-[1480px]:px-12 max-[1480px]:text-[16px] text-white hover:text-blue-300 flex h-full items-center px-18 transition-colors",
+          "duration": "0.15s",
+          "property": "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "BUTTON",
+          "class": "max-[1480px]:px-12 max-[1480px]:text-[16px] text-white hover:text-blue-300 flex h-full items-center px-18 transition-colors",
+          "duration": "0.15s",
+          "property": "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "BUTTON",
+          "class": "max-[1480px]:px-12 max-[1480px]:text-[16px] text-white hover:text-blue-300 flex h-full items-center px-18 transition-colors",
+          "duration": "0.15s",
+          "property": "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "BUTTON",
+          "class": "max-[1480px]:px-12 max-[1480px]:text-[16px] text-white hover:text-blue-300 flex h-full items-center px-18 transition-colors",
+          "duration": "0.15s",
+          "property": "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "BUTTON",
+          "class": "max-[1480px]:px-12 max-[1480px]:text-[16px] text-white hover:text-blue-300 flex h-full items-center px-18 transition-colors",
+          "duration": "0.15s",
+          "property": "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "svg",
+          "class": "svg",
+          "duration": "0.15s",
+          "property": "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "svg",
+          "class": "svg",
+          "duration": "0.15s",
+          "property": "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "DIV",
+          "class": "cms-content-visible",
+          "duration": "0s",
+          "property": "all",
+          "animation": "cms-fade-in-7dfd0c54",
+          "transform": "none"
+        }
+      ]
+    },
+    "hover": null,
+    "scroll": 0
+  },
+  {
+    "name": "kt",
+    "initial": {
+      "url": "https://cloud.kt.com/",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "buttons": [
+        {
+          "text": "기업\n하위 메뉴 있음",
+          "aria": null,
+          "class": ""
+        },
+        {
+          "text": "",
+          "aria": "상품 메뉴 닫기",
+          "class": "pdCloseBtn"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "btn-search"
+        },
+        {
+          "text": "하위 메뉴 있음",
+          "aria": null,
+          "class": ""
+        },
+        {
+          "text": "관련 사이트\n하위 메뉴 있음",
+          "aria": null,
+          "class": ""
+        },
+        {
+          "text": "이벤트 사항 리스트 이전버튼",
+          "aria": "이벤트 사항 리스트 이전",
+          "class": "prev swiper-btn"
+        },
+        {
+          "text": "이벤트 사항 리스트 이전버튼",
+          "aria": "이벤트 사항 리스트 다음",
+          "class": "next swiper-btn"
+        },
+        {
+          "text": "",
+          "aria": "이벤트 사항 리스트 정지",
+          "class": "stop"
+        },
+        {
+          "text": "Compute",
+          "aria": null,
+          "class": ""
+        },
+        {
+          "text": "Container",
+          "aria": null,
+          "class": ""
+        },
+        {
+          "text": "Networking",
+          "aria": null,
+          "class": ""
+        },
+        {
+          "text": "Storage",
+          "aria": null,
+          "class": ""
+        },
+        {
+          "text": "AI Foundry",
+          "aria": null,
+          "class": ""
+        },
+        {
+          "text": "DB",
+          "aria": null,
+          "class": ""
+        },
+        {
+          "text": "Security",
+          "aria": null,
+          "class": ""
+        },
+        {
+          "text": "Hybrid/Private Cloud",
+          "aria": null,
+          "class": ""
+        },
+        {
+          "text": "Business Tool",
+          "aria": null,
+          "class": ""
+        },
+        {
+          "text": "Application",
+          "aria": null,
+          "class": ""
+        },
+        {
+          "text": "Deliver & Protect",
+          "aria": null,
+          "class": ""
+        },
+        {
+          "text": "Development Service",
+          "aria": null,
+          "class": ""
+        }
+      ],
+      "transforms": [
+        {
+          "class": "swiper-wrapper",
+          "style": "transform: translate3d(0px, 0px, 0px);"
+        },
+        {
+          "class": "swiper-wrapper",
+          "style": "transform: translate3d(0px, 0px, 0px);"
+        },
+        {
+          "class": "swiper-wrapper",
+          "style": "transform: translate3d(0px, 0px, 0px);"
+        },
+        {
+          "class": "swiper-wrapper",
+          "style": "transform: translate3d(0px, 0px, 0px);"
+        },
+        {
+          "class": "swiper-wrapper",
+          "style": "transform: translate3d(0px, 0px, 0px);"
+        }
+      ],
+      "motions": [
+        {
+          "tag": "HEADER",
+          "class": "navbar",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "BUTTON",
+          "class": "",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "UL",
+          "class": "droplist",
+          "duration": "0.5s",
+          "property": "all",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "A",
+          "class": "menu-cate alone close-btn",
+          "duration": "0.2s",
+          "property": "all",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "DIV",
+          "class": "menu-con",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "DIV",
+          "class": "free NonLogin active",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "matrix(1, 0, 0, 1, 0, 27.9531)"
+        },
+        {
+          "tag": "A",
+          "class": "linkBtn gBlue close-btn",
+          "duration": "0.5s",
+          "property": "all",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "A",
+          "class": "linkBtn gDark close-btn",
+          "duration": "0.5s",
+          "property": "all",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "A",
+          "class": "menu-cate",
+          "duration": "0.2s",
+          "property": "all",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "DIV",
+          "class": "menu-con",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "DIV",
+          "class": "pd-box",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "matrix(1, 0, 0, 1, 0, 22.3)"
+        },
+        {
+          "tag": "DIV",
+          "class": "pd-box",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "matrix(1, 0, 0, 1, 0, 16.7)"
+        },
+        {
+          "tag": "DIV",
+          "class": "pd-box",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "matrix(1, 0, 0, 1, 0, 16.7)"
+        },
+        {
+          "tag": "DIV",
+          "class": "pd-box",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "matrix(1, 0, 0, 1, 0, 25.1)"
+        },
+        {
+          "tag": "DIV",
+          "class": "pd-box",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "matrix(1, 0, 0, 1, 0, 13.9)"
+        },
+        {
+          "tag": "DIV",
+          "class": "pd-box",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "matrix(1, 0, 0, 1, 0, 27.9)"
+        },
+        {
+          "tag": "DIV",
+          "class": "pd-box",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "matrix(1, 0, 0, 1, 0, 13.9)"
+        },
+        {
+          "tag": "DIV",
+          "class": "pd-box",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "matrix(1, 0, 0, 1, 0, 19.5)"
+        },
+        {
+          "tag": "DIV",
+          "class": "pd-box",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "matrix(1, 0, 0, 1, 0, 30.7)"
+        },
+        {
+          "tag": "DIV",
+          "class": "pd-box",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "matrix(1, 0, 0, 1, 0, 36.3)"
+        }
+      ]
+    },
+    "hover": {
+      "pre": {
+        "text": "",
+        "class": "close-btn",
+        "transition": "all",
+        "transform": "none",
+        "opacity": "1",
+        "grid": "none"
+      },
+      "mid": {
+        "text": "",
+        "class": "close-btn",
+        "transition": "all",
+        "transform": "none",
+        "opacity": "1",
+        "grid": "none"
+      },
+      "post": {
+        "text": "",
+        "class": "close-btn",
+        "transition": "all",
+        "transform": "none",
+        "opacity": "1",
+        "grid": "none"
+      }
+    },
+    "scroll": 800
+  },
+  {
+    "name": "lgcns",
+    "initial": {
+      "url": "https://www.lgcns.com/kr/service/modern-it-infra-on-cloud/cloud",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "buttons": [
+        {
+          "text": "언어 선택",
+          "aria": null,
+          "class": "btn-lang btn-dropdown"
+        },
+        {
+          "text": "검색",
+          "aria": null,
+          "class": "btn-search"
+        },
+        {
+          "text": "도입문의 바로가기",
+          "aria": null,
+          "class": "btn btn-x-large btn-secondary"
+        },
+        {
+          "text": "개인정보처리방침",
+          "aria": null,
+          "class": "font-caption-sm-ui btn-dropdown font-bold"
+        },
+        {
+          "text": "뉴스레터 구독",
+          "aria": null,
+          "class": "font-caption-sm"
+        },
+        {
+          "text": "패밀리 사이트",
+          "aria": null,
+          "class": "font-caption-sm btn-dropdown"
+        }
+      ],
+      "transforms": [],
+      "motions": [
+        {
+          "tag": "DIV",
+          "class": "header",
+          "duration": "0.5s",
+          "property": "top",
+          "animation": "none",
+          "transform": "none"
+        }
+      ]
+    },
+    "hover": null,
+    "scroll": 800
+  },
+  {
+    "name": "aws",
+    "initial": {
+      "url": "https://aws.amazon.com/ko/",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "buttons": [
+        {
+          "text": "한국어",
+          "aria": null,
+          "class": "rggn_12eba964"
+        },
+        {
+          "text": "지원",
+          "aria": null,
+          "class": "rggn_12eba964"
+        },
+        {
+          "text": "내 계정",
+          "aria": null,
+          "class": "rggn_12eba964"
+        },
+        {
+          "text": "",
+          "aria": "AWS Profile",
+          "class": "awsm-ik-navatar-icon"
+        },
+        {
+          "text": "AWS 살펴보기",
+          "aria": null,
+          "class": "rggn_8711ccd9 rggn_98b54368 rggn_70005696 rggn_007aef8b"
+        },
+        {
+          "text": "제품",
+          "aria": null,
+          "class": "rggn_8711ccd9 rggn_98b54368 rggn_70005696 rggn_007aef8b"
+        },
+        {
+          "text": "솔루션",
+          "aria": null,
+          "class": "rggn_8711ccd9 rggn_98b54368 rggn_70005696 rggn_007aef8b"
+        },
+        {
+          "text": "요금",
+          "aria": null,
+          "class": "rggn_8711ccd9 rggn_98b54368 rggn_70005696 rggn_007aef8b"
+        },
+        {
+          "text": "리소스",
+          "aria": null,
+          "class": "rggn_8711ccd9 rggn_98b54368 rggn_70005696 rggn_007aef8b"
+        },
+        {
+          "text": "검색",
+          "aria": "검색 전환",
+          "class": "rggn_03da0baa"
+        },
+        {
+          "text": "",
+          "aria": "마무리",
+          "class": "rggn_9e423fbb rggn_1ed8cbde rggn_5962fadc rggn_e90ac70d rggn_3ef5a62a rggn_38d8ffac rggn_f7822e54 rggn_090951dc rggn_b675880e rggn_837570f1 rggn_a9ffa635 rggn_b0761591"
+        },
+        {
+          "text": "",
+          "aria": null,
+          "class": "rggn_9e423fbb rggn_1ed8cbde rggn_5962fadc rggn_e90ac70d rggn_38d8ffac rggn_f7822e54 rggn_18409398 rggn_b78e9379 rggn_90c47075"
+        },
+        {
+          "text": "",
+          "aria": "Open feedback",
+          "class": "rggn_11480f5d"
+        },
+        {
+          "text": "",
+          "aria": "이전 슬라이드",
+          "class": "rgca_52b298d7"
+        },
+        {
+          "text": "",
+          "aria": "다음 슬라이드",
+          "class": "rgca_fbe28aeb"
+        },
+        {
+          "text": "8개 더 보기",
+          "aria": null,
+          "class": "rgic_9e423fbb rgic_1ed8cbde rgic_5962fadc rgic_e90ac70d rgic_3ef5a62a rgic_38d8ffac rgic_f7822e54 rgic_090951dc rgic_b78e9379 rgic_04e9a8ae rgic_be121009"
+        },
+        {
+          "text": "북미",
+          "aria": null,
+          "class": "rgim_9e423fbb rgim_1ed8cbde rgim_5962fadc rgim_e90ac70d rgim_3ef5a62a rgim_38d8ffac rgim_f7822e54 rgim_090951dc rgim_b78e9379 rgim_934373fe"
+        },
+        {
+          "text": "남아메리카",
+          "aria": null,
+          "class": "rgim_9e423fbb rgim_1ed8cbde rgim_5962fadc rgim_e90ac70d rgim_3ef5a62a rgim_38d8ffac rgim_f7822e54 rgim_090951dc rgim_b78e9379 rgim_934373fe"
+        },
+        {
+          "text": "유럽",
+          "aria": null,
+          "class": "rgim_9e423fbb rgim_1ed8cbde rgim_5962fadc rgim_e90ac70d rgim_3ef5a62a rgim_38d8ffac rgim_f7822e54 rgim_090951dc rgim_b78e9379 rgim_934373fe"
+        },
+        {
+          "text": "중동",
+          "aria": null,
+          "class": "rgim_9e423fbb rgim_1ed8cbde rgim_5962fadc rgim_e90ac70d rgim_3ef5a62a rgim_38d8ffac rgim_f7822e54 rgim_090951dc rgim_b78e9379 rgim_934373fe"
+        }
+      ],
+      "transforms": [
+        {
+          "class": {},
+          "style": "position: absolute; pointer-events: none; left: calc(100% + 0px); transform: rotate(-90deg); top: 12px;"
+        },
+        {
+          "class": "rgca_054cb155",
+          "style": "transform: translate3d(93.5px, 0px, 0px);"
+        },
+        {
+          "class": "rgca_60c9d15c",
+          "style": "transform: translate3d(0px, 0px, 0px);"
+        },
+        {
+          "class": "rgca_b07b9f3d rgca_03b50649",
+          "style": "transform: translateX(0px) scale(1);"
+        },
+        {
+          "class": "rgca_60c9d15c",
+          "style": "transform: translate3d(0px, 0px, 0px);"
+        },
+        {
+          "class": "rgca_b07b9f3d",
+          "style": "transform: translateX(-49.5044px) scale(0.920025);"
+        },
+        {
+          "class": "rgca_b07b9f3d",
+          "style": "transform: translateX(-160.909px) scale(0.9);"
+        },
+        {
+          "class": "rgca_b07b9f3d",
+          "style": "transform: translateX(-284.709px) scale(0.9);"
+        }
+      ],
+      "motions": [
+        {
+          "tag": "SPAN",
+          "class": "rggn_4a77510b rggn_a1b66739 rggn_3ed66ff4 rggn_bc1a8743",
+          "duration": "0.3s",
+          "property": "transform",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "SPAN",
+          "class": "rggn_4a77510b rggn_b16be37f rggn_a1b66739 rggn_3ed66ff4 rggn_bc1a8743",
+          "duration": "0.3s",
+          "property": "transform",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "SPAN",
+          "class": "rggn_4a77510b rggn_b16be37f rggn_a1b66739 rggn_3ed66ff4 rggn_bc1a8743",
+          "duration": "0.3s",
+          "property": "transform",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "SPAN",
+          "class": "rggn_4a77510b rggn_b16be37f rggn_a1b66739 rggn_3ed66ff4 rggn_bc1a8743",
+          "duration": "0.3s",
+          "property": "transform",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "BUTTON",
+          "class": "awsm-ik-navatar-icon",
+          "duration": "0.3s",
+          "property": "box-shadow",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "DIV",
+          "class": "rggn_8557fdd0",
+          "duration": "0s, 0s",
+          "property": "opacity, transform",
+          "animation": "none",
+          "transform": "matrix(1, 0, 0, 1, 0, -16)"
+        },
+        {
+          "tag": "BUTTON",
+          "class": "rggn_9e423fbb rggn_1ed8cbde rggn_5962fadc rggn_e90ac70d rggn_3ef5a62a rggn_38d8ffac rggn_f7822e54 rggn_090951dc rggn_b675880e rggn_837570f1 rggn_a9ffa635 rggn_b0761591",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "BUTTON",
+          "class": "rggn_9e423fbb rggn_1ed8cbde rggn_5962fadc rggn_e90ac70d rggn_38d8ffac rggn_f7822e54 rggn_18409398 rggn_b78e9379 rggn_90c47075",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "A",
+          "class": "rggn_9e423fbb rggn_1ed8cbde rggn_5962fadc rggn_e90ac70d rggn_38d8ffac rggn_f7822e54 rggn_303c672b rggn_b78e9379 rggn_1361e3f3",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "DIV",
+          "class": "rggn_84ad7149",
+          "duration": "0.2s, 0.3s",
+          "property": "height, opacity",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "SPAN",
+          "class": "rggn_90bccd78 rggn_a1b66739 rggn_3ed66ff4 rggn_bc1a8743",
+          "duration": "0.3s",
+          "property": "opacity",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "SPAN",
+          "class": "rggn_90bccd78 rggn_a1b66739 rggn_3ed66ff4 rggn_bc1a8743",
+          "duration": "0.3s",
+          "property": "opacity",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "SPAN",
+          "class": "rggn_90bccd78 rggn_a1b66739 rggn_3ed66ff4 rggn_bc1a8743",
+          "duration": "0.3s",
+          "property": "opacity",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "DIV",
+          "class": "rggn_71a95600 rggn_034e2feb",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "SPAN",
+          "class": "rggn_13c0f2f0 rggn_a1b66739 rggn_3ed66ff4 rggn_bc1a8743",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "tag": "DIV",
+          "class": "rggn_71a95600 rggn_034e2feb",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "SPAN",
+          "class": "rggn_13c0f2f0 rggn_a1b66739 rggn_3ed66ff4 rggn_bc1a8743",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "tag": "DIV",
+          "class": "rggn_71a95600 rggn_034e2feb",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "none"
+        },
+        {
+          "tag": "SPAN",
+          "class": "rggn_13c0f2f0 rggn_a1b66739 rggn_3ed66ff4 rggn_bc1a8743",
+          "duration": "0.3s",
+          "property": "all",
+          "animation": "none",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "tag": "DIV",
+          "class": "rggn_84ad7149",
+          "duration": "0.2s, 0.3s",
+          "property": "height, opacity",
+          "animation": "none",
+          "transform": "none"
+        }
+      ]
+    },
+    "hover": {
+      "pre": {
+        "text": "세션 카탈로그 살펴보기",
+        "class": "rgic_02e87eb9",
+        "transition": "grid-template-columns 0.25s cubic-bezier(0.4, 0, 0.6, 0.2), column-gap 0.25s cubic-bezier(0.4, 0, 0.6, 0.2), -moz-column-gap 0.25s cubic-bezier(0.4, 0, 0.6, 0.2)",
+        "transform": "none",
+        "opacity": "1",
+        "grid": "0px 16px"
+      },
+      "mid": {
+        "text": "세션 카탈로그 살펴보기",
+        "class": "rgic_02e87eb9",
+        "transition": "grid-template-columns 0.4s cubic-bezier(0.2, 0.6, 0.4, 1), column-gap 0.4s cubic-bezier(0.2, 0.6, 0.4, 1), -moz-column-gap 0.4s cubic-bezier(0.2, 0.6, 0.4, 1)",
+        "transform": "none",
+        "opacity": "1",
+        "grid": "46.9688px 54.6875px"
+      },
+      "post": {
+        "text": "세션 카탈로그 살펴보기",
+        "class": "rgic_02e87eb9",
+        "transition": "grid-template-columns 0.4s cubic-bezier(0.2, 0.6, 0.4, 1), column-gap 0.4s cubic-bezier(0.2, 0.6, 0.4, 1), -moz-column-gap 0.4s cubic-bezier(0.2, 0.6, 0.4, 1)",
+        "transform": "none",
+        "opacity": "1",
+        "grid": "156.172px 16px"
+      }
+    },
+    "scroll": 800
+  }
+]

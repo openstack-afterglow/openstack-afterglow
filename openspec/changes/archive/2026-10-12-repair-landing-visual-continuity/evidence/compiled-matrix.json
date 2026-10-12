@@ -1,0 +1,2759 @@
+{
+  "origin": "http://127.0.0.1:5222",
+  "conditions": 64,
+  "cases": [
+    {
+      "width": 320,
+      "height": 844,
+      "dpr": 1,
+      "locale": "ko",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 13.89969758064516,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 684.25,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "dpr": 1,
+      "locale": "ko",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 17.39969758064516,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 569.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 767,
+      "height": 844,
+      "dpr": 1,
+      "locale": "ko",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 768,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ko",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1023,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ko",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1024,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ko",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 24.096774193548388,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ko",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 31.079637096774192,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 2560,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ko",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 31.079637096774192,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 320,
+      "height": 844,
+      "dpr": 1,
+      "locale": "en",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 13.89969758064516,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 665.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "dpr": 1,
+      "locale": "en",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 17.39969758064516,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 641.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 767,
+      "height": 844,
+      "dpr": 1,
+      "locale": "en",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 768,
+      "height": 900,
+      "dpr": 1,
+      "locale": "en",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 521.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1023,
+      "height": 900,
+      "dpr": 1,
+      "locale": "en",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1024,
+      "height": 900,
+      "dpr": 1,
+      "locale": "en",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 24.096774193548388,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "dpr": 1,
+      "locale": "en",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 31.079637096774192,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 2560,
+      "height": 900,
+      "dpr": 1,
+      "locale": "en",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 31.079637096774192,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 320,
+      "height": 844,
+      "dpr": 1,
+      "locale": "ja",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 13.89969758064516,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 732.25,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "dpr": 1,
+      "locale": "ja",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 17.39969758064516,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 660.25,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 767,
+      "height": 844,
+      "dpr": 1,
+      "locale": "ja",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 768,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ja",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 545.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1023,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ja",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1024,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ja",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 24.096774193548388,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ja",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 31.079637096774192,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 2560,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ja",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 31.079637096774192,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 320,
+      "height": 844,
+      "dpr": 1,
+      "locale": "zh-CN",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 13.89969758064516,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 593.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "dpr": 1,
+      "locale": "zh-CN",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 17.39969758064516,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 569.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 767,
+      "height": 844,
+      "dpr": 1,
+      "locale": "zh-CN",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 768,
+      "height": 900,
+      "dpr": 1,
+      "locale": "zh-CN",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1023,
+      "height": 900,
+      "dpr": 1,
+      "locale": "zh-CN",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1024,
+      "height": 900,
+      "dpr": 1,
+      "locale": "zh-CN",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 24.096774193548388,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "dpr": 1,
+      "locale": "zh-CN",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 31.079637096774192,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 2560,
+      "height": 900,
+      "dpr": 1,
+      "locale": "zh-CN",
+      "theme": "dark",
+      "overflow": 0,
+      "minLabel": 31.079637096774192,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 320,
+      "height": 844,
+      "dpr": 1,
+      "locale": "ko",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 13.89969758064516,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 684.25,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "dpr": 1,
+      "locale": "ko",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 17.39969758064516,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 569.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 767,
+      "height": 844,
+      "dpr": 1,
+      "locale": "ko",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 768,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ko",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1023,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ko",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1024,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ko",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 24.096774193548388,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ko",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 31.079637096774192,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 2560,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ko",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 31.079637096774192,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 320,
+      "height": 844,
+      "dpr": 1,
+      "locale": "en",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 13.89969758064516,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 665.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "dpr": 1,
+      "locale": "en",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 17.39969758064516,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 641.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 767,
+      "height": 844,
+      "dpr": 1,
+      "locale": "en",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 768,
+      "height": 900,
+      "dpr": 1,
+      "locale": "en",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 521.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1023,
+      "height": 900,
+      "dpr": 1,
+      "locale": "en",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1024,
+      "height": 900,
+      "dpr": 1,
+      "locale": "en",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 24.096774193548388,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "dpr": 1,
+      "locale": "en",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 31.079637096774192,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 2560,
+      "height": 900,
+      "dpr": 1,
+      "locale": "en",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 31.079637096774192,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 320,
+      "height": 844,
+      "dpr": 1,
+      "locale": "ja",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 13.89969758064516,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 732.25,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "dpr": 1,
+      "locale": "ja",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 17.39969758064516,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 660.25,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 767,
+      "height": 844,
+      "dpr": 1,
+      "locale": "ja",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 768,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ja",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 545.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1023,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ja",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1024,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ja",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 24.096774193548388,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ja",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 31.079637096774192,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 2560,
+      "height": 900,
+      "dpr": 1,
+      "locale": "ja",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 31.079637096774192,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 320,
+      "height": 844,
+      "dpr": 1,
+      "locale": "zh-CN",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 13.89969758064516,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 593.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "dpr": 1,
+      "locale": "zh-CN",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 17.39969758064516,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 569.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 767,
+      "height": 844,
+      "dpr": 1,
+      "locale": "zh-CN",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 768,
+      "height": 900,
+      "dpr": 1,
+      "locale": "zh-CN",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1023,
+      "height": 900,
+      "dpr": 1,
+      "locale": "zh-CN",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 33.6,
+      "minTarget": 44,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1024,
+      "height": 900,
+      "dpr": 1,
+      "locale": "zh-CN",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 24.096774193548388,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "dpr": 1,
+      "locale": "zh-CN",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 31.079637096774192,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    },
+    {
+      "width": 2560,
+      "height": 900,
+      "dpr": 1,
+      "locale": "zh-CN",
+      "theme": "light",
+      "overflow": 0,
+      "minLabel": 31.079637096774192,
+      "minTarget": 32,
+      "minMajorTarget": 44,
+      "running": 0,
+      "paintInBounds": true,
+      "contacts": [
+        {
+          "kind": "server",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "gpu",
+          "points": 4,
+          "attached": true
+        },
+        {
+          "kind": "kubernetes",
+          "points": 6,
+          "attached": true
+        },
+        {
+          "kind": "onprem",
+          "points": 7,
+          "attached": true
+        }
+      ],
+      "opaqueFaces": 80,
+      "chat": {
+        "height": 497.0546875,
+        "overflow": 0,
+        "clip": "visible",
+        "retiredRaster": false
+      },
+      "completeTranslatedTranscript": true
+    }
+  ],
+  "probeCorrection": "Initial probe treated existing desktop compact LocaleSelect32px as a44px action. Correct scope records it separately: major links/buttons>=44px; locale mobile>=44px, desktop32px. No application change made for this probe mistake."
+}

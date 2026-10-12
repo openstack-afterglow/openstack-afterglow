@@ -1,0 +1,161 @@
+{
+  "boundary": "Current-source Uvicorn + installed OpenStack SDK over loopback Nova/Glance/Cinder HTTP. Synthetic identity, catalog, GPU quota/admission, policy and audit/history; no Windows guest, real GPU allocation or RDP acceptance.",
+  "cases": [
+    {
+      "path": "/api/v1/instances",
+      "boot": "image",
+      "status": 201,
+      "flavor": "gpu.1080ti_8c_32g",
+      "windowsPowerShell": true,
+      "configDrive": true,
+      "noLinuxBootstrap": true,
+      "gpuAdmissionRetained": true,
+      "privateResponseAndHistory": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "boot": "volume",
+      "status": 201,
+      "flavor": "gpu.1080ti_8c_32g",
+      "windowsPowerShell": true,
+      "configDrive": true,
+      "noLinuxBootstrap": true,
+      "gpuAdmissionRetained": true,
+      "privateResponseAndHistory": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "conflict": "userdata",
+      "status": 400,
+      "rejectedBeforeAdmissionAndMutation": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "conflict": "github_username",
+      "status": 400,
+      "rejectedBeforeAdmissionAndMutation": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "conflict": "data_mounts",
+      "status": 400,
+      "rejectedBeforeAdmissionAndMutation": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "mode": "linux-password",
+      "status": 201,
+      "linuxBootstrapPreserved": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "mode": "linux-ssh",
+      "status": 201,
+      "linuxBootstrapPreserved": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "boot": "image",
+      "status": 200,
+      "flavor": "gpu.1080ti_8c_32g",
+      "windowsPowerShell": true,
+      "configDrive": true,
+      "noLinuxBootstrap": true,
+      "gpuAdmissionRetained": true,
+      "privateResponseAndHistory": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "boot": "volume",
+      "status": 200,
+      "flavor": "gpu.1080ti_8c_32g",
+      "windowsPowerShell": true,
+      "configDrive": true,
+      "noLinuxBootstrap": true,
+      "gpuAdmissionRetained": true,
+      "privateResponseAndHistory": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "conflict": "userdata",
+      "status": 400,
+      "rejectedBeforeAdmissionAndMutation": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "conflict": "github_username",
+      "status": 400,
+      "rejectedBeforeAdmissionAndMutation": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "conflict": "data_mounts",
+      "status": 400,
+      "rejectedBeforeAdmissionAndMutation": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "mode": "linux-password",
+      "status": 200,
+      "linuxBootstrapPreserved": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "mode": "linux-ssh",
+      "status": 200,
+      "linuxBootstrapPreserved": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "boot": "image",
+      "status": 200,
+      "flavor": "gpu.1080ti_8c_32g",
+      "windowsPowerShell": true,
+      "configDrive": true,
+      "noLinuxBootstrap": true,
+      "gpuAdmissionRetained": true,
+      "privateResponseAndHistory": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "boot": "volume",
+      "status": 200,
+      "flavor": "gpu.1080ti_8c_32g",
+      "windowsPowerShell": true,
+      "configDrive": true,
+      "noLinuxBootstrap": true,
+      "gpuAdmissionRetained": true,
+      "privateResponseAndHistory": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "conflict": "userdata",
+      "status": 400,
+      "rejectedBeforeAdmissionAndMutation": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "conflict": "github_username",
+      "status": 400,
+      "rejectedBeforeAdmissionAndMutation": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "conflict": "data_mounts",
+      "status": 400,
+      "rejectedBeforeAdmissionAndMutation": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "mode": "linux-password",
+      "status": 200,
+      "linuxBootstrapPreserved": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "mode": "linux-ssh",
+      "status": 200,
+      "linuxBootstrapPreserved": true
+    }
+  ]
+}

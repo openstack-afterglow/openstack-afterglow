@@ -132,6 +132,7 @@
 	transferVolumeName={transferTarget?.name ?? ''}
 	showTransfer={!!transferTarget}
 	{extendTarget}
+	projectId={$auth.projectId ?? undefined}
 	{backupTarget}
 	{snapshotTarget}
 	renameTarget={s.showRenameModal ? s.volume : null}

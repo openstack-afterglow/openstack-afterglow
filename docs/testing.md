@@ -6,6 +6,220 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## Afterglow 부분 커밋 통합 검증 (2026-10-13, local-only)
+
+사용자의 전체 커밋 후속 지시에 따라 Palimpsest·블록 레이어 구현은 제외하고 현재 Afterglow 부분을 별도 public-source checkout/index에서 검증했다. Block API·consume/build/import, ORM와 background/instance cleanup hooks, Glance/Cinder/Neutron block 전용 helper, migrations088/089·manifest 항목, operator Palimpsest lock과 전용 tests/docs는 작업 트리에 보존한다. 공유 private 설정·원래 index·개발 Compose/volume·운영 자원은 변경하지 않는다. 아래 결과는 과거 scope receipt의 재사용이 아니라 이번 부분 snapshot 실행이다.
+
+| 검증 경계 | 관측 결과 |
+|---|---|
+| 필수 전체 `npm run test:gate` | Exit0 (`artifact://672`): orchestration175, Kolla Node27/Python11, Unix installer20, backend unit5,765, frontend350files/3,300 및 runner9, consumer contract174, 실제 격리 MariaDB/PostgreSQL/Redis functional128/23deselected, Ruff586files. PowerShell36개는 runtime 부재 skip이며 실행 증거가 아니다. |
+| Focused creation/cleanup | Backend260, frontend password75 통과 (`artifact://673`). 원래 guest-password 권한 회귀와 신규 native 생성·이미지 저장·단건/bulk/detach 및 불확실한 rule403/503 경계를 포함한다. |
+| 신규 삭제 회귀 | 부모 share를 먼저 요구해 삭제된 share의 exact rule 부재에도 세 API가 막히던 오류를 재현했다(`artifact://665`:3failed). Exact rule404면 cleanup을 완료하고, 남은 rule은 현재 share 관리 권한과 identity를 확인한 뒤 deny한다. Pending/error/403/503은 서버와 tracking을 보존한다. |
+| 실제 생성 SDK/HTTP smoke | Current FastAPI/Uvicorn + installed SDK→loopback Glance/Cinder/Nova:7조건·45provider HTTP. User sync/SSE×image/volume의 exact native password·ConfigDrive·user-data/keypair 부재, legacy400·자동 network mutation0, 생성 이후 합성 오류의 실제 Nova forceDelete·새 boot volume 삭제와 기존 volume 보존. Identity·cloud 자원·admission/placement/security/network/audit persistence는 합성이다. |
+| 실제 삭제 SDK/HTTP smoke | Current ordinary API·Manila HTTP·Nova SDK TCP:5조건·15provider HTTP. 단건/bulk는 authoritative exact-rule404 뒤 Nova 삭제, detach는 서버 보존·tracking 제거; native rule403/503이면502·서버/tracking 보존. 운영 provider/인가를 검증하지 않는다. |
+| 최신 compiled frontend | Svelte2,370files/0errors/기존3warnings, i18n37namespaces/9,450messages·0errors/0warnings, scan990files/hardcoding0, production build exit0 (`artifact://585`). 실제 Chromium4locales×2themes×390/1440px의16조건에서 overflow0·메뉴 bounds·4항목·Escape focus 복원. 문서 en→ja link/HTML lang/native password 설명·앱 ko cookie 보존을 확인했다. Reduced motion·기본 공개 config이며 API와 외부 요청은 차단했다. |
+| Source/credential boundary | Qualified source digest `01a2c45cd44b880988f142d0fc109b579a1d9591b9958dc0e19da0e50931e932`,2,615files. Gitleaks의14개 탐지는 직접 검토한 source SHA-256 parity 값이며 scratch-only exact fingerprint 제외 후 leak0. Repository scanner 정책을 완화하지 않았다. Gbrain CLI 부재로 sync/안내 변경은 수행하지 않았다. |
+
+처음 whole-tree gate의 Palimpsest fixture 실패와 미완료 block 경로는 이번 Afterglow 부분의 통과로 해결됐다고 주장하지 않는다. 기존 frontend tabindex2종·cloudInitFileInput 및 backend 경고는 유지한다. 실제 Windows 최초 부팅/RDP/GPU, 운영 IAM·DB/mixed-version migration/backup·deployment, Safari/Firefox는 미검증이며 version bump/tag/main PR·merge·운영 배포는 이 커밋 요청의 범위가 아니다.
+
+
+## 사용 중 볼륨의 명시적 강제 백업 검증 (local-only)
+
+`explicit-forced-volume-backups`는 두 수동 생성창의 일관성 경고·기본 미선택 force 동의와 기존 API의 fresh owned-volume admission을 추가한다. 실제 운영 Cinder의 원래400은 `Backing up an in-use volume must use the force flag.`였으며, 이번 구현 검증은 운영 volume/backup/VM을 생성·분리·삭제·복원하지 않는 별도 loopback 환경이다. 기존 자동 백업은 force=false를 유지한다.
+
+| 실행 범위 | 관측 결과 |
+|---|---|
+| Backend consumer regressions | backup/owner24 통과. Current storage target의 backend selectors와 auto_backup.py를 같은 source·격리 cwd에서 실행해628 통과. In-use 미선택의 mutation 전400, force 선택 수락, available 수락과 강제 옵션을 통한 foreign-owner 우회 거부를 포함한다. |
+| Frontend consumer regressions | 신규 consent6, 기존 storage selectors와 backup project isolation까지10files/83 통과. 선택 철회, 다른 원본 선택, 닫기/재열기, available 전환에서 동의가 승계되지 않음을 확인했다. |
+| Native HTTP | 실제 현재 FastAPI route·설치된 openstacksdk·loopback HTTP. In-use 미선택400은 provider POST0; 선택 시 SDK의 backup.force=true와 API201/creating, available은 force=false/201. 기존 activity.extra의 force 선택도 관측했다. Identity/Cinder/cache/audit persistence는 합성이며 실제 backup 저장소나 복원 proof가 아니다. |
+| 실제 UI | 최종 경고를 정합성 보장이 아닌 쓰기 중 데이터의 불일관성 가능성으로 표현한 current-source Vite를 Chromium으로 실행했다. 두 생성창 ×4locales×2themes×320/390/767/768/1023/1024/1440px의112조건에서 consent 전 차단·선택 후 활성화·철회 후 차단, overflow0와 panel/footer bounds를 확인했다. 실제 두 화면의 제출이 native SDK force=true로 도달했고, 사용 중 원본에서 available로 바꾼 제출은 force=false였다. 최종 consent/guide3files/34와 전체37namespace/9450source messages catalog0errors/0warnings도 확인했다. |
+| Short/zoom-equivalent viewport | 두 생성창의720×450 CSS/DPR2 조건에서 실제 overflow0, bounded panel 내부 스크롤과 동의/제출 접근을 확인했다.1440×900 물리 화면의200% zoom-equivalent geometry이며 OS/browser zoom control 자체를 조작한 proof는 아니다. |
+| Compiler/catalog/style | Svelte2370files/0errors/기존 범위 밖 warnings6, volume catalog0errors/0warnings. Backend 변경4files Ruff check 및 format check 통과. Test target registry validation도 통과했다. |
+| Public guide/registry | 변경한4locale core guide의 catalog/locales2files/28과 test-target orchestrator12 통과. 수동 백업 Svelte3files의 hard-coded Korean scan0. Current-source 별도 frontend snapshot에서 production build가 adapter-node 출력까지 완료했다. |
+| Scoped architecture | HEAD와 명시한17source overlays만 별도 dev checkout에서 stamp·working/staged check 통과. 최종 경고의 SHA256 `0614351daa08e93d8a461327597bfcc727e83f2f2c27a9b74d5699b10bffa2eb`,2602files. 공유 index/review marker와 다른 동시 WIP의 승인은 변경하지 않았다. Gbrain CLI가 PATH에 없어 sync는 수행하지 않았고 CLAUDE.md는 수정하지 않았다. |
+
+Canonical backend target runner는 기존 private TOML `Invalid value (line10,column9)` 때문에 collection 전에 종료했다. 사용자 config는 수정하지 않았고 `PYTHONPATH=<repo>/backend`와 `/tmp`의 별도 cwd에서 같은 source/선택 파일을 검증했다. 최초 volume UI fixture의 빈 quota body는 실제 storage/compute contract로 바로잡았으며 application code를 완화하지 않았다. ActionMenu의 진입/위치 frame을 paint hit-test로 기다린 뒤 실제 pointer를 사용했다. Scoped source·native JSON·matrix·대표 screenshots는 OpenSpec evidence와 `~/.local/share/afterglow-proofs/afterglow-forced-backup-qdsxonsa/`에 보존한다.
+
+한계: 실제 Keystone authorization, 운영 Cinder backup 생성/완료/저장소 일관성·실제 guest/DB 복원, Safari/Firefox, 전체 test:gate·commit/push·배포는 수행하지 않았다. 백업 I/O 부하, 쓰기 중 백업의 일관성과 복구 가능성은 운영 서비스별 검증 사항이다. Force 자체를 crash-consistent snapshot의 보장으로 설명하지 않으며 source의 선택값 전달과 사용자 인지/거부 boundary를 운영 복원 성공으로 승격하지 않는다.
+
+## 언어 메뉴 테마 통일 검증 (2026-10-12, local-only)
+
+사용자 첨부 화면의 문서/메인/콘솔 언어 메뉴 차이는 문서의 themed details와 앱의 투명 native select/OS popup에서 발생했다. `unify-locale-dropdowns`는 기존 LocaleSelect를 공용 details/summary로 바꾸고 문서 layout의 중복 구현을 제거했다. 운영체제 popup을 색만 덮는 대신 실제 열린 메뉴를 앱 theme tokens로 렌더링한다. Native toggle 직후 Escape가 누락되는 신규 경계는 수정 전 실패/수정 후 통과 회귀를 남겼다. 실제320px 콘솔 popup의 왼쪽 잘림도 viewport8px 여유로 수정했다.
+
+| 실행 범위 | 관측 결과 |
+|---|---|
+| 관련 consumer tests | LocaleSelect·docs locales·LandingPage·consoleTerminalLocale·designSystemRules의5files/35tests 통과. 언어/cookie/focus, 키보드 경계·즉시 dismissal 및 기존 terminal locale lifecycle을 포함한다. |
+| Compiler·catalog | Svelte0errors/공유 source의 범위 밖 warnings6개, production build exit0. 기존 DocCodeBlock/ProjectUsageTable tabindex·cloudInitFileInput 및 동시 ImageWindowsSetupSection redundant role3종이다. i18n0errors/0warnings,37namespaces/9,450messages, scan990files/0hard-coded Korean. 변경된 두 Svelte 파일에는 진단이 없다. |
+| 최종 compiled Chromium | loopback5275. 문서·메인·로그인·사용자/관리자 tutorial 콘솔5surfaces × ko/en/ja/zh-CN × dark/light ×320/390/767/768/1023/1024/1440px의280조건 통과. Overflow0, 모든 popup이 viewport 내부, 항목 최소44px. 동일 theme에서 panel background/ink가 모든 surface·locale·width에 동일하다. compact trigger는 mobile44px/desktop32px, labelled44px 유지. |
+| 실제 키보드/선택 | Arrow/Home/End·Enter/Space, Escape focus 복원, Tab 이탈·밖 클릭을 실행했다. 앱의4surfaces에서 선택 후 같은 stable-id trigger focus·닫힘·refocus flag 폐기,1년 cookie와 reload SSR 언어를 확인했다. 문서의 path/query/hash/tutorial 보존은 네 언어에서 검증했고, zh-CN URL 선택은 앱 en cookie를 바꾸지 않는다. |
+| No-JS·short viewport | JavaScript를 끈320px 문서에서4개 실제 link·완전한 popup bounds와 zh-CN→ja navigation/HTML lang을 확인했다.720×450/DPR2에서도 menu 전체가 보인다. |
+
+Source scope는 LocaleSelect.svelte·신규 LocaleSelect.test.ts·docs/+layout.svelte3개다. HEAD`249a937ed031d33a2fa883c37eb90c4aabacd17f`+이3overlays만 격리 local dev/index에 적용한 architecture stamp/check는 `7f750f0c54907a6e1254b78458c5457fb3ed3f9d7134eec52047c8b2107c1dc8`/2,602source files로 통과했다. 공유 index/review marker와 다른 작업을 보존하고 전체 WIP 승인으로 확대하지 않는다. Raw compiler·before/after screenshots는 `~/.local/share/afterglow-proofs/unified-locale-menu-20261012-bmy0i7u_/`, 대표 화면과 실제 matrix/interaction/architecture는 해당 OpenSpec archive의 `evidence/`에 보존한다.
+
+한계: 공개 config와 기존 tutorial의 합성 콘솔 UI 증거다. 실제 Keystone 인증/인가·운영 콘솔·Safari/Firefox·전체 test:gate·commit/push·배포는 수행하지 않았다. Backend/API/auth/schema·theme palette·일반 form select는 변경하지 않았다. Gbrain detect는 no-cli/config 없음이므로 sync하지 않고 CLAUDE.md 안내를 임의 변경하지 않았다. `rapid`의 proposal/tasks 완료를 generic delta-spec validator 통과로 표기하지 않는다.
+
+## Windows 이미지 서비스 설정 검증 (2026-10-12–13, local-only)
+
+`windows-image-service-preset`은 실제 게스트 준비 확인을 전제로 한 이미지 property 프리셋과 authoritative image 최소 부트 디스크 admission을 제공한다. 새 backend preset endpoint/DB/인가·production mutation·배포는 없다. `~/.local/share/afterglow-proofs/afterglow-windows-image-preset-tuarqe9o/native-http.json`은 실제 FastAPI·설치된 openstacksdk3.3.0·loopback Glance/Nova/Cinder HTTP의16케이스를 기록한다. Identity·이미지/VM/볼륨·Placement/admission/audit는 합성이고 목록 캐시는 격리 fakeredis다. 실제 Windows 게스트·운영 OpenStack·RDP acceptance 증거가 아니다.
+
+| 실행 범위 | 관측 결과 |
+|---|---|
+| 실제 SDK 오류 재현/수정 | 최초 raw PATCH가 `/glance/v2/v2/images/legacy`404였지만 API200/변경 없는 상세를 반환했다. 버전 상대 경로와 `raise_exc=True`로 수정했다. 다음 실행에서 SDK 별도 필드의 `img_config_drive` 누락을 발견해 ConfigDrive·machine type·Secure Boot·QGA를 원래 Glance property 키로 재투영했다. 공급자 fixture의 경로/상태 검사는 완화하지 않았다. |
+| 저장·권한·캐시 | 사용자/admin 경로의 정확한11플래그 단일 JSON-Patch·새 전체 상세 및 별도 재조회, owner/visibility/digest/minimum/unverified/production_ready=false 보존을 확인했다. 공급자409는 API400이며 이전 값 유지, nonowner/비관리자 admin endpoint403, 관리자 foreign 이미지 저장은 소유자 유지였다. Warm owner/shared 카탈로그 캐시2회귀는 수정 전2실패·수정 후2통과했다. |
+| 실제 create 전송 | 사용자 sync/SSE·관리자 SSE마다79GB는 min_disk80인 엄격한 Cinder에서 거부하고 Nova를 호출하지 않았다.80/500GB는 제출 크기를 그대로 생성하고 원문 비밀번호 digest·강제 config_drive·user-data/keypair 부재·응답/이력 비노출을 확인했다. 이전 smoke처럼20GB 요청을80GB 성공으로 꾸미지 않았다. |
+| 실제 compiled UI | owner/admin × ko/en/ja/zh-CN × dark/light ×320/390/767/768/1023/1024/1440px의112조건에서 page/section 가로 overflow0, 컨트롤 영역 이탈0, preview 셀의 세로 text clipping0을 확인했다. 실제 대표 pixels와 native table/row/cell 접근성도 확인했다. Compact TableShell의 고정 셀 높이가 모바일 두 줄 값을 자르던 문제는 표준 normal density의 자연 높이로 수정했다. |
+| 실제 브라우저 상태 전이 | 확인 전/공백 계정 차단, preview와 단일 실제 JSON-Patch 일치, provider 오류/초안 보존/재시도, 미선택 Win11/QGA·무관한 속성 보존, 비소유자 읽기 전용과 비관리자 admin 진입 차단, 관리자 foreign-owner 저장, 이전 저장을 닫고 다른 이미지 연 뒤 늦은 응답 격리를 확인했다. 이름 기반 distro 표시가 실제 provider property 없음에도 diff를 생략하던 문제도 재현·수정하여 실제5개 기본 flag가 저장됨을 확인했다. |
+| 저장 후 VM 생성 | Canonical 카탈로그 새로고침 후 상세 재진입으로 저장 계정 유지. 새로 설정한 이미지에서 실제 wizard의20→80GB/min80,79GB 입력을 강제 clamp하지 않고 Next 차단,500GB 허용, 최종80GB 제출/SSE 완료와 정확한 native 비밀번호·ConfigDrive·user-data/keypair 없음까지 확인했다. 네 언어 공개 `/docs/glance`도 인증 없이 요구값·게스트 준비·이전 이미지 경고가 번역되어 렌더됐다. |
+| 관련 검사 | Backend image API/native SDK/cache72, instances target backend1,147/frontend560 통과. 관련 frontend9files/213 통과 후 실제 distro 판정 회귀를 추가한 최종 consumer59 통과. Svelte2,369files/0errors/기존 warnings3개, i18n37namespaces/9,447source messages·0errors/0warnings, scan990files/0hard-coded Korean, 최종 production build exit0. |
+| 전체 `npm run test:gate` | 격리된 frozen public-source snapshot에서 exit0: architecture, orchestration175, Kolla Node27/Python11, Unix installer20, backend unit5,758, frontend349files/3,293+runner9, consumer contract174, 실제 disposable datastore functional128/23deselected, Ruff check/format586files. PowerShell36은 runtime 부재 skip이며 Windows 게스트 실행 proof가 아니다. |
+
+격리 staged/working architecture guard는 `b116355ae29fccafd0ff11351b827932e8021e8358e567c3afec634a80146fbd`/2,614source files로 통과했다. `source-parity.json`은 이 작업의29개 source가 실제 compiled/tested snapshot과 byte/hash로 같음을 기록한다. 공유 Git index·architecture review marker·private config·원래 `.venv`·운영 Compose/volume은 stage/stamp/교체하지 않았다. 통합 snapshot의 전체 gate는 동시 WIP의 별도 semantic 승인이 아니다. Gbrain CLI는 없어 sync/시작 지침 변경을 하지 않았다.
+
+별도 관측: 사용자 이미지의 가상 상세 URL(`/dashboard/compute/images/:id`)을 직접 새로고침하면 landing shell과 상대 asset import 오류가 있었다. 이 routing 경로는 이번 property/최소 디스크 변경에서 수정하지 않았고, direct deep-link reload 성공으로 기록하지 않는다. 저장값 persistence는 정상 카탈로그 URL 새로고침 후 같은 UUID 재진입과 실제 API/Glance 재조회로 증명했다. Actual guest/RDP·운영 identity/provider·hardware/TPM·이미지 binary/봉인·배포/commit/push는 수행하지 않았다.
+
+
+## 키네틱 아트 랜딩 검증 (2026-10-12, local-only)
+
+`kinetic-cloud-story`는 정적 hero와 opacity-only 설명을 불투명 조형의 실제 이동·회전·조립으로 바꾼다. Hero, 서버, GPU, Lumen, Kubernetes, 기관 구축6장면을 같은 재료로 연결하며 실제 cloud operation이나 live inference를 가장하지 않는다. 기존 schema/API/auth/config/배포 구조는 변경하지 않았다.
+
+| 실행 범위 | 관측 결과 |
+|---|---|
+| 관련 검사 | LandingPage·sceneMotion·typographyRoles·designSystemRules·MotionPrimitives·motion6files/37tests 통과. Svelte0errors/기존3warnings, i18n0errors/0warnings·37namespaces/9,401messages, scan988files/0hard-coded Korean. 최종 좌표·간격 수정은 마지막 production build와 아래 실제 화면에 포함했다. |
+| 최종 compiled UI | adapter-node build exit0, loopback5236의 실제 Chromium. ko/en/ja/zh-CN × dark/light ×320/390/767/768/1023/1024/1440/2560px의64조건에서 overflow0, 모든 SVG paint가 viewBox 내부, 라벨최소12.51px, 주요 action44px, 예시4messages. 영문 기관 라벨 잘림과 자원 판/라벨 겹침을 수정했으며 자원 caption의 최소 여유는 SVG6.03units 이상이다. |
+| 조형·연결 | 초기 replay에 각 장면의 transform 변화, 마지막 static에서 transform/자동재생 종료와 keyboard focus 보존. 불투명 face alpha255. 서버4/GPU4/Kubernetes6/기관7의21접점이 실제 SVG fill/stroke에 닿는다. 실제 조립 중 route dashoffset1, 조립 종료 후에도 draw 시작 전까지1이며 이후 연결선을 그린다. |
+| 정지·접근성 | 서버의23개 named motion clock이 화면 밖에서 정지. 실제 다른 탭을 앞으로 가져왔을 때 document.hidden/paused와23개 clock의 동일 시각을 확인했다. 반복 replay는 새 timeline으로 교체, reduced 전환은 완성 frame·4messages·replay 숨김. Skip link focus,720×450/DPR2,390px no-JS 및 IntersectionObserver 부재의6개 static scene/4messages/replay 없음 확인. |
+| 전후 영상 | 동일1440×900/DPR1·dark/no-preference,6장면·동일 대기/keyboard replay. Before는 보존한 변경 전5개 landing source와 원래 Korean hero caption/사진을 격리 Vite에서 실행했고 after는 최종 compiled build다. ffprobe: before32.366s/971encoded frames, after31.333s/940frames; mpdecimate changed174/339. 전후 playback·중간 contact sheet를 직접 확인했다. Nominal30fps나 changed-frame 수는 성능 개선 측정이 아니다. |
+
+영구 raw 증거는 `~/.local/share/afterglow-proofs/kinetic-cloud-story-20261012-irg4mo8n/`의 before/after영상·source·JSON이고, 이 change의 `evidence/`에는 결과와 대표 화면을 보존한다. HEAD`249a937ed031d33a2fa883c37eb90c4aabacd17f`+명시14source overlays/27obsolete deletions를 격리 local dev/index에 적용한 architecture guard가 `6ac0b6dee070e87474264ddc484d19ec70d5f1ea985d937d9506e805bdb9344f`/2,583files로 통과했다. 실제 공유 index/review marker와 동시 WIP는 수정하지 않았으며 전체 WIP 승인이 아니다.
+
+한계: 기본 공개 config의 로컬 Chromium 증거다. 실제 기관 config/인증·provider/GPU/VM/Kubernetes·운영 배포·Safari/Firefox·전체 `npm run test:gate`·commit/push는 수행하지 않았다. 기존 DocCodeBlock/ProjectUsageTable tabindex 및 cloudInitFileInput 경고는 남는다. Gbrain은 CLI/config가 없어 sync하지 않았고 시작 지침에 임의 설정을 넣지 않았다. `rapid` schema의 proposal/tasks는 완료이며 delta spec이 없으므로 generic strict validator의 “No deltas found”를 통과로 기록하지 않는다.
+
+## 랜딩 연결·가림·대화 시연 수정 검증 (2026-10-12, local-only)
+
+`repair-landing-visual-continuity`는 사용자 첨부 화면의 연결선 단절/합류, 기관 클라우드 뒤쪽 면 겹침, 잘린 빈 채팅 캡처와 무의미한 다시 보기를 수정했다. 이전 overflow/bounds 통과는 이 시각 결함을 검증한 것이 아니므로 이전 완료 주장으로 대체하지 않는다. 서버·GPU·Kubernetes·기관 구축 전체를 정지·중간 frame에서 점검했고, Lumen은 공용 `ChatBubble`의 네 언어 질문2개·답변2개로 교체했다. 대화는 작성된 예시이며 비공개 사용자 기록이나 provider 실행 결과가 아니다.
+
+| 실행 범위 | 관측 결과 |
+|---|---|
+| 관련 검사 | LandingPage·sceneMotion·typographyRoles·designSystemRules 4files/18tests 통과. Svelte2,360files/0errors/기존warnings3개. i18n0errors/0warnings·37namespaces/9,400messages, scan987files/0hard-coded Korean lines. 기존 DocCodeBlock/ProjectUsageTable tabindex와 cloudInitFileInput 경고는 남는다. |
+| 최종 build/runtime | Vite8.2.2·adapter-node build exit0 후 별도 loopback Node runtime5222에서 실제 Chromium 실행. 검사 후 마지막 SVG 좌표/장식선 정리는 최종 build/browser에 포함했다. |
+| 최종 반응형·현지화 | ko/en/ja/zh-CN × dark/light ×320/390/767/768/1023/1024/1440/2560px, DPR1의64조건 통과. Overflow0·missing key0·SVG labels최소13.89px·주요 link/button44px·전체 대화4messages 표시. 기존 compact LocaleSelect는 mobile44px/desktop32px로 별도 기록한다. |
+| 접점·가림 | 서버4·GPU4·Kubernetes6·기관7의21접점을 실제 SVG `isPointInFill/isPointInStroke`로 검사했다. Branch별 접점과 모델 circle을 포함한다. 전체 graphic paint viewBox 내부, 모든 equipment face alpha255, replay 중 transform 없음과 접점 유지 확인. Composited solid/route의 finite fade는 geometry를 움직이지 않는다. |
+| 실제 대화/replay | 4.54s 질문→답변chunk→후속질문→답변chunk 순서를 중간 opacity와 screenshots로 확인. 최종5장면 static/running0·focus 유지,1440×900에서 각 headline·완성 장면·replay가 함께 보인다. Chat 최종 bottom880.43px. |
+| 수명·접근성 | Offscreen 및 실제 다른 Chromium tab 활성화로 hidden 상태의 animation clock 정지/재개, 재생 중 replay가 기존 phase를 취소하고 첫 질문으로 재시작, 실행 중 reduced 전환 시 전체 대화/static·replay숨김 확인. Skip link focus,720×450/DPR2 overflow0; native200%zoom 증거는 아니다. |
+| 정적 fallback | 실제 JavaScript 비활성390px에서 전체4messages·모든 scene static·replay0·overflow0. 별도 owned capability fixture의 IntersectionObserver 부재에서도 전체 대화/static·replay0. |
+| 실제 전후 녹화 | 둘 다1440×900 CSS/encode·DPR1·dark/no-preference, 동일5장면·keyboard replay. Before14.4s/432frames/changed192, after17.2s/516frames/changed169. 새 대화의 전체 sequence를 담으려고 after 대화 관측은 더 길다. ffprobe/mpdecimate 결과이며 nominal30fps를 성능/fps 개선으로 해석하지 않는다. |
+
+QA probe 정정도 기록한다. 최초 matrix는 기존 desktop locale32px를44px 주요 action과 혼동해 중단됐고, 실제 controls를 분리한 기준으로64조건을 완주했다. Lifecycle의 모든 순차 assertion은 통과했으나 마지막 network assertion이 public site-config의OPTIONS를 금지해 실패했다. 실제 request trace는 해당GET/OPTIONS만 있고 preflight403(CORS)이었다. Network 분류만 정정했으며 앱에서 오류를 숨기거나 성공한 lifecycle 시나리오를 반복하지 않았다. Private chat/history/inference 요청·cloud mutation은 없었다.
+
+Scoped architecture는 HEAD`249a937ed031d33a2fa883c37eb90c4aabacd17f`+기존 랜딩을 포함한15overlays/25inherited deletions를 별도 clone/index에 구성해 실제 guard를 통과했다: `source_sha256=021e960f30faae2729494804228990d164a554f45dda54cda93433eaa0025191`,2,584source files. 공유 index/review marker와 동시 작업을 보존하며 전체 WIP 승인이 아니다. 증거는 `~/.local/share/afterglow-proofs/landing-visual-repair-20261012-4xs6up8k/`와 해당 OpenSpec `evidence/`의 compiled matrix·motion·lifecycle·contact·architecture receipts, 전후 screenshots/video다.
+
+한계: 기본 공개 config에서의 로컬 UI 증거다. Preview-origin public-config CORS, 실제 기관 config/인증·live inference/VM/GPU/Kubernetes·운영 배포·Safari/Firefox·전체`npm run test:gate`·commit/push는 검증하지 않았다. 기존 static `/docs` 캡처는 보존했고, 변경 없는 controller의 기존 consumer tests를 유지했다. CSS 기하/가림/타이밍은 source-text나 문구 고정 테스트 대신 실제 브라우저 증거로 검증했다.
+
+## MCP 연결 클라이언트 관측·자격 철회 검증 (2026-10-12, local-only)
+
+`mcp-connected-client-visibility`는 인증·SDK 검증이 성공한 initialize에서 grant별 정제 서명을 기록하고 계정의 OAuth/API 키 목록에 이름·버전·추정 product/kind/browser/OS·근거·첫/마지막 관측 시각을 표시한다. 최근10개 서로 다른 서명은 실제 단말·세션 수나 온라인 상태가 아니다. 모르는 클라이언트의 `연결 제거`는 관측 삭제나 UA 차단이 아니라 같은 자격을 공유한 모든 클라이언트와 선택된 Lumen 기본 위임의 grant/API 키 전체 철회다.
+
+| 실행 경계 | 관측 결과 |
+|---|---|
+| Exact·등록 target | Focused backend93개, 실제 disposable MariaDB의 observation/migration/OAuth 회귀42개 통과. 정본 `mcp` target backend519개/100deselected와 account frontend163개 통과. Account+mock transport189개/2files; 최종 catalog guard 포함193개/3files도 통과했다. |
+| Schema087 | 별도 소유 DB에 기존063/084/085/086 뒤087을 두 번 적용했다. 기존 OAuth grant의 이름·활성 상태·자격을 보존하고 관측은NULL→public[]였다. 공유/운영 DB에 migration하지 않았다. |
+| 실제 MCP SDK·ASGI·TCP·MariaDB·Redis | Canonical arm64/amd64 backend에서 각각6개 initialize와 실제 목록을 실행했다. 별도의 fresh amd64 실행은18개 SDK initialize와9개 lifecycle/privacy 시나리오를 통과했다: malformed/unauthenticated 미기록, 반복 first/last 갱신, 추정 근거·bot 우선순위, unsafe label 거부·10개 retention·정확한9개 공개 field, owner/project 격리, PAT/OAuth 전체 철회와 이전 bearer401·refresh400 `invalid_grant`·감사/tombstone·cleanup 확인. |
+| Canonical container 실행 | 정본 Dockerfile의 backend/frontend target를 각각 linux/arm64·linux/amd64로 build/load했다. 고유 Compose project `afterglow-mcp-client-v-tdslvh`에서 실제 backend machine `aarch64`/`x86_64`와 product source hash 일치를 확인했다. AMD64는 Docker Desktop emulation이며 image build만으로 실행 증거를 대체하지 않는다. |
+| 실제 compiled Chromium | 최종 qualified frontend2architecture ×4locale ×light/dark ×OAuth/API2method ×390/767/768/1023/1024/1280/1440px =224조건. Document/card/client overflow0,3개 관측·근거·unknown·비밀 비노출을 확인했다. Mobile64조건의 credential removal은 최소44px이며 native disclosure390px spot check도44px다. Desktop action은 credential의 상단에 정렬된다. |
+| 실제 오류·재시도·제거 | API 목록503이어도 OAuth는 유지하고 반대 경우도 확인했다. 실패한 method는 stale row/removal/확정0 count를 숨기며 inline retry 후 복구됐다. 두 architecture에서 OAuth/PAT의 실제 browser DELETE→목록 재조회와 native epoch2·이전 bearer401·OAuth refresh 거부·감사/cleanup을 확인했다. 네 locale의 공개 guide도 실제 rendered 위조 경고·자격 전체 제거 안내를 확인했다. |
+| 최종 전체 `npm run test:gate` | Exit0: architecture, orchestration175, Kolla Node27/Python11, Unix installer20, backend unit5673, frontend347files/3177 및 runner9, consumer contract174, 실제 disposable functional128/23deselected, Ruff check/format585files. PowerShell36개는 runtime 부재로 skip이며 Windows 실행 proof가 아니다. |
+| 추가 frontend 검사 | Svelte2359files/0errors/기존 warnings3개; i18n0errors/0warnings·37namespaces/9397messages, scan986files/0hard-coded Korean lines. 기존 DocCodeBlock/ProjectUsageTable tabindex와 cloudInitFileInput non-reactive 경고는 남는다. Changed Python11files Ruff check/format 통과. |
+
+**조회 실패 원인·배포 순서:** 첨부 화면 조사에서 실제 로컬 backend 로그의SQL1054 `Unknown column 'mcp_delegated_grants.project_scope'`를 확인했다. 현재 reader와 pre084 DB의 불일치이며 목록 오류 격리는 schema 복구가 아니다. 기존084–086과 신규087을 reader/writer 전에 적용할 별도 배포 준비가 필요하다. 공유 DB·원래 credential·private `afterglow.conf`·실제 Git index/review marker·다른 Docker project는 보존했다. 첫 전체 gate의 구형 grant fixture, exact allowlist의 잘못 복사된 tool paging footer, 뒤따른 stale architecture stamp는 수정한 후 최종 전체 gate만 성공으로 집계한다. Throwaway native harness의 JSON-RPC error/배열 순서/bot 추정/브라우저 mutation header/OAuth 무인증 token request 가정도 실제 계약에 맞췄으며 제품 검증·인가를 완화하지 않았다.
+
+**Scope·한계:** private 입력을 제외한 현재 source의 whole-file snapshot으로 검증했으며 동시 WIP가 포함된 통합 실행이다. Working와 소유 candidate index의 staged architecture guard는 같은 source digest `271bcad166abcdee6507d2c14d1e69d10429615ed5ccbfffd9b6de55fda9a5d9`/2605files였다. Feature-only patch·공유 checkout 전체의 이후 변경·운영 수용 증거가 아니다. Browser IAM/profile·membership·upstream Keystone cleanup은 합성 seam이고 MCP SDK/transport/SQL/Redis와 list/revoke는 실제다. 실제 제3자 제품 신원·continuous online/단말 수·live IAM/Keystone cleanup·분산 replica·production migration/배포·mixed-version rollout·backup/restore·Firefox/Safari·commit/push는 검증하거나 수행하지 않았다. Optional GBrain CLI가 없어 sync하지 않았다.
+
+**보존:** [`mcp-connected-client-visibility`](../openspec/changes/archive/2026-10-12-mcp-connected-client-visibility/)의 `evidence/verification.json`, `native-http.json`, `compiled-ui.json`, `container-runtime.json`, `architecture.json`에 compact receipt를 보존한다. 최종 mobile/desktop 합성 화면·image build metadata와 원래 전체 gate log는 `~/.local/share/afterglow-proofs/mcp-connected-clients-20261012-v_tdslvh/`에 남겼다. 이전 touch 수정 전 화면은 최종 수용 증거가 아니다.
+
+Rapid proposal/tasks 완료 뒤 `openspec archive mcp-connected-client-visibility --skip-specs --yes`로 위 날짜의 archive를 만들었다. Rapid schema의 no-delta-spec 경고는 비차단이며 다른 spec 관례를 추가하지 않았다. `evidence/cleanup.json`은 소유 host native service·dedicated Chrome 종료, 소유 Compose5container/1network 정상 제거와 scratch 삭제를 기록한다. Datastore는 소유 tmpfs였고 volume 삭제·force removal·광역 prune·`down --volumes`는 사용하지 않았다. 다른 project·이미지/cache·원래 private 설정과 영구 proof는 보존했다.
+
+
+## 그림·모션 중심 랜딩 검증 (2026-10-12, local-only)
+
+`visual-cloud-product-story`는 사용자가 직전 페이지를 심심하고 글이 많다고 평가한 데 따른 공개 frontend cutover다. 큰 제품 개념 그림과 서버·GPU 학습·Lumen 채팅·Kubernetes·기관 구축의 다섯 장면으로 바꿨다. 미지원 레이어 기록·보존·포크·재사용 홍보는 복원하지 않는다. 기존 cloud/auth/API/schema/config/운영 state는 변경하지 않았다.
+
+| 실행 범위 | 관측 결과 |
+|---|---|
+| 관련 consumer·design regression | LandingPage·sceneMotion·typographyRoles·designSystemRules 4개 파일·18개 테스트 통과. Skip focus·서비스 navigation, hidden/offscreen·늦은 callback·reduced motion·finite completion/replay 경계를 포함한다. 제거된 filter/fixture/plate 테스트는 새 문구로 repin하지 않았다. |
+| Svelte check | 2,359개 파일·0 errors·기존 warnings 3개. `DocCodeBlock`·`ProjectUsageTable` tabindex와 `cloudInitFileInput` non-reactive 경고는 남는다. |
+| Localization·build | i18n check 0 errors/0 warnings, 37 namespaces·9,392 source messages; scan 986개 파일·hardcoded Korean 0줄. Vite 8.2.2·adapter-node production build exit 0. 네 언어 번역은 원어민 검수 인증이 아니다. |
+| 실제 최종 compiled UI | ko/en/ja/zh-CN × light/dark × 320/390/767/768/1023/1024/1440/2560px, 64조건. 실제 DPR 1, overflow 0, action target 최소44px, SVG label 최소12.51px, 누락 key 없음. Text뿐 아니라 전체 SVG `getBBox()`가 각 viewBox 안에 있음을 확인했다. |
+| 한눈에 보이는 구성 | 1440×900에서 네 서비스 jump link가 첫 화면 안에 있다. 실제 replay activation 후에도 다섯 feature의 headline과 완성 그림이 같은 viewport에 남는다. Lumen은 실제 한국어 캡처의 채팅 영역을 명시적으로 보여주며 응답을 만들거나 provider를 호출하지 않는다. |
+| 실제 motion·keyboard | 다섯 장면 keyboard replay·focus 유지·offscreen pause/resume·finite static completion/running0. 실제 다른 Chromium tab으로 전환한 hidden/visible에서도 pause/resume, 실행 중 reduced motion 전환 뒤 모든 장면 static/running0. Skip link 본문 focus와720×450·DPR2 overflow0도 확인했다. 후자는 native200%zoom 증거가 아니다. |
+| 정적 fallback·clean cutover | 최종 build에서 JavaScript를 비활성화해 headline6개·완성된 static6장면·hero image decode·overflow0·inert replay부재 확인. Observer 부재는 owned synthetic capability fixture로 별도 확인했다. 삭제된 compute/quota/console/layer artwork4개 HTTP404, Nova/Lumen/Drover guide3개 HTTP200. |
+| 실제 전후 녹화 | 전4.866s·1200×750 encode·146frames/changed45, 후13.0s·1440×900 encode·390frames/changed198. 후자는 실제1440×900 CSS viewport·DPR1·light/no-preference를 영상 내 sample로 확인했다. 서로 다른 디자인·행동·encoded크기이므로 성능/동일조건 fps 비교가 아니다. Helper packet 수 대신 ffprobe/`mpdecimate`를 기록했다. |
+
+검증 중 발견·수정한 문제: `state` local name이 Svelte `$state` rune와 충돌해 발생한 타입 오류는 `motionState`로 수정했다. 첫320px 조건의11.815px SVG label은36 SVG units로 키우고 긴 일본어 label을 간결하게 정리했다. GPU pin의 연속 lower-case relative `m`이 다음 section까지 paint하던 문제는 absolute `M`으로 고쳤다. Scroll overflow0만으로 SVG paint가 안전하다고 판단하지 않았다. GPU/채팅/기관 구축의 지나치게 긴 framing도 실제 caption·그림·replay를 같이 보이도록 조정했다. 초기 check의 MCP account 타입 오류3개와 scan의MCP guide hardcoded1건은 동시 작업 영역으로, 이 변경에서 해당 source를 수정하지 않았다; 최종 global 결과와 구분한다.
+
+Scoped architecture는 HEAD`249a937ed031d33a2fa883c37eb90c4aabacd17f` + 명시14개 overlays + obsolete25개 deletions를 별도 Git clone/index에 구성했다. 실제 guard `--staged --stamp`/`--staged`는 `source_sha256=5842b2caf370574e1a0febe100204463b691be7a3683fb58492ffd487c90618d`, source2,583files로 통과했고 공유 index/review marker는 보존했다. 전체 동시 WIP·working-tree gate 승인으로 확대하지 않는다.
+
+증거: `~/.local/share/afterglow-proofs/visual-cloud-story-20261012-p9nbs46_/` 및 이 OpenSpec 완료 기록의 screenshots·browser JSON·motion·architecture receipts. 이전9개 cloud사이트 조사는 기존 archive에 그대로 남고 새 Apple reference는 [Mac Studio](https://www.apple.com/mac-studio/)의 source-backed 그림/기능별 소개 구조를 사용했다. 실제 Apple hero는 이 브라우저 sample에서 blank 상태여서 Apple video/motion을 관측했다고 주장하지 않는다.
+
+한계: local site-config preview CORS 제한으로 기본 공개 config에서 UI를 검증했다. 실제 configured public-site integration, VM/GPU 할당·유료 Lumen inference·Kubernetes 설치·기관 구축·운영 배포·Firefox/Safari·전체`npm run test:gate`·commit/push는 하지 않았다. GBrainCLI는PATH에 없어 sync하지 않았다. 생성 장비 그림은 실제 inventory 사진이 아니라 개념 이미지다.
+
+## 지원 서비스 중심 랜딩 검증 (2026-10-12, local-only)
+
+`research-cloud-service-landing`은 공개 소개를 서버·GPU AI 학습·Lumen 채팅·Kubernetes와 기관 내부 클라우드 구축으로 한정한다. 사용자 확인대로 미지원 레이어 기록·저장·포크·재사용 story·체험 결과·library 카드·전용 source/static artwork를 제거했다. Backend/API/schema·인증·운영 topology·설정은 변경하지 않는다.
+
+| 실행 경계 | 관측 결과 |
+|---|---|
+| Exact consumer regression | 최종 5개 파일·32개 테스트 통과. 체험 시작·일시정지·재개, 시나리오 변경과 늦은 callback 격리, reduced motion, workflow filter·제품 화면·skip focus를 포함한다. |
+| 기존 `design` target | 최종 27개 파일·138개 테스트 통과. 첫 실행은 DESIGN.md의 구형 request-to-reuse 문구를 고정하던 assertion 1개로 실패했다. 미지원 문구를 복원하거나 새 문구로 repin하지 않고 해당 incidental test와 unused token list를 삭제했다. |
+| Svelte/localization | check 2,363개 파일·0 errors·기존 warnings 3개. `DocCodeBlock`·`ProjectUsageTable` tabindex 2종과 `cloudInitFileInput` non-reactive 1종은 남는다. i18n check 0 errors·instance namespace key-order warnings 3개, scan 989개 파일·hardcoded Korean 0줄. 번역은 원어민 검수 인증이 아니다. |
+| Production build·실제 compiled preview | Vite 8.2.2·adapter-node build exit 0. 최종 재빌드 뒤 네 서비스·3개 panel·reuse stage 부재와 overflow 0을 다시 실행했다. 최종 adapter-node 자체 실행(5199)에서도 390px 구축 선택·정확한 문의 목적지·overflow 0과 삭제된 두 static artwork의 HTTP 404를 확인했다. |
+| Compiled responsive UI | ko/en/ja/zh-CN × light/dark × 320/390/767/768/1023/1024/1440/2560px, 총 64조건. 두 이용/구축 선택의 설명·소유 경계·console/mailto 목적지, 선택 target 44px 이상, 누락 key 부재와 horizontal overflow 0을 확인했다. Desktop 1024/1440px의 headline은 2줄이고 primary CTA는 첫 화면 안에 있다. |
+| Keyboard/reduced/short viewport | Enter로 구축 선택·trigger focus 유지, Tab 문의 action, skip 본문 focus. GPU/cluster/data 3시나리오는 명시적 start 뒤 즉시 3/3 완료·진행 animation 0. 720×450·DPR 2에서 overflow 0이며 browser-native 200% zoom 증거는 아니다. |
+| 링크·기존 탐색 | Nova/Lumen/Drover 공개 guide 3개 HTTP 200. Workflow 6개·filter 4개와 product project/cluster/network 3개 전환, 실제 Lumen WebP decode·font loaded/error 0을 확인했다. |
+| 실제 reference 9개 | 지정 9 URL의 1440×900·DPR 1 hero/section 캡처. Google carousel, AWS hover 400ms/250ms, NHN opacity/translate 700ms, KakaoCloud 두 사이트의 muted loop MP4 재생, DO 30s CSS marquee와 CF canvas/20s waveform을 DOM/source와 대조했다. Vendor 주장·선언된 timing·실제 관측을 구분했다. |
+| 전후 motion | 실제 light/no-preference·1440×900·DPR 1. 전 9.60s/288frames·후 9.333s/280frames, `mpdecimate` changed frames 95/74. Nominal 30fps는 성능 측정이 아니다. 새 구축 선택은 별도 4.733s/142frames 녹화(changed frames 10)와 rAF opacity/translate samples로 확인했으며 removed story와의 성능 비교가 아니다. |
+
+Source/config 경계: local `localhost:8000/api/v1/site-config`는 HTTP 200이지만 5197/5198 preview origin의 CORS allow header가 없어 browser가 거부했다. 기본 공개 config로 UI를 검증했고 CORS·서비스 gate·운영 configuration은 수정하지 않았다. 실제 OpenStack resource/GPU 예약·Lumen 유료 inference·Kubernetes 설치·기관 구축·운영 custom config/배포·Firefox/Safari는 검증하지 않았다. 전체 `npm run test:gate`와 commit/push도 실행하지 않았다. GBrain CLI는 PATH에 없어 sync하지 않았다.
+
+Scoped architecture는 HEAD `249a937ed031d33a2fa883c37eb90c4aabacd17f` + 명시적 source overlays 12개 + obsolete deletions 4개를 별도 Git index/review root에 구성해 `--staged --stamp`와 `--staged`를 통과했다(`98c0d1977586823acda12fb131b6600a9aca18ade9223c45d9ee49a73e8ffa40`, source 2,598 files). 공유 index·architecture review marker·동시 WIP는 보존하며 전체 공유 source 승인으로 확대하지 않는다. 영구 증거는 `~/.local/share/afterglow-proofs/research-cloud-landing-20261012-qxi2e2rq/`; 출처 링크를 포함한 조사 보고서와 compact receipts는 OpenSpec 완료 기록에 보존한다.
+
+## Windows native 생성 비밀번호 전달 수정 검증 (2026-10-12, local-only; 운영 상태 읽기 전용)
+
+`fix-windows-native-password`는 생성 비밀번호 입력과 실제 Nova 전달 사이의 불일치를 수정했다. 변경 전 실제 로컬 planner를 실행해 native marker 이미지의400 거부와 이전 marker의 Windows `adminPass` 제거·PowerShell 생성을 확인했다. 새 source는 정확한 `nova-adminpass-configdrive` metadata만 지원하며 Nova `adminPass` + `config_drive=true`, user-data·키페어 없는 생성으로 전환한다. 아래의 이전 PowerShell receipt는 당시 구현의 역사적 검증이지 현재 경로의 acceptance가 아니다.
+
+| 실행 경계 | 관측 결과 |
+|---|---|
+| exact 회귀 | Backend459개 통과. Frontend5files/106개 통과: native-only metadata, user/admin image/volume, unsupported method/account 전환, 정확한 비밀번호·입력/오류/소유권·draft 폐기 및 기존 Linux 동작. |
+| 정본 `instances` target | Backend1,145개·frontend36files/546개 통과. 공유 private config가 없는 frozen current public-source snapshot에서 정본 runner를 실행했다. |
+| 실제 Uvicorn/FastAPI + 설치된 SDK + loopback Nova/Glance/Cinder | 63조건·399provider HTTP요청. 세 create endpoint×image/volume×공백/따옴표·Unicode/최대128자 네 password case24개에서 exact native digest·ConfigDrive·user-data/keypair 부재·target project를 확인했다. Legacy/unknown/account·명시적 userdata/GitHub/Manila·foreign volume 거부와422, Linux/no-password 보존, provider secret echo 실패도 검증했다. Identity/provider 자원·placement/admission·network/SG·audit sink는 합성이다. |
+| 실제 compiled Chromium | 사용자/관리자×image/volume×ko/en/ja/zh-CN×rendered light/dark×390/767/768/1023/1024/1280/1440px,224조건 통과. Document 가로 overflow0, masked/in-bounds input·Admin 계정·Next readiness와 Linux access controls 부재. Rendered theme class 검증이며 OS preference persistence qualification은 아니다. |
+| UI→위 실제 로컬 native HTTP | 네 user/admin image/volume flow의 exact secret→Nova body·ConfigDrive·SSE completed→실제 panel closure. 불일치 confirmation 차단·secret 없는 review/storage, image/volume legacy 차단·no SSH fallback, close/reopen blank와 provider 오류 비노출·실패 뒤 두 입력 폐기를 확인했다. Runtime JS error0. |
+| 네 locale 공개 문서 | 실제 compiled `/docs/nova?lang=...`4개에서 해당 HTML language와 native adminPass/config-drive 설명·구형 생성 설명 부재를 확인했다. |
+| Frontend/static checks | Svelte check2,362files/0errors/기존3warnings, production build exit0(Vite8.2.2). i18n check0errors/0warnings·37namespaces/9,401messages, scan987files/한국어 hardcoding0. Changed backend Ruff check·format7files 통과. |
+| 전체 `npm run test:gate` | Frozen public current-source snapshot exit0. Orchestration175·Kolla27/image-ref11·CLI20, backend unit5,754, frontend347files/3,216+runner9, consumer contract174, disposable functional128/23deselected, Ruff585files 통과. PowerShell36개 runtime 부재 skip. Working·소유 임시 index staged architecture guard는 같은 `93050be8a4f1d4ace014b50d18b2a7ae7ac49dfcdf93e7fc91e4c68acd766764`/2,608sourcefiles였다. Snapshot에는 당시 concurrent WIP whole-file source가 포함되므로 scope-only나 이후 공유 source·운영 통합 승인으로 확대하지 않는다. 해당28개 scope 파일은 최종 verified snapshot과 hash 일치를 확인했다. |
+
+실패와 수정: 첫 exact backend8실패는 Linux multipart MIME의 base64 part를 plaintext로 가정하고 `history(None)` 호출을 금지한 신규 test의 incidental assumption이었다. MIME part decode로 consumer content를 검증하고 불필요한 call/history pin을 제거했으며 Linux 구현은 바꾸지 않았다. 첫 frontend dependency optimization은 생성된 SvelteKit tsconfig 부재였고 정본 check/sync·build 뒤 같은 suite가 통과했다. Formatter가 지적한 test2개만 정리했다. Native scratch의 api_version/microversion 충돌, admin project fixture 경로와 너무 이른 browser completion observer는 throwaway harness만 수정했으며 실패를 passing evidence로 세지 않는다. 기존 `DocCodeBlock`·`ProjectUsageTable` tabindex와 `cloudInitFileInput` non-reactive warning3개는 유지한다.
+
+Live 근거·미적용 상태: `/etc/kolla/reports/windows11-native-password-20261012/verified-summary.json`과 operator README를 읽었고, native Windows 이미지의 실제 active/private·`production_ready=false`·native marker/계정을 Glance에서 읽기 전용 확인했다. 보고서의 기존 CLI/guest ConfigDrive 암호 일치·RDP/NLA/desktop/TPM/SecureBoot/HTTPS 성공은 운영자의 선행 검증이며 이번 코드로 새 VM을 생성한 결과가 아니다. 컨트롤러3대 running backend에는 password planner가 없고 create API가 ConfigDrive를 전달하지 않으며 frontend build에도 native marker/confirmation 입력이 없어 수정 기능은 미배포다. 비밀번호 파일은 읽지 않았다. 운영 VM·이미지 공개/속성·보안그룹·운영 source/container/DB/IAM은 변경하지 않았다.
+
+미검증: 수정본의 운영 실행/Afterglow 생성 VM의 실제 Windows 최초 부팅·RDP, CLI image boot와 별개인 Cinder boot의 새 Windows guest, 이미 초기화된 디스크의 Cloudbase plugin 재실행, 실제 placement/GPU/Windows driver·Firefox/Safari. 이미지 marker는 게스트 내부 설정이나 plugin 재실행을 대신하지 않는다. GBrain CLI는 없어 sync/guidance 변경을 하지 않았다. 영구 compact evidence는 [`fix-windows-native-password`](../openspec/changes/archive/2026-10-12-fix-windows-native-password/)에, bounded log excerpts·source parity·read-only deployed receipts와 개인정보 없는 합성 screenshots는 `~/.local/share/afterglow-proofs/afterglow-native-password-cjyjk_ng/`에 보존했다.
+
+## Windows 초기 비밀번호·GPU flavor 수정 검증 (2026-10-12, local-only)
+
+`windows-instance-create-password`의 당시 PowerShell 구현은 GPU flavor를 Linux bootstrap 요청으로 잘못 간주하던 거부를 수정했다. 아래 결과는 이 이전 경로의 역사적 receipt이며 현재 native 전달 계약은 위 `fix-windows-native-password` 기록을 따른다. 당시 지원 Windows image/volume은 PowerShell user-data와 config drive만 사용하고 GPU quota·fresh capacity admission은 유지했다. 명시적 user-data·GitHub SSH·Manila data mount 충돌은 mutation 전에 거부했고 제출 시 비밀 초안 폐기 뒤 재시도에는 비밀번호 재입력이 필요했다.
+
+| 실행 경계 | 확인한 결과 |
+|---|---|
+| 비밀번호 exact regression | Backend378개, frontend2files/44개 통과. Metadata/소유권·입력 경계·secret redaction·wizard 전환 및 Windows GPU 허용/기존 Linux GPU 경로를 포함한다. |
+| 정본 `instances` target | Backend953개, frontend28files/288개 통과. Private 설정 없는 HEAD+명시적 Windows overlay clone에서 같은 runner/selector를 실행했다. |
+| 실제 Uvicorn + 설치된 OpenStack SDK + loopback Nova/Glance/Cinder | GPU21조건 통과: user sync/SSE·scoped-admin SSE의 Windows image/volume6개, explicit conflict9개, Linux password/SSH6개. Native Nova body의 PowerShell/config drive·Linux bootstrap 부재와 admission 유지, 응답/이력 비밀 비노출을 확인했다. |
+| Production compiled UI → 위 로컬 HTTP 경계 | 사용자·관리자 각각 image/volume4개 SSE완료. `gpu.1080ti_8c_32g`·image root500GB, 확인값 불일치 차단·비밀 없는 review·재열기 시 빈 초안·제출 뒤 닫힘을 확인했다. Consumer GPU 설정390/767/768/1023/1024/1440px에서 transition 완료 후 document/panel overflow0·masked password·Next활성을 확인했다. |
+| 실제 portable PowerShell7.6.6 | UTF-8/인용/공백/특수문자6조건의 exact account/password·injection 부재·변수 폐기를 확인했다. `Set-LocalUser`는 무해한 인자 probe이며 Windows 계정 변경 증거가 아니다. |
+| Frontend 검사·빌드 | Svelte check0errors/3warnings, production build exit0, i18n check0errors/0warnings와 scan0hardcoded Korean. 기존 tabindex2종과 `cloudInitFileInput` non-reactive warning은 별도이며 숨기지 않는다. Changed backend Ruff check/format 통과. |
+
+인접 회귀에서 일반 SSE placement-policy503보다 flavor400이 먼저 발생하던 검증 순서를 복원했다. Capacity refresh 테스트는 실제 flavor step을 명시하고 소비자 버그를 검증하지 않는 payload forwarding2개는 삭제했다. 격리 clone의 최초 frontend 시작 오류는 생성된 SvelteKit type/config 부재였고 `svelte-kit sync` 뒤 실행했다. 최초 실패 결과를 성공으로 세지 않는다. 공유 private `afterglow.conf`(기존 TOML 파싱 오류)·실제 index·공유 architecture review marker는 수정하지 않았다. 전체 `npm run test:gate`, 운영 배포·실제 GPU 할당·Cloudbase 최초 부팅·Windows 비밀번호 적용·RDP 로그인은 이번 증거에 포함하지 않는다.
+
+영구 증거는 [`windows-instance-create-password`](../openspec/changes/archive/2026-10-12-windows-instance-create-password/)의 `evidence/gpu-native-http.json`, `gpu-compiled-ui.json`, `powershell.json`, `verification.json`, `architecture.json`과 합성 화면이다. 상세 실행 로그·기존4locale×2theme×7width의 사용자/관리자112조건은 `~/.local/share/afterglow-proofs/windows-instance-create-password-20261011-o4jmfexx/`에 보존했다. Scoped architecture proof는 HEAD+명시적 overlay의 working/staged source만 검토하며 동시 WIP나 운영·게스트 수용으로 확대하지 않는다.
+
 ## Lumen 채팅 전체 작업 영역 복원 검증 (2026-10-12, local-only)
 
 `restore-chat-full-viewport`는 사용자 제공 화면을 기준으로 채팅·채팅 프로젝트의 외부 `PageShell` 제한을 제거하고 내부 transcript/composer만 공통80rem에 맞춘 markup/CSS 수정이다. 앞선 공통 shell 검증은 당시 기록으로 유지하며 채팅의 현재 계약은 full-bleed 예외다. 일반 설정·Studio·API·인증·DB·서비스 소유권은 바꾸지 않는다.
@@ -24,6 +238,17 @@ nav_order: 8
 영구 증거: [`source-browser.json`](../openspec/changes/archive/2026-10-11-restore-chat-full-viewport/evidence/source-browser.json), [`compiled-browser.json`](../openspec/changes/archive/2026-10-11-restore-chat-full-viewport/evidence/compiled-browser.json), [`architecture.json`](../openspec/changes/archive/2026-10-11-restore-chat-full-viewport/evidence/architecture.json). 같은 디렉터리의 WebP는 합성 로컬 화면이며 기존 운영 가이드 캡처를 대체하지 않는다. 보관 경로는 CLI가 출력한 날짜를 사용한다.
 
 후속 **전체 변경 커밋 qualification**은 구현 소유 세션과 별도다. 공유 checkout의 첫 `npm run test:gate`는 비공개 `afterglow.conf`의 `TOMLDecodeError`(line10,column9)로 backend collection 전에 exit4였다(`artifact://509`). 설정을 수정·복사하지 않고 현재 의도된 변경의 exact tree `4c4c050ca830ab9ee81c9c8e9217e6910a4fe16a`를 기존 격리 checkout에 설치했다. 별도 소유 `afterglow-remaining-commit-gate-bkjlix`의 loopback MariaDB/PostgreSQL/Redis만 원래 runner override로 제공한 전체 `npm run test:gate`는 exit0이었다(`artifact://515`): orchestration175, Kolla Node27/Python11, Unix installer20, backend5003, frontend342files/2914와 runner9, contract174, functional118/23deselected, Ruff check·format574files. 기존 PowerShell36skip·두 frontend tabindex 경고와 backend 경고는 숨기지 않는다. Source fingerprint는 위 scoped proof와 같은 `437992ae2c0baa32534efe7704a982f6f9f162977ee76205181b6c306018057a`/2601files이며 chat source5파일도 compiled-browser receipt와 byte-identical이다. 임시 index credential scan은 no leaks였고 private env/config/key·기존 다른 datastore/volume·운영 DB/IAM/배포는 변경하지 않았다. 이 결과는 snapshot 이후 동시 작업이나 운영 acceptance를 인증하지 않는다.
+
+## 로컬 Compose 복구·임시 컨테이너 정리 (2026-10-12)
+
+사용자가 기존 로컬 DB 복구를 선택한 뒤 ignored `.local-services/compose.env`의 Drover·Lumen·Waygate URL 세 값만 기존 worker 대상에 맞췄다. 사용자가 주석 처리한 `.env`와 원래 키·private 설정은 보존했다. Plain/prepared/명시 local 입력의 실제 Compose 14개 DB 소비자를 확인했으며 공개 Compose·Dockerfile·서비스 코드·schema는 변경하지 않았다. 조사 중 동시 로컬 재기동에서 네 migration/bootstrap exit0와 현재 서비스 healthy를 관측했으므로 중복 up/build는 하지 않았다.
+
+- **승인된 삭제**: 중지 컨테이너19개·빈 network9개를 제거하고, 추가 사용자 선택으로 실행 QA19개를 정상 중지·제거한 뒤 해당 network5개를 제거했다. 총 컨테이너38개·network14개를 exact ID로 정리했다. Force removal·volume 삭제·광역 prune은 없으며 승인된 tmpfs datastore9개의 내용은 폐기됐다.
+- **보존 증거**: 컨테이너59→21개(실행17개·성공한 migration/bootstrap4개), network20→6개다. 현재 개발 스택·별도 sandbox·BuildKit의 ID·PID·StartedAt·restart count·mount·host port·network를 보존했고 전체 volume25개의 이름이 불변이다. 이미지·빌드 캐시는 정리하지 않았다.
+- **네트워크와 실제 실행**: `afterglow-remaining-commit-gate-bkjlix_default`의 `172.30.0.0/16` 충돌 bridge를 제거했다. 현재 개발 network `172.18.0.0/16`는 유지한다. 정리 후 Drover `/v1/health/ready`는 HTTP200 및 database/redis/migrations/keystone 모두 `ok`였다. Backend/frontend와 각 sibling의 실제 liveness도 HTTP200을 확인했다.
+- **검증 한계**: 정리 후 `npm run services:smoke`는 direct readiness·Lumen API contract 이후 `AFTERGLOW_SMOKE_TOKEN` 미설정으로 exit1이다. 인증 BFF/dashboard 전체 성공이나 운영 qualification으로 표기하지 않는다. Ledger/schema 비교는 동시 재기동 후 관찰 구간의 불변 증거이며 재기동 전 상태 보존을 증명하지 않는다. 이 운영 정리는 source 변경이 아니므로 전체 unit/contract/functional gate를 새로 실행하지 않았다. 운영 DB·IAM·배포는 변경하지 않았다.
+
+증거: [`recover-local-compose-db-targets`](../openspec/changes/archive/2026-10-12-recover-local-compose-db-targets/)의 `evidence/runtime.json`, `evidence/cleanup.json`과 rollback한 두 endpoint 이동 시험 receipt. 이 host-only 정리는 서비스 ownership·정본 Compose·schema·DB 목적지 선택 계약에 구조 영향이 없다.
 
 ## 완료 세션 dev 통합 검증 (2026-10-11, local-only)
 
@@ -439,3 +664,33 @@ node ../scripts/ci/verify-vitest-shard.js --report /tmp/shard-1.json --shard 1/2
 MCP SDK/HTTP 경계와 browser runtime은 실제 loopback transport/Chromium을 사용하되 identity/cloud 응답은 synthetic이었다. 브라우저 확인에는 hydration, nonce 없는 inline script 차단, sessionStorage 자격 보관, 새 탭 독립 인증 및 cross-tab logout이 포함된다. 최종 queued logout 순서와 origin 누락/invalid mode는 실제 auth 모듈 및 backend selector로 독립 재검증했고 리뷰 승인을 받았다. 실제 Keystone/cloud 작업이나 운영 배포는 이 증거에 포함되지 않는다.
 
 중간 gate에서 test fixture·검증 설정 문제가 발견되어 수정했고, 전체 frontend 실행 중 카탈로그 scan 1건은 5초 timeout이었다. 동일 selector 4건과 최종 전체 gate는 통과했다. Documents의 검증 복사본에는 예상치 못한 중복 파일이 생겨 사용을 중단하고 새 `/private/tmp` clone의 동일 digest로 검증을 완료했다. 이전 실패 실행을 성공으로 취급하지 않는다.
+
+## 2026-10-12 인스턴스 생명주기·스토리지 연결 검증 (local, not deployed)
+
+`instance-lifecycle-storage-clarity`의 일곱 요청을 현재 dev source에서 구현했다. 기존 Windows 초기 비밀번호/GPU correction은 보존하며 두 변경 모두 미커밋이다. Private `afterglow.conf`는 TOML parse 오류가 있어 수정하지 않고, canonical selector를 owned scratch cwd + explicit backend project/PYTHONPATH에서 실행했다. 실제 shared index·운영 설정·VM·볼륨·키는 변경하지 않았다.
+
+| 검증 | 관찰 결과 |
+|---|---|
+| Exact changed-path pytest | 361 passed |
+| Canonical instances | backend1064 / frontend506 passed |
+| Canonical storage | backend615 / frontend76 passed |
+| Required access target | backend285 / frontend15 passed; 이번 current source의 owner/access proof이며 이전 Windows archive digest와 동일한 snapshot이라고 주장하지 않음 |
+| Final focused frontend + public-guide contracts | 26 files /380 passed |
+| Final design target | 27 files /138 passed |
+| Expansion polling regression | 원래 실패, scalar-derived scope/state projection 수정 후43 related tests passed |
+| Final Svelte check | 0 errors /3 existing warnings |
+| Final i18n check / scan | 0 errors /0 warnings, 37 namespaces /9575 source messages; hard-coded Korean0 in989 files |
+| Production frontend build | exit0; 최종 QA는 전체 current frontend source를 owned immutable copy에서 다시 build/serve |
+| Changed Python Ruff / format | check0 /12 files already formatted |
+| Native API/SDK HTTP | current-source Uvicorn + installed SDK/Manila transport, synthetic loopback providers의35 scenarios passed |
+| Compiled consumer/admin UI | 4 locales ×2 themes ×7 widths ×2 modes =112 conditions; document/changed volume-storage/hashed-metadata boundaries overflow0 |
+
+Native proof는 metadata-only Windows reader/다른 creator 접근, Windows-looking Linux 이름, exact NFS fixed IP/ambiguity/CIDR/floating/foreign/reader rejection, UUID-bound CephX, GET secret exclusion, explicit no-store secret retrieval, unmanaged protection, empty-list-versus-exact-rule pending/error404 fence, VM delete-before-revoke 차단, strict integer/shrink/live-task/fractional raw SDK power rejection과 Cinder500GB/extending actual reread를 확인했다. Native tracking PUT 전에 SDK `set_server_metadata(server, **metadata)`의 positional-dict 오류가 발견되어 수정됐다.
+
+Compiled UI는 동일 Button 규격, stop confirmation의 conditional quota 안내, SHUTOFF action grouping, Windows keypair 숨김과 Linux keypair 유지, exact NFS/Ceph form, transient secret 조회/clear/no-persistence, reader guard, root600/data80 요청 뒤 actual500/50GB extending 표시를 확인했다. Same-context30s polling이 volume draft를 닫는 회귀를 먼저 재현했고 수정 후 실제 polling 동안600 draft가 유지됐다. 새 hashed grant metadata key가 기존 metadata table을 늘리던 문제도 key wrapping으로 수정했다. 네 locale의 공개 Nova 가이드에서20–30분 안내를 실제 렌더링했다.
+
+이전 Windows rollback의 추가 helper-level proof는 정확한 UUID를 existing `rollback_instance` → installed SDK → loopback Nova에 전달하고 native `POST forceDelete` 및 synthetic provider 부재를 확인했다. Existing delete wrapper가 force=True이므로 DELETE-only counter의0건은 cleanup 미호출 증거가 아니다. 이 결과는 완전한 create-failure orchestration 또는 실제 guest/production rollback proof가 아니다. 비밀 오류 masking은 기존 unit coverage와 구분한다.
+
+전체 `npm run test:gate`, 실제 IAM/auth·provider capacity/physical quota 집계, live Windows first boot/password/RDP, 실제 NFS/Ceph mount/data-plane와 Cinder 완료·guest partition/filesystem growth, production/배포는 미실행이다. 기존 모바일 performance-monitoring toolbar의 자체 overflow는 이번 일곱 요청 범위 밖으로 유지했으며 전체 page의 모든 component overflow0를 주장하지 않는다. Intermediate mutable shared frontend build가 runtime chunk를 교체해 SSR500을 냈으므로 그 실행은 성공 증거에서 제외하고 immutable copy로 다시 확인했다.
+
+Durable raw receipts: `~/.local/share/afterglow-proofs/instance-lifecycle-storage-clarity-20261012-j8ec2ih6/`의 `canonical-targets.log`, `frontend-final-tests.log`, `frontend-final-check.log`, `frontend-isolated-build.log`, `i18n-final.log`, `python-style.log`, `native-http.json`, `compiled-ui.json`, `rollback-native.json`와 privacy-safe consumer/admin screenshots. OpenSpec evidence에는 source overlay와 scoped architecture guard 결과를 별도로 보관한다.

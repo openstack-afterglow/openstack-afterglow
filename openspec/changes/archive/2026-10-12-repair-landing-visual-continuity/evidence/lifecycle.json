@@ -1,0 +1,67 @@
+{
+  "origin": "http://127.0.0.1:5222",
+  "evidence": "Sequential browser assertions completed through missing-observer fallback. Only final network assertion failed because it disallowed OPTIONS. Actual trace confirms only public site-config GET/OPTIONS; classified below without replaying successful lifecycle checks.",
+  "offscreen": {
+    "state": "paused",
+    "actualAnimationClockFrozenWithinMs": 25,
+    "resumed": "playing"
+  },
+  "actualOtherTab": {
+    "visibility": "hidden",
+    "state": "paused",
+    "actualAnimationClockFrozenWithinMs": 25
+  },
+  "rapidReplay": {
+    "state": "playing",
+    "firstAnswerOpacity": 0,
+    "allAnimationCurrentTimesBelowMs": 300
+  },
+  "reducedDuringPlayback": {
+    "state": "static",
+    "allMessageOpacity": 1,
+    "animations": 0,
+    "replayControlDisplay": "none"
+  },
+  "skipFocus": "landing-content",
+  "shortViewport": {
+    "width": 720,
+    "height": 450,
+    "dpr": 2,
+    "overflow": 0,
+    "nativeZoom": false
+  },
+  "noJavaScript": {
+    "width": 390,
+    "height": 844,
+    "messages": 4,
+    "allScenes": "static",
+    "replayControls": 0,
+    "overflow": 0
+  },
+  "missingIntersectionObserver": {
+    "state": "static",
+    "allMessagesVisible": true,
+    "replayControls": 0
+  },
+  "network": [
+    {
+      "method": "OPTIONS",
+      "url": "http://localhost:8000/api/v1/site-config?cache=true",
+      "status": 403
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:8000/api/v1/site-config?cache=true"
+    },
+    {
+      "method": "OPTIONS",
+      "url": "http://localhost:8000/api/v1/site-config?cache=true",
+      "status": 403
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:8000/api/v1/site-config?cache=true"
+    }
+  ],
+  "networkBoundary": "Only public site-config GET/OPTIONS;403 preview CORS preflight. No chat-history/inference or cloud mutations."
+}

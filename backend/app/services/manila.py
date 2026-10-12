@@ -751,7 +751,9 @@ def create_access_rule(
     access_to: str,
     access_level: str = "ro",  # "ro" | "rw"
     access_type: str = "cephx",  # "cephx" | "ip"
-    metadata: dict | None = None,  # NFS access rule 보안 메타데이터 (IP 타입에만 유효)
+    metadata: dict | None = None,
+    *,
+    wait_for_key: bool = True,
 ) -> dict:
     """
     접근 규칙 생성.
@@ -765,14 +767,15 @@ def create_access_rule(
         "access_to": access_to,
         "access_level": access_level,
     }
-    if metadata and access_type == "ip":
+    if metadata:
         allow_access["metadata"] = metadata
     body = {"allow_access": allow_access}
-    data = client.post(f"shares/{file_storage_id}/action", body)["access"]
+    # Provider errors may contain access keys; do not log response bodies.
+    data = client.post(f"shares/{file_storage_id}/action", body, log_errors=False)["access"]
 
     # access_key 조회 (CephX만 해당, IP 규칙은 없음)
-    access_key = ""
-    if access_type == "cephx":
+    access_key = data.get("access_key", "")
+    if access_type == "cephx" and wait_for_key:
         try:
             from app.config import get_settings as _get_settings
 
@@ -801,7 +804,7 @@ def create_access_rule(
 def revoke_access_rule(conn, file_storage_id: str, access_id: str) -> None:
     client = get_client(conn)
     body = {"deny_access": {"access_id": access_id}}
-    client.post(f"shares/{file_storage_id}/action", body)
+    client.post(f"shares/{file_storage_id}/action", body, log_errors=False)
 
 
 def rotate_cephx_access_rule(conn, file_storage_id: str, access_id: str) -> dict:
@@ -823,12 +826,17 @@ def rotate_cephx_access_rule(conn, file_storage_id: str, access_id: str) -> dict
     return create_access_rule(conn, file_storage_id, access_to, access_level, "cephx")
 
 
-def list_access_rules(conn, file_storage_id: str) -> list[dict]:
+def list_access_rules(conn, file_storage_id: str, *, strict: bool = False) -> list[dict]:
     client = get_client(conn)
     # API v2.45+: use share-access-rules endpoint instead of action
     data = client.get(f"share-access-rules?share_id={file_storage_id}")
+    if strict and (
+        not isinstance(data.get("access_rules"), list)
+        or any(not isinstance(rule, dict) or not rule.get("id") for rule in data["access_rules"])
+    ):
+        raise ValueError("Manila access-rule list is incomplete")
     rules = data.get("access_rules", [])
-    if rules:
+    if rules or strict:
         return rules
     # 일부 Manila 구성에서 share-access-rules가 빈 결과를 반환하는 경우 legacy action API fallback
     try:
@@ -843,6 +851,21 @@ def list_access_rules(conn, file_storage_id: str) -> list[dict]:
     except Exception as e:
         logger.debug("os-list-access fallback failed: %s", e)
         return rules
+
+
+def get_access_rule(conn, file_storage_id: str, access_id: str) -> dict | None:
+    """Read one modern Manila rule; only an authoritative HTTP 404 proves absence."""
+    client = get_client(conn)
+    try:
+        data = client.get(f"share-access-rules/{access_id}")
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            return None
+        raise
+    rule = data.get("access")
+    if not isinstance(rule, dict) or rule.get("id") != access_id or rule.get("share_id") != file_storage_id:
+        raise ValueError("Manila exact access-rule response is incomplete or mismatched")
+    return rule
 
 
 def get_export_locations(conn, file_storage_id: str) -> list[str]:

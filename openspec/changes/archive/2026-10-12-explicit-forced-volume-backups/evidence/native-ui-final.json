@@ -1,0 +1,108 @@
+{
+  "boundary": "current final real UI -> actual FastAPI route -> native SDK -> synthetic loopback Cinder; no production mutations",
+  "provider_requests": [
+    {
+      "method": "POST",
+      "path": "/v3/project-smoke/backups",
+      "body": {
+        "backup": {
+          "name": "QA second attached data-backup-20261013-0057",
+          "force": true,
+          "volume_id": "attached-b",
+          "incremental": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v3/project-smoke/backups",
+      "body": {
+        "backup": {
+          "name": "Final selected forced backup",
+          "force": true,
+          "volume_id": "attached-a",
+          "incremental": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v3/project-smoke/backups",
+      "body": {
+        "backup": {
+          "name": "Final available unforced backup",
+          "force": false,
+          "volume_id": "available-a",
+          "incremental": false
+        }
+      }
+    }
+  ],
+  "backups": [
+    {
+      "id": "backup-1",
+      "name": "QA second attached data-backup-20261013-0057",
+      "volume_id": "attached-b",
+      "size": 80,
+      "status": "creating",
+      "is_incremental": false,
+      "description": "",
+      "created_at": "2026-10-12T14:30:00Z",
+      "os-backup-project-attr:project_id": "project-smoke"
+    },
+    {
+      "id": "backup-2",
+      "name": "Final selected forced backup",
+      "volume_id": "attached-a",
+      "size": 40,
+      "status": "creating",
+      "is_incremental": false,
+      "description": "",
+      "created_at": "2026-10-12T14:30:00Z",
+      "os-backup-project-attr:project_id": "project-smoke"
+    },
+    {
+      "id": "backup-3",
+      "name": "Final available unforced backup",
+      "volume_id": "available-a",
+      "size": 20,
+      "status": "creating",
+      "is_incremental": false,
+      "description": "",
+      "created_at": "2026-10-12T14:30:00Z",
+      "os-backup-project-attr:project_id": "project-smoke"
+    }
+  ],
+  "audit": [
+    {
+      "resource_type": "volume_backup",
+      "action": "volume_backup.create",
+      "status": "success",
+      "resource_name": "QA second attached data-backup-20261013-0057",
+      "extra": {
+        "volume_id": "attached-b",
+        "force": true
+      }
+    },
+    {
+      "resource_type": "volume_backup",
+      "action": "volume_backup.create",
+      "status": "success",
+      "resource_name": "Final selected forced backup",
+      "extra": {
+        "volume_id": "attached-a",
+        "force": true
+      }
+    },
+    {
+      "resource_type": "volume_backup",
+      "action": "volume_backup.create",
+      "status": "success",
+      "resource_name": "Final available unforced backup",
+      "extra": {
+        "volume_id": "available-a",
+        "force": false
+      }
+    }
+  ]
+}

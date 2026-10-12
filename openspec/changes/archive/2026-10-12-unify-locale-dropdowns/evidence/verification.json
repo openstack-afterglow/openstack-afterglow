@@ -1,0 +1,91 @@
+{
+  "change": "unify-locale-dropdowns",
+  "source_hashes": {
+    "frontend/src/lib/i18n/LocaleSelect.svelte": "7816291e8d8e7c3516e261a4efd692d76fc7a298621004c1b7b93f9ed20b9d5c",
+    "frontend/src/lib/i18n/LocaleSelect.test.ts": "e70a938e7bc11d1e3cb94b2974d2bc9fa0b7b96e856bf3ff2c11e434c18c15aa",
+    "frontend/src/routes/docs/+layout.svelte": "42230866e35990ffd4b72a9f23b75d86db67cb4e98cea255d6c07f558004e038"
+  },
+  "source_matches_scoped_review": true,
+  "related_tests": {
+    "files": 5,
+    "passed": 35,
+    "selectors": [
+      "LocaleSelect",
+      "docs locales",
+      "LandingPage",
+      "consoleTerminalLocale",
+      "designSystemRules"
+    ],
+    "immediate_escape_regression": "failed before native-open synchronization; passed after"
+  },
+  "compiler": {
+    "check": {
+      "returncode": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/unified-locale-menu-20261012-bmy0i7u_/accepted-check.log"
+    },
+    "build": {
+      "returncode": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/unified-locale-menu-20261012-bmy0i7u_/accepted-build.log"
+    }
+  },
+  "svelte_errors": 0,
+  "svelte_out_of_scope_warnings": 6,
+  "localization": {
+    "namespaces": 37,
+    "source_messages": 9450,
+    "errors": 0,
+    "warnings": 0,
+    "scanned_files": 990,
+    "hardcoded_korean": 0
+  },
+  "compiled_browser": {
+    "origin": "http://127.0.0.1:5275",
+    "conditions": 280,
+    "surfaces": [
+      "landing",
+      "docs",
+      "login",
+      "tutorial user console",
+      "tutorial administrator console"
+    ],
+    "locales": [
+      "ko",
+      "en",
+      "ja",
+      "zh-CN"
+    ],
+    "themes": [
+      "dark",
+      "light"
+    ],
+    "widths": [
+      320,
+      390,
+      767,
+      768,
+      1023,
+      1024,
+      1440
+    ],
+    "horizontal_overflow": 0,
+    "all_popups_in_viewport": true,
+    "choice_height_px": 44,
+    "no_js": "320px docs real-link navigation and language",
+    "keyboard": [
+      "ArrowUp",
+      "ArrowDown",
+      "Home",
+      "End",
+      "Enter",
+      "Space on native summary/app button",
+      "Escape",
+      "Tab departure",
+      "outside pointer"
+    ],
+    "short_viewport": "720x450 DPR2"
+  },
+  "boundary": "Local public config and synthetic tutorial UI only; no real IAM/provider, production, cross-browser, full gate, commit/push or deployment acceptance",
+  "raw_evidence": "/Users/pieroot/.local/share/afterglow-proofs/unified-locale-menu-20261012-bmy0i7u_",
+  "gbrain_sync": "not available: no CLI/config",
+  "probe_context": "Clear owned tutorial-profile state between surfaces; wait two rendered frames before reading menu geometry."
+}

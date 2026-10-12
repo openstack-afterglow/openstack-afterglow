@@ -1,0 +1,116 @@
+[
+  {
+    "host": "172.30.0.11",
+    "exit": 0,
+    "checks": {
+      "services/instance_password.py": {
+        "exists": false,
+        "native_marker": false,
+        "legacy_marker": false,
+        "preflight": false,
+        "admin_pass": false,
+        "config_drive": false
+      },
+      "api/compute/instances.py": {
+        "exists": true,
+        "native_marker": false,
+        "legacy_marker": false,
+        "preflight": false,
+        "admin_pass": true,
+        "config_drive": false
+      },
+      "api/identity/admin_instances.py": {
+        "exists": true,
+        "native_marker": false,
+        "legacy_marker": false,
+        "preflight": false,
+        "admin_pass": true,
+        "config_drive": false
+      },
+      "models/compute.py": {
+        "exists": true,
+        "native_marker": false,
+        "legacy_marker": false,
+        "preflight": false,
+        "admin_pass": true,
+        "config_drive": false
+      }
+    }
+  },
+  {
+    "host": "172.30.0.12",
+    "exit": 0,
+    "checks": {
+      "services/instance_password.py": {
+        "exists": false,
+        "native_marker": false,
+        "legacy_marker": false,
+        "preflight": false,
+        "admin_pass": false,
+        "config_drive": false
+      },
+      "api/compute/instances.py": {
+        "exists": true,
+        "native_marker": false,
+        "legacy_marker": false,
+        "preflight": false,
+        "admin_pass": true,
+        "config_drive": false
+      },
+      "api/identity/admin_instances.py": {
+        "exists": true,
+        "native_marker": false,
+        "legacy_marker": false,
+        "preflight": false,
+        "admin_pass": true,
+        "config_drive": false
+      },
+      "models/compute.py": {
+        "exists": true,
+        "native_marker": false,
+        "legacy_marker": false,
+        "preflight": false,
+        "admin_pass": true,
+        "config_drive": false
+      }
+    }
+  },
+  {
+    "host": "172.30.0.13",
+    "exit": 0,
+    "checks": {
+      "services/instance_password.py": {
+        "exists": false,
+        "native_marker": false,
+        "legacy_marker": false,
+        "preflight": false,
+        "admin_pass": false,
+        "config_drive": false
+      },
+      "api/compute/instances.py": {
+        "exists": true,
+        "native_marker": false,
+        "legacy_marker": false,
+        "preflight": false,
+        "admin_pass": true,
+        "config_drive": false
+      },
+      "api/identity/admin_instances.py": {
+        "exists": true,
+        "native_marker": false,
+        "legacy_marker": false,
+        "preflight": false,
+        "admin_pass": true,
+        "config_drive": false
+      },
+      "models/compute.py": {
+        "exists": true,
+        "native_marker": false,
+        "legacy_marker": false,
+        "preflight": false,
+        "admin_pass": true,
+        "config_drive": false
+      }
+    }
+  }
+]

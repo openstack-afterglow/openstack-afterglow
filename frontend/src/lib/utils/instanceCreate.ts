@@ -46,3 +46,32 @@ export function isSshAccessReady(input: {
 		&& profile?.login.toLowerCase() === normalizeGithubUsername(input.githubUsername).toLowerCase()
 		&& profile.has_public_keys;
 }
+
+/** Windows is determined by provider metadata, never the display name. */
+export function isWindowsImageMetadata(metadata: { os_type?: unknown } | null | undefined): boolean {
+	return typeof metadata?.os_type === 'string' && metadata.os_type.trim().toLowerCase() === 'windows';
+}
+
+/** Only the native Nova adminPass/config-drive method enables password creation. */
+export function windowsPasswordAccount(metadata: {
+	os_type?: unknown;
+	windows_initial_password_method?: unknown;
+	os_admin_user?: unknown;
+} | null | undefined): string | null {
+	if (!isWindowsImageMetadata(metadata)
+		|| metadata?.windows_initial_password_method !== 'nova-adminpass-configdrive') return null;
+	const account = metadata?.os_admin_user;
+	return typeof account === 'string' && account.trim() && !/[\u0000-\u001f\u007f-\u009f]/u.test(account)
+		? account : null;
+}
+
+export function windowsPasswordError(password: string, confirmation: string): 'invalid' | 'mismatch' | null {
+	let length = 0;
+	for (let index = 0; index < password.length; index += password.codePointAt(index)! > 0xffff ? 2 : 1) length += 1;
+	if (length < 8 || length > 128 || /[\u0000-\u001f\u007f-\u009f]/u.test(password)) return 'invalid';
+	return password === confirmation ? null : 'mismatch';
+}
+
+export function hasWindowsUserDataConflict(input: { cloudInit: string; dataMounts: unknown[] }): boolean {
+	return input.cloudInit.length > 0 || input.dataMounts.length > 0;
+}

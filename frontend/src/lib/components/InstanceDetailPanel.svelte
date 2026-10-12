@@ -6,6 +6,7 @@
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
+	import { Alert, Button } from '$lib/components/ui';
 	import { createInstanceDetailController, provideInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import InstanceHeader from '$lib/components/instance/InstanceHeader.svelte';
 	import InfoSection from '$lib/components/instance/InfoSection.svelte';
@@ -50,6 +51,15 @@
 	let showResizeModal = $state(false);
 	let resizePreselectFlavorId = $state('');
 	let showEvacuateModal = $state(false);
+	const canShowResize = $derived(
+		$canWrite && !!$auth.token && !!s.instance && s.instance.id === instanceId
+		&& !!s.instance.project_id && s.instance.project_id === (adminProjectId ?? $auth.projectId)
+		&& s.instance.status === 'SHUTOFF' && !s.loading && !s.actioning && !s.deleting
+	);
+	const canOpenResize = $derived(canShowResize && !s.resizeLoading);
+	$effect(() => {
+		if (!canShowResize) showResizeModal = false;
+	});
 
 	// 리소스 사용량 권장 상태
 	interface FlavorSnippet { id: string; name: string; vcpus: number; ram: number; disk: number }
@@ -62,16 +72,20 @@
 	let recommendation = $state<SummaryRec | null>(null);
 	let summaryCpuAvg = $state<number | null>(null);
 	let summaryMemAvg = $state<number | null>(null);
+	let summaryGeneration = 0;
 
 	async function loadSummary(iid: string, projectId: string | undefined) {
 		const token = $auth.token;
 		if (!token) return;
+		const generation = ++summaryGeneration;
 		try {
 			const resp = await api.get<{
 				prometheus_available: boolean;
 				stats: Record<string, { min: number | null; avg: number | null; max: number | null }>;
 				recommendation: SummaryRec | null;
 			}>(`/api/v1/instances/${iid}/metrics-summary?range=7d`, token, projectId);
+			if (generation !== summaryGeneration || instanceId !== iid || $auth.token !== token
+				|| (adminProjectId ?? $auth.projectId ?? undefined) !== projectId) return;
 			if (resp.prometheus_available) {
 				recommendation = resp.recommendation;
 				summaryCpuAvg = resp.stats.cpu?.avg ?? null;
@@ -87,6 +101,12 @@
 		const token = $auth.token;
 		const projectId = adminProjectId ?? $auth.projectId ?? undefined;
 		showPasswordModal = false;
+		showResizeModal = false;
+		resizePreselectFlavorId = '';
+		recommendation = null;
+		summaryCpuAvg = null;
+		summaryMemAvg = null;
+		summaryGeneration++;
 		if (!id || !token) return;
 		untrack(() => {
 			void s.fetchInstance(id);
@@ -108,7 +128,7 @@
 	}
 
 	async function openResizeModal(preselectId?: string) {
-		if (!$canWrite || !s.instance || !['ACTIVE', 'SHUTOFF'].includes(s.instance.status)) return;
+		if (!canOpenResize) return;
 		s.resizeError = '';
 		resizePreselectFlavorId = preselectId ?? '';
 		showResizeModal = true;
@@ -154,6 +174,10 @@
 			onOpenEvacuateModal={openEvacuateModal}
 		/>
 
+		{#if s.instance.status === 'SHUTOFF'}
+			<Alert tone="warning" class="mb-4">{t('panel.stoppedQuotaWarning')}</Alert>
+		{/if}
+
 		{#if $canWrite && (s.instance.status === 'ACTIVE' || s.instance.status === 'SHUTOFF') && recommendation?.underutilized}
 			<div class="bg-surface-selected/40 border border-action-warm text-warm-text rounded-lg px-4 py-3 text-sm mb-4 flex items-center justify-between gap-4">
 				<span>
@@ -170,12 +194,11 @@
 						{t('panel.smallerResize')}
 					{/if}
 				</span>
-				<button
-					onclick={() => openResizeModal(recommendation?.suggested_flavor?.id)}
-					class="shrink-0 px-3 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-xs font-medium rounded-lg transition-colors"
-				>
-					{t('panel.resize')}
-				</button>
+				{#if s.instance.status === 'SHUTOFF'}
+					<Button onclick={() => openResizeModal(recommendation?.suggested_flavor?.id)} disabled={!canOpenResize} variant="outline" size="sm" class="shrink-0">
+						{t('panel.resize')}
+					</Button>
+				{/if}
 			</div>
 		{/if}
 
@@ -201,7 +224,7 @@
 {#if showPasswordModal && s.canChangePassword}
 	<PasswordModal onClose={() => { showPasswordModal = false; }} />
 {/if}
-{#if showResizeModal && $canWrite}
+{#if showResizeModal && canShowResize}
 	<ResizeModal preselectFlavorId={resizePreselectFlavorId} onClose={() => { showResizeModal = false; }} />
 {/if}
 {#if showEvacuateModal && s.instance}

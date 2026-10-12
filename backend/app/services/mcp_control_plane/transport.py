@@ -16,12 +16,18 @@ from urllib.parse import urlsplit
 from mcp import types
 from mcp.server.lowlevel import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+from pydantic import ValidationError
 from starlette.responses import JSONResponse, Response
 from starlette.routing import BaseRoute, Match
 from starlette.types import Message, Receive, Scope, Send
 
 from app.config import get_settings
 from app.services.mcp_control_plane.authentication import McpAuthenticationError, McpPrincipal, verify_mcp_bearer
+from app.services.mcp_control_plane.clients import (
+    McpClientObservationUnavailable,
+    client_observation,
+    record_client_observation,
+)
 from app.services.mcp_control_plane.ledger import (
     McpInvocationError,
     authorize_mutation_dispatch,
@@ -266,6 +272,63 @@ def _replay_receive(messages: list[Message]) -> Receive:
     return receive
 
 
+def _initialization_observation(messages: list[Message], user_agent: str | None) -> tuple[Any, dict] | None:
+    try:
+        payload = json.loads(b"".join(message.get("body", b"") for message in messages))
+        if not isinstance(payload, dict) or payload.get("method") != "initialize":
+            return None
+        request = types.JSONRPCRequest.model_validate(payload, strict=True)
+        initialize = types.InitializeRequest.model_validate(payload, strict=True)
+        return request.id, client_observation(initialize.params.clientInfo.model_dump(), user_agent)
+    except (ValidationError, TypeError, ValueError, UnicodeDecodeError):
+        return None
+
+
+async def _handle_observed_initialize(
+    scope: Scope, receive: Receive, send: Send, principal: McpPrincipal, initialization: tuple[Any, dict]
+) -> None:
+    # Only initialize has this small, finite JSON response. Leave every other SDK
+    # request/lifecycle and its streaming behavior untouched. No headers escape
+    # until the required evidence transaction has actually committed.
+    buffered: list[Message] = []
+    response_size = 0
+
+    async def capture(message: Message) -> None:
+        nonlocal response_size
+        response_size += len(message.get("body", b""))
+        if response_size > 64 * 1024 or len(buffered) >= 64:
+            raise McpClientObservationUnavailable("MCP initialization response is unavailable")
+        buffered.append(message)
+
+    try:
+        assert _manager is not None
+        await _manager.handle_request(scope, receive, capture)
+    except Exception as exc:
+        raise McpClientObservationUnavailable("MCP initialization response is unavailable") from exc
+    start = next((message for message in buffered if message["type"] == "http.response.start"), None)
+    bodies = [message for message in buffered if message["type"] == "http.response.body"]
+    if start is None or not bodies or bodies[-1].get("more_body", False):
+        raise McpClientObservationUnavailable("MCP initialization response is incomplete")
+    if start["status"] == 200:
+        try:
+            payload = json.loads(b"".join(message.get("body", b"") for message in bodies))
+            if isinstance(payload, dict) and "error" in payload:
+                types.JSONRPCError.model_validate(payload)
+                successful = False
+            else:
+                response = types.JSONRPCResponse.model_validate(payload)
+                types.InitializeResult.model_validate(response.result)
+                if response.id != initialization[0] or type(response.id) is not type(initialization[0]):
+                    raise ValueError("MCP initialization response ID mismatch")
+                successful = True
+        except (ValidationError, TypeError, ValueError, UnicodeDecodeError) as exc:
+            raise McpClientObservationUnavailable("MCP initialization response is invalid") from exc
+        if successful:
+            await record_client_observation(principal, initialization[1])
+    for message in buffered:
+        await send(message)
+
+
 def _urls():
     settings = get_settings()
     production = os.environ.get("AFTERGLOW_ENV", "development").strip().lower() == "production"
@@ -367,15 +430,31 @@ async def mcp_asgi_app(scope: Scope, receive: Receive, send: Send) -> None:
     if _manager is None:
         await _reject(scope, receive, send, status_code=503, detail="MCP transport is unavailable")
         return
+    initialization = _initialization_observation(messages, headers.get("user-agent"))
     token = _current_principal.set(principal)
     try:
         try:
             async with grant_call_slot(principal, effect=_request_effect(messages)):
-                await _manager.handle_request(scope, _replay_receive(messages), send)
+                replay = _replay_receive(messages)
+                if initialization is None:
+                    await _manager.handle_request(scope, replay, send)
+                else:
+                    await _handle_observed_initialize(scope, replay, send, principal, initialization)
         except McpRateLimitUnavailable:
             await _reject(scope, receive, send, status_code=503, detail="MCP rate limiting is unavailable")
         except McpRateLimitExceeded:
             await _reject(scope, receive, send, status_code=429, detail="MCP request limit exceeded")
+        except McpAuthenticationError:
+            await _reject(
+                scope,
+                receive,
+                send,
+                status_code=401,
+                detail="MCP bearer token is invalid",
+                headers={"WWW-Authenticate": f'Bearer resource_metadata="{_urls().protected_resource_metadata}"'},
+            )
+        except McpClientObservationUnavailable:
+            await _reject(scope, receive, send, status_code=503, detail="MCP client observation is unavailable")
     finally:
         _current_principal.reset(token)
 

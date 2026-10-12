@@ -1,0 +1,290 @@
+{
+  "result": {
+    "started": "2026-10-11T19:18:54.867Z",
+    "finished": "2026-10-11T19:20:11.380Z",
+    "rolledBack": true,
+    "error": "Error: Post-relocation test data path failed",
+    "operations": [
+      {
+        "at": "2026-10-11T19:18:55.001Z",
+        "args": [
+          "network",
+          "disconnect",
+          "afterglow-remaining-commit-gate-bkjlix_default",
+          "870f04e753a3cda21fd6a56d638f99171205e18cfaef5c8767f295e0d325d9e5"
+        ],
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "at": "2026-10-11T19:18:55.133Z",
+        "args": [
+          "network",
+          "disconnect",
+          "afterglow-remaining-commit-gate-bkjlix_default",
+          "bb6a10b1a5a801cbf82b64132b3690983166df58c5188345f86fb2dc785894a8"
+        ],
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "at": "2026-10-11T19:18:55.258Z",
+        "args": [
+          "network",
+          "disconnect",
+          "afterglow-remaining-commit-gate-bkjlix_default",
+          "fe6bf2500ce1137348bccd75f41d823ef1b31a45c6d73da060602431ce455545"
+        ],
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "at": "2026-10-11T19:18:55.419Z",
+        "args": [
+          "network",
+          "rm",
+          "45744771eaac3eff93a07e9e58b2a05c7643d96e6592f444fb82d591eccae413"
+        ],
+        "exit": 0,
+        "output": "45744771eaac3eff93a07e9e58b2a05c7643d96e6592f444fb82d591eccae413"
+      },
+      {
+        "at": "2026-10-11T19:18:55.450Z",
+        "args": [
+          "network",
+          "create",
+          "--driver",
+          "bridge",
+          "--ipam-driver",
+          "default",
+          "--subnet",
+          "192.168.249.0/24",
+          "--gateway",
+          "192.168.249.1",
+          "--opt",
+          "com.docker.network.enable_ipv4=true",
+          "--opt",
+          "com.docker.network.enable_ipv6=false",
+          "--label",
+          "com.docker.compose.config-hash=df3f8b85797cc8447145e1c213a5308b35b955976a7cf4b3b302205accb17ae6",
+          "--label",
+          "com.docker.compose.network=default",
+          "--label",
+          "com.docker.compose.project=afterglow-remaining-commit-gate-bkjlix",
+          "--label",
+          "com.docker.compose.version=5.5.1",
+          "afterglow-remaining-commit-gate-bkjlix_default"
+        ],
+        "exit": 0,
+        "output": "9633fa7f1f26907e3c96ca0f6816bd6ebd4742ddb3eedd8eead617a11ef9c2b4"
+      },
+      {
+        "at": "2026-10-11T19:18:55.482Z",
+        "args": [
+          "network",
+          "connect",
+          "--alias",
+          "afterglow-remaining-commit-gate-bkjlix-test-redis-1",
+          "--alias",
+          "test-redis",
+          "afterglow-remaining-commit-gate-bkjlix_default",
+          "870f04e753a3cda21fd6a56d638f99171205e18cfaef5c8767f295e0d325d9e5"
+        ],
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "at": "2026-10-11T19:18:55.519Z",
+        "args": [
+          "network",
+          "connect",
+          "--alias",
+          "afterglow-remaining-commit-gate-bkjlix-mariadb-1",
+          "--alias",
+          "mariadb",
+          "afterglow-remaining-commit-gate-bkjlix_default",
+          "bb6a10b1a5a801cbf82b64132b3690983166df58c5188345f86fb2dc785894a8"
+        ],
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "at": "2026-10-11T19:18:55.551Z",
+        "args": [
+          "network",
+          "connect",
+          "--alias",
+          "afterglow-remaining-commit-gate-bkjlix-postgres-1",
+          "--alias",
+          "postgres",
+          "afterglow-remaining-commit-gate-bkjlix_default",
+          "fe6bf2500ce1137348bccd75f41d823ef1b31a45c6d73da060602431ce455545"
+        ],
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "at": "2026-10-11T19:20:10.819Z",
+        "args": [
+          "network",
+          "disconnect",
+          "afterglow-remaining-commit-gate-bkjlix_default",
+          "870f04e753a3cda21fd6a56d638f99171205e18cfaef5c8767f295e0d325d9e5"
+        ],
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "at": "2026-10-11T19:20:10.953Z",
+        "args": [
+          "network",
+          "disconnect",
+          "afterglow-remaining-commit-gate-bkjlix_default",
+          "bb6a10b1a5a801cbf82b64132b3690983166df58c5188345f86fb2dc785894a8"
+        ],
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "at": "2026-10-11T19:20:11.087Z",
+        "args": [
+          "network",
+          "disconnect",
+          "afterglow-remaining-commit-gate-bkjlix_default",
+          "fe6bf2500ce1137348bccd75f41d823ef1b31a45c6d73da060602431ce455545"
+        ],
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "at": "2026-10-11T19:20:11.222Z",
+        "args": [
+          "network",
+          "rm",
+          "9633fa7f1f26907e3c96ca0f6816bd6ebd4742ddb3eedd8eead617a11ef9c2b4"
+        ],
+        "exit": 0,
+        "output": "9633fa7f1f26907e3c96ca0f6816bd6ebd4742ddb3eedd8eead617a11ef9c2b4"
+      },
+      {
+        "at": "2026-10-11T19:20:11.258Z",
+        "args": [
+          "network",
+          "create",
+          "--driver",
+          "bridge",
+          "--ipam-driver",
+          "default",
+          "--subnet",
+          "172.30.0.0/16",
+          "--gateway",
+          "172.30.0.1",
+          "--opt",
+          "com.docker.network.enable_ipv4=true",
+          "--opt",
+          "com.docker.network.enable_ipv6=false",
+          "--label",
+          "com.docker.compose.config-hash=df3f8b85797cc8447145e1c213a5308b35b955976a7cf4b3b302205accb17ae6",
+          "--label",
+          "com.docker.compose.network=default",
+          "--label",
+          "com.docker.compose.project=afterglow-remaining-commit-gate-bkjlix",
+          "--label",
+          "com.docker.compose.version=5.5.1",
+          "afterglow-remaining-commit-gate-bkjlix_default"
+        ],
+        "exit": 0,
+        "output": "b4efc8f5f59d2af10326743d39cb046ec8e81e7e26445b751791ff50f71c691e"
+      },
+      {
+        "at": "2026-10-11T19:20:11.310Z",
+        "args": [
+          "network",
+          "connect",
+          "--alias",
+          "afterglow-remaining-commit-gate-bkjlix-test-redis-1",
+          "--alias",
+          "test-redis",
+          "--ip",
+          "172.30.0.3",
+          "afterglow-remaining-commit-gate-bkjlix_default",
+          "870f04e753a3cda21fd6a56d638f99171205e18cfaef5c8767f295e0d325d9e5"
+        ],
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "at": "2026-10-11T19:20:11.345Z",
+        "args": [
+          "network",
+          "connect",
+          "--alias",
+          "afterglow-remaining-commit-gate-bkjlix-mariadb-1",
+          "--alias",
+          "mariadb",
+          "--ip",
+          "172.30.0.4",
+          "afterglow-remaining-commit-gate-bkjlix_default",
+          "bb6a10b1a5a801cbf82b64132b3690983166df58c5188345f86fb2dc785894a8"
+        ],
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "at": "2026-10-11T19:20:11.380Z",
+        "args": [
+          "network",
+          "connect",
+          "--alias",
+          "afterglow-remaining-commit-gate-bkjlix-postgres-1",
+          "--alias",
+          "postgres",
+          "--ip",
+          "172.30.0.2",
+          "afterglow-remaining-commit-gate-bkjlix_default",
+          "fe6bf2500ce1137348bccd75f41d823ef1b31a45c6d73da060602431ce455545"
+        ],
+        "exit": 0,
+        "output": ""
+      }
+    ]
+  },
+  "failedProbe": {
+    "host": {
+      "exit": 1,
+      "results": "Traceback (most recent call last):\n  File \"/Users/pieroot/code/afterglow/backend/.venv/lib/python3.12/site-packages/aiomysql/connection.py\", line 657, in _read_bytes\n    data = await self._reader.readexactly(num_bytes)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/pieroot/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/streams.py\", line 750, in readexactly\n    raise exceptions.IncompleteReadError(incomplete, n)\nasyncio.exceptions.IncompleteReadError: 0 bytes read on a total of 4 expected bytes\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<string>\", line 24, in <module>\n  File \"/Users/pieroot/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/runners.py\", line 195, in run\n    return runner.run(main)\n           ^^^^^^^^^^^^^^^^\n  File \"/Users/pieroot/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/runners.py\", line 118, in run\n    return self._loop.run_until_complete(task)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/pieroot/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/base_events.py\", line 691, in run_until_complete\n    return future.result()\n           ^^^^^^^^^^^^^^^\n  File \"<string>\", line 7, in main\n  File \"/Users/pieroot/code/afterglow/backend/.venv/lib/python3.12/site-packages/aiomysql/connection.py\", line 74, in _connect\n    await conn._connect()\n  File \"/Users/pieroot/code/afterglow/backend/.venv/lib/python3.12/site-packages/aiomysql/connection.py\", line 539, in _connect\n    await self._get_server_information()\n  File \"/Users/pieroot/code/afterglow/backend/.venv/lib/python3.12/site-packages/aiomysql/connection.py\", line 1048, in _get_server_information\n    packet = await self._read_packet()\n             ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/pieroot/code/afterglow/backend/.venv/lib/python3.12/site-packages/aiomysql/connection.py\", line 609, in _read_packet\n    packet_header = await self._read_bytes(4)\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/pieroot/code/afterglow/backend/.venv/lib/python3.12/site-packages/aiomysql/connection.py\", line 661, in _read_bytes\n    raise OperationalError(CR.CR_SERVER_LOST, msg) from e\npymysql.err.OperationalError: (2013, 'Lost connection to MySQL server during query')\n"
+    },
+    "postgresMappedSQL": {
+      "exit": 2,
+      "result": "psql: error: connection to server at \"host.docker.[REDACTED]\" (192.168.65.254), port 62910 failed: timeout expired"
+    }
+  },
+  "rollbackProbes": {
+    "host": {
+      "exit": 0,
+      "results": [
+        {
+          "mysql": {
+            "database": "afterglow_functional",
+            "server_id": 1,
+            "select_one": 1,
+            "uptime_seconds": 2256
+          }
+        },
+        {
+          "redis": {
+            "run_id": "bf719e1146cb0d871caa0757f19751a2717439d4",
+            "uptime_seconds": 2258
+          }
+        },
+        {
+          "postgres_host_tcp": "connected"
+        }
+      ]
+    },
+    "postgresMappedSQL": {
+      "exit": 0,
+      "result": "afterglow_checkpoints|7695482625014321190|2026-10-11 18:42:53.3676+00|1"
+    }
+  }
+}

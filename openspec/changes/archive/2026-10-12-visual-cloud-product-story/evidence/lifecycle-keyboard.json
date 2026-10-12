@@ -1,0 +1,173 @@
+{
+  "origin": "http://127.0.0.1:5204/",
+  "scenes": [
+    {
+      "kind": "server",
+      "active": {
+        "state": "playing",
+        "focus": true,
+        "running": 9
+      },
+      "pause": {
+        "state": "paused",
+        "states": [
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused"
+        ]
+      },
+      "end": {
+        "state": "static",
+        "running": 0,
+        "focus": true
+      }
+    },
+    {
+      "kind": "gpu",
+      "active": {
+        "state": "playing",
+        "focus": true,
+        "running": 6
+      },
+      "pause": {
+        "state": "paused",
+        "states": [
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused"
+        ]
+      },
+      "end": {
+        "state": "static",
+        "running": 0,
+        "focus": true
+      }
+    },
+    {
+      "kind": "chat",
+      "active": {
+        "state": "playing",
+        "focus": true,
+        "running": 2
+      },
+      "pause": {
+        "state": "paused",
+        "states": [
+          "paused"
+        ]
+      },
+      "end": {
+        "state": "static",
+        "running": 0,
+        "focus": true
+      }
+    },
+    {
+      "kind": "kubernetes",
+      "active": {
+        "state": "playing",
+        "focus": true,
+        "running": 17
+      },
+      "pause": {
+        "state": "paused",
+        "states": [
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused"
+        ]
+      },
+      "end": {
+        "state": "static",
+        "running": 0,
+        "focus": true
+      }
+    },
+    {
+      "kind": "onprem",
+      "active": {
+        "state": "playing",
+        "focus": true,
+        "running": 7
+      },
+      "pause": {
+        "state": "paused",
+        "states": [
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused",
+          "paused"
+        ]
+      },
+      "end": {
+        "state": "static",
+        "running": 0,
+        "focus": true
+      }
+    }
+  ],
+  "skip": "landing-content",
+  "compact": {
+    "viewport": [
+      720,
+      450,
+      2
+    ],
+    "overflow": 0
+  },
+  "guides": [
+    {
+      "path": "/docs/nova",
+      "status": 200
+    },
+    {
+      "path": "/docs/lumen",
+      "status": 200
+    },
+    {
+      "path": "/docs/drover",
+      "status": 200
+    }
+  ],
+  "hidden": {
+    "visibility": "hidden",
+    "state": "paused"
+  },
+  "resumed": {
+    "visibility": "visible",
+    "state": "playing"
+  },
+  "reduced": {
+    "states": [
+      "static",
+      "static",
+      "static",
+      "static",
+      "static",
+      "static"
+    ],
+    "running": 0
+  }
+}

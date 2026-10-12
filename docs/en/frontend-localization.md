@@ -70,7 +70,7 @@ Manifests map `namespace:key` to the first 16 hexadecimal characters of the Kore
 
 ## How to identify a key on screen
 
-Language pickers show each language's native name on the public page, login page and console header. Selection persists in the `afterglow_locale` cookie for one year and determines the next server-rendered HTML language. Browser language is not auto-detected; missing or invalid preferences use Korean.
+Documentation, landing, login and console headers share one theme-aware language disclosure. Expanded choices use native language names; compact header triggers use a globe and short locale code. Arrow keys and Home/End move through choices, Enter selects, app buttons also support Space, Escape restores trigger focus, and outside click or Tab departure dismisses. App selection persists in `afterglow_locale` for one year and determines the next server-rendered HTML language. Documentation uses real `?lang=` links retaining the path/query/fragment, without changing the app cookie, and remains usable without JavaScript. Browser language is not auto-detected; missing or invalid preferences use Korean.
 
 In the browser developer console:
 

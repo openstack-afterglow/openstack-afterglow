@@ -1,0 +1,72 @@
+{
+  "changed_sources": [
+    "frontend/src/lib/components/landing/LandingPage.svelte",
+    "frontend/src/lib/components/landing/LandingMotionGraphic.svelte",
+    "frontend/src/lib/components/landing/LandingChatDemo.svelte",
+    "frontend/src/lib/i18n/messages/ko/public-entry.json",
+    "frontend/src/lib/i18n/messages/en/public-entry.json",
+    "frontend/src/lib/i18n/messages/ja/public-entry.json",
+    "frontend/src/lib/i18n/messages/zh-CN/public-entry.json"
+  ],
+  "tests": {
+    "files": 4,
+    "passed": 18
+  },
+  "check": {
+    "files": 2360,
+    "errors": 0,
+    "warnings": 3
+  },
+  "i18n": {
+    "errors": 0,
+    "warnings": 0,
+    "namespaces": 37,
+    "messages": 9400,
+    "scan_files": 987,
+    "hardcoded_korean_lines": 0
+  },
+  "build": {
+    "exit": 0,
+    "vite": "8.2.2",
+    "adapter": "node"
+  },
+  "compiled_browser": {
+    "origin": "http://127.0.0.1:5222",
+    "conditions": 64,
+    "contacts": 21,
+    "all_faces_opaque": true,
+    "min_graphic_label_px": 13.89969758064516,
+    "major_control_min_px": 44,
+    "desktop_compact_locale_px": 32,
+    "max_overflow": 0,
+    "chat": "Explicit authored4message illustrative conversation, not private history or provider output;4.54s finite sequence."
+  },
+  "media": {
+    "before": {
+      "width": 1440,
+      "height": 900,
+      "frames": 432,
+      "duration_seconds": 14.4,
+      "bytes": 1492034,
+      "changed_frames": 192,
+      "nominal_rate": "30/1"
+    },
+    "after": {
+      "width": 1440,
+      "height": 900,
+      "frames": 516,
+      "duration_seconds": 17.2,
+      "bytes": 1319162,
+      "changed_frames": 169,
+      "nominal_rate": "30/1"
+    }
+  },
+  "architecture": "checked staged source_sha256=021e960f30faae2729494804228990d164a554f45dda54cda93433eaa0025191 files=2584",
+  "limits": [
+    "Full test:gate not run",
+    "No production deployment/commit/push",
+    "Public config preview CORS preflight403; defaultconfig UI",
+    "No private history, actual inference/cloud mutation, Firefox/Safari/native200%zoom"
+  ],
+  "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/landing-visual-repair-20261012-4xs6up8k"
+}

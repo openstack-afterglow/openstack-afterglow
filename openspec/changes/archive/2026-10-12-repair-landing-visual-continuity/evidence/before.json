@@ -1,0 +1,15 @@
+{
+  "conditions": {
+    "w": 1440,
+    "h": 900,
+    "dpr": 1,
+    "motion": true,
+    "theme": ""
+  },
+  "recording": {
+    "path": "/tmp/landing-repair-before-chapters.mp4",
+    "durationMs": 13952,
+    "frames": 452,
+    "bytes": 1492034
+  }
+}

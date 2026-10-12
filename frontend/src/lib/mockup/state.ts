@@ -10,6 +10,7 @@ import type { EndpointGroup, NetworkAgent, Service, StoragePool } from '$lib/typ
 import type { User } from '$lib/types/common';
 import type { ZunContainerDetail } from '$lib/types/zunContainer';
 import type { MonitoringSummary } from '$lib/components/admin/monitoring/MonitoringSummaryTab.svelte';
+import type { McpClientObservation } from '$lib/components/account/McpAccessSection.svelte';
 
 const NOW = '2026-07-09T00:00:00Z';
 const PROJECT_ID = 'mock-project-1';
@@ -30,6 +31,7 @@ interface MockMcpAccessRecord {
 	last_used_at: string | null;
 	revoked_at: string | null;
 	is_lumen_default: boolean;
+	client_observations: McpClientObservation[];
 }
 
 interface MockupState {
@@ -250,6 +252,10 @@ function seedState(): MockupState {
 					last_used_at: '2026-07-08T18:30:00Z',
 					revoked_at: null,
 					is_lumen_default: true,
+					client_observations: [
+						{ client_name: 'Lumen', client_version: '1.0', product: 'Lumen', kind: 'agent', identity_source: 'client_info', browser: null, os: null, first_seen_at: '2026-07-06T12:00:00Z', last_seen_at: '2026-07-08T18:30:00Z' },
+						{ client_name: null, client_version: null, product: null, kind: 'unknown', identity_source: 'unknown', browser: null, os: null, first_seen_at: '2026-07-07T09:00:00Z', last_seen_at: '2026-07-08T12:00:00Z' },
+					],
 				},
 			],
 			oauthGrants: [
@@ -269,6 +275,11 @@ function seedState(): MockupState {
 					last_used_at: '2026-07-08T16:15:00Z',
 					revoked_at: null,
 					is_lumen_default: false,
+					client_observations: [
+						{ client_name: 'Desktop MCP client', client_version: '2.1', product: 'Desktop MCP client', kind: 'agent', identity_source: 'client_info', browser: null, os: 'macOS 15', first_seen_at: '2026-07-06T12:00:00Z', last_seen_at: '2026-07-08T16:15:00Z' },
+						{ client_name: null, client_version: null, product: 'Chrome', kind: 'browser', identity_source: 'user_agent', browser: 'Chrome 138', os: 'Windows 11', first_seen_at: '2026-07-07T10:00:00Z', last_seen_at: '2026-07-08T14:00:00Z' },
+						{ client_name: null, client_version: null, product: null, kind: 'unknown', identity_source: 'unknown', browser: null, os: null, first_seen_at: '2026-07-07T14:00:00Z', last_seen_at: '2026-07-08T10:00:00Z' },
+					],
 				},
 			],
 		},

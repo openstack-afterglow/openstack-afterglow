@@ -1,0 +1,9 @@
+## Implementation Tasks
+
+- [x] Trace the current user/admin wizard, three API creation paths and Nova boundary; inspect the operator report and live native-image metadata without reading the password or modifying cloud resources.
+- [x] Reproduce native-image rejection and old Windows adminPass suppression before editing (local executable smoke: native HTTP400, legacy suppresses adminPass and generates credential user-data).
+- [x] Replace script delivery with exact native-marker admission, Nova adminPass and ConfigDrive; remove obsolete generation and migrate affected backend regressions while retaining security/error/ownership/admission contracts.
+- [x] Update shared wizard metadata/readiness, unsupported-Windows handling, relevant frontend regressions and four-locale guidance without persisting or reviewing the secret.
+- [x] Run focused regressions and the instances target; exercise actual FastAPI and installed OpenStack SDK through loopback HTTP for user sync/SSE and target-project admin SSE, image/volume and secret/error boundaries (backend459/frontend106 focused; instances1,145/546; native63conditions/399provider HTTP).
+- [x] Exercise the compiled current frontend in Chromium for user/admin native-image/volume submission, unsupported sources, matching input, secret lifecycle and four-locale responsive guidance (224rendered locale/theme/width conditions, four native submission flows, failure/clearing and image/volume rejection; synthetic boundaries recorded).
+- [x] Update current architecture, API/user guides, changelog and evidence; run scoped architecture guard and record exactly what is local, prior-live, undeployed and unverified (frozen public snapshot full gate exit0; working/staged digest93050be8…/2,608files; shared28scope files hash-matched; private source/index/review marker/cloud resources unchanged; owned services/browser stopped).

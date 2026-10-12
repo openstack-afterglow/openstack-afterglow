@@ -257,7 +257,7 @@ async def update_image_properties(
             req.set,
             req.remove,
         )
-        await invalidate(f"afterglow:glance:{conn._afterglow_project_id}:images")
+        await invalidate("afterglow:glance:*:images")
         return (await image_verification.enrich([result]))[0]
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"properties 수정 실패: {e}")

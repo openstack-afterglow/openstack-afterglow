@@ -32,6 +32,7 @@ from app.models.mcp_authority import (
     McpProjectCredential,
     McpToolInvocation,
 )
+from app.services.mcp_control_plane.clients import public_client_observations
 from app.services.mcp_control_plane.crypto import decrypt_application_credential, encrypt_application_credential
 from app.services.mcp_control_plane.sdk import _drain
 
@@ -1014,6 +1015,7 @@ def grant_public_view(
         "last_used_at": token.last_used_at if token else grant.last_used_at,
         "revoked_at": grant.revoked_at,
         "is_lumen_default": is_lumen_default,
+        "client_observations": public_client_observations(grant.client_observations),
     }
 
 

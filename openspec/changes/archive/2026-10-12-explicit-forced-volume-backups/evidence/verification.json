@@ -1,0 +1,139 @@
+{
+  "scope": "local source only; no production mutations or deployment",
+  "backend_exact": {
+    "passed": 24,
+    "context": "same source, temporary cwd; canonical runner blocked by existing private TOML parse error"
+  },
+  "backend_storage_and_auto": {
+    "passed": 628
+  },
+  "frontend_storage": {
+    "files": 10,
+    "passed": 83
+  },
+  "frontend_guides": {
+    "files": 2,
+    "passed": 28
+  },
+  "target_registry": {
+    "passed": 12
+  },
+  "svelte": {
+    "files": 2370,
+    "errors": 0,
+    "warnings": 6,
+    "changed_files_have_diagnostics": false
+  },
+  "i18n_volume": {
+    "errors": 0,
+    "warnings": 0
+  },
+  "changed_svelte_scan": {
+    "files": 3,
+    "hardcoded_korean": 0
+  },
+  "ruff": {
+    "files": 4,
+    "check": "passed",
+    "format_check": "passed"
+  },
+  "browser": {
+    "conditions": 112,
+    "locales": [
+      "ko",
+      "en",
+      "ja",
+      "zh-CN"
+    ],
+    "themes": [
+      "dark",
+      "light"
+    ],
+    "widths": [
+      320,
+      390,
+      767,
+      768,
+      1023,
+      1024,
+      1440
+    ],
+    "provider": "real native SDK/loopback HTTP, synthetic identity and Cinder",
+    "zoom_equivalent_conditions": 2
+  },
+  "architecture": {
+    "scope": "HEAD plus 17 named source overlays",
+    "working": "passed",
+    "staged": "passed",
+    "source_sha256": "0614351daa08e93d8a461327597bfcc727e83f2f2c27a9b74d5699b10bffa2eb",
+    "files": 2602,
+    "shared_index_and_review_marker": "preserved"
+  },
+  "gbrain": {
+    "gbrain_cli_on_path": null,
+    "documented_detector": {
+      "path": "~/.claude/skills/gstack/bin/gstack-gbrain-detect",
+      "exit": 127,
+      "result": "command not found"
+    }
+  },
+  "full_test_gate": "not run",
+  "production_backup_restore": "not exercised",
+  "production_frontend_build": {
+    "result": "passed",
+    "context": "final conditional-warning current-source isolated frontend snapshot",
+    "receipt": "production-build.log",
+    "adapter": "node",
+    "source_sha256": "0614351daa08e93d8a461327597bfcc727e83f2f2c27a9b74d5699b10bffa2eb"
+  },
+  "openspec": {
+    "schema": "rapid",
+    "tasks": "all complete",
+    "archive": "2026-10-12-explicit-forced-volume-backups",
+    "spec_updates": "skipped; no delta specs",
+    "generic_validator_warning": "No deltas found; not reported as strict validation success"
+  },
+  "owned_qa_cleanup": {
+    "browser_tab_and_profile_process": "closed",
+    "dev_frontends": "stopped",
+    "native_loopback_apis": "stopped",
+    "other_agent_services": "untouched",
+    "temporary_copies_profile_and_fixture_scripts": "removed; durable receipts and screenshots retained outside /tmp"
+  },
+  "final_warning_revision": {
+    "claim": "force itself does not guarantee crash-consistency or recovery; live writes may yield inconsistent backup data",
+    "locales": [
+      "ko",
+      "en",
+      "ja",
+      "zh-CN"
+    ],
+    "consumer_regressions": {
+      "files": 3,
+      "passed": 34
+    },
+    "catalog": {
+      "namespaces": 37,
+      "source_messages": 9450,
+      "errors": 0,
+      "warnings": 0
+    },
+    "browser_conditions": 112,
+    "native_ui_forces": [
+      true,
+      true,
+      false
+    ],
+    "short_viewport_conditions": 2,
+    "final_screenshots": [
+      "selector-warning-mobile-light.png",
+      "inline-warning-mobile-light.png",
+      "selector-zoom-equivalent.png",
+      "inline-zoom-equivalent.png"
+    ],
+    "preliminary_screenshots": [
+      "preliminary-selector-warning-desktop.png",
+      "preliminary-inline-warning-desktop.png"
+    ]
+  }
+}

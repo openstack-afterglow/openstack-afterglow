@@ -34,7 +34,7 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 6. [소유자 정보](#6-소유자-정보)
 7. [Floating IP 관리](#7-floating-ip-관리)
 8. [관리자 패스워드 재설정](#8-관리자-패스워드-재설정)
-9. [데이터 스토리지 연결](#9-데이터-스토리지-연결-storage-attachments)
+9. [파일 스토리지 접근 권한](#9-파일-스토리지-접근-권한-storage-attachments)
 10. [리소스 메트릭](#10-리소스-메트릭)
 11. [GitHub SSH 사용자 확인](#11-github-ssh-사용자-확인)
 12. [cloud-init 스니펫 라이브러리](#12-cloud-init-스니펫-라이브러리)
@@ -67,6 +67,7 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `id` | string | 인스턴스 UUID |
 | `name` | string | 인스턴스 이름 |
 | `status` | string | Nova 상태 (`ACTIVE`, `SHUTOFF`, `BUILD`, `ERROR` 등) |
+| `os_type` | string \| null | 상세 조회에서 실제 Glance 이미지 또는 부팅 Cinder 볼륨 metadata의 OS를 정규화. 조회 불가·모호한 부팅 볼륨은 null이며 이름으로 추정하지 않음 |
 | `image_id` / `image_name` | string \| null | 부팅 이미지 |
 | `flavor_id` / `flavor_name` | string \| null | 플레이버 |
 | `ip_addresses` | array | `{addr, type("fixed"\|"floating"), network_name}` |
@@ -136,7 +137,7 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `flavor_id` | string | 예 | Nova 플레이버 UUID |
 | `network_id` | string | 아니오 | 연결할 네트워크 UUID. 생략 시 기본 네트워크 자동 결정 |
 | `key_name` | string | 아니오 | SSH 키페어 이름 |
-| `admin_pass` | string | 아니오 | 관리자 비밀번호 (8–128자) |
+| `admin_pass` | string | 아니오 | 초기 비밀번호(8–128자, 앞뒤 공백 보존, C0/DEL/C1 제어 문자 금지). 지원 Windows는 Nova `adminPass`와 ConfigDrive로 전달하며 명시적 비-Windows OS의 기존 Nova `adminPass`도 유지 |
 | `availability_zone` | string | 아니오 | 가용 영역. 생략 시 서버 기본 AZ |
 | `security_groups` | array[string] | 아니오 | 보안 그룹 이름 목록. GPU 모니터링에 필요한 SG는 서버가 추가 |
 | `boot_volume_size_gb` | integer | 아니오 | 부트 볼륨 크기(GB, 1–16384). 생략 시 서버 설정 기본값 |
@@ -144,10 +145,19 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `additional_volume_ids` | array[string] | 아니오 | 생성 직후 연결할 기존 볼륨 UUID 목록 |
 | `new_volumes` | array | 아니오 | 신규 생성·연결할 볼륨 `{name, size_gb}` 목록 |
 | `data_mounts` | array | 아니오 | 기존 Manila share 직접 마운트 `{file_storage_id, mount_point, read_only}` |
-| `userdata` | string | 아니오 | 사용자 cloud-init. 관리형 cloud-config 뒤에 병합 (최대 64 KiB) |
+| `userdata` | string | 아니오 | 사용자 cloud-init. 관리형 cloud-config 뒤에 병합 (최대 64 KiB). Windows 초기 비밀번호와 함께 지정할 수 없음 |
 | `github_username` | string | 아니오 | GitHub 공개키 SSH 접근. Ubuntu 이미지 직접 부팅에서만 사용하며 생성 전에 서버가 GitHub 프로필·공개키를 재검증 |
 
 > `data_mounts[].mount_point`는 `/mnt`, `/data`, `/srv`, `/home` 하위 절대 경로만 허용되며 `..`/`.` 세그먼트 및 `/opt`·`/etc`·`/usr`·`/var` 등 시스템 경로는 거부됩니다. NFS share 마운트에는 `network_id`(subnet CIDR 해석용)가 필요합니다.
+
+**Windows 초기 비밀번호**
+
+사용자 동기/SSE 및 관리자 SSE 생성은 `admin_pass`가 있을 때 요청 프로젝트의 Glance 이미지 또는 선택한 Cinder 부팅 볼륨의 `volume_image_metadata`를 다시 조회합니다. Windows 지원 조건은 `os_type=windows`(앞뒤 공백 제거·대소문자 무시), 정확한 `windows_initial_password_method=nova-adminpass-configdrive`, 비어 있지 않고 제어 문자가 없는 `os_admin_user`입니다. 이전 `cloudbase-user-data`와 미확인 방식은 지원하지 않습니다. 계정·이미지 UUID·compute host를 하드코딩하지 않습니다. 기존 볼륨은 공급자가 반환한 소유 프로젝트가 대상 프로젝트와 정확히 일치해야 하며 관리자도 우회하지 않습니다. OS/metadata가 미확인인 비밀번호 요청과 지원하지 않는 Windows 방식은 자원 생성 전에 거부됩니다. 공용 wizard도 미지원 Windows를 SSH/keypair 경로로 보내지 않고 명시적으로 차단합니다.
+
+지원 Windows 요청은 입력값을 그대로 Nova `adminPass`에 넣고 `config_drive=true`를 강제합니다. 비밀번호용 PowerShell·user-data와 SSH 키, 생성 후 암호 초기화는 필요하지 않습니다. 이미지 내부 Cloudbase-Init에 `inject_user_password=true`, ConfigDrive 우선 provider와 암호 플러그인이 실제 설정되어 있어야 합니다. Glance marker만 추가해 게스트 설정을 대신할 수 없으며, 이미 초기화된 Windows 부팅 볼륨의 재사용에서 암호를 다시 바꾸는 기능도 아닙니다. `userdata`, `github_username`, `data_mounts` 조합은 부트 볼륨·서버 생성 및 쿼터 예약 전에 거부합니다. GPU flavor는 선택할 수 있으며 기존 GPU quota·capacity admission은 유지하지만 Linux GPU 초기화 스크립트는 생성·병합하지 않습니다. Windows GPU 드라이버 설치와 게스트의 GPU 사용은 별도 확인 사항입니다. 비밀번호가 없으면 추가 password metadata 조회 없이 기존 생성 경로를 유지합니다. [Cloudbase-Init 암호 플러그인](https://cloudbase-init.readthedocs.io/en/1.1.6/plugins.html#setting-password-main)과 [Nova ConfigDrive](https://docs.openstack.org/nova/2025.2/admin/config-drive.html)를 참고하세요.
+
+비밀번호는 요청 내부에서 secret으로 취급하고 응답·검증 오류·진행 메시지·실패/rollback 로그·활동 및 cloud-init 이력·Nova 사용자 metadata에 저장하지 않습니다. 다만 **Nova의 게스트 metadata와 config drive에는 암호화되지 않은 비밀번호가 있습니다**. 해당 자료의 접근을 비밀처럼 보호해야 합니다. API/SSE 완료나 Nova `ACTIVE`는 Windows 최초 초기화·비밀번호 적용·RDP 로그인 성공 증거가 아닙니다. 최초 초기화는 약20–30분이 걸릴 수 있고 첫 RDP 프로필 준비에도 시간이 필요합니다. RDP `TCP/3389` 보안 그룹은 운영 정책에 맞는 접속 원본으로 별도 설정하며 자동으로 개방하지 않습니다.
+
 
 **플레이버 쿼터·호스트 용량 사전 검증**
 
@@ -171,7 +181,7 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 **오류**
 - `400 Bad Request` — boot source 검증 실패(`image_id`/`boot_volume_id` 동시 지정 또는 둘 다 누락), 볼륨 상태 불량, 이름 정규화 실패
 - `409 Conflict` — 프로젝트 인스턴스/vCPU/RAM/GPU 쿼터 초과 또는 확인된 같은 호스트 CPU·RAM·GPU 용량 부족
-- `422 Unprocessable Entity` — `github_username` 형식 오류, GitHub 사용자/조직 부적합, 공개 SSH 키 없음
+- `422 Unprocessable Entity` — `admin_pass` 길이/제어 문자 또는 요청 모델 오류, `github_username` 형식 오류, GitHub 사용자/조직 부적합, 공개 SSH 키 없음
 - `429 Too Many Requests` — GitHub API 요청 한도 도달(`Retry-After` 헤더 포함)
 - `503 Service Unavailable` — GPU flavor의 호스트 capacity·쿼터·AZ 정책 또는 GitHub 정보를 검증할 수 없어 생성 전에 차단
 - `500 Internal Server Error` — 생성 실패(리소스는 역순 롤백됨). 비관리자에게는 상세 원인이 숨겨집니다
@@ -273,6 +283,8 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `GET` | `/api/v1/instances/{instance_id}/log` | 콘솔 로그 반환 |
 
 기존 start/stop/reboot/shelve/unshelve 제어 액션은 소유권 검증 후 **`204 No Content`** 를 반환합니다. `start`는 정지(`SHUTOFF`) 상태, `stop`은 실행 상태를 전제로 하며, 상태가 맞지 않으면 하위 Nova 오류가 `500`으로 전달됩니다.
+
+공용 사용자·관리자 UI의 보관·삭제·리사이즈 진입점은 정확한 `SHUTOFF` 상태와 쓰기 권한을 요구합니다. 확인창 뒤에도 최초 대상·상태·토큰·프로젝트·권한을 재검사합니다. 기존 Nova API와 관리자 복구·마이그레이션 계약 자체를 좁히지는 않습니다. 정지는 컴퓨트 할당·쿼터를 유지합니다. `SHELVED`만으로 자원 반환을 판단하지 않고 `SHELVED_OFFLOADED` 완료 또는 삭제 뒤 호스트 컴퓨트 반환을 확인합니다. 보관 후 인스턴스·보존 볼륨 사용량은 남고 CPU/RAM 쿼터 반환은 Placement 기반/기존 집계 방식에 따라 다릅니다.
 
 ### 소유 인스턴스 리사이즈
 
@@ -574,54 +586,34 @@ QEMU Guest Agent(QGA)를 통해 게스트 OS 계정의 비밀번호를 변경합
 
 ---
 
-## 9. 데이터 스토리지 연결 (storage-attachments)
+## 9. 파일 스토리지 접근 권한 (storage-attachments)
 
-실행 중인 VM에 사용자 소유(또는 public) Manila 파일 스토리지 접근 규칙을 부여하고 게스트에서 실행할 마운트 명령을 반환합니다.
+이 API는 Manila 접근 규칙을 인스턴스와 연결합니다. 게스트 mount/unmount·SSH·agent 실행은 하지 않습니다. NFS는 현재 인스턴스의 정확한 fixed IP, CephFS는 이름 변경에 영향받지 않는 `afterglow-<instance UUID.hex>` CephX identity를 사용합니다. 인스턴스·share 관리 권한이 필요하며 public share 조회 가능 여부는 관리 권한을 부여하지 않습니다.
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| `POST` | `/api/v1/instances/{instance_id}/storage-attachments` | 파일 스토리지 접근 규칙 부여 + 마운트 명령 반환 |
-| `GET` | `/api/v1/instances/{instance_id}/storage-attachments` | 연결된 데이터 파일 스토리지 목록 |
-| `DELETE` | `/api/v1/instances/{instance_id}/storage-attachments/{file_storage_id}` | 접근 규칙 회수 |
+| `POST` | `/api/v1/instances/{instance_id}/storage-attachments` | 정확한 접근 규칙 부여·연결 정보 반환 |
+| `GET` | `/api/v1/instances/{instance_id}/storage-attachments` | 비밀 없는 연결·실제 규칙 상태 목록 |
+| `POST` | `/api/v1/instances/{instance_id}/storage-attachments/{file_storage_id}/connection-info` | 관리되는 active CephFS 규칙의 명시적 연결 정보·키 조회 |
+| `DELETE` | `/api/v1/instances/{instance_id}/storage-attachments/{file_storage_id}` | 정확히 추적하는 관리 규칙만 회수 |
 
-### POST /api/v1/instances/{instance_id}/storage-attachments
+### 접근 규칙 요청
 
-**요청 본문** (`StorageAttachRequest`)
+`StorageAttachRequest`는 `{ "file_storage_id": "share-uuid", "read_only": false, "fixed_ip": "10.0.0.5" }`를 받습니다. NFS의 `fixed_ip` 생략은 유일한 fixed IP일 때만 허용합니다. 다중 fixed IP는 선택이 필요하고 floating IP·CIDR·다른 IP·미지원 프로토콜은 변경 전에 거부합니다. CephFS에는 IP를 지정하지 않습니다. `read_only`는 접근 규칙의 `ro/rw`이지 mount 옵션이 아닙니다. 이전 `mount_point` 등 추가 필드는 `422`입니다. VM 생성의 별도 `data_mounts`/`DataMountSpec` 계약은 유지됩니다.
 
-```json
-{ "file_storage_id": "uuid-string", "mount_point": "/mnt/data", "read_only": false }
-```
+### 응답과 비밀 경계
 
-| 필드 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| `file_storage_id` | string | 예 | Manila share UUID |
-| `mount_point` | string | 예 | `/mnt`·`/data`·`/srv`·`/home` 하위 절대 경로 (시스템 경로/`..` 금지) |
-| `read_only` | boolean | 아니오 | 읽기 전용 마운트 여부 (기본 false) |
+POST는 `200`, GET는 같은 비밀 없는 객체의 배열을 반환합니다. 필드는 `file_storage_id`, `name`, `share_proto`, `status`, `access_id`, `access_type`, `access_to`, `access_level`, 실제 `state`, `association_state`, `managed`, `exports`, `share_network_id`, `share_network`입니다. `association_state`는 `tracked/mismatch/untracked/unknown`이며 `active` 규칙도 실제 게스트 연결을 증명하지 않습니다. `new/applying/denying/error` 등을 성공한 mount로 표시하지 않습니다.
 
-**응답 (200 OK)** — 프로토콜에 따라 마운트 명령이 다릅니다.
+GET에는 키·keyring·mount 명령이 없습니다. 새 active CephFS grant 또는 권한 있는 명시적 connection-info POST만 필요할 때 `secret: {type:"cephx_key", value:"..."}`를 포함하며 `Cache-Control: no-store`를 사용합니다. UI는 이를 현재 패널 메모리에만 표시하고 닫기·대상/프로젝트/토큰/권한 전환에서 지웁니다. 화면에서 지워도 제공자의 CephX credential은 회수되지 않습니다. guest OS에 맞는 클라이언트·export/network 도달성·안전한 키 전달은 사용자가 준비합니다.
 
-```json
-{
-  "file_storage_id": "uuid-string",
-  "share_proto": "CEPHFS",
-  "mount_command": "sudo mkdir -p ... && sudo mount -t ceph ...",
-  "keyring_file": "[client.data-rw-...]\n    key = ...\n",
-  "keyring_path": "/etc/ceph/ceph.client.data-rw-....keyring",
-  "access_id": "uuid-string"
-}
-```
+### 회수와 인스턴스 삭제
 
-> NFS share인 경우 `keyring_file`/`keyring_path`는 `null`이며, VM의 fixed IP 기반 접근 규칙이 부여됩니다(fixed IP를 찾지 못하면 `409`). 접근 권한이 없거나 share가 `available`이 아니면 각각 `403`/`409`.
+Nova metadata에는 share ID, 정확한 rule ID/type/target/level, managed 여부만 compact하게 기록합니다. 기존 외부 규칙은 `managed=false`이고 이 경로로 회수할 수 없습니다. 다른 VM·이름 prefix·광역 IP 규칙을 추정하여 삭제하지 않습니다. 잘못된 metadata와 provider mismatch는 fail closed합니다.
 
-### GET /api/v1/instances/{instance_id}/storage-attachments
+회수는 Manila 2.65의 정확한 `GET share-access-rules/{rule_id}`로 identity를 검증하고 deny 이후 다시 확인합니다. **정확한 HTTP 404만 부재**이며 빈/불완전 목록은 부재 증거가 아닙니다. pending은 `409`, 제공자 조회/처리 불확실성은 `502`로 남기고 tracking을 유지합니다. terminal absence 확인 후에만 metadata를 지우고 `204`를 반환합니다. 단건·bulk VM 삭제도 관리 grant 회수를 native 서버 삭제 전에 수행하여 미완료 시 VM과 tracking을 보존합니다. 기존 Union/prebuilt 정리는 별도 계약으로 유지됩니다.
 
-**응답 (200 OK)** — 배열 `[{file_storage_id, name, share_proto, status}]`
-
-### DELETE /api/v1/instances/{instance_id}/storage-attachments/{file_storage_id}
-
-해당 인스턴스에 대해 부여된 CephX/NFS 접근 규칙을 회수하고 메타데이터에서 제거합니다.
-
-**응답**: `204 No Content`
+이미 삭제된 파일 스토리지의 잔여 연결도 정확한 rule 조회의 HTTP404가 확인되면 정리할 수 있습니다. Rule이 남아 있으면 현재 파일 스토리지 관리 권한과 규칙 소유권·대상을 검증한 뒤에만 회수합니다. 부모 share 조회 실패나 rule403/503을 부재로 취급하지 않습니다.
 
 ---
 

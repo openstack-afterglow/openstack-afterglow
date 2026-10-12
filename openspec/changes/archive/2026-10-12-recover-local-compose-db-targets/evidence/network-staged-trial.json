@@ -1,0 +1,158 @@
+{
+  "successful": false,
+  "error": "Error: Published ports did not follow staged gateway after old endpoint removal",
+  "rollbackProbes": {
+    "host": {
+      "exit": 0,
+      "results": [
+        {
+          "mysql": {
+            "database": "afterglow_functional",
+            "server_id": 1,
+            "select_one": 1,
+            "uptime_seconds": 2420
+          }
+        },
+        {
+          "redis": {
+            "run_id": "bf719e1146cb0d871caa0757f19751a2717439d4",
+            "uptime_seconds": 2422
+          }
+        },
+        {
+          "postgres_host_tcp": "connected"
+        }
+      ]
+    },
+    "postgresMappedSQL": {
+      "exit": 0,
+      "result": "afterglow_checkpoints|7695482625014321190|2026-10-11 18:42:53.3676+00|1"
+    }
+  },
+  "withBothEndpoints": {
+    "host": {
+      "exit": 0,
+      "results": [
+        {
+          "mysql": {
+            "database": "afterglow_functional",
+            "server_id": 1,
+            "select_one": 1,
+            "uptime_seconds": 2407
+          }
+        },
+        {
+          "redis": {
+            "run_id": "bf719e1146cb0d871caa0757f19751a2717439d4",
+            "uptime_seconds": 2409
+          }
+        },
+        {
+          "postgres_host_tcp": "connected"
+        }
+      ]
+    },
+    "postgresMappedSQL": {
+      "exit": 0,
+      "result": "afterglow_checkpoints|7695482625014321190|2026-10-11 18:42:53.3676+00|1"
+    }
+  },
+  "afterOriginalEndpointRemoval": {
+    "host": {
+      "exit": 1,
+      "results": "Traceback (most recent call last):\n  File \"/Users/pieroot/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/tasks.py\", line 520, in wait_for\n    return await fut\n           ^^^^^^^^^\n  File \"<string>\", line 7, in main\n  File \"/Users/pieroot/code/afterglow/backend/.venv/lib/python3.12/site-packages/aiomysql/connection.py\", line 74, in _connect\n    await conn._connect()\n  File \"/Users/pieroot/code/afterglow/backend/.venv/lib/python3.12/site-packages/aiomysql/connection.py\", line 539, in _connect\n    await self._get_server_information()\n  File \"/Users/pieroot/code/afterglow/backend/.venv/lib/python3.12/site-packages/aiomysql/connection.py\", line 1048, in _get_server_information\n    packet = await self._read_packet()\n             ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/pieroot/code/afterglow/backend/.venv/lib/python3.12/site-packages/aiomysql/connection.py\", line 609, in _read_packet\n    packet_header = await self._read_bytes(4)\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/pieroot/code/afterglow/backend/.venv/lib/python3.12/site-packages/aiomysql/connection.py\", line 657, in _read_bytes\n    data = await self._reader.readexactly(num_bytes)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/pieroot/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/streams.py\", line 752, in readexactly\n    await self._wait_for_data('readexactly')\n  File \"/Users/pieroot/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/streams.py\", line 545, in _wait_for_data\n    await self._waiter\nasyncio.exceptions.CancelledError\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<string>\", line 24, in <module>\n  File \"/Users/pieroot/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/runners.py\", line 195, in run\n    return runner.run(main)\n           ^^^^^^^^^^^^^^^^\n  File \"/Users/pieroot/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/runners.py\", line 118, in run\n    return self._loop.run_until_complete(task)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/pieroot/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/base_events.py\", line 691, in run_until_complete\n    return future.result()\n           ^^^^^^^^^^^^^^^\n  File \"/Users/pieroot/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/tasks.py\", line 519, in wait_for\n    async with timeouts.timeout(timeout):\n               ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/pieroot/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/timeouts.py\", line 115, in __aexit__\n    raise TimeoutError from exc_val\nTimeoutError\n"
+    },
+    "postgresMappedSQL": {
+      "exit": 0,
+      "result": "afterglow_checkpoints|7695482625014321190|2026-10-11 18:42:53.3676+00|1"
+    }
+  },
+  "operations": [
+    {
+      "at": "2026-10-11T19:23:01.361Z",
+      "args": [
+        "network",
+        "create",
+        "--driver",
+        "bridge",
+        "--subnet",
+        "192.168.248.0/24",
+        "--gateway",
+        "192.168.248.1",
+        "--label",
+        "afterglow.relocation.owner=recover-local-compose-db-targets",
+        "afterglow-db-relocation-20261012-transfer"
+      ],
+      "exit": 0,
+      "output": "cc3c4095030154543fbcd6305435d090fa4052f8d34fd28650d91bd107c3a050"
+    },
+    {
+      "at": "2026-10-11T19:23:01.457Z",
+      "args": [
+        "network",
+        "connect",
+        "--gw-priority",
+        "1",
+        "--alias",
+        "afterglow-remaining-commit-gate-bkjlix-mariadb-1",
+        "--alias",
+        "mariadb",
+        "afterglow-db-relocation-20261012-transfer",
+        "bb6a10b1a5a801cbf82b64132b3690983166df58c5188345f86fb2dc785894a8"
+      ],
+      "exit": 0,
+      "output": ""
+    },
+    {
+      "at": "2026-10-11T19:23:01.596Z",
+      "args": [
+        "network",
+        "disconnect",
+        "afterglow-remaining-commit-gate-bkjlix_default",
+        "bb6a10b1a5a801cbf82b64132b3690983166df58c5188345f86fb2dc785894a8"
+      ],
+      "exit": 0,
+      "output": ""
+    },
+    {
+      "at": "2026-10-11T19:23:13.797Z",
+      "args": [
+        "network",
+        "connect",
+        "--gw-priority",
+        "2",
+        "--alias",
+        "afterglow-remaining-commit-gate-bkjlix-mariadb-1",
+        "--alias",
+        "mariadb",
+        "--ip",
+        "172.30.0.4",
+        "afterglow-remaining-commit-gate-bkjlix_default",
+        "bb6a10b1a5a801cbf82b64132b3690983166df58c5188345f86fb2dc785894a8"
+      ],
+      "exit": 0,
+      "output": ""
+    },
+    {
+      "at": "2026-10-11T19:23:13.877Z",
+      "args": [
+        "network",
+        "disconnect",
+        "afterglow-db-relocation-20261012-transfer",
+        "bb6a10b1a5a801cbf82b64132b3690983166df58c5188345f86fb2dc785894a8"
+      ],
+      "exit": 0,
+      "output": ""
+    },
+    {
+      "at": "2026-10-11T19:23:14.049Z",
+      "args": [
+        "network",
+        "rm",
+        "cc3c4095030154543fbcd6305435d090fa4052f8d34fd28650d91bd107c3a050"
+      ],
+      "exit": 0,
+      "output": "cc3c4095030154543fbcd6305435d090fa4052f8d34fd28650d91bd107c3a050"
+    }
+  ]
+}

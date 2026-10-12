@@ -1,4 +1,13 @@
 const translations: Readonly<Record<string, string>> = {
+	'Windows 서비스용 이미지 준비와 일괄 설정': '准备 Windows 服务镜像并批量设置',
+	'실제 Windows 게스트부터 준비하기': '先准备实际 Windows 客户机',
+	'Cloudbase-Init의 inject_user_password=true, ConfigDriveService 우선 공급자와 SetUserPasswordPlugin, 실제 로컬 로그인 계정, 최초 부팅용 일반화·봉인과 저장소·네트워크 드라이버를 준비하세요. 이미지의 min_disk(GB)와 min_ram(MB)은 실제 요구량으로 지정하세요. 플래그 저장은 게스트 설치나 재봉인이 아닙니다.': '准备 Cloudbase-Init 的 inject_user_password=true、首选提供程序 ConfigDriveService 与 SetUserPasswordPlugin、实际本地登录账户、用于首次启动的通用化与封装，以及存储和网络驱动程序。镜像的 min_disk（GB）和 min_ram（MB）应设置为实际需求。保存标志不会安装或重新封装客户机。',
+	'이미지 상세에서 Windows 메타데이터 설정하기': '在镜像详情中设置 Windows 元数据',
+	'이미지 소유자 또는 관리자는 상세의 Windows 설정을 열어 기존 로그인 계정과 실제 게스트 준비 확인을 입력합니다. 기본값은 os_type=windows, os_distro=windows, 입력 계정의 os_admin_user, windows_initial_password_method=nova-adminpass-configdrive, img_config_drive=mandatory입니다. 준비된 Windows 11에는 UEFI/q35·TPM 2.0/tpm-crb·필수 Secure Boot를 선택하고, QGA는 실제 설치했을 때만 선택하세요. 현재→변경값을 검토하고 메타데이터 저장을 누르면 달라진 선택 플래그만 한 번에 저장합니다. 선택하지 않은 속성·공개 범위·소유자·해시·검증은 유지합니다.': '镜像所有者或管理员打开详情中的 Windows 设置，输入现有登录账户，并明确确认实际客户机已准备好。基本设置为 os_type=windows、os_distro=windows、该账户的 os_admin_user、windows_initial_password_method=nova-adminpass-configdrive，以及 img_config_drive=mandatory。对于准备好的 Windows 11，可选择 UEFI/q35、TPM 2.0/tpm-crb 和必需的 Secure Boot；仅在已实际安装时选择 QGA。审查当前值→拟变更值后保存元数据，仅批量应用所选且发生变化的标志。未选择的属性、可见性、所有者、哈希与验证保持不变。',
+	'저장 결과와 실제 최초 로그인을 따로 검증하기': '分别验证保存结果与实际首次登录',
+	'같은 이미지 UUID를 다시 열어 저장된 계정·방식·ConfigDrive를 확인하세요. VM 생성의 루트 디스크는 이미지 최소량 이상이어야 합니다(min_disk=80이면80GB 이상). 처음 선택한 작은 초안은 올라가지만 더 큰 값은 줄어들지 않습니다. 지원 Windows는 비밀번호·확인값을 Nova adminPass와 강제 ConfigDrive로 전달하고 SSH 키나 비밀번호용 user-data를 사용하지 않습니다. ACTIVE는 로그인 성공이 아니며 최초 구성에20–30분이 걸릴 수 있습니다. RDP 활성화·방화벽·제한된 보안 그룹을 별도로 준비하고 실제 입력 암호로 접속하세요.': '重新打开同一镜像 UUID，检查已保存的账户、方式与 ConfigDrive。VM 根磁盘必须达到镜像的最小容量（min_disk=80 时至少80GB）。过小的初始草稿会提高，但更大的值不会缩小。受支持的 Windows 创建通过 Nova adminPass 和强制 ConfigDrive 传递确认后的密码，不使用 SSH 密钥或密码 user-data。ACTIVE 不代表登录成功，首次配置可能需要20～30分钟。请另行启用 RDP、配置防火墙及限制来源的安全组，并使用实际输入的密码连接。',
+	'이전 이미지를 이름만 바꾸어 전환하지 마세요': '不要仅通过更改标签迁移旧镜像',
+	'cloudbase-user-data 또는 inject_user_password=false인 이전 게스트는 marker만 바꾸어 네이티브 암호 주입을 지원하지 않습니다. 별도 이미지에서 게스트를 먼저 준비·검증하세요. 브라우저 확인은 운영자 확인이지 게스트/RDP 검사나 신뢰·운영 준비 승인이 아닙니다. 이 설정은 기존 VM·볼륨의 암호를 바꾸지 않습니다.': '使用 cloudbase-user-data 或 inject_user_password=false 的旧客户机，不能仅通过更改 marker 获得原生密码注入支持。请先在单独的镜像中准备并验证客户机。浏览器确认是运维人员的确认，不是客户机/RDP 检测或信任、生产就绪批准。这些设置不会更改现有 VM 或卷的密码。',
 	'Glance 이미지 카탈로그의 repository·tag 그룹과 검색·필터 영역': 'Glance 镜像目录中的 repository 与 tag 分组及搜索、筛选区域',
 	'검색과 필터로 후보를 좁히고 repository별 tag를 살펴보세요.': '使用搜索和筛选缩小候选范围，并查看各 repository 下的 tag。',
 	'파일·이름·디스크 형식·가시성을 지정하는 빈 이미지 업로드 폼': '用于指定文件、名称、磁盘格式和可见性的空白镜像上传表单',

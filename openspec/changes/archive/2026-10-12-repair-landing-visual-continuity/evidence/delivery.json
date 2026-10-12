@@ -1,0 +1,15 @@
+{
+  "archive": "/Users/pieroot/code/afterglow/openspec/changes/archive/2026-10-12-repair-landing-visual-continuity",
+  "owned_tabs_closed": [
+    "landing-repair-baseline"
+  ],
+  "owned_services_stopped": [
+    "LandingVisualRepairDev",
+    "LandingVisualRepairCompiled"
+  ],
+  "owned_temporary_review_clone_removed": "/var/folders/1m/xfc726k14szbjnrlq5t68zjw0000gn/T/afterglow-landing-repair-review-byefpzxh",
+  "shared_index_preserved": true,
+  "shared_review_marker_preserved": true,
+  "source_scope_digest": "checked staged source_sha256=021e960f30faae2729494804228990d164a554f45dda54cda93433eaa0025191 files=2584",
+  "deployment": "Not deployed; no commit/push, private conversation access, paid provider execution or cloud state mutation."
+}

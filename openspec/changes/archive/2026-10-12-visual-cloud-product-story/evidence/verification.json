@@ -1,0 +1,180 @@
+{
+  "tests": {
+    "files": 4,
+    "passed": 18,
+    "command": "npm run test:target -- frontend:src/lib/components/landing/__tests__/LandingPage.test.ts frontend:src/lib/components/landing/__tests__/sceneMotion.test.ts frontend:src/lib/design/__tests__/typographyRoles.test.ts frontend:src/routes/__tests__/designSystemRules.test.ts"
+  },
+  "check": {
+    "files": 2359,
+    "errors": 0,
+    "warnings": 3,
+    "warning_files": [
+      "DocCodeBlock.svelte",
+      "WizardStep5Config.svelte",
+      "ProjectUsageTable.svelte"
+    ]
+  },
+  "i18n": {
+    "errors": 0,
+    "warnings": 0,
+    "namespaces": 37,
+    "source_messages": 9392,
+    "scan_files": 986,
+    "hardcoded_korean": 0
+  },
+  "production_build": {
+    "vite": "8.2.2",
+    "adapter": "node",
+    "exit": 0
+  },
+  "compiled_browser": {
+    "origin": "http://127.0.0.1:5206/",
+    "conditions": 64,
+    "locales": [
+      "ko",
+      "en",
+      "ja",
+      "zh-CN"
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "widths": [
+      320,
+      390,
+      767,
+      768,
+      1023,
+      1024,
+      1440,
+      2560
+    ],
+    "dpr": 1,
+    "max_overflow": 0,
+    "min_target_px": 44,
+    "min_svg_label_px": 12.51,
+    "all_svg_paint_in_viewBox": true,
+    "all5desktop_headline_and_visual_in_same_viewport": true,
+    "final_replay": {
+      "scenes": 5,
+      "focus_retained": true,
+      "complete_static": true,
+      "running_after_completion": 0
+    },
+    "visibility": "Actual other-tab hidden/visible pause/resume exercised before last presentation-only geometry/crop repairs; controller and wrapper behavior unchanged",
+    "fallback": "Final390px no-JS and final guide/retired-static paths exercised; missing observer is an owned synthetic capability fixture"
+  },
+  "motion": {
+    "before": {
+      "encoded_width": 1200,
+      "encoded_height": 750,
+      "encoded_frames": 146,
+      "duration_seconds": 4.866016,
+      "changed_frames": 45,
+      "bytes": 675996,
+      "nominal_rate": "30/1"
+    },
+    "after": {
+      "encoded_width": 1440,
+      "encoded_height": 900,
+      "encoded_frames": 390,
+      "duration_seconds": 13.0,
+      "changed_frames": 198,
+      "bytes": 1487951,
+      "nominal_rate": "30/1"
+    }
+  },
+  "failures_fixed": [
+    "Svelte localstate/$state collision",
+    "320px11.815px SVG labels",
+    "lowercase relative m pin paths painted outside figure",
+    "GPU/chat/onprem long framing"
+  ],
+  "limits": [
+    "local public site-config preview-origin CORS; defaultconfig UI exercised",
+    "full test:gate not run",
+    "no actual OpenStack/GPU/inference/Kubernetes/institution construction/production deployment",
+    "no commit/push",
+    "Safari/Firefox/native browser200%zoom not exercised",
+    "translations draft/non-certified",
+    "GBrainCLI absent; no sync"
+  ],
+  "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/visual-cloud-story-20261012-p9nbs46_",
+  "source_scope": {
+    "base_head": "249a937ed031d33a2fa883c37eb90c4aabacd17f",
+    "overlays": [
+      "frontend/src/lib/components/landing/LandingPage.svelte",
+      "frontend/src/lib/components/landing/LandingScene.svelte",
+      "frontend/src/lib/components/landing/LandingMotionGraphic.svelte",
+      "frontend/src/lib/components/landing/sceneMotion.ts",
+      "frontend/src/lib/components/landing/__tests__/LandingPage.test.ts",
+      "frontend/src/lib/components/landing/__tests__/sceneMotion.test.ts",
+      "frontend/src/lib/i18n/hardcoded-text-allowlist.json",
+      "frontend/src/routes/layout.css",
+      "frontend/src/lib/i18n/messages/ko/public-entry.json",
+      "frontend/src/lib/i18n/messages/en/public-entry.json",
+      "frontend/src/lib/i18n/messages/ja/public-entry.json",
+      "frontend/src/lib/i18n/messages/zh-CN/public-entry.json",
+      "frontend/static/landing/research-infrastructure-light.jpg",
+      "frontend/static/landing/research-infrastructure-dark.jpg"
+    ],
+    "deletions": [
+      "frontend/src/lib/components/landing/LandingOpsBoard.svelte",
+      "frontend/src/lib/components/landing/LandingDeployment.svelte",
+      "frontend/src/lib/components/landing/LandingConsolePreview.svelte",
+      "frontend/src/lib/components/landing/LandingFigure.svelte",
+      "frontend/src/lib/components/landing/PlateGraphic.svelte",
+      "frontend/src/lib/components/landing/plateGraphics.ts",
+      "frontend/src/lib/components/landing/LandingJourney.svelte",
+      "frontend/src/lib/components/landing/__tests__/LandingOpsBoard.test.ts",
+      "frontend/src/lib/components/landing/__tests__/LandingFigure.test.ts",
+      "frontend/src/lib/components/landing/__tests__/LandingJourney.test.ts",
+      "frontend/static/landing/plate-compute-allocation.svg",
+      "frontend/static/landing/plate-shared-data.svg",
+      "frontend/static/landing/plate-network-topology.svg",
+      "frontend/static/landing/plate-kubernetes.svg",
+      "frontend/static/landing/plate-network.svg",
+      "frontend/static/landing/plate-release.svg",
+      "frontend/static/landing/plate-monitoring.svg",
+      "frontend/static/landing/plate-security.svg",
+      "frontend/static/landing/plate-storage.svg",
+      "frontend/static/landing/plate-console.svg",
+      "frontend/static/landing/plate-professor.svg",
+      "frontend/static/landing/plate-quota.svg",
+      "frontend/static/landing/plate-lab-cloud.svg",
+      "frontend/static/landing/plate-layer.svg",
+      "frontend/static/landing/plate-api.svg"
+    ],
+    "source_hashes": {
+      "frontend/src/lib/components/landing/LandingPage.svelte": "e62328e810970deeab80fd598699bea506e2812585d6b6ef10c79ea3ee953ab2",
+      "frontend/src/lib/components/landing/LandingScene.svelte": "90f4fc8ac5d144617fe2a8eb512f7ad1fcd0aa9dbe553726eea13321b4889819",
+      "frontend/src/lib/components/landing/LandingMotionGraphic.svelte": "cd5a38c69d49834288fd870ef7a9368351836ba2d0300f3eabd3306e07c80d85",
+      "frontend/src/lib/components/landing/sceneMotion.ts": "00bace70fd5bb3455292efcea4537c20d87fc4dc7a42ad9a258531c7a3435124",
+      "frontend/src/lib/components/landing/__tests__/LandingPage.test.ts": "dc5b32a8100c40c9ff06cffc7bed0dccc9635b2b7cebab28f255496c00df2d62",
+      "frontend/src/lib/components/landing/__tests__/sceneMotion.test.ts": "e7894e9fe844f98ab8fa2614d987456a4d28831cdf8276b4af634f523ea9b210",
+      "frontend/src/lib/i18n/hardcoded-text-allowlist.json": "394c7c1337f93d39709aab6b27d55e6873209fe1cbc8204516d499b512b8ee35",
+      "frontend/src/routes/layout.css": "40734cd4533857ee254098a152d317e6ed8fb74cfadf6eb48b864be18fe676fc",
+      "frontend/src/lib/i18n/messages/ko/public-entry.json": "13fc719c565002f9bb6182afb8326ab71f338d04173aa07552360bcaba2866c8",
+      "frontend/src/lib/i18n/messages/en/public-entry.json": "c55a0a4618611a82a8057d1ddaed41f89dd7cd9fa528cd971fc48cbb09c1a461",
+      "frontend/src/lib/i18n/messages/ja/public-entry.json": "20a44cda23364d5f157eb4552351c836c00c53aff6145f4e40fab963b5ce27d4",
+      "frontend/src/lib/i18n/messages/zh-CN/public-entry.json": "e306266b0e8f7ac8b31c3307b4a51895aeedc89af6a9ca4baa6ade243f1abb72",
+      "frontend/static/landing/research-infrastructure-light.jpg": "4e56c0c3864486e4c62c90c2dc6b94f3f8fb0adc801711f1bc6c07372129afc6",
+      "frontend/static/landing/research-infrastructure-dark.jpg": "011558982034f85c1d671b50f50feac2159e6d28055b4d7bc104ea46d119bf66"
+    },
+    "stamp": "stamped staged source_sha256=5842b2caf370574e1a0febe100204463b691be7a3683fb58492ffd487c90618d files=2583",
+    "check": "checked staged source_sha256=5842b2caf370574e1a0febe100204463b691be7a3683fb58492ffd487c90618d files=2583",
+    "shared_index_preserved": true,
+    "shared_review_marker_preserved": true,
+    "scope": "Isolated Git clone/index with HEAD+14named overlays+25deletions; not the whole concurrent working tree",
+    "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/visual-cloud-story-20261012-p9nbs46_",
+    "docs": [
+      "ARCHITECTURE.md",
+      "DESIGN.md",
+      "CHANGELOG.md",
+      "docs/user-guide.md",
+      "docs/testing.md"
+    ],
+    "summary": "Scoped visual-cloud-product-story: large concept hardware artwork, concise5service scenes, finite viewport/document visibility lifecycle and explicit replay, static reduced/no-observer/no-JS fallback, native semantic SVG/shared tokens, sanitized actual Lumen capture; delete obsolete fixtures/cards/plates and translations. API/auth/schema/service ownership/deployment unchanged. HEAD plus14named overlays and25deletions only; shared index/review marker and concurrent work preserved; local/browser proof is not production/full-gate qualification. Final bounded SVG paint/desktop chapter framing and disclosed crop of the actual Lumen chat workspace; no fabricated conversation/provider result. Current design/user/testing/changelog documentation includes the final compiled64conditions,18regressions and local-only limits."
+  }
+}

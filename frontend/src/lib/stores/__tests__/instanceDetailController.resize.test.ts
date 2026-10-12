@@ -4,12 +4,13 @@ import { derived, writable } from 'svelte/store';
 import type { Instance } from '$lib/types/compute';
 import type { FlavorOption } from '$lib/types/flavor';
 import type { InstanceDetailController } from '../instanceDetailController.svelte';
+import { t } from '$lib/i18n/ns/instance';
 
 const { mockGet, mockPost, confirmDialog, toastError } = vi.hoisted(() => ({
 	mockGet: vi.fn(), mockPost: vi.fn(), confirmDialog: vi.fn(), toastError: vi.fn(),
 }));
 vi.mock('$lib/stores/auth', () => {
-	const auth = writable({ token: 'token', projectId: 'own-project', roles: ['member'], isSystemAdmin: false });
+	const auth = writable({ token: 'token', userId: 'user', projectId: 'own-project', roles: ['member'], isSystemAdmin: false });
 	return {
 		auth,
 		canWrite: derived(auth, state => state.isSystemAdmin || state.roles.some(role => ['admin', 'member'].includes(role))),
@@ -35,13 +36,13 @@ const flavors: FlavorOption[] = [
 	{ id: 'blocked', name: 'blocked', vcpus: 8, ram: 16384, disk: 20, is_public: true,
 		eligibility: { selectable: false, blockers: [{ code: 'disk_shrink' }], requirements: { instances: 0, cores: 0, ram_mb: 0, gpus: {} }, remaining: { instances: 0, cores: 0, ram_mb: 0, gpus: {} } } },
 ];
-let status = 'ACTIVE';
+let status = 'SHUTOFF';
 let flavorRequest: string;
 
-async function setup(adminMode = false): Promise<Controller> {
+async function setup(adminMode = false, source = { id: 'vm', projectId: 'target-project', adminMode }): Promise<Controller> {
 	let controller: Controller | undefined;
 	render(Probe, {
-		source: { id: 'vm', projectId: 'target-project', adminMode },
+		source,
 		onReady: value => { controller = value; },
 	});
 	await vi.waitFor(() => expect(controller).toBeDefined());
@@ -51,9 +52,9 @@ async function setup(adminMode = false): Promise<Controller> {
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	status = 'ACTIVE';
+	status = 'SHUTOFF';
 	flavorRequest = '';
-	auth.update(state => ({ ...state, token: 'token', projectId: 'own-project', roles: ['member'], isSystemAdmin: false }));
+	auth.update(state => ({ ...state, token: 'token', userId: 'user', projectId: 'own-project', roles: ['member'], isSystemAdmin: false }));
 	confirmDialog.mockResolvedValue(true);
 	mockGet.mockImplementation((path: string) => {
 		if (path === '/api/v1/instances/vm') return Promise.resolve({
@@ -134,6 +135,118 @@ describe('instance detail resize routing', () => {
 		confirmDialog.mockResolvedValue(false);
 		await s.confirmResize();
 		await s.revertResize();
+		expect(mockPost).not.toHaveBeenCalled();
+	});
+
+	it('owns resize-submit confirmation and does not post when declined', async () => {
+		const s = await setup();
+		await s.loadResizeFlavors();
+		confirmDialog.mockResolvedValueOnce(false);
+		expect(await s.doResize('next')).toBe(false);
+		const flavorLabel = t('resize.flavorLabel', { name: 'next', vcpus: 4, ram: '8 GB' });
+		expect(confirmDialog).toHaveBeenCalledWith(t('resize.confirmMessage', { flavorLabel }));
+		expect(mockPost).not.toHaveBeenCalled();
+		expect(s.resizeLoading).toBe(false);
+	});
+
+	it.each(['status', 'project', 'mode', 'token', 'permission', 'reload'])('rejects resize confirmation after %s changes even if choices are reloaded', async (change) => {
+		const source = { id: 'vm', projectId: 'target-project', adminMode: false };
+		const s = await setup(false, source);
+		await s.loadResizeFlavors();
+		const pending = Promise.withResolvers<boolean>();
+		confirmDialog.mockReturnValueOnce(pending.promise);
+		const request = s.doResize('next');
+		if (change === 'status') {
+			status = 'ACTIVE';
+			await s.fetchInstance('vm');
+		}
+		if (change === 'project') source.projectId = 'other-project';
+		if (change === 'mode') source.adminMode = true;
+		if (change === 'token') auth.update(state => ({ ...state, token: 'other-token' }));
+		if (change === 'permission') auth.update(state => ({ ...state, roles: ['reader'] }));
+		await s.loadResizeFlavors();
+		pending.resolve(true);
+		expect(await request).toBe(false);
+		expect(mockPost).not.toHaveBeenCalled();
+	});
+
+	it.each([false, true])('requires exact SHUTOFF before loading or submitting resize in adminMode=%s', async (adminMode) => {
+		status = 'ACTIVE';
+		const s = await setup(adminMode);
+		await s.loadResizeFlavors();
+		expect(flavorRequest).toBe('');
+		expect(await s.doResize('next')).toBe(false);
+		status = 'SHUTOFF';
+		await s.fetchInstance('vm');
+		await s.loadResizeFlavors();
+		expect(s.resizeFlavors).toHaveLength(3);
+		status = 'ACTIVE';
+		await s.fetchInstance('vm');
+		expect(await s.doResize('next')).toBe(false);
+		expect(mockPost).not.toHaveBeenCalled();
+	});
+
+	it.each(['ACTIVE', 'STOPPED', 'SHELVED', 'ERROR', 'VERIFY_RESIZE'])('never permits resize for %s', async (nextStatus) => {
+		status = nextStatus;
+		const s = await setup();
+		await s.loadResizeFlavors();
+		expect(await s.doResize('next')).toBe(false);
+		expect(flavorRequest).toBe('');
+		expect(mockPost).not.toHaveBeenCalled();
+	});
+
+	it.each(['instance', 'project', 'mode', 'token', 'caller', 'authProject', 'permission'])('rejects loaded resize choices after a %s switch', async (change) => {
+		const source = { id: 'vm', projectId: 'target-project', adminMode: false };
+		const s = await setup(false, source);
+		await s.loadResizeFlavors();
+		if (change === 'instance') source.id = 'other';
+		if (change === 'project') source.projectId = 'other-project';
+		if (change === 'mode') source.adminMode = true;
+		if (change === 'token') auth.update(state => ({ ...state, token: 'other-token' }));
+		if (change === 'caller') auth.update(state => ({ ...state, userId: 'other-user' }));
+		if (change === 'authProject') auth.update(state => ({ ...state, projectId: 'other-project' }));
+		if (change === 'permission') auth.update(state => ({ ...state, roles: ['reader'] }));
+		expect(await s.doResize('next')).toBe(false);
+		expect(mockPost).not.toHaveBeenCalled();
+	});
+
+	it('does not publish resize choices from a late response after scope changes', async () => {
+		const source = { id: 'vm', projectId: 'target-project', adminMode: false };
+		const s = await setup(false, source);
+		const pending = Promise.withResolvers<FlavorOption[]>();
+		mockGet.mockReturnValueOnce(pending.promise);
+		const loading = s.loadResizeFlavors();
+		source.projectId = 'other-project';
+		pending.resolve(flavors);
+		await loading;
+		expect(s.resizeFlavors).toEqual([]);
+		expect(s.resizeFlavorsLoading).toBe(false);
+		expect(await s.doResize('next')).toBe(false);
+	});
+
+	it.each(['confirmResize', 'revertResize'] as const)('rechecks state after a stale %s confirmation', async (action) => {
+		status = 'VERIFY_RESIZE';
+		const s = await setup();
+		const pending = Promise.withResolvers<boolean>();
+		confirmDialog.mockReturnValueOnce(pending.promise);
+		const request = s[action]();
+		status = 'ACTIVE';
+		await s.fetchInstance('vm');
+		pending.resolve(true);
+		await request;
+		expect(mockPost).not.toHaveBeenCalled();
+	});
+
+	it.each(['confirmResize', 'revertResize'] as const)('does not retarget a pending %s confirmation', async (action) => {
+		status = 'VERIFY_RESIZE';
+		const source = { id: 'vm', projectId: 'target-project', adminMode: false };
+		const s = await setup(false, source);
+		const pending = Promise.withResolvers<boolean>();
+		confirmDialog.mockReturnValueOnce(pending.promise);
+		const request = s[action]();
+		source.id = 'other';
+		pending.resolve(true);
+		await request;
 		expect(mockPost).not.toHaveBeenCalled();
 	});
 });

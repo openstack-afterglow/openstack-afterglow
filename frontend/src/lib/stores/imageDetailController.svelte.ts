@@ -2,8 +2,11 @@ import { t } from '$lib/i18n/ns/images-keys';
 import { getContext, setContext } from 'svelte';
 import { api, ApiError } from '$lib/api/client';
 import type { ImageDetail, ImageMember } from '$lib/types/adminImage';
+import type { ImageInfo } from '$lib/types/compute';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { toast } from '$lib/stores/toast';
+import { isWindowsSetupAccountValid, windowsSetupChanges, windowsSetupProperties, windowsSetupStatus } from '$lib/utils/windowsImageSetup';
+import type { WindowsSetupChange } from '$lib/utils/windowsImageSetup';
 
 const RESERVED_KEYS = new Set([
 	'id', 'name', 'status', 'visibility', 'owner', 'size', 'virtual_size',
@@ -30,7 +33,28 @@ export interface ImageDetailControllerOpts {
 	onClose?: () => void;
 }
 
-export function createImageDetailController(opts: ImageDetailControllerOpts) {
+interface ImageDetailScope {
+	imageId: string;
+	token: string | undefined;
+	projectId: string | undefined;
+	isAdmin: boolean;
+	generation: number;
+}
+
+export function createImageDetailController(opts: ImageDetailControllerOpts): ImageDetailController {
+	// Every async result belongs to this exact scope and request generation.
+	let generation = 0;
+	function captureScope(): ImageDetailScope {
+		return { imageId: opts.imageId(), token: opts.token(), projectId: opts.projectId(), isAdmin: opts.isAdmin(), generation };
+	}
+	let loadedScope = $state<ImageDetailScope | null>(null);
+	function sameContext(scope: ImageDetailScope | null): boolean {
+		return scope !== null && scope.imageId === opts.imageId() && scope.token === opts.token()
+			&& scope.projectId === opts.projectId() && scope.isAdmin === opts.isAdmin();
+	}
+	function isCurrent(scope: ImageDetailScope): boolean {
+		return sameContext(scope) && scope.generation === generation;
+	}
 	// Domain state
 	let image = $state<ImageDetail | null>(null);
 	let members = $state<ImageMember[]>([]);
@@ -60,49 +84,74 @@ export function createImageDetailController(opts: ImageDetailControllerOpts) {
 	let savingProps = $state(false);
 	let propsError = $state('');
 
+	// Windows setup is a mutually exclusive metadata draft, not a guest operation.
+	let windowsEditing = $state(false);
+	let windowsSaving = $state(false);
+	let windowsError = $state('');
+	let windowsSuccess = $state(false);
+	let windowsAccount = $state('');
+	let windowsWin11 = $state(false);
+	let windowsQga = $state(false);
+	let windowsConfirmed = $state(false);
+
 	// Derived
-	const isOwner = $derived(image?.owner === opts.projectId());
-	const canEditMetadata = $derived(isOwner || opts.isAdmin());
-	const propertiesEndpoint = $derived(opts.isAdmin() ? '/api/v1/admin/images' : '/api/v1/images');
+	const isOwner = $derived(sameContext(loadedScope) && !!image && !!opts.projectId() && image.owner === opts.projectId());
+	const canEditMetadata = $derived(sameContext(loadedScope) && !!image && !!opts.token() && (isOwner || opts.isAdmin()));
+	const windowsCurrentProperties = $derived(image && sameContext(loadedScope) ? windowsSetupProperties(image) : {});
+	const windowsStatus = $derived(windowsSetupStatus(windowsCurrentProperties));
+	const windowsAccountValid = $derived(isWindowsSetupAccountValid(windowsAccount));
+	const windowsChanges = $derived(windowsSetupChanges(windowsCurrentProperties, {
+		account: windowsAccount, win11: windowsWin11, qga: windowsQga,
+	}));
+	const canSaveWindowsSetup = $derived(canEditMetadata && windowsEditing && !windowsSaving && !savingProps
+		&& !editingProps && windowsConfirmed && windowsAccountValid && windowsChanges.length > 0);
 
 	// Handlers
 	async function loadImage() {
-		const id = opts.imageId();
-		const tok = opts.token();
-		const proj = opts.projectId();
-		if (!id || !tok) return;
+		// An explicit reload must not replace an open metadata draft.
+		if (sameContext(loadedScope) && (editingProps || windowsEditing || savingProps || windowsSaving
+			|| savingVisibility || addingMember || removingMember || deleting)) return;
+		if (!sameContext(loadedScope)) reset();
+		++generation;
+		const scope = captureScope();
+		if (!scope.imageId || !scope.token) return;
 		loading = true;
 		error = '';
 		image = null;
+		loadedScope = null;
 		try {
-			const loadedImage = await api.get<ImageDetail>(`/api/v1/images/${id}`, tok, proj);
+			const loadedImage = await api.get<ImageDetail>(`/api/v1/images/${scope.imageId}`, scope.token, scope.projectId);
+			if (!isCurrent(scope)) return;
 			visibilityValue = loadedImage.visibility ?? '';
-			loading = false;
 			image = loadedImage;
-			if (loadedImage.visibility === 'shared') loadMembers();
+			loadedScope = scope;
+			if (loadedImage.visibility === 'shared') void loadMembers();
 		} catch (e) {
+			if (!isCurrent(scope)) return;
 			error = e instanceof ApiError ? t('detailController.loadFailed', { status: e.status, message: e.message }) : t('detailController.serverError');
 		} finally {
-			loading = false;
+			if (isCurrent(scope)) loading = false;
 		}
 	}
 
 	async function loadMembers() {
-		const id = opts.imageId();
-		const tok = opts.token();
-		const proj = opts.projectId();
+		const scope = captureScope();
+		if (!sameContext(loadedScope)) return;
 		loadingMembers = true;
 		memberError = '';
 		try {
-			members = await api.get<ImageMember[]>(`/api/v1/images/${id}/members`, tok, proj);
+			const loaded = await api.get<ImageMember[]>(`/api/v1/images/${scope.imageId}/members`, scope.token, scope.projectId);
+			if (isCurrent(scope)) members = loaded;
 		} catch {
-			members = [];
+			if (isCurrent(scope)) members = [];
 		} finally {
-			loadingMembers = false;
+			if (isCurrent(scope)) loadingMembers = false;
 		}
 	}
 
 	function reset() {
+		++generation;
+		loadedScope = null;
 		image = null;
 		members = [];
 		loading = true;
@@ -110,67 +159,89 @@ export function createImageDetailController(opts: ImageDetailControllerOpts) {
 		editingProps = false;
 		propsDraft = {};
 		propsRemovedKeys = new Set();
+		newPropKey = '';
+		newPropValue = '';
+		savingProps = false;
+		propsError = '';
+		windowsEditing = false;
+		windowsSaving = false;
+		windowsError = '';
+		windowsSuccess = false;
+		windowsAccount = '';
+		windowsWin11 = false;
+		windowsQga = false;
+		windowsConfirmed = false;
+		visibilityValue = '';
+		savingVisibility = false;
+		visibilityError = '';
+		visibilitySuccess = false;
+		loadingMembers = false;
+		newMemberId = '';
+		addingMember = false;
+		memberError = '';
+		removingMember = null;
+		deleting = false;
 	}
 
 	async function saveVisibility() {
-		if (!image || visibilityValue === image.visibility) return;
-		const tok = opts.token();
-		const proj = opts.projectId();
+		if (!image || !isOwner || savingVisibility || editingProps || windowsEditing || savingProps || windowsSaving
+			|| visibilityValue === image.visibility) return;
+		const scope = captureScope();
 		savingVisibility = true;
 		visibilityError = '';
 		visibilitySuccess = false;
 		try {
-			const updated = await api.patch<ImageDetail>(
-				`/api/v1/images/${image.id}`,
-				{ visibility: visibilityValue },
-				tok, proj
+			const updated = await api.patch<ImageInfo>(
+				`/api/v1/images/${scope.imageId}`, { visibility: visibilityValue }, scope.token, scope.projectId
 			);
-			image = { ...image, visibility: updated.visibility };
+			if (!isCurrent(scope) || !image) return;
+			// This endpoint returns ImageInfo, unlike the full properties PATCH projection.
+			image = { ...image, visibility: updated.visibility ?? image.visibility };
+			visibilityValue = image.visibility;
 			visibilitySuccess = true;
-			setTimeout(() => { visibilitySuccess = false; }, 2000);
-			if (updated.visibility === 'shared') loadMembers();
+			setTimeout(() => { if (isCurrent(scope)) visibilitySuccess = false; }, 2000);
+			if (updated.visibility === 'shared') void loadMembers();
 		} catch (e) {
-			visibilityError = e instanceof ApiError ? e.message : t('detailController.visibility.saveFailed');
+			if (isCurrent(scope)) visibilityError = e instanceof ApiError ? e.message : t('detailController.visibility.saveFailed');
 		} finally {
-			savingVisibility = false;
+			if (isCurrent(scope)) savingVisibility = false;
 		}
 	}
 
 	async function addMember() {
-		if (!image || !newMemberId.trim()) return;
-		const tok = opts.token();
-		const proj = opts.projectId();
+		if (!image || !isOwner || addingMember || !newMemberId.trim()) return;
+		const scope = captureScope();
 		addingMember = true;
 		memberError = '';
 		try {
-			await api.post(`/api/v1/images/${image.id}/members`, { member: newMemberId.trim() }, tok, proj);
+			await api.post(`/api/v1/images/${scope.imageId}/members`, { member: newMemberId.trim() }, scope.token, scope.projectId);
+			if (!isCurrent(scope)) return;
 			newMemberId = '';
 			await loadMembers();
 		} catch (e) {
-			memberError = e instanceof ApiError ? e.message : t('detailController.members.addFailed');
+			if (isCurrent(scope)) memberError = e instanceof ApiError ? e.message : t('detailController.members.addFailed');
 		} finally {
-			addingMember = false;
+			if (isCurrent(scope)) addingMember = false;
 		}
 	}
 
 	async function removeMember(memberId: string) {
-		if (!image) return;
-		const tok = opts.token();
-		const proj = opts.projectId();
+		if (!image || !isOwner || removingMember) return;
+		const scope = captureScope();
 		removingMember = memberId;
 		memberError = '';
 		try {
-			await api.delete(`/api/v1/images/${image.id}/members/${memberId}`, tok, proj);
-			await loadMembers();
+			await api.delete(`/api/v1/images/${scope.imageId}/members/${memberId}`, scope.token, scope.projectId);
+			if (isCurrent(scope)) await loadMembers();
 		} catch (e) {
-			memberError = e instanceof ApiError ? e.message : t('detailController.members.deleteFailed');
+			if (isCurrent(scope)) memberError = e instanceof ApiError ? e.message : t('detailController.members.deleteFailed');
 		} finally {
-			removingMember = null;
+			if (isCurrent(scope)) removingMember = null;
 		}
 	}
 
 	function startEditProps() {
-		if (!image) return;
+		if (!image || !canEditMetadata || savingVisibility || editingProps || savingProps || windowsEditing || windowsSaving) return;
 		propsDraft = { ...image.properties };
 		propsRemovedKeys = new Set();
 		newPropKey = '';
@@ -180,6 +251,7 @@ export function createImageDetailController(opts: ImageDetailControllerOpts) {
 	}
 
 	function cancelEditProps() {
+		if (savingProps) return;
 		editingProps = false;
 		propsDraft = {};
 		propsRemovedKeys = new Set();
@@ -187,7 +259,7 @@ export function createImageDetailController(opts: ImageDetailControllerOpts) {
 	}
 
 	function removeProperty(key: string) {
-		if (isReservedKey(key)) return;
+		if (!canEditMetadata || !editingProps || savingProps || isReservedKey(key)) return;
 		delete propsDraft[key];
 		propsDraft = { ...propsDraft };
 		propsRemovedKeys.add(key);
@@ -195,6 +267,7 @@ export function createImageDetailController(opts: ImageDetailControllerOpts) {
 	}
 
 	function addProperty() {
+		if (!canEditMetadata || !editingProps || savingProps) return;
 		const key = newPropKey.trim();
 		const value = newPropValue.trim();
 		if (!key) {
@@ -215,9 +288,7 @@ export function createImageDetailController(opts: ImageDetailControllerOpts) {
 	}
 
 	async function saveProperties() {
-		if (!image) return;
-		const tok = opts.token();
-		const proj = opts.projectId();
+		if (!image || !canEditMetadata || !editingProps || savingProps || windowsEditing || windowsSaving) return;
 		const pendingKey = newPropKey.trim();
 		if (pendingKey && !isReservedKey(pendingKey)) {
 			propsDraft[pendingKey] = newPropValue.trim();
@@ -238,34 +309,84 @@ export function createImageDetailController(opts: ImageDetailControllerOpts) {
 			editingProps = false;
 			return;
 		}
+		const scope = captureScope();
 		savingProps = true;
 		propsError = '';
 		try {
-			const updated = await api.patch<ImageDetail>(
-				`${propertiesEndpoint}/${image.id}/properties`,
-				{ set: setObj, remove: removeList },
-				tok, proj
-			);
-			image = { ...image, properties: updated.properties };
+			const updated = await patchProperties(scope, setObj, removeList);
+			if (!isCurrent(scope)) return;
+			image = updated;
+			visibilityValue = updated.visibility ?? '';
 			editingProps = false;
 		} catch (e) {
-			propsError = e instanceof ApiError ? e.message : t('detailController.properties.saveFailed');
+			if (isCurrent(scope)) propsError = e instanceof ApiError ? e.message : t('detailController.properties.saveFailed');
 		} finally {
-			savingProps = false;
+			if (isCurrent(scope)) savingProps = false;
+		}
+	}
+
+	// The existing API returns get_image's full authoritative projection after JSON-Patch.
+	function patchProperties(scope: ImageDetailScope, set: Record<string, string>, remove: string[]) {
+		const endpoint = scope.isAdmin ? '/api/v1/admin/images' : '/api/v1/images';
+		return api.patch<ImageDetail>(`${endpoint}/${scope.imageId}/properties`, { set, remove }, scope.token, scope.projectId);
+	}
+
+	function startWindowsSetup() {
+		if (!image || !canEditMetadata || savingVisibility || editingProps || savingProps || windowsEditing || windowsSaving) return;
+		windowsAccount = windowsCurrentProperties.os_admin_user || 'Admin';
+		windowsWin11 = false;
+		windowsQga = false;
+		windowsConfirmed = false;
+		windowsError = '';
+		windowsSuccess = false;
+		windowsEditing = true;
+	}
+
+	function cancelWindowsSetup() {
+		if (windowsSaving) return;
+		windowsEditing = false;
+		windowsAccount = '';
+		windowsWin11 = false;
+		windowsQga = false;
+		windowsConfirmed = false;
+		windowsError = '';
+	}
+
+	async function saveWindowsSetup() {
+		if (!canSaveWindowsSetup) return;
+		// Capture exactly the preview, never merge a full properties snapshot into a write.
+		const set = Object.fromEntries(windowsChanges.map(change => [change.key, change.proposed]));
+		const scope = captureScope();
+		windowsSaving = true;
+		windowsError = '';
+		windowsSuccess = false;
+		try {
+			const updated = await patchProperties(scope, set, []);
+			if (!isCurrent(scope)) return;
+			image = updated;
+			visibilityValue = updated.visibility ?? '';
+			windowsEditing = false;
+			windowsConfirmed = false;
+			windowsSuccess = true;
+		} catch (e) {
+			if (isCurrent(scope)) windowsError = e instanceof ApiError ? e.message : t('windowsSetup.saveFailed');
+		} finally {
+			if (isCurrent(scope)) windowsSaving = false;
 		}
 	}
 
 	async function deleteImage() {
-		if (!image) return;
-		const tok = opts.token();
-		const proj = opts.projectId();
-		if (!(await confirmDialog(t('detailController.deleteConfirm', { name: image.name })))) return;
+		if (!image || !isOwner || deleting || savingProps || windowsSaving) return;
+		const scope = captureScope();
+		if (!(await confirmDialog(t('detailController.deleteConfirm', { name: image.name }))) || !isCurrent(scope)) return;
 		deleting = true;
 		try {
-			await api.delete(`/api/v1/images/${image.id}`, tok, proj);
-			opts.onDelete?.(image.id);
+			await api.delete(`/api/v1/images/${scope.imageId}`, scope.token, scope.projectId);
+			if (!isCurrent(scope)) return;
+			opts.onDelete?.(scope.imageId);
 			opts.onClose?.();
 		} catch (e) {
+			if (!isCurrent(scope)) return;
 			toast.error(t('detailController.deleteFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 			deleting = false;
 		}
@@ -273,7 +394,7 @@ export function createImageDetailController(opts: ImageDetailControllerOpts) {
 
 	return {
 		// State getters
-		get image() { return image; },
+		get image() { return sameContext(loadedScope) ? image : null; },
 		get members() { return members; },
 		get loading() { return loading; },
 		get error() { return error; },
@@ -298,6 +419,23 @@ export function createImageDetailController(opts: ImageDetailControllerOpts) {
 		set newPropValue(v: string) { newPropValue = v; },
 		get savingProps() { return savingProps; },
 		get propsError() { return propsError; },
+		get windowsEditing() { return windowsEditing; },
+		get windowsSaving() { return windowsSaving; },
+		get windowsError() { return windowsError; },
+		get windowsSuccess() { return windowsSuccess; },
+		get windowsAccount() { return windowsAccount; },
+		set windowsAccount(v: string) { if (!windowsSaving && canEditMetadata) windowsAccount = v; },
+		get windowsWin11() { return windowsWin11; },
+		set windowsWin11(v: boolean) { if (!windowsSaving && canEditMetadata) windowsWin11 = v; },
+		get windowsQga() { return windowsQga; },
+		set windowsQga(v: boolean) { if (!windowsSaving && canEditMetadata) windowsQga = v; },
+		get windowsConfirmed() { return windowsConfirmed; },
+		set windowsConfirmed(v: boolean) { if (!windowsSaving && canEditMetadata) windowsConfirmed = v; },
+		get windowsCurrentProperties() { return windowsCurrentProperties; },
+		get windowsStatus() { return windowsStatus; },
+		get windowsAccountValid() { return windowsAccountValid; },
+		get windowsChanges() { return windowsChanges; },
+		get canSaveWindowsSetup() { return canSaveWindowsSetup; },
 		// Derived getters
 		get isOwner() { return isOwner; },
 		get canEditMetadata() { return canEditMetadata; },
@@ -315,10 +453,66 @@ export function createImageDetailController(opts: ImageDetailControllerOpts) {
 		addProperty,
 		saveProperties,
 		deleteImage,
+		startWindowsSetup,
+		cancelWindowsSetup,
+		saveWindowsSetup,
 	};
 }
 
-export type ImageDetailController = ReturnType<typeof createImageDetailController>;
+export interface ImageDetailController {
+	readonly image: ImageDetail | null;
+	readonly members: ImageMember[];
+	readonly loading: boolean;
+	readonly error: string;
+	readonly deleting: boolean;
+	visibilityValue: string;
+	readonly savingVisibility: boolean;
+	readonly visibilityError: string;
+	readonly visibilitySuccess: boolean;
+	readonly loadingMembers: boolean;
+	newMemberId: string;
+	readonly addingMember: boolean;
+	readonly memberError: string;
+	readonly removingMember: string | null;
+	readonly editingProps: boolean;
+	readonly propsDraft: Record<string, string>;
+	readonly propsRemovedKeys: Set<string>;
+	newPropKey: string;
+	newPropValue: string;
+	readonly savingProps: boolean;
+	readonly propsError: string;
+	readonly windowsEditing: boolean;
+	readonly windowsSaving: boolean;
+	readonly windowsError: string;
+	readonly windowsSuccess: boolean;
+	windowsAccount: string;
+	windowsWin11: boolean;
+	windowsQga: boolean;
+	windowsConfirmed: boolean;
+	readonly windowsCurrentProperties: Record<string, string>;
+	readonly windowsStatus: 'native' | 'legacy' | 'unconfigured';
+	readonly windowsAccountValid: boolean;
+	readonly windowsChanges: WindowsSetupChange[];
+	readonly canSaveWindowsSetup: boolean;
+	readonly isOwner: boolean;
+	readonly canEditMetadata: boolean;
+	readonly isAdmin: boolean;
+	loadImage(): Promise<void>;
+	loadMembers(): Promise<void>;
+	reset(): void;
+	saveVisibility(): Promise<void>;
+	addMember(): Promise<void>;
+	removeMember(memberId: string): Promise<void>;
+	startEditProps(): void;
+	cancelEditProps(): void;
+	removeProperty(key: string): void;
+	addProperty(): void;
+	saveProperties(): Promise<void>;
+	deleteImage(): Promise<void>;
+	startWindowsSetup(): void;
+	cancelWindowsSetup(): void;
+	saveWindowsSetup(): Promise<void>;
+}
 
 const IMAGE_DETAIL_KEY = Symbol('image-detail');
 

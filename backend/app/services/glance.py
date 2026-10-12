@@ -31,8 +31,10 @@ def list_images(conn: openstack.connection.Connection, project_id: str | None = 
                 min_disk=img.min_disk or 0,
                 min_ram=img.min_ram or 0,
                 disk_format=img.disk_format,
-                os_type=props.get("os_type"),
+                os_type=props.get("os_type", getattr(img, "os_type", None)),
                 os_distro=os_distro,
+                windows_initial_password_method=props.get("windows_initial_password_method"),
+                os_admin_user=props.get("os_admin_user", getattr(img, "os_admin_user", None)),
                 created_at=str(img.created_at) if img.created_at else None,
                 owner=getattr(img, "owner", None) or getattr(img, "project_id", None),
                 visibility=getattr(img, "visibility", None),
@@ -72,7 +74,13 @@ def get_image(conn: openstack.connection.Connection, image_id: str) -> ImageDeta
 
     # SDK 가 Image 본문 필드로 따로 노출하는 키들을 properties 에 병합 (OpenStack CLI 와 동일한 뷰)
     _sdk_fields: dict = {
+        "os_type": getattr(img, "os_type", None),
+        "os_admin_user": getattr(img, "os_admin_user", None),
         "os_distro": getattr(img, "os_distro", None),
+        "img_config_drive": getattr(img, "needs_config_drive", None),
+        "hw_machine_type": getattr(img, "hw_machine_type", None),
+        "os_secure_boot": getattr(img, "needs_secure_boot", None),
+        "hw_qemu_guest_agent": getattr(img, "hw_qemu_guest_agent", None),
         "os_hash_algo": getattr(img, "hash_algo", None),
         "os_hash_value": getattr(img, "hash_value", None),
         "direct_url": getattr(img, "direct_url", None),
@@ -96,6 +104,8 @@ def get_image(conn: openstack.connection.Connection, image_id: str) -> ImageDeta
         disk_format=img.disk_format,
         os_type=raw_props.get("os_type"),
         os_distro=os_distro,
+        windows_initial_password_method=raw_props.get("windows_initial_password_method"),
+        os_admin_user=raw_props.get("os_admin_user"),
         created_at=str(img.created_at) if img.created_at else None,
         owner=getattr(img, "owner", None) or getattr(img, "project_id", None),
         visibility=getattr(img, "visibility", None),
@@ -200,8 +210,10 @@ def update_image_metadata(
         min_disk=img.min_disk or 0,
         min_ram=img.min_ram or 0,
         disk_format=img.disk_format,
-        os_type=props.get("os_type"),
+        os_type=props.get("os_type", getattr(img, "os_type", None)),
         os_distro=od,
+        windows_initial_password_method=props.get("windows_initial_password_method"),
+        os_admin_user=props.get("os_admin_user", getattr(img, "os_admin_user", None)),
         created_at=str(img.created_at) if img.created_at else None,
         owner=getattr(img, "owner", None) or getattr(img, "project_id", None),
         visibility=getattr(img, "visibility", None),
@@ -280,10 +292,12 @@ def update_image_properties(
         patch_ops.append({"op": "remove", "path": f"/{k}"})
 
     if patch_ops:
+        # The SDK endpoint already includes /v2; raw proxy calls do not raise by default.
         conn.image.patch(
-            f"/v2/images/{image_id}",
+            f"/images/{image_id}",
             json=patch_ops,
             headers={"Content-Type": "application/openstack-images-v2.1-json-patch"},
+            raise_exc=True,
         )
 
     return get_image(conn, image_id)

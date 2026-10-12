@@ -115,28 +115,40 @@ async def rollback_instance(
     file_storage_ids: list[str],
     access_ids: list[tuple[str, str]],
     floating_ip_id: str | None = None,
+    *,
+    safe_error_message: str | None = None,
 ) -> None:
-    """인스턴스 생성 실패 시 역순 rollback."""
+    """인스턴스 생성 실패 시 역순 rollback; credential-bearing errors use a safe constant."""
     from app.services import cinder, keystone, manila, neutron, nova
 
     if floating_ip_id:
         try:
             await asyncio.to_thread(neutron.delete_floating_ip, conn, floating_ip_id)
         except Exception as e:
-            logger.error(f"Rollback - Floating IP 삭제 실패: {e}")
+            logger.error(
+                "Rollback - Floating IP 삭제 실패: %s",
+                safe_error_message if safe_error_message is not None else str(e),
+            )
 
     if server_id:
         try:
             await asyncio.to_thread(nova.delete_server, conn, server_id)
         except Exception as e:
-            logger.error(f"Rollback - 서버 삭제 실패: {e}")
+            logger.error(
+                "Rollback - 서버 삭제 실패: %s",
+                safe_error_message if safe_error_message is not None else str(e),
+            )
 
     for vol_id in [boot_volume_id, upper_volume_id]:
         if vol_id:
             try:
                 await asyncio.to_thread(cinder.delete_volume, conn, vol_id)
             except Exception as e:
-                logger.error(f"Rollback - 볼륨 삭제 실패 {vol_id}: {e}")
+                logger.error(
+                    "Rollback - 볼륨 삭제 실패 %s: %s",
+                    vol_id,
+                    safe_error_message if safe_error_message is not None else str(e),
+                )
 
     try:
         svc_conn = await asyncio.to_thread(keystone.get_service_project_connection)
@@ -146,10 +158,17 @@ async def rollback_instance(
         try:
             await asyncio.to_thread(manila.revoke_access_rule, svc_conn, file_storage_id, access_id)
         except Exception as e:
-            logger.error(f"Rollback - access rule 삭제 실패: {e}")
+            logger.error(
+                "Rollback - access rule 삭제 실패: %s",
+                safe_error_message if safe_error_message is not None else str(e),
+            )
 
     for file_storage_id in file_storage_ids:
         try:
             await asyncio.to_thread(manila.delete_file_storage, conn, file_storage_id)
         except Exception as e:
-            logger.error(f"Rollback - 파일 스토리지 삭제 실패 {file_storage_id}: {e}")
+            logger.error(
+                "Rollback - 파일 스토리지 삭제 실패 %s: %s",
+                file_storage_id,
+                safe_error_message if safe_error_message is not None else str(e),
+            )

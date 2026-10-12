@@ -5,6 +5,7 @@
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/volume';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 
 	let { volume, onclose, onsuccess }: {
 		volume: Volume | null;
@@ -15,6 +16,8 @@
 	let name = $state('');
 	let description = $state('');
 	let incremental = $state(false);
+	let force = $state(false);
+	const forceRequired = $derived(volume?.status === 'in-use');
 	let creating = $state(false);
 	let error = $state('');
 
@@ -30,18 +33,19 @@
 			name = defaultName(volume);
 			description = '';
 			incremental = false;
+			force = false;
 			error = '';
 		}
 	});
 
 	async function createBackup() {
-		if (!volume) return;
+		if (!volume || creating || !name.trim() || (forceRequired && !force)) return;
 		creating = true;
 		error = '';
 		try {
 			await api.post(
 				'/api/v1/volumes/backups',
-				{ volume_id: volume.id, name, description: description || null, incremental },
+				{ volume_id: volume.id, name, description: description || null, incremental, force: forceRequired && force },
 				$auth.token ?? undefined,
 				$auth.projectId ?? undefined,
 			);
@@ -66,7 +70,7 @@
 	tabindex="-1"
 >
 	<div
-		class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
+		class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto mx-4 shadow-[var(--shadow-restraint)]"
 		onclick={(e) => e.stopPropagation()}
 		role="none"
 	>
@@ -101,13 +105,22 @@
 				<input type="checkbox" id="backup-incremental" bind:checked={incremental} class="rounded border-line-2" />
 				<label for="backup-incremental" class="text-sm text-ink-2">{t('backupModal.incrementalLabel')}</label>
 			</div>
+			{#if forceRequired}
+				<Alert tone="warning" title={t('backupForce.title')}>
+					<p id="backup-force-warning">{t('backupForce.warning')}</p>
+				</Alert>
+				<label class="flex min-h-11 items-center gap-3 text-sm text-ink-1">
+					<input type="checkbox" bind:checked={force} disabled={creating} aria-describedby="backup-force-warning" class="shrink-0 rounded border-line-2" />
+					<span>{t('backupForce.enable')}</span>
+				</label>
+			{/if}
 		</div>
 		{#if error}<div class="mt-4 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{error}</div>{/if}
 		<div class="flex justify-end gap-3 mt-6">
 			<button onclick={onclose} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('backupModal.cancel')}</button>
 			<button
 				onclick={createBackup}
-				disabled={creating || !name.trim()}
+				disabled={creating || !name.trim() || (forceRequired && !force)}
 				class="inline-flex items-center gap-1.5 px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
 			>{#if creating}<ActivityIndicator size="xs" tone="ink" />{/if}{creating ? t('backupModal.creating') : t('backupModal.create')}</button>
 		</div>

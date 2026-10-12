@@ -3,18 +3,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import type { InstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 import type { Instance } from '$lib/types/compute';
 
-const { mockControllerRef, confirmDialog } = vi.hoisted(() => ({
+const { mockControllerRef } = vi.hoisted(() => ({
 	mockControllerRef: { current: undefined as unknown },
-	confirmDialog: vi.fn(),
 }));
 
 vi.mock('$lib/stores/instanceDetailController.svelte', () => ({
 	useInstanceDetailController: () => mockControllerRef.current,
 }));
 
-vi.mock('$lib/stores/confirm.svelte', () => ({
-	confirmDialog,
-}));
 
 import ResizeModal from '../ResizeModal.svelte';
 
@@ -25,7 +21,7 @@ function renderModal(overrides: Partial<InstanceDetailController> = {}) {
 			{ id: 'flavor-1', name: 'cpu.1c_2g', vcpus: 1, ram: 2048, disk: 20 },
 			{ id: 'flavor-2', name: 'cpu.2c_4g', vcpus: 2, ram: 4096, disk: 40 },
 		],
-		instance: { id: 'vm', flavor_id: 'flavor-1', status: 'ACTIVE' } as Instance,
+		instance: { id: 'vm', flavor_id: 'flavor-1', status: 'SHUTOFF' } as Instance,
 		resizeLoading: false,
 		resizeFlavorsLoading: false,
 		resizeError: '',
@@ -51,23 +47,8 @@ beforeEach(() => {
 });
 
 describe('ResizeModal', () => {
-	it('guards the resize API call when confirmation is canceled', async () => {
-		confirmDialog.mockResolvedValue(false);
-		const { doResize, onClose } = renderModal();
 
-		await fireEvent.click(screen.getByRole('button', { name: '리사이즈' }));
-
-		await waitFor(() => {
-			expect(confirmDialog).toHaveBeenCalledTimes(1);
-			expect(screen.getByRole('button', { name: '리사이즈' })).toBeTruthy();
-		});
-		expect(confirmDialog.mock.calls[0][0]).toContain('cpu.2c_4g (2 vCPU / 4 GB RAM)');
-		expect(doResize).not.toHaveBeenCalled();
-		expect(onClose).not.toHaveBeenCalled();
-	});
-
-	it('submits resize after confirmation and closes on success', async () => {
-		confirmDialog.mockResolvedValue(true);
+	it('closes on a successful controller-confirmed resize', async () => {
 		const { doResize, onClose } = renderModal();
 
 		await fireEvent.click(screen.getByRole('button', { name: '리사이즈' }));
@@ -78,8 +59,7 @@ describe('ResizeModal', () => {
 		});
 	});
 
-	it('keeps the modal open when resize fails after confirmation', async () => {
-		confirmDialog.mockResolvedValue(true);
+	it('keeps the modal open when the controller declines or fails resize', async () => {
 		const doResize = vi.fn().mockResolvedValue(false);
 		const onClose = vi.fn();
 		mockControllerRef.current = {
@@ -107,31 +87,24 @@ describe('ResizeModal', () => {
 		expect(onClose).not.toHaveBeenCalled();
 	});
 
-	it('blocks overlapping confirmations while one confirm dialog is pending', async () => {
-		let resolveConfirm: ((value: boolean) => void) | undefined;
-		confirmDialog.mockReturnValue(
-			new Promise<boolean>((resolve) => {
-				resolveConfirm = resolve;
-			})
-		);
-		const { doResize } = renderModal();
+	it('blocks overlapping submissions while controller confirmation is pending', async () => {
+		const pending = Promise.withResolvers<boolean>();
+		const doResize = vi.fn().mockReturnValue(pending.promise);
+		renderModal({ doResize });
 
 		const button = screen.getByRole('button', { name: '리사이즈' });
 		await fireEvent.click(button);
 		await fireEvent.click(button);
 
 		await waitFor(() => {
-			expect(confirmDialog).toHaveBeenCalledTimes(1);
-			expect(screen.getByRole('button', { name: '확인 대기 중...' })).toBeTruthy();
+			expect(doResize).toHaveBeenCalledTimes(1);
+			expect((screen.getByRole('button', { name: '확인 대기 중...' }) as HTMLButtonElement).disabled).toBe(true);
 		});
-		expect(doResize).not.toHaveBeenCalled();
-
-		resolveConfirm?.(false);
-
+		pending.resolve(false);
 		await waitFor(() => {
-			expect(screen.getByRole('button', { name: '리사이즈' })).toBeTruthy();
+			expect((screen.getByRole('button', { name: '리사이즈' }) as HTMLButtonElement).disabled).toBe(false);
 		});
-		expect(doResize).not.toHaveBeenCalled();
+		expect(doResize).toHaveBeenCalledTimes(1);
 	});
 
 	it('disables current flavor and non-quota ineligible flavors with their reasons', async () => {
@@ -150,7 +123,6 @@ describe('ResizeModal', () => {
 		await fireEvent.change(screen.getByRole('combobox'), { target: { value: 'flavor-1' } });
 		expect(button.disabled).toBe(true);
 		await fireEvent.click(button);
-		expect(confirmDialog).not.toHaveBeenCalled();
 		expect(doResize).not.toHaveBeenCalled();
 	});
 

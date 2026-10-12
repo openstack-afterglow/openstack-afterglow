@@ -1,7 +1,11 @@
+import { writable } from 'svelte/store';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import type { Instance } from '$lib/types/compute';
 import InstancesTable from '../InstancesTable.svelte';
+import { t } from '$lib/i18n/ns/instance';
+
+vi.mock('$lib/stores/auth', () => ({ canWrite: writable(true) }));
 
 const instances: Instance[] = [
 	{
@@ -15,13 +19,14 @@ const instances: Instance[] = [
 ];
 
 function renderTable(overrides: Partial<{
+	instances: Instance[];
 	selectedIds: ReadonlySet<string>;
 	selectableIds: ReadonlySet<string>;
 	selectionDisabled: boolean;
 	onToggleSelect: (id: string) => void;
 	onToggleAll: () => void;
 	onSelect: (id: string) => void;
-	onAction: (kind: 'console' | 'shelve' | 'unshelve' | 'delete', instance: Instance) => Promise<void>;
+	onAction: (kind: 'console' | 'shelve' | 'unshelve' | 'delete' | 'start' | 'stop', instance: Instance) => Promise<void>;
 }> = {}) {
 	return render(InstancesTable, {
 		instances,
@@ -80,5 +85,39 @@ describe('InstancesTable selection', () => {
 		resolve();
 		await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
 		expect(onAction).toHaveBeenCalledWith('console', instances[0]);
+	});
+
+	it('changes an open menu from ACTIVE stop/console to grouped SHUTOFF actions', async () => {
+		const { rerender } = renderTable({ instances: [instances[0]] });
+		await fireEvent.click(screen.getByRole('button', { name: t('rowActions.instanceActions', { name: instances[0].name }) }));
+		expect(screen.getByRole('button', { name: t('rowActions.console') })).toBeTruthy();
+		expect(screen.getByRole('button', { name: t('list.stop') })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: t('rowActions.shelve') })).toBeNull();
+		expect(screen.queryByRole('button', { name: t('rowActions.delete') })).toBeNull();
+		await rerender({ instances: [{ ...instances[0], status: 'SHUTOFF' }] });
+		expect(screen.getByRole('button', { name: t('list.start') })).toBeTruthy();
+		expect(screen.getByRole('button', { name: t('rowActions.shelve') })).toBeTruthy();
+		expect(screen.getByRole('button', { name: t('rowActions.delete') })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: t('rowActions.console') })).toBeNull();
+		expect(screen.queryByRole('button', { name: t('list.stop') })).toBeNull();
+		await rerender({ instances: [{ ...instances[0], status: 'ACTIVE' }] });
+		expect(screen.queryByRole('button', { name: t('rowActions.shelve') })).toBeNull();
+		expect(screen.queryByRole('button', { name: t('rowActions.delete') })).toBeNull();
+	});
+
+	it.each(['SHELVED', 'SHELVED_OFFLOADED'])('preserves %s restore without delete/archive', async (status) => {
+		renderTable({ instances: [{ ...instances[0], status }] });
+		await fireEvent.click(screen.getByRole('button', { name: t('rowActions.instanceActions', { name: instances[0].name }) }));
+		expect(screen.getByRole('button', { name: t('rowActions.unshelve') })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: t('rowActions.shelve') })).toBeNull();
+		expect(screen.queryByRole('button', { name: t('rowActions.delete') })).toBeNull();
+	});
+
+	it.each(['BUILD', 'ERROR', 'VERIFY_RESIZE', 'shutoff', ''])('rejects %s as stopped action eligibility', async (status) => {
+		renderTable({ instances: [{ ...instances[0], status }] });
+		await fireEvent.click(screen.getByRole('button', { name: t('rowActions.instanceActions', { name: instances[0].name }) }));
+		expect(screen.queryByRole('button', { name: t('list.start') })).toBeNull();
+		expect(screen.queryByRole('button', { name: t('rowActions.shelve') })).toBeNull();
+		expect(screen.queryByRole('button', { name: t('rowActions.delete') })).toBeNull();
 	});
 });

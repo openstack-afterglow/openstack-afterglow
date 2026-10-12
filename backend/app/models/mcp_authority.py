@@ -67,6 +67,7 @@ class McpDelegatedGrant(Base):
     orphan_recovery_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     orphan_recovery_nonce: Mapped[str | None] = mapped_column(CHAR(36))
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    client_observations: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 

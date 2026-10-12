@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
@@ -57,15 +56,9 @@
 
 	async function handleResize() {
 		if (!selectionAllowed || s.resizeLoading || s.resizeFlavorsLoading || resizeConfirming) return;
-		const flavorLabel = formatFlavorLabel(selectedFlavor!);
 
 		resizeConfirming = true;
 		try {
-			const confirmed = await confirmDialog(
-				t('resize.confirmMessage', { flavorLabel })
-			);
-			if (!confirmed) return;
-
 			const ok = await s.doResize(resizeFlavorId);
 			if (ok) onClose();
 		} finally {

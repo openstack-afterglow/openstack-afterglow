@@ -117,6 +117,7 @@
 				totalSteps={s.visibleTotalSteps}
 				canPrev={s.visibleStepIndex > 1}
 				canNext={s.canNext}
+				windowsUnsupported={s.windowsUnsupported}
 				onCancel={closeWizard}
 				onPrev={s.prevStep}
 				onNext={s.nextStep}

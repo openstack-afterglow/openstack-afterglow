@@ -1,0 +1,338 @@
+{
+  "conditions": {
+    "origin": "http://127.0.0.1:5222",
+    "width": 1440,
+    "height": 900,
+    "dpr": 1,
+    "theme": "",
+    "motion": true,
+    "locale": "ko"
+  },
+  "scenes": [
+    {
+      "kind": "server",
+      "samples": [
+        {
+          "at": 55859.800000071526,
+          "state": "playing",
+          "focus": true,
+          "running": 6,
+          "messages": [],
+          "geometryMoving": false,
+          "elapsed": 300
+        },
+        {
+          "at": 56694.700000047684,
+          "state": "playing",
+          "focus": true,
+          "running": 3,
+          "messages": [],
+          "geometryMoving": false,
+          "elapsed": 1100
+        },
+        {
+          "at": 57328.200000047684,
+          "state": "playing",
+          "focus": true,
+          "running": 2,
+          "messages": [],
+          "geometryMoving": false,
+          "elapsed": 1700
+        },
+        {
+          "at": 58161.5,
+          "state": "static",
+          "focus": true,
+          "running": 0,
+          "messages": [],
+          "geometryMoving": false,
+          "elapsed": 2500
+        }
+      ],
+      "composition": {
+        "titleTop": 349.3203125,
+        "sceneBottom": 754.65625
+      }
+    },
+    {
+      "kind": "gpu",
+      "samples": [
+        {
+          "at": 58648.700000047684,
+          "state": "playing",
+          "focus": true,
+          "running": 5,
+          "messages": [],
+          "geometryMoving": false,
+          "elapsed": 300
+        },
+        {
+          "at": 59484.90000009537,
+          "state": "playing",
+          "focus": true,
+          "running": 3,
+          "messages": [],
+          "geometryMoving": false,
+          "elapsed": 1100
+        },
+        {
+          "at": 60121.5,
+          "state": "playing",
+          "focus": true,
+          "running": 2,
+          "messages": [],
+          "geometryMoving": false,
+          "elapsed": 1700
+        },
+        {
+          "at": 60960.40000009537,
+          "state": "static",
+          "focus": true,
+          "running": 0,
+          "messages": [],
+          "geometryMoving": false,
+          "elapsed": 2500
+        }
+      ],
+      "composition": {
+        "titleTop": 152.90625,
+        "sceneBottom": 855.734375
+      }
+    },
+    {
+      "kind": "chat",
+      "samples": [
+        {
+          "at": 61349.800000071526,
+          "state": "playing",
+          "focus": true,
+          "running": 8,
+          "messages": [
+            {
+              "opacity": 0.78623,
+              "text": "연구자\n\n학습 손실은 줄고 검증 손실은 늘어요. 무엇을 확인할까요?"
+            },
+            {
+              "opacity": 0,
+              "text": "AI\n\n과적합을 확인해 보세요. 에포크별 학습·검증 손실을 비교하세요.\n\n검증 손실이 가장 낮은 시점에 조기 종료하고, 테스트 세트는 최종 평가에만 사용하세요."
+            },
+            {
+              "opacity": 0,
+              "text": "연구자\n\n다음 실험과 공정하게 비교하려면요?"
+            },
+            {
+              "opacity": 0,
+              "text": "AI\n\n데이터 분할과 랜덤 시드를 동일하게 유지하세요.\n\n학습률, 배치 크기, 최저 검증 손실을 기록하세요."
+            }
+          ],
+          "geometryMoving": false,
+          "elapsed": 200
+        },
+        {
+          "at": 62376.700000047684,
+          "state": "playing",
+          "focus": true,
+          "running": 7,
+          "messages": [
+            {
+              "opacity": 1,
+              "text": "연구자\n\n학습 손실은 줄고 검증 손실은 늘어요. 무엇을 확인할까요?"
+            },
+            {
+              "opacity": 0.843487,
+              "text": "AI\n\n과적합을 확인해 보세요. 에포크별 학습·검증 손실을 비교하세요.\n\n검증 손실이 가장 낮은 시점에 조기 종료하고, 테스트 세트는 최종 평가에만 사용하세요."
+            },
+            {
+              "opacity": 0,
+              "text": "연구자\n\n다음 실험과 공정하게 비교하려면요?"
+            },
+            {
+              "opacity": 0,
+              "text": "AI\n\n데이터 분할과 랜덤 시드를 동일하게 유지하세요.\n\n학습률, 배치 크기, 최저 검증 손실을 기록하세요."
+            }
+          ],
+          "geometryMoving": false,
+          "elapsed": 1200
+        },
+        {
+          "at": 64010.300000071526,
+          "state": "playing",
+          "focus": true,
+          "running": 4,
+          "messages": [
+            {
+              "opacity": 1,
+              "text": "연구자\n\n학습 손실은 줄고 검증 손실은 늘어요. 무엇을 확인할까요?"
+            },
+            {
+              "opacity": 1,
+              "text": "AI\n\n과적합을 확인해 보세요. 에포크별 학습·검증 손실을 비교하세요.\n\n검증 손실이 가장 낮은 시점에 조기 종료하고, 테스트 세트는 최종 평가에만 사용하세요."
+            },
+            {
+              "opacity": 0.963347,
+              "text": "연구자\n\n다음 실험과 공정하게 비교하려면요?"
+            },
+            {
+              "opacity": 0,
+              "text": "AI\n\n데이터 분할과 랜덤 시드를 동일하게 유지하세요.\n\n학습률, 배치 크기, 최저 검증 손실을 기록하세요."
+            }
+          ],
+          "geometryMoving": false,
+          "elapsed": 2800
+        },
+        {
+          "at": 65444.5,
+          "state": "playing",
+          "focus": true,
+          "running": 1,
+          "messages": [
+            {
+              "opacity": 1,
+              "text": "연구자\n\n학습 손실은 줄고 검증 손실은 늘어요. 무엇을 확인할까요?"
+            },
+            {
+              "opacity": 1,
+              "text": "AI\n\n과적합을 확인해 보세요. 에포크별 학습·검증 손실을 비교하세요.\n\n검증 손실이 가장 낮은 시점에 조기 종료하고, 테스트 세트는 최종 평가에만 사용하세요."
+            },
+            {
+              "opacity": 1,
+              "text": "연구자\n\n다음 실험과 공정하게 비교하려면요?"
+            },
+            {
+              "opacity": 1,
+              "text": "AI\n\n데이터 분할과 랜덤 시드를 동일하게 유지하세요.\n\n학습률, 배치 크기, 최저 검증 손실을 기록하세요."
+            }
+          ],
+          "geometryMoving": false,
+          "elapsed": 4200
+        },
+        {
+          "at": 66380,
+          "state": "static",
+          "focus": true,
+          "running": 0,
+          "messages": [
+            {
+              "opacity": 1,
+              "text": "연구자\n\n학습 손실은 줄고 검증 손실은 늘어요. 무엇을 확인할까요?"
+            },
+            {
+              "opacity": 1,
+              "text": "AI\n\n과적합을 확인해 보세요. 에포크별 학습·검증 손실을 비교하세요.\n\n검증 손실이 가장 낮은 시점에 조기 종료하고, 테스트 세트는 최종 평가에만 사용하세요."
+            },
+            {
+              "opacity": 1,
+              "text": "연구자\n\n다음 실험과 공정하게 비교하려면요?"
+            },
+            {
+              "opacity": 1,
+              "text": "AI\n\n데이터 분할과 랜덤 시드를 동일하게 유지하세요.\n\n학습률, 배치 크기, 최저 검증 손실을 기록하세요."
+            }
+          ],
+          "geometryMoving": false,
+          "elapsed": 5100
+        }
+      ],
+      "composition": {
+        "titleTop": 152.984375,
+        "sceneBottom": 880.4296875
+      }
+    },
+    {
+      "kind": "kubernetes",
+      "samples": [
+        {
+          "at": 66859.20000004768,
+          "state": "playing",
+          "focus": true,
+          "running": 12,
+          "messages": [],
+          "geometryMoving": false,
+          "elapsed": 300
+        },
+        {
+          "at": 67693.30000007153,
+          "state": "playing",
+          "focus": true,
+          "running": 7,
+          "messages": [],
+          "geometryMoving": false,
+          "elapsed": 1100
+        },
+        {
+          "at": 68326.10000002384,
+          "state": "playing",
+          "focus": true,
+          "running": 4,
+          "messages": [],
+          "geometryMoving": false,
+          "elapsed": 1700
+        },
+        {
+          "at": 69152.40000009537,
+          "state": "static",
+          "focus": true,
+          "running": 0,
+          "messages": [],
+          "geometryMoving": false,
+          "elapsed": 2500
+        }
+      ],
+      "composition": {
+        "titleTop": 314.7421875,
+        "sceneBottom": 685.6640625
+      }
+    },
+    {
+      "kind": "onprem",
+      "samples": [
+        {
+          "at": 69639.70000004768,
+          "state": "playing",
+          "focus": true,
+          "running": 6,
+          "messages": [],
+          "geometryMoving": false,
+          "elapsed": 300
+        },
+        {
+          "at": 70478.30000007153,
+          "state": "playing",
+          "focus": true,
+          "running": 4,
+          "messages": [],
+          "geometryMoving": false,
+          "elapsed": 1100
+        },
+        {
+          "at": 71112.90000009537,
+          "state": "playing",
+          "focus": true,
+          "running": 2,
+          "messages": [],
+          "geometryMoving": false,
+          "elapsed": 1700
+        },
+        {
+          "at": 71947.20000004768,
+          "state": "static",
+          "focus": true,
+          "running": 0,
+          "messages": [],
+          "geometryMoving": false,
+          "elapsed": 2500
+        }
+      ],
+      "composition": {
+        "titleTop": 291.1953125,
+        "sceneBottom": 754.7265625
+      }
+    }
+  ],
+  "recording": {
+    "path": "/tmp/landing-repair-after-chapters.mp4",
+    "durationMs": 16567,
+    "frames": 467,
+    "bytes": 1319162
+  }
+}

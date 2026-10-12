@@ -10,13 +10,6 @@ const alertSource = readFileSync(resolve(repoRoot, 'src/lib/components/ui/Alert.
 const uiIndexSource = readFileSync(resolve(repoRoot, 'src/lib/components/ui/index.ts'), 'utf8');
 const tokenSource = readFileSync(resolve(repoRoot, 'src/lib/design/tokens.ts'), 'utf8');
 
-const editorialTokenNames = [
-	'--gradient-editorial-canvas',
-	'--pattern-editorial-grid',
-	'--gradient-editorial-grid-mask',
-	'--gradient-editorial-cta',
-	'--color-surface-editorial-media',
-];
 
 
 const chatMessageTokenNames = [
@@ -189,17 +182,6 @@ describe('design system source contracts', () => {
 
 
 
-	it('keeps editorial public-surface tokens and panel composition documented', () => {
-		for (const token of editorialTokenNames) {
-			expect(layoutSource).toContain(token);
-			expect(tokenSource).toContain(token);
-			expect(designSource).toContain(token);
-		}
-		expect(tokenSource).toContain('EDITORIAL_CSS_VAR');
-		expect(designSource).toContain('Approved panel composition');
-		expect(designSource).toContain('Card surface="subtle"');
-		expect(designSource).toContain('request-to-reuse story is one figure beside direct semantic step articles');
-	});
 
 	it('defines the reusable chat message primitive and its shared layout tokens', () => {
 		for (const token of chatMessageTokenNames) {

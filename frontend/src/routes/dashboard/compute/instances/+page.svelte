@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/instance';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
-	import { untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { page } from '$app/stores';
-	import { auth } from '$lib/stores/auth';
+	import { auth, canWrite } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { createSwr } from '$lib/utils/swr.svelte';
 	import { apiMut } from '$lib/api/mutations';
@@ -31,6 +31,22 @@
 	const selection = createResourceSelection();
 	let bulkActioning = $state(false);
 	let loadGeneration = 0;
+	let scopeRevision = $state(0);
+	let instancesRevision = $state(-1);
+	const unsubscribeAuth = auth.subscribe(() => { scopeRevision += 1; });
+	onDestroy(() => { unsubscribeAuth(); scopeRevision += 1; });
+
+	function targetsAllowed(ids: readonly string[], action: 'start' | 'stop' | 'delete' | 'shelve' | 'unshelve') {
+		if (!$auth.token || !$canWrite || instancesRevision !== scopeRevision || ids.length === 0) return false;
+		return ids.every((id) => {
+			const row = instances.find((instance) => instance.id === id);
+			if (!row) return false;
+			if (action === 'stop') return row.status === 'ACTIVE';
+			if (action === 'unshelve') return row.status === 'SHELVED' || row.status === 'SHELVED_OFFLOADED';
+			return row.status === 'SHUTOFF';
+		});
+	}
+	const canBulkDelete = $derived(targetsAllowed([...selection.ids], 'delete'));
 
 	const mockupActive = $derived($page.data.mockup?.active === true);
 	const selectableIds = $derived(new Set(instances.map((instance) => instance.id)));
@@ -49,9 +65,11 @@
 		const requestToken = $auth.token ?? undefined;
 		const requestProjectId = $auth.projectId ?? undefined;
 		const generation = ++loadGeneration;
+		const requestRevision = scopeRevision;
 		const cached = swrGet<Instance[]>(path);
 		if (cached && instances.length === 0) {
 			instances = cached;
+			instancesRevision = requestRevision;
 			selection.retain(cached.map((instance) => instance.id));
 		}
 		const listPromise = api.get<Instance[]>(path, requestToken, requestProjectId, opts);
@@ -64,6 +82,7 @@
 				|| ($auth.projectId ?? undefined) !== requestProjectId
 			) return;
 			instances = fetchedInstances;
+			instancesRevision = requestRevision;
 			selection.retain(fetchedInstances.map((instance) => instance.id));
 			swrSet(path, instances);
 			error = '';
@@ -135,6 +154,7 @@
 	});
 
 	async function startInstance(id: string) {
+		if (!targetsAllowed([id], 'start')) return;
 		try {
 			await apiMut(t('list.startInstance'), () => api.post(`/api/v1/instances/${id}/start`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined));
 			ar.setBoost(4);
@@ -143,9 +163,14 @@
 	}
 
 	async function stopInstance(id: string) {
-		if (!await confirmDialog(t('list.confirmStop'))) return;
+		const revision = scopeRevision;
+		const token = $auth.token ?? undefined;
+		const projectId = $auth.projectId ?? undefined;
+		if (!targetsAllowed([id], 'stop')) return;
+		if (!await confirmDialog(`${t('list.confirmStop')}\n\n${t('panel.stoppedQuotaWarning')}`)) return;
+		if (revision !== scopeRevision || !targetsAllowed([id], 'stop')) return;
 		try {
-			await apiMut(t('list.stopInstance'), () => api.post(`/api/v1/instances/${id}/stop`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined));
+			await apiMut(t('list.stopInstance'), () => api.post(`/api/v1/instances/${id}/stop`, {}, token, projectId));
 			ar.setBoost(4);
 			await fetchInstances();
 		} catch { /* error toast shown by apiMut */ }
@@ -155,19 +180,31 @@
 		const ids = [...selection.ids];
 		const token = $auth.token ?? undefined;
 		const projectId = $auth.projectId ?? undefined;
-		if (ids.length === 0) return;
-
-
+		const revision = scopeRevision;
+		const selectedIds = selection.ids;
+		const targetProjects = ids.map((id) => instances.find((row) => row.id === id)?.project_id);
+		const targetStates = ids.map((id) => instances.find((row) => row.id === id)?.status);
+		const owns = () => revision === scopeRevision && !!$auth.token && $canWrite
+			&& instancesRevision === scopeRevision && ids.length > 0
+			&& selection.ids === selectedIds && selection.ids.size === ids.length && ids.every((id) => selection.ids.has(id))
+			&& ids.every((id, index) => {
+				const row = instances.find((instance) => instance.id === id);
+				return !!row && row.project_id === targetProjects[index] && row.status === targetStates[index]
+					&& (action !== 'delete' || row.status === 'SHUTOFF');
+			});
+		if (bulkActioning || !owns()) return;
 		if (action === 'stop' || action === 'delete') {
 			const msg = action === 'delete'
-				? t('list.confirmBulkDelete', { count: ids.length })
-				: t('list.confirmBulkStop', { count: ids.length });
+				? `${t('list.confirmBulkDelete', { count: ids.length })}\n\n${t('panel.stoppedQuotaWarning')}`
+				: `${t('list.confirmBulkStop', { count: ids.length })}\n\n${t('panel.stoppedQuotaWarning')}`;
 			if (!await confirmDialog(msg)) return;
 		}
+		if (!owns()) return;
 
 		bulkActioning = true;
 		const results: { id: string; ok: boolean }[] = [];
 		for (let index = 0; index < ids.length; index += 50) {
+			if (!owns()) break;
 			const chunk = ids.slice(index, index + 50);
 			try {
 				const response = await api.post<{ results: { id: string; ok: boolean }[] }>(
@@ -209,25 +246,46 @@
 	}
 
 	async function shelveInstance(id: string) {
-		if (!await confirmDialog(t('list.confirmShelve'))) return;
+		const revision = scopeRevision;
+		const token = $auth.token ?? undefined;
+		const projectId = $auth.projectId ?? undefined;
+		const targetProject = instances.find((row) => row.id === id)?.project_id;
+		const owns = () => revision === scopeRevision && targetsAllowed([id], 'shelve')
+			&& instances.find((row) => row.id === id)?.project_id === targetProject;
+		if (!owns()) return;
+		if (!await confirmDialog(`${t('list.confirmShelve')}\n\n${t('panel.stoppedQuotaWarning')}`)) return;
+		if (!owns()) return;
 		try {
-			await apiMut(t('list.shelveInstance'), () => api.post(`/api/v1/instances/${id}/shelve`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined));
+			await apiMut(t('list.shelveInstance'), () => api.post(`/api/v1/instances/${id}/shelve`, {}, token, projectId));
 			await fetchInstances();
 		} catch { /* error toast shown by apiMut */ }
 	}
 
 	async function unshelveInstance(id: string) {
+		const revision = scopeRevision;
+		const token = $auth.token ?? undefined;
+		const projectId = $auth.projectId ?? undefined;
+		if (!targetsAllowed([id], 'unshelve')) return;
 		if (!await confirmDialog(t('list.confirmUnshelve'))) return;
+		if (revision !== scopeRevision || !targetsAllowed([id], 'unshelve')) return;
 		try {
-			await apiMut(t('list.unshelveInstance'), () => api.post(`/api/v1/instances/${id}/unshelve`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined));
+			await apiMut(t('list.unshelveInstance'), () => api.post(`/api/v1/instances/${id}/unshelve`, {}, token, projectId));
 			await fetchInstances();
 		} catch { /* error toast shown by apiMut */ }
 	}
 
 	async function deleteInstance(id: string, name: string) {
-		if (!await confirmDialog(t('list.confirmDelete', { name }))) return;
+		const revision = scopeRevision;
+		const token = $auth.token ?? undefined;
+		const projectId = $auth.projectId ?? undefined;
+		const targetProject = instances.find((row) => row.id === id)?.project_id;
+		const owns = () => revision === scopeRevision && targetsAllowed([id], 'delete')
+			&& instances.find((row) => row.id === id)?.project_id === targetProject;
+		if (!owns()) return;
+		if (!await confirmDialog(`${t('list.confirmDelete', { name })}\n\n${t('panel.stoppedQuotaWarning')}`)) return;
+		if (!owns()) return;
 		try {
-			await apiMut(t('list.deleteInstance'), () => api.delete(`/api/v1/instances/${id}`, $auth.token ?? undefined, $auth.projectId ?? undefined));
+			await apiMut(t('list.deleteInstance'), () => api.delete(`/api/v1/instances/${id}`, token, projectId));
 			await fetchInstances();
 		} catch { /* error toast shown by apiMut */ }
 	}
@@ -320,7 +378,7 @@
 		actions={[
 			{ key: 'start', label: t('list.start'), tone: 'success', onAction: () => bulkAction('start') },
 			{ key: 'stop', label: t('list.stop'), tone: 'warning', onAction: () => bulkAction('stop') },
-			{ key: 'delete', label: t('list.delete'), tone: 'danger', onAction: () => bulkAction('delete') },
+			...(canBulkDelete ? [{ key: 'delete', label: t('list.delete'), tone: 'danger' as const, onAction: () => bulkAction('delete') }] : []),
 		]}
 		busy={bulkActioning}
 		onClear={() => selection.clear()}

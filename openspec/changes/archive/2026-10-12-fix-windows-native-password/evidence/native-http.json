@@ -1,0 +1,500 @@
+{
+  "passed": true,
+  "boundary": "Actual current FastAPI create endpoints and installed openstacksdk/keystoneauth over real loopback Nova/Glance/Cinder HTTP. Identity, provider resources, placement/admission, SG/network and audit sinks are synthetic. No real Windows guest, RDP or production mutation.",
+  "cases": [
+    {
+      "path": "/api/v1/instances",
+      "source": "image",
+      "password_case": 0,
+      "status": 201,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "source": "image",
+      "password_case": 1,
+      "status": 201,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "source": "image",
+      "password_case": 2,
+      "status": 201,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "source": "image",
+      "password_case": 3,
+      "status": 201,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "source": "volume",
+      "password_case": 0,
+      "status": 201,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "source": "volume",
+      "password_case": 1,
+      "status": 201,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "source": "volume",
+      "password_case": 2,
+      "status": 201,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "source": "volume",
+      "password_case": 3,
+      "status": 201,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "unsupported_source": "legacy-image",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "unsupported_source": "unknown-image",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "unsupported_source": "bad-account",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "conflict": "userdata",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "conflict": "github_username",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "conflict": "data_mounts",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "foreign_volume": true,
+      "status": 400,
+      "before_mutation": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "invalid_password": true,
+      "status": 422,
+      "response_private": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "invalid_password": true,
+      "status": 422,
+      "response_private": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "invalid_password": true,
+      "status": 422,
+      "response_private": true
+    },
+    {
+      "path": "/api/v1/instances",
+      "linux_compatibility": true,
+      "status": 201
+    },
+    {
+      "path": "/api/v1/instances",
+      "no_password_compatibility": true,
+      "status": 201
+    },
+    {
+      "path": "/api/v1/instances",
+      "provider_echo_failure": true,
+      "status": 500,
+      "response_audit_private": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "source": "image",
+      "password_case": 0,
+      "status": 200,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "source": "image",
+      "password_case": 1,
+      "status": 200,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "source": "image",
+      "password_case": 2,
+      "status": 200,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "source": "image",
+      "password_case": 3,
+      "status": 200,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "source": "volume",
+      "password_case": 0,
+      "status": 200,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "source": "volume",
+      "password_case": 1,
+      "status": 200,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "source": "volume",
+      "password_case": 2,
+      "status": 200,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "source": "volume",
+      "password_case": 3,
+      "status": 200,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "unsupported_source": "legacy-image",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "unsupported_source": "unknown-image",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "unsupported_source": "bad-account",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "conflict": "userdata",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "conflict": "github_username",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "conflict": "data_mounts",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "foreign_volume": true,
+      "status": 400,
+      "before_mutation": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "invalid_password": true,
+      "status": 422,
+      "response_private": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "invalid_password": true,
+      "status": 422,
+      "response_private": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "invalid_password": true,
+      "status": 422,
+      "response_private": true
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "linux_compatibility": true,
+      "status": 200
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "no_password_compatibility": true,
+      "status": 200
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "provider_echo_failure": true,
+      "status": 200,
+      "response_audit_private": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "source": "image",
+      "password_case": 0,
+      "status": 200,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "source": "image",
+      "password_case": 1,
+      "status": 200,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "source": "image",
+      "password_case": 2,
+      "status": 200,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "source": "image",
+      "password_case": 3,
+      "status": 200,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "source": "volume",
+      "password_case": 0,
+      "status": 200,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "source": "volume",
+      "password_case": 1,
+      "status": 200,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "source": "volume",
+      "password_case": 2,
+      "status": 200,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "source": "volume",
+      "password_case": 3,
+      "status": 200,
+      "native_exact_password": true,
+      "config_drive": true,
+      "no_userdata_keypair": true,
+      "scoped_provider_project": true,
+      "response_history_private": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "unsupported_source": "legacy-image",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "unsupported_source": "unknown-image",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "unsupported_source": "bad-account",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "conflict": "userdata",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "conflict": "github_username",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "conflict": "data_mounts",
+      "status": 400,
+      "before_admission_mutation": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "foreign_volume": true,
+      "status": 400,
+      "before_mutation": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "invalid_password": true,
+      "status": 422,
+      "response_private": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "invalid_password": true,
+      "status": 422,
+      "response_private": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "invalid_password": true,
+      "status": 422,
+      "response_private": true
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "linux_compatibility": true,
+      "status": 200
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "no_password_compatibility": true,
+      "status": 200
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "provider_echo_failure": true,
+      "status": 200,
+      "response_audit_private": true
+    }
+  ],
+  "count": 63,
+  "provider_http_requests": 399
+}

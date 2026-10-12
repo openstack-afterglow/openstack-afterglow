@@ -1,0 +1,33 @@
+{
+  "shared_scope_matches_verified_snapshot": true,
+  "files": {
+    "backend/app/services/instance_password.py": "8f43c28ebd6fbdb5b25b319c0c29556e468fa2de7ace719063eb323db77fc7b9",
+    "backend/app/api/compute/instances.py": "79b5b9d70425aa4733fea70ebae2d766512617467624fd0c29e1a6c52ad3c781",
+    "backend/app/api/identity/admin_instances.py": "9d0cf7dfab4b8b029cbc2dcbbc86cbb81a93b014794e8b762b1c544f6fca780e",
+    "backend/tests/test_windows_instance_password.py": "b6f282f502d20104f17a6f4bf3374fc7862a8183c58ae418f7fb08bd829e746f",
+    "backend/tests/test_admin_instance_password.py": "802d556b1220c59a7640bce13540dcb074cbf58c42848f3e746d38e5cfb41b94",
+    "backend/tests/test_windows_image_metadata.py": "3b2cf83fb844c2f0a3eb5647a66abba1c528186b157228ffe538811055e6626d",
+    "backend/tests/test_instance_password_validation.py": "f1464afae3d8dac2c7f7b1fa333eb4f6df67104900b293754deb0a9186b5f0fe",
+    "frontend/src/lib/utils/instanceCreate.ts": "8edab3162e4323439fe980c977e7512d7a2c7aafd6d9edefb3b82b3fb7736ade",
+    "frontend/src/lib/stores/vmCreateStore.svelte.ts": "99ed72ab7758ba27abfe3aa8cd068052dc04ff3cbc1db71223c875c9077b62f9",
+    "frontend/src/lib/components/wizard/WizardStep5Config.svelte": "2f8c46b63dd04f6a4791911e53776f6a270e68cf9ad3b3d3c6066ab995c09a2b",
+    "frontend/src/lib/components/wizard/WizardStep6Review.svelte": "a2167b7527d903cd1c76d41d69d3bf5ceb172af2fee9b27cc20e440eb557a429",
+    "frontend/src/lib/components/wizard/WizardFooter.svelte": "0cb28ded6fd238b57c1bb9b2ee0b9c699def1ed8446388210a3284a33e47db6b",
+    "frontend/src/lib/components/VmCreatePanel.svelte": "dae0473f591ab9137cfb2ff9cb09a1552fd29ec6e9ce46693f206a8ee0d7dcd7",
+    "frontend/src/lib/utils/__tests__/instanceCreate.test.ts": "13a7e093124a8d52f8171967664552454540f35d2a38270395c0c1cb37e4eb2b",
+    "frontend/src/lib/stores/__tests__/vmCreatePassword.test.ts": "91102874c404ca522b592a643169339fb2b410376aee60e60b284ea920079ede",
+    "frontend/src/lib/components/wizard/__tests__/WizardStep5Config.test.ts": "e2a61cd1df807b3fd9ab52a513bc4e371f2dabb7a7466d2315ff68bc680e6caa",
+    "frontend/src/lib/components/wizard/__tests__/WizardStep6Review.test.ts": "179a2e726fc4ccfb27a09b1f376086d1b56f2d4fc112445b6ddf21ff892aac40",
+    "frontend/src/lib/components/wizard/__tests__/WizardFooter.test.ts": "52ba767fd39c8bae3b9d88c5dcbf8e01324b37678bb09a49e48338db08c34f8d",
+    "frontend/src/lib/components/wizard/__tests__/_WizardConsumerWrapper.svelte": "e4eed2d5e9078af6c7160573d9f079db1fa9e7be7999cdbe7ca4fa2470bd65ef",
+    "frontend/src/lib/components/wizard/__tests__/wizardConsumerFixtures.ts": "83f77ccd8620e90b2a8d3cbac8519106f315667d4c630e796d1e6013182d268d",
+    "frontend/src/lib/i18n/messages/ko/vm-wizard.json": "2dc573afca7f39137f65df393e79c8e67634fa16c6dd46ccb5f74dd1305baff3",
+    "frontend/src/lib/i18n/messages/en/vm-wizard.json": "938ac2307f682fcdc80cebafd94550e640549e6d8632117b57f69183f1106953",
+    "frontend/src/lib/i18n/messages/ja/vm-wizard.json": "fc68f678113cfdeb5b61c0c7f38b4321a4a79591fc541b3483abf7d582f13075",
+    "frontend/src/lib/i18n/messages/zh-CN/vm-wizard.json": "e4464f1e663e94c552f02ae0c00b362e1d906e8a2b4fc2561f8155a60a307fee",
+    "frontend/src/lib/docs/coreGuides.ts": "997b9c48ee4589e58cf429c03460634561080dab662d223047c78dc163799dfe",
+    "frontend/src/lib/docs/translations/en/coreGuides.ts": "8eaa1f4141158492954198d78ede85160b30316e9b4b5bb71701377fe76723f4",
+    "frontend/src/lib/docs/translations/ja/coreGuides.ts": "a07a6a405a73c07e21dddf041ddcd0ea230f80e2020b08ef9e5047161e8ea2ad",
+    "frontend/src/lib/docs/translations/zh-CN/coreGuides.ts": "0820b67d97d6c350069871708663a189ee4c7f24c148246f956e30c03b95825e"
+  }
+}

@@ -396,3 +396,13 @@ MCP mutation calls require `idempotency_key`. Completed identical requests repla
 VM creation reuses project flavor quota, host-capacity and GPU admission plus name uniqueness. It validates active image visibility/minimum disk/RAM, network eligibility and optional keypair ownership from the Nova response. Image-to-volume boot mapping supports zero-disk flavors. Boot volumes are retained unless `delete_boot_volume_on_termination=true` is explicitly requested. Inputs exclude user data, passwords and arbitrary provider attributes; outputs exclude application credentials, private keys and `adminPass`.
 
 These are local-source additions. MCP handshake/discovery, live cloud provisioning and production deployment are separate evidence boundaries.
+
+## MCP observed clients and credential-wide removal
+
+`GET /api/v1/auth/mcp-tokens` and `/api/v1/auth/mcp-oauth/grants` return owner-user/anchor-project grant metadata with `Cache-Control: no-store` and `Pragma: no-cache`. Each record includes `client_observations`, empty for a new or legacy grant until authenticated successful MCP initialization is observed.
+
+Each observation contains exactly `client_name`, `client_version`, `product`, `kind` (browser/agent/bot/sdk/unknown), `identity_source` (client_info/user_agent/unknown), `browser`, `os`, `first_seen_at`, and `last_seen_at`. Names/versions are sanitized self-reports; product/browser/OS are fixed inferred labels or null. UTC timestamps describe first/last successful initialization of that sanitized signature, not continuous presence. Keep at most ten recent distinct signatures and preserve first-seen on repeat initialization. Never expose raw UA/IP, tokens/hashes, Authorization, capabilities or upstream credentials.
+
+Self-reported names and User-Agent can be forged and are not authorization identity or proof of a physical device/session. **Remove connection** uses the existing owner-scoped personal-key/OAuth-grant DELETE to revoke the entire credential, including every client sharing it and a selected Lumen default. Keep tombstone/audit, credential epoch and OAuth family/refresh invalidation, and durable upstream cleanup. Do not treat deletion of observation data or User-Agent blocking as access revocation.
+
+OAuth/PAT list readiness and errors are independent. A failed count stays unknown with retry, never a verified zero; failed/stale selected records cannot authorize an action. Actor/project/method/refresh changes fence pending confirmations. Apply additive migration087 before readers/writers and synchronize existing084–086 prerequisites. Missing `project_scope` SQL1054 is a schema mismatch, not an empty inventory. Shared/production schema rollout requires separate operator authorization.

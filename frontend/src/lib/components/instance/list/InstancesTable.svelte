@@ -21,7 +21,7 @@
 		selectableIds: ReadonlySet<string>;
 		selectionDisabled: boolean;
 		onSelect: (id: string) => void;
-		onAction: (kind: 'console' | 'shelve' | 'unshelve' | 'delete', instance: Instance) => Promise<void>;
+		onAction: (kind: 'console' | 'shelve' | 'unshelve' | 'delete' | 'start' | 'stop', instance: Instance) => Promise<void>;
 		onToggleSelect: (id: string) => void;
 		onToggleAll: () => void;
 	} = $props();

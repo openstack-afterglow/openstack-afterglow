@@ -52,6 +52,19 @@ interface MigrationStatus {
 	error: string | null;
 }
 
+interface InstanceMutationContext {
+	id: string;
+	status: string;
+	flavorId: string | null | undefined;
+	flavorName: string | null;
+	token: string;
+	userId: string | null | undefined;
+	ownProjectId: string | undefined;
+	effectiveProjectId: string | undefined;
+	adminMode: boolean;
+	isSystemAdmin: boolean;
+}
+
 export function createInstanceDetailController(opts: InstanceDetailControllerOpts): InstanceDetailController {
 	const identity = fromStore(auth);
 	const writePermission = fromStore(canWrite);
@@ -102,6 +115,8 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	let resizeFlavorsLoading = $state(false);
 	let resizeLoading = $state(false);
 	let resizeError = $state('');
+	let resizeFlavorContext: InstanceMutationContext | null = null;
+	let resizeFlavorGeneration = 0;
 	let migrateHosts = $state<{ name: string; state: string; status: string; cpu_model: string | null }[]>([]);
 	let migrateLoading = $state(false);
 	let migrateError = $state('');
@@ -310,22 +325,61 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		}
 	}
 
+	function captureMutationContext(): InstanceMutationContext | null {
+		const caller = get(auth);
+		if (!instance || instance.id !== opts.instanceId() || !caller.token || !get(canWrite)) return null;
+		return {
+			id: instance.id,
+			status: instance.status,
+			flavorId: instance.flavor_id,
+			flavorName: instance.flavor_name,
+			token: caller.token,
+			userId: caller.userId,
+			ownProjectId: ownPid(),
+			effectiveProjectId: opts.effectiveProjectId(),
+			adminMode: opts.adminMode(),
+			isSystemAdmin: caller.isSystemAdmin,
+		};
+	}
+
+	function ownsMutationContext(context: InstanceMutationContext, checkState = true) {
+		const caller = get(auth);
+		return get(canWrite) && instance?.id === context.id && opts.instanceId() === context.id
+			&& caller.token === context.token && caller.userId === context.userId
+			&& caller.isSystemAdmin === context.isSystemAdmin && ownPid() === context.ownProjectId
+			&& opts.effectiveProjectId() === context.effectiveProjectId && opts.adminMode() === context.adminMode
+			&& (!checkState || (instance.status === context.status
+				&& instance.flavor_id === context.flavorId && instance.flavor_name === context.flavorName));
+	}
+
+	function mutationBusy() { return !!actioning || deleting || resizeLoading; }
+
 	async function performAction(action: 'start' | 'stop' | 'reboot' | 'shelve' | 'unshelve') {
-		if (!instance) return;
-		if (!(await confirmDialog(t('controller.action.confirm', { action })))) return;
+		const context = captureMutationContext();
+		if (!context || mutationBusy()) return;
+		const statusAllowed = action === 'start' || action === 'shelve'
+			? context.status === 'SHUTOFF'
+			: action === 'unshelve'
+				? context.status === 'SHELVED' || context.status === 'SHELVED_OFFLOADED'
+				: context.status === 'ACTIVE';
+		if (!statusAllowed) return;
+		const message = t('controller.action.confirm', { action });
+		if (!(await confirmDialog(action === 'stop' || action === 'shelve' ? `${message}\n${t('panel.stoppedQuotaWarning')}` : message))) return;
+		if (!ownsMutationContext(context) || mutationBusy()) return;
 		actioning = action;
 		try {
-			await api.post(`/api/v1/instances/${instance.id}/${action}`, {}, tok(), ownPid());
-			await fetchInstance(instance.id, { silent: true });
+			await api.post(`/api/v1/instances/${context.id}/${action}`, {}, context.token, context.ownProjectId);
+			if (ownsMutationContext(context, false)) await fetchInstance(context.id, { silent: true });
 		} catch (e) {
-			toast.error(t('controller.action.failed', { action, message: e instanceof ApiError ? e.message : String(e) }));
+			if (ownsMutationContext(context, false)) toast.error(t('controller.action.failed', { action, message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			actioning = null;
 		}
 	}
 
 	async function deleteInstance() {
-		if (!instance) return;
+		const context = captureMutationContext();
+		if (!instance || !context || context.status !== 'SHUTOFF' || mutationBusy()) return;
 		const autoDeleteVols = volumes.filter(v => v.delete_on_termination);
 		const keepVols = volumes.filter(v => !v.delete_on_termination);
 		const lines = [t('controller.delete.confirm', { name: instance.name })];
@@ -333,12 +387,13 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (keepVols.length) lines.push(t('controller.delete.keepVolumes', { volumes: keepVols.map(v => v.name || v.device).join(', ') }));
 		if (instance.union_upper_volume_id) lines.push(t('controller.delete.upperVolumeNotice'));
 		if (!(await confirmDialog(lines.join('\n')))) return;
+		if (!ownsMutationContext(context) || mutationBusy()) return;
 		deleting = true;
 		try {
-			await api.delete(`/api/v1/instances/${instance.id}`, tok(), ownPid());
-			opts.onDelete();
+			await api.delete(`/api/v1/instances/${context.id}`, context.token, context.ownProjectId);
+			if (ownsMutationContext(context, false)) opts.onDelete();
 		} catch (e) {
-			toast.error(t('controller.delete.failed', { message: e instanceof ApiError ? e.message : String(e) }));
+			if (ownsMutationContext(context, false)) toast.error(t('controller.delete.failed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			deleting = false;
 		}
@@ -473,11 +528,12 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	// Admin detail keeps the administrative mutation path; project detail uses its own instance routes.
-	function canResize() { return get(canWrite); }
-	function resizePath(action: 'resize' | 'confirm-resize' | 'revert-resize') {
-		return `/api/v1/${opts.adminMode() ? 'admin/' : ''}instances/${instance!.id}/${action}`;
+	function resizePath(context: InstanceMutationContext, action: 'resize' | 'confirm-resize' | 'revert-resize') {
+		return `/api/v1/${context.adminMode ? 'admin/' : ''}instances/${context.id}/${action}`;
 	}
-	function resizeProjectId() { return opts.adminMode() ? ownPid() : opts.effectiveProjectId(); }
+	function resizeProjectId(context: InstanceMutationContext) {
+		return context.adminMode ? context.ownProjectId : context.effectiveProjectId;
+	}
 	function selectableResizeFlavor(flavorId: string) {
 		return flavorId !== instance?.flavor_id && resizeFlavors.some(f =>
 			f.id === flavorId && (!!instance?.flavor_id || f.name !== instance?.flavor_name) && f.eligibility?.selectable !== false
@@ -485,33 +541,49 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	async function loadResizeFlavors() {
-		if (!instance || !canResize()) return;
-		const id = instance.id;
+		const context = captureMutationContext();
+		if (!context || context.status !== 'SHUTOFF' || mutationBusy()) return;
+		const generation = ++resizeFlavorGeneration;
+		resizeFlavorContext = null;
 		resizeFlavors = [];
 		resizeError = '';
 		resizeFlavorsLoading = true;
 		try {
 			const flavors = await api.get<FlavorOption[]>(
-				`/api/v1/instances/${id}/resize-flavors`, tok(), resizeProjectId()
+				`/api/v1/instances/${context.id}/resize-flavors`, context.token, resizeProjectId(context)
 			);
-			if (instance?.id === id) resizeFlavors = flavors;
+			if (generation === resizeFlavorGeneration && ownsMutationContext(context)) {
+				resizeFlavors = flavors;
+				resizeFlavorContext = context;
+			}
 		} catch (e) {
-			if (instance?.id === id) resizeError = e instanceof ApiError ? e.message : t('controller.resize.flavorsFailed');
+			if (generation === resizeFlavorGeneration && ownsMutationContext(context)) {
+				resizeError = e instanceof ApiError ? e.message : t('controller.resize.flavorsFailed');
+			}
 		} finally {
-			resizeFlavorsLoading = false;
+			if (generation === resizeFlavorGeneration) resizeFlavorsLoading = false;
 		}
 	}
 
 	async function doResize(flavorId: string): Promise<boolean> {
-		if (!instance || !canResize() || !['ACTIVE', 'SHUTOFF'].includes(instance.status) || resizeFlavorsLoading || resizeLoading || !selectableResizeFlavor(flavorId)) return false;
+		const context = resizeFlavorContext;
+		if (!context || context.status !== 'SHUTOFF' || !ownsMutationContext(context)
+			|| resizeFlavorsLoading || mutationBusy() || !selectableResizeFlavor(flavorId)) return false;
+		const flavor = resizeFlavors.find(f => f.id === flavorId)!;
+		const ramLabel = flavor.ram >= 1024 ? `${(flavor.ram / 1024).toFixed(0)} GB` : `${flavor.ram} MB`;
+		const flavorLabel = t('resize.flavorLabel', { name: flavor.name, vcpus: flavor.vcpus, ram: ramLabel });
+		if (!(await confirmDialog(t('resize.confirmMessage', { flavorLabel })))) return false;
+		if (resizeFlavorContext !== context || !ownsMutationContext(context)
+			|| resizeFlavorsLoading || mutationBusy() || !selectableResizeFlavor(flavorId)) return false;
 		resizeLoading = true;
 		resizeError = '';
 		try {
-			await api.post(resizePath('resize'), { flavor_id: flavorId }, tok(), resizeProjectId());
-			await fetchInstance(instance.id, { silent: true });
+			await api.post(resizePath(context, 'resize'), { flavor_id: flavorId }, context.token, resizeProjectId(context));
+			if (!ownsMutationContext(context, false)) return false;
+			await fetchInstance(context.id, { silent: true });
 			return true;
 		} catch (e) {
-			resizeError = e instanceof ApiError ? e.message : t('controller.resize.failed');
+			if (ownsMutationContext(context, false)) resizeError = e instanceof ApiError ? e.message : t('controller.resize.failed');
 			return false;
 		} finally {
 			resizeLoading = false;
@@ -519,30 +591,32 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	async function revertResize() {
-		if (!instance || !canResize() || instance.status !== 'VERIFY_RESIZE') return;
+		const context = captureMutationContext();
+		if (!context || context.status !== 'VERIFY_RESIZE' || mutationBusy()) return;
 		if (!(await confirmDialog(t('controller.resize.revertConfirm')))) return;
-		if (!canResize() || instance.status !== 'VERIFY_RESIZE' || actioning) return;
+		if (!ownsMutationContext(context) || mutationBusy()) return;
 		actioning = 'revert-resize';
 		try {
-			await api.post(resizePath('revert-resize'), {}, tok(), resizeProjectId());
-			await fetchInstance(instance.id, { silent: true });
+			await api.post(resizePath(context, 'revert-resize'), {}, context.token, resizeProjectId(context));
+			if (ownsMutationContext(context, false)) await fetchInstance(context.id, { silent: true });
 		} catch (e) {
-			toast.error(t('controller.resize.revertFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			if (ownsMutationContext(context, false)) toast.error(t('controller.resize.revertFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			actioning = null;
 		}
 	}
 
 	async function confirmResize() {
-		if (!instance || !canResize() || instance.status !== 'VERIFY_RESIZE') return;
+		const context = captureMutationContext();
+		if (!context || context.status !== 'VERIFY_RESIZE' || mutationBusy()) return;
 		if (!(await confirmDialog(t('controller.resize.confirm')))) return;
-		if (!canResize() || instance.status !== 'VERIFY_RESIZE' || actioning) return;
+		if (!ownsMutationContext(context) || mutationBusy()) return;
 		actioning = 'confirm-resize';
 		try {
-			await api.post(resizePath('confirm-resize'), {}, tok(), resizeProjectId());
-			await fetchInstance(instance.id, { silent: true });
+			await api.post(resizePath(context, 'confirm-resize'), {}, context.token, resizeProjectId(context));
+			if (ownsMutationContext(context, false)) await fetchInstance(context.id, { silent: true });
 		} catch (e) {
-			toast.error(t('controller.resize.confirmFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			if (ownsMutationContext(context, false)) toast.error(t('controller.resize.confirmFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			actioning = null;
 		}

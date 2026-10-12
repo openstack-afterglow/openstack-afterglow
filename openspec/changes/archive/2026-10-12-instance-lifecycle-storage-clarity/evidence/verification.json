@@ -1,0 +1,80 @@
+{
+  "boundary": "Local uncommitted current dev source. Canonical pytest uses private-free owned cwd with explicit backend project/PYTHONPATH. Current whole-tree observations and the separately defined HEAD+95-file architecture overlay are distinct. No commit, push, full gate, release or production deployment.",
+  "canonical_targets": {
+    "instances": {
+      "backend_passed": 1064,
+      "frontend_passed": 506
+    },
+    "storage": {
+      "backend_passed": 615,
+      "frontend_passed": 76
+    },
+    "access": {
+      "backend_passed": 285,
+      "frontend_passed": 15
+    },
+    "design_initial": {
+      "frontend_passed": 139
+    }
+  },
+  "final_followup": {
+    "focused_frontend_and_public_guides": {
+      "files": 26,
+      "passed": 380
+    },
+    "design": {
+      "files": 27,
+      "passed": 138
+    },
+    "polling_regression": {
+      "failed_before": true,
+      "related_passed_after": 43
+    },
+    "svelte": {
+      "errors": 0,
+      "existing_warnings": 3
+    },
+    "i18n": {
+      "errors": 0,
+      "warnings": 0,
+      "namespaces": 37,
+      "source_messages": 9575
+    },
+    "i18n_scan": {
+      "hardcoded_korean": 0,
+      "files": 989
+    },
+    "ruff": {
+      "check_exit": 0,
+      "format_exit": 0,
+      "files": 12
+    },
+    "immutable_frontend_build_exit": 0
+  },
+  "runtime": {
+    "native_sdk_http_scenarios": 35,
+    "compiled_responsive_conditions": 112,
+    "rollback_helper_native_forceDelete": true,
+    "full_create_failure_orchestration_not_proven": true
+  },
+  "architecture": {
+    "source_sha256": "e86674be70b42edb5ebc33d56fe269022ede3ef59d1ad7fe7a8ec6058d2e03d9",
+    "source_files": 2618,
+    "overlay_files": 95,
+    "working_exit": 0,
+    "staged_exit": 0,
+    "shared_index_untouched": true
+  },
+  "prior_windows_security_supplement": "Current access target includes owner/access regressions; not a rerun of the old d87d5e snapshot. Existing rollback uses POST forceDelete, so a DELETE-only counter does not prove skipped rollback. Helper-level UUID/native action now exercised; full create-failure and real guest remain unverified.",
+  "known_visual_limit": "Preexisting mobile metrics-toolbar overflow is outside the seven requests; the document and changed volume/storage/metadata boundaries were qualified.",
+  "durable_proof_directory": "/Users/pieroot/.local/share/afterglow-proofs/instance-lifecycle-storage-clarity-20261012-j8ec2ih6",
+  "not_exercised": [
+    "npm run test:gate",
+    "Real IAM/Keystone login",
+    "Live cloud provisioning/mutation/deployment",
+    "Physical resource release/deployed quota counting",
+    "Windows first boot, guest password application/RDP",
+    "Actual guest NFS/Ceph mounting and data I/O",
+    "Cinder actual completed capacity and guest partition/filesystem growth"
+  ]
+}

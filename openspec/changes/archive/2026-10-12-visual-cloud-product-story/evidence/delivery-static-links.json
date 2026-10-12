@@ -1,0 +1,50 @@
+{
+  "origin": "http://127.0.0.1:5206",
+  "staticFrame": {
+    "headings": 6,
+    "states": [
+      "static",
+      "static",
+      "static",
+      "static",
+      "static",
+      "static"
+    ],
+    "controls": 0,
+    "overflow": 0,
+    "art": 1536
+  },
+  "assets": [
+    {
+      "path": "/landing/plate-compute-allocation.svg",
+      "status": 404
+    },
+    {
+      "path": "/landing/plate-quota.svg",
+      "status": 404
+    },
+    {
+      "path": "/landing/plate-console.svg",
+      "status": 404
+    },
+    {
+      "path": "/landing/plate-layer.svg",
+      "status": 404
+    }
+  ],
+  "guides": [
+    {
+      "path": "/docs/nova",
+      "status": 200
+    },
+    {
+      "path": "/docs/lumen",
+      "status": 200
+    },
+    {
+      "path": "/docs/drover",
+      "status": 200
+    }
+  ],
+  "focus": "landing-content"
+}

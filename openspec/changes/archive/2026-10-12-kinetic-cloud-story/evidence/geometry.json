@@ -1,0 +1,138 @@
+{
+  "contacts": [
+    {
+      "kind": "server",
+      "contacts": [
+        {
+          "x": 230,
+          "y": 136,
+          "touching": true
+        },
+        {
+          "x": 230,
+          "y": 280,
+          "touching": true
+        },
+        {
+          "x": 230,
+          "y": 424,
+          "touching": true
+        },
+        {
+          "x": 480,
+          "y": 280,
+          "touching": true
+        }
+      ]
+    },
+    {
+      "kind": "gpu",
+      "contacts": [
+        {
+          "x": 228,
+          "y": 210,
+          "touching": true
+        },
+        {
+          "x": 320,
+          "y": 320,
+          "touching": true
+        },
+        {
+          "x": 537,
+          "y": 320,
+          "touching": true
+        },
+        {
+          "x": 616,
+          "y": 223,
+          "touching": true
+        }
+      ]
+    },
+    {
+      "kind": "kubernetes",
+      "contacts": [
+        {
+          "x": 192,
+          "y": 232,
+          "touching": true
+        },
+        {
+          "x": 192,
+          "y": 324,
+          "touching": true
+        },
+        {
+          "x": 414,
+          "y": 232,
+          "touching": true
+        },
+        {
+          "x": 414,
+          "y": 324,
+          "touching": true
+        },
+        {
+          "x": 636,
+          "y": 232,
+          "touching": true
+        },
+        {
+          "x": 636,
+          "y": 324,
+          "touching": true
+        }
+      ]
+    },
+    {
+      "kind": "onprem",
+      "contacts": [
+        {
+          "x": 221,
+          "y": 146,
+          "touching": true
+        },
+        {
+          "x": 221,
+          "y": 290,
+          "touching": true
+        },
+        {
+          "x": 221,
+          "y": 434,
+          "touching": true
+        },
+        {
+          "x": 326,
+          "y": 290,
+          "touching": true
+        },
+        {
+          "x": 534,
+          "y": 310,
+          "touching": true
+        },
+        {
+          "x": 622,
+          "y": 153,
+          "touching": true
+        },
+        {
+          "x": 622,
+          "y": 427,
+          "touching": true
+        }
+      ]
+    }
+  ],
+  "early": {
+    "route": 1,
+    "moving": true
+  },
+  "between": {
+    "route": 1,
+    "moving": false
+  },
+  "offscreenFrozen": 23
+}

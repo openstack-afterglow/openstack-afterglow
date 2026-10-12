@@ -9,6 +9,7 @@ export interface Instance {
   name: string;
   status: string;
   image_name: string | null;
+  os_type?: string | null;
   flavor_name: string | null;
   ip_addresses: IpAddress[];
   created_at: string | null;
@@ -82,6 +83,8 @@ export interface ImageInfo {
   tags?: string[];
   os_distro?: string | null;
   os_version?: string | null;
-  os_type?: string;
+  os_type?: string | null;
+  windows_initial_password_method?: string | null;
+  os_admin_user?: string | null;
   properties?: Record<string, unknown> | null;
 }

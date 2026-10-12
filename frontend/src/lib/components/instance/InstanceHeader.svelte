@@ -29,30 +29,19 @@
 		}
 	}
 
-	const btn = {
-		base: 'text-sm px-3 py-1.5 rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
-		gray: 'text-ink-2 hover:text-ink-0 border-line-2 hover:border-line-2',
-		green: 'text-green-400 hover:text-green-300 border-green-900 hover:border-green-700',
-		yellow: 'text-yellow-400 hover:text-yellow-300 border-yellow-900 hover:border-yellow-700',
-		blue: 'text-warm-text hover:text-warm-text-hover border-action-warm hover:border-action-warm',
-		purple: 'text-purple-400 hover:text-purple-300 border-purple-900 hover:border-purple-700',
-		cyan: 'text-cyan-400 hover:text-cyan-300 border-cyan-900 hover:border-cyan-700',
-		teal: 'text-teal-400 hover:text-teal-300 border-teal-900 hover:border-teal-700',
-		violet: 'text-violet-400 hover:text-violet-300 border-violet-900 hover:border-violet-700',
-		orange: 'text-orange-400 hover:text-orange-300 border-orange-900 hover:border-orange-700',
-		red: 'text-red-400 hover:text-red-300 border-red-900 hover:border-red-700',
-	};
+	const busy = $derived(!!s.actioning || s.deleting || s.resizeLoading);
 </script>
 
 {#snippet passwordAction()}
 	<Button
 		onclick={onOpenPasswordModal}
-		disabled={!!s.actioning || s.instance?.status !== 'ACTIVE' || s.passwordPrecheckLoading || !s.passwordPrecheck?.supported}
+		disabled={busy || s.instance?.status !== 'ACTIVE' || s.passwordPrecheckLoading || !s.passwordPrecheck?.supported}
 		title={s.passwordPrecheckReason ?? (s.passwordPrecheckLoading ? t('header.checking') : s.passwordPrecheckError)}
 		variant="outline"
 		size="sm"
+		ariaBusy={s.passwordPrecheckLoading}
 	>
-		{#if s.passwordPrecheckLoading}<ActivityIndicator size="xs" label={t('header.checking')} />{:else}{t('header.changePassword')}{/if}
+		{#if s.passwordPrecheckLoading}<ActivityIndicator size="xs" />{t('header.checking')}{:else}{t('header.changePassword')}{/if}
 	</Button>
 {/snippet}
 
@@ -87,74 +76,48 @@
 	{/snippet}
 	{#snippet actions()}
 		<div class="flex flex-col gap-2 items-end">
-			<!-- 1행: 기본 동작 (콘솔 열기, 시작/중지, 재부팅, 보관) -->
 			<div class="flex items-center gap-2 flex-wrap justify-end">
 				{#if s.instance!.status === 'ACTIVE'}
-					<button
-						onclick={s.openConsole}
-						disabled={s.consoleOpening}
-						aria-busy={s.consoleOpening}
-						aria-describedby={s.consoleOpening || s.consoleOpenError ? 'instance-console-status' : undefined}
-						class="{btn.base} {btn.gray}"
-					>
+					<Button onclick={s.openConsole} disabled={s.consoleOpening} ariaBusy={s.consoleOpening} variant="outline" size="sm">
 						{#if s.consoleOpening}
-							<span class="inline-flex items-center gap-1.5"><ActivityIndicator size="xs" />{t('header.consolePreparing')}</span>
+							<ActivityIndicator size="xs" />{t('header.consolePreparing')}
 						{:else}
 							{t('header.openConsole')}
 						{/if}
-					</button>
+					</Button>
 					{#if canMutate}
-						<button
-							onclick={() => s.performAction('stop')}
-							disabled={!!s.actioning}
-							class="{btn.base} {btn.yellow}"
-						>{#if s.actioning === 'stop'}<ActivityIndicator size="xs" label={t('header.stopping')} />{:else}{t('header.stop')}{/if}</button>
-						<button
-							onclick={() => s.performAction('reboot')}
-							disabled={!!s.actioning}
-							class="{btn.base} {btn.blue}"
-						>{#if s.actioning === 'reboot'}<ActivityIndicator size="xs" label={t('header.rebooting')} />{:else}{t('header.reboot')}{/if}</button>
+						<Button onclick={() => s.performAction('stop')} disabled={busy} variant="outline" size="sm">
+							{#if s.actioning === 'stop'}<ActivityIndicator size="xs" label={t('header.stopping')} />{:else}{t('header.stop')}{/if}
+						</Button>
+						<Button onclick={() => s.performAction('reboot')} disabled={busy} variant="outline" size="sm">
+							{#if s.actioning === 'reboot'}<ActivityIndicator size="xs" label={t('header.rebooting')} />{:else}{t('header.reboot')}{/if}
+						</Button>
 					{/if}
 				{/if}
 				{#if canMutate && s.instance!.status === 'SHUTOFF'}
-					<button
-						onclick={() => s.performAction('start')}
-						disabled={!!s.actioning}
-						class="{btn.base} {btn.green}"
-					>{#if s.actioning === 'start'}<ActivityIndicator size="xs" label={t('header.starting')} />{:else}{t('header.start')}{/if}</button>
-				{/if}
-				{#if canMutate && (s.instance!.status === 'ACTIVE' || s.instance!.status === 'SHUTOFF')}
-					<button
-						onclick={() => s.performAction('shelve')}
-						disabled={!!s.actioning}
-						class="{btn.base} {btn.purple}"
-					>{#if s.actioning === 'shelve'}<ActivityIndicator size="xs" label={t('header.shelving')} />{:else}{t('header.shelve')}{/if}</button>
+					<Button onclick={() => s.performAction('start')} disabled={busy} variant="primary" size="sm">
+						{#if s.actioning === 'start'}<ActivityIndicator size="xs" label={t('header.starting')} />{:else}{t('header.start')}{/if}
+					</Button>
+					<Button onclick={() => s.performAction('shelve')} disabled={busy} variant="outline" size="sm">
+						{#if s.actioning === 'shelve'}<ActivityIndicator size="xs" label={t('header.shelving')} />{:else}{t('header.shelve')}{/if}
+					</Button>
+					<Button onclick={s.deleteInstance} disabled={busy} variant="danger-outline" size="sm">
+						{#if s.deleting}<ActivityIndicator size="xs" label={t('header.deleting')} />{:else}{t('header.delete')}{/if}
+					</Button>
+					<Button onclick={onOpenResizeModal} disabled={busy} variant="outline" size="sm">{t('header.resize')}</Button>
 				{/if}
 				{#if canMutate && (s.instance!.status === 'SHELVED_OFFLOADED' || s.instance!.status === 'SHELVED')}
-					<button
-						onclick={() => s.performAction('unshelve')}
-						disabled={!!s.actioning}
-						class="{btn.base} {btn.green}"
-					>{#if s.actioning === 'unshelve'}<ActivityIndicator size="xs" label={t('header.unshelving')} />{:else}{t('header.unshelve')}{/if}</button>
+					<Button onclick={() => s.performAction('unshelve')} disabled={busy} variant="primary" size="sm">
+						{#if s.actioning === 'unshelve'}<ActivityIndicator size="xs" label={t('header.unshelving')} />{:else}{t('header.unshelve')}{/if}
+					</Button>
 				{/if}
 				{#if canMutate && s.instance!.status === 'VERIFY_RESIZE'}
-					<button
-						onclick={s.confirmResize}
-						disabled={!!s.actioning}
-						class="{btn.base} {btn.orange}"
-					>{#if s.actioning === 'confirm-resize'}<ActivityIndicator size="xs" label={t('header.confirming')} />{:else}{t('header.confirmResize')}{/if}</button>
-					<button
-						onclick={s.revertResize}
-						disabled={!!s.actioning}
-						class="{btn.base} {btn.yellow}"
-					>{#if s.actioning === 'revert-resize'}<ActivityIndicator size="xs" label={t('header.canceling')} />{:else}{t('header.revert')}{/if}</button>
-				{/if}
-				{#if canMutate && !adminProjectId}
-					<button
-						onclick={s.deleteInstance}
-						disabled={s.deleting}
-						class="{btn.base} {btn.red}"
-					>{#if s.deleting}<ActivityIndicator size="xs" label={t('header.deleting')} />{:else}{t('header.delete')}{/if}</button>
+					<Button onclick={s.confirmResize} disabled={busy} variant="primary" size="sm">
+						{#if s.actioning === 'confirm-resize'}<ActivityIndicator size="xs" label={t('header.confirming')} />{:else}{t('header.confirmResize')}{/if}
+					</Button>
+					<Button onclick={s.revertResize} disabled={busy} variant="outline" size="sm">
+						{#if s.actioning === 'revert-resize'}<ActivityIndicator size="xs" label={t('header.canceling')} />{:else}{t('header.revert')}{/if}
+					</Button>
 				{/if}
 			</div>
 			{#if s.consoleOpening || s.consoleOpenError}
@@ -172,55 +135,31 @@
 				<!-- 2행: 라이브 마이그레이션, 콜드 마이그레이션 -->
 				<div class="flex items-center gap-2 flex-wrap justify-end">
 					{#if s.instance!.status === 'MIGRATING'}
-						<button
-							onclick={() => requestMigrationControl('complete')}
-							disabled={migrationRequest !== null}
-							class="{btn.base} {btn.cyan}"
-						>{#if migrationRequest === 'complete'}<ActivityIndicator size="xs" label={`${t('header.forceComplete')} · ${tc('state.processing')}`} />{:else}{t('header.forceComplete')}{/if}</button>
-						<button
-							onclick={() => requestMigrationControl('abort')}
-							disabled={migrationRequest !== null}
-							class="{btn.base} {btn.yellow}"
-						>{#if migrationRequest === 'abort'}<ActivityIndicator size="xs" label={`${t('header.abortMigration')} · ${tc('state.processing')}`} />{:else}{t('header.abortMigration')}{/if}</button>
+						<Button onclick={() => requestMigrationControl('complete')} disabled={migrationRequest !== null} variant="outline" size="sm">
+							{#if migrationRequest === 'complete'}<ActivityIndicator size="xs" label={`${t('header.forceComplete')} · ${tc('state.processing')}`} />{:else}{t('header.forceComplete')}{/if}
+						</Button>
+						<Button onclick={() => requestMigrationControl('abort')} disabled={migrationRequest !== null} variant="outline" size="sm">
+							{#if migrationRequest === 'abort'}<ActivityIndicator size="xs" label={`${t('header.abortMigration')} · ${tc('state.processing')}`} />{:else}{t('header.abortMigration')}{/if}
+						</Button>
 					{:else}
 						{#if s.instance!.status === 'ACTIVE'}
-							<button
-								onclick={() => onOpenMigrateModal('live')}
-								disabled={!!s.actioning}
-								class="{btn.base} {btn.cyan}"
-							>{t('header.liveMigration')}</button>
+							<Button onclick={() => onOpenMigrateModal('live')} disabled={busy} variant="outline" size="sm">{t('header.liveMigration')}</Button>
 						{/if}
 						{#if s.instance!.status === 'ACTIVE' || s.instance!.status === 'SHUTOFF'}
-							<button
-								onclick={() => onOpenMigrateModal('cold')}
-								disabled={!!s.actioning}
-								class="{btn.base} {btn.teal}"
-							>{t('header.coldMigration')}</button>
+							<Button onclick={() => onOpenMigrateModal('cold')} disabled={busy} variant="outline" size="sm">{t('header.coldMigration')}</Button>
 						{/if}
 					{/if}
 				</div>
 
-				<!-- 3행: 강제 이주, 비밀번호 변경, 삭제 -->
+				<!-- Administrator recovery and password actions remain separate. -->
 				<div class="flex items-center gap-2 flex-wrap justify-end">
-					<button
-						onclick={onOpenEvacuateModal}
-						disabled={!!s.actioning}
-						class="{btn.base} {btn.orange}"
-					>{t('header.evacuate')}</button>
+					<Button onclick={onOpenEvacuateModal} disabled={busy} variant="outline" size="sm">{t('header.evacuate')}</Button>
 					{#if s.canChangePassword}{@render passwordAction()}{/if}
-					<button
-						onclick={s.deleteInstance}
-						disabled={s.deleting}
-						class="{btn.base} {btn.red}"
-					>{#if s.deleting}<ActivityIndicator size="xs" label={t('header.deleting')} />{:else}{t('header.delete')}{/if}</button>
 				</div>
 			{/if}
-			{#if canMutate && (s.canChangePassword || s.instance!.status === 'ACTIVE' || s.instance!.status === 'SHUTOFF')}
+			{#if canMutate && !adminProjectId && s.canChangePassword}
 				<div class="flex items-center gap-2 flex-wrap justify-end">
-					{#if !adminProjectId && s.canChangePassword}{@render passwordAction()}{/if}
-					{#if s.instance!.status === 'ACTIVE' || s.instance!.status === 'SHUTOFF'}
-						<button onclick={() => onOpenResizeModal()} disabled={!!s.actioning} class="{btn.base} {btn.violet}">{t('header.resize')}</button>
-					{/if}
+					{@render passwordAction()}
 				</div>
 			{/if}
 			{#if s.canChangePassword && !s.passwordPrecheckLoading && (s.passwordPrecheckReason || s.passwordPrecheckError)}

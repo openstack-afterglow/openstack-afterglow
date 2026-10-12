@@ -1,0 +1,8587 @@
+{
+  "architectures": [
+    "arm64-qualified",
+    "amd64-qualified"
+  ],
+  "conditions": [
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "oauth",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 112.71875,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 54,
+          "right": 112.71875,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "oauth",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 112.71875,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 54,
+          "right": 112.71875,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "oauth",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 637.28125,
+          "right": 696,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 637.28125,
+          "right": 696,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 892.28125,
+          "right": 951,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 892.28125,
+          "right": 951,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 893.28125,
+          "right": 952,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 893.28125,
+          "right": 952,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1149.28125,
+          "right": 1208,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 1149.28125,
+          "right": 1208,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1234.28125,
+          "right": 1293,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 1234.28125,
+          "right": 1293,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "api",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 127.640625,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 127.640625,
+          "right": 186.359375,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "api",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 127.640625,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 127.640625,
+          "right": 186.359375,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "api",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 622.359375,
+          "right": 696,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 637.28125,
+          "right": 696,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "api",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 877.359375,
+          "right": 951,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 892.28125,
+          "right": 951,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "api",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 878.359375,
+          "right": 952,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 893.28125,
+          "right": 952,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "api",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1075.640625,
+          "right": 1149.28125,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 1149.28125,
+          "right": 1208,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "api",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1160.640625,
+          "right": 1234.28125,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 1234.28125,
+          "right": 1293,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 112.71875,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 54,
+          "right": 112.71875,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 112.71875,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 54,
+          "right": 112.71875,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 637.28125,
+          "right": 696,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 637.28125,
+          "right": 696,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 892.28125,
+          "right": 951,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 892.28125,
+          "right": 951,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 893.28125,
+          "right": 952,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 893.28125,
+          "right": 952,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1149.28125,
+          "right": 1208,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 1149.28125,
+          "right": 1208,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1234.28125,
+          "right": 1293,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 1234.28125,
+          "right": 1293,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "api",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 127.640625,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 127.640625,
+          "right": 186.359375,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "api",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 127.640625,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 127.640625,
+          "right": 186.359375,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "api",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 622.359375,
+          "right": 696,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 637.28125,
+          "right": 696,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "api",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 877.359375,
+          "right": 951,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 892.28125,
+          "right": 951,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "api",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 878.359375,
+          "right": 952,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 893.28125,
+          "right": 952,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "api",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1075.640625,
+          "right": 1149.28125,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 1149.28125,
+          "right": 1208,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "api",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1160.640625,
+          "right": 1234.28125,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 1234.28125,
+          "right": 1293,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "oauth",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 170.8125,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 54,
+          "right": 170.8125,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "oauth",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 170.8125,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 54,
+          "right": 170.8125,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "oauth",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 579.1875,
+          "right": 696,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 579.1875,
+          "right": 696,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 834.1875,
+          "right": 951,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 834.1875,
+          "right": 951,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 835.1875,
+          "right": 952,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 835.1875,
+          "right": 952,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1091.1875,
+          "right": 1208,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 1091.1875,
+          "right": 1208,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1176.1875,
+          "right": 1293,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 1176.1875,
+          "right": 1293,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "api",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 177.328125,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 177.328125,
+          "right": 294.140625,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "api",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 177.328125,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 177.328125,
+          "right": 294.140625,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "api",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 572.671875,
+          "right": 696,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 579.1875,
+          "right": 696,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "api",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 827.671875,
+          "right": 951,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 834.1875,
+          "right": 951,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "api",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 828.671875,
+          "right": 952,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 835.1875,
+          "right": 952,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "api",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1084.671875,
+          "right": 1208,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 1091.1875,
+          "right": 1208,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "api",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1169.671875,
+          "right": 1293,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 1176.1875,
+          "right": 1293,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 170.8125,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 54,
+          "right": 170.8125,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 170.8125,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 54,
+          "right": 170.8125,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 579.1875,
+          "right": 696,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 579.1875,
+          "right": 696,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 834.1875,
+          "right": 951,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 834.1875,
+          "right": 951,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 835.1875,
+          "right": 952,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 835.1875,
+          "right": 952,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1091.1875,
+          "right": 1208,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 1091.1875,
+          "right": 1208,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1176.1875,
+          "right": 1293,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 1176.1875,
+          "right": 1293,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "api",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 177.328125,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 177.328125,
+          "right": 294.140625,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "api",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 177.328125,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 177.328125,
+          "right": 294.140625,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "api",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 572.671875,
+          "right": 696,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 579.1875,
+          "right": 696,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "api",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 827.671875,
+          "right": 951,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 834.1875,
+          "right": 951,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "api",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 828.671875,
+          "right": 952,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 835.1875,
+          "right": 952,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "api",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1084.671875,
+          "right": 1208,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 1091.1875,
+          "right": 1208,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "api",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1169.671875,
+          "right": 1293,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 1176.1875,
+          "right": 1293,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "oauth",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 127,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 54,
+          "right": 127,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "oauth",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 127,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 54,
+          "right": 127,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "oauth",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 623,
+          "right": 696,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 623,
+          "right": 696,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 878,
+          "right": 951,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 878,
+          "right": 951,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 879,
+          "right": 952,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 879,
+          "right": 952,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1135,
+          "right": 1208,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 1135,
+          "right": 1208,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1220,
+          "right": 1293,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 1220,
+          "right": 1293,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "api",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 204.609375,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 204.609375,
+          "right": 277.609375,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "api",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 204.609375,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 204.609375,
+          "right": 277.609375,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "api",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 545.390625,
+          "right": 696,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 623,
+          "right": 696,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "api",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 800.390625,
+          "right": 951,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 878,
+          "right": 951,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "api",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 801.390625,
+          "right": 952,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 879,
+          "right": 952,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "api",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1057.390625,
+          "right": 1208,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 1135,
+          "right": 1208,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "api",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1142.390625,
+          "right": 1293,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 1220,
+          "right": 1293,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 127,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 54,
+          "right": 127,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 127,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 54,
+          "right": 127,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 623,
+          "right": 696,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 623,
+          "right": 696,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 878,
+          "right": 951,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 878,
+          "right": 951,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 879,
+          "right": 952,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 879,
+          "right": 952,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1135,
+          "right": 1208,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 1135,
+          "right": 1208,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1220,
+          "right": 1293,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 1220,
+          "right": 1293,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "api",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 204.609375,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 204.609375,
+          "right": 277.609375,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "api",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 204.609375,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 204.609375,
+          "right": 277.609375,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "api",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 545.390625,
+          "right": 696,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 623,
+          "right": 696,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "api",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 800.390625,
+          "right": 951,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 878,
+          "right": 951,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "api",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 801.390625,
+          "right": 952,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 879,
+          "right": 952,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "api",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1057.390625,
+          "right": 1208,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 1135,
+          "right": 1208,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "api",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1142.390625,
+          "right": 1293,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 1220,
+          "right": 1293,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "oauth",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 116,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 54,
+          "right": 116,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "oauth",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 116,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 54,
+          "right": 116,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "oauth",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 634,
+          "right": 696,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 634,
+          "right": 696,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 889,
+          "right": 951,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 889,
+          "right": 951,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 890,
+          "right": 952,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 890,
+          "right": 952,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1146,
+          "right": 1208,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 1146,
+          "right": 1208,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1231,
+          "right": 1293,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 1231,
+          "right": 1293,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "api",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 177.3125,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 177.3125,
+          "right": 239.3125,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "api",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 177.3125,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 177.3125,
+          "right": 239.3125,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "api",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 572.6875,
+          "right": 696,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 634,
+          "right": 696,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "api",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 827.6875,
+          "right": 951,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 889,
+          "right": 951,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "api",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 828.6875,
+          "right": 952,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 890,
+          "right": 952,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "api",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1022.6875,
+          "right": 1146,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 1146,
+          "right": 1208,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "api",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1107.6875,
+          "right": 1231,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 1231,
+          "right": 1293,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 116,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 54,
+          "right": 116,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 116,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 54,
+          "right": 116,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 634,
+          "right": 696,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 634,
+          "right": 696,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 889,
+          "right": 951,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 889,
+          "right": 951,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 890,
+          "right": 952,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 890,
+          "right": 952,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1146,
+          "right": 1208,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 1146,
+          "right": 1208,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1231,
+          "right": 1293,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 1231,
+          "right": 1293,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "api",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 177.3125,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 177.3125,
+          "right": 239.3125,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "api",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 177.3125,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 177.3125,
+          "right": 239.3125,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "api",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 572.6875,
+          "right": 696,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 634,
+          "right": 696,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "api",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 827.6875,
+          "right": 951,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 889,
+          "right": 951,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "api",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 828.6875,
+          "right": 952,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 890,
+          "right": 952,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "api",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1022.6875,
+          "right": 1146,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 1146,
+          "right": 1208,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "arm64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "api",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1107.6875,
+          "right": 1231,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 1231,
+          "right": 1293,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "oauth",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 112.71875,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 54,
+          "right": 112.71875,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "oauth",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 112.71875,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 54,
+          "right": 112.71875,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "oauth",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 637.28125,
+          "right": 696,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 637.28125,
+          "right": 696,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 892.28125,
+          "right": 951,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 892.28125,
+          "right": 951,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 893.28125,
+          "right": 952,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 893.28125,
+          "right": 952,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1149.28125,
+          "right": 1208,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 1149.28125,
+          "right": 1208,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1234.28125,
+          "right": 1293,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 1234.28125,
+          "right": 1293,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "api",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 127.640625,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 127.640625,
+          "right": 186.359375,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "api",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 127.640625,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 127.640625,
+          "right": 186.359375,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "api",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 622.359375,
+          "right": 696,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 637.28125,
+          "right": 696,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "api",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 877.359375,
+          "right": 951,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 892.28125,
+          "right": 951,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "api",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 878.359375,
+          "right": 952,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 893.28125,
+          "right": 952,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "api",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1075.640625,
+          "right": 1149.28125,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 1149.28125,
+          "right": 1208,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "light",
+      "method": "api",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1160.640625,
+          "right": 1234.28125,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 1234.28125,
+          "right": 1293,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 112.71875,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 54,
+          "right": 112.71875,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 112.71875,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 54,
+          "right": 112.71875,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 637.28125,
+          "right": 696,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 637.28125,
+          "right": 696,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 892.28125,
+          "right": 951,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 892.28125,
+          "right": 951,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 893.28125,
+          "right": 952,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 893.28125,
+          "right": 952,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1149.28125,
+          "right": 1208,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 1149.28125,
+          "right": 1208,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1234.28125,
+          "right": 1293,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        },
+        {
+          "x": 1234.28125,
+          "right": 1293,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "api",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 127.640625,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 127.640625,
+          "right": 186.359375,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "api",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 127.640625,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 127.640625,
+          "right": 186.359375,
+          "width": 58.71875,
+          "height": 44,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "api",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 622.359375,
+          "right": 696,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 637.28125,
+          "right": 696,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "api",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 877.359375,
+          "right": 951,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 892.28125,
+          "right": 951,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "api",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 878.359375,
+          "right": 952,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 893.28125,
+          "right": 952,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "api",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1075.640625,
+          "right": 1149.28125,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 1149.28125,
+          "right": 1208,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ko",
+      "theme": "dark",
+      "method": "api",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ko",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1160.640625,
+          "right": 1234.28125,
+          "width": 73.640625,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumen 기본"
+        },
+        {
+          "x": 1234.28125,
+          "right": 1293,
+          "width": 58.71875,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "연결 제거"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "oauth",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 170.8125,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 54,
+          "right": 170.8125,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "oauth",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 170.8125,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 54,
+          "right": 170.8125,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "oauth",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 579.1875,
+          "right": 696,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 579.1875,
+          "right": 696,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 834.1875,
+          "right": 951,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 834.1875,
+          "right": 951,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 835.1875,
+          "right": 952,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 835.1875,
+          "right": 952,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1091.1875,
+          "right": 1208,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 1091.1875,
+          "right": 1208,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1176.1875,
+          "right": 1293,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 1176.1875,
+          "right": 1293,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "api",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 177.328125,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 177.328125,
+          "right": 294.140625,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "api",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 177.328125,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 177.328125,
+          "right": 294.140625,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "api",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 572.671875,
+          "right": 696,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 579.1875,
+          "right": 696,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "api",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 827.671875,
+          "right": 951,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 834.1875,
+          "right": 951,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "api",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 828.671875,
+          "right": 952,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 835.1875,
+          "right": 952,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "api",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1084.671875,
+          "right": 1208,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 1091.1875,
+          "right": 1208,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "light",
+      "method": "api",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1169.671875,
+          "right": 1293,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 1176.1875,
+          "right": 1293,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 170.8125,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 54,
+          "right": 170.8125,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 170.8125,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 54,
+          "right": 170.8125,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 579.1875,
+          "right": 696,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 579.1875,
+          "right": 696,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 834.1875,
+          "right": 951,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 834.1875,
+          "right": 951,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 835.1875,
+          "right": 952,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 835.1875,
+          "right": 952,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1091.1875,
+          "right": 1208,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 1091.1875,
+          "right": 1208,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1176.1875,
+          "right": 1293,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        },
+        {
+          "x": 1176.1875,
+          "right": 1293,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "api",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 177.328125,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 177.328125,
+          "right": 294.140625,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "api",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 177.328125,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 177.328125,
+          "right": 294.140625,
+          "width": 116.8125,
+          "height": 44,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "api",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 572.671875,
+          "right": 696,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 579.1875,
+          "right": 696,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "api",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 827.671875,
+          "right": 951,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 834.1875,
+          "right": 951,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "api",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 828.671875,
+          "right": 952,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 835.1875,
+          "right": 952,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "api",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1084.671875,
+          "right": 1208,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 1091.1875,
+          "right": 1208,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "en",
+      "theme": "dark",
+      "method": "api",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "en",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1169.671875,
+          "right": 1293,
+          "width": 123.328125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Set as Lumen default"
+        },
+        {
+          "x": 1176.1875,
+          "right": 1293,
+          "width": 116.8125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Remove connection"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "oauth",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 127,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 54,
+          "right": 127,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "oauth",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 127,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 54,
+          "right": 127,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "oauth",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 623,
+          "right": 696,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 623,
+          "right": 696,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 878,
+          "right": 951,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 878,
+          "right": 951,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 879,
+          "right": 952,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 879,
+          "right": 952,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1135,
+          "right": 1208,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 1135,
+          "right": 1208,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1220,
+          "right": 1293,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 1220,
+          "right": 1293,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "api",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 204.609375,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 204.609375,
+          "right": 277.609375,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "api",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 204.609375,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 204.609375,
+          "right": 277.609375,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "api",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 545.390625,
+          "right": 696,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 623,
+          "right": 696,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "api",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 800.390625,
+          "right": 951,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 878,
+          "right": 951,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "api",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 801.390625,
+          "right": 952,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 879,
+          "right": 952,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "api",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1057.390625,
+          "right": 1208,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 1135,
+          "right": 1208,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "light",
+      "method": "api",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1142.390625,
+          "right": 1293,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 1220,
+          "right": 1293,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 127,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 54,
+          "right": 127,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 127,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 54,
+          "right": 127,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 623,
+          "right": 696,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 623,
+          "right": 696,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 878,
+          "right": 951,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 878,
+          "right": 951,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 879,
+          "right": 952,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 879,
+          "right": 952,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1135,
+          "right": 1208,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 1135,
+          "right": 1208,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1220,
+          "right": 1293,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        },
+        {
+          "x": 1220,
+          "right": 1293,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "api",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 204.609375,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 204.609375,
+          "right": 277.609375,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "api",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 204.609375,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 204.609375,
+          "right": 277.609375,
+          "width": 73,
+          "height": 44,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "api",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 545.390625,
+          "right": 696,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 623,
+          "right": 696,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "api",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 800.390625,
+          "right": 951,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 878,
+          "right": 951,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "api",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 801.390625,
+          "right": 952,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 879,
+          "right": 952,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "api",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1057.390625,
+          "right": 1208,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 1135,
+          "right": 1208,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "ja",
+      "theme": "dark",
+      "method": "api",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "ja",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1142.390625,
+          "right": 1293,
+          "width": 150.609375,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "Lumenのデフォルトに設定"
+        },
+        {
+          "x": 1220,
+          "right": 1293,
+          "width": 73,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "接続を解除"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "oauth",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 116,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 54,
+          "right": 116,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "oauth",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 116,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 54,
+          "right": 116,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "oauth",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 634,
+          "right": 696,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 634,
+          "right": 696,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 889,
+          "right": 951,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 889,
+          "right": 951,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 890,
+          "right": 952,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 890,
+          "right": 952,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1146,
+          "right": 1208,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 1146,
+          "right": 1208,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "oauth",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1231,
+          "right": 1293,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 1231,
+          "right": 1293,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "api",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 177.3125,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 177.3125,
+          "right": 239.3125,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "api",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 177.3125,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 177.3125,
+          "right": 239.3125,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "api",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 572.6875,
+          "right": 696,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 634,
+          "right": 696,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "api",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 827.6875,
+          "right": 951,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 889,
+          "right": 951,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "api",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 828.6875,
+          "right": 952,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 890,
+          "right": 952,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "api",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1022.6875,
+          "right": 1146,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 1146,
+          "right": 1208,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "light",
+      "method": "api",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": true,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1107.6875,
+          "right": 1231,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 1231,
+          "right": 1293,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 116,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 54,
+          "right": 116,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 116,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 54,
+          "right": 116,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 634,
+          "right": 696,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 634,
+          "right": 696,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 889,
+          "right": 951,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 889,
+          "right": 951,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 890,
+          "right": 952,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 890,
+          "right": 952,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1146,
+          "right": 1208,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 1146,
+          "right": 1208,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "oauth",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1231,
+          "right": 1293,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        },
+        {
+          "x": 1231,
+          "right": 1293,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Cursor",
+        "qa-crawler",
+        "qa-unrecognized"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "api",
+      "width": 390,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 177.3125,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 177.3125,
+          "right": 239.3125,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "api",
+      "width": 767,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 54,
+          "right": 177.3125,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 177.3125,
+          "right": 239.3125,
+          "width": 62,
+          "height": 44,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "api",
+      "width": 768,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 572.6875,
+          "right": 696,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 634,
+          "right": 696,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "api",
+      "width": 1023,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 827.6875,
+          "right": 951,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 889,
+          "right": 951,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "api",
+      "width": 1024,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 828.6875,
+          "right": 952,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 890,
+          "right": 952,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "api",
+      "width": 1280,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1022.6875,
+          "right": 1146,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 1146,
+          "right": 1208,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    },
+    {
+      "arch": "amd64-qualified",
+      "locale": "zh-CN",
+      "theme": "dark",
+      "method": "api",
+      "width": 1440,
+      "documentOverflow": 0,
+      "cardOverflow": 0,
+      "clientOverflow": 0,
+      "observedRows": 3,
+      "open": true,
+      "lang": "zh-CN",
+      "light": false,
+      "secretBearingText": false,
+      "actions": [
+        {
+          "x": 1107.6875,
+          "right": 1231,
+          "width": 123.3125,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "设为 Lumen 默认令牌"
+        },
+        {
+          "x": 1231,
+          "right": 1293,
+          "width": 62,
+          "height": 21.1875,
+          "disabled": false,
+          "text": "移除连接"
+        }
+      ],
+      "products": [
+        "Claude Code",
+        "Codex",
+        "qa-browser"
+      ]
+    }
+  ],
+  "finalConditions": 224,
+  "mobileConditions": 64,
+  "mobileRemovalMinHeight": 44,
+  "mobileDisclosureSpotCheck": {
+    "summary": 44,
+    "remove": 44
+  },
+  "selectedMethodFailureIsolation": [
+    {
+      "broken": "api",
+      "healthySelectedOAuthObserved": true,
+      "failed": {
+        "records": 0,
+        "count": null,
+        "removal": false,
+        "retry": true
+      },
+      "recovered": true
+    },
+    {
+      "broken": "oauth",
+      "healthy": {
+        "records": 1,
+        "error": false
+      },
+      "failed": {
+        "records": 0,
+        "count": null,
+        "removal": false,
+        "retry": true
+      },
+      "recovered": true
+    }
+  ],
+  "localizedGuides": [
+    {
+      "locale": "ko",
+      "renderedForgeryWarning": true,
+      "renderedCredentialRemovalGuidance": true
+    },
+    {
+      "locale": "en",
+      "renderedForgeryWarning": true,
+      "renderedCredentialRemovalGuidance": true
+    },
+    {
+      "locale": "ja",
+      "renderedForgeryWarning": true,
+      "renderedCredentialRemovalGuidance": true
+    },
+    {
+      "locale": "zh-CN",
+      "renderedForgeryWarning": true,
+      "renderedCredentialRemovalGuidance": true
+    }
+  ],
+  "actualBrowserDeletes": [
+    "arm64-qualified/oauth",
+    "arm64-qualified/api",
+    "amd64-qualified/oauth",
+    "amd64-qualified/api"
+  ],
+  "warnings": [
+    "Auth/projects/profile are synthetic browser fixtures; MCP lists and revoke are actual SQL-backed product HTTP",
+    "Screenshots before-touch-fix are not final acceptance",
+    "Chrome only; no real client authenticity, online/device count or production IAM proof"
+  ]
+}

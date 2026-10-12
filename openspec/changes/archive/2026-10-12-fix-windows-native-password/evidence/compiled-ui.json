@@ -1,0 +1,129 @@
+{
+  "passed": true,
+  "boundary": "Immutable current-source production frontend in actual Chromium; synthetic tab identity and read fixtures; real local FastAPI/installed SDK over loopback Nova/Glance/Cinder on submissions. Rendered theme classes tested, not OS theme-preference persistence. No production/real guest/RDP acceptance.",
+  "flows": [
+    {
+      "mode": "user",
+      "source": "image",
+      "passed": true,
+      "exactPasswordFromUi": true,
+      "nativeProviderPassword": true,
+      "configDrive": true,
+      "noUserdataKeypair": true,
+      "closedAfterCompleted": true
+    },
+    {
+      "mode": "user",
+      "source": "volume",
+      "passed": true,
+      "exactPasswordFromUi": true,
+      "nativeProviderPassword": true,
+      "configDrive": true,
+      "noUserdataKeypair": true,
+      "closedAfterCompleted": true
+    },
+    {
+      "mode": "admin",
+      "source": "image",
+      "passed": true,
+      "exactPasswordFromUi": true,
+      "nativeProviderPassword": true,
+      "configDrive": true,
+      "noUserdataKeypair": true,
+      "closedAfterCompleted": true
+    },
+    {
+      "mode": "admin",
+      "source": "volume",
+      "passed": true,
+      "exactPasswordFromUi": true,
+      "nativeProviderPassword": true,
+      "configDrive": true,
+      "noUserdataKeypair": true,
+      "closedAfterCompleted": true
+    }
+  ],
+  "unsupportedImage": {
+    "unsupportedFooterVisible": true,
+    "nextBlocked": true,
+    "passwordAbsent": true
+  },
+  "unsupportedVolume": {
+    "mode": "user",
+    "source": "volume",
+    "visible": true,
+    "nextBlocked": true
+  },
+  "providerFailure": {
+    "providerErrorVisible": true,
+    "secretNotEchoed": true,
+    "failedRequestSent": true
+  },
+  "clearing": {
+    "afterFailureBlank": true,
+    "afterFailureNextBlocked": true
+  },
+  "docs": [
+    {
+      "locale": "ko",
+      "nativePasswordGuide": true,
+      "language": "ko",
+      "overflow": -10
+    },
+    {
+      "locale": "en",
+      "nativePasswordGuide": true,
+      "language": "en",
+      "overflow": -10
+    },
+    {
+      "locale": "ja",
+      "nativePasswordGuide": true,
+      "language": "ja",
+      "overflow": -10
+    },
+    {
+      "locale": "zh-CN",
+      "nativePasswordGuide": true,
+      "language": "zh-CN",
+      "overflow": -10
+    }
+  ],
+  "errors": {
+    "entries": [],
+    "nextSeq": 0,
+    "dropped": 0
+  },
+  "matrix_summary": {
+    "conditions": 224,
+    "modes": [
+      "user",
+      "admin"
+    ],
+    "sources": [
+      "image",
+      "volume"
+    ],
+    "locales": [
+      "ko",
+      "en",
+      "ja",
+      "zh-CN"
+    ],
+    "themes": [
+      "rendered dark",
+      "rendered light"
+    ],
+    "widths": [
+      390,
+      767,
+      768,
+      1023,
+      1024,
+      1280,
+      1440
+    ],
+    "all_masked_in_bounds_ready": true,
+    "full_matrix_receipt": "/Users/pieroot/.local/share/afterglow-proofs/afterglow-native-password-cjyjk_ng/compiled-ui.json"
+  }
+}

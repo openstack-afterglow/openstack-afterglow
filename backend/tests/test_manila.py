@@ -74,11 +74,17 @@ def test_create_access_rule_ip_with_metadata(mock_get_client):
     mock_get_client.return_value = client
 
     conn = MagicMock()
-    meta = {"root_squash": "True", "auth_flavor_list": ["sys"]}
-    create_access_rule(conn, "share-1", "10.0.0.1", "rw", "ip", metadata=meta)
+    meta = {
+        "root_squash": "True",
+        "auth_flavor_list": ["sys"],
+        "afterglow_instance_id": "11111111-2222-4333-8444-555555555555",
+    }
+    result = create_access_rule(conn, "share-1", "10.0.0.1", "rw", "ip", metadata=meta)
 
     posted_body = client.post.call_args[0][1]
     assert posted_body["allow_access"]["metadata"] == meta
+    assert result["id"] == "rule-id"
+    assert result["state"] == "new"
 
 
 @patch("app.services.manila.get_client")
@@ -97,8 +103,8 @@ def test_create_access_rule_ip_no_metadata_when_none(mock_get_client):
 
 
 @patch("app.services.manila.get_client")
-def test_create_access_rule_cephx_ignores_metadata(mock_get_client):
-    """CephX access rule 생성 시 metadata가 전달돼도 allow_access에 포함하지 않는다."""
+def test_create_access_rule_cephx_preserves_instance_ownership_metadata(mock_get_client):
+    """CephX grants must retain the same provider ownership marker as NFS grants."""
     from app.services.manila import create_access_rule
 
     client = MagicMock()
@@ -106,21 +112,76 @@ def test_create_access_rule_cephx_ignores_metadata(mock_get_client):
         "access": {
             "id": "cephx-rule-id",
             "access_type": "cephx",
-            "access_to": "client.test",
+            "access_to": "afterglow-safe-identity",
             "access_level": "rw",
             "state": "new",
         }
     }
-    # _get_access_key 폴링 우회
     client.get.return_value = {"access_rules": [{"id": "cephx-rule-id", "access_key": "AQTEST=="}]}
     mock_get_client.return_value = client
 
     conn = MagicMock()
-    meta = {"root_squash": "True"}
-    create_access_rule(conn, "share-1", "client.test", "rw", "cephx", metadata=meta)
+    meta = {"afterglow_instance_id": "11111111-2222-4333-8444-555555555555"}
+    result = create_access_rule(conn, "share-1", "afterglow-safe-identity", "rw", "cephx", metadata=meta)
 
-    posted_body = client.post.call_args[0][1]
-    assert "metadata" not in posted_body["allow_access"]
+    client.post.assert_called_once_with(
+        "shares/share-1/action",
+        {
+            "allow_access": {
+                "access_type": "cephx",
+                "access_to": "afterglow-safe-identity",
+                "access_level": "rw",
+                "metadata": meta,
+            }
+        },
+        log_errors=False,
+    )
+    assert result["id"] == "cephx-rule-id"
+    assert result["access_key"] == "AQTEST=="
+    assert result["state"] == "new"
+
+
+@pytest.mark.parametrize("key", [None, "AVAILABLE_NOW=="])
+def test_create_ceph_grant_without_wait_preserves_state_and_never_polls_or_revokes(key):
+    from app.services.manila import create_access_rule
+
+    client = _make_manila_client_mock()
+    client.post.return_value["access"].update(access_type="cephx", access_key=key, state="new")
+    with (
+        patch("app.services.manila.get_client", return_value=client),
+        patch("app.services.manila._get_access_key") as get_key,
+        patch("app.services.manila._revoke_access_rule_raw") as revoke,
+    ):
+        result = create_access_rule(
+            MagicMock(),
+            "share-1",
+            "afterglow-safe-identity",
+            "rw",
+            "cephx",
+            wait_for_key=False,
+        )
+
+    assert result["state"] == "new"
+    assert result["access_key"] == key
+    get_key.assert_not_called()
+    revoke.assert_not_called()
+    client.get.assert_not_called()
+    assert client.post.call_args.kwargs == {"log_errors": False}
+
+
+@patch("app.services.manila.get_client")
+def test_revoke_access_rule_submits_exact_id_without_logging_provider_body(mock_get_client):
+    from app.services.manila import revoke_access_rule
+
+    client = MagicMock()
+    mock_get_client.return_value = client
+    revoke_access_rule(MagicMock(), "share-1", "exact-managed-rule")
+
+    client.post.assert_called_once_with(
+        "shares/share-1/action",
+        {"deny_access": {"access_id": "exact-managed-rule"}},
+        log_errors=False,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -467,3 +528,64 @@ def test_strict_file_storage_quota_keeps_unlimited_and_zero(mock_get_client):
             call("shares/detail"),
         ]
     )
+
+
+@patch("app.services.manila.get_client")
+def test_strict_access_rule_list_trusts_modern_empty_without_legacy(mock_get_client):
+    from app.services.manila import list_access_rules
+
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.get.return_value = {"access_rules": []}
+    client.post.side_effect = RuntimeError("legacy unsupported")
+    assert list_access_rules(MagicMock(), "share-1", strict=True) == []
+    client.post.assert_not_called()
+
+
+@pytest.mark.parametrize("response", [{}, {"access_rules": None}, {"access_rules": [{}]}])
+@patch("app.services.manila.get_client")
+def test_strict_access_rule_list_rejects_incomplete_response(mock_get_client, response):
+    from app.services.manila import list_access_rules
+
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.get.return_value = response
+    with pytest.raises(ValueError):
+        list_access_rules(MagicMock(), "share-1", strict=True)
+    client.post.assert_not_called()
+
+
+@pytest.mark.parametrize("status", [401, 403, 409, 500, 503])
+@patch("app.services.manila.get_client")
+def test_exact_access_rule_get_propagates_non_not_found(mock_get_client, status):
+    from app.services.manila import get_access_rule
+
+    client = MagicMock()
+    mock_get_client.return_value = client
+    response = httpx.Response(status, request=httpx.Request("GET", "https://manila/share-access-rules/rule-1"))
+    client.get.side_effect = httpx.HTTPStatusError("provider failure", request=response.request, response=response)
+    with pytest.raises(httpx.HTTPStatusError):
+        get_access_rule(MagicMock(), "share-1", "rule-1")
+
+
+@patch("app.services.manila.get_client")
+def test_exact_access_rule_get_only_not_found_proves_absence(mock_get_client):
+    from app.services.manila import get_access_rule
+
+    client = MagicMock()
+    mock_get_client.return_value = client
+    response = httpx.Response(404, request=httpx.Request("GET", "https://manila/share-access-rules/rule-1"))
+    client.get.side_effect = httpx.HTTPStatusError("not found", request=response.request, response=response)
+    assert get_access_rule(MagicMock(), "share-1", "rule-1") is None
+
+
+@pytest.mark.parametrize("response", [{}, {"access": {}}, {"access": {"id": "rule-1", "share_id": "other"}}])
+@patch("app.services.manila.get_client")
+def test_exact_access_rule_get_rejects_incomplete_or_foreign(mock_get_client, response):
+    from app.services.manila import get_access_rule
+
+    client = MagicMock()
+    mock_get_client.return_value = client
+    client.get.return_value = response
+    with pytest.raises(ValueError):
+        get_access_rule(MagicMock(), "share-1", "rule-1")

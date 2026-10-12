@@ -1,0 +1,19 @@
+{
+  "archive": "/Users/pieroot/code/afterglow/openspec/changes/archive/2026-10-12-visual-cloud-product-story",
+  "archive_result": "CLI taskComplete; skip-specs per project rapid schema; non-blocking no-delta warning expected because project uses docs, not specs",
+  "tabs_closed": [
+    "visual-cloud-story",
+    "visual-cloud-story-apple"
+  ],
+  "services_stopped": [
+    "visual-cloud-story-dev",
+    "visual-cloud-story-compiled",
+    "visual-cloud-story-final",
+    "visual-cloud-story-qualified",
+    "visual-cloud-story-repaired",
+    "visual-cloud-story-delivery"
+  ],
+  "shared_index_sha256": "42807594206221b32874320270e37d309c51d96fa407430bf93f157d22e3ca7b",
+  "shared_index_preserved": true,
+  "production": "no deployment/cloud state mutation/commit/push"
+}

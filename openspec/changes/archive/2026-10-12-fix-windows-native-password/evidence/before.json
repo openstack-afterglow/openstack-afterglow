@@ -1,0 +1,18 @@
+{
+  "native_image": {
+    "method": "nova-adminpass-configdrive",
+    "os_type": "windows",
+    "os_admin_user": "Admin",
+    "private": true,
+    "production_ready": false
+  },
+  "old_source_smoke": {
+    "native_source_rejected": 400,
+    "legacy_suppresses_adminPass": true,
+    "legacy_generates_password_userdata": true
+  },
+  "operator_guest_report": "/etc/kolla/reports/windows11-native-password-20261012/verified-summary.json",
+  "operator_report_existing_only": true,
+  "password_file_read": false,
+  "production_mutation": false
+}

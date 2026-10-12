@@ -1,0 +1,22 @@
+{
+  "owned_compose_project": "afterglow-mcp-client-v-tdslvh",
+  "removed_containers": [
+    "afterglow-mcp-client-v-tdslvh-backend-1",
+    "afterglow-mcp-client-v-tdslvh-frontend-1",
+    "afterglow-mcp-client-v-tdslvh-postgres-1",
+    "afterglow-mcp-client-v-tdslvh-test-redis-1",
+    "afterglow-mcp-client-v-tdslvh-mariadb-1"
+  ],
+  "owned_tmpfs_stores_discarded": true,
+  "removed_network": "afterglow-mcp-client-v-tdslvh_default",
+  "volume_deletion": false,
+  "owned_volumes": [],
+  "host_native_service": "McpClientsNative20261012 stopped",
+  "browser_tab_closed": true,
+  "dedicated_browser_pid_stopped": 26223,
+  "scratch_removed": "/var/folders/1m/xfc726k14szbjnrlq5t68zjw0000gn/T/afterglow-mcp-client-v_tdslvh",
+  "remaining_owned_containers": 0,
+  "durable_proof_retained": "/Users/pieroot/.local/share/afterglow-proofs/mcp-connected-clients-20261012-v_tdslvh",
+  "shared_services_private_inputs_index_not_targeted": true,
+  "no_prune_force_removal_or_down_volumes": true
+}

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import type { AdminInstance } from '$lib/types/adminInstance';
+import { t } from '$lib/i18n/ns/admin-compute';
+import { t as instanceT } from '$lib/i18n/ns/instance';
 
 vi.mock('$lib/stores/projectNames', () => ({
 	projectNames: {
@@ -50,5 +52,27 @@ describe('AdminInstanceTable', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'vm-one' }));
 		expect(onOpen).toHaveBeenCalledTimes(1);
 		expect(onOpen).toHaveBeenCalledWith(instance);
+	});
+
+	it('preserves ERROR recovery across state transitions without live destructive actions', async () => {
+		const instance: AdminInstance = {
+			id: 'inst-1', name: 'vm-one', status: 'ACTIVE', project_id: 'project-1',
+			user_id: 'user-1', flavor: 'small', host: 'host-1', created_at: null,
+		};
+		const { rerender } = render(AdminInstanceTable, {
+			instances: [instance], markerStack: [], nextMarker: null, refreshing: false,
+			selectedIds: new Set<string>(), onOpen: vi.fn(), onPrev: vi.fn(), onNext: vi.fn(),
+			onRecover: vi.fn(), onToggleSelect: vi.fn(), onToggleAll: vi.fn(),
+		});
+		expect(screen.queryByRole('button', { name: t('instances.table.recover') })).toBeNull();
+		expect(screen.queryByRole('button', { name: instanceT('rowActions.delete') })).toBeNull();
+		expect(screen.queryByRole('button', { name: instanceT('rowActions.shelve') })).toBeNull();
+		await rerender({ instances: [{ ...instance, status: 'ERROR', fault: 'Host unavailable' }] });
+		expect(screen.getByRole('button', { name: t('instances.table.recover') })).toBeTruthy();
+		expect(screen.getByRole('button', { name: t('instances.table.reason') })).toBeTruthy();
+		await rerender({ instances: [{ ...instance, status: 'ACTIVE' }] });
+		expect(screen.queryByRole('button', { name: t('instances.table.recover') })).toBeNull();
+		expect(screen.queryByRole('button', { name: instanceT('rowActions.delete') })).toBeNull();
+		expect(screen.queryByRole('button', { name: instanceT('rowActions.shelve') })).toBeNull();
 	});
 });

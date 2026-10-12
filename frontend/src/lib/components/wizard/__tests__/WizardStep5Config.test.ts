@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render as renderSvelte, screen, waitFor, within } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { get } from 'svelte/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -8,38 +9,56 @@ const mocks = vi.hoisted(() => ({
 	apiDelete: vi.fn(),
 }));
 
-vi.mock('$lib/api/client', () => ({
-	api: { get: mocks.apiGet, post: mocks.apiPost, delete: mocks.apiDelete },
-	ApiError: class ApiError extends Error {},
-}));
-const vmCreateState = vi.hoisted(() => ({ githubSshEligible: false }));
+vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
+vi.mock('$lib/api/client', () => {
+	return {
+		api: {
+			get: (path: string, ...args: unknown[]) => {
+				const resource = wizardResource(path);
+				return resource === undefined ? mocks.apiGet(path, ...args) : Promise.resolve(resource);
+			},
+			post: mocks.apiPost,
+			delete: mocks.apiDelete,
+		},
+		ApiError: class ApiError extends Error {},
+		fetchWithAuth: vi.fn(),
+		getBaseUrl: () => '',
+	};
+});
 
-vi.mock('$lib/stores/vmCreateStore.svelte', () => ({
-	useVmCreate: () => ({
-		adminMode: false,
-		get githubSshEligible() { return vmCreateState.githubSshEligible; },
-		keypairs: [{ name: 'test-keypair' }],
-		networks: [],
-		securityGroups: [],
-		defaultNetworkId: null,
-		fileStorages: [],
-		selectNetwork: vi.fn(),
-		selectSshAccessMode: vi.fn(),
-	}),
-}));
-
-import WizardStep5Config from '../WizardStep5Config.svelte';
+import Wrapper from './_WizardConsumerWrapper.svelte';
+import type { VmCreateStore } from '$lib/stores/vmCreateStore.svelte';
 import { auth } from '$lib/stores/auth';
-import { resetWizard, wizard } from '$lib/stores/wizard';
+import { wizard } from '$lib/stores/wizard';
 
-import { isSshAccessReady } from '$lib/utils/instanceCreate';
+import { prepareWizardConsumer, wizardResource } from './wizardConsumerFixtures';
 import type { GithubSshProfile } from '$lib/types/compute';
 import { t } from '$lib/i18n/ns/vm-wizard';
 
-// Step 5's canNext delegates to this same production readiness contract.
+let store: VmCreateStore;
 function configCanNext(): boolean {
-	return isSshAccessReady({ ...get(wizard), adminMode: false });
+	return store.canNext;
 }
+
+async function renderConfig() {
+	// Mount the consumer after authoritative options, as the panel's loading gate does.
+	const sshDraft = get(wizard);
+	wizard.update(w => ({ ...w, step: 5, sshAccessMode: 'keypair', githubUsername: '', githubProfile: null }));
+	const view = renderSvelte(Wrapper, { component: 'footer', onStore: value => { store = value; } });
+	await store.loadBootOptions();
+	await store.loadFlavorOptions();
+	await tick();
+	wizard.update(w => ({ ...w, sshAccessMode: sshDraft.sshAccessMode, githubUsername: sshDraft.githubUsername, githubProfile: sshDraft.githubProfile }));
+	await tick();
+	await view.rerender({ component: 'config' });
+	return view;
+}
+
+afterEach(cleanup);
+beforeEach(() => {
+	prepareWizardConsumer(5);
+	mocks.apiGet.mockResolvedValue({ history: [], presets: [] });
+});
 
 function deferredProfile() {
 	let resolve!: (profile: GithubSshProfile) => void;
@@ -53,14 +72,13 @@ function deferredProfile() {
 
 describe('WizardStep5Config ordinary root disk', () => {
 	beforeEach(() => {
-		vmCreateState.githubSshEligible = false;
-		resetWizard();
+		prepareWizardConsumer(5);
 		auth.update(a => ({ ...a, token: null }));
 		wizard.update(w => ({ ...w, bootVolumeSizeGb: 32, deleteBootVolumeOnTermination: false }));
 	});
 
 	it('shows editable size and deletion controls for image boot', async () => {
-		render(WizardStep5Config);
+		await renderConfig();
 
 		const size = screen.getByRole('spinbutton', { name: `${t('config.rootDisk.label')} *` }) as HTMLInputElement;
 		const deleteWithVm = screen.getByRole('checkbox', { name: t('config.rootDisk.deleteWithVm') }) as HTMLInputElement;
@@ -76,9 +94,9 @@ describe('WizardStep5Config ordinary root disk', () => {
 		expect(get(wizard).deleteBootVolumeOnTermination).toBe(true);
 	});
 
-	it.each(['existing-root', null])('shows existing volume guidance without size or deletion controls for volume name %s', volumeName => {
+	it.each(['existing-root', null])('shows existing volume guidance without size or deletion controls for volume name %s', async volumeName => {
 		wizard.update(w => ({ ...w, bootSource: 'volume', bootVolumeId: 'volume-a', bootVolumeName: volumeName }));
-		const { container } = render(WizardStep5Config);
+		const { container } = await renderConfig();
 
 		expect(container.querySelector('#boot-volume-size')).toBeNull();
 		expect(screen.queryByRole('checkbox', { name: t('config.rootDisk.deleteWithVm') })).toBeNull();
@@ -90,8 +108,7 @@ describe('WizardStep5Config ordinary root disk', () => {
 
 describe('WizardStep5Config cloud-init library', () => {
 	beforeEach(() => {
-		vmCreateState.githubSshEligible = false;
-		resetWizard();
+		prepareWizardConsumer(5);
 		wizard.update(w => ({
 			...w,
 			bootSource: 'image',
@@ -129,7 +146,7 @@ describe('WizardStep5Config cloud-init library', () => {
 				created_at: '2026-07-20T00:00:00+00:00',
 			}],
 		});
-		const { container } = render(WizardStep5Config);
+		const { container } = await renderConfig();
 
 		await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledWith(
 			'/api/v1/instances/cloud-init/library', 'test-token', 'project-a',
@@ -161,8 +178,7 @@ describe('WizardStep5Config GitHub SSH verification', () => {
 
 	beforeEach(() => {
 		vi.useFakeTimers();
-		vmCreateState.githubSshEligible = true;
-		resetWizard();
+		prepareWizardConsumer(5);
 		wizard.update(w => ({ ...w, bootSource: 'image', imageId: 'image-a', sshAccessMode: 'github' }));
 		auth.set({
 			token: 'test-token',
@@ -196,7 +212,7 @@ describe('WizardStep5Config GitHub SSH verification', () => {
 	});
 
 	it('verifies a typed username once and stores the canonical login for creation', async () => {
-		render(WizardStep5Config);
+		await renderConfig();
 
 		await fireEvent.input(screen.getByLabelText(/GitHub 사용자 ID/), { target: { value: 'octocat' } });
 		await vi.advanceTimersByTimeAsync(400);
@@ -217,7 +233,7 @@ describe('WizardStep5Config GitHub SSH verification', () => {
 	});
 
 	it('never calls the verification API for a malformed username', async () => {
-		render(WizardStep5Config);
+		await renderConfig();
 
 		await fireEvent.input(screen.getByLabelText(/GitHub 사용자 ID/), { target: { value: 'octo--cat' } });
 		await vi.advanceTimersByTimeAsync(1000);
@@ -228,7 +244,7 @@ describe('WizardStep5Config GitHub SSH verification', () => {
 	});
 
 	it('keeps readiness and the verified profile after repeated recent-user clicks', async () => {
-		render(WizardStep5Config);
+		await renderConfig();
 		await vi.advanceTimersByTimeAsync(0);
 
 		await fireEvent.click(screen.getByRole('button', { name: '@OctoCat' }));
@@ -252,13 +268,13 @@ describe('WizardStep5Config GitHub SSH verification', () => {
 
 	it('recognizes the matching current profile on remount without another lookup', async () => {
 		wizard.update(w => ({ ...w, githubUsername: ' octocat ', githubProfile: verifiedProfile }));
-		const first = render(WizardStep5Config);
+		const first = await renderConfig();
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(configCanNext()).toBe(true);
 		expect(screen.getByText(/공개 SSH 키 확인됨/)).toBeTruthy();
 		first.unmount();
 
-		render(WizardStep5Config);
+		await renderConfig();
 		await vi.advanceTimersByTimeAsync(0);
 		await fireEvent.click(screen.getByRole('button', { name: '@OctoCat' }));
 		await vi.advanceTimersByTimeAsync(1000);
@@ -272,7 +288,7 @@ describe('WizardStep5Config GitHub SSH verification', () => {
 		wizard.update(w => ({ ...w, githubUsername: 'OctoCat', githubProfile: verifiedProfile }));
 		const lookup = deferredProfile();
 		mocks.apiPost.mockReturnValue(lookup.promise);
-		render(WizardStep5Config);
+		await renderConfig();
 		await vi.advanceTimersByTimeAsync(0);
 
 		await fireEvent.click(screen.getByRole('button', { name: '@hubot' }));
@@ -298,7 +314,7 @@ describe('WizardStep5Config GitHub SSH verification', () => {
 		const oldLookup = deferredProfile();
 		const currentLookup = deferredProfile();
 		mocks.apiPost.mockReturnValueOnce(oldLookup.promise).mockReturnValueOnce(currentLookup.promise);
-		render(WizardStep5Config);
+		await renderConfig();
 		await fireEvent.input(screen.getByLabelText(/GitHub 사용자 ID/), { target: { value: 'octocat' } });
 		await vi.advanceTimersByTimeAsync(400);
 		await fireEvent.click(screen.getByRole('button', { name: '@hubot' }));
@@ -322,7 +338,7 @@ describe('WizardStep5Config GitHub SSH verification', () => {
 		const currentOctocat = deferredProfile();
 		mocks.apiPost.mockReturnValueOnce(firstOctocat.promise)
 			.mockReturnValueOnce(hubot.promise).mockReturnValueOnce(currentOctocat.promise);
-		render(WizardStep5Config);
+		await renderConfig();
 		await vi.advanceTimersByTimeAsync(0);
 		await fireEvent.click(screen.getByRole('button', { name: '@OctoCat' }));
 		await vi.advanceTimersByTimeAsync(400);
@@ -352,7 +368,7 @@ describe('WizardStep5Config GitHub SSH verification', () => {
 		{ ...verifiedProfile, login: 'hubot' },
 	])('does not accept an unkeyed or mismatched lookup profile', async (profile) => {
 		mocks.apiPost.mockResolvedValue(profile);
-		render(WizardStep5Config);
+		await renderConfig();
 		await fireEvent.input(screen.getByLabelText(/GitHub 사용자 ID/), { target: { value: 'octocat' } });
 		await vi.advanceTimersByTimeAsync(400);
 		expect(get(wizard).githubProfile).toBeNull();
@@ -367,7 +383,7 @@ describe('WizardStep5Config GitHub SSH verification', () => {
 		wizard.update(w => ({ ...w, githubUsername: 'octocat', githubProfile: profile }));
 		const lookup = deferredProfile();
 		mocks.apiPost.mockReturnValue(lookup.promise);
-		render(WizardStep5Config);
+		await renderConfig();
 		await vi.advanceTimersByTimeAsync(0);
 		expect(get(wizard).githubProfile).toBeNull();
 		expect(configCanNext()).toBe(false);
@@ -380,5 +396,42 @@ describe('WizardStep5Config GitHub SSH verification', () => {
 		await vi.advanceTimersByTimeAsync(0);
 		expect(get(wizard).githubProfile).toEqual(verifiedProfile);
 		expect(configCanNext()).toBe(true);
+	});
+});
+
+describe('WizardStep5Config Windows consumers', () => {
+	it.each(['image', 'volume'] as const)('replaces native masked %s password controls with an unsupported alert without Linux fallbacks', async bootSource => {
+		wizard.update(w => ({ ...w, bootSource, imageId: 'windows-native', bootVolumeId: 'windows-native', keyName: 'test-keypair' }));
+		const { container } = await renderConfig();
+		const password = screen.getByLabelText(t('config.windows.password'), { exact: false }) as HTMLInputElement;
+		const confirmation = screen.getByLabelText(t('config.windows.confirmation'), { exact: false }) as HTMLInputElement;
+		expect(password.type).toBe('password');
+		expect(confirmation.type).toBe('password');
+		expect(screen.getByText('GuestAdmin')).toBeTruthy();
+		await fireEvent.input(password, { target: { value: 'Secret-native-123!' } });
+		await fireEvent.input(confirmation, { target: { value: 'Secret-native-123!' } });
+		expect((screen.getByRole('button', { name: t('footer.next') }) as HTMLButtonElement).disabled).toBe(false);
+
+		wizard.update(w => ({ ...w, imageId: 'windows-unsupported', bootVolumeId: 'windows-unsupported', cloudInit: '#cloud-config\nsecret: stale', dataMounts: [{ fileStorageId: 'storage-a', mountPoint: '/mnt/stale', readOnly: false }] }));
+		await tick();
+		await tick();
+		const unsupported = screen.getByTestId('windows-unsupported-config');
+		expect(within(unsupported).getByRole('alert').textContent?.trim()).toBeTruthy();
+		expect(screen.queryByTestId('windows-password-config')).toBeNull();
+		expect(container.querySelector('input[type="password"]')).toBeNull();
+		expect(container.querySelector('#create-keypair')).toBeNull();
+		expect(container.querySelector('#github-username')).toBeNull();
+		expect(screen.queryByRole('group', { name: t('config.ssh.modeLabel') })).toBeNull();
+		expect(container.querySelector('#cloud-init')).toBeNull();
+		expect(screen.queryByRole('button', { name: t('config.mounts.add') })).toBeNull();
+		expect(container.textContent).not.toContain('Secret-native-123!');
+		expect((screen.getByRole('button', { name: t('footer.next') }) as HTMLButtonElement).disabled).toBe(true);
+
+		wizard.update(w => ({ ...w, bootSource: 'image', imageId: 'image-a' }));
+		await tick();
+		expect(screen.queryByTestId('windows-unsupported-config')).toBeNull();
+		expect(container.querySelector('#create-keypair')).toBeTruthy();
+		expect(container.querySelector('#cloud-init')).toBeTruthy();
+		expect(screen.getByRole('button', { name: t('config.mounts.add') })).toBeTruthy();
 	});
 });

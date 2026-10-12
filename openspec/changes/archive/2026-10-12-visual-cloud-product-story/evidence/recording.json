@@ -1,0 +1,275 @@
+{
+  "dimensions": {
+    "origin": "http://127.0.0.1:5206",
+    "css": [
+      1440,
+      900
+    ],
+    "dpr": 1,
+    "motion": true,
+    "theme": "light",
+    "locale": "ko"
+  },
+  "samples": [
+    {
+      "start": {
+        "kind": "server",
+        "state": "playing",
+        "focus": true,
+        "active": [
+          {
+            "name": "motion-enter",
+            "delay": 0,
+            "progress": 0.44817199996325385
+          },
+          {
+            "name": "motion-enter",
+            "delay": 40,
+            "progress": 0.36817199996325384
+          },
+          {
+            "name": "motion-enter",
+            "delay": 80,
+            "progress": 0.2881719999632538
+          },
+          {
+            "name": "motion-draw",
+            "delay": 500,
+            "progress": 0
+          },
+          {
+            "name": "motion-draw",
+            "delay": 500,
+            "progress": 0
+          },
+          {
+            "name": "motion-draw",
+            "delay": 500,
+            "progress": 0
+          },
+          {
+            "name": "motion-pop",
+            "delay": 1000,
+            "progress": 0
+          },
+          {
+            "name": "motion-fade",
+            "delay": 1500,
+            "progress": 0
+          }
+        ]
+      },
+      "end": {
+        "state": "static",
+        "running": 0,
+        "focus": true,
+        "headingTop": 364.796875,
+        "visualBottom": 726.140625
+      }
+    },
+    {
+      "start": {
+        "kind": "gpu",
+        "state": "playing",
+        "focus": true,
+        "active": [
+          {
+            "name": "motion-enter",
+            "delay": 0,
+            "progress": 0.4666339998437756
+          },
+          {
+            "name": "motion-draw",
+            "delay": 500,
+            "progress": 0
+          },
+          {
+            "name": "motion-pop",
+            "delay": 580,
+            "progress": 0
+          },
+          {
+            "name": "motion-draw",
+            "delay": 1000,
+            "progress": 0
+          },
+          {
+            "name": "motion-pop",
+            "delay": 1500,
+            "progress": 0
+          }
+        ]
+      },
+      "end": {
+        "state": "static",
+        "running": 0,
+        "focus": true,
+        "headingTop": 168.890625,
+        "visualBottom": 827.71875
+      }
+    },
+    {
+      "start": {
+        "kind": "chat",
+        "state": "playing",
+        "focus": true,
+        "active": [
+          {
+            "name": "motion-enter",
+            "delay": 0,
+            "progress": 0.23272899996352958
+          }
+        ]
+      },
+      "end": {
+        "state": "static",
+        "running": 0,
+        "focus": true,
+        "headingTop": 168.46875,
+        "visualBottom": 773.296875
+      }
+    },
+    {
+      "start": {
+        "kind": "kubernetes",
+        "state": "playing",
+        "focus": true,
+        "active": [
+          {
+            "name": "motion-enter",
+            "delay": 0,
+            "progress": 0.4672479998348962
+          },
+          {
+            "name": "motion-enter",
+            "delay": 0,
+            "progress": 0.4672479998348962
+          },
+          {
+            "name": "motion-draw",
+            "delay": 500,
+            "progress": 0
+          },
+          {
+            "name": "motion-enter",
+            "delay": 40,
+            "progress": 0.38724799983489616
+          },
+          {
+            "name": "motion-draw",
+            "delay": 540,
+            "progress": 0
+          },
+          {
+            "name": "motion-enter",
+            "delay": 80,
+            "progress": 0.30724799983489615
+          },
+          {
+            "name": "motion-draw",
+            "delay": 580,
+            "progress": 0
+          },
+          {
+            "name": "motion-fade",
+            "delay": 1000,
+            "progress": 0
+          },
+          {
+            "name": "motion-pop",
+            "delay": 1000,
+            "progress": 0
+          },
+          {
+            "name": "motion-enter",
+            "delay": 1500,
+            "progress": 0
+          },
+          {
+            "name": "motion-pop",
+            "delay": 1040,
+            "progress": 0
+          },
+          {
+            "name": "motion-enter",
+            "delay": 1540,
+            "progress": 0
+          },
+          {
+            "name": "motion-pop",
+            "delay": 1080,
+            "progress": 0
+          },
+          {
+            "name": "motion-enter",
+            "delay": 1580,
+            "progress": 0
+          },
+          {
+            "name": "motion-fade",
+            "delay": 1500,
+            "progress": 0
+          },
+          {
+            "name": "motion-draw",
+            "delay": 1500,
+            "progress": 0
+          }
+        ]
+      },
+      "end": {
+        "state": "static",
+        "running": 0,
+        "focus": true,
+        "headingTop": 330.90625,
+        "visualBottom": 657.828125
+      }
+    },
+    {
+      "start": {
+        "kind": "onprem",
+        "state": "playing",
+        "focus": true,
+        "active": [
+          {
+            "name": "motion-enter",
+            "delay": 0,
+            "progress": 0.4667859999048254
+          },
+          {
+            "name": "motion-draw",
+            "delay": 500,
+            "progress": 0
+          },
+          {
+            "name": "motion-pop",
+            "delay": 1000,
+            "progress": 0
+          },
+          {
+            "name": "motion-draw",
+            "delay": 1500,
+            "progress": 0
+          },
+          {
+            "name": "motion-draw",
+            "delay": 1500,
+            "progress": 0
+          },
+          {
+            "name": "motion-enter",
+            "delay": 1620,
+            "progress": 0
+          }
+        ]
+      },
+      "end": {
+        "state": "static",
+        "running": 0,
+        "focus": true,
+        "headingTop": 306.859375,
+        "visualBottom": 726.390625
+      }
+    }
+  ]
+}

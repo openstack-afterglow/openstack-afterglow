@@ -1,0 +1,13 @@
+{
+  "boundary": "Owned public full-working-source snapshot including concurrent WIP, not scope-only. Shared actual index/review marker unchanged.",
+  "stamp": {
+    "exit": 0,
+    "stdout": "stamped working source_sha256=93050be8a4f1d4ace014b50d18b2a7ae7ac49dfcdf93e7fc91e4c68acd766764 files=2608\n",
+    "stderr": ""
+  },
+  "staged": {
+    "exit": 0,
+    "stdout": "checked staged source_sha256=93050be8a4f1d4ace014b50d18b2a7ae7ac49dfcdf93e7fc91e4c68acd766764 files=2608\n",
+    "stderr": ""
+  }
+}

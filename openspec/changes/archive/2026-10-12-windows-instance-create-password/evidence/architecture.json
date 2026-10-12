@@ -1,0 +1,203 @@
+{
+  "boundary": "Private-free local clone with HEAD plus exactly listed current Windows feature files. Real shared index and architecture review marker untouched. No full-gate or production qualification.",
+  "overlay": [
+    "ARCHITECTURE.md",
+    "CHANGELOG.md",
+    "DESIGN.md",
+    "backend/app/api/compute/instances.py",
+    "backend/app/api/identity/admin_instances.py",
+    "backend/app/main.py",
+    "backend/app/models/compute.py",
+    "backend/app/services/glance.py",
+    "backend/app/services/instance_orchestration.py",
+    "backend/app/services/nova.py",
+    "backend/app/services/instance_password.py",
+    "backend/tests/test_admin_instance_password.py",
+    "backend/tests/test_instance_password_validation.py",
+    "backend/tests/test_windows_image_metadata.py",
+    "backend/tests/test_windows_instance_password.py",
+    "docs/api/instances.md",
+    "docs/testing.md",
+    "docs/user-guide.md",
+    "frontend/src/lib/components/wizard/WizardStep5Config.svelte",
+    "frontend/src/lib/components/wizard/WizardStep6Review.svelte",
+    "frontend/src/lib/docs/coreGuides.ts",
+    "frontend/src/lib/docs/translations/en/coreGuides.ts",
+    "frontend/src/lib/docs/translations/ja/coreGuides.ts",
+    "frontend/src/lib/docs/translations/zh-CN/coreGuides.ts",
+    "frontend/src/lib/i18n/messages/en/vm-wizard.json",
+    "frontend/src/lib/i18n/messages/ja/vm-wizard.json",
+    "frontend/src/lib/i18n/messages/ko/vm-wizard.json",
+    "frontend/src/lib/i18n/messages/zh-CN/vm-wizard.json",
+    "frontend/src/lib/stores/vmCreateStore.svelte.ts",
+    "frontend/src/lib/stores/wizard.ts",
+    "frontend/src/lib/types/compute.ts",
+    "frontend/src/lib/utils/__tests__/instanceCreate.test.ts",
+    "frontend/src/lib/utils/instanceCreate.ts",
+    "frontend/src/lib/stores/__tests__/_VmCreatePasswordWrapper.svelte",
+    "frontend/src/lib/stores/__tests__/vmCreatePassword.test.ts",
+    "scripts/test-target.js",
+    "frontend/src/lib/stores/__tests__/vmCreateStoreLoad.test.ts"
+  ],
+  "resolvedIntermediateFailure": "An owned scratch root node_modules symlink was counted as untracked source, unlike ignored dependency directories. Removed only that scratch symlink before stamp/staged proof.",
+  "priorSteps": [
+    {
+      "command": [
+        "python3",
+        "scripts/check_architecture.py",
+        "--stamp",
+        "--summary",
+        "Reviewed Windows initial-password provisioning and GPU rejection correction: image/volume metadata and exact project ownership, PowerShell/config-drive only on Windows, independent GPU quota/capacity admission, preserved ordinary placement error ordering, explicit userdata/GitHub/Manila conflicts, secret clearing/redaction and consumer transition regressions. No service/auth/schema/dependency/topology change. Private-free HEAD+explicit Windows overlay proof excludes concurrent WIP, production, live GPU and Windows/RDP acceptance; real shared index/review marker untouched."
+      ],
+      "stdout": "stamped working source_sha256=92643a45eeb462a27e60a73cdb05c3ff862e19e7bf1cece81272191b2fb67669 files=2609\n",
+      "stderr": "",
+      "exit": 0
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check_architecture.py"
+      ],
+      "stdout": "checked working source_sha256=92643a45eeb462a27e60a73cdb05c3ff862e19e7bf1cece81272191b2fb67669 files=2609\n",
+      "stderr": "",
+      "exit": 0
+    },
+    {
+      "command": [
+        "git",
+        "add",
+        "--",
+        "ARCHITECTURE.md",
+        "CHANGELOG.md",
+        "DESIGN.md",
+        "backend/app/api/compute/instances.py",
+        "backend/app/api/identity/admin_instances.py",
+        "backend/app/main.py",
+        "backend/app/models/compute.py",
+        "backend/app/services/glance.py",
+        "backend/app/services/instance_orchestration.py",
+        "backend/app/services/nova.py",
+        "backend/app/services/instance_password.py",
+        "backend/tests/test_admin_instance_password.py",
+        "backend/tests/test_instance_password_validation.py",
+        "backend/tests/test_windows_image_metadata.py",
+        "backend/tests/test_windows_instance_password.py",
+        "docs/api/instances.md",
+        "docs/testing.md",
+        "docs/user-guide.md",
+        "frontend/src/lib/components/wizard/WizardStep5Config.svelte",
+        "frontend/src/lib/components/wizard/WizardStep6Review.svelte",
+        "frontend/src/lib/docs/coreGuides.ts",
+        "frontend/src/lib/docs/translations/en/coreGuides.ts",
+        "frontend/src/lib/docs/translations/ja/coreGuides.ts",
+        "frontend/src/lib/docs/translations/zh-CN/coreGuides.ts",
+        "frontend/src/lib/i18n/messages/en/vm-wizard.json",
+        "frontend/src/lib/i18n/messages/ja/vm-wizard.json",
+        "frontend/src/lib/i18n/messages/ko/vm-wizard.json",
+        "frontend/src/lib/i18n/messages/zh-CN/vm-wizard.json",
+        "frontend/src/lib/stores/vmCreateStore.svelte.ts",
+        "frontend/src/lib/stores/wizard.ts",
+        "frontend/src/lib/types/compute.ts",
+        "frontend/src/lib/utils/__tests__/instanceCreate.test.ts",
+        "frontend/src/lib/utils/instanceCreate.ts",
+        "frontend/src/lib/stores/__tests__/_VmCreatePasswordWrapper.svelte",
+        "frontend/src/lib/stores/__tests__/vmCreatePassword.test.ts",
+        "scripts/test-target.js",
+        "frontend/src/lib/stores/__tests__/vmCreateStoreLoad.test.ts"
+      ],
+      "stdout": "",
+      "stderr": "",
+      "exit": 0
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check_architecture.py",
+        "--staged"
+      ],
+      "stdout": "",
+      "stderr": "architecture check failed: Architecture source snapshot is stale. Review ARCHITECTURE.md, then run the matching --stamp command.\n",
+      "exit": 1
+    }
+  ],
+  "steps": [
+    {
+      "command": [
+        "python3",
+        "scripts/check_architecture.py",
+        "--stamp",
+        "--summary",
+        "Reviewed Windows initial-password provisioning and GPU rejection correction: image/volume metadata and exact project ownership, PowerShell/config-drive only on Windows, independent GPU quota/capacity admission, preserved ordinary placement error ordering, explicit userdata/GitHub/Manila conflicts, secret clearing/redaction and consumer transition regressions. No service/auth/schema/dependency/topology change. Private-free HEAD+explicit Windows overlay proof excludes concurrent WIP, production, live GPU and Windows/RDP acceptance; real shared index/review marker untouched."
+      ],
+      "stdout": "stamped working source_sha256=d87d5ebc758a123493e38a4d5fb05614e48116a0c093250b452407ef3390050a files=2608\n",
+      "stderr": "",
+      "exit": 0
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check_architecture.py"
+      ],
+      "stdout": "checked working source_sha256=d87d5ebc758a123493e38a4d5fb05614e48116a0c093250b452407ef3390050a files=2608\n",
+      "stderr": "",
+      "exit": 0
+    },
+    {
+      "command": [
+        "git",
+        "add",
+        "--",
+        "ARCHITECTURE.md",
+        "CHANGELOG.md",
+        "DESIGN.md",
+        "backend/app/api/compute/instances.py",
+        "backend/app/api/identity/admin_instances.py",
+        "backend/app/main.py",
+        "backend/app/models/compute.py",
+        "backend/app/services/glance.py",
+        "backend/app/services/instance_orchestration.py",
+        "backend/app/services/nova.py",
+        "backend/app/services/instance_password.py",
+        "backend/tests/test_admin_instance_password.py",
+        "backend/tests/test_instance_password_validation.py",
+        "backend/tests/test_windows_image_metadata.py",
+        "backend/tests/test_windows_instance_password.py",
+        "docs/api/instances.md",
+        "docs/testing.md",
+        "docs/user-guide.md",
+        "frontend/src/lib/components/wizard/WizardStep5Config.svelte",
+        "frontend/src/lib/components/wizard/WizardStep6Review.svelte",
+        "frontend/src/lib/docs/coreGuides.ts",
+        "frontend/src/lib/docs/translations/en/coreGuides.ts",
+        "frontend/src/lib/docs/translations/ja/coreGuides.ts",
+        "frontend/src/lib/docs/translations/zh-CN/coreGuides.ts",
+        "frontend/src/lib/i18n/messages/en/vm-wizard.json",
+        "frontend/src/lib/i18n/messages/ja/vm-wizard.json",
+        "frontend/src/lib/i18n/messages/ko/vm-wizard.json",
+        "frontend/src/lib/i18n/messages/zh-CN/vm-wizard.json",
+        "frontend/src/lib/stores/vmCreateStore.svelte.ts",
+        "frontend/src/lib/stores/wizard.ts",
+        "frontend/src/lib/types/compute.ts",
+        "frontend/src/lib/utils/__tests__/instanceCreate.test.ts",
+        "frontend/src/lib/utils/instanceCreate.ts",
+        "frontend/src/lib/stores/__tests__/_VmCreatePasswordWrapper.svelte",
+        "frontend/src/lib/stores/__tests__/vmCreatePassword.test.ts",
+        "scripts/test-target.js",
+        "frontend/src/lib/stores/__tests__/vmCreateStoreLoad.test.ts"
+      ],
+      "stdout": "",
+      "stderr": "",
+      "exit": 0
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check_architecture.py",
+        "--staged"
+      ],
+      "stdout": "checked staged source_sha256=d87d5ebc758a123493e38a4d5fb05614e48116a0c093250b452407ef3390050a files=2608\n",
+      "stderr": "",
+      "exit": 0
+    }
+  ]
+}

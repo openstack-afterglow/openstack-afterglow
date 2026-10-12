@@ -1,0 +1,38 @@
+[
+  {
+    "kind": "selector",
+    "width": 720,
+    "height": 450,
+    "dpr": 2,
+    "overflow": 0,
+    "panel": {
+      "top": 17.336502075195312,
+      "bottom": 432.6635284423828,
+      "left": 137.4324188232422,
+      "right": 582.5675506591797
+    },
+    "action": {
+      "top": 371.5567626953125,
+      "bottom": 407.3265380859375
+    },
+    "scrollable": true
+  },
+  {
+    "kind": "inline",
+    "width": 720,
+    "height": 450,
+    "dpr": 2,
+    "overflow": 0,
+    "panel": {
+      "top": 16,
+      "bottom": 434,
+      "left": 136,
+      "right": 584
+    },
+    "action": {
+      "top": 372.5,
+      "bottom": 408.5
+    },
+    "scrollable": true
+  }
+]

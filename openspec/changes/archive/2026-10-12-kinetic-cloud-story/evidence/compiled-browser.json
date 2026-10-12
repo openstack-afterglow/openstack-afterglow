@@ -1,0 +1,3088 @@
+{
+  "recording": {
+    "rows": [
+      {
+        "kind": "hero",
+        "hidden": false,
+        "reduced": false,
+        "state": "playing",
+        "viewport": [
+          1440,
+          900,
+          1
+        ]
+      },
+      {
+        "kind": "server",
+        "hidden": false,
+        "reduced": false,
+        "state": "playing",
+        "viewport": [
+          1440,
+          900,
+          1
+        ]
+      },
+      {
+        "kind": "gpu",
+        "hidden": false,
+        "reduced": false,
+        "state": "playing",
+        "viewport": [
+          1440,
+          900,
+          1
+        ]
+      },
+      {
+        "kind": "chat",
+        "hidden": false,
+        "reduced": false,
+        "state": "playing",
+        "viewport": [
+          1440,
+          900,
+          1
+        ]
+      },
+      {
+        "kind": "kubernetes",
+        "hidden": false,
+        "reduced": false,
+        "state": "playing",
+        "viewport": [
+          1440,
+          900,
+          1
+        ]
+      },
+      {
+        "kind": "onprem",
+        "hidden": false,
+        "reduced": false,
+        "state": "playing",
+        "viewport": [
+          1440,
+          900,
+          1
+        ]
+      }
+    ],
+    "media": {
+      "path": "/tmp/kinetic-after-verified.mp4",
+      "durationMs": 29497,
+      "frames": 822,
+      "bytes": 3347704
+    }
+  },
+  "matrix": [
+    {
+      "locale": "ko",
+      "theme": "dark",
+      "width": 320,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 7.7093554687500045,
+          "bottomGap": 8.96676406860351
+        },
+        {
+          "topGap": 7.7093554687500045,
+          "bottomGap": 8.966764068603538
+        },
+        {
+          "topGap": 7.7093249511718795,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 12.51,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ko",
+      "theme": "dark",
+      "width": 390,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": 8.404470062255854
+        },
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": 8.404470062255882
+        },
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 15.66,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ko",
+      "theme": "dark",
+      "width": 767,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": 7.66897354125976
+        },
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": 7.668973541259788
+        },
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 32.625,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ko",
+      "theme": "dark",
+      "width": 768,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.810139770507817,
+          "bottomGap": 7.459153747558588
+        },
+        {
+          "topGap": 6.8101245117187545,
+          "bottomGap": 7.459169006347679
+        },
+        {
+          "topGap": 6.8101550292968795,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.95,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ko",
+      "theme": "dark",
+      "width": 1023,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.985280151367192,
+          "bottomGap": 7.651803588867182
+        },
+        {
+          "topGap": 6.9852648925781295,
+          "bottomGap": 7.651834106445335
+        },
+        {
+          "topGap": 6.9852648925781295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 33.6,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ko",
+      "theme": "dark",
+      "width": 1024,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 7.3565722656250045,
+          "bottomGap": 7.432920074462885
+        },
+        {
+          "topGap": 7.3565722656250045,
+          "bottomGap": 7.432920074462913
+        },
+        {
+          "topGap": 7.3566027832031295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 24.096875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ko",
+      "theme": "dark",
+      "width": 1440,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": 7.464696502685541
+        },
+        {
+          "topGap": 6.8310900878906295,
+          "bottomGap": 7.464665985107445
+        },
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.0796875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ko",
+      "theme": "dark",
+      "width": 2560,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": 7.464696502685541
+        },
+        {
+          "topGap": 6.8310900878906295,
+          "bottomGap": 7.464665985107445
+        },
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.0796875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ko",
+      "theme": "light",
+      "width": 320,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 7.7093554687500045,
+          "bottomGap": 8.96676406860351
+        },
+        {
+          "topGap": 7.7093554687500045,
+          "bottomGap": 8.966764068603538
+        },
+        {
+          "topGap": 7.7093249511718795,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 12.51,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ko",
+      "theme": "light",
+      "width": 390,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": 8.404470062255854
+        },
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": 8.404470062255882
+        },
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 15.66,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ko",
+      "theme": "light",
+      "width": 767,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": 7.66897354125976
+        },
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": 7.668973541259788
+        },
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 32.625,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ko",
+      "theme": "light",
+      "width": 768,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.810139770507817,
+          "bottomGap": 7.459153747558588
+        },
+        {
+          "topGap": 6.8101245117187545,
+          "bottomGap": 7.459169006347679
+        },
+        {
+          "topGap": 6.8101550292968795,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.95,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ko",
+      "theme": "light",
+      "width": 1023,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.985280151367192,
+          "bottomGap": 7.651803588867182
+        },
+        {
+          "topGap": 6.9852648925781295,
+          "bottomGap": 7.651834106445335
+        },
+        {
+          "topGap": 6.9852648925781295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 33.6,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ko",
+      "theme": "light",
+      "width": 1024,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 7.3565722656250045,
+          "bottomGap": 7.432920074462885
+        },
+        {
+          "topGap": 7.3565722656250045,
+          "bottomGap": 7.432920074462913
+        },
+        {
+          "topGap": 7.3566027832031295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 24.096875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ko",
+      "theme": "light",
+      "width": 1440,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": 7.464696502685541
+        },
+        {
+          "topGap": 6.8310900878906295,
+          "bottomGap": 7.464665985107445
+        },
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.0796875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ko",
+      "theme": "light",
+      "width": 2560,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": 7.464696502685541
+        },
+        {
+          "topGap": 6.8310900878906295,
+          "bottomGap": 7.464665985107445
+        },
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.0796875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "en",
+      "theme": "dark",
+      "width": 320,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 7.7093554687500045,
+          "bottomGap": 8.96676406860351
+        },
+        {
+          "topGap": 7.7093554687500045,
+          "bottomGap": 8.966764068603538
+        },
+        {
+          "topGap": 7.7093249511718795,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 12.51,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "en",
+      "theme": "dark",
+      "width": 390,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": 8.404470062255854
+        },
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": 8.404470062255882
+        },
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 15.66,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "en",
+      "theme": "dark",
+      "width": 767,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": 7.66897354125976
+        },
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": 7.668973541259788
+        },
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 32.625,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "en",
+      "theme": "dark",
+      "width": 768,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.810139770507817,
+          "bottomGap": 7.459153747558588
+        },
+        {
+          "topGap": 6.8101245117187545,
+          "bottomGap": 7.459169006347679
+        },
+        {
+          "topGap": 6.8101550292968795,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.95,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "en",
+      "theme": "dark",
+      "width": 1023,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.985280151367192,
+          "bottomGap": 7.651803588867182
+        },
+        {
+          "topGap": 6.9852648925781295,
+          "bottomGap": 7.651834106445335
+        },
+        {
+          "topGap": 6.9852648925781295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 33.6,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "en",
+      "theme": "dark",
+      "width": 1024,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 7.3565722656250045,
+          "bottomGap": 7.432920074462885
+        },
+        {
+          "topGap": 7.3565722656250045,
+          "bottomGap": 7.432920074462913
+        },
+        {
+          "topGap": 7.3566027832031295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 24.096875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "en",
+      "theme": "dark",
+      "width": 1440,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": 7.464696502685541
+        },
+        {
+          "topGap": 6.8310900878906295,
+          "bottomGap": 7.464665985107445
+        },
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.0796875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "en",
+      "theme": "dark",
+      "width": 2560,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": 7.464696502685541
+        },
+        {
+          "topGap": 6.8310900878906295,
+          "bottomGap": 7.464665985107445
+        },
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.0796875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "en",
+      "theme": "light",
+      "width": 320,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 7.7093554687500045,
+          "bottomGap": 8.96676406860351
+        },
+        {
+          "topGap": 7.7093554687500045,
+          "bottomGap": 8.966764068603538
+        },
+        {
+          "topGap": 7.7093249511718795,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 12.51,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "en",
+      "theme": "light",
+      "width": 390,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": 8.404470062255854
+        },
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": 8.404470062255882
+        },
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 15.66,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "en",
+      "theme": "light",
+      "width": 767,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": 7.66897354125976
+        },
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": 7.668973541259788
+        },
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 32.625,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "en",
+      "theme": "light",
+      "width": 768,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.810139770507817,
+          "bottomGap": 7.459153747558588
+        },
+        {
+          "topGap": 6.8101245117187545,
+          "bottomGap": 7.459169006347679
+        },
+        {
+          "topGap": 6.8101550292968795,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.95,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "en",
+      "theme": "light",
+      "width": 1023,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.985280151367192,
+          "bottomGap": 7.651803588867182
+        },
+        {
+          "topGap": 6.9852648925781295,
+          "bottomGap": 7.651834106445335
+        },
+        {
+          "topGap": 6.9852648925781295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 33.6,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "en",
+      "theme": "light",
+      "width": 1024,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 7.3565722656250045,
+          "bottomGap": 7.432920074462885
+        },
+        {
+          "topGap": 7.3565722656250045,
+          "bottomGap": 7.432920074462913
+        },
+        {
+          "topGap": 7.3566027832031295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 24.096875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "en",
+      "theme": "light",
+      "width": 1440,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": 7.464696502685541
+        },
+        {
+          "topGap": 6.8310900878906295,
+          "bottomGap": 7.464665985107445
+        },
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.0796875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "en",
+      "theme": "light",
+      "width": 2560,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": 7.464696502685541
+        },
+        {
+          "topGap": 6.8310900878906295,
+          "bottomGap": 7.464665985107445
+        },
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.0796875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ja",
+      "theme": "dark",
+      "width": 320,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 7.7093554687500045,
+          "bottomGap": 8.96676406860351
+        },
+        {
+          "topGap": 7.7093554687500045,
+          "bottomGap": 8.966764068603538
+        },
+        {
+          "topGap": 7.7093249511718795,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 12.51,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ja",
+      "theme": "dark",
+      "width": 390,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": 8.404470062255854
+        },
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": 8.404470062255882
+        },
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 15.66,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ja",
+      "theme": "dark",
+      "width": 767,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": 7.66897354125976
+        },
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": 7.668973541259788
+        },
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 32.625,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ja",
+      "theme": "dark",
+      "width": 768,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.810139770507817,
+          "bottomGap": 7.459153747558588
+        },
+        {
+          "topGap": 6.8101245117187545,
+          "bottomGap": 7.459169006347679
+        },
+        {
+          "topGap": 6.8101550292968795,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.95,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ja",
+      "theme": "dark",
+      "width": 1023,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.985280151367192,
+          "bottomGap": 7.651803588867182
+        },
+        {
+          "topGap": 6.9852648925781295,
+          "bottomGap": 7.651834106445335
+        },
+        {
+          "topGap": 6.9852648925781295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 33.6,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ja",
+      "theme": "dark",
+      "width": 1024,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 7.3565722656250045,
+          "bottomGap": 7.432920074462885
+        },
+        {
+          "topGap": 7.3565722656250045,
+          "bottomGap": 7.432920074462913
+        },
+        {
+          "topGap": 7.3566027832031295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 24.096875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ja",
+      "theme": "dark",
+      "width": 1440,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": 7.464696502685541
+        },
+        {
+          "topGap": 6.8310900878906295,
+          "bottomGap": 7.464665985107445
+        },
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.0796875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ja",
+      "theme": "dark",
+      "width": 2560,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": 7.464696502685541
+        },
+        {
+          "topGap": 6.8310900878906295,
+          "bottomGap": 7.464665985107445
+        },
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.0796875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ja",
+      "theme": "light",
+      "width": 320,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 7.7093554687500045,
+          "bottomGap": 8.96676406860351
+        },
+        {
+          "topGap": 7.7093554687500045,
+          "bottomGap": 8.966764068603538
+        },
+        {
+          "topGap": 7.7093249511718795,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 12.51,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ja",
+      "theme": "light",
+      "width": 390,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": 8.404470062255854
+        },
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": 8.404470062255882
+        },
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 15.66,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ja",
+      "theme": "light",
+      "width": 767,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": 7.66897354125976
+        },
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": 7.668973541259788
+        },
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 32.625,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ja",
+      "theme": "light",
+      "width": 768,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.810139770507817,
+          "bottomGap": 7.459153747558588
+        },
+        {
+          "topGap": 6.8101245117187545,
+          "bottomGap": 7.459169006347679
+        },
+        {
+          "topGap": 6.8101550292968795,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.95,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ja",
+      "theme": "light",
+      "width": 1023,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.985280151367192,
+          "bottomGap": 7.651803588867182
+        },
+        {
+          "topGap": 6.9852648925781295,
+          "bottomGap": 7.651834106445335
+        },
+        {
+          "topGap": 6.9852648925781295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 33.6,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ja",
+      "theme": "light",
+      "width": 1024,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 7.3565722656250045,
+          "bottomGap": 7.432920074462885
+        },
+        {
+          "topGap": 7.3565722656250045,
+          "bottomGap": 7.432920074462913
+        },
+        {
+          "topGap": 7.3566027832031295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 24.096875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ja",
+      "theme": "light",
+      "width": 1440,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": 7.464696502685541
+        },
+        {
+          "topGap": 6.8310900878906295,
+          "bottomGap": 7.464665985107445
+        },
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.0796875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "ja",
+      "theme": "light",
+      "width": 2560,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": 7.464696502685541
+        },
+        {
+          "topGap": 6.8310900878906295,
+          "bottomGap": 7.464665985107445
+        },
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.0796875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 320,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 7.7093554687500045,
+          "bottomGap": 8.96676406860351
+        },
+        {
+          "topGap": 7.7093554687500045,
+          "bottomGap": 8.966764068603538
+        },
+        {
+          "topGap": 7.7093249511718795,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 12.51,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 390,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": 8.404470062255854
+        },
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": 8.404470062255882
+        },
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 15.66,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 767,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": 7.66897354125976
+        },
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": 7.668973541259788
+        },
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 32.625,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 768,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.810139770507817,
+          "bottomGap": 7.459153747558588
+        },
+        {
+          "topGap": 6.8101245117187545,
+          "bottomGap": 7.459169006347679
+        },
+        {
+          "topGap": 6.8101550292968795,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.95,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 1023,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.985280151367192,
+          "bottomGap": 7.651803588867182
+        },
+        {
+          "topGap": 6.9852648925781295,
+          "bottomGap": 7.651834106445335
+        },
+        {
+          "topGap": 6.9852648925781295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 33.6,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 1024,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 7.3565722656250045,
+          "bottomGap": 7.432920074462885
+        },
+        {
+          "topGap": 7.3565722656250045,
+          "bottomGap": 7.432920074462913
+        },
+        {
+          "topGap": 7.3566027832031295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 24.096875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 1440,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": 7.464696502685541
+        },
+        {
+          "topGap": 6.8310900878906295,
+          "bottomGap": 7.464665985107445
+        },
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.0796875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "zh-CN",
+      "theme": "dark",
+      "width": 2560,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": 7.464696502685541
+        },
+        {
+          "topGap": 6.8310900878906295,
+          "bottomGap": 7.464665985107445
+        },
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.0796875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 320,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 7.7093554687500045,
+          "bottomGap": 8.96676406860351
+        },
+        {
+          "topGap": 7.7093554687500045,
+          "bottomGap": 8.966764068603538
+        },
+        {
+          "topGap": 7.7093249511718795,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 12.51,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 390,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": 8.404470062255854
+        },
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": 8.404470062255882
+        },
+        {
+          "topGap": 6.0390673828125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 15.66,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 767,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": 7.66897354125976
+        },
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": 7.668973541259788
+        },
+        {
+          "topGap": 6.4993029785156295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 32.625,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 768,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.810139770507817,
+          "bottomGap": 7.459153747558588
+        },
+        {
+          "topGap": 6.8101245117187545,
+          "bottomGap": 7.459169006347679
+        },
+        {
+          "topGap": 6.8101550292968795,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.95,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 1023,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.985280151367192,
+          "bottomGap": 7.651803588867182
+        },
+        {
+          "topGap": 6.9852648925781295,
+          "bottomGap": 7.651834106445335
+        },
+        {
+          "topGap": 6.9852648925781295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 33.6,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 1024,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 7.3565722656250045,
+          "bottomGap": 7.432920074462885
+        },
+        {
+          "topGap": 7.3565722656250045,
+          "bottomGap": 7.432920074462913
+        },
+        {
+          "topGap": 7.3566027832031295,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 24.096875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 1440,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": 7.464696502685541
+        },
+        {
+          "topGap": 6.8310900878906295,
+          "bottomGap": 7.464665985107445
+        },
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.0796875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    },
+    {
+      "locale": "zh-CN",
+      "theme": "light",
+      "width": 2560,
+      "overflow": 0,
+      "paint": [
+        {
+          "kind": "hero",
+          "within": true
+        },
+        {
+          "kind": "server",
+          "within": true
+        },
+        {
+          "kind": "gpu",
+          "within": true
+        },
+        {
+          "kind": "kubernetes",
+          "within": true
+        },
+        {
+          "kind": "onprem",
+          "within": true
+        }
+      ],
+      "labels": [
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": 7.464696502685541
+        },
+        {
+          "topGap": 6.8310900878906295,
+          "bottomGap": 7.464665985107445
+        },
+        {
+          "topGap": 6.8310595703125045,
+          "bottomGap": null
+        }
+      ],
+      "minLabel": 31.0796875,
+      "controls": 44,
+      "messages": 4,
+      "static": true,
+      "newServer": true
+    }
+  ]
+}

@@ -1,0 +1,1537 @@
+{
+  "boundary": "Immutable current-working frontend source compiled in owned copy; synthetic tab auth/global admin list only. Protected detail/storage/volume traffic uses actual current-source Uvicorn and installed SDK/Manila HTTP against owned loopback providers. Not authentication, production, guest mount/filesystem, real Windows/RDP, GPU or rollout qualification.",
+  "responsive": [
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "ko",
+      "width": 390,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "ko",
+      "width": 767,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "ko",
+      "width": 768,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "ko",
+      "width": 1023,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "ko",
+      "width": 1024,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "ko",
+      "width": 1280,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "ko",
+      "width": 1440,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "en",
+      "width": 390,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "en",
+      "width": 767,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "en",
+      "width": 768,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "en",
+      "width": 1023,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "en",
+      "width": 1024,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "en",
+      "width": 1280,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "en",
+      "width": 1440,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "ja",
+      "width": 390,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "ja",
+      "width": 767,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "ja",
+      "width": 768,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "ja",
+      "width": 1023,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "ja",
+      "width": 1024,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "ja",
+      "width": 1280,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "ja",
+      "width": 1440,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 390,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 767,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 768,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1023,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1024,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1280,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1440,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "ko",
+      "width": 390,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "ko",
+      "width": 767,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "ko",
+      "width": 768,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "ko",
+      "width": 1023,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "ko",
+      "width": 1024,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "ko",
+      "width": 1280,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "ko",
+      "width": 1440,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "en",
+      "width": 390,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "en",
+      "width": 767,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "en",
+      "width": 768,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "en",
+      "width": 1023,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "en",
+      "width": 1024,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "en",
+      "width": 1280,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "en",
+      "width": 1440,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "ja",
+      "width": 390,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "ja",
+      "width": 767,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "ja",
+      "width": 768,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "ja",
+      "width": 1023,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "ja",
+      "width": 1024,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "ja",
+      "width": 1280,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "ja",
+      "width": 1440,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 390,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 767,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 768,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1023,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1024,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1280,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "consumer",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1440,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "ko",
+      "width": 390,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "ko",
+      "width": 767,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "ko",
+      "width": 768,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "ko",
+      "width": 1023,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "ko",
+      "width": 1024,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "ko",
+      "width": 1280,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "ko",
+      "width": 1440,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "en",
+      "width": 390,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "en",
+      "width": 767,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "en",
+      "width": 768,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "en",
+      "width": 1023,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "en",
+      "width": 1024,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "en",
+      "width": 1280,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "en",
+      "width": 1440,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "ja",
+      "width": 390,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "ja",
+      "width": 767,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "ja",
+      "width": 768,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "ja",
+      "width": 1023,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "ja",
+      "width": 1024,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "ja",
+      "width": 1280,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "ja",
+      "width": 1440,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 390,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 767,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 768,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1023,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1024,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1280,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "dark",
+      "locale": "zh-CN",
+      "width": 1440,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "ko",
+      "width": 390,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "ko",
+      "width": 767,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "ko",
+      "width": 768,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "ko",
+      "width": 1023,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "ko",
+      "width": 1024,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "ko",
+      "width": 1280,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "ko",
+      "width": 1440,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "en",
+      "width": 390,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "en",
+      "width": 767,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "en",
+      "width": 768,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "en",
+      "width": 1023,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "en",
+      "width": 1024,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "en",
+      "width": 1280,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "en",
+      "width": 1440,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "ja",
+      "width": 390,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "ja",
+      "width": 767,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "ja",
+      "width": 768,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "ja",
+      "width": 1023,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "ja",
+      "width": 1024,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "ja",
+      "width": 1280,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "ja",
+      "width": 1440,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 390,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 767,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 768,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1023,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1024,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1280,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    },
+    {
+      "mode": "admin",
+      "theme": "light",
+      "locale": "zh-CN",
+      "width": 1440,
+      "documentOverflow": 0,
+      "volumeOverflow": 0,
+      "storageOverflow": 0,
+      "metadataOverflow": 0,
+      "windowsSshHidden": true
+    }
+  ],
+  "conditionCount": 112,
+  "changedTargetAssertions": "Document, attached-volume, storage authorization and hashed metadata boundaries only; not a claim of zero overflow in every preexisting component.",
+  "knownUntouchedVisualLimit": "Existing mobile performance-monitoring toolbar can overflow its own region; not modified as part of these seven requests.",
+  "active": {
+    "buttonLabels": [
+      "",
+      "QA project",
+      "리소스 검색... ⌘K",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "VM 생성",
+      "QA project",
+      "새로고침",
+      "Off",
+      "15s",
+      "30s",
+      "60s",
+      "120s",
+      "콘솔 열기",
+      "정지",
+      "재부팅",
+      "비밀번호 변경",
+      "차트",
+      "Grafana",
+      "15분",
+      "1시간",
+      "6시간",
+      "24시간",
+      "7일",
+      "새로고침",
+      "Off",
+      "15s",
+      "30s",
+      "60s",
+      "로그 보기",
+      "+ 인터페이스 추가",
+      "+ 볼륨 연결",
+      "유지",
+      "용량 확장",
+      "분리",
+      "유지",
+      "용량 확장",
+      "분리",
+      "+ 접근 허용"
+    ],
+    "sshKeypairVisible": false,
+    "buttonStyles": [
+      {
+        "label": "정지",
+        "classes": "btn btn-outline btn-sm  svelte-1xko78n",
+        "height": 24.390625,
+        "font": "12px"
+      },
+      {
+        "label": "재부팅",
+        "classes": "btn btn-outline btn-sm  svelte-1xko78n",
+        "height": 24.390625,
+        "font": "12px"
+      },
+      {
+        "label": "비밀번호 변경",
+        "classes": "btn btn-outline btn-sm  svelte-1xko78n",
+        "height": 24.390625,
+        "font": "12px"
+      }
+    ],
+    "overflow": 0
+  },
+  "stopped": {
+    "labels": [
+      {
+        "text": "새로고침",
+        "disabled": false
+      },
+      {
+        "text": "Off",
+        "disabled": false
+      },
+      {
+        "text": "15s",
+        "disabled": false
+      },
+      {
+        "text": "30s",
+        "disabled": false
+      },
+      {
+        "text": "60s",
+        "disabled": false
+      },
+      {
+        "text": "120s",
+        "disabled": false
+      },
+      {
+        "text": "시작",
+        "disabled": false
+      },
+      {
+        "text": "보관",
+        "disabled": false
+      },
+      {
+        "text": "삭제",
+        "disabled": false
+      },
+      {
+        "text": "리사이즈",
+        "disabled": false
+      },
+      {
+        "text": "점검 중...",
+        "disabled": true
+      },
+      {
+        "text": "차트",
+        "disabled": false
+      },
+      {
+        "text": "Grafana",
+        "disabled": false
+      },
+      {
+        "text": "15분",
+        "disabled": false
+      },
+      {
+        "text": "1시간",
+        "disabled": false
+      },
+      {
+        "text": "6시간",
+        "disabled": false
+      },
+      {
+        "text": "24시간",
+        "disabled": false
+      },
+      {
+        "text": "7일",
+        "disabled": false
+      },
+      {
+        "text": "새로고침",
+        "disabled": false
+      },
+      {
+        "text": "Off",
+        "disabled": false
+      },
+      {
+        "text": "15s",
+        "disabled": false
+      },
+      {
+        "text": "30s",
+        "disabled": false
+      },
+      {
+        "text": "60s",
+        "disabled": false
+      },
+      {
+        "text": "로그 보기",
+        "disabled": false
+      },
+      {
+        "text": "+ 인터페이스 추가",
+        "disabled": false
+      },
+      {
+        "text": "+ 볼륨 연결",
+        "disabled": false
+      },
+      {
+        "text": "유지",
+        "disabled": false
+      },
+      {
+        "text": "용량 확장",
+        "disabled": false
+      },
+      {
+        "text": "분리",
+        "disabled": false
+      },
+      {
+        "text": "유지",
+        "disabled": false
+      },
+      {
+        "text": "용량 확장",
+        "disabled": false
+      },
+      {
+        "text": "분리",
+        "disabled": false
+      },
+      {
+        "text": "+ 접근 허용",
+        "disabled": false
+      }
+    ],
+    "quotaWarning": true,
+    "sshHidden": true
+  },
+  "ceph": {
+    "uuidIdentity": true,
+    "secretDisplayed": true,
+    "noMountInput": true,
+    "noLinuxMountCommand": true,
+    "notPersisted": true
+  },
+  "rootExpansion": {
+    "rootSize": 500,
+    "rootStatus": "extending",
+    "extendRequest": {
+      "method": "POST",
+      "path": "/cinder/v3/qa-project/volumes/20000000-0000-4000-8000-000000000001/action",
+      "body": {
+        "os-extend": {
+          "new_size": 600
+        }
+      }
+    },
+    "reportedAccepted": true,
+    "dialogClosed": true
+  },
+  "dataExpansion": {
+    "dataSize": 50,
+    "dataStatus": "extending",
+    "request": {
+      "method": "POST",
+      "path": "/cinder/v3/qa-project/volumes/20000000-0000-4000-8000-000000000002/action",
+      "body": {
+        "os-extend": {
+          "new_size": 80
+        }
+      }
+    }
+  },
+  "stablePollingDraft": {
+    "dialogStillOpen": true,
+    "draft": "600"
+  },
+  "reader": {
+    "noStorageWrites": true,
+    "noStoppedLifecycle": true,
+    "allExpansionDisabled": true,
+    "windowsSshHidden": true,
+    "noCephKeyInGetUI": true
+  },
+  "linux": {
+    "linuxWindowsLookingNameShowsKeypair": true
+  },
+  "publicGuides": [
+    {
+      "locale": "ko",
+      "firstbootTimingPresent": true,
+      "publicGuideLoaded": true
+    },
+    {
+      "locale": "en",
+      "firstbootTimingPresent": true,
+      "publicGuideLoaded": true
+    },
+    {
+      "locale": "ja",
+      "firstbootTimingPresent": true,
+      "publicGuideLoaded": true
+    },
+    {
+      "locale": "zh-CN",
+      "firstbootTimingPresent": true,
+      "publicGuideLoaded": true
+    }
+  ],
+  "admin": {
+    "stoppedActions": true,
+    "recoveryVisible": true,
+    "windowsSshHidden": true,
+    "documentOverflow": 0
+  },
+  "resolvedIssues": [
+    "Nova tracking SDK caller required keyword metadata; installed HTTP caught the incorrect positional-dict call.",
+    "Same-context instance polling closed an open expansion draft; regression failed before and passed after scalar-derived identity/state fences.",
+    "New hashed grant metadata keys overflowed the generic metadata table; key cells now wrap.",
+    "Shared mutable frontend build replacement invalidated runtime chunk references; final QA served a separate immutable compiled copy."
+  ],
+  "unverified": [
+    "Live cloud changes, real authorization/IAM",
+    "Actual Windows first boot, password application or RDP",
+    "Actual guest NFS/Ceph mount and data-plane I/O",
+    "Actual Cinder capacity completion and guest partition/filesystem growth",
+    "Provider placement/physical resource allocation and deployed quota counting mode",
+    "Full test:gate and production deployment"
+  ]
+}

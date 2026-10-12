@@ -1,0 +1,1319 @@
+{
+  "scope": "User selected existing local DB recovery. Only three prepared-env DB URLs were changed by assistant; user concurrently commented five .env URL assignments and restarted the stack. No assistant up/build, external DB connection/migration/write, IAM mutation or volume deletion.",
+  "failure": [
+    {
+      "name": "/afterglow-local-services-drover-migrate-1",
+      "state": "exited",
+      "exit": 1,
+      "started": "2026-10-11T18:45:26.279227042Z",
+      "finished": "2026-10-11T18:47:42.749152758Z",
+      "db": {
+        "scheme": "mysql+aiomysql:",
+        "host": "172.30.0.11",
+        "port": "(default)",
+        "database": "drover_kolla",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "errors": [
+        "2026-10-11T18:47:42.587941842Z TimeoutError: [Errno 110] Connect call failed ('172.30.0.11', 3306)",
+        "2026-10-11T18:47:42.590700425Z pymysql.err.OperationalError: (2003, \"Can't connect to MySQL server on '172.30.0.11'\")",
+        "2026-10-11T18:47:42.596130050Z sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (2003, \"Can't connect to MySQL server on '172.30.0.11'\")"
+      ]
+    },
+    {
+      "name": "/afterglow-local-services-lumen-migrate-1",
+      "state": "exited",
+      "exit": 1,
+      "started": "2026-10-11T18:45:26.201071042Z",
+      "finished": "2026-10-11T18:45:38.171827048Z",
+      "db": {
+        "scheme": "mysql+aiomysql:",
+        "host": "172.30.11",
+        "port": "(default)",
+        "database": "lumen_kolla",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "errors": [
+        "2026-10-11T18:45:37.997070464Z pymysql.err.OperationalError: (2003, \"Can't connect to MySQL server on '172.30.11'\")",
+        "2026-10-11T18:45:38.000179964Z sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (2003, \"Can't connect to MySQL server on '172.30.11'\")"
+      ]
+    },
+    {
+      "name": "/afterglow-local-services-palimpsest-bootstrap-1",
+      "state": "exited",
+      "exit": 1,
+      "started": "2026-10-11T18:45:26.35914475Z",
+      "finished": "2026-10-11T18:45:38.021748048Z",
+      "db": {
+        "scheme": "mysql+asyncmy:",
+        "host": "172.30.0.11",
+        "port": "(default)",
+        "database": "palimpsest_kolla",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "errors": [
+        "2026-10-11T18:45:37.916725548Z asyncmy.errors.OperationalError: (2003, \"Can't connect to MySQL server on '172.30.0.11' ()\")",
+        "2026-10-11T18:45:37.919688964Z sqlalchemy.exc.OperationalError: (asyncmy.errors.OperationalError) (2003, \"Can't connect to MySQL server on '172.30.0.11' ()\")"
+      ]
+    },
+    {
+      "name": "/afterglow-local-services-waygate-migrate-1",
+      "state": "exited",
+      "exit": 1,
+      "started": "2026-10-11T18:45:26.135014959Z",
+      "finished": "2026-10-11T18:47:42.748154258Z",
+      "db": {
+        "scheme": "mysql+aiomysql:",
+        "host": "172.30.0.11",
+        "port": "(default)",
+        "database": "waygate_kolla",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "errors": [
+        "2026-10-11T18:47:42.589404175Z TimeoutError: [Errno 110] Connect call failed ('172.30.0.11', 3306)",
+        "2026-10-11T18:47:42.592920050Z pymysql.err.OperationalError: (2003, \"Can't connect to MySQL server on '172.30.0.11'\")",
+        "2026-10-11T18:47:42.598627717Z sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (2003, \"Can't connect to MySQL server on '172.30.0.11'\")"
+      ]
+    }
+  ],
+  "privateInputs": {
+    "updated": ".local-services/compose.env",
+    "updatedKeys": [
+      "DROVER_DATABASE_URL",
+      "LUMEN_DATABASE_URL",
+      "WAYGATE_DATABASE_URL"
+    ],
+    "mode": "0600",
+    "envUserEditPreserved": true,
+    "nonDbLinesUnchanged": true
+  },
+  "renders": [
+    {
+      "case": "plain",
+      "consumers": [
+        {
+          "name": "backend",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "afterglow-mariadb",
+            "port": "3306",
+            "database": "afterglow",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "drover-api",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "drover",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "drover-migrate",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "drover",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "drover-worker",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "drover",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "lumen-api",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "lumen",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "lumen-migrate",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "lumen",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "lumen-worker",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "lumen",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "notion-worker",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "afterglow-mariadb",
+            "port": "3306",
+            "database": "afterglow",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "palimpsest-api",
+          "db": {
+            "scheme": "mysql+asyncmy:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "palimpsest",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "palimpsest-bootstrap",
+          "db": {
+            "scheme": "mysql+asyncmy:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "palimpsest",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "palimpsest-worker",
+          "db": {
+            "scheme": "mysql+asyncmy:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "palimpsest",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "waygate-api",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "waygate",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "waygate-migrate",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "waygate",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "waygate-worker",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "waygate",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        }
+      ]
+    },
+    {
+      "case": "prepared",
+      "consumers": [
+        {
+          "name": "backend",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "afterglow-mariadb",
+            "port": "3306",
+            "database": "afterglow",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "drover-api",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "drover",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "drover-migrate",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "drover",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "drover-worker",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "drover",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "lumen-api",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "lumen",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "lumen-migrate",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "lumen",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "lumen-worker",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "lumen",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "notion-worker",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "afterglow-mariadb",
+            "port": "3306",
+            "database": "afterglow",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "palimpsest-api",
+          "db": {
+            "scheme": "mysql+asyncmy:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "palimpsest",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "palimpsest-bootstrap",
+          "db": {
+            "scheme": "mysql+asyncmy:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "palimpsest",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "palimpsest-worker",
+          "db": {
+            "scheme": "mysql+asyncmy:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "palimpsest",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "waygate-api",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "waygate",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "waygate-migrate",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "waygate",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "waygate-worker",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "waygate",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        }
+      ]
+    },
+    {
+      "case": "explicit-local-startup",
+      "consumers": [
+        {
+          "name": "backend",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "afterglow-mariadb",
+            "port": "3306",
+            "database": "afterglow",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "drover-api",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "drover",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "drover-migrate",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "drover",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "drover-worker",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "drover",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "lumen-api",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "lumen",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "lumen-migrate",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "lumen",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "lumen-worker",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "lumen",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "notion-worker",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "afterglow-mariadb",
+            "port": "3306",
+            "database": "afterglow",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "palimpsest-api",
+          "db": {
+            "scheme": "mysql+asyncmy:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "palimpsest",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "palimpsest-bootstrap",
+          "db": {
+            "scheme": "mysql+asyncmy:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "palimpsest",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "palimpsest-worker",
+          "db": {
+            "scheme": "mysql+asyncmy:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "palimpsest",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "waygate-api",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "waygate",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "waygate-migrate",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "waygate",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        },
+        {
+          "name": "waygate-worker",
+          "db": {
+            "scheme": "mysql+aiomysql:",
+            "host": "service-mariadb",
+            "port": "3306",
+            "database": "waygate",
+            "username": "[set]",
+            "password": "[set]"
+          },
+          "sameAsExistingWorker": true
+        }
+      ]
+    }
+  ],
+  "ownedKeyContinuity": [
+    {
+      "service": "backend",
+      "keys": [
+        {
+          "name": "SECRET_KEY",
+          "unchanged": true
+        },
+        {
+          "name": "K3S_KUBECONFIG_ENCRYPTION_KEY",
+          "unchanged": true
+        }
+      ]
+    },
+    {
+      "service": "notion-worker",
+      "keys": [
+        {
+          "name": "SECRET_KEY",
+          "unchanged": true
+        },
+        {
+          "name": "K3S_KUBECONFIG_ENCRYPTION_KEY",
+          "unchanged": true
+        }
+      ]
+    },
+    {
+      "service": "drover-migrate",
+      "keys": [
+        {
+          "name": "DROVER_KUBECONFIG_ENCRYPTION_KEY",
+          "unchanged": true
+        }
+      ]
+    },
+    {
+      "service": "drover-api",
+      "keys": [
+        {
+          "name": "DROVER_KUBECONFIG_ENCRYPTION_KEY",
+          "unchanged": true
+        }
+      ]
+    },
+    {
+      "service": "waygate-migrate",
+      "keys": [
+        {
+          "name": "WAYGATE_ENCRYPTION_KEY",
+          "unchanged": true
+        }
+      ]
+    },
+    {
+      "service": "waygate-api",
+      "keys": [
+        {
+          "name": "WAYGATE_ENCRYPTION_KEY",
+          "unchanged": true
+        }
+      ]
+    },
+    {
+      "service": "lumen-migrate",
+      "keys": [
+        {
+          "name": "LUMEN_ENCRYPTION_KEY",
+          "unchanged": true
+        },
+        {
+          "name": "LUMEN_MCP_SERVICE_TOKEN",
+          "unchanged": true
+        }
+      ]
+    },
+    {
+      "service": "lumen-api",
+      "keys": [
+        {
+          "name": "LUMEN_ENCRYPTION_KEY",
+          "unchanged": true
+        },
+        {
+          "name": "LUMEN_MCP_SERVICE_TOKEN",
+          "unchanged": true
+        }
+      ]
+    }
+  ],
+  "runtime": [
+    {
+      "name": "/afterglow-local-services-frontend-1",
+      "id": "97f3ab485778b5eec873dbcd8a17818ad43fcb19f4a54f18d3775c77517e44d4",
+      "state": "running",
+      "exit": 0,
+      "health": "healthy",
+      "started": "2026-10-11T19:07:05.342695671Z",
+      "finished": "0001-01-01T00:00:00Z"
+    },
+    {
+      "name": "/afterglow-local-services-backend-1",
+      "id": "c7ac6e55e7116f135a34fe24e642b27c7e6b479b43544d99551b4112fb11e959",
+      "state": "running",
+      "exit": 0,
+      "health": "healthy",
+      "started": "2026-10-11T19:06:59.763543627Z",
+      "finished": "0001-01-01T00:00:00Z",
+      "db": {
+        "scheme": "mysql+aiomysql:",
+        "host": "afterglow-mariadb",
+        "port": "3306",
+        "database": "afterglow",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "localDbMatch": true
+    },
+    {
+      "name": "/afterglow-local-services-waygate-api-1",
+      "id": "e696454117d5aa8fcaab4050a601c3d90df64d04c936481cbf0f9f6cda06eab6",
+      "state": "running",
+      "exit": 0,
+      "health": "healthy",
+      "started": "2026-10-11T19:06:48.391237636Z",
+      "finished": "0001-01-01T00:00:00Z",
+      "db": {
+        "scheme": "mysql+aiomysql:",
+        "host": "service-mariadb",
+        "port": "3306",
+        "database": "waygate",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "localDbMatch": true
+    },
+    {
+      "name": "/afterglow-local-services-palimpsest-api-1",
+      "id": "4bf97db7494f5b75b30b3352918242ea4e027854c808dfc567d2b49000fdfcb9",
+      "state": "running",
+      "exit": 0,
+      "health": "healthy",
+      "started": "2026-10-11T19:06:48.785696761Z",
+      "finished": "0001-01-01T00:00:00Z",
+      "db": {
+        "scheme": "mysql+asyncmy:",
+        "host": "service-mariadb",
+        "port": "3306",
+        "database": "palimpsest",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "localDbMatch": true
+    },
+    {
+      "name": "/afterglow-local-services-drover-api-1",
+      "id": "a3f1fbbb193e30cd462392b973d1d965dde7d36005cb037d17289a7f4cc273d8",
+      "state": "running",
+      "exit": 0,
+      "health": "healthy",
+      "started": "2026-10-11T19:06:48.499122053Z",
+      "finished": "0001-01-01T00:00:00Z",
+      "db": {
+        "scheme": "mysql+aiomysql:",
+        "host": "service-mariadb",
+        "port": "3306",
+        "database": "drover",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "localDbMatch": true
+    },
+    {
+      "name": "/afterglow-local-services-lumen-api-1",
+      "id": "188dbcb637fb1f9866de81e1266f593ea2302ee0b9744ecbb605d80ffe4ef959",
+      "state": "running",
+      "exit": 0,
+      "health": "healthy",
+      "started": "2026-10-11T19:06:49.172507886Z",
+      "finished": "0001-01-01T00:00:00Z",
+      "db": {
+        "scheme": "mysql+aiomysql:",
+        "host": "service-mariadb",
+        "port": "3306",
+        "database": "lumen",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "localDbMatch": true
+    },
+    {
+      "name": "/afterglow-local-services-drover-migrate-1",
+      "id": "7f4d83c347e41ec2141c9cda6c1e21dca11b5037e02f253677bf51ae6bd6cda4",
+      "state": "exited",
+      "exit": 0,
+      "started": "2026-10-11T19:06:46.866841427Z",
+      "finished": "2026-10-11T19:06:48.184558927Z",
+      "db": {
+        "scheme": "mysql+aiomysql:",
+        "host": "service-mariadb",
+        "port": "3306",
+        "database": "drover",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "localDbMatch": true
+    },
+    {
+      "name": "/afterglow-local-services-waygate-migrate-1",
+      "id": "7ec29d2b154e9cb3c1e4427e2404e3aa779045a05b224d1a71b09418b972b09e",
+      "state": "exited",
+      "exit": 0,
+      "started": "2026-10-11T19:06:46.758867552Z",
+      "finished": "2026-10-11T19:06:48.118607344Z",
+      "db": {
+        "scheme": "mysql+aiomysql:",
+        "host": "service-mariadb",
+        "port": "3306",
+        "database": "waygate",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "localDbMatch": true
+    },
+    {
+      "name": "/afterglow-local-services-palimpsest-bootstrap-1",
+      "id": "016246a41aeb5bf558c2ab54a069b9db71d3907cfc2a75a6e9a6dafcf50ad728",
+      "state": "exited",
+      "exit": 0,
+      "started": "2026-10-11T19:06:46.670809093Z",
+      "finished": "2026-10-11T19:06:48.296381511Z",
+      "db": {
+        "scheme": "mysql+asyncmy:",
+        "host": "service-mariadb",
+        "port": "3306",
+        "database": "palimpsest",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "localDbMatch": true
+    },
+    {
+      "name": "/afterglow-local-services-lumen-migrate-1",
+      "id": "bcb06655149e521657acbdb9ba529146bfed946e80f074b12f313ca811708044",
+      "state": "exited",
+      "exit": 0,
+      "started": "2026-10-11T19:06:46.585877135Z",
+      "finished": "2026-10-11T19:06:48.791290469Z",
+      "db": {
+        "scheme": "mysql+aiomysql:",
+        "host": "service-mariadb",
+        "port": "3306",
+        "database": "lumen",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "localDbMatch": true
+    },
+    {
+      "name": "/afterglow-local-services-redis-1",
+      "id": "273340c33521f2620f9d50de3e6adc8a38000a018ef1908802ba3c5c065ee3eb",
+      "state": "running",
+      "exit": 0,
+      "started": "2026-10-11T02:07:41.063368838Z",
+      "finished": "0001-01-01T00:00:00Z"
+    },
+    {
+      "name": "/afterglow-local-services-lumen-worker-1",
+      "id": "ad49c78bd82e4a6d93b4d2ea5c1a9537c3f9219db0780d9b62e818dcdfda3219",
+      "state": "running",
+      "exit": 0,
+      "started": "2026-10-11T10:42:31.559744335Z",
+      "finished": "2026-10-11T10:42:15.107180345Z",
+      "db": {
+        "scheme": "mysql+aiomysql:",
+        "host": "service-mariadb",
+        "port": "3306",
+        "database": "lumen",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "localDbMatch": true
+    },
+    {
+      "name": "/afterglow-local-services-drover-worker-1",
+      "id": "bd65d33da26cb0a714e1d96a9f61c52b52017cc68ac6b3f3f4776f30693f6916",
+      "state": "running",
+      "exit": 0,
+      "started": "2026-10-09T17:02:53.647014048Z",
+      "finished": "0001-01-01T00:00:00Z",
+      "db": {
+        "scheme": "mysql+aiomysql:",
+        "host": "service-mariadb",
+        "port": "3306",
+        "database": "drover",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "localDbMatch": true
+    },
+    {
+      "name": "/afterglow-local-services-notion-worker-1",
+      "id": "e913af5945f77d83bbb5ccebaed71443f707f8bbdb4b512de94facc02a190cca",
+      "state": "running",
+      "exit": 0,
+      "started": "2026-10-09T13:12:12.494859961Z",
+      "finished": "0001-01-01T00:00:00Z",
+      "db": {
+        "scheme": "mysql+aiomysql:",
+        "host": "afterglow-mariadb",
+        "port": "3306",
+        "database": "afterglow",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "localDbMatch": true
+    },
+    {
+      "name": "/afterglow-local-services-palimpsest-worker-1",
+      "id": "299252da9dd090102fa296048cec418eb0ee142dbb4bc5d11b984b6531c07b23",
+      "state": "running",
+      "exit": 0,
+      "started": "2026-10-09T13:09:09.347839834Z",
+      "finished": "0001-01-01T00:00:00Z",
+      "db": {
+        "scheme": "mysql+asyncmy:",
+        "host": "service-mariadb",
+        "port": "3306",
+        "database": "palimpsest",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "localDbMatch": true
+    },
+    {
+      "name": "/afterglow-local-services-waygate-worker-1",
+      "id": "a32e770aaa7e55f120b76fa1f745d5d6f42927cf49c012379e0c8f3060826b0d",
+      "state": "running",
+      "exit": 0,
+      "started": "2026-10-09T13:09:08.700720042Z",
+      "finished": "0001-01-01T00:00:00Z",
+      "db": {
+        "scheme": "mysql+aiomysql:",
+        "host": "service-mariadb",
+        "port": "3306",
+        "database": "waygate",
+        "username": "[set]",
+        "password": "[set]"
+      },
+      "localDbMatch": true
+    },
+    {
+      "name": "/afterglow-local-services-service-mariadb-1",
+      "id": "49dcdb83ca57867920bce9893b1369e3c6cea9b8f4ea037e9cfb5ce0315ba76f",
+      "state": "running",
+      "exit": 0,
+      "health": "healthy",
+      "started": "2026-10-08T07:11:04.163990758Z",
+      "finished": "0001-01-01T00:00:00Z"
+    },
+    {
+      "name": "/afterglow-local-services-afterglow-mariadb-1",
+      "id": "67652bda5fea0cb3c84913e4915cf81f115ef45794e585d35d0fda09cb58f63b",
+      "state": "running",
+      "exit": 0,
+      "health": "healthy",
+      "started": "2026-10-08T07:11:04.081631425Z",
+      "finished": "0001-01-01T00:00:00Z"
+    },
+    {
+      "name": "/afterglow-local-services-lumen-postgres-1",
+      "id": "ccb000e442d5d8fe58dc73e9282dc0151441f844a421f642d55ae1b1c2202e71",
+      "state": "running",
+      "exit": 0,
+      "health": "healthy",
+      "started": "2026-10-05T18:46:20.286871963Z",
+      "finished": "2026-10-05T17:44:00.77710205Z"
+    }
+  ],
+  "http": [
+    {
+      "name": "backend",
+      "url": "http://127.0.0.1:8000/api/v1/health",
+      "status": 200,
+      "contentType": "application/json",
+      "location": null,
+      "jsonStatus": "ok"
+    },
+    {
+      "name": "frontend",
+      "url": "http://127.0.0.1:3080/health",
+      "status": 200,
+      "contentType": "application/json",
+      "location": null,
+      "jsonStatus": "ok"
+    },
+    {
+      "name": "login",
+      "url": "http://127.0.0.1:3080/login",
+      "status": 200,
+      "contentType": "text/html",
+      "location": null,
+      "html": true
+    },
+    {
+      "name": "chat-auth-boundary",
+      "url": "http://127.0.0.1:3080/dashboard/chat",
+      "status": 302,
+      "contentType": null,
+      "location": "/login"
+    },
+    {
+      "name": "drover-api",
+      "url": "http://127.0.0.1:8011/v1/health",
+      "status": 200,
+      "contentType": "application/json",
+      "location": null,
+      "jsonStatus": "ok"
+    },
+    {
+      "name": "waygate-api",
+      "url": "http://127.0.0.1:8010/v1/health",
+      "status": 200,
+      "contentType": "application/json",
+      "location": null,
+      "jsonStatus": "ok"
+    },
+    {
+      "name": "lumen-api",
+      "url": "http://127.0.0.1:8012/v1/health",
+      "status": 200,
+      "contentType": "application/json",
+      "location": null,
+      "jsonStatus": "ok"
+    },
+    {
+      "name": "palimpsest-api",
+      "url": "http://127.0.0.1:8020/v1/health",
+      "status": 200,
+      "contentType": "application/json",
+      "location": null,
+      "jsonStatus": "ok"
+    }
+  ],
+  "preservation": {
+    "initialRunning": [
+      {
+        "name": "/afterglow-local-services-drover-worker-1",
+        "sameContainerId": true,
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-lumen-worker-1",
+        "sameContainerId": true,
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-waygate-worker-1",
+        "sameContainerId": true,
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-palimpsest-worker-1",
+        "sameContainerId": true,
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-notion-worker-1",
+        "sameContainerId": true,
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-service-mariadb-1",
+        "sameContainerId": true,
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-afterglow-mariadb-1",
+        "sameContainerId": true,
+        "sameMounts": true
+      }
+    ],
+    "observedMounts": [
+      {
+        "name": "/afterglow-local-services-drover-migrate-1",
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-lumen-migrate-1",
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-palimpsest-bootstrap-1",
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-waygate-migrate-1",
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-backend-1",
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-frontend-1",
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-drover-worker-1",
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-lumen-worker-1",
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-waygate-worker-1",
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-palimpsest-worker-1",
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-notion-worker-1",
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-service-mariadb-1",
+        "sameMounts": true
+      },
+      {
+        "name": "/afterglow-local-services-afterglow-mariadb-1",
+        "sameMounts": true
+      }
+    ],
+    "privateFiles": [
+      {
+        "path": ".local-services/afterglow.conf",
+        "unchanged": true
+      },
+      {
+        "path": ".local-services/secrets.json",
+        "unchanged": true
+      }
+    ],
+    "envUnchangedSinceUserCommentEdit": true,
+    "preparedNonDbLinesUnchanged": true
+  },
+  "localDbSelect": [
+    {
+      "service": "drover",
+      "database": "drover",
+      "select_one": 1,
+      "legacy_lumen_host_resolves_to": "172.30.0.11"
+    },
+    {
+      "service": "lumen",
+      "database": "lumen",
+      "select_one": 1,
+      "legacy_lumen_host_resolves_to": "172.30.0.11"
+    },
+    {
+      "service": "waygate",
+      "database": "waygate",
+      "select_one": 1,
+      "legacy_lumen_host_resolves_to": "172.30.0.11"
+    },
+    {
+      "service": "notion",
+      "database": "afterglow",
+      "select_one": 1,
+      "legacy_lumen_host_resolves_to": "172.30.0.11"
+    },
+    {
+      "service": "palimpsest",
+      "database": "palimpsest",
+      "select_one": 1,
+      "legacy_lumen_host_resolves_to": "172.30.0.11"
+    }
+  ],
+  "ledgerAfterConcurrentRestart": [
+    {
+      "service": "drover",
+      "database": "drover",
+      "ledger_present": true,
+      "ledger_rows": 4,
+      "ledger_sha256": "d87d4ba95f79e305f8b8c11194646fac8dec95d7e5cb137ad5ded7e497628a35",
+      "columns_sha256": "3db9eff2cc73d2a3c1afab572a7789cd1fc713c18f7ba7b7f930b7c02f98226b"
+    },
+    {
+      "service": "lumen",
+      "database": "lumen",
+      "ledger_present": true,
+      "ledger_rows": 27,
+      "ledger_sha256": "16a22813fb460ebfc311c1fec5730bdb2db31976aba40b115e85f9dd579070d2",
+      "columns_sha256": "500a24e080b4f7d0115b97bef59f2f12cc861ef23cbec04bc7856a9be3acf348"
+    },
+    {
+      "service": "waygate",
+      "database": "waygate",
+      "ledger_present": true,
+      "ledger_rows": 6,
+      "ledger_sha256": "98cce68747810b1e38280e3a433d328d70b6a662ec756e15dd3650059f15ca76",
+      "columns_sha256": "af70aaf40ed0992060a7c7d886be7c564b58df45f52c80a57d7cfeb1ace7a0da"
+    },
+    {
+      "service": "palimpsest",
+      "database": "palimpsest",
+      "ledger_present": false,
+      "ledger_rows": 0,
+      "ledger_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "columns_sha256": "f80c2ab152a157bcae4de9aee6a18ae833ac2bcf2e3b0c74224fb3459661e9d4"
+    },
+    {
+      "service": "notion",
+      "database": "afterglow",
+      "ledger_present": false,
+      "ledger_rows": 0,
+      "ledger_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "columns_sha256": "260ac69e6bdf8c462038f5c52f5017a5eaf3e75a49e7d3439e9572a54b9cde92"
+    }
+  ],
+  "ledgerAfterSmoke": [
+    {
+      "service": "drover",
+      "database": "drover",
+      "ledger_present": true,
+      "ledger_rows": 4,
+      "ledger_sha256": "d87d4ba95f79e305f8b8c11194646fac8dec95d7e5cb137ad5ded7e497628a35",
+      "columns_sha256": "3db9eff2cc73d2a3c1afab572a7789cd1fc713c18f7ba7b7f930b7c02f98226b"
+    },
+    {
+      "service": "lumen",
+      "database": "lumen",
+      "ledger_present": true,
+      "ledger_rows": 27,
+      "ledger_sha256": "16a22813fb460ebfc311c1fec5730bdb2db31976aba40b115e85f9dd579070d2",
+      "columns_sha256": "500a24e080b4f7d0115b97bef59f2f12cc861ef23cbec04bc7856a9be3acf348"
+    },
+    {
+      "service": "waygate",
+      "database": "waygate",
+      "ledger_present": true,
+      "ledger_rows": 6,
+      "ledger_sha256": "98cce68747810b1e38280e3a433d328d70b6a662ec756e15dd3650059f15ca76",
+      "columns_sha256": "af70aaf40ed0992060a7c7d886be7c564b58df45f52c80a57d7cfeb1ace7a0da"
+    },
+    {
+      "service": "palimpsest",
+      "database": "palimpsest",
+      "ledger_present": false,
+      "ledger_rows": 0,
+      "ledger_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "columns_sha256": "f80c2ab152a157bcae4de9aee6a18ae833ac2bcf2e3b0c74224fb3459661e9d4"
+    },
+    {
+      "service": "notion",
+      "database": "afterglow",
+      "ledger_present": false,
+      "ledger_rows": 0,
+      "ledger_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "columns_sha256": "260ac69e6bdf8c462038f5c52f5017a5eaf3e75a49e7d3439e9572a54b9cde92"
+    }
+  ],
+  "ledgerLimit": "No pre-restart ledger snapshot; equality proves only no ledger/column changes during the assistant verification interval, not no changes during concurrent startup.",
+  "canonicalSmoke": {
+    "command": "npm run services:smoke",
+    "exit": 1,
+    "output": "\n> afterglow-monorepo@1.30.12 services:smoke\n> node scripts/local-services.mjs smoke\n\n\nlocal-services: Drover readiness failed: Drover readiness timed out after 30 seconds\n",
+    "authenticatedInputsPresent": false
+  },
+  "remainingBlocker": {
+    "dockerSubnetsContainingKeystone": [
+      {
+        "name": "afterglow-remaining-commit-gate-bkjlix_default",
+        "id": "45744771eaac3eff93a07e9e58b2a05c7643d96e6592f444fb82d591eccae413",
+        "subnet": "172.30.0.0/16",
+        "project": "afterglow-remaining-commit-gate-bkjlix",
+        "containers": [
+          "afterglow-remaining-commit-gate-bkjlix-test-redis-1",
+          "afterglow-remaining-commit-gate-bkjlix-mariadb-1",
+          "afterglow-remaining-commit-gate-bkjlix-postgres-1"
+        ]
+      }
+    ],
+    "keystoneVersionGet": {
+      "container": {
+        "error_type": "URLError",
+        "reason_type": "TimeoutError"
+      },
+      "host": {
+        "status": 200
+      }
+    },
+    "networkNotChanged": true
+  },
+  "notRun": [
+    "Full npm run test:gate",
+    "Authenticated BFF/dashboard/context-preview acceptance",
+    "Provider completion/resource mutation",
+    "Production deployment/external DB migration",
+    "Rebuild or amd64 qualification: only machine-local DB URL inputs changed"
+  ]
+}

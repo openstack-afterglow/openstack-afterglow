@@ -11,6 +11,7 @@
 	const s = useInstanceDetailController();
 
 	const githubLogin = $derived(s.instance!.ssh_access_mode === 'github' ? s.instance!.github_login : null);
+	const isWindows = $derived(s.instance!.os_type?.trim().toLowerCase() === 'windows');
 </script>
 
 <div class="motion-enter bg-surface-base border border-line rounded-lg p-6 mb-4">
@@ -32,10 +33,12 @@
 			<dt class="text-xs text-ink-2 mb-0.5">{t('info.flavor')}</dt>
 			<dd class="text-sm text-ink-2">{s.instance!.flavor_name ?? s.instance!.flavor_id ?? '-'}</dd>
 		</div>
-		<div>
-			<dt class="text-xs text-ink-2 mb-0.5">{t(githubLogin ? 'info.githubSsh' : 'info.keyPair')}</dt>
-			<dd class="text-sm text-ink-2 font-mono [overflow-wrap:anywhere]">{#if githubLogin}@{githubLogin}{:else}{s.instance!.key_name ?? '-'}{/if}</dd>
-		</div>
+		{#if !isWindows}
+			<div>
+				<dt class="text-xs text-ink-2 mb-0.5">{t(githubLogin ? 'info.githubSsh' : 'info.keyPair')}</dt>
+				<dd class="text-sm text-ink-2 font-mono [overflow-wrap:anywhere]">{#if githubLogin}@{githubLogin}{:else}{s.instance!.key_name ?? '-'}{/if}</dd>
+			</div>
+		{/if}
 		{#if showHost && s.instance!.host}
 			<div>
 				<dt class="text-xs text-ink-2 mb-0.5">{t('info.host')}</dt>

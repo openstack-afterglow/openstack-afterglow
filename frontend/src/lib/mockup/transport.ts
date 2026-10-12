@@ -382,6 +382,7 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 			last_used_at: null,
 			revoked_at: null,
 			is_lumen_default: false,
+			client_observations: [],
 		} satisfies (typeof state.mcpAccess.personalTokens)[number];
 		state.mcpAccess.personalTokens.unshift(record);
 		return { ...record, token: `sk-afgl-mock-${id}` };

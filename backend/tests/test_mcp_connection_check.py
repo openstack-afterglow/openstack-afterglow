@@ -1,8 +1,8 @@
 """Personal MCP connection check and origin-root MCP resource, through the real protocol stack.
 
 The browser endpoint runs the real MCP SDK client against the real Afterglow
-Streamable HTTP server (ASGI in-process instead of a socket). Only the grant
-authority, rate-limit slot and tool registry are replaced by fakes.
+Streamable HTTP server (ASGI in-process instead of a socket). Grant authority,
+observation persistence, rate-limit slot and tool registry use explicit test seams.
 """
 
 from __future__ import annotations
@@ -118,7 +118,7 @@ def root_mcp(monkeypatch):
         monkeypatch.setattr(module, "get_settings", lambda: settings)
     monkeypatch.setattr(mcp_access, "_session_factory", lambda: object())
 
-    authority = SimpleNamespace(audiences=[], server_rejects=False)
+    authority = SimpleNamespace(audiences=[], observations=[], server_rejects=False)
 
     async def local_authority(raw_token: str, *, urls):
         authority.audiences.append(("local", urls.resource))
@@ -137,9 +137,13 @@ def root_mcp(monkeypatch):
         assert effect == "read"
         yield
 
+    async def observe(principal, observation):
+        authority.observations.append((principal, observation))
+
     monkeypatch.setattr(verification, "verify_mcp_bearer", local_authority)
     monkeypatch.setattr(transport, "verify_mcp_bearer", server_authority)
     monkeypatch.setattr(transport, "grant_call_slot", no_slot)
+    monkeypatch.setattr(transport, "record_client_observation", observe)
     monkeypatch.setattr(transport, "enabled_entries", lambda _principal: [_Tool(index) for index in range(5)])
     monkeypatch.setattr(transport, "enabled_service_fingerprint", lambda: "services")
 
@@ -178,6 +182,10 @@ async def test_owner_key_completes_real_handshake_at_the_origin_root(client, roo
         "tool_count": 5,
     }
     assert response.headers["cache-control"] == "no-store"
+    assert len(root_mcp.authority.observations) == 1
+    observed_principal, observed_identity = root_mcp.authority.observations[0]
+    assert observed_principal == GRANTS[OWN_TOKEN]
+    assert observed_identity["client_name"] is not None
     assert OWN_TOKEN not in response.text
 
     requests = root_mcp.recorder.requests

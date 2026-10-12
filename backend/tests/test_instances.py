@@ -99,7 +99,7 @@ async def test_admin_can_get_other_project_instance(admin_client, mock_conn):
         patch("app.api.compute.instances.nova.get_server", return_value=foreign),
         patch(
             "app.api.compute.instances._resolve_names",
-            return_value=[make_instance(instance_id="inst-foreign", name="vm-foreign")],
+            return_value=[make_instance(instance_id="inst-foreign", name="vm-foreign").model_dump()],
         ),
     ):
         resp = await admin_client.get("/api/v1/instances/inst-foreign")

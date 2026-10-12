@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -58,6 +59,20 @@ class McpProjectView(BaseModel):
     name: str
 
 
+class McpClientObservationView(BaseModel):
+    """Self-reported initialization evidence, never an authorization identity."""
+
+    client_name: str | None
+    client_version: str | None
+    product: str | None
+    kind: Literal["browser", "agent", "bot", "sdk", "unknown"]
+    identity_source: Literal["client_info", "user_agent", "unknown"]
+    browser: str | None
+    os: str | None
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+
 class McpTokenView(BaseModel):
     id: str
     grant_id: str
@@ -74,6 +89,7 @@ class McpTokenView(BaseModel):
     project_scope: str = "current"
     project_ids: list[str] = Field(default_factory=list)
     projects: list[McpProjectView] = Field(default_factory=list)
+    client_observations: list[McpClientObservationView] = Field(default_factory=list, max_length=10)
 
 
 class CreateMcpTokenResponse(McpTokenView):
@@ -144,8 +160,10 @@ async def get_mcp_projects(request: Request, token_info: dict = Depends(get_toke
 
 
 @router.get("/mcp-tokens", response_model=list[McpTokenView])
-async def get_mcp_tokens(request: Request, token_info: dict = Depends(get_token_info)):
+async def get_mcp_tokens(request: Request, http_response: Response, token_info: dict = Depends(get_token_info)):
     _require_mcp_enabled()
+    http_response.headers["Cache-Control"] = "no-store"
+    http_response.headers["Pragma"] = "no-cache"
     async with _session_factory()() as session:
         return await list_personal_tokens(
             session, owner_user_id=token_info["user_id"], owner_project_id=token_info["project_id"]
@@ -381,8 +399,10 @@ async def set_mcp_lumen_default(
 
 
 @router.get("/mcp-oauth/grants", response_model=list[McpTokenView])
-async def get_mcp_oauth_grants(request: Request, token_info: dict = Depends(get_token_info)):
+async def get_mcp_oauth_grants(request: Request, http_response: Response, token_info: dict = Depends(get_token_info)):
     _require_mcp_enabled()
+    http_response.headers["Cache-Control"] = "no-store"
+    http_response.headers["Pragma"] = "no-cache"
     async with _session_factory()() as session:
         return await list_oauth_grants(
             session, owner_user_id=token_info["user_id"], owner_project_id=token_info["project_id"]

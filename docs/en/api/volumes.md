@@ -195,13 +195,13 @@ Deletes a volume. A volume in the `in-use` state (attached to an instance) canno
 
 Extends volume capacity. **Rate limit: 10/min**
 
-Because Ceph online extension is supported, not only `available` volumes but also **`in-use` volumes (attached to an instance) can be extended without downtime**. Shrinking is not supported — the new size must be larger than the current size. Verifies ownership before extension.
+The project API extends detached `available` volumes, or `in-use` volumes only when every attachment resolves to a server in the effective project with exact `SHUTOFF`, raw power state `4`, an explicitly idle task, and a reciprocal volume attachment. System admins cannot bypass project ownership here. Reread authoritative Cinder ownership/status/size/attachments immediately before mutation and reject changes. The separate global admin endpoint retains its existing contract.
 
 | Parameter | In | Type | Required | Description |
 |-----------|-----|------|----------|-------------|
 | `volume_id` | path | string | Yes | Volume UUID |
 
-**Request body** — `ExtendVolumeRequest`
+**Request body** — `ProjectExtendVolumeRequest`
 
 ```json
 {
@@ -211,9 +211,9 @@ Because Ceph online extension is supported, not only `available` volumes but als
 
 | Field | Type | Required | Constraint | Description |
 |-------|------|----------|------------|-------------|
-| `new_size` | integer | Yes | `> 0`, must be larger than current size | New capacity (GB) |
+| `new_size` | integer | Yes | strict integer, `1..2147483647`, larger than current size | New capacity (GB); booleans, strings, fractions and shrink requests are rejected |
 
-**Response (200 OK)** — the `VolumeInfo` object after extension
+**Response (200 OK)** — actual provider-reread `VolumeInfo`, potentially still showing the previous size during asynchronous `extending`. Acceptance does not prove completed capacity growth or guest partition/filesystem expansion. Verify disk discovery after boot/rescan and perform any required guest-specific growth separately. No guest execution occurs. Attached root/data rows and the existing volume list/detail use the same explicitly scoped modal.
 
 **Errors**
 
@@ -221,6 +221,10 @@ Because Ceph online extension is supported, not only `available` volumes but als
 |--------|-------|
 | `400` | New size is at or below the current size, or Cinder extension failed |
 | `404` | Volume does not exist or is not in the owning project |
+| `403` | No project write permission |
+| `409` | Unknown/unsafe attachment, power, task, reciprocity, or changed final Cinder snapshot |
+| `422` | Strict integer/range validation failed |
+| `502` | Provider lookup failed or accepted result could not be verified |
 | `429` | Per-minute extension limit exceeded |
 
 ---

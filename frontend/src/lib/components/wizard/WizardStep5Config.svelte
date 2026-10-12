@@ -3,7 +3,7 @@
 	import { get } from 'svelte/store';
 	import { api, ApiError } from '$lib/api/client';
 	import { auth } from '$lib/stores/auth';
-	import { wizard } from '$lib/stores/wizard';
+	import { wizard, wizardPassword } from '$lib/stores/wizard';
 	import { useVmCreate } from '$lib/stores/vmCreateStore.svelte';
 	import { Alert, Button, Field, TextInput, ToggleGroup } from '$lib/components/ui';
 	import { CLOUD_INIT_PRESETS } from '$lib/config/cloudInitPresets';
@@ -322,7 +322,31 @@ function applyCloudInitPreset(event: Event) {
 
 <!-- SSH 접근 -->
 <div class="mb-4">
-	{#if s.adminMode}
+	{#if s.windowsUnsupported}
+		<div data-testid="windows-unsupported-config">
+			<Alert tone="danger">{t('config.windows.unsupported')}</Alert>
+		</div>
+	{:else if s.windowsAccount}
+		<div class="space-y-3" data-testid="windows-password-config">
+			<Field label={t('config.windows.account')}>
+				<p id="windows-account" class="text-sm text-ink-0 break-all">{s.windowsAccount}</p>
+			</Field>
+			<Alert tone="warning">{t('config.windows.secretWarning')}</Alert>
+			<Alert tone="info">{t('config.windows.firstboot')}</Alert>
+			<div class="grid grid-cols-1 @lg/panel:grid-cols-2 gap-3.5">
+				<Field label={t('config.windows.password')} for="windows-password" required help={t('config.windows.rules')} error={s.passwordError === 'invalid' ? t('config.windows.invalid') : undefined}>
+					<TextInput id="windows-password" type="password" autocomplete="new-password" bind:value={$wizardPassword.password} required ariaInvalid={s.passwordError === 'invalid'} />
+				</Field>
+				<Field label={t('config.windows.confirmation')} for="windows-password-confirmation" required error={s.passwordError === 'mismatch' ? t('config.windows.mismatch') : undefined}>
+					<TextInput id="windows-password-confirmation" type="password" autocomplete="new-password" bind:value={$wizardPassword.confirmation} required ariaInvalid={s.passwordError === 'mismatch'} />
+				</Field>
+			</div>
+			{#if s.windowsConflict}
+				<Alert tone="danger">{t('config.windows.conflict')}</Alert>
+				<Button variant="secondary" onclick={() => wizard.update(w => ({ ...w, cloudInit: '', dataMounts: [] }))}>{t('config.windows.clearConflict')}</Button>
+			{/if}
+		</div>
+	{:else if s.adminMode}
 		<p class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
 			{t('config.keypair.label')} <span class="text-xs text-ink-2 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">{t('config.optional')}</span>
 		</p>
@@ -418,12 +442,18 @@ function applyCloudInitPreset(event: Event) {
 				id="boot-volume-size"
 				bind:value={$wizard.bootVolumeSizeGb}
 				type="number"
-				min="1"
+				min={s.minBootVolumeSizeGb}
 				max="16384"
+				step="1"
+				aria-invalid={!s.bootVolumeSizeReady}
+				aria-describedby="boot-volume-size-help"
 				class="w-24 bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm transition-colors"
 			/>
-			<span class="text-xs text-ink-2">1 – 16,384 GB</span>
+			<span class="text-xs text-ink-2">{s.minBootVolumeSizeGb} – 16,384 GB</span>
 		</div>
+		<p id="boot-volume-size-help" class="text-xs mt-1 {s.bootVolumeSizeReady ? 'text-ink-2' : 'text-[var(--color-state-danger)]'}" aria-live="polite">
+			{t(s.bootVolumeSizeReady ? 'config.rootDisk.minimumHelp' : 'config.rootDisk.sizeInvalid', { min: s.minBootVolumeSizeGb })}
+		</p>
 	</div>
 	<div class="flex items-end pb-1">
 		<label class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-sunken/60 border border-line-2 cursor-pointer w-full">
@@ -443,7 +473,7 @@ function applyCloudInitPreset(event: Event) {
 {/if}
 
 <!-- 파일 스토리지 마운트 -->
-{#if s.fileStorages.length > 0}
+{#if !s.isWindowsBoot && s.fileStorages.length > 0}
 <div class="mb-4">
 	<div class="flex items-center justify-between mb-1.5">
 		<p class="block text-[11.5px] font-semibold text-ink-2 tracking-tight">
@@ -519,6 +549,7 @@ function applyCloudInitPreset(event: Event) {
 {/if}
 
 <!-- cloud-init 다크 에디터 -->
+{#if !s.isWindowsBoot}
 <div class="mb-4">
 	<label for="cloud-init" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
 		CLOUD-INIT <span class="text-xs text-ink-2 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">{t('config.optional')}</span>
@@ -606,3 +637,4 @@ function applyCloudInitPreset(event: Event) {
 		<p class="text-xs text-ink-2">{t('config.cloudInit.historyHelp')}</p>
 	</div>
 </div>
+{/if}

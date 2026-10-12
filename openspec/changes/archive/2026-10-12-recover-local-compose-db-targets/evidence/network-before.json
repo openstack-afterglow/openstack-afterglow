@@ -1,0 +1,239 @@
+{
+  "network": {
+    "Name": "afterglow-remaining-commit-gate-bkjlix_default",
+    "Id": "45744771eaac3eff93a07e9e58b2a05c7643d96e6592f444fb82d591eccae413",
+    "Created": "2026-10-11T18:42:52.505452888Z",
+    "Scope": "local",
+    "Driver": "bridge",
+    "EnableIPv4": true,
+    "EnableIPv6": false,
+    "IPAM": {
+      "Driver": "default",
+      "Options": null,
+      "Config": [
+        {
+          "Subnet": "172.30.0.0/16",
+          "Gateway": "172.30.0.1"
+        }
+      ]
+    },
+    "Internal": false,
+    "Attachable": false,
+    "Ingress": false,
+    "ConfigFrom": {
+      "Network": ""
+    },
+    "ConfigOnly": false,
+    "Options": {
+      "com.docker.network.enable_ipv4": "true",
+      "com.docker.network.enable_ipv6": "false"
+    },
+    "Labels": {
+      "com.docker.compose.config-hash": "df3f8b85797cc8447145e1c213a5308b35b955976a7cf4b3b302205accb17ae6",
+      "com.docker.compose.network": "default",
+      "com.docker.compose.project": "afterglow-remaining-commit-gate-bkjlix",
+      "com.docker.compose.version": "5.5.1"
+    },
+    "Containers": {
+      "870f04e753a3cda21fd6a56d638f99171205e18cfaef5c8767f295e0d325d9e5": {
+        "Name": "afterglow-remaining-commit-gate-bkjlix-test-redis-1",
+        "EndpointID": "c7c1b6f0e5809833da7ce99c5c9432277cd7ac120441cac3052763c89c0d2b4e",
+        "MacAddress": "de:75:8c:6c:c5:f2",
+        "IPv4Address": "172.30.0.3/16",
+        "IPv6Address": ""
+      },
+      "bb6a10b1a5a801cbf82b64132b3690983166df58c5188345f86fb2dc785894a8": {
+        "Name": "afterglow-remaining-commit-gate-bkjlix-mariadb-1",
+        "EndpointID": "de0ce65833e7a303d9d74bf78989771a40b2cb01677590535d110d0633cc1b85",
+        "MacAddress": "32:03:0f:4f:04:44",
+        "IPv4Address": "172.30.0.4/16",
+        "IPv6Address": ""
+      },
+      "fe6bf2500ce1137348bccd75f41d823ef1b31a45c6d73da060602431ce455545": {
+        "Name": "afterglow-remaining-commit-gate-bkjlix-postgres-1",
+        "EndpointID": "f812b567cf6f411f6eb9c9b538ab5aa5632dae3ce9d8a4ca64e96112f18bb46f",
+        "MacAddress": "6e:1a:05:68:8b:f3",
+        "IPv4Address": "172.30.0.2/16",
+        "IPv6Address": ""
+      }
+    },
+    "Status": {
+      "IPAM": {
+        "Subnets": {
+          "172.30.0.0/16": {
+            "IPsInUse": 6,
+            "DynamicIPsAvailable": 65530
+          }
+        }
+      }
+    }
+  },
+  "containers": [
+    {
+      "name": "/afterglow-remaining-commit-gate-bkjlix-test-redis-1",
+      "id": "870f04e753a3cda21fd6a56d638f99171205e18cfaef5c8767f295e0d325d9e5",
+      "pid": 88042,
+      "started": "2026-10-11T18:42:52.734563513Z",
+      "restartCount": 0,
+      "mounts": [],
+      "tmpfs": {
+        "/data": ""
+      },
+      "ports": {
+        "6379/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "62915"
+          }
+        ]
+      },
+      "portBindings": {
+        "6379/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": ""
+          }
+        ]
+      },
+      "aliases": [
+        "afterglow-remaining-commit-gate-bkjlix-test-redis-1",
+        "test-redis"
+      ],
+      "ip": "172.30.0.3"
+    },
+    {
+      "name": "/afterglow-remaining-commit-gate-bkjlix-mariadb-1",
+      "id": "bb6a10b1a5a801cbf82b64132b3690983166df58c5188345f86fb2dc785894a8",
+      "pid": 88135,
+      "started": "2026-10-11T18:42:52.845525305Z",
+      "restartCount": 0,
+      "mounts": [],
+      "tmpfs": {
+        "/var/lib/mysql": ""
+      },
+      "ports": {
+        "3306/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "62918"
+          }
+        ]
+      },
+      "portBindings": {
+        "3306/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": ""
+          }
+        ]
+      },
+      "aliases": [
+        "afterglow-remaining-commit-gate-bkjlix-mariadb-1",
+        "mariadb"
+      ],
+      "ip": "172.30.0.4"
+    },
+    {
+      "name": "/afterglow-remaining-commit-gate-bkjlix-postgres-1",
+      "id": "fe6bf2500ce1137348bccd75f41d823ef1b31a45c6d73da060602431ce455545",
+      "pid": 87942,
+      "started": "2026-10-11T18:42:52.631587972Z",
+      "restartCount": 0,
+      "mounts": [],
+      "tmpfs": {
+        "/var/lib/postgresql/data": ""
+      },
+      "ports": {
+        "5432/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "62910"
+          }
+        ]
+      },
+      "portBindings": {
+        "5432/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": ""
+          }
+        ]
+      },
+      "aliases": [
+        "afterglow-remaining-commit-gate-bkjlix-postgres-1",
+        "postgres"
+      ],
+      "ip": "172.30.0.2"
+    }
+  ],
+  "candidate": "192.168.249.0/24",
+  "hostRoutes": [
+    "127.0.0.0/8",
+    "127.0.0.1/32",
+    "169.254.0.0/16",
+    "169.254.169.254/32",
+    "192.168.50.0/24",
+    "192.168.50.1/32",
+    "192.168.50.1/32",
+    "192.168.50.29/32",
+    "192.168.50.29/32",
+    "192.168.50.35/32",
+    "192.168.50.50/32",
+    "192.168.50.255/32",
+    "192.168.64.0/24",
+    "192.168.64.1/32",
+    "192.168.64.13/32",
+    "192.168.64.14/32",
+    "192.168.64.15/32",
+    "192.168.64.22/32",
+    "192.168.64.255/32"
+  ],
+  "dockerSubnets": [
+    "172.23.0.0/16",
+    "172.24.0.0/16",
+    "172.18.0.0/16",
+    "192.168.240.0/24",
+    "192.168.16.0/20",
+    "172.25.0.0/16",
+    "172.21.0.0/16",
+    "192.168.48.0/20",
+    "172.30.0.0/16",
+    "172.27.0.0/16",
+    "172.26.0.0/16",
+    "172.17.0.0/16",
+    "172.19.0.0/16",
+    "172.20.0.0/16",
+    "172.28.0.0/16",
+    "172.22.0.0/16",
+    "192.168.32.0/20",
+    "172.29.0.0/16"
+  ],
+  "probes": {
+    "host": {
+      "exit": 0,
+      "results": [
+        {
+          "mysql": {
+            "database": "afterglow_functional",
+            "server_id": 1,
+            "select_one": 1,
+            "uptime_seconds": 2108
+          }
+        },
+        {
+          "redis": {
+            "run_id": "bf719e1146cb0d871caa0757f19751a2717439d4",
+            "uptime_seconds": 2110
+          }
+        },
+        {
+          "postgres_host_tcp": "connected"
+        }
+      ]
+    },
+    "postgresMappedSQL": {
+      "exit": 0,
+      "result": "afterglow_checkpoints|7695482625014321190|2026-10-11 18:42:53.3676+00|1"
+    }
+  }
+}

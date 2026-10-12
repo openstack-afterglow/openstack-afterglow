@@ -1,0 +1,115 @@
+{
+  "change": "fix-windows-native-password",
+  "date": "2026-10-12",
+  "status": "complete-local-not-deployed",
+  "scope_files": 28,
+  "focused": {
+    "backend_passed": 459,
+    "frontend_files": 5,
+    "frontend_passed": 106
+  },
+  "instances": {
+    "backend_passed": 1145,
+    "frontend_files": 36,
+    "frontend_passed": 546
+  },
+  "gate": {
+    "exit": 0,
+    "architecture_source_sha256": "93050be8a4f1d4ace014b50d18b2a7ae7ac49dfcdf93e7fc91e4c68acd766764",
+    "source_files": 2608,
+    "orchestration_passed": 175,
+    "kolla_passed": 27,
+    "image_refs_passed": 11,
+    "cli_passed": 20,
+    "powershell_skipped": 36,
+    "backend_unit_passed": 5754,
+    "frontend_files": 347,
+    "frontend_passed": 3216,
+    "frontend_runner_passed": 9,
+    "contract_passed": 174,
+    "functional_passed": 128,
+    "functional_deselected": 23,
+    "ruff_formatted_files": 585,
+    "source_boundary": "Owned frozen public current-source snapshot includes concurrent WIP whole files; not scope-only. Private config excluded; shared index/review marker unchanged."
+  },
+  "frontend_check": {
+    "files": 2362,
+    "errors": 0,
+    "warnings": 3,
+    "warning_sources": [
+      "DocCodeBlock tabindex",
+      "ProjectUsageTable tabindex",
+      "cloudInitFileInput non-reactive"
+    ]
+  },
+  "i18n": {
+    "errors": 0,
+    "warnings": 0,
+    "scan_hardcoded_korean": 0,
+    "namespaces": 37,
+    "source_messages": 9401,
+    "scan_files": 987
+  },
+  "build": {
+    "vite": "8.2.2",
+    "production_exit": 0
+  },
+  "native_http": {
+    "cases": 63,
+    "provider_requests": 399,
+    "synthetic": [
+      "identity",
+      "provider resources",
+      "placement/admission",
+      "network/SG",
+      "audit/history sink"
+    ],
+    "real": [
+      "FastAPI endpoints",
+      "Uvicorn HTTP",
+      "installed openstacksdk/keystoneauth",
+      "Nova/Glance/Cinder HTTP serialization"
+    ]
+  },
+  "compiled_ui": {
+    "conditions": 224,
+    "user_admin_image_volume_submissions": 4,
+    "runtime_errors": 0,
+    "scope": "Production-compiled snapshot frontend and real local BFF/native SDK; synthetic identity/resources; rendered theme classes, not OS preference persistence."
+  },
+  "prior_live": {
+    "operator_report": "/etc/kolla/reports/windows11-native-password-20261012/verified-summary.json",
+    "read_only_reviewed": true,
+    "new_image_private": true,
+    "production_ready": false,
+    "cloudbase_guest_password_rdp_desktop_reported_passed": true,
+    "performed_this_change": false
+  },
+  "deployed": {
+    "controllers_readonly_checked": 3,
+    "new_password_feature_present": false,
+    "production_mutation": false,
+    "deploy_performed": false,
+    "image_vm_security_group_changes": false,
+    "password_file_read": false
+  },
+  "failure_history": [
+    "Prechange local smoke native marker rejected HTTP400 and legacy suppressed Nova adminPass/generated user-data.",
+    "First focused run had 8 Linux regression failures: MIME-encoded custom userdata assumed plaintext and history(None) incorrectly pinned. Corrected consumer multipart decoding and removed incidental call/history assumptions; no Linux implementation change.",
+    "Initial native scratch SDK config used compute api_version 2.1 together with default_microversion; corrected scratch major version to2 only.",
+    "First frontend test startup lacked generated SvelteKit tsconfig; canonical check/sync then production build completed and unchanged suites passed.",
+    "Changed backend formatter check requested2 tests; only those formatted before final target/gate.",
+    "Browser scratch fixture needed actual admin projects/names endpoint; no application auth/API changes.",
+    "Initial browser success observer matched deploying view too early; observed completed provider receipt then waited for actual panel closure on following submissions."
+  ],
+  "unverified": [
+    "New source deployed execution",
+    "Real production identity/placement/GPU",
+    "Afterglow-created live Windows first boot/password/RDP",
+    "Fresh Windows guest boot from Cinder versus CLI image path",
+    "Already-initialized Windows disk plugin rerun",
+    "Firefox/Safari",
+    "Windows GPU guest drivers/device use"
+  ],
+  "gbrain": "CLI unavailable; no guidance/config mutation."
+}

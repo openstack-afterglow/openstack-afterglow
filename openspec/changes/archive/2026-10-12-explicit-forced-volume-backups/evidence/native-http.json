@@ -1,0 +1,90 @@
+{
+  "boundary": "current manual-backup FastAPI route + installed native SDK + real loopback HTTP; synthetic identity/Cinder/cache/audit persistence; no production mutations",
+  "cases": [
+    {
+      "request": {
+        "volume_id": "attached-a",
+        "name": "Native HTTP smoke",
+        "incremental": false
+      },
+      "status": 400,
+      "response": {
+        "detail": "사용 중인 볼륨을 백업하려면 강제 백업(force)을 활성화해야 합니다"
+      }
+    },
+    {
+      "request": {
+        "volume_id": "attached-a",
+        "name": "Native HTTP smoke",
+        "incremental": false,
+        "force": true
+      },
+      "status": 201,
+      "response": {
+        "id": "backup-1",
+        "name": "Native HTTP smoke",
+        "status": "creating",
+        "volume_id": "attached-a",
+        "size": 40,
+        "is_incremental": false,
+        "description": "",
+        "created_at": "2026-10-12T14:30:00Z"
+      }
+    },
+    {
+      "request": {
+        "volume_id": "available-a",
+        "name": "Native HTTP smoke",
+        "incremental": false,
+        "force": false
+      },
+      "status": 201,
+      "response": {
+        "id": "backup-2",
+        "name": "Native HTTP smoke",
+        "status": "creating",
+        "volume_id": "available-a",
+        "size": 20,
+        "is_incremental": false,
+        "description": "",
+        "created_at": "2026-10-12T14:30:00Z"
+      }
+    }
+  ],
+  "provider_requests": [
+    {
+      "method": "POST",
+      "path": "/v3/project-smoke/backups",
+      "body": {
+        "backup": {
+          "name": "Native HTTP smoke",
+          "volume_id": "attached-a",
+          "force": true,
+          "incremental": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v3/project-smoke/backups",
+      "body": {
+        "backup": {
+          "name": "Native HTTP smoke",
+          "volume_id": "available-a",
+          "force": false,
+          "incremental": false
+        }
+      }
+    }
+  ],
+  "audit_force": [
+    {
+      "volume_id": "attached-a",
+      "force": true
+    },
+    {
+      "volume_id": "available-a",
+      "force": false
+    }
+  ]
+}

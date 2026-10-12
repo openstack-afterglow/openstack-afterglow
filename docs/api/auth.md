@@ -418,6 +418,24 @@ UI는 기본1달과1일·1주일·3달·6달·1년·만료 없음·직접 선택
 
 폐기는 물리적 행 삭제가 아닙니다. Grant/token tombstone·감사 기록과 upstream credential 정리 재시도를 보존하고, 선택된 Lumen 기본 토큰은 해제합니다. Upstream 정리가 실패해도 로컬 폐기는 유지되어 접근·OAuth refresh가 거부되고 해당 항목은 사용자 목록에 다시 나타나지 않습니다.
 
+### 관측된 클라이언트와 연결 제거
+
+두 목록 GET은 `Cache-Control: no-store`/`Pragma: no-cache`와 각 grant의 `client_observations` 배열을 반환합니다. 현재 로그인 사용자와 발급 당시 anchor project의 소유 범위만 조회하며, 다른 프로젝트 실행 허용 목록을 사용자 목록 소유권으로 바꾸지 않습니다. 관측이 없는 기존/새 grant는 빈 배열입니다.
+
+| 관측 field | 의미 |
+|---|---|
+| `client_name`, `client_version` | 정제한 클라이언트 신고 값; 없거나 안전하지 않으면 null |
+| `product`, `kind` | 고정 product label 또는 null, browser/agent/bot/sdk/unknown 추정 |
+| `identity_source` | client_info/user_agent/unknown: 제품·종류 추정 근거 |
+| `browser`, `os` | User-Agent에서 추정한 고정 label 또는 null; raw UA/IP는 없음 |
+| `first_seen_at`, `last_seen_at` | 해당 정제 서명의 처음/마지막 성공 initialize 관측 UTC 시각 |
+
+최근10개 서로 다른 관측만 유지하고 반복 초기화는 첫 시각을 보존해 마지막 시각을 갱신합니다. 이는 실제 단말/세션 목록이나 실시간 접속 상태가 아닙니다. `clientInfo`/User-Agent는 위조 가능하므로 실제 제품 인증이나 인가 판단 근거로 사용하지 않습니다. 내부 서명·Authorization·token/hash·upstream credential·capabilities는 응답에 포함하지 않습니다.
+
+화면의 **연결 제거**는 위 기존 DELETE를 호출해 해당 OAuth grant/API 키 전체를 철회합니다. 같은 자격을 공유하는 모든 클라이언트와 선택된 Lumen 기본 위임에도 영향을 줍니다. 관측 행이나 User-Agent만 차단하는 방식은 아닙니다. 실패한 목록은0개로 표시하지 않으며 다른 방식의 성공 목록과 독립적으로 재시도합니다. Refresh·actor/project/method 변경 뒤 이전 confirmation은 실행할 수 없습니다.
+
+Migration087을 reader/writer 배포 전에 적용해야 합니다. 기존084–086 이전 스키마도 먼저 동기화해야 하며 `project_scope` 누락SQL1054를 빈 목록/0개로 숨기지 않습니다. 공유/운영 DB 자동 변경은 없고 schema-before-writer rollout은 별도 운영 절차입니다.
+
 MCP의 cloud tool은 이 application credential의 원래 scope로 인증하며 별도 project scope를 요청하지 않습니다. Keystone token의 user/project가 저장된 grant principal과 정확히 일치해야 provider에 요청하고, 다른 owner/project 또는 unscoped 응답은 거부합니다. Manager/admin/browser credential로 fallback하지 않습니다. 연결 확인의 handshake·tools/list 성공은 실제 cloud `tools/call` 성공과 별개의 증거입니다.
 
 `POST /api/v1/auth/mcp-tokens/verify`는 browser access JWT와 현재 프로젝트, 허용된 Origin 및 `Sec-Fetch-Site: same-origin|same-site`가 필요합니다. `Content-Type: application/json`의 정확한 `{ "token": "<본인 개인 키>" }`만 받으며 본문은 최대1024bytes입니다. 잘못된·만료·폐기·다른 user/project의 키는 공개 URL에 접속하기 **전** 거부합니다. 임의 endpoint를 지정할 수 없습니다.

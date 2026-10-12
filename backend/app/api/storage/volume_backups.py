@@ -48,6 +48,7 @@ async def _assert_volume_owner_local(conn, volume_id: str, token_info: dict):
     except Exception:
         raise HTTPException(status_code=404, detail="볼륨을 찾을 수 없습니다")
     assert_resource_owner(v, conn, token_info, not_found_detail="볼륨을 찾을 수 없습니다")
+    return v
 
 
 class CreateBackupRequest(BaseModel):
@@ -55,6 +56,7 @@ class CreateBackupRequest(BaseModel):
     name: str
     description: str | None = None
     incremental: bool = False
+    force: bool = False
 
 
 class RestoreBackupRequest(BaseModel):
@@ -85,10 +87,12 @@ async def create_backup(
     conn: openstack.connection.Connection = Depends(get_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
-    await _assert_volume_owner_local(conn, req.volume_id, token_info)
+    volume = await _assert_volume_owner_local(conn, req.volume_id, token_info)
+    if volume.status == "in-use" and not req.force:
+        raise HTTPException(status_code=400, detail="사용 중인 볼륨을 백업하려면 강제 백업(force)을 활성화해야 합니다")
     try:
         result = await asyncio.to_thread(
-            cinder.create_backup, conn, req.volume_id, req.name, req.description, req.incremental
+            cinder.create_backup, conn, req.volume_id, req.name, req.description, req.incremental, force=req.force
         )
         pid = conn._afterglow_project_id
         await invalidate(f"afterglow:cinder:{pid}:backups*")
@@ -100,7 +104,7 @@ async def create_backup(
             action="volume_backup.create",
             status="success",
             resource_name=req.name,
-            extra={"volume_id": req.volume_id},
+            extra={"volume_id": req.volume_id, "force": req.force},
         )
         return result
     except HttpException as e:

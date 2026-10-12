@@ -1,0 +1,54 @@
+{
+  "machine": "x86_64",
+  "scenarios": [
+    {
+      "scenario": "fresh and migrated legacy grants have no observations",
+      "passed": true
+    },
+    {
+      "scenario": "unauthorized browser/invalid/anonymous and malformed initialize cannot record",
+      "passed": true
+    },
+    {
+      "scenario": "actual SDK agent initialization, browser/OS inference, dedup and first/last persistence",
+      "passed": true
+    },
+    {
+      "scenario": "User-Agent fallback and explicit generic-bot precedence",
+      "passed": true
+    },
+    {
+      "scenario": "unsafe labels rejected, exact private-safe projection, ten most-recent distinct signatures",
+      "passed": true
+    },
+    {
+      "scenario": "OAuth matching-grant recording and both-method owner/project isolation",
+      "passed": true
+    },
+    {
+      "scenario": "api credential-wide revocation, retained audit evidence, cleanup and old bearer401",
+      "passed": true
+    },
+    {
+      "scenario": "oauth credential-wide revocation, retained audit evidence, cleanup and old bearer401",
+      "passed": true
+    },
+    {
+      "scenario": "revoked OAuth refresh cannot regain access",
+      "passed": true
+    }
+  ],
+  "sdk_initializations": 18,
+  "real": [
+    "installed MCP SDK",
+    "product ASGI routes",
+    "TCP",
+    "MariaDB JSON persistence",
+    "Redis rate limit/epoch state"
+  ],
+  "synthetic": [
+    "browser identity",
+    "membership and upstream Keystone cleanup"
+  ],
+  "production_mutation": false
+}

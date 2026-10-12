@@ -39,10 +39,6 @@
 		"reason": "Operator-configurable site description default; administrators replace it in site settings.",
 		"lines": ["site_description: 'OpenStack VM + OverlayFS 배포 플랫폼',"]
 	},
-	"src/lib/components/landing/LandingConsolePreview.svelte": {
-		"reason": "Landing fixture external-network resource name is data, not UI; generic network kind chrome is localized separately.",
-		"lines": ["{ kind: 'external', kindLabel: t('landing.consolePreview.network.external'), name: '외부망', mono: false, icon: 'external' },"]
-	},
 	"src/lib/components/chat/imageStudioStyles.ts": {
 		"reason": "Native provider-facing Korean style instructions and prompt prefix stay byte-for-byte identical across UI locales. Style labels and note framing are translated; the note shows the actual submitted suffix, not a translated substitute.",
 		"lines": [
@@ -134,6 +130,8 @@
 	"src/lib/docs/mcpGuide.ts": {
 		"reason": "Typed public MCP guide canonical Korean text; en/ja/zh-CN dictionaries are rendered by translateDocGuide. Exact lines are tracked to prevent drift.",
 		"lines": [
+			"'계정 → 외부 AI 접근에서 OAuth 또는 API 키를 선택하고 해당 연결의 클라이언트 서명 상세를 펼치세요. 신고 이름·버전, 브라우저·OS·에이전트·봇 추정과 근거, 처음·마지막 초기화 확인 시각을 볼 수 있습니다. 최근 10개 서로 다른 정제 서명만 표시하며 실제 단말·세션 수나 실시간 접속 상태가 아닙니다.',",
+			"'clientInfo와 User-Agent는 클라이언트가 위조할 수 있으므로 추정 정보를 실제 제품 인증이나 접근 권한 근거로 사용하지 마세요. 모르는 클라이언트가 보이면 해당 연결의 연결 제거를 선택하세요. OAuth 연결/API 키 전체와 같은 자격을 공유하는 모든 클라이언트가 차단되며 선택된 Lumen 기본 위임에도 영향을 줍니다. 계속 사용할 클라이언트에는 별도의 새 자격을 설정하세요.'",
 			"title: '4. 개인 키 없이 OAuth로 연결하기',",
 			"'OAuth는 개인 키를 복사하지 않는 별도 인증 경로입니다. 아래 JSON·CLI 예시는 공식 문서에 따른 형식이며 모든 외부 클라이언트를 Afterglow에 실제 연결해 시험했다는 뜻은 아닙니다. 예시 URL을 계정의 실제 MCP 엔드포인트로 바꾸고 설치된 클라이언트의 OAuth 지원과 조직 정책을 확인하세요.',",
 			"'MCP URL인 https://cloud.dmslab.re.kr/mcp는 도구 요청을 보내는 resource입니다. issuer는 https://cloud.dmslab.re.kr/mcp/oauth이며 authorization_endpoint는 https://cloud.dmslab.re.kr/mcp/oauth/authorize입니다. 클라이언트는 /.well-known/oauth-protected-resource/mcp와 /.well-known/oauth-authorization-server/mcp/oauth에서 authorize·token·register URL을 찾습니다. bare /authorize나 /mcp/oauth/authorize는 커넥터에 등록할 MCP 엔드포인트가 아닙니다.',",
@@ -178,7 +176,7 @@
 			"title: '이 JSON도 비밀입니다',",
 			"text: '실제 키를 넣은 JSON은 키와 동일한 접근 권한을 가집니다. 개인 클라이언트 설정에만 보관하고 프로젝트 공용 파일이나 Lumen의 전역·공유 서버 헤더에 넣지 마세요.'",
 			"title: '5. 클라이언트별 형식을 구분하기',",
-			"'아래 형식은 각 클라이언트 공식 문서를 기준으로 정리했습니다. Afterglow에서 클라이언트별 실제 연결을 시험한 결과가 아니므로 설치된 버전의 문서와 상태 화면을 함께 확인하세요.'",
+			"'아래 형식은 각 클라이언트 공식 문서를 기준으로 정리했습니다. Afterglow에서 클라이언트별 실제 연결을 시험한 결과가 아니므로 설치된 버전의 문서와 상태 화면을 함께 확인하세요.',",
 			"'Claude Code는 type이 http인 url·headers 항목과 mcpServers 형식을 지원합니다. url만 있고 type이 없으면 stdio로 해석되어 건너뜁니다. CLI에서는 --transport http와 --header를 사용하고 개인용 기본 local 또는 --scope user를 선택하세요. 팀 공유 --scope project 파일에는 개인 키를 저장하지 마세요. 추가 성공은 설정 저장일 뿐이므로 claude mcp get 또는 /mcp에서 연결 상태를 확인하세요.',",
 			"'Cursor의 mcp.json은 최상위 mcpServers 안에 url과 headers를 둡니다. 개인 전역 설정은 ~/.cursor/mcp.json이며 headers에서 ${env:NAME} 환경 변수 치환을 사용할 수 있습니다. 공식 원격 서버 예시에는 type이 없으므로 설치된 버전의 스키마에 맞춰 입력하고 활성화·연결 상태를 확인하세요.',",
 			"'VS Code의 .vscode/mcp.json과 사용자 프로필 mcp.json은 최상위 servers를 사용하므로 위 mcpServers JSON을 그대로 붙이지 마세요. MCP: Open User Configuration으로 개인 설정을 열고 password 입력 변수를 사용하세요. 최신 VS Code는 별도의 portable .mcp.json에서 mcpServers도 읽으므로 사용하는 파일 형식을 먼저 확인하세요.',",
@@ -216,6 +214,8 @@
 	"src/lib/docs/translations/en/mcpGuide.ts": {
 		"reason": "MCP documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide. Exact lines are tracked to prevent drift.",
 		"lines": [
+			"\"계정 → 외부 AI 접근에서 OAuth 또는 API 키를 선택하고 해당 연결의 클라이언트 서명 상세를 펼치세요. 신고 이름·버전, 브라우저·OS·에이전트·봇 추정과 근거, 처음·마지막 초기화 확인 시각을 볼 수 있습니다. 최근 10개 서로 다른 정제 서명만 표시하며 실제 단말·세션 수나 실시간 접속 상태가 아닙니다.\": \"Under Account → External AI access, select OAuth or API key and expand the connection's client-signature details. Inspect the reported name/version, inferred browser, OS, agent or bot, inference source, and first/last initialization observation. Only ten recent distinct sanitized signatures are shown; these are not physical device/session counts or live connection status.\",",
+			"\"clientInfo와 User-Agent는 클라이언트가 위조할 수 있으므로 추정 정보를 실제 제품 인증이나 접근 권한 근거로 사용하지 마세요. 모르는 클라이언트가 보이면 해당 연결의 연결 제거를 선택하세요. OAuth 연결/API 키 전체와 같은 자격을 공유하는 모든 클라이언트가 차단되며 선택된 Lumen 기본 위임에도 영향을 줍니다. 계속 사용할 클라이언트에는 별도의 새 자격을 설정하세요.\": \"Clients can forge clientInfo and User-Agent; inferred information is not product verification or authorization evidence. If you see an unfamiliar client, select Remove connection for that credential. The entire OAuth connection/API key and every client sharing it lose access, including a selected Lumen default. Configure a separate new credential for clients you intend to keep using.\",",
 			"\"4. 개인 키 없이 OAuth로 연결하기\": \"4. Connect with OAuth without a personal key\",",
 			"\"OAuth는 개인 키를 복사하지 않는 별도 인증 경로입니다. 아래 JSON·CLI 예시는 공식 문서에 따른 형식이며 모든 외부 클라이언트를 Afterglow에 실제 연결해 시험했다는 뜻은 아닙니다. 예시 URL을 계정의 실제 MCP 엔드포인트로 바꾸고 설치된 클라이언트의 OAuth 지원과 조직 정책을 확인하세요.\": \"OAuth is a separate authentication path that does not require copying a personal key. The JSON and CLI examples below follow official documentation; they do not mean every external client was live-tested against Afterglow. Replace the example URL with the actual MCP endpoint in your account, and check OAuth support in your installed client and your organization's policies.\",",
 			"\"MCP URL인 https://cloud.dmslab.re.kr/mcp는 도구 요청을 보내는 resource입니다. issuer는 https://cloud.dmslab.re.kr/mcp/oauth이며 authorization_endpoint는 https://cloud.dmslab.re.kr/mcp/oauth/authorize입니다. 클라이언트는 /.well-known/oauth-protected-resource/mcp와 /.well-known/oauth-authorization-server/mcp/oauth에서 authorize·token·register URL을 찾습니다. bare /authorize나 /mcp/oauth/authorize는 커넥터에 등록할 MCP 엔드포인트가 아닙니다.\": \"The MCP URL https://cloud.dmslab.re.kr/mcp is the resource used for tool requests. The issuer is https://cloud.dmslab.re.kr/mcp/oauth and the authorization_endpoint is https://cloud.dmslab.re.kr/mcp/oauth/authorize. Clients discover the authorize, token and register URLs through /.well-known/oauth-protected-resource/mcp and /.well-known/oauth-authorization-server/mcp/oauth. A bare /authorize or /mcp/oauth/authorize is not the MCP endpoint to register in a connector.\",",
@@ -300,6 +300,8 @@
 	"src/lib/docs/translations/ja/mcpGuide.ts": {
 		"reason": "MCP documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide. Exact lines are tracked to prevent drift.",
 		"lines": [
+			"\"계정 → 외부 AI 접근에서 OAuth 또는 API 키를 선택하고 해당 연결의 클라이언트 서명 상세를 펼치세요. 신고 이름·버전, 브라우저·OS·에이전트·봇 추정과 근거, 처음·마지막 초기화 확인 시각을 볼 수 있습니다. 최근 10개 서로 다른 정제 서명만 표시하며 실제 단말·세션 수나 실시간 접속 상태가 아닙니다.\": \"アカウント → 外部 AI アクセスで OAuth または API キーを選び、その接続のクライアントシグネチャ詳細を開いてください。申告された名前・バージョン、ブラウザー・OS・エージェント・ボットの推定と根拠、最初・最後の初期化観測時刻を確認できます。表示は最近の異なる正規化シグネチャ 10 件までであり、実際の端末数・セッション数やリアルタイムの接続状態ではありません。\",",
+			"\"clientInfo와 User-Agent는 클라이언트가 위조할 수 있으므로 추정 정보를 실제 제품 인증이나 접근 권한 근거로 사용하지 마세요. 모르는 클라이언트가 보이면 해당 연결의 연결 제거를 선택하세요. OAuth 연결/API 키 전체와 같은 자격을 공유하는 모든 클라이언트가 차단되며 선택된 Lumen 기본 위임에도 영향을 줍니다. 계속 사용할 클라이언트에는 별도의 새 자격을 설정하세요.\": \"clientInfo と User-Agent はクライアントが偽装できるため、推定情報を製品認証やアクセス権限の根拠にしないでください。見覚えのないクライアントがあれば、その認証情報の接続を削除してください。OAuth 接続・API キー全体と同じ認証情報を共有するすべてのクライアントが遮断され、選択中の Lumen デフォルト委任にも影響します。使い続けるクライアントには別の新しい認証情報を設定してください。\",",
 			"\"4. 개인 키 없이 OAuth로 연결하기\": \"4. 個人キーを使わず OAuth で接続する\",",
 			"\"OAuth는 개인 키를 복사하지 않는 별도 인증 경로입니다. 아래 JSON·CLI 예시는 공식 문서에 따른 형식이며 모든 외부 클라이언트를 Afterglow에 실제 연결해 시험했다는 뜻은 아닙니다. 예시 URL을 계정의 실제 MCP 엔드포인트로 바꾸고 설치된 클라이언트의 OAuth 지원과 조직 정책을 확인하세요.\": \"OAuth は個人キーをコピーしない別の認証方法です。以下の JSON・CLI の例は公式ドキュメントに基づく形式であり、すべての外部クライアントを Afterglow に実接続して試験したことを意味しません。例の URL をアカウントの実際の MCP エンドポイントに置き換え、インストール済みクライアントの OAuth 対応状況と組織のポリシーを確認してください。\",",
 			"\"MCP URL인 https://cloud.dmslab.re.kr/mcp는 도구 요청을 보내는 resource입니다. issuer는 https://cloud.dmslab.re.kr/mcp/oauth이며 authorization_endpoint는 https://cloud.dmslab.re.kr/mcp/oauth/authorize입니다. 클라이언트는 /.well-known/oauth-protected-resource/mcp와 /.well-known/oauth-authorization-server/mcp/oauth에서 authorize·token·register URL을 찾습니다. bare /authorize나 /mcp/oauth/authorize는 커넥터에 등록할 MCP 엔드포인트가 아닙니다.\": \"MCP URL の https://cloud.dmslab.re.kr/mcp は、ツールリクエストを送る resource です。issuer は https://cloud.dmslab.re.kr/mcp/oauth、authorization_endpoint は https://cloud.dmslab.re.kr/mcp/oauth/authorize です。クライアントは /.well-known/oauth-protected-resource/mcp と /.well-known/oauth-authorization-server/mcp/oauth から authorize・token・register の URL を検出します。パラメーターのない /authorize や /mcp/oauth/authorize は、コネクターに登録する MCP エンドポイントではありません。\",",
@@ -384,6 +386,8 @@
 	"src/lib/docs/translations/zh-CN/mcpGuide.ts": {
 		"reason": "MCP documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide. Exact lines are tracked to prevent drift.",
 		"lines": [
+			"\"계정 → 외부 AI 접근에서 OAuth 또는 API 키를 선택하고 해당 연결의 클라이언트 서명 상세를 펼치세요. 신고 이름·버전, 브라우저·OS·에이전트·봇 추정과 근거, 처음·마지막 초기화 확인 시각을 볼 수 있습니다. 최근 10개 서로 다른 정제 서명만 표시하며 실제 단말·세션 수나 실시간 접속 상태가 아닙니다.\": \"在账户 → 外部 AI 访问中选择 OAuth 或 API 密钥，然后展开该连接的客户端签名详情。可查看客户端报告的名称与版本、推断的浏览器、操作系统、代理或机器人及其依据，以及首次和最后一次初始化观测时间。仅显示最近 10 个不同的规范化签名，这并不代表真实设备或会话数量，也不是实时连接状态。\",",
+			"\"clientInfo와 User-Agent는 클라이언트가 위조할 수 있으므로 추정 정보를 실제 제품 인증이나 접근 권한 근거로 사용하지 마세요. 모르는 클라이언트가 보이면 해당 연결의 연결 제거를 선택하세요. OAuth 연결/API 키 전체와 같은 자격을 공유하는 모든 클라이언트가 차단되며 선택된 Lumen 기본 위임에도 영향을 줍니다. 계속 사용할 클라이언트에는 별도의 새 자격을 설정하세요.\": \"客户端可伪造 clientInfo 和 User-Agent，因此不能把推断信息当作产品认证或授权依据。如果看到不认识的客户端，请移除对应连接。整个 OAuth 连接或 API 密钥以及共享该凭据的所有客户端都会失去访问权限，也会影响已选中的 Lumen 默认委托。为需要继续使用的客户端配置独立的新凭据。\",",
 			"\"4. 개인 키 없이 OAuth로 연결하기\": \"4. 不使用个人密钥，通过 OAuth 连接\",",
 			"\"OAuth는 개인 키를 복사하지 않는 별도 인증 경로입니다. 아래 JSON·CLI 예시는 공식 문서에 따른 형식이며 모든 외부 클라이언트를 Afterglow에 실제 연결해 시험했다는 뜻은 아닙니다. 예시 URL을 계정의 실제 MCP 엔드포인트로 바꾸고 설치된 클라이언트의 OAuth 지원과 조직 정책을 확인하세요.\": \"OAuth 是无需复制个人密钥的独立认证方式。下方 JSON 和 CLI 示例依据官方文档，并不代表所有外部客户端都已与 Afterglow 进行实际连接测试。请将示例 URL 替换为账户中的实际 MCP 端点，并确认已安装客户端的 OAuth 支持情况和组织策略。\",",
 			"\"MCP URL인 https://cloud.dmslab.re.kr/mcp는 도구 요청을 보내는 resource입니다. issuer는 https://cloud.dmslab.re.kr/mcp/oauth이며 authorization_endpoint는 https://cloud.dmslab.re.kr/mcp/oauth/authorize입니다. 클라이언트는 /.well-known/oauth-protected-resource/mcp와 /.well-known/oauth-authorization-server/mcp/oauth에서 authorize·token·register URL을 찾습니다. bare /authorize나 /mcp/oauth/authorize는 커넥터에 등록할 MCP 엔드포인트가 아닙니다.\": \"MCP URL https://cloud.dmslab.re.kr/mcp 是发送工具请求的 resource。issuer 为 https://cloud.dmslab.re.kr/mcp/oauth，authorization_endpoint 为 https://cloud.dmslab.re.kr/mcp/oauth/authorize。客户端通过 /.well-known/oauth-protected-resource/mcp 和 /.well-known/oauth-authorization-server/mcp/oauth 发现 authorize、token 和 register URL。不带参数的 /authorize 或 /mcp/oauth/authorize 不是应在连接器中注册的 MCP 端点。\",",

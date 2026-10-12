@@ -1,0 +1,7002 @@
+[
+  {
+    "kind": "landing",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 134,
+      "right": 294,
+      "top": 52.5,
+      "bottom": 242.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 204,
+      "right": 364,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 581,
+      "right": 741,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 574,
+      "right": 734,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 829,
+      "right": 989,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 830,
+      "right": 990,
+      "top": 56,
+      "bottom": 246
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 1171,
+      "right": 1331,
+      "top": 56,
+      "bottom": 246
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ko",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 134,
+      "right": 294,
+      "top": 52.5,
+      "bottom": 242.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ko",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 204,
+      "right": 364,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ko",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 581,
+      "right": 741,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ko",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 574,
+      "right": 734,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ko",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 829,
+      "right": 989,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ko",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 830,
+      "right": 990,
+      "top": 56,
+      "bottom": 246
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ko",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 1171,
+      "right": 1331,
+      "top": 56,
+      "bottom": 246
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "en",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 134,
+      "right": 294,
+      "top": 52.5,
+      "bottom": 242.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "en",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 204,
+      "right": 364,
+      "top": 52.5,
+      "bottom": 242.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "en",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 581,
+      "right": 741,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "en",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 574,
+      "right": 734,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "en",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 829,
+      "right": 989,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "en",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 830,
+      "right": 990,
+      "top": 56,
+      "bottom": 246
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "en",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 1171,
+      "right": 1331,
+      "top": 56,
+      "bottom": 246
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "en",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 134,
+      "right": 294,
+      "top": 52.5,
+      "bottom": 242.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "en",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 204,
+      "right": 364,
+      "top": 52.5,
+      "bottom": 242.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "en",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 581,
+      "right": 741,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "en",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 574,
+      "right": 734,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "en",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 829,
+      "right": 989,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "en",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 830,
+      "right": 990,
+      "top": 56,
+      "bottom": 246
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "en",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 1171,
+      "right": 1331,
+      "top": 56,
+      "bottom": 246
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 134,
+      "right": 294,
+      "top": 52.5,
+      "bottom": 242.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 204,
+      "right": 364,
+      "top": 52.5,
+      "bottom": 242.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 581,
+      "right": 741,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 574,
+      "right": 734,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 829,
+      "right": 989,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 830,
+      "right": 990,
+      "top": 56,
+      "bottom": 246
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 1171,
+      "right": 1331,
+      "top": 56,
+      "bottom": 246
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ja",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 134,
+      "right": 294,
+      "top": 52.5,
+      "bottom": 242.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ja",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 204,
+      "right": 364,
+      "top": 52.5,
+      "bottom": 242.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ja",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 581,
+      "right": 741,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ja",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 574,
+      "right": 734,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ja",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 829,
+      "right": 989,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ja",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 830,
+      "right": 990,
+      "top": 56,
+      "bottom": 246
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "ja",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 1171,
+      "right": 1331,
+      "top": 56,
+      "bottom": 246
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 134,
+      "right": 294,
+      "top": 52.5,
+      "bottom": 242.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 204,
+      "right": 364,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 581,
+      "right": 741,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 574,
+      "right": 734,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 829,
+      "right": 989,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 830,
+      "right": 990,
+      "top": 56,
+      "bottom": 246
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 1171,
+      "right": 1331,
+      "top": 56,
+      "bottom": 246
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 134,
+      "right": 294,
+      "top": 52.5,
+      "bottom": 242.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 204,
+      "right": 364,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 581,
+      "right": 741,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 574,
+      "right": 734,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 829,
+      "right": 989,
+      "top": 55,
+      "bottom": 245
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 830,
+      "right": 990,
+      "top": 56,
+      "bottom": 246
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "landing",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 1171,
+      "right": 1331,
+      "top": 56,
+      "bottom": 246
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/"
+  },
+  {
+    "kind": "docs",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 28,
+      "right": 188,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 98,
+      "right": 258,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 409.171875,
+      "right": 569.171875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 402.171875,
+      "right": 562.171875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 657.171875,
+      "right": 817.171875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 658.171875,
+      "right": 818.171875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 999.171875,
+      "right": 1159.171875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ko",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 28,
+      "right": 188,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ko",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 98,
+      "right": 258,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ko",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 409.171875,
+      "right": 569.171875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ko",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 402.171875,
+      "right": 562.171875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ko",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 657.171875,
+      "right": 817.171875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ko",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 658.171875,
+      "right": 818.171875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ko",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 999.171875,
+      "right": 1159.171875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "en",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 28,
+      "right": 188,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=en#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "en",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 98,
+      "right": 258,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=en#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "en",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 397.296875,
+      "right": 557.296875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=en#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "en",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 390.296875,
+      "right": 550.296875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=en#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "en",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 645.296875,
+      "right": 805.296875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=en#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "en",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 646.296875,
+      "right": 806.296875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=en#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "en",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 987.296875,
+      "right": 1147.296875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=en#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "en",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 28,
+      "right": 188,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=en#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "en",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 98,
+      "right": 258,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=en#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "en",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 397.296875,
+      "right": 557.296875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=en#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "en",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 390.296875,
+      "right": 550.296875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=en#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "en",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 645.296875,
+      "right": 805.296875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=en#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "en",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 646.296875,
+      "right": 806.296875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=en#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "en",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 987.296875,
+      "right": 1147.296875,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=en#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 28,
+      "right": 188,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=ja#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 98,
+      "right": 258,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=ja#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 387.375,
+      "right": 547.375,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=ja#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 380.375,
+      "right": 540.375,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=ja#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 635.375,
+      "right": 795.375,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=ja#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 636.375,
+      "right": 796.375,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=ja#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 977.375,
+      "right": 1137.375,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=ja#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ja",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 28,
+      "right": 188,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=ja#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ja",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 98,
+      "right": 258,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=ja#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ja",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 387.375,
+      "right": 547.375,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=ja#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ja",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 380.375,
+      "right": 540.375,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=ja#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ja",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 635.375,
+      "right": 795.375,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=ja#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ja",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 636.375,
+      "right": 796.375,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=ja#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "ja",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 977.375,
+      "right": 1137.375,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=ja#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 28,
+      "right": 188,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=zh-CN#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 98,
+      "right": 258,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=zh-CN#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 426,
+      "right": 586,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=zh-CN#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 419,
+      "right": 579,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=zh-CN#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 674,
+      "right": 834,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=zh-CN#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 675,
+      "right": 835,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=zh-CN#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 1016,
+      "right": 1176,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=zh-CN#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 28,
+      "right": 188,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=zh-CN#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 98,
+      "right": 258,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=zh-CN#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 426,
+      "right": 586,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=zh-CN#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 419,
+      "right": 579,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=zh-CN#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 674,
+      "right": 834,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=zh-CN#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 675,
+      "right": 835,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=zh-CN#prerequisites"
+  },
+  {
+    "kind": "docs",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 1016,
+      "right": 1176,
+      "top": 62,
+      "bottom": 252
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/docs/nova?tutorial=on&context=locale-proof&lang=zh-CN#prerequisites"
+  },
+  {
+    "kind": "login",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 144,
+      "right": 304,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 214,
+      "right": 374,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 591,
+      "right": 751,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 592,
+      "right": 752,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 847,
+      "right": 1007,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 848,
+      "right": 1008,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 1264,
+      "right": 1424,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ko",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 144,
+      "right": 304,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ko",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 214,
+      "right": 374,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ko",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 591,
+      "right": 751,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ko",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 592,
+      "right": 752,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ko",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 847,
+      "right": 1007,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ko",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 848,
+      "right": 1008,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ko",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 1264,
+      "right": 1424,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "en",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 144,
+      "right": 304,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "en",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 214,
+      "right": 374,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "en",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 591,
+      "right": 751,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "en",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 592,
+      "right": 752,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "en",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 847,
+      "right": 1007,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "en",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 848,
+      "right": 1008,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "en",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 1264,
+      "right": 1424,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "en",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 144,
+      "right": 304,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "en",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 214,
+      "right": 374,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "en",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 591,
+      "right": 751,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "en",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 592,
+      "right": 752,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "en",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 847,
+      "right": 1007,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "en",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 848,
+      "right": 1008,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "en",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 1264,
+      "right": 1424,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 144,
+      "right": 304,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 214,
+      "right": 374,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 591,
+      "right": 751,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 592,
+      "right": 752,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 847,
+      "right": 1007,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 848,
+      "right": 1008,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 1264,
+      "right": 1424,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ja",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 144,
+      "right": 304,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ja",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 214,
+      "right": 374,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ja",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 591,
+      "right": 751,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ja",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 592,
+      "right": 752,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ja",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 847,
+      "right": 1007,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ja",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 848,
+      "right": 1008,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "ja",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 1264,
+      "right": 1424,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 144,
+      "right": 304,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 214,
+      "right": 374,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 591,
+      "right": 751,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 592,
+      "right": 752,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 847,
+      "right": 1007,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 848,
+      "right": 1008,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 1264,
+      "right": 1424,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 144,
+      "right": 304,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 214,
+      "right": 374,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 591,
+      "right": 751,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 592,
+      "right": 752,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 847,
+      "right": 1007,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 848,
+      "right": 1008,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "login",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 1264,
+      "right": 1424,
+      "top": 68,
+      "bottom": 258
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/login"
+  },
+  {
+    "kind": "console",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 347.203125,
+      "right": 507.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 316.203125,
+      "right": 476.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 571.203125,
+      "right": 731.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 608.203125,
+      "right": 768.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 1024.203125,
+      "right": 1184.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ko",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ko",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ko",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 347.203125,
+      "right": 507.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ko",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 316.203125,
+      "right": 476.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ko",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 571.203125,
+      "right": 731.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ko",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 608.203125,
+      "right": 768.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ko",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 1024.203125,
+      "right": 1184.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "en",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "en",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "en",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 347.203125,
+      "right": 507.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "en",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 316.203125,
+      "right": 476.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "en",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 571.203125,
+      "right": 731.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "en",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 608.203125,
+      "right": 768.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "en",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 1024.203125,
+      "right": 1184.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "en",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "en",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "en",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 347.203125,
+      "right": 507.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "en",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 316.203125,
+      "right": 476.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "en",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 571.203125,
+      "right": 731.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "en",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 608.203125,
+      "right": 768.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "en",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 1024.203125,
+      "right": 1184.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 347.203125,
+      "right": 507.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 316.203125,
+      "right": 476.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 571.203125,
+      "right": 731.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 608.203125,
+      "right": 768.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 1024.203125,
+      "right": 1184.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ja",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ja",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ja",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 347.203125,
+      "right": 507.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ja",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 316.203125,
+      "right": 476.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ja",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 571.203125,
+      "right": 731.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ja",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 608.203125,
+      "right": 768.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "ja",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 1024.203125,
+      "right": 1184.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 347.203125,
+      "right": 507.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 316.203125,
+      "right": 476.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 571.203125,
+      "right": 731.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 608.203125,
+      "right": 768.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 1024.203125,
+      "right": 1184.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 347.203125,
+      "right": 507.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 316.203125,
+      "right": 476.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 571.203125,
+      "right": 731.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 608.203125,
+      "right": 768.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "console",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 1024.203125,
+      "right": 1184.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/dashboard?tutorial=on"
+  },
+  {
+    "kind": "admin",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 347.203125,
+      "right": 507.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 316.203125,
+      "right": 476.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 571.203125,
+      "right": 731.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 608.203125,
+      "right": 768.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ko",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 1024.203125,
+      "right": 1184.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ko",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ko",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ko",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 347.203125,
+      "right": 507.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ko",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 316.203125,
+      "right": 476.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ko",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 571.203125,
+      "right": 731.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ko",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 608.203125,
+      "right": 768.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ko",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "ko",
+    "overflow": 0,
+    "bounds": {
+      "left": 1024.203125,
+      "right": 1184.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ko"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "en",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "en",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "en",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 347.203125,
+      "right": 507.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "en",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 316.203125,
+      "right": 476.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "en",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 571.203125,
+      "right": 731.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "en",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 608.203125,
+      "right": 768.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "en",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 1024.203125,
+      "right": 1184.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "en",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "en",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "en",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 347.203125,
+      "right": 507.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "en",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 316.203125,
+      "right": 476.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "en",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 571.203125,
+      "right": 731.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "en",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 608.203125,
+      "right": 768.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "en",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "en",
+    "overflow": 0,
+    "bounds": {
+      "left": 1024.203125,
+      "right": 1184.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "en"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 347.203125,
+      "right": 507.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 316.203125,
+      "right": 476.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 571.203125,
+      "right": 731.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 608.203125,
+      "right": 768.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ja",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 1024.203125,
+      "right": 1184.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ja",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ja",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ja",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 347.203125,
+      "right": 507.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ja",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 316.203125,
+      "right": 476.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ja",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 571.203125,
+      "right": 731.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ja",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 608.203125,
+      "right": 768.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "ja",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "ja",
+    "overflow": 0,
+    "bounds": {
+      "left": 1024.203125,
+      "right": 1184.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "ja"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 320,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 390,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 767,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 347.203125,
+      "right": 507.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 768,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 316.203125,
+      "right": 476.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 1023,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 571.203125,
+      "right": 731.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 1024,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 608.203125,
+      "right": 768.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "zh-CN",
+    "theme": "dark",
+    "width": 1440,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 1024.203125,
+      "right": 1184.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(28, 29, 32)",
+    "color": "rgb(213, 214, 218)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 320,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 390,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 8,
+      "right": 168,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 767,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 347.203125,
+      "right": 507.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 768,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 316.203125,
+      "right": 476.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 1023,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 571.203125,
+      "right": 731.203125,
+      "top": 53.5,
+      "bottom": 243.5
+    },
+    "within": true,
+    "triggerHeight": 44,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 1024,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 608.203125,
+      "right": 768.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  },
+  {
+    "kind": "admin",
+    "locale": "zh-CN",
+    "theme": "light",
+    "width": 1440,
+    "open": true,
+    "docLang": "zh-CN",
+    "overflow": 0,
+    "bounds": {
+      "left": 1024.203125,
+      "right": 1184.203125,
+      "top": 47.5,
+      "bottom": 237.5
+    },
+    "within": true,
+    "triggerHeight": 32,
+    "minChoiceHeight": 44,
+    "background": "rgb(254, 254, 255)",
+    "color": "rgb(52, 53, 58)",
+    "selected": [
+      "zh-CN"
+    ],
+    "nativeSelect": false,
+    "url": "http://127.0.0.1:5275/admin?tutorial=admin"
+  }
+]

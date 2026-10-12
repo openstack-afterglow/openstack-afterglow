@@ -3,53 +3,50 @@
 **대상 경로:** `frontend/src/lib/components/landing`
 
 ## 책임
-`frontend/src/lib/components/landing`의 책임은 <<interface>>, <<type alias>>으로 표현되는 운영 타입 계약을 정의하는 것이다.
-이 문서는 5개 source type과 1개 정적 관계를 1개 Mermaid class diagram으로 나누어 보여준다.
+
+공개 연구 클라우드 랜딩의 외부 props와 설명용 장면의 motion 계약을 정의한다. 장면은 실제 자원·진행 상태가 아니며, 기존 콘솔 목적지와 서비스 가이드에 연결한다. 이 문서는 현재 다섯 source type과 두 정적 타입 관계를 보여준다.
 
 ## 포함 파일
-- `frontend/src/lib/components/landing/LandingFigure.svelte`
-- `frontend/src/lib/components/landing/LandingPage.svelte`
 
-## 다이어그램 1 — `frontend/src/lib/components/landing/LandingFigure.svelte::Props` … `frontend/src/lib/components/landing/LandingPage.svelte::WorkflowKind`
+- `frontend/src/lib/components/landing/LandingPage.svelte`
+- `frontend/src/lib/components/landing/LandingScene.svelte`
+- `frontend/src/lib/components/landing/LandingMotionGraphic.svelte`
+- `frontend/src/lib/components/landing/sceneMotion.ts`
+
+## 타입 관계
+
 ```mermaid
 classDiagram
-%% source-type: frontend/src/lib/components/landing/LandingFigure.svelte::Props
-class T_frontend_src_lib_components_landing_LandingFigure_svelte_Props_68c248b23f34["Props (frontend/src/lib/components/landing/LandingFigure.svelte)"] {
-  <<interface>>
-  +class: string | undefined
-  +src: string
-  +alt: string
-  +lazy: boolean | undefined
-  +children: Snippet | undefined
-}
-%% source-type: frontend/src/lib/components/landing/LandingPage.svelte::MethodStep
-class T_frontend_src_lib_components_landing_LandingPage_svelte_MethodStep_a646a068bcb0["MethodStep (frontend/src/lib/components/landing/LandingPage.svelte)"] {
-  <<type alias>>
-  +step: string
-  +title: string
-  +alt: string
-  +src: string | undefined
-  +icon: 'observability' | 'reuse' | undefined
-}
-%% source-type: frontend/src/lib/components/landing/LandingPage.svelte::Props
-class T_frontend_src_lib_components_landing_LandingPage_svelte_Props_f4a71d2f9f08["Props (frontend/src/lib/components/landing/LandingPage.svelte)"] {
+class LandingPageProps {
   <<interface>>
   +siteName: string
   +logoPath: string
   +consoleHref: string
 }
-%% source-type: frontend/src/lib/components/landing/LandingPage.svelte::WorkflowFilter
-class T_frontend_src_lib_components_landing_LandingPage_svelte_WorkflowFilter_cfa2c500cb06["WorkflowFilter (frontend/src/lib/components/landing/LandingPage.svelte)"] {
-  <<type alias>>
-  +value: 'all' | WorkflowKind
+class LandingSceneProps {
+  <<interface>>
+  +kind: hero|server|gpu|chat|kubernetes|onprem
+  +label: string
+  +replay: boolean optional
+  +class: string optional
+  +children: Snippet~SceneMotionState~
 }
-%% source-type: frontend/src/lib/components/landing/LandingPage.svelte::WorkflowKind
-class T_frontend_src_lib_components_landing_LandingPage_svelte_WorkflowKind_51af3e5a5089["WorkflowKind (frontend/src/lib/components/landing/LandingPage.svelte)"] {
-  <<type alias>>
-  +value: 'compute' | 'data' | 'ops'
+class LandingMotionGraphicProps {
+  <<interface>>
+  +kind: server|gpu|kubernetes|onprem
+  +state: SceneMotionState optional
 }
-T_frontend_src_lib_components_landing_LandingPage_svelte_WorkflowFilter_cfa2c500cb06 --> T_frontend_src_lib_components_landing_LandingPage_svelte_WorkflowKind_51af3e5a5089 : associates
+class SceneMotionState {
+  <<type alias>>
+  +value: static|playing|paused
+}
+class SceneMotionController {
+  <<interface>>
+  +replay() void
+  +destroy() void
+}
+LandingSceneProps --> SceneMotionState : children argument
+LandingMotionGraphicProps --> SceneMotionState : state
 ```
 
-### 관계 설명
-- `frontend/src/lib/components/landing/LandingPage.svelte::WorkflowFilter --> frontend/src/lib/components/landing/LandingPage.svelte::WorkflowKind` — 근거: `frontend/src/lib/components/landing/LandingPage.svelte::WorkflowFilter.value`; 관계: `associates`.
+`SceneMotionController`는 `createSceneMotion(node, onstate)`가 생성하고 `LandingScene`이 보유한다. viewport/document visibility는 같은 유한 animation의 재생·정지를 제어한다. 모든 phase가 끝나거나 reduced motion이 활성화되면 완성된 static 장면이 된다. 완료 장면은 다시 진입해도 자동 재생하지 않고 명시적 replay만 새 timeline을 시작한다. Destroy 이후 늦은 observer callback은 무시한다.

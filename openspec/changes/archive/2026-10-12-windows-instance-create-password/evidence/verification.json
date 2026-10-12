@@ -1,0 +1,63 @@
+{
+  "date": "2026-10-12",
+  "change": "windows-instance-create-password",
+  "cause": "GPU flavor was incorrectly treated as an explicit Linux bootstrap conflict. Password clearing after request capture made the failure also show a missing-password warning.",
+  "correction": "Windows skips Linux GPU bootstrap; flavor eligibility, GPU admission and explicit userdata/GitHub/Manila conflicts are retained.",
+  "runs": [
+    {
+      "command": "node --require <owned-scratch>/isolate-backend.cjs scripts/test-target.js backend:tests/test_windows_instance_password.py backend:tests/test_admin_instance_password.py backend:tests/test_instance_password_validation.py backend:tests/test_windows_image_metadata.py frontend:src/lib/stores/__tests__/vmCreatePassword.test.ts frontend:src/lib/utils/__tests__/instanceCreate.test.ts",
+      "exit": 0,
+      "backendPassed": 378,
+      "frontendPassed": 44
+    },
+    {
+      "command": "node scripts/test-target.js instances",
+      "context": "Private-free HEAD + explicit Windows overlay clone; generated SvelteKit config; existing lock/dependencies and UV_NO_SYNC=1",
+      "exit": 0,
+      "backendPassed": 953,
+      "frontendFiles": 28,
+      "frontendPassed": 288
+    },
+    {
+      "command": "npm --prefix frontend run build",
+      "exit": 0
+    },
+    {
+      "command": "npm --prefix frontend run check",
+      "errors": 0,
+      "warnings": 3
+    },
+    {
+      "command": "npm --prefix frontend run i18n:check",
+      "errors": 0,
+      "warnings": 0
+    },
+    {
+      "command": "npm --prefix frontend run i18n:scan",
+      "hardcodedKorean": 0
+    },
+    {
+      "command": "uv run --project backend ruff check and ruff format --check on changed Windows service/routes/tests",
+      "exit": 0
+    }
+  ],
+  "resolvedIntermediateFailures": [
+    "Placement-policy 503 was masked by newly earlier invalid-flavor 400; restored placement validation ordering for ordinary creates.",
+    "Isolated frontend needed generated SvelteKit config; ran svelte-kit sync.",
+    "Capacity-refresh tests started on boot step but assumed flavor-step readiness; made their tested step explicit. Deleted two payload-forwarding-only tests.",
+    "Responsive measurements during slide transitions briefly included animated transforms; final evidence awaits animations and rendering frames. No layout source change."
+  ],
+  "notExercised": [
+    "Full npm run test:gate",
+    "Production deployment",
+    "Live OpenStack resource creation or GPU allocation",
+    "Actual Windows account mutation, Cloudbase first boot and RDP login"
+  ],
+  "preserved": [
+    "Shared real Git index and architecture review marker",
+    "Private root afterglow.conf and .env inputs",
+    "Existing user Docker projects and volumes"
+  ],
+  "detailedLogs": "~/.local/share/afterglow-proofs/windows-instance-create-password-20261011-o4jmfexx/",
+  "gbrain": "Unavailable/off; no search guidance/config changes."
+}

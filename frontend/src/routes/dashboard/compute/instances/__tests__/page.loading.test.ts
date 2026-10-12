@@ -11,6 +11,7 @@ vi.mock('$lib/api/client', () => ({
 }));
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token-a', projectId: 'project-a' }),
+	canWrite: writable(true),
 }));
 vi.mock('$lib/utils/swr.svelte', () => ({
 	createSwr: () => ({ swrGet: () => null, swrSet: vi.fn() }),

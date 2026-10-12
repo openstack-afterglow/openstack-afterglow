@@ -1,0 +1,83 @@
+{
+  "scope": [
+    "backend/app/api/storage/volume_backups.py",
+    "backend/app/services/cinder.py",
+    "backend/tests/test_volume_backups.py",
+    "backend/tests/test_volume_owner_check.py",
+    "frontend/src/lib/components/volume/VolumeBackupModal.svelte",
+    "frontend/src/lib/components/volume/backups/VolumeBackupCreateModal.svelte",
+    "frontend/src/routes/dashboard/volumes/backups/+page.svelte",
+    "frontend/src/lib/i18n/messages/ko/volume.json",
+    "frontend/src/lib/i18n/messages/en/volume.json",
+    "frontend/src/lib/i18n/messages/ja/volume.json",
+    "frontend/src/lib/i18n/messages/zh-CN/volume.json",
+    "frontend/src/lib/components/volume/__tests__/VolumeBackupConsent.test.ts",
+    "scripts/test-target.js",
+    "frontend/src/lib/docs/coreGuides.ts",
+    "frontend/src/lib/docs/translations/en/coreGuides.ts",
+    "frontend/src/lib/docs/translations/ja/coreGuides.ts",
+    "frontend/src/lib/docs/translations/zh-CN/coreGuides.ts"
+  ],
+  "shared_index_modified": false,
+  "shared_review_marker_modified": false,
+  "receipts": [
+    {
+      "command": [
+        "python3",
+        "scripts/check_architecture.py",
+        "--stamp",
+        "--summary"
+      ],
+      "exit": 0,
+      "stdout": "stamped working source_sha256=0614351daa08e93d8a461327597bfcc727e83f2f2c27a9b74d5699b10bffa2eb files=2602\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check_architecture.py"
+      ],
+      "exit": 0,
+      "stdout": "checked working source_sha256=0614351daa08e93d8a461327597bfcc727e83f2f2c27a9b74d5699b10bffa2eb files=2602\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "add",
+        "--",
+        "backend/app/api/storage/volume_backups.py",
+        "backend/app/services/cinder.py",
+        "backend/tests/test_volume_backups.py",
+        "backend/tests/test_volume_owner_check.py",
+        "frontend/src/lib/components/volume/VolumeBackupModal.svelte",
+        "frontend/src/lib/components/volume/backups/VolumeBackupCreateModal.svelte",
+        "frontend/src/routes/dashboard/volumes/backups/+page.svelte",
+        "frontend/src/lib/i18n/messages/ko/volume.json",
+        "frontend/src/lib/i18n/messages/en/volume.json",
+        "frontend/src/lib/i18n/messages/ja/volume.json",
+        "frontend/src/lib/i18n/messages/zh-CN/volume.json",
+        "frontend/src/lib/components/volume/__tests__/VolumeBackupConsent.test.ts",
+        "scripts/test-target.js",
+        "frontend/src/lib/docs/coreGuides.ts",
+        "frontend/src/lib/docs/translations/en/coreGuides.ts",
+        "frontend/src/lib/docs/translations/ja/coreGuides.ts",
+        "frontend/src/lib/docs/translations/zh-CN/coreGuides.ts",
+        "ARCHITECTURE.md"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check_architecture.py",
+        "--staged"
+      ],
+      "exit": 0,
+      "stdout": "checked staged source_sha256=0614351daa08e93d8a461327597bfcc727e83f2f2c27a9b74d5699b10bffa2eb files=2602\n",
+      "stderr": ""
+    }
+  ]
+}

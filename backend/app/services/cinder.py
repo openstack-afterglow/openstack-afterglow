@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import openstack
+
+from openstack.compute.v2.server import Server
+from openstack.exceptions import ResourceNotFound
+from openstack.resource import Resource
 
 from app.models.storage import VolumeInfo
 
@@ -87,8 +92,131 @@ def force_delete_volume(conn: openstack.connection.Connection, volume_id: str) -
         resp.raise_for_status()
 
 
-def extend_volume(conn: openstack.connection.Connection, volume_id: str, new_size: int) -> None:
+MAX_VOLUME_SIZE = 2**31 - 1
+
+
+class VolumeExtensionError(ValueError):
+    """A project extension whose target or safe provider state cannot be proven."""
+
+    def __init__(self, status_code: int, detail: str):
+        super().__init__(detail)
+        self.status_code = status_code
+
+
+def _extension_field(resource, name: str, api_name: str | None = None, default=None):
+    if isinstance(resource, Resource):
+        # Resource subclasses dict, but its dict snapshot can predate fetch().
+        # Preserve authoritative Nova power/task values before SDK descriptors
+        # coerce them (e.g. a malformed fractional power value must not become 4).
+        # Only an explicit provider null proves that task_state is idle.
+        if isinstance(resource, Server) and api_name:
+            return _extension_field(resource._body.attributes, name, api_name, default)
+        if name == "size":
+            # Cinder's int descriptor would coerce bool/fraction/string data.
+            return resource._body.attributes.get("size", default)
+        return getattr(resource, name, default)
+    if isinstance(resource, Mapping):
+        if api_name and name in resource and api_name in resource and resource[name] != resource[api_name]:
+            raise VolumeExtensionError(409, "공급자 상태 정보가 일치하지 않습니다")
+        return resource.get(name, resource.get(api_name, default) if api_name else default)
+    return getattr(resource, name, default)
+
+
+def _extension_owned(resource, project_id: str) -> bool:
+    owner = _extension_field(resource, "project_id")
+    tenant = _extension_field(resource, "tenant_id")
+    return bool(owner or tenant) and all(value == project_id for value in (owner, tenant) if value)
+
+
+def _extension_volume(conn, volume_id: str, project_id: str, new_size: int):
+    try:
+        volume = conn.block_storage.get_volume(volume_id)
+    except ResourceNotFound as exc:
+        raise VolumeExtensionError(404, "볼륨을 찾을 수 없습니다") from exc
+    if volume is None or _extension_field(volume, "id") != volume_id or not _extension_owned(volume, project_id):
+        raise VolumeExtensionError(404, "볼륨을 찾을 수 없습니다")
+    size = _extension_field(volume, "size")
+    if type(size) is not int or not 0 < size <= MAX_VOLUME_SIZE:
+        raise VolumeExtensionError(409, "현재 볼륨 크기를 확인할 수 없습니다")
+    if new_size <= size:
+        raise VolumeExtensionError(400, f"새 크기({new_size}GB)는 현재 크기({size}GB)보다 커야 합니다")
+    status = _extension_field(volume, "status")
+    attachments = _extension_field(volume, "attachments")
+    if not isinstance(attachments, list) or not all(isinstance(a, Mapping) for a in attachments):
+        raise VolumeExtensionError(409, "볼륨 연결 상태를 확인할 수 없습니다")
+    if not ((status == "available" and not attachments) or (status == "in-use" and attachments)):
+        raise VolumeExtensionError(409, "현재 볼륨 상태에서는 확장할 수 없습니다")
+    return volume, (status, size, [dict(a) for a in attachments])
+
+
+def extend_volume(conn: openstack.connection.Connection, volume_id: str, new_size: int) -> VolumeInfo:
+    """Extend an owned, detached or positively powered-off volume, without guest I/O.
+
+    This project helper deliberately has no system-admin ownership bypass. The
+    separate global admin API retains its direct SDK action and response contract.
+    Provider acceptance is asynchronous: return the reread, never the desired size.
+    """
+    if type(new_size) is not int or not 0 < new_size <= MAX_VOLUME_SIZE:
+        raise VolumeExtensionError(400, "새 크기는 1~2147483647 사이의 정수여야 합니다")
+    project_id = getattr(conn, "_afterglow_project_id", None)
+    if not isinstance(project_id, str) or not project_id:
+        raise VolumeExtensionError(404, "볼륨을 찾을 수 없습니다")
+    _, before = _extension_volume(conn, volume_id, project_id, new_size)
+    for attachment in before[2]:
+        server_id = attachment.get("server_id")
+        if (
+            not isinstance(server_id, str)
+            or not server_id.strip()
+            or attachment.get("volume_id", volume_id) != volume_id
+            or attachment.get("status", "attached") != "attached"
+        ):
+            raise VolumeExtensionError(409, "볼륨 연결 대상을 확인할 수 없습니다")
+        try:
+            server = conn.compute.get_server(server_id)
+        except ResourceNotFound as exc:
+            raise VolumeExtensionError(409, "볼륨 연결 대상을 확인할 수 없습니다") from exc
+        missing = object()
+        power = _extension_field(server, "power_state", "OS-EXT-STS:power_state")
+        task = _extension_field(server, "task_state", "OS-EXT-STS:task_state", missing)
+        volumes = _extension_field(server, "attached_volumes", "os-extended-volumes:volumes_attached")
+        if (
+            server is None
+            or _extension_field(server, "id") != server_id
+            or not _extension_owned(server, project_id)
+            or _extension_field(server, "status") != "SHUTOFF"
+            # Nova's authoritative SHUTDOWN power state is 4, not NOSTATE (0).
+            or not ((type(power) is int and power == 4) or (type(power) is str and power == "4"))
+            or task is not None
+            or not isinstance(volumes, list)
+            or not all(isinstance(v, Mapping) and isinstance(v.get("id"), str) for v in volumes)
+            or not any(v["id"] == volume_id for v in volumes)
+        ):
+            raise VolumeExtensionError(409, "연결된 모든 인스턴스의 소유권과 전원 종료 상태를 확인해야 합니다")
+    # Fence Cinder changes during Nova reads. No cache, audit, or other work is
+    # interposed between this final authoritative snapshot and the provider action.
+    _, latest = _extension_volume(conn, volume_id, project_id, new_size)
+    if latest != before:
+        raise VolumeExtensionError(409, "볼륨 상태가 변경되었습니다. 다시 시도해 주세요")
     conn.block_storage.extend_volume(volume_id, new_size)
+    try:
+        volume = conn.block_storage.get_volume(volume_id)
+    except Exception as exc:
+        raise VolumeExtensionError(502, "확장 요청 후 볼륨을 확인할 수 없습니다") from exc
+    if volume is None or _extension_field(volume, "id") != volume_id or not _extension_owned(volume, project_id):
+        raise VolumeExtensionError(502, "확장 요청 후 볼륨을 확인할 수 없습니다")
+    size = _extension_field(volume, "size")
+    status = _extension_field(volume, "status")
+    attachments = _extension_field(volume, "attachments")
+    if (
+        type(size) is not int
+        or not 0 < size <= MAX_VOLUME_SIZE
+        or not isinstance(status, str)
+        or not status
+        or not isinstance(attachments, list)
+        or not all(isinstance(a, Mapping) for a in attachments)
+    ):
+        raise VolumeExtensionError(502, "확장 요청 후 볼륨 상태를 확인할 수 없습니다")
+    return _vol_to_info(volume)
 
 
 def get_volume(conn: openstack.connection.Connection, volume_id: str) -> VolumeInfo:
@@ -267,8 +395,10 @@ def create_backup(
     name: str,
     description: str | None = None,
     incremental: bool = False,
+    *,
+    force: bool = False,
 ) -> dict:
-    kwargs: dict = {"volume_id": volume_id, "name": name, "is_incremental": incremental}
+    kwargs: dict = {"volume_id": volume_id, "name": name, "is_incremental": incremental, "force": force}
     if description:
         kwargs["description"] = description
     b = conn.block_storage.create_backup(**kwargs)

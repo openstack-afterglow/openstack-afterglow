@@ -168,29 +168,25 @@ async def create_volume(
         raise HTTPException(status_code=500, detail="볼륨 생성 실패")
 
 
+class ProjectExtendVolumeRequest(ExtendVolumeRequest):
+    # Keep strict project-write validation local; the global admin API uses the
+    # shared request model and retains its existing privileged contract.
+    new_size: int = Field(..., strict=True, gt=0, le=cinder.MAX_VOLUME_SIZE)
+
+
 @router.post("/{volume_id}/extend", response_model=VolumeInfo)
 @limiter.limit("10/minute")
 async def extend_volume(
     request: Request,
     volume_id: str,
-    req: ExtendVolumeRequest,
+    req: ProjectExtendVolumeRequest,
     conn: openstack.connection.Connection = Depends(get_os_conn_write),
     token_info: dict = Depends(require_project_write),
 ):
-    """볼륨 용량 확장. available 및 in-use 볼륨 모두 지원 (Ceph online extend)."""
-    await _assert_volume_owner(conn, volume_id, token_info)
-    try:
-        current = await asyncio.to_thread(conn.block_storage.get_volume, volume_id)
-    except Exception:
-        raise HTTPException(status_code=404, detail="볼륨을 찾을 수 없습니다")
-    if req.new_size <= current.size:
-        raise HTTPException(
-            status_code=400,
-            detail=f"새 크기({req.new_size}GB)는 현재 크기({current.size}GB)보다 커야 합니다",
-        )
+    """소유 볼륨 확장. 연결된 모든 인스턴스의 전원 종료를 확인한다."""
     pid = conn._afterglow_project_id
     try:
-        await asyncio.to_thread(cinder.extend_volume, conn, volume_id, req.new_size)
+        result = await asyncio.to_thread(cinder.extend_volume, conn, volume_id, req.new_size)
         await invalidate(f"afterglow:cinder:{pid}:volumes:v2")
         await rec(
             token_info,
@@ -199,12 +195,12 @@ async def extend_volume(
             action="volume.extend",
             status="success",
             resource_id=volume_id,
-            resource_name=current.name or "",
-            extra={"old_size": current.size, "new_size": req.new_size},
+            resource_name=result.name,
+            extra={"new_size": req.new_size, "observed_size": result.size},
         )
-        return await asyncio.to_thread(cinder.get_volume, conn, volume_id)
-    except HTTPException:
-        raise
+        return result
+    except cinder.VolumeExtensionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except Exception as e:
         logger.warning("볼륨 확장 실패: %s", e, exc_info=True)
         await rec(
@@ -216,7 +212,13 @@ async def extend_volume(
             resource_id=volume_id,
             error_message=str(e)[:500],
         )
-        raise HTTPException(status_code=400, detail=f"볼륨 확장 실패: {e}")
+        if isinstance(e, HttpException):
+            status = e.status_code
+            if status == 404:
+                raise HTTPException(status_code=404, detail="볼륨을 찾을 수 없습니다") from e
+            if status in (400, 403, 409, 413):
+                raise HTTPException(status_code=status, detail="볼륨 확장이 거부되었습니다") from e
+        raise HTTPException(status_code=502, detail="볼륨 서비스 오류") from e
 
 
 @router.delete("/{volume_id}", status_code=204)

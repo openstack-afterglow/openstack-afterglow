@@ -2,8 +2,9 @@
 	import { t } from '$lib/i18n/ns/vm-wizard';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 
-	let { imageDisplay, flavorDisplay, step, totalSteps, canPrev, canNext,
+	let { imageDisplay, flavorDisplay, step, totalSteps, canPrev, canNext, windowsUnsupported = false,
 		onCancel, onPrev, onNext, onDeploy }: {
 		imageDisplay?: string | null;
 		flavorDisplay?: string | null;
@@ -11,6 +12,7 @@
 		totalSteps: number;
 		canPrev: boolean;
 		canNext: boolean;
+		windowsUnsupported?: boolean;
 		onCancel: () => void;
 		onPrev: () => void;
 		onNext: () => void;
@@ -19,6 +21,10 @@
 
 	const isLast = $derived(step === totalSteps);
 </script>
+
+{#if windowsUnsupported && step < totalSteps - 1}
+	<div data-testid="windows-unsupported-footer"><Alert tone="danger">{t('config.windows.unsupported')}</Alert></div>
+{/if}
 
 <div class="wizard-footer sticky bottom-0 z-20 flex flex-none items-center justify-between flex-wrap gap-3 px-4 py-3 md:px-8 md:py-4 bg-[var(--color-surface-base)] border-t border-[var(--color-line)]">
 	<!-- selection chips strip -->

@@ -1,0 +1,79 @@
+{
+  "reduced": [
+    {
+      "scenario": "gpu",
+      "mode": "complete",
+      "value": 3,
+      "panels": 3,
+      "animations": 0,
+      "reduced": true
+    },
+    {
+      "scenario": "cluster",
+      "mode": "complete",
+      "value": 3,
+      "panels": 3,
+      "animations": 0,
+      "reduced": true
+    },
+    {
+      "scenario": "data",
+      "mode": "complete",
+      "value": 3,
+      "panels": 3,
+      "animations": 0,
+      "reduced": true
+    }
+  ],
+  "keyboard": {
+    "selected": "onprem",
+    "focused": "true",
+    "action": "mailto:pieroot@konkuk.ac.kr",
+    "animations": [
+      {
+        "state": "running",
+        "timing": {
+          "delay": 0,
+          "direction": "normal",
+          "duration": 0.01,
+          "easing": "linear",
+          "endDelay": 0,
+          "fill": "backwards",
+          "iterationStart": 0,
+          "iterations": 1
+        }
+      }
+    ]
+  },
+  "nextFocus": "btn btn-outline btn-lg offering-action svelte-1xko78n",
+  "compact": {
+    "viewport": [
+      720,
+      450,
+      2
+    ],
+    "overflow": 0,
+    "grid": "678px"
+  },
+  "skip": "landing-content",
+  "publicGuides": [
+    {
+      "href": "/docs/nova",
+      "status": 200,
+      "title": "Nova · 사용 가이드 | Afterglow",
+      "url": "http://127.0.0.1:5198/docs/nova"
+    },
+    {
+      "href": "/docs/lumen",
+      "status": 200,
+      "title": "Lumen · 사용 가이드 | Afterglow",
+      "url": "http://127.0.0.1:5198/docs/lumen"
+    },
+    {
+      "href": "/docs/drover",
+      "status": 200,
+      "title": "Drover · 사용 가이드 | Afterglow",
+      "url": "http://127.0.0.1:5198/docs/drover"
+    }
+  ]
+}

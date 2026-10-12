@@ -1,0 +1,382 @@
+{
+  "canonical": "Dockerfile backend/frontend targets; docker-compose.dev.yml with uniquely owned QA overrides",
+  "project": "afterglow-mcp-client-v-tdslvh",
+  "images": [
+    {
+      "architecture": "arm64",
+      "os": "linux",
+      "target": "backend",
+      "tag": "afterglow-mcp-client-v-tdslvh/backend:arm64",
+      "local_image_id": "sha256:dc5c08c1e6bec2d97c5ed5afa9fc81b60faaa4aeded51c867cd4f81db6c04284",
+      "build_image_digest": "sha256:dc5c08c1e6bec2d97c5ed5afa9fc81b60faaa4aeded51c867cd4f81db6c04284"
+    },
+    {
+      "architecture": "arm64",
+      "os": "linux",
+      "target": "frontend",
+      "tag": "afterglow-mcp-client-v-tdslvh/frontend:arm64-qualified",
+      "local_image_id": "sha256:6e473c72dbf4bc6ae62ae147edd519065f287340b487d2c61c132c414585e448",
+      "build_image_digest": "sha256:6e473c72dbf4bc6ae62ae147edd519065f287340b487d2c61c132c414585e448"
+    },
+    {
+      "architecture": "amd64",
+      "os": "linux",
+      "target": "backend",
+      "tag": "afterglow-mcp-client-v-tdslvh/backend:amd64",
+      "local_image_id": "sha256:97c8ef2beea3c60ad0f753b76fe2b896f5e7b6b76314d781234443950a48c58b",
+      "build_image_digest": "sha256:97c8ef2beea3c60ad0f753b76fe2b896f5e7b6b76314d781234443950a48c58b"
+    },
+    {
+      "architecture": "amd64",
+      "os": "linux",
+      "target": "frontend",
+      "tag": "afterglow-mcp-client-v-tdslvh/frontend:amd64-qualified",
+      "local_image_id": "sha256:afd9f61ca854b1e773bf39f58d7fae09bf28912f8c85123ae59dcc78df6997ca",
+      "build_image_digest": "sha256:afd9f61ca854b1e773bf39f58d7fae09bf28912f8c85123ae59dcc78df6997ca"
+    }
+  ],
+  "execution": {
+    "arm64": {
+      "machine": "aarch64",
+      "http_sdk_initializations": 6,
+      "actual_grant_rows": {
+        "api": {
+          "id": "458651b3-da7a-4649-ba0b-e2debca9faca",
+          "grant_id": "568ab917-7849-4caa-a03a-663bb67b351a",
+          "name": "Shared personal connection",
+          "source": "personal_token",
+          "access_level": "read",
+          "status": "active",
+          "visible_prefix": "mcp-afgl-Feb2a4b6YN3",
+          "issued_at": "2026-10-12T09:57:06.908658",
+          "expires_at": "2026-11-11T09:57:06.908658Z",
+          "last_used_at": "2026-10-12T09:57:39.659629",
+          "revoked_at": null,
+          "is_lumen_default": false,
+          "project_scope": "current",
+          "project_ids": [
+            "qa-project"
+          ],
+          "projects": [
+            {
+              "id": "qa-project",
+              "name": "qa-project"
+            }
+          ],
+          "client_observations": [
+            {
+              "client_name": "Claude Code",
+              "client_version": "2.1",
+              "product": "Claude Code",
+              "kind": "agent",
+              "identity_source": "client_info",
+              "browser": "Chrome",
+              "os": "macOS",
+              "first_seen_at": "2026-10-12T09:57:39.606884Z",
+              "last_seen_at": "2026-10-12T09:57:39.606884Z"
+            },
+            {
+              "client_name": "Codex",
+              "client_version": "2.1",
+              "product": "Codex",
+              "kind": "agent",
+              "identity_source": "client_info",
+              "browser": null,
+              "os": null,
+              "first_seen_at": "2026-10-12T09:57:39.631859Z",
+              "last_seen_at": "2026-10-12T09:57:39.631859Z"
+            },
+            {
+              "client_name": "qa-browser",
+              "client_version": "2.1",
+              "product": "Chrome",
+              "kind": "browser",
+              "identity_source": "user_agent",
+              "browser": "Chrome",
+              "os": "macOS",
+              "first_seen_at": "2026-10-12T09:57:39.654750Z",
+              "last_seen_at": "2026-10-12T09:57:39.654750Z"
+            }
+          ]
+        },
+        "oauth": {
+          "id": "07a64763-3fef-4f8a-ba0c-b02d93576e86",
+          "grant_id": "07a64763-3fef-4f8a-ba0c-b02d93576e86",
+          "name": "Approved OAuth connection",
+          "source": "oauth",
+          "access_level": "read",
+          "status": "active",
+          "visible_prefix": null,
+          "issued_at": "2026-10-12T09:57:06.908658",
+          "expires_at": "2026-11-11T09:57:06.908658Z",
+          "last_used_at": null,
+          "revoked_at": null,
+          "is_lumen_default": false,
+          "project_scope": "current",
+          "project_ids": [
+            "qa-project"
+          ],
+          "projects": [
+            {
+              "id": "qa-project",
+              "name": "qa-project"
+            }
+          ],
+          "client_observations": [
+            {
+              "client_name": "Cursor",
+              "client_version": "2.1",
+              "product": "Cursor",
+              "kind": "agent",
+              "identity_source": "client_info",
+              "browser": "Chrome",
+              "os": "macOS",
+              "first_seen_at": "2026-10-12T09:57:39.678581Z",
+              "last_seen_at": "2026-10-12T09:57:39.678581Z"
+            },
+            {
+              "client_name": "qa-crawler",
+              "client_version": "2.1",
+              "product": null,
+              "kind": "bot",
+              "identity_source": "client_info",
+              "browser": null,
+              "os": null,
+              "first_seen_at": "2026-10-12T09:57:39.702469Z",
+              "last_seen_at": "2026-10-12T09:57:39.702469Z"
+            },
+            {
+              "client_name": "qa-unrecognized",
+              "client_version": "2.1",
+              "product": null,
+              "kind": "unknown",
+              "identity_source": "client_info",
+              "browser": null,
+              "os": null,
+              "first_seen_at": "2026-10-12T09:57:39.726622Z",
+              "last_seen_at": "2026-10-12T09:57:39.726622Z"
+            }
+          ]
+        }
+      },
+      "public_runtime": {
+        "api": "http://127.0.0.1:64016",
+        "frontend": "http://127.0.0.1:64017",
+        "owner": "qa-owner",
+        "project": "qa-project"
+      },
+      "source_sha256": {
+        "app/services/mcp_control_plane/clients.py": "82030144b3e75f6b12f943a777b1b84e7170dcfbb8b181e6e17213e50f92de03",
+        "app/services/mcp_control_plane/transport.py": "752e09d9d2400cf3bca7d30cb1dfe89fda59eef5668536e5fba5e7bf605ea056",
+        "app/api/identity/mcp_access.py": "ebc36a8b6dd7230f98889e533eb2a1ebcb107d7b951ec041ef589e55b055ae94"
+      }
+    },
+    "amd64": {
+      "machine": "x86_64",
+      "http_sdk_initializations": 6,
+      "actual_grant_rows": {
+        "api": {
+          "id": "3e7e6e50-f498-4148-be4f-bb94d410385f",
+          "grant_id": "433c4ae0-9856-4a6f-b470-53ce776314ba",
+          "name": "Shared personal connection",
+          "source": "personal_token",
+          "access_level": "read",
+          "status": "active",
+          "visible_prefix": "mcp-afgl-wKnukKl6VXG",
+          "issued_at": "2026-10-12T10:01:39.223227",
+          "expires_at": "2026-11-11T10:01:39.223227Z",
+          "last_used_at": "2026-10-12T10:01:52.477698",
+          "revoked_at": null,
+          "is_lumen_default": false,
+          "project_scope": "current",
+          "project_ids": [
+            "qa-project"
+          ],
+          "projects": [
+            {
+              "id": "qa-project",
+              "name": "qa-project"
+            }
+          ],
+          "client_observations": [
+            {
+              "client_name": "Claude Code",
+              "client_version": "2.1",
+              "product": "Claude Code",
+              "kind": "agent",
+              "identity_source": "client_info",
+              "browser": "Chrome",
+              "os": "macOS",
+              "first_seen_at": "2026-10-12T10:01:52.371528Z",
+              "last_seen_at": "2026-10-12T10:01:52.371528Z"
+            },
+            {
+              "client_name": "Codex",
+              "client_version": "2.1",
+              "product": "Codex",
+              "kind": "agent",
+              "identity_source": "client_info",
+              "browser": null,
+              "os": null,
+              "first_seen_at": "2026-10-12T10:01:52.424256Z",
+              "last_seen_at": "2026-10-12T10:01:52.424256Z"
+            },
+            {
+              "client_name": "qa-browser",
+              "client_version": "2.1",
+              "product": "Chrome",
+              "kind": "browser",
+              "identity_source": "user_agent",
+              "browser": "Chrome",
+              "os": "macOS",
+              "first_seen_at": "2026-10-12T10:01:52.467342Z",
+              "last_seen_at": "2026-10-12T10:01:52.467342Z"
+            }
+          ]
+        },
+        "oauth": {
+          "id": "285f8864-331f-4767-ad05-d57efa07f614",
+          "grant_id": "285f8864-331f-4767-ad05-d57efa07f614",
+          "name": "Approved OAuth connection",
+          "source": "oauth",
+          "access_level": "read",
+          "status": "active",
+          "visible_prefix": null,
+          "issued_at": "2026-10-12T10:01:39.223227",
+          "expires_at": "2026-11-11T10:01:39.223227Z",
+          "last_used_at": null,
+          "revoked_at": null,
+          "is_lumen_default": false,
+          "project_scope": "current",
+          "project_ids": [
+            "qa-project"
+          ],
+          "projects": [
+            {
+              "id": "qa-project",
+              "name": "qa-project"
+            }
+          ],
+          "client_observations": [
+            {
+              "client_name": "Cursor",
+              "client_version": "2.1",
+              "product": "Cursor",
+              "kind": "agent",
+              "identity_source": "client_info",
+              "browser": "Chrome",
+              "os": "macOS",
+              "first_seen_at": "2026-10-12T10:01:52.509044Z",
+              "last_seen_at": "2026-10-12T10:01:52.509044Z"
+            },
+            {
+              "client_name": "qa-crawler",
+              "client_version": "2.1",
+              "product": null,
+              "kind": "bot",
+              "identity_source": "client_info",
+              "browser": null,
+              "os": null,
+              "first_seen_at": "2026-10-12T10:01:52.551553Z",
+              "last_seen_at": "2026-10-12T10:01:52.551553Z"
+            },
+            {
+              "client_name": "qa-unrecognized",
+              "client_version": "2.1",
+              "product": null,
+              "kind": "unknown",
+              "identity_source": "client_info",
+              "browser": null,
+              "os": null,
+              "first_seen_at": "2026-10-12T10:01:52.595391Z",
+              "last_seen_at": "2026-10-12T10:01:52.595391Z"
+            }
+          ]
+        }
+      },
+      "public_runtime": {
+        "api": "http://127.0.0.1:64016",
+        "frontend": "http://127.0.0.1:64017",
+        "owner": "qa-owner",
+        "project": "qa-project"
+      },
+      "source_sha256": {
+        "app/services/mcp_control_plane/clients.py": "82030144b3e75f6b12f943a777b1b84e7170dcfbb8b181e6e17213e50f92de03",
+        "app/services/mcp_control_plane/transport.py": "752e09d9d2400cf3bca7d30cb1dfe89fda59eef5668536e5fba5e7bf605ea056",
+        "app/api/identity/mcp_access.py": "ebc36a8b6dd7230f98889e533eb2a1ebcb107d7b951ec041ef589e55b055ae94"
+      }
+    }
+  },
+  "browser_removal_authority": {
+    "arm64": {
+      "machine": "aarch64",
+      "credential_removal": [
+        {
+          "method": "api",
+          "grant_revoked": true,
+          "epoch": 2,
+          "retained_observations": 3,
+          "prior_bearer_http": 401,
+          "cleanup_confirmed": true,
+          "audit": [
+            "mcp_grant.revoke",
+            "mcp_grant.cleanup_confirmed"
+          ]
+        },
+        {
+          "method": "oauth",
+          "grant_revoked": true,
+          "epoch": 2,
+          "retained_observations": 3,
+          "prior_bearer_http": 401,
+          "cleanup_confirmed": true,
+          "audit": [
+            "mcp_grant.revoke",
+            "mcp_grant.cleanup_confirmed"
+          ]
+        }
+      ],
+      "refresh_http": 400,
+      "refresh_error": "invalid_grant"
+    },
+    "amd64": {
+      "machine": "x86_64",
+      "credential_removal": [
+        {
+          "method": "api",
+          "grant_revoked": true,
+          "epoch": 2,
+          "retained_observations": 3,
+          "prior_bearer_http": 401,
+          "cleanup_confirmed": true,
+          "audit": [
+            "mcp_grant.revoke",
+            "mcp_grant.cleanup_confirmed"
+          ]
+        },
+        {
+          "method": "oauth",
+          "grant_revoked": true,
+          "epoch": 2,
+          "retained_observations": 3,
+          "prior_bearer_http": 401,
+          "cleanup_confirmed": true,
+          "audit": [
+            "mcp_grant.revoke",
+            "mcp_grant.cleanup_confirmed"
+          ]
+        }
+      ],
+      "refresh_http": 400,
+      "refresh_error": "invalid_grant"
+    }
+  },
+  "amd64_emulation": true,
+  "synthetic_seams": [
+    "same-site browser IAM/profile",
+    "membership",
+    "upstream Keystone application credential cleanup"
+  ],
+  "existing_stack_mutated": false,
+  "production_deployed": false
+}

@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from app.api.deps import get_os_conn, get_token_info, require_admin
 from app.models.compute import ImageDetail, ImageInfo
 from app.services import glance, image_verification
+from app.services.cache import invalidate
 from app.services.image_refs import ImageReferenceError, image_reference_fields, normalize_image_reference
 
 _logger = logging.getLogger(__name__)
@@ -209,6 +210,7 @@ async def update_admin_image_properties(
             req.set,
             req.remove,
         )
+        await invalidate("afterglow:glance:*:images")
         return (await image_verification.enrich([result]))[0]
     except Exception as e:
         _logger.warning("이미지 properties 수정 실패 image=%s: %s", image_id, e)

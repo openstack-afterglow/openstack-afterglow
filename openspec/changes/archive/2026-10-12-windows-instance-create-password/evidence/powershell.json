@@ -1,0 +1,48 @@
+{
+  "cases": [
+    {
+      "case": 0,
+      "password_exact": true,
+      "account_exact": true,
+      "injection_absent": true,
+      "secret_variables_cleared": true
+    },
+    {
+      "case": 1,
+      "password_exact": true,
+      "account_exact": true,
+      "injection_absent": true,
+      "secret_variables_cleared": true
+    },
+    {
+      "case": 2,
+      "password_exact": true,
+      "account_exact": true,
+      "injection_absent": true,
+      "secret_variables_cleared": true
+    },
+    {
+      "case": 3,
+      "password_exact": true,
+      "account_exact": true,
+      "injection_absent": true,
+      "secret_variables_cleared": true
+    },
+    {
+      "case": 4,
+      "password_exact": true,
+      "account_exact": true,
+      "injection_absent": true,
+      "secret_variables_cleared": true
+    },
+    {
+      "case": 5,
+      "password_exact": true,
+      "account_exact": true,
+      "injection_absent": true,
+      "secret_variables_cleared": true
+    }
+  ],
+  "runtime": "7.6.6",
+  "boundary": "Actual portable macOS PowerShell parser and execution; Set-LocalUser is a harmless exact-argument probe. Not Windows account mutation or Cloudbase login."
+}

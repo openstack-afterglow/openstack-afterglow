@@ -7,6 +7,71 @@
 
 ## [Unreleased]
 
+### Afterglow 부분 변경 통합 (local, not deployed)
+- Palimpsest·블록 레이어의 진행 중인 변경을 작업 트리에 남기고 Windows native password/이미지 설정, 인스턴스·스토리지 lifecycle, 명시적 강제 백업, MCP client 관측, 랜딩·언어 메뉴의 완료된 Afterglow 변경만 통합했다. 버전·release tag·main·운영 상태는 변경하지 않는다.
+- 이미 삭제된 share의 잔여 VM grant 기록이 단건·bulk 삭제와 detach를 막지 않도록 exact-rule 부재를 먼저 확인한다. 남은 규칙의 share 관리 권한·identity와 불확실한 provider 실패의 fail-closed 보존은 유지한다. 수정 전3실패/수정 후 회귀와 실제 native HTTP5조건을 확인했다.
+- 승인된 부분 snapshot의 전체 test:gate, 최신 production build·16조건 compiled menu smoke, native password 전달·실제 rollback7조건을 통과했다. 정확한 suite/skip·합성/운영 경계와 excluded source는 `docs/testing.md`에 분리 기록한다.
+
+
+### 사용 중 볼륨의 명시적 강제 백업 (local, not deployed)
+- 볼륨 목록/상세와 백업 목록의 생성창에 네 언어의 일관성 경고와 기본 미선택 강제 백업 체크박스를 추가했다. 사용 중 볼륨은 확인해야 제출할 수 있고 원본 변경/재열기에서 동의를 초기화하며 available 볼륨은 강제하지 않는다.
+- 기존 수동 API에 `force=false`를 추가하고 소유 볼륨의 현재 상태가 in-use일 때 명시적 선택이 없으면 Cinder mutation 전에400으로 거부한다. 실제 SDK에는 선택값을 전달하고 기존 활동 metadata에 기록한다. 자동 백업 force 정책·DB/schema·운영 설정은 바꾸지 않았다.
+- Force는 원본 분리/덮어쓰기가 아니라 연결 중 백업 허용이며 DB·애플리케이션 일관성은 보장하지 않는다. Native loopback HTTP와 실제 Chromium·회귀 검증 및 복원/운영 미검증 경계는 `docs/testing.md`에 기록한다.
+
+### 공용 언어 메뉴 테마 통일 (local, not deployed)
+- 메인·로그인·사용자/관리자 콘솔의 투명 native select/OS popup을 문서와 같은 테마형 disclosure로 교체하고 문서도 공용 LocaleSelect를 사용한다. 네 원어 항목·선택 상태·배경/글자/테두리/focus tokens를 통일하고320px header에서 메뉴가 화면 밖으로 나가지 않도록 했다.
+- 기존 앱 locale 쿠키·SSR·remount/focus와 문서 URL/query/hash·no-JS 링크 동선을 유지했다. 즉시 Escape, 밖 클릭/Tab 종료와 방향키/Home/End 이동을 검증했다. API·auth·schema·운영 상태는 변경하지 않았다.
+- 관련5files/35tests·Svelte0errors·production build·i18n 검사 통과. 실제 Chromium의5surfaces×4locales×2themes×7widths280조건에서 overflow0/메뉴 잘림 없음/44px 항목. 공유 source의 범위 밖 경고6개, 전체 gate 미실행과 미배포 경계는 docs/testing.md에 기록한다.
+
+### Windows 이미지 서비스 일괄 설정 (local, not deployed)
+- 사용자/관리자 이미지 상세에 실제 게스트 준비 확인·계정·Win11/QGA 선택·현재→변경 preview가 있는 Windows 메타데이터 일괄 설정을 추가했다. 기존 owner/admin properties API 한 번을 재사용하고 선택하지 않은 속성·공개 범위·소유자·해시·검증은 보존한다. 실패 초안과 scope/ABA/destroy fencing, 네 언어 및 공개 Glance 가이드를 제공한다.
+- 실제 SDK/HTTP가 기존 Glance PATCH의 중복 `/v2`404/거짓 성공과 SDK-normalized ConfigDrive·SecureBoot·machine type·QGA 누락을 발견해 수정했다. 사용자/admin 저장은 warm shared/owner 목록 캐시도 무효화한다.
+- VM wizard는 선택 이미지의 최소 부트 디스크를 반영하고 부족한 정수 용량을 다음/제출 및 async 재검사 뒤에 차단한다.80GB 이미지의20GB 초기 초안만 올리며500GB 같은 더 큰 초안과 기존 볼륨 재사용은 유지한다. 실제 저장/재조회·엄격한 Cinder/Nova 요청과 UI 검증 경계는 `docs/testing.md`에 기록한다. 게스트 구성·실제 RDP 로그인·운영 이미지 변경·배포는 하지 않았다.
+
+### 연구 클라우드 키네틱 아트 (local, not deployed)
+- Hero와 서버·GPU·Kubernetes·기관 구축을 불투명 판·핀·블록의 조립 조형으로 통일했다. 기존 사진 hero와 opacity-only 설명을 유한 이동·회전·정렬 choreography로 바꾸고, 도형이 정지한 뒤에만 연결선과 외부 label을 나타낸다.
+- Lumen의 작성된 네 메시지 예시와 공용 ChatBubble은 유지하며 작은 응답 조형을 추가했다. 기존 브랜드·네 언어·가이드·console/mailto·정지/재생/접근성 계약을 보존한다. 공유 motion keyframe만 추가하고 새 dependency·API·운영 변경은 없다.
+- 실제 최종 빌드의4locale×2theme×8width64조건·21연결 접점·숨김/화면 밖 정지·reduced/no-JS 및 전후 녹화를 확인했다. 관련37tests·Svelte0errors·i18n 검사 통과. 기존3warnings, 전체 gate 미실행, 미배포 범위는 `docs/testing.md`에 분리했다.
+
+### 랜딩 연결선·입체 면·채팅 시연 수정 (local, not deployed)
+- 서버·GPU·Kubernetes·기관 구축의 연결선을 실제 도형 접점에 맞추고, 겹친 합류선·부유한 장식선을 제거했다. 입체 면은 불투명한 기존 theme token으로 칠하고 공유면/paint 순서를 정리해 뒤쪽 edge가 비치지 않게 했다. 재생 중에도 접점이 떨어지지 않는 finite phase를 사용한다.
+- 잘린 빈 Lumen 스크린샷을 공용 ChatBubble 기반의 네 언어 대화 예시로 교체했다. 질문·답변 chunk가 순차 표시되고 다시 보기는 대화 전체를 재생한다. 좁은 화면에서도 내용을 자르지 않으며 reduced motion·no-JS에서는 전체 대화를 바로 보여준다. 예시는 작성된 시연으로 표시하고 비공개 기록 조회·실제 provider 실행으로 오인시키지 않는다.
+- 기존 콘솔·가이드·문의 동선과 API/인증/DB/운영 상태는 유지한다. 시각·검사 증거와 운영 미검증 경계는 `repair-landing-visual-continuity` 완료 기록과 `docs/testing.md`에 보존한다.
+
+### 그림·모션 중심 연구 클라우드 소개 (local, not deployed)
+- 장문 기능 카드·운영 체험·workflow 목록 대신 큰 연구 인프라 개념 이미지와 서버·GPU AI 학습·Lumen 채팅·Kubernetes·기관 구축의 개별 장면을 둔다. 각 기능의 설명은 한 문장으로 줄이고 기존 console/mailto·공개 가이드 목적지를 보존한다.
+- 자원이 연구용 VM으로, 데이터가 GPU와 모델로, container가 cluster로, 보유 장비가 기관 cloud로 연결되는 유한 모션을 공유 토큰과 native SVG로 표현한다. 화면 진입 시 한 번 재생하고 offscreen/hidden에서는 pause, reduced motion·API 부재·no-JS에서는 완성된 static 장면을 제공하며 명시적 replay는 focus를 유지한다.
+- 미지원 Palimpsest 레이어 홍보는 복원하지 않는다. Obsolete 운영 fixture·filter·plate component/test/catalog/static asset과 주입 SVG 전용 palette를 제거한다. 기존 brand·theme·공용 control·네 언어·auth 목적지는 유지하며 API/DB/운영 설정·새 animation dependency·실제 cloud mutation·배포는 없다.
+- 관련 4개 파일·18개 테스트, Svelte check 0 errors/기존 warnings 3개, i18n check·scan·production build 통과. 최종 compiled UI의 네 언어·두 테마·여덟 폭 64조건과 다섯 장면 replay·focus·유한 완료·정적 fallback을 확인했다. 실제 baseline·Apple reference·screenshots·녹화·scoped architecture 증거와 운영 미검증 경계는 `docs/testing.md`와 `visual-cloud-product-story` OpenSpec 완료 기록에 보존한다.
+
+### MCP 클라이언트 관측·연결 제거 (local, not deployed)
+- 인증된 MCP initialize의 신고 이름·버전과 브라우저/에이전트/봇/SDK 추정, 근거·OS·첫/마지막 확인 시각을 grant별로 최근10개 정제 서명만 저장한다. Migration087은 nullable JSON을 추가하며 raw UA·IP·Authorization·비밀·capabilities를 저장하지 않는다. 기존 연결에는 관측 전 identity를 만들지 않는다.
+- 계정 OAuth/API 키의 클라이언트 상세에 추정·위조 가능·실시간 접속 상태 아님을 안내하고 네 언어의 `연결 제거`가 해당 credential 전체와 공유 클라이언트를 차단함을 명시한다. 기존 소유권·epoch·token/family 폐기·cleanup·감사와 confirmation scope fence를 유지한다.
+- 방식별 목록 조회를 독립 처리해 다른 방식의 장애가 검증된 행을 숨기지 않고 조회 실패를0개로 표시하지 않는다. 기존 로컬 실패는084 이전 DB의 project_scope 누락으로 확인됐으며 공유 DB·운영 상태는 변경하지 않았다. 격리 SDK/SQL/Redis 및 compiled UI 검증의 실제/합성 경계는 테스트 기록에 분리한다.
+- Canonical arm64·amd64 backend/frontend와 실제 MCP SDK/SQL/Redis, compiled224locale/theme/method/width조건 및 두 architecture의 browser 철회→기존 bearer401·refresh invalid_grant를 검증했다. Mobile 제거/disclosure는44px target을 사용하고 action은 credential 상단에 둔다. 최종 isolated source 전체 test:gate가 통과했으며 운영 migration/배포·실제 제3자 신원/online/device inventory는 미검증이다.
+
+### 지원 서비스 중심 연구 클라우드 랜딩 (local, not deployed)
+- 연구자·교수에게 서버, GPU 기반 AI 학습, Lumen AI 채팅, Kubernetes를 네 가지 서비스로 소개하고 제목·meta·ko/en/ja/zh-CN 문구와 서비스 가이드 링크를 정리했다.
+- 미지원 레이어 기록·저장·포크·재사용 story와 hero 결과 단계, library 카드·전용 illustration을 제거했다. 환경 체험은 요청→정책 확인→자원 구성의 설명용 예시로 끝나며 실제 자원을 만들지 않는다.
+- 제공 클라우드 이용과 기관 보유 서버·GPU·스토리지·네트워크를 묶는 온프레미스 구축을 별도 선택·구성도로 설명하고 기존 콘솔/문의 목적지를 연결했다. 기존 테마·공용 primitive·reduced motion을 재사용하며 새로운 animation 의존성·API·DB·운영 설정·배포는 없다.
+- 지정 클라우드 사이트9개를 실제 Chromium1440×900으로 조사했다. Compiled UI64 locale/theme/width조건과 keyboard·reduced motion·전후 녹화의 증거 및 preview CORS·전체 gate 미검증 경계는 `docs/testing.md`와 OpenSpec에 기록한다.
+
+### 인스턴스 생명주기·스토리지 연결 명확화 (local, not deployed)
+- 비밀번호·인접 액션을 shared Button 규격으로 통일하고 보관·삭제·리사이즈를 사용자/관리자 exact SHUTOFF에서만 묶어 표시한다. Confirmation 이후 scope/state/permission을 재검사하고 자기 resize busy/error와 동일 scope volume draft를 유지한다.
+- 정지 시 compute allocation/quota 유지, offload 완료/삭제의 host compute 반환, 보존 instance/volume과 집계 방식에 따른 CPU/RAM quota를 구분한다. Actual boot metadata로 Windows SSH/keypair를 감추고 최초 초기화 약20–30분과 ACTIVE/login readiness 차이를 네 locale·공개 가이드에 안내한다.
+- 파일 스토리지는 exact NFS fixed IP 또는 UUID-bound CephX 접근 권한과 실제 state/export/share network를 제공한다. 자동 guest mount/명령을 제거하고 explicit secret만 transient/no-store로 표시한다. Exact Manila404로만 revoke 완료를 인정하며 pending/error이면 tracking과 VM 삭제를 보존한다.
+- Root/data 볼륨 행에서 offline/grow-only 확장을 제공한다. 실제 SDK HTTP가 Nova metadata kwargs 오류를 발견해 수정했고, same-context polling이 열린 expansion draft를 닫던 오류를 failing-before/passing-after 회귀로 수정했다. Production·guest mount/filesystem growth·Windows login/RDP는 검증 범위 밖이다.
+
+### Project volume extension safety (local, not deployed)
+- Enforce effective-project volume ownership, including system admins, and strict positive integer capacity growth within signed 32-bit bounds without changing shared models.
+- Allow detached available volumes or in-use volumes only when every attachment resolves to an owned, positively powered-off SHUTOFF Nova server with an idle task and matching volume attachment. Recheck authoritative Cinder ownership/status/size/attachments immediately before extension; no cached instance projection or guest operations.
+- Return the actual provider reread, including old capacity during asynchronous `extending`. Preserve provider rejection versus lookup/uncertain-result errors and the separate global admin endpoint's existing SDK response contract. Focused regressions and actual installed-SDK loopback HTTP exercise offline/strict-size/async-result boundaries; production and actual guest growth remain unverified.
+
+### Windows 생성 비밀번호의 native Nova 전달 수정 (local, not deployed)
+- 실제 CLI `--password`로 검증한 `nova-adminpass-configdrive` 이미지와 Afterglow의 이전 `cloudbase-user-data` admission 불일치를 수정했다. 사용자 sync/SSE·관리자 SSE가 입력값을 그대로 Nova `adminPass`와 강제 ConfigDrive로 전달하며 비밀번호용 PowerShell/user-data 생성을 제거했다. 로그인 계정은 authoritative image/volume metadata를 따른다.
+- 비밀번호는 secret으로 취급하고 검토·브라우저 저장소·오류·진행·로그·활동/cloud-init 이력에 노출하지 않는다. 부팅 소스·actor/project/target 변경, 닫기·초기화·해제 및 제출 시 메모리 초안을 지운다. 기존 Linux SSH/GitHub와 명시적 비-Windows Nova 암호 전달은 유지한다.
+- 미지원 Windows는 네 언어로 안내하고 모든 단계의 Next/직접 deploy를 차단해 SSH/keypair fallback을 막는다. 사용자 cloud-init·GitHub SSH·Manila data mount 충돌은 mutation 전에 거부하고 Windows에서는 Linux GPU 초기화를 생략하되 GPU quota/capacity admission과 Linux GPU/SSH를 유지한다. Native metadata/config drive의 평문 보호, 약20–30분 최초 초기화와 ACTIVE/RDP readiness 구분을 문서화했다. 운영3대의 미적용 상태를 읽기 전용으로 확인했으며 기존 이미지·VM·RDP 보안그룹·운영 배포는 변경하지 않았다.
+
 ### Lumen 채팅 작업 영역 폭 복원 (local, not deployed)
 - 채팅·채팅 프로젝트의 외부 PageShell 제한을 제거해 기록 sidebar·toolbar·canvas가 가용 작업 영역 전체를 채운다. 대화 기록 본문과 입력창만 공통80rem 최대 폭을 사용하고 긴 기록의 스크롤바가 두 영역의 중심축을 어긋나게 하지 않는다.
 - 낮은 화면에서 새 대화의 welcome·입력·프로젝트 선택이 잘리지 않도록 workspace 내부 스크롤을 유지한다. 일반 페이지·Studio·설정·API·권한·provider 호출·배포는 변경하지 않는다.

@@ -27,10 +27,23 @@ async def test_list_backups(client, mock_conn):
 
 
 @pytest.mark.asyncio
-async def test_create_backup(client, mock_conn):
+@pytest.mark.parametrize(("volume_status", "force"), [("available", False), ("in-use", True)])
+async def test_create_backup(client, mock_conn, volume_status, force):
+    mock_conn.block_storage.get_volume.return_value.status = volume_status
     with patch("app.api.storage.volume_backups.cinder.create_backup", return_value=make_backup("backup-new")):
-        resp = await client.post("/api/v1/volumes/backups", json={"volume_id": "vol-1", "name": "my-backup"})
+        resp = await client.post(
+            "/api/v1/volumes/backups", json={"volume_id": "vol-1", "name": "my-backup", "force": force}
+        )
     assert resp.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_in_use_backup_requires_explicit_force_without_provider_mutation(client, mock_conn):
+    mock_conn.block_storage.get_volume.return_value.status = "in-use"
+    with patch("app.api.storage.volume_backups.cinder.create_backup") as create:
+        resp = await client.post("/api/v1/volumes/backups", json={"volume_id": "vol-1", "name": "my-backup"})
+    assert resp.status_code == 400
+    create.assert_not_called()
 
 
 @pytest.mark.asyncio

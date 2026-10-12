@@ -111,6 +111,8 @@ _mark("stdlib")
 # ---------------------------------------------------------------------------
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exception_handlers import http_exception_handler as _default_http_handler
+from fastapi.exception_handlers import request_validation_exception_handler as _default_validation_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -250,6 +252,22 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 install_mcp_route(app)
+
+
+@app.exception_handler(RequestValidationError)
+async def creation_validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Keep creation passwords out of field and whole-model HTTP validation errors."""
+    if request.method != "POST" or request.url.path.rstrip("/") not in {
+        "/api/v1/instances",
+        "/api/v1/instances/async",
+        "/api/v1/admin/instances/async",
+    }:
+        return await _default_validation_handler(request, exc)
+    # Pydantic hide_input_in_errors protects str(exc), not errors(). FastAPI's
+    # default handler encodes raw input (including the whole body on model errors)
+    # and ctx; omit both for every error, not just those located at admin_pass.
+    detail = [{"type": error["type"], "loc": error["loc"], "msg": error["msg"]} for error in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": detail})
 
 
 @app.exception_handler(HTTPException)

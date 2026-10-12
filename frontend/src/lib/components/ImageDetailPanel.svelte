@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { createImageDetailController, provideImageDetailController } from '$lib/stores/imageDetailController.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
@@ -6,6 +7,7 @@
 	import ImageInfoSection from '$lib/components/image/ImageInfoSection.svelte';
 	import ImageSizeSection from '$lib/components/image/ImageSizeSection.svelte';
 	import ImageMetadataSection from '$lib/components/image/ImageMetadataSection.svelte';
+	import ImageWindowsSetupSection from '$lib/components/image/ImageWindowsSetupSection.svelte';
 	import ImageExportSection from '$lib/components/image/ImageExportSection.svelte';
 	import ImageVisibilitySection from '$lib/components/image/ImageVisibilitySection.svelte';
 	import ImageMembersSection from '$lib/components/image/ImageMembersSection.svelte';
@@ -33,12 +35,14 @@
 
 
 	$effect(() => {
-		const currentImageId = imageId;
-		const currentToken = $auth.token;
-		s.reset();
-		if (!currentImageId || !currentToken) return;
-		void s.loadImage();
+		// Track every identity dimension explicitly; controller state must not retrigger this effect.
+		const current = { imageId, token: $auth.token, projectId: $auth.projectId, isAdmin };
+		untrack(() => {
+			s.reset();
+			if (current.imageId && current.token) void s.loadImage();
+		});
 	});
+	onDestroy(() => s.reset());
 </script>
 
 <div class="flex flex-col h-full motion-fade" aria-busy={s.loading}>
@@ -53,6 +57,7 @@
 			<ImageInfoSection />
 			<ImageSizeSection />
 			<ImageMetadataSection />
+			<ImageWindowsSetupSection />
 			{#if $auth.token && s.image.status === 'active'}
 				<ImageExportSection />
 			{/if}

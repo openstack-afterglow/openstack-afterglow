@@ -595,6 +595,22 @@ async def test_browser_access_lists_omit_revocations_without_crossing_owner_scop
                 access_level="read",
                 status=status,
                 expires_at=datetime.now(UTC) + timedelta(days=30),
+                client_observations=[
+                    {
+                        "client_name": "claude-code",
+                        "client_version": "1.2.3",
+                        "product": "Claude Code",
+                        "kind": "agent",
+                        "identity_source": "client_info",
+                        "browser": None,
+                        "os": "macOS",
+                        "first_seen_at": "2026-10-12T00:00:00+00:00",
+                        "last_seen_at": "2026-10-12T01:00:00+00:00",
+                        "signature": "private-internal-signature",
+                        "user_agent": "private-raw-user-agent",
+                        "token_hash": "private-token-hash",
+                    }
+                ],
             )
             session.add(grant)
             await session.flush()
@@ -621,6 +637,29 @@ async def test_browser_access_lists_omit_revocations_without_crossing_owner_scop
     assert response.status_code == 200
     assert {record["id"] for record in response.json()} == expected
     assert {record["status"] for record in response.json()} == {"active", "expired"}
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    public_fields = {
+        "client_name",
+        "client_version",
+        "product",
+        "kind",
+        "identity_source",
+        "browser",
+        "os",
+        "first_seen_at",
+        "last_seen_at",
+    }
+    for record in response.json():
+        observed = record["client_observations"]
+        assert len(observed) == 1
+        assert set(observed[0]) == public_fields
+        assert observed[0]["client_name"] == "claude-code"
+        assert observed[0]["product"] == "Claude Code"
+        assert observed[0]["kind"] == "agent"
+        assert observed[0]["first_seen_at"] == "2026-10-12T00:00:00Z"
+        assert observed[0]["last_seen_at"] == "2026-10-12T01:00:00Z"
+    assert "private-" not in response.text
 
 
 @pytest.fixture

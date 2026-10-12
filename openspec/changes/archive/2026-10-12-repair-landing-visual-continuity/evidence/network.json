@@ -1,0 +1,20 @@
+[
+  {
+    "method": "OPTIONS",
+    "url": "http://localhost:8000/api/v1/site-config?cache=true",
+    "status": 403
+  },
+  {
+    "method": "GET",
+    "url": "http://localhost:8000/api/v1/site-config?cache=true"
+  },
+  {
+    "method": "OPTIONS",
+    "url": "http://localhost:8000/api/v1/site-config?cache=true",
+    "status": 403
+  },
+  {
+    "method": "GET",
+    "url": "http://localhost:8000/api/v1/site-config?cache=true"
+  }
+]

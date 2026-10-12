@@ -1,0 +1,14 @@
+{
+  "boundary": "Actual existing rollback_instance helper + installed openstacksdk + loopback Nova HTTP. Exact UUID handoff and native forceDelete acceptance/removal verified; no real cloud/guest or failure-through-complete-create orchestration qualification.",
+  "server_uuid": "10000000-0000-4000-8000-000000000004",
+  "native_request": {
+    "method": "POST",
+    "path": "/nova/v2.1/qa-project/servers/10000000-0000-4000-8000-000000000004/action",
+    "body": {
+      "forceDelete": null
+    }
+  },
+  "provider_server_absent": true,
+  "important_distinction": "Existing Nova delete_server uses force=True: native transport is POST forceDelete, not necessarily HTTP DELETE. A DELETE-only request counter cannot prove that rollback did not invoke cleanup.",
+  "safe_message_argument_supplied": true
+}

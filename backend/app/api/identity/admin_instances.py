@@ -21,6 +21,13 @@ from app.models.progress import ProgressMessage, ProgressStep
 from app.services import cinder, cloudinit, keystone, neutron, nova, vm_cloud_init_library
 from app.services import instance_orchestration as instance_orch
 from app.services.instance_names import ensure_unique_instance_name
+from app.services.instance_password import (
+    PASSWORD_METADATA_ERROR,
+    PASSWORD_PROVISIONING_ERROR,
+    WINDOWS_PASSWORD_CONFLICT,
+    WINDOWS_PASSWORD_UNSUPPORTED,
+    preflight_password,
+)
 from app.services.ssh_access import github_ssh_metadata
 
 logger = logging.getLogger(__name__)
@@ -150,23 +157,66 @@ async def admin_create_instance_async(
     from app.api.compute.instances import _verify_github_ssh
 
     settings = get_settings()
-    req = await _verify_github_ssh(req, token_info=token_info)
+    # Preserve the ordinary GitHub-only path without creating a target connection.
+    if req.admin_pass is None:
+        req = await _verify_github_ssh(req, token_info=token_info)
 
-    conn = await asyncio.to_thread(_make_admin_conn, req.project_id, token_info.get("user_id", ""))
     try:
+        conn = await asyncio.to_thread(_make_admin_conn, req.project_id, token_info.get("user_id", ""))
+    except Exception:
+        if req.admin_pass is not None:
+            raise HTTPException(status_code=500, detail=PASSWORD_PROVISIONING_ERROR) from None
+        raise
+
+    async def close_preflight_connection():
+        try:
+            await asyncio.to_thread(conn.close)
+        except Exception:
+            if req.admin_pass is None:
+                raise
+            logger.warning("Admin password request connection close failed")
+
+    try:
+        sse_flavors = await asyncio.to_thread(nova.list_flavors, conn)
+        sse_flavor = next((flavor for flavor in sse_flavors if flavor.id == req.flavor_id), None)
+        if sse_flavor is None:
+            raise HTTPException(status_code=400, detail="Invalid flavor ID")
+    except Exception:
+        await close_preflight_connection()
+        if req.admin_pass is not None:
+            raise HTTPException(status_code=400, detail=PASSWORD_PROVISIONING_ERROR) from None
+        raise
+
+    try:
+        password_plan = await asyncio.to_thread(preflight_password, conn, req)
+    except HTTPException as exc:
+        await close_preflight_connection()
+        if exc.detail not in (PASSWORD_METADATA_ERROR, WINDOWS_PASSWORD_CONFLICT, WINDOWS_PASSWORD_UNSUPPORTED):
+            raise HTTPException(status_code=400, detail=PASSWORD_PROVISIONING_ERROR) from None
+        raise
+    except Exception:
+        await close_preflight_connection()
+        raise HTTPException(status_code=400, detail=PASSWORD_PROVISIONING_ERROR) from None
+
+    try:
+        if req.admin_pass is not None:
+            req = await _verify_github_ssh(req, token_info=token_info)
         req = req.model_copy(update={"name": await asyncio.to_thread(ensure_unique_instance_name, conn, req.name)})
-    except ValueError as exc:
-        await asyncio.to_thread(conn.close)
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    try:
         if not req.network_id:
             req = req.model_copy(update={"network_id": await instance_orch.resolve_default_network(conn, settings)})
         compute_availability_zone, volume_availability_zone = await instance_orch.resolve_availability_zones(
             conn, req.availability_zone
         )
-    except Exception:
-        await asyncio.to_thread(conn.close)
+    except Exception as exc:
+        await close_preflight_connection()
+        if req.admin_pass is not None:
+            raise HTTPException(
+                status_code=exc.status_code if isinstance(exc, HTTPException) else 400,
+                detail=PASSWORD_PROVISIONING_ERROR,
+                headers=exc.headers if isinstance(exc, HTTPException) else None,
+            ) from None
+        if isinstance(exc, ValueError):
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         raise
 
     from app.services.flavor_eligibility import (
@@ -178,19 +228,28 @@ async def admin_create_instance_async(
     from app.services.gpu_quota import GpuQuotaDenied, GpuQuotaUnavailable
 
     try:
-        sse_flavors = await asyncio.to_thread(nova.list_flavors, conn)
-        sse_flavor = next((flavor for flavor in sse_flavors if flavor.id == req.flavor_id), None)
-        if sse_flavor is None:
-            raise HTTPException(status_code=400, detail="Invalid flavor ID")
+        # Password metadata and incompatible options have been rejected before
+        # quota reservations or any boot-volume/server mutation.
         admission = await admit_flavor(conn, req.project_id, sse_flavor, availability_zone=compute_availability_zone)
     except (FlavorEligibilityDenied, GpuQuotaDenied) as exc:
-        await asyncio.to_thread(conn.close)
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        await close_preflight_connection()
+        detail = PASSWORD_PROVISIONING_ERROR if req.admin_pass is not None else str(exc)
+        raise HTTPException(status_code=409, detail=detail) from None
     except (FlavorEligibilityUnavailable, GpuQuotaUnavailable) as exc:
-        await asyncio.to_thread(conn.close)
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except HTTPException:
-        await asyncio.to_thread(conn.close)
+        await close_preflight_connection()
+        detail = PASSWORD_PROVISIONING_ERROR if req.admin_pass is not None else str(exc)
+        raise HTTPException(status_code=503, detail=detail) from None
+    except HTTPException as exc:
+        await close_preflight_connection()
+        if req.admin_pass is not None:
+            raise HTTPException(
+                status_code=exc.status_code, detail=PASSWORD_PROVISIONING_ERROR, headers=exc.headers
+            ) from None
+        raise
+    except Exception:
+        await close_preflight_connection()
+        if req.admin_pass is not None:
+            raise HTTPException(status_code=400, detail=PASSWORD_PROVISIONING_ERROR) from None
         raise
     gpu_available = bool(admission.gpu_requested)
 
@@ -238,7 +297,8 @@ async def admin_create_instance_async(
                 )
                 yield send_progress(ProgressStep.BOOT_VOLUME_CREATING, 45, "부트 볼륨 생성 완료")
 
-            if gpu_available:
+            userdata = None
+            if not password_plan.windows and gpu_available:
                 yield send_progress(ProgressStep.USERDATA_GENERATING, 60, "cloud-init 생성 중...")
                 userdata = cloudinit.generate_userdata(
                     libraries=[],
@@ -250,10 +310,9 @@ async def admin_create_instance_async(
                     github_username=req.github_username,
                 )
                 yield send_progress(ProgressStep.USERDATA_GENERATING, 65, "cloud-init 생성 완료")
-            else:
-                userdata = None
 
-            userdata = cloudinit.compose_userdata(userdata, req.userdata, req.github_username)
+            if not password_plan.windows:
+                userdata = cloudinit.compose_userdata(userdata, req.userdata, req.github_username)
 
             yield send_progress(ProgressStep.SERVER_CREATING, 65, "Nova 서버 생성 중...")
             _sse_effective_sgs: list[str] | None = list(req.security_groups) if req.security_groups else None
@@ -268,7 +327,8 @@ async def admin_create_instance_async(
                 boot_volume_id=boot_volume_id,
                 userdata=userdata,
                 key_name=req.key_name or None,
-                admin_pass=req.admin_pass,
+                admin_pass=password_plan.nova_admin_pass(req.admin_pass),
+                config_drive=password_plan.config_drive,
                 availability_zone=compute_availability_zone,
                 metadata=meta,
                 delete_boot_volume_on_termination=(
@@ -305,12 +365,14 @@ async def admin_create_instance_async(
                         await asyncio.to_thread(neutron.associate_floating_ip, conn, fip.id, server_id)
                         yield send_progress(ProgressStep.FLOATING_IP_CREATING, 100, "Floating IP 할당 완료")
 
-            try:
-                await vm_cloud_init_library.record_history(user_id=token_info["user_id"], content=req.userdata)
-            except Exception:
-                logger.warning("cloud-init 실행 이력 저장 실패", extra={"user_id": token_info.get("user_id")})
+            if not password_plan.windows:
+                try:
+                    await vm_cloud_init_library.record_history(user_id=token_info["user_id"], content=req.userdata)
+                except Exception:
+                    logger.warning("cloud-init 실행 이력 저장 실패", extra={"user_id": token_info.get("user_id")})
 
-            note = " (키페어 없음 — 콘솔 비밀번호 사용)" if not req.key_name else ""
+            # ACTIVE confirms Nova readiness, not Windows first-boot completion.
+            note = " (키페어 없음 — 콘솔 비밀번호 사용)" if not req.key_name and not password_plan.windows else ""
             yield send_progress(
                 ProgressStep.COMPLETED,
                 100,
@@ -328,13 +390,14 @@ async def admin_create_instance_async(
             )
 
         except Exception as e:
-            error_detail = str(e)
+            raw_error = str(e)
+            error_detail = PASSWORD_PROVISIONING_ERROR if req.admin_pass is not None else raw_error
             logger.error("관리자 인스턴스 생성 실패, rollback 시작: %s", error_detail)
 
             import re as _re
 
             if not server_id:
-                _m = _re.search(r"Server:([0-9a-f-]{36})", error_detail)
+                _m = _re.search(r"Server:([0-9a-f-]{36})", raw_error)
                 if _m:
                     server_id = _m.group(1)
 
@@ -352,6 +415,9 @@ async def admin_create_instance_async(
                             error_detail = fault_msg
                 except Exception:
                     pass
+
+            if req.admin_pass is not None:
+                error_detail = PASSWORD_PROVISIONING_ERROR
 
             yield send_progress(
                 ProgressStep.FAILED,
@@ -376,12 +442,13 @@ async def admin_create_instance_async(
                 [],
                 [],
                 floating_ip_id,
+                safe_error_message=PASSWORD_PROVISIONING_ERROR if req.admin_pass is not None else None,
             )
         finally:
             try:
                 await release_admission(admission)
             except Exception:
-                logger.warning("GPU quota reservation release failed", exc_info=True)
+                logger.warning("GPU quota reservation release failed", exc_info=req.admin_pass is None)
             try:
                 await asyncio.to_thread(conn.close)
             except Exception:

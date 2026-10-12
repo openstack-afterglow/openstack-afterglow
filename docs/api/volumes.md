@@ -192,13 +192,13 @@ Cinder 블록 스토리지 볼륨, 백업, 스냅샷을 관리합니다.
 
 볼륨 용량을 확장합니다. **속도 제한: 분당 10회**
 
-Ceph 온라인 확장을 지원하므로 `available` 볼륨은 물론 **`in-use`(인스턴스에 부착된) 볼륨도 무중단으로 확장**할 수 있습니다. 축소는 지원하지 않습니다 — 새 크기는 반드시 현재 크기보다 커야 합니다. 확장 전 소유권을 검증합니다.
+프로젝트 API는 available/unattached 볼륨 또는 모든 attachment의 Nova 서버가 같은 effective project 소유이며 `SHUTOFF`, 실제 power state `4`, 명시적 idle task, 상호 일치하는 volume attachment일 때만 확장합니다. 시스템 관리자도 이 프로젝트 API의 소유권을 우회하지 않습니다. 마지막 Nova 확인 뒤 Cinder owner/status/size/attachments를 다시 확인하고 변경이 있으면 거부합니다. 별도 global admin endpoint의 계약은 변경하지 않습니다.
 
 | 파라미터 | 위치 | 타입 | 필수 | 설명 |
 |----------|------|------|------|------|
 | `volume_id` | path | string | 예 | 볼륨 UUID |
 
-**요청 본문** — `ExtendVolumeRequest`
+**요청 본문** — `ProjectExtendVolumeRequest`
 
 ```json
 {
@@ -208,9 +208,9 @@ Ceph 온라인 확장을 지원하므로 `available` 볼륨은 물론 **`in-use`
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |------|------|------|------|------|
-| `new_size` | integer | 예 | `> 0`, 현재 크기보다 커야 함 | 새 용량 (GB) |
+| `new_size` | integer | 예 | strict integer, `1..2147483647`, 현재 크기보다 커야 함 | 새 용량 (GB). bool·문자열·소수·축소를 거부 |
 
-**응답 (200 OK)** — 확장 후 `VolumeInfo` 객체
+**응답 (200 OK)** — 요청 뒤 제공자에서 다시 읽은 실제 `VolumeInfo`. 비동기 `extending` 중이면 이전 크기를 반환할 수 있으며 요청한 크기로 낙관적으로 덮어쓰지 않습니다. 접수는 capacity 확장 완료나 guest 파일시스템 성장 증거가 아닙니다. 게스트 재부팅/재검색과 파티션·LVM·파일시스템 확장은 OS/도구 구성에 맞게 별도 확인해야 하며 API는 guest 작업을 실행하지 않습니다. 인스턴스의 root/data 볼륨 행과 기존 볼륨 목록·상세는 동일한 scoped modal을 사용합니다.
 
 **오류**
 
@@ -218,6 +218,10 @@ Ceph 온라인 확장을 지원하므로 `available` 볼륨은 물론 **`in-use`
 |------|------|
 | `400` | 새 크기가 현재 크기 이하이거나 Cinder 확장 실패 |
 | `404` | 볼륨이 없거나 소유 프로젝트가 아님 |
+| `403` | 프로젝트 쓰기 권한이 없음 |
+| `409` | 연결·상태·전원·task·상호 연결을 확인할 수 없거나 최종 상태가 변경됨 |
+| `422` | 엄격한 양의 정수·범위 검증 실패 |
+| `502` | provider 조회 실패 또는 접수 뒤 실제 결과 확인 불가 |
 | `429` | 분당 확장 한도 초과 |
 
 ---
@@ -414,6 +418,10 @@ Ceph 온라인 확장을 지원하므로 `available` 볼륨은 물론 **`in-use`
 
 새 볼륨 백업을 생성합니다. 원본 볼륨의 소유권을 검증합니다.
 
+사용 중(`in-use`)인 볼륨은 `force: true`를 명시해야 합니다. 서버가 소유권과 현재 Cinder 상태를 확인하며, 강제 선택이 없으면 Cinder 생성 요청 전에 `400`과 활성화 안내를 반환합니다. 볼륨 목록/상세 및 백업 목록의 생성창은 일관성 경고와 기본 미선택 체크박스를 표시하고 선택해야 제출할 수 있습니다. 원본을 바꾸거나 창을 다시 열면 동의가 초기화되며, `available` 볼륨은 강제하지 않습니다.
+
+`force`는 연결 중 백업을 허용하는 옵션이지 원본의 분리·삭제·덮어쓰기가 아닙니다. 쓰기 중 복사한 데이터는 일관성이 깨질 수 있으며 DB·애플리케이션 일관성과 복구 가능성을 보장하지 않습니다. Force 옵션 자체를 crash-consistent snapshot의 보장으로 해석하지 않으며 백업 I/O가 성능에 영향을 줄 수 있습니다. 필요한 경우 쓰기를 정지/flush하거나 서비스별 백업 절차를 수행하고 별도 복원 검증을 합니다. VM을 정지해도 attachment가 남아 `in-use`이면 강제 선택이 필요합니다. 활동 기록의 기존 `extra`에 요청한 `force` 값을 남깁니다. 수동 강제 선택은 기존 자동 백업 정책으로 승계하지 않습니다.
+
 **요청 본문** — `CreateBackupRequest`
 
 ```json
@@ -421,7 +429,8 @@ Ceph 온라인 확장을 지원하므로 `available` 볼륨은 물론 **`in-use`
   "volume_id": "uuid-string (필수)",
   "name": "string (필수)",
   "description": "string (선택)",
-  "incremental": false
+  "incremental": false,
+  "force": false
 }
 ```
 
@@ -431,6 +440,7 @@ Ceph 온라인 확장을 지원하므로 `available` 볼륨은 물론 **`in-use`
 | `name` | string | 예 | 백업 이름 |
 | `description` | string | 아니오 | 설명 |
 | `incremental` | boolean | 아니오 | 증분 백업 여부 (기본값: `false`) |
+| `force` | boolean | 아니오 | 연결 중 백업의 명시적 허용. `in-use`이면 `true` 필수, 기본값 `false` |
 
 **응답 (201 Created)**
 
@@ -447,8 +457,9 @@ Ceph 온라인 확장을 지원하므로 `available` 볼륨은 물론 **`in-use`
 
 | 상태 | 원인 |
 |------|------|
+| `400` | `in-use` 볼륨인데 강제 백업을 명시적으로 활성화하지 않음 |
 | `404` | 원본 볼륨이 없거나 소유 프로젝트가 아님 |
-| `4xx/5xx` | Manila/Cinder API 오류를 상태 코드와 메시지 그대로 전달 |
+| `4xx/5xx` | 하위 Cinder API 오류 |
 | `500` | 백업 생성 실패 |
 
 ### POST /api/v1/volumes/backups/{backup_id}/restore

@@ -13,14 +13,18 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import ipaddress
+import json
 import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Literal
+from uuid import UUID
 
 if TYPE_CHECKING:
     import openstack
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from openstack.exceptions import ConflictException, HttpException
 from pydantic import BaseModel, field_validator
@@ -67,6 +71,7 @@ from app.services.cache import (
     ttl_static,
 )
 from app.services.cache import invalidation as cache_invalidation
+from app.services.instance_password import PASSWORD_PROVISIONING_ERROR, preflight_password
 from app.services.resource_policies import ResourcePolicyValidationError
 from app.services.resource_policy_store import ResourcePolicyStorageUnavailable
 from app.services.ssh_access import github_ssh_metadata
@@ -283,6 +288,18 @@ async def lookup_github_ssh_user(
         raise _github_http_exception(exc, not_found_status=404) from exc
 
 
+def _resolve_instance_detail(server, conn) -> dict:
+    detail = _resolve_names([server], conn)[0]
+    try:
+        boot_metadata = nova.get_server_image_meta(conn, server.id)
+    except Exception:
+        boot_metadata = {}
+    detail["os_type"] = boot_metadata.get("os_type")
+    if not detail.get("image_id"):
+        detail["image_name"] = boot_metadata.get("image_name") or "볼륨에서 부팅"
+    return detail
+
+
 @router.get("/{instance_id}", response_model=InstanceInfo)
 async def get_instance(
     instance_id: str,
@@ -300,7 +317,7 @@ async def get_instance(
         return await cached_call(
             f"afterglow:nova:{pid}:instance:{instance_id}",
             ttl_fast(),
-            lambda: _resolve_names([server], conn)[0],
+            lambda: _resolve_instance_detail(server, conn),
         )
     except Exception:
         raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다")
@@ -457,7 +474,8 @@ async def create_instance(
 ):
     """동기식 인스턴스 생성 (기존 방식)."""
     settings = get_settings()
-    req = await _verify_github_ssh(req, token_info=token_info)
+    if req.admin_pass is None:
+        req = await _verify_github_ssh(req, token_info=token_info)
 
     from app.services.instance_names import ensure_unique_instance_name
 
@@ -465,12 +483,6 @@ async def create_instance(
         req = req.model_copy(update={"name": await asyncio.to_thread(ensure_unique_instance_name, conn, req.name)})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    req, compute_availability_zone, volume_availability_zone = await _resolve_create_placement(
-        req,
-        conn,
-        settings,
-    )
 
     from app.services.flavor_eligibility import (
         FlavorEligibilityDenied,
@@ -480,6 +492,14 @@ async def create_instance(
     )
     from app.services.gpu_quota import GpuQuotaDenied, GpuQuotaUnavailable
 
+    password_plan = await asyncio.to_thread(preflight_password, conn, req)
+    if req.admin_pass is not None:
+        req = await _verify_github_ssh(req, token_info=token_info)
+    req, compute_availability_zone, volume_availability_zone = await _resolve_create_placement(
+        req,
+        conn,
+        settings,
+    )
     flavors = await asyncio.to_thread(nova.list_flavors, conn)
     flavor = next((f for f in flavors if f.id == req.flavor_id), None)
     if flavor is None:
@@ -541,7 +561,7 @@ async def create_instance(
         # ------------------------------------------------------------------
         project_id = conn._afterglow_project_id
         userdata = None
-        if gpu_available or data_mounts_info:
+        if not password_plan.windows and (gpu_available or data_mounts_info):
             userdata = cloudinit.generate_userdata(
                 libraries=[],
                 strategy="none",
@@ -553,7 +573,8 @@ async def create_instance(
                 github_username=req.github_username,
             )
 
-        userdata = cloudinit.compose_userdata(userdata, req.userdata, req.github_username)
+        if not password_plan.windows:
+            userdata = cloudinit.compose_userdata(userdata, req.userdata, req.github_username)
 
         # ------------------------------------------------------------------
         # 5. Nova: 서버 생성
@@ -581,7 +602,8 @@ async def create_instance(
             boot_volume_id=boot_volume_id,
             userdata=userdata,
             key_name=req.key_name,
-            admin_pass=req.admin_pass,
+            admin_pass=password_plan.nova_admin_pass(req.admin_pass),
+            config_drive=password_plan.config_drive,
             availability_zone=compute_availability_zone,
             metadata=meta,
             delete_boot_volume_on_termination=(
@@ -602,7 +624,8 @@ async def create_instance(
                     floating_ip_id = fip.id
                     await asyncio.to_thread(neutron.associate_floating_ip, conn, fip.id, server_id)
 
-        await _record_cloud_init_history_best_effort(token_info, req.userdata)
+        if not password_plan.windows:
+            await _record_cloud_init_history_best_effort(token_info, req.userdata)
         await rec(
             token_info,
             conn,
@@ -616,11 +639,10 @@ async def create_instance(
         await cache_invalidation.invalidate_mutation_count("nova", project_id)
         return server
 
-    except HTTPException:
-        raise
     except Exception as e:
+        if isinstance(e, HTTPException) and req.admin_pass is None:
+            raise
         error_detail = str(e)
-        logger.error(f"인스턴스 생성 실패, rollback 시작: {error_detail}")
 
         import re as _re
 
@@ -643,6 +665,9 @@ async def create_instance(
                         error_detail = fault_msg
             except Exception:
                 pass
+        if req.admin_pass is not None:
+            error_detail = PASSWORD_PROVISIONING_ERROR
+        logger.error("인스턴스 생성 실패, rollback 시작: %s", error_detail)
 
         await instance_orch.rollback_instance(
             conn,
@@ -652,12 +677,17 @@ async def create_instance(
             [],
             created_access_ids,
             floating_ip_id,
+            safe_error_message=PASSWORD_PROVISIONING_ERROR if req.admin_pass is not None else None,
         )
         is_admin = token_info.get("is_system_admin", False)
         detail = (
-            f"인스턴스 생성 실패: {error_detail}"
-            if is_admin
-            else "인스턴스 생성에 실패했습니다. 관리자에게 문의하세요."
+            PASSWORD_PROVISIONING_ERROR
+            if req.admin_pass is not None
+            else (
+                f"인스턴스 생성 실패: {error_detail}"
+                if is_admin
+                else "인스턴스 생성에 실패했습니다. 관리자에게 문의하세요."
+            )
         )
         await rec(
             token_info,
@@ -668,7 +698,11 @@ async def create_instance(
             resource_name=req.name,
             error_message=error_detail[:500],
         )
-        raise HTTPException(status_code=500, detail=detail)
+        raise HTTPException(
+            status_code=e.status_code if isinstance(e, HTTPException) else 500,
+            detail=detail,
+            headers=e.headers if isinstance(e, HTTPException) else None,
+        ) from None
     finally:
         try:
             await release_admission(admission)
@@ -684,19 +718,14 @@ async def create_instance_async(
 ):
     """SSE로 진행 상황을 스트리밍하는 비동기 인스턴스 생성."""
     settings = get_settings()
-    req = await _verify_github_ssh(req, token_info=token_info)
+    if req.admin_pass is None:
+        req = await _verify_github_ssh(req, token_info=token_info)
     from app.services.instance_names import ensure_unique_instance_name
 
     try:
         req = req.model_copy(update={"name": await asyncio.to_thread(ensure_unique_instance_name, conn, req.name)})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    req, compute_availability_zone, volume_availability_zone = await _resolve_create_placement(
-        req,
-        conn,
-        settings,
-    )
 
     from app.services.flavor_eligibility import (
         FlavorEligibilityDenied,
@@ -706,6 +735,14 @@ async def create_instance_async(
     )
     from app.services.gpu_quota import GpuQuotaDenied, GpuQuotaUnavailable
 
+    password_plan = await asyncio.to_thread(preflight_password, conn, req)
+    if req.admin_pass is not None:
+        req = await _verify_github_ssh(req, token_info=token_info)
+    req, compute_availability_zone, volume_availability_zone = await _resolve_create_placement(
+        req,
+        conn,
+        settings,
+    )
     sse_flavors = await asyncio.to_thread(nova.list_flavors, conn)
     sse_flavor = next((flavor for flavor in sse_flavors if flavor.id == req.flavor_id), None)
     if sse_flavor is None:
@@ -777,8 +814,8 @@ async def create_instance_async(
                 )
                 yield send_progress(ProgressStep.BOOT_VOLUME_CREATING, 45, "부트 볼륨 생성 완료")
 
-            # cloud-init for GPU setup and ordinary data mounts.
-            if gpu_available or data_mounts_info:
+            # Linux GPU/data-mount bootstrap must never run for Windows password provisioning.
+            if not password_plan.windows and (gpu_available or data_mounts_info):
                 yield send_progress(ProgressStep.USERDATA_GENERATING, 60, "cloud-init 생성 중...")
                 userdata = cloudinit.generate_userdata(
                     libraries=[],
@@ -792,7 +829,8 @@ async def create_instance_async(
                 )
                 yield send_progress(ProgressStep.USERDATA_GENERATING, 65, "cloud-init 생성 완료")
 
-            userdata = cloudinit.compose_userdata(userdata, req.userdata, req.github_username)
+            if not password_plan.windows:
+                userdata = cloudinit.compose_userdata(userdata, req.userdata, req.github_username)
 
             # Step 5: Nova server (65-95%)
             yield send_progress(ProgressStep.SERVER_CREATING, 65, "Nova 서버 생성 중...")
@@ -819,7 +857,8 @@ async def create_instance_async(
                 boot_volume_id=boot_volume_id,
                 userdata=userdata,
                 key_name=req.key_name,
-                admin_pass=req.admin_pass,
+                admin_pass=password_plan.nova_admin_pass(req.admin_pass),
+                config_drive=password_plan.config_drive,
                 availability_zone=compute_availability_zone,
                 metadata=meta,
                 delete_boot_volume_on_termination=(
@@ -871,7 +910,8 @@ async def create_instance_async(
                         )
 
             # Completed
-            await _record_cloud_init_history_best_effort(token_info, req.userdata)
+            if not password_plan.windows:
+                await _record_cloud_init_history_best_effort(token_info, req.userdata)
             yield send_progress(ProgressStep.COMPLETED, 100, "인스턴스 생성 완료", instance_id=server_id)
             await rec(
                 token_info,
@@ -888,7 +928,6 @@ async def create_instance_async(
 
         except Exception as e:
             error_detail = str(e)
-            logger.error(f"인스턴스 생성 실패, rollback 시작: {error_detail}")
 
             # wait_for_server 실패 시 server_id가 미설정 — 예외 메시지에서 추출
             import re as _re
@@ -913,20 +952,27 @@ async def create_instance_async(
                             error_detail = fault_msg
                 except Exception:
                     pass
+            if req.admin_pass is not None:
+                error_detail = PASSWORD_PROVISIONING_ERROR
+            logger.error("인스턴스 생성 실패, rollback 시작: %s", error_detail)
 
             # 비관리자에게는 상세 에러 숨김
             is_admin = token_info.get("is_system_admin", False)
             user_message = (
-                f"인스턴스 생성 실패: {error_detail}"
-                if is_admin
-                else "인스턴스 생성에 실패했습니다. 관리자에게 문의하세요."
+                PASSWORD_PROVISIONING_ERROR
+                if req.admin_pass is not None
+                else (
+                    f"인스턴스 생성 실패: {error_detail}"
+                    if is_admin
+                    else "인스턴스 생성에 실패했습니다. 관리자에게 문의하세요."
+                )
             )
 
             yield send_progress(
                 ProgressStep.FAILED,
                 0,
                 user_message,
-                error=error_detail if is_admin else "인스턴스 생성 실패",
+                error=error_detail if is_admin or req.admin_pass is not None else "인스턴스 생성 실패",
             )
             await rec(
                 token_info,
@@ -945,6 +991,7 @@ async def create_instance_async(
                 [],
                 created_access_ids,
                 floating_ip_id,
+                safe_error_message=PASSWORD_PROVISIONING_ERROR if req.admin_pass is not None else None,
             )
         finally:
             try:
@@ -1032,6 +1079,11 @@ async def delete_instance(
         raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다")
     assert_instance_owner(server, conn, token_info)
 
+    # Revoke only proven instance-managed grants before deleting their tracking.
+    for share_id, grant in _storage_grants(server).items():
+        if grant["m"]:
+            await _revoke_storage_grant(conn, instance_id, share_id, grant, token_info)
+
     upper_volume_id = server.union_upper_volume_id
     file_storage_ids = server.union_share_ids
     strategy = server.union_strategy
@@ -1100,22 +1152,6 @@ async def delete_instance(
                     logger.warning(f"prebuilt cephx rule 정리 실패 (share={file_storage_id}): {ex}")
         except Exception as ex:
             logger.warning(f"prebuilt access rule 정리 중 svc_conn 획득 실패: {ex}")
-
-    # data mount CephX access rule 정리 (best-effort, user conn 사용)
-    _data_share_meta = _data_share_metadata_value(server)
-    if _data_share_meta and _data_share_meta != "none":
-        _instance_name = server.name
-        for _fsi in [s for s in _data_share_meta.split(",") if s]:
-            try:
-                _rules = await asyncio.to_thread(manila.list_access_rules, conn, _fsi)
-                for _r in _rules:
-                    _at = _r.get("access_to", "")
-                    if _r.get("access_type") == "cephx" and (
-                        _at.startswith(f"data-ro-{_instance_name}-") or _at.startswith(f"data-rw-{_instance_name}-")
-                    ):
-                        await asyncio.to_thread(manila.revoke_access_rule, conn, _fsi, _r["id"])
-            except Exception as _ex:
-                logger.warning(f"data mount cephx rule 정리 실패 (share={_fsi}): {_ex}")
 
     # Floating IP 정리 (해제 + 삭제)
     try:
@@ -1511,6 +1547,10 @@ async def _bulk_delete_one(
     pid: str,
 ) -> None:
     """bulk-action DELETE용 인스턴스 삭제 (단건 delete_instance와 동일한 정리 수행)."""
+    for share_id, grant in _storage_grants(server).items():
+        if grant["m"]:
+            await _revoke_storage_grant(conn, instance_id, share_id, grant, token_info)
+
     upper_volume_id = server.union_upper_volume_id
     file_storage_ids = server.union_share_ids
     strategy = server.union_strategy
@@ -1573,21 +1613,6 @@ async def _bulk_delete_one(
                     pass
         except Exception:
             pass
-
-    # data mount CephX access rule 정리 (best-effort)
-    _data_meta = _data_share_metadata_value(server)
-    if _data_meta and _data_meta != "none":
-        for _fsi in [s for s in _data_meta.split(",") if s]:
-            try:
-                rules = await asyncio.to_thread(manila.list_access_rules, conn, _fsi)
-                for r in rules:
-                    at = r.get("access_to", "")
-                    if r.get("access_type") == "cephx" and (
-                        at.startswith(f"data-ro-{server.name}-") or at.startswith(f"data-rw-{server.name}-")
-                    ):
-                        await asyncio.to_thread(manila.revoke_access_rule, conn, _fsi, r["id"])
-            except Exception:
-                pass
 
     # Floating IP 정리 (best-effort)
     try:
@@ -2040,115 +2065,225 @@ async def set_admin_password(
 
 
 # ---------------------------------------------------------------------------
-# 파일 스토리지 연결 (실행 중 VM) — storage-attachments
+# Manila access authorization only — no guest mounting or command execution.
 # ---------------------------------------------------------------------------
+
+_STORAGE_GRANT_PREFIX = "afterglow_share_grant_"
+_STORAGE_RULE_OWNER = "afterglow_instance_id"
+
+
+def _storage_grant_key(share_id: str) -> str:
+    return _STORAGE_GRANT_PREFIX + hashlib.sha256(share_id.encode()).hexdigest()
+
+
+def _storage_grants(server) -> dict[str, dict]:
+    grants = {}
+    for key, value in (server.metadata or {}).items():
+        if not key.startswith(_STORAGE_GRANT_PREFIX):
+            continue
+        try:
+            grant = json.loads(value)
+            if (
+                not isinstance(grant, dict)
+                or set(grant) != {"s", "i", "t", "a", "l", "m"}
+                or not all(isinstance(grant[k], str) and grant[k] for k in ("s", "i", "t", "a", "l"))
+                or not isinstance(grant["m"], bool)
+                or grant["t"] not in {"ip", "cephx"}
+                or grant["l"] not in {"ro", "rw"}
+                or key != _storage_grant_key(grant["s"])
+            ):
+                raise ValueError
+            grants[grant["s"]] = grant
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=409, detail="스토리지 접근 연결 메타데이터가 올바르지 않습니다") from None
+    return grants
+
+
+async def _storage_server(conn, instance_id: str, token_info: dict):
+    try:
+        server = await asyncio.to_thread(nova.get_server, conn, instance_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다") from None
+    assert_project_resource_owner(server, conn, token_info, not_found_detail="인스턴스를 찾을 수 없습니다")
+    return server
+
+
+async def _storage_share(conn, share_id: str, token_info: dict):
+    try:
+        share = await asyncio.to_thread(manila.get_file_storage, conn, share_id)
+    except Exception:
+        raise HTTPException(status_code=502, detail="파일 스토리지를 조회할 수 없습니다") from None
+    # Public visibility is not share management authority.
+    assert_project_resource_owner(share, conn, token_info, not_found_detail="파일 스토리지 관리 권한이 없습니다")
+    if share.share_proto not in {"NFS", "CEPHFS"}:
+        raise HTTPException(status_code=422, detail="NFS 또는 CephFS 접근 규칙만 지원합니다")
+    return share
+
+
+def _storage_target(server, instance_id: str, share_proto: str, fixed_ip: str | None) -> tuple[str, str]:
+    if share_proto == "CEPHFS":
+        if fixed_ip:
+            raise HTTPException(status_code=422, detail="CephFS는 fixed IP 대신 인스턴스 CephX ID를 사용합니다")
+        try:
+            return "cephx", "afterglow-" + UUID(instance_id).hex
+        except ValueError:
+            raise HTTPException(status_code=422, detail="인스턴스 UUID가 올바르지 않습니다") from None
+    addresses = set()
+    for address in server.ip_addresses:
+        if address.type == "fixed":
+            try:
+                addresses.add(str(ipaddress.ip_address(address.addr)))
+            except ValueError:
+                continue
+    if fixed_ip is None:
+        if len(addresses) != 1:
+            raise HTTPException(status_code=409, detail="인스턴스의 정확한 fixed IP를 선택하세요")
+        return "ip", next(iter(addresses))
+    try:
+        selected = str(ipaddress.ip_address(fixed_ip))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="CIDR이 아닌 정확한 fixed IP를 선택하세요") from None
+    if selected not in addresses:
+        raise HTTPException(status_code=409, detail="선택한 IP가 현재 인스턴스의 fixed IP가 아닙니다")
+    return "ip", selected
+
+
+def _storage_rule_matches(rule: dict, grant: dict, instance_id: str) -> bool:
+    return (
+        rule.get("id") == grant["i"]
+        and rule.get("access_type") == grant["t"]
+        and rule.get("access_to") == grant["a"]
+        and rule.get("access_level") == grant["l"]
+        and (not grant["m"] or (rule.get("metadata") or {}).get(_STORAGE_RULE_OWNER) == instance_id)
+    )
+
+
+async def _storage_rules(conn, share_id: str) -> list[dict]:
+    try:
+        return await asyncio.to_thread(manila.list_access_rules, conn, share_id, strict=True)
+    except Exception:
+        raise HTTPException(status_code=502, detail="스토리지 접근 규칙을 조회할 수 없습니다") from None
+
+
+async def _storage_connection_info(
+    conn, share, grant: dict | None, rule: dict | None, *, association_state: str | None = None
+):
+    network_id = share.share_network_id
+    network = None
+    if network_id:
+        network = await asyncio.to_thread(manila.get_share_network, conn, network_id)
+    # Whitelist inspectable fields. Never serialize a provider access-rule dict.
+    return {
+        "file_storage_id": share.id,
+        "name": share.name,
+        "share_proto": share.share_proto,
+        "status": share.status,
+        "access_id": rule.get("id") if rule else (grant["i"] if grant else None),
+        "access_type": rule.get("access_type") if rule else (grant["t"] if grant else None),
+        "access_to": rule.get("access_to") if rule else (grant["a"] if grant else None),
+        "access_level": rule.get("access_level") if rule else (grant["l"] if grant else None),
+        "state": rule.get("state", "unknown") if rule else ("missing" if grant else "untracked"),
+        "association_state": association_state or ("tracked" if grant else "untracked"),
+        "managed": bool(grant and grant["m"]),
+        "exports": list(share.export_locations),
+        "share_network_id": network_id,
+        "share_network": network,
+    }
+
+
+async def _invalidate_storage_instance(conn, instance_id: str) -> None:
+    project_id = conn._afterglow_project_id
+    await invalidate(f"afterglow:nova:{project_id}:instance:{instance_id}")
+    await cache_invalidation.invalidate_mutation_count("nova", project_id)
 
 
 @router.post("/{instance_id}/storage-attachments", response_model=dict)
 async def attach_storage(
     instance_id: str,
     req: StorageAttachRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    response: Response,
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
     token_info: dict = Depends(get_token_info),
 ):
-    """실행 중인 VM에 Manila 파일 스토리지 접근 규칙을 부여하고 마운트 명령을 반환한다."""
-    import shlex as _shlex
-
-    try:
-        server = await asyncio.to_thread(nova.get_server, conn, instance_id)
-    except Exception:
-        raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다")
-    assert_instance_owner(server, conn, token_info)
-
-    share = await asyncio.to_thread(manila.get_file_storage, conn, req.file_storage_id)
-    project_id = conn._afterglow_project_id
-    if (share.project_id or "") != project_id and not share.is_public:
-        raise HTTPException(status_code=403, detail="파일 스토리지 접근 권한이 없습니다.")
+    """Authorize an exact Manila target; acceptance is not an active rule or guest mount."""
+    require_project_write(token_info)
+    response.headers["Cache-Control"] = "no-store"
+    server = await _storage_server(conn, instance_id, token_info)
+    share = await _storage_share(conn, req.file_storage_id, token_info)
     if share.status != "available":
-        raise HTTPException(status_code=409, detail=f"파일 스토리지가 available 상태가 아닙니다: {share.status}")
-
-    access_level = "ro" if req.read_only else "rw"
-    settings = get_settings()
-
-    if share.share_proto == "NFS":
-        fixed_ip = next((ip.addr for ip in server.ip_addresses if ip.type == "fixed"), None)
-        if not fixed_ip:
-            raise HTTPException(
-                status_code=409, detail="VM의 fixed IP를 찾을 수 없습니다. VM이 실행 중인지 확인하세요."
-            )
-
-        rule = await asyncio.to_thread(
-            manila.ensure_nfs_access_rule,
-            conn,
-            share.id,
-            fixed_ip,
-            access_level,
-            settings.manila_nfs_root_squash,
-            settings.manila_nfs_sec_flavor,
-        )
-
-        nfs_export = share.nfs_export_location
-        if not nfs_export:
-            locs = await asyncio.to_thread(manila.get_export_locations, conn, share.id)
-            nfs_export = locs[0] if locs else ""
-
-        nfs_base = "hard,intr,noatime,nosuid,nodev,_netdev,timeo=10,retrans=3"
-        mount_opts = f"ro,{nfs_base}" if req.read_only else nfs_base
-        mount_command = (
-            f"sudo mkdir -p {_shlex.quote(req.mount_point)} && "
-            f"sudo mount -t nfs -o {mount_opts} {_shlex.quote(nfs_export)} {_shlex.quote(req.mount_point)}"
-        )
-
-        await asyncio.to_thread(
-            conn.compute.set_server_metadata,
-            instance_id,
-            _merge_data_share_meta(server, share.id),
-        )
-        await invalidate(f"afterglow:nova:{project_id}:instance:{instance_id}")
-        await cache_invalidation.invalidate_mutation_count("nova", project_id)
-
-        return {
-            "file_storage_id": share.id,
-            "share_proto": "NFS",
-            "mount_command": mount_command,
-            "keyring_file": None,
-            "keyring_path": None,
-            "access_id": rule["access_id"],
-        }
-
+        raise HTTPException(status_code=409, detail="파일 스토리지가 available 상태가 아닙니다")
+    access_type, access_to = _storage_target(server, instance_id, share.share_proto, req.fixed_ip)
+    level = "ro" if req.read_only else "rw"
+    grant = _storage_grants(server).get(share.id)
+    rules = await _storage_rules(conn, share.id)
+    created = False
+    if grant:
+        if (grant["t"], grant["a"], grant["l"]) != (access_type, access_to, level):
+            raise HTTPException(status_code=409, detail="기존 접근 규칙의 대상 또는 권한을 변경할 수 없습니다")
+        rule = next((r for r in rules if r.get("id") == grant["i"]), None)
+        if not rule or not _storage_rule_matches(rule, grant, instance_id):
+            raise HTTPException(status_code=409, detail="추적 중인 접근 규칙이 없거나 변경되었습니다")
     else:
-        cephx_id = f"data-{access_level}-{server.name}-{share.id[:8]}"
-        rule = await asyncio.to_thread(manila.create_access_rule, conn, share.id, cephx_id, access_level)
-
-        locs = await asyncio.to_thread(manila.get_export_locations, conn, share.id)
-        export_path = locs[0] if locs else ""
-        keyring_path = f"/etc/ceph/ceph.client.{cephx_id}.keyring"
-        keyring_content = f"[client.{cephx_id}]\n    key = {rule['access_key']}\n"
-        ceph_opts = f"name={cephx_id},secretfile={keyring_path},_netdev"
-        if req.read_only:
-            ceph_opts += ",ro"
-        mount_command = (
-            f"sudo mkdir -p {_shlex.quote(req.mount_point)} && "
-            f"sudo bash -c 'cat > {_shlex.quote(keyring_path)} << EOF\n{keyring_content}EOF' && "
-            f"sudo mount -t ceph {_shlex.quote(export_path)} {_shlex.quote(req.mount_point)} -o {_shlex.quote(ceph_opts)}"
-        )
-
-        await asyncio.to_thread(
-            conn.compute.set_server_metadata,
-            instance_id,
-            _merge_data_share_meta(server, share.id),
-        )
-        await invalidate(f"afterglow:nova:{project_id}:instance:{instance_id}")
-        await cache_invalidation.invalidate_mutation_count("nova", project_id)
-
-        return {
-            "file_storage_id": share.id,
-            "share_proto": "CEPHFS",
-            "mount_command": mount_command,
-            "keyring_file": keyring_content,
-            "keyring_path": keyring_path,
-            "access_id": rule["access_id"],
-        }
+        # Reserve a UUID-sized provider rule ID before any allow mutation.
+        candidate = {"s": share.id, "i": "0" * 36, "t": access_type, "a": access_to, "l": level, "m": True}
+        if len(json.dumps(candidate, separators=(",", ":"), ensure_ascii=True).encode()) > 256:
+            raise HTTPException(status_code=422, detail="접근 연결이 Nova 메타데이터 제한을 초과합니다")
+        matching = [r for r in rules if r.get("access_type") == access_type and r.get("access_to") == access_to]
+        if matching:
+            if len(matching) != 1 or matching[0].get("access_level") != level:
+                raise HTTPException(status_code=409, detail="기존 접근 규칙의 권한이 요청과 일치하지 않습니다")
+            rule = matching[0]
+            if (rule.get("metadata") or {}).get(_STORAGE_RULE_OWNER):
+                raise HTTPException(status_code=409, detail="이 접근 규칙은 다른 연결에서 관리됩니다")
+        else:
+            metadata = {_STORAGE_RULE_OWNER: instance_id}
+            if access_type == "ip":
+                settings = get_settings()
+                metadata.update(
+                    manila._build_nfs_access_metadata(
+                        settings.manila_nfs_root_squash,
+                        settings.manila_nfs_sec_flavor,
+                    )
+                )
+            try:
+                rule = await asyncio.to_thread(
+                    manila.create_access_rule,
+                    conn,
+                    share.id,
+                    access_to,
+                    level,
+                    access_type=access_type,
+                    metadata=metadata,
+                    wait_for_key=False,
+                )
+            except Exception:
+                raise HTTPException(
+                    status_code=502, detail="스토리지 접근 허용 요청 실패; 제공자 상태를 확인하세요"
+                ) from None
+            created = True
+        grant = {"s": share.id, "i": rule["id"], "t": access_type, "a": access_to, "l": level, "m": created}
+        value = json.dumps(grant, separators=(",", ":"), ensure_ascii=True)
+        if len(value.encode()) > 256:
+            raise HTTPException(status_code=502, detail="접근 규칙 연결이 Nova 메타데이터 제한을 초과합니다")
+        try:
+            await asyncio.to_thread(
+                conn.compute.set_server_metadata, instance_id, **{_storage_grant_key(share.id): value}
+            )
+        except Exception:
+            # Do not report success or delete on an ambiguous metadata write failure.
+            raise HTTPException(
+                status_code=502, detail="접근 규칙 연결 기록 실패; 제공자 규칙과 메타데이터를 확인하세요"
+            ) from None
+    await _invalidate_storage_instance(conn, instance_id)
+    try:
+        result = await _storage_connection_info(conn, share, grant, rule)
+    except Exception:
+        raise HTTPException(
+            status_code=502, detail="접근 규칙은 요청되었으나 연결 정보를 조회하지 못했습니다"
+        ) from None
+    if created and access_type == "cephx" and rule.get("state") == "active" and rule.get("access_key"):
+        result["secret"] = {"type": "cephx_key", "value": rule["access_key"]}
+    return result
 
 
 @router.get("/{instance_id}/storage-attachments", response_model=list)
@@ -2157,95 +2292,126 @@ async def list_storage_attachments(
     conn: openstack.connection.Connection = Depends(get_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
-    """VM에 연결된 데이터 파일 스토리지 목록을 반환한다."""
-    try:
-        server = await asyncio.to_thread(nova.get_server, conn, instance_id)
-    except Exception:
-        raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다")
-    assert_instance_owner(server, conn, token_info)
-
-    meta_val = _data_share_metadata_value(server)
-    if not meta_val or meta_val == "none":
-        return []
-
+    """Inspect actual rule state without access keys; legacy mount metadata is untracked."""
+    server = await _storage_server(conn, instance_id, token_info)
+    grants = _storage_grants(server)
+    legacy = _data_share_metadata_value(server)
+    share_ids = list(dict.fromkeys([*grants, *(s for s in legacy.split(",") if s and s != "none")]))
     result = []
-    for fsi in [s for s in meta_val.split(",") if s]:
+    for share_id in share_ids:
+        grant = grants.get(share_id)
         try:
-            share = await asyncio.to_thread(manila.get_file_storage, conn, fsi)
+            share = await _storage_share(conn, share_id, token_info)
+            rules = await _storage_rules(conn, share_id) if grant else []
+            rule = next((r for r in rules if r.get("id") == grant["i"]), None) if grant else None
+            mismatch = rule and not _storage_rule_matches(rule, grant, instance_id)
             result.append(
-                {
-                    "file_storage_id": share.id,
-                    "name": share.name,
-                    "share_proto": share.share_proto,
-                    "status": share.status,
-                }
+                await _storage_connection_info(
+                    conn, share, grant, rule, association_state="mismatch" if mismatch else None
+                )
             )
         except Exception:
-            result.append({"file_storage_id": fsi, "name": None, "share_proto": None, "status": "unknown"})
-
+            result.append(
+                {
+                    "file_storage_id": share_id,
+                    "name": None,
+                    "share_proto": None,
+                    "status": "unknown",
+                    "access_id": grant["i"] if grant else None,
+                    "access_type": grant["t"] if grant else None,
+                    "access_to": grant["a"] if grant else None,
+                    "access_level": grant["l"] if grant else None,
+                    "state": "unknown",
+                    "association_state": "unknown",
+                    "managed": bool(grant and grant["m"]),
+                    "exports": [],
+                    "share_network_id": None,
+                    "share_network": None,
+                }
+            )
     return result
+
+
+@router.post("/{instance_id}/storage-attachments/{file_storage_id}/connection-info", response_model=dict)
+async def storage_connection_info(
+    instance_id: str,
+    file_storage_id: str,
+    response: Response,
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(get_token_info),
+):
+    """Explicit authorized retrieval of a transient Ceph key; never return it from GET."""
+    require_project_write(token_info)
+    response.headers["Cache-Control"] = "no-store"
+    server = await _storage_server(conn, instance_id, token_info)
+    grant = _storage_grants(server).get(file_storage_id)
+    if not grant or not grant["m"]:
+        raise HTTPException(status_code=409, detail="이 인스턴스의 관리 접근 규칙이 아닙니다")
+    share = await _storage_share(conn, file_storage_id, token_info)
+    rules = await _storage_rules(conn, file_storage_id)
+    rule = next((r for r in rules if r.get("id") == grant["i"]), None)
+    if not rule or not _storage_rule_matches(rule, grant, instance_id):
+        raise HTTPException(status_code=409, detail="추적 중인 접근 규칙이 없거나 변경되었습니다")
+    try:
+        result = await _storage_connection_info(conn, share, grant, rule)
+    except Exception:
+        raise HTTPException(status_code=502, detail="연결 정보를 조회할 수 없습니다") from None
+    if (
+        share.status == "available"
+        and rule.get("state") == "active"
+        and grant["t"] == "cephx"
+        and rule.get("access_key")
+    ):
+        result["secret"] = {"type": "cephx_key", "value": rule["access_key"]}
+    return result
+
+
+async def _revoke_storage_grant(conn, instance_id: str, share_id: str, grant: dict, token_info: dict) -> None:
+    """Shared exact managed-rule lifecycle for revoke and instance deletion cleanup."""
+    if not grant["m"]:
+        raise HTTPException(status_code=409, detail="기존 외부 접근 규칙은 이 인스턴스에서 회수할 수 없습니다")
+    try:
+        rule = await asyncio.to_thread(manila.get_access_rule, conn, share_id, grant["i"])
+    except Exception:
+        raise HTTPException(status_code=502, detail="정확한 접근 규칙을 조회할 수 없습니다") from None
+    if not rule:
+        return
+    # Exact rule 404 already proves cleanup; a deleted parent must not block it.
+    # Existing rules still require current share management authority before denial.
+    await _storage_share(conn, share_id, token_info)
+    if not _storage_rule_matches(rule, grant, instance_id):
+        raise HTTPException(status_code=409, detail="접근 규칙 소유권 또는 대상이 변경되었습니다")
+    if rule.get("state") not in {"denying", "queued_to_deny"}:
+        try:
+            await asyncio.to_thread(manila.revoke_access_rule, conn, share_id, grant["i"])
+        except Exception:
+            raise HTTPException(status_code=502, detail="접근 규칙 회수 요청 실패") from None
+    try:
+        remaining = await asyncio.to_thread(manila.get_access_rule, conn, share_id, grant["i"])
+    except Exception:
+        raise HTTPException(status_code=502, detail="접근 규칙 회수 완료를 확인할 수 없습니다") from None
+    if remaining is not None:
+        raise HTTPException(
+            status_code=409, detail="접근 규칙 회수가 아직 완료되지 않았습니다; 상태를 확인 후 다시 시도하세요"
+        )
 
 
 @router.delete("/{instance_id}/storage-attachments/{file_storage_id}", status_code=204)
 async def detach_storage(
     instance_id: str,
     file_storage_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
     token_info: dict = Depends(get_token_info),
 ):
-    """VM에서 데이터 파일 스토리지 접근 규칙을 회수한다."""
+    """Revoke only the exact tracked managed rule, never infer ownership from names/IPs."""
+    require_project_write(token_info)
+    server = await _storage_server(conn, instance_id, token_info)
+    grant = _storage_grants(server).get(file_storage_id)
+    if not grant:
+        raise HTTPException(status_code=409, detail="이 인스턴스에서 추적하는 접근 규칙이 없습니다")
+    await _revoke_storage_grant(conn, instance_id, file_storage_id, grant, token_info)
     try:
-        server = await asyncio.to_thread(nova.get_server, conn, instance_id)
+        await asyncio.to_thread(conn.compute.delete_server_metadata, instance_id, [_storage_grant_key(file_storage_id)])
     except Exception:
-        raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다")
-    assert_instance_owner(server, conn, token_info)
-
-    instance_name = server.name
-
-    # CephX 규칙 정리
-    try:
-        rules = await asyncio.to_thread(manila.list_access_rules, conn, file_storage_id)
-        for rule in rules:
-            at = rule.get("access_to", "")
-            if rule.get("access_type") == "cephx" and (
-                at.startswith(f"data-ro-{instance_name}-") or at.startswith(f"data-rw-{instance_name}-")
-            ):
-                await asyncio.to_thread(manila.revoke_access_rule, conn, file_storage_id, rule["id"])
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Access rule 정리 실패: {e}")
-
-    # NFS IP 규칙 정리 (VM fixed IP)
-    fixed_ip = next((ip.addr for ip in server.ip_addresses if ip.type == "fixed"), None)
-    if fixed_ip:
-        try:
-            rules = await asyncio.to_thread(manila.list_access_rules, conn, file_storage_id)
-            for rule in rules:
-                if rule.get("access_type") == "ip" and rule.get("access_to") == fixed_ip:
-                    await asyncio.to_thread(manila.revoke_access_rule, conn, file_storage_id, rule["id"])
-        except Exception as e:
-            logger.warning(f"NFS IP rule 정리 실패 (share={file_storage_id}): {e}")
-
-    # 메타데이터에서 제거
-    try:
-        meta_val = _data_share_metadata_value(server)
-        ids = [s for s in meta_val.split(",") if s and s != file_storage_id] if meta_val and meta_val != "none" else []
-        await asyncio.to_thread(
-            conn.compute.set_server_metadata,
-            instance_id,
-            {_DATA_SHARE_METADATA_KEY: ",".join(ids) if ids else "none"},
-        )
-    except Exception as e:
-        logger.warning(f"data share 메타데이터 갱신 실패: {e}")
-
-    _pid = conn._afterglow_project_id
-    await invalidate(f"afterglow:nova:{_pid}:instance:{instance_id}")
-    await cache_invalidation.invalidate_mutation_count("nova", _pid)
-
-
-def _merge_data_share_meta(server, new_share_id: str) -> dict:
-    """Add a share ID to the current data-mount metadata field."""
-    meta_val = _data_share_metadata_value(server)
-    ids = [s for s in meta_val.split(",") if s] if meta_val and meta_val != "none" else []
-    if new_share_id not in ids:
-        ids.append(new_share_id)
-    return {_DATA_SHARE_METADATA_KEY: ",".join(ids)}
+        raise HTTPException(status_code=502, detail="규칙 회수 후 연결 기록 제거 실패; 다시 시도하세요") from None
+    await _invalidate_storage_instance(conn, instance_id)

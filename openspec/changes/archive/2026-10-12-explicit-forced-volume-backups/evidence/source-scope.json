@@ -1,0 +1,19 @@
+[
+  "backend/app/api/storage/volume_backups.py",
+  "backend/app/services/cinder.py",
+  "backend/tests/test_volume_backups.py",
+  "backend/tests/test_volume_owner_check.py",
+  "frontend/src/lib/components/volume/VolumeBackupModal.svelte",
+  "frontend/src/lib/components/volume/backups/VolumeBackupCreateModal.svelte",
+  "frontend/src/routes/dashboard/volumes/backups/+page.svelte",
+  "frontend/src/lib/i18n/messages/ko/volume.json",
+  "frontend/src/lib/i18n/messages/en/volume.json",
+  "frontend/src/lib/i18n/messages/ja/volume.json",
+  "frontend/src/lib/i18n/messages/zh-CN/volume.json",
+  "frontend/src/lib/components/volume/__tests__/VolumeBackupConsent.test.ts",
+  "scripts/test-target.js",
+  "frontend/src/lib/docs/coreGuides.ts",
+  "frontend/src/lib/docs/translations/en/coreGuides.ts",
+  "frontend/src/lib/docs/translations/ja/coreGuides.ts",
+  "frontend/src/lib/docs/translations/zh-CN/coreGuides.ts"
+]

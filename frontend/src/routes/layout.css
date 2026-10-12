@@ -560,7 +560,7 @@ body {
   --topology-zone-fill-alpha-active: 12%;
   --color-topology-grid-minor: #f0f1f4;
   --color-topology-grid-major: #e4e6ea;
-  /* 랜딩 플레이트(인라인 SVG) 레터박스 배경 — 라이트 모드에서 밝은 표면으로 전환 */
+  /* Public editorial media remaps to the active light surface. */
   --color-surface-editorial-media: #eef0f4;
   /* 배경 색상 오버라이드 */
   --tw-bg-base: #f7f8fa;
@@ -960,27 +960,6 @@ body {
 .driver-popover.afterglow-tour .driver-popover-arrow-side-top.driver-popover-arrow { border-top-color: var(--color-surface-raised); }
 .driver-popover.afterglow-tour .driver-popover-arrow-side-bottom.driver-popover-arrow { border-bottom-color: var(--color-surface-raised); }
 
-/* Landing plate graphics — theme-aware inline SVG palette.
-   Presentation attributes (fill=/stroke=) do not resolve var(), so colors are
-   applied via these fill/stroke classes. Global (not Svelte-scoped) because the
-   markup is injected with {@html}. Every color maps to a theme token that flips
-   between dark and light mode, so the plates follow the active theme. */
-.plate-graphic .pf-canvas { fill: var(--color-surface-canvas); }
-.plate-graphic .pf-surface { fill: var(--color-surface-raised); }
-.plate-graphic .pf-line { fill: var(--color-line-2); }
-.plate-graphic .pf-ink { fill: var(--color-ink-0); }
-.plate-graphic .pf-warm { fill: var(--color-warm); }
-.plate-graphic .pf-accent { fill: var(--color-accent); }
-.plate-graphic .pf-violet { fill: var(--color-accent-2); }
-.plate-graphic .pf-green { fill: var(--color-state-success); }
-.plate-graphic .ps-canvas { stroke: var(--color-surface-canvas); }
-.plate-graphic .ps-surface { stroke: var(--color-surface-raised); }
-.plate-graphic .ps-line { stroke: var(--color-line-2); }
-.plate-graphic .ps-ink { stroke: var(--color-ink-0); }
-.plate-graphic .ps-warm { stroke: var(--color-warm); }
-.plate-graphic .ps-accent { stroke: var(--color-accent); }
-.plate-graphic .ps-violet { stroke: var(--color-accent-2); }
-.plate-graphic .ps-green { stroke: var(--color-state-success); }
 
 /* Shared selectable resource treatment. */
 .resource-selection-surface[data-selected='true'] {
@@ -1013,6 +992,11 @@ body {
 }
 @keyframes motion-pop {
   from { opacity: 0; transform: scale(0.94); }
+}
+/* Editorial objects assemble as opaque solids; never fade their individual faces. */
+@keyframes motion-assemble {
+  from { transform: translate(var(--motion-assemble-x, 0), var(--motion-assemble-y, 0)) rotate(var(--motion-assemble-angle, 0deg)); }
+  to { transform: translate(0, 0) rotate(0deg); }
 }
 @keyframes motion-grow-x {
   from { transform: scaleX(0); }
@@ -1082,6 +1066,10 @@ body {
 }
 .motion-pop {
   animation: motion-pop var(--motion-duration-panel) var(--motion-ease-overshoot) backwards;
+  animation-delay: calc(var(--motion-duration-stagger) * var(--motion-index, 0));
+}
+.motion-assemble {
+  animation: motion-assemble calc(var(--motion-duration-data) * 3) var(--motion-ease-emphasized) backwards;
   animation-delay: calc(var(--motion-duration-stagger) * var(--motion-index, 0));
 }
 /* Stagger caps at eight steps (MOTION_STAGGER_LIMIT) so a long list never waits more than a beat. */

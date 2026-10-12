@@ -84,6 +84,29 @@ export const additionalGuides: DocGuide[] = [
 				}
 			},
 			{
+				id: 'windows-service',
+				title: 'Windows 서비스용 이미지 준비와 일괄 설정',
+				steps: [
+					{
+						title: '실제 Windows 게스트부터 준비하기',
+						text: ['Cloudbase-Init의 inject_user_password=true, ConfigDriveService 우선 공급자와 SetUserPasswordPlugin, 실제 로컬 로그인 계정, 최초 부팅용 일반화·봉인과 저장소·네트워크 드라이버를 준비하세요. 이미지의 min_disk(GB)와 min_ram(MB)은 실제 요구량으로 지정하세요. 플래그 저장은 게스트 설치나 재봉인이 아닙니다.']
+					},
+					{
+						title: '이미지 상세에서 Windows 메타데이터 설정하기',
+						text: ['이미지 소유자 또는 관리자는 상세의 Windows 설정을 열어 기존 로그인 계정과 실제 게스트 준비 확인을 입력합니다. 기본값은 os_type=windows, os_distro=windows, 입력 계정의 os_admin_user, windows_initial_password_method=nova-adminpass-configdrive, img_config_drive=mandatory입니다. 준비된 Windows 11에는 UEFI/q35·TPM 2.0/tpm-crb·필수 Secure Boot를 선택하고, QGA는 실제 설치했을 때만 선택하세요. 현재→변경값을 검토하고 메타데이터 저장을 누르면 달라진 선택 플래그만 한 번에 저장합니다. 선택하지 않은 속성·공개 범위·소유자·해시·검증은 유지합니다.']
+					},
+					{
+						title: '저장 결과와 실제 최초 로그인을 따로 검증하기',
+						text: ['같은 이미지 UUID를 다시 열어 저장된 계정·방식·ConfigDrive를 확인하세요. VM 생성의 루트 디스크는 이미지 최소량 이상이어야 합니다(min_disk=80이면80GB 이상). 처음 선택한 작은 초안은 올라가지만 더 큰 값은 줄어들지 않습니다. 지원 Windows는 비밀번호·확인값을 Nova adminPass와 강제 ConfigDrive로 전달하고 SSH 키나 비밀번호용 user-data를 사용하지 않습니다. ACTIVE는 로그인 성공이 아니며 최초 구성에20–30분이 걸릴 수 있습니다. RDP 활성화·방화벽·제한된 보안 그룹을 별도로 준비하고 실제 입력 암호로 접속하세요.']
+					}
+				],
+				callout: {
+					tone: 'warning',
+					title: '이전 이미지를 이름만 바꾸어 전환하지 마세요',
+					text: 'cloudbase-user-data 또는 inject_user_password=false인 이전 게스트는 marker만 바꾸어 네이티브 암호 주입을 지원하지 않습니다. 별도 이미지에서 게스트를 먼저 준비·검증하세요. 브라우저 확인은 운영자 확인이지 게스트/RDP 검사나 신뢰·운영 준비 승인이 아닙니다. 이 설정은 기존 VM·볼륨의 암호를 바꾸지 않습니다.'
+				}
+			},
+			{
 				id: 'cleanup',
 				title: '비활성화와 삭제로 정리하기',
 				bullets: [

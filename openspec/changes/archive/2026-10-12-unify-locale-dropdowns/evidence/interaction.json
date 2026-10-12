@@ -1,0 +1,81 @@
+{
+  "app": [
+    {
+      "kind": "landing",
+      "selection": {
+        "focus": "landing-locale",
+        "open": false,
+        "lang": "en",
+        "refocus": null
+      },
+      "cookie": {
+        "value": "en",
+        "expires": 1823352762.276208
+      }
+    },
+    {
+      "kind": "login",
+      "selection": {
+        "focus": "login-locale",
+        "open": false,
+        "lang": "en",
+        "refocus": null
+      },
+      "cookie": {
+        "value": "en",
+        "expires": 1823352762.276208
+      }
+    },
+    {
+      "kind": "console",
+      "selection": {
+        "focus": "app-header-locale",
+        "open": false,
+        "lang": "en",
+        "refocus": null
+      },
+      "cookie": {
+        "value": "en",
+        "expires": 1823352762.276208
+      }
+    },
+    {
+      "kind": "admin",
+      "selection": {
+        "focus": "app-header-locale",
+        "open": false,
+        "lang": "en",
+        "refocus": null
+      },
+      "cookie": {
+        "value": "en",
+        "expires": 1823352762.276208
+      }
+    }
+  ],
+  "tabExit": {
+    "closed": true,
+    "focusTag": "A",
+    "focusLocale": ""
+  },
+  "docs": {
+    "url": "http://127.0.0.1:5275/docs/nova?context=locale-proof&lang=zh-CN#prerequisites",
+    "cookie": "en"
+  },
+  "noJS": {
+    "open": true,
+    "lang": "zh-CN",
+    "links": 4,
+    "left": 28,
+    "right": 188,
+    "width": 310
+  },
+  "short": {
+    "dpr": 2,
+    "left": 340.375,
+    "right": 500.375,
+    "bottom": 252,
+    "height": 450,
+    "within": true
+  }
+}

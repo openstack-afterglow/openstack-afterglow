@@ -1,0 +1,2562 @@
+[
+  {
+    "theme": "light",
+    "locale": "ko",
+    "width": 320,
+    "geometry": {
+      "viewport": [
+        320,
+        844,
+        1
+      ],
+      "locale": "ko",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 527.743896484375,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        47.59375
+      ],
+      "layout": "278px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "ko",
+    "width": 390,
+    "geometry": {
+      "viewport": [
+        390,
+        844,
+        1
+      ],
+      "locale": "ko",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 490.65625,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "348px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "ko",
+    "width": 767,
+    "geometry": {
+      "viewport": [
+        767,
+        844,
+        1
+      ],
+      "locale": "ko",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 566.03125,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "725px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "ko",
+    "width": 768,
+    "geometry": {
+      "viewport": [
+        768,
+        900,
+        1
+      ],
+      "locale": "ko",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 542.28125,
+      "navHeight": 113,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "710px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "ko",
+    "width": 1023,
+    "geometry": {
+      "viewport": [
+        1023,
+        900,
+        1
+      ],
+      "locale": "ko",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 561.84375,
+      "navHeight": 113,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "965px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "ko",
+    "width": 1024,
+    "geometry": {
+      "viewport": [
+        1024,
+        900,
+        1
+      ],
+      "locale": "ko",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 689.46875,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "367.188px 550.812px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "ko",
+    "width": 1440,
+    "geometry": {
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "locale": "ko",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 705.015625,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "473.594px 710.406px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "ko",
+    "width": 2560,
+    "geometry": {
+      "viewport": [
+        2560,
+        900,
+        1
+      ],
+      "locale": "ko",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 3,
+      "ctaBottom": 754.28125,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "473.594px 710.406px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "en",
+    "width": 320,
+    "geometry": {
+      "viewport": [
+        320,
+        844,
+        1
+      ],
+      "locale": "en",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 3,
+      "ctaBottom": 601.6846923828125,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "278px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "en",
+    "width": 390,
+    "geometry": {
+      "viewport": [
+        390,
+        844,
+        1
+      ],
+      "locale": "en",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 518.171875,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "348px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "en",
+    "width": 767,
+    "geometry": {
+      "viewport": [
+        767,
+        844,
+        1
+      ],
+      "locale": "en",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 566.03125,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "725px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "en",
+    "width": 768,
+    "geometry": {
+      "viewport": [
+        768,
+        900,
+        1
+      ],
+      "locale": "en",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 542.28125,
+      "navHeight": 113,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "710px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "en",
+    "width": 1023,
+    "geometry": {
+      "viewport": [
+        1023,
+        900,
+        1
+      ],
+      "locale": "en",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 561.84375,
+      "navHeight": 113,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "965px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "en",
+    "width": 1024,
+    "geometry": {
+      "viewport": [
+        1024,
+        900,
+        1
+      ],
+      "locale": "en",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 685.46875,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "367.188px 550.812px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "en",
+    "width": 1440,
+    "geometry": {
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "locale": "en",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 705.015625,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "473.594px 710.406px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "en",
+    "width": 2560,
+    "geometry": {
+      "viewport": [
+        2560,
+        900,
+        1
+      ],
+      "locale": "en",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 3,
+      "ctaBottom": 754.28125,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "473.594px 710.406px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "ja",
+    "width": 320,
+    "geometry": {
+      "viewport": [
+        320,
+        844,
+        1
+      ],
+      "locale": "ja",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 4,
+      "ctaBottom": 627.0874633789062,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        47.59375
+      ],
+      "layout": "278px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "ja",
+    "width": 390,
+    "geometry": {
+      "viewport": [
+        390,
+        844,
+        1
+      ],
+      "locale": "ja",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 545.6875,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "348px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "ja",
+    "width": 767,
+    "geometry": {
+      "viewport": [
+        767,
+        844,
+        1
+      ],
+      "locale": "ja",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 566.03125,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "725px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "ja",
+    "width": 768,
+    "geometry": {
+      "viewport": [
+        768,
+        900,
+        1
+      ],
+      "locale": "ja",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 542.28125,
+      "navHeight": 113,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "710px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "ja",
+    "width": 1023,
+    "geometry": {
+      "viewport": [
+        1023,
+        900,
+        1
+      ],
+      "locale": "ja",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 561.84375,
+      "navHeight": 113,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "965px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "ja",
+    "width": 1024,
+    "geometry": {
+      "viewport": [
+        1024,
+        900,
+        1
+      ],
+      "locale": "ja",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 686.953125,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "367.188px 550.812px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "ja",
+    "width": 1440,
+    "geometry": {
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "locale": "ja",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 705.015625,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "473.594px 710.406px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "ja",
+    "width": 2560,
+    "geometry": {
+      "viewport": [
+        2560,
+        900,
+        1
+      ],
+      "locale": "ja",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 4,
+      "ctaBottom": 790.28125,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "473.594px 710.406px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "zh-CN",
+    "width": 320,
+    "geometry": {
+      "viewport": [
+        320,
+        844,
+        1
+      ],
+      "locale": "zh-CN",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 526.6739501953125,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "278px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "zh-CN",
+    "width": 390,
+    "geometry": {
+      "viewport": [
+        390,
+        844,
+        1
+      ],
+      "locale": "zh-CN",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 518.171875,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "348px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "zh-CN",
+    "width": 767,
+    "geometry": {
+      "viewport": [
+        767,
+        844,
+        1
+      ],
+      "locale": "zh-CN",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 566.03125,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "725px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "zh-CN",
+    "width": 768,
+    "geometry": {
+      "viewport": [
+        768,
+        900,
+        1
+      ],
+      "locale": "zh-CN",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 542.28125,
+      "navHeight": 113,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "710px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "zh-CN",
+    "width": 1023,
+    "geometry": {
+      "viewport": [
+        1023,
+        900,
+        1
+      ],
+      "locale": "zh-CN",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 561.84375,
+      "navHeight": 113,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "965px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "zh-CN",
+    "width": 1024,
+    "geometry": {
+      "viewport": [
+        1024,
+        900,
+        1
+      ],
+      "locale": "zh-CN",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 689.46875,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "367.188px 550.812px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "zh-CN",
+    "width": 1440,
+    "geometry": {
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "locale": "zh-CN",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 705.015625,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "473.594px 710.406px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "light",
+    "locale": "zh-CN",
+    "width": 2560,
+    "geometry": {
+      "viewport": [
+        2560,
+        900,
+        1
+      ],
+      "locale": "zh-CN",
+      "theme": "light",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 718.28125,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "473.594px 710.406px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "ko",
+    "width": 320,
+    "geometry": {
+      "viewport": [
+        320,
+        844,
+        1
+      ],
+      "locale": "ko",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 527.747802734375,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        47.59375
+      ],
+      "layout": "278px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "ko",
+    "width": 390,
+    "geometry": {
+      "viewport": [
+        390,
+        844,
+        1
+      ],
+      "locale": "ko",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 490.65625,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "348px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "ko",
+    "width": 767,
+    "geometry": {
+      "viewport": [
+        767,
+        844,
+        1
+      ],
+      "locale": "ko",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 566.03125,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "725px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "ko",
+    "width": 768,
+    "geometry": {
+      "viewport": [
+        768,
+        900,
+        1
+      ],
+      "locale": "ko",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 542.28125,
+      "navHeight": 113,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "710px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "ko",
+    "width": 1023,
+    "geometry": {
+      "viewport": [
+        1023,
+        900,
+        1
+      ],
+      "locale": "ko",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 561.84375,
+      "navHeight": 113,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "965px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "ko",
+    "width": 1024,
+    "geometry": {
+      "viewport": [
+        1024,
+        900,
+        1
+      ],
+      "locale": "ko",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 689.46875,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "367.188px 550.812px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "ko",
+    "width": 1440,
+    "geometry": {
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "locale": "ko",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 705.015625,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "473.594px 710.406px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "ko",
+    "width": 2560,
+    "geometry": {
+      "viewport": [
+        2560,
+        900,
+        1
+      ],
+      "locale": "ko",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 3,
+      "ctaBottom": 754.28125,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "473.594px 710.406px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "en",
+    "width": 320,
+    "geometry": {
+      "viewport": [
+        320,
+        844,
+        1
+      ],
+      "locale": "en",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 3,
+      "ctaBottom": 602.5912475585938,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "278px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "en",
+    "width": 390,
+    "geometry": {
+      "viewport": [
+        390,
+        844,
+        1
+      ],
+      "locale": "en",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 518.171875,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "348px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "en",
+    "width": 767,
+    "geometry": {
+      "viewport": [
+        767,
+        844,
+        1
+      ],
+      "locale": "en",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 566.03125,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "725px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "en",
+    "width": 768,
+    "geometry": {
+      "viewport": [
+        768,
+        900,
+        1
+      ],
+      "locale": "en",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 542.28125,
+      "navHeight": 113,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "710px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "en",
+    "width": 1023,
+    "geometry": {
+      "viewport": [
+        1023,
+        900,
+        1
+      ],
+      "locale": "en",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 561.84375,
+      "navHeight": 113,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "965px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "en",
+    "width": 1024,
+    "geometry": {
+      "viewport": [
+        1024,
+        900,
+        1
+      ],
+      "locale": "en",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 685.46875,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "367.188px 550.812px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "en",
+    "width": 1440,
+    "geometry": {
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "locale": "en",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 705.015625,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "473.594px 710.406px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "en",
+    "width": 2560,
+    "geometry": {
+      "viewport": [
+        2560,
+        900,
+        1
+      ],
+      "locale": "en",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 3,
+      "ctaBottom": 754.28125,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "473.594px 710.406px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "ja",
+    "width": 320,
+    "geometry": {
+      "viewport": [
+        320,
+        844,
+        1
+      ],
+      "locale": "ja",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 4,
+      "ctaBottom": 627.2100219726562,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        47.59375
+      ],
+      "layout": "278px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "ja",
+    "width": 390,
+    "geometry": {
+      "viewport": [
+        390,
+        844,
+        1
+      ],
+      "locale": "ja",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 545.6875,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "348px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "ja",
+    "width": 767,
+    "geometry": {
+      "viewport": [
+        767,
+        844,
+        1
+      ],
+      "locale": "ja",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 566.03125,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "725px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "ja",
+    "width": 768,
+    "geometry": {
+      "viewport": [
+        768,
+        900,
+        1
+      ],
+      "locale": "ja",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 542.28125,
+      "navHeight": 113,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "710px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "ja",
+    "width": 1023,
+    "geometry": {
+      "viewport": [
+        1023,
+        900,
+        1
+      ],
+      "locale": "ja",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 561.84375,
+      "navHeight": 113,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "965px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "ja",
+    "width": 1024,
+    "geometry": {
+      "viewport": [
+        1024,
+        900,
+        1
+      ],
+      "locale": "ja",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 686.953125,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "367.188px 550.812px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "ja",
+    "width": 1440,
+    "geometry": {
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "locale": "ja",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 705.015625,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "473.594px 710.406px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "ja",
+    "width": 2560,
+    "geometry": {
+      "viewport": [
+        2560,
+        900,
+        1
+      ],
+      "locale": "ja",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 4,
+      "ctaBottom": 790.28125,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "473.594px 710.406px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "zh-CN",
+    "width": 320,
+    "geometry": {
+      "viewport": [
+        320,
+        844,
+        1
+      ],
+      "locale": "zh-CN",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 527.626953125,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "278px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "zh-CN",
+    "width": 390,
+    "geometry": {
+      "viewport": [
+        390,
+        844,
+        1
+      ],
+      "locale": "zh-CN",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 518.171875,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "348px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "zh-CN",
+    "width": 767,
+    "geometry": {
+      "viewport": [
+        767,
+        844,
+        1
+      ],
+      "locale": "zh-CN",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 566.03125,
+      "navHeight": 161,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "725px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "zh-CN",
+    "width": 768,
+    "geometry": {
+      "viewport": [
+        768,
+        900,
+        1
+      ],
+      "locale": "zh-CN",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 542.28125,
+      "navHeight": 113,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "710px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "zh-CN",
+    "width": 1023,
+    "geometry": {
+      "viewport": [
+        1023,
+        900,
+        1
+      ],
+      "locale": "zh-CN",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 561.84375,
+      "navHeight": 113,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "965px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "zh-CN",
+    "width": 1024,
+    "geometry": {
+      "viewport": [
+        1024,
+        900,
+        1
+      ],
+      "locale": "zh-CN",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 689.46875,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "367.188px 550.812px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "zh-CN",
+    "width": 1440,
+    "geometry": {
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "locale": "zh-CN",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 705.015625,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "473.594px 710.406px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  },
+  {
+    "theme": "dark",
+    "locale": "zh-CN",
+    "width": 2560,
+    "geometry": {
+      "viewport": [
+        2560,
+        900,
+        1
+      ],
+      "locale": "zh-CN",
+      "theme": "dark",
+      "overflow": 0,
+      "headlineLines": 2,
+      "ctaBottom": 718.28125,
+      "navHeight": 73,
+      "serviceCount": 4,
+      "links": [
+        "/docs/nova",
+        "/docs/nova",
+        "/docs/lumen",
+        "/docs/drover"
+      ],
+      "missingKeys": false
+    },
+    "onprem": {
+      "selected": "onprem",
+      "action": "mailto:pieroot@konkuk.ac.kr",
+      "overflow": 0,
+      "targetHeights": [
+        44,
+        44
+      ],
+      "layout": "473.594px 710.406px"
+    },
+    "cloud": {
+      "selected": "cloud",
+      "href": "/login"
+    }
+  }
+]

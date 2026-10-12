@@ -5,6 +5,7 @@
 	import Pagination from '$lib/components/ui/Pagination.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import type { AdminInstance } from '$lib/types/adminInstance';
+	import Button from '$lib/components/ui/Button.svelte';
 
 	let {
 		instances,
@@ -100,18 +101,18 @@
 						<div class="flex items-center gap-1.5">
 							<StatusChip status={s.status} />
 							{#if s.status === 'ERROR' && s.fault}
-								<button
+								<Button
 									onclick={(e) => { e.stopPropagation(); expandedError = expandedError === s.id ? null : s.id; }}
-									class="text-red-500 hover:text-red-300 text-xs underline"
+									variant="link" size="sm"
 									title={s.fault}
-								>{t('instances.table.reason')}</button>
+								>{t('instances.table.reason')}</Button>
 							{/if}
 							{#if s.status === 'ERROR' && onRecover}
-								<button
+								<Button
 									onclick={(e) => { e.stopPropagation(); onRecover(s); }}
-									class="text-warm-text hover:text-warm-text-hover text-xs underline"
+									variant="link" size="sm"
 									title={t('instances.table.recoveryHelp')}
-								>{t('instances.table.recover')}</button>
+								>{t('instances.table.recover')}</Button>
 							{/if}
 						</div>
 						{#if expandedError === s.id && s.fault}

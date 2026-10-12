@@ -1,6 +1,7 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/admin-compute';
+	import { t as instanceT } from '$lib/i18n/ns/instance';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -61,6 +62,20 @@
 	let projectEffectReady = $state(false);
 	let lastProjectId = $state<string | undefined>(undefined);
 	let loadGeneration = 0;
+	let scopeRevision = $state(0);
+	let instancesRevision = $state(-1);
+	let instancesPath = $state('');
+	const unsubscribeAuth = auth.subscribe(() => { scopeRevision += 1; });
+
+	function targetsStopped(ids: readonly string[]) {
+		if (!$auth.token || !$auth.isSystemAdmin || instancesRevision !== scopeRevision || ids.length === 0
+			|| instancesPath !== listPath(markerStack[markerStack.length - 1])) return false;
+		return ids.every((id) => {
+			const row = allInstances.find((instance) => instance.id === id);
+			return row?.status === 'SHUTOFF';
+		});
+	}
+	const canBulkDelete = $derived(targetsStopped([...selection.ids]));
 
 	const selectableIds = $derived(new Set(allInstances.map((instance) => instance.id)));
 	const projectId = $derived($auth.projectId ?? undefined);
@@ -91,6 +106,8 @@
 		const requestStatusFilter = statusFilter;
 		const requestNameSearch = nameSearch;
 		const requestPath = listPath(marker);
+		if (opts?.clearSelection) scopeRevision += 1;
+		const requestRevision = scopeRevision;
 		const owns = () => generation === loadGeneration
 			&& ($auth.token ?? undefined) === requestToken
 			&& ($auth.projectId ?? undefined) === requestProjectId
@@ -107,6 +124,8 @@
 			const res = await api.get<PagedResponse<AdminInstance>>(requestPath, requestToken, requestProjectId);
 			if (!owns()) return;
 			allInstances = res.items;
+			instancesRevision = requestRevision;
+			instancesPath = requestPath;
 			nextMarker = res.next_marker;
 			selection.retain(res.items.map((instance) => instance.id));
 			const path = nextMarker ? listPath(nextMarker) : null;
@@ -190,15 +209,29 @@
 		const ids = [...selection.ids];
 		const requestToken = $auth.token ?? undefined;
 		const requestProjectId = $auth.projectId ?? undefined;
-		if (ids.length === 0) return;
+		const revision = scopeRevision;
+		const selectedIds = selection.ids;
+		const targetProjects = ids.map((id) => allInstances.find((row) => row.id === id)?.project_id);
+		const targetStates = ids.map((id) => allInstances.find((row) => row.id === id)?.status);
+		const owns = () => revision === scopeRevision && !!$auth.token && $auth.isSystemAdmin
+			&& instancesRevision === scopeRevision && ids.length > 0
+			&& instancesPath === listPath(markerStack[markerStack.length - 1])
+			&& selection.ids === selectedIds && selection.ids.size === ids.length && ids.every((id) => selection.ids.has(id))
+			&& ids.every((id, index) => {
+				const row = allInstances.find((instance) => instance.id === id);
+				return !!row && row.project_id === targetProjects[index] && row.status === targetStates[index]
+					&& (action !== 'delete' || row.status === 'SHUTOFF');
+			});
+		if (bulkActioning || !owns()) return;
 		if (
 			(action === 'stop' || action === 'delete')
 			&& !await confirmDialog(
 				action === 'delete'
-					? t('instances.bulk.deleteConfirm', { count: ids.length })
-					: t('instances.bulk.stopConfirm', { count: ids.length }),
+					? `${t('instances.bulk.deleteConfirm', { count: ids.length })}\n\n${instanceT('panel.stoppedQuotaWarning')}`
+					: `${t('instances.bulk.stopConfirm', { count: ids.length })}\n\n${instanceT('panel.stoppedQuotaWarning')}`,
 			)
 		) return;
+		if (!owns()) return;
 
 		bulkActioning = true;
 		try {
@@ -234,7 +267,7 @@
 		void loadHealth();
 		projectNames.load($auth.token ?? undefined, $auth.projectId ?? undefined);
 	});
-	onDestroy(() => { loadGeneration += 1; nextPrefetch.cancel(); });
+	onDestroy(() => { unsubscribeAuth(); scopeRevision += 1; loadGeneration += 1; nextPrefetch.cancel(); });
 </script>
 
 <PageShell class="bulk-selection-page">
@@ -339,7 +372,7 @@
 		actions={[
 			{ key: 'start', label: t('instances.bulk.start'), tone: 'success', onAction: () => bulkAction('start') },
 			{ key: 'stop', label: t('instances.bulk.stop'), tone: 'warning', onAction: () => bulkAction('stop') },
-			{ key: 'delete', label: t('instances.bulk.delete'), tone: 'danger', onAction: () => bulkAction('delete') },
+			...(canBulkDelete ? [{ key: 'delete', label: t('instances.bulk.delete'), tone: 'danger' as const, onAction: () => bulkAction('delete') }] : []),
 		]}
 		busy={bulkActioning}
 		onClear={() => selection.clear()}

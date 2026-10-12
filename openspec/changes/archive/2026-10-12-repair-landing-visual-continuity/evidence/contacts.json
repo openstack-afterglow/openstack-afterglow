@@ -1,0 +1,194 @@
+[
+  {
+    "kind": "server",
+    "points": [
+      {
+        "x": 278,
+        "y": 158,
+        "attached": true,
+        "faces": [
+          "side svelte-1koifwl"
+        ]
+      },
+      {
+        "x": 278,
+        "y": 348,
+        "attached": true,
+        "faces": [
+          "side svelte-1koifwl"
+        ]
+      },
+      {
+        "x": 278,
+        "y": 518,
+        "attached": true,
+        "faces": [
+          "side svelte-1koifwl"
+        ]
+      },
+      {
+        "x": 455,
+        "y": 320,
+        "attached": true,
+        "faces": [
+          "front svelte-1koifwl"
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "gpu",
+    "points": [
+      {
+        "x": 259,
+        "y": 162,
+        "attached": true,
+        "faces": [
+          "side svelte-1koifwl"
+        ]
+      },
+      {
+        "x": 339,
+        "y": 285.5,
+        "attached": true,
+        "faces": [
+          "accent-top svelte-1koifwl"
+        ]
+      },
+      {
+        "x": 524,
+        "y": 287,
+        "attached": true,
+        "faces": [
+          "accent-top svelte-1koifwl",
+          "accent-side svelte-1koifwl"
+        ]
+      },
+      {
+        "x": 557,
+        "y": 177,
+        "attached": true,
+        "faces": [
+          "model-node svelte-1koifwl"
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "kubernetes",
+    "points": [
+      {
+        "x": 133,
+        "y": 182,
+        "attached": true,
+        "faces": [
+          "front svelte-1koifwl"
+        ]
+      },
+      {
+        "x": 113,
+        "y": 355,
+        "attached": true,
+        "faces": [
+          "top svelte-1koifwl",
+          "front svelte-1koifwl"
+        ]
+      },
+      {
+        "x": 343,
+        "y": 182,
+        "attached": true,
+        "faces": [
+          "front svelte-1koifwl"
+        ]
+      },
+      {
+        "x": 323,
+        "y": 355,
+        "attached": true,
+        "faces": [
+          "top svelte-1koifwl",
+          "front svelte-1koifwl"
+        ]
+      },
+      {
+        "x": 553,
+        "y": 182,
+        "attached": true,
+        "faces": [
+          "front svelte-1koifwl"
+        ]
+      },
+      {
+        "x": 533,
+        "y": 355,
+        "attached": true,
+        "faces": [
+          "top svelte-1koifwl",
+          "front svelte-1koifwl"
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "onprem",
+    "points": [
+      {
+        "x": 227,
+        "y": 166,
+        "attached": true,
+        "faces": [
+          "side svelte-1koifwl"
+        ]
+      },
+      {
+        "x": 227,
+        "y": 340,
+        "attached": true,
+        "faces": [
+          "side svelte-1koifwl"
+        ]
+      },
+      {
+        "x": 227,
+        "y": 478,
+        "attached": true,
+        "faces": [
+          "side svelte-1koifwl"
+        ]
+      },
+      {
+        "x": 327,
+        "y": 302,
+        "attached": true,
+        "faces": [
+          "front svelte-1koifwl"
+        ]
+      },
+      {
+        "x": 533,
+        "y": 302,
+        "attached": true,
+        "faces": [
+          "accent-side svelte-1koifwl"
+        ]
+      },
+      {
+        "x": 616,
+        "y": 166,
+        "attached": true,
+        "faces": [
+          "front svelte-1koifwl"
+        ]
+      },
+      {
+        "x": 616,
+        "y": 432,
+        "attached": true,
+        "faces": [
+          "front svelte-1koifwl"
+        ]
+      }
+    ]
+  }
+]

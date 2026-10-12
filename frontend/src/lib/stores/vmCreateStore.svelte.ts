@@ -2,7 +2,8 @@ import { t } from '$lib/i18n/ns/vm-wizard';
 import { get } from 'svelte/store';
 import { goto } from '$app/navigation';
 import { setContext, getContext } from 'svelte';
-import { wizard, resetWizard, closeWizard } from '$lib/stores/wizard';
+import { wizard, wizardPassword, wizardPasswordRevision, clearWizardPassword, resetWizard, closeWizard } from '$lib/stores/wizard';
+import type { WizardState } from '$lib/stores/wizard';
 import { api, ApiError, fetchWithAuth, getBaseUrl } from '$lib/api/client';
 import { maybeMockInstanceCreateStream } from '$lib/mockup/transport';
 import { auth } from '$lib/stores/auth';
@@ -18,6 +19,10 @@ import {
 	isGithubSshEligible,
 	isSshAccessReady,
 	isUbuntuImage,
+	isWindowsImageMetadata,
+	windowsPasswordAccount,
+	windowsPasswordError,
+	hasWindowsUserDataConflict,
 	normalizeGithubUsername,
 	normalizeRequestedInstanceName,
 } from '$lib/utils/instanceCreate';
@@ -114,6 +119,8 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	let authProjectId = $state(get(auth).projectId);
 	$effect(() => wizard.subscribe(v => { wizardState = v; }));
 	$effect(() => auth.subscribe(v => { authProjectId = v.projectId; }));
+	let passwordDraft = $state(get(wizardPassword));
+	$effect(() => wizardPassword.subscribe(value => { passwordDraft = value; }));
 	let images = $state<ImageInfo[]>([]);
 	let flavors = $state<FlavorOption[]>([]);
 	let networks = $state<NetworkInfo[]>([]);
@@ -267,10 +274,80 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		wizardState.imageId ? images.find(image => image.id === wizardState.imageId) ?? null : null
 	));
 
+	function minBootVolumeSizeFor(w: WizardState): number {
+		if (w.bootSource === 'volume') return 1;
+		const minimum = images.find(image => image.id === w.imageId)?.min_disk ?? 0;
+		return Number.isFinite(minimum) ? Math.max(1, Math.ceil(minimum)) : 1;
+	}
+	function bootVolumeSizeValid(w: WizardState): boolean {
+		return w.bootSource === 'volume' || (
+			Number.isFinite(w.bootVolumeSizeGb)
+			&& Number.isInteger(w.bootVolumeSizeGb)
+			&& w.bootVolumeSizeGb >= minBootVolumeSizeFor(w)
+		);
+	}
+	const minBootVolumeSizeGb = $derived(minBootVolumeSizeFor(wizardState));
+	const bootVolumeSizeReady = $derived(bootVolumeSizeValid(wizardState));
+	let previousSizeImageId: string | null = null;
+	let previousImageMinimum: number | null = null;
+	$effect(() => {
+		const image = wizardState.bootSource === 'image' ? selectedImage : null;
+		const minimum = minBootVolumeSizeGb;
+		if (!image) {
+			previousSizeImageId = null;
+			previousImageMinimum = null;
+			return;
+		}
+		// Raise only on selection/metadata transitions, never while editing the same image's draft.
+		if (image.id === previousSizeImageId && minimum === previousImageMinimum) return;
+		previousSizeImageId = image.id;
+		previousImageMinimum = minimum;
+		wizard.update(w => w.bootSource === 'image' && w.imageId === image.id
+			&& Number.isFinite(w.bootVolumeSizeGb) && w.bootVolumeSizeGb < minimum
+			? { ...w, bootVolumeSizeGb: minimum }
+			: w);
+	});
+
+	function metadataFor(w: WizardState) {
+		return w.bootSource === 'volume'
+			? volumes.find(volume => volume.id === w.bootVolumeId)?.volume_image_metadata
+			: images.find(image => image.id === w.imageId);
+	}
+	function bootMetadataReady(w: WizardState): boolean {
+		// A retained selection is not ordinary SSH until its authoritative metadata is known.
+		if (w.bootSource === 'volume') return !w.bootVolumeId || (optionStatus.volumes === 'loaded' && volumes.some(volume => volume.id === w.bootVolumeId));
+		return !w.imageId || (optionStatus.images === 'loaded' && images.some(image => image.id === w.imageId));
+	}
+	const windowsAccount = $derived(windowsPasswordAccount(metadataFor(wizardState)));
+	const isWindowsBoot = $derived(isWindowsImageMetadata(metadataFor(wizardState)));
+	const windowsUnsupported = $derived(isWindowsBoot && !windowsAccount);
+	const windowsConflict = $derived(Boolean(windowsAccount) && hasWindowsUserDataConflict(wizardState));
+	const passwordError = $derived(windowsPasswordError(passwordDraft.password, passwordDraft.confirmation));
+	function configurationReady(w: WizardState, draft: typeof passwordDraft): boolean {
+		if (!bootMetadataReady(w)) return false;
+		const metadata = metadataFor(w);
+		if (isWindowsImageMetadata(metadata)) return Boolean(windowsPasswordAccount(metadata))
+			&& !windowsPasswordError(draft.password, draft.confirmation) && !hasWindowsUserDataConflict(w);
+		return isSshAccessReady({ ...w, adminMode: opts.adminMode() });
+	}
+	const accessReady = $derived(configurationReady(wizardState, passwordDraft));
+	let previousWindowsAccount: string | null = null;
+	let previousAdminMode = opts.adminMode();
+	$effect(() => {
+		const adminMode = opts.adminMode();
+		if (adminMode !== previousAdminMode) {
+			previousAdminMode = adminMode;
+			clearWizardPassword();
+		}
+		if (windowsAccount !== previousWindowsAccount) {
+			previousWindowsAccount = windowsAccount;
+			clearWizardPassword();
+		}
+	});
 
 	const selectedImageIsUbuntu = $derived.by(() => isUbuntuImage(selectedImage, wizardState.imageName));
 	const githubSshEligible = $derived.by(() =>
-		isGithubSshEligible({
+		!isWindowsBoot && isGithubSshEligible({
 			adminMode: opts.adminMode(),
 			bootSource: wizardState.bootSource,
 			selectedImageIsUbuntu,
@@ -363,20 +440,13 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	);
 
 	const canNext = $derived((() => {
-		const adminMode = opts.adminMode();
+		if (windowsUnsupported) return false;
 		switch (wizardState.step) {
 			case 1: return wizardState.bootSource === 'volume' ? !!wizardState.bootVolumeId : !!wizardState.imageId;
 			case 2: return flavorAdmissionReady;
 			case 5:
-				return isSshAccessReady({
-					adminMode,
-					sshAccessMode: wizardState.sshAccessMode,
-					keyName: wizardState.keyName,
-					githubUsername: wizardState.githubUsername,
-					githubProfile: wizardState.githubProfile,
-
-				});
-			case 6: return flavorAdmissionReady;
+				return accessReady && bootVolumeSizeReady;
+			case 6: return flavorAdmissionReady && bootMetadataReady(wizardState) && bootVolumeSizeReady && (!isWindowsBoot || accessReady);
 			default: return false;
 		}
 	})());
@@ -788,6 +858,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 	function resetTargetOptions() {
+		clearWizardPassword();
 		advanceProjectGeneration();
 		for (const key of ['volumes', 'flavors', 'networks', 'securityGroups'] as const) {
 			optionStatus[key] = 'idle';
@@ -876,6 +947,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 	function nextStep() {
+		if (!canNext) return;
 		const current = get(wizard).step as WizardStepId;
 		const index = visibleStepIds.indexOf(current);
 		const next = visibleStepIds[Math.min(index + 1, visibleStepIds.length - 1)];
@@ -938,11 +1010,27 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 
 	async function deploy() {
 		if (destroyed || deploying || submitChecking) return;
+		if (!bootMetadataReady(get(wizard))) {
+			goTo(1);
+			return;
+		}
+		if (!bootVolumeSizeValid(get(wizard))) {
+			goTo(5);
+			return;
+		}
+		if (isWindowsImageMetadata(metadataFor(get(wizard))) && !configurationReady(get(wizard), get(wizardPassword))) {
+			goTo(5);
+			return;
+		}
 		// Revalidate the selected flavor against the create-capacity snapshot right before the mutation.
 		const checked = get(wizard);
 		const checkedGeneration = loadGeneration;
 		const checkedTargetProjectId = adminSelectedProjectId;
 		const checkedAuthProjectId = get(auth).projectId;
+		const checkedActor = JSON.stringify([get(auth).userId, get(auth).token, get(auth).projectId]);
+		const checkedPasswordRevision = wizardPasswordRevision;
+		const checkedAdminMode = opts.adminMode();
+		const checkedWindowsAccount = windowsPasswordAccount(metadataFor(checked));
 		submitChecking = true;
 		let refreshed = false;
 		try {
@@ -957,6 +1045,13 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			|| checkedTargetProjectId !== adminSelectedProjectId
 			|| (!opts.adminMode() && checkedAuthProjectId !== get(auth).projectId)
 			|| get(wizard).flavorId !== checked.flavorId
+			|| checkedActor !== JSON.stringify([get(auth).userId, get(auth).token, get(auth).projectId])
+			|| checkedAdminMode !== opts.adminMode()
+			|| checkedPasswordRevision !== wizardPasswordRevision
+			|| checked.bootSource !== get(wizard).bootSource
+			|| checked.imageId !== get(wizard).imageId
+			|| checked.bootVolumeId !== get(wizard).bootVolumeId
+			|| checkedWindowsAccount !== windowsPasswordAccount(metadataFor(get(wizard)))
 		) {
 			return;
 		}
@@ -964,6 +1059,18 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		if (!refreshed || !admitted || flavorCreateBlock(admitted) !== null) {
 			// SelectFlavor explains the refresh failure or the newly blocked selection; the user chooses again.
 			goTo(2);
+			return;
+		}
+		if (!bootMetadataReady(get(wizard))) {
+			goTo(1);
+			return;
+		}
+		if (!bootVolumeSizeValid(get(wizard))) {
+			goTo(5);
+			return;
+		}
+		if (isWindowsImageMetadata(metadataFor(get(wizard))) && !configurationReady(get(wizard), get(wizardPassword))) {
+			goTo(5);
 			return;
 		}
 		deployController?.abort();
@@ -982,13 +1089,15 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			: '/api/v1/instances/async';
 
 		const w = get(wizard);
+		const windowsMode = Boolean(windowsPasswordAccount(metadataFor(w)));
 		const requestedName = normalizeRequestedInstanceName(w.instanceName);
-		const githubUsername = w.sshAccessMode === 'github'
+		const githubUsername = !windowsMode && w.sshAccessMode === 'github'
 			? normalizeGithubUsername(w.githubUsername) || null
 			: null;
-		const keyName = w.sshAccessMode === 'github' ? null : w.keyName || null;
+		const keyName = windowsMode || w.sshAccessMode === 'github' ? null : w.keyName || null;
 		const body: Record<string, unknown> = {
 			name: requestedName,
+			...(windowsMode ? { admin_pass: get(wizardPassword).password } : {}),
 			...(w.bootSource === 'volume'
 				? { boot_volume_id: w.bootVolumeId }
 				: {
@@ -1001,8 +1110,8 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			key_name: keyName,
 			github_username: githubUsername,
 			security_groups: w.securityGroups,
-			userdata: w.cloudInit || null,
-			data_mounts: w.dataMounts.map(m => ({
+			userdata: windowsMode ? null : w.cloudInit || null,
+			data_mounts: windowsMode ? [] : w.dataMounts.map(m => ({
 				file_storage_id: m.fileStorageId,
 				mount_point: m.mountPoint,
 				read_only: m.readOnly,
@@ -1011,6 +1120,9 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		if (opts.adminMode() && adminSelectedProjectId) {
 			body.project_id = adminSelectedProjectId;
 		}
+		const requestBody = JSON.stringify(body);
+		delete body.admin_pass;
+		clearWizardPassword();
 
 		// mockup 모드: 실제 API 대신 가상 SSE 스트림으로 배포 흐름 재현
 		const mockStream = maybeMockInstanceCreateStream(
@@ -1039,7 +1151,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			const response = await fetchWithAuth(endpoint, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-				body: JSON.stringify(body),
+				body: requestBody,
 				signal: deployController.signal,
 			}, authState.token ?? undefined, authState.projectId ?? undefined, { baseUrl });
 			if (destroyed) return;
@@ -1119,6 +1231,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	function destroy() {
 		if (destroyed) return;
 		destroyed = true;
+		clearWizardPassword();
 		initialized = false;
 		projectLoadController.abort();
 		stopDeploymentClock();
@@ -1210,8 +1323,15 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		get progressSteps() { return progressSteps; },
 		get selectedNetwork() { return selectedNetwork; },
 		get selectedImage() { return selectedImage; },
+		get minBootVolumeSizeGb() { return minBootVolumeSizeGb; },
+		get bootVolumeSizeReady() { return bootVolumeSizeReady; },
 		get selectedImageIsUbuntu() { return selectedImageIsUbuntu; },
 		get githubSshEligible() { return githubSshEligible; },
+		get windowsAccount() { return windowsAccount; },
+		get isWindowsBoot() { return isWindowsBoot; },
+		get windowsUnsupported() { return windowsUnsupported; },
+		get windowsConflict() { return windowsConflict; },
+		get passwordError() { return passwordError; },
 		get hasGpuFlavor() { return hasGpuFlavor; },
 		get selectedFlavorDetail() { return selectedFlavorDetail; },
 		get canNext() { return canNext; },

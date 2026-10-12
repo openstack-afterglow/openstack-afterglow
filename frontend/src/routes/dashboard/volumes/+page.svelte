@@ -240,6 +240,7 @@
   transferVolumeName={ctrl.transferVolumeName}
   showTransfer={ctrl.showTransferModal}
   extendTarget={ctrl.extendTargetVol}
+  projectId={$auth.projectId ?? undefined}
   backupTarget={ctrl.backupTargetVol}
   snapshotTarget={ctrl.snapshotTargetVol}
   renameTarget={ctrl.renameTargetVol}

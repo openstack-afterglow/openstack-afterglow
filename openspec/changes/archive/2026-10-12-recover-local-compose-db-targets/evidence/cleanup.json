@@ -1,0 +1,3052 @@
+{
+  "recorded_at": "2026-10-11T19:34:15.029Z",
+  "request": "Remove unused containers; preserve active development stack and all volumes/images/build cache",
+  "before": {
+    "containers": 59,
+    "running": 36,
+    "networks": 20,
+    "volumes": [
+      "05db7bda613411184c0d68e77862b49966e852524a0583dff1ee5ec5717a906b",
+      "1562519539ed030f5f282d8091eb22b57ae85461ec7beaf59d77e9abe4f5f428",
+      "4da549cc130899177f4c768445696610530b4b283575e70bd53ee302587e93c5",
+      "6e39ff420c602ce647118bb96a5a3f74d1838ece5bee26553c302cf6e6a259f7",
+      "7fe00df1229cadd2f2da9e71afb60843a24c220bac4d18d111ab7557c9facba6",
+      "868f2e6a4a54333142223678160e439c14a90094a82668d5a55a683ffad2aab6",
+      "afterglow-local-services_afterglow-mariadb-data",
+      "afterglow-local-services_lumen-postgres-data",
+      "afterglow-local-services_palimpsest-hub",
+      "afterglow-local-services_redis-data",
+      "afterglow-local-services_service-mariadb-data",
+      "artex-local_artex_auth",
+      "artex-local_artex_data",
+      "artex-local_artex_home",
+      "artex-local_pgdata",
+      "buildx_buildkit_palimpsest-e2e0_state",
+      "d5a4f59483e9b0fc6e8c0477b945e1d79cb4a1cee90b39b9e3bfee9696a9bc61",
+      "lumen-elastic-batch-qa_system-mariadb",
+      "lumen-provider-smoke-20260928_lumen-mariadb",
+      "palimpsest-hub-candidate033-20261011-state",
+      "palimpsest-real-identity-d71e6689cc-hub-db",
+      "palimpsest-real-identity-d71e6689cc-hub-state",
+      "palimpsest-real-identity-d71e6689cc-keystone-db",
+      "palimpsest-real-identity-d71e6689cc-keystone-keys",
+      "palimpsest-real-identity-d71e6689cc-redis"
+    ]
+  },
+  "stopped_candidates": [
+    {
+      "id": "ef24625c08a5892d60cd74453fe7784be6bb97ada0c8b64b40e7952009939b4c",
+      "name": "afterglow-lumen-settings-ui-amd64-frontend-1",
+      "image": "afterglow-lumen-consent-qa/frontend:20261011",
+      "project": "afterglow-lumen-settings-ui-amd64",
+      "service": "frontend",
+      "status": "exited",
+      "exit_code": 0,
+      "finished_at": "2026-10-11T16:00:25.665133334Z",
+      "mounts": [
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/tmp/afterglow-lumen-settings-20261011/compiled-frontend.conf",
+          "destination": "/app/afterglow.conf"
+        }
+      ],
+      "network_names": [
+        "afterglow-lumen-settings-ui-amd64_default"
+      ]
+    },
+    {
+      "id": "65e2582e0658df1a7a9c35a01cb1e0db3643a385e4f28aa7012082b7c5dcef18",
+      "name": "ag-backend-amd64-20261011t200236_b687ac5a-backend-1",
+      "image": "afterglow-lumen-consent-qa/backend:20261011",
+      "project": "ag-backend-amd64-20261011t200236_b687ac5a",
+      "service": "backend",
+      "status": "exited",
+      "exit_code": 0,
+      "finished_at": "2026-10-11T11:05:36.290206003Z",
+      "mounts": [],
+      "network_names": [
+        "afterglow-lumen-settings-qa_default"
+      ]
+    },
+    {
+      "id": "3e45e293e34e03c2ea36d0c3d28d0a518724ba66c0f5a956f3de56748cc3ce7c",
+      "name": "ag-backend-arm64-20261011t200236_b687ac5a-backend-1",
+      "image": "afterglow-lumen-consent-qa/backend:20261011",
+      "project": "ag-backend-arm64-20261011t200236_b687ac5a",
+      "service": "backend",
+      "status": "exited",
+      "exit_code": 0,
+      "finished_at": "2026-10-11T11:05:35.81801542Z",
+      "mounts": [],
+      "network_names": [
+        "afterglow-lumen-settings-qa_default"
+      ]
+    },
+    {
+      "id": "06d3848a2bbeb37e6be75e2af7a9048a059df43cfdccbb739ed14d80b87b2e21",
+      "name": "qa-process-native-amd64-20261011200112-269657e7-lumen-api-1",
+      "image": "afterglow-lumen-consent-qa/lumen-api:20261011",
+      "project": "qa-process-native-amd64-20261011200112-269657e7",
+      "service": "lumen-api",
+      "status": "exited",
+      "exit_code": 0,
+      "finished_at": "2026-10-11T11:05:45.604627383Z",
+      "mounts": [],
+      "network_names": [
+        "afterglow-lumen-settings-qa_default"
+      ]
+    },
+    {
+      "id": "304fc0603c7e33e573f6adc550d05ac7caa0d42d842ac229a6581b214543e163",
+      "name": "qa-process-native-amd64-20261011200112-269657e7-lumen-worker-1",
+      "image": "afterglow-lumen-consent-qa/lumen-worker:20261011",
+      "project": "qa-process-native-amd64-20261011200112-269657e7",
+      "service": "lumen-worker",
+      "status": "exited",
+      "exit_code": 0,
+      "finished_at": "2026-10-11T11:05:46.261429966Z",
+      "mounts": [],
+      "network_names": [
+        "afterglow-lumen-settings-qa_default"
+      ]
+    },
+    {
+      "id": "68d3ce4483a91cfc96a505daf0b91674ba6e9960bf9cfffb58b2e862f7f9fb87",
+      "name": "qa-process-native-arm64-20261011200112-269657e7-lumen-api-1",
+      "image": "afterglow-lumen-consent-qa/lumen-api:20261011",
+      "project": "qa-process-native-arm64-20261011200112-269657e7",
+      "service": "lumen-api",
+      "status": "exited",
+      "exit_code": 0,
+      "finished_at": "2026-10-11T11:05:44.139563049Z",
+      "mounts": [],
+      "network_names": [
+        "afterglow-lumen-settings-qa_default"
+      ]
+    },
+    {
+      "id": "75f4e8ee93a5fc2cf7c2c2e07922940d43e8bd6b75275a437b5576423be72824",
+      "name": "qa-process-native-arm64-20261011200112-269657e7-lumen-worker-1",
+      "image": "afterglow-lumen-consent-qa/lumen-worker:20261011",
+      "project": "qa-process-native-arm64-20261011200112-269657e7",
+      "service": "lumen-worker",
+      "status": "exited",
+      "exit_code": 0,
+      "finished_at": "2026-10-11T11:05:44.706484549Z",
+      "mounts": [],
+      "network_names": [
+        "afterglow-lumen-settings-qa_default"
+      ]
+    },
+    {
+      "id": "f8678ecdfb7ea7f03fb75e8ebc20aa25d7be3d51e58ac7028c4ce3b3b5f92dd0",
+      "name": "qa-process-native-amd64-20261011200112-269657e7-migrate",
+      "image": "afterglow-lumen-consent-qa/lumen-api:20261011",
+      "project": "qa-process-native-amd64-20261011200112-269657e7",
+      "service": "migrate",
+      "status": "exited",
+      "exit_code": 0,
+      "finished_at": "2026-10-11T11:01:57.474192055Z",
+      "mounts": [],
+      "network_names": [
+        "afterglow-lumen-settings-qa_default"
+      ]
+    },
+    {
+      "id": "318a16b93019a70480e5c3d961cd5084aedb73fb6b05f067a27c0ec01ba32b55",
+      "name": "qa-process-native-arm64-20261011200112-269657e7-migrate",
+      "image": "afterglow-lumen-consent-qa/lumen-api:20261011",
+      "project": "qa-process-native-arm64-20261011200112-269657e7",
+      "service": "migrate",
+      "status": "exited",
+      "exit_code": 0,
+      "finished_at": "2026-10-11T11:01:54.830274595Z",
+      "mounts": [],
+      "network_names": [
+        "afterglow-lumen-settings-qa_default"
+      ]
+    },
+    {
+      "id": "c1d75e374c5c3d5f4915e456787e91717d72b7bcd7d023c627329ee49156e70e",
+      "name": "afterglow-lumen-settings-ui-arm64-frontend-1",
+      "image": "afterglow-lumen-consent-qa/frontend:20261011",
+      "project": "afterglow-lumen-settings-ui-arm64",
+      "service": "frontend",
+      "status": "exited",
+      "exit_code": 0,
+      "finished_at": "2026-10-11T16:00:25.483829876Z",
+      "mounts": [
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/tmp/afterglow-lumen-settings-20261011/compiled-frontend.conf",
+          "destination": "/app/afterglow.conf"
+        }
+      ],
+      "network_names": [
+        "afterglow-lumen-settings-ui-arm64_default"
+      ]
+    },
+    {
+      "id": "9fca65f57b1fee78d2239912f7cf0f52094bccb0b3ed4317b9e3aa72745ddc65",
+      "name": "palimpsest-real-identity-d71e6689cc-hub-api-amd64",
+      "image": "palimpsest-hub-api:management-d71e-amd64",
+      "project": null,
+      "service": null,
+      "status": "exited",
+      "exit_code": 137,
+      "finished_at": "2026-10-11T10:39:30.415128293Z",
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "palimpsest-real-identity-d71e6689cc-hub-state",
+          "source": "/var/lib/docker/volumes/palimpsest-real-identity-d71e6689cc-hub-state/_data",
+          "destination": "/var/lib/palimpsest-proof"
+        }
+      ],
+      "network_names": [
+        "palimpsest-real-identity-d71e6689cc-net"
+      ]
+    },
+    {
+      "id": "b47029125b7f05f150bf4172be24eac88a6776f1cab38dd561f933398b117641",
+      "name": "artex-local-artex-1",
+      "image": "artex-ko:local",
+      "project": "artex-local",
+      "service": "artex",
+      "status": "exited",
+      "exit_code": 0,
+      "finished_at": "2026-10-10T16:47:28.737917168Z",
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "artex-local_artex_auth",
+          "source": "/var/lib/docker/volumes/artex-local_artex_auth/_data",
+          "destination": "/app/auth"
+        },
+        {
+          "type": "volume",
+          "name": "artex-local_artex_data",
+          "source": "/var/lib/docker/volumes/artex-local_artex_data/_data",
+          "destination": "/app/data"
+        },
+        {
+          "type": "volume",
+          "name": "artex-local_artex_home",
+          "source": "/var/lib/docker/volumes/artex-local_artex_home/_data",
+          "destination": "/home/artex"
+        }
+      ],
+      "network_names": [
+        "artex-local_database",
+        "artex-local_outbound"
+      ]
+    },
+    {
+      "id": "dda2ef4f6023061506a85f7ae53b2bbbc464e93d1de9821a8f4a89ec786b4eb2",
+      "name": "artex-local-postgres-1",
+      "image": "postgres:16-alpine",
+      "project": "artex-local",
+      "service": "postgres",
+      "status": "exited",
+      "exit_code": 0,
+      "finished_at": "2026-10-10T16:47:29.009177293Z",
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "artex-local_pgdata",
+          "source": "/var/lib/docker/volumes/artex-local_pgdata/_data",
+          "destination": "/var/lib/postgresql/data"
+        }
+      ],
+      "network_names": [
+        "artex-local_database"
+      ]
+    },
+    {
+      "id": "2cdd71703c7914c8ed13b4c5e6fdcaa41a3cb5611cbf5b9841484f2435643400",
+      "name": "afterglow-mcp-oauth-test-mariadb-1",
+      "image": "mariadb:11.4",
+      "project": "afterglow-mcp-oauth-test",
+      "service": "mariadb",
+      "status": "exited",
+      "exit_code": 0,
+      "finished_at": "2026-10-09T12:05:58.862831552Z",
+      "mounts": [],
+      "network_names": [
+        "afterglow-mcp-oauth-test_default"
+      ]
+    },
+    {
+      "id": "937d609909e8263ea21d1427204c1c1fabaa156876ea85fe81c172d31dd9d7e9",
+      "name": "lumen-elastic-batch-qa-mariadb-1",
+      "image": "mariadb:11",
+      "project": "lumen-elastic-batch-qa",
+      "service": "mariadb",
+      "status": "exited",
+      "exit_code": 137,
+      "finished_at": "2026-10-11T10:32:11.23630496Z",
+      "mounts": [
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/host_mnt/Users/pieroot/code/lumen/tests/fixtures/mariadb-unicode-database.sql",
+          "destination": "/docker-entrypoint-initdb.d/10-lumen-collation.sql"
+        },
+        {
+          "type": "volume",
+          "name": "lumen-elastic-batch-qa_system-mariadb",
+          "source": "/var/lib/docker/volumes/lumen-elastic-batch-qa_system-mariadb/_data",
+          "destination": "/var/lib/mysql"
+        }
+      ],
+      "network_names": [
+        "lumen-elastic-batch-qa_default"
+      ]
+    },
+    {
+      "id": "20375f653add3e805ddae93674d557a007722f1025b79ccae66c096f4092b07f",
+      "name": "lumen-provider-smoke-20260928-lumen-api-1",
+      "image": "lumen-provider-smoke-20260928-lumen-api",
+      "project": "lumen-provider-smoke-20260928",
+      "service": "lumen-api",
+      "status": "exited",
+      "exit_code": 137,
+      "finished_at": "2026-10-05T17:44:03.737811468Z",
+      "mounts": [],
+      "network_names": [
+        "lumen-provider-smoke-20260928_default"
+      ]
+    },
+    {
+      "id": "a788cb4d0ab55c8c855d55e74028196bdd0a6101806dd2ec3fef6326aa52c44e",
+      "name": "lumen-provider-smoke-20260928-lumen-worker-1",
+      "image": "lumen-provider-smoke-20260928-lumen-worker",
+      "project": "lumen-provider-smoke-20260928",
+      "service": "lumen-worker",
+      "status": "exited",
+      "exit_code": 1,
+      "finished_at": "2026-10-05T17:44:02.767372217Z",
+      "mounts": [],
+      "network_names": [
+        "lumen-provider-smoke-20260928_default"
+      ]
+    },
+    {
+      "id": "bbfe8c4b62ec3f3736600f50a6adf40561d9c6c5de97960244f39b50c321769d",
+      "name": "lumen-provider-smoke-20260928-redis-1",
+      "image": "redis:7",
+      "project": "lumen-provider-smoke-20260928",
+      "service": "redis",
+      "status": "exited",
+      "exit_code": 0,
+      "finished_at": "2026-10-05T17:44:00.809312258Z",
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "6e39ff420c602ce647118bb96a5a3f74d1838ece5bee26553c302cf6e6a259f7",
+          "source": "/var/lib/docker/volumes/6e39ff420c602ce647118bb96a5a3f74d1838ece5bee26553c302cf6e6a259f7/_data",
+          "destination": "/data"
+        }
+      ],
+      "network_names": [
+        "lumen-provider-smoke-20260928_default"
+      ]
+    },
+    {
+      "id": "f0813972311849c099c9e4ff050c51586daaa849b1dac5b24d23bab4c2584067",
+      "name": "lumen-provider-smoke-20260928-mariadb-1",
+      "image": "mariadb:11",
+      "project": "lumen-provider-smoke-20260928",
+      "service": "mariadb",
+      "status": "exited",
+      "exit_code": 0,
+      "finished_at": "2026-10-05T17:44:01.011732008Z",
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "lumen-provider-smoke-20260928_lumen-mariadb",
+          "source": "/var/lib/docker/volumes/lumen-provider-smoke-20260928_lumen-mariadb/_data",
+          "destination": "/var/lib/mysql"
+        }
+      ],
+      "network_names": [
+        "lumen-provider-smoke-20260928_default"
+      ]
+    }
+  ],
+  "empty_network_candidates": [
+    {
+      "id": "e777671121407360337585760f2cab05778b344b0b7e3470ef40a4f76cf650b9",
+      "name": "afterglow-db-escaping-probe_default",
+      "ipam": [
+        {
+          "Subnet": "172.23.0.0/16",
+          "Gateway": "172.23.0.1"
+        }
+      ],
+      "labels": {
+        "com.docker.compose.config-hash": "24599c3e3346bb4071ade8b975ce50aeaa1849ce2c25cf7f6980bca52602993b",
+        "com.docker.compose.network": "default",
+        "com.docker.compose.project": "afterglow-db-escaping-probe",
+        "com.docker.compose.version": "5.5.1"
+      }
+    },
+    {
+      "id": "1a8604e7a73e0f87eed7b725a65d39d968fe44c04f8f8bfe9215aa30887282cc",
+      "name": "afterglow-db-selection-20261011_default",
+      "ipam": [
+        {
+          "Subnet": "172.24.0.0/16",
+          "Gateway": "172.24.0.1"
+        }
+      ],
+      "labels": {
+        "com.docker.compose.config-hash": "4ce46eb0cb565136ccd82bd671f2596a29c3b4c697aa9983a0e0c201b5e5a300",
+        "com.docker.compose.network": "default",
+        "com.docker.compose.project": "afterglow-db-selection-20261011",
+        "com.docker.compose.version": "5.5.1"
+      }
+    },
+    {
+      "id": "dc53ffb284622c270dec7780093c8c59c7261162f69910aa6463eab7d98fb3d7",
+      "name": "afterglow-lumen-settings-ui-amd64_default",
+      "ipam": [
+        {
+          "Subnet": "192.168.16.0/20",
+          "Gateway": "192.168.16.1"
+        }
+      ],
+      "labels": {
+        "com.docker.compose.config-hash": "71b3188c2f9c8bcbc8758833351d074898d65b8e1ac27b445a3ef9fbce886f04",
+        "com.docker.compose.network": "default",
+        "com.docker.compose.project": "afterglow-lumen-settings-ui-amd64",
+        "com.docker.compose.version": "5.5.1"
+      }
+    },
+    {
+      "id": "a67c3ae62110872ddd4c9dea7f358669ddb350efc04957986de1c157a6cc2f26",
+      "name": "afterglow-lumen-settings-ui-arm64_default",
+      "ipam": [
+        {
+          "Subnet": "172.25.0.0/16",
+          "Gateway": "172.25.0.1"
+        }
+      ],
+      "labels": {
+        "com.docker.compose.config-hash": "e9dd3967478467bb37cee7c5bfabc8103f7e9f35cdca101d9eac6ff7ea46d80c",
+        "com.docker.compose.network": "default",
+        "com.docker.compose.project": "afterglow-lumen-settings-ui-arm64",
+        "com.docker.compose.version": "5.5.1"
+      }
+    },
+    {
+      "id": "08c905abb29e294867cb10ee8ffe202a3d82850fdb27d41ac17b7ca15277c2f8",
+      "name": "afterglow-mcp-oauth-test_default",
+      "ipam": [
+        {
+          "Subnet": "172.21.0.0/16",
+          "Gateway": "172.21.0.1"
+        }
+      ],
+      "labels": {
+        "com.docker.compose.config-hash": "90752bd6d322f43f4ce2543d11d5784634724bf3785309e1b9d986bc98dacdd1",
+        "com.docker.compose.network": "default",
+        "com.docker.compose.project": "afterglow-mcp-oauth-test",
+        "com.docker.compose.version": "5.5.1"
+      }
+    },
+    {
+      "id": "5ee86cf8cae3490a7b3767b3bfaecf86305c4975e3039a3cb444b7ebb1cfd89a",
+      "name": "artex-local_database",
+      "ipam": [
+        {
+          "Subnet": "172.27.0.0/16",
+          "Gateway": "172.27.0.1"
+        }
+      ],
+      "labels": {
+        "com.docker.compose.config-hash": "515b39247f52710b02206ce93043d486b761e0457ab171abd7eb87384dc3488c",
+        "com.docker.compose.network": "database",
+        "com.docker.compose.project": "artex-local",
+        "com.docker.compose.version": "5.5.1"
+      }
+    },
+    {
+      "id": "1afe6d8c68f2e53ca07215d569cddb230fd5bb51c2421981ebee6f461bb517a4",
+      "name": "artex-local_outbound",
+      "ipam": [
+        {
+          "Subnet": "172.26.0.0/16",
+          "Gateway": "172.26.0.1"
+        }
+      ],
+      "labels": {
+        "com.docker.compose.config-hash": "f0dfaae280492b3177c845114f4752311ae7128e0f7317c6101a078766059335",
+        "com.docker.compose.network": "outbound",
+        "com.docker.compose.project": "artex-local",
+        "com.docker.compose.version": "5.5.1"
+      }
+    },
+    {
+      "id": "4b88d0fd8a2585fd353db01450ea4126d337fedef71e1990118357bc3a5ad304",
+      "name": "lumen-gate5-0hycd66i",
+      "ipam": [
+        {
+          "Subnet": "172.20.0.0/16",
+          "Gateway": "172.20.0.1"
+        }
+      ],
+      "labels": {}
+    },
+    {
+      "id": "868a4d9aaab7f932df5eeb2b88a8455323fcd747bf107ebbd3d5de0621ec7bfc",
+      "name": "lumen-provider-smoke-20260928_default",
+      "ipam": [
+        {
+          "Subnet": "172.28.0.0/16",
+          "Gateway": "172.28.0.1"
+        }
+      ],
+      "labels": {
+        "com.docker.compose.config-hash": "d2752f69d42f8857fc24b04c66a2f3f6f2fb4e30ffb98959ab4c04e53aaae0ea",
+        "com.docker.compose.network": "default",
+        "com.docker.compose.project": "lumen-provider-smoke-20260928",
+        "com.docker.compose.version": "5.5.1"
+      }
+    }
+  ],
+  "protected": [
+    {
+      "id": "97f3ab485778b5eec873dbcd8a17818ad43fcb19f4a54f18d3775c77517e44d4",
+      "name": "afterglow-local-services-frontend-1",
+      "running": true,
+      "pid": 78022,
+      "started_at": "2026-10-11T19:07:05.342695671Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/Users/pieroot/code/afterglow/.local-services/afterglow.conf",
+          "destination": "/app/afterglow.conf"
+        },
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/Users/pieroot/code/afterglow/.local-services/logs",
+          "destination": "/app/logs"
+        }
+      ],
+      "ports": {
+        "3080/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "3080"
+          }
+        ]
+      },
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "c7ac6e55e7116f135a34fe24e642b27c7e6b479b43544d99551b4112fb11e959",
+      "name": "afterglow-local-services-backend-1",
+      "running": true,
+      "pid": 77182,
+      "started_at": "2026-10-11T19:06:59.763543627Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/Users/pieroot/code/afterglow/.local-services/afterglow.conf",
+          "destination": "/app/afterglow.conf"
+        },
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/Users/pieroot/code/afterglow/.local-services/logs",
+          "destination": "/app/logs"
+        },
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/dev/null",
+          "destination": "/etc/ceph/ceph.client.afterglow-rbd.keyring"
+        },
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/dev/null",
+          "destination": "/etc/ceph/ceph.conf"
+        }
+      ],
+      "ports": {
+        "8000/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "8000"
+          }
+        ]
+      },
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "e696454117d5aa8fcaab4050a601c3d90df64d04c936481cbf0f9f6cda06eab6",
+      "name": "afterglow-local-services-waygate-api-1",
+      "running": true,
+      "pid": 75319,
+      "started_at": "2026-10-11T19:06:48.391237636Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/Users/pieroot/code/afterglow/.local-services/afterglow.conf",
+          "destination": "/etc/afterglow/afterglow.conf"
+        }
+      ],
+      "ports": {
+        "8010/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "8010"
+          }
+        ]
+      },
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "4bf97db7494f5b75b30b3352918242ea4e027854c808dfc567d2b49000fdfcb9",
+      "name": "afterglow-local-services-palimpsest-api-1",
+      "running": true,
+      "pid": 75527,
+      "started_at": "2026-10-11T19:06:48.785696761Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "afterglow-local-services_palimpsest-hub",
+          "source": "/var/lib/docker/volumes/afterglow-local-services_palimpsest-hub/_data",
+          "destination": "/var/lib/palimpsest/hub"
+        }
+      ],
+      "ports": {
+        "8020/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "8020"
+          }
+        ]
+      },
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "a3f1fbbb193e30cd462392b973d1d965dde7d36005cb037d17289a7f4cc273d8",
+      "name": "afterglow-local-services-drover-api-1",
+      "running": true,
+      "pid": 75455,
+      "started_at": "2026-10-11T19:06:48.499122053Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/Users/pieroot/code/afterglow/.local-services/afterglow.conf",
+          "destination": "/etc/afterglow/afterglow.conf"
+        }
+      ],
+      "ports": {
+        "8011/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "8011"
+          }
+        ]
+      },
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "188dbcb637fb1f9866de81e1266f593ea2302ee0b9744ecbb605d80ffe4ef959",
+      "name": "afterglow-local-services-lumen-api-1",
+      "running": true,
+      "pid": 75688,
+      "started_at": "2026-10-11T19:06:49.172507886Z",
+      "restart_count": 0,
+      "mounts": [],
+      "ports": {
+        "8012/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "8012"
+          }
+        ]
+      },
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "7f4d83c347e41ec2141c9cda6c1e21dca11b5037e02f253677bf51ae6bd6cda4",
+      "name": "afterglow-local-services-drover-migrate-1",
+      "running": false,
+      "pid": 0,
+      "started_at": "2026-10-11T19:06:46.866841427Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/Users/pieroot/code/afterglow/.local-services/afterglow.conf",
+          "destination": "/etc/afterglow/afterglow.conf"
+        }
+      ],
+      "ports": {},
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "7ec29d2b154e9cb3c1e4427e2404e3aa779045a05b224d1a71b09418b972b09e",
+      "name": "afterglow-local-services-waygate-migrate-1",
+      "running": false,
+      "pid": 0,
+      "started_at": "2026-10-11T19:06:46.758867552Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/Users/pieroot/code/afterglow/.local-services/afterglow.conf",
+          "destination": "/etc/afterglow/afterglow.conf"
+        }
+      ],
+      "ports": {},
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "016246a41aeb5bf558c2ab54a069b9db71d3907cfc2a75a6e9a6dafcf50ad728",
+      "name": "afterglow-local-services-palimpsest-bootstrap-1",
+      "running": false,
+      "pid": 0,
+      "started_at": "2026-10-11T19:06:46.670809093Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "afterglow-local-services_palimpsest-hub",
+          "source": "/var/lib/docker/volumes/afterglow-local-services_palimpsest-hub/_data",
+          "destination": "/var/lib/palimpsest/hub"
+        }
+      ],
+      "ports": {},
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "bcb06655149e521657acbdb9ba529146bfed946e80f074b12f313ca811708044",
+      "name": "afterglow-local-services-lumen-migrate-1",
+      "running": false,
+      "pid": 0,
+      "started_at": "2026-10-11T19:06:46.585877135Z",
+      "restart_count": 0,
+      "mounts": [],
+      "ports": {},
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "fe6bf2500ce1137348bccd75f41d823ef1b31a45c6d73da060602431ce455545",
+      "name": "afterglow-remaining-commit-gate-bkjlix-postgres-1",
+      "running": true,
+      "pid": 87942,
+      "started_at": "2026-10-11T18:42:52.631587972Z",
+      "restart_count": 0,
+      "mounts": [],
+      "ports": {
+        "5432/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": ""
+          }
+        ]
+      },
+      "networks": [
+        "afterglow-remaining-commit-gate-bkjlix_default"
+      ]
+    },
+    {
+      "id": "870f04e753a3cda21fd6a56d638f99171205e18cfaef5c8767f295e0d325d9e5",
+      "name": "afterglow-remaining-commit-gate-bkjlix-test-redis-1",
+      "running": true,
+      "pid": 88042,
+      "started_at": "2026-10-11T18:42:52.734563513Z",
+      "restart_count": 0,
+      "mounts": [],
+      "ports": {
+        "6379/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": ""
+          }
+        ]
+      },
+      "networks": [
+        "afterglow-remaining-commit-gate-bkjlix_default"
+      ]
+    },
+    {
+      "id": "bb6a10b1a5a801cbf82b64132b3690983166df58c5188345f86fb2dc785894a8",
+      "name": "afterglow-remaining-commit-gate-bkjlix-mariadb-1",
+      "running": true,
+      "pid": 88135,
+      "started_at": "2026-10-11T18:42:52.845525305Z",
+      "restart_count": 0,
+      "mounts": [],
+      "ports": {
+        "3306/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": ""
+          }
+        ]
+      },
+      "networks": [
+        "afterglow-remaining-commit-gate-bkjlix_default"
+      ]
+    },
+    {
+      "id": "fc7ca4569d1e21d982bda4ba7b1ed86900f97d70ee7e3584557071b4b8cdf160",
+      "name": "drover-inventory-redis-453d7513d64f",
+      "running": true,
+      "pid": 75538,
+      "started_at": "2026-10-11T10:45:45.705942633Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "05db7bda613411184c0d68e77862b49966e852524a0583dff1ee5ec5717a906b",
+          "source": "/var/lib/docker/volumes/05db7bda613411184c0d68e77862b49966e852524a0583dff1ee5ec5717a906b/_data",
+          "destination": "/data"
+        }
+      ],
+      "ports": {
+        "6379/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": ""
+          }
+        ]
+      },
+      "networks": [
+        "bridge"
+      ]
+    },
+    {
+      "id": "8edb660cf947234f39787a4b134723b3286d3ebadbabfe5e774d63ae04fde387",
+      "name": "drover-inventory-sql-453d7513d64f",
+      "running": true,
+      "pid": 79284,
+      "started_at": "2026-10-11T10:46:12.204656673Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "1562519539ed030f5f282d8091eb22b57ae85461ec7beaf59d77e9abe4f5f428",
+          "source": "/var/lib/docker/volumes/1562519539ed030f5f282d8091eb22b57ae85461ec7beaf59d77e9abe4f5f428/_data",
+          "destination": "/var/lib/mysql"
+        }
+      ],
+      "ports": {
+        "3306/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": ""
+          }
+        ]
+      },
+      "networks": [
+        "bridge"
+      ]
+    },
+    {
+      "id": "b72203ea174c61bbafa5b4f7ce834cff314525344ca7c451ef82d8c2ed450efd",
+      "name": "afterglow-lumen-settings-qa-postgres-1",
+      "running": true,
+      "pid": 80982,
+      "started_at": "2026-10-11T10:10:04.169183461Z",
+      "restart_count": 0,
+      "mounts": [],
+      "ports": {
+        "5432/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": ""
+          }
+        ]
+      },
+      "networks": [
+        "afterglow-lumen-settings-qa_default"
+      ]
+    },
+    {
+      "id": "1c9ff365068c0c4892e0593955ca1c84df8e6301d322023a4230498552a45d17",
+      "name": "afterglow-lumen-settings-qa-test-redis-1",
+      "running": true,
+      "pid": 80895,
+      "started_at": "2026-10-11T10:10:04.073486836Z",
+      "restart_count": 0,
+      "mounts": [],
+      "ports": {
+        "6379/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": ""
+          }
+        ]
+      },
+      "networks": [
+        "afterglow-lumen-settings-qa_default"
+      ]
+    },
+    {
+      "id": "52459aa4f55f663df2ccae5482c990dc2004684072a56793c4f17d9ba70943a9",
+      "name": "afterglow-lumen-settings-qa-mariadb-1",
+      "running": true,
+      "pid": 68987,
+      "started_at": "2026-10-11T10:45:03.591878044Z",
+      "restart_count": 0,
+      "mounts": [],
+      "ports": {
+        "3306/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": ""
+          }
+        ]
+      },
+      "networks": [
+        "afterglow-lumen-settings-qa_default"
+      ]
+    },
+    {
+      "id": "273340c33521f2620f9d50de3e6adc8a38000a018ef1908802ba3c5c065ee3eb",
+      "name": "afterglow-local-services-redis-1",
+      "running": true,
+      "pid": 19002,
+      "started_at": "2026-10-11T02:07:41.063368838Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "afterglow-local-services_redis-data",
+          "source": "/var/lib/docker/volumes/afterglow-local-services_redis-data/_data",
+          "destination": "/data"
+        }
+      ],
+      "ports": {
+        "6379/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "6379"
+          }
+        ]
+      },
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "b96604e5e0478df6d125852552d24e8ae0ee1573edd6892c4e5fb017f8da43b3",
+      "name": "palimpsest-real-identity-d71e6689cc-hub-worker-amd64",
+      "running": true,
+      "pid": 77239,
+      "started_at": "2026-10-10T20:39:07.40330963Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "palimpsest-real-identity-d71e6689cc-hub-state",
+          "source": "/var/lib/docker/volumes/palimpsest-real-identity-d71e6689cc-hub-state/_data",
+          "destination": "/var/lib/palimpsest-proof"
+        }
+      ],
+      "ports": {},
+      "networks": [
+        "palimpsest-real-identity-d71e6689cc-net"
+      ]
+    },
+    {
+      "id": "3c4047c011d156a6740ee432b38bfa1c62714b32c27b3e2f6971114d27fa1cc6",
+      "name": "palimpsest-real-identity-d71e6689cc-hub-worker-arm64",
+      "running": true,
+      "pid": 77180,
+      "started_at": "2026-10-10T20:39:07.243479547Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "palimpsest-real-identity-d71e6689cc-hub-state",
+          "source": "/var/lib/docker/volumes/palimpsest-real-identity-d71e6689cc-hub-state/_data",
+          "destination": "/var/lib/palimpsest-proof"
+        }
+      ],
+      "ports": {},
+      "networks": [
+        "palimpsest-real-identity-d71e6689cc-net"
+      ]
+    },
+    {
+      "id": "693f944a3402f855eac86dc64fcb8627d54aede3ba24ca97d90dfa5f420595db",
+      "name": "palimpsest-real-identity-d71e6689cc-hub-api-arm64",
+      "running": true,
+      "pid": 76972,
+      "started_at": "2026-10-10T20:39:06.90254538Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "palimpsest-real-identity-d71e6689cc-hub-state",
+          "source": "/var/lib/docker/volumes/palimpsest-real-identity-d71e6689cc-hub-state/_data",
+          "destination": "/var/lib/palimpsest-proof"
+        }
+      ],
+      "ports": {
+        "8020/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": ""
+          }
+        ]
+      },
+      "networks": [
+        "palimpsest-real-identity-d71e6689cc-net"
+      ]
+    },
+    {
+      "id": "b992c1a1dc18badc98855d91287defb1d3d70804c799dbc56e70a164c96b9415",
+      "name": "palimpsest-real-identity-d71e6689cc-keystone",
+      "running": true,
+      "pid": 37311,
+      "started_at": "2026-10-10T18:59:44.126677717Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/host_mnt/private/tmp/palimpsest-real-identity-d71e6689cc",
+          "destination": "/proof"
+        },
+        {
+          "type": "volume",
+          "name": "palimpsest-real-identity-d71e6689cc-keystone-keys",
+          "source": "/var/lib/docker/volumes/palimpsest-real-identity-d71e6689cc-keystone-keys/_data",
+          "destination": "/proof-keys"
+        },
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/tmp/palimpsest-real-identity-d71e6689cc/keystone.conf",
+          "destination": "/etc/keystone/keystone.conf"
+        }
+      ],
+      "ports": {
+        "5000/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": ""
+          }
+        ]
+      },
+      "networks": [
+        "palimpsest-real-identity-d71e6689cc-net"
+      ]
+    },
+    {
+      "id": "3cc5cccc77b12d62f8829ad14888f0bcba66dad2253ed9db0388b1f39ecfc513",
+      "name": "palimpsest-real-identity-d71e6689cc-redis",
+      "running": true,
+      "pid": 32820,
+      "started_at": "2026-10-10T18:59:04.046268712Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "palimpsest-real-identity-d71e6689cc-redis",
+          "source": "/var/lib/docker/volumes/palimpsest-real-identity-d71e6689cc-redis/_data",
+          "destination": "/data"
+        },
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/host_mnt/private/tmp/palimpsest-real-identity-d71e6689cc/redis.conf",
+          "destination": "/usr/local/etc/redis/redis.conf"
+        }
+      ],
+      "ports": {
+        "6379/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": ""
+          }
+        ]
+      },
+      "networks": [
+        "palimpsest-real-identity-d71e6689cc-net"
+      ]
+    },
+    {
+      "id": "6f2dc40622ab1cb8f66f007bbc3f057fb187d3e8f8a3cd1b421cfc08b9b7b5bd",
+      "name": "palimpsest-real-identity-d71e6689cc-hub-db",
+      "running": true,
+      "pid": 31999,
+      "started_at": "2026-10-10T18:58:59.640936835Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "palimpsest-real-identity-d71e6689cc-hub-db",
+          "source": "/var/lib/docker/volumes/palimpsest-real-identity-d71e6689cc-hub-db/_data",
+          "destination": "/var/lib/mysql"
+        }
+      ],
+      "ports": {
+        "3306/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": ""
+          }
+        ]
+      },
+      "networks": [
+        "palimpsest-real-identity-d71e6689cc-net"
+      ]
+    },
+    {
+      "id": "5cd0892e9991cebd50c0d43fbf4e9021f5ee1e6cc06708bdd362f78ec4c519da",
+      "name": "palimpsest-real-identity-d71e6689cc-keystone-db",
+      "running": true,
+      "pid": 31190,
+      "started_at": "2026-10-10T18:58:55.26054943Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "palimpsest-real-identity-d71e6689cc-keystone-db",
+          "source": "/var/lib/docker/volumes/palimpsest-real-identity-d71e6689cc-keystone-db/_data",
+          "destination": "/var/lib/mysql"
+        }
+      ],
+      "ports": {
+        "3306/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": ""
+          }
+        ]
+      },
+      "networks": [
+        "palimpsest-real-identity-d71e6689cc-net"
+      ]
+    },
+    {
+      "id": "abeebf7a23da9ae1a7ea9628de3c6a110a483582ccf6cc25c675aa9c9a61a034",
+      "name": "afterglow-mcp-scopes-test-test-redis-1",
+      "running": true,
+      "pid": 7047,
+      "started_at": "2026-10-10T16:59:16.160899468Z",
+      "restart_count": 0,
+      "mounts": [],
+      "ports": {
+        "6379/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "6380"
+          }
+        ]
+      },
+      "networks": [
+        "afterglow-mcp-scopes-test_default"
+      ]
+    },
+    {
+      "id": "bd3488478b23bd39f4756c3b5bd667c3b242fac44393b0e7399440475fb4f741",
+      "name": "afterglow-mcp-scopes-test-postgres-1",
+      "running": true,
+      "pid": 7181,
+      "started_at": "2026-10-10T16:59:16.255669427Z",
+      "restart_count": 0,
+      "mounts": [],
+      "ports": {
+        "5432/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "5434"
+          }
+        ]
+      },
+      "networks": [
+        "afterglow-mcp-scopes-test_default"
+      ]
+    },
+    {
+      "id": "24d2788542ee8e160df6c9b383455907913deafc6c29b3b7e61076f2a65aeb12",
+      "name": "afterglow-mcp-scopes-test-mariadb-1",
+      "running": true,
+      "pid": 7278,
+      "started_at": "2026-10-10T16:59:16.33486426Z",
+      "restart_count": 0,
+      "mounts": [],
+      "ports": {
+        "3306/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "3307"
+          }
+        ]
+      },
+      "networks": [
+        "afterglow-mcp-scopes-test_default"
+      ]
+    },
+    {
+      "id": "5ce187f0fb5bbd6e7426bc303f1515410659e7e6e261db3e08ab4eeda2332c52",
+      "name": "oc-sandbox-4d169e85aadbcb25701e-provider",
+      "running": true,
+      "pid": 17227,
+      "started_at": "2026-10-10T05:30:51.82384421Z",
+      "restart_count": 0,
+      "mounts": [],
+      "ports": {},
+      "networks": [
+        "oc-sandbox-4d169e85aadbcb25701e-bus"
+      ]
+    },
+    {
+      "id": "ad49c78bd82e4a6d93b4d2ea5c1a9537c3f9219db0780d9b62e818dcdfda3219",
+      "name": "afterglow-local-services-lumen-worker-1",
+      "running": true,
+      "pid": 51353,
+      "started_at": "2026-10-11T10:42:31.559744335Z",
+      "restart_count": 3,
+      "mounts": [],
+      "ports": {},
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "bd65d33da26cb0a714e1d96a9f61c52b52017cc68ac6b3f3f4776f30693f6916",
+      "name": "afterglow-local-services-drover-worker-1",
+      "running": true,
+      "pid": 32535,
+      "started_at": "2026-10-09T17:02:53.647014048Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/Users/pieroot/code/afterglow/.local-services/afterglow.conf",
+          "destination": "/etc/afterglow/afterglow.conf"
+        }
+      ],
+      "ports": {},
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "e913af5945f77d83bbb5ccebaed71443f707f8bbdb4b512de94facc02a190cca",
+      "name": "afterglow-local-services-notion-worker-1",
+      "running": true,
+      "pid": 15708,
+      "started_at": "2026-10-09T13:12:12.494859961Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/Users/pieroot/code/afterglow/.local-services/afterglow.conf",
+          "destination": "/app/afterglow.conf"
+        },
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/Users/pieroot/code/afterglow/.local-services/logs",
+          "destination": "/app/logs"
+        }
+      ],
+      "ports": {},
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "299252da9dd090102fa296048cec418eb0ee142dbb4bc5d11b984b6531c07b23",
+      "name": "afterglow-local-services-palimpsest-worker-1",
+      "running": true,
+      "pid": 10130,
+      "started_at": "2026-10-09T13:09:09.347839834Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "afterglow-local-services_palimpsest-hub",
+          "source": "/var/lib/docker/volumes/afterglow-local-services_palimpsest-hub/_data",
+          "destination": "/var/lib/palimpsest/hub"
+        }
+      ],
+      "ports": {},
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "a32e770aaa7e55f120b76fa1f745d5d6f42927cf49c012379e0c8f3060826b0d",
+      "name": "afterglow-local-services-waygate-worker-1",
+      "running": true,
+      "pid": 9986,
+      "started_at": "2026-10-09T13:09:08.700720042Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/Users/pieroot/code/afterglow/.local-services/afterglow.conf",
+          "destination": "/etc/afterglow/afterglow.conf"
+        }
+      ],
+      "ports": {},
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "49dcdb83ca57867920bce9893b1369e3c6cea9b8f4ea037e9cfb5ce0315ba76f",
+      "name": "afterglow-local-services-service-mariadb-1",
+      "running": true,
+      "pid": 58066,
+      "started_at": "2026-10-08T07:11:04.163990758Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "bind",
+          "name": null,
+          "source": "/host_mnt/Users/pieroot/code/afterglow/docker/mariadb/service-init.sql",
+          "destination": "/docker-entrypoint-initdb.d/00-services.sql"
+        },
+        {
+          "type": "volume",
+          "name": "afterglow-local-services_service-mariadb-data",
+          "source": "/var/lib/docker/volumes/afterglow-local-services_service-mariadb-data/_data",
+          "destination": "/var/lib/mysql"
+        }
+      ],
+      "ports": {},
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "67652bda5fea0cb3c84913e4915cf81f115ef45794e585d35d0fda09cb58f63b",
+      "name": "afterglow-local-services-afterglow-mariadb-1",
+      "running": true,
+      "pid": 58001,
+      "started_at": "2026-10-08T07:11:04.081631425Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "afterglow-local-services_afterglow-mariadb-data",
+          "source": "/var/lib/docker/volumes/afterglow-local-services_afterglow-mariadb-data/_data",
+          "destination": "/var/lib/mysql"
+        }
+      ],
+      "ports": {},
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "a26667802d03b68e342b8eae14ecb872fd0e5983f7d97fd5df6174cf02dcc5d2",
+      "name": "lumen-elastic-batch-qa-redis-1",
+      "running": true,
+      "pid": 64068,
+      "started_at": "2026-10-06T08:02:36.456689507Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "4da549cc130899177f4c768445696610530b4b283575e70bd53ee302587e93c5",
+          "source": "/var/lib/docker/volumes/4da549cc130899177f4c768445696610530b4b283575e70bd53ee302587e93c5/_data",
+          "destination": "/data"
+        }
+      ],
+      "ports": {
+        "6379/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "53706"
+          }
+        ]
+      },
+      "networks": [
+        "lumen-elastic-batch-qa_default"
+      ]
+    },
+    {
+      "id": "ccb000e442d5d8fe58dc73e9282dc0151441f844a421f642d55ae1b1c2202e71",
+      "name": "afterglow-local-services-lumen-postgres-1",
+      "running": true,
+      "pid": 45772,
+      "started_at": "2026-10-05T18:46:20.286871963Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "afterglow-local-services_lumen-postgres-data",
+          "source": "/var/lib/docker/volumes/afterglow-local-services_lumen-postgres-data/_data",
+          "destination": "/var/lib/postgresql/data"
+        }
+      ],
+      "ports": {},
+      "networks": [
+        "afterglow-local-services_default"
+      ]
+    },
+    {
+      "id": "beb3add8357e2e0d3505ce4e1b502cbbce109a0ec982c0deacc76d1bc045faf7",
+      "name": "buildx_buildkit_palimpsest-e2e0",
+      "running": true,
+      "pid": 831,
+      "started_at": "2026-10-05T17:44:09.918464792Z",
+      "restart_count": 0,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "buildx_buildkit_palimpsest-e2e0_state",
+          "source": "/var/lib/docker/volumes/buildx_buildkit_palimpsest-e2e0_state/_data",
+          "destination": "/var/lib/buildkit"
+        }
+      ],
+      "ports": {},
+      "networks": [
+        "none"
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "command": "docker rm <19 exact stopped IDs>; no --force/--volumes",
+      "exit_code": 0,
+      "removed_ids": [
+        "ef24625c08a5892d60cd74453fe7784be6bb97ada0c8b64b40e7952009939b4c",
+        "65e2582e0658df1a7a9c35a01cb1e0db3643a385e4f28aa7012082b7c5dcef18",
+        "3e45e293e34e03c2ea36d0c3d28d0a518724ba66c0f5a956f3de56748cc3ce7c",
+        "06d3848a2bbeb37e6be75e2af7a9048a059df43cfdccbb739ed14d80b87b2e21",
+        "304fc0603c7e33e573f6adc550d05ac7caa0d42d842ac229a6581b214543e163",
+        "68d3ce4483a91cfc96a505daf0b91674ba6e9960bf9cfffb58b2e862f7f9fb87",
+        "75f4e8ee93a5fc2cf7c2c2e07922940d43e8bd6b75275a437b5576423be72824",
+        "f8678ecdfb7ea7f03fb75e8ebc20aa25d7be3d51e58ac7028c4ce3b3b5f92dd0",
+        "318a16b93019a70480e5c3d961cd5084aedb73fb6b05f067a27c0ec01ba32b55",
+        "c1d75e374c5c3d5f4915e456787e91717d72b7bcd7d023c627329ee49156e70e",
+        "9fca65f57b1fee78d2239912f7cf0f52094bccb0b3ed4317b9e3aa72745ddc65",
+        "b47029125b7f05f150bf4172be24eac88a6776f1cab38dd561f933398b117641",
+        "dda2ef4f6023061506a85f7ae53b2bbbc464e93d1de9821a8f4a89ec786b4eb2",
+        "2cdd71703c7914c8ed13b4c5e6fdcaa41a3cb5611cbf5b9841484f2435643400",
+        "937d609909e8263ea21d1427204c1c1fabaa156876ea85fe81c172d31dd9d7e9",
+        "20375f653add3e805ddae93674d557a007722f1025b79ccae66c096f4092b07f",
+        "a788cb4d0ab55c8c855d55e74028196bdd0a6101806dd2ec3fef6326aa52c44e",
+        "bbfe8c4b62ec3f3736600f50a6adf40561d9c6c5de97960244f39b50c321769d",
+        "f0813972311849c099c9e4ff050c51586daaa849b1dac5b24d23bab4c2584067"
+      ],
+      "stderr": ""
+    },
+    {
+      "command": "docker network rm afterglow-db-escaping-probe_default",
+      "id": "e777671121407360337585760f2cab05778b344b0b7e3470ef40a4f76cf650b9",
+      "exit_code": 0,
+      "stdout": "e777671121407360337585760f2cab05778b344b0b7e3470ef40a4f76cf650b9",
+      "stderr": ""
+    },
+    {
+      "command": "docker network rm afterglow-db-selection-20261011_default",
+      "id": "1a8604e7a73e0f87eed7b725a65d39d968fe44c04f8f8bfe9215aa30887282cc",
+      "exit_code": 0,
+      "stdout": "1a8604e7a73e0f87eed7b725a65d39d968fe44c04f8f8bfe9215aa30887282cc",
+      "stderr": ""
+    },
+    {
+      "command": "docker network rm afterglow-lumen-settings-ui-amd64_default",
+      "id": "dc53ffb284622c270dec7780093c8c59c7261162f69910aa6463eab7d98fb3d7",
+      "exit_code": 0,
+      "stdout": "dc53ffb284622c270dec7780093c8c59c7261162f69910aa6463eab7d98fb3d7",
+      "stderr": ""
+    },
+    {
+      "command": "docker network rm afterglow-lumen-settings-ui-arm64_default",
+      "id": "a67c3ae62110872ddd4c9dea7f358669ddb350efc04957986de1c157a6cc2f26",
+      "exit_code": 0,
+      "stdout": "a67c3ae62110872ddd4c9dea7f358669ddb350efc04957986de1c157a6cc2f26",
+      "stderr": ""
+    },
+    {
+      "command": "docker network rm afterglow-mcp-oauth-test_default",
+      "id": "08c905abb29e294867cb10ee8ffe202a3d82850fdb27d41ac17b7ca15277c2f8",
+      "exit_code": 0,
+      "stdout": "08c905abb29e294867cb10ee8ffe202a3d82850fdb27d41ac17b7ca15277c2f8",
+      "stderr": ""
+    },
+    {
+      "command": "docker network rm artex-local_database",
+      "id": "5ee86cf8cae3490a7b3767b3bfaecf86305c4975e3039a3cb444b7ebb1cfd89a",
+      "exit_code": 0,
+      "stdout": "5ee86cf8cae3490a7b3767b3bfaecf86305c4975e3039a3cb444b7ebb1cfd89a",
+      "stderr": ""
+    },
+    {
+      "command": "docker network rm artex-local_outbound",
+      "id": "1afe6d8c68f2e53ca07215d569cddb230fd5bb51c2421981ebee6f461bb517a4",
+      "exit_code": 0,
+      "stdout": "1afe6d8c68f2e53ca07215d569cddb230fd5bb51c2421981ebee6f461bb517a4",
+      "stderr": ""
+    },
+    {
+      "command": "docker network rm lumen-gate5-0hycd66i",
+      "id": "4b88d0fd8a2585fd353db01450ea4126d337fedef71e1990118357bc3a5ad304",
+      "exit_code": 0,
+      "stdout": "4b88d0fd8a2585fd353db01450ea4126d337fedef71e1990118357bc3a5ad304",
+      "stderr": ""
+    },
+    {
+      "command": "docker network rm lumen-provider-smoke-20260928_default",
+      "id": "868a4d9aaab7f932df5eeb2b88a8455323fcd747bf107ebbd3d5de0621ec7bfc",
+      "exit_code": 0,
+      "stdout": "868a4d9aaab7f932df5eeb2b88a8455323fcd747bf107ebbd3d5de0621ec7bfc",
+      "stderr": ""
+    }
+  ],
+  "after": {
+    "recorded_at": "2026-10-11T19:34:35.543Z",
+    "containers": 40,
+    "running": 36,
+    "stopped": [
+      "afterglow-local-services-drover-migrate-1",
+      "afterglow-local-services-waygate-migrate-1",
+      "afterglow-local-services-palimpsest-bootstrap-1",
+      "afterglow-local-services-lumen-migrate-1"
+    ],
+    "network_count": 11,
+    "networks": [
+      "afterglow-local-services_default",
+      "afterglow-lumen-settings-qa_default",
+      "afterglow-mcp-scopes-test_default",
+      "afterglow-remaining-commit-gate-bkjlix_default",
+      "bridge",
+      "host",
+      "lumen-elastic-batch-qa_default",
+      "none",
+      "oc-sandbox-4d169e85aadbcb25701e-bus",
+      "opencrew-remodel-jq5gl6-arm64-egress",
+      "palimpsest-real-identity-d71e6689cc-net"
+    ],
+    "volume_names_unchanged": true,
+    "volume_count": 25,
+    "preservation": [
+      {
+        "name": "afterglow-local-services-frontend-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-backend-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-waygate-api-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-palimpsest-api-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-drover-api-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-lumen-api-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-drover-migrate-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-waygate-migrate-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-palimpsest-bootstrap-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-lumen-migrate-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-remaining-commit-gate-bkjlix-postgres-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-remaining-commit-gate-bkjlix-test-redis-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-remaining-commit-gate-bkjlix-mariadb-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "drover-inventory-redis-453d7513d64f",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "drover-inventory-sql-453d7513d64f",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-lumen-settings-qa-postgres-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-lumen-settings-qa-test-redis-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-lumen-settings-qa-mariadb-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-redis-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "palimpsest-real-identity-d71e6689cc-hub-worker-amd64",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "palimpsest-real-identity-d71e6689cc-hub-worker-arm64",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "palimpsest-real-identity-d71e6689cc-hub-api-arm64",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "palimpsest-real-identity-d71e6689cc-keystone",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "palimpsest-real-identity-d71e6689cc-redis",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "palimpsest-real-identity-d71e6689cc-hub-db",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "palimpsest-real-identity-d71e6689cc-keystone-db",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-mcp-scopes-test-test-redis-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-mcp-scopes-test-postgres-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-mcp-scopes-test-mariadb-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "oc-sandbox-4d169e85aadbcb25701e-provider",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-lumen-worker-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-drover-worker-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-notion-worker-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-palimpsest-worker-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-waygate-worker-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-service-mariadb-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-afterglow-mariadb-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "lumen-elastic-batch-qa-redis-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-lumen-postgres-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "buildx_buildkit_palimpsest-e2e0",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      }
+    ],
+    "http_smoke": [
+      {
+        "name": "backend",
+        "url": "http://127.0.0.1:8000/api/v1/health",
+        "status": 200,
+        "jsonStatus": "ok"
+      },
+      {
+        "name": "frontend",
+        "url": "http://127.0.0.1:3080/health",
+        "status": 200,
+        "jsonStatus": "ok"
+      },
+      {
+        "name": "login",
+        "url": "http://127.0.0.1:3080/login",
+        "status": 200,
+        "jsonStatus": null
+      },
+      {
+        "name": "drover",
+        "url": "http://127.0.0.1:8011/health",
+        "status": 404,
+        "jsonStatus": null
+      },
+      {
+        "name": "waygate",
+        "url": "http://127.0.0.1:8010/health",
+        "status": 404,
+        "jsonStatus": null
+      },
+      {
+        "name": "lumen",
+        "url": "http://127.0.0.1:8012/health",
+        "status": 404,
+        "jsonStatus": null
+      },
+      {
+        "name": "palimpsest",
+        "url": "http://127.0.0.1:8020/health",
+        "status": 200,
+        "jsonStatus": "ok"
+      }
+    ],
+    "actual_api_liveness": [
+      {
+        "name": "waygate-api",
+        "url": "http://127.0.0.1:8010/v1/health",
+        "status": 200,
+        "jsonStatus": "ok"
+      },
+      {
+        "name": "drover-api",
+        "url": "http://127.0.0.1:8011/v1/health",
+        "status": 200,
+        "jsonStatus": "ok"
+      },
+      {
+        "name": "lumen-api",
+        "url": "http://127.0.0.1:8012/v1/health",
+        "status": 200,
+        "jsonStatus": "ok"
+      }
+    ],
+    "http_smoke_note": "Unversioned /health probes for Drover/Waygate/Lumen returned404; actual container-configured /v1/health endpoints were then exercised below. Liveness is not authenticated readiness."
+  },
+  "qa_cleanup": {
+    "approval": "User selected: 임시 QA 19개 모두 정리; nine tmpfs datastore contents discarded; named volumes/images/build cache retained",
+    "recorded_at": "2026-10-12T04:04:10.914Z",
+    "before": [
+      {
+        "id": "fe6bf2500ce1137348bccd75f41d823ef1b31a45c6d73da060602431ce455545",
+        "name": "afterglow-remaining-commit-gate-bkjlix-postgres-1",
+        "image": "postgres:16",
+        "project": "afterglow-remaining-commit-gate-bkjlix",
+        "mounts": [],
+        "tmpfs": {
+          "/var/lib/postgresql/data": ""
+        },
+        "started_at": "2026-10-11T18:42:52.631587972Z",
+        "networks": [
+          "afterglow-remaining-commit-gate-bkjlix_default"
+        ]
+      },
+      {
+        "id": "870f04e753a3cda21fd6a56d638f99171205e18cfaef5c8767f295e0d325d9e5",
+        "name": "afterglow-remaining-commit-gate-bkjlix-test-redis-1",
+        "image": "redis:7-alpine",
+        "project": "afterglow-remaining-commit-gate-bkjlix",
+        "mounts": [],
+        "tmpfs": {
+          "/data": ""
+        },
+        "started_at": "2026-10-11T18:42:52.734563513Z",
+        "networks": [
+          "afterglow-remaining-commit-gate-bkjlix_default"
+        ]
+      },
+      {
+        "id": "bb6a10b1a5a801cbf82b64132b3690983166df58c5188345f86fb2dc785894a8",
+        "name": "afterglow-remaining-commit-gate-bkjlix-mariadb-1",
+        "image": "mariadb:11.4",
+        "project": "afterglow-remaining-commit-gate-bkjlix",
+        "mounts": [],
+        "tmpfs": {
+          "/var/lib/mysql": ""
+        },
+        "started_at": "2026-10-11T18:42:52.845525305Z",
+        "networks": [
+          "afterglow-remaining-commit-gate-bkjlix_default"
+        ]
+      },
+      {
+        "id": "fc7ca4569d1e21d982bda4ba7b1ed86900f97d70ee7e3584557071b4b8cdf160",
+        "name": "drover-inventory-redis-453d7513d64f",
+        "image": "redis:7-alpine",
+        "project": null,
+        "mounts": [
+          {
+            "type": "volume",
+            "name": "05db7bda613411184c0d68e77862b49966e852524a0583dff1ee5ec5717a906b",
+            "source": "/var/lib/docker/volumes/05db7bda613411184c0d68e77862b49966e852524a0583dff1ee5ec5717a906b/_data",
+            "destination": "/data"
+          }
+        ],
+        "tmpfs": {},
+        "started_at": "2026-10-11T10:45:45.705942633Z",
+        "networks": [
+          "bridge"
+        ]
+      },
+      {
+        "id": "8edb660cf947234f39787a4b134723b3286d3ebadbabfe5e774d63ae04fde387",
+        "name": "drover-inventory-sql-453d7513d64f",
+        "image": "mariadb:11.4",
+        "project": null,
+        "mounts": [
+          {
+            "type": "volume",
+            "name": "1562519539ed030f5f282d8091eb22b57ae85461ec7beaf59d77e9abe4f5f428",
+            "source": "/var/lib/docker/volumes/1562519539ed030f5f282d8091eb22b57ae85461ec7beaf59d77e9abe4f5f428/_data",
+            "destination": "/var/lib/mysql"
+          }
+        ],
+        "tmpfs": {},
+        "started_at": "2026-10-11T10:46:12.204656673Z",
+        "networks": [
+          "bridge"
+        ]
+      },
+      {
+        "id": "b72203ea174c61bbafa5b4f7ce834cff314525344ca7c451ef82d8c2ed450efd",
+        "name": "afterglow-lumen-settings-qa-postgres-1",
+        "image": "postgres:16",
+        "project": "afterglow-lumen-settings-qa",
+        "mounts": [],
+        "tmpfs": {
+          "/var/lib/postgresql/data": ""
+        },
+        "started_at": "2026-10-11T10:10:04.169183461Z",
+        "networks": [
+          "afterglow-lumen-settings-qa_default"
+        ]
+      },
+      {
+        "id": "1c9ff365068c0c4892e0593955ca1c84df8e6301d322023a4230498552a45d17",
+        "name": "afterglow-lumen-settings-qa-test-redis-1",
+        "image": "redis:7-alpine",
+        "project": "afterglow-lumen-settings-qa",
+        "mounts": [],
+        "tmpfs": {
+          "/data": ""
+        },
+        "started_at": "2026-10-11T10:10:04.073486836Z",
+        "networks": [
+          "afterglow-lumen-settings-qa_default"
+        ]
+      },
+      {
+        "id": "52459aa4f55f663df2ccae5482c990dc2004684072a56793c4f17d9ba70943a9",
+        "name": "afterglow-lumen-settings-qa-mariadb-1",
+        "image": "mariadb:11.4",
+        "project": "afterglow-lumen-settings-qa",
+        "mounts": [],
+        "tmpfs": {
+          "/var/lib/mysql": ""
+        },
+        "started_at": "2026-10-11T10:45:03.591878044Z",
+        "networks": [
+          "afterglow-lumen-settings-qa_default"
+        ]
+      },
+      {
+        "id": "b96604e5e0478df6d125852552d24e8ae0ee1573edd6892c4e5fb017f8da43b3",
+        "name": "palimpsest-real-identity-d71e6689cc-hub-worker-amd64",
+        "image": "palimpsest-hub-worker:management-d71e-amd64",
+        "project": null,
+        "mounts": [
+          {
+            "type": "volume",
+            "name": "palimpsest-real-identity-d71e6689cc-hub-state",
+            "source": "/var/lib/docker/volumes/palimpsest-real-identity-d71e6689cc-hub-state/_data",
+            "destination": "/var/lib/palimpsest-proof"
+          }
+        ],
+        "tmpfs": {},
+        "started_at": "2026-10-10T20:39:07.40330963Z",
+        "networks": [
+          "palimpsest-real-identity-d71e6689cc-net"
+        ]
+      },
+      {
+        "id": "3c4047c011d156a6740ee432b38bfa1c62714b32c27b3e2f6971114d27fa1cc6",
+        "name": "palimpsest-real-identity-d71e6689cc-hub-worker-arm64",
+        "image": "palimpsest-hub-worker:management-d71e-arm64",
+        "project": null,
+        "mounts": [
+          {
+            "type": "volume",
+            "name": "palimpsest-real-identity-d71e6689cc-hub-state",
+            "source": "/var/lib/docker/volumes/palimpsest-real-identity-d71e6689cc-hub-state/_data",
+            "destination": "/var/lib/palimpsest-proof"
+          }
+        ],
+        "tmpfs": {},
+        "started_at": "2026-10-10T20:39:07.243479547Z",
+        "networks": [
+          "palimpsest-real-identity-d71e6689cc-net"
+        ]
+      },
+      {
+        "id": "693f944a3402f855eac86dc64fcb8627d54aede3ba24ca97d90dfa5f420595db",
+        "name": "palimpsest-real-identity-d71e6689cc-hub-api-arm64",
+        "image": "palimpsest-hub-api:management-d71e-arm64",
+        "project": null,
+        "mounts": [
+          {
+            "type": "volume",
+            "name": "palimpsest-real-identity-d71e6689cc-hub-state",
+            "source": "/var/lib/docker/volumes/palimpsest-real-identity-d71e6689cc-hub-state/_data",
+            "destination": "/var/lib/palimpsest-proof"
+          }
+        ],
+        "tmpfs": {},
+        "started_at": "2026-10-10T20:39:06.90254538Z",
+        "networks": [
+          "palimpsest-real-identity-d71e6689cc-net"
+        ]
+      },
+      {
+        "id": "b992c1a1dc18badc98855d91287defb1d3d70804c799dbc56e70a164c96b9415",
+        "name": "palimpsest-real-identity-d71e6689cc-keystone",
+        "image": "quay.io/openstack.kolla/keystone:2025.1-ubuntu-noble",
+        "project": null,
+        "mounts": [
+          {
+            "type": "bind",
+            "name": null,
+            "source": "/host_mnt/private/tmp/palimpsest-real-identity-d71e6689cc",
+            "destination": "/proof"
+          },
+          {
+            "type": "volume",
+            "name": "palimpsest-real-identity-d71e6689cc-keystone-keys",
+            "source": "/var/lib/docker/volumes/palimpsest-real-identity-d71e6689cc-keystone-keys/_data",
+            "destination": "/proof-keys"
+          },
+          {
+            "type": "bind",
+            "name": null,
+            "source": "/tmp/palimpsest-real-identity-d71e6689cc/keystone.conf",
+            "destination": "/etc/keystone/keystone.conf"
+          }
+        ],
+        "tmpfs": {},
+        "started_at": "2026-10-10T18:59:44.126677717Z",
+        "networks": [
+          "palimpsest-real-identity-d71e6689cc-net"
+        ]
+      },
+      {
+        "id": "3cc5cccc77b12d62f8829ad14888f0bcba66dad2253ed9db0388b1f39ecfc513",
+        "name": "palimpsest-real-identity-d71e6689cc-redis",
+        "image": "redis:7-alpine",
+        "project": null,
+        "mounts": [
+          {
+            "type": "volume",
+            "name": "palimpsest-real-identity-d71e6689cc-redis",
+            "source": "/var/lib/docker/volumes/palimpsest-real-identity-d71e6689cc-redis/_data",
+            "destination": "/data"
+          },
+          {
+            "type": "bind",
+            "name": null,
+            "source": "/host_mnt/private/tmp/palimpsest-real-identity-d71e6689cc/redis.conf",
+            "destination": "/usr/local/etc/redis/redis.conf"
+          }
+        ],
+        "tmpfs": {},
+        "started_at": "2026-10-10T18:59:04.046268712Z",
+        "networks": [
+          "palimpsest-real-identity-d71e6689cc-net"
+        ]
+      },
+      {
+        "id": "6f2dc40622ab1cb8f66f007bbc3f057fb187d3e8f8a3cd1b421cfc08b9b7b5bd",
+        "name": "palimpsest-real-identity-d71e6689cc-hub-db",
+        "image": "mariadb:11.4",
+        "project": null,
+        "mounts": [
+          {
+            "type": "volume",
+            "name": "palimpsest-real-identity-d71e6689cc-hub-db",
+            "source": "/var/lib/docker/volumes/palimpsest-real-identity-d71e6689cc-hub-db/_data",
+            "destination": "/var/lib/mysql"
+          }
+        ],
+        "tmpfs": {},
+        "started_at": "2026-10-10T18:58:59.640936835Z",
+        "networks": [
+          "palimpsest-real-identity-d71e6689cc-net"
+        ]
+      },
+      {
+        "id": "5cd0892e9991cebd50c0d43fbf4e9021f5ee1e6cc06708bdd362f78ec4c519da",
+        "name": "palimpsest-real-identity-d71e6689cc-keystone-db",
+        "image": "mariadb:11.4",
+        "project": null,
+        "mounts": [
+          {
+            "type": "volume",
+            "name": "palimpsest-real-identity-d71e6689cc-keystone-db",
+            "source": "/var/lib/docker/volumes/palimpsest-real-identity-d71e6689cc-keystone-db/_data",
+            "destination": "/var/lib/mysql"
+          }
+        ],
+        "tmpfs": {},
+        "started_at": "2026-10-10T18:58:55.26054943Z",
+        "networks": [
+          "palimpsest-real-identity-d71e6689cc-net"
+        ]
+      },
+      {
+        "id": "abeebf7a23da9ae1a7ea9628de3c6a110a483582ccf6cc25c675aa9c9a61a034",
+        "name": "afterglow-mcp-scopes-test-test-redis-1",
+        "image": "redis:7-alpine",
+        "project": "afterglow-mcp-scopes-test",
+        "mounts": [],
+        "tmpfs": {
+          "/data": ""
+        },
+        "started_at": "2026-10-10T16:59:16.160899468Z",
+        "networks": [
+          "afterglow-mcp-scopes-test_default"
+        ]
+      },
+      {
+        "id": "bd3488478b23bd39f4756c3b5bd667c3b242fac44393b0e7399440475fb4f741",
+        "name": "afterglow-mcp-scopes-test-postgres-1",
+        "image": "postgres:16",
+        "project": "afterglow-mcp-scopes-test",
+        "mounts": [],
+        "tmpfs": {
+          "/var/lib/postgresql/data": ""
+        },
+        "started_at": "2026-10-10T16:59:16.255669427Z",
+        "networks": [
+          "afterglow-mcp-scopes-test_default"
+        ]
+      },
+      {
+        "id": "24d2788542ee8e160df6c9b383455907913deafc6c29b3b7e61076f2a65aeb12",
+        "name": "afterglow-mcp-scopes-test-mariadb-1",
+        "image": "mariadb:11.4",
+        "project": "afterglow-mcp-scopes-test",
+        "mounts": [],
+        "tmpfs": {
+          "/var/lib/mysql": ""
+        },
+        "started_at": "2026-10-10T16:59:16.33486426Z",
+        "networks": [
+          "afterglow-mcp-scopes-test_default"
+        ]
+      },
+      {
+        "id": "a26667802d03b68e342b8eae14ecb872fd0e5983f7d97fd5df6174cf02dcc5d2",
+        "name": "lumen-elastic-batch-qa-redis-1",
+        "image": "redis:7",
+        "project": "lumen-elastic-batch-qa",
+        "mounts": [
+          {
+            "type": "volume",
+            "name": "4da549cc130899177f4c768445696610530b4b283575e70bd53ee302587e93c5",
+            "source": "/var/lib/docker/volumes/4da549cc130899177f4c768445696610530b4b283575e70bd53ee302587e93c5/_data",
+            "destination": "/data"
+          }
+        ],
+        "tmpfs": {},
+        "started_at": "2026-10-06T08:02:36.456689507Z",
+        "networks": [
+          "lumen-elastic-batch-qa_default"
+        ]
+      }
+    ],
+    "networks": [
+      {
+        "id": "efa882d2126af71690221c2bac9e51eeba548f673e58c33180af2a161db689be",
+        "name": "afterglow-lumen-settings-qa_default",
+        "ipam": [
+          {
+            "Subnet": "192.168.240.0/24",
+            "Gateway": "192.168.240.1"
+          }
+        ]
+      },
+      {
+        "id": "ef3f3a7886733061c2ed16c74f35044ca4e6408569c2f4e652e459a82eeded2b",
+        "name": "afterglow-mcp-scopes-test_default",
+        "ipam": [
+          {
+            "Subnet": "192.168.48.0/20",
+            "Gateway": "192.168.48.1"
+          }
+        ]
+      },
+      {
+        "id": "b4efc8f5f59d2af10326743d39cb046ec8e81e7e26445b751791ff50f71c691e",
+        "name": "afterglow-remaining-commit-gate-bkjlix_default",
+        "ipam": [
+          {
+            "Subnet": "172.30.0.0/16",
+            "Gateway": "172.30.0.1"
+          }
+        ]
+      },
+      {
+        "id": "b103f417714efcbbb664bdc43c2f997097d9d7d20e4b1948e02fadf7b8f17c23",
+        "name": "lumen-elastic-batch-qa_default",
+        "ipam": [
+          {
+            "Subnet": "172.19.0.0/16",
+            "Gateway": "172.19.0.1"
+          }
+        ]
+      },
+      {
+        "id": "baecd5eb11a351718658d57904f0624a827476b34ac97175dd2fa23d254fd3e0",
+        "name": "palimpsest-real-identity-d71e6689cc-net",
+        "ipam": [
+          {
+            "Subnet": "172.29.0.0/16",
+            "Gateway": "172.29.0.1"
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "command": "docker stop --time30 <4 exact QA IDs>",
+        "ids": [
+          "b96604e5e0478df6d125852552d24e8ae0ee1573edd6892c4e5fb017f8da43b3",
+          "3c4047c011d156a6740ee432b38bfa1c62714b32c27b3e2f6971114d27fa1cc6",
+          "693f944a3402f855eac86dc64fcb8627d54aede3ba24ca97d90dfa5f420595db",
+          "b992c1a1dc18badc98855d91287defb1d3d70804c799dbc56e70a164c96b9415"
+        ],
+        "exit_code": 0,
+        "stdout": "Flag --time has been deprecated, use --timeout instead\nb96604e5e0478df6d125852552d24e8ae0ee1573edd6892c4e5fb017f8da43b3\n3c4047c011d156a6740ee432b38bfa1c62714b32c27b3e2f6971114d27fa1cc6\n693f944a3402f855eac86dc64fcb8627d54aede3ba24ca97d90dfa5f420595db\nb992c1a1dc18badc98855d91287defb1d3d70804c799dbc56e70a164c96b9415",
+        "stderr": ""
+      },
+      {
+        "command": "docker stop --time30 <15 exact QA IDs>",
+        "ids": [
+          "fe6bf2500ce1137348bccd75f41d823ef1b31a45c6d73da060602431ce455545",
+          "870f04e753a3cda21fd6a56d638f99171205e18cfaef5c8767f295e0d325d9e5",
+          "bb6a10b1a5a801cbf82b64132b3690983166df58c5188345f86fb2dc785894a8",
+          "fc7ca4569d1e21d982bda4ba7b1ed86900f97d70ee7e3584557071b4b8cdf160",
+          "8edb660cf947234f39787a4b134723b3286d3ebadbabfe5e774d63ae04fde387",
+          "b72203ea174c61bbafa5b4f7ce834cff314525344ca7c451ef82d8c2ed450efd",
+          "1c9ff365068c0c4892e0593955ca1c84df8e6301d322023a4230498552a45d17",
+          "52459aa4f55f663df2ccae5482c990dc2004684072a56793c4f17d9ba70943a9",
+          "3cc5cccc77b12d62f8829ad14888f0bcba66dad2253ed9db0388b1f39ecfc513",
+          "6f2dc40622ab1cb8f66f007bbc3f057fb187d3e8f8a3cd1b421cfc08b9b7b5bd",
+          "5cd0892e9991cebd50c0d43fbf4e9021f5ee1e6cc06708bdd362f78ec4c519da",
+          "abeebf7a23da9ae1a7ea9628de3c6a110a483582ccf6cc25c675aa9c9a61a034",
+          "bd3488478b23bd39f4756c3b5bd667c3b242fac44393b0e7399440475fb4f741",
+          "24d2788542ee8e160df6c9b383455907913deafc6c29b3b7e61076f2a65aeb12",
+          "a26667802d03b68e342b8eae14ecb872fd0e5983f7d97fd5df6174cf02dcc5d2"
+        ],
+        "exit_code": 0,
+        "stdout": "Flag --time has been deprecated, use --timeout instead\nfe6bf2500ce1137348bccd75f41d823ef1b31a45c6d73da060602431ce455545\n870f04e753a3cda21fd6a56d638f99171205e18cfaef5c8767f295e0d325d9e5\nbb6a10b1a5a801cbf82b64132b3690983166df58c5188345f86fb2dc785894a8\nfc7ca4569d1e21d982bda4ba7b1ed86900f97d70ee7e3584557071b4b8cdf160\n8edb660cf947234f39787a4b134723b3286d3ebadbabfe5e774d63ae04fde387\nb72203ea174c61bbafa5b4f7ce834cff314525344ca7c451ef82d8c2ed450efd\n1c9ff365068c0c4892e0593955ca1c84df8e6301d322023a4230498552a45d17\n52459aa4f55f663df2ccae5482c990dc2004684072a56793c4f17d9ba70943a9\n3cc5cccc77b12d62f8829ad14888f0bcba66dad2253ed9db0388b1f39ecfc513\n6f2dc40622ab1cb8f66f007bbc3f057fb187d3e8f8a3cd1b421cfc08b9b7b5bd\n5cd0892e9991cebd50c0d43fbf4e9021f5ee1e6cc06708bdd362f78ec4c519da\nabeebf7a23da9ae1a7ea9628de3c6a110a483582ccf6cc25c675aa9c9a61a034\nbd3488478b23bd39f4756c3b5bd667c3b242fac44393b0e7399440475fb4f741\n24d2788542ee8e160df6c9b383455907913deafc6c29b3b7e61076f2a65aeb12\na26667802d03b68e342b8eae14ecb872fd0e5983f7d97fd5df6174cf02dcc5d2",
+        "stderr": ""
+      },
+      {
+        "command": "docker rm <19 exact QA IDs>; no force/volumes",
+        "exit_code": 0,
+        "removed_ids": [
+          "fe6bf2500ce1137348bccd75f41d823ef1b31a45c6d73da060602431ce455545",
+          "870f04e753a3cda21fd6a56d638f99171205e18cfaef5c8767f295e0d325d9e5",
+          "bb6a10b1a5a801cbf82b64132b3690983166df58c5188345f86fb2dc785894a8",
+          "fc7ca4569d1e21d982bda4ba7b1ed86900f97d70ee7e3584557071b4b8cdf160",
+          "8edb660cf947234f39787a4b134723b3286d3ebadbabfe5e774d63ae04fde387",
+          "b72203ea174c61bbafa5b4f7ce834cff314525344ca7c451ef82d8c2ed450efd",
+          "1c9ff365068c0c4892e0593955ca1c84df8e6301d322023a4230498552a45d17",
+          "52459aa4f55f663df2ccae5482c990dc2004684072a56793c4f17d9ba70943a9",
+          "b96604e5e0478df6d125852552d24e8ae0ee1573edd6892c4e5fb017f8da43b3",
+          "3c4047c011d156a6740ee432b38bfa1c62714b32c27b3e2f6971114d27fa1cc6",
+          "693f944a3402f855eac86dc64fcb8627d54aede3ba24ca97d90dfa5f420595db",
+          "b992c1a1dc18badc98855d91287defb1d3d70804c799dbc56e70a164c96b9415",
+          "3cc5cccc77b12d62f8829ad14888f0bcba66dad2253ed9db0388b1f39ecfc513",
+          "6f2dc40622ab1cb8f66f007bbc3f057fb187d3e8f8a3cd1b421cfc08b9b7b5bd",
+          "5cd0892e9991cebd50c0d43fbf4e9021f5ee1e6cc06708bdd362f78ec4c519da",
+          "abeebf7a23da9ae1a7ea9628de3c6a110a483582ccf6cc25c675aa9c9a61a034",
+          "bd3488478b23bd39f4756c3b5bd667c3b242fac44393b0e7399440475fb4f741",
+          "24d2788542ee8e160df6c9b383455907913deafc6c29b3b7e61076f2a65aeb12",
+          "a26667802d03b68e342b8eae14ecb872fd0e5983f7d97fd5df6174cf02dcc5d2"
+        ],
+        "stderr": ""
+      },
+      {
+        "command": "docker network rm afterglow-lumen-settings-qa_default",
+        "id": "efa882d2126af71690221c2bac9e51eeba548f673e58c33180af2a161db689be",
+        "exit_code": 0,
+        "stdout": "efa882d2126af71690221c2bac9e51eeba548f673e58c33180af2a161db689be",
+        "stderr": ""
+      },
+      {
+        "command": "docker network rm afterglow-mcp-scopes-test_default",
+        "id": "ef3f3a7886733061c2ed16c74f35044ca4e6408569c2f4e652e459a82eeded2b",
+        "exit_code": 0,
+        "stdout": "ef3f3a7886733061c2ed16c74f35044ca4e6408569c2f4e652e459a82eeded2b",
+        "stderr": ""
+      },
+      {
+        "command": "docker network rm afterglow-remaining-commit-gate-bkjlix_default",
+        "id": "b4efc8f5f59d2af10326743d39cb046ec8e81e7e26445b751791ff50f71c691e",
+        "exit_code": 0,
+        "stdout": "b4efc8f5f59d2af10326743d39cb046ec8e81e7e26445b751791ff50f71c691e",
+        "stderr": ""
+      },
+      {
+        "command": "docker network rm lumen-elastic-batch-qa_default",
+        "id": "b103f417714efcbbb664bdc43c2f997097d9d7d20e4b1948e02fadf7b8f17c23",
+        "exit_code": 0,
+        "stdout": "b103f417714efcbbb664bdc43c2f997097d9d7d20e4b1948e02fadf7b8f17c23",
+        "stderr": ""
+      },
+      {
+        "command": "docker network rm palimpsest-real-identity-d71e6689cc-net",
+        "id": "baecd5eb11a351718658d57904f0624a827476b34ac97175dd2fa23d254fd3e0",
+        "exit_code": 0,
+        "stdout": "baecd5eb11a351718658d57904f0624a827476b34ac97175dd2fa23d254fd3e0",
+        "stderr": ""
+      }
+    ],
+    "stopped": [
+      {
+        "id": "fe6bf2500ce1137348bccd75f41d823ef1b31a45c6d73da060602431ce455545",
+        "name": "afterglow-remaining-commit-gate-bkjlix-postgres-1",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:41.146405505Z"
+      },
+      {
+        "id": "870f04e753a3cda21fd6a56d638f99171205e18cfaef5c8767f295e0d325d9e5",
+        "name": "afterglow-remaining-commit-gate-bkjlix-test-redis-1",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:41.21082063Z"
+      },
+      {
+        "id": "bb6a10b1a5a801cbf82b64132b3690983166df58c5188345f86fb2dc785894a8",
+        "name": "afterglow-remaining-commit-gate-bkjlix-mariadb-1",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:41.216871755Z"
+      },
+      {
+        "id": "fc7ca4569d1e21d982bda4ba7b1ed86900f97d70ee7e3584557071b4b8cdf160",
+        "name": "drover-inventory-redis-453d7513d64f",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:41.14803913Z"
+      },
+      {
+        "id": "8edb660cf947234f39787a4b134723b3286d3ebadbabfe5e774d63ae04fde387",
+        "name": "drover-inventory-sql-453d7513d64f",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:41.201007922Z"
+      },
+      {
+        "id": "b72203ea174c61bbafa5b4f7ce834cff314525344ca7c451ef82d8c2ed450efd",
+        "name": "afterglow-lumen-settings-qa-postgres-1",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:41.164359005Z"
+      },
+      {
+        "id": "1c9ff365068c0c4892e0593955ca1c84df8e6301d322023a4230498552a45d17",
+        "name": "afterglow-lumen-settings-qa-test-redis-1",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:41.194303588Z"
+      },
+      {
+        "id": "52459aa4f55f663df2ccae5482c990dc2004684072a56793c4f17d9ba70943a9",
+        "name": "afterglow-lumen-settings-qa-mariadb-1",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:41.686977589Z"
+      },
+      {
+        "id": "b96604e5e0478df6d125852552d24e8ae0ee1573edd6892c4e5fb017f8da43b3",
+        "name": "palimpsest-real-identity-d71e6689cc-hub-worker-amd64",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:12.217044797Z"
+      },
+      {
+        "id": "3c4047c011d156a6740ee432b38bfa1c62714b32c27b3e2f6971114d27fa1cc6",
+        "name": "palimpsest-real-identity-d71e6689cc-hub-worker-arm64",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:12.154107422Z"
+      },
+      {
+        "id": "693f944a3402f855eac86dc64fcb8627d54aede3ba24ca97d90dfa5f420595db",
+        "name": "palimpsest-real-identity-d71e6689cc-hub-api-arm64",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:12.848872131Z"
+      },
+      {
+        "id": "b992c1a1dc18badc98855d91287defb1d3d70804c799dbc56e70a164c96b9415",
+        "name": "palimpsest-real-identity-d71e6689cc-keystone",
+        "status": "exited",
+        "exit_code": 137,
+        "finished_at": "2026-10-12T04:04:40.966738547Z"
+      },
+      {
+        "id": "3cc5cccc77b12d62f8829ad14888f0bcba66dad2253ed9db0388b1f39ecfc513",
+        "name": "palimpsest-real-identity-d71e6689cc-redis",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:41.214523672Z"
+      },
+      {
+        "id": "6f2dc40622ab1cb8f66f007bbc3f057fb187d3e8f8a3cd1b421cfc08b9b7b5bd",
+        "name": "palimpsest-real-identity-d71e6689cc-hub-db",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:41.458886839Z"
+      },
+      {
+        "id": "5cd0892e9991cebd50c0d43fbf4e9021f5ee1e6cc06708bdd362f78ec4c519da",
+        "name": "palimpsest-real-identity-d71e6689cc-keystone-db",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:41.57469288Z"
+      },
+      {
+        "id": "abeebf7a23da9ae1a7ea9628de3c6a110a483582ccf6cc25c675aa9c9a61a034",
+        "name": "afterglow-mcp-scopes-test-test-redis-1",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:41.166725255Z"
+      },
+      {
+        "id": "bd3488478b23bd39f4756c3b5bd667c3b242fac44393b0e7399440475fb4f741",
+        "name": "afterglow-mcp-scopes-test-postgres-1",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:41.226446172Z"
+      },
+      {
+        "id": "24d2788542ee8e160df6c9b383455907913deafc6c29b3b7e61076f2a65aeb12",
+        "name": "afterglow-mcp-scopes-test-mariadb-1",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:41.602773964Z"
+      },
+      {
+        "id": "a26667802d03b68e342b8eae14ecb872fd0e5983f7d97fd5df6174cf02dcc5d2",
+        "name": "lumen-elastic-batch-qa-redis-1",
+        "status": "exited",
+        "exit_code": 0,
+        "finished_at": "2026-10-12T04:04:41.184363505Z"
+      }
+    ]
+  },
+  "final": {
+    "recorded_at": "2026-10-12T04:05:57.786Z",
+    "containers": 21,
+    "running": 17,
+    "stopped": [
+      {
+        "name": "afterglow-local-services-drover-migrate-1",
+        "exit_code": 0
+      },
+      {
+        "name": "afterglow-local-services-waygate-migrate-1",
+        "exit_code": 0
+      },
+      {
+        "name": "afterglow-local-services-palimpsest-bootstrap-1",
+        "exit_code": 0
+      },
+      {
+        "name": "afterglow-local-services-lumen-migrate-1",
+        "exit_code": 0
+      }
+    ],
+    "networks": [
+      {
+        "name": "afterglow-local-services_default",
+        "id": "4578bda053b94f8d9ddbeaadebe252f98eab5a9b7536cf73a4ab0d1f46a7eb74",
+        "subnets": [
+          {
+            "Subnet": "172.18.0.0/16",
+            "Gateway": "172.18.0.1"
+          }
+        ],
+        "active": 15
+      },
+      {
+        "name": "bridge",
+        "id": "9daf22e8f0168d134aabad38132b77b6b2830c994677ee9d170a5137e24be168",
+        "subnets": [
+          {
+            "Subnet": "172.17.0.0/16",
+            "Gateway": "172.17.0.1"
+          }
+        ],
+        "active": 0
+      },
+      {
+        "name": "host",
+        "id": "1390a9b3253fe7255c357bfe5b87d48ce79f67d613aec4825d216e22f2d5040b",
+        "subnets": null,
+        "active": 0
+      },
+      {
+        "name": "none",
+        "id": "3e907dc27b226c1b1b856ed184d4ca97f6311409bdc4322ab853702b96fe7ede",
+        "subnets": null,
+        "active": 1
+      },
+      {
+        "name": "oc-sandbox-4d169e85aadbcb25701e-bus",
+        "id": "8e8bfad720ae3f2690907ca1aebaa2c0c54ea09775980528e5ad89b98cd3cf0d",
+        "subnets": [
+          {
+            "Subnet": "172.22.0.0/16",
+            "Gateway": "172.22.0.1"
+          }
+        ],
+        "active": 1
+      },
+      {
+        "name": "opencrew-remodel-jq5gl6-arm64-egress",
+        "id": "bd2d387e383927a1bca78bd9d8c1c9d2b3e77673038f33bfb87a9215ad457449",
+        "subnets": [
+          {
+            "Subnet": "192.168.32.0/20",
+            "Gateway": "192.168.32.1"
+          }
+        ],
+        "active": 0
+      }
+    ],
+    "volumes": 25,
+    "volume_names_unchanged": true,
+    "preservation": [
+      {
+        "name": "afterglow-local-services-frontend-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-backend-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-waygate-api-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-palimpsest-api-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-drover-api-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-lumen-api-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-drover-migrate-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-waygate-migrate-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-palimpsest-bootstrap-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-lumen-migrate-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-redis-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "oc-sandbox-4d169e85aadbcb25701e-provider",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-lumen-worker-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-drover-worker-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-notion-worker-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-palimpsest-worker-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-waygate-worker-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-service-mariadb-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-afterglow-mariadb-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "afterglow-local-services-lumen-postgres-1",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      },
+      {
+        "name": "buildx_buildkit_palimpsest-e2e0",
+        "present": true,
+        "runningUnchanged": true,
+        "pidUnchanged": true,
+        "startUnchanged": true,
+        "restartsUnchanged": true,
+        "mountsUnchanged": true,
+        "portsUnchanged": true,
+        "networksUnchanged": true
+      }
+    ],
+    "removed_container_count": 38,
+    "removed_network_count": 14,
+    "canonical_smoke": {
+      "command": "npm run services:smoke",
+      "exit_code": 1,
+      "stdout": "\n> afterglow-monorepo@1.30.12 services:smoke\n> node scripts/local-services.mjs smoke\n\n",
+      "stderr": "\nlocal-services: AFTERGLOW_SMOKE_TOKEN is required for authenticated BFF checks. Supply a short-lived Afterglow access token in your shell; the script never reads or prints it.\n"
+    },
+    "drover_readiness": {
+      "url": "http://127.0.0.1:8011/v1/health/ready",
+      "status": 200,
+      "body": {
+        "status": "ok",
+        "checks": {
+          "database": "ok",
+          "redis": "ok",
+          "migrations": "ok",
+          "keystone": "ok"
+        }
+      }
+    },
+    "architecture_guard": {
+      "command": "python3 scripts/check_architecture.py --staged",
+      "exit_code": 0,
+      "source_sha256": "437992ae2c0baa32534efe7704a982f6f9f162977ee76205181b6c306018057a",
+      "files": 2601,
+      "scope": "Existing staged source snapshot only; no new full source gate, no restamp or index mutations"
+    },
+    "archive": "openspec/changes/archive/2026-10-12-recover-local-compose-db-targets",
+    "documents": [
+      "ARCHITECTURE.md",
+      "docs/testing.md"
+    ]
+  }
+}

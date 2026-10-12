@@ -1,0 +1,88 @@
+{
+  "services": [
+    {
+      "title": "연구용 클라우드 서버",
+      "body": "데이터 분석과 연구 소프트웨어를 위한 VM을 준비합니다. 필요한 vCPU·메모리·볼륨·네트워크를 선택하고 프로젝트별로 관리합니다.",
+      "href": "/docs/nova",
+      "screenshot": null
+    },
+    {
+      "title": "GPU 기반 AI 학습",
+      "body": "모델 학습과 연산 실험에 필요한 GPU 서버를 제공합니다. 필요한 프레임워크와 데이터를 연결해 연구에 맞는 실행 환경을 구성합니다.",
+      "href": "/docs/nova",
+      "screenshot": null
+    },
+    {
+      "title": "연구를 돕는 AI 채팅",
+      "body": "Lumen에서 제공되는 AI 모델과 대화하고 연구 아이디어와 코드를 검토합니다. 대화 기록과 프로젝트별 이용 범위를 함께 관리합니다.",
+      "href": "/docs/lumen",
+      "screenshot": {
+        "loaded": true,
+        "width": 1440,
+        "alt": "Lumen AI 채팅 콘솔의 한국어 화면 예시"
+      }
+    },
+    {
+      "title": "Kubernetes 플랫폼",
+      "body": "연구 서비스와 수업 실습을 위한 클러스터를 구성합니다. 노드와 Pod·워크로드 상태를 확인하고 컨테이너 기반 환경을 운영합니다.",
+      "href": "/docs/drover",
+      "screenshot": null
+    }
+  ],
+  "filter": [
+    {
+      "selected": "전체",
+      "visible": [
+        "컴퓨팅 자원 신청",
+        "공유 데이터 공간",
+        "클러스터 실습",
+        "연구를 돕는 AI 채팅",
+        "관측 가능한 운영",
+        "보안과 감사"
+      ]
+    },
+    {
+      "selected": "컴퓨팅",
+      "visible": [
+        "컴퓨팅 자원 신청",
+        "클러스터 실습"
+      ]
+    },
+    {
+      "selected": "데이터",
+      "visible": [
+        "공유 데이터 공간"
+      ]
+    },
+    {
+      "selected": "운영",
+      "visible": [
+        "연구를 돕는 AI 채팅",
+        "관측 가능한 운영",
+        "보안과 감사"
+      ]
+    }
+  ],
+  "product": [
+    {
+      "view": "project",
+      "heading": "프로젝트의 자원을 한눈에",
+      "selected": "프로젝트"
+    },
+    {
+      "view": "cluster",
+      "heading": "노드부터 워크로드까지",
+      "selected": "클러스터"
+    },
+    {
+      "view": "network",
+      "heading": "연결 관계를 읽는 화면",
+      "selected": "네트워크"
+    }
+  ],
+  "fonts": {
+    "status": "loaded",
+    "errors": 0
+  },
+  "overflow": 0
+}

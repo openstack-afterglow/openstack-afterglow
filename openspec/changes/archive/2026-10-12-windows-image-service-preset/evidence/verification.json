@@ -1,0 +1,26 @@
+{
+  "change": "windows-image-service-preset",
+  "implementation_complete": true,
+  "required_flags": {
+    "os_type": "windows",
+    "os_distro": "windows",
+    "os_admin_user": "actual prepared local account, operator-selected",
+    "windows_initial_password_method": "nova-adminpass-configdrive",
+    "img_config_drive": "mandatory"
+  },
+  "optional_win11": {"hw_firmware_type":"uefi","hw_machine_type":"q35","hw_tpm_version":"2.0","hw_tpm_model":"tpm-crb","os_secure_boot":"required"},
+  "optional_installed_qga": {"hw_qemu_guest_agent":"yes"},
+  "native_http_cases": 16,
+  "browser_conditions": {"count":112,"modes":["owner","admin"],"locales":["ko","en","ja","zh-CN"],"themes":["dark","light"],"widths":[320,390,767,768,1023,1024,1440],"page_overflow":0,"section_overflow":0,"clipped_preview_cells":0},
+  "browser_exercised": ["explicit guest acknowledgement and invalid account admission","exact preview equals a single installed-SDK Glance JSON-Patch","authoritative full readback and canonical catalog reload/reopen persistence","actual provider rejection, draft preservation and retry","unchecked and unrelated property/owner/visibility/hash/trust preservation","readonly nonowner and denied nonadmin admin entry","admin foreign-image save without ownership change","disposed late save cannot affect a new image","name-guessed distro cannot replace an actual property","newly configured image through real wizard: initial20-to80, editable79 rejected,500 allowed,80 submitted, SSE completed with exact native password digest/config_drive and no userdata/keypair","four translated public Glance guides without auth"],
+  "checks": {"image_backend_exact":72,"instances_backend":1147,"instances_frontend":560,"related_frontend_before_final_distro_regression":213,"final_preset_consumers":59,"svelte_files":2369,"svelte_errors":0,"existing_svelte_warnings":3,"i18n_namespaces":37,"source_messages":9447,"hardcoded_korean_lines":0,"production_build_exit":0,"full_gate_exit":0,"backend_unit":5758,"frontend_unit":3293,"frontend_files":349,"frontend_runner":9,"consumer_contract":174,"functional":128,"functional_deselected":23,"ruff_formatted_files":586,"powershell_runtime_skips":36},
+  "architecture": {"scope":"frozen public-source integration snapshot; original shared index/review marker not staged/stamped; not semantic approval of unrelated concurrent WIP","source_sha256":"b116355ae29fccafd0ff11351b827932e8021e8358e567c3afec634a80146fbd","source_files":2614,"own_source_files_matching_tested_snapshot":29},
+  "raw_proof_directory": "/Users/pieroot/.local/share/afterglow-proofs/afterglow-windows-image-preset-tuarqe9o",
+  "raw_receipts": ["native-http.json","browser-matrix.json","browser-flows.json","source-parity.json","cleanup.json"],
+  "separate_observed_limit": "Virtual user image detail URL direct reload returned a landing shell and relative asset import failure. Routing was not changed. Persistence was proved using canonical catalog reload/reopen and API/Glance reread, not direct deep-link reload.",
+  "boundary": "Real compiled Chromium UI, FastAPI handlers, installed OpenStack SDK and loopback Glance/Nova/Cinder HTTP. Synthetic identity/provider resources/admission/audit, isolated fakeredis. Full gate included disposable real datastores. No actual Windows guest/RDP/hypervisor/production identity or cloud acceptance.",
+  "production_mutation": false,
+  "deployment": false,
+  "commit_or_push": false,
+  "gbrain": "CLI unavailable; no sync or search-guidance/config change"
+}

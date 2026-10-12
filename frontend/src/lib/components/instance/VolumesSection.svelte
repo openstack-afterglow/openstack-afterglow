@@ -1,7 +1,11 @@
 <script lang="ts">
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import { t } from '$lib/i18n/ns/instance';
-	import { ActivityIndicator, StatusChip } from '$lib/components/ui';
+	import { ActivityIndicator, Alert, Button, StatusChip } from '$lib/components/ui';
+	import { auth, canWrite } from '$lib/stores/auth';
+	import { api, ApiError } from '$lib/api/client';
+	import type { Volume } from '$lib/types/volume';
+	import VolumeExtendModal from '$lib/components/volume/VolumeExtendModal.svelte';
 
 	const s = useInstanceDetailController();
 
@@ -10,6 +14,101 @@
 	let selectedVolumeId = $state('');
 	let newVolName = $state('');
 	let newVolSize = $state(20);
+
+	let extendTarget = $state<Volume | null>(null);
+	let extendLoading = $state<string | null>(null);
+	let extendError = $state('');
+	let extendScope = $state<{ instanceId: string; projectId: string; token: string } | null>(null);
+	let extendGeneration = 0;
+
+	function expansionReason(volumeId: string): 'volumes.extendReadOnly' | 'volumes.extendScopeUnavailable'
+		| 'volumes.extendOfflineRequired' | 'volumes.extendUnavailable' | null {
+		if (!$canWrite) return 'volumes.extendReadOnly';
+		if (!s.effectiveProjectId || !$auth.token || !s.instanceId || s.instance?.id !== s.instanceId) {
+			return 'volumes.extendScopeUnavailable';
+		}
+		if (s.instance?.status !== 'SHUTOFF') return 'volumes.extendOfflineRequired';
+		const row = s.volumes.find((volume) => volume.volume_id === volumeId);
+		if (!row || row.status !== 'in-use' || !Number.isSafeInteger(row.size)
+			|| !row.size || row.size < 1 || row.size >= 2147483647) return 'volumes.extendUnavailable';
+		return null;
+	}
+
+	function ownsExpansion(scope: NonNullable<typeof extendScope>, generation: number) {
+		return extendGeneration === generation && s.instanceId === scope.instanceId
+			&& s.effectiveProjectId === scope.projectId && $auth.token === scope.token
+			&& s.instance?.status === 'SHUTOFF' && $canWrite;
+	}
+
+	// Project scalar identity/state: a fresh server object alone is not a scope transition.
+	const expansionInstanceId = $derived(s.instanceId);
+	const expansionLoadedId = $derived(s.instance?.id);
+	const expansionProjectId = $derived(s.effectiveProjectId);
+	const expansionStatus = $derived(s.instance?.status);
+	const expansionToken = $derived($auth.token);
+	const expansionWritable = $derived($canWrite);
+
+	$effect(() => {
+		// A target or credential transition invalidates outstanding detail reads, including ABA switches.
+		expansionInstanceId;
+		expansionLoadedId;
+		expansionProjectId;
+		expansionStatus;
+		expansionToken;
+		expansionWritable;
+		extendGeneration++;
+		extendTarget = null;
+		extendScope = null;
+		extendLoading = null;
+		extendError = '';
+	});
+
+	const visibleExtendTarget = $derived(extendTarget && extendScope
+		&& ownsExpansion(extendScope, extendGeneration) && !expansionReason(extendTarget.id)
+		? extendTarget : null);
+
+	async function openExpansion(volumeId: string) {
+		if (expansionReason(volumeId) || extendLoading || s.actioning) return;
+		const scope = { instanceId: s.instanceId, projectId: s.effectiveProjectId!, token: $auth.token! };
+		const generation = ++extendGeneration;
+		extendLoading = volumeId;
+		extendError = '';
+		try {
+			const volume = await api.get<Volume>(`/api/v1/volumes/${encodeURIComponent(volumeId)}`, scope.token, scope.projectId, { refresh: true });
+			if (!ownsExpansion(scope, generation) || expansionReason(volumeId)) return;
+			if (volume.id !== volumeId || volume.status !== 'in-use'
+				|| !Number.isSafeInteger(volume.size) || volume.size < 1 || volume.size >= 2147483647
+				|| !Array.isArray(volume.attachments)
+				|| !volume.attachments.some((attachment) => attachment.server_id === scope.instanceId)) {
+				extendError = t('volumes.extendUnavailable');
+				return;
+			}
+			extendScope = scope;
+			extendTarget = volume;
+		} catch (error) {
+			if (ownsExpansion(scope, generation)) {
+				extendError = error instanceof ApiError ? error.message : t('volumes.extendLoadFailed');
+			}
+		} finally {
+			if (ownsExpansion(scope, generation)) extendLoading = null;
+		}
+	}
+
+	function closeExpansion() {
+		extendTarget = null;
+		extendScope = null;
+		extendGeneration++;
+	}
+
+	async function onExpanded() {
+		const scope = extendScope;
+		const generation = extendGeneration;
+		closeExpansion();
+		if (scope && generation + 1 === extendGeneration && s.instanceId === scope.instanceId
+			&& s.effectiveProjectId === scope.projectId && $auth.token === scope.token) {
+			await s.fetchInstance(scope.instanceId, { silent: true });
+		}
+	}
 
 	async function handleAttachVolume() {
 		await s.attachVolume(selectedVolumeId);
@@ -110,8 +209,9 @@
 	{:else}
 		<div class="space-y-2">
 			{#each s.volumes as vol}
-				<div class="flex items-center justify-between bg-surface-sunken/50 rounded px-3 py-2">
-					<div class="flex items-center gap-4">
+				{@const reason = expansionReason(vol.volume_id)}
+				<div class="flex flex-wrap items-center justify-between gap-3 bg-surface-sunken/50 rounded px-3 py-2">
+					<div class="flex flex-wrap items-center gap-4 min-w-0">
 						<span class="text-xs font-mono text-warm-text hover:text-warm-text-hover">
 							<a href="/dashboard/volumes/{vol.volume_id}">{vol.name || vol.volume_id.slice(0, 12) + '...'}</a>
 						</span>
@@ -139,6 +239,21 @@
 							{/if}
 						</button>
 					</div>
+					<div class="flex flex-wrap items-center gap-2">
+						<Button
+							variant="secondary"
+							size="sm"
+							onclick={() => openExpansion(vol.volume_id)}
+							disabled={!!reason || !!extendLoading || !!s.actioning}
+							ariaBusy={extendLoading === vol.volume_id}
+							title={reason ? t(reason) : t('volumes.extend')}
+						>
+							{#if extendLoading === vol.volume_id}
+								<ActivityIndicator size="xs" label={t('volumes.extendLoading')} />
+							{:else}
+								{t('volumes.extend')}
+							{/if}
+						</Button>
 					<button
 						onclick={() => s.detachVolume(vol.volume_id)}
 						disabled={s.actioning === 'detach-' + vol.volume_id}
@@ -146,8 +261,20 @@
 					>
 						{#if s.actioning === 'detach-' + vol.volume_id}<ActivityIndicator size="xs" label={t('volumes.detaching')} />{:else}{t('volumes.detach')}{/if}
 					</button>
+					</div>
 				</div>
 			{/each}
 		</div>
+		{#if s.instance?.status !== 'SHUTOFF'}
+			<p class="mt-3 text-xs text-ink-2">{t('volumes.extendOfflineRequired')}</p>
+		{/if}
 	{/if}
+	{#if extendError}<Alert tone="danger" class="mt-3">{extendError}</Alert>{/if}
 </div>
+
+<VolumeExtendModal
+	volume={visibleExtendTarget}
+	projectId={s.effectiveProjectId}
+	onclose={closeExpansion}
+	onsuccess={onExpanded}
+/>

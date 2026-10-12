@@ -17,6 +17,7 @@ vi.mock('$lib/api/client', () => {
 });
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token', projectId: 'project-a', isSystemAdmin: false }),
+	canWrite: writable(true),
 }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: () => ({ active: false, intervalSeconds: 15, intervalOptions: [10, 15, 30, 60] }),
@@ -140,5 +141,19 @@ describe('volume detail parity and list rename', () => {
 
 		expect(await within(dialog).findByText('볼륨을 변경할 권한이 없습니다')).toBeTruthy();
 		expect(screen.getByRole('button', { name: 'data-disk 볼륨 작업' })).toBeTruthy();
+	});
+
+	it.each([['list', ListPage], ['direct detail', DetailRoute]])('extends an unattached disk from the %s with the selected project', async (_surface, Component) => {
+		serverVolume = { ...serverVolume, status: 'available', attachments: [] };
+		mocks.post.mockResolvedValue({ ...serverVolume, status: 'extending' });
+		render(Component);
+		await fireEvent.click(await screen.findByRole('button', { name: 'data-disk 볼륨 작업' }));
+		const menu = await screen.findByRole('group', { name: 'data-disk 볼륨 작업 옵션' });
+		await fireEvent.click(within(menu).getByRole('button', { name: '용량 확장' }));
+		const dialog = await screen.findByRole('dialog', { name: '볼륨 용량 확장' });
+		await fireEvent.click(within(dialog).getByRole('button', { name: '확장' }));
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/volumes/vol-1/extend', { new_size: 30 }, 'token', 'project-a'));
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/volumes/vol-1', 'token', 'project-a', { refresh: true });
+		await waitFor(() => expect(screen.queryByRole('dialog', { name: '볼륨 용량 확장' })).toBeNull());
 	});
 });

@@ -1,9 +1,25 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
+import { tick } from 'svelte';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import WizardFooter from '../WizardFooter.svelte';
+import Wrapper from './_WizardConsumerWrapper.svelte';
+import { wizard, wizardPassword } from '$lib/stores/wizard';
+import type { VmCreateStore } from '$lib/stores/vmCreateStore.svelte';
+import { prepareWizardConsumer, wizardResource } from './wizardConsumerFixtures';
+import { t } from '$lib/i18n/ns/vm-wizard';
+
+vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
+vi.mock('$lib/api/client', () => ({
+	api: { get: (path: string) => Promise.resolve(wizardResource(path) ?? { history: [], presets: [] }) },
+	ApiError: class ApiError extends Error {},
+	fetchWithAuth: vi.fn(),
+	getBaseUrl: () => '',
+}));
+
+afterEach(cleanup);
 
 describe('WizardFooter', () => {
-	it('keeps one tutorial navigation surface with responsive placement', async () => {
+	it('keeps one tutorial navigation surface and invokes actions', async () => {
 		const onCancel = vi.fn();
 		const onPrev = vi.fn();
 		const onNext = vi.fn();
@@ -21,20 +37,7 @@ describe('WizardFooter', () => {
 			onDeploy,
 		});
 
-		const footer = container.querySelector('.wizard-footer');
-		expect(footer?.className.split(/\s+/)).toContain('sticky');
-		expect(footer?.className).toContain('bottom-0');
-		expect(footer?.className).toContain('flex-none');
-		expect(footer?.className).toContain('bg-[var(--color-surface-base)]');
-		expect(footer?.className).toContain('border-[var(--color-line)]');
-		expect(footer?.className).toContain('border-t');
-		expect(footer?.className).not.toContain('md:sticky');
-		expect(footer?.className).not.toContain('md:order-last');
 		expect(container.querySelectorAll('[data-tour="wizard-nav"]')).toHaveLength(1);
-		expect(container.querySelector('[data-tour="wizard-cancel"]')?.className).toContain('order-2');
-		expect(container.querySelector('[data-tour="wizard-prev"]')?.className).toContain('order-1');
-		expect(container.querySelector('[data-tour="wizard-next"]')?.className).toContain('order-3');
-		expect(container.querySelectorAll('.pick')).toHaveLength(2);
 		expect(screen.getByText('ubuntu:24.04')).toBeTruthy();
 		expect(screen.getByText('cpu.2c_4g')).toBeTruthy();
 		expect(screen.getByRole('button', { name: '다음 →' })).toBeTruthy();
@@ -61,5 +64,45 @@ describe('WizardFooter', () => {
 
 		await fireEvent.click(screen.getByRole('button', { name: 'VM 생성' }));
 		expect(onDeploy).toHaveBeenCalledOnce();
+	});
+});
+
+describe('WizardFooter Windows readiness', () => {
+	it.each([1, 2, 5, 6])('blocks its action after a supported to unsupported transition on step %s', async step => {
+		prepareWizardConsumer(step);
+		wizard.update(w => ({ ...w, imageId: 'windows-native', keyName: 'test-keypair' }));
+		let store!: VmCreateStore;
+		const onNext = vi.fn();
+		const onDeploy = vi.fn();
+		render(Wrapper, { component: 'footer', onStore: value => { store = value; }, onNext, onDeploy });
+		await store.loadBootOptions();
+		await store.loadFlavorOptions();
+		await tick();
+		wizardPassword.set({ password: 'Native-footer-123!', confirmation: 'Native-footer-123!' });
+		await tick();
+		const action = screen.getByRole('button', { name: step === 6 ? t('footer.create') : t('footer.next') }) as HTMLButtonElement;
+		expect(action.disabled).toBe(false);
+		await fireEvent.click(action);
+		expect(step === 6 ? onDeploy : onNext).toHaveBeenCalledOnce();
+		onNext.mockClear();
+		onDeploy.mockClear();
+
+		wizard.update(w => ({ ...w, imageId: 'windows-unsupported' }));
+		await tick();
+		await tick();
+		expect(action.disabled).toBe(true);
+		action.click();
+		expect(onNext).not.toHaveBeenCalled();
+		expect(onDeploy).not.toHaveBeenCalled();
+		if (step === 1 || step === 2) {
+			expect(within(screen.getByTestId('windows-unsupported-footer')).getByRole('alert').textContent?.trim()).toBeTruthy();
+		} else {
+			expect(screen.queryByTestId('windows-unsupported-footer')).toBeNull();
+		}
+
+		wizard.update(w => ({ ...w, imageId: 'image-a' }));
+		await tick();
+		expect(screen.queryByTestId('windows-unsupported-footer')).toBeNull();
+		expect(action.disabled).toBe(false);
 	});
 });

@@ -1,0 +1,42 @@
+{
+  "noJs": {
+    "viewport": [
+      390,
+      844,
+      1
+    ],
+    "headings": [
+      "연구를 움직이는 클라우드.",
+      "필요한 서버가, 내 연구 환경으로.",
+      "데이터에서, 다음 모델로.",
+      "질문은 짧게. 생각은 더 멀리.",
+      "컨테이너가 모여, 연구 서비스로.",
+      "보유한 장비가, 기관의 클라우드로."
+    ],
+    "states": [
+      "static",
+      "static",
+      "static",
+      "static",
+      "static",
+      "static"
+    ],
+    "replayControls": 0,
+    "artLoaded": 1536,
+    "overflow": 0
+  },
+  "observerFallback": {
+    "states": [
+      "static",
+      "static",
+      "static",
+      "static",
+      "static",
+      "static"
+    ],
+    "replayControls": 0,
+    "running": 0,
+    "overflow": 0
+  },
+  "observerQualification": "Owned synthetic capability fixture; not an actual legacy browser"
+}

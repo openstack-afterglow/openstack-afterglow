@@ -1,0 +1,32 @@
+[
+  {
+    "host": "172.30.0.11",
+    "exit": 0,
+    "checks": {
+      "files": 1114,
+      "native_marker_files": 0,
+      "legacy_marker_files": 0,
+      "password_confirmation_files": 0
+    }
+  },
+  {
+    "host": "172.30.0.12",
+    "exit": 0,
+    "checks": {
+      "files": 1114,
+      "native_marker_files": 0,
+      "legacy_marker_files": 0,
+      "password_confirmation_files": 0
+    }
+  },
+  {
+    "host": "172.30.0.13",
+    "exit": 0,
+    "checks": {
+      "files": 1114,
+      "native_marker_files": 0,
+      "legacy_marker_files": 0,
+      "password_confirmation_files": 0
+    }
+  }
+]

@@ -1,0 +1,25 @@
+{
+  "scope": "Owned private-free current-source whole-file snapshot at qualification; concurrent WIP included, not feature-only; later shared changes unqualified",
+  "working": {
+    "source_sha256": "271bcad166abcdee6507d2c14d1e69d10429615ed5ccbfffd9b6de55fda9a5d9",
+    "files": 2605,
+    "passed": true
+  },
+  "staged": {
+    "source_sha256": "271bcad166abcdee6507d2c14d1e69d10429615ed5ccbfffd9b6de55fda9a5d9",
+    "files": 2605,
+    "passed": true,
+    "index": "owned candidate only"
+  },
+  "shared_index_edited": false,
+  "shared_review_marker_edited": false,
+  "previous_superseded_digests": [
+    "b62e5168b6de25945224361fac01e43a88384939400fff00bc876b7af7b8b5e6",
+    "9018ed61b62793fb5ff4fdcba75b0503e7c2d981901b204c90b461c1ee555bfa"
+  ],
+  "actual_container_backend_source_sha256": {
+    "app/services/mcp_control_plane/clients.py": "82030144b3e75f6b12f943a777b1b84e7170dcfbb8b181e6e17213e50f92de03",
+    "app/services/mcp_control_plane/transport.py": "752e09d9d2400cf3bca7d30cb1dfe89fda59eef5668536e5fba5e7bf605ea056",
+    "app/api/identity/mcp_access.py": "ebc36a8b6dd7230f98889e533eb2a1ebcb107d7b951ec041ef589e55b055ae94"
+  }
+}

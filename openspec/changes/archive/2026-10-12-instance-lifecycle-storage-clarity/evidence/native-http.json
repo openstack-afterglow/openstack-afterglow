@@ -1,0 +1,185 @@
+{
+  "boundary": "Current-source Uvicorn + installed openstacksdk HTTP + real ManilaClient httpx transport. Identity/session, audit/cache, providers and state transitions are synthetic and loopback only. No production, actual guest mount/filesystem, live GPU or authentication qualification.",
+  "cases": [
+    {
+      "scenario": "volume-backed Windows OS visible to reader",
+      "status": 200,
+      "no_provider_mutation": false
+    },
+    {
+      "scenario": "Linux image name does not forge Windows OS",
+      "status": 200,
+      "no_provider_mutation": false
+    },
+    {
+      "scenario": "reader access grant denied",
+      "status": 403,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "unsupported share protocol rejected",
+      "status": 422,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "public foreign share not management authority",
+      "status": 404,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "floating or foreign IP rejected",
+      "status": 409,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "CIDR authorization forbidden",
+      "status": 422,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "obsolete mount payload rejected",
+      "status": 422,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "ambiguous NFS target requires exact selection",
+      "status": 409,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "NFS exact fixed IP grant and routing data",
+      "status": 200,
+      "no_provider_mutation": false
+    },
+    {
+      "scenario": "repeated exact managed grant avoids new authorization",
+      "status": 200,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "managed rule level cannot silently change",
+      "status": 409,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "CephFS uses UUID identity and explicit secret response",
+      "status": 200,
+      "no_provider_mutation": false
+    },
+    {
+      "scenario": "authorization list never exposes Ceph secret",
+      "status": 200,
+      "no_provider_mutation": false
+    },
+    {
+      "scenario": "reader connection-secret retrieval denied",
+      "status": 403,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "explicit authorized Ceph connection details",
+      "status": 200,
+      "no_provider_mutation": false
+    },
+    {
+      "scenario": "renamed instance retains stable Ceph identity",
+      "status": 200,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "empty list cannot hide exact live revoke target",
+      "status": 409,
+      "no_provider_mutation": false
+    },
+    {
+      "scenario": "unavailable exact rule keeps tracking",
+      "status": 502,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "only exact provider absence removes association",
+      "status": 204,
+      "no_provider_mutation": false
+    },
+    {
+      "scenario": "Ceph managed rule revoke",
+      "status": 204,
+      "no_provider_mutation": false
+    },
+    {
+      "scenario": "preexisting exact rule remains unmanaged",
+      "status": 200,
+      "no_provider_mutation": false
+    },
+    {
+      "scenario": "unmanaged rule cannot be revoked here",
+      "status": 409,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "clone managed grant for deletion",
+      "status": 200,
+      "no_provider_mutation": false
+    },
+    {
+      "scenario": "pending authorization revoke blocks server delete",
+      "status": 409,
+      "no_provider_mutation": false
+    },
+    {
+      "scenario": "server delete proceeds only after exact absence",
+      "status": 204,
+      "no_provider_mutation": false
+    },
+    {
+      "scenario": "active attachment blocks Cinder expansion",
+      "status": 409,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "strict integer rejects fractional size",
+      "status": 422,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "strict integer rejects bool size",
+      "status": 422,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "shrink rejected",
+      "status": 400,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "task transition blocks stopped expansion",
+      "status": 409,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "fractional SDK power cannot coerce to off",
+      "status": 409,
+      "no_provider_mutation": true
+    },
+    {
+      "scenario": "stopped attached Cinder extension reports actual asynchronous capacity",
+      "status": 200,
+      "no_provider_mutation": false
+    },
+    {
+      "scenario": "Other-creator reader receives authoritative Windows boot OS",
+      "status": 200
+    },
+    {
+      "scenario": "Other-creator reader cannot reuse OS read for privileged password precheck",
+      "status": 403
+    }
+  ],
+  "case_count": 35,
+  "provider_microversions": {
+    "compute": "2.88",
+    "cinder": "3.65",
+    "manila": "2.65"
+  },
+  "secret_exposure": "GET/audit/metadata absent; authorized mutation and explicit connection-info only; page clearance is not provider-key revocation."
+}

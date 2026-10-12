@@ -241,6 +241,38 @@ Repository 미리보기에는 tag를 한 번만 표시합니다. 사용자 repos
 
 **오류**: `403`(본인 소유 아님), `404`(없음), `400`(수정 실패)
 
+### 브라우저의 Windows 설정
+
+사용자 **Compute → 이미지** 또는 **관리자 → 이미지**의 개별 상세에서 **Windows 설정 → Windows 메타데이터 설정**을 엽니다. 이미지 소유자 또는 관리자만 저장할 수 있습니다. 실제 게스트 준비를 확인하고 현재→변경값을 검토한 뒤 **메타데이터 저장**을 누르면 기존 properties API의 단일 요청/Glance JSON-Patch로 달라진 값만 적용합니다. 임의 속성 편집기와 동시에 편집하지 않으며 실패 시 초안을 유지합니다.
+
+| 적용 범위 | 속성 | 값 / 조건 |
+|---|---|---|
+| 기본 | `os_type` | `windows` — Afterglow의 OS 판정 근거 |
+| 기본 | `os_distro` | `windows` — 배포판 표시·분류 |
+| 기본 | `os_admin_user` | 실제 게스트에서 준비한 로컬 계정. 예: `Admin`; RDP의 `.\Admin` 표기와 구분 |
+| 기본 | `windows_initial_password_method` | `nova-adminpass-configdrive` — Afterglow가 지원하는 최초 암호 전달 계약 |
+| 기본 | `img_config_drive` | `mandatory` — 이미지가 ConfigDrive를 요구함 |
+| 선택: 준비된 x86 Windows 11 | `hw_firmware_type` | `uefi` |
+| 선택: 준비된 x86 Windows 11 | `hw_machine_type` | `q35` |
+| 선택: 준비된 x86 Windows 11 | `hw_tpm_version` | `2.0` |
+| 선택: 준비된 x86 Windows 11 | `hw_tpm_model` | `tpm-crb` |
+| 선택: 준비된 x86 Windows 11 | `os_secure_boot` | `required` |
+| 선택: 실제 설치된 에이전트 | `hw_qemu_guest_agent` | `yes` — QGA 설치·구성 확인 시만 적용; 최초 암호 전달의 필수 조건은 아님 |
+
+프리셋의 현재값/변경 판정은 실제 `properties`를 기준으로 합니다. 목록·상세 표시용 `os_distro`는 이미지 이름에서 추측될 수 있으므로, 실제 배포판 property가 없으면 `os_distro=windows`를 필수 변경에 포함합니다.
+
+
+선택하지 않은 하드웨어/QGA 키는 삭제하거나 비활성화하지 않습니다. 디스크·NIC 버스/드라이버, CPU 토폴로지, 공개 범위, 소유자, 해시, 관리자 검증 및 `production_ready` 같은 무관한 속성도 보존합니다. `min_disk`/`min_ram`은 예약된 기본 metadata 필드이므로 이 properties 요청에 넣지 말고 기존 이미지 수정에서 실제 이미지 요구량으로 지정하세요. VM wizard는 선택 이미지의 최소 디스크보다 작은 초기 초안을 올리고 더 큰 초안은 줄이지 않으며, 부족한 정수 용량은 다음 단계·제출에서 차단합니다. 예를 들어 `min_disk=80` 이미지에는80GB 이상이 필요합니다.
+
+**플래그가 대신하지 않는 준비:** 이미지 내부 Cloudbase-Init의 `inject_user_password=true`, `ConfigDriveService` 우선 공급자와 활성 `SetUserPasswordPlugin`, 실제 로컬 계정 일치, 최초 부팅용 일반화·봉인과 저장소/네트워크 드라이버가 필요합니다. RDP에서 강제 최초 암호 변경이 접속을 막지 않도록 게스트의 `first_logon_behaviour` 정책도 확인하세요(`no`는 강제 변경 없음). UEFI/GPT·서명된 부트 체인과 호스트 OVMF/q35·Secure Boot/vTPM 지원은 선택한 Windows11 구성에 맞아야 합니다. RDP 활성화·방화벽·허용된 출발지의 보안 그룹은 별도입니다. ConfigDrive의 평문 초기 암호 보호와 실제 첫 부팅·RDP 로그인 검증은 운영자 책임입니다.
+
+`cloudbase-user-data` 또는 `inject_user_password=false`인 이전 게스트를 marker만 바꾸어 네이티브 지원 이미지로 만들 수 없습니다. 먼저 별도 이미지에서 게스트를 준비하고 실제 암호로 부팅·로그인을 확인하세요. 브라우저 확인란은 운영자 확인이지 게스트 검사/승인이 아니며, 메타데이터 저장이나 Nova ACTIVE도 서비스 준비 완료 증거가 아닙니다. 기존 VM/볼륨의 암호를 바꾸거나 게스트를 설치·봉인하지 않습니다.
+
+사용자/admin properties 저장은 모든 프로젝트의 Glance 목록 캐시를 무효화해 다음 카탈로그·wizard 조회가 새 OS/계정/방식을 읽도록 합니다. SDK가 별도 필드로 분리한 ConfigDrive·machine type·Secure Boot·QGA도 상세 `properties`로 재투영합니다. Glance 버전 상대 경로로 PATCH하고 공급자 오류를 명시적으로 전파하므로 실패 응답을 성공한 저장으로 반환하지 않습니다. 저장 응답은 공급자의 새 상세 재조회 결과입니다.
+
+참고: [Nova ConfigDrive](https://docs.openstack.org/nova/latest/user/metadata.html), [UEFI](https://docs.openstack.org/nova/latest/admin/uefi.html), [Secure Boot](https://docs.openstack.org/nova/latest/admin/secure-boot.html), [emulated TPM](https://docs.openstack.org/nova/latest/admin/emulated-tpm.html), [Cloudbase-Init password plugin](https://cloudbase-init.readthedocs.io/en/latest/plugins.html#setting-password-main).
+
+
 ---
 
 ## POST /api/v1/images/{image_id}/deactivate · reactivate

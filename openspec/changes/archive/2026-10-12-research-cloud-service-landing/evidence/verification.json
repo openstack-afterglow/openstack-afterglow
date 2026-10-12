@@ -1,0 +1,122 @@
+{
+  "exact": {
+    "command": "npm run test:target -- frontend:src/lib/components/landing/__tests__/LandingOpsBoard.test.ts frontend:src/lib/components/landing/__tests__/LandingPage.test.ts frontend:src/lib/components/landing/__tests__/LandingFigure.test.ts frontend:src/lib/design/__tests__/typographyRoles.test.ts frontend:src/routes/__tests__/designSystemRules.test.ts",
+    "files": 5,
+    "passed": 32
+  },
+  "design": {
+    "command": "npm run test:target -- design",
+    "files": 27,
+    "passed": 138,
+    "prior_failure": "obsolete request-to-reuse wording source-text assertion removed, not repinned"
+  },
+  "check": {
+    "errors": 0,
+    "warnings": 3,
+    "files": 2363,
+    "warning_files": [
+      "DocCodeBlock.svelte",
+      "WizardStep5Config.svelte",
+      "ProjectUsageTable.svelte"
+    ]
+  },
+  "localization": {
+    "errors": 0,
+    "key_order_warnings": 3,
+    "warning_namespace": "instance (en/ja/zh-CN)",
+    "hardcoded_korean_lines": 0,
+    "scan_files": 989
+  },
+  "build": {
+    "command": "npm --prefix frontend run build",
+    "exit": 0,
+    "vite": "8.2.2",
+    "adapter": "node"
+  },
+  "browser": {
+    "compiled_conditions": 64,
+    "locales": [
+      "ko",
+      "en",
+      "ja",
+      "zh-CN"
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "widths": [
+      320,
+      390,
+      767,
+      768,
+      1023,
+      1024,
+      1440,
+      2560
+    ],
+    "max_document_overflow": 0,
+    "reduced_motion_scenarios": 3,
+    "guide_http200": 3,
+    "keyboard": [
+      "onprem Enter",
+      "retained trigger focus",
+      "Tab inquiry link",
+      "skip focus"
+    ],
+    "compact_viewport": [
+      720,
+      450,
+      2
+    ]
+  },
+  "motion": {
+    "before": {
+      "width": 1440,
+      "height": 900,
+      "dpr": 1,
+      "duration_seconds": 9.6,
+      "frames": 288,
+      "changed_frames": 95
+    },
+    "after": {
+      "width": 1440,
+      "height": 900,
+      "dpr": 1,
+      "duration_seconds": 9.333008,
+      "frames": 280,
+      "changed_frames": 74
+    },
+    "deployment": {
+      "duration_seconds": 4.733333,
+      "frames": 142,
+      "changed_frames": 10
+    },
+    "qualification": "Actual changed-state/visual recordings, not fps/performance benchmark"
+  },
+  "limits": [
+    "full test:gate not run",
+    "no commit/push/deploy",
+    "real OpenStack/GPU/inference/Kubernetes/institution build not exercised",
+    "native browser zoom and Safari/Firefox not tested",
+    "local public site-config200 lacks preview-origin CORS; defaults exercised",
+    "GBrainCLI absent; sync not run",
+    "translations not certified reviewed"
+  ],
+  "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/research-cloud-landing-20261012-qxi2e2rq",
+  "adapter_node_smoke": {
+    "origin": "http://127.0.0.1:5199",
+    "viewport": [
+      390,
+      844,
+      1
+    ],
+    "onprem_inquiry_verified": true,
+    "services": 4,
+    "stages": 3,
+    "removed_static_http404": [
+      "/landing/plate-api.svg",
+      "/landing/plate-layer.svg"
+    ]
+  }
+}

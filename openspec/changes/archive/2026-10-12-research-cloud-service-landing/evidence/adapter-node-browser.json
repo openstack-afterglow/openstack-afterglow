@@ -1,0 +1,26 @@
+{
+  "offering": {
+    "url": "http://127.0.0.1:5199/",
+    "viewport": [
+      390,
+      844,
+      1
+    ],
+    "selected": "onprem",
+    "href": "mailto:pieroot@konkuk.ac.kr",
+    "overflow": 0,
+    "services": 4,
+    "panels": 3
+  },
+  "removed": [
+    {
+      "path": "/landing/plate-api.svg",
+      "status": 404
+    },
+    {
+      "path": "/landing/plate-layer.svg",
+      "status": 404
+    }
+  ],
+  "title": "Afterglow | 연구 클라우드와 온프레미스 구축"
+}

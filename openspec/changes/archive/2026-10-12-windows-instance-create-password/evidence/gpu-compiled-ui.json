@@ -1,0 +1,100 @@
+{
+  "boundary": "Compiled production Svelte UI + current-source Uvicorn + installed SDK + loopback Nova/Glance/Cinder. Synthetic auth/catalog/quota/policy. No live guest/GPU/RDP acceptance.",
+  "flows": [
+    {
+      "path": "/api/v1/admin/instances/async",
+      "boot": "image",
+      "status": 200,
+      "completed": true,
+      "secretAbsentFromResponse": true,
+      "noSsh": true,
+      "completedWizardClosed": true,
+      "gpuFlavor": "gpu.1080ti_8c_32g",
+      "bootVolumeGb": 500
+    },
+    {
+      "path": "/api/v1/admin/instances/async",
+      "boot": "volume",
+      "status": 200,
+      "completed": true,
+      "secretAbsentFromResponse": true,
+      "noSsh": true,
+      "completedWizardClosed": true,
+      "gpuFlavor": "gpu.1080ti_8c_32g"
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "boot": "image",
+      "status": 200,
+      "completed": true,
+      "secretAbsentFromResponse": true,
+      "noSsh": true,
+      "completedWizardClosed": true,
+      "gpuFlavor": "gpu.1080ti_8c_32g",
+      "bootVolumeGb": 500
+    },
+    {
+      "path": "/api/v1/instances/async",
+      "boot": "volume",
+      "status": 200,
+      "completed": true,
+      "secretAbsentFromResponse": true,
+      "noSsh": true,
+      "completedWizardClosed": true,
+      "gpuFlavor": "gpu.1080ti_8c_32g"
+    }
+  ],
+  "responsive": [
+    {
+      "width": 390,
+      "documentOverflow": 0,
+      "panelOverflow": 0,
+      "masked": true,
+      "secretInText": false,
+      "ready": true
+    },
+    {
+      "width": 767,
+      "documentOverflow": 0,
+      "panelOverflow": 0,
+      "masked": true,
+      "secretInText": false,
+      "ready": true
+    },
+    {
+      "width": 768,
+      "documentOverflow": 0,
+      "panelOverflow": 0,
+      "masked": true,
+      "secretInText": false,
+      "ready": true
+    },
+    {
+      "width": 1023,
+      "documentOverflow": 0,
+      "panelOverflow": 0,
+      "masked": true,
+      "secretInText": false,
+      "ready": true
+    },
+    {
+      "width": 1024,
+      "documentOverflow": 0,
+      "panelOverflow": 0,
+      "masked": true,
+      "secretInText": false,
+      "ready": true
+    },
+    {
+      "width": 1440,
+      "documentOverflow": 0,
+      "panelOverflow": 0,
+      "masked": true,
+      "secretInText": false,
+      "ready": true
+    }
+  ],
+  "passwordMismatchBlocked": true,
+  "reviewSecretAbsent": true,
+  "emptyDraftAfterSubmissionAndSourceReopen": true
+}

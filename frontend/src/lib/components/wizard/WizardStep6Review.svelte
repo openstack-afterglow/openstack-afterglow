@@ -3,6 +3,7 @@
 	import { useVmCreate } from '$lib/stores/vmCreateStore.svelte';
 	import { normalizeGithubUsername, normalizeRequestedInstanceName } from '$lib/utils/instanceCreate';
 	import { t } from '$lib/i18n/ns/vm-wizard';
+	import { Alert } from '$lib/components/ui';
 
 	const s = useVmCreate();
 	const reviewFlavor = $derived(s.flavors.find((f: any) => f.id === $wizard.flavorId));
@@ -81,8 +82,14 @@
 	</div>
 	<!-- SSH 접근 -->
 	<div class="grid grid-cols-[140px_1fr_auto] gap-4 items-center px-4 py-3.5 border-b border-line">
-		<span class="text-xs text-ink-2 font-medium">{t('review.ssh.label')}</span>
-		<span class="text-sm text-ink-0 font-mono">{reviewSshAccess}</span>
+		<span class="text-xs text-ink-2 font-medium">{s.isWindowsBoot ? t('review.windows.label') : t('review.ssh.label')}</span>
+		{#if s.windowsUnsupported}
+			<div data-testid="windows-unsupported-review"><Alert tone="danger">{t('config.windows.unsupported')}</Alert></div>
+		{:else if s.windowsAccount}
+			<span class="min-w-0 text-sm text-ink-0 break-all" data-testid="windows-password-review">{s.windowsAccount} · {s.passwordError ? t('review.windows.missing') : t('review.windows.provided')}</span>
+		{:else}
+			<span class="text-sm text-ink-0 font-mono">{reviewSshAccess}</span>
+		{/if}
 		<button onclick={() => s.goTo(5)} class="review-edit-btn">{t('review.edit')}</button>
 	</div>
 	<!-- 네트워크 -->
@@ -103,7 +110,7 @@
 	</div>
 	{/if}
 	<!-- 파일 스토리지 마운트 -->
-	{#if $wizard.dataMounts.length > 0}
+	{#if !s.isWindowsBoot && $wizard.dataMounts.length > 0}
 	<div class="grid grid-cols-[140px_1fr_auto] gap-4 items-start px-4 py-3.5">
 		<span class="text-xs text-ink-2 font-medium mt-0.5">{t('review.mounts')}</span>
 		<div class="flex flex-col gap-1.5">
@@ -121,7 +128,16 @@
 	{/if}
 </div>
 
+{#if s.windowsAccount}
+	<div class="mb-4 space-y-3">
+		<Alert tone="warning">{t('config.windows.secretWarning')}</Alert>
+		<Alert tone="info">{t('config.windows.firstboot')}</Alert>
+		{#if s.windowsConflict}<Alert tone="danger">{t('config.windows.conflict')}</Alert>{/if}
+		{#if s.passwordError}<Alert tone="danger">{t('review.windows.missing')}</Alert>{/if}
+	</div>
+{/if}
 <!-- deploy banner -->
+{#if !s.windowsUnsupported && (!s.isWindowsBoot || (s.windowsAccount && !s.passwordError && !s.windowsConflict))}
 <div class="flex items-center gap-3.5 px-4 py-3.5 rounded-lg bg-blue-950/30 border border-action-warm/50 mb-4">
 	<div class="w-9 h-9 rounded-full bg-action-warm text-action-on-warm flex items-center justify-center flex-shrink-0">
 		<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -135,6 +151,7 @@
 		</small>
 	</div>
 </div>
+{/if}
 
 {#if s.deployError}
 	<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">

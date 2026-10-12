@@ -1,0 +1,397 @@
+{
+  "hidden": {
+    "a": {
+      "hidden": true,
+      "state": "paused",
+      "animations": [
+        {
+          "name": "motion-draw",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-fade",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-fade",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-fade",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-fade",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-fade",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-fade",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-fade",
+          "state": "paused",
+          "time": 158.376999981499
+        }
+      ]
+    },
+    "b": {
+      "hidden": true,
+      "state": "paused",
+      "animations": [
+        {
+          "name": "motion-draw",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-fade",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-fade",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-fade",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-fade",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-assemble",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-fade",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-fade",
+          "state": "paused",
+          "time": 158.376999981499
+        },
+        {
+          "name": "motion-fade",
+          "state": "paused",
+          "time": 158.376999981499
+        }
+      ]
+    }
+  },
+  "rapid": {
+    "hidden": false,
+    "state": "playing",
+    "animations": [
+      {
+        "name": "motion-draw",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-fade",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-assemble",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-assemble",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-assemble",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-fade",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-assemble",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-assemble",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-assemble",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-fade",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-assemble",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-assemble",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-assemble",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-fade",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-assemble",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-assemble",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-assemble",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-assemble",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-assemble",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-assemble",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-fade",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-fade",
+        "state": "running",
+        "time": 0
+      },
+      {
+        "name": "motion-fade",
+        "state": "running",
+        "time": 0
+      }
+    ]
+  },
+  "reduced": {
+    "sceneAnimations": 0,
+    "messages": true,
+    "controls": true
+  },
+  "skip": "landing-content",
+  "short": {
+    "width": 720,
+    "height": 450,
+    "dpr": 2,
+    "overflow": 0
+  },
+  "noJS": {
+    "messages": 4,
+    "scenes": [
+      "static",
+      "static",
+      "static",
+      "static",
+      "static",
+      "static"
+    ],
+    "replay": 0,
+    "overflow": 0
+  },
+  "noObserver": {
+    "messages": 4,
+    "static": true,
+    "replay": 0
+  }
+}

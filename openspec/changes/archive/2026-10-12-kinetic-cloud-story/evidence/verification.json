@@ -1,0 +1,71 @@
+{
+  "scope": "local public frontend only, not deployed",
+  "source_files": {
+    "frontend/src/lib/components/landing/LandingPage.svelte": "63b1722d20cc8b511743c269c1a9fd003c648163cec9156125f4049e3abb0760",
+    "frontend/src/lib/components/landing/LandingScene.svelte": "90f4fc8ac5d144617fe2a8eb512f7ad1fcd0aa9dbe553726eea13321b4889819",
+    "frontend/src/lib/components/landing/LandingMotionGraphic.svelte": "29eaadf6315f2b70d75eb5ffec85d67d879448ddca16c8050e3d72ba5addd0ae",
+    "frontend/src/lib/components/landing/sceneMotion.ts": "00bace70fd5bb3455292efcea4537c20d87fc4dc7a42ad9a258531c7a3435124",
+    "frontend/src/lib/components/landing/__tests__/LandingPage.test.ts": "e9b544d9a0d390e7dabf5a7d3e45cc06845e4a60e1b21d52b0a98cd164393d80",
+    "frontend/src/lib/components/landing/__tests__/sceneMotion.test.ts": "e7894e9fe844f98ab8fa2614d987456a4d28831cdf8276b4af634f523ea9b210",
+    "frontend/src/lib/i18n/hardcoded-text-allowlist.json": "394c7c1337f93d39709aab6b27d55e6873209fe1cbc8204516d499b512b8ee35",
+    "frontend/src/routes/layout.css": "306f8d418d9cbea2846dfd2ea0ac132faea4e56594f29ac3239888db9dc84a5e",
+    "frontend/src/lib/i18n/messages/ko/public-entry.json": "ec381f5153fd56001f63945cb37958e0bedd81431471fc8fd5bb2a9ce81aacd4",
+    "frontend/src/lib/i18n/messages/en/public-entry.json": "5c29235e3b38d85a608ae59e172fd7c3af3981aa72f8cdedf0e9121a15fd5ba2",
+    "frontend/src/lib/i18n/messages/ja/public-entry.json": "afcb7153a5bf4bd3fa8faf2783ca27e5deb46eeb56e6905f65d09c263d79d7af",
+    "frontend/src/lib/i18n/messages/zh-CN/public-entry.json": "794abdab340173eea233276c7289a3f594723b82a2f0362f046cef3dc9e69b75",
+    "frontend/src/lib/components/landing/LandingChatDemo.svelte": "beb2da67808387dd6623846e2ea7b5286ba574393a6b1b6e8685923c67bc56f4",
+    "frontend/src/lib/components/landing/LandingSolid.svelte": "68c9a8c5109e8ce70856534fa382158bf56b34a5ff0fa82e518523ab88f8e06a"
+  },
+  "source_matches_scoped_review": true,
+  "tests": {
+    "files": 6,
+    "passed": 37,
+    "selectors": [
+      "LandingPage",
+      "sceneMotion",
+      "typographyRoles",
+      "designSystemRules",
+      "MotionPrimitives",
+      "motion"
+    ]
+  },
+  "svelte": {
+    "errors": 0,
+    "existing_warnings": 3
+  },
+  "localization": {
+    "errors": 0,
+    "warnings": 0,
+    "namespaces": 37,
+    "messages": 9401,
+    "scan_files": 988,
+    "hardcoded_korean": 0
+  },
+  "final_build": {
+    "result": "exit 0",
+    "raw_artifact": "artifact://277",
+    "runtime_origin": "http://127.0.0.1:5236"
+  },
+  "browser": {
+    "conditions": 64,
+    "min_label_px": 12.51,
+    "exact_contacts": 21,
+    "hidden_and_offscreen_named_clocks": 23,
+    "no_js_and_no_observer": "6 static scenes, 4 messages, 0 replay controls"
+  },
+  "raw_evidence": "/Users/pieroot/.local/share/afterglow-proofs/kinetic-cloud-story-20261012-irg4mo8n",
+  "full_gate_run": false,
+  "production_changed": false,
+  "commit_or_push": false,
+  "gbrain_sync": "not run: installed detection reports no-cli and config absent",
+  "openspec": {
+    "schema": "rapid",
+    "status": "artifacts and checklist complete",
+    "strict_validator": "No deltas found: no delta spec for this rapid visual-only change; not claimed as passed"
+  },
+  "probe_corrections": [
+    "Filter scene clocks by animationName; focus/hover CSS transitions are independent.",
+    "Parse computed strokeDashoffset units (1px).",
+    "Wait two animation frames after viewport changes for responsive layout before measuring."
+  ]
+}

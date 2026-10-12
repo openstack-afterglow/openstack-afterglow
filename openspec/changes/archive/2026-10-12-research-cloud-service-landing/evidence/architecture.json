@@ -1,0 +1,42 @@
+{
+  "base_sha": "249a937ed031d33a2fa883c37eb90c4aabacd17f",
+  "source_scope": [
+    "frontend/src/lib/components/landing/LandingPage.svelte",
+    "frontend/src/lib/components/landing/LandingOpsBoard.svelte",
+    "frontend/src/lib/components/landing/LandingDeployment.svelte",
+    "frontend/src/lib/components/landing/plateGraphics.ts",
+    "frontend/src/lib/i18n/messages/ko/public-entry.json",
+    "frontend/src/lib/i18n/messages/en/public-entry.json",
+    "frontend/src/lib/i18n/messages/ja/public-entry.json",
+    "frontend/src/lib/i18n/messages/zh-CN/public-entry.json",
+    "frontend/src/lib/components/landing/__tests__/LandingPage.test.ts",
+    "frontend/src/lib/components/landing/__tests__/LandingOpsBoard.test.ts",
+    "frontend/src/lib/design/__tests__/typographyRoles.test.ts",
+    "frontend/src/routes/__tests__/designSystemRules.test.ts"
+  ],
+  "removed_scope": [
+    "frontend/src/lib/components/landing/LandingJourney.svelte",
+    "frontend/src/lib/components/landing/__tests__/LandingJourney.test.ts",
+    "frontend/static/landing/plate-layer.svg",
+    "frontend/static/landing/plate-api.svg"
+  ],
+  "source_hashes": {
+    "frontend/src/lib/components/landing/LandingPage.svelte": "c8c177736848c4ef520fce284f827ac6a7b595895e203d8ae47018e336e4d906",
+    "frontend/src/lib/components/landing/LandingOpsBoard.svelte": "5eb28edd06f733b0954911b28c05c2ff33a38d1a9669a6877ba18e0704a73e41",
+    "frontend/src/lib/components/landing/LandingDeployment.svelte": "7eff12346ea40a72025d2b3168f9f36b662c5d6071b89bf3388d08d2881ba9c9",
+    "frontend/src/lib/components/landing/plateGraphics.ts": "3abe0a22752cd8b6c1dc6d3720af45079e720733afd8e684b27470919ace8156",
+    "frontend/src/lib/i18n/messages/ko/public-entry.json": "0a9dd279ed34092d8a8e2dabbdedf7635ec9d088dea924eeedfdb5c18fd8a85c",
+    "frontend/src/lib/i18n/messages/en/public-entry.json": "b8c11403ed514726089fa82afaadbd6ec690681ab8e7bd6b477e3244c472052a",
+    "frontend/src/lib/i18n/messages/ja/public-entry.json": "a7818a332de6dda64b5b4553614bfcd449d1a8537abd736e80a127af6296ed12",
+    "frontend/src/lib/i18n/messages/zh-CN/public-entry.json": "16819ec6c222146a880fd9865e88883d5cc7b52088b5892a23e7e04bda06e2b8",
+    "frontend/src/lib/components/landing/__tests__/LandingPage.test.ts": "e8c685224bb4d68074fd1c9af9b003ffca64c21f90fe2cc59f49be0dbb0aca71",
+    "frontend/src/lib/components/landing/__tests__/LandingOpsBoard.test.ts": "037e09affb65ab75df42e50e450321109d7b16cd2efa4cfb57d3ba8b1dd0be45",
+    "frontend/src/lib/design/__tests__/typographyRoles.test.ts": "b9ba8976e08b8578208d3b875d609ad9fbcbc7b10e601af43615f97887d51f57",
+    "frontend/src/routes/__tests__/designSystemRules.test.ts": "de5b84c5e99c2442bf67509e98a34aacd6e83a9c052b68960ad85992b153bba2"
+  },
+  "stamp": "stamped staged source_sha256=98c0d1977586823acda12fb131b6600a9aca18ade9223c45d9ee49a73e8ffa40 files=2598",
+  "check": "checked staged source_sha256=98c0d1977586823acda12fb131b6600a9aca18ade9223c45d9ee49a73e8ffa40 files=2598",
+  "shared_index_preserved": true,
+  "shared_review_marker_preserved": true,
+  "scope": "HEAD plus named12 overlays and4 deletions; no concurrent-work qualification"
+}

@@ -1,0 +1,1174 @@
+[
+  {
+    "name": "nhn",
+    "before": {
+      "url": "https://www.nhncloud.com/kr",
+      "title": "NHN Cloud : 유연하게 안전하게 비즈니스의 힘이 되는 통합 클라우드 서비스",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "headings": [
+        "NHN CLOUD",
+        "주요 솔루션",
+        "주요 서비스",
+        "고객 사례",
+        "한글과컴퓨터",
+        "모비릭스",
+        "엔터메이트 글로벌 퍼블리셔",
+        "트래블월렛",
+        "111퍼센트",
+        "로드컴플릿",
+        "힐링페이퍼",
+        "(주)오키코리아"
+      ],
+      "body": "NHN CLOUD\n소개\n솔루션\n서비스\n요금\n마켓플레이스\n파트너\n고객지원\n리소스\n로그인\n문의하기\n도입문의\nConsole\n\nNHN Cloud를\n가장 잘 아는 10명을 찾습니다.\n\n자격증 3종 취득 시, 페이코 100만 원을 드립니다.\n\n더 알아보기\n\n2027년 CSAP가 바뀐다\nSaaS 기업을 위한 공공시장 진입 전략 가이드\n\n심사 기간 로드맵 및 업종별 전략 제공\n\n가이드 무료 다운로드\n\n스타트업\n최대 5,400만원 크레딧 제공 혜택\n\n서비스 출시 비용을 절감할 수 있는 스타트업 한정 혜택,\n지금 바로 신청해 보세요.\n\n지금 문의 하기\n\nNHN Cloud Architect - Professional(CAP)\n자격증 오픈!\n\nNHN Cloud 인프라 아키텍처 설계 및\n운영의 전문가 역량을 검증해 보세요.\n\n더 알아보기\n\nAI 인프라,\n해본 만큼 다릅니다.\n\n실전 경험으로 완성한 AI 인프라 스택, NHN FactoryX\n\n더 알아보기\n\n뉴스 & 프로모션\n\n새로운 소식을 지금 바로\n확인해 보세요.\n\n교육/자격증\n\n보안 센터\n\n시작하기\n\n요금 계산기\n\n주요 솔루션\n\n공공기관부터 게임 스튜디오에 이르기까지, 각 분야에 특화된 맞춤 솔루션을 제공합니다.\n\nAI Infrastructure\n\nAI Infrastructure\n\nAI 인프라\n\n국내 유일 메가 클러스터\n\nB200 GPU 국내 최다 확보와 GPU 4,000장을 단일 클러스터로 엮어\n초거대 AI 모델 학습 및 병렬 연산을 지원합니다.\n\nAI 특화 데이터 센터\n\n수랭식 냉각, 대용량 전력, 초저지연 네트워크를 갖춘 AI 전용 데이터 센터로\n고성능 연산 환경을 제공합니다.\n\n검증된 운영 경험\n\n국가 AI 데이터 센터와 산업별 GPU 클러스터 운영 경험을 기반으로\n안정성과 신뢰성이 검증된 인프라를 제공합니다.\n\nAI Service\n\nAI Service\n\nAI 서비스\n\n끊김 없는 AI 서비스\n\n안전성을 최우선으로 설계된 인프라에서 구동되어, 어떠한 상황에서도\n끊김 없는 안정적 AI 서비스를 제공합니다.\n\n즉시 쓰는 AI 서비스\n\nFace Recognition, OCR, STT, TTS 등 AI SaaS를 즉시 활용해\n빠른 AI 도입과 비즈니스 혁신을 지원합니다.\n\n준비된 AI 개발 환경\n\nGPU 인프라부터 프레임워크까지 사전 구성된 환경을 제공해,\n복잡한 설정 없이 모델 학습과 추론에 집중할 수 있습니다.\n\nPrivate Cloud\n\nPrivate Cloud\n\n프라이빗 클라",
+      "videos": [],
+      "canvas": 0,
+      "animations": [],
+      "libraries": {
+        "Swiper": "undefined",
+        "lottie": "undefined"
+      },
+      "sliders": [],
+      "scripts": [
+        "https://connect.facebook.net/en_US/fbevents.js",
+        "https://js-na2.hubspot.com/web-interactives-embed.js",
+        "https://js-na2.hsadspixel.net/pixels.js",
+        "https://js-na2.hscollectedforms.net/collectedforms.js",
+        "https://js-na2.hs-banner.com/v2/245265320/banner.js",
+        "https://www.nhncloud.com/scripts/index.js",
+        "https://www.nhncloud.com/_nuxt/DvzPF_n1.js",
+        "https://js-na2.hs-scripts.com/245265320.js"
+      ],
+      "css": [
+        "https://www.nhncloud.com/_nuxt/GlobalLoading.D2-kX9A2.css",
+        "https://www.nhncloud.com/_nuxt/index.C0wY14Uw.css",
+        "https://www.nhncloud.com/_nuxt/tui-editor-contents.Ba4Q-kwC.css",
+        "https://www.nhncloud.com/_nuxt/thumbs.tn0RQdqM.css",
+        "https://www.nhncloud.com/_nuxt/CmsSection.BTIoUdIi.css"
+      ]
+    },
+    "after": {
+      "url": "https://www.nhncloud.com/kr",
+      "title": "NHN Cloud : 유연하게 안전하게 비즈니스의 힘이 되는 통합 클라우드 서비스",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "headings": [
+        "NHN CLOUD",
+        "주요 솔루션",
+        "주요 서비스",
+        "고객 사례",
+        "한글과컴퓨터",
+        "모비릭스",
+        "엔터메이트 글로벌 퍼블리셔",
+        "트래블월렛",
+        "111퍼센트",
+        "로드컴플릿",
+        "힐링페이퍼",
+        "(주)오키코리아"
+      ],
+      "body": "NHN CLOUD\n소개\n솔루션\n서비스\n요금\n마켓플레이스\n파트너\n고객지원\n리소스\n로그인\n문의하기\n도입문의\nConsole\n\nNHN Cloud를\n가장 잘 아는 10명을 찾습니다.\n\n자격증 3종 취득 시, 페이코 100만 원을 드립니다.\n\n더 알아보기\n\n2027년 CSAP가 바뀐다\nSaaS 기업을 위한 공공시장 진입 전략 가이드\n\n심사 기간 로드맵 및 업종별 전략 제공\n\n가이드 무료 다운로드\n\n스타트업\n최대 5,400만원 크레딧 제공 혜택\n\n서비스 출시 비용을 절감할 수 있는 스타트업 한정 혜택,\n지금 바로 신청해 보세요.\n\n지금 문의 하기\n\nNHN Cloud Architect - Professional(CAP)\n자격증 오픈!\n\nNHN Cloud 인프라 아키텍처 설계 및\n운영의 전문가 역량을 검증해 보세요.\n\n더 알아보기\n\nAI 인프라,\n해본 만큼 다릅니다.\n\n실전 경험으로 완성한 AI 인프라 스택, NHN FactoryX\n\n더 알아보기\n\n뉴스 & 프로모션\n\n새로운 소식을 지금 바로\n확인해 보세요.\n\n교육/자격증\n\n보안 센터\n\n시작하기\n\n요금 계산기\n\n주요 솔루션\n\n공공기관부터 게임 스튜디오에 이르기까지, 각 분야에 특화된 맞춤 솔루션을 제공합니다.\n\nAI Infrastructure\n\nAI Infrastructure\n\nAI 인프라\n\n국내 유일 메가 클러스터\n\nB200 GPU 국내 최다 확보와 GPU 4,000장을 단일 클러스터로 엮어\n초거대 AI 모델 학습 및 병렬 연산을 지원합니다.\n\nAI 특화 데이터 센터\n\n수랭식 냉각, 대용량 전력, 초저지연 네트워크를 갖춘 AI 전용 데이터 센터로\n고성능 연산 환경을 제공합니다.\n\n검증된 운영 경험\n\n국가 AI 데이터 센터와 산업별 GPU 클러스터 운영 경험을 기반으로\n안정성과 신뢰성이 검증된 인프라를 제공합니다.\n\nAI Service\n\nAI Service\n\nAI 서비스\n\n끊김 없는 AI 서비스\n\n안전성을 최우선으로 설계된 인프라에서 구동되어, 어떠한 상황에서도\n끊김 없는 안정적 AI 서비스를 제공합니다.\n\n즉시 쓰는 AI 서비스\n\nFace Recognition, OCR, STT, TTS 등 AI SaaS를 즉시 활용해\n빠른 AI 도입과 비즈니스 혁신을 지원합니다.\n\n준비된 AI 개발 환경\n\nGPU 인프라부터 프레임워크까지 사전 구성된 환경을 제공해,\n복잡한 설정 없이 모델 학습과 추론에 집중할 수 있습니다.\n\nPrivate Cloud\n\nPrivate Cloud\n\n프라이빗 클라",
+      "videos": [],
+      "canvas": 0,
+      "animations": [],
+      "libraries": {
+        "Swiper": "undefined",
+        "lottie": "undefined"
+      },
+      "sliders": [],
+      "scripts": [
+        "https://connect.facebook.net/en_US/fbevents.js",
+        "https://js-na2.hubspot.com/web-interactives-embed.js",
+        "https://js-na2.hsadspixel.net/pixels.js",
+        "https://js-na2.hscollectedforms.net/collectedforms.js",
+        "https://js-na2.hs-banner.com/v2/245265320/banner.js",
+        "https://www.nhncloud.com/scripts/index.js",
+        "https://www.nhncloud.com/_nuxt/DvzPF_n1.js",
+        "https://js-na2.hs-scripts.com/245265320.js"
+      ],
+      "css": [
+        "https://www.nhncloud.com/_nuxt/GlobalLoading.D2-kX9A2.css",
+        "https://www.nhncloud.com/_nuxt/index.C0wY14Uw.css",
+        "https://www.nhncloud.com/_nuxt/tui-editor-contents.Ba4Q-kwC.css",
+        "https://www.nhncloud.com/_nuxt/thumbs.tn0RQdqM.css",
+        "https://www.nhncloud.com/_nuxt/CmsSection.BTIoUdIi.css"
+      ]
+    },
+    "scroll": 0
+  },
+  {
+    "name": "kt",
+    "before": {
+      "url": "https://cloud.kt.com/",
+      "title": "클라우드 서비스 | kt cloud",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "headings": [
+        "클라우드 서비스",
+        "kt cloud만의 차별화된 \n다양한 상품을 만나보세요. ",
+        "상품",
+        "Compute",
+        "레퍼런스",
+        "마켓플레이스",
+        "뉴스",
+        "기술 블로그",
+        "Why kt cloud?",
+        "KT 파트너"
+      ],
+      "body": "본문 바로가기\n클라우드 서비스\n기업\n하위 메뉴 있음\n무료체험\n상품\n레퍼런스 아키텍처\n마켓플레이스\n고객지원\n파트너\n검색 버튼\n하위 메뉴 있음\nGuest\n회원가입\n로그인\n콘솔 바로가기\n관련 사이트\n하위 메뉴 있음\nkt cloud만의 차별화된 \n다양한 상품을 만나보세요. \n\n자사 데이터센터와 kt cloud를 손쉽게 연결하여 \r\n강력한 보안 안정성 및 운용 서비스를 제공합니다.\n\n상품 보기\n이벤트 사항 리스트 이전버튼\n11\n이벤트 사항 리스트 이전버튼\n공지사항\n전체보기\nNew\n[공지] kt cloud 민간포탈 작업 안내 (2026.10.23 (금) 19:00 ~ 23:00)\n2026-10-12\nNew\n[공지] 고객 문의 서비스 개편 안내(26.10.14~26.10.16)\n2026-10-12\nNew\n[공지] kt cloud 개인정보처리방침 개정 안내(적용일자: 10/19)\n2026-10-12\nNew\n[공지] kt cloud BizOffice 서비스 안정성 개선작업 안내 (26.10.06, 화요일 오후 18:00)\n2026-10-06\n컨설팅 신청\n\n영업/견적 문의\n\n상품\n상품 전체보기\nCompute\nContainer\nNetworking\nStorage\nAI Foundry\nDB\nSecurity\nHybrid/Private Cloud\nBusiness Tool\nApplication\nDeliver & Protect\nDevelopment Service\nManagement\nFinance Cloud\nIndustry Cloud\nCompute\n5\n상세 보기\nServer\n\n최고 품질을 자랑하는 가상화 Server(Network, Disk 포함)를 종량제 요금으로 제공\n\nGPU Server\n\nAI, Big Data 등 DX Platform을 위한 대용량 연산에 장점을 가진 초고성능 Infra\n\nAMD Server\n\nAMD Server는 AMD CPU 기반의 가상 서버로 비용 대비 성능을 고려할 때 최적의 인프라를 구성할 수 있는 Server\n\nSSD Server\n\nSSD Disk를 기본으로 장착한 Server로 높은 I/O성능 보장이 필요한 서비스에 추천\n\nBaremetal Server\n\n원하는 Spec으로 구성된 독립된 물리서버에 가상화 환경을 구성하고 싶은 경우 추천\n\n레퍼런스\n전체보기\n\n다양한 사업 형태에 따른 솔루션의 구성을 레퍼런스로서 제공합니다.\n연관된 상품도 함께 살펴보세요!\n\nHOT\n기업\n소규모 웹서비스\n\n하루 평균 접속자 10",
+      "videos": [],
+      "canvas": 0,
+      "animations": [],
+      "libraries": {
+        "Swiper": "undefined",
+        "lottie": "undefined"
+      },
+      "sliders": [],
+      "scripts": [
+        "https://cloud.kt.com/front/js/chunk-vendors.js",
+        "https://cloud.kt.com/front/js/app.js",
+        "https://rum.beusable.net/load/b200402e151414u580?url=https%3A%2F%2Fcloud.kt.com%2F"
+      ],
+      "css": []
+    },
+    "after": {
+      "url": "https://cloud.kt.com/",
+      "title": "클라우드 서비스 | kt cloud",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "headings": [
+        "클라우드 서비스",
+        "kt cloud만의 차별화된 \n다양한 상품을 만나보세요. ",
+        "상품",
+        "Compute",
+        "레퍼런스",
+        "마켓플레이스",
+        "뉴스",
+        "기술 블로그",
+        "Why kt cloud?",
+        "KT 파트너"
+      ],
+      "body": "본문 바로가기\n클라우드 서비스\n기업\n하위 메뉴 있음\n무료체험\n상품\n레퍼런스 아키텍처\n마켓플레이스\n고객지원\n파트너\n검색 버튼\n하위 메뉴 있음\nGuest\n회원가입\n로그인\n콘솔 바로가기\n관련 사이트\n하위 메뉴 있음\nkt cloud만의 차별화된 \n다양한 상품을 만나보세요. \n\n자사 데이터센터와 kt cloud를 손쉽게 연결하여 \r\n강력한 보안 안정성 및 운용 서비스를 제공합니다.\n\n상품 보기\n이벤트 사항 리스트 이전버튼\n11\n이벤트 사항 리스트 이전버튼\n공지사항\n전체보기\nNew\n[공지] kt cloud 민간포탈 작업 안내 (2026.10.23 (금) 19:00 ~ 23:00)\n2026-10-12\nNew\n[공지] 고객 문의 서비스 개편 안내(26.10.14~26.10.16)\n2026-10-12\nNew\n[공지] kt cloud 개인정보처리방침 개정 안내(적용일자: 10/19)\n2026-10-12\nNew\n[공지] kt cloud BizOffice 서비스 안정성 개선작업 안내 (26.10.06, 화요일 오후 18:00)\n2026-10-06\n컨설팅 신청\n\n영업/견적 문의\n\n상품\n상품 전체보기\nCompute\nContainer\nNetworking\nStorage\nAI Foundry\nDB\nSecurity\nHybrid/Private Cloud\nBusiness Tool\nApplication\nDeliver & Protect\nDevelopment Service\nManagement\nFinance Cloud\nIndustry Cloud\nCompute\n5\n상세 보기\nServer\n\n최고 품질을 자랑하는 가상화 Server(Network, Disk 포함)를 종량제 요금으로 제공\n\nGPU Server\n\nAI, Big Data 등 DX Platform을 위한 대용량 연산에 장점을 가진 초고성능 Infra\n\nAMD Server\n\nAMD Server는 AMD CPU 기반의 가상 서버로 비용 대비 성능을 고려할 때 최적의 인프라를 구성할 수 있는 Server\n\nSSD Server\n\nSSD Disk를 기본으로 장착한 Server로 높은 I/O성능 보장이 필요한 서비스에 추천\n\nBaremetal Server\n\n원하는 Spec으로 구성된 독립된 물리서버에 가상화 환경을 구성하고 싶은 경우 추천\n\n레퍼런스\n전체보기\n\n다양한 사업 형태에 따른 솔루션의 구성을 레퍼런스로서 제공합니다.\n연관된 상품도 함께 살펴보세요!\n\nHOT\n기업\n소규모 웹서비스\n\n하루 평균 접속자 10",
+      "videos": [],
+      "canvas": 0,
+      "animations": [],
+      "libraries": {
+        "Swiper": "undefined",
+        "lottie": "undefined"
+      },
+      "sliders": [],
+      "scripts": [
+        "https://cloud.kt.com/front/js/chunk-vendors.js",
+        "https://cloud.kt.com/front/js/app.js",
+        "https://rum.beusable.net/load/b200402e151414u580?url=https%3A%2F%2Fcloud.kt.com%2F"
+      ],
+      "css": []
+    },
+    "scroll": 760
+  },
+  {
+    "name": "lgcns",
+    "before": {
+      "url": "https://www.lgcns.com/kr/service/modern-it-infra-on-cloud/cloud",
+      "title": "Cloud | LG CNS | Korea",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "headings": [
+        "Cloud",
+        "클라우드, 그 모든 선택의 기준\nCloud with LG CNS",
+        "성공적인 클라우드 도입을 위한 조건",
+        "클라우드 통합 컨설팅",
+        "LG CNS 클라우드 컨설팅 서비스",
+        "최적의 클라우드 환경 구축",
+        "클라우드 전환 및 구축",
+        "LG CNS 클라우드 전환 및 구축 서비스",
+        "지속 가능한 최적의 환경 구축",
+        "애플리케이션 현대화",
+        "LG CNS 애플리케이션 현대화 서비스",
+        "기술을 활용한 더 효과적인 서비스"
+      ],
+      "body": "The Future\nServices\nAssets\n기업정보\n뉴스룸\n인재채용\n도입문의\n언어 선택\n검색\n\nIT Infrastructure on Cloud\n\nCloud\n클라우드, 그 모든 선택의 기준\nCloud with LG CNS\n\n클라우드가 필요한 순간 언제나 LG CNS가 있습니다. \n\n \n\nLG CNS는 다양한 산업 분야에서 독보적인 클라우드 경험을 보유하고 있는 준비된 엔터프라이즈 전문 클라우드 파트너​로, 클라우드 컨설팅부터 전환, 구축, 혁신 가속화를 위한 애플리케이션 현대화(Application Modernization, AM), 운영, 보안, 변화 관리까지의 완결형 서비스와 기업 환경에 특화된 맞춤형 솔루션을 제공합니다. 또한 빠르고 복잡하게 변화하는 클라우드 환경에서 클라우드 최고의 전문가들이 비즈니스의 가치를 높여줄 인공지능(Artificial Intelligence, AI), 데이터 등 최신 기술을 활용하여 기업이 가진 자원을 더 효과적으로 활용할 수 있는 로드맵을 제시합니다.\n\n \n\n탁월한 전문성과 혁신성을 바탕으로, 국내에서 유일한 글로벌 3대 클라우드 서비스 제공업체(Cloud Service Provider, CSP)의 프리미어 파트너이며, 세계적인 테크 기업들과의 긴밀한 파트너십을 통해 대한민국을 넘어 전 세계 고객들과 만나고 있습니다. \n\n \n\n클라우드가 열어갈 더 새롭고 편리한 비즈니스 세상, 그 시작과 끝을 LG CNS가 함께하겠습니다.\n\n컨설팅\n전환 및 구축\n애플리케이션 현대화\n클라우드 AI/Data\n운영 및 관리\n성공적인 클라우드 도입을 위한 조건\n클라우드 통합 컨설팅\n\n클라우드 컨설팅은 전략부터 전환 계획, 운영 모델, 조직 및 역량 설계, 도입 후의 변화 관리까지 완결형 통합 서비스를 제공합니다. 클라우드 환경 구축만이 아닌 비즈니스 혁신을 이끌 수 있는 기업 환경 변화를 지원하며, 고객 비즈니스 환경에 맞춰 단계적 추진도 가능합니다. 클라우드 전략 수립 과정을 통해 클라우드 도입 여부 및 필요성 등 비즈니스 활용 전략에 대한 전반적인 그림을 그려갑니다. 전환 로드맵 및 효과 분석 과정에서는 클라우드 전환에 필요한 대상 시스템, 전환 모델, CSP 선정과 함께 기간, 비용 등을 분석하고 전략 로드맵을 수립합니다. 이행 및 IT 정책 설계 과정에서 전환 작업을 주도할 내부 조직을 구축하고 전환 이후의 IT 운영 조직, 프로세스, 정책 등을 살펴봅니다.\n\nLG CNS 클라우드 컨설",
+      "videos": [],
+      "canvas": 0,
+      "animations": [],
+      "libraries": {
+        "Swiper": "undefined",
+        "lottie": "undefined"
+      },
+      "sliders": [],
+      "scripts": [
+        "https://www.lgcns.com/etc.clientlibs/lgcns/components/page/clientlibs.lc-98a59a29c0d60aa71a056f0dd05f968d-lc.min.js",
+        "https://munchkin.marketo.net/munchkin.js",
+        "https://wcs.naver.net/wcslog.js",
+        "https://ssl.pstatic.net/melona/libs/gfp-nac-module/synchronizer.js",
+        "https://www.lgcns.com/etc.clientlibs/lgcns/components/template/mkto-form-legacy/clientlibs.lc-58ac8e36eed85c32865d4f803a4116ee-lc.min.js",
+        "https://www.lgcns.com/etc.clientlibs/lgcns/components/template/mkto-form/clientlibs.lc-b8a5d1065ce0215fef35e42acfbf9d72-lc.min.js",
+        "https://www.lgcns.com/etc.clientlibs/lgcns/clientlibs/clientlib-site.lc-b72e6201c88b0dbe47b9e21a39d4969b-lc.min.js",
+        "https://www.lgcns.com/etc.clientlibs/core/wcm/components/commons/datalayer/v1/clientlibs/core.wcm.components.commons.datalayer.v1.lc-70264651675213ed7f7cc5a02a00f621-lc.min.js"
+      ],
+      "css": [
+        "https://www.lgcns.com/etc.clientlibs/lgcns/clientlibs/clientlib-dependencies.lc-d41d8cd98f00b204e9800998ecf8427e-lc.min.css",
+        "https://www.lgcns.com/etc.clientlibs/lgcns/clientlibs/clientlib-thirdparty.lc-d41d8cd98f00b204e9800998ecf8427e-lc.min.css",
+        "https://www.lgcns.com/etc.clientlibs/lgcns/clientlibs/clientlib-site.lc-d9536d58403ae7acf351531082b347de-lc.min.css",
+        "https://rtp-static.marketo.com/rtp/libs/jquery-ui-insightera-custom-1.9.6.css"
+      ]
+    },
+    "after": {
+      "url": "https://www.lgcns.com/kr/service/modern-it-infra-on-cloud/cloud",
+      "title": "Cloud | LG CNS | Korea",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "headings": [
+        "Cloud",
+        "클라우드, 그 모든 선택의 기준\nCloud with LG CNS",
+        "성공적인 클라우드 도입을 위한 조건",
+        "클라우드 통합 컨설팅",
+        "LG CNS 클라우드 컨설팅 서비스",
+        "최적의 클라우드 환경 구축",
+        "클라우드 전환 및 구축",
+        "LG CNS 클라우드 전환 및 구축 서비스",
+        "지속 가능한 최적의 환경 구축",
+        "애플리케이션 현대화",
+        "LG CNS 애플리케이션 현대화 서비스",
+        "기술을 활용한 더 효과적인 서비스"
+      ],
+      "body": "The Future\nServices\nAssets\n기업정보\n뉴스룸\n인재채용\n도입문의\n언어 선택\n검색\n\nIT Infrastructure on Cloud\n\nCloud\n클라우드, 그 모든 선택의 기준\nCloud with LG CNS\n\n클라우드가 필요한 순간 언제나 LG CNS가 있습니다. \n\n \n\nLG CNS는 다양한 산업 분야에서 독보적인 클라우드 경험을 보유하고 있는 준비된 엔터프라이즈 전문 클라우드 파트너​로, 클라우드 컨설팅부터 전환, 구축, 혁신 가속화를 위한 애플리케이션 현대화(Application Modernization, AM), 운영, 보안, 변화 관리까지의 완결형 서비스와 기업 환경에 특화된 맞춤형 솔루션을 제공합니다. 또한 빠르고 복잡하게 변화하는 클라우드 환경에서 클라우드 최고의 전문가들이 비즈니스의 가치를 높여줄 인공지능(Artificial Intelligence, AI), 데이터 등 최신 기술을 활용하여 기업이 가진 자원을 더 효과적으로 활용할 수 있는 로드맵을 제시합니다.\n\n \n\n탁월한 전문성과 혁신성을 바탕으로, 국내에서 유일한 글로벌 3대 클라우드 서비스 제공업체(Cloud Service Provider, CSP)의 프리미어 파트너이며, 세계적인 테크 기업들과의 긴밀한 파트너십을 통해 대한민국을 넘어 전 세계 고객들과 만나고 있습니다. \n\n \n\n클라우드가 열어갈 더 새롭고 편리한 비즈니스 세상, 그 시작과 끝을 LG CNS가 함께하겠습니다.\n\n컨설팅\n전환 및 구축\n애플리케이션 현대화\n클라우드 AI/Data\n운영 및 관리\n성공적인 클라우드 도입을 위한 조건\n클라우드 통합 컨설팅\n\n클라우드 컨설팅은 전략부터 전환 계획, 운영 모델, 조직 및 역량 설계, 도입 후의 변화 관리까지 완결형 통합 서비스를 제공합니다. 클라우드 환경 구축만이 아닌 비즈니스 혁신을 이끌 수 있는 기업 환경 변화를 지원하며, 고객 비즈니스 환경에 맞춰 단계적 추진도 가능합니다. 클라우드 전략 수립 과정을 통해 클라우드 도입 여부 및 필요성 등 비즈니스 활용 전략에 대한 전반적인 그림을 그려갑니다. 전환 로드맵 및 효과 분석 과정에서는 클라우드 전환에 필요한 대상 시스템, 전환 모델, CSP 선정과 함께 기간, 비용 등을 분석하고 전략 로드맵을 수립합니다. 이행 및 IT 정책 설계 과정에서 전환 작업을 주도할 내부 조직을 구축하고 전환 이후의 IT 운영 조직, 프로세스, 정책 등을 살펴봅니다.\n\nLG CNS 클라우드 컨설",
+      "videos": [],
+      "canvas": 0,
+      "animations": [],
+      "libraries": {
+        "Swiper": "undefined",
+        "lottie": "undefined"
+      },
+      "sliders": [],
+      "scripts": [
+        "https://www.lgcns.com/etc.clientlibs/lgcns/components/page/clientlibs.lc-98a59a29c0d60aa71a056f0dd05f968d-lc.min.js",
+        "https://munchkin.marketo.net/munchkin.js",
+        "https://wcs.naver.net/wcslog.js",
+        "https://ssl.pstatic.net/melona/libs/gfp-nac-module/synchronizer.js",
+        "https://www.lgcns.com/etc.clientlibs/lgcns/components/template/mkto-form-legacy/clientlibs.lc-58ac8e36eed85c32865d4f803a4116ee-lc.min.js",
+        "https://www.lgcns.com/etc.clientlibs/lgcns/components/template/mkto-form/clientlibs.lc-b8a5d1065ce0215fef35e42acfbf9d72-lc.min.js",
+        "https://www.lgcns.com/etc.clientlibs/lgcns/clientlibs/clientlib-site.lc-b72e6201c88b0dbe47b9e21a39d4969b-lc.min.js",
+        "https://www.lgcns.com/etc.clientlibs/core/wcm/components/commons/datalayer/v1/clientlibs/core.wcm.components.commons.datalayer.v1.lc-70264651675213ed7f7cc5a02a00f621-lc.min.js"
+      ],
+      "css": [
+        "https://www.lgcns.com/etc.clientlibs/lgcns/clientlibs/clientlib-dependencies.lc-d41d8cd98f00b204e9800998ecf8427e-lc.min.css",
+        "https://www.lgcns.com/etc.clientlibs/lgcns/clientlibs/clientlib-thirdparty.lc-d41d8cd98f00b204e9800998ecf8427e-lc.min.css",
+        "https://www.lgcns.com/etc.clientlibs/lgcns/clientlibs/clientlib-site.lc-d9536d58403ae7acf351531082b347de-lc.min.css",
+        "https://rtp-static.marketo.com/rtp/libs/jquery-ui-insightera-custom-1.9.6.css"
+      ]
+    },
+    "scroll": 760
+  },
+  {
+    "name": "kakao",
+    "before": {
+      "url": "https://kakaocloud.com/",
+      "title": "Beyond the Cloud, 카카오클라우드",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "headings": [
+        "Beyond the Cloud, KakaoCloud",
+        "최신 소식 살펴보기",
+        "카카오클라우드만의 기술력을 담은 서비스",
+        "비즈니스 환경에 맞는 산업별 솔루션",
+        "카카오클라우드를 선택한 고객 혁신 사례",
+        "주요 파트너",
+        "카카오클라우드의 다양한 프로그램",
+        "카카오클라우드와 함께 해야 하는 이유",
+        "카카오클라우드와 함께\n비즈니스 성공을 시작하세요",
+        "카카오클라우드 소개",
+        "서비스 및 요금",
+        "산업별 솔루션"
+      ],
+      "body": "서비스\n마켓플레이스\n솔루션\n요금\n비즈니스\n더보기\n도입문의\n기술문서\n콘솔\n회원가입\nBeyond the Cloud, KakaoCloud\n\n카카오클라우드의 장점은 무엇인가요?\n\nWhy KakaoCloud\n\n기술 혁신을 통해 이뤄낸 이유 있는 가격 경쟁력\n\n요금 소개\n\n스타트업의 새로운 도약을 더 가깝게 로켓런처\n\n로켓런처 스타트업 프로그램\n\n카카오클라우드의 장점은 무엇인가요?\n\nWhy KakaoCloud\n\n기술 혁신을 통해 이뤄낸 이유 있는 가격 경쟁력\n\n요금 소개\n\n스타트업의 새로운 도약을 더 가깝게 로켓런처\n\n로켓런처 스타트업 프로그램\n\n최신 소식 살펴보기\n\n뉴스\n\n증권사 AI 도입 가속화를 위한 AI 인프라 전략 세미나\n\n고객 사례\n\n응답속도 50% 단축, 데이터 처리량 3배 증가시킨 ‘이지스’\n\n새 소식\n\n카카오클라우드 콘솔 개편, 데이터 중심 클라우드로의 전환\n\n고객 사례\n\n공정 지연 40% 감소의 비결, 피지컬 AI를 위한 디밀리언의 멀티클라우드 전략\n\n고객 사례\n\nGS리테일의 AI 혁신: 모델 실험수 40% 증가, GPU 비용 35% 절감\n\n고객 사례\n\n\"고성능을 유지하며, 비용은 40% 절감\" 카카오게임즈가 밝힌 클라우드 혁신 비결\n\nK-Digital Training\n\n카카오엔터프라이즈, KDT 선도기업 선정! 카카오클라우드 & AI 융합 교육 개설\n\n뉴스\n\n이프카카오에서 클라우드⬝검색 분야 연구 성과 및 기술력 알려\n\n고객 사례\n\nGPU 부족과 비용 부담, 스캐터랩은 어떻게 극복했을까?\n\n고객 사례\n\n멀티모달 AI 기업 ‘액션파워’, 카카오클라우드로 유연한 GPU 관리와 비용 절감 실현\n\n상품 소개\n\n이제 필요할 때 필요한 만큼, 카카오클라우드 고성능 GPU\n\n카카오클라우드만의 기술력을 담은 서비스\n모든 서비스 보기\nFeatured\nCompute\nNetworking\nContainer Pack\nStorage\nDeveloper Tools\nManagement\nData Store\nAnalytics\nAI Service\nSecurity\nFeatured\n\nVirtual Machine\n\n다양한 인스턴스와 고성능 네트워크, 스토리지 옵션을 이용한 최적의 컴퓨팅 환경\n\n자세히 보기\n\nTransit Gateway\n\nVPC와 온프레미스 네트워크 등 다양한 환경을 통합하여 연결하고 관리하는 서비스\n\n자세히 보기\n\nKubeflow\n\n쿠버네티스 환경에서 머신러닝 워크플로우를 쉽고 효율적으로 실행하는 오픈소스 플랫폼\n\n자세히 보",
+      "videos": [
+        {
+          "src": "https://objectstorage.kr-central-2.kakaocloud.com/v1/25ee6753136c47bb98c5a87c08e998d9/portal/public/video/video_home_top_bg_lg.mp4",
+          "time": 1.333935,
+          "paused": false,
+          "autoplay": true,
+          "loop": true,
+          "muted": true,
+          "readyState": 4
+        }
+      ],
+      "canvas": 0,
+      "animations": [],
+      "libraries": {
+        "Swiper": "undefined",
+        "lottie": "undefined"
+      },
+      "sliders": [],
+      "scripts": [
+        "https://kakaocloud.com/_next/static/chunks/0ex1k31qrvrqs.js",
+        "https://kakaocloud.com/_next/static/chunks/1lrc2q144h27v.js",
+        "https://kakaocloud.com/_next/static/chunks/turbopack-2t5fl50_w_03a.js",
+        "https://kakaocloud.com/_next/static/chunks/3vopkzbcwj1fe.js",
+        "https://kakaocloud.com/_next/static/chunks/0fx3kmj1-g-pe.js",
+        "https://kakaocloud.com/_next/static/chunks/42a1b6xs0jnvx.js",
+        "https://kakaocloud.com/_next/static/chunks/243_6mqm949z8.js",
+        "https://kakaocloud.com/_next/static/chunks/02yp03eky5ub1.js"
+      ],
+      "css": [
+        "https://kakaocloud.com/_next/static/chunks/1s8pv6wwbxysq.css",
+        "https://kakaocloud.com/_next/static/chunks/2u9v8rav_b7vf.css",
+        "https://kakaocloud.com/_next/static/chunks/38kzvtmsg5uti.css"
+      ]
+    },
+    "after": {
+      "url": "https://kakaocloud.com/",
+      "title": "Beyond the Cloud, 카카오클라우드",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "headings": [
+        "Beyond the Cloud, KakaoCloud",
+        "최신 소식 살펴보기",
+        "카카오클라우드만의 기술력을 담은 서비스",
+        "비즈니스 환경에 맞는 산업별 솔루션",
+        "카카오클라우드를 선택한 고객 혁신 사례",
+        "주요 파트너",
+        "카카오클라우드의 다양한 프로그램",
+        "카카오클라우드와 함께 해야 하는 이유",
+        "카카오클라우드와 함께\n비즈니스 성공을 시작하세요",
+        "카카오클라우드 소개",
+        "서비스 및 요금",
+        "산업별 솔루션"
+      ],
+      "body": "서비스\n마켓플레이스\n솔루션\n요금\n비즈니스\n더보기\n도입문의\n기술문서\n콘솔\n회원가입\nBeyond the Cloud, KakaoCloud\n\n카카오클라우드의 장점은 무엇인가요?\n\nWhy KakaoCloud\n\n기술 혁신을 통해 이뤄낸 이유 있는 가격 경쟁력\n\n요금 소개\n\n스타트업의 새로운 도약을 더 가깝게 로켓런처\n\n로켓런처 스타트업 프로그램\n\n카카오클라우드의 장점은 무엇인가요?\n\nWhy KakaoCloud\n\n기술 혁신을 통해 이뤄낸 이유 있는 가격 경쟁력\n\n요금 소개\n\n스타트업의 새로운 도약을 더 가깝게 로켓런처\n\n로켓런처 스타트업 프로그램\n\n최신 소식 살펴보기\n\n뉴스\n\n증권사 AI 도입 가속화를 위한 AI 인프라 전략 세미나\n\n고객 사례\n\n응답속도 50% 단축, 데이터 처리량 3배 증가시킨 ‘이지스’\n\n새 소식\n\n카카오클라우드 콘솔 개편, 데이터 중심 클라우드로의 전환\n\n고객 사례\n\n공정 지연 40% 감소의 비결, 피지컬 AI를 위한 디밀리언의 멀티클라우드 전략\n\n고객 사례\n\nGS리테일의 AI 혁신: 모델 실험수 40% 증가, GPU 비용 35% 절감\n\n고객 사례\n\n\"고성능을 유지하며, 비용은 40% 절감\" 카카오게임즈가 밝힌 클라우드 혁신 비결\n\nK-Digital Training\n\n카카오엔터프라이즈, KDT 선도기업 선정! 카카오클라우드 & AI 융합 교육 개설\n\n뉴스\n\n이프카카오에서 클라우드⬝검색 분야 연구 성과 및 기술력 알려\n\n고객 사례\n\nGPU 부족과 비용 부담, 스캐터랩은 어떻게 극복했을까?\n\n고객 사례\n\n멀티모달 AI 기업 ‘액션파워’, 카카오클라우드로 유연한 GPU 관리와 비용 절감 실현\n\n상품 소개\n\n이제 필요할 때 필요한 만큼, 카카오클라우드 고성능 GPU\n\n카카오클라우드만의 기술력을 담은 서비스\n모든 서비스 보기\nFeatured\nCompute\nNetworking\nContainer Pack\nStorage\nDeveloper Tools\nManagement\nData Store\nAnalytics\nAI Service\nSecurity\nFeatured\n\nVirtual Machine\n\n다양한 인스턴스와 고성능 네트워크, 스토리지 옵션을 이용한 최적의 컴퓨팅 환경\n\n자세히 보기\n\nTransit Gateway\n\nVPC와 온프레미스 네트워크 등 다양한 환경을 통합하여 연결하고 관리하는 서비스\n\n자세히 보기\n\nKubeflow\n\n쿠버네티스 환경에서 머신러닝 워크플로우를 쉽고 효율적으로 실행하는 오픈소스 플랫폼\n\n자세히 보",
+      "videos": [
+        {
+          "src": "https://objectstorage.kr-central-2.kakaocloud.com/v1/25ee6753136c47bb98c5a87c08e998d9/portal/public/video/video_home_top_bg_lg.mp4",
+          "time": 2.588369,
+          "paused": false,
+          "autoplay": true,
+          "loop": true,
+          "muted": true,
+          "readyState": 4
+        }
+      ],
+      "canvas": 0,
+      "animations": [],
+      "libraries": {
+        "Swiper": "undefined",
+        "lottie": "undefined"
+      },
+      "sliders": [],
+      "scripts": [
+        "https://kakaocloud.com/_next/static/chunks/42a1b6xs0jnvx.js",
+        "https://kakaocloud.com/_next/static/chunks/243_6mqm949z8.js",
+        "https://kakaocloud.com/_next/static/chunks/02yp03eky5ub1.js",
+        "https://kakaocloud.com/_next/static/chunks/05n64fjs_44r0.js",
+        "https://kakaocloud.com/_next/static/chunks/2k-vomkhn4b-c.js",
+        "https://kakaocloud.com/_next/static/chunks/378oc4pa1i0e1.js",
+        "https://kakaocloud.com/_next/static/chunks/3bym2k24p2m40.js",
+        "https://kakaocloud.com/_next/static/chunks/1w7o1zv0tak3d.js"
+      ],
+      "css": [
+        "https://kakaocloud.com/_next/static/chunks/1s8pv6wwbxysq.css",
+        "https://kakaocloud.com/_next/static/chunks/2u9v8rav_b7vf.css",
+        "https://kakaocloud.com/_next/static/chunks/38kzvtmsg5uti.css"
+      ]
+    },
+    "scroll": 760
+  },
+  {
+    "name": "kakaogov",
+    "before": {
+      "url": "https://kakaocloud-kr-gov.com/",
+      "title": "Beyond the Cloud, 카카오클라우드",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "headings": [
+        "시스템 안정성과\n데이터 보호에 최적화된 클라우드",
+        "공공기관이 카카오클라우드를 선택하는 이유",
+        "데이터센터부터 AI까지, 직접 설계하고 운영하는 AI 풀스택",
+        "안전한 클라우드 서비스 제공을 위한 인증 및 보안 준수",
+        "정부 부처·지자체·연구기관까지, 공공 서비스 전 영역에서 검증",
+        "카카오클라우드만의 기술력을 담은 서비스",
+        "주요 파트너",
+        "카카오클라우드와 함께\n비즈니스 성공을 시작하세요",
+        "서비스 및 요금",
+        "마켓플레이스",
+        "비즈니스",
+        "전문가 지원"
+      ],
+      "body": "서비스\n마켓플레이스\n요금\n비즈니스\n더보기\n도입문의\n기술문서\n콘솔\n시스템 안정성과\n데이터 보호에 최적화된 클라우드\n\n공공기관 전용 클라우드 환경에서 멀티 리전 구성부터 검증된\nAI 인프라까지 쉽게 사용하실 수 있습니다.\n\n공공 도입 상담 신청\n\n핵심 가치\n\n공공기관이 카카오클라우드를 선택하는 이유\n\n공공기관이 지켜야 할 보안 수준을 충족하는 물리적인 인프라와 전용 네트워크를 제공합니다.\n\n엄격한 보안 및 규제 준수\n\n공공기관의 요구에 맞춰 클라우드 보안 규정과 개인정보 보호법을 철저히 준수하여 안전한 데이터 관리 환경을 제공합니다.\n\n고가용성 및 재해 복구\n\n고가용성 아키텍처와 멀티 리전 기반의 재해 복구(DR) 구성을 지원하여 안정적인 서비스 연속성 확보를 지원합니다.\n\n24/7 기술 지원 및 모니터링\n\n언제 발생할지 모르는 문제에 신속히 대응하기 위해 24시간 기술 지원과 지속적 모니터링으로 안정성을 강화합니다.\n\n유연한 확장성과 비용 효율성\n\n필요에 따라 리소스를 유연하게 확장할 수 있으며, 공공기관 예산과 운영 환경에 맞는 다양한 요금제를 제공합니다.\n\nAI 기술력\n\n데이터센터부터 AI까지, 직접 설계하고 운영하는 AI 풀스택\n\n카카오클라우드는 데이터센터부터 AI 개발 환경까지 핵심 인프라를 직접 설계·구축·운영해 공공기관의 안정적인 AI 서비스를 지원합니다.\n\n데이터센터\n\n하이퍼스케일 데이터센터를 직접 설계·운영하며, 전력·냉각·공조를 이중화해 안정적인 AI 인프라를 제공합니다.\n\n정부 GPU 구축 사업 수행\n\n카카오데이터센터 안산에 최신 GPU 인프라를 구축해 국내 AI 연구 및 마켓플레이스 개발 환경을 지원합니다.\n\n클라우드 플랫폼\n\nAI 워크로드에 최적화된 컴퓨팅, 네트워크, 스토리지를 하나의 플랫폼으로 제공합니다.\n\n보안 인증\n\n안전한 클라우드 서비스 제공을 위한 인증 및 보안 준수\n\n카카오클라우드는 공공기관의 신뢰를 얻기 위해 필수적인 인증을 획득하고, 엄격한 보안 기준을 준수합니다.\n\nISMS-P\n\n주요 정보자산 및 개인정보를 보호하기 위한\n정보보호 및 개인정보보호 관리체계 인증\n\n인증범위: 카카오엔터프라이즈(카카오클라우드, 카카오 i LaaS, CenterFlow) 서비스 운영\n유효기간: 2025.02.05 ~ 2028.02.04\n\nCSAP\n\n공공기관 클라우드 서비스 제공을\n위한 정보보호 수준 평가·인증\n\n유효기간: 2026.06.09 ~ 2031.06.08\n\nISO/IEC 27001\n\n정보",
+      "videos": [
+        {
+          "src": "https://objectstorage.kr-gov-central-1.kakaocloud-kr-gov.com/v1/59597076907d4025bd2fa67c1674689b/portal/public/video/video_home_top_bg_gov_lg.mp4",
+          "time": 1.307885,
+          "paused": false,
+          "autoplay": true,
+          "loop": true,
+          "muted": true,
+          "readyState": 4
+        }
+      ],
+      "canvas": 0,
+      "animations": [],
+      "libraries": {
+        "Swiper": "undefined",
+        "lottie": "undefined"
+      },
+      "sliders": [],
+      "scripts": [
+        "https://kakaocloud-kr-gov.com/_next/static/BDpECRY5HJigtJJaJzPzo/_buildManifest.js",
+        "https://kakaocloud-kr-gov.com/_next/static/BDpECRY5HJigtJJaJzPzo/_ssgManifest.js",
+        "https://kakaocloud-kr-gov.com/_next/static/BDpECRY5HJigtJJaJzPzo/_clientMiddlewareManifest.js",
+        "https://kakaocloud-kr-gov.com/_next/static/chunks/1d5ek42ncid1r.js",
+        "https://kakaocloud-kr-gov.com/_next/static/chunks/0y7jdwxf3qdnr.js",
+        "https://kakaocloud-kr-gov.com/_next/static/chunks/30n-0dilv_3j0.js",
+        "https://kakaocloud-kr-gov.com/_next/static/chunks/turbopack-43fc5neatj4hu.js",
+        "https://kakaocloud-kr-gov.com/_next/static/chunks/0fx3kmj1-g-pe.js"
+      ],
+      "css": [
+        "https://kakaocloud-kr-gov.com/_next/static/chunks/1s8pv6wwbxysq.css",
+        "https://kakaocloud-kr-gov.com/_next/static/chunks/2u9v8rav_b7vf.css",
+        "https://kakaocloud-kr-gov.com/_next/static/chunks/38kzvtmsg5uti.css"
+      ]
+    },
+    "after": {
+      "url": "https://kakaocloud-kr-gov.com/",
+      "title": "Beyond the Cloud, 카카오클라우드",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "headings": [
+        "시스템 안정성과\n데이터 보호에 최적화된 클라우드",
+        "공공기관이 카카오클라우드를 선택하는 이유",
+        "데이터센터부터 AI까지, 직접 설계하고 운영하는 AI 풀스택",
+        "안전한 클라우드 서비스 제공을 위한 인증 및 보안 준수",
+        "정부 부처·지자체·연구기관까지, 공공 서비스 전 영역에서 검증",
+        "카카오클라우드만의 기술력을 담은 서비스",
+        "주요 파트너",
+        "카카오클라우드와 함께\n비즈니스 성공을 시작하세요",
+        "서비스 및 요금",
+        "마켓플레이스",
+        "비즈니스",
+        "전문가 지원"
+      ],
+      "body": "서비스\n마켓플레이스\n요금\n비즈니스\n더보기\n도입문의\n기술문서\n콘솔\n시스템 안정성과\n데이터 보호에 최적화된 클라우드\n\n공공기관 전용 클라우드 환경에서 멀티 리전 구성부터 검증된\nAI 인프라까지 쉽게 사용하실 수 있습니다.\n\n공공 도입 상담 신청\n\n핵심 가치\n\n공공기관이 카카오클라우드를 선택하는 이유\n\n공공기관이 지켜야 할 보안 수준을 충족하는 물리적인 인프라와 전용 네트워크를 제공합니다.\n\n엄격한 보안 및 규제 준수\n\n공공기관의 요구에 맞춰 클라우드 보안 규정과 개인정보 보호법을 철저히 준수하여 안전한 데이터 관리 환경을 제공합니다.\n\n고가용성 및 재해 복구\n\n고가용성 아키텍처와 멀티 리전 기반의 재해 복구(DR) 구성을 지원하여 안정적인 서비스 연속성 확보를 지원합니다.\n\n24/7 기술 지원 및 모니터링\n\n언제 발생할지 모르는 문제에 신속히 대응하기 위해 24시간 기술 지원과 지속적 모니터링으로 안정성을 강화합니다.\n\n유연한 확장성과 비용 효율성\n\n필요에 따라 리소스를 유연하게 확장할 수 있으며, 공공기관 예산과 운영 환경에 맞는 다양한 요금제를 제공합니다.\n\nAI 기술력\n\n데이터센터부터 AI까지, 직접 설계하고 운영하는 AI 풀스택\n\n카카오클라우드는 데이터센터부터 AI 개발 환경까지 핵심 인프라를 직접 설계·구축·운영해 공공기관의 안정적인 AI 서비스를 지원합니다.\n\n데이터센터\n\n하이퍼스케일 데이터센터를 직접 설계·운영하며, 전력·냉각·공조를 이중화해 안정적인 AI 인프라를 제공합니다.\n\n정부 GPU 구축 사업 수행\n\n카카오데이터센터 안산에 최신 GPU 인프라를 구축해 국내 AI 연구 및 마켓플레이스 개발 환경을 지원합니다.\n\n클라우드 플랫폼\n\nAI 워크로드에 최적화된 컴퓨팅, 네트워크, 스토리지를 하나의 플랫폼으로 제공합니다.\n\n보안 인증\n\n안전한 클라우드 서비스 제공을 위한 인증 및 보안 준수\n\n카카오클라우드는 공공기관의 신뢰를 얻기 위해 필수적인 인증을 획득하고, 엄격한 보안 기준을 준수합니다.\n\nISMS-P\n\n주요 정보자산 및 개인정보를 보호하기 위한\n정보보호 및 개인정보보호 관리체계 인증\n\n인증범위: 카카오엔터프라이즈(카카오클라우드, 카카오 i LaaS, CenterFlow) 서비스 운영\n유효기간: 2025.02.05 ~ 2028.02.04\n\nCSAP\n\n공공기관 클라우드 서비스 제공을\n위한 정보보호 수준 평가·인증\n\n유효기간: 2026.06.09 ~ 2031.06.08\n\nISO/IEC 27001\n\n정보",
+      "videos": [
+        {
+          "src": "https://objectstorage.kr-gov-central-1.kakaocloud-kr-gov.com/v1/59597076907d4025bd2fa67c1674689b/portal/public/video/video_home_top_bg_gov_lg.mp4",
+          "time": 1.328625,
+          "paused": true,
+          "autoplay": true,
+          "loop": true,
+          "muted": true,
+          "readyState": 4
+        }
+      ],
+      "canvas": 0,
+      "animations": [],
+      "libraries": {
+        "Swiper": "undefined",
+        "lottie": "undefined"
+      },
+      "sliders": [],
+      "scripts": [
+        "https://kakaocloud-kr-gov.com/_next/static/BDpECRY5HJigtJJaJzPzo/_buildManifest.js",
+        "https://kakaocloud-kr-gov.com/_next/static/BDpECRY5HJigtJJaJzPzo/_ssgManifest.js",
+        "https://kakaocloud-kr-gov.com/_next/static/BDpECRY5HJigtJJaJzPzo/_clientMiddlewareManifest.js",
+        "https://kakaocloud-kr-gov.com/_next/static/chunks/1d5ek42ncid1r.js",
+        "https://kakaocloud-kr-gov.com/_next/static/chunks/0y7jdwxf3qdnr.js",
+        "https://kakaocloud-kr-gov.com/_next/static/chunks/30n-0dilv_3j0.js",
+        "https://kakaocloud-kr-gov.com/_next/static/chunks/turbopack-43fc5neatj4hu.js",
+        "https://kakaocloud-kr-gov.com/_next/static/chunks/0fx3kmj1-g-pe.js"
+      ],
+      "css": [
+        "https://kakaocloud-kr-gov.com/_next/static/chunks/1s8pv6wwbxysq.css",
+        "https://kakaocloud-kr-gov.com/_next/static/chunks/2u9v8rav_b7vf.css",
+        "https://kakaocloud-kr-gov.com/_next/static/chunks/38kzvtmsg5uti.css"
+      ]
+    },
+    "scroll": 760
+  },
+  {
+    "name": "digitalocean",
+    "before": {
+      "url": "https://www.digitalocean.com/",
+      "title": "AI-Native Cloud | DigitalOcean",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "headings": [
+        "Featured AI Products",
+        "AI/ML",
+        "Community",
+        "Become a Partner",
+        "AI-Native Cloud",
+        "67%",
+        "10x",
+        "40%",
+        "Five layers. One platform. Open at every layer.",
+        "Managed Agents",
+        "Performance, economics, and simplicity — together.",
+        "Performance proven in production"
+      ],
+      "body": "Introducing Agent Droplets\n\nBlog\nDocs\nCareers\nGet Support\nContact Sales\nDigitalOcean\nProducts\n\nFeatured AI Products\n\nCompute\n\nContainers and Images\n\nManaged Databases\n\nManagement and Dev Tools\n\nNetworking\n\nSecurity\n\nStorage\n\nBrowse all products\nFeatured AI Products\n\nManaged Agents\n\nRun AI agents in the cloud with governed tool access\n\nNew\n\nData and Learning\n\nStore, retrieve, and surface the context you need\n\nInference Engine\n\nRun inference at scale with policy-driven routing\n\nModel Library\n\nDiscover, compare, and evaluate AI models\n\nEvaluations\n\nRun LLM-as-a-Judge evaluations across your inference stack\n\nGPU Droplets\n\nGPU-powered virtual machines to build and run AI apps\n\nBrowse all products\nSolutions\n\nAI/ML\n\nCMS\n\nData and IoT\n\nDeveloper Tools\n\nGaming and Media\n\nHosting\n\nSecurity and Networking\n\nStartups and SMBs\n\nWeb and App Platforms\n\nSee all solutions\nAI/ML\n\nAI HR Knowledge Assistant\n\nDeploy AI tools developed for Human Resources\n\nAI Training GPU\n\nAccelerate model training with dedicated GPU infrastructure\n\nAI Recommendation Engine\n\nBuild tools to personalize user experiences\n\nMultimodal AI\n\nRun models that process multiple data types\n\nGPU Clusters\n\nGPUs clustered together for l",
+      "videos": [],
+      "canvas": 0,
+      "animations": [
+        {
+          "name": "fZRbCh",
+          "target": "MarqueeHeroStyles__StyledHeroMarquee-sc-919f80be-1 gCjaaN",
+          "duration": 30000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "fZRbCh",
+          "target": "MarqueeHeroStyles__StyledHeroMarquee-sc-919f80be-1 gCjaaN",
+          "duration": 30000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "fZRbCh",
+          "target": "MarqueeHeroStyles__StyledHeroMarquee-sc-919f80be-1 gCjaaN",
+          "duration": 30000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "ckkqjM",
+          "target": "ta-show ta-display-block slide-up",
+          "duration": 1000,
+          "delay": 0,
+          "iterations": 1,
+          "playState": "running"
+        }
+      ],
+      "libraries": {
+        "Swiper": "undefined",
+        "lottie": "undefined"
+      },
+      "sliders": [],
+      "scripts": [
+        "https://www.digitalocean.com/_do-www-marketing/2f50be18/_next/static/chunks/93848-f7a8e7a543baa120.js?dpl=2f50be18",
+        "https://www.digitalocean.com/_do-www-marketing/2f50be18/_next/static/chunks/polyfills-42372ed130431b0a.js?dpl=2f50be18",
+        "https://pocustrack.com/pocus.js",
+        "https://www.digitalocean.com/_do-www-marketing/2f50be18/_next/static/chunks/webpack-560a60753d867499.js?dpl=2f50be18",
+        "https://cdn.amplitude.com/script/deb86ab4f1db664150dfadff7652c966.experiment.js",
+        "https://consent.trustarc.com/asset/notice.js/v/62bb0e7",
+        "https://tags.pw.adn.cloud/GCZMHM/activation.js",
+        "https://cdn.schemaapp.com/javascript/highlight.js"
+      ],
+      "css": [
+        "https://www.digitalocean.com/_do-www-marketing/2f50be18/_next/static/css/705857f426eb4b27.css?dpl=2f50be18",
+        "https://www.digitalocean.com/_do-www-marketing/2f50be18/_next/static/css/df7d91f18a5cb967.css?dpl=2f50be18",
+        "https://www.digitalocean.com/api/static-content/v1/design_tokens/css"
+      ]
+    },
+    "after": {
+      "url": "https://www.digitalocean.com/",
+      "title": "AI-Native Cloud | DigitalOcean",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "headings": [
+        "Featured AI Products",
+        "AI/ML",
+        "Community",
+        "Become a Partner",
+        "AI-Native Cloud",
+        "67%",
+        "10x",
+        "40%",
+        "Five layers. One platform. Open at every layer.",
+        "Managed Agents",
+        "Performance, economics, and simplicity — together.",
+        "Performance proven in production"
+      ],
+      "body": "Introducing Agent Droplets\n\nBlog\nDocs\nCareers\nGet Support\nContact Sales\nDigitalOcean\nProducts\n\nFeatured AI Products\n\nCompute\n\nContainers and Images\n\nManaged Databases\n\nManagement and Dev Tools\n\nNetworking\n\nSecurity\n\nStorage\n\nBrowse all products\nFeatured AI Products\n\nManaged Agents\n\nRun AI agents in the cloud with governed tool access\n\nNew\n\nData and Learning\n\nStore, retrieve, and surface the context you need\n\nInference Engine\n\nRun inference at scale with policy-driven routing\n\nModel Library\n\nDiscover, compare, and evaluate AI models\n\nEvaluations\n\nRun LLM-as-a-Judge evaluations across your inference stack\n\nGPU Droplets\n\nGPU-powered virtual machines to build and run AI apps\n\nBrowse all products\nSolutions\n\nAI/ML\n\nCMS\n\nData and IoT\n\nDeveloper Tools\n\nGaming and Media\n\nHosting\n\nSecurity and Networking\n\nStartups and SMBs\n\nWeb and App Platforms\n\nSee all solutions\nAI/ML\n\nAI HR Knowledge Assistant\n\nDeploy AI tools developed for Human Resources\n\nAI Training GPU\n\nAccelerate model training with dedicated GPU infrastructure\n\nAI Recommendation Engine\n\nBuild tools to personalize user experiences\n\nMultimodal AI\n\nRun models that process multiple data types\n\nGPU Clusters\n\nGPUs clustered together for l",
+      "videos": [],
+      "canvas": 0,
+      "animations": [
+        {
+          "name": "fZRbCh",
+          "target": "MarqueeHeroStyles__StyledHeroMarquee-sc-919f80be-1 gCjaaN",
+          "duration": 30000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "fZRbCh",
+          "target": "MarqueeHeroStyles__StyledHeroMarquee-sc-919f80be-1 gCjaaN",
+          "duration": 30000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "fZRbCh",
+          "target": "MarqueeHeroStyles__StyledHeroMarquee-sc-919f80be-1 gCjaaN",
+          "duration": 30000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "ckkqjM",
+          "target": "ta-show ta-display-block slide-up",
+          "duration": 1000,
+          "delay": 0,
+          "iterations": 1,
+          "playState": "finished"
+        }
+      ],
+      "libraries": {
+        "Swiper": "undefined",
+        "lottie": "undefined"
+      },
+      "sliders": [],
+      "scripts": [
+        "https://www.digitalocean.com/_do-www-marketing/2f50be18/_next/static/chunks/9627-3205936318d8eccf.js?dpl=2f50be18",
+        "https://www.digitalocean.com/_do-www-marketing/2f50be18/_next/static/chunks/64221-3759242a7a2d1f73.js?dpl=2f50be18",
+        "https://www.digitalocean.com/_do-www-marketing/2f50be18/_next/static/chunks/app/products/managed-databases-opensearch/page-baf015c923f00657.js?dpl=2f50be18",
+        "https://www.digitalocean.com/_do-www-marketing/2f50be18/_next/static/chunks/webpack-560a60753d867499.js?dpl=2f50be18",
+        "https://cdn.amplitude.com/script/deb86ab4f1db664150dfadff7652c966.experiment.js",
+        "https://consent.trustarc.com/asset/notice.js/v/62bb0e7",
+        "https://tags.pw.adn.cloud/GCZMHM/activation.js",
+        "https://cdn.schemaapp.com/javascript/highlight.js"
+      ],
+      "css": [
+        "https://www.digitalocean.com/_do-www-marketing/2f50be18/_next/static/css/705857f426eb4b27.css?dpl=2f50be18",
+        "https://www.digitalocean.com/_do-www-marketing/2f50be18/_next/static/css/df7d91f18a5cb967.css?dpl=2f50be18",
+        "https://www.digitalocean.com/api/static-content/v1/design_tokens/css"
+      ]
+    },
+    "scroll": 760
+  },
+  {
+    "name": "aws",
+    "before": {
+      "url": "https://aws.amazon.com/ko/",
+      "title": "클라우드 컴퓨팅 서비스-Amazon Web Services(AWS)",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "headings": [
+        "쿠키 기본 설정 선택",
+        "쿠키 기본 설정 사용자 지정",
+        "필수",
+        "성능",
+        "기능",
+        "광고",
+        "사용자 개인정보 보호 선택",
+        "쿠키 기본 설정을 저장할 수 없음",
+        "고유한 보안 요구 사항을 충족",
+        "새로운 소식",
+        "re:Invent 2026 세션 카탈로그가 공개되었습니다",
+        "에이전트 파일럿의 88%가 중단됩니다. 여러분의 에이전트는 그럴 필요가 없습니다."
+      ],
+      "body": "메인 콘텐츠로 건너뛰기\n한국어\n문의하기\nAWS Marketplace\n지원\n내 계정\nre:Invent\nAWS 살펴보기\n제품\n솔루션\n요금\n리소스\n\n검색\n\n콘솔 로그인\n계정 생성\nFeedback\n고유한 보안 요구 사항을 충족\n\nAWS는 보안을 최우선으로 설계되어 정부, 금융 서비스, 의료 등 가장 민감한 워크로드까지 보호합니다.\n\n무료로 AWS 시작하기\n새로운 소식\n\nAWS 전반에서 가장 화제가 된 출시, 업데이트 및 성공 사례를 확인하세요.\n\nEvent\nre:Invent 2026 세션 카탈로그가 공개되었습니다\nAI, 보안, 데이터베이스 등에서 수백 개의 세션을 찾아보세요. 담당 업무에 맞는 세션을 찾아 일정을 구성하세요.\n세션 카탈로그 살펴보기\nAI Agents\n에이전트 파일럿의 88%가 중단됩니다. 여러분의 에이전트는 그럴 필요가 없습니다.\n대부분의 팀은 데모 단계에서 프로덕션 환경으로 전환하는 데 몇 달을 허비합니다. 선도 기업이 격차를 좁히고 에이전트를 빠르게 출시한 방법을 알아보세요.\n프로덕션의 격차 해소\nData\n에이전틱 AI를 위한 데이터 기반 마련\nAI 에이전트를 대규모로 확장하기 위해 기술 리더가 알아야 할 7가지 필수 데이터 역량을 알아보세요.\n가이드 보기\n스타트업부터 대기업까지 지난 20년 동안 리더들이 혁신을 이끌어온 원동력 - AWS\n\nAWS를 통해 혁신을 가속화하고 산업을 재정의하는 혁신가들로 구성된 최대 규모의 글로벌 커뮤니티에 참여하세요.\n\n더 많은 사례 보기\n여행 및 숙박\nBooking.com이 AWS에서 초당 최대 25만 개의 요청을 처리하여 모든 여행을 개인화하는 방법\n성공 사례 보기\n자동차\nAudi가 AI를 사용하여 전 세계 50개 이상의 제조 공장을 연결하는 방법\n성공 사례 보기\n여행 및 숙박\nUnited가 AI를 사용하여 매일 5,000편 이상의 항공편을 운항하는 방법\n성공 사례 보기\n여행 및 숙박\nTUI가 Amazon Connect Customer를 사용하여 85개 이상의 고객 서비스 애플리케이션을 통합하는 방법\n성공 사례 보기\nIndustrial\nSiemens Mobility, AWS AI로 175년의 데이터를 검색 가능한 인사이트로 변환\n성공 사례 보기\n1 / 5\n새로운 고객 성공 사례를 보고 싶은 항목:\n제조\n제조\nAI 솔루션으로 산업 운영을 최적화하는 Siemens\nSiemens는 AWS AI 솔루션을 통해 산업 효율성을 높이고 글로벌 운영 전반의 제조 프로세스를 현대",
+      "videos": [],
+      "canvas": 0,
+      "animations": [],
+      "libraries": {
+        "Swiper": "undefined",
+        "lottie": "undefined"
+      },
+      "sliders": [],
+      "scripts": [
+        "https://a0.awsstatic.com/awsm-core/0.1.9/bundle/head.js",
+        "https://a0.awsstatic.com/awsm-core/0.1.9/bundle/munchkin.min.js",
+        "https://a0.awsstatic.com/eb-csr/2.0.19/orchestrate.js",
+        "https://d0.m.awsstatic.com/awsm-acslibs/1.0/bundle/index.js",
+        "https://a0.awsstatic.com/s_code/js/3.0/awshome_s_code.js",
+        "https://a0.awsstatic.com/target/1.0.127/aws-target-mediator.js",
+        "https://prod.pa.cdn.uis.awsstatic.com/panorama-nav-init.js",
+        "https://loader.us-east-1.prod.mrc-sunrise.marketing.aws.dev/loader.js"
+      ],
+      "css": [
+        "https://t0.m.awsstatic.com/tmpl/awsm-rt/esm/templates/rt-feedback/1.0.0/rt-feedback.c0787143df.css",
+        "https://t0.m.awsstatic.com/tmpl/awsm-rt/esm/templates/compass-lite/1.0.0/compass-lite.90b19a56f1.css",
+        "https://t0.m.awsstatic.com/tmpl/awsm-rt/esm/templates/rt-footer/1.0.0/rt-footer.718a565c90.css",
+        "https://t0.m.awsstatic.com/tmpl/awsm-rt/esm/templates/rt-interactive-card-collection/3.0.0/rt-interactive-card-collection.7c273de821.css",
+        "https://t0.m.awsstatic.com/tmpl/awsm-rt/esm/templates/carousel/1.0.0/carousel.0cf8a83ba7.css"
+      ]
+    },
+    "after": {
+      "url": "https://aws.amazon.com/ko/",
+      "title": "클라우드 컴퓨팅 서비스-Amazon Web Services(AWS)",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "headings": [
+        "쿠키 기본 설정 선택",
+        "쿠키 기본 설정 사용자 지정",
+        "필수",
+        "성능",
+        "기능",
+        "광고",
+        "사용자 개인정보 보호 선택",
+        "쿠키 기본 설정을 저장할 수 없음",
+        "고유한 보안 요구 사항을 충족",
+        "새로운 소식",
+        "re:Invent 2026 세션 카탈로그가 공개되었습니다",
+        "에이전트 파일럿의 88%가 중단됩니다. 여러분의 에이전트는 그럴 필요가 없습니다."
+      ],
+      "body": "메인 콘텐츠로 건너뛰기\n한국어\n문의하기\nAWS Marketplace\n지원\n내 계정\nre:Invent\nAWS 살펴보기\n제품\n솔루션\n요금\n리소스\n\n검색\n\n콘솔 로그인\n계정 생성\nFeedback\n고유한 보안 요구 사항을 충족\n\nAWS는 보안을 최우선으로 설계되어 정부, 금융 서비스, 의료 등 가장 민감한 워크로드까지 보호합니다.\n\n무료로 AWS 시작하기\n새로운 소식\n\nAWS 전반에서 가장 화제가 된 출시, 업데이트 및 성공 사례를 확인하세요.\n\nEvent\nre:Invent 2026 세션 카탈로그가 공개되었습니다\nAI, 보안, 데이터베이스 등에서 수백 개의 세션을 찾아보세요. 담당 업무에 맞는 세션을 찾아 일정을 구성하세요.\n세션 카탈로그 살펴보기\nAI Agents\n에이전트 파일럿의 88%가 중단됩니다. 여러분의 에이전트는 그럴 필요가 없습니다.\n대부분의 팀은 데모 단계에서 프로덕션 환경으로 전환하는 데 몇 달을 허비합니다. 선도 기업이 격차를 좁히고 에이전트를 빠르게 출시한 방법을 알아보세요.\n프로덕션의 격차 해소\nData\n에이전틱 AI를 위한 데이터 기반 마련\nAI 에이전트를 대규모로 확장하기 위해 기술 리더가 알아야 할 7가지 필수 데이터 역량을 알아보세요.\n가이드 보기\n스타트업부터 대기업까지 지난 20년 동안 리더들이 혁신을 이끌어온 원동력 - AWS\n\nAWS를 통해 혁신을 가속화하고 산업을 재정의하는 혁신가들로 구성된 최대 규모의 글로벌 커뮤니티에 참여하세요.\n\n더 많은 사례 보기\n여행 및 숙박\nBooking.com이 AWS에서 초당 최대 25만 개의 요청을 처리하여 모든 여행을 개인화하는 방법\n성공 사례 보기\n자동차\nAudi가 AI를 사용하여 전 세계 50개 이상의 제조 공장을 연결하는 방법\n성공 사례 보기\n여행 및 숙박\nUnited가 AI를 사용하여 매일 5,000편 이상의 항공편을 운항하는 방법\n성공 사례 보기\n여행 및 숙박\nTUI가 Amazon Connect Customer를 사용하여 85개 이상의 고객 서비스 애플리케이션을 통합하는 방법\n성공 사례 보기\nIndustrial\nSiemens Mobility, AWS AI로 175년의 데이터를 검색 가능한 인사이트로 변환\n성공 사례 보기\n1 / 5\n새로운 고객 성공 사례를 보고 싶은 항목:\n제조\n제조\nAI 솔루션으로 산업 운영을 최적화하는 Siemens\nSiemens는 AWS AI 솔루션을 통해 산업 효율성을 높이고 글로벌 운영 전반의 제조 프로세스를 현대",
+      "videos": [],
+      "canvas": 0,
+      "animations": [
+        {
+          "name": "rgic_73f33585",
+          "target": "rgic_c9184425 rgic_284e35f8",
+          "duration": 400,
+          "delay": 0,
+          "iterations": 1,
+          "playState": "finished"
+        },
+        {
+          "name": "rgic_0b97811d",
+          "target": "rgic_c9184425 rgic_284e35f8",
+          "duration": 400,
+          "delay": 0,
+          "iterations": 1,
+          "playState": "finished"
+        },
+        {
+          "name": "rgic_73f33585",
+          "target": "rgic_c9184425 rgic_284e35f8",
+          "duration": 400,
+          "delay": 100,
+          "iterations": 1,
+          "playState": "finished"
+        },
+        {
+          "name": "rgic_0b97811d",
+          "target": "rgic_c9184425 rgic_284e35f8",
+          "duration": 400,
+          "delay": 100,
+          "iterations": 1,
+          "playState": "finished"
+        },
+        {
+          "name": "rgic_73f33585",
+          "target": "rgic_c9184425 rgic_284e35f8",
+          "duration": 400,
+          "delay": 200,
+          "iterations": 1,
+          "playState": "finished"
+        },
+        {
+          "name": "rgic_0b97811d",
+          "target": "rgic_c9184425 rgic_284e35f8",
+          "duration": 400,
+          "delay": 200,
+          "iterations": 1,
+          "playState": "finished"
+        }
+      ],
+      "libraries": {
+        "Swiper": "undefined",
+        "lottie": "undefined"
+      },
+      "sliders": [],
+      "scripts": [
+        "https://a0.awsstatic.com/awsm-core/0.1.9/bundle/head.js",
+        "https://a0.awsstatic.com/awsm-core/0.1.9/bundle/munchkin.min.js",
+        "https://a0.awsstatic.com/eb-csr/2.0.19/orchestrate.js",
+        "https://d0.m.awsstatic.com/awsm-acslibs/1.0/bundle/index.js",
+        "https://a0.awsstatic.com/s_code/js/3.0/awshome_s_code.js",
+        "https://a0.awsstatic.com/target/1.0.127/aws-target-mediator.js",
+        "https://prod.pa.cdn.uis.awsstatic.com/panorama-nav-init.js",
+        "https://loader.us-east-1.prod.mrc-sunrise.marketing.aws.dev/loader.js"
+      ],
+      "css": [
+        "https://t0.m.awsstatic.com/tmpl/awsm-rt/esm/templates/rt-feedback/1.0.0/rt-feedback.c0787143df.css",
+        "https://t0.m.awsstatic.com/tmpl/awsm-rt/esm/templates/compass-lite/1.0.0/compass-lite.90b19a56f1.css",
+        "https://t0.m.awsstatic.com/tmpl/awsm-rt/esm/templates/rt-footer/1.0.0/rt-footer.718a565c90.css",
+        "https://t0.m.awsstatic.com/tmpl/awsm-rt/esm/templates/rt-interactive-card-collection/3.0.0/rt-interactive-card-collection.7c273de821.css",
+        "https://t0.m.awsstatic.com/tmpl/awsm-rt/esm/templates/carousel/1.0.0/carousel.0cf8a83ba7.css"
+      ]
+    },
+    "scroll": 760
+  },
+  {
+    "name": "cloudflare",
+    "before": {
+      "url": "https://www.cloudflare.com/",
+      "title": "Cloudflare: Build for the agent era",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "headings": [
+        "Everything we learned from powering 20% of the Internet—yours by default",
+        "Region: Earth ",
+        "Run everywhere",
+        "Run anywhere",
+        "Run at massive scale",
+        "Cloudflare powers 45% of the Fortune 500",
+        "“\nFor Shopify, the real challenge is not about how many different pieces of complex technology we can use but the opposite. Cloudflare helps us find a simple way to achieve something very complex that we can scale and maintain.”",
+        "Why choose Cloudflare ",
+        "Fighting infra with “cloud”",
+        "Shipping with\nCloudflare",
+        "Pay only\nwhen\n \nyour\n \ncode\n \nruns",
+        "Pay for clean traffic"
+      ],
+      "body": "Products\nSolutions\nResources\nPricing\nUnder attack?\nLogin\nContact sales\nStart building\nConnect 2026 · The Agentic Conference of the Year · Oct 19-21\nEverything we learned from powering 20% of the Internet—yours by default\n\nOne platform for your apps, agents, and workforce.\nBuild, secure, and scale without managing infrastructure.\n\nStart building for free\nRegion: Earth \n\nOne smart network for workloads + security — close to users, close to data.\n\nCompute close to users reduces network latency.\n\nSmart Placement moves your Worker closer to your data for optimized end-to-end latency.\n\n4.5x faster\n\nFaster for 95% of round trips by running Workers near your backend, not you.\n\n95% of the world’s Internet-connected population is reached by Cloudflare within 50ms.\n\n310B\n\nDaily cyber threats blocked.\n\nRun everywhere\n\nSecurity, connectivity, and code run in 335+ cities around the world, within 50ms of 95% of the world's population.\n\nRun anywhere\n\nOur network is close to your users, applications, and sites. It optimizes all your traffic from source to destination for low latency.\n\nRun at massive scale\n\nNo more capacity planning. Ever.\n\nCloudflare powers 45% of the Fortune 500\n\nTrusted by the te",
+      "videos": [
+        {
+          "src": "https://www.cloudflare.com/static/hero-background-video.mp4",
+          "time": 0,
+          "paused": false,
+          "autoplay": true,
+          "loop": true,
+          "muted": true,
+          "readyState": 0
+        }
+      ],
+      "canvas": 1,
+      "animations": [
+        {
+          "target": "svg",
+          "duration": 2000,
+          "delay": 0,
+          "iterations": 1,
+          "playState": "running"
+        },
+        {
+          "target": "svg",
+          "duration": 2000,
+          "delay": 0,
+          "iterations": 1,
+          "playState": "running"
+        },
+        {
+          "name": "enter",
+          "target": "animate-in fade-in pointer-events-none absolute inset-0 -z-10 hidden overflow-hidden transition-opacity delay-100 duration-2000 ease-out md:block",
+          "duration": 2000,
+          "delay": 100,
+          "iterations": 1,
+          "playState": "running"
+        },
+        {
+          "name": "canvas-fade-in",
+          "target": "",
+          "duration": 1000,
+          "delay": 200,
+          "iterations": 1,
+          "playState": "finished"
+        },
+        {
+          "name": "rotating-text-noise-drift",
+          "target": "absolute inset-y-0 left-0 w-[200%]",
+          "duration": 2000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "canvas-fade-in",
+          "target": "hidden md:block -scale-x-100 pointer-events-none mt-[5%] absolute top-0 left-0 right-0 h-1/2 md:h-auto md:bottom-0 select-none opacity-0 overflow-hidden",
+          "duration": 1000,
+          "delay": 200,
+          "iterations": 1,
+          "playState": "finished"
+        },
+        {
+          "name": "waveform-scroll",
+          "target": "flex h-full max-h-full items-center",
+          "duration": 20000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "canvas-fade-in",
+          "target": "flex gap-1 opacity-0",
+          "duration": 1000,
+          "delay": 1500,
+          "iterations": 1,
+          "playState": "running"
+        },
+        {
+          "name": "marquee",
+          "target": "flex gap-1 opacity-0",
+          "duration": 8000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "rotating-text-noise-drift",
+          "target": "absolute inset-y-0 left-0 w-[200%]",
+          "duration": 2000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "infinite-scroll",
+          "target": "animate-infinite-scroll flex flex-row gap-x-4",
+          "duration": 80000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "infinite-scroll",
+          "target": "animate-infinite-scroll flex flex-row gap-x-4",
+          "duration": 80000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "infinite-scroll",
+          "target": "animate-infinite-scroll flex flex-row gap-x-4",
+          "duration": 80000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "infinite-scroll",
+          "target": "animate-infinite-scroll flex flex-row gap-x-4",
+          "duration": 40000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        }
+      ],
+      "libraries": {
+        "Swiper": "undefined",
+        "lottie": "undefined"
+      },
+      "sliders": [],
+      "scripts": [
+        "https://www.cloudflare.com/_b/v/latest/entry.js",
+        "https://ot.www.cloudflare.com/ot/scripttemplates/202503.1.0/otBannerSdk.js",
+        "https://www.cloudflare.com/static/z/i.js",
+        "https://js.adsrvr.org/up_loader.1.1.0.js",
+        "https://munchkin.marketo.net/munchkin-beta.js",
+        "https://js.adsrvr.org/up_loader.3.0.0.js",
+        "https://www.cloudflare.com/_astro/_ai-search-modal.astro_astro_type_script_index_0_lang.B0TZFBn6.js",
+        "https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920"
+      ],
+      "css": [
+        "https://www.cloudflare.com/_astro/_separator.CZgc5wuK.css",
+        "https://www.cloudflare.com/_astro/index.Cm-titPL.css",
+        "https://www.cloudflare.com/_astro/index.CN3UJUeJ.css",
+        "https://www.cloudflare.com/_astro/DomainSearchApp.DHMW05hs.css"
+      ]
+    },
+    "after": {
+      "url": "https://www.cloudflare.com/",
+      "title": "Cloudflare: Build for the agent era",
+      "viewport": [
+        1440,
+        900,
+        1
+      ],
+      "headings": [
+        "Everything we learned from powering 20% of the Internet—yours by default",
+        "Region: Earth ",
+        "Run everywhere",
+        "Run anywhere",
+        "Run at massive scale",
+        "Cloudflare powers 45% of the Fortune 500",
+        "“\nFor Shopify, the real challenge is not about how many different pieces of complex technology we can use but the opposite. Cloudflare helps us find a simple way to achieve something very complex that we can scale and maintain.”",
+        "Why choose Cloudflare ",
+        "Fighting infra with “cloud”",
+        "Shipping with\nCloudflare",
+        "Pay only\nwhen\n \nyour\n \ncode\n \nruns",
+        "Pay for clean traffic"
+      ],
+      "body": "Products\nSolutions\nResources\nPricing\nUnder attack?\nLogin\nContact sales\nStart building\nConnect 2026 · The Agentic Conference of the Year · Oct 19-21\nEverything we learned from powering 20% of the Internet—yours by default\n\nOne platform for your apps, agents, and workforce.\nBuild, secure, and scale without managing infrastructure.\n\nStart building for free\nRegion: Earth \n\nOne smart network for workloads + security — close to users, close to data.\n\nCompute close to users reduces network latency.\n\nSmart Placement moves your Worker closer to your data for optimized end-to-end latency.\n\n4.5x faster\n\nFaster for 95% of round trips by running Workers near your backend, not you.\n\n95% of the world’s Internet-connected population is reached by Cloudflare within 50ms.\n\n310B\n\nDaily cyber threats blocked.\n\nRun everywhere\n\nSecurity, connectivity, and code run in 335+ cities around the world, within 50ms of 95% of the world's population.\n\nRun anywhere\n\nOur network is close to your users, applications, and sites. It optimizes all your traffic from source to destination for low latency.\n\nRun at massive scale\n\nNo more capacity planning. Ever.\n\nCloudflare powers 45% of the Fortune 500\n\nTrusted by the te",
+      "videos": [
+        {
+          "src": "https://www.cloudflare.com/static/hero-background-video.mp4",
+          "time": 1.251304,
+          "paused": false,
+          "autoplay": true,
+          "loop": true,
+          "muted": true,
+          "readyState": 4
+        }
+      ],
+      "canvas": 1,
+      "animations": [
+        {
+          "target": "relative w-full overflow-hidden [&_*]:touch-pan-y! h-full origin-center transform-gpu transition-[opacity,transform] duration-[900ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:scale-100 motion-reduce:transition-none scale-100 opacity-100",
+          "duration": 900,
+          "delay": 0,
+          "iterations": 1,
+          "playState": "running"
+        },
+        {
+          "name": "canvas-fade-in",
+          "target": "",
+          "duration": 1000,
+          "delay": 200,
+          "iterations": 1,
+          "playState": "finished"
+        },
+        {
+          "name": "rotating-text-noise-drift",
+          "target": "absolute inset-y-0 left-0 w-[200%]",
+          "duration": 2000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "canvas-fade-in",
+          "target": "hidden md:block -scale-x-100 pointer-events-none mt-[5%] absolute top-0 left-0 right-0 h-1/2 md:h-auto md:bottom-0 select-none opacity-0 overflow-hidden",
+          "duration": 1000,
+          "delay": 200,
+          "iterations": 1,
+          "playState": "finished"
+        },
+        {
+          "name": "waveform-scroll",
+          "target": "flex h-full max-h-full items-center",
+          "duration": 20000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "canvas-fade-in",
+          "target": "flex gap-1 opacity-0",
+          "duration": 1000,
+          "delay": 1500,
+          "iterations": 1,
+          "playState": "finished"
+        },
+        {
+          "name": "marquee",
+          "target": "flex gap-1 opacity-0",
+          "duration": 8000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "rotating-text-noise-drift",
+          "target": "absolute inset-y-0 left-0 w-[200%]",
+          "duration": 2000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "infinite-scroll",
+          "target": "animate-infinite-scroll flex flex-row gap-x-4",
+          "duration": 80000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "infinite-scroll",
+          "target": "animate-infinite-scroll flex flex-row gap-x-4",
+          "duration": 80000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "infinite-scroll",
+          "target": "animate-infinite-scroll flex flex-row gap-x-4",
+          "duration": 80000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "infinite-scroll",
+          "target": "animate-infinite-scroll flex flex-row gap-x-4",
+          "duration": 40000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "infinite-scroll",
+          "target": "animate-infinite-scroll flex flex-row gap-x-4",
+          "duration": 40000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        },
+        {
+          "name": "infinite-scroll",
+          "target": "animate-infinite-scroll flex flex-row gap-x-4",
+          "duration": 40000,
+          "delay": 0,
+          "iterations": null,
+          "playState": "running"
+        }
+      ],
+      "libraries": {
+        "Swiper": "undefined",
+        "lottie": "undefined"
+      },
+      "sliders": [],
+      "scripts": [
+        "https://www.cloudflare.com/_b/v/latest/entry.js",
+        "https://ot.www.cloudflare.com/ot/scripttemplates/202503.1.0/otBannerSdk.js",
+        "https://www.cloudflare.com/static/z/i.js",
+        "https://js.adsrvr.org/up_loader.1.1.0.js",
+        "https://munchkin.marketo.net/munchkin-beta.js",
+        "https://js.adsrvr.org/up_loader.3.0.0.js",
+        "https://www.cloudflare.com/_astro/_ai-search-modal.astro_astro_type_script_index_0_lang.B0TZFBn6.js",
+        "https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920"
+      ],
+      "css": [
+        "https://www.cloudflare.com/_astro/_separator.CZgc5wuK.css",
+        "https://www.cloudflare.com/_astro/index.Cm-titPL.css",
+        "https://www.cloudflare.com/_astro/index.CN3UJUeJ.css",
+        "https://www.cloudflare.com/_astro/DomainSearchApp.DHMW05hs.css"
+      ]
+    },
+    "scroll": 760
+  }
+]

@@ -397,6 +397,7 @@ async def test_personal_token_listing_marks_only_selected_lumen_default():
         expires_at=__import__("datetime").datetime(2026, 8, 1, tzinfo=__import__("datetime").UTC),
         last_used_at=None,
         revoked_at=None,
+        client_observations=None,
     )
     grant_b = SimpleNamespace(**{**grant_a.__dict__, "id": "grant-b", "display_name": "second"})
     token_a = SimpleNamespace(

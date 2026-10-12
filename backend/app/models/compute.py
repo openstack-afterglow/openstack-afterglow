@@ -1,7 +1,7 @@
 import re
 from typing import Literal
 
-from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 
 class IpAddress(BaseModel):
@@ -22,6 +22,8 @@ class ImageInfo(BaseModel):
     disk_format: str | None = None
     os_type: str | None = None
     os_distro: str | None = None
+    windows_initial_password_method: str | None = None
+    os_admin_user: str | None = None
     created_at: str | None = None
     owner: str | None = None
     visibility: str | None = None
@@ -145,6 +147,7 @@ class InstanceInfo(BaseModel):
     status: str
     image_id: str | None = None
     image_name: str | None = None
+    os_type: str | None = None
     flavor_id: str | None = None
     flavor_name: str | None = None
     ip_addresses: list[IpAddress] = []
@@ -165,13 +168,15 @@ class InstanceInfo(BaseModel):
 
 
 class CreateInstanceRequest(BaseModel):
+    model_config = ConfigDict(hide_input_in_errors=True)
+
     name: str | None = None
     image_id: str | None = None
     flavor_id: str
     network_id: str | None = None
     key_name: str | None = None
     github_username: str | None = None
-    admin_pass: str | None = Field(None, min_length=8, max_length=128)
+    admin_pass: SecretStr | None = Field(None, min_length=8, max_length=128)
     availability_zone: str | None = None
     security_groups: list[str] = []
     userdata: str | None = None
@@ -182,6 +187,19 @@ class CreateInstanceRequest(BaseModel):
     new_volumes: list["NewVolumeRequest"] = []
     boot_volume_id: str | None = None  # 기존 부팅 볼륨 재사용 (image_id 와 상호 배타)
     data_mounts: list["DataMountSpec"] = []  # 기존 Manila share 직접 마운트 목록
+
+    @field_validator("admin_pass", mode="before")
+    @classmethod
+    def mask_password_input(cls, value):
+        # Wrap before length validation so field errors never retain a plaintext string.
+        return SecretStr(value) if isinstance(value, str) else value
+
+    @field_validator("admin_pass")
+    @classmethod
+    def validate_password_controls(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in value.get_secret_value()):
+            raise ValueError("admin_pass must not contain control characters")
+        return value
 
     @model_validator(mode="after")
     def validate_boot_source(self) -> "CreateInstanceRequest":
@@ -278,21 +296,11 @@ class DataMountSpec(BaseModel):
 
 
 class StorageAttachRequest(BaseModel):
-    file_storage_id: str
-    mount_point: str
-    read_only: bool = False
+    model_config = ConfigDict(extra="forbid")
 
-    @field_validator("mount_point")
-    @classmethod
-    def validate_mount_point(cls, v: str) -> str:
-        if not _MOUNT_POINT_RE.match(v):
-            raise ValueError("mount_point는 /mnt, /data, /srv, /home 하위 절대 경로여야 합니다 (예: /mnt/mydata)")
-        if any(seg in (".", "..") for seg in v.split("/")):
-            raise ValueError("mount_point에 '..' 또는 '.' 세그먼트는 허용되지 않습니다")
-        for blocked in _BLOCKED_MOUNT_PREFIXES:
-            if v == blocked.rstrip("/") or v.startswith(blocked):
-                raise ValueError(f"mount_point로 {blocked} 하위 경로는 허용되지 않습니다")
-        return v
+    file_storage_id: str
+    read_only: bool = False
+    fixed_ip: str | None = None
 
 
 class AttachVolumeRequest(BaseModel):

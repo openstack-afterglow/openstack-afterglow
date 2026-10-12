@@ -67,6 +67,7 @@ Returns the project's instance list. Each item's `flavor_name`/`image_name` is r
 | `id` | string | Instance UUID |
 | `name` | string | Instance name |
 | `status` | string | Nova status (`ACTIVE`, `SHUTOFF`, `BUILD`, `ERROR`, etc.) |
+| `os_type` | string \| null | Detail-only normalized OS from actual Glance or boot-volume metadata. Unknown/unavailable/ambiguous metadata is null; names are not OS evidence. |
 | `image_id` / `image_name` | string \| null | Boot image |
 | `flavor_id` / `flavor_name` | string \| null | Flavor |
 | `ip_addresses` | array | `{addr, type("fixed"\|"floating"), network_name}` |
@@ -134,7 +135,7 @@ Creates an instance synchronously. Waits for boot-source preparation, optional d
 | `flavor_id` | string | Yes | Nova flavor UUID |
 | `network_id` | string | No | Network UUID to attach. When omitted, the default network is determined automatically |
 | `key_name` | string | No | SSH keypair name |
-| `admin_pass` | string | No | Admin password (8–128 chars) |
+| `admin_pass` | string | No | Initial password, 8–128 Unicode characters, preserving spaces and rejecting C0/DEL/C1 controls. Sent unchanged as Nova `adminPass`; supported Windows also requires ConfigDrive |
 | `availability_zone` | string | No | Availability zone. When omitted, the server default AZ |
 | `security_groups` | array[string] | No | Security group names. The server adds the required GPU-monitoring SG |
 | `boot_volume_size_gb` | integer | No | Boot volume size (GB, 1–16384). When omitted, the server config default |
@@ -144,6 +145,14 @@ Creates an instance synchronously. Waits for boot-source preparation, optional d
 | `data_mounts` | array | No | Directly mount an existing Manila share `{file_storage_id, mount_point, read_only}` |
 
 > `data_mounts[].mount_point` allows only absolute paths under `/mnt`, `/data`, `/srv`, `/home`; `..`/`.` segments and system paths such as `/opt`·`/etc`·`/usr`·`/var` are rejected. Mounting an NFS share requires `network_id` (for subnet CIDR resolution).
+
+**Windows initial password**
+
+User synchronous/SSE and administrator SSE creation reread the selected Glance image or Cinder boot volume's `volume_image_metadata` through the target-project connection. Windows requires normalized `os_type=windows`, the exact `windows_initial_password_method=nova-adminpass-configdrive` marker, and a nonblank, control-free `os_admin_user`. Legacy `cloudbase-user-data` and unknown methods are unsupported. Existing volumes must have the exact provider-returned target project owner, including administrator requests. Unsupported Windows is explicitly blocked in the wizard rather than falling back to SSH/keypair access.
+
+The unchanged password is sent as Nova `adminPass` with `config_drive=true`. Afterglow does not generate password PowerShell/user-data or perform an after-create password reset; no SSH key is required. The image must actually enable Cloudbase-Init password injection and prefer ConfigDrive. An image property does not configure the guest, and an already-initialized Windows boot disk is not guaranteed to rerun the password plugin. Custom `userdata`, `github_username`, and `data_mounts` are rejected before admission/resource mutation. GPU flavors keep fresh quota/capacity admission but skip Linux bootstrap; Windows drivers and guest GPU use require separate verification. No-password and explicit non-Windows behavior remain unchanged.
+
+Secrets are excluded from validation responses, progress, provider/rollback error details, audit/cloud-init history, user metadata and review/browser persistence. Native guest metadata and the config drive contain an unencrypted password and require restricted access. ACTIVE/API completion is not first-boot/password/RDP readiness: allow approximately20–30 minutes, potentially more, plus initial RDP profile preparation. Configure TCP/3389 only for trusted sources; no ingress rule is automatically opened. See the [Cloudbase-Init password plugin](https://cloudbase-init.readthedocs.io/en/1.1.6/plugins.html#setting-password-main) and [Nova ConfigDrive](https://docs.openstack.org/nova/2025.2/admin/config-drive.html).
 
 
 **Response (201 Created)** — the created Nova server object
@@ -240,11 +249,13 @@ Cleans up the instance together with its associated resources (health token, dyn
 | `POST` | `/api/v1/instances/{instance_id}/start` | Start an instance (30/min) |
 | `POST` | `/api/v1/instances/{instance_id}/stop` | Stop an instance (30/min) |
 | `POST` | `/api/v1/instances/{instance_id}/reboot` | Reboot an instance (30/min) |
-| `POST` | `/api/v1/instances/{instance_id}/shelve` | Shelve an instance (release resources, keep disk, 30/min) |
+| `POST` | `/api/v1/instances/{instance_id}/shelve` | Shelve; host compute returns only after completed offload (30/min) |
 | `POST` | `/api/v1/instances/{instance_id}/unshelve` | Restore a shelved instance (30/min) |
 | `GET` | `/api/v1/instances/{instance_id}/console` | Return the VNC console URL |
 | `GET` | `/api/v1/instances/{instance_id}/log` | Return the console log |
 
+
+Consumer/scoped-admin UI exposes archive/delete/resize only for exact SHUTOFF and current write permission, rechecking the originating target/status/token/project/permission after confirmation. Native APIs and administrator recovery/migration remain unchanged. Stop retains compute allocations and quota. SHELVED is not offload proof; verify SHELVED_OFFLOADED or deletion before claiming returned host compute. Shelving retains instance/retained-volume usage; CPU/RAM quota release depends on the cloud counting mode.
 Each control action is performed after ownership verification and all return **`204 No Content`**. `start` assumes a stopped (`SHUTOFF`) state and `stop` assumes a running state; if the state does not match, the underlying Nova error is propagated as a `500`.
 
 ### GET /api/v1/instances/{instance_id}/console
@@ -502,52 +513,26 @@ The guest's QGA service and driver support are required. Nova targets the image'
 
 ## 9. Data Storage Attachments (storage-attachments)
 
-Grants a running VM access rules for a user-owned (or public) Manila file storage and returns the mount command to run in the guest.
+This is Manila authorization, not guest mounting. NFS grants a fresh exact instance fixed IP; CephFS uses `afterglow-<instance UUID.hex>`, not mutable names. Instance/share management authority is required; public visibility is not management permission. No SSH/agent/mount/unmount is executed.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/instances/{instance_id}/storage-attachments` | Grant a file storage access rule + return the mount command |
-| `GET` | `/api/v1/instances/{instance_id}/storage-attachments` | List attached data file storage |
-| `DELETE` | `/api/v1/instances/{instance_id}/storage-attachments/{file_storage_id}` | Revoke the access rule |
+| `POST` | `/api/v1/instances/{instance_id}/storage-attachments` | Grant an exact rule and return connection details |
+| `GET` | `/api/v1/instances/{instance_id}/storage-attachments` | Secret-free associations and actual provider state |
+| `POST` | `/api/v1/instances/{instance_id}/storage-attachments/{file_storage_id}/connection-info` | Explicit authorized active managed CephFS connection/key retrieval |
+| `DELETE` | `/api/v1/instances/{instance_id}/storage-attachments/{file_storage_id}` | Revoke only the exact tracked managed rule |
 
-### POST /api/v1/instances/{instance_id}/storage-attachments
+`StorageAttachRequest` accepts `{ "file_storage_id": "share-uuid", "read_only": false, "fixed_ip": "10.0.0.5" }`. NFS omission is allowed only for one unambiguous fixed IP. Floating addresses, CIDRs, foreign addresses and unsupported protocols fail before mutation. CephFS has no IP selection. `read_only` selects ro/rw authorization, not mount options. Obsolete `mount_point` and extra fields return422. VM-creation DataMountSpec remains unchanged.
 
-**Request body** (`StorageAttachRequest`)
+POST returns an object and GET a list containing `file_storage_id`, `name`, `share_proto`, `status`, `access_id`, `access_type`, `access_to`, `access_level`, actual `state`, `association_state` (`tracked/mismatch/untracked/unknown`), `managed`, `exports`, `share_network_id` and `share_network`. Active is not proof of a guest mount. Pending/error/mismatch is not mounted success.
 
-```json
-{ "file_storage_id": "uuid-string", "mount_point": "/mnt/data", "read_only": false }
-```
+GET never includes keys/keyrings/mount commands. A newly created active CephFS grant or explicit authorized connection-info POST may return `secret: {type:"cephx_key", value:"..."}` with `Cache-Control: no-store`. Disclosure is current-panel memory and clears on close or target/project/token/permission change; clearing does not revoke the provider credential. Guest-specific clients, export/network reachability and secure key transfer are manual.
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `file_storage_id` | string | Yes | Manila share UUID |
-| `mount_point` | string | Yes | Absolute path under `/mnt`·`/data`·`/srv`·`/home` (system paths/`..` forbidden) |
-| `read_only` | boolean | No | Whether to mount read-only (default false) |
+Compact secret-free Nova metadata binds exact share/rule/type/target/level/managed status. Preexisting rules are unmanaged and cannot be revoked here. Malformed tracking or changed provider ownership fails closed. Mutable names, broad IPs and another VM identity never select a rule for deletion.
 
-**Response (200 OK)** — the mount command differs by protocol.
+Manila2.65 revocation verifies exact `GET share-access-rules/{rule_id}` before deny and after. **Only exact HTTP404 proves absence**; empty/incomplete lists do not. Pending returns409, uncertain provider reads/actions502, preserving tracking. Remove tracking and return204 only after authoritative absence. Single/bulk VM deletion revokes managed grants before native server deletion; failure preserves server/tracking. Existing Union/prebuilt cleanup is separate.
 
-```json
-{
-  "file_storage_id": "uuid-string",
-  "share_proto": "CEPHFS",
-  "mount_command": "sudo mkdir -p ... && sudo mount -t ceph ...",
-  "keyring_file": "[client.data-rw-...]\n    key = ...\n",
-  "keyring_path": "/etc/ceph/ceph.client.data-rw-....keyring",
-  "access_id": "uuid-string"
-}
-```
-
-> For an NFS share, `keyring_file`/`keyring_path` are `null`, and an access rule based on the VM's fixed IP is granted (if the fixed IP cannot be found, `409`). If access is not permitted or the share is not `available`, `403`/`409` respectively.
-
-### GET /api/v1/instances/{instance_id}/storage-attachments
-
-**Response (200 OK)** — array `[{file_storage_id, name, share_proto, status}]`
-
-### DELETE /api/v1/instances/{instance_id}/storage-attachments/{file_storage_id}
-
-Revokes the CephX/NFS access rule granted to the instance and removes it from the metadata.
-
-**Response**: `204 No Content`
+A stale association whose share was deleted can be cleaned up after the exact rule lookup returns HTTP404. A remaining rule still requires current share-management authority and matching rule ownership/target before revocation. A parent lookup failure or rule403/503 is never treated as proven absence.
 
 ---
 
