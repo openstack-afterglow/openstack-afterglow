@@ -251,8 +251,9 @@ def _get_project_gpu_usage(conn: Any, project_id: str) -> dict[str, int]:
     scoped_project = getattr(conn, "_afterglow_authenticated_project_id", None) or getattr(
         conn, "current_project_id", None
     )
+    cross_project = scoped_project != project_id
     query: dict[str, Any] = {"details": True}
-    if scoped_project != project_id:
+    if cross_project:
         query["all_projects"] = True
         query["project_id"] = project_id
     try:
@@ -276,7 +277,9 @@ def _get_project_gpu_usage(conn: Any, project_id: str) -> dict[str, int]:
     flavor_cache: dict[str, dict[str, Any]] = {}
 
     for s in servers:
-        s_proj = getattr(s, "project_id", getattr(s, "tenant_id", None))
+        s_proj = getattr(s, "project_id", None) or getattr(s, "tenant_id", None)
+        if not s_proj and cross_project:
+            raise GpuQuotaUnavailable("GPU quota usage project ownership is unavailable")
         if s_proj and s_proj != project_id:
             continue
 

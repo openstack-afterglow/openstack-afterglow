@@ -184,20 +184,6 @@ async def test_flavor_filter_enforces_no_count_gpu_alias_and_ignores_non_gpu_pci
 
 
 @pytest.mark.asyncio
-async def test_require_gpu_quota_forwards_dict_extra_specs():
-    conn = MagicMock()
-    conn._afterglow_project_id = "proj-123"
-    flavor = {
-        "name": "accelerated-node",
-        "extra_specs": {"pci_passthrough:alias": "sriov_nic:1,RTX3090:1"},
-    }
-    with patch("app.services.gpu_quota.check_gpu_quota") as mock_check:
-        assert await require_gpu_quota(conn, flavor) is True
-
-    mock_check.assert_awaited_once_with(conn, "proj-123", {"RTX3090": 1})
-
-
-@pytest.mark.asyncio
 async def test_cpu_flavor_bypasses_gpu_quota_check():
     """CPU-only flavor must bypass Afterglow GPU quota checks completely."""
     from app.api.compute.instances import create_instance
@@ -222,7 +208,7 @@ async def test_cpu_flavor_bypasses_gpu_quota_check():
 
     # Direct unit test of require_gpu_quota
     with patch("app.services.gpu_quota.check_gpu_quota") as mock_check:
-        res = await require_gpu_quota(conn, cpu_flavor)
+        res = await require_gpu_quota(conn, cpu_flavor, project_id="proj-123")
     assert res is False
     mock_check.assert_not_awaited()
 

@@ -630,12 +630,10 @@ GpuQuotaDenied = gpu_quota.GpuQuotaDenied
 GpuQuotaUnavailable = gpu_quota.GpuQuotaUnavailable
 
 
-async def require_gpu_quota(conn: Any, flavor: Any) -> bool:
-    """Require an affirmative GPU quota decision before mutation."""
+async def require_gpu_quota(conn: Any, flavor: Any, *, project_id: str) -> bool:
+    """Require quota for the explicit target project, independently of auth scope."""
     if not is_gpu_flavor(flavor):
         return False
-
-    project_id = getattr(conn, "_afterglow_project_id", None) or getattr(conn, "current_project_id", None)
 
     flavor_extra_specs = (
         flavor.get("extra_specs") if isinstance(flavor, dict) else getattr(flavor, "extra_specs", None)

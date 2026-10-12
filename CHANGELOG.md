@@ -7,6 +7,15 @@
 
 ## [Unreleased]
 
+## [1.30.14] - 2026-10-13
+
+### Changed
+- 실제 운영 backend `v1.30.13`의 K3s GPU admission service/target-project 분리를 승인된 Afterglow 통합 결과와 정상 merge한다. Frontend/worker의 기존 `v1.30.12` 기준도 함께 보존하며 미완료 Palimpsest/block source·SQL088/089·sibling/operator dependency 변경은 포함하지 않는다.
+- Windows native Nova adminPass/ConfigDrive, 이미지 서비스 설정·최소 부트 디스크, 인스턴스/Manila lifecycle·offline extension·명시적 force backup, MCP 권한/명시 동의/클라이언트 관측, 전체 채팅 작업 영역·랜딩·언어 메뉴 등 아래 구현 기록을 이 patch의 source에 통합한다.
+- 배포는 immutable version image·복구 가능한 운영 snapshot·SQL084–087 호환성·canonical multinode Kolla·실제 공개 화면 검증을 조건으로 한다. 이 pre-publication 기록은 아직 운영 cutover 성공 증거가 아니며 최종 receipt는 `docs/testing.md`와 release OpenSpec에 별도로 남긴다.
+
+아래 `local, not deployed` 항목은 각 구현 당시 검증 범위를 보존한 기록이며 새 릴리스의 운영 검증으로 소급 해석하지 않는다.
+
 ### Afterglow 부분 변경 통합 (local, not deployed)
 - Palimpsest·블록 레이어의 진행 중인 변경을 작업 트리에 남기고 Windows native password/이미지 설정, 인스턴스·스토리지 lifecycle, 명시적 강제 백업, MCP client 관측, 랜딩·언어 메뉴의 완료된 Afterglow 변경만 통합했다. 버전·release tag·main·운영 상태는 변경하지 않는다.
 - 이미 삭제된 share의 잔여 VM grant 기록이 단건·bulk 삭제와 detach를 막지 않도록 exact-rule 부재를 먼저 확인한다. 남은 규칙의 share 관리 권한·identity와 불확실한 provider 실패의 fail-closed 보존은 유지한다. 수정 전3실패/수정 후 회귀와 실제 native HTTP5조건을 확인했다.
@@ -168,6 +177,13 @@
 - 검증: 권한/identity backend 선택 161, canonical access backend selector 276, 사용자 modal 22와 인접 역할 UI 15 통과. Backend 선택 Ruff 통과, Svelte check 0 errors/기존 DocCodeBlock warning 1, i18n check·scan 오류/누락 0, production build 통과. 실제 FastAPI·설치된 OpenStack SDK·loopback Keystone HTTP fixture에서 2페이지 범위·DAG 확장/403/404를 검증했다. 실제 Chromium에서 조회 장애→재조회·사용자 변경·빈 목록과 네 언어 × light/dark × 390/768/1440px 24조건의 수평 넘침 0·스크롤·작업 버튼 접근을 확인했다. 인증·Keystone·브라우저 API는 합성 경계이며 운영 조회/변경·배포·commit/push는 수행하지 않았다. Canonical backend runner는 기존 로컬 TOML의 line10,column9 파싱 실패로 시작하지 못하여 동일 source/selector를 `/tmp` config-discovery 문맥에서 실행했다. 로컬 설정은 변경하지 않았으며 전체 test:gate 통과로 보고하지 않는다.
 - 후속 확인: compiled production preview에서도 권한과 세션 동시 표시 및 JavaScript 오류 없음 확인. HEAD+해당 source/test/locale 9파일의 격리 index에서 architecture guard staged digest/review를 통과했다(`b497410c191653a04e0e559a3494ca67d1b5005d2063ad5dba5865d8c4460b61`, 2,531 files). 실제 index·공유 architecture review block을 보존했다.
 - **상속 응답 최종 수정/정정** — 최초 검증은 provenance link만 포함해 실제 effective scope의 `OS-INHERIT:inherited_to="projects"`를 누락했다. 이 marker와 대상 project가 함께 있는 정상 응답을 거부하던 길이 검사를 범위 키 1개 및 marker의 별도 검증으로 교체했다. 실제 SDK·Keystone loopback HTTP 회귀는 수정 전 503을 재현했고 수정 후 200·대상 프로젝트·암시 역할을 확인했다. 잘못된 marker/범위/unknown metadata는 계속 503으로 거부한다. 최종 권한/identity 167, access 276, scoped Ruff와 실제 Uvicorn HTTP smoke 통과. 최종 격리 architecture digest/review 통과(`943f2b28c4eb3e4cf984e02b219200f2f0a22dce9e7ba386fa2c9e76aa0f3c55`, 2,531 files). 앞의 161 및 `b497…`은 이 후속 수정 전 기록이며, 전체 gate·운영 acceptance·배포를 주장하지 않는다.
+
+## [1.30.13] - 2026-10-12
+
+### Fixed
+- **K3s GPU admission의 인증·대상 project 분리** — 서비스 인증은 기존 DB policy `openstack.service_project`로 고정하고 요청 project를 flavor public/private access 확인과 GPU quota/usage에 명시 전달한다. 비공유 flavor는400, metadata/access/authority 조회 불가는503으로 거부하며 empty extra specs를 명시 조회한다. 서비스 password의 tenant scope·membership 추가·admin fallback은 없다.
+- 기존 GPU/PCI alias·Afterglow DB default/project quota·미설정/0 거부·-1 무제한·부족409/fail-closed503과 native Drover provisioning을 유지한다. Quota·reservation·schema·capacity를 변경하지 않는다.
+- **검증 경계** — Focused64·K3s16/9·instances548/209 및 최종 `test:gate`(backend4431/frontend2569/contract174/functional35, Ruff check·format), working stamp/staged architecture check가 통과했다. 실제 DB·Keystone·Nova의 candidate ASGI에서 지정 target GPU admission200/`gpu_required=true`와 auth401·malformed400·schema422, 독립 tenant visibility를 확인하고 DB를 정상 종료했다. 배포된 endpoint proof는 아니며 artifact·rollout·deployed HTTP acceptance는 [검증 기록](docs/testing.md#gpu-admission-service-scope-2026-10-12)과 [OpenSpec](openspec/changes/gpu-admission-service-scope/tasks.md)에 pending이다.
 
 ## [1.30.12] - 2026-10-11
 

@@ -1,0 +1,17 @@
+{
+  "release": "1.30.14",
+  "approved_source": "aac6b9c5dc3e53fc3e430ca9ed96c30cacdbdb1e",
+  "deployed_backend_baseline": "25f3557fd56e5a298093053ef5825063a83b61c7",
+  "deployed_frontend_worker_baseline": "9cbfecad419b7d6c64e3a21b06a0cd80b1f44f93",
+  "scope": "Afterglow only; unfinished Palimpsest/block and SQL088/089, sibling releases/operator dependency changes excluded",
+  "source_sha256": "22c8c7f1f76dc459b1a293790a71b727eac89ffd6f473cb5edd10b9ab2ab2280",
+  "source_files": 2615,
+  "full_gate": {"exit_code":0,"backend_unit":5795,"frontend_unit":3300,"frontend_files":350,"contract":174,"functional":128,"functional_deselected":23,"ruff_files":586,"powershell_skipped":36},
+  "focused_gpu_capacity_storage_regressions":105,
+  "frontend_check":{"files":2370,"errors":0,"existing_warnings":3},
+  "frontend_build":{"exit_code":0,"vite":"8.2.2"},
+  "compiled_ui":{"conditions":16,"locales":["ko","en","ja","zh-CN"],"themes":["light","dark"],"widths":[390,1440],"horizontal_overflow":0,"page_errors":0},
+  "production_baseline":{"schema":"afterglow_kolla","engine":"MariaDB10.11.19","tables":90,"collation":"utf8mb3_general_ci","migration_ledger_present":false,"legacy_unkeyed_read_invocations":101,"legacy_keyed_mutations":0,"legacy_unresolved_invocations":0},
+  "hot_backup":{"tables":90,"sql_bytes":781732,"sql_sha256":"7c76f808b610da55e7f2d03302478cf2f36feec025e1175a1e35a8e9723c2f5f","encrypted_sha256":"381a2d01037c0a9fcf4f48d54e691b156c70243dbf280004cf8a360e677a90fc","gzip_and_decrypt_roundtrip":true,"actual_restore_not_yet_claimed":true},
+  "limits":["No production schema mutation/cutover claimed in this pre-publication receipt","Local/compiled checks are not live guest/RDP or paid inference acceptance","Old MCP readers/cleanup must be absent before new-only grant state is allowed","No historical migration replay or ledger/hash rewriting"]
+}

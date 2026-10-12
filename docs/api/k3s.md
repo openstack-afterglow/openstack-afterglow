@@ -8,7 +8,7 @@ nav_order: 40
 
 k3s 프로비저너는 **Magnum 없이** OpenStack Nova VM + cloud-init 만으로 k3s(경량 Kubernetes)를 직접 설치·운영하는 서브시스템입니다. 클러스터 생성/삭제/스케일, kubeconfig 다운로드, HA(embedded-etcd) 부트스트랩, 인증서 회전, 노드그룹, Stampede 오토스케일, Cloud Provider OpenStack 플러그인 배포를 담당합니다.
 
-Drover는 자체적으로 OpenStack 리소스를 프로비저닝하며 매 생성 전에 Afterglow의 `/api/v1/internal/k3s/gpu-admission`을 다시 확인합니다. Afterglow의 내부 K3s API는 GPU admission만 담당합니다.
+Drover는 자체적으로 OpenStack 리소스를 프로비저닝하며 매 GPU 워커 생성 전에 Afterglow의 `/api/v1/internal/k3s/gpu-admission`을 다시 확인합니다. Afterglow의 내부 K3s API는 GPU admission만 담당하며 Nova 생성 권한이나 용량 예약을 부여하지 않습니다.
 
 클러스터 내부 Kubernetes 리소스(Pod/Deployment/ConfigMap/Secret/Cloud Shell 등)를 조회·조작하는 프록시성 API는 별도 문서 [k3s 리소스 관리](k3s-resources.md)를 참고하세요.
 
@@ -29,6 +29,27 @@ Drover는 자체적으로 OpenStack 리소스를 프로비저닝하며 매 생�
 | Tags | `k3s`, `k3s-health`, `k3s-callback`, `k3s-templates`, `k3s-nodegroups`, `k3s-certificates` 등 |
 
 > 모든 경로는 `/api/v1` 단독 마운트입니다. 예외적으로 `POST /callback` 만 cloud-init baked VM 호환을 위해 레거시 `/api/k3s/callback` 를 함께 유지합니다(신규 레거시 추가 금지).
+
+## 내부 GPU admission: 인증 scope와 대상 project
+
+`POST /api/v1/internal/k3s/gpu-admission`은 브라우저 Bearer 대신 `X-Afterglow-K3s-Admission-Token`을 사용하는 Drover 전용 경계입니다. 토큰 값은 문서·명령 인자·로그에 기록하지 않습니다. JSON 본문은 `{"project_id":"<target-project-id>","flavor_id":"<nova-flavor-id>"}`입니다. 두 값은 공백을 제거한 뒤 `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`를 만족해야 합니다.
+
+- **고정 인증 project:** DB resource policy `openstack.service_project`의 ID만 `resource_policy_store.get_service_project_connection()`에 사용합니다. 요청 `project_id`로 서비스 password를 인증하거나 tenant membership을 추가하지 않습니다. 정책 누락·DB/Keystone 장애는 503이며 admin project·환경 설정으로 fallback하지 않습니다.
+- **대상 flavor 가시성:** 서비스 connection의 관리자 조회 가능 여부와 요청 project의 Nova 사용 가능 여부를 분리합니다. Public flavor는 허용하고, private flavor는 `get_flavor_access`의 `tenant_id` 또는 `project_id`에 요청 project가 있을 때만 허용합니다. Flavor가 없거나 공유되지 않았으면 400입니다. Extra specs가 비어 있으면 `fetch_flavor_extra_specs`로 명시 조회하며 metadata 404를 포함한 조회 실패는 CPU flavor로 간주하지 않고 503입니다.
+- **대상 quota/usage:** `require_gpu_quota(conn, flavor, project_id=project_id)`에 요청 project를 명시합니다. 인증 scope가 다르면 Nova `servers(details=True, all_projects=True, project_id=project_id)`를 조회하고 각 server의 실제 소유 project도 확인합니다. 다른 project는 제외하고 소유권을 확인할 수 없으면 503입니다. 서비스/admin project의 usage를 대신 쓰지 않습니다.
+- **변하지 않는 정본:** 기존 GPU/PCI alias 판별·정규화와 Afterglow DB quota를 유지합니다. `__default__` quota 위에 project override가 적용되며 미설정/0은 거부, -1은 무제한입니다. GPU 요청은 현재 usage와 requested count 합으로 검사합니다. 이 endpoint는 quota reservation·DB schema·membership·Placement capacity를 바꾸지 않습니다. 허용은 실제 Nova scheduling이나 GPU allocatable 성공의 증거가 아닙니다.
+
+| 결과 | HTTP / 본문 |
+|---|---|
+| GPU 허용 | 200 / `{"gpu_required":true}` |
+| 가시적인 비-GPU flavor | 200 / `{"gpu_required":false}` |
+| admission token 누락·불일치·미설정 | 401 |
+| 잘못된 문자열 ID / 존재하지 않거나 비공유 flavor | 400 |
+| 잘못된 JSON schema(필수 필드 누락·잘못된 타입) | 422 |
+| 실제 GPU quota 부족 | 409 |
+| 정책·인증·가시성·metadata·DB quota·Nova usage 확인 불가 | 503 (fail closed) |
+
+소스: [`internal_k3s.py`](../../backend/app/api/internal_k3s.py)의 `_get_project_flavor`·`k3s_gpu_admission`, [`resource_policy_store.py`](../../backend/app/services/resource_policy_store.py)의 `get_service_project_connection`, [`gpu_inventory.py`](../../backend/app/services/gpu_inventory.py)의 `require_gpu_quota`, [`gpu_quota.py`](../../backend/app/services/gpu_quota.py)의 `get_effective_gpu_quotas`·`_get_project_gpu_usage`·`check_gpu_quota`. Focused64개와 관련 K3s/instances target은 **test-passed**이며 실제 providers에 연결한 candidate ASGI200도 확인했습니다. Running API 교체·deployed HTTP acceptance는 별도 [검증 기록과 보호된 native smoke](../testing.md#gpu-admission-service-scope-2026-10-12)로 구분합니다.
 
 ## Drover 서비스 권한과 자격 등급
 
