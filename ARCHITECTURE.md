@@ -1200,8 +1200,8 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 {
   "schema_version": 1,
   "source_sha256": "5fad5099a1ec0e32eb088f5ae49ea5c72a4447b5cae07051a91f4d48bf571e11",
-  "reviewed_at": "2026-10-13T15:04:00Z",
-  "summary": "1.30.15 evidence docs only: docs/testing.md records exact-SHA CI/Helm, published image execution, canonical Kolla Afterglow-only rollout receipt (241/233/150 non-target containers preserved) and production browser verification of default-on switches with intercepted true/false request bodies; ARCHITECTURE/CHANGELOG release notes; K3s API doc adds observed GPU taint/toleration guidance; OpenSpec default-on-stampede-client archived with sanitized production evidence. No source, schema, dependency or deployment-asset change."
+  "reviewed_at": "2026-10-13T15:20:55Z",
+  "summary": "Documentation-only completion correction for v1.30.15: K3s API and testing docs withdraw CSI-incompatible standalone GPU taint advice; qualify initial-agent empty-specs fallback; archived OpenSpec evidence records actual CUDA Deployment image/command and local-only CSI rendering/taint-match/provider-error smoke. No source, schema, config, CSI template, runtime or production resource change."
 }
 ```
 <!-- architecture-review:end -->

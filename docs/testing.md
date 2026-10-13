@@ -34,6 +34,7 @@ nav_order: 8
   - `accelerator: RTX3060LHR` nodeSelector와 `nvidia.com/gpu: 1` Pod로 GPU가 0→1로 증설됐고, 자동 label·Running nvidia-smi·Operation SUCCEEDED를 확인했다.
   - 이후 cluster/VM/volume을 정리하고 임시 flavor access를 제거했다.
   - 상세 기록과 taint 없는 GPU worker의 축소 차단 경계는 Drover [live acceptance](https://github.com/openstack-afterglow/drover/blob/dev/docs/release-0.4.0.md#live-default-on-and-accelerator-acceptance)에 있다.
+- **문서 정정:** GPU Pod toleration만 추가하고 GPU nodegroup에 `NoSchedule` taint를 적용하라는 앞선 권고는 철회한다. 제공되는 Cinder/Manila/NFS CSI node DaemonSet에는 해당 사용자 taint toleration이 없어 CSI 배치·mount가 막힐 수 있다. CPU/control-plane으로 시스템 workload를 배치하는 것과 CSI toleration·실제 mount 확인은 별도 전제다. 초기 agent flavor metadata-error 경로는 일반 agent로 진행할 수 있으며, 이번 live 검증은 명시적 GPU nodegroup의 Stampede 증설뿐이다. Drover standalone Pod 예제의 CUDA registry·명령을 실제 Deployment에서 사용한 값으로 맞췄으나 standalone Pod manifest 자체의 live 실행 증거는 아니다. 코드·CSI template·taint·운영 환경은 추가로 변경하지 않았다.
 
 OpenSpec 기록은 `openspec/changes/archive/2026-10-13-default-on-stampede-client/`에 있다. 공개 증거에는 비밀·token·kubeconfig를 넣지 않는다.
 

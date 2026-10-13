@@ -251,6 +251,9 @@
       "afterglow.io/gpu": "true"
     },
     "podRunningWithNvidiaSmi": true,
+    "workloadKind": "Deployment",
+    "containerImage": "nvcr.io/nvidia/cuda:12.4.1-base-ubuntu22.04",
+    "containerCommand": ["sh", "-c", "set -eu; nvidia-smi --query-gpu=name,uuid,driver_version --format=csv,noheader; echo GPU_EXECUTION_OK; sleep 3600"],
     "cleanup": {
       "clusterStatus": "DELETED",
       "serversHttp": 404,
@@ -258,9 +261,32 @@
       "temporaryFlavorAccessRemoved": true
     }
   },
+  "documentationCorrectionSmoke": {
+    "scope": "local-only execution; synthetic render credentials and simulated provider error; no cloud or Kubernetes API calls",
+    "rc": 0,
+    "renderContext": "with_resource_policy_snapshot",
+    "csiGpuNoScheduleMatch": {
+      "cinder-csi-nodeplugin": false,
+      "manila-csi-nodeplugin": false,
+      "nfs-csi-node": false
+    },
+    "renderedNodeTolerations": {
+      "cinder-csi-nodeplugin": [],
+      "manila-csi-nodeplugin": [],
+      "nfs-csi-node": []
+    },
+    "initialAgentMetadataError": {
+      "returnedExtraSpecs": {},
+      "gpuCount": 0
+    },
+    "failedFirstHarness": "Bare Settings has no resource_id; corrected by using the canonical plugin context. This was a local harness failure, not a runtime deployment failure."
+  },
   "limitations": [
     "Browser evidence proves UI defaults and request bodies, not UI-driven resource creation.",
     "Natural GPU scale-in was blocked by protected_pod (K3s traefik with emptyDir on the untainted GPU worker); not forced.",
+    "The GPU NoSchedule taint plus only a GPU Pod toleration recommendation is withdrawn: supplied Cinder/Manila/NFS CSI node DaemonSets have no matching custom-GPU-taint tolerations. CSI toleration and real mount verification are separate prerequisites; no CSI template or taint was changed.",
+    "Initial agents can take the non-GPU path if empty list metadata is followed by a failed flavor-detail lookup. Initial GPU agent metadata-error handling was not live-verified; the live workload exercised an explicit GPU nodegroup's Stampede path.",
+    "The documented standalone Pod example uses the live Deployment's CUDA registry and command, but the standalone Pod manifest itself was not separately live-executed.",
     "Existing clusters, nodegroups and Nodes are not backfilled."
   ]
 }
