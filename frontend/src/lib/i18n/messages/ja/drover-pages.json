@@ -53,7 +53,7 @@
 	"create.keypair": "キーペア（任意）",
 	"create.stampedeMode": "Stampedeモード",
 	"create.stampedeHelp": "podのデプロイ時にノード（VM）を自動で拡張・縮小します。ノードグループでmin/maxを別途設定する必要があります。",
-	"create.stampedeWarning": "⚠ 開発段階の機能です。サーバーで<code>k3s.stampede_enabled = true</code>の設定が必要です。",
+	"create.stampedeWarning": "⚠ 開発段階の機能です。既定で有効になり、Stampedeが有効なノードグループのmin/maxの範囲内でのみノードを追加・削除します。最初に作成した既定ワーカーは自動で縮小しません。",
 	"nodegroup.role": "ロール",
 	"nodegroup.agent": "エージェント",
 	"nodegroup.server": "サーバー",

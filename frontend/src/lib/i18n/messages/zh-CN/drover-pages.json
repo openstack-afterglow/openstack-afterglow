@@ -53,7 +53,7 @@
 	"create.keypair": "密钥对（可选）",
 	"create.stampedeMode": "Stampede 模式",
 	"create.stampedeHelp": "部署 pod 时自动扩缩节点（虚拟机）。需要在节点组中单独设置 min/max。",
-	"create.stampedeWarning": "⚠ 此功能处于开发阶段。需要在服务器上设置 <code>k3s.stampede_enabled = true</code>。",
+	"create.stampedeWarning": "⚠ 此功能处于开发阶段。默认启用，仅在已启用 Stampede 的节点组 min/max 范围内添加或删除节点。最初创建的默认工作节点不会被自动缩减。",
 	"nodegroup.role": "角色",
 	"nodegroup.agent": "代理节点",
 	"nodegroup.server": "服务器",

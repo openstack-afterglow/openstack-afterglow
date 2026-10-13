@@ -248,7 +248,7 @@ SSE 스트림으로 클러스터를 비동기 생성합니다. **Rate limit: 5�
 | `allowed_cidrs` | string[] | — | SSH/API(22·6443) 접근 허용 CIDR. 미지정 시 `0.0.0.0/0`. **최대 20개**, 유효 CIDR 검증 |
 | `template_id` | string | — | 클러스터 템플릿. 지정 시 기본값 병합(본문 명시값 우선) |
 | `master_count` | int | — | `1`(단일) 또는 `3`(embedded-etcd HA). 그 외 값은 `422` |
-| `stampede_enabled` | bool | — | Stampede 오토스케일 모드(개발 단계, 기본 `false`) |
+| `stampede_enabled` | bool | — | Stampede 오토스케일 모드(개발 단계). Drover 0.4.13부터 생략 시 `true`이며 Afterglow 생성 화면도 기본으로 켜고 사용자가 끄면 `false`를 명시해 보낸다. 처음 만든 기본 워커 그룹은 자동 축소 대상이 아니다. |
 
 Drover 생성 화면은 `is_external` 네트워크만 선택지로 보여줍니다. **관리자 외부 Provider 기본 네트워크 사용**을 선택하면 `network_id`를 요청에서 생략하고, 외부 Provider 네트워크를 직접 선택하면 해당 ID를 전송합니다. 초기 클러스터 노드는 이 Provider 네트워크에 직접 연결됩니다. 내부 네트워크는 생성 시 선택하지 않으며, 필요한 경우 생성 후 아래 노드 인터페이스 API로 별도 NIC를 추가합니다.
 
@@ -302,7 +302,9 @@ Drover 생성 화면은 `is_external` 네트워크만 선택지로 보여줍니�
 
 ## Stampede 오토스케일
 
-클러스터 단위 오토스케일 모드를 제어합니다. 서버 전역 설정 `afterglow.conf [k3s] stampede_enabled` 가 꺼져 있으면 enable 시 `400`. 클러스터에 현재 사용자 자원 권한이 없으면(이전 버전에서 만든 클러스터) enable은 `409`이며 아래 재인가가 먼저 필요합니다.
+클러스터 단위 오토스케일 모드를 제어합니다. 새 클러스터는 생성 시 기본으로 켜집니다. Drover 서버 전역 설정 `[drover] stampede_enabled`(Kolla `drover_stampede_enabled`, 0.4.13부터 기본 `true`)가 꺼져 있으면 enable 시 `400`. 클러스터에 현재 사용자 자원 권한이 없으면(이전 버전에서 만든 클러스터) enable은 `409`이며 아래 재인가가 먼저 필요합니다.
+
+GPU flavor 노드는 kubelet 등록 시 `accelerator=<GPU 타입>`(예: `RTX3060LHR`, Afterglow GPU quota와 같은 정규화), `afterglow.io/gpu-type=<GPU 타입>`, `afterglow.io/gpu=true` label을 자동으로 가집니다. GPU Pod는 `spec.nodeSelector`(예: `accelerator: RTX3060LHR`)와 `resources.requests/limits`의 `nvidia.com/gpu`를 함께 지정해야 Stampede가 맞는 GPU 노드그룹을 증설하고 그 노드에 배치됩니다. 상세 계약은 Drover [GPU 타입 기반 스케줄링](https://github.com/openstack-afterglow/drover/blob/dev/docs/drover-api-v1-reference.md#gpu-타입-기반-스케줄링)을 따릅니다.
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
@@ -394,7 +396,7 @@ Stampede·상태 조정·게스트 클라우드 플러그인은 현재 프로젝
 
 - `role` 은 `agent` 만 허용 — 커스텀 `server` 노드그룹은 미지원 (`422`). `server` 그룹의 `node_count` 변경도 `422`.
 - `labels` 키/값, `taints` 키/값/effect 는 K8s 명명 규칙 정규식으로 화이트리스트 검증(쉘 메타문자 차단). `effect` 는 `NoSchedule`/`PreferNoSchedule`/`NoExecute` 만 허용. 위반 시 `422`.
-- `stampede_enabled=true` 는 `flavor_id` 필수, `min_size ≤ max_size`.
+- `stampede_enabled=true` 는 `flavor_id` 필수, `min_size ≤ max_size`. Afterglow 노드그룹 생성 화면은 오토스케일을 기본으로 켜며, API에서 생략하면 Drover는 명시적 `flavor_id`가 있는 그룹만 켭니다.
 
 ---
 

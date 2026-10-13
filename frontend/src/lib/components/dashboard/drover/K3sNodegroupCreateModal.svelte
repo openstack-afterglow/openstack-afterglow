@@ -24,7 +24,7 @@
 		role: 'agent',
 		node_count: 0,
 		flavor_id: '',
-		stampede_enabled: false,
+		stampede_enabled: true,
 		min_size: 0,
 		max_size: 5,
 	});

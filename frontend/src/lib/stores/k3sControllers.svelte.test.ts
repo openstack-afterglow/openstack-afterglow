@@ -199,6 +199,12 @@ describe('Drover handlers independently enforce current exact leaves', () => {
 		await list.createCluster(form);
 		expect(mocks.stream.mock.calls[0][1].body.key_name).toBe('unsafe-host-key');
 	});
+	it.each([[undefined, true], [true, true], [false, false]])('sends Stampede choice %s explicitly as %s', async (choice, expected) => {
+		grant('drover-clusters_editor');
+		const { list } = setup();
+		await list.createCluster({ ...form, stampede_enabled: choice });
+		expect(mocks.stream.mock.calls[0][1].body.stampede_enabled).toBe(expected);
+	});
 	it('uses workloads_editor or access_admin for resource reads/edits, never cluster editor alone', async () => {
 		const { detail } = setup();
 		detail.selectedNamespace = 'backend-private-namespace';

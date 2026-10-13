@@ -48,4 +48,17 @@ describe('Drover create SSH credential boundary', () => {
 		await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 		expect(onCreate).not.toHaveBeenCalled();
 	});
+	it('starts with Stampede on and submits an explicit opt-out when the switch is turned off', async () => {
+		grant('drover-clusters_editor');
+		const onCreate = vi.fn();
+		const { container } = render(K3sCreateClusterModal, { open: true, token: 'token', projectId: 'project', onCreate });
+		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(3));
+		const stampede = screen.getByRole('switch', { name: 'Stampede 모드' });
+		expect(stampede.getAttribute('aria-checked')).toBe('true');
+		await fireEvent.input(container.querySelector('[data-tour="drover-name"] input')!, { target: { value: 'opt-out' } });
+		await fireEvent.click(stampede);
+		expect(stampede.getAttribute('aria-checked')).toBe('false');
+		await fireEvent.click(container.querySelector('[data-tour="drover-create-submit"]') as HTMLButtonElement);
+		expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ name: 'opt-out', stampede_enabled: false }));
+	});
 });

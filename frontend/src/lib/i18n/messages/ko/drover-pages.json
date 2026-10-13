@@ -53,7 +53,7 @@
 	"create.keypair": "키페어 (선택)",
 	"create.stampedeMode": "Stampede 모드",
 	"create.stampedeHelp": "pod 배포 시 노드(VM)를 자동으로 확장/축소합니다. 노드그룹에서 min/max를 별도 설정해야 합니다.",
-	"create.stampedeWarning": "⚠ 개발 단계 기능입니다. 서버에서 <code>k3s.stampede_enabled = true</code> 설정이 필요합니다.",
+	"create.stampedeWarning": "⚠ 개발 단계 기능입니다. 기본으로 켜지며 Stampede가 켜진 노드그룹의 min/max 안에서만 노드를 추가·제거합니다. 처음 만든 기본 워커는 자동으로 줄이지 않습니다.",
 	"nodegroup.role": "역할",
 	"nodegroup.agent": "에이전트",
 	"nodegroup.server": "서버",

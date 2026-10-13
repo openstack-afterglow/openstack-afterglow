@@ -35,7 +35,7 @@
 		}) => void;
 	} = $props();
 
-	let form = $state({ name: '', agent_count: 1, agent_flavor_id: '', network_id: '', key_name: '', os_type: 'ubuntu', template_id: '', master_count: 1, stampede_enabled: false });
+	let form = $state({ name: '', agent_count: 1, agent_flavor_id: '', network_id: '', key_name: '', os_type: 'ubuntu', template_id: '', master_count: 1, stampede_enabled: true });
 	let flavors = $state<K3sFlavor[]>([]);
 	let networks = $state<K3sNetwork[]>([]);
 	let keypairs = $state<K3sKeypair[]>([]);
@@ -46,7 +46,7 @@
 		if (!open) return;
 		untrack(() => {
 			if (!$k3sPermissions.editClusters) return;
-			form = { name: '', agent_count: 1, agent_flavor_id: '', network_id: '', key_name: '', os_type: 'ubuntu', template_id: '', master_count: 1, stampede_enabled: false };
+			form = { name: '', agent_count: 1, agent_flavor_id: '', network_id: '', key_name: '', os_type: 'ubuntu', template_id: '', master_count: 1, stampede_enabled: true };
 			void loadDeps();
 		});
 	});

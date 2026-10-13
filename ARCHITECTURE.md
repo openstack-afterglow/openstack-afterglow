@@ -4,7 +4,7 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 및 Cloud Shell 모두 `1.30.14`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 및 Cloud Shell 모두 `1.30.15`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 **1.30.14 production release integration (2026-10-13):** 실제 운영 backend `v1.30.13` (`25f3557f`)의 service-project 인증과 target-project GPU admission을 `aac6b9c5` Afterglow 결과에 정상 merge한 `3572268a`를 불변 `v1.30.14`로 발행했다. 시작 시 frontend/Notion worker는 `v1.30.12`였다. Old API·Notion worker6개를 모두 멈추고 cold SQL·Redis backup의 격리 restore를 통과한 뒤 SQL084–087의9개 statement만 적용했다. 기존90tables/2285rows·legacy grant fields·invocation ledger를 보존했고 권한/동의 backfill이나 historical073–075 replay는 없다. Canonical `/etc/kolla/multinode`와 Afterglow tag로 genconfig·pull·prechecks·controller별 reconfigure를 수행하여 API/frontend/worker9개가 같은 revision·immutable digest로 실행되고 API/frontend6개가 healthy였다(worker에는 Docker healthcheck가 없다). 원래 key/config/inventory/volume·624개 기존 비대상 container·sibling/operator dependency·미완료 Palimpsest/block source·SQL088/089를 보존한다. 새 MCP consumer 재개 이후 image-only downgrade는 안전하지 않다. 실제 공개/API/UI 및 post-rollout 관측은 `docs/testing.md`의 이번 release receipt로 분리하며 guest/RDP·유료 inference·모든 provider의 동작 수용을 뜻하지 않는다. 이 사후 기록은 추가 source/schema/서비스 구조를 바꾸지 않는다.
 
@@ -640,7 +640,7 @@ Lumen 브라우저 BFF는 기존 `/v1/{path}` 기본 전달을 유지하되 `/ap
 
 Realtime browser intent key는 user/project/model/voice fingerprint가 같고 admission/WS 준비 실패의 결과가 불확실할 때 재사용한다. 명백한 4xx 또는 scope 변경에는 폐기한다. OpenAI 수동 `response.cancel`은 연결을 유지하고, Gemini Live는 별도의 response cancel wire가 없어 수동 중단 시 세션을 닫는다(자동 barge-in은 Gemini VAD).
 
-Drover 생성 모달(`K3sCreateClusterModal.svelte`)은 `/api/v1/networks`의 `is_external=true` 항목만 선택지로 노출하고 내부 `Default` 이름 자동 선택과 Tenant/Provider 전환을 제공하지 않는다. 빈 선택은 기존 caller가 `network_id`를 생략하여 Drover의 관리자 외부 provider 기본 정책을 사용하고, 명시 선택은 해당 ID를 그대로 전달한다. 노드는 provider 네트워크에 직접 연결하며 내부 NIC는 생성 후 별도 attach 경로로 추가한다. API admission·guest NIC pin·작업 snapshot의 소유자는 독립 Drover이며 Afterglow는 이를 중복 구현하지 않는다. 상세 계약은 [`docs/api/k3s.md`](docs/api/k3s.md)를 따른다.
+Drover 생성 모달(`K3sCreateClusterModal.svelte`)은 `/api/v1/networks`의 `is_external=true` 항목만 선택지로 노출하고 내부 `Default` 이름 자동 선택과 Tenant/Provider 전환을 제공하지 않는다. 빈 선택은 기존 caller가 `network_id`를 생략하여 Drover의 관리자 외부 provider 기본 정책을 사용하고, 명시 선택은 해당 ID를 그대로 전달한다. 노드는 provider 네트워크에 직접 연결하며 내부 NIC는 생성 후 별도 attach 경로로 추가한다. Stampede 스위치와 노드그룹 생성 모달(`K3sNodegroupCreateModal.svelte`)의 오토스케일 스위치는 기본으로 켜져 있다. `k3sClusterListController`는 생략 시 Stampede를 켜는 Drover 0.4.13 계약 때문에 사용자의 선택을 항상 `stampede_enabled` boolean으로 보내 끈 선택을 명시적 opt-out으로 유지한다. 노드그룹 생성은 기존처럼 boolean과 켜진 경우의 min/max를 보낸다. API admission·guest NIC pin·작업 snapshot·Stampede 동작과 GPU `accelerator` node label의 소유자는 독립 Drover이며 Afterglow는 이를 중복 구현하지 않는다. 상세 계약은 [`docs/api/k3s.md`](docs/api/k3s.md)를 따른다.
 
 ### Waygate VPN control plane과 네트워크 연결
 
@@ -1197,9 +1197,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "22c8c7f1f76dc459b1a293790a71b727eac89ffd6f473cb5edd10b9ab2ab2280",
-  "reviewed_at": "2026-10-12T18:09:47Z",
-  "summary": "Reviewed approved Afterglow aac6b9c5 plus deployed v1.30.13 GPU service/target admission hotfix, exact four source files retained; patch1.30.14 metadata only. Preserved source exclusions for unfinished Palimpsest/block and088/089, sibling/operator pins/private inputs. SQL084-087 restored-snapshot qualification and old-reader quiescence before nullable personal deadlines required before canonical Afterglow Kolla rollout; no production cutover claimed."
+  "source_sha256": "5fad5099a1ec0e32eb088f5ae49ea5c72a4447b5cae07051a91f4d48bf571e11",
+  "reviewed_at": "2026-10-13T11:21:51Z",
+  "summary": "1.30.15: Drover cluster create Stampede switch and node group autoscale switch default on; k3sClusterListController always sends the stampede_enabled boolean so off stays an explicit opt-out under Drover v0.4.13 omitted-true contract; default-visible warning copy corrected in ko/en/ja/zh-CN; K3s API/architecture/changelog document accelerator nodeSelector plus nvidia.com/gpu usage (Drover owns autoscaling/labels). Frontend-only plus patch version metadata; no backend endpoint, schema, migration, config or topology change."
 }
 ```
 <!-- architecture-review:end -->

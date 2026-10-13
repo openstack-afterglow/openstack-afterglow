@@ -53,7 +53,7 @@
 	"create.keypair": "Key pair (optional)",
 	"create.stampedeMode": "Stampede mode",
 	"create.stampedeHelp": "Automatically scales nodes (VMs) up/down when pods are deployed. Configure min/max separately in the node group.",
-	"create.stampedeWarning": "⚠ This feature is in development. The server requires <code>k3s.stampede_enabled = true</code>.",
+	"create.stampedeWarning": "⚠ This feature is in development. It is on by default and only adds or removes nodes within the min/max of node groups with Stampede on. The initial default workers are never scaled down automatically.",
 	"nodegroup.role": "Role",
 	"nodegroup.agent": "Agent",
 	"nodegroup.server": "Server",

@@ -76,7 +76,8 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
         ...(form.network_id ? { network_id: form.network_id } : {}),
         ...(get(k3sPermissions).adminCredentials && form.key_name ? { key_name: form.key_name } : {}),
         ...(form.template_id ? { template_id: form.template_id } : {}),
-        ...(form.stampede_enabled ? { stampede_enabled: true } : {}),
+        // Drover enables omitted requests; always send the user's choice so switching it off opts out.
+        stampede_enabled: form.stampede_enabled ?? true,
       };
       for await (const msg of streamK3sProgress('/api/v1/k3s/clusters/async', {
         method: 'POST', body, token: opts.token(), projectId: opts.projectId(),
