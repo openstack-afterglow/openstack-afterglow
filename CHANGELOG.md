@@ -12,6 +12,7 @@
 ### Changed
 - Drover 클러스터 생성 화면의 Stampede 스위치와 노드그룹 생성 화면의 오토스케일 스위치를 기본으로 켠다. 생략 시 Stampede를 켜는 Drover `v0.4.13`에 맞춰 클러스터 생성 요청은 사용자의 선택을 항상 `stampede_enabled` boolean으로 보내므로 끈 선택은 명시적 opt-out으로 유지된다. 기본 노출되는 안내 문구를 네 언어에서 실제 동작(노드그룹 min/max 범위, 초기 기본 워커 비축소)에 맞게 고쳤다.
 - GPU Pod의 `accelerator` nodeSelector와 `nvidia.com/gpu` resources 사용법을 K3s API 문서에 추가했다. Stampede 동작·GPU label 정본은 독립 Drover가 소유한다.
+- 불변 `v1.30.15` image를 발행하고 canonical multinode Kolla로 세 controller의 API/frontend/worker9개를 같은 revision·digest로 교체했다(migration 없음, 기존 비대상 container 보존). 실제 운영 생성 화면에서 두 스위치가 기본으로 켜지고 끈 선택은 `false` 본문으로 전송됨을 확인했으며, 증거는 `docs/testing.md`와 archive된 OpenSpec에 남긴다.
 
 ## [1.30.14] - 2026-10-13
 

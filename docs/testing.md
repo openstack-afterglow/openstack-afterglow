@@ -6,6 +6,37 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 1.30.15 Stampede 기본 활성화 생성 화면 운영 검증 (2026-10-13)
+
+`default-on-stampede-client`는 Drover `v0.4.13`의 생략=활성 계약에 맞춰 클러스터·노드그룹 생성 화면의 Stampede 스위치를 기본으로 켜고, 클러스터 생성 요청에는 사용자의 선택을 항상 boolean으로 보낸다. Frontend 전용 patch이며 DB migration·backend API·설정 변경은 없다. `v1.30.14..v1.30.15`의 비문서 변경은 frontend source/test/i18n과 version manifest·lock·Helm chart version뿐이다.
+
+- **Source/CI:** `6deffce1a81f44279dad7600ea9c6cdc032f54a3`, 불변 annotated tag `v1.30.15`. 커밋 전 `npm run test:gate`가 rc0였다(backend unit5795, frontend3305/351 files, contract174, functional128). `i18n:check`/`i18n:scan`과 svelte check는 error0이다(기존 warning3). 정확한 SHA의 [dev Docker CI](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/38390146794)(layered tests 포함), [tag Docker CI](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/38390970773), [Helm Chart Release](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/38390970449)가 성공했다.
+- **Published image:** 아래 세 digest는 amd64+attestation index다. 세 image를 `--network none`으로 실제 실행해 version `1.30.15`, `x86_64`/`x64`, OCI revision `6deffce1`을 확인했다.
+  - API `sha256:154ed3006a3887adfb8b408628aaf53d0ee1fd19400f2e1d9ac259399a1c75c8`
+  - frontend `sha256:920567335691bb9d88cab150eee9da48dc7d77fdd48cf9afb423f23ad01c36e4`
+  - worker `sha256:defb7543749ba0574ce354f9623e5307c7e86f28db806a9f537c801dfeb3507c`
+- **Kolla rollout:** 보호 backup `/etc/kolla/.afterglow-rollout-backups/1.30.15/`에 globals 원본(SHA256 `c428f5fa…`)을 보존하고 `afterglow_image_tag`와 세 image ref만 바꿨다(새 SHA256 `4157155e…`). Canonical `/etc/kolla/multinode` `--tags afterglow`의 prechecks·genconfig·pull과 controller1→2→3 reconfigure가 모두 rc0였다.
+  - 세 controller의 API/frontend/worker9개가 위 digest·revision으로 재생성됐고 restart는 0이다. API/frontend6개는 healthy이며 Notion worker에는 Docker healthcheck가 없다.
+  - 기존 비대상 running container241/233/150개의 ID·image·시작 시각·restart가 그대로였다.
+  - 공개 `/health`·`/api/v1/health`는 200이었다. Receipt `rollout-receipt.json`의 시각은 `2026-10-13T14:49:02Z`다.
+- **실제 운영 화면:** 새 profile의 headless Chrome for Testing 150에서 `test` 계정으로 실제 로그인해 확인했다.
+  - 두 창 모두 열자마자 `aria-checked=true`였고 새 안내 문구가 표시됐다. 대상은 클러스터 생성 창의 `Stampede 모드`와, ACTIVE 수락 클러스터 `dc52541f-4258-41dd-b6f4-8fcfa017808c` 노드그룹 추가 창의 `Stampede 오토스케일`(min0/max5)이다.
+  - 네 번의 생성 POST는 browser 안에서 본문만 기록하고 503으로 응답해 서버로 보내지 않았다. 기록한 본문은 다음과 같다.
+    - 클러스터 기본값: `{"name":"qa-intercept-13015-on","agent_count":1,"os_type":"ubuntu","stampede_enabled":true}`
+    - 다시 연 클러스터 창에서 스위치를 끔: `{"name":"qa-intercept-13015-off","agent_count":1,"os_type":"ubuntu","stampede_enabled":false}`
+    - 노드그룹 기본값(GPU flavor 선택): `{"name":"qa-ng-13015-on","role":"agent","node_count":0,"flavor_id":"fe5a5a4c-a568-481d-982b-469967f64808","stampede_enabled":true,"min_size":0,"max_size":5}`
+    - 다시 연 노드그룹 창에서 스위치를 끔: `{"name":"qa-ng-13015-off","role":"agent","node_count":0,"flavor_id":null,"stampede_enabled":false}`
+  - 이후 Drover 목록에 `qa-intercept*` cluster는 없었고, 수락 클러스터의 nodegroup은 `default-server`/`default-agent`/`gpu-accel-0413`뿐이었다.
+  - 화면 캡처는 `~/.local/share/afterglow-proofs/afterglow-13015-qa-3fa2_mr_/`의 `cluster-create-default-on.webp`, `nodegroup-create-default-on.webp`다.
+  - 이 browser 검증은 UI 기본값과 요청 본문의 증거이며, UI로 실제 자원을 생성했다는 증거는 아니다.
+- **서버 기본값과 GPU 실행:** 운영 Drover `v0.4.13`에서 다음을 확인했다.
+  - `stampede_enabled`를 생략하면 cluster는 `true`, default 그룹은 `false`이고, GPU flavor nodegroup은 `true`였다.
+  - `accelerator: RTX3060LHR` nodeSelector와 `nvidia.com/gpu: 1` Pod로 GPU가 0→1로 증설됐고, 자동 label·Running nvidia-smi·Operation SUCCEEDED를 확인했다.
+  - 이후 cluster/VM/volume을 정리하고 임시 flavor access를 제거했다.
+  - 상세 기록과 taint 없는 GPU worker의 축소 차단 경계는 Drover [live acceptance](https://github.com/openstack-afterglow/drover/blob/dev/docs/release-0.4.0.md#live-default-on-and-accelerator-acceptance)에 있다.
+
+OpenSpec 기록은 `openspec/changes/archive/2026-10-13-default-on-stampede-client/`에 있다. 공개 증거에는 비밀·token·kubeconfig를 넣지 않는다.
+
 ## 1.30.14 운영 기준 통합 검증 (2026-10-13)
 
 이 릴리스는 운영 backend `v1.30.13`/`25f3557f`와 승인된 Afterglow commit `aac6b9c5`를 격리 local `dev`에서 정상 merge한 `3572268ab3ccd27daea5a134b3c46ba8f1c9dc29`다. 시작 시 세 controller의 frontend/Notion worker는 `v1.30.12`/`9cbfecad`였다. 미완료 Palimpsest/block layer·SQL088/089·sibling/operator dependency 변경과 공유 private source/index는 제외·보존한다. 실제 root/operator globals가 다르므로 authoritative `/etc/kolla/globals.d/90-openstack-afterglow-globals.yml`의 실행 중 digest를 기준으로 했다.

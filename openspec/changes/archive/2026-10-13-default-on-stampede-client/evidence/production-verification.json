@@ -1,0 +1,266 @@
+{
+  "release": "v1.30.15",
+  "revision": "6deffce1a81f44279dad7600ea9c6cdc032f54a3",
+  "scope": "frontend-only: default-on Stampede switches; explicit stampede_enabled boolean on cluster create; no migration/backend/config change",
+  "sourceQualification": {
+    "testGate": {
+      "rc": 0,
+      "backendUnit": 5795,
+      "frontendTests": 3305,
+      "frontendFiles": 351,
+      "contract": 174,
+      "functional": 128
+    },
+    "i18nCheckErrors": 0,
+    "i18nScanErrors": 0,
+    "svelteCheckErrors": 0,
+    "svelteCheckPreexistingWarnings": 3
+  },
+  "ci": {
+    "devDocker": {
+      "run": 38390146794,
+      "conclusion": "success"
+    },
+    "tagDocker": {
+      "run": 38390970773,
+      "conclusion": "success"
+    },
+    "helmChartRelease": {
+      "run": 38390970449,
+      "conclusion": "success"
+    },
+    "tagObject": "4ea92fc08447b2d64d0d732fe782924ecee8e97b"
+  },
+  "images": {
+    "afterglow_backend": {
+      "ref": "ghcr.io/openstack-afterglow/afterglow-api@sha256:154ed3006a3887adfb8b408628aaf53d0ee1fd19400f2e1d9ac259399a1c75c8",
+      "platforms": [
+        "amd64",
+        "attestation"
+      ],
+      "runtime": {
+        "version": "1.30.15",
+        "arch": "x86_64"
+      },
+      "ociRevision": "6deffce1a81f44279dad7600ea9c6cdc032f54a3"
+    },
+    "afterglow_frontend": {
+      "ref": "ghcr.io/openstack-afterglow/afterglow@sha256:920567335691bb9d88cab150eee9da48dc7d77fdd48cf9afb423f23ad01c36e4",
+      "platforms": [
+        "amd64",
+        "attestation"
+      ],
+      "runtime": {
+        "version": "1.30.15",
+        "arch": "x64"
+      },
+      "ociRevision": "6deffce1a81f44279dad7600ea9c6cdc032f54a3"
+    },
+    "afterglow_notion_worker": {
+      "ref": "ghcr.io/openstack-afterglow/afterglow-worker@sha256:defb7543749ba0574ce354f9623e5307c7e86f28db806a9f537c801dfeb3507c",
+      "platforms": [
+        "amd64",
+        "attestation"
+      ],
+      "runtime": {
+        "version": "1.30.15",
+        "arch": "x86_64"
+      },
+      "ociRevision": "6deffce1a81f44279dad7600ea9c6cdc032f54a3"
+    },
+    "execution": "docker run --rm --platform linux/amd64 --network none"
+  },
+  "kolla": {
+    "inventory": "/etc/kolla/multinode",
+    "tags": "afterglow",
+    "backup": "/etc/kolla/.afterglow-rollout-backups/1.30.15/",
+    "globals": {
+      "path": "/etc/kolla/globals.d/90-openstack-afterglow-globals.yml",
+      "beforeSha256": "c428f5fa2133a773ca282b71dc7438c38e960037a8f150cf5915684e772a7e9a",
+      "afterSha256": "4157155ee72969a0a7dc7f17c488ee948653e82cc7953ef0bd376780bdb4d43d",
+      "changedKeys": [
+        "afterglow_image_tag",
+        "afterglow_backend_image_ref",
+        "afterglow_frontend_image_ref",
+        "afterglow_worker_image_ref"
+      ]
+    },
+    "recaps": [
+      [
+        "prechecks",
+        null,
+        0
+      ],
+      [
+        "genconfig",
+        null,
+        0
+      ],
+      [
+        "pull",
+        null,
+        0
+      ],
+      [
+        "reconfigure",
+        "dms-controller1",
+        0
+      ],
+      [
+        "reconfigure",
+        "dms-controller2",
+        0
+      ],
+      [
+        "reconfigure",
+        "dms-controller3",
+        0
+      ]
+    ]
+  },
+  "rollout": {
+    "receiptObservedAt": "2026-10-13T14:49:02.403803+00:00",
+    "baselineRunningContainers": {
+      "dms-controller1": 244,
+      "dms-controller2": 236,
+      "dms-controller3": 153
+    },
+    "unchangedNonTargetContainers": {
+      "dms-controller1": 241,
+      "dms-controller2": 233,
+      "dms-controller3": 150
+    },
+    "comparedFields": [
+      "id",
+      "image",
+      "startedAt",
+      "restartCount"
+    ],
+    "perController": {
+      "dms-controller1": {
+        "afterglow_backend": {
+          "health": "healthy",
+          "restarts": 0
+        },
+        "afterglow_frontend": {
+          "health": "healthy",
+          "restarts": 0
+        },
+        "afterglow_notion_worker": {
+          "health": null,
+          "restarts": 0
+        }
+      },
+      "dms-controller2": {
+        "afterglow_backend": {
+          "health": "healthy",
+          "restarts": 0
+        },
+        "afterglow_frontend": {
+          "health": "healthy",
+          "restarts": 0
+        },
+        "afterglow_notion_worker": {
+          "health": null,
+          "restarts": 0
+        }
+      },
+      "dms-controller3": {
+        "afterglow_backend": {
+          "health": "healthy",
+          "restarts": 0
+        },
+        "afterglow_frontend": {
+          "health": "healthy",
+          "restarts": 0
+        },
+        "afterglow_notion_worker": {
+          "health": null,
+          "restarts": 0
+        }
+      }
+    },
+    "allTargetContainersRecreatedWithExpectedDigestAndRevision": true,
+    "publicEndpoints": {
+      "https://cloud.dmslab.re.kr/health": 200,
+      "https://cloud.dmslab.re.kr/api/v1/health": 200
+    }
+  },
+  "browser": {
+    "engine": "headless Chrome for Testing 150.0.7871.24, fresh profile",
+    "origin": "https://cloud.dmslab.re.kr",
+    "identity": "real login as test user, project 99f2f82cb2d14788a0723af31c16dab0 (credential not recorded)",
+    "clusterCreateModal": {
+      "switch": "Stampede 모드",
+      "ariaCheckedOnOpen": "true",
+      "warningTextUpdated": true
+    },
+    "nodegroupCreateModal": {
+      "cluster": "dc52541f-4258-41dd-b6f4-8fcfa017808c",
+      "switch": "Stampede 오토스케일",
+      "ariaCheckedOnOpen": "true",
+      "minSize": 0,
+      "maxSize": 5
+    },
+    "interception": "request bodies captured in-page; answered 503; never forwarded",
+    "capturedBodies": [
+      {
+        "path": "/api/v1/k3s/clusters/async",
+        "body": "{\"name\":\"qa-intercept-13015-on\",\"agent_count\":1,\"os_type\":\"ubuntu\",\"stampede_enabled\":true}"
+      },
+      {
+        "path": "/api/v1/k3s/clusters/async",
+        "body": "{\"name\":\"qa-intercept-13015-off\",\"agent_count\":1,\"os_type\":\"ubuntu\",\"stampede_enabled\":false}"
+      },
+      {
+        "path": "/api/v1/k3s/clusters/dc52541f-4258-41dd-b6f4-8fcfa017808c/nodegroups",
+        "body": "{\"name\":\"qa-ng-13015-on\",\"role\":\"agent\",\"node_count\":0,\"flavor_id\":\"fe5a5a4c-a568-481d-982b-469967f64808\",\"stampede_enabled\":true,\"min_size\":0,\"max_size\":5}"
+      },
+      {
+        "path": "/api/v1/k3s/clusters/dc52541f-4258-41dd-b6f4-8fcfa017808c/nodegroups",
+        "body": "{\"name\":\"qa-ng-13015-off\",\"role\":\"agent\",\"node_count\":0,\"flavor_id\":null,\"stampede_enabled\":false}"
+      }
+    ],
+    "postCheck": {
+      "qaInterceptClusters": [],
+      "acceptanceClusterNodegroups": [
+        "default-agent",
+        "default-server",
+        "gpu-accel-0413"
+      ]
+    },
+    "screenshots": [
+      "/Users/pieroot/.local/share/afterglow-proofs/afterglow-13015-qa-3fa2_mr_/cluster-create-default-on.webp",
+      "/Users/pieroot/.local/share/afterglow-proofs/afterglow-13015-qa-3fa2_mr_/nodegroup-create-default-on.webp"
+    ]
+  },
+  "droverLiveAcceptance": {
+    "record": "https://github.com/openstack-afterglow/drover/blob/dev/docs/release-0.4.0.md#live-default-on-and-accelerator-acceptance",
+    "cluster": "dc52541f-4258-41dd-b6f4-8fcfa017808c",
+    "clusterStampedeDefault": true,
+    "defaultGroupsStampede": false,
+    "gpuNodegroup": "7eb79bbf-2c71-4687-8617-82e444b33a89",
+    "gpuNodegroupStampedeDefault": true,
+    "scaleUpOperation": {
+      "id": "d8bc2c4f-7951-4239-80e5-3d07a27f78fb",
+      "status": "SUCCEEDED"
+    },
+    "nodeLabels": {
+      "accelerator": "RTX3060LHR",
+      "afterglow.io/gpu-type": "RTX3060LHR",
+      "afterglow.io/gpu": "true"
+    },
+    "podRunningWithNvidiaSmi": true,
+    "cleanup": {
+      "clusterStatus": "DELETED",
+      "serversHttp": 404,
+      "bootVolumesHttp": 404,
+      "temporaryFlavorAccessRemoved": true
+    }
+  },
+  "limitations": [
+    "Browser evidence proves UI defaults and request bodies, not UI-driven resource creation.",
+    "Natural GPU scale-in was blocked by protected_pod (K3s traefik with emptyDir on the untainted GPU worker); not forced.",
+    "Existing clusters, nodegroups and Nodes are not backfilled."
+  ]
+}
