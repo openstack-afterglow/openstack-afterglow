@@ -1,0 +1,136 @@
+{
+  "release": "v1.30.16",
+  "revision": "eaa5772a6ebcab75dc3748add134b92d9f33f4e3",
+  "evidenceSource": "Observed DMS Lab production rollout facts — 2026-10-14 (UTC); sanitized summary, no credentials or user content",
+  "receipt": "docs/testing.md#production-rollout-2026-10-14",
+  "ci": {
+    "exactSha": "success",
+    "tag": "v1.30.16",
+    "helmChartRelease": "success",
+    "docker": "success"
+  },
+  "images": {
+    "ociRevision": "eaa5772a",
+    "afterglow-api": {"digest": "sha256:70cceb9edfc1b2935aaf2c40fcc9afa3e2ed31a715ec65dda1a80d91cb90b027", "deployed": true},
+    "afterglow": {"digest": "sha256:f6d393ba16527fdba4aa689a2913371fea0f82a13227ca596b114ebda2ec94c8", "deployed": true},
+    "afterglow-worker": {"digest": "sha256:2506440c9cfccdbc9c2d33db58172b55d37a92d2525575013681568d67ac6982", "platforms": ["amd64"], "deployed": true},
+    "afterglow-cloud-shell": {"digest": "sha256:a4ffd68e48bb031a69095b26e772971f6b4b2e019c8cd3449328a4cfd4f38e9d", "platforms": ["amd64", "arm64"], "deployed": false, "scope": "Published only; production has no Cloud Shell image configured"}
+  },
+  "commonRollout": {
+    "date": "2026-10-14",
+    "approximateWindowUtc": "09:43–11:15",
+    "order": ["Drover", "Lumen", "Waygate", "Palimpsest controller1 Hub then remote build worker VM", "Afterglow"],
+    "kolla": "Canonical operator-host Kolla; --skip-tags haproxy on every pull/prechecks/genconfig/reconfigure/deploy action",
+    "untouchedDrift": "Known controller3 HAProxy/ProxySQL/Keepalived image drift intentionally untouched",
+    "writerGate": "Terminal work gate → stop every API → gate again → stop every worker; whole cohort, no mixed old/new writers",
+    "coldRestore": "MariaDB cold dump → isolated network-none/tmpfs restore with exact per-table counts → genconfig → reconfigure → verify",
+    "verification": "Pinned digest, OCI revision, health and restart count on every replica; every non-target container unchanged",
+    "unchangedNonTargetContainersVsFirstPreDroverCensus": {"controller1": 234, "controller2": 231, "controller3": 144},
+    "nonTargetContainersAdded": 0
+  },
+  "operatorPromotion": {
+    "packages": {"drover": "0.4.15", "lumen": "0.6.8", "waygate": "0.3.4", "palimpsest-client": "0.3.5"},
+    "lockScope": "uv lock --upgrade-package changed only those packages plus the virtual kolla project",
+    "roleFilesByteIdenticalToTags": {"drover": 20, "lumen": 23, "waygate": 22, "palimpsest": 27},
+    "afterglowPlugin": "/etc/kolla/plugins/openstack-afterglow-v1.30.16",
+    "afterglowCheckout": "Shallow tag checkout; deploy/kolla tree ad8ee874 matches tag; role/site links switched only before Afterglow phase"
+  },
+  "afterglowRollout": {
+    "configSnapshot": "Encrypted preafterglow snapshot: every controller's /etc/kolla/config/afterglow backend/frontend bind-mount source plus operator backend/frontend config",
+    "quiesce": {"backendsStopped": 3, "notionWorkersStopped": 3, "exitCode": 0, "gate": "terminal"},
+    "mariadbColdRestore": {"tables": 90, "rows": 2485, "exactPerTableCounts": true},
+    "redisColdRestore": {"db": 5, "keys": 95, "activeAutoBackupJournals": 0, "restoredKeys": 95, "isolatedValkey": true},
+    "migrations": {
+      "writersStopped": true,
+      "ordered": [
+        {"file": "088_layer_block_sources.sql", "sha256Prefix": "5c43bf8f", "durationMs": 114},
+        {"file": "089_layer_block_consumes.sql", "sha256Prefix": "8a46fc70", "durationMs": 109}
+      ],
+      "requiredColumnsBefore": 0,
+      "requiredColumnsAfter": 5,
+      "columns": ["layer_artifacts.block_source", "layer_consumes.transport", "layer_consumes.run_id", "layer_consumes.resources", "layer_consumes.cleanup_state"],
+      "rowCountsUnchanged": true,
+      "tablesAfterKollaBootstrap": 90
+    },
+    "genconfig": "Generated files unchanged; traffic-analytics settings are frontend env; empty ingest key keeps ingestion off",
+    "reconfigureOrder": ["controller1", "health gate", "controller2", "health gate", "controller3"],
+    "verification": {
+      "containers": 9,
+      "pinnedDigestAndRevision": true,
+      "health": "healthy",
+      "restarts": 0,
+      "healthRoutes": ["/api/v1/health", "/health (frontend)"],
+      "httpStatus": 200,
+      "listeners": "All three direct listeners and public endpoints",
+      "backendWarningOrHigherLogLinesSinceCutover": 0,
+      "diagnostics": "Only DEBUG client_error request diagnostics"
+    },
+    "authenticatedBrowser": {
+      "client": "Real Chrome; first-party Keystone login as backend-configured service account; credentials in memory only; GET-only",
+      "responses": [
+        {"path": "/api/v1/auth/me", "status": 200},
+        {"path": "/api/v1/instances", "status": 200, "count": 0},
+        {"path": "/api/v1/auth/mcp-tokens", "status": 200, "noStore": true, "count": 0},
+        {"path": "/api/v1/auth/mcp-oauth/grants", "status": 200, "noStore": true, "count": 0},
+        {"path": "/api/v1/auth/mcp-projects", "status": 200, "noStore": true, "count": 1}
+      ],
+      "bklitDashboard": {"path": "/dashboard", "widthsPx": [1440, 390], "gaugeChartsRendered": 5, "gaugeChartsTotal": 5, "failed": 0, "horizontalOverflowPx": 0},
+      "bklitActivity": {"path": "/dashboard/activity", "barChartsRendered": 1, "barChartsTotal": 1},
+      "pageErrors": 0
+    },
+    "notCovered": ["Admin-only chart pages: account is not a system admin", "All locales/themes", "Ordinary test tenant"],
+    "residualObservations": [
+      "Pre-existing unchanged activity hour_distribution buckets are UTC hours without a timezone label",
+      "Pre-existing unchanged dashboard Drover tile is unavailable for this service account, as in the 1.30.15 post-deploy screenshot",
+      "Unchanged deploy/kolla/operator/pyproject.toml still pins palimpsest 0.3.3, lumen v0.3.1, waygate v0.2.0 and drover v0.2.25; not the promoted operator package state"
+    ],
+    "recovery": {
+      "imageOnlyRollbackAllowed": false,
+      "boundary": "088/089 applied and 1.30.16 writers live",
+      "required": ["Cold DB backups", "Cold Redis backups", "Previous images", "preafterglow config snapshot"],
+      "protectedDirectory": "/etc/kolla/.afterglow-rollout-backups/1.30.16/"
+    }
+  },
+  "siblings": {
+    "drover": {
+      "release": "v0.4.15", "deployed": true,
+      "source": "314c7a6ab743e7ee766ade41e11ddcb0040e3797", "pinCommit": "977a1cad411cc0eafb5a92090bdced272de0611a",
+      "publication": "Exact-SHA CI, Release and Docker success",
+      "stoppedWriters": 6, "exitCode": 0,
+      "coldRestore": {"tables": 16, "rows": 75225, "exact": true},
+      "ledger": "4/4, no migration", "genconfig": "unchanged",
+      "replicas": 6, "verification": "Pinned digests, APIs healthy, 0 restarts; /v1/health/ready 200 on three listeners and public; 0 error log lines"
+    },
+    "lumen": {
+      "release": "0.6.8", "deployed": true, "revision": "2417886bc6f320f3b0f0438ed0fe5b8ab12c2640",
+      "publication": "Exact-SHA CI, Package Release and Docker success",
+      "coldRestore": {"tables": 63, "rows": 5540, "exact": true}, "coldCheckpointerPostgresDumpTables": 4,
+      "ledger": 26, "ledgerUnchanged": true, "llmProvidersRows": 6, "llmProvidersLastUpdate": "2026-10-10", "llmProvidersUnchanged": true, "newWorkerRegistrations": 3,
+      "replicas": 6, "verification": "Pinned digests, APIs healthy, 0 restarts; /v1/ready 200 on three listeners and public; 0 error log lines",
+      "residualDrain": "Five old writers exited 0; old 0.6.7 controller3 worker SIGKILLed (137) after 300 s drain. auxiliary_active=1 with runs/jobs/memory-outbox/batch-queue live leases all zero prevented acknowledge_drain. Five older registrations dated 2026-10-05/06 showed the same pre-existing drain-acknowledgement defect; follow-up needed."
+    },
+    "waygate": {
+      "release": "0.3.4", "deployed": true, "revision": "1c752692f053b78df963805583c930a7a801241b",
+      "publication": "Exact-SHA CI and Docker success", "stoppedWriters": 6, "exitCode": 0,
+      "coldRestore": {"tables": 7, "rows": 54, "exact": true}, "ledger": "6/6, no migration", "genconfig": "unchanged",
+      "verification": "Replicas healthy, 0 restarts; /v1/health 200 on three listeners and public",
+      "residualRedisWiring": "Pre-existing unchanged since 0.3.3: plain Redis URL points at read-only Valkey replica. agent_auth.store_status_result logs handled ReadOnlyError WARNING; POST still 204, status not cached. Drover/Lumen/Palimpsest also use plain URLs to the same node; only Afterglow is Sentinel-aware. Separate Sentinel/master-routed wiring change needed."
+    },
+    "palimpsest": {
+      "release": "v0.3.5", "deployed": true, "mergeRevision": "04d51ad6e1bf00c4b6e5bf82050383d0bb0a10cf", "pr": 24,
+      "requiredChecks": "All six passed on 1ff87efe before protected-dev merge",
+      "publication": "Dev CI (Test, Hub images, Development package), Release (verify, PyPI, GitHub release) and Hub images success; native KVM proof skipped by repository policy as for 0.3.4",
+      "pypi": {"package": "palimpsest-client", "version": "0.3.5", "wheelSha256Prefix": "ad0ee712cecef648", "sdistSha256Prefix": "f53642bbe1a2d2bb"},
+      "hub": {"scope": "controller1 only", "stoppedWriters": 2, "exitCode": 0, "coldRestore": {"tables": 15, "rows": 10, "exact": true}, "encryptedColdBlobTarBytes": 884766720, "genconfig": "unchanged", "health": "200 direct and public", "unauthenticatedMeStatus": 401},
+      "buildWorker": {
+        "deployment": "palimpsest-build-worker.yml pull + deploy",
+        "claimPending": "Old 0.3.4 worker journaled claim_pending at 10:47:06Z, 5 s after Hub API quiesce began; claim response lost; new worker halted at startup",
+        "serverDispositionProof": {"builds": 4, "allTerminal": true, "allLeaseExpiresAtNull": true, "lastChangeUtc": "2026-10-13 21:19:30Z", "nothingClaimable": true},
+        "disposition": "Followed docs/install.md: journal preserved in operator backup and VM /root; worker.json cleared; worker.lock retained",
+        "restartsAfterDisposition": 0, "claimRequestsInTwoMinutes": 16, "claimStatus": 204,
+        "futureRolloutBoundary": "Stop/drain remote build worker before stopping Hub API"
+      }
+    }
+  },
+  "notPerformed": ["Pruning", "Policy/IAM changes", "LB/route changes", "Paid inference", "Cloud Shell enablement"]
+}

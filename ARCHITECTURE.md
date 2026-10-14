@@ -6,7 +6,7 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 
 이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 및 Cloud Shell 모두 `1.30.16`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
-**1.30.16 release integration (2026-10-14):** 최신 fetched `dev`에 보존된 public WIP 전체를 통합한다: Bklit 수치 시각화, Redis 기반 background 역할·대상 소유권, 관리자 자격 증명·호스트/접속 관측, 볼륨 이전·자동 백업, MCP/chat 복구와 Palimpsest Cinder/RBD block transport·격리 sibling 실행 자격 증명. 운영 SQL **088/089는 미적용**이며 보호 backup 뒤 088→089를 명시 적용하고 새 writer를 시작해야 한다(`create_tables()`는 기존 컬럼을 추가하지 않는다). API·Notion worker 전체를 함께 교체하고 구형/신형 cohort를 혼합하지 않는다. 동반 버전은 Lumen `0.6.8`·Drover `0.4.15`·Waygate `0.3.4`·Palimpsest `0.3.5`다. [로컬/disposable qualification](docs/testing.md#13016-release-qualification-2026-10-14)은 CI·발행·운영 증거가 아니며 exact-SHA CI, publication, operator promotion 및 production rollout/auth UI acceptance는 pending이다.
+**1.30.16 release integration (2026-10-14):** 최신 fetched `dev`에 보존된 public WIP 전체를 통합했다: Bklit 수치 시각화, Redis 기반 background 역할·대상 소유권, 관리자 자격 증명·호스트/접속 관측, 볼륨 이전·자동 백업, MCP/chat 복구와 Palimpsest Cinder/RBD block transport·격리 sibling 실행 자격 증명. Exact-SHA `eaa5772a6ebcab75dc3748add134b92d9f33f4e3` CI와 `v1.30.16` Helm Chart Release·Docker 발행이 성공했다. 보호된 cold DB/Redis backup의 격리 restore 뒤 구형 API·Notion worker 전체를 중지한 상태에서 SQL **088→089를 적용**하고 controller1→2→3 health-gated reconfigure로 새 writer를 시작했다(`create_tables()`는 기존 컬럼을 추가하지 않는다). 9개 container는 pinned digest/revision·healthy·restart 0이며 구형/신형 writer cohort를 혼합하지 않았다. Lumen `0.6.8`·Drover `0.4.15`·Waygate `0.3.4`·Palimpsest `0.3.5`도 operator promotion·운영 배포를 완료했다. [로컬/disposable qualification](docs/testing.md#13016-release-qualification-2026-10-14)과 [운영 receipt](docs/testing.md#production-rollout-2026-10-14)는 별도 증거다. 운영 receipt는 authenticated GET-only browser/Bklit 결과, 미검증 범위·잔여 관측과 image-only rollback 불가 경계를 기록한다.
 
 **1.30.15 production release (2026-10-13):** Frontend 전용 `6deffce1`을 불변 `v1.30.15`로 발행했다. Drover `v0.4.13`의 생략=활성 계약에 맞춰 클러스터·노드그룹 생성 화면의 Stampede 스위치를 기본으로 켜고, 클러스터 생성 요청은 선택값을 항상 boolean으로 보낸다. Migration·backend API·설정 변경은 없다. Canonical `/etc/kolla/multinode`에서 Afterglow-only prechecks·genconfig·pull과 controller1→2→3 reconfigure를 수행해 API/frontend/worker9개를 같은 revision·digest로 교체했고, 기존 비대상 container ID/image는 보존했다. 실제 운영 화면에서 확인한 기본 켜짐과 opt-out 본문은 `docs/testing.md`에 기록한다.
 
@@ -1310,8 +1310,8 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 {
   "schema_version": 1,
   "source_sha256": "fa5e23933e370e34c41bb9d003c514258c85b473fc264472f02e45ebfaf9d3d8",
-  "reviewed_at": "2026-10-14T08:45:58Z",
-  "summary": "Reviewed latest-dev 1.30.16 integration and native caller/authority/storage contracts, distributed ownership shutdown, supported Bklit props, refreshed tooltip/touch lifecycle and disabled-map-zoom scrolling, LTTB bucket/timestamp semantics, native lock generation and final backend formatting. No authentication or destructive-resource guard relaxation; fresh qualification receipts remain separate."
+  "reviewed_at": "2026-10-14T11:21:52Z",
+  "summary": "1.30.16 post-rollout documentation review: docs-only update recording exact-SHA CI, Helm/Docker publication, operator promotion and the 2026-10-14 DMS Lab production rollout (cold backup and isolated restore, SQL 088 then 089, health-gated controller reconfigure, authenticated browser and Bklit acceptance, residual risks and recovery boundary) together with the sibling Lumen 0.6.8, Drover 0.4.15, Waygate 0.3.4 and Palimpsest 0.3.5 deployments; archives OpenSpec release-complete-public-changes with evidence. No source, schema, configuration or Kolla role change."
 }
 ```
 <!-- architecture-review:end -->

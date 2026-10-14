@@ -717,7 +717,7 @@ kolla-ansible reconfigure -i multinode --tags afterglow,lumen
 - 각 API process의 hostname/PID/random incarnation은 자동 생성됩니다. 리더 하나만15초 정책 스캔을 수행하고, 새 작업·사라진 소유자의 작업을 살아 있는 process들의 배정 개수 기준으로 분배합니다. 정상 pending/active 소유권은 유지하며 동일 volume/slot 중복 제출은 별도의90초 renewable lease/durable journal로 방어합니다. Worker 수가 다르면 물리 controller별 가중치는 같지 않습니다.
 -45초 member/leader lease와10초 heartbeat는 Redis server time을 사용합니다. SDK 실행과 스캔은 독립이고, 정상 종료는 SDK drain 뒤 회수합니다. Hard crash 인계는 membership/leader 만료와 다음 heartbeat/poll, 해당 볼륨의 남은90초 lease를 기다립니다. 진행 중인 Cinder data copy를 취소하거나 재시작하는 기능이 아닙니다.
 - 정책·slot·active journal은 캐시가 아닌 정본입니다. Redis persistence/backup·failover 데이터 보존과 controller 시간 동기화를 유지합니다. Key 삭제/독립 Redis/journal 유실을 복구 작업으로 사용하지 않습니다. Redis 조정 불능에는 새 백업을 local로 실행하지 않으며, 이미 접수되었거나 결과가 불명확한 백업은 재발행하지 않습니다.
-- 1.30.16 전환은 구형 process가 새 membership/assignment에 참여하지 않으므로 혼합 cohort의 rolling upgrade로 수행하지 않습니다. 기존 API·Notion worker 전체를 drain·중지한 뒤 같은 새 버전으로 함께 교체합니다. [SQL088/089 및 writer cohort 업그레이드 순서](#13016-업그레이드-sql-088089와-writer-cohort)를 따르세요. 이번 source 변경은 운영 배포·공유 datastore 설정·기존 volume·암호화 키를 변경하지 않았고 live Cinder 저장소/복원 증거는 아닙니다.
+- 1.30.16 전환은 구형 process가 새 membership/assignment에 참여하지 않으므로 혼합 cohort의 rolling upgrade로 수행하지 않습니다. 기존 API·Notion worker 전체를 drain·중지한 뒤 같은 새 버전으로 함께 교체합니다. [SQL088/089 및 writer cohort 업그레이드 순서](#13016-업그레이드-sql-088089와-writer-cohort)를 따르세요. 2026-10-14 운영 전환은 이 순서로 완료했으며 [운영 receipt](testing.md#production-rollout-2026-10-14)에 기록합니다. Cold DB/Redis restore 검증은 live Cinder data copy/restore 증거가 아닙니다.
 
 ### 공유 background process의 다중 컨트롤러 분배
 
@@ -1177,7 +1177,7 @@ image와 기존 생성 config를 사용해 backend를 시작하기 **전에** �
 
 #### 1.30.16 업그레이드: SQL 088/089와 writer cohort
 
-1.30.16은 Palimpsest block source/consumer의 기존 테이블 컬럼을 읽고 쓰므로 **새 API·Notion worker를 시작하기 전에 SQL 088 다음 089를 명시 적용**해야 합니다. 2026-10-14 read-only baseline receipt는 운영 081–087 적용·088/089 미적용을 보고했습니다. 실제 적용 대상은 현재 schema와 `backend/migrations/manifest.txt`를 다시 대조하여 정합니다. Kolla bootstrap의 `create_tables()`나 `auto_create_tables`는 이 기존 컬럼을 추가하지 않습니다.
+1.30.16은 Palimpsest block source/consumer의 기존 테이블 컬럼을 읽고 쓰므로 **새 API·Notion worker를 시작하기 전에 SQL 088 다음 089를 명시 적용**해야 합니다. 2026-10-14 전환 전 read-only baseline은 운영 081–087 적용·088/089 미적용이었으나, 이후 cold backup/격리 restore와 writer 전체 중지 뒤 **088→089 적용을 완료**했습니다(필수 컬럼 0→5, row count 불변, bootstrap 뒤 90 tables). [운영 receipt](testing.md#production-rollout-2026-10-14)를 참고하세요. 다른 적용 대상은 현재 schema와 `backend/migrations/manifest.txt`를 다시 대조하여 정합니다. Kolla bootstrap의 `create_tables()`나 `auto_create_tables`는 이 기존 컬럼을 추가하지 않습니다.
 
 1. [운영 데이터와 양방향 호환성 평가](#운영-데이터와-양방향-호환성-평가)의 승인·snapshot·원래 key/Redis/CAS 보존·복원 시험·rollback 제한을 충족합니다. **보호된 backup과 격리 restore 확인이 SQL 적용보다 먼저**입니다. 기존 SQL084–087 cutover의 protected backup/restore 후 필요한 statement만 적용한 패턴을 따르되, 당시의 idempotence/호환성 결과를 088/089로 확대하지 않습니다([1.30.14 receipt](testing.md#13014-운영-기준-통합-검증-2026-10-13)). 없는 ledger를 만들거나 historical migration 전체를 replay하지 않습니다.
 2. 위 `SHOW COLUMNS` 패턴으로 적용 **전** 컬럼을 확인합니다. **089는 `IF NOT EXISTS`가 없어 idempotent가 아닙니다**. 모두 없을 때만 전체 089 SQL을 실행하고, 모두 있으면 정의/type/default/nullability가 파일과 일치하는지 확인합니다. 일부만 있거나 정의가 다르면 blind 재실행하지 말고 중단하여 승인된 schema 복구 절차를 정합니다.
@@ -1193,7 +1193,7 @@ image와 기존 생성 config를 사용해 backend를 시작하기 **전에** �
 3. 운영 DB 접근 권한을 가진 기존 관리 경로에서 **`backend/migrations/088_layer_block_sources.sql` → `backend/migrations/089_layer_block_consumes.sql`** 순서로 적용합니다. 088은 nullable JSON `layer_artifacts.block_source`를 `IF NOT EXISTS`로 추가합니다. 089는 `layer_consumes.transport`를 `VARCHAR(16) NOT NULL DEFAULT 'nfs'`로, `run_id`·`resources`·`cleanup_state`를 nullable 컬럼으로 추가하여 기존 NFS consumer를 보존합니다. 위 local fallback Compose SQL 예시는 외부/운영 DB 적용 명령이 아닙니다. 비밀번호를 명령행이나 Git에 기록하지 않습니다. 적용 후 같은 컬럼 검사로 정의를 확인하고 기존 row/state 보존을 대조합니다. Additive nullable/defaulted DDL을 구형 writer가 허용하는 것과 새 durable state의 downgrade 안전성은 별개입니다.
 4. SQL 적용·확인 후에만 1.30.16 writer를 시작합니다. Redis 기반 분산 background ownership 전환은 **구형 API·Notion worker 전체의 SDK/HTTP drain·중지 후 모든 replica를 같은 새 버전으로 함께 교체**하며 구형/신형 cohort를 혼합하지 않습니다. Controller별 reconfigure 중에도 구형 writer를 재시작하지 않습니다. Lumen **0.6.8**, Drover **0.4.15**, Waygate **0.3.4**, Palimpsest **0.3.5**의 publication/operator promotion과 각 sibling rollout 절차도 충족해야 합니다. Health/bootstrap exit 0만으로 완료 처리하지 말고 authenticated 업무/UI와 기존 데이터·키·비대상 runtime 보존을 확인합니다.
 
-이 절차는 운영 적용 완료 보고가 아닙니다. 1.30.16의 exact-SHA CI·tag image·operator promotion·production cutover/auth UI는 [release qualification](testing.md#13016-release-qualification-2026-10-14)에 pending으로 기록합니다.
+위 내용은 재사용할 업그레이드 절차입니다. 2026-10-14의 1.30.16 exact-SHA CI·Helm/tag image 발행·operator promotion·production cutover 및 범위가 제한된 authenticated GET-only UI/Bklit 검증은 완료했으며 [운영 receipt](testing.md#production-rollout-2026-10-14)에 결과·미검증 범위·잔여 관측을 기록합니다. SQL088/089와 새 writer가 live인 현재 **image-only rollback은 허용되지 않으며**, cold DB/Redis backup·이전 image·`preafterglow` config snapshot을 함께 사용하는 복구 경계를 따릅니다.
 
 
 ### 선택적 OpenStack notification 수집
