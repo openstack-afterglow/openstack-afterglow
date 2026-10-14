@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+## [1.30.18] - 2026-10-15
+
+Patch release on `v1.30.17`: offline IPv4/IPv6 country lookup, cluster-internal/external/unknown request origin, the controller-centred radial network workspace, and the separately installed passive Linux flow collector. No SQL migration. Remove obsolete `geoip_csv`/client-address trust keys before starting 1.30.18, and roll out backend before frontend and collectors as described in `docs/deployment.md`. Local qualification is recorded in `docs/testing.md`; production rollout and physical-switch acceptance are recorded separately.
+
+### 국가·요청 origin·controller 중심 radial mesh 관측
+- Complete offline DB-IP IPv4/IPv6 MMDB를 provider/revision/SHA pin·read-only mount·CC BY4.0 attribution과 함께 사용한다. Runtime 외부 IP lookup은 없으며 국가 미확인 사유를 구분한다. Backend/frontend source별 internal/external/unknown 및 legacy-unclassified를 표시하고 과거 bucket을 소급 분류하지 않는다.
+- Factory launcher가 outer rewrite 전에 원래 socket peer를 보존하고 안쪽 proxy middleware는 기존 `FORWARDED_ALLOW_IPS` 인증/scheme 계약을 유지한다. 독립 analytics proxy/cluster CIDR로 bounded chain과 source evidence를 검증하며 old client-address trust alias·`geoip_csv` 설정은 제거한다.
+- 하나의 controller-center radial workspace에서 방향별 pps/B/s·고정 로그 척도·freshness/window와 LLDP/physical·NIC·route·TCP·trace evidence를 분리한다. Controller 중심은 배치 anchor이지 transit 추정이 아니다. 첫 표본/reset/stale/overflow/error는0이 아니며 endpoint/NIC/switch counters를 합산하거나 peer traffic을 만들어내지 않는다.
+- 승인된 별도 BPF socket-filter collector는 등록 주소/검토 NIC의 헤더와 skb 길이만 계수하고 CAP_BPF+CAP_NET_RAW 및 protected read-only snapshot으로 zero-capability observer에 전달한다. NIC/TC/XDP/qdisc/route/firewall/offload 변경·payload 수집은 없다. Typed monotonic revision과 protected SNMPv3 authPriv targets로 actual switch-port/LLDP 관측을 지원하되 management 경로·read-only view·credential-file 위치가 확보되지 않아 운영 물리-switch 수용은 미검증이다.
+- Direct-Nova `native-cloud-vm` 디스크에는 국가 DB 전달 경로를 추가하지 않는다. Root 전용 `/etc/afterglow` 아래 MMDB는 `appuser`가 읽지 못하므로 지정하지 않으며, 별도 검토한 read-only 경로를 제공하기 전에는 unconfigured로 표시한다.
+- SQL migration은 없으며 기존 HMAC/writer/observer/auth key·Redis/HLL/history를 보존한다. `extra="forbid"` old TOML 제거, exact Kolla MMDB source/pin/mount·existing PVC, backend-first rolling 순서와 config+image rollback을 `docs/deployment.md`·`deploy/kolla/README.md`에 명시했다. 실제 native BPF/socket·Redis/MMDB, built-image adapter runtime·synthetic Chromium 및 full-gate 증거와 physical-switch/production 미검증 경계는 `docs/testing.md`의 dated 절로 분리한다. 과거 deployed1.30.x receipts는 변경하지 않는다.
+
 ## [1.30.17] - 2026-10-15
 
 - **Light chat project context:** strengthen the neutral-gray project selector strip beneath the new-chat composer using existing semantic colors. Dark appearance, project-selection behavior and responsive dimensions remain unchanged.

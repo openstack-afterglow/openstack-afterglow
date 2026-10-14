@@ -89,6 +89,7 @@ def mock_capture(monkeypatch, *, faults=None):
 
     monkeypatch.setattr(cli, "read_bounded", read)
     monkeypatch.setattr(cli, "run_command", command)
+    monkeypatch.setattr(cli, "physical_interface", lambda *args: None)
     return commands
 
 
@@ -283,6 +284,7 @@ def test_capture_actual_dual_stack_evidence_and_counter_positions(monkeypatch):
         "mac": LINK["address"],
         "operstate": "UP",
         "ifindex": 2,
+        "physical": None,
         "addresses": ["192.0.2.10/24", "2001:db8::10/64"],
         "rx_bytes": 12345,
         "rx_packets": 17,
@@ -297,7 +299,10 @@ def test_capture_actual_dual_stack_evidence_and_counter_positions(monkeypatch):
         "chassis_id": "02:00:00:00:01:00",
         "port_id": "Ethernet1",
         "system_name": "switch-a",
+        "management_address": None,
+        "port_description": None,
     }
+    assert report["sources"].pop("flows") == "unsupported"
     assert set(report["sources"].values()) == {"measured"}
     assert len(cli.encode_json(report)) <= cli.MAX_BYTES
     assert all("get" not in command and "traceroute" not in command for command in commands)
@@ -1297,3 +1302,171 @@ def test_unexpected_cli_failure_has_fixed_non_sensitive_diagnostic(monkeypatch, 
     assert cli.main(["--base-url", "https://observer.example", "--host-id", HOST, "--once"]) == 1
     captured = capsys.readouterr()
     assert captured.err == "host_observer: observer_failed\n" and captured.out == ""
+
+
+def test_lldp_management_and_port_metadata_are_passive_only():
+    value = json.loads(json.dumps(LLDP))
+    chassis = value["lldp"]["interface"][0]["eth0"]["chassis"]["switch-a"]
+    chassis["mgmt-ip"] = ["2001:0db8::2", "192.0.2.2"]
+    value["lldp"]["interface"][0]["eth0"]["port"]["descr"] = "uplink compute rack"
+    neighbor = cli.parse_lldp(value)[0]
+    assert neighbor["management_address"] == "192.0.2.2"
+    assert neighbor["port_description"] == "uplink compute rack"
+    assert set(neighbor) == {
+        "interface",
+        "chassis_id",
+        "port_id",
+        "system_name",
+        "management_address",
+        "port_description",
+    }
+
+
+def flow_snapshot(ts=1000):
+    return {
+        "collector_id": "boot.config.instance",
+        "captured_at": ts,
+        "overflow": False,
+        "rows": [
+            {
+                "source_host_id": HOST,
+                "target_host_id": "storage:node-b",
+                "interface": "eth0",
+                "direction": "egress",
+                "packets": str(2**64 - 1),
+                "bytes": str(2**63 + 1),
+            },
+        ],
+    }
+
+
+def publish_snapshot(tmp_path, monkeypatch, value):
+    path = tmp_path / "snapshot.json"
+    path.write_bytes(json_bytes(value))
+    path.chmod(0o640)
+    original = cli.os.fstat
+
+    def root_stat(fd):
+        result = original(fd)
+        return SimpleNamespace(st_mode=result.st_mode, st_uid=0, st_nlink=result.st_nlink, st_size=result.st_size)
+
+    monkeypatch.setattr(cli.os, "fstat", root_stat)
+    # Parsing fixtures emulate an already qualified directory; ancestry is checked separately.
+    monkeypatch.setattr(cli, "flow_snapshot_directory", lambda parent: os.open(parent, os.O_RDONLY | os.O_DIRECTORY))
+    return path
+
+
+def test_restricted_handoff_uint64_roundtrip_and_schema(monkeypatch, tmp_path):
+    value = flow_snapshot()
+    path = publish_snapshot(tmp_path, monkeypatch, value)
+    assert cli.read_flow_snapshot(path, {"eth0"}, now=1000) == value
+    with pytest.raises(cli.ObserverError, match="invalid_flow_snapshot"):
+        cli.read_flow_snapshot(path, {"eth99"}, now=1000)
+    with pytest.raises(cli.ObserverError, match="invalid_flow_snapshot"):
+        cli.read_flow_snapshot(path, {"eth0"}, now=1031)
+
+
+@pytest.mark.parametrize(
+    "mutation", ["overflow-type", "uint64", "numeric-counter", "duplicate", "extra-field", "outside-interface"]
+)
+def test_flow_handoff_rejects_unbounded_or_ambiguous_input(monkeypatch, tmp_path, mutation):
+    value = flow_snapshot()
+    if mutation == "overflow-type":
+        value["overflow"] = 1
+    elif mutation == "uint64":
+        value["rows"][0]["packets"] = str(2**64)
+    elif mutation == "numeric-counter":
+        value["rows"][0]["packets"] = 2**63
+    elif mutation == "duplicate":
+        value["rows"] *= 2
+    elif mutation == "extra-field":
+        value["payload"] = "never accepted"
+    else:
+        value["rows"][0]["interface"] = "eth99"
+    path = publish_snapshot(tmp_path, monkeypatch, value)
+    with pytest.raises(cli.ObserverError, match="invalid_flow_snapshot"):
+        cli.read_flow_snapshot(path, {"eth0"}, now=1000)
+
+
+def test_handoff_requires_root_owned_readonly_group_file_no_symlink_or_fifo(monkeypatch, tmp_path):
+    path = publish_snapshot(tmp_path, monkeypatch, flow_snapshot())
+    for mode in (0o440, 0o600, 0o644, 0o660, 0o666):
+        path.chmod(mode)
+        with pytest.raises(cli.ObserverError, match="invalid_flow_snapshot"):
+            cli.read_flow_snapshot(path, {"eth0"}, now=1000)
+    path.chmod(0o640)
+    link = tmp_path / "link"
+    link.symlink_to(path)
+    with pytest.raises(cli.ObserverError, match="invalid_flow_snapshot"):
+        cli.read_flow_snapshot(link, {"eth0"}, now=1000)
+    fifo = tmp_path / "fifo"
+    os.mkfifo(fifo, 0o640)
+    with pytest.raises(cli.ObserverError, match="invalid_flow_snapshot"):
+        cli.read_flow_snapshot(fifo, {"eth0"}, now=1000)
+    hardlink = tmp_path / "hardlink"
+    os.link(path, hardlink)
+    with pytest.raises(cli.ObserverError, match="invalid_flow_snapshot"):
+        cli.read_flow_snapshot(path, {"eth0"}, now=1000)
+    hardlink.unlink()
+    mode = path.stat().st_mode
+    monkeypatch.setattr(cli.os, "fstat", lambda fd: SimpleNamespace(st_mode=mode, st_uid=1000))
+    with pytest.raises(cli.ObserverError, match="invalid_flow_snapshot"):
+        cli.read_flow_snapshot(path, {"eth0"}, now=1000)
+
+
+def test_handoff_rejects_writable_ancestry_even_for_an_otherwise_valid_snapshot(tmp_path):
+    path = tmp_path / "snapshot.json"
+    path.write_bytes(json_bytes(flow_snapshot()))
+    path.chmod(0o640)
+    tmp_path.chmod(0o777)
+    with pytest.raises(cli.ObserverError, match="invalid_flow_snapshot"):
+        cli.read_flow_snapshot(path, {"eth0"}, now=1000)
+
+
+def test_configured_flow_failure_keeps_host_evidence_and_source_error(monkeypatch):
+    mock_capture(monkeypatch)
+    report = cli.capture_report(flow_snapshot_file=Path("/missing/snapshot.json"))
+    assert report["sources"]["flows"] == "error" and "flows" not in report
+    assert report["interfaces"][0]["rx_bytes"] == 12345
+
+
+def test_configured_flow_handoff_matches_backend_observation(monkeypatch, tmp_path):
+    from app.models.infrastructure_topology import Observation
+
+    mock_capture(monkeypatch)
+    monkeypatch.setattr(cli, "physical_interface", lambda *args: True)
+    path = publish_snapshot(tmp_path, monkeypatch, flow_snapshot(cli.time.time()))
+    report = cli.capture_report(flow_snapshot_file=path)
+    parsed = Observation.model_validate(report)
+    assert parsed.sources.flows == "measured" and parsed.flows.rows[0].packets == str(2**64 - 1)
+    assert (
+        cli.parse_args(
+            ["--base-url", "https://example.test", "--host-id", HOST, "--flow-snapshot-file", str(path)]
+        ).flow_snapshot_file
+        == path
+    )
+
+
+def test_physical_interface_qualification_rejects_virtual_master_alias_and_unknown(tmp_path):
+    sys_root = tmp_path / "sys"
+    device = sys_root / "devices/pci0000/ethernet"
+    device.mkdir(parents=True)
+    path = sys_root / "class/net/enp2s0"
+    path.mkdir(parents=True)
+    (path / "device").symlink_to(device)
+    for name, value in (("type", "1"), ("ifindex", "2"), ("iflink", "2")):
+        (path / name).write_text(value)
+    assert cli.physical_interface("enp2s0", sys_root) is True
+    (path / "iflink").write_text("3")
+    assert cli.physical_interface("enp2s0", sys_root) is False
+    (path / "iflink").write_text("2")
+    for master in ("bonding", "bridge"):
+        (path / master).mkdir()
+        assert cli.physical_interface("enp2s0", sys_root) is False
+        (path / master).rmdir()
+    (path / "type").unlink()
+    assert cli.physical_interface("enp2s0", sys_root) is None
+    virtual = sys_root / "class/net/bond0"
+    virtual.mkdir()
+    assert cli.physical_interface("bond0", sys_root) is False
+    assert cli.physical_interface("missing", sys_root) is None

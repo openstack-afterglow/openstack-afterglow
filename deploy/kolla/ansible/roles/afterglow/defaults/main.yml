@@ -52,7 +52,13 @@ afterglow_frontend_config_name: "afterglow.frontend.generated.conf"
 # traffic_analytics.frontend_ingest_key. Keep it in a protected secrets override.
 afterglow_traffic_analytics_ingest_key: ""
 afterglow_traffic_analytics_ingest_url: "http://{{ afterglow_backend_listen_address }}:{{ afterglow_backend_listen_port }}/api/v1/monitoring/traffic/events"
-afterglow_traffic_analytics_trust_client_address: false
+# Adapter ADDRESS_HEADER stays unset: getClientAddress must remain the socket peer.
+afterglow_traffic_analytics_peer_is_socket: true
+# Deploy a checksum-pinned complete offline country DB at this operator-owned path.
+afterglow_traffic_analytics_geoip_mmdb_source: ""
+afterglow_traffic_analytics_geoip_mmdb_sha256: ""
+afterglow_traffic_analytics_geoip_mmdb_runtime_path: "{{ afterglow_runtime_config_dir }}/traffic-country.mmdb"
+afterglow_traffic_analytics_geoip_mmdb_path: "/etc/afterglow/geoip/country.mmdb"
 
 # ── 로그 디렉토리 소유권 ──────────────────────────────────────────────────────
 afterglow_log_owner_uid: 1000
@@ -217,7 +223,7 @@ afterglow_services:
     enabled: "{{ enable_afterglow_backend | bool }}"
     image: "{{ afterglow_backend_image_ref }}"
     network_mode: host
-    command: ["uvicorn", "app.main:app", "--host", "{{ afterglow_backend_listen_address }}", "--port", "{{ afterglow_backend_listen_port | string }}", "--proxy-headers", "--forwarded-allow-ips", "{{ afterglow_backend_forwarded_allow_ips }}"]
+    command: ["uvicorn", "app.middleware.traffic_address:create_app", "--factory", "--host", "{{ afterglow_backend_listen_address }}", "--port", "{{ afterglow_backend_listen_port | string }}", "--no-proxy-headers"]
     restart_policy: unless-stopped
     groups: ["0"]
     volumes: >-
@@ -232,6 +238,10 @@ afterglow_services:
             afterglow_rbd_conf_source ~ ':/etc/ceph/ceph.conf:ro',
             afterglow_rbd_keyring_source ~ ':/etc/ceph/ceph.client.afterglow-rbd.keyring:ro'
           ] if afterglow_rbd_conf_source and afterglow_rbd_keyring_source else []
+        ) + (
+          [
+            afterglow_traffic_analytics_geoip_mmdb_runtime_path ~ ':' ~ afterglow_traffic_analytics_geoip_mmdb_path ~ ':ro'
+          ] if afterglow_traffic_analytics_geoip_mmdb_source else []
         )
       }}
     healthcheck:
@@ -309,6 +319,7 @@ afterglow_service_environments:
     SECRET_KEY: "{{ afterglow_secret_key }}"
     PUBLIC_API_BASE: "{{ afterglow_public_api_base }}"
     ORIGIN: "{{ afterglow_public_endpoint_url }}"
+    FORWARDED_ALLOW_IPS: "{{ afterglow_backend_forwarded_allow_ips }}"
     K3S_KUBECONFIG_ENCRYPTION_KEY: "{{ afterglow_kubeconfig_encryption_key }}"
     K3S_GPU_ADMISSION_TOKEN: "{{ afterglow_k3s_gpu_admission_token }}"
     LUMEN_MCP_SERVICE_TOKEN: "{{ afterglow_lumen_mcp_service_token }}"
@@ -326,7 +337,7 @@ afterglow_service_environments:
     LOG_MAX_BYTES: "52428800"
     TRAFFIC_ANALYTICS_INGEST_URL: "{{ afterglow_traffic_analytics_ingest_url }}"
     TRAFFIC_ANALYTICS_INGEST_KEY: "{{ afterglow_traffic_analytics_ingest_key }}"
-    TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS: "{{ afterglow_traffic_analytics_trust_client_address | bool | string | lower }}"
+    TRAFFIC_ANALYTICS_PEER_IS_SOCKET: "{{ afterglow_traffic_analytics_peer_is_socket | bool | string | lower }}"
   afterglow-notion-worker:
     DATABASE_URL: "{{ afterglow_database_url }}"
     REDIS_URL: "{{ afterglow_redis_url }}"

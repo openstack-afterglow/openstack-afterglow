@@ -1,6 +1,7 @@
 """Admin aggregate reads and a separate, narrowly scoped frontend service writer."""
 
 import hmac
+import json
 import time
 from typing import Literal
 
@@ -9,7 +10,7 @@ from pydantic import ValidationError
 
 from app.api.deps import require_admin
 from app.config import get_settings
-from app.models.traffic_analytics import TrafficEvent, TrafficSnapshot
+from app.models.traffic_analytics import LegacyTrafficEvent, OriginFilter, TrafficEvent, TrafficSnapshot
 from app.services.traffic_analytics import record_event, snapshot
 
 admin_router = APIRouter(dependencies=[Depends(require_admin)])
@@ -21,9 +22,10 @@ async def traffic_snapshot(
     response: Response,
     range: Literal["24h", "7d", "30d"] = Query("24h"),
     source: Literal["backend", "frontend"] = Query("backend"),
+    origin: OriginFilter = Query("all"),
 ):
     response.headers["Cache-Control"] = "no-store"
-    return await snapshot(source, range)
+    return await snapshot(source, range, origin)
 
 
 def require_frontend_writer(request: Request):
@@ -48,7 +50,11 @@ async def ingest_traffic(request: Request, response: Response):
             raise HTTPException(413, "Traffic event exceeds size limit")
         body.extend(chunk)
     try:
-        event = TrafficEvent.model_validate_json(body)
+        data = json.loads(body)
+        # Backend-first rollout: old reporters are accepted only as unclassified.
+        # New v2 reporters must never be deployed ahead of v2 ingestion backends.
+        model = TrafficEvent if isinstance(data, dict) and "schema_version" in data else LegacyTrafficEvent
+        event = model.model_validate(data)
     except (ValidationError, ValueError):
         raise HTTPException(422, "Invalid traffic observation") from None
     if abs(time.time() - event.at) > 120:

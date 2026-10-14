@@ -157,6 +157,9 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
         _sec(traffic.get("frontend_ingest_key", ""), "trafficAnalyticsFrontendIngestKey")
         if mon.get("infrastructure_topology_observers"):
             secrets["infrastructureTopologyObservers"] = mon["infrastructure_topology_observers"]
+        fabric_targets = mon.get("infrastructure_fabric", {}).get("targets", [])
+        if fabric_targets:
+            secrets["infrastructureFabricTargets"] = fabric_targets
     if secrets:
         out["secrets"] = secrets
 
@@ -341,9 +344,12 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
     dashboards = mon.get("dashboards", {})
     if dashboards:
         mon_out["dashboards"] = {_s(k): v for k, v in dashboards.items()}
+    fabric = mon.get("infrastructure_fabric", {})
+    if fabric:
+        mon_out["infrastructureFabric"] = {_s(k): v for k, v in fabric.items() if k != "targets"}
     if mon_out:
         out["monitoring"] = mon_out
-    traffic_out = {_s(k): traffic[k] for k in ("enabled", "retention_days", "geoip_csv", "site_country", "trust_frontend_client_address") if k in traffic}
+    traffic_out = {_s(k): traffic[k] for k in ("enabled", "retention_days", "geoip_mmdb", "site_country", "cluster_cidrs", "backend_trusted_proxy_cidrs", "frontend_trusted_proxy_cidrs") if k in traffic}
     if traffic_out:
         out["trafficAnalytics"] = traffic_out
 

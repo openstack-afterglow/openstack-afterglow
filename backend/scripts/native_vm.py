@@ -456,7 +456,18 @@ def main(argv=None):
         supervisor.check()
         supervisor.start(
             "backend",
-            [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"],
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "app.middleware.traffic_address:create_app",
+                "--factory",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "8000",
+                "--no-proxy-headers",
+            ],
             app_dir,
             environment,
         )

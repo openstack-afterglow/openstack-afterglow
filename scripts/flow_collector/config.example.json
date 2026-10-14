@@ -1,0 +1,11 @@
+{
+  "host_id": "compute:reviewed-node",
+  "hosts": [
+    {"id": "compute:reviewed-node", "addresses": ["192.0.2.10", "2001:db8::10"]},
+    {"id": "controller:reviewed-peer", "addresses": ["192.0.2.20", "2001:db8::20"]}
+  ],
+  "interfaces": [
+    {"name": "enp2s0", "ifindex": 2, "mac": "02:00:00:00:00:10"}
+  ],
+  "interval_seconds": 5
+}

@@ -104,6 +104,7 @@ secrets:
   prometheusPassword: ""
   monitoringSDToken: ""
   infrastructureTopologyObservers: []
+  infrastructureFabricTargets: [] # Protected SNMPv3 authPriv targets; never put credentials in monitoring values.
   trafficAnalyticsHmacKey: ""
   trafficAnalyticsFrontendIngestKey: ""
   notionConfigEncryptionKey: ""
@@ -683,6 +684,18 @@ monitoring:
   infrastructureTopologyTraceTargets: []
   infrastructureTopologyPeerTargets: []
   infrastructureTopologyRetentionSeconds: 3600
+  infrastructureFabric:
+    revision: 0 # Increment on every source/credential edit, including disabling targets.
+    pollIntervalSeconds: 10
+    freshnessSeconds: 30
+    timeoutSeconds: 2
+    retries: 1
+    concurrency: 4
+    pollBudgetSeconds: 30
+    maxPorts: 256
+    maxNeighbors: 256
+    maxVarbinds: 16384
+    retentionSeconds: 3600
   prometheusBaseUrl: "http://prometheus:9090"
   prometheusUsername: ""
   scrapeCidr: ""
@@ -727,9 +740,12 @@ monitoring:
 trafficAnalytics:
   enabled: false
   retentionDays: 30
-  geoipCsv: ""
+  geoipMmdb: "" # Complete operator-supplied offline IPv4/IPv6 country MMDB, mounted read-only.
+  geoipExistingClaim: "" # Optional pre-provisioned read-only country.mmdb PVC; mount path /etc/afterglow/geoip.
+  clusterCidrs: []
+  backendTrustedProxyCidrs: []
+  frontendTrustedProxyCidrs: []
   siteCountry: ""
-  trustFrontendClientAddress: false
 
 # -----------------------------------------------------------------------------
 # [notion]

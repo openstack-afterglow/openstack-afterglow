@@ -6,6 +6,91 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 국가·요청 origin·radial mesh 관측 검증 (2026-10-15, local/disposable)
+
+`observe-country-request-origin-and-network-mesh`의 qualification은 **source/unit, 실제 native BPF/socket·Redis·MMDB, built-image adapter/API runtime, 합성 API Chromium**으로 나뉜다. 최초 격리 기준은 `cbd75d6d506e3609c07202183181004f950a4c51`이며 최신 `origin/dev` `a7830307`의 별도 OAuth/chat 수정까지 보존해 통합했다. 아래 최초 gate/image/browser 결과는 통합 전 bytes의 증거이고 통합 후 결과와 구분한다. 과거 배포1.30.x 또는 이전 collector 활성화를 이 변경의 운영 수용으로 승격하지 않는다.
+
+### Source/unit·renderer 경계
+
+Typed config/secret 분리·factory original-peer 보존·origin/legacy bucket·flow uint64/reset/freshness·physical qualification과 renderer consumer 회귀를 작성하고 선택 lane을 실행했다. 초기 선택 회귀의 **실패2건**은 short secret literal이 Pydantic `too_short`에 걸린 test fixture와 corrupt-state diagnostic의 잘못된 exact expectation이었다. 실제 secret leak 또는 재현된 exploit으로 기록하지 않는다. Renderer 초기4실패는 required app/Helm secret을 빠뜨린 fixture와 obsolete whole-template source assertion이었다. Brittle 구현 문자열 검사를 제거하고 실제 렌더된 ephemeral log volume과 optional read-only country PVC를 각각 확인한 repaired3 selectors가 통과했다. Graph27회귀는 physical false/null/missing/wrong-device가 cable rate로 승격되지 않는 user-visible 경계를 포함한다. 이 선택 결과를 전체 backend/frontend/contract/functional gate 성공으로 합산하지 않는다.
+
+Observer ancestry/single-link/exact0640, installer의 root import 이전 source validation, MAC/ifindex fencing, SNMP wrap 뒤 discontinuity 보존은 **static review에서 발견해 보강한 경계**다. 재현된 운영 공격·failed-before exploit으로 쓰지 않는다. Fabric/SNMP의 deterministic unit transport/MIB/Redis fence 검증은 실제 인증된 물리 switch/port counters의 수용 증거가 아니다.
+
+추가 static review의 **unresolved/logical switch endpoint cable attribution**과 **sysUpTime wrap/closing boot continuity**는 별도 failed-before로 재현했다. 양쪽 switch endpoint 회귀2건은 미해결 끝에도2방향 rate를 붙여 실패했고 수정 후 graph30회귀가 통과했다. Unit/실제 loopback SNMPv3 authPriv UDP의 정상 wrap2건은 reset으로 거부돼 실패했지만 ordinary reboot 거부는 이미 통과했다. Closing uptime 누락/잘못된 type·engine boots 누락·quick reboot4건은 모두 잘못된 baseline을 반환하여 실패했다. Typed opening/closing GET·같은 engine boots·monotonic 및 modulo32-bit elapsed bound를 적용한 뒤 fabric45회귀가 통과했다. Current-source Chromium의 unresolved trunk는 LLDP 선1개/rate unknown/arrow 없음이었다(`integrated-browser/physical-trunk-after.json`). 이 결과는 실제 물리 switch credential/view·port 수용이 아니다.
+
+통합 전 전체 `npm run test:gate`는 exit0이었다. Working-source digest `3ebb6c28af72996bce8060c73ff4ba0a10a85144f7f65b8e27cc49270a8106a9`/2,869files이며 commit SHA가 아니다. 원문 `artifact://406`/`artifact://417`.
+
+| 통합 전 gate lane | 관측된 결과 |
+|---|---|
+| Architecture freshness | passed |
+| JS orchestration / Kolla contract | 175 / 27 passed |
+| CLI install | 20 passed / 36 skipped (PowerShell unavailable) |
+| Backend unit | 6,772 passed / 95 skipped |
+| Frontend unit / file-log runner | 370files / 3,628tests passed; runner9passed |
+| Consumer contract | 174 passed |
+| Disposable MariaDB/PostgreSQL/Redis functional | 154 passed / 27 deselected |
+| Ruff | check passed;639files formatted |
+
+초기 full gate의 proxy12실패는 새 launcher가 `--no-proxy-headers`인데 fixture가 여전히 `app.main:app`를 직접 구성해 factory를 누락한 것이었다. 실제 rendered app/factory/env로 fixture를 이관해 기존 HTTPS redirect·직접 HTTP·untrusted spoof와 IP-binding 재인증을 검증했고 해당20건과 위 전체 gate가 통과했다. 인증/rate-limit 정책을 완화하지 않았다. Typed origin fixture의 null 계약 및 scoped definition-list 검사를 이관했다. Svelte/i18n 검사는0errors/기존3warnings,40namespaces/10,022messages,1,073files에서 hard-coded Korean0이었다.
+
+최신 `origin/dev` `a7830307` 통합 및 dense graph 회귀 추가 후 `npm run test:gate`도 exit0이었다. Working-source digest `1f015c579d86a859f43f8d187f8945931bdd9933816c5a358ce694b670dbe0da`/2,869files,backend **6,774passed/95skipped**,frontend **370files/3,629tests**,contract **174passed**,실제 disposable functional **157passed/29deselected**,Ruff check/format **639files**가 통과했다(`artifact://443`/`artifact://455`). 선택 frontend38회귀·Svelte0errors/기존3warnings·i18n0errors/0warnings 및 hard-coded Korean0도 통과했다. 이 gate는 물리 switch/운영 수용을 증명하지 않는다.
+
+Final continuity fixes 뒤 frozen source `808f18a1802cdbe5d43940eadae2c39cf5eb89f1566a814e5068135f3d00dd03`/2,869files의 `npm run test:gate`는 isolated Docker engine의 canonical functional datastores를 사용해 exit0이었다. Backend **6,781passed/95skipped**,frontend **370files/3,631tests**,contract **174passed**,functional **157passed/29deselected**,Ruff check/format **639files**가 통과했다(`artifact://533`/`artifact://535`). 이는 source·DB contract qualification이며 runtime images와 실제 운영/물리 switch acceptance는 별도다.
+
+### 실제 native runtime: BPF/socket·Redis·MMDB
+
+| 경계 | 보존된 실제 결과와 제한 |
+|---|---|
+| Linux BPF 실행 | Disposable aarch64 VM/kernel6.8.0-134의 BCC `BPF_PROG_TEST_RUN`에서 collector56passed/21warnings. IPv4/IPv6/VLAN·nonlocal exclusion·uint64/map capacity/invalid-L3 경계를 실제 filter로 exercise했다. Final receipt는 unchanged collector/filter/security/test4파일 hash를 명시해 이 결과를 보존한다. Warning은 배포판 BCC bytes deprecation이며 전체 Python suite 수치가 아니다. |
+| 실제 AF_PACKET socket | Guest virtio `eth0`와 등록 local gateway fixture의 egress137→194packets, ingress140→198packets 및 byte 증가를 관측했다. Quiet period의 delta0, collector restart의 새 identity, stop 뒤 stale rejection을 확인했다. Header-only return-zero filter이며 guest NIC의 **Linux skb** 계수다. DMS physical NIC/wire/switch, offload 정확성 또는 full mesh를 검증한 것이 아니다. |
+| 최소권한 handoff | Collector CapEff/CapBnd/CapAmb `0000008000002000`(CAP_BPF+CAP_NET_RAW), NoNewPrivs1/Seccomp2. Nonroot observer가2rows를 읽었고 CapEff0/NoNewPrivs1/Seccomp2를 유지했다. Installer unprotected source 및 writable destination 거부도 확인했다. |
+| 실제 complete MMDB | 공식 DB-IP2026-10 압축 해제 database8,348,509bytes, SHA-256 `dbd70ccfa2a13627eaf4913d19920a1a229f1b3c5439ac01c509995b6364202a`; provider MD5/SHA1 일치와 metadata DBIP-Country-Lite/ip_version6/build version2026-10-01을 확인했다. Native lookup은 IPv4 US·IPv6 CA·service endpoint KR, private→XX/non_global·missing→XX/address_unavailable였다. 실제 운영 client 국가 정확성이나 모든 address의 ground truth 검증은 아니다. |
+| Factory/API·실제 TCP Redis | 실제 Uvicorn TCP/factory/API·Redis Lua/HLL·complete MMDB로 external3/internal2/unknown4와 legacy-unclassified2를 분리했다. 기존 auth client rewrite 유지·analytics trust 독립, raw-IP durable 저장 없음, dedupe/TTL, writer401·ordinary admin403을 확인했다. `app.main` binding·admin identity·SvelteKit adapter event는 합성으로 실제 Keystone/main lifespan/배포 인증을 주장하지 않는다. |
+| Reporter 실제 HTTP | Raw escaped oversized body는 실제 HTTP413이었다. Reporter의 invalid-evidence sentinel 적용 뒤 실제 HTTP200,299-byte wire payload를 확인했다. Listener/cleanup harness 수정까지 포함한 최종 command exit0(8.88s)/receipt passed:true다. Synthetic adapter peer이며 native SvelteKit deployment/production provenance 수용을 뜻하지 않는다. |
+| SNMP 실제 UDP·Redis runtime | Current source/pysnmp7.1.22/cryptography50.0.0에서 loopback authPriv UDP→실제 isolated TCP Redis Lua fence→fabric snapshot을 실행했다. 실제6.230250초 interval에서 sysUpTime4294966996→324 wrap 및 packet delta300/byte delta100의 정확한 rate를 확인했다. Closing uptime 누락/잘못된 type·boots 누락은 `snmp_invalid_response`,quick reboot는 `snmp_stale_sample`이며 key·username은 durable state에 없었다. Native MIB/identity는 합성이며 실제 switch/view/physical-port 수용은 아니다. 원문 `native-fabric-final.json`. |
+
+**Failed-before와 수정 원인:** 첫 native BPF/filter 회귀는 통과했지만 systemd collector는 `no_fresh_snapshot`으로 실패했다. `ProtectKernelModules=yes`가 `/lib/modules/<kernel>/build` symlink 접근을 가려 BCC가 `chdir(...): Permission denied`, missing kheaders/module 메시지를 냈다. Unit에 `BCC_KERNEL_SOURCE=/usr/src/linux-headers-%v`를 명시해 이미 provision한 matching distro headers를 사용한 뒤 위 실제 socket/handoff 결과를 얻었다. Module protection·MemoryDenyWriteExecute·capability/seccomp 경계를 낮추지 않았다. Before의 overall passed:false와 after passed:true를 함께 보존하며 이것은 별도 Ubuntu storage Python executable-stack repair의 역사적 receipt와 혼동하지 않는다.
+
+Durable native receipts: `~/.local/share/afterglow-proofs/network-observation-20261015/native-collector-before.json`, `native-collector.json`, `native-http.json`. Provider/native lookup 원본은 parent의 `country-mmdb-provider-receipt.json`과 `country-mmdb-native-qualification.json`이다. Source pin·실제 데이터·합성 identity 경계를 분리해 읽는다.
+
+### Built-image runtime (통합 전 source)
+
+Canonical root `Dockerfile`의 backend/frontend/worker/native-vm을 **linux/amd64+linux/arm64**, declared native-cloud-vm은 **linux/amd64**로 실제 build했다. OpenTofu1.8.3의 linux_arm64/linux_amd64와 Ceph18.2.7,Python3.12.15/pysnmp7.1.22·factory 및 worker crypto0.1.1,frontend Node20.20.2/x64·arm64를 built images 안에서 실행했다. `*-build.json`은 durable proof root에 보존한다.
+
+Canonical `docker-compose.dev.yml`와 task-owned port/image/tmpfs overlay의 `afterglow-observation-runtime-20261015`에서 backend/frontend·Redis·MariaDB health와 running Notion worker를 확인했다. 최초 기동은 throwaway TOML에 존재하지 않는 fabric `enabled`를 넣어 strict config가 거부했고 그 fixture key만 제거했다. 실제 adapter-node→factory/API→Redis Lua/HLL에서 login/health200·response-byte observations·external0/legacy0와 private/noncluster unknown,위조 XFF 원문 nondurability 및 empty fabric generation registration을 확인했다. 실제 mounted full MMDB SHA와 US/CA/KR도 일치했다. 개발 IAM 값은 synthetic loopback이며 Keystone 로그인/권한 또는 switch SNMP 수용이 아니다. 원문 `container-pipeline.json`.
+
+`native-vm` canonical nonroot OCI entrypoint는 network-none/tmpfs에서 **arm64/amd64** 모두 MariaDB/Redis/schema·API/frontend ready,UID1000·complete MMDB lookup과 exit0 graceful shutdown을 확인했다. `native-cloud-vm` image build는 성공했으나 별도 OCI lifecycle command는 Docker stop timeout으로 전체 성공이 아니었다. Nova/KVM guest boot는 어느 결과도 주장하지 않는다. 동시에 Docker inspect/stats·HTTP timeout과 Docker VM OOM events를 관측했고 공유 engine restart/prune·다른 프로젝트 변경은 하지 않았다; 당시 task Compose containers는 OOM=false/restart0이었다. 원문 `native-entrypoint.json`과 retained failed command output.
+
+최종 source의 desktop backend/frontend/worker amd64+arm64 build는 성공했지만 이어지는 native target은 BuildKit `no active session`으로 중단됐고 Compose recreate는360초 timeout이었다. 호스트 Redis port와 container API도 timeout이어서 그 결과를 ready로 쓰지 않았다. Shared engine39running containers는 restart/prune하지 않고 별도 task-owned Lima/Docker29.1.3/API1.52·containerd/6CPU/8GiB로 격리했다. Initial SSH 세션의 stale docker-group membership은 해당 VM 연결만 갱신하고 root:docker0660 socket을 유지한 채 private Unix tunnel로 해결했다. Ubuntu QEMU8.2.2의 amd64 `sqv` SIGSEGV가 APT signature failure로 드러났으며 **task VM의 qemu-x86_64만** Docker 권고 pinned binfmt image `sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0`로 교체한 뒤 sqv1.3.0 실행을 확인했다. Signature verification을 끄지 않았다. Root runbook/architecture/source를 바꾸는 문제 회피가 아니라 QA runtime repair이며 `runtime-environment.json`에 성공/실패 경계를 보존했다. 최종 isolated build/ready/image-runtime 결과는 별도 receipt를 따른다.
+
+해당 QEMU 교체 뒤 APT/sqv는 정상이었지만 OpenTofu1.8.3의 Go `lfstack.push` pointer packing은 실패했다. Task VM만 기존 host Rosetta로 재부팅했고 docker-container BuildKit0.33.1은 amd64 chroot probe에서 `/proc/self/exe` 경계를 만나 여전히 내부 QEMU를 선택했다([upstream7110](https://github.com/moby/buildkit/issues/7110),[7052](https://github.com/moby/buildkit/issues/7052)). 동일 owned engine의 canonical Docker driver/BuildKit0.26.2로 unchanged `tofu-installer`를 build하여 pinned amd64 checksum과 build·container runtime의 **OpenTofu1.8.3/linux_amd64**를 exit0으로 검증했다(`artifact://551`). Project Dockerfile·APT trust·버전 검사는 우회하지 않았다. 전체 target의 final image/runtime 결과는 별도 receipt로 판단한다.
+
+### 최종 source built-image runtime (task-owned isolated VM)
+
+Frozen source `808f18a1…`의 canonical Dockerfile target을 owned Docker driver로 모두 build했다. backend/frontend/worker/native-vm/cloud-shell은 **linux/amd64+linux/arm64**, native-cloud-vm은 **linux/amd64**이며 808.70초가 걸렸다(`final-image-builds.json`, `artifact://552`). Built image 안에서 두 architecture 모두 Python3.12.15/pysnmp7.1.22/factory, OpenTofu1.8.3 `linux_arm64`/`linux_amd64`, Ceph18.2.7, Node20.20.2 arm64/x64와 worker/cloud-shell module을 실행했다(`final-image-runtime.json`).
+
+Canonical `docker-compose.dev.yml` project의 첫 backend 기동은 `IsADirectoryError`로 실패했다. VM 재부팅 뒤 nonsecret QA fixture가 없어 short bind가 빈 디렉터리를 만든 것이다. 정확한 config/MMDB fixture를 SHA로 복원했고 QA overlay는 `create_host_path=false` read-only bind로 바꿨다(`mount-fixture-repair.json`). 그 뒤 Redis/MariaDB/backend/frontend는 healthy, worker는 running이었다. 실제 adapter-node→factory/API→Redis에서 backend internal4, frontend internal3/unknown2, external0/legacy0을 확인했다. MMDB `2026-10-01` SHA와 US/CA/KR, 위조 XFF 원문 비저장과 fabric generation registration도 일치했다(`container-pipeline-final.json`).
+
+`native-vm` arm64/amd64는 network-none에서 supervisor ready, UID1000, `offline_mmdb`, exit0 graceful shutdown이었다. `native-cloud-vm`도 supervisor/API/frontend health와 UID1000은 통과했다. 다만 root:root0700 `/etc/afterglow` 아래 mount한 MMDB는 appuser가 읽지 못해 `database_unavailable`이었다. Root-owned read-only `/usr/local/share/afterglow/geoip/country.mmdb`와 env 경로로는 `offline_mmdb`/US·CA·KR과 exit0을 확인했다(`native-final-entrypoint.json`). 이 경계는 deployment 문서에 기록했으며 Nova/KVM guest boot는 주장하지 않는다.
+
+Host `127.0.0.1:58642`로 실행한 첫 browser pass는 무효다. 그 listener는 Docker Desktop의 이전 frontend였고 API 요청이 `58641`로 갔다. 그 image는 unresolved trunk를 rx/tx measured edge로 표시했다. 결과는 폐기했다(`final-compiled-browser-invalidated.json`). `limactl` forward `58742`의 final frontend `sha256:08007d29…`(API `58741`)에서 **96/96조건·50/50조작**, 38node Fit overlap0·navigator38/44px·overflow0을 확인했다. Unresolved LAG/trunk endpoint는 rate unknown·marker 없는 단일 LLDP edge였다. Application exception은0이고 차단한 fonts와 unmatched GitLab fixture 등 request failure103건이 있다(`final-compiled-browser/summary.json`). Dense 합성 overview에서는 edge/port가 core label 위를 지나간다. Identity/API는 합성이며 인증·provider·switch·운영 수용이 아니다.
+
+### Synthetic Chromium 경계
+
+실제 current-source Vite/Chromium input/rendering에서 topology/traffic의 **96/96 route×locale×theme×width 조건,50/50 interaction**을 확인했다. Directional zero/reset/stale/error·physical-port qualification·pps/B/s·node/edge/list selection·stable refresh·keyboard/mouse·native touch pan/pinch·mobile inspector와30source/range/origin 조합을 포함한다. Overflow/uncontained control/reduced-motion running animation/page error는0이었다. `physical=true`·matching device가 없는 join을 unmeasured LLDP edge로 유지하도록 수정했고 inspector grid/wrapping과 mobile min-content width oscillation/fit을 수정했다.
+
+Identity·모든 API/inventory/switch/flow/MMDB analytics payload는 **합성**이다. Real authentication/provider/production proof가 아니며 source와 built-container UI는 아래에서 구분한다. 이전 **잘못된 checkout의 legacy browser evidence는 명시적으로 무효화**했다. 이 최초 source 화면의 high-density Fit에는 fixed-size node targets가 겹쳤으나 zoom·complete evidence-list selection은 가능했다; 이후 camera-scaled glyph/cluster spacing 수정과 현재 overlap0 증거를 아래에 분리했다. Reused profile의 native-touch flakiness와 fresh-profile 최종 pan/pinch transform 성공을 구분한다. Durable proof: `~/.local/share/afterglow-proofs/topology-traffic-assigned-20261015T1500/`의 summary/matrix/interactions·screenshots·before/after defects·재사용 scripts.
+
+Built adapter-node frontend에서도 동일 synthetic96조건/50조작이 통과했다. `compiled-browser/summary.json`의 application exceptions는0이나 network errors는0이 아니다: 의도적으로 차단한 외부 fonts 및 unmatched login GitLab-enabled fixture 요청이 기록됐다. Actual adapter reporting/Redis proof는 위 runtime 절과 별개다. 이후 screenshot에서 확인한 dense overview의 fixed44px box overlap은 camera-scaled glyph 및 controller core/host sector 밖의 switch-port cluster spacing으로 수정했으며 integrated source/image의 후속 화면 증거와 구분한다.
+
+통합 후 current-source Vite/Chromium에서도 **96/96조건·50/50조작**이 통과했다.18hosts+2switches+18ports/38node의 Fit에서 node target pair overlap0,동등 navigator38개/min-height44px,document overflow0이었다. Overview glyph camera scale과 core 밖 port-cluster spacing의 screenshot·geometry를 `integrated-browser/dense-fit.json`·`dense-fit-after.png` 및 summary/matrix/interactions에 보존한다. 합성 API/native input이고 built-image 또는 physical switch acceptance가 아니다. Network error는0이 아니며 block한 external fonts 및 unmatched login/dashboard fixture가 실패한 기록을 application exception0과 구분한다.
+
+### 아직 qualification하지 않은 경계
+
+이 절의 근거는 **physical-switch SNMPv3/실제 port mapping, Nova/KVM guest boot, 운영 mixed-version/backup-restore/production rollout 수용**을 포함하지 않는다. 실제 운영은 authorized management endpoint 또는 jump 경로·read-only SNMPv3 authPriv view와 operator0600 credential-file 위치가 먼저 필요하다. LLDP 광고 `192.168.0.2/.3`의 HTTP/HTTPS timeout과 representative kernel/BTF preflight는 switch counter 수용이나 all-node collector qualification이 아니다. NIC totals/guest skb/TCP reachability/합성 ports로 physical-switch gap을 대신 채우지 않는다. 기존 deployed1.30.x 수치/장애/partial coverage는 아래 역사적 기록을 그대로 따른다.
+
+후속 read-only operator preflight는 native `/etc/kolla/multinode` parse exit0과 Afterglow/control 대상3controllers, 기존 보호 backend/global/secret 파일·18observer 및 기존 HMAC/writer key 존재를 확인했다. 기존 operator inputs에는 fabric/SNMP credential 변수가 없었다(`operator-readonly-preflight.json`). 정확한 등록18hosts의 kernel/NIC/package/security metadata도 읽었으며 matching header directory18/18,Ubuntu BCC0.29.1가 compute/controller15대에 존재하고 storage3대에는 `python3-bpfcc`가 없었다. Standalone `clang`/`llvm` package는18대 모두 없었다. 실행 중 observer18대는 nonroot·CapEff/CapBnd/CapAmb0·NoNewPrivs1·Seccomp2였다(`all-hosts-readonly-preflight.json`). 이는 **metadata preflight**이며 BPF compile/load/capture·collector 배포·switch 접근·운영 acceptance 성공은 아니다.
+
 ## Chat project footer and MCP acceptance (2026-10-15)
 
 The isolated clone starts at `cbd75d6d506e3609c07202183181004f950a4c51` (latest fetched `dev`). The UI slice changes only the light-theme new-chat project footer: existing sunken surface at90% plus primary ink produces a stronger neutral-gray strip; dark remains `rgb(36, 37, 41)`. That presentation change does not itself alter schema, API, shared tokens or authority. The separately approved OAuth authority repair has its own evidence below.

@@ -34,6 +34,18 @@ class StrictModel(BaseModel):
 class HostObserverIdentity(StrictModel):
     host_id: HostId
     token: SecretStr = Field(min_length=32, max_length=256, repr=False)
+    # Operator-owned exact identities, never learned from neighbor advertisements.
+    addresses: list[str] = Field(default_factory=list, max_length=32)
+
+    @field_validator("addresses")
+    @classmethod
+    def registered_addresses(cls, values):
+        normalized = [validate_trace_target(value) for value in values]
+        if any(getattr(ipaddress.ip_address(value), "ipv4_mapped", None) for value in normalized):
+            raise ValueError("Register IPv4 directly, not mapped IPv6 aliases")
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("Registered addresses must be unique")
+        return normalized
 
     @field_validator("token")
     @classmethod
@@ -82,6 +94,9 @@ def validate_topology_settings(settings):
     tokens = [item.token.get_secret_value() for item in observers]
     if len(ids) != len(set(ids)) or len(tokens) != len(set(tokens)):
         raise ValueError("Observer identities and tokens must be unique")
+    addresses = [address for observer in observers for address in observer.addresses]
+    if len(addresses) != len(set(addresses)):
+        raise ValueError("Registered addresses must have exactly one host owner")
     targets = settings.monitoring_infrastructure_topology_trace_targets
     normalized = [validate_trace_target(target) for target in targets]
     if len(normalized) != len(set(normalized)):
@@ -109,6 +124,7 @@ class Interface(StrictModel):
     rx_packets: Counter | None = None
     tx_packets: Counter | None = None
     ifindex: int | None = Field(default=None, ge=1)
+    physical: bool | None = Field(default=None, strict=True)
 
     @field_validator("addresses")
     @classmethod
@@ -146,6 +162,50 @@ class Lldp(StrictModel):
     chassis_id: str = Field(min_length=1, max_length=128)
     port_id: str = Field(min_length=1, max_length=128)
     system_name: str | None = Field(default=None, max_length=128)
+    management_address: str | None = Field(default=None, max_length=64)
+    port_description: str | None = Field(default=None, max_length=128)
+
+    @field_validator("management_address")
+    @classmethod
+    def management_ip(cls, value):
+        return literal_ip(value) if value is not None else None
+
+
+class FlowCounter(StrictModel):
+    source_host_id: HostId
+    target_host_id: HostId
+    interface: InterfaceName
+    direction: Literal["ingress", "egress"]
+    # Strings preserve full uint64 through JSON/JavaScript consumers.
+    packets: str = Field(pattern=r"^(0|[1-9][0-9]{0,19})$")
+    bytes: str = Field(pattern=r"^(0|[1-9][0-9]{0,19})$")
+
+    @field_validator("packets", "bytes")
+    @classmethod
+    def uint64(cls, value):
+        if int(value) > 2**64 - 1:
+            raise ValueError("Flow counters must fit uint64")
+        return value
+
+    @model_validator(mode="after")
+    def distinct_endpoints(self):
+        if self.source_host_id == self.target_host_id:
+            raise ValueError("Flow endpoints must be different registered hosts")
+        return self
+
+
+class FlowObservation(StrictModel):
+    collector_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$")
+    captured_at: Timestamp
+    overflow: bool = Field(strict=True)
+    rows: list[FlowCounter] = Field(max_length=1024)
+
+    @model_validator(mode="after")
+    def unique_rows(self):
+        keys = [(row.interface, row.direction, row.source_host_id, row.target_host_id) for row in self.rows]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Flow counter identities must be unique")
+        return self
 
 
 class Sources(StrictModel):
@@ -155,6 +215,7 @@ class Sources(StrictModel):
     lldp: SourceState
     counters: SourceState
     peer_probes: SourceState = "unsupported"
+    flows: SourceState = "unsupported"
 
 
 class Observation(StrictModel):
@@ -169,6 +230,7 @@ class Observation(StrictModel):
     routes: list[Route] = Field(max_length=256)
     lldp: list[Lldp] = Field(max_length=128)
     peer_probes: list[PeerProbe] = Field(default_factory=list, max_length=64)
+    flows: FlowObservation | None = None
     sources: Sources
 
     @model_validator(mode="after")
@@ -184,6 +246,25 @@ class Observation(StrictModel):
         pairs = [(probe.target_host_id, probe.address, probe.port) for probe in self.peer_probes]
         if len(pairs) != len(set(pairs)):
             raise ValueError("Peer probe tuples must be unique")
+        if self.flows is not None:
+            if self.sources.flows == "unsupported":
+                raise ValueError("Unsupported flow sources cannot publish counters")
+            if self.flows.overflow and self.sources.flows != "error":
+                raise ValueError("Overflow must be reported as a source error")
+            physical = {
+                item.name
+                for item in self.interfaces
+                if item.physical is True
+                and item.ifindex is not None
+                and item.mac is not None
+                and re.fullmatch(r"(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}", item.mac)
+                and item.mac.lower() != "00:00:00:00:00:00"
+                and not int(item.mac[:2], 16) & 1
+            }
+            if any(row.interface not in physical for row in self.flows.rows):
+                raise ValueError("Flow rows require a qualified physical interface with stable ifindex and MAC")
+        elif self.sources.flows == "measured":
+            raise ValueError("Measured flow sources require a collector snapshot")
         return self
 
 

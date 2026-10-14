@@ -3,11 +3,13 @@
 	import { t } from '$lib/i18n/ns/infra-topology';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
-	import { quantity } from './evidence';
+	import TrafficArea from '$lib/components/ui/TrafficArea.svelte';
+	import { nicHistory, quantity } from './evidence';
 	let { host, name, verified }: { host: TopologyHost; name: string; verified: boolean } = $props();
 	const nic = $derived(host.observation?.interfaces.find(item => item.name === name));
+	const history = $derived(nicHistory(host, name, verified));
 	const keys: (keyof InterfaceCounters)[] = ['rx_bytes', 'tx_bytes', 'rx_packets', 'tx_packets'];
-	const sources = ['addresses', 'counters', 'lldp', 'neighbors', 'routes'] as const;
+	const sources = ['addresses', 'counters', 'lldp', 'neighbors', 'routes', 'flows'] as const;
 </script>
 
 {#if nic && host.observation}
@@ -17,17 +19,20 @@
 			<div><dt class="text-ink-2">{t('addresses')}</dt><dd class="font-mono break-all">{nic.addresses.join(', ') || t('unknown')}</dd></div>
 			<div><dt class="text-ink-2">{t('mac')}</dt><dd class="font-mono break-all">{nic.mac ?? t('unknown')}</dd></div>
 			<div><dt class="text-ink-2">{t('operstate')}</dt><dd>{nic.operstate}</dd></div>
+			<div><dt class="text-ink-2">{t('workspace.nicClassification')}</dt><dd>{t(nic.physical === true ? 'workspace.nicPhysical.yes' : nic.physical === false ? 'workspace.nicPhysical.no' : 'workspace.nicPhysical.unknown')}</dd></div>
 		</dl>
 		<div><h3 class="text-sm font-semibold mb-2">{t('sources')}</h3><dl class="flex flex-wrap gap-x-5 gap-y-2 text-xs">{#each sources as source}<div><dt>{t(`source.${source}`)}</dt><dd class="text-ink-2">{t(`state.${host.observation.sources[source]}`)}</dd></div>{/each}</dl></div>
 		<p class="text-sm text-ink-2">{t('counterHelp')}</p>
+		<TrafficArea samples={history} rxLabel={t('rx')} txLabel={t('tx')} fresh={verified && host.observation_state === 'fresh' && host.observation.sources.counters === 'measured'}><p class="text-xs text-ink-2">{t('nicHistory', { nic: name })}</p></TrafficArea>
 		<TableShell><table>
 			<caption class="text-left text-sm font-semibold pb-2">{t('counters')}</caption>
 			<thead><tr><th scope="col">{t('metric')}</th><th scope="col">{t('total')}</th><th scope="col">{t('rate')}</th></tr></thead>
 			<tbody>{#each keys as key}<tr><th scope="row">{t(`metric.${key}`)}</th><td class="tabular-nums">{quantity(host.observation.sources.counters === 'measured' ? nic[key] : null, key)}</td><td class="tabular-nums">{quantity(verified && host.observation_state === 'fresh' && host.observation.sources.counters === 'measured' ? nic.rates[key] : null, key, true)}</td></tr>{/each}</tbody>
 		</table></TableShell>
+		<p class="text-xs text-ink-2">{t('workspace.lldpDiagnostic')}</p>
 		<TableShell><table><caption class="text-left text-sm font-semibold pb-2">{t('physical')}</caption>
-			<thead><tr><th scope="col">{t('chassis')}</th><th scope="col">{t('port')}</th><th scope="col">{t('system')}</th></tr></thead>
-			<tbody>{#each host.observation.sources.lldp === 'measured' ? host.observation.lldp.filter(edge => edge.interface === name) : [] as edge}<tr><td class="font-mono">{edge.chassis_id}</td><td class="font-mono">{edge.port_id}</td><td>{edge.system_name ?? t('unknown')}</td></tr>{:else}<tr><td colspan="3">{host.observation.sources.lldp === 'measured' ? t('none') : t(`state.${host.observation.sources.lldp}`)}</td></tr>{/each}</tbody>
+			<thead><tr><th scope="col">{t('chassis')}</th><th scope="col">{t('port')}</th><th scope="col">{t('system')}</th><th scope="col">{t('workspace.portDescription')}</th><th scope="col">{t('workspace.management')}</th></tr></thead>
+			<tbody>{#each host.observation.sources.lldp === 'measured' ? host.observation.lldp.filter(edge => edge.interface === name) : [] as edge}<tr><td class="font-mono">{edge.chassis_id}</td><td class="font-mono">{edge.port_id}</td><td>{edge.system_name ?? t('unknown')}</td><td>{edge.port_description ?? t('unknown')}</td><td class="font-mono">{edge.management_address ?? t('unknown')}</td></tr>{:else}<tr><td colspan="5">{host.observation.sources.lldp === 'measured' ? t('none') : t(`state.${host.observation.sources.lldp}`)}</td></tr>{/each}</tbody>
 		</table></TableShell>
 		<TableShell><table><caption class="text-left text-sm font-semibold pb-2">{t('neighbors')}</caption>
 			<thead><tr><th scope="col">{t('ip')}</th><th scope="col">{t('mac')}</th><th scope="col">{t('neighborState')}</th></tr></thead>

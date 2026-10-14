@@ -91,3 +91,8 @@ origins = "{{ afterglow_public_endpoint_url }}"
 [logging]
 log_directory = "/var/log/kolla/afterglow_api"
 max_bytes = 52428800
+
+{% if afterglow_traffic_analytics_geoip_mmdb_source %}
+[traffic_analytics]
+geoip_mmdb = {{ afterglow_traffic_analytics_geoip_mmdb_path | to_json }}
+{% endif %}

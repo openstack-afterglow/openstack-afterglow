@@ -48,7 +48,7 @@ def configuration():
             "retention_days": 7,
             "hmac_key": HMAC_KEY,
             "frontend_ingest_key": INGEST_KEY,
-            "geoip_csv": "/etc/afterglow/geo.csv",
+            "geoip_mmdb": "/etc/afterglow/geoip/country.mmdb",
             "site_country": "KR",
         },
     }

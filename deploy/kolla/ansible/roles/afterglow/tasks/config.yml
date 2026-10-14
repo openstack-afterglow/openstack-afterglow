@@ -76,6 +76,54 @@
     group: root
   when: inventory_hostname in groups['afterglow']
 
+- name: Config | Validate offline country database pin
+  ansible.builtin.assert:
+    that:
+      - afterglow_traffic_analytics_geoip_mmdb_sha256 is match('^[a-f0-9]{64}$')
+      - afterglow_traffic_analytics_geoip_mmdb_source is match('^/')
+      - afterglow_traffic_analytics_geoip_mmdb_runtime_path is match('^/')
+      - afterglow_traffic_analytics_geoip_mmdb_path is match('^/')
+    fail_msg: "Configured offline country data requires absolute paths and a reviewed SHA-256 pin"
+  run_once: true
+  when: afterglow_traffic_analytics_geoip_mmdb_source | length > 0 or afterglow_traffic_analytics_geoip_mmdb_sha256 | length > 0
+
+- name: Config | Inspect operator-owned offline country database
+  become: false
+  ansible.builtin.stat:
+    path: "{{ afterglow_traffic_analytics_geoip_mmdb_source }}"
+    follow: false
+    get_checksum: true
+    checksum_algorithm: sha256
+  register: afterglow_country_database_stat
+  run_once: true
+  delegate_to: "{{ groups['deployment'][0] }}"
+  when: afterglow_traffic_analytics_geoip_mmdb_source | length > 0
+
+- name: Config | Verify complete offline country database input
+  ansible.builtin.assert:
+    that:
+      - afterglow_country_database_stat.stat.isreg | default(false)
+      - not (afterglow_country_database_stat.stat.islnk | default(false))
+      - afterglow_country_database_stat.stat.readable | default(false)
+      - afterglow_country_database_stat.stat.size | default(0) | int > 0
+      - afterglow_country_database_stat.stat.size | default(0) | int <= 67108864
+      - afterglow_country_database_stat.stat.checksum | default('') == afterglow_traffic_analytics_geoip_mmdb_sha256
+    fail_msg: "Offline country database is unreadable, oversized, nonregular or does not match its reviewed pin"
+  run_once: true
+  when: afterglow_traffic_analytics_geoip_mmdb_source | length > 0
+
+- name: Config | Install pinned offline country database read-only
+  become: true
+  ansible.builtin.copy:
+    src: "{{ afterglow_traffic_analytics_geoip_mmdb_source }}"
+    dest: "{{ afterglow_traffic_analytics_geoip_mmdb_runtime_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - inventory_hostname in groups['afterglow']
+    - afterglow_traffic_analytics_geoip_mmdb_source | length > 0
+
 - name: Config | Protect operator-owned source files
   ansible.builtin.assert:
     that:

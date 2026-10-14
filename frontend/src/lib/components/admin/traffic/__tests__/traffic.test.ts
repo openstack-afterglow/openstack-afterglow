@@ -176,6 +176,16 @@ describe('trends and source disclosures', () => {
 		expect(screen.getByText(formatTrafficTime(snapshot.coverage.last_observed_at))).toBeTruthy();
 		expect(screen.getByText(t('coverage.retention', { days: '30' }))).toBeTruthy();
 	});
+    it('shows current DB attribution and explicit legacy/private reasons without reclassifying old traffic', () => {
+        const snapshot = observations();
+        Object.assign(snapshot.coverage, { geo_source: 'offline_mmdb', geo_provider: 'DB-IP', geo_version: '2026-10-01', geo_attribution: 'IP Geolocation by DB-IP, CC BY 4.0' });
+        render(TrafficCoverage, { snapshot, source: 'backend' });
+        expect(screen.getByText('DB-IP · 2026-10-01')).toBeTruthy();
+        expect(screen.getByRole('link', { name: 'IP Geolocation by DB-IP, CC BY 4.0' }).getAttribute('href')).toBe('https://db-ip.com');
+        expect(screen.getByText(t('coverage.legacy'))).toBeTruthy();
+        expect(screen.getByText(new RegExp(t('reasons.non_global_noncluster')))).toBeTruthy();
+        expect(screen.getByText(new RegExp(t('reasons.legacy_unclassified')))).toBeTruthy();
+    });
 	it('keeps unknown reporter drops and absent source timestamps unknown rather than claiming a healthy reporter', () => {
 		const snapshot = observations(); snapshot.coverage.last_observed_at = null; snapshot.coverage.observed_since = null;
 		render(TrafficCoverage, { snapshot, source: 'backend' });

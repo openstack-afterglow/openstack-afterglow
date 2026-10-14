@@ -12,7 +12,7 @@ data:
   APP_GRAFANA_BASE: {{ .Values.monitoring.grafanaBaseUrl | quote }}
   PUBLIC_API_BASE: {{ $publicApiBase | quote }}
   TRAFFIC_ANALYTICS_INGEST_URL: "http://backend:8000/api/v1/monitoring/traffic/events"
-  TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS: {{ .Values.trafficAnalytics.trustFrontendClientAddress | quote }}
+  TRAFFIC_ANALYTICS_PEER_IS_SOCKET: "true"
   afterglow.conf: |
     # Afterglow 통합 설정 파일
     # 비밀 값은 secret.yaml의 환경변수로 주입됩니다.
@@ -378,10 +378,27 @@ data:
     instance_cpu_uid = {{ .Values.monitoring.dashboards.instanceCpuUid | quote }}
     instance_gpu_uid = {{ .Values.monitoring.dashboards.instanceGpuUid | quote }}
 
+    [monitoring.infrastructure_fabric]
+    revision = {{ .Values.monitoring.infrastructureFabric.revision }}
+    poll_interval_seconds = {{ .Values.monitoring.infrastructureFabric.pollIntervalSeconds }}
+    freshness_seconds = {{ .Values.monitoring.infrastructureFabric.freshnessSeconds }}
+    timeout_seconds = {{ .Values.monitoring.infrastructureFabric.timeoutSeconds }}
+    retries = {{ .Values.monitoring.infrastructureFabric.retries }}
+    concurrency = {{ .Values.monitoring.infrastructureFabric.concurrency }}
+    poll_budget_seconds = {{ .Values.monitoring.infrastructureFabric.pollBudgetSeconds }}
+    max_ports = {{ .Values.monitoring.infrastructureFabric.maxPorts }}
+    max_neighbors = {{ .Values.monitoring.infrastructureFabric.maxNeighbors }}
+    max_varbinds = {{ .Values.monitoring.infrastructureFabric.maxVarbinds }}
+    retention_seconds = {{ .Values.monitoring.infrastructureFabric.retentionSeconds }}
+    # AuthPriv targets are injected by MONITORING_INFRASTRUCTURE_FABRIC__TARGETS Secret.
+
     [traffic_analytics]
     enabled = {{ .Values.trafficAnalytics.enabled }}
     retention_days = {{ .Values.trafficAnalytics.retentionDays }}
-    geoip_csv = {{ .Values.trafficAnalytics.geoipCsv | quote }}
+    geoip_mmdb = {{ .Values.trafficAnalytics.geoipMmdb | quote }}
+    cluster_cidrs = {{ .Values.trafficAnalytics.clusterCidrs | toJson }}
+    backend_trusted_proxy_cidrs = {{ .Values.trafficAnalytics.backendTrustedProxyCidrs | toJson }}
+    frontend_trusted_proxy_cidrs = {{ .Values.trafficAnalytics.frontendTrustedProxyCidrs | toJson }}
     site_country = {{ .Values.trafficAnalytics.siteCountry | quote }}
     # HMAC and ingestion secrets are injected by TRAFFIC_ANALYTICS__* environment keys.
 

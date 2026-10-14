@@ -38,6 +38,12 @@ describe('infrastructure observation polling lifecycle', () => {
 		const ctrl = controller(); await vi.advanceTimersByTimeAsync(0); ctrl.selectHost('storage:node-c');
 		ctrl.setAuthority({ ...authority }); expect(read).toHaveBeenCalledTimes(1); expect(ctrl.selectedId).toBe('storage:node-c');
 	});
+	it('preserves non-host graph selection across polling and clears it immediately on authority loss', async () => {
+		const ctrl = controller(); await vi.advanceTimersByTimeAsync(0);
+		ctrl.selectElement({ kind: 'node', id: 'switch:switch:sw-a' }); await ctrl.load();
+		expect(ctrl.selection).toEqual({ kind: 'node', id: 'switch:switch:sw-a' });
+		ctrl.setAuthority({ ...authority, ready: false }); expect(ctrl.selection).toBeNull(); expect(ctrl.snapshot).toBeNull();
+	});
 	it('retains verified live observations during the next poll rather than flickering stale', async () => {
 		const ctrl = controller(); await vi.advanceTimersByTimeAsync(0); expect(ctrl.verified).toBe(true);
 		const pending = Promise.withResolvers<InfrastructureTopologySnapshot>(); read.mockImplementationOnce(() => pending.promise);
@@ -113,6 +119,15 @@ describe('configured-target trace lifecycle', () => {
 		else ctrl.dispose();
 		pending.resolve(makeTrace('queued')); await saving; await vi.advanceTimersByTimeAsync(0);
 		expect(ctrl.snapshot?.hosts[0].traces ?? []).toEqual([]); expect(ctrl.busy).toBe(false);
+	});
+	it('ignores a late trace submission when an edge on the same reporting host is selected', async () => {
+		const ctrl = controller(); await vi.advanceTimersByTimeAsync(0);
+		const pending = Promise.withResolvers<unknown>(); submit.mockImplementationOnce(() => pending.promise);
+		const saving = ctrl.submitTrace();
+		ctrl.selectElement({ kind: 'edge', id: 'flow:observed-edge' }, 'compute:node-a');
+		expect(ctrl.busy).toBe(false); expect(submit.mock.calls[0][3].aborted).toBe(true);
+		pending.resolve(makeTrace('queued')); await saving;
+		expect(ctrl.snapshot?.hosts[0].traces).toEqual([]); expect(ctrl.selection).toEqual({ kind: 'edge', id: 'flow:observed-edge' });
 	});
 	it('exposes unsupported and conflict without fabricating a successful path', async () => {
 		const snapshot = makeSnapshot(); snapshot.hosts[0].traces = [{ ...makeTrace('unsupported'), result: { status: 'unsupported', hops: [], reached: false, error: 'traceroute_missing', source_interface: null, next_hop: null, completed_at: 1_800_000_000 } }];

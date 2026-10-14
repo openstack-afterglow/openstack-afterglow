@@ -12,6 +12,9 @@ data:
   PUBLIC_S3_BASE: "https://s3.example.com"
   PUBLIC_API_BASE: "http://afterglow.example.com"
   APP_GRAFANA_BASE: ""
+  TRAFFIC_ANALYTICS_INGEST_URL: "http://backend:8000/api/v1/monitoring/traffic/events"
+  # ADDRESS_HEADER is unset: adapter-node reports the original socket peer.
+  TRAFFIC_ANALYTICS_PEER_IS_SOCKET: "true"
   afterglow.conf: |
     # Afterglow 통합 설정 파일
     [DEFAULT]
@@ -51,6 +54,37 @@ data:
     frontend_base_url = "http://afterglow.example.com"
     public_api_base = "http://afterglow.example.com"
     trusted_proxies = "127.0.0.1/32,::1/128"
+
+    [monitoring]
+    infrastructure_topology_enabled = false
+    infrastructure_topology_retention_seconds = 3600
+    infrastructure_topology_trace_targets = []
+    infrastructure_topology_peer_targets = []
+    # Observer identities and fabric target credentials are injected from Secret.
+
+    [monitoring.infrastructure_fabric]
+    revision = 0
+    poll_interval_seconds = 10
+    freshness_seconds = 30
+    timeout_seconds = 2.0
+    retries = 1
+    concurrency = 4
+    poll_budget_seconds = 30
+    max_ports = 256
+    max_neighbors = 256
+    max_varbinds = 16384
+    retention_seconds = 3600
+
+    [traffic_analytics]
+    enabled = false
+    retention_days = 30
+    geoip_mmdb = ""
+    site_country = ""
+    cluster_cidrs = []
+    backend_trusted_proxy_cidrs = []
+    frontend_trusted_proxy_cidrs = []
+    # HMAC and writer keys are injected from Secret. Exact analytics proxy CIDRs
+    # remain independent from FORWARDED_ALLOW_IPS authentication/scheme trust.
 
     [logging]
     log_directory = "/app/logs"

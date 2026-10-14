@@ -9,7 +9,7 @@ describe('traffic snapshot schema and unknown coverage', () => {
 		expect(parsed).toBe(input); expect(parsed.series[0].metrics).toBeNull(); expect(parsed.countries[0].unique_visitors).toBeNull();
 	});
 	it('keeps absent totals and measured zero as distinct states', () => {
-		const absent = observations({ totals: null, countries: [], routes: [], series: [] });
+		const absent = observations({ totals: null, origins: null, countries: [], routes: [], series: [] });
 		expect(parseTrafficSnapshot(absent, 'backend', '24h').totals).toBeNull();
 		expect(metricValue(metrics({ requests: 0 }), 'requests')).toBe(0); expect(metricValue(null, 'requests')).toBeNull();
 	});
@@ -22,6 +22,16 @@ describe('traffic snapshot schema and unknown coverage', () => {
 		}
 		expect(() => parseTrafficSnapshot({ ...observations(), coverage: { ...observations().coverage, geo_source: 'header' } }, 'backend', '24h')).toThrow();
 	});
+    it('fences origin selections and rejects forged reason/cardinality dimensions', () => {
+        expect(() => parseTrafficSnapshot(observations(), 'backend', '24h', 'external')).toThrow();
+        const selected = observations({ origin: 'external', origins: { internal: 0, external: 10, unknown: 0, legacy_unclassified: 0 }, routes: [] });
+        expect(parseTrafficSnapshot(selected, 'backend', '24h', 'external')).toBe(selected);
+        expect(() => parseTrafficSnapshot({ ...selected, origins: { ...selected.origins, internal: 1 } }, 'backend', '24h', 'external')).toThrow();
+        const invalid = observations(); Object.assign(invalid.coverage.geo_unknown_reasons, { 'raw-ip-8.8.8.8': 1 });
+        expect(() => parseTrafficSnapshot(invalid, 'backend', '24h')).toThrow();
+        const inconsistent = observations(); inconsistent.routes[0].origins.internal++;
+        expect(() => parseTrafficSnapshot(inconsistent, 'backend', '24h')).toThrow();
+    });
 	it.each([-1, Infinity, NaN, 1.5, '0', undefined])('rejects invalid request counters %s', (requests) => {
 		expect(() => parseTrafficSnapshot({ ...observations(), totals: { ...metrics(), requests } }, 'backend', '24h')).toThrow();
 	});

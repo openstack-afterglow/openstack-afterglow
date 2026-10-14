@@ -61,11 +61,11 @@ spec:
                   name: afterglow-config
                   key: TRAFFIC_ANALYTICS_INGEST_URL
                   optional: true
-            - name: TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS
+            - name: TRAFFIC_ANALYTICS_PEER_IS_SOCKET
               valueFrom:
                 configMapKeyRef:
                   name: afterglow-config
-                  key: TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS
+                  key: TRAFFIC_ANALYTICS_PEER_IS_SOCKET
                   optional: true
             - name: TRAFFIC_ANALYTICS_INGEST_KEY
               valueFrom:

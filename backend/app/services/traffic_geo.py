@@ -1,12 +1,11 @@
-"""Offline-only country lookup; CSV is operator-owned, never downloaded at runtime.
+"""Complete offline DB-IP Country MMDB, mmap-backed and never fetched at runtime.
 
-Schema: cidr,country (ISO 3166-1 alpha-2), e.g. 8.8.8.0/24,US.
-Longest prefix wins. Private/reserved IPs and missing entries are unlocated (XX).
-Restart workers after replacing the read-only CSV; malformed tables fail closed.
+Mount the monthly DB read-only and restart workers on replacement. Missing,
+corrupt, incompatible databases fail closed; no fixture or network fallback.
 """
 
-import csv
 import ipaddress
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 
@@ -267,48 +266,65 @@ ISO_COUNTRIES = frozenset(
 
 class CountryLookup:
     def __init__(self, filename: str):
-        self.state = "unconfigured" if not filename else "offline_cidr"
-        self.networks: dict[tuple[int, int, int], str] = {}
+        self.state = "unconfigured" if not filename else "unavailable"
+        self.provider = None
+        self.version = None
+        self.attribution = None
+        self.reader = None
         if not filename:
             return
         try:
+            import maxminddb
+
             path = Path(filename)
-            if path.stat().st_size > 16 * 1024 * 1024:
-                raise ValueError("country table exceeds size limit")
-            with path.open(encoding="utf-8", newline="") as stream:
-                reader = csv.DictReader(stream)
-                if reader.fieldnames != ["cidr", "country"]:
-                    raise ValueError("country table requires cidr,country header")
-                for index, row in enumerate(reader):
-                    if index >= 250_000 or None in row:
-                        raise ValueError("country table exceeds record/schema limit")
-                    network = ipaddress.ip_network(row["cidr"].strip(), strict=True)
-                    country = row["country"].strip().upper()
-                    if country not in ISO_COUNTRIES:
-                        raise ValueError("invalid country code")
-                    key = (network.version, network.prefixlen, int(network.network_address))
-                    if key in self.networks:
-                        raise ValueError("duplicate network")
-                    self.networks[key] = country
-        except (OSError, ValueError, csv.Error, UnicodeError, AttributeError):
-            self.networks.clear()
+            if not path.is_file() or not 0 < path.stat().st_size <= 512 * 1024 * 1024:
+                return
+            reader = maxminddb.open_database(str(path), mode=maxminddb.MODE_MMAP)
+            try:
+                metadata = reader.metadata()
+                if "dbip" not in metadata.database_type.lower() or "country" not in metadata.database_type.lower():
+                    raise ValueError("DB-IP country MMDB required")
+                self.version = datetime.fromtimestamp(metadata.build_epoch, UTC).strftime("%Y-%m-%d")
+                self.reader = reader
+                self.provider = "DB-IP"
+                self.attribution = "IP Geolocation by DB-IP (https://db-ip.com)" + (
+                    ", CC BY 4.0"
+                    if "lite" in metadata.database_type.lower()
+                    else "; operator-supplied licensed database"
+                )
+                self.state = "offline_mmdb"
+            except Exception:
+                reader.close()
+                raise
+        except Exception:
+            # No filename, raw address or library exception enters logs/API.
             self.state = "unavailable"
 
-    def country(self, address: str | None) -> str:
+    def lookup(self, address: str | None) -> tuple[str, str]:
+        if address is None:
+            return "XX", "address_unavailable"
         try:
             ip = ipaddress.ip_address(address)
         except ValueError:
-            return "XX"
-        if not ip.is_global or self.state != "offline_cidr":
-            return "XX"
-        bits = ip.max_prefixlen
-        value = int(ip)
-        for prefix in range(bits, -1, -1):
-            mask = ((1 << bits) - 1) ^ ((1 << (bits - prefix)) - 1)
-            country = self.networks.get((ip.version, prefix, value & mask))
-            if country:
-                return country
-        return "XX"
+            return "XX", "invalid_address"
+        if not ip.is_global or ip.is_multicast:
+            return "XX", "non_global"
+        if self.state != "offline_mmdb":
+            return "XX", "database_" + self.state
+        try:
+            row = self.reader.get(str(ip))
+            if row is None:
+                return "XX", "range_missing"
+            country = row.get("country", {}).get("iso_code")
+            if country not in ISO_COUNTRIES:
+                return "XX", "country_invalid"
+            return country, "located"
+        except Exception:
+            return "XX", "lookup_failed"
+
+    def __del__(self):
+        if self.reader is not None:
+            self.reader.close()
 
 
 @lru_cache(maxsize=1)

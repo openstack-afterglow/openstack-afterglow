@@ -29,14 +29,30 @@ pytestmark = [
 
 @pytest.fixture
 async def analytics(monkeypatch, tmp_path):
-    geo = tmp_path / "geo.csv"
-    geo.write_text("cidr,country\n8.8.8.0/24,KR\n9.9.9.0/24,US\n")
+    # Unit-level geographic seam; production qualification must use the complete
+    # mounted DB-IP MMDB, not this deterministic reader.
+    rows = {"8.8.8.8": "KR", "9.9.9.9": "US"}
+    monkeypatch.setattr(
+        service,
+        "country_lookup",
+        lambda filename: SimpleNamespace(
+            state="offline_mmdb",
+            provider="DB-IP",
+            version="2026-10-01",
+            attribution="DB-IP CC BY 4.0",
+            lookup=lambda address: (
+                (rows[address], "located")
+                if address in rows
+                else ("XX", "address_unavailable" if address is None else "non_global")
+            ),
+        ),
+    )
     settings = SimpleNamespace(
         traffic_analytics=TrafficAnalyticsSettings(
             enabled=True,
             hmac_key="identity-" + "h" * 32,
             frontend_ingest_key="frontend-" + "f" * 32,
-            geoip_csv=str(geo),
+            cluster_cidrs=["172.30.0.0/16"],
         )
     )
     monkeypatch.setattr(service, "get_settings", lambda: settings)
@@ -58,7 +74,8 @@ def observation(**changes):
         at=time.time(),
         status=200,
         route="/dashboard/instances/{id}",
-        client_ip="8.8.8.8",
+        peer_ip="8.8.8.8",
+        peer_verified=True,
         pageview=True,
         request_bytes=None,
         response_bytes=42,
@@ -73,9 +90,9 @@ async def test_atomic_concurrent_count_dedupe_country_hll_and_privacy(analytics)
     same = observation()
     assert all(await asyncio.gather(*(service.record_event(same, "frontend") for _ in range(32))))
     assert await service.record_event(same.model_copy(update={"at": same.at - 60}), "frontend")
-    other = observation(status=503, client_ip="9.9.9.9", response_bytes=18, latency_ms=35)
+    other = observation(status=503, peer_ip="9.9.9.9", response_bytes=18, latency_ms=35)
     assert await service.record_event(other, "frontend")
-    assert await service.record_event(observation(client_ip=None, response_bytes=None), "frontend")
+    assert await service.record_event(observation(peer_ip=None, response_bytes=None), "frontend")
     data = await service.snapshot("frontend", "24h")
     assert data["state"] == "available"
     totals = data["totals"]
@@ -146,13 +163,17 @@ async def test_bounded_minute_capacity_rejects_without_partial_aggregation(analy
     assert data["state"] == "partial"
     assert data["totals"]["requests"] == 1
     assert data["coverage"]["dropped_events"] == 1
+    external = await service.snapshot("frontend", "24h", "external")
+    internal = await service.snapshot("frontend", "24h", "internal")
+    assert external["coverage"]["dropped_events"] == internal["coverage"]["dropped_events"] == 1
+    assert internal["totals"] is None and internal["origins"] is None
 
 
 async def test_no_high_cardinality_paths_or_country_spoofing(analytics):
     redis, _ = analytics
     for index in range(25):
         await service.record_event(
-            observation(route=f"/secret/{index}?token=DO-NOT-STORE", client_ip="192.0.2.1"), "frontend"
+            observation(route=f"/secret/{index}?token=DO-NOT-STORE", peer_ip="192.0.2.1"), "frontend"
         )
     data = await service.snapshot("frontend", "24h")
     assert [row["route"] for row in data["routes"]] == ["/other"]
@@ -160,4 +181,65 @@ async def test_no_high_cardinality_paths_or_country_spoofing(analytics):
     counts, _ = service.bucket_keys("frontend", int(time.time()) // 3600)
     raw = repr(await redis.hgetall(counts))
     assert "DO-NOT-STORE" not in raw and "secret" not in raw and "192.0.2.1" not in raw
-    assert await redis.hlen(counts) <= 3 * (len(service.COUNTERS) + 1)
+    assert await redis.hlen(counts) <= 6 * (len(service.COUNTERS) + 3)
+
+
+async def test_origin_filter_is_atomic_across_totals_routes_countries_series_hll_and_dedupe(analytics):
+    redis, _ = analytics
+    for peer in ("172.30.1.4", "8.8.8.8", "9.9.9.9", "192.168.9.1", None):
+        value = observation(peer_ip=peer)
+        assert await service.record_event(value, "frontend")
+        assert await service.record_event(value, "frontend")
+    all_data = await service.snapshot("frontend", "24h")
+    assert all_data["totals"]["requests"] == 5
+    assert all_data["origins"] == {"internal": 1, "external": 2, "unknown": 2, "legacy_unclassified": 0}
+    for selected, total, unique in (("internal", 1, 1), ("external", 2, 2), ("unknown", 2, 1)):
+        data = await service.snapshot("frontend", "24h", selected)
+        assert data["totals"]["requests"] == total and data["totals"]["unique_visitors"] == unique
+        assert sum(row["requests"] for row in data["countries"]) == total
+        assert sum(row["requests"] for row in data["routes"]) == total
+        assert sum(point["metrics"]["requests"] for point in data["series"] if point["metrics"]) == total
+        assert sum(data["origins"].values()) == total
+        assert data["routes"][0]["origins"][selected] == total
+    assert all_data["coverage"]["origin_unknown_reasons"] == {"address_unavailable": 1, "non_global_noncluster": 1}
+    assert all_data["coverage"]["geo_unknown_reasons"] == {"address_unavailable": 1, "non_global": 2}
+
+
+async def test_existing_v1_buckets_and_old_reporters_remain_legacy_without_reset(analytics):
+    from app.models.traffic_analytics import LegacyTrafficEvent
+
+    redis, _ = analytics
+    hour = int(time.time()) // 3600
+    old_counts, old_visitors = service.bucket_keys("frontend", hour, 1)
+    old = {key: 0 for key in service.COUNTERS}
+    old.update(requests=2, success=2, status_2xx=2, unlocated=1, identity_known=1)
+    await redis.hset(
+        old_counts,
+        mapping={
+            dimension + "|" + key: value for dimension in ("t", "c:XX", "r:/dashboard") for key, value in old.items()
+        },
+    )
+    await redis.expire(old_counts, 3600)
+    await redis.pfadd(old_visitors, "old-opaque-digest")
+    await redis.expire(old_visitors, 3600)
+    old_report = LegacyTrafficEvent(
+        id=uuid4(), at=time.time(), status=200, route="/dashboard", client_ip="8.8.8.8", latency_ms=2
+    )
+    assert await service.record_event(old_report, "frontend")
+    modern = observation()
+    assert await service.record_event(modern, "frontend")
+    # Shared dedupe boundary suppresses a retry first accepted by an old backend.
+    shared = observation()
+    dedupe = f"{service.KEY_PREFIX}:frontend:dedupe:{int(time.time()) // 60}"
+    await redis.hset(dedupe, str(shared.id), "1")
+    assert await service.record_event(shared, "frontend")
+    all_data = await service.snapshot("frontend", "24h")
+    legacy = await service.snapshot("frontend", "24h", "legacy_unclassified")
+    external = await service.snapshot("frontend", "24h", "external")
+    assert all_data["totals"]["requests"] == 4
+    assert all_data["totals"]["unique_visitors"] == 2
+    assert legacy["totals"]["requests"] == 3 and legacy["totals"]["unique_visitors"] == 1
+    assert legacy["coverage"]["legacy_unclassified_requests"] == 3
+    assert legacy["coverage"]["origin_unknown_reasons"] == {"legacy_unclassified": 3}
+    assert external["totals"]["requests"] == 1 and external["coverage"]["legacy_unclassified_requests"] == 0
+    assert int(await redis.hget(old_counts, "t|requests")) == 2

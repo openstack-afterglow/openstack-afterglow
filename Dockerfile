@@ -90,7 +90,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 USER appuser
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.middleware.traffic_address:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]
 
 # ── Backend 개발 스테이지 (docker-compose.override.yml에서 사용) ────────────
 # 소스코드를 볼륨 마운트하여 실시간 반영, reload 모드로 실행
@@ -103,7 +103,7 @@ RUN adduser --disabled-password --gecos "" appuser \
 USER appuser
 ENV PATH="/app/.venv/bin:$PATH"
 # named volume 캐시가 오래된 .venv를 갖고 있어도 의존성 자동 동기화
-CMD ["sh", "-c", "uv sync --frozen --no-install-project && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
+CMD ["sh", "-c", "uv sync --frozen --no-install-project && uvicorn app.middleware.traffic_address:create_app --factory --host 0.0.0.0 --port 8000 --reload --no-proxy-headers"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Notion integration worker stage

@@ -1317,6 +1317,10 @@ async def start_background_workers():
     from app.services.auto_backup import scheduler_loop
 
     _start_background(scheduler_loop(), name="volume-backup-dispatch")
+    from app.services.infrastructure_fabric import monitoring_loop as fabric_monitoring_loop
+
+    # Register empty generations too, so disabling sources fences an older replica.
+    _start_background(fabric_monitoring_loop(settings=_db_cfg), name="physical-fabric-observation")
     if _db_cfg.monitoring_host_healthcheck_enabled:
         from app.services.host_health import monitoring_loop
 

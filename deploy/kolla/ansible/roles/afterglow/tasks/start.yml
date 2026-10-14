@@ -12,6 +12,43 @@
     - "{{ afterglow_runtime_config_dir }}/{{ afterglow_frontend_config_name }}"
   when: inventory_hostname in groups['afterglow']
 
+- name: Start | Validate offline country database pin
+  ansible.builtin.assert:
+    that:
+      - afterglow_traffic_analytics_geoip_mmdb_sha256 is match('^[a-f0-9]{64}$')
+      - afterglow_traffic_analytics_geoip_mmdb_source is match('^/')
+      - afterglow_traffic_analytics_geoip_mmdb_runtime_path is match('^/')
+      - afterglow_traffic_analytics_geoip_mmdb_path is match('^/')
+    fail_msg: "Configured offline country data requires absolute paths and a reviewed SHA-256 pin"
+  when:
+    - inventory_hostname in groups['afterglow']
+    - afterglow_traffic_analytics_geoip_mmdb_source | length > 0 or afterglow_traffic_analytics_geoip_mmdb_sha256 | length > 0
+
+- name: Start | Stat offline country data for restart identity
+  become: true
+  ansible.builtin.stat:
+    path: "{{ afterglow_traffic_analytics_geoip_mmdb_runtime_path }}"
+    follow: false
+    checksum_algorithm: sha256
+  register: afterglow_country_runtime_stat
+  when:
+    - inventory_hostname in groups['afterglow']
+    - afterglow_traffic_analytics_geoip_mmdb_source | length > 0
+
+- name: Start | Require pinned offline country data
+  ansible.builtin.assert:
+    that:
+      - afterglow_country_runtime_stat.stat.isreg | default(false)
+      - not (afterglow_country_runtime_stat.stat.islnk | default(false))
+      - afterglow_country_runtime_stat.stat.readable | default(false)
+      - afterglow_country_runtime_stat.stat.size | default(0) | int > 0
+      - afterglow_country_runtime_stat.stat.size | default(0) | int <= 67108864
+      - afterglow_country_runtime_stat.stat.checksum | default('') == afterglow_traffic_analytics_geoip_mmdb_sha256
+    fail_msg: "Offline country data changed or disappeared after generation; keep the serving containers unchanged"
+  when:
+    - inventory_hostname in groups['afterglow']
+    - afterglow_traffic_analytics_geoip_mmdb_source | length > 0
+
 - name: Start | Start Afterglow containers
   become: true
   community.docker.docker_container:
@@ -30,7 +67,7 @@
     groups: "{{ item.value.groups | default(omit) }}"
     labels:
       kolla_version: "2025.2"
-      config_hash: "{{ afterglow_config_stats.results | map(attribute='stat.checksum') | join(':') }}"
+      config_hash: "{{ afterglow_config_stats.results | map(attribute='stat.checksum') | join(':') }}:{{ [afterglow_traffic_analytics_geoip_mmdb_source, afterglow_traffic_analytics_geoip_mmdb_sha256, afterglow_country_runtime_stat.stat.checksum | default('disabled')] | to_json | hash('sha256') }}"
   no_log: true
   loop: "{{ afterglow_services | dict2items }}"
   when:

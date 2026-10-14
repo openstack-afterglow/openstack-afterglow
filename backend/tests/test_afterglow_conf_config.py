@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -660,33 +661,6 @@ def test_k8s_static_config_uses_portable_log_rotation_settings():
     assert "backup_count" not in configmap
 
 
-def test_helm_app_templates_use_writable_ephemeral_log_mounts():
-    """Backend and frontend Helm templates must declare pod-local writable emptyDir log mounts without PVC/hostPath."""
-    paths = [
-        ROOT / "helm/afterglow/templates/backend/deployment.yaml",
-        ROOT / "helm/afterglow/templates/frontend/deployment.yaml",
-    ]
-    for path in paths:
-        text = path.read_text(encoding="utf-8")
-
-        # Must include securityContext with fsGroup 1000
-        assert "securityContext:" in text
-        assert "fsGroup: 1000" in text
-
-        # Must include app-logs volumeMount at /app/logs
-        assert "- name: app-logs\n              mountPath: /app/logs" in text
-
-        # Must include app-logs emptyDir volume definition
-        assert "- name: app-logs\n          emptyDir: {}" in text
-
-        # Must preserve ConfigMap volume mount
-        assert "afterglow-config-volume" in text
-
-        # Must not introduce hostPath or PVC for log storage
-        assert "persistentVolumeClaim" not in text
-        assert "hostPath" not in text
-
-
 def test_ceph_rbd_config_is_disabled_only_when_both_mount_paths_are_empty():
     assert app_config.Settings().ceph_rbd_enabled is False
 
@@ -769,3 +743,271 @@ def test_k8s_renderer_separates_ceph_conf_and_keyring():
     assert keyring not in toml
     assert configmap["data"]["ceph.conf"].rstrip("\n") == ceph_conf
     assert secret["stringData"]["CEPH_RBD_KEYRING"].rstrip("\n") == keyring
+
+
+@pytest.fixture
+def observation_config():
+    return {
+        "app": {"secret_key": "fixture-application-secret-" + "s" * 32},
+        "openstack": {"password": "fixture-openstack-password"},
+        "database": {"url": "mysql+aiomysql://fixture:fixture@127.0.0.1/fixture"},
+        "k3s": {"kubeconfig_encryption_key": "ZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmY="},
+        "traffic_analytics": {
+            "enabled": True,
+            "hmac_key": "identity-secret-" + "a" * 32,
+            "frontend_ingest_key": "writer-secret-" + "b" * 32,
+            "geoip_mmdb": "/etc/afterglow/geoip/country.mmdb",
+            "cluster_cidrs": ["10.42.0.0/16", "fd00:42::/48"],
+            "backend_trusted_proxy_cidrs": ["10.42.1.8/32"],
+            "frontend_trusted_proxy_cidrs": ["10.42.1.9/32"],
+            "site_country": "KR",
+        },
+        "monitoring": {
+            "infrastructure_fabric": {
+                "revision": 3,
+                "poll_interval_seconds": 15,
+                "freshness_seconds": 45,
+                "targets": [
+                    {
+                        "id": "switch-a",
+                        "name": "Switch A",
+                        "chassis_id": "aa:bb:cc:dd:ee:ff",
+                        "management_ip": "10.20.0.5",
+                        "username": "observer",
+                        "auth_key": 'auth-"secret\\value',
+                        "priv_key": "privacy-secret-value",
+                    }
+                ],
+            },
+        },
+    }
+
+
+def _assert_observation_config(configmap, secret, expected):
+    from app.models.infrastructure_fabric import FabricSettings
+    from app.models.traffic_analytics import TrafficAnalyticsSettings
+
+    parsed = tomllib.loads(configmap["data"]["afterglow.conf"])
+    protected = secret["stringData"]
+    traffic = TrafficAnalyticsSettings.model_validate(
+        {
+            **parsed["traffic_analytics"],
+            "hmac_key": protected["TRAFFIC_ANALYTICS__HMAC_KEY"],
+            "frontend_ingest_key": protected["TRAFFIC_ANALYTICS__FRONTEND_INGEST_KEY"],
+        }
+    )
+    fabric = FabricSettings.model_validate(
+        {
+            **parsed["monitoring"]["infrastructure_fabric"],
+            "targets": json.loads(protected["MONITORING_INFRASTRUCTURE_FABRIC__TARGETS"]),
+        }
+    )
+    assert traffic == TrafficAnalyticsSettings.model_validate(expected["traffic_analytics"])
+    assert fabric == FabricSettings.model_validate(expected["monitoring"]["infrastructure_fabric"])
+    public = json.dumps(configmap)
+    for value in (
+        traffic.hmac_key,
+        traffic.frontend_ingest_key,
+        fabric.targets[0].auth_key,
+        fabric.targets[0].priv_key,
+    ):
+        assert value.get_secret_value() not in public
+        assert value.get_secret_value() not in configmap["data"]["afterglow.conf"]
+
+
+def test_generated_observation_settings_round_trip_without_public_credentials(observation_config):
+    _assert_observation_config(
+        yaml.safe_load(generate_k8s.render_configmap(observation_config)),
+        yaml.safe_load(generate_k8s.render_secret(observation_config)),
+        observation_config,
+    )
+    public_values = yaml.safe_load(config2helm.render_yaml(config2helm.convert(observation_config, False)))
+    assert "secrets" not in public_values
+    assert "targets" not in public_values["monitoring"]["infrastructureFabric"]
+    for key in ("auth_key", "priv_key", "username", "hmac_key", "frontend_ingest_key"):
+        assert key not in json.dumps(public_values)
+
+
+@pytest.mark.parametrize("claim", ["", "operator-country-data"])
+def test_helm_observation_settings_and_optional_readonly_country_volume(tmp_path, observation_config, claim):
+    helm = shutil.which("helm")
+    if helm is None:
+        pytest.skip("Helm is required to render the deployment contract")
+    values = config2helm.convert(observation_config, True)
+    values["trafficAnalytics"]["geoipExistingClaim"] = claim
+    values_path = tmp_path / "observation-values.yaml"
+    values_path.write_text(config2helm.render_yaml(values), encoding="utf-8")
+    rendered = subprocess.run(
+        [helm, "template", "afterglow", str(ROOT / "helm/afterglow"), "-f", str(values_path)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    documents = list(yaml.safe_load_all(rendered.stdout))
+    configmap = next(
+        doc for doc in documents if doc["kind"] == "ConfigMap" and doc["metadata"]["name"] == "afterglow-config"
+    )
+    secret = next(
+        doc for doc in documents if doc["kind"] == "Secret" and doc["metadata"]["name"] == "afterglow-secrets"
+    )
+    _assert_observation_config(configmap, secret, observation_config)
+    for document in documents:
+        if document["kind"] == "Deployment" and document["metadata"]["name"] in {"backend", "frontend"}:
+            app_pod = document["spec"]["template"]["spec"]
+            log_volume = next(volume for volume in app_pod["volumes"] if volume["name"] == "app-logs")
+            log_mount = next(mount for mount in app_pod["containers"][0]["volumeMounts"] if mount["name"] == "app-logs")
+            assert log_volume == {"name": "app-logs", "emptyDir": {}}
+            assert log_mount["mountPath"] == "/app/logs" and log_mount.get("readOnly", False) is False
+    pod = next(doc for doc in documents if doc["kind"] == "Deployment" and doc["metadata"]["name"] == "backend")[
+        "spec"
+    ]["template"]["spec"]
+    volumes = {volume["name"]: volume for volume in pod["volumes"]}
+    mounts = {mount["name"]: mount for mount in pod["containers"][0]["volumeMounts"]}
+    if claim:
+        assert volumes["traffic-country-mmdb"]["persistentVolumeClaim"] == {"claimName": claim, "readOnly": True}
+        assert mounts["traffic-country-mmdb"]["mountPath"] == "/etc/afterglow/geoip"
+        assert mounts["traffic-country-mmdb"]["readOnly"] is True
+    else:
+        assert "traffic-country-mmdb" not in volumes
+        assert "traffic-country-mmdb" not in mounts
+
+
+def test_helm_rejects_country_claim_with_unmounted_database_path():
+    helm = shutil.which("helm")
+    if helm is None:
+        pytest.skip("Helm is required to render the deployment contract")
+    rendered = subprocess.run(
+        [
+            helm,
+            "template",
+            "afterglow",
+            str(ROOT / "helm/afterglow"),
+            "--set",
+            "trafficAnalytics.geoipExistingClaim=operator-country-data",
+            "--set",
+            "trafficAnalytics.geoipMmdb=/unmounted/country.mmdb",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert rendered.returncode != 0
+    assert "requires geoipMmdb=/etc/afterglow/geoip/country.mmdb" in rendered.stderr
+
+
+@pytest.mark.parametrize("source", ["", "/operator/country.mmdb"])
+def test_kolla_country_mount_configuration_preserves_other_operator_settings(source):
+    from jinja2 import meta
+
+    from app.models.traffic_analytics import TrafficAnalyticsSettings
+
+    environment = Environment(undefined=StrictUndefined)
+    environment.filters.update(bool=bool, to_json=json.dumps)
+    template = environment.parse(
+        (ROOT / "deploy/kolla/ansible/roles/afterglow/templates/afterglow.kolla.conf.j2").read_text()
+    )
+    context = dict.fromkeys(meta.find_undeclared_variables(template), "")
+    for key in (
+        "backend_port",
+        "frontend_port",
+        "cloud_shell_home_size_gib",
+        "cloud_shell_cpu",
+        "cloud_shell_memory_mib",
+        "cloud_shell_idle_timeout_seconds",
+        "cloud_shell_max_session_seconds",
+        "cloud_shell_ticket_ttl_seconds",
+        "cloud_shell_reconcile_interval_seconds",
+    ):
+        context["afterglow_" + key] = 1
+    context.update(
+        afterglow_traffic_analytics_geoip_mmdb_source=source,
+        afterglow_traffic_analytics_geoip_mmdb_path="/etc/afterglow/geoip/country.mmdb",
+    )
+    override = tomllib.loads(environment.from_string(template).render(context))
+    operator = {"geoip_mmdb": "/operator/image-country.mmdb", "cluster_cidrs": ["10.42.0.0/16"]}
+    effective = TrafficAnalyticsSettings.model_validate({**operator, **override.get("traffic_analytics", {})})
+    assert effective.geoip_mmdb == (
+        context["afterglow_traffic_analytics_geoip_mmdb_path"] if source else operator["geoip_mmdb"]
+    )
+    assert effective.cluster_cidrs == operator["cluster_cidrs"]
+
+
+def test_kolla_country_startup_fails_closed_and_tracks_source_identity(tmp_path):
+    executable = ROOT / "deploy/kolla/operator/.venv/bin/ansible-playbook"
+    ansible = str(executable) if executable.is_file() else shutil.which("ansible-playbook")
+    if ansible is None:
+        pytest.skip("Kolla's Ansible runtime is required for functional startup checks")
+    tasks = yaml.safe_load((ROOT / "deploy/kolla/ansible/roles/afterglow/tasks/start.yml").read_text())
+    marker = tmp_path / "started-container"
+    for task in tasks:
+        task["become"] = False
+        if "community.docker.docker_container" in task:
+            # Sandbox only the Docker side effect; retain the real guards, stat,
+            # restart expression, loop and host selection from the startup path.
+            container = task.pop("community.docker.docker_container")
+            task["ansible.builtin.copy"] = {"content": container["labels"]["config_hash"], "dest": str(marker)}
+    playbook = tmp_path / "start.yml"
+    playbook.write_text(yaml.safe_dump([{"hosts": "afterglow", "gather_facts": False, "tasks": tasks}]))
+    inventory = tmp_path / "inventory"
+    inventory.write_text("[afterglow]\nlocalhost ansible_connection=local\n")
+    database = tmp_path / "country.mmdb"
+    content = b"opaque operator-provisioned database bytes for checksum boundary"
+    database.write_bytes(content)
+    pin = hashlib.sha256(content).hexdigest()
+    variables = {
+        "afterglow_runtime_config_dir": str(tmp_path),
+        "afterglow_traffic_analytics_geoip_mmdb_source": "/operator/release-a/country.mmdb",
+        "afterglow_traffic_analytics_geoip_mmdb_runtime_path": str(database),
+        "afterglow_traffic_analytics_geoip_mmdb_path": "/etc/afterglow/geoip/country.mmdb",
+        "afterglow_traffic_analytics_geoip_mmdb_sha256": pin,
+        "afterglow_services": {"backend": {"enabled": True}},
+    }
+    for key in (
+        "generated_config_name",
+        "operator_config_name",
+        "operator_frontend_config_name",
+        "kolla_config_name",
+        "frontend_config_name",
+    ):
+        variables["afterglow_" + key] = key + ".conf"
+        (tmp_path / variables["afterglow_" + key]).write_text("# configuration layer\n")
+    environment = {key: value for key, value in os.environ.items() if not key.startswith(("ANSIBLE_", "KOLLA_"))}
+    environment.update(ANSIBLE_LOCAL_TEMP=str(tmp_path / "ansible-tmp"), OBJC_DISABLE_INITIALIZE_FORK_SAFETY="YES")
+
+    def start(**overrides):
+        marker.unlink(missing_ok=True)
+        result = subprocess.run(
+            [ansible, "-i", str(inventory), str(playbook), "-e", json.dumps({**variables, **overrides})],
+            cwd=tmp_path,
+            env=environment,
+            capture_output=True,
+            text=True,
+        )
+        return result, marker.read_text() if marker.exists() else None
+
+    result, identity_a = start()
+    assert result.returncode == 0, result.stdout + result.stderr
+    result, identity_b = start(afterglow_traffic_analytics_geoip_mmdb_source="/operator/release-b/country.mmdb")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert identity_a != identity_b
+    for overrides in (
+        {"afterglow_traffic_analytics_geoip_mmdb_source": ""},
+        {"afterglow_traffic_analytics_geoip_mmdb_sha256": ""},
+        {"afterglow_traffic_analytics_geoip_mmdb_sha256": "0" * 64},
+    ):
+        result, identity = start(**overrides)
+        assert result.returncode != 0
+        assert identity is None
+    database.write_bytes(b"replaced data")
+    result, identity = start()
+    assert result.returncode != 0
+    assert identity is None
+    database.unlink()
+    result, identity = start()
+    assert result.returncode != 0
+    assert identity is None
+    target = tmp_path / "symlink-target.mmdb"
+    target.write_bytes(content)
+    database.symlink_to(target)
+    result, identity = start()
+    assert result.returncode != 0
+    assert identity is None

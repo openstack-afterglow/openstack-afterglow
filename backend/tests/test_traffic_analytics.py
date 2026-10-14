@@ -51,22 +51,62 @@ def test_settings_opt_in_secrets_and_retention():
     ):
         with pytest.raises(ValidationError):
             TrafficAnalyticsSettings(**changes)
+    for field in ("cluster_cidrs", "backend_trusted_proxy_cidrs", "frontend_trusted_proxy_cidrs"):
+        for cidrs in (["*"], ["0.0.0.0/0"], ["172.30.1.1/16"], ["::/0"], ["bad"]):
+            with pytest.raises(ValidationError):
+                TrafficAnalyticsSettings(**{field: cidrs})
 
 
-def test_offline_country_lookup_longest_prefix_private_and_invalid(tmp_path):
-    path = tmp_path / "geo.csv"
-    path.write_text("cidr,country\n8.0.0.0/8,US\n8.8.8.0/24,KR\n2001:4860::/32,US\n10.0.0.0/8,JP\n")
+def test_offline_mmdb_metadata_ipv6_and_unknown_reasons(tmp_path, monkeypatch):
+    import sys
+
+    path = tmp_path / "country.mmdb"
+    path.write_bytes(b"synthetic unit reader seam, not a country database")
+    rows = {
+        "8.8.8.8": {"country": {"iso_code": "KR"}},
+        "2001:4860:4860::8888": {"country": {"iso_code": "US"}},
+        "1.1.1.1": {"country": {"iso_code": "ZZ"}},
+    }
+    reader = SimpleNamespace(
+        metadata=lambda: SimpleNamespace(database_type="DBIP-Country-Lite", build_epoch=1790812800),
+        get=lambda address: rows.get(address),
+        close=lambda: None,
+    )
+    monkeypatch.setitem(
+        sys.modules, "maxminddb", SimpleNamespace(MODE_MMAP=2, open_database=lambda filename, mode: reader)
+    )
     geo = CountryLookup(str(path))
-    assert geo.state == "offline_cidr"
-    assert geo.country("8.8.8.8") == "KR"
-    assert geo.country("8.1.1.1") == "US"
-    assert geo.country("2001:4860:4860::8888") == "US"
-    for address in (None, "bad", "10.1.1.1", "127.0.0.1", "192.0.2.1", "9.9.9.9"):
-        assert geo.country(address) == "XX"
-    path.write_text("cidr,country\n8.8.8.0/24,ZZ\n")
+    assert geo.state == "offline_mmdb" and geo.provider == "DB-IP"
+    assert geo.version == "2026-10-01" and "CC BY 4.0" in geo.attribution
+    assert geo.lookup("8.8.8.8") == ("KR", "located")
+    assert geo.lookup("2001:4860:4860::8888") == ("US", "located")
+    assert geo.lookup(None) == ("XX", "address_unavailable")
+    assert geo.lookup("bad") == ("XX", "invalid_address")
+    assert geo.lookup("10.1.1.1") == ("XX", "non_global")
+    assert geo.lookup("9.9.9.9") == ("XX", "range_missing")
+    assert geo.lookup("1.1.1.1") == ("XX", "country_invalid")
+    assert CountryLookup("").lookup("8.8.8.8") == ("XX", "database_unconfigured")
+    assert CountryLookup(str(tmp_path / "missing.mmdb")).lookup("8.8.8.8") == ("XX", "database_unavailable")
+
+
+def test_mmdb_corruption_and_wrong_provider_fail_closed(tmp_path, monkeypatch):
+    import sys
+    from unittest.mock import Mock
+
+    path = tmp_path / "country.mmdb"
+    path.write_bytes(b"not a database")
+
+    def corrupt(filename, mode):
+        raise ValueError("malformed metadata, never echoed")
+
+    monkeypatch.setitem(sys.modules, "maxminddb", SimpleNamespace(MODE_MMAP=2, open_database=corrupt))
     assert CountryLookup(str(path)).state == "unavailable"
-    assert CountryLookup("").state == "unconfigured"
-    assert CountryLookup(str(tmp_path / "missing.csv")).country("8.8.8.8") == "XX"
+    reader = SimpleNamespace(metadata=lambda: SimpleNamespace(database_type="Other-City", build_epoch=0), close=Mock())
+    monkeypatch.setitem(
+        sys.modules, "maxminddb", SimpleNamespace(MODE_MMAP=2, open_database=lambda filename, mode: reader)
+    )
+    assert CountryLookup(str(path)).state == "unavailable"
+    reader.close.assert_called_once()
 
 
 def test_route_cardinality_and_hmac_privacy():
@@ -100,7 +140,7 @@ async def test_redis_outage_is_unknown_and_recovered_drops(settings, monkeypatch
 async def test_unknown_sizes_are_not_false_zero(settings, monkeypatch):
     redis = SimpleNamespace(eval=AsyncMock(return_value=1))
     monkeypatch.setattr(service, "_get_redis", AsyncMock(return_value=redis))
-    await service.record_event(event(client_ip="8.8.8.8"), "frontend")
+    await service.record_event(event(peer_ip="8.8.8.8", peer_verified=True), "frontend")
     args = redis.eval.call_args.args
     measures = json.loads(args[args[1] + 6])
     assert measures["request_bytes_known"] == 0
@@ -135,7 +175,6 @@ async def test_middleware_streams_messages_unchanged_and_only_reads_on_demand(se
         return True
 
     monkeypatch.setattr(middleware, "record_event", record)
-    monkeypatch.setattr(middleware, "_get_real_ip", lambda request: "8.8.8.8")
     incoming = [
         {"type": "http.request", "body": b"abc", "more_body": True},
         {"type": "http.request", "body": b"defg", "more_body": False},
@@ -170,7 +209,6 @@ async def test_middleware_streams_messages_unchanged_and_only_reads_on_demand(se
 async def test_middleware_does_not_consume_unread_request_and_does_not_mask_error(settings, monkeypatch):
     record = AsyncMock(return_value=True)
     monkeypatch.setattr(middleware, "record_event", record)
-    monkeypatch.setattr(middleware, "_get_real_ip", lambda request: "8.8.8.8")
     receive = AsyncMock()
 
     async def broken(scope, receive, send):
@@ -207,7 +245,7 @@ async def test_ingest_writer_scope_freshness_bounds_and_no_validation_echo(setti
     app.include_router(api.ingest_router, prefix="/ingest")
     record = AsyncMock(return_value=True)
     monkeypatch.setattr(api, "record_event", record)
-    data = event(client_ip="8.8.8.8").model_dump(mode="json")
+    data = event(peer_ip="8.8.8.8", peer_verified=True).model_dump(mode="json")
     headers = {"Authorization": "Bearer " + "f" * 32}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         assert (await client.post("/ingest/events", json=data)).status_code == 401
@@ -221,7 +259,7 @@ async def test_ingest_writer_scope_freshness_bounds_and_no_validation_echo(setti
         response = await client.post("/ingest/events", headers={**headers, "CF-IPCountry": "KR"}, json=data)
         assert response.json() == {"accepted": True}
         assert record.call_args.args[1] == "frontend"
-        assert record.call_args.args[0].client_ip == "8.8.8.8"
+        assert record.call_args.args[0].peer_ip == "8.8.8.8"
         record.return_value = False
         assert (await client.post("/ingest/events", headers=headers, json=data)).status_code == 503
 
@@ -237,6 +275,7 @@ async def test_admin_aggregate_requires_verified_system_admin(settings, monkeypa
         observed.assert_not_awaited()
         app.dependency_overrides[get_token_info] = lambda: {"is_system_admin": True}
         assert (await client.get("/traffic?range=all&source=anything")).status_code == 422
+        assert (await client.get("/traffic?origin=made-up")).status_code == 422
         observed.assert_not_awaited()
         monkeypatch.setattr(service, "_get_redis", AsyncMock(side_effect=ConnectionError("unavailable")))
         observed.return_value = await service.snapshot("backend", "24h")
@@ -264,13 +303,126 @@ async def test_snapshot_http_exposes_configured_or_null_site_country(settings, m
     assert response.json()["coverage"]["site_country"] == (country or None)
 
 
-async def test_backend_proxy_trust_ignores_headers_unless_peer_trusted(settings, monkeypatch):
-    from starlette.requests import Request
+@pytest.mark.parametrize(
+    "peer,verified,chain,expected,reason",
+    [
+        ("8.8.8.8", True, "172.30.0.12", "external", "classified"),
+        ("172.30.0.11", True, "8.8.8.8, 172.30.0.12", "external", "classified"),
+        ("172.30.0.11", True, "8.8.8.8, 192.168.8.1", "unknown", "non_global_noncluster"),
+        ("172.30.0.11", True, "172.30.9.4", "internal", "classified"),
+        ("172.30.0.11", True, "bad, 8.8.8.8", "unknown", "forwarded_invalid"),
+        ("172.30.0.11", True, None, "unknown", "forwarded_missing"),
+        ("172.30.0.11", True, "172.30.0.12", "unknown", "forwarded_all_trusted"),
+        ("8.8.8.8", False, "8.8.4.4", "unknown", "peer_unverified"),
+        (None, True, None, "unknown", "address_unavailable"),
+        ("garbage", True, None, "unknown", "invalid_address"),
+        ("2001:4860:4860::8888", True, None, "external", "classified"),
+        ("fd00:1234::5", True, None, "internal", "classified"),
+        ("fd00:9999::5", True, None, "unknown", "non_global_noncluster"),
+        ("::ffff:172.30.5.1", True, None, "internal", "classified"),
+    ],
+)
+def test_analytics_proxy_chain_and_origin_policy(peer, verified, chain, expected, reason):
+    from app.services.traffic_address import resolve_address
 
-    from app import rate_limit
+    result = resolve_address(
+        peer, verified, chain, ["172.30.0.11/32", "172.30.0.12/32"], ["172.30.0.0/16", "fd00:1234::/48"]
+    )
+    assert result.origin == expected and result.reason == reason
 
-    monkeypatch.setattr("app.config.get_settings", lambda: settings)
-    scope = asgi_scope(headers=[(b"x-forwarded-for", b"9.9.9.9"), (b"cf-ipcountry", b"KR")])
-    assert rate_limit._get_real_ip(Request(scope)) == "8.8.8.8"
-    settings.trusted_proxies = "8.8.8.0/24"
-    assert rate_limit._get_real_ip(Request(scope)) == "9.9.9.9"
+
+async def test_original_peer_capture_preserves_auth_client_and_https_and_combines_headers(settings, monkeypatch):
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+    from app.middleware.traffic_address import OriginalPeerMiddleware
+
+    settings.traffic_analytics.backend_trusted_proxy_cidrs = ["172.30.0.11/32", "172.30.0.12/32"]
+    record = AsyncMock(return_value=True)
+    monkeypatch.setattr(middleware, "record_event", record)
+    seen = []
+
+    async def app(scope, receive, send):
+        seen.append((scope["client"], scope["scheme"]))
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    scope = asgi_scope(
+        headers=[
+            (b"x-forwarded-for", b"8.8.8.8"),
+            (b"x-forwarded-for", b"172.30.0.12"),
+            (b"x-forwarded-proto", b"https"),
+        ]
+    )
+    scope["client"] = ("172.30.0.11", 43210)
+    wrapped = OriginalPeerMiddleware(
+        ProxyHeadersMiddleware(middleware.TrafficAnalyticsMiddleware(app), trusted_hosts="172.30.0.11,172.30.0.12")
+    )
+    await wrapped(scope, AsyncMock(), AsyncMock())
+    # Uvicorn sees its exact original configuration (including duplicate-header semantics).
+    assert seen == [(("172.30.0.12", 0), "https")]
+    observed = record.call_args.args[0]
+    assert observed.peer_ip == "172.30.0.11" and observed.peer_verified
+    assert observed.forwarded_for == "8.8.8.8,172.30.0.12"
+    assert scope["client"] == ("172.30.0.11", 43210)  # no caller mutation
+
+
+async def test_backend_without_original_peer_does_not_trust_rewritten_client(settings, monkeypatch):
+    record = AsyncMock(return_value=True)
+    monkeypatch.setattr(middleware, "record_event", record)
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 204, "headers": []})
+
+    await middleware.TrafficAnalyticsMiddleware(app)(asgi_scope(), AsyncMock(), AsyncMock())
+    assert record.call_args.args[0].peer_verified is False
+
+
+async def test_old_frontend_writer_is_explicit_legacy_boundary(settings, monkeypatch):
+    from app.models.traffic_analytics import LegacyTrafficEvent
+
+    app = FastAPI()
+    app.include_router(api.ingest_router, prefix="/ingest")
+    record = AsyncMock(return_value=True)
+    monkeypatch.setattr(api, "record_event", record)
+    data = event().model_dump(mode="json")
+    for key in ("schema_version", "peer_ip", "peer_verified", "forwarded_for"):
+        data.pop(key)
+    data["client_ip"] = "8.8.8.8"
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/ingest/events", headers={"Authorization": "Bearer " + "f" * 32}, json=data)
+    assert response.status_code == 200
+    assert isinstance(record.call_args.args[0], LegacyTrafficEvent)
+
+
+@pytest.mark.parametrize(
+    "chain",
+    [
+        "8.8.8.8:443",
+        "[2001:4860::1]",
+        "8.8.8.8,",
+        ",8.8.8.8",
+        "unknown",
+        "8.8.8.8," * 16 + "8.8.8.8",
+        "1" * 1025,
+        "fe80::1%eth0",
+    ],
+)
+def test_trusted_proxy_rejects_entire_malformed_or_over_limit_chain(chain):
+    from app.services.traffic_address import resolve_address
+
+    result = resolve_address("172.30.0.11", True, chain, ["172.30.0.11/32"], ["172.30.0.0/16"])
+    assert result.address is None and result.origin == "unknown" and result.reason == "forwarded_invalid"
+
+
+async def test_sources_use_independent_exact_proxy_policies(settings, monkeypatch):
+    settings.traffic_analytics.backend_trusted_proxy_cidrs = ["172.30.0.11/32"]
+    settings.traffic_analytics.cluster_cidrs = ["172.30.0.0/16"]
+    redis = SimpleNamespace(eval=AsyncMock(return_value=1))
+    monkeypatch.setattr(service, "_get_redis", AsyncMock(return_value=redis))
+    value = event(peer_ip="172.30.0.11", peer_verified=True, forwarded_for="8.8.8.8")
+    assert await service.record_event(value, "backend")
+    assert redis.eval.call_args.args[-1] == "external"
+    assert await service.record_event(value, "frontend")
+    assert redis.eval.call_args.args[-1] == "internal"
+    # The same UUID belongs to independent source dedupe namespaces.
+    assert ":frontend:dedupe:" in repr(redis.eval.call_args.args)

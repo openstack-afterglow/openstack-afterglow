@@ -1,3 +1,6 @@
+{{- if and .Values.trafficAnalytics.geoipExistingClaim (ne .Values.trafficAnalytics.geoipMmdb "/etc/afterglow/geoip/country.mmdb") }}
+{{- fail "trafficAnalytics.geoipExistingClaim requires geoipMmdb=/etc/afterglow/geoip/country.mmdb" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -35,7 +38,8 @@ spec:
           imagePullPolicy: {{ .Values.image.backend.pullPolicy }}
           command:
             - "uvicorn"
-            - "app.main:app"
+            - "app.middleware.traffic_address:create_app"
+            - "--factory"
             - "--host"
             - "0.0.0.0"
             - "--port"
@@ -48,7 +52,7 @@ spec:
             - "uvloop"
             - "--http"
             - "httptools"
-            - "--proxy-headers"
+            - "--no-proxy-headers"
           ports:
             - containerPort: 8000
           env:
@@ -97,6 +101,12 @@ spec:
                   name: afterglow-secrets
                   key: MONITORING_INFRASTRUCTURE_TOPOLOGY_OBSERVERS
                   optional: true
+            - name: MONITORING_INFRASTRUCTURE_FABRIC__TARGETS
+              valueFrom:
+                secretKeyRef:
+                  name: afterglow-secrets
+                  key: MONITORING_INFRASTRUCTURE_FABRIC__TARGETS
+                  optional: true
             - name: TRAFFIC_ANALYTICS__HMAC_KEY
               valueFrom:
                 secretKeyRef:
@@ -127,6 +137,11 @@ spec:
               mountPath: /etc/ceph/ceph.client.afterglow-rbd.keyring
               subPath: ceph.client.afterglow-rbd.keyring
               readOnly: true
+            {{- if .Values.trafficAnalytics.geoipExistingClaim }}
+            - name: traffic-country-mmdb
+              mountPath: /etc/afterglow/geoip
+              readOnly: true
+            {{- end }}
             - name: app-logs
               mountPath: /app/logs
           # startupProbe: 노드 I/O 저하 시 import가 10분+ 걸릴 수 있어 20분까지 허용
@@ -185,5 +200,11 @@ spec:
               - key: CEPH_RBD_KEYRING
                 path: ceph.client.afterglow-rbd.keyring
             defaultMode: 0400
+        {{- if .Values.trafficAnalytics.geoipExistingClaim }}
+        - name: traffic-country-mmdb
+          persistentVolumeClaim:
+            claimName: {{ .Values.trafficAnalytics.geoipExistingClaim | quote }}
+            readOnly: true
+        {{- end }}
         - name: app-logs
           emptyDir: {}

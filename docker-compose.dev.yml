@@ -412,6 +412,7 @@ services:
       - ./.local-services/logs:/app/logs
       - ${AFTERGLOW_LOCAL_CEPH_CONF:-/dev/null}:/etc/ceph/ceph.conf:ro
       - ${AFTERGLOW_LOCAL_CEPH_KEYRING:-/dev/null}:/etc/ceph/ceph.client.afterglow-rbd.keyring:ro
+      - ${TRAFFIC_ANALYTICS_GEOIP_MMDB_FILE:-/dev/null}:/etc/afterglow/geoip/country.mmdb:ro
     env_file:
       - path: .env
         required: false
@@ -420,6 +421,7 @@ services:
       CORS_ORIGINS: http://localhost:3080,http://127.0.0.1:3080
       FRONTEND_BASE_URL: http://localhost:3080
       PUBLIC_API_BASE: http://localhost:8000
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
       MCP_PUBLIC_URL: http://localhost:8000/api/v1/mcp
       MCP_OAUTH_CONSENT_URL: http://localhost:3080/oauth/mcp/authorize
       LUMEN_MCP_SERVICE_TOKEN: ${AFTERGLOW_LOCAL_SERVICE_TOKEN:-}
@@ -427,7 +429,7 @@ services:
       SERVICE_WAYGATE_ENABLED: "true"
       SERVICE_PALIMPSEST_ENABLED: "true"
       SERVICE_CHAT_ENABLED: "true"
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.middleware.traffic_address:create_app --factory --host 0.0.0.0 --port 8000 --reload --no-proxy-headers
     depends_on:
       afterglow-mariadb:
         condition: service_healthy
@@ -471,7 +473,7 @@ services:
       PUBLIC_API_BASE: http://localhost:8000
       TRAFFIC_ANALYTICS_INGEST_URL: ${TRAFFIC_ANALYTICS_INGEST_URL:-http://backend:8000/api/v1/monitoring/traffic/events}
       TRAFFIC_ANALYTICS_INGEST_KEY: ${TRAFFIC_ANALYTICS_INGEST_KEY:-}
-      TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS: ${TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS:-false}
+      TRAFFIC_ANALYTICS_PEER_IS_SOCKET: "true"
     depends_on:
       backend:
         condition: service_healthy

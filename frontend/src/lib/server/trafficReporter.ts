@@ -2,11 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { isHttpError, isRedirect, type Handle } from '@sveltejs/kit';
 
 export interface TrafficEvent {
-	id: string; at: number; status: number; route: string; client_ip: string | null;
+    schema_version: 2; id: string; at: number; status: number; route: string;
+    peer_ip: string | null; peer_verified: boolean; forwarded_for: string | null;
 	pageview: boolean; request_bytes: null; response_bytes: number | null;
 	latency_ms: number; reporter_dropped_events: number;
 }
-export interface ReporterConfig { url: string; key: string; trustClientAddress: boolean }
+export interface ReporterConfig { url: string; key: string; peerIsSocket: boolean }
 export function reporterConfig(env: Record<string, string | undefined>): ReporterConfig | null {
 	const url = env.TRAFFIC_ANALYTICS_INGEST_URL;
 	const key = env.TRAFFIC_ANALYTICS_INGEST_KEY;
@@ -15,7 +16,8 @@ export function reporterConfig(env: Record<string, string | undefined>): Reporte
 		const parsed = new URL(url);
 		if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) return null;
 	} catch { return null; }
-	return { url, key, trustClientAddress: env.TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS === 'true' };
+    // ADDRESS_HEADER makes adapter getClientAddress header-derived, not a socket peer.
+    return { url, key, peerIsSocket: env.TRAFFIC_ANALYTICS_PEER_IS_SOCKET === 'true' && !env.ADDRESS_HEADER };
 }
 
 // Never retain dynamic IDs, URLs, query strings or user-supplied paths.
@@ -23,7 +25,7 @@ export function trafficCategory(routeId: string | null): string {
 	if (routeId === null) return '__unmatched__';
 	const route = routeId.replace(/\/\([^/]+\)/g, '') || '/';
 	if (route === '/') return '/';
-	for (const category of ['/admin', '/dashboard', '/login', '/docs', '/auth']) {
+    for (const category of ['/admin', '/dashboard', '/login', '/docs', '/auth', '/health']) {
 		if (route === category || route.startsWith(`${category}/`)) return category;
 	}
 	return '/other';
@@ -77,6 +79,13 @@ export function createTrafficReporter(
 		if (inflight >= maxInflight) { drop(1); return; }
 		const carried = Math.min(1_000_000, dropped);
 		dropped -= carried;
+		const payload = { ...event, reporter_dropped_events: carried };
+		let body = JSON.stringify(payload);
+		// JSON escaping must not turn invalid address evidence into a lost request.
+		if (Buffer.byteLength(body, 'utf8') > 2048) {
+			payload.forwarded_for = 'invalid';
+			body = JSON.stringify(payload);
+		}
 		inflight++;
 		// The deadline frees the bounded slot even if a custom transport ignores abort.
 		void (async () => {
@@ -91,7 +100,7 @@ export function createTrafficReporter(
 					const result = await send(config.url, {
 						method: 'POST', credentials: 'omit', redirect: 'error', signal: controller.signal,
 						headers: { Authorization: `Bearer ${config.key}`, 'Content-Type': 'application/json' },
-						body: JSON.stringify({ ...event, reporter_dropped_events: carried }),
+						body,
 					});
 					try { if (!result.ok) throw new Error('report rejected'); }
 					finally { await result.body?.cancel(); }
@@ -105,10 +114,17 @@ export function createTrafficReporter(
 		if (!config) return resolve(event);
 		const start = performance.now();
 		let address: string | null = null;
-		if (config.trustClientAddress) {
-			try { address = event.getClientAddress(); } catch { /* Adapter address unavailable. */ }
-		}
-		const base = { id: randomUUID(), route: trafficCategory(event.route.id), client_ip: address, request_bytes: null } as const;
+        if (config.peerIsSocket) {
+            try { address = event.getClientAddress(); } catch { /* Adapter address unavailable. */ }
+        }
+        const forwarded = event.request.headers.get('x-forwarded-for');
+        const base = {
+            schema_version: 2, id: randomUUID(), route: trafficCategory(event.route.id),
+            peer_ip: address && address.length <= 64 ? address : null,
+            peer_verified: config.peerIsSocket,
+            forwarded_for: forwarded && forwarded.length > 1024 ? 'invalid' : forwarded,
+            request_bytes: null,
+        } as const;
 		const finish = (status: number, pageview: boolean, bytes: number | null) => report({
 			...base, at: Date.now() / 1000, status, pageview, response_bytes: bytes,
 			latency_ms: Math.max(0, performance.now() - start),

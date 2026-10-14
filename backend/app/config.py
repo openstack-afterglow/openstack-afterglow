@@ -22,6 +22,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
+from app.models.infrastructure_fabric import FabricSettings
 from app.models.infrastructure_topology import HostObserverIdentity, HostPeerProbeTarget, validate_topology_settings
 from app.models.traffic_analytics import TrafficAnalyticsSettings
 
@@ -302,6 +303,7 @@ def _load_toml() -> dict:
     flat["monitoring_infrastructure_topology_retention_seconds"] = mon.get(
         "infrastructure_topology_retention_seconds", 3600
     )
+    flat["monitoring_infrastructure_fabric"] = mon.get("infrastructure_fabric", {})
     flat["traffic_analytics"] = data.get("traffic_analytics", {})
     flat["prometheus_base_url"] = mon.get("prometheus_base_url", "http://prometheus:9090")
     flat["prometheus_username"] = mon.get("prometheus_username", "")
@@ -699,6 +701,7 @@ class Settings(BaseSettings):
         default_factory=list, max_length=64
     )
     monitoring_infrastructure_topology_retention_seconds: int = Field(default=3600, ge=300, le=86400)
+    monitoring_infrastructure_fabric: FabricSettings = Field(default_factory=FabricSettings)
     traffic_analytics: TrafficAnalyticsSettings = Field(default_factory=TrafficAnalyticsSettings)
 
     @model_validator(mode="after")

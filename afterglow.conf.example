@@ -127,7 +127,8 @@ public_api_base = ""
 # Docker Desktop macOS 환경: 192.168.65.0/24 추가 필요
 # ⚠ /12 처럼 넓은 CIDR 은 내부 컨테이너가 헤더를 위조할 수 있어 위험함
 # K8s 생성기/Helm은 이 목록을 Uvicorn FORWARDED_ALLOW_IPS에도 전달해 HTTPS scheme을 보존한다.
-# 직접 Uvicorn 실행은 --proxy-headers와 --forwarded-allow-ips를 별도로 지정해야 한다.
+# 직접 실행도 app.middleware.traffic_address:create_app --factory --no-proxy-headers를 사용하고
+# FORWARDED_ALLOW_IPS 환경변수에 실제 proxy peer만 지정합니다. 바깥 proxy middleware는 금지합니다.
 trusted_proxies = "127.0.0.1/32,::1/128"
 
 [cache]
@@ -501,20 +502,46 @@ ceph_uid = "afterglow-ceph"
 instance_cpu_uid = "afterglow-instance-cpu"   # CPU 전용 인스턴스 per-VM 대시보드
 instance_gpu_uid = "afterglow-instance-gpu"   # GPU 인스턴스 per-VM 대시보드
 
+# 물리 스위치 IF-MIB/LLDP-MIB의 read-only SNMPv3 authPriv 관측.
+# 매 대상/자격/disable 변경 때 revision을 증가시킵니다. 실제 target이 있으면 positive revision 필수.
+# management IP는 운영자가 승인한 exact literal IP이며 LLDP 광고로 자동 등록하지 않습니다.
+[monitoring.infrastructure_fabric]
+revision = 0
+targets = []
+poll_interval_seconds = 10
+freshness_seconds = 30
+timeout_seconds = 2
+retries = 1
+concurrency = 4
+poll_budget_seconds = 30
+max_ports = 256
+max_neighbors = 256
+max_varbinds = 16384
+retention_seconds = 3600
+# target의 username/auth_key/priv_key는 보호된 operator TOML 또는
+# MONITORING_INFRASTRUCTURE_FABRIC__TARGETS Secret JSON에만 둡니다. ConfigMap/공개 frontend에는 금지.
+
 [traffic_analytics]
 # 관리자 국가별/경로별 트래픽, IP 기반 고유 방문 추정. 쿠키/요청 body/토큰/원문 IP를 저장하지 않습니다.
 enabled = false
 retention_days = 30
-# 읽기 전용 오프라인 CIDR,country CSV 경로. 미설정/사설 IP는 위치 미확인으로 표시합니다.
-geoip_csv = ""
+# 읽기 전용 IPv4/IPv6 전체 대역 MMDB. DB-IP Country Lite는 월별 배포와 화면 출처 표기가 필요합니다.
+# Runtime 외부 조회·다운로드는 없으며 데이터 교체 후 backend worker를 재시작합니다.
+geoip_mmdb = ""
+# 실제 클러스터 대역만 등록합니다. 모든 RFC1918 주소를 내부 요청으로 간주하지 않습니다.
+cluster_cidrs = []
+# Analytics 원본 주소 판정의 exact proxy CIDR. Uvicorn auth/scheme의 FORWARDED_ALLOW_IPS와 별도입니다.
+# /0 및 전체 인터넷 trust는 금지합니다. 직접 peer·최종 forwarded chain을 먼저 검증합니다.
+backend_trusted_proxy_cidrs = []
+frontend_trusted_proxy_cidrs = []
 # 서비스 인입 국가(대문자 ISO-3166 2자리, 예: KR). 논리적 접속 흐름을 그릴 때만 사용하며 실제 네트워크 경로가 아닙니다.
 # 빈 값은 미설정입니다. 위치 미확인 버킷 XX는 사용할 수 없습니다.
 site_country = ""
 # 서로 다른 32자 이상 비밀. 배포에서는 TRAFFIC_ANALYTICS__HMAC_KEY / __FRONTEND_INGEST_KEY Secret 사용.
 hmac_key = ""
 frontend_ingest_key = ""
-# 프론트엔드 adapter의 client address가 실제 접속자 주소임을 확인한 뒤에만 true.
-trust_frontend_client_address = false
+# Frontend ADDRESS_HEADER는 unset으로 두고 TRAFFIC_ANALYTICS_PEER_IS_SOCKET=true를 사용합니다.
+# getClientAddress의 실제 TCP peer와 bounded XFF를 보호된 ingest로 보내 backend가 신뢰 경계를 판정합니다.
 # 서버 전용 환경: TRAFFIC_ANALYTICS_INGEST_URL=<backend>/api/v1/monitoring/traffic/events
 # TRAFFIC_ANALYTICS_INGEST_KEY는 위 frontend_ingest_key와 일치해야 합니다. PUBLIC_*에 넣지 마십시오.
 # 프론트엔드 문서 요청과 backend API를 별도 집계하며 CDN에서 종료된 요청/SPA 이동은 관측하지 않습니다.

@@ -3,12 +3,10 @@
 import time
 from uuid import uuid4
 
-from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.config import get_settings
 from app.models.traffic_analytics import TrafficEvent
-from app.rate_limit import _get_real_ip
 from app.services.traffic_analytics import record_event, route_category
 
 EXCLUDED = ("/api/v1/monitoring/traffic", "/api/v1/admin/monitoring/traffic")
@@ -61,19 +59,20 @@ class TrafficAnalyticsMiddleware:
             # not replace a successful response or mask an application's exception.
             try:
                 route = scope.get("route")
-                client_ip = _get_real_ip(Request(scope))
-                try:
-                    import ipaddress
-
-                    client_ip = str(ipaddress.ip_address(client_ip))
-                except ValueError:
-                    client_ip = None
+                peer = scope.get("extensions", {}).get("afterglow.analytics.original_peer")
+                forwarded = b",".join(
+                    value for name, value in scope.get("headers", []) if name.lower() == b"x-forwarded-for"
+                )
+                # Oversized chains become invalid evidence, never silently truncated.
+                forwarded_for = forwarded.decode("latin-1") if len(forwarded) <= 1024 else "invalid"
                 event = TrafficEvent(
                     id=uuid4(),
                     at=at,
                     status=status,
                     route=route_category(getattr(route, "path", None), "backend"),
-                    client_ip=client_ip,
+                    peer_ip=peer[0] if peer else None,
+                    peer_verified=peer is not None,
+                    forwarded_for=forwarded_for or None,
                     request_bytes=request_bytes if request_complete and request_bytes <= 2**40 else None,
                     response_bytes=response_bytes if response_complete and response_bytes <= 2**40 else None,
                     latency_ms=min((time.perf_counter() - started) * 1000, 86_400_000),

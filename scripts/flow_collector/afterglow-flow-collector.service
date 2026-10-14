@@ -1,0 +1,54 @@
+[Unit]
+Description=Afterglow passive registered-node Linux skb header counter
+Documentation=man:bpf(2) man:packet(7)
+After=local-fs.target network.target
+ConditionPathExists=/etc/afterglow-flow/collector.json
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=root
+Group=afterglow-flow-read
+ExecStart=/usr/bin/python3 -E -s /opt/afterglow-flow/collector.py --config /etc/afterglow-flow/collector.json --output /run/afterglow-flow/snapshot.json
+# ProtectKernelModules masks /usr/lib/modules, including its build symlink.
+# Use matching distro headers without allowing module access or new capabilities.
+Environment=BCC_KERNEL_SOURCE=/usr/src/linux-headers-%v
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=15
+RuntimeDirectory=afterglow-flow
+RuntimeDirectoryMode=0750
+UMask=0077
+# No CAP_NET_ADMIN/CAP_SYS_ADMIN, no tc/XDP, no bpffs pins or map chmod.
+# Modern Linux >=5.8 CAP_BPF and CAP_NET_RAW are sufficient for socket filters.
+# A kernel/BCC combination needing broader capabilities must fail closed and
+# receive operator review; never widen this automatically.
+CapabilityBoundingSet=CAP_BPF CAP_NET_RAW
+AmbientCapabilities=CAP_BPF CAP_NET_RAW
+NoNewPrivileges=yes
+LimitMEMLOCK=infinity
+ProtectSystem=strict
+ReadWritePaths=/run/afterglow-flow
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_PACKET AF_UNIX
+# Host namespace is required; never use PrivateNetwork for this collector.
+SystemCallArchitectures=native
+SystemCallFilter=@system-service bpf
+SystemCallErrorNumber=EPERM
+TasksMax=32
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

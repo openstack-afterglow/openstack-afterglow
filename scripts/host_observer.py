@@ -16,12 +16,22 @@ process user and exactly mode 0600. HOST_OBSERVER_TOKEN is the alternative; chil
 commands never inherit it. There is deliberately no token argument.
 
 Reads only existing iproute2 address/link/route/neighbour tables, /proc/net/dev,
-/proc/sys/kernel/random/boot_id and installed lldpcli neighbour data. Never scans,
-installs tools, captures packets, performs DNS target lookup or uses a shell.
+/proc/sys/kernel/random/boot_id, read-only sysfs physical-interface identities,
+and installed lldpcli neighbour data. Never scans, installs tools, captures
+packets, performs DNS target lookup or uses a shell.
 Missing tools are unsupported; invalid, oversized or failed sources are errors,
 not invented empty measurements. Counters are cumulative; the backend calculates
 rates and reset/stale handling. Lists and command/HTTP output have hard bounds;
 JSON input is limited to 64 nested objects/arrays before parsing.
+
+Optional --flow-snapshot-file reads a separate root collector's atomic mode-0640
+JSON handoff. The observer needs reader-group membership, never BPF or packet
+socket capabilities. Counters describe Linux skb headers/length, not physical
+wire packets (GRO/GSO/offloads affect coverage). Invalid/stale/overflow handoffs
+are source errors, never measured zero. Advertised LLDP management addresses
+remain metadata; they never become probe or SNMP targets. Only qualified physical
+Ethernet interfaces enter the physical fabric graph; bond/bridge LLDP stays
+diagnostic evidence, not an inferred cable.
 
 Before reporting, authenticated polling supplies at most 64 operator-admitted
 directed peer IP/port tuples. Exactly those tuples may be TCP-connected, without
@@ -408,6 +418,88 @@ def parse_counters(data: bytes):
         raise ObserverError("invalid_source") from None
 
 
+def flow_snapshot_directory(path):
+    """Retain the checked root-owned directory inode through the file open."""
+    path = Path(path)
+    if not path.is_absolute() or ".." in path.parts:
+        raise ObserverError("invalid_flow_snapshot")
+    descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        for component in path.parts[1:]:
+            child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                            dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+            info = os.fstat(descriptor)
+            if info.st_uid != 0 or stat.S_IMODE(info.st_mode) & 0o022:
+                raise ObserverError("invalid_flow_snapshot")
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def read_flow_snapshot(path, interfaces, now=None):
+    """Read only a root-published snapshot, never BPF maps or packet sockets."""
+    clock = time.time() if now is None else now
+    try:
+        path = Path(path)
+        parent = flow_snapshot_directory(path.parent)
+        try:
+            descriptor = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                                 dir_fd=parent)
+        finally:
+            os.close(parent)
+        with os.fdopen(descriptor, "rb") as handle:
+            info = os.fstat(handle.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_nlink != 1
+                    or stat.S_IMODE(info.st_mode) != 0o640 or info.st_size > MAX_BYTES):
+                raise ObserverError("invalid_flow_snapshot")
+            value = decode_json(handle.read(MAX_BYTES + 1))
+        if not isinstance(value, dict) or set(value) != {"collector_id", "captured_at", "overflow", "rows"}:
+            raise ValueError
+        if not isinstance(value["collector_id"], str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", value["collector_id"]):
+            raise ValueError
+        captured = value["captured_at"]
+        if isinstance(captured, bool) or not isinstance(captured, (int, float)) or not math.isfinite(captured) or not -5 <= clock - captured <= 30:
+            raise ValueError
+        if not isinstance(value["overflow"], bool):
+            raise ValueError
+        seen = set()
+        for row in rows(value["rows"], 1024):
+            if set(row) != {"source_host_id", "target_host_id", "interface", "direction", "packets", "bytes"}:
+                raise ValueError
+            if any(not isinstance(row[key], str) or not re.fullmatch(HOST_ID_PATTERN, row[key]) for key in ("source_host_id", "target_host_id")):
+                raise ValueError
+            if row["source_host_id"] == row["target_host_id"] or row["direction"] not in {"ingress", "egress"}:
+                raise ValueError
+            if interface_name(row["interface"]) not in interfaces:
+                raise ValueError
+            for key in ("packets", "bytes"):
+                counter = row[key]
+                if not isinstance(counter, str) or not re.fullmatch(r"0|[1-9][0-9]{0,19}", counter) or int(counter) > MAX_COUNTER:
+                    raise ValueError
+            identity = (row["source_host_id"], row["target_host_id"], row["interface"], row["direction"])
+            if identity in seen:
+                raise ValueError
+            seen.add(identity)
+        return value
+    except (OSError, ValueError, TypeError, KeyError, ObserverError):
+        raise ObserverError("invalid_flow_snapshot") from None
+
+
+def lldp_management_address(chassis):
+    advertised = chassis.get("mgmt-ip")
+    if advertised is None:
+        return None
+    if isinstance(advertised, str):
+        advertised = [advertised]
+    if not isinstance(advertised, list) or len(advertised) > 16:
+        raise ObserverError("invalid_source")
+    # Metadata only; never feed this address into probe/SNMP admission.
+    return sorted({literal_ip(value) for value in advertised})[0] if advertised else None
+
+
 def parse_lldp(value):
     try:
         interfaces = value["lldp"].get("interface", [])
@@ -435,7 +527,9 @@ def parse_lldp(value):
                 port = neighbor["port"]
                 result.append({"interface": interface, "chassis_id": text(chassis["id"]["value"], 128),
                                "port_id": text(port["id"]["value"], 128),
-                               "system_name": text(chassis.get("name"), 128, optional=True)})
+                               "system_name": text(chassis.get("name"), 128, optional=True),
+                               "management_address": lldp_management_address(chassis),
+                               "port_description": text(port.get("descr"), 128, optional=True)})
             except (KeyError, TypeError, ValueError, AttributeError):
                 raise ObserverError("invalid_source") from None
     return result
@@ -457,8 +551,24 @@ def interface_priority(name, sys_root=Path("/sys")):
         pass
     return 2 if name.startswith(VM_PORT_PREFIXES) else 1
 
+def physical_interface(name, sys_root=Path("/sys")):
+    """Physical Ethernet observation point, not its bond/bridge/VLAN master."""
+    path = sys_root / "class/net" / name
+    try:
+        if not path.exists():
+            return None
+        if not (path / "device").exists() or (path / "bridge").exists() or (path / "bonding").exists():
+            return False
+        if not (path / "device").resolve().is_relative_to((sys_root / "devices").resolve()):
+            return False
+        return (int((path / "type").read_text()) == 1
+                and int((path / "ifindex").read_text()) == int((path / "iflink").read_text()))
+    except (OSError, ValueError):
+        return None
 
-def capture_report(proc_root=Path("/proc"), sys_root=Path("/sys")):
+
+
+def capture_report(proc_root=Path("/proc"), sys_root=Path("/sys"), flow_snapshot_file=None):
     boot = read_bounded(proc_root / "sys/kernel/random/boot_id", 65).strip()
     try:
         boot_id = str(uuid.UUID(boot.decode("ascii")))
@@ -493,6 +603,7 @@ def capture_report(proc_root=Path("/proc"), sys_root=Path("/sys")):
     evidence_omitted = 0
     for name, item in interfaces.items():
         item.update(counters.get(name, {}))
+        item["physical"] = physical_interface(name, sys_root)
     if link_state != "measured":
         address_state = "unsupported" if link_state == address_state == "unsupported" else "error"
     all_routes = (routes or []) + (routes6 or [])
@@ -518,6 +629,18 @@ def capture_report(proc_root=Path("/proc"), sys_root=Path("/sys")):
               "neighbors": neighbors or [], "routes": all_routes, "lldp": lldp or [],
               "sources": {"addresses": address_state, "neighbors": neighbor_state, "routes": route_state,
                           "lldp": lldp_state, "counters": counter_state}}
+    report["sources"]["flows"] = "unsupported"
+    if flow_snapshot_file is not None:
+        try:
+            physical = {name for name, item in interfaces.items() if item.get("physical") is True}
+            flow = read_flow_snapshot(flow_snapshot_file, physical, now=captured_at)
+            report["flows"] = flow
+            report["sources"]["flows"] = "error" if flow["overflow"] else "measured"
+            # Leave room for the host evidence; cardinality alone doesn't bound long host IDs.
+            encode_json(report)
+        except ObserverError:
+            report.pop("flows", None)
+            report["sources"]["flows"] = "error"
     encode_json(report)
     return report
 
@@ -759,7 +882,7 @@ class PeerTargetCache:
         return result
 
 
-def run_cycle(client, allowed_targets, worker=None, peer_cache=None):
+def run_cycle(client, allowed_targets, worker=None, peer_cache=None, flow_snapshot_file=None):
     """Refresh authenticated admission, report evidence, handle one trace job."""
     peer_cache = PeerTargetCache() if peer_cache is None else peer_cache
     failed, active, job, admitted = False, False, None, False
@@ -789,7 +912,7 @@ def run_cycle(client, allowed_targets, worker=None, peer_cache=None):
         # ownership requires checked_at <= captured_at+5 even for slow peers.
         probes = peer_cache.measure() if admitted else peer_cache.unavailable()
         peer_cache.await_sample_slot()
-        report = capture_report()
+        report = capture_report() if flow_snapshot_file is None else capture_report(flow_snapshot_file=flow_snapshot_file)
         peer_cache.last_sample_at = time.monotonic()
         report["peer_probes"] = probes
         report["sources"]["peer_probes"] = (
@@ -823,6 +946,7 @@ def parse_args(argv=None):
     parser.add_argument("--host-id", required=True, help="Exact operator-configured host ID; never inferred from hostname")
     parser.add_argument("--token-file", type=Path, help="Regular process-owned mode-0600 token file; otherwise HOST_OBSERVER_TOKEN")
     parser.add_argument("--ca-file", help="Optional trusted CA bundle; hostname verification stays enabled")
+    parser.add_argument("--flow-snapshot-file", type=Path, help="Root-owned mode-0640 read-only collector snapshot; no capabilities needed")
     parser.add_argument("--interval", type=float, default=MIN_INTERVAL, help="Cycle interval seconds, minimum/default 10")
     parser.add_argument("--once", action="store_true", help="Report, poll once, submit any trace result and exit")
     parser.add_argument("--trace-target", action="append", default=[], help="Locally authorized literal IP, repeatable; none disables traces")
@@ -845,11 +969,11 @@ def main(argv=None):
         client = ApiClient(args.base_url, args.host_id, load_token(args.token_file), args.ca_file)
         peer_cache = PeerTargetCache()
         if args.once:
-            return 0 if run_cycle(client, args.trace_targets, peer_cache=peer_cache) else 1
+            return 0 if run_cycle(client, args.trace_targets, peer_cache=peer_cache, flow_snapshot_file=args.flow_snapshot_file) else 1
         worker = TraceWorker()
         while True:
             started = time.monotonic()
-            run_cycle(client, args.trace_targets, worker, peer_cache)
+            run_cycle(client, args.trace_targets, worker, peer_cache, flow_snapshot_file=args.flow_snapshot_file)
             # Nominal 10-second start cadence; never catch up after a slow cycle.
             remaining = args.interval - (time.monotonic() - started)
             time.sleep(remaining if remaining > 0 else args.interval)

@@ -1,8 +1,20 @@
 import { getInfrastructureTopology, submitInfrastructureTrace } from '$lib/api/infrastructureTopology';
 import { ApiError } from '$lib/api/errors';
-import type { InfrastructureTopologySnapshot, TopologyAuthority } from '$lib/types/infrastructureTopology';
+import type { InfrastructureTopologySnapshot, TopologyAuthority, TopologySelection } from '$lib/types/infrastructureTopology';
 
-export function createInfrastructureTopologyController() {
+export type TraceSubmissionError = 'denied' | 'conflict' | 'rateLimited' | 'targetDenied' | 'observerNotConfigured' | 'unavailable' | '';
+export interface InfrastructureTopologyController {
+	readonly snapshot: InfrastructureTopologySnapshot | null;
+	readonly loading: boolean; readonly busy: boolean; readonly verified: boolean; readonly allowed: boolean;
+	readonly error: 'denied' | 'unavailable' | ''; readonly traceError: TraceSubmissionError;
+	readonly selectedId: string; readonly selection: TopologySelection | null;
+	selectedNic: string; target: string;
+	setAuthority(next: TopologyAuthority): void; setVisible(next: boolean): void;
+	selectHost(id: string): void; selectElement(next: TopologySelection, hostId?: string): void;
+	load(): Promise<void>; submitTrace(): Promise<void>; dispose(): void;
+}
+
+export function createInfrastructureTopologyController(): InfrastructureTopologyController {
 	let authority = $state<TopologyAuthority>({ admin: false, ready: false });
 	let disposed = $state(false), visible = $state(true);
 	let epoch = 0, pendingReload = false;
@@ -10,9 +22,10 @@ export function createInfrastructureTopologyController() {
 	let readAbort: AbortController | null = null, traceAbort: AbortController | null = null;
 	let snapshot = $state<InfrastructureTopologySnapshot | null>(null);
 	let selectedId = $state(''), selectedNic = $state(''), target = $state('');
+	let selection = $state<TopologySelection | null>(null);
 	let loading = $state(false), busy = $state(false), verified = $state(false);
 	let error = $state<'denied' | 'unavailable' | ''>('');
-	let traceError = $state<'denied' | 'conflict' | 'rateLimited' | 'targetDenied' | 'observerNotConfigured' | 'unavailable' | ''>('');
+	let traceError = $state<TraceSubmissionError>('');
 	const allowed = () => !disposed && authority.admin && authority.ready && !!authority.token && !!authority.userId && !!authority.projectId;
 	function stop() {
 		clearTimeout(timer); timer = undefined;
@@ -23,7 +36,7 @@ export function createInfrastructureTopologyController() {
 	function setAuthority(next: TopologyAuthority) {
 		if (next.token === authority.token && next.userId === authority.userId && next.projectId === authority.projectId && next.admin === authority.admin && next.ready === authority.ready) return;
 		++epoch; stop(); authority = { ...next };
-		snapshot = null; selectedId = ''; selectedNic = ''; target = ''; error = ''; loading = false;
+		snapshot = null; selection = null; selectedId = ''; selectedNic = ''; target = ''; error = ''; loading = false;
 		pendingReload = allowed() && visible;
 		if (pendingReload) void load();
 	}
@@ -34,9 +47,16 @@ export function createInfrastructureTopologyController() {
 		if (pendingReload) void load();
 	}
 	function selectHost(id: string) {
+		selection = id ? { kind: 'node', id: `host:${id}` } : null;
 		if (selectedId === id) return;
 		selectedId = id; selectedNic = snapshot?.hosts.find(host => host.id === id)?.observation?.interfaces[0]?.name ?? '';
 		traceAbort?.abort(); traceAbort = null; busy = false; traceError = '';
+	}
+	function selectElement(next: TopologySelection, hostId?: string) {
+		const changed = selection?.kind !== next.kind || selection.id !== next.id;
+		if (changed) { traceAbort?.abort(); traceAbort = null; busy = false; traceError = ''; }
+		if (hostId && snapshot?.hosts.some(host => host.id === hostId)) selectHost(hostId);
+		selection = next;
 	}
 	async function load() {
 		if (!allowed() || !visible) return;
@@ -59,7 +79,7 @@ export function createInfrastructureTopologyController() {
 		} catch (failure) {
 			if (generation === epoch && !disposed && visible && !abort.signal.aborted) {
 				verified = false; error = failure instanceof ApiError && (failure.status === 401 || failure.status === 403) ? 'denied' : 'unavailable';
-				if (error === 'denied') snapshot = null;
+				if (error === 'denied') { snapshot = null; selection = null; }
 			}
 		} finally {
 			if (readAbort === abort) readAbort = null;
@@ -86,19 +106,20 @@ export function createInfrastructureTopologyController() {
 			if (generation === epoch && traceAbort === abort && !abort.signal.aborted && !disposed) {
 				const code = failure instanceof ApiError ? failure.code : undefined;
 				traceError = code === 'trace_rate_limited' ? 'rateLimited' : code === 'trace_target_not_allowed' ? 'targetDenied' : code === 'observer_not_configured' ? 'observerNotConfigured' : code === 'trace_already_active' ? 'conflict' : failure instanceof ApiError && (failure.status === 401 || failure.status === 403) ? 'denied' : failure instanceof ApiError && failure.status === 409 ? 'conflict' : 'unavailable';
-				if (traceError === 'denied') { verified = false; snapshot = null; }
+				if (traceError === 'denied') { verified = false; snapshot = null; selection = null; }
 			}
 		} finally {
 			if (traceAbort === abort) { traceAbort = null; busy = false; }
 		}
 	}
 	function dispose() {
-		disposed = true; ++epoch; pendingReload = false; stop(); snapshot = null;
+		disposed = true; ++epoch; pendingReload = false; stop(); snapshot = null; selection = null;
 	}
 	return {
 		get snapshot() { return snapshot; }, get loading() { return loading; }, get busy() { return busy; },
 		get verified() { return verified && visible && allowed(); }, get error() { return error; }, get traceError() { return traceError; },
 		get allowed() { return allowed(); }, get selectedId() { return selectedId; }, get selectedNic() { return selectedNic; },
+		get selection() { return selection; }, selectElement,
 		set selectedNic(value: string) { selectedNic = value; }, get target() { return target; }, set target(value: string) { target = value; traceError = ''; },
 		setAuthority, setVisible, selectHost, load, submitTrace, dispose,
 	};

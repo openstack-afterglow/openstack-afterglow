@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
 import Page from './+page.svelte';
 import { auth } from '$lib/stores/auth';
@@ -49,9 +49,13 @@ describe('traffic API to UI', () => {
 		expect(screen.queryByText('/admin')).toBeNull(); expect(screen.getByText(t('coverage.proxy'))).toBeTruthy();
 	});
 	it.each(['disabled', 'unavailable', 'partial'] as const)('renders %s without fake zero totals or countries', async (state) => {
-		get.mockResolvedValue(observations({ state, totals: null, countries: [], routes: [], series: [] })); render(Page);
-		await screen.findByText(t('empty')); expect(screen.getByText(t(`states.${state}`), { exact: false })).toBeTruthy();
-		expect(screen.queryByText('/admin')).toBeNull(); expect(screen.getAllByText(t('unknown')).length).toBeGreaterThan(0);
+		get.mockResolvedValue(observations({ state, totals: null, origins: null, countries: [], routes: [], series: [] })); render(Page);
+		await screen.findByText(t(`states.${state}`), { exact: false });
+		expect(screen.queryByText('/admin')).toBeNull();
+		const origins = within(screen.getByText(t('origins.internal'), { selector: 'dt' }).closest('dl')!);
+		for (const origin of ['internal', 'external', 'unknown', 'legacy_unclassified'] as const) {
+			expect(origins.getByText(t(`origins.${origin}`), { selector: 'dt' }).nextElementSibling?.textContent).toBe(t('unknown'));
+		}
 	});
 	it('masks old authority immediately and drops delayed results across an A→B→A actor transition', async () => {
 		const pending = Promise.withResolvers<TrafficSnapshot>();

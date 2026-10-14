@@ -14,13 +14,40 @@ from collections import defaultdict
 from typing import Literal
 
 from app.config import get_settings
-from app.models.traffic_analytics import TrafficEvent
+from app.models.traffic_analytics import LegacyTrafficEvent, OriginFilter, TrafficEvent
 from app.services.cache import _get_redis
+from app.services.traffic_address import resolve_address
 from app.services.traffic_geo import country_lookup
 
 Source = Literal["backend", "frontend"]
 RANGES = {"24h": 24, "7d": 168, "30d": 720}
 KEY_PREFIX = "afterglow:{traffic}"
+ORIGINS = ("internal", "external", "unknown", "legacy_unclassified")
+GEO_REASONS = (
+    "address_unavailable",
+    "invalid_address",
+    "non_global",
+    "database_unconfigured",
+    "database_unavailable",
+    "range_missing",
+    "country_invalid",
+    "lookup_failed",
+    "peer_unverified",
+    "forwarded_missing",
+    "forwarded_invalid",
+    "forwarded_all_trusted",
+    "legacy_unclassified",
+)
+ORIGIN_REASONS = (
+    "peer_unverified",
+    "address_unavailable",
+    "invalid_address",
+    "forwarded_missing",
+    "forwarded_invalid",
+    "forwarded_all_trusted",
+    "non_global_noncluster",
+    "legacy_unclassified",
+)
 ROUTE_CATEGORIES = frozenset(
     {
         "/",
@@ -66,14 +93,15 @@ _pending_drops: dict[str, int] = defaultdict(int)
 # Every key uses a common Redis Cluster hash tag. Event time is limited by ingress;
 # expiries are absolute so late reports cannot extend historical retention.
 AGGREGATE_LUA = r"""
-for index = 3, #KEYS do
+for index = 3, 9 do
     if index ~= 4 and redis.call('HEXISTS', KEYS[index], ARGV[1]) == 1 then return 0 end
 end
 if redis.call('HLEN', KEYS[3]) >= 10000 then return -1 end
 redis.call('HSET', KEYS[3], ARGV[1], '1')
 redis.call('EXPIRE', KEYS[3], 300)
 local measures = cjson.decode(ARGV[5])
-local dimensions = {'t', 'c:' .. ARGV[3], 'r:' .. ARGV[4]}
+local origin = 'o:' .. ARGV[9] .. ':'
+local dimensions = {'t', 'c:' .. ARGV[3], 'r:' .. ARGV[4], origin .. 't', origin .. 'c:' .. ARGV[3], origin .. 'r:' .. ARGV[4]}
 for _, dimension in ipairs(dimensions) do
     for field, value in pairs(measures) do
         if field == 'latency_ms_total' then
@@ -90,6 +118,8 @@ redis.call('EXPIREAT', KEYS[1], ARGV[2])
 if ARGV[7] ~= '' then
     redis.call('PFADD', KEYS[2], ARGV[7])
     redis.call('EXPIREAT', KEYS[2], ARGV[2])
+    redis.call('PFADD', KEYS[10], ARGV[7])
+    redis.call('EXPIREAT', KEYS[10], ARGV[2])
 end
 local first = tonumber(redis.call('HGET', KEYS[4], 'first') or ARGV[8])
 local last = tonumber(redis.call('HGET', KEYS[4], 'last') or ARGV[8])
@@ -160,12 +190,12 @@ def identity_digest(address: str | None, secret: str) -> str:
     return hmac.new(secret.encode(), normalized.encode(), hashlib.sha256).hexdigest()
 
 
-def bucket_keys(source: Source, hour: int) -> tuple[str, str]:
-    root = f"{KEY_PREFIX}:{source}:{hour}"
+def bucket_keys(source: Source, hour: int, version: int = 2) -> tuple[str, str]:
+    root = f"{KEY_PREFIX}:{source}:" + ("v2:" if version == 2 else "") + str(hour)
     return root + ":counts", root + ":visitors"
 
 
-async def record_event(event: TrafficEvent, source: Source) -> bool:
+async def record_event(event: TrafficEvent | LegacyTrafficEvent, source: Source) -> bool:
     """Fail open for callers, with recovered/drop coverage; never log event payloads."""
     settings = get_settings().traffic_analytics
     if not settings.enabled:
@@ -177,8 +207,21 @@ async def record_event(event: TrafficEvent, source: Source) -> bool:
         import json
 
         hour = int(event.at) // 3600
-        country = country_lookup(settings.geoip_csv).country(event.client_ip)
-        digest = identity_digest(event.client_ip, settings.hmac_key.get_secret_value())
+        if isinstance(event, LegacyTrafficEvent):
+            address, origin, origin_reason = None, "legacy_unclassified", "legacy_unclassified"
+        else:
+            observation = resolve_address(
+                event.peer_ip,
+                event.peer_verified,
+                event.forwarded_for,
+                getattr(settings, source + "_trusted_proxy_cidrs"),
+                settings.cluster_cidrs,
+            )
+            address, origin, origin_reason = observation.address, observation.origin, observation.reason
+        country, geo_reason = country_lookup(settings.geoip_mmdb).lookup(address)
+        if address is None:
+            geo_reason = origin_reason
+        digest = identity_digest(address, settings.hmac_key.get_secret_value())
         measures = {key: 0 for key in COUNTERS}
         measures.update(
             {
@@ -198,10 +241,15 @@ async def record_event(event: TrafficEvent, source: Source) -> bool:
                 "reporter_dropped_events": event.reporter_dropped_events,
             }
         )
+        if geo_reason != "located":
+            measures["geo_reason_" + geo_reason] = 1
+        if origin_reason != "classified":
+            measures["origin_reason_" + origin_reason] = 1
         counts, visitors = bucket_keys(source, hour)
         minute = int(time.time()) // 60
         keys = [counts, visitors, f"{KEY_PREFIX}:{source}:dedupe:{minute}", f"{KEY_PREFIX}:{source}:coverage"]
         keys.extend(f"{KEY_PREFIX}:{source}:dedupe:{minute - offset}" for offset in range(1, 6))
+        keys.append(visitors + ":" + origin)
         expiry = hour * 3600 + settings.retention_days * 86400
         async with asyncio.timeout(0.25):
             redis = await _get_redis()
@@ -217,6 +265,7 @@ async def record_event(event: TrafficEvent, source: Source) -> bool:
                 event.latency_ms,
                 digest,
                 event.at,
+                origin,
             )
         if int(result) == 1:
             return True
@@ -255,25 +304,56 @@ def _dimensions(raw: dict) -> dict[str, dict]:
     return result
 
 
-async def snapshot(source: Source, period: str) -> dict:
+def _merge(target: dict, values: dict):
+    for metric, value in values.items():
+        target[metric] = (
+            max(target.get(metric, 0), value) if metric == "latency_ms_max" else target.get(metric, 0) + value
+        )
+
+
+def _selected_dimensions(dimensions: dict, origin: OriginFilter, legacy: bool = False) -> dict:
+    if legacy:
+        return (
+            {key: value for key, value in dimensions.items() if not key.startswith("o:")}
+            if origin in {"all", "legacy_unclassified"}
+            else {}
+        )
+    if origin == "all":
+        return {key: value for key, value in dimensions.items() if not key.startswith("o:")}
+    prefix = f"o:{origin}:"
+    return {key[len(prefix) :]: value for key, value in dimensions.items() if key.startswith(prefix)}
+
+
+async def snapshot(source: Source, period: str, origin: OriginFilter = "all") -> dict:
     settings = get_settings().traffic_analytics
     now = time.time()
+    geo = country_lookup(settings.geoip_mmdb)
     description = (
-        "Backend ASGI requests only; excludes analytics ingest/read endpoints, WebSockets and requests outside this app. Body bytes are ASGI payload bytes, not wire bandwidth."
+        "Backend ASGI requests only; excludes analytics endpoints, WebSockets and requests outside this app."
         if source == "backend"
-        else "SvelteKit server requests only; HTML GET successes are SSR pageviews. Client-only SPA navigation, CDN/static bypasses and edge traffic are not observed. Body bytes exclude transport headers/compression outside the observer."
+        else "SvelteKit server requests only; HTML GET successes are SSR pageviews. SPA navigation, CDN/static bypasses and edge traffic are not observed."
     )
     result = {
         "state": "disabled" if not settings.enabled else "unavailable",
         "source": source,
+        "origin": origin,
+        "origins": None,
         "range": period,
         "retention_days": settings.retention_days,
         "generated_at": now,
         "coverage": {
-            "description": description,
-            "geo_source": country_lookup(settings.geoip_csv).state,
+            "description": description + " Body bytes are application payload bytes, not wire bandwidth.",
+            "geo_source": geo.state,
+            "geo_provider": geo.provider,
+            "geo_version": geo.version,
+            "geo_attribution": geo.attribution,
+            "geo_unknown_reasons": {},
+            "origin_unknown_reasons": {},
+            "classified_requests": None,
+            "legacy_unclassified_requests": None,
+            "classification_policy": "Only configured cluster CIDRs are internal. Global noncluster addresses are external; other or unverified addresses are unknown. Original socket provenance and exact right-to-left trusted proxy CIDRs are required. Legacy writers/buckets cannot be reclassified. Current DB metadata is not historical dataset attribution; replacing DBs/CIDRs affects only new events. Coverage timestamps describe the selected source, not the origin filter.",
             "site_country": settings.site_country or None,
-            "unique_method": "IP-derived HMAC + Redis HyperLogLog (~0.81% standard error); not people. NAT/shared IPs undercount; changing IPs overcount. No tracking cookie, user agent, body, token, URL/query or raw IP retained. Proxy headers use backend trusted_proxies only; frontend client address requires explicit adapter trust opt-in. Drops are recovered observations plus this worker; other lost/restarted workers and disconnected reporters are not knowable.",
+            "unique_method": "IP-derived HMAC + Redis HyperLogLog (~0.81% standard error); not people. NAT/shared IPs undercount; changing IPs overcount. Source estimates are independent. No tracking cookie, user agent, body, token, URL/query or raw IP retained. Legacy identities retain their original method. Drops include recovered observations and this worker only; lost/restarted workers and disconnected reporters are not knowable.",
             "dropped_events": None,
             "reporter_dropped_events": None,
             "observed_since": None,
@@ -288,55 +368,110 @@ async def snapshot(source: Source, period: str) -> dict:
         return result
     current = int(now) // 3600
     hours = list(range(current - min(RANGES[period], settings.retention_days * 24) + 1, current + 1))
+
+    def hll_keys(hour):
+        old = bucket_keys(source, hour, 1)[1]
+        new = bucket_keys(source, hour)[1]
+        if origin == "all":
+            return [old, new]
+        if origin == "legacy_unclassified":
+            return [old, new + ":legacy_unclassified"]
+        return [new + ":" + origin]
+
     try:
         async with asyncio.timeout(3):
             redis = await _get_redis()
             pipe = redis.pipeline(transaction=True)
             for hour in hours:
-                counts, visitors = bucket_keys(source, hour)
-                pipe.hgetall(counts)
-                pipe.pfcount(visitors)
+                pipe.hgetall(bucket_keys(source, hour, 1)[0])
+                pipe.hgetall(bucket_keys(source, hour)[0])
+                pipe.pfcount(*hll_keys(hour))
             pipe.hgetall(f"{KEY_PREFIX}:{source}:coverage")
-            pipe.pfcount(*(bucket_keys(source, hour)[1] for hour in hours))
+            pipe.pfcount(*(key for hour in hours for key in hll_keys(hour)))
             rows = await pipe.execute()
-        merged: dict[str, dict] = defaultdict(lambda: defaultdict(int))
+        merged = defaultdict(dict)
+        route_origins = defaultdict(lambda: dict.fromkeys(ORIGINS, 0))
+        selected_origins = dict.fromkeys(ORIGINS, 0)
+        source_totals = {}
         for index, hour in enumerate(hours):
-            dimensions = _dimensions(rows[index * 2])
-            raw = dimensions.get("t")
-            result["series"].append(
-                {"at": hour * 3600, "metrics": _metrics(raw, int(rows[index * 2 + 1])) if raw else None}
-            )
-            for dimension, values in dimensions.items():
-                for metric, value in values.items():
-                    if metric == "latency_ms_max":
-                        merged[dimension][metric] = max(merged[dimension][metric], value)
-                    else:
-                        merged[dimension][metric] += value
+            old, new, unique = rows[index * 3 : index * 3 + 3]
+            hourly = defaultdict(dict)
+            for raw, legacy in ((old, True), (new, False)):
+                all_dimensions = _dimensions(raw)
+                _merge(source_totals, all_dimensions.get("t", {}))
+                for selected in ORIGINS:
+                    if origin not in {"all", selected}:
+                        continue
+                    selected_dimensions = _selected_dimensions(all_dimensions, selected, legacy)
+                    selected_origins[selected] += selected_dimensions.get("t", {}).get("requests", 0)
+                    for dimension, values in selected_dimensions.items():
+                        if dimension.startswith("r:"):
+                            route_origins[dimension[2:]][selected] += values.get("requests", 0)
+                for dimension, values in _selected_dimensions(all_dimensions, origin, legacy).items():
+                    _merge(hourly[dimension], values)
+                # Historical v1 stores no explicit reasons. Preserve unknown coverage
+                # as legacy, never infer the country/address reason retrospectively.
+                if legacy and origin in {"all", "legacy_unclassified"} and "t" in all_dimensions:
+                    legacy_totals = all_dimensions["t"]
+                    hourly["t"]["geo_reason_legacy_unclassified"] = hourly["t"].get(
+                        "geo_reason_legacy_unclassified", 0
+                    ) + legacy_totals.get("unlocated", 0)
+                    hourly["t"]["origin_reason_legacy_unclassified"] = hourly["t"].get(
+                        "origin_reason_legacy_unclassified", 0
+                    ) + legacy_totals.get("requests", 0)
+            raw = hourly.get("t")
+            result["series"].append({"at": hour * 3600, "metrics": _metrics(raw, int(unique)) if raw else None})
+            for dimension, values in hourly.items():
+                _merge(merged[dimension], values)
         totals = merged.get("t")
         coverage = {_text(key): float(value) for key, value in rows[-2].items()}
+        result["coverage"].update(
+            observed_since=max(coverage.get("first", hours[0] * 3600), hours[0] * 3600) if coverage else None,
+            last_observed_at=coverage.get("last"),
+            classified_requests=selected_origins["internal"] + selected_origins["external"] if totals else None,
+            legacy_unclassified_requests=selected_origins["legacy_unclassified"] if totals else None,
+        )
+        if source_totals:
+            # Lost events cannot be assigned an origin. Coverage is source-wide,
+            # independent of the selected origin, just like source timestamps.
+            result["coverage"].update(
+                dropped_events=int(source_totals.get("dropped_events", 0)) + _pending_drops[source],
+                reporter_dropped_events=int(source_totals.get("reporter_dropped_events", 0)),
+            )
         if totals:
+            result["origins"] = selected_origins
             result["totals"] = _metrics(totals, int(rows[-1]))
             result["countries"] = sorted(
                 [{"country": key[2:], **_metrics(values)} for key, values in merged.items() if key.startswith("c:")],
-                key=lambda row: -row["requests"],
+                key=lambda row: (-row["requests"], row["country"]),
             )
             result["routes"] = sorted(
-                [{"route": key[2:], **_metrics(values)} for key, values in merged.items() if key.startswith("r:")],
-                key=lambda row: -row["requests"],
+                [
+                    {"route": key[2:], "origins": route_origins[key[2:]], **_metrics(values)}
+                    for key, values in merged.items()
+                    if key.startswith("r:")
+                ],
+                key=lambda row: (-row["requests"], row["route"]),
             )
             result["coverage"].update(
-                dropped_events=int(totals["dropped_events"]) + _pending_drops[source],
-                reporter_dropped_events=int(totals["reporter_dropped_events"]),
-                observed_since=max(coverage.get("first", hours[0] * 3600), hours[0] * 3600),
-                last_observed_at=coverage.get("last"),
+                geo_unknown_reasons={
+                    reason: int(totals.get("geo_reason_" + reason, 0))
+                    for reason in GEO_REASONS
+                    if totals.get("geo_reason_" + reason)
+                },
+                origin_unknown_reasons={
+                    reason: int(totals.get("origin_reason_" + reason, 0))
+                    for reason in ORIGIN_REASONS
+                    if totals.get("origin_reason_" + reason)
+                },
             )
-        # An empty store has no proven observation interval; never present healthy zero.
         result["state"] = (
             "partial"
             if not totals
             or _pending_drops[source]
-            or (totals and (totals["dropped_events"] or totals["reporter_dropped_events"]))
-            or result["coverage"]["geo_source"] == "unavailable"
+            or source_totals.get("dropped_events")
+            or source_totals.get("reporter_dropped_events")
+            or geo.state == "unavailable"
             else "available"
         )
     except Exception:

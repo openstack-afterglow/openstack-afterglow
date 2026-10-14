@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { error, redirect, type Handle, type RequestEvent } from '@sveltejs/kit';
 import { createTrafficReporter, observeResponse, reporterConfig, trafficCategory, type TrafficEvent } from './trafficReporter';
 
-const config = { url: 'http://backend:8000/api/v1/monitoring/traffic/events', key: 'k'.repeat(32), trustClientAddress: false };
+const config = { url: 'http://backend:8000/api/v1/monitoring/traffic/events', key: 'k'.repeat(32), peerIsSocket: false };
 const settle = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 function event(method = 'GET', route: string | null = '/admin/instances/[id]'): RequestEvent {
 	return {
@@ -85,7 +85,9 @@ describe('server reporter transport and privacy', () => {
 	it('is disabled without valid server-only configuration and defaults address trust off', async () => {
 		expect(reporterConfig({})).toBeNull(); expect(reporterConfig({ TRAFFIC_ANALYTICS_INGEST_URL: config.url, TRAFFIC_ANALYTICS_INGEST_KEY: 'short' })).toBeNull();
 		for (const url of ['file:///secret', '/api/events', 'https://user:password@backend/events', 'https://backend/events?secret=1']) expect(reporterConfig({ TRAFFIC_ANALYTICS_INGEST_URL: url, TRAFFIC_ANALYTICS_INGEST_KEY: config.key })).toBeNull();
-		expect(reporterConfig({ TRAFFIC_ANALYTICS_INGEST_URL: config.url, TRAFFIC_ANALYTICS_INGEST_KEY: config.key })?.trustClientAddress).toBe(false);
+		expect(reporterConfig({ TRAFFIC_ANALYTICS_INGEST_URL: config.url, TRAFFIC_ANALYTICS_INGEST_KEY: config.key })?.peerIsSocket).toBe(false);
+        expect(reporterConfig({ TRAFFIC_ANALYTICS_INGEST_URL: config.url, TRAFFIC_ANALYTICS_INGEST_KEY: config.key, TRAFFIC_ANALYTICS_PEER_IS_SOCKET: 'true', ADDRESS_HEADER: 'x-forwarded-for' })?.peerIsSocket).toBe(false);
+        expect(reporterConfig({ TRAFFIC_ANALYTICS_INGEST_URL: config.url, TRAFFIC_ANALYTICS_INGEST_KEY: config.key, TRAFFIC_ANALYTICS_PEER_IS_SOCKET: 'true' })?.peerIsSocket).toBe(true);
 		const send = vi.fn<typeof fetch>(); const requestEvent = event(); const response = new Response('same');
 		expect(await invoke(createTrafficReporter(null, { fetch: send }), response, requestEvent)).toBe(response); expect(send).not.toHaveBeenCalled(); expect(requestEvent.getClientAddress).not.toHaveBeenCalled();
 	});
@@ -94,19 +96,27 @@ describe('server reporter transport and privacy', () => {
 		const clone = vi.spyOn(requestEvent.request, 'clone');
 		const response = await invoke(createTrafficReporter(config, { fetch: send }), new Response('ok'), requestEvent);
 		expect(send).not.toHaveBeenCalled(); expect(await response.text()).toBe('ok'); await settle();
-		const body = payload(send); expect(Object.keys(body).sort()).toEqual(['id', 'at', 'status', 'route', 'client_ip', 'pageview', 'request_bytes', 'response_bytes', 'latency_ms', 'reporter_dropped_events'].sort());
-		expect(body).toMatchObject({ route: '/admin', client_ip: null, pageview: false, request_bytes: null, response_bytes: 2, reporter_dropped_events: 0 });
+		const body = payload(send); expect(Object.keys(body).sort()).toEqual(['schema_version', 'id', 'at', 'status', 'route', 'peer_ip', 'peer_verified', 'forwarded_for', 'pageview', 'request_bytes', 'response_bytes', 'latency_ms', 'reporter_dropped_events'].sort());
+		expect(body).toMatchObject({ schema_version: 2, route: '/admin', peer_ip: null, peer_verified: false, forwarded_for: '1.2.3.4', pageview: false, request_bytes: null, response_bytes: 2, reporter_dropped_events: 0 });
 		expect(body.id).toMatch(/^[0-9a-f-]{36}$/); expect(Math.abs(body.at - Date.now() / 1000)).toBeLessThan(2); expect(body.latency_ms).toBeGreaterThanOrEqual(0);
-		expect(JSON.stringify(body)).not.toMatch(/secret|private|user-agent|cookie|1\.2\.3\.4|US/); expect(clone).not.toHaveBeenCalled(); expect(requestEvent.request.bodyUsed).toBe(false); expect(requestEvent.getClientAddress).not.toHaveBeenCalled(); expect(requestEvent.fetch).not.toHaveBeenCalled();
+		expect(JSON.stringify(body)).not.toMatch(/secret|private|user-agent|cookie|US/); expect(clone).not.toHaveBeenCalled(); expect(requestEvent.request.bodyUsed).toBe(false); expect(requestEvent.getClientAddress).not.toHaveBeenCalled(); expect(requestEvent.fetch).not.toHaveBeenCalled();
 		expect(send.mock.calls[0][0]).toBe(config.url);
 		expect(send.mock.calls[0][1]).toMatchObject({ credentials: 'omit', redirect: 'error', headers: { Authorization: `Bearer ${config.key}`, 'Content-Type': 'application/json' } });
 	});
 	it('uses only opted-in adapter address and reports unavailable adapter addresses as null', async () => {
-		const send = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 })); const handle = createTrafficReporter({ ...config, trustClientAddress: true }, { fetch: send });
-		await invoke(handle); await settle(); expect(payload(send).client_ip).toBe('192.0.2.10');
+		const send = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 })); const handle = createTrafficReporter({ ...config, peerIsSocket: true }, { fetch: send });
+		await invoke(handle); await settle(); expect(payload(send)).toMatchObject({ peer_ip: '192.0.2.10', peer_verified: true, forwarded_for: '1.2.3.4' });
 		const requestEvent = event(); vi.mocked(requestEvent.getClientAddress).mockImplementation(() => { throw new Error('no adapter support'); });
-		await invoke(handle, undefined, requestEvent); await settle(); expect(payload(send, 1).client_ip).toBeNull();
+		await invoke(handle, undefined, requestEvent); await settle(); expect(payload(send, 1).peer_ip).toBeNull();
 	});
+    it.each(['1'.repeat(1025), '"'.repeat(1024)])('bounds raw and escaped forwarded evidence without losing the observation', async (forwarded) => {
+        const send = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
+        const requestEvent = event(); requestEvent.request.headers.set('x-forwarded-for', forwarded);
+        await invoke(createTrafficReporter({ ...config, peerIsSocket: true }, { fetch: send }), undefined, requestEvent);
+        expect(payload(send).forwarded_for).toBe('invalid');
+        expect(Buffer.byteLength(send.mock.calls[0][1]!.body as string, 'utf8')).toBeLessThanOrEqual(2048);
+        expect(payload(send)).toMatchObject({ status: 204, response_bytes: 0, reporter_dropped_events: 0 });
+    });
 	it.each([
 		['GET', 200, 'text/html; charset=utf-8', true], ['POST', 200, 'text/html', false],
 		['GET', 302, 'text/html', false], ['GET', 500, 'text/html', false], ['GET', 200, 'application/json', false], ['HEAD', 200, 'text/html', false],

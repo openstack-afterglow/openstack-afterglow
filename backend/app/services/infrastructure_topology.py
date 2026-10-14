@@ -10,7 +10,7 @@ from fastapi import HTTPException
 
 from app.config import get_settings
 from app.models.infrastructure_topology import Observation, TraceResult
-from app.services import host_health
+from app.services import host_health, infrastructure_fabric
 from app.services.cache import _get_redis
 
 INTERVAL_SECONDS = 10
@@ -143,8 +143,110 @@ def projected_peers(host_id, observation, settings, clock):
     return result
 
 
+def flow_key(row):
+    return (row["interface"], row["direction"], row["source_host_id"], row["target_host_id"])
+
+
+def flow_rates(current, old):
+    flow = current.get("flows")
+    if flow is None:
+        return []
+    previous = old.get("flows") if old else None
+    prior_rows = {flow_key(row): row for row in previous["rows"]} if previous else {}
+    elapsed = flow["captured_at"] - previous["captured_at"] if previous else 0
+    adjacent = bool(
+        previous
+        and current["boot_id"] == old["boot_id"]
+        and flow["collector_id"] == previous["collector_id"]
+        and current["sources"].get("flows") == old["sources"].get("flows") == "measured"
+        and not flow["overflow"]
+        and not previous["overflow"]
+        and 5 <= elapsed <= STALE_SECONDS
+    )
+    interfaces = {item["name"]: item for item in current["interfaces"]}
+    old_interfaces = {item["name"]: item for item in old["interfaces"]} if old else {}
+    result = []
+    for row in flow["rows"]:
+        prior = prior_rows.get(flow_key(row))
+        interface, old_interface = interfaces.get(row["interface"]), old_interfaces.get(row["interface"])
+        identity_matches = bool(
+            interface
+            and old_interface
+            and interface.get("ifindex") is not None
+            and interface.get("mac") is not None
+            and interface.get("physical") is True
+            and old_interface.get("physical") is True
+            and interface["ifindex"] == old_interface.get("ifindex")
+            and interface["mac"].lower() == (old_interface.get("mac") or "").lower()
+        )
+        valid = bool(
+            adjacent
+            and prior
+            and identity_matches
+            and all(int(row[key]) >= int(prior[key]) for key in ("packets", "bytes"))
+        )
+        reason = None
+        if flow["overflow"] or (previous and previous["overflow"]):
+            reason = "overflow"
+        elif current["sources"].get("flows") == "error" or (old and old["sources"].get("flows") == "error"):
+            reason = "collector_error"
+        elif previous and (flow["collector_id"] != previous["collector_id"] or current["boot_id"] != old["boot_id"]):
+            reason = "collector_reset"
+        elif previous and not 5 <= elapsed <= STALE_SECONDS:
+            reason = "stale_sample"
+        elif previous is None or prior is None:
+            reason = "first_sample"
+        elif not valid:
+            reason = "counter_reset"
+        rates = [None, None]
+        if valid:
+            deltas = [int(row[key]) - int(prior[key]) for key in ("packets", "bytes")]
+            numerator, denominator = elapsed.as_integer_ratio()
+            if any(delta * denominator > (2**53 - 1) * numerator for delta in deltas):
+                valid, reason = False, "overflow"
+            else:
+                rates = [delta / elapsed for delta in deltas]
+        result.append(
+            {
+                **row,
+                "window_seconds": elapsed if valid else None,
+                "packets_per_second": rates[0],
+                "bytes_per_second": rates[1],
+                "reason": reason,
+                "state": "error" if current["sources"].get("flows") == "error" else "fresh" if valid else "unmeasured",
+            }
+        )
+    return result
+
+
+def public_flows(host_id, observation, clock):
+    if not observation or not observation.get("flows"):
+        return []
+    captured = observation["flows"]["captured_at"]
+    stale = not 0 <= clock - captured <= STALE_SECONDS
+    result = []
+    for row in observation.get("flow_rates", []):
+        identity = json.dumps([host_id, *flow_key(row)], separators=(",", ":"))
+        result.append(
+            {
+                "id": "flow:" + hashlib.sha256(identity.encode()).hexdigest(),
+                **{key: row[key] for key in ("source_host_id", "target_host_id", "interface", "direction")},
+                "reporting_host_id": host_id,
+                "captured_at": captured,
+                "window_seconds": None if stale else row["window_seconds"],
+                "packets_per_second": None if stale else row["packets_per_second"],
+                "bytes_per_second": None if stale else row["bytes_per_second"],
+                "state": "stale" if stale else row["state"],
+                "measurement": "linux_skb_header_counter",
+                "reason": "stale_sample" if stale else row.get("reason"),
+            }
+        )
+    return result
+
+
 def enrich_observation(report: Observation, old: dict | None):
     current = report.model_dump()
+    current["flow_rates"] = flow_rates(current, old)
     prior_interfaces = {item["name"]: item for item in old["interfaces"]} if old else {}
     elapsed = current["captured_at"] - old["captured_at"] if old else 0
     for interface in current["interfaces"]:
@@ -184,6 +286,19 @@ async def ingest(host_id, report: Observation, *, settings=None, redis=None, now
             raise HTTPException(422, "peer_target_not_allowed")
         if not -5 <= clock - probe.checked_at <= STALE_SECONDS or probe.checked_at > report.captured_at + 5:
             raise HTTPException(409, "peer_probe_time_invalid")
+    if report.flows is not None:
+        registered = {
+            identity.host_id for identity in settings.monitoring_infrastructure_topology_observers if identity.addresses
+        }
+        if (
+            not -5 <= clock - report.flows.captured_at <= STALE_SECONDS
+            or report.flows.captured_at > report.captured_at + 5
+        ):
+            raise HTTPException(409, "flow_observation_time_invalid")
+        for row in report.flows.rows:
+            local = row.source_host_id if row.direction == "egress" else row.target_host_id
+            if local != host_id or row.source_host_id not in registered or row.target_host_id not in registered:
+                raise HTTPException(422, "flow_host_not_allowed")
     redis = redis if redis is not None else await redis_client()
     keys = _keys(host_id, settings)
     raw = _text(await _redis_call(redis, "get", keys["observation"])) or ""
@@ -200,6 +315,9 @@ async def ingest(host_id, report: Observation, *, settings=None, redis=None, now
         previous = previous_peers.get((probe.target_host_id, probe.address, probe.port))
         if previous is not None and probe.checked_at <= previous:
             raise HTTPException(409, "peer_probe_replayed_or_out_of_order")
+    previous_flow = old.get("flows") if old else None
+    if report.flows is not None and previous_flow and report.flows.captured_at <= previous_flow["captured_at"]:
+        raise HTTPException(409, "flow_observation_replayed_or_out_of_order")
     enriched = enrich_observation(report, old)
     cutoff = report.captured_at - settings.monitoring_infrastructure_topology_retention_seconds
     for interface in enriched["interfaces"]:
@@ -336,6 +454,7 @@ def _configured_host(identity):
 
 async def snapshot(*, settings=None, redis=None, now=None):
     settings = settings or get_settings()
+    clock = time.time() if now is None else now
     result = {
         "enabled": settings.monitoring_infrastructure_topology_enabled,
         "error": None,
@@ -343,11 +462,12 @@ async def snapshot(*, settings=None, redis=None, now=None):
         "interval_seconds": INTERVAL_SECONDS,
         "trace_targets": settings.monitoring_infrastructure_topology_trace_targets,
         "hosts": [],
+        "flows": [],
     }
     if not result["enabled"]:
         result["error"] = "topology_disabled"
+        result["fabric"] = await infrastructure_fabric.snapshot(settings=settings, redis=redis, now=clock)
         return result
-    clock = time.time() if now is None else now
     health = await host_health.get_snapshot(settings=settings, redis=redis, now=clock)
     inventory = {
         host["id"]: {key: host[key] for key in ("id", "name", "role", "address", "reachability", "heartbeat")}
@@ -404,4 +524,18 @@ async def snapshot(*, settings=None, redis=None, now=None):
             host.update(observation=None, observation_state="unmeasured", traces=[])
             host["peer_probes"] = projected_peers(host["id"], None, settings, clock)
     result["hosts"] = hosts
+    result["flows"] = sorted(
+        [flow for host in hosts for flow in public_flows(host["id"], host["observation"], clock)],
+        key=lambda flow: flow["id"],
+    )
+    result["fabric"] = await infrastructure_fabric.snapshot(
+        settings=settings,
+        redis=redis,
+        now=clock,
+        host_observations={host["id"]: host["observation"] for host in hosts if host["observation"]},
+    )
+    for host in hosts:
+        if host["observation"]:
+            host["observation"].pop("flows", None)
+            host["observation"].pop("flow_rates", None)
     return result

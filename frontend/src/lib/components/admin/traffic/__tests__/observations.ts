@@ -7,9 +7,9 @@ export function metrics(overrides: Partial<TrafficMetrics> = {}): TrafficMetrics
 		latency_ms_total: 120, latency_ms_max: 40, unique_visitors: 4, visitor_identity_known: 8, ...overrides };
 }
 export function observations(overrides: Partial<TrafficSnapshot> = {}): TrafficSnapshot {
-	return { state: 'partial', source: 'backend', range: '24h', retention_days: 30, generated_at: 1700007200,
-		coverage: { description: 'Observed test server only', geo_source: 'unconfigured', site_country: null, unique_method: 'Rotating HLL', dropped_events: 2, reporter_dropped_events: null, observed_since: 1700000000, last_observed_at: 1700003600 },
+	return { state: 'partial', source: 'backend', range: '24h', origin: 'all', origins: { internal: 3, external: 4, unknown: 2, legacy_unclassified: 1 }, retention_days: 30, generated_at: 1700007200,
+		coverage: { description: 'Observed test server only', geo_source: 'unconfigured', geo_provider: null, geo_version: null, geo_attribution: null, geo_unknown_reasons: { non_global: 2 }, origin_unknown_reasons: { non_global_noncluster: 2, legacy_unclassified: 1 }, classified_requests: 7, legacy_unclassified_requests: 1, classification_policy: 'Exact configured CIDRs only', site_country: null, unique_method: 'Rotating HLL', dropped_events: 2, reporter_dropped_events: null, observed_since: 1700000000, last_observed_at: 1700003600 },
 		totals: metrics(), countries: [{ ...metrics({ unique_visitors: null }), country: 'KR' }, { ...metrics({ requests: 0, success: 0, errors: 0, status_2xx: 0, status_4xx: 0, status_5xx: 0, pageviews: 0, unlocated: 0, response_bytes: 0, response_bytes_known: 0, visitor_identity_known: 0, latency_ms_total: 0, latency_ms_max: 0, unique_visitors: null }), country: 'US' }, { ...metrics({ unique_visitors: null }), country: 'XX' }],
-		routes: [{ ...metrics({ unique_visitors: null }), route: '/admin' }],
+		routes: [{ ...metrics({ unique_visitors: null }), route: '/admin', origins: { internal: 3, external: 4, unknown: 2, legacy_unclassified: 1 } }],
 		series: [{ at: 1700000000, metrics: metrics({ requests: 8 }) }, { at: 1700003600, metrics: metrics({ requests: 10 }) }], ...overrides };
 }

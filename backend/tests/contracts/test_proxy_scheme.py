@@ -37,7 +37,12 @@ def _kolla_launch():
         renderer.from_string(argument).render(**variables)
         for argument in defaults["afterglow_services"]["afterglow-backend"]["command"]
     ]
-    return command, {}, "172.30.0.12", "172.30.0.99"
+    environment = {
+        "FORWARDED_ALLOW_IPS": renderer.from_string(
+            defaults["afterglow_service_environments"]["afterglow-backend"]["FORWARDED_ALLOW_IPS"]
+        ).render(**variables)
+    }
+    return command, environment, "172.30.0.12", "172.30.0.99"
 
 
 def _kubernetes_launch(kind):
@@ -113,9 +118,10 @@ def launch(request, monkeypatch):
     with uvicorn_cli.make_context("uvicorn", command[1:]) as context:
         options = context.params
     configuration = uvicorn.Config(
-        app,
+        options["app"],
         proxy_headers=options["proxy_headers"],
         forwarded_allow_ips=options["forwarded_allow_ips"],
+        factory=options["factory"],
         lifespan="off",
     )
     configuration.load()

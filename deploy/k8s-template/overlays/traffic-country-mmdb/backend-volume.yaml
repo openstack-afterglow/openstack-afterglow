@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  template:
+    spec:
+      containers:
+        - name: backend
+          env:
+            - name: TRAFFIC_ANALYTICS__GEOIP_MMDB
+              value: /etc/afterglow/geoip/country.mmdb
+          volumeMounts:
+            - name: traffic-country-mmdb
+              mountPath: /etc/afterglow/geoip
+              readOnly: true
+      volumes:
+        - name: traffic-country-mmdb
+          persistentVolumeClaim:
+            claimName: afterglow-country-data
+            readOnly: true

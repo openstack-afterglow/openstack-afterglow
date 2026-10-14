@@ -141,6 +141,9 @@ const targets = {
 				"tests/test_monitoring_config.py",
 				"tests/test_host_observer.py",
 				"tests/test_infrastructure_topology.py",
+				"tests/test_topology_flows.py",
+				"tests/test_flow_collector.py",
+				"tests/test_infrastructure_fabric.py",
 				"tests/test_traffic_analytics.py",
 				"tests/test_login_monitoring.py"
 			]

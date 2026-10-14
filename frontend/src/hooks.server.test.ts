@@ -63,7 +63,7 @@ async function loadHandle(reporting = false) {
 	vi.resetModules();
 	vi.stubEnv('TRAFFIC_ANALYTICS_INGEST_URL', reporting ? 'http://backend:8000/api/v1/monitoring/traffic/events' : '');
 	vi.stubEnv('TRAFFIC_ANALYTICS_INGEST_KEY', reporting ? 'k'.repeat(32) : '');
-	vi.stubEnv('TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS', 'false');
+	vi.stubEnv('TRAFFIC_ANALYTICS_PEER_IS_SOCKET', 'false');
 	vi.doMock('$lib/server/config', () => ({
 		loadPublicSiteConfig: () => baseConfig,
 	}));
@@ -411,7 +411,7 @@ describe('traffic reporter hook integration', () => {
 		expect(response.status).toBe(302); expect(response.headers.get('location')).toBe('/login'); expect(resolve).not.toHaveBeenCalled();
 		expect(event.getClientAddress).not.toHaveBeenCalled(); expect(send).toHaveBeenCalledTimes(1);
 		const payload = JSON.parse(send.mock.calls[0][1]!.body as string);
-		expect(payload).toMatchObject({ status: 302, route: '/admin', client_ip: null, request_bytes: null, response_bytes: 0, pageview: false });
+		expect(payload).toMatchObject({ status: 302, route: '/admin', request_bytes: null, response_bytes: 0, pageview: false });
 		expect(JSON.stringify(payload)).not.toMatch(/private|secret|cookie/);
 	});
 	it('passes through rendered HTML bytes and generated CSP before nonblocking ingest', async () => {

@@ -357,6 +357,7 @@ def render_secret(cfg: dict, namespace: str = "afterglow") -> str:
     traffic = cfg.get("traffic_analytics", {})
     lines.extend([
         f"  MONITORING_INFRASTRUCTURE_TOPOLOGY_OBSERVERS: {_yaml_str(json.dumps(mon.get('infrastructure_topology_observers', [])))}",
+        f"  MONITORING_INFRASTRUCTURE_FABRIC__TARGETS: {_yaml_str(json.dumps(mon.get('infrastructure_fabric', {}).get('targets', [])))}",
         f"  TRAFFIC_ANALYTICS__HMAC_KEY: {_yaml_str(traffic.get('hmac_key', ''))}",
         f"  TRAFFIC_ANALYTICS__FRONTEND_INGEST_KEY: {_yaml_str(traffic.get('frontend_ingest_key', ''))}",
         f"  TRAFFIC_ANALYTICS_INGEST_KEY: {_yaml_str(traffic.get('frontend_ingest_key', ''))}",
@@ -820,12 +821,24 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"instance_cpu_uid = {_toml_str(dashboards.get('instance_cpu_uid', 'afterglow-instance-cpu'))}")
     lines.append(f"instance_gpu_uid = {_toml_str(dashboards.get('instance_gpu_uid', 'afterglow-instance-gpu'))}")
     lines.append("")
+    fabric = mon.get("infrastructure_fabric", {})
+    lines.append("[monitoring.infrastructure_fabric]")
+    for key, default in (
+        ("revision", 0), ("poll_interval_seconds", 10), ("freshness_seconds", 30),
+        ("timeout_seconds", 2), ("retries", 1), ("concurrency", 4), ("poll_budget_seconds", 30),
+        ("max_ports", 256), ("max_neighbors", 256), ("max_varbinds", 16384), ("retention_seconds", 3600),
+    ):
+        lines.append(f"{key} = {fabric.get(key, default)}")
+    lines.append("# AuthPriv target credentials are injected through MONITORING_INFRASTRUCTURE_FABRIC__TARGETS Secret")
+    lines.append("")
 
     traffic = cfg.get("traffic_analytics", {})
     lines.append("[traffic_analytics]")
     lines.append(f"enabled = {_toml_bool(traffic.get('enabled', False))}")
     lines.append(f"retention_days = {traffic.get('retention_days', 30)}")
-    lines.append(f"geoip_csv = {_toml_str(traffic.get('geoip_csv', ''))}")
+    lines.append(f"geoip_mmdb = {_toml_str(traffic.get('geoip_mmdb', ''))}")
+    for key in ("cluster_cidrs", "backend_trusted_proxy_cidrs", "frontend_trusted_proxy_cidrs"):
+        lines.append(f"{key} = [" + ", ".join(_toml_str(value) for value in traffic.get(key, [])) + "]")
     lines.append(f"site_country = {_toml_str(traffic.get('site_country', ''))}")
     lines.append("# hmac_key and frontend_ingest_key are injected through TRAFFIC_ANALYTICS__* Secret environment keys")
     lines.append("")
@@ -917,7 +930,7 @@ def render_configmap(cfg: dict, namespace: str = "afterglow") -> str:
         f'  PUBLIC_S3_BASE: "{public_s3_base}"',
         f'  APP_GRAFANA_BASE: "{app_grafana_base}"',
         '  TRAFFIC_ANALYTICS_INGEST_URL: "http://backend:8000/api/v1/monitoring/traffic/events"',
-        f"  TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS: {_yaml_str(str(cfg.get('traffic_analytics', {}).get('trust_frontend_client_address', False)).lower())}",
+        '  TRAFFIC_ANALYTICS_PEER_IS_SOCKET: "true"',
         "  afterglow.conf: |",
         indented_toml,
     ]
