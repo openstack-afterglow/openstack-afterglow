@@ -13,6 +13,7 @@ import httpx
 from app.models.storage import FileStorageDeleteDiagnostic, FileStorageInfo
 
 logger = logging.getLogger(__name__)
+INSTANCE_STORAGE_GRANT_PREFIX = "afterglow_share_grant_"
 
 
 class ManilaClient:
@@ -415,7 +416,7 @@ def delete_security_service(conn, security_service_id: str) -> None:
     client.delete(f"security-services/{security_service_id}")
 
 
-def create_file_storage(
+def submit_file_storage(
     conn,
     name: str,
     size_gb: int,
@@ -423,7 +424,8 @@ def create_file_storage(
     share_type: str = "cephfstype",
     share_proto: str = "CEPHFS",
     metadata: dict | None = None,
-) -> FileStorageInfo:
+) -> dict:
+    """Submit one share CREATE and return its raw identity before any readiness polling."""
     client = get_client(conn)
     proto_upper = share_proto.upper()
     share_body: dict = {
@@ -474,7 +476,21 @@ def create_file_storage(
                 response=e.response,
             ) from e
         raise
+    return data
+
+
+def create_file_storage(
+    conn,
+    name: str,
+    size_gb: int,
+    share_network_id: str,
+    share_type: str = "cephfstype",
+    share_proto: str = "CEPHFS",
+    metadata: dict | None = None,
+) -> FileStorageInfo:
+    data = submit_file_storage(conn, name, size_gb, share_network_id, share_type, share_proto, metadata)
     file_storage_id = data["id"]
+    client = get_client(conn)
 
     # available 상태까지 폴링
     for _ in range(60):
@@ -828,29 +844,15 @@ def rotate_cephx_access_rule(conn, file_storage_id: str, access_id: str) -> dict
 
 def list_access_rules(conn, file_storage_id: str, *, strict: bool = False) -> list[dict]:
     client = get_client(conn)
-    # API v2.45+: use share-access-rules endpoint instead of action
+    # Manila 2.45+ share-access-rules uses the same `access_list` envelope as
+    # the legacy action, so a modern empty list is authoritative.
     data = client.get(f"share-access-rules?share_id={file_storage_id}")
+    rules = data.get("access_list")
     if strict and (
-        not isinstance(data.get("access_rules"), list)
-        or any(not isinstance(rule, dict) or not rule.get("id") for rule in data["access_rules"])
+        not isinstance(rules, list) or any(not isinstance(rule, dict) or not rule.get("id") for rule in rules)
     ):
         raise ValueError("Manila access-rule list is incomplete")
-    rules = data.get("access_rules", [])
-    if rules or strict:
-        return rules
-    # 일부 Manila 구성에서 share-access-rules가 빈 결과를 반환하는 경우 legacy action API fallback
-    try:
-        data2 = client.post(f"shares/{file_storage_id}/action", {"os-list-access": {}}, log_errors=False)
-        legacy = data2.get("access_list", [])
-        if legacy:
-            logger.warning(
-                "share-access-rules returned empty; os-list-access fallback returned %d rules",
-                len(legacy),
-            )
-        return legacy
-    except Exception as e:
-        logger.debug("os-list-access fallback failed: %s", e)
-        return rules
+    return rules if isinstance(rules, list) else []
 
 
 def get_access_rule(conn, file_storage_id: str, access_id: str) -> dict | None:
@@ -922,7 +924,7 @@ def _get_access_key(client: ManilaClient, file_storage_id: str, access_id: str, 
     last_state = "?"
     for attempt in range(max_attempts):
         data = client.get(f"share-access-rules?share_id={file_storage_id}")
-        rules = data.get("access_rules", [])
+        rules = data.get("access_list", [])
         for rule in rules:
             if rule["id"] == access_id:
                 last_state = rule.get("state", "?")

@@ -187,13 +187,15 @@
 - [ ] ⏳ **실환경 검증(수동, CI 불가)** — 런북 §4 의 5단계. 로컬 KVM 호스트에서 3단 스택 VM 부팅 →
       `lsblk`/by-id/squashfs/overlay 확인 → merged 에서 패키지 실행
 
-### Phase 6 — OpenStack virtio (계획 확정, 코드 미착수)
+### Phase 6 — OpenStack virtio (local implementation, live authentication blocked)
 
-- [ ] ⏳ 착수 게이트 — `cinder.list_volume_types()` / `cinder.list_storage_pools()`로 백엔드 확인.
-      **RBD가 아니면 착수하지 않고 "NFS 유지"를 최종 결론으로 문서화**
-- [ ] ⏳ RBD인 경우: 대표 레이어 1개 clone 소요 시간 + 프로젝트 볼륨 개수 쿼터 측정
-- [ ] (게이트 통과 시) `services/palimpsest_volume.py` — blob → Glance(`glance.create_image` disk_format=raw) → VM당 `cinder.create_volume_from_image` → `nova.attach_volume` + `delete_on_termination=True`, 실패 시 전량 롤백
-- [ ] (게이트 통과 시) `058_palimpsest_layer_volumes.sql` + `layer_consumes.volume_ids JSON`
-- [ ] (게이트 통과 시) 게스트 디바이스는 `/dev/vdX`가 아니라 `/dev/disk/by-id/virtio-${VOLUME_ID:0:20}` (scsi면 `scsi-0QEMU_QEMU_HARDDISK_…`)
-- [ ] (게이트 통과 시) `[palimpsest] consume_transport`(기본 `nfs`) / `virtio_disk_bus` — 3곳 동시 갱신
-- [ ] (게이트 통과 시) `backend/tests/test_palimpsest_volume.py`
+- [x] 승인된 read-only provider 설정 확인: Cinder RBDDriver/ceph_hdd와 Glance rbd가 구성돼 있다. 설정은 실제 clone/COW·quota·readonly attachment의 증거가 아니다.
+- [x] `services/layer_block.py`·관리자 `layer_block_sources` — 봉인 exact-byte raw/bare Glance source, immutable owner/store/member/upload UUID, row-lock reservation와 artifact DELETE 경쟁·취소 drain. Non-RBD 요청은 fail-closed이고 기존 명시적 NFS 경로를 자동 fallback으로 바꾸지 않는다.
+- [x] 실제 migration088/089와 manifest — artifact `block_source` 및 consume transport/run/resources/cleanup_state. 기존 NFS/null 계약 유지; 계획했던058과 `volume_ids` shortcut은 사용하지 않는다.
+- [x] `layer_consume_resources` — 원본 SDK/project/expected owner fence, CREATE 전 commit·retry 억제·heartbeat·응답 유실 discovery·monotonic cleanup journal. 단건/bulk/dedicated 회수에서 managed Manila grant denial 및 bound FIP DELETE/404를 먼저 확인한다.
+- [x] `layer_block_guest`·root renderer — whole virtio/RO/정확한20자 또는 full/compact UUID·ambiguity·sealed-prefix SHA256·직접 SquashFS RO mount. Upper boot/layer alias·전체 zero/signature gate와 Cinder+ext4 identity/중복 FSUUID reboot fence. 실제 initramfs prerequisite/dependency module packaging.
+- [x] 즉시 block import는 admin 인가 후 planning 전에422, nonadmin403. Optional consumer 실패/취소와 봉인을 분리하고 completed exact `import_id`로 원래 artifact 계보를 소비한다.
+- [x] 선택적 `transport` 요청 계약(`nfs` 기본)과 scoped pytest/real MariaDB lock/SDK-loopback regressions, opt-in `scripts/layer-block-smoke.py` 실제 help. 광역 consume_transport/virtio setting 또는 일반 사용자 endpoint를 추가하지 않는다.
+- [x] 로컬 canonical backend/worker/frontend arm64·amd64 실행 및 selected app byte 일치, TCP API→native SDK→실제 MariaDB restart/recovery, 실제 CPU-only Linux virtio/OverlayFS/upper 장치명 변경/persistence·RW lower 거부·serial 없는 duplicate FSUUID 거부. `docs/testing.md`에 합성 입력·실제 실행·미검증 cloud 경계를 분리 기록한다.
+- [ ] 원본 SDK 인증과 actual roles/service capability 선행 후 실제 cloud source membership·Cinder clone/COW·quota·readonly Nova attachment·Ubuntu cloud-init/SSH·재부팅 및 exact cleanup 검증. 같은 test-openrc 입력은 Keystone401이므로 unchanged retry, manual token, admin/service substitute 또는 cloud-resource 생성으로 우회하지 않는다.
+- [ ] 운영 migration·writer-fenced paired SQL/CAS restore·정본 Hub cutover/권한/bytes/restart proof는 별도 승인된 배포 순서의 prerequisite 뒤에서 보류한다.

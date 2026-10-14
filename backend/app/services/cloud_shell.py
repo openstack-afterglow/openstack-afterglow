@@ -881,7 +881,15 @@ def _reconcile_candidates(
 
 
 async def reconcile_once() -> dict[str, int]:
-    """Delete only proven orphan containers; Redis uncertainty is a no-op."""
+    """Delete only proven orphan containers under the assigned maintenance role."""
+    from app.services.work_dispatcher import (
+        DispatcherUnavailable,
+        checkpoint,
+        close_connection,
+        open_connection,
+        run_sync,
+    )
+
     settings = get_settings()
     if not settings.service_cloud_shell_enabled:
         return {"examined": 0, "deleted": 0}
@@ -892,56 +900,56 @@ async def reconcile_once() -> dict[str, int]:
             wait_seconds=0.05,
         ):
             redis = await _get_redis()
-            conn = await asyncio.to_thread(keystone.get_cloud_shell_project_connection)
+            conn = await open_connection(keystone.get_cloud_shell_project_connection)
             try:
-                containers = await asyncio.to_thread(zun.list_containers_raw, conn)
-                candidates = _reconcile_candidates(containers, settings)
-                states: list[tuple[dict[str, Any], dict[str, str], str | None, str | None]] = []
-                for container, labels in candidates:
-                    heartbeat = _decode_redis(await redis.get(_heartbeat_key(labels["afterglow.session"])))
-                    active = _decode_redis(await redis.get(_active_key(labels["afterglow.user"])))
-                    states.append((container, labels, heartbeat, active))
-            except Exception:
-                await asyncio.to_thread(conn.close)
-                raise CloudShellUnavailable(
-                    "reconcile_unavailable", "Cloud Shell reconciliation state is unavailable"
-                ) from None
-
-            deleted = 0
-            now = int(time.time())
-            for container, labels, heartbeat, _active in states:
                 try:
-                    created_at = int(labels.get("afterglow.created_at", "0"))
-                    expires_at = int(labels["afterglow.expires_at"])
-                except ValueError:
-                    continue
-                expected_active = _active_value(labels["afterglow.session"], labels["afterglow.workspace"])
-                heartbeat_valid = bool(heartbeat and hmac.compare_digest(heartbeat, expected_active))
-                orphaned = expires_at <= now or (not heartbeat_valid and created_at + CREATION_GRACE_SECONDS <= now)
-                if not orphaned:
-                    continue
-                container_id = container.get("uuid") or container.get("id")
-                if not isinstance(container_id, str) or not container_id:
-                    continue
-                try:
-                    await asyncio.to_thread(
-                        _delete_exact_container_sync,
-                        conn,
-                        container_id,
-                        labels,
-                        settings,
-                    )
+                    containers = await run_sync(zun.list_containers_raw, conn)
+                    candidates = _reconcile_candidates(containers, settings)
+                    states: list[tuple[dict[str, Any], dict[str, str], str | None, str | None]] = []
+                    for container, labels in candidates:
+                        heartbeat = _decode_redis(await redis.get(_heartbeat_key(labels["afterglow.session"])))
+                        active = _decode_redis(await redis.get(_active_key(labels["afterglow.user"])))
+                        states.append((container, labels, heartbeat, active))
+                except DispatcherUnavailable:
+                    raise
                 except Exception:
-                    logger.warning(
-                        "Cloud Shell reconciliation could not verify cleanup (session=%s)",
-                        labels["afterglow.session"],
-                    )
-                    continue
-                await compare_delete(_heartbeat_key(labels["afterglow.session"]), expected_active)
-                await compare_delete(_active_key(labels["afterglow.user"]), expected_active)
-                deleted += 1
-            await asyncio.to_thread(conn.close)
-            return {"examined": len(states), "deleted": deleted}
+                    raise CloudShellUnavailable(
+                        "reconcile_unavailable", "Cloud Shell reconciliation state is unavailable"
+                    ) from None
+
+                deleted = 0
+                now = int(time.time())
+                for container, labels, heartbeat, _active in states:
+                    try:
+                        created_at = int(labels.get("afterglow.created_at", "0"))
+                        expires_at = int(labels["afterglow.expires_at"])
+                    except ValueError:
+                        continue
+                    expected_active = _active_value(labels["afterglow.session"], labels["afterglow.workspace"])
+                    heartbeat_valid = bool(heartbeat and hmac.compare_digest(heartbeat, expected_active))
+                    orphaned = expires_at <= now or (not heartbeat_valid and created_at + CREATION_GRACE_SECONDS <= now)
+                    if not orphaned:
+                        continue
+                    container_id = container.get("uuid") or container.get("id")
+                    if not isinstance(container_id, str) or not container_id:
+                        continue
+                    try:
+                        await run_sync(_delete_exact_container_sync, conn, container_id, labels, settings)
+                    except DispatcherUnavailable:
+                        raise
+                    except Exception:
+                        logger.warning(
+                            "Cloud Shell reconciliation could not verify cleanup (session=%s)",
+                            labels["afterglow.session"],
+                        )
+                        continue
+                    await checkpoint()
+                    await compare_delete(_heartbeat_key(labels["afterglow.session"]), expected_active)
+                    await compare_delete(_active_key(labels["afterglow.user"]), expected_active)
+                    deleted += 1
+                return {"examined": len(states), "deleted": deleted}
+            finally:
+                await close_connection(conn)
     except CloudShellConflict:
         return {"examined": 0, "deleted": 0}
     except WebSocketTicketError:

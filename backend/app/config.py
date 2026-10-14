@@ -8,6 +8,7 @@ TOML 불리언은 소문자 true/false만 허용되며, 환경변수가 있어�
 커스텀 설정과 DB 로고 업로드가 우선하며, 업로드 초기화 시 설정된 로고로 돌아간다.
 """
 
+import ipaddress
 import json
 import os
 import re
@@ -20,6 +21,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings
+
+from app.models.infrastructure_topology import HostObserverIdentity, HostPeerProbeTarget, validate_topology_settings
+from app.models.traffic_analytics import TrafficAnalyticsSettings
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 _EMPTY_ENV_TOML_FALLBACK_KEYS = frozenset({"GITLAB_OIDC_CLIENT_SECRET", "K3S_GPU_ADMISSION_TOKEN"})
@@ -289,6 +293,16 @@ def _load_toml() -> dict:
     flat["palimpsest_kvm_state_dir"] = palimpsest.get("kvm_state_dir", "/var/lib/palimpsest/domains")
 
     mon = data.get("monitoring", {})
+    flat["monitoring_host_healthcheck_enabled"] = mon.get("host_healthcheck_enabled", True)
+    flat["monitoring_host_healthcheck_targets"] = mon.get("host_healthcheck_targets", [])
+    flat["monitoring_infrastructure_topology_enabled"] = mon.get("infrastructure_topology_enabled", False)
+    flat["monitoring_infrastructure_topology_observers"] = mon.get("infrastructure_topology_observers", [])
+    flat["monitoring_infrastructure_topology_trace_targets"] = mon.get("infrastructure_topology_trace_targets", [])
+    flat["monitoring_infrastructure_topology_peer_targets"] = mon.get("infrastructure_topology_peer_targets", [])
+    flat["monitoring_infrastructure_topology_retention_seconds"] = mon.get(
+        "infrastructure_topology_retention_seconds", 3600
+    )
+    flat["traffic_analytics"] = data.get("traffic_analytics", {})
     flat["prometheus_base_url"] = mon.get("prometheus_base_url", "http://prometheus:9090")
     flat["prometheus_username"] = mon.get("prometheus_username", "")
     flat["prometheus_password"] = mon.get("prometheus_password", "")
@@ -382,6 +396,66 @@ class OpenStackNotificationBinding(BaseModel):
         if any(not re.fullmatch(r"[A-Za-z0-9_.*#-]{1,255}", value) for value in values):
             raise ValueError("notification routing keys must be bounded AMQP topic keys")
         return list(dict.fromkeys(values))
+
+
+_HOST_HEALTH_FORBIDDEN_NETWORKS = tuple(
+    ipaddress.ip_network(network)
+    for network in ("0.0.0.0/8", "100.100.100.200/32", "fd00:ec2::254/128", "64:ff9b::/96", "64:ff9b:1::/48")
+)
+_HOST_HEALTH_FORBIDDEN_NAMES = frozenset({"localhost", "metadata", "metadata.google.internal"})
+
+
+def validate_host_health_address(value: str) -> str:
+    """Accept a bare operator host/IP, never a URL or an unsafe literal IP.
+
+    DNS answers are independently checked and pinned by the collector before I/O.
+    Private management networks are allowed; local/metadata/special networks are not.
+    """
+    if not isinstance(value, str) or value != value.strip() or not value or len(value) > 253:
+        raise ValueError("host health address must be a bounded bare host or IP")
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?", value):
+            raise ValueError("host health address must be a bare DNS name or IP") from None
+        labels = value.split(".")
+        if any(len(label) > 63 or not label or label.startswith("-") or label.endswith("-") for label in labels):
+            raise ValueError("host health address has invalid DNS labels")
+        lowered = value.lower()
+        if lowered in _HOST_HEALTH_FORBIDDEN_NAMES or lowered.endswith(".localhost"):
+            raise ValueError("host health loopback/metadata targets are forbidden")
+        if all(character in "0123456789." for character in value):
+            raise ValueError("host health ambiguous numeric addresses are forbidden")
+        return value.lower()
+    effective = address.ipv4_mapped if isinstance(address, ipaddress.IPv6Address) else None
+    effective = effective or address
+    if (
+        effective.is_loopback
+        or effective.is_link_local
+        or effective.is_unspecified
+        or effective.is_multicast
+        or effective.is_reserved
+        or any(effective in network for network in _HOST_HEALTH_FORBIDDEN_NETWORKS)
+        or "%" in value
+        or (isinstance(address, ipaddress.IPv6Address) and (address.sixtofour or address.teredo))
+    ):
+        raise ValueError("host health special/local/metadata targets are forbidden")
+    return str(address)
+
+
+class HostHealthTarget(BaseModel):
+    """Trusted operator target; compute/controller rows also merge Nova discovery by role/name."""
+
+    model_config = {"extra": "forbid"}
+    name: str = Field(min_length=1, max_length=253, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+    address: str
+    role: Literal["compute", "controller", "storage"]
+    port: int = Field(default=9100, ge=1, le=65535, strict=True)
+
+    @field_validator("address")
+    @classmethod
+    def validate_address(cls, value: str) -> str:
+        return validate_host_health_address(value)
 
 
 class Settings(BaseSettings):
@@ -614,6 +688,31 @@ class Settings(BaseSettings):
     union_egress_sg_name: str = "union-egress-default"  # 자동 생성/재사용할 SG 이름
 
     # 모니터링 (Prometheus + Grafana — Option A, label-based 프로젝트 격리)
+    monitoring_host_healthcheck_enabled: bool = True
+    monitoring_host_healthcheck_targets: list[HostHealthTarget] = Field(default_factory=list, max_length=64)
+    monitoring_infrastructure_topology_enabled: bool = False
+    monitoring_infrastructure_topology_observers: list[HostObserverIdentity] = Field(
+        default_factory=list, max_length=256
+    )
+    monitoring_infrastructure_topology_trace_targets: list[str] = Field(default_factory=list, max_length=16)
+    monitoring_infrastructure_topology_peer_targets: list[HostPeerProbeTarget] = Field(
+        default_factory=list, max_length=64
+    )
+    monitoring_infrastructure_topology_retention_seconds: int = Field(default=3600, ge=300, le=86400)
+    traffic_analytics: TrafficAnalyticsSettings = Field(default_factory=TrafficAnalyticsSettings)
+
+    @model_validator(mode="after")
+    def validate_infrastructure_topology(self):
+        return validate_topology_settings(self)
+
+    @field_validator("monitoring_host_healthcheck_targets")
+    @classmethod
+    def validate_host_health_targets(cls, values: list[HostHealthTarget]) -> list[HostHealthTarget]:
+        identities = [(target.role, target.name.lower()) for target in values]
+        if len(set(identities)) != len(identities):
+            raise ValueError("host health targets require unique role/name identities")
+        return values
+
     monitoring_auto_sg_enabled: bool = True  # 프로젝트/인스턴스 생성 시 monitoring SG 자동 attach
     node_exporter_sg_name: str = "node_exporter"  # node_exporter ingress SG 이름 (tcp/9100)
     dcgm_exporter_sg_name: str = "dcgm_exporter"  # dcgm_exporter ingress SG 이름 (tcp/9400, GPU 전용)
@@ -988,6 +1087,8 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        env_nested_delimiter = "__"
+        hide_input_in_errors = True
 
 
 # 부팅 시 실제로 읽어들인 설정 파일 목록(진단용). load_raw_toml() 첫 호출 시 채워진다.
@@ -1043,5 +1144,5 @@ def get_settings() -> Settings:
         if env_key not in os.environ or (
             env_key in _EMPTY_ENV_TOML_FALLBACK_KEYS and os.environ[env_key] == "" and value != ""
         ):
-            os.environ[env_key] = json.dumps(value) if isinstance(value, dict) else str(value)
+            os.environ[env_key] = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
     return Settings()

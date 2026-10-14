@@ -557,24 +557,58 @@ def _backup_to_dict(b: dict) -> dict:
     }
 
 
-def list_backups(conn, instance_id: str | None = None) -> list[dict]:
-    """백업 목록. instance_id 지정 시 해당 인스턴스 백업만 반환."""
+def list_backups(conn, instance_id: str | None = None, *, strict: bool = False) -> list[dict]:
+    """Optional UI listing; background observation must opt into fail-closed reads."""
     try:
         url = f"/instances/{instance_id}/backups" if instance_id else "/backups"
-        resp = conn.database.get(url)
-        body = resp.json() if hasattr(resp, "json") else {}
-        return [_backup_to_dict(b) for b in body.get("backups", [])]
+        backups = []
+        seen = set()
+        while url:
+            if url in seen:
+                raise RuntimeError("Trove backup pagination loop")
+            seen.add(url)
+            resp = conn.database.get(url)
+            if strict:
+                resp.raise_for_status()
+            body = resp.json()
+            if strict and not isinstance(body.get("backups"), list):
+                raise RuntimeError("Trove backup listing has no backups array")
+            backups.extend(_backup_to_dict(b) for b in body.get("backups", []))
+            url = next(
+                (
+                    link["href"]
+                    for link in body.get("backups_links", body.get("links", []))
+                    if link.get("rel") == "next"
+                ),
+                None,
+            )
+        return backups
     except Exception:
+        if strict:
+            raise
         _logger.debug("Trove 백업 목록 조회 실패", exc_info=True)
         return []
 
 
-def create_backup(conn, instance_id: str, name: str, description: str = "") -> dict:
-    """백업 생성."""
+def create_backup(conn, instance_id: str, name: str, description: str = "", *, no_retry: bool = False) -> dict:
+    """Create a backup; only journaled background submissions disable POST replay."""
     payload: dict = {"backup": {"instance": instance_id, "name": name}}
     if description:
         payload["backup"]["description"] = description
-    resp = conn.database.post("/backups", json=payload)
+    if no_retry:
+        # Per-request controls: do not alter the request-bound caller's adapter
+        # or session. A committed POST can lose its reply, including a 401/503.
+        resp = conn.database.post(
+            "/backups",
+            json=payload,
+            connect_retries=0,
+            status_code_retries=0,
+            allow_reauth=False,
+            redirect=False,
+            raise_exc=True,
+        )
+    else:
+        resp = conn.database.post("/backups", json=payload)
     status = getattr(resp, "status_code", None)
     text = (getattr(resp, "text", "") or "")[:2000]
     body = resp.json() if hasattr(resp, "json") else {}

@@ -1,17 +1,22 @@
 """A stopped Nova builder is trusted only after a complete token-bound blob readback."""
 
+import asyncio
+import base64
 import hashlib
 import json
 import shutil
 import subprocess
 import sys
+import threading
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services import dockerfile_guest, dockerfile_verify
+from app.services import build_work, dockerfile_guest, dockerfile_verify
 from app.services.dockerfile_import import DockerfileImportError, _parse_dockerfile_manifest, _read_dockerfile_reports
+from tests.test_dockerfile_import import _import_job, _ImportRows, _owned_import
 
 _TOKEN = "a" * 32
 _NAMES = ["root-proof", "proof-01-run"]
@@ -292,7 +297,7 @@ def test_remote_verifier_retries_an_alternate_after_mount_timeout(tmp_path, monk
 
 
 @pytest.mark.asyncio
-async def test_console_404_uses_verified_shares_but_error_builder_never_seals():
+async def test_console_404_uses_verified_shares_but_error_builder_never_seals(_fake_redis_global):
     outputs = [{"name": "root-proof"}]
     conn = SimpleNamespace(
         compute=SimpleNamespace(get_server=MagicMock(return_value=SimpleNamespace(status="SHUTOFF")))
@@ -304,22 +309,21 @@ async def test_console_404_uses_verified_shares_but_error_builder_never_seals():
             "app.services.dockerfile_verify.verify_builder_outputs", new_callable=AsyncMock, return_value=verified
         ) as fallback,
     ):
-        result = await _read_dockerfile_reports(
-            conn, "server", _TOKEN, outputs, [["host:/out"]], ["share"], {}, False, False
-        )
-        assert result is verified
-        conn.compute.get_server.return_value.status = "ERROR"
-        with pytest.raises(DockerfileImportError):
-            await _read_dockerfile_reports(
+        async with _owned_import(_ImportRows(_import_job()), _fake_redis_global):
+            result = await _read_dockerfile_reports(
                 conn, "server", _TOKEN, outputs, [["host:/out"]], ["share"], {}, False, False
             )
-        fallback.assert_awaited_once()
+            assert result is verified
+            conn.compute.get_server.return_value.status = "ERROR"
+            with pytest.raises(DockerfileImportError):
+                await _read_dockerfile_reports(
+                    conn, "server", _TOKEN, outputs, [["host:/out"]], ["share"], {}, False, False
+                )
+            fallback.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_console_manifest_cannot_bypass_byte_verifier_when_share_manifest_is_missing():
-    import base64
-
+async def test_console_manifest_cannot_bypass_byte_verifier_when_share_manifest_is_missing(_fake_redis_global):
     outputs = [{"name": "root-proof"}]
     encoded = base64.b64encode(json.dumps([{"name": "root-proof", **_digest(b"console-only")}]).encode()).decode()
     console = f"::AFTERGLOW::SUCCESS::{_TOKEN}\n::AFTERGLOW::MANIFEST::{_TOKEN}::{encoded}\n"
@@ -334,8 +338,11 @@ async def test_console_manifest_cannot_bypass_byte_verifier_when_share_manifest_
             side_effect=FileNotFoundError("missing share manifest"),
         ) as verifier,
     ):
-        with pytest.raises(FileNotFoundError, match="missing share manifest"):
-            await _read_dockerfile_reports(conn, "server", _TOKEN, outputs, [["host:/out"]], ["share"], {}, True, False)
+        async with _owned_import(_ImportRows(_import_job()), _fake_redis_global):
+            with pytest.raises(FileNotFoundError, match="missing share manifest"):
+                await _read_dockerfile_reports(
+                    conn, "server", _TOKEN, outputs, [["host:/out"]], ["share"], {}, True, False
+                )
     verifier.assert_awaited_once()
 
 
@@ -352,98 +359,208 @@ async def test_console_manifest_cannot_bypass_byte_verifier_when_share_manifest_
     ],
 )
 async def test_verifier_rejects_every_malformed_export_before_vm_or_access(exports):
-    snapshot = {"builder.flavor": {"id": "flavor"}, "builder.network": {"id": "network"}, "base_image": {"id": "image"}}
-    with (
-        patch.object(dockerfile_verify.builder_vm, "create_ephemeral_vm", new_callable=AsyncMock) as create_vm,
-        patch.object(dockerfile_verify.manila, "ensure_nfs_access_rule") as grant_access,
-    ):
+    conn = MagicMock()
+    with patch.object(dockerfile_verify.manila, "ensure_nfs_access_rule") as grant_access:
         with pytest.raises(ValueError):
             await dockerfile_verify.verify_builder_outputs(
-                object(),
+                conn,
                 token=_TOKEN,
                 outputs=[{"name": "root-proof"}],
                 exports=exports,
                 share_ids=["share"],
-                snapshot=snapshot,
+                snapshot={},
             )
-    create_vm.assert_not_awaited()
+    conn.compute.create_server.assert_not_called()
     grant_access.assert_not_called()
 
 
-@pytest.mark.asyncio
-async def test_verifier_releases_only_its_new_access_and_disposable_vm_on_failure():
-    vm = SimpleNamespace(
-        host="172.30.0.2",
-        internal_ip="172.30.0.2",
-        username="ubuntu",
-        key_path="/tmp/key",
-        server_id="utility",
-        fip_id=None,
-        keypair_name="once",
+@contextmanager
+def _verifier_provider(conn):
+    conn.network.create_port.return_value = SimpleNamespace(id="verify-port", fixed_ips=[{"ip_address": "172.30.0.2"}])
+    conn.network.get_port.return_value = conn.network.create_port.return_value
+    conn.compute.create_server.return_value = SimpleNamespace(id="utility")
+    conn.compute.get_server.return_value = SimpleNamespace(
+        id="utility", status="ACTIVE", addresses={"network": [{"addr": "172.30.0.2", "OS-EXT-IPS:type": "fixed"}]}
     )
-    snapshot = {"builder.flavor": {"id": "flavor"}, "builder.network": {"id": "network"}, "base_image": {"id": "image"}}
-    with (
-        patch.object(dockerfile_verify.builder_vm, "create_ephemeral_vm", new_callable=AsyncMock, return_value=vm),
-        patch.object(dockerfile_verify.builder_vm, "delete_ephemeral_vm", new_callable=AsyncMock) as delete_vm,
-        patch.object(dockerfile_verify.manila, "list_access_rules", return_value=[]) as list_rules,
-        patch.object(dockerfile_verify.manila, "ensure_nfs_access_rule", return_value={"access_id": "new"}),
-        patch.object(dockerfile_verify.manila, "revoke_access_rule") as revoke,
-        patch.object(
-            dockerfile_verify.ssh_executor,
-            "run_command",
-            new_callable=AsyncMock,
-            return_value=(1, "", "mount 172.30.0.1:/out failed; secret=password123"),
-        ),
-    ):
-        with pytest.raises(RuntimeError, match="verification failed") as failure:
-            await dockerfile_verify.verify_builder_outputs(
-                object(),
-                token=_TOKEN,
-                outputs=[{"name": "root-proof"}],
-                exports=[["172.30.0.1:/out"]],
-                share_ids=["share"],
-                snapshot=snapshot,
-            )
-    assert "172.30.0.1" not in str(failure.value)
-    assert "password123" not in str(failure.value)
-    assert list_rules.call_count >= 1
-    revoke.assert_called_once()
-    delete_vm.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_verifier_does_not_seal_if_temporary_access_revocation_fails():
-    import base64
-
-    vm = SimpleNamespace(
-        host="172.30.0.2",
-        internal_ip="172.30.0.2",
-        username="ubuntu",
-        key_path="/tmp/key",
-        server_id="utility",
-        fip_id=None,
-        keypair_name="once",
-    )
-    snapshot = {"builder.flavor": {"id": "flavor"}, "builder.network": {"id": "network"}, "base_image": {"id": "image"}}
     encoded = base64.b64encode(json.dumps([{"name": "root-proof", **_digest(b"sealed")}]).encode()).decode()
     manifest = f"::AFTERGLOW::MANIFEST::{_TOKEN}::{encoded}\n"
     with (
-        patch.object(dockerfile_verify.builder_vm, "create_ephemeral_vm", new_callable=AsyncMock, return_value=vm),
-        patch.object(dockerfile_verify.builder_vm, "delete_ephemeral_vm", new_callable=AsyncMock) as delete_vm,
-        patch.object(dockerfile_verify.manila, "list_access_rules", return_value=[]),
-        patch.object(dockerfile_verify.manila, "ensure_nfs_access_rule", return_value={"access_id": "new"}),
-        patch.object(dockerfile_verify.manila, "revoke_access_rule", side_effect=RuntimeError("Manila unavailable")),
-        patch.object(
-            dockerfile_verify.ssh_executor, "run_command", new_callable=AsyncMock, return_value=(0, manifest, "")
-        ),
+        patch.object(dockerfile_verify.manila, "ensure_nfs_access_rule", return_value={"access_id": "new"}) as access,
+        patch.object(dockerfile_verify.manila, "revoke_access_rule") as revoke,
+        patch.object(dockerfile_verify.nova, "get_console_output", return_value=manifest) as console,
     ):
-        with pytest.raises(RuntimeError, match="temporary verifier access could not be revoked"):
-            await dockerfile_verify.verify_builder_outputs(
-                object(),
-                token=_TOKEN,
-                outputs=[{"name": "root-proof"}],
-                exports=[["172.30.0.1:/out"]],
-                share_ids=["share"],
-                snapshot=snapshot,
+        yield SimpleNamespace(manifest=manifest, access=access, revoke=revoke, console=console)
+
+
+async def _verify(conn):
+    return await dockerfile_verify.verify_builder_outputs(
+        conn,
+        token=_TOKEN,
+        outputs=[{"name": "root-proof"}],
+        exports=[["172.30.0.1:/out"]],
+        share_ids=["share"],
+        snapshot=_import_job().resource_snapshot,
+    )
+
+
+@pytest.mark.asyncio
+async def test_verifier_releases_temporary_access_and_vm_after_definite_guest_failure(_fake_redis_global):
+    conn = MagicMock()
+    with _verifier_provider(conn) as provider:
+        provider.console.return_value = f"::AFTERGLOW::VERIFY_FAILURE::{_TOKEN}\nsecret=password123"
+        async with _owned_import(_ImportRows(_import_job()), _fake_redis_global):
+            with pytest.raises(RuntimeError, match="verification failed") as failure:
+                await _verify(conn)
+            state = (await build_work.journal_get())["verifier"]
+            assert state["failure"] and state["deleted"]
+    assert "172.30.0.1" not in str(failure.value) and "password123" not in str(failure.value)
+    provider.revoke.assert_called_once_with(conn, "share", "new")
+    conn.compute.delete_server.assert_called_once_with("utility", ignore_missing=True)
+
+
+@pytest.mark.asyncio
+async def test_verifier_receipt_and_cleanup_survive_failed_revocation_without_recreate(_fake_redis_global):
+    conn, store = MagicMock(), _ImportRows(_import_job())
+    with _verifier_provider(conn) as provider:
+        provider.revoke.side_effect = RuntimeError("Manila unavailable")
+        async with _owned_import(store, _fake_redis_global):
+            with pytest.raises(build_work.SubmissionUnknown, match="cleanup"):
+                await _verify(conn)
+            state = (await build_work.journal_get())["verifier"]
+            assert state["reports"]["root-proof"]["size_bytes"] == 6
+        conn.compute.delete_server.assert_not_called()
+        provider.revoke.side_effect = None
+        async with _owned_import(store, _fake_redis_global, owner="replacement"):
+            reports = await _verify(conn)
+        assert reports["root-proof"].size_bytes == 6
+        assert conn.compute.create_server.call_count == 1
+        assert provider.console.call_count == 1
+        assert provider.access.call_count == 1
+        conn.compute.delete_server.assert_called_once_with("utility", ignore_missing=True)
+
+
+@pytest.mark.asyncio
+async def test_verifier_console_thread_drains_cancellation_and_handoff_reuses_vm(_fake_redis_global):
+    conn, store = MagicMock(), _ImportRows(_import_job())
+    started, release = threading.Event(), threading.Event()
+    with _verifier_provider(conn) as provider:
+
+        def console(*_args):
+            started.set()
+            if not release.wait(5):
+                raise TimeoutError("test console barrier was not released")
+            return provider.manifest
+
+        provider.console.side_effect = console
+        async with _owned_import(store, _fake_redis_global):
+            task = asyncio.create_task(_verify(conn))
+            try:
+                assert await asyncio.wait_for(asyncio.to_thread(started.wait, 5), 6)
+                task.cancel()
+                await asyncio.sleep(0)
+                assert not task.done()
+            finally:
+                release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            state = (await build_work.journal_get())["verifier"]
+            assert state["server_id"] == "utility" and len(state["rules"]) == 1
+        provider.revoke.assert_not_called()
+        conn.compute.delete_server.assert_not_called()
+        provider.console.side_effect = None
+        async with _owned_import(store, _fake_redis_global, owner="replacement"):
+            reports = await _verify(conn)
+        assert reports["root-proof"].size_bytes == 6
+        assert conn.compute.create_server.call_count == 1 and provider.access.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_verifier_cannot_mutate_after_assignment_loss(_fake_redis_global):
+    conn, store = MagicMock(), _ImportRows(_import_job())
+    with _verifier_provider(conn) as provider:
+        async with _owned_import(store, _fake_redis_global):
+            loop = asyncio.get_running_loop()
+
+            def lose(*_args):
+                asyncio.run_coroutine_threadsafe(
+                    _fake_redis_global.set("test:imports:lease:import:9", "replacement"),
+                    loop,
+                ).result(timeout=5)
+                return provider.manifest
+
+            provider.console.side_effect = lose
+            with pytest.raises(build_work.DispatcherUnavailable):
+                await _verify(conn)
+        provider.revoke.assert_not_called()
+        conn.compute.delete_server.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_verifier_unknown_create_is_adopted_only_with_exact_project_token(_fake_redis_global):
+    conn, store = MagicMock(), _ImportRows(_import_job())
+    with _verifier_provider(conn) as provider:
+        conn.compute.create_server.side_effect = OSError("accepted reply lost")
+        async with _owned_import(store, _fake_redis_global):
+            with pytest.raises(build_work.SubmissionUnknown):
+                await _verify(conn)
+        conn.compute.servers.return_value = [
+            SimpleNamespace(
+                id="utility",
+                name=f"afterglow-import-verify-{_TOKEN}",
+                project_id="project-a",
+                metadata={"import_id": "9", "build_token": _TOKEN},
             )
-    delete_vm.assert_awaited_once()
+        ]
+        async with _owned_import(store, _fake_redis_global, owner="replacement"):
+            reports = await _verify(conn)
+        assert reports["root-proof"].size_bytes == 6
+        assert conn.compute.create_server.call_count == 1
+        provider.access.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handoff_after_verifier_create_cannot_exceed_ungranted_guest_mount_deadline(_fake_redis_global):
+    conn, store = MagicMock(), _ImportRows(_import_job())
+    started, release = threading.Event(), threading.Event()
+    guest = {"elapsed": 0, "access_ready_at_boot": False}
+    with _verifier_provider(conn) as provider:
+
+        def create(**kwargs):
+            assert kwargs["networks"] == [{"port": "verify-port"}]
+            guest["access_ready_at_boot"] = provider.access.call_count == 1
+            started.set()
+            if not release.wait(5):
+                raise TimeoutError("test CREATE barrier was not released")
+            return SimpleNamespace(id="utility")
+
+        def console(*_args):
+            if not guest["access_ready_at_boot"] and guest["elapsed"] > 180:
+                return f"::AFTERGLOW::VERIFY_FAILURE::{_TOKEN}"
+            return provider.manifest
+
+        conn.compute.create_server.side_effect = create
+        provider.console.side_effect = console
+        async with _owned_import(store, _fake_redis_global):
+            task = asyncio.create_task(_verify(conn))
+            try:
+                assert await asyncio.wait_for(asyncio.to_thread(started.wait, 5), 6)
+                task.cancel()
+            finally:
+                release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            state = (await build_work.journal_get())["verifier"]
+            assert state["port_id"] == "verify-port" and len(state["rules"]) == 1
+            assert (await build_work.submission_get("verifier-server"))["state"] == "accepted"
+        assert guest["access_ready_at_boot"]
+        provider.revoke.assert_not_called()
+        conn.compute.delete_server.assert_not_called()
+        conn.network.delete_port.assert_not_called()
+        guest["elapsed"] = 300
+        async with _owned_import(store, _fake_redis_global, owner="replacement"):
+            reports = await _verify(conn)
+        assert reports["root-proof"].size_bytes == 6
+        assert conn.compute.create_server.call_count == 1
+        assert conn.network.create_port.call_count == 1
+        assert provider.access.call_count == 1
+        conn.network.delete_port.assert_called_once_with("verify-port", ignore_missing=True)

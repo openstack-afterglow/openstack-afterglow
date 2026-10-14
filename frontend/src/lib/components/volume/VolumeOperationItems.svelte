@@ -2,6 +2,7 @@
 	import { t } from '$lib/i18n/ns/volume';
 	import type { Volume } from '$lib/types/volume';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import { canWrite } from '$lib/stores/auth';
 
 	let {
 		volume,
@@ -71,8 +72,12 @@
 		{t('operationItems.backup')}
 	</button>
 {/if}
-{#if volume.status === 'available'}
-	<button onclick={() => run(onTransfer)} class={itemClass}>
+<a href={`/dashboard/volumes/backups?auto-backup=${encodeURIComponent(volume.id)}`} onclick={onclose} class={`${itemClass} min-h-11`}>
+	<svg class="w-3.5 h-3.5 shrink-0 text-warm-text" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+	{t('autoPolicy.settings')}
+</a>
+{#if $canWrite && volume.status === 'available' && volume.attachments.length === 0}
+	<button onclick={() => run(onTransfer)} disabled={selectionDisabled} class={itemClass}>
 		<svg class="w-3.5 h-3.5 text-state-info" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
 		{t('operationItems.transfer')}
 	</button>

@@ -6,32 +6,17 @@ if TYPE_CHECKING:
     import openstack
 import asyncio
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from openstack.exceptions import HttpException
+from fastapi import APIRouter, Depends, HTTPException
+from openstack.exceptions import HttpException, ResourceNotFound
 from pydantic import BaseModel
 
 from app.api.common.activity_recorder import rec
 from app.api.common.owner_check import assert_resource_owner
-from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info
+from app.api.deps import CacheMode, cache_mode, get_os_conn, get_os_conn_write, get_token_info
 from app.services import auto_backup, cinder
 from app.services.cache import cached_call, invalidate, invalidation, keys, ttl_slow
 
 router = APIRouter()
-
-
-async def _run_first_backup_bg(project_id: str, volume_id: str, config: dict) -> None:
-    """자동 백업 활성화 직후 첫 번째 백업 사이클을 백그라운드에서 실행."""
-    import logging
-
-    _log = logging.getLogger(__name__)
-    try:
-        from app.services.keystone import get_admin_connection_for_project
-
-        conn = await asyncio.to_thread(get_admin_connection_for_project, project_id)
-        await auto_backup.run_backup_cycle(conn, project_id, volume_id, config)
-        _log.info("auto_backup: 즉시 백업 사이클 완료 (volume=%s)", volume_id)
-    except Exception:
-        _log.warning("auto_backup: 즉시 백업 사이클 실패 (volume=%s)", volume_id, exc_info=True)
 
 
 async def _assert_backup_owner(conn, backup_id: str, token_info: dict):
@@ -223,10 +208,36 @@ async def restore_backup(
 # ────────── 자동 백업 설정 엔드포인트 ──────────
 
 
-class AutoBackupRequest(BaseModel):
-    max_daily: int = 2
-    max_weekly: int = 2
-    max_monthly: int = 1
+class AutoBackupRequest(auto_backup.PolicySettings):
+    pass
+
+
+async def _read_schedule_source(conn, volume_id: str):
+    try:
+        return await asyncio.to_thread(conn.block_storage.get_volume, volume_id)
+    except ResourceNotFound:
+        return None
+    except HttpException as exc:
+        if exc.status_code == 404:
+            return None
+        if exc.status_code in (401, 403):
+            raise HTTPException(status_code=exc.status_code, detail="볼륨 조회 권한을 확인할 수 없습니다") from None
+        raise HTTPException(status_code=503, detail="원본 볼륨을 조회할 수 없습니다") from None
+    except Exception:
+        raise HTTPException(status_code=503, detail="원본 볼륨을 조회할 수 없습니다") from None
+
+
+def _assert_schedule_scope(conn, volume):
+    # Scheduling is strictly bound to the effective project, including system admins.
+    project_id = getattr(conn, "_afterglow_project_id", None)
+    if not project_id or volume is None or getattr(volume, "project_id", None) != project_id:
+        raise HTTPException(status_code=404, detail="볼륨을 찾을 수 없습니다")
+
+
+async def _assert_schedule_source(conn, volume_id: str):
+    volume = await _read_schedule_source(conn, volume_id)
+    _assert_schedule_scope(conn, volume)
+    return volume
 
 
 @router.post("/auto-backup/configs")
@@ -234,11 +245,35 @@ async def list_auto_backup_configs(
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
     """현재 프로젝트의 모든 자동 백업 설정 목록."""
-    project_id = conn._afterglow_project_id
     try:
-        return await auto_backup.list_auto_backup_configs(project_id)
+        configs = await auto_backup.list_auto_backup_configs(conn._afterglow_project_id)
+        for config in configs:
+            if config.get("project_id") != conn._afterglow_project_id or config.get("identity_verified") is False:
+                raise HTTPException(status_code=503, detail="저장된 자동 백업 정책 소유권을 확인할 수 없습니다")
+            try:
+                volume = await _read_schedule_source(conn, config["volume_id"])
+                if volume is None:
+                    status, available, error = "missing", False, "Source volume no longer exists."
+                else:
+                    _assert_schedule_scope(conn, volume)
+                    continue
+            except HTTPException as exc:
+                if exc.status_code in (401, 403, 404):
+                    status, available, error = "not_owned", False, "Source volume ownership could not be confirmed."
+                else:
+                    status, available, error = (
+                        "unavailable",
+                        None,
+                        "Source volume could not be checked; try again later.",
+                    )
+            # Response-only observation. Never silently pause or rewrite the saved policy.
+            config.update(source_status=status, source_available=available, source_error=error)
+            config["last_error"] = config.get("last_error") or error
+        return configs
+    except HTTPException:
+        raise
     except Exception:
-        raise HTTPException(status_code=500, detail="자동 백업 설정 목록 조회 실패")
+        raise HTTPException(status_code=503, detail="자동 백업 설정 목록 조회 실패") from None
 
 
 @router.get("/auto-backup/{volume_id}")
@@ -246,9 +281,11 @@ async def get_auto_backup_config(
     volume_id: str,
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """볼륨의 자동 백업 설정 조회."""
-    project_id = conn._afterglow_project_id
-    config = await auto_backup.get_auto_backup_config(project_id, volume_id)
+    await _assert_schedule_source(conn, volume_id)
+    try:
+        config = await auto_backup.get_auto_backup_config(conn._afterglow_project_id, volume_id)
+    except Exception:
+        raise HTTPException(status_code=503, detail="자동 백업 설정 조회 실패") from None
     if config is None:
         raise HTTPException(status_code=404, detail="자동 백업 설정이 없습니다")
     return config
@@ -257,22 +294,21 @@ async def get_auto_backup_config(
 @router.post("/auto-backup/{volume_id}", status_code=201)
 async def enable_auto_backup(
     volume_id: str,
-    background_tasks: BackgroundTasks,
     req: AutoBackupRequest = AutoBackupRequest(),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
     token_info: dict = Depends(get_token_info),
 ):
-    """볼륨 자동 백업 활성화. 활성화 즉시 첫 번째 백업 사이클을 백그라운드에서 시작."""
-    project_id = conn._afterglow_project_id
+    """Save/edit/pause a calendar policy; no backup is submitted by this request."""
+    volume = await _assert_schedule_source(conn, volume_id)
+    if req.enabled:
+        if volume.status not in ("available", "in-use"):
+            raise HTTPException(status_code=400, detail="현재 볼륨 상태에서는 자동 백업을 활성화할 수 없습니다")
+        if volume.status == "in-use" and not req.force:
+            raise HTTPException(
+                status_code=400, detail="사용 중인 볼륨의 자동 백업에는 별도의 강제 백업(force) 동의가 필요합니다"
+            )
     try:
-        result = await auto_backup.enable_auto_backup(
-            project_id,
-            volume_id,
-            max_daily=req.max_daily,
-            max_weekly=req.max_weekly,
-            max_monthly=req.max_monthly,
-        )
-        background_tasks.add_task(_run_first_backup_bg, project_id, volume_id, result)
+        result = await auto_backup.enable_auto_backup(conn._afterglow_project_id, volume_id, **req.model_dump())
         await rec(
             token_info,
             conn,
@@ -280,31 +316,36 @@ async def enable_auto_backup(
             action="volume.auto_backup_enable",
             status="success",
             resource_id=volume_id,
+            extra={"enabled": req.enabled, "force": req.force},
         )
         return result
-    except Exception as e:
-        await rec(
-            token_info,
-            conn,
-            resource_type="volume_backup",
-            action="volume.auto_backup_enable",
-            status="failed",
-            resource_id=volume_id,
-            error_message=str(e)[:500],
-        )
-        raise HTTPException(status_code=500, detail="자동 백업 활성화 실패")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=503, detail="자동 백업 설정 저장 실패") from None
 
 
 @router.delete("/auto-backup/{volume_id}", status_code=204)
 async def disable_auto_backup(
     volume_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
     token_info: dict = Depends(get_token_info),
 ):
-    """볼륨 자동 백업 비활성화."""
-    project_id = conn._afterglow_project_id
+    """Remove the policy only; existing and already submitted backups are retained."""
+    volume = await _read_schedule_source(conn, volume_id)
+    if volume is not None:
+        _assert_schedule_scope(conn, volume)
     try:
-        await auto_backup.disable_auto_backup(project_id, volume_id)
+        if volume is None:
+            config = await auto_backup.get_auto_backup_config(conn._afterglow_project_id, volume_id)
+            if (
+                not config
+                or config.get("project_id") != conn._afterglow_project_id
+                or config.get("volume_id") != volume_id
+                or config.get("identity_verified") is False
+            ):
+                raise HTTPException(status_code=404, detail="자동 백업 설정이 없습니다")
+        await auto_backup.disable_auto_backup(conn._afterglow_project_id, volume_id)
         await rec(
             token_info,
             conn,
@@ -313,14 +354,7 @@ async def disable_auto_backup(
             status="success",
             resource_id=volume_id,
         )
-    except Exception as e:
-        await rec(
-            token_info,
-            conn,
-            resource_type="volume_backup",
-            action="volume.auto_backup_disable",
-            status="failed",
-            resource_id=volume_id,
-            error_message=str(e)[:500],
-        )
-        raise HTTPException(status_code=500, detail="자동 백업 비활성화 실패")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=503, detail="자동 백업 설정 삭제 실패") from None

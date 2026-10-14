@@ -247,15 +247,19 @@ async def _lock_grant(
 
 
 def _role_snapshot(roles: object) -> list[dict[str, str]]:
-    names: list[str] = []
+    snapshot: list[dict[str, str]] = []
     if isinstance(roles, list):
         for item in roles:
             name = item.get("name") if isinstance(item, dict) else item
-            if isinstance(name, str) and name and name not in names:
-                names.append(name)
-    if not names:
+            if isinstance(name, str) and name:
+                role = {"name": name}
+                if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"]:
+                    role["id"] = item["id"]
+                if role not in snapshot:
+                    snapshot.append(role)
+    if not snapshot:
         raise McpAuthorityError("the current project has no usable Keystone role")
-    return [{"name": name} for name in names]
+    return snapshot
 
 
 def _approved_project_authority(grant: McpDelegatedGrant) -> list[dict[str, object]]:
@@ -517,6 +521,23 @@ async def create_grant_credentials(
                 credential.application_credential_id = created["id"]
                 credential.cleanup_pending = True
                 grant.cleanup_pending = True
+            # Persist the remote ID before checking its authority, so even an
+            # unexpected role response is rolled back by ID rather than name.
+            returned_roles = created["roles"]
+            approved_ids = {role["id"] for role in project.roles}
+            if (
+                not isinstance(returned_roles, list)
+                or any(
+                    not isinstance(role, dict) or not isinstance(role.get("id"), str) or role["id"] not in approved_ids
+                    for role in returned_roles
+                )
+                or {role["id"] for role in returned_roles} != approved_ids
+            ):
+                raise McpAuthorityError("Keystone application credential roles do not match the authenticated approval")
+            if created["project_id"] != project.id:
+                raise McpAuthorityError(
+                    "Keystone application credential project does not match the authenticated approval"
+                )
             ciphertext = encrypt_application_credential(
                 created["secret"], grant_id=grant_id, owner_user_id=owner_user_id, owner_project_id=project.id
             )
@@ -597,18 +618,23 @@ def create_restricted_application_credential(
     upstream_name: str,
     expires_at: datetime | None,
     roles: object,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """Create one restricted credential through the caller's scoped connection only."""
     if (
         getattr(conn, "_afterglow_user_id", None) != owner_user_id
         or getattr(conn, "_afterglow_project_id", None) != owner_project_id
     ):
         raise McpAuthorityError("scoped connection does not match the MCP grant owner")
+    snapshot = _role_snapshot(roles)
+    if any("id" not in role for role in snapshot):
+        raise McpAuthorityError("application credential roles require authenticated Keystone role IDs")
     created = conn.identity.create_application_credential(
         user=owner_user_id,
         name=upstream_name,
         description="Afterglow inbound MCP delegated authority",
-        roles=_role_snapshot(roles),
+        # Keystone's default is this scoped token's exact role IDs. Explicit
+        # roles re-resolve names and expand today's inference graph, which can
+        # differ from the authenticated snapshot and reject valid delegation.
         **({"expires_at": isotime(_as_utc(expires_at), subsecond=True)} if expires_at is not None else {}),
         unrestricted=False,
     )
@@ -616,7 +642,12 @@ def create_restricted_application_credential(
     secret = getattr(created, "secret", None)
     if not isinstance(credential_id, str) or not credential_id or not isinstance(secret, str) or not secret:
         raise McpAuthorityError("Keystone returned an incomplete application credential")
-    return {"id": credential_id, "secret": secret}
+    return {
+        "id": credential_id,
+        "secret": secret,
+        "roles": getattr(created, "roles", None),
+        "project_id": getattr(created, "project_id", None),
+    }
 
 
 def delete_and_confirm_application_credential(

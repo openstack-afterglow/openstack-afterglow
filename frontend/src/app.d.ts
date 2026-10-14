@@ -13,7 +13,9 @@ declare global {
 			siteConfig: PublicSiteConfig;
 		}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			chatWorkspacePath?: string;
+		}
 		// interface Platform {}
 	}
 

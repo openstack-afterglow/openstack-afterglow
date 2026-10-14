@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Promote package-owned Kolla roles from immutable sibling release tags.
+"""Promote Git-sourced Kolla roles from immutable sibling release tags.
 
 The operator is intentionally not a live "latest" consumer.  A release tag can
 advance the committed operator manifest only through this tool, which resolves
@@ -28,7 +28,6 @@ SERVICES: dict[str, Service] = {
     "drover": Service("drover", "https://github.com/openstack-afterglow/drover.git"),
     "lumen": Service("lumen", "https://github.com/openstack-afterglow/lumen.git"),
     "waygate": Service("waygate", "https://github.com/openstack-afterglow/waygate.git"),
-    "palimpsest": Service("palimpsest-client", "https://github.com/openstack-afterglow/palimpsest.git"),
 }
 TAG_RE = re.compile(r"^v(?P<major>0|[1-9][0-9]*)\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)$")
 
@@ -184,7 +183,7 @@ def main() -> int:
     if args.check:
         for name, service in SERVICES.items():
             verify_tag_source(operator_dir, name, service)
-        print("all package-owned Kolla roles resolve from immutable release tags")
+        print("all Git-sourced Kolla roles resolve from immutable release tags")
         return 0
     promote(operator_dir, list(SERVICES))
     return 0

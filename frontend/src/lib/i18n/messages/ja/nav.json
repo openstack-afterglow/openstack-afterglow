@@ -1,4 +1,9 @@
 {
+	"items.infrastructureTopology": "インフラトポロジー",
+	"items.trafficAnalytics": "アクセストラフィック分析",
+	"items.loginMonitoring": "ログインとセッション",
+	"items.applicationCredentials": "アプリケーション資格情報",
+	"items.userCredentials": "ユーザー資格情報",
 	"sections.dashboard": "ダッシュボード",
 	"sections.compute": "コンピュート",
 	"sections.volumes": "ボリューム",

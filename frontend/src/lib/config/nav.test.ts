@@ -53,6 +53,8 @@ describe('allNavItems service inheritance', () => {
     ['/admin/chat/stats/daily', '/admin/chat'],
     ['/admin/libraries/123', '/admin/libraries'],
     ['/admin/waygate', '/admin/topology'],
+    ['/admin/application-credentials', '/admin/users'],
+    ['/admin/user-credentials', '/admin/users'],
   ])('activates only the owning section for %s', (path, owner) => {
     expect(adminNavSections.filter(section => isNavSectionActive(section, path)).map(section => section.prefix)).toEqual([owner]);
   });
@@ -61,6 +63,14 @@ describe('allNavItems service inheritance', () => {
     expect(adminNavSections.some(section => isNavSectionActive(section, path))).toBe(false);
   });
 
+  it('exposes both credential destinations only in administrator Identity navigation', () => {
+    const adminItems = allNavItems(true, DEFAULT_BETA_FEATURES);
+    const userItems = allNavItems(false, DEFAULT_BETA_FEATURES);
+    for (const href of ['/admin/application-credentials', '/admin/user-credentials']) {
+      expect(adminItems.find(item => item.href === href)).toMatchObject({ sectionKey: 'sections.identity', service: null });
+      expect(userItems.some(item => item.href === href)).toBe(false);
+    }
+  });
 	it('retains catalog keys and stable routes while flattened labels follow each locale', () => {
 		for (const [locale, instances, compute, packages] of [
 			['ko', '인스턴스', 'Compute', '프로젝트 패키지'],

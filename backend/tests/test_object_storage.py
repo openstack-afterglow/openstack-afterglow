@@ -1722,3 +1722,41 @@ async def test_create_container_no_invalidation_on_failure(client, mock_conn):
     if resp.status_code == 500:
         mock_inv.assert_not_called()
         mock_mut.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_owned_trash_cleanup_stops_after_first_accepted_delete(_fake_redis_global, monkeypatch):
+    import secrets
+
+    from app.services import swift as swift_service
+    from app.services.cache import _get_redis
+    from app.services.work_dispatcher import DispatcherUnavailable, WorkDispatcher, run_sync, work_lease
+
+    redis = await _get_redis()
+    prefix = f"afterglow:test:trash-drain:{secrets.token_hex(12)}"
+    conn, provider = _swift_conn({"first": b"a", "retained": b"b"}, extra=("bucket_segments",))
+    provider.containers["bucket_segments"]["retained-segment"] = b"segment"
+    monkeypatch.setattr(swift_service, "_apply_endpoint_override", lambda _: None)
+    try:
+        async with WorkDispatcher(redis, prefix) as worker:
+            await worker.publish(["trash"])
+            async with work_lease(worker, *await worker.claim(90)) as lease:
+                send = provider.send
+
+                def accepted_then_revoked(request, **kwargs):
+                    response = send(request, **kwargs)
+                    if request.method == "DELETE":
+                        lease.revoke()
+                    return response
+
+                monkeypatch.setattr(provider, "send", accepted_then_revoked)
+                with pytest.raises(DispatcherUnavailable):
+                    await run_sync(swift_service.delete_container, conn, "bucket")
+        assert set(provider.containers["bucket"]) == {"retained"}
+        assert provider.containers["bucket_segments"] == {"retained-segment": b"segment"}
+        assert provider.mutations() == [("DELETE", "bucket", "first")]
+    finally:
+        conn.close()
+        keys = [key async for key in redis.scan_iter(match=f"{prefix}:*")]
+        if keys:
+            await redis.delete(*keys)

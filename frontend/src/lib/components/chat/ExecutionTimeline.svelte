@@ -142,6 +142,10 @@
 		border-radius: 0.65rem;
 		background: color-mix(in oklab, var(--color-surface-sunken) 76%, transparent);
 	}
+	:global(:root.light) .execution-timeline {
+		border-color: var(--color-line-2);
+		background: var(--color-surface-sunken);
+	}
 	summary {
 		display: flex;
 		align-items: center;

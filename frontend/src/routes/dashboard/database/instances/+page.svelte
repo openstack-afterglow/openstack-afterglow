@@ -39,7 +39,7 @@
 
 	function openPanel(id: string) {
 		selectedInstanceId = id;
-		pushState(`/dashboard/database/instances/${id}`, { instanceId: id });
+		pushState(`/dashboard/database/instances/${id}`, {});
 	}
 
 	function closePanel() {

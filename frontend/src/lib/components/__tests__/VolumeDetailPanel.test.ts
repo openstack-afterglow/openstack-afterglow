@@ -18,7 +18,7 @@ vi.mock('$lib/api/client', () => {
 });
 vi.mock('$lib/stores/wizard', () => ({ wizard: { update: mocks.wizardUpdate }, openWizard: mocks.openWizard }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: mocks.confirm }));
-vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project-a' }), canWrite: writable(true) }));
+vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project-a' }), canWrite: writable(true), projectSwitching: writable(false) }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: () => ({ active: false, intervalSeconds: 15, intervalOptions: [10, 15, 30, 60] }),
 }));
@@ -201,6 +201,26 @@ describe('VolumeDetailPanel', () => {
 		expect(screen.getByRole('heading', { name: 'data-disk' })).toBeTruthy();
 		expect(onRenamed).not.toHaveBeenCalled();
 	});
+
+	it.each([['list panel', true], ['direct route', false]])('preselects the volume through Auto Backup settings from the shared %s actions without mutating it', async (_surface, embedded) => {
+		const volume = attachedVolume({ id: 'vol /한?&=#', attachments: [] });
+		routeGets(volume, {});
+		render(VolumeDetailPanel, { props: { volumeId: volume.id, ...(embedded ? { onClose: vi.fn() } : {}) } });
+		await openVolumeMenu();
+		const menu = screen.getByRole('group', { name: 'data-disk 볼륨 작업 옵션' });
+		const link = within(menu).getByRole('link', { name: '자동 백업 설정' });
+		expect(link.getAttribute('href')).toBe('/dashboard/volumes/backups?auto-backup=vol%20%2F%ED%95%9C%3F%26%3D%23');
+		const url = new URL(link.getAttribute('href')!, 'http://localhost');
+		expect([...url.searchParams.entries()]).toEqual([['auto-backup', volume.id]]);
+		expect(mocks.get).toHaveBeenCalledWith(`/api/v1/volumes/${volume.id}`, 'token', 'project-a');
+		link.addEventListener('click', (event) => event.preventDefault(), { once: true });
+		await fireEvent.click(link);
+		expect(screen.queryByRole('group', { name: 'data-disk 볼륨 작업 옵션' })).toBeNull();
+		expect(mocks.post).not.toHaveBeenCalled();
+		expect(mocks.patch).not.toHaveBeenCalled();
+		expect(mocks.delete).not.toHaveBeenCalled();
+	});
+
 	it.each([['list panel', true], ['direct route', false]])('offers boot, resize, backup and transfer from the %s', async (_surface, embedded) => {
 		const volume = attachedVolume({ status: 'available', bootable: true, attachments: [] });
 		routeGets(volume, {});

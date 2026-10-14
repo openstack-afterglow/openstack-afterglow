@@ -213,6 +213,126 @@ Afterglow는 image data/header/trash를 삭제하지 않습니다. 쓰기는 누
 
 배포 뒤 backend container의 non-root 사용자로 `rbd --version`, `rados --version`, `ceph fsid`를 확인합니다. 진단 API에서 `backend_fsid=present`와 mapped pool을 확인하되, 기존 Cinder 장애 볼륨을 자동 복구 검증 대상으로 사용하지 않습니다. Keyring 본문·CLI argv 전체·Ceph auth output은 로그나 이슈에 붙이지 않습니다.
 
+### 관리자 호스트 관측과 트래픽 분석 운영
+
+이 절은 [관리자 API](api/admin.md#호스트-건강-관측-host-health)의 host health, [인프라 토폴로지](api/admin.md#인프라-토폴로지와-호스트-관측), [트래픽](api/admin.md#트래픽-분석)의 **운영자가 준비하는 수집 경계**입니다. Afterglow는 node_exporter·observer·LLDP daemon·traceroute를 노드에 자동 설치하거나 방화벽·NIC·OpenStack 설정을 변경하지 않습니다. 관리자 UI는 [하이퍼바이저](/admin/hypervisors), [인프라 토폴로지](/admin/infrastructure-topology), [트래픽](/admin/monitoring/traffic), [로그인](/admin/monitoring/logins)입니다. [애플리케이션 자격 증명](/admin/application-credentials)과 [사용자 자격 증명](/admin/user-credentials)은 별도 caller-scoped Keystone API이며 observer/writer token을 대신하지 않습니다.
+
+#### `[monitoring]` 호스트 관측 설정
+
+| 키 | 기본값·범위 | 운영 의미 |
+|---|---|---|
+| `host_healthcheck_enabled` | `true` | main-process lifespan의 nominal 10초 node_exporter collector 활성화 |
+| `host_healthcheck_targets` | `[]`, 최대 64개 | `{name,address,role,port?}`. role은 `compute/controller/storage`, port 기본 9100·1–65535 |
+| `infrastructure_topology_enabled` | `false` | observer report/job API와 관리자 topology 활성화 |
+| `infrastructure_topology_observers` | `[]`, 최대 256개 | `{host_id,token}` per-host 신원. host_id와 token 모두 유일해야 함 |
+| `infrastructure_topology_trace_targets` | `[]`, 최대 16개 | 관리자 요청으로 실행할 literal unicast IP allowlist. 중복·DNS·CIDR·loopback/link-local/multicast/unspecified 금지 |
+| `infrastructure_topology_peer_targets` | `[]`, 최대 64개 | `{source_host_id,target_host_id,address,port?}` directed TCP tuple. port 기본 9100 |
+| `infrastructure_topology_retention_seconds` | `3600`, 300–86400 | Redis observation 및 trace 보존 TTL/표시 cutoff; NIC history 최대 60표본, trace history 최대 20개 |
+
+```toml
+[monitoring]
+host_healthcheck_enabled = true
+host_healthcheck_targets = [
+  { name = "controller-1", address = "controller-1.example.org", role = "controller", port = 9100 },
+  { name = "storage-1", address = "storage-1.example.org", role = "storage", port = 9100 }
+]
+infrastructure_topology_enabled = true
+infrastructure_topology_observers = [] # 실제 host/token 목록은 backend 전용 Secret으로 주입
+infrastructure_topology_trace_targets = [] # 승인한 literal IP만 운영자가 채움
+infrastructure_topology_peer_targets = []  # 승인한 source→target IP/port만 운영자가 채움
+infrastructure_topology_retention_seconds = 3600
+```
+
+`host_healthcheck_targets`의 name은 1–253자의 영문/숫자로 시작하는 영문·숫자·`_`·`.`·`-` 이름이며 동일 role/name(대소문자 무시)은 중복할 수 없습니다. Bare address DNS/IP만 허용합니다. URL·path·query·인증 정보, local/link-local/metadata/special 주소 및 그런 주소를 반환하는 DNS는 거부합니다. Private 관리망 IP는 허용되며 DNS의 모든 응답을 검사한 뒤 선택한 IP로 probe를 고정합니다. Compute는 Nova `host_ip`, controller는 scheduler/conductor host DNS로 자동 발견하고 설정은 동일 identity의 주소/포트를 override합니다. Nova에 없는 controller와 storage는 명시적으로 추가해야 하며 storage heartbeat는 미관측입니다.
+
+Collector는 인증 없는 **관리망 HTTP `/metrics`**만 읽습니다. 전용 node_exporter를 설치하고 backend에서 해당 주소/포트로만 접근 가능하도록 운영자가 제한하세요. Public internet에 exporter를 공개하지 않습니다. TLS/basic-auth exporter 또는 Prometheus 서버를 대신 조회하는 계약은 아닙니다. NIC 주소를 표시하려면 exporter의 `--collector.netdev.address-info`가 필요하며 미제공 주소는 null입니다. Probe당 3초·동시 8개·body 2 MiB, snapshot staleness 30초, metric history 600초/최대 60 points는 코드의 고정 제한이지 추가 설정 key가 아닙니다.
+
+모든 backend replica는 같은 cloud 설정과 Redis primary/DB/namespace를 공유해야 합니다. Redis 30초 lease를 5초마다 갱신한 단일 소유자만 probe/discovery를 하고 fenced publication을 사용합니다. Redis 장애를 process-local collection으로 우회하지 않으며 API는 미수집/stale/unknown을 그대로 보여줍니다. Nova heartbeat, Afterglow→exporter 연결, observer의 directed peer 연결은 서로 다른 증거입니다.
+
+Observer token은 **호스트별 서로 다른 32–256자의 URL-safe random 문자열**(`A–Z`, `a–z`, `0–9`, `_`, `-`)을 운영자의 secret 생성/배포 경로에서 준비합니다. 실제 token을 예시·명령 인자·로그·공개 frontend 설정에 넣지 않습니다. Backend 환경변수 `MONITORING_INFRASTRUCTURE_TOPOLOGY_OBSERVERS`에 `{host_id,token}` 객체의 **JSON 배열**을 Secret으로 주입하면 `[monitoring].infrastructure_topology_observers`를 override합니다. 각 Linux 호스트에는 자기 token 하나만 배포하고 frontend/browser에는 어느 token도 전달하지 않습니다. Backend 설정 변경·회수 뒤 해당 프로세스를 재시작하여 반영합니다.
+
+`host_id`는 `compute:compute-1`, `controller:controller-1`, `storage:storage-1`처럼 role과 **소문자 inventory 이름**의 정확한 값입니다. Observer가 hostname에서 추정하지 않습니다. Peer의 source는 configured observer여야 하고 target은 다른 host_id여야 합니다. Source/target 쌍은 유일해야 하며 address는 literal unicast IP, port는 1–65535입니다. Target host_id를 선언한 것만으로 그 IP의 실제 소유권·물리 연결을 자동 증명하지 않습니다. 운영자가 host/주소 매핑과 허용 통신 방향을 검토해야 합니다.
+
+#### 각 Linux 호스트에서 observer 실행
+
+Linux와 **Python 3.12+**(stdlib만 사용), JSON 출력을 지원하는 iproute2의 `ip`, 읽을 수 있는 `/proc/net/dev`·boot_id·sysfs가 필요합니다. Trace를 사용할 때는 `-n/-q/-m/-w/-4/-6`를 지원하는 Linux `traceroute`를 사전 설치합니다. LLDP는 선택 사항으로 기존 lldpd의 이웃을 읽으며 **현재 스크립트가 실행하는 명령은 `lldpcli -f json show neighbors`**입니다. `lldpctl`만 있는 설치는 충분하지 않으므로 같은 패키지의 `lldpcli` 지원을 확인하세요. Tool 부재는 `unsupported`, 잘못된/과대/실패 출력은 `error`이며 자동 설치·scan·packet capture·다른 도구 fallback은 없습니다.
+
+전용 최소 권한 사용자로 먼저 passive 읽기·`lldpcli` socket 접근·승인된 TCP/UDP outbound가 가능한지 확인합니다. 기본 실행을 root로 하거나 전체 NIC/방화벽 변경 권한을 주지 않습니다. 필요한 경우 배포판의 traceroute 실행 권한 및 LLDP 읽기 group만 별도로 검토하고, 권한 부족을 전체 관리자 권한으로 숨기지 않습니다. 보고 시간 검증과 counter rate를 위해 호스트와 backend의 clock을 동기화하세요.
+
+```bash
+# 승인된 스크립트를 해당 호스트에 배포한 뒤 전용 사용자로 1회 보고
+python3 scripts/host_observer.py \
+  --base-url https://console.example.org \
+  --host-id compute:compute-1 \
+  --token-file /etc/afterglow/host-observer.token \
+  --once
+
+# 동일 신원으로 계속 실행. TEST-NET 목적지는 문법 예시일 뿐 실제 도달 검증 대상 아님
+python3 scripts/host_observer.py \
+  --base-url https://console.example.org \
+  --host-id compute:compute-1 \
+  --token-file /etc/afterglow/host-observer.token \
+  --interval 10 \
+  --trace-target 192.0.2.1
+```
+
+| CLI / 환경 | 계약 |
+|---|---|
+| `--base-url` | 검증된 **HTTPS origin**, 선택 deployment path prefix. `/api/v1` suffix·query·fragment·userinfo 없음 |
+| `--host-id` | backend에 등록된 정확한 host ID |
+| `--token-file` | regular·nonsymlink 파일, 실행 사용자가 소유하고 **정확히 0600**; 마지막 newline 하나만 허용 |
+| `HOST_OBSERVER_TOKEN` | token-file 생략 시 secret 환경 주입 대안. Child command에는 전달하지 않음; `--token` 인자는 없음 |
+| `--ca-file` | 사설 CA를 쓸 때 신뢰할 CA bundle. 생략하면 system CA; hostname 검증 유지 |
+| `--interval` | 기본/최소 10초, 최대 3600초. Slow cycle 중복·catch-up burst 없음 |
+| `--once` | report와 poll 한 cycle 및 가능한 trace result 제출 후 종료 |
+| `--trace-target` | 반복 가능한 local literal-IP allowlist. 생략하면 trace 실행 안 함; 서버 target 허용도 별도로 필요 |
+
+HTTP·insecure TLS·redirect·proxy 환경 전달은 지원하지 않습니다. Passive command는 1.5초/256 KiB 출력, API body/response도 256 KiB, trace는 16 hops/40초 deadline으로 제한합니다. HTTPS 작업은 bounded이며 origin DNS는 OS resolver timeout을 따릅니다. 정상 mode의 단일 trace worker는 passive report와 peer admission을 계속 진행하고 busy poll에 `claim=false`를 사용합니다. Trace 접수는 90초 job 만료·host당 60초 rate limit을 가지며 임의 반복 측정/역방향 진단을 하지 않습니다.
+
+Peer targets는 **매 cycle authenticated poll**에서 받은 정확한 IP/port만 사용합니다. 최대 8 workers·각 3초·batch 8초와 cleanup으로 제한하고 미완료 probe는 unknown입니다. Admission 실패 시 cached tuple은 최대 20초 동안 unknown으로만 보존하며 재probe하지 않습니다. 물리 링크는 LLDP 증거로만 표시하고 neighbors/routes·NIC counters·directed TCP reachability·outbound trace를 별도로 검토하세요. `*` hop을 장애 위치로 단정하거나 target IP만 보인 trace를 reached로 표시하지 않습니다.
+
+Afterglow는 daemon/service unit도 자동 설치하지 않습니다. 운영자가 승인한 supervisor로 실행·재시작/Secret 회수를 관리하고 `--once` 결과와 관리자 snapshot의 freshness/source state를 확인합니다. Fixed diagnostic code만 수집하며 token·명령 출력·API 오류 body를 troubleshooting 로그에 복사하지 않습니다.
+
+#### 트래픽 분석 설정
+
+| `[traffic_analytics]` 키 | 기본값·범위 | 운영 의미 |
+|---|---|---|
+| `enabled` | `false` | Backend HTTP 집계 및 frontend ingest 활성화 |
+| `retention_days` | `30`, 1–30 | UTC hourly bucket 시작부터 Redis 보존기간. 늦은 event로 연장하지 않음 |
+| `geoip_csv` | `""` | backend가 읽을 수 있는 offline CIDR 국가표 경로. 미설정은 unconfigured/XX |
+| `site_country` | `""` | 운영자가 지정한 서비스 인입 국가. 대문자 ISO-3166 alpha-2를 사용하며 `XX` 금지; 빈 값은 미설정 |
+| `hmac_key` | `""` | IP identity HMAC용 backend 전용 secret |
+| `frontend_ingest_key` | `""` | 별도 frontend server writer용 bearer secret |
+
+Enabled일 때 두 secret은 **각각 최소 32자이며 서로 달라야** 합니다. Backend Secret 환경 `TRAFFIC_ANALYTICS__HMAC_KEY`, `TRAFFIC_ANALYTICS__FRONTEND_INGEST_KEY`로 주입하고 public TOML/이미지/브라우저 `PUBLIC_*`에 넣지 않습니다. Writer key는 frontend server와 backend ingest만 공유하고 HMAC key는 backend에만 둡니다. HMAC key 교체는 이미 보존된 HLL과 새로운 identity의 연속성을 끊으므로 변경 시 기간 비교·unique 해석을 재검토하세요.
+
+```toml
+[traffic_analytics]
+enabled = true
+retention_days = 30
+geoip_csv = "/etc/afterglow/traffic-country.csv"
+site_country = "KR"
+# hmac_key / frontend_ingest_key 실제 값은 backend Secret 환경에서 주입
+```
+
+`site_country`는 `coverage.site_country`로 반환하며 빈 값은 null입니다. 현재 validator는 빈 값 또는 `XX`가 아닌 대문자 영문 2자리 형식을 검사하므로 **실제 ISO-3166 국가 코드 선택은 운영자의 책임**입니다. 관리자 세계 지도는 client-country→service-location 논리적 접속 흐름만 그리며 GeoIP 위치를 실제 network route·LLDP·traceroute 증거로 사용하지 않습니다. 서비스 국가를 설정해도 미확인 client IP에 국가를 만들어 주지 않습니다.
+
+Offline CSV는 정확한 header `cidr,country`, IPv4/IPv6 canonical CIDR 및 유효 ISO alpha-2 country를 사용합니다. 최대 16 MiB/250000행, 중복 network·잘못된 header/CIDR/country는 table 전체를 unavailable로 처리합니다. Longest prefix를 선택하며 global IP만 위치화합니다. Table은 backend에 read-only로 배포하고 교체 뒤 worker를 재시작하세요. Runtime download/외부 GeoIP 호출은 없으며 미설정/사설/예약/미등록 주소는 `XX`입니다.
+
+Frontend **서버 프로세스** 환경은 다음과 같습니다.
+
+| 환경변수 | 값·주의 |
+|---|---|
+| `TRAFFIC_ANALYTICS_INGEST_URL` | backend의 `/api/v1/monitoring/traffic/events` 전체 URL. Frontend server가 실제 도달하는 internal HTTP 또는 HTTPS 경로 사용; userinfo/query/fragment 금지 |
+| `TRAFFIC_ANALYTICS_INGEST_KEY` | backend `frontend_ingest_key`와 동일한 secret, 최소 32자 |
+| `TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS` | **정확히 `true`**일 때만 adapter `getClientAddress()` 사용. 미지정/그 외는 IP null |
+
+URL/key가 없거나 invalid면 frontend reporter는 비활성입니다. Frontend 프로세스는 `[traffic_analytics].trust_frontend_client_address`를 직접 읽지 않습니다. `generate_k8s.py`와 Helm 변환(`trafficAnalytics.trustFrontendClientAddress`)이 이 값을 frontend 환경 `TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS`로 렌더링하고, Compose·직접 실행은 위 서버 환경변수를 직접 설정합니다. Adapter의 reverse-proxy 설정을 검토하여 `getClientAddress()`가 실제 client를 반환하고 사용자가 조작할 수 없음을 확인한 뒤 opt-in하세요. Backend는 별도의 **환경변수 `TRUSTED_PROXIES`** CIDR로 직접 peer를 신뢰하며 기본은 loopback만입니다. 현재 backend TOML loader는 예시의 `[app].trusted_proxies`를 settings로 매핑하지 않으므로 그 TOML 값만 바꾸는 것으로 적용됐다고 판단하지 않습니다. 현재 X-Forwarded-For는 2개 이상이면 뒤에서 두 번째 값을 선택하므로 HAProxy/ingress의 header 생성·정규화와 맞춰야 합니다. 인터넷 전체를 trusted proxy로 등록하지 않습니다.
+
+Frontend reporter는 SSR/server 요청만 보내고 backend 요청과 별도 집계합니다. Browser-only SPA 이동·CDN/static bypass·edge request는 누락되며 정상 화면이라도 관측 coverage가 완전하지 않을 수 있습니다. Writer는 2 KiB·±120초 event만 수락하며 frontend 16 inflight/2초 deadline·backend Redis write 250 ms 제한에서 실패한 보고가 원래 사용자 응답을 막지 않습니다. `available/partial/unavailable/disabled`, drop counts·geo state·observed interval을 같이 확인하고 빈 store/null을 정상 0으로 취급하지 않습니다.
+
+원문 IP는 frontend→backend 보호된 전송 및 메모리 계산에만 필요합니다. Durable 집계는 IP HMAC의 HLL 추정치와 country/고정 route별 수치이며 사람이 아니고 packet bandwidth가 아닙니다. Request/response body, cookie, user agent, token, raw IP, URL/query는 분석 저장소에 보관하지 않습니다. 중복 방지 UUID만 bounded Redis table에 TTL 300초로 남습니다. CSV/secret mount·Redis 접근·로그 정책도 이 경계에 맞춰 운영하고 request payload를 별도 수집하는 것으로 확대하지 않습니다. 로그인 모니터링은 기존 ActivityLog와 session store를 읽을 뿐 실패 로그인 수집을 추가하지 않으며, Redis/SQL 보존 정책 밖 이력·현재 온라인 상태를 보장하지 않습니다.
+
 ### 2. 기본 서비스 시작
 
 ```bash
@@ -590,6 +710,22 @@ custom service와 HAProxy 플레이에 `become: true`가 선언되어 있어 별
 kolla-ansible prechecks -i multinode --tags afterglow,lumen
 kolla-ansible reconfigure -i multinode --tags afterglow,lumen
 ```
+
+### 볼륨 자동 백업의 다중 컨트롤러 실행
+
+- 이 dispatcher를 포함한 동일 backend 소스를 모든 replica에 적용하고, 같은 Redis/Valkey primary·logical DB와 기존 `afterglow:auto_backup` namespace를 사용합니다. Controller마다 독립 Redis를 띄우면 분산 조정이 되지 않습니다. 기존 Redis/Sentinel 설정 경로를 유지하며 새 scheduler 설정·cron·worker service를 추가하지 않습니다.
+- 각 API process의 hostname/PID/random incarnation은 자동 생성됩니다. 리더 하나만15초 정책 스캔을 수행하고, 새 작업·사라진 소유자의 작업을 살아 있는 process들의 배정 개수 기준으로 분배합니다. 정상 pending/active 소유권은 유지하며 동일 volume/slot 중복 제출은 별도의90초 renewable lease/durable journal로 방어합니다. Worker 수가 다르면 물리 controller별 가중치는 같지 않습니다.
+-45초 member/leader lease와10초 heartbeat는 Redis server time을 사용합니다. SDK 실행과 스캔은 독립이고, 정상 종료는 SDK drain 뒤 회수합니다. Hard crash 인계는 membership/leader 만료와 다음 heartbeat/poll, 해당 볼륨의 남은90초 lease를 기다립니다. 진행 중인 Cinder data copy를 취소하거나 재시작하는 기능이 아닙니다.
+- 정책·slot·active journal은 캐시가 아닌 정본입니다. Redis persistence/backup·failover 데이터 보존과 controller 시간 동기화를 유지합니다. Key 삭제/독립 Redis/journal 유실을 복구 작업으로 사용하지 않습니다. Redis 조정 불능에는 새 백업을 local로 실행하지 않으며, 이미 접수되었거나 결과가 불명확한 백업은 재발행하지 않습니다.
+- 1.30.16 전환은 구형 process가 새 membership/assignment에 참여하지 않으므로 혼합 cohort의 rolling upgrade로 수행하지 않습니다. 기존 API·Notion worker 전체를 drain·중지한 뒤 같은 새 버전으로 함께 교체합니다. [SQL088/089 및 writer cohort 업그레이드 순서](#13016-업그레이드-sql-088089와-writer-cohort)를 따르세요. 이번 source 변경은 운영 배포·공유 datastore 설정·기존 volume·암호화 키를 변경하지 않았고 live Cinder 저장소/복원 증거는 아닙니다.
+
+### 공유 background process의 다중 컨트롤러 분배
+
+- 모든 Afterglow API·Notion worker replica는 같은 Redis/Valkey primary·logical DB와 같은 SQL DB를 사용해야 합니다. Namespace는 `afterglow:background:api`(API 유지보수 역할), `afterglow:auto_backup`, `afterglow:builds`, `afterglow:notion:work`, `afterglow:db_auto_backup`, `afterglow:worker_runtime:<mode>:<hash>`입니다. 새 설정 키·cron·worker service는 없습니다.
+- API의 snapshot·block-consumer·host-health·Swift trash·MCP·Cloud Shell 정리 루프는 설정된 역할만 살아 있는 API process에 나뉘며, process가 합류·이탈하면 재분배합니다. Cinder/Trove 백업·Notion 대상·build/import·worker-runtime 대상은 모든 process가 참여하고 leader만 registry를 발행합니다. 분배는 process 단위이므로 controller별 worker 수가 다르면 물리 가중치는 같지 않습니다.
+- 정상 종료(SIGTERM)는 진행 중 SDK·HTTP를 drain한 뒤 lease를 회수하고 membership에서 빠집니다. Hard crash 인계는45초 membership 만료와 다음 heartbeat/scan을 기다리며 해당 대상의 남은90초 execution lease를 우회하지 않습니다. Leader crash 동안에도 정상 실행자의 배정은 후계 leader 스캔까지 유지됩니다.
+- Worker runtime 관리는 Docker는 Engine ID, Kubernetes는 `notion-worker` Deployment UID 단위로 조정합니다. Kubernetes는 기존 Deployment `get`과 `deployments/scale` `patch` 권한만 쓰며, scale PATCH에 UID·resourceVersion precondition을 포함하므로 재생성·동시 변경된 Deployment는 409로 거부되고 다음 주기에 다시 읽습니다.
+- 이미 접수되었거나 결과가 불명확한 CREATE·백업은 재발행하지 않고 관측합니다. 이 보장은 공유 Redis persistence·failover 데이터 보존, 시간 동기화와 모든 replica의 동일 버전 전환을 전제로 합니다. 구형 process와 혼합 실행하지 말고 전체 API·worker를 함께 교체하세요. Drover·Lumen·Waygate·Palimpsest Hub는 각 저장소의 rollout 절차(구형 SQL worker·controller 중지 후 교체)를 따릅니다.
 
 ### 애플리케이션 이미지 채널 자동 해석 및 롤백
 
@@ -1038,6 +1174,27 @@ image와 기존 생성 config를 사용해 backend를 시작하기 **전에** �
 생성됩니다. 기존 테이블에 새 컬럼을 추가하는 변경에는 위 수동 SQL 적용이 여전히
 필수이며, bootstrap 성공이나 `/api/v1/health` 200만으로 인증된 업무 경로를 검증했다고
 보지 않습니다.
+
+#### 1.30.16 업그레이드: SQL 088/089와 writer cohort
+
+1.30.16은 Palimpsest block source/consumer의 기존 테이블 컬럼을 읽고 쓰므로 **새 API·Notion worker를 시작하기 전에 SQL 088 다음 089를 명시 적용**해야 합니다. 2026-10-14 read-only baseline receipt는 운영 081–087 적용·088/089 미적용을 보고했습니다. 실제 적용 대상은 현재 schema와 `backend/migrations/manifest.txt`를 다시 대조하여 정합니다. Kolla bootstrap의 `create_tables()`나 `auto_create_tables`는 이 기존 컬럼을 추가하지 않습니다.
+
+1. [운영 데이터와 양방향 호환성 평가](#운영-데이터와-양방향-호환성-평가)의 승인·snapshot·원래 key/Redis/CAS 보존·복원 시험·rollback 제한을 충족합니다. **보호된 backup과 격리 restore 확인이 SQL 적용보다 먼저**입니다. 기존 SQL084–087 cutover의 protected backup/restore 후 필요한 statement만 적용한 패턴을 따르되, 당시의 idempotence/호환성 결과를 088/089로 확대하지 않습니다([1.30.14 receipt](testing.md#13014-운영-기준-통합-검증-2026-10-13)). 없는 ledger를 만들거나 historical migration 전체를 replay하지 않습니다.
+2. 위 `SHOW COLUMNS` 패턴으로 적용 **전** 컬럼을 확인합니다. **089는 `IF NOT EXISTS`가 없어 idempotent가 아닙니다**. 모두 없을 때만 전체 089 SQL을 실행하고, 모두 있으면 정의/type/default/nullability가 파일과 일치하는지 확인합니다. 일부만 있거나 정의가 다르면 blind 재실행하지 말고 중단하여 승인된 schema 복구 절차를 정합니다.
+
+   ```sql
+   SHOW COLUMNS FROM layer_artifacts LIKE 'block_source';
+   SHOW COLUMNS FROM layer_consumes LIKE 'transport';
+   SHOW COLUMNS FROM layer_consumes LIKE 'run_id';
+   SHOW COLUMNS FROM layer_consumes LIKE 'resources';
+   SHOW COLUMNS FROM layer_consumes LIKE 'cleanup_state';
+   ```
+
+3. 운영 DB 접근 권한을 가진 기존 관리 경로에서 **`backend/migrations/088_layer_block_sources.sql` → `backend/migrations/089_layer_block_consumes.sql`** 순서로 적용합니다. 088은 nullable JSON `layer_artifacts.block_source`를 `IF NOT EXISTS`로 추가합니다. 089는 `layer_consumes.transport`를 `VARCHAR(16) NOT NULL DEFAULT 'nfs'`로, `run_id`·`resources`·`cleanup_state`를 nullable 컬럼으로 추가하여 기존 NFS consumer를 보존합니다. 위 local fallback Compose SQL 예시는 외부/운영 DB 적용 명령이 아닙니다. 비밀번호를 명령행이나 Git에 기록하지 않습니다. 적용 후 같은 컬럼 검사로 정의를 확인하고 기존 row/state 보존을 대조합니다. Additive nullable/defaulted DDL을 구형 writer가 허용하는 것과 새 durable state의 downgrade 안전성은 별개입니다.
+4. SQL 적용·확인 후에만 1.30.16 writer를 시작합니다. Redis 기반 분산 background ownership 전환은 **구형 API·Notion worker 전체의 SDK/HTTP drain·중지 후 모든 replica를 같은 새 버전으로 함께 교체**하며 구형/신형 cohort를 혼합하지 않습니다. Controller별 reconfigure 중에도 구형 writer를 재시작하지 않습니다. Lumen **0.6.8**, Drover **0.4.15**, Waygate **0.3.4**, Palimpsest **0.3.5**의 publication/operator promotion과 각 sibling rollout 절차도 충족해야 합니다. Health/bootstrap exit 0만으로 완료 처리하지 말고 authenticated 업무/UI와 기존 데이터·키·비대상 runtime 보존을 확인합니다.
+
+이 절차는 운영 적용 완료 보고가 아닙니다. 1.30.16의 exact-SHA CI·tag image·operator promotion·production cutover/auth UI는 [release qualification](testing.md#13016-release-qualification-2026-10-14)에 pending으로 기록합니다.
+
 
 ### 선택적 OpenStack notification 수집
 

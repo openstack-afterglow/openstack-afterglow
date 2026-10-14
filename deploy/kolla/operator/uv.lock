@@ -20,7 +20,7 @@ requires-dist = [
     { name = "drover", git = "https://github.com/openstack-afterglow/drover.git?tag=v0.2.25" },
     { name = "kolla-ansible", git = "https://opendev.org/openstack/kolla-ansible.git?rev=34daacfbf2d5987f543787f57535b2bebe7dee19" },
     { name = "lumen", git = "https://github.com/openstack-afterglow/lumen.git?tag=v0.3.1" },
-    { name = "palimpsest-client", git = "https://github.com/openstack-afterglow/palimpsest.git?tag=v0.2.3" },
+    { name = "palimpsest-client", specifier = "==0.3.3" },
     { name = "urllib3", specifier = ">=2.8.0" },
     { name = "waygate", git = "https://github.com/openstack-afterglow/waygate.git?tag=v0.2.0" },
 ]
@@ -686,8 +686,12 @@ wheels = [
 
 [[package]]
 name = "palimpsest-client"
-version = "0.2.3"
-source = { git = "https://github.com/openstack-afterglow/palimpsest.git?tag=v0.2.3#fc729e3bb33ed9a4a860ad0d8c1c79b192891331" }
+version = "0.3.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7e/37/a94b7c7c9d7a960b3997ce1edb4ed0473d7b5cf0d2e88b9aa3bf05095a5c/palimpsest_client-0.3.3.tar.gz", hash = "sha256:9e0f1a47084a57c3a6b51edff8f8a59a2075e752783890ea5ff59806b0d80d49", size = 4292341, upload-time = "2026-10-11T10:31:39.819Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/80/98/49e69334aa99cf4173aafab23855fff33091f6c391c26d935594ab6cadc0/palimpsest_client-0.3.3-py3-none-any.whl", hash = "sha256:b15292af8a2b00aa3b1db15e0de30eaea7355693cf04e3aaa0407bf41e534204", size = 840794, upload-time = "2026-10-11T10:31:38.251Z" },
+]
 
 [[package]]
 name = "passlib"

@@ -438,6 +438,8 @@ Migration087을 reader/writer 배포 전에 적용해야 합니다. 기존084–
 
 MCP의 cloud tool은 이 application credential의 원래 scope로 인증하며 별도 project scope를 요청하지 않습니다. Keystone token의 user/project가 저장된 grant principal과 정확히 일치해야 provider에 요청하고, 다른 owner/project 또는 unscoped 응답은 거부합니다. Manager/admin/browser credential로 fallback하지 않습니다. 연결 확인의 handshake·tools/list 성공은 실제 cloud `tools/call` 성공과 별개의 증거입니다.
 
+생성은 실제 대상 scoped token의 role ID/name을 저장하고 Keystone payload의 `roles`를 생략합니다. 이는 token 역할을 사용하는 native 기본값이며 읽기/관리 권한 확대가 아닙니다. Role 이름을 명시해 현재 inference 그래프를 재확장하면 token에 없는 역할 때문에 유효한 승인도 Keystone400으로 실패할 수 있습니다. 반환 role ID 집합이 승인 snapshot과 다르면 remote ID를 먼저 기록한 상태에서 credential을 폐기·확인하고 grant activation/token 발급을 거부합니다. Restricted flag, finite expiry, owner/project 및 승인된 target 검증은 유지됩니다.
+
 `POST /api/v1/auth/mcp-tokens/verify`는 browser access JWT와 현재 프로젝트, 허용된 Origin 및 `Sec-Fetch-Site: same-origin|same-site`가 필요합니다. `Content-Type: application/json`의 정확한 `{ "token": "<본인 개인 키>" }`만 받으며 본문은 최대1024bytes입니다. 잘못된·만료·폐기·다른 user/project의 키는 공개 URL에 접속하기 **전** 거부합니다. 임의 endpoint를 지정할 수 없습니다.
 
 성공 `200`의 응답은 다음 구조이며 token을 포함하지 않습니다.
@@ -475,6 +477,8 @@ MCP의 cloud tool은 이 application credential의 원래 scope로 인증하며 
 개인 Bearer 키와 OAuth는 별도 인증 방식입니다. OAuth 클라이언트 설정 JSON은 HTTP MCP resource URL만 포함하고 개인 키·`Authorization` header·`client_secret`을 넣지 않습니다. 예시 `https://cloud.dmslab.re.kr/mcp`의 discovery는 `/mcp/oauth/{register,authorize,token,revoke}`를 광고합니다. Authorization endpoint를 매개변수 없이 직접 여는 것은 유효한 요청이 아닙니다. 등록한 `client_id`, 정확한 callback/resource, `response_type=code`, 허용 scope, PKCE S256과 state를 포함한 클라이언트 요청을 사용합니다. Public client 등록은 `token_endpoint_auth_method=none`과 authorization-code·refresh grant 모두를 요구하며 HTTP loopback callback은 `127.0.0.1`·`[::1]` IP literal만 허용합니다.
 
 정확한 `/oauth/mcp/authorize`는 공개 브라우저 동의 shell이며 protected console 전체를 공개하지 않습니다. 불투명 ticket은 URL에서 제거해 `sessionStorage`에만 보존하고 password/GitLab login·프로젝트 선택 뒤 같은 동의 화면으로 돌아옵니다. Ticket은 권한이나 access token이 아닙니다. 동의 조회·approve/deny는 현재 browser access bearer와 `X-Project-Id`가 있는 scoped session에서만 수행합니다. 승인은 해당 user/project의 restricted application credential과 grant를 만들며 클라이언트에는 opaque access/refresh token만 반환하고 upstream credential은 보내지 않습니다.
+
+Restricted credential은 대상 프로젝트에 scoped된 실제 SDK token의 role ID/name snapshot을 사용합니다. 생성 payload의 `roles`를 생략하여 Keystone의 token-role 기본값을 적용하고 `unrestricted=False`와 기존 UTC `Z` 만료를 유지합니다. 역할 이름을 명시하면 현재 role-inference 그래프가 token에 없는 descendant까지 재확장하여 `Cannot create an application credential with unassigned role`로 거부할 수 있습니다. 반환 credential의 정확한 project ID와 role ID 집합이 승인 snapshot과 일치하지 않으면 활성화하지 않습니다. Remote ID를 SQL에 먼저 commit하므로 검증 실패도 기존 내구성 cleanup 경로로 회수하며 privileged credential이나 다른 프로젝트로 대체하지 않습니다.
 
 Refresh의 필수 `client_id`는 최초 authorization code의 client와 정확히 일치해야 합니다. 빈 값·다른 client·불명확한 persisted binding은 `invalid_grant`이며 token rotation이나 replay revocation을 일으키지 않습니다. `client_id` 생략도 거부하고 올바른 client의 consumed refresh 재사용은 기존 family/grant 폐기를 유지합니다. Binding은 consumed code row에 남으므로 code expiry·authorization ticket cleanup 뒤에도 유지됩니다. 계정의 OAuth 회수 또는 resource의 revoke endpoint는 기존 내구성 cleanup 경로로 grant/family와 downstream authority를 폐기합니다. Token·code·ticket·upstream secret은 문서·audit·QA receipt에 기록하지 않습니다.
 

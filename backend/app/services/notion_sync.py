@@ -11,15 +11,65 @@ import hashlib
 import json
 import logging
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC
 
 import httpx
+
+from app.services.work_dispatcher import DispatcherUnavailable
+
+_worker_policy = ContextVar("notion_worker_policy", default=None)
+
+
+@contextmanager
+def worker_policy(check):
+    """Install a task-local current-policy/output fence for background sync."""
+    token = _worker_policy.set(check)
+    try:
+        yield
+    finally:
+        _worker_policy.reset(token)
+
+
+async def worker_checkpoint() -> None:
+    from app.services.work_dispatcher import checkpoint
+
+    await checkpoint()
+    check = _worker_policy.get()
+    if check is not None:
+        await check()
+
+
+async def _drained_parallel(coroutines) -> None:
+    # TaskGroup waits for every HTTP child on cancellation before its owner can
+    # release the target/output lease or close the database.
+    try:
+        async with asyncio.TaskGroup() as group:
+            for coroutine in coroutines:
+                group.create_task(coroutine)
+    except BaseExceptionGroup as exc:
+        if exc.subgroup(DispatcherUnavailable) is not None:
+            raise DispatcherUnavailable("Notion parallel work lost ownership") from exc
+        raise
+
 
 _logger = logging.getLogger(__name__)
 
 NOTION_API_BASE = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
 REDIS_CONFIG_KEY = "afterglow:notion:config"
+
+_UPDATE_REDIS_TIMESTAMPS = """
+local raw = redis.call('GET', KEYS[1])
+if raw ~= ARGV[1] then return 0 end
+local config = cjson.decode(raw)
+if config.enabled ~= true then return 0 end
+local stamps = cjson.decode(ARGV[2])
+for field, value in pairs(stamps) do config[field] = value end
+redis.call('SET', KEYS[1], cjson.encode(config), 'KEEPTTL')
+return 1
+"""
 
 # 속성 이름 → 인스턴스 데이터 키 매핑 (한국어 속성명 기준)
 # DB에 이 이름의 속성이 있으면 해당 데이터를 채운다.
@@ -232,6 +282,7 @@ async def _notion_request(
             kwargs: dict = {"headers": _headers(api_key)}
             if json is not None:
                 kwargs["json"] = json
+            await worker_checkpoint()
             resp = await call(url, **kwargs)
         if resp.status_code != 429:
             return resp
@@ -534,11 +585,13 @@ async def sync_to_notion(api_key: str, database_id: str, instances: list[dict]) 
                 else:
                     stats["updated" if match_key in page_map else "created"] += 1
 
+            except DispatcherUnavailable:
+                raise
             except Exception as e:
                 _logger.warning("Notion 페이지 동기화 실패 (instance=%s): %s", name, e)
                 stats["errors"] += 1
 
-        await asyncio.gather(*[_upsert(inst) for inst in instances])
+        await _drained_parallel(_upsert(inst) for inst in instances)
 
         # Notion에만 있고 OpenStack에 없는 페이지 → openstack resource relation 해제 후 아카이브
         resource_prop_name = (
@@ -564,13 +617,15 @@ async def sync_to_notion(api_key: str, database_id: str, instances: list[dict]) 
                     stats["archived"] += 1
                 else:
                     stats["errors"] += 1
+            except DispatcherUnavailable:
+                raise
             except Exception as e:
                 _logger.warning("Notion 페이지 아카이브 실패 (key=%s): %s", key, e)
                 stats["errors"] += 1
 
         to_archive = [(k, pid) for k, pid in page_map.items() if k not in seen_keys]
         if to_archive:
-            await asyncio.gather(*[_archive(k, pid) for k, pid in to_archive])
+            await _drained_parallel(_archive(k, pid) for k, pid in to_archive)
 
     _logger.info(
         "Notion 동기화 완료: created=%d updated=%d archived=%d errors=%d",
@@ -731,8 +786,11 @@ async def save_notion_config(config: dict) -> None:
                 row.hypervisors_last_sync = _parse_dt(config.get("hypervisors_last_sync"))
                 row.gpu_spec_last_sync = _parse_dt(config.get("gpu_spec_last_sync"))
                 row.updated_at = datetime.now(UTC)
+                await worker_checkpoint()
                 await session.commit()
             return
+        except DispatcherUnavailable:
+            raise
         except Exception:
             _logger.warning("Notion 설정 DB 저장 실패, Redis fallback", exc_info=True)
 
@@ -740,7 +798,45 @@ async def save_notion_config(config: dict) -> None:
     from app.services.cache import _get_redis
 
     r = await _get_redis()
+    await worker_checkpoint()
     await r.set(REDIS_CONFIG_KEY, json.dumps(config))
+
+
+async def update_notion_config_timestamps(timestamps: dict) -> None:
+    """Update result columns in the actual legacy store without rewriting policy."""
+    from sqlalchemy import select, update
+
+    from app.database import get_session_factory, is_db_available
+    from app.models.db import NotionConfig
+    from app.services.cache import _get_redis
+
+    if is_db_available():
+        try:
+            values = {field: _parse_dt(value) for field, value in timestamps.items()}
+            async with get_session_factory()() as session:
+                await worker_checkpoint()
+                result = await session.execute(
+                    update(NotionConfig).where(NotionConfig.id == 1, NotionConfig.enabled.is_(True)).values(**values)
+                )
+                await worker_checkpoint()
+                if result.rowcount:
+                    await session.commit()
+                    return
+                existing = await session.execute(select(NotionConfig.id).where(NotionConfig.id == 1))
+                if existing.scalar_one_or_none() is not None:
+                    raise DispatcherUnavailable("Legacy SQL config is no longer enabled")
+        except DispatcherUnavailable:
+            raise
+        except Exception:
+            _logger.warning("Notion timestamp SQL write failed; checking Redis legacy authority", exc_info=True)
+
+    redis = await _get_redis()
+    raw = await redis.get(REDIS_CONFIG_KEY)
+    if raw is None:
+        raise DispatcherUnavailable("Legacy Notion config was removed")
+    await worker_checkpoint()
+    if not await redis.eval(_UPDATE_REDIS_TIMESTAMPS, 1, REDIS_CONFIG_KEY, raw, json.dumps(timestamps)):
+        raise DispatcherUnavailable("Legacy Redis policy changed before timestamp update")
 
 
 async def delete_notion_config() -> None:
@@ -893,11 +989,13 @@ async def sync_hypervisors_to_notion(api_key: str, database_id: str, hypervisors
                     stats["errors"] += 1
                 else:
                     stats["updated" if name in page_map else "created"] += 1
+            except DispatcherUnavailable:
+                raise
             except Exception as e:
                 _logger.warning("Notion 하이퍼바이저 동기화 실패 (%s): %s", name, e)
                 stats["errors"] += 1
 
-        await asyncio.gather(*[_upsert(h) for h in hypervisors])
+        await _drained_parallel(_upsert(h) for h in hypervisors)
 
         async def _archive(key: str, page_id: str) -> None:
             try:
@@ -909,13 +1007,15 @@ async def sync_hypervisors_to_notion(api_key: str, database_id: str, hypervisors
                     json={"archived": True},
                 )
                 stats["archived" if resp.status_code < 400 else "errors"] += 1
+            except DispatcherUnavailable:
+                raise
             except Exception as e:
                 _logger.warning("Notion 하이퍼바이저 아카이브 실패 (%s): %s", key, e)
                 stats["errors"] += 1
 
         to_archive = [(k, pid) for k, pid in page_map.items() if k not in seen_keys]
         if to_archive:
-            await asyncio.gather(*[_archive(k, pid) for k, pid in to_archive])
+            await _drained_parallel(_archive(k, pid) for k, pid in to_archive)
 
     _logger.info(
         "Notion 하이퍼바이저 동기화 완료: created=%d updated=%d archived=%d errors=%d",
@@ -1080,11 +1180,13 @@ async def sync_gpu_specs_to_notion(
                     stats["errors"] += 1
                 else:
                     stats["updated" if name in page_map else "created"] += 1
+            except DispatcherUnavailable:
+                raise
             except Exception as e:
                 _logger.warning("Notion GPU spec 동기화 실패 (%s): %s", name, e)
                 stats["errors"] += 1
 
-        await asyncio.gather(*[_upsert(spec) for spec in gpu_specs])
+        await _drained_parallel(_upsert(spec) for spec in gpu_specs)
 
         async def _archive(key: str, page_id: str) -> None:
             try:
@@ -1096,13 +1198,15 @@ async def sync_gpu_specs_to_notion(
                     json={"archived": True},
                 )
                 stats["archived" if resp.status_code < 400 else "errors"] += 1
+            except DispatcherUnavailable:
+                raise
             except Exception as e:
                 _logger.warning("Notion GPU spec 아카이브 실패 (%s): %s", key, e)
                 stats["errors"] += 1
 
         to_archive = [(k, pid) for k, pid in page_map.items() if k not in seen_keys]
         if to_archive:
-            await asyncio.gather(*[_archive(k, pid) for k, pid in to_archive])
+            await _drained_parallel(_archive(k, pid) for k, pid in to_archive)
 
     _logger.info(
         "Notion GPU spec 동기화 완료: created=%d updated=%d archived=%d errors=%d",
@@ -1140,8 +1244,12 @@ async def fetch_user_page_ids_by_email(api_key: str, users_database_id: str) -> 
                     email = arr[0].get("plain_text", "") if arr else ""
                 if email:
                     email_to_page_id[email.lower()] = page["id"]
+    except DispatcherUnavailable:
+        raise
     except Exception:
         _logger.warning("People DB 이메일 조회 실패", exc_info=True)
+        if _worker_policy.get() is not None:
+            raise
     return email_to_page_id
 
 
@@ -1161,8 +1269,12 @@ async def fetch_hypervisor_page_ids_by_name(api_key: str, hypervisors_database_i
                 name = _extract_rich_text(page, title_prop)
                 if name:
                     name_to_page_id[name] = page["id"]
+    except DispatcherUnavailable:
+        raise
     except Exception:
         _logger.warning("Hypervisor DB 이름 조회 실패", exc_info=True)
+        if _worker_policy.get() is not None:
+            raise
     return name_to_page_id
 
 
@@ -1182,8 +1294,12 @@ async def fetch_gpu_spec_page_ids_by_name(api_key: str, gpu_spec_database_id: st
                 name = _extract_rich_text(page, title_prop)
                 if name:
                     name_to_page_id[name] = page["id"]
+    except DispatcherUnavailable:
+        raise
     except Exception:
         _logger.warning("GPU Spec DB 이름 조회 실패", exc_info=True)
+        if _worker_policy.get() is not None:
+            raise
     return name_to_page_id
 
 
@@ -1238,6 +1354,8 @@ async def migrate_instance_db_to_korean(api_key: str, database_id: str) -> bool:
 
         return True
 
+    except DispatcherUnavailable:
+        raise
     except Exception:
         _logger.warning("인스턴스 DB 한국어 마이그레이션 실패", exc_info=True)
         return False
@@ -1387,6 +1505,7 @@ async def update_notion_target(target_id: int, data: dict) -> dict | None:
             row.gpu_spec_last_sync = _parse_dt(data["gpu_spec_last_sync"])
 
         row.updated_at = datetime.now(UTC)
+        await worker_checkpoint()
         await session.commit()
         await session.refresh(row)
         return _target_to_dict(row)

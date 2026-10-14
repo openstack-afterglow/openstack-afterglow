@@ -202,9 +202,11 @@ export const adminNavSections: NavSection[] = [
   }),
   withLabel('sections.network', {
     prefix: '/admin/topology',
+    extraPrefixes: ['/admin/infrastructure-topology'],
     icon: 'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9',
     items: [
       withLabel('items.topology', { href: '/admin/topology', icon: navIcons.network, service: null }),
+      withLabel('items.infrastructureTopology', { href: '/admin/infrastructure-topology', icon: navIcons.cluster, service: null }),
       withLabel('items.networks', { href: '/admin/networks', icon: navIcons.layers, service: null }),
       withLabel('items.floatingIps', { href: '/admin/floating-ips', icon: navIcons.floatingIp, service: null }),
       withLabel('items.routers', { href: '/admin/routers', icon: navIcons.router, service: null }),
@@ -255,6 +257,8 @@ export const adminNavSections: NavSection[] = [
     icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
     items: [
       withLabel('items.monitoringOverview', { href: '/admin/monitoring', icon: navIcons.monitor, service: null }),
+      withLabel('items.trafficAnalytics', { href: '/admin/monitoring/traffic', icon: navIcons.chart, service: null }),
+      withLabel('items.loginMonitoring', { href: '/admin/monitoring/logins', icon: navIcons.users, service: null }),
       withLabel('items.nodes', { href: '/admin/monitoring/node', icon: navIcons.instances, service: null }),
       { label: 'MySQL', href: '/admin/monitoring/mysql', icon: navIcons.database, service: null },
       { label: 'ProxySQL', href: '/admin/monitoring/proxysql', icon: navIcons.proxy, service: null },
@@ -288,6 +292,8 @@ export const adminNavSections: NavSection[] = [
       withLabel('items.quotas', { href: '/admin/quotas', icon: navIcons.quota, service: null }),
       withLabel('items.groups', { href: '/admin/groups', icon: navIcons.users, service: null }),
       withLabel('items.roles', { href: '/admin/roles', icon: navIcons.shield, service: null }),
+      withLabel('items.applicationCredentials', { href: '/admin/application-credentials', icon: navIcons.key, service: null }),
+      withLabel('items.userCredentials', { href: '/admin/user-credentials', icon: navIcons.key, service: null }),
       withLabel('items.systemAdmins', { href: '/admin/system-admins', icon: navIcons.admin, service: null }),
     ],
   }),

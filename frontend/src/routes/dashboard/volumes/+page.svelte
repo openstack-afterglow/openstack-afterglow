@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/volume';
   import { untrack } from 'svelte';
-  import { auth } from '$lib/stores/auth';
+  import { auth, canWrite } from '$lib/stores/auth';
   import { api } from '$lib/api/client';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { toast } from '$lib/stores/toast';
@@ -133,6 +133,8 @@
   <PageHeader breadcrumb={t('page.breadcrumb')} title={t('page.title')}>
     {#snippet actions()}
       <Button dataTour="volume-create-open" onclick={() => ctrl.showModal = true} variant="primary">{t('page.create')}</Button>
+      <Button variant="outline" disabled={!$canWrite} onclick={() => ctrl.openTransferModal('', '', 'receive')}>{t('transferModal.receiveTitle')}</Button>
+      <Button variant="outline" disabled={!$canWrite} onclick={() => ctrl.openTransferModal('', '', 'list')}>{t('transferModal.listTitle')}</Button>
     {/snippet}
   </PageHeader>
   <ResourceToolbar label={t('page.toolbar')}>
@@ -164,8 +166,6 @@
         volumes={ctrl.volumes}
         selectedVolumeId={ctrl.selectedVolumeId}
         deleting={ctrl.deleting}
-        autoBackupConfigs={ctrl.autoBackupConfigs}
-        autoBackupToggling={ctrl.autoBackupToggling}
         openActionMenu={ctrl.openActionMenu}
         selectedIds={volumeSelection.ids}
         selectableIds={selectableVolumeIds}
@@ -184,7 +184,6 @@
         onTransfer={ctrl.openTransferModal}
         onForceDelete={ctrl.forceDeleteVolume}
         onDelete={ctrl.deleteVolume}
-        onToggleAutoBackup={ctrl.toggleAutoBackup}
         volumeSnapshotsEnabled={$betaFeatures.volumeSnapshots}
       />
       <BulkSelectionOverlay
@@ -239,12 +238,14 @@
   transferVolumeId={ctrl.transferVolumeId}
   transferVolumeName={ctrl.transferVolumeName}
   showTransfer={ctrl.showTransferModal}
+  transferMode={ctrl.transferMode}
   extendTarget={ctrl.extendTargetVol}
   projectId={$auth.projectId ?? undefined}
   backupTarget={ctrl.backupTargetVol}
   snapshotTarget={ctrl.snapshotTargetVol}
   renameTarget={ctrl.renameTargetVol}
   onCloseTransfer={() => ctrl.showTransferModal = false}
+  onTransferChanged={() => { void ctrl.fetchVolumes(true); ctrl.refreshSelectedDetail(); }}
   onTransferred={() => { ctrl.fetchVolumes(); ctrl.showTransferModal = false; }}
   onCloseExtend={() => ctrl.extendTargetVol = null}
   onExtendSuccess={() => { ctrl.extendTargetVol = null; ctrl.fetchVolumes(true); ctrl.refreshSelectedDetail(); }}

@@ -8,12 +8,14 @@ operator opts into a concrete runtime manager mode.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
-import uuid
 from collections.abc import Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Protocol
 
@@ -21,15 +23,51 @@ import httpx
 
 from app.config import Settings, get_settings
 from app.models.worker_runtime import WorkerName, WorkerRuntimeStatus, WorkerRuntimeWorkerStatus
+from app.services.work_dispatcher import DispatcherUnavailable, WorkDispatcher, checkpoint, run_roles, work_lease
 
 _logger = logging.getLogger(__name__)
+
+_runtime_identity: ContextVar[tuple[str, str] | None] = ContextVar("runtime_identity", default=None)
+
+
+async def _send_owned_request(adapter, client, method, path, kwargs):
+    if method not in {"GET", "HEAD", "OPTIONS"}:
+        await checkpoint()
+        expected = _runtime_identity.get()
+        if expected is not None:
+            mode, identity = expected
+            if mode == "docker":
+                observed = await adapter._request("GET", "/info")
+                observed.raise_for_status()
+                current = observed.json().get("ID")
+            else:
+                deployment = adapter._deployment_name("notion_worker")
+                observed = await adapter._request(
+                    "GET", f"/apis/apps/v1/namespaces/{adapter.config.namespace}/deployments/{deployment}"
+                )
+                observed.raise_for_status()
+                current = observed.json().get("metadata", {}).get("uid")
+            if current != identity:
+                raise DispatcherUnavailable("worker runtime target incarnation changed")
+        await checkpoint()
+    return await client.request(method, path, **kwargs)
+
+
+async def _drain_request(request):
+    while not request.done():
+        try:
+            await asyncio.shield(request)
+        except asyncio.CancelledError:
+            continue
+        except Exception:
+            break
+    if not request.cancelled():
+        request.exception()
+
 
 _MANAGED_LABEL = "afterglow.worker-runtime.managed"
 _WORKER_LABEL = "afterglow.worker"
 _DESIRED_KEY = "afterglow:worker_runtime:desired"
-_LOCK_KEY = "afterglow:worker_runtime:reconcile_lock"
-_LOCK_TTL_SECONDS = 90
-_OWNER = f"{os.uname().nodename}:{os.getpid()}:{uuid.uuid4().hex}"
 
 
 @dataclass(frozen=True)
@@ -185,10 +223,17 @@ class DockerWorkerRuntimeAdapter:
         return httpx.AsyncClient(transport=transport, base_url="http://docker")
 
     async def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        if method not in {"GET", "HEAD", "OPTIONS"}:
+            await checkpoint()
         client = self._make_client()
         close_client = self._client is None
         try:
-            response = await client.request(method, path, **kwargs)
+            request = asyncio.create_task(_send_owned_request(self, client, method, path, kwargs))
+            try:
+                response = await asyncio.shield(request)
+            except asyncio.CancelledError:
+                await _drain_request(request)
+                raise
         except PermissionError as exc:
             raise RuntimeError("docker_permission_denied") from exc
         except httpx.ConnectError as exc:
@@ -368,10 +413,17 @@ class KubernetesWorkerRuntimeAdapter:
         )
 
     async def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        if method not in {"GET", "HEAD", "OPTIONS"}:
+            await checkpoint()
         client = self._make_client()
         close_client = self._client is None
         try:
-            response = await client.request(method, path, **kwargs)
+            request = asyncio.create_task(_send_owned_request(self, client, method, path, kwargs))
+            try:
+                response = await asyncio.shield(request)
+            except asyncio.CancelledError:
+                await _drain_request(request)
+                raise
         except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, httpx.TransportError) as exc:
             raise RuntimeError("kubernetes_api_unavailable") from exc
         finally:
@@ -425,15 +477,30 @@ class KubernetesWorkerRuntimeAdapter:
         try:
             for spec in specs:
                 replicas = min(max(desired_map.get(spec.name, spec.desired_replicas), 0), spec.max_replicas)
+                deployment_path = (
+                    f"/apis/apps/v1/namespaces/{self.config.namespace}/deployments/{self._deployment_name(spec.name)}"
+                )
+                current = await self._request("GET", deployment_path)
+                if current.status_code == 404:
+                    return _status_unavailable("kubernetes", specs, "kubernetes_deployment_not_found")
+                current.raise_for_status()
+                metadata = current.json().get("metadata", {})
+                if not metadata.get("uid") or not metadata.get("resourceVersion"):
+                    return _status_unavailable("kubernetes", specs, "kubernetes_target_precondition_unavailable")
                 response = await self._request(
                     "PATCH",
                     f"/apis/apps/v1/namespaces/{self.config.namespace}/deployments/{self._deployment_name(spec.name)}/scale",
                     headers={"Content-Type": "application/merge-patch+json"},
-                    json={"spec": {"replicas": replicas}},
+                    json={
+                        "metadata": {"uid": metadata["uid"], "resourceVersion": metadata["resourceVersion"]},
+                        "spec": {"replicas": replicas},
+                    },
                 )
                 if response.status_code == 404:
                     return _status_unavailable("kubernetes", specs, "kubernetes_deployment_not_found")
                 response.raise_for_status()
+        except DispatcherUnavailable:
+            raise
         except RuntimeError as exc:
             return _status_unavailable("kubernetes", specs, str(exc) or "kubernetes_api_unavailable")
         except Exception:
@@ -604,46 +671,49 @@ async def patch_desired_counts(updates: dict[WorkerName, int], settings: Setting
     return await get_runtime_status(cfg)
 
 
-async def _acquire_reconcile_lock() -> bool:
-    from app.services.cache import _get_redis
-
-    redis = await _get_redis()
-    return bool(await redis.set(_LOCK_KEY, _OWNER, nx=True, ex=_LOCK_TTL_SECONDS))
-
-
-async def _release_reconcile_lock() -> None:
-    from app.services.cache import _get_redis
-
-    redis = await _get_redis()
-    script = """
-    if redis.call('GET', KEYS[1]) == ARGV[1] then
-        return redis.call('DEL', KEYS[1])
-    end
-    return 0
-    """
-    await redis.eval(script, 1, _LOCK_KEY, _OWNER)
+async def _coordination_prefix(adapter, settings: Settings) -> str:
+    """The Engine/Deployment identity, not a container hostname, owns this target."""
+    if settings.worker_runtime_mode == "docker":
+        response = await adapter._request("GET", "/info")
+        response.raise_for_status()
+        identity = response.json().get("ID")
+    else:
+        deployment = adapter._deployment_name("notion_worker")
+        response = await adapter._request(
+            "GET", f"/apis/apps/v1/namespaces/{adapter.config.namespace}/deployments/{deployment}"
+        )
+        response.raise_for_status()
+        identity = response.json().get("metadata", {}).get("uid")
+    if not isinstance(identity, str) or not identity:
+        raise RuntimeError("worker runtime target identity unavailable")
+    _runtime_identity.set((settings.worker_runtime_mode, identity))
+    digest = hashlib.sha256(identity.encode()).hexdigest()
+    return f"afterglow:worker_runtime:{settings.worker_runtime_mode}:{digest}"
 
 
 async def reconcile_once_with_lock(settings: Settings | None = None) -> WorkerRuntimeStatus | None:
+    """Best-effort immediate reconcile using the background target's execution lease."""
+    from app.services.cache import _get_redis
+
     cfg = settings or get_settings()
     if cfg.worker_runtime_mode == "static":
         return await get_runtime_status(cfg)
     try:
-        acquired = await _acquire_reconcile_lock()
+        adapter = get_adapter(cfg)
+        prefix = await _coordination_prefix(adapter, cfg)
+        async with WorkDispatcher(await _get_redis(), prefix, roles=("reconcile",)) as dispatcher:
+            if await dispatcher.is_leader():
+                await dispatcher.publish(["reconcile"])
+            claimed = await dispatcher.claim(90)
+            if claimed is None:
+                return None
+            async with work_lease(dispatcher, *claimed):
+                specs = build_worker_specs(cfg)
+                desired = await desired_with_overrides(specs)
+                return await adapter.reconcile(desired, specs)
     except Exception:
-        _logger.warning("worker-runtime reconcile skipped: lock store unavailable", exc_info=True)
+        _logger.warning("worker-runtime reconcile skipped: target or coordination unavailable", exc_info=True)
         return None
-    if not acquired:
-        return None
-    try:
-        specs = build_worker_specs(cfg)
-        desired = await desired_with_overrides(specs)
-        return await get_adapter(cfg).reconcile(desired, specs)
-    finally:
-        try:
-            await _release_reconcile_lock()
-        except Exception:
-            _logger.warning("worker-runtime reconcile lock release failed", exc_info=True)
 
 
 async def reconcile_loop() -> None:
@@ -651,14 +721,42 @@ async def reconcile_loop() -> None:
     interval = cfg.worker_runtime_reconcile_interval
     if cfg.worker_runtime_mode == "static" or interval <= 0:
         return
+
+    async def run_owned(adapter) -> None:
+        while True:
+            try:
+                await checkpoint()
+                specs = build_worker_specs(cfg)
+                desired = await desired_with_overrides(specs)
+                status = await adapter.reconcile(desired, specs)
+                if not status.capable:
+                    _logger.warning(
+                        "worker-runtime reconcile unavailable", extra={"mode": status.mode, "reason": status.reason}
+                    )
+            except Exception:
+                _logger.warning("worker-runtime reconcile failed", exc_info=True)
+            await asyncio.sleep(interval)
+
+    async def watch_target(adapter, prefix):
+        while True:
+            await asyncio.sleep(min(interval, 5))
+            if await _coordination_prefix(adapter, cfg) != prefix:
+                return
+
     while True:
         try:
-            status = await reconcile_once_with_lock(cfg)
-            if status is not None and not status.capable:
-                _logger.warning(
-                    "worker-runtime reconcile unavailable",
-                    extra={"mode": status.mode, "reason": status.reason},
-                )
+            adapter = get_adapter(cfg)
+            prefix = await _coordination_prefix(adapter, cfg)
+            roles = asyncio.create_task(run_roles({"reconcile": partial(run_owned, adapter)}, prefix=prefix))
+            target_watch = asyncio.create_task(watch_target(adapter, prefix))
+            try:
+                done, _ = await asyncio.wait((roles, target_watch), return_when=asyncio.FIRST_COMPLETED)
+                for task in done:
+                    await task
+            finally:
+                roles.cancel()
+                target_watch.cancel()
+                await asyncio.gather(roles, target_watch, return_exceptions=True)
         except Exception:
-            _logger.warning("worker-runtime reconcile failed", exc_info=True)
+            _logger.warning("worker-runtime target coordination unavailable", exc_info=True)
         await asyncio.sleep(interval)

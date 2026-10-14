@@ -54,7 +54,6 @@
 		newHistoryActivity?: boolean;
 		onLoadBefore?: () => Promise<void>;
 		onLoadAfter?: () => Promise<void>;
-		onLoadFirst?: () => Promise<boolean>;
 		onLoadLatest?: () => Promise<boolean>;
 		onCopy: (text: string) => void;
 		onRegenerate: (messageId: string, modelName: string) => void;
@@ -84,7 +83,6 @@
 		newHistoryActivity = false,
 		onLoadBefore,
 		onLoadAfter,
-		onLoadFirst,
 		onLoadLatest,
 		onCopy,
 		onRegenerate,
@@ -181,6 +179,7 @@
 		if (!loader || navigatingHistory || loadingHistory) return;
 		const anchor = viewportAnchor();
 		navigatingHistory = true;
+		followingLatest = false;
 		try {
 			await loader();
 			await tick();
@@ -193,19 +192,13 @@
 		}
 	}
 
-	async function jumpHistory(anchor: 'first' | 'latest') {
-		const loader = anchor === 'first' ? onLoadFirst : onLoadLatest;
-		if (!loader || navigatingHistory || loadingHistory) return;
+	async function loadLatest() {
+		if (!onLoadLatest || navigatingHistory || loadingHistory) return;
 		navigatingHistory = true;
 		try {
-			const loaded = await loader();
+			const loaded = await onLoadLatest();
 			await tick();
-			if (!loaded || !scrollEl) return;
-			if (anchor === 'latest') scrollToLatest();
-			else {
-				scrollEl.scrollTop = 0;
-				followingLatest = !hasAfter;
-			}
+			if (loaded) scrollToLatest();
 		} finally {
 			navigatingHistory = false;
 		}
@@ -214,7 +207,11 @@
 	function onScroll() {
 		const el = scrollEl;
 		if (!el) return;
-		followingLatest = el.scrollHeight - el.clientHeight - el.scrollTop <= 64;
+		const remaining = el.scrollHeight - el.clientHeight - el.scrollTop;
+		followingLatest = !hasAfter && remaining <= 64;
+		if (navigatingHistory || loadingHistory) return;
+		if (hasBefore && el.scrollTop <= 64) void moveHistory('before');
+		else if (hasAfter && remaining <= 64) void moveHistory('after');
 	}
 	$effect(() => {
 		void conversationKey;
@@ -263,21 +260,13 @@
 			</div>
 		{:else}
 			<div class="stream">
-				{#if onLoadFirst && onLoadLatest}
-					<nav class="history-nav" aria-label={t('window.historyNavigation')}>
-						<Button variant="ghost" size="xs" onclick={() => jumpHistory('first')} disabled={!hasBefore || navigatingHistory || loadingHistory}>{t('window.first')}</Button>
-						<Button variant="ghost" size="xs" onclick={() => moveHistory('before')} disabled={!hasBefore || navigatingHistory || loadingHistory}>{t('window.previous')}</Button>
-						<Button variant="ghost" size="xs" onclick={() => moveHistory('after')} disabled={!hasAfter || navigatingHistory || loadingHistory}>{t('window.next')}</Button>
-						<Button variant="ghost" size="xs" onclick={() => jumpHistory('latest')} disabled={!hasAfter || navigatingHistory || loadingHistory}>{t('window.latest')}</Button>
-					</nav>
-				{/if}
 				{#if loadingHistory}
 					<div class="history-loading"><ActivityIndicator label={t('window.historyLoading')} /></div>
 				{/if}
 				{#if newHistoryActivity}
 					<div class="history-activity motion-enter" role="status">
 						<span>{t('window.newResponse')}</span>
-						<Button variant="accent" size="xs" onclick={() => jumpHistory('latest')}>{t('window.viewLatestResponse')}</Button>
+						<Button variant="accent" size="xs" onclick={loadLatest}>{t('window.viewLatestResponse')}</Button>
 					</div>
 				{/if}
 				{#each displayedPath as msg (msg.sessionEntrance ?? msg.id)}
@@ -328,7 +317,7 @@
 
 	{#if !empty && !followingLatest}
 		<div class="latest-control motion-enter">
-			<Button variant="accent" size="sm" onclick={() => hasAfter ? jumpHistory('latest') : scrollToLatest()}>
+			<Button variant="accent" size="sm" onclick={() => hasAfter ? loadLatest() : scrollToLatest()}>
 				{hasAfter ? t('window.goToLatestHistory') : busy ? t('window.followResponse') : t('window.goToLatestMessage')}
 			</Button>
 		</div>
@@ -373,20 +362,6 @@
 		max-width: var(--app-content-max-width);
 		padding-inline: 1rem;
 		margin: 0 auto;
-	}
-	.history-nav {
-		position: sticky;
-		top: 0;
-		z-index: 2;
-		align-self: center;
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: 0.25rem;
-		padding: 0.25rem;
-		border: 1px solid var(--color-line);
-		border-radius: var(--radius-md);
-		background: var(--color-surface-raised);
 	}
 	.history-loading {
 		align-self: center;

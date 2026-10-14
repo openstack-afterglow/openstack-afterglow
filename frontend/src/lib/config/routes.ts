@@ -76,6 +76,11 @@ const ROUTE_LABEL_KEYS: Record<string, NavMessage> = {
   quotas: 'routes.quotas',
   groups: 'routes.groups',
   roles: 'routes.roles',
+  'application-credentials': 'items.applicationCredentials',
+  'user-credentials': 'items.userCredentials',
+  'infrastructure-topology': 'items.infrastructureTopology',
+  traffic: 'items.trafficAnalytics',
+  logins: 'items.loginMonitoring',
   announcements: 'routes.announcements',
 };
 

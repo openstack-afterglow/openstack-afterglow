@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
@@ -11,7 +10,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import OperationalError
 
 from app.database import get_session_factory, is_db_available, mark_db_unhealthy
-from app.models.db import LayerArtifact, LayerBuild, LibraryBuild, ResourcePolicy, RuntimeSetting
+from app.models.db import LayerArtifact, LayerBuild, LayerImportJob, LibraryBuild, ResourcePolicy, RuntimeSetting
 from app.services.resource_policies import (
     PolicySpec,
     ResourcePolicyValidationError,
@@ -122,7 +121,9 @@ async def inspect_policies(conn) -> list[dict[str, Any]]:
     finally:
         if service_conn is not None:
             with suppress(Exception):
-                await asyncio.to_thread(service_conn.close)
+                from app.services.work_dispatcher import close_connection
+
+                await close_connection(service_conn)
 
 
 async def get_policy_snapshot(keys: tuple[str, ...]) -> dict[str, dict[str, str] | None]:
@@ -159,8 +160,20 @@ async def _ensure_service_project_mutable(session) -> None:
     active_library_build = await session.scalar(
         select(LibraryBuild.id).where(LibraryBuild.status.not_in(("complete", "error", "timeout"))).limit(1)
     )
-    if sealed_artifact or active_layer_build or active_library_build:
+    active_import = await session.scalar(
+        select(LayerImportJob.id)
+        .where(LayerImportJob.status.not_in(("complete", "error", "cancelled", "timeout")))
+        .limit(1)
+    )
+    if sealed_artifact or active_layer_build or active_library_build or active_import:
         raise ResourcePolicyValidationError("service project cannot change while durable service resources exist")
+
+
+async def lock_service_project_admission(session, expected_project_id: str) -> None:
+    """Serialize immutable build admission against the service-project setter."""
+    row = await session.get(ResourcePolicy, "openstack.service_project", with_for_update=True, populate_existing=True)
+    if row is None or row.resource_id != expected_project_id:
+        raise ResourcePolicyValidationError("service project changed during build admission")
 
 
 async def set_policy(*, conn, key: str, resource_id: str | None, updated_by_user_id: str) -> dict[str, Any]:
@@ -208,15 +221,15 @@ async def get_service_project_id() -> str:
     return selected["id"]
 
 
-async def get_service_project_connection():
-    """Create the service-project connection from the database policy only."""
+async def get_service_project_connection(project_id: str | None = None):
+    """Create the service-project connection; admission passes its exact snapshot ID."""
     from app.services.keystone import get_admin_connection_for_project
+    from app.services.work_dispatcher import open_connection
 
-    project_id = await get_service_project_id()
-    return await asyncio.to_thread(get_admin_connection_for_project, project_id)
+    return await open_connection(get_admin_connection_for_project, project_id or await get_service_project_id())
 
 
-async def resolve_policy_snapshot(*, conn, keys: tuple[str, ...]) -> dict[str, dict[str, str]]:
+async def resolve_policy_snapshot(*, conn, keys: tuple[str, ...], service_conn=None) -> dict[str, dict[str, str]]:
     """Validate and freeze effective IDs/names in each policy's real execution scope."""
     specs: dict[str, PolicySpec] = {key: get_spec(key) for key in keys}
     stored = await get_policy_snapshot(tuple(specs))
@@ -224,9 +237,9 @@ async def resolve_policy_snapshot(*, conn, keys: tuple[str, ...]) -> dict[str, d
     if missing:
         raise ResourcePolicyValidationError(f"required resource policies are not configured: {', '.join(missing)}")
 
-    service_conn = None
+    owns_service_connection = service_conn is None
     try:
-        if any(spec.execution_scope == "service" for spec in specs.values()):
+        if any(spec.execution_scope == "service" for spec in specs.values()) and service_conn is None:
             service_conn = await get_service_project_connection()
         resolved: dict[str, dict[str, str]] = {}
         for key, spec in specs.items():
@@ -235,9 +248,11 @@ async def resolve_policy_snapshot(*, conn, keys: tuple[str, ...]) -> dict[str, d
             resolved[key] = {"id": selected["id"], "name": selected["name"]}
         return resolved
     finally:
-        if service_conn is not None:
+        if owns_service_connection and service_conn is not None:
             with suppress(Exception):
-                await asyncio.to_thread(service_conn.close)
+                from app.services.work_dispatcher import close_connection
+
+                await close_connection(service_conn)
 
 
 async def resolve_policies(*, conn, keys: tuple[str, ...]) -> dict[str, str]:

@@ -13,16 +13,16 @@
 		instancesLoading,
 		addRuleOpen,
 		originalRuleId,
+		requiresRemovalFirst,
 		addingRule,
-		canAddRule,
+		canSaveRule,
 		addError,
 		ruleForm = $bindable(),
 		targetType = $bindable(),
 		onStartAdd,
 		onEditRule,
 		onCancelAdd,
-		onAddRule,
-		onRemoveOriginal,
+		onSaveRule,
 		onDeleteRule,
 		onDeleteGroup,
 		onSelectGroup,
@@ -36,16 +36,16 @@
 		instancesLoading: boolean;
 		addRuleOpen: boolean;
 		originalRuleId: string | null;
+		requiresRemovalFirst: boolean;
 		addingRule: boolean;
-		canAddRule: boolean;
+		canSaveRule: boolean;
 		addError: string;
 		ruleForm: SecurityGroupRuleDraft;
 		targetType: 'cidr' | 'group';
 		onStartAdd: () => void;
 		onEditRule: (rule: SecurityGroupRule) => void;
 		onCancelAdd: () => void;
-		onAddRule: () => Promise<void>;
-		onRemoveOriginal: () => Promise<void>;
+		onSaveRule: () => Promise<void>;
 		onDeleteRule: (ruleId: string) => Promise<void>;
 		onDeleteGroup: () => Promise<void>;
 		onSelectGroup: (id: string) => void;
@@ -61,7 +61,7 @@
 <!-- 모바일: 전체화면 오버레이 / 태블릿·데스크톱: 인라인. 모바일에서 fixed 레이어이므로 opacity 진입만 쓴다. -->
 <div class="security-group-rules motion-fade fixed inset-0 bg-surface-canvas overflow-y-auto p-4 md:static md:inset-auto md:bg-surface-base md:border md:border-line md:rounded-lg md:p-5 md:overflow-visible">
 	<div class="flex items-center mb-4 gap-2">
-		<button type="button" aria-label={t('securityGroupRules.backToList')} onclick={onCloseMobile} class="md:hidden text-ink-2 hover:text-ink-0 p-2">
+		<button type="button" aria-label={t('securityGroupRules.backToList')} onclick={onCloseMobile} disabled={addingRule} class="md:hidden text-ink-2 hover:text-ink-0 p-2">
 			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
 		</button>
 		<div class="min-w-0">
@@ -69,7 +69,7 @@
 			{#if group.description}<div class="text-xs text-ink-2 mt-0.5">{group.description}</div>{/if}
 		</div>
 		{#if group.name !== 'default'}
-			<button type="button" onclick={onDeleteGroup} class="ml-auto text-xs text-state-danger-text border border-state-danger rounded-md px-3 py-1.5 shrink-0">{t('securityGroupRules.delete')}</button>
+			<button type="button" onclick={onDeleteGroup} disabled={addingRule} class="ml-auto text-xs text-state-danger-text border border-state-danger rounded-md px-3 py-1.5 shrink-0">{t('securityGroupRules.delete')}</button>
 		{/if}
 	</div>
 
@@ -93,9 +93,11 @@
 	<section aria-label={t('securityGroupRules.rulesLabel')} class="border border-line rounded-lg overflow-hidden bg-surface-base">
 		<div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-line">
 			<h2 class="text-sm font-medium text-ink-0"><AnimatedNumber value={group.rules.length} format={(value) => t('securityGroupRules.rulesCount', { count: Math.round(value) })} /></h2>
-			<button type="button" onclick={onStartAdd} aria-expanded={addRuleOpen} class="text-xs text-warm-text border border-action-warm rounded-md px-2 py-1.5 shrink-0">{t('securityGroupRules.add')}</button>
+			{#if !addRuleOpen}
+				<button type="button" onclick={onStartAdd} aria-expanded={false} disabled={addingRule} class="text-xs text-warm-text border border-action-warm rounded-md px-2 py-1.5 shrink-0">{t('securityGroupRules.add')}</button>
+			{/if}
 		</div>
-		<div class="overflow-x-auto">
+		<div class="@container/rules overflow-x-auto">
 			<div class="min-w-[42rem]">
 				<div class="grid grid-cols-[6.5rem_3.5rem_5rem_5rem_minmax(8rem,1fr)_8rem] gap-2 px-3 py-2.5 border-b border-line text-xs text-ink-2 font-medium items-center">
 					<div>{t('securityGroupRules.direction')}</div><div>{t('securityGroupRules.ipVersion')}</div><div>{t('securityGroupRules.protocol')}</div><div>{t('securityGroupRules.port')}</div><div>{t('securityGroupRules.sourceTarget')}</div><div>{t('securityGroupRules.actions')}</div>
@@ -105,6 +107,7 @@
 				{/if}
 				<div class="motion-stagger">
 				{#each group.rules as rule (rule.id)}
+					<div>
 					<div class="grid grid-cols-[6.5rem_3.5rem_5rem_5rem_minmax(8rem,1fr)_8rem] gap-2 px-3 py-2.5 text-xs items-center border-b border-line">
 						<div><span class="text-state-info-text">{rule.direction === 'ingress' ? t('securityGroupRules.ingress') : t('securityGroupRules.egress')}</span></div>
 						<div class="text-ink-1 font-mono">{rule.ethertype}</div>
@@ -118,17 +121,24 @@
 							{/if}
 						</div>
 						<div class="flex gap-2 justify-end">
-							<button type="button" onclick={() => onEditRule(rule)} class="text-accent hover:underline">{t('securityGroupRules.edit')}</button>
-							<button type="button" onclick={() => onDeleteRule(rule.id)} class="text-state-danger-text hover:underline">{t('securityGroupRules.remove')}</button>
+							<button type="button" onclick={() => onEditRule(rule)} aria-expanded={addRuleOpen && originalRuleId === rule.id} disabled={addingRule} class="text-accent hover:underline">{t('securityGroupRules.edit')}</button>
+							<button type="button" onclick={() => onDeleteRule(rule.id)} disabled={addingRule} class="text-state-danger-text hover:underline">{t('securityGroupRules.remove')}</button>
 						</div>
+					</div>
+						{#if addRuleOpen && originalRuleId === rule.id}
+							<div class="sticky left-0 w-[100cqw] max-w-full">
+								<AddRuleForm bind:ruleForm bind:targetType {groups} {originalRuleId} {requiresRemovalFirst} adding={addingRule} canAdd={canSaveRule} error={addError} onSubmit={onSaveRule} onCancel={onCancelAdd} />
+							</div>
+						{/if}
 					</div>
 				{/each}
 				</div>
 			</div>
 		</div>
-		{#if addRuleOpen}
-			<AddRuleForm bind:ruleForm bind:targetType {groups} {originalRuleId} adding={addingRule} canAdd={canAddRule} error={addError} onAdd={onAddRule} onCancel={onCancelAdd} onRemoveOriginal={onRemoveOriginal} />
+		{#if addRuleOpen && (!originalRuleId || !group.rules.some((rule) => rule.id === originalRuleId))}
+			<AddRuleForm bind:ruleForm bind:targetType {groups} {originalRuleId} {requiresRemovalFirst} adding={addingRule} canAdd={canSaveRule} error={addError} onSubmit={onSaveRule} onCancel={onCancelAdd} />
 		{/if}
+		{#if addError && !addRuleOpen}<p role="alert" class="text-xs text-state-danger-text p-3">{addError}</p>{/if}
 	</section>
 </div>
 

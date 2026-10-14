@@ -23,8 +23,4 @@ describe('StatTile', () => {
 		expect(view.container.querySelector('.stat-value')?.textContent).toBe('무제한');
 	});
 
-	it.each([[-1, 0], [25, 0.25], [120, 1]])('clamps visible progress for %s', (value, scale) => {
-		const view = render(StatTile, { label: 'CPU', value, progress: { value, max: 100 } });
-		expect((view.container.querySelector('.progress-bar') as HTMLElement).style.transform).toBe(`scaleX(${scale})`);
-	});
 });

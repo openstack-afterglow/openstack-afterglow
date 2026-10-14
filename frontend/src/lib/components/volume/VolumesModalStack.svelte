@@ -10,6 +10,7 @@
 		transferVolumeId,
 		transferVolumeName,
 		showTransfer,
+		transferMode = 'create',
 		extendTarget,
 		projectId,
 		backupTarget,
@@ -18,6 +19,7 @@
 		volumeSnapshotsEnabled = true,
 		onCloseTransfer,
 		onTransferred,
+		onTransferChanged,
 		onCloseExtend,
 		onExtendSuccess,
 		onCloseBackup,
@@ -30,6 +32,7 @@
 		transferVolumeId: string;
 		transferVolumeName: string;
 		showTransfer: boolean;
+		transferMode?: 'create' | 'receive' | 'list';
 		extendTarget: Volume | null;
 		projectId: string | undefined;
 		backupTarget: Volume | null;
@@ -38,6 +41,7 @@
 		volumeSnapshotsEnabled?: boolean;
 		onCloseTransfer: () => void;
 		onTransferred: () => void;
+		onTransferChanged?: () => void;
 		onCloseExtend: () => void;
 		onExtendSuccess: () => void;
 		onBackupSuccess?: () => void;
@@ -53,6 +57,8 @@
 	<VolumeTransferModal
 		volumeId={transferVolumeId}
 		volumeName={transferVolumeName}
+		initialMode={transferMode}
+		onChanged={onTransferChanged}
 		onClose={onCloseTransfer}
 		onTransferred={onTransferred}
 	/>

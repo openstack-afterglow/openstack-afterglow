@@ -47,6 +47,8 @@ def deletion(monkeypatch):
         env.native_events.append("delete")
         env.deleted = True
 
+    # These servers have Manila grants but no block-consumer binding; ledger safety is covered separately.
+    monkeypatch.setattr("app.services.layer_consume_resources.lookup_for_server", AsyncMock(return_value=[]))
     monkeypatch.setattr("app.api.compute.instances.nova.get_server", lambda *_: server)
     monkeypatch.setattr("app.api.compute.instances.nova.delete_server", delete)
     monkeypatch.setattr("app.api.compute.instances.manila.get_file_storage", lambda *_: share)

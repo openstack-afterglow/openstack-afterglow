@@ -62,9 +62,8 @@
 	const selected = $derived(workspaces.find((w) => w.id === selectedId) ?? null);
 
 	$effect(() => {
-		if (initialWorkspaceId === null) return;
 		selectedId = initialWorkspaceId;
-		mode = 'detail';
+		mode = initialWorkspaceId === null ? 'grid' : 'detail';
 	});
 	const canSubmit = $derived($serviceCapabilities('lumen-chat_user') && form.name.trim().length > 0 && !saving);
 
@@ -400,6 +399,11 @@
 		text-align: left;
 		cursor: pointer;
 		transition: border-color 0.15s, background 0.15s;
+	}
+	:global(:root.light) .card,
+	:global(:root.light) .search,
+	:global(:root.light) .conv-row {
+		border-color: var(--color-line-2);
 	}
 	.card:hover {
 		border-color: var(--color-line-2);

@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/volume';
-	import { t as tc } from '$lib/i18n/ns/common';
 	import type { Volume } from '$lib/types/volume';
 	import { formatStorage } from '$lib/utils/format';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
@@ -12,8 +11,6 @@
 		volumes,
 		selectedVolumeId,
 		deleting,
-		autoBackupConfigs,
-		autoBackupToggling,
 		openActionMenu,
 		selectedIds,
 		selectableIds,
@@ -33,13 +30,10 @@
 		onTransfer,
 		onForceDelete,
 		onDelete,
-		onToggleAutoBackup,
 	}: {
 		volumes: Volume[];
 		selectedVolumeId: string | null;
 		deleting: string | null;
-		autoBackupConfigs: Set<string>;
-		autoBackupToggling: string | null;
 		openActionMenu: string | null;
 		selectedIds: ReadonlySet<string>;
 		selectableIds: ReadonlySet<string>;
@@ -59,7 +53,6 @@
 		onTransfer: (id: string, name: string) => void;
 		onForceDelete: (id: string, name: string) => void;
 		onDelete: (id: string, name: string) => void;
-		onToggleAutoBackup: (id: string) => void;
 	} = $props();
 
 	const volumeGridClass = 'grid grid-cols-[32px_1fr_60px_0px_32px_0px_0px_0px_0px] sm:grid-cols-[32px_1.6fr_70px_90px_100px_0px_0px_0px_0px] lg:grid-cols-[32px_1.6fr_70px_90px_100px_1fr_80px_80px_56px]';
@@ -139,17 +132,14 @@
 					{/if}
 				{/if}
 			</div>
-			<!-- 자동 백업 토글 -->
-			<div class="hidden lg:flex flex-col items-center justify-center gap-1" onclick={(e) => e.stopPropagation()} role="none">
-				<button
-					onclick={(e) => { e.stopPropagation(); onToggleAutoBackup(vol.id); }}
-					disabled={autoBackupToggling === vol.id}
-					title={autoBackupConfigs.has(vol.id) ? t('listTable.disableAutoBackup') : t('listTable.enableAutoBackup')}
-					class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out disabled:opacity-50 {autoBackupConfigs.has(vol.id) ? 'bg-action-warm' : 'bg-surface-selected'}"
+			<!-- 자동 백업 설정 -->
+			<div class="hidden lg:flex items-center justify-center">
+				<a
+					href={`/dashboard/volumes/backups?auto-backup=${encodeURIComponent(vol.id)}`}
+					class="w-full min-w-0 whitespace-normal break-words text-xs text-center text-warm-text hover:text-warm-text-hover transition-colors"
 				>
-					<span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-surface-base shadow ring-0 transition duration-200 ease-in-out {autoBackupConfigs.has(vol.id) ? 'translate-x-4' : 'translate-x-0'}"></span>
-				</button>
-				{#if autoBackupToggling === vol.id}<span class="inline-flex items-center gap-1 text-xs text-ink-2"><ActivityIndicator size="xs" tone="ink" />{tc('state.processing')}</span>{/if}
+					{t('autoPolicy.settings')}
+				</a>
 			</div>
 			<!-- 액션 드롭다운 -->
 			<div class="flex justify-end" role="none">

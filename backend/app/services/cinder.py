@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
+from copy import copy
+from functools import partial
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -9,6 +11,7 @@ if TYPE_CHECKING:
 
 from openstack.compute.v2.server import Server
 from openstack.exceptions import ResourceNotFound
+from openstack.proxy import Proxy
 from openstack.resource import Resource
 
 from app.models.storage import VolumeInfo
@@ -66,6 +69,21 @@ def rename_volume(conn: openstack.connection.Connection, volume_id: str, new_nam
 
 def delete_volume(conn: openstack.connection.Connection, volume_id: str) -> None:
     conn.block_storage.delete_volume(volume_id, ignore_missing=True)
+
+
+def set_volume_readonly(conn, volume_id: str) -> dict:
+    """Use Cinder's action, never ordinary user-writable metadata as proof."""
+    response = conn.block_storage.post(
+        f"/volumes/{volume_id}/action", json={"os-update_readonly_flag": {"readonly": True}}
+    )
+    response.raise_for_status()
+    return get_volume_details(conn, volume_id)
+
+
+def get_volume_details(conn, volume_id: str) -> dict:
+    response = conn.block_storage.get(f"/volumes/{volume_id}")
+    response.raise_for_status()
+    return response.json()["volume"]
 
 
 def reset_volume_status(
@@ -401,7 +419,13 @@ def create_backup(
     kwargs: dict = {"volume_id": volume_id, "name": name, "is_incremental": incremental, "force": force}
     if description:
         kwargs["description"] = description
-    b = conn.block_storage.create_backup(**kwargs)
+    adapter = conn.block_storage
+    if isinstance(adapter, Proxy):
+        # A lost reply may already have created a backup. Scope the SDK's
+        # transport/status retry override to this POST, not the caller session.
+        adapter = copy(adapter)
+        adapter.request = partial(adapter.request, connect_retries=0, status_code_retries=0)
+    b = adapter.create_backup(**kwargs)
     return _backup_to_dict(b)
 
 
@@ -477,7 +501,9 @@ def _backup_to_dict(b) -> dict:
         "status": b.status,
         "volume_id": b.volume_id,
         "size": b.size,
-        "is_incremental": getattr(b, "is_incremental", False),
+        "project_id": getattr(b, "project_id", None),
+        "has_dependent_backups": getattr(b, "has_dependent_backups", None),
+        "is_incremental": getattr(b, "is_incremental", None),
         "description": b.description or "",
         "created_at": str(b.created_at) if getattr(b, "created_at", None) else None,
     }
@@ -494,27 +520,31 @@ def wait_volume_available(
     return _vol_to_info(vol)
 
 
+def _transfer_result(transfer, *, created: bool = False, detail: bool = False) -> dict:
+    result = {
+        "id": transfer.id,
+        "name": transfer.name or "",
+        "volume_id": transfer.volume_id,
+    }
+    if detail or created:
+        result["created_at"] = transfer.created_at
+    if created:
+        result["auth_key"] = transfer.auth_key
+    return result
+
+
 def create_volume_transfer(
     conn: openstack.connection.Connection,
     volume_id: str,
     name: str | None = None,
 ) -> dict:
-    """볼륨 이전(transfer) 생성. auth_key를 반환 — 수락 측에 전달 필요."""
-    body: dict = {"volume_id": volume_id}
+    """Issue the native key once; never retry an ambiguous POST."""
+    proxy = copy(conn.block_storage)
+    proxy.request = partial(proxy.request, connect_retries=0, status_code_retries=0)
+    attrs = {"volume_id": volume_id}
     if name:
-        body["name"] = name
-    result = conn.block_storage.post(
-        "/os-volume-transfer",
-        json={"transfer": body},
-    )
-    transfer = result.json().get("transfer", result.json())
-    return {
-        "id": transfer.get("id"),
-        "name": transfer.get("name") or "",
-        "volume_id": transfer.get("volume_id"),
-        "auth_key": transfer.get("auth_key"),
-        "created_at": transfer.get("created_at"),
-    }
+        attrs["name"] = name
+    return _transfer_result(proxy.create_transfer(**attrs), created=True)
 
 
 def accept_volume_transfer(
@@ -522,37 +552,22 @@ def accept_volume_transfer(
     transfer_id: str,
     auth_key: str,
 ) -> dict:
-    """볼륨 이전 수락."""
-    result = conn.block_storage.post(
-        f"/os-volume-transfer/{transfer_id}/accept",
-        json={"accept": {"auth_key": auth_key}},
-    )
-    transfer = result.json().get("transfer", result.json())
-    return {
-        "id": transfer.get("id"),
-        "name": transfer.get("name") or "",
-        "volume_id": transfer.get("volume_id"),
-    }
+    """Let native Cinder authenticate the key, without POST retries."""
+    proxy = copy(conn.block_storage)
+    proxy.request = partial(proxy.request, connect_retries=0, status_code_retries=0)
+    return _transfer_result(proxy.accept_transfer(transfer_id, auth_key))
 
 
 def list_volume_transfers(conn: openstack.connection.Connection) -> list[dict]:
-    """볼륨 이전 목록 조회."""
-    result = conn.block_storage.get("/os-volume-transfer/detail")
-    transfers = result.json().get("transfers", [])
+    """Only the caller token's project, including for administrator tokens."""
     return [
-        {
-            "id": t.get("id"),
-            "name": t.get("name") or "",
-            "volume_id": t.get("volume_id"),
-            "created_at": t.get("created_at"),
-        }
-        for t in transfers
+        _transfer_result(transfer, detail=True)
+        for transfer in conn.block_storage.transfers(details=True, all_projects=False)
     ]
 
 
 def delete_volume_transfer(conn: openstack.connection.Connection, transfer_id: str) -> None:
-    """볼륨 이전 취소."""
-    conn.block_storage.delete(f"/os-volume-transfer/{transfer_id}", ignore_missing=True)
+    conn.block_storage.delete_transfer(transfer_id, ignore_missing=False)
 
 
 def _vol_to_info(vol) -> VolumeInfo:

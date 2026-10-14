@@ -16,43 +16,6 @@ _logger = logging.getLogger(__name__)
 MOUNT_POINT = "/mnt/lib-output"
 
 
-async def create_builder_share(
-    svc_conn,
-    *,
-    name: str,
-    size_gb: int,
-    share_proto: str,
-    share_type: str,
-    share_network_id: str = "",
-    metadata: dict | None = None,
-) -> str:
-    """Create a builder share from an already validated resource snapshot.
-
-    CephFS callers pass an empty ``share_network_id`` for the non-DHSS service
-    backend. NFS callers pass the service share network selected by policy.
-    """
-    proto_upper = share_proto.upper()
-    if proto_upper not in {"NFS", "CEPHFS"}:
-        raise ValueError(f"unsupported builder share protocol: {share_proto!r}")
-
-    base_metadata: dict = {"union_type": "ephemeral-build", "union_status": "building"}
-    if metadata:
-        base_metadata.update(metadata)
-
-    storage = await asyncio.to_thread(
-        manila.create_file_storage,
-        svc_conn,
-        name=name,
-        size_gb=size_gb,
-        share_network_id=share_network_id,
-        share_type=share_type,
-        share_proto=proto_upper,
-        metadata=base_metadata,
-    )
-    _logger.info("[ephemeral_mount] share 생성 완료: %s (%s, %dGB)", storage.id, proto_upper, size_gb)
-    return storage.id
-
-
 async def add_vm_access_rule(
     svc_conn,
     share_id: str,

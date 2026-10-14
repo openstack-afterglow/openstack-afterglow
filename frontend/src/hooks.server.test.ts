@@ -49,6 +49,8 @@ function createRequest(url: string, initialCookies: CookieJar = {}, routeId: str
 	};
 	const event = {
 		url: new URL(url),
+		request: new Request(url),
+		getClientAddress: vi.fn(() => '192.0.2.10'),
 		locals: {},
 		cookies,
 		route: { id: routeId },
@@ -57,8 +59,11 @@ function createRequest(url: string, initialCookies: CookieJar = {}, routeId: str
 	return { cookies, event, resolve, jar };
 }
 
-async function loadHandle() {
+async function loadHandle(reporting = false) {
 	vi.resetModules();
+	vi.stubEnv('TRAFFIC_ANALYTICS_INGEST_URL', reporting ? 'http://backend:8000/api/v1/monitoring/traffic/events' : '');
+	vi.stubEnv('TRAFFIC_ANALYTICS_INGEST_KEY', reporting ? 'k'.repeat(32) : '');
+	vi.stubEnv('TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS', 'false');
 	vi.doMock('$lib/server/config', () => ({
 		loadPublicSiteConfig: () => baseConfig,
 	}));
@@ -69,6 +74,8 @@ async function loadHandle() {
 afterEach(() => {
 	vi.resetModules();
 	vi.doUnmock('$lib/server/config');
+	vi.unstubAllEnvs();
+	vi.unstubAllGlobals();
 });
 
 describe('frontend health', () => {
@@ -391,5 +398,47 @@ describe('generated CSP preservation', () => {
 		expect(response.headers.get('Content-Security-Policy')).toContain("'nonce-shell-nonce'");
 		expect(response.headers.get('Content-Security-Policy')).not.toContain('original-404');
 		expect(await response.text()).toContain('nonce="shell-nonce"');
+	});
+});
+
+describe('traffic reporter hook integration', () => {
+	it('observes early login redirects without changing authentication behavior or trusting forwarded addresses', async () => {
+		const send = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
+		vi.stubGlobal('fetch', send);
+		const { handle } = await loadHandle(true);
+		const { event, resolve } = createRequest('http://frontend.example.com/admin/instances/private?secret=value', {}, '/admin/instances/[id]');
+		const response = await handle({ event, resolve });
+		expect(response.status).toBe(302); expect(response.headers.get('location')).toBe('/login'); expect(resolve).not.toHaveBeenCalled();
+		expect(event.getClientAddress).not.toHaveBeenCalled(); expect(send).toHaveBeenCalledTimes(1);
+		const payload = JSON.parse(send.mock.calls[0][1]!.body as string);
+		expect(payload).toMatchObject({ status: 302, route: '/admin', client_ip: null, request_bytes: null, response_bytes: 0, pageview: false });
+		expect(JSON.stringify(payload)).not.toMatch(/private|secret|cookie/);
+	});
+	it('passes through rendered HTML bytes and generated CSP before nonblocking ingest', async () => {
+		const send = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
+		vi.stubGlobal('fetch', send);
+		const { handle } = await loadHandle(true);
+		const { event } = createRequest('http://frontend.example.com/login', {}, '/login');
+		const response = await handle({ event, resolve: async () => new Response('한글', { headers: {
+			'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "script-src 'self' 'nonce-original'",
+		} }) });
+		expect(send).not.toHaveBeenCalled(); expect(response.headers.get('Content-Security-Policy')).toContain("'nonce-original'");
+		expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff'); expect(await response.text()).toBe('한글');
+		expect(JSON.parse(send.mock.calls[0][1]!.body as string)).toMatchObject({ route: '/login', status: 200, response_bytes: 6, pageview: true });
+	});
+});
+
+describe('traffic reporter disabled', () => {
+	it('passes the unchanged unauthenticated redirect and security headers without any transport', async () => {
+		const send = vi.fn<typeof fetch>();
+		vi.stubGlobal('fetch', send);
+		const { handle } = await loadHandle(false);
+		const unauthenticated = createRequest('http://frontend.example.com/dashboard');
+		const redirected = await handle({ event: unauthenticated.event, resolve: unauthenticated.resolve });
+		expect(redirected.status).toBe(302); expect(redirected.headers.get('location')).toBe('/login');
+		const publicRequest = createRequest('http://frontend.example.com/login');
+		const response = await handle({ event: publicRequest.event, resolve: publicRequest.resolve });
+		expect(response.headers.get('X-Frame-Options')).toBe('DENY'); expect(await response.text()).toBe('ok');
+		expect(send).not.toHaveBeenCalled(); expect(publicRequest.event.getClientAddress).not.toHaveBeenCalled();
 	});
 });

@@ -546,7 +546,7 @@ Retrieves the build list (max 50)/detail. The detail includes the live VM status
 
 ### POST /api/v1/admin/libraries/builds/{build_id}/cancel
 
-Cancels an in-progress build.
+Cancels an in-progress build. The SQL status becomes `cancelled` immediately, fencing the executing owner's next mutation, while `completed_at` stays empty. The assigned build worker removes the exact journaled transient resources (including a late-accepted CREATE) without submitting a new CREATE, then records `completed_at`. A `200` response therefore does not mean cleanup has finished.
 
 **Response (200 OK)**: cancellation result · **Errors**: `404` (build does not exist), `409` (cannot cancel, e.g., terminal state)
 

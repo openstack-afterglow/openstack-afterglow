@@ -216,7 +216,7 @@ def test_restricted_credential_creation_uses_exact_scoped_connection(monkeypatch
             assert parsed.astimezone(UTC) == deadline
             assert timestamp.endswith("Z")
         assert credential["unrestricted"] is False
-        assert credential["roles"] == [{"name": "member"}]
+        assert "roles" not in credential
         assert request.method == "POST"
         assert request.url == "https://keystone.example.test/v3/users/user-a/application_credentials"
         response = requests.Response()
@@ -224,7 +224,15 @@ def test_restricted_credential_creation_uses_exact_scoped_connection(monkeypatch
         response.request = request
         response.headers["Content-Type"] = "application/json"
         response._content = json.dumps(
-            {"application_credential": {**credential, "id": "credential-id", "secret": "credential-secret"}}
+            {
+                "application_credential": {
+                    **credential,
+                    "id": "credential-id",
+                    "secret": "credential-secret",
+                    "roles": [{"id": "member-role-id", "name": "member"}],
+                    "project_id": "project-a",
+                }
+            }
         ).encode()
         return response
 
@@ -244,12 +252,17 @@ def test_restricted_credential_creation_uses_exact_scoped_connection(monkeypatch
             owner_project_id="project-a",
             upstream_name="afterglow-mcp-grant-a",
             expires_at=deadline if supplied is None else supplied,
-            roles=[{"name": "member"}],
+            roles=[{"id": "member-role-id", "name": "member"}],
         )
     finally:
         conn.close()
 
-    assert created == {"id": "credential-id", "secret": "credential-secret"}
+    assert created == {
+        "id": "credential-id",
+        "secret": "credential-secret",
+        "roles": [{"id": "member-role-id", "name": "member"}],
+        "project_id": "project-a",
+    }
     assert len(sent) == 1
 
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import { Alert, Button, Card, Pill } from '$lib/components/ui';
+	import BklitChart from '$lib/components/charts/BklitChart.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import {
 		flavorCreateBlock,
@@ -405,8 +406,18 @@
 	{@const usedPercent = quotaPercent(used, limit)}
 	{@const deltaPercent = Math.min(100 - usedPercent, quotaPercent(requested, limit))}
 	<div class="quota-track relative mt-auto h-[5px] rounded-full bg-surface-sunken overflow-hidden">
-		<div class="quota-used absolute left-0 top-0 h-full bg-accent" style="width:{usedPercent}%"></div>
-		<div class="quota-delta absolute top-0 h-full {critical ? 'bg-state-danger' : 'bg-action-warm'}" style="left:{usedPercent}%; width:{deltaPercent}%"></div>
+		<BklitChart
+			spec={{
+				kind: 'bar', orientation: 'horizontal', stacked: true, compact: true, tooltips: false,
+				data: [{ category: '', used: usedPercent, requested: deltaPercent }], xKey: 'category', domain: [0, 100],
+				series: [
+					{ key: 'used', label: '', color: 'var(--color-accent)' },
+					{ key: 'requested', label: '', color: critical ? 'var(--color-state-danger)' : 'var(--color-action-warm)' },
+				],
+			}}
+			height={5} decorative
+		/>
+
 	</div>
 {/snippet}
 

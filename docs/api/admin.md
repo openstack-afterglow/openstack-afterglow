@@ -32,6 +32,155 @@ nav_order: 20
 
 ---
 
+## 관리자 자격 증명
+
+UI: [애플리케이션 자격 증명](/admin/application-credentials), [사용자 자격 증명](/admin/user-credentials).
+두 API는 `require_admin` 확인 뒤 **요청자의 인증 토큰으로 만든 `get_os_conn`**에서 Keystone native API를 호출합니다. 서비스 계정으로 재인증하거나 관리자 화면이라는 이유로 Keystone 정책을 우회하지 않습니다. 아래 기능의 실제 조회·변경 범위는 요청 토큰과 Keystone 정책에 따르며, 문서 상단의 시스템 관리자 접근 요건이 곧 시스템 스코프 SDK 토큰을 뜻하지는 않습니다.
+
+### 애플리케이션 자격 증명 (`application-credentials`)
+
+| 메서드 | 경로 | 입력·응답 |
+|---|---|---|
+| `GET` | `/api/v1/admin/application-credentials` | 선택 query `user_id`; 생략하면 현재 사용자. `{items: [...]}` |
+| `GET` | `/api/v1/admin/application-credentials/context` | 현재 인증 사용자·프로젝트·토큰 역할의 `{user_id, project_id, roles:[{id,name}]}` |
+| `GET` | `/api/v1/admin/application-credentials/{credential_id}` | 선택 query `user_id`; 생략하면 현재 사용자. metadata 단건 |
+| `POST` | `/api/v1/admin/application-credentials` | `{name, description?, role_ids, expires_at?}` → `201`, metadata와 **1회 표시용 `secret`** |
+| `DELETE` | `/api/v1/admin/application-credentials/{credential_id}` | 선택 query `user_id`; 생략하면 현재 사용자. `204` |
+
+Metadata는 `id`, `user_id`, `name`, `description`, `project_id`, `expires_at`, `unrestricted`, `roles:[{id,name}]`만 반환합니다. 목록·상세에는 `secret`이 없으며 생성 응답의 secret을 이후 다시 조회할 수 없습니다. Native 계약에 수정/PATCH는 없습니다. 목록은 별도의 `limit`/`marker` 응답 계약이 아닌 SDK iterator의 결과입니다.
+
+생성은 **현재 사용자와 현재 실제 인증 프로젝트에서만** 가능합니다. 논리적 `X-Project-Id`와 `connection_project_id`가 다르거나 SDK access의 사용자·프로젝트가 일치하지 않으면 거부합니다. 본문의 `user_id`, `project_id`, `unrestricted`, `secret` 등 미정의 필드는 허용하지 않습니다. `role_ids`는 현재 토큰 역할 ID의 부분집합이어야 하며 비어 있을 수 없습니다. Keystone에는 역할 ID와 `unrestricted=false`를 보내고 프로젝트는 토큰에서 결정하게 합니다. 다른 사용자 조회·삭제가 Keystone 정책상 허용되더라도 그 사용자를 대신한 생성 권한은 부여하지 않습니다.
+
+- `name`: 1–255자, `description`: 기본 빈 문자열·최대 4096자, `role_ids`: 1–128개.
+- 경로/query/역할 ID: 1–128자, 영문·숫자·`_`·`.`·`-`만 허용합니다.
+- `expires_at`: 생략/null 또는 **미래의 timezone-aware 시각**. 요청은 UTC `Z`로 전달합니다. 필수 만료나 별도의 최대 유효기간을 강제하지는 않습니다.
+- 생성 결과의 프로젝트·정확한 역할 ID 집합·restricted 상태·ID·비어 있지 않은 secret을 확인합니다. 만료를 요청했으면 반환 만료도 해석 가능하고 요청보다 늦지 않아야 합니다. 불일치하면 반환된 native ID가 있는 경우 그 ID로 revoke를 시도하고 secret을 공개하지 않습니다. Revoke 자체의 실패는 native 오류로 반환될 수 있으므로 롤백 완료를 무조건 보장하지 않습니다.
+
+### 사용자 자격 증명 (`user-credentials`)
+
+| 메서드 | 경로 | 입력·응답 |
+|---|---|---|
+| `GET` | `/api/v1/admin/user-credentials` | 선택 query `user_id`로 native 필터; 생략하면 native 정책이 허용하는 목록. `{items: [...]}` |
+| `GET` | `/api/v1/admin/user-credentials/{credential_id}` | 기본 metadata만 반환. 명시적 `sensitive=true`일 때만 `blob` 추가 |
+| `POST` | `/api/v1/admin/user-credentials` | `{user_id, project_id?, type, blob}` → `201`, metadata |
+| `PATCH` | `/api/v1/admin/user-credentials/{credential_id}` | `user_id`, `project_id`, `type`, `blob` 부분 갱신 → metadata |
+| `DELETE` | `/api/v1/admin/user-credentials/{credential_id}` | `204` |
+
+Metadata는 `{id, user_id, project_id, type}`만 포함합니다. **목록뿐 아니라 생성·수정 응답에서도 blob을 생략**합니다. 이는 기존 Keystone credential 관리이며 새로운 EC2 키 자동 발급 API가 아닙니다. `type`은 1–255자, `blob`은 1–65536자의 문자열입니다. 생성에서 `type="ec2"`이면 `project_id`와 JSON으로 파싱 가능한 blob 문자열이 필요합니다. 임의 EC2 access/secret 구조까지 검증하거나 보완하지 않습니다. PATCH는 각 필드가 독립적으로 선택 사항이며 생략/null은 native 요청에서 제외합니다. 실제 변경 필드가 없으면 `422`; null로 값을 지우는 계약은 아닙니다. Create/PATCH의 미정의 필드는 거부합니다.
+
+모든 자격 증명 route의 정상 응답과 route가 처리하는 검증/HTTP 오류에는 `Cache-Control: no-store, private`, `Pragma: no-cache`를 붙입니다. Blob/secret을 URL·로그·활동 기록·브라우저 영속 저장소에 복사하지 마세요. 공개 native 오류는 원본 Keystone 본문을 노출하지 않는 다음 `detail` 코드입니다.
+
+| HTTP | `detail` | 의미 |
+|---|---|---|
+| `422` | `credential_invalid_input` | 입력 검증 또는 빈 PATCH; 민감 입력을 검증 응답에 되비추지 않음 |
+| `403` | `credential_scope_denied` | 생성 사용자·프로젝트·역할·반환 범위 검증 실패 |
+| `403` | `credential_native_denied` | Native 401/403 또는 권한 거부 |
+| `404` | `credential_not_found` | Native 대상 부재 |
+| `409` | `credential_conflict` | Native 충돌 |
+| `400` / `422` | `credential_native_invalid` | Native 입력 거부 |
+| `503` | `credential_unavailable` | 그 밖의 native 장애 |
+
+인증·관리자 의존성 및 SDK connection 생성 실패는 각 의존성의 기존 오류 계약을 사용합니다.
+
+---
+
+## 호스트 건강 관측 (`host-health`)
+
+UI: [하이퍼바이저](/admin/hypervisors). `GET /api/v1/admin/host-health`는 관리자 전용이며 `Cache-Control: no-store`로 **공유 Redis snapshot만 읽습니다**. 브라우저 요청이 새 probe나 Nova 조회를 시작하지 않습니다.
+
+응답은 `{enabled, interval_seconds:10, collected_at, stale, error, hosts}`입니다. 호스트에는 `id`, `name`, `role`(`compute/controller/storage`), `address`, `reachability`, `heartbeat`, `metrics`, `metrics_error`, `interfaces`, `interfaces_omitted`가 있습니다. `reachability`는 `{status, checked_at, latency_ms, error}`, `heartbeat`는 `{status, updated_at, source}`이며 각각 `up/down/unknown`입니다.
+
+애플리케이션 주 프로세스의 lifespan에서 독립 collector를 시작합니다. 여러 backend 프로세스 중 cloud별 Redis **30초 lease** 소유자만 수집하고 5초마다 갱신합니다. 소유자 fence 아래 snapshot·counter baseline·history를 함께 게시하며 Redis/lease 상실 시 수집을 중단합니다. Nova discovery와 exporter 수집은 분리되어 느린 Nova 조회가 exporter cycle을 막지 않습니다. nominal 10초 간격, cycle 중복·밀린 slot 몰아 실행은 없습니다.
+
+Nova `nova-compute`와 hypervisor의 정확한 `host_ip`를 매핑하고, scheduler/conductor의 host DNS를 controller로 사용합니다. 설정 대상은 동일 role/name의 주소·포트를 override하며 storage 및 Nova에 없는 호스트를 추가할 수 있습니다. 최대 64호스트, 동시 8 probe, probe당 3초, exporter body 2 MiB·전체 sample 40000개 제한입니다. Bare DNS/IP만 받으며 DNS의 모든 응답을 안전성 검사하고 선택한 IP로 연결을 고정합니다. `GET http://<검증 IP>:<port>/metrics`만 사용하고 redirect·환경 proxy·인증·query·response 압축은 사용하지 않습니다.
+
+`metrics`의 `cpu`, `memory`, `disk`, `network_rx`, `network_tx`는 각각 `{value, unit, series:[{ts,value}]}`입니다.
+
+- CPU `%`: 연속 CPU counter 차이에서 idle+iowait를 제외한 비율. guest/guest_nice는 중복 합산하지 않습니다.
+- Memory `%`: `100 × (1 - MemAvailable / MemTotal)`.
+- Disk `%`: 지원하는 파일시스템의 **단일 writable `/`**에서 `100 × (1 - avail / size)`. 전체 디스크 합계·Ceph pool·인스턴스 할당률이 아닙니다.
+- Network `B/s`: loopback과 일반 virtual/stacked NIC를 제외한 RX/TX byte counter 차이 합계. VLAN·bridge·bond/team 등 중복 집계를 피하며 누락/불일치 counter를 0으로 메우지 않습니다.
+- `interfaces`: 최대 32개 NIC의 `name`, exporter label의 `mac`/`operstate`, `addresses`, RX/TX byte·packet `*_total`, `*_per_second`. 주소는 `node_exporter --collector.netdev.address-info`가 제공할 때만 있으며 미수집은 `null`입니다. 이는 LLDP나 케이블 연결 증거가 아닙니다.
+
+첫 표본·counter reset·NIC/CPU membership 변경·유효하지 않은 counter·30초 초과 gap은 해당 **차분 rate를 `null`**로 표시합니다. Memory/filesystem gauge는 유효한 첫 표본에서도 계산 가능합니다. Exporter 주소·포트·실제 pinned IP가 달라지면 이전 baseline/history와 연결하지 않습니다. 호스트별 각 metric history는 최근 600초·최대 60 points이며 Redis snapshot TTL은 1200초입니다. 누락 구간을 interpolation하거나 정상 0으로 표시하지 않습니다.
+
+30초보다 오래된 snapshot/probe는 현재 값과 NIC 관측을 비우고 exporter 상태를 `unknown`으로 바꾸며 과거 history는 과거 관측으로 남깁니다. Nova inventory 관측이 오래되면 heartbeat도 `unknown`입니다. `not_collected`, `redis_unavailable`, `snapshot_invalid`, `snapshot_stale`, `discovery_failed`, `target_limit` 등은 `error`로 표시하며 **빈 응답·null은 건강함의 증거가 아닙니다**. Exporter HTTP 200이어도 metrics parsing/완전성은 별도입니다. Nova heartbeat와 Afterglow→exporter reachability는 서로 다른 관측이며 실제 ping, host 간 통신, 데이터 plane 정상 또는 물리 장비 생존을 보장하지 않습니다.
+
+---
+
+## 인프라 토폴로지와 호스트 관측
+
+UI: [인프라 토폴로지](/admin/infrastructure-topology). 프로젝트 Neutron 지도 `/api/v1/admin/topology`와 다른 **호스트 inventory 및 수집된 네트워크 증거**입니다. 설치·허용 대상은 [배포 가이드](../deployment.md#관리자-호스트-관측과-트래픽-분석-운영)를 참조하세요.
+
+| 메서드 | 경로 | 권한·응답 |
+|---|---|---|
+| `GET` | `/api/v1/admin/infrastructure-topology` | `require_admin`; snapshot |
+| `POST` | `/api/v1/admin/infrastructure-topology/hosts/{host_id}/traces` | `require_admin`; `{target:"허용된 literal IP"}` → `202`, queued job |
+| `POST` | `/api/v1/monitoring/host-observations/{host_id}/reports` | 해당 호스트 전용 bearer; observation → `202`, `{accepted:true,captured_at}` |
+| `GET` | `/api/v1/monitoring/host-observations/{host_id}/jobs` | 해당 호스트 전용 bearer; `{job,peer_targets}`. 기본 `claim=true`; busy일 때 `?claim=false`로 peer admission만 갱신 |
+| `POST` | `/api/v1/monitoring/host-observations/{host_id}/jobs/{job_id}/result` | 해당 호스트 전용 bearer; trace result → `202`, `{accepted:true}` |
+
+이 route들의 정상 응답은 `Cache-Control: no-store`입니다. Observer API는 사용자 access JWT가 아니라 설정된 **호스트별 서로 다른 token**으로 인증합니다. 다른 host_id의 token은 `401 observer_unauthorized`; token은 administrator snapshot에 반환하지 않습니다. `host_id` 형식은 `compute|controller|storage` + `:` + 소문자 영문/숫자로 시작하는 `[a-z0-9_.-]` 이름(최대 253자)입니다. `job_id`는 UUID입니다. Observer body는 파싱 전에 **256 KiB**로 제한하며 초과는 `413 observation_payload_too_large`, identity 이외 encoding은 `415 content_encoding_not_supported`입니다.
+
+Snapshot은 `{enabled, error, inventory_error, interval_seconds:10, trace_targets, hosts}`이고 health inventory와 configured observers를 합쳐 최대 256호스트를 반환합니다. 호스트별 `observer_configured`, `observation_state`(`unmeasured/fresh/stale`), `observation`, `peer_probes`, `traces`를 추가합니다. Inventory 실패와 관측 store 실패를 구분하며 `topology_store_unavailable`/`topology_store_invalid`에서는 관측 부재를 정상 링크로 해석하지 않습니다.
+
+Observation은 `captured_at`, `boot_id`, `interfaces`, `interfaces_omitted`, `evidence_omitted`, `neighbors`, `routes`, `lldp`, `peer_probes`, `sources`입니다. `sources`의 addresses/neighbors/routes/lldp/counters/peer_probes는 `measured/unsupported/error`를 구분합니다. Interface는 `name`, `mac`, `operstate`, `addresses`, `ifindex`, RX/TX bytes·packets 누적 counter를 담고 서버가 `rates`와 `history:[{ts,rates}]`를 더합니다. 최대 interfaces 64개(주소 각 32개), neighbors 256개, routes 256개, LLDP 128개, peer probes 64개이며 모든 neighbor/route/LLDP는 보고된 interface를 참조해야 합니다. 잘린 inventory/evidence는 omitted 수로 명시합니다.
+
+- **물리 연결 증거는 LLDP의 local interface·remote chassis/port뿐**입니다. LLDP 부재가 케이블 부재라는 뜻은 아닙니다. ARP/NDP neighbor, route/gateway, IP 주소, Nova inventory, exporter reachability는 별도 종류의 증거이며 물리 링크로 합치지 않습니다.
+- NIC rate는 같은 boot_id·interface 이름·MAC·ifindex, 양쪽 measured counters, 5–30초 간격과 감소하지 않는 counter에서만 계산합니다. 첫 표본·재부팅·reset·gap에서는 해당 rate가 `null`. History는 최대 60표본이며 configured retention 밖의 점은 제외합니다. 30초 초과 관측은 `stale`, 현재 rate는 null이고 원본 누적값/과거 history는 과거 증거로 남습니다.
+- Peer probe는 운영자가 허용한 **source host→target host의 정확한 literal IP/port**로 TCP 연결만 시도합니다. `up`은 그 방향·포트의 연결 성공/latency, `down`은 refusal/timeout/unreachable, `unknown`은 source/local probe 실패·미측정·stale입니다. Payload·로그인·포트 scan은 없으며 역방향·다른 NIC·data plane 정상이나 물리 연결을 증명하지 않습니다.
+- Trace는 호스트에서 허용한 destination으로 나가는 **outbound traceroute**만입니다. DNS/CIDR·arbitrary target·역방향 trace는 없습니다. 서버 allowlist와 observer의 local `--trace-target`가 모두 필요합니다. `source_interface`/`next_hop`은 실제 `ip -j route get` 결과입니다. `*` hop은 `{ip:null,rtt_ms:null}`로 남기며 그 hop을 장애 위치로 단정하지 않습니다. Target IP가 출력에 보이는 것만으로 도달 성공이 아닙니다. Completed command의 annotation 없는 timed target reply가 있어야 `reached=true`; 서버도 complete result의 마지막 hop IP·RTT를 대조합니다. Failed command/`!H`·`!X`/untimed reply는 도달 성공으로 표시하지 않습니다.
+
+Reports는 현재 기준 30초 이내·미래 최대 5초의 timestamp만 허용하며 host별 최소 5초 간격입니다. Replay/out-of-order는 `409`, 빠른 보고는 `429 observation_rate_limited`; peer tuple과 timestamp/replay도 검증합니다. Job poll은 host별 최소 5초입니다. Trace는 host별 60초당 1회, 활성 queued/running job 1개만 허용합니다. Job은 90초 만료, 최대 16 hops·40초 command deadline, history 최대 20개입니다. `202 queued`는 접수이지 실행·완료·도달 성공이 아닙니다. 비활성은 `503 topology_disabled`, 미등록 observer는 `404 observer_not_configured`, target 거부는 `422 trace_target_not_allowed`, 활성 job 충돌은 `409 trace_already_active`, 제한은 `429 trace_rate_limited`, Redis 장애는 `503 topology_store_unavailable`입니다. 만료·재전송·회수된 target·시간 불일치 result는 거부하며 자동 재실행이나 우회 설치는 없습니다.
+
+---
+
+## 트래픽 분석
+
+UI: [트래픽 모니터링](/admin/monitoring/traffic).
+
+| 메서드 | 경로 | 입력·응답 |
+|---|---|---|
+| `GET` | `/api/v1/admin/monitoring/traffic` | `require_admin`; `range=24h\|7d\|30d`(기본 `24h`), `source=backend\|frontend`(기본 `backend`); no-store snapshot |
+| `POST` | `/api/v1/monitoring/traffic/events` | 별도 frontend writer bearer; 최대 **2 KiB**, event 시각 현재 ±120초; `{accepted:true}` |
+
+Writer는 사용자/관리자 로그인 token이 아닙니다. 비활성 ingest는 `404`, 잘못된 bearer는 `401`, body 초과는 `413`, 잘못된 schema/시각은 `422`, 집계 장애·capacity 초과는 `503`입니다. 인증 후 streaming body를 제한하며 validation 응답에 입력 IP/secret을 되비추지 않습니다. Event는 `{id:UUID, at, status, route, client_ip?, pageview?, request_bytes?, response_bytes?, latency_ms, reporter_dropped_events?}`입니다. `status` 100–599, route 최대 256자, IP literal 최대 64자, 각 byte count 0–2^40 또는 null, finite latency 0–86400000 ms, reporter drop 0–1000000; 미정의 필드는 거부합니다.
+
+Snapshot은 `state`, `source`, `range`, `retention_days`, `generated_at`, `coverage`, `totals`, `countries`, `routes`, `series`를 반환합니다. Source별로 Redis **UTC 시간 bucket**을 분리하여 합산하며 요청 기간과 retention 중 짧은 범위(최대 30일)만 조회합니다. 두 source를 합쳐 고유 사용자/요청 수라고 주장하지 않습니다. `series[].at`은 bucket 시작 epoch, `metrics:null`은 미관측 bucket입니다.
+
+`totals` 및 country/route/hour metrics에는 `requests`, `success`(2xx/3xx), `errors`(4xx/5xx), `status_1xx`–`status_5xx`, `pageviews`, `unlocated`, `request_bytes`, `response_bytes`, 각각의 `*_bytes_known`, `latency_ms_total`, `latency_ms_max`, `unique_visitors`, `visitor_identity_known`가 있습니다. Byte coverage가 없으면 합계도 null이고 일부만 알려졌다면 알려진 합계 및 known count를 함께 봅니다. 이는 transport header/TLS/관측 밖 압축을 포함하는 wire bandwidth가 아닙니다. Latency 평균은 total/requests로 해석할 수 있으며 p95 같은 percentile은 수집하지 않습니다.
+
+- 고유 방문자는 normalized IP의 keyed HMAC을 Redis HyperLogLog에 넣은 **추정치(표준 오차 약 0.81%)**입니다. 사람이 아니며 NAT/공유 IP는 과소, IP 변경은 과대 집계됩니다. 기간 total은 HLL union이며 country/route별 HLL은 없으므로 dimension의 `unique_visitors`는 null입니다. IP identity 미관측도 null로 표시합니다.
+- 국가 조회는 운영자 제공 offline `cidr,country` CSV의 longest-prefix match이며 runtime 외부 GeoIP 호출·download는 없습니다. 사설/예약/미등록 IP와 미설정/실패 geo는 `XX`(위치 미확인)입니다. `coverage.geo_source`는 `unconfigured/offline_cidr/unavailable`입니다.
+- `coverage.site_country`는 서비스 위치 설정 문자열 또는 미설정 `null`입니다. 지도에서는 **client 국가→서비스 위치의 논리적 access flow**에만 사용하며 실제 packet 경로·물리 링크·host trace를 뜻하지 않습니다. `XX`는 서비스 위치로 사용할 수 없습니다.
+- Backend는 이 앱의 HTTP ASGI 요청만 관측하고 traffic ingest/read·WebSocket·앱 밖 요청을 제외합니다. Frontend는 SvelteKit server 요청만 관측하며 성공한 HTML GET이 SSR pageview입니다. SPA client-only 이동, CDN/static bypass, edge traffic은 수집하지 않습니다. Frontend request bytes는 미수집이고 response는 실제 소비된 stream에서만 측정합니다.
+- Backend proxy header는 실제 settings의 `trusted_proxies`에 속하는 직접 peer에서만 신뢰합니다. Backend 환경 `TRUSTED_PROXIES`로 설정하며 현재 TOML loader는 예시의 `[app].trusted_proxies`를 매핑하지 않습니다. 현재 X-Forwarded-For 선택 규칙은 값 2개 이상이면 뒤에서 두 번째, 1개면 그 값이며 X-Real-IP는 fallback입니다. 해당 ingress가 이 규칙에 맞게 header를 정규화해야 합니다. Frontend IP는 서버 adapter trust opt-in이 없으면 null입니다.
+
+`state`는 `disabled/available/partial/unavailable`입니다. 빈 store는 정상 0이 아니라 `partial`, Redis 읽기 실패는 `unavailable`입니다. Known drops 또는 실패한 geo table도 partial이며 geo 미설정(`unconfigured`)은 그 자체로 장애를 뜻하지 않습니다. `coverage`에는 `description`, `unique_method`, `dropped_events`, `reporter_dropped_events`, `observed_since`, `last_observed_at`도 있습니다. Drop 수는 복구되어 다음 accepted event에 실린 관측과 현재 worker만 반영하며 종료된 worker·끊긴 reporter의 모든 손실을 복원하지 못합니다.
+
+원문 IP는 전송·메모리 내 국가/HMAC 계산에만 사용하고 장기 집계에 보관하지 않습니다. Cookie, user agent, body, token, 실제 URL/query/동적 path ID는 저장하지 않고 고정 route category만 남깁니다. 중복 방지용 event UUID는 제한된 Redis dedupe table에 TTL 300초로 잠시 남으며 집계의 사용자/request drilldown 기능이 아닙니다. 집계는 bucket 시작 기준 만료하고 늦은 event가 보존기간을 늘리지 않습니다. Reporter는 최대 16 inflight·2초 deadline, 집계 writer는 250 ms deadline으로 bounded이며 관측 실패가 원래 응답/예외를 바꾸지 않습니다. 설정과 secret 주입은 [운영 설정](../deployment.md#트래픽-분석-설정)을 따르세요.
+
+---
+
+## 사용자 로그인 모니터링
+
+UI: [로그인 모니터링](/admin/monitoring/logins).
+
+| 메서드 | 경로 | Query·응답 |
+|---|---|---|
+| `GET` | `/api/v1/admin/monitoring/logins/users` | `limit` 기본/최대 100·최소 1, `marker` 최대 128자; `{items:[{id,name}],next_marker}` |
+| `GET` | `/api/v1/admin/monitoring/logins/users/{user_id}` | user_id 1–64자, `window=24h\|7d\|30d` 기본 24h; 선택 사용자 history/session snapshot |
+
+두 endpoint는 `require_admin`, no-store와 caller-scoped SDK connection을 사용합니다. Directory는 Keystone native pagination으로 요청 page만 소비하며 꽉 찬 page는 마지막 ID를 next_marker로 반환합니다. 선택 사용자를 native 조회로 확인하고 `403 login_monitoring_native_denied`, `404 login_monitoring_user_not_found`, 그 밖의 native 장애 `503 login_monitoring_directory_unavailable`를 반환합니다.
+
+선택 사용자 응답은 `{user,window,as_of,from_at,observed_interval_seconds:300,history,sessions}`입니다. 두 데이터 원천은 **보존된 SQL ActivityLog**와 **현재 Redis session store**이며 Keystone 전체 로그인 감사·현재 온라인 상태를 대신하지 않습니다.
+
+- `history`: 해당 사용자·기간의 최근 활동 최대 100개 `events`와 Afterglow auth/login row 최대 10000개로 `timeline`(UTC 시간 bucket), `hour_distribution`(UTC 0–23시), `login_successes`, `recorded_login_failures`를 만듭니다. Event allowlist는 `at`, `project_id`, `resource_type`, `action`, `status`, `auth_method`(`password/federated/null`)입니다. 최근 event는 로그인뿐 아니라 사용자 활동도 포함합니다. State는 `ready/partial/unavailable`; login row가 10000개를 넘으면 partial입니다. DB 미사용/실패에서는 수치를 null로 표시합니다. 현재 password/OIDC hook은 성공만 기록하므로 항상 `failure_history="not_collected"`; recorded 실패 0은 실제 실패가 없었다는 증거가 아닙니다.
+- `sessions`: 정확한 user_id, blacklist, refresh 만료와 설정된 세션 timeout을 검사해 유효한 retained session만 반환합니다. 허용 필드는 `started_at`, `last_seen`, `expires_at`(refresh 만료와 session timeout 중 빠른 값), `refresh_expires_at`, `project_id`, `device_type`(`desktop/mobile/tablet/unknown/null`), `os`(`Windows/macOS/Linux/Android/iOS/null`), `auth_method`(`password/federated/null`), `observed_recently`입니다. JTI·token·fingerprint·IP·임의 session metadata는 제외합니다.
+- Session state는 `ready/partial/unknown/unavailable`입니다. Secondary index가 없으면 세션 0개를 증명하지 못하므로 unknown, Redis 실패는 unavailable, index/row 수 불일치·잘못된 소유권/필수 metadata는 partial이고 `valid_count`/`observed_recent_count`를 null로 둡니다. 최근 300초의 유효한 last_seen만 `observed_recently=true`; 유효 token·recent activity는 실제 사용자가 현재 온라인이라는 증거가 아닙니다. 이 API는 세션 갱신·차단·삭제나 로그인 수집을 추가하지 않습니다.
+
+---
+
 ## 이벤트 조사
 
 | 메서드 | 경로 | 설명 |

@@ -5,6 +5,8 @@ import logging as _logging
 from bisect import bisect_right
 from typing import TYPE_CHECKING, Any
 
+from openstack.exceptions import ResourceNotFound
+
 if TYPE_CHECKING:
     import openstack
 
@@ -623,12 +625,16 @@ def create_port(
     network_id: str,
     name: str,
     security_group_ids: list[str] | None = None,
+    *,
+    description: str | None = None,
 ) -> dict:
     """Neutron 포트를 생성하고 { id, fixed_ip } 를 반환한다.
 
     IP 예약 후 server에 attach 할 수 있어 Manila access rule에 고정 IP를 사전 등록할 때 사용.
     """
     kwargs: dict = {"network_id": network_id, "name": name}
+    if description is not None:
+        kwargs["description"] = description
     if security_group_ids:
         # Neutron 포트 API의 security_groups는 UUID 문자열 리스트를 요구한다.
         # dict({"id": ...}) 형식은 400 "is not a valid UUID"로 거부됨.
@@ -644,7 +650,7 @@ def delete_port(conn: openstack.connection.Connection, port_id: str) -> None:
     conn.network.delete_port(port_id, ignore_missing=True)
 
 
-def cleanup_instance_fips(conn: openstack.connection.Connection, instance_id: str) -> None:
+def cleanup_instance_fips(conn: openstack.connection.Connection, instance_id: str, *, strict: bool = False) -> None:
     """인스턴스 포트에 연결된 Floating IP만 해제하고 삭제한다.
 
     Neutron /v2.0/floatingips 는 device_id 필터를 지원하지 않으므로
@@ -654,21 +660,43 @@ def cleanup_instance_fips(conn: openstack.connection.Connection, instance_id: st
     try:
         ports = list(conn.network.ports(device_id=instance_id))
     except Exception:
+        if strict:
+            raise
         log.warning("cleanup_instance_fips: 포트 조회 실패 (instance=%s)", instance_id, exc_info=True)
         return
+    if strict:
+        ports = [p for p in ports if p.device_id == instance_id]
+        project_id = conn.session.get_project_id()
+        if not project_id or any(p.project_id != project_id for p in ports):
+            raise RuntimeError("floating IP port ownership differs from consumer")
     port_ids = {p.id for p in ports}
     if not port_ids:
         return
     try:
         fips = [f for f in conn.network.ips() if f.port_id in port_ids]
     except Exception:
+        if strict:
+            raise
         log.warning("cleanup_instance_fips: FIP 조회 실패 (instance=%s)", instance_id, exc_info=True)
         return
     for fip in fips:
         try:
+            if strict:
+                if fip.project_id != project_id:
+                    raise RuntimeError("foreign consumer floating IP")
+                # Keep the port binding discoverable if DELETE is rejected or
+                # its outcome is unknown; do not disassociate it first.
+                conn.network.delete_ip(fip.id, ignore_missing=True)
+                try:
+                    conn.network.get_ip(fip.id)
+                except ResourceNotFound:
+                    continue
+                raise RuntimeError("floating IP deletion not observed")
             conn.network.update_ip(fip.id, port_id=None)
             conn.network.delete_ip(fip.id, ignore_missing=True)
         except Exception:
+            if strict:
+                raise
             log.warning("cleanup_instance_fips: FIP %s 정리 실패", fip.id, exc_info=True)
 
 

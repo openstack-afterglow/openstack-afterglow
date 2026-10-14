@@ -23,6 +23,7 @@
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import { hasValidRemovalReview, isVerifiedRemoval } from '$lib/components/admin/hypervisors/removal';
 	import type { RemovalInspection, RemovalApproval, RemovalResult } from '$lib/components/admin/hypervisors/removal';
+	import HostHealthPanel from '$lib/components/admin/hypervisors/HostHealthPanel.svelte';
 
 	let hypervisors = $state<HypervisorRow[]>([]);
 	let gpuHostMap = $state<Map<string, AggregatedHost>>(new Map());
@@ -432,6 +433,7 @@
 				onSelect={(id) => { if (!actionPending) void loadDetail(id); }}
 			/>
 	{/if}
+	<HostHealthPanel />
 </div>
 
 {#if selectedId !== null}

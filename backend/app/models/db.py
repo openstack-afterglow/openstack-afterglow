@@ -266,6 +266,10 @@ class LayerConsume(Base):
     project_id: Mapped[str | None] = mapped_column(VARCHAR(64), nullable=True, index=True)
     artifact_ids: Mapped[list[int] | None] = mapped_column(JSON, nullable=True)
     resource_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    transport: Mapped[str] = mapped_column(VARCHAR(16), nullable=False, default="nfs", server_default="nfs")
+    run_id: Mapped[str | None] = mapped_column(CHAR(32), nullable=True)
+    resources: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    cleanup_state: Mapped[str | None] = mapped_column(VARCHAR(32), nullable=True)
     server_name: Mapped[str | None] = mapped_column(VARCHAR(128))
 
     # 상태: creating/active/error
@@ -316,6 +320,7 @@ class LayerArtifact(Base):
     base_image_visibility: Mapped[str | None] = mapped_column(VARCHAR(32), nullable=True)
     base_image_owner: Mapped[str | None] = mapped_column(VARCHAR(128), nullable=True)
     source_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    block_source: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     sqsh_filename: Mapped[str] = mapped_column(VARCHAR(256), nullable=False)
     # 이 레이어 전용 Manila NFS share ID (동적 생성, 봉인 후 RO)
     share_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)

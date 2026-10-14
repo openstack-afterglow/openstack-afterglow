@@ -1,4 +1,9 @@
 {
+	"items.infrastructureTopology": "Infrastructure topology",
+	"items.trafficAnalytics": "Traffic analytics",
+	"items.loginMonitoring": "Logins & sessions",
+	"items.applicationCredentials": "Application credentials",
+	"items.userCredentials": "User credentials",
 	"sections.dashboard": "Dashboard",
 	"sections.compute": "Compute",
 	"sections.volumes": "Volumes",

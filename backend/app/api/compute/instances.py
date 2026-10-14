@@ -1078,11 +1078,22 @@ async def delete_instance(
     except Exception:
         raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다")
     assert_instance_owner(server, conn, token_info)
+    from app.services.layer_consume_resources import cleanup, lookup_for_server
 
-    # Revoke only proven instance-managed grants before deleting their tracking.
-    for share_id, grant in _storage_grants(server).items():
-        if grant["m"]:
-            await _revoke_storage_grant(conn, instance_id, share_id, grant, token_info)
+    block_ids = await lookup_for_server(
+        instance_id, pid, require_block=(server.metadata or {}).get("layer_transport") == "block"
+    )
+
+    if not block_ids:
+        await _revoke_instance_storage_grants(conn, instance_id, server, token_info)
+    for consume_id in block_ids:
+        await cleanup(
+            conn,
+            consume_id,
+            project_id=pid,
+            revoke_grants=lambda current: _revoke_instance_storage_grants(conn, instance_id, current, token_info),
+        )
+    block_cleaned = bool(block_ids)
 
     upper_volume_id = server.union_upper_volume_id
     file_storage_ids = server.union_share_ids
@@ -1099,7 +1110,8 @@ async def delete_instance(
             logger.warning("헬스 토큰 폐기 실패 (instance=%s)", instance_id)
 
     # Nova 서버 삭제
-    await asyncio.to_thread(nova.delete_server, conn, instance_id)
+    if not block_cleaned:
+        await asyncio.to_thread(nova.delete_server, conn, instance_id)
     await invalidate(f"afterglow:nova:{pid}:instances")
     await invalidate(f"afterglow:nova:{pid}:instance:{instance_id}")
     await invalidate(f"afterglow:neutron:{pid}:port_mac_map")
@@ -1115,7 +1127,7 @@ async def delete_instance(
     )
 
     # Strategy B: 전용 파일 스토리지 삭제
-    if strategy == "dynamic":
+    if strategy == "dynamic" and not block_cleaned:
         for file_storage_id in file_storage_ids:
             if file_storage_id:
                 try:
@@ -1124,7 +1136,7 @@ async def delete_instance(
                     logger.warning(f"파일 스토리지 삭제 실패 {file_storage_id}: {ex}")
 
     # upper 볼륨 삭제
-    if upper_volume_id:
+    if upper_volume_id and not block_cleaned:
         try:
             await asyncio.to_thread(cinder.delete_volume, conn, upper_volume_id)
         except Exception as ex:
@@ -1132,7 +1144,7 @@ async def delete_instance(
 
     # Strategy A(prebuilt): CephX access rule 정리 (best-effort, svc_conn 사용)
     # NFS CIDR rule은 프로젝트 수준 grant이므로 VM 삭제 시 회수하지 않음 (관리자 수동 revoke).
-    if strategy != "dynamic":
+    if strategy != "dynamic" and not block_cleaned:
         try:
             svc_conn_del = await asyncio.to_thread(keystone.get_service_project_connection)
             instance_name = server.name
@@ -1155,7 +1167,8 @@ async def delete_instance(
 
     # Floating IP 정리 (해제 + 삭제)
     try:
-        await asyncio.to_thread(neutron.cleanup_instance_fips, conn, instance_id)
+        if not block_cleaned:
+            await asyncio.to_thread(neutron.cleanup_instance_fips, conn, instance_id)
     except Exception as ex:
         logger.warning(f"Floating IP 정리 실패: {ex}")
 
@@ -1547,9 +1560,21 @@ async def _bulk_delete_one(
     pid: str,
 ) -> None:
     """bulk-action DELETE용 인스턴스 삭제 (단건 delete_instance와 동일한 정리 수행)."""
-    for share_id, grant in _storage_grants(server).items():
-        if grant["m"]:
-            await _revoke_storage_grant(conn, instance_id, share_id, grant, token_info)
+    from app.services.layer_consume_resources import cleanup, lookup_for_server
+
+    block_ids = await lookup_for_server(
+        instance_id, pid, require_block=(server.metadata or {}).get("layer_transport") == "block"
+    )
+    if not block_ids:
+        await _revoke_instance_storage_grants(conn, instance_id, server, token_info)
+    for consume_id in block_ids:
+        await cleanup(
+            conn,
+            consume_id,
+            project_id=pid,
+            revoke_grants=lambda current: _revoke_instance_storage_grants(conn, instance_id, current, token_info),
+        )
+    block_cleaned = bool(block_ids)
 
     upper_volume_id = server.union_upper_volume_id
     file_storage_ids = server.union_share_ids
@@ -1564,7 +1589,8 @@ async def _bulk_delete_one(
         except Exception:
             pass
 
-    await asyncio.to_thread(nova.delete_server, conn, instance_id)
+    if not block_cleaned:
+        await asyncio.to_thread(nova.delete_server, conn, instance_id)
     await invalidate(f"afterglow:nova:{pid}:instances")
     await invalidate(f"afterglow:nova:{pid}:instance:{instance_id}")
     await invalidate(f"afterglow:neutron:{pid}:port_mac_map")
@@ -1580,7 +1606,7 @@ async def _bulk_delete_one(
     )
 
     # Strategy B: 전용 파일 스토리지 삭제 (best-effort)
-    if strategy == "dynamic":
+    if strategy == "dynamic" and not block_cleaned:
         for fsi in file_storage_ids:
             if fsi:
                 try:
@@ -1589,14 +1615,14 @@ async def _bulk_delete_one(
                     pass
 
     # upper 볼륨 삭제 (best-effort)
-    if upper_volume_id:
+    if upper_volume_id and not block_cleaned:
         try:
             await asyncio.to_thread(cinder.delete_volume, conn, upper_volume_id)
         except Exception:
             pass
 
     # Strategy A(prebuilt): CephX access rule 정리 (best-effort)
-    if strategy != "dynamic":
+    if strategy != "dynamic" and not block_cleaned:
         try:
             svc_conn = await asyncio.to_thread(keystone.get_service_project_connection)
             for fsi in file_storage_ids:
@@ -1616,7 +1642,8 @@ async def _bulk_delete_one(
 
     # Floating IP 정리 (best-effort)
     try:
-        await asyncio.to_thread(neutron.cleanup_instance_fips, conn, instance_id)
+        if not block_cleaned:
+            await asyncio.to_thread(neutron.cleanup_instance_fips, conn, instance_id)
     except Exception:
         pass
 
@@ -2068,18 +2095,17 @@ async def set_admin_password(
 # Manila access authorization only — no guest mounting or command execution.
 # ---------------------------------------------------------------------------
 
-_STORAGE_GRANT_PREFIX = "afterglow_share_grant_"
 _STORAGE_RULE_OWNER = "afterglow_instance_id"
 
 
 def _storage_grant_key(share_id: str) -> str:
-    return _STORAGE_GRANT_PREFIX + hashlib.sha256(share_id.encode()).hexdigest()
+    return manila.INSTANCE_STORAGE_GRANT_PREFIX + hashlib.sha256(share_id.encode()).hexdigest()
 
 
 def _storage_grants(server) -> dict[str, dict]:
     grants = {}
     for key, value in (server.metadata or {}).items():
-        if not key.startswith(_STORAGE_GRANT_PREFIX):
+        if not key.startswith(manila.INSTANCE_STORAGE_GRANT_PREFIX):
             continue
         try:
             grant = json.loads(value)
@@ -2364,6 +2390,12 @@ async def storage_connection_info(
     ):
         result["secret"] = {"type": "cephx_key", "value": rule["access_key"]}
     return result
+
+
+async def _revoke_instance_storage_grants(conn, instance_id: str, server, token_info: dict) -> None:
+    for share_id, grant in _storage_grants(server).items():
+        if grant["m"]:
+            await _revoke_storage_grant(conn, instance_id, share_id, grant, token_info)
 
 
 async def _revoke_storage_grant(conn, instance_id: str, share_id: str, grant: dict, token_info: dict) -> None:

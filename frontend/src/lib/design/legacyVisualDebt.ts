@@ -1337,10 +1337,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 19,
 		tokens: ["bg-blue-900/30","bg-gray-700","bg-gray-800","bg-gray-800/50","bg-gray-900","border-blue-500","border-gray-700","border-gray-800","text-gray-300","text-gray-400","text-gray-500","text-red-400"],
 	},
-	"frontend/src/lib/components/QuotaDonut.poc.svelte": {
-		count: 9,
-		tokens: ["#374151","#8893d4","#ef4444","#f59e0b","text-gray-300","text-gray-500"],
-	},
 	"frontend/src/lib/components/QuotaDonut.svelte": {
 		count: 16,
 		tokens: ["#374151","#8893d4","#b08cd6","#be185d","#dc2626","#ef4444","#f472b6","#f4976c","#f59e0b","text-gray-300","text-gray-500"],
@@ -1380,10 +1376,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 	"frontend/src/lib/components/SlidePanel.svelte": {
 		count: 4,
 		tokens: ["bg-gray-950","bg-indigo-500/40","bg-indigo-500/60","border-gray-700"],
-	},
-	"frontend/src/lib/components/TimeSeriesChart.poc.svelte": {
-		count: 30,
-		tokens: ["#34d399","#3b82f6","#4ade80","#60a5fa","#9ca3af","#c084fc","#f87171","#fbbf24","bg-blue-500","bg-blue-600","bg-gray-800","bg-gray-900","bg-green-900/30","bg-red-900/30","border-gray-700","border-gray-800","fill-blue-500","fill-gray-500","stroke-gray-600","text-blue-400","text-gray-300","text-gray-400","text-gray-500","text-gray-600","text-green-400","text-red-400"],
 	},
 	"frontend/src/lib/components/TimeSeriesChart.svelte": {
 		count: 27,

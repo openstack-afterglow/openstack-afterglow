@@ -696,7 +696,6 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		return ok204();
 	}
 	if (method === 'GET' && pathname === '/api/v1/volume-snapshots') return [];
-	if (method === 'POST' && pathname === '/api/v1/volumes/backups/auto-backup/configs') return [];
 
 	const imageId = pathname.match(/^\/api\/v1\/images\/([^/]+)$/)?.[1];
 	if (method === 'GET' && imageId) {

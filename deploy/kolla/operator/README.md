@@ -11,7 +11,7 @@ application.
 | `drover` | `drover` | `0.2.25` |
 | `lumen` | `lumen` | `0.3.1` |
 | `waygate` | `waygate` | `0.2.0` |
-| `palimpsest-client` | `palimpsest` | `0.2.3` |
+| `palimpsest-client` | `palimpsest` | `0.3.3` (PyPI) |
 
 Each root wheel owns its role files. No separate `*-kolla` distribution is
 installed, and installing one of these packages does not make its role a Kolla
@@ -23,11 +23,12 @@ The controller and every root package require Python 3.11 or newer.
 ## Source declaration and release-tag promotion
 
 `pyproject.toml` names the root distributions without `subdirectory` entries.
-Kolla-Ansible remains independently pinned to
-`34daacfbf2d5987f543787f57535b2bebe7dee19`. A promoted root package uses an
-explicit immutable Git `tag = "vX.Y.Z"`; `uv.lock` then records that tag's
-resolved commit. The lock—not a floating Git ref—is what every controller
-installs with `uv sync --locked`.
+Palimpsest uses exact `palimpsest-client==0.3.3` from PyPI, with distribution
+hashes in `uv.lock` and no Palimpsest Git source. GitHub access to Palimpsest is
+not required by normal role installation. Kolla-Ansible remains independently
+pinned to `34daacfbf2d5987f543787f57535b2bebe7dee19`. The other promoted root
+packages use immutable Git tags and resolved commits; every controller installs
+the reviewed lock with `uv sync --locked`.
 
 Root-role Git sources must never use a branch, a bare repository URL, or a
 mutable `latest` label. This package/lock policy is distinct from application
@@ -42,13 +43,13 @@ release is promotable only when all of these are true:
 4. The generated operator PR contains the matching `tag = "vX.Y.Z"` source,
    a refreshed `uv.lock`, and an architecture-review stamp.
 
-`.github/workflows/promote-kolla-role-tags.yml` polls the four sibling tag
-sets hourly and opens or updates a single `automation/kolla-role-tags` PR. It
-selects only the newest stable tag at or above the already locked version, so
-it never downgrades an operator or promotes a prerelease. The PR is a required
-human review boundary; merging it is what permits the tag to reach a Kolla
-environment. Trigger the workflow manually after a release when an immediate
-promotion is needed.
+`.github/workflows/promote-kolla-role-tags.yml` polls the three Git-sourced
+siblings (Drover, Lumen and Waygate) hourly and opens or updates a single
+`automation/kolla-role-tags` PR. Palimpsest is excluded: update its exact PyPI
+requirement and regenerate the lock only after verifying the published wheel
+and packaged role. The Git promoter selects the newest stable tag at or above
+the already locked version; it never downgrades or promotes prereleases. Human
+review and merge remain the boundary before any operator synchronization.
 
 The workflow opens and updates the PR with `GITHUB_TOKEN`, so GitHub starts no
 `pull_request` checks on it, including after its hourly force-push. While the
@@ -64,14 +65,14 @@ root:
 
 ```bash
 python3 scripts/promote_kolla_role_tags.py --latest
-python3 scripts/promote_kolla_role_tags.py --check  # after all roots use tags
+python3 scripts/promote_kolla_role_tags.py --check  # Git-sourced roots only
 ```
 
 ## Updating root source dependencies
 
-Normal service promotion is tag-driven. Run the repository-root promotion
+Git-sourced service promotion is tag-driven. Run the repository-root promotion
 command, review its manifest/lock diff, and merge its PR before synchronizing
-an operator:
+an operator. Palimpsest follows its separately reviewed exact PyPI requirement:
 
 ```bash
 python3 scripts/promote_kolla_role_tags.py --latest
@@ -85,9 +86,16 @@ directory:
 uv add --no-sync --tag vX.Y.Z "drover @ git+https://github.com/openstack-afterglow/drover.git"
 uv add --no-sync --tag vX.Y.Z "lumen @ git+https://github.com/openstack-afterglow/lumen.git"
 uv add --no-sync --tag vX.Y.Z "waygate @ git+https://github.com/openstack-afterglow/waygate.git"
-uv add --no-sync --tag vX.Y.Z "palimpsest-client @ git+https://github.com/openstack-afterglow/palimpsest.git"
 uv lock --refresh
 ```
+
+For Palimpsest, change only `palimpsest-client==0.3.3` to the reviewed published
+version, keep its `[tool.uv.sources]` entry absent, and run `uv lock` without a
+broad upgrade. Replacing an installed Git wheel with the same PyPI version needs
+`uv sync --locked --inexact --no-install-project --reinstall-package palimpsest-client`;
+a plain sync can only audit the old Git installation. Verify role bytes and
+unchanged unrelated dependency versions. Package installation does not deploy
+Hub images or change the storage/authentication prerequisites.
 
 ### Security floor updates
 
@@ -158,11 +166,12 @@ tagged reconfigure invokes native loadbalancer config/check tasks; enabled
 HAProxy, ProxySQL and Keepalived handlers can restart changed services.
 
 For explicitly authorized current-state recovery, preserve the actual installed
-Kolla commit and deployed image digests, review immutable root-role tags against
-those images, snapshot the venv/configuration, and verify a locked/inexact dry-run
-before syncing. If that operator has its own reviewed manifest/lock, pass
-`AFTERGLOW_OPERATOR_LOCK=/etc/kolla/uv.lock` to the existing installer rather than
-changing this repository's release-promotion pins or using a custom playbook.
+Kolla commit and deployed image digests, review exact root-role package pins
+(PyPI version/hashes for Palimpsest; immutable tags for the other roots), snapshot
+the venv/configuration, and verify a locked/inexact dry-run before syncing.
+If the operator has its own reviewed manifest/lock, pass
+`AFTERGLOW_OPERATOR_LOCK=/etc/kolla/uv.lock` to the existing installer rather
+than changing repository promotion pins or using a custom playbook.
 Keep fresh operator authentication, restorable datastore backups and full-stock
 storage/availability gates separate from operator-path preparation.
 
@@ -235,7 +244,7 @@ Remove old mutable or bare `*_image_ref` entries from globals and extra-vars,
 and use the service `*_image_tag` instead (for example,
 `-e afterglow_image_tag=latest`). Immutable `*_image_ref` pins remain supported.
 This does not change stock images, datastore pins, Cloud Shell's digest
-requirement, unmanaged Lumen sandbox images, root-role Git pins, human package
+requirement, unmanaged Lumen sandbox images, root-role package pins, human
 promotion, or the deployment guide's reviewed schema migration requirements.
 
 See [the deployment guide](../README.md) for inventory, configuration, legacy

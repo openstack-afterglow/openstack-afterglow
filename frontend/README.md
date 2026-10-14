@@ -66,6 +66,40 @@ Frontend visual changes must start from root `DESIGN.md`; reusable assets live i
 
 See [`../DESIGN.md`](../DESIGN.md).
 
+### Dashboard charts: Bklit UI
+
+All Afterglow-owned numerical visualizations use the actual [Bklit UI](https://github.com/bklit/bklit-ui) React registry components. SvelteKit remains the application framework. `src/lib/components/charts/BklitChart.svelte` owns the client-only lazy import, one React root per mounted plot, reactive data/locale updates, reduced-motion subscription, and teardown. Do not import React/vendor components from Svelte routes or create a second SVG/CSS chart implementation.
+
+| Surface | Shared composition / native Bklit renderer |
+| --- | --- |
+| Quotas, resource capacity, hypervisor/project usage, context inspector | `UsageBar`, `QuotaBar`, `CapacityBar`, `HypervisorUsageBar`, `ProjectQuotaPanel` → continuous linear `Gauge` |
+| Composer context, dashboard/resource overview rings | `UsageRing`, `Donut`, `QuotaDonut` → `RingChart` + `Ring` |
+| Dashboard/usage/report mini graphs and host telemetry | `Spark`, `StatTile` → native line/area or gauge |
+| Resource/admin time history, library/layer history | `TimeSeriesChart`, `LibraryUsageChart` → native time series with stable series IDs |
+| VM CPU/memory/network/disk/GPU charts | `MetricsPanel` → native line/area with independent sample timestamps |
+| Network lanes/detail, Waygate peer rates, infrastructure NIC history | `TrafficSparkline`, `TrafficArea`, `NetworkLane` → native time series |
+| Activity/hourly login distributions, user/admin chat statistics | `LoginCharts`, activity route, `ChatUsagePanel`, admin stats route → native bars/stacks |
+| Model/token shares, chat quota, storage-pool usage, file-storage capacity, flavor capacity preview | Native gauge or horizontal stacked bar; existing thresholds/units preserved |
+| Admin traffic trends and country map | `TrafficTrend` → `Spark`; `TrafficCountryMap` → native `ChoroplethChart`/`ChoroplethFeature`/`ChoroplethTooltip` |
+
+Editable network topology, role/dependency graphs, external Grafana embeds and their queries remain specialized. Their embedded numerical plots use Bklit. Task progress, status indicators, icons, QR codes, terminal output, public illustrations and user-authored Mermaid are not statistical charts. Country flow/site annotations remain a small domain overlay using Bklit's projection; they never replace the native geographic renderer or imply physical network routes.
+
+**Adding a visualization**
+
+1. Reuse a domain component above; otherwise pass a typed `ChartSpec` from `charts/types.ts` to `BklitChart`. The discriminants are `time-series`, `bar`, `ring`, `gauge`, and `choropleth`. Required `height` reserves layout before the client runtime loads; `width` is only for fixed-size compact plots.
+2. Time-series X values are epoch **milliseconds**. Convert seconds at the consumer boundary. Keep null/nonfinite/unobserved values unavailable, measured zero as zero, source timestamps independent via `ChartSeries.data`, exact percentage domains explicit, and byte/unit/timezone semantics unchanged. `data` supplies the union of timestamps for axes, tooltips and the accessible table. Do not manufacture aligned samples or interpolate missing buckets.
+3. Use existing chart/tone/surface CSS variables and current `intlLocale()` formatters. Full plots expose native tooltips plus a keyboard-accessible source-data disclosure. Compact/decorative plots require adjacent readable labels/values; meter wrappers own `role="meter"` and unlimited/over-limit semantics. Numeric labels fit the actual panel width; complete category text remains available in tooltip/table.
+4. Keep fetch, authorization, project/request-generation fences, loading/error/empty states, refresh and filters in the existing Svelte controller. The chart receives data, never credentials or a fetch callback. `showData={false}` requires an equivalent existing table; decorative plots must not introduce duplicate accessible graphics.
+5. Qualify actual compiled Chromium at mobile/tablet/desktop widths, all four locales and both themes. Check refresh, null gaps, zero/unlimited/over-limit, independent sample spacing, 18px rings/5px meters, tooltips, data-table keyboard access, geographic selection, unmount/remount and live reduced-motion changes. jsdom's zero-layout ResizeObserver shim is not visual evidence.
+
+For categorical timestamps, retain canonical bucket IDs in `data` and use `formatCategory(value, 'axis' | 'detail')` to abbreviate the axis only. Never use abbreviated dates as scale keys: distinct hours/days must remain separate bars. Qualification checks pairwise label collisions as well as plot/document overflow.
+
+**Upstream maintenance**
+
+`src/lib/vendor/bklit-ui/provenance.json` pins commit `f7b3bd2999a5c993863f9cc5523c9cf60b9f3bc2`, official immutable registry URLs, original hashes, import rewrites and local extensions. Keep its MIT `LICENSE`. This is source-distributed Bklit, not an unofficial Svelte imitation or a runtime CDN. Fetch the required registry roots and transitive registry dependencies at a reviewed commit, reapply only the documented extensions (exact domains, null gaps, independent sampling, compact geometry, localized axes, reduced motion, stable geographic focus), and retain original hashes alongside the patch ledger. Do not run `shadcn init`, replace the app theme/reset, or copy a complete Next.js demo.
+
+React/ReactDOM, Motion and exact Visx 4 dependencies are declared in `package.json`; keep npm and Bun locks synchronized using the existing dependency procedure. LayerChart POCs and the unused direct `layerchart`/`d3-scale` dependencies are removed. `svelte.config.js` includes `.tsx` in generated TypeScript checking, and `tsconfig.json` enables React JSX. Run `npm run check`, native/consumer regressions, the full frontend suite, i18n checks and `npm run build`; report pre-existing failures separately. Current qualification evidence is in [`../docs/testing.md`](../docs/testing.md).
+
 ## 환경 설정
 
 백엔드 API는 `/api` 경로로 프록시됩니다.

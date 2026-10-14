@@ -76,12 +76,14 @@ async def owner(db_tables, monkeypatch):
         def create_application_credential(self, **values):
             assert values["user"] == state.conn._afterglow_user_id
             assert values["unrestricted"] is False
+            assert "roles" not in values
             credential = SimpleNamespace(
                 id=str(uuid4()),
                 name=values["name"],
                 secret="synthetic-keystone-secret",
                 user_id=values["user"],
                 project_id=state.conn._afterglow_project_id,
+                roles=[{"id": "role-" + role, "name": role} for role in state.roles],
             )
             state.created.append(values)
             state.remote[credential.id] = credential
@@ -129,7 +131,7 @@ async def owner(db_tables, monkeypatch):
         assert project_scope == "current" and project_ids is None
         assert token_info["token"] == state.info["token"]
         state.prepared.append(access_level)
-        roles = authority._role_snapshot(state.roles)
+        roles = authority._role_snapshot([{"id": "role-" + role, "name": role} for role in state.roles])
         can_write = bool({role["name"].casefold() for role in roles} & {"admin", "member"})
         if access_level == "manage" and not can_write:
             raise authority.McpGrantPrivilegeError("selected project does not allow management")
@@ -253,7 +255,7 @@ async def test_explicit_consent_uses_actual_roles_without_personal_bearer(owner,
     if access_level == "read":
         assert all(entry.effect == "read" for entry in registry.enabled_entries(principal))
     assert len(owner.created) == 1
-    assert owner.created[0]["roles"] == [{"name": "member"}]
+    assert "roles" not in owner.created[0]
     assert owner.created[0]["user"] == owner.info["user_id"]
     async with owner.factory() as session:
         grant = await session.get(McpDelegatedGrant, snapshot.grant_id)
@@ -283,7 +285,7 @@ async def test_reader_roles_attenuate_read_and_refuse_manage_despite_logical_adm
     assert await selected(owner) is None
     snapshot = await approve(owner, "read")
     assert not (await lumen.resolve_lumen_principal(snapshot)).can_write
-    assert owner.created[0]["roles"] == [{"name": "reader"}]
+    assert "roles" not in owner.created[0]
     async with owner.factory() as session:
         grant = await session.get(McpDelegatedGrant, snapshot.grant_id)
         assert grant.approved_projects[0]["can_write"] is False
@@ -482,7 +484,7 @@ async def test_legacy_implicit_grant_is_nondispatchable_and_reapproval_creates_n
     user_id, project_id = owner.info["user_id"], owner.info["project_id"]
     grant_id = str(uuid4())
     credential = owner.conn.identity.create_application_credential(
-        user=user_id, name="afterglow-mcp-" + grant_id, roles=[{"name": "member"}], unrestricted=False
+        user=user_id, name="afterglow-mcp-" + grant_id, unrestricted=False
     )
     async with owner.factory() as session, session.begin():
         owner_lock = await authority.lock_owner(session, owner_user_id=user_id, owner_project_id=project_id)
@@ -607,9 +609,7 @@ async def test_ambiguous_creation_is_not_retried_and_only_same_owner_orphan_reco
     assert await recover(project=str(uuid4())) == 0
     assert owner.deleted == owner.listed == []
 
-    unrelated = original_create(
-        user=user_id, name="afterglow-mcp-unrelated", roles=[{"name": "member"}], unrestricted=False
-    )
+    unrelated = original_create(user=user_id, name="afterglow-mcp-unrelated", unrestricted=False)
     foreign_user = SimpleNamespace(id=str(uuid4()), name=orphan.name, user_id=str(uuid4()), project_id=project_id)
     foreign_project = SimpleNamespace(id=str(uuid4()), name=orphan.name, user_id=user_id, project_id=str(uuid4()))
     owner.remote[foreign_user.id] = foreign_user

@@ -7,6 +7,80 @@
 
 ## [Unreleased]
 
+## [1.30.16] - 2026-10-14
+
+Patch release integrating all preserved public WIP onto the latest fetched `dev`: Bklit dashboard charts, distributed background ownership, administrator credentials/telemetry, storage and backup workflows, MCP/chat repairs, and Palimpsest Cinder/RBD block transport with isolated sibling execution credentials. It pairs with Lumen `0.6.8`, Drover `0.4.15`, Waygate `0.3.4` and Palimpsest `0.3.5`. Apply SQL **088 then 089** after a protected backup and before starting any 1.30.16 writer; replace all API/Notion worker replicas together, with no mixed old/new cohort. Local/disposable qualification is recorded in [docs/testing.md](docs/testing.md#13016-release-qualification-2026-10-14); exact-SHA CI, publication, operator promotion and production rollout remain pending.
+
+### 대시보드 수치 시각화 Bklit UI 통합
+- 사용자·관리자 dashboard의 자체 시계열·분포/누적 막대·사용량/쿼터/용량 gauge·ring·국가별 지도를 실제 Bklit UI 원본 registry component로 전환했다. SvelteKit은 유지하고 client-only React host 하나로 theme/locale·tooltip·수치 table·수명 관리를 통일했다.
+- 결측값을 0으로 만들지 않고 독립 계측 시각·명시 domain·단위·무제한·초과 표시·기존 임계값/필터/갱신을 유지한다. 작은18px ring·5px stack, 정확한 누적 구간, native reduced-motion 및 지도 키보드 focus를 보완했다. 실제 Chromium에서 드러난 시간/범주 축 라벨 잘림을 수정했다.
+- LayerChart 실험 경로/불필요한 직접 의존성을 제거하고 Bklit commit·MIT·원본 hash와 최소 확장 ledger, 향후 공통 component 사용 및 upstream 갱신 기준을 문서화했다. 편집 토폴로지·외부 Grafana는 유지하며 내부 수치 그래프만 전환했다. 실제 검증·잔여 gate 한계는 `docs/testing.md`에 기록한다.
+
+### 프로젝트·도메인 간 볼륨 이전
+- 볼륨 목록에 기존 볼륨이 없어도 사용할 수 있는 `볼륨 수신`과 `대기 중인 이전`을 추가했다. 전체 transfer UUID로 모든 도메인·프로젝트의 대기 전송 하나를 조회하고 볼륨 정보와 출발 도메인·프로젝트 이름/ID를 확인한 뒤 auth key로 현재 프로젝트에 수신한다. 같은 도메인과 다른 도메인이 같은 흐름을 사용한다.
+- 단건 조회만 configured operator 읽기를 사용하며 전체 목록·키·metadata를 공개하지 않는다. 생성·수락·취소는 실제 사용자/선택 프로젝트 credential, native owner/state/key 검사와 POST no-retry를 사용한다. 연결 볼륨 자동 분리를 제거하고 source/destination cache와 발급 키 폐기·no-store를 적용했다.
+- Native SDK loopback·compiled Chromium 결과와 synthetic/운영 미검증 경계는 `docs/testing.md`에 기록한다. 배포·운영 IAM/Cinder 변경은 하지 않았다.
+
+### 공유 background process 역할·대상 분배
+- Cinder 전용 coordinator를 `WorkDispatcher`로 일반화했다(alias 없음). API의 snapshot·block-consumer·host-health·Swift trash·MCP·Cloud Shell 정리는 설정된 역할을 살아 있는 API process에 나누고 합류·이탈 때 재분배한다. Cinder/Trove 백업·Notion 대상·library/layer/Dockerfile build·worker-runtime은 leader가 발행한 대상을 각 process가 원자적으로 claim한다. 모든 launched background task를 추적하고 shutdown에서 SDK·HTTP drain 뒤 lease·DB를 닫는다.
+- 실행 lease는 90초 token을 독립 갱신하고 SDK thread 시작 시점마다 fence한다. 소유권 상실·취소는 새 mutation을 막되 이미 시작한 요청을 drain한 뒤 token을 해제한다. Leader crash 동안 정상 실행자의 배정이 후계 leader 스캔 전에 만료되던 결함(assignment TTL=membership)을 failed-before/passed-after로 재현·수정했다.
+- Library·layer·Dockerfile build는 불변 SQL admission과 service-project 잠금을 사용하고 process-local queue를 제거했다. CREATE intent를 journal하며 접수/불명확 결과는 재발행하지 않고 관측한다. Ephemeral build는 `run_ephemeral_build(build_db_id)`로 실행·인계하고 `manila.submit_file_storage`는 readiness 전 raw share를 반환한다. Layer 취소와 호출자 없는 `library_builder.cancel_build`는 요청에서 provider를 변경하지 않고 `cancel_cleanup=pending`을 남기며, 배정된 owner가 늦게 접수된 CREATE까지 정리한 뒤 닫는다.
+- 봉인된 Dockerfile import의 선택 consumer가 확정 실패하면 다시 읽은 SQL row로 판단한다. 정리가 끝난 terminal row만 import를 `complete`로 닫고, 정리 실패로 nonterminal인 row는 import를 실행 가능하게 남겨 다음 owner가 이어받는다(failed-before/passed-after).
+- Worker runtime은 Docker Engine ID/Kubernetes Deployment UID 단위로 조정하고 scale PATCH에 UID·resourceVersion precondition을 넣는다. Notion은 출력 DB lease와 성공 section timestamp만 기록하며 Trove는 cron slot journal·FAILED/ERROR slot 종결을 사용한다.
+- Manila 2.45+ `share-access-rules`의 실제 `access_list` envelope를 읽도록 수정했다(native HTTP failed-before/passed-after). 잘못된 키를 보완하던 empty-result legacy fallback을 제거했다.
+- Drover·Lumen·Waygate·Palimpsest Hub는 각 저장소 change로 역할·대상·SQL claim 소유권을 구현했다. 실행한 consumer·실제 Redis/SQL/process 증거와 합성 provider·미검증 운영 경계는 `docs/testing.md`에 기록한다. 운영 배포·IAM·실제 provider mutation은 수행하지 않았다.
+
+### 관리자 자격 증명·인프라·접속 모니터링
+- Identity에 애플리케이션 자격 증명 조회/생성/삭제와 사용자 자격 증명 조회/생성/수정/삭제를 추가했다. 실제 token scope·역할 ceiling, native policy, 1회 secret·명시적 blob 공개·no-store·인증 문맥 폐기를 적용한다.
+- 하이퍼바이저에 10초 backend probe와 node exporter CPU/메모리/파일시스템/RX/TX 소형 그래프를 추가했다. 별도 Linux 관측기가 NIC별 bytes/s·packets/s, route/neighbor/LLDP와 허용된 호스트 간 TCP 연결을 보고한다.
+- 컴퓨트·컨트롤러·스토리지 지도에 실제 연결 근거와 허용된 목적지의 traceroute router/hop/RTT·미응답 구간을 통합했다. 광역 자동 스캔이나 역방향·실패 위치 추정은 하지 않는다.
+- 국가별 요청·응답·성공·오류, 고유 방문자 추정·페이지뷰·전송량·기간별 추이와 논리 접속 흐름 세계지도를 추가했다. Backend/frontend 수집을 분리하며 offline GeoIP·독립 writer/HMAC secret·opt-in 설정을 사용한다.
+- 사용자별 성공 로그인 시각·활동 분포·유효 세션을 기존 SQL/Redis에서 읽는다. 미수집 실패 로그인·미측정 리소스·stale 관측을 정상/0으로 위장하지 않는다. 실제 로컬 실행과 운영 미검증 경계는 `docs/testing.md`에 기록한다.
+
+### 보안 그룹 규칙 저장·인라인 편집
+- 규칙 `수정`은 선택한 행 바로 아래에 열리고 `저장`/`취소`만 제공한다. 수동 `기존 규칙 제거`/`새 규칙 추가` 단계를 제거했으며 새 규칙 폼이 열린 동안 상단 `+ 규칙 추가`를 숨긴다.
+- 저장 전 포트·CIDR 형식/IP 버전·원격 대상을 검증하고 변경 없는 저장은 요청하지 않는다. 쿼터 여유가 있으면 새 규칙 생성 후 기존 규칙을 제거하고, 쿼터가 가득 찬 경우에만 먼저 제거한 뒤 생성 실패 시 원래 규칙 복원을 시도한다. 복원·기존 규칙 제거 실패는 별도 오류로 보고하며 생성 실패 시 초안을 보존한다.
+- 실행한 page 회귀·design·i18n 검사와 현재 Vite 화면의 합성 identity/API Chromium 흐름·48 locale/theme/width 조건은 `docs/testing.md`에 기록한다. 기존 API/schema/권한은 변경하지 않았고 실제 Neutron·배포는 검증하지 않았다.
+
+### 볼륨 자동 백업의 HA 스케줄·실행 분배
+- 모든 replica의 정책 전체 스캔을 Redis server-time leader 하나로 모으고, 새/장애 작업을 살아 있는 API process에 균등 배정한다. 정상 pending/active 소유권은 유지하여 빠른 peer의 완료가 다른 worker의 제출을 가져가는 경합을 막는다.
+- 독립 heartbeat·scheduling·execution loop와45초 member/leader, 기존90초 volume lease/durable slot을 유지한다. SDK 작업 중에도 새 예약을 배정하고 정상 drain/종료 및 crash·lost incarnation 후 인계한다. Unknown 결과는 기존 ID/정확한 이름으로 관측하며 재발행하지 않는다.
+- Provider 접수 후 응답 유실을 installed SDK가 자동 retry하여 두 POST를 보내는 결함을 native HTTP로 재현·수정했다. 생성 POST에만 scoped transport/status retries0을 적용하며 공유 caller session·조회 retry와 API/UI/policy schema는 유지한다.
+- 실제 Redis/SDK/process와 합성 provider·identity 경계, failed-before/passed-after 회귀 및 검사 결과는 `docs/testing.md`에 기록한다. 운영 배포·Redis/Cinder·IAM·실제 data copy/restore는 수행하지 않았다.
+
+### MCP OAuth 역할 snapshot·채팅 도구 실행 복구
+- 외부 OAuth의 read/manage·current/selected/all credential 준비에서 실제 scoped token 역할을 사용한다. 생성 payload의 역할 이름을 제거하여 Keystone의 role-inference 재확장 거부를 피하고 반환 project/role ID를 정확히 검증한다. Remote ID 선저장·실패 cleanup, restricted flag·expiry·owner/project·승인 ceiling을 유지한다.
+- 명시적으로 승인된 Afterglow read 도구를 Lumen on-demand catalogue에 포함하고 한국어 클라우드·가상머신·스토리지 검색으로 적재·호출한다. 최초 컨텍스트의 내장3개 schema와 legacy mutation 비노출, frozen authority·disabled/foreign/stale/revoked 거부를 유지한다.
+- Native worker 실행에서 발견한 queued tool-result 턴 소유권 경합을 originating turn ordinal로 수정했다. 실제 compiled UI→native API/worker→fake provider→installed SDK 조회→SSE 완료와 컨텍스트6조건을 확인했다. 정확한 suite·architecture·합성 경계는 `docs/testing.md`에 기록하며 운영 배포·IAM/cloud 쓰기·유료 호출은 수행하지 않았다.
+
+### 볼륨 자동 백업의 예약·정책 관리
+- 백업 페이지의 보이는 자동 백업 설정·정책 카드와 목록/공용 상세의 동일한 진입점으로 기존 숨겨진 즉시 토글을 교체했다. 네 언어에서 calendar 시각·시간대·일/주/월 보존·활성·별도 반복 force 동의와 편집·일시 중지·재개·정책 제거, 다음/최근/결과/백업ID/오류를 관리한다.
+- 실제 startup timer를15초 due dispatcher로 연결했다. 저장 즉시 생성·0tier 생성·경과시간 기반 일정을 제거하고 충돌 단일 full, missed-run coalescing, renewable HA lease/durable slot/revision fence와 unknown 결과 보존을 구현했다. SDK 접수와 완료를 구분하고 완료본에만 정확한 소유권/원본/관리 이름/의존성·revision을 재검증하여 보존 삭제한다.
+- 원본이 사라진 정책은 오류와 함께 보존·표시하고 검증된 정책만 제거한다. 공급자 권한·일시 장애를 부재로 취급하지 않으며 malformed 저장 bytes, read-only·project/ABA 경계와 shutdown connection close를 보존한다. 자동 생성/상태/삭제도 기존 백업 cache 무효화를 재사용한다.
+- Actual Redis/native SDK15scenarios·실제 분 경계 두 실행·compiled Chromium56locale/theme/width조건과 storage709backend/142frontend를 확인했다. 상세 evidence/검사 한계는 `docs/testing.md`; 운영 IAM·Cinder 저장소·게스트/DB 복원·배포는 수행하지 않았다.
+
+### Lumen 밝은 테마·새 채팅·기록 전환 수정
+- 밝은 채팅 canvas와 메시지·도구·프로젝트·선택 기록의 표면/경계를 기존 semantic tokens로 구분했다. Dark palette와 전체 작업 영역은 유지한다.
+- 새 채팅의 짧은 작성창은48rem으로 줄이고160자 이상 또는 명시적3줄 초안과 기존 대화만80rem 본문 폭을 사용한다. 짧게 줄이면 compact로 돌아온다.
+- 상단 처음/이전/다음/최신 막대와 obsolete first callback/locale keys를 제거했다. Scroll edge에서 opaque cursor를 읽고 최대120messages·visible anchor·latest-response action을 유지한다.
+- 프로젝트·기록 전환을 typed shallow history로 바꿔 같은 panel/sidebar/editor/transcript·초안·스크롤·실행 연결을 보존한다. 선택된 대화 복귀의 중복 조회를 없애고 direct URL/back-forward를 유지했다.
+- Compiled Chromium64locale/theme/width조건과5draft/history상태,4회 프로젝트·기록 왕복의 재조회0·동일 DOM/초안/scroll 및 양방향120-message paging을 확인했다. 정확한 검사 결과와 private TOML로 차단된 backend/full-gate 경계는 `docs/testing.md`에 기록한다.
+
+### Palimpsest Cinder/RBD block transport
+- Add exact sealed-byte protected Glance source publication, readonly per-VM Cinder lowers and a separate writable upper with durable source/consumer identity in additive migrations088/089. Preserve explicit NFS defaults and reject unsupported providers without fallback or scope substitution.
+- Commit CREATE intents before provider calls, suppress transport/status retries, retain unknown outcomes for fenced discovery, and merge concurrent rejection/deletion progress under a row lock. Keep artifact locks through cancelled destructive threads and SQL disposition.
+- Route ordinary single/bulk and dedicated consume deletion through exact managed Manila denial and owned FIP deletion before removing Nova/port tracking; retain failed/pending evidence for retry and never delete unrelated/shared sources.
+- Enforce real whole-device virtio/RO/sealed-prefix checks, safe zero-only dedicated upper formatting and Cinder/ext4/duplicate-FSUUID reboot identities. Package actual initramfs utilities/helpers/filesystem modules, not build-host transient configuration.
+- Reject immediate block imports after admin authorization but before planning; retain sealed completed output when optional consumer launch fails/cancels and use exact persisted import IDs. Executed local verification and the unresolved original-authentication/live-cloud limits are recorded separately in `docs/testing.md`.
+
+### Fixed
+- **Integration fixture repair** — Ordinary Manila-grant deletion tests now mock `layer_consume_resources.lookup_for_server` with an `AsyncMock` returning `[]`, matching lifecycle fixtures. Authoritative production lookup, revoke-before-delete and fail-closed behavior are unchanged.
+- **Database instance navigation** — Use `pushState('/dashboard/database/instances/${id}', {})` instead of the undeclared `PageState.instanceId`.
+- **Vendored Bklit review repairs** — Dismiss bar tooltips on data revision and clear time-series tooltips before re-anchoring; clear saved touch positions on touch end so refresh cannot resurrect dismissed tooltips. Tooltip-free plots remain pointer-inert with vertical touch scrolling, and the zoom-disabled map preserves scrolling without a nonfunctional grab cursor. Correct LTTB first-interior/unique-endpoint buckets (720→450 rows retain the early spike and 450 unique timestamps, previously 449); instance metric details use full default timestamps. Update the vendor provenance ledger with these changes.
+- **Native metadata and style** — Regenerate `services/afterglow-crypto/uv.lock` offline to match its `0.1.1` manifest; synchronize 1.30.16 across root/frontend/backend, Cloud Shell, Helm/Kolla metadata and native locks with `node scripts/sync-version.js`. Repair `backend/app/main.py` import order and format `app/api/compute/instances.py`, `app/api/identity/admin.py`, `tests/test_palimpsest_dockerfile.py` and `tests/test_resource_policies.py` without behavior changes.
+- **Qualification receipts** — Final local `test:gate` exited 0: backend 6,610 passed/91 skipped, frontend 368 files/3,621 tests plus runner 9, contract 174, disposable functional 154/27 deselected and Ruff 632 files. Compiled native chart smoke and sibling totals/limitations are recorded separately in `docs/testing.md`; these are not publication or production acceptance.
+
+
 ## [1.30.15] - 2026-10-13
 
 ### Changed

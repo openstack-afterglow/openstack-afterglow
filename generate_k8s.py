@@ -29,6 +29,7 @@ Python 3.12+ 표준 라이브러리만 사용합니다.
 """
 
 import argparse
+import json
 import os
 import sys
 import tempfile
@@ -352,6 +353,14 @@ def render_secret(cfg: dict, namespace: str = "afterglow") -> str:
                 f"  MONITORING_SD_TOKEN: {_yaml_str(sd_token)}",
             ]
         )
+
+    traffic = cfg.get("traffic_analytics", {})
+    lines.extend([
+        f"  MONITORING_INFRASTRUCTURE_TOPOLOGY_OBSERVERS: {_yaml_str(json.dumps(mon.get('infrastructure_topology_observers', [])))}",
+        f"  TRAFFIC_ANALYTICS__HMAC_KEY: {_yaml_str(traffic.get('hmac_key', ''))}",
+        f"  TRAFFIC_ANALYTICS__FRONTEND_INGEST_KEY: {_yaml_str(traffic.get('frontend_ingest_key', ''))}",
+        f"  TRAFFIC_ANALYTICS_INGEST_KEY: {_yaml_str(traffic.get('frontend_ingest_key', ''))}",
+    ])
 
     notion_enc_key = notion.get("config_encryption_key", "")
     if notion_enc_key:
@@ -763,6 +772,25 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
 
     # [monitoring]
     lines.append("[monitoring]")
+    lines.append(f"host_healthcheck_enabled = {_toml_bool(mon.get('host_healthcheck_enabled', True))}")
+    targets = mon.get("host_healthcheck_targets", [])
+    # Inline tables keep the targets inside [monitoring], before its child tables.
+    rendered_targets = []
+    for target in targets:
+        fields = [f"{key} = {_toml_str(target[key])}" for key in ("name", "address", "role")]
+        fields.append(f"port = {target.get('port', 9100)}")
+        rendered_targets.append("{ " + ", ".join(fields) + " }")
+    lines.append("host_healthcheck_targets = [" + ", ".join(rendered_targets) + "]")
+    lines.append(f"infrastructure_topology_enabled = {_toml_bool(mon.get('infrastructure_topology_enabled', False))}")
+    lines.append(f"infrastructure_topology_retention_seconds = {mon.get('infrastructure_topology_retention_seconds', 3600)}")
+    lines.append("infrastructure_topology_trace_targets = [" + ", ".join(_toml_str(target) for target in mon.get("infrastructure_topology_trace_targets", [])) + "]")
+    rendered_peers = []
+    for target in mon.get("infrastructure_topology_peer_targets", []):
+        fields = [f"{key} = {_toml_str(target[key])}" for key in ("source_host_id", "target_host_id", "address")]
+        fields.append(f"port = {target.get('port', 9100)}")
+        rendered_peers.append("{ " + ", ".join(fields) + " }")
+    lines.append("infrastructure_topology_peer_targets = [" + ", ".join(rendered_peers) + "]")
+    lines.append("# infrastructure_topology_observers is injected from MONITORING_INFRASTRUCTURE_TOPOLOGY_OBSERVERS in Secret")
     lines.append(f"prometheus_base_url = {_toml_str(mon.get('prometheus_base_url', 'http://prometheus:9090'))}")
     lines.append(f"prometheus_username = {_toml_str(mon.get('prometheus_username', ''))}")
     lines.append("# prometheus_password는 secret.yaml의 PROMETHEUS_PASSWORD 환경변수로 주입됩니다")
@@ -791,6 +819,15 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"ceph_uid = {_toml_str(dashboards.get('ceph_uid', 'afterglow-ceph'))}")
     lines.append(f"instance_cpu_uid = {_toml_str(dashboards.get('instance_cpu_uid', 'afterglow-instance-cpu'))}")
     lines.append(f"instance_gpu_uid = {_toml_str(dashboards.get('instance_gpu_uid', 'afterglow-instance-gpu'))}")
+    lines.append("")
+
+    traffic = cfg.get("traffic_analytics", {})
+    lines.append("[traffic_analytics]")
+    lines.append(f"enabled = {_toml_bool(traffic.get('enabled', False))}")
+    lines.append(f"retention_days = {traffic.get('retention_days', 30)}")
+    lines.append(f"geoip_csv = {_toml_str(traffic.get('geoip_csv', ''))}")
+    lines.append(f"site_country = {_toml_str(traffic.get('site_country', ''))}")
+    lines.append("# hmac_key and frontend_ingest_key are injected through TRAFFIC_ANALYTICS__* Secret environment keys")
     lines.append("")
 
     # [notion]
@@ -879,6 +916,8 @@ def render_configmap(cfg: dict, namespace: str = "afterglow") -> str:
         f"  FORWARDED_ALLOW_IPS: {_toml_str(cfg.get('app', {}).get('trusted_proxies', '127.0.0.1/32,::1/128'))}",
         f'  PUBLIC_S3_BASE: "{public_s3_base}"',
         f'  APP_GRAFANA_BASE: "{app_grafana_base}"',
+        '  TRAFFIC_ANALYTICS_INGEST_URL: "http://backend:8000/api/v1/monitoring/traffic/events"',
+        f"  TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS: {_yaml_str(str(cfg.get('traffic_analytics', {}).get('trust_frontend_client_address', False)).lower())}",
         "  afterglow.conf: |",
         indented_toml,
     ]

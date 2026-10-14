@@ -74,39 +74,74 @@ async def test_health_request_is_logged(caplog):
 
 
 @pytest.mark.asyncio
-async def test_build_execution_info_and_debug_are_bounded_and_sanitized(caplog):
+async def test_build_execution_info_and_debug_are_bounded_and_sanitized(caplog, monkeypatch, tmp_path):
+    from fakeredis.aioredis import FakeRedis
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.models.db import LayerArtifact, LayerBuild
+    from app.services import build_work
+
     secret = "secret-index-credential"
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'build-logging.sqlite'}")
+    async with engine.begin() as connection:
+        for model in (LayerBuild, LayerArtifact):
+            await connection.run_sync(lambda sync, model=model: model.__table__.create(sync))
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr("app.database.get_session_factory", lambda: factory)
+    recipe = {
+        "layer_name": secret,
+        "kind": "pip",
+        "python_version": None,
+        "pip_packages": [secret],
+        "pip_index_url": f"https://{secret}@example.test/simple",
+        "parent_artifact_id": None,
+    }
+    async with factory() as session:
+        row = LayerBuild(
+            layer_name=secret,
+            kind="pip",
+            share_id="",
+            status="queued",
+            build_token="b" * 32,
+            resource_snapshot={"build_input": recipe},
+        )
+        session.add(row)
+        await session.commit()
+        build_id = row.id
+    redis = FakeRedis(decode_responses=True)
+
+    class Lease:
+        async def check(self):
+            return None
 
     async def run():
+        # The terminal write is stubbed so the same queued SQL row replays at DEBUG.
         with patch("app.services.layer_build._update_build_db", new_callable=AsyncMock):
-            await run_layer_build(
-                build_db_id=123,
-                layer_name=secret,
-                kind="pip",
-                python_version=None,
-                pip_packages=[secret],
-                pip_index_url=f"https://{secret}@example.test/simple",
-                parent_artifact_id=None,
-            )
+            async with build_work.bind(redis, f"layer:{build_id}", Lease()):
+                await run_layer_build(build_id)
 
-    with caplog.at_level(logging.INFO):
-        await run()
-    events = [r for r in caplog.records if r.name == "app.services.layer_build" and r.msg == "execution"]
-    assert [(r.state, getattr(r, "result", None)) for r in events] == [("started", None), ("completed", "failed")]
-    assert not any(r.msg == "execution metadata" for r in caplog.records)
-    assert secret not in "\n".join(_JSONFormatter().format(r) for r in caplog.records)
+    try:
+        with caplog.at_level(logging.INFO, logger="app.services.layer_build"):
+            await run()
+        events = [r for r in caplog.records if r.name == "app.services.layer_build" and r.msg == "execution"]
+        assert [(r.state, getattr(r, "result", None)) for r in events] == [("started", None), ("completed", "failed")]
+        assert not any(r.msg == "execution metadata" for r in caplog.records)
+        assert secret not in "\n".join(_JSONFormatter().format(r) for r in caplog.records)
 
-    caplog.clear()
-    with caplog.at_level(logging.DEBUG):
-        await run()
-    metadata = [r for r in caplog.records if r.name == "app.services.layer_build" and r.msg == "execution metadata"]
-    assert [(r.state, r.query) for r in metadata] == [
-        ("validating", "recipe_contract"),
-        ("completed", "recipe_contract"),
-    ]
-    assert metadata[0].pip_package_count == 1
-    assert metadata[-1].result == "failed"
-    assert secret not in "\n".join(_JSONFormatter().format(r) for r in caplog.records)
+        caplog.clear()
+        with caplog.at_level(logging.DEBUG, logger="app.services.layer_build"):
+            await run()
+        metadata = [r for r in caplog.records if r.name == "app.services.layer_build" and r.msg == "execution metadata"]
+        assert [(r.state, r.query) for r in metadata] == [
+            ("validating", "recipe_contract"),
+            ("completed", "recipe_contract"),
+        ]
+        assert metadata[0].pip_package_count == 1
+        assert metadata[-1].result == "failed"
+        assert secret not in "\n".join(_JSONFormatter().format(r) for r in caplog.records)
+    finally:
+        await redis.close()
+        await engine.dispose()
 
 
 @pytest.fixture

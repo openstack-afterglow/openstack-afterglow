@@ -4,18 +4,20 @@ import { writable, type Writable } from 'svelte/store';
 import { tick } from 'svelte';
 import type { VolumeBackup } from '$lib/types/volume';
 
-const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }));
+const { mockGet, mockPost } = vi.hoisted(() => ({ mockGet: vi.fn(), mockPost: vi.fn() }));
 
 vi.mock('$lib/api/client', () => ({
-  api: { get: mockGet, prefetch: vi.fn(), post: vi.fn(), delete: vi.fn() },
+  api: { get: mockGet, prefetch: vi.fn(), post: mockPost, delete: vi.fn() },
   ApiError: class ApiError extends Error { status = 500; },
 }));
 vi.mock('$lib/stores/auth', () => ({
   auth: writable({ token: 'token', projectId: 'old' }),
+  canWrite: writable(true), projectSwitching: writable(false),
 }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
   createAutoRefresh: () => ({ active: false, intervalSeconds: 15, intervalOptions: [10, 15, 30, 60] }),
 }));
+vi.mock('$app/state', () => ({ page: { url: new URL('http://localhost/dashboard/volumes/backups') } }));
 
 import { auth } from '$lib/stores/auth';
 import Page from '../+page.svelte';
@@ -30,12 +32,15 @@ describe('volume backup project isolation', () => {
   beforeEach(() => {
     projectAuth.set({ token: 'token', projectId: 'old' });
     mockGet.mockReset();
+    mockPost.mockReset();
+    mockPost.mockResolvedValue([]);
   });
 
   it('ignores a late response from the previous project and clears rows when no project is selected', async () => {
     let resolveOld!: (rows: VolumeBackup[]) => void;
     const oldResponse = new Promise<VolumeBackup[]>((resolve) => { resolveOld = resolve; });
     mockGet.mockImplementation((path: string, _token: string, projectId: string) => {
+      if (path === '/api/v1/volumes') return Promise.resolve([]);
       expect(path).toBe('/api/v1/volumes/backups');
       return projectId === 'old' ? oldResponse : Promise.resolve([backup('current-backup')]);
     });

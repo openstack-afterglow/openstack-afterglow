@@ -1,302 +1,490 @@
-"""notion_worker 워커 동작 + 기본값 30분 + FastAPI-free 회귀 가드 테스트."""
+"""Consumer behavior: current policy, target partition, output fencing and drain."""
 
+import asyncio
+import secrets
 import select
 import signal
 import subprocess
 import sys
+from contextlib import AsyncExitStack
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
+import httpx
 import pytest
+
+from app import notion_worker as nw
+from app.services import notion_sync as ns
+from app.services import work_dispatcher as wd
 
 
 @pytest.fixture(autouse=True)
-def _enable_global_notion_sync(monkeypatch):
-    monkeypatch.setattr(
-        "app.services.resource_policy_store.get_runtime_setting",
-        AsyncMock(return_value=True),
-    )
-
-
-# ---------------------------------------------------------------------------
-# 1. 기본값 30분 검증
-# ---------------------------------------------------------------------------
-
-
-def test_notion_target_create_request_default_interval():
-    """NotionTargetCreateRequest의 interval_minutes 기본값이 30이어야 한다."""
-    from app.api.identity.admin_notion import NotionTargetCreateRequest
-
-    req = NotionTargetCreateRequest(api_key="k", database_id="d")
-    assert req.interval_minutes == 30
-
-
-def test_notion_config_request_default_interval():
-    """NotionConfigRequest의 interval_minutes 기본값이 30이어야 한다."""
-    from app.api.identity.admin_notion import NotionConfigRequest
-
-    req = NotionConfigRequest(api_key="k", database_id="d")
-    assert req.interval_minutes == 30
-
-
-# ---------------------------------------------------------------------------
-# 2. 워커 사이클이 interval_minutes를 존중하는지 검증
-# ---------------------------------------------------------------------------
+def enabled(monkeypatch):
+    monkeypatch.setattr("app.services.resource_policy_store.get_runtime_setting", AsyncMock(return_value=True))
 
 
 @pytest.fixture
-def make_target():
-    """테스트용 NotionTarget dict 생성 헬퍼."""
+async def coordination(_fake_redis_global, monkeypatch):
+    from app.services.cache import _get_redis
 
-    def _make(
-        target_id: int = 1,
-        enabled: bool = True,
-        interval_minutes: int = 30,
-        last_sync: str | None = None,
-    ) -> dict:
-        return {
-            "id": target_id,
-            "enabled": enabled,
-            "interval_minutes": interval_minutes,
-            "last_sync": last_sync,
-            "api_key": "test-api-key",
-            "database_id": "test-db-id",
-            "users_database_id": "",
-            "hypervisors_database_id": "",
-            "gpu_spec_database_id": "",
-        }
-
-    return _make
+    redis = await _get_redis()
+    prefix = f"afterglow:test:notion:{secrets.token_hex(12)}"
+    monkeypatch.setattr(nw, "_PREFIX", prefix)
+    try:
+        yield redis, prefix
+    finally:
+        keys = [key async for key in redis.scan_iter(match=f"{prefix}:*")]
+        if keys:
+            await redis.delete(*keys)
 
 
-@pytest.mark.asyncio
-async def test_worker_cycle_skips_disabled_target(make_target):
-    """enabled=False 타겟은 동기화를 건너뛴다."""
-    from app.notion_worker import _run_sync_cycle
-
-    target = make_target(enabled=False)
-
-    with (
-        patch("app.notion_worker._run_notion_target_sync", new_callable=AsyncMock) as mock_sync,
-        patch("app.services.notion_sync.list_notion_targets", new_callable=AsyncMock, return_value=[target]),
-        patch("app.services.notion_sync.get_notion_config", new_callable=AsyncMock, return_value=None),
-    ):
-        await _run_sync_cycle()
-
-    mock_sync.assert_not_called()
+def target(index=1, **values):
+    return {
+        "id": index,
+        "api_key": "key",
+        "database_id": f"output-{index}",
+        "enabled": True,
+        "interval_minutes": 30,
+        "last_sync": None,
+        **values,
+    }
 
 
 @pytest.mark.asyncio
-async def test_worker_cycle_skips_target_within_interval(make_target):
-    """마지막 동기화 경과 시간이 interval_minutes 미만이면 건너뛴다."""
-    from app.notion_worker import _run_sync_cycle
-
-    # 방금 동기화됨 (5분 전) — 30분 간격이므로 아직 스킵
-    recent = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
-    target = make_target(interval_minutes=30, last_sync=recent)
-
-    with (
-        patch("app.notion_worker._run_notion_target_sync", new_callable=AsyncMock) as mock_sync,
-        patch("app.services.notion_sync.list_notion_targets", new_callable=AsyncMock, return_value=[target]),
-        patch("app.services.notion_sync.get_notion_config", new_callable=AsyncMock, return_value=None),
-    ):
-        await _run_sync_cycle()
-
-    mock_sync.assert_not_called()
+@pytest.mark.parametrize(
+    "values,expected",
+    [
+        ({"enabled": False}, []),
+        ({"last_sync": (datetime.now(UTC) - timedelta(minutes=5)).isoformat()}, []),
+        ({"last_sync": (datetime.now(UTC) - timedelta(minutes=45)).isoformat()}, ["1"]),
+        ({"last_sync": (datetime.now(UTC) - timedelta(minutes=6)).isoformat(), "interval_minutes": 5}, ["1"]),
+        ({}, ["1"]),
+    ],
+)
+async def test_consumer_interval_and_enable_guard(monkeypatch, values, expected):
+    monkeypatch.setattr(ns, "list_notion_targets", AsyncMock(return_value=[target(**values)]))
+    assert await nw._discover_targets() == expected
 
 
 @pytest.mark.asyncio
-async def test_worker_cycle_syncs_target_after_interval(make_target):
-    """마지막 동기화 경과 시간이 interval_minutes 이상이면 동기화한다."""
-    from app.notion_worker import _run_sync_cycle
-
-    # 45분 전 동기화 — 30분 간격이므로 실행해야 함
-    old = (datetime.now(UTC) - timedelta(minutes=45)).isoformat()
-    target = make_target(interval_minutes=30, last_sync=old)
-
-    with (
-        patch("app.notion_worker._run_notion_target_sync", new_callable=AsyncMock) as mock_sync,
-        patch("app.services.notion_sync.list_notion_targets", new_callable=AsyncMock, return_value=[target]),
-        patch("app.services.notion_sync.get_notion_config", new_callable=AsyncMock, return_value=None),
-    ):
-        await _run_sync_cycle()
-
-    mock_sync.assert_called_once_with(target)
+async def test_global_gate_prevents_registry_and_claimed_target_reads(monkeypatch):
+    monkeypatch.setattr("app.services.resource_policy_store.get_runtime_setting", AsyncMock(return_value=False))
+    listing = AsyncMock()
+    lookup = AsyncMock()
+    monkeypatch.setattr(ns, "list_notion_targets", listing)
+    monkeypatch.setattr(ns, "get_notion_target", lookup)
+    assert await nw._discover_targets() == []
+    assert await nw._current_target("1") is None
+    listing.assert_not_awaited()
+    lookup.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_worker_cycle_syncs_target_with_no_last_sync(make_target):
-    """last_sync가 None(한 번도 동기화 안 됨)이면 즉시 동기화한다."""
-    from app.notion_worker import _run_sync_cycle
-
-    target = make_target(last_sync=None)
-
-    with (
-        patch("app.notion_worker._run_notion_target_sync", new_callable=AsyncMock) as mock_sync,
-        patch("app.services.notion_sync.list_notion_targets", new_callable=AsyncMock, return_value=[target]),
-        patch("app.services.notion_sync.get_notion_config", new_callable=AsyncMock, return_value=None),
-    ):
-        await _run_sync_cycle()
-
-    mock_sync.assert_called_once_with(target)
-
-
-@pytest.mark.asyncio
-async def test_worker_cycle_respects_custom_interval(make_target):
-    """interval_minutes가 5분으로 설정된 타겟은 5분이 지나면 동기화한다."""
-    from app.notion_worker import _run_sync_cycle
-
-    # 6분 전 동기화 — 5분 간격이므로 실행해야 함
-    old = (datetime.now(UTC) - timedelta(minutes=6)).isoformat()
-    target = make_target(interval_minutes=5, last_sync=old)
-
-    with (
-        patch("app.notion_worker._run_notion_target_sync", new_callable=AsyncMock) as mock_sync,
-        patch("app.services.notion_sync.list_notion_targets", new_callable=AsyncMock, return_value=[target]),
-        patch("app.services.notion_sync.get_notion_config", new_callable=AsyncMock, return_value=None),
-    ):
-        await _run_sync_cycle()
-
-    mock_sync.assert_called_once_with(target)
+async def test_legacy_fallback_only_without_registered_targets(monkeypatch):
+    legacy = target()
+    legacy.pop("id")
+    monkeypatch.setattr(ns, "list_notion_targets", AsyncMock(return_value=[]))
+    config = AsyncMock(return_value=legacy)
+    monkeypatch.setattr(ns, "get_notion_config", config)
+    assert await nw._discover_targets() == ["legacy"]
+    legacy["last_sync"] = datetime.now(UTC).isoformat()
+    assert await nw._discover_targets() == []
+    monkeypatch.setattr(ns, "list_notion_targets", AsyncMock(return_value=[target(enabled=False)]))
+    config.reset_mock()
+    assert await nw._discover_targets() == []
+    config.assert_not_awaited()
 
 
-@pytest.mark.asyncio
-async def test_run_sync_cycle_refreshes_gpu_catalog_before_fallback_mapping_calls():
-    from app.notion_worker import _run_sync_cycle
-
-    instances = [
-        {
-            "name": "alias-vm",
-            "instance_id": "inst-1",
-            "status": "ACTIVE",
-            "project_name": "proj",
-            "flavor_name": "gpu.3060lhr_8c_16g",
-            "vcpus": 8,
-            "ram_gb": 16,
-            "gpu_name": "RTX 3060 LHR",
-            "gpu_count": 1,
-            "gpu_spec_page_id": "page-3060",
-            "fixed_ip": "",
-            "floating_ip": "",
-            "created_at": "2026-07-08T00:00:00Z",
-            "compute_host": "",
-            "user_page_id": "",
-            "hypervisor_page_id": "",
-        }
+async def join_three(stack, redis, prefix):
+    return [
+        await stack.enter_async_context(wd.WorkDispatcher(redis, prefix, worker_id=f"worker-{i}")) for i in range(3)
     ]
-    call_order: list[str] = []
-
-    async def _refresh():
-        call_order.append("refresh")
-
-    async def _collect_instance_data(**kwargs):
-        call_order.append("collect")
-        assert kwargs["gpu_name_to_page_id"] == {"RTX 3060 LHR": "page-3060"}
-        return instances
-
-    with (
-        patch("app.database.is_db_available", return_value=True),
-        patch("app.services.gpu_catalog.refresh_device_map_from_db", new=AsyncMock(side_effect=_refresh)) as refresh,
-        patch("app.services.notion_sync.list_notion_targets", new=AsyncMock(return_value=[])),
-        patch(
-            "app.services.notion_sync.get_notion_config",
-            new=AsyncMock(
-                return_value={
-                    "enabled": True,
-                    "api_key": "test-api-key",
-                    "database_id": "test-db-id",
-                    "users_database_id": "",
-                    "hypervisors_database_id": "",
-                    "gpu_spec_database_id": "gpu-spec-db-id",
-                }
-            ),
-        ),
-        patch(
-            "app.services.gpu_inventory.get_gpu_spec_list",
-            side_effect=lambda: call_order.append("gpu_specs") or [{"name": "RTX 3060 LHR"}],
-        ),
-        patch(
-            "app.services.gpu_inventory.build_alias_to_device_name_map",
-            side_effect=lambda: call_order.append("alias_map") or {"RTX-3060-LHR": "RTX 3060 LHR"},
-        ),
-        patch(
-            "app.services.openstack_inventory.collect_instance_data", new=AsyncMock(side_effect=_collect_instance_data)
-        ),
-        patch(
-            "app.services.notion_sync.sync_gpu_specs_to_notion",
-            new=AsyncMock(return_value={"created": 0, "updated": 0}),
-        ),
-        patch(
-            "app.services.notion_sync.fetch_gpu_spec_page_ids_by_name",
-            new=AsyncMock(return_value={"RTX 3060 LHR": "page-3060"}),
-        ),
-        patch("app.services.notion_sync.build_gpu_usage_by_gpu", return_value={}),
-        patch("app.services.notion_sync.sync_to_notion", new=AsyncMock(return_value={"created": 1, "updated": 0})),
-        patch("app.services.notion_sync.save_notion_config", new=AsyncMock()),
-        patch("app.services.notion_sync.migrate_instance_db_to_korean", new=AsyncMock(return_value=False)),
-    ):
-        await _run_sync_cycle()
-
-    refresh.assert_awaited_once()
-    assert call_order.index("refresh") < call_order.index("gpu_specs")
-    assert call_order.index("refresh") < call_order.index("collect")
-    assert call_order.index("refresh") < call_order.index("alias_map")
 
 
-# ---------------------------------------------------------------------------
-# 3. FastAPI-free 회귀 가드
-#    서브프로세스로 격리 실행해 fastapi/starlette가 워커 import 경로에
-#    끌려들어오지 않음을 확인한다. Phase 2 리팩토링의 핵심 보장.
-# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_three_workers_execute_disjoint_targets_without_worker_registry_scans(coordination, monkeypatch):
+    from contextvars import ContextVar
 
-_FASTAPI_FREE_SCRIPT = """
-import sys
+    redis, prefix = coordination
+    targets = {str(i): target(i) for i in range(1, 10)}
+    scanner_calls = []
+    executor = ContextVar("test_notion_executor")
+    observed = {}
+    complete = asyncio.Event()
 
-# Afterglow-owned worker entry point and its runtime dependencies.
-import app.notion_worker
-import app.services.gpu_inventory
-import app.services.openstack_inventory
-import app.services.notion_sync
+    async def listing():
+        scanner_calls.append(asyncio.current_task().get_name())
+        return [dict(config) for config in targets.values()]
 
-leaked = [m for m in sys.modules if m in ("fastapi", "starlette", "uvicorn")]
-if leaked:
-    print("FAIL: leaked modules:", leaked, file=sys.stderr)
-    sys.exit(1)
-print("OK")
-"""
+    monkeypatch.setattr(ns, "list_notion_targets", listing)
+    monkeypatch.setattr(ns, "get_notion_target", AsyncMock(side_effect=lambda index, **_: dict(targets[str(index)])))
+    monkeypatch.setattr(nw, "_CHECK_INTERVAL", 0.01)
+    monkeypatch.setattr(nw, "_POLL_INTERVAL", 0.001)
 
-# 테스트 파일 기준 backend/ 루트 경로 (CI/CD 환경 호환)
+    async def sync(config):
+        await ns.worker_checkpoint()
+        observed.setdefault(executor.get(), []).append(config["id"])
+        targets[str(config["id"])]["last_sync"] = datetime.now(UTC).isoformat()
+        if sum(len(batch) for batch in observed.values()) == 9:
+            complete.set()
+
+    async def execute(worker):
+        token = executor.set(worker.worker_id)
+        try:
+            await nw._execute(worker)
+        finally:
+            executor.reset(token)
+
+    monkeypatch.setattr(nw, "_run_notion_target_sync", sync)
+    async with AsyncExitStack() as stack:
+        workers = await join_three(stack, redis, prefix)
+        tasks = [asyncio.create_task(nw._scan(worker), name=f"scan:{worker.worker_id}") for worker in workers]
+        tasks.extend(asyncio.create_task(execute(worker)) for worker in workers)
+        try:
+            await asyncio.wait_for(complete.wait(), 3)
+        finally:
+            await nw._drain(tasks)
+    assert sorted(index for batch in observed.values() for index in batch) == list(range(1, 10))
+    assert sorted(len(batch) for batch in observed.values()) == [3, 3, 3]
+    assert scanner_calls and set(scanner_calls) == {"scan:worker-0"}
+
+
+@pytest.mark.asyncio
+async def test_expired_target_owner_cannot_execute_and_successor_waits_for_lease(coordination, monkeypatch):
+    redis, prefix = coordination
+    targets = {str(i): target(i) for i in range(1, 4)}
+    monkeypatch.setattr(ns, "list_notion_targets", AsyncMock(side_effect=lambda: list(targets.values())))
+    monkeypatch.setattr(ns, "get_notion_target", AsyncMock(side_effect=lambda index, **_: dict(targets[str(index)])))
+    observed = []
+
+    async def sync(config):
+        await ns.worker_checkpoint()
+        observed.append(config["id"])
+        targets[str(config["id"])]["last_sync"] = datetime.now(UTC).isoformat()
+
+    monkeypatch.setattr(nw, "_run_notion_target_sync", sync)
+    async with AsyncExitStack() as stack:
+        leader, absent, survivor = await join_three(stack, redis, prefix)
+        await leader.publish(await nw._discover_targets())
+        member, owner = await absent.claim(90)
+        seconds, micros = await redis.time()
+        await redis.zadd(absent._members_key, {absent.worker_id: int(seconds) + int(micros) / 1_000_000 - 1})
+        await leader.publish(await nw._discover_targets())
+        for worker in (leader, survivor):
+            while await worker.pending():
+                claim = await worker.claim(90)
+                if claim:
+                    await nw._execute_target(worker, *claim)
+        assert int(member) not in observed
+        assert await redis.get(f"{prefix}:lease:{member}") == owner
+        await leader.publish(await nw._discover_targets())
+        assert await leader.claim(90) is None
+        assert await survivor.claim(90) is None
+        # Simulate Redis TTL expiration without waiting ninety wall-clock seconds.
+        await redis.expire(f"{prefix}:lease:{member}", 0)
+        await leader.publish(await nw._discover_targets())
+        recovered = [(worker, claim) for worker in (leader, survivor) if (claim := await worker.claim(90))]
+        assert len(recovered) == 1
+        worker, claim = recovered[0]
+        assert claim[0] == member and claim[1] != owner
+        with pytest.raises(wd.DispatcherUnavailable):
+            await nw._execute_target(absent, member, owner)
+        assert await redis.get(f"{prefix}:lease:{member}") == claim[1]
+        await nw._execute_target(worker, *claim)
+    assert sorted(observed) == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("revocation", ["enabled", "interval", "gate", "output"])
+async def test_revoked_policy_after_await_prevents_native_http_mutation(coordination, monkeypatch, revocation):
+    redis, prefix = coordination
+    config = target()
+    monkeypatch.setattr(ns, "get_notion_target", AsyncMock(return_value=config))
+    sent = []
+
+    async def transport(request):
+        sent.append(request)
+        return httpx.Response(200, json={})
+
+    async def sync(_):
+        if revocation == "enabled":
+            config["enabled"] = False
+        elif revocation == "interval":
+            config["last_sync"] = datetime.now(UTC).isoformat()
+        elif revocation == "gate":
+            monkeypatch.setattr("app.services.resource_policy_store.get_runtime_setting", AsyncMock(return_value=False))
+        else:
+            config["database_id"] = "new-output"
+        async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as client:
+            await ns._notion_request(client, "POST", "https://notion.invalid/pages", "key", json={})
+
+    monkeypatch.setattr(nw, "_run_notion_target_sync", sync)
+    async with wd.WorkDispatcher(redis, prefix) as worker:
+        await worker.publish(["1"])
+        # Use a snapshot as the database service does; modifying current state
+        # must not also rewrite the execution snapshot.
+        monkeypatch.setattr(ns, "get_notion_target", AsyncMock(side_effect=lambda *_, **__: dict(config)))
+        with pytest.raises(wd.DispatcherUnavailable):
+            await nw._execute_target(worker, *await worker.claim(90))
+    assert sent == []
+
+
+@pytest.mark.asyncio
+async def test_legacy_singleton_and_normalized_shared_outputs_are_exclusive(coordination, monkeypatch):
+    redis, prefix = coordination
+    uuid = "ABCDEF12-3456-7890-ABCD-EF1234567890"
+    legacy = target(database_id=uuid)
+    legacy.pop("id")
+    modern = target(database_id=f"https://www.notion.so/{uuid.replace('-', '').lower()}?v=anything")
+    monkeypatch.setattr(ns, "get_notion_config", AsyncMock(return_value=legacy))
+    monkeypatch.setattr(ns, "get_notion_target", AsyncMock(return_value=modern))
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    seen = []
+
+    async def sync(config):
+        seen.append(config)
+        entered.set()
+        await release.wait()
+
+    monkeypatch.setattr(nw, "_run_notion_target_sync", sync)
+    async with AsyncExitStack() as stack:
+        workers = await join_three(stack, redis, prefix)
+        await workers[0].publish(["1", "legacy"])
+        claims = [(worker, claim) for worker in workers if (claim := await worker.claim(90))]
+        assert len(claims) == 2
+        worker, claim = claims[0]
+        first = asyncio.create_task(nw._execute_target(worker, *claim))
+        try:
+            await asyncio.wait_for(entered.wait(), 2)
+            other, other_claim = claims[1]
+            await nw._execute_target(other, *other_claim)
+            assert len(seen) == 1
+            assert not any(await asyncio.gather(*(worker.claim(90) for worker in workers)))
+        finally:
+            release.set()
+            await first
+
+
+@pytest.mark.asyncio
+async def test_slow_leader_execution_does_not_block_scan_or_heartbeat(coordination, monkeypatch):
+    redis, prefix = coordination
+    config = target()
+    listing = AsyncMock(return_value=[config])
+    monkeypatch.setattr(ns, "list_notion_targets", listing)
+    monkeypatch.setattr(ns, "get_notion_target", AsyncMock(return_value=config))
+    monkeypatch.setattr(nw, "_CHECK_INTERVAL", 0.01)
+    monkeypatch.setattr(wd, "HEARTBEAT_SECONDS", 0.01)
+    started = asyncio.Event()
+
+    async def slow(_):
+        started.set()
+        await asyncio.Future()
+
+    monkeypatch.setattr(nw, "_run_notion_target_sync", slow)
+    async with wd.WorkDispatcher(redis, prefix) as worker:
+        await worker.publish(["1"])
+        before = await redis.zscore(worker._members_key, worker.worker_id)
+        tasks = [asyncio.create_task(nw._execute(worker)), asyncio.create_task(nw._scan(worker))]
+        try:
+            await asyncio.wait_for(started.wait(), 2)
+            for _ in range(100):
+                if listing.await_count >= 2 and await redis.zscore(worker._members_key, worker.worker_id) > before:
+                    break
+                await asyncio.sleep(0.01)
+            assert listing.await_count >= 2
+            assert await redis.zscore(worker._members_key, worker.worker_id) > before
+        finally:
+            await nw._drain(tasks)
+        assert not await redis.exists(f"{prefix}:lease:1")
+
+
+@pytest.mark.asyncio
+async def test_shutdown_drains_http_children_before_database_close(monkeypatch):
+    import app.database as db
+    import app.services.db_auto_backup as dab
+
+    started = asyncio.Event()
+    allow_drain = asyncio.Event()
+    order = []
+
+    async def child():
+        started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            await allow_drain.wait()
+            order.append("http-drained")
+
+    async def notion():
+        await ns._drained_parallel([child()])
+
+    async def trove(_):
+        await asyncio.Future()
+
+    async def close():
+        order.append("db-closed")
+
+    monkeypatch.setattr(db, "init_db", lambda *_, **__: None)
+    monkeypatch.setattr(db, "is_db_available", lambda: True)
+    monkeypatch.setattr(db, "close_db", close)
+    monkeypatch.setattr(nw, "_run_target_worker", notion)
+    monkeypatch.setattr(dab, "run_scheduler", trove)
+    main = asyncio.create_task(nw.main())
+    await asyncio.wait_for(started.wait(), 2)
+    main.cancel()
+    await asyncio.sleep(0)
+    assert not main.done()
+    assert order == []
+    allow_drain.set()
+    with pytest.raises(asyncio.CancelledError):
+        await main
+    assert order == ["http-drained", "db-closed"]
+
+
+@pytest.mark.asyncio
+async def test_cancellation_keeps_target_and_output_owned_until_http_drain(coordination, monkeypatch):
+    redis, prefix = coordination
+    monkeypatch.setattr(ns, "get_notion_target", AsyncMock(return_value=target()))
+    started = asyncio.Event()
+    draining = asyncio.Event()
+    release = asyncio.Event()
+
+    async def child():
+        started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            draining.set()
+            await release.wait()
+
+    async def sync(_):
+        await ns._drained_parallel([child()])
+
+    monkeypatch.setattr(nw, "_run_notion_target_sync", sync)
+    async with wd.WorkDispatcher(redis, prefix) as worker:
+        await worker.publish(["1"])
+        execution = asyncio.create_task(nw._execute_target(worker, *await worker.claim(90)))
+        try:
+            await asyncio.wait_for(started.wait(), 2)
+            execution.cancel()
+            await asyncio.wait_for(draining.wait(), 2)
+            assert await redis.exists(f"{prefix}:lease:1")
+            assert await redis.exists(f"{prefix}:output:output-1")
+            assert not execution.done()
+        finally:
+            release.set()
+            await nw._drain([execution])
+        assert not await redis.exists(f"{prefix}:lease:1", f"{prefix}:output:output-1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("config", [target(enabled=False), target(last_sync=datetime.now(UTC).isoformat())])
+async def test_claimed_legacy_rereads_current_enable_and_interval(coordination, monkeypatch, config):
+    redis, prefix = coordination
+    legacy = {key: value for key, value in config.items() if key != "id"}
+    monkeypatch.setattr(ns, "get_notion_config", AsyncMock(return_value=legacy))
+    sync = AsyncMock()
+    monkeypatch.setattr(nw, "_run_notion_target_sync", sync)
+    async with wd.WorkDispatcher(redis, prefix) as worker:
+        await worker.publish(["legacy"])
+        await nw._execute_target(worker, *await worker.claim(90))
+    sync.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_native_inventory_thread_finishes_before_connection_and_lease_close(coordination, monkeypatch):
+    import threading
+    from types import SimpleNamespace
+
+    import openstack
+
+    redis, prefix = coordination
+    started = asyncio.Event()
+    release = threading.Event()
+    loop = asyncio.get_running_loop()
+    order = []
+
+    def servers(**_):
+        loop.call_soon_threadsafe(started.set)
+        if not release.wait(5):
+            raise RuntimeError("inventory test release timed out")
+        order.append("sdk-finished")
+        return []
+
+    conn = SimpleNamespace(
+        compute=SimpleNamespace(servers=servers),
+        identity=SimpleNamespace(projects=lambda: [], users=lambda: []),
+        close=lambda: order.append("connection-closed"),
+    )
+    monkeypatch.setattr(openstack, "connect", lambda **_: conn)
+    monkeypatch.setattr("app.services.nova.list_flavors", lambda _: [])
+    monkeypatch.setattr("app.database.is_db_available", lambda: False)
+    monkeypatch.setattr(ns, "get_notion_target", AsyncMock(return_value=target()))
+    mutate = AsyncMock(return_value={})
+    monkeypatch.setattr(ns, "sync_to_notion", mutate)
+    async with wd.WorkDispatcher(redis, prefix) as worker:
+        await worker.publish(["1"])
+        execution = asyncio.create_task(nw._execute_target(worker, *await worker.claim(90)))
+        try:
+            await asyncio.wait_for(started.wait(), 2)
+            execution.cancel()
+            await asyncio.sleep(0)
+            assert not execution.done()
+            assert order == []
+            assert await redis.exists(f"{prefix}:lease:1")
+        finally:
+            release.set()
+            await nw._drain([execution])
+        assert order == ["sdk-finished", "connection-closed"]
+        assert not await redis.exists(f"{prefix}:lease:1")
+    mutate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_partial_sync_does_not_record_success(monkeypatch):
+    monkeypatch.setattr("app.database.is_db_available", lambda: False)
+    monkeypatch.setattr("app.services.openstack_inventory.collect_instance_data", AsyncMock(return_value=[]))
+    monkeypatch.setattr(ns, "sync_to_notion", AsyncMock(return_value={"errors": 1}))
+    update = AsyncMock()
+    monkeypatch.setattr(ns, "update_notion_target", update)
+    with pytest.raises(RuntimeError, match="partial"):
+        await nw._run_notion_target_sync(target())
+    update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_executor_refreshes_gpu_overlay_before_mapping(monkeypatch):
+    order = []
+    monkeypatch.setattr("app.database.is_db_available", lambda: True)
+    monkeypatch.setattr(
+        "app.services.gpu_catalog.refresh_device_map_from_db", AsyncMock(side_effect=lambda: order.append("refresh"))
+    )
+    monkeypatch.setattr("app.services.openstack_inventory.collect_instance_data", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        "app.services.gpu_inventory.build_alias_to_device_name_map", lambda: order.append("mapping") or {}
+    )
+    monkeypatch.setattr(ns, "sync_to_notion", AsyncMock(return_value={}))
+    monkeypatch.setattr(ns, "update_notion_target", AsyncMock())
+    await nw._run_notion_target_sync(target())
+    assert order == ["refresh", "mapping"]
+
+
 _BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
 def test_worker_imports_are_fastapi_free():
-    """Afterglow-owned worker imports must not load FastAPI, Starlette, or Uvicorn."""
-    result = subprocess.run(
-        [sys.executable, "-c", _FASTAPI_FREE_SCRIPT],
-        capture_output=True,
-        text=True,
-        cwd=str(_BACKEND_DIR),
-    )
-    assert result.returncode == 0, (
-        f"워커 import 경로에 FastAPI/starlette/uvicorn가 포함됨:\nstdout: {result.stdout}\nstderr: {result.stderr}"
-    )
-    assert result.stdout.strip() == "OK"
-
-
-@pytest.mark.asyncio
-async def test_worker_cycle_skips_all_external_work_when_global_gate_is_disabled(monkeypatch):
-    from app.notion_worker import _run_sync_cycle
-
-    get_setting = AsyncMock(return_value=False)
-    list_targets = AsyncMock()
-    monkeypatch.setattr("app.services.resource_policy_store.get_runtime_setting", get_setting)
-    monkeypatch.setattr("app.services.notion_sync.list_notion_targets", list_targets)
-
-    await _run_sync_cycle()
-
-    get_setting.assert_awaited_once_with("notion.sync_enabled")
-    list_targets.assert_not_awaited()
+    script = """
+import sys
+import app.notion_worker
+import app.services.gpu_inventory
+import app.services.openstack_inventory
+import app.services.notion_sync
+assert not any(m in sys.modules for m in ('fastapi', 'starlette', 'uvicorn'))
+"""
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, cwd=_BACKEND_DIR)
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX worker shutdown signals")
@@ -305,23 +493,17 @@ def test_worker_shutdown_signals_cancel_pending_work_cleanly(shutdown_signal):
     script = """
 import asyncio
 from app import notion_worker
-
 async def pending_work():
-    print("READY", flush=True)
+    print('READY', flush=True)
     try:
         await asyncio.Future()
     finally:
-        print("CLEANED", flush=True)
-
+        print('CLEANED', flush=True)
 notion_worker.main = pending_work
 asyncio.run(notion_worker._main_async())
 """
     with subprocess.Popen(
-        [sys.executable, "-c", script],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        cwd=_BACKEND_DIR,
+        [sys.executable, "-c", script], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=_BACKEND_DIR
     ) as process:
         try:
             assert select.select([process.stdout], [], [], 10)[0], "worker did not become ready"
@@ -334,3 +516,214 @@ asyncio.run(notion_worker._main_async())
             if process.poll() is None:
                 process.kill()
                 process.communicate(timeout=5)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failed_section", ["gpu", "hypervisor"])
+async def test_optional_section_failure_preserves_instance_sync_without_false_section_timestamp(
+    monkeypatch, failed_section
+):
+    monkeypatch.setattr("app.database.is_db_available", lambda: False)
+    monkeypatch.setattr("app.services.gpu_inventory.get_gpu_spec_list", lambda: [])
+    monkeypatch.setattr("app.services.openstack_inventory.collect_instance_data", AsyncMock(return_value=[]))
+    monkeypatch.setattr("app.services.openstack_inventory.collect_hypervisor_data", AsyncMock(return_value=[]))
+    monkeypatch.setattr(ns, "build_gpu_usage_by_gpu", lambda *_: {})
+    monkeypatch.setattr(
+        ns, "sync_gpu_specs_to_notion", AsyncMock(return_value={"errors": int(failed_section == "gpu")})
+    )
+    monkeypatch.setattr(
+        ns, "sync_hypervisors_to_notion", AsyncMock(return_value={"errors": int(failed_section == "hypervisor")})
+    )
+    monkeypatch.setattr(ns, "fetch_gpu_spec_page_ids_by_name", AsyncMock(return_value={}))
+    monkeypatch.setattr(ns, "fetch_hypervisor_page_ids_by_name", AsyncMock(return_value={}))
+    instance_sync = AsyncMock(return_value={"errors": 0})
+    monkeypatch.setattr(ns, "sync_to_notion", instance_sync)
+    update = AsyncMock()
+    monkeypatch.setattr(ns, "update_notion_target", update)
+    await nw._run_notion_target_sync(target(gpu_spec_database_id="gpu-db", hypervisors_database_id="hypervisor-db"))
+    instance_sync.assert_awaited_once()
+    stamps = update.await_args.args[1]
+    assert "last_sync" in stamps
+    failed_key = "gpu_spec_last_sync" if failed_section == "gpu" else "hypervisors_last_sync"
+    success_key = "hypervisors_last_sync" if failed_section == "gpu" else "gpu_spec_last_sync"
+    assert failed_key not in stamps and success_key in stamps
+
+
+@pytest.mark.asyncio
+async def test_legacy_timestamp_update_preserves_concurrent_user_columns(monkeypatch):
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.models.db import NotionConfig
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr("app.database.is_db_available", lambda: True)
+    monkeypatch.setattr("app.database.get_session_factory", lambda: factory)
+    older = datetime(2026, 10, 13)
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(NotionConfig.__table__.create)
+        async with factory() as session:
+            session.add(
+                NotionConfig(
+                    id=1,
+                    api_key_encrypted="changed-key",
+                    database_id="changed-db",
+                    enabled=True,
+                    interval_minutes=60,
+                    gpu_spec_last_sync=older,
+                )
+            )
+            await session.commit()
+        stamp = datetime.now(UTC).isoformat()
+        await ns.update_notion_config_timestamps({"last_sync": stamp})
+        async with factory() as session:
+            row = await session.get(NotionConfig, 1)
+            assert row.api_key_encrypted == "changed-key"
+            assert row.database_id == "changed-db" and row.interval_minutes == 60 and row.enabled
+            assert row.last_sync is not None and row.gpu_spec_last_sync == older
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_cancellation_first_received_during_normal_drain_is_propagated():
+    started = asyncio.Event()
+    cleaning = asyncio.Event()
+    release = asyncio.Event()
+
+    async def child():
+        started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            cleaning.set()
+            await release.wait()
+
+    task = asyncio.create_task(child())
+    await started.wait()
+    draining = asyncio.create_task(nw._drain([task]))
+    await asyncio.wait_for(cleaning.wait(), 2)
+    draining.cancel()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await draining
+    assert task.done()
+
+
+@pytest.mark.asyncio
+async def test_transient_discovery_error_does_not_end_scanner_incarnation(coordination, monkeypatch):
+    redis, prefix = coordination
+    retried = asyncio.Event()
+    calls = 0
+
+    async def discovery():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise ConnectionError("temporary registry failure")
+        retried.set()
+        return []
+
+    monkeypatch.setattr(nw, "_discover_targets", discovery)
+    monkeypatch.setattr(nw, "_CHECK_INTERVAL", 0.001)
+    async with wd.WorkDispatcher(redis, prefix) as worker:
+        scanner = asyncio.create_task(nw._scan(worker))
+        try:
+            await asyncio.wait_for(retried.wait(), 2)
+            assert not scanner.done() and await worker.is_leader()
+        finally:
+            await nw._drain([scanner])
+
+
+@pytest.fixture
+async def legacy_store(coordination, monkeypatch):
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.models.db import NotionConfig
+
+    redis, prefix = coordination
+    key = f"{prefix}:legacy-config"
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(ns, "REDIS_CONFIG_KEY", key)
+    monkeypatch.setattr("app.database.is_db_available", lambda: True)
+    monkeypatch.setattr("app.database.get_session_factory", lambda: factory)
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(NotionConfig.__table__.create)
+        yield redis, prefix, key, factory
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_redis_only_legacy_worker_persists_stamps_and_respects_next_interval(legacy_store, monkeypatch):
+    import json
+
+    from app.models.db import NotionConfig
+
+    redis, prefix, key, factory = legacy_store
+    config = target(database_id="redis-output", interval_minutes=60)
+    config.pop("id")
+    await redis.set(key, json.dumps(config))
+    monkeypatch.setattr("app.services.gpu_catalog.refresh_device_map_from_db", AsyncMock())
+    monkeypatch.setattr("app.services.openstack_inventory.collect_instance_data", AsyncMock(return_value=[]))
+    monkeypatch.setattr(ns, "sync_to_notion", AsyncMock(return_value={"errors": 0}))
+    monkeypatch.setattr(ns, "migrate_instance_db_to_korean", AsyncMock(return_value=False))
+    monkeypatch.setattr(ns, "list_notion_targets", AsyncMock(return_value=[]))
+    async with wd.WorkDispatcher(redis, prefix) as worker:
+        await worker.publish(await nw._discover_targets())
+        await nw._execute_target(worker, *await worker.claim(90))
+        assert await nw._discover_targets() == []
+    stored = json.loads(await redis.get(key))
+    assert stored["last_sync"] is not None
+    assert {field: stored[field] for field in config if field != "last_sync"} == {
+        field: value for field, value in config.items() if field != "last_sync"
+    }
+    async with factory() as session:
+        assert await session.get(NotionConfig, 1) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", [{"enabled": False}, {"interval_minutes": 90}, {"database_id": "new-output"}])
+async def test_redis_timestamp_compare_and_set_cannot_revert_policy_change(legacy_store, monkeypatch, change):
+    import json
+
+    redis, _, key, _ = legacy_store
+    config = target()
+    config.pop("id")
+    await redis.set(key, json.dumps(config))
+    changed = {**config, **change}
+
+    class RedisRace:
+        def __getattr__(self, name):
+            return getattr(redis, name)
+
+        async def eval(self, script, *args):
+            if script == ns._UPDATE_REDIS_TIMESTAMPS:
+                await redis.set(key, json.dumps(changed))
+            return await redis.eval(script, *args)
+
+    monkeypatch.setattr("app.services.cache._get_redis", AsyncMock(return_value=RedisRace()))
+    with pytest.raises(wd.DispatcherUnavailable, match="policy changed"):
+        await ns.update_notion_config_timestamps({"last_sync": datetime.now(UTC).isoformat()})
+    assert json.loads(await redis.get(key)) == changed
+
+
+@pytest.mark.asyncio
+async def test_disabled_sql_legacy_config_cannot_fall_back_to_stale_redis_policy(legacy_store):
+    import json
+
+    from app.models.db import NotionConfig
+
+    redis, _, key, factory = legacy_store
+    config = target()
+    config.pop("id")
+    await redis.set(key, json.dumps(config))
+    async with factory() as session:
+        session.add(NotionConfig(id=1, api_key_encrypted="disabled-key", database_id="sql-output", enabled=False))
+        await session.commit()
+    with pytest.raises(wd.DispatcherUnavailable):
+        await ns.update_notion_config_timestamps({"last_sync": datetime.now(UTC).isoformat()})
+    assert json.loads(await redis.get(key)) == config

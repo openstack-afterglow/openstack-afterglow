@@ -173,6 +173,9 @@ async def build_from_inline_dockerfile(
     conn=Depends(get_os_conn),
 ) -> dict[str, Any]:
     """Build or reuse a Dockerfile chain and optionally launch its SSH VM."""
+    if req.consumer is not None:
+        req.consumer.require_immediate_transport()
+
     try:
         plan = await prepare_inline_dockerfile_import(
             conn,

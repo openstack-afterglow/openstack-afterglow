@@ -2,6 +2,7 @@
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import BklitChart from '$lib/components/charts/BklitChart.svelte';
 	import type { StoragePool } from '$lib/types/adminServices';
 	import ServiceListControls from './ServiceListControls.svelte';
 	import {
@@ -103,24 +104,14 @@
 							<div class="text-xs text-ink-2">{t('services.pools.freeValue', { capacity: pool.free_capacity_gb.toFixed(1) })}</div>
 						</div>
 					</div>
-					<div class="w-full h-2 bg-surface-sunken rounded-full overflow-hidden">
-						<div
-							class="pool-fill"
-							style="transform: scaleX({Math.max(0, pct) / 100}); background: {pct > 85 ? 'var(--gradient-usage-danger)' : pct > 65 ? 'var(--gradient-usage-warning)' : 'var(--gradient-usage)'}"
-						></div>
-					</div>
+					<BklitChart
+						spec={{ kind: 'gauge', value: Math.max(0, pct), color: pct > 85 ? 'var(--color-state-danger)' : pct > 65 ? 'var(--color-state-warning)' : 'var(--color-accent)', track: 'var(--color-surface-sunken)' }}
+						height={8}
+						decorative
+					/>
 					<div class="text-xs text-ink-2 mt-1">{t('services.pools.usedPercent', { percent: pct.toFixed(1) })}</div>
 				</article>
 			{/each}
 		</div>
 	{/if}
 </div>
-
-<style>
-	/* Scales instead of resizing; no mount grow-in because filtering re-creates keyed pool cards. */
-	.pool-fill {
-		height: 100%;
-		transform-origin: left center;
-		transition: transform var(--motion-duration-data) var(--motion-ease-emphasized);
-	}
-</style>

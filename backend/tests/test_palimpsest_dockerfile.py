@@ -870,6 +870,103 @@ async def test_inline_build_rejects_missing_or_unsafe_consumer_ssh_identity_befo
     create_job.assert_not_awaited()
 
 
+@pytest.mark.parametrize("transport", [None, "nfs"])
+async def test_inline_build_consumer_transport_is_frozen_in_job(admin_client, mock_conn, transport):
+    plan = SimpleNamespace(
+        profile_name="demo",
+        source_type=SOURCE_INLINE,
+        dockerfile_digest=_DIGEST_A,
+        parent_digest=None,
+        cached_artifact_ids=[],
+        planned_layers=[],
+    )
+    snapshot = {
+        "network": {"id": "net-1"},
+        "flavor": {"id": "flavor-1"},
+        "openstack.service_project": {"id": "service-project"},
+    }
+    consumer = {"flavor_id": "m1.small", "ssh_public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest"}
+    if transport is not None:
+        consumer["transport"] = transport
+    with (
+        patch("app.api.palimpsest.builds.prepare_inline_dockerfile_import", AsyncMock(return_value=plan)),
+        patch(
+            "app.services.layer_build.resolve_layer_consume_resource_snapshot", AsyncMock(return_value=snapshot)
+        ) as resolve,
+        patch("app.api.palimpsest.builds.create_import_job", AsyncMock(return_value={"id": 1})) as create,
+    ):
+        response = await admin_client.post(
+            "/api/v1/palimpsest/builds/dockerfile",
+            json={"dockerfile": "FROM ubuntu:24.04\n", "layer_prefix": "demo", "consumer": consumer},
+        )
+    assert response.status_code == 200
+    spec = create.await_args.kwargs["consumer_spec"]
+    assert spec["transport"] == (transport or "nfs")
+    assert spec["resource_snapshot"] == snapshot
+    resolve.assert_awaited_once_with(mock_conn, flavor_ref="m1.small", network_id=None)
+
+
+async def test_inline_block_consumer_rejected_before_provider_mutation(admin_client, mock_conn):
+    with (
+        patch(
+            "app.api.palimpsest.builds.prepare_inline_dockerfile_import",
+            AsyncMock(
+                side_effect=AssertionError("planner invoked"),
+            ),
+        ) as plan,
+        patch("app.services.layer_build.resolve_layer_consume_resource_snapshot", AsyncMock()) as resolve,
+        patch("app.api.palimpsest.builds.create_import_job", AsyncMock()) as create,
+    ):
+        response = await admin_client.post(
+            "/api/v1/palimpsest/builds/dockerfile",
+            json={
+                "dockerfile": "FROM ubuntu:24.04\n",
+                "layer_prefix": "demo",
+                "consumer": {"flavor_id": "m1.small", "transport": "block", "key_name": "private-key"},
+            },
+        )
+    assert response.status_code == 422
+    assert "import_id" in str(response.json()["detail"])
+    plan.assert_not_awaited()
+    resolve.assert_not_awaited()
+    create.assert_not_awaited()
+    mock_conn.compute.get_keypair.assert_not_called()
+    mock_conn.compute.create_server.assert_not_called()
+
+
+@pytest.mark.parametrize("transport", ["invalid", "BLOCK", "", None])
+async def test_inline_build_consumer_rejects_invalid_transport_before_planning(admin_client, transport):
+    with (
+        patch("app.api.palimpsest.builds.prepare_inline_dockerfile_import", AsyncMock()) as plan,
+        patch("app.api.palimpsest.builds.create_import_job", AsyncMock()) as create,
+    ):
+        response = await admin_client.post(
+            "/api/v1/palimpsest/builds/dockerfile",
+            json={
+                "dockerfile": "FROM ubuntu:24.04\n",
+                "layer_prefix": "demo",
+                "consumer": {"flavor_id": "m1.small", "transport": transport},
+            },
+        )
+    assert response.status_code == 422
+    plan.assert_not_awaited()
+    create.assert_not_awaited()
+
+
+async def test_inline_block_consumer_remains_admin_only(non_admin_client):
+    with patch("app.api.palimpsest.builds.create_import_job", AsyncMock()) as create:
+        response = await non_admin_client.post(
+            "/api/v1/palimpsest/builds/dockerfile",
+            json={
+                "dockerfile": "FROM ubuntu:24.04\n",
+                "layer_prefix": "demo",
+                "consumer": {"flavor_id": "m1.small", "transport": "block"},
+            },
+        )
+    assert response.status_code == 403
+    create.assert_not_awaited()
+
+
 async def test_plan_endpoint_resolves_glance_from_without_base_image_id(admin_client, mock_conn):
     mock_conn.image = FakeGlance(glance_image("img-noble", "noble-golden"))
 

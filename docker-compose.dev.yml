@@ -469,6 +469,9 @@ services:
     environment:
       ORIGIN: http://localhost:3080
       PUBLIC_API_BASE: http://localhost:8000
+      TRAFFIC_ANALYTICS_INGEST_URL: ${TRAFFIC_ANALYTICS_INGEST_URL:-http://backend:8000/api/v1/monitoring/traffic/events}
+      TRAFFIC_ANALYTICS_INGEST_KEY: ${TRAFFIC_ANALYTICS_INGEST_KEY:-}
+      TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS: ${TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS:-false}
     depends_on:
       backend:
         condition: service_healthy

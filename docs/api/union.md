@@ -20,14 +20,14 @@ nav_order: 30
 > 기본 경로: `/api/v1/admin/libraries`
 > 인증: `Authorization: Bearer <access_token>` · `X-Project-Id`(선택, rescope용)
 
-Afterglow의 플래그십 기능인 **레이어 기반 환경 플랫폼** API입니다. 도커 이미지처럼 패키지·툴체인 단위 레이어를 중앙(CephFS)에 저장하고, VM 부팅 시 base 디스크 위에 OverlayFS로 합성하여 사용합니다. 컨테이너가 아니라 VM 내부에서 직접 마운트하는 방식이며, 저장소 공유는 Manila(CephFS/NFS) share로 이뤄집니다.
+관리자 레이어 API는 봉인된 SquashFS를 VM의 OverlayFS lower로 소비한다. 빌드/봉인은 Manila NFS share를 유지하며 소비는 기본 NFS 또는 명시적인 protected Glance RBD source와 VM별 readonly Cinder volume을 사용한다. 실제 provider·membership·quota·RO 준비 조건을 통과하지 못한 block 요청을 NFS로 대체하지 않는다.
 
 이 API는 **경로 접두사가 다른 두 서브시스템**으로 구성됩니다. 두 시스템은 데이터 모델이 다르므로 혼동하지 않도록 주의합니다.
 
 | 서브시스템 | 접두사 | 소스 | 레이어 식별자 | 저장소 | 설명 |
 |------------|--------|------|----------------|--------|------|
 | **Union 레이어** | `/api/v1/union` | `union/layers.py` | `sha256:<64hex>` (content-addressable) | CephFS + OverlayFS | `union.md` 설계 문서 구현. seal/fork/snapshot, single-parent 상속, 템플릿. |
-| **squashfs 라이브러리 (관리자)** | `/api/v1/admin/libraries` | `union/layer_ops.py` | 정수 artifact ID | squashfs NFS share | 빌드/소비 파이프라인. `kind` 계약(uv→python→pip), 프로필, 공개 설정. **전 엔드포인트 관리자 전용.** |
+| **squashfs 라이브러리 (관리자)** | `/api/v1/admin/libraries` | `union/layer_ops.py`, `union/layer_block_sources.py` | 정수 artifact ID | Manila NFS 및 선택적 RBD Glance/Cinder | 봉인·정확한 import 계보·명시적 transport와 내구성 소비/회수. **전 엔드포인트 관리자 전용.** |
 
 > **주의:** `sha256` content-addressable 모델(Union 레이어)과 정수 artifact 모델(squashfs 라이브러리)은 별개입니다. `POST /api/v1/admin/libraries/build`가 만드는 artifact는 sha256 content-addressable 레이어가 아닙니다.
 
@@ -133,9 +133,11 @@ stateDiagram-v2
 | `GET` | `/api/v1/admin/libraries/builds` | 빌드 목록 (최대 50) |
 | `GET` | `/api/v1/admin/libraries/builds/{build_id}` | 빌드 상세 + 라이브 VM 상태·콘솔 |
 | `POST` | `/api/v1/admin/libraries/builds/{build_id}/cancel` | 진행 중 빌드 취소 |
-| `POST` | `/api/v1/admin/libraries/consume` | 소비 인스턴스 생성 |
+| `POST` | `/api/v1/admin/libraries/consume` | NFS 기본 또는 명시적 block; completed import의 정확한 IDs로 소비 |
 | `GET` | `/api/v1/admin/libraries/consumes` | 소비 인스턴스 목록 |
 | `GET` | `/api/v1/admin/libraries/consumes/{consume_id}` | 소비 인스턴스 상세 + 라이브 Nova 상태 |
+| `DELETE` | `/api/v1/admin/libraries/consumes/{consume_id}` | block 전용 durable cleanup, managed Manila/FIP 선행 회수 |
+| `PUT`, `GET` | `/api/v1/admin/libraries/artifacts/{artifact_id}/block-source` | exact sealed-byte RBD source 게시/내구성 상태 |
 | `GET` | `/api/v1/admin/libraries/artifacts` | 빌드된 artifact 목록 (lineage/삭제 메타 포함) |
 | `GET` | `/api/v1/admin/libraries/artifacts/{artifact_id}/delete-preview` | artifact 삭제 가능 여부/차단 사유 |
 | `PATCH` | `/api/v1/admin/libraries/artifacts/{artifact_id}/publication` | artifact 공개/비공개 설정 |
@@ -559,13 +561,13 @@ squashfs 레이어 빌드를 시작합니다(백그라운드 태스크). 레이�
 
 ### POST /api/v1/admin/libraries/builds/{build_id}/cancel
 
-진행 중인 빌드를 취소합니다.
+진행 중인 빌드를 취소합니다. SQL 상태는 즉시 `cancelled`가 되어 실행 owner의 다음 mutation을 막지만 `completed_at`은 비어 있습니다. 배정된 build worker가 journal된 정확한 transient 리소스(늦게 접수된 CREATE 포함)를 정리하고 새 CREATE 없이 `completed_at`을 기록합니다. 따라서 `200`은 정리 완료를 뜻하지 않습니다.
 
 **응답 (200 OK)**: 취소 결과 · **오류**: `404`(빌드 없음), `409`(터미널 상태 등 취소 불가)
 
 ### POST /api/v1/admin/libraries/consume
 
-레이어 소비 인스턴스를 생성합니다. `layer-store-ro` NFS share를 RO 마운트하고 squashfs + OverlayFS를 활성화한 VM을 만듭니다.
+`profile_name` 또는 completed `import_id`의 봉인된 계보를 소비한다. NFS가 기본이며 `transport="block"`이면 미리 게시된 RBD raw/bare 원본을 검증하고 VM별 kernel-readonly lower와 별도 writable upper를 사용한다. 파일 staging/loop/NFS fallback은 없다.
 
 | 파라미터 | 위치 | 타입 | 필수 | 기본값 | 설명 |
 |----------|------|------|------|--------|------|
@@ -578,12 +580,23 @@ squashfs 레이어 빌드를 시작합니다(백그라운드 태스크). 레이�
 | `key_name` | body | string \| null | 아니오 | `null` | 키페어 이름 (≤255자, 개행·탭 불가) |
 | `ssh_public_key` | body | string \| null | 아니오 | `null` | SSH 공개키 (형식 검증) |
 | `ssh_username` | body | string \| null | 아니오 | `null` | SSH 사용자명. `root` 금지 |
+| `transport` | body | `"nfs"` \| `"block"` | 아니오 | `"nfs"` | 명시적 null/다른 값 거부; block source 사전 게시 필요 |
+| `expected_project_id` | body | string \| null | 아니오 | `null` | 실제 SDK·snapshot 자원 owner assertion; 다른 scope로 대체하지 않음 |
 
 **파라미터 의존성**: `profile_name`과 `import_id` 중 정확히 하나를 지정합니다. `import_id`는 완료된 작업의 봉인된 root→delta artifact IDs를 그대로 사용하며 이름이 같은 프로필의 최신 artifact를 재조회하지 않습니다. `ssh_username`은 `key_name` 또는 `ssh_public_key`와 함께 지정해야 합니다.
 
 **응답 (200 OK)**: `{ "consume_id": <int>, "server_id": "<uuid>", "status": "active", "ready": true }` (guest root와 SSH 준비 확인 후)
 
 **오류 응답**: `422` — 선택자 형식/조합 오류. `400` — 작업 미완료·봉인/계보 불일치 또는 키페어 공개키 조회 실패 등.
+
+Block의 provider/create 실패는502 응답에 내구성 `consume_id`와 cleanup 상태를 남길 수 있다. 응답 유실을 새 CREATE로 자동 재시도하지 말고 기존 상세/DELETE로 발견·회수 상태를 확인한다. 즉시 Dockerfile import의 `consumer.transport="block"`은 관리자 인가 뒤 planner 전에422, 일반 사용자는403이며 봉인 후 exact `import_id`를 사용한다.
+
+### PUT/GET artifact block-source · DELETE block consume
+
+`PUT /api/v1/admin/libraries/artifacts/{artifact_id}/block-source`는 `store_id` query(실제 RBD store) 및 반복 `member_project_id` query와 raw `.sqsh` body를 받는다. Sealed 길이·SHA256·magic이 provider/DB 변경보다 먼저 일치해야 한다. Owner/store/member/blob/chain/size와 durable Glance/upload UUID를 유지해 `pending → ready`로 회수하며 Glance member의 실제 acceptance는 본인이 수행한다. GET은 `{ "block_source": <source 또는 null> }`이다. 기존 source reservation이 있으면 일반 artifact DELETE는409이고 공유 원본은 consumer cleanup으로 지우지 않는다.
+
+`DELETE /api/v1/admin/libraries/consumes/{consume_id}`는 block ledger의 실제 project/run/resource identity를 fence한다. 정확한 managed Manila grant denial과 bound owned FIP 삭제/404 확인을 먼저 완료하며 pending/error이면 VM·tracking을 유지한다. Nova→volume→port 회수의 unknown outcome은 내구성 pending이다. 인증 callback 없는 자동 cleanup은 tracked grants를 버리지 않는다. 상세의 `transport`, `run_id`, `resources`, `cleanup_state`는 진단/회수 상태이지 자격 부여가 아니다. [상세 계약](../palimpsest.md#cinderrbd-block-소비)과 [증거 한계](../testing.md)를 따른다.
+
 
 ### GET /api/v1/admin/libraries/consumes · GET /api/v1/admin/libraries/consumes/{consume_id}
 

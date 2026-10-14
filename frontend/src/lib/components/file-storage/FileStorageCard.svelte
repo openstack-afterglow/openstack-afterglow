@@ -6,6 +6,7 @@
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import ProgressTrack from '$lib/components/ui/ProgressTrack.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import BklitChart from '$lib/components/charts/BklitChart.svelte';
 
 	let {
 		fs, quotaLimit, copiedExport, deleting, selected = false, selectable = true, selectionDisabled = false,
@@ -55,7 +56,9 @@
 			<span class="text-ink-0 font-medium">{fs.size} GB</span>
 		</div>
 		{#if Number.isFinite(quotaLimit) && quotaLimit > 0}
-			<ProgressTrack value={(fs.size / quotaLimit) * 100} label={`${fs.name || fs.id} · ${t('storageCard.allocatedSize')}`} />
+			<div role="meter" aria-label={`${fs.name || fs.id} · ${t('storageCard.allocatedSize')}`} aria-valuemin="0" aria-valuemax={quotaLimit} aria-valuenow={Math.max(0, Math.min(quotaLimit, fs.size))} aria-valuetext={`${fs.size} / ${quotaLimit} GB`}>
+				<BklitChart spec={{ kind: 'gauge', value: (fs.size / quotaLimit) * 100, color: 'var(--color-accent)' }} height={6} decorative />
+			</div>
 		{/if}
 	</div>
 

@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { trafficAreaGeometry, type TrafficAreaPoint } from './trafficArea';
+	import { trafficAreaSeries, type TrafficAreaPoint } from './trafficArea';
+	import BklitChart from '$lib/components/charts/BklitChart.svelte';
+	import type { ChartSpec } from '$lib/components/charts/types';
 	import { formatTrafficBytes } from '$lib/utils/waygateTraffic';
 	import { t } from '$lib/i18n/ns/common';
 
@@ -12,28 +14,24 @@
 		children: Snippet;
 	}
 	let { samples, rxLabel, txLabel, fresh, children }: Props = $props();
-	const chart = $derived(trafficAreaGeometry(samples));
-	const hasGraph = $derived(chart.rx.length > 0 || chart.tx.length > 0);
+	let plotHeight = $state(80);
+	const chart = $derived(trafficAreaSeries(samples));
+	const spec = $derived<ChartSpec>({
+		kind: 'time-series', data: chart.data, xKey: 'timestamp',
+		series: [
+			{ key: 'rxRate', label: rxLabel, color: 'var(--color-chart-1)', area: true },
+			{ key: 'txRate', label: txLabel, color: 'var(--color-chart-2)', area: true, dashed: true },
+		],
+		domain: [0, chart.peak || 1], compact: true, tooltips: false,
+	});
 </script>
 
 <div class="traffic-area">
-	<div class="plot">
-		{#if hasGraph}
-			<svg viewBox="0 0 {chart.width} {chart.height}" preserveAspectRatio="none" aria-hidden="true">
-			<line class="baseline" x1="0" y1={chart.height} x2={chart.width} y2={chart.height} />
-			{#key chart.last}
-				<g class:arrival={fresh}>
-					{#each chart.rx as path}
-						<path class="rx area" d={path.area} />
-						<path class="rx line" d={path.line} vector-effect="non-scaling-stroke" />
-					{/each}
-					{#each chart.tx as path}
-						<path class="tx area" d={path.area} />
-						<path class="tx line" d={path.line} vector-effect="non-scaling-stroke" />
-					{/each}
-				</g>
-			{/key}
-			</svg>
+	<div class="plot" bind:clientHeight={plotHeight}>
+		{#if chart.hasGraph}
+			<div class="background" class:arrival={fresh}>
+				<BklitChart {spec} height={plotHeight || 80} decorative />
+			</div>
 		{/if}
 		<div class="foreground">{@render children()}</div>
 	</div>
@@ -41,7 +39,7 @@
 		<span class="rx-label">{t('traffic.rxLegend', { label: rxLabel })}</span>
 		<span class="tx-label">{t('traffic.txLegend', { label: txLabel })}</span>
 	</div>
-	{#if hasGraph}
+	{#if chart.hasGraph}
 		<p class="scale">{t('traffic.scale', { peak: formatTrafficBytes(chart.peak), seconds: Math.round((chart.last - chart.first) / 1000) })}</p>
 	{:else}
 		<p class="empty">{t('traffic.empty')}</p>
@@ -55,13 +53,7 @@
 	.legend { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; font-size: 0.75rem; }
 	.rx-label { color: var(--color-chart-1); }
 	.tx-label { color: var(--color-chart-2); }
-	svg { position: absolute; inset: 0; display: block; width: 100%; height: 100%; opacity: 0.24; pointer-events: none; }
-	.baseline { stroke: var(--color-line); }
-	.rx { color: var(--color-chart-1); }
-	.tx { color: var(--color-chart-2); }
-	.area { fill: currentColor; opacity: 0.1; }
-	.line { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
-	.tx.line { stroke-dasharray: 4 3; }
+	.background { position: absolute; inset: 0; opacity: 0.24; pointer-events: none; }
 	.scale, .empty { margin: 0.5rem 0 0; color: var(--color-ink-2); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
 	.empty { padding-block: 0.5rem; }
 	.arrival { animation: report-arrival var(--motion-duration-data) var(--motion-ease-out); }

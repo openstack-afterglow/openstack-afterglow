@@ -1,0 +1,257 @@
+{
+  "change": "repair-mcp-authorization-tool-discovery",
+  "local_only": true,
+  "scope": {
+    "afterglow": {
+      "base": "aac6b9c5dc3e53fc3e430ca9ed96c30cacdbdb1e",
+      "source_sha256": "41ee11098dcdfe9a68f0f1fd061754317eed50ffdb739da85622ed002e3a1b9d",
+      "files": 2615,
+      "owned_sources_and_tests": 6,
+      "working_and_staged_guard": "passed",
+      "gate_input_sha256": "0766c7e047e2fe77465433fb1b1e695649a7b9eb9b4be835429a00ec9214b23a",
+      "gate_input_files": 2616,
+      "gate_input_difference": "One clone-only root node_modules runtime symlink; separated using clone-local Git metadata. Product source and suite unchanged."
+    },
+    "lumen": {
+      "base": "24e6ae46e7673772b7ef4b2f176b1802258c4235",
+      "source_sha256": "0dfe7c4a5c333f97d4ea839052c561029f9dcd62b0a1d1ef6943019ec899fd3d",
+      "files": 422,
+      "owned_sources_and_tests": 10,
+      "working_and_staged_guard": "passed"
+    }
+  },
+  "oauth": {
+    "access_levels": [
+      "read",
+      "manage"
+    ],
+    "project_scopes": [
+      "current",
+      "selected",
+      "all"
+    ],
+    "http_runtime_checks": 35,
+    "selected_non_db_tests_passed": 164,
+    "selected_db_authority_tests_passed": 306,
+    "test_selections_may_overlap": true,
+    "create_payload_roles": "omitted; restricted authenticated token snapshot",
+    "remote_id_committed_before_verification": true,
+    "exact_returned_project_and_role_ids_required": true
+  },
+  "native_system": {
+    "architecture": "linux/arm64",
+    "checks": [
+      "explicit_owned_grant_created",
+      "explicit_owned_grant_selected",
+      "native_authenticated_model_catalog",
+      "native_owned_conversation_created",
+      "native_context_preview",
+      "preview_keeps_three_lazy_schemas",
+      "native_durable_run_admitted",
+      "native_durable_sse",
+      "actual_worker_run_completed",
+      "preview_matches_actual_initial_provider_schemas",
+      "provider_discovery_added_vm_schema",
+      "provider_received_actual_sdk_vm_result",
+      "legacy_durable_read_never_exposes_mutation"
+    ],
+    "provider_rounds": 3,
+    "initial_schema_names": [
+      "list_my_conversations",
+      "get_conversation_detail",
+      "list_available_tools"
+    ],
+    "discovered_and_executed": "afterglow_vm_list",
+    "status": "completed",
+    "owned_grant_revoked_status": 204
+  },
+  "browser": {
+    "conversation_post_status": 201,
+    "completion_post_status": 202,
+    "sse_status": 200,
+    "run_status": "completed",
+    "tools": [
+      {
+        "name": "list_available_tools",
+        "status": "completed"
+      },
+      {
+        "name": "afterglow_vm_list",
+        "status": "completed"
+      }
+    ],
+    "context_conditions": [
+      {
+        "theme": "light",
+        "width": 390,
+        "overflow": 0,
+        "panelInside": true,
+        "hasThreeSchemas": true
+      },
+      {
+        "theme": "light",
+        "width": 768,
+        "overflow": 0,
+        "panelInside": true,
+        "hasThreeSchemas": true
+      },
+      {
+        "theme": "light",
+        "width": 1440,
+        "overflow": 0,
+        "panelInside": true,
+        "hasThreeSchemas": true
+      },
+      {
+        "theme": "dark",
+        "width": 390,
+        "overflow": 0,
+        "panelInside": true,
+        "hasThreeSchemas": true
+      },
+      {
+        "theme": "dark",
+        "width": 768,
+        "overflow": 0,
+        "panelInside": true,
+        "hasThreeSchemas": true
+      },
+      {
+        "theme": "dark",
+        "width": 1440,
+        "overflow": 0,
+        "panelInside": true,
+        "hasThreeSchemas": true
+      }
+    ],
+    "session_permissions_and_bff_mapping": "owned synthetic QA fixture"
+  },
+  "images": [
+    {
+      "target": "backend",
+      "architecture": "linux/arm64",
+      "execution_exit": 0,
+      "host_runtime_source_hash_parity": true
+    },
+    {
+      "target": "backend",
+      "architecture": "linux/amd64",
+      "execution_exit": 0,
+      "host_runtime_source_hash_parity": true
+    },
+    {
+      "target": "lumen-api",
+      "architecture": "linux/arm64",
+      "execution_exit": 0,
+      "host_runtime_source_hash_parity": true
+    },
+    {
+      "target": "lumen-api",
+      "architecture": "linux/amd64",
+      "execution_exit": 0,
+      "host_runtime_source_hash_parity": true
+    },
+    {
+      "target": "lumen-worker",
+      "architecture": "linux/arm64",
+      "execution_exit": 0,
+      "host_runtime_source_hash_parity": true
+    },
+    {
+      "target": "lumen-worker",
+      "architecture": "linux/amd64",
+      "execution_exit": 0,
+      "host_runtime_source_hash_parity": true
+    }
+  ],
+  "lumen_gate": {
+    "service_passed": 3125,
+    "deselected": 320,
+    "dependency_warnings": 21,
+    "sdk_passed": 128,
+    "root_and_sdk_ruff": "passed",
+    "native_sql_queued_turn_tests_passed": 5
+  },
+  "boundaries": {
+    "real": [
+      "packaged native API/worker",
+      "migrations/bootstrap",
+      "SQL/Redis/SSE",
+      "installed SDK",
+      "compiled frontend"
+    ],
+    "synthetic": [
+      "IAM directory/catalog",
+      "browser session and permissions",
+      "provider",
+      "VM inventory"
+    ],
+    "not_performed": [
+      "production deployment",
+      "live IAM/cloud writes",
+      "paid inference",
+      "shared index staging",
+      "commit",
+      "push"
+    ],
+    "not_qualified": [
+      "production schema/original keys",
+      "mixed-version API/worker",
+      "bidirectional production writer/schema compatibility",
+      "production BFF/auth acceptance"
+    ]
+  },
+  "private_evidence_root": "/Users/pieroot/.local/share/afterglow-proofs/afterglow-mcp-repair-xgt8rj01",
+  "gbrain_sync": "unavailable: CLI absent on PATH",
+  "afterglow_gate": {
+    "command": "npm run test:gate",
+    "result": "passed",
+    "source_sha256": "0766c7e047e2fe77465433fb1b1e695649a7b9eb9b4be835429a00ec9214b23a",
+    "backend_unit_passed": 5769,
+    "frontend_files_passed": 350,
+    "frontend_tests_passed": 3300,
+    "frontend_log_runner_passed": 9,
+    "contract_passed": 174,
+    "functional_passed": 150,
+    "functional_deselected": 27,
+    "ruff_files_formatted": 586,
+    "powershell_skipped": 36,
+    "preexisting_svelte_warnings": 3
+  },
+  "prior_failures": [
+    {
+      "scope": "clone setup",
+      "result": "47 failed / 5722 passed",
+      "reason": "editable shared venv and unit REAL_REDIS environment pollution"
+    },
+    {
+      "scope": "clone setup",
+      "reason": "missing frozen dev extra / pytest"
+    },
+    {
+      "scope": "frontend clone setup",
+      "reason": "missing generated SvelteKit tsconfig; corrected using existing svelte-kit sync"
+    },
+    {
+      "scope": "native worker product",
+      "reason": "queued tool result bound to producer later turn; fixed private originating ordinal"
+    },
+    {
+      "scope": "Lumen fixture migration",
+      "result": "3 cache-pricing fixture failures; final contract/SDK passed",
+      "reason": "event-bound ordinal contract"
+    }
+  ],
+  "cleanup": {
+    "owned_ui_grant_revoke_status": 204,
+    "owned_driver_grant_revoke_status": 204,
+    "owned_browser": "released",
+    "native_system_compose": "down without volume deletion; zero owned containers",
+    "functional_datastore_compose": "down without volume deletion; zero owned containers",
+    "owned_throwaway_fixture_files_removed": 14,
+    "owned_qa_image_tags_removed": 11,
+    "older_http_bridge": "graceful stop file; no running server",
+    "shared_index_and_private_inputs": "untouched"
+  },
+  "completed_at": "2026-10-13T09:48:32.813Z"
+}

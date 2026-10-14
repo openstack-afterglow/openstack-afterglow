@@ -73,4 +73,23 @@ describe('chat admin statistics activity', () => {
 		expect(b.getAttribute('aria-valuenow')).toBe('25');
 		expect(b.getAttribute('aria-valuetext')).toBe('25 토큰');
 	});
+
+	it('stacks measured token sources without inventing zero-valued missing buckets', async () => {
+		const now = new Date();
+		const bucket = `${now.toISOString().slice(0, 10)} ${now.toISOString().slice(11, 13)}:00:00`;
+		mocks.get.mockImplementation((path: string) => path.includes('/timeseries?')
+			? Promise.resolve({ series: [
+				{ ...usage, bucket, source: 'web' },
+				{ ...usage, bucket, source: 'api', prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 },
+			] })
+			: Promise.resolve(response));
+		render(StatsPage);
+		const summary = await screen.findByText('차트 데이터 보기');
+		const details = summary.closest('details')!;
+		details.open = true;
+		await fireEvent(details, new Event('toggle'));
+		const rows = [...details.querySelectorAll('tbody tr')];
+		expect([...rows.at(-1)!.querySelectorAll('td')].map(cell => cell.textContent)).toEqual(['80', '50']);
+		expect([...rows.at(-2)!.querySelectorAll('td')].map(cell => cell.textContent)).toEqual(['—', '—']);
+	});
 });

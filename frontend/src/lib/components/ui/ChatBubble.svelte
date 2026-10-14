@@ -98,6 +98,9 @@
 	.chat-start .chat-bubble {
 		border-bottom-left-radius: var(--chat-message-directional-corner);
 	}
+	:global(:root.light) .chat-start .chat-bubble {
+		border-color: var(--color-line-2);
+	}
 	.chat-end .chat-bubble {
 		max-width: min(82%, var(--chat-message-user-max-inline));
 		border-color: var(--color-accent);

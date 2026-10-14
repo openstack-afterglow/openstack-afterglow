@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/chat-panel';
 	import type { ChatUsage } from '$lib/api/chatTree';
+	import BklitChart from '$lib/components/charts/BklitChart.svelte';
 	let { usage }: { usage: ChatUsage } = $props();
 
 	const quotaMax = $derived(usage.quota_max ?? 0);
@@ -22,7 +23,7 @@
 	</div>
 	{#if hasQuota}
 		<div class="bar" aria-label={t('usage.quotaUsage', { percent: fmtPercent(quotaPct!) })}>
-			<div class="bar-fill" data-tone={quotaTone} style="width: {quotaBarPct}%"></div>
+			<BklitChart spec={{ kind: 'gauge', value: quotaBarPct, color: quotaTone === 'danger' ? 'var(--color-state-danger)' : quotaTone === 'warning' ? 'var(--color-state-warning)' : 'var(--color-accent)', track: 'var(--color-surface-sunken)' }} height={5} decorative />
 		</div>
 	{/if}
 </div>
@@ -51,21 +52,5 @@
 	}
 	.bar {
 		width: 8rem;
-		height: 0.3rem;
-		border-radius: 999px;
-		background: var(--color-surface-sunken);
-		overflow: hidden;
-	}
-	.bar-fill {
-		height: 100%;
-		border-radius: 999px;
-		background: var(--color-accent);
-		transition: width 0.3s ease;
-	}
-	.bar-fill[data-tone='warning'] {
-		background: var(--color-state-warning);
-	}
-	.bar-fill[data-tone='danger'] {
-		background: var(--color-state-danger);
 	}
 </style>

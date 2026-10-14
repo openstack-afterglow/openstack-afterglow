@@ -3,10 +3,9 @@
 - extract_manila_error: 응답 본문에서 메시지 추출 회귀
 - create_file_storage: 'Share type not found' 404 시 가용 type 목록 첨부
 - format_error_message: enrichment 여부에 따른 메시지 선택
-- ephemeral_build: HTTPStatusError 시 format_error_message 사용
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -186,76 +185,29 @@ def test_create_file_storage_other_404_reraises_unchanged(monkeypatch):
     assert exc_info.value is original_exc
 
 
-# ---------------------------------------------------------------------------
-# ephemeral_build — HTTPStatusError 시 format_error_message 사용
-# ---------------------------------------------------------------------------
+def test_submit_file_storage_returns_accepted_identity_without_poll_or_cleanup(monkeypatch):
+    """A caller can journal the provider ID even while readiness reads are unavailable."""
+    from app.services import manila
 
+    class SubmissionClient:
+        def __init__(self):
+            self.posts = 0
 
-@pytest.mark.asyncio
-async def test_ephemeral_build_uses_format_error_message_for_http_error(monkeypatch):
-    """run_ephemeral_build이 HTTPStatusError를 잡으면 format_error_message로 error_message 구성."""
-    from app.services import ephemeral_build
+        def post(self, path, body):
+            assert path == "shares"
+            assert body["share"]["share_proto"] == "CEPHFS"
+            assert "share_network_id" not in body["share"]
+            self.posts += 1
+            return {"share": {"id": "accepted-share", "status": "creating"}}
 
-    # HTTPStatusError 설정 (enriched 메시지 포함)
-    request = httpx.Request("POST", "https://manila.example.com/v2/proj/shares")
-    response = httpx.Response(
-        404,
-        content=b'{"itemNotFound": {"code": 404, "message": "Share type not found."}}',
-    )
-    enriched_exc = httpx.HTTPStatusError(
-        "Manila API 404: Share type not found. 가용 share type: ['nfstype']",
-        request=request,
-        response=response,
-    )
+        def get(self, *args, **kwargs):
+            raise AssertionError("raw submission must not wait for readiness")
 
-    mock_conn = MagicMock()
-    monkeypatch.setattr(
-        "app.services.keystone.get_admin_connection_for_project",
-        MagicMock(return_value=mock_conn),
-    )
-    # create_builder_share가 enriched HTTPStatusError를 raise
-    monkeypatch.setattr(
-        "app.services.ephemeral_build.ephemeral_mount.create_builder_share",
-        AsyncMock(side_effect=enriched_exc),
-    )
+        def delete(self, *args, **kwargs):
+            raise AssertionError("raw submission must not perform error cleanup")
 
-    captured: dict = {}
-
-    async def mock_update_db(build_db_id, **kwargs):
-        captured.update(kwargs)
-
-    monkeypatch.setattr(ephemeral_build, "_update_db", mock_update_db)
-
-    # get_recipe mock — ORM 모델 대신 MagicMock 사용
-    mock_recipe = MagicMock()
-    mock_recipe.share_proto = "NFS"
-    mock_recipe.share_size_gb = 10
-    mock_recipe.base_image_id = "img-123"
-    monkeypatch.setattr(
-        "app.services.ephemeral_build.library_recipes.get_recipe",
-        AsyncMock(return_value=mock_recipe),
-    )
-    monkeypatch.setattr(
-        "app.services.ephemeral_build.lib_svc.get_by_id",
-        MagicMock(return_value=MagicMock(version="1.0")),
-    )
-
-    await ephemeral_build.run_ephemeral_build(
-        "jupyter",
-        1,
-        resource_snapshot={
-            "openstack.service_project": {"id": "service-project", "name": "service"},
-            "base_image": {"id": "img-123", "name": "Ubuntu"},
-            "builder.flavor": {"id": "flavor-1", "name": "builder"},
-            "builder.network": {"id": "network-1", "name": "network"},
-            "manila": {
-                "share_proto": "NFS",
-                "share_type": "nfs-policy",
-                "share_size_gb": 10,
-            },
-        },
-    )
-
-    error_msg = captured.get("error_message", "")
-    assert "Share type not found" in error_msg, f"expected Manila message, got: {error_msg!r}"
-    assert "nfstype" in error_msg
+    client = SubmissionClient()
+    monkeypatch.setattr(manila, "get_client", lambda conn: client)
+    share = manila.submit_file_storage(object(), "build-output", 5, "not-for-cephfs")
+    assert share == {"id": "accepted-share", "status": "creating"}
+    assert client.posts == 1

@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { enterStep } from './firstArrival.svelte.ts';
 	import type { TopologyNetwork, TopologyTraffic } from './types.ts';
+	import BklitChart from '$lib/components/charts/BklitChart.svelte';
 
 	interface Props {
 		net: TopologyNetwork;
@@ -137,17 +138,11 @@
 					—
 				{/if}
 			</div>
-			<!-- RX/TX mini-bar (log10 스케일, 트래픽 유무 무관하게 동일 높이). 채움은 scaleX 로 움직인다. -->
+			<!-- RX/TX rates retain the existing log10 scale, not a capacity percentage. -->
 			{#if netTraffic && totalBps > 0}
 				<div class="mt-1 space-y-0.5">
-					<div class="h-0.5 rounded-full overflow-hidden"
-					     style="background: {isLight ? '#e5e7eb' : '#1f2937'}">
-						<div class="rate-fill rate-rx" style:transform="scaleX({rxPct / 100})"></div>
-					</div>
-					<div class="h-0.5 rounded-full overflow-hidden"
-					     style="background: {isLight ? '#e5e7eb' : '#1f2937'}">
-						<div class="rate-fill rate-tx" style:transform="scaleX({txPct / 100})"></div>
-					</div>
+					<BklitChart spec={{ kind: 'gauge', value: rxPct, color: 'var(--color-chart-1)' }} height={2} decorative />
+					<BklitChart spec={{ kind: 'gauge', value: txPct, color: 'var(--color-chart-2)' }} height={2} decorative />
 				</div>
 			{:else}
 				<div class="mt-1 h-1.5"></div>
@@ -169,13 +164,4 @@
 	}
 	.rail-svg { display: block; overflow: visible; transition: opacity var(--motion-duration-base) var(--motion-ease-standard); }
 	.rail-flow { stroke: var(--motion-sheen); }
-	.rate-fill {
-		height: 100%;
-		width: 100%;
-		transform-origin: left;
-		animation: motion-grow-x var(--motion-duration-data) var(--motion-ease-emphasized) backwards;
-		transition: transform var(--motion-duration-data) var(--motion-ease-emphasized);
-	}
-	.rate-rx { background: var(--color-chart-1); }
-	.rate-tx { background: var(--color-chart-2); }
 </style>

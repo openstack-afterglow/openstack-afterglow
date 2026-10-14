@@ -538,6 +538,22 @@ helm template afterglow helm/afterglow --namespace afterglow \
 
 For multi-controller OpenStack environments, Afterglow and its sibling services (Drover, Waygate, Lumen, Palimpsest) can be deployed using Kolla-Ansible with the provided roles and playbooks.
 
+### Scheduled volume backups across controllers
+
+- Deploy the same backend implementation on every replica and use the same Redis/Valkey primary, logical database and existing `afterglow:auto_backup` namespace. Separate Redis stores on each controller do not coordinate. Retain existing Redis/Sentinel configuration; no new scheduler option, cron or worker service is needed.
+- Each API process receives an automatic hostname/PID/random incarnation. One leader scans policies every15seconds. New work and departed-owner work are distributed by live processes' assignment counts; healthy pending/active ownership stays stable. A separate90-second renewable volume lease and durable slot/journal fence duplicate submissions. Different API worker counts do not imply equal physical-controller weights.
+-45-second member/leader leases and10-second heartbeats use Redis server time. Scheduling is independent of SDK execution; graceful exit drains before releasing participation. Hard-crash handoff waits for membership/leader expiry, the next heartbeat/poll and any remaining90-second volume lease. It never restarts or cancels Cinder's data copy.
+- Policies, slots and active journals are authoritative, not cache. Preserve Redis persistence/backups/failover data and controller clock synchronization. Do not erase keys or journals as a recovery shortcut. Coordination failure denies new local submissions; accepted or uncertain backups are observed, not resubmitted.
+- Older processes in a rolling transition retain the existing volume lease but do not join the new membership/assignment protocol. All replicas must be upgraded for this division of work. This local-source change did not deploy or change production datastores, volumes or encryption keys, and does not qualify live backup storage or restores.
+
+### Shared background processes across controllers
+
+- Every Afterglow API and Notion worker replica must use the same Redis/Valkey primary and logical database and the same SQL database. Namespaces are `afterglow:background:api` (API maintenance roles), `afterglow:auto_backup`, `afterglow:builds`, `afterglow:notion:work`, `afterglow:db_auto_backup` and `afterglow:worker_runtime:<mode>:<hash>`. No new setting, cron or worker service is required.
+- The API snapshot, block-consumer, host-health, Swift trash, MCP and Cloud Shell cleanup loops are divided as configured roles across live API processes and rebalanced when processes join or leave. Cinder/Trove backups, Notion targets, build/import work and worker-runtime targets have every process participate while only the leader publishes the registry. Division is per process, so different worker counts per controller do not give equal physical weights.
+- Graceful SIGTERM drains in-flight SDK/HTTP work before releasing leases and leaving membership. Hard-crash handoff waits for the 45-second membership expiry and the next heartbeat/scan and never bypasses a target's remaining 90-second execution lease. During a leader crash, healthy executors keep their assignments until the successor leader scans.
+- Worker-runtime management coordinates per Docker Engine ID or Kubernetes `notion-worker` Deployment UID. Kubernetes still uses only the existing Deployment `get` and `deployments/scale` `patch` permissions; the scale PATCH carries UID and resourceVersion preconditions, so a recreated or concurrently modified Deployment is rejected with 409 and re-read on the next cycle.
+- Accepted or uncertain CREATE requests and backups are observed, never resubmitted. This relies on shared Redis persistence and failover data retention, synchronized clocks and replacing all replicas at the same protocol version. Do not mix old processes; replace all API and worker replicas together. Drover, Lumen, Waygate and Palimpsest Hub follow their own repositories' rollout procedures (stop old SQL workers/controllers before replacement).
+
 ### Application Image Channel Resolution and Rollback
 
 In standard Kolla environments, application images for Afterglow, Drover, Waygate, Lumen, and Palimpsest follow `*_image_tag: "latest"` (or a published `stable` alias) by default.

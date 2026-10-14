@@ -138,6 +138,7 @@
 	renameTarget={s.showRenameModal ? s.volume : null}
 	volumeSnapshotsEnabled={$betaFeatures.volumeSnapshots}
 	onCloseTransfer={() => transferTarget = null}
+	onTransferChanged={refreshAfterAction}
 	onTransferred={finishTransfer}
 	onCloseExtend={() => extendTarget = null}
 	onExtendSuccess={() => { extendTarget = null; refreshAfterAction(); }}

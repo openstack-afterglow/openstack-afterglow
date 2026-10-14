@@ -286,7 +286,10 @@ def _validate_existing_sync(conn, spec: PolicySpec, resource_id: str) -> dict[st
             raise ResourcePolicyValidationError("selected flavor is unavailable in the execution scope")
         return _option(flavor.id, flavor.name)
     if spec.resource_kind == "network":
-        network = conn.network.get_network(resource_id)
+        try:
+            network = conn.network.get_network(resource_id)
+        except ResourceNotFound as exc:
+            raise ResourcePolicyValidationError("selected network is unavailable in the execution scope") from exc
         if (
             network is None
             or (spec.execution_scope == "tenant" and not _is_tenant_network(network))

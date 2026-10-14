@@ -18,6 +18,10 @@ export default defineConfig({
 				replacement: fileURLToPath(new URL('./src/__mocks__/sveltekit/app-stores.ts', import.meta.url)),
 			},
 			{
+				find: '$app/state',
+				replacement: fileURLToPath(new URL('./src/__mocks__/sveltekit/app-state.ts', import.meta.url)),
+			},
+			{
 				find: '$app/environment',
 				replacement: fileURLToPath(new URL('./src/__mocks__/sveltekit/app-environment.ts', import.meta.url)),
 			},
@@ -34,6 +38,7 @@ export default defineConfig({
 	test: {
 		include: ['src/**/*.{test,spec}.{js,ts}'],
 		environment: 'jsdom',
+		setupFiles: ['src/__mocks__/resize-observer.ts'],
 		globals: true,
 		// 기본 forks 대비 worker_threads 가 파일당 환경·import 비용을 줄인다.
 		// 로컬 --maxWorkers=3 측정(CI 실행 아님): 전체 247 파일 2회 모두 통과, 로컬 wall time 약 -14.8%.

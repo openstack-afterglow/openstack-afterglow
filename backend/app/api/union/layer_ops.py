@@ -9,6 +9,7 @@ import asyncio
 import logging
 import re
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -16,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from sqlalchemy import desc, select
 
 from app.api.deps import get_os_conn, require_admin
+from app.api.union.layer_block_sources import router as block_sources_router
 from app.database import get_session_factory
 from app.services.cache import invalidate
 from app.services.layer_base_images import (
@@ -40,6 +42,8 @@ def _iso(dt: datetime | None) -> str | None:
 
 
 router = APIRouter()
+
+router.include_router(block_sources_router)
 
 # ---------------------------------------------------------------------------
 # 입력 모델 (Pydantic 화이트리스트 validator)
@@ -289,6 +293,8 @@ class LayerConsumeRequest(BaseModel):
     import_id: int | None = Field(default=None, gt=0)
     server_name: str | None = None
     flavor_id: str
+    transport: Literal["nfs", "block"] = "nfs"
+    expected_project_id: str | None = None
     image_id: str | None = None
     network_id: str | None = None
     key_name: str | None = None
@@ -389,10 +395,18 @@ class DockerfileConsumerRequest(BaseModel):
 
     server_name: str | None = None
     flavor_id: str
+    transport: Literal["nfs", "block"] = "nfs"
     network_id: str | None = None
     key_name: str | None = None
     ssh_public_key: str | None = None
     ssh_username: str | None = None
+
+    def require_immediate_transport(self) -> None:
+        """Call after admin authorization, before planning or any provider I/O."""
+        if self.transport == "block":
+            from app.services.dockerfile_import import IMMEDIATE_BLOCK_IMPORT_GUIDANCE
+
+            raise HTTPException(status_code=422, detail=IMMEDIATE_BLOCK_IMPORT_GUIDANCE)
 
 
 class DockerfileImportRequest(BaseModel):
@@ -575,6 +589,9 @@ async def create_dockerfile_import(req: DockerfileImportRequest, conn=Depends(ge
         resolve_parent_layer,
     )
 
+    if req.consumer is not None:
+        req.consumer.require_immediate_transport()
+
     try:
         plan = await asyncio.to_thread(
             prepare_dockerfile_import,
@@ -638,6 +655,9 @@ async def trigger_layer_build(req: LayerBuildRequest, conn=Depends(get_os_conn))
     from app.models.db import LayerArtifact
     from app.services import layer_builder
     from app.services.layer_build import nvidia_driver_apt_packages
+
+    if get_session_factory() is None:
+        raise HTTPException(status_code=503, detail="layer build database unavailable")
 
     _logger.info(
         "[layer_ops] 빌드 요청: layer=%s kind=%s ubuntu_base=%s python=%s parent=%s parent_id=%s pip_count=%d apt_count=%d pip_sources=%d",
@@ -707,20 +727,23 @@ async def trigger_layer_build(req: LayerBuildRequest, conn=Depends(get_os_conn))
         nvidia_driver_apt_packages(req.nvidia_driver_branch) if req.kind == "nvidia" else req.apt_packages
     )
 
-    result = await layer_builder.start_layer_build(
-        layer_name=req.layer_name,
-        kind=req.kind,
-        python_version=req.python_version,
-        pip_packages=req.pip_packages,
-        apt_packages=build_apt_packages,
-        pip_index_url=req.pip_index_url,
-        pip_extra_index_urls=req.pip_extra_index_urls,
-        pip_find_links=req.pip_find_links,
-        parent_artifact_id=parent_artifact_id,
-        nvidia_driver_branch=req.nvidia_driver_branch,
-        ubuntu_base=effective_ubuntu_base,
-        base_image_snapshot=base_image_snapshot,
-    )
+    try:
+        result = await layer_builder.start_layer_build(
+            layer_name=req.layer_name,
+            kind=req.kind,
+            python_version=req.python_version,
+            pip_packages=req.pip_packages,
+            apt_packages=build_apt_packages,
+            pip_index_url=req.pip_index_url,
+            pip_extra_index_urls=req.pip_extra_index_urls,
+            pip_find_links=req.pip_find_links,
+            parent_artifact_id=parent_artifact_id,
+            nvidia_driver_branch=req.nvidia_driver_branch,
+            ubuntu_base=effective_ubuntu_base,
+            base_image_snapshot=base_image_snapshot,
+        )
+    except layer_builder.LayerBuildUnavailable as exc:
+        raise HTTPException(status_code=503, detail="layer build admission unavailable") from exc
     _logger.info("[layer_ops] 빌드 등록 완료: build_id=%s layer=%s", result.get("build_id"), req.layer_name)
     return result
 
@@ -845,6 +868,11 @@ async def trigger_layer_consume(req: LayerConsumeRequest, conn=Depends(get_os_co
             flavor_ref=req.flavor_id,
             network_id=req.network_id,
         )
+        if (
+            req.expected_project_id is not None
+            and req.expected_project_id != resource_snapshot["openstack.service_project"]["id"]
+        ):
+            raise RuntimeError("consumer resource owner differs from expected project")
 
         from app.services.keystone import get_admin_connection_for_project
 
@@ -869,6 +897,9 @@ async def trigger_layer_consume(req: LayerConsumeRequest, conn=Depends(get_os_co
                 row = LayerConsume(
                     profile_name=profile_name,
                     server_name=req.server_name,
+                    transport=req.transport,
+                    project_id=resource_snapshot["openstack.service_project"]["id"],
+                    share_id="",
                     artifact_ids=[item["id"] for item in resolved_artifacts],
                     resource_snapshot=resource_snapshot,
                     status="creating",
@@ -878,18 +909,32 @@ async def trigger_layer_consume(req: LayerConsumeRequest, conn=Depends(get_os_co
                 await session.refresh(row)
                 consume_db_id = row.id
 
-        server_id = await run_layer_consume(
-            consume_db_id=consume_db_id,
-            profile_name=profile_name,
-            server_name=req.server_name,
-            flavor_id=req.flavor_id,
-            image_id=req.image_id,
-            network_id=req.network_id,
-            ssh_public_key=ssh_public_key,
-            ssh_username=req.ssh_username,
-            resource_snapshot=resource_snapshot,
-            resolved_artifacts=resolved_artifacts,
-        )
+        try:
+            server_id = await run_layer_consume(
+                consume_db_id=consume_db_id,
+                profile_name=profile_name,
+                server_name=req.server_name,
+                flavor_id=req.flavor_id,
+                transport=req.transport,
+                image_id=req.image_id,
+                network_id=req.network_id,
+                ssh_public_key=ssh_public_key,
+                ssh_username=req.ssh_username,
+                resource_snapshot=resource_snapshot,
+                resolved_artifacts=resolved_artifacts,
+            )
+        except Exception as exc:
+            if req.transport != "block" or consume_db_id is None:
+                raise
+            async with factory() as session:
+                tracked = await session.get(LayerConsume, consume_db_id)
+                detail = {
+                    "message": "block consumer could not become ready; inspect the durable consume before retrying",
+                    "consume_id": consume_db_id,
+                    "status": tracked.status if tracked else None,
+                    "cleanup_state": tracked.cleanup_state if tracked else None,
+                }
+            raise HTTPException(status_code=502, detail=detail) from exc
         return {"consume_id": consume_db_id, "server_id": server_id, "status": "active", "ready": True}
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -942,6 +987,46 @@ async def get_layer_consume(consume_id: int) -> dict:
             _logger.debug("[layer_ops] 소비 VM 상태 조회 실패: server=%s", row.server_id)
 
     return result
+
+
+@router.delete("/consumes/{consume_id}", dependencies=[Depends(require_admin)])
+async def delete_block_consume(consume_id: int, token_info: dict = Depends(require_admin)) -> dict:
+    """Delete only the durable run's fenced resources, never its artifact images."""
+    from app.api.compute.instances import _revoke_instance_storage_grants
+    from app.models.db import LayerConsume
+    from app.services.keystone import get_admin_connection_for_project
+    from app.services.layer_consume_resources import cleanup
+
+    async with get_session_factory()() as session:
+        row = await session.get(LayerConsume, consume_id)
+        if row is None:
+            raise HTTPException(404, "consume not found")
+        if row.transport != "block" or not row.project_id:
+            raise HTTPException(409, "only durable block runs use this cleanup route")
+        if not row.run_id:
+            if (
+                row.cleanup_state == "complete"
+                and row.resources in (None, [])
+                and not row.server_id
+                and not row.port_id
+            ):
+                return _consume_row_to_dict(row)
+            raise HTTPException(409, "unclaimed block admission has not completed recovery")
+        project_id = row.project_id
+    conn = await asyncio.to_thread(get_admin_connection_for_project, project_id)
+    try:
+        await cleanup(
+            conn,
+            consume_id,
+            project_id=project_id,
+            revoke_grants=lambda server: _revoke_instance_storage_grants(conn, server.id, server, token_info),
+        )
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    finally:
+        await asyncio.to_thread(conn.close)
+    async with get_session_factory()() as session:
+        return _consume_row_to_dict(await session.get(LayerConsume, consume_id))
 
 
 # ---------------------------------------------------------------------------
@@ -1030,14 +1115,35 @@ async def delete_layer_artifact(artifact_id: int) -> dict:
         target = await session.get(LayerArtifact, artifact_id)
         if target is None:
             raise HTTPException(status_code=404, detail=f"artifact {artifact_id}를 찾을 수 없습니다")
-        all_artifacts = (
-            (await session.execute(select(LayerArtifact).order_by(desc(LayerArtifact.created_at)))).scalars().all()
-        )
-        profiles = (await session.execute(select(LayerProfile).order_by(LayerProfile.name))).scalars().all()
+        # Reconciliation may wait on providers and commit its own changes. Finish
+        # it before the artifact lock: publication takes that lock before Glance,
+        # and no helper commit may release it during destructive deletion.
         consumes = (await session.execute(select(LayerConsume))).scalars().all()
         builds = (await session.execute(select(LayerBuild))).scalars().all()
         await _sync_consume_rows_with_nova(session, consumes)
         await _sync_build_rows_timeouts(session, builds)
+        await session.commit()
+
+        # Start a fresh transaction/snapshot and replace the identity-map value
+        # loaded above. A reservation committed during reconciliation must win.
+        target = (
+            await session.execute(
+                select(LayerArtifact)
+                .where(LayerArtifact.id == artifact_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(status_code=404, detail=f"artifact {artifact_id}를 찾을 수 없습니다")
+        all_artifacts = (
+            (await session.execute(select(LayerArtifact).order_by(desc(LayerArtifact.created_at)))).scalars().all()
+        )
+        profiles = (await session.execute(select(LayerProfile).order_by(LayerProfile.name))).scalars().all()
+        consumes = (
+            (await session.execute(select(LayerConsume).execution_options(populate_existing=True))).scalars().all()
+        )
+        builds = (await session.execute(select(LayerBuild).execution_options(populate_existing=True))).scalars().all()
         preview = _artifact_delete_preview(target, all_artifacts, profiles, consumes, builds)
         if not preview["can_delete"]:
             raise HTTPException(
@@ -1048,32 +1154,47 @@ async def delete_layer_artifact(artifact_id: int) -> dict:
         share_id = target.share_id
         artifact_summary = _artifact_summary(target)
 
-        try:
-            conn = await asyncio.to_thread(get_service_project_connection)
+        async def finish_delete():
             try:
-                rules = await asyncio.to_thread(manila.list_access_rules, conn, share_id)
-            except Exception:
-                _logger.warning("[layer_ops] artifact share access rule 조회 실패: share=%s", share_id, exc_info=True)
-                rules = []
-            for rule in rules:
-                access_id = rule.get("id") or rule.get("access_id")
-                if not access_id:
-                    continue
+                conn = await asyncio.to_thread(get_service_project_connection)
                 try:
-                    await asyncio.to_thread(manila.revoke_access_rule, conn, share_id, access_id)
+                    rules = await asyncio.to_thread(manila.list_access_rules, conn, share_id)
                 except Exception:
                     _logger.warning(
-                        "[layer_ops] artifact share access rule 회수 실패: share=%s access=%s",
-                        share_id,
-                        access_id,
-                        exc_info=True,
+                        "[layer_ops] artifact share access rule 조회 실패: share=%s", share_id, exc_info=True
                     )
-            await asyncio.to_thread(manila.delete_file_storage, conn, share_id)
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"Manila share 삭제 실패: {exc}") from exc
+                    rules = []
+                for rule in rules:
+                    access_id = rule.get("id") or rule.get("access_id")
+                    if not access_id:
+                        continue
+                    try:
+                        await asyncio.to_thread(manila.revoke_access_rule, conn, share_id, access_id)
+                    except Exception:
+                        _logger.warning(
+                            "[layer_ops] artifact share access rule 회수 실패: share=%s access=%s",
+                            share_id,
+                            access_id,
+                            exc_info=True,
+                        )
+                await asyncio.to_thread(manila.delete_file_storage, conn, share_id)
+            except Exception as exc:
+                raise HTTPException(status_code=502, detail="Manila share deletion failed; artifact retained") from exc
+            await session.delete(target)
+            await session.commit()
 
-        await session.delete(target)
-        await session.commit()
+        # Cancelling a to_thread await cannot stop the provider operation. Drain
+        # the destructive phase and commit while this artifact row stays locked.
+        deleting = asyncio.create_task(finish_delete())
+        cancelled = False
+        while not deleting.done():
+            try:
+                await asyncio.shield(deleting)
+            except asyncio.CancelledError:
+                cancelled = True
+        deleting.result()
+        if cancelled:
+            raise asyncio.CancelledError
 
     return {"deleted": True, "artifact": artifact_summary}
 
@@ -1278,8 +1399,13 @@ def _consume_row_to_dict(row) -> dict:
         "share_id": row.share_id,
         "project_id": getattr(row, "project_id", None),
         "artifact_ids": _json_list(getattr(row, "artifact_ids", None)),
+        "transport": getattr(row, "transport", "nfs"),
+        "run_id": getattr(row, "run_id", None),
+        "resources": _json_list(getattr(row, "resources", None)),
+        "cleanup_state": getattr(row, "cleanup_state", None),
         "status": row.status,
-        "ready": row.status == "active",
+        "ready": row.status == "active"
+        and (getattr(row, "transport", "nfs") != "block" or getattr(row, "cleanup_state", None) == "active"),
         "error_message": row.error_message,
         "created_at": _iso(row.created_at),
         "completed_at": _iso(row.completed_at),
@@ -1346,6 +1472,10 @@ def _profile_layers(row) -> list[str]:
 
 
 def _is_blocking_consume(row) -> bool:
+    if getattr(row, "transport", "nfs") == "block":
+        return (bool(getattr(row, "run_id", None)) and getattr(row, "cleanup_state", None) != "complete") or getattr(
+            row, "status", None
+        ) == "creating"
     status = str(getattr(row, "status", "") or "").lower()
     return status in _CONSUME_BLOCKING_STATUSES
 
@@ -1413,6 +1543,9 @@ def _should_terminalize_no_server_consume(row, now: datetime) -> bool:
 
 
 async def _sync_consume_rows_with_nova(session, rows: list[object]) -> None:
+    # The durable owner/run reconciler owns block disposition; Nova absence is
+    # not proof that volumes and uncertain allocation intents were reclaimed.
+    rows = [row for row in rows if getattr(row, "transport", "nfs") != "block"]
     now = datetime.now(UTC)
     changed = False
     for row in rows:
@@ -1618,6 +1751,14 @@ def _artifact_delete_preview(target, artifacts, profiles, consumes, builds) -> d
     ]
 
     blockers = []
+    if getattr(target, "block_source", None):
+        blockers.append(
+            {
+                "type": "retained_block_source",
+                "message": "immutable block source and its recovery identity are retained by default",
+                "items": [{"artifact_id": target_id}],
+            }
+        )
     if direct_children:
         blockers.append(
             {
@@ -1709,6 +1850,7 @@ def _artifact_row_to_dict(row, *, lineage: list[dict] | None = None, delete_prev
         "is_published": _bool_attr(row, "is_published"),
         "build_id": row.build_id,
         "size_bytes": row.size_bytes,
+        "block_source": getattr(row, "block_source", None),
         "parent_id": _int_or_none(getattr(row, "parent_id", None)),
         "is_sealed": bool(getattr(row, "is_sealed", False)),
         "lineage": lineage,

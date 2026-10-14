@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import AnimatedNumber from './AnimatedNumber.svelte';
+  import BklitChart from '$lib/components/charts/BklitChart.svelte';
 
   type Accent = 'blue' | 'cyan' | 'violet' | 'emerald' | 'amber' | 'teal' | 'rose' | 'indigo' | 'admin-tone';
 
@@ -70,8 +71,8 @@
       ? Math.max(0, Math.min(100, Math.round((progress.value / progress.max) * 100)))
       : 0
   );
-  const progressTone = $derived(
-    pct > 80 ? 'progress-danger' : pct > 60 ? 'progress-warning' : 'progress-accent'
+  const progressColor = $derived(
+    pct > 80 ? 'var(--color-state-danger)' : pct > 60 ? 'var(--color-state-warning)' : 'var(--color-accent)'
   );
 </script>
 
@@ -89,8 +90,8 @@
       {#if delta}<div class="stat-delta">{delta}</div>{/if}
     </div>
     {#if progress && progress.max > 0}
-      <div class="progress-track">
-        <div class="progress-bar {progressTone}" style="transform: scaleX({pct / 100})"></div>
+      <div class="mt-2" role="meter" aria-label={label} aria-valuemin="0" aria-valuemax="100" aria-valuenow={pct} aria-valuetext={`${progress.value} / ${progress.max}`}>
+        <BklitChart spec={{ kind: 'gauge', value: pct, color: progressColor }} height={4} decorative />
       </div>
     {:else if footer}
       <div class="stat-footer">
@@ -188,22 +189,6 @@
     color: var(--color-state-success);
   }
   .stat-footer { margin-top: 0.25rem; }
-  .progress-track {
-    margin-top: 0.5rem;
-    width: 100%;
-    height: 0.25rem;
-    overflow: hidden;
-    border-radius: 999px;
-    background: var(--color-surface-sunken);
-  }
-  .progress-bar {
-    height: 0.25rem;
-    border-radius: 999px;
-    width: 100%;
-    transform-origin: left;
-    animation: motion-grow-x var(--motion-duration-data) var(--motion-ease-emphasized) backwards;
-    transition: transform var(--motion-duration-data) var(--motion-ease-emphasized);
-  }
   .icon-chip {
     width: 2.25rem;
     height: 2.25rem;
@@ -256,7 +241,4 @@
     border-color: var(--admin-tone-ring);
     color: var(--admin-tone);
   }
-  .progress-accent { background: var(--color-accent); }
-  .progress-warning { background: var(--color-state-warning); }
-  .progress-danger { background: var(--color-state-danger); }
 </style>

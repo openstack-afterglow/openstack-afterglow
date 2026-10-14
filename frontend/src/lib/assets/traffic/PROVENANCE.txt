@@ -1,0 +1,31 @@
+Made with Natural Earth — Admin 0 countries, 1:110 million, v5.1.1.
+Primary maintainer source:
+https://github.com/nvkelso/natural-earth-vector/blob/9380cca83db5f9aef52d5e762765100745f84b27/geojson/ne_110m_admin_0_countries.geojson
+Retrieved 2026-10-14. Original GeoJSON SHA-256:
+6866c877d39cba9c357620878839b336d569f8c662d3cfab4cb1dbe2d39c977f
+Derived countries.geo.json SHA-256:
+8c76fe9399468f04b247567987e11d68d49ed25cefb7df2ed54207bc0b02fd57
+
+countries.geo.json is derived directly from that GeoJSON. Every polygon ring
+and unrounded longitude/latitude vertex (including holes) is retained, with
+the upstream ring orientation and antimeridian splits unchanged. Only
+properties are reduced: ISO_A2_EH supplies country codes (absent codes remain
+null, never guessed), NE_ID is the feature ID and ADMIN the upstream name.
+The previous rounded equirectangular 720 x 360 SVG-path asset is removed.
+Bklit UI's native ChoroplethChart/Mercator projects the bundled features;
+country-to-site annotations use that same projection context. Anchors remain
+the largest exterior polygon's bounding-box center in geographic degrees.
+The adapter centers at [0, 20] with scale min(width / (2*pi), height / 4.8).
+Mercator clips polar geography to its viewport, as expected for this projection.
+No runtime third-party map requests. Small territories omitted by the 110m
+source remain reachable in the observed country ranking. Boundaries and
+logical access-flow annotations do not assert sovereignty or network routing.
+
+License: public domain. Natural Earth terms:
+https://www.naturalearthdata.com/about/terms-of-use/
+“All versions of Natural Earth raster + vector map data found on this website
+are in the public domain. You may use the maps in any manner, including
+modifying the content and design, electronic dissemination, and offset
+printing.” No permission or attribution is required. Authors Tom Patterson,
+Nathaniel Vaughn Kelso and contributors renounce financial claims. Data is
+provided as a public service with no warranty of accuracy or fitness.

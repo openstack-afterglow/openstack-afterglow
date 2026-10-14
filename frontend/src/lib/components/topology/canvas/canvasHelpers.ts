@@ -68,18 +68,3 @@ export const UPLINK_TITLE = () => t('hud.uplinkTitle');
 
 /* 휠 제스처 처리는 `TopologyCanvas.svelte` 의 `onWheel` 에 있다(장치 추정 없음). */
 
-/**
- * 스파크라인 폴리라인 좌표. `peak` 를 rx/tx 공용 상한으로 써서 두 선을 같은 축에 올린다.
- *
- * 샘플이 1개면 두 점을 내보내 가로선으로 보이게 한다 — polyline 은 점 1개로 아무것도 그리지 않는다.
- * 빈 입력은 빈 문자열이며, 호출부가 "데이터 없음"을 0 과 구분해 표시해야 한다.
- */
-export function sparkPoints(values: readonly number[], w: number, h: number, peak: number): string {
-	if (!values.length) return '';
-	const top = peak > 0 ? peak : 1;
-	const r = (v: number) => Math.round(v * 100) / 100;
-	const y = (v: number) => r(h - Math.max(0, Math.min(1, v / top)) * h);
-	if (values.length === 1) return `0,${y(values[0])} ${r(w)},${y(values[0])}`;
-	const span = values.length - 1;
-	return values.map((v, i) => `${r((i / span) * w)},${y(v)}`).join(' ');
-}

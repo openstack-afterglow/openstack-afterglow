@@ -675,7 +675,6 @@ describe('mockup transport', () => {
 
 		// 볼륨 페이지가 항상 호출하는 부속 엔드포인트도 빈 값으로 응답한다
 		expect(await maybeMockJson('GET', '/api/v1/volume-snapshots', undefined, 'mock-token-tutorial-scoped', 'mock-project-1')).toEqual([]);
-		expect(await maybeMockJson('POST', '/api/v1/volumes/backups/auto-backup/configs', {}, 'mock-token-tutorial-scoped', 'mock-project-1')).toEqual([]);
 	});
 
 	it('supports the image detail export tutorial flow', async () => {

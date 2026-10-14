@@ -17,6 +17,8 @@ export const RAW_VISUAL_TOKEN_PATTERN =
 export const DESIGN_DEBT_EXCLUDED_PATHS = [
 	'frontend/src/routes/layout.css',
 	'frontend/src/lib/design/',
+	// Pinned third-party source retains upstream defaults; Afterglow adapters remain checked.
+	'frontend/src/lib/vendor/bklit-ui/',
 	'__tests__/',
 ] as const;
 

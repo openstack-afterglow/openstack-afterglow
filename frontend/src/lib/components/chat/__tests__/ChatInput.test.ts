@@ -250,7 +250,8 @@ describe('ChatInput compact context meter', () => {
 				{ id: 'mcp_tools', tokens: null, measurement: 'unknown' as const, count: null, included: false, items: ['Preloaded MCP'] }
 			]
 		} } });
-		expect(view.queryByRole('meter')).toBeNull();
+		expect(view.queryByRole('meter', { name: '컨텍스트 입력 예산 사용률' })).toBeNull();
+		expect(view.getByRole('meter', { name: '전체 컨텍스트 대비 확인된 입력 일부' }).getAttribute('aria-valuenow')).toBe('25');
 		expect(view.getByText('남은 입력 용량').parentElement?.textContent).not.toContain('9,000');
 	});
 

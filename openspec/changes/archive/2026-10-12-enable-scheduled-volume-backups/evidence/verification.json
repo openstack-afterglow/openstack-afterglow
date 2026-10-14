@@ -1,0 +1,58 @@
+{
+  "change": "enable-scheduled-volume-backups",
+  "status": "implemented-and-exercised-local-source-not-deployed",
+  "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/afterglow-scheduled-backup-izjvbzfc",
+  "runtime_boundary": {
+    "real": ["current FastAPI backup routes", "Redis7 Lua, durable claims and renewable leases", "installed openstacksdk native HTTP serialization", "main calendar dispatcher and startup/shutdown", "compiled adapter-node frontend", "Chromium pointer/keyboard/DOM and visual surfaces"],
+    "synthetic": ["authentication and project fixtures", "strict loopback Cinder provider and completion states", "activity sink", "intercepted UI load/save failures and invalid/orphan response projection"],
+    "not_exercised": ["production Keystone authentication or authorization", "live Cinder backup storage/data copy", "guest/database write consistency and restore", "production deployment", "Safari/Firefox"]
+  },
+  "acceptance": {
+    "visible_policy_settings_and_list_detail_deep_links": true,
+    "calendar_time_timezone_weekday_monthday_and_retention": true,
+    "save_does_not_create_immediate_backup": true,
+    "zero_tiers_do_not_execute_or_delete_existing_points": true,
+    "coincident_monthly_weekly_daily_create_one_full_backup": true,
+    "forced_in_use_backup_requires_separately_saved_policy_consent": true,
+    "manual_consent_does_not_transfer": true,
+    "pause_resume_edit_remove_preserve_history_and_existing_backups": true,
+    "read_only_and_exact_project_source_authority": true,
+    "generation_and_ABA_response_fences": true,
+    "lease_slot_revision_and_unknown_submission_fences": true,
+    "completion_only_owned_dependency_safe_retention": true,
+    "warm_cached_inventory_refreshes_after_submission_and_completion": true,
+    "orphan_policy_visible_and_authoritative_absence_removable": true,
+    "transient_or_foreign_source_does_not_authorize_removal": true,
+    "malformed_policy_bytes_preserved_without_execution": true,
+    "shutdown_waits_for_blocked_factory_and_closes_connection_before_lease_release": true
+  },
+  "checks": {
+    "storage_target": {"backend_passed": 709, "frontend_files_passed": 14, "frontend_tests_passed": 142},
+    "focused_backend": {"passed_before_cache_regression": 115, "cache_regression_failed_before_and_passed_after": true},
+    "native_sdk_redis_lifecycle": {"cases": 8, "failures": 0, "eight_replicas_submissions": 1},
+    "native_socket_policy_api_and_cached_inventory": {"cases": 7, "failures": 0},
+    "actual_minute_dispatch": {"runs": 2, "due_utc": ["2026-10-12T22:23:00+00:00", "2026-10-12T22:53:00+00:00"], "submissions_per_run": 1, "force": true, "full_backup": true, "creating_then_available_observed": true},
+    "actual_main_startup_shutdown": {"passed": true, "provider_mutations": 0, "connections_opened": 1, "connections_closed": 1},
+    "real_redis_concurrency_consumers": {"passed": 3, "one_second_lease_renewed_over_1_2_seconds": true},
+    "compiled_browser": {"locales": ["ko", "en", "ja", "zh-CN"], "themes": ["light", "dark"], "widths": [320, 390, 767, 768, 1023, 1024, 1440], "conditions": 56, "policy_and_editor_surfaces": 112, "overflow_failures": 0, "all_editor_controls_reachable": true, "additional_native_policy_actions": true, "tablet_shared_panel_entry": true, "available_weekly_only_unforced_policy": true},
+    "compiled_public_guides": {"locales_passed": 4},
+    "production_build": {"exit_code": 0},
+    "i18n": {"namespaces": 37, "source_messages": 9504, "errors": 0, "warnings": 0, "scan_files": 994, "hard_coded_korean_lines": 0},
+    "svelte_check": {"feature_diagnostics": 0, "outside_scope_errors": 1, "outside_scope_error": "dashboard/database/instances/+page.svelte: PageState.instanceId", "existing_warnings": 3},
+    "feature_backend_style": {"files": 7, "ruff_check_passed": true, "ruff_format_check_passed": true},
+    "full_gate": {"exit_code": 1, "backend_passed": 6003, "backend_skipped": 91, "backend_failed": 11, "failure_suite": "backend/tests/test_instance_storage_delete.py", "failure_boundary": "unchanged Palimpsest block consumer tracking / managed-grant single and bulk deletion; block consumer tracking database unavailable and related state assertions", "full_gate_not_claimed_passed": true},
+    "remaining_canonical_components": {"frontend_files_passed": 351, "frontend_tests_passed": 3317, "file_log_passed": 9, "contracts_passed": 174, "functional_passed": 154, "functional_deselected": 27, "functional_disposable_project_torn_down": true, "overall_ruff_check_passed": true, "overall_ruff_format_outside_scope_files": 7}
+  },
+  "source_review": {
+    "scope": "Frozen current public working source includes concurrent public WIP; private afterglow.conf and local inputs excluded",
+    "source_sha256": "7ac9fb728c75b6a25b5682d0ed2e2785784f609f3be16d51d2ee87b4c74036b6",
+    "source_files": 2635,
+    "working_and_alternate_local_staged_guards_passed": true,
+    "owned_source_parity_files": 34,
+    "shared_index_and_review_marker_preserved": true
+  },
+  "cleanup_observed": {"owned_browser_closed": true, "owned_api_and_ui_stopped": true, "final_api_connections_opened": 124, "final_api_connections_closed": 124, "timer_stopped": true, "owned_redis_container_removed": true},
+  "gbrain": "CLI and detection script unavailable; no sync or agent-guidance mutation",
+  "commit_stage_push_release_deployment": false,
+  "receipts": ["native-cases.json", "native-api-cases.json", "startup-shutdown.json", "calendar-library.json", "wall-clock-completed.json", "compiled-cycle/wall-clock-start.json", "compiled-cycle/wall-clock-completed.json", "compiled-matrix.json", "compiled-actions.json", "compiled-authority.json", "compiled-save-error.json", "compiled-remove-and-recovery.json", "compiled-panel-and-zero-tiers.json", "compiled-public-guides.json", "architecture-review.json", "source-parity.json"]
+}

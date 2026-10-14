@@ -40,10 +40,9 @@ export function createVolumesController(opts: VolumesControllerOpts) {
   let showTransferModal = $state(false);
   let transferVolumeId = $state('');
   let transferVolumeName = $state('');
+  let transferMode = $state<'create' | 'receive' | 'list'>('create');
   let tab = $state<'volumes' | 'snapshots'>('volumes');
   let selectedVolumeId = $state<string | null>(null);
-  let autoBackupConfigs = $state<Set<string>>(new Set());
-  let autoBackupToggling = $state<string | null>(null);
   let openActionMenu = $state<string | null>(null);
   let openSnapshotActionMenu = $state<string | null>(null);
   let extendTargetVol = $state<Volume | null>(null);
@@ -97,18 +96,8 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     } catch { /* 오류 무시 */ }
   }
 
-  async function fetchAutoBackupConfigs() {
-    try {
-      const configs = await api.post<{ volume_id: string }[]>(
-        '/api/v1/volumes/backups/auto-backup/configs', {},
-        opts.token(), opts.projectId(),
-      );
-      autoBackupConfigs = new Set(configs.map(c => c.volume_id));
-    } catch { /* 오류 무시 */ }
-  }
-
   async function fetchAll() {
-    await Promise.all([fetchVolumes(), fetchSnapshots(), fetchAutoBackupConfigs(), fetchQuotas()]);
+    await Promise.all([fetchVolumes(), fetchSnapshots(), fetchQuotas()]);
   }
 
   function openVolumePanel(id: string) {
@@ -154,9 +143,10 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     }
   }
 
-  function openTransferModal(id: string, name: string) {
+  function openTransferModal(id = '', name = '', mode: 'create' | 'receive' | 'list' = 'create') {
     transferVolumeId = id;
     transferVolumeName = name;
+    transferMode = mode;
     showTransferModal = true;
   }
 
@@ -194,24 +184,6 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     if (selectedVolumeId) closeVolumePanel();
   }
 
-  async function toggleAutoBackup(volumeId: string) {
-    autoBackupToggling = volumeId;
-    const enabling = !autoBackupConfigs.has(volumeId);
-    try {
-      if (!enabling) {
-        await apiMut(t('listController.disableAutoBackup'), () => api.delete(`/api/v1/volumes/backups/auto-backup/${volumeId}`, opts.token(), opts.projectId()));
-        autoBackupConfigs = new Set([...autoBackupConfigs].filter(id => id !== volumeId));
-      } else {
-        await apiMut(t('listController.enableAutoBackup'), () => api.post(`/api/v1/volumes/backups/auto-backup/${volumeId}`, {}, opts.token(), opts.projectId()));
-        autoBackupConfigs = new Set([...autoBackupConfigs, volumeId]);
-      }
-    } catch {
-      // error toast shown by apiMut
-    } finally {
-      autoBackupToggling = null;
-    }
-  }
-
   return {
     get volumes() { return volumes; },
     get snapshots() { return snapshots; },
@@ -226,11 +198,10 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     set showTransferModal(v: boolean) { showTransferModal = v; },
     get transferVolumeId() { return transferVolumeId; },
     get transferVolumeName() { return transferVolumeName; },
+    get transferMode() { return transferMode; },
     get tab() { return tab; },
     set tab(v: 'volumes' | 'snapshots') { tab = v; },
     get selectedVolumeId() { return selectedVolumeId; },
-    get autoBackupConfigs() { return autoBackupConfigs; },
-    get autoBackupToggling() { return autoBackupToggling; },
     get openActionMenu() { return openActionMenu; },
     set openActionMenu(v: string | null) { openActionMenu = v; },
     get openSnapshotActionMenu() { return openSnapshotActionMenu; },
@@ -248,7 +219,6 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     fetchVolumes,
     fetchSnapshots,
     fetchQuotas,
-    fetchAutoBackupConfigs,
     fetchAll,
     openVolumePanel,
     closeVolumePanel,
@@ -258,7 +228,6 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     openTransferModal,
     forceDeleteVolume,
     bootFromVolume,
-    toggleAutoBackup,
     applyRenamedVolume,
     resetProjectScope,
   };

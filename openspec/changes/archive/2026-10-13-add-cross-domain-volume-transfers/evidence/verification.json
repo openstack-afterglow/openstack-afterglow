@@ -1,0 +1,43 @@
+{
+  "scope": "local source, synthetic identity/cloud; not deployed",
+  "backend": {
+    "focused": "102 passed (after 4 failed/97 passed before fixes)",
+    "storage": "821 passed",
+    "access": "326 passed",
+    "ruff": "check ok, 6 formatted"
+  },
+  "frontend": {
+    "storage": "16 files/165 passed",
+    "access": "4 files/38 passed",
+    "build": "exit 0",
+    "i18n": "0 errors/0 warnings; hard-coded Korean 0",
+    "svelte_check": "transfer diagnostics 0; pre-existing database PageState error 1/warnings 3"
+  },
+  "native_http": {
+    "assertions": 31,
+    "native_requests": 132,
+    "operator_cinder_mutations": 0,
+    "operator_connections_closed": "16/16"
+  },
+  "compiled_chromium": {
+    "source_create_copy_cancel": true,
+    "cross_domain_receive": true,
+    "same_domain_receive": true,
+    "matrix_conditions": 48,
+    "rendered_states": 96,
+    "overflow": 0
+  },
+  "architecture": {
+    "mode": "isolated HEAD clone + explicit overlay",
+    "source_sha256": "cf8fd7c09e937f9e9cb601b52cfe84c60da2bfdabf5dea10490ea618312ba468",
+    "files": 2618,
+    "working": "pass",
+    "staged": "pass"
+  },
+  "not_run": [
+    "npm run test:gate",
+    "live OpenStack IAM/Cinder",
+    "production deploy"
+  ],
+  "receipts": "/Users/pieroot/.local/share/afterglow-proofs/volume-transfer-20261014-c7nvejts"
+}

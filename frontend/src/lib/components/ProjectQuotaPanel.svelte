@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api, ApiError } from '$lib/api/client';
-	import { MOTION_DURATION_MS } from '$lib/design/tokens';
-	import { motionDuration } from '$lib/utils/motion';
 	import { t } from '$lib/i18n/ns/shared';
 	import { t as tc } from '$lib/i18n/ns/common';
 	import { ActivityIndicator } from '$lib/components/ui';
+	import UsageBar from '$lib/components/ui/UsageBar.svelte';
 
 	interface QuotaItem {
 		limit: number;
@@ -96,19 +95,6 @@
 		}
 	}
 
-	function usageBar(inUse: number, limit: number): number {
-		if (limit <= 0) return 0;
-		return Math.min(100, Math.round((inUse / limit) * 100));
-	}
-
-	function usageGrad(inUse: number, limit: number): string {
-		if (limit <= 0) return 'var(--color-surface-sunken)';
-		const pct = (inUse / limit) * 100;
-		if (pct >= 95) return 'var(--gradient-usage-danger)';
-		if (pct >= 80) return 'var(--gradient-usage-warning)';
-		return 'var(--gradient-usage)';
-	}
-
 	function limitLabel(limit: number): string {
 		return limit === -1 ? '∞' : String(limit);
 	}
@@ -156,12 +142,7 @@
 							<span class="text-xs text-ink-2">{t('quotaPanel.usage', { used: quota.compute.instances?.in_use ?? 0, limit: limitLabel(quota.compute.instances?.limit ?? -1) })}</span>
 						</div>
 						{#if (quota.compute.instances?.limit ?? -1) > 0}
-							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
-								<div
-									class="quota-fill w-full h-full rounded-full"
-									style="transform: scaleX({usageBar(quota.compute.instances?.in_use ?? 0, quota.compute.instances?.limit ?? 0) / 100}); background: {usageGrad(quota.compute.instances?.in_use ?? 0, quota.compute.instances?.limit ?? 0)}"
-								></div>
-							</div>
+							<UsageBar class="mb-2" value={quota.compute.instances?.in_use ?? 0} max={quota.compute.instances?.limit} showValue={false} size="xs" />
 						{/if}
 						<input
 							id="q-instances"
@@ -180,12 +161,7 @@
 							<span class="text-xs text-ink-2">{t('quotaPanel.usage', { used: quota.compute.cores?.in_use ?? 0, limit: limitLabel(quota.compute.cores?.limit ?? -1) })}</span>
 						</div>
 						{#if (quota.compute.cores?.limit ?? -1) > 0}
-							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
-								<div
-									class="quota-fill w-full h-full rounded-full"
-									style="transform: scaleX({usageBar(quota.compute.cores?.in_use ?? 0, quota.compute.cores?.limit ?? 0) / 100}); background: {usageGrad(quota.compute.cores?.in_use ?? 0, quota.compute.cores?.limit ?? 0)}"
-								></div>
-							</div>
+							<UsageBar class="mb-2" value={quota.compute.cores?.in_use ?? 0} max={quota.compute.cores?.limit} showValue={false} size="xs" />
 						{/if}
 						<input
 							id="q-cores"
@@ -203,12 +179,7 @@
 							<span class="text-xs text-ink-2">{t('quotaPanel.usageMb', { used: quota.compute.ram?.in_use ?? 0, limit: limitLabel(quota.compute.ram?.limit ?? -1) })}</span>
 						</div>
 						{#if (quota.compute.ram?.limit ?? -1) > 0}
-							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
-								<div
-									class="quota-fill w-full h-full rounded-full"
-									style="transform: scaleX({usageBar(quota.compute.ram?.in_use ?? 0, quota.compute.ram?.limit ?? 0) / 100}); background: {usageGrad(quota.compute.ram?.in_use ?? 0, quota.compute.ram?.limit ?? 0)}"
-								></div>
-							</div>
+							<UsageBar class="mb-2" value={quota.compute.ram?.in_use ?? 0} max={quota.compute.ram?.limit} showValue={false} size="xs" />
 						{/if}
 						<input
 							id="q-ram"
@@ -232,12 +203,7 @@
 							<span class="text-xs text-ink-2">{t('quotaPanel.usage', { used: quota.volume.volumes?.in_use ?? 0, limit: limitLabel(quota.volume.volumes?.limit ?? -1) })}</span>
 						</div>
 						{#if (quota.volume.volumes?.limit ?? -1) > 0}
-							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
-								<div
-									class="quota-fill w-full h-full rounded-full"
-									style="transform: scaleX({usageBar(quota.volume.volumes?.in_use ?? 0, quota.volume.volumes?.limit ?? 0) / 100}); background: {usageGrad(quota.volume.volumes?.in_use ?? 0, quota.volume.volumes?.limit ?? 0)}"
-								></div>
-							</div>
+							<UsageBar class="mb-2" value={quota.volume.volumes?.in_use ?? 0} max={quota.volume.volumes?.limit} showValue={false} size="xs" />
 						{/if}
 						<input
 							id="q-volumes"
@@ -255,12 +221,7 @@
 							<span class="text-xs text-ink-2">{t('quotaPanel.usageGb', { used: quota.volume.gigabytes?.in_use ?? 0, limit: limitLabel(quota.volume.gigabytes?.limit ?? -1) })}</span>
 						</div>
 						{#if (quota.volume.gigabytes?.limit ?? -1) > 0}
-							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
-								<div
-									class="quota-fill w-full h-full rounded-full"
-									style="transform: scaleX({usageBar(quota.volume.gigabytes?.in_use ?? 0, quota.volume.gigabytes?.limit ?? 0) / 100}); background: {usageGrad(quota.volume.gigabytes?.in_use ?? 0, quota.volume.gigabytes?.limit ?? 0)}"
-								></div>
-							</div>
+							<UsageBar class="mb-2" value={quota.volume.gigabytes?.in_use ?? 0} max={quota.volume.gigabytes?.limit} showValue={false} size="xs" />
 						{/if}
 						<input
 							id="q-gigabytes"
@@ -299,10 +260,3 @@
 		</div>
 	{/if}
 </div>
-
-<style>
-	.quota-fill {
-		transform-origin: left;
-		transition: transform var(--motion-duration-base) var(--motion-ease-standard);
-	}
-</style>

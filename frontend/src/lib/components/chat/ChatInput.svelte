@@ -380,13 +380,25 @@
 	// 내용에 맞춰 높이 자동 조절(최대 12rem)
 	function autoGrow() {
 		const el = ta;
-		if (!el) return;
+		if (!el || el.clientWidth === 0) return;
 		el.style.height = 'auto';
 		el.style.height = `${Math.min(el.scrollHeight, 192)}px`;
 	}
 	$effect(() => {
 		void value;
 		autoGrow();
+	});
+	$effect(() => {
+		const el = ta;
+		if (!el || typeof ResizeObserver === 'undefined') return;
+		let width = 0;
+		const observer = new ResizeObserver(([entry]) => {
+			if (entry.contentRect.width === width) return;
+			width = entry.contentRect.width;
+			if (width > 0) autoGrow();
+		});
+		observer.observe(el);
+		return () => observer.disconnect();
 	});
 
 	async function onKeydown(e: KeyboardEvent) {

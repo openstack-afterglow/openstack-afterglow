@@ -1,4 +1,9 @@
 {
+	"items.infrastructureTopology": "基础设施拓扑",
+	"items.trafficAnalytics": "访问与流量分析",
+	"items.loginMonitoring": "登录与会话",
+	"items.applicationCredentials": "应用凭据",
+	"items.userCredentials": "用户凭据",
 	"sections.dashboard": "仪表盘",
 	"sections.compute": "计算",
 	"sections.volumes": "卷",

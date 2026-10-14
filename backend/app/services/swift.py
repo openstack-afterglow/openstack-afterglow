@@ -16,6 +16,8 @@ import logging
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
+from app.services.work_dispatcher import DispatcherUnavailable, checkpoint_sync
+
 if TYPE_CHECKING:
     pass
 
@@ -374,12 +376,17 @@ def delete_container(conn, name: str) -> None:
             obj_name = o.name or ""
             try:
                 delete_object(conn, name, obj_name)
+            except DispatcherUnavailable:
+                raise
             except Exception:
                 _logger.warning("객체 삭제 실패 container=%s name=%s", name, obj_name, exc_info=True)
+    except DispatcherUnavailable:
+        raise
     except Exception:
         _logger.debug("컨테이너 객체 목록 조회 실패: %s", name, exc_info=True)
 
     # 2. 원본 컨테이너 삭제
+    checkpoint_sync()
     conn.object_store.delete_container(name, ignore_missing=False)
 
     # 3. _segments 컨테이너 정리 (SLO 분할 파일의 orphan 방지)
@@ -388,11 +395,17 @@ def delete_container(conn, name: str) -> None:
         for o in conn.object_store.objects(seg_name):
             obj_name = o.name or ""
             try:
+                checkpoint_sync()
                 conn.object_store.delete_object(obj_name, container=seg_name, ignore_missing=True)
+            except DispatcherUnavailable:
+                raise
             except Exception:
                 _logger.warning("SLO segment 삭제 실패 container=%s name=%s", seg_name, obj_name, exc_info=True)
+        checkpoint_sync()
         conn.object_store.delete_container(seg_name, ignore_missing=True)
         _logger.info("SLO segments 컨테이너 정리: %s", seg_name)
+    except DispatcherUnavailable:
+        raise
     except Exception:
         # segments 가 없는 경우(SLO 미사용 버킷) 정상
         _logger.debug("SLO segments 정리 스킵 또는 부재: %s", seg_name, exc_info=True)
@@ -712,6 +725,7 @@ def delete_object(conn, container: str, name: str) -> None:
     _apply_endpoint_override(conn)
     if name.endswith("/"):
         encoded = "/" + urllib.parse.quote(container, safe="") + "/" + urllib.parse.quote(name, safe="/")
+        checkpoint_sync()
         _require_swift_success(conn.object_store.delete(encoded), "directory marker delete")
         return
 
@@ -734,8 +748,10 @@ def delete_object(conn, container: str, name: str) -> None:
             + urllib.parse.quote(name, safe="/")
             + "?multipart-manifest=delete"
         )
+        checkpoint_sync()
         _require_swift_success(conn.object_store.delete(encoded), "SLO manifest delete")
     else:
+        checkpoint_sync()
         conn.object_store.delete_object(name, ignore_missing=False, container=container)
 
 

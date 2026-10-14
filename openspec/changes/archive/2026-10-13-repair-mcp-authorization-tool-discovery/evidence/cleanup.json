@@ -1,0 +1,17 @@
+{
+  "local_only": true,
+  "owned_compose_projects": ["afterglow-mcp-system-xgt8rj01", "afterglow-mcp-repair-xgt8rj01"],
+  "owned_native_containers_removed": 10,
+  "owned_functional_datastore_containers_removed": 3,
+  "remaining_owned_containers": 0,
+  "owned_browser": "released",
+  "owned_http_bridge": "gracefully stopped; zero running owned listener processes",
+  "owned_driver_and_ui_grant_revoke_http": 204,
+  "owned_throwaway_fixture_files_removed": 14,
+  "owned_qa_image_tags_removed_without_force": 11,
+  "volume_deletion_or_prune": false,
+  "original_shared_compose_private_inputs_and_index": "preserved; no mutation commands issued",
+  "staging": "owned isolated qualification clones only, for required architecture staged guards",
+  "commit_push_publish_or_production_deployment": false,
+  "durable_logs_and_screenshots": "/Users/pieroot/.local/share/afterglow-proofs/afterglow-mcp-repair-xgt8rj01/"
+}

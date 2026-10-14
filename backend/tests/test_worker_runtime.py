@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
-import os
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -12,26 +12,10 @@ import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app import config as app_config
 from app.config import Settings
 from app.main import app
 from app.models.worker_runtime import WorkerRuntimeStatus
 from app.services import worker_runtime as runtime_service
-
-
-@pytest.fixture
-def isolated_worker_runtime_config(tmp_path, monkeypatch):
-    """Load worker runtime defaults without ambient config or env overrides."""
-
-    monkeypatch.chdir(tmp_path)
-    for key in list(os.environ):
-        if key.startswith("WORKER_RUNTIME_"):
-            monkeypatch.delenv(key, raising=False)
-    app_config.load_raw_toml.cache_clear()
-    app_config.get_settings.cache_clear()
-    yield tmp_path
-    app_config.load_raw_toml.cache_clear()
-    app_config.get_settings.cache_clear()
 
 
 @pytest.fixture
@@ -41,7 +25,8 @@ async def anon_client():
 
 
 class FakeDockerAPI:
-    def __init__(self, containers: list[dict]) -> None:
+    def __init__(self, containers: list[dict], *, engine_id: str = "engine-1") -> None:
+        self.engine_id = engine_id
         self.containers = [dict(container) for container in containers]
         self.deleted_ids: list[str] = []
         self.created: list[dict] = []
@@ -52,6 +37,9 @@ class FakeDockerAPI:
         return json.loads(raw)
 
     def handler(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/info":
+            return httpx.Response(200, request=request, json={"ID": self.engine_id})
+
         if request.method == "GET" and request.url.path == "/_ping":
             return httpx.Response(200, request=request)
 
@@ -140,15 +128,6 @@ def _kubernetes_config(tmp_path: Path, **overrides) -> runtime_service.Kubernete
         manage_deployments=False,
     )
     return replace(base, **overrides)
-
-
-@pytest.mark.asyncio
-async def test_worker_runtime_settings_default_to_static_with_single_replica_limits(isolated_worker_runtime_config):
-    settings = app_config.get_settings()
-
-    assert settings.worker_runtime_mode == "static"
-    assert settings.worker_runtime_notion_worker_desired_replicas == 1
-    assert settings.worker_runtime_notion_worker_max_replicas == 1
 
 
 @pytest.mark.asyncio
@@ -334,7 +313,11 @@ async def test_kubernetes_reconcile_patches_only_scale_subresource(tmp_path):
             return httpx.Response(
                 200,
                 request=request,
-                json={"spec": {"replicas": observed[deployment]}, "status": {"replicas": observed[deployment]}},
+                json={
+                    "metadata": {"uid": "deployment-uid", "resourceVersion": "7"},
+                    "spec": {"replicas": observed[deployment]},
+                    "status": {"replicas": observed[deployment]},
+                },
             )
 
         raise AssertionError(f"Unexpected Kubernetes request: {request.method} {request.url}")
@@ -361,7 +344,10 @@ async def test_kubernetes_reconcile_patches_only_scale_subresource(tmp_path):
     assert [path for path, _, _ in patch_calls] == [
         "/apis/apps/v1/namespaces/afterglow/deployments/notion-worker/scale"
     ]
-    assert [body for _, body, _ in patch_calls] == [{"spec": {"replicas": 2}}]
+    # UID and resourceVersion make a recreated or concurrently changed Deployment fail closed.
+    assert [body for _, body, _ in patch_calls] == [
+        {"metadata": {"uid": "deployment-uid", "resourceVersion": "7"}, "spec": {"replicas": 2}}
+    ]
     assert all(content_type == "application/merge-patch+json" for _, _, content_type in patch_calls)
 
 
@@ -442,65 +428,200 @@ async def test_patch_worker_runtime_desired_rejects_counts_above_worker_max(admi
     assert response.json()["detail"] == "notion_worker desired_replicas exceeds max_replicas=1"
 
 
-@pytest.mark.asyncio
-async def test_reconcile_once_with_lock_skips_adapter_when_lock_is_not_acquired():
-    settings = Settings(worker_runtime_mode="docker")
+@pytest.fixture
+async def runtime_coordination(monkeypatch):
+    from fakeredis.aioredis import FakeRedis
 
-    with (
-        patch("app.services.worker_runtime._acquire_reconcile_lock", new=AsyncMock(return_value=False)),
-        patch("app.services.worker_runtime.get_adapter") as get_adapter,
-        patch("app.services.worker_runtime._release_reconcile_lock", new=AsyncMock()) as release_lock,
+    redis = FakeRedis(decode_responses=True)
+    monkeypatch.setattr("app.services.cache._get_redis", AsyncMock(return_value=redis))
+    yield redis
+    await redis.close()
+
+
+@pytest.mark.asyncio
+async def test_runtime_reconcile_same_engine_claims_only_one_create(tmp_path, monkeypatch, runtime_coordination):
+    docker = FakeDockerAPI([])
+    accepted, release = asyncio.Event(), asyncio.Event()
+
+    async def provider(request):
+        response = docker.handler(request)
+        if request.method == "POST" and request.url.path == "/containers/create":
+            accepted.set()
+            await release.wait()
+        return response
+
+    settings = Settings(worker_runtime_mode="docker")
+    async with AsyncClient(transport=httpx.MockTransport(provider), base_url="http://docker") as client:
+        adapter = runtime_service.DockerWorkerRuntimeAdapter(_docker_config(tmp_path, monkeypatch), client=client)
+        monkeypatch.setattr(runtime_service, "get_adapter", lambda _: adapter)
+        owner = asyncio.create_task(runtime_service.reconcile_once_with_lock(settings))
+        try:
+            async with asyncio.timeout(5):
+                await accepted.wait()
+                assert await runtime_service.reconcile_once_with_lock(settings) is None
+            assert len(docker.created) == 1
+            assert docker.started_ids == []
+        finally:
+            release.set()
+            status = await owner
+    assert status.capable is True
+    assert docker.started_ids == ["created-0"]
+    assert await runtime_coordination.keys("*:lease:*") == []
+
+
+@pytest.mark.asyncio
+async def test_runtime_reconcile_different_engines_do_not_share_ownership(tmp_path, monkeypatch, runtime_coordination):
+    first, second = FakeDockerAPI([], engine_id="engine-a"), FakeDockerAPI([], engine_id="engine-b")
+    config = _docker_config(tmp_path, monkeypatch)
+    async with (
+        AsyncClient(transport=httpx.MockTransport(first.handler), base_url="http://docker") as first_client,
+        AsyncClient(transport=httpx.MockTransport(second.handler), base_url="http://docker") as second_client,
     ):
-        result = await runtime_service.reconcile_once_with_lock(settings)
-
-    assert result is None
-    get_adapter.assert_not_called()
-    release_lock.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_reconcile_once_with_lock_calls_adapter_after_lock_acquisition():
-    settings = Settings(worker_runtime_mode="docker")
-    specs = [
-        runtime_service.WorkerSpec(
-            name="notion_worker",
-            module="app.notion_worker",
-            enabled=True,
-            desired_replicas=1,
-            max_replicas=2,
+        first_adapter = runtime_service.DockerWorkerRuntimeAdapter(config, client=first_client)
+        second_adapter = runtime_service.DockerWorkerRuntimeAdapter(config, client=second_client)
+        first_settings = Settings(worker_runtime_mode="docker", worker_runtime_docker_image="engine-a")
+        second_settings = Settings(worker_runtime_mode="docker", worker_runtime_docker_image="engine-b")
+        monkeypatch.setattr(
+            runtime_service,
+            "get_adapter",
+            lambda settings: first_adapter if settings.worker_runtime_docker_image == "engine-a" else second_adapter,
         )
-    ]
-    desired = [runtime_service.WorkerDesired(name="notion_worker", desired_replicas=1)]
-    expected = WorkerRuntimeStatus(
-        mode="docker",
-        capable=True,
-        reason=None,
-        workers=[
-            runtime_service.WorkerRuntimeWorkerStatus(
-                name="notion_worker",
-                enabled=True,
-                module="app.notion_worker",
-                desired_replicas=1,
-                max_replicas=2,
-                observed_replicas=1,
-                mode="docker",
-                capable=True,
-                reason=None,
+        statuses = await asyncio.gather(
+            runtime_service.reconcile_once_with_lock(first_settings),
+            runtime_service.reconcile_once_with_lock(second_settings),
+        )
+    assert all(status.capable for status in statuses)
+    assert first.started_ids == ["created-0"]
+    assert second.started_ids == ["created-0"]
+    assert first.deleted_ids == second.deleted_ids == []
+
+
+@pytest.mark.asyncio
+async def test_runtime_reconcile_without_engine_identity_starts_no_mutation(
+    tmp_path, monkeypatch, runtime_coordination
+):
+    docker = FakeDockerAPI([], engine_id="")
+    async with AsyncClient(transport=httpx.MockTransport(docker.handler), base_url="http://docker") as client:
+        adapter = runtime_service.DockerWorkerRuntimeAdapter(_docker_config(tmp_path, monkeypatch), client=client)
+        monkeypatch.setattr(runtime_service, "get_adapter", lambda _: adapter)
+        assert await runtime_service.reconcile_once_with_lock(Settings(worker_runtime_mode="docker")) is None
+    assert docker.created == docker.started_ids == docker.deleted_ids == []
+
+
+@pytest.mark.asyncio
+async def test_runtime_cancel_drains_accepted_request_before_releasing_target(
+    tmp_path, monkeypatch, runtime_coordination
+):
+    docker = FakeDockerAPI([])
+    accepted, release = asyncio.Event(), asyncio.Event()
+
+    async def provider(request):
+        response = docker.handler(request)
+        if request.method == "POST" and request.url.path == "/containers/create":
+            accepted.set()
+            await release.wait()
+        return response
+
+    settings = Settings(worker_runtime_mode="docker")
+    async with AsyncClient(transport=httpx.MockTransport(provider), base_url="http://docker") as client:
+        adapter = runtime_service.DockerWorkerRuntimeAdapter(_docker_config(tmp_path, monkeypatch), client=client)
+        monkeypatch.setattr(runtime_service, "get_adapter", lambda _: adapter)
+        owner = asyncio.create_task(runtime_service.reconcile_once_with_lock(settings))
+        try:
+            async with asyncio.timeout(5):
+                await accepted.wait()
+                owner.cancel()
+                # One loop turn delivers cancellation to the actual HTTP await.
+                await asyncio.sleep(0)
+                assert not owner.done()
+                assert await runtime_coordination.keys("*:lease:reconcile")
+                assert await runtime_service.reconcile_once_with_lock(settings) is None
+            assert len(docker.created) == 1
+        finally:
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await owner
+    assert docker.started_ids == []
+    assert await runtime_coordination.keys("*:lease:*") == []
+
+
+@pytest.mark.asyncio
+async def test_runtime_same_deployment_uid_serializes_replica_updates(tmp_path, monkeypatch, runtime_coordination):
+    accepted, release = asyncio.Event(), asyncio.Event()
+    state = {"updates": [], "replicas": 0, "paths": []}
+    deployment_path = "/apis/apps/v1/namespaces/afterglow/deployments/notion-worker"
+
+    async def provider(request):
+        state["paths"].append(request.url.path)
+        if request.method == "GET" and request.url.path == deployment_path:
+            return httpx.Response(
+                200,
+                request=request,
+                json={
+                    "metadata": {"uid": "deployment-owned-uid", "resourceVersion": "11"},
+                    "spec": {"replicas": state["replicas"]},
+                    "status": {"replicas": state["replicas"]},
+                },
             )
-        ],
-    )
-    adapter = AsyncMock()
-    adapter.reconcile = AsyncMock(return_value=expected)
+        if request.method == "PATCH" and request.url.path == deployment_path + "/scale":
+            body = json.loads(request.content)
+            state["updates"].append(body)
+            accepted.set()
+            await release.wait()
+            state["replicas"] = body["spec"]["replicas"]
+            return httpx.Response(200, request=request, json=body)
+        raise AssertionError(f"Unexpected Kubernetes operation: {request.method} {request.url.path}")
 
-    with (
-        patch("app.services.worker_runtime._acquire_reconcile_lock", new=AsyncMock(return_value=True)),
-        patch("app.services.worker_runtime._release_reconcile_lock", new=AsyncMock()) as release_lock,
-        patch("app.services.worker_runtime.build_worker_specs", return_value=specs),
-        patch("app.services.worker_runtime.desired_with_overrides", new=AsyncMock(return_value=desired)),
-        patch("app.services.worker_runtime.get_adapter", return_value=adapter),
-    ):
-        result = await runtime_service.reconcile_once_with_lock(settings)
+    settings = Settings(worker_runtime_mode="kubernetes")
+    async with AsyncClient(
+        transport=httpx.MockTransport(provider), base_url="https://kubernetes.default.svc"
+    ) as client:
+        adapter = runtime_service.KubernetesWorkerRuntimeAdapter(_kubernetes_config(tmp_path), client=client)
+        monkeypatch.setattr(runtime_service, "get_adapter", lambda _: adapter)
+        owner = asyncio.create_task(runtime_service.reconcile_once_with_lock(settings))
+        try:
+            async with asyncio.timeout(5):
+                await accepted.wait()
+                assert await runtime_service.reconcile_once_with_lock(settings) is None
+            assert state["updates"] == [
+                {"metadata": {"uid": "deployment-owned-uid", "resourceVersion": "11"}, "spec": {"replicas": 1}}
+            ]
+        finally:
+            release.set()
+            status = await owner
+    assert status.capable and status.workers[0].observed_replicas == 1
+    assert set(state["paths"]) == {deployment_path, deployment_path + "/scale"}
 
-    assert result == expected
-    adapter.reconcile.assert_awaited_once_with(desired, specs)
-    release_lock.assert_awaited_once()
+
+@pytest.mark.asyncio
+async def test_recreated_deployment_identity_blocks_old_owner_mutation(tmp_path):
+    state = {"uid": "original-deployment", "patches": []}
+    deployment_path = "/apis/apps/v1/namespaces/afterglow/deployments/notion-worker"
+
+    def provider(request):
+        if request.method == "GET" and request.url.path == deployment_path:
+            return httpx.Response(
+                200,
+                request=request,
+                json={
+                    "metadata": {"uid": state["uid"], "resourceVersion": "3"},
+                    "spec": {"replicas": 0},
+                    "status": {"replicas": 0},
+                },
+            )
+        if request.method == "PATCH":
+            state["patches"].append(json.loads(request.content))
+            return httpx.Response(200, request=request, json={})
+        raise AssertionError(f"Unexpected Kubernetes operation: {request.method} {request.url.path}")
+
+    specs = runtime_service.build_worker_specs(Settings(worker_runtime_mode="kubernetes"))
+    desired = [runtime_service.WorkerDesired(name=spec.name, desired_replicas=1) for spec in specs]
+    async with AsyncClient(
+        transport=httpx.MockTransport(provider), base_url="https://kubernetes.default.svc"
+    ) as client:
+        adapter = runtime_service.KubernetesWorkerRuntimeAdapter(_kubernetes_config(tmp_path), client=client)
+        await runtime_service._coordination_prefix(adapter, Settings(worker_runtime_mode="kubernetes"))
+        state["uid"] = "recreated-deployment"
+        with pytest.raises(runtime_service.DispatcherUnavailable):
+            await adapter.reconcile(desired, specs)
+    assert state["patches"] == []

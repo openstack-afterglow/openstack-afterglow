@@ -117,7 +117,7 @@ def test_create_access_rule_cephx_preserves_instance_ownership_metadata(mock_get
             "state": "new",
         }
     }
-    client.get.return_value = {"access_rules": [{"id": "cephx-rule-id", "access_key": "AQTEST=="}]}
+    client.get.return_value = {"access_list": [{"id": "cephx-rule-id", "access_key": "AQTEST=="}]}
     mock_get_client.return_value = client
 
     conn = MagicMock()
@@ -325,28 +325,6 @@ def test_ensure_nfs_access_rule_root_squash_disabled(mock_create, mock_list):
     assert "root_squash" not in passed_meta
 
 
-@patch("app.services.manila.get_client")
-def test_list_access_rules_legacy_fallback_suppresses_error_logging(mock_get_client):
-    """legacy os-list-access fallback은 unsupported여도 ERROR 로그를 남기지 않는다."""
-    from app.services.manila import list_access_rules
-
-    client = MagicMock()
-    client.get.return_value = {"access_rules": []}
-    request = httpx.Request("POST", "https://manila.example.com/v2/proj/shares/share-1/action")
-    response = httpx.Response(
-        400,
-        request=request,
-        json={"badRequest": {"code": 400, "message": "There is no such action: os-list-access"}},
-    )
-    client.post.side_effect = httpx.HTTPStatusError("unsupported", request=request, response=response)
-    mock_get_client.return_value = client
-
-    result = list_access_rules(MagicMock(), "share-1")
-
-    assert result == []
-    client.post.assert_called_once_with("shares/share-1/action", {"os-list-access": {}}, log_errors=False)
-
-
 # ---------------------------------------------------------------------------
 # Settings — 새 config 필드 기본값
 # ---------------------------------------------------------------------------
@@ -382,7 +360,7 @@ def test_get_access_key_returns_on_first_hit():
     from app.services.manila import _get_access_key
 
     client = MagicMock()
-    client.get.return_value = {"access_rules": [{"id": "rule-1", "access_key": "AQTEST=="}]}
+    client.get.return_value = {"access_list": [{"id": "rule-1", "access_key": "AQTEST=="}]}
     key = _get_access_key(client, "share-1", "rule-1", timeout_seconds=30)
     assert key == "AQTEST=="
     assert client.get.call_count == 1
@@ -392,8 +370,8 @@ def test_get_access_key_retries_until_key_available():
     """처음 몇 회는 빈 key, 이후 채워지면 정상 반환한다."""
     from app.services.manila import _get_access_key
 
-    empty = {"access_rules": [{"id": "rule-1", "access_key": ""}]}
-    filled = {"access_rules": [{"id": "rule-1", "access_key": "AQfilled=="}]}
+    empty = {"access_list": [{"id": "rule-1", "access_key": ""}]}
+    filled = {"access_list": [{"id": "rule-1", "access_key": "AQfilled=="}]}
     client = MagicMock()
     client.get.side_effect = [empty, empty, filled]
 
@@ -409,7 +387,7 @@ def test_get_access_key_raises_on_timeout():
     from app.services.manila import _get_access_key
 
     client = MagicMock()
-    client.get.return_value = {"access_rules": [{"id": "rule-1", "access_key": ""}]}
+    client.get.return_value = {"access_list": [{"id": "rule-1", "access_key": ""}]}
 
     with patch("time.sleep"):
         try:
@@ -424,7 +402,7 @@ def test_get_access_key_respects_timeout_seconds():
     from app.services.manila import _get_access_key
 
     client = MagicMock()
-    client.get.return_value = {"access_rules": [{"id": "rule-1", "access_key": ""}]}
+    client.get.return_value = {"access_list": [{"id": "rule-1", "access_key": ""}]}
 
     with patch("time.sleep"):
         try:
@@ -531,18 +509,21 @@ def test_strict_file_storage_quota_keeps_unlimited_and_zero(mock_get_client):
 
 
 @patch("app.services.manila.get_client")
-def test_strict_access_rule_list_trusts_modern_empty_without_legacy(mock_get_client):
+def test_access_rule_list_trusts_modern_empty_without_legacy_action(mock_get_client):
     from app.services.manila import list_access_rules
 
     client = MagicMock()
     mock_get_client.return_value = client
-    client.get.return_value = {"access_rules": []}
+    client.get.return_value = {"access_list": []}
     client.post.side_effect = RuntimeError("legacy unsupported")
     assert list_access_rules(MagicMock(), "share-1", strict=True) == []
+    assert list_access_rules(MagicMock(), "share-1") == []
     client.post.assert_not_called()
 
 
-@pytest.mark.parametrize("response", [{}, {"access_rules": None}, {"access_rules": [{}]}])
+@pytest.mark.parametrize(
+    "response", [{}, {"access_list": None}, {"access_list": [{}]}, {"access_rules": [{"id": "rule-1"}]}]
+)
 @patch("app.services.manila.get_client")
 def test_strict_access_rule_list_rejects_incomplete_response(mock_get_client, response):
     from app.services.manila import list_access_rules
@@ -589,3 +570,59 @@ def test_exact_access_rule_get_rejects_incomplete_or_foreign(mock_get_client, re
     client.get.return_value = response
     with pytest.raises(ValueError):
         get_access_rule(MagicMock(), "share-1", "rule-1")
+
+
+def test_share_access_rules_read_native_manila_access_list_envelope():
+    """Manila 2.45+ GET /share-access-rules returns `access_list`; strict readers must accept it."""
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from app.services import manila
+
+    rule = {
+        "id": "rule-1",
+        "share_id": "share-1",
+        "access_type": "cephx",
+        "access_to": "reader",
+        "access_level": "ro",
+        "state": "active",
+        "access_key": "AQnative==",
+    }
+    requests = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def do_GET(self):
+            requests.append(("GET", self.path, self.headers["X-OpenStack-Manila-API-Version"]))
+            payload = json.dumps({"access_list": [rule]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def do_POST(self):
+            requests.append(("POST", self.path, None))
+            self.send_response(400)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        client = manila.ManilaClient(f"http://127.0.0.1:{server.server_port}/v2/project", "synthetic-token", "project")
+        with patch.object(manila, "get_client", return_value=client):
+            assert manila.list_access_rules(MagicMock(), "share-1", strict=True) == [rule]
+            assert manila.list_access_rules(MagicMock(), "share-1") == [rule]
+        assert manila._get_access_key(client, "share-1", "rule-1", timeout_seconds=3) == "AQnative=="
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+    assert {method for method, _, _ in requests} == {"GET"}
+    assert {version for _, _, version in requests} == {"2.65"}
+    assert all(path == "/v2/project/share-access-rules?share_id=share-1" for _, path, _ in requests)

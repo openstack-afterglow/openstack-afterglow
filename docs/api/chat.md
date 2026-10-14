@@ -20,6 +20,12 @@ Afterglow 백엔드는 독자적인 AI 모델 실행 엔진, LiteLLM 라우팅, 
 
 Lumen 텍스트 채팅 상단에는 모델·에이전트 선택과 기록·출처·임시 채팅 컨트롤만 둔다. 이미지 Studio·오디오 Studio·실시간 음성 바로가기는 상단에서 제거하며, 기존 Studio 사이드바·전체 메뉴·command palette 목적지와 `/dashboard/chat/realtime` 직접 route, 서비스 인가·API는 변경하지 않는다.
 
+새 채팅의 작성창은 최대48rem이며 초안이160자 이상 또는 명시적3줄 이상일 때만 본문과 같은80rem까지 확장한다. 초안을 짧게 줄이면 다시 좁아지고 기존 대화에서는80rem을 유지한다. 모바일에서는 내부 스크롤바를 제외한 가용 폭 안에 머문다. 밝은 테마는 기존 semantic 색상을 유지하며 canvas/sidebar/raised message의 표면 계층과 메시지·도구·프로젝트·선택 기록의 경계를 구분한다.
+
+사이드바 프로젝트 목록·상세와 채팅 간 전환은 `page.state.chatWorkspacePath`를 사용하는 shallow history다. 같은 ChatPanel과 sidebar/transcript/editor를 유지하므로 선택된 대화로 돌아올 때 목록·메시지를 다시 읽거나 초안·스크롤·실행 연결을 초기화하지 않는다. 실제 다른 대화를 선택하면 해당 대화의 latest page를 읽고 기존 selection/identity fence를 적용한다. 직접 URL 진입과 browser back/forward를 지원하며 설정·Studio는 기존 일반 route를 유지한다.
+
+프로젝트 화면에서 숨겨진 editor를0px로 측정하지 않으며 실제 폭·표시 복귀를 `ResizeObserver`로 감지해 textarea 높이를 다시 맞춘다. 높이 변화만으로 observer를 반복 실행하지 않고, compact drawer의 Escape는 실제로 열었던 현재 화면 trigger로 focus를 돌려준다.
+
 이미지 Studio는 생성/수정 선택 없이 `이미지 만들기`로 요청한다. 첨부가 없으면 `/api/v1/chat/images/generations`에 제출하고, 첨부가 있으면 업로드된 `input_asset_id`와 사용자 `prompt`를 `/api/v1/chat/images/edits`에 함께 보낸다. 참고 이미지로 새 결과를 만드는 요청도 입력 이미지를 받는 `edits` 경로를 사용하며, 참고 생성/원본 수정의 의미는 이미지 모델이 프롬프트와 이미지를 보고 처리한다. 별도 분류 모델·키워드 heuristic·숨겨진 프롬프트 재작성은 없다. 아래의 명시적인 생성·편집 API 계약은 변경하지 않는다.
 
 업로드 중이거나 실패한 첨부는 제출을 막고 미리보기를 유지한다. 모델 준비·입력 가격·provider 오류 뒤에도 첨부를 버리거나 `generations`로 자동 재시도하지 않는다. 사용자가 명시적으로 제거한 경우에만 이미지 없는 생성으로 전환하며 실제 입력 asset ID가 바뀌면 새 idempotency intent를 사용한다. 프로젝트 전환의 업로드·응답 격리와 기존 스타일 지시문·결과 조회·다운로드는 유지한다.
@@ -143,7 +149,7 @@ DeepSeek의 공식 `/user/balance`는 통화별 총 account balance, 구매 충�
 
 ### Active-path 기록 탐색
 
-대화 화면은 Lumen의 전체 message graph를 다운로드하거나 browser에서 parent graph를 재구성하지 않습니다. Initial/latest/first page와 cursor page는 active-path projection에 이미 root-to-leaf로 정렬되어 있으며 각 message의 `branch.previous_id`/`next_id`가 version 탐색을 제공합니다. Browser는 40개 page를 최대 3개(120 messages)만 보존합니다. **처음/이전/다음/최신**은 모든 breakpoint에서 explicit action이며 한 번 누를 때 Lumen request도 정확히 한 번 발생합니다.
+대화 화면은 Lumen의 전체 message graph를 다운로드하거나 browser에서 parent graph를 재구성하지 않습니다. Initial/latest page와 cursor page는 active-path projection에 이미 root-to-leaf로 정렬되어 있으며 각 message의 `branch.previous_id`/`next_id`가 version 탐색을 제공합니다. Browser는40개 page를 최대3개(120 messages)만 보존합니다. 상단 처음/이전/다음/최신 막대는 없으며 transcript의 위·아래 edge에 도달하면 해당 opaque cursor로 한 page를 가져옵니다. 요청 중 반복 scroll은 중복 요청하지 않습니다.
 
 이전 page prepend는 첫 visible `data-history-message-id`의 top offset을 render 전후 비교해 viewport를 보존합니다. Opposite edge page를 버려도 edge cursor가 남아 다시 가져올 수 있습니다. Selection generation, local mutation epoch, token/project와 conversation identity가 바뀐 response는 적용하지 않습니다. Branch change로 cursor revision이 stale해져 409가 오면 alert를 표시하고 latest page를 한 번만 다시 조회합니다.
 

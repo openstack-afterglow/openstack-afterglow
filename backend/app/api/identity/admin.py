@@ -91,13 +91,19 @@ async def trigger_build(
         raise HTTPException(status_code=409, detail=f"이미 존재하는 사전 빌드 파일 스토리지: {existing[0].id}")
 
     if auto_install:
+        from sqlalchemy.exc import SQLAlchemyError
+
         try:
             result = await library_builder.queue_build(library_id)
             return result
         except RuntimeError as e:
             msg = str(e)
-            status_code = 409 if "이미" in msg else 400
+            status_code = 409 if "이미" in msg else 503
             raise HTTPException(status_code=status_code, detail=msg)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except SQLAlchemyError as exc:
+            raise HTTPException(status_code=503, detail="빌드 DB를 사용할 수 없습니다") from exc
 
     file_storage = manila.create_file_storage(
         conn,
@@ -117,45 +123,39 @@ async def trigger_build(
 
 @router.get("/file-storage/builds", dependencies=[Depends(require_admin)])
 async def list_active_builds():
-    """빌드 목록 조회 (DB 기반, 인메모리 캐시 병합)."""
-    from app.database import get_session_factory, is_db_available
+    """Return persisted build status without a process-local fallback."""
+    from sqlalchemy import select
 
-    result: list[dict] = []
-    if is_db_available():
-        try:
-            from sqlalchemy import select
+    from app.database import get_session_factory
+    from app.models.db import LibraryBuild
 
-            from app.models.db import LibraryBuild
-
-            factory = get_session_factory()
-            if factory:
-                async with factory() as session:
-                    rows = (
-                        (await session.execute(select(LibraryBuild).order_by(LibraryBuild.created_at.desc()).limit(20)))
-                        .scalars()
-                        .all()
-                    )
-                    for r in rows:
-                        result.append(
-                            {
-                                "id": r.id,
-                                "library_id": r.library_id,
-                                "file_storage_id": r.file_storage_id,
-                                "server_id": r.server_id,
-                                "status": r.status,
-                                "progress_step": r.progress_step,
-                                "progress_pct": r.progress_pct,
-                                "error_message": r.error_message,
-                                "started_at": r.started_at.isoformat() + "Z" if r.started_at else None,
-                                "completed_at": r.completed_at.isoformat() + "Z" if r.completed_at else None,
-                            }
-                        )
-        except Exception:
-            pass
-    if not result:
-        # DB 사용 불가 시 인메모리 폴백
-        return library_builder.get_active_builds()
-    return result
+    factory = get_session_factory()
+    if factory is None:
+        raise HTTPException(status_code=503, detail="DB가 초기화되지 않았습니다")
+    try:
+        async with factory() as session:
+            rows = (
+                (await session.execute(select(LibraryBuild).order_by(LibraryBuild.created_at.desc()).limit(20)))
+                .scalars()
+                .all()
+            )
+            return [
+                {
+                    "id": row.id,
+                    "library_id": row.library_id,
+                    "file_storage_id": row.file_storage_id,
+                    "server_id": row.server_id,
+                    "status": row.status,
+                    "progress_step": row.progress_step,
+                    "progress_pct": row.progress_pct,
+                    "error_message": row.error_message,
+                    "started_at": row.started_at.isoformat() + "Z" if row.started_at else None,
+                    "completed_at": row.completed_at.isoformat() + "Z" if row.completed_at else None,
+                }
+                for row in rows
+            ]
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="빌드 DB를 조회할 수 없습니다") from exc
 
 
 # ---------------------------------------------------------------------------

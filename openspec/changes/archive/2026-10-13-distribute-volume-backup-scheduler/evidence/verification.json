@@ -1,0 +1,46 @@
+{
+  "change": "distribute-volume-backup-scheduler",
+  "status": "implemented-and-exercised-local-source-not-deployed",
+  "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/afterglow-backup-ha-82g70zwq",
+  "runtime_boundary": {
+    "real": ["Redis7 Lua and server TIME", "three independent Python scheduler_loop processes", "45s member/leader leases", "10s heartbeat", "15s scheduler/worker polls", "90s volume lease", "installed openstacksdk3.3.0 Cinder HTTP serialization"],
+    "synthetic": ["project identity and credentials", "loopback Cinder provider state and data copy"],
+    "not_exercised": ["production Kolla controllers", "production Redis or Sentinel failover", "Keystone authentication or authorization", "live Cinder backup storage/data copy", "restore", "mixed-version rolling upgrade", "deployment"]
+  },
+  "native_three_process": {
+    "status": "passed-local-real-runtime-synthetic-provider",
+    "idle": {"live_processes": 3, "scan_workers": 1, "sdk_connections": 0},
+    "phases": [
+      {"phase": "balanced3", "volumes": 9, "submissions": 9, "by_worker": [3, 3, 3], "completed": 9, "post_after_due_only": true},
+      {"phase": "hard_leader_crash", "remaining_workers": 2, "observed_handoff_seconds": 49.97},
+      {"phase": "balanced2", "volumes": 6, "submissions": 6, "by_worker": [3, 3], "completed": 6, "post_after_due_only": true},
+      {"phase": "hard_worker_crash_after_provider_acceptance", "journal_before_kill": "unknown", "lease_ttl_before_kill": 90, "observed_recovery_seconds": 90.03, "provider_submissions": 1, "final_status": "available", "manual_preserved": true},
+      {"phase": "restarted3", "volumes": 3, "submissions": 3, "by_worker": [1, 1, 1], "completed": 3, "post_after_due_only": true}
+    ],
+    "native_requests": 164,
+    "total_posts": 20,
+    "old_managed_backups_pruned": 9,
+    "private_config_sources": 0,
+    "cleanup": {"owned_processes_stopped": true, "leader_key": null, "members": 0, "graceful_connections_closed": true, "hard_kill_connection_close_not_claimed": true}
+  },
+  "defects_found_and_fixed": [
+    {"boundary": "installed SDK accepted-response-loss", "before": "two Cinder POSTs from SDK connection retry", "after": "one POST, unknown journal, existing backup ID observed available", "regression": "backend/tests/test_auto_backup_native_http.py"},
+    {"boundary": "real-process stable ownership", "before": "native distribution 4/3/2 and consumer worker-a 4 / worker-b 2", "after": "native 3/3/3 and consumer 3/3/3", "regression": "test_early_completion_does_not_move_other_live_workers_pending_volume_ownership"}
+  ],
+  "checks": {
+    "final_real_redis_backup_consumers": {"passed": 105, "files": ["test_backup_dispatcher.py", "test_auto_backup_distributed.py", "test_auto_backup.py", "test_auto_backup_native_http.py"]},
+    "final_storage_target": {"backend_passed": 751, "frontend_files_passed": 14, "frontend_tests_passed": 142},
+    "intermediate_storage_target": {"passed": 749, "failed": 2, "cause": "fixed-round consumers raced independent completion/handoff transitions; replaced by bounded observable-transition waits without reducing assertions"},
+    "cross_cutting_backend_unit": {"passed": 6271, "skipped": 91, "failed": 25, "errors": 22, "snapshot_relation": "executed before the final 69-file public-source refresh; not qualification of the final stamped snapshot", "outside_scope_suites": ["test_host_health.py", "test_host_observer.py", "test_admin_credentials.py", "test_login_monitoring.py", "test_instance_storage_delete.py"], "backup_scheduler_failures": 0},
+    "scoped_ruff": {"owned_files_formatted": 6, "owned_files_checked": 6, "main_py_excluded_from_final_scoped_check_and_format": true, "main_py_outside_scope_concurrent_import_and_format_differences": true},
+    "full_test_gate": "not run or claimed"
+  },
+  "source_review": {
+    "scope": "Frozen current public source with concurrent public WIP; private afterglow.conf, env files and local inputs excluded",
+    "source_sha256": "23f479784339659cda29f83dff95d1f35a815971ba0c5c928f876d7113935da9",
+    "source_files": 2728,
+    "isolated_working_and_temporary_index_staged_guards_passed": true,
+    "shared_index_and_review_marker": "preserved"
+  },
+  "commit_stage_push_release_deployment": false
+}

@@ -6,9 +6,10 @@
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import GrafanaEmbed from '$lib/components/monitoring/GrafanaEmbed.svelte';
 	import { t } from '$lib/i18n/ns/instance';
-	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { ActivityIndicator, AnimatedNumber } from '$lib/components/ui';
+	import BklitChart from '$lib/components/charts/BklitChart.svelte';
+	import type { ChartDatum, ChartSpec as BklitSpec } from '$lib/components/charts/types';
 
 	interface Props {
 		instanceId: string;
@@ -20,7 +21,7 @@
 
 	interface Series {
 		ts: number;
-		value: number;
+		value: number | null;
 	}
 
 	let { instanceId, isGpu = false }: Props = $props();
@@ -110,24 +111,6 @@
 		loadAll();
 	});
 
-	// --- SVG chart helpers ---
-	const SVG_W = 480;
-	const SVG_H = 120;
-	const PAD_L = 64;
-	const PAD_R = 24;
-	const PAD_T = 10;
-	const PAD_B = 22;
-
-	function chartX(ts: number, minTs: number, tsRange: number): number {
-		return PAD_L + ((ts - minTs) / Math.max(1, tsRange)) * (SVG_W - PAD_L - PAD_R);
-	}
-	function chartY(val: number, maxVal: number): number {
-		return PAD_T + (1 - val / Math.max(0.001, maxVal)) * (SVG_H - PAD_T - PAD_B);
-	}
-
-	function buildPolyline(pts: Series[], maxVal: number, minTs: number, tsRange: number): string {
-		return pts.map(p => `${chartX(p.ts, minTs, tsRange)},${chartY(p.value, maxVal)}`).join(' ');
-	}
 
 	function formatBytes(b: number): string {
 		if (b >= 1_000_000) return `${(b / 1_000_000).toFixed(1)}MB/s`;
@@ -135,27 +118,6 @@
 		return `${b.toFixed(0)}B/s`;
 	}
 
-	// Remember each series entrance for this panel; polling, range and tab changes do not replay it.
-	const enteredSeries = new Set<string>();
-	function enterSeries(node: SVGElement, series: { key: string; dashed?: boolean }) {
-		if (enteredSeries.has(series.key)) return;
-		enteredSeries.add(series.key);
-		node.classList.add(series.dashed ? 'motion-fade' : 'motion-draw');
-	}
-
-	function xLabels(pts: Series[], minTs: number, tsRange: number): { ts: number; label: string }[] {
-		if (pts.length === 0) return [];
-		const step = Math.max(1, Math.floor(pts.length / 4));
-		const result: { ts: number; label: string }[] = [];
-		for (let i = 0; i < pts.length; i += step) {
-			const d = new Date(pts[i].ts * 1000);
-			result.push({
-				ts: pts[i].ts,
-				label: d.toLocaleTimeString(intlLocale(), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }),
-			});
-		}
-		return result;
-	}
 
 	interface ChartSpec {
 		key: MetricKey;
@@ -181,6 +143,36 @@
 	];
 
 	const activeCharts = $derived(isGpu ? [...CHARTS, ...GPU_CHARTS] : CHARTS);
+
+	function metricChart(chart: ChartSpec, primary: Series[], extra: Series[]): BklitSpec {
+		const rows = new Map<number, ChartDatum>();
+		let maximum = 0.001;
+		function add(samples: Series[], key: string) {
+			for (const sample of samples) {
+				if (!Number.isFinite(sample.ts)) continue;
+				const time = sample.ts * 1000;
+				const row = rows.get(time) ?? { time };
+				const value = sample.value;
+				row[key] = typeof value === 'number' && Number.isFinite(value) ? value : null;
+				if (typeof value === 'number' && Number.isFinite(value)) maximum = Math.max(maximum, value);
+				rows.set(time, row);
+			}
+		}
+		add(primary, chart.key);
+		if (chart.extraKey) add(extra, chart.extraKey);
+		const data = [...rows.values()].sort((a, b) => Number(a.time) - Number(b.time));
+		return {
+			kind: 'time-series',
+			data,
+			xKey: 'time',
+			series: [
+				{ key: chart.key, label: chart.extraKey ? t('metrics.readLegend') : chart.title, color: chart.color, area: true, data: data.filter((row) => Object.hasOwn(row, chart.key)) },
+				...(chart.extraKey ? [{ key: chart.extraKey, label: t('metrics.writeLegend'), color: chart.extraColor ?? chart.color, dashed: true, data: data.filter((row) => Object.hasOwn(row, chart.extraKey!)) }] : []),
+			],
+			domain: [0, chart.yMax ?? maximum],
+			formatValue: chart.formatY ?? ((value) => `${value.toFixed(1)}${chart.unit}`),
+		};
+	}
 </script>
 
 <div>
@@ -234,8 +226,11 @@
 				<div class="flex items-center justify-between mb-2">
 					<span class="text-xs font-semibold text-ink-2">{chart.title}</span>
 					{#if m.data && m.data.length > 0}
+						{@const latest = m.data[m.data.length - 1].value}
 						<span class="text-sm font-bold text-ink-0">
-							<AnimatedNumber value={m.data[m.data.length - 1].value} format={chart.formatY ?? ((value) => `${value.toFixed(1)}${chart.unit}`)} />
+							{#if latest != null && Number.isFinite(latest)}
+								<AnimatedNumber value={latest} format={chart.formatY ?? ((value) => `${value.toFixed(1)}${chart.unit}`)} />
+							{:else}—{/if}
 						</span>
 					{/if}
 				</div>
@@ -247,65 +242,7 @@
 				{:else if m.data.length === 0}
 					<div class="flex items-center justify-center h-20 text-ink-2 text-xs">{t('metrics.empty')}</div>
 				{:else}
-					{@const pts = m.data}
-					{@const exPts = ex?.data ?? []}
-					{@const minTs = pts[0].ts}
-					{@const tsRange = pts[pts.length - 1].ts - minTs}
-					{@const allVals = [...pts.map(p => p.value), ...exPts.map(p => p.value)]}
-					{@const maxVal = chart.yMax ?? Math.max(0.001, ...allVals)}
-					{@const labels = xLabels(pts, minTs, tsRange)}
-					<svg viewBox="0 0 {SVG_W} {SVG_H}" class="w-full" style="height:120px">
-						<!-- 그리드 -->
-						{#each [0.25, 0.5, 0.75, 1] as frac}
-							<line
-								x1={PAD_L} y1={chartY(maxVal * frac, maxVal)}
-								x2={SVG_W - PAD_R} y2={chartY(maxVal * frac, maxVal)}
-								stroke="var(--color-line-2)" stroke-width="1"
-							/>
-							<text x={PAD_L - 4} y={chartY(maxVal * frac, maxVal) + 3} text-anchor="end" font-size="0.75rem" fill="var(--color-ink-2)">
-								{chart.formatY ? chart.formatY(maxVal * frac) : Math.round(maxVal * frac)}
-							</text>
-						{/each}
-
-						<!-- 메인 영역 채우기 -->
-						{#if pts.length > 1}
-							<polygon
-								points="{chartX(pts[0].ts, minTs, tsRange)},{chartY(0, maxVal)} {buildPolyline(pts, maxVal, minTs, tsRange)} {chartX(pts[pts.length-1].ts, minTs, tsRange)},{chartY(0, maxVal)}"
-								fill={chart.color}
-								opacity="0.1"
-							/>
-							<polyline
-								pathLength="1"
-								use:enterSeries={{ key: chart.key }}
-								points={buildPolyline(pts, maxVal, minTs, tsRange)}
-								fill="none"
-								stroke={chart.color}
-								stroke-width="2"
-								stroke-linejoin="round"
-								stroke-linecap="round"
-							/>
-						{/if}
-
-						<!-- 추가 라인 (network_tx / disk_write) -->
-						{#if chart.extraKey && exPts.length > 1}
-							<polyline
-								use:enterSeries={{ key: chart.extraKey, dashed: true }}
-								points={buildPolyline(exPts, maxVal, minTs, tsRange)}
-								fill="none"
-								stroke={chart.extraColor}
-								stroke-width="1.5"
-								stroke-dasharray="4 2"
-								opacity="0.8"
-							/>
-						{/if}
-
-						<!-- X축 레이블 -->
-						{#each labels as lbl}
-							<text x={chartX(lbl.ts, minTs, tsRange)} y={SVG_H - 4} text-anchor="middle" font-size="0.75rem" fill="var(--color-ink-2)">
-								{lbl.label}
-							</text>
-						{/each}
-					</svg>
+					<BklitChart spec={metricChart(chart, m.data, ex?.data ?? [])} height={120} label={chart.title} />
 
 					<!-- 범례 (이중 라인일 때만) -->
 					{#if chart.extraKey}

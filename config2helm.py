@@ -22,6 +22,7 @@ afterglow.conf 옆에 config.gpu.toml(GPU 디바이스 맵 오버라이드)이 �
 """
 
 import argparse
+import json
 import os
 import sys
 import tempfile
@@ -133,6 +134,7 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
     notion  = cfg.get("notion", {})
     smtp    = cfg.get("smtp", {})
     sec     = cfg.get("security", {})
+    traffic = cfg.get("traffic_analytics", {})
 
     # ── secrets ────────────────────────────────────────────────────────────
     secrets: dict = {}
@@ -151,6 +153,10 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
         _sec(notion.get("config_encryption_key", ""), "notionConfigEncryptionKey")
         _sec(smtp.get("password", ""),               "smtpPassword")
         _sec(builder.get("ssh_private_key", ""),     "builderSshPrivateKey")
+        _sec(traffic.get("hmac_key", ""), "trafficAnalyticsHmacKey")
+        _sec(traffic.get("frontend_ingest_key", ""), "trafficAnalyticsFrontendIngestKey")
+        if mon.get("infrastructure_topology_observers"):
+            secrets["infrastructureTopologyObservers"] = mon["infrastructure_topology_observers"]
     if secrets:
         out["secrets"] = secrets
 
@@ -321,7 +327,10 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
 
     # ── monitoring ─────────────────────────────────────────────────────────
     mon_out: dict = {}
-    for k in ("prometheus_base_url", "prometheus_username",
+    for k in ("host_healthcheck_enabled", "host_healthcheck_targets",
+              "infrastructure_topology_enabled", "infrastructure_topology_trace_targets",
+              "infrastructure_topology_peer_targets",
+              "infrastructure_topology_retention_seconds", "prometheus_base_url", "prometheus_username",
               "scrape_cidr", "auto_sg_enabled",
               "node_exporter_sg_name", "dcgm_exporter_sg_name",
               "node_exporter_port", "dcgm_exporter_port",
@@ -334,6 +343,9 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
         mon_out["dashboards"] = {_s(k): v for k, v in dashboards.items()}
     if mon_out:
         out["monitoring"] = mon_out
+    traffic_out = {_s(k): traffic[k] for k in ("enabled", "retention_days", "geoip_csv", "site_country", "trust_frontend_client_address") if k in traffic}
+    if traffic_out:
+        out["trafficAnalytics"] = traffic_out
 
     # ── notion ─────────────────────────────────────────────────────────────
     if notion:
@@ -372,7 +384,8 @@ def _render_yaml(data: dict, indent: int = 0) -> list[str]:
             else:
                 lines.append(f"{prefix}{key}:")
                 for item in value:
-                    lines.append(f"{prefix}  - {_yaml_val(item, (indent + 1) * 2)}")
+                    rendered = json.dumps(item, ensure_ascii=False) if isinstance(item, dict) else _yaml_val(item, (indent + 1) * 2)
+                    lines.append(f"{prefix}  - {rendered}")
         elif isinstance(value, str) and "\n" in value:
             lines.append(f"{prefix}{key}: |")
             for ln in value.splitlines():

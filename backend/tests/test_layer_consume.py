@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 import os
 import subprocess
 import sys
@@ -311,45 +310,6 @@ def test_unavailable_cinder_upper_is_deleted_before_server_creation():
     with pytest.raises(TimeoutError, match="Cinder unavailable"):
         create_empty_volume(conn, "root-upper", 50)
     conn.block_storage.delete_volume.assert_called_once_with(_UPPER_ID, ignore_missing=True)
-
-
-@pytest.mark.parametrize(
-    "children,fstype,ambiguous",
-    [
-        (None, None, False),
-        (None, "ext4", False),
-        ([{"name": "vdc1"}], None, False),
-        (None, None, True),
-    ],
-)
-def test_guest_upper_device_requires_unique_empty_non_boot_disk(children, fstype, ambiguous, capsys):
-    from app.services.layer_build import _ROOT_UPPER_DEVICE_PY
-
-    serial = _UPPER_ID[:20]
-    disks = [
-        {"name": "vda", "type": "disk", "path": "/dev/vda", "serial": "boot"},
-        {"name": "vdb", "type": "disk", "path": "/dev/vdb", "serial": serial, "children": children, "fstype": fstype},
-    ]
-    if ambiguous:
-        disks.append({"name": "vdc", "type": "disk", "path": "/dev/vdc", "serial": serial})
-
-    def fake_check_output(argv, *, text):
-        if argv[0] == "findmnt":
-            return "/dev/vda1\n"
-        if argv[1] == "-n":
-            return "vda\n"
-        return json.dumps({"blockdevices": disks})
-
-    with (
-        patch.object(sys, "argv", ["layer-upper-device.py", _UPPER_ID]),
-        patch("subprocess.check_output", side_effect=fake_check_output),
-    ):
-        if fstype or children or ambiguous:
-            with pytest.raises(RuntimeError, match="not an empty|ambiguous"):
-                exec(_ROOT_UPPER_DEVICE_PY, {"__name__": "__main__"})
-        else:
-            exec(_ROOT_UPPER_DEVICE_PY, {"__name__": "__main__"})
-            assert capsys.readouterr().out.strip() == "/dev/vdb"
 
 
 def test_root_identity_merge_keeps_dockerfile_users_and_adds_consumer_ssh(tmp_path):

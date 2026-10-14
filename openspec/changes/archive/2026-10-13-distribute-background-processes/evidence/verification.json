@@ -1,0 +1,68 @@
+{
+  "change": "distribute-background-processes",
+  "status": "implemented-and-exercised-local-source-not-deployed",
+  "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/afterglow-process-ownership-n7xrnua4",
+  "commit_stage_push_release_deployment": false,
+  "runtime_boundary": {
+    "real": [
+      "owned Docker Redis 7 Lua and server TIME",
+      "owned Docker MariaDB 11.4 (tmpfs)",
+      "three real uvicorn app.main:app API processes",
+      "three independent interpreters running native run_roles and _background_sdk",
+      "production 45s member/leader, 10s heartbeat and 90s execution lease constants in the leader-gap probe",
+      "Drover three-replica worker processes, Waygate worker subprocess SIGTERM/SIGINT, Lumen multiprocess controller smoke, Palimpsest spawned SQL consumers"
+    ],
+    "synthetic": [
+      "OpenStack Nova/Neutron/Manila/Glance/Cinder/Trove providers (loopback HTTP or in-process fakes)",
+      "Keystone identity and credentials",
+      "Notion API",
+      "guest/VM execution"
+    ],
+    "not_exercised": [
+      "production Kolla controllers",
+      "production Redis/Sentinel failover, async-replication lease/journal loss and promoted-node TIME skew",
+      "mixed-version rolling upgrade",
+      "live OpenStack/Keystone/K3s/KVM",
+      "paid inference",
+      "deployment"
+    ]
+  },
+  "source_review": {
+    "scope": "Frozen current public source with concurrent public WIP; private afterglow.conf and helm/afterglow/files/config.gpu.toml excluded",
+    "source_sha256": "98e79ca0151c428ae659c294c5950209a5784b67dcc269f03d045703531f6a34",
+    "source_files": 2847,
+    "isolated_working_and_temporary_index_staged_guards_passed": true,
+    "shared_index_and_review_marker": "preserved",
+    "native_guards": {
+      "drover": {"source_sha256": "f7e9f7f00b09c93c4310bb72e2708ec61db319160e2cb6ae153932e07e676570", "files": 230},
+      "waygate": {"source_sha256": "b3f9def499340b2ab667bf119c6358ff4920d2c0400275e92a31ff26e61e22bc", "files": 120},
+      "lumen": {"source_sha256": "41a373a1a34787270b5501c348823f13527be926508379a965f7a06d69dc9d77", "files": 501},
+      "palimpsest": {"source_sha256": "d4300659ed1c17510aa0220551b28099505569e0380eff4be0f9dcd29fa1dcac", "files": 468}
+    }
+  },
+  "checks": {
+    "afterglow_core": {"files": 19, "passed": 675},
+    "afterglow_builds": {"files": 8, "passed": 143},
+    "afterglow_notion_trove": {"files": 7, "passed": 92, "note": "one run concurrent with three other lanes exceeded the 300s harness limit without output; standalone 1 and contention 8 iterations (faulthandler 45s) all passed; cause undetermined"},
+    "afterglow_adjacent": {"files": 22, "passed": 403, "skipped": 95, "skip_reasons": {"linux_gnu_coreutils_guest_helper": 91, "mariadb_row_lock_only": 4}},
+    "afterglow_mariadb_row_lock": {"passed": 4, "database": "owned MariaDB afterglow_rowlock_n7xrnua4"},
+    "afterglow_backend_unit_full": {"passed": 6569, "skipped": 91, "failed": 11, "failures": "tests/test_instance_storage_delete.py: block consumer tracking database unavailable from untracked block-consumer WIP and modified instances.py; outside scope, recorded 2026-10-12"},
+    "afterglow_style": {"files": 45, "ruff_check": "pass", "ruff_format_check": "pass", "main_py": "own lines only; concurrent import block untouched"},
+    "api_lifecycle_smoke": {"processes": 3, "members_per_workload": 3, "role_split": [1, 1, 1], "sigterm_graceful_seconds": 0.23, "members_after_sigterm": 2, "roles_reassigned": true, "members_after_shutdown": 0, "leaders_after_shutdown": null, "tracebacks": 0, "exit_code_note": "-15 is uvicorn 0.39 re-raising SIGTERM after logged graceful lifespan shutdown"},
+    "shared_role_smoke": {"processes": 3, "initial_split": [2, 2, 2], "drain_reassigned": true, "crash_handoff_seconds": 46.73, "actual_work_handoff_seconds": 89.69, "overlapping_role_effects": 0, "members_after_shutdown": 0},
+    "leader_gap_real_redis": {"constants": {"member": 45, "heartbeat": 10, "lease": 90}, "lease_held_seconds": 85.1, "successor_elected_seconds": 60.04, "revoked": false},
+    "drover": {"focused": 374, "full_service": {"passed": 1323, "skipped": 1}, "three_replica_smoke": {"exit": 0, "initial_owner_counts": [11, 11, 11], "all_safety_flags": true}, "ruff_remaining": "2 pre-existing scoped-access findings outside this extension"},
+    "waygate": {"focused": 115, "mariadb": {"passed": 49, "skipped": 0}, "full": {"passed": 671, "skipped": 3}, "ruff": "clean"},
+    "lumen": {"focused": 110, "integration": {"passed": 110, "deselected": 3393}, "contract": {"service_passed": 3159, "deselected": 344, "sdk_passed": 128, "ruff": "pass"}},
+    "palimpsest_hub": {"focused": {"passed": 93, "skipped": 2}, "mariadb_multiprocess_smoke": 2, "full": {"passed": 378, "skipped": 2}, "format_gate": "fails on 7 files and test_auth.py I001 owned by isolate-service-execution-credentials"}
+  },
+  "defects_found_and_fixed": [
+    {"boundary": "dispatcher leader crash", "before": "assignment hash expired with membership (45s) before successor election (~60s) and revoked healthy executor leases", "after": "assignment TTL is twice membership; real Redis lease held 85.1s with successor at 60.04s and no revocation", "regression": "backend/tests/test_work_dispatcher.py"},
+    {"boundary": "Manila 2.45+ share-access-rules envelope", "before": "read access_rules; native HTTP ValueError: Manila access-rule list is incomplete", "after": "reads access_list; empty-result legacy fallback removed", "regression": "backend/tests/test_manila.py::test_share_access_rules_read_native_manila_access_list_envelope"},
+    {"boundary": "optional import consumer failure", "before": "sealed import marked complete while consumer row stayed creating after failed disposal", "after": "re-read SQL row decides; nonterminal stays runnable for the next owner", "regression": "backend/tests/test_dockerfile_import.py::test_failed_consumer_completes_sealed_import_only_after_terminal_disposal"},
+    {"boundary": "library build cancellation", "before": "row terminal immediately and request-time provider cleanup missed journal-only resources", "after": "cancel_cleanup pending; assigned owner removes exact/uniquely tagged resources, then seals (function has no API route since 110058dd)", "regression": "backend/tests/test_ephemeral_build_orchestration.py, backend/tests/test_build_admission_durable.py"},
+    {"boundary": "layer build observability", "before": "ownership rewrite dropped execution INFO/DEBUG lifecycle events", "after": "fixed-label started/completed events restored with handoff/cancelled results", "regression": "backend/tests/test_logging_contract.py::test_build_execution_info_and_debug_are_bounded_and_sanitized"},
+    {"boundary": "Palimpsest export lease timestamps", "before": "16 failures comparing naive SQL DATETIME with aware UTC", "after": "SQL-side synchronization and UTC normalization", "regression": "palimpsest hub tests/test_image_exports.py"},
+    {"boundary": "Drover worker ownership", "before": "Lua empty-map encoding, shared Sentinel client, lease release during drain and missing operation_id among defects", "after": "fixed and covered by focused, full and three-replica smoke runs", "regression": "drover tests/test_worker_ownership.py and related"}
+  ]
+}

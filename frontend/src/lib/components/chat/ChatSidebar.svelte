@@ -421,6 +421,13 @@
 		background: var(--color-surface-sunken);
 		transition: transform var(--motion-duration-panel) var(--motion-ease-out);
 	}
+	:global(:root.light) .sidebar,
+	:global(:root.light) .brand {
+		border-color: var(--color-line-2);
+	}
+	:global(:root.light) .item-row.active {
+		box-shadow: inset 0 0 0 1px var(--color-line-2);
+	}
 	/* Desktop retains the collapsible inline sidebar. */
 	.sidebar.closed {
 		margin-left: -16rem;

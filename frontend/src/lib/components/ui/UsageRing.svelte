@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { usageTone } from '$lib/design/tokens';
+	import BklitChart from '$lib/components/charts/BklitChart.svelte';
+	import { TONE_CSS_VAR, usageTone } from '$lib/design/tokens';
 
 	interface Props {
 		percent: number;
@@ -33,18 +34,20 @@
 	aria-valuenow={clampedPercent}
 	aria-valuetext={valueText}
 >
-	<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-		<circle class="track" cx="10" cy="10" r="8" pathLength="100" />
-		<circle
-			class="fill"
-			cx="10"
-			cy="10"
-			r="8"
-			pathLength="1"
-			stroke-dasharray="1"
-			stroke-dashoffset={1 - clampedPercent / 100}
-		/>
-	</svg>
+	<BklitChart
+		spec={{
+			kind: 'ring',
+			value: clampedPercent,
+			max: 100,
+			size: 18,
+			stroke: 2.25,
+			color: TONE_CSS_VAR[tone],
+			track: 'var(--color-line-2)',
+		}}
+		height={18}
+		width={18}
+		decorative
+	/>
 </span>
 
 <style>
@@ -53,26 +56,5 @@
 		width: 1.125rem;
 		height: 1.125rem;
 		flex: 0 0 auto;
-		color: var(--color-accent);
-	}
-	.usage-ring[data-tone='warning'] { color: var(--color-state-warning); }
-	.usage-ring[data-tone='danger'] { color: var(--color-state-danger); }
-	.usage-ring svg {
-		display: block;
-		width: 100%;
-		height: 100%;
-		transform: rotate(-90deg);
-	}
-	.track,
-	.fill {
-		fill: none;
-		stroke-width: 2.5;
-	}
-	.track { stroke: var(--color-line-2); }
-	.fill {
-		stroke: currentColor;
-		stroke-linecap: round;
-		animation: motion-draw var(--motion-duration-data) var(--motion-ease-emphasized) backwards;
-		transition: stroke-dashoffset var(--motion-duration-data) var(--motion-ease-emphasized), stroke var(--motion-duration-fast) var(--motion-ease-standard);
 	}
 </style>

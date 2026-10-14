@@ -211,7 +211,7 @@ class LayerBuild(Base):
 
 Dockerfile import는 기존 `/usr` 전용 `uv`/`python`/`packages` 체인을 재사용하지 않는다. 서비스 프로젝트의 임시 builder는 active Ubuntu Glance 이미지에서 생성한 **부팅하지 않은** Cinder 볼륨을 volume serial로 식별하고 read-only mount한다. `/var/lib/cloud`, `/etc/machine-id`, host/private SSH key 등 VM별 비밀과 런타임 mount를 제외한 파일시스템 전체를 `kind=dockerfile-root` squashfs로 보관한다. FROM만 있는 계획도 이 root artifact와 profile을 봉인한다. GitHub는 commit pin archive를 받고 inline 파일은 빌드 컨텍스트가 없으므로 COPY/ADD를 허용하지 않는다.
 
-DMSLab Nova는 Cinder volume UUID를 하이픈이 포함된 20자 virtio serial로 잘라 노출한다. Guest는 `/dev/vdX` 순서를 가정하지 않고 serial의 하이픈을 제거한 최소 17자 hex 접두사를 해당 volume UUID와 대조한다. 부트 디스크·다중 일치 항목은 거부하고, Glance 복제본은 Ubuntu root partition만 read-only mount한다. 소비 upper는 같은 방법으로 식별한 **빈 전용 디스크**만 포맷한다.
+DMSLab에서 관측한 serial은 하이픈을 포함한 Cinder UUID의 앞20자다. 소비 helper는 full/compact UUID 또는 정확한20자 dashed/compact 접두사를 모든 supplied volume IDs와 비교하며 다중 일치·whole-disk/virtio/RO 오류를 거부한다. Builder의 Glance root 복제본은 부트 ancestry를 제외한 Ubuntu partition만 RO로 읽는다. 소비 upper는 boot/layer alias·RW·partition/signature와 전체 zero 데이터를 검사한 정확한 전용 장치만 포맷하고, reboot 때 Cinder identity·저장된 ext4 UUID·모든 filesystem node의 duplicate UUID를 재검증한다.
 
 Glance→Cinder 복제본은 builder 부트 이미지와 root 파일시스템 UUID가 중복되므로 `findmnt SOURCE /`로 부트 디스크를 식별하지 않는다. Builder는 실제 mount의 `MAJ:MIN`을 `lsblk` 파티션의 kernel 장치 번호와 대조하고 확인되지 않거나 여러 개인 경우 실패한다.
 
@@ -229,6 +229,15 @@ Nova의 image-backed root 소비 BDM은 `image_id`와 동일 UUID의 `image→lo
 
 Nova serial console이 404/공백인 경우 root 소비 VM은 `layer-health.service`가 post-reboot overlay `/` 및 SSH 상태를 확인한 뒤 `/run/afterglow-layer-ready`에 쓴 token을 일회용 backend SSH 키로 읽어 비교한다. 비교는 SSH로 보낸 명령에 token을 포함하지 않고 backend에서 수행하며 `findmnt /`의 `overlay`와 SSH `active`도 검사한다. Backend가 VM의 fixed IP SSH에 도달하지 못하거나 파일/값이 틀리면 성공으로 간주하지 않는다. SSH 증명 경로에서는 VM authorized_keys의 일회용 항목 회수 실패도 성공으로 처리하지 않는다. Console만으로 증명한 경우 회수를 시도하고 실패를 경고하며, local private key는 모든 경로에서 삭제한다. 기존 `/usr` 소비는 console 완료 계약을 유지한다.
 
+### 명시적 Cinder/RBD block transport
+
+빌드/봉인 NFS 파이프라인은 유지한다. 봉인 뒤 관리자가 exact `.sqsh` 바이트를 RBD Glance store에 raw/bare protected source로 게시하며 immutable blob/chain/길이·owner/member/store·upload/image UUID가 migration088의 `block_source`에 남는다. 원본 프로젝트의 실제 member acceptance가 필요하며 source reservation과 artifact share DELETE는 row lock을 공유한다. Consumer는 `transport="block"`을 명시해 원본 SDK/service snapshot/expected project, RBD type·quota·source visibility를 확인한 뒤 VM별 readonly Cinder lower를 만든다. Source에 대한 implicit publication, NFS fallback이나 service-scope 대체는 없다.
+
+Layer bytes는 kernel-RO whole virtio device에서 sealed 길이만 검증하고 바로 SquashFS RO로 mount한다. 파일 staging·loop·NFS copy 없이 child-first OverlayFS lower와 별도 ext4 upper를 합성한다. Runtime configs는 mounted bootstrap root에 남고 initramfs는 실제 helpers/GNU utilities 및 필요한 virtio/squashfs/overlay/ext4 modules를 포함한다. Migration089의 `run_id/resources/cleanup_state`가 CREATE 전에 intent를 commit하고 response loss·rejection·cleanup을 보존한다. 기존 NFS 행은 default/null로 호환하며 fresh `create_all()`은 운영 ALTER 적용의 대체가 아니다.
+
+단건/bulk/dedicated 회수는 기존 managed Manila exact denial을 먼저 확인하고 bound owned FIP→Nova→volume→port 순서로 처리한다. Metadata/UUID/run/project 불일치·uncertain create/discovery/delete는 tracking을 지우지 않고 pending으로 남긴다. Cleanup progress는 row lock에서 최신 rejection/deleted 상태를 병합하며 취소된 artifact DELETE는 provider+SQL drain까지 lock을 보존한다. 즉시 block import는 admin 인가 뒤 planner 전에422로 거부하고, 봉인된 completed `import_id`의 원래 IDs로 별도 소비한다. [상세 계약](palimpsest.md#cinderrbd-block-소비)과 [로컬 증거/실클라우드 한계](testing.md)를 따른다.
+
+
 ## API 엔드포인트
 
 모든 엔드포인트: `Depends(require_admin)` 필수. 경로 prefix: `/api/v1/admin/libraries`
@@ -240,8 +249,10 @@ Nova serial console이 404/공백인 경우 root 소비 VM은 `layer-health.serv
 | `GET` | `/builds/{id}` | 빌드 상세 + 콘솔 로그 |
 | `POST` | `/builds/{id}/cancel` | 빌드 취소 |
 | `GET` | `/artifacts` | 봉인된 레이어 artifact 목록 |
-| `POST` | `/consume` | 소비 인스턴스 생성 |
+| `POST` | `/consume` | 정확한 completed `import_id` 또는 `profile_name`; NFS 기본/명시적 block 소비 |
 | `GET` | `/consumes` | 소비 인스턴스 목록 |
+| `GET`, `DELETE` | `/consumes/{id}` | 상세와 fenced durable block 회수; DELETE는 block 전용 |
+| `PUT`, `GET` | `/artifacts/{id}/block-source` | 관리자 exact-byte RBD source 게시/내구성 상태 |
 
 ---
 
@@ -270,9 +281,14 @@ layer_share_size_gb = 20        # 레이어별 Manila share 용량 (기본 20GB)
 | `backend/app/services/layer_builder.py` | asyncio 백그라운드 태스크 관리, 취소 처리 |
 | `backend/app/services/manila.py` | `ensure_nfs_access_rule`, `create_file_storage`, `delete_file_storage` |
 | `backend/app/api/union/layer_ops.py` | FastAPI 라우터 |
+| `backend/app/api/union/layer_block_sources.py` | immutable source upload/recovery 및 artifact row-lock 경계 |
+| `backend/app/services/layer_block.py` | source/project/RBD/quota/readonly Cinder 검증 |
+| `backend/app/services/layer_block_guest.py` | 실제 virtio lower/upper identity·RO·hash·blank/reboot 검증 |
+| `backend/app/services/layer_consume_resources.py` | intent/lease/rejection/discovery·grant/FIP 선행 durable cleanup |
 | `frontend/src/routes/admin/libraries/+page.svelte` | 관리자 UI |
 | `backend/tests/test_layer_ops.py` | pytest 검증 |
 | `backend/migrations/017_layer_artifacts_stacked.sql` | `parent_id`, `is_sealed` ALTER TABLE |
+| `backend/migrations/088_layer_block_sources.sql`, `089_layer_block_consumes.sql` | source와 transport/run/resources/cleanup_state additive schema |
 
 ---
 

@@ -3,8 +3,9 @@
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
+	import BklitChart from '$lib/components/charts/BklitChart.svelte';
+	import type { ChartDatum, ChartSpec } from '$lib/components/charts/types';
 	import {
-		pivotTimeseries,
 		sourceRow,
 		type TimeseriesRow,
 		type KeyUsage,
@@ -29,8 +30,20 @@
 		{ key: 'month', get label() { return t('usage.buckets.month'); } }
 	];
 
-	const points = $derived(pivotTimeseries(series, 'total_tokens'));
-	const maxTotal = $derived(Math.max(1, ...points.map((p) => Number(p.total) || 0)));
+	const points = $derived.by(() => {
+		const buckets = new Map<string, ChartDatum>();
+		for (const sample of series) {
+			const point = buckets.get(sample.bucket) ?? { bucket: sample.bucket, total: 0 };
+			const key = sample.source || 'web';
+			const value = sample.total_tokens;
+			const measured = typeof value === 'number' && Number.isFinite(value);
+			point[key] = !measured || point[key] === null ? null : (typeof point[key] === 'number' ? point[key] : 0) + value;
+			point.total = !measured || point.total === null ? null : Number(point.total) + value;
+			buckets.set(sample.bucket, point);
+		}
+		return [...buckets.values()].sort((a, b) => String(a.bucket).localeCompare(String(b.bucket)));
+	});
+	const maxTotal = $derived(Math.max(1, ...points.map((point) => typeof point.total === 'number' && Number.isFinite(point.total) ? point.total : 0)));
 	const web = $derived(sourceRow(bySource, 'web'));
 	const apiUse = $derived(sourceRow(bySource, 'api'));
 
@@ -40,6 +53,20 @@
 	function bucketLabel(b: string): string {
 		return bucket === 'month' ? b : bucket === 'hour' ? b.slice(5, 16) : b.slice(5);
 	}
+
+	const usageChart: ChartSpec = $derived({
+		kind: 'bar',
+		data: points.map((point) => ({ ...point, bucket: bucketLabel(String(point.bucket)) })),
+		xKey: 'bucket',
+		series: [
+			{ key: 'web', label: t('usage.web'), color: 'var(--color-accent)' },
+			{ key: 'api', label: 'API', color: 'var(--color-state-success)' },
+		],
+		stacked: true,
+		orientation: 'horizontal',
+		domain: [0, maxTotal],
+		formatValue: fmt,
+	});
 
 	async function loadSummary() {
 		if (!token) return;
@@ -128,16 +155,15 @@
 			<p class="px-1 text-xs text-[var(--color-ink-3)]">{t('usage.empty')}</p>
 		{:else}
 			<div class="{cardCls} space-y-1 p-3">
-				{#each points as p (p.bucket)}
-					<div class="flex items-center gap-2">
-						<span class="w-24 shrink-0 truncate font-mono text-xs text-[var(--color-ink-3)]">{bucketLabel(String(p.bucket))}</span>
-						<div class="flex h-3 flex-1 overflow-hidden rounded bg-[var(--color-surface-sunken)]">
-							<div class="h-full bg-[var(--color-accent)]" style="width: {((Number(p.web) || 0) / maxTotal) * 100}%" title={t('usage.webTooltip', { count: fmt(Number(p.web) || 0) })}></div>
-							<div class="h-full bg-[var(--color-state-success)]" style="width: {((Number(p.api) || 0) / maxTotal) * 100}%" title={t('usage.apiTooltip', { count: fmt(Number(p.api) || 0) })}></div>
+				<BklitChart spec={usageChart} height={Math.max(144, points.length * 24 + 48)} label={t('usage.trendTitle')} />
+				<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-ink-2 tabular-nums">
+					{#each points as point (point.bucket)}
+						<div class="flex justify-between gap-2">
+							<span class="truncate">{bucketLabel(String(point.bucket))}</span>
+							<span>{typeof point.total === 'number' ? fmt(point.total) : '—'}</span>
 						</div>
-						<span class="w-16 shrink-0 text-right text-xs text-[var(--color-ink-3)]">{fmt(Number(p.total) || 0)}</span>
-					</div>
-				{/each}
+					{/each}
+				</div>
 				<div class="mt-1 flex gap-3 text-xs text-[var(--color-ink-3)]">
 					<span><span class="inline-block h-2 w-2 rounded-sm bg-[var(--color-accent)]"></span> {t('usage.web')}</span>
 					<span><span class="inline-block h-2 w-2 rounded-sm bg-[var(--color-state-success)]"></span> API</span>

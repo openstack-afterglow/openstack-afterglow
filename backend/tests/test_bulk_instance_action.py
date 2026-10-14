@@ -19,6 +19,12 @@ _URL = "/api/v1/instances/bulk-action"
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _ordinary_consume_dispatch(monkeypatch):
+    """Ordinary lifecycle units; real block ledger dispatch is covered separately."""
+    monkeypatch.setattr("app.services.layer_consume_resources.lookup_for_server", AsyncMock(return_value=[]))
+
+
 def _make_server(server_id: str, project_id: str = "test-project-123") -> MagicMock:
     srv = MagicMock()
     srv.id = server_id

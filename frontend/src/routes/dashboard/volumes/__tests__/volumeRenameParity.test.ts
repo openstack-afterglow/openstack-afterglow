@@ -96,6 +96,7 @@ describe('volume detail parity and list rename', () => {
 		expect(within(actions).getByRole('button', { name: '이름 변경' })).toBeTruthy();
 		expect(within(actions).getByRole('button', { name: '용량 확장' })).toBeTruthy();
 		expect(within(actions).getByRole('button', { name: '백업 생성' })).toBeTruthy();
+		expect(within(actions).getByRole('link', { name: '자동 백업 설정' }).getAttribute('href')).toBe('/dashboard/volumes/backups?auto-backup=vol-1');
 	});
 
 	it('renames from the list action menu and updates both the row and the open detail panel', async () => {
@@ -110,6 +111,7 @@ describe('volume detail parity and list rename', () => {
 		const detailMenu = await screen.findByRole('group', { name: 'data-disk 볼륨 작업 옵션' });
 		expect(within(detailMenu).getByRole('button', { name: '용량 확장' })).toBeTruthy();
 		expect(within(detailMenu).getByRole('button', { name: '백업 생성' })).toBeTruthy();
+		expect(within(detailMenu).getByRole('link', { name: '자동 백업 설정' }).getAttribute('href')).toBe('/dashboard/volumes/backups?auto-backup=vol-1');
 		await fireEvent.click(within(detail).getByRole('button', { name: 'data-disk 볼륨 작업' }));
 
 		await fireEvent.click(within(document.getElementById('volume-resource-panel')!).getByRole('button', { name: 'data-disk 볼륨 작업' }));
@@ -155,5 +157,24 @@ describe('volume detail parity and list rename', () => {
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/volumes/vol-1/extend', { new_size: 30 }, 'token', 'project-a'));
 		expect(mocks.get).toHaveBeenCalledWith('/api/v1/volumes/vol-1', 'token', 'project-a', { refresh: true });
 		await waitFor(() => expect(screen.queryByRole('dialog', { name: '볼륨 용량 확장' })).toBeNull());
+	});
+
+	it('loads only project-scoped volume resources and reaches settings without a policy mutation', async () => {
+		render(ListPage);
+		await screen.findByRole('button', { name: 'data-disk 볼륨 작업' });
+		expect(screen.getByRole('link', { name: '자동 백업 설정' }).getAttribute('href')).toBe('/dashboard/volumes/backups?auto-backup=vol-1');
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/volumes', 'token', 'project-a', undefined);
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/dashboard/quotas', 'token', 'project-a');
+		expect(mocks.post).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: 'data-disk 볼륨 작업' }));
+		const menu = screen.getByRole('group', { name: 'data-disk 볼륨 작업 옵션' });
+		const link = within(menu).getByRole('link', { name: '자동 백업 설정' });
+		expect(link.getAttribute('href')).toBe('/dashboard/volumes/backups?auto-backup=vol-1');
+		link.addEventListener('click', (event) => event.preventDefault(), { once: true });
+		await fireEvent.click(link);
+		expect(screen.queryByRole('group', { name: 'data-disk 볼륨 작업 옵션' })).toBeNull();
+		expect(mocks.post).not.toHaveBeenCalled();
+		expect(mocks.patch).not.toHaveBeenCalled();
+		expect(mocks.delete).not.toHaveBeenCalled();
 	});
 });

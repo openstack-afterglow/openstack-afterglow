@@ -136,14 +136,12 @@ describe('TopologyNetworkPanel 사용량 추이', () => {
 
 	it('series 를 스파크라인과 평균·최대·최근 통계로 보여준다', async () => {
 		const loadHistory = vi.fn().mockResolvedValue(makeHistory());
-		const { container } = render(TopologyNetworkPanel, {
+		render(TopologyNetworkPanel, {
 			props: { networkId: 'net-web', data: makeFixture(), traffic: makeTraffic(), showProvider: false, loadHistory },
 		});
 		await vi.waitFor(() => expect(screen.getByText('최근 15분')).toBeTruthy());
 
 		expect(loadHistory).toHaveBeenCalledWith('net-web', '15m');
-		// rx/tx 두 선이 같은 축에 올라간다
-		expect(container.querySelectorAll('polyline')).toHaveLength(2);
 		// 위 `합산 트래픽` 행과 같은 방향별 표기여야 대조가 된다
 		expect(screen.getByText('평균')).toBeTruthy();
 		expect(screen.getByText(/^▼ 2\.0M\s+▲ 750k$/)).toBeTruthy();

@@ -48,6 +48,12 @@ afterglow_operator_frontend_config_name: "afterglow.frontend.operator.generated.
 afterglow_operator_frontend_config_staging_path: "/tmp/{{ afterglow_operator_frontend_config_name }}.projected"
 afterglow_frontend_config_name: "afterglow.frontend.generated.conf"
 
+# The ingestion key is server-only and must match the backend protected TOML
+# traffic_analytics.frontend_ingest_key. Keep it in a protected secrets override.
+afterglow_traffic_analytics_ingest_key: ""
+afterglow_traffic_analytics_ingest_url: "http://{{ afterglow_backend_listen_address }}:{{ afterglow_backend_listen_port }}/api/v1/monitoring/traffic/events"
+afterglow_traffic_analytics_trust_client_address: false
+
 # ── 로그 디렉토리 소유권 ──────────────────────────────────────────────────────
 afterglow_log_owner_uid: 1000
 afterglow_log_owner_gid: 1000
@@ -318,6 +324,9 @@ afterglow_service_environments:
     PORT: "{{ afterglow_frontend_listen_port | string }}"
     LOG_DIRECTORY: "/var/log/kolla/afterglow"
     LOG_MAX_BYTES: "52428800"
+    TRAFFIC_ANALYTICS_INGEST_URL: "{{ afterglow_traffic_analytics_ingest_url }}"
+    TRAFFIC_ANALYTICS_INGEST_KEY: "{{ afterglow_traffic_analytics_ingest_key }}"
+    TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS: "{{ afterglow_traffic_analytics_trust_client_address | bool | string | lower }}"
   afterglow-notion-worker:
     DATABASE_URL: "{{ afterglow_database_url }}"
     REDIS_URL: "{{ afterglow_redis_url }}"

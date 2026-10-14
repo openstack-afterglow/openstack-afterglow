@@ -164,6 +164,77 @@ def delete_image(conn: openstack.connection.Connection, image_id: str) -> None:
     conn.image.delete_image(image_id, ignore_missing=False)
 
 
+def get_source_image(conn, image_id: str) -> dict | None:
+    """Fetch uncached provider fields with the supplied identity only."""
+    response = conn.image.get(f"/images/{image_id}", raise_exc=False)
+    if response.status_code == 404:
+        return None
+    response.raise_for_status()
+    return response.json()
+
+
+def allocate_source_image(conn, image_id: str, name: str, properties: dict) -> dict:
+    """The caller durably reserves this UUID before allocation."""
+    response = conn.image.post(
+        "/images",
+        json={
+            "id": image_id,
+            "name": name,
+            "disk_format": "raw",
+            "container_format": "bare",
+            "visibility": "shared",
+            "protected": True,
+            **properties,
+        },
+        connect_retries=0,
+        status_code_retries=0,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def upload_source_image(conn, image_id: str, data, size_bytes: int, store_id: str) -> None:
+    response = conn.image.put(
+        f"/images/{image_id}/file",
+        data=data,
+        headers={
+            "Content-Type": "application/octet-stream",
+            "Content-Length": str(size_bytes),
+            "X-Image-Meta-Store": store_id,
+        },
+    )
+    response.raise_for_status()
+
+
+def validate_rbd_store(conn, store_id: str) -> None:
+    # Basic /info/stores omits type. Detailed discovery is policy-protected;
+    # unsupported/denied discovery is not evidence and never triggers fallback.
+    response = conn.image.get("/info/stores/detail")
+    response.raise_for_status()
+    matches = [store for store in response.json().get("stores", []) if store.get("id") == store_id]
+    if len(matches) != 1 or matches[0].get("type") != "rbd":
+        raise ValueError("selected Glance store must be an explicitly discovered RBD store")
+
+
+def verify_source_bytes(conn, image_id: str, digest: str, size_bytes: int) -> None:
+    import hashlib
+
+    response = conn.image.get(f"/images/{image_id}/file", stream=True)
+    try:
+        response.raise_for_status()
+        sha = hashlib.sha256()
+        length = 0
+        for chunk in response.iter_content(chunk_size=1024 * 1024):
+            length += len(chunk)
+            if length > size_bytes:
+                raise ValueError("source length exceeds sealed artifact")
+            sha.update(chunk)
+        if length != size_bytes or "sha256:" + sha.hexdigest() != digest:
+            raise ValueError("source bytes differ from sealed artifact")
+    finally:
+        response.close()
+
+
 def deactivate_image(conn: openstack.connection.Connection, image_id: str) -> None:
     conn.image.deactivate_image(image_id)
 

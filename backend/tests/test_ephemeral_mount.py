@@ -17,12 +17,6 @@ def _make_settings(**kwargs) -> MagicMock:
     return s
 
 
-def _make_storage(share_id: str = "share-abc") -> MagicMock:
-    s = MagicMock()
-    s.id = share_id
-    return s
-
-
 def _make_vm(
     server_id: str = "srv-xyz",
     host: str = "5.5.5.5",
@@ -39,65 +33,6 @@ def _make_vm(
         keypair_name="builder-keypair",
         fip_id="fip-xyz",
     )
-
-
-# ---------------------------------------------------------------------------
-# create_builder_share
-# ---------------------------------------------------------------------------
-
-
-class TestCreateBuilderShare:
-    @pytest.mark.asyncio
-    async def test_nfs_uses_nfs_share_type_and_network(self):
-        """NFS share는 os_manila_nfs_share_type과 share_network_id를 사용한다."""
-        svc_conn = MagicMock()
-        storage = _make_storage("share-nfs-1")
-
-        with patch(
-            "app.services.ephemeral_mount.manila.create_file_storage",
-            return_value=storage,
-        ) as mock_create:
-            result = await __import__(
-                "app.services.ephemeral_mount", fromlist=["create_builder_share"]
-            ).create_builder_share(
-                svc_conn,
-                name="test-nfs",
-                size_gb=5,
-                share_proto="NFS",
-                share_type="nfstype",
-                share_network_id="net-manila",
-            )
-        assert result == "share-nfs-1"
-        call_kwargs = mock_create.call_args
-        assert call_kwargs.kwargs["share_type"] == "nfstype"
-        assert call_kwargs.kwargs["share_network_id"] == "net-manila"
-        assert call_kwargs.kwargs["share_proto"] == "NFS"
-
-    @pytest.mark.asyncio
-    async def test_cephfs_skips_share_network(self):
-        """CephFS share는 share_network_id를 빈 문자열로 넘긴다."""
-        svc_conn = MagicMock()
-        storage = _make_storage("share-ceph-1")
-
-        with patch(
-            "app.services.ephemeral_mount.manila.create_file_storage",
-            return_value=storage,
-        ) as mock_create:
-            from app.services.ephemeral_mount import create_builder_share
-
-            result = await create_builder_share(
-                svc_conn,
-                name="test-cephfs",
-                size_gb=10,
-                share_proto="CEPHFS",
-                share_type="cephfstype",
-            )
-
-        assert result == "share-ceph-1"
-        call_kwargs = mock_create.call_args
-        assert call_kwargs.kwargs["share_type"] == "cephfstype"
-        assert call_kwargs.kwargs["share_network_id"] == ""
-        assert call_kwargs.kwargs["share_proto"] == "CEPHFS"
 
 
 # ---------------------------------------------------------------------------

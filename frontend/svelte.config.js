@@ -15,6 +15,9 @@ const config = {
 	},
 	kit: {
 		adapter: adapter(),
+		typescript: {
+			config: (config) => { config.include.push('../src/**/*.tsx'); }
+		},
 		// SvelteKit stamps its generated scripts with a per-response nonce (hashes when prerendered).
 		csp: { mode: 'auto', directives: { 'script-src': ['self'] } }
 	}

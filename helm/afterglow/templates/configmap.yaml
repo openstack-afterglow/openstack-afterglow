@@ -11,6 +11,8 @@ data:
   PUBLIC_S3_BASE: {{ .Values.openstack.s3Endpoint | quote }}
   APP_GRAFANA_BASE: {{ .Values.monitoring.grafanaBaseUrl | quote }}
   PUBLIC_API_BASE: {{ $publicApiBase | quote }}
+  TRAFFIC_ANALYTICS_INGEST_URL: "http://backend:8000/api/v1/monitoring/traffic/events"
+  TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS: {{ .Values.trafficAnalytics.trustFrontendClientAddress | quote }}
   afterglow.conf: |
     # Afterglow 통합 설정 파일
     # 비밀 값은 secret.yaml의 환경변수로 주입됩니다.
@@ -341,6 +343,13 @@ data:
     {{- end }}
 
     [monitoring]
+    host_healthcheck_enabled = {{ .Values.monitoring.hostHealthcheckEnabled }}
+    host_healthcheck_targets = [{{ range $i, $target := .Values.monitoring.hostHealthcheckTargets }}{{ if $i }}, {{ end }}{ name = {{ $target.name | quote }}, address = {{ $target.address | quote }}, role = {{ $target.role | quote }}, port = {{ default 9100 $target.port }} }{{ end }}]
+    infrastructure_topology_enabled = {{ .Values.monitoring.infrastructureTopologyEnabled }}
+    infrastructure_topology_retention_seconds = {{ .Values.monitoring.infrastructureTopologyRetentionSeconds }}
+    infrastructure_topology_trace_targets = {{ .Values.monitoring.infrastructureTopologyTraceTargets | toJson }}
+    infrastructure_topology_peer_targets = [{{ range $i, $target := .Values.monitoring.infrastructureTopologyPeerTargets }}{{ if $i }}, {{ end }}{ source_host_id = {{ $target.source_host_id | quote }}, target_host_id = {{ $target.target_host_id | quote }}, address = {{ $target.address | quote }}, port = {{ default 9100 $target.port }} }{{ end }}]
+    # Observer identities are injected by Secret environment, never by this ConfigMap.
     prometheus_base_url = {{ .Values.monitoring.prometheusBaseUrl | quote }}
     prometheus_username = {{ .Values.monitoring.prometheusUsername | quote }}
     # prometheus_password는 secret.yaml의 PROMETHEUS_PASSWORD 환경변수로 주입됩니다
@@ -368,6 +377,13 @@ data:
     ceph_uid = {{ .Values.monitoring.dashboards.cephUid | quote }}
     instance_cpu_uid = {{ .Values.monitoring.dashboards.instanceCpuUid | quote }}
     instance_gpu_uid = {{ .Values.monitoring.dashboards.instanceGpuUid | quote }}
+
+    [traffic_analytics]
+    enabled = {{ .Values.trafficAnalytics.enabled }}
+    retention_days = {{ .Values.trafficAnalytics.retentionDays }}
+    geoip_csv = {{ .Values.trafficAnalytics.geoipCsv | quote }}
+    site_country = {{ .Values.trafficAnalytics.siteCountry | quote }}
+    # HMAC and ingestion secrets are injected by TRAFFIC_ANALYTICS__* environment keys.
 
     {{- if .Values.notion.enabled }}
 

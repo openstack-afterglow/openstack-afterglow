@@ -4,7 +4,7 @@ import { writable } from 'svelte/store';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ api }));
-vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'admin-token', projectId: 'admin-project' }) }));
+vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'admin-token', projectId: 'admin-project' }), authReady: writable(true), projectSwitching: writable(false) }));
 vi.mock('$lib/stores/projectNames', () => ({ projectNames: { subscribe: writable(new Map([['project-1', 'Project One']])).subscribe, load: vi.fn() } }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({ createAutoRefresh: () => ({ active: false, intervalSeconds: 30, intervalOptions: [15, 30, 60] }) }));
 import Page from '../+page.svelte';

@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { usageTone } from '$lib/design/tokens';
+	import BklitChart from '$lib/components/charts/BklitChart.svelte';
+	import { SURFACE_CSS_VAR, TONE_CSS_VAR, usageTone } from '$lib/design/tokens';
 	import { t } from '$lib/i18n/ns/common';
 
 	interface Props {
@@ -36,9 +37,25 @@
 	const isUnlimited = $derived(max === -1);
 	const valueText = $derived(value == null ? '' : unit ? `${value}${unit}` : `${value}`);
 	const maxText = $derived(max === -1 ? t('quota.unlimited') : max == null ? '' : unit ? `${max}${unit}` : `${max}`);
+	const height = $derived(size === 'xs' ? 4 : size === 'md' ? 8 : 6);
+	const accessibleValue = $derived(
+		isUnlimited
+			? value == null ? t('quota.unlimited') : `${valueText} / ${maxText}`
+			: value == null ? `${pct}%` : `${valueText}${maxText ? ` / ${maxText}` : ''} · ${pct}%`,
+	);
 </script>
 
-<div class="usage-bar usage-size-{size} {className}" data-tone={tone}>
+<div
+	class="usage-bar {className}"
+	data-tone={tone}
+	style:--usage-tone={TONE_CSS_VAR[tone]}
+	role={isUnlimited ? 'group' : 'meter'}
+	aria-label={label || accessibleValue}
+	aria-valuemin={isUnlimited ? undefined : 0}
+	aria-valuemax={isUnlimited ? undefined : 100}
+	aria-valuenow={isUnlimited ? undefined : pct}
+	aria-valuetext={isUnlimited ? undefined : accessibleValue}
+>
 	{#if showValue || label}
 		<div class="usage-meta">
 			{#if label}
@@ -58,11 +75,15 @@
 			{/if}
 		</div>
 	{/if}
-	<div class="usage-track" class:usage-track-unlimited={isUnlimited}>
-		{#if !isUnlimited}
-			<div class="usage-fill usage-fill-{tone}" style={`transform: scaleX(${pct / 100})`}></div>
-		{/if}
-	</div>
+	{#if isUnlimited}
+		<div class="usage-unlimited" style:height={`${height}px`} aria-hidden="true"></div>
+	{:else}
+		<BklitChart
+			spec={{ kind: 'gauge', value: pct, color: TONE_CSS_VAR[tone], track: SURFACE_CSS_VAR.sunken }}
+			{height}
+			decorative
+		/>
+	{/if}
 </div>
 
 <style>
@@ -97,30 +118,9 @@
 		font-weight: 600;
 		color: var(--usage-tone);
 	}
-	.usage-track {
-		overflow: hidden;
-		border-radius: 999px;
-		background: var(--color-surface-sunken);
-	}
-	.usage-track-unlimited {
+	.usage-unlimited {
 		border: 1px dashed var(--color-line-2);
+		border-radius: 999px;
 		background: var(--color-surface-base);
 	}
-	.usage-size-xs .usage-track { height: 0.25rem; }
-	.usage-size-sm .usage-track { height: 0.375rem; }
-	.usage-size-md .usage-track { height: 0.5rem; }
-	.usage-fill {
-		height: 100%;
-		border-radius: inherit;
-		width: 100%;
-		transform-origin: left;
-		animation: motion-grow-x var(--motion-duration-data) var(--motion-ease-emphasized) backwards;
-		transition: transform var(--motion-duration-data) var(--motion-ease-emphasized);
-	}
-	.usage-fill-accent { --usage-tone: var(--color-accent); background: var(--gradient-usage); }
-	.usage-fill-warning { --usage-tone: var(--color-state-warning); background: var(--gradient-usage-warning); }
-	.usage-fill-danger { --usage-tone: var(--color-state-danger); background: var(--gradient-usage-danger); }
-	.usage-bar[data-tone='accent'] { --usage-tone: var(--color-accent); }
-	.usage-bar[data-tone='warning'] { --usage-tone: var(--color-state-warning); }
-	.usage-bar[data-tone='danger'] { --usage-tone: var(--color-state-danger); }
 </style>

@@ -172,7 +172,7 @@ Glance 조회 장애는 인라인 plan/build에서 내부 오류나 자격 증�
 
 빌드는 service-project 일회용 Ubuntu builder에 **부팅하지 않은** Glance→Cinder 볼륨 복제본을 attach하고, 볼륨 serial을 확인해 read-only로 mount한다. `/dev`, `/proc`, `/sys`, cloud-init state, 머신 ID, SSH host/private key를 제외하고 전체 root squashfs를 별도 Manila NFS share에 만든다. builder는 root와 각 명령의 OverlayFS upper 변경분을 개별 share에 쓰고 byte SHA-256·MD5·size를 계산한다. 모든 단계가 성공한 뒤 첫 번째 share에 token-bound manifest를 원자적으로 저장하고 Nova console에도 보고를 시도한다. 정상 SHUTOFF를 확인한 다음 console 출력 여부와 무관하게 일회용 SSH VM에 각 share의 read-only 권한만 부여해 NFS manifest의 token·순서를 확인하고 모든 실제 squashfs 바이트의 SHA-256·MD5·size를 다시 검증한다. 실패·누락은 봉인하지 않는다. 검증 뒤 검증 VM/접근 권한, builder 접근 권한 및 임시 Nova/Cinder/Neutron 자원을 정리한 다음에만 root→명령 순서의 parent/chain digest와 profile을 한 DB 트랜잭션으로 봉인한다. 실패한 미봉인 share는 정리한다.
 
-DMSLab Nova는 Cinder volume UUID의 하이픈을 포함한 앞 20자만 virtio serial로 노출한다. Builder와 소비 guest는 `/dev/vdX` 순서를 가정하지 않고, serial에서 하이픈을 제거한 hex 접두사(최소 17자)를 지정된 volume UUID와 대조한다. 부트 디스크·불일치·중복을 제외하며 root 복제본은 Ubuntu 파일시스템만 읽기 전용 mount하고 upper는 빈 전용 디스크만 포맷한다.
+DMSLab에서 관측한 virtio serial은 Cinder UUID의 하이픈 포함 앞 20자다. 소비 helper는 `/dev/vdX` 순서 대신 전체 UUID, compact UUID 또는 정확히 20자인 dashed/compact 접두사를 전체 공급된 volume ID inventory와 대조한다. 여러 ID/장치에 맞는 접두사는 거부한다. 실제 whole-disk `virtio_blk`와 kernel RO를 lower마다 확인하고 부트 디스크·layer ID와 충돌하는 upper는 포맷하지 않는다.
 
 Glance 복제본은 builder 부트 이미지의 파일시스템 UUID를 그대로 가진다. `findmnt SOURCE /`가 복제본을 부트 장치로 잘못 나타내는 환경에서 builder는 실제 `/` mount의 `MAJ:MIN`과 각 block device의 `MAJ:MIN`을 비교한다. 유일한 부트 디스크를 확인하지 못하면 안전하게 거부한다.
 
@@ -181,6 +181,10 @@ Glance 복제본은 builder 부트 이미지의 파일시스템 UUID를 그대�
 Manila가 동일 share에 반환한 여러 NFS export 위치는 builder 입력/출력과 일회용 검증 VM에서 순서대로 시도한다. 각 mount 최대 15초, 전체 180초·12회전 이내이며 모든 위치가 실패하면 봉인을 거부한다. 검증 manifest 또는 byte digest가 틀리면 mount 성공과 무관하게 봉인을 거부한다. `ENV` delta는 일반 SSH의 비로그인 명령에 `sshd SetEnv`, login shell과 대화형 세션에 profile script, systemd 서비스에 `DefaultEnvironment`로 전달한다. `WORKDIR`는 이후 `RUN`과 대화형 로그인 셸의 시작 디렉터리이며 비로그인 SSH 명령에 임의 `cd`를 강제하지 않는다.
 
 두 import API의 선택적 `consumer`는 flavor, network, server 이름과 SSH keypair 또는 public key를 받는다. SSH 공개키와 placement는 인증된 관리자 요청 중 확정하며 비밀키는 저장하지 않는다. import 응답은 `consumer_requested`, `consumer_status`, `consume_id`를 제공하고 완료 뒤 `/api/v1/admin/libraries/consumes/{id}`로 작업을 추적한다. 소비 VM은 child-first 변경분들과 전체 root를 NFS read-only·digest 검증 후 합성하고 전용 쓰기 upper를 사용한다. `/var/lib/cloud`와 머신 identity는 원래 bootstrap disk에서 유지한다. 활성화는 initramfs root overlay 부팅·재부팅 뒤 health token이 관측될 때에만 완료된다. SSH username에 `root`는 허용하지 않는다. 이미지 내용 실행과 NFS export는 관리자 권한·service project 정책에 한정한다.
+
+관리자 `POST /api/v1/admin/libraries/consume`는 `transport: "nfs" | "block"`을 받으며 생략 시 `nfs`다. 다른 값과 명시적 null은 거부한다. 두 import API가 공유하는 `DockerfileConsumerRequest`도 같은 transport를 받지만, 즉시 import+block 소비는 **관리자 인가 후, GitHub 다운로드·Glance/부모 계획 전에 422**로 거부한다. 먼저 import를 봉인하고 정확한 `import_id`로 별도 block consume을 요청해야 한다. 일반 사용자는 기존 403을 유지한다. `/api/v1/palimpsest/builds/dockerfile`도 이 관리자 경계를 재사용하며 일반 사용자 native consume endpoint를 추가하지 않는다. 명시적으로 전달된 compute 연결을 다른 service 연결로 바꾸지 않으며 인증 project·연결 marker·service-project snapshot과 `expected_project_id`를 일치시킨 뒤 run을 admission한다.
+
+`089_layer_block_consumes.sql`은 `layer_consumes.transport VARCHAR(16) NOT NULL DEFAULT 'nfs'`, nullable `run_id CHAR(32)`, `resources JSON`, `cleanup_state VARCHAR(32)`를 추가한다. 기존 행은 NFS이며 lifecycle ledger 필드는 기존 행과 생성 직후에 null일 수 있다. `resources`는 소비 lifecycle이 관리하는 내구성 ledger이며 자원 인증/권한 계약이 아니다. 소비 행의 `project_id`는 확정된 service-project snapshot에서 가져오고, share가 아직 없는 생성 시점에는 `share_id`를 빈 문자열로 기록한다. 새 ORM/writer 실행 전에 manifest에 등록된 migration 적용이 필요하며, 기존 writer는 새 컬럼의 기본값/null을 사용할 수 있다. 운영 schema·mixed-version·rollback 검증은 이 문서 변경으로 입증하지 않는다.
 
 전체 루트 소비자는 첫 부팅 시 각 share의 Manila NFS export 후보를 순서대로 시도하고 실제 `.sqsh` digest를 검증해 Cinder `blobs/`에 보관한 뒤 NFS를 해제한다. root fstab에 NFS 자동 마운트를 남기지 않으므로 다음 부팅은 해당 로컬 blob으로만 진행한다. 기존 `/usr` 전용 소비자의 fstab 마운트 동작은 유지한다.
 
@@ -193,6 +197,19 @@ Nova console이 없는 설치에서는 root 소비 VM의 guest health unit이 ov
 소비 생성은 별도의 빈 Cinder volume(`upper_volume_size_gb`)을 먼저 준비하고 Nova server의 비부팅 block-device mapping(`boot_index=-1`, `delete_on_termination=true`)으로 붙인다. 첫 부팅 guest는 volume UUID의 serial과 부팅 디스크가 아닌 빈 장치를 검증한 뒤 **그 volume만** ext4로 포맷한다. NFS의 모든 `.sqsh`는 SHA-256 검증 후 같은 volume의 `blobs/`에 복사하며 upper/work도 그곳에 둔다. `layer-identity-merge.py`는 부팅하지 않은 Glance 루트에 아직 없는 첫 부팅 cloud-init SSH 계정(`ubuntu` 등)을 실제 소비자 `/`의 `/etc/{passwd,shadow,group,gshadow}`에서 `$ROOT_UPPER/etc`로 병합하고 `/home/<user>` 및 `.ssh` 소유권을 맞춘다. `$ROOT_UPPER/etc/fstab`에는 `/boot`·`/boot/efi`만 남기고 `multi-user.target.wants/layer-{activate,health}.service`와 `initramfs-tools` hook(`prereqs` 인자 처리 포함)을 보존한다. initramfs는 저장된 파일시스템 UUID로 volume을 mount해 네트워크 없이 child-first root stack을 구성한다. Nova 생성 전 실패하면 Cinder volume·port·access rule을 정리하고, 생성 후 health 실패는 VM과 진단 가능한 attached volume을 보존한다. 기존 `/usr` profile은 이 부팅 경로와 volume allocation을 사용하지 않는다.
 
 Image-backed 부트와 별도 upper를 함께 요청할 때는 Nova BDM에 Glance 이미지와 일치하는 `image→local, boot_index=0` 항목, 그리고 `volume→volume, boot_index=-1` upper 항목을 모두 보낸다. 비부팅 볼륨만 BDM으로 전달하면 실제 Nova가 부트 순서를 거부한다.
+
+### Cinder/RBD block 소비
+
+관리자 `PUT /api/v1/admin/libraries/artifacts/{artifact_id}/block-source?store_id=<rbd-store>&member_project_id=<project>`의 body는 봉인된 원래 SquashFS 바이트다. 길이·SHA-256·magic 검증을 provider/DB 변경보다 먼저 완료한다. `088_layer_block_sources.sql`의 nullable `layer_artifacts.block_source`에 artifact/blob/chain/길이와 owner/store/member, 미리 정한 Glance UUID·upload UUID를 기록한 뒤 raw/bare 원본을 게시한다. 재시도는 같은 내구성 UUID를 회수하며 임의 새 이미지로 대체하지 않는다. GET 같은 경로는 source 상태를 반환한다. Glance 원본은 protected/shared이며 member 프로젝트의 실제 acceptance와 정책은 별도 prerequisite다. 일반 artifact DELETE는 source reservation이 있으면 409이고, reservation이 없는 share DELETE도 같은 artifact row lock을 사용한다. 요청 취소 시 provider thread와 SQL 처분을 drain할 때까지 그 lock을 유지한다.
+
+Block consume은 검증한 RBD volume type·실제 프로젝트 quota와 봉인 source를 사용해 **VM별** image-backed layer 볼륨을 만든다. 레이어 readonly flag를 확인한 뒤 `boot_index=-1`으로 attach하고 writable upper는 별도 빈 volume이다. Lower는 sealed 길이만 SHA-256으로 확인하고 raw device를 read-only SquashFS로 직접 mount한다. SquashFS 파일 복사·loop mount·네트워크/NFS fallback을 사용하지 않는다. root→delta IDs는 DB에 보존하고 mount manifest만 child-first로 뒤집는다. 공급자가 RBD·원본 visibility·readonly를 증명하지 못하면 실패하며 NFS로 자동 전환하지 않는다.
+
+Upper는 부트 ancestry·모든 layer ID와의 alias·whole-disk/driver/RW·partition/signature를 검사하고 **전체 디스크가 zero인지** 확인한 뒤 정확한 장치만 ext4로 포맷한다. 재부팅은 Cinder identity를 다시 resolve하고 저장된 ext4 UUID를 확인하며 serial 없는 장치/partition까지 포함해 중복 FSUUID를 거부한다. initramfs hook은 `prereqs`에서 즉시 끝나고 Bash/GNU·block/ancestry helper 및 `virtio_blk`, `squashfs`, `overlay`, `ext4` 모듈을 명시적으로 포함한다. 런타임 config/manifest/upper identity는 mounted bootstrap root에서 읽으며 build-host의 임시 config 복사에 의존하지 않는다.
+
+`layer_consume_resources`는 CREATE 전에 intent/name/ownership metadata를 commit하고 CREATE의 transport/status 재시도를 끈다. 응답 유실은 UUID discovery를 위한 pending으로 보존하며 확정된 HTTP rejection만 rejected로 기록한다. Cleanup은 row lock으로 새 원장과 병합해 concurrent rejection/deleted 증거를 되돌리지 않는다. 단건·bulk VM 삭제와 관리자 `DELETE /api/v1/admin/libraries/consumes/{id}`가 동일한 cleanup을 사용한다. 정확한 managed Manila grant denial이 실패/pending이면 VM·tracking·원장을 유지하고, 인가된 callback이 없는 자동 cleanup도 해당 grant를 버리지 않는다. 소유 FIP를 아직 bound된 port로 발견·DELETE·정확한 404 확인한 뒤 Nova와 port를 제거한다. 불확실한 CREATE/discovery/delete 결과는 재시도 가능한 pending으로 남고 외부/다른 run 자원과 공유 Glance source는 지우지 않는다.
+
+Opt-in smoke는 `backend/.venv/bin/python scripts/layer-block-smoke.py --help`를 따른다. 기본은 기존 consume 관찰이며 `--exercise`와 `--cleanup`이 생성/회수의 명시적 선택이다. 원본 SDK scope와 `--expected-project`를 먼저 대조하고 token을 출력/파일로 저장하거나 helper/payload를 cloud로 전송하지 않는다. 로컬 SDK/SQL/TCG 증거와 실제 Cinder/RBD·Glance membership·cloud-init/SSH·운영 acceptance는 [`testing.md`](testing.md)에 구분한다.
+
 
 ### 🔴 보안
 

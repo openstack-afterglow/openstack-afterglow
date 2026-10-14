@@ -100,3 +100,88 @@ def test_registry_has_no_service_owned_drover_policies():
 def test_unknown_resource_policy_is_rejected():
     with pytest.raises(resource_policies.ResourcePolicyValidationError):
         resource_policies.get_spec("not-a-policy")
+
+
+@pytest.mark.asyncio
+async def test_missing_sdk_network_is_admission_validation_not_provider_error():
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from openstack.exceptions import ResourceNotFound
+
+    provider_error = ResourceNotFound("private provider response")
+    conn = SimpleNamespace(network=SimpleNamespace(get_network=MagicMock(side_effect=provider_error)))
+    with pytest.raises(
+        resource_policies.ResourcePolicyValidationError, match="selected network is unavailable"
+    ) as failure:
+        await resource_policies.validate_existing_selection(conn, "nova.default_network", "missing-network")
+    assert failure.value.__cause__ is provider_error
+    assert "private provider response" not in str(failure.value)
+    conn.network.get_network.assert_called_once_with("missing-network")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["auth", "outage"])
+async def test_network_auth_and_outage_errors_are_not_reclassified_as_missing(kind):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from openstack.exceptions import ForbiddenException, HttpException
+
+    error = (
+        ForbiddenException("authorization denied")
+        if kind == "auth"
+        else HttpException("provider unavailable", http_status=503)
+    )
+    conn = SimpleNamespace(network=SimpleNamespace(get_network=MagicMock(side_effect=error)))
+    with pytest.raises(type(error)) as failure:
+        await resource_policies.validate_existing_selection(conn, "nova.default_network", "network-a")
+    assert failure.value is error
+
+
+@pytest.mark.asyncio
+async def test_consume_missing_sdk_network_returns_400_before_provider_mutation(admin_client, mock_conn):
+    from unittest.mock import AsyncMock, patch
+
+    from openstack.exceptions import ResourceNotFound
+
+    mock_conn.network.get_network.side_effect = ResourceNotFound("private provider response")
+    with (
+        patch("app.services.layer_build.run_layer_consume", AsyncMock()) as run,
+        patch("app.services.layer_build.resolve_import_consume_artifacts", AsyncMock()) as artifacts,
+        patch("app.services.keystone.get_admin_connection_for_project") as connect,
+    ):
+        response = await admin_client.post(
+            "/api/v1/admin/libraries/consume",
+            json={"transport": "block", "import_id": 9, "flavor_id": "flavor-a", "network_id": "missing-network"},
+        )
+    assert response.status_code == 400
+    assert "selected network is unavailable" in response.json()["detail"]
+    assert "private provider response" not in response.text
+    run.assert_not_awaited()
+    artifacts.assert_not_awaited()
+    connect.assert_not_called()
+    mock_conn.compute.create_server.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["auth", "outage"])
+async def test_consume_network_auth_and_outage_do_not_become_missing_400(admin_client, mock_conn, kind):
+    from unittest.mock import AsyncMock, patch
+
+    from openstack.exceptions import ForbiddenException, HttpException
+
+    error = (
+        ForbiddenException("authorization denied")
+        if kind == "auth"
+        else HttpException("provider unavailable", http_status=503)
+    )
+    mock_conn.network.get_network.side_effect = error
+    with patch("app.services.layer_build.run_layer_consume", AsyncMock()) as run:
+        with pytest.raises(type(error)) as failure:
+            await admin_client.post(
+                "/api/v1/admin/libraries/consume",
+                json={"transport": "block", "import_id": 9, "flavor_id": "flavor-a", "network_id": "network-a"},
+            )
+    assert failure.value is error
+    run.assert_not_awaited()

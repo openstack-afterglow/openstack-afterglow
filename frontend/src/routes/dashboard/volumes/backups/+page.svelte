@@ -1,8 +1,12 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/volume';
+	import { page } from '$app/state';
+	import VolumeBackupPolicies from '$lib/components/volume/backups/VolumeBackupPolicies.svelte';
+	import { createVolumeBackupPoliciesController } from '$lib/stores/volumeBackupPoliciesController.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { untrack } from 'svelte';
-	import { auth } from '$lib/stores/auth';
+	import { auth, canWrite, projectSwitching } from '$lib/stores/auth';
+	import { derived } from 'svelte/store';
 	import { api, ApiError } from '$lib/api/client';
 	import type { Volume, VolumeBackup } from '$lib/types/volume';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
@@ -27,34 +31,39 @@
 	let showRestoreModal = $state(false);
 	let selectedBackup = $state<VolumeBackup | null>(null);
 	let bulkBusy = $state(false);
+	const policies = createVolumeBackupPoliciesController();
+	let generation = 0;
+	let consumedLink = $state('');
 	const selection = createResourceSelection();
 	const selectableIds = $derived(new Set(backups.map((backup) => backup.id)));
 
 	async function fetchBackups() {
 		const token = $auth.token ?? undefined;
 		const projectId = $auth.projectId;
-		if (!projectId) return;
+		const requestGeneration = generation;
+		if (!projectId || !token || $projectSwitching) return;
 		try {
 			const next = await api.get<VolumeBackup[]>('/api/v1/volumes/backups', token, projectId);
-			if ($auth.projectId !== projectId) return;
+			if ($auth.projectId !== projectId || $auth.token !== token || generation !== requestGeneration) return;
 			backups = next;
 			error = '';
 		} catch (e) {
-			if ($auth.projectId === projectId) error = e instanceof ApiError ? t('backupsPage.fetchFailed', { status: e.status }) : t('backupsPage.serverError');
+			if ($auth.projectId === projectId && $auth.token === token && generation === requestGeneration) error = e instanceof ApiError ? t('backupsPage.fetchFailed', { status: e.status }) : t('backupsPage.serverError');
 		} finally {
-			if ($auth.projectId === projectId) loading = false;
+			if ($auth.projectId === projectId && $auth.token === token && generation === requestGeneration) loading = false;
 		}
 	}
 
 	async function fetchVolumes() {
 		const token = $auth.token ?? undefined;
 		const projectId = $auth.projectId;
-		if (!projectId) return;
+		const requestGeneration = generation;
+		if (!projectId || !token || $projectSwitching) return;
 		try {
 			const next = await api.get<Volume[]>('/api/v1/volumes', token, projectId);
-			if ($auth.projectId === projectId) volumes = next;
+			if ($auth.projectId === projectId && $auth.token === token && generation === requestGeneration) volumes = next;
 		} catch {
-			if ($auth.projectId === projectId) volumes = [];
+			if ($auth.projectId === projectId && $auth.token === token && generation === requestGeneration) volumes = [];
 		}
 	}
 
@@ -101,22 +110,31 @@
 	}
 
 	const bulkActions = $derived<BulkSelectionAction[]>([{ key: 'delete', label: t('backupsPage.delete'), tone: 'danger', onAction: runBulkDelete }]);
-	async function forceRefresh() { refreshing = true; try { await fetchBackups(); } finally { refreshing = false; } }
-	const ar = createAutoRefresh(() => fetchBackups(), { storageKey: 'dashboard-volume-backups', defaultActive: true, defaultInterval: 15, intervalOptions: [10, 15, 30, 60], invokeOnMount: false });
+	async function forceRefresh() { refreshing = true; try { await Promise.all([fetchBackups(), policies.refresh()]); } finally { refreshing = false; } }
+	const ar = createAutoRefresh(async () => { await Promise.all([fetchBackups(), policies.refresh()]); }, { storageKey: 'dashboard-volume-backups', defaultActive: true, defaultInterval: 15, intervalOptions: [10, 15, 30, 60], invokeOnMount: false });
 
 	$effect(() => {
-		const pid = $auth.projectId;
-		untrack(() => {
-			selection.clear();
-			backups = [];
-			volumes = [];
-			error = '';
-			selectedBackup = null;
-			showModal = false;
-			showRestoreModal = false;
-			loading = Boolean(pid);
-			if (pid) void fetchBackups();
+		let previous = '';
+		return derived([auth, projectSwitching], ([value, switching]) => ({ value, switching })).subscribe(({ value, switching }) => {
+			const key = JSON.stringify([value.token, value.projectId, value.userId, switching]);
+			if (key === previous) return;
+			previous = key;
+			untrack(() => {
+				generation++;
+				selection.clear(); backups = []; volumes = []; error = ''; selectedBackup = null;
+				showModal = false; showRestoreModal = false;
+				loading = Boolean(value.projectId && value.token);
+				if (value.projectId && value.token && !switching) void fetchBackups();
+			});
 		});
+	});
+	$effect(() => {
+		const volumeId = page.url.searchParams.get('auto-backup');
+		const linkKey = `${policies.generation}:${volumeId}`;
+		if (volumeId && consumedLink !== linkKey && !policies.loading && !policies.error && !policies.volumesError && $canWrite && policies.volumes.some((volume) => volume.id === volumeId)) {
+			consumedLink = linkKey;
+			untrack(() => policies.open(volumeId));
+		}
 	});
 	$effect(() => { const ids = selectableIds; untrack(() => selection.retain(ids)); });
 </script>
@@ -132,6 +150,7 @@
 	<ResourceToolbar label={t('backupsPage.toolbar')}>
 		{#snippet actions()}<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing} onManualRefresh={forceRefresh} />{/snippet}
 	</ResourceToolbar>
+	<VolumeBackupPolicies controller={policies} />
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={4} />

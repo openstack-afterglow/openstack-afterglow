@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 	cancelRun: vi.fn(),
 	previewContext: vi.fn(),
 	goto: vi.fn(),
+	setPageState: vi.fn(),
 	ChatHttpError: class ChatHttpError extends Error {
 		status: number;
 		constructor(message: string, status: number) {
@@ -46,7 +47,17 @@ vi.mock('$lib/api/client', () => ({
 	ApiError: mocks.ApiError
 }));
 
-vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
+vi.mock('$app/stores', async () => {
+	const { writable } = await import('svelte/store');
+	const initial = { data: {}, url: new URL('http://localhost/dashboard/chat'), state: {} };
+	const page = writable(initial);
+	mocks.setPageState.mockImplementation((state) => page.set({ ...initial, state }));
+	return { page };
+});
+vi.mock('$app/navigation', () => ({
+	goto: mocks.goto,
+	pushState: (_url: URL, state: unknown) => mocks.setPageState(state)
+}));
 
 vi.mock('$lib/api/chatStream', () => ({
 	createChatRun: mocks.createRun,
@@ -81,6 +92,7 @@ function event(seq: number, type: string, payload: object) {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	mocks.setPageState({});
 	siteConfig.update((config) => ({ ...config, services: { ...config.services, mcp: false } }));
 	auth.set({
 		token: 'token',
@@ -1035,7 +1047,9 @@ describe('ChatPanel', () => {
 		await fireEvent.click(await screen.findByRole('button', { name: '긴 대화' }));
 		await screen.findByText('history-160');
 		for (const cursor of ['cursor-4', 'cursor-3', 'cursor-2']) {
-			await fireEvent.click(screen.getByRole('button', { name: '이전' }));
+			const scroll = document.querySelector('.scroll') as HTMLDivElement;
+			scroll.scrollTop = 0;
+			await fireEvent.scroll(scroll);
 			await waitFor(() => expect(mocks.get.mock.calls.some(([path]) => String(path).includes(`cursor=${cursor}`))).toBe(true));
 		}
 
@@ -1044,6 +1058,36 @@ describe('ChatPanel', () => {
 		const historyRequests = mocks.get.mock.calls.filter(([path]) => String(path).includes('/conv-history/messages?'));
 		expect(historyRequests).toHaveLength(4);
 		expect(document.querySelectorAll('[data-history-message-id]')).toHaveLength(120);
+	});
+	it('retains the selected transcript, draft and sidebar through project/history transitions', async () => {
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') return [{ id: 'retained-chat', title: '계속 읽을 대화', model_name: 'model-1', workspace_id: null }];
+			if (path.includes('/retained-chat/messages?')) return {
+				messages: [{ id: 'retained-message', conversation_id: 'retained-chat', parent_id: null, role: 'user', content: '이미 읽고 있던 내용', created_at: at }],
+				active_leaf_id: 'retained-message', history_revision: 1, has_before: false, has_after: false, before_cursor: null, after_cursor: null
+			};
+			return fallback(path, ...args);
+		});
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		await fireEvent.click(await screen.findByRole('button', { name: '계속 읽을 대화' }));
+		await screen.findByText('이미 읽고 있던 내용');
+		const editor = screen.getByRole('textbox') as HTMLTextAreaElement;
+		const history = document.querySelector('.sidebar .list');
+		await fireEvent.input(editor, { target: { value: '아직 보내지 않은 초안' } });
+		const initialRequests = mocks.get.mock.calls.filter(([path]) => String(path) === '/api/v1/chat/conversations' || String(path).includes('/retained-chat/messages?')).length;
+		for (let i = 0; i < 3; i++) {
+			await fireEvent.click(screen.getByRole('button', { name: '대화 기록과 설정 열기' }));
+			await fireEvent.click(screen.getByRole('button', { name: /^프로젝트$/ }));
+			await screen.findByRole('heading', { name: '프로젝트' });
+			await fireEvent.click(screen.getByRole('button', { name: '대화 기록과 설정 열기' }));
+			await fireEvent.click(screen.getByRole('button', { name: '계속 읽을 대화' }));
+			expect(screen.getByRole('textbox')).toBe(editor);
+			expect(editor.value).toBe('아직 보내지 않은 초안');
+			expect(document.querySelector('.sidebar .list')).toBe(history);
+		}
+		expect(mocks.get.mock.calls.filter(([path]) => String(path) === '/api/v1/chat/conversations' || String(path).includes('/retained-chat/messages?'))).toHaveLength(initialRequests);
 	});
 
 	it('alerts on a stale cursor and re-queries the latest window exactly once', async () => {
@@ -1069,7 +1113,9 @@ describe('ChatPanel', () => {
 		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
 		await fireEvent.click(await screen.findByRole('button', { name: '변경된 대화' }));
 		await screen.findByText('old-latest');
-		await fireEvent.click(screen.getByRole('button', { name: '이전' }));
+		const scroll = document.querySelector('.scroll') as HTMLDivElement;
+		scroll.scrollTop = 0;
+		await fireEvent.scroll(scroll);
 
 		await screen.findByText('refreshed-latest');
 		expect(latestRequests).toBe(2);

@@ -39,6 +39,7 @@
 	let selectedSg = $state<string | null>(null);
 	let addRuleOpen = $state(false);
 	let originalRuleId = $state<string | null>(null);
+	let originalRuleRemoved = $state(false);
 	let targetType = $state<'cidr' | 'group'>('cidr');
 	let ruleForm = $state<SecurityGroupRuleDraft>(emptyRule());
 	let sgCreating = $state(false);
@@ -52,6 +53,7 @@
 	let curSg = $derived(securityGroups.find((group) => group.id === selectedSg) ?? null);
 	let canCreateGroup = $derived(quota !== null && (quota.security_group.limit < 0 || quota.security_group.in_use < quota.security_group.limit));
 	let canCreateRule = $derived(quota !== null && (quota.security_group_rule.limit < 0 || quota.security_group_rule.in_use < quota.security_group_rule.limit));
+	let canSaveRule = $derived(quota !== null && (quota.security_group_rule.limit < 0 || quota.security_group_rule.in_use - (originalRuleId && !originalRuleRemoved ? 1 : 0) < quota.security_group_rule.limit));
 
 	async function fetchSecurityGroups(opts?: { refresh?: boolean }) {
 		const project = $auth.projectId;
@@ -182,14 +184,17 @@
 	}
 
 	function startAddRule() {
+		if (sgCreating) return;
 		ruleForm = emptyRule();
 		targetType = 'cidr';
 		originalRuleId = null;
+		originalRuleRemoved = false;
 		sgCreateError = '';
 		addRuleOpen = true;
 	}
 
 	function editRule(rule: SecurityGroupRule) {
+		if (sgCreating) return;
 		ruleForm = {
 			direction: rule.direction,
 			protocol: rule.protocol ?? '',
@@ -201,6 +206,7 @@
 		};
 		targetType = rule.remote_group_id ? 'group' : 'cidr';
 		originalRuleId = rule.id;
+		originalRuleRemoved = false;
 		sgCreateError = '';
 		addRuleOpen = true;
 	}
@@ -208,6 +214,7 @@
 	function cancelAddRule() {
 		addRuleOpen = false;
 		originalRuleId = null;
+		originalRuleRemoved = false;
 		sgCreateError = '';
 	}
 
@@ -215,8 +222,28 @@
 		return /^[0-9]+$/.test(value) && Number(value) >= 1 && Number(value) <= 65535;
 	}
 
-	async function addSgRule(sgId: string) {
-		if (!canCreateRule) { sgCreateError = t('securityGroups.ruleQuotaRequired'); return; }
+	function cidrVersion(value: string): 'IPv4' | 'IPv6' | null {
+		const [address, prefix, ...extra] = value.split('/');
+		if (extra.length > 0) return null;
+		const ipv4 = (ip: string) => /^(?:0|[1-9][0-9]{0,2})(?:\.(?:0|[1-9][0-9]{0,2})){3}$/.test(ip) && ip.split('.').every((part) => Number(part) <= 255);
+		if (ipv4(address)) {
+			if (prefix === undefined || (/^[0-9]+$/.test(prefix) && Number(prefix) <= 32)) return 'IPv4';
+			if (ipv4(prefix)) {
+				const mask = prefix.split('.').reduce((bits, part) => (bits << 8) | Number(part), 0) >>> 0;
+				const inverse = ~mask >>> 0;
+				if ((inverse & (inverse + 1)) === 0 || (mask & (mask + 1)) === 0) return 'IPv4';
+			}
+			return null;
+		}
+		if (!/^[0-9a-f:.]+$/i.test(address) || !address.includes(':') || (prefix !== undefined && (!/^[0-9]+$/.test(prefix) || Number(prefix) > 128))) return null;
+		try { new URL(`http://[${address}]/`); return 'IPv6'; }
+		catch { return null; }
+	}
+
+	async function saveSgRule(sgId: string) {
+		if (sgCreating) return;
+		if (!canSaveRule) { sgCreateError = t('securityGroups.ruleQuotaRequired'); return; }
+		const original = securityGroups.find((group) => group.id === sgId)?.rules.find((rule) => rule.id === originalRuleId);
 		const body: Record<string, unknown> = { direction: ruleForm.direction, ethertype: ruleForm.ethertype };
 		if (ruleForm.protocol) body.protocol = ruleForm.protocol;
 		if (ruleForm.protocol === 'tcp' || ruleForm.protocol === 'udp') {
@@ -227,6 +254,13 @@
 				return;
 			}
 			if (min) { body.port_range_min = Number(min); body.port_range_max = max ? Number(max) : Number(min); }
+		} else if (original && ruleForm.protocol === original.protocol) {
+			if (original.port_range_min !== null) body.port_range_min = original.port_range_min;
+			if (original.port_range_max !== null) body.port_range_max = original.port_range_max;
+		}
+		if (ruleForm.remote_group_id && ruleForm.remote_ip_prefix.trim()) {
+			sgCreateError = t('securityGroups.remoteTargetConflict');
+			return;
 		}
 		if (targetType === 'group') {
 			if (!ruleForm.remote_group_id || !securityGroups.some((group) => group.id === ruleForm.remote_group_id)) {
@@ -236,15 +270,64 @@
 			body.remote_group_id = ruleForm.remote_group_id;
 		} else {
 			body.remote_ip_prefix = ruleForm.remote_ip_prefix.trim() || (ruleForm.ethertype === 'IPv6' ? '::/0' : '0.0.0.0/0');
+			const version = cidrVersion(body.remote_ip_prefix as string);
+			if (!version) { sgCreateError = t('securityGroups.invalidCidr'); return; }
+			if (version !== ruleForm.ethertype) { sgCreateError = t('securityGroups.cidrVersionMismatch'); return; }
 		}
+		const editingRuleId = originalRuleId;
+		const originalBody = original ? {
+			direction: original.direction, ethertype: original.ethertype, protocol: original.protocol,
+			port_range_min: original.port_range_min, port_range_max: original.port_range_max,
+			remote_group_id: original.remote_group_id,
+			remote_ip_prefix: original.remote_group_id ? null : original.remote_ip_prefix ?? (original.ethertype === 'IPv6' ? '::/0' : '0.0.0.0/0'),
+		} : null;
+		if (originalBody && !originalRuleRemoved && Object.entries(originalBody).every(([key, value]) => value === (body[key] ?? null))) {
+			cancelAddRule();
+			return;
+		}
+		const missing = !!editingRuleId && !originalRuleRemoved && !original;
+		const token = $auth.token ?? undefined;
+		const project = $auth.projectId ?? undefined;
+		const generation = projectGeneration;
+		let removed = originalRuleRemoved;
+		const removeFirst = !!editingRuleId && !removed && !missing && !canCreateRule;
+		let created = false;
 		sgCreating = true;
 		sgCreateError = '';
 		try {
-			await api.post(`/api/v1/security-groups/${sgId}/rules`, body, $auth.token ?? undefined, $auth.projectId ?? undefined);
-			cancelAddRule();
-			await refreshResources();
+			if (removeFirst) {
+				await api.delete(`/api/v1/security-groups/${sgId}/rules/${editingRuleId}`, token, project);
+				removed = true;
+				if (generation === projectGeneration && selectedSg === sgId) originalRuleRemoved = true;
+			}
+			await api.post(`/api/v1/security-groups/${sgId}/rules`, body, token, project);
+			created = true;
+			if (editingRuleId && !removed && !missing) await api.delete(`/api/v1/security-groups/${sgId}/rules/${editingRuleId}`, token, project);
+			if (generation === projectGeneration) {
+				if (selectedSg === sgId) cancelAddRule();
+				await refreshResources({ refresh: true });
+			}
 		} catch (e) {
-			sgCreateError = e instanceof ApiError ? e.message : t('securityGroups.addRuleFailed');
+			if (removed && originalBody) {
+				try {
+					const restored = await api.post<SecurityGroupRule>(`/api/v1/security-groups/${sgId}/rules`, originalBody, token, project);
+					removed = false;
+					if (generation === projectGeneration && selectedSg === sgId) {
+						originalRuleId = restored.id;
+						originalRuleRemoved = false;
+					}
+				} catch { /* Report the lost-rule state below; never present a failed restore as success. */ }
+			}
+			const message = e instanceof ApiError ? e.message : String(e);
+			const failure = editingRuleId
+				? t(created ? 'securityGroups.removeReplacedRuleFailed' : removed ? 'securityGroups.replaceRuleFailed' : 'securityGroups.saveRuleFailed', { message })
+				: e instanceof ApiError ? e.message : t('securityGroups.addRuleFailed');
+			if (generation === projectGeneration) {
+				if (created && selectedSg === sgId) cancelAddRule();
+				if (removed || originalBody || created) await refreshResources({ refresh: true });
+			}
+			if (generation === projectGeneration && selectedSg === sgId) sgCreateError = failure;
+			else toast.error(failure);
 		} finally {
 			sgCreating = false;
 		}
@@ -253,7 +336,7 @@
 	async function deleteSgRule(sgId: string, ruleId: string): Promise<boolean> {
 		try {
 			await api.delete(`/api/v1/security-groups/${sgId}/rules/${ruleId}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
-			if (originalRuleId === ruleId) originalRuleId = null;
+			if (originalRuleId === ruleId) cancelAddRule();
 			await refreshResources();
 			return true;
 		} catch (e) {
@@ -262,11 +345,6 @@
 		}
 	}
 
-	async function removeOriginalRule(sgId: string) {
-		if (!originalRuleId) return;
-		if (!await confirmDialog(t('securityGroups.removeOriginalConfirm'))) return;
-		await deleteSgRule(sgId, originalRuleId);
-	}
 
 	$effect(() => {
 		const pid = $auth.projectId;
@@ -331,9 +409,10 @@
 			{#if curSg}
 				<SecurityGroupRulesPanel
 					group={curSg} groups={securityGroups} {instances} {instancesError} {instancesLoading}
-					{addRuleOpen} {originalRuleId} addingRule={sgCreating} canAddRule={canCreateRule} addError={sgCreateError} bind:ruleForm bind:targetType
+					{addRuleOpen} {originalRuleId} addingRule={sgCreating} canSaveRule={canSaveRule} addError={sgCreateError} bind:ruleForm bind:targetType
+					requiresRemovalFirst={originalRuleId !== null && !originalRuleRemoved && quota !== null && !canCreateRule && curSg.rules.some((rule) => rule.id === originalRuleId)}
 					onStartAdd={startAddRule} onEditRule={editRule} onCancelAdd={cancelAddRule}
-					onAddRule={() => addSgRule(curSg!.id)} onRemoveOriginal={() => removeOriginalRule(curSg!.id)}
+					onSaveRule={() => saveSgRule(curSg!.id)}
 					onDeleteRule={async (id) => { await deleteSgRule(curSg!.id, id); }}
 					onDeleteGroup={() => deleteSecurityGroup(curSg!.id, curSg!.name)}
 					onSelectGroup={(id) => { if (securityGroups.some((group) => group.id === id)) selectedSg = id; }}

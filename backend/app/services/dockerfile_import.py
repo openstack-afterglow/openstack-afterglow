@@ -22,17 +22,20 @@ from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Any
 
+from openstack.exceptions import ResourceNotFound
+from sqlalchemy.exc import SQLAlchemyError
+
 from app.config import get_settings
 from app.database import get_session_factory
 from app.models.db import LayerArtifact, LayerBuild, LayerImportJob, LayerProfile
-from app.services import manila, neutron, nova
+from app.services import build_work, manila, neutron, nova
 from app.services.layer_base_images import (
     FROM_REF_RE,
     list_base_images,
     resolve_from_reference,
     resolve_glance_base_snapshot,
 )
-from app.services.layer_build import LAYER_BUILD_IMAGE_PACKAGES, _wait_for_shutoff
+from app.services.layer_build import _SHUTOFF_MAX_WAIT, _SHUTOFF_POLL_INTERVAL, LAYER_BUILD_IMAGE_PACKAGES
 from app.services.palimpsest_kvm import MAX_LAYER_DISKS
 from app.services.palimpsest_layers import load_lineage, resolve_digest_fields
 from app.services.recipe_blocks import _NFS_EXPORT_RE
@@ -1000,6 +1003,13 @@ def _base_fields(snapshot: dict) -> dict:
     }
 
 
+IMMEDIATE_BLOCK_IMPORT_GUIDANCE = (
+    "Immediate block import is unsupported. Seal the Dockerfile import first, publish the exact sealed "
+    "SquashFS bytes for every artifact, then consume with transport=block using that exact import_id. "
+    "Provider image/volume IDs are not consume inputs; no fallback is available."
+)
+
+
 def _job_to_dict(job: LayerImportJob, consumer_status: str | None = None) -> dict:
     return {
         "id": job.id,
@@ -1023,7 +1033,11 @@ def _job_to_dict(job: LayerImportJob, consumer_status: str | None = None) -> dic
         "base_image_os_hash_algo": job.base_image_os_hash_algo,
         "base_image_os_hash_value": job.base_image_os_hash_value,
         "base_image_min_disk": job.base_image_min_disk,
-        "resource_snapshot": job.resource_snapshot,
+        "resource_snapshot": (
+            {key: value for key, value in job.resource_snapshot.items() if key != "build_token"}
+            if job.resource_snapshot is not None
+            else None
+        ),
         "artifact_ids": job.artifact_ids or [],
         "build_ids": job.build_ids or [],
         "consumer_requested": job.consumer_spec is not None,
@@ -1040,10 +1054,8 @@ def _job_to_dict(job: LayerImportJob, consumer_status: str | None = None) -> dic
         "consume_id": job.consume_id,
         "consumer_status": consumer_status
         or (
-            "active"
-            if job.consumer_spec and job.status == "complete"
-            else "error"
-            if job.consumer_spec and job.status == "error"
+            "error"
+            if job.consumer_spec and job.error_message
             else "creating"
             if job.consumer_spec and job.consume_id
             else "queued"
@@ -1057,6 +1069,8 @@ def _job_to_dict(job: LayerImportJob, consumer_status: str | None = None) -> dic
 
 
 async def create_import_job(plan: DockerfilePlan, *, consumer_spec: dict | None = None) -> dict:
+    if consumer_spec and consumer_spec.get("transport") == "block":
+        raise DockerfileImportError(IMMEDIATE_BLOCK_IMPORT_GUIDANCE)
     if plan.source_type == SOURCE_GITHUB:
         if plan.parent_digest:
             parent = await resolve_parent_layer(plan.parent_digest, name=plan.parent_name)
@@ -1070,23 +1084,25 @@ async def create_import_job(plan: DockerfilePlan, *, consumer_spec: dict | None 
     from app.services.resource_policy_store import (
         get_policy_snapshot,
         get_service_project_connection,
+        lock_service_project_admission,
         resolve_policy_snapshot,
     )
 
     if not plan.planned_layers and plan.cached_artifact_ids:
         resource_snapshot = {"base_image": {"id": plan.base_image_snapshot["base_image_id"]}}
     else:
-        service_conn = await get_service_project_connection()
+        service_project = (await get_policy_snapshot(("openstack.service_project",)))["openstack.service_project"]
+        if service_project is None:
+            raise DockerfileImportError("service project policy is not configured")
+        service_conn = await get_service_project_connection(service_project["id"])
         try:
             policies = await resolve_policy_snapshot(
                 conn=service_conn,
+                service_conn=service_conn,
                 keys=("builder.flavor", "builder.network", "manila.share_network", "manila.nfs_share_type"),
             )
-            service_project = (await get_policy_snapshot(("openstack.service_project",)))["openstack.service_project"]
-            if service_project is None:
-                raise DockerfileImportError("service project policy is not configured")
         finally:
-            await asyncio.to_thread(service_conn.close)
+            await build_work.cleanup_sync(service_conn.close)
         resource_snapshot = {
             "openstack.service_project": service_project,
             "base_image": {
@@ -1101,7 +1117,10 @@ async def create_import_job(plan: DockerfilePlan, *, consumer_spec: dict | None 
                 "share_size_gb": get_settings().builder_layer_share_size_gb,
             },
         }
+    resource_snapshot["build_token"] = uuid.uuid4().hex
     async with factory() as session:
+        if "openstack.service_project" in resource_snapshot:
+            await lock_service_project_admission(session, resource_snapshot["openstack.service_project"]["id"])
         job = LayerImportJob(
             source_type=plan.source_type,
             status="queued",
@@ -1129,7 +1148,6 @@ async def create_import_job(plan: DockerfilePlan, *, consumer_spec: dict | None 
         await session.commit()
         await session.refresh(job)
         data = _job_to_dict(job)
-    asyncio.create_task(run_dockerfile_import_job(data["id"]))
     return data
 
 
@@ -1178,14 +1196,17 @@ async def _update_job(job_id: int, **fields) -> None:
     if factory is None:
         return
     async with factory() as session:
-        job = await session.get(LayerImportJob, job_id)
-        if job is None:
-            return
+        job = await _locked_import(session, job_id)
+        if job.status in build_work.TERMINAL:
+            raise build_work.DispatcherUnavailable("terminal import cannot be overwritten")
         for key, value in fields.items():
             setattr(job, key, value)
         job.updated_at = _now()
         if fields.get("status") in {"complete", "error", "cancelled"} and job.completed_at is None:
             job.completed_at = _now()
+        # The current status is locked above; only execution authority can
+        # change while the terminal transition itself remains uncommitted.
+        await build_work.current_binding().lease.check()
         await session.commit()
 
 
@@ -1343,6 +1364,40 @@ def _parse_dockerfile_manifest(console: str, token: str, names: list[str]) -> di
     return reports
 
 
+async def _wait_for_import_shutdown(conn, server_id: str, build_id: int, token: str) -> tuple[bool, bool]:
+    """Observe the existing builder under the import target, not a layer target."""
+    state = await build_work.journal_get()
+    early_success, early_failure = bool(state.get("early_success")), bool(state.get("early_failure"))
+    for waited in range(0, _SHUTOFF_MAX_WAIT, _SHUTOFF_POLL_INTERVAL):
+        server = await build_work.run_sync(conn.compute.get_server, server_id)
+        if server is None:
+            raise DockerfileImportError("import builder is unavailable")
+        status = (server.status or "").upper()
+        if status in {"SHUTOFF", "ERROR"}:
+            return early_success, early_failure
+        if status == "ACTIVE" and waited > 60:
+            try:
+                console = await build_work.run_sync(nova.get_console_output, conn, server_id, 12000)
+            except build_work.DispatcherUnavailable:
+                raise
+            except Exception:
+                console = ""
+            early_success |= f"::AFTERGLOW::SUCCESS::{token}" in console
+            early_failure |= f"::AFTERGLOW::FAILURE::{token}" in console
+            await build_work.journal_update(early_success=early_success, early_failure=early_failure)
+        async with get_session_factory()() as session:
+            import_id = int(build_work.current_binding().member.split(":", 1)[1])
+            await _locked_import(session, import_id)
+            build = await session.get(LayerBuild, build_id)
+            if build is None or build.status in build_work.TERMINAL:
+                raise build_work.DispatcherUnavailable("bound import build is terminal")
+            build.cloud_init_status = "booting" if waited < 120 else "installing"
+            await build_work.checkpoint()
+            await session.commit()
+        await asyncio.sleep(_SHUTOFF_POLL_INTERVAL)
+    raise TimeoutError("Dockerfile builder did not shut down within the build deadline")
+
+
 async def _read_dockerfile_reports(
     conn,
     server_id: str,
@@ -1355,11 +1410,13 @@ async def _read_dockerfile_reports(
     early_failure: bool,
 ) -> dict[str, Any]:
     try:
-        console = await asyncio.to_thread(nova.get_console_output, conn, server_id, None)
+        console = await build_work.run_sync(nova.get_console_output, conn, server_id, None)
+    except build_work.DispatcherUnavailable:
+        raise
     except Exception:
         _logger.warning("[dockerfile_import] Nova console unavailable; verifying output shares")
         console = ""
-    status = await asyncio.to_thread(conn.compute.get_server, server_id)
+    status = await build_work.run_sync(conn.compute.get_server, server_id)
     observed_status = getattr(status, "status", "")
     safe_status = observed_status.upper() if isinstance(observed_status, str) else "UNKNOWN"
     if safe_status not in {"ACTIVE", "BUILD", "ERROR", "HARD_REBOOT", "REBOOT", "SHUTOFF", "SUSPENDED"}:
@@ -1405,6 +1462,8 @@ async def prepare_import_consumer(conn, request, *, profile_name: str) -> dict:
     from app.services.layer_build import resolve_layer_consume_resource_snapshot
 
     validated = LayerConsumeRequest(profile_name=profile_name, **request.model_dump(exclude_none=True))
+    if validated.transport == "block":
+        raise DockerfileImportError(IMMEDIATE_BLOCK_IMPORT_GUIDANCE)
     ssh_public_key = validated.ssh_public_key
     if validated.key_name and not ssh_public_key:
         try:
@@ -1420,10 +1479,32 @@ async def prepare_import_consumer(conn, request, *, profile_name: str) -> dict:
     return {
         "server_name": validated.server_name,
         "flavor_id": validated.flavor_id,
+        "transport": validated.transport,
         "ssh_public_key": ssh_public_key,
         "ssh_username": validated.ssh_username,
         "resource_snapshot": snapshot,
     }
+
+
+async def _locked_import(session, import_id: int):
+    """Read current SQL authority under a row lock, never a detached status snapshot."""
+    from sqlalchemy import select
+
+    await build_work.checkpoint()
+    job = (
+        await session.execute(
+            select(LayerImportJob)
+            .where(LayerImportJob.id == import_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    binding = build_work.current_binding()
+    if binding.member != f"import:{import_id}":
+        raise build_work.DispatcherUnavailable("import does not match the owned target")
+    if job is None or (job.status in build_work.TERMINAL and not (binding.allow_complete and job.status == "complete")):
+        raise build_work.DispatcherUnavailable("import is no longer runnable")
+    return job
 
 
 async def _launch_import_consumer(import_id: int) -> None:
@@ -1432,102 +1513,381 @@ async def _launch_import_consumer(import_id: int) -> None:
 
     factory = get_session_factory()
     async with factory() as session:
-        job = await session.get(LayerImportJob, import_id)
+        job = await _locked_import(session, import_id)
         spec = job.consumer_spec
         if not spec:
             return
         if not job.artifact_ids:
             raise DockerfileImportError("cannot create a VM before sealing its full-root artifact")
-        # Persisted artifact IDs are root-first; the consumer validates ancestry
-        # before reversing the mount list for the guest's child-first OverlayFS.
-        row = LayerConsume(
-            profile_name=job.profile_name,
-            server_name=spec["server_name"],
-            artifact_ids=list(job.artifact_ids),
-            resource_snapshot=spec["resource_snapshot"],
-            status="creating",
-            share_id="",
-        )
-        session.add(row)
-        await session.flush()
-        job.consume_id = row.id
-        job.status = "creating_vm"
-        job.progress_step = "전체 루트 SSH VM 활성화 중"
-        job.progress_pct = 92
-        await session.commit()
+        # Parent row lock serializes consumer admission; handoff reuses its
+        # existing allocation ledger, never a second consume row or CREATE.
+        row = await session.get(LayerConsume, job.consume_id) if job.consume_id else None
+        if job.consume_id and row is None:
+            raise DockerfileImportError("import consumer binding is missing")
+        if row is None:
+            row = LayerConsume(
+                profile_name=job.profile_name,
+                server_name=spec["server_name"],
+                transport=spec.get("transport", "nfs"),
+                project_id=spec["resource_snapshot"]["openstack.service_project"]["id"],
+                artifact_ids=list(job.artifact_ids),
+                resource_snapshot=spec["resource_snapshot"],
+                status="creating",
+                share_id="",
+            )
+            session.add(row)
+            await build_work.checkpoint()
+            await session.flush()
+            job.consume_id = row.id
         consume_id = row.id
-        profile_name = job.profile_name
-        base_image_id = job.base_image_id
+        profile_name, base_image_id = job.profile_name, job.base_image_id
         artifact_ids = list(job.artifact_ids)
-    await run_layer_consume(
-        consume_db_id=consume_id,
-        profile_name=profile_name,
-        server_name=spec["server_name"],
-        flavor_id=spec["flavor_id"],
-        image_id=base_image_id,
-        ssh_public_key=spec["ssh_public_key"],
-        ssh_username=spec["ssh_username"],
-        resource_snapshot=spec["resource_snapshot"],
-        artifact_ids=artifact_ids,
+        consumer_status = row.status
+        terminal = consumer_status in {"active", "error", "deleted", "cancelled"}
+        job.progress_step = "전체 루트 SSH VM 활성화 중"
+        await build_work.checkpoint()
+        await session.commit()
+    await build_work.journal_update(consume_id=consume_id)
+    if not terminal:
+        await build_work.checkpoint()
+        try:
+            await run_layer_consume(
+                consume_db_id=consume_id,
+                profile_name=profile_name,
+                server_name=spec["server_name"],
+                flavor_id=spec["flavor_id"],
+                transport=spec.get("transport", "nfs"),
+                image_id=base_image_id,
+                ssh_public_key=spec["ssh_public_key"],
+                ssh_username=spec["ssh_username"],
+                resource_snapshot=spec["resource_snapshot"],
+                artifact_ids=artifact_ids,
+            )
+        except (build_work.DispatcherUnavailable, build_work.SubmissionUnknown, SQLAlchemyError):
+            raise
+        except Exception as exc:
+            # Sealed output survives a definite consumer failure, but only the
+            # re-read SQL row may finish the import: a row left nonterminal
+            # (for example, failed disposal) stays runnable for the next owner.
+            _logger.warning("[dockerfile_import] import %s optional consumer failed: %s", import_id, type(exc).__name__)
+        async with factory() as session:
+            await _locked_import(session, import_id)
+            row = await session.get(LayerConsume, consume_id, populate_existing=True)
+            consumer_status = row.status if row is not None else None
+    if consumer_status not in {"active", "error", "deleted", "cancelled"}:
+        raise build_work.SubmissionUnknown("import consumer awaits reconciliation")
+    await build_work.journal_update(consumer_done=True, consumer_status=consumer_status)
+    if consumer_status != "active":
+        await _update_job(
+            import_id, error_message="Optional consumer launch failed; sealed artifacts remain consumable by import_id"
+        )
+
+
+async def _accepted_id(step: str, existing: str | None = None, *, observe=None, allow_rejected=False) -> str | None:
+    """SQL resource IDs outrank a journal; ambiguous CREATE is never replayed."""
+    submission = await build_work.submission_get(step)
+    if existing:
+        return existing
+    if submission is None:
+        return None
+    if submission["state"] == "rejected":
+        if allow_rejected:
+            return None
+        raise DockerfileImportError(f"{step} was definitively rejected")
+    if submission["state"] != "accepted":
+        if observe is not None:
+            identity = await build_work.run_sync(observe)
+            if identity:
+                return identity
+        raise build_work.SubmissionUnknown(f"{step} awaits provider reconciliation")
+    result = submission.get("result")
+    identity = result.get("id") if isinstance(result, dict) else result
+    if not identity:
+        raise build_work.SubmissionUnknown(f"{step} has no accepted resource identity")
+    return identity
+
+
+def _resource_field(resource, field, default=None):
+    return resource.get(field, default) if isinstance(resource, dict) else getattr(resource, field, default)
+
+
+def _discover_import_resource(conn, kind, name, project_id, token, import_id, network_id=None):
+    """Recover only one exact tenant/token-bound resource after a lost reply."""
+    if kind == "port":
+        resources = list(conn.network.ports(name=name))
+    elif kind == "share":
+        resources = manila.get_client(conn).get("shares/detail", params={"name": name})["shares"]
+    elif kind == "volume":
+        resources = list(conn.block_storage.volumes(name=name))
+    else:
+        resources = list(conn.compute.servers(name=name))
+    matches = []
+    for resource in resources:
+        owner = _resource_field(resource, "project_id") or _resource_field(resource, "tenant_id")
+        if owner != project_id or _resource_field(resource, "name") != name:
+            continue
+        if kind == "port":
+            exact = (
+                _resource_field(resource, "network_id") == network_id
+                and _resource_field(resource, "description") == f"afterglow-import:{import_id}:{token}"
+            )
+        else:
+            metadata = _resource_field(resource, "metadata", {}) or {}
+            exact = metadata.get("import_id") == str(import_id) and metadata.get("build_token") == token
+        if exact:
+            matches.append(_resource_field(resource, "id"))
+    if len(matches) != 1 or not matches[0]:
+        raise build_work.SubmissionUnknown("import submission has no unique owned provider identity")
+    return matches[0]
+
+
+def _get_import_share(conn, share_id):
+    return manila.get_client(conn).get(f"shares/{share_id}")["share"]
+
+
+async def _import_exports(conn, share_id: str) -> list[str]:
+    for _ in range(60):
+        share = await build_work.run_sync(_get_import_share, conn, share_id)
+        if share["status"] == "available":
+            break
+        if share["status"].startswith("error"):
+            raise DockerfileImportError("import share failed provisioning")
+        await asyncio.sleep(5)
+    else:
+        raise TimeoutError("import share did not become available")
+    locations = await build_work.run_sync(manila.get_export_locations, conn, share_id)
+    candidates = [
+        path
+        for path in locations
+        if isinstance(path, str) and _NFS_EXPORT_RE.fullmatch(path) and path.rpartition(":/")[0]
+    ]
+    if not candidates:
+        raise DockerfileImportError("import share export location is unavailable")
+    return candidates
+
+
+async def _import_rule(conn, step: str, share_id: str, fixed_ip: str, mode: str) -> str:
+    submission = await build_work.submission_get(step)
+    if submission is not None:
+        rules = await build_work.run_sync(manila.list_access_rules, conn, share_id)
+        if submission["state"] == "accepted":
+            access_id = submission["result"]["access_id"]
+            if not any(rule.get("id") == access_id for rule in rules):
+                raise DockerfileImportError("import access rule disappeared")
+            return access_id
+        matches = [
+            rule
+            for rule in rules
+            if rule.get("access_to") == fixed_ip
+            and rule.get("access_type") == "ip"
+            and rule.get("access_level") == mode
+            and rule.get("state") == "active"
+        ]
+        if len(matches) != 1:
+            raise build_work.SubmissionUnknown(f"{step} awaits access reconciliation")
+        return matches[0]["id"]
+    rule = await build_work.submit(
+        step,
+        manila.ensure_nfs_access_rule,
+        conn,
+        share_id,
+        fixed_ip,
+        mode,
+        root_squash=False,
+        sec_flavor="sys",
     )
-    await _update_job(import_id, status="complete", progress_step="SSH VM 준비 완료", progress_pct=100)
+    return rule["access_id"]
+
+
+async def _open_import_connection(project_id: str):
+    from app.services.keystone import get_admin_connection_for_project
+
+    holder = []
+    connection = None
+
+    def connect():
+        value = get_admin_connection_for_project(project_id)
+        holder.append(value)
+        return value
+
+    try:
+        connection = await build_work.run_sync(connect)
+        return connection
+    finally:
+        if connection is None and holder:
+            await build_work.cleanup_sync(holder[0].close)
+
+
+async def _dispose_import_resources(conn, state: dict, *, drop_outputs=False, protected_shares=()):
+    from app.services import cinder
+
+    if drop_outputs and state.get("verifier"):
+        from app.services.dockerfile_verify import _cleanup_verifier
+
+        await _cleanup_verifier(conn, state["verifier"])
+    for entry in state.get("shares", []) + state.get("ancestors", []):
+        if entry.get("access_id") and not entry.get("revoked"):
+            share_id = entry.get("id", entry.get("share_id"))
+            rules = await build_work.run_sync(manila.list_access_rules, conn, share_id)
+            if any(rule.get("id") == entry["access_id"] for rule in rules):
+                await build_work.run_sync(manila.revoke_access_rule, conn, share_id, entry["access_id"])
+            entry["revoked"] = True
+            await build_work.journal_update(shares=state.get("shares", []), ancestors=state.get("ancestors", []))
+    if state.get("server_id") and not state.get("server_deleted"):
+        await build_work.run_sync(conn.compute.delete_server, state["server_id"], ignore_missing=True)
+        state["server_deleted"] = True
+        await build_work.journal_update(server_deleted=True)
+    if state.get("base_volume_id") and not state.get("base_deleted"):
+        try:
+            volume = await build_work.run_sync(conn.block_storage.get_volume, state["base_volume_id"])
+        except ResourceNotFound:
+            # DELETE may have succeeded before its journal acknowledgment.
+            volume = None
+        if volume is not None and _resource_field(volume, "status") == "deleting":
+            # A successor observes disappearance on its next owned attempt;
+            # this clone will never become available again and needs no DELETE.
+            raise build_work.SubmissionUnknown("base volume deletion awaits disappearance")
+        if volume is not None:
+            # A clone that failed provisioning cannot become available. Normal
+            # Cinder DELETE accepts the error state without any force override.
+            if _resource_field(volume, "status") != "error":
+                await build_work.run_sync(conn.block_storage.wait_for_status, volume, status="available", wait=180)
+            await build_work.run_sync(cinder.delete_volume, conn, state["base_volume_id"])
+        state["base_deleted"] = True
+        await build_work.journal_update(base_deleted=True)
+    if state.get("port_id") and not state.get("port_deleted"):
+        await build_work.run_sync(neutron.delete_port, conn, state["port_id"])
+        state["port_deleted"] = True
+        await build_work.journal_update(port_deleted=True)
+    if drop_outputs:
+        for entry in state.get("shares", []):
+            if not entry.get("id") or entry.get("deleted") or entry["id"] in protected_shares:
+                continue
+            try:
+                share = await build_work.run_sync(_get_import_share, conn, entry["id"])
+            except build_work.DispatcherUnavailable:
+                raise
+            except Exception as exc:
+                if getattr(getattr(exc, "response", None), "status_code", None) != 404:
+                    raise
+                share = None
+            if share is not None and share.get("status") != "deleting":
+                await build_work.run_sync(manila.delete_file_storage, conn, entry["id"])
+            entry["deleted"] = True
+            await build_work.journal_update(shares=state.get("shares", []))
+
+
+async def _finish_failed_import(import_id: int, conn=None) -> None:
+    """Remain discoverable during disposal; terminalize SQL only at its end."""
+    factory = get_session_factory()
+    owned_connection = False
+    try:
+        state = await build_work.journal_get()
+        async with factory() as session:
+            job = await _locked_import(session, import_id)
+            snapshot = job.resource_snapshot or {}
+            builds = [await session.get(LayerBuild, identity) for identity in (job.build_ids or [])]
+            builds = [build for build in builds if build is not None]
+            protected = {build.share_id for build in builds if build.status == "complete"}
+        state["server_id"] = await _accepted_id(
+            "server",
+            state.get("server_id") or next((build.server_id for build in builds if build.server_id), None),
+            allow_rejected=True,
+        )
+        state["port_id"] = await _accepted_id(
+            "port",
+            state.get("port_id") or next((build.port_id for build in builds if build.port_id), None),
+            allow_rejected=True,
+        )
+        state["base_volume_id"] = await _accepted_id("base-volume", state.get("base_volume_id"), allow_rejected=True)
+        shares = state.setdefault("shares", [{} for _ in builds])
+        for index, build in enumerate(builds):
+            while len(shares) <= index:
+                shares.append({})
+            shares[index]["id"] = await _accepted_id(
+                f"share:{index}", build.share_id or shares[index].get("id"), allow_rejected=True
+            )
+        await build_work.journal_update(
+            server_id=state["server_id"],
+            port_id=state["port_id"],
+            base_volume_id=state["base_volume_id"],
+            shares=shares,
+        )
+        has_resources = (
+            state["server_id"]
+            or state["port_id"]
+            or state["base_volume_id"]
+            or any(entry.get("id") for entry in shares)
+            or state.get("verifier")
+        )
+        if has_resources:
+            if conn is None:
+                project_id = snapshot.get("openstack.service_project", {}).get("id")
+                if not project_id:
+                    raise build_work.DispatcherUnavailable("failed import cleanup project is unavailable")
+                conn = await _open_import_connection(project_id)
+                owned_connection = True
+            await _dispose_import_resources(conn, state, drop_outputs=True, protected_shares=protected)
+        async with factory() as session:
+            job = await _locked_import(session, import_id)
+            message = state["pending_failure"]
+            for identity in job.build_ids or []:
+                build = await session.get(LayerBuild, identity, with_for_update=True, populate_existing=True)
+                if build is not None and build.status not in build_work.TERMINAL:
+                    build.status, build.cloud_init_status = "error", "failure"
+                    build.progress_step, build.error_message = "Dockerfile import 실패", message
+                    build.completed_at = _now()
+            job.status, job.progress_step, job.error_message = "error", "실패", message
+            job.completed_at, job.updated_at = _now(), _now()
+            await build_work.current_binding().lease.check()
+            await session.commit()
+    except SQLAlchemyError as exc:
+        raise build_work.DispatcherUnavailable("import SQL authority is unavailable") from exc
+    except (asyncio.CancelledError, build_work.DispatcherUnavailable, build_work.SubmissionUnknown):
+        raise
+    except Exception as exc:
+        raise build_work.SubmissionUnknown("failed import disposal awaits handoff") from exc
+    finally:
+        if owned_connection:
+            await build_work.cleanup_sync(conn.close)
 
 
 async def run_dockerfile_import_job(import_id: int) -> None:
-    """Build a clean Glance root and its deltas, then optionally boot the result."""
-    from app.services import cinder
+    """Execute the admitted SQL job under its worker lease; resume, never resubmit."""
+    from app.services.palimpsest_digest import DigestReport
 
+    await build_work.checkpoint()
     factory = get_session_factory()
-    if factory is None:
-        return
     conn = None
-    port_id: str | None = None
-    server_id: str | None = None
-    base_volume_id: str | None = None
-    share_ids: list[str] = []
-    rw_access_rules: list[tuple[str, str]] = []
-    ro_access_rules: list[tuple[str, str]] = []
-    build_ids: list[int] = []
     artifacts_committed = False
+    consumer_started = False
     try:
+        state = await build_work.journal_get()
+        if state.get("pending_failure"):
+            await _finish_failed_import(import_id)
+            return
         async with factory() as session:
-            job = await session.get(LayerImportJob, import_id)
-            if job is None:
-                return
-            cached_ids = list(job.artifact_ids or [])
+            job = await _locked_import(session, import_id)
+            cached_ids = list(state.get("cached_ids", job.artifact_ids or []))
             planned = list(job.planned_layers or [])
-            if not planned and cached_ids:
-                await _save_import_profile(session, job, cached_ids)
-                job.status = "built" if job.consumer_spec else "complete"
-                job.progress_step = "캐시 재사용 완료"
-                job.progress_pct = 90 if job.consumer_spec else 100
-                if not job.consumer_spec:
-                    job.completed_at = _now()
-                await session.commit()
-                artifacts_committed = True
-            else:
-                snapshot = job.resource_snapshot or {}
-                service_project = snapshot.get("openstack.service_project") or {}
-                builder_flavor = snapshot.get("builder.flavor") or {}
-                builder_network = snapshot.get("builder.network") or {}
-                manila_snapshot = snapshot.get("manila") or {}
-                if not all(
-                    (
-                        service_project.get("id"),
-                        builder_flavor.get("id"),
-                        builder_network.get("id"),
-                        manila_snapshot.get("share_network_id"),
-                        manila_snapshot.get("share_type"),
-                        manila_snapshot.get("share_size_gb"),
-                    )
-                ):
-                    raise DockerfileImportError("import resource snapshot is incomplete")
-                if cached_ids:
-                    cached_final = await session.get(LayerArtifact, cached_ids[-1])
-                    if cached_final is None or not await _rooted_lineage(session, cached_final, job.base_image_id):
-                        raise DockerfileImportError("cached import lineage is no longer sealed and complete")
+            snapshot = job.resource_snapshot or {}
+            existing_builds = [await session.get(LayerBuild, identity) for identity in (job.build_ids or [])]
+            if any(build is None for build in existing_builds):
+                raise DockerfileImportError("import build binding is missing")
+            if "outputs" not in state:
                 root_name = None
-                if not cached_ids:
+                recovered_token = next((build.build_token for build in existing_builds if build.build_token), None)
+                if existing_builds:
+                    if not recovered_token and any(build.server_id for build in existing_builds):
+                        raise build_work.SubmissionUnknown("existing builder token awaits reconciliation")
+                    cached_ids = [
+                        identity
+                        for identity in cached_ids
+                        if (await session.get(LayerArtifact, identity)).build_id not in job.build_ids
+                    ]
+                    if existing_builds[0].kind == "dockerfile-root":
+                        root_name = existing_builds[0].layer_name
+                elif not cached_ids:
                     identity = f"{job.base_image_id}:{job.base_image_os_hash_value or job.base_image_checksum or ''}"
                     root_name = "root-" + hashlib.sha256(identity.encode()).hexdigest()[:20]
                 outputs = (
@@ -1547,336 +1907,458 @@ async def run_dockerfile_import_job(import_id: int) -> None:
                     if root_name
                     else []
                 ) + planned
-                for step in outputs:
-                    build = LayerBuild(
-                        layer_name=step["name"],
-                        kind="dockerfile-root" if step["instruction"] == "ROOT" else "dockerfile",
-                        python_version=None,
-                        pip_packages=[],
-                        apt_packages=[],
-                        parent_artifact_id=cached_ids[-1] if cached_ids and not build_ids else None,
-                        share_id="",
-                        builder_flavor_id=builder_flavor["id"],
-                        builder_network_id=builder_network["id"],
-                        resource_snapshot=snapshot,
-                        status="queued",
-                        cloud_init_status="queued",
-                        progress_step="Dockerfile import 대기",
-                        progress_pct=0,
-                        ubuntu_base=job.ubuntu_base,
-                        base_image_id=job.base_image_id,
-                        base_image_name=job.base_image_name,
-                        base_image_checksum=job.base_image_checksum,
-                        base_image_os_hash_algo=job.base_image_os_hash_algo,
-                        base_image_os_hash_value=job.base_image_os_hash_value,
-                        base_image_min_disk=job.base_image_min_disk,
-                        source_metadata=step.get("source_metadata"),
-                    )
-                    session.add(build)
-                    await session.flush()
-                    build_ids.append(build.id)
-                job.build_ids = build_ids
-                job.status = "validating"
-                job.progress_step = "빌드 레코드 생성"
-                job.progress_pct = 5
-                await session.commit()
-
-        if artifacts_committed:
-            if job.consumer_spec:
-                await _launch_import_consumer(import_id)
-            return
-
-        from app.services.keystone import get_admin_connection_for_project
-
-        conn = await asyncio.to_thread(get_admin_connection_for_project, service_project["id"])
-        token = uuid.uuid4().hex
-        port = await asyncio.to_thread(
-            neutron.create_port, conn, builder_network["id"], f"afterglow-layer-import-{token[:8]}"
-        )
-        port_id = port["id"]
-        fixed_ip = port["fixed_ip"]
-        await _update_job(import_id, status="creating_vm", progress_step="share/VM 생성", progress_pct=15)
-        exports: list[list[str]] = []
-        for index, step in enumerate(outputs):
-            share = await asyncio.to_thread(
-                manila.create_file_storage,
-                conn,
-                f"afterglow-layer-{step['name']}-{token[:8]}",
-                manila_snapshot["share_size_gb"],
-                manila_snapshot["share_network_id"],
-                manila_snapshot["share_type"],
-                "NFS",
-                {"afterglow_role": "dockerfile-layer", "afterglow_layer_name": step["name"]},
-            )
-            share_ids.append(share.id)
-            rule = await asyncio.to_thread(
-                manila.ensure_nfs_access_rule, conn, share.id, fixed_ip, "rw", root_squash=False, sec_flavor="sys"
-            )
-            rw_access_rules.append((share.id, rule["access_id"]))
-            locations = await asyncio.to_thread(manila.get_export_locations, conn, share.id)
-            candidates = [
-                path
-                for path in locations
-                if isinstance(path, str) and _NFS_EXPORT_RE.fullmatch(path) and path.rpartition(":/")[0]
-            ]
-            if not candidates:
-                raise DockerfileImportError("import share export location is unavailable")
-            exports.append(candidates)
-            async with factory() as session:
-                build = await session.get(LayerBuild, build_ids[index])
-                build.share_id = share.id
-                build.status = "creating_vm"
-                build.progress_pct = 15
-                await session.commit()
-
-        ancestors: list[dict] = []
-        if cached_ids:
-            async with factory() as session:
+                # Freeze context and token BEFORE build flush/any provider call.
+                await build_work.journal_update(
+                    outputs=outputs,
+                    cached_ids=cached_ids,
+                    root_name=root_name,
+                    token=recovered_token or snapshot.get("build_token") or uuid.uuid4().hex,
+                    snapshot=snapshot,
+                    adopted_sql=bool(existing_builds),
+                    shares=[{"id": build.share_id} for build in existing_builds]
+                    if existing_builds
+                    else [{} for _ in outputs],
+                    server_id=next((build.server_id for build in existing_builds if build.server_id), None),
+                    port_id=next((build.port_id for build in existing_builds if build.port_id), None),
+                )
+                state = await build_work.journal_get()
+            outputs = state.get("outputs")
+            if outputs is None:
+                raise DockerfileImportError("import execution context is missing")
+            root_name, token = state["root_name"], state["token"]
+            build_ids = list(job.build_ids or [])
+            if outputs:
+                required = (
+                    snapshot.get("openstack.service_project", {}).get("id"),
+                    snapshot.get("builder.flavor", {}).get("id"),
+                    snapshot.get("builder.network", {}).get("id"),
+                    snapshot.get("manila", {}).get("share_network_id"),
+                    snapshot.get("manila", {}).get("share_type"),
+                    snapshot.get("manila", {}).get("share_size_gb"),
+                )
+                if not all(required):
+                    raise DockerfileImportError("import resource snapshot is incomplete")
+                if not build_ids:
+                    for step in outputs:
+                        build = LayerBuild(
+                            layer_name=step["name"],
+                            kind="dockerfile-root" if step["instruction"] == "ROOT" else "dockerfile",
+                            python_version=None,
+                            pip_packages=[],
+                            apt_packages=[],
+                            parent_artifact_id=cached_ids[-1] if cached_ids and not build_ids else None,
+                            share_id="",
+                            builder_flavor_id=snapshot["builder.flavor"]["id"],
+                            builder_network_id=snapshot["builder.network"]["id"],
+                            resource_snapshot=snapshot,
+                            status="queued",
+                            cloud_init_status="queued",
+                            progress_step="Dockerfile import 대기",
+                            progress_pct=0,
+                            ubuntu_base=job.ubuntu_base,
+                            base_image_id=job.base_image_id,
+                            base_image_name=job.base_image_name,
+                            base_image_checksum=job.base_image_checksum,
+                            base_image_os_hash_algo=job.base_image_os_hash_algo,
+                            base_image_os_hash_value=job.base_image_os_hash_value,
+                            base_image_min_disk=job.base_image_min_disk,
+                            source_metadata=step.get("source_metadata"),
+                        )
+                        session.add(build)
+                        await build_work.checkpoint()
+                        await session.flush()
+                        build_ids.append(build.id)
+                    job.build_ids = build_ids
+                if len(build_ids) != len(outputs):
+                    raise DockerfileImportError("import build binding does not match frozen outputs")
+            builds = [await session.get(LayerBuild, identity) for identity in build_ids]
+            if any(build is None for build in builds):
+                raise DockerfileImportError("import build binding is missing")
+            if cached_ids:
                 final = await session.get(LayerArtifact, cached_ids[-1])
-                lineage = await _rooted_lineage(session, final, job.base_image_id)
-                if not lineage:
-                    raise DockerfileImportError("cached lineage changed during import")
-                for artifact in lineage:
-                    rule = await asyncio.to_thread(
-                        manila.ensure_nfs_access_rule,
+                if final is None or not await _rooted_lineage(session, final, job.base_image_id):
+                    raise DockerfileImportError("cached import lineage is no longer sealed and complete")
+            # SQL build/artifact completion outranks a missing journal ack.
+            artifacts_committed = bool(builds) and all(build.status == "complete" for build in builds)
+            if any(build.status in build_work.TERMINAL and build.status != "complete" for build in builds):
+                raise build_work.DispatcherUnavailable("bound import build is terminal")
+            if artifacts_committed:
+                await _save_import_profile(session, job, list(job.artifact_ids or []))
+            if not outputs:
+                await _save_import_profile(session, job, cached_ids)
+                artifacts_committed = True
+            if job.status != "complete":
+                job.status = "running"
+            await build_work.checkpoint()
+            await session.commit()
+        await build_work.journal_update(build_ids=build_ids)
+
+        if outputs:
+            conn = await _open_import_connection(snapshot["openstack.service_project"]["id"])
+            state = await build_work.journal_get()
+            if not artifacts_committed:
+                port_id = await _accepted_id(
+                    "port",
+                    next((b.port_id for b in builds if b.port_id), state.get("port_id")),
+                    observe=lambda: _discover_import_resource(
                         conn,
-                        artifact.share_id,
-                        fixed_ip,
-                        "ro",
-                        root_squash=False,
-                        sec_flavor="sys",
+                        "port",
+                        f"afterglow-layer-import-{token[:8]}",
+                        snapshot["openstack.service_project"]["id"],
+                        token,
+                        import_id,
+                        snapshot["builder.network"]["id"],
+                    ),
+                )
+                if port_id:
+                    port = await build_work.run_sync(conn.network.get_port, port_id)
+                    if port is None or not port.fixed_ips:
+                        raise DockerfileImportError("import port is unavailable")
+                    fixed_ip = port.fixed_ips[0]["ip_address"]
+                else:
+                    if state.get("adopted_sql"):
+                        raise build_work.SubmissionUnknown("existing import port awaits reconciliation")
+                    port = await build_work.submit(
+                        "port",
+                        conn.network.create_port,
+                        network_id=snapshot["builder.network"]["id"],
+                        name=f"afterglow-layer-import-{token[:8]}",
+                        description=f"afterglow-import:{import_id}:{token}",
                     )
-                    ro_access_rules.append((artifact.share_id, rule["access_id"]))
-                    locations = await asyncio.to_thread(manila.get_export_locations, conn, artifact.share_id)
-                    candidates = [
-                        path
-                        for path in locations
-                        if isinstance(path, str) and _NFS_EXPORT_RE.fullmatch(path) and path.rpartition(":/")[0]
-                    ]
-                    if not candidates:
-                        raise DockerfileImportError("cached ancestor export location is unavailable")
-                    ancestors.append(
-                        {
-                            "exports": candidates,
-                            "filename": artifact.sqsh_filename,
-                            "blob_digest": artifact.blob_digest,
+                    port_id, fixed_ip = port.id, port.fixed_ips[0]["ip_address"]
+                await build_work.journal_update(port_id=port_id, fixed_ip=fixed_ip)
+                shares = list(state.get("shares", [{} for _ in outputs]))
+                for index, step in enumerate(outputs):
+                    entry = shares[index]
+                    share_id = await _accepted_id(
+                        f"share:{index}",
+                        builds[index].share_id or entry.get("id"),
+                        observe=lambda step=step: _discover_import_resource(
+                            conn,
+                            "share",
+                            f"afterglow-layer-{step['name']}-{token[:8]}",
+                            snapshot["openstack.service_project"]["id"],
+                            token,
+                            import_id,
+                        ),
+                    )
+                    if not share_id:
+                        if state.get("adopted_sql"):
+                            raise build_work.SubmissionUnknown("existing import share awaits reconciliation")
+                        policy = snapshot["manila"]
+                        share = await build_work.submit(
+                            f"share:{index}",
+                            manila.submit_file_storage,
+                            conn,
+                            f"afterglow-layer-{step['name']}-{token[:8]}",
+                            policy["share_size_gb"],
+                            policy["share_network_id"],
+                            policy["share_type"],
+                            "NFS",
+                            {
+                                "afterglow_role": "dockerfile-layer",
+                                "afterglow_layer_name": step["name"],
+                                "import_id": str(import_id),
+                                "build_token": token,
+                            },
+                        )
+                        share_id = share["id"]
+                    entry["id"] = share_id
+                    await build_work.journal_update(shares=shares)
+                    async with factory() as session:
+                        await _locked_import(session, import_id)
+                        build = await session.get(LayerBuild, build_ids[index])
+                        build.share_id = share_id
+                        await build_work.checkpoint()
+                        await session.commit()
+                    if not entry.get("exports"):
+                        entry["exports"] = await _import_exports(conn, share_id)
+                        await build_work.journal_update(shares=shares)
+                    if not entry.get("access_id"):
+                        entry["access_id"] = await _import_rule(conn, f"rw:{index}", share_id, fixed_ip, "rw")
+                        await build_work.journal_update(shares=shares)
+                ancestors = state.get("ancestors")
+                if ancestors is None:
+                    ancestors = []
+                    if cached_ids:
+                        async with factory() as session:
+                            await _locked_import(session, import_id)
+                            final = await session.get(LayerArtifact, cached_ids[-1])
+                            lineage = await _rooted_lineage(session, final, job.base_image_id)
+                            if not lineage:
+                                raise DockerfileImportError("cached lineage changed during import")
+                            ancestors = [
+                                {
+                                    "share_id": artifact.share_id,
+                                    "filename": artifact.sqsh_filename,
+                                    "blob_digest": artifact.blob_digest,
+                                }
+                                for artifact in lineage
+                            ]
+                    await build_work.journal_update(ancestors=ancestors)
+                for index, ancestor in enumerate(ancestors):
+                    if not ancestor.get("exports"):
+                        ancestor["exports"] = await _import_exports(conn, ancestor["share_id"])
+                        await build_work.journal_update(ancestors=ancestors)
+                    if not ancestor.get("access_id"):
+                        ancestor["access_id"] = await _import_rule(
+                            conn, f"ro:{index}", ancestor["share_id"], fixed_ip, "ro"
+                        )
+                        await build_work.journal_update(ancestors=ancestors)
+                base_volume_id = await _accepted_id(
+                    "base-volume",
+                    state.get("base_volume_id"),
+                    observe=lambda: _discover_import_resource(
+                        conn,
+                        "volume",
+                        f"afterglow-root-source-{token[:8]}",
+                        snapshot["openstack.service_project"]["id"],
+                        token,
+                        import_id,
+                    ),
+                )
+                if root_name and not base_volume_id and state.get("adopted_sql"):
+                    existing_server = next((build.server_id for build in builds if build.server_id), None)
+                    if existing_server:
+                        attachments = await build_work.run_sync(
+                            lambda: list(conn.compute.volume_attachments(existing_server))
+                        )
+                        candidates = []
+                        for attachment in attachments:
+                            identity = _resource_field(attachment, "volume_id")
+                            volume = await build_work.run_sync(conn.block_storage.get_volume, identity)
+                            if (
+                                volume is not None
+                                and volume.name == f"afterglow-root-source-{token[:8]}"
+                                and _resource_field(volume, "project_id") == snapshot["openstack.service_project"]["id"]
+                            ):
+                                candidates.append(identity)
+                        if len(candidates) == 1:
+                            base_volume_id = candidates[0]
+                            await build_work.journal_update(base_volume_id=base_volume_id)
+                    if not base_volume_id:
+                        raise build_work.SubmissionUnknown("existing root source volume awaits reconciliation")
+                if root_name:
+                    if not base_volume_id:
+                        image = await build_work.run_sync(conn.image.get_image, job.base_image_id)
+                        if image is None or getattr(image, "status", None) != "active":
+                            raise DockerfileImportError("Glance base image is no longer active")
+                        for field, expected in (
+                            ("checksum", job.base_image_checksum),
+                            ("hash_algo", job.base_image_os_hash_algo),
+                            ("hash_value", job.base_image_os_hash_value),
+                        ):
+                            if expected and getattr(image, field, None) != expected:
+                                raise DockerfileImportError("Glance base image fingerprint changed before snapshot")
+                        volume = await build_work.submit(
+                            "base-volume",
+                            conn.block_storage.create_volume,
+                            name=f"afterglow-root-source-{token[:8]}",
+                            imageRef=job.base_image_id,
+                            size=max(job.base_image_min_disk or 0, get_settings().boot_volume_size_gb, 1),
+                            metadata={"import_id": str(import_id), "build_token": token},
+                        )
+                        base_volume_id = volume.id
+                    await build_work.journal_update(base_volume_id=base_volume_id)
+                exports = [entry["exports"] for entry in shares]
+                share_ids = [entry["id"] for entry in shares]
+                server_id = await _accepted_id(
+                    "server",
+                    next((b.server_id for b in builds if b.server_id), state.get("server_id")),
+                    observe=lambda: _discover_import_resource(
+                        conn,
+                        "server",
+                        f"afterglow-layer-import-{job.layer_prefix}-{token[:8]}",
+                        snapshot["openstack.service_project"]["id"],
+                        token,
+                        import_id,
+                    ),
+                )
+                if server_id:
+                    server = await build_work.run_sync(conn.compute.get_server, server_id)
+                    if server is None:
+                        raise DockerfileImportError("import builder is unavailable")
+                else:
+                    if state.get("adopted_sql"):
+                        raise build_work.SubmissionUnknown("existing import builder awaits reconciliation")
+                    if base_volume_id:
+                        volume = await build_work.run_sync(conn.block_storage.get_volume, base_volume_id)
+                        await build_work.run_sync(
+                            conn.block_storage.wait_for_status, volume, status="available", wait=300
+                        )
+                    user_data = _dockerfile_cloud_config(job, exports, ancestors, root_name, base_volume_id, token)
+                    block_mapping = []
+                    if base_volume_id:
+                        block_mapping = [
+                            {
+                                "boot_index": 0,
+                                "uuid": job.base_image_id,
+                                "source_type": "image",
+                                "destination_type": "local",
+                            },
+                            {
+                                "boot_index": -1,
+                                "uuid": base_volume_id,
+                                "source_type": "volume",
+                                "destination_type": "volume",
+                                "delete_on_termination": False,
+                                "disk_bus": "virtio",
+                                "device_type": "disk",
+                            },
+                        ]
+                    await build_work.journal_update(user_data=user_data, block_mapping=block_mapping)
+                    server = await build_work.submit(
+                        "server",
+                        conn.compute.create_server,
+                        name=f"afterglow-layer-import-{job.layer_prefix}-{token[:8]}",
+                        image_id=job.base_image_id,
+                        flavor_id=snapshot["builder.flavor"]["id"],
+                        networks=[{"port": port_id}],
+                        user_data=base64.b64encode(user_data.encode()).decode(),
+                        **({"block_device_mapping_v2": block_mapping} if block_mapping else {}),
+                        metadata={
+                            "union_type": "dockerfile-layer-import",
+                            "afterglow_managed": "true",
+                            "import_id": str(import_id),
+                            "build_token": token,
+                        },
+                    )
+                    server_id = server.id
+                await build_work.journal_update(server_id=server_id)
+                async with factory() as session:
+                    await _locked_import(session, import_id)
+                    for index, identity in enumerate(build_ids):
+                        build = await session.get(LayerBuild, identity)
+                        if build.status not in build_work.TERMINAL:
+                            build.server_id, build.port_id = server_id, port_id
+                            build.build_token = token if index == 0 else None
+                            build.status, build.cloud_init_status = "building", "booting"
+                            build.progress_step, build.progress_pct = "Dockerfile import 실행 중", 35
+                    await build_work.checkpoint()
+                    await session.commit()
+                frozen_reports = state.get("reports")
+                if frozen_reports:
+                    reports = {name: DigestReport(**value) for name, value in frozen_reports.items()}
+                else:
+                    await build_work.checkpoint()
+                    early_success, early_failure = await _wait_for_import_shutdown(conn, server_id, build_ids[0], token)
+                    await build_work.checkpoint()
+                    reports = await _read_dockerfile_reports(
+                        conn, server_id, token, outputs, exports, share_ids, snapshot, early_success, early_failure
+                    )
+                    await build_work.journal_update(
+                        reports={
+                            name: {
+                                "layer_name": report.layer_name,
+                                "blob_digest": report.blob_digest,
+                                "blob_md5": report.blob_md5,
+                                "size_bytes": report.size_bytes,
+                            }
+                            for name, report in reports.items()
                         }
                     )
-
-        if root_name:
-            image = await asyncio.to_thread(conn.image.get_image, job.base_image_id)
-            if image is None or getattr(image, "status", None) != "active":
-                raise DockerfileImportError("Glance base image is no longer active")
-            for field, expected in (
-                ("checksum", job.base_image_checksum),
-                ("hash_algo", job.base_image_os_hash_algo),
-                ("hash_value", job.base_image_os_hash_value),
-            ):
-                if expected and getattr(image, field, None) != expected:
-                    raise DockerfileImportError("Glance base image fingerprint changed before snapshot")
-            volume = await asyncio.to_thread(
-                cinder.create_volume_from_image,
-                conn,
-                f"afterglow-root-source-{token[:8]}",
-                job.base_image_id,
-                max(job.base_image_min_disk or 0, get_settings().boot_volume_size_gb, 1),
-            )
-            base_volume_id = volume.id
-
-        user_data = _dockerfile_cloud_config(job, exports, ancestors, root_name, base_volume_id, token)
-        server = await asyncio.to_thread(
-            conn.compute.create_server,
-            name=f"afterglow-layer-import-{job.layer_prefix}-{token[:8]}",
-            image_id=job.base_image_id,
-            flavor_id=builder_flavor["id"],
-            networks=[{"port": port_id}],
-            user_data=base64.b64encode(user_data.encode()).decode(),
-            metadata={
-                "union_type": "dockerfile-layer-import",
-                "afterglow_managed": "true",
-                "import_id": str(import_id),
-            },
-        )
-        server_id = server.id
-        if base_volume_id:
-            await asyncio.to_thread(conn.compute.wait_for_server, server, status="ACTIVE", wait=300)
-            await asyncio.to_thread(conn.compute.create_volume_attachment, server_id, volume_id=base_volume_id)
-        await _update_job(import_id, status="running", progress_step="Dockerfile import 실행 중", progress_pct=35)
-        for index, build_id in enumerate(build_ids):
-            await _set_build_running(build_id, server_id, port_id, token if index == 0 else None)
-        early_success, early_failure = await _wait_for_shutoff(conn, server_id, build_ids[0], token)
-        reports = await _read_dockerfile_reports(
-            conn, server_id, token, outputs, exports, share_ids, snapshot, early_success, early_failure
-        )
-        for rules in (rw_access_rules, ro_access_rules):
-            while rules:
-                share_id, access_id = rules[-1]
-                await asyncio.to_thread(manila.revoke_access_rule, conn, share_id, access_id)
-                rules.pop()
-
-        # Tear down disposable compute and the never-booted Glance clone before sealing metadata.
-        await asyncio.to_thread(conn.compute.delete_server, server_id)
-        server_id = None
-        if base_volume_id:
-            volume = await asyncio.to_thread(conn.block_storage.get_volume, base_volume_id)
-            await asyncio.to_thread(conn.block_storage.wait_for_status, volume, status="available", wait=180)
-            await asyncio.to_thread(cinder.delete_volume, conn, base_volume_id)
-            base_volume_id = None
-        await asyncio.to_thread(neutron.delete_port, conn, port_id)
-        port_id = None
-
-        async with factory() as session:
-            job = await session.get(LayerImportJob, import_id)
-            parent_id = cached_ids[-1] if cached_ids else None
-            completed_ids = list(cached_ids)
-            for index, step in enumerate(outputs):
-                report = reports[step["name"]]
-                root = step["instruction"] == "ROOT"
-                kind = "dockerfile-root" if root else "dockerfile"
-                fields = await resolve_digest_fields(
-                    session,
-                    report=report,
-                    parent_artifact_id=parent_id,
-                    name=step["name"],
-                    kind=kind,
-                    ubuntu_base=job.ubuntu_base,
-                    python_version=None,
-                    pip_packages=[],
-                    apt_packages=[],
-                )
-                if not fields["chain_id"]:
-                    raise DockerfileImportError("Dockerfile artifact has no verifiable parent digest")
-                step_digest = None
-                if not root:
-                    parent = await session.get(LayerArtifact, parent_id)
-                    args = step["args"]
-                    if step["instruction"] in {"COPY", "ADD"}:
-                        args += "\ncommit:" + (step.get("source_metadata") or {}).get("commit_sha", "")
-                    step_digest = compute_step_digest(parent.chain_id, step["instruction"], args)
-                artifact = LayerArtifact(
-                    name=step["name"],
-                    kind=kind,
-                    python_version=None,
-                    pip_packages=[],
-                    apt_packages=[],
-                    ubuntu_base=job.ubuntu_base,
-                    sqsh_filename=f"{step['name']}-latest.sqsh",
-                    share_id=share_ids[index],
-                    build_id=build_ids[index],
-                    parent_id=parent_id,
-                    is_sealed=True,
-                    size_bytes=report.size_bytes,
-                    step_digest=step_digest,
-                    **fields,
-                    base_image_id=job.base_image_id,
-                    base_image_name=job.base_image_name,
-                    base_image_checksum=job.base_image_checksum,
-                    base_image_os_hash_algo=job.base_image_os_hash_algo,
-                    base_image_os_hash_value=job.base_image_os_hash_value,
-                    base_image_min_disk=job.base_image_min_disk,
-                    source_metadata=step.get("source_metadata"),
-                )
-                session.add(artifact)
-                await session.flush()
-                completed_ids.append(artifact.id)
-                parent_id = artifact.id
-                build = await session.get(LayerBuild, build_ids[index])
-                build.status = "complete"
-                build.cloud_init_status = "success"
-                build.progress_step = "빌드 완료"
-                build.progress_pct = 100
-                build.completed_at = _now()
-            await _save_import_profile(session, job, completed_ids)
-            job.status = "built" if job.consumer_spec else "complete"
-            job.progress_step = "레이어 봉인 완료"
-            job.progress_pct = 90 if job.consumer_spec else 100
-            if not job.consumer_spec:
-                job.completed_at = _now()
-            await session.commit()
-            artifacts_committed = True
+                async with factory() as session:
+                    job = await _locked_import(session, import_id)
+                    parent_id = cached_ids[-1] if cached_ids else None
+                    completed_ids = list(cached_ids)
+                    for index, step in enumerate(outputs):
+                        report = reports[step["name"]]
+                        root = step["instruction"] == "ROOT"
+                        kind = "dockerfile-root" if root else "dockerfile"
+                        fields = await resolve_digest_fields(
+                            session,
+                            report=report,
+                            parent_artifact_id=parent_id,
+                            name=step["name"],
+                            kind=kind,
+                            ubuntu_base=job.ubuntu_base,
+                            python_version=None,
+                            pip_packages=[],
+                            apt_packages=[],
+                        )
+                        if not fields["chain_id"]:
+                            raise DockerfileImportError("Dockerfile artifact has no verifiable parent digest")
+                        step_digest = None
+                        if not root:
+                            parent = await session.get(LayerArtifact, parent_id)
+                            args = step["args"]
+                            if step["instruction"] in {"COPY", "ADD"}:
+                                args += "\ncommit:" + (step.get("source_metadata") or {}).get("commit_sha", "")
+                            step_digest = compute_step_digest(parent.chain_id, step["instruction"], args)
+                        artifact = LayerArtifact(
+                            name=step["name"],
+                            kind=kind,
+                            python_version=None,
+                            pip_packages=[],
+                            apt_packages=[],
+                            ubuntu_base=job.ubuntu_base,
+                            sqsh_filename=f"{step['name']}-latest.sqsh",
+                            share_id=share_ids[index],
+                            build_id=build_ids[index],
+                            parent_id=parent_id,
+                            is_sealed=True,
+                            size_bytes=report.size_bytes,
+                            step_digest=step_digest,
+                            **fields,
+                            base_image_id=job.base_image_id,
+                            base_image_name=job.base_image_name,
+                            base_image_checksum=job.base_image_checksum,
+                            base_image_os_hash_algo=job.base_image_os_hash_algo,
+                            base_image_os_hash_value=job.base_image_os_hash_value,
+                            base_image_min_disk=job.base_image_min_disk,
+                            source_metadata=step.get("source_metadata"),
+                        )
+                        session.add(artifact)
+                        await build_work.checkpoint()
+                        await session.flush()
+                        completed_ids.append(artifact.id)
+                        parent_id = artifact.id
+                        build = await session.get(LayerBuild, build_ids[index])
+                        build.status, build.cloud_init_status = "complete", "success"
+                        build.progress_step, build.progress_pct, build.completed_at = "빌드 완료", 100, _now()
+                    await _save_import_profile(session, job, completed_ids)
+                    await build_work.checkpoint()
+                    await session.commit()
+                    artifacts_committed = True
+            # Only sealed output may advance to disposable cleanup. Cancellation
+            # or loss before here never deletes the ongoing builder or output.
+            await _dispose_import_resources(conn, await build_work.journal_get())
+        if job.consumer_spec:
+            consumer_started = True
+            await _launch_import_consumer(import_id)
+        await _update_job(import_id, status="complete", progress_step="레이어 봉인 완료", progress_pct=100)
         try:
             from app.services.cache import invalidate
 
             await invalidate("afterglow:union_layer:*")
         except Exception:
-            _logger.warning("[dockerfile_import] layer cache invalidation failed", exc_info=True)
-        if job.consumer_spec:
-            await _launch_import_consumer(import_id)
-    except asyncio.CancelledError:
-        await _update_job(
-            import_id, status="error", progress_step="취소됨", error_message="Dockerfile import task was cancelled"
-        )
-        for build_id in build_ids:
-            await _set_build_error(build_id, "Dockerfile import task was cancelled")
+            _logger.warning("[dockerfile_import] layer cache invalidation failed")
+    except (asyncio.CancelledError, build_work.DispatcherUnavailable):
+        # Handoff is not failure: the next owner observes durable resource IDs.
         raise
-    except Exception as exc:
-        _logger.exception("[dockerfile_import] import %s failed", import_id)
-        await _update_job(import_id, status="error", progress_step="실패", error_message=str(exc)[:1000])
-        for build_id in build_ids:
-            await _set_build_error(build_id, str(exc))
+    except SQLAlchemyError as exc:
+        raise build_work.DispatcherUnavailable("import SQL authority is unavailable") from exc
+    except build_work.SubmissionUnknown:
+        _logger.warning("[dockerfile_import] import %s awaits submission reconciliation", import_id)
+    except Exception:
+        _logger.warning("[dockerfile_import] import %s failed", import_id)
+        if artifacts_committed:
+            if consumer_started:
+                await _update_job(
+                    import_id,
+                    status="complete",
+                    progress_pct=100,
+                    progress_step="레이어 봉인 완료; VM 시작 실패",
+                    error_message="Optional consumer launch failed; sealed artifacts remain consumable by import_id",
+                )
+            # Otherwise disposable cleanup remains pending. Keep sealed work
+            # runnable so a successor finishes disposal and the requested VM.
+        else:
+            await build_work.journal_update(pending_failure="Dockerfile import failed before sealing")
+            try:
+                await _finish_failed_import(import_id, conn)
+            except build_work.SubmissionUnknown:
+                _logger.warning("[dockerfile_import] import %s awaits failure disposal", import_id)
     finally:
         if conn is not None:
-            for share_id, access_id in rw_access_rules + ro_access_rules:
-                try:
-                    await asyncio.to_thread(manila.revoke_access_rule, conn, share_id, access_id)
-                except Exception:
-                    _logger.warning("[dockerfile_import] access rule cleanup failed: %s", share_id, exc_info=True)
-            if server_id:
-                try:
-                    await asyncio.to_thread(conn.compute.delete_server, server_id)
-                except Exception:
-                    _logger.warning("[dockerfile_import] builder deletion failed: %s", server_id, exc_info=True)
-            if base_volume_id:
-                try:
-                    volume = await asyncio.to_thread(conn.block_storage.get_volume, base_volume_id)
-                    await asyncio.to_thread(conn.block_storage.wait_for_status, volume, status="available", wait=180)
-                    await asyncio.to_thread(cinder.delete_volume, conn, base_volume_id)
-                except Exception:
-                    _logger.warning("[dockerfile_import] base volume cleanup failed: %s", base_volume_id, exc_info=True)
-            if not artifacts_committed:
-                for share_id in share_ids:
-                    try:
-                        await asyncio.to_thread(manila.delete_file_storage, conn, share_id)
-                    except Exception:
-                        _logger.warning("[dockerfile_import] output share cleanup failed: %s", share_id, exc_info=True)
-            if port_id:
-                try:
-                    await asyncio.to_thread(neutron.delete_port, conn, port_id)
-                except Exception:
-                    _logger.warning("[dockerfile_import] port cleanup failed: %s", port_id, exc_info=True)
-            try:
-                await asyncio.to_thread(conn.close)
-            except Exception:
-                _logger.warning("[dockerfile_import] service connection close failed", exc_info=True)
-
-
-async def _set_build_running(build_id: int, server_id: str, port_id: str, token: str | None) -> None:
-    factory = get_session_factory()
-    if factory is None:
-        return
-    async with factory() as session:
-        build = await session.get(LayerBuild, build_id)
-        if build is not None:
-            build.server_id = server_id
-            build.port_id = port_id
-            build.build_token = token
-            build.status = "building"
-            build.cloud_init_status = "booting"
-            build.progress_step = "Dockerfile import 실행 중"
-            build.progress_pct = 35
-        await session.commit()
-
-
-async def _set_build_error(build_id: int, message: str) -> None:
-    factory = get_session_factory()
-    if factory is None:
-        return
-    async with factory() as session:
-        build = await session.get(LayerBuild, build_id)
-        if build is not None and build.status != "complete":
-            build.status = "error"
-            build.cloud_init_status = "failure"
-            build.progress_step = "Dockerfile import 실패"
-            build.error_message = message[:1000]
-            build.completed_at = _now()
-        await session.commit()
+            await build_work.cleanup_sync(conn.close)

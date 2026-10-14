@@ -8,6 +8,9 @@ if TYPE_CHECKING:
     import openstack
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from openstack.exceptions import HttpException
 from pydantic import BaseModel, Field, field_validator
 
@@ -24,11 +27,40 @@ from app.api.deps import (
 )
 from app.models.storage import CreateVolumeRequest, ExtendVolumeRequest, VolumeInfo
 from app.rate_limit import limiter
-from app.services import cinder, nova
-from app.services.cache import cached_call, invalidate, ttl_fast
+from app.services import cinder, volume_transfers
+from app.services.cache import cached_call, invalidate, invalidate_project, invalidation, ttl_fast
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+
+
+class VolumeTransferRoute(APIRoute):
+    """Protect transfer keys without changing other volume route behavior."""
+
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+        if (
+            not self.path.endswith("/transfers")
+            and "/transfer/" not in self.path
+            and not self.path.endswith("/transfer")
+        ):
+            return handler
+
+        async def guarded(request):
+            try:
+                response = await handler(request)
+            except RequestValidationError:
+                response = JSONResponse({"detail": "볼륨 이전 입력을 확인해 주세요"}, status_code=422)
+            except HTTPException as exc:
+                if exc.status_code < 500:
+                    request.state.audit_error = exc.detail
+                response = JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
+            response.headers.update({"Cache-Control": "no-store, private", "Pragma": "no-cache"})
+            return response
+
+        return guarded
+
+
+router = APIRouter(route_class=VolumeTransferRoute)
 
 
 async def _assert_volume_owner(
@@ -61,6 +93,12 @@ async def list_volumes(
         )
     except Exception:
         raise HTTPException(status_code=500, detail="볼륨 목록 조회 실패")
+
+
+@router.get("/transfers")
+async def list_volume_transfers(token_info: dict = Depends(get_token_info)):
+    """Current genuinely authenticated project's pending transfers only."""
+    return await _transfer_call(volume_transfers.own_list, token_info)
 
 
 @router.get("/{volume_id}", response_model=VolumeInfo)
@@ -284,157 +322,108 @@ async def force_delete_volume(
 
 
 # ---------------------------------------------------------------------------
-# 볼륨 Transfer (프로젝트 간 마이그레이션)
+# Native volume transfers: exact readback, caller-scoped writes, one-time key.
 # ---------------------------------------------------------------------------
 
 
 class CreateVolumeTransferRequest(BaseModel):
-    name: str | None = None
+    name: str | None = Field(None, max_length=255)
 
 
 class AcceptVolumeTransferRequest(BaseModel):
-    auth_key: str = Field(..., min_length=1)
+    auth_key: str = Field(..., min_length=1, max_length=512)
+
+    @field_validator("auth_key")
+    @classmethod
+    def nonblank_key(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("인증 키를 입력해 주세요")
+        return value
 
 
-@router.get("/transfers")
-async def list_volume_transfers(conn: openstack.connection.Connection = Depends(get_os_conn)):
-    """볼륨 이전(transfer) 목록 조회."""
+async def _invalidate_transfer_accept(project_id: str):
+    # Native acceptance also moves snapshots and changes both projects' quotas.
+    await invalidate_project(project_id, "cinder")
+    await invalidation.invalidate_mutation_count("cinder", project_id)
+
+
+async def _transfer_call(function, *args, accepting: bool = False):
     try:
-        return await asyncio.to_thread(cinder.list_volume_transfers, conn)
-    except Exception:
-        raise HTTPException(status_code=500, detail="볼륨 이전 목록 조회 실패")
+        return await asyncio.to_thread(function, *args)
+    except volume_transfers.TransferError as exc:
+        for project_id in exc.affected_projects:
+            await _invalidate_transfer_accept(project_id)
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
+    except Exception as exc:
+        error = volume_transfers.provider_error(exc, accepting=accepting)
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from None
+
+
+@router.get("/transfer/{transfer_id}")
+async def get_volume_transfer(transfer_id: str, _token_info: dict = Depends(get_token_info)):
+    """Read exactly one pending transfer without its key or private metadata."""
+    return await _transfer_call(volume_transfers.lookup, transfer_id)
 
 
 @router.post("/{volume_id}/transfer", status_code=201)
 async def create_volume_transfer(
     volume_id: str,
     req: CreateVolumeTransferRequest | None = None,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
-    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
 ):
-    """볼륨 이전(transfer) 생성.
-
-    VM에 부착된 경우 자동으로 detach한 뒤 transfer를 생성한다.
-    transfer 생성 실패 시 detach한 서버에 볼륨을 다시 attach(rollback)한다.
-    """
-    await _assert_volume_owner(conn, volume_id, token_info)
-    try:
-        vol = await asyncio.to_thread(cinder.get_volume, conn, volume_id)
-    except Exception:
-        raise HTTPException(status_code=404, detail="볼륨을 찾을 수 없습니다")
-
-    # 부착된 VM에서 detach — 성공한 서버 ID를 rollback용으로 보관
-    detached_server_ids: list[str] = []
-    for attachment in vol.attachments:
-        server_id = attachment.get("server_id")
-        if not server_id:
-            continue
-        try:
-            await asyncio.to_thread(nova.detach_volume, conn, server_id, volume_id)
-            detached_server_ids.append(server_id)
-        except Exception as ex:
-            logger.warning("volume detach 실패 server=%s volume=%s: %s", server_id, volume_id, ex)
-            raise HTTPException(
-                status_code=409,
-                detail=f"볼륨 detach 실패 (인스턴스 {server_id}) — 수동으로 분리 후 재시도 해주세요",
-            )
-
-    # detach 후 available 상태 대기
-    if detached_server_ids:
-        try:
-            await asyncio.to_thread(cinder.wait_volume_available, conn, volume_id)
-        except Exception:
-            raise HTTPException(status_code=409, detail="볼륨 detach 대기 시간 초과")
-
-    # transfer 생성 — 실패 시 detach한 서버에 rollback
-    try:
-        name = req.name if req else None
-        result = await asyncio.to_thread(cinder.create_volume_transfer, conn, volume_id, name)
-        await rec(
-            token_info,
-            conn,
-            resource_type="volume",
-            action="volume.transfer_create",
-            status="success",
-            resource_id=volume_id,
-        )
-        return result
-    except Exception as e:
-        await rec(
-            token_info,
-            conn,
-            resource_type="volume",
-            action="volume.transfer_create",
-            status="failed",
-            resource_id=volume_id,
-            error_message=str(e)[:500],
-        )
-        for server_id in detached_server_ids:
-            try:
-                await asyncio.to_thread(nova.attach_volume, conn, server_id, volume_id)
-            except Exception as rb_ex:
-                logger.error("rollback attach 실패 server=%s volume=%s: %s", server_id, volume_id, rb_ex)
-        raise HTTPException(status_code=500, detail="볼륨 이전 생성 실패")
+    """Issue a transfer only for an owned, available and unattached volume."""
+    result = await _transfer_call(volume_transfers.create, token_info, volume_id, req.name if req else None)
+    await invalidate(f"afterglow:cinder:{token_info['project_id']}:volumes*")
+    await rec(
+        token_info,
+        conn,
+        resource_type="volume",
+        action="volume.transfer_create",
+        status="success",
+        resource_id=volume_id,
+    )
+    return result
 
 
 @router.post("/transfer/{transfer_id}/accept", status_code=200)
 async def accept_volume_transfer(
     transfer_id: str,
     req: AcceptVolumeTransferRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
-    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
 ):
-    """볼륨 이전 수락."""
-    try:
-        result = await asyncio.to_thread(cinder.accept_volume_transfer, conn, transfer_id, req.auth_key)
-        await invalidate(f"afterglow:cinder:{conn._afterglow_project_id}:volumes:v2")
-        await rec(
-            token_info,
-            conn,
-            resource_type="volume",
-            action="volume.transfer_accept",
-            status="success",
-            resource_id=transfer_id,
-        )
-        return result
-    except Exception as e:
-        await rec(
-            token_info,
-            conn,
-            resource_type="volume",
-            action="volume.transfer_accept",
-            status="failed",
-            resource_id=transfer_id,
-            error_message=str(e)[:500],
-        )
-        raise HTTPException(status_code=500, detail="볼륨 이전 수락 실패")
+    """Native key authorization using a verified destination-scoped caller."""
+    result, source = await _transfer_call(
+        volume_transfers.accept, token_info, transfer_id, req.auth_key, accepting=True
+    )
+    await _invalidate_transfer_accept(source)
+    await _invalidate_transfer_accept(token_info["project_id"])
+    await rec(
+        token_info,
+        conn,
+        resource_type="volume",
+        action="volume.transfer_accept",
+        status="success",
+        resource_id=transfer_id,
+    )
+    return result
 
 
 @router.delete("/transfer/{transfer_id}", status_code=204)
 async def delete_volume_transfer(
     transfer_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
-    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
 ):
-    """볼륨 이전 취소."""
-    try:
-        await asyncio.to_thread(cinder.delete_volume_transfer, conn, transfer_id)
-        await rec(
-            token_info,
-            conn,
-            resource_type="volume",
-            action="volume.transfer_delete",
-            status="success",
-            resource_id=transfer_id,
-        )
-    except Exception as e:
-        await rec(
-            token_info,
-            conn,
-            resource_type="volume",
-            action="volume.transfer_delete",
-            status="failed",
-            resource_id=transfer_id,
-            error_message=str(e)[:500],
-        )
-        raise HTTPException(status_code=500, detail="볼륨 이전 취소 실패")
+    """Cancel only a pending transfer whose actual source is this project."""
+    source = await _transfer_call(volume_transfers.cancel, token_info, transfer_id)
+    await invalidate(f"afterglow:cinder:{source}:volumes*")
+    await rec(
+        token_info,
+        conn,
+        resource_type="volume",
+        action="volume.transfer_delete",
+        status="success",
+        resource_id=transfer_id,
+    )

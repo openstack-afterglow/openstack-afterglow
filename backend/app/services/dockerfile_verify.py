@@ -1,23 +1,21 @@
-"""Verify a stopped Dockerfile builder's output through a disposable read-only VM.
+"""Verify Dockerfile output bytes through one durable, read-only utility VM.
 
-Nova may discard the serial console at SHUTOFF. The guest writes its completion
-manifest to its first owned Manila share; a second VM reads that manifest and
-hashes *all* sealed blobs before the builder/share lifecycle can advance.
+The stopped builder's console is not proof. The verifier hashes every output
+and reports its token-bound manifest while ACTIVE, so a handoff can observe the
+same VM without SSH key material or an additional CREATE.
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
-import logging
 import re
 import shlex
 import textwrap
 
-from app.services import builder_vm, manila, ssh_executor
+from app.services import build_work, manila, neutron, nova
 from app.services.recipe_blocks import _NFS_EXPORT_RE, _SQSH_FILENAME_RE
-
-_logger = logging.getLogger(__name__)
 
 # Sent verbatim to the one-use Ubuntu verifier. No Afterglow installation, backend
 # NFS mount privilege, or trust in the serial console is needed on that VM.
@@ -98,10 +96,31 @@ _VERIFY_SCRIPT = textwrap.dedent("""\
 """)
 
 
+async def _cleanup_verifier(conn, state):
+    try:
+        for rule in state["rules"]:
+            if not rule.get("revoked"):
+                await build_work.run_sync(manila.revoke_access_rule, conn, rule["share_id"], rule["access_id"])
+                rule["revoked"] = True
+                await build_work.journal_update(verifier=state)
+        if state.get("server_id") and not state.get("deleted"):
+            await build_work.run_sync(conn.compute.delete_server, state["server_id"], ignore_missing=True)
+            state["deleted"] = True
+            await build_work.journal_update(verifier=state)
+        if state.get("port_id") and not state.get("port_deleted"):
+            await build_work.run_sync(neutron.delete_port, conn, state["port_id"])
+            state["port_deleted"] = True
+            await build_work.journal_update(verifier=state)
+    except build_work.DispatcherUnavailable:
+        raise
+    except Exception as exc:
+        raise build_work.SubmissionUnknown("verifier cleanup awaits handoff") from exc
+
+
 async def verify_builder_outputs(
     conn, *, token: str, outputs: list[dict], exports: list[list[str]], share_ids: list[str], snapshot: dict
 ):
-    """Return digest reports only after a token-bound complete manifest and byte checks."""
+    """Return only complete byte-verified reports; preserve resources on handoff."""
     if (
         not re.fullmatch(r"[0-9a-f]{32}", token)
         or not outputs
@@ -123,57 +142,135 @@ async def verify_builder_outputs(
         ):
             raise ValueError("unsafe builder verification path")
         entries.append({"name": name, "exports": alternatives})
-    builder_flavor = snapshot["builder.flavor"]["id"]
-    builder_network = snapshot["builder.network"]["id"]
-    image_id = snapshot["base_image"]["id"]
-    verifier = None
-    access_rules: list[tuple[str, str]] = []
-    try:
-        verifier = await builder_vm.create_ephemeral_vm(
-            conn, image_id=image_id, flavor_id=builder_flavor, network_id=builder_network
-        )
-        for share_id in share_ids:
-            existing = await asyncio.to_thread(manila.list_access_rules, conn, share_id)
-            existing_ids = {rule.get("id") for rule in existing}
-            rule = await asyncio.to_thread(
-                manila.ensure_nfs_access_rule,
-                conn,
-                share_id,
-                verifier.internal_ip,
-                "ro",
-                root_squash=False,
-                sec_flavor="sys",
-            )
-            if rule["access_id"] not in existing_ids:
-                access_rules.append((share_id, rule["access_id"]))
-        payload = json.dumps({"token": token, "outputs": entries}, separators=(",", ":"))
-        command = f"sudo -n python3 -c {shlex.quote(_VERIFY_SCRIPT)} {shlex.quote(payload)}"
-        try:
-            status, stdout, _stderr = await ssh_executor.run_command(
-                verifier.host, verifier.key_path, command, username=verifier.username, timeout=900
-            )
-        except Exception:
-            raise RuntimeError("builder output verification failed (remote execution)") from None
-        if status != 0:
-            raise RuntimeError(f"builder output verification failed (exit={status})")
-        from app.services.dockerfile_import import _parse_dockerfile_manifest
+    await build_work.checkpoint()
+    from app.services.dockerfile_import import (
+        _accepted_id,
+        _discover_import_resource,
+        _import_rule,
+        _parse_dockerfile_manifest,
+    )
+    from app.services.palimpsest_digest import DigestReport
 
-        return _parse_dockerfile_manifest(stdout, token, [step["name"] for step in outputs])
-    finally:
-        cleanup_error = None
-        for share_id, access_id in reversed(access_rules):
-            try:
-                await asyncio.to_thread(manila.revoke_access_rule, conn, share_id, access_id)
-            except Exception as exc:
-                _logger.warning("[dockerfile_verify] temporary access cleanup failed")
-                cleanup_error = exc
-        if verifier is not None:
-            await builder_vm.delete_ephemeral_vm(
+    import_id = int(build_work.current_binding().member.split(":", 1)[1])
+    state = (await build_work.journal_get()).get("verifier", {})
+    config = {"token": token, "outputs": entries, "share_ids": share_ids, "snapshot": snapshot}
+    if state and state.get("config") != config:
+        raise ValueError("verifier context changed after admission")
+    if not state:
+        state = {"config": config, "rules": []}
+        await build_work.journal_update(verifier=state)
+    if state.get("failure"):
+        await _cleanup_verifier(conn, state)
+        raise RuntimeError("builder output verification failed (remote execution)")
+    if not state.get("reports"):
+        name = f"afterglow-import-verify-{token}"
+        port_id = await _accepted_id(
+            "verifier-port",
+            state.get("port_id"),
+            observe=lambda: _discover_import_resource(
                 conn,
-                server_id=verifier.server_id,
-                fip_id=verifier.fip_id,
-                keypair_name=verifier.keypair_name,
-                key_path=verifier.key_path,
+                "port",
+                name,
+                snapshot["openstack.service_project"]["id"],
+                token,
+                import_id,
+                snapshot["builder.network"]["id"],
+            ),
+        )
+        if port_id:
+            port = await build_work.run_sync(conn.network.get_port, port_id)
+        else:
+            port = await build_work.submit(
+                "verifier-port",
+                conn.network.create_port,
+                name=name,
+                network_id=snapshot["builder.network"]["id"],
+                description=f"afterglow-import:{import_id}:{token}",
             )
-        if cleanup_error is not None:
-            raise RuntimeError("temporary verifier access could not be revoked") from None
+            port_id = port.id
+        if port is None or not port.fixed_ips:
+            raise RuntimeError("builder output verifier port is unavailable")
+        fixed_ip = port.fixed_ips[0]["ip_address"]
+        state["port_id"], state["fixed_ip"] = port_id, fixed_ip
+        await build_work.journal_update(verifier=state)
+        # A replacement can arrive long after the guest mount deadline. All
+        # grants must therefore exist before the one-shot guest can ever boot.
+        for index, share_id in enumerate(share_ids):
+            if index < len(state["rules"]):
+                continue
+            access_id = await _import_rule(conn, f"verifier-ro:{index}", share_id, fixed_ip, "ro")
+            state["rules"].append({"share_id": share_id, "access_id": access_id})
+            await build_work.journal_update(verifier=state)
+        server_id = await _accepted_id(
+            "verifier-server",
+            state.get("server_id"),
+            observe=lambda: _discover_import_resource(
+                conn, "server", name, snapshot["openstack.service_project"]["id"], token, import_id
+            ),
+        )
+        if not server_id:
+            payload = json.dumps({"token": token, "outputs": entries}, separators=(",", ":"))
+            # No SSH/one-controller local key state. The VM stays ACTIVE after
+            # the read-only check, retaining its serial receipt until cleanup.
+            command = f"python3 -c {shlex.quote(_VERIFY_SCRIPT)} {shlex.quote(payload)}"
+            user_data = (
+                "#!/bin/bash\nset -euo pipefail\nexec > /dev/console 2>&1\n"
+                f"trap 'echo ::AFTERGLOW::VERIFY_FAILURE::{token}' ERR\n"
+                "apt-get update -qq\napt-get install -y --no-install-recommends nfs-common\n" + command + "\n"
+            )
+            state["user_data"] = user_data
+            await build_work.journal_update(verifier=state)
+            server = await build_work.submit(
+                "verifier-server",
+                conn.compute.create_server,
+                name=name,
+                image_id=snapshot["base_image"]["id"],
+                flavor_id=snapshot["builder.flavor"]["id"],
+                networks=[{"port": port_id}],
+                user_data=base64.b64encode(user_data.encode()).decode(),
+                metadata={
+                    "union_type": "dockerfile-output-verifier",
+                    "afterglow_managed": "true",
+                    "import_id": str(import_id),
+                    "build_token": token,
+                },
+            )
+            server_id = server.id
+        state["server_id"] = server_id
+        await build_work.journal_update(verifier=state)
+        for _ in range(60):
+            server = await build_work.run_sync(conn.compute.get_server, server_id)
+            if server is None or server.status == "ERROR":
+                raise RuntimeError("builder output verifier is unavailable")
+            if server.status == "ACTIVE":
+                break
+            await asyncio.sleep(10)
+        else:
+            raise TimeoutError("builder output verifier did not become active")
+        for _ in range(90):
+            console = await build_work.run_sync(nova.get_console_output, conn, server_id, None)
+            if f"::AFTERGLOW::VERIFY_FAILURE::{token}" in console:
+                state["failure"] = True
+                await build_work.journal_update(verifier=state)
+                await _cleanup_verifier(conn, state)
+                raise RuntimeError("builder output verification failed (remote execution)")
+            if f"::AFTERGLOW::MANIFEST::{token}::" in console:
+                reports = _parse_dockerfile_manifest(console, token, [step["name"] for step in outputs])
+                state["reports"] = {
+                    name: {
+                        "layer_name": report.layer_name,
+                        "blob_digest": report.blob_digest,
+                        "blob_md5": report.blob_md5,
+                        "size_bytes": report.size_bytes,
+                    }
+                    for name, report in reports.items()
+                }
+                await build_work.journal_update(verifier=state)
+                break
+            await asyncio.sleep(10)
+        else:
+            raise TimeoutError("builder output verifier did not report a complete manifest")
+    # Cleanup can be resumed from the receipt. Never run mutations in finally:
+    # cancellation or lease loss preserves this VM and access for the next owner.
+    await _cleanup_verifier(conn, state)
+    return {name: DigestReport(**report) for name, report in state["reports"].items()}

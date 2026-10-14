@@ -46,13 +46,20 @@ def project_provider(monkeypatch):
             if target in delays:
                 delays[target]()
             assert values["user"] == self.access.user_id == user_id
-            assert values["roles"] == [{"name": role} for role in self.access.role_names]
+            assert "roles" not in values
             assert values["unrestricted"] is False
             created.append((target, self.access.auth_token, values))
             if target in failures and getattr(failures[target], "status_code", None) == 403:
                 raise failures[target]
             credential = SimpleNamespace(
-                id=str(uuid4()), secret="secret-" + target, name=values["name"], project_id=target
+                id=str(uuid4()),
+                secret="secret-" + target,
+                name=values["name"],
+                project_id=target,
+                roles=[
+                    {"id": role_id, "name": name}
+                    for role_id, name in zip(self.access.role_ids, self.access.role_names, strict=True)
+                ],
             )
             remote[credential.id] = credential
             if target in failures:
@@ -81,6 +88,7 @@ def project_provider(monkeypatch):
                 project_id=target,
                 project_name=target,
                 role_names=roles[target],
+                role_ids=["role-" + role for role in roles[target]],
                 auth_token="scoped-token-" + target,
             )
             self.session = SimpleNamespace(auth=SimpleNamespace(get_access=lambda session: self.access), get=self.get)
@@ -133,6 +141,7 @@ def project_provider(monkeypatch):
 async def test_current_authority_preparation_reports_typed_management_refusal(project_provider):
     provider = project_provider
     provider.conn.access.role_names = ["reader"]
+    provider.conn.access.role_ids = ["role-reader"]
     with pytest.raises(authority.McpGrantPrivilegeError, match="management"):
         await authority._prepare_connection_projects(
             provider.conn, provider.user, provider.a, ["admin", "member"], "current", None, "manage"
@@ -141,7 +150,7 @@ async def test_current_authority_preparation_reports_typed_management_refusal(pr
         provider.conn, provider.user, provider.a, ["admin", "member"], "current", None, "read"
     )
     assert len(approved) == 1
-    assert approved[0].roles == [{"name": "reader"}]
+    assert approved[0].roles == [{"id": "role-reader", "name": "reader"}]
     assert approved[0].can_write is False
     assert approved[0].owns_connection is False
 
@@ -866,3 +875,12 @@ async def test_owner_locked_pending_reservation_consumes_capacity_before_creatio
     issued = await pending
     assert [target for target, token, values in owner.created] == [owner.a, owner.b]
     assert issued.grant_id == grants[0].id
+
+
+@pytest.mark.parametrize("role_ids", [[], [""], [None], ["role-member", "unexpected-extra"]])
+async def test_target_token_requires_exact_role_id_name_pairs(project_provider, role_ids):
+    provider = project_provider
+    provider.conn.access.role_ids = role_ids
+    with pytest.raises(authority.McpAuthorityError, match="invalid role identities"):
+        await projects.project_connection(provider.conn, provider.user, provider.a)
+    assert provider.created == []

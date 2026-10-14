@@ -47,6 +47,11 @@ def _scalar_result(row):
 
 def _row(**attrs):
     row = MagicMock()
+    row.transport = "nfs"
+    row.run_id = None
+    row.resources = None
+    row.cleanup_state = None
+    row.block_source = None
     for key, value in attrs.items():
         setattr(row, key, value)
     return row
@@ -81,6 +86,7 @@ def _artifact(
     row.base_image_visibility = "shared"
     row.base_image_owner = "admin"
     row.source_metadata = None
+    row.block_source = None
     row.sqsh_filename = f"{name}-latest.sqsh"
     row.share_id = f"share-{artifact_id}"
     row.build_id = artifact_id * 10
@@ -437,6 +443,7 @@ class TestLayerConsumeRequestValidation:
         )
         assert req.profile_name == "default"
         assert req.server_name == "consumer-01"
+        assert req.transport == "nfs"
 
     def test_empty_server_name_uses_auto_generation(self):
         req = LayerConsumeRequest(
@@ -683,11 +690,15 @@ async def test_trigger_build_success(admin_client, mock_conn):
         owner="admin",
     )
 
-    with patch(
-        "app.services.layer_builder.start_layer_build",
-        new_callable=AsyncMock,
-        return_value=mock_result,
-    ) as mock_start:
+    with (
+        # Admission is durable SQL work; the forwarding contract assumes it is available.
+        patch("app.api.union.layer_ops.get_session_factory", return_value=MagicMock()),
+        patch(
+            "app.services.layer_builder.start_layer_build",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ) as mock_start,
+    ):
         resp = await admin_client.post(
             f"{BASE}/build",
             json={"layer_name": "uv", "kind": "uv", "ubuntu_base": "ubuntu-22.04", "base_image_id": "img-22"},
@@ -722,11 +733,14 @@ async def test_trigger_system_build_success(admin_client, mock_conn):
         owner="admin",
     )
 
-    with patch(
-        "app.services.layer_builder.start_layer_build",
-        new_callable=AsyncMock,
-        return_value=mock_result,
-    ) as mock_start:
+    with (
+        patch("app.api.union.layer_ops.get_session_factory", return_value=MagicMock()),
+        patch(
+            "app.services.layer_builder.start_layer_build",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ) as mock_start,
+    ):
         resp = await admin_client.post(
             f"{BASE}/build",
             json={
@@ -763,11 +777,14 @@ async def test_trigger_nvidia_build_success_forwards_safe_template_metadata(admi
         owner="admin",
     )
 
-    with patch(
-        "app.services.layer_builder.start_layer_build",
-        new_callable=AsyncMock,
-        return_value=mock_result,
-    ) as mock_start:
+    with (
+        patch("app.api.union.layer_ops.get_session_factory", return_value=MagicMock()),
+        patch(
+            "app.services.layer_builder.start_layer_build",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ) as mock_start,
+    ):
         resp = await admin_client.post(
             f"{BASE}/build",
             json={
@@ -971,6 +988,65 @@ async def test_cancel_build_already_terminal(admin_client):
 # ============================================================================
 # Part 6: 소비 인스턴스 생성
 # ============================================================================
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("transport", [None, "nfs", "block"])
+async def test_trigger_consume_selects_and_persists_transport(admin_client, transport):
+    snapshot = {
+        "network": {"id": "net-1"},
+        "flavor": {"id": "flavor-1"},
+        "openstack.service_project": {"id": "service-project"},
+    }
+    session = AsyncMock()
+    session.add = MagicMock()
+    context = AsyncMock()
+    context.__aenter__.return_value = session
+    body = {"profile_name": "default", "flavor_id": "m1.small"}
+    if transport is not None:
+        body["transport"] = transport
+    with (
+        patch("app.database.get_session_factory", return_value=MagicMock(return_value=context)),
+        patch("app.services.layer_build.resolve_layer_consume_resource_snapshot", AsyncMock(return_value=snapshot)),
+        patch("app.services.layer_build.resolve_admin_consume_artifacts", AsyncMock(return_value=[{"id": 1}])),
+        patch("app.services.layer_build.validate_consume_image_identity", AsyncMock()),
+        patch("app.services.keystone.get_admin_connection_for_project", return_value=MagicMock()),
+        patch("app.services.layer_build.run_layer_consume", AsyncMock(return_value="vm-1")) as run,
+    ):
+        response = await admin_client.post(f"{BASE}/consume", json=body)
+    assert response.status_code == 200
+    assert response.json()["server_id"] == "vm-1"
+    assert run.await_args.kwargs["transport"] == (transport or "nfs")
+    row = session.add.call_args.args[0]
+    assert row.transport == (transport or "nfs")
+    assert row.project_id == "service-project"
+    assert row.share_id == ""
+    assert row.resources is None
+    assert row.run_id is None
+    assert row.cleanup_state is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("transport", ["invalid", "BLOCK", "", None])
+async def test_trigger_consume_rejects_invalid_transport_before_placement(admin_client, transport):
+    with patch("app.services.layer_build.resolve_layer_consume_resource_snapshot", AsyncMock()) as resolve:
+        response = await admin_client.post(
+            f"{BASE}/consume",
+            json={"profile_name": "default", "flavor_id": "m1.small", "transport": transport},
+        )
+    assert response.status_code == 422
+    resolve.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_block_consume_remains_admin_only(non_admin_client):
+    with patch("app.services.layer_build.run_layer_consume", AsyncMock()) as run:
+        response = await non_admin_client.post(
+            f"{BASE}/consume",
+            json={"profile_name": "default", "flavor_id": "m1.small", "transport": "block"},
+        )
+    assert response.status_code == 403
+    run.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -2070,6 +2146,9 @@ async def test_delete_artifact_executes_manila_delete_after_empty_preview(admin_
         mock_session.get = AsyncMock(return_value=target)
         mock_session.execute = AsyncMock(
             side_effect=[
+                _scalars_result([]),
+                _scalars_result([]),
+                _scalar_result(target),
                 _scalars_result([target]),
                 _scalars_result([]),
                 _scalars_result([]),
@@ -2107,6 +2186,9 @@ async def test_delete_artifact_refuses_before_manila_when_blocked(admin_client):
         mock_session.get = AsyncMock(return_value=target)
         mock_session.execute = AsyncMock(
             side_effect=[
+                _scalars_result([]),
+                _scalars_result([]),
+                _scalar_result(target),
                 _scalars_result([target, child]),
                 _scalars_result([]),
                 _scalars_result([]),

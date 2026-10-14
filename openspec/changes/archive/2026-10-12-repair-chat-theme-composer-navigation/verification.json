@@ -1,0 +1,12 @@
+{
+  "change": "repair-chat-theme-composer-navigation",
+  "boundary": "Local compiled adapter-node frontend and Chromium with loopback synthetic identity/API; no native provider/cloud or production deployment",
+  "compiled": { "localeThemeWidthConditions": 64, "statesPerCondition": 5, "horizontalOverflow": 0, "minimumTextareaHeightPx": 26, "multilineRevealHeightPx": 70, "compactInnerMaxWidthPx": 736, "expandedInnerMaxWidthPx": 1248 },
+  "navigation": { "projectHistoryCycles": 4, "repeatedConversationListOrPageRequests": 0, "sameEditorTranscriptSidebar": true, "draftAndSettledScrollPreserved": true, "directProjectLinkAndBackForward": true, "compactEscapeVisibleTriggerFocus": true },
+  "history": { "cursorSequence": ["before:121", "before:81", "before:41", "after:120"], "messageWindowLimit": 120, "topToolbarPresent": false },
+  "checks": { "targetedFrontendTestsPassed": 91, "designTestsPassed": 138, "productionBuildExit": 0, "i18nErrors": 0, "i18nWarnings": 0, "hardCodedKoreanLines": 0 },
+  "architecture": { "mode": "isolated local dev HEAD plus 19 scoped source files; real shared index and marker preserved", "sourceSha256": "05b00ffced76778091de607567cc679cd12e690e0760192c4baa53db97b21fa6", "sourceFiles": 2615, "workingStampAndStagedCheck": "passed" },
+  "limits": ["Shared full frontend:349files/3305tests passed; two concurrent volume-backup suites could not resolve $app/state", "Svelte check: no chat errors; volume-backup typing3 and database PageState.instanceId1 errors; three existing warnings", "Named chat backend halted before conftest on private TOML line10,column9; private configuration unchanged", "Full test:gate, paid inference, live authentication/cloud, production deployment and Safari/Firefox not run"],
+  "rawProofDirectory": "/Users/pieroot/.local/share/afterglow-proofs/chat-repair-20261013",
+  "docs": "docs/testing.md#lumen-밝은-테마작성창사이드바-전환-수정-검증-2026-10-13-local-only"
+}

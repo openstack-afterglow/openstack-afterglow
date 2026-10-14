@@ -1,6 +1,6 @@
 [project]
 name = "afterglow-api"
-version = "1.30.15"
+version = "1.30.16"
 description = "Afterglow - OpenStack VM deployment platform"
 requires-python = ">=3.12"
 dependencies = [
@@ -22,6 +22,7 @@ dependencies = [
     "aiomysql>=0.2.0",
     "aio-pika==9.6.2",  # Opt-in oslo notification collector; available in production images.
     "prometheus-client>=0.20.0",
+    "apscheduler>=3.10",
     "slowapi>=0.1.9",
     "pyyaml>=6.0",
     "boto3>=1.35.0",

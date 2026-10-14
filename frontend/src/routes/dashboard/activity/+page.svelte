@@ -7,6 +7,8 @@
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import { Alert, PageHeader, PageShell, Pill, ResourceToolbar, SectionHeader, StatTile, ToggleGroup } from '$lib/components/ui';
+	import BklitChart from '$lib/components/charts/BklitChart.svelte';
+	import type { ChartSpec } from '$lib/components/charts/types';
 
 	interface KPI {
 		total: number;
@@ -75,24 +77,17 @@
 	// Derived KPI values
 	const kpi = $derived(data?.kpi ?? { total: 0, success: 0, failed: 0, last_24h: 0, unique_users: 0 });
 	const successRate = $derived(kpi.total > 0 ? Math.round((kpi.success / kpi.total) * 100) : '—');
-	const hourDist = $derived(data?.hour_distribution ?? Array(24).fill(0));
+	const hourDist = $derived(data?.hour_distribution ?? []);
 	const recentActions = $derived(data?.recent_actions ?? []);
 
-	// Bar chart derived values
-	const maxHour = $derived(Math.max(...hourDist) || 1);
-	const BAR_MAX_PX = 72;
-
-	/** Bars scale from the bottom of a fixed 72px column; empty hours keep a 1px baseline, active ones at least 2px. */
-	function barScale(val: number): number {
-		const minPx = val > 0 ? 2 : 1;
-		return Math.max(Math.round((val / maxHour) * BAR_MAX_PX), minPx) / BAR_MAX_PX;
-	}
-
-	function barColor(idx: number, val: number): string {
-		if (val === 0) return 'color-mix(in oklab, var(--color-ink-3) 25%, transparent)';
-		if (val === Math.max(...hourDist) && val > 0) return 'var(--color-warm)';
-		return 'color-mix(in oklab, var(--color-accent) 55%, transparent)';
-	}
+	const hourSpec = $derived<ChartSpec>({
+		kind: 'bar',
+		data: hourDist.map((value, hour) => ({ hour: String(hour).padStart(2, '0'), events: value })),
+		xKey: 'hour',
+		series: [{ key: 'events', label: t('activity.distribution'), color: 'var(--color-chart-1)' }],
+		domain: [0, Math.max(1, ...hourDist)],
+		formatValue: value => value.toLocaleString(intlLocale()),
+	});
 
 	function formatHour(created_at: string): string {
 		try {
@@ -165,26 +160,7 @@
 		<!-- Hour Distribution Card -->
 		<div class="bg-surface-base border border-line rounded-lg p-5">
 			<SectionHeader title={t('activity.distribution')} meta={t('activity.hourly')} />
-			<div class="mt-4 flex items-end gap-0.5 h-20" aria-hidden="true">
-				{#each hourDist as val, i}
-					<div class="flex-1 flex flex-col justify-end">
-						<div
-							class="hour-bar w-full rounded-sm"
-							style="transform: scaleY({barScale(val)}); background: {barColor(i, val)};"
-						></div>
-					</div>
-				{/each}
-			</div>
-			<!-- Hour labels: show at 0,3,6,9,12,15,18,21 -->
-			<div class="flex mt-1" aria-hidden="true">
-				{#each hourDist as _, i}
-					<div class="flex-1 text-center">
-						{#if i % 3 === 0}
-							<span class="text-xs text-[var(--color-ink-3)]">{String(i).padStart(2, '0')}</span>
-						{/if}
-					</div>
-				{/each}
-			</div>
+			<BklitChart spec={hourSpec} height={180} label={t('activity.distribution')} class="mt-4" />
 		</div>
 
 		<!-- Audit Log Table -->
@@ -236,12 +212,3 @@
 	{/if}
 </PageShell>
 
-<style>
-	/* Hour bars grow from the baseline once, then ease to new counts on refresh. */
-	.hour-bar {
-		height: 72px;
-		transform-origin: center bottom;
-		animation: motion-grow-y var(--motion-duration-data) var(--motion-ease-emphasized) backwards;
-		transition: transform var(--motion-duration-data) var(--motion-ease-emphasized), background-color var(--motion-duration-base) var(--motion-ease-standard);
-	}
-</style>

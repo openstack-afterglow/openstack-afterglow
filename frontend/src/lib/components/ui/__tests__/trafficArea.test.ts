@@ -1,37 +1,38 @@
 import { describe, expect, it } from 'vitest';
-import { trafficAreaGeometry } from '../trafficArea';
+import { trafficAreaSeries } from '../trafficArea';
 
-describe('traffic area geometry', () => {
-	it('uses elapsed report time and one zero-based axis for both directions', () => {
-		const graph = trafficAreaGeometry([
-			{ timestamp: 0, rxRate: 0, txRate: 20 },
-			{ timestamp: 10, rxRate: 10, txRate: 10 },
-			{ timestamp: 30, rxRate: 20, txRate: 0 },
-		]);
-		expect(graph.peak).toBe(20);
-		expect(graph.rx[0].line).toBe('M0,64 L100,32 L300,0');
-		expect(graph.tx[0].line).toBe('M0,0 L100,32 L300,64');
-	});
-
-	it('leaves missing/reset intervals disconnected rather than drawing synthetic traffic', () => {
-		const graph = trafficAreaGeometry([
+describe('traffic observations', () => {
+	it('keeps missing/reset intervals and isolated measurements out of connected traffic', () => {
+		const graph = trafficAreaSeries([
 			{ timestamp: 0, rxRate: 10, txRate: null },
 			{ timestamp: 10, rxRate: 20, txRate: null },
 			{ timestamp: 20, rxRate: null, txRate: null },
 			{ timestamp: 30, rxRate: 20, txRate: 10 },
 			{ timestamp: 40, rxRate: 10, txRate: null },
 		]);
-		expect(graph.rx.map((path) => path.line)).toEqual(['M0,32 L75,0', 'M225,0 L300,32']);
-		expect(graph.tx).toEqual([]);
+		expect(graph.data.map(row => row.rxRate)).toEqual([10, 20, null, 20, 10]);
+		expect(graph.data.map(row => row.txRate)).toEqual([null, null, null, null, null]);
+		expect(graph.hasGraph).toBe(true);
 	});
 
-	it('does not invent a wave from zero traffic or a single rate', () => {
-		expect(trafficAreaGeometry([{ timestamp: 0, rxRate: 8, txRate: null }]).rx).toEqual([]);
-		const graph = trafficAreaGeometry([
+	it('distinguishes a measured zero interval from an unestablished rate', () => {
+		expect(trafficAreaSeries([{ timestamp: 0, rxRate: 8, txRate: null }]).hasGraph).toBe(false);
+		const graph = trafficAreaSeries([
 			{ timestamp: 0, rxRate: 0, txRate: 0 },
 			{ timestamp: 10, rxRate: 0, txRate: 0 },
 		]);
-		expect(graph.rx[0].line).toBe('M0,64 L300,64');
+		expect(graph.hasGraph).toBe(true);
+		expect(graph.data.map(row => row.rxRate)).toEqual([0, 0]);
 		expect(graph.peak).toBe(0);
+	});
+
+	it('rejects invalid rates without creating a zero measurement', () => {
+		const graph = trafficAreaSeries([
+			{ timestamp: 0, rxRate: 5, txRate: -1 },
+			{ timestamp: 10, rxRate: Number.NaN, txRate: 3 },
+			{ timestamp: 20, rxRate: 5, txRate: Number.POSITIVE_INFINITY },
+		]);
+		expect(graph.hasGraph).toBe(false);
+		expect(graph.data.every(row => row.rxRate === null && row.txRate === null)).toBe(true);
 	});
 });

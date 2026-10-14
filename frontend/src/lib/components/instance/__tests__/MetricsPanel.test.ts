@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
+import { render, screen, fireEvent } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
 
 vi.mock('$env/dynamic/public', () => ({ env: { PUBLIC_API_BASE: 'http://localhost:8000' } }));
@@ -8,6 +8,7 @@ const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }));
 vi.mock('$lib/api/client', () => ({
 	api: { get: mockGet },
 }));
+
 
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'test-token', projectId: 'test-project' }),
@@ -31,8 +32,8 @@ const FAKE_SERIES = [
 
 const ALL_METRIC_KEYS = ['cpu', 'memory', 'network_rx', 'network_tx', 'disk_read', 'disk_write', 'gpu_util', 'gpu_mem'];
 
-function makeBatchResponse(series: { ts: number; value: number }[]) {
-	const metrics: Record<string, { series: { ts: number; value: number }[]; error: null }> = {};
+function makeBatchResponse(series: { ts: number; value: number | null }[]) {
+	const metrics: Record<string, { series: { ts: number; value: number | null }[]; error: null }> = {};
 	for (const k of ALL_METRIC_KEYS) metrics[k] = { series, error: null };
 	return { metrics };
 }
@@ -141,34 +142,27 @@ describe('MetricsPanel', () => {
 		expect(urls.some(u => u.includes('range=6h'))).toBe(true);
 	});
 
-	it('preserves plotted series nodes while a new range replaces their measured data', async () => {
-		mockAllMetrics();
-		const { container } = render(MetricsPanel, { props: { instanceId: 'inst-1', isGpu: false } });
-		await waitFor(() => expect(container.querySelectorAll('polyline').length).toBeGreaterThan(0));
-		const plot = container.querySelector('polyline');
-		const originalPoints = plot?.getAttribute('points');
-		mockGet.mockResolvedValue(makeBatchResponse([
-			{ ts: 1700000000, value: 10 }, { ts: 1700000030, value: 80 },
-		]));
-		await fireEvent.click(screen.getByText('6시간'));
-		await waitFor(() => expect(plot?.getAttribute('points')).not.toBe(originalPoints));
-		expect(container.querySelector('polyline')).toBe(plot);
-	});
 
-	it('does not replay draw-in when a measured series returns after an empty refresh', async () => {
-		mockAllMetrics();
-		const { container } = render(MetricsPanel, { props: { instanceId: 'inst-1', isGpu: false } });
-		await waitFor(() => expect(container.querySelector('polyline')?.classList.contains('motion-draw')).toBe(true));
-		const dashed = container.querySelector('polyline[stroke-dasharray]');
-		expect(dashed?.getAttribute('stroke-dasharray')).toBe('4 2');
-		expect(dashed?.classList.contains('motion-draw')).toBe(false);
-		mockGet.mockResolvedValue(makeBatchResponse([]));
-		await fireEvent.click(screen.getByText('6시간'));
-		await waitFor(() => expect(container.querySelector('polyline')).toBeNull());
-		mockAllMetrics();
-		await fireEvent.click(screen.getByText('24시간'));
-		await waitFor(() => expect(container.querySelector('polyline')).not.toBeNull());
-		expect(container.querySelector('polyline')?.classList.contains('motion-draw')).toBe(false);
-		expect(container.querySelector('polyline[stroke-dasharray]')?.getAttribute('stroke-dasharray')).toBe('4 2');
+	it('exposes independently timed measurements with explicit gaps and byte-rate units', async () => {
+		const batch = makeBatchResponse(FAKE_SERIES);
+		batch.metrics.network_rx.series = [
+			{ ts: 1700000000, value: 1024 },
+			{ ts: 1700000060, value: null },
+			{ ts: 1700000090, value: 2048 },
+		];
+		batch.metrics.network_tx.series = [
+			{ ts: 1700000030, value: 512 },
+			{ ts: 1700000090, value: 768 },
+		];
+		mockGet.mockResolvedValue(batch);
+		render(MetricsPanel, { props: { instanceId: 'inst-1' } });
+		const chart = await screen.findByRole('group', { name: '네트워크 I/O' });
+		const details = chart.querySelector('details')!;
+		details.open = true;
+		await fireEvent(details, new Event('toggle'));
+		const values = [...chart.querySelectorAll('tbody tr')].map(row => [...row.querySelectorAll('td')].map(cell => cell.textContent));
+		expect(values).toEqual([
+			['1.0KB/s', '—'], ['—', '512B/s'], ['—', '—'], ['2.0KB/s', '768B/s'],
+		]);
 	});
 });

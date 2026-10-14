@@ -103,6 +103,9 @@ secrets:
   databaseUrl: ""
   prometheusPassword: ""
   monitoringSDToken: ""
+  infrastructureTopologyObservers: []
+  trafficAnalyticsHmacKey: ""
+  trafficAnalyticsFrontendIngestKey: ""
   notionConfigEncryptionKey: ""
   smtpPassword: ""
   # 멀티라인 PEM 키: |로 시작하는 블록 스칼라로 입력
@@ -674,6 +677,12 @@ smtp:
 # -----------------------------------------------------------------------------
 monitoring:
   enabled: true
+  hostHealthcheckEnabled: true
+  hostHealthcheckTargets: []
+  infrastructureTopologyEnabled: false
+  infrastructureTopologyTraceTargets: []
+  infrastructureTopologyPeerTargets: []
+  infrastructureTopologyRetentionSeconds: 3600
   prometheusBaseUrl: "http://prometheus:9090"
   prometheusUsername: ""
   scrapeCidr: ""
@@ -714,6 +723,13 @@ monitoring:
     # 보안 플러그인 비활성화 여부 (기본 false = 보안 활성화)
     # 개발 환경에서만 true로 설정할 것
     disableSecurityPlugin: false
+
+trafficAnalytics:
+  enabled: false
+  retentionDays: 30
+  geoipCsv: ""
+  siteCountry: ""
+  trustFrontendClientAddress: false
 
 # -----------------------------------------------------------------------------
 # [notion]

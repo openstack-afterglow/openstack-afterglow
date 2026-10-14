@@ -111,6 +111,9 @@ describe('ChatProjectsView project creation', () => {
 		await rerender({ ...common, initialWorkspaceId: 8 });
 
 		await waitFor(() => expect(screen.getByRole('heading', { name: '개발' })).toBeTruthy());
+		await rerender({ ...common, initialWorkspaceId: null });
+		await waitFor(() => expect(screen.getByRole('heading', { name: '프로젝트' })).toBeTruthy());
+		expect(screen.queryByRole('heading', { name: '개발' })).toBeNull();
 	});
 
 	it('shows only chats assigned to the routed project in its detail list', () => {

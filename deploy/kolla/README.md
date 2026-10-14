@@ -86,7 +86,7 @@ KOLLA_ANSIBLE_DIR=/etc/kolla/.venv/share/kolla-ansible \
 - Verified root-package roles under `$KOLLA_DIR/ansible/roles/`: `drover`
   (via `drover==0.2.25`), `lumen` (via `lumen==0.3.1`), `waygate`
   (via `waygate==0.2.0`), and `palimpsest` (via
-  `palimpsest-client==0.2.3`). Installer validates non-symlink role paths and
+  `palimpsest-client==0.3.3` from PyPI). Installer validates non-symlink role paths and
   required lifecycle files, and refuses a leftover retired `palimpsest-local`
   distribution that shares the Palimpsest role files.
 - Aggregate playbook: `$KOLLA_DIR/ansible/afterglow-site.yml` ->
@@ -118,20 +118,20 @@ unexpected, `install.sh` aborts rather than replacing it.
 - **`drover==0.2.25`** owns the `drover` role.
 - **`lumen==0.3.1`** owns the `lumen` role.
 - **`waygate==0.2.0`** owns the `waygate` role.
-- **`palimpsest-client==0.2.3`** owns the `palimpsest` role (renamed from
+- **`palimpsest-client==0.3.3` from PyPI** owns the `palimpsest` role (renamed from
   `palimpsest-local` in 0.2.3; see the operator README for migration).
 
 All roots require Python 3.11 or newer. There are no `*-kolla` distributions,
 no `subdirectory = "deploy/kolla"` sources, and no plugin role becomes a Kolla
 default dependency merely by being installed.
 
-Each root package promotion is bound to its immutable `vX.Y.Z` release tag.
-The operator manifest records that tag by name; `operator/uv.lock` records the
-resolved commit, so frozen synchronization gives every controller the same
-artifact. Branches, bare Git URLs, mutable `latest` labels, and tag rewrites
-are prohibited. The tag must exactly match root-package metadata and carry the
-package-owned role. The scheduled Afterglow workflow opens a reviewed PR when
-a newer eligible sibling tag appears; merging that PR is the promotion boundary.
+Palimpsest's exact PyPI requirement and wheel/sdist hashes are recorded in the
+operator manifest/lock, without a Palimpsest Git source. The other root package
+promotions remain bound to immutable `vX.Y.Z` tags and resolved commits.
+Frozen synchronization installs that reviewed artifact set; branches, bare Git
+URLs, mutable `latest` labels and tag rewrites are prohibited for Git sources.
+The scheduled workflow covers only the three Git-sourced roots. Palimpsest
+version/hashes and packaged role bytes require a separately reviewed PyPI update.
 
 ### 1. Legacy Symlink Migration
 
@@ -165,10 +165,10 @@ done
 ### 2. Promote and Sync the Operator Dependencies
 
 Do not make a Kolla control node discover a remote "latest" release at install
-time. From a reviewed Afterglow checkout, the scheduled
-`promote-kolla-role-tags` workflow (or its manual dispatch) records each new
-eligible sibling `vX.Y.Z` tag by name and opens a promotion PR. Review and
-merge that PR first; its lock is the release set to install.
+time. Review and merge the exact operator manifest/lock update first. For the
+three Git-sourced siblings, the scheduled `promote-kolla-role-tags` workflow
+records eligible immutable tags. For Palimpsest, pin the published PyPI version
+and preserve all unrelated package resolutions.
 
 Then, from the promoted checkout:
 

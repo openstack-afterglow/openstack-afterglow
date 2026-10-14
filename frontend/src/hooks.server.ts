@@ -1,4 +1,5 @@
 import type { Handle } from '@sveltejs/kit';
+import { createTrafficReporter, reporterConfig } from '$lib/server/trafficReporter';
 import { loadPublicSiteConfig } from '$lib/server/config';
 import type { PublicSiteConfig } from '$lib/types/siteConfig';
 import { LOCALE_COOKIE, resolveLocale } from '$lib/i18n/locales';
@@ -163,7 +164,7 @@ function buildSecurityHeaders(siteConfig: PublicSiteConfig): Record<string, stri
 	};
 }
 
-export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
+const securityHandle: Handle = async ({ event, resolve: resolveEvent }) => {
 	const siteConfig = loadPublicSiteConfig();
 	const securityHeaders = buildSecurityHeaders(siteConfig);
 	event.locals.siteConfig = siteConfig;
@@ -247,3 +248,8 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 	applySecurityHeaders(response, securityHeaders);
 	return response;
 };
+
+// Outer reporter observes every security-hook exit; transformPageChunk stays on the real resolve.
+const trafficHandle = createTrafficReporter(reporterConfig(process.env));
+export const handle: Handle = ({ event, resolve }) =>
+	trafficHandle({ event, resolve: (inner) => securityHandle({ event: inner, resolve }) });

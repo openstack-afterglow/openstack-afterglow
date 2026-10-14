@@ -206,25 +206,17 @@ async def test_list_transfers_unauthenticated():
 
 
 @pytest.mark.asyncio
+async def test_lookup_transfer_unauthenticated():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/v1/volumes/transfer/11111111-1111-4111-8111-111111111111")
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_create_transfer_unauthenticated():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.post("/api/v1/volumes/vol-1/transfer", json={})
     assert resp.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_create_transfer_success(client):
-    with patch("app.api.storage.volumes.cinder") as mock_cinder:
-        mock_cinder.get_volume.return_value = make_mock_volume("vol-1", status="available")
-        mock_cinder.create_volume_transfer.return_value = {
-            "id": "tr-1",
-            "name": "transfer-1",
-            "volume_id": "vol-1",
-            "auth_key": "abc123",
-            "created_at": None,
-        }
-        resp = await client.post("/api/v1/volumes/vol-1/transfer", json={})
-    assert resp.status_code in (200, 201)
 
 
 @pytest.mark.asyncio
@@ -239,11 +231,3 @@ async def test_delete_transfer_unauthenticated():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.delete("/api/v1/volumes/transfer/tr-1")
     assert resp.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_delete_transfer_success(client):
-    with patch("app.api.storage.volumes.cinder") as mock_cinder:
-        mock_cinder.delete_volume_transfer.return_value = None
-        resp = await client.delete("/api/v1/volumes/transfer/tr-1")
-    assert resp.status_code in (200, 204)

@@ -6,6 +6,254 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 1.30.16 release qualification (2026-10-14)
+
+**Local/disposable evidence only.** 최신 fetched `origin/dev` `c2712e690ae24a20870f985caf709d3766a7df4e` 위에 보존된 public WIP 전체를 통합한 격리 release clone에서 검증했다. Re-fetch 당시 더 최신 dev는 없었다. 아래는 parent의 fresh qualification receipts이며 과거 slice의 실패/skip/제외 범위를 소급 수정하지 않는다. Exact-SHA CI·tag·package/image publication·operator 변경·운영 배포 증거가 아니다. 원문은 private proof root **`release-all-20261014T073153Z-c2ba90`**에 보존하며 private 입력은 공개 문서에 복사하지 않는다.
+
+### Afterglow commands and totals
+
+Final gate의 stamped working source는 **`fa5e23933e370e34c41bb9d003c514258c85b473fc264472f02e45ebfaf9d3d8`**, **2,849 source files**다. 이는 working-source digest이지 release commit SHA가 아니다.
+
+```bash
+env -u AFTERGLOW_TEST_REAL_REDIS -u AFTERGLOW_TEST_DATABASE_URL -u AFTERGLOW_TEST_CHECKPOINTER_POSTGRES_URL AFTERGLOW_TEST_PROJECT_NAME=afterglow-release-all-c2ba90-final2 npm run test:gate
+```
+
+명령은 exit **0**이었다. Functional datastore는 disposable MariaDB/PostgreSQL/Redis이며 실행 뒤 teardown했다.
+
+| Gate lane | Result |
+|---|---|
+| `docs:check` | Architecture freshness passed |
+| JS orchestration | 175 passed |
+| Kolla contract | 27 passed |
+| CLI install | 20 passed / 36 skipped (56 total; PowerShell 실행은 미검증) |
+| Backend unit | **6,610 passed / 91 skipped** |
+| Frontend unit | **368 files / 3,621 tests passed** |
+| File-log runner | 9 passed |
+| Consumer contract | **174 passed** |
+| Functional | **154 passed / 27 deselected** |
+| `lint:backend` | Ruff check passed; 632 files formatted |
+
+동일 통합 source의 formatting-only backend 변경 **이전**에 다음 명령도 실행했다. 이를 final gate의 exact stamped bytes에서 재실행한 결과로 표기하지 않는다.
+
+```bash
+npm run check
+npm run build
+npm run i18n:check
+npm run i18n:scan
+```
+
+- `check`: 2,513 files, **0 errors / 3 existing warnings**.
+- `build`: production build passed.
+- `i18n:check`: **0 errors / 0 warnings**, 40 namespaces / **9,920 messages**.
+- `i18n:scan`: **0 hard-coded Korean lines** in **1,072 files**.
+
+Parent repairs는 ordinary Manila-grant deletion fixture의 block-consumer lookup mock, database instances의 빈 shallow-history state, `main.py` import order와 backend 4files formatting, vendored Bklit tooltip/touch/scroll/LTTB 및 상세 timestamp 수정, crypto native lock 재생성, 1.30.16 metadata/native lock 동기화다. Production 삭제의 authoritative lookup·revoke-before-delete·fail-closed 계약은 유지했다. 구체적인 수정 항목은 `CHANGELOG.md` 1.30.16 **Fixed**에 기록한다.
+
+### Compiled native chart smoke
+
+현재 source의 실제 `runtime.tsx`/vendored Bklit와 application CSS를 Vite production bundle로 컴파일해 managed Chromium에서 실행했다. Data는 synthetic local fixture이며 authenticated dashboard나 production proof가 아니다.
+
+- Bar polling: hover 값 **2**, refresh **2→9** 뒤 cached tooltip dismissal, re-hover 값 **9**.
+- Time series: held pointer가 refresh **2→9** 뒤 새 값에 re-anchor했다. 상세 title은 **`Oct 13, 09:34:56 PM`**으로 날짜·초를 포함했다.
+- **390px touch**: scrub tooltip 표시 후 touch end→refresh에서 tooltip/crosshair가 되살아나지 않았다.
+- Decorative line/area/bar 및 zoom-disabled map 위 vertical swipe가 page를 각각 **180/121/117/117px** scroll했다. Map은 `touch-action: pan-y`, grab cursor 없음.
+- Map: keyboard focus+Enter로 Korea 선택(`aria-pressed=true`), interior touch tap으로 China 선택.
+- Application exceptions **0**.
+
+### Paired sibling qualification summary
+
+각 sibling도 격리 integration clone의 local/disposable 검증이다. SDK/service/선택 SQL smoke는 서로 중복할 수 있으므로 합산하지 않는다. Native HTTP/SQL/process/image 실행과 synthetic provider·IAM 경계를 구분한다.
+
+| Pair | Commands / totals | Runtime scope and limits |
+|---|---|---|
+| **Lumen 0.6.8** | `env -u LUMEN_TEST_DATABASE_URL -u LUMEN_TEST_REDIS_URL uv run --no-sync lumen-test contract -q`: service **3,179 passed / 344 deselected**, SDK **128 passed**, Ruff passed (CPython 3.12.13). `lumen-test integration -q`: **313 passed / 3,210 deselected**. `lumen-test system -q`: **31 passed**. | Disposable MariaDB/Redis and locally built native **arm64** api/worker/batch-worker/migrate images, fake Keystone/provider, MinIO/ClamAV/Postgres. **amd64 image execution**, real IAM/provider and production not qualified. |
+| **Drover 0.4.15** | `uv sync --python 3.12 --frozen --extra service --extra dev`; `uv run pytest tests -q`: **1,560 passed / 3 skipped**; `ruff check .` passed. Frozen all-extras SDK: **114 passed**, Ruff passed. `uv build --wheel`: `drover-0.4.15-py3-none-any.whl` includes `tasks/source_build.yml`. | Canonical api/worker **amd64+arm64** images executed with version/machine/import checks. `scripts/worker_ownership_smoke.py` inside arm64 worker with qualification-only Redis overlay and empty disposable MariaDB: exit **0**, initial owners **[11,11,11]**, **9 SQL jobs**, lost-reply/killed-after-accept no replay, drain/crash takeover and Redis fail-closed, **0 duplicate healthy polls**. Provider synthetic; not Keystone/guest/production. |
+| **Waygate 0.3.4** | `uv sync --python 3.12 --frozen --extra service --extra dev`; `uv run pytest tests -q -n 4 --dist worksteal`: **729 passed / 3 skipped**; `ruff check .` passed. Frozen all-extras SDK: **44 passed**, Ruff passed. Disposable `WAYGATE_DELEGATION_MARIADB_URL`, `tests/test_execution_delegation.py`: **61 passed**. | Canonical api/worker **arm64+amd64** images. `WAYGATE_NATIVE_CONTAINER_SMOKE=1 uv run pytest tests/test_native_service_grades.py -k native_built_images_and_mariadb_upgrade -q -s`: **2 passed**. MariaDB 11.4.13 preserves 001–004 ledger/records/ciphertext through packaged 005–006, NULL owner reopen and competing assign-once; native HTTP/SDK/ownership/downgrade/export/machine callbacks. Not production proof. |
+| **Palimpsest 0.3.5** | `uv sync --python 3.12 --frozen --extra dev`; `scripts/test_lanes.py list --check` valid; `scripts/test_lanes.py run full`: **7,064 passed / 264 skipped**. Ruff check/format, OCI fixture and CLI-reference checks passed. Client wheel+sdist built/smoke-installed; `uv run --python 3.11 --no-dev palimpsest --version` → **0.3.5**. Hub `pytest tests -q`: **559 passed / 2 skipped**, Ruff passed; `uv build` built Hub wheel+sdist. | Disposable `PALIMPSEST_OWNERSHIP_SQL_URL`, `test_shared_sql_process_ownership_smoke`: **2 passed**, 2/3 real SQL/process workers with independent flocks, synthetic remote provider. Canonical Hub api/worker/build-worker **amd64** images executed under local emulation; version/import checks and build-worker client/tools present. Opt-in **native/KVM/BuildKit skipped**, not qualified; no native cloud/production proof. |
+
+### Not yet done
+
+- **Exact-SHA hosted CI** for the final release commits.
+- **Tag publication and published-image execution**: Afterglow API/frontend/worker **amd64**, Cloud Shell **amd64+arm64**; immutable revision/digest and release artifact checks remain pending. Sibling local image/package checks above are not tag-publication evidence.
+- **Operator promotion** of the paired root-role packages/lock and source pins to the released identities.
+- **Production cutover and authenticated UI acceptance**, including protected backup/restore and explicit SQL **088 then 089** before new writers. Read-only baseline receipts report 081–087 applied and 088/089 pending; Afterglow has no migration ledger. Bootstrap does not add existing columns. Do not mix old/new API/Notion worker cohorts; follow [schema upgrade guidance](deployment.md#13016-업그레이드-sql-088089와-writer-cohort).
+
+
+## Bklit 대시보드 수치 시각화 전환 검증 (2026-10-14, local-only)
+
+`standardize-bklit-visualizations`는 실제 MIT Bklit UI registry commit `f7b3bd2999a5c993863f9cc5523c9cf60b9f3bc2`를 Svelte의 client-only React 경계에서 실행한다. 사용자/관리자·서비스별 자체 선/영역·bar/stack·usage/quota/capacity gauge/ring·country choropleth를 전환했고 전체 surface/향후 개발/upstream 갱신 기준은 `frontend/README.md`에 둔다. 편집 토폴로지·외부 Grafana·진행 상태/아이콘은 별도이며 내장 수치 그래프만 이 경계를 사용한다.
+
+Private root 설정은 읽거나 수정하지 않고 현재 public frontend를 별도 scratch로 복사해 실제 adapter-node production build를 실행했다. Identity/API payload는 loopback 합성이며 cloud/provider 호출·실제 인증·배포 증거가 아니다. 1,717개 `frontend/src/` 파일은 compiled clone과 SHA-256 byte parity가 일치한다. QA route/fixture/profile은 scratch에만 존재하며 공유 checkout/index·Compose·볼륨·운영 설정은 보존한다.
+
+| 검증 경계 | 실제 결과 |
+|---|---|
+| Native boundary + login consumer exact | `runtime.test.ts`, `runtime-map.test.ts`, `loginMonitoringController.test.ts`: 3files / 39 passed. Native scales/paths/projection을 사용하며 jsdom shim은 없는 layout 정보만 제공한다. |
+| 전체 frontend | 최종 `vitest run --maxWorkers=4`: 367files / 3,615 passed, 실패/skip 0. File-log runner 9 passed. Legacy SVG element/class/geometry-implementation assertion은 삭제하고 실제 값·filter·scope·unknown-budget 계약은 유지했다. |
+| Named design target | `npm run test:frontend:design`: 26files / 128 passed. |
+| Build·i18n | 실제 adapter-node production build 성공. i18n check 0errors/0warnings,40namespaces/9,920source messages; scan 1,072files에 hard-coded Korean 0. |
+| Type check 한계 | 최종 `npm run check`: 2,520files, 범위 밖 database instances `PageState.instanceId` 오류1개(`+page.svelte:42:54`)와 기존 warning3개. Bklit/TSX 변경 진단0. 전체 type check 통과로 표기하지 않는다. |
+| Compiled component matrix | 실제 consumer 39개 plot(ring5/gauge10/bar11/time-series12/choropleth1), ko/en/ja/zh-CN × light/dark × 390/768/1024/1440 = 32조건. Document overflow·invalid path·축 잘림·pairwise label overlap·reduced-motion running chart animation 모두0. |
+| Compiled actual routes | `/dashboard/activity`, `/admin/chat/stats`, `/admin/monitoring/traffic` × 2themes × 4widths = 24조건. Overflow·invalid path·axis label overlap0, browser exception0. |
+| Data/filter/refresh | Activity 7d→24h, admin chat model-a/90d, instance metrics 1h→6h 및 refresh, chat day→month/1y의 실제 query와 렌더링 확인. Traffic backend→frontend/24h→7d, refresh의 Japan100→101 관측을 native map label에 반영했다. |
+| Numeric/lifecycle edge | 5px stack의0/70/95/120 사용량에서 정확한 used/proposed endpoint와100% clipping;18px ring;무제한;null gap3구간과 table의 미관측 표시;empty에서 painted path0;unmount0/remount39;독립 timestamps·실제0 baseline을 검증했다. |
+| Map·motion·quota | SG(소국가)/XX(미위치) 선택 보존, clear/Enter/Space와 동일 native feature focus 유지, native tooltip, quota7/10=70%와 limit10 입력 보존. Live motion 정책 변경 뒤12frames 동일 geometry·running animation0. |
+| Browser에서 발견/수정 | 작은 ring padding·5px stacked segment/초과 clipping·null gap/reveal;모바일 범주 축 잘림/겹침과120px metric card의 숫자 tick 겹침. Canonical ISO bucket은 scale key로 유지하고 축/tooltip 상세 formatter를 분리했다. 축의 width/height 기반 tick density와 이웃 간 간격을 실제 browser에서 확인했다. 초기 실패 matrix도 보관한다. |
+| Architecture | Public frozen snapshot(동시 WIP 포함)의 working stamp와 독립 temporary-index staged guard가 동일 `891401c9ce17f0bdc88a4a79dbca7c4f22405c6e2f2784ad4160fef23b3c0145`/2,847files로 통과했다. 공유 index/review marker는 그대로이며 전체 동시 WIP의 integration 승인이 아니다. |
+| 전체 gate 한계 | 동일 public frozen snapshot에서 `npm run test:gate` 실행. 첫 시도는 scratch에 pytest가 없어 중단됐고 locked `uv sync --extra dev --frozen` 뒤 같은 명령을 실행했다. Architecture·JS orchestration/Kolla/install lane 통과(비가용 PowerShell36 skip), backend unit6,569passed/91skipped/11failed. 실패11개는 모두 범위 밖 `test_instance_storage_delete.py`의 block-consumer tracking/DB 계약이며 기존 동시 WIP를 고치지 않았다. Gate는 이 지점에서 중단되어 이후 contract·functional·backend lint는 미실행이며 전체 통과로 기록하지 않는다. Frontend는 별도 최종 전체 실행으로 위와 같이 통과했다. |
+
+Receipts: `~/.local/share/afterglow-proofs/afterglow-bklit-7mhvOI/`의 `matrix-final.json`, `route-matrix.json`, `routes.json`, `consumer-filters.json`, `interactions.json`, `quota-motion.json`, `frontend-tests-accepted.json`, `architecture.json`, `source-parity.json`, `accepted-*.png`, `route-*.png`. 실제 운영 인증·cloud/provider·deployment acceptance는 미검증이다. 선택적 gbrain CLI가 설치되지 않아 code index sync는 실행하지 않았다.
+
+## 공유 background process 역할·대상 분배 검증 (2026-10-14, local-only)
+
+`distribute-background-processes`와 Drover·Waygate·Lumen·Palimpsest native change를 각 저장소 current working tree를 byte 단위로 복사한 frozen public clone(동시 WIP 포함)에서 실행했다. 소유한 Docker MariaDB 11.4(tmpfs)·Redis 7 loopback fixture와 합성 provider만 사용했고 private 설정·운영 Redis/IAM·배포·commit·stage·push는 하지 않았다. Receipts: `~/.local/share/afterglow-proofs/afterglow-process-ownership-n7xrnua4/`.
+
+| 검증 경계 | 실행 결과 |
+|---|---|
+| Afterglow 선택 lane(최종 source) | core 19files 675 passed; build 8files 143 passed; Notion/Trove 7files 92 passed; 인접 consumer 22files 403 passed/95 skipped. Skip 91건은 Linux GNU coreutils guest helper, 4건은 MariaDB 전용이며 owned MariaDB의 `AFTERGLOW_TEST_DATABASE_URL`로 4 passed. |
+| Afterglow 전체 backend unit | `pytest tests/ -m "not db and not contract" -n 4` 6569 passed, 91 skipped, 11 failed. 실패는 모두 `test_instance_storage_delete.py`의 `block consumer tracking database unavailable`로, untracked block-consumer WIP와 수정된 `instances.py`에서 발생하며 2026-10-12 기록과 같은 범위 밖 실패다. |
+| Failed-before/passed-after | ① Leader crash 중 assignment hash TTL이 membership(45초)과 같아 후계 선출(약 60초) 전에 만료되어 정상 실행자 lease를 철회했다(`DispatcherUnavailable: Background work lease was revoked`). 2× TTL 뒤 `test_work_dispatcher.py` 39 passed, 실제 Redis 운영 상수(45/10/90)에서 lease 85.1초 유지·후계 60.04초 선출·철회 없음. ② Manila 2.45+ `access_list` 오독(native HTTP `ValueError: Manila access-rule list is incomplete`) 수정 후 통과. ③ 선택 consumer 정리 실패에도 import를 `complete`로 닫음(`'complete' == 'running'`) 수정 후 통과. ④ Library 취소의 즉시 terminal·요청 내 provider 연결(`completed_at` 설정, keystoneauth `MissingRequiredOptions`)을 pending cleanup 계약으로 바꾼 뒤 2 passed. 이 함수는 `110058dd` 이후 API route가 없다. ⑤ Ownership 재작성으로 사라진 layer build `execution` INFO/DEBUG 이벤트(`[] == [started, completed]`)를 복원했고 `test_logging_contract.py` 43 passed. |
+| 실제 API process | 실제 `uvicorn app.main:app` 3개, Redis DB8, MariaDB에서 api-roles/builds/volume-backups 각 3 member, 역할 1/1/1. SIGTERM 0.23초 graceful shutdown 뒤 member 2와 역할 재배정, 전체 종료 뒤 member 0·leader null·traceback 0이고 3/3이 `Application shutdown complete`를 기록했다. Exit `-15`는 Uvicorn 0.39가 graceful lifespan 종료 뒤 SIGTERM을 재발생시킨 결과다. |
+| 실제 공유 role process | Interpreter 3개, 실제 Redis, native `run_roles`/`_background_sdk`. 초기 2/2/2, SIGTERM drain 뒤 생존자 재배정, crash 인계 46.73초·실제 작업 89.69초(90초 lease), overlapping role effect 0, 종료 뒤 member 0·leader null. Leader-gap 수정 전 실행(49.95초/90.07초)은 별도 보관했다. |
+| Notion lane 안정성 | 4 lane 동시 실행 중 1회가 300초 제한을 넘었다(출력 없음, 원인 미확정). 같은 source 단독 1회와 동시 부하 8회(faulthandler 45초) 모두 92 passed로 재현되지 않았고 잔여 process도 없었다. |
+| Afterglow style·architecture | 소유 backend 45 files `ruff check`·`ruff format --check` 통과. `main.py`는 소유 줄만 정리하고 동시 import block은 건드리지 않았다. Frozen public snapshot(동시 WIP 포함)의 working stamp와 격리 temporary-index staged guard가 동일 `98e79ca0151c428ae659c294c5950209a5784b67dcc269f03d045703531f6a34`/2847files로 통과했다. 공유 index/review marker는 보존했다. |
+| Drover | Focused 374 passed; 전체 service 1323 passed/1 skipped. Three-replica smoke(owned Docker Redis pause/unpause, 빈 MariaDB, 합성 provider)는 exit 0, [11,11,11], 모든 safety flag true. 이전 시도 1·2는 harness 실패(listen backlog, InnoDB 1213 deadlock)였고 3·4와 최종 run은 통과했다. Ruff는 기존 scoped-access 2건만 남았다. Guard `f7e9f7f0…`/230files. |
+| Waygate | Focused 115; MariaDB 49(0 skip, 실제 worker SIGTERM/SIGINT drain·accepted response 유실 무재발행 포함); 전체 671 passed/3 skipped(opt-in image 2, live 1); Ruff clean. Guard `b3f9def4…`/120files. |
+| Lumen | Focused 110; integration 110 passed/3393 deselected(실제 Redis/SQL 다중 process smoke·late join·crash·lock 내 배정 상실, ON/OFF); contract service 3159/344 deselected·SDK 128·Ruff 통과. Ruff는 HEAD 기존 1건만 남았다. Guard `41a373a1…`/501files. |
+| Palimpsest Hub | Focused 93 passed/2 skipped; MariaDB 다중 process smoke 2 passed; 전체 hub 378 passed/2 skipped. Hub format gate는 다른 change(`isolate-service-execution-credentials`)의 7 files와 `tests/test_auth.py` I001 때문에 실패 상태로 남는다. Guard `d4300659…`/468files. |
+| 미검증 | 운영 Redis/Sentinel failover와 비동기 복제의 lease/journal 유실·TIME skew, 혼합 버전 rolling upgrade, 실제 OpenStack/Keystone/K3s/KVM/유료 추론, 배포. 전체 `npm run test:gate`는 동시 WIP 실패 때문에 통과로 기록하지 않는다. |
+
+## 관리자 자격 증명·호스트·접속 모니터링 검증 (2026-10-14, local-only)
+
+`add-admin-credentials-host-telemetry`는 Identity 자격 증명, Hypervisors host health, 인프라 topology, traffic/world map 및 login/session 화면을 연결한다. Private root TOML의 기존 line10,column9 파싱 장애를 변경하지 않고 current public source를 격리 clone으로 복사했다. 동시 public WIP가 포함된 snapshot이며 공유 index/review marker·운영 설정·배포를 수정하지 않았다.
+
+| 검증 경계 | 실행 결과 |
+|---|---|
+| 선택 회귀 | Monitoring target backend304/frontend263(11files), access backend326/frontend38(4files), config backend256/frontend12(2files) 통과. 공유 selector의 중복은 합산하지 않는다. 후속 미응답 hop 압축 회귀는 topology2files81passed로 확인했다. |
+| 빌드·품질 | Adapter-node production build 성공. i18n0errors/0warnings,40namespaces/9911source messages. 변경 backend25files Ruff check/format 통과. Svelte check는 범위 밖 database instances `PageState.instanceId` 오류1개와 기존 warning3개로 실패하며 변경 파일 진단은0이다. |
+| Native credential | 실제 FastAPI→installed openstacksdk3.3.0→loopback Keystone HTTP로 reader 역할 application201·1회 secret·닫기 후 폐기·확인 삭제204, cert 원문 blob 생성/명시적 상세/수정/삭제204를 실행했다. 목록 blob 비공개·no-store, nonadmin403, native403 정제와 UI 거부·복구를 확인했다. Identity와 Keystone records는 합성이다. |
+| 10초 host health | 실제 lifecycle/Redis lease와 native Nova HTTP inventory, bounded HTTP exporter fixture에서3hosts의 CPU25%·memory50%·filesystem75%·RX10KiB/s·TX20KiB/s 및 연속 history를 확인했다. Exporter503은 UI의 연결 실패·측정 없음이고 Nova heartbeat와 구분된다.200복구 뒤 새 연속 표본의 rates가 복원됐다. |
+| Linux observer/network | 전용 nonroot/read-only/cap-drop-all Linux container의 실제 iproute2·`/proc/net/dev`·HTTPS observer가10초마다 보고했다. 실제 TCP9100open/9101closed를 방향별 표시하고, unprivileged traceroute가 direct1hop와 소유 dual-NIC router를 지나는2hop 성공, router 이후15미응답 hop의 reached=false를 보고했다. 연속 미응답은 지도에서 범위로 압축되며 원본 hop은 유지한다. Disallowed destination422·nonadmin403·60초 trace rate limit을 확인했다. LLDP 미설치는 unsupported로 표시했고 물리 케이블 연결을 검증했다고 주장하지 않는다. |
+| 실제 장애 표시 | 소유 observer를 중단하자 host·NIC·peer·trace 근거가 오래된 관측/확인 불가로 바뀌었고 다시 시작했다. Exporter HTTP503과 Keystone403도 실제 응답으로 주입해 정상0 대신 오류·미측정을 표시하고 복구를 확인했다. |
+| Traffic/login 실제 저장 | 실제 Redis Lua/HLL에 한국·미국·호주 합성 country fixture의200/401/404 요청을 수집하고 세계지도2개 country→KR 논리 arc와 미위치 분리를 확인했다. 실제 SvelteKit server reporter가 frontend source의 HTML pageview/response bytes/unique estimate를 별도 수집했다. SQLite ActivityLog4개와 Redis 유효 세션1개를 표시하고 절대수명 초과 세션을 제외했다. 응답에 token/JTI/IP/fingerprint가 없으며24h/7d/30d 조회200을 확인했다. |
+| Compiled Chromium | 실제 adapter-node UI의6screens×ko/en/ja/zh-CN×dark/light×320/390/768/1024/1440px 총240조건에서 document overflow0·heading/locale/theme 표시를 확인했다. Credential CRUD, host graphs, NIC counters, shared router/gap map, country map, login history를 시각 검토했다. Native cloud/auth/exporter/country는 합성이며 실제 운영 로그인/provider acceptance가 아니다. |
+| Native Redis 회귀 | 별도 disposable Redis DB6에서 Lua concurrency/dedupe/HLL/privacy·24h/7d/30d/retention·capacity·route/country 경계4passed. 처음에는 test의 binary DUMP를 text/hiredis client로 읽어 UnicodeDecodeError와 다음 pipeline 오염을 일으켰다. 별도 decode_responses=false pool로 fixture만 수정해4개 모두 통과했으며 서비스의 실제 empty/unavailable 구분을 약화하지 않았다. |
+| 전체 gate | `npm run test:gate`는 docs guard를 통과했으나 orchestration174passed/1failed에서 중단됐다. Frozen 동시 WIP의 storage selector가 없는 `tests/test_backup_dispatcher.py`를 가리킨다. 무관한 selector/source를 변경하지 않았고 이후 전체 unit/contract/functional/lint 통과를 주장하지 않는다. stdout은 `full-gate.log`에 보존했다. |
+| Architecture | Binary-reader fixture 최종 수정 뒤 frozen public snapshot(동시 WIP 포함)의 working stamp와 격리 temporary-index staged guard가 동일 `1d4708475cb3a1c857d6e4c684485d1b285a1099ffa26d0f456a580bf46cc75d`/2735files로 통과했다. 공유 index/review marker는 보존했고 전체 동시 변경의 integration 승인을 뜻하지 않는다. |
+
+증거는 `~/.local/share/afterglow-proofs/afterglow-admin-monitoring-fvp32smm/`의 `verification.json`, `browser-matrix.json`, 화면별24개WebP와 `world-map-light.webp`, `exporter-outage.webp`, `observer-stale.webp`다. 첫 native directory fixture의 marker 미처리로 SDK endless pagination503이 발생했으며 marker page를 구현해200복구했다. 외부 font 차단·명시적 fixture 재시작/페이지 이탈의 request abort는 JS 오류와 구분한다. 실제 운영 exporter/LLDP·허용된 외부 인터넷 경로·GeoIP DB·IAM, multi-arch image/운영 배포는 검증하지 않았다. Gbrain CLI는 PATH에 없어 sync/CLAUDE 변경을 하지 않았다.
+
+검증 종료 후 소유 API/frontend/Chromium, disposable container7개·network2개·observer image를 종료·제거했다. 임시 clone/profile·fixture scripts·합성 TLS/SQL/GeoIP 입력을 제거하고 JSON/WebP/full-gate log만 보존했다. 기존 개발 서비스·volume·private 설정과 사용자 index는 건드리지 않았다. OpenSpec rapid change는 delta spec 없는 task-based 변경으로 `openspec/changes/archive/2026-10-13-add-admin-credentials-host-telemetry/`에 archive했다.
+
+
+## 보안 그룹 규칙 저장·인라인 편집 검증 (2026-10-14, local-only)
+
+`fix-security-group-rule-editor`는 사용자 첨부 화면의 수동 제거/추가 편집, 표 맨 아래 편집 폼, 추가 폼의 중복 진입 버튼을 수정한다. 변경 source는 route·rules panel·shared form·page 회귀·네 `network-pages` catalog 8개다. Backend endpoint·schema·권한·설정·운영 상태는 변경하지 않았고 공유 index·review marker·동시 WIP·private 설정을 보존했다.
+
+| 검증 경계 | 실제 관측 |
+|---|---|
+| Exact page 회귀 | `npm run test:target -- frontend:src/routes/dashboard/network/security-groups/__tests__/page.test.ts` 21 passed. 인라인 위치·취소/무변경 무요청, 생성 우선 교체, 쿼터 가득 참의 제거 우선·복원, 복원 실패 뒤 재저장의 중복 DELETE 없음, 기존 규칙 제거 실패, 잘못된 CIDR/IP 버전/포트/원격 대상의 쓰기 전 거부, 외부 삭제 뒤 저장을 포함한다. |
+| Design·i18n·type | `npm run test:frontend:design` 27 files/138 passed. `i18n:check` 0 errors/0 warnings, `i18n:scan` hard-coded Korean 0. `npm run check`는 변경 파일 진단 0이지만 범위 밖 `CredentialManagement.svelte`의 `$props.id()` 위치와 database instances `PageState` 오류2개로 exit1이다. |
+| 전체 frontend unit | `npm run test:unit:frontend`는 363 files/3,517 tests passed지만, 범위 밖 untracked `CredentialManagement.svelte`의 같은 `$props.id()` compile 오류로 `adminCredentialsController.test.ts` suite 1개가 실패해 exit1이다. 이 변경의 회귀는 모두 통과했다. |
+| 실제 Chromium 흐름 | 현재 작업 트리 Vite dev(`127.0.0.1:4417`)의 실제 route를 합성 sessionStorage identity와 in-memory HTTP fixture로 실행했다. 선택 행 bottom과 form top(532px), form bottom과 다음 행 top(777px)이 같았고 동작은 `저장`/`취소`였다. 취소·무변경 저장은 요청이 없었고 교체는 POST→DELETE였다. 추가 시 상단 trigger0·단일 `추가`였으며 생성 실패는 POST만 보내 원래 규칙/초안을 유지했다. 쿼터 가득 참에서는 잘못된 CIDR·IP 버전이 요청 없이 거부되고 DELETE→실패 POST→복원 POST가 원래 정책과 초안을 남겼다. 복원 실패 보고 뒤 재저장의 DELETE는 1회였고 기존 규칙 제거 실패는 두 정책과 부분 적용 오류를 표시했다. |
+| 반응형·locale·theme | ko/en/ja/zh-CN × dark/light × 390/767/768/1023/1024/1440px 48조건에서 document overflow0, 편집 폼의 선택 행 직후 배치, 표 scroll container 안 입력/버튼 수용과 최대 가로 스크롤 뒤 sticky 수용, 쿼터 가득 참 경고와 두 동작, 최소 글자12px를 통과했다. 증거: `~/.local/share/afterglow-proofs/security-group-rule-editor-20261014/`의 matrix.json과 대표 screenshot8개. |
+| Architecture | HEAD `aac6b9c5`+8개 source 격리 worktree/index에서 working stamp와 staged guard가 `source_sha256=cedb9087f07570fac6d5a2d37f1cb131f0ed44c037a5df0d21a0ce7d24f40b3a`/2,615 files로 통과했다. 실제 공유 index·review marker는 수정하지 않았다. |
+
+미검증: 실제 Keystone 로그인·Neutron 규칙 생성/삭제·다중 worker cache 최신성·전체 `npm run test:gate`·배포. 합성 fixture는 backend Pydantic·Neutron 검증을 대체하지 않는다.
+
+## MCP OAuth 역할·Lumen discovery/worker 복구 검증 (2026-10-13, local-only)
+
+`repair-mcp-authorization-tool-discovery`는 외부 OAuth credential 발급과 명시적으로 선택된 Afterglow MCP의 legacy chat 검색·적재·실제 조회를 복구한다. 운영 기존 로그를 읽어 Keystone400 `Cannot create an application credential with unassigned role`를 확인했으며 운영 승인 요청을 replay하지 않았다. 로컬 실패-before와 수정-after를 별도로 보존한다.
+
+| 검증 경계 | 실제 관측 |
+|---|---|
+| OAuth/MCP TCP·installed SDK·SQL/Redis | Read/manage × current/selected/all 6조합에서 approve200→token200→MCP initialize/list→VM `isError=false`를 확인했다. Read19/manage29 schema, 실제 조회와 명시적 revoke204·stale snapshot403 포함35checks. IAM/identity/catalog/VM inventory는 합성이다. |
+| Afterglow 관련 회귀 | 비DB credential/프로젝트 권위 선택164passed·Ruff 통과. DB/authority 선택306passed로 actual SDK 요청·반환 project/role ID mismatch cleanup·selected/all anchor 제외·read/manage ceiling·expiry/revocation을 검증했다. 두 선택은 중복 가능하므로 합산하지 않는다. |
+| Native discovery 경계 | 실제 native bindings·installed plugin의 TCP bridge/SQL/Redis/VM SDK10checks: 최초3schema, 한국어 cloud/VM 검색 적재, 후속 요청 schema, 실제 조회, legacy manage mutation 비노출, foreign/disabled snapshot 거부. 이 직접 경로만으로 provider/worker 완료를 주장하지 않는다. |
+| Canonical native system | 기존 Lumen `docker-compose.system.yml`에 소유한 fake IAM/provider/Afterglow bridge overlay를 적용했다. Packaged API/worker·migration/bootstrap·MariaDB/Redis/SSE에서13checks 통과. Provider3rounds가 initial3schemas→한국어 discovery·VM schema 추가→SDK VM 결과·최종 응답을 확인했고 소유 grant를204철회했다. |
+| Native durable 경합 회귀 | 실제 system 실행에서 성공한 tool result가 후속 producer turn에 잘못 붙어 run이 실패하는 경합을 발견했다. 발행 시점의 private originating ordinal로 고정했다. Native SQL 회귀5passed는 첫 model-response 소비를 다음 provider round 이후까지 지연하여 tool 결과·assistant 메시지·완료 턴의 소유권을 검증한다. |
+| 실제 compiled 채팅 | 사용자 새 채팅 버튼→한국어 입력→conversation201→completion202→native SSE200→run `completed`. 실제 native event journal의 `list_available_tools`와 `afterglow_vm_list` 모두completed이며 합성 VM 응답이 화면에 표시됐다. Browser session/permissions와 BFF→native mapping만 소유 QA fixture이며 운영 BFF/auth 검증으로 대체하지 않는다. |
+| Context inspector | Light/dark ×390/768/1440px 총6조건에서 panel viewport 안·가로 overflow0·최초3schemas를 확인했다. Preview와 실제 initial provider schema 집합이 같고 discovery-loaded schema는 후속 요청에만 추가된다. 최초3개만 표시되는 상태는 lazy-load 정책이며 전체 MCP 미연결의 증거가 아니다. |
+| 이미지·architecture | Canonical Dockerfile의 Afterglow backend 및 Lumen API/worker3targets를 linux/arm64·linux/amd64로 빌드했다. 각6개 packaged 실행이 aarch64/x86_64·exit0과 host/image source SHA parity를 확인했다. Native system workload는 arm64이며 amd64는 Docker Desktop emulation의 실행/parity 검증이다. |
+| Lumen gate | Service contract3125passed/320deselected/21dependency warnings, SDK128passed, root/SDK Ruff 통과. 초기 cache-billing fixture3failure는 current event-bound ordinal 계약에 맞춰 이관한 뒤 통과했으며 실패 receipt를 보존했다. |
+| 최종 Afterglow full gate | 격리 snapshot의 `npm run test:gate`가 docs guard→orchestration/installer→unit→contract→functional→Ruff check/format까지 통과했다. Backend5769passed, frontend350files/3300passed+runner9, contract174passed, MariaDB/PostgreSQL/Redis functional150passed/27deselected, Ruff586files. PowerShell36skip과 기존 범위 밖 Svelte warning3개를 유지한다. |
+
+Scope는 Afterglow base `aac6b9c5dc3e53fc3e430ca9ed96c30cacdbdb1e`+owned source/tests6개 및 Lumen base `24e6ae46e7673772b7ef4b2f176b1802258c4235`+owned source/tests10개다. 최종 격리 architecture working/staged guard는 Afterglow `41ee11098dcdfe9a68f0f1fd061754317eed50ffdb739da85622ed002e3a1b9d`/2615files와 Lumen `0dfe7c4a5c333f97d4ea839052c561029f9dcd62b0a1d1ef6943019ec899fd3d`/422files로 통과했다. Gate 당시 working digest `0766c7e047e2fe77465433fb1b1e695649a7b9eb9b4be835429a00ec9214b23a`/2616files에는 clone-only root `node_modules` runtime symlink1개가 포함돼 있었고 staged guard에서 그 차이를 드러냈다. Clone `.git/info/exclude`에 이 alias만 분리해 재stamp했으며 product source·suite·dependencies는 변경하지 않았다. 공유 index/review marker·private 설정과 무관한 동시 변경을 보존했고 shared 전체 WIP의 integration 승인이 아니다.
+
+Raw evidence는 `/Users/pieroot/.local/share/afterglow-proofs/afterglow-mcp-repair-xgt8rj01/`의 `verification.json`, `cloud-runtime.json`, `native-runtime.json`, `system-arm64/system-native.json`, `browser-native-events.json`, `browser-context-matrix.json`과 WebP다. 초기 clone editable-venv/REAL_REDIS 환경 혼입의47failed/5722passed, dev-extra 누락, generated SvelteKit tsconfig 누락의 frontend startup 실패는 setup 실패로 분리해 보존한다. Private TOML·suite·제품 권한 계약을 바꿔 성공으로 만들지 않았다. Gbrain CLI가 PATH에 없어 sync/CLAUDE 변경은 하지 않았다. 운영 배포·production schema/원래 key·mixed-version/writer 호환성·live IAM/cloud 쓰기·paid inference는 수행하지 않았다.
+
+최종 gate는 `AFTERGLOW_TEST_DATABASE_URL`·`AFTERGLOW_TEST_CHECKPOINTER_POSTGRES_URL`과 소유 Redis DB6를 명시했다. Unit에는 global `AFTERGLOW_TEST_REAL_REDIS`를 제거하고 기존 functional runner만 real-Redis flag를 설정했다. 독립 clone venv는 frozen lock의 dev extra를 설치했으며 frontend는 기존 `svelte-kit sync`로 generated tsconfig를 준비했다. Suite 범위나 consumer assertion을 줄이지 않았다. 최종 native system·UI grant204철회와 브라우저 release 뒤 소유 Compose만 `down`하며 volume 삭제/prune·기존 개발 서비스 중단은 하지 않는다.
+
+정제된 최종 수용 증거는 [archived verification](../openspec/changes/archive/2026-10-13-repair-mcp-authorization-tool-discovery/evidence/verification.json)다. 소유 native10개·functional datastore3개 container와 임시 HTTP server는 종료·제거했고 browser를 release했으며 throwaway fixture14개를 제거했다. Gate 전체 stdout은 private proof의 `afterglow-full-gate.log`로 보존한다. 원래 공유 Compose/volume·설정·index와 운영 상태는 변경하지 않았고 stage/commit/push는 소유 clone의 architecture 검증용 index 이외에는 수행하지 않았다.
+
+
+## 다중 컨트롤러 볼륨 자동 백업 분배 검증 (2026-10-14, local-only)
+
+`distribute-volume-backup-scheduler`는 모든 backend process가 반복하던 정책 전체 스캔을 Redis leader 하나로 모으고 due/active 작업을 살아 있는 process에 분배한다. 운영 Kolla·Redis/Sentinel·Keystone·Cinder·private 설정·shared index/review marker·release/deployment는 변경하지 않았다. 검사는 current public working source(동시 public WIP 포함)를 frozen local clone에 복사해 수행했고 private `afterglow.conf`·env 입력은 복사하지 않았다.
+
+| 실행 경계 | 관측 결과 |
+|---|---|
+| 독립 3 process + Redis7 | 실제 `scheduler_loop` process3개, Redis server TIME·45초 member/leader·10초 heartbeat·15초 poll·90초 volume lease를 사용했다. Idle18초 동안 scan worker1·SDK connection0. 9개 due 정책은3/3/3으로 제출·완료됐다. Leader hard kill49.97초 뒤 successor가 선출되고 남은2개 process가6개를3/3으로 처리했다. |
+| 접수 후 worker crash | Provider가 POST를 접수한 뒤 응답을 막고 담당 process를 hard kill했다. Journal `unknown`·lease TTL90에서90.03초 뒤 다른 process가 기존 백업 ID를 `available`로 확인했고 그 볼륨의 POST는1개였다. 재시작한3 process는 새 identity로 참여해 3개를1/1/1로 처리했다. |
+| Installed openstacksdk3.3.0 HTTP | Loopback Cinder에 대한 실제 SDK 직렬화(`incremental`/`force`)·version discovery·GET/POST/DELETE 164요청. 총 POST20, 오래된 관리 백업9개만 보존 정리하고 수동 백업은 보존했다. Private config source0. Provider·project identity·data copy는 합성이다. |
+| Failed-before/passed-after | 접수 후 응답 유실은 수정 전 SDK connection retry로 POST2, 수정 후 POST1→`unknown`→`accepted-1` 확인이다. 빠른 worker의 조기 완료 후 재배정은 수정 전 native4/3/2·consumer worker-a4/worker-b2, 수정 후 native3/3/3·consumer3/3/3이다. |
+| Consumer regression | 기본 fakeredis와 opt-in real Redis(DB1)에서 dispatcher·distributed·auto-backup·native HTTP105통과. 최종 storage target backend751·frontend14files/142통과. |
+| Style | 소유 Python6files의 Ruff format/check가 통과했다. `app/main.py`는 최종 scoped check/format에서 제외했으며 동시 WIP traffic analytics/host-observation import·validation 줄의 차이는 수정하지 않았다. |
+| Cross-cutting backend unit | 최종69file public-source refresh 이전 snapshot의 unit 전체는6271 passed/91 skipped/25 failed/22 errors였다. 최종 stamped snapshot의 전체 unit 수용 증거로 승격하지 않는다. 실패·오류는 동시 WIP인 `test_host_health.py`, `test_host_observer.py`, `test_admin_credentials.py`, `test_login_monitoring.py`와 이전 receipt에도 있던 `test_instance_storage_delete.py`11건뿐이며 백업·scheduler suite에는 없다. Refresh 이후에는 storage target과 실제 Redis consumer만 다시 검증했다. 전체 `test:gate`는 실행·주장하지 않는다. |
+| Architecture | Frozen current public source(동시 public WIP 포함, private 입력 제외)의 격리 clone에서 working과 임시 index staged guard가 `source_sha256=23f479784339659cda29f83dff95d1f35a815971ba0c5c928f876d7113935da9`/2728files로 통과했다. 공유 index와 review marker는 보존했다. |
+
+중간 storage target의 2 failures(749 passed)는 두 consumer가 고정 2 round 뒤 독립 실행 loop의 완료/인계 전이를 가정한 시험 race였다. Assertion 범위를 줄이지 않고 관측 가능한 상태 전이까지 bounded round를 반복하도록 바꾼 뒤 최종 snapshot의 storage target이 통과했다. 실제 native imbalance(4/3/2) receipt는 `native-ha-before.json`, `native-http-before.json`으로 보존했다. 응답 유실의 POST2는 수정 전 native HTTP consumer 실패로 관측했다.
+
+Raw evidence는 `/Users/pieroot/.local/share/afterglow-proofs/afterglow-backup-ha-82g70zwq/`의 `native-ha.json`, `native-http.json`, process별 log다. 정제된 수용 증거는 [archived verification](../openspec/changes/archive/2026-10-13-distribute-volume-backup-scheduler/evidence/verification.json)다. Hard kill한 process의 SDK connection close는 주장하지 않는다. 운영 controller·Redis/Sentinel failover·Keystone 인증·live Cinder data copy/restore·혼합 버전 rolling upgrade는 실행하지 않았다.
+
+
+## Calendar 볼륨 자동 백업 검증 (2026-10-13, local-only)
+
+`enable-scheduled-volume-backups`는 기존 desktop blind toggle/즉시 첫 사이클/1시간 경과 heuristic을 보이는 policy editor와 실제 calendar dispatcher로 cutover한다. 운영 IAM·Cinder·Redis/Compose·private 설정·shared index·release/deployment는 변경하지 않았다. 검사에는 current public working source의 frozen local dev clone을 사용했으며 private `afterglow.conf`를 복사하거나 고치지 않았다.
+
+| 실제 실행 경계 | 관측 결과 |
+|---|---|
+| Current backend consumer selector | auto-backup·backup API·ownership115통과, 이후 warm cached inventory 회귀를 추가해 수정 전 실패/수정 후 통과. Native reader403, source/force400·validation422·exact project owner·pause/resume/0tier·revision/lease/pending/retention·cancelled factory close 포함. |
+| 최종 storage target | backend709통과, frontend14files/142통과. PolicyUI11사례에 calendar save/backend next·deep link·source별 force·manual consent 분리·pause/resume·read-only·실패 draft·ABA/late result·invalid/orphan removal을 포함한다. Registry에 backup route regressions·shared detail·mock transport를 연결했다. |
+| Real Redis7 + installed openstacksdk loopback | Injected aware clock8lifecycle 사례: June1 Monday daily/weekly/monthly 충돌의8동시 replica에서1forced full POST, 접수creating에서DELETE0, available 뒤old monthly만 삭제; manual/foreign source/project/dependent/incremental/pending 보존, paused zero connection0, source/force skip, available forcefalse, pause 중 완료 관측, failed 새 백업에서lastgood 유지,503unknown2일후 재발행0, legacy 단일 정규화. |
+| 실제 native FastAPI socket HTTP |7사례: authoritative source404 policy 표시·원문 불변·정책만204제거, source503/403·foreign/missing owner에서503/403/404제거 거부·설정 유지, 원래 identity가 foreign인 malformed policy404/원문 보존. 따뜻한 backup list `[] → creating → available`를 실제 SDK/Redis/HTTP로 확인. Identity/activity sink/Cinder는 합성. |
+| 실제 UTC 분 경계 timer | API 저장22:23UTC와 compiled UI 저장22:53UTC 두 실행. 저장 직후provider POST0, 실제 `main._auto_backup_loop`의15초 dispatcher에서각1POST/force=true/full, 이후fixture provider available 관측과 다음 날next 확인. UI 실행은 월/주/일 충돌의monthly 단일 백업이며 데이터 복사·운영 복원 proof가 아니다. |
+| 실제 main startup/shutdown | `start_background_workers`가 실제 task를 시작했다. SDK connection factory thread를 막은 채 shutdown하면 task cancel/await·lease를 유지하며, 반환된 installed SDK connection1개를1회close하고lease 해제·taskNone/cancelled·provider mutation0 확인. |
+| Compiled adapter-node + Chromium | ko/en/ja/zh-CN × light/dark ×320/390/767/768/1023/1024/1440px56조건의 policy/editor112surfaces. 가로 overflow0, viewport-bounded modal과 내부 scroll 모든 입력·동의·취소/저장 접근,44px 작업·실제 theme/locale·설명 연결 확인. Mobile list와 직접 detail 메뉴/desktop 설정 링크, native save/edit/pause/resume/remove·백업 보존, reader4controls disabled/API403·다른project policy비노출·load503이empty아님·save503draft보존도 관측했다. Invalid/orphan UI projection은 별도 intercepted200fixture; 실제 absent API 증거와 구분한다. |
+| Build/catalog/compiler | Current-source production build exit0. i18n37namespaces/9504messages errors0/warnings0,994files hard-coded Korean0. Svelte check는 이번 volume policy diagnostics0이며 범위 밖 database `PageState.instanceId` 오류1와 기존 warning3를 보고했다. 그 unrelated source를 변경하지 않았다. |
+
+따뜻한 목록이 실제 백업을 즉시 나타내지 않는 결함은 consumer 회귀의 수정 전 `[]` 응답으로 재현했다. 자동 제출·완료/실패·보존 삭제에서도 기존 backup cache invalidation/mutation-count를 적용해 수정 후와 nativeHTTP가 통과했다. Source 문구/invalid label 개수만 고정하던 새 incidental assertion은 삭제하고 실제 orphan 표시·수정/재개 차단·제거/잔여 정책 보존 검사는 유지했다.
+
+Owned proof root: `/Users/pieroot/.local/share/afterglow-proofs/afterglow-scheduled-backup-izjvbzfc/`. `native-cases.json`, `native-api-cases.json`, `startup-shutdown.json`, `calendar-library.json`, `wall-clock-completed.json`, `compiled-cycle/`, `compiled-matrix.json`, `compiled-actions.json`, `compiled-authority.json`, `compiled-save-error.json`, `compiled-remove-and-recovery.json`와 실제 mobile/desktop light/dark PNG에 보존했다. Synthetic origin57761/57762와 전용 Redis57760만 사용했다.
+
+검증 중 scratch native API observer가 서버 loop의 Redis client를 재사용해 cross-loop 오류를 냈으며 observer 전용 client로 수정했다. 초기 frontend run은 생성 `.svelte-kit/tsconfig.json` 전의 dependency optimizer 오류였다. Policy 테스트의 label 개수 assertion, theme 변경 정착 전 측정, 숨긴 desktop 링크를 첫 matching selector로 클릭, save 완료 전 GET 및 잘못된 예상 copy는 acceptance에서 제외하고 실제 정착/visible pointer/완료/catalog 의미를 관측했다. QA를 위해 application auth/소유권/오류를 완화하지 않았다.
+
+미검증: 실제 Keystone 인증·권한, 운영 Cinder backup service/저장소·I/O·쓰는 게스트/DB 일관성·복원, Safari/Firefox, 운영 rollout. Force와available/API성공을 복원 보장으로 승격하지 않는다. Gbrain CLI와 detection script가 없어 sync/agent 안내 변경은 수행하지 않았다. Commit/stage/push/release·운영 배포는 하지 않았다.
+
+후속 qualification: frozen public working source의 전체 `npm run test:gate`는 orchestration175·Kolla27·native-image-ref11·CLI20pass/36skip 뒤 backend unit에서6003pass/91skip/11fail로 중단됐다. 모두 수정하지 않은 `test_instance_storage_delete.py`의 단건/bulk managed-grant 삭제 경로이며, stack의 `layer_consume_resources.lookup_for_server`가 `block consumer tracking database unavailable`로 거부하고 관련 상태 assertion도 실패했다. 동시 Palimpsest block DB tracking source/tests는 자동 백업 범위 밖이므로 수정·축소·skip하거나 실패를 재실행해 숨기지 않았다. Full gate 통과로 보고하지 않는다.
+
+중단된 나머지 canonical 단계는 별도 완료했다: 전체 frontend351files/3317tests와 file-log9pass, BFF contracts174pass, 전용 tmpfs MariaDB/PostgreSQL/Redis functional154pass/27deselected; disposable project는 자동 teardown되었다. 전체 Ruff lint0오류이나 format check는 범위 밖7files(`compute/instances.py`, `union/layer_ops.py`, `dockerfile_import.py`, `layer_build.py`, `test_dockerfile_import.py`, `test_palimpsest_dockerfile.py`, `test_resource_policies.py`)에서 실패했다. 이번 backend source/tests7files의 Ruff check/format은 모두 통과했다. 전용 real Redis로 lease TTL을1초로 축소한1.2초 긴 제출·두 replica durable claim·blocked factory cancellation3consumer 회귀도 통과했다.
+
+같은 frozen source에서 working stamp/check와 alternate local clone index의 `--staged`가 같은 `source_sha256=7ac9fb728c75b6a25b5682d0ed2e2785784f609f3be16d51d2ee87b4c74036b6`,source2635files를 검증했다. Feature source34files는 공유 working bytes와 SHA-256 parity가 일치하며, private 설정·shared index/review marker는 보존했다. 이 digest는 frozen concurrent public WIP까지 포함한 snapshot freshness이며 위 unit/format 실패를 통과로 바꾸지 않는다. Compiled public `/docs/cinder`4언어와 tablet SlidePanel→정책 deep link·available 원본 forcefalse/weekly-only(0 daily/monthly) 저장도 추가 관측했다. Owned browser/API/UI/Redis를 종료했고 API connection124open/124close·timer stopped를 확인했다. Scripts/profile/temporary index/source clone은 raw logs·receipts·pixels를 durable proof root에 보존한 뒤 제거했다. Rapid OpenSpec은 `openspec/changes/archive/2026-10-12-enable-scheduled-volume-backups/`에 완료 archive했다.
+
+
+
+## Lumen 밝은 테마·작성창·사이드바 전환 수정 검증 (2026-10-13, local-only)
+
+`repair-chat-theme-composer-navigation`은 밝은 채팅의 표면/박스 경계, 새 초안48rem→긴 초안/기존 대화80rem 작성창, obsolete 탐색 막대 제거와 같은 ChatPanel 내 shallow 프로젝트 전환을 수정한다. Backend/native API·권한·DB·운영 설정은 변경하지 않는다. 기존 palette/dark 선언과 full-bleed workspace를 보존한다.
+
+| 실제 실행 | 관측 결과 |
+|---|---|
+| 최종 adapter-node build + 실제 Chromium | ko/en/ja/zh-CN × light/dark ×320/390/767/768/1023/1024/1440/2560px64조건. 각 조건에서 빈 초안·짧은 초안·긴 초안·명시적3줄·저장 기록5상태를 확인했다. 가로 overflow0, transcript/composer 중심 정렬, 빈 작성창 inner736px·확장/저장 inner1248px 상한. 최종 textarea 최소 높이26px이며3줄 복귀70px. |
+| 실제 프로젝트·기록 왕복 | 포인터로4회 왕복 시 추가 대화 목록/메시지 조회0, 같은 editor/transcript/sidebar DOM과 초안 보존. 안정된 기록 viewport의 scrollTop3510을4회 모두 유지했다. 프로젝트 index/detail·Back/Forward·직접 상세URL과 compact Escape의 보이는 trigger focus 복원을 확인했다. |
+| 실제 HTTP fixture의 bounded history | opaque before:121→before:81→before:41→after:120 cursor를 그대로 전달.4page에서 반대 edge만 제거하여120messages를 유지하고 다시 최신 edge로 돌아왔다. Permanent 회귀는 pending중 중복 scroll 억제·visible anchor 보존·409 한 번 복구도 검증한다. |
+| 관련 컴포넌트 회귀 | `ChatPanel`, `ChatWindow`, `ChatProjectsView`, `ChatPanelDelete`, `ChatInput`, `ChatBubble`6files/91tests 통과. 디자인 target27files/138tests 통과. |
+| Build·현지화 | production build exit0. i18n37namespaces/9503messages·errors0/warnings0, scan994files/hard-coded Korean0. |
+| 공유 checkout의 범위 밖 검사 | 전체 frontend349files/3305tests는 통과했지만 동시 volume-backup2suites가 `$app/state` alias 미해결로 수집 실패했다. 최종 Svelte check는 chat 오류0, volume backup catalog typing3개·database `PageState.instanceId`1개의 범위 밖 오류와 기존 warning3개를 보고했다. |
+| Backend/gate 한계 | named `chat design`은 private TOML line10,column9 파싱 오류로 backend conftest 전에 중단됐다. 해당 private 설정과 별도 volume/database 작업은 수정하지 않았다. 전체 `npm run test:gate`·live identity/provider·운영 배포·Safari/Firefox는 검증하지 않았다. commit/push/release도 수행하지 않는다. |
+
+Raw browser JSON·HTTP paths·최종 light/dark 화면은 `/Users/pieroot/.local/share/afterglow-proofs/chat-repair-20261013/`의 `final-compiled-matrix.json`, `navigation.json`, `final-navigation.json`, `pagination.json`, `project-routes.json`, `composer-reveal.json`, `multiline-reveal.json`과 `final-*.png`에 보존한다. Matrix는 DOM activation이며 실제 pointer/keyboard 전환은 별도 smoke다. Runtime/API·identity 응답은 격리 loopback fixture이고 실제 provider 실행·OpenStack mutation은 없다. 첫 source QA의 소실된 browser routes/CORS, assertion의 cache query·scrollbar 가용 폭·비동기 resize 정착 전 측정은 acceptance에서 제외했다. 실제 최종 화면에서 확인한 숨김 editor0px 측정은 width/reveal observer로 수정한 뒤 위64조건을 다시 실행했다.
+
+공유 source/index와 기존 architecture review marker를 덮어쓰지 않고 HEAD+chat scope source19files만 별도 local dev clone에 overlay하여 guard를 stamp/`--staged`로 통과했다. Digest는 `05b00ffced76778091de607567cc679cd12e690e0760192c4baa53db97b21fa6`,source2,615files다. 이 scoped guard는 동시 Palimpsest/MCP/volume/database WIP 전체의 검토·게이트 통과가 아니다.
 ## 1.30.15 Stampede 기본 활성화 생성 화면 운영 검증 (2026-10-13)
 
 `default-on-stampede-client`는 Drover `v0.4.13`의 생략=활성 계약에 맞춰 클러스터·노드그룹 생성 화면의 Stampede 스위치를 기본으로 켜고, 클러스터 생성 요청에는 사용자의 선택을 항상 boolean으로 보낸다. Frontend 전용 patch이며 DB migration·backend API·설정 변경은 없다. `v1.30.14..v1.30.15`의 비문서 변경은 frontend source/test/i18n과 version manifest·lock·Helm chart version뿐이다.
@@ -795,3 +1043,59 @@ Compiled UI는 동일 Button 규격, stop confirmation의 conditional quota 안�
 전체 `npm run test:gate`, 실제 IAM/auth·provider capacity/physical quota 집계, live Windows first boot/password/RDP, 실제 NFS/Ceph mount/data-plane와 Cinder 완료·guest partition/filesystem growth, production/배포는 미실행이다. 기존 모바일 performance-monitoring toolbar의 자체 overflow는 이번 일곱 요청 범위 밖으로 유지했으며 전체 page의 모든 component overflow0를 주장하지 않는다. Intermediate mutable shared frontend build가 runtime chunk를 교체해 SSR500을 냈으므로 그 실행은 성공 증거에서 제외하고 immutable copy로 다시 확인했다.
 
 Durable raw receipts: `~/.local/share/afterglow-proofs/instance-lifecycle-storage-clarity-20261012-j8ec2ih6/`의 `canonical-targets.log`, `frontend-final-tests.log`, `frontend-final-check.log`, `frontend-isolated-build.log`, `i18n-final.log`, `python-style.log`, `native-http.json`, `compiled-ui.json`, `rollback-native.json`와 privacy-safe consumer/admin screenshots. OpenSpec evidence에는 source overlay와 scoped architecture guard 결과를 별도로 보관한다.
+
+## 2026-10-13 KST Palimpsest block transport 검증 (local, not deployed)
+
+Afterglow dirty `dev` HEAD `aac6b9c5dc3e53fc3e430ca9ed96c30cacdbdb1e`의 block slice다. 실제 index·MCP/operator의 다른 WIP·private `afterglow.conf`·운영 서비스는 보존했다. Proof directory의 SHA 접두사는 시도 이름이지 immutable source attestations가 아니다. Shared Palimpsest checkout은 별도 `aa397a0fd976e35302974a347748a9773e3084bf`이고 게시된 Hub0.3.3 source는 `7186abf7844454eda7ed86a215192b33b9250ff8`이다.
+
+| 실행한 검증 | 관찰 결과 및 범위 |
+|---|---|
+| Layer/API/ordinary single-bulk deletion 선택 node | 326 passed; 전체 backend gate가 아님 |
+| 최종 SDK runner + durable cleanup selector | 97 passed; local fixture imports로 test-module plugin/global-name 충돌 제거 |
+| 실제 MariaDB source DELETE/publication 경쟁 | 4 passed; NOWAIT lock·반복 request cancellation·publisher404/원본 보존 경계. Manila mutation은 synthetic |
+| Linux guest helper selector | 91 passed, ext4 fixture prerequisites 포함. 실제 kernel proof와 별도 |
+| Required access backend selectors | 285 passed; 같은 canonical 파일 목록을 config-discovery 없는 scratch cwd에서 실행 |
+| Additive migration088/089 actual DDL | owned legacy-schema mirror에서 기존 row·old writer의 NFS/null·새 block JSON commit/reread 확인; canonical runner/운영 rollback 증거 아님 |
+| Canonical Dockerfile image build/execution | backend/worker/frontend arm64·amd64 완료. Python3.12.15/UID1000, Node20.20.2/UID1001, backend OpenTofu1.8.3·Ceph18.2.7 실행 |
+| Final image source match | 두 architecture backend/worker의 selected block app16파일이 현재 source bytes와 일치. Frontend는 unchanged runtime만 확인; 전체 WIP/source 승인이 아님 |
+| Canonical local app liveness | isolated Compose의 backend/frontend health200 및 실제 Redis PONG. Route harness의 auth/readiness와 혼동하지 않음 |
+| TCP API→native installed SDK→실제 MariaDB | synthetic provider/auth/policy로 source2개 게시, 정상/accepted-response-loss consume2개, lost run의 Nova CREATE1회, pending의 API restart 유지·discovery/recovery·exact cleanup 통과 |
+| HTTP immediate import admission | 두 import의 admin422/nonadmin403, DB/provider mutation0 및 importer URL-open attempts0 확인 |
+| Actual CPU-only Linux guest | kernel6.1.0-53-amd64/TCG: first boot, lower와 upper 장치명 변경 후 persistence, writable lower 거부, serial 없는 duplicate upper FSUUID 거부4조건 통과 |
+| Changed Python style | scoped Ruff check 성공; 새/관련11파일 format check 성공 |
+| Scoped architecture guard | HEAD+33명시 overlay,2,628files, `19474e68e7f701a66451693c49433968f2e491a741cc2d6c39bd93d7eecd7c7e`; isolated staged guard와 real index byte 보존 |
+
+HTTP proof는 canonical backend image에서 production routers·SQLAlchemy factory·native SDK를 Uvicorn TCP로 실행한다. 인증 principal/admin, resource snapshot, Glance member visibility 및 console health는 **synthetic**이며 full `app.main` 인증/ready·Redis·guest proof가 아니다. 원본 SquashFS 파일2개의 magic/hash/길이를 전달했고 source UUID/identity는 restart 전후 유지됐다. Provider counters는 image2/volume4/port2/server2 CREATE와 같은 exact DELETE이며 최종 server/volume/port0이다. Lost-response server는1회만 CREATE됐다. 공유 Glance source 정리는 explicit external synthetic-only helper이며 production source-retirement API나 DB source pointer 삭제의 증거가 아니다.
+
+실제 QEMU guest는 생성된 production lower/upper helpers와 root local-bottom hook을 변경 없이 실행한다. Raw readonly virtio lower를 직접 SquashFS로 mount하고 `/` OverlayFS, child precedence·whiteout·bootstrap cloud-state bind와 ext4 upper write를 관찰했다. 두 번째 cold boot에서 upper도 `vdc→vdd`로 바뀌었지만 같은 Cinder serial/ext4 UUID로 데이터가 유지됐다. Negative 조건은 success marker 없이 실제 guard 오류를 확인했다. Minimal synthetic BusyBox root와 external first-format harness를 사용하므로 Ubuntu cloud-init/사용자·SSH·provider Cinder/RBD/physical COW·quota 또는 native KVM/보안/ownership fidelity의 증거로 확장하지 않는다.
+
+중간 실패를 성공으로 지우지 않는다: 빈 root exports가 YAML null이 된 renderer를 quote했고, build-host의 존재하지 않는 runtime config copy와 prereqs 부작용을 제거했다. 실제 initrd/boot에서 missing squashfs module을 발견해 source hook에 squashfs/overlay/ext4를 명시했다. Proof-only Bash local-top의 sh validation, 기존 symlink, BusyBox가 대신 선택한 `mkfs.ext4` 오류는 외부 harness에서 POSIX hook·고유 실제 mke2fs 경로/정상 config로 수정했으며 production에 fake UUID/formatter를 넣지 않았다. 새 SQL race의 최초 barrier가 `_reserve` 뒤를 기다려 timeout 났으므로 먼저 잡히는 `_locked` 진입을 관찰하도록 수정한 뒤4조건을 통과했다. Missing fixture와 Ruff import/shadow warnings는 local fixture exports로 수정했다. 로컬 TOML parse 오류는 고치거나 우회된 운영 설정으로 주장하지 않고 안전한 scratch에서 같은 source/selectors를 실행했다. 마지막 DB rerun은 stopped owned service/잘못된 relative Compose 경로에서 실패한 뒤 exact owned MariaDB만 시작해4조건을 다시 통과했다.
+
+독립 initial lifecycle review의 grant bypass·stale rejection overwrite·cancelled DELETE lock release·late FIP discovery4건은 수정/실행 회귀로 해소했다. Guest/import re-review는 pre-planner rejection과 initramfs dependency correction에 새 finding이 없었다. Lifecycle reviewer의 후속 응답은 과거 snapshot을 재서술했으므로 post-fix independent clean signoff로 세지 않는다. Astra planning/ops 역할도 제공되지 않았으며 대체 승인하지 않는다.
+
+전체 `npm run test:gate`, frontend/UI 재검증, production schema/mixed writer/rollback, 실제 Glance membership acceptance·Cinder COW clone/readonly Nova attachment·Ubuntu cloud-init/SSH와 Hub0.3.3 cutover는 **미실행**이다. 원본 `test-openrc.sh` SDK401(`req-4c47fa98-68e1-46a2-a203-3a722bb3790f`) 뒤에는 로그인 재시도·IAM/password 변경·service/admin 대체·cloud resource 생성/원격 helper 전송·writer fencing/paired restore/운영 rollout을 하지 않았다. SDK가 원본 계정/project로 token을 메모리에서 정상 발급한 뒤 actual roles/service capability와 승인된 recovery 순서를 확인해야 live 작업을 진행한다. 수동 token 파일을 요구하지 않는다.
+
+Receipts: `~/.local/share/palimpsest-proofs/block-transport-aac6b9c5-20261013/`의 `http-state/receipt.json`, `canonical-image-final-runtime.json`, `guest-results.json`, 네 guest serial logs, `generated-files.json`, `migration-smoke.json`, `scoped-architecture-review.json`. Shared architecture markers는 관련 없는 WIP를 덮어쓰지 않는다. Parent Palimpsest working guard는 앞선 refresh checkpoint에서 stale였으며 이번 docs-only 변경으로 broad restamp·새 parent-source 승인을 하지 않았다. 현재 PATH에 Gbrain CLI가 없어 sync/guidance 변경은 하지 않았다. 모든 throwaway/proof scripts는 repository 밖에 있다.
+
+
+## 2026-10-14 KST 프로젝트·도메인 간 볼륨 이전 검증 (local, not deployed)
+
+`add-cross-domain-volume-transfers` 변경은 공유 dirty `dev` working tree에서 구현했다. 실제 index·private `afterglow.conf`·다른 WIP·운영 Cinder/Keystone은 변경하지 않았다. Private TOML이 backend config-discovery를 막지 않도록 backend selector는 scratch cwd + 명시적 `PYTHONPATH`로 같은 source를 실행했다. Frontend는 변경 13파일을 보존한 immutable scratch copy에서 build/serve했고 source SHA-256 parity를 확인했다.
+
+| 실행한 검증 | 관찰 결과 및 범위 |
+|---|---|
+| Exact transfer/owner/volume pytest | 수정 전 4 failed/97 passed, 수정 후 102 passed |
+| Canonical storage target | backend 821 passed / frontend 16 files 165 passed |
+| Required access target | backend 326 passed / frontend 4 files 38 passed |
+| Changed Python Ruff check·format | check 성공 / 6 files already formatted |
+| i18n check / scan | 0 errors·0 warnings, 40 namespaces·9,920 messages / hard-coded Korean 0 in 1,072 files |
+| Production frontend build | exit 0 |
+| Svelte check | transfer 파일 진단 0. 기존 범위 밖 `dashboard/database/instances/+page.svelte` PageState 오류 1·경고 3으로 exit 1 |
+| Actual Uvicorn TCP → installed openstacksdk 3.3.0 → loopback Keystone/Cinder | 31 HTTP assertions, 132 native requests, operator Cinder mutation 0, operator connection 16/16 close |
+| Compiled Chromium | source create·ID/key clipboard·own cancel, empty destination 외부 도메인 수신, 같은 도메인 프로젝트 수신, 4 locale×2 theme×6 width의 48 조건/96 상태 overflow 0 |
+
+Native proof는 같은 도메인과 다른 도메인 모두 생성 → 정확한 ID 조회 → 실제 출발 project/domain readback → Cinder `InvalidAuthKey` 400의 403 매핑과 원본 소유 유지 → reader 403·출발=대상 409 → destination scope 수락 → 실제 native owner/available 확인 → 반복 조회·수락 404를 확인했다. 다른 프로젝트 취소는 403, 소유 취소는 available 복원, 연결 볼륨 생성은 409이며 자동 분리하지 않았다. 관리자 UI가 다른 프로젝트를 선택해도 home scope가 아닌 선택 project credential로 수락됐다. 수락 후 응답을 끊으면 POST 1회만 전송되고 실제 이동한 소유권과 source/destination cache 무효화가 관측됐다.
+
+초기 integration에서 SDK 3.3.0이 microversion 3.55 이상에서 `/volume-transfers`를 사용함을 harness가 404로 드러내 fixture가 old/new native path를 모두 강제하도록 정정했다. Transfer POST retry 0은 copied Proxy 속성만으로 적용되지 않아 `Proxy.request` partial로 수정했고, 실제 연결 끊김 회귀가 create/accept 각각 POST 1회를 확인한다. 브라우저에서는 모든 native 403을 잘못된 키로 표시하던 문제를 발견해 서버의 실제 사유를 보존하도록 고쳤다. Headless Chromium의 clipboard 권한 거부는 inline manual-copy 복구 화면으로 관찰했고, 권한 부여 후 ID와 키 복사 값을 확인했다.
+
+Identity·Keystone·Cinder 응답은 synthetic loopback이며 실제 IAM/policy, Cinder backend의 데이터 이전·스냅샷/암호화 볼륨, 운영 operator 권한, 혼합 버전, 배포는 검증하지 않았다. 전체 `npm run test:gate`는 실행하지 않았다. Receipts: `~/.local/share/afterglow-proofs/volume-transfer-20261014-c7nvejts/`의 `native-http.json`, `native-http-*.log`, `compiled-lifecycle.json`, `compiled-same-domain.json`, `compiled-matrix.json`, `source-parity.json`, `*-backend.log`, `*-frontend-final.log`, `create-to-cross-domain.mp4`, `issued-final.png`, `receive-*.png`.

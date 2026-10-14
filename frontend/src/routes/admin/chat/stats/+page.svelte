@@ -10,6 +10,9 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import BklitChart from '$lib/components/charts/BklitChart.svelte';
+	import type { ChartDatum, ChartSpec } from '$lib/components/charts/types';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	import { usageChartWindow } from '$lib/utils/chatUsageChartWindow';
 	import { adminIdentityLabel } from '$lib/utils/adminIdentityLabel';
@@ -112,8 +115,8 @@
 	let hasMoreUsers = $state(false);
 
 	let timeSeriesGeneration = 0;
-	const fmtInt = (n: number) => (n ?? 0).toLocaleString('en-US');
-	const fmtCredit = (n: number) => (n ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+	const fmtInt = (n: number) => (n ?? 0).toLocaleString(intlLocale());
+	const fmtCredit = (n: number) => (n ?? 0).toLocaleString(intlLocale(), { maximumFractionDigits: 2 });
 	const fmtUsd = (n: number) => `$${(n ?? 0).toFixed(4)}`;
 	const CHART_BUCKETS = [
 		{ value: '5m', get label() { return t('adminStats.bucket5Minutes'); } },
@@ -212,23 +215,17 @@
 		if (token) void loadTimeSeries();
 	});
 
-	function aggregateSeries(rows: TimeStat[]): Map<string, TimeStat> {
-		const buckets = new Map<string, TimeStat>();
+	function aggregateSeries(rows: TimeStat[]): Map<string, ChartDatum> {
+		const buckets = new Map<string, ChartDatum>();
 		for (const row of rows) {
-			const current = buckets.get(row.bucket) ?? {
-				bucket: row.bucket,
-				source: 'all',
-				prompt_tokens: 0,
-				completion_tokens: 0,
-				total_tokens: 0,
-				credited_cost: 0,
-				request_count: 0
-			};
-			current.prompt_tokens += row.prompt_tokens;
-			current.completion_tokens += row.completion_tokens;
-			current.total_tokens += row.total_tokens;
-			current.credited_cost += row.credited_cost;
-			current.request_count += row.request_count;
+			const current = buckets.get(row.bucket) ?? { bucket: row.bucket, prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+			for (const key of ['prompt_tokens', 'completion_tokens', 'total_tokens'] as const) {
+				const value = row[key];
+				const previous = current[key];
+				current[key] = typeof value !== 'number' || !Number.isFinite(value) || previous === null
+					? null
+					: Number(previous) + value;
+			}
 			buckets.set(row.bucket, current);
 		}
 		return buckets;
@@ -282,23 +279,19 @@
 		return floorBucket(new Date(now.getTime() - days * 24 * 60 * 60 * 1000));
 	}
 
-	function filledSeries(rows: TimeStat[]): TimeStat[] {
+	function filledSeries(rows: TimeStat[]): ChartDatum[] {
 		const aggregate = aggregateSeries(rows);
 		const end = floorBucket(new Date());
-		const points: TimeStat[] = [];
+		const points: ChartDatum[] = [];
 		for (const cursor = chartStart(end, rows); cursor <= end; advanceBucket(cursor)) {
 			const bucket = formatBucket(cursor);
-			points.push(
-				aggregate.get(bucket) ?? {
-					bucket,
-					source: 'all',
-					prompt_tokens: 0,
-					completion_tokens: 0,
-					total_tokens: 0,
-					credited_cost: 0,
-					request_count: 0
-				}
-			);
+			const point = aggregate.get(bucket);
+			points.push({
+				bucket,
+				prompt_tokens: point?.prompt_tokens ?? null,
+				completion_tokens: point?.completion_tokens ?? null,
+				total_tokens: point?.total_tokens ?? null,
+			});
 		}
 		return points;
 	}
@@ -307,8 +300,20 @@
 	const models = $derived(data?.by_model ?? []);
 	const users = $derived(userRows);
 	const chartPoints = $derived(filledSeries(timeSeries));
-	// Filters reload and remount this chart: keep its data bars static, without draw/entrance motion.
-	const maxHourlyTokens = $derived(Math.max(1, ...chartPoints.map((point) => point.total_tokens)));
+	const maxHourlyTokens = $derived(Math.max(1, ...chartPoints.map((point) => typeof point.total_tokens === 'number' && Number.isFinite(point.total_tokens) ? point.total_tokens : 0)));
+	const tokenChart: ChartSpec = $derived({
+		kind: 'bar',
+		data: chartPoints.map((point) => ({ ...point, bucket: fmtChartBucket(String(point.bucket)) })),
+		xKey: 'bucket',
+		series: [
+			{ key: 'prompt_tokens', label: t('adminStats.inputTokens'), color: 'var(--color-accent)' },
+			{ key: 'completion_tokens', label: t('adminStats.outputTokens'), color: 'var(--color-accent-2)' },
+		],
+		stacked: true,
+		orientation: 'vertical',
+		domain: [0, maxHourlyTokens],
+		formatValue: fmtInt,
+	});
 	const maxModelTokens = $derived(Math.max(1, ...models.map((m) => m.total_tokens)));
 	const hasData = $derived((overview?.request_count ?? 0) > 0);
 
@@ -400,40 +405,14 @@
 			{:else if timeSeries.length === 0}
 				<EmptyState headline={t('adminStats.chartEmpty', { granularity: chartGranularityLabel })} class="py-4 [&_.motion-enter]:animate-none" />
 			{:else}
-				<div class="overflow-x-auto pb-1">
-					<div class="flex h-48 min-w-[42rem] items-end gap-px">
-						{#each chartPoints as point, index (point.bucket)}
-							<div class="grid h-full min-w-0 flex-1 grid-rows-[minmax(0,1fr)_2rem] gap-1">
-								<div class="relative h-full w-full">
-									<div
-										class="absolute inset-x-0 bottom-0 flex flex-col-reverse overflow-hidden rounded-t"
-										style="height: {point.total_tokens > 0 ? Math.max(0.5, (point.total_tokens / maxHourlyTokens) * 100) : 0}%"
-										title={t('adminStats.chartTooltip', { bucket: point.bucket, input: fmtInt(point.prompt_tokens), output: fmtInt(point.completion_tokens), total: fmtInt(point.total_tokens) })}
-									>
-										<div
-											class="w-full bg-[var(--color-accent)]"
-											style="height: {point.total_tokens > 0 ? (point.prompt_tokens / point.total_tokens) * 100 : 0}%"
-										></div>
-										<div
-											class="w-full bg-[var(--color-accent-2)]"
-											style="height: {point.total_tokens > 0 ? (point.completion_tokens / point.total_tokens) * 100 : 0}%"
-										></div>
-									</div>
-								</div>
-								<div class="flex h-8 flex-col items-center justify-end">
-									{#if chartBucket === 'month'}
-										<span class="text-[0.6rem] font-medium text-[var(--color-ink-2)]">{fmtInt(point.total_tokens)}</span>
-									{/if}
-									{#if index % Math.ceil(chartPoints.length / 8) === 0 || index === chartPoints.length - 1}
-										<span class="w-full truncate text-center text-[0.6rem] text-[var(--color-ink-3)]">
-											{fmtChartBucket(point.bucket)}
-										</span>
-									{/if}
-								</div>
-							</div>
+				<BklitChart spec={tokenChart} height={192} label={t('adminStats.chartTitle', { granularity: chartGranularityLabel })} />
+				{#if chartBucket === 'month'}
+					<div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-2 tabular-nums">
+						{#each chartPoints as point (point.bucket)}
+							<span>{point.bucket}: {typeof point.total_tokens === 'number' ? fmtInt(point.total_tokens) : '—'}</span>
 						{/each}
 					</div>
-				</div>
+				{/if}
 				<div class="mt-4 flex items-center gap-4 text-xs text-[var(--color-ink-3)]">
 					<span class="flex items-center gap-1.5">
 						<span class="inline-block h-2 w-2 rounded-full bg-[var(--color-accent)]"></span>{t('adminStats.inputTokens')}
@@ -472,8 +451,8 @@
 								<tr>
 									<td class="text-sm font-medium text-[var(--color-ink-1)]">{m.model_name}</td>
 									<td class="w-32">
-										<div class="h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken" role="meter" aria-label={t('adminStats.modelShareLabel', { model: m.model_name })} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round((m.total_tokens / maxModelTokens) * 100)} aria-valuetext={t('adminStats.tokenCount', { count: fmtInt(m.total_tokens) })}>
-											<div class="h-full origin-left rounded-full bg-accent" style:transform={`scaleX(${m.total_tokens / maxModelTokens})`}></div>
+										<div role="meter" aria-label={t('adminStats.modelShareLabel', { model: m.model_name })} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round((m.total_tokens / maxModelTokens) * 100)} aria-valuetext={t('adminStats.tokenCount', { count: fmtInt(m.total_tokens) })}>
+											<BklitChart spec={{ kind: 'gauge', value: (m.total_tokens / maxModelTokens) * 100, color: 'var(--color-accent)', track: 'var(--color-surface-sunken)' }} height={6} decorative />
 										</div>
 									</td>
 									<td class="text-right text-sm text-[var(--color-ink-2)]">{fmtInt(m.prompt_tokens)}</td>

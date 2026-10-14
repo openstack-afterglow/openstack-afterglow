@@ -1,4 +1,9 @@
 {
+	"items.infrastructureTopology": "인프라 토폴로지",
+	"items.trafficAnalytics": "접속·트래픽 분석",
+	"items.loginMonitoring": "로그인·세션",
+	"items.applicationCredentials": "애플리케이션 자격 증명",
+	"items.userCredentials": "사용자 자격 증명",
 	"sections.dashboard": "대시보드",
 	"sections.compute": "Compute",
 	"sections.volumes": "볼륨",

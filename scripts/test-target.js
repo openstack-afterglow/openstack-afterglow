@@ -105,6 +105,7 @@ const targets = {
 			selectors: [
 				"tests/test_admin_write.py",
 				"tests/test_admin_identity.py",
+				"tests/test_admin_credentials.py",
 				"tests/test_admin_identity_inventory.py",
 				"tests/test_admin_hypervisor_removal.py",
 				"tests/test_project_self_service.py",
@@ -123,8 +124,39 @@ const targets = {
 		},
 		frontend: {
 			selectors: [
+				"src/lib/stores/__tests__/adminCredentialsController.test.ts",
+				"src/lib/api/__tests__/adminCredentials.test.ts",
 				"src/lib/components/admin/roles/__tests__/catalog.test.ts",
 				"src/routes/admin/roles/__tests__/page.boundaries.test.ts"
+			]
+		}
+	},
+	monitoring: {
+		description: "Host exporter/peer observations, infrastructure paths, traffic analytics, and login sessions",
+		liveServices: "none (native Redis is exercised separately by the functional profile)",
+		backend: {
+			selectors: [
+				"tests/test_host_health.py",
+				"tests/test_host_health_config.py",
+				"tests/test_monitoring_config.py",
+				"tests/test_host_observer.py",
+				"tests/test_infrastructure_topology.py",
+				"tests/test_traffic_analytics.py",
+				"tests/test_login_monitoring.py"
+			]
+		},
+		frontend: {
+			selectors: [
+				"src/lib/components/admin/hypervisors/HostHealthPanel.test.ts",
+				"src/lib/components/admin/infrastructure-topology/__tests__",
+				"src/lib/stores/__tests__/infrastructureTopologyController.test.ts",
+				"src/lib/components/admin/traffic/__tests__",
+				"src/routes/admin/monitoring/traffic/page.test.ts",
+				"src/lib/types/trafficAnalytics.test.ts",
+				"src/lib/server/trafficReporter.test.ts",
+				"src/hooks.server.test.ts",
+				"src/lib/stores/__tests__/loginMonitoringController.test.ts",
+				"src/lib/api/__tests__/loginMonitoring.test.ts"
 			]
 		}
 	},
@@ -134,6 +166,7 @@ const targets = {
 		backend: {
 			selectors: [
 				"tests/test_afterglow_conf_config.py",
+				"tests/test_monitoring_config.py",
 				"tests/contracts/test_ingress_root_path_coverage.py",
 				"tests/contracts/test_proxy_scheme.py",
 				"tests/test_config_insecure_guard.py",
@@ -267,6 +300,10 @@ const targets = {
 			selectors: [
 				"tests/test_volumes.py",
 				"tests/test_volume_backups.py",
+				"tests/test_auto_backup.py",
+				"tests/test_work_dispatcher.py",
+				"tests/test_auto_backup_distributed.py",
+				"tests/test_auto_backup_native_http.py",
 				"tests/test_ceph_rbd.py",
 				"tests/test_volume_delete_recovery.py",
 				"tests/test_volume_extend.py",
@@ -301,6 +338,12 @@ const targets = {
 				"src/lib/components/volume/__tests__/VolumeBulkSelection.test.ts",
 				"src/lib/components/volume/__tests__/VolumeExtendModal.test.ts",
 				"src/lib/components/volume/__tests__/VolumeBackupConsent.test.ts",
+				"src/lib/components/volume/__tests__/VolumeTransferModal.test.ts",
+				"src/lib/components/__tests__/VolumeDetailPanel.test.ts",
+				"src/routes/dashboard/volumes/__tests__/volumeRenameParity.test.ts",
+				"src/routes/dashboard/volumes/__tests__/volumeTransferLifecycle.test.ts",
+				"src/routes/dashboard/volumes/backups/__tests__",
+				"src/lib/mockup/transport.test.ts",
 				"src/lib/api/__tests__/client.upload.test.ts"
 			]
 		}
@@ -313,14 +356,17 @@ const targets = {
 				"tests/test_common_libraries_squashfs.py",
 				"tests/test_layer_ops.py",
 				"tests/test_layer_build.py",
+				"tests/test_layer_build_ownership.py",
 				"tests/test_layer_consume.py",
 				"tests/test_libraries.py",
 				"tests/test_library_builder.py",
+				"tests/test_build_work.py",
+				"tests/test_build_admission_durable.py",
 				"tests/test_library_usage.py",
 				"tests/test_dockerfile_import.py",
+				"tests/test_dockerfile_verify.py",
 				"tests/test_recipe_blocks.py",
 				"tests/test_reconcile_builds.py",
-				"tests/test_existing_share_build.py",
 				"tests/test_ephemeral_build_orchestration.py",
 				"tests/test_ephemeral_builder_vm.py",
 				"tests/test_ephemeral_mount.py",
@@ -357,7 +403,12 @@ const targets = {
 			selectors: [
 				"tests/test_worker_runtime.py",
 				"tests/test_worker_runtime_templates.py",
-				"tests/test_notion_worker.py"
+				"tests/test_notion_worker.py",
+				"tests/test_work_dispatcher.py",
+				"tests/test_db_auto_backup.py",
+				"tests/test_db_auto_backup_native_http.py",
+				"tests/test_database_auto_backup.py",
+				"tests/test_trove_backup.py"
 			]
 		}
 	},

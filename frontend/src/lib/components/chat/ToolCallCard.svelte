@@ -144,6 +144,9 @@
 		overflow: hidden;
 		font-size: 0.76rem;
 	}
+	:global(:root.light) .tool-card {
+		border-color: var(--color-line-2);
+	}
 	.tool-head {
 		position: relative;
 		overflow: hidden;

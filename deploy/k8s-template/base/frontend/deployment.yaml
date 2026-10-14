@@ -55,6 +55,24 @@ spec:
                 configMapKeyRef:
                   name: afterglow-config
                   key: APP_GRAFANA_BASE
+            - name: TRAFFIC_ANALYTICS_INGEST_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: afterglow-config
+                  key: TRAFFIC_ANALYTICS_INGEST_URL
+                  optional: true
+            - name: TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS
+              valueFrom:
+                configMapKeyRef:
+                  name: afterglow-config
+                  key: TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS
+                  optional: true
+            - name: TRAFFIC_ANALYTICS_INGEST_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: afterglow-secrets
+                  key: TRAFFIC_ANALYTICS_INGEST_KEY
+                  optional: true
           startupProbe:
             httpGet:
               path: /

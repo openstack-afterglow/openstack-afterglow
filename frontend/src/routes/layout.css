@@ -1137,3 +1137,35 @@ body {
     transition-delay: 0ms !important;
   }
 }
+
+/* Bklit registry variables are private to charts, not a second app theme. */
+@layer components {
+  .bklit-chart {
+    width: 100%;
+    min-width: 0;
+    --chart-1: var(--color-chart-1);
+    --chart-2: var(--color-chart-2);
+    --chart-3: var(--color-chart-3);
+    --chart-4: var(--color-chart-4);
+    --chart-5: var(--color-chart-5);
+    --chart-6: var(--color-chart-6);
+    --chart-background: var(--color-surface-base);
+    --chart-foreground: var(--color-ink-0);
+    --chart-foreground-muted: var(--color-ink-2);
+    --chart-line-primary: var(--color-chart-1);
+    --chart-line-secondary: var(--color-chart-2);
+    --chart-crosshair: var(--color-ink-2);
+    --chart-grid: var(--color-line);
+    --chart-label: var(--color-ink-2);
+    --chart-tooltip-background: var(--color-surface-raised);
+    --chart-tooltip-foreground: var(--color-ink-0);
+    --chart-tooltip-muted: var(--color-ink-2);
+    --border: var(--color-line-2);
+    --background: var(--color-surface-base);
+    --foreground: var(--color-ink-0);
+    --muted: var(--color-surface-sunken);
+    --muted-foreground: var(--color-ink-2);
+    font-variant-numeric: tabular-nums;
+  }
+  .bklit-chart-plot { position: relative; width: 100%; min-width: 0; }
+}

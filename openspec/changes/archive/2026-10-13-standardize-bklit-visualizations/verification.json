@@ -1,0 +1,83 @@
+{
+  "change": "standardize-bklit-visualizations",
+  "scope": "All Afterglow-owned numerical dashboard visualizations; native Bklit React registry behind the shared client-only Svelte boundary",
+  "upstream": {
+    "repository": "https://github.com/bklit/bklit-ui",
+    "commit": "f7b3bd2999a5c993863f9cc5523c9cf60b9f3bc2",
+    "license": "MIT",
+    "provenance": "frontend/src/lib/vendor/bklit-ui/provenance.json"
+  },
+  "environment": {
+    "branch": "dev",
+    "productionBuild": "adapter-node compiled from current public frontend in an isolated scratch clone",
+    "identityAndApi": "synthetic loopback fixtures; no real cloud/provider/authentication acceptance",
+    "compiledSourceParityFiles": 1717,
+    "compiledSourceMismatches": 0,
+    "privateSettingsChanged": false,
+    "sharedIndexChanged": false,
+    "sharedArchitectureReviewMarkerChanged": false,
+    "committed": false,
+    "deployed": false
+  },
+  "verification": {
+    "nativeAndLoginExact": {"files": 3, "passed": 39},
+    "frontendFinal": {"files": 367, "passed": 3615, "failed": 0, "skipped": 0},
+    "fileLogRunner": {"passed": 9},
+    "designTarget": {"files": 26, "passed": 128},
+    "productionBuild": "passed",
+    "i18n": {"errors": 0, "warnings": 0, "namespaces": 40, "sourceMessages": 9920, "scannedFiles": 1072, "hardcodedKoreanLines": 0},
+    "componentBrowserMatrix": {
+      "conditions": 32,
+      "locales": ["ko", "en", "ja", "zh-CN"],
+      "themes": ["light", "dark"],
+      "widths": [390, 768, 1024, 1440],
+      "plotsPerCondition": 39,
+      "documentOverflow": 0,
+      "invalidPaths": 0,
+      "clippedAxisLabels": 0,
+      "axisLabelCollisions": 0,
+      "runningReducedMotionChartAnimations": 0
+    },
+    "routeBrowserMatrix": {
+      "conditions": 24,
+      "routes": ["/dashboard/activity", "/admin/chat/stats", "/admin/monitoring/traffic"],
+      "locale": "en",
+      "themes": ["light", "dark"],
+      "widths": [390, 768, 1024, 1440],
+      "documentOverflow": 0,
+      "invalidPaths": 0,
+      "axisLabelCollisions": 0,
+      "browserExceptions": 0
+    },
+    "interactions": [
+      "Native tooltip with complete timestamp and measured values",
+      "Activity range 7d to 24h; administrator chat model-a and 90d queries",
+      "Instance metrics range 1h to 6h and refresh; chat day to month/1y queries",
+      "Traffic observation source backend to frontend, 24h to 7d, refreshed Japan count 100 to 101",
+      "Zero/70/95/120 quota and exact 5px used/proposed segments, upper clipping and 18px rings",
+      "Null gap three subpaths, unavailable table cells, empty path removal and independent series timestamps",
+      "Unmount zero chart roots, remount 39 charts without duplication",
+      "Small-country SG and unknown XX selection; clear/Enter/Space preserving the same native feature focus",
+      "Quota editor retains input limit 10 and native measured usage 7/10=70%",
+      "Live reduced-motion policy switch stops geometry motion for 12 observed frames and leaves zero running native animations"
+    ],
+    "architecture": {
+      "mode": "frozen public source including concurrent WIP, independent temporary index",
+      "workingGuard": "passed",
+      "stagedGuard": "passed",
+      "sourceSha256": "891401c9ce17f0bdc88a4a79dbca7c4f22405c6e2f2784ad4160fef23b3c0145",
+      "files": 2847,
+      "notWholeWipIntegrationApproval": true
+    }
+  },
+  "remainingLimits": {
+    "typeCheck": "1 unrelated PageState.instanceId error in frontend/src/routes/dashboard/database/instances/+page.svelte:42:54; 3 existing warnings. No Bklit/TSX diagnostics.",
+    "fullGate": "Attempted on the same public frozen source. Initial scratch lacked pytest; locked dev extras installed before the second run. Architecture and JS orchestration/Kolla/install lanes passed (36 PowerShell tests skipped: unavailable runtime). Backend unit: 6569 passed, 91 skipped, 11 failed, all in test_instance_storage_delete.py due to outside-scope block-consumer tracking/DB WIP. Gate stopped before contract, functional, backend lint; frontend separately passed.",
+    "gbrain": "CLI unavailable; optional index synchronization not run.",
+    "live": "Real IAM/OpenStack/provider data, deployment and production acceptance not exercised."
+  },
+  "preservedSpecializedSurfaces": ["editable network topology and structural/role graphs", "external Grafana queries and dashboards", "task progress/status/icons/QR/terminal", "public illustrations and user-authored Mermaid"],
+  "evidenceDirectory": "~/.local/share/afterglow-proofs/afterglow-bklit-7mhvOI/",
+  "evidence": ["matrix-final.json", "matrix-before-axis-fix.json", "matrix-before-height-density-fix.json", "route-matrix.json", "routes.json", "consumer-filters.json", "interactions.json", "quota-motion.json", "frontend-tests-accepted.json", "frontend-tests-accepted.log", "architecture.json", "source-parity.json", "test-gate.log", "production-build.log", "type-check.log", "accepted-*.png", "route-*.png"],
+  "cleanup": "Owned compiled server, fixture API, browser/profile and scratch clones removed after evidence capture; persistent proof directory retained."
+}

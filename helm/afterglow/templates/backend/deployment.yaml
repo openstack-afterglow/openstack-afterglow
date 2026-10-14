@@ -91,6 +91,24 @@ spec:
                 secretKeyRef:
                   name: afterglow-secrets
                   key: PROMETHEUS_PASSWORD
+            - name: MONITORING_INFRASTRUCTURE_TOPOLOGY_OBSERVERS
+              valueFrom:
+                secretKeyRef:
+                  name: afterglow-secrets
+                  key: MONITORING_INFRASTRUCTURE_TOPOLOGY_OBSERVERS
+                  optional: true
+            - name: TRAFFIC_ANALYTICS__HMAC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: afterglow-secrets
+                  key: TRAFFIC_ANALYTICS__HMAC_KEY
+                  optional: true
+            - name: TRAFFIC_ANALYTICS__FRONTEND_INGEST_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: afterglow-secrets
+                  key: TRAFFIC_ANALYTICS__FRONTEND_INGEST_KEY
+                  optional: true
           volumeMounts:
             - name: afterglow-config-volume
               mountPath: /app/afterglow.conf

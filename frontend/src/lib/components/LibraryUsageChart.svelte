@@ -1,5 +1,8 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/palimpsest-admin';
+  import BklitChart from '$lib/components/charts/BklitChart.svelte';
+  import type { ChartSpec } from '$lib/components/charts/types';
+  import { intlLocale } from '$lib/i18n/runtime.svelte';
   interface TsPoint {
     ts: number;
     [key: string]: number | undefined;
@@ -24,35 +27,39 @@
   const RANGES = ['1d', '2d', '7d', '30d'];
   const RANGE_DAYS: Record<string, number> = { '1d': 1, '2d': 2, '7d': 7, '30d': 30 };
 
-  const PALETTE = [
-    '#60a5fa', '#4ade80', '#f87171', '#fbbf24', '#c084fc',
-    '#34d399', '#fb923c', '#38bdf8', '#a78bfa', '#f472b6',
-  ];
 
   // 최신 스냅샷에서 사용 키 추출 (lib: / layer: 접두어 제거)
   const latestPoint = $derived(data.length > 0 ? data[data.length - 1] : null);
 
   const topKeys = $derived.by(() => {
-    if (!latestPoint) return [] as { key: string; label: string; color: string }[];
-    return Object.entries(latestPoint)
-      .filter(([k]) => k !== 'ts' && k.includes(':'))
-      .sort(([, a], [, b]) => (b ?? 0) - (a ?? 0))
-      .slice(0, 8)
-      .map(([k], i) => ({
-        key: k,
-        label: k.replace(/^(lib|layer):/, ''),
-        color: PALETTE[i % PALETTE.length],
-      }));
+    if (!latestPoint) return [] as { key: string; label: string }[];
+    const entries = Object.entries(latestPoint)
+      .filter(([key, value]) => key !== 'ts' && key.includes(':') && typeof value === 'number' && Number.isFinite(value))
+      .sort(([, a], [, b]) => b! - a!)
+      .slice(0, 8);
+    return entries.map(([key]) => {
+      const name = key.replace(/^(lib|layer):/, '');
+      const duplicate = entries.some(([peer]) => peer !== key && peer.replace(/^(lib|layer):/, '') === name);
+      return { key, label: duplicate ? key : name };
+    });
   });
 
   // 최신 사용량 합계
   const totalUsage = $derived(
     topKeys.reduce((sum, { key }) => sum + ((latestPoint?.[key] as number) ?? 0), 0)
   );
+  const spec = $derived<ChartSpec>({
+    kind: 'bar',
+    data: topKeys.map(({ key, label }) => ({ name: label, usage: latestPoint?.[key] ?? null })),
+    xKey: 'name',
+    series: [{ key: 'usage', label: t('chart.activeVm'), color: 'var(--color-chart-1)' }],
+    orientation: 'horizontal', domain: [0, totalUsage || 1],
+    formatValue: value => value.toLocaleString(intlLocale()),
+  });
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-5">
-  <div class="flex items-center justify-between mb-4">
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
     <div class="flex items-center gap-3">
       <h3 class="text-sm font-semibold text-ink-2">{shownTitle}</h3>
       {#if totalUsage > 0}
@@ -63,8 +70,10 @@
     <div class="flex gap-1">
       {#each RANGES as r}
         <button
+          type="button"
+          aria-pressed={currentRange === r}
           onclick={() => onRangeChange?.(r)}
-          class="text-xs px-2 py-0.5 rounded transition-colors {currentRange === r ? 'bg-action-warm text-ink-0' : 'text-ink-2 hover:text-ink-2'}"
+          class="min-h-11 md:min-h-8 text-xs px-2 py-0.5 rounded transition-colors focus-visible:outline focus-visible:outline-accent {currentRange === r ? 'bg-action-warm text-[var(--color-action-on-warm)]' : 'text-ink-2 hover:text-ink-0'}"
         >{t('chart.days', { count: RANGE_DAYS[r] })}</button>
       {/each}
     </div>
@@ -75,22 +84,6 @@
       {t('chart.empty')}
     </div>
   {:else}
-    <!-- 수평 바 차트 (최신 스냅샷 기준) -->
-    <div class="space-y-2">
-      {#each topKeys as { key, label, color }}
-        {@const val = (latestPoint?.[key] as number) ?? 0}
-        {@const pct = totalUsage > 0 ? (val / totalUsage) * 100 : 0}
-        <div class="flex items-center gap-3">
-          <div class="w-28 text-xs text-ink-2 truncate text-right">{label}</div>
-          <div class="flex-1 h-3 bg-surface-sunken rounded-full overflow-hidden">
-            <div
-              class="h-full rounded-full transition-all duration-500"
-              style="width: {pct}%; background-color: {color};"
-            ></div>
-          </div>
-          <div class="w-6 text-xs text-ink-2 text-right">{val}</div>
-        </div>
-      {/each}
-    </div>
+    <BklitChart {spec} height={Math.max(120, topKeys.length * 32 + 16)} label={shownTitle} />
   {/if}
 </div>

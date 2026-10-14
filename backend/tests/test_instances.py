@@ -23,6 +23,15 @@ def _resolve_default_placement_policies(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def _ordinary_consume_dispatch(monkeypatch):
+    """These ordinary-instance units do not provision the resource ledger.
+
+    Real database/provider block dispatch coverage lives in test_layer_consume_resources.
+    """
+    monkeypatch.setattr("app.services.layer_consume_resources.lookup_for_server", AsyncMock(return_value=[]))
+
+
 def make_instance(instance_id: str = "inst-1", name: str = "test-vm", status: str = "ACTIVE") -> InstanceInfo:
     return InstanceInfo(
         id=instance_id,

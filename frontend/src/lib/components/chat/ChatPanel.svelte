@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, pushState } from '$app/navigation';
+	import { page } from '$app/stores';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import { derived } from 'svelte/store';
@@ -125,12 +126,16 @@
 
 
 	interface Props {
-		/** Undefined is the normal chat route; null is the project index. */
-		projectRoute?: number | null;
 		/** One-shot workspace assignment for a newly created conversation. */
 		initialWorkspaceId?: number | null;
 	}
-	let { projectRoute = undefined, initialWorkspaceId = null }: Props = $props();
+	let { initialWorkspaceId = null }: Props = $props();
+	const projectRoute = $derived.by((): number | null | undefined => {
+		const path = $page.state.chatWorkspacePath ?? $page.url.pathname;
+		if (path === '/dashboard/chat/projects') return null;
+		const match = path.match(/^\/dashboard\/chat\/projects\/(\d+)\/?$/);
+		return match ? Number(match[1]) : undefined;
+	});
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 	const canChat = $derived($serviceCapabilities('lumen-chat_user'));
@@ -310,9 +315,8 @@
 
 	// 프로젝트(workspace) 관리
 	let workspaces = $state<Workspace[]>([]);
-	let view = $state<'chat' | 'projects'>('chat');
-	let projectsInitialMode = $state<'grid'>('grid');
-	let projectsInitialWorkspaceId = $state<number | null>(null);
+	const view = $derived(projectRoute === undefined ? 'chat' : 'projects');
+	const projectsInitialWorkspaceId = $derived(projectRoute ?? null);
 	let createProjectDialogOpen = $state(false);
 	let sourcesOpen = $state(false);
 	let modelPickerOpen = $state(false);
@@ -320,11 +324,6 @@
 		void goto(`/dashboard/chat/settings?section=${section}`);
 	}
 
-	$effect(() => {
-		if (projectRoute === undefined) return;
-		view = 'projects';
-		projectsInitialWorkspaceId = projectRoute;
-	});
 
 	// 현재 선택 모델의 능력(배지·게이팅). 에이전트 바인딩 시 에이전트 모델 기준.
 	const activeModelName = $derived(activeAgent?.model_name || selectedModel);
@@ -484,8 +483,17 @@
 		if (activeConv) void assignWorkspace(activeConv, id);
 		else pendingWorkspaceId = id; // 신규 대화 — 생성 시 배정
 	}
+	function navigateWorkspace(path: string) {
+		if (($page.state.chatWorkspacePath ?? $page.url.pathname) !== path) {
+			const next = new URL($page.url);
+			next.pathname = path;
+			next.searchParams.delete('workspace');
+			pushState(next, { ...$page.state, chatWorkspacePath: path });
+		}
+		closeSidebarOnMobile();
+	}
 	function openProjects() {
-		void goto('/dashboard/chat/projects');
+		navigateWorkspace('/dashboard/chat/projects');
 	}
 	function createProject() {
 		createProjectDialogOpen = true;
@@ -494,13 +502,13 @@
 		return createWorkspace({ name });
 	}
 	function openProjectWorkspace(workspaceId: number) {
-		void goto(`/dashboard/chat/projects/${workspaceId}`);
+		navigateWorkspace(`/dashboard/chat/projects/${workspaceId}`);
 	}
 	function leaveProjectsRoute() {
-		if (projectRoute !== undefined) void goto('/dashboard/chat');
+		if (projectRoute !== undefined) navigateWorkspace('/dashboard/chat');
 	}
 	function navigateProjectRoute(workspaceId: number | null) {
-		if (workspaceId === null) void goto('/dashboard/chat/projects');
+		if (workspaceId === null) openProjects();
 		else openProjectWorkspace(workspaceId);
 	}
 
@@ -513,6 +521,7 @@
 		return activePath;
 	});
 	const isEmpty = $derived(displayPath.length === 0);
+	const expandedComposer = $derived(!isEmpty || input.length >= 160 || /\n[^]*\n/.test(input));
 	let previousComposerEmpty: boolean | null = null;
 	$effect.pre(() => {
 		const wasEmpty = previousComposerEmpty;
@@ -1004,7 +1013,6 @@
 	}
 
 	async function replaceHistoryWindow(
-		anchor: 'first' | 'latest',
 		selection = selectionGeneration
 	): Promise<boolean> {
 		const convId = activeConvId;
@@ -1014,10 +1022,10 @@
 		const mutationEpoch = localMutationEpoch;
 		historyLoading = true;
 		try {
-			const params = new URLSearchParams({ anchor, limit: String(HISTORY_PAGE_SIZE) });
+			const params = new URLSearchParams({ anchor: 'latest', limit: String(HISTORY_PAGE_SIZE) });
 			const page = await requestMessagePage(convId, params, requestToken, requestProjectId);
 			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) return false;
-			applyHistoryPages([page], anchor === 'latest');
+			applyHistoryPages([page], true);
 			return true;
 		} catch (cause) {
 			if (historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) {
@@ -1031,7 +1039,7 @@
 
 	async function loadMessages(convId: string, selection = selectionGeneration): Promise<boolean> {
 		if (activeConvId !== convId) return false;
-		return replaceHistoryWindow('latest', selection);
+		return replaceHistoryWindow(selection);
 	}
 
 	async function loadHistoryDirection(direction: 'before' | 'after'): Promise<void> {
@@ -1262,9 +1270,10 @@
 	// --- 대화 선택/생성 ---
 	async function selectConversation(conv: Conversation) {
 		leaveProjectsRoute();
+		closeSidebarOnMobile();
+		if (!tempMode && activeConvId === conv.id && (historyPages.length > 0 || historyLoading)) return;
 		detachLocalStream();
 		const selection = ++selectionGeneration;
-		view = 'chat';
 		pendingWorkspaceId = null;
 		tempMode = false;
 		historyPages = [];
@@ -1295,7 +1304,6 @@
 		leaveProjectsRoute();
 		detachLocalStream();
 		selectionGeneration += 1;
-		view = 'chat';
 		pendingWorkspaceId = null;
 		tempMode = false;
 		historyPages = [];
@@ -1332,7 +1340,6 @@
 		leaveProjectsRoute();
 		detachLocalStream();
 		selectionGeneration += 1;
-		view = 'chat';
 		pendingWorkspaceId = null;
 		closeSidebarOnMobile();
 		tempMode = true;
@@ -2084,7 +2091,7 @@
 			return;
 		}
 		if (!tempMode && activeConvId && historyHasAfter) {
-			const loadedLatest = await replaceHistoryWindow('latest');
+			const loadedLatest = await replaceHistoryWindow();
 			if (!loadedLatest) return;
 		}
 		input = '';
@@ -2494,10 +2501,12 @@
 
 {#snippet historyToggle()}
 					<button
-						bind:this={sidebarTrigger}
 						type="button"
 						class="compact-history-toggle"
-						onclick={toggleSidebar}
+						onclick={(event) => {
+							sidebarTrigger = event.currentTarget;
+							toggleSidebar();
+						}}
 						aria-controls="chat-history-drawer"
 						aria-expanded={sidebarOpen}
 						aria-label={sidebarOpen ? t('panel.history.close') : t('panel.history.openSettings')}
@@ -2563,7 +2572,6 @@
 		{#if view === 'projects'}
 			<div class="lg:hidden p-2 border-b border-line">{@render historyToggle()}</div>
 			<ChatProjectsView
-				initialMode={projectsInitialMode}
 				initialWorkspaceId={projectsInitialWorkspaceId}
 				{conversations}
 				{workspaces}
@@ -2575,7 +2583,8 @@
 				onNewInProject={newInProject}
 				onNavigate={navigateProjectRoute}
 			/>
-		{:else}
+		{/if}
+		<div class="chat-view" hidden={view === 'projects'}>
 			<header class="head">
 			<div class="head-center">
 				<div class="head-controls">
@@ -2632,7 +2641,7 @@
 			{/if}
 		</header>
 
-		<div class="chat-workspace" class:empty-workspace={isEmpty} class:temp-mode={tempMode}>
+		<div class="chat-workspace" class:empty-workspace={isEmpty} class:expanded-composer={expandedComposer} class:temp-mode={tempMode}>
 		<ChatWindow
 			actionsDisabled={!canChat}
 			activePath={displayPath}
@@ -2654,8 +2663,7 @@
 			newHistoryActivity={historyNewActivity}
 			onLoadBefore={activeConvId && !tempMode ? () => loadHistoryDirection('before') : undefined}
 			onLoadAfter={activeConvId && !tempMode ? () => loadHistoryDirection('after') : undefined}
-			onLoadFirst={activeConvId && !tempMode ? () => replaceHistoryWindow('first') : undefined}
-			onLoadLatest={activeConvId && !tempMode ? () => replaceHistoryWindow('latest') : undefined}
+			onLoadLatest={activeConvId && !tempMode ? () => replaceHistoryWindow() : undefined}
 			onCopy={copy}
 			{manualCompactionActivity}
 			onRegenerate={regenerate}
@@ -2726,7 +2734,7 @@
 				</ChatInput>
 			</div>
 		</div>
-		{/if}
+		</div>
 	</section>
 </div>
 
@@ -2765,6 +2773,18 @@
 		overflow: hidden;
 		background: var(--color-surface-base);
 		position: relative; /* 모바일 드로어 사이드바·백드롭 기준 */
+	}
+	:global(:root.light) .chat-shell {
+		background: var(--color-surface-canvas);
+	}
+	:global(:root.light) .head,
+	:global(:root.light) .sidebar-rail {
+		border-color: var(--color-line-2);
+	}
+	:global(:root.light) .compact-history-toggle,
+	:global(:root.light) .model-btn,
+	:global(:root.light) .sources-btn {
+		border-color: var(--color-line-2);
 	}
 	.sidebar-rail {
 		display: none;
@@ -2878,6 +2898,16 @@
 		min-width: 0;
 		min-height: 0;
 	}
+	.chat-view {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		min-width: 0;
+		min-height: 0;
+	}
+	.chat-view[hidden] {
+		display: none;
+	}
 	.head {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) auto;
@@ -2938,6 +2968,9 @@
 	.chat-workspace.empty-workspace .composer-anchor {
 		width: min(100%, var(--app-content-max-width));
 		flex: 0 0 auto;
+	}
+	.chat-workspace.empty-workspace:not(.expanded-composer) .composer-anchor {
+		width: min(100%, 48rem);
 	}
 	.chat-workspace.empty-workspace :global(.window) {
 		margin-bottom: 0.25rem;

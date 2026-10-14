@@ -158,6 +158,12 @@ from app.api.container import clusters_router, containers_router
 
 _mark("api.container")
 from app.api.cloud_shell import router as cloud_shell_router
+from app.api.common.traffic_analytics import (
+    admin_router as admin_traffic_router,
+)
+from app.api.common.traffic_analytics import (
+    ingest_router as traffic_ingest_router,
+)
 
 # ---------------------------------------------------------------------------
 # app.api.identity (admin, auth, sub-routers)
@@ -165,11 +171,14 @@ from app.api.cloud_shell import router as cloud_shell_router
 from app.api.identity import admin_router, auth_router, gitlab_auth_router, mcp_access_router
 from app.api.identity.admin_activity import router as admin_activity_router
 from app.api.identity.admin_announcements import router as admin_announcements_router
+from app.api.identity.admin_credentials import router as admin_credentials_router
 from app.api.identity.admin_dashboard import router as admin_dashboard_router
 from app.api.identity.admin_flavors import router as admin_flavors_router
 from app.api.identity.admin_gpu import router as admin_gpu_router
+from app.api.identity.admin_host_health import router as admin_host_health_router
 from app.api.identity.admin_identity import router as admin_identity_router
 from app.api.identity.admin_images import router as admin_images_router
+from app.api.identity.admin_infrastructure_topology import router as admin_infrastructure_topology_router
 from app.api.identity.admin_instances import router as admin_instances_router
 from app.api.identity.admin_notion import router as admin_notion_router
 from app.api.identity.admin_orphans import router as admin_orphans_router
@@ -178,6 +187,7 @@ from app.api.identity.admin_secrets import router as admin_secrets_router
 from app.api.identity.admin_services import router as admin_services_router
 from app.api.identity.admin_worker_runtime import router as admin_worker_runtime_router
 from app.api.identity.invitations import router as invitations_router
+from app.api.identity.login_monitoring import router as login_monitoring_router
 from app.api.identity.profile import router as profile_router
 from app.api.identity.profile_activity import router as profile_activity_router
 from app.api.identity.projects import router as projects_router
@@ -185,7 +195,10 @@ from app.api.mcp import auth_router as mcp_oauth_router
 from app.api.mcp import root_router as mcp_root_router
 from app.api.mcp import router as mcp_router
 from app.api.mcp_lumen import router as mcp_lumen_router
+from app.api.monitoring.host_observations import HostObservationBodyLimit
+from app.api.monitoring.host_observations import router as host_observations_router
 from app.api.union.layer_ops import router as admin_libraries_router
+from app.middleware.traffic_analytics import TrafficAnalyticsMiddleware
 from app.services.mcp_control_plane.transport import (
     install_mcp_route,
     mcp_paths,
@@ -256,12 +269,22 @@ install_mcp_route(app)
 
 @app.exception_handler(RequestValidationError)
 async def creation_validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Keep creation passwords out of field and whole-model HTTP validation errors."""
-    if request.method != "POST" or request.url.path.rstrip("/") not in {
+    """Keep creation passwords and credential secrets out of validation responses."""
+    path = request.url.path.rstrip("/")
+    if path.startswith("/api/v1/monitoring/host-observations/"):
+        return JSONResponse(
+            status_code=422, content={"detail": "observation_validation_failed"}, headers={"Cache-Control": "no-store"}
+        )
+    sensitive_credential = request.method in {"POST", "PUT", "PATCH"} and any(
+        path == base or path.startswith(base + "/")
+        for base in ("/api/v1/admin/application-credentials", "/api/v1/admin/user-credentials")
+    )
+    sensitive_creation = request.method == "POST" and path in {
         "/api/v1/instances",
         "/api/v1/instances/async",
         "/api/v1/admin/instances/async",
-    }:
+    }
+    if not (sensitive_creation or sensitive_credential):
         return await _default_validation_handler(request, exc)
     # Pydantic hide_input_in_errors protects str(exc), not errors(). FastAPI's
     # default handler encodes raw input (including the whole body on model errors)
@@ -382,6 +405,8 @@ _AUDIT_PREFIX_MAP: list[tuple[str, str]] = [
     ("/api/v1/admin/networks", "network"),
     ("/api/v1/admin/floating-ips", "floating_ip"),
     ("/api/v1/admin/flavors", "flavor"),
+    ("/api/v1/admin/application-credentials", "application_credential"),
+    ("/api/v1/admin/user-credentials", "user_credential"),
     ("/api/v1/admin/users", "user"),
     ("/api/v1/admin/projects", "project"),
     ("/api/v1/waygate/servers", "waygate_server"),
@@ -612,6 +637,22 @@ async def activity_audit_middleware(request: Request, call_next):
 app.middleware("http")(request_logging_middleware)
 
 
+@app.middleware("http")
+async def credential_response_cache_policy(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path.rstrip("/")
+    if any(
+        path == base or path.startswith(base + "/")
+        for base in ("/api/v1/admin/application-credentials", "/api/v1/admin/user-credentials")
+    ):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
+app.add_middleware(HostObservationBodyLimit)
+app.add_middleware(TrafficAnalyticsMiddleware)
+
 # Identity
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(mcp_access_router, prefix="/api/v1/auth", tags=["mcp-access"])
@@ -628,6 +669,13 @@ app.include_router(admin_services_router, prefix="/api/v1/admin", tags=["admin-s
 app.include_router(admin_worker_runtime_router, prefix="/api/v1/admin", tags=["admin-worker-runtime"])
 app.include_router(admin_flavors_router, prefix="/api/v1/admin", tags=["admin-flavors"])
 app.include_router(admin_identity_router, prefix="/api/v1/admin", tags=["admin-identity"])
+app.include_router(admin_credentials_router, prefix="/api/v1/admin", tags=["admin-credentials"])
+app.include_router(admin_host_health_router, prefix="/api/v1/admin", tags=["admin-host-health"])
+app.include_router(admin_infrastructure_topology_router, prefix="/api/v1/admin", tags=["admin-infrastructure-topology"])
+app.include_router(host_observations_router, prefix="/api/v1/monitoring", tags=["host-observations"])
+app.include_router(admin_traffic_router, prefix="/api/v1/admin/monitoring/traffic", tags=["admin-traffic"])
+app.include_router(traffic_ingest_router, prefix="/api/v1/monitoring/traffic", tags=["traffic"])
+app.include_router(login_monitoring_router, prefix="/api/v1/admin/monitoring/logins", tags=["admin-login-monitoring"])
 app.include_router(admin_gpu_router, prefix="/api/v1/admin", tags=["admin-gpu"])
 app.include_router(admin_libraries_router, prefix="/api/v1/admin/libraries", tags=["admin-libraries"])
 app.include_router(admin_notion_router, prefix="/api/v1/admin", tags=["admin-notion"])
@@ -787,6 +835,30 @@ async def health_detail(token_info: dict = Depends(get_token_info)):
 # ---------------------------------------------------------------------------
 
 
+async def _background_sdk(function, *args, **kwargs):
+    from app.services.work_dispatcher import run_sync
+
+    return await run_sync(function, *args, **kwargs)
+
+
+async def _open_background_connection(factory, *args, **kwargs):
+    from app.services.work_dispatcher import open_connection
+
+    return await open_connection(factory, *args, **kwargs)
+
+
+async def _close_background_connection(conn):
+    from app.services.work_dispatcher import close_connection
+
+    await close_connection(conn)
+
+
+async def _background_checkpoint():
+    from app.services.work_dispatcher import checkpoint
+
+    await checkpoint()
+
+
 async def _collect_snapshot() -> None:
     """관리자 자격으로 리소스 현황을 수집하여 Redis 시계열에 저장."""
     from app.config import get_settings
@@ -796,7 +868,8 @@ async def _collect_snapshot() -> None:
     try:
         import openstack
 
-        conn = openstack.connect(
+        conn = await _open_background_connection(
+            openstack.connect,
             auth_url=settings.os_auth_url,
             username=settings.os_username,
             password=settings.os_password,
@@ -882,17 +955,20 @@ async def _collect_snapshot() -> None:
 
             from app.database import get_session_factory
 
-            counts: dict[str, int] = {}
-            try:
-                for s in conn.compute.servers(all_projects=True, details=True):
-                    libs_str = (s.metadata or {}).get("union_libraries", "")
-                    for lib in libs_str.split(","):
-                        lib = lib.strip()
-                        if lib:
-                            key = f"lib:{lib}"
-                            counts[key] = counts.get(key, 0) + 1
-            except Exception:
-                pass
+            def _nova_library_usage():
+                counts: dict[str, int] = {}
+                try:
+                    for server in conn.compute.servers(all_projects=True, details=True):
+                        for library_id in (server.metadata or {}).get("union_libraries", "").split(","):
+                            library_id = library_id.strip()
+                            if library_id:
+                                key = f"lib:{library_id}"
+                                counts[key] = counts.get(key, 0) + 1
+                except Exception:
+                    pass
+                return counts
+
+            counts = await _background_sdk(_nova_library_usage)
             try:
                 factory = get_session_factory()
                 if factory:
@@ -914,19 +990,24 @@ async def _collect_snapshot() -> None:
                 pass
             return counts
 
-        inst_data = await asyncio.to_thread(_count_instances)
-        vol_data = await asyncio.to_thread(_count_volumes)
+        inst_data = await _background_sdk(_count_instances)
+        vol_data = await _background_sdk(_count_volumes)
         if settings.service_manila_enabled:
-            file_storage_data = await asyncio.to_thread(_count_file_storages)
+            file_storage_data = await _background_sdk(_count_file_storages)
         else:
             file_storage_data = {"total": 0}
-        net_data = await asyncio.to_thread(_count_networks)
+        net_data = await _background_sdk(_count_networks)
         lib_usage_data = await _count_library_usage()
 
+        await _background_checkpoint()
         await timeseries.record_snapshot("instances", inst_data)
+        await _background_checkpoint()
         await timeseries.record_snapshot("volumes", vol_data)
+        await _background_checkpoint()
         await timeseries.record_snapshot("file_storage", file_storage_data)
+        await _background_checkpoint()
         await timeseries.record_snapshot("networks", net_data)
+        await _background_checkpoint()
         await timeseries.record_snapshot("library_usage", lib_usage_data)
 
         _logger.info(
@@ -941,7 +1022,7 @@ async def _collect_snapshot() -> None:
         _logger.warning("시계열 스냅샷 수집 오류", exc_info=True)
     finally:
         try:
-            await asyncio.to_thread(conn.close)
+            await _close_background_connection(conn)
         except Exception:
             pass
 
@@ -965,6 +1046,7 @@ async def _mcp_cleanup_loop() -> None:
 
             session_factory = get_session_factory()
             if session_factory is not None:
+                await _background_checkpoint()
                 await sweep_delegated_authority(session_factory)
         except Exception:
             _logger.warning("MCP delegated-authority cleanup failed", exc_info=True)
@@ -999,7 +1081,7 @@ async def _trash_cleanup_loop() -> None:
             cutoff = int(_time.time()) - retention_days * 86400
 
             try:
-                project_ids: set[str] = await asyncio.to_thread(list_all_project_ids)
+                project_ids: set[str] = await _background_sdk(list_all_project_ids)
             except Exception:
                 _logger.warning("trash_cleanup: 프로젝트 목록 조회 실패", exc_info=True)
                 project_ids = set()
@@ -1008,7 +1090,7 @@ async def _trash_cleanup_loop() -> None:
                 if not pid:
                     continue
                 try:
-                    conn = await asyncio.to_thread(get_admin_connection_for_project, pid)
+                    conn = await _open_background_connection(get_admin_connection_for_project, pid)
                 except Exception:
                     _logger.debug("trash_cleanup: 프로젝트 %s 연결 실패", pid, exc_info=True)
                     continue
@@ -1017,7 +1099,7 @@ async def _trash_cleanup_loop() -> None:
                     # 컨테이너 목록 조회 (step 1·reconcile 공유)
                     all_containers: list = []
                     try:
-                        all_containers = await asyncio.to_thread(swift.list_containers, conn, False, True)
+                        all_containers = await _background_sdk(swift.list_containers, conn, False, True)
                     except Exception:
                         _logger.debug("trash_cleanup: pid=%s 컨테이너 목록 조회 실패", pid, exc_info=True)
 
@@ -1031,7 +1113,7 @@ async def _trash_cleanup_loop() -> None:
                             # C-2: 이미 빈 trash 버킷은 즉시 정리
                             if trash_count == 0:
                                 try:
-                                    await asyncio.to_thread(swift.delete_container, conn, tc["name"])
+                                    await _background_sdk(swift.delete_container, conn, tc["name"])
                                     _logger.info(
                                         "trash_cleanup: 빈 휴지통 버킷 삭제 pid=%s bucket=%s",
                                         pid,
@@ -1046,7 +1128,7 @@ async def _trash_cleanup_loop() -> None:
                                     )
                                 continue
                             try:
-                                result = await asyncio.to_thread(
+                                result = await _background_sdk(
                                     swift.purge_expired_trash_objects, conn, origin, retention_days
                                 )
                                 if result["purged"]:
@@ -1059,7 +1141,7 @@ async def _trash_cleanup_loop() -> None:
                                 # C-2: purge 후 trash 버킷이 비었으면 삭제
                                 if trash_count >= 0 and len(result.get("purged", [])) >= trash_count:
                                     try:
-                                        await asyncio.to_thread(swift.delete_container, conn, tc["name"])
+                                        await _background_sdk(swift.delete_container, conn, tc["name"])
                                         _logger.info(
                                             "trash_cleanup: 빈 휴지통 버킷 삭제 pid=%s bucket=%s",
                                             pid,
@@ -1095,10 +1177,11 @@ async def _trash_cleanup_loop() -> None:
                             if cname in current_redis_map:
                                 continue  # 이미 Redis에 있음
                             try:
-                                meta_epoch = await asyncio.to_thread(swift.get_container_deleted_at, conn, cname)
+                                meta_epoch = await _background_sdk(swift.get_container_deleted_at, conn, cname)
                             except Exception:
                                 continue
                             if meta_epoch is not None:
+                                await _background_checkpoint()
                                 await _mark_container_deleted(pid, cname, meta_epoch, retention_days)
                                 reconciled += 1
                                 _logger.info(
@@ -1122,13 +1205,14 @@ async def _trash_cleanup_loop() -> None:
                         for cname, epoch in deleted_map.items():
                             if epoch <= cutoff:
                                 try:
-                                    await asyncio.to_thread(swift.delete_container, conn, cname)
+                                    await _background_sdk(swift.delete_container, conn, cname)
                                     _logger.info("trash_cleanup: 버킷 영구 삭제 pid=%s name=%s", pid, cname)
                                 except Exception:
                                     _logger.debug(
                                         "trash_cleanup: 버킷 삭제 실패 pid=%s name=%s", pid, cname, exc_info=True
                                     )
                                 finally:
+                                    await _background_checkpoint()
                                     await _unmark_container_deleted(pid, cname)
                     except Exception:
                         _logger.debug("trash_cleanup: pid=%s 버킷 휴지통 처리 실패", pid, exc_info=True)
@@ -1137,40 +1221,10 @@ async def _trash_cleanup_loop() -> None:
                     import contextlib as _cl
 
                     with _cl.suppress(Exception):
-                        await asyncio.to_thread(conn.close)
+                        await _close_background_connection(conn)
 
         except Exception:
             _logger.warning("trash_cleanup: 루프 오류", exc_info=True)
-        await asyncio.sleep(3600)  # 1시간
-
-
-async def _auto_backup_loop() -> None:
-    """1시간 간격으로 자동 백업 설정이 있는 볼륨에 대해 백업 사이클 실행."""
-    await asyncio.sleep(60)  # 시작 후 1분 대기
-    while True:
-        try:
-            from app.services import auto_backup as _ab
-            from app.services.keystone import get_admin_connection_for_project
-
-            configs = await _ab.list_all_auto_backup_configs()
-            if configs:
-                _logger.info("auto_backup: %d개 볼륨 자동 백업 시작", len(configs))
-                for cfg in configs:
-                    project_id = cfg.get("project_id")
-                    volume_id = cfg.get("volume_id")
-                    if not project_id or not volume_id:
-                        continue
-                    try:
-                        conn = await asyncio.to_thread(get_admin_connection_for_project, project_id)
-                        await _ab.run_backup_cycle(conn, project_id, volume_id, cfg)
-                    except Exception:
-                        _logger.warning(
-                            "auto_backup: 백업 사이클 실패 (volume=%s)",
-                            volume_id,
-                            exc_info=True,
-                        )
-        except Exception:
-            _logger.warning("auto_backup: 루프 오류", exc_info=True)
         await asyncio.sleep(3600)  # 1시간
 
 
@@ -1210,13 +1264,18 @@ async def _deferred_load_gpu_catalog() -> None:
     _logger.warning("GPU 장치 카탈로그 DB 로드 최종 실패 — 내장/config 카탈로그로 동작")
 
 
-_cloud_shell_reconcile_task: asyncio.Task[None] | None = None
+_background_tasks: set[asyncio.Task[None]] = set()
 _notification_collector = None
+
+
+def _start_background(coroutine, *, name: str) -> None:
+    _background_tasks.add(asyncio.create_task(coroutine, name=name))
 
 
 @app.on_event("startup")
 async def start_background_workers():
-    global _cloud_shell_reconcile_task, _notification_collector
+    global _notification_collector
+    roles = {"snapshot": _snapshot_loop}
     # Redis 연결 pre-warm (첫 health check 지연 방지)
     try:
         from app.services.cache import _get_redis
@@ -1242,9 +1301,12 @@ async def start_background_workers():
         if _db_cfg.database_auto_create_tables:
             # create_tables()를 await하지 않고 백그라운드 태스크로 실행해
             # API가 DB DDL 완료를 기다리지 않고 즉시 요청을 받을 수 있게 한다.
-            asyncio.create_task(_deferred_create_tables())
+            _start_background(_deferred_create_tables(), name="database-initialization")
         else:
-            asyncio.create_task(_deferred_load_gpu_catalog())
+            _start_background(_deferred_load_gpu_catalog(), name="gpu-catalog-initialization")
+        from app.services.layer_consume_resources import reconciliation_loop as consume_reconciliation_loop
+
+        roles["block-consumer-reconciliation"] = consume_reconciliation_loop
     if _db_cfg.openstack_notifications_enabled:
         if not _db_cfg.database_url:
             raise RuntimeError("OpenStack notification collection requires a persistent database")
@@ -1252,43 +1314,54 @@ async def start_background_workers():
 
         _notification_collector = await start_notification_collector(_db_cfg)
 
-    asyncio.create_task(_snapshot_loop())
-    asyncio.create_task(_auto_backup_loop())
+    from app.services.auto_backup import scheduler_loop
+
+    _start_background(scheduler_loop(), name="volume-backup-dispatch")
+    if _db_cfg.monitoring_host_healthcheck_enabled:
+        from app.services.host_health import monitoring_loop
+
+        roles["host-health"] = monitoring_loop
     if _svc_cfg.service_swift_enabled:
-        asyncio.create_task(_trash_cleanup_loop())
+        roles["swift-trash-cleanup"] = _trash_cleanup_loop
     if _svc_cfg.service_mcp_enabled:
         await start_mcp_transport()
-        asyncio.create_task(_mcp_cleanup_loop())
+        roles["mcp-cleanup"] = _mcp_cleanup_loop
     if _svc_cfg.service_cloud_shell_enabled:
-        from app.services.cloud_shell import reconcile_once, reconciliation_loop
+        from app.services.cloud_shell import reconciliation_loop
 
-        try:
-            await reconcile_once()
-        except Exception:
-            _logger.warning("Cloud Shell startup reconciliation failed closed", exc_info=True)
-        _cloud_shell_reconcile_task = asyncio.create_task(reconciliation_loop())
+        roles["cloud-shell-reconciliation"] = reconciliation_loop
 
     if _db_cfg.worker_runtime_mode != "static" and _db_cfg.worker_runtime_reconcile_interval > 0:
         from app.services.worker_runtime import reconcile_loop
 
-        asyncio.create_task(reconcile_loop())
+        # Local Engines and Kubernetes namespaces have independent target pools.
+        _start_background(reconcile_loop(), name="worker-runtime-target-reconciliation")
 
-    from app.services.library_builder import _build_worker, reconcile_orphan_builds
+    if _db_cfg.database_url:
+        from app.services.library_builder import build_worker_loop
 
-    asyncio.create_task(reconcile_orphan_builds())
-    asyncio.create_task(_build_worker())
+        _start_background(build_worker_loop(), name="library-build-dispatch")
+
+    from app.services.work_dispatcher import run_roles
+
+    _start_background(run_roles(roles), name="api-background-roles")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    global _cloud_shell_reconcile_task, _notification_collector
+    global _notification_collector
     from app.database import close_db
     from app.services import prom_query
 
-    if _cloud_shell_reconcile_task is not None:
-        _cloud_shell_reconcile_task.cancel()
-        await asyncio.gather(_cloud_shell_reconcile_task, return_exceptions=True)
-        _cloud_shell_reconcile_task = None
+    tasks = tuple(_background_tasks)
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    _background_tasks.clear()
+    from app.services import host_health
+
+    await host_health.aclose_client()
 
     from app.services.openstack_notifications import stop_notification_collector
 

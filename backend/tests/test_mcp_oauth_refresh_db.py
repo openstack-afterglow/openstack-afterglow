@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
@@ -695,6 +697,7 @@ async def oauth_consent(issued_refresh, monkeypatch):
                         project_id=project_id,
                         project_name="Project " + project_id,
                         role_names=memberships[project_id],
+                        role_ids=["role-" + role for role in memberships[project_id]],
                         auth_token="caller-token",
                     )
                 ),
@@ -715,12 +718,13 @@ async def oauth_consent(issued_refresh, monkeypatch):
         def create_application_credential(self, **kwargs):
             assert kwargs["user"] == owner
             assert kwargs["unrestricted"] is False
-            assert kwargs["roles"] == [{"name": role} for role in memberships[self._afterglow_project_id]]
+            assert "roles" not in kwargs
             credential = SimpleNamespace(
                 id=str(uuid4()),
                 secret="secret-" + self._afterglow_project_id,
                 name=kwargs["name"],
                 project_id=self._afterglow_project_id,
+                roles=[{"id": "role-" + role, "name": role} for role in memberships[self._afterglow_project_id]],
             )
             created.append((self._afterglow_project_id, kwargs["name"], credential.id))
             remote[credential.id] = credential
@@ -959,3 +963,369 @@ async def test_oauth_ticket_expiring_during_credential_creation_revokes_and_clea
         code = await session.scalar(select(McpOAuthCode).where(McpOAuthCode.grant_id == grant.id))
         assert code is None
     assert consent.remote == {}
+
+
+@pytest.fixture
+async def sdk_oauth_consent(oauth_consent, monkeypatch):
+    """Only HTTP responses are synthetic; SDK auth/rescope/creation and SQL are real."""
+    import requests
+    from keystoneauth1 import identity, session
+    from openstack.connection import Connection
+    from oslo_utils import timeutils
+
+    from app.services import keystone
+
+    consent = oauth_consent
+    consent.remote.clear()
+    state = SimpleNamespace(
+        returned_roles=None,
+        override_roles=False,
+        creates=[],
+        deletes=[],
+        auth_scopes=[],
+        foreign_subject=False,
+        omit_anchor=False,
+        returned_project=None,
+    )
+    endpoint = "https://keystone.example.test/v3"
+    connections = []
+
+    def send(_session, request, **kwargs):
+        url = urlsplit(request.url)
+        assert url.netloc == "keystone.example.test", "test must not contact real Keystone"
+        path = url.path.rstrip("/")
+        headers = {}
+        status = 200
+        if request.method == "GET" and path == "/v3":
+            payload = {"version": {"id": "v3.14", "status": "stable", "links": [{"rel": "self", "href": endpoint}]}}
+        elif request.method == "POST" and path == "/v3/auth/tokens":
+            body = json.loads(request.body)["auth"]
+            assert body["identity"]["methods"] == ["token"]
+            target = body["scope"]["project"]["id"]
+            assert target in consent.memberships
+            state.auth_scopes.append(target)
+            now = datetime.now(UTC)
+            payload = {
+                "token": {
+                    "methods": ["token"],
+                    "issued_at": now.isoformat(),
+                    "expires_at": (now + timedelta(hours=1)).isoformat(),
+                    "user": {
+                        "id": "foreign" if state.foreign_subject else consent.owner,
+                        "name": "owner",
+                        "domain": {"id": "default"},
+                    },
+                    "project": {"id": target, "name": "Project " + target, "domain": {"id": "default"}},
+                    "roles": [{"id": "role-" + role, "name": role} for role in consent.memberships[target]],
+                    "catalog": [
+                        {
+                            "type": "identity",
+                            "name": "keystone",
+                            "endpoints": [
+                                {
+                                    "interface": "public",
+                                    "region": "RegionOne",
+                                    "url": endpoint,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            }
+            status = 201
+            headers["X-Subject-Token"] = "sdk-scoped-" + target
+        elif request.method == "GET" and path == "/v3/auth/projects":
+            payload = {
+                "projects": [
+                    {"id": target, "name": "Project " + target}
+                    for target in consent.memberships
+                    if not (state.omit_anchor and target == "A")
+                ]
+            }
+        else:
+            prefix = "/v3/users/" + consent.owner + "/application_credentials"
+            assert path == prefix or path.startswith(prefix + "/")
+            if request.method == "POST":
+                target = request.headers["X-Auth-Token"].removeprefix("sdk-scoped-")
+                assert target in consent.memberships
+                value = json.loads(request.body)["application_credential"]
+                assert value["unrestricted"] is False
+                assert timeutils.parse_isotime(value["expires_at"]).astimezone(UTC) > datetime.now(UTC)
+                # Keystone 2025.2's explicit-role branch expands the CURRENT
+                # inference graph, then rejects IDs absent from the scoped token.
+                # A new descendant is deliberately absent from this token. Its
+                # native omitted-role branch instead uses token.roles exactly.
+                if "roles" in value:
+                    status = 400
+                    payload = {
+                        "error": {
+                            "code": 400,
+                            "title": "Bad Request",
+                            "message": "Invalid application credential: Cannot create an application credential with unassigned role",
+                        }
+                    }
+                else:
+                    roles = [{"id": "role-" + role, "name": role} for role in consent.memberships[target]]
+                    if state.override_roles:
+                        roles = state.returned_roles
+                    credential = {
+                        **value,
+                        "id": str(uuid4()),
+                        "secret": "sdk-secret-" + target,
+                        "roles": roles,
+                        "project_id": state.returned_project or target,
+                        "user_id": consent.owner,
+                    }
+                    consent.remote[credential["id"]] = credential
+                    consent.created.append((target, value["name"], credential["id"]))
+                    state.creates.append(value)
+                    payload = {"application_credential": credential}
+                    status = 201
+            elif request.method == "DELETE":
+                credential_id = path.rsplit("/", 1)[-1]
+                consent.remote.pop(credential_id, None)
+                state.deletes.append(credential_id)
+                payload = {}
+                status = 204
+            elif request.method == "GET" and path == prefix:
+                payload = {
+                    "application_credentials": [
+                        {key: value for key, value in credential.items() if key != "secret"}
+                        for credential in consent.remote.values()
+                    ],
+                    "links": {"next": None},
+                }
+            elif request.method == "GET":
+                credential = consent.remote.get(path.rsplit("/", 1)[-1])
+                status = 200 if credential else 404
+                payload = (
+                    {"application_credential": credential}
+                    if credential
+                    else {"error": {"code": 404, "title": "Not Found", "message": "absent"}}
+                )
+            else:
+                raise AssertionError((request.method, path))
+        response = requests.Response()
+        response.status_code = status
+        response.request = request
+        response.headers.update({"Content-Type": "application/json", **headers})
+        response._content = json.dumps(payload).encode()
+        return response
+
+    monkeypatch.setattr(requests.Session, "send", send)
+
+    def connect(token, project_id):
+        auth = identity.v3.Token(auth_url=endpoint, token=token, project_id=project_id)
+        conn = Connection(
+            session=session.Session(auth=auth), identity_endpoint_override=endpoint, identity_api_version="3"
+        )
+        conn._afterglow_user_id = consent.owner
+        conn._afterglow_project_id = project_id
+        conn._afterglow_token = token
+        connections.append(conn)
+        return conn
+
+    monkeypatch.setattr(keystone, "get_openstack_connection", connect)
+    consent.conn = connect("synthetic-caller", "A")
+    consent.sdk = state
+    try:
+        yield consent
+    finally:
+        for conn in connections:
+            conn.close()
+
+
+@pytest.mark.parametrize("access_level", ["read", "manage"])
+@pytest.mark.parametrize(
+    "project_scope,omit_anchor",
+    [("current", False), ("selected", False), ("selected", True), ("all", False), ("all", True)],
+)
+async def test_oauth_sdk_native_roles_support_each_scope_without_inference_expansion(
+    sdk_oauth_consent, access_level, project_scope, omit_anchor
+):
+    from app.services.mcp_control_plane.authority import (
+        default_grant_project,
+        grant_credential_for_project,
+        validate_grant_project,
+    )
+    from app.services.mcp_control_plane.oauth_authority import resolve_oauth_access_token
+
+    consent = sdk_oauth_consent
+    consent.memberships["B"] = ["member"] if access_level == "manage" else ["reader"]
+    if omit_anchor and project_scope == "all":
+        # The browser's authenticated anchor need not be in /auth/projects.
+        # It can remain a logical issuance/ownership anchor only.
+        consent.sdk.omit_anchor = True
+    choices = {"project_scope": project_scope, "access_level": access_level}
+    if project_scope == "selected":
+        choices["project_ids"] = ["B"] if omit_anchor else ["A", "B"]
+    _, tokens, grant_id = await approve_and_exchange(consent, **choices)
+    expected = ["A"] if project_scope == "current" else (["B"] if omit_anchor else ["A", "B"])
+    assert [project for project, _, _ in consent.created] == expected
+    assert all("roles" not in value and value["unrestricted"] is False for value in consent.sdk.creates)
+    async with consent.factory() as db, db.begin():
+        grant, scopes = await resolve_oauth_access_token(db, raw_token=tokens["access_token"], resource=_URLS.resource)
+        assert scopes == (("mcp:read", "mcp:write") if access_level == "manage" else ("mcp:read",))
+        assert default_grant_project(grant) == expected[0]
+        assert grant.owner_project_id == "A" and grant.cleanup_pending is False
+        assert bool(grant.application_credential_id) == ("A" in expected)
+        for target in expected:
+            credential_id, _ = await grant_credential_for_project(db, grant, target)
+            assert consent.remote[credential_id]["project_id"] == target
+            assert [role["id"] for role in consent.remote[credential_id]["roles"]] == [
+                "role-" + role for role in consent.memberships[target]
+            ]
+            validate_grant_project(grant, target, write=access_level == "manage")
+
+
+@pytest.mark.parametrize(
+    "returned_roles",
+    [
+        None,
+        [],
+        [{"id": "foreign-role", "name": "member"}],
+        [{"name": "member"}],
+        [{"id": [], "name": "member"}],
+        [{"id": "role-reader", "name": "reader"}, {"id": "foreign-role", "name": "admin"}],
+    ],
+)
+async def test_oauth_sdk_unapproved_returned_roles_revoke_and_cleanup_saved_id(sdk_oauth_consent, returned_roles):
+    from app.services.mcp_control_plane.authority import McpAuthorityError
+    from app.services.mcp_control_plane.oauth_authority import approve_consent_ticket
+
+    consent = sdk_oauth_consent
+    consent.sdk.returned_roles = returned_roles
+    consent.sdk.override_roles = True
+    with pytest.raises(McpAuthorityError, match="roles do not match"):
+        await approve_consent_ticket(
+            consent.factory,
+            ticket=consent.ticket,
+            owner_user_id=consent.owner,
+            owner_project_id="A",
+            username="owner",
+            roles=["admin"],
+            conn=consent.conn,
+            project_scope="selected",
+            project_ids=["B"],
+            access_level="read",
+        )
+    assert len(consent.created) == 1
+    assert consent.sdk.deletes == [consent.created[0][2]]
+    assert consent.remote == {}
+    async with consent.factory() as db:
+        request = await db.scalar(
+            select(McpOAuthAuthorizationRequest).where(
+                McpOAuthAuthorizationRequest.ticket_hash == hash_oauth_value(consent.ticket)
+            )
+        )
+        grant = await db.get(McpDelegatedGrant, request.grant_id)
+        assert grant.status == "revoked" and grant.cleanup_pending is False
+        assert await db.scalar(select(McpOAuthCode).where(McpOAuthCode.grant_id == grant.id)) is None
+
+
+@pytest.mark.parametrize("denial", ["foreign-subject", "unknown-target", "reader-manage"])
+async def test_oauth_sdk_denied_target_never_creates_credentials(sdk_oauth_consent, denial):
+    from app.services.mcp_control_plane.authority import McpAuthorityError
+    from app.services.mcp_control_plane.oauth_authority import approve_consent_ticket
+
+    consent = sdk_oauth_consent
+    consent.sdk.foreign_subject = denial == "foreign-subject"
+    with pytest.raises(McpAuthorityError):
+        await approve_consent_ticket(
+            consent.factory,
+            ticket=consent.ticket,
+            owner_user_id=consent.owner,
+            owner_project_id="A",
+            username="owner",
+            roles=["admin"],
+            conn=consent.conn,
+            project_scope="selected",
+            project_ids=["unknown" if denial == "unknown-target" else "B"],
+            access_level="manage" if denial == "reader-manage" else "read",
+        )
+    assert consent.created == []
+    async with consent.factory() as db:
+        request = await db.scalar(
+            select(McpOAuthAuthorizationRequest).where(
+                McpOAuthAuthorizationRequest.ticket_hash == hash_oauth_value(consent.ticket)
+            )
+        )
+        assert request.status == "pending" and request.grant_id is None
+
+
+@pytest.mark.parametrize("project_scope", ["selected", "all"])
+async def test_oauth_sdk_ticket_expiry_before_activation_cleans_without_anchor(
+    sdk_oauth_consent, monkeypatch, project_scope
+):
+    from app.services.mcp_control_plane import oauth_authority
+
+    consent = sdk_oauth_consent
+    consent.sdk.omit_anchor = True
+    clock = SimpleNamespace(now=oauth_authority._now())
+    monkeypatch.setattr(oauth_authority, "_now", lambda: clock.now)
+    original_create = type(consent.conn.identity).create_application_credential
+
+    def expire_after_creation(identity_proxy, *args, **kwargs):
+        credential = original_create(identity_proxy, *args, **kwargs)
+        clock.now += timedelta(hours=2)
+        return credential
+
+    monkeypatch.setattr(type(consent.conn.identity), "create_application_credential", expire_after_creation)
+    with pytest.raises(oauth_authority.McpOAuthAuthorityError, match="ticket changed before activation"):
+        await oauth_authority.approve_consent_ticket(
+            consent.factory,
+            ticket=consent.ticket,
+            owner_user_id=consent.owner,
+            owner_project_id="A",
+            username="owner",
+            roles=["admin"],
+            conn=consent.conn,
+            project_scope=project_scope,
+            project_ids=["B"] if project_scope == "selected" else None,
+            access_level="read",
+        )
+    assert [project for project, _, _ in consent.created] == ["B"]
+    assert consent.remote == {}
+    assert consent.sdk.deletes == [consent.created[0][2]]
+    async with consent.factory() as db:
+        request = await db.scalar(
+            select(McpOAuthAuthorizationRequest).where(
+                McpOAuthAuthorizationRequest.ticket_hash == hash_oauth_value(consent.ticket)
+            )
+        )
+        grant = await db.get(McpDelegatedGrant, request.grant_id)
+        assert grant.status == "revoked" and grant.cleanup_pending is False
+        assert grant.application_credential_id is None
+        assert await db.scalar(select(McpOAuthCode).where(McpOAuthCode.grant_id == grant.id)) is None
+
+
+async def test_oauth_sdk_wrong_returned_project_cleans_by_saved_id(sdk_oauth_consent):
+    from app.services.mcp_control_plane import oauth_authority
+    from app.services.mcp_control_plane.authority import McpAuthorityError
+
+    consent = sdk_oauth_consent
+    consent.sdk.returned_project = "foreign-project"
+    with pytest.raises(McpAuthorityError, match="project does not match"):
+        await oauth_authority.approve_consent_ticket(
+            consent.factory,
+            ticket=consent.ticket,
+            owner_user_id=consent.owner,
+            owner_project_id="A",
+            username="owner",
+            roles=["admin"],
+            conn=consent.conn,
+            project_scope="selected",
+            project_ids=["B"],
+            access_level="read",
+        )
+    assert consent.remote == {}
+    assert consent.sdk.deletes == [consent.created[0][2]]
+    async with consent.factory() as db:
+        request = await db.scalar(
+            select(McpOAuthAuthorizationRequest).where(
+                McpOAuthAuthorizationRequest.ticket_hash == hash_oauth_value(consent.ticket)
+            )
+        )
+        grant = await db.get(McpDelegatedGrant, request.grant_id)
+        assert grant.status == "revoked" and grant.cleanup_pending is False
+        assert await db.scalar(select(McpOAuthCode).where(McpOAuthCode.grant_id == grant.id)) is None

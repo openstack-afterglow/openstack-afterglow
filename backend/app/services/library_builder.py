@@ -8,35 +8,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime
 
 from app.services import libraries as lib_svc
-from app.services import manila, neutron
-from app.services.keystone import get_service_project_connection
 
 _logger = logging.getLogger(__name__)
 
-# 빌드 중인 작업 추적 {library_id: {share_id, status, ...}} (인메모리 캐시, DB가 원본)
-_active_builds: dict[str, dict] = {}
-
-# 빌드 대기 큐 — (library_id, existing_share_id | None) 튜플
-_build_queue: asyncio.Queue[tuple[str, str | None]] = asyncio.Queue()
-# 큐에 있는 library_id 집합 (중복 요청 방지용 빠른 조회)
-_queued_libraries: set[str] = set()
-
-# 백그라운드 태스크 참조 보관 — GC로 인한 태스크 소실 방지
-_background_tasks: set[asyncio.Task] = set()
-
-
-def get_active_builds() -> dict[str, dict]:
-    """현재 진행 중인 빌드 목록 반환."""
-    return dict(_active_builds)
+_TERMINAL = {"complete", "error", "timeout", "cancelled"}
+_DISPATCH_PREFIX = "afterglow:builds"
 
 
 async def cancel_build(build_db_id: int) -> dict:
-    """진행 중인 빌드를 취소하고 OpenStack 리소스를 정리한다.
+    """진행 중인 빌드를 취소한다.
 
-    ephemeral 경로(build_token 존재)는 server + port + access rule 정리.
+    SQL row는 즉시 ``cancelled``가 되어 실행 owner의 다음 mutation을 막는다.
+    ``completed_at``은 비워 두고 ``resource_snapshot.cancel_cleanup=pending``을 남겨
+    배정된 build owner가 SQL·CREATE journal의 정확한 server/port/RW rule을 관측·정리한
+    뒤 닫는다. 요청 처리 중에는 provider 리소스를 변경하지 않는다.
 
     Returns:
         { "cancelled": True, "library_id": str }
@@ -51,74 +38,22 @@ async def cancel_build(build_db_id: int) -> dict:
         raise RuntimeError("DB가 초기화되지 않았습니다")
 
     async with factory() as session:
-        row = (await session.execute(select(LibraryBuild).where(LibraryBuild.id == build_db_id))).scalar_one_or_none()
+        row = (
+            await session.execute(select(LibraryBuild).where(LibraryBuild.id == build_db_id).with_for_update())
+        ).scalar_one_or_none()
         if row is None:
             raise KeyError(f"빌드 {build_db_id}를 찾을 수 없습니다")
-
-        terminal_states = {"complete", "error", "timeout", "cancelled"}
-        if row.status in terminal_states:
+        if row.status in _TERMINAL:
             raise ValueError(f"이미 종료된 빌드입니다 (상태: {row.status})")
 
         library_id = row.library_id
-        share_id = row.file_storage_id
-        server_id = row.server_id
-        port_id = row.port_id
-        is_ephemeral = bool(row.build_token)
-        resource_snapshot = row.resource_snapshot or {}
-
         row.status = "cancelled"
-        row.cloud_init_status = "failure" if is_ephemeral else row.cloud_init_status
+        if row.build_token:
+            row.cloud_init_status = "failure"
         row.progress_step = "사용자 취소"
         row.error_message = "관리자에 의해 취소됨"
-        row.completed_at = datetime.now(UTC)
+        row.resource_snapshot = {**(row.resource_snapshot or {}), "cancel_cleanup": "pending"}
         await session.commit()
-
-    _active_builds.pop(library_id, None)
-
-    from app.services.keystone import get_admin_connection_for_project
-
-    service_project = resource_snapshot.get("openstack.service_project") or {}
-    if not service_project.get("id"):
-        raise RuntimeError("library build resource snapshot is incomplete")
-    conn = await asyncio.to_thread(get_admin_connection_for_project, service_project["id"])
-
-    if is_ephemeral:
-        # ephemeral 경로: server → port → access rule 정리
-        if server_id:
-            try:
-                await asyncio.to_thread(conn.compute.delete_server, server_id)
-                _logger.info("[builder] 취소 — server 삭제: %s", server_id)
-            except Exception:
-                _logger.warning("[builder] 취소 — server 삭제 실패: %s", server_id, exc_info=True)
-        if port_id:
-            try:
-                from app.services import neutron as _neutron
-
-                await asyncio.to_thread(_neutron.delete_port, conn, port_id)
-                _logger.info("[builder] 취소 — port 삭제: %s", port_id)
-            except Exception:
-                _logger.warning("[builder] 취소 — port 삭제 실패: %s", port_id, exc_info=True)
-
-    # Manila RW rule 정리 (두 경로 모두 best-effort)
-    if share_id:
-        try:
-            rules = await asyncio.to_thread(manila.list_access_rules, conn, share_id)
-            for rule in rules:
-                at = rule.get("access_to", "")
-                # ephemeral NFS RW (ip/rw) 또는 CephX RW rule 회수
-                if at.startswith("union-builder-") or (
-                    rule.get("access_type") == "ip" and rule.get("access_level") == "rw"
-                ):
-                    await asyncio.to_thread(manila.revoke_access_rule, conn, share_id, rule["id"])
-            _logger.info("[builder] 취소 — RW rule 정리 완료: share=%s", share_id)
-        except Exception:
-            _logger.warning("[builder] 취소 — RW rule 정리 실패: share=%s", share_id, exc_info=True)
-
-    try:
-        await asyncio.to_thread(conn.close)
-    except Exception:
-        _logger.warning("[builder] cancel: service connection close failed", exc_info=True)
-
     return {"cancelled": True, "library_id": library_id}
 
 
@@ -127,48 +62,52 @@ async def cancel_build(build_db_id: int) -> dict:
 # ---------------------------------------------------------------------------
 
 
-async def start_ephemeral_build(library_id: str, existing_share_id: str | None = None) -> dict:
-    """Ephemeral VM cloud-init 경로로 라이브러리 빌드를 시작한다.
+async def queue_build(library_id: str, existing_share_id: str | None = None) -> dict:
+    """Commit a frozen build request; only an assigned worker can execute it."""
+    import copy
+    import uuid
 
-    DB 레코드를 생성하고 run_ephemeral_build 백그라운드 태스크를 시작한다.
+    from sqlalchemy import select
 
-    Args:
-        library_id: 빌드할 라이브러리 ID.
-        existing_share_id: 사전 생성된 Manila share ID. 지정 시 빌더가 새 share를
-            생성하지 않고 이 share를 사용한다. None이면 기존 경로대로 신규 share 생성.
-    """
-    if library_id in _active_builds:
-        raise RuntimeError(f"이미 빌드 중인 라이브러리: {library_id}")
-
-    # library_id 유효성 검사 (알 수 없는 ID면 여기서 예외)
-    lib_svc.get_by_id(library_id)
+    from app.database import get_session_factory
+    from app.models.db import LibraryBuild, LibraryRecipe
     from app.services import library_recipes
     from app.services.resource_policy_store import (
         get_policy_snapshot,
         get_service_project_connection,
+        lock_service_project_admission,
         resolve_policy_snapshot,
     )
+    from app.services.work_dispatcher import close_connection
 
+    factory = get_session_factory()
+    if factory is None:
+        raise RuntimeError("DB가 초기화되지 않았습니다")
+    lib = lib_svc.get_by_id(library_id)
     recipe = await library_recipes.get_recipe(library_id)
     if recipe is None or not recipe.base_image_id:
         raise ValueError("library builds require an explicit recipe base image")
     proto = (recipe.share_proto or "NFS").upper()
-    policy_keys = ["builder.flavor", "builder.network"]
-    policy_keys.append("manila.nfs_share_type" if proto == "NFS" else "manila.cephfs_share_type")
+    keys = ["builder.flavor", "builder.network"]
+    keys.append("manila.nfs_share_type" if proto == "NFS" else "manila.cephfs_share_type")
     if proto == "NFS":
-        policy_keys.append("manila.share_network")
-    service_conn = await get_service_project_connection()
+        keys.append("manila.share_network")
+    service_project = (await get_policy_snapshot(("openstack.service_project",)))["openstack.service_project"]
+    if service_project is None:
+        raise ValueError("service project policy is not configured")
+    # Resolve every service-owned resource against this exact project; the
+    # admission transaction below rejects a concurrent project change.
+    service_conn = await get_service_project_connection(service_project["id"])
+    from app.services.work_dispatcher import run_sync
+
     try:
-        policies = await resolve_policy_snapshot(conn=service_conn, keys=tuple(policy_keys))
-        image = await asyncio.to_thread(service_conn.image.get_image, recipe.base_image_id)
+        policies = await resolve_policy_snapshot(conn=service_conn, keys=tuple(keys), service_conn=service_conn)
+        image = await run_sync(service_conn.image.get_image, recipe.base_image_id)
         if image is None:
             raise ValueError(f"library recipe base image was not found: {recipe.base_image_id}")
-        service_project = (await get_policy_snapshot(("openstack.service_project",)))["openstack.service_project"]
-        if service_project is None:
-            raise ValueError("service project policy is not configured")
     finally:
-        await asyncio.to_thread(service_conn.close)
-    resource_snapshot = {
+        await close_connection(service_conn)
+    snapshot = {
         "openstack.service_project": service_project,
         "base_image": {"id": recipe.base_image_id, "name": getattr(image, "name", recipe.base_image_id)},
         **policies,
@@ -178,317 +117,254 @@ async def start_ephemeral_build(library_id: str, existing_share_id: str | None =
             "share_network_id": policies["manila.share_network"]["id"] if proto == "NFS" else "",
             "share_size_gb": recipe.share_size_gb,
         },
+        "library_version": lib.version,
+        "recipe": {
+            key: copy.deepcopy(getattr(recipe, key, None))
+            for key in (
+                "id",
+                "library_id",
+                "version",
+                "commands",
+                "apt_packages",
+                "pip_packages",
+                "base_image_id",
+                "share_size_gb",
+                "share_proto",
+                "cloud_init_template_version",
+            )
+        },
     }
-
-    build_db_id: int | None = None
-    initial_share_id = existing_share_id or ""
-    try:
-        from app.database import get_session_factory
-        from app.models.db import LibraryBuild
-
-        factory = get_session_factory()
-        if factory:
-            async with factory() as session:
-                build_row = LibraryBuild(
-                    library_id=library_id,
-                    file_storage_id=initial_share_id,  # 기존 share 있으면 미리 기록
-                    resource_snapshot=resource_snapshot,
-                    status="queued",
-                    cloud_init_status="queued",
-                    progress_step="빌드 대기",
-                    progress_pct=0,
+    async with factory() as session:
+        await lock_service_project_admission(session, service_project["id"])
+        # The oldest recipe is a stable SQL serialization row even as later
+        # recipe versions are added. No process cache or Redis admission lock.
+        anchor = (
+            await session.execute(
+                select(LibraryRecipe)
+                .where(LibraryRecipe.library_id == recipe.library_id)
+                .order_by(LibraryRecipe.id)
+                .limit(1)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if anchor is None:
+            raise RuntimeError("library builds require a persisted recipe")
+        current = (
+            (
+                await session.execute(
+                    select(LibraryBuild)
+                    .where(
+                        LibraryBuild.library_id == library_id,
+                        LibraryBuild.status.notin_(_TERMINAL),
+                    )
+                    .with_for_update()
                 )
-                session.add(build_row)
-                await session.commit()
-                await session.refresh(build_row)
-                build_db_id = build_row.id
-    except Exception:
-        _logger.warning("[builder] DB 레코드 생성 실패", exc_info=True)
-
-    _active_builds[library_id] = {
-        "library_id": library_id,
-        "file_storage_id": initial_share_id,
-        "status": "queued",
-        "started_at": datetime.now(UTC).isoformat(),
-        "build_db_id": build_db_id,
-    }
-
-    task = asyncio.create_task(
-        _ephemeral_build_task(
+            )
+            .scalars()
+            .first()
+        )
+        if current is not None:
+            raise RuntimeError(f"이미 빌드 중인 라이브러리: {library_id}")
+        row = LibraryBuild(
             library_id=library_id,
-            build_db_id=build_db_id,
-            existing_share_id=existing_share_id,
-            resource_snapshot=resource_snapshot,
+            recipe_id=recipe.id,
+            file_storage_id=existing_share_id or "",
+            build_token=uuid.uuid4().hex,
+            resource_snapshot=snapshot,
+            status="queued",
+            cloud_init_status="queued",
+            progress_step="빌드 대기",
+            progress_pct=0,
         )
-    )
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
-
-    return {"file_storage_id": initial_share_id, "status": "queued", "library": library_id, "build_id": build_db_id}
-
-
-async def _ephemeral_build_task(
-    library_id: str,
-    build_db_id: int | None,
-    existing_share_id: str | None = None,
-    resource_snapshot: dict | None = None,
-) -> None:
-    """Run one durable, pre-snapshotted library build."""
-    try:
-        from app.services.ephemeral_build import run_ephemeral_build
-
-        await run_ephemeral_build(
-            library_id,
-            build_db_id,
-            existing_share_id=existing_share_id,
-            resource_snapshot=resource_snapshot,
-        )
-    except Exception:
-        _logger.error("[builder] ephemeral build task failed: %s", library_id, exc_info=True)
-    finally:
-        _active_builds.pop(library_id, None)
-
-
-async def queue_build(library_id: str, existing_share_id: str | None = None) -> dict:
-    """라이브러리 빌드 요청을 큐에 추가한다.
-
-    이미 빌드 중이거나 큐에 대기 중인 동일 라이브러리는 거부된다.
-
-    Args:
-        library_id: 빌드할 라이브러리 ID.
-        existing_share_id: 사전 생성된 Manila share ID. None이면 신규 share 생성.
-
-    Returns:
-        {"status": "queued", "library_id": ..., "queue_position": int}
-    """
-    if library_id in _active_builds:
-        raise RuntimeError(f"이미 빌드 중인 라이브러리: {library_id}")
-    if library_id in _queued_libraries:
-        raise RuntimeError(f"이미 빌드 큐에 있는 라이브러리: {library_id}")
-
-    _queued_libraries.add(library_id)
-    await _build_queue.put((library_id, existing_share_id))
-    position = _build_queue.qsize()
-    _logger.info("[builder] 빌드 큐 추가: %s (대기 위치 %d)", library_id, position)
+        session.add(row)
+        await session.flush()
+        queued = (await session.execute(select(LibraryBuild.id).where(LibraryBuild.status == "queued"))).scalars().all()
+        position = len(queued)
+        await session.commit()
     return {"status": "queued", "library_id": library_id, "queue_position": position}
 
 
-def get_build_queue_status() -> dict:
-    """빌드 큐 및 진행 중 빌드 상태 반환."""
+async def get_build_queue_status() -> dict:
+    from sqlalchemy import select
+
+    from app.database import get_session_factory
+    from app.models.db import LibraryBuild
+
+    factory = get_session_factory()
+    if factory is None:
+        raise RuntimeError("DB가 초기화되지 않았습니다")
+    async with factory() as session:
+        rows = (
+            (await session.execute(select(LibraryBuild).where(LibraryBuild.status.notin_(_TERMINAL)))).scalars().all()
+        )
+    queued = sorted(row.library_id for row in rows if row.status == "queued")
     return {
-        "queued": sorted(_queued_libraries),
-        "active": sorted(_active_builds.keys()),
-        "queue_size": _build_queue.qsize(),
+        "queued": queued,
+        "active": sorted(row.library_id for row in rows if row.status != "queued"),
+        "queue_size": len(queued),
     }
 
 
-async def _resume_build_task(
-    build_db_id: int,
-    library_id: str,
-    library_version: str,
-    share_id: str,
-    server_id: str,
-    port_id: str | None,
-    build_token: str,
-    proto: str,
-) -> None:
-    """reconcile에서 생성된 재개 태스크 래퍼."""
-    try:
-        from app.services.ephemeral_build import resume_ephemeral_build
-
-        await resume_ephemeral_build(
-            build_db_id=build_db_id,
-            library_id=library_id,
-            library_version=library_version,
-            share_id=share_id,
-            server_id=server_id,
-            port_id=port_id,
-            build_token=build_token,
-            proto=proto,
-        )
-    except Exception:
-        _logger.error("[builder] reconcile 재개 태스크 예외: build_id=%d", build_db_id, exc_info=True)
-    finally:
-        _active_builds.pop(library_id, None)
-
-
-async def _mark_error_and_cleanup(row) -> None:
-    """DB row를 error로 마킹하고 Manila share 메타데이터를 갱신한다."""
-    from datetime import UTC, datetime
-
-    from sqlalchemy import select
+async def _discover_work(dispatcher) -> None:
+    """Leader-only SQL discovery is a hint, never an orphan cleanup decision."""
+    if not await dispatcher.is_leader():
+        return
+    from sqlalchemy import and_, or_, select
 
     from app.database import get_session_factory
-    from app.models.db import LibraryBuild
+    from app.models.db import LayerBuild, LayerImportJob, LibraryBuild
+    from app.services.work_dispatcher import DispatcherUnavailable
 
     factory = get_session_factory()
     if factory is None:
-        return
-
-    now = datetime.now(UTC)
+        raise DispatcherUnavailable("build database is unavailable")
     async with factory() as session:
-        db_row = (await session.execute(select(LibraryBuild).where(LibraryBuild.id == row.id))).scalar_one_or_none()
-        if db_row is None:
-            return
-        db_row.status = "error"
-        db_row.cloud_init_status = "failure"
-        db_row.progress_step = "백엔드 재시작으로 중단됨 (VM 없음)"
-        db_row.error_message = "백엔드 재시작 시 빌드 VM 정보가 없어 자동 복구 불가"
-        db_row.completed_at = now
-        await session.commit()
-
-    if row.file_storage_id:
-        try:
-            conn = await asyncio.to_thread(get_service_project_connection)
-            await asyncio.to_thread(
-                manila.update_share_metadata,
-                conn,
-                row.file_storage_id,
-                {"union_status": "error"},
-            )
-        except Exception:
-            _logger.warning("[builder] reconcile: share 메타데이터 갱신 실패: share=%s", row.file_storage_id)
-
-        # port가 있으면 정리 시도
-        if row.port_id:
-            try:
-                conn = await asyncio.to_thread(get_service_project_connection)
-                await asyncio.to_thread(neutron.delete_port, conn, row.port_id)
-                _logger.info("[builder] reconcile: 고아 port 삭제: %s", row.port_id)
-            except Exception:
-                _logger.warning("[builder] reconcile: port 삭제 실패: %s", row.port_id)
-
-
-async def reconcile_orphan_builds() -> None:
-    """백엔드 재시작 시 비터미널 상태로 남은 고아 빌드를 재개하거나 error 처리한다.
-
-    server_id와 build_token이 있으면 VM 상태를 확인해 재개를 시도한다.
-    VM이 SHUTOFF면 sentinel 검증 후 성공/실패 처리한다.
-    VM이 없거나 server_id가 없으면 error 마킹 + 리소스 정리만 수행한다.
-    """
-    from sqlalchemy import select
-
-    from app.database import get_session_factory
-    from app.models.db import LibraryBuild
-
-    factory = get_session_factory()
-    if factory is None:
-        return
-
-    _TERMINAL = {"complete", "error", "timeout", "cancelled"}
-
-    async with factory() as session:
-        rows = (
-            (await session.execute(select(LibraryBuild).where(LibraryBuild.status.notin_(_TERMINAL)))).scalars().all()
-        )
-
-    if not rows:
-        return
-
-    _logger.info("[builder] reconcile: 고아 빌드 %d건 발견", len(rows))
-
-    for row in rows:
-        if row.server_id and row.build_token:
-            try:
-                lib = lib_svc.get_by_id(row.library_id)
-                library_version = lib.version
-            except Exception:
-                library_version = ""
-
-            # share proto 조회 (NFS 기본)
-            proto = "NFS"
-            if row.file_storage_id:
-                try:
-                    conn = await asyncio.to_thread(get_service_project_connection)
-                    share = await asyncio.to_thread(manila.get_file_storage, conn, row.file_storage_id)
-                    proto = (getattr(share, "share_proto", None) or "NFS").upper()
-                except Exception:
-                    pass
-
-            _logger.info(
-                "[builder] reconcile: 빌드 %d 재개 시도 (library=%s, server=%s)",
-                row.id,
-                row.library_id,
-                row.server_id,
-            )
-            task = asyncio.create_task(
-                _resume_build_task(
-                    build_db_id=row.id,
-                    library_id=row.library_id,
-                    library_version=library_version,
-                    share_id=row.file_storage_id or "",
-                    server_id=row.server_id,
-                    port_id=row.port_id,
-                    build_token=row.build_token,
-                    proto=proto,
+        # Cancelled rows with completed_at unset still owe cancellation cleanup: an
+        # assigned owner observes journaled identities, removes them, then seals.
+        libraries = (
+            (
+                await session.execute(
+                    select(LibraryBuild.id).where(
+                        or_(
+                            LibraryBuild.status.notin_(_TERMINAL),
+                            and_(LibraryBuild.status == "cancelled", LibraryBuild.completed_at.is_(None)),
+                        )
+                    )
                 )
             )
-            _background_tasks.add(task)
-            task.add_done_callback(_background_tasks.discard)
-        else:
-            _logger.warning(
-                "[builder] reconcile: VM 정보 없음 — error 처리: build_id=%d, library=%s",
-                row.id,
-                row.library_id,
-            )
-            await _mark_error_and_cleanup(row)
-
-
-async def cleanup_stale_builds() -> None:
-    """백엔드 재시작 시 비터미널 상태로 남은 고아 빌드를 error 로 마킹한다.
-
-    asyncio.Queue 는 인메모리이므로 재시작하면 진행 중이던 태스크가 사라지지만
-    DB row 는 building/queued 등 비터미널 상태로 남는다. 이 함수는 startup 시
-    해당 row 들을 error 로 마킹해 UI 에서 영구 멈춤으로 보이지 않도록 한다.
-    """
-    from sqlalchemy import select
-
-    from app.database import get_session_factory
-    from app.models.db import LibraryBuild
-
-    factory = get_session_factory()
-    if factory is None:
-        return
-
-    _TERMINAL = {"complete", "error", "timeout", "cancelled"}
-    now = datetime.now(UTC)
-
-    async with factory() as session:
-        rows = (
-            (await session.execute(select(LibraryBuild).where(LibraryBuild.status.notin_(_TERMINAL)))).scalars().all()
+            .scalars()
+            .all()
         )
+        imports = (
+            (await session.execute(select(LayerImportJob.id).where(LayerImportJob.status.notin_(_TERMINAL))))
+            .scalars()
+            .all()
+        )
+        # Import-owned child rows are executed by their import target, never
+        # independently alongside that target's VM/output orchestration.
+        layers = (
+            (
+                await session.execute(
+                    select(LayerBuild.id).where(
+                        or_(
+                            LayerBuild.status.notin_(_TERMINAL),
+                            # Cancelled before an in-flight CREATE settled (same contract as libraries).
+                            and_(LayerBuild.status == "cancelled", LayerBuild.completed_at.is_(None)),
+                        ),
+                        LayerBuild.kind.notin_(("dockerfile", "dockerfile-root")),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    await dispatcher.publish(
+        [
+            *(f"library:{identity}" for identity in libraries),
+            *(f"import:{identity}" for identity in imports),
+            *(f"layer:{identity}" for identity in layers),
+        ]
+    )
 
-        if not rows:
-            return
 
-        ids = [r.id for r in rows]
-        for row in rows:
-            row.status = "error"
-            row.cloud_init_status = "failure"
-            row.progress_step = "백엔드 재시작으로 중단됨"
-            row.error_message = "백엔드 프로세스가 재시작되어 빌드가 중단되었습니다"
-            row.completed_at = now
+async def _execute_work(dispatcher, member: str, owner: str) -> None:
+    from app.services import build_work
+    from app.services.work_dispatcher import work_lease
 
-        await session.commit()
+    kind, identity = member.split(":", 1)
+    async with work_lease(dispatcher, member, owner) as lease:
+        cancel_cleanup = False
+        if kind in ("layer", "library"):
+            from app.database import get_session_factory
+            from app.models.db import LayerBuild, LibraryBuild
 
-    _logger.warning("[builder] 고아 빌드 %d건 정리됨: ids=%s", len(ids), ids)
+            async with get_session_factory()() as session:
+                row = await session.get(LayerBuild if kind == "layer" else LibraryBuild, int(identity))
+                cancel_cleanup = (
+                    row is not None
+                    and row.status == "cancelled"
+                    and (row.resource_snapshot or {}).get("cancel_cleanup") == "pending"
+                )
+        async with build_work.bind(dispatcher.redis, member, lease, cancel_cleanup=cancel_cleanup):
+            if kind == "library":
+                from app.services.ephemeral_build import run_ephemeral_build
+
+                await run_ephemeral_build(int(identity))
+            elif kind == "import":
+                from app.services.dockerfile_import import run_dockerfile_import_job
+
+                await run_dockerfile_import_job(int(identity))
+            elif kind == "layer":
+                from app.services.layer_builder import execute_layer_build
+
+                await execute_layer_build(int(identity))
+            else:
+                raise ValueError(f"unknown build target: {member}")
 
 
-async def _build_worker() -> None:
-    """빌드 큐 워커 — 애플리케이션 lifespan 동안 실행되는 무한 루프.
+async def _worker_session(dispatcher, poll_seconds: float) -> None:
+    from app.services.work_dispatcher import DispatcherUnavailable
 
-    큐에서 library_id를 꺼내 start_ephemeral_build()를 호출한다.
-    start_ephemeral_build() 내부에서 asyncio.create_task(_ephemeral_build_task(...))가 생성되므로
-    워커는 빌드 완료를 기다리지 않고 다음 큐 항목을 즉시 처리할 수 있다.
-    """
-    _logger.info("[builder] 빌드 큐 워커 시작")
+    # References only supervise/drain tasks; they never grant execution authority.
+    tasks: dict[str, asyncio.Task] = {}
+    retired: dict[asyncio.Task, str] = {}
+    try:
+        while True:
+            if dispatcher.lost:
+                raise DispatcherUnavailable("build dispatcher lost membership")
+            for task, member in list(retired.items()):
+                if task.done():
+                    retired.pop(task)
+                    try:
+                        task.result()
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception:
+                        _logger.warning("retired build target stopped: %s", member, exc_info=True)
+            for member, task in list(tasks.items()):
+                if task.done():
+                    tasks.pop(member)
+                    try:
+                        task.result()
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception:
+                        _logger.warning("build target stopped: %s", member, exc_info=True)
+                elif not await dispatcher.is_assigned(member):
+                    task.cancel()
+            await _discover_work(dispatcher)
+            while claimed := await dispatcher.claim(90):
+                member, owner = claimed
+                previous = tasks.get(member)
+                if previous is not None:
+                    # Keep the real SDK/connection drain referenced, without
+                    # stalling leader discovery while the stale task drains.
+                    previous.cancel()
+                    retired[previous] = member
+                tasks[member] = asyncio.create_task(_execute_work(dispatcher, member, owner))
+            await asyncio.sleep(poll_seconds)
+    finally:
+        remaining = [*tasks.values(), *retired]
+        for task in remaining:
+            task.cancel()
+        # Do not leave membership/release leases until all SDK calls drain.
+        from app.services.build_work import drain
+
+        await drain(asyncio.gather(*remaining, return_exceptions=True))
+
+
+async def build_worker_loop(*, redis=None, worker_id: str | None = None, poll_seconds: float = 5) -> None:
+    """Supervised target dispatcher for durable library and Dockerfile work."""
+    from app.services.cache import _get_redis
+    from app.services.work_dispatcher import WorkDispatcher
+
     while True:
-        library_id, existing_share_id = await _build_queue.get()
-        _queued_libraries.discard(library_id)
         try:
-            _logger.info("[builder] 큐에서 ephemeral 빌드 시작: %s", library_id)
-            await start_ephemeral_build(library_id, existing_share_id=existing_share_id)
+            client = redis if redis is not None else await _get_redis()
+            async with WorkDispatcher(client, _DISPATCH_PREFIX, worker_id=worker_id) as dispatcher:
+                await _worker_session(dispatcher, poll_seconds)
+        except asyncio.CancelledError:
+            raise
         except Exception:
-            _logger.error("[builder] 큐 빌드 실패: %s", library_id, exc_info=True)
-        finally:
-            _build_queue.task_done()
+            _logger.warning("build dispatcher unavailable; rejoining", exc_info=True)
+            await asyncio.sleep(poll_seconds)

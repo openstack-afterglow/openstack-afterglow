@@ -60,7 +60,11 @@ async def project_connection(conn: Any, owner_user_id: str, project_id: str) -> 
             access = await asyncio.to_thread(scoped.session.auth.get_access, scoped.session)
         if access.user_id != owner_user_id or access.project_id != project_id:
             raise McpAuthorityError("authenticated connection does not match the MCP target")
-        roles = _role_snapshot(list(access.role_names or ()))
+        names = list(access.role_names or ())
+        role_ids = list(access.role_ids or ())
+        if len(names) != len(role_ids) or any(not isinstance(role_id, str) or not role_id for role_id in role_ids):
+            raise McpAuthorityError("Keystone token has invalid role identities")
+        roles = _role_snapshot([{"id": role_id, "name": name} for role_id, name in zip(role_ids, names, strict=True)])
         scoped._afterglow_user_id = owner_user_id
         scoped._afterglow_project_id = project_id
         scoped._afterglow_project_name = access.project_name or project_id
