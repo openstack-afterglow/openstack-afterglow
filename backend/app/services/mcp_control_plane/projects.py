@@ -40,8 +40,9 @@ async def caller_membership_projects(conn: Any, owner_user_id: str) -> list[dict
 
 
 async def project_connection(conn: Any, owner_user_id: str, project_id: str) -> Any:
-    """Authenticate the actual caller and verify both returned token scope and roles."""
+    """Intersect authenticated scope with current assignments; never elevate a stale token."""
     from app.services.mcp_control_plane.authority import McpAuthorityError, _role_snapshot
+    from app.services.project_service import get_project_delegation_roles
 
     if getattr(conn, "_afterglow_user_id", None) != owner_user_id:
         raise McpAuthorityError("scoped connection does not match the MCP grant owner")
@@ -65,12 +66,26 @@ async def project_connection(conn: Any, owner_user_id: str, project_id: str) -> 
         if len(names) != len(role_ids) or any(not isinstance(role_id, str) or not role_id for role_id in role_ids):
             raise McpAuthorityError("Keystone token has invalid role identities")
         roles = _role_snapshot([{"id": role_id, "name": name} for role_id, name in zip(role_ids, names, strict=True)])
+        authenticated = {role["id"]: role["name"] for role in roles}
+        current_roles = await get_project_delegation_roles(project_id, owner_user_id)
+        current_ids = {role["id"] for role in current_roles if authenticated.get(role["id"]) == role["name"]}
+        delegated_roles = roles
+        if authenticated.keys() - current_ids:
+            # Only an actually stale token needs explicit roles. Otherwise keep
+            # Keystone's token-default path, even if today's DAG has new children.
+            delegatable_ids = {
+                role["id"]
+                for role in current_roles
+                if role["id"] in current_ids and set(role["inherited_role_ids"]) <= current_ids
+            }
+            delegated_roles = _role_snapshot([role for role in roles if role["id"] in delegatable_ids])
         scoped._afterglow_user_id = owner_user_id
         scoped._afterglow_project_id = project_id
         scoped._afterglow_project_name = access.project_name or project_id
         scoped._afterglow_authenticated_project_id = project_id
         scoped._afterglow_token = access.auth_token
-        scoped._afterglow_roles = roles
+        scoped._afterglow_roles = delegated_roles
+        scoped._afterglow_delegation_narrowed = len(delegated_roles) != len(roles)
         scoped._afterglow_is_system_admin = False
         return scoped
     except BaseException:

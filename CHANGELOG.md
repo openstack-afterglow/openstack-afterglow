@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [1.30.17] - 2026-10-15
+
+- **Light chat project context:** strengthen the neutral-gray project selector strip beneath the new-chat composer using existing semantic colors. Dark appearance, project-selection behavior and responsive dimensions remain unchanged.
+- **External MCP OAuth approval:** verify authenticated project role IDs against current effective assignments. If every token role remains valid, retain the full snapshot and omit `roles`, including when the current role graph gained descendants. Only stale token roles trigger narrowing to a verified current-assignment/token intersection closed under the current graph. Issuance still uses the user's exact-project connection; trusted operator authority supplies read-only role metadata only. Preserve durable rollback and return safe upstream rejection errors.
+- **Scope:** no schema/API migration, provider selection or automatic MCP delegation change. Browser, SDK/SQL, release and operational acceptance are tracked separately in `docs/testing.md` and `chat-footer-and-mcp-live-proof`.
+
 ## [1.30.16] - 2026-10-14
 
 Patch release integrating all preserved public WIP onto the latest fetched `dev`: Bklit dashboard charts, distributed background ownership, administrator credentials/telemetry, storage and backup workflows, MCP/chat repairs, and Palimpsest Cinder/RBD block transport with isolated sibling execution credentials. It pairs with Lumen `0.6.8`, Drover `0.4.15`, Waygate `0.3.4` and Palimpsest `0.3.5`. Apply SQL **088 then 089** after a protected backup and before starting any 1.30.16 writer; replace all API/Notion worker replicas together, with no mixed old/new cohort. Local/disposable qualification is recorded in [docs/testing.md](docs/testing.md#13016-release-qualification-2026-10-14). Exact-SHA CI passed on `eaa5772a6ebcab75dc3748add134b92d9f33f4e3`; `v1.30.16` Helm Chart Release and Docker publication succeeded. Operator promotion and production rollout completed after cold restore verification and SQL 088→089: all 9 Afterglow containers use pinned digests/revision, are healthy and have 0 restarts; authenticated GET-only browser and Bklit checks passed within the [production receipt's coverage limits](docs/testing.md#production-rollout-2026-10-14). The four paired sibling releases are deployed too; their outcomes and residual risks are recorded in the same receipt.

@@ -2996,6 +2996,9 @@
 		background: var(--color-surface-sunken);
 		pointer-events: none;
 	}
+	:global(:root.light) .composer-meta {
+		background: color-mix(in oklab, var(--color-surface-sunken) 90%, var(--color-ink-0));
+	}
 	.composer-meta-reserve {
 		visibility: hidden;
 	}

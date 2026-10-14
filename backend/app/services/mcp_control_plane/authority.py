@@ -18,6 +18,7 @@ from typing import Any
 from uuid import uuid4
 
 from keystoneclient.utils import isotime
+from openstack import exceptions as sdk_exc
 from sqlalchemy import func, select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -628,16 +629,28 @@ def create_restricted_application_credential(
     snapshot = _role_snapshot(roles)
     if any("id" not in role for role in snapshot):
         raise McpAuthorityError("application credential roles require authenticated Keystone role IDs")
-    created = conn.identity.create_application_credential(
-        user=owner_user_id,
-        name=upstream_name,
-        description="Afterglow inbound MCP delegated authority",
-        # Keystone's default is this scoped token's exact role IDs. Explicit
-        # roles re-resolve names and expand today's inference graph, which can
-        # differ from the authenticated snapshot and reject valid delegation.
-        **({"expires_at": isotime(_as_utc(expires_at), subsecond=True)} if expires_at is not None else {}),
-        unrestricted=False,
-    )
+    try:
+        created = conn.identity.create_application_credential(
+            user=owner_user_id,
+            name=upstream_name,
+            description="Afterglow inbound MCP delegated authority",
+            # Omit normally: Keystone expands explicit roles against today's DAG.
+            # A verified closed subset is required only when the authenticated
+            # token still carries roles absent from current project assignments.
+            **(
+                {"roles": [{"id": role["id"]} for role in snapshot]}
+                if getattr(conn, "_afterglow_delegation_narrowed", False)
+                else {}
+            ),
+            **({"expires_at": isotime(_as_utc(expires_at), subsecond=True)} if expires_at is not None else {}),
+            unrestricted=False,
+        )
+    except sdk_exc.HttpException as exc:
+        if exc.status_code in {400, 401, 403, 404}:
+            raise McpAuthorityError(
+                "Keystone rejected the current project delegation; refresh authentication and review project access"
+            ) from None
+        raise
     credential_id = getattr(created, "id", None)
     secret = getattr(created, "secret", None)
     if not isinstance(credential_id, str) or not credential_id or not isinstance(secret, str) or not secret:

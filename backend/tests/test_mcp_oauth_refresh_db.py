@@ -31,6 +31,7 @@ from app.models.mcp_authority import (
     McpProjectCredential,
     McpToolInvocation,
 )
+from app.services.keystone import get_openstack_connection
 from app.services.mcp_control_plane.oauth import hash_oauth_value, oauth_urls, pkce_s256
 
 pytestmark = [pytest.mark.db, pytest.mark.asyncio]
@@ -666,7 +667,7 @@ async def test_browser_access_lists_omit_revocations_without_crossing_owner_scop
 
 @pytest.fixture
 async def oauth_consent(issued_refresh, monkeypatch):
-    from app.services import k3s_crypto, keystone
+    from app.services import k3s_crypto, keystone, project_service
     from app.services.mcp_control_plane.oauth_authority import (
         create_authorization_ticket,
         load_consent_ticket,
@@ -674,11 +675,20 @@ async def oauth_consent(issued_refresh, monkeypatch):
     )
 
     monkeypatch.setattr(k3s_crypto, "get_settings", lambda: SimpleNamespace(k3s_kubeconfig_encryption_key="a" * 64))
-    monkeypatch.setattr(
-        "app.config.get_settings", lambda: SimpleNamespace(os_auth_url="https://keystone.example.test/v3")
-    )
+    runtime_settings = keystone.get_settings().model_copy(update={"os_auth_url": "https://keystone.example.test/v3"})
+    monkeypatch.setattr("app.config.get_settings", lambda: runtime_settings)
     owner = "consent-" + str(uuid4())
     memberships = {"A": ["member"], "B": ["reader"]}
+    current_role_overrides = {}
+
+    async def current_roles(project_id, owner_user_id):
+        assert owner_user_id == owner
+        return current_role_overrides.get(
+            project_id,
+            [{"id": "role-" + name, "name": name, "inherited_role_ids": []} for name in memberships[project_id]],
+        )
+
+    monkeypatch.setattr(project_service, "get_project_delegation_roles", current_roles)
     created = []
     connections = []
     remote = {}
@@ -776,6 +786,7 @@ async def oauth_consent(issued_refresh, monkeypatch):
         owner=owner,
         conn=CallerConnection("A"),
         memberships=memberships,
+        current_role_overrides=current_role_overrides,
         created=created,
         connections=connections,
         remote=remote,
@@ -969,8 +980,6 @@ async def test_oauth_ticket_expiring_during_credential_creation_revokes_and_clea
 async def sdk_oauth_consent(oauth_consent, monkeypatch):
     """Only HTTP responses are synthetic; SDK auth/rescope/creation and SQL are real."""
     import requests
-    from keystoneauth1 import identity, session
-    from openstack.connection import Connection
     from oslo_utils import timeutils
 
     from app.services import keystone
@@ -986,8 +995,14 @@ async def sdk_oauth_consent(oauth_consent, monkeypatch):
         foreign_subject=False,
         omit_anchor=False,
         returned_project=None,
+        current_role_names={},
     )
     endpoint = "https://keystone.example.test/v3"
+    production_connect = get_openstack_connection
+    runtime_settings = keystone.get_settings().model_copy(
+        update={"os_auth_url": endpoint, "os_region_name": "RegionOne", "os_interface": "public"}
+    )
+    monkeypatch.setattr(keystone, "get_settings", lambda: runtime_settings)
     connections = []
 
     def send(_session, request, **kwargs):
@@ -1051,21 +1066,26 @@ async def sdk_oauth_consent(oauth_consent, monkeypatch):
                 value = json.loads(request.body)["application_credential"]
                 assert value["unrestricted"] is False
                 assert timeutils.parse_isotime(value["expires_at"]).astimezone(UTC) > datetime.now(UTC)
-                # Keystone 2025.2's explicit-role branch expands the CURRENT
-                # inference graph, then rejects IDs absent from the scoped token.
-                # A new descendant is deliberately absent from this token. Its
-                # native omitted-role branch instead uses token.roles exactly.
-                if "roles" in value:
+                # Explicit roles are accepted only for a verified closed subset;
+                # the normal path still detects current-graph expansion hazards.
+                requested = value.get("roles")
+                current_names = state.current_role_names.get(target)
+                allowed_narrowing = current_names is not None and requested == [
+                    {"id": "role-" + name} for name in current_names
+                ]
+                if (requested is not None or current_names is not None) and not allowed_narrowing:
                     status = 400
                     payload = {
                         "error": {
                             "code": 400,
                             "title": "Bad Request",
-                            "message": "Invalid application credential: Cannot create an application credential with unassigned role",
+                            "message": "Invalid application credential: Could not find role assignment with role: role-admin",
                         }
                     }
                 else:
-                    roles = [{"id": "role-" + role, "name": role} for role in consent.memberships[target]]
+                    roles = [
+                        {"id": "role-" + role, "name": role} for role in (current_names or consent.memberships[target])
+                    ]
                     if state.override_roles:
                         roles = state.returned_roles
                     credential = {
@@ -1115,10 +1135,7 @@ async def sdk_oauth_consent(oauth_consent, monkeypatch):
     monkeypatch.setattr(requests.Session, "send", send)
 
     def connect(token, project_id):
-        auth = identity.v3.Token(auth_url=endpoint, token=token, project_id=project_id)
-        conn = Connection(
-            session=session.Session(auth=auth), identity_endpoint_override=endpoint, identity_api_version="3"
-        )
+        conn = production_connect(token, project_id)
         conn._afterglow_user_id = consent.owner
         conn._afterglow_project_id = project_id
         conn._afterglow_token = token
@@ -1152,6 +1169,13 @@ async def test_oauth_sdk_native_roles_support_each_scope_without_inference_expan
 
     consent = sdk_oauth_consent
     consent.memberships["B"] = ["member"] if access_level == "manage" else ["reader"]
+    # Today's DAG gained a descendant absent from these still-valid tokens.
+    # The native omitted-role path must retain their original authority.
+    for target, names in consent.memberships.items():
+        consent.current_role_overrides[target] = [
+            *[{"id": "role-" + name, "name": name, "inherited_role_ids": ["new-role"]} for name in names],
+            {"id": "new-role", "name": "new-capability", "inherited_role_ids": []},
+        ]
     if omit_anchor and project_scope == "all":
         # The browser's authenticated anchor need not be in /auth/projects.
         # It can remain a logical issuance/ownership anchor only.
@@ -1176,6 +1200,79 @@ async def test_oauth_sdk_native_roles_support_each_scope_without_inference_expan
                 "role-" + role for role in consent.memberships[target]
             ]
             validate_grant_project(grant, target, write=access_level == "manage")
+
+
+@pytest.mark.parametrize("access_level", ["read", "manage"])
+async def test_oauth_sdk_stale_admin_role_narrows_to_current_selected_project(sdk_oauth_consent, access_level):
+    from app.services.mcp_control_plane.oauth_authority import resolve_oauth_access_token
+
+    consent = sdk_oauth_consent
+    consent.memberships["B"] = ["admin", "member", "reader"]
+    consent.sdk.current_role_names["B"] = ["member", "reader"]
+    consent.current_role_overrides["B"] = [
+        {"id": "role-member", "name": "member", "inherited_role_ids": ["role-reader"]},
+        {"id": "role-reader", "name": "reader", "inherited_role_ids": []},
+    ]
+    _, tokens, grant_id = await approve_and_exchange(
+        consent, project_scope="selected", project_ids=["B"], access_level=access_level
+    )
+    assert len(consent.created) == 1 and consent.created[0][0] == "B"
+    credential = consent.remote[consent.created[0][2]]
+    assert [role["id"] for role in credential["roles"]] == ["role-member", "role-reader"]
+    async with consent.factory() as db, db.begin():
+        grant, scopes = await resolve_oauth_access_token(db, raw_token=tokens["access_token"], resource=_URLS.resource)
+        assert grant.id == grant_id and grant.status == "active"
+        assert grant.approved_projects == [
+            {"id": "B", "name": "Project B", "roles": ["member", "reader"], "can_write": True}
+        ]
+        assert scopes == (("mcp:read", "mcp:write") if access_level == "manage" else ("mcp:read",))
+
+
+async def test_oauth_sdk_role_revoked_during_creation_returns_safe_error_and_cleans_partial_grant(
+    sdk_oauth_consent, monkeypatch
+):
+    from app.api.identity import mcp_access
+    from app.main import app
+
+    consent = sdk_oauth_consent
+    consent.memberships["B"] = ["member"]
+    # Readback still saw member; Keystone revokes it before the second create.
+    consent.sdk.current_role_names["B"] = ["reader"]
+    monkeypatch.setattr(
+        mcp_access,
+        "get_settings",
+        lambda: SimpleNamespace(
+            service_mcp_enabled=True,
+            frontend_base_url="http://test",
+            public_api_base="http://test",
+            cors_origin_list=[],
+        ),
+    )
+    monkeypatch.setitem(
+        app.dependency_overrides,
+        mcp_api.get_token_info,
+        lambda: {"user_id": consent.owner, "project_id": "A", "username": "owner", "roles": ["member"]},
+    )
+    monkeypatch.setitem(app.dependency_overrides, mcp_api.get_os_conn, lambda: consent.conn)
+    response = await consent.client.post(
+        f"/api/v1/auth/mcp-oauth/consents/{consent.ticket}/approve",
+        json={"project_scope": "selected", "project_ids": ["A", "B"], "access_level": "manage"},
+        headers={"Origin": "http://test", "Sec-Fetch-Site": "same-origin"},
+    )
+    assert response.status_code == 400
+    assert all(value not in response.text for value in (consent.owner, "role-admin", "sdk-secret-"))
+    assert [target for target, _, _ in consent.created] == ["A"]
+    assert consent.sdk.deletes == [consent.created[0][2]]
+    assert consent.remote == {}
+    async with consent.factory() as db:
+        request = await db.scalar(
+            select(McpOAuthAuthorizationRequest).where(
+                McpOAuthAuthorizationRequest.ticket_hash == hash_oauth_value(consent.ticket)
+            )
+        )
+        grant = await db.get(McpDelegatedGrant, request.grant_id)
+        assert grant.status == "revoked" and grant.application_credential_id is None
+        assert await db.scalar(select(McpOAuthCode).where(McpOAuthCode.grant_id == grant.id)) is None
 
 
 @pytest.mark.parametrize(

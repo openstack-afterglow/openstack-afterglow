@@ -539,10 +539,31 @@ def test_command_bounded_output_real_local_process(monkeypatch, tmp_path):
 
 
 def test_command_timeout_real_local_process_preserves_partial_hops(monkeypatch, tmp_path):
-    local_command(monkeypatch, tmp_path, "import os, time\nos.write(1, b'1 *\\n')\ntime.sleep(20)\n")
-    with pytest.raises(cli.ObserverError, match="^timeout$") as error:
-        cli.run_command(["test-command"], timeout=0.3)
-    assert error.value.output == b"1 *\n"
+    path = local_command(monkeypatch, tmp_path, "import os, time\nos.write(1, b'1 *\\n')\ntime.sleep(20)\n")
+    process = cli.subprocess.Popen(
+        [str(path)],
+        stdin=cli.subprocess.DEVNULL,
+        stdout=cli.subprocess.PIPE,
+        stderr=cli.subprocess.STDOUT,
+        env={"PATH": cli.SAFE_PATH, "LC_ALL": "C"},
+        start_new_session=True,
+    )
+    try:
+        # Test preservation of existing output, not Python startup within 300ms.
+        # Keep the real pipe/process and the original reader deadline unchanged.
+        with cli.selectors.DefaultSelector() as ready:
+            ready.register(process.stdout, cli.selectors.EVENT_READ)
+            assert ready.select(10), "local output fixture did not become ready"
+        monkeypatch.setattr(cli.subprocess, "Popen", lambda *args, **kwargs: process)
+        with pytest.raises(cli.ObserverError, match="^timeout$") as error:
+            cli.run_command(["test-command"], timeout=0.3)
+        assert error.value.output == b"1 *\n"
+        assert process.poll() is not None
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        process.stdout.close()
 
 
 def test_command_environment_never_inherits_secrets(monkeypatch, tmp_path):

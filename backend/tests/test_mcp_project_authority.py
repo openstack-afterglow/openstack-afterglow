@@ -18,7 +18,7 @@ from app.config import get_settings
 from app.database import Base
 from app.models.activity import ActivityLog
 from app.models.mcp_authority import McpDelegatedGrant, McpLumenSelection, McpPersonalToken, McpProjectCredential
-from app.services import k3s_crypto
+from app.services import k3s_crypto, project_service
 from app.services.mcp_control_plane import authority, projects
 from app.services.mcp_control_plane.crypto import encrypt_application_credential
 
@@ -35,6 +35,7 @@ def project_provider(monkeypatch):
     created, deleted, discoveries, rescopes = [], [], [], []
     failures = {}
     blocked = set()
+    current_role_overrides = {}
     delays = {}
 
     class Identity:
@@ -113,6 +114,15 @@ def project_provider(monkeypatch):
         return Connection(project_id)
 
     monkeypatch.setattr(projects.keystone, "get_openstack_connection", connect)
+
+    async def current_roles(project_id, owner_user_id):
+        assert owner_user_id == user_id
+        return current_role_overrides.get(
+            project_id,
+            [{"id": "role-" + name, "name": name, "inherited_role_ids": []} for name in roles[project_id]],
+        )
+
+    monkeypatch.setattr(project_service, "get_project_delegation_roles", current_roles)
     # The helper imports get_settings locally; configure the provider's trusted URL.
     settings = get_settings().model_copy(update={"os_auth_url": "https://keystone.example.test/v3"})
     monkeypatch.setattr("app.config.get_settings", lambda: settings)
@@ -133,6 +143,7 @@ def project_provider(monkeypatch):
         rescopes=rescopes,
         failures=failures,
         blocked=blocked,
+        current_role_overrides=current_role_overrides,
         delays=delays,
         Connection=Connection,
     )
@@ -142,6 +153,7 @@ async def test_current_authority_preparation_reports_typed_management_refusal(pr
     provider = project_provider
     provider.conn.access.role_names = ["reader"]
     provider.conn.access.role_ids = ["role-reader"]
+    provider.roles[provider.a] = ["reader"]
     with pytest.raises(authority.McpGrantPrivilegeError, match="management"):
         await authority._prepare_connection_projects(
             provider.conn, provider.user, provider.a, ["admin", "member"], "current", None, "manage"
@@ -884,3 +896,47 @@ async def test_target_token_requires_exact_role_id_name_pairs(project_provider, 
     with pytest.raises(authority.McpAuthorityError, match="invalid role identities"):
         await projects.project_connection(provider.conn, provider.user, provider.a)
     assert provider.created == []
+
+
+async def test_stale_token_admin_never_becomes_current_project_delegation(project_provider):
+    provider = project_provider
+    provider.conn.access.role_names = ["admin", "member", "reader"]
+    provider.conn.access.role_ids = ["role-admin", "role-member", "role-reader"]
+    provider.current_role_overrides[provider.a] = [
+        {"id": "role-member", "name": "member", "inherited_role_ids": ["role-reader"]},
+        {"id": "role-reader", "name": "reader", "inherited_role_ids": []},
+    ]
+    prepared = await authority._prepare_connection_projects(
+        provider.conn, provider.user, provider.a, ["admin"], "current", None, "manage"
+    )
+    assert prepared[0].roles == [{"id": "role-member", "name": "member"}, {"id": "role-reader", "name": "reader"}]
+    assert prepared[0].can_write is True
+    assert prepared[0].conn._afterglow_delegation_narrowed is True
+    assert provider.created == []
+
+
+async def test_current_graph_cannot_expand_delegation_beyond_authenticated_roles(project_provider):
+    provider = project_provider
+    provider.conn.access.role_names = ["member", "reader"]
+    provider.conn.access.role_ids = ["role-member", "role-reader"]
+    provider.current_role_overrides[provider.a] = [
+        {"id": "role-member", "name": "member", "inherited_role_ids": ["role-reader", "new-role"]},
+        {"id": "role-reader", "name": "reader", "inherited_role_ids": []},
+        {"id": "new-role", "name": "new-capability", "inherited_role_ids": []},
+    ]
+    prepared = await authority._prepare_connection_projects(
+        provider.conn, provider.user, provider.a, ["member"], "current", None, "manage"
+    )
+    assert prepared[0].roles == [{"id": "role-member", "name": "member"}, {"id": "role-reader", "name": "reader"}]
+    assert prepared[0].can_write is True
+    assert prepared[0].conn._afterglow_delegation_narrowed is False
+    credential = authority.create_restricted_application_credential(
+        prepared[0].conn,
+        owner_user_id=provider.user,
+        owner_project_id=provider.a,
+        upstream_name="graph-added-descendant",
+        expires_at=None,
+        roles=prepared[0].roles,
+    )
+    assert credential["roles"] == prepared[0].roles
+    assert "roles" not in provider.created[0][2]

@@ -4,7 +4,7 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 및 Cloud Shell 모두 `1.30.16`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 및 Cloud Shell 모두 `1.30.17`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 **1.30.16 release integration (2026-10-14):** 최신 fetched `dev`에 보존된 public WIP 전체를 통합했다: Bklit 수치 시각화, Redis 기반 background 역할·대상 소유권, 관리자 자격 증명·호스트/접속 관측, 볼륨 이전·자동 백업, MCP/chat 복구와 Palimpsest Cinder/RBD block transport·격리 sibling 실행 자격 증명. Exact-SHA `eaa5772a6ebcab75dc3748add134b92d9f33f4e3` CI와 `v1.30.16` Helm Chart Release·Docker 발행이 성공했다. 보호된 cold DB/Redis backup의 격리 restore 뒤 구형 API·Notion worker 전체를 중지한 상태에서 SQL **088→089를 적용**하고 controller1→2→3 health-gated reconfigure로 새 writer를 시작했다(`create_tables()`는 기존 컬럼을 추가하지 않는다). 9개 container는 pinned digest/revision·healthy·restart 0이며 구형/신형 writer cohort를 혼합하지 않았다. Lumen `0.6.8`·Drover `0.4.15`·Waygate `0.3.4`·Palimpsest `0.3.5`도 operator promotion·운영 배포를 완료했다. [로컬/disposable qualification](docs/testing.md#13016-release-qualification-2026-10-14)과 [운영 receipt](docs/testing.md#production-rollout-2026-10-14)는 별도 증거다. 운영 receipt는 authenticated GET-only browser/Bklit 결과, 미검증 범위·잔여 관측과 image-only rollback 불가 경계를 기록한다.
 
@@ -59,6 +59,8 @@ Drover SQL 설정이 있으나 breaker가 열렸으면 native `/v1/clusters`는 
 Frontend의 일반 데이터·설정 페이지 외부 콘텐츠 폭·padding 소유자는 단일 `PageShell`이다. `layout.css --app-content-max-width:80rem`, `width:100%`, `min-width:0`, auto 양쪽 margin과 mobile1rem/tablet-desktop1.5rem padding을 dashboard/admin/계정/리소스·직접 detail에 적용한다. Lumen 채팅·채팅 프로젝트3개 route는 full-bleed 예외로 전역 header/service navigation을 제외한 workspace 전체를 채운다. Sidebar/rail·toolbar·canvas에 외부 상한·padding을 두지 않고 transcript/기존 대화 composer만 공통80rem에 맞춘다. 새 채팅 composer는48rem이며160자 이상 또는 명시적3줄 초안에서80rem으로 확장하고 짧게 줄이면 복원한다. 저장 대화는 transcript가 스크롤하고 composer는 하단에 유지되며, 새 대화가 짧은 높이에 맞지 않으면 welcome/composer 묶음을 내부 스크롤한다. 일반 route의 중복 outer padding은 제거하고 모달·본문·프로젝트 설정 form의 내부 가독성 제한은 유지한다. 프로젝트 표의 넓이는 named keyboard-scroll region에 가둔다. 로컬/합성 검증과 운영·schema cutover 미검증 범위는 `docs/testing.md`를 따른다.
 
 채팅 full-bleed 검토는 외부 workspace와 내부 readable content의 CSS/markup 소유권만 정정한다. 기존 history projection·권한·API·DB·서비스/배포 topology는 그대로다. HEAD+chat source5파일의 격리 index에서 architecture stamp와 staged guard를 통과했으며 실제 공유 index/review marker는 보존했다. 현재 source·compiled Chromium 증거와 이전 전체 gate/운영 검증의 분리 경계는 [`docs/testing.md`](docs/testing.md#lumen-채팅-전체-작업-영역-복원-검증-2026-10-12-local-only)를 따른다.
+
+1.30.17의 새 채팅 프로젝트 선택 바는 `:root.light`에서만 기존 sunken90%·primary ink 혼합을 적용한다. Dark fill·geometry·프로젝트 선택·권한·API·schema·서비스/배포 topology는 그대로인 표시 수정이며 공유 surface token은 바꾸지 않는다. 격리 최신 dev의 source Chromium12조건과 별도 운영 MCP 진단/위임·실제 실행 증거는 `docs/testing.md`에 구분한다.
 
 계정·리소스 final architecture 검토는 private 설정/DB data/다른 worktree를 제외한 current-source snapshot에서 working와 staged guard가 같은 `source_sha256=d3768d2de0ad659d9c97a0afa77df6cdc1353339978c6ac9faa3e2b407bda4ed`/2601files로 통과했다. Source 정지 시점의 동시 WIP도 포함하는 snapshot이며 scope-only/full integration 성공으로 포장하지 않는다. 전체 gate는 동시 Lumen mutation coverage1건에서 중단됐고 최종 test-only HTTP 회귀 교체는 exact87개로 따로 검증했다. Compiled UI·native SQL/SDK 증거와 운영/mixed-version 미검증은 `docs/testing.md`에 구분했다. 실제 공유 index·review marker는 보존했다.
 
@@ -263,7 +265,7 @@ MCP SDK1.28.1는 cold `tools/call`의 schema cache miss에서 `ListToolsRequest`
 
 인가 검증(`GET /api/v1/auth/mcp-projects`)은 Keystone의 실제 프로젝트 멤버십을 권위 있게 조회하며 빈 성공을 허용하지 않는다. 개인 토큰 생성 시 사용자는 읽기 또는 관리와 전체 또는 일부 프로젝트를 선택할 수 있으며, 빈 프로젝트 선택은 400으로 차단된다. OAuth 동의 화면(`/oauth/mcp/authorize`)은 클라이언트가 `mcp:write`를 요청했더라도 기본값을 안전한 읽기 전용으로 축소(attenuation)하여 제안하고, `mcp:write`가 없는 요청에서는 관리 권한 선택 자체를 비활성화한다. 승인된 접근 권한과 프로젝트 제한은 토큰 교환 및 refresh 회전 전반에서 불변으로 유지된다.
 
-Application credential 생성은 browser의 표시용 role 이름이 아니라 대상 scoped SDK token의 role ID/name snapshot을 사용한다. `roles`를 Keystone 생성 payload에서 생략하여 token의 실제 역할을 기본값으로 사용한다. 이름을 명시하면 Keystone의 현재 role-inference 그래프를 다시 확장해 token에 없는 descendant 때문에 `Cannot create an application credential with unassigned role`로 실패할 수 있다. 반환 credential의 role ID 집합은 승인 snapshot과 정확히 일치해야 한다. Remote ID를 SQL에 먼저 commit한 뒤 role 검사·암호화·activation을 수행하므로 잘못된 역할 응답도 저장한 ID로 폐기·확인하고 grant를 활성화하지 않는다. Owner/target scope, restricted flag, expiry, read/manage ceiling과 취소·orphan recovery 경계는 그대로다.
+Application credential 생성은 browser 표시 역할이 아니라 대상 scoped SDK token의 role ID/name과 현재 effective 할당/검증된 role DAG의 교집합을 사용한다. `project_service.get_project_delegation_roles`는 기존 trusted identity reader로 exact user/project 역할 metadata만 읽으며 credential 발급에는 caller의 정확한 scoped connection만 사용한다. 정상 token은 `roles`를 생략하여 현재 그래프의 새 descendant를 token에 추가하는 explicit-role 경로를 피한다. Stale token 역할을 제거해야 할 때만 모든 descendant도 교집합 안인 closed subset의 ID를 명시한다. Metadata 장애·foreign scope·빈 역할은 거부하고, 발급 중 native 권한 거부는 안전한 domain 오류로 처리한다. 반환 credential의 role ID 집합과 project는 승인 snapshot에 정확히 일치해야 하며 remote ID를 SQL에 먼저 commit한 기존 폐기·확인 경로를 유지한다. Schema·public API·role assignment는 바꾸지 않는다.
 
 Lumen 설정의 `ChatMcpCatalogue.svelte`는 Afterglow MCP를 항상 표시하고 기본 비활성으로 시작한다. `GET /api/v1/chat/cloud-tools`와 chat admission은 위임을 생성하지 않는다. Same-site browser POST의 명시적 `read`/`manage` 승인이 현재 caller/project의 restricted credential을 만들며 `lumen-tools_user`와 실제 관리 역할 ceiling을 검사한다. `defaults.approve_lumen_grant`는 외부 준비 전 generation을 캡처하고 pending reservation·activation lock에서 다시 검사한다. DELETE/clear/다른 개인 토큰 선택이 이후에 발생하면 늦은 approval이 이를 덮어쓰지 못한다. `source="lumen"`은 현재 singleton 프로젝트와 `consented_at`를 선택·dispatch에서 검사하고 GET/chat은 명시적으로 선택된 개인 토큰의 권한·프로젝트를 교체하지 않는다.
 
@@ -1309,9 +1311,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "fa5e23933e370e34c41bb9d003c514258c85b473fc264472f02e45ebfaf9d3d8",
-  "reviewed_at": "2026-10-14T11:21:52Z",
-  "summary": "1.30.16 post-rollout documentation review: docs-only update recording exact-SHA CI, Helm/Docker publication, operator promotion and the 2026-10-14 DMS Lab production rollout (cold backup and isolated restore, SQL 088 then 089, health-gated controller reconfigure, authenticated browser and Bklit acceptance, residual risks and recovery boundary) together with the sibling Lumen 0.6.8, Drover 0.4.15, Waygate 0.3.4 and Palimpsest 0.3.5 deployments; archives OpenSpec release-complete-public-changes with evidence. No source, schema, configuration or Kolla role change."
+  "source_sha256": "a8f342c70a12054d87c2fe1f67a83f291716654d412f23f31ea57f7ce5fbe24d",
+  "reviewed_at": "2026-10-14T18:44:40Z",
+  "summary": "1.30.17 local-qualified release: conditional stale-token role narrowing only, valid member/manage snapshots preserve omitted-role issuance despite new graph descendants; exact caller project and restricted expiry/role validation/durable rollback unchanged. Light-only footer fill preserves shared tokens/routing/schema. Observer test waits for real pipe readiness without production timeout changes. Full gate6612 backend/3621 frontend/174contract/157functional and both image platforms exercised; real repaired production OAuth and separate Lumen/Zun rollout remain pending."
 }
 ```
 <!-- architecture-review:end -->

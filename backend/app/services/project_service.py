@@ -361,8 +361,10 @@ async def _provider_call(fn, *args, **kwargs):
         raise identity_roles._provider_error(exc) from exc
 
 
-def _assignment_rows(ks, project_id, *, effective=False):
+def _assignment_rows(ks, project_id, *, effective=False, user_id=None):
     query = {"project": project_id}
+    if user_id is not None:
+        query["user"] = user_id
     if effective:
         query["effective"] = True
     rows = list(ks.role_assignments.list(**query))
@@ -380,6 +382,8 @@ def _assignment_rows(ks, project_id, *, effective=False):
             raise identity_roles._unavailable("Effective project assignment did not resolve its user")
         if not effective and not (_principal(row, "user") or _principal(row, "group")):
             raise identity_roles._unavailable("Project assignment did not resolve its principal")
+        if user_id is not None and _principal(row, "user") != user_id:
+            raise identity_roles._unavailable("Keystone returned assignments outside the requested user")
     return rows
 
 
@@ -447,6 +451,19 @@ async def get_project_access(project_id: str, user_id: str) -> dict:
     catalog = await _provider_call(identity_roles._trusted_catalog)
     rows = await _provider_call(_assignment_rows, ks, project_id, effective=True)
     return _access(rows, catalog, user_id)
+
+
+async def get_project_delegation_roles(project_id: str, user_id: str) -> list[dict]:
+    """Current assignment/graph metadata only; never a credential-issuing connection."""
+    ks = await _provider_call(keystone._get_admin_ks_client)
+    catalog = await _provider_call(identity_roles._trusted_catalog)
+    rows = await _provider_call(_assignment_rows, ks, project_id, effective=True, user_id=user_id)
+    role_ids = _expanded_role_ids(rows, catalog, user_id)
+    return [
+        {"id": role["id"], "name": role["name"], "inherited_role_ids": role["inherited_role_ids"]}
+        for role in catalog
+        if role["id"] in role_ids
+    ]
 
 
 @asynccontextmanager
