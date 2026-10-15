@@ -10,3 +10,10 @@
 - [x] 선택한 실제 flow collector의 방향별 packets/bytes·window/identity/reset·sampling/offload/namespace/누락 상태를 구현하고 기존 비특권 보고 경로와 통합한다. Raw payload/클라이언트 IP durable 저장, NIC-to-peer 배분, endpoint 이중 합산 및 가짜 완전 메시를 금지한다. 실제 알려진 peer 간 트래픽으로 증가/역방향/0/재시작/누락 경계를 exercise한다.
 - [x] 하나의 controller-centered radial graph로 role 목록/trace/probe 화면을 통합한다. 실측 edge width/brightness·packets/s 또는 bytes/s 선택, evidence layer, selection inspector·stable refresh·pan/zoom/fit·keyboard/touch·mobile sheet를 완성하고 obsolete 기본 표현을 제거한다. 컨트롤러가 실제 transit라는 추정은 하지 않는다.
 - [ ] 소비자-visible 경계/상태전이 회귀와 실제 backend/frontend/collector runtime smoke, 모바일·태블릿·데스크톱 및 767/768·1023/1024 경계·네 locale/light/dark/reduced-motion browser 화면을 검증한다. Synthetic/real/production 근거를 분리한다. 영향받는 문서/changelog/architecture stamp·staged guard를 갱신하고 모두 완료된 뒤 archive한다. 배포 요청/승인이 있으면 정확한 release·backup·Kolla 표준 절차·운영 화면까지 별도 검증한다.
+
+## 2026-10-15 continuation checkpoint
+
+- Active change: `observe-country-request-origin-and-network-mesh` (`rapid`); CLI apply progress9/10. 마지막 acceptance는 아직 완료 처리하거나 archive하지 않는다.
+- `v1.30.18`로 국가/origin/mesh와 observer18·collector15개를 반영했다. Storage collector는 사용자 선택으로 제외했다. 운영 route 중복 keyed-list 오류는 `v1.30.19`(`9f3be6c1`)에서 수정 전 실패·수정 후 통과 회귀로 고쳤다. Source·게시 image의 익명 운영형 Chromium, exact-SHA CI, 세 controller의 표준 Kolla 순차 반영·health·auth boundary·실제 packet rate를 확인했다. 자세한 증거와 관측 누락/일시적 stale는 `docs/testing.md`를 따른다.
+- 운영 사용자 화면: 사용자가 로그인했던 managed Chrome의 세션이 만료됐다. 기존 창에서 사용자 본인의 재로그인이 필요하다. 서비스 계정 UI 로그인·토큰 추출로 대체하지 않는다.
+- 실제 physical-switch/port 수용: 기존 승인 management endpoint/jump와 operator-side0600 read-only SNMPv3 authPriv credential-file 경로가 여전히 없다. 새 관리망/계정/SNMP 설정, LLDP 광고 주소의 자동 polling, 주소·권한 추측은 승인 범위 밖이다.

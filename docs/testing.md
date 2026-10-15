@@ -6,7 +6,7 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
-## 국가·요청 origin·radial mesh 관측 검증 (2026-10-15, local/disposable)
+## 국가·요청 origin·radial mesh 관측 검증 (2026-10-15; local/disposable·production 분리)
 
 `observe-country-request-origin-and-network-mesh`의 qualification은 **source/unit, 실제 native BPF/socket·Redis·MMDB, built-image adapter/API runtime, 합성 API Chromium**으로 나뉜다. 최초 격리 기준은 `cbd75d6d506e3609c07202183181004f950a4c51`이며 최신 `origin/dev` `a7830307`의 별도 OAuth/chat 수정까지 보존해 통합했다. 아래 최초 gate/image/browser 결과는 통합 전 bytes의 증거이고 통합 후 결과와 구분한다. 과거 배포1.30.x 또는 이전 collector 활성화를 이 변경의 운영 수용으로 승격하지 않는다.
 
@@ -85,7 +85,7 @@ Built adapter-node frontend에서도 동일 synthetic96조건/50조작이 통과
 
 통합 후 current-source Vite/Chromium에서도 **96/96조건·50/50조작**이 통과했다.18hosts+2switches+18ports/38node의 Fit에서 node target pair overlap0,동등 navigator38개/min-height44px,document overflow0이었다. Overview glyph camera scale과 core 밖 port-cluster spacing의 screenshot·geometry를 `integrated-browser/dense-fit.json`·`dense-fit-after.png` 및 summary/matrix/interactions에 보존한다. 합성 API/native input이고 built-image 또는 physical switch acceptance가 아니다. Network error는0이 아니며 block한 external fonts 및 unmatched login/dashboard fixture가 실패한 기록을 application exception0과 구분한다.
 
-### 아직 qualification하지 않은 경계
+### 위 local/disposable 검증이 증명하지 않는 경계
 
 이 절의 근거는 **physical-switch SNMPv3/실제 port mapping, Nova/KVM guest boot, 운영 mixed-version/backup-restore/production rollout 수용**을 포함하지 않는다. 실제 운영은 authorized management endpoint 또는 jump 경로·read-only SNMPv3 authPriv view와 operator0600 credential-file 위치가 먼저 필요하다. LLDP 광고 `192.168.0.2/.3`의 HTTP/HTTPS timeout과 representative kernel/BTF preflight는 switch counter 수용이나 all-node collector qualification이 아니다. NIC totals/guest skb/TCP reachability/합성 ports로 physical-switch gap을 대신 채우지 않는다. 기존 deployed1.30.x 수치/장애/partial coverage는 아래 역사적 기록을 그대로 따른다.
 
@@ -100,6 +100,19 @@ Built adapter-node frontend에서도 동일 synthetic96조건/50조작이 통과
 - **트래픽:** DB-IP `2026-10-01`과 CC BY 4.0 attribution이 표시된다. 반영 직후 실제 외부 요청은 국가별로 분류됐다(KR/AU/US/SG 등). 미확인은 세 경우에서 나온다. ① LB·컨테이너 health check가 XFF 없이 trusted proxy에서 온 경우(`forwarded_missing`). ② controller가 직접 보낸 요청이 trusted chain만 남긴 경우(`forwarded_all_trusted`). ③ 클러스터 gateway hairpin NAT 주소가 노드 목록 밖이라 `non_global_noncluster`가 된 경우. HAProxy log에서는 observer report 대부분이 gateway NAT를 거쳤다. 이는 사용자가 고른 노드 주소 정책을 그대로 따른 결과다.
 - **관측기·수집기:** observer 18대를 1.30.18 source로 교체했다. 모두 nonroot·CapEff0·NoNewPrivs1·Seccomp2를 유지했다. Collector는 compute 12대·controller 3대에 설치했다. CapEff는 정확히 CAP_BPF+CAP_NET_RAW이고 snapshot은 root:afterglow-flow-read 0640이다. Storage는 사용자 선택으로 제외했다. 실측 방향 edge는 123개이며 모두 fresh다. Bridge member NIC로 들어오는 unicast는 bridge MAC으로 향하므로 `PACKET_OTHERHOST`가 되어 promiscuous 방지 규칙에 따라 세지 않는다. 따라서 현재는 송신 측 egress만 계측하고, storage→X 방향은 미계측이다.
 - **사용자 화면:** 운영 `/admin/infrastructure-topology`는 렌더링되지 않았다. Observer가 여러 kernel table에서 같은 interface/destination/gateway/metric route를 보고하자 keyed list에 같은 ID가 생겨 Svelte `each_key_duplicate`가 발생했다. 운영 snapshot을 익명화해 재현했다(edge 2,199개 중 중복 route ID 939개). 1.30.19에서 동일 route evidence를 host마다 하나로 합쳤다. 수정 전 실패·수정 후 통과 회귀와 production-shape 렌더링(18 hosts/123 flows, route layer 1,103개 unique, mobile modal, overflow0)을 확인했다. 운영 화면 재확인은 1.30.19 반영 뒤 별도로 기록한다.
+
+### 중복 route 수정과 운영 반영 1.30.19 (2026-10-15)
+
+- **정확한 release:** `9f3be6c1a9703bdb10672f9a064a990ccb7dd637`, architecture digest `f56fed1789b0f85eaead786becb63c93c8bbe1b5d4093546962c942623cb47b0`/2,869 files. Dev CI `38675079723`, tag images `38675665542`, Helm `38675665539`는 success다. API/frontend/worker의 tag·latest digest와 실행 revision label이 일치했다. 표준 image 발행은 현 workflow의 선언대로 amd64이며, Cloud Shell은 amd64/arm64 모두 빌드하고 실제 image에서 1.30.19 metadata를 실행 확인했다. Arm64 표준 image를 새 release가 발행한다고 주장하지 않는다.
+- **회귀·compiled 화면:** 동일 route 반복 회귀는 수정 전 `each_key_duplicate`로 실패하고 수정 후 통과했다. 관련 114 tests, 전체 frontend 370 files/3,632 tests가 통과했고 Svelte check는 errors0/warnings3, i18n은0/0이었다. 게시된 frontend `784102ce…`/API `2ae1e371…`/worker `ff8eceaa…`를 task-owned Compose에 재배포해 healthy를 확인했다. API host `127.0.0.1:58741`을 증명한 Chromium에서 운영 익명 snapshot의18 hosts/123 flows,1,103 unique route edges,390px modal inspector와 overflow0을 확인했다. 첫 fixture override는 외부 HTTP 차단 rule 뒤에 들어가 실패했으며 rule 순서를 고쳤다. 누적 requestfailed11을 application exception0과 구분한다. 이는 합성 identity·익명 운영 데이터이지 운영 사용자 인증 수용이 아니다.
+- **복구·반영:** operator의 `/etc/kolla/.afterglow-rollout-backups/1.30.19/network-observation-20261015/`에 암호화한 설정·SQL·Redis 복구 지점을 유지한다. Network-none/tmpfs SQL restore는93 tables/2,672 rows, Redis는245 keys 중241 surviving keys를 복원했다(4 expired). Image4keys와 role/site link만 바꿨고 TOML·키·datastore·collector는 변경하지 않았다. Controller1→2→3 각각 `--tags afterglow --skip-tags haproxy --limit <one-controller>`로 genconfig→pull→target-image config-check→prechecks→terminal-work gate→reconfigure→verify-host, 마지막 전체 verify를 완료했다. 첫 controller SSH 결과 수집 timeout 뒤에도 보호된 단계별 receipt가 성공을 증명했으므로 mutation을 재실행하지 않았다. 세 API/frontend는 healthy, worker는 running, 전부 restart0이다. 비대상 container246/239/154개에서 변경·추가0, public health200·미인증 topology/traffic API401을 확인했다.
+- **실제 관측:** 06:15 UTC native snapshot에는 fresh·nonzero egress flow123개와 collector measured15/unsupported3개가 있었다. 같은 snapshot의 host freshness는16 fresh/2 stale, TCP33 up/1 unknown이었으며 원본을 보존했다. 뒤이은 host별 진단에서는18개 모두 fresh(표본 age0.42–9.99s)이고 모든 TCP probe가 up이었다. Observer18개는 nonroot·CapEff0, collector15개는 정확히 CAP_BPF+CAP_NET_RAW·NoNewPrivs1·Seccomp2이고 handoff는 root:afterglow-flow-read0640/nlink1이었다. Storage collector 제외와 bridge-member egress-only 경계를 유지한다.
+- **부분 관측은 남음:** 실제 DB-IP source는 `offline_mmdb`/`2026-10-01`이며 국가별 KR/AU/SG/US/DE 관측을 확인했다. 24h에는 기존 미분류와 XFF 누락·all-trusted·gateway NAT의 origin unknown이 남는다. Backend dropped474, frontend dropped323/reporter-dropped580이었던 06:15 UTC aggregate를 보존했다. 06:14 이후 controller2의 실제 frontend ingestion503도 file log에서 관측했다. `record_event`의250ms best-effort budget·실패 시 drop coverage 계약을 넓히거나 예외를 숨기지 않았다. 기록된 실패 요청 duration은0.78–1.64s였고 삼켜진 예외의 정확한 종류는 알 수 없다. 따라서 무손실·모든 요청 수집 성공으로 보고하지 않는다.
+- **남은 수용:** 기존 사용자의 운영 브라우저 세션이 만료되어 `/login`으로 돌아갔고 tab auth marker도 없었다. 서비스 관리자 자격을 대신 사용하거나 토큰을 추출하지 않았다. 운영 topology/traffic 사용자 화면 최종 수용은 사용자의 재로그인 뒤 진행한다. 물리 switch/port 수용은 승인된 management endpoint/jump와 operator-side0600 SNMPv3 authPriv credential-file 경로가 없어 여전히 차단된다. `fabric.state=unconfigured`를 host traffic으로 대체하지 않으며 OpenSpec을 archive하지 않는다.
+
+위 분리된 증거는 `~/.local/share/afterglow-proofs/network-observation-20261015/{release-1.30.19-publication.json,release-13019-browser/summary.json,release-13019-cloud-shell-runtime.json,production-runtime-13019.json,production-host-freshness-diagnostic.json,production-observer-security-13019.json,production-traffic-filelog-13019.json,production-ingestion-unavailable-timings.json}`과 operator 보호 receipt에 있다.
+
+게시 image runtime 검증 뒤 isolated `dev`에서 `DOCKER_HOST=unix:///tmp/afterglow-observation-client-20261015.sock npm run test:gate`를 실행해 exit0을 확인했다. Backend6,781 passed/95 skipped, frontend370 files/3,632 tests, service contracts174, functional157 passed/29 deselected, Ruff639 files가 통과했다. Orchestration175·Kolla27·CLI20 passed/36 skipped도 포함한다. Disposable functional datastore만 기동·정리했으며 shared Docker Desktop과 운영 datastore는 변경하지 않았다. Gate 원문은 `artifact://782`에 보존한다.
 
 ## Chat project footer and MCP acceptance (2026-10-15)
 
