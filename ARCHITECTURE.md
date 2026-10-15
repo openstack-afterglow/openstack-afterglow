@@ -1317,9 +1317,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "632ad38afb5e02e8d4590d5ed2f297d5990c67913808caea9a486c0f76cd51aa",
-  "reviewed_at": "2026-10-14T22:49:29Z",
-  "summary": "검토: v1.30.18은 808f18a1 관측 source에 release metadata(package/frontend/backend·cloud-shell pyproject/uv.lock/Helm Chart)만 동기화했다. Original-peer factory·독립 proxy/cluster CIDR origin·complete offline MMDB·protected skb collector·generation-fenced SNMPv3·단일 radial workspace 구조는 그대로다. Final built-image/native/Compose/browser qualification에서 native-cloud root의 root-only /etc/afterglow는 appuser MMDB 경로가 될 수 없음을 확인해 배포 문서에 경계로 기록했다. SQL migration 없음; physical-switch·운영 수용은 별도."
+  "source_sha256": "f56fed1789b0f85eaead786becb63c93c8bbe1b5d4093546962c942623cb47b0",
+  "reviewed_at": "2026-10-15T03:12:01Z",
+  "summary": "검토: v1.30.19는 1.30.18 운영 반영에서 드러난 결함만 고쳤다. 관측기가 여러 kernel table의 같은 route tuple을 보고하면 radial graph route evidence ID가 겹쳐 keyed workspace/inspector가 렌더링되지 않았다. 이제 host마다 같은 route evidence를 하나로 합친다. API·schema·collector·backend 구조 변화는 없고 release metadata만 함께 동기화했다. 운영 bridge member egress-only 계측 경계와 노드 주소 기반 origin 결과를 deployment/testing 문서에 기록했다."
 }
 ```
 <!-- architecture-review:end -->

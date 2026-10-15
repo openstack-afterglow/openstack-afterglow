@@ -82,6 +82,16 @@ describe('one radial workspace and integrated inspector', () => {
 		for (const layer of ['trace', 'probe', 'route'] as const) await fireEvent.click(within(screen.getByRole('group', { name: t('workspace.layers') })).getByRole('button', { name: t(`workspace.layer.${layer}`) }));
 		expect(view.container.querySelectorAll('[data-edge-kind="trace"]').length).toBeGreaterThan(0); expect(view.container.querySelectorAll('[data-edge-kind="probe"]')).toHaveLength(1); expect(view.container.querySelectorAll('[data-edge-kind="route"]')).toHaveLength(3); expect(host.style.transform).toBe(before);
 	});
+	it('renders the workspace and host inspector when an observer repeats a route from several kernel tables', async () => {
+		// Production observers read every kernel table; identical route tuples are the same evidence.
+		const snapshot = makeMeshSnapshot(), repeated = { interface: 'eno1', destination: 'fe80::/64', gateway: null, metric: 256 };
+		for (const host of snapshot.hosts) host.observation!.routes = [repeated, { ...repeated }, { interface: 'eno1', destination: 'default', gateway: '10.0.0.1', metric: 100 }];
+		read.mockResolvedValue(snapshot); const view = render(InfrastructureTopology);
+		await vi.waitFor(() => expect(screen.getByRole('heading', { name: `${t('details')} · eno1` })).toBeTruthy());
+		await fireEvent.click(within(screen.getByRole('group', { name: t('workspace.layers') })).getByRole('button', { name: t('workspace.layer.route') }));
+		const routes = [...view.container.querySelectorAll('[data-edge-kind="route"]')].map(line => line.getAttribute('data-edge-id'));
+		expect(routes).toHaveLength(snapshot.hosts.length * 2); expect(new Set(routes).size).toBe(routes.length);
+	});
 	it('pans, zooms and fits through keyboard controls while retaining selection', async () => {
 		const snapshot = makeMeshSnapshot(), select = vi.fn(), graph = buildRadialGraph(snapshot, true); const view = render(RadialWorkspace, { graph, selection: { kind: 'node', id: 'host:compute:node-a' }, onselect: select });
 		const host = view.container.querySelector('[data-node-id="host:compute:node-a"]') as HTMLElement, before = host.style.transform;

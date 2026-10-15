@@ -164,8 +164,14 @@ export function buildRadialGraph(snapshot: InfrastructureTopologySnapshot, verif
 		edges.push({ id: `probe:${tupleId(probe.source, probe.target_host_id, probe.address, String(probe.port))}`, source: hostNode(probe.source), target, layer: 'probe', state: probe.status, probe, hostId: probe.source, lane: 1 });
 	}
 	for (const host of hosts) {
+		// The observer reads every kernel table, and the route model carries no table field:
+		// the same interface/destination/gateway/metric can arrive several times. Each copy is
+		// the same evidence, and a repeated ID would break every keyed consumer of graph.edges.
+		const routeIds = new Set<string>();
 		if (host.observation?.sources.routes === 'measured') for (const route of host.observation.routes) {
 			const id = tupleId(host.id, route.interface, route.destination, route.gateway ?? '', String(route.metric));
+			if (routeIds.has(id)) continue;
+			routeIds.add(id);
 			const target = external({ id: `route:${id}`, kind: 'route', label: `${route.gateway ?? '—'} → ${route.destination}`, x: 0, y: 0, state: state(host.observation_state), layer: 'route' }, 1);
 			edges.push({ id: `route:${id}`, source: hostNode(host.id), target, layer: 'route', state: state(host.observation_state), hostId: host.id, route, lane: 0 });
 		}

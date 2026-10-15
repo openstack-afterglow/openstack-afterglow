@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+## [1.30.19] - 2026-10-15
+
+- **Infrastructure topology:** production observers report routes from every kernel table, so the same interface/destination/gateway/metric can repeat. Each repeat produced the same route evidence ID, and the radial workspace and host inspector failed with a Svelte duplicate keyed-list error and never rendered. Identical route evidence now collapses per host. No API, schema or collector change. The 1.30.18 production rollout and this defect are recorded in `docs/testing.md`.
+
 ## [1.30.18] - 2026-10-15
 
 Patch release on `v1.30.17`: offline IPv4/IPv6 country lookup, cluster-internal/external/unknown request origin, the controller-centred radial network workspace, and the separately installed passive Linux flow collector. No SQL migration. Remove obsolete `geoip_csv`/client-address trust keys before starting 1.30.18, and roll out backend before frontend and collectors as described in `docs/deployment.md`. Local qualification is recorded in `docs/testing.md`; production rollout and physical-switch acceptance are recorded separately.

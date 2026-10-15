@@ -319,6 +319,8 @@ Handoff는 `/run/afterglow-flow`0750 root:`afterglow-flow-read`, atomic `snapsho
 
 표시되는 `linux_skb_header_counter`는 Linux AF_PACKET 관측점의 skb 수/길이입니다. GRO/GSO·VLAN offload·관측 지점은 coverage에 영향을 주며 **물리 wire packets가 아닙니다**. 첫 표본·collector/boot/NIC identity 변경·counter reset·stale·overflow·오류는 unknown/null이지0이 아닙니다. 유효한 연속 표본의 변화0만 실측0입니다. NIC 전체 RX/TX를 peer에 배분하거나 여러 NIC·양 endpoint·switch counters를 합산하지 않습니다. Collector를 stop/disable하거나 observer의 snapshot 옵션을 제거하면 미계측 상태로 돌아가며 남은 파일을 fresh로 가장하지 않습니다.
 
+Bridge·bond의 physical member NIC를 관측점으로 지정할 때 주의할 점이 있습니다. 상위 bridge MAC이 member MAC과 다르면, 들어오는 unicast는 member에서 `PACKET_OTHERHOST`로 보입니다. Collector는 promiscuous 계수를 막기 위해 이를 세지 않으므로 그 host는 **송신(egress) 방향만** 계측합니다. 두 endpoint 모두에 collector가 있으면 각 방향을 송신 측이 측정합니다. Collector가 없는 host에서 나가는 방향은 미계측으로 남습니다. 2026-10-15 DMS Lab 운영(mybr0 member, storage 제외)이 이 상태이며 실제 기록은 [testing.md](testing.md)에 있습니다.
+
 #### `[monitoring.infrastructure_fabric]` switch/port 관측
 
 Backend는 **명시적으로 등록한 literal management endpoint**에만 read-only SNMPv3 authPriv GET/GETBULK를 실행합니다. IF-MIB/IF-X-MIB의 counters·ifIndex/ifName/ifType/ifConnectorPresent·discontinuity와 LLDP-MIB·sysUpTime/engine boot/chassis identity를 읽습니다. LLDP 광고 management 주소는 polling 권한이나 target이 아니며 discovery/scan·SNMP SET·default/public community 추측은 없습니다.
