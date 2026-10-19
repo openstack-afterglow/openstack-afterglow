@@ -144,7 +144,9 @@ public_url = {{ afterglow_mcp_public_url | to_json }}
 lumen_service_token = {{ afterglow_lumen_mcp_service_token | to_json }}
 
 [traffic_analytics]
+frontend_ingest_url = {{ afterglow_traffic_analytics_ingest_url | to_json }}
 frontend_ingest_key = {{ afterglow_traffic_analytics_ingest_key | to_json }}
+peer_is_socket = {{ afterglow_traffic_analytics_peer_is_socket | bool | lower }}
 {% if afterglow_traffic_analytics_geoip_mmdb_source %}
 geoip_mmdb = {{ afterglow_traffic_analytics_geoip_mmdb_path | to_json }}
 {% endif %}

@@ -33,8 +33,9 @@ export interface NicEvidence {
 	txWidth: number;
 	history: { timestamp: number; rxRate: number | null; txRate: number | null }[];
 }
-/** LLDP is the only physical-link evidence. Neighbor/route records never imply cables
- * or receive apportioned interface totals. Animation ends at the local NIC. */
+/** Only LLDP on a classified physical NIC qualifies as physical-link evidence.
+ * Neighbor/route records never imply cables or receive apportioned NIC totals.
+ * Raw unqualified LLDP advertisements remain available in NicDetails. */
 export function buildNicEvidence(host: TopologyHost, verified: boolean): NicEvidence[] {
 	const observation = host.observation;
 	if (!observation) return [];
@@ -53,7 +54,7 @@ export function buildNicEvidence(host: TopologyHost, verified: boolean): NicEvid
 		rxWidth: width(safeRate(nic.rates.rx_bytes)),
 		txWidth: width(safeRate(nic.rates.tx_bytes)),
 		history: nicHistory(host, nic.name, verified),
-		physical: observation.sources.lldp === 'measured' ? observation.lldp.filter(edge => edge.interface === nic.name).map(edge => ({ chassis: edge.chassis_id, port: edge.port_id, name: edge.system_name })) : [],
+		physical: nic.physical === true && observation.sources.lldp === 'measured' ? observation.lldp.filter(edge => edge.interface === nic.name).map(edge => ({ chassis: edge.chassis_id, port: edge.port_id, name: edge.system_name })) : [],
 		neighbors: observation.sources.neighbors === 'measured' ? observation.neighbors.filter(edge => edge.interface === nic.name).map(edge => ({ ip: edge.ip, mac: edge.mac, state: edge.state })) : [],
 		routes: observation.sources.routes === 'measured' ? observation.routes.filter(edge => edge.interface === nic.name).map(edge => ({ destination: edge.destination, gateway: edge.gateway, metric: edge.metric })) : [],
 		rxActive: verified && host.observation_state === 'fresh' && observation.sources.counters === 'measured' && ((Number.isFinite(nic.rates.rx_bytes) && (nic.rates.rx_bytes ?? 0) > 0) || (Number.isFinite(nic.rates.rx_packets) && (nic.rates.rx_packets ?? 0) > 0)),

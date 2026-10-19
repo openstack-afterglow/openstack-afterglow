@@ -85,7 +85,7 @@
 	"beta.validatingTitle": "Các tính năng đang được kiểm chứng",
 	"beta.validatingDescription": "Chỉ hiển thị các tính năng chưa được kiểm chứng là đạt chất lượng phát hành rộng rãi trong trình duyệt hiện tại.",
 	"projectSettings.membersFailed": "Không thể tải danh sách thành viên",
-	"projectSettings.title": "Thành viên dự án",
+	"projectSettings.title": "Thành viên và lời mời của dự án",
 	"projectSettings.noProject": "Không có dự án đang hoạt động.",
 	"projectSettings.noMembers": "Không có thành viên.",
 	"projectSettings.user": "Người dùng",

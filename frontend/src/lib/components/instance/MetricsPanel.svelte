@@ -6,7 +6,6 @@
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import GrafanaEmbed from '$lib/components/monitoring/GrafanaEmbed.svelte';
 	import { t } from '$lib/i18n/ns/instance';
-	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { ActivityIndicator, AnimatedNumber, Button } from '$lib/components/ui';
 	import BklitChart from '$lib/components/charts/BklitChart.svelte';
@@ -194,7 +193,6 @@
 			],
 			domain: [0, chart.yMax ?? maximum],
 			formatValue: (value) => formatMetric(chart, metrics[chart.key], value),
-			formatTime: (time) => new Date(time).toLocaleTimeString(intlLocale(), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }),
 		};
 	}
 </script>

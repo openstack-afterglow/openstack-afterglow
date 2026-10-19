@@ -6,6 +6,48 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 남은 실제 local dev source 통합 (2026-10-19)
+
+게시된 `c893591dc0904e46b78be84685e3b2ace6f4dbfe`와 실제 공유 `dev` HEAD `3c9af255f7047c25d5ea8bcbf3d37d357634a134`의 잔여 작업을 대조했다. 외부 proof root는 `~/.local/share/afterglow-proofs/remaining-source-20261019-8kflhybg/`다. `capture-manifest.json`·public tar·원래 index와 private 입력의 hash/mode를 보존하고 최초 capture·현재 source·게시본의 각 대안을 분류했다. 게시본의 home-first/projectless·auth owner/ABA·원래 socket peer·명시 launcher trust는 유지하며, 이전 local-sync 절의 TOML trust 대안과 오래된 domain-first 문구를 현재 계약으로 되돌리지 않는다.
+
+| 실행한 검증 | 관측 결과·경계 |
+|---|---|
+| 최종 필수 gate | `npm run test:gate` exit0. Reviewed source `3594c25d6d1ae9618311a154ac10a9802a7a01dfe81b6233fb50599553503bdc`/3358files에서 backend **8721passed/95skipped**, frontend **406files/4652passed**, API contract **163passed**, disposable DB functional **166passed/33deselected**, backend Ruff check·707file format check 통과. JS orchestration/Kolla/installer lane을 포함한 raw 근거는 `gate-receipts.json`·`test-gate.log`를 따른다. 중첩 selector는 합산하지 않는다. |
+| Focused·static | Backend config/observer/traffic/proxy **362passed/1skipped**, frontend14files **451passed**. Svelte **0errors/16warnings**, i18n48namespaces/11112messages **0errors/37key-order warnings**. 기존 root standalone import-order2건은 backend-only canonical lint 범위 밖이며 숨기거나 일괄 restyle하지 않았다. `focused-receipts.json`과 해당 log를 따른다. |
+| 정본9image build·실행 | backend/worker/frontend/native-vm의 arm64·amd64, native-cloud-vm의 지원 amd64를 build/load하고 실제 비특권 Python/Node ABI를 확인했다. Backend source parity와 worker 양 ABI crypto smoke를 통과했다. `image-build-metadata.json`·`image-runtime.json`; amd64는 Docker emulation이며 worker job·VM/KVM boot·운영 image 발행 수용은 아니다. |
+| 실제 HTTP trust 경계 | Task-owned canonical dev Compose 두 arm64 service가 healthy. Native/SQL/background writer를 끄고 readonly 합성 TOML1개·logs tmpfs만 mount했다. 실제 API health200·retired domain login422·unauthenticated admin401, untrusted bridge peer의 spoofed HTTPS는 HTTP307, 실제 trusted loopback socket의 HTTPS는 HTTPS307이며 query를 보존했다. `runtime/{render-preflight,post-apply,http-smoke}.json`. |
+| 실제 compiled metric·locale | 정상 root `/me` 검증과 완전한 scoped 합성 DTO를 사용하는 compiled MetricsPanel에서 서로 다른 날짜·동일 시각 두 점의 실제 차트/접근성 표가 full Korean date-time으로 구별되고 overflow0이었다. 같은 image의9locale Nova article200·34paragraphs·HTML lang과 login의 cookie/lang·domain field0·desktop overflow0, Bengali390px article overflow0을 확인했다. `runtime/browser-{metrics,locales}.json`과 screenshot; 번역은 machine draft이며 native 인증·실제 cloud 데이터 수용은 아니다. |
+
+Synthetic UI 준비 중 builtin tutorial의 instance에 project ID가 없어 올바른 scoped metrics guard가 panel을 숨겼고, broad interception의 wildcard/우선순위·preflight 처리도 부정확했다. 제품의 권한 guard를 낮추거나 tutorial source를 바꾸지 않고 정확한 pathname·완전한 DTO·OPTIONS204를 사용하는 test-owned fixture로 교정한 뒤 위 실제 화면을 관측했다. 현재 사용자 credential·GitLab code·운영 token은 사용하지 않았다. 선택적 gbrain CLI는 없어 index/guidance sync하지 않았다.
+
+최종 source/index 적용·정상 dev push와 보존 결과는 [완료 OpenSpec](../openspec/changes/archive/2026-10-19-reconcile-remaining-local-source/tasks.md) 및 같은 proof root의 delivery receipt를 따른다. 기존 local 서비스·private/ignored 입력·다른 worktree를 교체하지 않으며, 버전 bump·tag·main PR/merge·release·migration·운영 배포는 이번 source 게시의 범위가 아니다. 아래 과거 feature/release 수용 기록은 해당 시점의 증거로 유지한다.
+
+
+## 실제 로컬 dev 아홉 언어 통합 (2026-10-19)
+
+사용자가 승인한 full local sync는 원격에 이미 병합된 언어 지원과 실제 `/Users/pieroot/code/afterglow`·localhost3080의 차이를 해결한다. Base `aac6b9c5dc3e53fc3e430ca9ed96c30cacdbdb1e`, fetched target `3c9af255f7047c25d5ea8bcbf3d37d357634a134`; 공개 WIP snapshot `5035f4afbe132fd0d0d6797b93e668a1659b7d01`과 original index/manifest/tar는 외부 proof root `~/.local/share/afterglow-proofs/afterglow-local-dev-reconcile-wb61pysx/`에 보존한다. 격리 clone `/tmp/afterglow-full-dev-sync-0v3944hu`에서124conflict paths를 해결했다. Local domain credential/telemetry·background/storage·effective-config/cache 작업과 remote role/flow/fabric/MMDB·nine-locale 동선을 결합했으며 미커밋 작업을 remote에 게시하지 않는다.
+
+검증 중 찾은 통합 오류와 교정:
+- 초기 image의 새 다섯 언어 docs는 strict dictionary 누락으로500이었다. 기존 source에 추가된 gettingStarted7·coreGuides4문구를 언어별로 번역하고, UI의1011missing entries·63obsolete keys와 별도118entry domain-admin namespace를 동기화했다. 최종 키 비교는48namespaces에서 기존8translation locales 모두 missing/extra0이다. 새 번역은 원어민 검수 전 초안이다.
+- Kolla는 local effective TOML을 읽고 backend env를 제거했지만 remote socket factory가 env-only proxy trust를 기대했다. Native `[app] trusted_proxies` 렌더링·Settings flatten·factory TOML fallback으로 결합했다. 명시 환경변수 우선과 빈 trust override를 보존하고 analytics CIDR로 인증 권위를 대체하지 않는다. Consumer181passed/1skip 및 실제 Uvicorn TCP에서 default/empty TOML HTTP307과 trusted TOML HTTPS307, query 보존을 확인했다.
+- Chart fixture의 broad `.pointer-events-none` selector가 독립 SVG overlay를 잡아 실패했다. CSS class 존재에 의존하는 incidental test를 삭제하고 실제 data/lifecycle/decimation 회귀는 유지한다. Production chart 코드를 이 fixture에 맞춰 바꾸지 않았다.
+- 일부 delegated worker가 상대 경로로 original checkout의 chart9·새 catalog46개를 실수로 쓰거나 stage했다. 소유 경로를 확인하고 중지했으며 별도 tar/index로 보존했다. 이를 사용자 변경으로 오인해 revert하지 않고 final semantic publication에 포함한다. Original baseline index는 clean이었으며 사용자 미커밋 WIP·private inputs는 보존한다.
+
+격리 qualification: backend unit8694passed/95skipped, telemetry/config545passed/11skipped, disposable functional166passed/33deselected, orchestration166·Kolla18+Python13이 통과했다(서로 포함된 selector는 합산하지 않는다). Native config/import smoke는 version1.30.19와 중복 없는569API method/path를 확인했다. Final canonical Docker frontend arm64/amd64 build와 각각 실제 Node arch arm64/x64·app1.30.19를 확인했다. 두 runtime에서 모든9locale docs200·SSR lang·9choices·locale cookie를 확인했고 실제 Chromium에서 docs→login9locale 유지 및515×402 메뉴9choices·내부 스크롤·수평 overflow0을 확인했다. 실제 로그인·Keystone·BPF/SNMP·운영 rollout 수용이 아니며 backend는 이 작업에서 갱신하지 않는다.
+
+최종 gate·실제 local cutover 결과는 이 절의 후속 receipt와 proof root의 JSON/log/screenshot을 따른다. 초기 실패·기존 jsdom navigation stderr, Svelte16warnings, i18n key-order51warnings 및 PowerShell 미설치 skip은 숨기지 않는다. 선택적 gbrain CLI는 PATH에 없어 sync하지 않았다.
+
+Final `npm run test:gate` exit0: architecture `411604751ffd8910ae62a414e905d6be5a773f4891b8940980ad3f5080c0112f`/3359source files, orchestration166, Kolla18+Python13, CLI20passed/36PowerShell skipped, backend8694passed/95skipped, frontend406files/4615passed+9runner, contract163, disposable functional166passed/33deselected, Ruff check/format707files. Svelte check0errors/16warnings, i18n0errors/51key-order warnings·48namespaces/11110source messages, scan1181files/0hardcoded Korean. Working/staged architecture와 version1.30.19동기화도 통과했다. Gate raw receipt는 `artifact://230`, builds는 `artifact://221`, final multiarch/runtime/cookie/menu evidence는 proof root에 보존한다.
+
+Actual local receipt: `dev` HEAD와 `origin/dev`는 모두 `3c9af255f7047c25d5ea8bcbf3d37d357634a134`이고 index는 그 remote baseline이다. 기존/통합 WIP는 uncommitted working source로 남겼다. 최초 binary apply는 검증용 root `node_modules` symlink를 기존 실제 directory 위에 쓰려다 중단했고 일부 replace-target5개를 제거한 상태였다. 새 dependency directory·private input은 건드리지 않았으며 exact partial manifest를 기록하고, 오직 격리 symlink를 source/index에서 제외한 잔여 patch로 복구·완료했다. 최종 source guard는 `a8d7e07589e5ab910b9687910763c5ae36e7ef0d46684906723f65bb4f114735`/3358files다. 이는 위3359file gate에서 source가 아닌 검증 symlink 하나를 제외한 정정이다.
+
+정본 `.local-services/compose.env`·`docker-compose.dev.yml`·project `afterglow-local-services`를 같은 Python executor/environment에서 render/apply했다. Empty ingest key를 유지해 reporter는 비활성이고, obsolete trust-client=false 대신 direct Node listener의 peer-is-socket=true만 의도적으로 전환했다. `up --no-deps --no-build --wait frontend` exit0·healthy; 실제 frontend `c4bbd98a26034226577478749223fd559f9570bc8b10021c1318947aab585f7a`, final OCI index `sha256:c97f3317abdca9a37ea47245d86b9f2910e6e3b4acede5b0f15100dd79c93181`. Env·mount·port·group은 승인 render와 일치하며 private5files SHA와 비대상35containers의 ID/image/start/env/mount/port는 전후 동일하다. Backend ID `1774f385c6c108c0df7c706367e0478843910199c9a0f5375b88d396bfc91e88`·start `2026-10-19T07:52:40.974825006Z`를 유지했다. 기존 image object는 이미 없어 running frontend filesystem을 `afterglow-local-reconcile:frontend-rollback`으로 보존하고 native Node 실행을 검증했다. DB migration·backend/worker 재시작·운영 배포는 하지 않았다. 동시 사용자 activity나 기존 writer의 정상 DB 쓰기까지 없었다고 주장하지 않는다.
+
+Actual Chromium localhost3080에서9locale의 docs→getting-started article→login→reload 언어 유지, main의 실제 Swahili button 클릭·닫힘·focus 복원·shared docs 선호를 확인했다. 실제 main 메뉴9choices,515×402 overflow0·내부 scroll104px 뒤 Bengali 접근,900×700 docs 메뉴 전체9언어 screenshot을 보존했다. 실제 public-flow browser errors0. `actual-nine-language-navigation.json`, `actual-main-language-click.json`, `actual-menu-after.json`, `actual-preservation.json`, `actual-docs-all-nine-languages.png`, `actual-main-menu-{after,last-language}.png`가 최종 runtime evidence다. 임시 arm64/amd64 frontend4개와 lifespan-off backend smoke만 종료했으며 사용자 canonical frontend는 healthy로 유지했다.
+
+Post-rollout final gate도 exit0(`artifact://254`): scaffold를 제외한 `a8d7e07589e5ab910b9687910763c5ae36e7ef0d46684906723f65bb4f114735`/3358files에서 backend8694/95skip, frontend406files/4615+9runner, contract163, disposable functional166/33deselected, Ruff707files 통과. Actual root의 working guard·version1.30.19와 `/health`200/`status=ok`도 archive 뒤 다시 확인했다. OpenSpec는 `openspec/changes/archive/2026-10-19-sync-local-dev-nine-languages`로 완료 archive했다.
+
+
 ## 전체 공개 source dev 통합 (2026-10-19, local qualification)
 
 `integrate-all-source-dev`는 요청 시점의 public snapshot과 최신 fetched `origin/dev` `3c9af255f7047c25d5ea8bcbf3d37d357634a134`를 격리 local `dev`에서 통합한다. 증거 root는 `/Users/pieroot/.local/share/afterglow-proofs/commit-all-20261019-0meyzotw/`다. 아래는 **최종 통합 source의 새 검증**이며 이후 역사적 feature/release 기록의 실패·미수용 경계를 소급 변경하지 않는다. 공유 checkout은 작업 중 upstream과 동시 source가 갱신되었으므로 처음 index/source와 byte-identical하다고 주장하지 않는다. 초기 snapshot·변경 분류는 `original-source-manifest.json`·`shared-source-preservation.json`에 보존하며 현재 공유 source/index를 reset/stash하지 않는다.

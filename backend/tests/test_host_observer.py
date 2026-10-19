@@ -1430,6 +1430,41 @@ def test_configured_flow_failure_keeps_host_evidence_and_source_error(monkeypatc
     assert report["interfaces"][0]["rx_bytes"] == 12345
 
 
+@pytest.mark.parametrize(
+    "identity",
+    [
+        {"ifindex": None},
+        {"mac": None},
+        {"mac": "invalid"},
+        {"mac": "00:00:00:00:00:00"},
+        {"mac": "01:00:00:00:00:01"},
+    ],
+)
+def test_flow_handoff_without_stable_interface_identity_preserves_host_evidence(monkeypatch, tmp_path, identity):
+    from app.models.infrastructure_topology import Observation
+
+    mock_capture(monkeypatch)
+    monkeypatch.setattr(cli, "physical_interface", lambda *args: True)
+    parse_interfaces = cli.parse_interfaces
+
+    def parse(value, **kwargs):
+        interfaces = parse_interfaces(value, **kwargs)
+        interfaces["eth0"].update(identity)
+        return interfaces
+
+    monkeypatch.setattr(cli, "parse_interfaces", parse)
+    path = publish_snapshot(tmp_path, monkeypatch, flow_snapshot(cli.time.time()))
+    report = cli.capture_report(flow_snapshot_file=path)
+    assert report["sources"]["flows"] == "error" and "flows" not in report
+    assert report["interfaces"][0]["rx_bytes"] == 12345
+    assert report["interfaces"][0].items() >= identity.items()
+    assert report["neighbors"] == cli.parse_neighbors([NEIGHBOR])
+    assert report["routes"] == cli.parse_routes([ROUTE, {"dev": "eth0", "dst": "2001:db8::/64"}])
+    assert report["lldp"] == cli.parse_lldp(LLDP)
+    assert all(state == "measured" for source, state in report["sources"].items() if source != "flows")
+    Observation.model_validate(report)
+
+
 def test_configured_flow_handoff_matches_backend_observation(monkeypatch, tmp_path):
     from app.models.infrastructure_topology import Observation
 

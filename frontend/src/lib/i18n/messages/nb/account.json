@@ -85,7 +85,7 @@
 	"beta.validatingTitle": "Funksjoner under validering",
 	"beta.validatingDescription": "Vis funksjoner som ennå ikke er validert for generell lansering, bare i denne nettleseren.",
 	"projectSettings.membersFailed": "Kunne ikke laste inn medlemmer",
-	"projectSettings.title": "Prosjektmedlemmer",
+	"projectSettings.title": "Prosjektmedlemmer og invitasjoner",
 	"projectSettings.noProject": "Ingen aktive prosjekter.",
 	"projectSettings.noMembers": "Ingen medlemmer.",
 	"projectSettings.user": "Bruker",

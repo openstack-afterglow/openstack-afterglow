@@ -364,7 +364,13 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
         }
     fabric = mon.get("infrastructure_fabric", {})
     if fabric:
-        mon_out["infrastructureFabric"] = {_s(k): v for k, v in fabric.items() if k != "targets"}
+        mon_out["infrastructureFabric"] = {
+            _s(k): fabric[k] for k in (
+                "revision", "poll_interval_seconds", "freshness_seconds",
+                "timeout_seconds", "retries", "concurrency", "poll_budget_seconds",
+                "max_ports", "max_neighbors", "max_varbinds", "retention_seconds",
+            ) if k in fabric
+        }
     if mon_out:
         out["monitoring"] = mon_out
     traffic_out = {_s(k): traffic[k] for k in ("enabled", "retention_days", "geoip_mmdb", "site_country", "cluster_cidrs", "backend_trusted_proxy_cidrs", "frontend_trusted_proxy_cidrs") if k in traffic}

@@ -31,7 +31,9 @@ wire packets (GRO/GSO/offloads affect coverage). Invalid/stale/overflow handoffs
 are source errors, never measured zero. Advertised LLDP management addresses
 remain metadata; they never become probe or SNMP targets. Only qualified physical
 Ethernet interfaces enter the physical fabric graph; bond/bridge LLDP stays
-diagnostic evidence, not an inferred cable.
+diagnostic evidence, not an inferred cable. Flow rows additionally require a
+stable ifindex and a valid nonzero unicast Ethernet MAC on the physical NIC.
+
 Before reporting, authenticated polling supplies at most 64 operator-admitted
 directed peer IP/port tuples. Exactly those tuples may be TCP-connected, without
 DNS, authentication or payload: up to 8 workers, <=3 seconds each, <=8 seconds
@@ -630,7 +632,15 @@ def capture_report(proc_root=Path("/proc"), sys_root=Path("/sys"), flow_snapshot
     report["sources"]["flows"] = "unsupported"
     if flow_snapshot_file is not None:
         try:
-            physical = {name for name, item in interfaces.items() if item.get("physical") is True}
+            physical = {
+                name for name, item in interfaces.items()
+                if item.get("physical") is True
+                and item["ifindex"] is not None
+                and item["mac"] is not None
+                and re.fullmatch(r"(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}", item["mac"])
+                and item["mac"].lower() != "00:00:00:00:00:00"
+                and not int(item["mac"][:2], 16) & 1
+            }
             flow = read_flow_snapshot(flow_snapshot_file, physical, now=captured_at)
             report["flows"] = flow
             report["sources"]["flows"] = "error" if flow["overflow"] else "measured"

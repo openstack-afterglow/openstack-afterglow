@@ -17,6 +17,11 @@ describe('NIC evidence and directional traffic', () => {
 		host.observation!.lldp = []; expect(buildNicEvidence(host, true)[0].physical).toEqual([]);
 		expect(buildNicEvidence(host, true)[0].neighbors).toHaveLength(1);
 	});
+	it.each([false, null])('does not promote physical=%s NIC advertisements to cable evidence', physical => {
+		const host = makeHost(); host.observation!.interfaces[0].physical = physical;
+		expect(buildNicEvidence(host, true)[0]).toMatchObject({ physical: [], neighbors: [{ ip: '10.0.0.1', mac: '02:00:00:00:00:01', state: 'REACHABLE' }] });
+		expect(host.observation!.lldp).toHaveLength(1);
+	});
 	it('does not assign interface totals or rates to any remote endpoint', () => {
 		const row = buildNicEvidence(makeHost(), true)[0];
 		for (const edge of [...row.physical, ...row.neighbors, ...row.routes]) {

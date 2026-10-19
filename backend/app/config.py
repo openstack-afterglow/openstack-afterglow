@@ -308,7 +308,13 @@ def _load_toml() -> dict:
         "infrastructure_topology_retention_seconds", 3600
     )
     flat["monitoring_infrastructure_fabric"] = mon.get("infrastructure_fabric", {})
-    flat["traffic_analytics"] = data.get("traffic_analytics", {})
+    # These two file keys configure the frontend process, not backend analytics.
+    # Preserve strict validation of every other key in this shared section.
+    flat["traffic_analytics"] = {
+        key: value
+        for key, value in data.get("traffic_analytics", {}).items()
+        if key not in {"frontend_ingest_url", "peer_is_socket"}
+    }
     flat["prometheus_base_url"] = mon.get("prometheus_base_url", "http://prometheus:9090")
     flat["prometheus_username"] = mon.get("prometheus_username", "")
     flat["prometheus_password"] = mon.get("prometheus_password", "")

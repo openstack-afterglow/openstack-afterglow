@@ -562,7 +562,7 @@ Lookup는 memory-mapped reader를 재사용하므로 dataset 교체 뒤 backend 
 
 Frontend **서버 프로세스** 환경은 다음과 같습니다.
 
-Kolla의 backend effective `[traffic_analytics]` TOML에는 backend model이 지원하는 key만 둡니다. `frontend_ingest_key`는 sparse operator override를 포함한 effective 값이 우선하며 frontend writer에 같은 값을 전달합니다. Frontend ingest URL과 socket-peer attestation은 native deployment 변수로 남고 backend TOML에 `frontend_ingest_url`, `trust_client_address`, `peer_is_socket` 같은 frontend-only key를 넣지 않습니다. `extra="forbid"` 모델에서 이 key들은 startup 오류입니다.
+Kolla는 native deployment 변수로 `[traffic_analytics].frontend_ingest_url`, `frontend_ingest_key`, `peer_is_socket` 기본값을 만든 뒤 protected operator TOML의 명시 값을 병합해 frontend 서버 환경에 전달합니다. 빈 URL과 `peer_is_socket = false`도 기본값으로 되돌리지 않습니다. Backend loader는 frontend 전용 `frontend_ingest_url`·`peer_is_socket` 두 키만 analytics model 입력에서 제외합니다. `frontend_ingest_key`와 나머지 backend 설정의 검증은 유지하며 `geoip_csv`, `trust_frontend_client_address`, `trust_client_address` 및 unknown key는 여전히 `extra="forbid"`로 거부합니다. 이 handoff는 backend launcher의 `FORWARDED_ALLOW_IPS`나 source별 analytics CIDR 신뢰를 바꾸지 않습니다.
 
 
 | 환경변수 | 값·주의 |

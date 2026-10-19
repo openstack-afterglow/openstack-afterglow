@@ -4,14 +4,20 @@ import TrafficCountryMap from '../TrafficCountryMap.svelte';
 import TrafficTrend from '../TrafficTrend.svelte';
 import TrafficCoverage from '../TrafficCoverage.svelte';
 import { initLocale } from '$lib/i18n/runtime.svelte';
+import { LOCALES } from '$lib/i18n/locales';
 import { t } from '$lib/i18n/ns/traffic-analytics';
-import { trafficCountryName, formatTrafficTime } from '$lib/utils/trafficFormat';
+import { trafficCountryName, formatTrafficTime, formatTrafficValue } from '$lib/utils/trafficFormat';
 import { parseTrafficSnapshot } from '$lib/types/trafficAnalytics';
 import { countryAnchor, createTrafficMapSpec, trafficCountryAnchors, trafficGeography, trafficFlowWidth } from '$lib/utils/trafficMap';
 import en from '$lib/i18n/messages/en/traffic-analytics.json';
 import ko from '$lib/i18n/messages/ko/traffic-analytics.json';
 import ja from '$lib/i18n/messages/ja/traffic-analytics.json';
 import zh from '$lib/i18n/messages/zh-CN/traffic-analytics.json';
+import bn from '$lib/i18n/messages/bn/traffic-analytics.json';
+import ms from '$lib/i18n/messages/ms/traffic-analytics.json';
+import nb from '$lib/i18n/messages/nb/traffic-analytics.json';
+import sw from '$lib/i18n/messages/sw/traffic-analytics.json';
+import viLocale from '$lib/i18n/messages/vi/traffic-analytics.json';
 import { metrics, observations } from './observations';
 
 beforeEach(() => {
@@ -143,7 +149,7 @@ describe('country map observations and equivalent controls', () => {
 		}
 		expect(detail.getByText(t('map.responsesNote'))).toBeTruthy();
 	});
-	it.each(['en', 'ko', 'ja', 'zh-CN'] as const)('explains flow, error-pattern and location limitations in %s', (locale) => {
+	it.each(LOCALES)('explains flow, error-pattern and location limitations in %s', (locale) => {
 		initLocale(locale);
 		render(TrafficCountryMap, { countries: observations().countries, siteCountry: 'KR' });
 		for (const key of ['map.flows.note', 'map.flows.failure', 'map.flows.width'] as const) expect(screen.getByText(t(key))).toBeTruthy();
@@ -169,12 +175,12 @@ describe('trends and source disclosures', () => {
 		render(TrafficTrend, { snapshot: observations(), metric: 'unique_visitors' });
 		expect(screen.getByText(t('unique.coverage', { known: '8', total: '10' }))).toBeTruthy();
 	});
-	it.each(['en', 'ko', 'ja', 'zh-CN'] as const)('renders complete privacy and source-freshness disclosures in %s', (locale) => {
+	it.each(LOCALES)('renders complete privacy and source-freshness disclosures in %s', (locale) => {
 		initLocale(locale); const snapshot = observations({ source: 'frontend' });
 		render(TrafficCoverage, { snapshot, source: 'frontend' });
 		for (const key of ['coverage.source', 'coverage.frontend', 'coverage.proxy', 'coverage.privacy', 'coverage.bytes', 'coverage.latency', 'coverage.freshness', 'coverage.lastObserved'] as const) expect(screen.getByText(t(key))).toBeTruthy();
 		expect(screen.getByText(formatTrafficTime(snapshot.coverage.last_observed_at))).toBeTruthy();
-		expect(screen.getByText(t('coverage.retention', { days: '30' }))).toBeTruthy();
+		expect(screen.getByText(t('coverage.retention', { days: formatTrafficValue(snapshot.retention_days) }))).toBeTruthy();
 	});
     it('shows current DB attribution and explicit legacy/private reasons without reclassifying old traffic', () => {
         const snapshot = observations();
@@ -194,7 +200,7 @@ describe('trends and source disclosures', () => {
 	});
 	it('keeps matching namespace keys and ICU substitution names in every catalog', () => {
 		const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map(match => match[1]).sort();
-		for (const catalog of [en, ja, zh]) {
+		for (const catalog of [en, ja, zh, bn, ms, nb, sw, viLocale]) {
 			expect(Object.keys(catalog).sort()).toEqual(Object.keys(ko).sort());
 			for (const key of Object.keys(ko) as Array<keyof typeof ko>) {
 				expect(catalog[key].length).toBeGreaterThan(0); expect(placeholders(catalog[key])).toEqual(placeholders(ko[key]));

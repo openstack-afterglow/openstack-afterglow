@@ -315,9 +315,9 @@ afterglow_service_environments:
     PORT: "{{ afterglow_frontend_listen_port | string }}"
     LOG_DIRECTORY: "/var/log/kolla/afterglow"
     LOG_MAX_BYTES: "52428800"
-    TRAFFIC_ANALYTICS_INGEST_URL: "{{ afterglow_traffic_analytics_ingest_url }}"
+    TRAFFIC_ANALYTICS_INGEST_URL: "{{ afterglow_effective_config.traffic_analytics.frontend_ingest_url }}"
     TRAFFIC_ANALYTICS_INGEST_KEY: "{{ afterglow_effective_config.traffic_analytics.frontend_ingest_key }}"
-    TRAFFIC_ANALYTICS_PEER_IS_SOCKET: "{{ afterglow_traffic_analytics_peer_is_socket | bool | string | lower }}"
+    TRAFFIC_ANALYTICS_PEER_IS_SOCKET: "{{ afterglow_effective_config.traffic_analytics.peer_is_socket | bool | string | lower }}"
 # Kolla's external frontend map selects one backend per host. This synthetic
 # service supplies that backend; it is never passed to the container start loop.
 afterglow_public_haproxy_services:

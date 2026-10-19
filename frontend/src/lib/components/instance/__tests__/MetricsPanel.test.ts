@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
 import { tick } from 'svelte';
-import { initLocale } from '$lib/i18n/runtime.svelte';
+import { initLocale, intlLocale } from '$lib/i18n/runtime.svelte';
 import { t } from '$lib/i18n/ns/instance';
 
 vi.mock('$env/dynamic/public', () => ({ env: { PUBLIC_API_BASE: 'http://localhost:8000' } }));
@@ -173,6 +173,19 @@ describe('MetricsPanel', () => {
 		expect(values).toEqual([
 			['1.0KB/s', '—'], ['—', '512B/s'], ['—', '—'], ['2.0KB/s', '768B/s'],
 		]);
+	});
+
+	it('keeps full localized dates in metric details when the same clock time occurs on different days', async () => {
+		const samples = [{ ts: 1700000000, value: 0 }, { ts: 1700086400, value: 10 }];
+		mockGet.mockResolvedValue(makeBatchResponse(samples));
+		render(MetricsPanel, { props: { instanceId: 'inst-1' } });
+		const chart = await screen.findByRole('group', { name: t('metrics.cpuUsage') });
+		const details = chart.querySelector('details')!;
+		details.open = true;
+		await fireEvent(details, new Event('toggle'));
+		const timestamps = within(chart).getAllByRole('rowheader').map(cell => cell.textContent);
+		expect(timestamps).toEqual(samples.map(sample => new Date(sample.ts * 1000).toLocaleString(intlLocale())));
+		expect(new Set(timestamps).size).toBe(2);
 	});
 
 	it('distinguishes native zero, fallback, uncollected and native capacity units', async () => {

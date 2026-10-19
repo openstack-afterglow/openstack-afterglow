@@ -1,0 +1,47 @@
+{
+  "base": "aac6b9c5dc3e53fc3e430ca9ed96c30cacdbdb1e",
+  "target": "3c9af255f7047c25d5ea8bcbf3d37d357634a134",
+  "localDevHead": "3c9af255f7047c25d5ea8bcbf3d37d357634a134",
+  "branch": "dev",
+  "architectureSha256": "a8d7e07589e5ab910b9687910763c5ae36e7ef0d46684906723f65bb4f114735",
+  "sourceFiles": 3358,
+  "gate": {
+    "command": "npm run test:gate",
+    "exitCode": 0,
+    "backendPassed": 8694,
+    "backendSkipped": 95,
+    "frontendPassed": 4615,
+    "frontendRunnerPassed": 9,
+    "contractPassed": 163,
+    "functionalPassed": 166,
+    "functionalDeselected": 33,
+    "ruffFiles": 707,
+    "architectureSha256": "a8d7e07589e5ab910b9687910763c5ae36e7ef0d46684906723f65bb4f114735",
+    "sourceFiles": 3358,
+    "postRolloutExitCode": 0,
+    "rawArtifact": "artifact://254"
+  },
+  "frontendCheck": {
+    "errors": 0,
+    "warnings": 16
+  },
+  "i18n": {
+    "errors": 0,
+    "warnings": 51,
+    "sourceMessages": 11110,
+    "namespaces": 48,
+    "hardcodedKoreanLines": 0
+  },
+  "actualFrontendVerified": true,
+  "actualFrontendHealth": "healthy",
+  "actualNineLanguageMainAndDocsVerified": true,
+  "actualBrowserErrors": 0,
+  "archive": "openspec/changes/archive/2026-10-19-sync-local-dev-nine-languages",
+  "wipRetainedUncommitted": true,
+  "proofRoot": "/Users/pieroot/.local/share/afterglow-proofs/afterglow-local-dev-reconcile-wb61pysx",
+  "frontendImage": "sha256:c97f3317abdca9a37ea47245d86b9f2910e6e3b4acede5b0f15100dd79c93181",
+  "unchangedOtherContainers": 35,
+  "privateInputsUnchanged": true,
+  "translations": "native-speaker-unreviewed drafts",
+  "productionDeployment": false
+}

@@ -53,7 +53,7 @@
 	"create.keypair": "Nøkkelpar (valgfritt)",
 	"create.stampedeMode": "Stampede-modus",
 	"create.stampedeHelp": "Skalerer automatisk antall noder (VM-er) opp/ned når poder settes i drift. Konfigurer minimum/maksimum separat i nodegruppen.",
-	"create.stampedeWarning": "⚠ Denne funksjonen er under utvikling. Den er aktivert som standard og legger bare til eller fjerner noder innenfor min/max-grensene i nodegrupper der Stampede er aktivert. Standardarbeidernodene som ble opprettet først, skaleres ikke automatisk ned.",
+	"create.stampedeWarning": "⚠ Denne funksjonen er under utvikling. Den er aktivert som standard og legger bare til eller fjerner noder innenfor minimums-/maksimumsgrensene for nodegrupper der Stampede er aktivert. Antallet opprinnelige standardarbeidsnoder skaleres aldri ned automatisk.",
 	"nodegroup.role": "Rolle",
 	"nodegroup.agent": "Agent",
 	"nodegroup.server": "Server",

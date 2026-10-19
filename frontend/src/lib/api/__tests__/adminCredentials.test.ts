@@ -30,6 +30,10 @@ describe('sensitive credential transport', () => {
     fetchAuth.mockResolvedValue(new Response(JSON.stringify({ detail: 'provider-secret-or-token' }), { status: 503 }));
     await expect(credentialRequest('/api/v1/admin/user-credentials', domainId, authority)).rejects.toMatchObject({ status: 503, message: 'credential_unavailable' });
   });
+  it('preserves explicit platform-admin denial for authority revocation', async () => {
+    fetchAuth.mockResolvedValue(new Response(JSON.stringify({ detail: 'credential_admin_denied' }), { status: 403 }));
+    await expect(credentialRequest('/api/v1/admin/user-credentials', domainId, authority)).rejects.toMatchObject({ status: 403, code: 'credential_admin_denied' });
+  });
   it('does not infer platform-admin revocation from an unclassified native 403', async () => {
     fetchAuth.mockResolvedValue(new Response('Forbidden', { status: 403 }));
     await expect(credentialRequest('/api/v1/admin/users', domainId, authority)).rejects.toMatchObject({ status: 403, code: 'credential_native_denied' });

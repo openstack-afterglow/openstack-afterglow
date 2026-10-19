@@ -7,12 +7,23 @@
 
 ## [Unreleased]
 
+### 실제 로컬 dev 언어 지원 동기화 (2026-10-19, local only)
+- 원격 dev의 아홉 언어 병합과 별개로 남아 있던 실제 로컬 dev·불변 frontend image 차이를 해소한다. `aac6b9c5`의 미커밋 공개 작업을 보존한 격리 snapshot과 `3c9af255` 사이124개 충돌을 의미 단위로 통합하며 사용자 작업은 새 commit/push에 포함하지 않는다.
+- 새 다섯 언어에 빠진 기존 WIP namespace·문구와 엄격한 문서 dictionary를 동기화한다. 문서의 missing translation500과 incidental chart CSS selector 회귀, config-owned Kolla proxy trust 통합 오류를 실제 검증에서 찾아 수정했다. Native-speaker reviewed 상태로 승격하지 않는다.
+- arm64·amd64 frontend build와 두 architecture의 아홉 언어 docs200·SSR/cookie, 실제 compiled docs→login 언어 유지와 짧은 화면의 아홉 항목/스크롤을 검증했다. 정본 로컬 frontend만 교체하며 backend·datastore·private 설정은 보존한다. 최종 gate·실제3080 화면·복구 증거와 운영 미검증 경계는 `docs/testing.md`에 기록한다.
+
 ### 전체 공개 source dev 통합 (local source, not deployed)
 - 오래된 공유 dev의 누적 source를 최신 `origin/dev`와 격리 병합하고, upstream 아홉 언어·socket-peer/MMDB/origin·flow/fabric·route 중복 제거·frozen npm runtime 설치와 local 개인 가입/승인/quota·home-first/SSO·IAM·native telemetry·backup/snapshot·effective 배포 설정을 함께 보존한다.
 - Domain-bound credential과 working/home identity 검증, scoped native role-ID와 현재 할당 교집합, stale-token closed-subset 위임, durable rollback·lease/journal·non-replay 및 frontend owner/ABA fence를 유지한다. Retired Afterglow Cloud Shell package/build는 복구하지 않으며 image 기본값은 독립 `openstack-client:slim`, 빈 pull policy·registry를 유지한다.
 - 새 local UI 문구를 추가 다섯 언어에도 machine-draft로 연결하며 원어민 검수 상태를 올리지 않는다. 기존 release/운영 기록은 원래 시점의 근거이고 이번 병합의 수용 증거는 `docs/testing.md`에 별도로 기록한다. 버전 bump·tag·main merge·서비스 배포·운영 migration은 하지 않는다.
 - 통합 결함인 K8s traffic TOML table 중복과 Kolla launcher proxy trust 누락을 수정했다. 다른 working domain의 프로젝트 권한 상실 뒤 반복 projectless refresh/조회는 native subject·home을 먼저 검증하며 frontend의 명시적 project 제거도 반영한다. 실제 membership/native proof 회수·scoped mismatch·old-owner/ABA 차단은 유지한다.
 - 아홉 언어의 시작 문서를 domain-free login·별도 SSO·home-first 선택 흐름에 맞추고 Nova guide 누락 번역을 보완했다. 전체 `test:gate`, Svelte/i18n 검사와 정본9image build·비특권 실행 및 격리 HTTP/compiled 로그인 화면 검증을 통과했다. 원어민 승인·실제 사용자 GitLab/Keystone 로그인·운영 migration/배포의 새 수용 증거는 아니다.
+
+### 남은 실제 local dev source 통합 (2026-10-19, not deployed)
+- 게시된 `c893591d`와 실제 공유 checkout의 누적 변경을 파일별로 대조하고 원래 public tree·index를 외부 복구 snapshot에 보존했다. 단순히 오래된 전체 tree를 덮어쓰지 않고 현재 번역 초안·local-sync 기록과 더 강한 게시본의 home-first/projectless·owner/ABA·socket-peer 보안 경계를 함께 유지한다.
+- Frontend ingest URL·socket-peer attestation은 protected effective TOML의 명시적 빈 값/false까지 보존하고 backend Settings에서는 정확한 frontend 전용 두 key만 분리한다. Helm public fabric 설정은 지원 key allowlist로 제한하고 stable ifindex·nonzero unicast MAC 없는 flow handoff는 거부하되 다른 host 관측은 보존한다.
+- 인스턴스 metric의 clock-only override를 제거해 같은 시각·다른 날짜의 표와 tooltip을 구분한다. LLDP 물리 케이블 증거는 `physical===true`인 NIC에서만 인정하고 raw neighbor·실패한 directed TCP probe는 별도 관측으로 보존한다. 아홉 언어의 문구·회귀도 통합하며 새 번역은 원어민 검수 전 초안이다.
+- 최종 source의 전체 `test:gate`, Svelte/i18n, 정본9image build·비특권 실행과 격리 HTTP/compiled metric·아홉 언어 docs/login을 검증했다. 근거·경고·미검증 경계는 `docs/testing.md`를 따른다. 이번 작업은 source commit/push이며 사용자 실행 서비스·native IAM·private 설정·SQL·release/tag/main은 변경하지 않는다.
 
 ### 조직 SSO 로그인 진입 분리 (local source)
 - 메인 로그인은 사용자 이름/이메일·비밀번호와 단일 `SSO로 로그인` 버튼만 표시한다. 조직별 GitLab/OIDC 공급자 목록은 명시적으로 연 SSO 선택 화면에서 제공하며 같은 이름은 등록 도메인으로 구분한다.

@@ -1,6 +1,6 @@
 {
 	"items.aodhAlarms": "Aodh-alarmer",
-	"items.gnocchi": "Gnocchi-tjenesten",
+	"items.gnocchi": "Gnocchi-tjeneste",
 	"sections.domainIam": "Domene-IAM",
 	"sections.domains": "Domener",
 	"items.selectDomain": "Bytt eller opprett domene",

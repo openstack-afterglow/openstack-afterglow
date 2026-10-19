@@ -53,7 +53,7 @@
 	"create.keypair": "Cặp khóa (tùy chọn)",
 	"create.stampedeMode": "Chế độ Stampede",
 	"create.stampedeHelp": "Tự động tăng/giảm số nút (VM) khi triển khai pod. Phải cấu hình riêng số lượng tối thiểu/tối đa trong nhóm nút.",
-	"create.stampedeWarning": "⚠ Tính năng này đang trong giai đoạn phát triển. Tính năng được bật theo mặc định và chỉ thêm hoặc xóa nút trong giới hạn min/max của nhóm nút đã bật Stampede. Các nút worker mặc định được tạo ban đầu không tự động bị thu hẹp.",
+	"create.stampedeWarning": "⚠ Tính năng này đang trong giai đoạn phát triển. Tính năng được bật theo mặc định và chỉ thêm hoặc xóa nút trong giới hạn min/max của các nhóm nút đã bật Stampede. Các nút worker mặc định được tạo ban đầu sẽ không bao giờ bị tự động giảm số lượng.",
 	"nodegroup.role": "Vai trò",
 	"nodegroup.agent": "Tác nhân",
 	"nodegroup.server": "Máy chủ",

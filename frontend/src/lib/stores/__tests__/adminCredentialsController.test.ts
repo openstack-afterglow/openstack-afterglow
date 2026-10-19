@@ -9,6 +9,7 @@ import type { CredentialAuthority } from '$lib/types/adminCredential';
 import { t } from '$lib/i18n/ns/admin-identity';
 import { t as dt } from '$lib/i18n/ns/domain-admin';
 import { getLocale, initLocale, intlLocale } from '$lib/i18n/runtime.svelte';
+import { LOCALES } from '$lib/i18n/locales';
 
 const { request } = vi.hoisted(() => ({ request: vi.fn() }));
 vi.mock('$lib/api/adminCredentials', () => ({ credentialRequest: request }));
@@ -253,7 +254,7 @@ describe('credential operator UI', () => {
     await fireEvent.change(screen.getByRole('combobox', { name: t('credentials.type') }), { target: { value: 'cert' } }); expect(screen.getByText(t('credentials.noMatches'))).toBeTruthy();
     expect(request.mock.calls.some(([path]) => path.includes('type=') || path.includes('project_id='))).toBe(false);
   });
-  it.each(['ko', 'en', 'ja', 'zh-CN'] as const)('formats table and detail expiry in %s while retaining the exact ISO timestamp', async locale => {
+  it.each(LOCALES)('formats table and detail expiry in %s while retaining the exact ISO timestamp', async locale => {
     initLocale(locale); authenticate();
     const timestamp = '2031-02-03T04:05:06.123456Z';
     const expiring = { ...app, expires_at: timestamp };

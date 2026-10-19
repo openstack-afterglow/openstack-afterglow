@@ -705,6 +705,25 @@ def test_generated_observation_settings_round_trip_without_public_credentials(ob
         assert key not in json.dumps(public_values)
 
 
+@pytest.mark.parametrize("include_secrets", [False, True])
+def test_helm_fabric_public_values_allow_only_supported_settings(observation_config, include_secrets):
+    from app.models.infrastructure_fabric import FabricSettings
+
+    fabric = observation_config["monitoring"]["infrastructure_fabric"]
+    public_settings = FabricSettings.model_validate(fabric).model_dump(exclude={"targets"})
+    fabric.update(public_settings)
+    fabric["unexpected_credential"] = "private-fabric-sentinel"
+    converted = config2helm.convert(observation_config, include_secrets)
+    assert converted["monitoring"]["infrastructureFabric"] == {
+        config2helm._s(key): value for key, value in public_settings.items()
+    }
+    assert "private-fabric-sentinel" not in json.dumps(converted)
+    if include_secrets:
+        assert converted["secrets"]["infrastructureFabricTargets"] == fabric["targets"]
+    else:
+        assert "secrets" not in converted
+
+
 @pytest.mark.parametrize("claim", ["", "operator-country-data"])
 def test_helm_observation_settings_and_optional_readonly_country_volume(tmp_path, observation_config, claim):
     helm = shutil.which("helm")
@@ -771,8 +790,9 @@ def test_helm_rejects_country_claim_with_unmounted_database_path():
     assert "requires geoipMmdb=/etc/afterglow/geoip/country.mmdb" in rendered.stderr
 
 
+@pytest.mark.parametrize("ingest_url", ["", "https://backend.example.test/api/v1/monitoring/traffic/events"])
 @pytest.mark.parametrize("source", ["", "/operator/country.mmdb"])
-def test_kolla_country_mount_configuration_preserves_other_operator_settings(source):
+def test_kolla_country_mount_configuration_preserves_other_operator_settings(source, ingest_url, monkeypatch):
     import importlib.util
 
     from jinja2 import Environment, StrictUndefined, meta
@@ -801,6 +821,8 @@ def test_kolla_country_mount_configuration_preserves_other_operator_settings(sou
         afterglow_rbd_volume_pools={},
         afterglow_traffic_analytics_geoip_mmdb_source=source,
         afterglow_traffic_analytics_geoip_mmdb_path="/etc/afterglow/geoip/country.mmdb",
+        afterglow_traffic_analytics_ingest_url="http://backend:8000/api/v1/monitoring/traffic/events",
+        afterglow_traffic_analytics_peer_is_socket=True,
     )
     native_text = environment.from_string(template).render(context)
     native = tomllib.loads(native_text)["traffic_analytics"]
@@ -812,12 +834,51 @@ def test_kolla_country_mount_configuration_preserves_other_operator_settings(sou
     spec.loader.exec_module(renderer)
     operator_text = (
         '[traffic_analytics]\ngeoip_mmdb = "/operator/image-country.mmdb"\ncluster_cidrs = ["10.42.0.0/16"]\n'
+        f"frontend_ingest_url = {json.dumps(ingest_url)}\n"
+        "peer_is_socket = false\n"
     )
     operator = tomllib.loads(operator_text)["traffic_analytics"]
     merged = renderer.merge_config(native_text, operator_text)
-    effective = TrafficAnalyticsSettings.model_validate(merged["traffic_analytics"])
+    assert merged["traffic_analytics"]["frontend_ingest_url"] == operator["frontend_ingest_url"]
+    assert merged["traffic_analytics"]["peer_is_socket"] is False
+    effective_config = tomllib.loads(renderer.render_toml(merged))
+    defaults = yaml.safe_load((ROOT / "deploy/kolla/ansible/roles/afterglow/defaults/main.yml").read_text())
+    frontend_environment = defaults["afterglow_service_environments"]["afterglow-frontend"]
+    rendered_environment = {
+        key: environment.from_string(frontend_environment[key]).render(afterglow_effective_config=effective_config)
+        for key in ("TRAFFIC_ANALYTICS_INGEST_URL", "TRAFFIC_ANALYTICS_PEER_IS_SOCKET")
+    }
+    assert rendered_environment == {
+        "TRAFFIC_ANALYTICS_INGEST_URL": ingest_url,
+        "TRAFFIC_ANALYTICS_PEER_IS_SOCKET": "false",
+    }
+    monkeypatch.setattr(app_config, "load_raw_toml", lambda: effective_config)
+    effective = TrafficAnalyticsSettings.model_validate(app_config._load_toml()["traffic_analytics"])
     assert effective.geoip_mmdb == operator["geoip_mmdb"]
     assert effective.cluster_cidrs == operator["cluster_cidrs"]
+
+
+@pytest.mark.parametrize("obsolete_key", ["geoip_csv", "trust_frontend_client_address", "unexpected_key"])
+def test_frontend_deployment_keys_do_not_disable_strict_traffic_validation(monkeypatch, obsolete_key):
+    from pydantic import ValidationError
+
+    from app.models.traffic_analytics import TrafficAnalyticsSettings
+
+    monkeypatch.setattr(
+        app_config,
+        "load_raw_toml",
+        lambda: {
+            "traffic_analytics": {
+                "frontend_ingest_url": "http://backend:8000/api/v1/monitoring/traffic/ingest",
+                "peer_is_socket": True,
+                obsolete_key: "invalid",
+            }
+        },
+    )
+    flat = app_config._load_toml()["traffic_analytics"]
+    assert flat == {obsolete_key: "invalid"}
+    with pytest.raises(ValidationError):
+        TrafficAnalyticsSettings.model_validate(flat)
 
 
 def test_kolla_country_startup_fails_closed_and_tracks_source_identity(tmp_path):

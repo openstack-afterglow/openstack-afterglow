@@ -195,10 +195,14 @@ describe('retained host diagnostics and authorization lifecycle', () => {
 		const table = screen.getByRole('table', { name: t('counters') }), row = within(table).getByRole('row', { name: new RegExp(t('metric.rx_bytes')) });
 		expect(within(row).getByText(t('bytes', { value: (8).toLocaleString(intlLocale()), unit: 'KiB' }))).toBeTruthy(); expect(within(row).getByText(t('unknown'))).toBeTruthy();
 		const neighbors = screen.getByRole('table', { name: t('neighbors') }); expect(within(neighbors).getAllByRole('columnheader')).toHaveLength(3); expect(within(neighbors).queryByText(t('rate'))).toBeNull();
+		expect(within(neighbors).queryByText(t('total'))).toBeNull();
 	});
 	it('preserves outbound hop gaps and actual NIC selection in the trace inspector', async () => {
 		const host = makeHost(); host.traces = [makeTrace()]; const select = vi.fn(), view = render(TraceDetails, { host, verified: true, onselectnic: select });
 		expect(view.container.querySelector('[data-hop="2"]')?.textContent).toContain('*'); expect(view.container.querySelector('[data-hop="3"]')?.textContent).toContain('203.0.113.9');
+		const table = screen.getByRole('table', { name: `${t('outbound')} · 203.0.113.9` });
+		expect(within(table).getAllByRole('row')).toHaveLength(4); expect(within(table).getAllByText('*')).toHaveLength(2);
+		expect(screen.queryByText(t('trace.stale'))).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: 'eno1' })); expect(select).toHaveBeenCalledWith('eno1'); await view.rerender({ host, verified: false, onselectnic: select }); expect(screen.getByText(t('trace.stale'))).toBeTruthy();
 	});
 	it.each(['queued', 'running', 'expired', 'unsupported', 'error'] as const)('retains trace %s without fabricated hops', status => {
@@ -275,6 +279,18 @@ describe('network evidence migrated to the radial workspace', () => {
 		await fireEvent.click(within(list).getByRole('button', { name: edgeLabel(probe, graph, 'pps') }));
 		expect(screen.getAllByText(t('probeNotice')).length).toBeGreaterThan(0); expect(screen.getAllByText(t('probeError.probe_stale')).length).toBeGreaterThan(0);
 		expect(screen.queryByText(t('probe.up'))).toBeNull(); expect(view.container.querySelectorAll('[data-edge-kind="probe"] .motion-flow')).toHaveLength(0);
+	});
+	it('renders an observed failed service-port probe without a reverse or moving edge', async () => {
+		const snapshot = makeSnapshot(), host = snapshot.hosts[0];
+		host.peer_probes = [{ target_host_id: 'storage:outside', address: '10.0.0.50', port: 443, status: 'down', checked_at: 1_800_000_000, latency_ms: null, error: 'connection_refused' }]; read.mockResolvedValue(snapshot);
+		const view = render(InfrastructureTopology); await vi.waitFor(() => expect(diagram()).toBeTruthy());
+		await fireEvent.click(within(screen.getByRole('group', { name: t('workspace.layers') })).getByRole('button', { name: t('workspace.layer.probe') }));
+		const graph = buildRadialGraph(snapshot, true), probes = graph.edges.filter(edge => edge.probe);
+		expect(probes).toHaveLength(1); expect(probes[0].probe).toMatchObject({ source: host.id, target_host_id: 'storage:outside', targetInInventory: false, status: 'down', error: 'connection_refused' });
+		expect(view.container.querySelectorAll('[data-edge-kind="probe"]')).toHaveLength(1); expect(view.container.querySelectorAll('[data-edge-kind="probe"] .motion-flow')).toHaveLength(0);
+		const list = view.container.querySelector('.evidence-list') as HTMLElement; await fireEvent.click(list.querySelector('summary')!);
+		await fireEvent.click(within(list).getByRole('button', { name: edgeLabel(probes[0], graph, 'pps') }));
+		expect(screen.getAllByText(t('probeError.connection_refused')).length).toBeGreaterThan(0);
 	});
 });
 

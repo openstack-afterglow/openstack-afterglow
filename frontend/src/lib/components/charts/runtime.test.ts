@@ -79,13 +79,32 @@ describe('native Bklit chart data boundaries', () => {
 		expect(container.querySelector('path[stroke="var(--color-chart-1)"]')!.getAttribute('d')).toBe('M0,90L400,70');
 		expect(container.querySelector('path[stroke="var(--color-chart-2)"]')!.getAttribute('d')).toBe('M200,80L600,60');
 	});
+
+	it('ignores updates after idempotent teardown of the mounted root', async () => {
+		const spec: ChartSpec = { kind: 'gauge', value: 25, color: 'var(--color-chart-1)' };
+		await draw(spec);
+		expect(container.querySelector('svg')).not.toBeNull();
+		await act(async () => {
+			chart!.destroy();
+			chart!.destroy();
+			chart!.update({ ...spec, value: 75 }, { height: viewport.height, locale: 'en-US', reducedMotion: true });
+		});
+		expect(container.childElementCount).toBe(0);
+	});
+
 	it('retains an early observed spike and each endpoint once when downsampling long histories', () => {
 		const history = Array.from({ length: 720 }, (_, index) => ({ timestamp: index * 3_600_000, value: index === 1 ? 1000 : 10 }));
 		const sampled = decimateTimeSeries(history, 450, ['value']);
+		expect(sampled).toHaveLength(450);
 		expect(sampled).toContain(history[1]);
 		expect(sampled[0]).toBe(history[0]);
 		expect(sampled.at(-1)).toBe(history.at(-1));
 		expect(new Set(sampled.map(row => row.timestamp)).size).toBe(sampled.length);
 		expect(sampled.every((row, index) => index === 0 || row.timestamp > sampled[index - 1].timestamp)).toBe(true);
+	});
+
+	it.each([null, NaN, Infinity])('does not decimate across a missing or nonfinite observation (%s)', (value) => {
+		const history = Array.from({ length: 20 }, (_, timestamp) => ({ timestamp, value: timestamp === 10 ? value : timestamp }));
+		expect(decimateTimeSeries(history, 5, ['value'])).toBe(history);
 	});
 });

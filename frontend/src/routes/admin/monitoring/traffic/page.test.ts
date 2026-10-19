@@ -75,12 +75,12 @@ describe('traffic API to UI', () => {
 	it.each(['disabled', 'unavailable', 'partial'] as const)('renders %s without fake zero totals or countries', async (state) => {
 		get.mockResolvedValue(observations({ state, totals: null, origins: null, countries: [], routes: [], series: [] })); render(Page);
 		await screen.findByText(t(`states.${state}`), { exact: false });
+		await screen.findByText(t('empty'));
 		expect(screen.queryByText('/admin')).toBeNull();
 		const origins = within(screen.getByText(t('origins.internal'), { selector: 'dt' }).closest('dl')!);
 		for (const origin of ['internal', 'external', 'unknown', 'legacy_unclassified'] as const) {
 			expect(origins.getByText(t(`origins.${origin}`), { selector: 'dt' }).nextElementSibling?.textContent).toBe(t('unknown'));
 		}
-		await screen.findByText(t('empty'));
 		expect(screen.getAllByText(t('unknown')).length).toBeGreaterThan(0);
 	});
 	it('masks old authority immediately and drops delayed results across an A→B→A actor transition', async () => {

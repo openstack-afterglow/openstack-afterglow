@@ -82,56 +82,6 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-async function renderLanguage(request: LanguageRequest): Promise<Response> {
-	const { handle } = await loadHandle();
-	return handle({
-		event: request.event,
-		resolve: async (_event, options) => {
-			const html = '<html lang="%afterglow.lang%"></html>';
-			return new Response(await options?.transformPageChunk?.({ html, done: true }) ?? html);
-		},
-	});
-}
-
-describe('shared interface language', () => {
-	it.each(LOCALES)('keeps saved %s across public docs, login and authenticated pages', async (locale) => {
-		for (const path of ['/', '/docs', '/docs/nova', '/login', '/dashboard']) {
-			const request = createRequest(`https://frontend.example.com${path}`, {
-				[LOCALE_COOKIE]: locale, afterglow_session: 'synthetic-session',
-			});
-			const response = await renderLanguage(request);
-			expect(await response.text()).toBe(`<html lang="${locale}"></html>`);
-			expect(request.event.locals.locale).toBe(locale);
-		}
-	});
-
-	it.each(LOCALES)('saves explicit docs %s for subsequent login and console requests', async (locale) => {
-		const request = createRequest(`https://frontend.example.com/docs/nova?lang=${locale}`, { [LOCALE_COOKIE]: 'en' });
-		expect(await (await renderLanguage(request)).text()).toBe(`<html lang="${locale}"></html>`);
-		expect(request.cookies.set).toHaveBeenCalledWith(LOCALE_COOKIE, locale, {
-			path: '/', maxAge: 31536000, sameSite: 'lax', httpOnly: false, secure: true,
-		});
-		for (const path of ['/login', '/dashboard']) {
-			const next = createRequest(`https://frontend.example.com${path}`, { ...request.jar, afterglow_session: 'synthetic-session' });
-			expect(await (await renderLanguage(next)).text()).toBe(`<html lang="${locale}"></html>`);
-		}
-	});
-
-	it('does not let a preloaded docs response overwrite the saved preference', async () => {
-		const request = createRequest('https://frontend.example.com/docs?lang=nb', { [LOCALE_COOKIE]: 'ms' });
-		Object.defineProperty(request.event, 'isDataRequest', { value: true });
-		expect(await (await renderLanguage(request)).text()).toBe('<html lang="nb"></html>');
-		expect(request.cookies.set).not.toHaveBeenCalled();
-		expect(request.jar[LOCALE_COOKIE]).toBe('ms');
-	});
-
-	it('retains the saved language when a docs selector is unsupported', async () => {
-		const request = createRequest('https://frontend.example.com/docs?lang=untrusted', { [LOCALE_COOKIE]: 'sw' });
-		expect(await (await renderLanguage(request)).text()).toBe('<html lang="sw"></html>');
-		expect(request.cookies.set).not.toHaveBeenCalled();
-	});
-});
-
 describe('frontend health', () => {
 	it('returns health JSON without a browser session', async () => {
 		const { handle } = await loadHandle();
@@ -220,18 +170,19 @@ describe('shared browser language preference', () => {
 		} });
 	}
 
-	it.each(['ko', 'en', 'ja', 'zh-CN'])('renders docs, login and authenticated pages in the saved %s language', async (locale) => {
+	it.each(LOCALES)('renders docs, login and authenticated pages in the saved %s language', async (locale) => {
 		const { handle } = await loadHandle();
-		for (const path of ['/docs', '/docs/nova', '/login', '/dashboard']) {
+		for (const path of ['/', '/docs', '/docs/nova', '/login', '/dashboard']) {
 			const request = createRequest(`https://frontend.example.com${path}`, {
-				afterglow_locale: locale, afterglow_session: 'active-session',
+				[LOCALE_COOKIE]: locale, afterglow_session: 'active-session',
 			});
 			const response = await renderLanguage(handle, request);
 			expect(await response.text()).toBe(`<html lang="${locale}"></html>`);
+			expect(request.event.locals.locale).toBe(locale);
 		}
 	});
 
-	it.each(['ko', 'ja', 'zh-CN'])('persists an explicit docs choice of %s for subsequent login and console requests', async (locale) => {
+	it.each(LOCALES)('persists an explicit docs choice of %s for subsequent login and console requests', async (locale) => {
 		const { handle } = await loadHandle();
 		const docs = createRequest(`https://frontend.example.com/docs/nova?lang=${locale}`, { afterglow_locale: 'en' });
 		expect(await (await renderLanguage(handle, docs)).text()).toBe(`<html lang="${locale}"></html>`);
@@ -244,20 +195,21 @@ describe('shared browser language preference', () => {
 		}
 	});
 
-	it('does not change the saved choice while preloading another documentation language', async () => {
+	it.each([['ja', 'en'], ['nb', 'ms']] as const)('preloads docs language %s without changing saved %s choice', async (selected, saved) => {
 		const { handle } = await loadHandle();
-		const preload = createRequest('https://frontend.example.com/docs/nova?lang=ja', { afterglow_locale: 'en' });
+		const preload = createRequest(`https://frontend.example.com/docs/nova?lang=${selected}`, { [LOCALE_COOKIE]: saved });
 		preload.event.isDataRequest = true;
-		expect(await (await renderLanguage(handle, preload)).text()).toBe('<html lang="ja"></html>');
+		expect(await (await renderLanguage(handle, preload)).text()).toBe(`<html lang="${selected}"></html>`);
 		expect(preload.cookies.set).not.toHaveBeenCalled();
+		expect(preload.jar[LOCALE_COOKIE]).toBe(saved);
 		const login = createRequest('https://frontend.example.com/login', preload.jar);
-		expect(await (await renderLanguage(handle, login)).text()).toBe('<html lang="en"></html>');
+		expect(await (await renderLanguage(handle, login)).text()).toBe(`<html lang="${saved}"></html>`);
 	});
 
-	it('ignores an unsupported docs language instead of discarding the saved choice', async () => {
+	it.each([['en-US', 'ja'], ['untrusted', 'sw']] as const)('ignores unsupported docs language %s instead of discarding saved %s', async (unsupported, saved) => {
 		const { handle } = await loadHandle();
-		const request = createRequest('https://frontend.example.com/docs?lang=en-US', { afterglow_locale: 'ja' });
-		expect(await (await renderLanguage(handle, request)).text()).toBe('<html lang="ja"></html>');
+		const request = createRequest(`https://frontend.example.com/docs?lang=${unsupported}`, { [LOCALE_COOKIE]: saved });
+		expect(await (await renderLanguage(handle, request)).text()).toBe(`<html lang="${saved}"></html>`);
 		expect(request.cookies.set).not.toHaveBeenCalled();
 	});
 });
@@ -552,7 +504,7 @@ describe('traffic reporter hook integration', () => {
 		expect(response.status).toBe(302); expect(response.headers.get('location')).toBe('/login'); expect(resolve).not.toHaveBeenCalled();
 		expect(event.getClientAddress).not.toHaveBeenCalled(); expect(send).toHaveBeenCalledTimes(1);
 		const payload = JSON.parse(send.mock.calls[0][1]!.body as string);
-		expect(payload).toMatchObject({ schema_version: 2, status: 302, route: '/admin', peer_ip: null, peer_verified: false, request_bytes: null, response_bytes: 0, pageview: false });
+		expect(payload).toMatchObject({ schema_version: 2, status: 302, route: '/admin', peer_ip: null, peer_verified: false, forwarded_for: null, request_bytes: null, response_bytes: 0, pageview: false });
 		expect(JSON.stringify(payload)).not.toMatch(/private|secret|cookie/);
 	});
 	it('passes through rendered HTML bytes and generated CSP before nonblocking ingest', async () => {
