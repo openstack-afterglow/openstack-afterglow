@@ -9,6 +9,7 @@
 
 ### 추가 언어 dev 통합 (not deployed)
 - `i18n` worktree에 미커밋 상태로 남아 있던 스와힐리어·노르웨이어 보크몰·말레이어·베트남어·벵골어의 UI/공개 가이드와 공용 언어 선호 변경을 dev에 통합한다. 기존 네 언어를 포함한 총 아홉 언어의 실제 compiled 화면·메뉴·SSR·언어 유지 검증은 `docs/testing.md`에 기록한다. 원어민 검수 전 초안 상태와 운영 배포 경계는 유지한다.
+- 병합 후 CI에서 발견한 frontend runtime npm10 `edgesOut` 설치 실패는 기존 npm lock 복사와 `npm ci --omit=dev --ignore-scripts`로 수정한다. 의존성 graph는 유지하고 lock의 두 version metadata만1.30.19로 맞춘다. 실제 amd64/arm64 image build·runtime HTTP와 전체 gate를 검증했다.
 
 ### 벵골어 추가 (local, not deployed)
 - 방글라데시용 벵골어 `bn`(বাংলা, Intl `bn-BD`)를 추가해 총 아홉 언어를 지원한다. 전체40 UI namespace·10,022문구,15개 공개 가이드·1,152번역 항목과118개 용어를 기존 번역·검색·CSV 경로에 연결한다.

@@ -26,6 +26,18 @@ nav_order: 8
 
 정제된 JSON·실제 PNG: `~/.local/share/afterglow-proofs/i18n-dev-merge-20261019/`의 `compiled-responsive.json`, `language-persistence.json`, `ssr.json`, `native-keyboard.json`. 선택적 gbrain CLI는 PATH에 없어 indexing/시작 지침 변경을 하지 않았다.
 
+### CI frontend runtime 설치 후속 수정
+
+병합 커밋 `cd3062158575034e24774d0b126bd1f1faedcd19`의 [Actions 39252951448](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/39252951448)는 모든 테스트 lane과 Bun frontend compile을 통과했지만 Node20-Alpine runtime의 lock 없는 `npm install --omit=dev --ignore-scripts`에서 npm10.8.2 Arborist `Cannot read properties of null (reading 'edgesOut')`로 실패했다. 이 실패를 번역·compile 실패나 성공한 이미지 발행으로 보고하지 않는다.
+
+최소 수정은 기존 `package-lock.json`을 runtime에 함께 복사하고 `npm ci --omit=dev --ignore-scripts`를 사용하는 것이다. 두 root version metadata만 현재 manifest의1.30.19로 맞췄고 JSON 대조로 의존성 graph 불변을 확인했다. Bun lock/build·Node20 base·nonroot user·entrypoint·API·인가·schema·배포 topology는 유지한다.
+
+- 실제 canonical `Dockerfile --target frontend`의 `linux/amd64`·`linux/arm64` 빌드가 모두 성공했다. 변경된 runtime 설치 단계가 각각241packages를 설치했으며 fake/no-op/cache-only 성공이 아니다.
+- 두 최종 이미지를 소유 loopback container로 실행해 Node20.20.2의 실제 `x64`/`arm64`, nonroot UID1001, 설치된 `smol-toml`의 TOML parse와 Bengali `১,২৩৪.৫` 서식을 확인했다. 각 이미지에서9locales×로그인/docs/Manila의27HTTP응답, 총54개에서200과 초기 HTML lang을 확인했다. 기존 서비스·DB·볼륨·설정은 연결하거나 교체하지 않았다.
+- 수정 source digest `1c7ff2f7792c112130d539cda0e016c0939f971ee2ff4b4efcad48de79b46180`/3,104files에서 전체 `test:gate`가 다시 exit0이었다. Source-only216조건 browser proof와 이번 실제 image/HTTP proof는 구분한다. 운영 배포·실제 인증/provider·원어민 검수는 여전히 미실행이다.
+- 근거: 같은 외부 proof directory의 `frontend-amd64-build.log`, `frontend-arm64-build.log`, `frozen-install-gate.log`, `runtime-image-smoke.json`. 기존 lock의 npm audit 결과2low/1moderate는 보존했고 광역 dependency update나 audit-fix는 하지 않았다.
+
+
 
 ## 벵골어 추가 검증 (2026-10-16; local-only)
 

@@ -234,9 +234,9 @@ FROM node:20-alpine AS frontend
 WORKDIR /app
 
 COPY --from=frontend-builder /app/build ./build
-COPY --from=frontend-builder /app/package.json ./
+COPY --from=frontend-builder /app/package.json /app/package-lock.json ./
 COPY --from=frontend-builder /app/scripts ./scripts
-RUN npm install --omit=dev --ignore-scripts \
+RUN npm ci --omit=dev --ignore-scripts \
     && adduser -D appuser \
     && chown -R appuser:appuser /app
 

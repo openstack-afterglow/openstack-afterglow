@@ -1001,6 +1001,8 @@ openstacksdk `Proxy.request`의 raw `get/put/delete` 기본값은 `raise_exc=Fal
 
 `Dockerfile`은 backend/worker에 Python 3.12 slim, frontend build에 Bun 1, runtime에 Node 20을 사용한다. Backend의 OpenTofu acquisition은 runtime package 설치와 분리된 stage에서 BuildKit `TARGETARCH`를 `amd64`/`arm64`로 fail-closed 매핑하고, transient GitHub 오류를 bounded retry하며, 공식 release manifest에서 pin한 architecture별 SHA-256을 확인한 binary만 runtime stage에 복사한다. 현재 [`docker-build.yml`](.github/workflows/docker-build.yml)은 `linux/amd64` matrix만 활성화하며 arm64 항목은 주석 처리되어 있지만, dev source build는 native `arm64`도 지원한다. GitHub Actions가 이미지를 GHCR로 push하고, 배포 구성은 Kubernetes/Kustomize·Helm/ArgoCD 또는 [`deploy/kolla/site.yml`](deploy/kolla/site.yml)의 custom service role 경계를 사용한다. Kolla는 `afterglow`, `waygate`, `drover`, `lumen`, `palimpsest` inventory group을 별도로 검사한다. `deploy/kolla/install.sh`가 stock site import와 inventory/globals.d 연결을 준비하면 `/etc/kolla`에서 `kolla-ansible deploy -i multinode`가 custom 서비스를 함께 실행한다. 서비스·HAProxy 플레이는 `become: true`로 toolbox와 중첩/위임 task의 권한을 선언하며, operator 계정의 기존 sudo 권한을 전제로 한다. 형제 역할은 각 서비스 root distribution(`drover`, `lumen`, `waygate`, `palimpsest`)에서 설치되고 release archive wheel은 tag version과 일치하는 immutable GitHub URL·SHA-256을 사용한다.
 
+Frontend runtime stage는 builder의 `package.json`·`package-lock.json`을 함께 복사해 `npm ci --omit=dev --ignore-scripts`로 기존 npm graph를 설치한다. Bun build의 frozen `bun.lock`·Node20-Alpine base·nonroot 실행·scripts와 배포 경계는 유지한다. Lock 없이 재해석하던 npm10 Arborist `edgesOut` CI 실패의 국소 수정이며 API·인가·schema·서비스 topology에는 구조 영향이 없다.
+
 Kolla Afterglow `deploy`·`reconfigure`는 config 생성 뒤, `upgrade`는 새 image pull 뒤 기존 생성 config로 backend 시작·policy seed 전에 package image의 일회성 DB bootstrap(`create_tables`)을 실행한다. Bootstrap은 실패 시 rollout을 차단하며 `auto_create_tables=false`인 운영 backend에도 누락된 신규 ORM table을 생성한다. 기존 테이블의 컬럼 변경은 `create_all`이 처리하지 않으므로 `backend/migrations/manifest.txt`의 해당 SQL을 배포 전에 별도로 적용해야 한다. 2026-09-25 실제 `POST /api/v1/instances/github-users/lookup` 503은 GitHub API 장애가 아니라 운영 DB `vm_github_ssh_users` 누락(MariaDB 1146)으로 history 저장이 실패한 사건이다. checksum을 대조한 `080_vm_github_ssh_users.sql`의 한 테이블만 운영 DB에 적용하고 공개 GitHub SSH 조회→임시 history 기록·조회·삭제를 검증했으며 backend는 healthy/restart 0이었다. 이 운영 복구는 아직 Kolla 역할 변경의 운영 rollout 증거가 아니다.
 
 2026-10-06 Palimpsest endpoint 연결 검토: Kolla의 명시적 `palimpsest_public_endpoint_url`을 `afterglow_service_palimpsest_internal_url`의 기본값으로 사용하고, 활성·nonempty일 때 base/final `[services] palimpsest_internal_url`에 함께 렌더링한다. 별도 신뢰 HTTPS BFF URL은 해당 Afterglow 변수로 지정할 수 있고, URL이 없거나 비면 key를 생략해 기존 운영자 TOML을 보존한다. 형제 Palimpsest 역할은 공개 HAProxy hostname을 같은 URL에서 유도하며 sample globals에도 동일한 유도식을 넣어 기존 pinned 역할을 지원한다. 공개 노출 토글·기존 HTTPS origin 일치 precheck·원본 subject/no-catalog 경계·DNS/TLS·reader/protected-ID·Hub volume 소유권은 유지된다. 구조 영향은 두 배포 설정 경계의 연결뿐이며 API·인증·schema·애플리케이션 이미지는 변경하지 않는다. 실제 Ansible 11개 구성/거부 조건과 stock Kolla template/map을 렌더링했고, 격리 HAProxy 3.2.25의 amd64/arm64 실제 컨테이너에서 생성 TOML URL의 검증된 HTTPS host routing 200·다른 hostname 404를 확인했다. Upstream은 합성 HTTP fixture이며 운영 rollout·실제 Hub 패키지 인증 수용·이미지 업그레이드 증거가 아니다.
@@ -1317,9 +1319,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "8ba5b3fcb181cc5a201f6775b8c0c324065e641c24cbaf82b7d0c03a7ee09f50",
-  "reviewed_at": "2026-10-19T10:49:37Z",
-  "summary": "Integrate unpublished sw/nb/ms/vi/bn UI and public-guide catalogs onto dev 08e27242; review shared locale cookie, SSR, document navigation and existing regression changes; frontend localization only, no API/auth authority/schema/dependency/deployment topology changes"
+  "source_sha256": "1c7ff2f7792c112130d539cda0e016c0939f971ee2ff4b4efcad48de79b46180",
+  "reviewed_at": "2026-10-19T12:41:21Z",
+  "summary": "Fix frontend runtime npm10 edgesOut CI install by copying the existing npm lock and using frozen npm ci; align only root lock version metadata, preserve dependency graph and Bun build; no API/auth/schema/service topology change"
 }
 ```
 <!-- architecture-review:end -->

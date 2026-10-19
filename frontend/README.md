@@ -24,6 +24,8 @@ npm run test:watch  # vitest watch 모드
 
 `package.json`의 dependency/override 선언과 두 lockfile(`package-lock.json`, `bun.lock`)을 함께 유지한다. npm lock의 root와 `packages[""]` version은 manifest와 같아야 한다. Bun lock에는 root version 필드가 없고 두 package manager의 중첩 graph는 다를 수 있지만, 대상 package의 모든 사본은 patched floor를 충족해야 한다.
 
+Frontend runtime 이미지는 builder의 `package.json`과 기존 `package-lock.json`을 함께 복사하고 `npm ci --omit=dev --ignore-scripts`로 설치한다. Lock 없는 runtime 재해석을 하지 않으며 Bun build는 기존 frozen `bun.lock`을 그대로 사용한다.
+
 | Package | Floor | 경로 |
 | --- | --- | --- |
 | `dompurify` | `^3.4.16` | 직접 의존성 + `overrides` (Mermaid의 중첩 사본까지 같은 patched 버전으로 고정) |
