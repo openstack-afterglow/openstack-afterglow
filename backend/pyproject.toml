@@ -32,7 +32,7 @@ dependencies = [
     "aiosmtplib>=3.0.0",
     "openpyxl>=3.1.5",
     # BFF-side MCP control plane and bounded content inspection; no model/agent runtime.
-    "mcp==1.28.1",
+    "mcp==1.30.0",
     "jsonschema==4.26.0",
     "beautifulsoup4==4.14.3",
     "puremagic==1.30",
