@@ -1,0 +1,13 @@
+{
+	"run.reloadRequired": "চ্যাট রানের জার্নাল আর পাওয়া যাচ্ছে না; কথোপকথনটি পুনরায় লোড করুন",
+	"protocol.invalidDescriptor": "চ্যাট রানের বিবরণীটি বৈধ নয়",
+	"http.requestFailed": "চ্যাটের অনুরোধ ব্যর্থ হয়েছে",
+	"stream.unterminatedFrame": "অসমাপ্ত SSE ফ্রেম",
+	"stream.disconnected": "চ্যাট ইভেন্ট স্ট্রিমের সংযোগ বিচ্ছিন্ন হয়েছে",
+	"stream.invalidJson": "চ্যাট ইভেন্টটি বৈধ JSON নয়",
+	"stream.idMismatch": "SSE ইভেন্টের আইডি মেলেনি",
+	"stream.typeMismatch": "SSE ইভেন্টের ধরন মেলেনি",
+	"stream.runMismatch": "SSE ইভেন্টের রান মেলেনি",
+	"protocol.sequenceGap": "চ্যাট ইভেন্টের ক্রমে ফাঁক রয়েছে",
+	"reducer.runMismatch": "চ্যাট ইভেন্টের রান মেলেনি"
+}

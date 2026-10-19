@@ -14,7 +14,7 @@ import { messageArguments, messageRichErrors, messageTags, parseMessage } from '
 
 export const I18N_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/lib/i18n');
 /** Must equal LOCALES in src/lib/i18n/locales.ts (asserted by the catalog test). */
-export const LOCALES = ['ko', 'en', 'ja', 'zh-CN'];
+export const LOCALES = ['ko', 'en', 'ja', 'zh-CN', 'sw', 'nb', 'ms', 'vi', 'bn'];
 export const SOURCE_LOCALE = 'ko';
 export const TRANSLATION_LOCALES = LOCALES.filter((locale) => locale !== SOURCE_LOCALE);
 

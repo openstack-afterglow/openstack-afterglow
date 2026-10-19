@@ -6,6 +6,77 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 추가 다섯 언어 dev 통합 검증 (2026-10-19; local-only)
+
+`origin/i18n`의 기존 네 언어 커밋 `88113fb8`은 이미 `origin/dev`의 조상이다. 미반영된 변경은 별도 `afterglow-i18n` worktree의 미커밋 30개 tracked 파일과 243개 신규 파일이었다. 최신 fetched dev `08e272422cd855b30d39929c24993047ec0cd6ad`를 기준으로 격리 clone에 이 273개 파일만 byte-identical하게 옮겼다. 원래 worktree의 source/index와 공유 dirty dev checkout, private 설정은 수정하지 않았다. 기존 OpenSpec 두 archive의 과거 검증은 아래 새 실행과 구분해 보존한다.
+
+| 검증 경계 | 실제 관측 |
+|---|---|
+| 번역 검사 | `i18n:check` 0 errors/0 warnings, 40 namespaces/10,022 source messages; `i18n:scan` 1,103 files/하드코딩 한국어 0. |
+| 관련 회귀·컴파일 | canonical frontend cwd의 10 files/207 tests 통과. Svelte check 2,554 files/0 errors/기존 3 warnings, production build·adapter-node 완료. |
+| 전체 프로젝트 gate | 최종 `npm run test:gate` 성공. Orchestration 175, Kolla 27 + Python resolver 11, shell CLI 20 passed/PowerShell 36 skipped, backend unit 6,781 passed/95 skipped, frontend 370 files/3,704 tests + Node runner 9, consumer contracts 174, disposable MariaDB/PostgreSQL/Redis functional 157 passed/29 deselected, Ruff check/format 639 files 통과. 관련 207 tests는 전체 frontend 결과와 중복 합산하지 않는다. |
+| Architecture | 동일 source digest `8ba5b3fcb181cc5a201f6775b8c0c324065e641c24cbaf82b7d0c03a7ee09f50`/3,104 files의 working guard 통과. Frontend 현지화 경계만 확장하며 backend/API·인가·schema·dependency·배포 topology에는 구조 영향이 없다. |
+| 실제 compiled 화면 | Node adapter를 loopback 4199에서 실행하고 Chromium 150에서 9 locales × 2 themes × 390/768/1440px × 메인/로그인/docs/tutorial console의 216조건을 확인했다. 각 조건의 실제 pathname, 9개 언어 항목, 최소 44px 행과 viewport 내 메뉴를 검증했으며 document 가로 overflow는 0이었다. |
+| 선택·유지 동선 | 추가 5개 언어를 실제 로그인 메뉴에서 선택 → 언어 없는 docs → Manila 가이드에서 다음 언어 선택 → 로그인 복귀·reload를 검증했다. 번역된 로그인 버튼·문서 제목, 공용 쿠키·HTML lang과 hydrated reader query/fragment를 확인했다. |
+| SSR·native·keyboard | 9 locales × 로그인/docs/Manila 27개 HTTP 응답의 초기 lang을 확인했다. 명시적 docs 선택의 1년/Path=/SameSite=Lax 쿠키와 data preload의 선호 미변경을 검증했다. JS 없는 docs 선택은 article·reader query와 다음 로그인 언어를 유지했다. Fragment는 서버에 전달되지 않아 no-JS 링크에서는 소실되며 hydrated 동선의 보존과 구분한다. End/Enter의 마지막 Bengali 선택과 trigger focus 복귀를 확인했다. |
+
+실제 UI·HTTP·Node runtime의 증거이며 console은 내장 tutorial의 **합성 identity/data**다. 나머지 API는 외부 호출을 막고 unavailable 응답을 사용했다. 실제 Keystone 로그인, backend 데이터·provider, 원어민 번역 승인 또는 운영 배포의 수용 증거가 아니다. 번역은 기존 draft 상태를 유지한다. API·인가·schema·dependency·배포 topology 변경은 없으며 이번 승인 범위는 dev 통합·push이고 main merge·버전/tag·운영 배포는 포함하지 않는다.
+
+초기 잘못된 root cwd의 Vitest 실행은 frontend alias/Svelte 설정을 읽지 못했으므로 제외했다. 최초 전체 gate는 새 clone의 pytest 미설치에서 중단되어 frozen `dev` extra를 설치했다. 초기 browser matrix는 tutorial session이 로그인 redirect를 유발할 수 있어 제외하고, 조건마다 소유 storage/cookie를 초기화하고 실제 pathname을 검사하는 위 216조건으로 대체했다. No-JS fragment 보존을 요구한 throwaway assertion은 실패했으며 위의 정확한 관측 경계로 정정했다. 소스 결함을 숨기거나 이 실패들을 성공으로 집계하지 않는다.
+
+정제된 JSON·실제 PNG: `~/.local/share/afterglow-proofs/i18n-dev-merge-20261019/`의 `compiled-responsive.json`, `language-persistence.json`, `ssr.json`, `native-keyboard.json`. 선택적 gbrain CLI는 PATH에 없어 indexing/시작 지침 변경을 하지 않았다.
+
+
+## 벵골어 추가 검증 (2026-10-16; local-only)
+
+`add-bn-locale`는 별도 `/Users/pieroot/code/afterglow-i18n`의 `i18n`에서 기존 여덟 언어 구현에 벵골어(방글라데시)를 추가했다. 시작·최종 fetch의 `origin/dev`는 모두 `08e272422cd855b30d39929c24993047ec0cd6ad`이고 최종 merge는 `Already up to date`, ancestry check는 exit0이었다. Locale `bn`, 원어 메뉴 `বাংলা`, Intl `bn-BD`이며 기존 공용 쿠키·SSR·namespace ICU·typed guide·검색·CSV 경로를 재사용한다.
+
+40개 UI namespace의10,022문구,15개 가이드의5개 dictionary·1,152항목과118개 용어를 제공한다. `i18n:report -- --locale bn`은10,022draft·0reviewed·0outdated·0missing이었다. 모든 번역은 기계 작성 초안이며 자동 구조·의미 대조는 원어민 검수 승인이 아니다.
+
+| 검증 경계 | 실제 관측 |
+|---|---|
+| 번역·source guard | `i18n:check`0errors/0warnings·40namespaces/10,022source messages; `i18n:scan`1,103files/hard-coded Korean0. Guide dictionary1,152항목의 source key 순서·누락·빈 값·한글 잔존0. |
+| Frontend 회귀 | exact docs search1file/29tests → 관련8files/189tests → 전체370Vitest files/3,704tests와 Node file-log runner9tests 통과. 포함된 selector를 별도 합산하지 않는다. |
+| Compiler·build | Node24.14.1에서 `npm run check`0errors/기존3warnings(`DocCodeBlock`, `WizardStep5Config`, `ProjectUsageTable`), production build·adapter-node 완료. 실제 `node build`를 loopback4188에서 실행했다. |
+| 실제 사용자 동선 | Bengali 로그인 선택→언어 없는 docs→`Cinder স্ন্যাপশট` 검색·가이드→합성 로그인→콘솔 reload→docs 복귀·콘솔 복귀→실제 logout confirmation에서 `html.lang`/공용 쿠키 유지. Hydrated Manila 언어 왕복은 path/query/fragment를 보존했다. |
+| Compiled 반응형 | 9locales·2themes·landing/login/docs/console의248조건: 기존8언어는320/768/1024px, Bengali는320/390/767/768/1023/1024/1440px. 가로 document overflow0,9언어 항목·최소44px·viewport-bounded menu. 콘솔 geometry는 disposable synthetic session을 주입했으며 실제 fixture 로그인은 별도 동선으로 검증했다. |
+| Native·keyboard | JavaScript를 끈 실제 docs 언어 링크가 Bengali 쿠키와 reader query를 갱신하고 다음 login SSR도 Bengali였다.320×450px에서 End/Enter로 마지막 বাংলা 선택·세로 스크롤 접근, Escape refocus·outside dismissal을 확인했다. |
+| HTTP·Intl | 15guides×9locales를 포함한180개 SSR 응답에서 HTML lang·정상200/문서404 확인. 명시적 `lang=bn`은1년 Max-Age·Path=/·SameSite=Lax 쿠키를 설정했다. 실제 Node/Chromium의 `bn-BD` 숫자·날짜는 벵골 문자로 표시됐다. |
+| Architecture·index | Working stamp와 temporary-index staged guard 모두 `8ba5b3fcb181cc5a201f6775b8c0c324065e641c24cbaf82b7d0c03a7ee09f50`/3,104source files로 통과. 실제 index 전후 SHA-256 동일, temporary index 제거. |
+
+Browser는 실제 Chromium150의 compiled UI이며 로그인/me/logout만 합성 응답이다. Backend 데이터는 의도적으로503/unavailable이므로 실제 데이터·차트·Keystone/provider·운영 인증 수용이나 console-error-free를 주장하지 않는다. 관측한 최종 bounded error 기록에는 pageerror가 없지만 network 실패가 존재한다. 초기 단일 대형 matrix run은 timeout으로 결과가 반환되지 않고 persistent fixture routes도 소실되어 후속 identity 읽기가 실패했다. 이 실행을 통과로 세지 않고 fixture를 복구해 locale별 bounded run과 매 조건별 JSON receipt로 최종248조건을 완료했다. Bun의 Intl 숫자는 Latin 자릿수를 기본으로 써 초기 throwaway assertion이 실패했으나 실제 서비스 Node와 Chromium은 `bn-BD` Bengali 자릿수·월명으로 확인했다. 지역 서식 결과를 특정 엔진 전체의 동일 bytes로 강제하지 않는다.
+
+전체 `npm run test:gate`·실제 backend/provider·운영 배포는 수행하지 않았다. 커밋·push·실제 index staging 없이 현지화 worktree의 기존 변경을 보존했다. 소유 frontend service·Chromium·scratch profile을 정리했고 proof만 유지한다. 선택적인 gbrain sync는 CLI가 `ENOENT`여서 실행하지 않았으며 시작 지침 파일을 바꾸지 않았다.
+
+증거: `~/.local/share/afterglow-proofs/add-bn-locale-20261016/`의 `browser-verification.json`, `compiled-responsive-final.json`, `intl-smoke.json`, `guide-data-integrity.json`, `architecture-guard.json`, test/check/build 로그와 실제 PNG. OpenSpec 검증 기록은 [archived verification](../openspec/changes/archive/2026-10-16-add-bn-locale/verification.json)에 보존한다.
+
+
+## 스와힐리어·노르웨이어·말레이어·베트남어 추가 검증 (2026-10-16; local-only)
+
+`add-sw-nb-ms-vi-locales`는 별도 `/Users/pieroot/code/afterglow-i18n`의 `i18n`에서 진행했다. 시작·최종 fetch의 최신 dev는 모두 `08e272422cd855b30d39929c24993047ec0cd6ad`이며 최종 merge는 `Already up to date`, ancestry check는 exit0이었다. 추가 언어는 탄자니아용 Kiswahili `sw`/`sw-TZ`, Norsk bokmål `nb`/`nb-NO`, 말레이시아용 Bahasa Melayu `ms`/`ms-MY`, Tiếng Việt `vi`/`vi-VN`이다. 기존 네 언어와 같은 namespace·ICU·typed guide·CSV 경로를 사용한다.
+
+새 언어마다40 UI namespace의10,022문구와15개 가이드에 필요한5개 dictionary·1,152항목을 제공한다. `i18n:report -- --locale sw,nb,ms,vi`는 각10,022 draft·0reviewed·0outdated·0missing이었다. 이는 기계 작성 초안이며 원어민 의미·용어·문체 검수가 완료됐다는 뜻이 아니다.
+
+| 검증 경계 | 실제 관측 |
+|---|---|
+| 번역·source guard | `i18n:check`0errors/0warnings·40namespaces/10,022source messages, `i18n:scan`1,097files/hard-coded Korean0. |
+| Frontend 회귀 | 관련8files/164tests, 전체370Vitest files/3,679tests와 Node file-log runner9tests 통과. 관련 회귀는 전체 suite와 중복 집계하지 않는다. |
+| Compiler·build | Node24.14.1에서 최종 `npm run check` exit0·0errors/기존3warnings(`DocCodeBlock`, `WizardStep5Config`, `ProjectUsageTable`). Vite8.2.2 production build와 adapter-node 완료(`artifact://222`), 실제 `node build`를 loopback4187에서 실행했다. |
+| 실제 사용자 동선 | 새 네 언어의 로그인 선택→언어 없는 docs→본문 검색·Cinder 가이드→합성 로그인→콘솔 reload→docs 복귀·logout에서 `html.lang`/공용 쿠키 유지. Native no-JS docs 선택4건,8항목 End/ArrowUp/Enter·Escape refocus·밖 클릭,320×450px의 마지막 항목 스크롤 접근 확인. |
+| Source 반응형 | 새4locales×2themes×320/390/767/768/1023/1024/1440px×landing/login/docs/console의224조건. Document 가로 overflow0,8항목·44px 최소 행 높이와 viewport-bounded menu 확인. |
+| Compiled 반응형 | 전체8locales×2themes×320/768/1024px×같은4surfaces의192조건. 가로 overflow0, 메뉴 경계·8항목·44px 행 높이와 관측한 unhandled runtime event0. Identity는 합성이며 정상 backend data/실서비스 chart rendering 검증으로 확대하지 않는다. |
+| 실제 SSR·공유 URL | Source56개 응답, compiled160개 응답에서 cookie locale과 초기 HTML language·정상200/문서404를 확인했다. Compiled에는15guides×8locales가 포함된다. 명시적 docs 선택의1년/Path=/SameSite=Lax 응답과 no-JS 쿠키 갱신, hydrated Manila 문서의 path/query/fragment 유지·한국어 명시 선택→콘솔 복귀를 확인했다. |
+| Architecture·index | Working stamp와 격리 temporary-index staged guard가 같은 `f20bc41cf8e1208a35a184b3e838da48e9528b87573785be4ee117b5b00a4d06`/3,057source files로 통과했다. 실제 worktree index의 전후 SHA-256이 같고 temporary index를 제거했다. |
+
+초기 isolated `node_modules`가 frozen npm lock과 달라 React import suite2개와 missing-module type diagnostics가 실패했다. 소유 dev server를 중지한 뒤 `npm ci --no-audit --no-fund`로437packages를 설치하여 최종 suite/check를 통과했다. `package.json`·`package-lock.json`·`bun.lock` SHA는 전후 같았다. 실패 로그도 보존하며 dependency source/manifest를 고쳐 숨긴 결과가 아니다.
+
+브라우저는 실제 Chromium150의 source/compiled UI이며 identity/login/me/logout은 합성 응답이다. 나머지 API data는 의도적으로 unavailable이므로 network/CORS 실패와 번역된 오류 상태가 존재한다. Console-error-free·실제 Keystone/provider·운영 로그인/배포·전체 `npm run test:gate` 통과를 주장하지 않는다. 커밋·push·배포는 하지 않았다. 선택은 공용 `afterglow_locale` 쿠키이며 계정 설정·인가·schema·운영 상태를 변경하지 않는다.
+
+초기 번역 worker의 잘못된 shared-root 사본과 당시 snapshot/hash 확인·외부 tar backup·정리 내역은 `shared-copy-reconciliation.json`에 별도 기록했다. 최종 검증 중에는 shared checkout을 추가 정리하지 않았다. 이 기록을 모든 동시 변경이나 관측하지 못한 과거 내용의 보존 보장으로 확대하지 않는다. 선택적인 gbrain sync는 CLI가 `ENOENT`여서 수행하지 않았고 agent 시작 파일을 바꾸지 않았다.
+
+상세 정제 기록은 [archived verification](../openspec/changes/archive/2026-10-15-add-sw-nb-ms-vi-locales/verification.json), 외부 증거는 `~/.local/share/afterglow-proofs/add-sw-nb-ms-vi-20261016/`의 `browser-verification.json`, `architecture-guard.json`, `frontend-tests-final.log`, `frontend-check-final.log`, 초기 실패/설치 로그와 실제 screenshots다.
+
+
 ## 국가·요청 origin·radial mesh 관측 검증 (2026-10-15; local/disposable·production 분리)
 
 `observe-country-request-origin-and-network-mesh`의 qualification은 **source/unit, 실제 native BPF/socket·Redis·MMDB, built-image adapter/API runtime, 합성 API Chromium**으로 나뉜다. 최초 격리 기준은 `cbd75d6d506e3609c07202183181004f950a4c51`이며 최신 `origin/dev` `a7830307`의 별도 OAuth/chat 수정까지 보존해 통합했다. 아래 최초 gate/image/browser 결과는 통합 전 bytes의 증거이고 통합 후 결과와 구분한다. 과거 배포1.30.x 또는 이전 collector 활성화를 이 변경의 운영 수용으로 승격하지 않는다.

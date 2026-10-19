@@ -6,7 +6,7 @@ nav_order: 9
 
 # Frontend localization
 
-Afterglow supports Korean (`ko`, source and default), English (`en`), Japanese (`ja`) and Simplified Chinese (`zh-CN`). Each feature namespace maps the same keys in `frontend/src/lib/i18n/messages/<locale>/<namespace>.json`. English is the reference for contributors who do not read Korean. Resource names, user input, API identifiers and product names stay unchanged. Server errors, operator-authored site descriptions and announcements, and tutorial fixtures representing server data remain as received.
+Afterglow supports Korean (`ko`, source and default), English (`en`), Japanese (`ja`), Simplified Chinese (`zh-CN`), Swahili for Tanzania (`sw`), Norwegian Bokmål (`nb`), Malay for Malaysia (`ms`), Vietnamese (`vi`) and Bengali for Bangladesh (`bn`). The chooser displays 한국어, English, 日本語, 简体中文, Kiswahili, Norsk bokmål, Bahasa Melayu, Tiếng Việt and বাংলা. The added number/date formatting tags are `sw-TZ`, `nb-NO`, `ms-MY`, `vi-VN` and `bn-BD`, respectively. Each feature namespace maps the same keys in `frontend/src/lib/i18n/messages/<locale>/<namespace>.json`. English is the reference for contributors who do not read Korean. Resource names, user input, API identifiers and product names stay unchanged. Server errors, operator-authored site descriptions and announcements, and tutorial fixtures representing server data remain as received.
 
 [Korean guide](../frontend-localization.md) · [Architecture](../../ARCHITECTURE.md) · [Terminology glossary](../../frontend/src/lib/i18n/glossary.csv)
 
@@ -43,7 +43,7 @@ npm --prefix frontend run i18n:format
 npm --prefix frontend run i18n:check
 ```
 
-Include the translation files and `review/<locale>.json` in the same PR. The review command rejects syntax, argument and tag errors in selected translations without partially changing review records. Review marking is a human declaration, not automatic quality certification. Initial English, Japanese and Chinese translations are unreviewed drafts.
+Include the translation files and `review/<locale>.json` in the same PR. The review command rejects syntax, argument and tag errors in selected translations without partially changing review records. Review marking is a human declaration, not automatic quality certification. Initial translations are unreviewed drafts. The new sw/nb/ms/vi/bn catalogs are machine-authored drafts, not native-speaker approval, and their review manifests remain empty.
 
 ## Review states
 
@@ -70,7 +70,7 @@ Manifests map `namespace:key` to the first 16 hexadecimal characters of the Kore
 
 ## How to identify a key on screen
 
-Documentation, landing, login and console headers share one theme-aware language disclosure. Expanded choices use native language names; compact header triggers use a globe and short locale code. Arrow keys and Home/End move through choices, Enter selects, app buttons also support Space, Escape restores trigger focus, and outside click or Tab departure dismisses. App selection persists in `afterglow_locale` for one year and determines the next server-rendered HTML language. Documentation uses real `?lang=` links retaining the path/query/fragment, without changing the app cookie, and remains usable without JavaScript. Browser language is not auto-detected; missing or invalid preferences use Korean.
+Documentation, landing, login and console headers share one theme-aware language disclosure and the `afterglow_locale` cookie. Expanded choices use all nine native language names; compact header triggers use a globe and short locale code. Arrow keys and Home/End move through choices, Enter selects, app buttons also support Space, Escape restores trigger focus, and outside click or Tab departure dismisses. Selection persists for one year with path `/`, SameSite=Lax and Secure on HTTPS, and determines the next server-rendered HTML language. A valid explicit docs `?lang=` overrides the cookie and updates the shared preference on actual navigation; language-less docs use the cookie and preload does not change it. Real documentation language links retain the article and reader query without JavaScript; hydrated links also preserve its fragment. Browser language is not auto-detected; Korean is the default when neither the explicit URL choice nor the stored preference is valid. Use `?lang=ko` when explicitly sharing Korean content too.
 
 In the browser developer console:
 
@@ -102,11 +102,11 @@ npm --prefix frontend run i18n:check
 npm --prefix frontend run i18n:scan
 ```
 
-The initial post-merge checks identify new omissions and define the work scope. After updating translations, repeat the checks, relevant tests and actual four-locale UI verification. Fetch again before completion/push; if dev advanced, integrate and reverify. Record the incorporated dev SHA in OpenSpec and the completion report. Follow the detailed [agent development guide](../agent-development-guide.md). Spreadsheet contributors receive fresh CSV exports from maintainers working against this synchronized source.
+The initial post-merge checks identify new omissions and define the work scope. After updating translations, repeat the checks, relevant tests and actual supported-locale UI verification. Fetch again before completion/push; if dev advanced, integrate and reverify. Record the incorporated dev SHA in OpenSpec and the completion report. Follow the detailed [agent development guide](../agent-development-guide.md). Spreadsheet contributors receive fresh CSV exports from maintainers working against this synchronized source.
 
 ## Developer contract
 
-`ns/<namespace>.ts` types keys from Korean JSON and eager-imports all four catalogs. Catalogs travel with code importing the namespace. Call `t()` from markup, `$derived`, getters or event-time functions, never module scope or SvelteKit `load`. The server locale initializes at the beginning of synchronous root layout rendering; translation outside that render can mix request languages.
+`ns/<namespace>.ts` types keys from Korean JSON and eager-imports all nine catalogs. Catalogs travel with code importing the namespace. Fallback is `ja/zh-CN/sw/nb/ms/vi/bn → en → ko`, and `en → ko`. Call `t()` from markup, `$derived`, getters or event-time functions, never module scope or SvelteKit `load`. The server locale initializes at the beginning of synchronous root layout rendering; translation outside that render can mix request languages.
 
 ```svelte
 <script lang="ts">
@@ -126,7 +126,7 @@ Call `intlLocale()` at formatting time for displayed numbers/dates. Do not modif
 npm --prefix frontend run i18n:scan
 ```
 
-Intentional server fixture data, parsing regexes or operator configuration belongs in `hardcoded-text-allowlist.json` with an exact line and justification. Do not allow entire files to hide UI omissions. The only exception is `/docs` content: the canonical Korean guides (`src/lib/docs/*Guides.ts`, `gettingStarted.ts`), the `src/lib/docs/translations/<locale>/` dictionaries keyed by Korean source text, and the per-locale docs UI dictionary in `src/lib/docs/locales.ts`. They are data rendered in all four locales through `translateDocGuide`/`docsMessages`, so they use `"lines": "all"`. The scanner detects Hangul, not hard-coded English.
+Intentional server fixture data, parsing regexes or operator configuration belongs in `hardcoded-text-allowlist.json` with an exact line and justification. Do not allow entire files to hide UI omissions. The only exception is `/docs` content: the canonical Korean guides (`src/lib/docs/*Guides.ts`, `gettingStarted.ts`), the `src/lib/docs/translations/<locale>/` dictionaries keyed by Korean source text, and the per-locale docs UI dictionary in `src/lib/docs/locales.ts`. They are data rendered in supported locales through `translateDocGuide`/`docsMessages`, so they use `"lines": "all"`. The scanner detects Hangul, not hard-coded English.
 
 ## Troubleshooting
 

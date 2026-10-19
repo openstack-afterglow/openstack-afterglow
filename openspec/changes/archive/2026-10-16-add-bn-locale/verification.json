@@ -1,0 +1,278 @@
+{
+  "change": "add-bn-locale",
+  "archive": {
+    "directory": "openspec/changes/archive/2026-10-16-add-bn-locale",
+    "taskStatus": "Complete",
+    "specUpdates": "Skipped per repository rapid workflow",
+    "nonBlockingWarning": "No delta specs found"
+  },
+  "verifiedAt": "2026-10-16T06:52:11.944Z",
+  "worktree": "/Users/pieroot/code/afterglow-i18n",
+  "branch": "i18n",
+  "baseline": {
+    "startingDev": "08e272422cd855b30d39929c24993047ec0cd6ad",
+    "finalFetchedDev": "08e272422cd855b30d39929c24993047ec0cd6ad",
+    "merge": "Already up to date",
+    "ancestryExit": 0
+  },
+  "implementation": {
+    "locale": "bn",
+    "language": "Bengali for Bangladesh",
+    "nativeName": "বাংলা",
+    "intl": "bn-BD",
+    "supportedLanguages": 9,
+    "uiNamespaces": 40,
+    "uiMessages": 10022,
+    "guideCount": 15,
+    "guideDictionaryEntries": 1152,
+    "guideGroups": {
+      "gettingStarted": 70,
+      "coreGuides": 412,
+      "additionalGuides": 243,
+      "platformGuides": 338,
+      "mcpGuide": 89
+    },
+    "glossaryTerms": 118,
+    "translationStatus": {
+      "draft": 10022,
+      "reviewed": 0,
+      "outdated": 0,
+      "missing": 0,
+      "nativeSpeakerApproved": false
+    },
+    "persistence": "Shared afterglow_locale cookie, Max-Age 31536000, Path=/, SameSite=Lax; Secure on HTTPS per existing behavior"
+  },
+  "verification": {
+    "catalogCheck": {
+      "label": "i18n-check",
+      "code": 0,
+      "durationMs": 352,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/add-bn-locale-20261016/i18n-check.log",
+      "summary": [
+        "0 errors, 0 warnings · 40 namespaces · 10022 source messages"
+      ]
+    },
+    "hardcodedScan": {
+      "label": "i18n-scan",
+      "code": 0,
+      "durationMs": 426,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/add-bn-locale-20261016/i18n-scan.log",
+      "summary": [
+        "0 hard-coded Korean lines in 1103 files"
+      ]
+    },
+    "exactSearch": {
+      "files": 1,
+      "tests": 29,
+      "exit": 0
+    },
+    "focused": {
+      "files": 8,
+      "tests": 189,
+      "exit": 0
+    },
+    "frontend": {
+      "files": 370,
+      "tests": 3704,
+      "nodeRunnerTests": 9,
+      "exit": 0
+    },
+    "typecheck": {
+      "errors": 0,
+      "warnings": 3,
+      "exit": 0,
+      "existingWarnings": [
+        "DocCodeBlock.svelte:26 noninteractive tabIndex",
+        "WizardStep5Config.svelte:42 non-reactive cloudInitFileInput",
+        "ProjectUsageTable.svelte:14 noninteractive tabIndex"
+      ]
+    },
+    "productionBuild": {
+      "exit": 0,
+      "adapter": "node",
+      "runtime": "node build on loopback 4188"
+    },
+    "browser": {
+      "engine": "Chromium 150",
+      "actual": "Compiled UI, cookie/navigation/search/keyboard/SSR responsive rendering",
+      "synthetic": "Identity login/me/logout and matrix disposable session; backend data unavailable",
+      "flowStages": [
+        "login-select-bn",
+        "locale-less-docs",
+        "native-doc-search",
+        "cinder-guide",
+        "docs-to-login",
+        "synthetic-login-dashboard",
+        "dashboard-reload",
+        "console-to-docs",
+        "docs-return-console",
+        "hydrated-docs-context",
+        "actual-ui-synthetic-logout"
+      ],
+      "matrix": {
+        "path": "/Users/pieroot/.local/share/afterglow-proofs/add-bn-locale-20261016/compiled-responsive-final.json",
+        "cases": 248,
+        "bengaliCases": 56,
+        "overflowCases": 0,
+        "rows": [
+          9
+        ],
+        "fixture": "Injected disposable synthetic session for console geometry; actual fixture login is verified separately"
+      },
+      "ssrResponses": 180,
+      "includes": "15 guides × 9 locales plus public/login/console/docs/404 responses",
+      "nativeNoJavascript": {
+        "docs": {
+          "url": "http://127.0.0.1:4188/docs/manila?lang=bn&reader=shared",
+          "lang": "bn",
+          "cookie": "afterglow_locale=bn",
+          "heading": "Manila NFS ও CephFS শেয়ার তৈরি করুন, প্রবেশাধিকার নিন এবং মাউন্ট করুন"
+        },
+        "login": {
+          "lang": "bn",
+          "cookie": "afterglow_locale=bn",
+          "fields": [
+            "ডোমেইন ",
+            "ব্যবহারকারীর নাম *",
+            "পাসওয়ার্ড *"
+          ]
+        }
+      },
+      "shortViewport": {
+        "viewport": {
+          "width": 320,
+          "height": 450
+        },
+        "lastChoice": {
+          "focused": "বাংলা",
+          "lang": "bn",
+          "choiceBottom": 415,
+          "choiceTop": 371,
+          "menuTop": 68,
+          "menuBottom": 422,
+          "scrollTop": 56,
+          "scrollHeight": 408,
+          "clientHeight": 352
+        },
+        "selected": {
+          "path": "/login",
+          "lang": "bn",
+          "cookie": "afterglow_locale=bn",
+          "hasAuth": false,
+          "trigger": "ভাষা: বাংলা",
+          "heading": "Afterglow",
+          "fields": [
+            "ডোমেইন ",
+            "ব্যবহারকারীর নাম *",
+            "পাসওয়ার্ড *"
+          ],
+          "horizontalOverflow": 0
+        },
+        "escape": {
+          "closed": true,
+          "refocused": true
+        },
+        "outsideDismissed": true
+      },
+      "errors": "Network/unavailable data failures are expected. Retained bounded final error records contain no pageerror; not an unbounded console-error-free claim."
+    },
+    "intl": {
+      "bun": {
+        "locale": "bn-BD",
+        "number": "12,34,567.89",
+        "date": "16 অক্টোবর, 2026"
+      },
+      "chromium": {
+        "locale": "bn-BD",
+        "number": "১২,৩৪,৫৬৭.৮৯",
+        "date": "১৬ অক্টোবর, ২০২৬",
+        "numberLocale": {
+          "locale": "bn-BD",
+          "numberingSystem": "beng",
+          "style": "decimal",
+          "minimumIntegerDigits": 1,
+          "minimumFractionDigits": 0,
+          "maximumFractionDigits": 3,
+          "useGrouping": "auto",
+          "notation": "standard",
+          "signDisplay": "auto",
+          "roundingIncrement": 1,
+          "roundingMode": "halfExpand",
+          "roundingPriority": "auto",
+          "trailingZeroDisplay": "auto"
+        },
+        "dateLocale": {
+          "locale": "bn-BD",
+          "calendar": "gregory",
+          "numberingSystem": "beng",
+          "timeZone": "Asia/Seoul",
+          "year": "numeric",
+          "month": "numeric",
+          "day": "numeric"
+        }
+      },
+      "node": {
+        "locale": "bn-BD",
+        "number": "১২,৩৪,৫৬৭.৮৯",
+        "date": "১৬ অক্টোবর, ২০২৬"
+      }
+    },
+    "architecture": {
+      "working": {
+        "code": 0,
+        "source_sha256": "8ba5b3fcb181cc5a201f6775b8c0c324065e641c24cbaf82b7d0c03a7ee09f50",
+        "files": 3104
+      },
+      "temporaryIndexStaged": {
+        "code": 0,
+        "stdout": "checked staged source_sha256=8ba5b3fcb181cc5a201f6775b8c0c324065e641c24cbaf82b7d0c03a7ee09f50 files=3104\n",
+        "stderr": ""
+      },
+      "actualIndex": {
+        "before": "5647d7cf122f48a0d7e5178a781339923eb8df556b584325d52f095aae57ad7b",
+        "after": "5647d7cf122f48a0d7e5178a781339923eb8df556b584325d52f095aae57ad7b",
+        "unchanged": true
+      },
+      "temporaryIndexRemoved": true
+    }
+  },
+  "limitations": [
+    "Machine-generated drafts require native-speaker semantic/style review.",
+    "No full npm run test:gate, real Keystone/provider acceptance, paid call, commit, push or deployment.",
+    "Backend/API/permissions/schema/dependency manifests/operational state unchanged.",
+    "Initial large browser matrix timed out and its persistent fixtures disappeared; that run is not counted. Final bounded receipt matrix restored fixtures and passed 248 cases.",
+    "Initial throwaway Bun Intl assertion assumed Bengali digits; Bun emitted Latin digits while Node and Chromium produced Bengali digits with bn-BD. No source fallback or numbering override added.",
+    "Optional gbrain sync unavailable: CLI ENOENT; agent guidance files unchanged."
+  ],
+  "evidence": {
+    "directory": "/Users/pieroot/.local/share/afterglow-proofs/add-bn-locale-20261016",
+    "files": [
+      "browser-verification.json",
+      "compiled-responsive-final.json",
+      "intl-smoke.json",
+      "guide-data-integrity.json",
+      "architecture-guard.json",
+      "focused-tests.log",
+      "frontend-tests.log",
+      "frontend-check.log",
+      "frontend-build.log",
+      "i18n-check.log",
+      "i18n-scan.log",
+      "i18n-report.log",
+      "cleanup.json"
+    ],
+    "screenshots": [
+      "docs-bn-390-dark.png",
+      "console-bn-1440-dark.png",
+      "login-bn-768-dark.png"
+    ]
+  },
+  "cleanup": {
+    "browserClosed": true,
+    "profileRemoved": true,
+    "compiledServiceStopped": true,
+    "temporaryIndexRemoved": true,
+    "actualIndexUnchanged": true,
+    "throwawayRepoScriptsAdded": false
+  }
+}

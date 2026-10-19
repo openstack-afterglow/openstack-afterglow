@@ -1,0 +1,13 @@
+{
+	"run.reloadRequired": "jurnal pelaksanaan sembang tidak lagi tersedia; muat semula perbualan",
+	"protocol.invalidDescriptor": "deskriptor pelaksanaan sembang tidak sah",
+	"http.requestFailed": "permintaan sembang gagal",
+	"stream.unterminatedFrame": "bingkai SSE tidak ditamatkan",
+	"stream.disconnected": "strim peristiwa sembang terputus",
+	"stream.invalidJson": "peristiwa sembang bukan JSON yang sah",
+	"stream.idMismatch": "ID peristiwa SSE tidak sepadan",
+	"stream.typeMismatch": "jenis peristiwa SSE tidak sepadan",
+	"stream.runMismatch": "pelaksanaan peristiwa SSE tidak sepadan",
+	"protocol.sequenceGap": "jurang urutan peristiwa sembang",
+	"reducer.runMismatch": "pelaksanaan peristiwa sembang tidak sepadan"
+}

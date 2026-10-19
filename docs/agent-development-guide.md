@@ -134,8 +134,8 @@ milestone.md          OpenSpec redirect stub; append 대상이 아님
 - status는 `StatusChip`/`Pill`, action은 `Button`, alert는 `Alert`, form은 `Field`/input primitives, table은 `TableShell`을 우선 사용한다.
 - 대시보드 자체 수치 시각화는 Bklit UI 기반 공통 component와 `charts/BklitChart.svelte`를 사용한다. Route별 SVG/CSS 차트·새 chart library를 추가하지 않는다. Client-only React 경계·결측/0/무제한·단위/시간·locale/theme/reduced-motion 및 immutable upstream 갱신 절차는 [`../frontend/README.md`](../frontend/README.md#dashboard-charts-bklit-ui)를 따른다. 편집 토폴로지·외부 Grafana·작업 진행 상태는 별도 계약이며 그 내부 수치 그래프만 Bklit로 렌더링한다.
 - `DESIGN.md`의 scrim, layer, motion, reduced-motion 규칙을 따른다. 새 route/component은 token/primitive 확장 → primitive test → feature composition → visual-debt 검사 순으로 만든다.
-- UI 문구는 한국어 source와 en/ja/zh-CN 동일 키 카탈로그를 사용한다. `t()`는 markup/derived/getter/event 시점에만 호출하고 모듈 최상위·load에서 호출하지 않는다. 날짜·숫자에는 format 시점의 `intlLocale()`을 사용하고 API 데이터·식별자는 바꾸지 않는다.
-- 번역 변경은 [`frontend-localization.md`](frontend-localization.md)의 CSV·검수 계약을 따른다. `npm --prefix frontend run i18n:check`와 `i18n:scan`을 실행하고 네 언어에서 실제 responsive UI를 확인한다. allowlist에는 UI 누락이 아닌 정확한 데이터 줄과 이유만 추가한다.
+- UI 문구는 한국어 source와 등록된 모든 지원 언어의 동일 키 카탈로그를 사용한다(`frontend/src/lib/i18n/locales.ts`가 locale 정본). `t()`는 markup/derived/getter/event 시점에만 호출하고 모듈 최상위·load에서 호출하지 않는다. 날짜·숫자에는 format 시점의 `intlLocale()`을 사용하고 API 데이터·식별자는 바꾸지 않는다.
+- 번역 변경은 [`frontend-localization.md`](frontend-localization.md)의 CSV·검수 계약을 따른다. `npm --prefix frontend run i18n:check`와 `i18n:scan`을 실행하고 지원 언어에서 실제 responsive UI를 확인한다. allowlist에는 UI 누락이 아닌 정확한 데이터 줄과 이유만 추가한다.
 
 ## 개발, 테스트, OpenSpec
 

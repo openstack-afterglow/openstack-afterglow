@@ -3,9 +3,9 @@
  *
  * Korean is the source language: every message is authored in `messages/ko/*.json` first and
  * every other locale maps the same keys. English is the pivot reference for translators who do
- * not read Korean, so Japanese and Chinese fall back to English before Korean.
+ * not read Korean, so non-English translations fall back to English before Korean.
  */
-export const LOCALES = ['ko', 'en', 'ja', 'zh-CN'] as const;
+export const LOCALES = ['ko', 'en', 'ja', 'zh-CN', 'sw', 'nb', 'ms', 'vi', 'bn'] as const;
 
 export type Locale = (typeof LOCALES)[number];
 
@@ -22,6 +22,11 @@ export const LOCALE_NATIVE_NAMES: Record<Locale, string> = {
 	en: 'English',
 	ja: '日本語',
 	'zh-CN': '简体中文',
+	sw: 'Kiswahili',
+	nb: 'Norsk bokmål',
+	ms: 'Bahasa Melayu',
+	vi: 'Tiếng Việt',
+	bn: 'বাংলা',
 };
 
 /** Compact label for space-constrained controls. */
@@ -30,6 +35,11 @@ export const LOCALE_SHORT_NAMES: Record<Locale, string> = {
 	en: 'EN',
 	ja: 'JA',
 	'zh-CN': 'ZH',
+	sw: 'SW',
+	nb: 'NB',
+	ms: 'MS',
+	vi: 'VI',
+	bn: 'BN',
 };
 
 /** BCP 47 tags passed to `Intl.*` formatters. */
@@ -38,6 +48,11 @@ export const INTL_LOCALES: Record<Locale, string> = {
 	en: 'en-US',
 	ja: 'ja-JP',
 	'zh-CN': 'zh-CN',
+	sw: 'sw-TZ',
+	nb: 'nb-NO',
+	ms: 'ms-MY',
+	vi: 'vi-VN',
+	bn: 'bn-BD',
 };
 
 export const FALLBACK_CHAIN: Record<Locale, readonly Locale[]> = {
@@ -45,6 +60,11 @@ export const FALLBACK_CHAIN: Record<Locale, readonly Locale[]> = {
 	en: ['en', 'ko'],
 	ja: ['ja', 'en', 'ko'],
 	'zh-CN': ['zh-CN', 'en', 'ko'],
+	sw: ['sw', 'en', 'ko'],
+	nb: ['nb', 'en', 'ko'],
+	ms: ['ms', 'en', 'ko'],
+	vi: ['vi', 'en', 'ko'],
+	bn: ['bn', 'en', 'ko'],
 };
 
 export function isLocale(value: unknown): value is Locale {

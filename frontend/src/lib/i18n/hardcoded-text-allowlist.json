@@ -123,12 +123,112 @@
 		"reason": "Documentation locale dictionary uses canonical Korean source text as lookup keys; translated values are rendered through translateDocGuide.",
 		"lines": "all"
 	},
+	"src/lib/docs/translations/sw/additionalGuides.ts": {
+		"reason": "Swahili documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/sw/coreGuides.ts": {
+		"reason": "Swahili documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/sw/gettingStarted.ts": {
+		"reason": "Swahili documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/sw/platformGuides.ts": {
+		"reason": "Swahili documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/sw/mcpGuide.ts": {
+		"reason": "Swahili MCP documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/nb/additionalGuides.ts": {
+		"reason": "Norwegian Bokmål documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/nb/coreGuides.ts": {
+		"reason": "Norwegian Bokmål documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/nb/gettingStarted.ts": {
+		"reason": "Norwegian Bokmål documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/nb/platformGuides.ts": {
+		"reason": "Norwegian Bokmål documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/nb/mcpGuide.ts": {
+		"reason": "Norwegian Bokmål MCP documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/ms/additionalGuides.ts": {
+		"reason": "Malay documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/ms/coreGuides.ts": {
+		"reason": "Malay documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/ms/gettingStarted.ts": {
+		"reason": "Malay documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/ms/platformGuides.ts": {
+		"reason": "Malay documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/ms/mcpGuide.ts": {
+		"reason": "Malay MCP documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/vi/additionalGuides.ts": {
+		"reason": "Vietnamese documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/vi/coreGuides.ts": {
+		"reason": "Vietnamese documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/vi/gettingStarted.ts": {
+		"reason": "Vietnamese documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/vi/platformGuides.ts": {
+		"reason": "Vietnamese documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/vi/mcpGuide.ts": {
+		"reason": "Vietnamese MCP documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/bn/additionalGuides.ts": {
+		"reason": "Bengali documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/bn/coreGuides.ts": {
+		"reason": "Bengali documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/bn/gettingStarted.ts": {
+		"reason": "Bengali documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/bn/platformGuides.ts": {
+		"reason": "Bengali documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/bn/mcpGuide.ts": {
+		"reason": "Bengali MCP documentation dictionary uses canonical Korean lookup keys; translated values are rendered by translateDocGuide.",
+		"lines": "all"
+	},
 	"src/lib/docs/locales.ts": {
-		"reason": "Korean entry of the typed per-locale docs UI dictionary (docsMessages: Record<DocsLocale, typeof ko>) and the Korean language picker name; en/ja/zh-CN entries sit beside it and docs render docsMessages[locale].",
+		"reason": "Typed per-locale docs UI dictionary, including canonical Korean source; every supported locale renders docsMessages[locale].",
 		"lines": "all"
 	},
 	"src/lib/docs/mcpGuide.ts": {
-		"reason": "Typed public MCP guide canonical Korean text; en/ja/zh-CN dictionaries are rendered by translateDocGuide. Exact lines are tracked to prevent drift.",
+		"reason": "Typed public MCP guide canonical Korean text; supported locale dictionaries are rendered by translateDocGuide. Exact lines are tracked to prevent drift.",
 		"lines": [
 			"'계정 → 외부 AI 접근에서 OAuth 또는 API 키를 선택하고 해당 연결의 클라이언트 서명 상세를 펼치세요. 신고 이름·버전, 브라우저·OS·에이전트·봇 추정과 근거, 처음·마지막 초기화 확인 시각을 볼 수 있습니다. 최근 10개 서로 다른 정제 서명만 표시하며 실제 단말·세션 수나 실시간 접속 상태가 아닙니다.',",
 			"'clientInfo와 User-Agent는 클라이언트가 위조할 수 있으므로 추정 정보를 실제 제품 인증이나 접근 권한 근거로 사용하지 마세요. 모르는 클라이언트가 보이면 해당 연결의 연결 제거를 선택하세요. OAuth 연결/API 키 전체와 같은 자격을 공유하는 모든 클라이언트가 차단되며 선택된 Lumen 기본 위임에도 영향을 줍니다. 계속 사용할 클라이언트에는 별도의 새 자격을 설정하세요.'",

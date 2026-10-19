@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+### 추가 언어 dev 통합 (not deployed)
+- `i18n` worktree에 미커밋 상태로 남아 있던 스와힐리어·노르웨이어 보크몰·말레이어·베트남어·벵골어의 UI/공개 가이드와 공용 언어 선호 변경을 dev에 통합한다. 기존 네 언어를 포함한 총 아홉 언어의 실제 compiled 화면·메뉴·SSR·언어 유지 검증은 `docs/testing.md`에 기록한다. 원어민 검수 전 초안 상태와 운영 배포 경계는 유지한다.
+
+### 벵골어 추가 (local, not deployed)
+- 방글라데시용 벵골어 `bn`(বাংলা, Intl `bn-BD`)를 추가해 총 아홉 언어를 지원한다. 전체40 UI namespace·10,022문구,15개 공개 가이드·1,152번역 항목과118개 용어를 기존 번역·검색·CSV 경로에 연결한다.
+- 문서·메인·로그인·콘솔의 공용 `afterglow_locale` 쿠키·SSR·원어 메뉴를 재사용한다. 추가 번역은 원어민 검수 전 초안이며 권한·API·schema·의존성·운영 배포는 바꾸지 않는다. 실제 검증과 합성 identity/API의 한계는 `docs/testing.md`에 기록한다.
+
+### 여덟 언어 UI·공개 문서와 공용 언어 선호 (local, not deployed)
+- 탄자니아용 스와힐리어 `sw`(Kiswahili), 노르웨이어 보크몰 `nb`(Norsk bokmål), 말레이시아용 말레이어 `ms`(Bahasa Melayu), 베트남어 `vi`(Tiếng Việt)를 기존 네 언어에 추가했다. 새 언어마다 전체40 UI namespace·10,022문구와15개 공개 가이드의1,152개 번역 항목을 제공하고 언어 메뉴·지역별 숫자/날짜 서식·fallback·CSV/검사를 연결했다.
+- 문서·메인·로그인·콘솔이 같은1년간의 `afterglow_locale` 쿠키를 사용한다. 명시적 docs `?lang=`은 쿠키보다 우선해 공용 선호를 갱신하며, 언어 없는 경로·새로고침·로그인/로그아웃에서도 선택을 유지한다. 문서 preload는 선호를 바꾸지 않는다.
+- 새 번역은 기계 작성 초안으로 원어민 검수 전이며 reviewed로 표시하지 않는다. 검증 증거·초기 stale dependency 복구·합성 identity/API와 실제 화면의 경계는 `docs/testing.md`에 기록한다. API·인증 권위·schema·의존성 manifest·운영 상태는 바꾸지 않았다.
+
 ## [1.30.19] - 2026-10-15
 
 - **Infrastructure topology:** production observers report routes from every kernel table, so the same interface/destination/gateway/metric can repeat. Each repeat produced the same route evidence ID, and the radial workspace and host inspector failed with a Svelte duplicate keyed-list error and never rendered. Identical route evidence now collapses per host. No API, schema or collector change. The 1.30.18 production rollout and this defect are recorded in `docs/testing.md`.

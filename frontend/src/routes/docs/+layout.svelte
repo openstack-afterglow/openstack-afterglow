@@ -9,12 +9,11 @@
 	import { resolveLandingLogoPath } from '$lib/config/brandAssets';
 	import { auth, isLoggedIn } from '$lib/stores/auth';
 	import { theme, resolvedTheme } from '$lib/stores/theme';
-	import { docsHref, docsLanguageHref, docsLocaleFromUrl, docsMessages } from '$lib/docs/locales';
-	import { getLocale } from '$lib/i18n/runtime.svelte';
+	import { docsHref, docsLanguageHref, docsMessages } from '$lib/docs/locales';
 	import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
 
 	let { children, data }: { children: Snippet; data: LayoutData } = $props();
-	const locale = $derived(docsLocaleFromUrl($page.url));
+	const locale = $derived(data.docsLocale);
 	const messages = $derived(docsMessages[locale]);
 	const docCategories = $derived(messages.categories);
 	const docGuides = $derived(data.docsNavigationGuides);
@@ -22,10 +21,6 @@
 	let themeReady = $state(false);
 	let mobileMenu: HTMLDetailsElement | undefined;
 	let languageOpen = $state(false);
-	$effect(() => {
-		document.documentElement.lang = locale;
-		return () => { document.documentElement.lang = getLocale(); };
-	});
 	onMount(() => { themeReady = true; });
 	afterNavigate(() => {
 		if (mobileMenu) mobileMenu.open = false;

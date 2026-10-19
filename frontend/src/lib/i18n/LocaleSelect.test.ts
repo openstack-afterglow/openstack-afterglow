@@ -43,7 +43,7 @@ describe('themed language disclosure', () => {
 	it('dismisses with Escape and returns focus from the last choice', async () => {
 		const { trigger, details } = await openMenu();
 		await fireEvent.keyDown(document.activeElement!, { key: 'End' });
-		expect(document.activeElement).toBe(screen.getByRole('button', { name: '简体中文' }));
+		expect(document.activeElement).toBe(screen.getAllByRole('button').at(-1));
 		await fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
 		expect(details.open).toBe(false);
 		expect(document.activeElement).toBe(trigger);
@@ -64,9 +64,10 @@ describe('themed language disclosure', () => {
 
 	it('wraps arrow navigation and keeps Home and End inside the choices', async () => {
 		await openMenu();
-		for (const [key, name] of [['End', '简体中文'], ['ArrowDown', '한국어'], ['ArrowUp', '简体中文'], ['Home', '한국어']] as const) {
+		const choices = screen.getAllByRole('button');
+		for (const [key, target] of [['End', choices.at(-1)], ['ArrowDown', choices[0]], ['ArrowUp', choices.at(-1)], ['Home', choices[0]]] as const) {
 			await fireEvent.keyDown(document.activeElement!, { key });
-			expect(document.activeElement).toBe(screen.getByRole('button', { name }));
+			expect(document.activeElement).toBe(target);
 		}
 		expect(getLocale()).toBe('ko');
 	});

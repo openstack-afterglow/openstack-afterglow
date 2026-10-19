@@ -1,0 +1,13 @@
+{
+	"run.reloadRequired": "journalen for chatkjøringen er ikke lenger tilgjengelig; last inn samtalen på nytt",
+	"protocol.invalidDescriptor": "ugyldig beskrivelse av chatkjøring",
+	"http.requestFailed": "chatforespørselen mislyktes",
+	"stream.unterminatedFrame": "uavsluttet SSE-ramme",
+	"stream.disconnected": "hendelsesstrømmen for chatten ble frakoblet",
+	"stream.invalidJson": "chathendelsen er ikke gyldig JSON",
+	"stream.idMismatch": "uoverensstemmelse i SSE-hendelsens ID",
+	"stream.typeMismatch": "uoverensstemmelse i SSE-hendelsens type",
+	"stream.runMismatch": "uoverensstemmelse i SSE-hendelsens kjøring",
+	"protocol.sequenceGap": "hull i sekvensen av chathendelser",
+	"reducer.runMismatch": "uoverensstemmelse i chathendelsens kjøring"
+}
