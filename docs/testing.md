@@ -20,7 +20,9 @@ nav_order: 8
 
 Synthetic UI 준비 중 builtin tutorial의 instance에 project ID가 없어 올바른 scoped metrics guard가 panel을 숨겼고, broad interception의 wildcard/우선순위·preflight 처리도 부정확했다. 제품의 권한 guard를 낮추거나 tutorial source를 바꾸지 않고 정확한 pathname·완전한 DTO·OPTIONS204를 사용하는 test-owned fixture로 교정한 뒤 위 실제 화면을 관측했다. 현재 사용자 credential·GitLab code·운영 token은 사용하지 않았다. 선택적 gbrain CLI는 없어 index/guidance sync하지 않았다.
 
-최종 source/index 적용·정상 dev push와 보존 결과는 [완료 OpenSpec](../openspec/changes/archive/2026-10-19-reconcile-remaining-local-source/tasks.md) 및 같은 proof root의 delivery receipt를 따른다. 기존 local 서비스·private/ignored 입력·다른 worktree를 교체하지 않으며, 버전 bump·tag·main PR/merge·release·migration·운영 배포는 이번 source 게시의 범위가 아니다. 아래 과거 feature/release 수용 기록은 해당 시점의 증거로 유지한다.
+Public source **136files**를 `88f84e56172e3c7933e70d26cd1dada2365f9fc2`로 커밋해 `origin/dev`에 정상 push했다. Actual checkout의 captured public tree에 exact134path patch를 적용하고 index가 target tree와 같은지 확인한 뒤 `3c9af255→88f84e56`을 reset/stash 없이 정상 fast-forward했다. 그 시점의 public worktree/index는 clean이고 private7inputs의 hash/mode, 기존18service의 ID/image/start/env/mount가 전후 같았다. `actual-source-delivery.json`·`actual-preservation.json`이 근거다. Staged Gitleaks는0findings이며 이는 pattern scan의 범위이지 비밀 부재의 수학적 증명은 아니다.
+
+[완료 OpenSpec](../openspec/changes/archive/2026-10-19-reconcile-remaining-local-source/tasks.md)는 저장소 rapid 절차의 `--skip-specs --yes`로 archive했다. Delta 부재 경고와 archive 작업 자신의 미완료1항목 경고는 비차단이었고 실제 archive 직후 해당 checkbox를 완료했다. 후속 마감은 문서 전용이며 새 source/runtime qualification으로 세지 않는다. 기존 local 서비스·private/ignored 입력·다른 worktree를 교체하지 않았고 버전 bump·tag·main PR/merge·release·migration·운영 배포도 하지 않았다. 기본 브랜치 Dependabot high1 push 알림의 도입 여부·영향과 remote GitHub CI 통과는 이번 근거로 평가하지 않았다. 아래 과거 feature/release 수용 기록은 해당 시점의 증거로 유지한다.
 
 
 ## 실제 로컬 dev 아홉 언어 통합 (2026-10-19)
