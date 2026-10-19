@@ -153,6 +153,35 @@ class ResolverTests(unittest.TestCase):
         self.assertEqual(result.stderr, "")
         self.assertEqual(json.loads(result.stdout), refs)
 
+    def test_selected_slim_tag_is_frozen_without_changing_pins_or_local_source(self):
+        refs = {
+            "cloud_shell": "ghcr.io/openstack-afterglow/openstack-client:slim",
+            "version": "registry.example:5000/team/backend:v1.2.3",
+            "digest": f"registry.example:5000/team/backend@{_INDEX_DIGEST}",
+            "tag_and_digest": f"ghcr.io/team/backend:latest@{_INDEX_DIGEST}",
+            "source": "afterglow-local/backend:123456789abc",
+        }
+        status, stdout, stderr = self.invoke(
+            {"refs": refs, "force_refs": ["cloud_shell", "digest", "tag_and_digest", "source"]},
+            {refs["cloud_shell"]: RegistryFixture(_INDEX_DIGEST)},
+        )
+        self.assertEqual(status, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(json.loads(stdout), {
+            **refs,
+            "cloud_shell": f"ghcr.io/openstack-afterglow/openstack-client@{_INDEX_DIGEST}",
+        })
+
+    def test_missing_selected_slim_never_falls_back_to_another_tag(self):
+        selected = "ghcr.io/openstack-afterglow/openstack-client:slim"
+        self.assert_failure(self.invoke(
+            {"refs": {"cloud_shell": selected}, "force_refs": ["cloud_shell"]},
+            {
+                selected: RuntimeError(f"manifest unknown; password={_SECRET}"),
+                selected.removesuffix(":slim") + ":latest": RegistryFixture(_PLATFORM_DIGEST),
+            },
+        ), "Registry lookup failed for moving image 1")
+
     def test_malformed_digest_rejects_whole_selection(self):
         for digest in (
             None, 42, "sha256:" + "a" * 63, "sha256:" + "a" * 65,
@@ -284,6 +313,9 @@ class ResolverTests(unittest.TestCase):
                 "username": "operator", "password": _SECRET,
                 "serveraddress": f"https://operator:{_SECRET}@registry.example",
             }},
+            *({"refs": {"backend": "ubuntu:v1.2.3"}, "force_refs": forced} for forced in (
+                "backend", {"backend": True}, [None], [42], ["unknown"], [_SECRET],
+            )),
         ):
             with self.subTest(request=request):
                 self.assert_failure(self.invoke(request), "Image resolution failed:")

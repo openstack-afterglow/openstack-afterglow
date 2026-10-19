@@ -15,7 +15,14 @@ from app.services.mcp_control_plane import connection as consumer
 
 
 @contextmanager
-def application_credential_keystone(*, user_id="user-a", project_id="project-a", credential_id="credential-a"):
+def application_credential_keystone(
+    *,
+    user_id="user-a",
+    project_id="project-a",
+    credential_id="credential-a",
+    user_domain_id="default",
+    project_domain_id="default",
+):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):
             pass
@@ -37,7 +44,7 @@ def application_credential_keystone(*, user_id="user-a", project_id="project-a",
             else:
                 token = {
                     "methods": ["application_credential"],
-                    "user": {"id": user_id, "name": "fixture", "domain": {"id": "default", "name": "Default"}},
+                    "user": {"id": user_id, "name": "fixture", "domain": {"id": user_domain_id, "name": "Fixture"}},
                     "roles": [{"id": "reader", "name": "reader"}],
                     "catalog": [],
                     "expires_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
@@ -47,7 +54,7 @@ def application_credential_keystone(*, user_id="user-a", project_id="project-a",
                     token["project"] = {
                         "id": project_id,
                         "name": "fixture-project",
-                        "domain": {"id": "default", "name": "Default"},
+                        "domain": {"id": project_domain_id, "name": "Fixture"},
                     }
                 status, payload = 201, {"token": token}
             encoded = json.dumps(payload).encode()
@@ -136,3 +143,44 @@ def test_selected_target_credential_authenticates_target_not_owner_anchor(monkey
                 assert connection._afterglow_project_id == "project-b"
             finally:
                 connection.close()
+
+
+@pytest.mark.parametrize(
+    ("user_domain_id", "project_domain_id"),
+    [(None, "tenant-a"), ("tenant-a", None)],
+    ids=["missing-user-domain", "missing-project-domain"],
+)
+def test_saved_credential_cannot_omit_native_domain(monkeypatch, user_domain_id, project_domain_id):
+    with application_credential_keystone(
+        user_domain_id=user_domain_id, project_domain_id=project_domain_id
+    ) as auth_url:
+        monkeypatch.setattr(
+            consumer,
+            "get_settings",
+            lambda: SimpleNamespace(
+                os_auth_url=auth_url, os_region_name="RegionOne", os_interface="public", ssl_verify=True
+            ),
+        )
+        principal = SimpleNamespace(user_id="user-a", project_id="project-a")
+        with pytest.raises(consumer.McpConsumerConnectionError, match="domain identity is unavailable"):
+            consumer._build_connection("credential-a", "synthetic-credential-secret", principal)
+
+
+def test_exact_owned_credential_can_use_foreign_working_domain(monkeypatch):
+    with application_credential_keystone(user_domain_id="identity-home", project_domain_id="working") as auth_url:
+        monkeypatch.setattr(
+            consumer,
+            "get_settings",
+            lambda: SimpleNamespace(
+                os_auth_url=auth_url, os_region_name="RegionOne", os_interface="public", ssl_verify=True
+            ),
+        )
+        principal = SimpleNamespace(user_id="user-a", project_id="project-a")
+        connection = consumer._build_connection("credential-a", "synthetic-credential-secret", principal)
+        try:
+            assert connection.authorize() == "synthetic-cloud-token"
+            assert connection.current_project_id == "project-a"
+            assert connection._afterglow_domain_id == "working"
+            assert connection._afterglow_identity_domain_id == "identity-home"
+        finally:
+            connection.close()

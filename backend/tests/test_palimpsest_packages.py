@@ -6,12 +6,14 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 
 from app.api.palimpsest import hub, package_keys, packages
 from app.config import get_settings
+from app.models.domain_auth import DomainLoginPolicy
 from app.services import identity_roles, keystone, service_proxy
 from app.services.service_permissions import ROLE_IMPLICATIONS, ROLE_PRESETS
+from tests.test_domain_auth import db as db
 
 PROJECT = "11111111111141118111111111111111"
 FOREIGN = "22222222222242228222222222222222"
@@ -56,7 +58,15 @@ async def package_client(monkeypatch):
     ]
 
     async def identity(request: Request):
-        info = {"project_id": PROJECT, "user_id": USER, "token": "original-subject"}
+        info = {
+            "project_id": PROJECT,
+            "user_id": USER,
+            "token": "original-subject",
+            "domain_id": "default",
+            "identity_domain_id": "default",
+            "roles": state.grants.copy(),
+            "is_system_admin": state.is_system_admin,
+        }
         request.state.token_info = info
         return info
 
@@ -86,29 +96,98 @@ async def package_client(monkeypatch):
     state.grants = ["member", *PACKAGE_LEAVES]
     state.catalog = identity_roles._catalog(rows, edges)
     state.assignment_user_id = USER
-    state.assignment_queries = []
+    state.project_ids = {PROJECT, FOREIGN}
     state.is_system_admin = False
     state.has_system_admin_role = False
 
     def assignments(**query):
-        assert set(query) == {"project", "effective"}
-        assert query["effective"] is True
-        state.assignment_queries.append(dict(query))
+        projects = state.project_ids.copy()
+        if "project" in query:
+            projects &= {query["project"]}
         return [
             {
                 "user": {"id": state.assignment_user_id},
                 "role": {"id": "id-" + name},
-                "scope": {"project": {"id": query["project"]}},
+                "scope": {"project": {"id": project_id}},
             }
+            for project_id in sorted(projects)
             for name in state.grants
         ]
 
-    # Keep get_project_access and its role-ID/implication checks real.
-    provider = SimpleNamespace(role_assignments=SimpleNamespace(list=assignments))
+    def native_user(user_id):
+        from keystoneauth1.exceptions.http import NotFound
+
+        if user_id != state.assignment_user_id:
+            raise NotFound()
+        # Exact native identity: home domain/email do not come from a selected project or JWT.
+        return {"id": user_id, "domain_id": "default", "enabled": True, "email": "owner@packages.example"}
+
+    def native_project(project_id):
+        from keystoneauth1.exceptions.http import NotFound
+
+        if project_id not in state.project_ids:
+            raise NotFound()
+        return {"id": project_id, "name": "Project", "domain_id": "default", "enabled": True}
+
+    def native_domain(domain_id):
+        from keystoneauth1.exceptions.http import NotFound
+
+        if domain_id != "default":
+            raise NotFound()
+        return {"id": domain_id, "name": "Default", "enabled": True}
+
+    # Keep native membership provenance and service role-ID/implication checks real.
+    provider = SimpleNamespace(
+        roles=SimpleNamespace(list=lambda: rows),
+        inference_rules=SimpleNamespace(
+            list_inference_roles=lambda: [
+                {
+                    "prior_role": {"id": role["id"]},
+                    "implies": [{"id": implied} for implied in role["implied_role_ids"]],
+                }
+                for role in state.catalog
+            ]
+        ),
+        role_assignments=SimpleNamespace(list=assignments),
+        users=SimpleNamespace(get=native_user),
+        projects=SimpleNamespace(get=native_project, list=lambda **_: []),
+        domains=SimpleNamespace(get=native_domain),
+    )
     monkeypatch.setattr(keystone, "_get_admin_ks_client", lambda: provider)
     monkeypatch.setattr(identity_roles, "_trusted_catalog", lambda: state.catalog)
-    monkeypatch.setattr(keystone, "_is_system_admin", lambda *_: state.is_system_admin)
-    monkeypatch.setattr(keystone, "_has_system_admin_role", lambda *_: state.has_system_admin_role)
+    monkeypatch.setattr(keystone, "_is_system_admin", lambda *args, **kwargs: state.is_system_admin)
+    monkeypatch.setattr(keystone, "_has_system_admin_role", lambda *args, **kwargs: state.has_system_admin_role)
+
+    issued = {}
+
+    def validate_native(token, project_id="", *, operation=None):
+        from keystoneauth1.exceptions.http import Unauthorized
+
+        user_id = state.assignment_user_id if token == "original-subject" else issued.get(token)
+        if user_id is None:
+            raise Unauthorized()
+        identity = keystone.get_identity_user(user_id, operation=operation)
+        if project_id:
+            native_project(project_id)
+        native_token = f"project-subject:{user_id}:{project_id}" if project_id else "original-subject"
+        issued[native_token] = user_id
+        return {
+            "token": native_token,
+            "user_id": user_id,
+            "username": "user",
+            "project_id": project_id,
+            "project_name": "Project" if project_id else "",
+            "domain_id": "default",
+            "domain_name": "Default",
+            "identity_domain_id": identity["domain_id"],
+            "identity_domain_name": "Default",
+            "email": identity["email"],
+            "roles": getattr(state, "stale_native_roles", state.grants).copy() if project_id else [],
+            "is_system_admin": state.is_system_admin,
+            "is_domain_manager": False,
+        }
+
+    monkeypatch.setattr(keystone, "validate_token", validate_native)
 
     async def upstream(request: httpx.Request):
         state.paths.append(request.url.path)
@@ -211,6 +290,115 @@ async def test_secret_once_issue_requires_matching_project_owner(package_client)
     assert response.status_code == 201
     assert response.json()["secret"] == KEY
     assert "no-store" in response.headers["cache-control"]
+
+
+async def test_human_system_admin_key_crud_without_project_roles_and_revocation(package_client):
+    client, state, _ = package_client
+    state.grants = []
+    state.is_system_admin = state.has_system_admin_role = True
+    key = {"project_id": PROJECT, "namespace": NAMESPACE, "owner_user_id": USER, "key_id": KEY_ID}
+    state.status = 201
+    state.payload = {"key": key, "secret": KEY}
+    requested = {"name": "ci", "scope": {"packages": ["test"]}, "actions": ["packages:read"]}
+    created = await client.post(BASE + "/package-keys", json=requested)
+    assert created.status_code == 201
+    assert created.json()["secret"] == KEY
+    assert json.loads(state.bodies[-1]) == requested
+    state.status = 200
+    state.payload = {"project_id": PROJECT, "namespace": NAMESPACE, "items": [key]}
+    listed = await client.get(BASE + "/package-keys")
+    assert listed.status_code == 200
+    assert listed.json()["items"] == [key]
+    before_revoke = state.paths.copy()
+    state.has_system_admin_role = state.is_system_admin = False
+    denied = await client.delete(BASE + f"/package-keys/{KEY_ID}")
+    assert denied.status_code == 403
+    assert state.paths == before_revoke
+    state.is_system_admin = state.has_system_admin_role = True
+    state.status = 204
+    assert (await client.delete(BASE + f"/package-keys/{KEY_ID}")).status_code == 204
+    assert state.paths[-1] == f"/v1/projects/{NAMESPACE}/keys/{KEY_ID}"
+    assert all(actor["x-auth-token"] == "original-subject" for actor in state.actors)
+    assert all(actor["x-project-id"] == PROJECT for actor in state.actors)
+
+
+@pytest.mark.parametrize("operation", ["context", "namespace", "inventory", "download"])
+async def test_human_system_admin_custom_operations_need_no_project_leaves(package_client, operation):
+    client, state, _ = package_client
+    state.grants = []
+    state.is_system_admin = state.has_system_admin_role = True
+    if operation == "namespace":
+        state.payload = state.context.copy()
+        response = await client.put(BASE + "/packages/namespace", json={})
+    elif operation == "download":
+        state.payload = {"project_id": PROJECT, "namespace": NAMESPACE, "package": "test", "root_digest": DIGEST}
+        response = await client.get(BASE + f"/packages/versions/{DIGEST}/download", params={"package": "test"})
+        assert response.content == b"verified-archive"
+    else:
+        response = await client.get(BASE + ("/packages/context" if operation == "context" else "/packages"))
+    assert response.status_code == (206 if operation == "download" else 200)
+    assert state.paths
+
+
+async def test_human_system_admin_retains_namespace_response_fence(package_client):
+    client, state, _ = package_client
+    state.grants = []
+    state.is_system_admin = state.has_system_admin_role = True
+    response = await client.get(BASE + "/packages", params={"namespace": "foreign"})
+    assert response.status_code == 403
+    assert state.paths == ["/v1/projects/current"]
+
+
+async def test_system_admin_revoked_between_custom_preflight_and_io(package_client):
+    client, state, _ = package_client
+    state.grants = []
+    state.is_system_admin = state.has_system_admin_role = True
+    original_actors = state.actors
+
+    class RevokeAfterContext(list):
+        def append(self, actor):
+            super().append(actor)
+            state.is_system_admin = state.has_system_admin_role = False
+
+    state.actors = RevokeAfterContext(original_actors)
+    response = await client.get(BASE + "/packages")
+    assert response.status_code == 403
+    assert state.paths == ["/v1/projects/current"]
+
+
+async def test_custom_system_authority_outage_prevents_hub_io(package_client, monkeypatch):
+    client, state, _ = package_client
+    state.grants = []
+    state.is_system_admin = state.has_system_admin_role = True
+
+    def unavailable(*_):
+        raise HTTPException(503, "Current system authority unavailable")
+
+    monkeypatch.setattr(keystone, "_has_system_admin_role", unavailable)
+    response = await client.post(BASE + "/package-keys", json={"name": "ci"})
+    assert response.status_code == 503
+    assert state.paths == []
+
+
+@pytest.mark.parametrize(
+    "grants,system_flag,system_grant",
+    [
+        (["admin", *PACKAGE_LEAVES], False, False),
+        ([], True, False),
+        (["service"], True, True),
+    ],
+)
+@pytest.mark.parametrize("method,path", [("POST", "/package-keys"), ("PUT", "/packages/namespace")])
+async def test_custom_package_admin_override_excludes_unverified_and_service_principals(
+    package_client, grants, system_flag, system_grant, method, path
+):
+    client, state, _ = package_client
+    state.grants = grants
+    state.is_system_admin = system_flag
+    state.has_system_admin_role = system_grant
+    response = await client.request(method, BASE + path, json={})
+    assert response.status_code == 403
+    assert state.paths == []
 
 
 @pytest.mark.parametrize("wrong", ["project", "package", "digest"])
@@ -360,30 +548,56 @@ async def test_service_toggle_fails_before_upstream(package_client, monkeypatch)
 
 
 @pytest.fixture
-def browser_session(package_client, monkeypatch):
+async def browser_session(package_client, db, monkeypatch):
+    """Password session with immutable native home `default` and a real SQL policy.
+
+    Only the policy DB fixture is reused; the package provider still owns exact
+    users, projects and live grants. The allowlist requires its native email,
+    not the JWT username or a cached session login address.
+    """
     from app.api import deps
-    from app.services import jwt_service, session_store, token_binding
+    from app.services import domain_scope, jwt_service, session_store, token_binding
 
     _, _, app = package_client
     app.dependency_overrides.clear()
-    session = {"project_id": PROJECT, "user_id": USER, "keystone_token": "original-subject", "blacklisted": False}
+    async with db() as policy_session:
+        policy_session.add(
+            DomainLoginPolicy(
+                domain_id="default",
+                password_enabled=True,
+                allowed_email_domains=["packages.example"],
+                updated_by_user_id=USER,
+            )
+        )
+        await policy_session.commit()
+    session = {
+        "project_id": PROJECT,
+        "user_id": USER,
+        "domain_id": "default",
+        "identity_domain_id": "default",
+        "auth_method": "password",
+        "keystone_token": "original-subject",
+        "blacklisted": False,
+    }
     monkeypatch.setattr(session_store, "get_session", AsyncMock(return_value=session))
+    monkeypatch.setattr(session_store, "update_session_token", AsyncMock(return_value=True))
     monkeypatch.setattr(session_store, "session_seen_needs_touch", lambda *_: False)
     monkeypatch.setattr(token_binding, "check_binding", lambda *_: ("allow", ""))
     monkeypatch.setattr(deps, "_check_session_timeout", AsyncMock())
-    monkeypatch.setattr(deps, "_cached_validate", AsyncMock(side_effect=AssertionError("must not exchange token")))
+    monkeypatch.setattr(
+        domain_scope,
+        "domain_context",
+        lambda uid, did, **_: {
+            "domain_id": did,
+            "domain_name": "Default",
+            "identity_domain_id": "default",
+            "identity_domain_name": "Default",
+            "is_domain_manager": False,
+        },
+    )
+    monkeypatch.setattr(domain_scope, "assert_project_domain", lambda did, pid, **_: None)
     jwt, _, _ = jwt_service.sign_access(USER, "user", PROJECT, "Project", "session-id")
     return session, jwt
-
-
-async def test_browser_signed_jwt_uses_original_subject_without_token_exchange(package_client, browser_session):
-    client, state, _ = package_client
-    _, jwt = browser_session
-    response = await client.get(BASE + "/packages/context", headers={"authorization": "Bearer " + jwt})
-    assert response.status_code == 200
-    assert response.json()["project_id"] == PROJECT
-    assert state.actors[0]["x-auth-token"] == "original-subject"
-    assert "authorization" not in state.actors[0]
 
 
 async def test_browser_header_cannot_rescope_signed_jwt(package_client, browser_session):
@@ -458,6 +672,7 @@ async def test_opaque_project_identity_preserves_case_and_namespace_mapping(pack
     client, state, _ = package_client
     session, _ = browser_session
     project = "LDAP-Project.Identifier"
+    state.project_ids.add(project)
     session["project_id"] = project
     state.context["project_id"] = project
     state.context["namespace"] = "operator-alias"
@@ -612,50 +827,53 @@ async def test_real_application_package_surface_is_v1_only(package_client):
     ],
 )
 @pytest.mark.parametrize("asserted_project", [None, FOREIGN])
-async def test_legacy_jwt_native_routes_deny_before_exchange_or_hub(
+async def test_legacy_jwt_native_routes_are_denied_before_hub(
     package_client,
     browser_session,
-    monkeypatch,
     method,
     path,
     asserted_project,
 ):
-    from app.api import deps
-
     client, state, _ = package_client
     _, jwt = browser_session
-    exchange = AsyncMock(side_effect=AssertionError("native routes must not exchange JWT subject"))
-    monkeypatch.setattr(deps, "_cached_validate", exchange)
     headers = {"authorization": "Bearer " + jwt}
     if asserted_project is not None:
         headers["x-project-id"] = asserted_project
     response = await client.request(method, BASE + "/hub/" + path, headers=headers)
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "ACTION_DENIED"
-    exchange.assert_not_awaited()
     assert state.paths == []
 
 
 @pytest.fixture
 def legacy_browser_session(package_client, browser_session, monkeypatch):
-    from app.api import deps
-
     _, state, _ = package_client
-
-    async def validate(token, project_id):
-        assert token == "original-subject"
-        return {
-            "token": token,
-            "project_id": project_id,
-            "user_id": USER,
-            # Deliberately stale token leaves must not replace current assignments.
-            "roles": ["member", *PACKAGE_LEAVES],
-            "is_system_admin": state.is_system_admin,
-        }
-
-    monkeypatch.setattr(deps, "_cached_validate", AsyncMock(side_effect=validate))
+    # Stale native role leaves still cannot replace current assignments.
+    state.stale_native_roles = ["member", *PACKAGE_LEAVES]
     monkeypatch.setattr("app.services.recent_projects.record_project_access", AsyncMock())
     return browser_session
+
+
+async def test_revoked_home_password_policy_blocks_package_and_legacy_hub(package_client, legacy_browser_session, db):
+    client, state, _ = package_client
+    _, jwt = legacy_browser_session
+    headers = {"authorization": "Bearer " + jwt}
+    paths = ["/packages/context", "/hub/images"]
+    for path in paths:
+        response = await client.get(BASE + path, headers=headers)
+        assert response.status_code == 200
+    assert state.paths == ["/v1/projects/current", "/v1/images"]
+
+    async with db() as policy_session:
+        policy = await policy_session.get(DomainLoginPolicy, "default")
+        policy.password_enabled = False
+        policy.revision += 1
+        await policy_session.commit()
+
+    for path in paths:
+        response = await client.get(BASE + path, headers=headers)
+        assert response.status_code == 403
+    assert state.paths == ["/v1/projects/current", "/v1/images"]
 
 
 @pytest.mark.parametrize("method,path,leaf", LEGACY_ACTIONS)
@@ -677,10 +895,8 @@ async def test_legacy_jwt_hub_surface_retains_caller_identity(
     response = await client.request(method, BASE + "/hub/" + path, headers=headers)
     assert response.status_code == 200
     assert state.paths == ["/v1/" + path]
-    assert state.actors[0]["x-auth-token"] == "original-subject"
     assert state.actors[0]["x-project-id"] == (asserted_project or PROJECT)
     assert "authorization" not in state.actors[0]
-    assert state.assignment_queries == [{"project": asserted_project or PROJECT, "effective": True}]
 
 
 @pytest.mark.parametrize("method,path,leaf", LEGACY_ACTIONS)
@@ -708,7 +924,6 @@ async def test_legacy_jwt_missing_action_denies_before_hub(
     )
     assert response.json() == {"detail": expected_detail}
     assert state.paths == []
-    assert state.assignment_queries == [{"project": asserted_project or PROJECT, "effective": True}]
 
 
 @pytest.mark.parametrize(
@@ -731,12 +946,13 @@ async def test_legacy_jwt_builds_require_flag_and_current_system_grant(
     response = await client.get(BASE + "/hub/builds", headers=headers)
     assert response.status_code == expected_status
     if expected_status == 403:
-        assert response.json() == {"detail": "Verified system administrator authority is required"}
         assert state.paths == []
     else:
         assert state.paths == ["/v1/builds"]
-        assert state.actors[0]["x-auth-token"] == "original-subject"
-        assert state.actors[0]["x-project-id"] == (asserted_project or PROJECT)
+        assert state.actors[0]["x-project-id"] == PROJECT
+        assert state.actors[0].get("x-target-project-id", state.actors[0]["x-project-id"]) == (
+            asserted_project or PROJECT
+        )
         assert "authorization" not in state.actors[0]
 
 

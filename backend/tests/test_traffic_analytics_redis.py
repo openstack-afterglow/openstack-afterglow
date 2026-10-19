@@ -243,3 +243,37 @@ async def test_existing_v1_buckets_and_old_reporters_remain_legacy_without_reset
     assert legacy["coverage"]["origin_unknown_reasons"] == {"legacy_unclassified": 3}
     assert external["totals"]["requests"] == 1 and external["coverage"]["legacy_unclassified_requests"] == 0
     assert int(await redis.hget(old_counts, "t|requests")) == 2
+
+
+def domain_request(token_info, headers=None):
+    return SimpleNamespace(state=SimpleNamespace(token_info=token_info), headers=headers or {})
+
+
+async def test_domain_requests_use_validated_token_domain_only(analytics):
+    redis, _ = analytics
+    now = time.time()
+    verified = {"user_id": "u1", "domain_id": "tenant-a"}
+    spoof = {"X-Domain-Id": "tenant-b", "X-Project-Id": "foreign"}
+    assert await service.record_domain_request(
+        domain_request(verified, spoof), status=200, route_template="/api/v1/instances/{id}", at=now
+    )
+    assert await service.record_domain_request(
+        domain_request(verified, spoof), status=503, route_template="/api/v1/volumes", at=now
+    )
+    # Unauthenticated or token-less requests are never attributed from headers.
+    assert not await service.record_domain_request(
+        domain_request(None, {"X-Domain-Id": "tenant-a"}), status=200, route_template="/api/v1/instances", at=now
+    )
+    assert not await service.record_domain_request(
+        domain_request({"user_id": "u2"}, {"X-Domain-Id": "tenant-a"}), status=200, route_template=None, at=now
+    )
+    selected = await service.domain_snapshot("tenant-a", "24h")
+    assert selected["total"] == 2 and selected["errors"] == 1
+    assert {row["service"]: (row["requests"], row["errors"]) for row in selected["services"]} == {
+        "nova": (1, 0),
+        "cinder": (1, 1),
+    }
+    foreign = await service.domain_snapshot("tenant-b", "24h")
+    assert foreign["total"] is None and foreign["state"] != "ready"
+    raw = repr([await redis.hgetall(key) async for key in redis.scan_iter(match=service.KEY_PREFIX + ":domain:*")])
+    assert "tenant-a" not in raw and "u1" not in raw and "{id}" not in raw

@@ -1,388 +1,123 @@
-"""셀프서비스 프로젝트 생성 + 이메일 초대 시스템 단위 테스트."""
+"""Legacy project routes share the domain IAM boundary, never Default fallback."""
 
-import hashlib
-import secrets
-from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import get_token_info
-from app.main import app
-from app.rate_limit import limiter as _rate_limiter
+from app.api.identity.iam import router as iam_router
+from app.api.identity.projects import router
+from app.database import get_session
+from app.services import project_service
+from tests.ownership_journal import ownership_journal as ownership_journal
+from tests.test_domain_iam import directory as directory
+from tests.test_domain_iam import enrollments as enrollments
+from tests.test_domain_iam import manager
+from tests.test_project_membership_roles import PROJECT, rid
 
-_rate_limiter.enabled = False
-
-PROJECT_ID = "proj-selfservice-123"
-
-
-def make_token_info(is_manager=False, is_admin=False, user_id="user-abc", email="user@example.com"):
-    return {
-        "token": "test-token",
-        "project_id": PROJECT_ID,
-        "project_name": "test-project",
-        "user_id": user_id,
-        "username": "testuser",
-        "email": email,
-        "roles": ["member"],
-        "is_system_admin": is_admin,
-    }
-
-
-# ─── /api/projects ──────────────────────────────────────────────────────────
+pytestmark = pytest.mark.usefixtures("ownership_journal")
 
 
 @pytest.mark.asyncio
-async def test_create_project_requires_auth():
-    """인증 없이 프로젝트 생성 불가."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        resp = await ac.post("/api/v1/projects", json={"name": "MyProject"})
-    assert resp.status_code == 401
+@pytest.mark.parametrize("uid", ["member", "admin", "owner"])
+async def test_project_create_and_invite_deny_ordinary_project_roles(directory, enrollments, uid):
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1/projects")
+    app.include_router(iam_router, prefix="/api/v1/iam")
+    app.dependency_overrides[get_token_info] = lambda: manager(uid)
+
+    async def db():
+        async with enrollments() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = db
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        for path, body in [
+            ("/api/v1/projects", {"name": "project"}),
+            (
+                "/api/v1/iam/invitations",
+                {"email": "new@test.invalid", "project_id": PROJECT, "role_ids": [rid("project_member")]},
+            ),
+        ]:
+            response = await client.post(path, json=body)
+            assert response.status_code == 403
+    assert not directory.sent and not directory.creates
 
 
 @pytest.mark.asyncio
-async def test_create_project_success():
-    """Project creation explicitly grants project_owner without a DB manager row."""
-    mock_ks = MagicMock()
-    mock_project = MagicMock()
-    mock_project.id = "new-proj-id"
-    mock_project.name = "MyProject"
-    mock_project.description = ""
-    mock_ks.projects.create.return_value = mock_project
+async def test_project_create_explicit_domain_and_real_creator_owner(directory, monkeypatch):
+    created_attrs = []
+    from app.services import domain_quotas
 
-    mock_session = AsyncMock()
-    mock_session.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None)))
-    mock_session.commit = AsyncMock()
-    mock_session.rollback = AsyncMock()
-    mock_session.refresh = AsyncMock()
-    mock_session.add = MagicMock()
+    directory.direct = []
+    directory.project = None
 
-    async def override_token():
-        return make_token_info()
+    async def quota_defaults(conn, domain_id, project_id, *, lease):
+        assert directory.project.enabled is False
+        assert domain_id == "domain" and project_id == PROJECT
 
-    async def override_session():
-        yield mock_session
+    quota = AsyncMock(side_effect=quota_defaults)
+    monkeypatch.setattr(domain_quotas, "apply_project_defaults", quota)
 
-    app.dependency_overrides[get_token_info] = override_token
-    from app.database import get_session
+    def update_project(pid, **attrs):
+        assert pid == PROJECT
+        for key, value in attrs.items():
+            setattr(directory.project, key, value)
+        return directory.project
 
-    app.dependency_overrides[get_session] = override_session
+    directory.ks.projects.update = update_project
 
-    with (
-        patch("app.services.keystone._get_admin_ks_client", return_value=mock_ks),
-        patch("app.services.keystone.get_admin_connection_for_project", side_effect=Exception("no monitoring")),
-        patch("app.services.activity.record", new_callable=AsyncMock),
-        patch("app.services.project_service._grant_project_role", new_callable=AsyncMock) as grant,
-        patch("app.services.project_service.cache.invalidate", new_callable=AsyncMock),
-    ):
-        async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test",
-            headers={"X-Auth-Token": "test-token"},
-        ) as ac:
-            resp = await ac.post("/api/v1/projects", json={"name": "MyProject"})
-
-    app.dependency_overrides.clear()
-    assert resp.status_code == 201
-    data = resp.json()
-    assert data["id"] == "new-proj-id"
-    assert data["name"] == "MyProject"
-    grant.assert_awaited_once_with("new-proj-id", "user-abc", "project_owner", require_hierarchy=True)
-    mock_session.add.assert_not_called()
-    mock_session.commit.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_create_project_empty_name_rejected():
-    """빈 이름으로 프로젝트 생성 거부."""
-    mock_session = AsyncMock()
-
-    async def override_token():
-        return make_token_info()
-
-    async def override_session():
-        yield mock_session
-
-    app.dependency_overrides[get_token_info] = override_token
-    from app.database import get_session
-
-    app.dependency_overrides[get_session] = override_session
-
-    async with AsyncClient(
-        transport=ASGITransport(app=app),
-        base_url="http://test",
-        headers={"X-Auth-Token": "test-token"},
-    ) as ac:
-        resp = await ac.post("/api/v1/projects", json={"name": "   "})
-    app.dependency_overrides.clear()
-    assert resp.status_code == 422
-
-
-# ─── 초대 생성 ────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_create_invitation_requires_manager():
-    """manager가 아닌 사용자는 초대 불가 (403)."""
-    mock_session = AsyncMock()
-    mock_session.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None)))
-
-    async def override_token():
-        return make_token_info(is_manager=False, is_admin=False)
-
-    async def override_session():
-        yield mock_session
-
-    app.dependency_overrides[get_token_info] = override_token
-    from app.database import get_session
-
-    app.dependency_overrides[get_session] = override_session
-
-    with patch(
-        "app.services.project_service.get_project_access",
-        new_callable=AsyncMock,
-        return_value={"is_owner": False, "is_manager": False, "roles": ["member"]},
-    ):
-        async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test",
-            headers={"X-Auth-Token": "test-token"},
-        ) as ac:
-            resp = await ac.post(
-                f"/api/v1/projects/{PROJECT_ID}/invitations",
-                json={"email": "invite@example.com"},
-            )
-    app.dependency_overrides.clear()
-    assert resp.status_code in (403, 503)
-
-
-@pytest.mark.asyncio
-async def test_create_invitation_success():
-    """manager가 초대 생성 성공 — 이메일 미발송(SMTP 비활성) 시에도 201."""
-    mock_ks = MagicMock()
-    mock_user = MagicMock()
-    mock_user.id = "invited-user-id"
-    mock_user.name = "invite_user"
-    mock_user.email = "invite@example.com"
-    mock_ks.users.list.return_value = [mock_user]
-    mock_ks.projects.get.return_value = MagicMock(name="TestProject", id=PROJECT_ID)
-
-    mock_session = AsyncMock()
-    mock_invitation = MagicMock()
-    mock_invitation.id = 1
-    mock_invitation.created_at = datetime.now(UTC)
-    mock_session.add = MagicMock()
-    mock_session.commit = AsyncMock()
-    mock_session.refresh = AsyncMock()
-
-    async def override_token():
-        return make_token_info(is_admin=True)
-
-    async def override_session():
-        yield mock_session
-
-    app.dependency_overrides[get_token_info] = override_token
-    from app.database import get_session
-
-    app.dependency_overrides[get_session] = override_session
-
-    with (
-        patch("app.services.keystone._get_admin_ks_client", return_value=mock_ks),
-        patch("app.services.activity.record", new_callable=AsyncMock),
-        patch(
-            "app.services.project_service.get_project_access",
-            new_callable=AsyncMock,
-            return_value={"is_owner": False, "is_manager": True, "roles": ["project_admin", "member"]},
-        ),
-    ):
-        async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test",
-            headers={"X-Auth-Token": "test-token"},
-        ) as ac:
-            resp = await ac.post(
-                f"/api/v1/projects/{PROJECT_ID}/invitations",
-                json={"email": "invite@example.com"},
-            )
-    app.dependency_overrides.clear()
-    assert resp.status_code == 201
-
-
-# ─── 초대 수락/거절 ───────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_accept_invitation_email_mismatch():
-    """수락자 이메일 != invited_email → 403."""
-    from app.services.project_service import accept_invitation
-
-    token = secrets.token_urlsafe(32)
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-
-    mock_inv = MagicMock()
-    mock_inv.token_hash = token_hash
-    mock_inv.status = "pending"
-    mock_inv.invited_email = "other@example.com"
-    mock_inv.expires_at = datetime.now(UTC) + timedelta(days=7)
-
-    mock_session = AsyncMock()
-    mock_session.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=mock_inv)))
-
-    from fastapi import HTTPException
-
-    with pytest.raises(HTTPException) as exc_info:
-        await accept_invitation(
-            plaintext_token=token,
-            accepting_user_id="user-xyz",
-            accepting_email="wrong@example.com",
-            session=mock_session,
+    def create_project(**attrs):
+        created_attrs.append(attrs)
+        project = SimpleNamespace(
+            id=PROJECT,
+            name=attrs["name"],
+            description=attrs.get("description", ""),
+            domain_id=attrs["domain"],
+            enabled=attrs["enabled"],
         )
-    assert exc_info.value.status_code == 403
+        directory.project = project
+        return project
+
+    directory.ks.projects.create = create_project
+    result = await project_service.create_project_for_user(
+        "new-project", "description", "domain-manager", "manager", "domain"
+    )
+    assert created_attrs == [
+        {"name": "new-project", "domain": "domain", "enabled": False, "description": "description"}
+    ]
+    quota.assert_awaited_once()
+    assert directory.project.enabled is True
+    assert result["id"] == PROJECT
+    assert (await project_service.get_project_access(PROJECT, "domain-manager"))["is_owner"]
 
 
 @pytest.mark.asyncio
-async def test_accept_invitation_expired():
-    """만료된 초대 수락 시 410 반환."""
-    from app.services.project_service import accept_invitation
+async def test_manager_cannot_create_project_in_other_domain(directory):
+    with pytest.raises(HTTPException) as denied:
+        await project_service.create_project_for_user("project", "", "domain-manager", "manager", "other")
+    assert denied.value.status_code == 403
+    assert not directory.calls
 
-    token = secrets.token_urlsafe(32)
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
 
-    mock_inv = MagicMock()
-    mock_inv.token_hash = token_hash
-    mock_inv.status = "pending"
-    mock_inv.invited_email = "user@example.com"
-    expired = datetime.now(UTC) - timedelta(days=1)
-    mock_inv.expires_at = expired
+@pytest.mark.asyncio
+async def test_iam_invitation_rejects_foreign_domain(directory, enrollments):
+    app = FastAPI()
+    app.include_router(iam_router, prefix="/api/v1/iam")
+    app.dependency_overrides[get_token_info] = lambda: manager()
 
-    mock_session = AsyncMock()
-    mock_session.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=mock_inv)))
-    mock_session.commit = AsyncMock()
+    async def db():
+        async with enrollments() as session:
+            yield session
 
-    from fastapi import HTTPException
-
-    with pytest.raises(HTTPException) as exc_info:
-        await accept_invitation(
-            plaintext_token=token,
-            accepting_user_id="user-abc",
-            accepting_email="user@example.com",
-            session=mock_session,
+    app.dependency_overrides[get_session] = db
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/iam/invitations",
+            json={"email": "new@test.invalid", "project_id": "foreign-project", "role_ids": [rid("project_member")]},
         )
-    assert exc_info.value.status_code == 410
-
-
-@pytest.mark.asyncio
-async def test_accept_invitation_invalid_token():
-    """존재하지 않는 토큰 → 404."""
-    from app.services.project_service import accept_invitation
-
-    mock_session = AsyncMock()
-    mock_session.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None)))
-
-    from fastapi import HTTPException
-
-    with pytest.raises(HTTPException) as exc_info:
-        await accept_invitation("nonexistent-token", "user", "user@example.com", mock_session)
-    assert exc_info.value.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_decline_invitation_success():
-    """정상 거절 — status가 declined로 변경."""
-    from app.services.project_service import decline_invitation
-
-    token = secrets.token_urlsafe(32)
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-
-    mock_inv = MagicMock()
-    mock_inv.token_hash = token_hash
-    mock_inv.status = "pending"
-
-    mock_session = AsyncMock()
-    mock_session.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=mock_inv)))
-    mock_session.commit = AsyncMock()
-
-    result = await decline_invitation(token, mock_session)
-    assert result["status"] == "declined"
-    assert mock_inv.status == "declined"
-
-
-@pytest.mark.asyncio
-async def test_decline_invitation_idempotent():
-    """이미 수락된 초대 거절 시도 → 현재 상태 반환 (오류 없음)."""
-    from app.services.project_service import decline_invitation
-
-    token = secrets.token_urlsafe(32)
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-
-    mock_inv = MagicMock()
-    mock_inv.token_hash = token_hash
-    mock_inv.status = "accepted"
-
-    mock_session = AsyncMock()
-    mock_session.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=mock_inv)))
-
-    result = await decline_invitation(token, mock_session)
-    assert result["status"] == "accepted"
-
-
-# ─── 매니저 관리 ──────────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_system_admin_can_invite():
-    """system admin은 manager가 아니어도 초대 가능."""
-    mock_ks = MagicMock()
-    mock_ks.users.list.return_value = []
-    mock_ks.projects.get.return_value = MagicMock(name="TestProject")
-
-    mock_session = AsyncMock()
-    mock_session.add = MagicMock()
-    mock_session.commit = AsyncMock()
-    mock_session.refresh = AsyncMock()
-
-    async def override_token():
-        return make_token_info(is_admin=True)
-
-    async def override_session():
-        yield mock_session
-
-    app.dependency_overrides[get_token_info] = override_token
-    from app.database import get_session
-
-    app.dependency_overrides[get_session] = override_session
-
-    with (
-        patch("app.services.keystone._get_admin_ks_client", return_value=mock_ks),
-        patch("app.services.activity.record", new_callable=AsyncMock),
-    ):
-        async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test",
-            headers={"X-Auth-Token": "test-token"},
-        ) as ac:
-            resp = await ac.post(
-                f"/api/v1/projects/{PROJECT_ID}/invitations",
-                json={"email": "new@example.com"},
-            )
-    app.dependency_overrides.clear()
-    assert resp.status_code == 201
-
-
-# ─── 이메일 서비스 ────────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_send_email_skipped_when_smtp_disabled(monkeypatch):
-    """SMTP 비활성 시 이메일 전송 건너뜀 — False 반환."""
-    from app.services.email_service import send_email
-
-    monkeypatch.setenv("SMTP_ENABLED", "false")
-    from app.config import get_settings
-
-    get_settings.cache_clear()
-
-    result = await send_email("user@example.com", "Test", "<p>hi</p>", "hi")
-    assert result is False
-    get_settings.cache_clear()
+        assert response.status_code == 403
+    assert not directory.sent

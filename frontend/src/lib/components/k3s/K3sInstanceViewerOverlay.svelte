@@ -14,5 +14,5 @@
       {t('instanceViewer.back')}
     </button>
   </div>
-  <InstanceDetailPanel instanceId={s.viewingInstanceId!} onClose={() => s.clearViewingInstance()} />
+  <InstanceDetailPanel instanceId={s.viewingInstanceId!} adminProjectId={s.adminMode ? s.projectId : undefined} onClose={() => s.clearViewingInstance()} />
 </div>

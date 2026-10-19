@@ -1,0 +1,386 @@
+"""Future-only policy and one-use approvals, serialized by the identity graph lease.
+
+Enrollment callers hold the outer graph lease across admission, native effects,
+and consumption. This module never stores credentials or performs native writes.
+"""
+
+import hashlib
+import json
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
+
+from fastapi import HTTPException
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+
+from app.api.common.errors import public_service_error
+from app.config import get_settings
+from app.database import get_session_factory
+from app.models.domain_quotas import DomainQuotaPolicy
+from app.models.enrollment_policy import EnrollmentPolicy, EnrollmentPolicyUpdate, SignupRequest
+from app.services import activity, identity_roles, quota_native
+
+_CORE_FIELDS = {
+    "compute": ("instances", "cores", "ram"),
+    "volume": ("volumes", "snapshots", "gigabytes"),
+    "network": tuple(quota_native.QUOTA_FIELDS["network"]),
+    "file_storage": ("shares", "share_gigabytes", "share_snapshots", "share_snapshot_gigabytes", "share_networks"),
+}
+
+
+@asynccontextmanager
+async def _session(session=None):
+    try:
+        if session is not None:
+            yield session
+        else:
+            factory = get_session_factory()
+            if factory is None:
+                raise public_service_error(503, "enrollment_policy_storage_unavailable")
+            async with factory() as owned:
+                yield owned
+    except SQLAlchemyError as exc:
+        raise public_service_error(503, "enrollment_policy_storage_unavailable") from exc
+
+
+def _limits(values):
+    keys = {key for fields in quota_native.QUOTA_FIELDS.values() for key in fields}
+    if not isinstance(values, dict) or any(
+        key not in keys or type(value) is not int or value < -1 for key, value in values.items()
+    ):
+        raise HTTPException(422, "quota_values_invalid")
+    return dict(values)
+
+
+def _fields():
+    return {
+        section: list(fields)
+        for section, fields in quota_native.QUOTA_FIELDS.items()
+        if section != "file_storage" or get_settings().service_manila_enabled
+    }
+
+
+def _policy_dto(row):
+    settings = get_settings()
+    quotas = (
+        _limits(row.personal_quotas)
+        if row is not None
+        else {key: 0 for section in _fields() for key in _CORE_FIELDS[section]}
+    )
+    if row is not None and (row.approval_mode not in {"auto", "admin"} or row.revision < 1):
+        raise public_service_error(503, "enrollment_policy_invalid")
+    return {
+        "revision": row.revision if row is not None else 0,
+        "public_signup_enabled": row.public_signup_enabled if row is not None else settings.auth.public_signup_enabled,
+        "approval_mode": row.approval_mode if row is not None else "auto",
+        "personal_quotas": quotas,
+        "quota_fields": _fields(),
+        "defaults_future_only": True,
+        "smtp_configured": bool(
+            settings.smtp_enabled and settings.smtp_host and settings.smtp_from_address and settings.frontend_base_url
+        ),
+    }
+
+
+async def read_policy(*, session=None):
+    """Only an absent singleton falls back to config; unavailable SQL fails closed."""
+    async with _session(session) as sql:
+        row = (await sql.execute(select(EnrollmentPolicy).where(EnrollmentPolicy.id == 1))).scalar_one_or_none()
+        return _policy_dto(row)
+
+
+async def _audit(token_info, action, resource_id, *, extra=None, status="success"):
+    await activity.record(
+        project_id=token_info.get("project_id", ""),
+        user_id=token_info["user_id"],
+        username=token_info.get("username", ""),
+        resource_type="enrollment_policy",
+        action=action,
+        status=status,
+        resource_id=resource_id,
+        extra=extra,
+    )
+
+
+@identity_roles._complete_mutation
+async def update_policy(conn, attrs, *, token_info):
+    req = EnrollmentPolicyUpdate.model_validate(attrs)
+    quotas = _limits(req.personal_quotas)
+    async with identity_roles._graph_lock(conn) as lease:
+        async with _session() as sql:
+            values = {
+                "revision": req.revision + 1,
+                "public_signup_enabled": req.public_signup_enabled,
+                "approval_mode": req.approval_mode,
+                "personal_quotas": quotas,
+                "updated_by_user_id": token_info["user_id"],
+                "updated_at": datetime.now(UTC),
+            }
+            await lease.assert_owned()
+            if req.revision == 0:
+                sql.add(EnrollmentPolicy(id=1, **values))
+                try:
+                    await sql.flush()
+                except IntegrityError as exc:
+                    await sql.rollback()
+                    raise HTTPException(409, "enrollment_policy_revision_conflict") from exc
+            else:
+                result = await sql.execute(
+                    update(EnrollmentPolicy)
+                    .where(EnrollmentPolicy.id == 1, EnrollmentPolicy.revision == req.revision)
+                    .values(**values)
+                )
+                if result.rowcount != 1:
+                    raise HTTPException(409, "enrollment_policy_revision_conflict")
+            await sql.commit()
+            await lease.assert_owned()
+            result = await read_policy(session=sql)
+        await _audit(token_info, "enrollment_policy.update", "global", extra={"revision": result["revision"]})
+        return result
+
+
+def _hash(parts):
+    return hashlib.sha256(json.dumps(parts, ensure_ascii=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _identity(source, email, issuer, subject, domain_id, provider_id):
+    if source not in {"email", "oidc", "github"} or not isinstance(email, str) or not 3 <= len(email) <= 255:
+        raise HTTPException(422, "signup_identity_invalid")
+    if email != email.strip() or "@" not in email or any(ord(char) < 32 for char in email):
+        raise HTTPException(422, "signup_identity_invalid")
+    if any(
+        value is not None and (not isinstance(value, str) or not 1 <= len(value) <= 64)
+        for value in (domain_id, provider_id)
+    ):
+        raise HTTPException(422, "signup_identity_invalid")
+    if source == "email":
+        if issuer or subject or provider_id is not None or domain_id is not None:
+            raise HTTPException(422, "signup_identity_invalid")
+        identity = [source, email]
+    else:
+        if not isinstance(issuer, str) or not issuer or not isinstance(subject, str) or not subject:
+            raise HTTPException(422, "signup_identity_invalid")
+        identity = [source, issuer, subject]
+    return _hash(identity), _hash([source, email, issuer, subject, domain_id, provider_id])
+
+
+@identity_roles._complete_mutation
+async def require_signup_approval(session, *, source, email, issuer="", subject="", domain_id=None, provider_id=None):
+    """Caller supplies a verified identity and holds the outer graph lease.
+
+    Stable identity is unique independently of mutable email or organization.
+    Changing the binding cannot create a second request inheriting a decision.
+    Pending creation commits before the deliberate 403, surviving caller rollback.
+    """
+    from app.services.domain_auth import DomainAuthError, normalize_email
+
+    try:
+        email = normalize_email(email).casefold()
+    except DomainAuthError as exc:
+        raise HTTPException(422, "signup_identity_invalid") from exc
+    identity_hash, binding_hash = _identity(source, email, issuer, subject, domain_id, provider_id)
+    async with _session(session) as sql:
+        row = (
+            await sql.execute(
+                select(SignupRequest)
+                .where(SignupRequest.identity_hash == identity_hash)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            if (await read_policy(session=sql))["approval_mode"] == "auto":
+                return None
+            row = SignupRequest(
+                id=str(uuid4()),
+                source=source,
+                identity_hash=identity_hash,
+                binding_hash=binding_hash,
+                email=email,
+                domain_id=domain_id,
+                provider_id=provider_id,
+                status="pending",
+            )
+            sql.add(row)
+            try:
+                await sql.commit()
+            except IntegrityError as exc:
+                await sql.rollback()
+                raise HTTPException(409, "signup_approval_conflict") from exc
+        if (
+            row.binding_hash != binding_hash
+            or row.email != email
+            or row.domain_id != domain_id
+            or row.provider_id != provider_id
+        ):
+            raise HTTPException(409, "signup_approval_identity_mismatch")
+        if row.status == "approved":
+            return row.id
+        if row.status == "pending":
+            raise HTTPException(403, "signup_approval_pending")
+        if row.status == "rejected":
+            raise HTTPException(403, "signup_approval_rejected")
+        raise HTTPException(409, "signup_approval_consumed")
+
+
+@identity_roles._complete_mutation
+async def consume_approval(session, request_id, *, user_id):
+    if request_id is None:
+        return
+    if not isinstance(user_id, str) or not 1 <= len(user_id) <= 64:
+        raise HTTPException(422, "signup_user_invalid")
+    async with _session(session) as sql:
+        result = await sql.execute(
+            update(SignupRequest)
+            .where(SignupRequest.id == request_id, SignupRequest.status == "approved")
+            .values(status="consumed", consumed_by_user_id=user_id, consumed_at=datetime.now(UTC))
+        )
+        if result.rowcount != 1:
+            raise HTTPException(409, "signup_approval_not_usable")
+        await sql.commit()
+
+
+def _timestamp(value):
+    return value.replace(tzinfo=UTC).isoformat() if value is not None else None
+
+
+def request_dto(row):
+    return {
+        "id": row.id,
+        "source": row.source,
+        "email": row.email,
+        "domain_id": row.domain_id,
+        "provider_id": row.provider_id,
+        "status": row.status,
+        "created_at": _timestamp(row.created_at),
+        "reviewed_at": _timestamp(row.reviewed_at),
+        "reviewed_by_user_id": row.reviewed_by_user_id,
+    }
+
+
+def _request_id(value):
+    try:
+        if str(UUID(value)) != value:
+            raise ValueError()
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise HTTPException(422, "signup_request_id_invalid") from exc
+    return value
+
+
+async def list_requests(*, status="pending", cursor=None):
+    if status not in {"pending", "approved", "rejected", "all"}:
+        raise HTTPException(422, "signup_request_status_invalid")
+    query = select(SignupRequest).order_by(SignupRequest.id).limit(51)
+    if status != "all":
+        query = query.where(SignupRequest.status == status)
+    if cursor is not None:
+        query = query.where(SignupRequest.id > _request_id(cursor))
+    async with _session() as sql:
+        rows = list((await sql.execute(query)).scalars())
+        return {
+            "items": [request_dto(row) for row in rows[:50]],
+            "next_cursor": rows[49].id if len(rows) > 50 else None,
+        }
+
+
+@identity_roles._complete_mutation
+async def review_request(conn, request_id, decision, *, token_info):
+    request_id = _request_id(request_id)
+    if decision not in {"approved", "rejected"}:
+        raise HTTPException(422, "signup_review_invalid")
+    async with identity_roles._graph_lock(conn) as lease, _session() as sql:
+        row = (
+            await sql.execute(select(SignupRequest).where(SignupRequest.id == request_id).with_for_update())
+        ).scalar_one_or_none()
+        if row is None:
+            raise HTTPException(404, "signup_request_not_found")
+        if row.status == decision:
+            return request_dto(row)
+        if row.status != "pending":
+            raise HTTPException(409, "signup_request_already_reviewed")
+        await lease.assert_owned()
+        result = await sql.execute(
+            update(SignupRequest)
+            .where(SignupRequest.id == request_id, SignupRequest.status == "pending")
+            .values(status=decision, reviewed_at=datetime.now(UTC), reviewed_by_user_id=token_info["user_id"])
+        )
+        if result.rowcount != 1:
+            raise HTTPException(409, "signup_request_already_reviewed")
+        await sql.commit()
+        await sql.refresh(row)
+        await lease.assert_owned()
+        safe = request_dto(row)
+        await _audit(token_info, f"signup_request.{decision}", request_id)
+        if decision == "approved" and row.source == "email":
+            try:
+                if (await read_policy(session=sql))["public_signup_enabled"]:
+                    from app.services.domain_iam import issue_enrollment
+
+                    await issue_enrollment(sql, kind="registration", domain_id=None, email=row.email)
+                else:
+                    from app.services.email_service import send_email
+
+                    delivered = await send_email(
+                        row.email,
+                        "Your signup request was approved",
+                        "<p>Your signup request was approved. Reopen your original verified invitation "
+                        "to complete enrollment. If the invitation has expired, contact your inviter "
+                        "for a renewed link. Public email registration is currently disabled.</p>",
+                        "Your signup request was approved. Reopen your original verified invitation "
+                        "to complete enrollment. If the invitation has expired, contact your inviter "
+                        "for a renewed link. Public email registration is currently disabled.",
+                    )
+                    if not delivered:
+                        raise HTTPException(503, "signup_approval_notification_failed")
+            except Exception as exc:
+                await _audit(token_info, "signup_request.notify", request_id, status="failed")
+                raise HTTPException(503, "signup_approval_notification_failed; approval remains approved") from exc
+        return safe
+
+
+@identity_roles._complete_mutation
+async def initialize_personal_quotas(domain_id, quotas, *, lease):
+    """Seed once, never overwrite native-domain policy, never acquire another lease.
+
+    Disabled Manila fields remain in the enrollment snapshot but are explicitly
+    omitted from active policy. Missing native optional fields are NOT silently
+    dropped: existing quota preflight must reject them before activation.
+    """
+    values = _limits(quotas)
+    omitted = (
+        sorted(set(values) & set(quota_native.QUOTA_FIELDS["file_storage"]))
+        if not get_settings().service_manila_enabled
+        else []
+    )
+    active = {key: value for key, value in values.items() if key not in omitted}
+    await lease.assert_owned()
+    async with _session() as sql:
+        row = (
+            await sql.execute(
+                select(DomainQuotaPolicy).where(DomainQuotaPolicy.domain_id == domain_id).with_for_update()
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            row = DomainQuotaPolicy(domain_id=domain_id, revision=1, ceilings=active, defaults=active)
+            sql.add(row)
+            try:
+                await sql.flush()
+            except IntegrityError as exc:
+                await sql.rollback()
+                raise HTTPException(409, "personal_quota_policy_conflict") from exc
+        elif row.ceilings != active or row.defaults != active:
+            raise HTTPException(409, "personal_quota_policy_conflict")
+        await lease.assert_owned()
+        await sql.commit()
+        await sql.refresh(row)
+        await lease.assert_owned()
+        if row.ceilings != active or row.defaults != active:
+            raise HTTPException(409, "personal_quota_policy_conflict")
+        return {
+            "domain_id": domain_id,
+            "revision": row.revision,
+            "ceilings": dict(row.ceilings),
+            "defaults": dict(row.defaults),
+            "omitted_fields": omitted,
+        }

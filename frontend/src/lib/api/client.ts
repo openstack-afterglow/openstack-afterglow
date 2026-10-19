@@ -1,7 +1,9 @@
 import { browser } from '$app/environment';
 import { get } from 'svelte/store';
 import { siteConfig } from '$lib/config/site';
-import { auth, authRecovery, logoutInProgress } from '$lib/stores/auth';
+import { auth, authRecovery, getAuthVerificationEpoch, logoutInProgress, projectSwitching } from '$lib/stores/auth';
+import type { AuthState } from '$lib/stores/auth';
+import { refreshAuthState, sessionScopeKey, type SessionStateUpdate } from '$lib/utils/authSession';
 import { ApiError } from '$lib/api/errors';
 import { isDocsPath } from '$lib/docs/paths';
 import { t } from '$lib/i18n/ns/shared';
@@ -57,7 +59,9 @@ function formatErrorDetail(body: unknown, fallback: string): string {
 			})
 			.join('; ');
 	}
-	if (detail && typeof detail === 'object') return JSON.stringify(detail);
+	if (detail && typeof detail === 'object') {
+		return 'message' in detail && typeof detail.message === 'string' ? detail.message : JSON.stringify(detail);
+	}
 	return JSON.stringify(body);
 }
 
@@ -68,7 +72,14 @@ let _handling403Admin = false;
 // 동시 다수 요청이 토큰 refresh를 중복 호출하지 않도록 직렬화
 let _refreshPromise: Promise<string | null> | null = null;
 let _sessionRevocationInProgress = false;
-const AUTH_PUBLIC_PATHS = new Set(['/', '/login', '/auth/gitlab/callback']);
+const AUTH_PUBLIC_PATHS: Record<string, true> = { '/': true, '/login': true, '/signup': true, '/recover': true, '/auth/callback': true };
+const AUTH_PUBLIC_PREFIXES = ['/invitations/', '/registrations/', '/recover/'];
+
+function isAuthPublicPath(pathname: string): boolean {
+	return AUTH_PUBLIC_PATHS[pathname] === true
+		|| AUTH_PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+		|| isDocsPath(pathname);
+}
 
 
 /**
@@ -94,6 +105,7 @@ async function handleAdminForbidden(): Promise<void> {
 	}
 }
 
+
 /**
  * 401 응답 시 인증 상태 정리 + 로그인 페이지(/login)로 자동 redirect.
  */
@@ -105,6 +117,7 @@ async function handleUnauthorized(): Promise<void> {
 	// cannot run a competing clear-and-redirect sequence.
 	_redirectingTo401 = true;
 	const rejectedToken = get(auth).token;
+	const rejectedEpoch = getAuthVerificationEpoch();
 	try {
 		if (_refreshPromise) {
 			try {
@@ -120,11 +133,11 @@ async function handleUnauthorized(): Promise<void> {
 			import('$lib/stores/auth'),
 			import('$app/navigation'),
 		]);
-		if (get(logoutInProgress) || get(auth).token !== rejectedToken) return;
+		if (get(logoutInProgress) || get(auth).token !== rejectedToken || getAuthVerificationEpoch() !== rejectedEpoch) return;
 		clearAuth();
-		if (!AUTH_PUBLIC_PATHS.has(window.location.pathname) && !isDocsPath(window.location.pathname)) await goto('/login', { replaceState: true });
+		if (!isAuthPublicPath(window.location.pathname)) await goto('/login', { replaceState: true });
 	} catch {
-		if (!get(logoutInProgress) && !AUTH_PUBLIC_PATHS.has(window.location.pathname) && !isDocsPath(window.location.pathname)) window.location.replace('/login');
+		if (!get(logoutInProgress) && (!get(auth).token || getAuthVerificationEpoch() === rejectedEpoch) && !isAuthPublicPath(window.location.pathname)) window.location.replace('/login');
 	} finally {
 		setTimeout(() => { _redirectingTo401 = false; }, 1000);
 	}
@@ -170,9 +183,17 @@ function computeRetryAt(retryAfterHeader: string | null | undefined, now: number
 	return now + effectiveCooldownMs;
 }
 
-async function tryRefresh({ allowDuringRevocation = false }: { allowDuringRevocation?: boolean } = {}): Promise<string | null> {
+async function tryRefresh({ allowDuringRevocation = false, allowDuringScopeChange = false }: { allowDuringRevocation?: boolean; allowDuringScopeChange?: boolean } = {}): Promise<string | null> {
 	if (_sessionRevocationInProgress && !allowDuringRevocation) return null;
 	if (_refreshPromise) return _refreshPromise;
+	if (get(projectSwitching) && !allowDuringScopeChange) {
+		const previous = get(auth);
+		const epoch = getAuthVerificationEpoch();
+		await waitForScopeChange();
+		const current = get(auth);
+		if (getAuthVerificationEpoch() !== epoch || current.token !== previous.token || current.refreshToken !== previous.refreshToken) return current.token;
+		return tryRefresh({ allowDuringRevocation });
+	}
 	_refreshPromise = (async () => {
 		const { get } = await import('svelte/store');
 		const { auth, setAuth } = await import('$lib/stores/auth');
@@ -221,7 +242,10 @@ async function tryRefresh({ allowDuringRevocation = false }: { allowDuringRevoca
 		if (get(auth).token !== state.token) return get(auth).token;
 
 		if (!res.ok) {
-			if (res.status === 401) {
+			// 401 (invalid session) and 403 (domain login policy revoked: method, provider
+			// or email no longer allowed) end the session; outages and 429 stay recoverable.
+			// 404: the bound domain or provider no longer exists (domain_not_found / provider_not_found).
+			if (res.status === 401 || res.status === 403 || res.status === 404) {
 				_refreshSettledFailure = {
 					kind: 'terminal',
 					accessToken: state.token,
@@ -254,22 +278,21 @@ async function tryRefresh({ allowDuringRevocation = false }: { allowDuringRevoca
 		}
 
 		const data = await res.json();
-		const refreshedToken = data.token as string;
 		const currentToken = get(auth).token;
 		if (currentToken !== state.token) {
 			_refreshSettledFailure = null;
 			return currentToken ?? null;
 		}
-		setAuth({
-			token: refreshedToken,
-			refreshToken: data.refresh_token ?? refreshToken,
-			accessExpiresAt: data.expires_at
-				? Math.floor(new Date(data.expires_at).getTime() / 1000)
-				: null,
-			roles: data.roles ?? state.roles,
-			isSystemAdmin: data.is_system_admin ?? state.isSystemAdmin,
-			canWrite: data.can_write,
-		});
+		let update: SessionStateUpdate;
+		try {
+			update = refreshAuthState(data, state);
+		} catch {
+			// A response without this session's bound domain is never published.
+			_refreshSettledFailure = { kind: 'terminal', accessToken: state.token, refreshToken };
+			return null;
+		}
+		const refreshedToken = update.token;
+		setAuth(update);
 		_refreshSettledFailure = null;
 		return refreshedToken;
 	})().finally(() => { _refreshPromise = null; });
@@ -334,20 +357,59 @@ function _buildHeaders(token?: string, projectId?: string, extra?: HeadersInit, 
 interface AuthRequestOptions {
 	suppressAuthRedirect?: boolean;
 	allowDuringRevocation?: boolean;
+	// Only the scope mutation may finish its preflight refresh while it owns the switch.
+	allowDuringScopeChange?: boolean;
+	// Accepted non-idempotent operations must not be repeated after a 401.
+	replayOnUnauthorized?: boolean;
 	signal?: AbortSignal | null;
 }
 
-function waitForRefresh(refresh: Promise<string | null>, signal?: AbortSignal | null): Promise<string | null> {
+function waitForRefresh<T>(refresh: Promise<T>, signal?: AbortSignal | null): Promise<T> {
 	if (!signal) return refresh;
 	signal.throwIfAborted();
-	return new Promise((resolve, reject) => {
-		const abort = () => reject(signal.reason);
-		signal.addEventListener('abort', abort, { once: true });
-		refresh.then(
-			(token) => { signal.removeEventListener('abort', abort); resolve(token); },
-			(error) => { signal.removeEventListener('abort', abort); reject(error); },
-		);
-	});
+	const { promise, resolve, reject } = Promise.withResolvers<T>();
+	const abort = () => reject(signal.reason);
+	signal.addEventListener('abort', abort, { once: true });
+	refresh.then(
+		(token) => { signal.removeEventListener('abort', abort); resolve(token); },
+		(error) => { signal.removeEventListener('abort', abort); reject(error); },
+	);
+	return promise;
+}
+
+async function waitForScopeChange(signal?: AbortSignal | null): Promise<void> {
+	if (!get(projectSwitching)) return;
+	const { promise, resolve } = Promise.withResolvers<void>();
+	const unsubscribe = projectSwitching.subscribe(switching => { if (!switching) resolve(); });
+	try { await waitForRefresh(promise, signal); } finally { unsubscribe(); }
+}
+
+// Token → owning logical scope, so a caller holding a token rotated by refresh can still
+// be recognized. Bounded: only recent rotations of live sessions matter.
+const MAX_TOKEN_SCOPES = 32;
+const tokenScopes = new Map<string, string>();
+
+function rememberTokenScope(state: AuthState): string | null {
+	if (!state.token) return null;
+	const key = sessionScopeKey(state);
+	tokenScopes.delete(state.token);
+	tokenScopes.set(state.token, key);
+	if (tokenScopes.size > MAX_TOKEN_SCOPES) {
+		const oldest = tokenScopes.keys().next().value;
+		if (oldest !== undefined) tokenScopes.delete(oldest);
+	}
+	return key;
+}
+auth.subscribe(rememberTokenScope);
+
+function requestScopeKey(token: string): string | null {
+	const live = get(auth);
+	return live.token === token ? rememberTokenScope(live) : tokenScopes.get(token) ?? null;
+}
+
+function isLiveRequestScope(scopeKey: string | null): boolean {
+	const live = get(auth);
+	return scopeKey !== null && !!live.token && sessionScopeKey(live) === scopeKey;
 }
 
 async function withAuthRecovery<T extends { status: number }>(
@@ -356,6 +418,9 @@ async function withAuthRecovery<T extends { status: number }>(
 	opts: AuthRequestOptions = {},
 ): Promise<T> {
 	opts.signal?.throwIfAborted();
+	// A request may be resent only under a rotated token of the same logical session,
+	// user, domain and project; never under a later login or another project scope.
+	const scopeKey = token ? requestScopeKey(token) : null;
 	let requestToken = token;
 	if (token && !_sessionRevocationInProgress) {
 		const state = get(auth);
@@ -365,30 +430,52 @@ async function withAuthRecovery<T extends { status: number }>(
 			state.token && state.refreshToken && state.accessExpiresAt
 			&& state.accessExpiresAt <= Math.floor(Date.now() / 1000) + 120
 		)) {
-			const freshToken = await waitForRefresh(tryRefresh(), opts.signal);
+			const freshToken = await waitForRefresh(tryRefresh({ allowDuringScopeChange: opts.allowDuringScopeChange }), opts.signal);
 			opts.signal?.throwIfAborted();
+			// Ownership matters even when a later login reused the same token string.
+			if (!isLiveRequestScope(scopeKey)) throw new ApiError(401, t('client.sessionExpired'));
 			if (!freshToken) {
-				if (!opts.suppressAuthRedirect) void handleUnauthorized();
+				if (!opts.suppressAuthRedirect && isLiveRequestScope(scopeKey)) void handleUnauthorized();
 				throw new ApiError(401, t('client.sessionExpired'));
 			}
-			requestToken = freshToken;
+			if (freshToken !== token) requestToken = freshToken;
 		}
 	}
 
 	let response = await send(requestToken);
 	opts.signal?.throwIfAborted();
 	if (response.status === 401 && requestToken) {
+		if (isLiveRequestScope(scopeKey) && get(projectSwitching) && !opts.allowDuringScopeChange) {
+			// A scope commit may have consumed this JTI before its response was published.
+			// Non-replay mutations wait too, but are never sent again.
+			await waitForScopeChange(opts.signal);
+			opts.signal?.throwIfAborted();
+		}
+		if (!isLiveRequestScope(scopeKey)) return response;
+	}
+	if (response.status === 401 && requestToken && opts.replayOnUnauthorized !== false) {
 		const liveToken = get(auth).token;
 		const retryToken = liveToken && liveToken !== requestToken
 			? liveToken
-			: await waitForRefresh(tryRefresh({ allowDuringRevocation: opts.allowDuringRevocation }), opts.signal);
+			: await waitForRefresh(tryRefresh({ allowDuringRevocation: opts.allowDuringRevocation, allowDuringScopeChange: opts.allowDuringScopeChange }), opts.signal);
 		opts.signal?.throwIfAborted();
-		if (retryToken && retryToken !== requestToken) {
+		if (retryToken && retryToken !== requestToken && isLiveRequestScope(scopeKey)) {
 			response = await send(retryToken);
+			requestToken = retryToken;
 		}
 		opts.signal?.throwIfAborted();
 	}
-	if (response.status === 401 && !opts.suppressAuthRedirect) void handleUnauthorized();
+	// A retried send can also overlap a scope commit that retires its JTI.
+	if (response.status === 401 && requestToken && isLiveRequestScope(scopeKey)
+		&& get(projectSwitching) && !opts.allowDuringScopeChange) {
+		await waitForScopeChange(opts.signal);
+		opts.signal?.throwIfAborted();
+	}
+	// A stale request's rejection must never end a different, live session.
+	if (response.status === 401 && !opts.suppressAuthRedirect
+		&& (!requestToken || get(auth).token === requestToken) && (!token || isLiveRequestScope(scopeKey))) {
+		void handleUnauthorized();
+	}
 	return response;
 }
 
@@ -398,7 +485,7 @@ export function fetchWithAuth(
 	options: RequestInit = {},
 	token?: string,
 	projectId?: string,
-	reqOpts?: { suppressAuthRedirect?: boolean; baseUrl?: string },
+	reqOpts?: { suppressAuthRedirect?: boolean; baseUrl?: string; replayOnUnauthorized?: boolean },
 ): Promise<Response> {
 	const baseUrl = reqOpts?.baseUrl ?? getBaseUrl();
 	return withAuthRecovery(
@@ -410,7 +497,9 @@ export function fetchWithAuth(
 		{
 			signal: options.signal,
 			suppressAuthRedirect: reqOpts?.suppressAuthRedirect,
+			replayOnUnauthorized: reqOpts?.replayOnUnauthorized,
 			allowDuringRevocation: path === '/api/v1/auth/logout' || path === '/api/v1/auth/logout-all',
+			allowDuringScopeChange: options.method === 'POST' && ['/api/v1/auth/token/domain', '/api/v1/auth/token/workspace', '/api/v1/auth/token/project'].includes(path),
 		},
 	);
 }
@@ -421,7 +510,7 @@ async function request<T>(
 	token?: string,
 	projectId?: string,
 	// Fix 3: caller가 401을 직접 처리하는 경우 전역 로그아웃 리다이렉트를 억제할 수 있음
-	reqOpts?: { suppressAuthRedirect?: boolean; baseUrl?: string }
+	reqOpts?: { suppressAuthRedirect?: boolean; baseUrl?: string; replayOnUnauthorized?: boolean }
 ): Promise<T> {
 	options.signal?.throwIfAborted();
 	const method = (options.method ?? 'GET').toString().toUpperCase();
@@ -433,7 +522,7 @@ async function request<T>(
 	const mock = await maybeMockJson<T>(method, path, requestBody, token, projectId);
 	options.signal?.throwIfAborted();
 	if (mock !== symbolNoMatch) {
-		if (method === 'GET') memoryCache.set(path, { data: mock, timestamp: Date.now() });
+		if (method === 'GET' && options.cache !== 'no-store') memoryCache.set(path, { data: mock, timestamp: Date.now() });
 		return mock;
 	}
 
@@ -447,17 +536,30 @@ async function request<T>(
 	if (!res.ok) {
 		let detail = res.statusText;
 		let code: string | undefined;
+		let linkTicket: { link_token: string; domain_id: string } | undefined;
 		try {
 			const body = await res.json();
 			detail = formatErrorDetail(body, res.statusText);
 			if (typeof body?.code === 'string') code = body.code;
+			else if (typeof body?.detail?.code === 'string') code = body.detail.code;
+			else if (res.status === 403 && (body?.detail === 'signup_approval_pending' || body?.detail === 'signup_approval_rejected')) code = body.detail;
+			if (code === 'account_link_required') {
+				const ticket = body?.detail?.code ? body.detail : body;
+				if (typeof ticket.link_token === 'string' && typeof ticket.domain_id === 'string') {
+					linkTicket = { link_token: ticket.link_token, domain_id: ticket.domain_id };
+				}
+				// Never serialize a bearer ticket into an error message or alert.
+				detail = 'account_link_required';
+			}
 		} catch {
 			detail = await res.text().catch(() => res.statusText);
 		}
-		if (res.status === 403 && /^\/api\/v1\/admin(?:\/|$|[?#])/.test(path)) {
+		// Only the platform's explicit authority denial demotes the admin console; native
+		// operation or domain-boundary 403s leave verified system-admin authority intact.
+		if (res.status === 403 && code === 'system_admin_required' && /^\/api\/v1\/admin(?:\/|$|[?#])/.test(path)) {
 			void handleAdminForbidden();
 		}
-		throw new ApiError(res.status, detail, code);
+		throw new ApiError(res.status, detail, code, linkTicket);
 	}
 
 	if (res.status === 204) return undefined as T;
@@ -935,12 +1037,18 @@ export const api = {
 		path: string,
 		token?: string,
 		projectId?: string,
-		opts?: { refresh?: boolean; signal?: AbortSignal; suppressAuthRedirect?: boolean }
+		opts?: { refresh?: boolean; signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean }
 	): Promise<T> => {
 		if (opts?.signal?.aborted) {
 			return Promise.reject(new DOMException(t('client.operationAborted'), 'AbortError'));
 		}
 		const scope = captureRequestScope(token, projectId);
+		// Token inspection can consume authority on GET. Do not warm, coalesce, cache or replay it.
+		if (opts?.cache === 'no-store') {
+			return request<T>(path, { method: 'GET', signal: opts.signal, cache: 'no-store' }, token, projectId, {
+				baseUrl: scope.baseUrl, suppressAuthRedirect: opts.suppressAuthRedirect, replayOnUnauthorized: opts.replayOnUnauthorized ?? false,
+			});
+		}
 		const normalized = normalizeGetPath(path, scope, opts?.refresh);
 		const familyKey = registerFamily(scope, normalized.logicalUrl);
 		const suppressAuthRedirect = opts?.suppressAuthRedirect ?? false;
@@ -971,28 +1079,28 @@ export const api = {
 	},
 	prefetch: prefetchJson,
 	clearPrefetchCache,
-	post: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache }) => {
+	post: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean }) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>
-			request<T>(path, { method: 'POST', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect })
+			request<T>(path, { method: 'POST', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect, replayOnUnauthorized: opts?.replayOnUnauthorized })
 		);
 	},
-	put: <T>(path: string, body: unknown, token?: string, projectId?: string) => {
+	put: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean }) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>
-			request<T>(path, { method: 'PUT', body: JSON.stringify(body) }, token, projectId, { baseUrl: scope.baseUrl })
+			request<T>(path, { method: 'PUT', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect, replayOnUnauthorized: opts?.replayOnUnauthorized })
 		);
 	},
-	patch: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: { signal?: AbortSignal }) => {
+	patch: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean }) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>
-			request<T>(path, { method: 'PATCH', body: JSON.stringify(body), signal: opts?.signal }, token, projectId, { baseUrl: scope.baseUrl })
+			request<T>(path, { method: 'PATCH', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect, replayOnUnauthorized: opts?.replayOnUnauthorized })
 		);
 	},
-	delete: <T>(path: string, token?: string, projectId?: string, opts?: { signal?: AbortSignal }) => {
+	delete: <T>(path: string, token?: string, projectId?: string, opts?: { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean }) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>
-			request<T>(path, { method: 'DELETE', signal: opts?.signal }, token, projectId, { baseUrl: scope.baseUrl })
+			request<T>(path, { method: 'DELETE', signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect, replayOnUnauthorized: opts?.replayOnUnauthorized })
 		);
 	},
 

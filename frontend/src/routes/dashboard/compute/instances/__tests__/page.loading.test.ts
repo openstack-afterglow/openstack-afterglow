@@ -49,7 +49,7 @@ describe('instance list loading graph', () => {
 	it('starts list and metrics together and releases the page when the list settles', async () => {
 		const list = Promise.withResolvers<Instance[]>();
 		const metrics = Promise.withResolvers<{
-			prometheus_available: boolean;
+			monitoring_available: boolean;
 			instances: Record<string, never>;
 		}>();
 		mockGet.mockImplementation((path: string) => path.endsWith('metrics-summary-batch')

@@ -82,6 +82,11 @@ class RedactedCredentials(RedactedMapping):
     """Credential-specific redacted mapping."""
 
 
+def password_login_payload(credentials: dict[str, str]) -> RedactedCredentials:
+    """Project native SDK credentials onto the domain-free browser login API."""
+    return RedactedCredentials({key: credentials[key] for key in ("username", "password")})
+
+
 class RedactedSecret(str):
     """String-compatible secret value with a traceback-safe representation."""
 
@@ -122,9 +127,66 @@ class IntegrationAuthSession:
 
     async def _login_locked(self) -> None:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            resp = await ac.post("/api/v1/auth/login", json=self.credentials)
-        assert resp.status_code == 200, f"{self.label} 로그인 실패 (HTTP {resp.status_code})"
-        self.token_data = resp.json()
+            resp = await ac.post("/api/v1/auth/login", json=password_login_payload(self.credentials))
+            assert resp.status_code == 200, f"{self.label} 로그인 실패 (HTTP {resp.status_code})"
+            data = resp.json()
+            assert data["domain_id"] == data["identity_domain_id"], "Fresh login must start in the account home"
+            # Native project/domain settings remain explicit live-test workspace
+            # targets, never password-login authority or a fallback on failure.
+            if self.credentials.get("project_name"):
+                headers = {"Authorization": f"Bearer {data['token']}"}
+                domains = await ac.get("/api/v1/auth/domains", headers=headers)
+                assert domains.status_code == 200, f"{self.label} domain directory failed (HTTP {domains.status_code})"
+                matches = [
+                    domain
+                    for domain in domains.json()
+                    if self.credentials["domain_name"] in (domain["id"], domain["name"])
+                ]
+                assert len(matches) == 1, f"{self.label} requires one accessible configured workspace domain"
+                domain_id = matches[0]["id"]
+                workspace = await ac.get("/api/v1/auth/workspaces", params={"domain_id": domain_id}, headers=headers)
+                assert workspace.status_code == 200, (
+                    f"{self.label} workspace directory failed (HTTP {workspace.status_code})"
+                )
+                assert workspace.json()["domain"]["id"] == domain_id
+                projects = [
+                    project
+                    for project in workspace.json()["projects"]
+                    if project["name"] == self.credentials["project_name"]
+                ]
+                assert len(projects) == 1, f"{self.label} requires one accessible configured workspace project"
+                selected = await ac.post(
+                    "/api/v1/auth/token/workspace",
+                    json={"domain_id": domain_id, "project_id": projects[0]["id"]},
+                    headers=headers,
+                )
+                assert selected.status_code == 200, (
+                    f"{self.label} workspace selection failed (HTTP {selected.status_code})"
+                )
+                scoped = selected.json()
+                assert (scoped["domain_id"], scoped["project_id"]) == (domain_id, projects[0]["id"])
+                assert (scoped["user_id"], scoped["identity_domain_id"]) == (
+                    data["user_id"],
+                    data["identity_domain_id"],
+                )
+                # Workspace selection can preserve a system administrator's
+                # original native connection scope. Core OpenStack live tests
+                # require an actual user project token, not logical authority.
+                native = await ac.post(
+                    "/api/v1/auth/token/project",
+                    json={"project_id": projects[0]["id"]},
+                    headers={"Authorization": f"Bearer {scoped['token']}"},
+                )
+                assert native.status_code == 200, (
+                    f"{self.label} native project rescope failed (HTTP {native.status_code})"
+                )
+                data = native.json()
+                assert (data["domain_id"], data["project_id"]) == (domain_id, projects[0]["id"])
+                assert (data["user_id"], data["identity_domain_id"]) == (
+                    scoped["user_id"],
+                    scoped["identity_domain_id"],
+                )
+            self.token_data = data
 
     async def _refresh_locked(self) -> bool:
         if not self.token_data or not self.token_data.get("refresh_token"):
@@ -471,6 +533,30 @@ async def anon_client():
         timeout=30,
     ) as ac:
         yield ac
+
+
+async def _caller_domain_id(client):
+    """Resolve the caller's authoritative domain ID, not a display name."""
+    response = await client.get("/api/v1/auth/me")
+    assert response.status_code == 200, response.text
+    domain_id = response.json()["domain_id"]
+    assert isinstance(domain_id, str) and domain_id
+    return domain_id
+
+
+@pytest.fixture(scope="session")
+async def selected_domain_id(client):
+    return await _caller_domain_id(client)
+
+
+@pytest.fixture(scope="session")
+async def regular_user_domain_id(user_client):
+    return await _caller_domain_id(user_client)
+
+
+@pytest.fixture(scope="session")
+async def admin_user_domain_id(admin_user_client):
+    return await _caller_domain_id(admin_user_client)
 
 
 # ---------------------------------------------------------------------------

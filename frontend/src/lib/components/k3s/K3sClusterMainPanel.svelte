@@ -37,7 +37,7 @@
 		disabling = true;
 		stampedeError = '';
 		const token = $auth.token ?? undefined;
-		const projectId = $auth.projectId ?? undefined;
+		const projectId = s.projectId;
 		try {
 			await api.post(`/api/v1/k3s/clusters/${s.cluster.id}/stampede/disable`, {}, token, projectId);
 		} catch (error) {
@@ -52,7 +52,7 @@
 		enabling = true;
 		stampedeError = '';
 		const token = $auth.token ?? undefined;
-		const projectId = $auth.projectId ?? undefined;
+		const projectId = s.projectId;
 		try {
 			await api.post(`/api/v1/k3s/clusters/${s.cluster.id}/stampede/enable`, {}, token, projectId);
 		} catch (error) {

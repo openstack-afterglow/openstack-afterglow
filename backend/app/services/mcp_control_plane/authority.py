@@ -362,6 +362,8 @@ async def prepare_project_authority(
     conn._afterglow_user_id = token_info["user_id"]
     conn._afterglow_project_id = token_info["project_id"]
     conn._afterglow_token = token_info["token"]
+    conn._afterglow_domain_id = token_info.get("domain_id")
+    conn._afterglow_identity_domain_id = token_info.get("identity_domain_id")
     try:
         projects = await _prepare_connection_projects(
             conn,

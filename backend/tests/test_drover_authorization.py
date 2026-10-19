@@ -11,6 +11,7 @@ from app.api.drover.admin import router as drover_admin_router
 from app.api.drover.proxy import router as drover_proxy_router
 from app.services import project_service, service_proxy
 from app.services.drover_authorization import authorize_drover_request
+from tests.admin_gate import synthetic_verified_admin
 
 PROJECT = "11111111111141118111111111111111"
 USER = "33333333333343338333333333333333"
@@ -328,6 +329,7 @@ async def bff(monkeypatch):
     app.include_router(drover_proxy_router, prefix="/api/v1/k3s")
     app.include_router(drover_admin_router, prefix="/api/v1/admin")
     app.dependency_overrides[deps.get_token_info] = identity
+    app.dependency_overrides[deps.require_admin] = synthetic_verified_admin
     monkeypatch.setattr(project_service, "get_project_access", AsyncMock(side_effect=lambda *_: dict(current)))
     monkeypatch.setattr(service_proxy, "_get_internal_endpoint", lambda *_: "http://drover.internal")
     monkeypatch.setattr(httpx, "AsyncClient", upstream_client)

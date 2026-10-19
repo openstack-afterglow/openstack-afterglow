@@ -1,6 +1,7 @@
 """Admin credential API. Mount router under /api/v1/admin."""
 
 import asyncio
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.exceptions import RequestValidationError
@@ -9,6 +10,7 @@ from fastapi.routing import APIRoute
 from keystoneauth1 import exceptions as auth_exc
 from openstack import exceptions as sdk_exc
 
+from app.api.common.errors import public_service_error
 from app.api.deps import get_os_conn, get_token_info, require_admin
 from app.models.admin_credentials import (
     ApplicationCredentialCreate,
@@ -19,6 +21,10 @@ from app.models.admin_credentials import (
 from app.services import admin_credentials as svc
 
 NO_STORE = {"Cache-Control": "no-store, private", "Pragma": "no-cache"}
+# A bare ``= Query(...)`` default discards the Annotated identifier constraints, so
+# an empty or malformed ``?domain_id=`` would otherwise reach native lookups.
+QueryIdentifier = Annotated[Identifier, Query()]
+OptionalQueryIdentifier = Annotated[Identifier | None, Query()]
 
 
 class CredentialRoute(APIRoute):
@@ -49,6 +55,10 @@ async def native(call):
         raise
     except svc.ScopeDenied:
         raise HTTPException(403, "credential_scope_denied") from None
+    except svc.RollbackFailed:
+        # Issuance committed and revocation failed; never label this a normal
+        # denial/not-found that implies no live credential was created.
+        raise public_service_error(502, "credential_rollback_failed") from None
     except Exception as exc:
         status = getattr(exc, "status_code", None) or getattr(exc, "http_status", None)
         if isinstance(exc, (sdk_exc.ForbiddenException, auth_exc.Forbidden)) or status in (401, 403):
@@ -65,65 +75,79 @@ async def native(call):
 
 
 @router.get("/application-credentials/context")
-async def application_context(conn=Depends(get_os_conn), token_info=Depends(get_token_info)):
-    return await native(lambda: svc.creation_context(conn, token_info))
+async def application_context(
+    domain_id: QueryIdentifier, conn=Depends(get_os_conn), token_info=Depends(get_token_info)
+):
+    return await native(lambda: svc.creation_context(conn, token_info, domain_id))
 
 
 @router.get("/application-credentials")
 async def list_applications(
-    user_id: Identifier | None = Query(None), conn=Depends(get_os_conn), token_info=Depends(get_token_info)
+    domain_id: QueryIdentifier,
+    user_id: OptionalQueryIdentifier = None,
+    conn=Depends(get_os_conn),
+    token_info=Depends(get_token_info),
 ):
     user_id = user_id or token_info["user_id"]
-    return await native(
-        lambda: {
-            "items": [svc.application_metadata(r, user_id) for r in conn.identity.application_credentials(user_id)]
-        }
-    )
+    return await native(lambda: svc.list_applications(conn, domain_id, user_id))
 
 
 @router.get("/application-credentials/{credential_id}")
 async def get_application(
     credential_id: Identifier,
-    user_id: Identifier | None = Query(None),
+    domain_id: QueryIdentifier,
+    user_id: OptionalQueryIdentifier = None,
     conn=Depends(get_os_conn),
     token_info=Depends(get_token_info),
 ):
     user_id = user_id or token_info["user_id"]
     return await native(
-        lambda: svc.application_metadata(conn.identity.get_application_credential(user_id, credential_id), user_id)
+        lambda: svc.application_metadata(
+            svc.get_application(conn, domain_id, user_id, credential_id), user_id, domain_id
+        )
     )
 
 
 @router.post("/application-credentials", status_code=201)
 async def create_application(
-    body: ApplicationCredentialCreate, conn=Depends(get_os_conn), token_info=Depends(get_token_info)
+    body: ApplicationCredentialCreate,
+    domain_id: QueryIdentifier,
+    conn=Depends(get_os_conn),
+    token_info=Depends(get_token_info),
 ):
-    return await native(lambda: svc.create_application(conn, token_info, body))
+    return await native(lambda: svc.create_application(conn, token_info, body, domain_id))
 
 
 @router.delete("/application-credentials/{credential_id}", status_code=204)
 async def delete_application(
     credential_id: Identifier,
-    user_id: Identifier | None = Query(None),
+    domain_id: QueryIdentifier,
+    user_id: OptionalQueryIdentifier = None,
     conn=Depends(get_os_conn),
     token_info=Depends(get_token_info),
 ):
     user_id = user_id or token_info["user_id"]
-    await native(lambda: conn.identity.delete_application_credential(user_id, credential_id, ignore_missing=False))
+    await native(lambda: svc.delete_application(conn, domain_id, user_id, credential_id))
     return Response(status_code=204, headers=NO_STORE)
 
 
 @router.get("/user-credentials")
-async def list_user_credentials(user_id: Identifier | None = Query(None), conn=Depends(get_os_conn)):
-    query = {"user_id": user_id} if user_id else {}
-    return await native(lambda: {"items": [svc.user_metadata(r) for r in conn.identity.credentials(**query)]})
+async def list_user_credentials(
+    domain_id: QueryIdentifier, user_id: OptionalQueryIdentifier = None, conn=Depends(get_os_conn)
+):
+    return await native(lambda: svc.list_user_credentials(conn, domain_id, user_id))
 
 
 @router.get("/user-credentials/{credential_id}")
-async def get_user_credential(credential_id: Identifier, sensitive: bool = Query(False), conn=Depends(get_os_conn)):
+async def get_user_credential(
+    credential_id: Identifier,
+    domain_id: QueryIdentifier,
+    sensitive: bool = Query(False),
+    conn=Depends(get_os_conn),
+):
     def fetch():
-        resource = conn.identity.get_credential(credential_id)
-        result = svc.user_metadata(resource)
+        resource = svc.get_user_credential(conn, domain_id, credential_id)
+        result = svc.user_metadata(resource, domain_id)
         if sensitive:
             result["blob"] = svc.value(resource, "blob")
         return result
@@ -132,24 +156,18 @@ async def get_user_credential(credential_id: Identifier, sensitive: bool = Query
 
 
 @router.post("/user-credentials", status_code=201)
-async def create_user_credential(body: UserCredentialCreate, conn=Depends(get_os_conn)):
-    return await native(
-        lambda: svc.user_metadata(conn.identity.create_credential(**body.model_dump(exclude_none=True)))
-    )
+async def create_user_credential(body: UserCredentialCreate, domain_id: QueryIdentifier, conn=Depends(get_os_conn)):
+    return await native(lambda: svc.create_user_credential(conn, domain_id, body))
 
 
 @router.patch("/user-credentials/{credential_id}")
-async def update_user_credential(credential_id: Identifier, body: UserCredentialUpdate, conn=Depends(get_os_conn)):
-    def update():
-        attrs = body.model_dump(exclude_unset=True, exclude_none=True)
-        if not attrs:
-            raise HTTPException(422, "credential_invalid_input")
-        return svc.user_metadata(conn.identity.update_credential(credential_id, **attrs))
-
-    return await native(update)
+async def update_user_credential(
+    credential_id: Identifier, body: UserCredentialUpdate, domain_id: QueryIdentifier, conn=Depends(get_os_conn)
+):
+    return await native(lambda: svc.update_user_credential(conn, domain_id, credential_id, body))
 
 
 @router.delete("/user-credentials/{credential_id}", status_code=204)
-async def delete_user_credential(credential_id: Identifier, conn=Depends(get_os_conn)):
-    await native(lambda: conn.identity.delete_credential(credential_id, ignore_missing=False))
+async def delete_user_credential(credential_id: Identifier, domain_id: QueryIdentifier, conn=Depends(get_os_conn)):
+    await native(lambda: svc.delete_user_credential(conn, domain_id, credential_id))
     return Response(status_code=204, headers=NO_STORE)

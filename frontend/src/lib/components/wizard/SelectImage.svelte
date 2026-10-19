@@ -1,17 +1,20 @@
 <script lang="ts">
 	import type { ImageInfo } from '$lib/types/compute';
+	import type { FlavorOption } from '$lib/types/flavor';
+	import { hasGpuImageMetadata, imageFlavorProfile, imageRecommendations } from '$lib/utils/imageRecommendation';
 	import { createImageCatalog, currentImagesByReference, imageReferenceParts, imageUploadInstant } from '$lib/stores/imageCatalog.svelte';
 	import { imageReferenceMatchesQuery } from '$lib/utils/imageReference';
 	import { formatSize } from '$lib/utils/format';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
-	import { TableShell } from '$lib/components/ui';
+	import { Alert, TableShell } from '$lib/components/ui';
 	import ImageDigest from '$lib/components/image/ImageDigest.svelte';
 	import { t } from '$lib/i18n/ns/vm-wizard';
 	import RichText from '$lib/i18n/RichText.svelte';
-	let { images, selectedId, onSelect }: {
+	let { images, selectedId, onSelect, selectedFlavor = null }: {
 		images: ImageInfo[];
 		selectedId: string | null;
 		onSelect: (id: string, name: string) => void;
+		selectedFlavor?: FlavorOption | null;
 	} = $props();
 
 	let activeDistro = $state<string | null>(null);
@@ -87,6 +90,9 @@
 	const catalog = createImageCatalog(() => filteredImages, () => images);
 	const repositoryGroups = $derived(catalog.repositoryGroups);
 	const selectedImage = $derived(images.find(image => image.id === selectedId));
+	const flavorProfile = $derived(imageFlavorProfile(selectedFlavor));
+	const recommendations = $derived(imageRecommendations(images, selectedFlavor));
+	const cpuDriverWarning = $derived(flavorProfile !== null && !flavorProfile.gpu && selectedImage && hasGpuImageMetadata(selectedImage));
 	const openRepository = $derived(expandedRepository === undefined
 		? selectedImage ? imageReferenceParts(selectedImage).repository : null
 		: expandedRepository);
@@ -186,6 +192,20 @@
 	</div>
 {/if}
 
+{#if flavorProfile}
+	<section aria-label={t('image.recommendation.title')} class="mb-4 text-sm text-[var(--color-ink-2)]">
+		<p>{flavorProfile.gpu ? t('image.recommendation.gpuHelp') : t('image.recommendation.cpuHelp')}</p>
+		{#if flavorProfile.gpu && recommendations.size === 0}
+			<p class="mt-1">{t('image.recommendation.noMatch')}</p>
+		{/if}
+	</section>
+{/if}
+{#if cpuDriverWarning}
+	<Alert tone="warning" title={t('image.recommendation.cpuWarningTitle')} class="mb-4">
+		{t('image.recommendation.cpuWarning')}
+	</Alert>
+{/if}
+
 {#if previousSelected || previousSelectedMissing}
 	<section aria-label={t('image.previous.label')} class="mb-4 rounded-xl border border-[var(--color-line-2)] bg-[var(--color-surface-sunken)] p-4 text-sm text-[var(--color-ink-1)]">
 		<p class="mb-2 font-semibold">{t('image.previous.title')}</p>
@@ -227,6 +247,9 @@
 						<p class="break-all font-mono text-sm font-semibold text-[var(--color-ink-0)]">{group.repository}</p>
 						<p class="mt-1 text-xs text-[var(--color-ink-2)]">{[distroLabel(image.os_distro ?? OTHER_DISTRO), image.os_type].filter(Boolean).join(' · ')}</p>
 						<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('image.tagCount', { count: group.tags.length })}</p>
+						{#if group.images.some(candidate => recommendations.has(candidate.id))}
+							<p class="mt-1 text-xs font-medium text-[var(--color-accent)]">{t('image.recommendation.repository')}</p>
+						{/if}
 						{#if selectedImage && imageReferenceParts(selectedImage).repository === group.repository}
 							<p class="mt-1 truncate text-xs text-[var(--color-ink-2)]" title={imageReferenceParts(selectedImage).tag}>{t('image.selectedTag', { tag: imageReferenceParts(selectedImage).tag })}</p>
 						{/if}
@@ -277,12 +300,20 @@
 													? 'bg-[var(--color-surface-selected)]'
 													: 'bg-[var(--color-surface-base)] enabled:hover:bg-[var(--color-surface-sunken)]'}"
 											>
-												<span class="flex min-w-0 items-center gap-2 text-[var(--color-ink-1)]" title={tag.tag}>
+												<span class="flex min-w-0 flex-wrap items-center gap-2 text-[var(--color-ink-1)]" title={tag.tag}>
 													<span class="min-w-0 truncate font-mono text-sm">{tag.tag}</span>
 													{#if selectedId === image.id}
 														<svg class="h-4 w-4 shrink-0 text-[var(--color-accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
 													{/if}
 													{#if image.status !== 'active'}<span class="shrink-0 text-xs text-[var(--color-ink-2)]">{image.status}</span>{/if}
+													{#if recommendations.get(image.id) === 'gpu'}
+														<span class="text-xs font-medium text-[var(--color-accent)]">{t('image.recommendation.gpu', { vendor: image.gpu_vendor })}</span>
+													{:else if recommendations.get(image.id) === 'general'}
+														<span class="text-xs font-medium text-[var(--color-accent)]">{t('image.recommendation.general')}</span>
+													{/if}
+													{#if hasGpuImageMetadata(image)}
+														<span class="text-xs text-[var(--color-ink-2)]">{t('image.recommendation.driverImage')}</span>
+													{/if}
 												</span>
 												<ImageDigest {image} showId={false} compact />
 												<span class="whitespace-nowrap text-xs tabular-nums text-[var(--color-ink-2)]">

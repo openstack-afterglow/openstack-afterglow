@@ -205,7 +205,7 @@ async def _list_all_projects_containers(
     from app.services import keystone, swift
     from app.services.swift import _is_unauthorized
 
-    projects = await asyncio.to_thread(keystone.list_projects, admin_token)
+    projects = await asyncio.to_thread(keystone.list_system_projects, admin_token)
     semaphore = asyncio.Semaphore(8)
 
     async def _one(p: dict) -> list[dict]:

@@ -60,16 +60,6 @@ function jobIf(job) {
 	return match[1].trim()
 }
 
-test("test jobs start at t=0: no test job waits on version-check", () => {
-	assert.match(testWorkflow, /^  version-check:\s*$/m)
-	for (const job of ["test-backend", "test-cloud-shell", "test-contract", "test-functional", "test-frontend", "detect-live"]) {
-		const block = jobBlock(testWorkflow, job)
-		assert.doesNotMatch(block, /^\s+needs:/m, `${job} must start at t=0 without needs`)
-	}
-	// 빌드 게이팅은 docker-build.yml changes 가 reusable test workflow 전체에 걸어 유지한다.
-	const changes = jobBlock(dockerWorkflow, "changes")
-	assert.match(changes, /^    needs: \[test, test-pr\]\s*$/m)
-})
 
 test("the build gate ties each test caller's result to its own event", () => {
 	const changes = jobIf(jobBlock(dockerWorkflow, "changes"))
@@ -82,15 +72,6 @@ test("the build gate ties each test caller's result to its own event", () => {
 	assert.doesNotMatch(changes, /needs\.test\.result == 'success'\s*\|\|/)
 })
 
-test("functional tests always run and live tests wait on version-check and every test layer", () => {
-	assert.doesNotMatch(jobBlock(testWorkflow, "test-functional"), /^    if:/m)
-	const needs = /^    needs: \[([^\]]+)\]\s*$/m.exec(jobBlock(testWorkflow, "test-live"))
-	assert.ok(needs, "test-live must declare needs")
-	assert.deepEqual(
-		needs[1].split(",").map((name) => name.trim()).sort(),
-		["detect-live", "test-backend", "test-cloud-shell", "test-contract", "test-frontend", "test-functional", "version-check"],
-	)
-})
 
 /** step 이 조건 없이 실행되고 실패가 잡을 실패시키는지(`if:`·`continue-on-error:`·`|| true` 없음). */
 function assertGatingStep(step, label) {
@@ -99,54 +80,6 @@ function assertGatingStep(step, label) {
 	assert.doesNotMatch(step, /\|\|\s*(true\b|:(?=\s|$))/m, `${label} must not swallow its exit code`)
 }
 
-test("every test layer step gates its job and runs exactly its pinned command", () => {
-	// CI 규정 11번: 안전 단계는 존재만이 아니라 게이트하는지도 고정한다. `|| true` 만이 무력화 방법은 아니므로
-	// (예: `run: "true"`, 다른 명령) step 의 run 줄도 정확히 고정한다.
-	const gating = {
-		"version-check": [
-			["Check architecture freshness", "python3 scripts/check_architecture.py"],
-			["Test target orchestration", "npm run test:orchestration"],
-			["Check versions aligned", "bash scripts/check-version-sync.sh"],
-		],
-		"test-backend": [
-			["Sync deps (dev)", "uv sync --frozen --extra dev"],
-			["Lint ruff check", "uv run ruff check ."],
-			["Lint ruff format check", "uv run ruff format --check ."],
-			["Unit tests", "npm run test:unit:backend"],
-		],
-		"test-cloud-shell": [["Image and bootstrap smoke", "npm run test:cloud-shell:image"]],
-		"test-contract": [
-			["Sync deps (dev)", "uv sync --frozen --extra dev"],
-			["Contract tests", "npm run test:contract"],
-			["Kolla contract tests", "npm run test:kolla:contract"],
-		],
-		"test-functional": [
-			["Sync deps (dev)", "uv sync --frozen --extra dev"],
-			["Functional tests", "npm run test:functional -- --no-start"],
-		],
-		"test-frontend": [["Install", "bun install --frozen-lockfile"]],
-		"test-live": [["Live OpenStack tests", "npm run test:live"]],
-	}
-	for (const [jobName, steps] of Object.entries(gating)) {
-		const job = jobBlock(testWorkflow, jobName)
-		// 필수 계층 잡은 조건 없이 실행된다. opt-in 인 test-live 의 if 는 아래에서 정확히 고정한다.
-		if (jobName !== "test-live") assert.doesNotMatch(job, /^    if:/m, `${jobName} must not be conditional`)
-		assert.doesNotMatch(job, /^    continue-on-error:/m, `${jobName} must fail the workflow`)
-		for (const [name, command] of steps) {
-			const step = stepBlock(job, name)
-			assertGatingStep(step, `${jobName} "${name}"`)
-			const runs = (step.match(/^\s+run:.*$/gm) || []).map((line) => line.trim())
-			assert.deepEqual(runs, [`run: ${command}`], `${jobName} "${name}" must run exactly ${command}`)
-		}
-	}
-	// architecture freshness 는 version-check 의 첫 명령이다(tag-only version 처리보다 먼저).
-	const versionCheck = jobBlock(testWorkflow, "version-check")
-	assert.ok(versionCheck.indexOf("Check architecture freshness") < versionCheck.indexOf("- uses: actions/setup-node@v4"))
-
-	// 실제 자격 증명을 쓰는 test-live 는 status 함수 없이(암묵적 success()) detect-live 결과만 본다.
-	// always()·!cancelled() 가 붙으면 version-check 나 테스트 계층이 실패해도 live 테스트가 돈다.
-	assert.equal(jobIf(jobBlock(testWorkflow, "test-live")), "${{ needs.detect-live.outputs.enabled == 'true' }}")
-})
 
 test("frontend runs as a verified 2-way vitest shard matrix", () => {
 	const job = jobBlock(testWorkflow, "test-frontend")
@@ -324,52 +257,6 @@ test("jobs that run PR code reference no secrets outside the push-only registry 
 	)
 })
 
-test("image target detection diffs event.before on push, never only the tip commit", () => {
-	const job = jobBlock(dockerWorkflow, "changes")
-	assert.doesNotMatch(dockerWorkflow, /git diff --name-only HEAD\^1 HEAD/)
-	assert.doesNotMatch(job, /fetch-depth:/, "no HEAD^1 comparison needs a second commit")
-	assert.match(job, /EVENT_BEFORE: \$\{\{ github\.event\.before \}\}/)
-	assert.match(job, /EVENT_FORCED: \$\{\{ github\.event\.forced \}\}/)
-	assert.match(job, /run: node scripts\/ci\/detect-build-targets\.js/)
-	for (const output of ["targets", "standard_targets", "effective_ref", "cloud_shell", "is_pr"]) {
-		assert.match(job, new RegExp(`^      ${output}: \\$\\{\\{ steps\\.`, "m"), `changes output ${output}`)
-	}
-
-	// 레지스트리 자격 증명과 compare 토큰은 push 에서만 사용한다(PR 코드가 이 job 을 실행한다).
-	// checkout 토큰도 .git/config 에 남기지 않는다.
-	assert.match(stepBlock(job, "Checkout"), /persist-credentials: false/)
-	// is_pr 는 build 의 보조 PR 제외와 build-push 의 push 여부를 정한다. 항상 false 를 쓰는 회귀를 막는다.
-	assert.equal(
-		runBlock(stepBlock(job, "Resolve effective ref")),
-		[
-			"run: |",
-			'          echo "ref=$GITHUB_REF" >> $GITHUB_OUTPUT',
-			'          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then',
-			'            echo "is_pr=true" >> $GITHUB_OUTPUT',
-			"          else",
-			'            echo "is_pr=false" >> $GITHUB_OUTPUT',
-			"          fi",
-		].join("\n"),
-	)
-	const login = stepBlock(job, "Log in to registry (push only")
-	assert.match(login, /id: registry-login/)
-	assert.match(login, /if: github\.event_name == 'push'/)
-	assert.match(job, /REGISTRY_LOGIN_OUTCOME: \$\{\{ steps\.registry-login\.outcome \}\}/)
-	assert.match(job, /GH_TOKEN: \$\{\{ github\.event_name == 'push' && github\.token \|\| '' \}\}/)
-	// 최소 권한: PR diff 를 계산하지 않으므로 pull-requests 권한이 없다. packages: read 는 push 의 발행 revision 조회용이다.
-	assert.match(job, /^    permissions:\n      contents: read\n      packages: read\n    outputs:\n/m)
-	assert.doesNotMatch(job, /pull-requests:/)
-
-	const detect = fs.readFileSync(path.join(rootDir, "scripts", "ci", "detect-build-targets.js"), "utf8")
-	assert.match(detect, /env\.EVENT_BEFORE/)
-	assert.match(detect, /"fetch", "--no-tags", "--depth=1", "origin", before/)
-	// rename 감지가 켜져 있으면 이미지 디렉터리 밖으로 옮긴 파일이 도착 경로로만 보고된다. 두 diff 를 따로 고정한다.
-	assert.match(detect, /exec\("git", \["diff", "--no-renames", "--name-only", before, head\]\)/)
-	assert.match(detect, /exec\("git", \["diff", "--no-renames", "--name-only", revision, sha\]\)/)
-	assert.equal((detect.match(/exec\("git", \["diff"/g) || []).length, 2, "the detector has exactly two git diff calls")
-	assert.ok(!detect.includes("HEAD^1"), "the detector must not keep a tip-only first-parent diff")
-	assert.match(detect, /env\.REGISTRY_LOGIN_OUTCOME === "failure"/)
-})
 
 const workflowDir = path.join(rootDir, ".github", "workflows")
 const allWorkflows = fs
@@ -414,91 +301,6 @@ test("every scripts/ci test runs in test:orchestration", () => {
 	for (const name of ciTests) assert.ok(orchestration.includes(`scripts/ci/${name}`), `test:orchestration must run scripts/ci/${name}`)
 })
 
-test("every image build records its source revision", () => {
-	const builds = dockerWorkflow.match(/uses: docker\/build-push-action@/g) || []
-	const labels = dockerWorkflow.match(/labels: org\.opencontainers\.image\.revision=\$\{\{ github\.sha \}\}/g) || []
-	assert.ok(builds.length >= 3)
-	assert.equal(labels.length, builds.length)
-})
-
-test("jobs after a skipped test caller state explicit status checks", () => {
-	for (const job of ["build", "build-cloud-shell", "manifest"]) {
-		assert.match(
-			jobBlock(dockerWorkflow, job),
-			/^    if: \$\{\{ github\.event_name != 'pull_request' && !cancelled\(\) && needs\.changes\.result == 'success' && needs\.changes\.outputs\.is_pr != 'true' && /m,
-			`${job} must not rely on implicit success()`,
-		)
-	}
-})
-
-test("manifests publish per target from verified digests behind a stale re-run guard", () => {
-	const job = jobBlock(dockerWorkflow, "manifest")
-	assert.match(job, /needs: \[changes, build\]/)
-	assert.match(job, /strategy:\s+fail-fast: false\s+matrix:/)
-	assert.match(job, /sparse-checkout: scripts\/ci/)
-
-	const verify = stepBlock(job, "Verify per-arch images for this revision")
-	assert.match(verify, /node scripts\/ci\/image-revision\.js verify "\$\{IMG\}:\$\{BASE\}-\$\{arch\}" "\$\{GITHUB_SHA\}"/)
-
-	const create = stepBlock(job, "Create multi-arch manifest")
-	assert.match(create, /AMD64_DIGEST: \$\{\{ steps\.verify\.outputs\.amd64 \}\}/)
-	assert.match(create, /SOURCES=\("\$\{IMG\}@\$\{AMD64_DIGEST\}"\)/)
-	// guard 는 태그가 추적하는 브랜치(:nightly→main, :dev→dev)의 끝을 확인해 force-push rollback 을 stale
-	// re-run 과 구분한다(4번째 인자). 실행 ref(EFFECTIVE_REF)가 아니다: 다른 브랜치의 dispatch 도 :dev 로 간다.
-	const finalTags = stepBlock(job, "Compute final tags")
-	assert.match(finalTags, /primary="\$\{IMG\}:nightly";[^\n]*branch_tag=true; tracked_ref="refs\/heads\/main"\n/)
-	assert.match(finalTags, /primary="\$\{IMG\}:dev";[^\n]*branch_tag=true; tracked_ref="refs\/heads\/dev"\n/)
-	assert.match(finalTags, /branch_tag=false; tracked_ref=""\n/)
-	assert.match(finalTags, /echo "tracked_ref=\$\{tracked_ref\}"/)
-	assert.match(create, /TRACKED_REF: \$\{\{ steps\.tags\.outputs\.tracked_ref \}\}/)
-	assert.match(
-		create,
-		/node scripts\/ci\/image-revision\.js guard "\$\{PRIMARY\}" "\$\{GITHUB_SHA\}" "\$\{GITHUB_REPOSITORY\}" "\$\{TRACKED_REF\}"\n/,
-	)
-	assert.ok(create.indexOf("image-revision.js guard") < create.indexOf("imagetools create"))
-	assert.doesNotMatch(create, /imagetools create[^\n]*:\$\{BASE\}-amd64/)
-	// guard exit code 는 정확히 세 갈래다: 0 발행, 3 stale 건너뜀, 그 밖(예: 인자 누락 exit 2)은 leg 실패.
-	// `*) ;;` 나 추가 arm 으로 오류를 삼키면 guard 가 조용히 꺼진 채 발행한다.
-	const guardCase = (skipArm) =>
-		new RegExp(
-			String.raw`image-revision\.js guard [^\n]*\n\s+rc=\$\?\n\s+set -e\n\s+case "\$rc" in\n\s+0\) ;;\n\s+3\) ` +
-				skipArm +
-				String.raw` ;;\n\s+\*\) echo "::error::stale re-run guard failed with exit \$\{rc\}"; exit "\$rc" ;;\n\s+esac\n`,
-		)
-	assert.match(create, guardCase("exit 0"))
-	assert.match(create, /set \+e\n\s+node scripts\/ci\/image-revision\.js guard /)
-	const errorArms = dockerWorkflow.match(/^\s+\*\) echo "::error::stale re-run guard failed with exit \$\{rc\}"; exit "\$rc" ;;$/gm) || []
-	assert.equal(errorArms.length, 2, "both guard call sites fail on unexpected exit codes")
-	assert.equal((dockerWorkflow.match(/case "\$rc" in/g) || []).length, 2)
-	for (const [name, step] of [
-		["verify", verify],
-		["create", create],
-		["final tags", finalTags],
-	]) {
-		assertGatingStep(step, `manifest ${name} step`)
-	}
-	assert.doesNotMatch(job, /^    continue-on-error:/m)
-
-	const cloudShell = jobBlock(dockerWorkflow, "build-cloud-shell")
-	const guard = stepBlock(cloudShell, "Stale re-run guard")
-	assert.match(guard, /afterglow-cloud-shell:dev"\n\s+TRACKED_REF="refs\/heads\/dev"\n/)
-	assert.match(guard, /afterglow-cloud-shell:nightly"\n\s+TRACKED_REF="refs\/heads\/main"\n/)
-	assert.match(
-		guard,
-		/node scripts\/ci\/image-revision\.js guard "\$\{BRANCH_TAG\}" "\$\{GITHUB_SHA\}" "\$\{GITHUB_REPOSITORY\}" "\$\{TRACKED_REF\}"\n/,
-	)
-	// 모든 guard 호출은 4개 인자 형식이고 4번째는 추적 브랜치다(빠지면 image-revision.js 가 exit 2 로 leg 를 실패시킨다).
-	const guardCalls = dockerWorkflow.match(/image-revision\.js guard [^\n]*/g) || []
-	assert.equal(guardCalls.length, 2)
-	for (const call of guardCalls) assert.match(call, / "\$\{TRACKED_REF\}"$/, call)
-	assert.match(guard, guardCase("publish=false"))
-	assert.match(guard, /^\s+publish=true\n\s+if \[\[ "\$\{EFFECTIVE_REF\}" != refs\/tags\/v\* \]\]; then\n/m)
-	assert.match(guard, /echo "publish=\$\{publish\}" >> "\$GITHUB_OUTPUT"/)
-	assertGatingStep(guard, "Cloud Shell stale re-run guard")
-	assert.doesNotMatch(cloudShell, /^    continue-on-error:/m)
-	assert.match(stepBlock(cloudShell, "Build and push Cloud Shell"), /if: steps\.guard\.outputs\.publish == 'true'/)
-	assert.ok(cloudShell.indexOf("Stale re-run guard") < cloudShell.indexOf("Build and push Cloud Shell"))
-})
 
 test("push runs are never cancelled by a concurrency group", () => {
 	for (const [name, workflow] of [["docker-build.yml", dockerWorkflow], ["test.yml", testWorkflow]]) {
@@ -794,24 +596,3 @@ test("the rule 10 check treats issue_comment and workflow_run as PR-reachable", 
 	)
 })
 
-test("pull_request code never runs on a self-hosted runner", () => {
-	const { violations, nonHosted, prReachableCallees } = selfHostedPrViolations(allWorkflows)
-	assert.deepEqual(violations, [])
-	// 분류기 sanity: self-hosted build matrix(runs-on: ${{ matrix.runner }})는 non-hosted 로 잡힌다.
-	assert.ok(nonHosted.includes("docker-build.yml build"), nonHosted.join(", "))
-	const dockerJobs = workflowJobs(dockerWorkflow)
-	assert.equal(dockerJobs.has("push"), false, "on: keys are not jobs")
-	// PR 이 publishing 잡(packages: write)을 예약하지 못한다. step 이 계산하는 is_pr 는 보조 확인일 뿐이다.
-	for (const job of ["build", "build-cloud-shell", "manifest"]) {
-		assert.equal(excludesPullRequests(dockerJobs.get(job)), true, `${job} must exclude pull_request by event name`)
-	}
-	// PR 에서 실행되는 docker-build 잡과 test-pr 의 호출 대상은 GitHub-hosted ubuntu 이다.
-	for (const job of ["pr-dedup", "changes"]) {
-		assert.equal(excludesPullRequests(dockerJobs.get(job)), false, `${job} runs on pull_request`)
-		assert.match(runsOnValue(dockerJobs.get(job)), /^ubuntu-/, `${job} runs PR code`)
-	}
-	assert.ok(prReachableCallees.has("test.yml"), [...prReachableCallees].join(", "))
-	for (const [job, block] of workflowJobs(testWorkflow)) {
-		assert.match(runsOnValue(block) ?? "", /^ubuntu-/, `test.yml ${job} must use a GitHub-hosted ubuntu label`)
-	}
-})

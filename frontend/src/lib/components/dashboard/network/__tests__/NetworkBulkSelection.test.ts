@@ -133,7 +133,7 @@ describe('network bulk selection controls', () => {
       availableProjects: [],
       roles: [],
       isSystemAdmin: false,
-      federated: false,
+      federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false,
     });
     render(LoadBalancerPage);
     const ordinaryCheckbox = await screen.findByRole('checkbox', { name: 'edge 선택' });
@@ -159,7 +159,7 @@ describe('network bulk selection controls', () => {
       availableProjects: [],
       roles: [],
       isSystemAdmin: false,
-      federated: false,
+      federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false,
     });
     render(WaygatePage);
     const checkbox = await screen.findByRole('checkbox', { name: 'gateway 선택' });

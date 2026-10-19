@@ -116,6 +116,7 @@
     if (disposed || !$k3sPermissions.workloads || connecting || !terminal || !s.cluster) return;
     const userId = $auth.userId;
     const projectId = $auth.projectId;
+    const targetProjectId = s.projectId;
     const clusterId = s.cluster.id;
     connecting = true;
     errorMsg = '';
@@ -126,7 +127,7 @@
       const res = await createShellTicket(
         s.cluster.id,
         $auth.token ?? undefined,
-        $auth.projectId ?? undefined
+        targetProjectId
       );
       ticket = res.ticket;
     } catch {
@@ -135,7 +136,7 @@
       terminal?.write(`\r\n\x1b[31m${t('cloudShell.terminalTicketFailed')}\x1b[0m\r\n`);
       return;
     }
-    if (disposed || !terminal || $auth.userId !== userId || $auth.projectId !== projectId || s.cluster?.id !== clusterId) { connecting = false; return; }
+    if (disposed || !terminal || $auth.userId !== userId || $auth.projectId !== projectId || s.projectId !== targetProjectId || s.cluster?.id !== clusterId) { connecting = false; return; }
 
     const baseUrl = getBaseUrl();
     const proto = baseUrl.startsWith('https') ? 'wss:' : 'ws:';

@@ -60,7 +60,7 @@ async def update_profile(
     token_info: dict = Depends(get_token_info),
     conn=Depends(get_os_conn),
 ):
-    """본인 프로필 수정 (이메일, 설명, 이름)."""
+    """Update profile metadata; email ownership changes require a verified link."""
     user_id = token_info["user_id"]
 
     def _update():
@@ -68,7 +68,9 @@ async def update_profile(
         if req.name is not None:
             kwargs["name"] = req.name
         if req.email is not None:
-            kwargs["email"] = req.email
+            current = conn.identity.get_user(user_id)
+            if req.email.strip().casefold() != (getattr(current, "email", "") or "").strip().casefold():
+                raise HTTPException(status_code=409, detail="email_verification_required")
         if req.description is not None:
             kwargs["description"] = req.description
         if req.default_project_id is not None:
@@ -112,13 +114,22 @@ async def change_password(
 
     user_id = token_info["user_id"]
     username = token_info["username"]
-    project_name = token_info.get("project_name", "")
 
-    # 현재 패스워드 검증
+    # Reauthenticate in the immutable account namespace, not the working domain.
+    from keystoneauth1.exceptions.http import Unauthorized
+
     try:
-        keystone.authenticate(username, req.current_password, project_name)
-    except Exception:
-        raise HTTPException(status_code=401, detail="현재 패스워드가 올바르지 않습니다")
+        current = await asyncio.to_thread(
+            keystone.authenticate, username, req.current_password, "", token_info["identity_domain_id"]
+        )
+    except Unauthorized as exc:
+        raise HTTPException(status_code=401, detail="현재 패스워드가 올바르지 않습니다") from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="현재 패스워드를 검증할 수 없습니다") from exc
+    if current.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Password identity does not match the current account")
 
     def _change():
         try:

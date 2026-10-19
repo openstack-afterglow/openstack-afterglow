@@ -6,6 +6,10 @@
     from .credentials import admin_credentials, user_credentials
     creds = admin_credentials()   # 항상 반환
     user = user_credentials()     # 미설정 시 None → 테스트 skip
+
+The returned native credentials retain project/domain settings for SDK callers
+and explicit live-test workspace selection. HTTP password login must project
+only username/password with conftest.password_login_payload.
 """
 
 import os

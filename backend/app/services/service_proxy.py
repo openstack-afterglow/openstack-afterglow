@@ -122,7 +122,11 @@ def _get_internal_endpoint(token: str, project_id: str, service_type: str) -> st
         return endpoint
     conn: openstack.connection.Connection | None = None
     try:
-        conn = keystone.get_openstack_connection(token, project_id)
+        conn = (
+            keystone.get_openstack_connection(token, project_id)
+            if project_id
+            else keystone.get_openstack_connection(token, "", system_scope=True)
+        )
         endpoint = conn.session.get_endpoint(service_type=service_type, interface="internal")
         return endpoint.rstrip("/") if endpoint else None
     except Exception as exc:
@@ -242,15 +246,13 @@ async def proxy(
         raise HTTPException(status_code=401, detail="인증이 필요합니다")
     await authorize_service_request(service_type, request, upstream_path)
 
-    connection_project_id = logical_project_id
-    if service_type == "lumen":
-        connection_project_id = (token_info.get("connection_project_id") if token_info else None) or logical_project_id
+    connection_project_id = token_info.get("connection_project_id", logical_project_id)
 
     endpoint = await asyncio.to_thread(_get_internal_endpoint, token, connection_project_id, service_type)
     headers = _forwarded_headers(request)
     headers["x-auth-token"] = token
     headers["x-project-id"] = connection_project_id
-    if service_type == "lumen" and logical_project_id != connection_project_id:
+    if logical_project_id != connection_project_id:
         headers["x-target-project-id"] = logical_project_id
     return await _forward(
         service_type, request, upstream_path, endpoint=endpoint, headers=headers, read_timeout=read_timeout
@@ -266,9 +268,7 @@ async def get_json(service_type: str, request: Request, upstream_path: str) -> A
         raise HTTPException(status_code=401, detail="인증이 필요합니다")
     await authorize_service_request(service_type, request, upstream_path)
 
-    connection_project_id = logical_project_id
-    if service_type == "lumen":
-        connection_project_id = (token_info.get("connection_project_id") if token_info else None) or logical_project_id
+    connection_project_id = token_info.get("connection_project_id", logical_project_id)
 
     endpoint = await asyncio.to_thread(_get_internal_endpoint, token, connection_project_id, service_type)
     if not endpoint:
@@ -284,7 +284,7 @@ async def get_json(service_type: str, request: Request, upstream_path: str) -> A
     headers = _forwarded_headers(request)
     headers["x-auth-token"] = token
     headers["x-project-id"] = connection_project_id
-    if service_type == "lumen" and logical_project_id != connection_project_id:
+    if logical_project_id != connection_project_id:
         headers["x-target-project-id"] = logical_project_id
     settings = get_settings()
     try:
@@ -385,12 +385,15 @@ async def package_member_request(
     info = getattr(request.state, "token_info", None) or {}
     if not info.get("token") or not info.get("project_id"):
         raise HTTPException(status_code=401, detail="Authentication required")
-    if info.get("connection_project_id", info["project_id"]) != info["project_id"]:
+    connection_project_id = info.get("connection_project_id", info["project_id"])
+    if connection_project_id != info["project_id"] and info.get("_live_system_admin") is not True:
         raise HTTPException(status_code=403, detail="Original subject and target project disagree")
     # Same trusted configured Hub as the key gateway; never catalog discovery,
     # which would re-authenticate (exchange) the original subject token.
     endpoint = _package_endpoint(_configured_internal_endpoint("palimpsest"))
-    headers = {"x-auth-token": info["token"], "x-project-id": info["project_id"], "accept": "application/json"}
+    headers = {"x-auth-token": info["token"], "x-project-id": connection_project_id, "accept": "application/json"}
+    if info["project_id"] != connection_project_id:
+        headers["x-target-project-id"] = info["project_id"]
     if forward_body and request.headers.get("content-type"):
         headers["content-type"] = request.headers["content-type"]
     if stream and request.headers.get("range"):

@@ -75,16 +75,19 @@ spec:
                 secretKeyRef:
                   name: afterglow-secrets
                   key: SECRET_KEY
-            - name: GITLAB_OIDC_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: afterglow-secrets
-                  key: GITLAB_OIDC_CLIENT_SECRET
             - name: K3S_KUBECONFIG_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
                   name: afterglow-secrets
                   key: K3S_KUBECONFIG_ENCRYPTION_KEY
+            {{- range $key := list "K3S_GPU_ADMISSION_TOKEN" "LUMEN_MCP_SERVICE_TOKEN" "MONITORING_SD_TOKEN" "NOTION_CONFIG_ENCRYPTION_KEY" "SMTP_PASSWORD" }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef:
+                  name: afterglow-secrets
+                  key: {{ $key }}
+                  optional: true
+            {{- end }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
@@ -119,6 +122,14 @@ spec:
                   name: afterglow-secrets
                   key: TRAFFIC_ANALYTICS__FRONTEND_INGEST_KEY
                   optional: true
+            {{- range .Values.auth.providerKeys }}
+            - name: {{ printf "AUTH__PROVIDERS__%s__CLIENT_SECRET" (upper .) }}
+              valueFrom:
+                secretKeyRef:
+                  name: afterglow-secrets
+                  key: {{ printf "AUTH__PROVIDERS__%s__CLIENT_SECRET" (upper .) }}
+                  optional: true
+            {{- end }}
           volumeMounts:
             - name: afterglow-config-volume
               mountPath: /app/afterglow.conf
@@ -148,7 +159,7 @@ spec:
           # (2026-06-12 워커 재부팅 장애: 5분 한도로 backend 크래시루프 발생)
           startupProbe:
             httpGet:
-              path: /api/health
+              path: /api/v1/health
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 5
@@ -156,7 +167,7 @@ spec:
             timeoutSeconds: 10
           livenessProbe:
             httpGet:
-              path: /api/health
+              path: /api/v1/health
               port: 8000
             initialDelaySeconds: 15
             periodSeconds: 30
@@ -164,7 +175,7 @@ spec:
             timeoutSeconds: 5
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: /api/v1/health
               port: 8000
             periodSeconds: 5
             failureThreshold: 2

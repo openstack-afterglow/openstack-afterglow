@@ -1,10 +1,14 @@
-"""Refresh JTI → {keystone_token, project_id, user_id, exp, started_at} 세션 저장소.
+"""Refresh JTI → immutable identity, working-domain session with atomic family revocation.
 
 키 스킴: afterglow:refresh:{jti}
 TTL: refresh JWT 만료까지 남은 초 (exp - now)
 
 access JWT의 rjti 필드가 이 키를 가리킨다.
 started_at은 최초 로그인 시각이며 refresh/rescope의 원자적 회전에도 유지한다.
+Only an explicit previous_domain_id compare permits a working-domain switch;
+identity_domain_id always remains the original authentication namespace.
+Family aliases resolve only revocation targets; access/refresh always require the
+current JTI's own record, so rotation never makes an old credential reusable.
 """
 
 from __future__ import annotations
@@ -19,18 +23,20 @@ from app.services.cache import _get_redis
 
 _PREFIX = "afterglow:refresh:"
 _USER_INDEX_PREFIX = "afterglow:user-sessions:"
+_FAMILY_PREFIX = "afterglow:session-family:"
+_FAMILY_ALIAS_PREFIX = "afterglow:refresh-family:"
 _TOUCH_THROTTLE_SECONDS = 60  # last_ip/fp 갱신 최소 간격 (Redis 쓰기 폭증 방지)
-_SENSITIVE_KEYS = {"keystone_token"}  # list_user_sessions에서 제거할 민감 필드
+_SENSITIVE_KEYS = {"keystone_token", "family_id"}  # internal authority, never session-list metadata
 
 _logger = logging.getLogger(__name__)
 
 _UPDATE_TOKEN_SCRIPT = """
 local raw = redis.call('GET', KEYS[1])
-if not raw then return nil end
+if not raw then return 0 end
 local data = cjson.decode(raw)
-if data['keystone_token'] == ARGV[1] then
-    return nil
-end
+if data['blacklisted'] == true then return 0 end
+if ARGV[2] ~= '' and data['keystone_token'] ~= ARGV[2] then return 0 end
+if data['keystone_token'] == ARGV[1] then return 1 end
 data['keystone_token'] = ARGV[1]
 local pttl = redis.call('PTTL', KEYS[1])
 local new_raw = cjson.encode(data)
@@ -105,7 +111,14 @@ local raw = redis.call('GET', KEYS[1])
 if not raw then return 0 end
 local old = cjson.decode(raw)
 local replacement = cjson.decode(ARGV[1])
-if old['user_id'] ~= replacement['user_id'] or old['blacklisted'] == true then
+local identity = old['identity_domain_id']
+-- Pre-multidomain records belong to their old domain, never the requested target.
+if not identity or identity == '' then identity = old['domain_id'] end
+if old['user_id'] ~= replacement['user_id'] or old['blacklisted'] == true
+    or not old['domain_id'] or old['domain_id'] == ''
+    or replacement['domain_id'] == ''
+    or old['domain_id'] ~= ARGV[7]
+    or identity ~= replacement['identity_domain_id'] then
     return 0
 end
 local start = tonumber(old['started_at'])
@@ -117,9 +130,18 @@ end
 -- The current record, not a snapshot read before Keystone validation, owns
 -- the immutable login origin and absolute lifetime.
 replacement['started_at'] = start
-for _, field in ipairs({'origin_ip', 'origin_fp', 'device_type', 'os', 'auth_method'}) do
+replacement['identity_domain_id'] = identity
+for _, field in ipairs({'origin_ip', 'origin_fp', 'device_type', 'os', 'auth_method', 'provider_id', 'provider_revision', 'provider_domain_id', 'login_email'}) do
     replacement[field] = old[field] or ''
 end
+local family = old['family_id'] or ARGV[3]
+local family_key = 'afterglow:session-family:' .. family
+local current = redis.call('GET', family_key)
+if current and current ~= ARGV[3] then return 0 end
+replacement['family_id'] = family
+redis.call('SETEX', family_key, ARGV[2], ARGV[4])
+redis.call('SETEX', 'afterglow:refresh-family:' .. ARGV[3], ARGV[2], family)
+redis.call('SETEX', 'afterglow:refresh-family:' .. ARGV[4], ARGV[2], family)
 redis.call('SETEX', KEYS[2], ARGV[2], cjson.encode(replacement))
 redis.call('DEL', KEYS[1])
 redis.call('SREM', KEYS[3], ARGV[3])
@@ -127,6 +149,57 @@ redis.call('SADD', KEYS[3], ARGV[4])
 local ttl = redis.call('TTL', KEYS[3])
 if ttl < tonumber(ARGV[2]) then redis.call('EXPIRE', KEYS[3], ARGV[2]) end
 return 1
+"""
+
+
+_REVOKE_USER_SCRIPT = """
+local jtis = redis.call('SMEMBERS', KEYS[1])
+local deleted = {}
+for _, jti in ipairs(jtis) do
+    local key = 'afterglow:refresh:' .. jti
+    local raw = redis.call('GET', key)
+    if raw then
+        local data = cjson.decode(raw)
+        if data['user_id'] == ARGV[1] then
+            table.insert(deleted, raw)
+            redis.call('DEL', key)
+            local family = data['family_id'] or jti
+            local family_key = 'afterglow:session-family:' .. family
+            if redis.call('GET', family_key) == jti then redis.call('DEL', family_key) end
+        end
+    end
+end
+redis.call('DEL', KEYS[1])
+return deleted
+"""
+
+_DELETE_SESSION_SCRIPT = """
+local requested = ARGV[1]
+local raw = redis.call('GET', KEYS[1])
+local family = redis.call('GET', KEYS[2]) or requested
+if raw then family = cjson.decode(raw)['family_id'] or requested end
+local family_key = 'afterglow:session-family:' .. family
+local current = redis.call('GET', family_key) or requested
+raw = redis.call('GET', 'afterglow:refresh:' .. current)
+if not raw then
+    if ARGV[2] ~= '' then
+        local index = 'afterglow:user-sessions:' .. ARGV[2]
+        if redis.call('SISMEMBER', index, requested) == 1 then
+            redis.call('SREM', index, requested)
+            return {1, ''}
+        end
+    end
+    return {0, ''}
+end
+local data = cjson.decode(raw)
+local user_id = data['user_id']
+if not user_id or (ARGV[2] ~= '' and user_id ~= ARGV[2]) then return {0, ''} end
+if (data['family_id'] or current) ~= family then return {0, ''} end
+local index = 'afterglow:user-sessions:' .. user_id
+if ARGV[2] ~= '' and redis.call('SISMEMBER', index, current) ~= 1 then return {0, ''} end
+redis.call('DEL', 'afterglow:refresh:' .. current, family_key)
+redis.call('SREM', index, current)
+return {1, raw}
 """
 
 
@@ -152,11 +225,25 @@ async def store_session(
     started_at: float | None = None,
     previous_jti: str | None = None,
     timeout_seconds: int | None = None,
+    domain_id: str = "",
+    provider_id: str = "",
+    provider_revision: int | None = None,
+    provider_domain_id: str = "",
+    login_email: str = "",
+    identity_domain_id: str = "",
+    previous_domain_id: str | None = None,
+    target_project_id: str | None = None,
+    target_project_name: str = "",
 ) -> bool:
     """Store a login or atomically replace an active previous refresh record.
 
     A replacement returns False when the previous record was consumed, expired,
-    revoked or blacklisted. Its original login lifetime and origin are preserved.
+    revoked, blacklisted, or has a different subject/identity. Ordinary rotation
+    requires the same working domain; an authenticated switch must explicitly
+    compare previous_domain_id with the latest old record. The old record owns
+    the immutable identity, login lifetime, origin, and authentication metadata.
+    Legacy callers omitting identity_domain_id use domain_id for the new record;
+    legacy stored records normalize identity only from their own old domain_id.
     """
     r = await _get_redis()
     now = int(datetime.now(UTC).timestamp())
@@ -165,7 +252,16 @@ async def store_session(
         {
             "keystone_token": keystone_token,
             "project_id": project_id,
+            "target_project_id": target_project_id,
+            "target_project_name": target_project_name,
             "user_id": user_id,
+            "family_id": jti,
+            "domain_id": domain_id,
+            "identity_domain_id": identity_domain_id or domain_id,
+            "provider_id": provider_id,
+            "provider_revision": provider_revision,
+            "provider_domain_id": provider_domain_id,
+            "login_email": login_email,
             "exp": exp,
             "started_at": now if started_at is None else started_at,
             "auth_method": auth_method,
@@ -200,10 +296,12 @@ async def store_session(
                 jti,
                 now,
                 timeout_seconds,
+                domain_id if previous_domain_id is None else previous_domain_id,
             )
         )
     async with r.pipeline() as pipe:
         pipe.setex(_key(jti), ttl, data)
+        pipe.setex(f"{_FAMILY_PREFIX}{jti}", ttl, jti)
         pipe.sadd(_user_index_key(user_id), jti)
         pipe.expire(_user_index_key(user_id), ttl)
         await pipe.execute()
@@ -228,75 +326,53 @@ async def get_session(jti: str) -> dict | None:
     return json.loads(raw)
 
 
-async def delete_session(jti: str) -> None:
-    """refresh JTI 세션 삭제. 로그아웃·토큰 회전 시 호출."""
+async def _delete_family(jti: str, user_id: str = "") -> tuple[bool, dict | None]:
     r = await _get_redis()
-    raw = await r.get(_key(jti))
-    if raw:
-        try:
-            sess = json.loads(raw)
-            uid = sess.get("user_id", "")
-            if uid:
-                await r.srem(_user_index_key(uid), jti)
-        except Exception:
-            pass
-    await r.delete(_key(jti))
+    removed, raw = await r.eval(_DELETE_SESSION_SCRIPT, 2, _key(jti), f"{_FAMILY_ALIAS_PREFIX}{jti}", jti, user_id)
+    return bool(removed), json.loads(raw) if raw else None
 
 
-async def update_session_token(jti: str, new_keystone_token: str) -> None:
-    """세션의 keystone_token을 새 토큰으로 갱신. TTL은 기존 값 유지.
+async def delete_session(jti: str) -> dict | None:
+    """Invalidate the family and return its current native subject for revocation."""
+    _, session = await _delete_family(jti)
+    return session
 
-    validate_token이 POST /v3/auth/tokens으로 새 Keystone 토큰을 발급할 때 호출.
-    원본 토큰이 만료되기 전에 세션을 갱신해 1시간 TTL 문제를 방지.
+
+async def update_session_token(jti: str, new_keystone_token: str, *, expected_token: str = "") -> bool:
+    """Persist verified unscoped proof without recreating/overwriting a session.
+
+    CAS prevents an in-flight access validation replacing a newer proof. Redis
+    serialization preserves origin, lifetime, family and blacklist fields.
     """
     r = await _get_redis()
-    await r.eval(_UPDATE_TOKEN_SCRIPT, 1, _key(jti), new_keystone_token)
+    return bool(await r.eval(_UPDATE_TOKEN_SCRIPT, 1, _key(jti), new_keystone_token, expected_token))
 
 
-async def revoke_user_sessions(user_id: str, *, revoke_keystone: bool = True) -> int:
-    """사용자의 모든 refresh 세션을 즉시 삭제.
+async def revoke_user_sessions(user_id: str, *, revoke_keystone: bool = True, strict_keystone: bool = False) -> int:
+    """Atomically delete every current family and capture its native token.
 
-    revoke_keystone=True(기본)이면 각 세션의 Keystone 토큰도 폐기한다
-    (DELETE /v3/auth/tokens). best-effort — 개별 실패는 warning 후 계속.
-
-    admin role 박탈, 전체 로그아웃 등 강제 로그아웃 시 호출.
-
-    Returns:
-        삭제된 세션 수
+    Lua shares Redis serialization with rotation. Native revocation happens only
+    after the browser credentials are gone; a slow provider cannot orphan a new
+    JTI or block Redis's atomic decision. Strict callers observe provider failure
+    after every captured token has been attempted; removed families stay removed.
     """
     r = await _get_redis()
-    index_key = _user_index_key(user_id)
-    raw_jtis = await r.smembers(index_key)
-    if not raw_jtis:
-        return 0
-    jtis = [j.decode() if isinstance(j, bytes) else j for j in raw_jtis]
-
-    # Keystone 직접 폐기 (삭제 전에 토큰 수집)
+    deleted = await r.eval(_REVOKE_USER_SCRIPT, 1, _user_index_key(user_id), user_id)
+    native_failed = False
     if revoke_keystone:
-        from app.services import keystone  # 순환 임포트 방지용 지연 임포트
+        from app.services import keystone
 
-        ks_tokens: list[str] = []
-        for jti in jtis:
-            raw = await r.get(_key(jti))
-            if raw:
+        for raw in deleted:
+            token = json.loads(raw).get("keystone_token")
+            if token:
                 try:
-                    sess = json.loads(raw)
-                    tok = sess.get("keystone_token", "")
-                    if tok:
-                        ks_tokens.append(tok)
+                    await asyncio.to_thread(keystone.revoke_token, token)
                 except Exception:
-                    pass
-
-        # 각 Keystone 토큰 폐기 (best-effort — 실패해도 Redis 삭제는 진행)
-        for tok in ks_tokens:
-            try:
-                await asyncio.to_thread(keystone.revoke_token, tok)
-            except Exception:
-                _logger.warning("revoke_user_sessions: Keystone revoke 실패 (user_id=%s)", user_id, exc_info=True)
-
-    keys = [_key(jti) for jti in jtis] + [index_key]
-    await r.delete(*keys)
-    return len(jtis)
+                    native_failed = True
+                    _logger.warning("Native token revocation failed after atomic session removal", exc_info=True)
+    if native_failed and strict_keystone:
+        raise RuntimeError("Native token revocation failed after atomic session removal")
+    return len(deleted)
 
 
 async def blacklist_session(jti: str, reason: str = "") -> None:
@@ -332,51 +408,18 @@ async def touch_session_seen(jti: str, ip: str, fp: str) -> None:
 
 
 async def delete_session_owned(user_id: str, jti: str, *, revoke_keystone: bool = True) -> bool:
-    """소유권 확인 후 개별 세션 삭제.
-
-    jti가 user_id의 세션 인덱스에 없으면 False 반환 — 호출자는 404로 응답한다.
-    소유권이 확인되면 Keystone 토큰도 폐기(best-effort) 후 세션 삭제 → True 반환.
-
-    보안: 인덱스 통과 후 세션 데이터의 user_id를 재검증하여 stale/오염된
-    Redis 인덱스로 인해 타인의 세션을 삭제하는 것을 방지한다.
-    """
-    r = await _get_redis()
-    is_member = await r.sismember(_user_index_key(user_id), jti)
-    if not is_member:
-        return False
-
-    # raw를 한 번만 읽어 소유권 재검증 + Keystone revoke에 재사용
-    raw = await r.get(_key(jti))
-    sess: dict | None = None
-    if raw:
-        try:
-            sess = json.loads(raw)
-        except Exception:
-            pass
-
-    # 소유권 이중 검증: 인덱스뿐만 아니라 세션 데이터의 user_id도 확인
-    if sess is not None and sess.get("user_id") != user_id:
-        _logger.warning(
-            "delete_session_owned: 인덱스-데이터 user_id 불일치 "
-            "(index_user=%s, data_user=%s, jti=%s) — Redis 인덱스 오염 의심",
-            user_id,
-            sess.get("user_id"),
-            jti,
-        )
-        return False
-
-    if revoke_keystone and sess is not None:
-        ks_token = sess.get("keystone_token", "")
-        if ks_token:
-            from app.services import keystone  # 순환 임포트 방지용 지연 임포트
+    """Revoke the owned login family even if the listed JTI rotated meanwhile."""
+    removed, session = await _delete_family(jti, user_id)
+    if removed and session is not None and revoke_keystone:
+        token = session.get("keystone_token")
+        if token:
+            from app.services import keystone
 
             try:
-                await asyncio.to_thread(keystone.revoke_token, ks_token)
+                await asyncio.to_thread(keystone.revoke_token, token)
             except Exception:
-                _logger.warning("delete_session_owned: Keystone revoke 실패 (jti=%s)", jti, exc_info=True)
-
-    await delete_session(jti)
-    return True
+                _logger.warning("Native token revocation failed after atomic family removal", exc_info=True)
+    return removed
 
 
 async def list_user_sessions(user_id: str) -> list[dict]:

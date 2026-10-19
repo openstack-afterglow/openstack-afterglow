@@ -1,12 +1,13 @@
 import asyncio
-import hmac
 import logging
-import os
 from datetime import UTC, datetime
-from urllib.parse import urlsplit
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
+from keystoneauth1.exceptions.http import Unauthorized
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import (
     CacheMode,
@@ -17,27 +18,26 @@ from app.api.deps import (
     invalidate_token_cache,
 )
 from app.config import get_settings
-from app.models.auth import GitLabCallbackRequest, LoginRequest, ProjectInfo, TokenResponse, UserInfo
+from app.models.auth import DomainInfo, LoginRequest, ProjectInfo, TokenResponse, UserInfo, WorkspaceInfo
 from app.rate_limit import limiter
 from app.services import activity as activity_svc
-from app.services import cache, jwt_service, keystone, login_guard, session_store
+from app.services import cache, domain_projects, jwt_service, keystone, login_guard, project_service, session_store
 from app.services.cache import cached_call, keys, ttl_fast, ttl_normal, ttl_static
-from app.services.identity_roles import visible_role_names
+from app.services.domain_auth import DomainAuthError, domain_auth_error_response
+from app.services.domain_scope import (
+    assert_domain_resource,
+    assert_project_domain,
+    assert_token_context,
+    domain_context,
+    resolve_domain,
+)
+from app.services.identity_roles import _field, visible_role_names
+from app.services.native_operation import NativeOperation
 from app.services.recent_projects import get_recent_project_ids, record_project_access
+from app.utils.auth_diagnostics import authentication_operation, authentication_step
 
 _logger = logging.getLogger(__name__)
 _PROJECTS_TTL = 120  # 프로젝트 목록 캐시 2분
-
-_GITLAB_OIDC_STATE_COOKIE = "afterglow_gitlab_oidc_state"
-_GITLAB_OIDC_STATE_COOKIE_PATH = "/api/v1/auth/gitlab/callback"
-_GITLAB_OIDC_STATE_TTL_SECONDS = 600
-
-
-def _gitlab_oidc_cookie_secure(settings) -> bool:
-    return (
-        os.environ.get("AFTERGLOW_ENV", "development").strip().lower() == "production"
-        or urlsplit(getattr(settings, "public_api_base", "")).scheme == "https"
-    )
 
 
 class GroupInfo(BaseModel):
@@ -55,6 +55,59 @@ class ProjectScopeRequest(BaseModel):
     project_id: str = Field(..., min_length=1, max_length=255)
 
 
+class DomainScopeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    domain_id: str = Field(min_length=1, max_length=255)
+
+
+class WorkspaceScopeRequest(DomainScopeRequest):
+    project_id: str = Field(max_length=255)
+
+
+class DomainCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    name: str = Field(min_length=1, max_length=64)
+    description: str = Field(default="", max_length=4096)
+
+
+def _visible_domains(user_id: str, *, operation: NativeOperation) -> list[dict]:
+    from keystoneauth1.exceptions.http import NotFound
+    from keystoneclient.exceptions import NotFound as ClientNotFound
+
+    try:
+        identity = keystone.get_identity_user(user_id, operation=operation)
+        resolve_domain(identity["domain_id"], operation=operation)
+        if not keystone._is_system_admin(user_id, operation=operation):
+            return domain_projects.accessible_domains(user_id, operation=operation)
+        domains = []
+        for row in operation.ks.domains.list():
+            if _field(row, "enabled") is True:
+                domain = resolve_domain(_field(row, "id"), operation=operation)
+                domains.append({"id": domain["id"], "name": domain["name"]})
+        if len({domain["id"] for domain in domains}) != len(domains):
+            raise HTTPException(503, "Domain directory identity is unavailable")
+        return sorted(domains, key=lambda domain: (domain["name"], domain["id"]))
+    except (Unauthorized, NotFound, ClientNotFound) as exc:
+        raise HTTPException(401, "Identity is disabled or unavailable; log in again") from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(503, "Domain directory is unavailable") from exc
+
+
+async def _domain_metadata(user_id: str, identity_domain_id: str, is_system_admin: bool, *, operation=None) -> dict:
+    from app.services.domain_auth import get_policy
+
+    if operation is None:
+        async with NativeOperation() as operation:
+            return await _domain_metadata(user_id, identity_domain_id, is_system_admin, operation=operation)
+
+    with authentication_step("domain_metadata"):
+        domains = await operation.run(_visible_domains, user_id, operation=operation)
+        can_create = is_system_admin or (await get_policy(identity_domain_id)).signup_enabled
+        return {"available_domains": domains, "can_create_domain": bool(can_create)}
+
+
 async def _build_token_response(
     *,
     keystone_token: str,
@@ -64,6 +117,15 @@ async def _build_token_response(
     username: str,
     roles: list[str],
     is_system_admin: bool,
+    domain_id: str,
+    domain_name: str,
+    is_domain_manager: bool,
+    identity_domain_id: str,
+    identity_domain_name: str,
+    provider_id: str = "",
+    provider_revision: int | None = None,
+    provider_domain_id: str = "",
+    login_email: str = "",
     default_project_id: str = "",
     auth_method: str = "password",
     origin_ip: str = "",
@@ -72,53 +134,219 @@ async def _build_token_response(
     os: str = "",
     started_at: float | None = None,
     previous_jti: str | None = None,
+    previous_domain_id: str | None = None,
+    connection_project_id: str | None = None,
+    operation=None,
 ) -> TokenResponse:
     """Keystone 토큰으로 JWT access+refresh 쌍을 발급하고 TokenResponse를 반환."""
-    public_roles = await visible_role_names(roles, is_system_admin)
-    can_write = has_project_write_permission({"roles": roles, "is_system_admin": is_system_admin})
-    refresh_str, r_jti, r_exp = jwt_service.sign_refresh(user_id)
-    access_str, _, a_exp = jwt_service.sign_access(
-        user_id=user_id,
-        username=username,
-        project_id=project_id,
-        project_name=project_name,
-        refresh_jti=r_jti,
-    )
-    stored = await session_store.store_session(
-        jti=r_jti,
-        keystone_token=keystone_token,
-        project_id=project_id,
-        user_id=user_id,
-        exp=r_exp,
-        auth_method=auth_method,
-        origin_ip=origin_ip,
-        origin_fp=origin_fp,
-        device_type=device_type,
-        os=os,
-        started_at=started_at,
-        previous_jti=previous_jti,
-        timeout_seconds=get_settings().session_timeout_seconds if previous_jti else None,
-    )
-    if stored is False:
-        raise HTTPException(status_code=401, detail="세션이 만료되거나 이미 갱신되었습니다. 다시 로그인해 주세요.")
-    exp_dt = datetime.fromtimestamp(a_exp, tz=UTC)
-    return TokenResponse(
-        token=access_str,
-        refresh_token=refresh_str,
-        project_id=project_id,
-        project_name=project_name,
-        user_id=user_id,
-        username=username,
-        expires_at=exp_dt.isoformat(),
-        roles=public_roles,
-        default_project_id=default_project_id,
-        is_system_admin=is_system_admin,
-        can_write=can_write,
-        auth_method=auth_method,
-    )
+    with authentication_step("session_publication"):
+        if not project_id:
+            roles = []
+        public_roles = await visible_role_names(roles, is_system_admin)
+        if not domain_id or not domain_name or not identity_domain_id or not identity_domain_name:
+            raise HTTPException(status_code=401, detail="Canonical working and identity domains are required")
+        metadata = await _domain_metadata(user_id, identity_domain_id, is_system_admin, operation=operation)
+        native_project_id = project_id if connection_project_id is None else connection_project_id
+        if connection_project_id is not None:
+            if not is_system_admin or not await asyncio.to_thread(keystone._is_system_admin, user_id):
+                raise HTTPException(403, "Current system administrator authority is required")
+            fresh = await asyncio.to_thread(domain_context, user_id, domain_id)
+            assert_domain_resource(identity_domain_id, fresh["identity_domain_id"])
+            if project_id:
+                await asyncio.to_thread(assert_project_domain, domain_id, project_id)
+        can_write = has_project_write_permission(
+            {"project_id": project_id, "roles": roles, "is_system_admin": is_system_admin}
+        )
+        refresh_str, r_jti, r_exp = jwt_service.sign_refresh(user_id)
+        access_str, _, a_exp = jwt_service.sign_access(
+            user_id=user_id,
+            username=username,
+            project_id=native_project_id,
+            project_name=project_name if connection_project_id is None else "",
+            refresh_jti=r_jti,
+        )
+        try:
+            stored = await session_store.store_session(
+                jti=r_jti,
+                keystone_token=keystone_token,
+                project_id=native_project_id,
+                user_id=user_id,
+                exp=r_exp,
+                domain_id=domain_id,
+                identity_domain_id=identity_domain_id,
+                previous_domain_id=previous_domain_id,
+                target_project_id=project_id if connection_project_id is not None else None,
+                target_project_name=project_name if connection_project_id is not None else "",
+                provider_id=provider_id,
+                provider_revision=provider_revision,
+                provider_domain_id=provider_domain_id,
+                login_email=login_email,
+                auth_method=auth_method,
+                origin_ip=origin_ip,
+                origin_fp=origin_fp,
+                device_type=device_type,
+                os=os,
+                started_at=started_at,
+                previous_jti=previous_jti,
+                timeout_seconds=get_settings().session_timeout_seconds if previous_jti else None,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(503, "Session publication is unavailable") from exc
+        if stored is False:
+            raise HTTPException(status_code=401, detail="세션이 만료되거나 이미 갱신되었습니다. 다시 로그인해 주세요.")
+        exp_dt = datetime.fromtimestamp(a_exp, tz=UTC)
+        return TokenResponse(
+            token=access_str,
+            refresh_token=refresh_str,
+            project_id=project_id,
+            project_name=project_name,
+            user_id=user_id,
+            username=username,
+            expires_at=exp_dt.isoformat(),
+            roles=public_roles,
+            default_project_id=default_project_id,
+            is_system_admin=is_system_admin,
+            domain_id=domain_id,
+            domain_name=domain_name,
+            is_domain_manager=is_domain_manager,
+            identity_domain_id=identity_domain_id,
+            identity_domain_name=identity_domain_name,
+            **metadata,
+            can_write=can_write,
+            auth_method=auth_method,
+        )
 
 
-router = APIRouter()
+async def _enforce_session_policy(session: dict, identity: dict) -> None:
+    from app.services.domain_auth import enforce_email, get_policy, require_password, require_provider
+
+    identity_domain_id = identity["identity_domain_id"]
+    expected = session.get("identity_domain_id") or session.get("domain_id")
+    if expected:
+        assert_domain_resource(expected, identity_domain_id)
+    email = identity["email"]
+    password_method = session.get("auth_method", "password") == "password"
+    if password_method:
+        await require_password(identity_domain_id, email)
+    else:
+        provider_id = session.get("provider_id")
+        revision = session.get("provider_revision")
+        email = session.get("login_email")
+        if not provider_id or type(revision) is not int or not email:
+            raise HTTPException(status_code=401, detail="Provider session context is unavailable; log in again")
+        provider_domain_id = session.get("provider_domain_id")
+        if not provider_domain_id:
+            raise HTTPException(status_code=401, detail="Provider origin is unavailable; log in again")
+        await require_provider(provider_domain_id, provider_id, revision, email)
+    policy_origin = identity_domain_id if password_method else provider_domain_id
+    if identity["domain_id"] != policy_origin:
+        policy = await get_policy(identity["domain_id"])
+        if policy.allowed_email_domains:
+            enforce_email(policy, email)
+
+
+async def _exchange_native_scope(token: str, project_id: str, *, operation=None) -> dict:
+    with authentication_step("native_exchange"):
+        try:
+            kwargs = {"operation": operation} if operation is not None else {}
+            run = operation.run if operation is not None else asyncio.to_thread
+            return await run(keystone.validate_session, token, project_id=project_id, **kwargs)
+        except Unauthorized as exc:
+            raise HTTPException(401, "Native login proof was rejected") from exc
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(503, "Native session exchange is unavailable") from exc
+
+
+async def _prepare_domain_session(
+    data: dict,
+    domain_id: str,
+    *,
+    requested_project_id: str | None = None,
+    operation=None,
+) -> dict:
+    """Provision only verified membership, then exchange the caller's native token."""
+    with authentication_step("domain_preparation"):
+        kwargs = {"operation": operation} if operation is not None else {}
+        run = operation.run if operation is not None else asyncio.to_thread
+        with authentication_step("domain_context"):
+            context = await run(domain_context, data["user_id"], domain_id, **kwargs)
+            assert_domain_resource(data["identity_domain_id"], context["identity_domain_id"])
+        if requested_project_id:
+            await run(assert_project_domain, domain_id, requested_project_id, **kwargs)
+            await run(domain_projects.assert_project_membership, data["user_id"], requested_project_id, **kwargs)
+        with authentication_step("login_access"):
+            await domain_projects.ensure_login_access(data["user_id"], domain_id, **kwargs)
+        with authentication_step("default_project"):
+            # Provisioning may have created Default or repaired membership. Read
+            # the final directory for both password and provider login paths.
+            default = await run(domain_projects.default_project, domain_id, **kwargs)
+        with authentication_step("native_projects"):
+            try:
+                projects = await run(keystone.list_projects, data["token"], domain_id, **kwargs)
+            except HTTPException:
+                raise
+            except Exception as exc:
+                raise HTTPException(503, "Native project membership is unavailable") from exc
+        # A saved user preference wins only within the enabled, accessible
+        # projects of this domain. Canonical Default is the onboarding fallback.
+        default_id = next(
+            (p["id"] for p in projects if p["id"] == data.get("default_project_id")),
+            default["id"] if default else "",
+        )
+        if requested_project_id is not None:
+            matches = [p for p in projects if p["id"] == requested_project_id]
+            if requested_project_id and len(matches) != 1 or not requested_project_id and projects:
+                raise HTTPException(403, "Project is not accessible in the selected domain")
+            target = matches[0] if matches else None
+        else:
+            target = next((p for p in projects if p["id"] == default_id), projects[0] if projects else None)
+        project_id = target["id"] if target else ""
+        if not data["project_id"] and not project_id:
+            # The verified unscoped subject already is the final projectless token.
+            native = {**data, **context}
+        else:
+            native = await _exchange_native_scope(data.get("session_token") or data["token"], project_id, **kwargs)
+        await run(
+            assert_token_context,
+            native,
+            user_id=data["user_id"],
+            domain_id=domain_id,
+            identity_domain_id=data["identity_domain_id"],
+            project_id=project_id,
+            **kwargs,
+        )
+        native["default_project_id"] = default_id if any(p["id"] == default_id for p in projects) else ""
+        native["session_token"] = native.get("session_token") or data.get("session_token") or data["token"]
+        return native
+
+
+class AuthRoute(APIRoute):
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+
+        async def guarded(request):
+            # Source endpoint names only: never use a URL, input or client request ID.
+            with authentication_operation(self.endpoint.__name__):
+                try:
+                    with authentication_step("request"):
+                        response = await handler(request)
+                except RequestValidationError:
+                    response = JSONResponse({"detail": "Invalid authentication input"}, status_code=422)
+                except DomainAuthError as exc:
+                    response = domain_auth_error_response(exc)
+                except HTTPException as exc:
+                    response = JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
+                response.headers.update({"Cache-Control": "no-store, private", "Pragma": "no-cache"})
+                return response
+
+        return guarded
+
+
+router = APIRouter(route_class=AuthRoute)
 
 
 async def _prewarm_dashboard(token: str, project_id: str):
@@ -160,30 +388,44 @@ async def _prewarm_dashboard(token: str, project_id: str):
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("10/minute")
 async def login(request: Request, req: LoginRequest, background_tasks: BackgroundTasks):
-    domain = req.domain_name or "Default"
+    async with NativeOperation() as operation:
+        return await _login(request, req, background_tasks, operation)
 
-    # 잠금 확인 (HTTPException 429 발생 가능)
-    await login_guard.check_locked(req.username, domain)
+
+async def _login(request: Request, req: LoginRequest, background_tasks: BackgroundTasks, operation: NativeOperation):
+    from app.services.account_identity import authenticate_password, password_account
+    from app.services.domain_auth import DomainAuthDenied, get_policy, require_password
 
     try:
-        data = keystone.authenticate(
-            username=req.username,
-            password=req.password,
-            project_name=req.project_name,
-            domain_name=req.domain_name,
-        )
-    except Exception:
-        asyncio.create_task(login_guard.record_failure(req.username, domain))
-        raise HTTPException(status_code=401, detail="인증 실패")
+        with authentication_step("resolve"):
+            account = await operation.run(password_account, req.username, operation=operation)
+        with authentication_step("password_method_policy"):
+            if not (await get_policy(account["domain_id"])).password_enabled:
+                raise DomainAuthDenied("Password login is disabled for this account", code="password_disabled")
+        with authentication_step("authenticate"):
+            data = await authenticate_password(account, req.password, operation=operation)
+    except keystone.PasswordRejected as exc:
+        raise HTTPException(status_code=401, detail="인증 실패") from exc
+    except Unauthorized as exc:
+        # A disabled subject/denied project is not a bad-password attempt.
+        raise HTTPException(status_code=401, detail="인증 실패") from exc
+    except (HTTPException, DomainAuthError):
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503, detail="인증 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요."
+        ) from exc
 
-    # 사용자의 default_project_id 조회
-    default_project_id = ""
-    try:
-        conn = keystone.get_openstack_connection(data["token"], data["project_id"])
-        u = conn.identity.get_user(data["user_id"])
-        default_project_id = getattr(u, "default_project_id", None) or ""
-    except Exception:
-        pass
+    assert_domain_resource(account["domain_id"], data.get("identity_domain_id"))
+    if data.get("user_id") != account["id"]:
+        raise HTTPException(401, "Native account subject changed")
+
+    with authentication_step("password_policy"):
+        await require_password(account["domain_id"], data["email"])
+    # Policy I/O must not carry pre-proof directory authority into provisioning.
+    operation.invalidate()
+    data = await _prepare_domain_session(data, account["domain_id"], operation=operation)
+    default_project_id = data.get("default_project_id", "")
 
     # 로그인 출처 + 기기 정보 기록
     from app.services.token_binding import get_origin, parse_device
@@ -191,27 +433,34 @@ async def login(request: Request, req: LoginRequest, background_tasks: Backgroun
     origin_ip, origin_fp = get_origin(request)
     device_type, os_name = parse_device(request.headers.get("User-Agent", ""))
 
-    # 성공 시 실패 카운트 초기화 (fire-and-forget)
-    asyncio.create_task(login_guard.record_success(req.username, domain))
+    # Only an exact, policy-valid canonical native proof clears its account guard.
+    await login_guard.record_success(account["name"], account["domain_id"])
 
     # 대시보드 캐시 프리워밍 + 최근 프로젝트 기록 (백그라운드)
-    background_tasks.add_task(_prewarm_dashboard, data["token"], data["project_id"])
-    background_tasks.add_task(record_project_access, data["user_id"], data["project_id"])
+    if data["project_id"]:
+        background_tasks.add_task(_prewarm_dashboard, data["token"], data["project_id"])
+        background_tasks.add_task(record_project_access, data["user_id"], data["project_id"])
 
     response = await _build_token_response(
-        keystone_token=data["token"],
+        keystone_token=data["session_token"],
         project_id=data["project_id"],
         project_name=data["project_name"],
         user_id=data["user_id"],
         username=data["username"],
         roles=data.get("roles", []),
         is_system_admin=data.get("is_system_admin", False),
+        domain_id=data["domain_id"],
+        domain_name=data["domain_name"],
+        is_domain_manager=data["is_domain_manager"],
+        identity_domain_id=data["identity_domain_id"],
+        identity_domain_name=data["identity_domain_name"],
         default_project_id=default_project_id,
         auth_method="password",
         origin_ip=origin_ip,
         origin_fp=origin_fp,
         device_type=device_type,
         os=os_name,
+        operation=operation,
     )
     await activity_svc.record(
         project_id=data["project_id"],
@@ -228,6 +477,9 @@ async def login(request: Request, req: LoginRequest, background_tasks: Backgroun
 
 @router.get("/me", response_model=UserInfo)
 async def me(token_info: dict = Depends(get_token_info)):
+    metadata = await _domain_metadata(
+        token_info["user_id"], token_info["identity_domain_id"], token_info.get("is_system_admin") is True
+    )
     return UserInfo(
         user_id=token_info["user_id"],
         username=token_info["username"],
@@ -237,6 +489,12 @@ async def me(token_info: dict = Depends(get_token_info)):
         is_system_admin=token_info.get("is_system_admin", False),
         can_write=has_project_write_permission(token_info),
         auth_method=token_info.get("auth_method", "password"),
+        domain_id=token_info["domain_id"],
+        domain_name=token_info["domain_name"],
+        is_domain_manager=token_info.get("is_domain_manager", False),
+        identity_domain_id=token_info["identity_domain_id"],
+        identity_domain_name=token_info["identity_domain_name"],
+        **metadata,
     )
 
 
@@ -254,22 +512,27 @@ async def logout(token_info: dict = Depends(get_token_info)):
             if session and session.get("user_id") == token_info["user_id"]:
                 keystone_token = session.get("keystone_token") or None
             elif session:
-                _logger.warning("logout session ownership mismatch (jti=%s)", refresh_jti)
                 raise HTTPException(status_code=403, detail="세션 소유권이 일치하지 않습니다.")
-            await session_store.delete_session(refresh_jti)
+            removed = await session_store.delete_session(refresh_jti)
+            if isinstance(removed, dict):
+                if removed.get("user_id") != token_info["user_id"]:
+                    raise HTTPException(status_code=403, detail="세션 소유권이 일치하지 않습니다.")
+                keystone_token = removed.get("keystone_token") or keystone_token
         except HTTPException:
             raise
-        except Exception:
-            _logger.error("refresh 세션 삭제 실패 (jti=%s)", refresh_jti, exc_info=True)
-            raise HTTPException(status_code=503, detail="세션 폐기를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.")
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503, detail="세션 폐기를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요."
+            ) from exc
 
     if keystone_token:
         try:
             await asyncio.to_thread(keystone.revoke_token, keystone_token)
-        except Exception:
-            _logger.warning("Keystone revoke 실패 — 캐시는 그대로 invalidate", exc_info=True)
+        except Exception as exc:
             await invalidate_token_cache(token, pid)
-            raise HTTPException(status_code=503, detail="인증 토큰 폐기를 확인할 수 없습니다. 다시 로그인해 주세요.")
+            raise HTTPException(
+                status_code=503, detail="인증 토큰 폐기를 확인할 수 없습니다. 다시 로그인해 주세요."
+            ) from exc
     await invalidate_token_cache(token, pid)
     return {"message": "로그아웃 완료"}
 
@@ -277,6 +540,11 @@ async def logout(token_info: dict = Depends(get_token_info)):
 @router.post("/refresh", response_model=TokenResponse)
 @limiter.limit("30/minute")
 async def refresh_token(request: Request, req: RefreshRequest):
+    async with NativeOperation() as operation:
+        return await _refresh_token(request, req, operation=operation)
+
+
+async def _refresh_token(request: Request, req: RefreshRequest, *, operation: NativeOperation):
     """refresh JWT로 새 access JWT + refresh JWT 발급 (토큰 회전).
 
     기존 refresh JTI는 즉시 삭제되므로 같은 refresh 토큰으로 두 번 호출하면 두 번째는 401.
@@ -287,18 +555,20 @@ async def refresh_token(request: Request, req: RefreshRequest):
         raise HTTPException(status_code=401, detail="유효하지 않은 refresh 토큰")
 
     r_jti = r_payload["jti"]
-    try:
-        sess = await session_store.get_session(r_jti)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        _logger.error("Redis session store lookup failure during refresh: %s", exc, exc_info=True)
-        raise HTTPException(status_code=503, detail="세션 저장소 연결 실패")
+    with authentication_step("session_lookup"):
+        try:
+            sess = await session_store.get_session(r_jti)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="세션 저장소 연결 실패") from exc
 
     if sess is None:
         raise HTTPException(status_code=401, detail="세션이 만료되었습니다. 다시 로그인해 주세요.")
     if sess.get("user_id") != r_payload.get("sub"):
         raise HTTPException(status_code=401, detail="refresh 토큰의 세션 소유권이 일치하지 않습니다.")
+    if not isinstance(sess.get("domain_id"), str) or not sess["domain_id"]:
+        raise HTTPException(status_code=401, detail="세션의 도메인을 확인할 수 없습니다. 다시 로그인해 주세요.")
 
     # 블랙리스트 세션은 refresh 갱신도 거부
     if sess.get("blacklisted"):
@@ -337,11 +607,10 @@ async def refresh_token(request: Request, req: RefreshRequest):
             )
     except HTTPException:
         raise
-    except Exception:
-        _logger.error("refresh origin validation failed", exc_info=True)
+    except Exception as exc:
         raise HTTPException(
             status_code=503, detail="토큰 바인딩 검사를 완료할 수 없습니다. 잠시 후 다시 시도해 주세요."
-        )
+        ) from exc
 
     # 최초 로그인 origin과 기기 정보를 회전 너머로 그대로 운반 (재파싱 금지)
     origin_ip = sess.get("origin_ip", "")
@@ -349,32 +618,70 @@ async def refresh_token(request: Request, req: RefreshRequest):
     device_type = sess.get("device_type", "")
     os_name = sess.get("os", "")
 
-    # Keystone 토큰 유효성 확인 (만료 시 재로그인 필요)
-    from keystoneauth1.exceptions.http import Unauthorized
-
+    # Verify the independent login before checking its current project authority.
+    operation.invalidate()
     try:
-        kc_info = await asyncio.to_thread(
-            keystone.validate_token, sess["keystone_token"], project_id=sess["project_id"]
-        )
-    except Unauthorized:
-        await session_store.delete_session(r_jti)
-        raise HTTPException(status_code=401, detail="세션이 만료되었습니다. 다시 로그인해 주세요.")
-    except HTTPException:
+        root = await _exchange_native_scope(sess["keystone_token"], "", operation=operation)
+    except HTTPException as exc:
+        if exc.status_code == 401:
+            await session_store.delete_session(r_jti)
         raise
-    except Exception as exc:
-        _logger.error("Keystone validation failure during refresh (session preserved): %s", exc, exc_info=True)
-        raise HTTPException(status_code=503, detail="인증 검증 서비스 일시적 오류. 잠시 후 다시 시도해 주세요.")
+    if root["user_id"] != sess["user_id"] or root["identity_domain_id"] != (
+        sess.get("identity_domain_id") or sess["domain_id"]
+    ):
+        raise HTTPException(403, "Native login identity does not match the session")
+    context = await operation.run(domain_context, sess["user_id"], sess["domain_id"], operation=operation)
+    assert_domain_resource(root["identity_domain_id"], context["identity_domain_id"])
+    await _enforce_session_policy(sess, {**root, **context})
+    logical_workspace = isinstance(sess.get("target_project_id"), str)
+    try:
+        kc_info = await _exchange_native_scope(root["session_token"], sess["project_id"], operation=operation)
+    except keystone.ProjectAccessDenied:
+        kc_info = {**root, "project_id": "", "project_name": "", "roles": []}
+    operation.invalidate()
+    native_domain_id = root["identity_domain_id"]
+    if kc_info["project_id"]:
+        native_domain_id = kc_info["domain_id"] if logical_workspace else sess["domain_id"]
+    await operation.run(
+        assert_token_context,
+        kc_info,
+        user_id=sess["user_id"],
+        domain_id=native_domain_id,
+        project_id=kc_info["project_id"],
+        identity_domain_id=sess.get("identity_domain_id") or sess["domain_id"],
+        operation=operation,
+    )
+    if not kc_info["project_id"]:
+        # Only after native subject/home checks may selected-domain authority
+        # replace the home-derived working domain of an unscoped result.
+        kc_info = {**kc_info, **context}
+    connection_project_id = kc_info["project_id"]
+    if logical_workspace:
+        kc_info = await operation.run(
+            _administrator_workspace, kc_info, sess["domain_id"], sess["target_project_id"], operation=operation
+        )
+    await _enforce_session_policy(sess, kc_info)
 
     # Redis consumes the old record and publishes its replacement atomically.
     try:
+        operation.invalidate()
         token_resp = await _build_token_response(
-            keystone_token=kc_info["token"],
+            keystone_token=kc_info["session_token"],
             project_id=kc_info["project_id"],
             project_name=kc_info["project_name"],
             user_id=kc_info["user_id"],
             username=kc_info["username"],
             roles=kc_info.get("roles", []),
             is_system_admin=kc_info.get("is_system_admin", False),
+            domain_id=kc_info["domain_id"],
+            domain_name=kc_info["domain_name"],
+            is_domain_manager=kc_info["is_domain_manager"],
+            identity_domain_id=kc_info["identity_domain_id"],
+            identity_domain_name=kc_info["identity_domain_name"],
+            provider_id=sess.get("provider_id", ""),
+            provider_revision=sess.get("provider_revision"),
+            provider_domain_id=sess.get("provider_domain_id", ""),
+            login_email=sess.get("login_email", ""),
             auth_method=sess.get("auth_method", "password"),
             origin_ip=origin_ip,
             origin_fp=origin_fp,
@@ -382,35 +689,67 @@ async def refresh_token(request: Request, req: RefreshRequest):
             os=os_name,
             started_at=started_at,
             previous_jti=r_jti,
+            connection_project_id=connection_project_id if logical_workspace else None,
+            operation=operation,
         )
         return token_resp
     except HTTPException:
         raise
     except Exception as exc:
-        _logger.error("Failed to rotate session during refresh (session preserved): %s", exc, exc_info=True)
-        raise HTTPException(status_code=503, detail="세션 갱신 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
+        raise HTTPException(
+            status_code=503, detail="세션 갱신 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
+        ) from exc
 
 
 @router.post("/token/project", response_model=TokenResponse)
 async def scope_project(req: ProjectScopeRequest, token_info: dict = Depends(get_token_info)):
+    async with NativeOperation() as operation:
+        return await _scope_project(req, token_info, operation=operation)
+
+
+async def _scope_project(req: ProjectScopeRequest, token_info: dict, *, operation: NativeOperation):
     """접근 가능한 프로젝트로 새 토큰 쌍 발급 (rescope)."""
-    keystone_token = token_info["token"]
-    try:
-        kc_info = await asyncio.to_thread(keystone.validate_token, keystone_token, project_id=req.project_id)
-    except Exception:
-        raise HTTPException(status_code=403, detail="해당 프로젝트에 접근 권한이 없습니다")
+    keystone_token = token_info["session_token"]
+    await operation.run(assert_project_domain, token_info["domain_id"], req.project_id, operation=operation)
+
+    await operation.run(
+        domain_projects.assert_project_membership, token_info["user_id"], req.project_id, operation=operation
+    )
+    operation.invalidate()
+    kc_info = await _exchange_native_scope(keystone_token, req.project_id, operation=operation)
+    operation.invalidate()
+    await operation.run(
+        assert_token_context,
+        kc_info,
+        user_id=token_info["user_id"],
+        domain_id=token_info["domain_id"],
+        project_id=req.project_id,
+        identity_domain_id=token_info["identity_domain_id"],
+        operation=operation,
+    )
+    await _enforce_session_policy(token_info, kc_info)
 
     old_rjti = token_info.get("refresh_jti")
     await record_project_access(kc_info["user_id"], kc_info["project_id"])
     try:
+        operation.invalidate()
         return await _build_token_response(
-            keystone_token=kc_info["token"],
+            keystone_token=kc_info["session_token"],
             project_id=kc_info["project_id"],
             project_name=kc_info["project_name"],
             user_id=kc_info["user_id"],
             username=kc_info["username"],
             roles=kc_info.get("roles", []),
             is_system_admin=kc_info.get("is_system_admin", False),
+            domain_id=kc_info["domain_id"],
+            domain_name=kc_info["domain_name"],
+            is_domain_manager=kc_info["is_domain_manager"],
+            identity_domain_id=kc_info["identity_domain_id"],
+            identity_domain_name=kc_info["identity_domain_name"],
+            provider_id=token_info.get("provider_id", ""),
+            provider_revision=token_info.get("provider_revision"),
+            provider_domain_id=token_info.get("provider_domain_id", ""),
+            login_email=token_info.get("login_email", ""),
             auth_method=token_info.get("auth_method", "password"),
             # 기존 세션의 origin·기기 정보를 그대로 운반 (프로젝트 전환 시 재파싱 금지)
             origin_ip=token_info.get("origin_ip", ""),
@@ -419,12 +758,245 @@ async def scope_project(req: ProjectScopeRequest, token_info: dict = Depends(get
             os=token_info.get("os", ""),
             started_at=token_info.get("started_at"),
             previous_jti=old_rjti,
+            operation=operation,
         )
     except HTTPException:
         raise
     except Exception:
-        _logger.error("Failed to rotate session during project change", exc_info=True)
         raise HTTPException(status_code=503, detail="프로젝트 세션 갱신을 완료할 수 없습니다. 다시 시도해 주세요.")
+
+
+@router.get("/domains", response_model=list[DomainInfo])
+async def list_domains(token_info: dict = Depends(get_token_info)):
+    async with NativeOperation() as operation:
+        return await operation.run(_visible_domains, token_info["user_id"], operation=operation)
+
+
+def _workspace_projects(token: str, user_id: str, context: dict, *, operation: NativeOperation) -> list[dict]:
+    """Read enabled projects for a current manager or independently verified system administrator."""
+    domain_id = context["domain_id"]
+    ks = operation.ks
+    if context["is_domain_manager"] or keystone._is_system_admin(user_id, operation=operation):
+        rows = []
+        projects = operation.read(
+            ("domain_projects", "project_list", domain_id), lambda: list(ks.projects.list(domain=domain_id))
+        )
+        for project in projects:
+            assert_domain_resource(domain_id, _field(project, "domain_id"))
+            if _field(project, "enabled") is True:
+                rows.append(
+                    {
+                        "id": _field(project, "id"),
+                        "name": _field(project, "name"),
+                        "description": _field(project, "description", "") or "",
+                        "domain_id": domain_id,
+                        "domain_name": context["domain_name"],
+                        "enabled": True,
+                    }
+                )
+    else:
+        rows = []
+        for project in keystone.list_projects(token, domain_id, operation=operation):
+            assert_domain_resource(domain_id, project.get("domain_id"))
+            if project.get("enabled") is not True:
+                continue
+            try:
+                domain_projects.assert_project_membership(user_id, project["id"], operation=operation)
+            except HTTPException as exc:
+                if exc.status_code != 403:
+                    raise
+                # A stale native manager projection is not real membership.
+                continue
+            rows.append(project)
+    ids = [project.get("id") for project in rows]
+    if any(not isinstance(pid, str) or not pid for pid in ids) or len(set(ids)) != len(ids):
+        raise HTTPException(503, "Project directory identity is unavailable")
+    return sorted(rows, key=lambda project: (project["name"].casefold(), project["id"]))
+
+
+def _administrator_workspace(
+    current: dict, domain_id: str, project_id: str | None, *, operation: NativeOperation
+) -> dict:
+    user_id = current["user_id"]
+    if not keystone._is_system_admin(user_id, operation=operation):
+        raise HTTPException(403, "Current system administrator authority is required")
+    context = domain_context(user_id, domain_id, operation=operation)
+    assert_domain_resource(current["identity_domain_id"], context["identity_domain_id"])
+    if project_id is None:
+        projects = _workspace_projects(current["token"], user_id, context, operation=operation)
+        default = domain_projects.default_project(domain_id, operation=operation)
+        project_id = (
+            default["id"]
+            if default and any(row["id"] == default["id"] for row in projects)
+            else (projects[0]["id"] if projects else "")
+        )
+    name = ""
+    if project_id:
+        assert_project_domain(domain_id, project_id, operation=operation)
+        name = _field(operation.get("projects", project_id), "name")
+    return {**current, **context, "project_id": project_id, "project_name": name, "roles": [], "is_system_admin": True}
+
+
+@router.get("/workspaces", response_model=WorkspaceInfo)
+async def browse_workspace(
+    domain_id: str | None = Query(default=None, min_length=1, max_length=255),
+    token_info: dict = Depends(get_token_info),
+):
+    """Browse an authorized domain without rescoping, creating grants or rotating sessions."""
+    user_id = token_info["user_id"]
+    target = domain_id if domain_id is not None else token_info["domain_id"]
+    async with NativeOperation() as operation:
+        context = await operation.run(domain_context, user_id, target, operation=operation)
+        assert_domain_resource(token_info["identity_domain_id"], context["identity_domain_id"])
+        try:
+            projects = await operation.run(
+                _workspace_projects, token_info["token"], user_id, context, operation=operation
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(503, "Project directory is unavailable") from exc
+        default = await operation.run(domain_projects.default_project, target, operation=operation)
+        can_create = await project_service.can_create_project(user_id, target, operation=operation)
+        # Transport may survive the inventory; authority observations must not.
+        operation.invalidate()
+        fresh = await operation.run(domain_context, user_id, target, operation=operation)
+        assert_domain_resource(token_info["identity_domain_id"], fresh["identity_domain_id"])
+        if fresh["is_domain_manager"] != context["is_domain_manager"]:
+            raise HTTPException(403, "Domain authority changed; refresh the resource directory")
+        return WorkspaceInfo(
+            domain=DomainInfo(id=target, name=fresh["domain_name"]),
+            projects=[ProjectInfo(**project) for project in projects],
+            default_project_id=default["id"] if default and any(p["id"] == default["id"] for p in projects) else "",
+            is_domain_manager=fresh["is_domain_manager"],
+            can_create_project=can_create,
+        )
+
+
+@router.post("/domains", status_code=201)
+async def create_domain(req: DomainCreateRequest, token_info: dict = Depends(get_token_info)):
+    """Creation follows the account's signup mode, not a client capability flag."""
+    from app.services.domain_auth import get_policy
+
+    user_id = token_info["user_id"]
+    try:
+        identity = await asyncio.to_thread(keystone.get_identity_user, user_id)
+    except Unauthorized as exc:
+        raise HTTPException(401, "Identity is disabled or unavailable; log in again") from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(503, "Identity directory is unavailable") from exc
+    assert_domain_resource(token_info["identity_domain_id"], identity["domain_id"])
+    admin = await asyncio.to_thread(keystone._is_system_admin, user_id)
+    if not admin and not (await get_policy(identity["domain_id"])).signup_enabled:
+        raise HTTPException(403, "Domain creation requires open signup or current system administrator authority")
+    result = await domain_projects.create_domain(
+        name=req.name, description=req.description, enabled=True, creator_id=user_id
+    )
+    await activity_svc.record(
+        project_id="",
+        user_id=user_id,
+        username=token_info.get("username", ""),
+        resource_type="domain",
+        action="domain.create",
+        status="success",
+        resource_id=result["id"],
+        service="keystone",
+        extra={"domain_id": result["id"], "name": result["name"]},
+    )
+    return result
+
+
+async def _scope_working_domain(domain_id: str, token_info: dict, *, project_id: str | None = None):
+    async with NativeOperation() as operation:
+        return await _switch_working_domain(domain_id, token_info, project_id=project_id, operation=operation)
+
+
+async def _switch_working_domain(
+    domain_id: str, token_info: dict, *, project_id: str | None, operation: NativeOperation
+):
+    """Explicitly switch only working scope; identity, login policy and lifetime persist."""
+    user_id = token_info["user_id"]
+    context = await operation.run(domain_context, user_id, domain_id, operation=operation)
+    assert_domain_resource(token_info["identity_domain_id"], context["identity_domain_id"])
+    system_admin = await operation.run(keystone._is_system_admin, user_id, operation=operation)
+    connection_project_id = token_info.get("connection_project_id", token_info["project_id"])
+    if project_id:
+        await operation.run(assert_project_domain, domain_id, project_id, operation=operation)
+        if not system_admin:
+            await operation.run(domain_projects.assert_project_membership, user_id, project_id, operation=operation)
+    current = await _exchange_native_scope(
+        token_info["session_token"], connection_project_id if system_admin else "", operation=operation
+    )
+    operation.invalidate()
+    await operation.run(
+        assert_token_context,
+        current,
+        user_id=user_id,
+        domain_id=current["domain_id"],
+        identity_domain_id=token_info["identity_domain_id"],
+        project_id=connection_project_id if system_admin else "",
+        operation=operation,
+    )
+    await _enforce_session_policy(token_info, {**current, **context})
+    # Check the target again after the current-subject exchange and policy read.
+    operation.invalidate()
+    if system_admin:
+        data = await operation.run(_administrator_workspace, current, domain_id, project_id, operation=operation)
+    else:
+        data = await _prepare_domain_session(current, domain_id, requested_project_id=project_id, operation=operation)
+    await _enforce_session_policy(token_info, data)
+    operation.invalidate()
+    final_context = await operation.run(domain_context, user_id, domain_id, operation=operation)
+    assert_domain_resource(token_info["identity_domain_id"], final_context["identity_domain_id"])
+    if final_context["is_domain_manager"] != data["is_domain_manager"]:
+        raise HTTPException(403, "Domain authority changed during workspace selection")
+    if data["project_id"] and not system_admin:
+        await operation.run(domain_projects.assert_project_membership, user_id, data["project_id"], operation=operation)
+    response = await _build_token_response(
+        keystone_token=data["session_token"],
+        project_id=data["project_id"],
+        project_name=data["project_name"],
+        user_id=user_id,
+        username=data["username"],
+        roles=data["roles"],
+        is_system_admin=data["is_system_admin"],
+        domain_id=data["domain_id"],
+        domain_name=data["domain_name"],
+        is_domain_manager=data["is_domain_manager"],
+        identity_domain_id=data["identity_domain_id"],
+        identity_domain_name=data["identity_domain_name"],
+        default_project_id=data.get("default_project_id", ""),
+        provider_id=token_info.get("provider_id", ""),
+        provider_revision=token_info.get("provider_revision"),
+        provider_domain_id=token_info.get("provider_domain_id", ""),
+        login_email=token_info.get("login_email", ""),
+        auth_method=token_info.get("auth_method", "password"),
+        origin_ip=token_info.get("origin_ip", ""),
+        origin_fp=token_info.get("origin_fp", ""),
+        device_type=token_info.get("device_type", ""),
+        os=token_info.get("os", ""),
+        started_at=token_info.get("started_at"),
+        previous_jti=token_info["refresh_jti"],
+        previous_domain_id=token_info["domain_id"],
+        connection_project_id=connection_project_id if system_admin else None,
+        operation=operation,
+    )
+    if data["project_id"]:
+        await record_project_access(user_id, data["project_id"])
+    return response
+
+
+@router.post("/token/domain", response_model=TokenResponse)
+async def scope_domain(req: DomainScopeRequest, token_info: dict = Depends(get_token_info)):
+    return await _scope_working_domain(req.domain_id, token_info)
+
+
+@router.post("/token/workspace", response_model=TokenResponse)
+async def scope_workspace(req: WorkspaceScopeRequest, token_info: dict = Depends(get_token_info)):
+    """Commit one exact domain/project pair without publishing an intermediate session."""
+    return await _scope_working_domain(req.domain_id, token_info, project_id=req.project_id)
 
 
 @router.post("/logout-all")
@@ -481,11 +1053,10 @@ async def list_my_groups(token_info: dict = Depends(get_token_info)):
     """현재 사용자가 속한 keystone 그룹 목록. policy 불허 시 빈 리스트 반환."""
     try:
         groups = await asyncio.to_thread(keystone.list_user_groups, token_info["token"], token_info["user_id"])
-        return [GroupInfo(**g) for g in groups]
+        return [GroupInfo(**g) for g in groups if g.get("domain_id") == token_info["domain_id"]]
     except PermissionError:
         return []
     except Exception:
-        _logger.exception("/api/v1/auth/groups 처리 실패 (user_id=%s)", token_info.get("user_id"))
         raise HTTPException(status_code=500, detail="그룹 목록 조회 실패")
 
 
@@ -496,16 +1067,18 @@ async def list_projects(
 ):
     """사용자가 접근 가능한 프로젝트 목록 반환."""
     user_id = token_info["user_id"]
-    key = keys.user_key(user_id, "projects")
+    key = keys.user_key(user_id, f"domain:{token_info['domain_id']}:projects")
     try:
         data = await cache.cached_call(
             key,
             _PROJECTS_TTL,
-            lambda: keystone.list_projects(token_info["token"]),
+            lambda: keystone.list_projects(token_info["token"], token_info["domain_id"]),
             enabled=cm.enabled,
             refresh=cm.refresh,
         )
-        return [ProjectInfo(**p) for p in data]
+        return [
+            ProjectInfo(**p) for p in data if p.get("enabled") is True and p.get("domain_id") == token_info["domain_id"]
+        ]
     except Exception:
         raise HTTPException(status_code=500, detail="프로젝트 목록 조회 실패")
 
@@ -518,7 +1091,7 @@ async def list_projects_recent(token_info: dict = Depends(get_token_info)):
     Redis 기록이 없는 프로젝트는 이름순으로 뒤에 덧붙인다.
     """
     try:
-        projects = await asyncio.to_thread(keystone.list_projects, token_info["token"])
+        projects = await asyncio.to_thread(keystone.list_projects, token_info["token"], token_info["domain_id"])
     except Exception:
         raise HTTPException(status_code=500, detail="프로젝트 목록 조회 실패")
 
@@ -528,6 +1101,8 @@ async def list_projects_recent(token_info: dict = Depends(get_token_info)):
 
     project_infos: list[ProjectInfo] = []
     for p in projects:
+        if p.get("enabled") is not True or p.get("domain_id") != token_info["domain_id"]:
+            continue
         ts = recent_map.get(p["id"])
         last_accessed_at = datetime.fromtimestamp(ts / 1000, tz=UTC).isoformat() if ts else None
         project_infos.append(ProjectInfo(**p, last_accessed_at=last_accessed_at))
@@ -541,95 +1116,97 @@ async def list_projects_recent(token_info: dict = Depends(get_token_info)):
     return project_infos
 
 
-# OIDC/OAuth API router - mounted under /api/v1/auth in main.py.
-gitlab_router = APIRouter()
+async def issue_federated_login(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    *,
+    unscoped_token: str,
+    user_id: str,
+    username: str,
+    domain_id: str,
+    domain_name: str,
+    provider_id: str,
+    provider_revision: int,
+    provider_kind: str,
+    login_email: str,
+) -> TokenResponse:
+    """Verify provider-origin authority, then open the canonical identity home."""
+    async with NativeOperation() as operation:
+        with authentication_step("federated_login"):
+            with authentication_step("resolve"):
+                context = await operation.run(domain_context, user_id, domain_id, operation=operation)
+                if context["domain_name"] != domain_name:
+                    raise HTTPException(status_code=403, detail="Federation domain does not match")
+            with authentication_step("native_exchange"):
+                data = await operation.run(keystone.validate_session, unscoped_token, operation=operation)
+                await operation.run(
+                    assert_token_context,
+                    data,
+                    user_id=user_id,
+                    domain_id=data["domain_id"],
+                    identity_domain_id=context["identity_domain_id"],
+                    project_id="",
+                    operation=operation,
+                )
+            policy_context = {
+                "auth_method": "federated",
+                "provider_id": provider_id,
+                "provider_revision": provider_revision,
+                "provider_domain_id": domain_id,
+                "login_email": login_email,
+            }
+            with authentication_step("session_policy"):
+                # Check the provider at its origin, and email policy at the home
+                # that will become the initial selected workspace.
+                await _enforce_session_policy(
+                    policy_context, {**data, **context, "domain_id": context["identity_domain_id"]}
+                )
+            # Reuse the connection, not authority observed before policy I/O.
+            operation.invalidate()
+            origin = await operation.run(domain_context, user_id, domain_id, operation=operation)
+            assert_domain_resource(context["identity_domain_id"], origin["identity_domain_id"])
+            if origin["domain_name"] != domain_name:
+                raise HTTPException(status_code=403, detail="Federation domain does not match")
+            data = await _prepare_domain_session(data, context["identity_domain_id"], operation=operation)
+            default_project_id = data.get("default_project_id", "")
+            from app.services.token_binding import get_origin, parse_device
 
-
-@gitlab_router.get("/gitlab/enabled")
-async def gitlab_enabled():
-    """GitLab OIDC 활성화 여부 반환 (프론트엔드에서 버튼 표시 여부 결정)."""
-    settings = get_settings()
-    return {"enabled": settings.gitlab_oidc_enabled}
-
-
-@gitlab_router.get("/gitlab/authorize")
-async def gitlab_authorize(response: Response):
-    """GitLab OAuth2 authorization URL and browser-bound state cookie."""
-    settings = get_settings()
-    if not settings.gitlab_oidc_enabled:
-        raise HTTPException(status_code=404, detail="GitLab OIDC가 비활성화 상태입니다")
-    from app.services.gitlab_oidc import create_authorization_request
-
-    try:
-        authorization = await create_authorization_request()
-    except Exception:
-        raise HTTPException(status_code=500, detail="GitLab 인증 URL 생성 실패")
-    response.set_cookie(
-        key=_GITLAB_OIDC_STATE_COOKIE,
-        value=authorization.state,
-        max_age=_GITLAB_OIDC_STATE_TTL_SECONDS,
-        httponly=True,
-        secure=_gitlab_oidc_cookie_secure(settings),
-        samesite="lax",
-        path=_GITLAB_OIDC_STATE_COOKIE_PATH,
-    )
-    return {"authorize_url": authorization.url}
-
-
-@gitlab_router.post("/gitlab/callback", response_model=TokenResponse)
-@limiter.limit("10/minute")
-async def gitlab_callback(
-    request: Request, req: GitLabCallbackRequest, background_tasks: BackgroundTasks, response: Response
-):
-    """GitLab OAuth2 콜백: browser-bound authorization code로 Keystone 토큰 발급."""
-    settings = get_settings()
-    if not settings.gitlab_oidc_enabled:
-        raise HTTPException(status_code=404, detail="GitLab OIDC가 비활성화 상태입니다")
-    browser_state = request.cookies.get(_GITLAB_OIDC_STATE_COOKIE, "")
-    if not browser_state or not hmac.compare_digest(browser_state, req.state):
-        raise HTTPException(status_code=401, detail="GitLab 인증 상태가 현재 브라우저와 일치하지 않습니다")
-    from app.services.gitlab_oidc import exchange_code
-
-    try:
-        data = await exchange_code(req.code, req.state)
-    except Exception:
-        raise HTTPException(status_code=401, detail="GitLab 인증 실패")
-
-    # exchange_code는 접근 가능한 default_project_id만 채워 응답한다.
-    # frontend는 project_id/default_project_id 공통 규칙으로 다음 화면을 결정한다.
-    background_tasks.add_task(_prewarm_dashboard, data["token"], data["project_id"])
-    background_tasks.add_task(record_project_access, data["user_id"], data["project_id"])
-
-    from app.services.token_binding import get_origin, parse_device
-
-    origin_ip, origin_fp = get_origin(request)
-    device_type, os_name = parse_device(request.headers.get("User-Agent", ""))
-
-    token_response = await _build_token_response(
-        keystone_token=data["token"],
-        project_id=data["project_id"],
-        project_name=data["project_name"],
-        user_id=data["user_id"],
-        username=data["username"],
-        roles=data.get("roles", []),
-        is_system_admin=data.get("is_system_admin", False),
-        auth_method="federated",
-        default_project_id=data.get("default_project_id", "") or "",
-        origin_ip=origin_ip,
-        origin_fp=origin_fp,
-        device_type=device_type,
-        os=os_name,
-    )
-    response.delete_cookie(key=_GITLAB_OIDC_STATE_COOKIE, path=_GITLAB_OIDC_STATE_COOKIE_PATH)
-    await activity_svc.record(
-        project_id=data["project_id"],
-        user_id=data["user_id"],
-        username=data["username"],
-        resource_type="auth",
-        action="login",
-        status="success",
-        source="afterglow",
-        service="keystone",
-        extra={"method": "federated"},
-    )
-    return token_response
+            origin_ip, origin_fp = get_origin(request)
+            device_type, os_name = parse_device(request.headers.get("User-Agent", ""))
+            operation.invalidate()
+            response = await _build_token_response(
+                keystone_token=data["session_token"],
+                project_id=data["project_id"],
+                project_name=data["project_name"],
+                user_id=data["user_id"],
+                username=data["username"],
+                roles=data["roles"],
+                is_system_admin=data["is_system_admin"],
+                domain_id=data["domain_id"],
+                domain_name=data["domain_name"],
+                is_domain_manager=data["is_domain_manager"],
+                identity_domain_id=data["identity_domain_id"],
+                identity_domain_name=data["identity_domain_name"],
+                default_project_id=default_project_id,
+                origin_ip=origin_ip,
+                origin_fp=origin_fp,
+                device_type=device_type,
+                os=os_name,
+                operation=operation,
+                **policy_context,
+            )
+            if data["project_id"]:
+                background_tasks.add_task(_prewarm_dashboard, data["token"], data["project_id"])
+                background_tasks.add_task(record_project_access, data["user_id"], data["project_id"])
+            await activity_svc.record(
+                project_id=data["project_id"],
+                user_id=data["user_id"],
+                username=data["username"],
+                resource_type="auth",
+                action="login",
+                status="success",
+                source="afterglow",
+                service="keystone",
+                extra={"method": "federated", "provider_kind": provider_kind},
+            )
+            return response

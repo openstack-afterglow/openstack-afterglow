@@ -28,10 +28,42 @@ describe('tab-local credential persistence', () => {
 
 	it('restores credentials after a reload in the same tab', async () => {
 		const first = await import('../auth');
-		first.setAuth({ token: 'tab-access', refreshToken: 'tab-refresh' });
+		first.setAuth({ token: 'tab-access', refreshToken: 'tab-refresh', domainId: 'domain-1', identityDomainId: 'domain-1', domainName: 'Tenant' });
 		vi.resetModules();
 		const reloaded = await import('../auth');
-		expect(get(reloaded.auth)).toMatchObject({ token: 'tab-access', refreshToken: 'tab-refresh' });
+		expect(get(reloaded.auth)).toMatchObject({ token: 'tab-access', refreshToken: 'tab-refresh', domainId: 'domain-1', domainName: 'Tenant' });
+	});
+
+	it('requires a fresh login for a stored session without its bound domain', async () => {
+		sessionStorage.setItem('afterglow_auth', JSON.stringify({ token: 'pre-domain-access', refreshToken: 'pre-domain-refresh', isDomainManager: true }));
+		const mod = await import('../auth');
+		expect(get(mod.auth).token).toBeNull();
+		expect(get(mod.canManageDomain)).toBe(false);
+		expect(sessionStorage.getItem('afterglow_auth')).toBeNull();
+	});
+
+	it('does not infer identity-domain binding from pre-cutover working-domain snapshots', async () => {
+		sessionStorage.setItem('afterglow_auth', JSON.stringify({ token: 'pre-identity-access', domainId: 'domain-1', isDomainManager: true }));
+		const mod = await import('../auth');
+		expect(get(mod.auth).token).toBeNull();
+		expect(sessionStorage.getItem('afterglow_auth')).toBeNull();
+	});
+
+	it('shows domain management only for a verified Default manager, independently of selected project and system admin', async () => {
+		const mod = await import('../auth');
+		mod.setAuth({ token: 'member', domainId: 'domain-1', isDomainManager: false, isSystemAdmin: false });
+		expect(get(mod.canManageDomain)).toBe(false);
+		mod.setAuth({ token: 'manager', domainId: 'domain-1', isDomainManager: true });
+		expect(get(mod.canManageDomain)).toBe(true);
+		mod.setAuth({ token: 'unbound', domainId: null, isDomainManager: true });
+		expect(get(mod.canManageDomain)).toBe(false);
+		mod.setAuth({ token: 'admin', domainId: null, isDomainManager: false, isSystemAdmin: true });
+		expect(get(mod.canManageDomain)).toBe(false);
+		mod.setAuth({ token: 'system-only', domainId: 'domain-1', projectId: 'project', isSystemAdmin: true, isDomainManager: false });
+		expect(get(mod.canManageDomain)).toBe(false);
+		mod.setAuth({ token: 'default-manager', domainId: 'domain-1', projectId: null, isSystemAdmin: false, isDomainManager: true });
+		expect(get(mod.canManageDomain)).toBe(true);
+		expect(get(mod.isAdmin)).toBe(false);
 	});
 
 	it('drops a dormant tab session after another tab revoked sessions', async () => {

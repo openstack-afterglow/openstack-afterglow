@@ -8,7 +8,7 @@ const project = {
 	name: 'demo',
 	description: '',
 	enabled: true,
-	domain_id: null,
+	domain_id: 'domain-a',
 	created_at: null,
 };
 
@@ -19,7 +19,7 @@ describe('admin dialog dismissal', () => {
 	// key on `document` rather than on the dialog is what proves the old shape was dead.
 	it('moves focus into the dialog and closes on Escape raised outside it', async () => {
 		const onClose = vi.fn();
-		render(AdminProjectDeleteModal, { props: { project, onClose, onSuccess: () => {} } });
+		render(AdminProjectDeleteModal, { props: { project, domainId: 'domain-a', onClose, onSuccess: () => {} } });
 
 		const dialog = screen.getByRole('dialog');
 		await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
@@ -31,7 +31,7 @@ describe('admin dialog dismissal', () => {
 	});
 
 	it('isolates the page behind an open admin dialog', async () => {
-		render(AdminProjectDeleteModal, { props: { project, onClose: () => {}, onSuccess: () => {} } });
+		render(AdminProjectDeleteModal, { props: { project, domainId: 'domain-a', onClose: () => {}, onSuccess: () => {} } });
 
 		const dialog = screen.getByRole('dialog');
 		await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));

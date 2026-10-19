@@ -1,4 +1,11 @@
 {
+	"items.aodhAlarms": "Kengele za Aodh",
+	"items.gnocchi": "Huduma ya Gnocchi",
+	"sections.domainIam": "IAM ya kikoa",
+	"sections.domains": "Vikoa",
+	"items.selectDomain": "Badilisha au unda kikoa",
+	"items.domains": "Vikoa",
+	"items.domainIam": "Watumiaji na miradi",
 	"items.infrastructureTopology": "Topolojia ya miundombinu",
 	"items.trafficAnalytics": "Uchanganuzi wa trafiki",
 	"items.loginMonitoring": "Kuingia na vipindi",

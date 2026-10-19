@@ -88,6 +88,7 @@ describe('server reporter transport and privacy', () => {
 		expect(reporterConfig({ TRAFFIC_ANALYTICS_INGEST_URL: config.url, TRAFFIC_ANALYTICS_INGEST_KEY: config.key })?.peerIsSocket).toBe(false);
         expect(reporterConfig({ TRAFFIC_ANALYTICS_INGEST_URL: config.url, TRAFFIC_ANALYTICS_INGEST_KEY: config.key, TRAFFIC_ANALYTICS_PEER_IS_SOCKET: 'true', ADDRESS_HEADER: 'x-forwarded-for' })?.peerIsSocket).toBe(false);
         expect(reporterConfig({ TRAFFIC_ANALYTICS_INGEST_URL: config.url, TRAFFIC_ANALYTICS_INGEST_KEY: config.key, TRAFFIC_ANALYTICS_PEER_IS_SOCKET: 'true' })?.peerIsSocket).toBe(true);
+		expect(reporterConfig({ TRAFFIC_ANALYTICS_INGEST_URL: config.url, TRAFFIC_ANALYTICS_INGEST_KEY: config.key, TRAFFIC_ANALYTICS_TRUST_CLIENT_ADDRESS: 'true' })?.peerIsSocket).toBe(false);
 		const send = vi.fn<typeof fetch>(); const requestEvent = event(); const response = new Response('same');
 		expect(await invoke(createTrafficReporter(null, { fetch: send }), response, requestEvent)).toBe(response); expect(send).not.toHaveBeenCalled(); expect(requestEvent.getClientAddress).not.toHaveBeenCalled();
 	});
@@ -108,6 +109,19 @@ describe('server reporter transport and privacy', () => {
 		await invoke(handle); await settle(); expect(payload(send)).toMatchObject({ peer_ip: '192.0.2.10', peer_verified: true, forwarded_for: '1.2.3.4' });
 		const requestEvent = event(); vi.mocked(requestEvent.getClientAddress).mockImplementation(() => { throw new Error('no adapter support'); });
 		await invoke(handle, undefined, requestEvent); await settle(); expect(payload(send, 1).peer_ip).toBeNull();
+	});
+	it('bounds adapter evidence and never treats a header-derived address as a verified peer', async () => {
+		const send = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
+		const requestEvent = event(); vi.mocked(requestEvent.getClientAddress).mockReturnValue('1'.repeat(65));
+		await invoke(createTrafficReporter({ ...config, peerIsSocket: true }, { fetch: send }), undefined, requestEvent);
+		expect(payload(send)).toMatchObject({ peer_ip: null, peer_verified: true, forwarded_for: '1.2.3.4' }); await settle();
+		const headerConfig = reporterConfig({ TRAFFIC_ANALYTICS_INGEST_URL: config.url, TRAFFIC_ANALYTICS_INGEST_KEY: config.key,
+			TRAFFIC_ANALYTICS_PEER_IS_SOCKET: 'true', ADDRESS_HEADER: 'x-forwarded-for' });
+		const headerEvent = event();
+		await invoke(createTrafficReporter(headerConfig, { fetch: send }), undefined, headerEvent); await settle();
+		expect(headerEvent.getClientAddress).not.toHaveBeenCalled();
+		expect(payload(send, 1)).toMatchObject({ peer_ip: null, peer_verified: false, forwarded_for: '1.2.3.4' });
+		expect(send.mock.calls[1][0]).toBe(config.url);
 	});
     it.each(['1'.repeat(1025), '"'.repeat(1024)])('bounds raw and escaped forwarded evidence without losing the observation', async (forwarded) => {
         const send = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
@@ -161,6 +175,6 @@ describe('server reporter transport and privacy', () => {
 	it('retains only fixed categories derived from route IDs, never actual dynamic URLs', () => {
 		expect(trafficCategory('/(app)/dashboard/compute/[id]')).toBe('/dashboard'); expect(trafficCategory(null)).toBe('__unmatched__');
 		expect(trafficCategory('/administer/[name]')).toBe('/other'); expect(trafficCategory('/')).toBe('/'); expect(trafficCategory('/(public)')).toBe('/');
-		for (const route of ['/docs/[slug]', '/auth/gitlab/callback', '/login']) expect(trafficCategory(route)).toBe(route.split('/').slice(0, 2).join('/'));
+		for (const route of ['/docs/[slug]', '/auth/gitlab/callback', '/auth/callback', '/login', '/health']) expect(trafficCategory(route)).toBe(route.split('/').slice(0, 2).join('/'));
 	});
 });

@@ -17,11 +17,12 @@ from openstack.exceptions import ForbiddenException
 from sqlalchemy import Integer, MetaData
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.api.deps import get_os_conn, get_token_info
+from app.api.deps import get_os_conn, get_token_info, require_admin
 from app.api.identity.login_monitoring import router
 from app.models.activity import ActivityLog
 from app.services import login_monitoring as service
 from app.services import session_store
+from tests.admin_gate import synthetic_verified_admin
 
 BASE = "/api/v1/admin/monitoring/logins"
 
@@ -51,6 +52,7 @@ async def monitoring(monkeypatch):
     app = FastAPI()
     app.include_router(router, prefix="/api/v1/admin/monitoring/logins")
     app.dependency_overrides[get_token_info] = lambda: authority
+    app.dependency_overrides[require_admin] = synthetic_verified_admin
     app.dependency_overrides[get_os_conn] = lambda: conn
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield SimpleNamespace(client=client, redis=redis, factory=factory, conn=conn, authority=authority)
@@ -325,3 +327,45 @@ async def test_real_session_creation_and_revocation_remove_monitorable_session(m
     assert after.json()["sessions"]["items"] is None
     assert after.json()["sessions"]["state"] == "unknown"
     assert "revoked-jti" not in before.text + after.text
+
+
+@pytest.mark.asyncio
+async def test_domain_observation_counts_only_directory_scope(monitoring):
+    m = monitoring
+    await add_event(m.factory)
+    await add_event(m.factory, status="failed")
+    await add_event(m.factory, project="", action="logout")  # domain-only auth event
+    await add_event(m.factory, project="project-x")  # same user, foreign project
+    await add_event(m.factory, user="outsider", project="project-x")
+    await add_event(m.factory, user="outsider", project="")
+    await put_session(m.redis, "valid", domain_id="tenant-a")
+    await put_session(m.redis, "foreign-project", domain_id="tenant-a", project_id="project-x")
+    await put_session(m.redis, "foreign-domain", domain_id="tenant-b")
+    await put_session(m.redis, "outsider", user_id="outsider", domain_id="tenant-a")
+    # "idle" has no session index at all; that is a verified zero, not unknown.
+    data = await service.domain_observation("tenant-a", {"selected", "idle"}, {"project-a"}, "24h")
+    assert data["logins"]["successes"] == 1 and data["logins"]["recorded_failures"] == 1
+    assert data["logins"]["failure_history"] == "not_collected"
+    assert data["activity"]["events"] == 3 and data["activity"]["recent_users"] == 1
+    assert data["sessions"] == {
+        "state": "ready",
+        "valid_count": 1,
+        "observed_recent_count": 1,
+        "unattributed_count": 0,
+        "online_count": None,
+    }
+    assert "private" not in json.dumps(data) and "192.0.2.1" not in json.dumps(data)
+
+
+@pytest.mark.asyncio
+async def test_domain_observation_legacy_sessions_and_storage_outage_are_explicit(monitoring, monkeypatch):
+    await put_session(monitoring.redis, "legacy")  # no stored domain
+    await put_session(monitoring.redis, "attributed", domain_id="tenant-a")
+    await put_session(monitoring.redis, "malformed", exp=None, domain_id="tenant-a")
+    monkeypatch.setattr(service, "is_db_available", lambda: False)
+    data = await service.domain_observation("tenant-a", {"selected"}, {"project-a"}, "24h")
+    assert data["sessions"]["state"] == "partial"
+    assert data["sessions"]["valid_count"] == 1 and data["sessions"]["unattributed_count"] == 1
+    assert "sessions_without_domain_attribution" in data["notes"]
+    assert data["logins"]["state"] == "unavailable" and data["logins"]["successes"] is None
+    assert data["activity"]["events"] is None and data["activity"]["hour_distribution"] is None

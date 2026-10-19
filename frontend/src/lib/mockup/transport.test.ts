@@ -453,8 +453,8 @@ describe('mockup transport', () => {
 		expect(await maybeMockJson('GET', '/api/v1/admin/services?category=network')).toMatchObject({ network: [expect.objectContaining({ alive: true })] });
 		expect(await maybeMockJson('GET', '/api/v1/admin/services?category=endpoints')).toMatchObject({ endpoints: [expect.any(Object)] });
 		expect(await maybeMockJson('GET', '/api/v1/admin/services?category=storage_pools')).toMatchObject({ storage_pools: [expect.any(Object)] });
-		expect(await maybeMockJson('GET', '/api/v1/admin/users')).toMatchObject({ count: 3, items: expect.any(Array) });
-		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/users/activity')).toHaveLength(2);
+		expect(await maybeMockJson('GET', '/api/v1/admin/users?domain_id=mock-domain')).toMatchObject({ count: 3, items: expect.any(Array) });
+		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/users/activity?domain_id=mock-domain')).toHaveLength(2);
 		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/projects/names')).toHaveLength(3);
 		expect(fetchMock).not.toHaveBeenCalled();
 	});

@@ -24,12 +24,27 @@
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import HubArtifactsPanel from '$lib/components/palimpsest/HubArtifactsPanel.svelte';
+  import PalimpsestLocalGuide from '$lib/components/palimpsest/PalimpsestLocalGuide.svelte';
 
   const selectedIdentity = derived([auth, authReady, projectSwitching, logoutInProgress], ([$auth, ready, switching, loggingOut]): PackageIdentity | null =>
     ready && !switching && !loggingOut && $auth.token && $auth.projectId && $auth.userId
       ? { token: $auth.token, projectId: $auth.projectId, userId: $auth.userId } : null);
   const controller = createPalimpsestPackagesController(() => get(selectedIdentity), undefined, (leaf) => $serviceCapabilities(leaf), (leaf) => $serviceDenials(leaf));
   let tab = $state('inventory');
+  let workspace = $state(get(page).url.searchParams.get('package') ? 'packages' : 'hub');
+  let search = $state('');
+  const visibleInventory = $derived.by(() => {
+    const query = search.trim().toLowerCase();
+    return (controller.inventory ?? []).filter((item) => {
+      if (!query) return true;
+      const latest = controller.latestVersions[item.package_id]?.version;
+      return [item.namespace, item.name, `${item.namespace}/${item.name}`,
+        ...item.tags.flatMap((tag) => [tag.tag, tag.digest]), latest?.root_digest ?? '',
+        ...[...item.platforms, ...latest?.platforms ?? []].map((platform) => `${platform.os}/${platform.architecture}${platform.variant ? `/${platform.variant}` : ''}`),
+      ].some((value) => value.toLowerCase().includes(query));
+    });
+  });
   let showCreate = $state(false);
   let keyName = $state('');
   let packageNames = $state('');
@@ -40,6 +55,7 @@
   let copyMessage = $state<Parameters<typeof t>[0] | ''>('');
   let revokeTarget = $state<PackageKey | null>(null);
   let linkHandled = '';
+  let routeLink = '';
   const actionChoices: { value: KeyAction; label: string }[] = $derived([
     { value: 'packages:inventory', label: t('action.packagesInventory') },
     { value: 'packages:read', label: t('action.packagesRead') }, { value: 'packages:write', label: t('action.packagesWrite') },
@@ -52,7 +68,7 @@
   onMount(() => {
     let previous: PackageIdentity | null = null;
     const stop = selectedIdentity.subscribe((identity) => {
-      if (!samePackageIdentity(previous, identity)) { resetForm(); linkHandled = ''; tab = 'inventory'; }
+      if (!samePackageIdentity(previous, identity)) { resetForm(); linkHandled = ''; tab = 'inventory'; search = ''; }
       previous = identity;
       controller.bindIdentity();
     });
@@ -71,12 +87,21 @@
     if (tab === 'keys' && (controller.canIssue || controller.canRevoke) && controller.keys === null && !controller.busy.keys && !controller.errors.keys) void controller.loadKeys();
   });
   $effect(() => {
+    const params = $page.url.searchParams;
+    const name = params.get('package');
+    const key = JSON.stringify([name, params.get('namespace'), params.get('digest')]);
+    if (key !== routeLink) {
+      routeLink = key; linkHandled = '';
+      if (name) { changeWorkspace('packages'); tab = 'inventory'; }
+    }
+  });
+  $effect(() => {
     const context = controller.context;
     const name = $page.url.searchParams.get('package');
     const namespace = $page.url.searchParams.get('namespace') ?? undefined;
     const digest = $page.url.searchParams.get('digest') ?? undefined;
     const key = `${context?.project_id}:${name}:${namespace}:${digest}`;
-    if (context?.namespace && controller.canRead && name && key !== linkHandled) {
+    if (workspace === 'packages' && tab === 'inventory' && context?.namespace && controller.canRead && name && key !== linkHandled) {
       linkHandled = key;
       void controller.openPackage(name, digest, namespace);
     }
@@ -84,6 +109,9 @@
   function changeTab(value: string) {
     controller.discardSecret(); resetForm(); controller.closeDetail(); tab = value;
     if (value === 'keys') void controller.loadKeys();
+  }
+  function changeWorkspace(value: string) {
+    controller.discardSecret(); resetForm(); controller.closeDetail(); workspace = value;
   }
   function platforms(values: Platform[]) { return values.map((item) => `${item.os}/${item.architecture}${item.variant ? `/${item.variant}` : ''}`).join(', ') || t('format.noPlatforms'); }
   function timestamp(value: string | null) { return value ? new Date(value).toLocaleString(intlLocale()) : t('format.noTimestamp'); }
@@ -132,12 +160,27 @@
 
 <svelte:head><title>{t('page.title')}</title></svelte:head>
 <PageShell>
-  <PageHeader breadcrumb="Palimpsest" title={t('page.heading')} subtitle={t('page.subtitle')}>
-    {#snippet actions()}<Button variant="secondary" disabled={!$selectedIdentity || !!controller.busy.context || !!controller.busy.issue || !!controller.busy.revoke || !!controller.busy.register} onclick={() => { void controller.loadContext(); if (tab === 'keys') void controller.loadKeys(); }}>{t('actions.refresh')}</Button>{/snippet}
-  </PageHeader>
+  <PageHeader breadcrumb="Palimpsest" title={t('page.heading')} subtitle={t('page.subtitle')} />
   <div class="space-y-4">
+    <Tabs id="palimpsest-workspace-tabs" value={workspace} ariaLabel={t('workspace.label')} items={[{ value: 'hub', label: t('workspace.hub'), panelId: 'palimpsest-hub' }, { value: 'packages', label: t('workspace.packages'), panelId: 'palimpsest-native' }, { value: 'local', label: t('workspace.local'), panelId: 'palimpsest-local' }]} onchange={changeWorkspace} />
+    {#if workspace === 'hub'}
+      <div id="palimpsest-hub" role="tabpanel" aria-labelledby="palimpsest-workspace-tabs-hub" tabindex="0">
+        <HubArtifactsPanel identity={$selectedIdentity} />
+      </div>
+    {:else if workspace === 'local'}
+      <div id="palimpsest-local" role="tabpanel" aria-labelledby="palimpsest-workspace-tabs-local" tabindex="0">
+        <PalimpsestLocalGuide projectId={$selectedIdentity?.projectId} packageAuthority={controller.context?.package_authority} namespace={controller.context?.namespace} />
+      </div>
+    {:else}
+      <div id="palimpsest-native" role="tabpanel" aria-labelledby="palimpsest-workspace-tabs-packages" tabindex="0" class="space-y-4">
+        <div class="flex flex-wrap justify-end gap-2"><Button variant="secondary" disabled={!$selectedIdentity || !!controller.busy.context || !!controller.busy.issue || !!controller.busy.revoke || !!controller.busy.register} onclick={() => { void controller.loadContext(); if (tab === 'keys') void controller.loadKeys(); }}>{t('actions.refresh')}</Button></div>
+    {#if controller.errors.context}
+      <Alert tone="warning"><p>{t('context.unavailable')}</p><p class="mt-2">{t('context.accessHelp')}</p><p class="mt-2 break-words text-xs">{controller.errors.context}</p></Alert>
+    {/if}
     {#if !controller.context}
-      {#if controller.errors.context}<Alert tone="danger">{controller.errors.context}</Alert><Button variant="secondary" onclick={() => controller.loadContext()}>{t('actions.retry')}</Button>
+      {#if controller.errors.context}
+        <Button variant="secondary" disabled={!$selectedIdentity || !!controller.busy.context} onclick={() => controller.loadContext()}>{t('actions.retry')}</Button>
+      {:else if !$selectedIdentity}<Alert tone="info">{t('context.selectProject')}</Alert>
       {:else}<p class="text-sm text-ink-2" role="status">{t('context.loading')}</p>{/if}
     {:else}
       <Card surface="base">
@@ -162,17 +205,20 @@
             {#if !controller.canRead}<Alert tone="warning">{t('inventory.denied')}</Alert>
             {:else if controller.busy.inventory && controller.inventory === null}<p class="text-sm text-ink-2" role="status">{t('inventory.loading')}</p>
             {:else if controller.inventory !== null}
+              <Field label={t('search.label')} for="native-package-search" help={t('search.scope')}><TextInput id="native-package-search" type="search" bind:value={search} /></Field>
+              <p class="text-sm text-ink-2" role="status">{t('search.count', { matched: visibleInventory.length, loaded: controller.inventory.length })}</p>
               {#if controller.inventory.length === 0}<Card surface="base"><p class="text-sm text-ink-2">{t('inventory.empty')}</p></Card>
+              {:else if visibleInventory.length === 0}<Card surface="base"><p class="text-sm text-ink-2">{t('search.empty')}</p></Card>
               {:else}
                 <div class="hidden xl:block"><TableShell><table><thead><tr><th scope="col">{t('columns.package')}</th><th scope="col">{t('columns.tags')}</th><th scope="col">{t('columns.platforms')}</th><th scope="col">{t('columns.size')}</th><th scope="col">{t('columns.actions')}</th></tr></thead><tbody>
-                  {#each controller.inventory as item (item.package_id)}<tr>
+                  {#each visibleInventory as item (item.package_id)}<tr>
                     <td><span class="font-mono">{item.namespace}/{item.name}</span><p class="mt-1 text-xs text-ink-2">{packageType(item.package_type)} · {t('inventory.versions', { count: item.version_count })}</p></td>
                     <td>{#each item.tags as tag}<p class="font-mono text-xs" title={tag.digest}>{tag.tag} → {shortDigest(tag.digest)}</p>{/each}{#if !item.tags.length}<span class="text-ink-2">{t('inventory.noTags')}</span>{/if}</td>
                     <td class="max-w-56 whitespace-normal">{platforms(item.platforms)}</td><td>{@render latestMetadata(item, true)}<p class="max-w-56 break-all text-xs">{item.latest_pushed_by ?? t('inventory.noPublisher')}</p><p class="text-xs text-ink-2 tabular-nums">{timestamp(item.latest_pushed_at)}</p></td>
                     <td>{@render packageActions(item, true)}</td>
                   </tr>{/each}
                 </tbody></table></TableShell></div>
-                <div class="space-y-3 xl:hidden">{#each controller.inventory as item (item.package_id)}<Card surface="base">
+                <div class="space-y-3 xl:hidden">{#each visibleInventory as item (item.package_id)}<Card surface="base">
                   <h2 class="break-all font-mono text-sm font-medium">{item.namespace}/{item.name}</h2><p class="mt-1 text-xs text-ink-2">{packageType(item.package_type)} · {t('inventory.versions', { count: item.version_count })} · {t('context.private')}</p>
                   <div class="my-3 space-y-1 text-xs">{#each item.tags as tag}<p class="break-all font-mono">{tag.tag} → {tag.digest}</p>{/each}{#if !item.tags.length}<p>{t('inventory.noTags')}</p>{/if}<p>{platforms(item.platforms)}</p><p class="break-all">{item.latest_pushed_by ?? t('inventory.noPublisher')} · {timestamp(item.latest_pushed_at)}</p></div>
                   {@render latestMetadata(item)}
@@ -203,6 +249,8 @@
       {/if}
     {/if}
     {#if copyMessage}<p role="status" class="text-sm text-ink-2">{t(copyMessage)}</p>{/if}
+      </div>
+    {/if}
   </div>
 </PageShell>
 
@@ -219,7 +267,13 @@
   {:else if !latest}<p class="text-xs text-ink-2" role="status">{t('metadata.loading')}</p>
   {:else}<p class="max-w-72 text-xs text-state-warning-text">{t('metadata.unavailable')} · {latest.error}</p>{/if}
 {/snippet}
-{#snippet keyRevoke(key: PackageKey)}<Button variant="danger-outline" disabled={!controller.canRevoke || !!key.revoked_at || !!controller.busy.issue || !!controller.busy.revoke} onclick={() => { revokeTarget = key; }}>{t('actions.revoke')}</Button>{/snippet}
+{#snippet keyRevoke(key: PackageKey)}
+  <div class="flex flex-col items-start gap-2">
+    <p class="max-w-64 break-all font-mono text-xs select-all"><span class="text-ink-2">{t('keys.publicId')}</span> {key.key_id}</p>
+    <Button variant="ghost" size="sm" onclick={() => copy(key.key_id)}>{t('keys.copyId')}</Button>
+    <Button variant="danger-outline" disabled={!controller.canRevoke || !!key.revoked_at || !!controller.busy.issue || !!controller.busy.revoke} onclick={() => { revokeTarget = key; }}>{t('actions.revoke')}</Button>
+  </div>
+{/snippet}
 
 <Modal open={!!controller.detail && controller.canRead} ariaLabel={t('detail.label')} onClose={() => controller.closeDetail()}>
   {#if controller.detail}<Card surface="modal" class="w-full max-w-full md:w-[48rem] space-y-4">

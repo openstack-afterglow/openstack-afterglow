@@ -58,9 +58,14 @@ vi.mock('$lib/stores/projectList', () => ({ projectList: { prefetch() {} } }));
 vi.mock('$lib/stores/auth', async () => {
 	const { writable } = await vi.importActual<typeof StoreModule>('svelte/store');
 	return {
-		auth: writable({ token: 'synthetic-token', projectId: 'project', userId: 'user', roles: ['admin'], isSystemAdmin: true }),
+		auth: writable({ token: 'synthetic-token', projectId: 'project', userId: 'user', roles: ['admin'], isSystemAdmin: true, domainId: 'domain-1', identityDomainId: 'domain-1' }),
 		isAdmin: writable(true),
+		clearAuth: vi.fn(),
+		isMockAuthActive: () => false,
 		authReady: writable(true),
+		// Locale-only fixtures keep one fully verified scope for the real layouts.
+		getAuthVerificationEpoch: () => 1,
+		hasVerifiedAuth: () => true,
 		projectSwitching: writable(false),
 	};
 });
@@ -73,7 +78,7 @@ vi.mock('$lib/api/client', () => ({
 	api: {
 		get: vi.fn().mockImplementation(async (path: string) => path === '/api/v1/projects/current/permissions'
 			? { is_owner: false, is_manager: false, can_write: false, service_permissions: { drover: ['drover-inventory_reader', 'drover-workloads_editor'] } }
-			: { id: 'cluster', name: 'Cluster', is_system_admin: true, roles: ['admin'] }),
+			: { id: 'cluster', name: 'Cluster', user_id: 'user', is_system_admin: true, roles: ['admin'], domain_id: 'domain-1', domain_name: 'Domain', identity_domain_id: 'domain-1', identity_domain_name: 'Domain' }),
 		post: vi.fn().mockResolvedValue({ ticket: 'ticket' }),
 	},
 	getBaseUrl: () => 'http://localhost',

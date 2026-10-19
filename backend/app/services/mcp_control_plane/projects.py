@@ -19,6 +19,17 @@ async def caller_membership_projects(conn: Any, owner_user_id: str) -> list[dict
     access = await asyncio.to_thread(conn.session.auth.get_access, conn.session)
     if access.user_id != owner_user_id:
         raise McpAuthorityError("authenticated connection does not match the MCP owner")
+    identity_domain_id = getattr(access, "user_domain_id", None)
+    domain_id = getattr(conn, "_afterglow_domain_id", None)
+    if (
+        not isinstance(identity_domain_id, str)
+        or not identity_domain_id
+        or not isinstance(domain_id, str)
+        or not domain_id
+    ):
+        raise McpAuthorityError("authenticated domain is unavailable")
+    if getattr(conn, "_afterglow_identity_domain_id", None) != identity_domain_id:
+        raise McpAuthorityError("authenticated identity domain does not match the MCP owner")
     from app.config import get_settings
 
     # /auth/projects is the authenticated user's available scopes, including
@@ -33,6 +44,10 @@ async def caller_membership_projects(conn: Any, owner_user_id: str) -> list[dict
         raise McpAuthorityError("Keystone returned invalid project memberships")
     result = {}
     for project in projects:
+        if not isinstance(project, dict):
+            raise McpAuthorityError("Keystone returned invalid project memberships")
+        if project.get("domain_id") != domain_id:
+            continue
         project_id = project.get("id")
         if isinstance(project_id, str) and project_id and project.get("enabled", True):
             result[project_id] = {"id": project_id, "name": project.get("name") or project_id}
@@ -54,6 +69,17 @@ async def project_connection(conn: Any, owner_user_id: str, project_id: str) -> 
     access = await asyncio.to_thread(conn.session.auth.get_access, conn.session)
     if access.user_id != owner_user_id:
         raise McpAuthorityError("authenticated connection does not match the MCP owner")
+    identity_domain_id = getattr(access, "user_domain_id", None)
+    domain_id = getattr(conn, "_afterglow_domain_id", None)
+    if (
+        not isinstance(identity_domain_id, str)
+        or not identity_domain_id
+        or not isinstance(domain_id, str)
+        or not domain_id
+    ):
+        raise McpAuthorityError("authenticated domain is unavailable")
+    if getattr(conn, "_afterglow_identity_domain_id", None) != identity_domain_id:
+        raise McpAuthorityError("authenticated identity domain does not match the MCP owner")
     current = access.project_id == project_id
     scoped = conn if current else await asyncio.to_thread(keystone.get_openstack_connection, token, project_id)
     try:
@@ -61,6 +87,8 @@ async def project_connection(conn: Any, owner_user_id: str, project_id: str) -> 
             access = await asyncio.to_thread(scoped.session.auth.get_access, scoped.session)
         if access.user_id != owner_user_id or access.project_id != project_id:
             raise McpAuthorityError("authenticated connection does not match the MCP target")
+        if access.user_domain_id != identity_domain_id or getattr(access, "project_domain_id", None) != domain_id:
+            raise McpAuthorityError("MCP project must belong to the selected working domain")
         names = list(access.role_names or ())
         role_ids = list(access.role_ids or ())
         if len(names) != len(role_ids) or any(not isinstance(role_id, str) or not role_id for role_id in role_ids):
@@ -87,6 +115,8 @@ async def project_connection(conn: Any, owner_user_id: str, project_id: str) -> 
         scoped._afterglow_roles = delegated_roles
         scoped._afterglow_delegation_narrowed = len(delegated_roles) != len(roles)
         scoped._afterglow_is_system_admin = False
+        scoped._afterglow_domain_id = domain_id
+        scoped._afterglow_identity_domain_id = identity_domain_id
         return scoped
     except BaseException:
         if scoped is not conn:

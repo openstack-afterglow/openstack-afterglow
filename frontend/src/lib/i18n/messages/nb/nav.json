@@ -1,4 +1,11 @@
 {
+	"items.aodhAlarms": "Aodh-alarmer",
+	"items.gnocchi": "Gnocchi-tjenesten",
+	"sections.domainIam": "Domene-IAM",
+	"sections.domains": "Domener",
+	"items.selectDomain": "Bytt eller opprett domene",
+	"items.domains": "Domener",
+	"items.domainIam": "Brukere og prosjekter",
 	"items.infrastructureTopology": "Infrastrukturtopologi",
 	"items.trafficAnalytics": "Trafikkanalyse",
 	"items.loginMonitoring": "Innlogginger og økter",

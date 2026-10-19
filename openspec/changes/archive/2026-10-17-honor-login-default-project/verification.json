@@ -1,0 +1,316 @@
+{
+  "change": "honor-login-default-project",
+  "status": "implemented-and-local-runtime-verified; full-project-gate-non-green",
+  "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd",
+  "root_cause": "_prepare_domain_session ignored verified native user default_project_id and prioritized canonical domain Default",
+  "selection_precedence": [
+    "explicit accessible target",
+    "enabled accessible saved user default in selected domain",
+    "canonical domain Default",
+    "remaining accessible project"
+  ],
+  "implementation_files": [
+    "backend/app/api/identity/auth.py",
+    "backend/tests/test_login_native_operation.py"
+  ],
+  "preserved_invariants": [
+    "Default provisioning and owner/reader/manager policy",
+    "native final scope before session publication",
+    "current domain and enabled native membership boundary",
+    "stored user preference is not mutated by fallback"
+  ],
+  "checks": {
+    "before": {
+      "failed": 2,
+      "methods": [
+        "password",
+        "provider"
+      ]
+    },
+    "native_after": {
+      "passed": 34
+    },
+    "backend_consumers": {
+      "files": 5,
+      "passed": 203
+    },
+    "changed_file_lint_format": "passed",
+    "auth_target": {
+      "passed": 472,
+      "failed": 4,
+      "errors": 4,
+      "scope": "role_visibility non-loopback fixture calls; frontend stage not run"
+    },
+    "full_gate": {
+      "passed": 8181,
+      "failed": 18,
+      "skipped": 91,
+      "stopped_at": "backend unit",
+      "unrun_downstream": [
+        "frontend unit",
+        "contracts",
+        "functional",
+        "full lint"
+      ],
+      "failure_scopes": {
+        "role_visibility": 4,
+        "identity_roles": 1,
+        "user_dashboard": 1,
+        "waygate_authority": 1,
+        "instance_storage_delete": 11
+      }
+    },
+    "architecture": {
+      "source_sha256": "a1ab59fd14775c14edfeefb559936973a9c502a15b65e7020f8807a2d30f16e4",
+      "files": 3033,
+      "working": "passed",
+      "staged": "passed",
+      "snapshot": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/public-architecture-snapshot"
+    }
+  },
+  "http": {
+    "boundary": "real HTTP profile/auth/JWT/session; synthetic Keystone/IdP/Redis/quota I/O; real disposable SQLite ownership journal",
+    "initial_project": "default-a",
+    "profile_save": {
+      "status": 200,
+      "default_project_id": "work-a"
+    },
+    "password": {
+      "status": 200,
+      "project_id": "work-a",
+      "default_project_id": "work-a"
+    },
+    "provider": {
+      "status": 200,
+      "project_id": "work-a",
+      "default_project_id": "work-a"
+    },
+    "session": {
+      "status": 200,
+      "project_id": "work-a",
+      "domain_id": "tenant-a",
+      "identity_domain_id": "tenant-a",
+      "auth_method": "password"
+    },
+    "explicit_target": {
+      "status": 200,
+      "project_id": "default-a",
+      "default_project_id": "work-a"
+    },
+    "foreign_preference": {
+      "status": 200,
+      "project_id": "default-a",
+      "saved_preference_unchanged": true
+    }
+  },
+  "browser": {
+    "url": "http://127.0.0.1:3086/dashboard",
+    "state": {
+      "projectId": "work-a",
+      "projectName": "Work",
+      "domainId": "tenant-a",
+      "identityDomainId": "tenant-a",
+      "overflow": 0
+    },
+    "selector": "Work · tenant-a: 리소스 선택",
+    "screenshot": "preferred-project-desktop.webp",
+    "cloud_dashboard_fixture_supplied": false,
+    "limit": "Real frontend Vite/Chromium + direct loopback HTTP; native/IdP are synthetic. Dashboard summary/quota errors preserved."
+  },
+  "images": [
+    {
+      "architecture": "arm64",
+      "stage": "backend",
+      "machine": "aarch64",
+      "uid": 1000,
+      "auth_sha256": "aa9fc020f957829cfc1666fddd5bd18cbed952ceb8151a4a9fca9bf39c1b1f5a"
+    },
+    {
+      "architecture": "arm64",
+      "stage": "worker",
+      "machine": "aarch64",
+      "uid": 1000,
+      "auth_sha256": "aa9fc020f957829cfc1666fddd5bd18cbed952ceb8151a4a9fca9bf39c1b1f5a"
+    },
+    {
+      "architecture": "amd64",
+      "stage": "backend",
+      "machine": "x86_64",
+      "uid": 1000,
+      "auth_sha256": "aa9fc020f957829cfc1666fddd5bd18cbed952ceb8151a4a9fca9bf39c1b1f5a"
+    },
+    {
+      "architecture": "amd64",
+      "stage": "worker",
+      "machine": "x86_64",
+      "uid": 1000,
+      "auth_sha256": "aa9fc020f957829cfc1666fddd5bd18cbed952ceb8151a4a9fca9bf39c1b1f5a"
+    }
+  ],
+  "canonical_runtime": {
+    "backend_container": "a75b5c483e7a4beab2759ebf33c3bc94cca0134220409336093014d0b0776700",
+    "backend_image": "sha256:117b36fedf572aa4ac4780aeed5d4eae5c6f208311df570032e4c47b160a0ca2",
+    "health": "healthy",
+    "config_hash": "263ec3966e183130982f30ef5f61f34c3e52f0b958404278985d83de032fae8b",
+    "existing_database_url_preserved": true,
+    "auth_source_sha256": "aa9fc020f957829cfc1666fddd5bd18cbed952ceb8151a4a9fca9bf39c1b1f5a",
+    "private_inputs_unchanged": true
+  },
+  "boundaries": {
+    "real": [
+      "HTTP auth/profile handlers",
+      "JWT/session implementation",
+      "disposable SQLite ownership journal",
+      "Chromium frontend Vite",
+      "canonical local Compose backend deployment",
+      "Python image execution on amd64/arm64"
+    ],
+    "synthetic": [
+      "native Keystone directory/SDK I/O",
+      "IdP verification",
+      "HTTP smoke Redis",
+      "quota I/O"
+    ],
+    "live_user_gitlab_code_exchange": false,
+    "production_rollout": false,
+    "worker_main_or_job_exercised": false
+  },
+  "preservation": {
+    "shared_index": true,
+    "global_architecture_review_marker": true,
+    "private_inputs": true,
+    "database_url_override": true
+  },
+  "cleanup": {
+    "owned_api_and_ui_stopped": true,
+    "owned_browser_closed": true,
+    "throwaway_script_removed": true,
+    "owned_image_tags_removed": true,
+    "proof_retained": true
+  },
+  "gbrain_cli_available": false,
+  "commit_push_tag": false,
+  "command_receipts": [
+    {
+      "label": "regression-before",
+      "exit": 1,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/regression-before.log"
+    },
+    {
+      "label": "regression-after",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/regression-after.log"
+    },
+    {
+      "label": "auth-target",
+      "exit": 1,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/auth-target.log"
+    },
+    {
+      "label": "build-amd64-worker",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/build-amd64-worker.log"
+    },
+    {
+      "label": "build-arm64",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/build-arm64.log"
+    },
+    {
+      "label": "build-amd64-backend",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/build-amd64-backend.log"
+    },
+    {
+      "label": "image-smoke-arm64-backend",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/image-smoke-arm64-backend.log"
+    },
+    {
+      "label": "image-smoke-arm64-worker",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/image-smoke-arm64-worker.log"
+    },
+    {
+      "label": "image-smoke-amd64-backend",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/image-smoke-amd64-backend.log"
+    },
+    {
+      "label": "image-smoke-amd64-worker",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/image-smoke-amd64-worker.log"
+    },
+    {
+      "label": "format",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/format.log"
+    },
+    {
+      "label": "lint",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/lint.log"
+    },
+    {
+      "label": "backend-consumers",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/backend-consumers.log"
+    },
+    {
+      "label": "canonical-source-parity",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/canonical-source-parity.log"
+    },
+    {
+      "label": "snapshot-clone",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/snapshot-clone.log"
+    },
+    {
+      "label": "snapshot-source-stage",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/snapshot-source-stage.log"
+    },
+    {
+      "label": "architecture-stamp",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/architecture-stamp.log"
+    },
+    {
+      "label": "full-gate",
+      "exit": 1,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/full-gate.log"
+    },
+    {
+      "label": "architecture-final-stamp",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/architecture-final-stamp.log"
+    },
+    {
+      "label": "architecture-final-working",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/architecture-final-working.log"
+    },
+    {
+      "label": "architecture-final-stage",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/architecture-final-stage.log"
+    },
+    {
+      "label": "architecture-final-staged",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/architecture-final-staged.log"
+    },
+    {
+      "label": "cleanup-owned-image-tags",
+      "exit": 0,
+      "log": "/Users/pieroot/.local/share/afterglow-proofs/login-preferred-project-wsfsq_rd/cleanup-owned-image-tags.log"
+    }
+  ],
+  "openspec": {
+    "archive": "openspec/changes/archive/2026-10-17-honor-login-default-project",
+    "task_status": "complete",
+    "canonical_archive": "passed with --skip-specs --yes",
+    "strict_validation": "failed: generic validator requires a specs delta; project rapid workflow intentionally keeps only proposal/tasks; canonical archive reported a non-blocking warning"
+  }
+}

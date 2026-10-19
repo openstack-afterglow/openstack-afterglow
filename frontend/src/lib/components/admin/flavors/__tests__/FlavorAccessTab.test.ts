@@ -56,7 +56,7 @@ describe('FlavorAccessTab frontend visibility', () => {
 			availableProjects: [],
 			roles: ['admin'],
 			isSystemAdmin: true,
-			federated: false,
+			federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false,
 		});
 	});
 

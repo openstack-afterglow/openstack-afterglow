@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -18,10 +19,12 @@
 
 	let {
 		project,
+		domainId,
 		onClose,
 		onSuccess,
 	}: {
 		project: Project | null;
+		domainId: string;
 		onClose: () => void;
 		onSuccess: () => void;
 	} = $props();
@@ -34,8 +37,13 @@
 	let editEnabled = $state(true);
 	let updating = $state(false);
 	let editError = $state('');
+	let generation = 0;
+	onDestroy(() => { generation += 1; });
 
 	$effect(() => {
+		void domainId; void token; void projectId;
+		generation += 1;
+		updating = false;
 		if (project) {
 			editName = project.name;
 			editDesc = project.description;
@@ -45,25 +53,32 @@
 	});
 
 	async function updateProject() {
-		if (!project) return;
+		if (!project || !domainId || project.domain_id !== domainId || updating) return;
+		const target = project.id;
+		const request = generation;
+		const requestDomain = domainId;
+		const requestToken = token;
+		const requestProject = projectId;
+		const owns = () => request === generation && project?.id === target && domainId === requestDomain && token === requestToken && projectId === requestProject;
 		updating = true;
 		editError = '';
 		const namesScope = projectNames.scope(token, projectId);
 		projectNames.invalidate(namesScope);
 		try {
 			await api.patch(
-				`/api/v1/admin/projects/${project.id}`,
+				`/api/v1/admin/projects/${encodeURIComponent(target)}?domain_id=${encodeURIComponent(requestDomain)}`,
 				{ name: editName, description: editDesc || null, enabled: editEnabled },
-				token,
-				projectId,
+				requestToken,
+				requestProject,
 			);
 			projectNames.invalidate(namesScope);
+			if (!owns()) return;
 			onSuccess();
 			onClose();
 		} catch (e) {
-			editError = e instanceof ApiError ? e.message : t('projectEdit.failed');
+			if (owns()) editError = e instanceof ApiError ? e.message : t('projectEdit.failed');
 		} finally {
-			updating = false;
+			if (owns()) updating = false;
 		}
 	}
 </script>

@@ -1,12 +1,19 @@
-"""JWT access+refresh 토큰 통합 단위 테스트."""
+"""JWT access/refresh and session security with synthetic native Keystone data.
+
+Password authentication is unscoped; native inventory follows auth_directory
+grants and final validation returns scoped identity data. Domain preparation,
+JWT signatures and Redis session handling run without bypassing their checks.
+"""
 
 from __future__ import annotations
 
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import DEFAULT, AsyncMock, MagicMock, patch
 
 import fakeredis.aioredis as fakeredis
 import pytest
+
+pytestmark = pytest.mark.usefixtures("auth_directory")
 
 # ──────────────────────────────────────────────────────────────────
 # 공통 픽스처 / 헬퍼
@@ -17,12 +24,28 @@ _KS_DATA = {
     "token": _KEYSTONE_TOKEN,
     "project_id": "proj-1",
     "project_name": "myproject",
+    "default_project_id": "proj-1",
     "user_id": "user-1",
     "username": "alice",
     "expires_at": "2099-01-01T00:00:00+00:00",
     "roles": ["member"],
     "is_system_admin": False,
+    "domain_id": "default",
+    "domain_name": "Default",
+    "identity_domain_id": "default",
+    "identity_domain_name": "Default",
+    "is_domain_manager": False,
+    "email": "actual@example.test",
 }
+
+
+def _native_validation(_token, project_id="", **_):
+    return dict(
+        _KS_DATA,
+        project_id=project_id,
+        project_name=_KS_DATA["project_name"] if project_id else "",
+        roles=_KS_DATA["roles"] if project_id else [],
+    )
 
 
 def _make_fake_redis():
@@ -199,9 +222,27 @@ class TestSessionStore:
 
 
 @pytest.fixture
-def _ks_authenticate():
-    with patch("app.api.identity.auth.keystone.authenticate", return_value=dict(_KS_DATA)) as m:
-        yield m
+def _ks_authenticate(auth_directory, _ks_validate_ok):
+    """Stub native I/O, not the real login domain/scope preparation."""
+    auth_directory.users[_KS_DATA["user_id"]]["default_project_id"] = _KS_DATA["project_id"]
+    with (
+        patch(
+            "app.api.identity.auth.keystone.authenticate",
+            return_value=dict(_KS_DATA, project_id="", project_name="", roles=[]),
+        ) as authenticate,
+        patch(
+            "app.api.identity.auth.keystone.list_projects",
+            side_effect=lambda _token, domain_id=None, **_: [
+                dict(auth_directory.projects[pid])
+                for pid in auth_directory.grants[_KS_DATA["user_id"]]
+                if domain_id is None or auth_directory.projects[pid]["domain_id"] == domain_id
+            ],
+        ),
+        patch("app.api.identity.auth._prewarm_dashboard", AsyncMock()),
+        patch("app.api.identity.auth.record_project_access", AsyncMock()),
+        patch("app.api.identity.auth.activity_svc.record", AsyncMock()),
+    ):
+        yield authenticate
 
 
 @pytest.fixture
@@ -216,9 +257,13 @@ def _ks_get_user():
 
 @pytest.fixture
 def _ks_validate_ok():
+    """Scoped native data; DEFAULT opts into real validation with a mocked SDK."""
+    from app.services import keystone
+
     with patch(
         "app.api.identity.auth.keystone.validate_token",
-        return_value=dict(_KS_DATA),
+        side_effect=_native_validation,
+        wraps=keystone.validate_token,
     ) as m:
         yield m
 
@@ -239,7 +284,7 @@ async def test_login_returns_access_and_refresh(_ks_authenticate, _ks_get_user, 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.post(
             "/api/v1/auth/login",
-            json={"username": "alice", "password": "pw", "project_name": "myproject"},
+            json={"username": "alice", "password": "pw"},
         )
     assert resp.status_code == 200
     body = resp.json()
@@ -249,6 +294,10 @@ async def test_login_returns_access_and_refresh(_ks_authenticate, _ks_get_user, 
     # token은 JWT 형식 (점 3개)
     assert body["token"].count(".") == 2
     assert body["refresh_token"].count(".") == 2
+    assert body["user_id"] == _KS_DATA["user_id"]
+    assert body["project_id"] == _KS_DATA["project_id"]
+    assert body["domain_id"] == _KS_DATA["domain_id"]
+    assert body["identity_domain_id"] == _KS_DATA["identity_domain_id"]
 
 
 @pytest.mark.asyncio
@@ -261,7 +310,7 @@ async def test_bearer_access_protects_me_endpoint(_ks_authenticate, _ks_get_user
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         login = await ac.post(
             "/api/v1/auth/login",
-            json={"username": "alice", "password": "pw", "project_name": "myproject"},
+            json={"username": "alice", "password": "pw"},
         )
         access = login.json()["token"]
         me = await ac.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {access}"})
@@ -321,7 +370,7 @@ async def test_refresh_rotates_tokens(_ks_authenticate, _ks_get_user, _ks_valida
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         login = await ac.post(
             "/api/v1/auth/login",
-            json={"username": "alice", "password": "pw", "project_name": "myproject"},
+            json={"username": "alice", "password": "pw"},
         )
         old_refresh = login.json()["refresh_token"]
         old_access = login.json()["token"]
@@ -351,7 +400,7 @@ async def test_refresh_keystone_transient_failure_returns_503_and_preserves_sess
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         login = await ac.post(
             "/api/v1/auth/login",
-            json={"username": "alice", "password": "pw", "project_name": "myproject"},
+            json={"username": "alice", "password": "pw"},
         )
         refresh_token = login.json()["refresh_token"]
 
@@ -366,7 +415,7 @@ async def test_refresh_keystone_transient_failure_returns_503_and_preserves_sess
         assert r_transient.status_code == 503
 
         # Keystone 장애 복구 후 동일한 refresh_token으로 재시도 → 성공 (200) 및 토큰 회전
-        with patch("app.api.identity.auth.keystone.validate_token", return_value=dict(_KS_DATA)):
+        with patch("app.api.identity.auth.keystone.validate_token", side_effect=_native_validation):
             r_recovered = await ac.post("/api/v1/auth/refresh", json={"refresh_token": refresh_token})
 
         assert r_recovered.status_code == 200
@@ -384,7 +433,7 @@ async def test_refresh_keystone_transient_failure_returns_503_and_preserves_sess
     ],
 )
 async def test_keystone_token_not_found_is_not_an_endpoint_outage(
-    _ks_authenticate, _ks_get_user, _rate_limiter_off, message, expected_status
+    _ks_authenticate, _ks_get_user, _ks_validate_ok, _rate_limiter_off, message, expected_status
 ):
     from httpx import ASGITransport, AsyncClient
     from keystoneauth1.exceptions.http import NotFound
@@ -394,16 +443,19 @@ async def test_keystone_token_not_found_is_not_an_endpoint_outage(
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         login = await ac.post(
             "/api/v1/auth/login",
-            json={"username": "alice", "password": "pw", "project_name": "myproject"},
+            json={"username": "alice", "password": "pw"},
         )
         credentials = login.json()
+        # Exercise the real native error translation, with only the SDK exchange synthetic.
+        _ks_validate_ok.return_value = DEFAULT
+        _ks_validate_ok.side_effect = None
         with patch("app.services.keystone.v3.Token") as plugin:
             plugin.return_value.get_access.side_effect = NotFound(message=message)
             me = await ac.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {credentials['token']}"})
             refresh = await ac.post("/api/v1/auth/refresh", json={"refresh_token": credentials["refresh_token"]})
         assert me.status_code == expected_status
         assert refresh.status_code == expected_status
-        with patch("app.services.keystone.validate_token", return_value=dict(_KS_DATA)):
+        with patch("app.services.keystone.validate_token", side_effect=_native_validation):
             recovered = await ac.post("/api/v1/auth/refresh", json={"refresh_token": credentials["refresh_token"]})
         assert recovered.status_code == (401 if expected_status == 401 else 200)
 
@@ -419,7 +471,7 @@ async def test_logout_revokes_refresh_session(_ks_authenticate, _ks_get_user, _k
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             login = await ac.post(
                 "/api/v1/auth/login",
-                json={"username": "alice", "password": "pw", "project_name": "myproject"},
+                json={"username": "alice", "password": "pw"},
             )
             access = login.json()["token"]
             refresh = login.json()["refresh_token"]
@@ -448,8 +500,8 @@ async def test_no_auth_header_returns_401(_rate_limiter_off):
 
 
 @pytest.mark.asyncio
-async def test_bearer_jwt_uses_cached_validate_not_payload(_ks_authenticate, _ks_get_user, _rate_limiter_off):
-    """Bearer JWT 요청은 JWT payload가 아닌 _cached_validate(Keystone live)에서 권한 정보를 읽어야 한다."""
+async def test_bearer_jwt_rejects_stale_cached_admin_claim(_ks_authenticate, _ks_get_user, _rate_limiter_off):
+    """Cached token roles never confer system authority without a fresh exact grant."""
     from httpx import ASGITransport, AsyncClient
 
     from app.main import app
@@ -458,19 +510,26 @@ async def test_bearer_jwt_uses_cached_validate_not_payload(_ks_authenticate, _ks
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         login = await ac.post(
             "/api/v1/auth/login",
-            json={"username": "alice", "password": "pw", "project_name": "myproject"},
+            json={"username": "alice", "password": "pw"},
         )
     access = login.json()["token"]
 
     # Keystone이 is_system_admin=True를 반환하도록 모킹
-    elevated_ks_data = dict(_KS_DATA, is_system_admin=True, roles=["admin", "member"])
-    with patch("app.api.deps._cached_validate", new=AsyncMock(return_value=elevated_ks_data)):
+    async def elevated(_token, project_id, **_):
+        return dict(
+            _native_validation(_token, project_id),
+            session_token=_KEYSTONE_TOKEN,
+            is_system_admin=True,
+            roles=["admin", "member"] if project_id else [],
+        )
+
+    with patch("app.api.deps._cached_validate", new=elevated):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             me = await ac.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {access}"})
 
     assert me.status_code == 200
-    # JWT payload에는 is_system_admin이 없지만 Keystone mock이 True를 반환하므로 True여야 함
-    assert me.json()["is_system_admin"] is True
+    # The directory has no current system grant, even if a token cache says admin.
+    assert me.json()["is_system_admin"] is False
 
 
 @pytest.mark.asyncio
@@ -485,7 +544,7 @@ async def test_protected_request_cached_validate_transient_failure_yields_503_an
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         login = await ac.post(
             "/api/v1/auth/login",
-            json={"username": "alice", "password": "pw", "project_name": "myproject"},
+            json={"username": "alice", "password": "pw"},
         )
         assert login.status_code == 200
         access = login.json()["token"]
@@ -501,7 +560,7 @@ async def test_protected_request_cached_validate_transient_failure_yields_503_an
         assert resp.status_code == 503
 
         # 세션이 유지되어 복구 후 refresh가 성공해야 함 (200)
-        with patch("app.api.identity.auth.keystone.validate_token", return_value=dict(_KS_DATA)):
+        with patch("app.api.identity.auth.keystone.validate_token", side_effect=_native_validation):
             r_refresh = await ac.post("/api/v1/auth/refresh", json={"refresh_token": refresh_token})
 
         assert r_refresh.status_code == 200
@@ -520,7 +579,7 @@ async def test_protected_request_cached_validate_unauthorized_yields_401(
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         login = await ac.post(
             "/api/v1/auth/login",
-            json={"username": "alice", "password": "pw", "project_name": "myproject"},
+            json={"username": "alice", "password": "pw"},
         )
         assert login.status_code == 200
         access = login.json()["token"]
@@ -543,7 +602,7 @@ async def test_get_os_conn_constructor_failure_yields_503(
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         login = await ac.post(
             "/api/v1/auth/login",
-            json={"username": "alice", "password": "pw", "project_name": "myproject"},
+            json={"username": "alice", "password": "pw"},
         )
         assert login.status_code == 200
         access = login.json()["token"]
@@ -558,48 +617,10 @@ async def test_get_os_conn_constructor_failure_yields_503(
 
 
 @pytest.mark.asyncio
-async def test_admin_connection_request_resolves_auth_once(_ks_authenticate, _ks_get_user, _rate_limiter_off):
-    """관리자 연결 endpoint의 중첩 의존성은 요청당 Keystone 검증을 한 번만 수행한다."""
-    from httpx import ASGITransport, AsyncClient
-
-    from app.main import app
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        login = await ac.post(
-            "/api/v1/auth/login",
-            json={"username": "alice", "password": "pw", "project_name": "myproject"},
-        )
-        assert login.status_code == 200
-        access = login.json()["token"]
-
-    admin_info = dict(_KS_DATA, is_system_admin=True, roles=["admin", "member"])
-    validate = AsyncMock(return_value=admin_info)
-    fake_response = MagicMock()
-    fake_response.json.return_value = {"servers": []}
-    fake_conn = MagicMock()
-    fake_conn.compute.get_endpoint.return_value = "https://nova.example.test/v2.1"
-    fake_conn.session.get.return_value = fake_response
-
-    with (
-        patch("app.api.deps._cached_validate", new=validate),
-        patch("app.api.deps.keystone.get_openstack_connection", return_value=fake_conn),
-    ):
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            response = await ac.get(
-                "/api/v1/admin/all-instances",
-                headers={"Authorization": f"Bearer {access}"},
-            )
-
-    assert response.status_code == 200
-    assert response.json() == {"items": [], "next_marker": None, "count": 0}
-    assert validate.await_count == 1
-
-
-@pytest.mark.asyncio
-async def test_system_admin_foreign_target_succeeds_and_never_validates_target(
-    _ks_authenticate, _ks_get_user, _rate_limiter_off
+async def test_system_admin_foreign_domain_target_denied_on_tenant_routes(
+    _ks_authenticate, _ks_get_user, _rate_limiter_off, auth_directory
 ):
-    """system_admin이 foreign X-Project-Id 요청 시 target rescope를 검증하지 않고 home 권한으로 성공해야 한다."""
+    """System scope does not permit a foreign tenant context on ordinary routes."""
     from unittest.mock import AsyncMock
 
     from httpx import ASGITransport, AsyncClient
@@ -609,51 +630,26 @@ async def test_system_admin_foreign_target_succeeds_and_never_validates_target(
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         login = await ac.post(
             "/api/v1/auth/login",
-            json={"username": "alice", "password": "pw", "project_name": "myproject"},
+            json={"username": "alice", "password": "pw"},
         )
         assert login.status_code == 200
         access = login.json()["token"]
 
-    admin_home_data = dict(_KS_DATA, is_system_admin=True, project_id="home-proj-id", roles=["admin"])
-    cached_validate_mock = AsyncMock(return_value=admin_home_data)
+    auth_directory.assignments = [
+        {"user": {"id": "user-1"}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}}
+    ]
+    auth_directory.projects["foreign-target-proj-id"] = {
+        "id": "foreign-target-proj-id",
+        "domain_id": "tenant-b",
+        "enabled": True,
+    }
+
+    async def admin_home(_token, project_id, **_):
+        return dict(_native_validation(_token, project_id), session_token=_KEYSTONE_TOKEN, is_system_admin=True)
+
+    cached_validate_mock = AsyncMock(side_effect=admin_home)
 
     with patch("app.api.deps._cached_validate", new=cached_validate_mock):
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            resp = await ac.get(
-                "/api/v1/auth/me",
-                headers={"Authorization": f"Bearer {access}", "X-Project-Id": "foreign-target-proj-id"},
-            )
-
-    assert resp.status_code == 200
-    assert resp.json()["project_id"] == "foreign-target-proj-id"
-    assert cached_validate_mock.call_count == 1
-    assert cached_validate_mock.call_args[0][1] == "proj-1"
-
-
-@pytest.mark.asyncio
-async def test_valid_non_admin_target_unauthorized_yields_403(_ks_authenticate, _ks_get_user, _rate_limiter_off):
-    """유효한 세션의 비관리자가 접근 불가 target X-Project-Id로 요청 시 403을 반환해야 한다."""
-    from httpx import ASGITransport, AsyncClient
-    from keystoneauth1.exceptions.http import Unauthorized
-
-    from app.main import app
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        login = await ac.post(
-            "/api/v1/auth/login",
-            json={"username": "alice", "password": "pw", "project_name": "myproject"},
-        )
-        assert login.status_code == 200
-        access = login.json()["token"]
-
-    non_admin_home_data = dict(_KS_DATA, is_system_admin=False, project_id="home-proj-id")
-
-    async def side_effect(token, project_id):
-        if project_id == "foreign-target-proj-id":
-            raise Unauthorized("Target project unauthorized")
-        return non_admin_home_data
-
-    with patch("app.api.deps._cached_validate", side_effect=side_effect):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             resp = await ac.get(
                 "/api/v1/auth/me",
@@ -664,8 +660,36 @@ async def test_valid_non_admin_target_unauthorized_yields_403(_ks_authenticate, 
 
 
 @pytest.mark.asyncio
-async def test_foreign_target_invalid_home_yields_401(_ks_authenticate, _ks_get_user, _rate_limiter_off):
-    """foreign X-Project-Id 요청 시 home project 검증 실패(Unauthorized)는 401을 반환해야 한다."""
+async def test_non_member_target_yields_403(_ks_authenticate, _ks_get_user, _rate_limiter_off):
+    """An authenticated member cannot select a project absent from current grants."""
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        login = await ac.post(
+            "/api/v1/auth/login",
+            json={"username": "alice", "password": "pw"},
+        )
+        assert login.status_code == 200
+        access = login.json()["token"]
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        resp = await ac.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {access}", "X-Project-Id": "foreign-target-proj-id"},
+        )
+        home = await ac.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {access}"})
+
+    assert resp.status_code == 403
+    assert home.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_same_domain_target_unauthorized_yields_403(
+    _ks_authenticate, _ks_get_user, _rate_limiter_off, auth_directory
+):
+    """A denied target exchange is a forbidden project, not a missing browser session."""
     from httpx import ASGITransport, AsyncClient
     from keystoneauth1.exceptions.http import Unauthorized
 
@@ -674,56 +698,32 @@ async def test_foreign_target_invalid_home_yields_401(_ks_authenticate, _ks_get_
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         login = await ac.post(
             "/api/v1/auth/login",
-            json={"username": "alice", "password": "pw", "project_name": "myproject"},
+            json={"username": "alice", "password": "pw"},
         )
         assert login.status_code == 200
         access = login.json()["token"]
 
-    with patch("app.api.deps._cached_validate", side_effect=Unauthorized("Home session unauthorized")):
+    auth_directory.projects["denied-target-proj-id"] = {
+        "id": "denied-target-proj-id",
+        "name": "Denied Target",
+        "domain_id": "default",
+        "enabled": True,
+    }
+    auth_directory.grants["user-1"].append("denied-target-proj-id")
+
+    def deny_target(token, project_id="", **kwargs):
+        if project_id == "denied-target-proj-id":
+            raise Unauthorized("Target project unauthorized")
+        return _native_validation(token, project_id, **kwargs)
+
+    with patch("app.services.keystone.validate_token", side_effect=deny_target):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             resp = await ac.get(
                 "/api/v1/auth/me",
-                headers={"Authorization": f"Bearer {access}", "X-Project-Id": "foreign-target-proj-id"},
+                headers={"Authorization": f"Bearer {access}", "X-Project-Id": "denied-target-proj-id"},
             )
 
-    assert resp.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_get_os_conn_system_admin_foreign_target_scope_and_close(
-    _ks_authenticate, _ks_get_user, _rate_limiter_off
-):
-    """get_os_conn이 system_admin foreign target 시 SDK에는 authenticated home scope를 전달하고 conn에는 target logical scope 및 메타데이터를 설정하며 종료 시 connection을 닫아야 한다."""
-    from httpx import ASGITransport, AsyncClient
-
-    from app.main import app
-
+    assert resp.status_code == 403
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        login = await ac.post(
-            "/api/v1/auth/login",
-            json={"username": "alice", "password": "pw", "project_name": "myproject"},
-        )
-        assert login.status_code == 200
-        access = login.json()["token"]
-
-    admin_home_data = dict(_KS_DATA, is_system_admin=True, project_id="home-proj-id")
-    fake_conn = MagicMock()
-    fake_conn.close = MagicMock()
-
-    with (
-        patch("app.api.deps._cached_validate", new=AsyncMock(return_value=admin_home_data)),
-        patch("app.api.deps.keystone.get_openstack_connection", return_value=fake_conn) as mock_get_conn,
-    ):
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            resp = await ac.get(
-                "/api/v1/flavors",
-                headers={"Authorization": f"Bearer {access}", "X-Project-Id": "foreign-target-proj-id"},
-            )
-
-    assert resp.status_code == 200
-    mock_get_conn.assert_called_once()
-    assert mock_get_conn.call_args[0][1] == "home-proj-id"
-    assert fake_conn._afterglow_project_id == "foreign-target-proj-id"
-    assert fake_conn._afterglow_authenticated_project_id == "home-proj-id"
-    assert fake_conn._afterglow_is_system_admin is True
-    fake_conn.close.assert_called_once()
+        home = await ac.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {access}"})
+    assert home.status_code == 200

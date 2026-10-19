@@ -20,51 +20,36 @@
   tags: precheck
   when: enable_afterglow | default(false) | bool
 
-- name: Precheck | Check required password variables
-  ansible.builtin.assert:
-    that:
-      - afterglow_database_password is defined and afterglow_database_password | length > 0
-      - afterglow_secret_key is defined and afterglow_secret_key | length > 0
-      - afterglow_admin_keystone_password is defined and afterglow_admin_keystone_password | length > 0
-      - afterglow_kubeconfig_encryption_key is defined and afterglow_kubeconfig_encryption_key | length > 0
-    fail_msg: "Required afterglow passwords are not set. Add them to passwords.yml from passwords.afterglow.additions.yml"
-  run_once: true
+- name: Precheck | Check required effective credentials
+  ansible.builtin.include_tasks: preconditions_secrets.yml
   tags: precheck
   when: enable_afterglow | bool
 
 - name: Precheck | Verify Keystone public catalog endpoint from every Afterglow host
   ansible.builtin.uri:
-    url: "{{ keystone_public_url | regex_replace('/$', '') }}/v3"
+    url: "{{ afterglow_effective_config.openstack.auth_url }}"
     method: GET
     status_code: 200
     return_content: false
     timeout: 10
-    validate_certs: "{{ not (afterglow_openstack_insecure | bool) }}"
-    ca_path: "{{ afterglow_openstack_cacert | default(omit, true) }}"
+    validate_certs: "{{ not (afterglow_effective_config.openstack.insecure | bool) }}"
+    ca_path: "{{ afterglow_effective_config.openstack.cacert | default(omit, true) }}"
   register: afterglow_keystone_reachability
   changed_when: false
+  no_log: true
   tags: precheck
   when:
     - enable_afterglow | bool
     - inventory_hostname in groups['afterglow']
 
-- name: Precheck | Verify K3s GPU admission credential
-  ansible.builtin.assert:
-    that:
-      - afterglow_k3s_gpu_admission_token | length >= 32
-    fail_msg: "K3s GPU admission token must be at least 32 characters in secrets.yml"
-  run_once: true
-  tags: precheck
-  when:
-    - enable_afterglow | bool
-    - afterglow_service_k3s_enabled | bool
 
 - name: Precheck | Validate Afterglow public frontend origin
   ansible.builtin.assert:
     that:
-      - afterglow_public_endpoint_url is match('^https?://[^/?#\s]+/?$')
-    fail_msg: "afterglow_public_endpoint_url must be an absolute HTTP(S) origin without a path, query, or fragment"
+      - afterglow_effective_config.app.frontend_base_url is match('^https?://[^/?#\s]+/?$')
+    fail_msg: "Effective app.frontend_base_url must be an absolute HTTP(S) origin without a path, query, or fragment"
   run_once: true
+  no_log: true
   tags: precheck
   when: enable_afterglow | bool
 
@@ -86,11 +71,11 @@
   ansible.builtin.include_tasks: precheck_cloud_shell.yml
   when:
     - enable_afterglow | bool
-    - afterglow_service_cloud_shell_enabled | bool
+    - afterglow_effective_config.services.cloud_shell | bool
   tags: precheck
 - name: Precheck | Prepare Manila CLI authentication
   ansible.builtin.include_tasks: manila_cli_auth.yml
-  when: enable_afterglow | bool and afterglow_service_manila_enabled | bool
+  when: enable_afterglow | bool and afterglow_effective_config.services.manila | bool
   tags: precheck
 
 - name: Precheck | Verify Manila microversion support
@@ -105,14 +90,15 @@
   run_once: true
   delegate_to: "{{ groups['afterglow'][0] }}"
   tags: precheck
-  when: enable_afterglow | bool and afterglow_service_manila_enabled | bool
+  no_log: true
+  when: enable_afterglow | bool and afterglow_effective_config.services.manila | bool
 
 - name: Precheck | Fail if Manila microversion not supported
   ansible.builtin.fail:
-    msg: "Manila authenticated API check failed: {{ manila_version_check.stderr | default('', true) }} {{ manila_version_check.stdout | default('', true) }} {{ manila_version_check.msg | default('', true) }}"
+    msg: "Manila authenticated API check failed; verify the configured microversion and native service credentials"
   when:
     - enable_afterglow | bool
-    - afterglow_service_manila_enabled | bool
+    - afterglow_effective_config.services.manila | bool
     - manila_version_check is defined
     - manila_version_check.rc | default(1) != 0
   run_once: true
@@ -121,11 +107,12 @@
 - name: Precheck | Check Ceph monitors reachability
   ansible.builtin.assert:
     that:
-      - afterglow_ceph_monitors | length > 0
-    fail_msg: "afterglow_ceph_monitors must be set (e.g. '10.0.0.1:6789,10.0.0.2:6789')"
+      - afterglow_effective_config.openstack.ceph_monitors | length > 0
+    fail_msg: "Effective openstack.ceph_monitors must be set for Manila"
   run_once: true
+  no_log: true
   tags: precheck
-  when: enable_afterglow | bool and afterglow_service_manila_enabled | bool
+  when: enable_afterglow | bool and afterglow_effective_config.services.manila | bool
 
 - name: Precheck | Inspect enabled remote Afterglow image manifests
   become: true

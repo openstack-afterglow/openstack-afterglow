@@ -233,11 +233,11 @@ deployment-host variable files to target hosts.
 
 ### Optional Detailed Afterglow Configuration
 
-For settings not modeled as Kolla variables, place a partial or complete
-backend TOML at `/etc/kolla/config/afterglow/backend/afterglow.conf` on the
-Kolla deployment host. The role uses this path by default. The file may contain
-only the detailed keys being overridden; it does not need to repeat generated
-OpenStack, database, Redis, port, URL, or service-toggle values. Keep it outside
+To preserve selected values across native globals/passwords regeneration, place
+a sparse backend TOML at `/etc/kolla/config/afterglow/backend/afterglow.conf` on
+the Kolla deployment host. Exact keys in this trusted file override generated
+defaults, including OpenStack/database/cache credentials, service switches and
+public URLs. Omitted keys continue to follow current native inputs. Keep it outside
 the repository and Kolla globals files, mode `0600`:
 
 ```bash
@@ -253,40 +253,53 @@ additional browser-safe values. Both default source files are discovered by
 existence; no globals override is required. Override
 `afterglow_operator_config_source` or
 `afterglow_operator_frontend_config_source` only when an input lives elsewhere.
-Missing inputs produce empty generated layers.
+Missing inputs leave the regenerated native defaults unchanged. A backend key
+explicitly set to `false`, `0`, `""`, or an array replaces that generated value;
+arrays are replaced, not appended. Removing a key restores the newly generated
+native value on the next run.
 
-The role reads the backend source only to produce a protected short-lived
-staging artifact. It validates the original TOML, removes `[builder].ssh_private_key`,
-and validates the sanitized result.
-The GitLab OIDC client secret remains in this protected TOML flow and is not
-shadowed by an empty container environment variable. The frontend source is
+The role parses both original TOML sources before replacing any runtime output.
+It removes the obsolete `[builder].ssh_private_key` from the private merged result
+without modifying the original source. It uses no secret-bearing staging files.
+Domain identity-provider client secrets are not part of this TOML flow: domain
+managers store them write-only and encrypted in the Afterglow database. The frontend source is
 projected through the same closed browser-safe allowlist as the final frontend
 configuration. Raw operator files are never mounted into containers.
 
 Set `afterglow_ceph_monitors` in `globals.yml` from the `mon_host` value in
 the deployed `/etc/kolla/config/ceph/ceph.conf`; this value is required by the
-Afterglow precheck and final Kolla configuration layer.
+Afterglow precheck and generated native defaults unless explicitly overridden.
 
 The role writes process-specific runtime artifacts under
 `/etc/kolla/config/afterglow/generated`:
 
-1. generated `afterglow.generated.conf` base from Kolla and plugin globals/secrets;
-2. sanitized `afterglow.operator.generated.conf` application override;
-3. projected `afterglow.frontend.operator.generated.conf` public override;
-4. generated `afterglow.zz-kolla.generated.conf` final override;
-5. generated `afterglow.frontend.generated.conf`, a closed public projection of
-   the merged base → backend operator → frontend operator → final result.
+1. private `afterglow.generated.conf`: current native globals/passwords defaults
+   recursively merged with the explicit backend operator TOML;
+2. public `afterglow.frontend.generated.conf`: that effective backend configuration
+   plus the optional frontend source, projected through the closed public allowlist.
 
-The backend and workers mount the generated base, sanitized backend operator,
-and final override in that order. The final layer intentionally reasserts
-deployment-owned OpenStack credentials/project/region/interface, database and
-Redis connections, service toggles, public API/origin and CORS values,
-encryption keys, Manila storage bindings, and application ports.
+The API, Notion worker, database bootstrap and policy-seed job mount only the
+same effective private file at `/app/afterglow.conf`. Config-owned environment
+variables and the former final Kolla override layer no longer undo operator keys.
+Bootstrap and seed use the effective database URL. Native database provisioning
+only manages a selected MySQL/MariaDB URL on the configured native endpoint;
+external database URLs do not create a native schema or user.
 
-The frontend mounts only `afterglow.frontend.generated.conf`. Its allowlist
-includes branding, refresh interval, public API/UI origins, service flags,
-public S3/Grafana/chat/GitLab/MCP origins, and no credentials. Kolla-owned final
-values win over both operator inputs.
+The frontend mounts only its public projection. Its independent allowlist includes
+branding, refresh interval, public API/UI origins, service flags and public
+S3/Grafana/chat/MCP origins, never credentials. Frontend `ORIGIN` and
+`PUBLIC_API_BASE` follow this effective public projection; the optional frontend
+source can override only allowlisted keys. Server-only traffic ingestion credentials
+stay in the private backend result and private frontend environment, never a public
+service map or projection. All secret-bearing Ansible inputs/results use `no_log`.
+
+The Cloud Shell defaults are `ghcr.io/openstack-afterglow/openstack-client:slim`,
+empty `image_pull_policy`, and empty `registry_id`. When Cloud Shell is enabled,
+the role resolves its effective selected default tag through the canonical image
+resolver before immutable-digest and native Zun/security checks. Explicit image
+pins remain authoritative; a different unpinned version tag does not bypass the
+immutable-image requirement. Re-merging after native project/share discovery
+retains the digest only for the same selected effective image input.
 
 #### Offline country MMDB and observation settings
 
@@ -475,7 +488,9 @@ afterglow_service_zun_enabled: true
 afterglow_service_cloud_shell_enabled: true
 afterglow_cloud_shell_project_name: "afterglow-cloud-shell"
 afterglow_cloud_shell_project_id: "<dedicated-project-uuid>"
-afterglow_cloud_shell_image: "ghcr.io/openstack-afterglow/afterglow-cloud-shell@sha256:<64-hex-digest>"
+afterglow_cloud_shell_image: "ghcr.io/openstack-afterglow/openstack-client@sha256:<64-hex-digest>"
+afterglow_cloud_shell_image_pull_policy: "" # Zun default, or admin-only always/ifnotpresent/never
+afterglow_cloud_shell_registry_id: "" # Private registry UUID in the dedicated project
 afterglow_cloud_shell_network_id: ""  # optional: empty uses the dedicated project's default network
 afterglow_cloud_shell_security_group: "default"
 afterglow_cloud_shell_auth_url: "https://keystone.example.com:5000/v3"
@@ -484,6 +499,9 @@ afterglow_cloud_shell_volume_type: "ceph"
 ```
 
 Stock Kolla must also enable `enable_zun`, `enable_kuryr`, `enable_etcd`, `docker_configure_for_zun`, `containerd_configure_for_zun`, and `zun_configure_for_cinder_ceph`, with at least one host in `zun-compute`. The Cloud Shell image must be an immutable multi-architecture manifest digest accessible from every Zun compute host. The Zun API must support container microversion 1.36, and zun-compute must be able to attach Cinder (Ceph RBD) volumes and format them as ext4 on first mount.
+
+The source image and its CLI/bootstrap validation are owned by [openstack-client](https://github.com/openstack-afterglow/openstack-client), not Afterglow's image matrix. `slim`/`latest` select Debian and `alpine` selects Alpine in development; production still requires a published manifest digest. Private GHCR pulls require a Zun registry credential with `read:packages` and its UUID above. The per-compute Docker login used for manifest prechecks is separate. Registry passwords/PATs do not belong in Afterglow globals or browser state. Keep the service disabled while an image or pull credential is unavailable; there is no fallback image.
+
 
 `kolla-ansible prechecks -i multinode --tags afterglow` verifies that the dedicated project differs from the general Afterglow service project, that an explicit network belongs to it, that the security group resolves uniquely inside it by ID then name and belongs to it, that scoped Zun/Cinder calls succeed, and that every Zun compute can inspect the image. Keystone setup grants the existing Afterglow service user `admin` in the pre-created project; it does not provision the project or networking.
 

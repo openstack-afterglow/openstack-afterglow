@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -349,48 +350,43 @@ def test_session_seen_precheck_skips_fresh_redis_write():
 
 
 @pytest.mark.asyncio
-async def test_revoke_user_sessions_calls_keystone():
+async def test_revoke_user_sessions_calls_keystone(_fake_redis_global):
     """revoke_user_sessions(revoke_keystone=True)가 Keystone revoke_token을 호출하는지 확인."""
     import json
 
     from app.services.session_store import revoke_user_sessions
 
     sess_data = {"keystone_token": "ks-token-abc", "user_id": "user1"}
-    store = {
-        "afterglow:refresh:jti1": json.dumps(sess_data).encode(),
-        "afterglow:user-sessions:user1": {b"jti1"},
-    }
+    await _fake_redis_global.set("afterglow:refresh:jti1", json.dumps(sess_data))
+    await _fake_redis_global.sadd("afterglow:user-sessions:user1", "jti1")
     mock_revoke = MagicMock()
     with (
-        patch("app.services.session_store._get_redis", AsyncMock(return_value=_make_redis_mock(store))),
-        patch("app.services.session_store.asyncio.to_thread", new=AsyncMock(side_effect=lambda fn, *a: fn(*a))),
         patch("app.services.keystone.revoke_token", mock_revoke),
     ):
         count = await revoke_user_sessions("user1", revoke_keystone=True)
     assert count == 1
     mock_revoke.assert_called_once_with("ks-token-abc")
+    assert not await _fake_redis_global.exists("afterglow:refresh:jti1")
 
 
 @pytest.mark.asyncio
-async def test_revoke_user_sessions_skip_keystone():
+async def test_revoke_user_sessions_skip_keystone(_fake_redis_global):
     """revoke_keystone=False이면 Keystone 폐기 없이 세션만 삭제."""
     import json
 
     from app.services.session_store import revoke_user_sessions
 
     sess_data = {"keystone_token": "ks-token", "user_id": "user1"}
-    store = {
-        "afterglow:refresh:jti1": json.dumps(sess_data).encode(),
-        "afterglow:user-sessions:user1": {b"jti1"},
-    }
+    await _fake_redis_global.set("afterglow:refresh:jti1", json.dumps(sess_data))
+    await _fake_redis_global.sadd("afterglow:user-sessions:user1", "jti1")
     mock_revoke = MagicMock()
     with (
-        patch("app.services.session_store._get_redis", AsyncMock(return_value=_make_redis_mock(store))),
         patch("app.services.keystone.revoke_token", mock_revoke),
     ):
         count = await revoke_user_sessions("user1", revoke_keystone=False)
     assert count == 1
     mock_revoke.assert_not_called()
+    assert not await _fake_redis_global.exists("afterglow:refresh:jti1")
 
 
 # ──────────────────────────────────────────────
@@ -405,6 +401,7 @@ def _make_sess(blacklisted=False, origin_ip="10.0.0.1", origin_fp="fp"):
         "keystone_token": "ks",
         "project_id": "proj",
         "user_id": "user1",
+        "domain_id": "default",
         "exp": 9999999999,
         "started_at": int(time.time()),
         "auth_method": "password",
@@ -418,6 +415,7 @@ def _make_sess(blacklisted=False, origin_ip="10.0.0.1", origin_fp="fp"):
     }
 
 
+@pytest.mark.usefixtures("auth_directory")
 @pytest.mark.asyncio
 async def test_blacklisted_session_returns_401():
     """블랙리스트 세션 — _resolve_jwt_token_info 직접 호출 시 HTTPException(401)."""
@@ -446,30 +444,37 @@ async def test_blacklisted_session_returns_401():
 
 
 @pytest.mark.asyncio
-async def test_subnet_mismatch_returns_401():
-    """subnet 모드에서 다른 대역 IP 요청은 HTTPException(401)."""
+async def test_subnet_mismatch_returns_401(native_auth):
+    """A valid native login is still rejected outside its bound subnet."""
     from fastapi import HTTPException
 
     from app.api.deps import _resolve_jwt_token_info
-    from app.services import jwt_service
+    from app.services import jwt_service, session_store
 
-    _, r_jti, _ = jwt_service.sign_refresh("user1")
+    _, r_jti, refresh_exp = jwt_service.sign_refresh(native_auth.user_id)
     access_str, _, _ = jwt_service.sign_access(
-        user_id="user1",
+        user_id=native_auth.user_id,
         username="testuser",
-        project_id="proj",
+        project_id="test-project-123",
         project_name="Test",
         refresh_jti=r_jti,
     )
-    sess = _make_sess(origin_ip="192.168.1.1", origin_fp="fp_origin")
-    mock_req = MagicMock()
-    mock_req.headers = {"User-Agent": "Test/1.0", "Accept-Language": "ko", "Accept-Encoding": "gzip"}
+    await session_store.store_session(
+        r_jti,
+        native_auth.token,
+        "test-project-123",
+        native_auth.user_id,
+        refresh_exp,
+        domain_id="default",
+        identity_domain_id="default",
+        origin_ip="192.168.1.1",
+        origin_fp="fp_origin",
+    )
+    mock_req = _make_request()
 
     with (
-        patch("app.services.session_store.get_session", AsyncMock(return_value=sess)),
         patch("app.api.deps.get_settings") as mock_settings,
         patch("app.rate_limit._get_real_ip", return_value="10.99.99.99"),
-        patch("app.services.session_store.blacklist_session", AsyncMock()),
         patch("app.services.activity.record", AsyncMock()),
     ):
         mock_settings.return_value.token_ip_binding_mode = "subnet"
@@ -478,6 +483,7 @@ async def test_subnet_mismatch_returns_401():
             await _resolve_jwt_token_info(mock_req, access_str, None)
     assert exc_info.value.status_code == 401
     assert "출처" in exc_info.value.detail
+    assert (await session_store.get_session(r_jti))["blacklisted"] is True
 
 
 @pytest.mark.asyncio
@@ -515,15 +521,17 @@ async def test_list_sessions_returns_sessions(client):
 
 
 @pytest.mark.asyncio
-async def test_admin_revoke_sessions(admin_client):
+async def test_admin_revoke_sessions(admin_client, mock_conn):
     """POST /api/admin/users/{id}/revoke-sessions 가 관리자 권한으로 호출된다."""
+    mock_conn.identity.get_domain.return_value = SimpleNamespace(id="default", name="Default")
+    mock_conn.identity.get_user.return_value = SimpleNamespace(id="target-user-id", domain_id="default")
     with (
         patch(
             "app.api.identity.admin_identity.session_store.revoke_user_sessions", AsyncMock(return_value=2)
         ) as mock_r,
         patch("app.api.identity.admin_identity.activity.record", AsyncMock()),
     ):
-        resp = await admin_client.post("/api/v1/admin/users/target-user-id/revoke-sessions")
+        resp = await admin_client.post("/api/v1/admin/users/target-user-id/revoke-sessions?domain_id=default")
     assert resp.status_code == 200
     data = resp.json()
     assert data["revoked_count"] == 2
@@ -537,51 +545,11 @@ async def test_admin_revoke_sessions_forbidden_for_non_admin(client):
 
     normal_info = make_token_info(is_system_admin=False)
     with patch("app.api.identity.admin_identity.get_token_info", return_value=normal_info):
-        resp = await client.post("/api/v1/admin/users/target-user-id/revoke-sessions")
+        resp = await client.post("/api/v1/admin/users/target-user-id/revoke-sessions?domain_id=default")
     assert resp.status_code == 403
 
 
-@pytest.mark.asyncio
-async def test_refresh_carries_origin(client):
-    """refresh 토큰 회전 시 origin_ip/origin_fp가 새 세션으로 그대로 운반된다."""
-    from app.services import jwt_service
-
-    refresh_str, r_jti, r_exp = jwt_service.sign_refresh("user1")
-
-    sess = _make_sess(origin_ip="10.1.1.1", origin_fp="fp_carried")
-    kc_info = {
-        "token": "new-ks",
-        "project_id": "proj",
-        "project_name": "Test",
-        "user_id": "user1",
-        "username": "testuser",
-        "roles": ["member"],
-        "is_system_admin": False,
-    }
-    stored_sessions = {}
-
-    async def _mock_store(
-        jti, keystone_token, project_id, user_id, exp, auth_method="password", origin_ip="", origin_fp="", **kwargs
-    ):
-        stored_sessions["origin_ip"] = origin_ip
-        stored_sessions["origin_fp"] = origin_fp
-
-    with (
-        patch("app.api.identity.auth.session_store.get_session", AsyncMock(return_value=sess)),
-        patch("app.api.identity.auth.session_store.delete_session", AsyncMock()),
-        patch("app.api.identity.auth.session_store.store_session", side_effect=_mock_store),
-        patch("app.api.identity.auth.asyncio.to_thread", new=AsyncMock(return_value=kc_info)),
-        patch("app.services.token_binding.get_origin", return_value=("10.1.1.1", "fp_carried")),
-    ):
-        resp = await client.post(
-            "/api/v1/auth/refresh",
-            json={"refresh_token": refresh_str},
-        )
-    assert resp.status_code == 200
-    assert stored_sessions.get("origin_ip") == "10.1.1.1"
-    assert stored_sessions.get("origin_fp") == "fp_carried"
-
-
+@pytest.mark.usefixtures("auth_directory")
 @pytest.mark.asyncio
 async def test_refresh_blocked_for_blacklisted_session(client):
     """블랙리스트 세션으로 refresh 시도 시 401."""

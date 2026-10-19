@@ -1,42 +1,13 @@
-"""Phase 52e — /api/dashboard/metrics/trend PromQL trend endpoint 검증."""
+"""Project monitoring selection, measurement semantics and caller-bound native data."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 
-@pytest.fixture(autouse=True)
-def _default_servers(mock_conn):
-    """대시보드 PromQL 핸들러는 UUID 필터 구성을 위해 서버 1개 이상이 필요하다."""
-    s = MagicMock()
-    s.id = "test-server-uuid-1"
-    mock_conn.compute.servers.return_value = [s]
-
-
-@pytest.mark.asyncio
-async def test_trend_returns_structure(client, mock_conn):
-    """prometheus_available + vcpu/memory/storage 시계열 구조 반환."""
-    fake_series = [{"ts": 1000, "value": 25.0}, {"ts": 1086400, "value": 30.0}]
-
-    with patch("app.api.common.dashboard.prom_query.query_range", new_callable=AsyncMock) as mock_qr:
-        mock_qr.return_value = fake_series
-        resp = await client.get("/api/v1/dashboard/metrics/trend")
-
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "prometheus_available" in data
-    assert "vcpu" in data
-    assert "memory" in data
-    assert "storage" in data
-    assert isinstance(data["vcpu"]["data"], list)
-    assert data["vcpu"]["points"] == 2
-    assert data["vcpu"]["available"] is True
-    assert data["prometheus_available"] is True
-
-
 @pytest.mark.asyncio
 async def test_trend_prometheus_unavailable_returns_empty(client, mock_conn):
-    """Prometheus 미설치 시 prometheus_available=False + data=[] + 500 미발생."""
+    """No native telemetry and offline Prometheus must not fabricate measurements."""
     from app.services.prom_query import PromUnavailable
 
     with patch("app.api.common.dashboard.prom_query.query_range", new_callable=AsyncMock) as mock_qr:
@@ -45,7 +16,7 @@ async def test_trend_prometheus_unavailable_returns_empty(client, mock_conn):
 
     assert resp.status_code == 200
     data = resp.json()
-    assert data["prometheus_available"] is False
+    assert data["monitoring_available"] is False
     assert data["vcpu"]["data"] == []
     assert data["vcpu"]["available"] is False
 
@@ -73,18 +44,95 @@ async def test_trend_partial_failure_returns_available_series(client, mock_conn)
     data = resp.json()
     assert data["vcpu"]["available"] is True
     assert data["memory"]["available"] is False
-    # 하나라도 성공하면 prometheus_available=True
-    assert data["prometheus_available"] is True
+    assert data["monitoring_available"] is True
+
+
+def _native_metric(values, unit="%"):
+    return {
+        "series": [{"ts": 100 + index * 60, "value": value} for index, value in enumerate(values)],
+        "source": "gnocchi",
+        "status": "available",
+        "error": None,
+        "unit": unit,
+    }
+
+
+def _native_project():
+    return {
+        "source": "gnocchi",
+        "status": "available",
+        "error": None,
+        "truncated": False,
+        "instances": {
+            "small": {
+                "cpu": _native_metric([20, 0]),
+                "vcpus": _native_metric([1, 1], "vcpu"),
+                "memory": _native_metric([20, 0]),
+                "network_rx": _native_metric([1024, 0], "B/s"),
+                "network_tx": _native_metric([1024, 0], "B/s"),
+            },
+            "large": {
+                "cpu": _native_metric([80, 0]),
+                "vcpus": _native_metric([3, 3], "vcpu"),
+                "memory": _native_metric([40, 0]),
+                "network_rx": _native_metric([2048, 0], "B/s"),
+                "network_tx": _native_metric([4096, 0], "B/s"),
+            },
+        },
+    }
 
 
 @pytest.mark.asyncio
-async def test_trend_data_values_rounded(client, mock_conn):
-    """반환 데이터 값이 소수점 2자리로 반올림됨."""
-    fake_series = [{"ts": 1000, "value": 25.12345}]
+async def test_native_project_cpu_is_weighted_and_storage_keeps_guest_filesystem_semantics(client):
+    with (
+        patch("app.api.common.dashboard.native_telemetry.project_series", AsyncMock(return_value=_native_project())),
+        patch("app.api.common.dashboard.prom_query.query_range", AsyncMock(return_value=[{"ts": 100, "value": 71}])),
+    ):
+        response = await client.get("/api/v1/dashboard/metrics/trend?range=24h")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["vcpu"]["data"] == [65, 0]
+    assert body["memory"]["data"] == [30, 0]
+    assert body["network"]["data"] == [8, 0]
+    assert body["network"]["unit"] == "KiB/s"
+    assert body["vcpu"]["source"] == "gnocchi"
+    assert body["storage"]["data"] == [71]
+    assert body["storage"]["source"] == "prometheus"
+    assert body["storage"]["unit"] == "%"
+    assert body["monitoring_available"] is True
+    assert response.headers["cache-control"] == "no-store"
 
-    with patch("app.api.common.dashboard.prom_query.query_range", new_callable=AsyncMock) as mock_qr:
-        mock_qr.return_value = fake_series
-        resp = await client.get("/api/v1/dashboard/metrics/trend")
 
-    assert resp.status_code == 200
-    assert resp.json()["vcpu"]["data"][0] == 25.12
+@pytest.mark.asyncio
+async def test_missing_native_denominator_and_memory_report_partial_not_zero(client):
+    observed = _native_project()
+    observed["instances"]["large"]["vcpus"]["series"] = []
+    observed["instances"]["large"]["memory"]["series"] = []
+    with (
+        patch("app.api.common.dashboard.native_telemetry.project_series", AsyncMock(return_value=observed)),
+        patch("app.api.common.dashboard.prom_query.query_range", AsyncMock(return_value=[])),
+    ):
+        response = await client.get("/api/v1/dashboard/metrics/trend?range=24h")
+    body = response.json()
+    assert body["vcpu"]["data"] == [20, 0]
+    assert body["vcpu"]["status"] == "partial"
+    assert body["memory"]["data"] == [20, 0]
+    assert body["memory"]["status"] == "partial"
+
+
+@pytest.mark.asyncio
+async def test_warm_project_cache_does_not_replay_denied_native_measurements(client):
+    denied = {"source": "gnocchi", "status": "forbidden", "error": "gnocchi_forbidden", "instances": {}}
+    with (
+        patch(
+            "app.api.common.dashboard.native_telemetry.project_series",
+            AsyncMock(side_effect=[_native_project(), denied]),
+        ),
+        patch("app.api.common.dashboard.prom_query.query_range", AsyncMock(return_value=[{"ts": 100, "value": 90}])),
+    ):
+        first = await client.get("/api/v1/dashboard/metrics/trend?range=24h&cache=true")
+        second = await client.get("/api/v1/dashboard/metrics/trend?range=24h&cache=true")
+    assert first.json()["vcpu"]["data"] == [65, 0]
+    assert second.json()["vcpu"]["data"] == [90]
+    assert second.json()["vcpu"]["source"] == "libvirt"
+    assert second.json()["vcpu"]["native_status"] == "forbidden"

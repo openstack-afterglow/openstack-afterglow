@@ -7,6 +7,7 @@
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
+	import { t as td } from '$lib/i18n/ns/domain-admin';
 	import { t as tc } from '$lib/i18n/ns/common';
 
 	interface Project {
@@ -25,8 +26,8 @@
 		type?: 'user' | 'group';
 		group_id?: string;
 	}
-	interface User { id: string; name: string; }
-	interface Group { id: string; name: string; description: string; }
+	interface User { id: string; name: string; domain_id: string; }
+	interface Group { id: string; name: string; description: string; domain_id: string; }
 	interface Role { id: string; name: string; }
 	interface Principal {
 		key: string;
@@ -38,9 +39,11 @@
 
 	let {
 		project,
+		domainId,
 		onClose,
 	}: {
 		project: Project | null;
+		domainId: string;
 		onClose: () => void;
 	} = $props();
 
@@ -97,104 +100,99 @@
 		allGroups.filter((group) => !userSearchFilter || group.name.toLowerCase().includes(userSearchFilter.toLowerCase())),
 	);
 
+	interface Scope { target: string; domainId: string; token: string | undefined; projectId: string | undefined; }
+	let scope: Scope | null = null;
+	let membersGeneration = 0;
+	function current(request: Scope) {
+		return scope === request && project?.id === request.target && project.domain_id === request.domainId
+			&& domainId === request.domainId && token === request.token && projectId === request.projectId;
+	}
+	function path(request: Scope, endpoint: string) {
+		return `${endpoint}${endpoint.includes('?') ? '&' : '?'}domain_id=${encodeURIComponent(request.domainId)}`;
+	}
 	$effect(() => {
-		if (!project) return;
-		membersLoading = true;
-		addError = '';
-		userSearchFilter = '';
-		accessTab = 'users';
-		detailPrincipal = null;
-		detailError = '';
-		roleBusy = null;
-		removingKey = null;
-		const currentProject = project;
-		Promise.all([
-			api.get<Member[]>(`/api/v1/admin/projects/${currentProject.id}/members`, token, projectId),
-			api.get<{ items: User[] }>('/api/v1/admin/users?limit=100', token, projectId),
-			api.get<Role[]>('/api/v1/admin/roles', token, projectId),
-			api.get<Group[]>('/api/v1/admin/groups', token, projectId),
-		])
-			.then(([loadedMembers, users, roles, groups]) => {
-				members = loadedMembers;
-				allUsers = users.items;
-				allRoles = roles;
-				allGroups = groups;
-			})
-			.catch(() => {
-				members = [];
-			})
-			.finally(() => {
-				membersLoading = false;
-			});
+		const request: Scope = { target: project?.id ?? '', domainId, token, projectId };
+		const targetDomain = project?.domain_id;
+		scope = request.target && domainId && targetDomain === domainId ? request : null;
+		members = []; allUsers = []; allGroups = []; allRoles = [];
+		membersLoading = !!scope;
+		addError = scope || !request.target ? '' : td('projects.accessLoadFailed');
+		addSaving = false; userSearchFilter = ''; accessTab = 'users';
+		detailPrincipal = null; detailError = ''; roleBusy = null; removingKey = null;
+		if (scope) {
+			void Promise.all([
+				api.get<Member[]>(path(request, `/api/v1/admin/projects/${encodeURIComponent(request.target)}/members`), request.token, request.projectId),
+				api.get<{ domain_id: string; items: User[] }>(`/api/v1/admin/domains/${encodeURIComponent(request.domainId)}/members`, request.token, request.projectId, { refresh: true }),
+				api.get<Role[]>(path(request, '/api/v1/admin/roles'), request.token, request.projectId),
+				api.get<Group[]>(path(request, '/api/v1/admin/groups'), request.token, request.projectId),
+			]).then(([loadedMembers, users, roles, groups]) => {
+				if (!current(request)) return;
+				if (users.domain_id !== request.domainId || groups.some((group) => group.domain_id !== request.domainId)) throw new Error('foreign domain');
+				members = loadedMembers; allUsers = users.items; allRoles = roles; allGroups = groups;
+			}).catch((error) => {
+				if (current(request)) addError = error instanceof ApiError ? error.message : td('projects.accessLoadFailed');
+			}).finally(() => { if (current(request)) membersLoading = false; });
+		}
+		return () => { scope = null; membersGeneration += 1; };
 	});
 
-	async function reloadMembers() {
-		if (!project) return;
-		try {
-			members = await api.get<Member[]>(`/api/v1/admin/projects/${project.id}/members`, token, projectId);
-		} catch {
-			members = [];
-		}
+	async function reloadMembers(request: Scope) {
+		if (!current(request)) return;
+		const generation = ++membersGeneration;
+		const loaded = await api.get<Member[]>(path(request, `/api/v1/admin/projects/${encodeURIComponent(request.target)}/members`), request.token, request.projectId);
+		if (current(request) && generation === membersGeneration) members = loaded;
 	}
-
-	function assignRequest(principal: { id: string; type: 'user' | 'group' }, roleId: string) {
-		if (!project) return Promise.resolve();
-		return principal.type === 'group'
-			? api.post('/api/v1/admin/roles/assign-group', { group_id: principal.id, project_id: project.id, role_id: roleId }, token, projectId)
-			: api.post('/api/v1/admin/roles/assign', { user_id: principal.id, project_id: project.id, role_id: roleId }, token, projectId);
+	function assignRequest(request: Scope, principal: { id: string; type: 'user' | 'group' }, roleId: string) {
+		const endpoint = principal.type === 'group' ? '/api/v1/admin/roles/assign-group' : '/api/v1/admin/roles/assign';
+		const identity = principal.type === 'group' ? { group_id: principal.id } : { user_id: principal.id };
+		return api.post(path(request, endpoint), { ...identity, project_id: request.target, role_id: roleId, domain_id: request.domainId }, request.token, request.projectId);
 	}
-
-	function revokeRequest(principal: { id: string; type: 'user' | 'group' }, roleId: string) {
-		if (!project) return Promise.resolve();
-		return principal.type === 'group'
-			? api.delete(`/api/v1/admin/roles/assign-group?group_id=${principal.id}&project_id=${project.id}&role_id=${roleId}`, token, projectId)
-			: api.delete(`/api/v1/admin/roles/assign?user_id=${principal.id}&project_id=${project.id}&role_id=${roleId}`, token, projectId);
+	function revokeRequest(request: Scope, principal: { id: string; type: 'user' | 'group' }, roleId: string) {
+		const endpoint = principal.type === 'group' ? '/api/v1/admin/roles/assign-group' : '/api/v1/admin/roles/assign';
+		const params = new URLSearchParams({ project_id: request.target, role_id: roleId });
+		params.set(principal.type === 'group' ? 'group_id' : 'user_id', principal.id);
+		return api.delete(path(request, `${endpoint}?${params}`), request.token, request.projectId);
 	}
-
 	async function addAsReader(target: { id: string; type: 'user' | 'group' }) {
-		if (!project || !readerRole || addSaving) return;
-		addSaving = true;
-		addError = '';
+		const request = scope;
+		if (!request || !current(request) || !readerRole || addSaving) return;
+		const catalog = target.type === 'group' ? allGroups : allUsers;
+		if (!catalog.some((item) => item.id === target.id)) return;
+		addSaving = true; addError = '';
 		try {
-			await assignRequest(target, readerRole.id);
-			await reloadMembers();
+			await assignRequest(request, target, readerRole.id);
+			if (current(request)) await reloadMembers(request);
 		} catch (error) {
-			addError = error instanceof ApiError ? error.message : (target.type === 'group' ? t('projectAccess.addGroupFailed') : t('projectAccess.addMemberFailed'));
-		} finally {
-			addSaving = false;
-		}
+			if (current(request)) addError = error instanceof ApiError ? error.message : (target.type === 'group' ? t('projectAccess.addGroupFailed') : t('projectAccess.addMemberFailed'));
+		} finally { if (current(request)) addSaving = false; }
 	}
-
 	async function toggleRole(role: Role, checked: boolean) {
-		if (!detailPrincipal || roleBusy) return;
+		const request = scope;
+		if (!request || !current(request) || !detailPrincipal || roleBusy) return;
 		if (!checked && role.id === readerRole?.id) return;
-		roleBusy = role.id;
-		detailError = '';
+		const principal = detailPrincipal;
+		roleBusy = role.id; detailError = '';
 		try {
-			if (checked) await assignRequest(detailPrincipal, role.id);
-			else await revokeRequest(detailPrincipal, role.id);
-			await reloadMembers();
+			if (checked) await assignRequest(request, principal, role.id);
+			else await revokeRequest(request, principal, role.id);
+			if (current(request)) await reloadMembers(request);
 		} catch (error) {
-			detailError = error instanceof ApiError ? error.message : (checked ? t('projectAccess.assignRoleFailed') : t('projectAccess.revokeRoleFailed'));
-		} finally {
-			roleBusy = null;
-		}
+			if (current(request)) detailError = error instanceof ApiError ? error.message : (checked ? t('projectAccess.assignRoleFailed') : t('projectAccess.revokeRoleFailed'));
+		} finally { if (current(request)) roleBusy = null; }
 	}
-
 	async function removePrincipal(principal: Principal) {
-		if (!project || removingKey) return;
-		removingKey = principal.key;
-		addError = '';
+		const request = scope;
+		if (!request || !current(request) || removingKey) return;
+		removingKey = principal.key; addError = '';
 		try {
 			for (const role of principal.roles) {
-				await revokeRequest(principal, role.role_id);
+				if (!current(request)) return;
+				await revokeRequest(request, principal, role.role_id);
 			}
+			if (current(request)) await reloadMembers(request);
 		} catch (error) {
-			addError = error instanceof ApiError ? error.message : t('projectAccess.removeMemberFailed');
-		} finally {
-			await reloadMembers();
-			removingKey = null;
-		}
+			if (current(request)) addError = error instanceof ApiError ? error.message : t('projectAccess.removeMemberFailed');
+		} finally { if (current(request)) removingKey = null; }
 	}
 </script>
 

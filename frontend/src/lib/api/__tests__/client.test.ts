@@ -63,6 +63,40 @@ describe('api client', () => {
     });
   });
 
+  it('sends uncached token reads independently without reusing a username disclosure', async () => {
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ kind: 'username', username: 'original' }), { status: 200 }));
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ detail: 'used' }), { status: 410 }));
+    const path = '/api/v1/auth/recovery/one-use-token';
+    await expect(api.get(path, undefined, undefined, { cache: 'no-store', suppressAuthRedirect: true })).resolves.toMatchObject({ username: 'original' });
+    await expect(api.get(path, undefined, undefined, { cache: 'no-store', suppressAuthRedirect: true })).rejects.toMatchObject({ status: 410 });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch.mock.calls[0][1].cache).toBe('no-store');
+  });
+
+  it.each([false, true])('retains link tickets only in structured metadata, not error text (nested=%s)', async (nested) => {
+    const ticket = { code: 'account_link_required', link_token: 'private-one-use-ticket', domain_id: 'original-home' };
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify(nested ? { detail: ticket } : ticket), { status: 409, headers: { 'Content-Type': 'application/json' } }));
+    await expect(api.post('/api/v1/auth/providers/callback', { code: 'code', state: 'state' }, undefined, undefined, { suppressAuthRedirect: true, replayOnUnauthorized: false })).rejects.toMatchObject({
+      status: 409, code: 'account_link_required', message: 'account_link_required', linkTicket: { link_token: 'private-one-use-ticket', domain_id: 'original-home' },
+    });
+    expect(mockFetch).toHaveBeenCalledOnce();
+  });
+
+  it.each(['signup_approval_pending', 'signup_approval_rejected'])('exposes %s from detail or typed code without a callback replay', async (code) => {
+    for (const body of [{ detail: code }, { code, detail: 'Enrollment review' }, { detail: { code, message: 'Enrollment review' } }]) {
+      mockFetch.mockResolvedValueOnce(new Response(JSON.stringify(body), { status: 403, headers: { 'Content-Type': 'application/json' } }));
+      await expect(api.post('/api/v1/auth/providers/callback', { code: 'one-use-code', state: 'one-use-state' }, undefined, undefined, { suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false })).rejects.toMatchObject({ status: 403, code, linkTicket: undefined });
+    }
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([403, 503])('does not reinterpret arbitrary failure details as typed approval codes (status=%s)', async (status) => {
+    const detail = status === 403 ? 'approval service unavailable' : 'signup_approval_pending';
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ detail }), { status, headers: { 'Content-Type': 'application/json' } }));
+    await expect(api.get('/api/v1/auth/registrations/one-use-token', undefined, undefined, { suppressAuthRedirect: true, cache: 'no-store' })).rejects.toMatchObject({ status, message: detail, code: undefined });
+    expect(mockFetch).toHaveBeenCalledOnce();
+  });
+
   it('never dispatches an already-aborted MCP mutation', async () => {
     const controller = new AbortController();
     controller.abort();

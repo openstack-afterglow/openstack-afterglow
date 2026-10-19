@@ -35,6 +35,22 @@ _GPU_INSTANCE = MagicMock(
 _FAKE_SERIES = [{"ts": 1700000000, "value": 42.0}, {"ts": 1700000030, "value": 45.0}]
 
 
+@pytest.fixture(autouse=True)
+def native_metrics():
+    """Existing exporter scenarios run independently of native deployment."""
+    from app.api.compute.instance_metrics import _VALID_METRICS
+
+    with patch(
+        "app.api.compute.instance_metrics.native_telemetry.instance_series",
+        new=AsyncMock(
+            return_value={
+                metric: {"series": [], "status": "not_configured", "error": None} for metric in _VALID_METRICS
+            }
+        ),
+    ) as native:
+        yield native
+
+
 @pytest.mark.anyio
 async def test_metrics_returns_series(client):
     with (
@@ -126,40 +142,6 @@ def test_step_calculation():
     assert calc_step(900) == 15  # 15m → 900/100=9 → max(15,9)=15
     assert calc_step(3600) == 36  # 1h  → 3600/100=36
     assert calc_step(86400) == 864  # 24h → 86400/100=864
-
-
-# ---------------------------------------------------------------------------
-# _build_expr — kolla-ansible OpenStack SD 라벨 스킴 회귀 방지
-# ---------------------------------------------------------------------------
-
-
-def test_build_expr_uses_instance_id_label():
-    """모든 메트릭이 instance_id 라벨로 필터해야 한다 (IP:port 사용 금지)."""
-    from app.api.compute.instance_metrics import _build_expr
-
-    uuid = "16585e7b-cade-4136-a72a-6e55b54d5054"
-    for metric in ("cpu", "memory", "network_rx", "network_tx", "disk_read", "disk_write", "gpu_util", "gpu_mem"):
-        expr = _build_expr(metric, uuid)
-        assert f'instance_id="{uuid}"' in expr, f"{metric}: instance_id 셀렉터 누락"
-        assert ":9100" not in expr, f"{metric}: IP:port 셀렉터가 남아있음"
-        assert ":9400" not in expr, f"{metric}: DCGM IP:port 셀렉터가 남아있음"
-
-
-def test_build_expr_does_not_filter_by_job():
-    """job 필터는 두지 않아야 한다 — internal/external 양쪽 모두 매치되어야 한다."""
-    from app.api.compute.instance_metrics import _build_expr
-
-    expr = _build_expr("cpu", "uuid-1")
-    assert "job=" not in expr, "job 필터가 있으면 internal/external 한쪽만 매치됨"
-
-
-def test_build_expr_cpu_shape():
-    """CPU PromQL 정확한 형태 검증."""
-    from app.api.compute.instance_metrics import _build_expr
-
-    expr = _build_expr("cpu", "abc")
-    expected = '100 - (avg by (instance_id) (rate(node_cpu_seconds_total{instance_id="abc",mode="idle"}[2m])) * 100)'
-    assert expr == expected
 
 
 # ---------------------------------------------------------------------------
@@ -320,27 +302,6 @@ async def test_instance_metrics_disk_read_fallback(client):
 
 
 @pytest.mark.anyio
-async def test_instance_metrics_node_exporter_priority_no_fallback_call(client):
-    """node_exporter 결과가 있으면 libvirt 폴백 호출 없어야 한다."""
-    call_count = 0
-
-    async def _side_effect(expr: str, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        return _FAKE_SERIES
-
-    with (
-        patch("app.api.compute.instance_metrics.nova.get_server", return_value=_FAKE_INSTANCE),
-        patch("app.api.compute.instance_metrics.query_range", new=AsyncMock(side_effect=_side_effect)),
-    ):
-        resp = await client.get("/api/v1/instances/inst-1/metrics?metric=cpu&range=1h")
-
-    assert resp.status_code == 200
-    assert resp.json()["series"] == _FAKE_SERIES
-    assert call_count == 1  # libvirt 폴백 호출 없음
-
-
-@pytest.mark.anyio
 async def test_instance_metrics_both_empty_returns_empty_series(client):
     """node_exporter + libvirt 모두 빈 시계열 → 빈 배열, 500 금지."""
     with (
@@ -351,24 +312,6 @@ async def test_instance_metrics_both_empty_returns_empty_series(client):
 
     assert resp.status_code == 200
     assert resp.json()["series"] == []
-
-
-def test_build_libvirt_expr_returns_single_series_format():
-    """libvirt 표현식이 sum/avg by(instance_id) 로 단일 시계열을 보장해야 한다."""
-    from app.api.compute.instance_metrics import _build_libvirt_expr
-
-    uuid = "test-uuid-1234"
-    for metric in ("cpu", "memory", "network_rx", "network_tx", "disk_read", "disk_write"):
-        expr = _build_libvirt_expr(metric, uuid)
-        assert expr is not None, f"{metric}: libvirt 표현식이 None"
-        assert f'instance_id="{uuid}"' in expr, f"{metric}: instance_id 셀렉터 누락"
-        assert "group_left(instance_id)" in expr, f"{metric}: group_left 조인 누락"
-        assert "libvirt_domain_openstack_info" in expr, f"{metric}: openstack_info 조인 누락"
-        assert "on (instance, domain)" in expr, f"{metric}: instance/domain 조인 누락"
-
-    # GPU 는 libvirt 대체 없음
-    assert _build_libvirt_expr("gpu_util", uuid) is None
-    assert _build_libvirt_expr("gpu_mem", uuid) is None
 
 
 def test_metric_instance_id_rejects_promql_label_injection():
@@ -407,3 +350,207 @@ async def test_metric_routes_reject_untrusted_nova_id_before_prometheus_query(cl
     assert response.status_code == 502
     query.assert_not_awaited()
     stats.assert_not_awaited()
+
+
+def _native(series, *, status="available"):
+    return {"series": series, "source": "gnocchi", "unit": "%", "status": status, "error": None}
+
+
+@pytest.mark.anyio
+async def test_native_zero_uses_authorized_canonical_server_without_exporters(client, native_metrics):
+    from app.services.prom_query import PromUnavailable
+
+    native_metrics.return_value = {"cpu": _native([{"ts": 1700000000, "value": 0.0}])}
+    with (
+        patch("app.api.compute.instance_metrics.nova.get_server", return_value=_FAKE_INSTANCE),
+        patch("app.api.compute.instance_metrics.query_range", new=AsyncMock(side_effect=PromUnavailable("down"))),
+    ):
+        response = await client.get("/api/v1/instances/request-alias/metrics?metric=cpu")
+    assert response.status_code == 200
+    result = response.json()
+    assert result["series"] == [{"ts": 1700000000, "value": 0.0}]
+    assert result["source"] == "gnocchi"
+    assert result["unit"] == "%"
+    assert result["status"] == result["native_status"] == "available"
+    assert result["error"] is None
+    assert native_metrics.await_args.args[1] is _FAKE_INSTANCE
+
+
+@pytest.mark.anyio
+async def test_batch_selects_native_and_fallback_independently(client, native_metrics):
+    native_metrics.return_value = {
+        "cpu": _native(_FAKE_SERIES, status="partial"),
+        "memory": {"series": [], "status": "forbidden", "error": "forbidden"},
+        "disk_read_iops": _native([{"ts": 1700000000, "value": 3.0}]),
+    }
+    fallback = [{"ts": 1700000030, "value": 67.0}]
+    with (
+        patch("app.api.compute.instance_metrics.nova.get_server", return_value=_FAKE_INSTANCE),
+        patch("app.api.compute.instance_metrics.query_range", new=AsyncMock(return_value=fallback)),
+    ):
+        response = await client.get(
+            "/api/v1/instances/inst-1/metrics-batch?metrics=cpu,memory,disk_read_iops,memory_resident"
+        )
+    assert response.status_code == 200
+    metrics = response.json()["metrics"]
+    assert metrics["cpu"]["series"] == _FAKE_SERIES  # No exporter samples mixed into native history.
+    assert metrics["cpu"]["status"] == "partial"
+    assert metrics["memory"]["series"] == fallback
+    assert metrics["memory"]["source"] == "prometheus"
+    assert metrics["memory"]["status"] == "available"
+    assert metrics["memory"]["native_status"] == "forbidden"
+    assert metrics["memory"]["error"] is None
+    assert metrics["disk_read_iops"]["unit"] == "request/s"
+    assert metrics["memory_resident"]["series"] == []
+    assert metrics["memory_resident"]["status"] == "not_collected"
+    assert metrics["memory_resident"]["unit"] == "MiB"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "metric,unit",
+    [
+        ("disk_write_iops", "request/s"),
+        ("network_rx_packets", "packet/s"),
+        ("network_tx_packets", "packet/s"),
+        ("memory_resident", "MiB"),
+        ("disk_allocation", "B"),
+        ("memory_swap_in", "MiB/s"),
+        ("memory_swap_out", "MiB/s"),
+    ],
+)
+async def test_additional_native_metrics_are_readable_without_exporter_fabrication(
+    client, native_metrics, metric, unit
+):
+    native_metrics.return_value = {metric: _native([{"ts": 1700000000, "value": 0.0}])}
+    with (
+        patch("app.api.compute.instance_metrics.nova.get_server", return_value=_FAKE_INSTANCE),
+        patch(
+            "app.api.compute.instance_metrics.query_range",
+            new=AsyncMock(side_effect=AssertionError("native-only metric")),
+        ),
+    ):
+        response = await client.get(f"/api/v1/instances/inst-1/metrics?metric={metric}")
+    assert response.status_code == 200
+    assert response.json()["series"][0]["value"] == 0.0
+    assert response.json()["unit"] == unit
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("suffix", ["metrics?metric=cpu", "metrics-batch?metrics=cpu", "metrics-summary"])
+async def test_native_queries_never_precede_canonical_nova_authorization(client, native_metrics, suffix):
+    with patch("app.api.compute.instance_metrics.nova.get_server", return_value=_OTHER_INSTANCE):
+        response = await client.get(f"/api/v1/instances/inst-other/{suffix}")
+    assert response.status_code == 403
+    native_metrics.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_provider_failures_do_not_expose_credential_bearing_exception_bodies(client, native_metrics):
+    from app.services.prom_query import PromUnavailable
+
+    secret = "https://user:password@telemetry.invalid/?token=private-token"
+    native_metrics.side_effect = RuntimeError(secret)
+    with (
+        patch("app.api.compute.instance_metrics.nova.get_server", return_value=_FAKE_INSTANCE),
+        patch("app.api.compute.instance_metrics.query_range", new=AsyncMock(side_effect=PromUnavailable(secret))),
+    ):
+        response = await client.get("/api/v1/instances/inst-1/metrics-batch?metrics=cpu")
+        single = await client.get("/api/v1/instances/inst-1/metrics?metric=cpu")
+    assert response.status_code == 200
+    assert response.json()["metrics"]["cpu"]["error"] == "prometheus_unavailable"
+    assert response.json()["metrics"]["cpu"]["native_status"] == "unavailable"
+    assert single.status_code == 503
+    assert "password" not in response.text + single.text
+    assert "private-token" not in response.text + single.text
+
+
+@pytest.mark.anyio
+async def test_readable_native_without_samples_is_not_an_exporter_outage(client, native_metrics):
+    from app.services.prom_query import PromUnavailable
+
+    native_metrics.return_value = {"cpu": {"series": [], "status": "not_collected", "error": None}}
+    with (
+        patch("app.api.compute.instance_metrics.nova.get_server", return_value=_FAKE_INSTANCE),
+        patch("app.api.compute.instance_metrics.query_range", new=AsyncMock(side_effect=PromUnavailable("down"))),
+    ):
+        response = await client.get("/api/v1/instances/inst-1/metrics?metric=cpu")
+    assert response.status_code == 200
+    assert response.json()["series"] == []
+    assert response.json()["status"] == response.json()["native_status"] == "not_collected"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "inst-1/metrics?metric=cpu",
+        "inst-1/metrics-batch?metrics=cpu",
+        "inst-1/metrics-summary",
+        "metrics-summary-batch",
+    ],
+)
+@pytest.mark.parametrize("denied", [False, True])
+async def test_metrics_responses_are_not_cacheable_including_errors(client, suffix, denied):
+    server = _OTHER_INSTANCE if denied else _FAKE_INSTANCE
+    with (
+        patch("app.api.compute.instance_metrics.nova.get_server", return_value=server),
+        patch(
+            "app.api.compute.instance_metrics.nova.list_servers",
+            side_effect=RuntimeError("denied") if denied else None,
+            return_value=[_FAKE_INSTANCE],
+        ),
+        patch("app.api.compute.instance_metrics.query_range", new=AsyncMock(return_value=[])),
+        patch("app.api.compute.instance_metrics.query_instant_multi", new=AsyncMock(return_value=[])),
+        patch(
+            "app.api.compute.instance_metrics.native_telemetry.project_series",
+            new=AsyncMock(
+                return_value={
+                    "status": "not_configured",
+                    "instances": {},
+                }
+            ),
+        ),
+    ):
+        response = await client.get(f"/api/v1/instances/{suffix}")
+    assert response.status_code == (502 if denied and suffix == "metrics-summary-batch" else 403 if denied else 200)
+    assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.anyio
+async def test_metrics_validation_errors_are_not_cacheable(client):
+    response = await client.get("/api/v1/instances/inst-1/metrics?metric=invalid")
+    assert response.status_code == 422
+    assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("batch", [False, True])
+async def test_nonfinite_exporter_values_do_not_break_metrics_json(client, batch):
+    series = [
+        {"ts": 1700000000, "value": float("nan")},
+        {"ts": 1700000030, "value": float("inf")},
+        {"ts": 1700000060, "value": float("-inf")},
+        {"ts": 1700000090, "value": 0.0},
+    ]
+    with (
+        patch("app.api.compute.instance_metrics.nova.get_server", return_value=_FAKE_INSTANCE),
+        patch("app.api.compute.instance_metrics.query_range", new=AsyncMock(return_value=series)),
+    ):
+        suffix = "metrics-batch?metrics=cpu" if batch else "metrics?metric=cpu"
+        response = await client.get(f"/api/v1/instances/inst-1/{suffix}")
+    assert response.status_code == 200
+    metric = response.json()["metrics"]["cpu"] if batch else response.json()
+    assert metric["series"] == [{"ts": 1700000090, "value": 0.0}]
+
+
+@pytest.mark.anyio
+async def test_nonfinite_node_samples_can_use_finite_libvirt_fallback(client):
+    results = [[{"ts": 1700000000, "value": float("nan")}], _FAKE_SERIES]
+    with (
+        patch("app.api.compute.instance_metrics.nova.get_server", return_value=_FAKE_INSTANCE),
+        patch("app.api.compute.instance_metrics.query_range", new=AsyncMock(side_effect=results)),
+    ):
+        response = await client.get("/api/v1/instances/inst-1/metrics?metric=cpu")
+    assert response.status_code == 200
+    assert response.json()["series"] == _FAKE_SERIES

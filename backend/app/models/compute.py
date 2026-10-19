@@ -22,6 +22,11 @@ class ImageInfo(BaseModel):
     disk_format: str | None = None
     os_type: str | None = None
     os_distro: str | None = None
+    # Explicit Glance properties, never inferred from image names or distro.
+    # gpu_vendor: nvidia | amd | intel; gpu_driver: nvidia | nvidia-grid |
+    # nouveau | amdgpu | i915 | xe | none. Unknown provider values stay opaque.
+    gpu_vendor: str | None = None
+    gpu_driver: str | None = None
     windows_initial_password_method: str | None = None
     os_admin_user: str | None = None
     created_at: str | None = None
@@ -183,6 +188,9 @@ class CreateInstanceRequest(BaseModel):
 
     boot_volume_size_gb: int | None = Field(None, ge=1, le=16384)
     delete_boot_volume_on_termination: bool = False
+    auto_snapshot: bool = False
+    auto_backup: bool = False
+    volume_protection_force: bool = False
     additional_volume_ids: list[str] = []
     new_volumes: list["NewVolumeRequest"] = []
     boot_volume_id: str | None = None  # 기존 부팅 볼륨 재사용 (image_id 와 상호 배타)
@@ -211,6 +219,11 @@ class CreateInstanceRequest(BaseModel):
             raise ValueError("image_id 또는 boot_volume_id 중 하나는 반드시 지정해야 합니다")
         if self.github_username and self.key_name:
             raise ValueError("github_username과 key_name은 함께 사용할 수 없습니다")
+        if self.auto_snapshot or self.auto_backup:
+            if has_volume:
+                raise ValueError("Automatic protection cannot be changed when reusing a boot volume")
+            if not self.volume_protection_force:
+                raise ValueError("Automatic volume protection requires volume_protection_force consent")
         return self
 
     @field_validator("name")

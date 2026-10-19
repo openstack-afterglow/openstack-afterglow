@@ -3,11 +3,12 @@
 import time
 from uuid import uuid4
 
+from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.config import get_settings
 from app.models.traffic_analytics import TrafficEvent
-from app.services.traffic_analytics import record_event, route_category
+from app.services.traffic_analytics import record_domain_request, record_event, route_category
 
 EXCLUDED = ("/api/v1/monitoring/traffic", "/api/v1/admin/monitoring/traffic")
 
@@ -78,6 +79,9 @@ class TrafficAnalyticsMiddleware:
                     latency_ms=min((time.perf_counter() - started) * 1000, 86_400_000),
                 )
                 await record_event(event, "backend")
+                await record_domain_request(
+                    Request(scope), status=status, route_template=getattr(route, "path", None), at=at
+                )
             except Exception:
                 # Never log event data or change request behavior on metrics failure.
                 pass

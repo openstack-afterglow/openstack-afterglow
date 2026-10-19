@@ -3,8 +3,8 @@
 
 afterglow.conf(및 오버라이드)을 읽어
 deploy/k8s/{secret.yaml, configmap.yaml, ingress.yaml, grafana-deployment.yaml}을 자동 생성합니다.
-`--namespace`는 해당 환경 프로필(deploy/afterglow-prod.conf 또는
-deploy/afterglow-dev.conf)을 항상 먼저 적용합니다. `--override`는 추가 오버라이드입니다.
+`--namespace`는 namespace만 선택합니다. 환경별 domain 프로필은
+`--override deploy/afterglow-prod.conf` 또는 dev.conf로 명시적으로 선택합니다.
 
 grafana-deployment.yaml 은 anonymous 인증으로 동작하는 Grafana Deployment 매니페스트로,
 iframe 임베드를 위해 GF_SECURITY_ALLOW_EMBEDDING 이 활성화되어 있습니다.
@@ -25,17 +25,19 @@ ingress.yaml을 적용해야 설정된 MCP 경로가 반영됩니다.
         --override deploy/afterglow-dev.conf \
         --namespace afterglow-dev
 
-Python 3.12+ 표준 라이브러리만 사용합니다.
+Python 3.11+ 표준 라이브러리만 사용합니다.
 """
 
 import argparse
 import json
 import os
+import re
 import sys
-import tempfile
-import tomllib
 from pathlib import Path
 from urllib.parse import urlparse
+from uuid import UUID
+
+from generation_config import config_override_paths, load_config, merge_config, prepare_config, write_files
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 상수
@@ -77,55 +79,11 @@ def dim(t: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _deep_merge(base: dict, override: dict) -> None:
-    """dict를 재귀적으로 병합 (list는 덮어쓰기, dict는 재귀 병합)."""
-    for k, v in override.items():
-        if k in base and isinstance(base[k], dict) and isinstance(v, dict):
-            _deep_merge(base[k], v)
-        else:
-            base[k] = v
-
-
-def _config_override_paths(config_path: Path) -> list[Path]:
-    """설정 파일과 같은 디렉터리의 지원되는 오버라이드 파일을 반환한다."""
-    patterns = [f"{config_path.stem}.*{config_path.suffix}"]
-    if config_path.name == "afterglow.conf":
-        patterns.append("config.gpu.toml")
-
-    overrides: dict[Path, Path] = {}
-    for pattern in patterns:
-        for override_path in config_path.parent.glob(pattern):
-            if override_path.resolve() == config_path.resolve():
-                continue
-            if not override_path.is_file() or override_path.stat().st_size == 0:
-                continue
-            overrides[override_path.resolve()] = override_path
-    return [overrides[key] for key in sorted(overrides)]
-
-
-def load_config(config_path: Path, extra_override_paths: list[Path] | None = None) -> dict:
-    """afterglow.conf와 오버라이드 파일을 로드하고 딥 머지한다."""
-    with open(config_path, "rb") as f:
-        cfg = tomllib.load(f)
-    # 자동 오버라이드 뒤에 명시적 오버라이드를 적용해 환경별 값을 우선한다.
-    override_paths = _config_override_paths(config_path)
-    for override_path in extra_override_paths or []:
-        resolved_path = override_path.resolve()
-        if not resolved_path.is_file():
-            raise FileNotFoundError(f"오버라이드 파일을 찾을 수 없습니다: {resolved_path}")
-        if resolved_path not in override_paths:
-            override_paths.append(resolved_path)
-    # 알파벳순으로 자동 오버라이드를 적용한 뒤 명시적 오버라이드를 적용한다.
-    for override_path in override_paths:
-        with open(override_path, "rb") as f:
-            _deep_merge(cfg, tomllib.load(f))
-        print(f"  {dim(f'오버라이드 로드: {override_path.name}')}")
-    return cfg
 
 
 def default_config_path() -> Path:
     """기본 설정 파일 경로."""
-    return SCRIPT_DIR / "afterglow.conf"
+    return Path.cwd() / "afterglow.conf"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -134,11 +92,8 @@ def default_config_path() -> Path:
 
 
 def _yaml_str(v: str) -> str:
-    """YAML 스칼라 값을 안전하게 따옴표로 감싸서 렌더링."""
-    if any(c in v for c in ('"', "'", ":", "#", "\n", "\\", "{", "}")):
-        escaped = v.replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
-    return f'"{v}"'
+    """Quote a scalar, including controls and multiline values, as valid YAML."""
+    return json.dumps(v, ensure_ascii=False)
 
 
 def _yaml_block_scalar(v: str) -> str:
@@ -162,7 +117,7 @@ def _yaml_block_scalar(v: str) -> str:
 
 def _toml_str(v: str) -> str:
     """TOML 문자열 값 이스케이프."""
-    return '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return json.dumps(v, ensure_ascii=False)
 
 
 def _toml_bool(v: bool) -> str:
@@ -186,6 +141,124 @@ def _toml_val(v) -> str:
             return _toml_list_str(v)
         return str(v)
     return _toml_str(str(v))
+
+
+_AUTH_PROVIDER_FIELDS = frozenset({
+    "name", "kind", "enabled", "issuer_url", "authorization_url", "token_url", "api_url",
+    "client_id", "client_secret", "scopes", "keystone_idp_id", "keystone_protocol_id",
+    "federation_token_type", "token_endpoint_auth_method",
+})
+
+
+def _auth_config(cfg: dict) -> dict:
+    """Reject unknown structures before projecting secrets; runtime validates semantics."""
+    invalid = ValueError("Invalid auth configuration; check registry fields and selection references")
+    auth = cfg.get("auth", {})
+    if not isinstance(auth, dict) or set(auth) - {
+        "providers", "default", "domain", "public_signup_enabled", "signup_email_domains",
+    }:
+        raise invalid
+    if "public_signup_enabled" in auth and not isinstance(auth["public_signup_enabled"], bool):
+        raise invalid
+    signup_domains = auth.get("signup_email_domains", [])
+    if not isinstance(signup_domains, list) or any(not isinstance(host, str) for host in signup_domains):
+        raise invalid
+    providers = auth.get("providers", {})
+    domains = auth.get("domain", {})
+    if not isinstance(providers, dict) or not isinstance(domains, dict):
+        raise invalid
+    for key, provider in providers.items():
+        if (
+            not isinstance(key, str) or len(key) > 32 or re.fullmatch(r"[a-z](?:[a-z0-9]|_[a-z0-9])*", key) is None
+            or not isinstance(provider, dict) or set(provider) - _AUTH_PROVIDER_FIELDS
+        ):
+            raise invalid
+        for field, value in provider.items():
+            if field == "enabled":
+                valid = isinstance(value, bool)
+            elif field == "scopes":
+                valid = isinstance(value, list) and all(isinstance(item, str) for item in value)
+            else:
+                valid = isinstance(value, str)
+            if not valid:
+                raise invalid
+    for domain_id in domains:
+        if (
+            not isinstance(domain_id, str) or not 1 <= len(domain_id) <= 64
+            or any(char.isspace() or ord(char) < 32 for char in domain_id)
+        ):
+            raise invalid
+    for methods in (auth.get("default", {}), *domains.values()):
+        if not isinstance(methods, dict) or set(methods) - {"allow_providers", "auto_join_email_domains"}:
+            raise invalid
+        selected = methods.get("allow_providers", [])
+        auto_join = methods.get("auto_join_email_domains", {})
+        if not isinstance(selected, list) or not isinstance(auto_join, dict):
+            raise invalid
+        if any(
+            not isinstance(hosts, list) or any(not isinstance(host, str) for host in hosts)
+            for hosts in auto_join.values()
+        ):
+            raise invalid
+        for selectors in (selected, auto_join):
+            for key in selectors:
+                if not isinstance(key, str):
+                    raise invalid
+                if key in providers:
+                    continue
+                try:
+                    if str(UUID(key)) == key:
+                        continue
+                except ValueError:
+                    pass
+                raise invalid
+    return auth
+
+
+def auth_secret_env(cfg: dict) -> dict[str, str]:
+    """Return raw provider credentials only as nested Settings environment entries."""
+    return {
+        f"AUTH__PROVIDERS__{key.upper()}__CLIENT_SECRET": provider["client_secret"]
+        for key, provider in _auth_config(cfg).get("providers", {}).items()
+        if provider.get("client_secret")
+    }
+
+
+def render_auth_toml(cfg: dict) -> str:
+    """Render standalone auth TOML preserving every configured nonsecret field."""
+    auth = _auth_config(cfg)
+    if not auth:
+        return ""
+    lines = ["[auth]"]
+    for field in ("public_signup_enabled", "signup_email_domains"):
+        if field in auth:
+            lines.append(f"{field} = {_toml_val(auth[field])}")
+    for key, provider in auth.get("providers", {}).items():
+        lines.extend(("", f"[auth.providers.{_toml_str(key)}]"))
+        for field, value in provider.items():
+            if field != "client_secret":
+                lines.append(f"{field} = {_toml_val(value)}")
+    if "default" in auth:
+        lines.extend(("", "[auth.default]"))
+        if "allow_providers" in auth["default"]:
+            lines.append(f"allow_providers = {_toml_list_str(auth['default']['allow_providers'])}")
+        if "auto_join_email_domains" in auth["default"]:
+            entries = ", ".join(
+                f"{_toml_str(key)} = {_toml_list_str(hosts)}"
+                for key, hosts in auth["default"]["auto_join_email_domains"].items()
+            )
+            lines.append(f"auto_join_email_domains = {{{entries}}}")
+    for domain_id, methods in auth.get("domain", {}).items():
+        lines.extend(("", f"[auth.domain.{_toml_str(domain_id)}]"))
+        if "allow_providers" in methods:
+            lines.append(f"allow_providers = {_toml_list_str(methods['allow_providers'])}")
+        if "auto_join_email_domains" in methods:
+            entries = ", ".join(
+                f"{_toml_str(key)} = {_toml_list_str(hosts)}"
+                for key, hosts in methods["auto_join_email_domains"].items()
+            )
+            lines.append(f"auto_join_email_domains = {{{entries}}}")
+    return "\n".join(lines) + "\n"
 
 
 def _origin_of(value: object) -> str:
@@ -269,7 +342,6 @@ def render_secret(cfg: dict, namespace: str = "afterglow") -> str:
     """secret.yaml 생성: 비밀 값만 추출."""
     os_cfg = cfg.get("openstack", {})
     app = cfg.get("app", {})
-    oidc = cfg.get("gitlab_oidc", {})
     k3s = cfg.get("k3s", {})
     ceph = cfg.get("ceph", {})
     db = cfg.get("database", {})
@@ -296,15 +368,6 @@ def render_secret(cfg: dict, namespace: str = "afterglow") -> str:
         '  # 생성: python3 -c "import secrets; print(secrets.token_hex(32))"',
         f"  SECRET_KEY: {_yaml_str(secret_key)}",
     ]
-
-    client_secret = oidc.get("client_secret", "")
-    lines.extend(
-        [
-            "",
-            "  # GitLab OIDC Client Secret (미사용 시 빈 문자열)",
-            f"  GITLAB_OIDC_CLIENT_SECRET: {_yaml_str(client_secret)}",
-        ]
-    )
 
     enc_key = k3s.get("kubeconfig_encryption_key", "")
     token = k3s.get("gpu_admission_token", "")
@@ -401,6 +464,8 @@ def render_secret(cfg: dict, namespace: str = "afterglow") -> str:
             f"  CEPH_RBD_KEYRING: {_yaml_block_scalar(rbd_keyring)}",
         ]
     )
+    for key, value in auth_secret_env(cfg).items():
+        lines.append(f"  {key}: {_yaml_str(value)}")
 
     lines.append("")
     return "\n".join(lines)
@@ -429,7 +494,6 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     db = cfg.get("database", {})
     cors = cfg.get("cors", {})
     public_api_base = _derive_public_api_base_for_k8s(cfg)
-    oidc = cfg.get("gitlab_oidc", {})
     logging_cfg = cfg.get("logging", {})
     mon = cfg.get("monitoring", {})
     notion = cfg.get("notion", {})
@@ -622,7 +686,9 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append("[cloud_shell]")
     for key, default in (
         ("service_project_id", ""),
-        ("image", ""),
+        ("image", "ghcr.io/openstack-afterglow/openstack-client:slim"),
+        ("image_pull_policy", ""),
+        ("registry_id", ""),
         ("network_id", ""),
         ("security_group", "default"),
         ("auth_url", ""),
@@ -702,7 +768,7 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"logs_mount = {_toml_str(wr_docker.get('logs_mount', '/app/logs'))}")
     lines.append(f"logs_host_path = {_toml_str(wr_docker.get('logs_host_path', ''))}")
     lines.append(
-        f"env_allowlist = {_toml_str(wr_docker.get('env_allowlist', 'AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,K3S_KUBECONFIG_ENCRYPTION_KEY,K3S_GPU_ADMISSION_TOKEN,PROMETHEUS_PASSWORD,GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY'))}"
+        f"env_allowlist = {_toml_str(wr_docker.get('env_allowlist', 'AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,K3S_KUBECONFIG_ENCRYPTION_KEY,K3S_GPU_ADMISSION_TOKEN,PROMETHEUS_PASSWORD,NOTION_CONFIG_ENCRYPTION_KEY'))}"
     )
     lines.append("")
     lines.append("[worker_runtime.kubernetes]")
@@ -739,18 +805,6 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     # [cors]
     lines.append("[cors]")
     lines.append(f"origins = {_toml_str(cors.get('origins', 'http://localhost:3080'))}")
-    lines.append("")
-
-    # [gitlab_oidc]
-    lines.append("[gitlab_oidc]")
-    lines.append(f"enabled = {_toml_bool(oidc.get('enabled', False))}")
-    lines.append(f"gitlab_url = {_toml_str(oidc.get('gitlab_url', 'https://gitlab.com'))}")
-    lines.append(f"client_id = {_toml_str(oidc.get('client_id', ''))}")
-    lines.append("# client_secret은 secret.yaml의 GITLAB_OIDC_CLIENT_SECRET 환경변수로 주입됩니다")
-    lines.append(f"idp_id = {_toml_str(oidc.get('idp_id', 'gitlab'))}")
-    lines.append(f"protocol_id = {_toml_str(oidc.get('protocol_id', 'openid'))}")
-    lines.append(f"redirect_uri = {_toml_str(oidc.get('redirect_uri', ''))}")
-    lines.append(f"scopes = {_toml_str(oidc.get('scopes', 'openid email profile read_user'))}")
     lines.append("")
 
     # [smtp]
@@ -843,6 +897,7 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append("# hmac_key and frontend_ingest_key are injected through TRAFFIC_ANALYTICS__* Secret environment keys")
     lines.append("")
 
+
     # [notion]
     if notion.get("config_encryption_key"):
         lines.append("[notion]")
@@ -852,11 +907,11 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     # [security]
     security = cfg.get("security", {})
     lines.append("[security]")
-    lines.append(f"admin_legacy_project_policy = {_toml_bool(security.get('admin_legacy_project_policy', False))}")
     lines.append(f"login_max_attempts = {security.get('login_max_attempts', 10)}")
     lines.append(f"login_lockout_seconds = {security.get('login_lockout_seconds', 300)}")
     lines.append(f"login_backoff_base = {security.get('login_backoff_base', 2)}")
     lines.append("")
+    lines.append(render_auth_toml(cfg))
 
     return "\n".join(lines)
 
@@ -866,7 +921,7 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _render_gpu_toml(cfg: dict) -> str:
+def render_gpu_toml(cfg: dict) -> str:
     """config.gpu.toml 렌더링: GPU 디바이스 맵."""
     gpu = cfg.get("gpu", {})
     devices = gpu.get("devices", [])
@@ -943,7 +998,7 @@ def render_configmap(cfg: dict, namespace: str = "afterglow") -> str:
     )
 
     # config.gpu.toml (GPU 디바이스 맵이 있는 경우에만)
-    gpu_content = _render_gpu_toml(cfg)
+    gpu_content = render_gpu_toml(cfg)
     if gpu_content:
         indented_gpu = "\n".join("    " + line for line in gpu_content.splitlines())
         lines.extend(
@@ -1128,20 +1183,88 @@ def render_grafana_deployment(cfg: dict, namespace: str = "afterglow") -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def write_atomic(path: Path, content: str) -> None:
-    """임시 파일로 쓴 뒤 원자적으로 교체 (부분 쓰기 방지)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".gen_k8s_")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(content)
-        os.replace(tmp, path)
-    except Exception:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+def _application_sources(template: Path) -> dict[str, str]:
+    """Follow the existing local resource lists, never arbitrary checkout files."""
+    files: dict[str, str] = {}
+
+    def include(path: Path) -> None:
+        relative = path.relative_to(template)
+        if path.is_symlink() or ".." in relative.parts:
+            raise ValueError("Unsafe application template path")
+        if path.is_dir():
+            include(path / "kustomization.yaml")
+            return
+        content = path.read_text(encoding="utf-8")
+        files[str(relative)] = content
+        if path.name != "kustomization.yaml":
+            return
+        resources = False
+        for line in content.splitlines():
+            if line == "resources:":
+                resources = True
+                continue
+            if resources and line and not line.startswith((" ", "#")):
+                resources = False
+            if resources and line.lstrip().startswith("- "):
+                name = line.strip()[2:].split(" #", 1)[0].strip()
+                if ":" in name or Path(name).is_absolute() or ".." in Path(name).parts:
+                    raise ValueError("Only local application template resources are supported")
+                include(path.parent / name)
+
+    include(template / "base")
+    include(template / "monitoring")
+    return files
+
+
+def render_artifacts(cfg: dict, namespace: str = "afterglow") -> dict[str, str]:
+    """Render a self-contained application Kustomize tree without deploying it.
+
+    The existing application/monitoring templates remain authoritative; generated
+    configuration and routing replace their placeholders. Cluster infrastructure
+    (Traefik/cert-manager) remains an operator prerequisite, not an installer.
+    """
+    template = SCRIPT_DIR / "deploy" / "k8s-template"
+    artifacts = _application_sources(template)
+    secret = render_secret(cfg, namespace)
+    grafana = render_grafana_deployment(cfg, namespace)
+    artifacts.update({
+        "secret.yaml": secret,
+        "configmap.yaml": render_configmap(cfg, namespace),
+        "ingress.yaml": render_ingress(cfg, namespace),
+        "grafana-deployment.yaml": grafana,
+        "monitoring/grafana/deployment.yaml": grafana,
+        "middleware.yaml": (template / "middleware.yaml").read_text(encoding="utf-8"),
+        "base/namespace.yaml": f"apiVersion: v1\nkind: Namespace\nmetadata:\n  name: {namespace}\n",
+        "kustomization.yaml": (
+            "apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\n"
+            f"namespace: {namespace}\nresources:\n"
+            "  - base\n  - secret.yaml\n  - configmap.yaml\n"
+            "  - ingress.yaml\n  - middleware.yaml\n  - monitoring\n"
+        ),
+    })
+    # Explicit env lists in both workloads must consume the dynamic registry keys.
+    auth_keys = [f"AUTH__PROVIDERS__{key.upper()}__CLIENT_SECRET" for key in _auth_config(cfg).get("providers", {})]
+    if auth_keys:
+        artifacts["kustomization.yaml"] += "patches:\n"
+        for workload in ("backend", "notion-worker"):
+            path = f"auth-{workload}-env.yaml"
+            artifacts["kustomization.yaml"] += (
+                f"  - path: {path}\n    target:\n      kind: Deployment\n      name: {workload}\n"
+            )
+            lines = [
+                "apiVersion: apps/v1", "kind: Deployment", "metadata:", f"  name: {workload}",
+                "spec:", "  template:", "    spec:", "      containers:",
+                f"        - name: {workload}", "          env:",
+            ]
+            for key in auth_keys:
+                lines.extend((
+                    f"            - name: {key}", "              valueFrom:",
+                    "                secretKeyRef:", "                  name: afterglow-secrets",
+                    f"                  key: {key}",
+                    "                  optional: true",
+                ))
+            artifacts[path] = "\n".join(lines) + "\n"
+    return artifacts
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1171,7 +1294,7 @@ def main() -> None:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=SCRIPT_DIR / "deploy" / "k8s",
+        default=Path.cwd() / "deploy" / "k8s",
         help="출력 디렉토리 (기본값: ./deploy/k8s)",
     )
     parser.add_argument(
@@ -1189,88 +1312,29 @@ def main() -> None:
 
     config_path = args.config.resolve()
     output_dir = args.output_dir.resolve()
-    profile_name = "dev" if args.namespace == "afterglow-dev" else "prod"
-    profile_path = SCRIPT_DIR / "deploy" / f"afterglow-{profile_name}.conf"
-    if not profile_path.is_file():
-        print(
-            f"{red('오류')}: namespace 환경 프로필을 찾을 수 없습니다: {profile_path}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    override_paths = [profile_path, *args.override_paths]
-
-    if config_path.name != "afterglow.conf" or not config_path.is_file():
-        print(
-            f"{red('오류')}: afterglow.conf을(를) 찾을 수 없습니다: {config_path}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    print(f"  설정 로드: {dim(str(config_path))}")
-    cfg = load_config(config_path, override_paths)
-    print(f"  {green('✓')} 설정 로드 완료")
-    print()
-
-    # 렌더링
     try:
-        secret_content = render_secret(cfg, args.namespace)
-        configmap_content = render_configmap(cfg, args.namespace)
-        grafana_deployment_content = render_grafana_deployment(cfg, args.namespace)
-        ingress_content = render_ingress(cfg, args.namespace)
-    except ValueError as exc:
-        print(f"{red('오류')}: {exc}", file=sys.stderr)
+        text = prepare_config(config_path)
+        cfg = merge_config(config_path, text, args.override_paths)
+        artifacts = render_artifacts(cfg, args.namespace)
+        if args.dry_run:
+            # Never preview a Secret, credential-bearing deployment or private
+            # config. Public renderers retain the closed projection boundary.
+            print(render_configmap(cfg, args.namespace))
+            print("---")
+            print(render_ingress(cfg, args.namespace))
+            return
+        contents = {output_dir / name: content for name, content in artifacts.items()}
+        sources = [config_path, *config_override_paths(config_path), *args.override_paths]
+        if {path.resolve() for path in sources} & {path.resolve() for path in contents}:
+            raise ValueError("Configuration inputs and artifact paths must be distinct")
+        if not config_path.exists():
+            contents[config_path] = text
+        write_files(contents)
+    except (OSError, ValueError):
+        # Parser exceptions can contain the input literal; never echo it.
+        print("Generation failed; check configuration and output permissions. No secrets displayed.", file=sys.stderr)
         sys.exit(1)
-
-    if args.dry_run:
-        print("─" * 60)
-        print("# secret.yaml")
-        print("─" * 60)
-        print(secret_content)
-        print("─" * 60)
-        print("# configmap.yaml")
-        print("─" * 60)
-        print(configmap_content)
-        print("─" * 60)
-        print("# grafana-deployment.yaml")
-        print("─" * 60)
-        print(grafana_deployment_content)
-        print("─" * 60)
-        print("# ingress.yaml")
-        print("─" * 60)
-        print(ingress_content)
-        return
-
-    # 파일 쓰기
-    secret_path = output_dir / "secret.yaml"
-    configmap_path = output_dir / "configmap.yaml"
-    grafana_deployment_path = output_dir / "grafana-deployment.yaml"
-    ingress_path = output_dir / "ingress.yaml"
-
-    write_atomic(secret_path, secret_content)
-    print(f"  {green('✓')} {secret_path}")
-
-    write_atomic(configmap_path, configmap_content)
-    print(f"  {green('✓')} {configmap_path}")
-
-    write_atomic(grafana_deployment_path, grafana_deployment_content)
-    print(f"  {green('✓')} {grafana_deployment_path}")
-
-    write_atomic(ingress_path, ingress_content)
-    print(f"  {green('✓')} {ingress_path}")
-
-    print()
-    print(f"{green('완료!')} K8s 매니페스트가 생성되었습니다.")
-    print()
-    print(f"  {yellow('주의')}: secret.yaml에 비밀번호가 평문으로 저장됩니다.")
-    print("        git에 커밋하지 마세요.")
-    print()
-    print("  적용 방법:")
-    print("    # Apply generated ingress after any static base/overlay Ingress; those may overwrite the main route.")
-    print(f"    kubectl apply -f {secret_path}")
-    print(f"    kubectl apply -f {configmap_path}")
-    print(f"    kubectl apply -f {ingress_path}")
-    print(f"    # grafana-deployment.yaml is Helm/ArgoCD-managed; do not apply it directly: {grafana_deployment_path}")
-    print(f"    kubectl rollout restart deployment -n {args.namespace}")
+    print(f"Generated Kubernetes application artifacts in {output_dir}. No cluster changes performed.")
 
 
 if __name__ == "__main__":

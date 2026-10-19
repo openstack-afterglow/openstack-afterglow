@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from keystoneauth1.exceptions.http import Unauthorized
 
 from app.api.deps import get_os_conn, get_token_info
 from app.main import app
@@ -30,13 +31,13 @@ async def test_get_profile(client, mock_conn):
 
 
 @pytest.mark.asyncio
-async def test_update_profile(client, mock_conn):
-    updated = make_user_obj()
-    updated.email = "new@example.com"
-    mock_conn.identity.update_user.return_value = updated
-    resp = await client.patch("/api/v1/profile", json={"email": "new@example.com"})
-    assert resp.status_code == 200
-    assert resp.json()["email"] == "new@example.com"
+async def test_profile_email_change_requires_owner_verification(client, mock_conn):
+    current = make_user_obj()
+    mock_conn.identity.get_user.return_value = current
+    response = await client.patch("/api/v1/profile", json={"email": "other-owner@example.com"})
+    assert response.status_code == 409
+    assert response.json()["detail"] == "email_verification_required"
+    mock_conn.identity.update_user.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -49,7 +50,7 @@ async def test_update_profile_no_fields(client, mock_conn):
 @pytest.mark.asyncio
 async def test_change_password(client, mock_conn):
     mock_conn.identity.update_user.return_value = make_user_obj()
-    with patch("app.api.identity.profile.keystone.authenticate", return_value={}):
+    with patch("app.api.identity.profile.keystone.authenticate", return_value={"user_id": "test-user-123"}):
         resp = await client.post(
             "/api/v1/profile/password",
             json={
@@ -64,7 +65,7 @@ async def test_change_password(client, mock_conn):
 @pytest.mark.asyncio
 async def test_change_password_wrong_current(client, mock_conn):
     """현재 패스워드 불일치 시 401."""
-    with patch("app.api.identity.profile.keystone.authenticate", side_effect=Exception("auth failed")):
+    with patch("app.api.identity.profile.keystone.authenticate", side_effect=Unauthorized()):
         resp = await client.post(
             "/api/v1/profile/password",
             json={
@@ -73,6 +74,26 @@ async def test_change_password_wrong_current(client, mock_conn):
             },
         )
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_password_change_rejects_foreign_authenticated_subject(client, mock_conn):
+    with patch("app.api.identity.profile.keystone.authenticate", return_value={"user_id": "other-account"}):
+        response = await client.post(
+            "/api/v1/profile/password", json={"current_password": "valid", "new_password": "replacement"}
+        )
+    assert response.status_code == 403
+    mock_conn.identity.update_user.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_password_verifier_outage_does_not_modify_account(client, mock_conn):
+    with patch("app.api.identity.profile.keystone.authenticate", side_effect=ConnectionError("directory down")):
+        response = await client.post(
+            "/api/v1/profile/password", json={"current_password": "valid", "new_password": "replacement"}
+        )
+    assert response.status_code == 503
+    mock_conn.identity.update_user.assert_not_called()
 
 
 @pytest.mark.asyncio

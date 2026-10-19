@@ -45,6 +45,8 @@ vi.mock('$lib/stores/auth', () => ({
 			return () => undefined;
 		},
 	},
+	projectSwitching: { subscribe: (run: (switching: boolean) => void) => { run(false); return () => {}; } },
+	getAuthVerificationEpoch: () => 0,
 	getMockupProfile: () => mockProfile.value,
 	isMockAuthActive: () => mockProfile.value !== null,
 	setAuth: vi.fn(),

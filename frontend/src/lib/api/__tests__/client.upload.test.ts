@@ -65,8 +65,8 @@ describe('authenticated progress upload recovery', () => {
 
 	it('recovers an XHR 401 with the original upload body and reports retried progress', async () => {
 		const { setAuth } = await import('$lib/stores/auth');
-		setAuth({ token: 'old-token', refreshToken: 'refresh-token', accessExpiresAt: null });
-		mockFetch.mockResolvedValueOnce(jsonResponse({ token: 'new-token', refresh_token: 'new-refresh' }));
+		setAuth({ token: 'old-token', refreshToken: 'refresh-token', accessExpiresAt: null, domainId: 'domain-1', identityDomainId: 'domain-1' });
+		mockFetch.mockResolvedValueOnce(jsonResponse({ token: 'new-token', refresh_token: 'new-refresh', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain' }));
 		const { api } = await import('../client');
 		const form = new FormData();
 		form.append('file', new Blob(['data']), 'file.txt');
@@ -89,7 +89,7 @@ describe('authenticated progress upload recovery', () => {
 
 	it('aborts during refresh without sending a second PUT or cancelling session rotation', async () => {
 		const { setAuth } = await import('$lib/stores/auth');
-		setAuth({ token: 'old-token', refreshToken: 'refresh-token', accessExpiresAt: null });
+		setAuth({ token: 'old-token', refreshToken: 'refresh-token', accessExpiresAt: null, domainId: 'domain-1', identityDomainId: 'domain-1' });
 		const refreshResponse = Promise.withResolvers<Response>();
 		mockFetch.mockReturnValueOnce(refreshResponse.promise);
 		const { api, refreshSession } = await import('../client');
@@ -101,7 +101,7 @@ describe('authenticated progress upload recovery', () => {
 		const rotation = refreshSession();
 		abort();
 		await expect(promise).rejects.toMatchObject({ status: 0 });
-		refreshResponse.resolve(jsonResponse({ token: 'new-token', refresh_token: 'new-refresh' }));
+		refreshResponse.resolve(jsonResponse({ token: 'new-token', refresh_token: 'new-refresh', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain' }));
 		await expect(rotation).resolves.toBe('new-token');
 		expect(lastXhr).toBe(rejectedXhr);
 	});
@@ -486,7 +486,7 @@ describe('getBaseUrl', () => {
 			favicon_path: '/favicon.svg',
 			refresh_interval_ms: 5000,
 			services: { magnum: false, manila: false, zun: false, k3s: false, trove: false, swift: false, barbican: false },
-			runtime: { api_base: 'http://api.example.com', s3_base: '', grafana_base: '', librechat_base: '', gitlab_base: '' },
+			runtime: { api_base: 'http://api.example.com', s3_base: '', grafana_base: '', librechat_base: '' },
 		});
 		const { getBaseUrl } = await import('../client');
 		expect(getBaseUrl()).toBe('http://api.example.com');

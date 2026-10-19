@@ -72,10 +72,11 @@ const inspect = (image, response) => [
 const allUnlabeled = [/imagetools inspect/, JSON.stringify(config())];
 
 test("path rules keep the Afterglow deployment set coupling", () => {
+	assert.deepEqual(ALL_TARGETS, ["backend", "frontend", "worker"]);
 	assert.deepEqual(targetsForFiles(["backend/app/main.py"]), ["backend", "frontend", "worker"]);
 	assert.deepEqual(targetsForFiles(["services/afterglow-crypto/x.py"]), ["backend", "frontend", "worker"]);
 	assert.deepEqual(targetsForFiles(["frontend/src/app.html"]), ["frontend"]);
-	assert.deepEqual(targetsForFiles(["cloud-shell/bootstrap.sh"]), ["cloud-shell"]);
+	assert.deepEqual(targetsForFiles(["cloud-shell/src/bootstrap.py"]), []);
 	assert.deepEqual(targetsForFiles(["Dockerfile"]), ALL_TARGETS);
 	assert.deepEqual(targetsForFiles([".dockerignore"]), ALL_TARGETS);
 	assert.deepEqual(targetsForFiles([".github/workflows/docker-build.yml"]), ALL_TARGETS);
@@ -89,7 +90,7 @@ test("workflow_dispatch maps the requested set and rejects unknown values", () =
 	assert.deepEqual(decide("backend"), ["backend"]);
 	assert.deepEqual(decide("frontend"), ["frontend"]);
 	assert.deepEqual(decide("worker"), ["worker"]);
-	assert.deepEqual(decide("cloud-shell"), ["cloud-shell"]);
+	assert.throws(() => decide("cloud-shell"), /Unsupported dispatch target: cloud-shell/);
 	assert.deepEqual(decide("afterglow"), ALL_TARGETS);
 	assert.deepEqual(decide("all"), ALL_TARGETS);
 	assert.throws(() => decide("database"), /Unsupported dispatch target: database/);
@@ -154,7 +155,7 @@ test("an unexpected event-basis failure is annotated, not only logged", () => {
 	assert.equal(main(devPushEnv(), { exec, stdout: { write: (line) => lines.push(line) } }), 0);
 	const output = lines.join("");
 	assert.match(output, /^::warning title=Image target detection::Dev push event basis is unavailable \(fetch of before 1{40} failed: /m);
-	assert.match(output, /^targets=\["backend","frontend","worker","cloud-shell"\]$/m);
+	assert.match(output, /^targets=\["backend","frontend","worker"\]$/m);
 
 	// main/태그/PR/dispatch 는 event 기준을 쓰지 않으므로 이 경고가 없다.
 	for (const env of [
@@ -180,6 +181,20 @@ test("no image paths and images that are not published (bootstrap) build nothing
 	}
 });
 
+test("retired package paths do not select a build or query the retired image", () => {
+	const exec = fakeExec([
+		fetchBefore,
+		diffBefore(["cloud-shell/pyproject.toml", "cloud-shell/src/bootstrap.py"]),
+		inspect("afterglow-api", JSON.stringify(config())),
+		inspect("afterglow", JSON.stringify(config())),
+		inspect("afterglow-worker", JSON.stringify(config())),
+	]);
+	const result = collectAndDecide(devPushEnv(), exec);
+	assert.deepEqual(result.targets, []);
+	assert.deepEqual(result.warnings, []);
+	assert.equal(exec.calls.filter((call) => call.includes("imagetools inspect")).length, 3);
+});
+
 test("a registry failure while reading published revisions builds those targets and warns", () => {
 	for (const stderr of [
 		"ERROR: failed to authorize: 401 Unauthorized",
@@ -199,10 +214,9 @@ test("a registry failure while reading published revisions builds those targets 
 		diffBefore(["docs/index.md"]),
 		inspect("afterglow-api", JSON.stringify(config())),
 		inspect("afterglow-worker", JSON.stringify(config())),
-		inspect("afterglow", JSON.stringify(config())),
-		inspect("afterglow-cloud-shell", commandError("ERROR: toomanyrequests: rate limit exceeded")),
+		inspect("afterglow", commandError("ERROR: toomanyrequests: rate limit exceeded")),
 	]);
-	assert.deepEqual(collectAndDecide(devPushEnv(), partial).targets, ["cloud-shell"]);
+	assert.deepEqual(collectAndDecide(devPushEnv(), partial).targets, ["frontend"]);
 });
 
 test("a failed registry login is reported as a warning", () => {
@@ -212,7 +226,7 @@ test("a failed registry login is reported as a warning", () => {
 	const output = lines.join("");
 	assert.match(output, /^::warning title=Image target detection::Registry login failed/m);
 	assert.match(output, /^::warning title=Image target detection::backend: published revision check failed/m);
-	assert.match(output, /^targets=\["backend","frontend","worker","cloud-shell"\]$/m);
+	assert.match(output, /^targets=\["backend","frontend","worker"\]$/m);
 
 	const quiet = [];
 	const ok = fakeExec([fetchBefore, diffBefore(["frontend/a.ts"]), allUnlabeled]);
@@ -225,7 +239,7 @@ test("targets already selected by the event basis are not inspected", () => {
 	collectAndDecide(devPushEnv(), exec);
 	const inspected = exec.calls.filter((call) => call.includes("imagetools inspect"));
 	assert.equal(inspected.some((call) => call.includes("/afterglow:dev")), false);
-	assert.equal(inspected.length, 3);
+	assert.equal(inspected.length, 2);
 });
 
 test("published-revision basis rebuilds a target whose earlier build failed (carry-over)", () => {
@@ -236,7 +250,6 @@ test("published-revision basis rebuilds a target whose earlier build failed (car
 		inspect("afterglow-api", JSON.stringify(config(PUB))),
 		inspect("afterglow-worker", JSON.stringify(config(BEFORE))),
 		inspect("afterglow", JSON.stringify(config(BEFORE))),
-		inspect("afterglow-cloud-shell", JSON.stringify(config())),
 		[`gh api repos/${REPO}/compare/${PUB}...${HEAD} --jq .status`, "ahead"],
 		[`gh api repos/${REPO}/compare/${BEFORE}...${HEAD} --jq .status`, "ahead"],
 		[`git fetch --no-tags --depth=1 origin ${PUB}`, ""],
@@ -266,18 +279,17 @@ test("compare statuses: identical/ahead use the diff, behind falls back, diverge
 				fetchBefore,
 				diffBefore(["docs/index.md"]),
 				inspect("afterglow-api", JSON.stringify(config())),
-				inspect("afterglow-worker", JSON.stringify(config())),
+				inspect("afterglow-worker", JSON.stringify(config(published))),
 				inspect("afterglow", JSON.stringify(config())),
-				inspect("afterglow-cloud-shell", JSON.stringify(config(published))),
 				[/gh api .*compare/, status],
 				[`git fetch --no-tags --depth=1 origin ${published}`, ""],
-				[`git diff --no-renames --name-only ${published} ${HEAD}`, "cloud-shell/bootstrap.sh"],
+				[`git diff --no-renames --name-only ${published} ${HEAD}`, "backend/app/main.py"],
 			]),
 		).targets;
-	assert.deepEqual(run("ahead"), ["cloud-shell"]);
-	assert.deepEqual(run("identical"), ["cloud-shell"]);
+	assert.deepEqual(run("ahead"), ["frontend", "worker"]);
+	assert.deepEqual(run("identical"), ["frontend", "worker"]);
 	assert.deepEqual(run("behind"), []);
-	assert.deepEqual(run("diverged"), ["cloud-shell"]);
+	assert.deepEqual(run("diverged"), ["frontend", "worker"]);
 });
 
 test("any error after a published revision is read builds that target", () => {
@@ -287,7 +299,6 @@ test("any error after a published revision is read builds that target", () => {
 		inspect("afterglow-api", JSON.stringify(config())),
 		inspect("afterglow-worker", JSON.stringify(config())),
 		inspect("afterglow", JSON.stringify(config(PUB))),
-		inspect("afterglow-cloud-shell", JSON.stringify(config())),
 	];
 	const compareError = fakeExec([...base, [/compare/, new Error("HTTP 502")]]);
 	assert.deepEqual(collectAndDecide(devPushEnv(), compareError).targets, ["frontend"]);
@@ -314,7 +325,6 @@ test("a docker-build.yml change since the published revision rebuilds that targe
 		inspect("afterglow-api", JSON.stringify(config())),
 		inspect("afterglow-worker", JSON.stringify(config(PUB))),
 		inspect("afterglow", JSON.stringify(config())),
-		inspect("afterglow-cloud-shell", JSON.stringify(config())),
 		[/compare/, "ahead"],
 		[`git fetch --no-tags --depth=1 origin ${PUB}`, ""],
 		[`git diff --no-renames --name-only ${PUB} ${HEAD}`, ".github/workflows/docker-build.yml"],
@@ -330,7 +340,6 @@ test("a frontend published revision behind a backend change rebuilds frontend", 
 		inspect("afterglow-api", JSON.stringify(config())),
 		inspect("afterglow-worker", JSON.stringify(config())),
 		inspect("afterglow", JSON.stringify(config(PUB))),
-		inspect("afterglow-cloud-shell", JSON.stringify(config())),
 		[/compare/, "ahead"],
 		[`git fetch --no-tags --depth=1 origin ${PUB}`, ""],
 		[`git diff --no-renames --name-only ${PUB} ${HEAD}`, "backend/app/main.py"],
@@ -338,7 +347,7 @@ test("a frontend published revision behind a backend change rebuilds frontend", 
 	assert.deepEqual(collectAndDecide(devPushEnv(), exec).targets, ["frontend"]);
 });
 
-test("main writes targets, standard_targets and cloud_shell to GITHUB_OUTPUT", () => {
+test("main writes the single remaining target list to GITHUB_OUTPUT", () => {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "detect-targets-"));
 	const output = path.join(dir, "out");
 	try {
@@ -347,7 +356,7 @@ test("main writes targets, standard_targets and cloud_shell to GITHUB_OUTPUT", (
 		assert.equal(main(devPushEnv({ GITHUB_OUTPUT: output }), { exec, stdout }), 0);
 		assert.equal(
 			fs.readFileSync(output, "utf8"),
-			'targets=["frontend","cloud-shell"]\nstandard_targets=["frontend"]\ncloud_shell=true\n',
+			'targets=["frontend"]\n',
 		);
 
 		const bad = path.join(dir, "bad");

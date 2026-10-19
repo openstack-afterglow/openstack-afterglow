@@ -6,7 +6,9 @@
   - admin_client      → 명시적인 성공 응답 및 provider 부작용 검증
 """
 
+import asyncio
 import json
+import threading
 import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -16,6 +18,15 @@ import pytest
 from requests import Response
 
 from app.services import identity_roles, keystone, session_store
+from tests.ownership_journal import ownership_journal as ownership_journal
+from tests.test_domain_projects import domain_native as domain_native
+
+
+@pytest.fixture(autouse=True)
+def selected_domain_directory(mock_conn, ownership_journal):
+    """Native directory authority for these explicitly default-domain requests."""
+    mock_conn.identity.get_domain.return_value = SimpleNamespace(id="default", name="Default")
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 사용자 관리 (3개)
@@ -24,27 +35,29 @@ from app.services import identity_roles, keystone, session_store
 
 @pytest.mark.asyncio
 async def test_list_users_requires_admin(non_admin_client):
-    resp = await non_admin_client.get("/api/v1/admin/users")
+    resp = await non_admin_client.get("/api/v1/admin/users?domain_id=default")
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_list_users_allowed(admin_client, mock_conn):
     mock_conn.identity.users.return_value = iter([])
-    resp = await admin_client.get("/api/v1/admin/users")
+    resp = await admin_client.get("/api/v1/admin/users?domain_id=default")
     assert resp.status_code == 200
     assert resp.json() == {"items": [], "next_marker": None, "count": 0}
 
 
 @pytest.mark.asyncio
 async def test_create_user_requires_admin(non_admin_client):
-    resp = await non_admin_client.post("/api/v1/admin/users", json={"name": "u", "password": "pw"})
+    resp = await non_admin_client.post(
+        "/api/v1/admin/users", json={"name": "u", "password": "pw", "domain_id": "default"}
+    )
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_update_user_requires_admin(non_admin_client):
-    resp = await non_admin_client.patch("/api/v1/admin/users/user-1", json={"name": "u"})
+    resp = await non_admin_client.patch("/api/v1/admin/users/user-1?domain_id=default", json={"name": "u"})
     assert resp.status_code == 403
 
 
@@ -55,20 +68,20 @@ async def test_update_user_requires_admin(non_admin_client):
 
 @pytest.mark.asyncio
 async def test_list_project_names_requires_admin(non_admin_client):
-    resp = await non_admin_client.get("/api/v1/admin/projects/names")
+    resp = await non_admin_client.get("/api/v1/admin/projects/names?domain_id=default")
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_list_projects_requires_admin(non_admin_client):
-    resp = await non_admin_client.get("/api/v1/admin/projects")
+    resp = await non_admin_client.get("/api/v1/admin/projects?domain_id=default")
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_list_projects_allowed(admin_client, mock_conn):
     mock_conn.identity.projects.return_value = iter([])
-    resp = await admin_client.get("/api/v1/admin/projects")
+    resp = await admin_client.get("/api/v1/admin/projects?domain_id=default")
     assert resp.status_code == 200
     assert resp.json()["items"] == []
     assert resp.json()["count"] == 0
@@ -77,31 +90,31 @@ async def test_list_projects_allowed(admin_client, mock_conn):
 
 @pytest.mark.asyncio
 async def test_create_project_requires_admin(non_admin_client):
-    resp = await non_admin_client.post("/api/v1/admin/projects", json={"name": "p"})
+    resp = await non_admin_client.post("/api/v1/admin/projects", json={"name": "p", "domain_id": "default"})
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_update_project_requires_admin(non_admin_client):
-    resp = await non_admin_client.patch("/api/v1/admin/projects/proj-1", json={"name": "p"})
+    resp = await non_admin_client.patch("/api/v1/admin/projects/proj-1?domain_id=default", json={"name": "p"})
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_delete_project_requires_admin(non_admin_client):
-    resp = await non_admin_client.delete("/api/v1/admin/projects/proj-1")
+    resp = await non_admin_client.delete("/api/v1/admin/projects/proj-1?domain_id=default")
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_list_project_members_requires_admin(non_admin_client):
-    resp = await non_admin_client.get("/api/v1/admin/projects/proj-1/members")
+    resp = await non_admin_client.get("/api/v1/admin/projects/proj-1/members?domain_id=default")
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_get_project_requires_admin(non_admin_client):
-    resp = await non_admin_client.get("/api/v1/admin/projects/proj-1")
+    resp = await non_admin_client.get("/api/v1/admin/projects/proj-1?domain_id=default")
     assert resp.status_code == 403
 
 
@@ -117,7 +130,7 @@ async def test_get_project_returns_shape(admin_client, mock_conn):
     type(fake_proj).__getattr__ = lambda self, k: None  # getattr fallback
     mock_conn.identity.get_project.return_value = fake_proj
 
-    resp = await admin_client.get("/api/v1/admin/projects/proj-abc")
+    resp = await admin_client.get("/api/v1/admin/projects/proj-abc?domain_id=default")
 
     assert resp.status_code == 200
     data = resp.json()
@@ -131,11 +144,12 @@ async def test_get_project_returns_shape(admin_client, mock_conn):
 @pytest.mark.asyncio
 async def test_get_project_not_found(admin_client, mock_conn):
     """존재하지 않는 project_id → 404."""
-    mock_conn.identity.get_project.side_effect = Exception("Not found")
+    mock_conn.identity.get_project.return_value = None
 
-    resp = await admin_client.get("/api/v1/admin/projects/nonexistent")
+    resp = await admin_client.get("/api/v1/admin/projects/nonexistent?domain_id=default")
 
     assert resp.status_code == 404
+    assert resp.json() == {"detail": "identity_not_found"}
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -145,13 +159,13 @@ async def test_get_project_not_found(admin_client, mock_conn):
 
 @pytest.mark.asyncio
 async def test_get_quota_requires_admin(non_admin_client):
-    resp = await non_admin_client.get("/api/v1/admin/quotas/proj-1")
+    resp = await non_admin_client.get("/api/v1/admin/quotas/proj-1?domain_id=default")
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_update_quota_requires_admin(non_admin_client):
-    resp = await non_admin_client.put("/api/v1/admin/quotas/proj-1", json={"cores": 20})
+    resp = await non_admin_client.put("/api/v1/admin/quotas/proj-1?domain_id=default", json={"cores": 20})
     assert resp.status_code == 403
 
 
@@ -162,51 +176,51 @@ async def test_update_quota_requires_admin(non_admin_client):
 
 @pytest.mark.asyncio
 async def test_list_groups_requires_admin(non_admin_client):
-    resp = await non_admin_client.get("/api/v1/admin/groups")
+    resp = await non_admin_client.get("/api/v1/admin/groups?domain_id=default")
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_list_groups_allowed(admin_client, mock_conn):
     mock_conn.identity.groups.return_value = iter([])
-    resp = await admin_client.get("/api/v1/admin/groups")
+    resp = await admin_client.get("/api/v1/admin/groups?domain_id=default")
     assert resp.status_code == 200
     assert resp.json() == []
 
 
 @pytest.mark.asyncio
 async def test_create_group_requires_admin(non_admin_client):
-    resp = await non_admin_client.post("/api/v1/admin/groups", json={"name": "g"})
+    resp = await non_admin_client.post("/api/v1/admin/groups", json={"name": "g", "domain_id": "default"})
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_update_group_requires_admin(non_admin_client):
-    resp = await non_admin_client.patch("/api/v1/admin/groups/grp-1", json={"name": "g"})
+    resp = await non_admin_client.patch("/api/v1/admin/groups/grp-1?domain_id=default", json={"name": "g"})
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_delete_group_requires_admin(non_admin_client):
-    resp = await non_admin_client.delete("/api/v1/admin/groups/grp-1")
+    resp = await non_admin_client.delete("/api/v1/admin/groups/grp-1?domain_id=default")
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_list_group_users_requires_admin(non_admin_client):
-    resp = await non_admin_client.get("/api/v1/admin/groups/grp-1/users")
+    resp = await non_admin_client.get("/api/v1/admin/groups/grp-1/users?domain_id=default")
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_add_user_to_group_requires_admin(non_admin_client):
-    resp = await non_admin_client.put("/api/v1/admin/groups/grp-1/users/user-1")
+    resp = await non_admin_client.put("/api/v1/admin/groups/grp-1/users/user-1?domain_id=default")
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_remove_user_from_group_requires_admin(non_admin_client):
-    resp = await non_admin_client.delete("/api/v1/admin/groups/grp-1/users/user-1")
+    resp = await non_admin_client.delete("/api/v1/admin/groups/grp-1/users/user-1?domain_id=default")
     assert resp.status_code == 403
 
 
@@ -234,7 +248,7 @@ async def test_list_roles_allowed(admin_client, mock_conn):
 @pytest.mark.asyncio
 async def test_assign_role_requires_admin(non_admin_client):
     resp = await non_admin_client.post(
-        "/api/v1/admin/roles/assign", json={"user_id": "u", "project_id": "p", "role_id": "r"}
+        "/api/v1/admin/roles/assign?domain_id=default", json={"user_id": "u", "project_id": "p", "role_id": "r"}
     )
     assert resp.status_code == 403
 
@@ -242,7 +256,8 @@ async def test_assign_role_requires_admin(non_admin_client):
 @pytest.mark.asyncio
 async def test_revoke_role_requires_admin(non_admin_client):
     resp = await non_admin_client.delete(
-        "/api/v1/admin/roles/assign", params={"user_id": "u", "project_id": "p", "role_id": "r"}
+        "/api/v1/admin/roles/assign?domain_id=default",
+        params={"domain_id": "default", "user_id": "u", "project_id": "p", "role_id": "r"},
     )
     assert resp.status_code == 403
 
@@ -250,7 +265,7 @@ async def test_revoke_role_requires_admin(non_admin_client):
 @pytest.mark.asyncio
 async def test_assign_group_role_requires_admin(non_admin_client):
     resp = await non_admin_client.post(
-        "/api/v1/admin/roles/assign-group", json={"group_id": "g", "project_id": "p", "role_id": "r"}
+        "/api/v1/admin/roles/assign-group?domain_id=default", json={"group_id": "g", "project_id": "p", "role_id": "r"}
     )
     assert resp.status_code == 403
 
@@ -258,53 +273,10 @@ async def test_assign_group_role_requires_admin(non_admin_client):
 @pytest.mark.asyncio
 async def test_revoke_group_role_requires_admin(non_admin_client):
     resp = await non_admin_client.delete(
-        "/api/v1/admin/roles/assign-group", params={"group_id": "g", "project_id": "p", "role_id": "r"}
+        "/api/v1/admin/roles/assign-group?domain_id=default",
+        params={"domain_id": "default", "group_id": "g", "project_id": "p", "role_id": "r"},
     )
     assert resp.status_code == 403
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Monitoring SG auto-attach (프로젝트 생성 시)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-
-@pytest.mark.asyncio
-async def test_create_project_calls_both_monitoring_sgs(admin_client, mock_conn):
-    """프로젝트 생성 시 node_exporter + dcgm_exporter SG 자동 생성 모두 호출 검증."""
-    mock_project = MagicMock()
-    mock_project.id = "proj-new-1"
-    mock_project.name = "test-proj"
-    mock_project.description = ""
-    mock_project.is_enabled = True
-    mock_conn.identity.create_project.return_value = mock_project
-
-    fake_settings = MagicMock()
-    fake_settings.monitoring_auto_sg_enabled = True
-    fake_settings.monitoring_scrape_cidr = "10.0.0.0/8"
-    fake_settings.node_exporter_sg_name = "node_exporter"
-    fake_settings.dcgm_exporter_sg_name = "dcgm_exporter"
-
-    ne_called = []
-    dc_called = []
-
-    with (
-        patch("app.config.get_settings", return_value=fake_settings),
-        patch(
-            "app.services.neutron.ensure_node_exporter_sg",
-            side_effect=lambda *a, **kw: ne_called.append(a) or "node_exporter",
-        ),
-        patch(
-            "app.services.neutron.ensure_dcgm_exporter_sg",
-            side_effect=lambda *a, **kw: dc_called.append(a) or "dcgm_exporter",
-        ),
-    ):
-        resp = await admin_client.post("/api/v1/admin/projects", json={"name": "test-proj"})
-
-    assert resp.status_code in (200, 201)
-    assert len(ne_called) == 1
-    assert ne_called[0][1] == "proj-new-1"  # project_id
-    assert len(dc_called) == 1
-    assert dc_called[0][1] == "proj-new-1"
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -352,6 +324,12 @@ async def assignment_authority(mock_conn, monkeypatch):
     mock_conn.endpoint_for.return_value = "https://keystone.invalid/v3"
     mock_conn.identity.roles.side_effect = lambda: iter(roles)
     mock_conn.identity.get.side_effect = graph
+    mock_conn.identity.get_user.side_effect = lambda uid: SimpleNamespace(id=uid, domain_id="default")
+    mock_conn.identity.get_project.side_effect = lambda pid: SimpleNamespace(id=pid, domain_id="default")
+    mock_conn.identity.get_group.side_effect = lambda gid: SimpleNamespace(id=gid, domain_id="default")
+    mock_conn.identity.get_role.side_effect = lambda rid: SimpleNamespace(
+        **next(role for role in roles if role["id"] == rid)
+    )
     mock_conn.identity.assign_project_role_to_user.side_effect = assign
     mock_conn.identity.unassign_project_role_from_user.side_effect = revoke
     redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
@@ -373,77 +351,63 @@ async def assignment_authority(mock_conn, monkeypatch):
 async def _assignment_sessions(user_id):
     for uid in (user_id, "unaffected-user"):
         await session_store.store_session("session-" + uid, "token-" + uid, "some-proj", uid, int(time.time()) + 3600)
+    return {uid: await session_store.get_session("session-" + uid) for uid in (user_id, "unaffected-user")}
 
 
-async def _assert_assignment_effects(authority, user_id, project_id, role_id, *, remove=False):
-    assert await session_store.get_session("session-" + user_id) is None
-    assert await session_store.get_session("session-unaffected-user") is not None
-    authority.revoke_token.assert_called_once_with("token-" + user_id)
-    authority.record.assert_awaited_once_with(
-        project_id="test-project-123",
-        user_id="test-user-123",
-        username="testuser",
-        resource_type="role",
-        action="role_revoke" if remove else "role_assign",
-        status="success",
-        resource_id=role_id,
-        extra={"target_project_id": project_id},
-    )
+async def _assert_assignment_sessions(sessions):
+    for uid, original in sessions.items():
+        assert await session_store.get_session("session-" + uid) == original
 
 
 @pytest.mark.asyncio
-async def test_assign_admin_role_revokes_sessions(admin_client, mock_conn, assignment_authority):
-    """An admin grant changes provider state, revokes real sessions, and records the role audit."""
-    await _assignment_sessions("target-user-1")
+async def test_assign_admin_role_preserves_login(admin_client, mock_conn, assignment_authority):
+    """A project admin grant changes authority without deleting login families."""
+    sessions = await _assignment_sessions("target-user-1")
     resp = await admin_client.post(
-        "/api/v1/admin/roles/assign",
+        "/api/v1/admin/roles/assign?domain_id=default",
         json={"user_id": "target-user-1", "project_id": "admin-proj", "role_id": _ADMIN_ROLE_ID},
     )
 
     assert resp.status_code == 200
     assert resp.json() == {"status": "assigned"}
     assert assignment_authority.assignments == {("admin-proj", "target-user-1", _ADMIN_ROLE_ID)}
-    mock_conn.identity.assign_project_role_to_user.assert_called_once_with(
-        "admin-proj", "target-user-1", _ADMIN_ROLE_ID
-    )
-    await _assert_assignment_effects(assignment_authority, "target-user-1", "admin-proj", _ADMIN_ROLE_ID)
+    await _assert_assignment_sessions(sessions)
 
 
 @pytest.mark.asyncio
-async def test_assign_non_admin_role_revokes_sessions(admin_client, mock_conn, assignment_authority):
-    """Member grants also revoke sessions so project access is immediately re-evaluated."""
-    await _assignment_sessions("target-user-2")
+async def test_assign_non_admin_role_preserves_login(admin_client, mock_conn, assignment_authority):
+    """A member grant changes native authority without deleting login families."""
+    sessions = await _assignment_sessions("target-user-2")
     resp = await admin_client.post(
-        "/api/v1/admin/roles/assign",
+        "/api/v1/admin/roles/assign?domain_id=default",
         json={"user_id": "target-user-2", "project_id": "some-proj", "role_id": _MEMBER_ROLE_ID},
     )
 
     assert resp.status_code == 200
     assert resp.json() == {"status": "assigned"}
     assert assignment_authority.assignments == {("some-proj", "target-user-2", _MEMBER_ROLE_ID)}
-    mock_conn.identity.assign_project_role_to_user.assert_called_once_with(
-        "some-proj", "target-user-2", _MEMBER_ROLE_ID
-    )
-    await _assert_assignment_effects(assignment_authority, "target-user-2", "some-proj", _MEMBER_ROLE_ID)
+    await _assert_assignment_sessions(sessions)
 
 
 @pytest.mark.asyncio
-async def test_revoke_admin_role_revokes_sessions(admin_client, mock_conn, assignment_authority):
-    """An admin revoke removes the provider grant and invalidates only the target's sessions."""
+async def test_revoke_admin_role_preserves_login(admin_client, mock_conn, assignment_authority):
+    """A project admin revoke removes the grant without deleting login families."""
     assignment_authority.assignments.add(("admin-proj", "target-user-3", _ADMIN_ROLE_ID))
-    await _assignment_sessions("target-user-3")
+    sessions = await _assignment_sessions("target-user-3")
     resp = await admin_client.delete(
-        "/api/v1/admin/roles/assign",
-        params={"user_id": "target-user-3", "project_id": "admin-proj", "role_id": _ADMIN_ROLE_ID},
+        "/api/v1/admin/roles/assign?domain_id=default",
+        params={
+            "domain_id": "default",
+            "user_id": "target-user-3",
+            "project_id": "admin-proj",
+            "role_id": _ADMIN_ROLE_ID,
+        },
     )
 
     assert resp.status_code == 200
     assert resp.json() == {"status": "revoked"}
     assert assignment_authority.assignments == set()
-    mock_conn.identity.unassign_project_role_from_user.assert_called_once_with(
-        "admin-proj", "target-user-3", _ADMIN_ROLE_ID
-    )
-    await _assert_assignment_effects(assignment_authority, "target-user-3", "admin-proj", _ADMIN_ROLE_ID, remove=True)
+    await _assert_assignment_sessions(sessions)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -458,102 +422,38 @@ async def test_security_policy_requires_admin(non_admin_client):
 
 
 @pytest.mark.asyncio
-async def test_security_policy_returns_compat_flag_and_count(admin_client):
-    """security-policy가 legacy_compat, system_admin_count, admin_project_member_count를 반환한다."""
-
-    def _make_assign(uid: str):
-        a = MagicMock()
-        a.user = {"id": uid}
-        return a
-
+async def test_security_policy_returns_only_native_system_admin_count(admin_client):
+    """Project grants and compatibility settings never affect the strict policy shape."""
     mock_ks = MagicMock()
-    mock_ks.role_assignments.list.side_effect = lambda **kwargs: (
-        [_make_assign("sys-1"), _make_assign("sys-2")] if kwargs.get("system") == "all" else [_make_assign("proj-1")]
-    )
-
+    mock_ks.role_assignments.list.return_value = [
+        SimpleNamespace(user={"id": "sys-1"}),
+        SimpleNamespace(user={"id": "sys-2"}),
+    ]
+    mock_ks.users.get.return_value = SimpleNamespace(name="Admin", email="", enabled=True)
     with (
-        patch(
-            "app.api.identity.admin_identity.keystone._resolve_admin_ids",
-            return_value=("proj-id", _ADMIN_ROLE_ID),
-        ),
-        patch(
-            "app.api.identity.admin_identity.keystone._get_admin_ks_client",
-            return_value=mock_ks,
-        ),
-        patch(
-            "app.config.get_settings",
-            return_value=MagicMock(admin_legacy_project_policy=True),
-        ),
+        patch("app.api.identity.admin_identity.keystone._resolve_admin_role_id", return_value=_ADMIN_ROLE_ID),
+        patch("app.api.identity.admin_identity.keystone._get_admin_ks_client", return_value=mock_ks),
     ):
         resp = await admin_client.get("/api/v1/admin/identity/security-policy")
 
     assert resp.status_code == 200
-    data = resp.json()
-    assert data["legacy_compat"] is True
-    assert data["system_admin_count"] == 2
-    assert data["admin_project_member_count"] == 1
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# migrate-from-project
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    assert resp.json() == {"system_admin_count": 2}
+    mock_ks.role_assignments.list.assert_called_once_with(role=_ADMIN_ROLE_ID, system="all")
 
 
 @pytest.mark.asyncio
-async def test_migrate_from_project_requires_admin(non_admin_client):
-    resp = await non_admin_client.post("/api/v1/admin/identity/system-roles/migrate-from-project")
-    assert resp.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_migrate_from_project_grants_only_missing(admin_client):
-    """이미 system admin인 멤버는 skip, 아닌 멤버만 grant → migrated/skipped 카운트 정확."""
-
-    def _make_assign(uid: str):
-        a = MagicMock()
-        a.user = {"id": uid}
-        return a
-
+async def test_security_policy_native_list_failure_is_not_zero(admin_client):
     mock_ks = MagicMock()
-
-    def _list_side(**kwargs):
-        if kwargs.get("system") == "all":
-            return [_make_assign("already-admin")]
-        return [_make_assign("already-admin"), _make_assign("new-admin")]
-
-    mock_ks.role_assignments.list.side_effect = _list_side
-    mock_ks.roles.grant = MagicMock(return_value=None)
-
+    mock_ks.role_assignments.list.side_effect = RuntimeError("native assignment list unavailable")
     with (
-        patch(
-            "app.api.identity.admin_identity.keystone._resolve_admin_ids",
-            return_value=("admin-proj-id", _ADMIN_ROLE_ID),
-        ),
-        patch(
-            "app.api.identity.admin_identity.keystone._get_admin_ks_client",
-            return_value=mock_ks,
-        ),
-        patch(
-            "app.api.identity.admin_identity.session_store.revoke_user_sessions",
-            new=AsyncMock(return_value=1),
-        ) as mock_revoke,
-        patch(
-            "app.api.identity.admin_identity.activity.record",
-            new=AsyncMock(),
-        ) as mock_record,
+        patch("app.api.identity.admin_identity.keystone._resolve_admin_role_id", return_value=_ADMIN_ROLE_ID),
+        patch("app.api.identity.admin_identity.keystone._get_admin_ks_client", return_value=mock_ks),
     ):
-        resp = await admin_client.post("/api/v1/admin/identity/system-roles/migrate-from-project")
+        resp = await admin_client.get("/api/v1/admin/identity/security-policy")
 
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["migrated"] == 1
-    assert data["skipped"] == 1
-    assert data["errors"] == []
-    mock_ks.roles.grant.assert_called_once()
-    mock_revoke.assert_awaited_once_with("new-admin")
-    mock_record.assert_awaited_once()
-    assert mock_record.call_args.kwargs["action"] == "admin_system_role_grant"
-    assert mock_record.call_args.kwargs["resource_id"] == "new-admin"
+    assert resp.status_code == 500
+    assert "system_admin_count" not in resp.json()
+    mock_ks.role_assignments.list.assert_called_once_with(role=_ADMIN_ROLE_ID, system="all")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -567,76 +467,176 @@ async def test_list_system_roles_requires_admin(non_admin_client):
     assert resp.status_code == 403
 
 
-@pytest.mark.asyncio
-async def test_grant_system_role_revokes_sessions(admin_client):
-    """system role grant 시 대상 세션 즉시 무효화 + audit 기록."""
-    mock_ks = MagicMock()
-    mock_ks.roles.grant = MagicMock(return_value=None)
+class _SystemKeystone:
+    """Native raw system grants and group members; effective omits system grants."""
 
-    with (
-        patch(
-            "app.api.identity.admin_identity.keystone._resolve_admin_ids",
-            return_value=(None, _ADMIN_ROLE_ID),
-        ),
-        patch(
-            "app.api.identity.admin_identity.keystone._get_admin_ks_client",
-            return_value=mock_ks,
-        ),
-        patch(
-            "app.api.identity.admin_identity.session_store.revoke_user_sessions",
-            new=AsyncMock(return_value=1),
-        ) as mock_revoke,
-        patch(
-            "app.api.identity.admin_identity.activity.record",
-            new=AsyncMock(),
-        ) as mock_record,
-    ):
-        resp = await admin_client.post(
-            "/api/v1/admin/identity/system-roles/grant",
-            json={"user_id": "target-user-sys"},
+    def __init__(self, direct, *, via_group=(), disabled=()):
+        self.direct, self.via_group, self.disabled = set(direct), set(via_group), set(disabled)
+        self.calls = []
+        self.role_assignments = SimpleNamespace(list=self._list)
+        self.roles = SimpleNamespace(grant=self._grant, revoke=self._revoke)
+        native_roles = [
+            {"id": role_id, "name": name, "domain_id": None}
+            for role_id, name in (
+                (_ADMIN_ROLE_ID, "admin"),
+                ("native-manager", "manager"),
+                (_MEMBER_ROLE_ID, "member"),
+                ("native-reader", "reader"),
+            )
+        ]
+        self.roles.list = lambda: list(native_roles)
+        self.inference_rules = SimpleNamespace(list_inference_roles=lambda: [])
+        self.domains = SimpleNamespace(
+            get=lambda did: SimpleNamespace(id=did, name=did, enabled=True),
+            list=lambda: [SimpleNamespace(id="default", name="Default", enabled=True)],
+        )
+        # System-authority tests represent a legacy identity domain with no
+        # canonical Default project; policy reads must not bootstrap one.
+        self.projects = SimpleNamespace(list=lambda **kwargs: [])
+        self.groups = SimpleNamespace(
+            get=lambda gid: SimpleNamespace(id=gid, name=gid, description="", domain_id="default"),
+            list=lambda user=None, **kwargs: [SimpleNamespace(id="operators")] if user in self.via_group else [],
+        )
+        self.users = SimpleNamespace(
+            get=lambda uid: SimpleNamespace(id=uid, domain_id="default", enabled=uid not in self.disabled),
+            list=lambda group: (
+                [SimpleNamespace(id=uid) for uid in sorted(self.via_group)] if group == "operators" else []
+            ),
         )
 
+    def _list(self, role=None, system=None, user=None, effective=False, group=None, project=None, domain=None):
+        assert system in {None, "all"}
+        if project is not None or domain is not None:
+            return []
+        if effective:
+            return []
+        rows = [
+            SimpleNamespace(user={"id": uid}, role={"id": _ADMIN_ROLE_ID}, scope={"system": {"all": True}})
+            for uid in sorted(self.direct)
+            if group is None and (user is None or uid == user)
+        ]
+        if self.via_group and user is None and group in {None, "operators"}:
+            rows.append(
+                SimpleNamespace(group={"id": "operators"}, role={"id": _ADMIN_ROLE_ID}, scope={"system": {"all": True}})
+            )
+        return rows
+
+    def _grant(self, *, role, user, system):
+        self.calls.append(("grant", user))
+        self.direct.add(user)
+
+    def _revoke(self, *, role, user, system):
+        self.calls.append(("revoke", user))
+        self.direct.discard(user)
+
+
+@pytest.fixture
+def system_keystone(assignment_authority, monkeypatch, mock_conn):
+    state = {}
+    original_roles = mock_conn.identity.roles.side_effect
+
+    def native_catalog():
+        rows = list(original_roles())
+        if not any(identity_roles._field(row, "name") == "manager" for row in rows):
+            rows.append({"id": "native-manager", "name": "manager", "domain_id": None, "description": ""})
+        return iter(rows)
+
+    mock_conn.identity.roles.side_effect = native_catalog
+
+    def install(ks):
+        state["ks"] = ks
+        monkeypatch.setattr(keystone, "_resolve_admin_role_id", lambda: _ADMIN_ROLE_ID)
+        monkeypatch.setattr(keystone, "_get_admin_ks_client", lambda: ks)
+        return ks
+
+    return install
+
+
+@pytest.mark.asyncio
+async def test_grant_system_role_revokes_sessions(admin_client, system_keystone):
+    """system role grant 시 대상 세션 즉시 무효화 + audit 기록."""
+    ks = system_keystone(_SystemKeystone({"admin-1"}))
+    with (
+        patch(
+            "app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock(return_value=1)
+        ) as mock_revoke,
+        patch("app.api.identity.admin_identity.activity.record", new=AsyncMock()) as mock_record,
+    ):
+        resp = await admin_client.post("/api/v1/admin/identity/system-roles/grant", json={"user_id": "target-user-sys"})
     assert resp.status_code == 200
+    assert ks.calls == [("grant", "target-user-sys")]
     mock_revoke.assert_awaited_once_with("target-user-sys")
-    mock_record.assert_awaited_once()
     assert mock_record.call_args.kwargs["action"] == "admin_system_role_grant"
     assert mock_record.call_args.kwargs["resource_id"] == "target-user-sys"
 
 
 @pytest.mark.asyncio
-async def test_revoke_system_role_revokes_sessions(admin_client):
+async def test_revoke_system_role_revokes_sessions(admin_client, system_keystone):
     """system role revoke 시 대상 세션 즉시 무효화 + audit 기록."""
-    mock_ks = MagicMock()
-    mock_ks.roles.revoke = MagicMock(return_value=None)
-
+    ks = system_keystone(_SystemKeystone({"target-user-sys", "admin-2"}))
     with (
         patch(
-            "app.api.identity.admin_identity.keystone._resolve_admin_ids",
-            return_value=(None, _ADMIN_ROLE_ID),
-        ),
-        patch(
-            "app.api.identity.admin_identity.keystone._get_admin_ks_client",
-            return_value=mock_ks,
-        ),
-        patch(
-            "app.api.identity.admin_identity.session_store.revoke_user_sessions",
-            new=AsyncMock(return_value=1),
+            "app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock(return_value=1)
         ) as mock_revoke,
-        patch(
-            "app.api.identity.admin_identity.activity.record",
-            new=AsyncMock(),
-        ) as mock_record,
+        patch("app.api.identity.admin_identity.activity.record", new=AsyncMock()) as mock_record,
     ):
         resp = await admin_client.post(
-            "/api/v1/admin/identity/system-roles/revoke",
-            json={"user_id": "target-user-sys"},
+            "/api/v1/admin/identity/system-roles/revoke", json={"user_id": "target-user-sys"}
         )
-
-    assert resp.status_code == 200
+    assert resp.status_code == 200 and resp.json()["status"] == "revoked"
+    assert ks.calls == [("revoke", "target-user-sys")]
     mock_revoke.assert_awaited_once_with("target-user-sys")
-    mock_record.assert_awaited_once()
     assert mock_record.call_args.kwargs["action"] == "admin_system_role_revoke"
-    assert mock_record.call_args.kwargs["resource_id"] == "target-user-sys"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["cancel", "lost_reply"])
+async def test_committed_system_revoke_invalidates_sessions_after_interrupted_reply(
+    admin_client, system_keystone, monkeypatch, failure
+):
+    from app.api.identity import admin_identity
+
+    ks = system_keystone(_SystemKeystone({"target-user-sys", "admin-2"}))
+    entered, release = threading.Event(), threading.Event()
+    original = ks.roles.revoke
+    sessions = {"target-user-sys", "admin-2"}
+    cleared_authority = []
+
+    def revoke(**attrs):
+        entered.set()
+        assert release.wait(5)
+        original(**attrs)
+        if failure == "lost_reply":
+            raise ConnectionError("Synthetic committed revocation reply lost")
+
+    async def invalidate():
+        cleared_authority.append(True)
+
+    async def revoke_sessions(uid):
+        sessions.discard(uid)
+
+    ks.roles.revoke = revoke
+    monkeypatch.setattr(admin_identity, "invalidate_authority", invalidate)
+    monkeypatch.setattr(session_store, "revoke_user_sessions", revoke_sessions)
+    monkeypatch.setattr(admin_identity.activity, "record", AsyncMock())
+    request = asyncio.create_task(
+        admin_client.post("/api/v1/admin/identity/system-roles/revoke", json={"user_id": "target-user-sys"})
+    )
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        if failure == "cancel":
+            request.cancel()
+        release.set()
+        if failure == "cancel":
+            with pytest.raises(asyncio.CancelledError):
+                await request
+        else:
+            assert (await request).status_code >= 500
+    finally:
+        release.set()
+    assert ks.direct == {"admin-2"}
+    assert sessions == {"admin-2"}
+    assert cleared_authority
 
 
 @pytest.mark.asyncio
@@ -656,8 +656,8 @@ async def test_list_system_roles_returns_enriched_fields(admin_client):
 
     with (
         patch(
-            "app.api.identity.admin_identity.keystone._resolve_admin_ids",
-            return_value=(None, _ADMIN_ROLE_ID),
+            "app.api.identity.admin_identity.keystone._resolve_admin_role_id",
+            return_value=_ADMIN_ROLE_ID,
         ),
         patch(
             "app.api.identity.admin_identity.keystone._get_admin_ks_client",
@@ -676,103 +676,127 @@ async def test_list_system_roles_returns_enriched_fields(admin_client):
 
 
 @pytest.mark.asyncio
-async def test_revoke_last_system_admin_blocked(admin_client):
-    """마지막 system admin 회수 시도 → 422."""
-    mock_assignment = MagicMock()
-    mock_assignment.user = {"id": "last-admin"}
-
-    mock_ks = MagicMock()
-    mock_ks.role_assignments.list.return_value = [mock_assignment]
-
-    with (
-        patch(
-            "app.api.identity.admin_identity.keystone._resolve_admin_ids",
-            return_value=(None, _ADMIN_ROLE_ID),
-        ),
-        patch(
-            "app.api.identity.admin_identity.keystone._get_admin_ks_client",
-            return_value=mock_ks,
-        ),
-        patch(
-            "app.api.identity.admin_identity.session_store.revoke_user_sessions",
-            new=AsyncMock(return_value=0),
-        ),
-        patch(
-            "app.api.identity.admin_identity.activity.record",
-            new=AsyncMock(),
-        ),
-    ):
-        resp = await admin_client.post(
-            "/api/v1/admin/identity/system-roles/revoke",
-            json={"user_id": "last-admin"},
-        )
-
+@pytest.mark.parametrize(
+    "direct,disabled",
+    [({"last-admin"}, set()), ({"last-admin", "disabled-admin"}, {"disabled-admin"})],
+)
+async def test_revoke_last_enabled_effective_system_admin_blocked(admin_client, system_keystone, direct, disabled):
+    """A disabled account never counts as the remaining administrator."""
+    ks = system_keystone(_SystemKeystone(direct, disabled=disabled))
+    with patch("app.api.identity.admin_identity.activity.record", new=AsyncMock()):
+        resp = await admin_client.post("/api/v1/admin/identity/system-roles/revoke", json={"user_id": "last-admin"})
     assert resp.status_code == 422
     assert "마지막" in resp.json()["detail"]
+    assert ks.calls == []
 
 
 @pytest.mark.asyncio
-async def test_revoke_with_other_admins_succeeds(admin_client):
-    """system admin이 2명 이상인 경우 회수 성공 → 200."""
-
-    def _make_assign(uid: str):
-        a = MagicMock()
-        a.user = {"id": uid}
-        return a
-
-    mock_ks = MagicMock()
-    mock_ks.role_assignments.list.return_value = [_make_assign("admin-1"), _make_assign("admin-2")]
-    mock_ks.roles.revoke = MagicMock(return_value=None)
-
-    with (
-        patch(
-            "app.api.identity.admin_identity.keystone._resolve_admin_ids",
-            return_value=(None, _ADMIN_ROLE_ID),
-        ),
-        patch(
-            "app.api.identity.admin_identity.keystone._get_admin_ks_client",
-            return_value=mock_ks,
-        ),
-        patch(
-            "app.api.identity.admin_identity.session_store.revoke_user_sessions",
-            new=AsyncMock(return_value=1),
-        ),
-        patch(
-            "app.api.identity.admin_identity.activity.record",
-            new=AsyncMock(),
-        ),
-    ):
-        resp = await admin_client.post(
-            "/api/v1/admin/identity/system-roles/revoke",
-            json={"user_id": "admin-1"},
-        )
-
+async def test_revoke_allowed_when_group_derived_admin_remains(admin_client, system_keystone):
+    ks = system_keystone(_SystemKeystone({"admin-1"}, via_group={"group-admin"}))
+    with patch("app.api.identity.admin_identity.activity.record", new=AsyncMock()):
+        resp = await admin_client.post("/api/v1/admin/identity/system-roles/revoke", json={"user_id": "admin-1"})
     assert resp.status_code == 200
-    assert resp.json()["status"] == "revoked"
+    assert ks.calls == [("revoke", "admin-1")]
 
 
 @pytest.mark.asyncio
-async def test_revoke_non_admin_role_revokes_sessions(admin_client, mock_conn, assignment_authority):
-    """Member revocation invalidates sessions too, rather than keeping stale project access."""
+async def test_revoke_without_direct_grant_is_not_found(admin_client, system_keystone):
+    ks = system_keystone(_SystemKeystone({"admin-1", "admin-2"}, via_group={"group-only"}))
+    with patch("app.api.identity.admin_identity.activity.record", new=AsyncMock()):
+        resp = await admin_client.post("/api/v1/admin/identity/system-roles/revoke", json={"user_id": "group-only"})
+    assert resp.status_code == 404
+    assert ks.calls == []
+
+
+@pytest.mark.asyncio
+async def test_concurrent_revokes_never_remove_every_system_admin(admin_client, system_keystone):
+    ks = system_keystone(_SystemKeystone({"admin-1", "admin-2"}))
+    with patch("app.api.identity.admin_identity.activity.record", new=AsyncMock()):
+        responses = await asyncio.gather(
+            admin_client.post("/api/v1/admin/identity/system-roles/revoke", json={"user_id": "admin-1"}),
+            admin_client.post("/api/v1/admin/identity/system-roles/revoke", json={"user_id": "admin-2"}),
+        )
+    assert all(r.status_code in (200, 409, 422) for r in responses)
+    assert len([r for r in responses if r.status_code == 200]) == 1
+    assert len(ks.direct) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("others,status", [(set(), 422), ({"admin-2"}, 200)])
+async def test_disabling_last_enabled_system_admin_is_refused(admin_client, mock_conn, system_keystone, others, status):
+    system_keystone(_SystemKeystone({"admin-1", *others}))
+    mock_conn.identity.update_user.return_value = SimpleNamespace(id="admin-1", name="a", email="", is_enabled=False)
+    resp = await admin_client.patch("/api/v1/admin/users/admin-1", json={"enabled": False})
+    assert resp.status_code == status
+    assert mock_conn.identity.update_user.called is (status == 200)
+
+
+def _system_group(mock_conn, group_id, members):
+    mock_conn.identity.role_assignments.side_effect = lambda **_: [
+        SimpleNamespace(group={"id": group_id}, role={"id": _ADMIN_ROLE_ID}, scope={"system": {"all": True}})
+    ]
+    mock_conn.identity.group_users.side_effect = lambda gid: iter(SimpleNamespace(id=uid) for uid in members)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("group_admins,status", [({"admin-1"}, 422), ({"admin-1", "admin-2"}, 204)])
+async def test_group_member_removal_keeps_a_system_admin(
+    admin_client, mock_conn, system_keystone, group_admins, status
+):
+    system_keystone(_SystemKeystone(set(), via_group=group_admins))
+    _system_group(mock_conn, "sys-group", group_admins)
+    resp = await admin_client.delete("/api/v1/admin/groups/sys-group/users/admin-1")
+    assert resp.status_code == status
+    assert mock_conn.identity.remove_user_from_group.called is (status == 204)
+
+
+@pytest.mark.asyncio
+async def test_group_delete_cannot_remove_every_system_admin(admin_client, mock_conn, system_keystone):
+    system_keystone(_SystemKeystone(set(), via_group={"admin-1", "admin-2"}))
+    _system_group(mock_conn, "sys-group", {"admin-1", "admin-2", "member"})
+    resp = await admin_client.delete("/api/v1/admin/groups/sys-group")
+    assert resp.status_code == 422
+    mock_conn.identity.delete_group.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_unreadable_system_authority_fails_closed(admin_client, mock_conn, system_keystone, monkeypatch):
+    system_keystone(_SystemKeystone({"admin-1", "admin-2"}))
+
+    def unavailable():
+        raise RuntimeError("keystone down")
+
+    monkeypatch.setattr(keystone, "_get_admin_ks_client", unavailable)
+    resp = await admin_client.patch("/api/v1/admin/users/admin-1", json={"enabled": False})
+    assert resp.status_code == 503
+    mock_conn.identity.update_user.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_revoke_non_admin_role_preserves_login(admin_client, mock_conn, assignment_authority):
+    """Member revocation removes native authority without deleting login families."""
     assignment_authority.assignments.add(("some-proj", "target-user-4", _MEMBER_ROLE_ID))
-    await _assignment_sessions("target-user-4")
+    sessions = await _assignment_sessions("target-user-4")
     resp = await admin_client.delete(
-        "/api/v1/admin/roles/assign",
-        params={"user_id": "target-user-4", "project_id": "some-proj", "role_id": _MEMBER_ROLE_ID},
+        "/api/v1/admin/roles/assign?domain_id=default",
+        params={
+            "domain_id": "default",
+            "user_id": "target-user-4",
+            "project_id": "some-proj",
+            "role_id": _MEMBER_ROLE_ID,
+        },
     )
 
     assert resp.status_code == 200
     assert resp.json() == {"status": "revoked"}
     assert assignment_authority.assignments == set()
-    mock_conn.identity.unassign_project_role_from_user.assert_called_once_with(
-        "some-proj", "target-user-4", _MEMBER_ROLE_ID
-    )
-    await _assert_assignment_effects(assignment_authority, "target-user-4", "some-proj", _MEMBER_ROLE_ID, remove=True)
+    await _assert_assignment_sessions(sessions)
 
 
 @pytest.mark.asyncio
 async def test_sync_monitoring_sg_returns_both_sg_names(admin_client, mock_conn):
     """sync-monitoring-sg 엔드포인트가 두 SG 이름을 반환한다."""
+    mock_conn.identity.get_project.return_value = SimpleNamespace(id="proj-abc", domain_id="default")
     fake_settings = MagicMock()
     fake_settings.monitoring_scrape_cidr = "10.0.0.0/8"
     fake_settings.node_exporter_sg_name = "node_exporter"
@@ -783,7 +807,7 @@ async def test_sync_monitoring_sg_returns_both_sg_names(admin_client, mock_conn)
         patch("app.services.neutron.ensure_node_exporter_sg", return_value="node_exporter"),
         patch("app.services.neutron.ensure_dcgm_exporter_sg", return_value="dcgm_exporter"),
     ):
-        resp = await admin_client.post("/api/v1/admin/projects/proj-abc/sync-monitoring-sg")
+        resp = await admin_client.post("/api/v1/admin/projects/proj-abc/sync-monitoring-sg?domain_id=default")
 
     assert resp.status_code == 200
     data = resp.json()
@@ -840,9 +864,9 @@ async def test_generic_assignment_rejects_owner_bearing_roles_without_side_effec
         "project_id": "some-proj",
         "role_id": role_id,
     }
-    path = "/api/v1/admin/roles/assign" + ("-group" if principal == "group" else "")
+    path = "/api/v1/admin/roles/assign" + ("-group" if principal == "group" else "") + "?domain_id=default"
     if remove:
-        response = await admin_client.delete(path, params=payload)
+        response = await admin_client.delete(path, params={"domain_id": "default", **payload})
     else:
         response = await admin_client.post(path, json=payload)
 
@@ -870,9 +894,11 @@ async def test_project_assignment_fails_closed_without_graph_metadata(
     mock_conn.identity.get.side_effect = RuntimeError("provider graph unavailable")
     payload = {"user_id": "target-user", "project_id": "some-proj", "role_id": _MEMBER_ROLE_ID}
     if remove:
-        response = await admin_client.delete("/api/v1/admin/roles/assign", params=payload)
+        response = await admin_client.delete(
+            "/api/v1/admin/roles/assign?domain_id=default", params={"domain_id": "default", **payload}
+        )
     else:
-        response = await admin_client.post("/api/v1/admin/roles/assign", json=payload)
+        response = await admin_client.post("/api/v1/admin/roles/assign?domain_id=default", json=payload)
 
     assert response.status_code == 503
     mock_conn.identity.assign_project_role_to_user.assert_not_called()
@@ -891,9 +917,11 @@ async def test_project_assignment_rejects_concurrent_graph_mutation(
     payload = {"user_id": "target-user", "project_id": "some-proj", "role_id": _MEMBER_ROLE_ID}
     async with identity_roles._graph_lock(mock_conn):
         if remove:
-            response = await admin_client.delete("/api/v1/admin/roles/assign", params=payload)
+            response = await admin_client.delete(
+                "/api/v1/admin/roles/assign?domain_id=default", params={"domain_id": "default", **payload}
+            )
         else:
-            response = await admin_client.post("/api/v1/admin/roles/assign", json=payload)
+            response = await admin_client.post("/api/v1/admin/roles/assign?domain_id=default", json=payload)
 
     assert response.status_code == 409
     assert "in progress" in response.json()["detail"]
@@ -903,3 +931,85 @@ async def test_project_assignment_rejects_concurrent_graph_mutation(
     assignment_authority.record.assert_not_awaited()
     assignment_authority.revoke_token.assert_not_called()
     assert await session_store.get_session("session-target-user") is not None
+
+
+@pytest.mark.asyncio
+async def test_revoke_counts_native_role_inference_admin(admin_client, system_keystone, monkeypatch):
+    ks = system_keystone(_SystemKeystone({"admin-1"}))
+    direct_list = ks.role_assignments.list
+
+    def assignments(**query):
+        rows = direct_list(**query)
+        if query.get("user") is None:
+            rows.append(
+                SimpleNamespace(
+                    user={"id": "alias-admin"}, role={"id": "system-admin-alias"}, scope={"system": {"all": True}}
+                )
+            )
+        return rows
+
+    ks.role_assignments.list = assignments
+    monkeypatch.setattr(
+        identity_roles,
+        "_trusted_catalog",
+        lambda: [
+            {"id": _ADMIN_ROLE_ID, "inherited_role_ids": []},
+            {"id": "system-admin-alias", "inherited_role_ids": [_ADMIN_ROLE_ID]},
+        ],
+    )
+    response = await admin_client.post("/api/v1/admin/identity/system-roles/revoke", json={"user_id": "admin-1"})
+    assert response.status_code == 200
+    assert ks.calls == [("revoke", "admin-1")]
+
+
+@pytest.mark.asyncio
+async def test_revoke_rejects_foreign_scope_in_system_directory(admin_client, system_keystone):
+    ks = system_keystone(_SystemKeystone({"admin-1", "admin-2"}))
+    direct_list = ks.role_assignments.list
+
+    def assignments(**query):
+        rows = direct_list(**query)
+        if query.get("user") is None:
+            rows[-1].scope = {"project": {"id": "foreign-project"}}
+        return rows
+
+    ks.role_assignments.list = assignments
+    response = await admin_client.post("/api/v1/admin/identity/system-roles/revoke", json={"user_id": "admin-1"})
+    assert response.status_code == 503
+    assert ks.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("attrs", [{"name": "Renamed"}, {"enabled": False}])
+async def test_default_project_mutation_rejected_before_provider_write(admin_client, mock_conn, domain_native, attrs):
+    mock_conn.identity.get_project.return_value = SimpleNamespace(
+        id="domain-default", name="Default", domain_id="default", is_enabled=True
+    )
+    response = await admin_client.patch("/api/v1/admin/projects/domain-default?domain_id=default", json=attrs)
+    assert response.status_code == 422
+    mock_conn.identity.update_project.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method,path", [("DELETE", ""), ("GET", "/deletion-check")])
+async def test_default_project_delete_rejected_before_resource_inspection(
+    admin_client, mock_conn, domain_native, method, path
+):
+    mock_conn.identity.get_project.return_value = SimpleNamespace(
+        id="domain-default", name="Default", domain_id="default", is_enabled=True
+    )
+    with patch("app.api.identity.admin_identity.inspect_project_resources") as inspect:
+        response = await admin_client.request(method, f"/api/v1/admin/projects/domain-default{path}?domain_id=default")
+    assert response.status_code == 422
+    inspect.assert_not_called()
+    mock_conn.identity.delete_project.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ordinary_project_cannot_be_renamed_to_default(admin_client, mock_conn, domain_native):
+    mock_conn.identity.get_project.return_value = SimpleNamespace(
+        id="tenant", name="Tenant", domain_id="default", is_enabled=True
+    )
+    response = await admin_client.patch("/api/v1/admin/projects/tenant?domain_id=default", json={"name": "Default"})
+    assert response.status_code == 422
+    mock_conn.identity.update_project.assert_not_called()

@@ -1,4 +1,4 @@
-import { grantLumen } from './lumenPermissionFixture';
+import { grantLumen, setVerifiedLumenActor } from './lumenPermissionFixture';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '$lib/stores/auth';
@@ -34,7 +34,7 @@ describe('ChatExtensionsManager MCP OAuth', () => {
 	});
 	beforeEach(() => {
 		vi.clearAllMocks();
-		auth.set({
+		setVerifiedLumenActor({
 			token: 'token',
 			refreshToken: null,
 			accessExpiresAt: null,
@@ -45,7 +45,7 @@ describe('ChatExtensionsManager MCP OAuth', () => {
 			availableProjects: [],
 			roles: [],
 			isSystemAdmin: false,
-			federated: false
+			federated: false, domainId: 'domain-1', domainName: 'Domain', identityDomainId: 'domain-1', identityDomainName: 'Domain', isDomainManager: false
 		});
 		mocks.get.mockImplementation((path: string) => {
 			if (path.endsWith('/mcp-servers')) {

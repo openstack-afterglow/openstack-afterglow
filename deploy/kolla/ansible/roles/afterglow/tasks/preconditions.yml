@@ -10,4 +10,4 @@
 
 - name: Include manila precondition tasks
   ansible.builtin.import_tasks: preconditions_manila.yml
-  when: afterglow_service_manila_enabled | bool
+  when: afterglow_effective_config.services.manila | bool

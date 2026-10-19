@@ -10,6 +10,8 @@
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
 	import { t as tc } from '$lib/i18n/ns/common';
+	import type { IamSession } from '$lib/api/domainIam';
+	import { t as td } from '$lib/i18n/ns/domain-iam';
 
 	interface Project {
 		id: string;
@@ -22,12 +24,16 @@
 
 	let {
 		project,
+		domainId,
 		onClose,
+		session,
 		onSuccess,
 	}: {
 		project: Project | null;
+		domainId: string;
 		onClose: () => void;
 		onSuccess: () => void;
+		session?: IamSession;
 	} = $props();
 
 	interface ResourceCheck {
@@ -46,6 +52,7 @@
 	}
 	interface Scope {
 		target: string;
+		domainId: string;
 		token: string;
 		projectId: string | undefined;
 		userId: string | null;
@@ -75,6 +82,7 @@
 		container_infra: 'projectDelete.services.container_infra', orchestration: 'projectDelete.services.orchestration',
 	} as const;
 	function resourceLabel(kind: string) {
+		if (kind === 'child_projects') return td('childProjects');
 		return Object.hasOwn(resourceKeys, kind) ? t(resourceKeys[kind as keyof typeof resourceKeys]) : t('projectDelete.resources.other');
 	}
 	function serviceLabel(service: string) {
@@ -117,7 +125,10 @@
 		return t('projectDelete.unknown');
 	}
 
-	const token = $derived($auth.token ?? undefined);
+	const token = $derived.by(() => {
+		const accessToken = $auth.token;
+		return accessToken ? (session ? session.token() : accessToken) : undefined;
+	});
 	const projectId = $derived($auth.projectId ?? undefined);
 	let scope = $state.raw<Scope | null>(null);
 	let report = $state.raw<DeletionCheck | null>(null);
@@ -126,20 +137,23 @@
 	let deleting = $state(false);
 	let deleteError = $state('');
 	let controller: AbortController | null = null;
-	const canDelete = $derived(!!scope && current(scope) && !checking && !deleting && !!report?.can_delete
+	const canDelete = $derived(!!scope && current(scope) && (!session || session.canSubmit()) && !checking && !deleting && !!report?.can_delete
 		&& report.project_id === scope.target && report.resources.every((row) => absent(row) || (row.status === 'ok' && row.count === 0)));
 
 	function current(requestScope: Scope) {
 		return scope === requestScope && project?.id === requestScope.target && token === requestScope.token
+			&& domainId === requestScope.domainId && project.domain_id === requestScope.domainId
 			&& projectId === requestScope.projectId && $auth.userId === requestScope.userId
-			&& $auth.isSystemAdmin && !$logoutInProgress && !$projectSwitching;
+			&& (session ? session.isCurrent() : $auth.isSystemAdmin) && !$logoutInProgress && !$projectSwitching;
 	}
 	$effect(() => {
 		const target = project?.id;
+		const selectedDomain = domainId;
+		const targetDomain = project?.domain_id;
 		const accessToken = token;
 		const callerProject = projectId;
 		const userId = $auth.userId;
-		const permitted = $auth.isSystemAdmin && !$logoutInProgress && !$projectSwitching;
+		const permitted = (session ? session.isCurrent() : $auth.isSystemAdmin) && !$logoutInProgress && !$projectSwitching;
 		untrack(() => {
 			controller?.abort();
 			report = null;
@@ -147,7 +161,8 @@
 			deleteError = '';
 			deleting = false;
 			checking = false;
-			scope = target && accessToken && permitted ? { target, token: accessToken, projectId: callerProject, userId } : null;
+			scope = target && accessToken && permitted && selectedDomain && targetDomain === selectedDomain
+				? { target, token: accessToken, projectId: callerProject, userId, domainId: selectedDomain } : null;
 			if (scope) void inspect(scope);
 			else if (target) checkError = t('projectDelete.checkFailed');
 		});
@@ -163,13 +178,15 @@
 		report = null;
 		checkError = '';
 		try {
-			const result = await api.get<unknown>(`/api/v1/admin/projects/${encodeURIComponent(requestScope.target)}/deletion-check`,
-				requestScope.token, requestScope.projectId, { refresh: true, signal: request.signal });
+			const path = session
+				? `/api/v1/projects/${encodeURIComponent(requestScope.target)}/deletion-check`
+				: `/api/v1/admin/projects/${encodeURIComponent(requestScope.target)}/deletion-check?domain_id=${encodeURIComponent(requestScope.domainId)}`;
+			const result = await api.get<unknown>(path, requestScope.token, requestScope.projectId, { refresh: true, signal: request.signal });
 			if (!current(requestScope) || request.signal.aborted || controller !== request) return;
 			report = readReport(result, requestScope.target);
 			if (!report) checkError = t('projectDelete.checkFailed');
-		} catch {
-			if (current(requestScope) && !request.signal.aborted && controller === request) checkError = t('projectDelete.checkFailed');
+		} catch (e) {
+			if (current(requestScope) && !request.signal.aborted && controller === request) checkError = e instanceof ApiError ? e.message : t('projectDelete.checkFailed');
 		} finally {
 			if (current(requestScope) && controller === request) checking = false;
 		}
@@ -191,7 +208,10 @@
 		const namesScope = projectNames.scope(requestScope.token, requestScope.projectId);
 		projectNames.invalidate(namesScope);
 		try {
-			await api.delete(`/api/v1/admin/projects/${encodeURIComponent(requestScope.target)}`, requestScope.token, requestScope.projectId);
+			const path = session
+				? `/api/v1/projects/${encodeURIComponent(requestScope.target)}`
+				: `/api/v1/admin/projects/${encodeURIComponent(requestScope.target)}?domain_id=${encodeURIComponent(requestScope.domainId)}`;
+			await api.delete(path, requestScope.token, requestScope.projectId, { replayOnUnauthorized: false });
 			projectNames.invalidate(namesScope);
 			if (!current(requestScope)) return;
 			scope = null;

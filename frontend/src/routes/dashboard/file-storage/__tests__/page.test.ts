@@ -18,7 +18,7 @@ describe('dashboard file-storage refresh ownership', () => {
 			if (path === '/api/v1/file-storage/quota') return Promise.resolve(null);
 			return Promise.resolve([]);
 		});
-		auth.set({ token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'user', username: 'user', projectId: 'project', projectName: 'project', availableProjects: [], roles: [], isSystemAdmin: false, federated: false });
+		auth.set({ token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'user', username: 'user', projectId: 'project', projectName: 'project', availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false });
 	});
 
 	it('issues one explicit list and quota round on mount', async () => {

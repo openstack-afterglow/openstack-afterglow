@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from uuid import UUID
 
-from app.services import cinder, keystone
+from app.services import cinder, domain_display, keystone
 from app.services.user_inventory import scoped_connection
 
 
@@ -147,7 +147,7 @@ def lookup(transfer_id: str) -> dict:
             domain_id = required_id(project, "domain_id")
             domain = conn.identity.get_domain(domain_id)
             required_id(domain, "id", domain_id)
-            project_name, domain_name = field(project, "name"), field(domain, "name")
+            project_name, domain_name = field(project, "name"), domain_display.display_name(domain)
             size = field(volume, "size")
             if (
                 not isinstance(project_name, str)

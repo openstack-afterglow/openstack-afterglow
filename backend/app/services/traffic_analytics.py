@@ -477,3 +477,166 @@ async def snapshot(source: Source, period: str, origin: OriginFilter = "all") ->
     except Exception:
         pass
     return result
+
+
+DOMAIN_AGGREGATE_LUA = r"""
+redis.call('HINCRBY', KEYS[1], 't|requests', 1)
+redis.call('HINCRBY', KEYS[1], 't|errors', ARGV[1])
+redis.call('HINCRBY', KEYS[1], 's:' .. ARGV[2] .. '|requests', 1)
+redis.call('HINCRBY', KEYS[1], 's:' .. ARGV[2] .. '|errors', ARGV[1])
+redis.call('HINCRBY', KEYS[1], 't|dropped', ARGV[5])
+redis.call('EXPIREAT', KEYS[1], ARGV[3])
+local first = tonumber(redis.call('HGET', KEYS[2], 'first') or ARGV[4])
+redis.call('HSET', KEYS[2], 'first', math.min(first, tonumber(ARGV[4])), 'last', ARGV[4])
+redis.call('EXPIREAT', KEYS[2], ARGV[3])
+return 1
+"""
+
+
+def _domain_root(domain_id: str) -> str:
+    return f"{KEY_PREFIX}:domain:{hashlib.sha256(domain_id.encode()).hexdigest()}"
+
+
+def domain_service(template: str | None) -> str:
+    """Finite labels from main.py mount prefixes; never URL arguments or queries.
+
+    Administrative routes stay "afterglow": they are not tenant service usage.
+    """
+    parts = (template or "").split("/")
+    if len(parts) < 4 or parts[1:3] != ["api", "v1"]:
+        return "afterglow"
+    resource = parts[3]
+    groups = {
+        "nova": {"instances", "flavors", "keypairs"},
+        "glance": {"images"},
+        "cinder": {"volumes", "volume-snapshots"},
+        "neutron": {"networks", "routers", "security-groups"},
+        "octavia": {"loadbalancers"},
+        "manila": {"file-storage", "share-snapshots", "share-networks", "security-services"},
+        "magnum": {"clusters"},
+        "zun": {"containers", "cloud-shell"},
+        "drover": {"k3s"},
+        "palimpsest": {"palimpsest"},
+        "trove": {"database-instances"},
+        "swift": {"object-storage"},
+        "barbican": {"secrets", "secret-containers", "secret-orders"},
+        "waygate": {"waygate"},
+        "lumen": {"chat"},
+        "keystone": {"auth", "projects", "invitations", "iam", "profile"},
+    }
+    return next((service for service, resources in groups.items() if resource in resources), "afterglow")
+
+
+async def record_domain_request(request, *, status: int, route_template: str | None, at: float) -> bool:
+    """Parent middleware hook, AFTER auth: only request.state.token_info is authority.
+
+    Call once on completion with the native matched route template. Headers,
+    frontend analytics and unvalidated login names are never attribution inputs.
+    This stores only hour/service request and error counters, not identities.
+    """
+    settings = get_settings().traffic_analytics
+    info = getattr(request.state, "token_info", None)
+    domain_id = info.get("domain_id") if isinstance(info, dict) else None
+    if (
+        not settings.enabled
+        or not isinstance(domain_id, str)
+        or not domain_id
+        or not info.get("user_id")
+        or not isinstance(status, int)
+        or not 100 <= status <= 599
+    ):
+        return False
+    root = _domain_root(domain_id)
+    pending = _pending_drops[root]
+    _pending_drops[root] = 0
+    hour = int(at) // 3600
+    try:
+        async with asyncio.timeout(0.25):
+            redis = await _get_redis()
+            await redis.eval(
+                DOMAIN_AGGREGATE_LUA,
+                2,
+                f"{root}:{hour}",
+                f"{root}:coverage",
+                int(status >= 400),
+                domain_service(route_template),
+                hour * 3600 + settings.retention_days * 86400,
+                at,
+                pending,
+            )
+        return True
+    except Exception:
+        _pending_drops[root] += pending + 1
+        return False
+
+
+async def domain_snapshot(domain_id: str, window: str) -> dict:
+    """Observed authenticated backend requests only; an empty store is unknown."""
+    from datetime import UTC, datetime
+
+    settings = get_settings().traffic_analytics
+    result = {
+        "state": "disabled" if not settings.enabled else "unavailable",
+        "window": window,
+        "total": None,
+        "errors": None,
+        "services": [],
+        "timeline": None,
+    }
+    if not settings.enabled:
+        return result
+    now = time.time()
+    current = int(now) // 3600
+    hours = list(range(current - min(RANGES[window], settings.retention_days * 24) + 1, current + 1))
+    root = _domain_root(domain_id)
+    try:
+        async with asyncio.timeout(3):
+            redis = await _get_redis()
+            pipe = redis.pipeline(transaction=True)
+            for hour in hours:
+                pipe.hgetall(f"{root}:{hour}")
+            pipe.hgetall(f"{root}:coverage")
+            rows = await pipe.execute()
+        totals = defaultdict(int)
+        services = defaultdict(lambda: defaultdict(int))
+        timeline = []
+        for hour, raw in zip(hours, rows[:-1], strict=True):
+            dimensions = _dimensions(raw)
+            values = dimensions.get("t")
+            timeline.append(
+                {
+                    "at": datetime.fromtimestamp(hour * 3600, UTC).isoformat(),
+                    "requests": values.get("requests", 0) if values else 0,
+                    "errors": values.get("errors", 0) if values else 0,
+                }
+            )
+            if values:
+                for key, value in values.items():
+                    totals[key] += value
+            for dimension, values in dimensions.items():
+                if dimension.startswith("s:"):
+                    for key, value in values.items():
+                        services[dimension[2:]][key] += value
+        coverage = {_text(key): float(value) for key, value in rows[-1].items()}
+        if not totals or not coverage:
+            result["state"] = "partial"
+            return result
+        partial = (
+            coverage.get("first", now) > hours[0] * 3600
+            or totals["dropped"]
+            or _pending_drops[root]
+            or RANGES[window] > settings.retention_days * 24
+        )
+        result.update(
+            state="partial" if partial else "ready",
+            total=totals["requests"],
+            errors=totals["errors"],
+            services=[
+                {"service": service, "requests": values["requests"], "errors": values["errors"]}
+                for service, values in sorted(services.items())
+            ],
+            timeline=timeline,
+        )
+    except Exception:
+        return result
+    return result

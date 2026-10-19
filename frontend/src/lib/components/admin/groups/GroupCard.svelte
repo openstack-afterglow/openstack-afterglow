@@ -2,6 +2,7 @@
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { Group, GroupMember, User } from '$lib/types/adminGroup';
 	import Button from '$lib/components/ui/Button.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
@@ -10,6 +11,8 @@
 		expanded: boolean;
 		members: GroupMember[];
 		membersLoading: boolean;
+		membersError?: string;
+		usersError?: string;
 		allUsers: User[];
 		addError: string;
 		addSaving: boolean;
@@ -25,6 +28,8 @@
 		expanded,
 		members,
 		membersLoading,
+		membersError = '',
+		usersError = '',
 		allUsers,
 		addError,
 		addSaving,
@@ -77,6 +82,8 @@
 		<div class="border-t border-line bg-surface-base/50 px-4 py-4">
 			{#if membersLoading}
 				<div class="text-xs text-ink-2 py-2"><ActivityIndicator size="xs" label={t('state.loading')} /></div>
+			{:else if membersError}
+				<Alert tone="danger">{membersError}</Alert>
 			{:else}
 				<div class="text-xs text-ink-2 uppercase tracking-wide mb-2">{t('groupCard.membersHeading')}</div>
 				{#if members.length === 0}
@@ -95,6 +102,7 @@
 					</div>
 				{/if}
 				<div class="border-t border-line-2/50 pt-3">
+					{#if usersError}<Alert tone="danger">{usersError}</Alert>{/if}
 					{#if addError}
 						<div class="text-xs text-[var(--color-state-danger)] mb-2">{addError}</div>
 					{/if}

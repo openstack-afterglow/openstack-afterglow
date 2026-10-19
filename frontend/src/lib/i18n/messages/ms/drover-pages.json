@@ -53,7 +53,7 @@
 	"create.keypair": "Pasangan kunci (pilihan)",
 	"create.stampedeMode": "Mod Stampede",
 	"create.stampedeHelp": "Menambah/mengurangkan nod (VM) secara automatik apabila pod diatur guna. Tetapkan minimum/maksimum secara berasingan dalam kumpulan nod.",
-	"create.stampedeWarning": "⚠ Ciri ini masih dalam pembangunan. Ciri ini dihidupkan secara lalai dan hanya menambah atau menyingkirkan nod dalam had minimum/maksimum kumpulan nod yang menghidupkan Stampede. Bilangan nod pekerja lalai yang dicipta pada awalnya tidak pernah dikurangkan secara automatik.",
+	"create.stampedeWarning": "⚠ Ciri ini masih dalam pembangunan. Ia diaktifkan secara lalai dan hanya menambah atau membuang nod dalam had min/max kumpulan nod yang mengaktifkan Stampede. Nod pekerja lalai yang mula-mula dicipta tidak dikurangkan secara automatik.",
 	"nodegroup.role": "Peranan",
 	"nodegroup.agent": "Ejen",
 	"nodegroup.server": "Pelayan",

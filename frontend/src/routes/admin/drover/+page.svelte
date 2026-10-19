@@ -36,13 +36,18 @@
 	let statusFilter = $state<'all' | 'active' | 'pending' | 'error' | 'deleted'>('all');
 	// 슬라이드 패널
 	let selectedClusterId = $state<string | null>(null);
+	let selectedProjectId = $state<string | null>(null);
 
 	function openClusterPanel(id: string) {
+		const projectId = clusters.find(cluster => cluster.id === id)?.project_id;
+		if (!projectId) return;
+		selectedProjectId = projectId;
 		selectedClusterId = id;
 	}
 
 	function closeClusterPanel() {
 		selectedClusterId = null;
+		selectedProjectId = null;
 	}
 
 	const token = $derived($auth.token ?? undefined);
@@ -93,7 +98,7 @@
 <!-- 슬라이드 패널 -->
 {#if selectedClusterId}
 	<SlidePanel onClose={closeClusterPanel} ariaLabel={t('cluster.detailLabel')}>
-		<K3sClusterDetailPanel clusterId={selectedClusterId} onClose={closeClusterPanel} adminMode={true} />
+		<K3sClusterDetailPanel clusterId={selectedClusterId} adminProjectId={selectedProjectId ?? undefined} onClose={closeClusterPanel} adminMode={true} />
 	</SlidePanel>
 {/if}
 

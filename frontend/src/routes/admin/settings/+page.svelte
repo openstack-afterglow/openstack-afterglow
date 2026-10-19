@@ -3,6 +3,7 @@
 	import { auth } from '$lib/stores/auth';
 	import AdminLoginBrandingPanel from '$lib/components/admin/AdminLoginBrandingPanel.svelte';
 	import AdminResourcePoliciesPanel from '$lib/components/admin/AdminResourcePoliciesPanel.svelte';
+	import AdminEnrollmentPolicyPanel from '$lib/components/admin/AdminEnrollmentPolicyPanel.svelte';
 	import { Card, PageHeader, PageShell } from '$lib/components/ui';
 
 	const token = $derived($auth.token ?? undefined);
@@ -29,6 +30,7 @@
 
 		<AdminLoginBrandingPanel {token} {projectId} />
 		<AdminResourcePoliciesPanel {token} {projectId} />
+		<AdminEnrollmentPolicyPanel />
 	</div>
 </PageShell>
 

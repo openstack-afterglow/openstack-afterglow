@@ -117,6 +117,7 @@ async def rollback_instance(
     floating_ip_id: str | None = None,
     *,
     safe_error_message: str | None = None,
+    additional_volume_ids: list[str] | None = None,
 ) -> None:
     """인스턴스 생성 실패 시 역순 rollback; credential-bearing errors use a safe constant."""
     from app.services import cinder, keystone, manila, neutron, nova
@@ -139,7 +140,7 @@ async def rollback_instance(
                 safe_error_message if safe_error_message is not None else str(e),
             )
 
-    for vol_id in [boot_volume_id, upper_volume_id]:
+    for vol_id in [boot_volume_id, upper_volume_id, *(additional_volume_ids or [])]:
         if vol_id:
             try:
                 await asyncio.to_thread(cinder.delete_volume, conn, vol_id)

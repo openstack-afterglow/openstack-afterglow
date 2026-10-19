@@ -111,7 +111,7 @@ const TOUR_META: Record<TourId, { label: string; summary: string }> = {
 	},
 };
 
-/** VM 생성 투어 — 일반 위저드의 raw 단계 1, 2, 5, 6을 따라 진행한다. */
+/** VM 생성 투어 — Flavor → 이미지 → 설정 → 배포의 raw 단계 2, 1, 5, 6을 따라 진행한다. */
 function vmCreateSteps(): TourStep[] {
 	return [
 		{
@@ -128,10 +128,10 @@ function vmCreateSteps(): TourStep[] {
 		},
 		{
 			element: '[data-tour="wizard-panel"]',
-			get title() { return t('tours.vmCreate.step2.title'); },
-			get description() { return t('tours.vmCreate.step2.description'); },
+			get title() { return t('tours.vmCreate.step3.title'); },
+			get description() { return t('tours.vmCreate.step3.description'); },
 			advanceOn: 'wizard',
-			wizardStep: 1,
+			wizardStep: 2,
 			cancelElement: '[data-tour="wizard-cancel"]',
 			// 위저드 데이터 로딩이 끝나 본문이 나타난 뒤에 하이라이트한다
 			readyElement: '[data-tour="wizard-body"]',
@@ -139,10 +139,10 @@ function vmCreateSteps(): TourStep[] {
 		},
 		{
 			element: '[data-tour="wizard-panel"]',
-			get title() { return t('tours.vmCreate.step3.title'); },
-			get description() { return t('tours.vmCreate.step3.description'); },
+			get title() { return t('tours.vmCreate.step2.title'); },
+			get description() { return t('tours.vmCreate.step2.description'); },
 			advanceOn: 'wizard',
-			wizardStep: 2,
+			wizardStep: 1,
 			cancelElement: '[data-tour="wizard-cancel"]',
 		},
 		{

@@ -62,6 +62,16 @@ src/
     └── components/              # 슬라이드 패널, 위저드, 차트 등 UI 컴포넌트
 ```
 
+## Administrator service project scope
+
+The workspace selector uses the server-authorized `/api/v1/auth/domains` and `/api/v1/auth/workspaces` directories, then `/api/v1/auth/token/workspace` for an atomic logical selection. A projectless system administrator must not be required to have a target membership or rescope native credentials into the target. The backend preserves the native authentication source; the browser sends the selected logical project as `X-Project-Id`.
+
+Lumen, Drover, Waygate and Palimpsest controls consume the exact leaves from `/api/v1/projects/current/permissions`; cached administrator flags and role names never synthesize service grants. Loading, verification failures and project transitions disable actions. Native service policies remain authoritative. Administrative management does not impersonate a resource owner: Waygate profiles and Palimpsest package keys retain requester ownership checks and one-time-secret disclosure fences.
+
+The administrator Drover list captures the resource's `project_id` with the selected cluster and supplies it to the existing detail controller and its auxiliary controls (health, workloads, nodegroups, networks, certificates, Stampede and shell tickets). Missing owner project metadata never falls back to the caller project. Routine kubeconfig downloads explicitly request the current `user` or `editor` grade on the project endpoint, including from administrator details. The stored `admin` certificate remains a separate explicitly confirmed action.
+
+Source changes and regression definitions are not browser/native acceptance evidence. Run the focused permission, workspace-selector, Drover controller and auxiliary-control regressions, then verify the compiled controls against the integrated backend with a freshly verified zero-role administrator and a selected project without membership.
+
 ## Design system
 
 Frontend visual changes must start from root `DESIGN.md`; reusable assets live in `src/lib/components/ui`; semantic token metadata lives in `src/lib/design`.
@@ -79,6 +89,7 @@ All Afterglow-owned numerical visualizations use the actual [Bklit UI](https://g
 | Dashboard/usage/report mini graphs and host telemetry | `Spark`, `StatTile` → native line/area or gauge |
 | Resource/admin time history, library/layer history | `TimeSeriesChart`, `LibraryUsageChart` → native time series with stable series IDs |
 | VM CPU/memory/network/disk/GPU charts | `MetricsPanel` → native line/area with independent sample timestamps |
+| Admin native host/storage measurements | `MonitoringSummaryTab` → per-meter native time series, retaining reported units and real timestamps |
 | Network lanes/detail, Waygate peer rates, infrastructure NIC history | `TrafficSparkline`, `TrafficArea`, `NetworkLane` → native time series |
 | Activity/hourly login distributions, user/admin chat statistics | `LoginCharts`, activity route, `ChatUsagePanel`, admin stats route → native bars/stacks |
 | Model/token shares, chat quota, storage-pool usage, file-storage capacity, flavor capacity preview | Native gauge or horizontal stacked bar; existing thresholds/units preserved |
@@ -96,6 +107,7 @@ Editable network topology, role/dependency graphs, external Grafana embeds and t
 
 For categorical timestamps, retain canonical bucket IDs in `data` and use `formatCategory(value, 'axis' | 'detail')` to abbreviate the axis only. Never use abbreviated dates as scale keys: distinct hours/days must remain separate bars. Qualification checks pairwise label collisions as well as plot/document overflow.
 
+`/admin/monitoring` keeps Nova allocation and provisioned storage inventory independent of optional Gnocchi telemetry. The native section reports caller-policy coverage, provider availability and truncation, shows the latest observation with its reported unit, and lazily opens recorded Bklit history (including null gaps and true zeros). Display work is bounded to 12 resources and 12 meters per resource; the visible limit notice must not imply cloud-wide totals. Allocation bars are not measured host RAM or guest usage. Summary and instance inventory responses are fenced by auth/session/project generations; instance selection recreates `MetricsPanel` for its verified owning project, and unknown ownership does not issue a private metrics request.
 **Upstream maintenance**
 
 `src/lib/vendor/bklit-ui/provenance.json` pins commit `f7b3bd2999a5c993863f9cc5523c9cf60b9f3bc2`, official immutable registry URLs, original hashes, import rewrites and local extensions. Keep its MIT `LICENSE`. This is source-distributed Bklit, not an unofficial Svelte imitation or a runtime CDN. Fetch the required registry roots and transitive registry dependencies at a reviewed commit, reapply only the documented extensions (exact domains, null gaps, independent sampling, compact geometry, localized axes, reduced motion, stable geographic focus), and retain original hashes alongside the patch ledger. Do not run `shadcn init`, replace the app theme/reset, or copy a complete Next.js demo.

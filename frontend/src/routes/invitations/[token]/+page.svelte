@@ -1,190 +1,280 @@
 <script lang="ts">
+	import { onDestroy, onMount, untrack } from 'svelte';
+	import { derived } from 'svelte/store';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { auth, isLoggedIn } from '$lib/stores/auth';
+	import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores/auth';
+	import { sessionScopeKey } from '$lib/utils/authSession';
 	import { api, ApiError } from '$lib/api/client';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import type { InvitationInfo } from '$lib/types/project';
-	import { t } from '$lib/i18n/ns/public-entry';
+	import OnboardingAccountForm from '$lib/components/auth/OnboardingAccountForm.svelte';
+	import type { DomainAccountResult, DomainInvitationInfo } from '$lib/types/auth';
+	import { isOnboardingToken, onboardingErrorKey, storePendingInvitation, signupApprovalState, type SignupApprovalState } from '$lib/utils/domainLogin';
+	import { t } from '$lib/i18n/ns/domain-auth';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
 
 	const token = $derived(($page.params as Record<string, string>)['token'] ?? '');
 
-	let info = $state<InvitationInfo | null>(null);
+	let info = $state<DomainInvitationInfo | null>(null);
 	let loading = $state(true);
 	let loadError = $state('');
-	let actionDone = $state('');
 	let actionError = $state('');
 	let acting = $state(false);
+	let accountExists = $state(false);
+	let accepted = $state<DomainAccountResult | null>(null);
+	let created = $state<DomainAccountResult | null>(null);
+	let approval = $state<SignupApprovalState | null>(null);
+	let createAbandoned = $state(false);
+	let loadSerial = 0;
 
-	$effect(() => {
-		if (token) loadInfo();
+	const signedIn = $derived(!!info && !!$auth.token);
+	let live = true;
+	let sessionGeneration = 0;
+	onMount(() => {
+		let previous = '';
+		return derived([auth, authReady, logoutInProgress, projectSwitching], ([state, ready, loggingOut, switching]) =>
+			JSON.stringify([sessionScopeKey(state), !!state.token, ready, loggingOut, switching])
+		).subscribe(key => {
+			if (previous && key !== previous) {
+				sessionGeneration++;
+				accepted = null; actionError = ''; acting = false;
+				created = null; approval = null; createAbandoned = true;
+			}
+			previous = key;
+		});
 	});
 
-	async function loadInfo() {
-		loading = true;
+	$effect(() => {
+		const current = token;
+		untrack(() => void loadInfo(current));
+	});
+
+	async function loadInfo(current: string) {
+		const serial = ++loadSerial;
+		info = null;
+		accepted = null;
+		created = null;
+		approval = null;
+		accountExists = false;
+		actionError = '';
 		loadError = '';
-		try {
-			info = await api.get<InvitationInfo>(`/api/v1/invitations/${token}`);
-		} catch (e) {
-			loadError = e instanceof ApiError ? e.message : t('invitations.error.loadFailed');
-		} finally {
+		if (!isOnboardingToken(current)) {
 			loading = false;
+			loadError = t('invitation.notFound');
+			return;
+		}
+		loading = true;
+		try {
+			const result = await api.get<DomainInvitationInfo>(
+				`/api/v1/auth/invitations/${encodeURIComponent(current)}`,
+				undefined,
+				undefined,
+				{ refresh: true, suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false },
+			);
+			if (serial !== loadSerial) return;
+			info = result;
+			accountExists = result.account_exists;
+		} catch (e) {
+			if (serial !== loadSerial) return;
+			const status = e instanceof ApiError ? e.status : null;
+			loadError = status === 404 ? t('invitation.notFound') : status === 410 ? t('invitation.gone') : t(onboardingErrorKey(status));
+		} finally {
+			if (serial === loadSerial) loading = false;
 		}
 	}
 
-	async function accept() {
-		if (acting) return;
+	async function createAccount(account: { name: string; password: string; personal_domain_name: string }) {
+		if (!info || accountExists || approval || createAbandoned || $auth.token || $logoutInProgress || $projectSwitching) return;
+		const current = token;
+		const serial = loadSerial;
+		const generation = sessionGeneration;
+		const owns = () => live && serial === loadSerial && current === token && generation === sessionGeneration
+			&& !$auth.token && !$logoutInProgress && !$projectSwitching;
+		actionError = '';
+		accountExists = false;
+		try {
+			const result = await api.post<DomainAccountResult>(
+				'/api/v1/auth/invitations/accept',
+				{ token: current, ...account },
+				undefined,
+				undefined,
+				{ suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false },
+			);
+			if (!owns()) return;
+			created = result;
+		} catch (e) {
+			if (!owns()) return;
+			approval = e instanceof ApiError ? signupApprovalState(e) : null;
+			if (approval) { created = null; storePendingInvitation(current); return; }
+			const status = e instanceof ApiError ? e.status : null;
+			accountExists = status === 409;
+			actionError = t(onboardingErrorKey(status));
+		}
+	}
+
+	async function acceptExisting() {
+		const sessionToken = $auth.token;
+		const current = token;
+		const serial = loadSerial;
+		const generation = sessionGeneration;
+		const session = sessionScopeKey($auth);
+		const owns = () => live && serial === loadSerial && current === token
+			&& generation === sessionGeneration && session === sessionScopeKey($auth)
+			&& !!$auth.token && $authReady && !$logoutInProgress && !$projectSwitching;
+		if (!sessionToken || !signedIn || acting || !owns()) return;
 		acting = true;
 		actionError = '';
 		try {
-			await api.post(`/api/v1/invitations/${token}/accept`, {}, $auth.token ?? undefined);
-			actionDone = 'accepted';
+			const result = await api.post<DomainAccountResult>(
+				'/api/v1/auth/invitations/accept-existing',
+				{ token: current },
+				sessionToken,
+				undefined,
+				{ cache: 'no-store', replayOnUnauthorized: false },
+			);
+			if (!owns()) return;
+			accepted = result;
 		} catch (e) {
-			actionError = e instanceof ApiError ? e.message : t('invitations.error.acceptFailed');
+			if (!owns()) return;
+			const status = e instanceof ApiError ? e.status : null;
+			actionError = status === 403 ? t('invitation.emailMismatch') : t(onboardingErrorKey(status));
 		} finally {
-			acting = false;
+			if (owns()) acting = false;
 		}
 	}
 
-	async function decline() {
-		if (acting) return;
-		acting = true;
-		actionError = '';
-		try {
-			await api.post(`/api/v1/invitations/${token}/decline`, {});
-			actionDone = 'declined';
-		} catch (e) {
-			actionError = e instanceof ApiError ? e.message : t('invitations.error.declineFailed');
-		} finally {
-			acting = false;
-		}
-	}
-
-	function loginAndAccept() {
-		goto(`/?next=/invitations/${token}`);
+	function signInToAccept() {
+		if (!info) return;
+		storePendingInvitation(token);
+		void goto('/login');
 	}
 
 	function fmtDate(iso: string): string {
-		return new Date(iso).toLocaleDateString(intlLocale(), {
-			year: 'numeric',
-			month: 'long',
-			day: 'numeric',
-			hour: '2-digit',
-			minute: '2-digit',
-		});
+		const date = new Date(iso);
+		if (Number.isNaN(date.getTime())) return iso;
+		return date.toLocaleString(intlLocale(), { dateStyle: 'long', timeStyle: 'short' });
 	}
-
-	const isExpiredOrHandled = $derived(
-		info && ['accepted', 'declined', 'revoked', 'expired'].includes(info.status)
-	);
+	onDestroy(() => { live = false; loadSerial++; info = null; accepted = null; created = null; });
 </script>
 
-<main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas flex items-center justify-center">
+<svelte:head><meta name="referrer" content="no-referrer" /></svelte:head>
+
+<main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas flex items-center justify-center py-8">
 	<PageShell class="flex justify-center">
 	<div class="w-full max-w-md">
-		<!-- 로고 헤더 -->
-		<div class="text-center mb-8 motion-enter">
-			<div class="text-2xl font-bold text-ink-0 mb-1">{t('invitations.brand')}</div>
-			<div class="text-sm text-ink-2">{t('invitations.title')}</div>
-		</div>
+		<h1 class="text-center text-xl font-semibold text-ink-0 mb-6 motion-enter">{t('invitation.title')}</h1>
 
-		{#if loading}
-			<div class="bg-surface-base border border-line rounded-xl p-8 text-center motion-enter" style="--motion-index: 1">
-				<ActivityIndicator label={t('invitations.loading')} />
-			</div>
-		{:else if loadError}
-			<div class="bg-surface-base border border-state-danger/40 rounded-xl p-8 text-center motion-enter" style="--motion-index: 1">
-				<div class="text-state-danger-text text-sm">{loadError}</div>
-			</div>
-		{:else if actionDone === 'accepted'}
-			<div class="bg-surface-base border border-state-success/40 rounded-xl p-8 text-center motion-enter" style="--motion-index: 1">
-				<div class="w-12 h-12 bg-state-success/15 rounded-full flex items-center justify-center mx-auto mb-4 motion-pop" style="--motion-index: 2">
-					<svg class="w-6 h-6 text-state-success-text" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-						<path class="motion-draw" pathLength="1" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-					</svg>
+		<div class="bg-surface-raised border border-line-2 rounded-xl p-5 sm:p-6 motion-enter" style="--motion-index: 1">
+			{#if loading}
+				<div class="flex justify-center py-6"><ActivityIndicator label={t('invitation.loading')} /></div>
+			{:else if loadError}
+				<div class="space-y-4">
+					<Alert tone="danger">{loadError}</Alert>
+					<Button variant="secondary" href="/login" class="w-full">{t('common.backToLogin')}</Button>
 				</div>
-				<div class="text-ink-0 font-medium mb-1">{t('invitations.accepted.title')}</div>
-				<div class="text-ink-2 text-sm mb-5"><RichText segments={t.rich('invitations.accepted.body', { projectName: info?.project_name })} classes={{ strong: 'text-ink-2' }} /></div>
-				<a href="/select-project" class="inline-block px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg transition-colors">
-					{t('invitations.actions.selectProject')}
-				</a>
-			</div>
-		{:else if actionDone === 'declined'}
-			<div class="bg-surface-base border border-line-2 rounded-xl p-8 text-center motion-enter" style="--motion-index: 1">
-				<div class="text-ink-2 text-sm">{t('invitations.declined')}</div>
-			</div>
-		{:else if info}
-			<div class="bg-surface-base border border-line rounded-xl p-6 motion-enter" style="--motion-index: 1">
-				<!-- 초대 정보 -->
-				<div class="mb-6">
-					<div class="text-xs text-ink-2 uppercase tracking-wide mb-1">{t('invitations.details.project')}</div>
-					<div class="text-ink-0 font-semibold text-lg">{info.project_name}</div>
+			{:else if approval}
+				<div class="space-y-4">
+					<Alert tone={approval === 'pending' ? 'info' : 'warning'} title={t(approval === 'pending' ? 'signup.approval.pendingTitle' : 'signup.approval.rejectedTitle')}>
+						{t(approval === 'pending' ? 'signup.approval.invitationPending' : 'signup.approval.invitationRejected')}
+					</Alert>
+					{#if approval === 'pending'}<Button onclick={() => loadInfo(token)} class="w-full">{t('signup.approval.reopenInvitation')}</Button>{/if}
+					<Button href="/signup" class="w-full">{t('signup.approval.restart')}</Button>
+					<Button variant="secondary" href="/login" class="w-full">{t('common.backToLogin')}</Button>
 				</div>
+			{:else if created}
+				<div class="space-y-4">
+					<Alert tone="success" title={t('onboarding.created.title')}>
+						<RichText segments={t.rich('onboarding.created.body', { domain: created.identity_domain_name })} classes={{ strong: 'text-ink-0' }} />
+					</Alert>
+					<Button href="/login" size="lg" class="w-full">{t('onboarding.created.signIn')}</Button>
+				</div>
+			{:else if accepted}
+				<div class="space-y-4">
+					<Alert tone="success" title={t('invitation.accepted.title')}>
+						<RichText segments={t.rich('invitation.accepted.body', { domain: accepted.domain_name })} classes={{ strong: 'text-ink-0' }} />
+					</Alert>
+					<Button href="/select-domain" size="lg" class="w-full">{t('invitation.accepted.continue')}</Button>
+				</div>
+			{:else if info}
+				<dl class="invitation-details">
+					<div><dt>{t('invitation.domain')}</dt><dd>{info.domain_name}</dd></div>
+					<div><dt>{t('invitation.email')}</dt><dd>{info.email}</dd></div>
+					<div><dt>{t('invitation.project')}</dt><dd>{info.project_name || t('invitation.noProject')}</dd></div>
+					<div><dt>{t('invitation.expiresAt')}</dt><dd>{fmtDate(info.expires_at)}</dd></div>
+				</dl>
 
-				<div class="space-y-3 text-sm mb-6">
-					<div class="flex justify-between">
-						<span class="text-ink-2">{t('invitations.details.inviter')}</span>
-						<span class="text-ink-1">{info.inviter_name || t('invitations.details.unknownInviter')}</span>
-					</div>
-					<div class="flex justify-between">
-						<span class="text-ink-2">{t('invitations.details.email')}</span>
-						<span class="text-ink-1">{info.invited_email}</span>
-					</div>
-					<div class="flex justify-between">
-						<span class="text-ink-2">{t('invitations.details.expiresAt')}</span>
-						<span class="text-ink-1">{fmtDate(info.expires_at)}</span>
-					</div>
-				</div>
-
-				{#if isExpiredOrHandled}
-					<div class="text-center py-2 text-sm text-ink-2">
-						{#if info.status === 'accepted'}
-							{t('invitations.status.accepted')}
-						{:else if info.status === 'declined'}
-							{t('invitations.status.declined')}
-						{:else if info.status === 'expired'}
-							{t('invitations.status.expired')}
-						{:else}
-							{t('invitations.status.revoked')}
-						{/if}
-					</div>
-				{:else if !$isLoggedIn}
-					<button
-						onclick={loginAndAccept}
-						class="w-full py-2.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg transition-colors"
-					>
-						{t('invitations.actions.signInAndAccept')}
-					</button>
-					<p class="text-center text-xs text-ink-2 mt-2">{t('invitations.signInHelp')}</p>
-				{:else}
-					{#if actionError}
-						<div class="mb-3 text-xs text-state-danger-text motion-fade">{actionError}</div>
-					{/if}
-					<div class="flex gap-2">
-						<button
-							onclick={decline}
-							disabled={acting}
-							class="flex-1 py-2.5 border border-line-2 hover:border-line-2 text-ink-2 hover:text-ink-0 text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-						>
-							{t('invitations.actions.decline')}
-						</button>
-						<button
-							onclick={accept}
-							disabled={acting}
-							class="flex-1 py-2.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-action-warm/40 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
-						>
-							{t('invitations.actions.accept')}
-						</button>
-					</div>
-					{#if acting}
-						<ActivityIndicator label={t('invitations.actions.processing')} size="xs" class="mt-3" />
-					{/if}
+				{#if actionError}
+					<Alert tone="danger" class="mb-4">{actionError}</Alert>
 				{/if}
-			</div>
-		{/if}
+
+				{#if signedIn}
+					<Button size="lg" class="w-full" disabled={acting || !$authReady || $logoutInProgress || $projectSwitching} ariaBusy={acting} onclick={acceptExisting}>
+						{t('invitation.acceptExisting', { username: $auth.username ?? '' })}
+					</Button>
+					{#if acting}
+						<ActivityIndicator label={t('onboarding.processing')} class="mt-3" />
+					{/if}
+				{:else}
+					{#if createAbandoned || $logoutInProgress || $projectSwitching}
+						<Button href="/login" class="w-full">{t('common.backToLogin')}</Button>
+					{:else if !accountExists}
+						<h2 class="text-sm font-semibold text-ink-0 mb-3">{t('invitation.createTitle')}</h2>
+						{#key token}<OnboardingAccountForm idPrefix="invitation" submitLabel={t('invitation.create')} onSubmit={createAccount} />{/key}
+					{/if}
+					<div class="invitation-existing">
+						<span>{accountExists ? t('onboarding.accountExists') : t('invitation.existingPrompt')}</span>
+						<Button variant={accountExists ? 'primary' : 'link'} size="sm" onclick={signInToAccept}>{t('invitation.signInToAccept')}</Button>
+					</div>
+					<Button variant="link" size="sm" href="/recover">{t('recovery.title')}</Button>
+				{/if}
+			{/if}
+		</div>
 	</div>
 	</PageShell>
 </main>
+
+<style>
+	.invitation-details {
+		display: grid;
+		gap: 0.625rem;
+		margin: 0 0 1.25rem;
+		font-size: 0.875rem;
+	}
+
+	.invitation-details > div {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		gap: 0.25rem 1rem;
+	}
+
+	.invitation-details dt {
+		color: var(--color-ink-2);
+	}
+
+	.invitation-details dd {
+		margin: 0;
+		min-width: 0;
+		overflow-wrap: anywhere;
+		color: var(--color-ink-0);
+		text-align: end;
+	}
+
+	.invitation-existing {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		margin-top: 1.25rem;
+		padding-top: 1rem;
+		border-top: 1px solid var(--color-line);
+		font-size: 0.875rem;
+		color: var(--color-ink-2);
+		text-align: center;
+	}
+</style>

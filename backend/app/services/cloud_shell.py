@@ -638,6 +638,8 @@ async def provision_session(lease: CloudShellLease, status: StatusCallback) -> C
             conn,
             name=_container_name(lease.session_id),
             image=settings.cloud_shell_image,
+            image_pull_policy=settings.cloud_shell_image_pull_policy,
+            registry_id=settings.cloud_shell_registry_id,
             cpu=settings.cloud_shell_cpu,
             memory_mib=settings.cloud_shell_memory_mib,
             network_id=network_id,

@@ -26,6 +26,7 @@ describe('MCP OAuth consent handoff', () => {
 	it('selects a project before returning to a pending OAuth request without losing its ticket', () => {
 		storeMcpConsentTicket(ticket);
 		expect(postAuthDestination('/select-project')).toBe('/select-project');
+		expect(postAuthDestination('/select-domain')).toBe('/select-domain');
 		expect(pendingMcpConsentTicket()).toBe(ticket);
 		expect(postAuthDestination('/dashboard')).toBe('/oauth/mcp/authorize');
 	});
@@ -44,6 +45,8 @@ describe('Claude gateway authorization handoff', () => {
 		expect(storeClaudeGatewayUserCode('abcd-2345')).toBe(true);
 		expect(pendingClaudeGatewayUserCode()).toBe('ABCD-2345');
 		expect(postAuthDestination('/dashboard')).toBe('/oauth/claude/authorize');
+		expect(postAuthDestination('/select-domain')).toBe('/select-domain');
+		expect(pendingClaudeGatewayUserCode()).toBe('ABCD-2345');
 	});
 
 	it('supports manual code entry after login without accepting ambiguous codes', () => {

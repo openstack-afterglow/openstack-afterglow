@@ -22,6 +22,19 @@ Afterglow는 Docker Compose(개발/소규모), Kubernetes(프로덕션), ArgoCD(
 
 ---
 
+## Docker 빌드 캐시
+
+`Dockerfile`은 오래 걸리는 설치를 애플리케이션 소스보다 먼저 수행한다. Backend/worker는 lock과 crypto manifest → 외부 의존성 → crypto 소스 설치 → 런타임 앱 순서이며, uv의 다운로드/빌드 캐시는 BuildKit cache mount에 보존한다. `backend-runtime`의 ffmpeg/QEMU/Ceph, `native-runtime`의 MariaDB/Redis, `native-cloud-runtime`의 amd64 kernel/initramfs 설치는 앱 코드 변경으로 재실행되지 않는다. Runtime은 `COPY --chown`을 사용하며 개발 backend의 writable venv 소유권 설정도 앱 복사 전에 캐시한다.
+
+Frontend는 Bun build 의존성과 Node 운영 의존성을 각각 manifest/lock만으로 먼저 설치한다. Node의 `npm ci --omit=dev --ignore-scripts` 이후 compiled build와 runtime script를 복사하므로 화면 코드만 바뀌면 npm 설치는 캐시된다. 실제 Bun/SvelteKit 컴파일은 소스가 바뀌면 필요하며 생략하지 않는다. `.dockerignore`는 로컬 DB 파일·agent/browser 상태·graphify 산출물·frontend 로그를 빌드 컨텍스트에서 제외한다.
+
+```bash
+docker compose -f docker-compose.dev.yml --profile notion-worker build backend frontend notion-worker
+docker buildx build --platform linux/amd64 --target backend --progress=plain --load -t afterglow-api:local .
+```
+
+소스만 변경한 두 번째 빌드에서 apt/uv/npm 설치 단계의 `CACHED`를 확인한다. Lock·패키지 manifest·base image나 해당 시스템 설치 명령 변경은 정상적으로 그 의존성 레이어를 무효화한다. 광역 prune/`--no-cache`는 이 비교에 사용하지 않는다. Native cloud target은 여전히 amd64 전용이며 container 안의 supervisor 실행은 실제 systemd/KVM boot 검증이 아니다. 전후 시간과 로컬 실행 범위는 [검증 기록](testing.md#docker-빌드-레이어-캐시-최적화-2026-10-18)을 따른다.
+
 ## Docker 없는 OCI-root VM 후보 (미배포)
 
 별도 `Dockerfile` target `native-vm`은 Afterglow API·Notion worker·빌드된 SvelteKit, Node 22, MariaDB/client, Redis를 미리 설치합니다. BuildKit/Docker는 **빌드 호스트**에서만 사용하며 이미지 entrypoint는 `appuser`로 서비스 프로세스를 직접 실행합니다. 기존 Compose·Kolla 배포나 형제 Drover/Lumen/Waygate/Palimpsest Hub를 대체하지 않습니다.
@@ -91,6 +104,36 @@ default_network_id = "your-network-uuid"
 
 기본 Compose backend는 `.env`를 선택적으로 읽지만 frontend에는 backend 시크릿을 주입하지 않습니다. Dev runner는 별도의 private random key를 생성·보존하며 insecure 기본 키 허용에 의존하지 않습니다. `.env.example`의 dev-only allow 플래그를 운영에 사용하지 마세요. Prod manifest는 이를 `0`으로 고정하고 실제 운영 키를 요구합니다.
 
+### K8s·Helm 로컬 설정 편집과 생성
+
+Python 3.11+에서 `python3 /path/to/openstack-afterglow/setup.py`를 **설정을 보관할 디렉터리**에서 실행합니다. 메뉴는 설정 편집, Kubernetes, Helm, 두 형식 생성, 취소입니다. 비밀 입력은 숨기고 마지막 저장·생성 확인 전에는 파일을 쓰지 않습니다. 없던 base만 `afterglow.conf.example`에서 초기화하며 signing key를 한 번 생성합니다. 기존 키·주석·미선택 설정·사용자 확장은 보존하고, 기존의 잘못된 키도 몰래 교체하지 않습니다.
+
+```bash
+python3 /path/to/openstack-afterglow/setup.py --non-interactive --target both \
+  --config ./afterglow.conf --output-dir ./generated --namespace afterglow-dev \
+  --set 'app.site_name="My cloud"' \
+  --set-file openstack.password=/protected/openstack-password \
+  --set-file database.url=/protected/database-url \
+  --set-file k3s.kubeconfig_encryption_key=/protected/kubeconfig-key
+```
+
+`--set`은 알려진 공개 TOML 값만 받습니다. 비밀은 hidden prompt나 보호 파일의 `--set-file`로 전달하며 argv에 넣지 않습니다. 파일 입력은 마지막 줄바꿈까지 UTF-8 byte를 보존하므로 URI·단일 비밀에는 불필요한 줄바꿈을 넣지 않습니다. 생성물·base backup은 0600입니다. 모든 artifact를 먼저 준비하고 일반 쓰기 실패에는 이전 파일을 복원하지만 여러 파일의 crash-atomic commit을 보장하지는 않습니다.
+
+병합은 base → 정렬된 nonempty sibling override와 `config.gpu.toml` → 반복 `--override`의 인자 순서입니다. `afterglow.frontend.conf`는 backend override가 아닙니다. Namespace는 namespace만 선택하며 DMSLab의 domain profile을 자동 적용하지 않습니다. 필요하면 `--override /path/to/deploy/afterglow-dev.conf`처럼 명시합니다.
+
+출력은 `generated/k8s/`의 local-only 전체 application Kustomize tree, `generated/helm/afterglow/`의 allowlisted chart와 private `values-local.yaml`, `generated/generation.json`입니다. 설치·클러스터 생성·apply는 하지 않습니다. 실제 OpenStack/DB/Redis·공개 origins·TLS·ingress-controller/cert-manager와 활성 기능의 키는 운영자가 준비해야 합니다. Helm이 Secret을 소유할 때의 필수 DB/암호화 키 검증도 그대로 유지합니다.
+
+`scripts/setup.sh`가 포함된 GitHub ref 게시 뒤에는 같은 workflow를 curl로 실행할 수 있습니다. 호출 shell의 `pipefail`로 첫 raw-script 다운로드 오류도 전파합니다.
+
+```bash
+set -o pipefail
+curl --fail --location --show-error --silent \
+  https://raw.githubusercontent.com/openstack-afterglow/openstack-afterglow/dev/scripts/setup.sh | bash
+```
+
+Entry point는 `AFTERGLOW_SETUP_REF`(기본 dev)를 한 번 SHA로 고정하고 그 전체 GitHub source bundle을 받습니다. 재현 시 raw URL과 Bash 쪽 ref를 모두 검토한 SHA로 고정하세요. Piped interactive 입력은 `/dev/tty`로 연결하며 controlling terminal이 없으면 `--non-interactive`가 필수입니다. 임시 source는 종료·signal에 정리하고 caller cwd/input은 보존합니다. 새 source의 원격 게시·실행 검증 여부는 `docs/testing.md`의 해당 기록과 구분합니다.
+
+
 ### 애플리케이션 진단 로그 (`DEFAULT.debug`)
 
 ```toml
@@ -120,8 +163,10 @@ OpenStack/HTTP/SDK/SQL 및 `uvicorn.access`의 보호된 logger는 WARNING 제�
 DEBUG는 HTML traceback이나 HTTP wire dump, 인증·인가 우회, insecure 모드 또는 시크릿
 출력을 허용하는 스위치가 아닙니다. 진단은 method·등록된 route template·status·duration·
 outcome과 module/function/line 같은 제한된 메타데이터이며 실제 URL path 값, query,
-header, body, cookie를 기록하지 않습니다. 예외는 type과 제한된 function/line만 기록하며
-예외 문자열·소스 줄·locals·chained cause는 제외합니다. 민감 key와 인식된 credential 패턴은
+header, body, cookie를 기록하지 않습니다. 예외는 type·각 예외의 안쪽 function/line 최대12개·
+최대8개 원인 예외의 구조와 정수 HTTP status/errno만 기록합니다. `root_cause`는 확인된 마지막
+원인이며 순환/개수 제한이면 null과 truncation 표식을 남깁니다. 예외 문자열·소스 줄·locals·
+렌더링된 traceback/chain은 제외합니다. 민감 key와 인식된 credential 패턴은
 값 전체를 `***`로 마스킹합니다. 텍스트의 민감 assignment(`key`, `cephx_key`,
 `kube_config`, API key/authorization 변형, headers/body 포함)는 뒤의 나머지 텍스트도
 마스킹합니다. 공백·중첩 JSON·이스케이프 따옴표·여러 줄 값의 경계는 신뢰할 수 없으므로
@@ -155,6 +200,22 @@ request/response 전체 덤프의 허가로 해석하지 않습니다.
 변경 후 해당 설정을 사용하는 프로세스를 재시작/재생성해야 합니다. 환경변수로 TOML 오류를
 덮어 정상 설정처럼 취급하거나, 생성된 private 설정/로그를 시크릿과 함께 공개하지 않습니다.
 
+로그인 진단은 `auth_operation`, 서버가 생성한 `auth_correlation`, `auth_stage`,
+`auth_function`, `auth_line`, `outcome`, `duration_ms`로 연결합니다. 도메인 해석·비밀번호
+교환·프로젝트 목록/토큰 교환·도메인/프로젝트/system 권한 확인·세션 저장의 시작/완료는
+DEBUG, 실패는 debug를 꺼도 WARNING으로 남습니다. 인증 route가 401/403/409/503을 직접
+응답하는 경우도 예외 구조를 기록하며 클라이언트 오류 응답과 no-store 정책은 바꾸지 않습니다.
+실제 Keystone SDK의 `keystoneauth` namespace도 wire DEBUG 차단 대상입니다.
+
+Dev 로그인 문제는 루트 파일만 보지 말고 실제 mount인 `.local-services/afterglow.conf`의
+`[DEFAULT] debug = true`와 컨테이너에 주입한 `DEBUG` override를 확인합니다. 파일 변경은
+프로세스 재생성이 필요합니다. 기존 prepared env/볼륨을 유지한 backend-only 재적용은
+`docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml up -d --no-deps --build --force-recreate --wait backend`입니다.
+Keystone HTTP 성공과 별개로 권한 조회 단계에서 지연/실패할 수 있으므로 각 stage의 duration과
+원인 구조를 확인합니다. Native Keystone client도 설정된 `openstack.interface`와 `region_name`을
+사용하며 public endpoint로 조용히 바꾸지 않습니다. 권한 읽기 재사용은 한 번의 조회 안으로
+제한되고 다음 호출의 revoke·group membership·disabled 상태는 native에서 다시 확인합니다.
+
 ### 1-b. 설정 오버라이드 (선택)
 
 긴 옵션 섹션(GPU 디바이스 맵 등)은 별도 오버라이드 파일로 분리할 수 있습니다.  
@@ -177,6 +238,101 @@ afterglow.openstack.conf  ← OpenStack 자격증명 오버라이드 (선택)
 ```
 
 파일명 예시 처럼 알파벳순(`g` < `o`)으로 적용되며 뒤 파일이 앞 파일을 이깁니다.
+
+### 공통·도메인별 로그인 공급자
+
+`afterglow.conf`의 `[auth.providers.<key>]`는 공급자 레지스트리이고 `[auth.default].allow_providers`, `[auth.domain."<canonical Keystone domain ID>"].allow_providers`는 **파일·SQL 공급자 모두의 허용 목록**입니다. GitLab.com(`gitlab_com`, `https://gitlab.com`)과 DMSLab GitLab(`dmslab_gitlab`, `https://git.dmslab.re.kr`)의 독립 client ID/secret/native IdP 및 선택적 도메인 제한 전체 예제는 [인증 API](api/auth.md#afterglowconf의-공통도메인별-로그인-방법)와 `afterglow.conf.example`을 참고하세요. 도메인 키는 `openstack domain show <name> -f value -c id`로 얻은 정확한 ID이며 표시 이름·namespace를 쓰거나 대소문자를 바꾸지 않습니다. 예제의 도메인 자리표시자는 반드시 실제 ID로 교체합니다.
+
+- **기본은 무제한**입니다. Default의 `allow_providers` 생략은 활성 레지스트리와 해당 도메인의 eligible SQL 공급자를 모두 허용합니다. 도메인 테이블/필드 생략은 default를 상속하며, 명시적 `[]`는 그 범위의 federated provider를 전부 거부합니다. 비어 있지 않은 도메인 목록은 default를 **대체**하고 SQL 공급자도 자동 추가하지 않습니다. 비밀번호/이메일/회원가입 정책이나 SQL 행은 변경하지 않습니다.
+- 항목은 bare registry key 또는 소문자·하이픈 포함 canonical SQL provider UUID이며 표시 이름이나 `cfg:` ID가 아닙니다. 명시적 목록은 최초 중복을 제외한 목록 순서, 무제한은 레지스트리 선언 순서 다음 SQL name/ID 순서입니다. 비활성 공급자는 목록에 있어도 사용할 수 없으며 SQL UUID도 도메인 소속·사용 가능 여부를 검사합니다. Resolve·authorize·callback·provider-bound session refresh에서 같은 제한을 집행합니다.
+- **Breaking migration:** 옛 `[auth.default]`/`[auth.domain.*]`의 additive selector `providers`는 거부됩니다. `allow_providers`로 이전하면서 계속 허용할 SQL UUID까지 포함한 전체 대체 목록을 작성하세요. 단순 필드명 변경은 과거 common+domain 추가 의미를 보존하지 않습니다. 무제한/상속을 원하면 필드를 생략하며 `[]`를 기본값으로 쓰지 않습니다. `[auth.providers.<key>]` 레지스트리는 유지됩니다.
+- 비밀은 보호된 TOML의 `client_secret` 또는 `AUTH__PROVIDERS__<대문자 공급자 키>__CLIENT_SECRET`로 주입합니다. 두 GitLab에는 `AUTH__PROVIDERS__GITLAB_COM__CLIENT_SECRET`와 `AUTH__PROVIDERS__DMSLAB_GITLAB__CLIENT_SECRET`를 별도로 사용합니다. Nested env는 해당 leaf만 덮어쓰고, 최상위 `AUTH` JSON은 auth 객체 전체를 대체합니다. 활성 공급자의 명시적 빈 secret은 오류입니다. Registry key는 소문자로 시작하는 최대32자의 소문자/숫자/단일 내부 밑줄이며 끝/연속 밑줄과 알 수 없는 참조는 거부됩니다.
+- Kubernetes 생성물은 auth의 비밀 없는 metadata/선택만 ConfigMap에, 비밀 값은 `afterglow-secrets`의 nested env 키에 둡니다. 생성된 API·Notion worker patch가 해당 키를 참조합니다. 별도 관리 Secret을 사용할 때도 같은 키를 준비해야 합니다. Optional Secret 참조가 있어도 활성 공급자의 누락 자격을 허용하지는 않습니다.
+- Helm 변환도 `auth.configToml`/`auth.providerKeys`와 `secrets.authProviders`로 같은 계약을 사용합니다. K8s/Helm 생성 과정에서 **생략된 `allow_providers`는 생략된 채로, 명시적 `[]`는 `[]`로 보존**합니다. 생략 필드를 빈 배열로 채우면 무제한/상속이 전체 거부로 바뀝니다. `--no-secrets`/`--dry-run`은 비밀을 출력하지 않으며 실제 실행에는 외부 Secret이 필요합니다. Frontend에 auth Secret을 주입하지 않습니다.
+- Keystone의 각 실제 IdP/protocol/mapping과 각 GitLab/GitHub application callback `<frontend_base_url>/auth/callback`은 별도 선행 조건입니다. 선택한 작업 도메인과 계정 home을 혼동하지 않습니다. Native는 연결된 canonical user ID와 실제 home을 반환해야 하며 Afterglow가 Keystone mapping을 생성하거나 서비스 계정으로 사용자를 가장하지 않습니다. Stable-sub user-only mapping과 full federated tuple PATCH 선행 조건은 아래 cutover를 따릅니다.
+- 새 지원 인스턴스(OIDC/GitHub)의 연결 데이터는 설정으로 추가합니다. 레지스트리/Secret, 대상 도메인의 전체 `allow_providers`, native IdP/protocol/mapping과 upstream generic callback을 준비한 뒤 아래 재시작 절차를 따르며 애플리케이션 source/image를 바꾸지 않습니다. 같은 issuer/application도 protocol/mapping이 다르면 별도 키로 등록합니다. [설정만으로 로그인 연결 추가](api/auth.md#설정만으로-로그인-연결-추가)의 예시를 따르며 지원하지 않는 wire protocol을 설정만으로 구현했다고 취급하지 않습니다.
+- 설정은 시작 시 cache됩니다. Config/Secret/허용 목록 변경 후 artifact를 재생성·적용하고 **모든 API·worker를 정상 재시작**합니다. 파일 변경이나 ConfigMap/Secret 적용만으로 실행 중 process에 반영되지 않으며 구형 process와의 혼합 집행을 전제로 하지 않습니다. 기존 SQL 공급자·정책·암호화 키·Redis discovery pin을 보존합니다. OIDC 목적지 변경은 secret 교체를 동반하며 pin을 지워 우회하지 않습니다. TTL 없는 Redis pin도 영속 보장은 아니며, eviction/flush/유실/이전 snapshot 복원으로 pin을 잃으면 같은 자격에 새 목적지가 고정될 잔여 위험이 있습니다([상세 계약](api/auth.md#afterglowconf의-공통도메인별-로그인-방법)).
+
+`allow_providers` selector 변경 자체에는 별도 DB migration이 없지만 **아래 canonical 계정·전역 가입·복구 cutover는096/097 schema가 필요**합니다. 이 문서는 운영 schema 적용·real mailbox 수신·실제 GitLab federation·rolling/mixed-version 수용이나 배포 완료 증거가 아닙니다.
+
+### Canonical 계정·공개 가입·복구 cutover
+
+현재 source는 global email 소유권, explicit account linking, email-first 개인 home 가입 및 local-password 계정 복구를 함께 집행합니다. API payload/error의 정본은 [인증 API](api/auth.md), manager 관리 경계는 [IAM API](api/iam.md)입니다. 기존 root architecture/changelog/testing의 증거 범위를 따르며 이 절은 배포 실행 기록이 아닙니다.
+
+#### 설정과 admission
+
+```toml
+[auth]
+public_signup_enabled = false
+signup_email_domains = ["example.org"]
+
+[auth.default.auto_join_email_domains]
+dmslab_gitlab = ["example.org"]
+
+[auth.domain."<exact-working-domain-id>"]
+allow_providers = ["dmslab_gitlab"]
+auto_join_email_domains = {}
+```
+
+- Public signup 기본은false입니다. `signup_email_domains=[]`는 host 제한 없음이며 nonempty 목록은 exact IDNA host만 허용합니다. Signup/recovery readiness는 SMTP enabled/host/from-address와 frontend base URL 구성 여부입니다. SMTP 인증/TLS/발신 권한·실제 mailbox 수신은 별도 운영 수용이 필요합니다. 복구는 signup opt-in과 독립이며 SMTP readiness가 있어도 부적격 계정은 발급하지 않습니다.
+- Auto-join은 provider bare key 또는 canonical SQL UUID → host 배열 map입니다. 도메인 map 생략은 default 상속, 명시 map은 전체 대체, `{}`·누락 provider·빈 배열은 자동 가입 거부입니다. `allow_providers` 허용/활성·verified provider email·현재 email 정책도 필요합니다. 기본 provider 노출은 무제한일 수 있지만 **기본 auto-admission은 거부**입니다. Target Default를 사전에 정확히 준비해야 하며 이 경로는 reader만 추가하고 manager/owner/group을 provision하지 않습니다.
+- 전역 signup은 `/auth/registrations`에서 전달된 email proof로 새 개인 home만 만듭니다. `/auth/domains/{domain_id}/registrations`는403 `invitation_required`이고 기존 SQL signup opt-in/resolve projection으로 다시 열 수 없습니다. 기존 도메인 가입에는 초대 또는 위 provider별 admission이 필요합니다. Auto-join은 기존 email 계정의 password/authenticated 연결 proof를 대신하지 않습니다.
+- Config/Secret·K8s/Helm artifact를 재생성할 때 위 auth metadata와 **생략/명시 빈 map/list의 차이**를 유지합니다. Protected provider secret·암호화 키·Redis pin·SQL 정책을 보존하고 모든 API/worker를 일관된 설정으로 재시작합니다. Nested env secret leaf와 최상위 AUTH 전체 대체를 혼동하지 않습니다. Hot reload·구형 process와 혼합 집행을 가정하지 않습니다.
+
+#### 가입 승인·개인 quota 정책 전환
+
+`098_enrollment_policy.sql`과 migration manifest를 **새 writer보다 먼저** 적용합니다. 기존 가입 writer를 drain하고 모든 API/worker를 함께 전환합니다. 구형 writer 혼합 운용은 승인·quota 정책을 우회할 수 있으므로 지원하지 않습니다. Migration은 `enrollment_policy`, `signup_requests`, enrollment의 nullable JSON `personal_quotas`를 추가하며 기존 사용자·home·권한·진행 중 intent를 이전하지 않습니다.
+
+시스템 관리자 → 설정의 가입 정책에서 공개 email 가입과 auto/admin 승인, 미래 개인 도메인의 sparse quota template을 저장합니다. 최초 persisted row가 없을 때만 config 공개 가입 flag·auto·core quota0을 사용하고 SQL 장애는503입니다. Row가 생기면 config flag보다 persisted flag가 우선하며 host allowlist·SMTP/provider 설정은 계속 필요합니다. 다른 배포 입력에 새 설정 키나 secret을 복제하지 않습니다.
+
+Quota blank는 OpenStack 기본값,0은 금지,-1은 unlimited입니다. Template은 새 개인 Default의 native quota와 도메인 allocation ceilings/defaults에 동결 적용하며 사용자/Default 활성화 전 readback합니다. 비활성 Manila field는 보존·omitted로 표시하고 다른 native quota 불확실성은 recovery journal을 남기고 차단합니다. 저장 뒤 기존 도메인의 quota를 일괄 변경하지 않습니다.
+
+승인은 native 계정이 아닌 verified request에 대한 결정입니다. Password/OAuth code/session을 저장하지 않고 OIDC/GitHub는 승인 뒤 다시 로그인합니다. Email은 공개 가입 enabled일 때 새 링크, 꺼진 invitation-only 환경에서는 기존 검증 초대 재조회 안내를 보냅니다. 승인 메일503은 **이미 확정된 승인**을 뜻할 수 있으므로 자동 승인/재전송하지 말고 현재 queue 상태를 조회합니다. 구버전 rollback 전 새 가입 writer를 중지하고 승인/journal 상태를 보존해야 하며 자동 DROP/backfill/기존 계정 이동은 하지 않습니다.
+
+#### Native Keystone 선행 조건
+
+Apache/upstream verifier가 검증된 bearer의 immutable subject를 전달하고, enabled IdP/protocol이 **user-only stable-sub mapping**을 가리켜야 합니다. OIDC 예시는 다음과 같으며 실제 설치가 전달하는 stable claim/header 이름과 정확히 맞춰 검토합니다:
+
+```json
+{"rules":[{"local":[{"user":{"id":"{0}","type":"ephemeral"}}],"remote":[{"type":"OIDC-sub"}]}]}
+```
+
+허용 subject source는 OIDC `OIDC-sub`, `OIDC_CLAIM_sub`, `HTTP_OIDC_SUB`, `HTTP_OIDC_CLAIM_SUB`, `sub`이며 GitHub는 stable numeric ID의 `HTTP_X_GITHUB_ID`, `GITHUB_ID`, `github_id`, `id`도 가능합니다. 실제 원본 header 검증 없이 이름만 바꾸지 않습니다. `user.id`는 remote index를 직접 참조해야 하며 mutable `preferred_username`/email/name을 identity key로 사용하지 않습니다. Mapping은 email을 덮어쓰거나 local groups/projects/roles를 provision할 수 없습니다. 각 rule은 user 하나만 허용하며 callback/link가 native exchange 전에 검사합니다. Unsafe·조회 불가 mapping은503 `native_mapping_unsafe`입니다. IdP의 default domain이 선택 작업 도메인과 같다는 것만으로 canonical 연결을 입증하지 못합니다.
+
+Native protocol ID는 URL label일 뿐 아니라 설치된 Keystone이 로드할 auth-method 이름이다. 실제 `keystone.auth.<method>` entrypoint와 primary-auth 분류를 설치 버전에서 확인하고, 모든 원본 설정·현재 프로토콜/소비자·exact backup을 보존한 뒤 별도 프로세스에서 정식 config option 등록 및 `core.load_auth_methods()`를 먼저 실행해야 한다. 현재 stevedore loader는 `[auth] <새 이름> = <Python 클래스 경로>`만으로 미등록 namespace를 만들지 않으며, 이런 설정을 reload하면 기존 method 전체의 로딩도 깨질 수 있다. Builtin `mapped`가 필요한 경로는 승인된 해당 protocol/mapping을 이관하거나 정식 native plugin/image를 별도 준비하며 실행 중 컨테이너에 import/entrypoint shim을 주입하지 않는다. 실제 custom plugin을 사용하는 설치에서만 그 설치가 지원하는 `additional_primary_auth_methods`도 검토한다. 이는 token-rescope 제한을 끄라는 뜻이 아니다.
+
+Shared protocol을 여러 클라이언트가 사용할 때는 live API binding만 수정하지 말고 **실제 배포 writer의 선언과 source JSON을 먼저** 같은 계약으로 바꿉니다. Kolla의 `keystone_identity_providers[].attribute_mapping`과 `keystone_identity_mappings[].name/file`, `globals.d`·관리 scripts·automation을 함께 검토합니다. 도메인 접두사 mapping으로 되돌리는 bootstrap/reconcile 명령은 퇴역시키고 grant migration을 로그인 복구에 실행하지 않습니다. 기존 사용자·grant·legacy protocol을 삭제하는 보상 rollback은 금지하며 timed-out native write는 readback 후 판단합니다.
+
+현재 DMSLab shared 계약은 `gitlab/mapped → afterglow_gitlab_stable_sub`, schema1.0, 위 정확한 user-only `OIDC-sub` 규칙과 `remote_id_attribute=HTTP_OIDC_ISS`입니다. Native `openid → sso_oidc_mapping`의 rules·null attribute는 유지합니다. Operator source는 전용 `git.dmslab.re.kr.stable_sub_identity_mapping.json`을 선언하고, `scripts/reconcile-keystone-domain-protocols.py --keystone-url <실제 native /v3 endpoint>`의 audit 후 승인된 `--apply`만 mapping/protocol을 조정합니다. Aligned apply는 configuration write0이며 source/IdP/legacy/unrelated state가 다르면 중단합니다. Private before-state를 보존하고 구형 domain binding으로 자동 복귀하지 않습니다.
+
+Horizon은 설치된 `openstack_auth`의 `WEBSSO_IDP_MAPPING`을 확인하고 Default/dmslab의 selector 둘 다 `('gitlab','mapped')`로 보냅니다. Selector 이름은 native protocol 이름이 아닙니다. Credentials form·CSRF·unknown-domain 거부·exact WebSSO redirect와 trusted dashboards를 실제 Django Client 및 public browser에서 검증합니다. Kolla `genconfig -i /etc/kolla/multinode --tags keystone`는 operator venv의 `ansible-playbook`이 PATH에 있어야 하며, generated mapping source·runtime auth/Apache bytes·metadata의 정합성을 확인합니다. 실제 사용자 GitLab→canonical native token 수용은 별도로 확인합니다([실행 증거](testing.md)).
+
+
+
+설치된 Keystone은 기존 local user에 `PATCH /v3/users/{exact-user-id}`로 **전체 `federated` 배열**을 적용·조회할 수 있어야 합니다. Payload의 개념적 shape는 `{"user":{"federated":[{"idp_id":"exact-idp","protocols":[{"protocol_id":"exact-protocol","unique_id":"URL-quoted-stable-sub"}]}],"afterglow_external_identities":[{"issuer":"exact-verified-issuer","subject":"stable-sub"}]}}`입니다. 실제 쓰기에서는 현재 배열의 **모든 다른 IdP/protocol tuple**과 stable metadata를 보존해 합치며 기존 password/home/name/email/default project를 바꾸지 않습니다. Password proof가 확인된 경우만 `afterglow_local_password=true`를 추가합니다. SDK update는 이 full native PATCH와 readback을 수행하고, 최종 OS-FEDERATION이 같은 canonical user ID/home을 반환해야 합니다. Mutable-name으로 새 shadow user를 만들거나 service token을 반환하는 대체 경로는 없습니다. 이 native 동작은 source/API 또는 합성 provider 성공만으로 최종 GitLab acceptance를 주장할 수 없는 운영 prerequisite입니다.
+
+계정 proof와 native attachment는 같은 identity graph lease 안에 있습니다. Authenticated 연결은 native token 및 origin refresh record의 exact user/home·blacklist·`exp`·최초 `started_at` 절대 deadline을 다시 확인하며 만료/회수된 origin은401입니다. 직접 password proof뿐 아니라 살아 있는 **password-origin authenticated 세션**도 local-password marker를 확정할 수 있지만 federated-origin bearer만으로는 확정하지 않습니다. 이 원자적 경계와 refresh-record 보존을 구형 writer 혼합이나 legacy session origin 추정으로 우회하지 않습니다.
+
+기존 계정 연결의200은 `ProviderLinkResponse`이며 로그인 성공이 아닙니다. 연결 API는 native attachment readback에서 종료하고 frontend는 도메인 힌트 없는 `/login?reauthenticate=1`로 새 인증을 안내합니다. 새 authorize/callback에서만 native token·프로젝트 scope·application session을 발급하고 최초 세션은 provider origin이 아니라 canonical home에 둡니다. 연결 완료·세션 미발급과 별도 새 로그인 성공을 각각 확인합니다.
+
+도메인 입력 없는 로그인 cutover는 backend/frontend를 함께 반영해야 합니다. 새 password body는 `{username,password}`뿐이며 구형 `domain_name`/`project_name` 추가 필드는422입니다. 공개 `/auth/login-options`의 provider origin 등록은 기존 설정·정책을 재사용하고 실제 인증 뒤 home에서 workspace chooser를 엽니다. 새 schema/config key·native mapping 변경은 없지만 앞선 개인-domain 가입의098 등 prerequisite는 그대로 필요합니다. 구형 UI와 새 API를 혼용하지 않으며 rollback 시 원래 API/frontend 쌍을 함께 복원합니다. 기존 계정 home·권한·자원은 이전하거나 삭제하지 않습니다.
+
+#### Schema-before-writer와 rollback
+
+운영자는 아래 순서를 [운영 데이터와 양방향 호환성 평가](#운영-데이터와-양방향-호환성-평가)의 승인된 backup/snapshot·실제 ledger/schema·원래 키 증거와 함께 적용합니다. 이 문서 작성으로 live migration/write 권한이 생기지 않습니다.
+
+1. 구형 enrollment/registration API·worker와 검증 없는 profile email writer를 **먼저 drain**합니다. 미완료 native intent는 원 요청 종료·exact readback을 확인하며 replay하지 않습니다. Schema 확장이 additive여도 old/new public registration 의미를 혼합하지 않습니다.
+2. 기존 manifest의 선행 migration들을 실제 DB와 대조한 뒤 `096_public_signup.sql`을 writer 전에 적용합니다. `domain_enrollments.domain_id`를 nullable로 확장하여 global registration의 미확정 personal home을NULL로 나타냅니다. Null은 invitation target이 아닙니다. 과거 nonnull-domain registration 중 `pending`/`delivery_pending`만 revoked로 바꾸며 accepted identity·invitation·중단된 native-write recovery journal은 건드리지 않습니다. Native 사용자/password/domain/grant를 이동/reset하지 않습니다.
+3. `097_account_recovery.sql`을 recovery/email-change writer mount 전에 적용합니다. `account_recoveries`는 SHA-256 token hash PK, kind, exact user/home/original_email/new-or-recovery email, status, expiry·consume·create 시각과 user/status index를 추가합니다. 평문 token/password를 저장하지 않습니다. 기존 writer는 이 새 table을 쓰지 않지만 unverified profile writer로 rollback하면 email 소유권 bypass가 다시 열립니다.
+4. Native stable-sub mapping/full tuple PATCH·canonical 소유권 검토와 설정을 준비한 후 새 API/worker/frontend를 일관되게 cutover합니다. Provider-origin 없는 legacy federated 세션은 재로그인이 필요합니다. Public signup은 readiness와 native role/quota baseline 준비 후 명시적으로 opt-in하며 옵션 flag/SMTP 접수만으로 실제 전달·native 로그인 수용을 선언하지 않습니다.
+5. Recovery `dispatching/outcome_unknown/sessions_failed`와 enrollment native journal은 재시작·image rollback 후에도 보존합니다. Recovery token은1시간·1회용이고 dispatch 전 소비를 commit하므로 실패했다고 다시 pending으로 돌리거나 password write를 replay하지 않습니다. Afterglow session family는 Redis에서 원자적으로 제거·native token을 캡처한 뒤 각 exact token을 operator 인증으로 revoke합니다. 정확한 native token404 `Failed to validate token`/`Could not recognize Fernet token`만 이미 무효로 인정하고 proxy/directory404·권한·연결 오류는 회수 실패로 조사합니다. Native 쓰기 불명502와 회수 불완전503을 성공으로 닫지 않습니다.
+6. 096 rollback은 **새 writer도 drain**하고 nullable global registration row를 검토·해소한 뒤에만 NOT NULL 복원을 계획합니다. Pending NULL row를 정리하더라도 interrupted journal을 임의 삭제하지 않습니다. Image-only rollback으로 과거 공개 target-domain 링크를 복원하거나 global 링크를 그 의미로 재해석할 수 없습니다. 097 journal을 삭제하거나 구형 profile writer를 다시 열어 rollback을 대신하지 않습니다. 새 writer/이전 schema 및 이전 writer/새 schema·mixed-version 수용 증거가 없으면 지원한다고 주장하지 않습니다.
+
+#### 기존 중복·legacy 연결의 검토된 이관
+
+정규화 이메일이 여러 home에 있거나 issuer/sub/native tuple이 서로 다른 사용자에 연결돼 있으면 자동 merge하지 않습니다. 운영자는 exact canonical user/home을 사용자의 password 또는 authenticated native proof와 대조하고, 보존할 password·이메일 소유권·stable issuer/sub·URL-quoted native tuple 및 모든 멤버십/그룹·역할·프로젝트 소유권·application credential을 inventory로 검토해야 합니다. 선택한 정확한 ID별 변경·회수·복구 지점을 승인받은 뒤 이관하며 mutable username, 표시 이름, email host만으로 계정을 선택/삭제하지 않습니다. Explicit account+external proof는 untracked legacy mutable-name tuple의 제한된 교체만 허용하며 이미 기록된 stable issuer 연결을 덮어쓰는 일반 merge API가 아닙니다. 비슷한 username/email로 native 사용자를 자동 이동·복제/reset하지 않습니다.
+
+사람의 system admin/manager는 global unique email의 local-password 계정이면 이메일 복구 대상입니다. Operational `os_username`, effective service 계정과 external-only 계정은 제외하며 기존 federated 계정의 local-password capability는 추정하지 않습니다. 실제 mailbox 전달·one-use 처리·기존 password 보존·동일 native user/home·세션 회수까지의 운영 수용은 별도 증거가 필요합니다. **이 문서는 배포됨, 실물 메일 수신 성공 또는 최종 real GitLab/native acceptance를 주장하지 않습니다.**
 
 ### 1-c. 관리자 볼륨 삭제 Ceph RBD 검사 (선택)
 
@@ -215,6 +371,29 @@ Afterglow는 image data/header/trash를 삭제하지 않습니다. 쓰기는 누
 
 배포 뒤 backend container의 non-root 사용자로 `rbd --version`, `rados --version`, `ceph fsid`를 확인합니다. 진단 API에서 `backend_fsid=present`와 mapped pool을 확인하되, 기존 Cinder 장애 볼륨을 자동 복구 검증 대상으로 사용하지 않습니다. Keyring 본문·CLI argv 전체·Ceph auth output은 로그나 이슈에 붙이지 않습니다.
 
+### Ceilometer·Gnocchi 실측 자동 발견
+
+Afterglow는 요청자의 Keystone catalog `metric` endpoint와 기존 SDK session을 사용합니다. 별도 Gnocchi URL·관리자 비밀번호·service-account fallback 설정은 추가하지 않습니다. Ceilometer pollster/pipeline/publisher와 Gnocchi archive policy·endpoint·native read policy는 OpenStack 운영자가 배포해야 합니다. 이 기능은 그 서비스를 설치하거나 활성화하지 않습니다. Ceilometer REST endpoint를 요구하지 않습니다.
+
+서비스가 없거나 meter/policy가 허용되지 않으면 기존 exporter 모니터링·Nova inventory/할당량을 유지하며 native 상태를 따로 표시합니다. Guest RAM 수집은 환경의 guest agent/pollster, GPU는 실제 per-instance vGPU meter/분모에 달려 있습니다. 상주 메모리·디스크 allocation·볼륨 backend GiB 용량을 guest filesystem 사용량으로 해석하지 않습니다. 운영 acceptance는 해당 사용자 native 정책과 실제 표본·수집 주기·archive retention을 확인해야 하며 합성 HTTP 검증으로 대체하지 않습니다.
+
+Reader는 collection당 6초 deadline, 요청당 1.5초, 최대 96 HTTP 요청·4페이지 × 32행·128 resource·meter 결과당 2,048표본·응답당 512KiB·총 4MiB를 적용합니다. 긴 요청 구간은 공식 `granularity`/`resample` mean 조회로 읽고 최대 세 archive tier 중 하나만 사용합니다. Counter/vCPU resampling은 window당 최대 2,048 native 표본으로 reset/gap/resize를 검증하며 이전 표본과 invalid interval만 보존합니다. 모든 window가 같은 총 요청·byte·deadline 제한을 공유합니다. 한계 도달은 partial/안전한 실패로 표시하며 전체 cloud coverage를 주장하지 않습니다. Caller plugin의 기존 blocking Keystone/DNS discovery thread는 async 응답 deadline 뒤에도 자체 session timeout까지 남을 수 있습니다. Redirect·재시도·전역 native cache는 사용하지 않습니다.
+
+참고: [Ceilometer measurements](https://docs.openstack.org/ceilometer/latest/admin/telemetry-measurements.html), [공식 Gnocchi resource mapping](https://github.com/openstack/ceilometer/blob/master/ceilometer/publisher/data/gnocchi_resources.yaml), [Gnocchi REST](https://gnocchi.osci.io/rest.html).
+
+### 관리자 Aodh·Gnocchi 운영 전제
+
+관리자 [Aodh 경보](/admin/monitoring/aodh)·[설정](/admin/monitoring/aodh/settings)은 caller `alarming` catalog의 native Aodh를 사용합니다. [Gnocchi 서비스](/admin/monitoring/gnocchi)는 `metric` endpoint를 읽기만 합니다. Afterglow 설정에 별도 URL·password를 넣거나 daemon을 설치하지 않습니다. Aodh api/evaluator/notifier/listener와 DB·메시징·Gnocchi 수집/보존 정책 및 caller native 권한은 운영자가 준비합니다. Afterglow system-admin 여부와 native project/system scope 정책은 독립적입니다.
+
+알림은 Aodh가 수행합니다. 기본 `http(s)://...`는 경보 전이 JSON을 POST하는 receiver, `trust+http(s)://...`는 Keystone 위임을 받아 처리하는 신뢰 receiver여야 합니다. URL에는 trust ID를 직접 넣지 않습니다. `log://`는 notifier 로그를 위한 방식이며 운영 통지 전달의 증명이 아닙니다. `zaqar://?topic=ops&subscriber=mailto%3A//ops%40example.org&ttl=3600` 또는 signed queue URL은 Aodh Zaqar plugin·클라이언트·catalog/credentials와 Zaqar subscription driver가 실제로 설치되어야 합니다. `trust+zaqar://?queue_name=ops`는 caller 위임 queue를 사용합니다. `trust+heat://`는 load-balancer member health/Heat autohealing용이며 일반 메일 통지나 arbitrary webhook 대체가 아닙니다.
+
+직접 SMTP·Slack·Telegram endpoint는 native 전이 JSON 형식을 수용하지 않을 수 있습니다. 그 경우 호환 webhook relay나 설치된 Zaqar subscriber로 변환해야 합니다. Afterglow는 메시지를 대신 발송하지 않고 native credentials·notifier/plugin policy도 변경하지 않습니다. API capabilities에는 설치된 모든 plugin 목록이나 전달 성공 여부가 없으므로 운영에서는 허용된 시험 경보와 승인된 receiver로 evaluator→notifier→receiver 수신까지 별도로 확인해야 합니다. Trust action은 native 권한 위임·외부 효과가 있어 대상과 범위를 검토한 후 저장합니다. Webhook path/query와 Zaqar signed query는 비밀로 취급합니다.
+
+Gnocchi 화면의 pending measures/metrics는 `/status`의 backlog snapshot입니다. `0`은 확인된 대기량0일 뿐 Ceilometer polling·publisher·metricd 전체 건강을 보장하지 않습니다. Native policy가 `/status`를 거부해도 readable archive 정책/rule·resources·metrics는 계속 점검할 수 있습니다. 경보 granularity는 실제 metric archive policy와 일치시켜 insufficient-data 반복을 피해야 하며 API에서 보이는 raw counter를 CPU-percent로 해석하지 않습니다.
+
+관리자 adapter는 호출당 최대12 HTTP·협력적8초 deadline·socket 요청당최대2초, 응답당1MiB·총4MiB·diagnostic section당256개·measures512개를 제한합니다. 시간 범위는1–168시간, inventory page는1–100개이며 한계는 partial/truncated로 표시합니다. Caller 인증·DNS/discovery 또는 blocking socket read는 hard-cancel하지 않으므로 해당 native timeout까지 초과할 수 있습니다. Native 요청은 redirect·connect/status retry·재인증 replay를 하지 않습니다. 변경 응답이 불확실하면 `telemetry_mutation_uncertain`을 읽고 native 목록/정의를 재조회한 뒤 재제출 여부를 결정합니다.
+
+공식 근거: [Aodh alarms/actions](https://docs.openstack.org/aodh/latest/admin/telemetry-alarms.html), [Aodh REST](https://docs.openstack.org/aodh/latest/contributor/webapi/v2.html), [표준 notifier entrypoints](https://github.com/openstack/aodh/blob/master/pyproject.toml), [Zaqar URL 형식](https://github.com/openstack/aodh/blob/master/aodh/notifier/zaqar.py), [Gnocchi REST/status](https://gnocchi.osci.io/rest.html).
 ### 관리자 호스트 관측과 트래픽 분석 운영
 
 이 절은 [관리자 API](api/admin.md#호스트-건강-관측-host-health)의 host health, [인프라 토폴로지](api/admin.md#인프라-토폴로지와-호스트-관측), [트래픽](api/admin.md#트래픽-분석)의 **운영자가 준비하는 수집 경계**입니다. Afterglow는 node_exporter·observer·LLDP daemon·traceroute를 노드에 자동 설치하거나 방화벽·NIC·OpenStack 설정을 변경하지 않습니다. 관리자 UI는 [하이퍼바이저](/admin/hypervisors), [인프라 토폴로지](/admin/infrastructure-topology), [트래픽](/admin/monitoring/traffic), [로그인](/admin/monitoring/logins)입니다. [애플리케이션 자격 증명](/admin/application-credentials)과 [사용자 자격 증명](/admin/user-credentials)은 별도 caller-scoped Keystone API이며 observer/writer token을 대신하지 않습니다.
@@ -340,7 +519,6 @@ Target마다 `id`, `name`, expected `chassis_id`, `management_ip`, `username`, p
 측정된 cable join은 **ifType6 + ifConnectorPresent1**인 physical port, actual chassis, 모호하지 않은 exact port alias와 physical host NIC evidence가 함께 맞을 때만 허용합니다. LLDP localPortNum은 ifIndex가 아닙니다. Logical/LAG/unknown port·bond 광고·불명확 alias는 cable rate로 승격하지 않고 진단 근거만 남깁니다. Uptime wrap 뒤에도 discontinuity를 보존하며 reboot/identity/reset/stale·누락 packet component는 rate null입니다. Cumulative uint64는 decimal string, rate는 bounded number로 처리합니다. Switch port counters는 해당 port 전체 관측이지 특정 host peer traffic의 대체 측정이 아닙니다.
 
 현재 운영 prerequisite는 **승인된 management endpoint 또는 jump 경로**, read-only SNMPv3 authPriv view, operator-side0600 credential-file의 실제 위치입니다. 사용자에게 물리 switch/port와 Afterglow/collector-only rollout 승인은 받았지만 이 입력은 아직 확보되지 않았습니다. LLDP로 관측한 SG3210X-M2/SG3428X-M2의 광고 주소 `192.168.0.2/.3`는 operator/controller1에서 HTTP/HTTPS timeout이었으며 authorized/reachable 관리 대상으로 단정하지 않습니다. 실제 switch counters·port 매핑·운영 수용은 이 prerequisite를 확보한 뒤 별도 검증해야 합니다.
-
 #### 트래픽 분석 설정
 
 | `[traffic_analytics]` 키 | 기본값·범위 | 운영 의미 |
@@ -384,6 +562,9 @@ Lookup는 memory-mapped reader를 재사용하므로 dataset 교체 뒤 backend 
 
 Frontend **서버 프로세스** 환경은 다음과 같습니다.
 
+Kolla의 backend effective `[traffic_analytics]` TOML에는 backend model이 지원하는 key만 둡니다. `frontend_ingest_key`는 sparse operator override를 포함한 effective 값이 우선하며 frontend writer에 같은 값을 전달합니다. Frontend ingest URL과 socket-peer attestation은 native deployment 변수로 남고 backend TOML에 `frontend_ingest_url`, `trust_client_address`, `peer_is_socket` 같은 frontend-only key를 넣지 않습니다. `extra="forbid"` 모델에서 이 key들은 startup 오류입니다.
+
+
 | 환경변수 | 값·주의 |
 |---|---|
 | `TRAFFIC_ANALYTICS_INGEST_URL` | backend의 `/api/v1/monitoring/traffic/events` 전체 URL. Frontend server가 실제 도달하는 internal HTTP 또는 HTTPS 경로 사용; userinfo/query/fragment 금지 |
@@ -408,6 +589,21 @@ Frontend reporter는 SSR/server 요청만 보내고 backend 요청과 별도 집
 4. 승인된 별도 collector 설치/start와 fresh read-only handoff 후 observer를 전환합니다. LLDP 도구/read socket 및 switch credential/view는 독립 prerequisite입니다. 새로운 fabric source·credential·disable마다 revision을 증가시키고 모든 backend에 동일 revision을 배포합니다. Rollout 후 direct/untrusted 헤더·HTTPS redirect·writer/observer/admin 인가·fresh/reset/stale/unknown과 기존 history를 각각 확인합니다.
 
 Rollback은 새 collector를 먼저 stop/disable하고 old observer command/drop-in을 복원한 뒤 frontend writer를 호환 버전으로 내리거나 수집을 중지합니다. 보호된 old TOML/env/launcher/MMDB bytes+pin과 image를 함께 복원하여 backend/API/설정 consumer를 되돌립니다. New-only TOML을 old binary에 남기지 않으며 이미지 downgrade만으로 config 호환을 보장하지 않습니다. 새 binary를 유지하며 fabric 설정을 되돌릴 때는 **이전 값 + 더 높은 revision**을 사용합니다. Redis/history·키·volume·system Python·network를 삭제/재생성하지 않으며 별도 schema migration의 rollback과 혼동하지 않습니다. 기존 배포1.30.x 수용 기록은 해당 시점의 역사적 증거로 유지하고 이 기능의 새 운영 수용으로 승격하지 않습니다.
+
+#### DMS Lab 운영 활성화 기록 (2026-10-14 UTC)
+
+이 기록은 기존 `v1.30.16` 기능의 운영자 승인 수집기/설정 배포이며 제품의 자동 노드 설치나 새 이미지 release가 아닙니다. Operator의 `/etc/kolla/config/afterglow/backend/afterglow.conf`(0600)에 관측18개·명시 host-health 대상18개·controller1↔나머지17대의 기존 node_exporter9100 peer34개를 등록했습니다. Traffic은 enabled·retention30일·site_countryKR와 서로 다른 HMAC/writer secret으로 활성화하고, frontend writer만 protected `secrets.yml`의 `afterglow_traffic_analytics_ingest_key`와 공유합니다. 실제 API listener는 controller별18020, frontend18081이며 기존 ingest URL을 유지했습니다. 원문 IP를 추가 저장하거나 proxy trust를 넓히지 않았습니다.
+
+- 대상: native inventory의 `dms-compute{1,2,3,5..13}`12대와 `dms-controller{1..3}`3대, 기존 Ceph monitor 주소에서 실제 hostname을 확인한 `dms-storage{1..3}`3대. Kolla `storage` 그룹의 controller를 Ceph host로 잘못 재분류하지 않았습니다.
+- 각 노드: `afterglow-observer` nologin system user, root-owned `/opt/afterglow-host-observer/libexec/host_observer.py`, 본인만 읽는0600 `/etc/afterglow-host-observer/observer.token`, `afterglow-host-observer.service`와 동일 sandbox의 once unit. Verified public HTTPS·10초 주기·restart-on-failure·boot enablement; root/capability·NIC·firewall 변경 없음.
+- Storage Python: 시스템3.10은 보존하고 verified standalone3.12.11을 `/opt/afterglow-host-observer/python/cpython-3.12.11-linux-x86_64-gnu`에 격리했습니다. 원 binary의 GNU stack 정보 부재로 동일 sandbox의 thread가 `can't start new thread`, `mprotect(...PROT_EXEC) = EPERM`으로 실패했습니다. 공식 CPython main을 Ubuntu22.04 GCC11.4로 nonexec-stack build하고 executable만 교체했습니다. 최종 binary sha256 `5bdf8ff4706057021354b54ce0fff23f1a08fba6db28c6638ec9d75ffcb59bb8`, tree sha256 `4f16088bdc2348c266b0caf16629a582f265876fe61c43dd8153d12972289e43`. 모든 systemd hardening, 특히 `MemoryDenyWriteExecute=yes`는 유지했습니다.
+- Canonical Kolla 네 단계는 모두3controller failed0/unreachable0으로 완료했습니다. 기존 API/frontend image와 worker image를 유지했고, 변경하지 않은 container629개의 id/image/start/state가 baseline과 동일했습니다. 운영 volume·기존 암호화/auth key·inventory·다른 서비스/HAProxy를 변경하지 않았습니다.
+- 실제 수용: observer18개 active/enabled·nonroot·cap0·seccomp, 모두 fresh·NIC rates 진행, peer34 up/0down. Real public backend health와 frontend `/login` HTML GET3쌍 뒤 native route 집계가 backend requests/2xx/body-known 각각+12, frontend requests/2xx/pageviews/body-known 각각+3 증가했습니다. 운영 동시 요청이 있으므로 단독 원인 귀속은 하지 않습니다. 관리자 topology/두 traffic source200과1440/390px 실제 화면·overflow0을 확인했습니다.
+- 권한: unauth/bad/cross-host observer401, 해당 observer jobs200·관리자 읽기401; writer unauth/bad/read401·valid key invalid body422. 실제 일반 계정 me200·topology/traffic403·logout 이후 JWT401. **별도 logout 자체는503**이었고 서버의 `Keystone revoke 실패 / Unauthorized`를 확인했습니다. 원격 Keystone 회수 성공은 미검증이며 권한 확대·인증 코드 변경으로 숨기지 않았습니다. 해당 실패 때문에 combined observation smoke의 전체 `passed`는 false; 관측·인가 결과와 이 독립 실패를 분리합니다. 전체 source `test:gate`/새 image build/commit/push는 수행하지 않았습니다.
+
+Coverage: LLDP/traceroute 도구와 진단 allowlist는 미설정이므로 물리/송신 trace를 만들어 내지 않습니다. Offline GeoIP filename은 비어 있어 국가가 unknown/XX입니다(디스크 전체의 DB 부재를 단정하지 않음). Frontend 주소 trust는 false이고 방문자 추정은 null입니다. Initial traffic smoke에서 frontend cumulative reporter drop65를 관측했고 후속 snapshot은 backend recovered drop19, frontend recovered2/reporter69로 partial이었습니다. 누락을 지우거나 완전 집계·대역폭·실제 사람 수로 승격하지 않으며 활성화 이전 트래픽을 소급 수집하지 않습니다.
+
+보호된 복구 지점은 operator `/etc/kolla/.afterglow-observation-backups/activate-observation-20261014T143303Z`의 original inputs·controller별 generated tar·container census·Kolla logs입니다. Observer installer receipts/runtime pin은 operator `~/.local/share/afterglow-host-observer/`에 있고, storage의 original executable/marker는 각 노드 `/var/lib/afterglow-host-observer-backups/activate-observation-20261014T143303Z`에 있습니다. Rollback은 observer를 먼저 disable/stop한 뒤 보호된 original operator inputs를 복원하고 같은 Afterglow-only canonical sequence로 설정을 재적용합니다. 원 executable만 복구하려면 해당 runtime pin/marker도 함께 복원해야 하며 system Python·공유 data/volume을 삭제하지 않습니다. 공개 operation 기록은 OpenSpec archive, 비밀 없는 상세 proof는 `~/.local/share/afterglow-proofs/activate-observation-20261014T143303Z/`에 보존합니다.
 
 ### 2. 기본 서비스 시작
 
@@ -758,6 +954,30 @@ Notion worker는 SIGTERM/SIGINT에서 대기·동기화 task를 취소하고 스
 
 ---
 
+## System 관리자 서비스 작업의 native 선행 조건
+
+Afterglow의 관리자 화면은 기존 service leaf **또는 현재 human `system:all` admin**으로 선택 target을 인가한다. 이것은 native 공급자 권한을 발급하거나 운영 IAM을 변경하는 기능이 아니다. 원본 caller token/source project와 명시한 target은 별개이며, native Lumen·Drover·Waygate·Palimpsest가 독립적으로 현재 권위를 검사한다. Native directory reader에는 exact user/project/domain, 현재 user-group membership, raw user/group system assignment, 전체 role catalog/inference를 읽을 권한이 필요하다. `effective=True` system 조회가 비어 있어도 raw grant와 ID graph가 권위이며 불완전한 응답·읽기 장애를 관리자 없음이나 빈 성공으로 처리하지 않는다.
+
+Drover·Waygate의 **실제 provider 변경**에는 운영자가 미리 등록한 별도 non-admin executor가 대상 프로젝트의 필요한 provider 역할을 가지고 있어야 한다. 요청자에게 프로젝트 역할을 추가하지 않는다. Native의 private TOML에서 다음 쌍을 설정한다. 빈 쌍은 미설정이며 실행은503으로 차단된다. Password는 source·frontend·public ConfigMap에 넣지 않는다.
+
+```toml
+# Waygate private runtime TOML
+[admin_executor]
+user_id = ""
+password = ""
+
+# Drover private runtime TOML
+[drover]
+system_admin_executor_user_id = ""
+system_admin_executor_password = ""
+```
+
+Waygate executor는 native `member`와 그 `reader` 범위만 허용한다. Drover는 기존 `delegated_required_roles`·`delegated_optional_roles`의 provider-only ceiling을 사용한다. Admin/service 역할·현재 user/home-domain/target-domain 비활성화·권한 회수는 새 I/O를 차단하며 서비스 운영자 자격이나 요청자 impersonation으로 대체하지 않는다. Kolla는 각 native 저장소의 defaults/precheck/private template을 사용한다. 로컬 Compose는 보호된 `.local-services/afterglow.conf`를 native API/worker가 함께 읽는다. Afterglow의 K8s/Helm 생성기는 별도 native 서비스를 배포하지 않으므로 이 비밀을 Afterglow ConfigMap에 복제하거나 자동 role-grant 경로를 추가하지 않는다.
+
+새 writer 전에 native API/worker를 drain·중지하고 **Drover005 / Waygate007**을 각 서비스 정본 migrate 경로로 적용해야 한다. Palimpsest Hub offline bootstrap은 기존 key table에 nullable `admin_issuer_context`를 추가하고 upload/publication의 key audit ID를 nullable로 확장한다. 기존 key의 issuer를 human admin으로 backfill하지 않는다. Lumen은 기존 capability JSON에 원본 reduced-credential의 nonsecret source/issued-role-ID ceiling을 보존하며 새 schema는 추가하지 않는다. 과거 run에 없는 원본 provenance를 복원했다고 간주하지 말고 기존 실행·복구/settlement와 새 I/O 경계를 native 운영 지침대로 drain·분리한다.
+
+새/기존 writer의 schema·queue 호환성, backup/restore와 rollback 제한, 실제 directory RBAC 및 Nova/Neutron 등의 provider policy는 별도 운영 qualification이다. Local HTTP/SDK·SQLite·합성 공급자 smoke는 실제 cloud VM/K3s 준비 완료나 Kolla 배포의 증거가 아니다. 검증한 조건과 남은 공백은 [서비스 작업 검증 기록](testing.md#system-관리자의-서비스-작업-검증-2026-10-17-local-only)을 따른다.
+
 ## kolla-ansible 배포
 
 Afterglow와 Lumen은 Kolla 배포 호스트에서 표준 명령으로 함께 배포합니다.
@@ -788,6 +1008,10 @@ custom service와 HAProxy 플레이에 `become: true`가 선언되어 있어 별
 kolla-ansible prechecks -i multinode --tags afterglow,lumen
 kolla-ansible reconfigure -i multinode --tags afterglow,lumen
 ```
+
+Kolla는 매 `genconfig`/`reconfigure`/`upgrade`에서 현재 globals/passwords(연결된 plugin globals/secrets 포함)로 native base를 다시 만들고, `afterglow_operator_config_source`가 지정한 TOML의 **존재하는 key만** 최종 병합합니다. False·0·빈 문자열·빈 배열도 override입니다. 원본은 수정하지 않고 backend/API·Notion worker·bootstrap·policy seed가 같은 private `afterglow.generated.conf`를 `/app/afterglow.conf`로 읽습니다. 과거 final-wins layer와 config-owned backend/worker 환경변수는 더 이상 명시한 값을 덮지 않습니다. Frontend는 effective backend와 별도 public override를 closed allowlist로 투영합니다.
+
+직접 편집할 파일은 sparse operator source이고 generated 파일은 아닙니다. 전체 예시를 operator source로 복사하면 secret/DB URL까지 전부 고정되어 native rotation이 반영되지 않습니다. 전환 전 실제로 고정하려는 key만 남기고 연결 DB·서명/암호화 키를 검토하세요. Key를 source에서 제거하면 다음 생성에서 현재 native 값으로 돌아갑니다. `genconfig`는 파일 생성이며 실행 중 process의 hot reload가 아닙니다. 적용은 승인된 native prechecks/reconfigure 절차를 따릅니다.
 
 ### 볼륨 자동 백업의 다중 컨트롤러 실행
 
@@ -868,7 +1092,7 @@ Cloud Shell은 Afterglow backend Pod/container 안에서 shell을 실행하지 �
 2. Afterglow service user가 이 전용 프로젝트에서 Zun·Cinder·Neutron 자원을 관리할 역할을 받아야 합니다. 세션 정리는 owner 권한의 `stop=true` 삭제를 사용하므로 기본 policy에서는 `member`로 충분하며, Kolla Keystone setup은 기존대로 전용 프로젝트 `admin`을 부여합니다. 사용자 Keystone token으로 Zun/Cinder lifecycle을 관리하지 않습니다.
 3. `network_id`는 선택 사항입니다. 비우면 전용 프로젝트의 DB default → 기존 자동 생성 정책 → 자동 생성 비활성 시 검증된 shared default-network 정책을 따릅니다. 선택 네트워크는 subnet과 external network/router gateway 연결이 필요하며, 명시적 override는 전용 프로젝트 소유여야 합니다. `security_group`은 전용 프로젝트의 `default`를 기본으로 사용하고 기존 규칙을 유지합니다. Egress-only가 필요하면 별도 그룹을 명시합니다. Kolla 역할은 project/network/router/group을 만들거나 삭제하지 않으며, backend는 세션 승인 시 기존 default-network 정책에 따라 network/router를 자동 준비할 수 있습니다.
 4. Zun, Kuryr, etcd, Docker/containerd Zun integration, Cinder-backed Zun volume mount와 하나 이상의 `zun-compute`를 준비합니다. Backend에서 Keystone/Cinder/Zun API와 Zun exec WebSocket endpoint에 접근할 수 있어야 합니다. Zun API는 container microversion 1.36 이상을 지원해야 하고, zun-compute는 Cinder volume을 attach해 처음 mount할 때 ext4로 format할 수 있어야 합니다.
-5. `cloud-shell` 이미지를 `linux/amd64`와 `linux/arm64` manifest로 게시하고 운영 설정에는 반드시 `@sha256:<manifest-digest>`를 사용합니다. `latest`나 bare tag는 사용하지 않습니다.
+5. Image 정본은 [openstack-afterglow/openstack-client](https://github.com/openstack-afterglow/openstack-client)이며 GitLab 최신화 소스와 Afterglow의 보안 bootstrap을 함께 빌드합니다. 기본은 `ghcr.io/openstack-afterglow/openstack-client:slim`(Debian), 대안은 `:alpine`입니다. 운영 설정에는 `linux/amd64`와 `linux/arm64` manifest의 실제 `@sha256:<manifest-digest>`를 사용하고 이동 태그나 bare image는 사용하지 않습니다. Afterglow monorepo는 별도 Cloud Shell image를 빌드하지 않습니다.
 6. Cinder volume count/gigabytes와 Zun container/CPU/RAM quota는 **전용 프로젝트**에 적용합니다. 사용자 tenant quota를 Cloud Shell 용량으로 사용하거나 늘리지 않습니다. 최대 동시 세션은 전역 사용자당 1개지만 영구 홈은 사용자×논리 프로젝트마다 하나이므로 예상 project 수를 volume quota에 반영합니다.
 
 기본 runtime 설정 예시:
@@ -880,7 +1104,9 @@ cloud_shell = true
 
 [cloud_shell]
 service_project_id = "<dedicated-project-uuid>"
-image = "ghcr.io/openstack-afterglow/afterglow-cloud-shell@sha256:<64-hex-digest>"
+image = "ghcr.io/openstack-afterglow/openstack-client@sha256:<64-hex-digest>"
+image_pull_policy = "" # Zun 기본값; always / ifnotpresent / never 선택 가능
+registry_id = "" # 비공개 registry는 전용 프로젝트의 Zun registry UUID
 network_id = "" # 전용 프로젝트 default 네트워크
 security_group = "default"
 auth_url = "https://keystone.example.com:5000/v3"
@@ -898,6 +1124,15 @@ zun_websocket_origin = "wss://zun.example.com"
 
 `auth_url`과 `zun_websocket_origin`은 backend가 신뢰하는 고정 HTTPS/WSS endpoint입니다. 브라우저에 공개되는 값이 아니며 redirect나 untrusted HTTP fallback을 허용하지 않습니다. `SECRET_KEY`는 관리 volume/container metadata HMAC에도 쓰이므로 홈을 유지하는 동안 회전하면 기존 리소스를 자동 채택하지 않습니다.
 
+#### 이미지 소스와 가져오기 정책 선택
+
+- `image`에는 GHCR 또는 호환 registry의 전체 image reference를 지정합니다. 원본 GitLab 주소는 `glcr.dmslab.re.kr/system/openstack/openstack-client`입니다. 어느 registry든 Afterglow bootstrap helper와 위 PTY protocol을 포함한 이미지만 사용할 수 있습니다. 일반 CLI image로 자동 대체하지 않습니다.
+- `image_pull_policy`의 빈 값은 요청 필드를 생략해 Zun 기본값을 따릅니다. `always`는 매번 pull, `ifnotpresent`는 로컬에 없을 때 pull, `never`는 로컬 image만 사용합니다. Stock Zun의 명시적 pull policy는 `container:create:image_pull_policy` 관리자 권한이 필요하므로 member 전용 서비스 계정은 빈 값을 유지합니다. 권한 오류 때 임의로 다른 정책으로 재시도하지 않습니다.
+- 비공개 GHCR/GitLab은 전용 Cloud Shell 프로젝트에 registry 인증정보를 등록하고 해당 UUID를 `registry_id`로 지정합니다. GHCR은 최소 `read:packages` 권한의 credential을 사용합니다. 비밀번호·PAT는 Zun에서 관리하며 Afterglow 설정·브라우저에는 넣지 않습니다. Zun POST는 `image_driver="docker"`와 선택 시 `registry=<UUID>`를 사용합니다(`registry_id`는 응답 필드).
+- 환경 변수 `CLOUD_SHELL_IMAGE`, `CLOUD_SHELL_IMAGE_PULL_POLICY`, `CLOUD_SHELL_REGISTRY_ID`가 TOML보다 우선합니다. Kolla는 `afterglow_cloud_shell_image{,_pull_policy}`와 `afterglow_cloud_shell_registry_id`, Helm은 `cloudShell.image`, `cloudShell.imagePullPolicy`, `cloudShell.registryId`로 같은 값을 전달합니다. Helm의 이 정책은 backend Pod의 Kubernetes pull policy가 아니라 Zun workload 설정입니다.
+- 아직 image가 게시되지 않았으면 `cloud_shell=false`로 설정을 준비할 수 있습니다. 활성 세션의 pull 실패는 오류이며 fallback image나 가짜 ready를 만들지 않습니다. 생성된 세션 container는 기존 exact-owner cleanup을 따르고 영구 홈은 유지합니다. 비공개 package의 게시 여부와 pull 권한은 별도로 준비해야 합니다.
+
+
 #### Kolla
 
 `/etc/kolla/config/afterglow/globals.yml`에 `afterglow_service_zun_enabled: true`, `afterglow_service_cloud_shell_enabled: true`와 `afterglow_cloud_shell_*` 값을 설정합니다. Image는 digest-pinned manifest이며 project ID, public auth URL, Zun WSS origin을 지정합니다. Network ID는 기본 선택 시 비워 두고 security group의 기본값은 `default`입니다. Stock Kolla 변수 `enable_zun`, `enable_kuryr`, `enable_etcd`, `docker_configure_for_zun`, `containerd_configure_for_zun`, `zun_configure_for_cinder_ceph`도 모두 활성화합니다.
@@ -910,17 +1145,22 @@ kolla-ansible deploy -i multinode --tags afterglow
 
 Precheck는 전용 project 분리, network/security-group 소유권, ingress 0건, project-scoped Zun/Cinder list, 선택 volume type, 모든 `zun-compute`의 image manifest 접근을 fail-closed 확인합니다. Keystone 단계는 미리 만든 project를 정확히 하나만 찾고 Afterglow service user의 `admin` role assignment만 보장합니다.
 
+비공개 image는 각 compute의 Docker client가 manifest를 검사할 credential도 준비해야 합니다. Zun registry credential과 호스트 Docker login은 별개이며 `registry_id`를 설정했다고 Kolla precheck 인증이 자동으로 이전되지 않습니다.
+
+
 #### Kubernetes와 Helm
 
-`generate_k8s.py`는 같은 `[services]`와 `[cloud_shell]` 값을 ConfigMap의 `afterglow.conf`에 렌더합니다. Helm은 `services.zun`, `services.cloudShell`, `cloudShell.*` values를 같은 계약으로 렌더합니다. Secret 값은 추가되지 않습니다. Backend Pod egress policy와 cluster DNS가 Keystone/Cinder/Zun API, Zun WSS, registry에 도달하도록 별도로 허용하고, browser ingress는 기존 `/api/` WebSocket upgrade를 보존합니다.
+`config2helm.py --config <경로>/afterglow.conf`는 `[services].cloud_shell`과 `[cloud_shell]` 전체 runtime 설정을 Helm 값으로 변환합니다. 수동 values 편집 없이 선택한 image/pull policy/registry UUID를 유지하며, registry 비밀은 이 변환에 넣지 않습니다.
+
+`generate_k8s.py`는 같은 `[services]`와 `[cloud_shell]` 값을 ConfigMap의 `afterglow.conf`에 렌더합니다. Helm은 `services.zun`, `services.cloud_shell`, `cloudShell.*` values를 같은 계약으로 렌더합니다. Backend Pod는 Keystone/Cinder/Zun HTTP·WSS와 DNS에 접근해야 하며, 실제 image pull과 registry 접근은 Zun compute가 담당합니다. Kubernetes backend Pod의 `imagePullSecrets`로 Zun workload를 인증하지 않습니다. Browser ingress는 기존 `/api/` WebSocket upgrade를 보존합니다.
 
 #### 확인, live smoke, rollback
 
 ```bash
 # 정적/모의 lifecycle과 배포 계약
 npm run test:cloud-shell
-npm run test:cloud-shell:image
 npm run test:kolla:contract
+# Image build/CLI/PTY bootstrap smoke는 openstack-client 저장소의 GitHub Actions와 README를 따릅니다.
 
 # 실제 승인 → OpenStack CLI → 종료 → 홈 재사용 → 초기화 (resource mutation)
 # username은 tests/integration/credentials.toml [user]의 disposable identity와 정확히 일치해야 한다.
@@ -966,34 +1206,22 @@ deploy/k8s-template/
     └── prod/          # 프로덕션 오버레이
 ```
 
-### 1. 프로덕션 네임스페이스 및 시크릿 생성
+### 1. 설정·Secret과 전체 Kustomize tree 생성
 
-아래 정적 `configmap.yaml`/`secret.yaml`은 `metadata.namespace: afterglow`를 포함하므로 프로덕션 네임스페이스 전용입니다. `overlays/dev`는 `namespace: afterglow-dev`를 사용하므로 이 파일을 그대로 적용해도 dev Pod가 `afterglow-config`/`afterglow-secrets`를 볼 수 없습니다. dev 오버레이를 단독으로 쓰려면 동일한 ConfigMap/Secret을 `afterglow-dev` 네임스페이스용으로 별도 생성하거나 ArgoCD/ExternalSecret에서 관리해야 합니다.
+위의 `setup.py` workflow에서 Kubernetes 또는 두 형식을 선택합니다. 기존 base를 자동 모드로 변환할 때도 동일 경로를 씁니다.
 
 ```bash
-kubectl create namespace afterglow
-# Builder SSH를 쓰지 않으면 빈 파일로 키 존재만 보장합니다. 실제 사용 시 private key 경로를 지정하세요.
-touch builder.key
-
-kubectl create secret generic afterglow-secrets \
-  --namespace=afterglow \
-  --from-literal=OS_PASSWORD=<openstack-password> \
-  --from-literal=SECRET_KEY=$(openssl rand -hex 32) \
-  --from-literal=GITLAB_OIDC_CLIENT_SECRET='' \
-  --from-literal=K3S_KUBECONFIG_ENCRYPTION_KEY=$(openssl rand -hex 32) \
-  --from-literal=DATABASE_URL='mysql+asyncmy://afterglow:<db-password>@mariadb/afterglow' \
-  --from-literal=PROMETHEUS_PASSWORD='' \
-  --from-file=BUILDER_SSH_PRIVATE_KEY=builder.key
+python3 setup.py --non-interactive --target k8s \
+  --config ./afterglow.conf --output-dir ./generated --namespace afterglow
+kubectl kustomize ./generated/k8s
 ```
 
-### 2. 프로덕션 ConfigMap 및 Kustomize 배포
+생성된 root tree에는 선택 namespace의 ConfigMap·Secret·Ingress와 application base/monitoring resources가 함께 있습니다. private `secret.yaml`과 원본/backup을 Git에 추가하지 않습니다. 생성은 배포가 아니므로 실제 secret·DB·ingress/TLS·권한을 검토한 뒤 승인된 cluster에 적용합니다.
+
+### 2. 검토한 application tree 적용
 
 ```bash
-# afterglow.conf ConfigMap은 prod overlay에 포함되지 않으므로 먼저 적용
-kubectl apply -f deploy/k8s-template/configmap.yaml
-
-# 프로덕션 환경
-kubectl apply -k deploy/k8s-template/overlays/prod
+kubectl apply -k ./generated/k8s
 ```
 
 ### 3. 배포 확인
@@ -1023,7 +1251,7 @@ data:
     # password는 afterglow-secrets/OS_PASSWORD 환경변수로 주입
 ```
 
-비밀 값은 ConfigMap에 넣지 않습니다. `OS_PASSWORD`, `SECRET_KEY`, `GITLAB_OIDC_CLIENT_SECRET`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL`, `PROMETHEUS_PASSWORD`, `BUILDER_SSH_PRIVATE_KEY`는 `afterglow-secrets`에서 환경변수 또는 Secret volume으로 주입됩니다.
+비밀 값은 ConfigMap에 넣지 않습니다. `OS_PASSWORD`, `SECRET_KEY`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL`, `PROMETHEUS_PASSWORD`, `BUILDER_SSH_PRIVATE_KEY`는 `afterglow-secrets`에서 환경변수 또는 Secret volume으로 주입됩니다. 도메인 로그인 공급자 client secret은 배포 설정이 아니라 도메인 IAM이 Afterglow DB에 암호화해 저장합니다.
 
 `generate_k8s.py --config ./afterglow.conf --output-dir deploy/k8s-template`는 `configmap.yaml`, `secret.yaml`, `grafana-deployment.yaml`, `ingress.yaml`을 생성합니다. `[app].secret_key`가 빈 값, `change-me-in-production`, 32자 미만이면 `secret.yaml` 생성을 실패시켜 Kubernetes production guard와 맞춥니다.
 
@@ -1089,20 +1317,20 @@ Kubernetes의 Python 서비스는 Docker Compose 개발 모드와 다르게 항�
 
 | Deployment | 설정 파일 | Secret 참조 |
 |---|---|---|
-| `backend` | `/app/afterglow.conf` | `OS_PASSWORD`, `SECRET_KEY`, `GITLAB_OIDC_CLIENT_SECRET`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL`, `PROMETHEUS_PASSWORD`, `BUILDER_SSH_PRIVATE_KEY` |
-| `drover` (`worker`) | `/app/afterglow.conf` | `OS_PASSWORD`, `SECRET_KEY`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL` |
+| `backend` | `/app/afterglow.conf` | `OS_PASSWORD`, `SECRET_KEY`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL`, `PROMETHEUS_PASSWORD`, `BUILDER_SSH_PRIVATE_KEY` |
+| `notion-worker` 외의 독립 Drover | Afterglow chart가 배포하지 않음 | 독립 Drover 정본 배포가 소유 |
 | `notion-worker` | `/app/afterglow.conf` | `OS_PASSWORD`, `SECRET_KEY`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL` |
 
-세 서비스 모두 `AFTERGLOW_ENV=production`으로 실행되며, `AFTERGLOW_ALLOW_INSECURE=1`은 Kubernetes manifest에 넣으면 안 됩니다. Secret을 직접 작성하지 않고 `generate_k8s.py`를 사용할 때도 `[app].secret_key`가 비어 있거나 `change-me-in-production`이거나 32자 미만이면 `secret.yaml` 생성을 중단합니다.
+Afterglow의 두 Python 서비스는 `AFTERGLOW_ENV=production`으로 실행되며 `AFTERGLOW_ALLOW_INSECURE=1`을 manifest에 넣으면 안 됩니다. 삭제된 `app.worker`를 실행하던 오래된 `drover` Deployment는 더 이상 생성하지 않습니다. `[app].secret_key`가 비어 있거나 `change-me-in-production`이거나 32자 미만이면 Kubernetes Secret 생성을 중단합니다.
 
 ### Helm 배포
 
-Helm chart도 같은 계약을 사용합니다. `backend`, `drover`, `notion-worker`는 `afterglow-config/afterglow.conf`를 `/app/afterglow.conf`로 마운트하고 `afterglow-secrets/SECRET_KEY`를 읽습니다.
+Helm chart도 같은 계약을 사용합니다. `backend`, `notion-worker`는 `afterglow-config/afterglow.conf`를 `/app/afterglow.conf`로 마운트하고 `afterglow-secrets/SECRET_KEY`를 읽습니다. `setup.py --target helm` 또는 `both`의 `values-local.yaml`을 사용하면 로컬 TOML을 중복 수작업으로 옮길 필요가 없습니다.
 
 Secret 소유 방식은 두 가지입니다.
 
 1. **ExternalSecret/ArgoCD가 `afterglow-secrets`를 소유**: `values.yaml`의 `secrets.osPassword`를 비워 두면 Helm은 Secret을 렌더하지 않고 Deployment만 기존 Secret을 참조합니다.
-2. **Helm이 Secret 직접 렌더**: `secrets.osPassword`를 설정하면 Helm이 `afterglow-secrets`를 만들며, 이때 `secrets.secretKey`, `secrets.databaseUrl`, `secrets.k3sKubeconfigEncryptionKey`도 필수입니다. GitLab/Prometheus/Builder/Grafana 등 선택 Secret 키는 값이 비어 있어도 Secret에 포함됩니다. 필수 값이 하나라도 빠지면 template 단계에서 실패합니다.
+2. **Helm이 Secret 직접 렌더**: `secrets.osPassword`를 설정하면 Helm이 `afterglow-secrets`를 만들며, 이때 `secrets.secretKey`, `secrets.databaseUrl`, `secrets.k3sKubeconfigEncryptionKey`도 필수입니다. Prometheus/Builder/Grafana 등 선택 Secret 키는 값이 비어 있어도 Secret에 포함됩니다. 필수 값이 하나라도 빠지면 template 단계에서 실패합니다. Domain provider secret은 Helm/환경 변수가 아니라 IAM의 encrypted database 값입니다.
 
 ```bash
 helm template afterglow helm/afterglow --namespace afterglow \
@@ -1227,7 +1455,37 @@ docker compose --env-file /path/to/production.env -f docker-compose.prod.yml up 
 
 ### 데이터베이스 스키마 마이그레이션
 
-`auto_create_tables`는 기존 테이블에 컬럼을 추가하지 않습니다. 이미지가 새 ORM 컬럼을 참조하는 릴리스는 **롤아웃 전에** 해당 SQL 마이그레이션을 운영 데이터베이스에 적용해야 합니다. 적용 대상과 순서는 `backend/migrations/manifest.txt`의 논리 ID를 기준으로 판단하며, 숫자 접두사만으로 판단하지 않습니다.
+`auto_create_tables`/ORM `create_all`은 manifest 기반 schema upgrade가 아닙니다. 누락 table 생성과 일부 과거 ad-hoc DDL을 수행할 수 있어도 기존 table의 신규 column·backfill·constraint·migration ledger를 모두 적용/검증하지 않습니다. 새 writer가 참조하는 schema는 **API/UI/worker 롤아웃 전에** 승인된 SQL 마이그레이션으로 준비해야 합니다. 적용 대상·순서·SHA-256은 `backend/migrations/manifest.txt`의 논리 ID를 기준으로 판단하며 숫자 접두사나 bootstrap exit0만으로 판단하지 않습니다. `backend/scripts/baseline_migrations.py`는 일반 apply runner가 아니고 자동 pre-037 baseline도 거부합니다. 이 도구로 운영 ledger를 임의 채우지 않습니다.
+
+도메인 격리 cutover는 `090-domain-auth`(`domain_login_policies`, `domain_identity_providers`)와 `091-domain-iam`(`domain_enrollments`)의 manifest checksum·schema를 확인한 뒤 API/UI/worker를 함께 전환합니다. 기존 Default 사용자·프로젝트·grant는 이동하지 않으며 시스템 관리자를 자동 부여하지 않습니다. 운영자가 사전에 실제 `system:all admin` 계정과 각 작업 도메인의 canonical Default에 필요한 live `manager` 할당, native federation IdP/protocol·정책 및 SMTP를 준비해야 합니다. 일반 project/domain의 `admin` 이름만으로 domain IAM authority가 되지 않습니다. `scripts/manage_system_admins.py`의 명시적 grant/list/recovery 이외에 project-admin 자동 승격은 없습니다.
+
+Global GitLab 설정·callback과 old invitation API는 제거되었습니다. OIDC/GitHub provider는 domain IAM에서 재구성하고 actual native login에 성공한 revision을 확인한 뒤에만 password를 끕니다. Frontend와 API는 same-site여야 하며 genuinely cross-site 배포에는 first-party API proxy가 필요합니다. Provider/state/session 암호화·서명 키를 보존하고 domain 없는 과거 session은 재로그인합니다. 구형 writer는 새 policy를 집행하지 않으므로 혼합 버전을 안전하다고 가정하지 마세요. 운영 snapshot/ledger·backup/restore·원래 키의 증거 없이 test DB 성공을 양방향 호환성으로 승격하지 않습니다. Image downgrade가 새 인증 정책을 보존하는 rollback은 아닙니다. 상세 계약은 [Auth](api/auth.md), [IAM](api/iam.md), [관리자 API](api/admin.md)를 따릅니다.
+
+로그인 Default 자동 준비는 새 schema를 추가하지 않지만 기존 `094-project-ownership-transfers`와 quota/enrollment schema를 사용합니다. API·worker의 동일한 DB/원래 키와 native `project_owner → project_admin → project_member → project_reader → reader` 및 native member 연결을 먼저 확인합니다. 역할/edge를 로그인·startup에서 자동 seed하지 않습니다. 기존 Default·소유자·grant는 그대로이고 Default가 없는 기존 도메인의 첫 authorized 로그인은 신규 Default의 owner+reader만 받습니다. 새 도메인의 실제 creator만 manager도 받습니다. 소유권 applying/unknown·disabled Default는 반복 로그인으로 복구하지 말고 native 요청 종료 확인 후 exact journal settlement/reconciliation을 사용합니다. 구형 writer는 이 새 bootstrap/owner 동작을 수행하지 않으므로 old/new 혼합 동작과 운영 snapshot·restore/rollback을 별도로 평가하고 API/UI를 함께 전환합니다.
+
+#### Domain/project workspace cutover
+
+이 절은 현재 source의 배포 계약이며 이 기능의 gate 통과·운영 배포/승인 증거가 아닙니다. 기존 도메인 격리 schema 위에 다음 **정확한 manifest ID**를 순서대로 적용/대조합니다.
+
+| Logical ID | SQL | 변경·보존 경계 |
+|---|---|---|
+| `090-domain-auth` | `backend/migrations/090_domain_auth.sql` | 도메인 로그인 정책/provider 저장소 |
+| `091-domain-iam` | `backend/migrations/091_domain_iam.sql` | durable enrollment intent·보상 저장소 |
+| `092-domain-quotas` | `backend/migrations/092_domain_quotas.sql` | `domain_quota_policies`, `domain_quota_operations`; 기존 native quota를 재작성하지 않음 |
+| `093-personal-domains` | `backend/migrations/093_personal_domains.sql` | 기존 `domain_enrollments`에 personal domain/account/project provenance·uncertainty·multi-project `added_grants` journal 추가; NULL journal을 빈 배열로 backfill |
+| `094-project-ownership-transfers` | `backend/migrations/094_project_ownership_transfers.sql` | project별 durable ownership transfer fence·operation ID·stage·status 저장 |
+
+`093`의 nullable `added_grants`는 old insert가 SQL 수준에서 가능하도록 한 것이지 혼합 writer의 enrollment 의미·안전성을 보증하지 않습니다. 기존 user/service account·domain을 personal domain으로 이동하거나 이름을 바꾸는 data migration은 없습니다. 새 human만 별도 personal home에 생성합니다. 새 관리 domain의 native name은 opaque unique `afterglow-<uuid4 hex>`, 표시 이름은 중복 가능한 `afterglow_display_name`입니다. 기존 domain은 native name을 표시 fallback으로 유지하고 operator의 OpenStack domain 설정은 바꾸지 않습니다. Immutable home/login-provider origin과 선택 작업 domain을 혼동하지 않으며 과거 identity/working 문맥 없는 session은 재로그인합니다.
+
+운영 전환 순서:
+
+1. 승인된 대상 DB/schema·native cloud·runtime config·image digest를 확정하고 SQL snapshot/restore, 원래 암호화·서명 키, 현재 역할 ID/DAG·owner·manager·quota inventory와 미해결 operation을 보존합니다. private credential이나 journal 원문을 공개 evidence에 복사하지 않습니다. `093`은 기존 table ALTER/backfill이므로 lock·중복 적용·부분 적용 상태를 검토하고 manifest checksum 및 실제 postcondition을 대조합니다. Kolla bootstrap이나 신규 빈 DB 성공으로 대신하지 않습니다.
+2. **구형 project-create/quota/ownership/enrollment 및 관련 role/account writer를 먼저 drain**합니다. API replica·background worker·자동화·관리자 alternate route도 포함합니다. `092`를 모르는 writer는 domain ceiling을 무시하고 `094`를 모르는 writer는 unresolved transfer fence를 무시합니다. Native 권한 graph/할당을 동시에 바꾸는 외부 자동화도 전환 중 정지/조정해야 합니다. 일반 rolling restart 명령만으로 이 feature의 mixed-version 안전성이 성립하지 않습니다.
+3. Schema를 먼저 적용한 뒤 동일한 새 계약의 API/UI/affected worker를 전환합니다. Role catalog는 명시적 system-admin preset preview/apply로 `project_creator`를 준비합니다. 로그인/startup은 creator capability를 자동 seed하지 않습니다. Manager는 canonical Default의 live authority, creator는 native domain-scoped capability이며 ordinary project owner와 분리됩니다. Manager→owner inference를 추가해 다중 owner를 만들지 않습니다. 기존 missing Default·multi-owner·외부 graph drift는 명시적 관리자 검토 대상이며 자동 선택·revocation으로 정리하지 않습니다.
+4. 기존 project native limits를 먼저 읽어 baseline/drift를 확인한 후 ceiling/default를 설정합니다. Domain ceiling은 **프로젝트 native limit 합의 allocation budget**이며 aggregate resource usage 강제가 아닙니다. Disabled project도 할당에 포함합니다. Future defaults는 기존 project를 덮지 않고 생성 시 예산 아래 적용합니다. Afterglow의 project-create·quota·compute-policy writer는 같은 mutation boundary를 사용하지만 외부 native admin은 우회할 수 있으므로 drift를 관측·조정합니다. Unlimited(-1), zero, unknown/unavailable, used/reserved/limit를 구분하고 미확인을0으로 간주하지 않습니다.
+5. 새 native mutation을 허용하기 전에 pending/unknown enrollment·quota·ownership journal을 검토합니다. Timeout·readback 일치만으로 native 실행 settlement를 단정하지 않고 원래 mutation을 blind retry하지 않습니다. Quota/owner manual reconciliation은 실제 native in-flight 작업이 끝났음을 운영자가 별도로 확인한 후 시스템 관리자 경로로 수행합니다. Resource/child project 존재 또는 삭제 점검 unavailable이면 삭제를 차단하며 force·resource teardown으로 우회하지 않습니다.
+
+Rollback은 writer stop과 실제 native 상태의 disposition을 포함합니다. `domain_enrollments`의 새 provenance·quota policy/operation·ownership transfer table/journal과 키를 **그대로 보존**합니다. Image만 downgrade하면 새 budget·unique-owner·personal-domain enrollment 정책과 durable fence를 집행하지 못하므로 구형 writer를 다시 활성화할 수 없습니다. 복원 시점 뒤 native domain/user/project/grant/quota는 SQL snapshot rollback으로 되돌아가지 않습니다. 승인된 복원 rehearsal과 SQL/native 양쪽의 작업별 판정 없이 자동 rollback·retry·table/column drop을 약속하지 않습니다. 현재 runtime·native·브라우저·image 및 생산 승인 증거는 별도 [테스트 기록](testing.md)과 해당 OpenSpec evidence를 확인합니다.
 
 로컬 fallback `afterglow-mariadb`를 사용하는 격리 DB에 한정한 2026-08-02 채팅 메시지
 시간대 컬럼 마이그레이션 예시입니다. 외부 `AFTERGLOW_DATABASE_URL`을 선택한 경우 이
@@ -1246,12 +1504,7 @@ SHOW COLUMNS FROM chat_messages LIKE 'created_at_local';
 SHOW COLUMNS FROM chat_messages LIKE 'created_timezone';
 ```
 
-Kolla Afterglow `deploy`·`reconfigure`는 생성된 config를 사용해, `upgrade`는 pull한
-image와 기존 생성 config를 사용해 backend를 시작하기 **전에** 일회성 DB bootstrap을
-실행합니다. 운영 API에서 `auto_create_tables=false`여도 신규 ORM table은 이 단계에서
-생성됩니다. 기존 테이블에 새 컬럼을 추가하는 변경에는 위 수동 SQL 적용이 여전히
-필수이며, bootstrap 성공이나 `/api/v1/health` 200만으로 인증된 업무 경로를 검증했다고
-보지 않습니다.
+Kolla Afterglow `deploy`·`reconfigure`는 생성된 config를 사용해, `upgrade`는 pull한 image와 기존 생성 config를 사용해 backend를 시작하기 **전에** 일회성 DB bootstrap을 실행합니다. 운영 API에서 `auto_create_tables=false`여도 누락 ORM table이 생성될 수 있지만, 이 단계는 manifest SQL/ledger 적용이나 기존 schema upgrade를 보증하지 않습니다. 특히 기존 `domain_enrollments`의 `093-personal-domains` column/backfill은 위 schema-before-writer 절차로 준비해야 합니다. Bootstrap 성공이나 `/api/v1/health`200만으로 schema 호환성·인증된 업무 경로·native recovery가 검증된 것은 아닙니다.
 
 #### 1.30.16 업그레이드: SQL 088/089와 writer cohort
 

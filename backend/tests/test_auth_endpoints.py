@@ -1,6 +1,5 @@
 """인증 API 단위 테스트."""
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -8,6 +7,9 @@ import pytest
 from app.api.deps import get_token_info
 from app.config import get_settings
 from app.main import app
+from app.services.keystone import PasswordRejected
+
+pytestmark = pytest.mark.usefixtures("auth_directory")
 
 
 def make_auth_data() -> dict:
@@ -15,10 +17,18 @@ def make_auth_data() -> dict:
         "token": "test-token",
         "project_id": "test-project-123",
         "project_name": "test-project",
+        "default_project_id": "test-project-123",
         "user_id": "test-user-123",
         "username": "testuser",
         "expires_at": "2099-01-01T00:00:00Z",
         "roles": ["member"],
+        "is_system_admin": False,
+        "domain_id": "default",
+        "domain_name": "Default",
+        "identity_domain_id": "default",
+        "identity_domain_name": "Default",
+        "is_domain_manager": False,
+        "email": "actual@example.test",
     }
 
 
@@ -34,12 +44,26 @@ def make_user_obj() -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_login_success(client):
+async def test_login_success(client, auth_directory):
+    auth_directory.users["test-user-123"]["default_project_id"] = "test-project-123"
     mock_conn = MagicMock()
     mock_conn.identity.get_user.return_value = make_user_obj()
 
     with (
-        patch("app.api.identity.auth.keystone.authenticate", return_value=make_auth_data()),
+        patch(
+            "app.api.identity.auth.keystone.authenticate",
+            return_value={**make_auth_data(), "project_id": "", "project_name": "", "roles": []},
+        ),
+        patch(
+            "app.api.identity.auth.keystone.validate_token",
+            side_effect=lambda _token, project_id="", **_: dict(
+                make_auth_data(), project_id=project_id, roles=["member"] if project_id else []
+            ),
+        ),
+        patch(
+            "app.api.identity.auth.keystone.list_projects",
+            return_value=[{"id": "test-project-123", "name": "test-project", "domain_id": "default", "enabled": True}],
+        ),
         patch("app.api.identity.auth.keystone.get_openstack_connection", return_value=mock_conn),
     ):
         resp = await client.post(
@@ -47,26 +71,30 @@ async def test_login_success(client):
             json={
                 "username": "testuser",
                 "password": "password123",
-                "project_name": "test-project",
-                "domain_name": "Default",
             },
         )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["token"] and data["token"].count(".") == 2  # JWT: header.payload.sig
-    assert data["user_id"] == "test-user-123"
+    from app.services import jwt_service, session_store
+
+    claims = jwt_service.verify_access(data["token"])
+    native_session = await session_store.get_session(claims["rjti"])
+    assert (data["user_id"], data["domain_id"], data["project_id"]) == ("test-user-123", "default", "test-project-123")
+    assert (native_session["user_id"], native_session["domain_id"], native_session["project_id"]) == (
+        data["user_id"],
+        data["domain_id"],
+        data["project_id"],
+    )
 
 
 @pytest.mark.asyncio
 async def test_login_failure(client):
-    with patch("app.api.identity.auth.keystone.authenticate", side_effect=Exception("auth failed")):
+    with patch("app.api.identity.auth.keystone.authenticate", side_effect=PasswordRejected("auth failed")):
         resp = await client.post(
             "/api/v1/auth/login",
             json={
                 "username": "testuser",
                 "password": "wrongpassword",
-                "project_name": "test-project",
-                "domain_name": "Default",
             },
         )
     assert resp.status_code == 401
@@ -98,9 +126,20 @@ async def test_scope_project(client):
         "username": "testuser",
         "roles": ["member"],
         "is_system_admin": False,
+        "domain_id": "default",
+        "domain_name": "Default",
+        "identity_domain_id": "default",
+        "identity_domain_name": "Default",
+        "is_domain_manager": False,
+        "email": "actual@example.test",
     }
     with (
-        patch("app.api.identity.auth.keystone.validate_token", return_value=kc_info),
+        patch(
+            "app.api.identity.auth.keystone.validate_token",
+            side_effect=lambda _token, project_id="", **_: dict(
+                kc_info, project_id=project_id, roles=["member"] if project_id else []
+            ),
+        ),
         patch("app.api.identity.auth.record_project_access", new_callable=AsyncMock),
     ):
         resp = await client.post(
@@ -203,15 +242,6 @@ async def test_logout_invalidates_token_cache(client):
     assert args[0]  # token 비어있지 않음
 
 
-def test_token_cache_ttl_is_short():
-    """토큰 검증 캐시 TTL 이 60초 이하인지 (revoke window 제한)."""
-    from app.api import deps
-
-    assert deps._TOKEN_CACHE_TTL <= 60, (
-        f"토큰 캐시 TTL 이 {deps._TOKEN_CACHE_TTL}s 으로 너무 길다 — revoke 후 공격 window 가 벌어짐"
-    )
-
-
 # ────── projects ──────
 
 
@@ -226,7 +256,7 @@ async def test_list_projects(client):
 
 @pytest.mark.asyncio
 async def test_list_projects_cache_miss_then_hit(client):
-    projects = [{"id": "proj-1", "name": "cached-project", "description": "", "enabled": True}]
+    projects = [{"id": "proj-1", "name": "cached-project", "description": "", "domain_id": "default", "enabled": True}]
     with patch("app.api.identity.auth.keystone.list_projects", return_value=projects) as mock_list:
         first = await client.get("/api/v1/auth/projects?cache=true")
         second = await client.get("/api/v1/auth/projects?cache=true")
@@ -239,8 +269,12 @@ async def test_list_projects_cache_miss_then_hit(client):
 
 @pytest.mark.asyncio
 async def test_list_projects_refresh_bypasses_cache(client):
-    cached_projects = [{"id": "proj-old", "name": "old-project", "description": "", "enabled": True}]
-    refreshed_projects = [{"id": "proj-new", "name": "new-project", "description": "", "enabled": True}]
+    cached_projects = [
+        {"id": "proj-old", "name": "old-project", "description": "", "domain_id": "default", "enabled": True}
+    ]
+    refreshed_projects = [
+        {"id": "proj-new", "name": "new-project", "description": "", "domain_id": "default", "enabled": True}
+    ]
     with patch(
         "app.api.identity.auth.keystone.list_projects",
         side_effect=[cached_projects, refreshed_projects],
@@ -265,6 +299,7 @@ async def test_list_projects_cache_is_isolated_by_user(client, _fake_redis_globa
         "username": "testuser",
         "roles": ["member"],
         "is_system_admin": False,
+        "domain_id": "default",
     }
 
     async def override_token_info():
@@ -272,9 +307,9 @@ async def test_list_projects_cache_is_isolated_by_user(client, _fake_redis_globa
 
     app.dependency_overrides[get_token_info] = override_token_info
 
-    def projects_for_token(token: str):
+    def projects_for_token(token: str, domain_id: str):
         project_id = "project-a" if token == "token-a" else "project-b"
-        return [{"id": project_id, "name": project_id, "description": "", "enabled": True}]
+        return [{"id": project_id, "name": project_id, "description": "", "domain_id": "default", "enabled": True}]
 
     with patch("app.api.identity.auth.keystone.list_projects", side_effect=projects_for_token) as mock_list:
         response_a = await client.get("/api/v1/auth/projects?cache=true")
@@ -287,8 +322,8 @@ async def test_list_projects_cache_is_isolated_by_user(client, _fake_redis_globa
     assert response_b.json()[0]["id"] == "project-b"
     assert response_a_cached.json()[0]["id"] == "project-a"
     assert response_a.status_code == response_b.status_code == response_a_cached.status_code == 200
-    assert await _fake_redis_global.exists("afterglow:user:user-a:projects")
-    assert await _fake_redis_global.exists("afterglow:user:user-b:projects")
+    assert await _fake_redis_global.exists("afterglow:user:user-a:domain:default:projects")
+    assert await _fake_redis_global.exists("afterglow:user:user-b:domain:default:projects")
     assert mock_list.call_count == 2
 
 
@@ -345,24 +380,14 @@ def test_list_user_groups_converts_exception_to_permission_error():
             list_user_groups("fake-token", "fake-user-id")
 
 
-# ────── GitLab enabled ──────
-
-
 @pytest.mark.asyncio
-async def test_gitlab_enabled(client):
-    resp = await client.get("/api/v1/auth/gitlab/enabled")
-    assert resp.status_code == 200
-    assert "enabled" in resp.json()
-
-
-@pytest.mark.asyncio
-async def test_gitlab_enabled_preflight_allows_configured_frontend_origin(client):
+async def test_auth_preflight_allows_configured_frontend_origin(client):
     origin = get_settings().cors_origin_list[0]
     resp = await client.options(
-        "/api/v1/auth/gitlab/enabled",
+        "/api/v1/auth/login",
         headers={
             "Origin": origin,
-            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Method": "POST",
         },
     )
 
@@ -385,109 +410,27 @@ async def test_me_returns_auth_method(client):
 
 
 @pytest.mark.asyncio
-async def test_gitlab_callback_stores_federated_auth_method():
-    """gitlab_callback이 store_session에 auth_method='federated'를 전달하는지 확인."""
-    exchange_data = {
-        "token": "ks-token",
-        "project_id": "proj-123",
-        "project_name": "test-project",
-        "user_id": "user-123",
-        "username": "gitlabuser",
-        "roles": ["member"],
-        "is_system_admin": False,
-    }
-    captured: dict = {}
-
-    async def mock_store_session(*, jti, keystone_token, project_id, user_id, exp, auth_method="password", **kwargs):
-        captured["auth_method"] = auth_method
-
-    with (
-        # exchange_code는 함수 내에서 지연 import되므로 원본 모듈에서 패치
-        patch("app.services.gitlab_oidc.exchange_code", new_callable=AsyncMock, return_value=exchange_data),
-        patch("app.services.session_store.store_session", side_effect=mock_store_session),
-        patch("app.services.jwt_service.sign_refresh", return_value=("refresh-tok", "jti-123", 9999999999)),
-        patch("app.services.jwt_service.sign_access", return_value=("access-tok", "ajti-123", 9999999999)),
-        patch("app.api.identity.auth._prewarm_dashboard"),
-        patch("app.api.identity.auth.record_project_access", new_callable=AsyncMock),
-    ):
-        from httpx import ASGITransport, AsyncClient
-
-        from app.main import app
-
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            ac.cookies.set("afterglow_gitlab_oidc_state", "state-value")
-            resp = await ac.post(
-                "/api/v1/auth/gitlab/callback",
-                json={"code": "auth-code", "state": "state-value"},
-            )
-
-    # GitLab OIDC 비활성화 시 404 — 그 외엔 store_session 호출 여부만 검증
-    if resp.status_code != 404:
-        assert captured.get("auth_method") == "federated", (
-            f"gitlab_callback은 auth_method='federated'를 store_session에 전달해야 합니다. "
-            f"실제 값: {captured.get('auth_method')!r}"
-        )
+@pytest.mark.parametrize("path", ["enabled", "authorize", "callback"])
+async def test_legacy_gitlab_routes_removed(client, path):
+    response = await client.request("POST" if path == "callback" else "GET", f"/api/v1/auth/gitlab/{path}")
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_gitlab_callback_rejects_state_without_issuing_browser_cookie():
-    exchange_code = AsyncMock()
-    with (
-        patch("app.api.identity.auth.get_settings", return_value=SimpleNamespace(gitlab_oidc_enabled=True)),
-        patch("app.services.gitlab_oidc.exchange_code", exchange_code),
-    ):
-        from httpx import ASGITransport, AsyncClient
-
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            response = await ac.post(
-                "/api/v1/auth/gitlab/callback",
-                json={"code": "attacker-code", "state": "attacker-state"},
-            )
-
-    assert response.status_code == 401
-    exchange_code.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_gitlab_callback_returns_default_project_id():
-    """gitlab_callback이 접근 가능한 default_project_id를 응답에 포함한다."""
-    exchange_data = {
-        "token": "ks-token",
-        "project_id": "proj-123",
-        "project_name": "test-project",
-        "user_id": "user-123",
-        "username": "gitlabuser",
-        "roles": ["member"],
-        "is_system_admin": False,
-        "default_project_id": "proj-123",
-    }
-    captured: dict = {}
-
-    async def mock_store_session(*, jti, keystone_token, project_id, user_id, exp, auth_method="password", **kwargs):
-        captured["auth_method"] = auth_method
-
-    with (
-        patch("app.api.identity.auth.get_settings", return_value=SimpleNamespace(gitlab_oidc_enabled=True)),
-        patch("app.services.gitlab_oidc.exchange_code", new_callable=AsyncMock, return_value=exchange_data),
-        patch("app.services.session_store.store_session", side_effect=mock_store_session),
-        patch("app.services.jwt_service.sign_refresh", return_value=("refresh-tok", "jti-123", 9999999999)),
-        patch("app.services.jwt_service.sign_access", return_value=("access-tok", "ajti-123", 9999999999)),
-        patch("app.api.identity.auth._prewarm_dashboard"),
-        patch("app.api.identity.auth.record_project_access", new_callable=AsyncMock),
-    ):
-        from httpx import ASGITransport, AsyncClient
-
-        from app.main import app
-
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            ac.cookies.set("afterglow_gitlab_oidc_state", "state-value")
-            resp = await ac.post(
-                "/api/v1/auth/gitlab/callback",
-                json={"code": "auth-code", "state": "state-value"},
-            )
-
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["default_project_id"] == "proj-123"
-    assert data["project_id"] == "proj-123"
-    assert captured["auth_method"] == "federated"
+@pytest.mark.parametrize(
+    "legacy",
+    [
+        {"domain_name": "Default"},
+        {"project_name": "test-project"},
+        {"domain_name": "Default", "project_name": "test-project"},
+    ],
+)
+async def test_password_login_rejects_legacy_scope_without_echoing_secret(client, legacy):
+    secret = "password-must-not-appear"
+    with patch("app.api.identity.auth.keystone.authenticate") as authenticate:
+        response = await client.post("/api/v1/auth/login", json={"username": "u", "password": secret, **legacy})
+    authenticate.assert_not_called()
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Invalid authentication input"}
+    assert secret not in response.text
+    assert response.headers["cache-control"] == "no-store, private"

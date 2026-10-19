@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-ops';
-	import { onMount } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
+	import { get } from 'svelte/store';
+	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import MetricsPanel from '$lib/components/instance/MetricsPanel.svelte';
 	import { ActivityIndicator } from '$lib/components/ui';
 
-	interface AdminInstance {
+	export interface AdminInstance {
 		id: string;
 		name: string;
 		status: string;
@@ -36,9 +38,30 @@
 	let nextMarker = $state<string | null>(null);
 	let search = $state('');
 	let selectedInst = $state<AdminInstance | null>(null);
+	let listContext = $state('');
+	let requestVersion = 0;
+	let authRevision = $state(0);
+	function authKey(state: typeof $auth) {
+		return JSON.stringify([state.sessionId, state.userId, state.identityDomainId, state.domainId, state.token, state.projectId, state.isSystemAdmin]);
+	}
+	const context = $derived(JSON.stringify([authKey($auth), token, projectId, authRevision]));
+	const selected = $derived(listContext === context ? selectedInst : null);
+	let previousAuth = '';
+	const unsubscribe = auth.subscribe((state) => {
+		const next = authKey(state);
+		if (next === previousAuth) return;
+		previousAuth = next;
+		requestVersion++;
+		authRevision++;
+		instanceList = [];
+		nextMarker = null;
+		selectedInst = null;
+		loadingInstances = false;
+	});
+	onDestroy(() => { requestVersion++; unsubscribe(); });
 
 	const filtered = $derived(
-		search
+		listContext !== context ? [] : search
 			? instanceList.filter(i =>
 				i.name.toLowerCase().includes(search.toLowerCase()) ||
 				(i.project_id ?? '').includes(search)
@@ -47,22 +70,30 @@
 	);
 
 	async function loadInstances(reset = false) {
-		if (loadingInstances) return;
-		if (reset) { instanceList = []; nextMarker = null; selectedInst = null; }
+		if (loadingInstances && !reset) return;
+		const owner = context;
+		const version = ++requestVersion;
+		const requestToken = token;
+		const requestProject = projectId;
+		const current = () => version === requestVersion && owner === JSON.stringify([authKey(get(auth)), token, projectId, authRevision]);
+		if (reset) { instanceList = []; nextMarker = null; selectedInst = null; listContext = ''; }
+		if (!requestToken || !get(auth).isSystemAdmin) { loadingInstances = false; return; }
 		loadingInstances = true;
 		try {
-			const marker = nextMarker && !reset ? `&marker=${nextMarker}` : '';
+			const marker = nextMarker && !reset ? `&marker=${encodeURIComponent(nextMarker)}` : '';
 			const resp = await api.get<PagedResponse<AdminInstance>>(
 				`/api/v1/admin/all-instances?limit=50${marker}`,
-				token,
-				projectId,
+				requestToken,
+				requestProject,
 			);
+			if (!current()) return;
 			instanceList = reset ? resp.items : [...instanceList, ...resp.items];
 			nextMarker = resp.next_marker;
+			listContext = owner;
 		} catch {
-			// 목록 로드 실패는 UI에 빈 상태로 처리
+			// A failed page must not publish rows from a different context.
 		} finally {
-			loadingInstances = false;
+			if (current()) loadingInstances = false;
 		}
 	}
 
@@ -70,17 +101,21 @@
 		onReload?.(() => loadInstances(true));
 	});
 
-	onMount(() => loadInstances(true));
+	$effect(() => {
+		void context;
+		untrack(() => { search = ''; void loadInstances(true); });
+	});
 </script>
 
 <div class="flex flex-col md:flex-row gap-4 h-[calc(100vh-180px)] overflow-hidden">
 	<!-- 왼쪽: 인스턴스 목록 -->
 	<div data-tour="admin-monitoring-list" class="w-full md:w-72 flex-shrink-0 bg-surface-base border border-line rounded-xl overflow-hidden flex flex-col
-		{selectedInst ? 'hidden md:flex' : 'flex'}">
+		{selected ? 'hidden md:flex' : 'flex'}">
 		<div class="p-3 border-b border-line">
 			<input
 				type="text"
 				placeholder={t('monitoring.instances.search')}
+				aria-label={t('monitoring.instances.search')}
 				bind:value={search}
 				class="w-full bg-surface-sunken rounded-lg px-3 py-1.5 text-sm text-ink-2 placeholder-ink-3 outline-none focus:ring-1 focus:ring-line-2"
 			/>
@@ -99,8 +134,9 @@
 					<button
 						onclick={() => (selectedInst = inst)}
 						class="w-full text-left px-3 py-2.5 border-b border-line hover:bg-surface-sunken transition-colors
-							{selectedInst?.id === inst.id ? 'bg-surface-sunken border-l-2 border-l-blue-500 pl-2.5' : ''}"
+							{selected?.id === inst.id ? 'bg-surface-sunken border-l-2 border-l-blue-500 pl-2.5' : ''}"
 						data-tour={index === 0 ? 'admin-monitoring-row' : undefined}
+						aria-pressed={selected?.id === inst.id}
 					>
 						<div class="flex items-center gap-2">
 							<div class="w-1.5 h-1.5 rounded-full flex-shrink-0
@@ -134,8 +170,8 @@
 	</div>
 
 	<!-- 오른쪽: MetricsPanel -->
-	<div class="flex-1 min-w-0 overflow-y-auto {selectedInst ? 'block' : 'hidden md:block'}">
-		{#if selectedInst}
+	<div class="flex-1 min-w-0 overflow-y-auto {selected ? 'block' : 'hidden md:block'}">
+		{#if selected}
 			<div class="motion-fade bg-surface-base border border-line rounded-xl p-5">
 				<button
 					onclick={() => (selectedInst = null)}
@@ -144,23 +180,30 @@
 				>
 					{t('monitoring.instances.back')}
 				</button>
-				<div class="flex items-center gap-3 mb-5">
-					<span class="text-ink-0 font-semibold">{selectedInst.name}</span>
-					<span class="text-xs text-ink-2 font-mono">{selectedInst.id.slice(0, 8)}…</span>
+				<div class="flex min-w-0 flex-wrap items-center gap-3 mb-5 break-all">
+					<span class="text-ink-0 font-semibold">{selected.name}</span>
+					<span class="text-xs text-ink-2 font-mono">{selected.id.slice(0, 8)}…</span>
 					<span class="text-xs px-2 py-0.5 rounded
-						{selectedInst.status === 'ACTIVE' ? 'bg-green-900/30 text-green-400' :
-						 selectedInst.status === 'ERROR' ? 'bg-red-900/30 text-red-400' :
+						{selected.status === 'ACTIVE' ? 'bg-green-900/30 text-green-400' :
+						 selected.status === 'ERROR' ? 'bg-red-900/30 text-red-400' :
 						 'bg-surface-sunken text-ink-2'}"
-					>{selectedInst.status}</span>
-					{#if selectedInst.flavor}
-						<span class="text-xs text-ink-2">{selectedInst.flavor}</span>
+					>{selected.status}</span>
+					{#if selected.flavor}
+						<span class="text-xs text-ink-2">{selected.flavor}</span>
 					{/if}
 				</div>
 				<div data-tour="admin-monitoring-metrics">
-					<MetricsPanel
-						instanceId={selectedInst.id}
-						isGpu={selectedInst.flavor.toLowerCase().startsWith('gpu.')}
-					/>
+					{#if selected.project_id}
+						{#key JSON.stringify([context, selected.id, selected.project_id])}
+							<MetricsPanel
+								instanceId={selected.id}
+								projectId={selected.project_id}
+								isGpu={selected.flavor.toLowerCase().startsWith('gpu.')}
+							/>
+						{/key}
+					{:else}
+						<p class="text-sm text-ink-2" role="status">{t('monitoring.instances.unknownProject')}</p>
+					{/if}
 				</div>
 			</div>
 		{:else}

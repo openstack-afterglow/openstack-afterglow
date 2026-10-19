@@ -25,32 +25,29 @@
 //   원래 target 을 빌드하지 않는다(Helm 발행 판단도 collectEventChanges 를 공유한다).
 //
 // 경로 규칙(Afterglow 배포 세트): backend/worker 는 afterglow 규칙, frontend 는 frontend 규칙 또는
-// afterglow 규칙, cloud-shell 은 cloud-shell 규칙. backend/worker 가 빌드되면 frontend 도 함께 빌드한다.
+// afterglow 규칙. backend/worker 가 빌드되면 frontend 도 함께 빌드한다.
 // docker-build.yml 자체가 바뀌면 전체(발행 revision 기준에서는 그 target)를 빌드한다.
 
 const fs = require("node:fs");
 const { execFileSync } = require("node:child_process");
 const { SHA_RE, compareStatus, readRevision } = require("./image-revision.js");
 
-const ALL_TARGETS = ["backend", "frontend", "worker", "cloud-shell"];
+const ALL_TARGETS = ["backend", "frontend", "worker"];
 const IMAGE_NAMES = {
 	backend: "afterglow-api",
 	frontend: "afterglow",
 	worker: "afterglow-worker",
-	"cloud-shell": "afterglow-cloud-shell",
 };
 const PATH_RULES = {
 	pipeline: String.raw`^\.github/workflows/docker-build\.yml$`,
 	afterglow: String.raw`^(backend/|Dockerfile$|\.dockerignore$|services/afterglow-crypto/)`,
 	frontend: String.raw`^(frontend/|Dockerfile$|\.dockerignore$)`,
-	cloudShell: String.raw`^(cloud-shell/|Dockerfile$|\.dockerignore$)`,
 };
 const PATTERNS = Object.fromEntries(Object.entries(PATH_RULES).map(([key, source]) => [key, new RegExp(source)]));
 const DISPATCH_MAP = {
 	backend: ["backend"],
 	frontend: ["frontend"],
 	worker: ["worker"],
-	"cloud-shell": ["cloud-shell"],
 	afterglow: ALL_TARGETS,
 	all: ALL_TARGETS,
 };
@@ -70,7 +67,7 @@ function ordered(targets) {
 }
 
 function classify(files) {
-	const groups = { pipeline: false, afterglow: false, frontend: false, cloudShell: false };
+	const groups = { pipeline: false, afterglow: false, frontend: false };
 	for (const file of files) {
 		for (const key of Object.keys(groups)) {
 			if (PATTERNS[key].test(file)) groups[key] = true;
@@ -86,7 +83,6 @@ function targetsForFiles(files) {
 	const targets = [];
 	if (groups.afterglow) targets.push("backend", "worker");
 	if (groups.frontend || groups.afterglow) targets.push("frontend");
-	if (groups.cloudShell) targets.push("cloud-shell");
 	return ordered(targets);
 }
 
@@ -291,18 +287,13 @@ function main(env = process.env, { exec = defaultExec, stdout = process.stdout }
 		return 1;
 	}
 	const targets = result.targets;
-	const standard = targets.filter((target) => target !== "cloud-shell");
 	for (const warning of result.warnings) stdout.write(`::warning title=Image target detection::${warning}\n`);
 	for (const reason of result.reasons) stdout.write(`${reason}\n`);
 	if (Array.isArray(result.input.eventChanges)) {
 		stdout.write(`changed files (${result.input.eventChanges.length}):\n`);
 		for (const file of result.input.eventChanges.slice(0, 200)) stdout.write(`  ${file}\n`);
 	}
-	const lines = [
-		`targets=${JSON.stringify(targets)}`,
-		`standard_targets=${JSON.stringify(standard)}`,
-		`cloud_shell=${targets.includes("cloud-shell")}`,
-	];
+	const lines = [`targets=${JSON.stringify(targets)}`];
 	stdout.write(`${lines.join("\n")}\n`);
 	if (env.GITHUB_OUTPUT) fs.appendFileSync(env.GITHUB_OUTPUT, `${lines.join("\n")}\n`);
 	return 0;

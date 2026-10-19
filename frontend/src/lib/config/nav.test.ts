@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_BETA_FEATURES } from '$lib/stores/betaFeatures';
 import { adminNavSections, allNavItems, isNavSectionActive } from './nav';
 import { initLocale } from '$lib/i18n/runtime.svelte';
+import { isProjectAgnosticPath } from './routes';
 
 beforeEach(() => initLocale('ko'));
 afterEach(() => initLocale('ko'));
@@ -31,6 +32,21 @@ describe('allNavItems service inheritance', () => {
 		const fileStorage = items.find(item => item.href === '/admin/file-storage');
 
 		expect(fileStorage?.service).toBe('manila');
+	});
+
+	it('keeps Aodh and Gnocchi as ungated monitoring siblings in all four locales', () => {
+		for (const [locale, aodh, gnocchi] of [
+			['ko', 'Aodh 알람', 'Gnocchi 서비스'],
+			['en', 'Aodh alarms', 'Gnocchi service'],
+			['ja', 'Aodh アラーム', 'Gnocchi サービス'],
+			['zh-CN', 'Aodh 告警', 'Gnocchi 服务'],
+		] as const) {
+			initLocale(locale);
+			const items = allNavItems(true, DEFAULT_BETA_FEATURES);
+			expect(items.find(item => item.href === '/admin/monitoring/aodh')).toMatchObject({ label: aodh, sectionKey: 'sections.monitoring', service: null });
+			expect(items.find(item => item.href === '/admin/monitoring/gnocchi')).toMatchObject({ label: gnocchi, sectionKey: 'sections.monitoring', service: null });
+			expect(adminNavSections.filter(section => isNavSectionActive(section, '/admin/monitoring/aodh/settings')).map(section => section.prefix)).toEqual(['/admin/monitoring']);
+		}
 	});
 
 
@@ -71,6 +87,21 @@ describe('allNavItems service inheritance', () => {
       expect(userItems.some(item => item.href === href)).toBe(false);
     }
   });
+
+  it('lists domain IAM only for a domain-manager capability and domains only for administrators', () => {
+    expect(allNavItems(false, DEFAULT_BETA_FEATURES).some(item => item.href === '/dashboard/iam')).toBe(false);
+    expect(allNavItems(false, DEFAULT_BETA_FEATURES, { domainManager: true }).find(item => item.href === '/dashboard/iam'))
+      .toMatchObject({ sectionKey: 'sections.domainIam', capability: 'domainManager' });
+    expect(allNavItems(true, DEFAULT_BETA_FEATURES).find(item => item.href === '/admin/domains')).toMatchObject({ sectionKey: 'sections.identity' });
+    expect(allNavItems(false, DEFAULT_BETA_FEATURES, { domainManager: true }).some(item => item.href === '/admin/domains')).toBe(false);
+  });
+
+	it('keeps domain selection in the resource dialog rather than the navigation catalog', () => {
+		const items = allNavItems(false, DEFAULT_BETA_FEATURES);
+		expect(items.some(item => item.href === '/select-domain')).toBe(false);
+		expect(items.some(item => item.href === '/dashboard/iam')).toBe(false);
+		expect(items.some(item => item.href.startsWith('/admin'))).toBe(false);
+	});
 	it('retains catalog keys and stable routes while flattened labels follow each locale', () => {
 		for (const [locale, instances, compute, packages] of [
 			['ko', '인스턴스', 'Compute', '프로젝트 패키지'],
@@ -83,5 +114,18 @@ describe('allNavItems service inheritance', () => {
 			expect(byHref.get('/dashboard/compute/instances')).toMatchObject({ label: instances, labelKey: 'items.instances', section: compute, sectionKey: 'sections.compute' });
 			expect(byHref.get('/palimpsest/packages')).toMatchObject({ label: packages, labelKey: 'items.projectPackages', section: 'Palimpsest', service: null });
 		}
+	});
+});
+
+describe('project-independent authenticated routes', () => {
+	it.each(['/select-domain', '/select-project', '/dashboard/iam', '/dashboard/iam/users'])('does not require a selected project for %s', (path) => {
+		expect(isProjectAgnosticPath(path, false)).toBe(true);
+	});
+	it.each(['/admin', '/admin/domains'])('keeps the project exemption on %s system-admin-only', (path) => {
+		expect(isProjectAgnosticPath(path, false)).toBe(false);
+		expect(isProjectAgnosticPath(path, true)).toBe(true);
+	});
+	it.each(['/select-domain-other', '/dashboard/iam-other', '/dashboard/compute/instances'])('does not exempt lookalike or project-bound route %s', (path) => {
+		expect(isProjectAgnosticPath(path, false)).toBe(false);
 	});
 });

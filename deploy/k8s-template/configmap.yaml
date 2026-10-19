@@ -381,7 +381,10 @@ data:
 
     [cloud_shell]
     service_project_id = ""
-    image = ""
+    # Production must pin the published manifest digest before enabling Cloud Shell.
+    image = "ghcr.io/openstack-afterglow/openstack-client:slim"
+    image_pull_policy = ""
+    registry_id = ""
     # Empty network_id uses the dedicated project's external-connected default network.
     # "default" resolves the dedicated project's default group with its existing rules.
     network_id = ""
@@ -407,12 +410,3 @@ data:
     [cors]
     origins = "https://example.com,http://localhost:3080,http://127.0.0.1:3080"
 
-    [gitlab_oidc]
-    enabled = false
-    gitlab_url = "https://gitlab.com"
-    client_id = "CHANGE_ME"
-    # client_secret은 secret.yaml의 GITLAB_OIDC_CLIENT_SECRET 환경변수로 주입됩니다
-    idp_id = "gitlab"
-    protocol_id = "openid"
-    redirect_uri = "https://example.com/auth/gitlab/callback"
-    scopes = "openid email profile read_user"

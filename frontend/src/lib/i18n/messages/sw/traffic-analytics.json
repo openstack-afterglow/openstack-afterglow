@@ -66,7 +66,7 @@
   "map.flows.failure": "Toni ya rangi: uwiano wa hitilafu; mstari wa vistari: hitilafu zinazidi mafanikio. Chagua nchi ili kuona idadi sahihi.",
   "map.flows.site": "◆ Kiingilio cha huduma: {country}",
   "map.flows.sameCountry": "Maombi kutoka nchi ya huduma: {count}. Ukubwa wa pete unaonyesha wingi wake kwa kulinganisha kwenye skeli ya logaritimu.",
-  "map.flows.note": "Mitiririko ni uchunguzi wa kimantiki wa nchi ya mteja → eneo la huduma, si njia halisi za mtandao. Nchi ya mteja hukadiriwa kwa kutumia safu za anwani za IP bila mtandao, si eneo sahihi. Nchi zisizo na umbo kwenye ramani hubaki kwenye orodha ya viwango lakini hazina tao.",
+  "map.flows.note": "Mitiririko ni uchunguzi wa kimantiki wa ufikiaji kutoka nchi ya mteja → eneo la huduma, si njia halisi za mtandao. Eneo la mteja ni kadirio la CIDR lisilohitaji mtandao, si eneo sahihi. Nchi zisizo na umbo kwenye ramani hubaki katika orodha ya viwango lakini hazina mikunjo ya kuziunganisha.",
   "map.flows.unconfigured": "Mitiririko ya ufikiaji haichorwi kwa sababu eneo la huduma halijasanidiwa (traffic_analytics.site_country).",
   "map.flows.noShape": "Mitiririko ya ufikiaji haichorwi kwa sababu nchi ya huduma iliyosanidiwa haina umbo katika skeli hii ya ramani.",
   "routes.title": "Kategoria / huduma za ufikiaji zilizozingatiwa",

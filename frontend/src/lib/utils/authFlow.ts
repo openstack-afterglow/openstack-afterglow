@@ -1,4 +1,6 @@
-export type PostLoginTarget = '/dashboard' | '/select-project';
+import type { AvailableDomain } from '$lib/types/auth';
+
+export type PostLoginTarget = '/dashboard' | '/select-project' | '/select-domain';
 
 export interface PostLoginProjectInput {
 	project_id?: string | null;
@@ -21,10 +23,12 @@ export function resolvePostLoginProject(input: PostLoginProjectInput): PostLogin
 		return { projectId, target: '/dashboard' };
 	}
 
-	const defaultProjectId = normalizeProjectId(input.default_project_id);
-	if (defaultProjectId) {
-		return { projectId: defaultProjectId, target: '/dashboard' };
-	}
-
 	return { projectId: null, target: '/select-project' };
+}
+
+/** Existing-session navigation only. Fresh authentication always opens the workspace chooser. */
+export function loginDestination(state: { availableDomains?: AvailableDomain[]; projectId?: string | null }): PostLoginTarget {
+	if (normalizeProjectId(state.projectId)) return '/dashboard';
+	if ((state.availableDomains?.length ?? 0) > 1) return '/select-domain';
+	return '/select-project';
 }

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { goto, clearAuth, mockFetch, auth, logoutInProgress, setAuth, session, logoutState } = vi.hoisted(() => {
 	const session = {
-		value: { token: 'expired-token', refreshToken: 'refresh-token' as string | null, accessExpiresAt: null as number | null },
+		value: { token: 'expired-token', refreshToken: 'refresh-token' as string | null, accessExpiresAt: null as number | null, domainId: 'domain-1' as string | null, identityDomainId: 'domain-1' as string | null },
 	};
 	const logoutState = { value: false };
 	return {
@@ -37,6 +37,8 @@ vi.mock('$lib/stores/auth', () => ({
 	getMockupProfile: () => null,
 	isMockAuthActive: () => false,
 	logoutInProgress,
+	projectSwitching: { subscribe: (run: (switching: boolean) => void) => { run(false); return () => {}; } },
+	getAuthVerificationEpoch: () => 0,
 	setAuth,
 }));
 vi.mock('$env/dynamic/public', () => ({
@@ -54,7 +56,7 @@ describe('unauthorized API redirect', () => {
 		vi.resetModules();
 		vi.clearAllMocks();
 		mockFetch.mockReset();
-		session.value = { token: 'expired-token', refreshToken: 'refresh-token', accessExpiresAt: null };
+		session.value = { token: 'expired-token', refreshToken: 'refresh-token', accessExpiresAt: null, domainId: 'domain-1', identityDomainId: 'domain-1' };
 		logoutState.value = false;
 		localStorage.clear();
 		replace = vi.fn();
@@ -157,7 +159,7 @@ describe('unauthorized API redirect', () => {
 				order.push('refresh');
 				return Response.json({
 					token: 'fresh-token',
-					refresh_token: 'fresh-refresh',
+					refresh_token: 'fresh-refresh', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain',
 					expires_at: new Date(Date.now() + 900_000).toISOString(),
 				});
 			}
@@ -178,14 +180,16 @@ describe('unauthorized API redirect', () => {
 	});
 
 	it('refreshes the expired current session when a long-lived callback still holds an older token', async () => {
-		session.value = { token: 'already-rotated-token', refreshToken: 'current-refresh', accessExpiresAt: 1 };
+		// The callback captured a token this session issued before it was rotated.
+		session.value = { token: 'older-captured-token', refreshToken: 'older-refresh', accessExpiresAt: 1, domainId: 'domain-1', identityDomainId: 'domain-1' };
+		const { api } = await import('../client');
+		session.value = { token: 'already-rotated-token', refreshToken: 'current-refresh', accessExpiresAt: 1, domainId: 'domain-1', identityDomainId: 'domain-1' };
 		mockFetch
-			.mockResolvedValueOnce(Response.json({ token: 'fresh-token', refresh_token: 'fresh-refresh' }))
+			.mockResolvedValueOnce(Response.json({ token: 'fresh-token', refresh_token: 'fresh-refresh', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain' }))
 			.mockImplementation(async (_url: string, init: RequestInit) =>
 				new Headers(init.headers).get('Authorization') === 'Bearer fresh-token'
 					? Response.json({ recovered: true })
 					: Response.json({ detail: 'expired' }, { status: 401 }));
-		const { api } = await import('../client');
 		await expect(api.get('/api/v1/dashboard/summary', 'older-captured-token')).resolves.toEqual({ recovered: true });
 		expect(mockFetch).toHaveBeenCalledTimes(2);
 		expect(clearAuth).not.toHaveBeenCalled();
@@ -197,7 +201,7 @@ describe('unauthorized API redirect', () => {
 			.mockResolvedValueOnce(Response.json({ detail: 'expired' }, { status: 401 }))
 			.mockResolvedValueOnce(Response.json({
 				token: 'fresh-token',
-				refresh_token: 'fresh-refresh',
+				refresh_token: 'fresh-refresh', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain',
 				expires_at: new Date(Date.now() + 900_000).toISOString(),
 			}))
 			.mockResolvedValueOnce({
@@ -227,7 +231,7 @@ describe('unauthorized API redirect', () => {
 		}, 'expired-token', 'project');
 		controller.abort();
 		await expect(request).rejects.toMatchObject({ name: 'AbortError' });
-		refreshResponse.resolve(Response.json({ token: 'fresh-token', refresh_token: 'fresh-refresh' }));
+		refreshResponse.resolve(Response.json({ token: 'fresh-token', refresh_token: 'fresh-refresh', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain' }));
 		await expect(refresh).resolves.toBe('fresh-token');
 		expect(mockFetch).toHaveBeenCalledOnce();
 		expect(clearAuth).not.toHaveBeenCalled();
@@ -252,7 +256,7 @@ describe('unauthorized API redirect', () => {
 		});
 		const upload = fetchWithAuth('/api/v1/upload', { method: 'POST', body: form }, 'expired-token', 'chosen-project');
 		expect(mockFetch).toHaveBeenCalledOnce();
-		refreshResponse.resolve(Response.json({ token: 'fresh-token', refresh_token: 'fresh-refresh' }));
+		refreshResponse.resolve(Response.json({ token: 'fresh-token', refresh_token: 'fresh-refresh', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain' }));
 		await refresh;
 		const response = await upload;
 		expect(await response.json()).toEqual({ id: 'uploaded' });
@@ -283,7 +287,7 @@ describe('unauthorized API redirect', () => {
 	it('stops after a refreshed token is also rejected', async () => {
 		mockFetch
 			.mockResolvedValueOnce(Response.json({ detail: 'expired' }, { status: 401 }))
-			.mockResolvedValueOnce(Response.json({ token: 'fresh-token', refresh_token: 'fresh-refresh' }))
+			.mockResolvedValueOnce(Response.json({ token: 'fresh-token', refresh_token: 'fresh-refresh', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain' }))
 			.mockResolvedValueOnce(Response.json({ detail: 'revoked' }, { status: 401 }));
 		const { fetchWithAuth } = await import('../client');
 		const response = await fetchWithAuth('/api/v1/protected', {}, 'expired-token');
@@ -299,8 +303,8 @@ describe('unauthorized API redirect', () => {
 		const { fetchWithAuth } = await import('../client');
 		const request = fetchWithAuth('/api/v1/protected', {}, 'expired-token');
 		await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
-		session.value = { token: '', refreshToken: null, accessExpiresAt: null };
-		refreshResponse.resolve(Response.json({ token: 'late-token', refresh_token: 'late-refresh' }));
+		session.value = { token: '', refreshToken: null, accessExpiresAt: null, domainId: 'domain-1', identityDomainId: 'domain-1' };
+		refreshResponse.resolve(Response.json({ token: 'late-token', refresh_token: 'late-refresh', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain' }));
 		await expect(request).rejects.toMatchObject({ status: 401 });
 		expect(mockFetch).toHaveBeenCalledOnce();
 		expect(setAuth).not.toHaveBeenCalled();
@@ -310,7 +314,7 @@ describe('unauthorized API redirect', () => {
 			ok: true,
 			json: async () => ({
 				token: 'rotated-token',
-				refresh_token: 'rotated-refresh-token',
+				refresh_token: 'rotated-refresh-token', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain',
 				expires_at: '2026-07-11T00:00:00Z',
 			}),
 		});
@@ -337,7 +341,7 @@ describe('unauthorized API redirect', () => {
 	it('fences new refreshes while preserving a captured response for logout revocation', async () => {
 		let resolveRefresh!: (response: {
 			ok: boolean;
-			json: () => Promise<{ token: string; refresh_token: string; expires_at: string }>;
+			json: () => Promise<{ token: string; refresh_token: string; domain_id: string; expires_at: string }>;
 		}) => void;
 		mockFetch.mockImplementationOnce(() => new Promise((resolve) => {
 			resolveRefresh = resolve;
@@ -353,7 +357,7 @@ describe('unauthorized API redirect', () => {
 				ok: true,
 				json: async () => ({
 					token: 'rotated-token',
-					refresh_token: 'rotated-refresh-token',
+					refresh_token: 'rotated-refresh-token', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain',
 					expires_at: '2026-07-11T00:00:00Z',
 				}),
 			});
@@ -394,7 +398,7 @@ describe('unauthorized API redirect', () => {
 				ok: true,
 				json: async () => ({
 					token: 'logout-refresh-token',
-					refresh_token: 'logout-refresh-refresh-token',
+					refresh_token: 'logout-refresh-refresh-token', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain',
 					expires_at: '2026-07-11T00:00:00Z',
 				}),
 			})
@@ -441,7 +445,7 @@ describe('unauthorized API redirect', () => {
 	it('adopts a cross-tab winner token when current token changes while refresh 200 response is in flight', async () => {
 		let resolveRefresh!: (response: {
 			ok: boolean;
-			json: () => Promise<{ token: string; refresh_token: string; expires_at: string }>;
+			json: () => Promise<{ token: string; refresh_token: string; domain_id: string; expires_at: string }>;
 		}) => void;
 		mockFetch.mockImplementationOnce(() => new Promise((resolve) => {
 			resolveRefresh = resolve;
@@ -455,13 +459,14 @@ describe('unauthorized API redirect', () => {
 			token: 'cross-tab-winner-token',
 			refreshToken: 'winner-refresh-token',
 			accessExpiresAt: null,
+			domainId: 'domain-1', identityDomainId: 'domain-1',
 		};
 
 		resolveRefresh({
 			ok: true,
 			json: async () => ({
 				token: 'stale-token',
-				refresh_token: 'stale-refresh-token',
+				refresh_token: 'stale-refresh-token', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain',
 				expires_at: '2026-07-11T00:00:00Z',
 			}),
 		});
@@ -534,7 +539,7 @@ describe('unauthorized API redirect', () => {
 		expect(session.value.token).toBe('expired-token');
 	});
 	it('retries a late 401 using the rotated live token without initiating a second refresh', async () => {
-		session.value = { token: 'expired-token', refreshToken: 'refresh-token', accessExpiresAt: null };
+		session.value = { token: 'expired-token', refreshToken: 'refresh-token', accessExpiresAt: null, domainId: 'domain-1', identityDomainId: 'domain-1' };
 
 		let resolveReq1!: (response: any) => void;
 		let resolveReq2!: (response: any) => void;
@@ -611,7 +616,7 @@ describe('unauthorized API redirect', () => {
 			statusText: 'OK',
 			json: async () => ({
 				token: 'rotated-token',
-				refresh_token: 'rotated-refresh-token',
+				refresh_token: 'rotated-refresh-token', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain',
 				expires_at: '2026-08-26T12:00:00Z',
 			}),
 		});
@@ -659,7 +664,7 @@ describe('unauthorized API redirect', () => {
 		expect(replace).not.toHaveBeenCalled();
 	});
 	it('coalesces failed refresh outcomes across staggered 401 requests within cooldown', async () => {
-		session.value = { token: 'expired-token', refreshToken: 'refresh-token', accessExpiresAt: null };
+		session.value = { token: 'expired-token', refreshToken: 'refresh-token', accessExpiresAt: null, domainId: 'domain-1', identityDomainId: 'domain-1' };
 
 		let baseTime = 1700000000000;
 		const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => baseTime);

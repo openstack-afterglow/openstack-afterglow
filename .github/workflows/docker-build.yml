@@ -18,7 +18,7 @@ on:
         required: false
         default: 'all'
         type: choice
-        options: [all, afterglow, backend, frontend, worker, cloud-shell]
+        options: [all, afterglow, backend, frontend, worker]
       run_live_openstack:
         description: 'Run manual live OpenStack scenarios'
         required: false
@@ -128,9 +128,7 @@ jobs:
       packages: read
     outputs:
       targets: ${{ steps.set-targets.outputs.targets }}
-      standard_targets: ${{ steps.set-targets.outputs.standard_targets }}
       effective_ref: ${{ steps.eff-ref.outputs.ref }}
-      cloud_shell: ${{ steps.set-targets.outputs.cloud_shell }}
       is_pr: ${{ steps.eff-ref.outputs.is_pr }}
     steps:
       # PR 이벤트에서는 PR 코드(detect 스크립트)가 이 잡을 실행하므로 토큰을 .git/config 에 남기지 않는다.
@@ -181,11 +179,11 @@ jobs:
     needs: changes
     # PR 은 self-hosted 빌드 matrix 를 예약할 수 없다(CI 규정 10번). 첫 conjunct 는 step 이 계산하는 is_pr 에 기대지 않는
     # 이벤트 리터럴이고 is_pr 는 보조 확인이다. !cancelled() + 결과 확인은 skipped test/test-pr 조상 대비다.
-    if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.is_pr != 'true' && needs.changes.outputs.standard_targets != '[]' }}
+    if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.is_pr != 'true' && needs.changes.outputs.targets != '[]' }}
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJSON(needs.changes.outputs.standard_targets) }}
+        target: ${{ fromJSON(needs.changes.outputs.targets) }}
         # arm64 빌드 비활성화 — arm64 self-hosted(macOS) 러너가 상시 가동되지 않아
         # 빌드 잡이 queued 로 정체되고 manifest 병합까지 막혀 :dev 태그가 갱신되지 않았다.
         # arm64 가 다시 필요하면 아래 원본 2줄(arch 배열 + include 항목)의 주석을 되살린다.
@@ -345,123 +343,6 @@ jobs:
           cache-from: type=registry,ref=${{ steps.img.outputs.name }}:cache-${{ matrix.arch }}
           cache-to: ${{ needs.changes.outputs.is_pr != 'true' && format('type=registry,ref={0}:cache-{1},mode=max', steps.img.outputs.name, matrix.arch) || '' }}
 
-  # Cloud Shell is published for both supported architectures from a hosted
-  # Linux runner. QEMU avoids depending on the intentionally disabled macOS
-  # arm64 runner used by the legacy image matrix.
-  build-cloud-shell:
-    name: Build Cloud Shell (amd64 + arm64)
-    needs: changes
-    if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.is_pr != 'true' && contains(fromJSON(needs.changes.outputs.targets), 'cloud-shell') }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ github.sha }}
-
-      - name: Install uv (tag push only)
-        if: startsWith(needs.changes.outputs.effective_ref, 'refs/tags/v')
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-
-      - name: Setup Node (tag push only)
-        if: startsWith(needs.changes.outputs.effective_ref, 'refs/tags/v')
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Apply tag version (tag push only)
-        if: startsWith(needs.changes.outputs.effective_ref, 'refs/tags/v')
-        env:
-          GITHUB_REF: ${{ needs.changes.outputs.effective_ref }}
-        run: npm run version:apply-tag
-
-      - name: Verify version sync
-        run: bash scripts/check-version-sync.sh
-        env:
-          GITHUB_REF: ${{ needs.changes.outputs.effective_ref }}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to registry
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
-          password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
-
-      - name: Resolve tags
-        id: tags
-        env:
-          EFFECTIVE_REF: ${{ needs.changes.outputs.effective_ref }}
-        run: |
-          IMAGE="${REGISTRY}/${IMAGE_OWNER}/afterglow-cloud-shell"
-          echo 'values<<EOF' >> $GITHUB_OUTPUT
-          if [[ "${EFFECTIVE_REF}" == refs/tags/v* ]]; then
-            echo "${IMAGE}:${EFFECTIVE_REF#refs/tags/}" >> $GITHUB_OUTPUT
-            echo "${IMAGE}:latest" >> $GITHUB_OUTPUT
-          elif [[ "${EFFECTIVE_REF}" == refs/heads/main ]]; then
-            echo "${IMAGE}:nightly" >> $GITHUB_OUTPUT
-          else
-            echo "${IMAGE}:dev" >> $GITHUB_OUTPUT
-          fi
-          echo 'EOF' >> $GITHUB_OUTPUT
-
-      # Stale re-run 가드: 이번 SHA 가 태그가 추적하는 브랜치(:dev→dev, :nightly→main)의 끝이 아니고(tip != sha),
-      # 그 태그의 현재 발행 revision 이 이번 SHA 보다 새로우면(compare=behind) 빌드·push 를 건너뛴다. 이번 SHA 가
-      # 추적 브랜치 끝이면(정상 push, force-push rollback) 항상 발행한다. tip·revision 을 모르면 진행한다.
-      # 추적 브랜치는 실행 ref 가 아니다. 다른 브랜치의 workflow_dispatch 도 :dev 로 가므로 dev 끝과 비교한다.
-      # 버전 태그는 항상 발행한다. 가드는 빌드 전에 평가되므로, 동시에 실행 중인 더 새로운 실행이 이 빌드 도중
-      # 발행하는 경합은 남는다.
-      - name: Stale re-run guard
-        id: guard
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EFFECTIVE_REF: ${{ needs.changes.outputs.effective_ref }}
-        run: |
-          publish=true
-          if [[ "${EFFECTIVE_REF}" != refs/tags/v* ]]; then
-            BRANCH_TAG="${REGISTRY}/${IMAGE_OWNER}/afterglow-cloud-shell:dev"
-            TRACKED_REF="refs/heads/dev"
-            if [[ "${EFFECTIVE_REF}" == refs/heads/main ]]; then
-              BRANCH_TAG="${REGISTRY}/${IMAGE_OWNER}/afterglow-cloud-shell:nightly"
-              TRACKED_REF="refs/heads/main"
-            fi
-            set +e
-            node scripts/ci/image-revision.js guard "${BRANCH_TAG}" "${GITHUB_SHA}" "${GITHUB_REPOSITORY}" "${TRACKED_REF}"
-            rc=$?
-            set -e
-            case "$rc" in
-              0) ;;
-              3) publish=false ;;
-              *) echo "::error::stale re-run guard failed with exit ${rc}"; exit "$rc" ;;
-            esac
-          fi
-          echo "publish=${publish}" >> "$GITHUB_OUTPUT"
-
-      - name: Build and push Cloud Shell
-        if: steps.guard.outputs.publish == 'true'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile
-          target: cloud-shell
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.values }}
-          labels: org.opencontainers.image.revision=${{ github.sha }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/afterglow-cloud-shell:cache
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/afterglow-cloud-shell:cache,mode=max
-
   # ─── manifest 통합: 두 arch 태그를 합쳐 단일 멀티플랫폼 태그로 push ───
   # target 별로 독립 실행한다. 다른 target 의 빌드가 실패해도 이 target 의 per-arch 이미지가
   # 이번 SHA(revision label)로 발행됐으면 manifest 를 만든다. fail-fast 를 끄지 않으면 한 leg 실패가
@@ -469,7 +350,7 @@ jobs:
   manifest:
     name: Manifest ${{ matrix.target }}
     needs: [changes, build]
-    if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.is_pr != 'true' && needs.changes.outputs.standard_targets != '[]' }}
+    if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.is_pr != 'true' && needs.changes.outputs.targets != '[]' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -477,7 +358,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJSON(needs.changes.outputs.standard_targets) }}
+        target: ${{ fromJSON(needs.changes.outputs.targets) }}
 
     steps:
       - name: Checkout CI scripts

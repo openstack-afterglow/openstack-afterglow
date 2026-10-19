@@ -33,17 +33,45 @@
 
 <div class="rounded-xl bg-surface-base border border-line overflow-hidden mb-4">
 	<!-- 이름 -->
-	<div class="grid grid-cols-[140px_1fr_auto] gap-4 items-center px-4 py-3.5 border-b border-line">
+	<div class="grid grid-cols-[minmax(0,5rem)_minmax(0,1fr)_auto] @lg/panel:grid-cols-[140px_minmax(0,1fr)_auto] gap-3 items-center px-4 py-3.5 border-b border-line">
 		<span class="text-xs text-ink-2 font-medium">{t('review.name.label')}</span>
-		<span class="text-sm text-ink-0 font-semibold font-mono">{reviewInstanceName ?? t('review.name.automatic')}</span>
+		<span class="min-w-0 break-all text-sm text-ink-0 font-semibold font-mono">{reviewInstanceName ?? t('review.name.automatic')}</span>
 		<button onclick={() => s.goTo(5)} class="review-edit-btn">{t('review.edit')}</button>
 	</div>
+	<!-- 플레이버 -->
+	<div class="grid grid-cols-[minmax(0,5rem)_minmax(0,1fr)_auto] @lg/panel:grid-cols-[140px_minmax(0,1fr)_auto] gap-3 items-start px-4 py-3.5 border-b border-line">
+		<span class="text-xs text-ink-2 font-medium mt-0.5">{t('review.flavor')}</span>
+		<span class="flex flex-col gap-2 min-w-0">
+			<span class="break-all text-sm text-ink-0 font-mono font-semibold">{$wizard.flavorName ?? '-'}</span>
+			{#if reviewFlavor}
+				<div class="grid grid-cols-1 @md/panel:grid-cols-2 @xl/panel:grid-cols-4 gap-2">
+					<div class="flex flex-col gap-0.5 px-2.5 py-2 rounded-md bg-surface-sunken/70 border border-line-2">
+						<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-medium">vCPU</span>
+						<span class="font-mono text-sm font-semibold text-ink-0">{reviewFlavor.vcpus}</span>
+					</div>
+					<div class="flex flex-col gap-0.5 px-2.5 py-2 rounded-md bg-surface-sunken/70 border border-line-2">
+						<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-medium">RAM</span>
+						<span class="font-mono text-sm font-semibold text-ink-0">{reviewFlavor.ram >= 1024 ? Math.round(reviewFlavor.ram / 1024) + 'G' : reviewFlavor.ram + 'M'}</span>
+					</div>
+					<div class="flex flex-col gap-0.5 px-2.5 py-2 rounded-md bg-surface-sunken/70 border border-line-2">
+						<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-medium">{t('review.disk')}</span>
+						<span class="font-mono text-sm font-semibold text-ink-0">{reviewFlavor.disk}G</span>
+					</div>
+					<div class="flex flex-col gap-0.5 px-2.5 py-2 rounded-md bg-surface-sunken/70 border border-line-2">
+						<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-medium">GPU</span>
+						<span class="break-all font-mono text-sm font-semibold {reviewGpu ? 'text-[var(--color-state-info-text)]' : 'text-ink-2'}">{reviewGpu || '—'}</span>
+					</div>
+				</div>
+			{/if}
+		</span>
+		<button onclick={() => s.goTo(2)} class="review-edit-btn mt-0.5">{t('review.edit')}</button>
+	</div>
 	<!-- 이미지 / 볼륨 -->
-	<div class="grid grid-cols-[140px_1fr_auto] gap-4 items-center px-4 py-3.5 border-b border-line">
+	<div class="grid grid-cols-[minmax(0,5rem)_minmax(0,1fr)_auto] @lg/panel:grid-cols-[140px_minmax(0,1fr)_auto] gap-3 items-center px-4 py-3.5 border-b border-line">
 		<span class="text-xs text-ink-2 font-medium">
 			{$wizard.bootSource === 'volume' ? t('review.bootVolume') : t('review.image')}
 		</span>
-		<span class="flex flex-col gap-0.5 min-w-0 text-sm text-ink-0 font-mono">
+		<span class="flex flex-col gap-0.5 min-w-0 break-all text-sm text-ink-0 font-mono">
 			{#if $wizard.bootSource === 'volume'}
 				{$wizard.bootVolumeName ?? $wizard.bootVolumeId ?? '-'}
 			{:else}
@@ -52,55 +80,27 @@
 		</span>
 		<button onclick={() => s.goTo(1)} class="review-edit-btn">{t('review.edit')}</button>
 	</div>
-	<!-- 플레이버 -->
-	<div class="grid grid-cols-[140px_1fr_auto] gap-4 items-start px-4 py-3.5 border-b border-line">
-		<span class="text-xs text-ink-2 font-medium mt-0.5">{t('review.flavor')}</span>
-		<span class="flex flex-col gap-2 min-w-0">
-			<span class="text-sm text-ink-0 font-mono font-semibold">{$wizard.flavorName ?? '-'}</span>
-			{#if reviewFlavor}
-				<div class="grid grid-cols-4 gap-2">
-					<div class="flex flex-col gap-0.5 px-2.5 py-2 rounded-md bg-surface-sunken/70 border border-line-2">
-						<span class="text-[9.5px] uppercase tracking-wider text-ink-2 font-mono font-bold">vCPU</span>
-						<span class="font-mono text-sm font-semibold text-ink-0">{reviewFlavor.vcpus}</span>
-					</div>
-					<div class="flex flex-col gap-0.5 px-2.5 py-2 rounded-md bg-surface-sunken/70 border border-line-2">
-						<span class="text-[9.5px] uppercase tracking-wider text-ink-2 font-mono font-bold">RAM</span>
-						<span class="font-mono text-sm font-semibold text-ink-0">{reviewFlavor.ram >= 1024 ? Math.round(reviewFlavor.ram / 1024) + 'G' : reviewFlavor.ram + 'M'}</span>
-					</div>
-					<div class="flex flex-col gap-0.5 px-2.5 py-2 rounded-md bg-surface-sunken/70 border border-line-2">
-						<span class="text-[9.5px] uppercase tracking-wider text-ink-2 font-mono font-bold">{t('review.disk')}</span>
-						<span class="font-mono text-sm font-semibold text-ink-0">{reviewFlavor.disk}G</span>
-					</div>
-					<div class="flex flex-col gap-0.5 px-2.5 py-2 rounded-md bg-surface-sunken/70 border border-line-2">
-						<span class="text-[9.5px] uppercase tracking-wider text-ink-2 font-mono font-bold">GPU</span>
-						<span class="font-mono text-sm font-semibold {reviewGpu ? 'text-purple-400' : 'text-ink-2'}">{reviewGpu || '—'}</span>
-					</div>
-				</div>
-			{/if}
-		</span>
-		<button onclick={() => s.goTo(2)} class="review-edit-btn mt-0.5">{t('review.edit')}</button>
-	</div>
 	<!-- SSH 접근 -->
-	<div class="grid grid-cols-[140px_1fr_auto] gap-4 items-center px-4 py-3.5 border-b border-line">
+	<div class="grid grid-cols-[minmax(0,5rem)_minmax(0,1fr)_auto] @lg/panel:grid-cols-[140px_minmax(0,1fr)_auto] gap-3 items-center px-4 py-3.5 border-b border-line">
 		<span class="text-xs text-ink-2 font-medium">{s.isWindowsBoot ? t('review.windows.label') : t('review.ssh.label')}</span>
 		{#if s.windowsUnsupported}
 			<div data-testid="windows-unsupported-review"><Alert tone="danger">{t('config.windows.unsupported')}</Alert></div>
 		{:else if s.windowsAccount}
 			<span class="min-w-0 text-sm text-ink-0 break-all" data-testid="windows-password-review">{s.windowsAccount} · {s.passwordError ? t('review.windows.missing') : t('review.windows.provided')}</span>
 		{:else}
-			<span class="text-sm text-ink-0 font-mono">{reviewSshAccess}</span>
+			<span class="min-w-0 break-all text-sm text-ink-0 font-mono">{reviewSshAccess}</span>
 		{/if}
 		<button onclick={() => s.goTo(5)} class="review-edit-btn">{t('review.edit')}</button>
 	</div>
 	<!-- 네트워크 -->
-	<div class="grid grid-cols-[140px_1fr_auto] gap-4 items-center px-4 py-3.5 border-b border-line">
+	<div class="grid grid-cols-[minmax(0,5rem)_minmax(0,1fr)_auto] @lg/panel:grid-cols-[140px_minmax(0,1fr)_auto] gap-3 items-center px-4 py-3.5 border-b border-line">
 		<span class="text-xs text-ink-2 font-medium">{t('review.network.label')}</span>
-		<span class="text-sm text-ink-0 font-mono">{$wizard.networkName ?? t('review.network.default')}</span>
+		<span class="min-w-0 break-all text-sm text-ink-0 font-mono">{$wizard.networkName ?? t('review.network.default')}</span>
 		<button onclick={() => s.goTo(5)} class="review-edit-btn">{t('review.edit')}</button>
 	</div>
 	<!-- 루트 디스크 -->
 	{#if $wizard.bootSource === 'image'}
-	<div class="grid grid-cols-[140px_1fr_auto] gap-4 items-center px-4 py-3.5 {$wizard.dataMounts.length > 0 ? 'border-b border-line' : ''}">
+	<div class="grid grid-cols-[minmax(0,5rem)_minmax(0,1fr)_auto] @lg/panel:grid-cols-[140px_minmax(0,1fr)_auto] gap-3 items-center px-4 py-3.5 {$wizard.dataMounts.length > 0 ? 'border-b border-line' : ''}">
 		<span class="text-xs text-ink-2 font-medium">{t('review.rootDisk.label')}</span>
 		<span class="text-sm text-ink-0 font-mono">
 			{$wizard.bootVolumeSizeGb} GB
@@ -108,10 +108,19 @@
 		</span>
 		<button onclick={() => s.goTo(5)} class="review-edit-btn">{t('review.edit')}</button>
 	</div>
+	<div class="grid grid-cols-[minmax(0,5rem)_minmax(0,1fr)_auto] @lg/panel:grid-cols-[140px_minmax(0,1fr)_auto] gap-3 items-start px-4 py-3.5 border-t border-line">
+		<span class="text-xs text-ink-2 font-medium">{t('config.protection.title')}</span>
+		<div class="min-w-0 space-y-1 text-sm text-ink-0">
+			<p>{t('review.protection.snapshot', { enabled: $wizard.autoSnapshot ? 'yes' : 'no' })}</p>
+			<p>{t('review.protection.backup', { enabled: $wizard.autoBackup ? 'yes' : 'no' })}</p>
+			{#if $wizard.autoSnapshot || $wizard.autoBackup}<p class="text-xs text-ink-2">{t('config.protection.schedule')}</p>{/if}
+		</div>
+		<button onclick={() => s.goTo(5)} class="review-edit-btn">{t('review.edit')}</button>
+	</div>
 	{/if}
 	<!-- 파일 스토리지 마운트 -->
 	{#if !s.isWindowsBoot && $wizard.dataMounts.length > 0}
-	<div class="grid grid-cols-[140px_1fr_auto] gap-4 items-start px-4 py-3.5">
+	<div class="grid grid-cols-[minmax(0,5rem)_minmax(0,1fr)_auto] @lg/panel:grid-cols-[140px_minmax(0,1fr)_auto] gap-3 items-start px-4 py-3.5">
 		<span class="text-xs text-ink-2 font-medium mt-0.5">{t('review.mounts')}</span>
 		<div class="flex flex-col gap-1.5">
 			{#each $wizard.dataMounts as dm}
@@ -161,9 +170,10 @@
 
 <style>
   .review-edit-btn {
-    font-size: 11.5px;
+    font-size: 0.75rem;
     color: var(--color-ink-2);
     padding: 2px 10px;
+    min-height: 2.75rem;
     border-radius: 6px;
     border: 1px solid var(--color-line-2);
     transition: all 0.15s;

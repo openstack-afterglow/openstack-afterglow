@@ -1,4 +1,11 @@
 {
+	"items.aodhAlarms": "Aodh অ্যালার্ম",
+	"items.gnocchi": "Gnocchi সেবা",
+	"sections.domainIam": "ডোমেইন IAM",
+	"sections.domains": "ডোমেইন",
+	"items.selectDomain": "ডোমেইন বদলান বা তৈরি করুন",
+	"items.domains": "ডোমেইন",
+	"items.domainIam": "ব্যবহারকারী ও প্রকল্প পরিচালনা",
 	"items.infrastructureTopology": "ইনফ্রাস্ট্রাকচার টপোলজি",
 	"items.trafficAnalytics": "ট্রাফিক বিশ্লেষণ",
 	"items.loginMonitoring": "লগইন ও সেশন",

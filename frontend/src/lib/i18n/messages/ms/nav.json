@@ -1,4 +1,11 @@
 {
+	"items.aodhAlarms": "Penggera Aodh",
+	"items.gnocchi": "Perkhidmatan Gnocchi",
+	"sections.domainIam": "IAM domain",
+	"sections.domains": "Domain",
+	"items.selectDomain": "Tukar atau cipta domain",
+	"items.domains": "Domain",
+	"items.domainIam": "Pengguna dan projek",
 	"items.infrastructureTopology": "Topologi infrastruktur",
 	"items.trafficAnalytics": "Analisis trafik",
 	"items.loginMonitoring": "Log masuk & sesi",

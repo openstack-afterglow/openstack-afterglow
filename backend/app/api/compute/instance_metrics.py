@@ -1,4 +1,4 @@
-"""인스턴스별 Prometheus 메트릭 조회."""
+"""Authorized instance telemetry, preferring native measurements per metric."""
 
 from __future__ import annotations
 
@@ -8,10 +8,14 @@ import re
 import time
 from typing import Literal, get_args
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRoute
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.deps import get_os_conn, get_token_info
-from app.services import nova
+from app.services import native_telemetry, nova
 from app.services.prom_query import (
     PromBadQuery,
     PromUnavailable,
@@ -21,7 +25,26 @@ from app.services.prom_query import (
     query_range,
 )
 
-router = APIRouter()
+
+class _PrivateMetricsRoute(APIRoute):
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+
+        async def private_response(request: Request):
+            try:
+                response = await handler(request)
+            except StarletteHTTPException as exc:
+                exc.headers = {**(exc.headers or {}), "Cache-Control": "no-store"}
+                raise
+            except RequestValidationError as exc:
+                response = await request_validation_exception_handler(request, exc)
+            response.headers["Cache-Control"] = "no-store"
+            return response
+
+        return private_response
+
+
+router = APIRouter(route_class=_PrivateMetricsRoute)
 
 _RANGE_SECONDS: dict[str, int] = {
     "15m": 900,
@@ -40,10 +63,39 @@ MetricKey = Literal[
     "disk_write",
     "gpu_util",
     "gpu_mem",
+    "disk_read_iops",
+    "disk_write_iops",
+    "network_rx_packets",
+    "network_tx_packets",
+    "memory_resident",
+    "disk_allocation",
+    "memory_swap_in",
+    "memory_swap_out",
 ]
 
 _VALID_METRICS: frozenset[str] = frozenset(get_args(MetricKey))
 _GPU_METRICS: frozenset[str] = frozenset({"gpu_util", "gpu_mem"})
+_PROM_METRICS = frozenset({"cpu", "memory", "network_rx", "network_tx", "disk_read", "disk_write"}) | _GPU_METRICS
+_UNITS = {
+    "cpu": "%",
+    "memory": "%",
+    "network_rx": "B/s",
+    "network_tx": "B/s",
+    "disk_read": "B/s",
+    "disk_write": "B/s",
+    "gpu_util": "%",
+    "gpu_mem": "%",
+    "disk_read_iops": "request/s",
+    "disk_write_iops": "request/s",
+    "network_rx_packets": "packet/s",
+    "network_tx_packets": "packet/s",
+    "memory_resident": "MiB",
+    "disk_allocation": "B",
+    "memory_swap_in": "MiB/s",
+    "memory_swap_out": "MiB/s",
+}
+_NATIVE_STATUSES = frozenset({"available", "partial", "not_configured", "forbidden", "unavailable", "not_collected"})
+_READABLE_STATUSES = frozenset({"available", "partial", "not_collected"})
 
 # metrics-summary에서 집계할 메트릭 목록 (네트워크 제외)
 _SUMMARY_METRICS: tuple[str, ...] = ("cpu", "memory", "disk_read", "disk_write")
@@ -129,6 +181,77 @@ def _is_gpu(server) -> bool:
     return (server.flavor_name or "").lower().startswith("gpu.")
 
 
+def _finite_series(series: list[dict]) -> list[dict]:
+    return [
+        {"ts": point["ts"], "value": point["value"]}
+        for point in series
+        if isinstance(point.get("ts"), (int, float))
+        and math.isfinite(point["ts"])
+        and isinstance(point.get("value"), (int, float))
+        and math.isfinite(point["value"])
+    ]
+
+
+def _native_result(metric: str, result: dict | None, *, default_status: str = "not_collected") -> dict:
+    """Keep provider failures as safe codes, never upstream exception text."""
+    result = result or {}
+    status = result.get("status", default_status)
+    if status not in _NATIVE_STATUSES:
+        status = "unavailable"
+    series = _finite_series(result.get("series", [])) if status in {"available", "partial"} else []
+    if not series and status in {"available", "partial"}:
+        status = "not_collected"
+    return {
+        "series": series,
+        "source": "gnocchi",
+        "unit": _UNITS[metric],
+        "status": status,
+        "native_status": status,
+        "error": f"native_{status}" if result.get("error") else None,
+    }
+
+
+async def _native_instance_series(conn, server, metrics: list[str], *, start_ts: int, end_ts: int, step_s: int) -> dict:
+    try:
+        return await native_telemetry.instance_series(
+            conn, server, metrics, start_ts=start_ts, end_ts=end_ts, step_s=step_s
+        )
+    except Exception:
+        # Native discovery/policy failure must not disable independent exporters.
+        return {metric: {"status": "unavailable", "error": "native_unavailable"} for metric in metrics}
+
+
+async def _metric_series(
+    metric: str, instance_id: str, native: dict | None, *, start_ts: int, end_ts: int, step_s: int
+) -> dict:
+    result = _native_result(metric, native)
+    if result["series"] or metric not in _PROM_METRICS:
+        return result
+    try:
+        series = await query_range(_build_expr(metric, instance_id), start_ts=start_ts, end_ts=end_ts, step_s=step_s)
+        series = _finite_series(series)
+        if not series:
+            lv_expr = _build_libvirt_expr(metric, instance_id)
+            if lv_expr:
+                series = await query_range(lv_expr, start_ts=start_ts, end_ts=end_ts, step_s=step_s)
+                series = _finite_series(series)
+        return {
+            **result,
+            "series": series,
+            "source": "prometheus" if series else None,
+            "status": "available" if series else "not_collected",
+            "error": None,
+        }
+    except (PromUnavailable, PromBadQuery) as exc:
+        return {
+            **result,
+            "series": [],
+            "source": "gnocchi" if result["native_status"] in _READABLE_STATUSES else None,
+            "status": "not_collected" if result["native_status"] in _READABLE_STATUSES else "unavailable",
+            "error": "prometheus_unavailable" if isinstance(exc, PromUnavailable) else "bad_query",
+        }
+
+
 # ---------------------------------------------------------------------------
 # 단일 메트릭 엔드포인트 (deprecated — batch 엔드포인트 사용 권장)
 # ---------------------------------------------------------------------------
@@ -142,11 +265,7 @@ async def get_instance_metrics(
     conn=Depends(get_os_conn),
     token_info: dict = Depends(get_token_info),
 ) -> dict:
-    """인스턴스의 Prometheus 메트릭 시계열 조회 (단일).
-
-    반환: { instance_id, metric, range, series: [{"ts": int, "value": float}] }
-    batch 엔드포인트(/metrics-batch) 사용을 권장합니다.
-    """
+    """Return one native-first metric with exporter fallback and provenance."""
     server = _resolve_server(conn, instance_id)
     _authorize(server, token_info)
     metric_instance_id = _metric_instance_id(server)
@@ -159,24 +278,19 @@ async def get_instance_metrics(
     start_ts = end_ts - range_s
     step_s = calc_step(range_s)
 
-    try:
-        series = await query_range(
-            _build_expr(metric, metric_instance_id), start_ts=start_ts, end_ts=end_ts, step_s=step_s
-        )
-        if not series:
-            lv_expr = _build_libvirt_expr(metric, metric_instance_id)
-            if lv_expr:
-                series = await query_range(lv_expr, start_ts=start_ts, end_ts=end_ts, step_s=step_s)
-    except PromUnavailable as exc:
-        raise HTTPException(status_code=503, detail=f"Prometheus 연결 불가: {exc}")
-    except PromBadQuery as exc:
-        raise HTTPException(status_code=500, detail=f"PromQL 오류: {exc}")
-
-    return {"instance_id": instance_id, "metric": metric, "range": range, "series": series}
+    native = await _native_instance_series(conn, server, [metric], start_ts=start_ts, end_ts=end_ts, step_s=step_s)
+    result = await _metric_series(
+        metric, metric_instance_id, native.get(metric), start_ts=start_ts, end_ts=end_ts, step_s=step_s
+    )
+    if result["status"] == "unavailable" and result["error"] == "prometheus_unavailable":
+        raise HTTPException(status_code=503, detail="prometheus_unavailable")
+    if result["status"] == "unavailable" and result["error"] == "bad_query":
+        raise HTTPException(status_code=500, detail="bad_query")
+    return {"instance_id": instance_id, "metric": metric, "range": range, **result}
 
 
 # ---------------------------------------------------------------------------
-# Batch 메트릭 엔드포인트 — Nova/권한 1회, Prometheus N개 병렬
+# Batch 메트릭 엔드포인트 — Nova/권한 1회, 메트릭별 폴백
 # ---------------------------------------------------------------------------
 
 
@@ -188,12 +302,8 @@ async def get_instance_metrics_batch(
     conn=Depends(get_os_conn),
     token_info: dict = Depends(get_token_info),
 ) -> dict:
-    """인스턴스의 Prometheus 메트릭 시계열 일괄 조회.
-
-    Nova 조회 1회, 권한 검증 1회, Prometheus 쿼리 N개 병렬.
-    반환: { instance_id, range, metrics: { "<key>": { series, error } } }
-    """
-    keys = [k.strip() for k in metrics.split(",") if k.strip()]
+    """Resolve/authorize once; choose a single provider independently per metric."""
+    keys = list(dict.fromkeys(k.strip() for k in metrics.split(",") if k.strip()))
     if not keys:
         raise HTTPException(status_code=422, detail="metrics 파라미터가 비어있습니다")
     invalid = [k for k in keys if k not in _VALID_METRICS]
@@ -213,30 +323,21 @@ async def get_instance_metrics_batch(
     start_ts = end_ts - range_s
     step_s = calc_step(range_s)
 
-    async def _one(metric: str) -> tuple[str, dict]:
-        try:
-            series = await query_range(
-                _build_expr(metric, metric_instance_id),
-                start_ts=start_ts,
-                end_ts=end_ts,
-                step_s=step_s,
-            )
-            # node_exporter 미노출 시 libvirt-exporter 폴백 (테넌트망 격리 인스턴스 대응)
-            if not series:
-                lv_expr = _build_libvirt_expr(metric, metric_instance_id)
-                if lv_expr:
-                    series = await query_range(lv_expr, start_ts=start_ts, end_ts=end_ts, step_s=step_s)
-            return metric, {"series": series, "error": None}
-        except PromUnavailable as exc:
-            return metric, {"series": [], "error": f"prometheus_unavailable: {exc}"}
-        except PromBadQuery as exc:
-            return metric, {"series": [], "error": f"bad_query: {exc}"}
-
-    results = await asyncio.gather(*(_one(k) for k in keys))
+    native = (
+        await _native_instance_series(conn, server, keys, start_ts=start_ts, end_ts=end_ts, step_s=step_s)
+        if keys
+        else {}
+    )
+    results = await asyncio.gather(
+        *(
+            _metric_series(k, metric_instance_id, native.get(k), start_ts=start_ts, end_ts=end_ts, step_s=step_s)
+            for k in keys
+        )
+    )
     return {
         "instance_id": instance_id,
         "range": range,
-        "metrics": dict(results),
+        "metrics": dict(zip(keys, results, strict=True)),
     }
 
 
@@ -255,7 +356,8 @@ async def _fetch_stat(base_expr: str, range_s: int, step_s: int) -> dict[str, fl
 
     async def _one(stat: str) -> float | None:
         results = await query_instant_multi(_subquery_expr(stat, base_expr, range_s, step_s))
-        return results[0][1] if results else None
+        value = results[0][1] if results else None
+        return value if value is not None and math.isfinite(value) else None
 
     avg_v, min_v, max_v = await asyncio.gather(_one("avg"), _one("min"), _one("max"))
     return {"avg": avg_v, "min": min_v, "max": max_v}
@@ -273,6 +375,40 @@ async def _fetch_stat_with_fallback(
     return result
 
 
+def _series_stats(result: dict) -> dict:
+    values = [point["value"] for point in result["series"]]
+    return {
+        "avg": sum(values) / len(values) if values else None,
+        "min": min(values) if values else None,
+        "max": max(values) if values else None,
+        **{key: result[key] for key in ("source", "unit", "status", "native_status", "error")},
+    }
+
+
+async def _metric_stats(metric: str, instance_id: str, native: dict | None, range_s: int, step_s: int) -> dict:
+    result = _native_result(metric, native)
+    if result["series"]:
+        return _series_stats(result)
+    try:
+        stats = await _fetch_stat_with_fallback(metric, instance_id, range_s, step_s)
+        measured = stats["avg"] is not None
+        return {
+            **stats,
+            "source": "prometheus" if measured else None,
+            "unit": _UNITS[metric],
+            "status": "available" if measured else "not_collected",
+            "native_status": result["native_status"],
+            "error": None,
+        }
+    except (PromUnavailable, PromBadQuery) as exc:
+        return {
+            **_series_stats(result),
+            "source": "gnocchi" if result["native_status"] in _READABLE_STATUSES else None,
+            "status": "not_collected" if result["native_status"] in _READABLE_STATUSES else "unavailable",
+            "error": "prometheus_unavailable" if isinstance(exc, PromUnavailable) else "bad_query",
+        }
+
+
 # ---------------------------------------------------------------------------
 # 목록 배지용 일괄 요약 엔드포인트 (literal 경로 — instances_router 보다 먼저 등록됨)
 # ---------------------------------------------------------------------------
@@ -280,20 +416,60 @@ async def _fetch_stat_with_fallback(
 
 @router.get("/metrics-summary-batch")
 async def get_metrics_summary_batch(
+    conn=Depends(get_os_conn),
     token_info: dict = Depends(get_token_info),
 ) -> dict:
-    """프로젝트 내 모든 인스턴스의 7일 평균 CPU/메모리 + underutilized 판단.
-
-    반환: { range, prometheus_available, instances: { "<id>": { cpu_avg, mem_avg, underutilized } } }
-    """
+    """Project-scoped native summaries with bounded project-wide PromQL fallback."""
     project_id = token_info.get("project_id", "")
 
     # PromQL 라벨 값 주입 방어 — project_id 형식 화이트리스트 검증
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", project_id):
-        return {"range": "7d", "prometheus_available": True, "instances": {}}
+        return {"range": "7d", "monitoring_available": False, "instances": {}}
 
     range_s = _RANGE_SECONDS["7d"]
     step_s = calc_step(range_s)
+    # Canonical Nova ownership is established before any native resource search.
+    try:
+        servers = nova.list_servers(conn)
+    except Exception:
+        raise HTTPException(status_code=502, detail="instance_inventory_unavailable")
+    authorized_ids = {
+        server.id for server in servers if server.project_id == project_id and is_safe_label_value(server.id)
+    }
+    if not authorized_ids:
+        return {"range": "7d", "monitoring_available": False, "instances": {}}
+    end_ts = int(time.time())
+    if getattr(conn, "_afterglow_authenticated_project_id", None) != project_id:
+        # An admin/system credential must not enumerate a selected foreign project.
+        # Keep the independently authorized project exporter fallback available.
+        native = {"status": "forbidden", "instances": {}}
+    else:
+        try:
+            native = await native_telemetry.project_series(
+                conn,
+                project_id,
+                ["cpu", "memory"],
+                start_ts=end_ts - range_s,
+                end_ts=end_ts,
+                step_s=step_s,
+            )
+        except Exception:
+            native = {"status": "unavailable", "instances": {}}
+    native_status = native.get("status", "unavailable")
+    if native_status not in _NATIVE_STATUSES:
+        native_status = "unavailable"
+    monitoring_available = native_status in _READABLE_STATUSES
+    missing_status = native_status if native_status not in {"available", "partial"} else "not_collected"
+    native_instances = native.get("instances", {})
+    summaries = {
+        iid: {
+            metric: _series_stats(
+                _native_result(metric, native_instances.get(iid, {}).get(metric), default_status=missing_status)
+            )
+            for metric in ("cpu", "memory")
+        }
+        for iid in authorized_ids
+    }
     pid = project_id
 
     cpu_expr_node = (
@@ -319,45 +495,64 @@ async def get_metrics_summary_batch(
         f")[{range_s}s:{step_s}s])"
     )
 
-    try:
-        node_cpu_res, node_mem_res = await asyncio.gather(
-            query_instant_multi(cpu_expr_node),
-            query_instant_multi(mem_expr_node),
-        )
-    except PromUnavailable:
-        return {"range": "7d", "prometheus_available": False, "instances": {}}
-    except PromBadQuery:
-        return {"range": "7d", "prometheus_available": True, "instances": {}}
+    async def _fallback(metric: str, node_expr: str, lv_expr: str) -> None:
+        nonlocal monitoring_available
+        missing = [iid for iid in authorized_ids if summaries[iid][metric]["avg"] is None]
+        if not missing:
+            return
 
-    cpu_map: dict[str, float] = {labels["instance_id"]: v for labels, v in node_cpu_res if "instance_id" in labels}
-    mem_map: dict[str, float] = {labels["instance_id"]: v for labels, v in node_mem_res if "instance_id" in labels}
+        # Always bounded by metric/provider count, never by number of servers.
+        async def _query(expr: str) -> tuple[list, str | None]:
+            try:
+                return await query_instant_multi(expr), None
+            except (PromUnavailable, PromBadQuery) as exc:
+                return [], "prometheus_unavailable" if isinstance(exc, PromUnavailable) else "bad_query"
 
-    # node_exporter 없는 인스턴스는 libvirt 결과로 보충 (node 우선)
-    try:
-        lv_cpu_res, lv_mem_res = await asyncio.gather(
-            query_instant_multi(cpu_expr_lv),
-            query_instant_multi(mem_expr_lv),
-        )
-        for labels, v in lv_cpu_res:
-            iid = labels.get("instance_id", "")
-            if iid and iid not in cpu_map:
-                cpu_map[iid] = v
-        for labels, v in lv_mem_res:
-            iid = labels.get("instance_id", "")
-            if iid and iid not in mem_map:
-                mem_map[iid] = v
-    except (PromUnavailable, PromBadQuery):
-        pass  # libvirt 없으면 node 결과만 사용
+        (node, node_error), (libvirt, lv_error) = await asyncio.gather(_query(node_expr), _query(lv_expr))
+        monitoring_available = monitoring_available or node_error is None or lv_error is None
+        measured = {}
+        for labels, value in [*node, *libvirt]:
+            iid = labels.get("instance_id")
+            if iid in authorized_ids and math.isfinite(value):
+                measured.setdefault(iid, value)  # node wins, including a real zero
+        for iid in missing:
+            value = measured.get(iid)
+            native_readable = summaries[iid][metric]["native_status"] in _READABLE_STATUSES
+            readable = native_readable or node_error is None or lv_error is None
+            summaries[iid][metric].update(
+                {
+                    "avg": value,
+                    "source": "prometheus" if value is not None else "gnocchi" if native_readable else None,
+                    "status": "available" if value is not None else "not_collected" if readable else "unavailable",
+                    "error": None if value is not None else node_error or lv_error,
+                }
+            )
 
-    all_ids = set(cpu_map) | set(mem_map)
-    instances: dict[str, dict] = {}
-    for iid in all_ids:
-        cpu_avg = cpu_map.get(iid)
-        mem_avg = mem_map.get(iid)
-        underutilized = (cpu_avg is not None and cpu_avg < 10) or (mem_avg is not None and mem_avg < 20)
-        instances[iid] = {"cpu_avg": cpu_avg, "mem_avg": mem_avg, "underutilized": underutilized}
-
-    return {"range": "7d", "prometheus_available": True, "instances": instances}
+    await asyncio.gather(
+        _fallback("cpu", cpu_expr_node, cpu_expr_lv),
+        _fallback("memory", mem_expr_node, mem_expr_lv),
+    )
+    instances = {}
+    for iid, stats in summaries.items():
+        cpu_avg, mem_avg = stats["cpu"]["avg"], stats["memory"]["avg"]
+        if cpu_avg is None and mem_avg is None:
+            continue
+        sources = {stat["source"] for stat in stats.values() if stat["avg"] is not None}
+        instances[iid] = {
+            "cpu_avg": cpu_avg,
+            "mem_avg": mem_avg,
+            "underutilized": (
+                stats["cpu"]["status"] == "available"
+                and stats["memory"]["status"] == "available"
+                and cpu_avg is not None
+                and mem_avg is not None
+                and (cpu_avg < 10 or mem_avg < 20)
+            ),
+            "source": next(iter(sources)) if len(sources) == 1 else "mixed",
+            "native_status": native_status,
+            "stats": stats,
+        }
+    return {"range": "7d", "monitoring_available": monitoring_available, "instances": instances}
 
 
 # ---------------------------------------------------------------------------
@@ -375,7 +570,7 @@ async def get_instance_metrics_summary(
     """인스턴스 리소스 사용량 통계(min/avg/max) + 저사용 리사이즈 권장.
 
     반환: {
-      instance_id, range, prometheus_available,
+      instance_id, range, monitoring_available,
       stats: { cpu/memory/disk_read/disk_write: { min, avg, max } },
       recommendation: { underutilized, reason, current_flavor, suggested_flavor } | null
     }
@@ -387,30 +582,17 @@ async def get_instance_metrics_summary(
     range_s = _RANGE_SECONDS[range]
     step_s = calc_step(range_s)
 
-    _prom_unavailable = False
-
-    async def _safe_fetch(metric: str) -> dict[str, float | None]:
-        nonlocal _prom_unavailable
-        try:
-            return await _fetch_stat_with_fallback(metric, metric_instance_id, range_s, step_s)
-        except PromUnavailable:
-            _prom_unavailable = True
-            return {"avg": None, "min": None, "max": None}
-        except PromBadQuery:
-            return {"avg": None, "min": None, "max": None}
-
-    stat_results = await asyncio.gather(*(_safe_fetch(m) for m in _SUMMARY_METRICS))
-
-    if _prom_unavailable:
-        return {
-            "instance_id": instance_id,
-            "range": range,
-            "prometheus_available": False,
-            "stats": {},
-            "recommendation": None,
-        }
-
-    stats: dict[str, dict[str, float | None]] = {m: r for m, r in zip(_SUMMARY_METRICS, stat_results, strict=True)}
+    end_ts = int(time.time())
+    native = await _native_instance_series(
+        conn, server, list(_SUMMARY_METRICS), start_ts=end_ts - range_s, end_ts=end_ts, step_s=step_s
+    )
+    stat_results = await asyncio.gather(
+        *(_metric_stats(metric, metric_instance_id, native.get(metric), range_s, step_s) for metric in _SUMMARY_METRICS)
+    )
+    stats = dict(zip(_SUMMARY_METRICS, stat_results, strict=True))
+    monitoring_available = any(
+        stat["status"] in _READABLE_STATUSES or stat["native_status"] in _READABLE_STATUSES for stat in stats.values()
+    )
 
     # 권장 판단 (GPU 인스턴스 제외)
     recommendation = None
@@ -418,8 +600,14 @@ async def get_instance_metrics_summary(
         cpu_avg = stats["cpu"]["avg"]
         mem_avg = stats["memory"]["avg"]
 
-        if cpu_avg is not None or mem_avg is not None:
-            underutilized = (cpu_avg is not None and cpu_avg < 10) or (mem_avg is not None and mem_avg < 20)
+        # Incomplete capacity coverage can understate usage even with surviving samples.
+        if (
+            stats["cpu"]["status"] == "available"
+            and stats["memory"]["status"] == "available"
+            and cpu_avg is not None
+            and mem_avg is not None
+        ):
+            underutilized = cpu_avg < 10 or mem_avg < 20
             if underutilized:
                 reason_parts = []
                 if cpu_avg is not None and cpu_avg < 10:
@@ -493,7 +681,7 @@ async def get_instance_metrics_summary(
     return {
         "instance_id": instance_id,
         "range": range,
-        "prometheus_available": True,
-        "stats": stats,
+        "monitoring_available": monitoring_available,
+        "stats": stats if monitoring_available else {},
         "recommendation": recommendation,
     }

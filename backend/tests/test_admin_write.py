@@ -15,7 +15,7 @@ import pytest
         ("get", "/api/v1/admin/all-instances", None),
         ("get", "/api/v1/admin/all-volumes", None),
         ("get", "/api/v1/admin/hypervisors", None),
-        ("get", "/api/v1/admin/quotas/some-project-id", None),
+        ("get", "/api/v1/admin/quotas/some-project-id?domain_id=default", None),
         ("post", "/api/v1/admin/instances/inst-1/live-migrate", {}),
     ],
 )

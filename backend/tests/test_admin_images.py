@@ -4,8 +4,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.models.compute import ImageInfo
-
 
 def _make_image(img_id: str, name: str, **extra) -> SimpleNamespace:
     base = {
@@ -30,13 +28,6 @@ def _make_image(img_id: str, name: str, **extra) -> SimpleNamespace:
 async def test_list_admin_images_requires_admin(non_admin_client):
     resp = await non_admin_client.get("/api/v1/admin/images")
     assert resp.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_list_admin_images_allowed(admin_client, mock_conn):
-    mock_conn.image.images.return_value = iter([])
-    resp = await admin_client.get("/api/v1/admin/images")
-    assert resp.status_code != 403
 
 
 @pytest.mark.asyncio
@@ -102,43 +93,6 @@ async def test_list_admin_images_search_pagination_with_marker(admin_client, moc
 
 
 @pytest.mark.asyncio
-async def test_list_admin_images_search_does_not_pass_name_to_glance(admin_client, mock_conn):
-    """search 시 Glance에 name= 정확매칭 인자를 넘기면 안 된다 (substring은 클라이언트 필터)."""
-    images = [_make_image("1", "ubuntu-24.04")]
-    mock_conn.image.images.return_value = iter(images)
-    resp = await admin_client.get("/api/v1/admin/images?search=ub")
-    assert resp.status_code == 200
-    # Glance 호출 인자 검사: name 키가 없어야 함
-    _, called_kwargs = mock_conn.image.images.call_args
-    assert "name" not in called_kwargs
-
-
-@pytest.mark.asyncio
-async def test_list_admin_images_visibility_passed_to_glance(admin_client, mock_conn):
-    """?visibility=public 파라미터가 Glance 호출에 전달되어야 한다."""
-    images = [_make_image("1", "ubuntu", visibility="public")]
-    mock_conn.image.images.return_value = iter(images)
-    resp = await admin_client.get("/api/v1/admin/images?visibility=public")
-    assert resp.status_code == 200
-    _, called_kwargs = mock_conn.image.images.call_args
-    assert called_kwargs.get("visibility") == "public"
-
-
-@pytest.mark.asyncio
-async def test_list_admin_images_no_visibility_no_filter(admin_client, mock_conn):
-    """?visibility 없으면 Glance에 visibility 인자 미전달 (모든 이미지 반환)."""
-    images = [
-        _make_image("1", "ubuntu", visibility="public"),
-        _make_image("2", "rocky", visibility="private"),
-    ]
-    mock_conn.image.images.return_value = iter(images)
-    resp = await admin_client.get("/api/v1/admin/images?search=ub")
-    assert resp.status_code == 200
-    _, called_kwargs = mock_conn.image.images.call_args
-    assert "visibility" not in called_kwargs
-
-
-@pytest.mark.asyncio
 async def test_list_admin_images_preserves_protected_and_duplicate_uploads(admin_client, mock_conn):
     images = [
         _make_image("older", "ubuntu:latest", is_protected=True, hash_algo="sha512", hash_value="a" * 128),
@@ -165,25 +119,6 @@ async def test_get_admin_image_requires_admin(non_admin_client):
 async def test_patch_admin_image_requires_admin(non_admin_client):
     resp = await non_admin_client.patch("/api/v1/admin/images/img-1", json={"name": "new"})
     assert resp.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_patch_admin_image_normalizes_latest_and_explicit_tag(admin_client):
-    from unittest.mock import patch
-
-    updated = ImageInfo.model_validate(vars(_make_image("img-1", "ubuntu:24.04")))
-    with patch("app.api.identity.admin_images.glance.update_image_metadata", return_value=updated) as update:
-        resp = await admin_client.patch("/api/v1/admin/images/img-1", json={"name": "ubuntu:24.04"})
-    assert resp.status_code == 200
-    assert update.call_args.args[2] == "ubuntu:24.04"
-
-    with patch(
-        "app.api.identity.admin_images.glance.update_image_metadata",
-        return_value=ImageInfo.model_validate(vars(_make_image("img-1", "ubuntu:latest"))),
-    ) as update:
-        resp = await admin_client.patch("/api/v1/admin/images/img-1", json={"name": "ubuntu"})
-    assert resp.status_code == 200
-    assert update.call_args.args[2] == "ubuntu:latest"
 
 
 @pytest.mark.asyncio

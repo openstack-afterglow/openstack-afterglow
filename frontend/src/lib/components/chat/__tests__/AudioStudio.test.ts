@@ -1,7 +1,7 @@
-import { grantLumen, pendingLumen } from './lumenPermissionFixture';
+import { grantLumen, pendingLumen, refreshLumenAuth, setVerifiedLumenActor } from './lumenPermissionFixture';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { auth, authReady, projectSwitching } from '$lib/stores/auth';
+import { authReady, projectSwitching } from '$lib/stores/auth';
 import { takeAudioTranscript } from '$lib/api/audioChatHandoff';
 import type * as AudioModule from '$lib/api/audioStudio';
 import AudioStudio from '../AudioStudio.svelte';
@@ -13,7 +13,7 @@ vi.mock('$app/navigation', () => ({ goto: calls.goto }));
 vi.mock('$lib/api/audioStudio', async (original) => ({ ...await original<typeof AudioModule>(), audioStudioApi: calls }));
 const gate = (feature: 'audio_output' | 'audio_input', pricing_available = true) => ({ feature_gates: { [feature]: { available: true, mode: 'native', pricing_available, reason_code: null } } });
 const model = (kind: 'tts' | 'stt', pricing = true) => ({ id: kind === 'tts' ? 17 : 19, model_kind: kind, model_name: kind, display_name: kind === 'tts' ? 'Speech model' : 'Transcription model', provider_api_key_configured: true, capabilities: gate(kind === 'tts' ? 'audio_output' : 'audio_input', pricing) });
-const user = (projectId: string) => ({ token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'owner', username: 'tester', projectId, projectName: projectId, availableProjects: [], roles: [], isSystemAdmin: false, federated: false });
+const user = (projectId: string) => ({ token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'owner', username: 'tester', projectId, projectName: projectId, availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', identityDomainId: 'domain-1', identityDomainName: 'Domain', isDomainManager: false });
 const capability = (kind: 'tts' | 'stt', id: number, timestamps = true) => ({
 	model_id: id,
 	model_kind: kind,
@@ -41,7 +41,7 @@ async function chooseAudio(file: File) {
 beforeEach(() => {
 	vi.clearAllMocks();
 	created = [];
-	auth.set(user('project-1'));
+	setVerifiedLumenActor(user('project-1'));
 	calls.models.mockImplementation(async (kind: 'tts' | 'stt') => [model(kind)]);
 	calls.capabilities.mockImplementation(async (kind: 'tts' | 'stt', id: number) => capability(kind, id));
 	calls.speech.mockResolvedValue(new Blob(['FAKE-AUDIO-BYTES'], { type: 'audio/mpeg' }));
@@ -76,7 +76,7 @@ describe('Audio Studio', () => {
 		await fireEvent.click(screen.getByRole('button', { name: t('audioStudio.convertToText') }));
 		const transcriptUrl = (await screen.findByRole('link', { name: t('audioStudio.downloadText') })).getAttribute('href');
 		pendingLumen(permissionError);
-		auth.set({ ...user('project-1'), token: 'refreshed-token' });
+		refreshLumenAuth('refreshed-token');
 		await waitFor(() => expect(screen.getByRole('button', { name: t('audioStudio.convertToText') }).hasAttribute('disabled')).toBe(true));
 		expect(screen.getByLabelText(t('audioStudio.chooseFile')).hasAttribute('disabled')).toBe(true);
 		expect(screen.queryByRole('link', { name: t('audioStudio.downloadText') })).toBeNull();
@@ -103,7 +103,7 @@ describe('Audio Studio', () => {
 		await fireEvent.change(screen.getByLabelText(t('audioStudio.chooseFile')), { target: { files: [new File(['audio'], 'voice.wav', { type: 'audio/wav' })] } });
 		const signal: AbortSignal = calls.upload.mock.calls[0][2];
 		pendingLumen();
-		auth.set({ ...user('project-1'), token: 'refreshed-token' });
+		refreshLumenAuth('refreshed-token');
 		await waitFor(() => expect(screen.getByLabelText(t('audioStudio.chooseFile')).hasAttribute('disabled')).toBe(true));
 		expect(signal.aborted).toBe(false);
 		expect(URL.revokeObjectURL).not.toHaveBeenCalled();
@@ -133,8 +133,8 @@ describe('Audio Studio', () => {
 		await fireEvent.click(screen.getByRole('button', { name: t('audioStudio.generateSpeech') }));
 		const url = (await screen.findByRole('link', { name: t('audioStudio.downloadSpeech') })).getAttribute('href');
 		if (transition === 'revocation') grantLumen('lumen-assets_editor', 'lumen-chat_user');
-		else if (transition === 'project') auth.set(user('project-2'));
-		else if (transition === 'user') auth.set({ ...user('project-1'), userId: 'another-user' });
+		else if (transition === 'project') setVerifiedLumenActor(user('project-2'));
+		else if (transition === 'user') setVerifiedLumenActor({ ...user('project-1'), userId: 'another-user' });
 		else if (transition === 'logout') authReady.set(false);
 		else projectSwitching.set(true);
 		await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith(url));
@@ -176,7 +176,7 @@ describe('Audio Studio', () => {
 		await fireEvent.click(screen.getByRole('button', { name: t('audioStudio.recordMicrophone') }));
 		await screen.findByText(t('audioStudio.recordingStatus'));
 		pendingLumen();
-		auth.set({ ...user('project-1'), token: 'refreshed-token' });
+		refreshLumenAuth('refreshed-token');
 		const stop = await screen.findByRole('button', { name: t('audioStudio.stopRecording') });
 		expect(stop.hasAttribute('disabled')).toBe(false);
 		expect(track.stop).not.toHaveBeenCalled();
@@ -215,7 +215,7 @@ describe('Audio Studio', () => {
 		expect(screen.queryByText('unpublished transcript')).toBeNull();
 		expect(await readBlob(blobAt(url))).toContain('둘째 문장');
 		expect(URL.revokeObjectURL).not.toHaveBeenCalledWith(url);
-		auth.set(user('project-2'));
+		setVerifiedLumenActor(user('project-2'));
 		await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith(url));
 		expect(screen.queryByText('둘째 문장')).toBeNull();
 		expect(screen.queryByLabelText(t('audioStudio.previewSource', { name: 'voice.wav' }))).toBeNull();
@@ -293,7 +293,7 @@ describe('Audio Studio', () => {
 		await fireEvent.click(screen.getByRole('tab', { name: '텍스트 → 음성' }));
 		expect(screen.getByRole('link', { name: '음성 다운로드' }).getAttribute('href')).toBe(speechUrl);
 		expect(URL.revokeObjectURL).not.toHaveBeenCalledWith(speechUrl);
-		auth.set(user('project-2'));
+		setVerifiedLumenActor(user('project-2'));
 		await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith(speechUrl));
 		expect(screen.queryByRole('link', { name: '음성 다운로드' })).toBeNull();
 		view.unmount();
@@ -497,7 +497,7 @@ describe('Audio Studio', () => {
 		calls.upload.mockImplementationOnce(() => promise);
 		await fireEvent.change(screen.getByLabelText('음성 파일 선택'), { target: { files: [new File(['abc'], 'first.wav', { type: 'audio/wav' })] } });
 		expect(screen.getAllByRole('status').some((status) => status.textContent?.trim() === '업로드하고 검사하는 중…')).toBe(true);
-		auth.set(user('project-2'));
+		setVerifiedLumenActor(user('project-2'));
 		resolve({ id: 'old-asset', name: 'first.wav' });
 		await waitFor(() => expect(calls.models).toHaveBeenCalledWith('stt', { token: 'token', projectId: 'project-2' }));
 		expect(screen.queryByText('검사된 입력: first.wav')).toBeNull();
@@ -514,7 +514,7 @@ describe('Audio Studio', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '텍스트로 변환' }));
 		expect(screen.getAllByRole('status').some((status) => status.textContent?.trim() === '음성 처리 중…')).toBe(true);
 		const signal: AbortSignal = calls.transcribe.mock.calls[0][3];
-		auth.set(user('project-2'));
+		setVerifiedLumenActor(user('project-2'));
 		await waitFor(() => expect(signal.aborted).toBe(true));
 		pending.resolve(timed);
 		await waitFor(() => expect(calls.models).toHaveBeenCalledWith('stt', { token: 'token', projectId: 'project-2' }));

@@ -6,6 +6,7 @@ import type { StampedeStatus } from '$lib/types/k3s';
 const mocks = vi.hoisted(() => ({
 	apiGet: vi.fn(),
 	controller: {
+		projectId: 'resource-project',
 		cluster: { id: 'cluster-1', status: 'ACTIVE' },
 	},
 }));
@@ -85,8 +86,8 @@ describe('K3sStampedeTab', () => {
 		expect(await screen.findByText('gpu-workers')).toBeTruthy();
 		await waitFor(() => {
 			expect(mocks.apiGet.mock.calls).toEqual([
-				['/api/v1/k3s/clusters/cluster-1/stampede', 'test-token', 'test-project'],
-				['/api/v1/k3s/clusters/cluster-1/stampede/events?limit=100', 'test-token', 'test-project'],
+				['/api/v1/k3s/clusters/cluster-1/stampede', 'test-token', 'resource-project'],
+				['/api/v1/k3s/clusters/cluster-1/stampede/events?limit=100', 'test-token', 'resource-project'],
 			]);
 		});
 

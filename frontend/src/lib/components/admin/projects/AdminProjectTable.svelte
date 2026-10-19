@@ -12,6 +12,7 @@
 
 	let {
 		projects,
+		domainId,
 		copiedId,
 		onCopyId,
 		onEdit,
@@ -19,6 +20,7 @@
 		onDelete,
 	}: {
 		projects: Project[];
+		domainId: string;
 		copiedId: string | null;
 		onCopyId: (id: string) => void;
 		onEdit: (p: Project) => void;
@@ -43,7 +45,7 @@
 			{#each projects as p (p.id)}
 				<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/50 transition-colors">
 					<td class="py-2 pr-4 text-ink-0">
-						<a href="/admin/projects/{p.id}" class="hover:text-warm-text-hover transition-colors max-md:block max-md:max-w-[66vw] max-md:truncate" title={p.name}>{p.name}</a>
+						<a href={`/admin/projects/${encodeURIComponent(p.id)}?domain_id=${encodeURIComponent(domainId)}`} class="hover:text-warm-text-hover transition-colors max-md:block max-md:max-w-[66vw] max-md:truncate" title={p.name}>{p.name}</a>
 					</td>
 					<td class="py-2 pr-4 text-ink-2">{p.description || '-'}</td>
 					<td class="py-2 pr-4">

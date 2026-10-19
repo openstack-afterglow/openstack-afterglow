@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { t } from '$lib/i18n/ns/chat-studio';
 
 const mocks = vi.hoisted(() => {
 	class ApiError extends Error {
@@ -31,12 +32,12 @@ vi.mock('$lib/api/client', () => ({
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: mocks.confirm }));
 vi.mock('$lib/stores/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-import QuotaPage from '../+page.svelte';
+import QuotaPage from '$lib/components/admin/chat/AdminChatQuotasPage.svelte';
 
 const users = {
 	items: [
-		{ id: 'u1', name: 'alice', email: 'a@x', enabled: true },
-		{ id: 'u2', name: 'bob', email: 'b@x', enabled: true }
+		{ id: 'u1', name: 'alice', email: 'a@x', enabled: true, domain_id: 'tenant-a' },
+		{ id: 'u2', name: 'bob', email: 'b@x', enabled: true, domain_id: 'tenant-a' }
 	],
 	next_marker: null
 };
@@ -158,8 +159,29 @@ describe('admin user quota page', () => {
 
 	afterEach(cleanup);
 
+	it('rejects a foreign-domain user page before exposing quota actions', async () => {
+		mocks.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/admin/users?')
+			? { ...users, items: [{ ...users.items[0], domain_id: 'tenant-b' }] } : quotaList));
+		render(QuotaPage, { domainId: 'tenant-a' });
+		await screen.findByText(t('adminQuotas.loadFailed'));
+		await waitFor(() => expect(screen.queryByText('alice')).toBeNull());
+		expect(screen.queryByRole('button', { name: '편집' })).toBeNull();
+	});
+
+	it('does not submit a confirmed reset after the selected domain unmounts', async () => {
+		const confirmation = Promise.withResolvers<boolean>();
+		mocks.confirm.mockReturnValue(confirmation.promise);
+		const view = render(QuotaPage, { domainId: 'tenant-a' });
+		const alice = (await screen.findByText('alice')).closest('tr')!;
+		await fireEvent.click(within(alice).getByRole('button', { name: '기본값 복원' }));
+		view.unmount();
+		confirmation.resolve(true);
+		await confirmation.promise;
+		expect(mocks.delete).not.toHaveBeenCalled();
+	});
+
 	it('separates the system default from personal quota edits', async () => {
-		render(QuotaPage);
+		render(QuotaPage, { domainId: 'tenant-a' });
 
 		const alice = (await screen.findByText('alice')).closest('tr');
 		const bob = screen.getByText('bob').closest('tr');
@@ -186,7 +208,7 @@ describe('admin user quota page', () => {
 	});
 
 	it('preserves the default monthly cap when only the weekly limit is edited', async () => {
-		render(QuotaPage);
+		render(QuotaPage, { domainId: 'tenant-a' });
 
 		const bob = (await screen.findByText('bob')).closest('tr');
 		await fireEvent.click(within(bob!).getByRole('button', { name: '편집' }));
@@ -206,7 +228,7 @@ describe('admin user quota page', () => {
 	});
 
 	it('updates the system default independently and resets a personal override', async () => {
-		render(QuotaPage);
+		render(QuotaPage, { domainId: 'tenant-a' });
 		await screen.findByText('alice');
 
 		await fireEvent.input(screen.getByLabelText('기본 월 한도(크레딧)'), { target: { value: '80000' } });
@@ -232,7 +254,7 @@ describe('admin user quota page', () => {
 	});
 
 	it('opens timestamped per-user model and source usage detail', async () => {
-		render(QuotaPage);
+		render(QuotaPage, { domainId: 'tenant-a' });
 		const alice = (await screen.findByText('alice')).closest('tr');
 
 		await fireEvent.click(within(alice!).getByRole('button', { name: '사용량' }));
@@ -259,10 +281,10 @@ describe('admin user quota page', () => {
 			week_credited_cost: '1'
 		};
 		mocks.get.mockImplementation((path: string) => {
-			if (path === '/api/v1/admin/users?limit=20') {
+			if (path === '/api/v1/admin/users?domain_id=tenant-a&limit=20') {
 				return Promise.resolve({ items: [users.items[0]], next_marker: 'u1', count: 1 });
 			}
-			if (path === '/api/v1/admin/users?limit=20&marker=u1') {
+			if (path === '/api/v1/admin/users?domain_id=tenant-a&limit=20&marker=u1') {
 				return Promise.resolve({ items: [users.items[1]], next_marker: null, count: 1 });
 			}
 			if (path === '/api/v1/chat/admin/quotas') {
@@ -271,13 +293,13 @@ describe('admin user quota page', () => {
 			return Promise.resolve({});
 		});
 
-		render(QuotaPage);
+		render(QuotaPage, { domainId: 'tenant-a' });
 
 		expect(await screen.findByText('alice')).toBeTruthy();
 		expect(screen.queryByText('bob')).toBeNull();
 		expect(screen.queryByText('미확인 사용자')).toBeNull();
 		expect(mocks.get).toHaveBeenCalledWith(
-			'/api/v1/admin/users?limit=20',
+			'/api/v1/admin/users?domain_id=tenant-a&limit=20',
 			'browser-token',
 			'project-1'
 		);
@@ -289,7 +311,7 @@ describe('admin user quota page', () => {
 		expect(screen.getByText('7,000')).toBeTruthy();
 		expect(screen.getByText('페이지 2')).toBeTruthy();
 		expect(mocks.get).toHaveBeenCalledWith(
-			'/api/v1/admin/users?limit=20&marker=u1',
+			'/api/v1/admin/users?domain_id=tenant-a&limit=20&marker=u1',
 			'browser-token',
 			'project-1'
 		);
@@ -308,10 +330,10 @@ describe('admin user quota page', () => {
 			configured_monthly_credit_limit: '7000'
 		};
 		mocks.get.mockImplementation((path: string) => {
-			if (path === '/api/v1/admin/users?limit=20') {
+			if (path === '/api/v1/admin/users?domain_id=tenant-a&limit=20') {
 				return Promise.resolve({ items: [users.items[0]], next_marker: 'u1', count: 1 });
 			}
-			if (path === '/api/v1/admin/users?limit=20&marker=u1') {
+			if (path === '/api/v1/admin/users?domain_id=tenant-a&limit=20&marker=u1') {
 				return pendingPage.promise;
 			}
 			if (path === '/api/v1/chat/admin/quotas') {
@@ -320,7 +342,7 @@ describe('admin user quota page', () => {
 			return Promise.resolve({});
 		});
 
-		render(QuotaPage);
+		render(QuotaPage, { domainId: 'tenant-a' });
 		await screen.findByText('alice');
 		await fireEvent.click(screen.getByRole('button', { name: '다음 →' }));
 		mocks.auth.set({ token: 'navigation-token', userId: 'user-1', projectId: 'project-1', isSystemAdmin: true });
@@ -332,7 +354,7 @@ describe('admin user quota page', () => {
 		mocks.auth.set({ token: 'refreshed-token', userId: 'user-1', projectId: 'project-1', isSystemAdmin: true });
 		await waitFor(() => {
 			expect(mocks.get).toHaveBeenCalledWith(
-				'/api/v1/admin/users?limit=20&marker=u1',
+				'/api/v1/admin/users?domain_id=tenant-a&limit=20&marker=u1',
 				'refreshed-token',
 				'project-1'
 			);
@@ -343,7 +365,7 @@ describe('admin user quota page', () => {
 		mocks.auth.set({ token: 'project-two-token', userId: 'user-1', projectId: 'project-2', isSystemAdmin: true });
 		await waitFor(() => {
 			expect(mocks.get).toHaveBeenCalledWith(
-				'/api/v1/admin/users?limit=20',
+				'/api/v1/admin/users?domain_id=tenant-a&limit=20',
 				'project-two-token',
 				'project-2'
 			);
@@ -358,7 +380,7 @@ describe('admin user quota page', () => {
 		const reset = Promise.withResolvers<unknown>();
 		mocks.put.mockImplementation((path: string) => path.endsWith('/defaults') ? defaultSave.promise : personalSave.promise);
 		mocks.delete.mockReturnValue(reset.promise);
-		render(QuotaPage);
+		render(QuotaPage, { domainId: 'tenant-a' });
 		let alice = (await screen.findByText('alice')).closest('tr')!;
 		let bob = screen.getByText('bob').closest('tr')!;
 
@@ -394,7 +416,7 @@ describe('admin user quota page', () => {
 			if (path.includes('before_id=')) return nextPage.promise;
 			return Promise.resolve({ ...usageDetail, next_before_id: 9 });
 		});
-		render(QuotaPage);
+		render(QuotaPage, { domainId: 'tenant-a' });
 		const alice = (await screen.findByText('alice')).closest('tr')!;
 		await fireEvent.click(within(alice).getByRole('button', { name: '사용량' }));
 		await fireEvent.click(await screen.findByRole('button', { name: '이전 기록 더 보기' }));

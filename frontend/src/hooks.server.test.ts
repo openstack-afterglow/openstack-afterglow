@@ -31,11 +31,14 @@ const baseConfig: PublicSiteConfig = {
 		s3_base: '',
 		grafana_base: '',
 		librechat_base: '',
-		gitlab_base: '',
 	},
 };
 
 type CookieJar = Record<string, string | undefined>;
+
+interface LanguageRequest {
+	event: Parameters<Handle>[0]['event'];
+}
 
 function createRequest(url: string, initialCookies: CookieJar = {}, routeId: string | null = '/[...path]') {
 	const jar = { ...initialCookies };
@@ -78,10 +81,6 @@ afterEach(() => {
 	vi.unstubAllEnvs();
 	vi.unstubAllGlobals();
 });
-
-interface LanguageRequest {
-	event: Parameters<Handle>[0]['event'];
-}
 
 async function renderLanguage(request: LanguageRequest): Promise<Response> {
 	const { handle } = await loadHandle();
@@ -167,6 +166,22 @@ describe('frontend health', () => {
 	});
 });
 
+describe('authenticated project-independent domain surfaces', () => {
+	it.each(['/select-domain', '/dashboard/iam'])('keeps %s authenticated without requiring a project cookie', async (path) => {
+		const { handle } = await loadHandle();
+		const anonymous = createRequest(`http://frontend.example.com${path}`, {}, path);
+		const denied = await handle({ event: anonymous.event, resolve: anonymous.resolve });
+		expect(denied.status).toBe(302);
+		expect(denied.headers.get('Location')).toBe('/login');
+		expect(anonymous.resolve).not.toHaveBeenCalled();
+		const signedIn = createRequest(`http://frontend.example.com${path}`, { afterglow_session: 'active-session' }, path);
+		const allowed = await handle({ event: signedIn.event, resolve: signedIn.resolve });
+		expect(allowed.status).toBe(200);
+		expect(allowed.headers.get('Location')).toBeNull();
+		expect(signedIn.resolve).toHaveBeenCalledOnce();
+	});
+});
+
 describe('public service documentation', () => {
 	it.each(['/docs', '/docs/nova', '/docs/lumen?tutorial=on', '/docs/waygate?tutorial=admin'])(
 		'serves %s without a session or tutorial redirect', async (path) => {
@@ -197,6 +212,56 @@ describe('public service documentation', () => {
 	});
 });
 
+describe('shared browser language preference', () => {
+	async function renderLanguage(handle: Handle, request: LanguageRequest) {
+		return handle({ event: request.event, resolve: async (_event, options) => {
+			const html = await options!.transformPageChunk!({ html: '<html lang="%afterglow.lang%"></html>', done: true });
+			return new Response(html);
+		} });
+	}
+
+	it.each(['ko', 'en', 'ja', 'zh-CN'])('renders docs, login and authenticated pages in the saved %s language', async (locale) => {
+		const { handle } = await loadHandle();
+		for (const path of ['/docs', '/docs/nova', '/login', '/dashboard']) {
+			const request = createRequest(`https://frontend.example.com${path}`, {
+				afterglow_locale: locale, afterglow_session: 'active-session',
+			});
+			const response = await renderLanguage(handle, request);
+			expect(await response.text()).toBe(`<html lang="${locale}"></html>`);
+		}
+	});
+
+	it.each(['ko', 'ja', 'zh-CN'])('persists an explicit docs choice of %s for subsequent login and console requests', async (locale) => {
+		const { handle } = await loadHandle();
+		const docs = createRequest(`https://frontend.example.com/docs/nova?lang=${locale}`, { afterglow_locale: 'en' });
+		expect(await (await renderLanguage(handle, docs)).text()).toBe(`<html lang="${locale}"></html>`);
+		expect(docs.cookies.set).toHaveBeenCalledWith('afterglow_locale', locale, {
+			path: '/', maxAge: 31536000, sameSite: 'lax', httpOnly: false, secure: true,
+		});
+		for (const path of ['/login', '/dashboard']) {
+			const next = createRequest(`https://frontend.example.com${path}`, { ...docs.jar, afterglow_session: 'active-session' });
+			expect(await (await renderLanguage(handle, next)).text()).toBe(`<html lang="${locale}"></html>`);
+		}
+	});
+
+	it('does not change the saved choice while preloading another documentation language', async () => {
+		const { handle } = await loadHandle();
+		const preload = createRequest('https://frontend.example.com/docs/nova?lang=ja', { afterglow_locale: 'en' });
+		preload.event.isDataRequest = true;
+		expect(await (await renderLanguage(handle, preload)).text()).toBe('<html lang="ja"></html>');
+		expect(preload.cookies.set).not.toHaveBeenCalled();
+		const login = createRequest('https://frontend.example.com/login', preload.jar);
+		expect(await (await renderLanguage(handle, login)).text()).toBe('<html lang="en"></html>');
+	});
+
+	it('ignores an unsupported docs language instead of discarding the saved choice', async () => {
+		const { handle } = await loadHandle();
+		const request = createRequest('https://frontend.example.com/docs?lang=en-US', { afterglow_locale: 'ja' });
+		expect(await (await renderLanguage(handle, request)).text()).toBe('<html lang="ja"></html>');
+		expect(request.cookies.set).not.toHaveBeenCalled();
+	});
+});
+
 describe('MCP OAuth consent shell', () => {
 	it('serves an unauthenticated ticket handoff without caching or referrer leakage', async () => {
 		const { handle } = await loadHandle();
@@ -220,6 +285,27 @@ describe('MCP OAuth consent shell', () => {
 		expect(response.status).toBe(302);
 		expect(response.headers.get('Location')).toBe('/login');
 	});
+
+	it.each(['/auth/callback', '/signup', '/recover', '/recover/' + 'r'.repeat(43), '/invitations/' + 'a'.repeat(43), '/registrations/' + 'b'.repeat(43)])(
+		'serves the token-bearing sign-in route %s without a session', async (path) => {
+			const { handle } = await loadHandle();
+			const request = createRequest(`http://frontend.example.com${path}`);
+			const response = await handle({ event: request.event, resolve: request.resolve });
+			expect(response.status).toBe(200);
+			expect(response.headers.get('Location')).toBeNull();
+			expect(response.headers.get('Referrer-Policy')).toBe('no-referrer');
+		},
+	);
+
+	it.each(['/invitations/', '/registrations/', '/recover/', '/signup-other', '/recovery/token', '/auth/gitlab/callback', '/invitationsx/token'])(
+		'keeps %s behind authentication', async (path) => {
+			const { handle } = await loadHandle();
+			const request = createRequest(`http://frontend.example.com${path}`);
+			const response = await handle({ event: request.event, resolve: request.resolve });
+			expect(response.status).toBe(302);
+			expect(response.headers.get('Location')).toBe('/login');
+		},
+	);
 });
 describe('hooks.server mockup gating', () => {
 	it('redirects logged-out protected routes to /login when mockup mode is off', async () => {
@@ -466,7 +552,7 @@ describe('traffic reporter hook integration', () => {
 		expect(response.status).toBe(302); expect(response.headers.get('location')).toBe('/login'); expect(resolve).not.toHaveBeenCalled();
 		expect(event.getClientAddress).not.toHaveBeenCalled(); expect(send).toHaveBeenCalledTimes(1);
 		const payload = JSON.parse(send.mock.calls[0][1]!.body as string);
-		expect(payload).toMatchObject({ status: 302, route: '/admin', request_bytes: null, response_bytes: 0, pageview: false });
+		expect(payload).toMatchObject({ schema_version: 2, status: 302, route: '/admin', peer_ip: null, peer_verified: false, request_bytes: null, response_bytes: 0, pageview: false });
 		expect(JSON.stringify(payload)).not.toMatch(/private|secret|cookie/);
 	});
 	it('passes through rendered HTML bytes and generated CSP before nonblocking ingest', async () => {

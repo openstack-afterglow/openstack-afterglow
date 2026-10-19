@@ -32,7 +32,6 @@ are source errors, never measured zero. Advertised LLDP management addresses
 remain metadata; they never become probe or SNMP targets. Only qualified physical
 Ethernet interfaces enter the physical fabric graph; bond/bridge LLDP stays
 diagnostic evidence, not an inferred cable.
-
 Before reporting, authenticated polling supplies at most 64 operator-admitted
 directed peer IP/port tuples. Exactly those tuples may be TCP-connected, without
 DNS, authentication or payload: up to 8 workers, <=3 seconds each, <=8 seconds
@@ -498,7 +497,6 @@ def lldp_management_address(chassis):
         raise ObserverError("invalid_source")
     # Metadata only; never feed this address into probe/SNMP admission.
     return sorted({literal_ip(value) for value in advertised})[0] if advertised else None
-
 
 def parse_lldp(value):
     try:

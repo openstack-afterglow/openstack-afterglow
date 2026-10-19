@@ -4,6 +4,7 @@ Only validated identity, current directory access and native Hub/provider respon
 are synthetic; Request parsing, httpx streaming and authorization run unchanged.
 """
 
+import json
 from unittest.mock import AsyncMock
 
 import httpx
@@ -110,6 +111,52 @@ async def test_palimpsest_hub_proxy_requires_auth(api_client, monkeypatch):
     response = await api_client.get(BASE + "/layers")
 
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_hub_identity_read_survives_native_panel_denial_but_not_service_revocation(
+    api_client, monkeypatch, validated_identity, current_access
+):
+    monkeypatch.setattr(get_settings(), "service_palimpsest_enabled", True)
+
+    async def identity(request, **_kwargs):
+        request.state.token_info = validated_identity
+        return validated_identity
+
+    monkeypatch.setattr("app.api.palimpsest.hub.get_token_info", identity)
+    native_actor = {
+        "user_id": "caller-user",
+        "project_id": "caller-project",
+        "is_system_admin": False,
+        "capabilities": {"inventory": True, "download": False, "build": False},
+    }
+    transport = httpx.MockTransport(
+        lambda _: httpx.Response(
+            200, headers={"content-type": "application/json"}, stream=_UnreadStream(json.dumps(native_actor).encode())
+        )
+    )
+    client = _use_transport(monkeypatch, transport)
+    headers = {"Authorization": "Bearer browser-jwt"}
+    response = await api_client.get(BASE + "/me", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["capabilities"] == {"inventory": True, "download": False, "build": False}
+    assert response.headers["cache-control"] == "private, no-store"
+    assert client.is_closed
+    assert (await api_client.get(BASE + "/projects/current", headers=headers)).status_code == 403
+
+    current_access["roles"] = ["member"]
+    monkeypatch.setattr("app.services.service_proxy._get_internal_endpoint", _unexpected_catalog)
+    assert (await api_client.get(BASE + "/me", headers=headers)).status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("authorization", [None, "Bearer ppk_v1_" + SESSION + "." + "A" * 43])
+async def test_hub_identity_requires_browser_authority(api_client, monkeypatch, authorization):
+    monkeypatch.setattr(get_settings(), "service_palimpsest_enabled", True)
+    monkeypatch.setattr("app.services.service_proxy._get_internal_endpoint", _unexpected_catalog)
+    headers = {"Authorization": authorization} if authorization else {}
+    response = await api_client.get(BASE + "/me", headers=headers)
+    assert response.status_code == (403 if authorization else 401)
 
 
 @pytest.mark.asyncio

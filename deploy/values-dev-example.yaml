@@ -188,15 +188,6 @@ database:
 cors:
   origins: "https://dev.cloud.example.com,http://localhost:3080,http://127.0.0.1:3080"
 
-gitlabOidc:
-  enabled: true
-  gitlabUrl: "https://gitlab.example.com/"
-  clientId: "YOUR_GITLAB_CLIENT_ID"
-  idpId: "gitlab"
-  protocolId: "openid"
-  redirectUri: "https://dev.cloud.example.com/auth/gitlab/callback"
-  scopes: "openid email profile read_user"
-
 smtp:
   enabled: true
   host: "smtp.gmail.com"
@@ -207,9 +198,6 @@ smtp:
   useTls: true
   invitation:
     tokenExpiryDays: 7
-
-security:
-  adminLegacyProjectPolicy: true
 
 monitoring:
   enabled: false

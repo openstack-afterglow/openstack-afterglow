@@ -1,7 +1,7 @@
-import { grantLumen, pendingLumen } from './lumenPermissionFixture';
+import { grantLumen, pendingLumen, refreshLumenAuth, setVerifiedLumenActor } from './lumenPermissionFixture';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { auth, authReady, projectSwitching } from '$lib/stores/auth';
+import { authReady, projectSwitching } from '$lib/stores/auth';
 import type * as ImageStudioModule from '$lib/api/imageStudio';
 import { ApiError } from '$lib/api/client';
 import ImageStudio from '../ImageStudio.svelte';
@@ -29,13 +29,13 @@ const ready = {
 };
 const owner = {
 	token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'user-1', username: 'tester',
-	projectId: 'project-1', projectName: 'Project 1', availableProjects: [], roles: [], isSystemAdmin: false, federated: false
+	projectId: 'project-1', projectName: 'Project 1', availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', identityDomainId: 'domain-1', identityDomainName: 'Domain', isDomainManager: false
 };
 
 beforeEach(() => {
 	vi.clearAllMocks();
 	sessionStorage.clear();
-	auth.set(owner);
+	setVerifiedLumenActor(owner);
 	api.models.mockResolvedValue([ready]);
 	api.capabilities.mockResolvedValue({ available_image_variants: ['1024x1024:high', '1024x1024:medium'], max_image_count: 4 });
 	api.submit.mockResolvedValue({ run_id: 'run-1', status: 'queued' });
@@ -72,7 +72,7 @@ describe('Image Studio', () => {
 		await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.createImage') }));
 		const output = (await screen.findByRole('img', { name: t('imageStudio.generatedImage') })).getAttribute('src');
 		pendingLumen(permissionError);
-		auth.set({ ...owner, token: 'refreshed-token' });
+		refreshLumenAuth('refreshed-token');
 		await waitFor(() => expect(screen.getByRole('button', { name: t('imageStudio.createImage') }).hasAttribute('disabled')).toBe(true));
 		expect(screen.getByLabelText(t('imageStudio.inputImage')).hasAttribute('disabled')).toBe(true);
 		expect(screen.getByRole('combobox', { name: t('imageStudio.size') }).hasAttribute('disabled')).toBe(true);
@@ -103,7 +103,7 @@ describe('Image Studio', () => {
 		await fireEvent.change(screen.getByLabelText(t('imageStudio.inputImage')), { target: { files: [new File(['pixels'], 'source.png', { type: 'image/png' })] } });
 		const signal: AbortSignal = api.upload.mock.calls[0][2];
 		pendingLumen();
-		auth.set({ ...owner, token: 'refreshed-token' });
+		refreshLumenAuth('refreshed-token');
 		await waitFor(() => expect(screen.getByLabelText(t('imageStudio.inputImage')).hasAttribute('disabled')).toBe(true));
 		expect(signal.aborted).toBe(false);
 		expect(URL.revokeObjectURL).not.toHaveBeenCalled();
@@ -147,7 +147,7 @@ describe('Image Studio', () => {
 			await vi.advanceTimersByTimeAsync(0);
 			expect(api.run).toHaveBeenCalledTimes(1);
 			pendingLumen();
-			auth.set({ ...owner, token: 'refreshed-token' });
+			refreshLumenAuth('refreshed-token');
 			await vi.advanceTimersByTimeAsync(6000);
 			expect(api.run).toHaveBeenCalledTimes(1);
 			expect(screen.queryByLabelText(t('imageStudio.developing'))).toBeNull();
@@ -166,8 +166,8 @@ describe('Image Studio', () => {
 		await screen.findByText(t('imageStudio.uploadComplete', { name: 'source.png' }));
 		await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.createImage') }));
 		await screen.findByRole('img', { name: t('imageStudio.generatedImage') });
-		if (transition === 'project') auth.set({ ...owner, projectId: 'project-2' });
-		else if (transition === 'user') auth.set({ ...owner, userId: 'another-user' });
+		if (transition === 'project') setVerifiedLumenActor({ ...owner, projectId: 'project-2' });
+		else if (transition === 'user') setVerifiedLumenActor({ ...owner, userId: 'another-user' });
 		else if (transition === 'logout') authReady.set(false);
 		else projectSwitching.set(true);
 		await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2));
@@ -328,10 +328,11 @@ describe('Image Studio', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
 		await waitFor(() => expect(api.submit).toHaveBeenCalledWith('edits', expect.objectContaining({ model_id: '1', input_asset_id: 'input-1' }), { token: 'token', projectId: 'project-1' }, expect.any(String), expect.any(AbortSignal)));
 		await screen.findByRole('img', { name: '생성된 이미지' });
-		auth.set({ ...owner, projectId: 'project-2' });
+		setVerifiedLumenActor({ ...owner, projectId: 'project-2' });
 		await waitFor(() => expect(screen.queryByRole('img', { name: '생성된 이미지' })).toBeNull());
 		expect(screen.queryByRole('button', { name: /run-1/ })).toBeNull();
 		expect(screen.queryByRole('img', { name: '입력 이미지 미리보기' })).toBeNull();
+		await waitFor(() => expect(api.models).toHaveBeenLastCalledWith({ token: 'token', projectId: 'project-2' }));
 		await waitFor(() => expect((screen.getByRole('button', { name: '이미지 만들기' }) as HTMLButtonElement).disabled).toBe(false));
 		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
 		await waitFor(() => expect(api.submit).toHaveBeenLastCalledWith('generations', expect.not.objectContaining({ input_asset_id: expect.anything() }), { token: 'token', projectId: 'project-2' }, expect.any(String), expect.any(AbortSignal)));

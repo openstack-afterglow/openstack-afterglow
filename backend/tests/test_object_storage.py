@@ -1184,7 +1184,7 @@ async def test_list_containers_all_projects_fans_out(admin_client):
     }
 
     with (
-        patch("app.services.keystone.list_projects", return_value=fake_projects),
+        patch("app.services.keystone.list_system_projects", return_value=fake_projects),
         patch(
             "app.services.keystone.get_admin_connection_for_project",
             side_effect=lambda pid: conns[pid],
@@ -1229,7 +1229,7 @@ async def test_list_containers_all_projects_include_quarantine_propagates(admin_
         ]
 
     with (
-        patch("app.services.keystone.list_projects", return_value=fake_projects),
+        patch("app.services.keystone.list_system_projects", return_value=fake_projects),
         patch(
             "app.services.keystone.get_admin_connection_for_project",
             return_value=sub_conn,
@@ -1291,7 +1291,7 @@ async def test_list_containers_all_projects_runs_concurrently(admin_client):
         return [{"name": "bucket", "count": 1, "bytes": 100}]
 
     with (
-        patch("app.services.keystone.list_projects", return_value=fake_projects),
+        patch("app.services.keystone.list_system_projects", return_value=fake_projects),
         patch(
             "app.services.keystone.get_admin_connection_for_project",
             side_effect=lambda pid: sub_conns[pid],
@@ -1326,7 +1326,7 @@ async def test_list_containers_all_projects_skips_unauthorized(admin_client):
         return good_conn
 
     with (
-        patch("app.services.keystone.list_projects", return_value=fake_projects),
+        patch("app.services.keystone.list_system_projects", return_value=fake_projects),
         patch(
             "app.services.keystone.get_admin_connection_for_project",
             side_effect=_get_conn,

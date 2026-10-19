@@ -1,0 +1,66 @@
+{
+  "change": "separate-organization-sso-login",
+  "date": "2026-10-19",
+  "scope": "Local source: LoginPage progressive disclosure only; no new route or backend API",
+  "source_sha256": "311297c9c77ac93487a7143f942b424dbd1c5c73804300554e0169f99cca8369",
+  "source_files": 3059,
+  "implementation_files": [
+    "frontend/src/lib/components/auth/LoginPage.svelte",
+    "frontend/src/lib/components/auth/__tests__/LoginPage.test.ts",
+    "frontend/src/lib/i18n/messages/ko/domain-auth.json",
+    "frontend/src/lib/i18n/messages/en/domain-auth.json",
+    "frontend/src/lib/i18n/messages/ja/domain-auth.json",
+    "frontend/src/lib/i18n/messages/zh-CN/domain-auth.json"
+  ],
+  "invariants": [
+    "One SSO entry on main form; provider choices require explicit view selection",
+    "Method switch clears password and method error and moves keyboard focus",
+    "Public catalog lifetime remains tied to mounted page, not auth/authorize generation",
+    "Credential/provider owner and same-tick ABA fences and transition locks preserved",
+    "Exact clicked provider ID and origin; no working-domain change from choosing an entry",
+    "Home-first login, admission/enrollment/quota and workspace chooser unchanged"
+  ],
+  "verification": {
+    "login_exact": {"passed": 59},
+    "named_auth": {"backend_passed": 714, "frontend_files": 21, "frontend_passed": 403, "receipt": "artifact://1374"},
+    "frontend_full": {"vitest_files": 403, "vitest_passed": 4450, "node_runner_passed": 9, "receipt": "artifact://1381"},
+    "i18n": {"namespaces": 48, "messages": 10986, "errors": 0, "warnings": 0, "scanned_files": 1147, "hardcoded_korean": 0, "human_translation_review": false},
+    "production_build": {"passed": true, "receipt": "artifact://1384", "preview_port": 4187},
+    "source_chromium": {"locales": ["ko", "en", "ja", "zh-CN"], "themes": ["light", "dark"], "widths": [390, 767, 768, 1023, 1024, 1440], "conditions": 48, "surfaces": 96, "overflow": 0},
+    "compiled_chromium": {"locales": ["ko", "en", "ja", "zh-CN"], "themes": ["light", "dark"], "widths": [390, 768, 1440], "conditions": 24, "surfaces": 48, "overflow": 0},
+    "browser_actions": [
+      "Password removed on SSO entry; return preserves username, clears password and restores focus",
+      "Exact encoded dmslab provider authorize POST503 shows safe error and permits password return",
+      "Native Enter sends one username/password-only POST401",
+      "Compiled Default provider reaches intercepted synthetic HTTPS authorize destination and preserves exact pending origin/provider"
+    ],
+    "architecture": {"working": "passed", "task_owned_staged": "passed", "user_index_unchanged_sha256": "55c07c33bcf2be1d17721de3cae672fda08d9c28774df972a2c8219846a77591"}
+  },
+  "limits": {
+    "svelte_check": {"passed": false, "errors": 1, "warnings": 16, "error": "src/routes/dashboard/database/instances/+page.svelte:42 PageState.instanceId", "receipt": "artifact://1382"},
+    "full_test_gate": "Not rerun in this UI-only request; prior home-first failure is not replaced with a passing claim",
+    "browser_api_idp": "Synthetic/intercepted. No real GitLab/Keystone credential, cookie/code exchange or positive callback acceptance",
+    "gbrain": "CLI absent from PATH; no sync or guidance modification",
+    "shared_concurrent_source": "Preserved, not newly accepted by scoped architecture stamp",
+    "deployment_commit_push": false
+  },
+  "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/sso-entry-20261019-1cAJ25/",
+  "proof_files": [
+    "responsive-locale-matrix.json",
+    "compiled-locale-matrix.json",
+    "source-action-evidence.json",
+    "compiled-provider-redirect.json",
+    "source-browser-summary.json",
+    "main-ko-dark-801.png",
+    "sso-ko-dark-801.png",
+    "sso-ko-light-390.png",
+    "built-sso-ko-dark-1440.png",
+    "built-sso-ko-light-390.png"
+  ],
+  "harness_corrections": [
+    "Login locale uses cookie, not docs-only lang query",
+    "Native aria text handle replaced by direct role helper; Enter helper argument order corrected",
+    "In-page wait spanning successful navigation timed out; actual destination and restored-origin sessionStorage verified without repeating authorize",
+    "Missing asynchronous delivery diagnosed once; already completed command artifacts consumed without rerunning checks"
+  ]
+}

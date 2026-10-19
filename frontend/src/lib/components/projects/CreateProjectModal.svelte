@@ -1,106 +1,97 @@
 <script lang="ts">
-	import { t } from '$lib/i18n/ns/dashboard-home';
-	import { auth } from '$lib/stores/auth';
+	import { onMount } from 'svelte';
+	import { derived, get } from 'svelte/store';
+	import { t } from '$lib/i18n/ns/workspace-selector';
+	import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores/auth';
+	import { sessionScopeKey } from '$lib/utils/authSession';
 	import { api, ApiError } from '$lib/api/client';
-	import { dialogFocus } from '$lib/utils/dialogFocus';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import FormModal from '$lib/components/ui/FormModal.svelte';
+	import Field from '$lib/components/ui/Field.svelte';
+	import TextInput from '$lib/components/ui/TextInput.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 
-	let { onClose, onSuccess }: {
-		onClose: () => void;
+	let { domainId = $auth.domainId ?? '', domainName = $auth.domainName ?? '', submitting = $bindable(false), onClose, onSuccess }: {
+		domainId?: string; domainName?: string; submitting?: boolean; onClose: () => void;
 		onSuccess: (project: { id: string; name: string }) => void;
 	} = $props();
-
+	let open = $state(true);
 	let name = $state('');
 	let description = $state('');
-	let submitting = $state(false);
-	let error = $state('');
-
-	async function submit() {
-		if (!name.trim() || submitting) return;
-		submitting = true;
-		error = '';
-		try {
-			const result = await api.post<{ id: string; name: string; description: string }>(
-				'/api/v1/projects',
-				{ name: name.trim(), description: description.trim() },
-				$auth.token ?? undefined
-			);
-			onSuccess(result);
-		} catch (e) {
-			error = e instanceof ApiError ? e.message : t('createProject.failed');
-		} finally {
-			submitting = false;
-		}
+	let checking = $state(true);
+	let allowed = $state(false);
+	let authorizedDomain = $state('');
+	let error = $state<'loadFailed' | 'createRejected' | 'createUncertain' | ''>('');
+	let uncertain = $state(false);
+	let active = false;
+	let epoch = 0;
+	let request: AbortController | null = null;
+	const componentId = $props.id();
+	const canSubmit = $derived(allowed && authorizedDomain === domainId && !checking && !submitting && !uncertain && !!name.trim() && $authReady && !$logoutInProgress && !$projectSwitching);
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+		return { destroy: () => node.remove() };
 	}
 
-	function handleKeydown(e: KeyboardEvent) {
-		// Escape 는 dialogFocus 가 처리한다. 여기 남기면 두 번 닫힌다.
-		if (e.key === 'Enter' && name.trim()) submit();
+	onMount(() => {
+		active = true;
+		let previous = '';
+		const unsubscribe = derived([auth, authReady, logoutInProgress, projectSwitching], ([state, ready, loggingOut, switching]) => ({ state, ready, loggingOut, switching })).subscribe(({ state, ready, loggingOut, switching }) => {
+			const key = JSON.stringify([sessionScopeKey(state), !!state.token, ready, loggingOut, switching]);
+			if (key === previous) return;
+			const first = previous === ''; previous = key;
+			epoch++; request?.abort(); allowed = false; submitting = false;
+			if (!first) { onClose(); return; }
+			if (ready && state.token && !loggingOut && !switching && domainId) void checkCapability();
+			else checking = false;
+		});
+		return () => { active = false; epoch++; request?.abort(); unsubscribe(); submitting = false; };
+	});
+	async function checkCapability() {
+		const version = epoch; const target = domainId;
+		request = new AbortController(); const signal = request.signal;
+		try {
+			const result = await api.get<{ domain_id: string; can_create_project: boolean }>(`/api/v1/projects/capabilities?domain_id=${encodeURIComponent(target)}`, get(auth).token!, undefined, { refresh: true, suppressAuthRedirect: true, signal });
+			if (!active || version !== epoch || domainId !== target || signal.aborted) return;
+			allowed = result.domain_id === target && result.can_create_project === true;
+			authorizedDomain = target;
+		} catch { if (active && version === epoch && !signal.aborted) error = 'loadFailed'; }
+		finally { if (active && version === epoch) checking = false; }
+	}
+	async function submit(event: SubmitEvent) {
+		event.preventDefault();
+		if (!canSubmit) return;
+		const version = epoch; const target = domainId;
+		request = new AbortController(); const signal = request.signal;
+		submitting = true; error = '';
+		try {
+			const result = await api.post<{ id: string; name: string }>('/api/v1/projects', { name: name.trim(), description: description.trim(), domain_id: target }, get(auth).token!, undefined, { signal, replayOnUnauthorized: false, suppressAuthRedirect: true, cache: 'no-store' });
+			if (!active || version !== epoch || domainId !== target || signal.aborted) return;
+			if (!result?.id || typeof result.name !== 'string') throw new Error('Invalid project response');
+			submitting = false;
+			onSuccess(result);
+		} catch (cause) {
+			if (active && version === epoch && !signal.aborted) {
+				uncertain = !(cause instanceof ApiError && cause.status >= 400 && cause.status < 500 && cause.status !== 408);
+				error = uncertain ? 'createUncertain' : 'createRejected';
+			}
+		} finally { if (active && version === epoch) submitting = false; }
 	}
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
-	use:dialogFocus={{ enabled: true, onEscape: onClose }}
-	class="fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim/60"
-	onclick={(event) => {
-		if (event.target === event.currentTarget) onClose();
-	}}
-	tabindex="-1"
-	role="dialog"
-	aria-modal="true"
-	aria-label={t('createProject.title')}
->
-	<div
-    class="motion-pop bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md shadow-[var(--shadow-restraint)]"
-		role="none"
-	>
-		<h2 class="text-base font-semibold text-ink-0 mb-4">{t('createProject.title')}</h2>
-
-		<div class="space-y-3">
-			<div>
-				<label class="block text-xs text-ink-2 mb-1.5" for="proj-name">
-					{t('createProject.name')} <span class="text-red-400">*</span>
-				</label>
-				<input
-					id="proj-name"
-					bind:value={name}
-					placeholder="my-project"
-					class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm transition-colors"
-				/>
-			</div>
-			<div>
-				<label class="block text-xs text-ink-2 mb-1.5" for="proj-desc">{t('createProject.description')}</label>
-				<input
-					id="proj-desc"
-					bind:value={description}
-					placeholder={t('createProject.descriptionPlaceholder')}
-					class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm transition-colors"
-				/>
-			</div>
+<div use:portal>
+<FormModal bind:open title={t('newProject')} {onClose} {submitting}>
+	<form class="space-y-4" onsubmit={submit}>
+		<p class="break-all text-sm text-ink-2">{domainName} · {domainId}</p>
+		{#if error}<Alert tone="warning">{t(error)}</Alert>{/if}
+		{#if !checking && !allowed && !error}<Alert tone="neutral">{t('createDenied')}</Alert>{/if}
+		<Field label={t('projectName')} for={`${componentId}-name`} required><TextInput id={`${componentId}-name`} bind:value={name} required maxlength={64} disabled={submitting || uncertain || !allowed} /></Field>
+		<Field label={t('description')} for={`${componentId}-description`}><TextInput id={`${componentId}-description`} bind:value={description} maxlength={255} disabled={submitting || uncertain || !allowed} /></Field>
+		<div class="flex flex-wrap justify-end gap-2">
+			<Button variant="secondary" onclick={onClose} disabled={submitting}>{t('cancel')}</Button>
+			<Button type="submit" disabled={!canSubmit} ariaBusy={submitting}>{t('create')}</Button>
 		</div>
-
-		{#if error}
-			<div class="mt-3 text-xs text-red-400">{error}</div>
-		{/if}
-
-		<div class="flex justify-end gap-2 mt-5">
-			<button
-				onclick={onClose}
-				class="px-3 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors"
-			>
-				{t('createProject.cancel')}
-			</button>
-			<button
-				onclick={submit}
-				disabled={!name.trim() || submitting}
-				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-action-warm/40 disabled:cursor-not-allowed text-action-on-warm text-sm font-medium rounded-lg transition-colors"
-			>
-				{#if submitting}<ActivityIndicator size="xs" label={t('createProject.creating')} />{:else}{t('createProject.create')}{/if}
-			</button>
-		</div>
-	</div>
+	</form>
+	{#snippet actions()}{/snippet}
+</FormModal>
 </div>

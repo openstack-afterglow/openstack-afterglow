@@ -1,0 +1,34 @@
+{
+  "scope": "Local source implementation and task-owned isolated runtime; no commit, push, existing-service replacement, production deployment or existing identity migration",
+  "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/personal-enrollment-20261019-XCvLvQ",
+  "verified": {
+    "backend_focused": {"passed": 346, "artifact": "artifact://1196"},
+    "frontend_full": {"files": 403, "vitest_passed": 4390, "node_passed": 9, "artifact": "artifact://1195"},
+    "api_contract": {"passed": 163, "artifact": "artifact://1193"},
+    "functional_datastores": {"passed": 163, "deselected": 31, "artifact": "artifact://1176"},
+    "i18n": {"errors": 0, "warnings": 0, "namespaces": 48, "messages": 10988},
+    "ruff": "Global check passed; 16 affected files format-check passed; unrelated global formatting remains non-green",
+    "migration": "MariaDB 11.4.13: 091/092/093/096/098 plus repeated098; preserved old invitation, absent policy row, CAS, pending rollback durability, approval consumption and quota JSON readback",
+    "http_browser": "Real project API and SQLite with installed native-quota HTTP transport; pending before native effects, explicit review, fresh email, personal-home completion, frozen future-only sparse quotas, rejection without account creation",
+    "frontend_matrix": {"conditions": 48, "surfaces": 96, "overflow_or_containment_failures": 0},
+    "provider_ui": "Final compiled UI with synthetic pending/rejected403: one callback POST, URL code scrubbed, no session or credential form; fresh state required",
+    "images": "Canonical backend/worker/frontend built and executed for linux/arm64 and linux/amd64 in task-owned canonical dev Compose; non-root, source8-file parity, API/frontend health, signup options and Redis-server-time worker membership verified",
+    "architecture": {"working_and_disposable_staged_sha256": "efea5272ac61dcf1b188baa353dec7391f1a0c0b2298ee2e1398502d444bc7fd", "files": 3059, "original_index_unchanged": true}
+  },
+  "not_green": {
+    "initial_test_gate": {"backend_passed": 8377, "backend_failed": 35, "backend_skipped": 91, "artifact": "artifact://1169", "rerun_after_corrections": false},
+    "corrected_gate_failures": "22 new readiness fixture failures corrected; structural dependency-placement assertion replaced with actual ordinary/revoked-admin403 and no-policy/queue-change tests; final focused346passed",
+    "outside_changed_behavior": "Initial gate also observed 11 existing storage-delete failures and one host-observer timeout; not modified, skipped or xfailed",
+    "svelte_check": "Existing dashboard/database/instances/+page.svelte:42 PageState.instanceId error; 1error/16warnings",
+    "global_format": "Initial check listed20files; affected8 formatted, other12 formatting left unchanged",
+    "gbrain": "CLI unavailable; no sync performed"
+  },
+  "evidence_boundaries": [
+    "Identity directory, IdP, SMTP delivery and graph leases in enrollment HTTP/browser proof are synthetic",
+    "Provider UI403 responses are fixtures, not actual GitLab/OIDC acceptance",
+    "Real migration/functional DB and Redis use task-owned disposable datastores, not a production snapshot",
+    "Quota HTTP transport uses loopback service responses, not real cloud quota-support qualification",
+    "Image runtime native-auth URL deliberately points at loopback port9; worker readiness is not a completed job",
+    "No production native identity, grants, mapper, existing Default user or existing domain quota was changed"
+  ]
+}

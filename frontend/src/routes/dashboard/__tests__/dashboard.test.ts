@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 
 const mocks = vi.hoisted(() => {
 	type Subscriber<T> = (value: T) => void;
@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => {
 	return {
 		auth: store({
 			token: 'token-a' as string | null,
+			userId: 'user-a' as string | null,
+			identityDomainId: 'domain-a' as string | null,
 			username: 'tester' as string | null,
 			projectId: 'project-a' as string | null,
 			projectName: 'Project A' as string | null,
@@ -70,17 +72,27 @@ const quotas = {
 	alerts: [],
 };
 const trend = {
-	vcpu: { data: [10], points: 1, available: true },
-	memory: { data: [20], points: 1, available: true },
-	storage: { data: [30], points: 1, available: true },
-	network: { data: [], points: 0, available: false, unit: 'KiB/s' },
-	prometheus_available: true,
+	vcpu: { data: [10], points: 1, available: true, source: 'gnocchi', status: 'available', native_status: 'available' },
+	memory: { data: [20], points: 1, available: true, source: 'gnocchi', status: 'available', native_status: 'available' },
+	storage: { data: [30], points: 1, available: true, source: 'prometheus', status: 'available', native_status: 'not_collected' },
+	network: { data: [], points: 0, available: false, unit: 'KiB/s', source: null, status: 'not_collected', native_status: 'not_collected' },
+	monitoring_available: true,
 	range: '14d' as const,
 };
 const announcements: unknown[] = [];
 
+const authContext = { token: 'token-a', userId: 'user-a', identityDomainId: 'domain-a', username: 'tester', projectId: 'project-a', projectName: 'Project A' };
+
+function resolveOverview(path: string, metrics: unknown = trend): unknown {
+	if (path.includes('/summary')) return summary;
+	if (path.includes('/quotas')) return quotas;
+	if (path.includes('/k3s-stats')) return { total: 1, active: 1, available: true };
+	if (path.includes('/announcements')) return announcements;
+	return metrics;
+}
+
 beforeEach(() => {
-	mocks.auth.set({ token: 'token-a', username: 'tester', projectId: 'project-a', projectName: 'Project A' });
+	mocks.auth.set(authContext);
 	mocks.authReady.set(true);
 	mocks.siteConfig.set({ services: { k3s: true } });
 	mocks.apiGet.mockReset();
@@ -187,7 +199,7 @@ describe('dashboard overview loading', () => {
 		render(Page);
 		await waitFor(() => expect(requests).toHaveLength(5));
 		const oldRequests = [...requests];
-		mocks.auth.set({ token: 'token-b', username: 'tester', projectId: 'project-b', projectName: 'Project B' });
+		mocks.auth.set({ ...authContext, token: 'token-b', projectId: 'project-b', projectName: 'Project B' });
 		await waitFor(() => expect(requests).toHaveLength(10));
 		expect(oldRequests.every((request) => request.signal?.aborted)).toBe(true);
 		expect(requests.slice(5).every((request) => request.projectId === 'project-b')).toBe(true);
@@ -245,6 +257,10 @@ describe('dashboard overview loading', () => {
 		expect(originalTrend.options.signal?.aborted).toBe(true);
 		expect(replacementTrend.path).toContain('range=24h');
 		expect(replacementTrend.options.refresh).toBe(true);
+		expect(within(screen.getByRole('group', { name: 'vCPU 사용률 (24h)' })).queryByText('10.0')).toBeNull();
+		originalTrend.pending.resolve({ ...trend, vcpu: { ...trend.vcpu, data: [99] } });
+		await Promise.resolve();
+		expect(screen.queryByText('99.0')).toBeNull();
 
 		const auto = mocks.autoCallback!();
 		await Promise.resolve();
@@ -344,5 +360,91 @@ describe('dashboard overview loading', () => {
 		await waitFor(() => expect(requests).toHaveLength(5));
 		rendered.unmount();
 		expect(requests.every((request) => request.signal?.aborted)).toBe(true);
+	});
+
+	it('shows native zero, partial coverage and exporter fallback with the native reason', async () => {
+		const metrics = {
+			...trend,
+			scope: 'native_policy',
+			vcpu: { ...trend.vcpu, data: [0] },
+			memory: { ...trend.memory, status: 'partial', native_status: 'partial' },
+			storage: { ...trend.storage, native_status: 'not_configured' },
+		};
+		mocks.apiGet.mockImplementation((path: string) => Promise.resolve(resolveOverview(path, metrics)));
+		render(Page);
+		const cpu = within(await screen.findByRole('group', { name: 'vCPU 사용률 (14d)' }));
+		await cpu.findByText('0.0');
+		expect(cpu.getByText('네이티브 텔레메트리 · Gnocchi')).toBeTruthy();
+		expect(cpu.getByText('min 0.0% · max 0.0%')).toBeTruthy();
+		expect(screen.getByText('부분 수집 · 일부 표본 또는 리소스 누락')).toBeTruthy();
+		const disk = within(screen.getByRole('group', { name: '게스트 파일시스템 사용률 (14d)' }));
+		expect(disk.getByText('Exporter 대체 수집 · Prometheus')).toBeTruthy();
+		expect(disk.getByText('네이티브 텔레메트리: 메트릭 수집 미설정')).toBeTruthy();
+		expect(screen.getByText('네이티브 범위는 현재 사용자 정책에 표시되는 리소스로 제한됩니다.')).toBeTruthy();
+	});
+
+	it.each([
+		[false, 'not_configured', '메트릭 수집 미설정'],
+		[true, 'not_collected', '해당 메트릭의 텔레메트리 미수집'],
+		[true, 'forbidden', '텔레메트리 접근 거부'],
+		[false, 'unavailable', '텔레메트리를 사용할 수 없음'],
+	] as const)('keeps empty %s/%s telemetry distinct from measured zero', async (available, status, message) => {
+		const empty = { data: [], points: 0, available: false, source: null, status, native_status: status };
+		const metrics = { ...trend, vcpu: empty, memory: empty, storage: empty, monitoring_available: available };
+		mocks.apiGet.mockImplementation((path: string) => Promise.resolve(resolveOverview(path, metrics)));
+		render(Page);
+		await waitFor(() => expect(screen.getAllByText(message)).toHaveLength(3));
+		const cpu = within(screen.getByRole('group', { name: 'vCPU 사용률 (14d)' }));
+		expect(cpu.queryByText('0.0')).toBeNull();
+		expect(cpu.queryByText(/min .*max/)).toBeNull();
+		if (available) expect(cpu.queryByText('메트릭 수집 미설정')).toBeNull();
+	});
+
+	it.each(['token', 'userId', 'identityDomainId', 'projectId'] as const)(
+		'clears displayed trends on %s changes and rejects late same-project responses',
+		async (field) => {
+			const requests: Array<{ path: string; signal: AbortSignal; pending: Deferred<unknown> }> = [];
+			let calls = 0;
+			mocks.apiGet.mockImplementation((path: string, _token: string, _project: string, options: { signal: AbortSignal }) => {
+				if (++calls <= 5) return Promise.resolve(resolveOverview(path));
+				const pending = deferred<unknown>();
+				requests.push({ path, signal: options.signal, pending });
+				return pending.promise;
+			});
+			render(Page);
+			await screen.findByText('10.0');
+			void mocks.autoCallback!();
+			await waitFor(() => expect(requests).toHaveLength(5));
+			const stale = [...requests];
+			mocks.auth.set({ ...authContext, [field]: 'changed-context' });
+			await waitFor(() => expect(requests).toHaveLength(10));
+			expect(screen.queryByText('10.0')).toBeNull();
+			expect(screen.queryByText('newest')).toBeNull();
+			expect(stale.every(({ signal }) => signal.aborted)).toBe(true);
+			for (const request of stale) {
+				request.pending.resolve(resolveOverview(request.path, { ...trend, vcpu: { ...trend.vcpu, data: [91] } }));
+			}
+			for (const request of requests.slice(5)) {
+				request.pending.resolve(resolveOverview(request.path, { ...trend, vcpu: { ...trend.vcpu, data: [7] } }));
+			}
+			await screen.findByText('7.0');
+			expect(screen.queryByText('91.0')).toBeNull();
+		},
+	);
+
+	it('clears loaded trends when the session is removed and ignores a pending refresh', async () => {
+		const pending = deferred<unknown>();
+		let calls = 0;
+		mocks.apiGet.mockImplementation((path: string) => ++calls <= 5 ? Promise.resolve(resolveOverview(path)) : pending.promise);
+		render(Page);
+		await screen.findByText('10.0');
+		void mocks.autoCallback!();
+		await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledTimes(10));
+		mocks.auth.set({ ...authContext, token: null });
+		await waitFor(() => expect(screen.queryByText('10.0')).toBeNull());
+		pending.resolve(trend);
+		await Promise.resolve();
+		expect(screen.queryByText('10.0')).toBeNull();
+		expect(mocks.apiGet).toHaveBeenCalledTimes(10);
 	});
 });

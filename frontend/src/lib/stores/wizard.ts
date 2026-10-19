@@ -78,6 +78,9 @@ export interface WizardState {
 	cloudInit: string;
 	bootVolumeSizeGb: number;
 	deleteBootVolumeOnTermination: boolean;
+	autoSnapshot: boolean;
+	autoBackup: boolean;
+	volumeProtectionForce: boolean;
 	additionalVolumeIds: string[];
 	newVolumes: NewVolumeSpec[];
 	dataMounts: DataMountSpec[];
@@ -85,7 +88,7 @@ export interface WizardState {
 }
 
 const initial: WizardState = {
-	step: 1,
+	step: 2,
 	bootSource: 'image',
 	imageId: null,
 	imageName: null,
@@ -105,6 +108,9 @@ const initial: WizardState = {
 	cloudInit: '',
 	bootVolumeSizeGb: 20,
 	deleteBootVolumeOnTermination: false,
+	autoSnapshot: false,
+	autoBackup: false,
+	volumeProtectionForce: false,
 	additionalVolumeIds: [],
 	newVolumes: [],
 	dataMounts: [],

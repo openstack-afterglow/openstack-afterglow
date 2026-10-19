@@ -4,8 +4,9 @@
 	import { page } from '$app/stores';
 	import { get } from 'svelte/store';
 	import { auth, authReady, authRecovery, isLoggedIn, isAdmin, clearAuth, logoutInProgress, enterMockAuth, exitMockAuth, getMockupProfile, isMockAuthActive } from '$lib/stores/auth';
+	import { createAuthVerificationController } from '$lib/utils/authVerification';
 	import { theme, resolvedTheme } from '$lib/stores/theme';
-	import { api, ApiError, getBaseUrl, refreshSession, beginSessionRevocation, endSessionRevocation } from '$lib/api/client';
+	import { api, getBaseUrl, refreshSession, beginSessionRevocation, endSessionRevocation } from '$lib/api/client';
 	import ProjectSelector from '$lib/components/ProjectSelector.svelte';
 	import AnnouncementBellButton from '$lib/components/notifications/AnnouncementBellButton.svelte';
 	import { siteConfig, initSiteConfig, qualifyBackendAssetPaths, replaceSiteConfig } from '$lib/config/site';
@@ -41,6 +42,7 @@
 	import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
 	import { isDocsPath } from '$lib/docs/paths';
 	import { documentationNavItem } from '$lib/config/nav';
+	import { isProjectAgnosticPath } from '$lib/config/routes';
 	import './layout.css';
 
 	let { children, data } = $props();
@@ -61,10 +63,9 @@
 	const faviconPath = $derived(resolveFaviconPath($siteConfig));
 	const mockup = $derived(data.mockup);
 	const mockupAdminActive = $derived(mockup.active && mockup.profile === 'admin');
-	const publicRoutes = ['/', '/login', '/auth/gitlab/callback', '/oauth/claude/authorize', '/oauth/mcp/authorize'];
+	const publicRoutes = ['/', '/login', '/signup', '/recover', '/auth/callback', '/oauth/claude/authorize', '/oauth/mcp/authorize'];
 	const isDocumentationRoute = $derived(isDocsPath($page.url.pathname));
-	let lastVerifiedToken: string | null = null;
-	let authVerifyNonce = $state(0);
+	const authVerification = createAuthVerificationController();
 	let unreadFetchSerial = 0;
 	let recoveryBusy = $state(false);
 	let recoveryClock = $state(Date.now());
@@ -209,7 +210,6 @@
 				enteredMockProfile = mockup.profile;
 			}
 		} else if (explicitMockupOff) {
-			lastVerifiedToken = null;
 			if (isMockAuthActive()) exitMockAuth();
 			void refreshPublicSiteConfig();
 			enteredMockProfile = null;
@@ -260,11 +260,13 @@
 		($auth.username ?? 'U').slice(0, 2).toUpperCase()
 	);
 
-	const projectAgnosticRoutes = ['/', '/login', '/auth/gitlab/callback', '/select-project', '/oauth/claude/authorize', '/oauth/mcp/authorize'];
+	// Domain selection and IAM work without a project; admin exemption remains system-only.
+	const projectAgnostic = $derived(isProjectAgnosticPath($page.url.pathname, $isAdmin));
 
-	const isInvitationRoute = $derived($page.url.pathname.startsWith('/invitations/'));
-	const shelllessRoutes = ['/', '/login', '/auth/gitlab/callback', '/select-project', '/oauth/claude/authorize', '/oauth/mcp/authorize'];
-	const showAppChrome = $derived($isLoggedIn && !isDocumentationRoute && !shelllessRoutes.includes($page.url.pathname) && !isInvitationRoute);
+	// Token-bearing onboarding links are public and render without console chrome.
+	const isOnboardingRoute = $derived($page.url.pathname.startsWith('/invitations/') || $page.url.pathname.startsWith('/registrations/') || $page.url.pathname.startsWith('/recover/'));
+	const shelllessRoutes = ['/', '/login', '/signup', '/recover', '/auth/callback', '/select-project', '/select-domain', '/oauth/claude/authorize', '/oauth/mcp/authorize'];
+	const showAppChrome = $derived($isLoggedIn && !isDocumentationRoute && !shelllessRoutes.includes($page.url.pathname) && !isOnboardingRoute);
 	$effect(() => {
 		const token = $auth.token;
 		const projectId = $auth.projectId;
@@ -286,53 +288,20 @@
 
 	$effect(() => {
 		if (!mockupClientReady) return;
-		if (!$logoutInProgress && !$isLoggedIn && !isDocumentationRoute && !publicRoutes.includes($page.url.pathname) && !isInvitationRoute) {
+		if (!$logoutInProgress && !$isLoggedIn && !isDocumentationRoute && !publicRoutes.includes($page.url.pathname) && !isOnboardingRoute) {
 			goto('/login', { replaceState: true });
 		}
 	});
 
 	$effect(() => {
-		if ($authReady && $isLoggedIn && !$auth.projectId && !isDocumentationRoute && !projectAgnosticRoutes.includes($page.url.pathname) && !isInvitationRoute) {
+		if ($authReady && $isLoggedIn && !$auth.projectId && !isDocumentationRoute && !projectAgnostic && !isOnboardingRoute) {
 			goto('/select-project');
 		}
 	});
 
-	// 토큰이 설정되면 (로그인 직후 포함) 서버에서 권한 검증. 503/네트워크 오류 시 5초 후 반응형 재시도.
+	// Only restored/unverified sessions need /me; fresh mapped logins are ready.
 	$effect(() => {
-		const token = $auth.token;
-		const projectId = $auth.projectId;
-		const _nonce = authVerifyNonce;
-		if (isDocumentationRoute || mockup.active || isMockAuthActive() || !token || token === lastVerifiedToken) return;
-		lastVerifiedToken = token;
-		(async () => {
-			try {
-				const me = await api.get<{ user_id: string; username: string; project_id: string; project_name: string; roles: string[]; is_system_admin: boolean; can_write: boolean; auth_method?: string }>(
-					'/api/v1/auth/me', token, projectId ?? undefined,
-				);
-				if (get(auth).token !== token || mockup.active || isMockAuthActive()) return;
-				auth.update((s) => ({ ...s, isSystemAdmin: me.is_system_admin === true, roles: me.roles ?? s.roles, canWrite: me.can_write, federated: me.auth_method === 'federated' }));
-				authRecovery.set(null);
-				authReady.set(true);
-			} catch (err) {
-				if (get(auth).token === token && !mockup.active && !isMockAuthActive()) {
-					if (err instanceof ApiError && err.status === 401) {
-						authReady.set(false);
-						clearAuth();
-					} else {
-						authReady.set(false);
-						if (get(authRecovery)?.token !== token) {
-							authRecovery.set({ token, retryAt: Date.now() + 5000 });
-						}
-						setTimeout(() => {
-							if (get(auth).token === token && !mockup.active && !isMockAuthActive() && lastVerifiedToken === token) {
-								lastVerifiedToken = null;
-								authVerifyNonce += 1;
-							}
-						}, 5000);
-					}
-				}
-			}
-		})();
+		authVerification.setEnabled(!isDocumentationRoute && !mockup.active);
 	});
 
 	onMount(() => {
@@ -363,7 +332,6 @@
 			}
 		}
 		if (clientMockProfile && !isMockAuthActive()) {
-			lastVerifiedToken = null;
 			enterMockAuth(buildMockAuth(clientMockProfile, $page.url.pathname), clientMockProfile);
 			enteredMockProfile = clientMockProfile;
 		}
@@ -392,6 +360,7 @@
 	});
 
 	onDestroy(() => {
+		authVerification.dispose();
 		void cloudShell.close('destroy', { keepDock: false });
 	});
 
@@ -472,7 +441,7 @@
 				<img src="/afterglow-symbol.svg" alt="" width="24" height="24" class="shrink-0" />
 				<span class="hidden max-w-36 truncate sm:block">{$siteConfig.site_name}</span>
 			</a>
-			<div class="hidden w-32 shrink-0 md:block xl:w-40"><ProjectSelector direction="down" /></div>
+			<div class="min-w-0 w-28 md:w-36 xl:w-44"><ProjectSelector /></div>
 		</div>
 
 		<!-- 검색 입력 (⌘K 트리거) -->
@@ -595,7 +564,7 @@
 			<a
 				href={mockupAdminActive ? '/admin' : '/dashboard/account'}
 				class="w-[30px] h-[30px] rounded-full bg-surface-sunken border border-line-2 flex items-center justify-center text-ink-2 text-xs font-semibold hover:border-line-2 transition-colors"
-				title={$auth.username}
+				title={$auth.domainName ? `${$auth.username ?? ''} @ ${$auth.domainName}` : $auth.username}
 			>{initials}</a>
 
 			<!-- 로그아웃 -->

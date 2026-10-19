@@ -30,7 +30,10 @@ def project_provider(monkeypatch):
     user_id = str(uuid4())
     project_a, project_b, project_c = str(uuid4()), str(uuid4()), str(uuid4())
     roles = {project_a: ["member"], project_b: ["reader"], project_c: ["member"]}
-    memberships = [{"id": project_a, "name": "A", "enabled": True}, {"id": project_b, "name": "B", "enabled": True}]
+    memberships = [
+        {"id": project_a, "name": "A", "enabled": True, "domain_id": "tenant-a"},
+        {"id": project_b, "name": "B", "enabled": True, "domain_id": "tenant-a"},
+    ]
     remote = {}
     created, deleted, discoveries, rescopes = [], [], [], []
     failures = {}
@@ -87,6 +90,8 @@ def project_provider(monkeypatch):
             self.access = SimpleNamespace(
                 user_id=user_id,
                 project_id=target,
+                user_domain_id="tenant-a",
+                project_domain_id="tenant-a",
                 project_name=target,
                 role_names=roles[target],
                 role_ids=["role-" + role for role in roles[target]],
@@ -98,6 +103,8 @@ def project_provider(monkeypatch):
             self._afterglow_project_id = target
             self._afterglow_token = self.access.auth_token
             self._afterglow_is_system_admin = True
+            self._afterglow_domain_id = "tenant-a"
+            self._afterglow_identity_domain_id = "tenant-a"
 
         def get(self, url, **kwargs):
             discoveries.append((url, kwargs))
@@ -147,6 +154,44 @@ def project_provider(monkeypatch):
         delays=delays,
         Connection=Connection,
     )
+
+
+async def test_foreign_domain_memberships_never_enter_mcp_grant(project_provider):
+    provider = project_provider
+    provider.memberships.append({"id": provider.c, "name": "Foreign", "enabled": True, "domain_id": "tenant-b"})
+    scopes = await projects.resolve_project_scope(
+        provider.conn, provider.user, provider.a, ["admin"], project_scope="all"
+    )
+    assert {scope["id"] for scope in scopes} == {provider.a, provider.b}
+    with pytest.raises(authority.McpAuthorityError):
+        await projects.resolve_project_scope(
+            provider.conn, provider.user, provider.a, ["admin"], project_scope="selected", project_ids=[provider.c]
+        )
+
+
+@pytest.mark.parametrize("domain", [None, "tenant-b"])
+async def test_target_domain_must_match_selected_working_domain(project_provider, monkeypatch, domain):
+    provider = project_provider
+    target = provider.Connection(provider.b)
+    target.access.project_domain_id = domain
+    monkeypatch.setattr(projects.keystone, "get_openstack_connection", lambda token, project_id: target)
+    with pytest.raises(authority.McpAuthorityError):
+        await projects.project_connection(provider.conn, provider.user, provider.b)
+    assert target.closed
+    assert not provider.created
+
+
+async def test_external_identity_account_uses_native_memberships_in_working_domain(project_provider):
+    provider = project_provider
+    provider.conn._afterglow_identity_domain_id = "identity-home"
+    provider.conn.access.user_domain_id = "identity-home"
+    discovered = await projects.caller_membership_projects(provider.conn, provider.user)
+    assert {row["id"] for row in discovered} == {provider.a, provider.b}
+    scope = await projects.resolve_project_scope(provider.conn, provider.user, provider.a, ["member"])
+    assert scope == [{"id": provider.a, "name": provider.a, "roles": ["member"], "can_write": True}]
+    provider.conn._afterglow_identity_domain_id = "forged-home"
+    with pytest.raises(authority.McpAuthorityError):
+        await projects.caller_membership_projects(provider.conn, provider.user)
 
 
 async def test_current_authority_preparation_reports_typed_management_refusal(project_provider):

@@ -313,7 +313,6 @@ export function useChartInteraction({
   }, []);
 
   useEffect(() => { clearTooltip(); }, [data, clearTooltip]);
-
   // Re-anchor tooltip/crosshair when x-scale or visible data changes (e.g. brush zoom commit).
   useEffect(() => {
     if (!canInteract || lastHoveredXRef.current === null) {

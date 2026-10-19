@@ -142,6 +142,9 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `security_groups` | array[string] | 아니오 | 보안 그룹 이름 목록. GPU 모니터링에 필요한 SG는 서버가 추가 |
 | `boot_volume_size_gb` | integer | 아니오 | 부트 볼륨 크기(GB, 1–16384). 생략 시 서버 설정 기본값 |
 | `delete_boot_volume_on_termination` | boolean | 아니오 | 인스턴스 삭제 시 부트 볼륨 동반 삭제 (기존 볼륨 재사용 시 강제 false) |
+| `auto_snapshot` | boolean | 아니오 | 새 부팅 볼륨의 자동 스냅샷 정책 활성화(기본 false). 기존 `boot_volume_id`와 함께 true 불가 |
+| `auto_backup` | boolean | 아니오 | 새 부팅 볼륨의 자동 백업 정책 활성화(기본 false). 기존 `boot_volume_id`와 함께 true 불가 |
+| `volume_protection_force` | boolean | 조건부 | 어느 자동 보호 정책이라도 켤 때 필수 true. 실행 중 볼륨의 반복 강제 사본 허용 동의이며 게스트/앱 일관성 보장이 아님 |
 | `additional_volume_ids` | array[string] | 아니오 | 생성 직후 연결할 기존 볼륨 UUID 목록 |
 | `new_volumes` | array | 아니오 | 신규 생성·연결할 볼륨 `{name, size_gb}` 목록 |
 | `data_mounts` | array | 아니오 | 기존 Manila share 직접 마운트 `{file_storage_id, mount_point, read_only}` |
@@ -149,6 +152,14 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `github_username` | string | 아니오 | GitHub 공개키 SSH 접근. Ubuntu 이미지 직접 부팅에서만 사용하며 생성 전에 서버가 GitHub 프로필·공개키를 재검증 |
 
 > `data_mounts[].mount_point`는 `/mnt`, `/data`, `/srv`, `/home` 하위 절대 경로만 허용되며 `..`/`.` 세그먼트 및 `/opt`·`/etc`·`/usr`·`/var` 등 시스템 경로는 거부됩니다. NFS share 마운트에는 `network_id`(subnet CIDR 해석용)가 필요합니다.
+
+**Flavor 우선 생성과 볼륨 자동 보호**
+
+사용자·관리자 wizard는 Flavor → 이미지/기존 볼륨 → 설정 → 검토 순서다. 이미지 단계는 선택 Flavor에 따라 GPU 드라이버 이미지 추천 또는 CPU 일반 이미지 우선을 안내하지만 최종 UUID는 사용자가 직접 선택한다. 추천은 용량 admission·게스트 드라이버 호환성 보장이 아니다.
+
+새 이미지 부팅의 볼륨 용량 옆에서 스냅샷·백업을 독립적으로 선택한다. 기본은 둘 다 false이며 기존 부팅 볼륨 재사용은 기존 정책을 변경하지 않는다. 활성화와 강제 사본 동의 조합은 자원 생성 전에 요청 모델에서 검사한다. 정책마다03:00 UTC, 일별2·주별2(월요일)·월별1(매월1일), 동시 시각 monthly>weekly>daily의 한 사본을 사용한다. 저장 즉시 백업/스냅샷을 만들지는 않으며 다음 미래 예약부터 실행한다. 추가 storage/쿼터를 사용하고, 스냅샷은 원본 스토리지 장애에 독립적인 백업을 대체하지 않는다.
+
+선택 정책은 실제 생성된 부팅 볼륨 UUID·대상 프로젝트로 등록된 뒤에만201/SSE `completed`를 보낸다. 등록 실패는 성공이 아니며 관측 가능한 실패에서는 해당 생성의 정책만 보상 정리하고 기존 신규 자원 rollback 경로를 따른다. Redis·Cinder/Nova와 요청의 다중 시스템 원자성은 제공하지 않는다. 등록 ACK 유실과 Redis 정리 불가 또는 process crash가 겹치면 durable deferred cleanup을 보장하지 않는다. 운영 Redis 내구성·native Cinder 권한·백업 저장소와 게스트/애플리케이션 복구 검증은 별도 전제다.
 
 **Windows 초기 비밀번호**
 
@@ -619,11 +630,11 @@ Nova metadata에는 share ID, 정확한 rule ID/type/target/level, managed 여�
 
 ## 10. 리소스 메트릭
 
-Prometheus(node_exporter 우선, 테넌트망 격리 인스턴스는 libvirt-exporter 폴백)에서 인스턴스 시계열/요약 메트릭을 조회합니다.
+현재 caller의 Keystone catalog `metric` endpoint에서 Gnocchi를 자동 발견하여 Ceilometer 수집값을 우선 읽습니다. 현대 Ceilometer의 제거된 REST API는 호출하지 않습니다. Native 서비스 부재·권한 거절·미수집·실패 시 CPU/guest RAM·네트워크·disk I/O는 기존 Prometheus(node_exporter → libvirt-exporter, GPU는 DCGM) 경로를 지표별로 사용합니다. Native 일부 지표가 실패해도 다른 지표는 유지됩니다.
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| `GET` | `/api/v1/instances/{instance_id}/metrics` | 단일 메트릭 시계열 (deprecated, batch 권장) |
+| `GET` | `/api/v1/instances/{instance_id}/metrics` | 단일 메트릭 시계열 |
 | `GET` | `/api/v1/instances/{instance_id}/metrics-batch` | 다중 메트릭 시계열 일괄 조회 |
 | `GET` | `/api/v1/instances/metrics-summary-batch` | 프로젝트 전체 7일 CPU/메모리 요약 + 저사용 판단 |
 | `GET` | `/api/v1/instances/{instance_id}/metrics-summary` | 인스턴스 min/avg/max 요약 + 리사이즈 권장 |
@@ -632,7 +643,7 @@ Prometheus(node_exporter 우선, 테넌트망 격리 인스턴스는 libvirt-exp
 
 | 파라미터 | 값 | 설명 |
 |----------|-----|------|
-| `metric` | `cpu`, `memory`, `network_rx`, `network_tx`, `disk_read`, `disk_write`, `gpu_util`, `gpu_mem` | 조회할 메트릭 키 |
+| `metric` | `cpu`, `memory`, `network_rx`, `network_tx`, `disk_read`, `disk_write`, `gpu_util`, `gpu_mem`, `disk_read_iops`, `disk_write_iops`, `network_rx_packets`, `network_tx_packets`, `memory_resident`, `disk_allocation`, `memory_swap_in`, `memory_swap_out` | 조회할 메트릭 키 |
 | `metrics` | 위 키를 쉼표로 구분 | batch 전용. 예: `cpu,memory,disk_read` |
 | `range` | `15m`, `1h`, `6h`, `24h`, `7d` | 조회 구간 (단일/batch 기본 `1h`, summary 기본 `7d`) |
 
@@ -647,13 +658,17 @@ Prometheus(node_exporter 우선, 테넌트망 격리 인스턴스는 libvirt-exp
   "instance_id": "uuid-string",
   "range": "1h",
   "metrics": {
-    "cpu": { "series": [ { "ts": 1710000000, "value": 12.3 } ], "error": null },
-    "memory": { "series": [ ... ], "error": null }
+    "cpu": { "series": [{ "ts": 1710000000, "value": 12.3 }], "source": "gnocchi", "unit": "%", "status": "available", "native_status": "available", "error": null },
+    "memory": { "series": [], "source": "gnocchi", "unit": "%", "status": "not_collected", "native_status": "not_collected", "error": null }
   }
 }
 ```
 
-**오류**: `422` — `metrics` 비어 있음/알 수 없는 키. Prometheus 장애 시 각 메트릭 `error` 필드에 사유가 담깁니다.
+**오류**: `422` — `metrics` 비어 있음/알 수 없는 키. 지표별 `status`는 `available`, `partial`, `not_collected`, `not_configured`, `forbidden`, `unavailable`입니다. `source`는 `gnocchi`, `prometheus`, null이며 `native_status`는 fallback 뒤에도 native 판정을 보존합니다. `error`는 안전한 코드뿐이며 upstream 본문을 반환하지 않습니다. 빈 표본은 실측 0이 아닙니다. 정상·오류 응답 모두 `Cache-Control: no-store`입니다.
+
+Native CPU는 ns counter의 인접 차이를 경과 시간과 같은 시점의 vCPU로 정규화합니다. Guest RAM은 `memory.usage / memory`, 상주 메모리는 별도 `MiB`이며 게스트 실사용으로 간주하지 않습니다. Disk/NIC byte·request·packet와 swap counter는 reset/gap을 건너뛴 rate(`B/s`, `request/s`, `packet/s`, `MiB/s`)입니다. `disk_allocation`은 현재 `instance_disk`의 `disk.device.allocation` 합계(`B`)이며 filesystem 사용률과 다릅니다. Archive mean에서 계산한 rate는 추정값입니다. 긴 구간은 광고된 archive tier의 provider-side mean resampling을 사용하고, 부족한 fine tier 대신 최대 세 tier 중 한 tier의 최선 coverage를 보존합니다. 서로 다른 tier를 혼합하지 않습니다.
+
+Resampling이 counter reset/gap이나 vCPU resize를 평균으로 숨기지 않도록 native granularity의 bounded window를 추가 검증하고 영향받은 coarse bucket을 제외합니다. 이 검증이 거절되거나 제한에 걸리면 연속 rate를 만들어내지 않습니다. 알려진 불연속은 다른 malformed/archive 진단과 독립적으로 archive 재시도를 중단하므로 더 거친 tier로 reset을 덮지 않습니다. 정지된 resource의 오래된 기록은 wall-clock 나이만으로 거부하지 않으며, 요청보다 retention이 짧아도 실제 남은 표본은 partial로 보존합니다.
 
 ### GET /api/v1/instances/metrics-summary-batch
 
@@ -664,8 +679,8 @@ Prometheus(node_exporter 우선, 테넌트망 격리 인스턴스는 libvirt-exp
 ```json
 {
   "range": "7d",
-  "prometheus_available": true,
-  "instances": { "uuid-string": { "cpu_avg": 8.1, "mem_avg": 15.0, "underutilized": true } }
+  "monitoring_available": true,
+  "instances": { "uuid-string": { "cpu_avg": 8.1, "mem_avg": 15.0, "underutilized": true, "source": "gnocchi", "native_status": "available", "stats": { "cpu": { "min": 1.0, "avg": 8.1, "max": 20.0, "source": "gnocchi", "unit": "%", "status": "available", "native_status": "available", "error": null } } } }
 }
 ```
 
@@ -679,7 +694,7 @@ Prometheus(node_exporter 우선, 테넌트망 격리 인스턴스는 libvirt-exp
 {
   "instance_id": "uuid-string",
   "range": "7d",
-  "prometheus_available": true,
+  "monitoring_available": true,
   "stats": { "cpu": { "min": 1.0, "avg": 8.1, "max": 20.0 }, "memory": { ... }, "disk_read": { ... }, "disk_write": { ... } },
   "recommendation": {
     "underutilized": true,
@@ -690,7 +705,7 @@ Prometheus(node_exporter 우선, 테넌트망 격리 인스턴스는 libvirt-exp
 }
 ```
 
-> Prometheus 연결 불가 시 `prometheus_available: false`, `stats: {}`, `recommendation: null`로 응답합니다.
+> `monitoring_available`은 읽을 수 있는 모니터링 provider가 있다는 뜻이며 표본 존재를 보장하지 않습니다. 양쪽 provider가 없으면 false이고 미측정 통계는 null입니다. CPU와 guest RAM의 선택된 상태가 모두 `available`이며 평균이 실제로 존재할 때만 저사용 배지·축소 권장을 계산합니다. Partial 통계는 표시하되 축소 근거로 쓰지 않습니다. Native project batch는 실제 연결의 인증 프로젝트와 선택 프로젝트가 같아야 하며 Nova 소유 inventory와 교차합니다. 시스템 계정으로 외국 프로젝트 native 정책을 우회하지 않습니다.
 
 
 ---

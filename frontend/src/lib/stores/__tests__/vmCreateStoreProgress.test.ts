@@ -69,7 +69,7 @@ beforeEach(() => {
 	vi.spyOn(performance, 'now').mockImplementation(() => now);
 	resetWizard();
 	betaFeatures.set(DEFAULT_BETA_FEATURES);
-	auth.set({ token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'user', username: 'user', projectId: 'project', projectName: 'project', availableProjects: [], roles: [], isSystemAdmin: false, federated: false });
+	auth.set({ token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'user', username: 'user', projectId: 'project', projectName: 'project', availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false });
 	siteConfig.update(config => ({ ...config, services: { ...config.services, manila: false } }));
 	mocks.apiGet.mockImplementation((path: string) => Promise.resolve(path.includes('flavors') ? [flavor] : []));
 	mocks.fetchWithAuth.mockImplementation(() => Promise.resolve(new Response(new ReadableStream<Uint8Array>({

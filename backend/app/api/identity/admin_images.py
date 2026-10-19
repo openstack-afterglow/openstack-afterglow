@@ -30,6 +30,8 @@ class AdminUpdateImageRequest(BaseModel):
     min_disk: int | None = None
     min_ram: int | None = None
     visibility: str | None = None
+    gpu_vendor: glance.GpuVendor | None = None
+    gpu_driver: glance.GpuDriver | None = None
 
 
 class AdminUpdatePropertiesRequest(BaseModel):
@@ -45,6 +47,7 @@ class VerificationRequest(BaseModel):
 
 def _serialize_image(img) -> dict:
     display_name, repository, tag = image_reference_fields(getattr(img, "name", None))
+    properties = getattr(img, "properties", None) or {}
     return {
         "id": img.id,
         "name": display_name,
@@ -56,6 +59,8 @@ def _serialize_image(img) -> dict:
         "min_ram": img.min_ram or 0,
         "disk_format": img.disk_format or "",
         "os_distro": getattr(img, "os_distro", None) or glance._guess_distro(display_name),
+        "gpu_vendor": properties.get("gpu_vendor"),
+        "gpu_driver": properties.get("gpu_driver"),
         "visibility": img.visibility or "private",
         "owner": img.owner or "",
         "created_at": str(img.created_at) if img.created_at else None,
@@ -187,7 +192,10 @@ async def update_admin_image(
             req.min_disk,
             req.min_ram,
             req.visibility,
+            gpu_vendor=req.gpu_vendor,
+            gpu_driver=req.gpu_driver,
         )
+        await invalidate("afterglow:glance:*:images")
         return (await image_verification.enrich([result]))[0]
     except Exception as e:
         _logger.warning("이미지 수정 실패: %s", e)

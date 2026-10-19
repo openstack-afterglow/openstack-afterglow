@@ -2,6 +2,10 @@
 
 The provider fixture models the installed SDK/native wire API, not service-function
 forwarding. Session tests use the real session store against isolated fake Redis.
+Role/permission reductions must preserve the stored login family and proof; only
+explicit session revocation removes them. Cache tests exercise old-entry eviction,
+not distributed authorization freshness. Native token liveness/revocation is a
+synthetic provider boundary, not evidence about real Keystone group-member deletion.
 """
 
 import asyncio
@@ -17,9 +21,12 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from requests import Response
 
-from app.api.deps import get_os_conn, get_token_info
+from app.api.deps import get_os_conn, get_token_info, require_admin
 from app.api.identity.admin_identity import router
-from app.services import identity_roles, keystone, session_store
+from app.services import cache, identity_roles, keystone, project_service, session_store
+from app.services.cache.redis_backend import RedisBackend
+from app.services.service_permissions import service_permissions
+from tests.admin_gate import synthetic_verified_admin
 
 
 class IdentityProvider:
@@ -35,6 +42,11 @@ class IdentityProvider:
         self.graph_payload = None
         self.write_status = None
         self.assignments_error = False
+        self.native_tokens = set()
+        self.projects = {
+            pid: SimpleNamespace(id=pid, name=pid, domain_id="default", enabled=True)
+            for pid in ("project", "p", "tenant", "isolated")
+        }
 
     @staticmethod
     def response(status, payload=None):
@@ -90,19 +102,83 @@ class IdentityProvider:
     def delete_role(self, rid, ignore_missing=True):
         del self.rows[rid]
 
-    def role_assignments(self, role_id, effective=False):
+    def role_assignments(self, role_id=None, effective=False, **query):
         if self.assignments_error:
             raise RuntimeError("assignment metadata unavailable")
         result = []
         for assignment in self.assignments:
-            if assignment["role"]["id"] != role_id:
+            if role_id is not None and assignment["role"]["id"] != role_id:
                 continue
+            rows = [assignment]
             if effective and "group" in assignment:
-                for uid in self.groups[assignment["group"]["id"]]:
-                    result.append({"role": assignment["role"], "user": {"id": uid}, "scope": assignment["scope"]})
-            else:
-                result.append(assignment)
+                rows = [
+                    {"role": assignment["role"], "user": {"id": uid}, "scope": assignment["scope"]}
+                    for uid in self.groups[assignment["group"]["id"]]
+                ]
+            for row in rows:
+                scope = row["scope"]
+                if effective and "domain" in scope and scope.get("OS-INHERIT:inherited_to") == "projects":
+                    scopes = [
+                        {"project": {"id": project.id}, "OS-INHERIT:inherited_to": "projects"}
+                        for project in self.projects.values()
+                        if project.domain_id == scope["domain"]["id"]
+                    ]
+                else:
+                    scopes = [scope]
+                for resolved_scope in scopes:
+                    resolved = {**row, "scope": resolved_scope}
+                    if any(
+                        resolved.get(kind, {}).get("id") != query.get(kind, query.get(kind + "_id"))
+                        for kind in ("user", "group", "role")
+                        if kind in query or kind + "_id" in query
+                    ):
+                        continue
+                    if any(
+                        resolved_scope.get(kind, {}).get("id") != query[kind]
+                        for kind in ("project", "domain")
+                        if kind in query
+                    ):
+                        continue
+                    result.append(resolved)
         return iter(result)
+
+    def get_domain(self, did):
+        return SimpleNamespace(id=did, name=did, enabled=True)
+
+    def get_user(self, uid):
+        return SimpleNamespace(id=uid, name=uid, domain_id="default", enabled=True)
+
+    def get_project(self, pid):
+        return self.projects[pid]
+
+    def get_group(self, gid):
+        assert gid in self.groups
+        return SimpleNamespace(id=gid, name=gid, description="", domain_id="default")
+
+    def get_role(self, rid):
+        return SimpleNamespace(**self.rows[rid])
+
+    def _project_assignment(self, pid, principal, subject, rid, *, remove=False):
+        row = {"role": {"id": rid}, principal: {"id": subject}, "scope": {"project": {"id": pid}}}
+        if remove:
+            self.assignments.remove(row)
+        elif row not in self.assignments:
+            self.assignments.append(row)
+
+    def assign_project_role_to_user(self, pid, uid, rid):
+        self._project_assignment(pid, "user", uid, rid)
+
+    def unassign_project_role_from_user(self, pid, uid, rid):
+        self._project_assignment(pid, "user", uid, rid, remove=True)
+
+    def assign_project_role_to_group(self, pid, gid, rid):
+        self._project_assignment(pid, "group", gid, rid)
+
+    def unassign_project_role_from_group(self, pid, gid, rid):
+        self._project_assignment(pid, "group", gid, rid, remove=True)
+
+    def native_assignments(self, **query):
+        return list(self.role_assignments(**query))
 
     def group_users(self, gid):
         return iter(SimpleNamespace(id=uid) for uid in self.groups[gid])
@@ -112,6 +188,32 @@ class IdentityProvider:
 async def role_env(monkeypatch):
     provider = IdentityProvider()
     redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    # The graph lifecycle suite represents legacy native domains without
+    # Default projects. Default-manager source simulations live in its own suite.
+    native = SimpleNamespace(
+        domains=SimpleNamespace(
+            get=provider.get_domain,
+            list=lambda: [provider.get_domain("default")],
+        ),
+        projects=SimpleNamespace(
+            get=provider.get_project,
+            list=lambda **query: [
+                project
+                for project in provider.projects.values()
+                if all(
+                    getattr(project, "domain_id" if key == "domain" else key) == value for key, value in query.items()
+                )
+            ],
+        ),
+        groups=SimpleNamespace(get=provider.get_group),
+        roles=SimpleNamespace(list=provider.roles),
+        inference_rules=SimpleNamespace(
+            list_inference_roles=lambda: provider.get("/role_inferences").json()["role_inferences"]
+        ),
+        role_assignments=SimpleNamespace(list=provider.native_assignments),
+    )
+    monkeypatch.setattr(keystone, "_get_admin_ks_client", lambda: native)
+    monkeypatch.setattr(cache, "_backend", RedisBackend(client=redis))
 
     async def get_redis():
         return redis
@@ -121,11 +223,16 @@ async def role_env(monkeypatch):
 
     async def invalidate(key):
         cleared.append(key)
+        await cache.invalidate(key)
+
+    def revoke_native(token):
+        revoked.append(token)
+        provider.native_tokens.remove(token)
 
     events, cleared, revoked = [], [], []
     monkeypatch.setattr(session_store, "_get_redis", get_redis)
-    # Actual session deletion still runs; token revocation is an external boundary.
-    monkeypatch.setattr(keystone, "revoke_token", revoked.append)
+    # Real family deletion runs; only the external native revocation is synthetic.
+    monkeypatch.setattr(keystone, "revoke_token", revoke_native)
     monkeypatch.setattr(identity_roles.activity, "record", record)
     monkeypatch.setattr(identity_roles, "invalidate", invalidate)
     app = FastAPI()
@@ -141,6 +248,7 @@ async def role_env(monkeypatch):
         identity=provider, endpoint_for=lambda service: "https://keystone.invalid/v3"
     )
     app.dependency_overrides[get_token_info] = lambda: state
+    app.dependency_overrides[require_admin] = synthetic_verified_admin
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield SimpleNamespace(
             provider=provider, redis=redis, client=client, auth=state, events=events, cleared=cleared, revoked=revoked
@@ -148,8 +256,78 @@ async def role_env(monkeypatch):
     await redis.close()
 
 
-async def session(uid):
-    await session_store.store_session("session-" + uid, "token-" + uid, "project", uid, int(time.time()) + 3600)
+async def session(env, uid, project_id="project"):
+    """Create and rotate a real login family, retaining its native login proof."""
+    token, initial, current = "token-" + uid, "login-" + uid, "session-" + uid
+    env.provider.native_tokens.add(token)
+    exp = int(time.time()) + 3600
+    assert await session_store.store_session(
+        initial,
+        token,
+        project_id,
+        uid,
+        exp,
+        domain_id="default",
+        identity_domain_id="home",
+        started_at=time.time() - 30,
+        origin_ip="192.0.2.10",
+        origin_fp="browser",
+    )
+    assert await session_store.store_session(
+        current,
+        token,
+        project_id,
+        uid,
+        exp,
+        domain_id="default",
+        identity_domain_id="home",
+        previous_jti=initial,
+        timeout_seconds=7200,
+    )
+    stored = await session_store.get_session(current)
+    assert stored["family_id"] == initial
+    return stored
+
+
+async def assert_login_survives(env, uid, stored):
+    current, initial = "session-" + uid, "login-" + uid
+    assert await session_store.get_session(current) == stored
+    assert await env.redis.get("afterglow:session-family:" + initial) == current
+    assert await env.redis.get("afterglow:refresh-family:" + initial) == initial
+    assert await env.redis.smembers("afterglow:user-sessions:" + uid) == {current}
+    assert stored["keystone_token"] in env.provider.native_tokens
+    assert stored["keystone_token"] not in env.revoked
+
+
+async def cached_access(uid, project_id="project"):
+    """Cache real current-project permissions in the native-validation namespace.
+
+    No auth resolver is replaced: this isolates cache eviction from refresh-family
+    storage while using the production current role-ID/DAG permission resolver.
+    """
+    token_hash = hashlib.sha256(("token-" + uid).encode()).hexdigest()
+
+    async def load():
+        return await project_service.get_project_access(project_id, uid)
+
+    key = f"afterglow:session:{token_hash}:{project_id}"
+    access = await cache.cached_call(key, 60, load)
+    # A swallowed cache-write failure must not turn this into an uncached test.
+    assert json.loads(await cache.get_backend().get(key)) == access
+    return access
+
+
+def add_chat_permission(provider):
+    provider.rows["lumen-chat_user"] = {
+        "id": "lumen-chat_user",
+        "name": "lumen-chat_user",
+        "description": "",
+        "domain_id": None,
+    }
+
+
+def chat_allowed(access):
+    return "lumen-chat_user" in service_permissions({"roles": access["roles"]})["lumen"]
 
 
 @pytest.mark.asyncio
@@ -255,6 +433,7 @@ async def test_actual_repeated_edge_and_removal_do_not_fake_success(role_env):
         "afterglow:admin:roles",
         "afterglow:admin:identity:summary",
         identity_roles.VISIBILITY_KEY,
+        "afterglow:session:*",
     }
 
 
@@ -276,7 +455,7 @@ async def test_actual_provider_write_errors_are_not_success_or_empty(role_env, s
     response = await role_env.client.put("/api/v1/admin/roles/custom/implies/reader")
     assert response.status_code == expected
     assert ("custom", "reader") not in role_env.provider.edges
-    assert not role_env.events
+    assert len(role_env.events) == 1 and role_env.events[0]["status"] == "failed"
 
 
 @pytest.mark.asyncio
@@ -332,7 +511,12 @@ async def test_metadata_lifecycle_validation_and_safe_delete(role_env):
 async def test_create_description_and_delete_success_clear_caches_and_audit(role_env):
     client, keys = (
         role_env.client,
-        {"afterglow:admin:roles", "afterglow:admin:identity:summary", identity_roles.VISIBILITY_KEY},
+        {
+            "afterglow:admin:roles",
+            "afterglow:admin:identity:summary",
+            identity_roles.VISIBILITY_KEY,
+            "afterglow:session:*",
+        },
     )
     created = await client.post("/api/v1/admin/roles", json={"name": "Audited_user"})
     assert created.status_code == 201
@@ -354,47 +538,83 @@ def _holder_fixture(p):
     p.groups["g"] = ["group-user"]
     p.assignments = [
         {"role": {"id": "custom"}, "user": {"id": "direct"}, "scope": {"system": {"all": True}}},
+        {"role": {"id": "custom"}, "user": {"id": "direct"}, "scope": {"project": {"id": "project"}}},
+        *[
+            {"role": {"id": "member"}, "user": {"id": uid}, "scope": {"project": {"id": "project"}}}
+            for uid in ("direct", "group-user")
+        ],
         {
             "role": {"id": "other"},
             "group": {"id": "g"},
-            "scope": {"domain": {"id": "d"}, "OS-INHERIT:inherited_to": "projects"},
+            "scope": {"domain": {"id": "default"}, "OS-INHERIT:inherited_to": "projects"},
         },
     ]
 
 
 @pytest.mark.asyncio
-async def test_edge_removal_revokes_real_sessions_for_group_inherited_and_ancestor_holders(role_env):
+async def test_edge_removal_drops_current_permissions_but_preserves_holder_logins(role_env):
     p, client = role_env.provider, role_env.client
     _holder_fixture(p)
-    p.edges.add(("custom", "reader"))
-    for uid in ("direct", "group-user", "unaffected"):
-        await session(uid)
-    response = await client.delete("/api/v1/admin/roles/custom/implies/reader")
+    add_chat_permission(p)
+    p.edges.add(("custom", "lumen-chat_user"))
+    stored = {uid: await session(role_env, uid) for uid in ("direct", "group-user", "unaffected")}
+    before = {uid: await cached_access(uid) for uid in stored}
+    for uid in ("direct", "group-user"):
+        assert "lumen-chat_user" in before[uid]["roles"]
+        assert chat_allowed(before[uid])
+    assert not chat_allowed(before["unaffected"])
+
+    response = await client.delete("/api/v1/admin/roles/custom/implies/lumen-chat_user")
     assert response.status_code == 200
-    assert await session_store.get_session("session-direct") is None
-    assert await session_store.get_session("session-group-user") is None
-    assert await session_store.get_session("session-unaffected") is not None
-    assert set(role_env.revoked) == {"token-direct", "token-group-user"}
-
-
-@pytest.mark.asyncio
-async def test_adding_lower_edge_keeps_holder_sessions(role_env):
-    p, client = role_env.provider, role_env.client
-    _holder_fixture(p)
-    p.assignments_error = True  # Adding a lower edge needs no recipient lookup.
-    await session("direct")
-    assert (await client.put("/api/v1/admin/roles/custom/implies/reader")).status_code == 200
-    assert await session_store.get_session("session-direct") is not None
+    for uid in ("direct", "group-user"):
+        current = await cached_access(uid)
+        assert "lumen-chat_user" not in current["roles"]
+        assert "custom" in current["roles"]
+        assert not chat_allowed(current)
+    assert await cached_access("unaffected") == before["unaffected"]
+    for uid, snapshot in stored.items():
+        await assert_login_survives(role_env, uid, snapshot)
     assert not role_env.revoked
 
 
 @pytest.mark.asyncio
-async def test_rename_revokes_holders_and_unknown_recipients_block_removal(role_env):
+async def test_adding_lower_edge_refreshes_cached_permissions_without_holder_lookup(role_env):
     p, client = role_env.provider, role_env.client
-    p.assignments = [{"role": {"id": "custom"}, "user": {"id": "holder"}, "scope": {"project": {"id": "p"}}}]
-    await session("holder")
+    _holder_fixture(p)
+    add_chat_permission(p)
+    stored = {uid: await session(role_env, uid) for uid in ("direct", "group-user", "unaffected")}
+    before = {uid: await cached_access(uid) for uid in stored}
+    assert all(not chat_allowed(access) for access in before.values())
+    p.assignments_error = True  # A write with any holder lookup would fail.
+    assert (await client.put("/api/v1/admin/roles/custom/implies/lumen-chat_user")).status_code == 200
+    p.assignments_error = False
+    for uid in ("direct", "group-user"):
+        current = await cached_access(uid)
+        assert "lumen-chat_user" in current["roles"]
+        assert chat_allowed(current)
+    assert await cached_access("unaffected") == before["unaffected"]
+    for uid, snapshot in stored.items():
+        await assert_login_survives(role_env, uid, snapshot)
+    assert not role_env.revoked
+
+
+@pytest.mark.asyncio
+async def test_rename_refreshes_permissions_preserves_login_and_unknown_recipients_block_removal(role_env):
+    p, client = role_env.provider, role_env.client
+    p.rows["custom"]["name"] = "lumen-chat_user"
+    p.assignments = [
+        {"role": {"id": rid}, "user": {"id": "holder"}, "scope": {"project": {"id": "p"}}}
+        for rid in ("custom", "member")
+    ]
+    stored = await session(role_env, "holder", "p")
+    before = await cached_access("holder", "p")
+    assert "lumen-chat_user" in before["roles"] and chat_allowed(before)
     assert (await client.patch("/api/v1/admin/roles/custom", json={"name": "Renamed_user"})).status_code == 200
-    assert await session_store.get_session("session-holder") is None
+    current = await cached_access("holder", "p")
+    assert "lumen-chat_user" not in current["roles"]
+    assert "renamed_user" in current["roles"]
+    assert not chat_allowed(current)
+    await assert_login_survives(role_env, "holder", stored)
     p.edges.add(("custom", "reader"))
     p.assignments_error = True
     assert (await client.delete("/api/v1/admin/roles/custom/implies/reader")).status_code == 503
@@ -404,6 +624,8 @@ async def test_rename_revokes_holders_and_unknown_recipients_block_removal(role_
     p.edges.clear()
     assert (await client.delete("/api/v1/admin/roles/custom")).status_code == 503
     assert "custom" in p.rows
+    await assert_login_survives(role_env, "holder", stored)
+    assert not role_env.revoked
 
 
 @pytest.mark.asyncio
@@ -427,16 +649,24 @@ async def test_post_write_invalidation_failure_reports_applied_change(role_env, 
     p = role_env.provider
     p.edges.add(("custom", "reader"))
     p.assignments = [{"role": {"id": "custom"}, "user": {"id": "holder"}, "scope": {"project": {"id": "p"}}}]
+    stored = await session(role_env, "holder", "p")
+    before = await cached_access("holder", "p")
+    original_invalidate = identity_roles.invalidate
 
-    async def failed_revoke(uid):
-        raise RuntimeError("session deletion failed after preflight")
+    async def failed_invalidate(key):
+        if key == "afterglow:session:*":
+            raise RuntimeError("validation cache deletion failed after preflight")
+        await original_invalidate(key)
 
-    monkeypatch.setattr(session_store, "revoke_user_sessions", failed_revoke)
+    monkeypatch.setattr(identity_roles, "invalidate", failed_invalidate)
     response = await role_env.client.delete("/api/v1/admin/roles/custom/implies/reader")
     assert response.status_code == 503
     assert "applied" in response.json()["detail"]
     assert ("custom", "reader") not in p.edges
     assert not role_env.events
+    assert await cached_access("holder", "p") == before
+    assert "reader" not in (await project_service.get_project_access("p", "holder"))["roles"]
+    await assert_login_survives(role_env, "holder", stored)
 
 
 @pytest.mark.asyncio
@@ -526,16 +756,59 @@ async def test_corrupt_visibility_metadata_is_refreshed_once_then_hidden(monkeyp
 
 @pytest.mark.asyncio
 async def test_auth_me_succeeds_after_external_custom_role_outdates_cached_catalog(monkeypatch):
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
     from app.main import app
+    from app.models.domain_auth import DomainLoginPolicy
+    from app.services import domain_auth
 
     p = IdentityProvider()
     _trusted(monkeypatch, p)
+    ks = keystone._get_admin_ks_client()
+    # Exact enabled native resources and current grants back the real domain
+    # visibility/system-authority checks; token role names are not authority.
+    users = {"u": SimpleNamespace(id="u", name="u", domain_id="default", enabled=True)}
+    domains = {"default": SimpleNamespace(id="default", name="Default", enabled=True)}
+    projects = {"p": SimpleNamespace(id="p", name="P", domain_id="default", enabled=True)}
+    ks.users = SimpleNamespace(get=users.__getitem__)
+    ks.domains = SimpleNamespace(get=domains.__getitem__, list=lambda: list(domains.values()))
+    ks.projects = SimpleNamespace(get=projects.__getitem__)
+
+    def groups(*, user):
+        return [SimpleNamespace(id=gid) for gid, members in p.groups.items() if user in members]
+
+    def assignments(**query):
+        # All grants here are direct user grants, so raw and effective rows
+        # coincide. An unfiltered read must still return the complete source.
+        rows = list(p.assignments)
+        for principal in ("user", "group", "role"):
+            if principal in query:
+                rows = [row for row in rows if row.get(principal, {}).get("id") == query[principal]]
+        for scope in ("project", "domain"):
+            if scope in query:
+                rows = [row for row in rows if row["scope"].get(scope, {}).get("id") == query[scope]]
+        if "system" in query:
+            rows = [row for row in rows if row["scope"].get("system") == {"all": True}]
+        return rows
+
+    ks.groups = SimpleNamespace(list=groups)
+    ks.role_assignments = SimpleNamespace(list=assignments)
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(DomainLoginPolicy.__table__.create)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(domain_auth.database, "is_db_available", lambda: True)
+    monkeypatch.setattr(domain_auth.database, "get_session_factory", lambda: factory)
     _memory_cache(monkeypatch, {})
     assert await identity_roles.visible_role_names(["custom"], False) == ["custom"]  # warm old graph
     # Created and assigned through the CLI: safe external role, then an external alias.
     p.rows["cli-role"] = {"id": "cli-role", "name": "cli-role", "description": "", "domain_id": None}
     p.rows["cli-alias"] = {"id": "cli-alias", "name": "cli-alias", "description": "", "domain_id": None}
     p.edges.add(("cli-alias", "admin"))
+    p.assignments = [
+        {"user": {"id": "u"}, "role": {"id": rid}, "scope": {"project": {"id": "p"}}}
+        for rid in ("member", "cli-role", "cli-alias")
+    ]
     token = {
         "user_id": "u",
         "username": "u",
@@ -544,6 +817,10 @@ async def test_auth_me_succeeds_after_external_custom_role_outdates_cached_catal
         "roles": ["member", "cli-role", "cli-alias", "never-listed"],
         "is_system_admin": False,
         "auth_method": "password",
+        "domain_id": "default",
+        "domain_name": "Default",
+        "identity_domain_id": "default",
+        "identity_domain_name": "Default",
     }
     app.dependency_overrides[get_token_info] = lambda: token
     try:
@@ -551,16 +828,21 @@ async def test_auth_me_succeeds_after_external_custom_role_outdates_cached_catal
             response = await client.get("/api/v1/auth/me")
     finally:
         app.dependency_overrides.pop(get_token_info, None)
+        await engine.dispose()
     assert response.status_code == 200
     assert response.json()["roles"] == ["member", "cli-role"]
+    assert response.json()["is_system_admin"] is False
+    assert response.json()["available_domains"] == [{"id": "default", "name": "Default"}]
 
 
 @pytest.mark.asyncio
-async def test_cancelled_edge_removal_finishes_required_session_invalidation(role_env, monkeypatch):
+async def test_cancelled_edge_removal_finishes_validation_eviction_and_preserves_login(role_env, monkeypatch):
     provider = role_env.provider
     _holder_fixture(provider)
-    provider.edges.add(("custom", "reader"))
-    await session("direct")
+    add_chat_permission(provider)
+    provider.edges.add(("custom", "lumen-chat_user"))
+    stored = await session(role_env, "direct")
+    assert chat_allowed(await cached_access("direct"))
     entered = asyncio.Event()
     release = threading.Event()
     loop = asyncio.get_running_loop()
@@ -573,7 +855,7 @@ async def test_cancelled_edge_removal_finishes_required_session_invalidation(rol
         return response
 
     monkeypatch.setattr(provider, "delete", blocking_delete)
-    request = asyncio.create_task(role_env.client.delete("/api/v1/admin/roles/custom/implies/reader"))
+    request = asyncio.create_task(role_env.client.delete("/api/v1/admin/roles/custom/implies/lumen-chat_user"))
     try:
         await asyncio.wait_for(entered.wait(), 5)
         request.cancel()
@@ -585,10 +867,144 @@ async def test_cancelled_edge_removal_finishes_required_session_invalidation(rol
         if not request.done():
             await request
 
-    assert ("custom", "reader") not in provider.edges
-    assert await session_store.get_session("session-direct") is None
-    assert "token-direct" in role_env.revoked
+    assert ("custom", "lumen-chat_user") not in provider.edges
+    current = await cached_access("direct")
+    assert "lumen-chat_user" not in current["roles"]
+    assert not chat_allowed(current)
+    await assert_login_survives(role_env, "direct", stored)
+    assert not role_env.revoked
     assert identity_roles.VISIBILITY_KEY in role_env.cleared
+
+
+@pytest.mark.asyncio
+async def test_post_write_holder_recheck_failure_still_evicts_validation_without_revoking_login(role_env, monkeypatch):
+    p = role_env.provider
+    _holder_fixture(p)
+    add_chat_permission(p)
+    p.edges.add(("custom", "lumen-chat_user"))
+    stored = await session(role_env, "direct")
+    assert chat_allowed(await cached_access("direct"))
+    original_delete = p.delete
+
+    def delete_then_lose_metadata(path):
+        response = original_delete(path)
+        p.assignments_error = True
+        return response
+
+    monkeypatch.setattr(p, "delete", delete_then_lose_metadata)
+    response = await role_env.client.delete("/api/v1/admin/roles/custom/implies/lumen-chat_user")
+    assert response.status_code == 503
+    assert "applied" in response.json()["detail"]
+    p.assignments_error = False
+    current = await cached_access("direct")
+    assert "lumen-chat_user" not in current["roles"]
+    assert not chat_allowed(current)
+    await assert_login_survives(role_env, "direct", stored)
+    assert not role_env.revoked
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("principal", ["user", "group"])
+@pytest.mark.parametrize("self_change", [False, True], ids=["other-user", "self"])
+@pytest.mark.parametrize("role_id", ["project_admin", "lumen-chat_user"])
+async def test_generic_project_assignment_updates_current_authority_without_cross_project_logout(
+    role_env, principal, self_change, role_id
+):
+    p, client = role_env.provider, role_env.client
+    existing_project_hierarchy(p)
+    add_chat_permission(p)
+    target = "operator" if self_change else "target"
+    if self_change:
+        role_env.auth["project_id"] = "tenant"
+    affected = [target, "group-peer"] if principal == "group" else [target]
+    p.groups["editors"] = affected
+    for uid in [*affected, "outsider"]:
+        for pid in ("tenant", "isolated"):
+            p.assign_project_role_to_user(pid, uid, "member")
+    for uid in affected:
+        p.assign_project_role_to_user("isolated", uid, role_id)
+    stored = {uid: await session(role_env, uid, "tenant") for uid in [*affected, "outsider"]}
+    isolated = {uid: await cached_access(uid, "isolated") for uid in stored}
+    for uid in affected:
+        before = await cached_access(uid, "tenant")
+        assert role_id not in before["roles"]
+        assert not before["is_manager"] and not chat_allowed(before)
+        assert role_id in isolated[uid]["roles"]
+    outsider = await cached_access("outsider", "tenant")
+    subject = {"user_id": target} if principal == "user" else {"group_id": "editors"}
+    path = "/api/v1/admin/roles/assign" + ("-group" if principal == "group" else "")
+    payload = {**subject, "project_id": "tenant", "role_id": role_id}
+    granted = await client.post(path, params={"domain_id": "default"}, json=payload)
+    assert granted.status_code == 200, granted.text
+    assert granted.json() == {"status": "assigned"}
+    for uid in affected:
+        current = await cached_access(uid, "tenant")
+        assert role_id in current["roles"]
+        assert current["is_manager"] is (role_id == "project_admin")
+        assert chat_allowed(current) is (role_id == "lumen-chat_user")
+        await assert_login_survives(role_env, uid, stored[uid])
+    assert await cached_access("outsider", "tenant") == outsider
+    for uid in stored:
+        assert await cached_access(uid, "isolated") == isolated[uid]
+
+    revoked = await client.delete(path, params={"domain_id": "default", **payload})
+    assert revoked.status_code == 200, revoked.text
+    assert revoked.json() == {"status": "revoked"}
+    for uid in affected:
+        current = await cached_access(uid, "tenant")
+        assert role_id not in current["roles"]
+        assert "member" in current["roles"]
+        assert not current["is_manager"] and not chat_allowed(current)
+        assert role_id in (await cached_access(uid, "isolated"))["roles"]
+    assert await cached_access("outsider", "tenant") == outsider
+    for uid, snapshot in stored.items():
+        assert await cached_access(uid, "isolated") == isolated[uid]
+        await assert_login_survives(role_env, uid, snapshot)
+    assert [event["action"] for event in role_env.events] == ["role_assign", "role_revoke"]
+    for uid in affected:
+        assert f"afterglow:user:{uid}:domain:*:projects" in role_env.cleared
+    assert not role_env.revoked
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("revoke_all", [False, True], ids=["owned-rotated-family", "all-user-families"])
+async def test_explicit_revocation_still_removes_family_and_native_proof_after_role_change(role_env, revoke_all):
+    p = role_env.provider
+    _holder_fixture(p)
+    add_chat_permission(p)
+    p.edges.add(("custom", "lumen-chat_user"))
+    stored = await session(role_env, "direct")
+    unrelated = await session(role_env, "unaffected")
+    assert chat_allowed(await cached_access("direct"))
+    response = await role_env.client.delete("/api/v1/admin/roles/custom/implies/lumen-chat_user")
+    assert response.status_code == 200
+    assert not chat_allowed(await cached_access("direct"))
+    await assert_login_survives(role_env, "direct", stored)
+
+    if revoke_all:
+        assert await session_store.revoke_user_sessions("direct") == 1
+    else:
+        # The session-list JTI may have rotated: its retained alias must still
+        # remove the current family, not merely the already consumed record.
+        assert await session_store.delete_session_owned("direct", "login-direct")
+    assert await session_store.get_session("session-direct") is None
+    assert await role_env.redis.get("afterglow:session-family:login-direct") is None
+    assert await session_store.list_user_sessions("direct") == []
+    assert "token-direct" not in p.native_tokens
+    assert role_env.revoked == ["token-direct"]
+    assert not await session_store.store_session(
+        "after-revoke",
+        "token-direct",
+        "project",
+        "direct",
+        int(time.time()) + 3600,
+        previous_jti="session-direct",
+        timeout_seconds=7200,
+        domain_id="default",
+        identity_domain_id="home",
+    )
+    assert await session_store.get_session("after-revoke") is None
+    await assert_login_survives(role_env, "unaffected", unrelated)
 
 
 def existing_project_hierarchy(provider):
@@ -755,14 +1171,46 @@ async def test_generic_identity_assignment_and_edge_api_cannot_bypass_owner_work
     existing_project_hierarchy(p)
     p.rows["owner-alias"] = {"id": "owner-alias", "name": "owner-alias_admin", "domain_id": None, "description": ""}
     p.edges.add(("owner-alias", "project_owner"))
+    p.get_domain = lambda did: SimpleNamespace(id=did, name="Default")
+    p.get_user = lambda uid: SimpleNamespace(id=uid, domain_id="default")
+    p.get_project = lambda pid: SimpleNamespace(id=pid, domain_id="default")
+    p.get_role = lambda rid: SimpleNamespace(**p.rows[rid])
     for role_id in ("project_owner", "owner-alias"):
         response = await client.post(
-            "/api/v1/admin/roles/assign", json={"user_id": "member", "project_id": "tenant", "role_id": role_id}
+            "/api/v1/admin/roles/assign?domain_id=default",
+            json={"user_id": "member", "project_id": "tenant", "role_id": role_id},
         )
         assert response.status_code == 409
         response = await client.delete(
-            "/api/v1/admin/roles/assign", params={"user_id": "member", "project_id": "tenant", "role_id": role_id}
+            "/api/v1/admin/roles/assign",
+            params={"domain_id": "default", "user_id": "member", "project_id": "tenant", "role_id": role_id},
         )
         assert response.status_code == 409
     assert (await client.delete("/api/v1/admin/roles/owner-alias/implies/project_owner")).status_code == 409
     assert ("owner-alias", "project_owner") in p.edges
+
+
+@pytest.mark.asyncio
+async def test_rename_cannot_create_owner_authority_from_existing_assigned_role(role_env):
+    p, client = role_env.provider, role_env.client
+    p.assignments = [{"role": {"id": "custom"}, "user": {"id": "member"}, "scope": {"project": {"id": "tenant"}}}]
+    response = await client.patch("/api/v1/admin/roles/custom", json={"name": "project_owner"})
+    assert response.status_code == 409
+    assert p.rows["custom"]["name"] == "custom"
+
+
+@pytest.mark.asyncio
+async def test_manager_owner_implication_and_owner_alias_rename_are_explicitly_blocked(role_env):
+    p, client = role_env.provider, role_env.client
+    existing_project_hierarchy(p)
+    response = await client.put("/api/v1/admin/roles/manager/implies/project_owner")
+    assert response.status_code == 409
+    assert ("manager", "project_owner") not in p.edges
+    p.edges.add(("alias", "project_owner"))
+    response = await client.patch("/api/v1/admin/roles/alias", json={"name": "renamed"})
+    assert response.status_code == 409
+    assert p.rows["alias"]["name"] == "alias"
+    p.rows["project_owner"]["name"] = "PROJECT_OWNER"
+    response = await client.delete("/api/v1/admin/roles/alias/implies/project_owner")
+    assert response.status_code == 409
+    assert ("alias", "project_owner") in p.edges

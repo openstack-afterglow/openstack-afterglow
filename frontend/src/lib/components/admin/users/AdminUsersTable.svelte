@@ -2,6 +2,7 @@
   import type { User } from '$lib/types/common';
   import Pagination from '$lib/components/ui/Pagination.svelte';
   import { t } from '$lib/i18n/ns/admin-identity';
+  import Button from '$lib/components/ui/Button.svelte';
 
   let {
     users,
@@ -39,10 +40,9 @@
         {#each users as u, index (u.id)}
           <tr
             class="border-b border-line/50 text-xs hover:bg-surface-sunken/50 transition-colors cursor-pointer"
-            onclick={() => onEdit(u)}
             data-tour={index === 0 ? 'admin-identity-row' : undefined}
           >
-            <td class="py-2 pr-4 text-ink-0"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={u.name}>{u.name}</span></td>
+            <td class="py-2 pr-4 text-ink-0"><Button variant="link" size="sm" onclick={() => onEdit(u)}>{u.name}</Button></td>
             <td class="py-2 pr-4 text-ink-2">{u.email || '-'}</td>
             <td class="py-2 pr-4">
               <span class="px-1.5 py-0.5 rounded text-xs font-medium {u.enabled ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}">{u.enabled ? t('userTable.enabled') : t('userTable.disabled')}</span>

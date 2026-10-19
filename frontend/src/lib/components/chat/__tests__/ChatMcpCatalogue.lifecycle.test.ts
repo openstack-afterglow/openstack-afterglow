@@ -1,15 +1,14 @@
-import './lumenPermissionFixture';
+import { setVerifiedLumenActor } from './lumenPermissionFixture';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
-import { auth } from '$lib/stores/auth';
 import { api } from '$lib/api/client';
 import ChatMcpCatalogue from '../ChatMcpCatalogue.svelte';
 
 const actor = {
 	token: 'synthetic-owner-a', refreshToken: null, accessExpiresAt: 4102444800,
 	userId: 'owner-a', username: 'Owner A', projectId: 'project-a', projectName: 'Project A',
-	availableProjects: [], roles: ['member'], isSystemAdmin: false, federated: false
+	availableProjects: [], roles: ['member'], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', identityDomainId: 'domain-1', identityDomainName: 'Domain', isDomainManager: false
 };
 const cloud = {
 	available: true, enabled: false, access_level: 'read', project_id: 'project-a',
@@ -23,7 +22,7 @@ const fetchMock = vi.fn();
 const requests: Promise<unknown>[] = [];
 
 beforeEach(() => {
-	auth.set(actor);
+	setVerifiedLumenActor(actor);
 	fetchMock.mockReset();
 	requests.length = 0;
 	const post = api.post, patch = api.patch, remove = api.delete;
@@ -86,7 +85,8 @@ describe('catalogue request ownership through the real HTTP client', () => {
 				await fireEvent.click(screen.getByRole('button', { name: '승인하고 활성화' }));
 			}
 			await waitFor(() => expect(attempted).toBe(true));
-			auth.set({ ...actor, token: 'synthetic-owner-b', userId: 'owner-b', username: 'Owner B' });
+			// B has completed verification: A's delayed 401 must not replay as B.
+			setVerifiedLumenActor({ ...actor, token: 'synthetic-owner-b', userId: 'owner-b', username: 'Owner B' });
 			await tick();
 			pending.resolve(Response.json({ detail: 'expired owner A' }, { status: 401 }));
 			await settle();

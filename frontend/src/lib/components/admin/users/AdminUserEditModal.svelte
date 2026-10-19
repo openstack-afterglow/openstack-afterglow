@@ -11,12 +11,16 @@
   import { t } from '$lib/i18n/ns/admin-identity';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
   import RichText from '$lib/i18n/RichText.svelte';
+  import { domainPath } from '$lib/api/domains';
+  import UserDomainManagers from './UserDomainManagers.svelte';
 
   let {
     user = $bindable<User | null>(),
     onUpdate,
+    domainId,
   }: {
     user: User | null;
+    domainId: string;
     onUpdate: (id: string, form: { name: string; email: string; password: string; enabled: boolean }) => Promise<string | true>;
   } = $props();
 
@@ -44,6 +48,7 @@
 
   interface UserScope {
     userId: string;
+    domainId: string;
     token: string | undefined;
     projectId: string | undefined;
   }
@@ -89,7 +94,7 @@
 
   function current(requestScope: UserScope): boolean {
     return scope === requestScope && user?.id === requestScope.userId
-      && token === requestScope.token && projectId === requestScope.projectId;
+      && domainId === requestScope.domainId && token === requestScope.token && projectId === requestScope.projectId;
   }
 
   async function loadUserSessions(requestScope: UserScope) {
@@ -99,12 +104,12 @@
     sessions = [];
     try {
       const data = await api.get<{ sessions: AdminSession[]; count: number }>(
-        `/api/v1/admin/users/${encodeURIComponent(requestScope.userId)}/sessions`,
+        domainPath(`/api/v1/admin/users/${encodeURIComponent(requestScope.userId)}/sessions`, domainId),
         requestScope.token, requestScope.projectId,
       );
       if (current(requestScope)) sessions = data.sessions;
-    } catch {
-      if (current(requestScope)) sessionsError = t('userEdit.sessionsFailed');
+    } catch (e) {
+      if (current(requestScope)) sessionsError = e instanceof ApiError ? e.message : t('userEdit.sessionsFailed');
     } finally {
       if (current(requestScope)) loadingSessions = false;
     }
@@ -117,7 +122,7 @@
     permissions = [];
     try {
       const data = await api.get<{ items: UserPermission[]; count: number }>(
-        `/api/v1/admin/users/${encodeURIComponent(requestScope.userId)}/permissions`,
+        domainPath(`/api/v1/admin/users/${encodeURIComponent(requestScope.userId)}/permissions`, domainId),
         requestScope.token, requestScope.projectId,
       );
       if (!current(requestScope)) return;
@@ -138,8 +143,9 @@
     const selectedEnabled = user?.enabled ?? true;
     const accessToken = token;
     const callerProject = projectId;
+    const selectedDomain = domainId;
     untrack(() => {
-      scope = selectedId ? { userId: selectedId, token: accessToken, projectId: callerProject } : null;
+      scope = selectedId && user?.domain_id === selectedDomain ? { userId: selectedId, domainId: selectedDomain, token: accessToken, projectId: callerProject } : null;
       name = selectedName;
       email = selectedEmail;
       enabled = selectedEnabled;
@@ -187,7 +193,7 @@
     revokeSuccess = '';
     try {
       const res = await api.post<{ revoked_count: number }>(
-        `/api/v1/admin/users/${encodeURIComponent(requestScope.userId)}/revoke-sessions`, {}, requestScope.token, requestScope.projectId,
+        domainPath(`/api/v1/admin/users/${encodeURIComponent(requestScope.userId)}/revoke-sessions`, domainId), {}, requestScope.token, requestScope.projectId,
       );
       if (!current(requestScope)) return;
       revokeSuccess = t('userEdit.sessionsRevoked', { count: res.revoked_count });
@@ -303,6 +309,12 @@
           {/if}
         </section>
       </div>
+
+      {#if user.domain_id === domainId && $auth.isSystemAdmin}
+        {#key `${domainId}:${user.id}`}
+          <UserDomainManagers userId={user.id} {domainId} onChanged={() => { if (scope) { void loadUserPermissions(scope); void loadUserSessions(scope); } }} />
+        {/key}
+      {/if}
 
       <!-- 세션 강제 폐기 -->
       <div class="mt-3 pt-3 border-t border-line">

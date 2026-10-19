@@ -51,7 +51,7 @@ beforeEach(() => {
 	api.clearPrefetchCache();
 	resetWizard();
 	openWizard();
-	auth.set({ token: 'token-a', refreshToken: null, accessExpiresAt: null, userId: 'user-a', username: 'user-a', projectId: 'project-a', projectName: 'A', availableProjects: [], roles: [], isSystemAdmin: false, federated: false });
+	auth.set({ token: 'token-a', refreshToken: null, accessExpiresAt: null, userId: 'user-a', username: 'user-a', projectId: 'project-a', projectName: 'A', availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false });
 	siteConfig.update(value => ({ ...value, runtime: { ...value.runtime, api_base: 'https://afterglow.test' }, services: { ...value.services, manila: false } }));
 	requests = [];
 	refresh = null;
@@ -296,13 +296,18 @@ async function enter(password = " Secret'123 ", confirmation = password) {
 		await fireEvent.click(screen.getByTestId('deploy'));
 		expect(requests).toHaveLength(0);
 		expect(get(wizard).step).toBe(5);
-		for (const step of [1, 2]) {
-			store.goTo(step);
-			await tick();
-			expect(store.canNext).toBe(false);
-			await fireEvent.click(screen.getByTestId('next'));
-			expect(get(wizard).step).toBe(step);
-		}
+		store.goTo(1);
+		await tick();
+		expect(store.canNext).toBe(false);
+		await fireEvent.click(screen.getByTestId('next'));
+		expect(get(wizard).step).toBe(1);
+		// The first Flavor step must remain usable so the unsupported image can be replaced.
+		store.goTo(2);
+		await tick();
+		expect(store.canNext).toBe(true);
+		await fireEvent.click(screen.getByTestId('next'));
+		expect(get(wizard).step).toBe(1);
+		expect(store.canNext).toBe(false);
 	});
 
 	it('does not infer password support from a name and retains ordinary keypair and GitHub payloads', async () => {

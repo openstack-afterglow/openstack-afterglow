@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { auth, canWrite } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api/client';
@@ -73,26 +73,32 @@
 	let summaryCpuAvg = $state<number | null>(null);
 	let summaryMemAvg = $state<number | null>(null);
 	let summaryGeneration = 0;
+	let summaryAuthEpoch = $state(0);
+	let summaryOwner = $state('');
+	const unsubscribeSummaryAuth = auth.subscribe(() => { summaryAuthEpoch += 1; });
+	onDestroy(() => { unsubscribeSummaryAuth(); summaryGeneration += 1; });
 
 	async function loadSummary(iid: string, projectId: string | undefined) {
 		const token = $auth.token;
 		if (!token) return;
 		const generation = ++summaryGeneration;
+		const authEpoch = summaryAuthEpoch;
 		try {
 			const resp = await api.get<{
-				prometheus_available: boolean;
+				monitoring_available: boolean;
 				stats: Record<string, { min: number | null; avg: number | null; max: number | null }>;
 				recommendation: SummaryRec | null;
 			}>(`/api/v1/instances/${iid}/metrics-summary?range=7d`, token, projectId);
-			if (generation !== summaryGeneration || instanceId !== iid || $auth.token !== token
+			if (generation !== summaryGeneration || authEpoch !== summaryAuthEpoch || instanceId !== iid || $auth.token !== token
 				|| (adminProjectId ?? $auth.projectId ?? undefined) !== projectId) return;
-			if (resp.prometheus_available) {
+			if (resp.monitoring_available) {
+				summaryOwner = `${authEpoch}:${projectId}:${iid}`;
 				recommendation = resp.recommendation;
 				summaryCpuAvg = resp.stats.cpu?.avg ?? null;
 				summaryMemAvg = resp.stats.memory?.avg ?? null;
 			}
 		} catch {
-			// Prometheus 미연결 등 — 조용히 무시
+			// Monitoring unavailable: no measured recommendation.
 		}
 	}
 
@@ -100,6 +106,7 @@
 		const id = instanceId;
 		const token = $auth.token;
 		const projectId = adminProjectId ?? $auth.projectId ?? undefined;
+		void summaryAuthEpoch;
 		showPasswordModal = false;
 		showResizeModal = false;
 		resizePreselectFlavorId = '';
@@ -178,7 +185,7 @@
 			<Alert tone="warning" class="mb-4">{t('panel.stoppedQuotaWarning')}</Alert>
 		{/if}
 
-		{#if $canWrite && (s.instance.status === 'ACTIVE' || s.instance.status === 'SHUTOFF') && recommendation?.underutilized}
+		{#if $canWrite && summaryOwner === `${summaryAuthEpoch}:${adminProjectId ?? $auth.projectId ?? undefined}:${instanceId}` && (s.instance.status === 'ACTIVE' || s.instance.status === 'SHUTOFF') && recommendation?.underutilized}
 			<div class="bg-surface-selected/40 border border-action-warm text-warm-text rounded-lg px-4 py-3 text-sm mb-4 flex items-center justify-between gap-4">
 				<span>
 					{#snippet cpuUsage(text: string)}
@@ -203,13 +210,16 @@
 		{/if}
 
 		<InfoSection {showHost} />
+		{#if s.instance.id === instanceId && s.instance.project_id === (adminProjectId ?? $auth.projectId) && $auth.token}
 		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
 			<div class="text-ink-0 text-[15px] font-semibold mb-4">{t('panel.monitoring')}</div>
 			<MetricsPanel
-				instanceId={s.instance.id}
+				{instanceId}
+				projectId={adminProjectId ?? $auth.projectId ?? undefined}
 				isGpu={(s.instance.flavor_name ?? '').toLowerCase().startsWith('gpu.')}
 			/>
 		</div>
+		{/if}
 		<ConsoleSection />
 		<NetworkSection />
 		<VolumesSection />

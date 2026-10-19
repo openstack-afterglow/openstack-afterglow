@@ -10,7 +10,7 @@
 		id: string;
 		/** `compact` fits app chrome; `labelled` shows the native language name. */
 		variant?: 'compact' | 'labelled';
-		/** Documentation supplies language links that update the shared preference on navigation. */
+		/** Documentation supplies shareable language links; navigation persists the same app preference. */
 		locale?: Locale;
 		label?: string;
 		href?: (locale: Locale) => string;

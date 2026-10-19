@@ -33,7 +33,7 @@
 	let stepDirection = $state<1 | -1>(1);
 	let previousStep: number | null = null;
 	$effect.pre(() => {
-		const step = $wizard.step;
+		const step = s.visibleStepIndex;
 		if (previousStep !== null && step !== previousStep) stepDirection = step < previousStep ? -1 : 1;
 		previousStep = step;
 	});

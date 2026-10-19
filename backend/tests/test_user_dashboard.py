@@ -69,13 +69,32 @@ class ReadProxy:
 
 
 class InventoryState:
-    def __init__(self):
-        self.subject = {"user_id": "user-a", "project_id": "p-a", "token": "source-a", "is_system_admin": False}
-        self.memberships = [{"id": "p-a", "name": "Alpha"}, {"id": "p-b", "name": "Beta"}]
+    def __init__(self, directory):
+        self.directory = directory
+        self.subject = {
+            "user_id": "user-a",
+            "project_id": "p-a",
+            "token": "source-a",
+            "domain_id": "tenant-a",
+            "domain_name": "Tenant A",
+            "identity_domain_id": "tenant-a",
+            "identity_domain_name": "Tenant A",
+            "is_domain_manager": False,
+        }
+        self.memberships = [
+            {"id": "p-a", "name": "Alpha", "domain_id": "tenant-a"},
+            {"id": "p-b", "name": "Beta", "domain_id": "tenant-a"},
+        ]
         self.roles = {
             p: ["member", "drover-inventory_reader", "waygate-inventory_reader", "palimpsest-inventory_reader"]
             for p in ("p-a", "p-b")
         }
+        directory.roles.extend(
+            {"id": name + "-role", "name": name, "domain_id": None}
+            for name in sorted({role for roles in self.roles.values() for role in roles} - {"member"})
+        )
+        self.system_grants = []
+        self.assignment_errors = {}
         self.settings = SimpleNamespace(
             **{f"service_{gate}_enabled": True for _, gate in inventory.CATALOG.values() if gate}
         )
@@ -84,6 +103,48 @@ class InventoryState:
         self.identity_override = {}
         self.contexts = {}
         self.membership_error = None
+
+    def sync_directory(self):
+        """Publish current native resources/assignments before any request guard runs."""
+        uid = self.subject["user_id"]
+        self.directory.users[uid] = {
+            "id": uid,
+            "name": uid,
+            "domain_id": self.subject["identity_domain_id"],
+            "enabled": True,
+        }
+        self.directory.projects = {p["id"]: {**p, "enabled": True} for p in self.memberships}
+        # Do not add conftest's implicit member grants on top of the explicit graph.
+        self.directory.grants = {}
+        self.directory.assignments = [
+            *self.system_grants,
+            *(
+                {"user": {"id": uid}, "role": {"id": role + "-role"}, "scope": {"project": {"id": p["id"]}}}
+                for p in self.memberships
+                for role in self.roles.get(p["id"], [])
+            ),
+        ]
+
+    def native_access(self, token, project):
+        user, scope = self.identity_override.get(project, (self.subject["user_id"], project))
+        identity = self.directory.users[self.subject["user_id"]]
+        native_project = self.directory.projects[project]
+        role_ids = {
+            row["role"]["id"]
+            for row in self.directory.assignments
+            if row.get("user", {}).get("id") == user and row["scope"] == {"project": {"id": project}}
+        }
+        return SimpleNamespace(
+            user_id=user,
+            username=identity["name"],
+            user_domain_id=identity["domain_id"],
+            project_id=scope,
+            project_name=native_project["name"],
+            project_domain_id=native_project["domain_id"],
+            auth_token=token,
+            role_names=[role["name"] for role in self.directory.roles if role["id"] in role_ids],
+            expires=None,
+        )
 
     def rows(self, project, category):
         self.calls[project, category] += 1
@@ -112,12 +173,11 @@ class InventoryState:
 
     def connection(self, token, project):
         self.events.append(("connection", token, project))
-        user, scope = self.identity_override.get(project, (self.subject["user_id"], project))
         issued = f"issued:{token}:{project}"
 
         def access(session):
             self.events.append(("identity", project))
-            return SimpleNamespace(user_id=user, project_id=scope)
+            return self.native_access(issued, project)
 
         conn = SimpleNamespace(
             close=lambda: self.events.append(("close", project)),
@@ -227,39 +287,58 @@ class InventoryState:
 
 
 @pytest.fixture
-async def inventory_http(monkeypatch):
-    state = InventoryState()
+async def inventory_http(monkeypatch, auth_directory):
+    """Keep native authority guards live; synthesize directory, token and resource I/O."""
+    state = InventoryState(auth_directory)
+    assignments = inventory.keystone._get_admin_ks_client().role_assignments.list
+
+    def observed_assignments(**query):
+        project = query.get("project")
+        if project is not None:
+            state.events.append(("membership", project, state.subject["user_id"]))
+            if project in state.assignment_errors:
+                raise state.assignment_errors[project]
+        rows = assignments(**query)
+        # Native effective assignment lists omit system grants. System authority
+        # must still be established from the complete raw user/group source.
+        if query.get("effective"):
+            rows = [row for row in rows if "system" not in row["scope"]]
+        return rows
+
+    class Token:
+        """Only the native token exchange is synthetic; validation guards still run."""
+
+        def __init__(self, **kwargs):
+            self.token, self.project = kwargs["token"], kwargs.get("project_id", "")
+
+        def get_access(self, session):
+            assert self.token == f"issued:{state.subject['token']}:{self.project}"
+            state.events.append(("token", self.token, self.project))
+            return state.native_access(self.token, self.project)
 
     async def subject(request: Request):
-        request.state.token_info = {**state.subject, "roles": ["member"]}
+        state.sync_directory()
+        request.state.token_info = {
+            **state.subject,
+            "roles": list(state.roles.get(state.subject["project_id"], [])),
+            "is_system_admin": inventory.keystone._is_system_admin(state.subject["user_id"]),
+        }
         return request.state.token_info
 
-    async def access(project, user):
-        assert user == state.subject["user_id"]
-        state.events.append(("membership", project, user))
-        roles = state.roles.get(project, [])
-        if isinstance(roles, Exception):
-            raise roles
-        return {"roles": roles}
-
-    def memberships(token):
+    def memberships(token, domain_id):
         assert token == state.subject["token"]
         state.events.append(("memberships", token))
         if state.membership_error:
             raise state.membership_error
         return state.memberships
 
-    def operator(user):
-        assert user == state.subject["user_id"]
-        return state.subject["is_system_admin"]
-
     old_overrides = dict(app.dependency_overrides)
     app.dependency_overrides[get_token_info] = subject
     monkeypatch.setattr(inventory, "get_settings", lambda: state.settings)
     monkeypatch.setattr(inventory.keystone, "list_projects", memberships)
     monkeypatch.setattr(inventory.keystone, "get_openstack_connection", state.connection)
-    monkeypatch.setattr(inventory.keystone, "_is_system_admin", operator)
-    monkeypatch.setattr(inventory.project_service, "get_project_access", access)
+    monkeypatch.setattr(inventory.keystone.v3, "Token", Token)
+    monkeypatch.setattr(inventory.keystone._get_admin_ks_client().role_assignments, "list", observed_assignments)
     monkeypatch.setattr(inventory.manila, "get_client", state.manila)
     monkeypatch.setattr(inventory.zun, "_get_zun_endpoint", lambda conn: "https://zun.test/v1")
     monkeypatch.setattr(inventory.swift, "_apply_endpoint_override", lambda conn: None)
@@ -273,7 +352,7 @@ async def inventory_http(monkeypatch):
 
     monkeypatch.setattr(inventory, "cached_call", observed_cache)
 
-    # Trusted role graph is replaced above; never let cloud reads use admin credentials.
+    # Native authority reads remain active; cloud inventory must never use admin credentials.
     def forbidden(*args, **kwargs):
         state.mutations.append("administrative connection")
         raise AssertionError("Inventory used administrative cloud connection")
@@ -294,7 +373,7 @@ async def inventory_http(monkeypatch):
 
 
 def assert_contract(data):
-    assert set(data) == {"user_id", "current_project_id", "projects", "totals"}
+    assert set(data) == {"user_id", "domain_id", "current_project_id", "projects", "totals"}
     assert set(data["totals"]) == {"resources", "usage"}
     assert set(data["totals"]["resources"]) == CATEGORIES
     for project in data["projects"]:
@@ -331,6 +410,42 @@ async def test_get_user_dashboard_summary_unauthenticated():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(URL)
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_summary_excludes_foreign_domain_membership_before_resource_reads(inventory_http):
+    state, client = inventory_http
+    state.memberships.append({"id": "foreign-project", "name": "Foreign", "domain_id": "tenant-b"})
+    state.roles["foreign-project"] = ["member"]
+    response = await client.get(URL)
+    assert response.status_code == 200
+    assert {project["project_id"] for project in response.json()["projects"]} == {"p-a", "p-b"}
+    assert response.json()["domain_id"] == "tenant-a"
+    assert not any(event[0] == "connection" and event[2] == "foreign-project" for event in state.events)
+
+
+@pytest.mark.asyncio
+async def test_summary_uses_foreign_working_domain_without_changing_account_identity(inventory_http):
+    state, client = inventory_http
+    state.subject["identity_domain_id"] = "tenant-b"
+    state.subject["identity_domain_name"] = "Tenant B"
+    state.data["p-a", "instances"] = [{"id": "vm", "name": "VM", "project_id": "p-a", "status": "ACTIVE"}]
+    response = await client.get(URL)
+    assert response.status_code == 200
+    assert response.json()["domain_id"] == "tenant-a"
+    project = next(row for row in response.json()["projects"] if row["project_id"] == "p-a")
+    assert project["resources"]["instances"]["items"][0]["id"] == "vm"
+    assert all(conn._afterglow_identity_domain_id == "tenant-b" for conn in state.connections)
+    assert all(conn._afterglow_domain_id == "tenant-a" for conn in state.connections)
+
+
+@pytest.mark.asyncio
+async def test_summary_requires_authenticated_domain(inventory_http):
+    state, client = inventory_http
+    state.subject["domain_id"] = ""
+    response = await client.get(URL)
+    assert response.status_code == 403
+    assert not state.calls
 
 
 @pytest.mark.asyncio
@@ -470,21 +585,32 @@ async def test_summary_refuses_rescoped_identity_mismatch(inventory_http, mismat
 @pytest.mark.asyncio
 async def test_summary_fresh_membership_before_cache_and_system_admin_not_global(inventory_http):
     state, client = inventory_http
-    state.subject["is_system_admin"] = True
-    state.memberships.append({"id": "not-member", "name": "Hidden"})
+    state.system_grants.append(
+        {"user": {"id": "user-a"}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}}
+    )
+    state.memberships.append({"id": "not-member", "name": "Hidden", "domain_id": "tenant-a"})
     state.data["p-a", "networks"] = [{"id": "network", "project_id": "p-a"}]
     first = await client.get(URL + "?cache=true")
     assert first.status_code == 200
+    assert state.connections[0]._afterglow_is_system_admin is True
+    assert first.json()["projects"][0]["resources"]["networks"]["count"] == 1
+    # A member with native packages_read and no namespace has an empty inventory,
+    # not a denial or a failed administrator-context validation.
+    assert first.json()["projects"][0]["resources"]["packages"] == {"state": "ready", "count": 0, "items": []}
     assert first.json()["projects"][-1]["resources"]["networks"]["state"] == "denied"
-    assert first.json()["projects"][0]["resources"]["packages"]["state"] == "denied"
+    # Missing membership denies packages; the source administrator flag alone does not.
+    assert first.json()["projects"][-1]["resources"]["packages"]["state"] == "denied"
     state.roles["p-a"] = []
     second = await client.get(URL + "?cache=true")
     assert second.status_code == 200
     assert second.json()["projects"][0]["resources"]["networks"]["state"] == "denied"
+    assert second.json()["projects"][0]["resources"]["packages"]["state"] == "denied"
     assert state.calls["p-a", "networks"] == 1
     assert not any(project == "not-member" for project, _ in state.calls)
-    state.memberships = [{"id": "p-b", "name": "Beta"}]
+    assert not any(event[:2] == ("package", "not-member") for event in state.events)
+    state.memberships = [{"id": "p-b", "name": "Beta", "domain_id": "tenant-a"}]
     third = await client.get(URL + "?cache=true")
+    assert third.status_code == 200
     assert [p["project_id"] for p in third.json()["projects"]] == ["p-b"]
     assert third.json()["current_project_id"] == "p-a"
 
@@ -898,7 +1024,7 @@ async def test_summary_membership_provider_outage_cannot_serve_warm_inventory(in
     first = await client.get(URL + "?cache=true")
     assert first.status_code == 200
     reads = sum(state.calls.values())
-    state.roles["p-a"] = HTTPException(503, "private identity outage")
+    state.assignment_errors["p-a"] = HTTPException(503, "private identity outage")
     second = await client.get(URL + "?cache=true")
     assert second.status_code == 200
     assert all(

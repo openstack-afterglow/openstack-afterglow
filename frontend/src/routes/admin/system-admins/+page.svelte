@@ -12,7 +12,7 @@
 	import SystemAdminTable from '$lib/components/admin/system-admins/SystemAdminTable.svelte';
 	import SystemAdminGrantModal from '$lib/components/admin/system-admins/SystemAdminGrantModal.svelte';
 	import SecurityPolicyBanner from '$lib/components/admin/system-admins/SecurityPolicyBanner.svelte';
-	import MigrateModal from '$lib/components/admin/system-admins/MigrateModal.svelte';
+	import type { AdminSecurityPolicy } from '$lib/types/adminSecurityPolicy';
 	import { t } from '$lib/i18n/ns/admin-identity';
 
 	interface SystemAdmin {
@@ -22,14 +22,8 @@
 		enabled: boolean;
 	}
 
-	interface SecurityPolicy {
-		legacy_compat: boolean;
-		system_admin_count: number;
-		admin_project_member_count: number;
-	}
-
 	let admins = $state<SystemAdmin[]>([]);
-	let policy = $state<SecurityPolicy | null>(null);
+	let policy = $state<AdminSecurityPolicy | null>(null);
 	let loading = $state(true);
 	let refreshing = $state(false);
 	let policyLoading = $state(true);
@@ -37,7 +31,6 @@
 	let policyError = $state('');
 	let loadGeneration = 0;
 	let showGrant = $state(false);
-	let showMigrate = $state(false);
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
@@ -52,7 +45,7 @@
 		adminsError = '';
 		policyError = '';
 		const adminsPromise = api.get<SystemAdmin[]>('/api/v1/admin/identity/system-roles', requestToken, requestProjectId);
-		const policyPromise = api.get<SecurityPolicy>('/api/v1/admin/identity/security-policy', requestToken, requestProjectId)
+		const policyPromise = api.get<AdminSecurityPolicy>('/api/v1/admin/identity/security-policy', requestToken, requestProjectId)
 			.then((value) => {
 				if (generation === loadGeneration && token === requestToken && projectId === requestProjectId) policy = value;
 				if (generation === loadGeneration && token === requestToken && projectId === requestProjectId) policyError = '';
@@ -121,7 +114,7 @@
 			{:else if policyError}
 				<Alert tone="danger" class="mb-3" title={t('systemPage.policyFailed')}>{policyError}</Alert>
 			{:else if policy}
-				<SecurityPolicyBanner {policy} onMigrate={() => (showMigrate = true)} />
+				<SecurityPolicyBanner {policy} />
 			{/if}
 
 			{#if adminsError}
@@ -139,12 +132,4 @@
 
 {#if showGrant}
 	<SystemAdminGrantModal onClose={() => (showGrant = false)} onGranted={load} />
-{/if}
-
-{#if showMigrate && policy}
-	<MigrateModal
-		adminProjectMemberCount={policy.admin_project_member_count}
-		onClose={() => (showMigrate = false)}
-		onMigrated={load}
-	/>
 {/if}

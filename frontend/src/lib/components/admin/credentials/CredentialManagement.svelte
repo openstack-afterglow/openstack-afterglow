@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { get } from 'svelte/store';
   import { auth, authReady, projectSwitching } from '$lib/stores/auth';
   import { createAdminCredentialsController } from '$lib/stores/adminCredentialsController.svelte';
@@ -16,15 +16,36 @@
   import Modal from '$lib/components/ui/Modal.svelte';
   import Card from '$lib/components/ui/Card.svelte';
   import { t } from '$lib/i18n/ns/admin-identity';
-  let { kind }: { kind: 'application' | 'user' } = $props();
-  // Each credential route mounts its own instance with a fixed kind; the controller owns that kind for its lifetime.
+  import { t as dt } from '$lib/i18n/ns/domain-admin';
+  import { intlLocale } from '$lib/i18n/runtime.svelte';
+  let { kind, domainId, domainName }: { kind: 'application' | 'user'; domainId: string; domainName: string } = $props();
+  // DomainScope remounts this instance; also fence direct prop changes defensively.
   // svelte-ignore state_referenced_locally
-  const ctrl = createAdminCredentialsController(kind);
+  const ctrl = createAdminCredentialsController(kind, domainId);
   const componentId = $props.id();
   const modalTitleId = `${componentId}-credential-title`;
-  let search = $state(''), userSearch = $state('');
+  let search = $state(''), userSearch = $state(''), projectFilter = $state(''), typeFilter = $state(''), expiryFilter = $state('');
+  $effect(() => { const id = domainId; untrack(() => ctrl.setScope(id)); search = ''; userSearch = ''; projectFilter = ''; typeFilter = ''; expiryFilter = ''; });
   const title = $derived(t(kind === 'application' ? 'credentials.applicationTitle' : 'credentials.userTitle'));
-  const filtered = $derived(ctrl.items.filter(item => Object.values(item).some(value => typeof value === 'string' && value.toLocaleLowerCase().includes(search.toLocaleLowerCase()))));
+  const expiryFormatter = $derived(new Intl.DateTimeFormat(intlLocale(), { dateStyle: 'medium', timeStyle: 'short' }));
+  function expiryLabel(value: string) {
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? expiryFormatter.format(timestamp) : value;
+  }
+  const projects = $derived([...new Set(ctrl.items.flatMap(item => item.project_id ? [item.project_id] : []))].sort());
+  const types = $derived([...new Set(ctrl.items.flatMap(item => 'type' in item ? [item.type] : []))].sort());
+  const hasFilters = $derived(Boolean(search || projectFilter || typeFilter || expiryFilter));
+  const filtered = $derived(ctrl.items.filter(item => {
+    if (projectFilter && item.project_id !== projectFilter) return false;
+    if (typeFilter && (!('type' in item) || item.type !== typeFilter)) return false;
+    if (expiryFilter && 'expires_at' in item) {
+      const expires = item.expires_at === null ? null : Date.parse(item.expires_at);
+      if (expiryFilter === 'never' && expires !== null) return false;
+      if (expiryFilter === 'expired' && (expires === null || !(expires <= Date.now()))) return false;
+      if (expiryFilter === 'active' && expires !== null && !(expires > Date.now())) return false;
+    }
+    return [item.id, item.user_id, item.project_id, 'name' in item ? item.name : item.type, 'description' in item ? item.description : ''].some(value => value?.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
+  }));
   const filteredUsers = $derived(ctrl.users.filter(user => user.id === ctrl.selectedUser || `${user.name} ${user.id}`.toLocaleLowerCase().includes(userSearch.toLocaleLowerCase())));
   const modalOpen = $derived(ctrl.mode !== null);
   const modalTitle = $derived(ctrl.mode === 'issued' ? t('credentials.issued') : ctrl.mode === 'delete' ? t('credentials.deleteTitle') : ctrl.mode === 'edit' ? t('credentials.editTitle') : ctrl.mode === 'create' ? t('credentials.createTitle') : t('credentials.detailTitle'));
@@ -39,9 +60,9 @@
 </script>
 
 <PageShell>
-  <PageHeader title={title} breadcrumb={t('credentials.identity')}>
+  <PageHeader title={title} breadcrumb={t('credentials.identity')} subtitle={`${domainName} · ${domainId}`}>
     {#snippet actions()}
-      <Button variant="primary" disabled={!ctrl.allowed || (kind === 'application' && ctrl.selectedUser !== $auth.userId)} onclick={() => ctrl.open('create')}>{t('actions.create')}</Button>
+      <Button variant="primary" disabled={!ctrl.canCreate} onclick={() => ctrl.open('create')}>{t('actions.create')}</Button>
       <Button variant="secondary" disabled={!ctrl.allowed || ctrl.loading} onclick={ctrl.load}>{t('credentials.refresh')}</Button>
     {/snippet}
   </PageHeader>
@@ -50,21 +71,39 @@
     <TextInput type="search" bind:value={search} ariaLabel={t('credentials.search')} placeholder={t('credentials.search')} />
     <TextInput type="search" bind:value={userSearch} ariaLabel={t('credentials.userSearch')} placeholder={t('credentials.userSearch')} />
     <SelectInput value={ctrl.selectedUser} ariaLabel={t('credentials.user')} onchange={(event) => ctrl.selectUser((event.currentTarget as HTMLSelectElement).value)}>
-      {#if kind === 'user'}<option value="">{t('credentials.allUsers')}</option>{/if}
-      <option value={$auth.userId ?? ''}>{t('credentials.currentUser')} · {$auth.username}</option>
-      {#each filteredUsers.filter(user => user.id !== $auth.userId) as user (user.id)}<option value={user.id}>{user.name} · {user.id}</option>{/each}
+      <option value="">{kind === 'user' ? t('credentials.allUsers') : dt('credentials.chooseUser')}</option>
+      {#each filteredUsers as user (user.id)}<option value={user.id}>{user.name} · {user.id}</option>{/each}
     </SelectInput>
+    <SelectInput bind:value={projectFilter} ariaLabel={t('credentials.project')}>
+      <option value="">{dt('credentials.allProjects')}</option>
+      {#each projects as project}<option value={project}>{project}</option>{/each}
+    </SelectInput>
+    {#if kind === 'user'}
+      <SelectInput bind:value={typeFilter} ariaLabel={t('credentials.type')}>
+        <option value="">{dt('credentials.allTypes')}</option>
+        {#each types as type}<option value={type}>{type}</option>{/each}
+      </SelectInput>
+    {:else}
+      <SelectInput bind:value={expiryFilter} ariaLabel={t('credentials.expiry')}>
+        <option value="">{dt('credentials.allExpiries')}</option>
+        <option value="expired">{dt('credentials.expired')}</option>
+        <option value="active">{dt('credentials.active')}</option>
+        <option value="never">{dt('credentials.neverExpires')}</option>
+      </SelectInput>
+    {/if}
   </ResourceToolbar>
   {#if ctrl.directoryLoading}<p class="text-sm text-ink-2 mb-3" role="status">{t('credentials.directoryLoading')}</p>{/if}
   {#if ctrl.directoryError}<Alert class="mb-3">{ctrl.directoryError}<Button variant="ghost" size="sm" onclick={ctrl.loadUsers}>{t('credentials.retryDirectory')}</Button></Alert>{/if}
   {#if ctrl.error}<Alert class="mb-4">{ctrl.error}</Alert>{/if}
   {#if ctrl.loading}<p role="status" class="text-sm text-ink-2">{t('state.loading')}</p>
-  {:else if !ctrl.error && ctrl.allowed && filtered.length === 0}<p class="text-sm text-ink-2 py-8 text-center">{search ? t('credentials.noMatches') : t('credentials.empty')}</p>
+  {:else if ctrl.allowed && !ctrl.error && kind === 'application' && !ctrl.selectedUser && !ctrl.directoryLoading && !ctrl.directoryError}<p class="text-sm text-ink-2 py-8 text-center">{dt('credentials.chooseUser')}</p>
+  {:else if !ctrl.error && !ctrl.directoryLoading && !ctrl.directoryError && ctrl.allowed && filtered.length === 0}<p class="text-sm text-ink-2 py-8 text-center">{hasFilters ? t('credentials.noMatches') : t('credentials.empty')}</p>
   {:else if ctrl.allowed && filtered.length}
     <TableShell><table>
-      <thead><tr><th>{t(kind === 'application' ? 'form.name' : 'credentials.type')}</th><th>{t('credentials.id')}</th><th>{t('credentials.project')}</th><th>{t('credentials.user')}</th><th>{t('credentials.actions')}</th></tr></thead>
+      <thead><tr><th>{t(kind === 'application' ? 'form.name' : 'credentials.type')}</th><th>{t('credentials.id')}</th><th>{t('credentials.project')}</th><th>{t('credentials.user')}</th>{#if kind === 'application'}<th>{t('credentials.expiry')}</th>{/if}<th>{t('credentials.actions')}</th></tr></thead>
       <tbody>{#each filtered as item (item.id)}<tr>
         <td>{'name' in item ? item.name : item.type}</td><td class="font-mono">{item.id}</td><td>{item.project_id ?? t('credentials.none')}</td><td>{item.user_id}</td>
+        {#if 'expires_at' in item}<td>{#if item.expires_at}<time datetime={item.expires_at} title={item.expires_at}>{expiryLabel(item.expires_at)}</time>{:else}{dt('credentials.neverExpires')}{/if}</td>{/if}
         <td><div class="flex gap-2"><Button variant="ghost" size="sm" onclick={() => ctrl.open('detail', item)}>{t('credentials.details')}</Button><Button variant="danger" size="sm" onclick={() => ctrl.open('delete', item)}>{t('actions.delete')}</Button></div></td>
       </tr>{/each}</tbody>
     </table></TableShell>
@@ -93,7 +132,7 @@
           {#each ctrl.context?.roles ?? [] as role (role.id)}<label class="flex items-center gap-2 text-sm min-h-11"><input type="checkbox" value={role.id} bind:group={ctrl.draft.role_ids} disabled={ctrl.busy} />{role.name || role.id}</label>{/each}
         </fieldset>
       {:else}
-        <Field label={t('credentials.user')}><TextInput bind:value={ctrl.draft.user_id} ariaLabel={t('credentials.user')} disabled={ctrl.busy} /></Field>
+        <Field label={t('credentials.user')}><SelectInput bind:value={ctrl.draft.user_id} ariaLabel={t('credentials.user')} disabled={ctrl.busy}><option value="">{dt('credentials.chooseUser')}</option>{#each ctrl.users as user (user.id)}<option value={user.id}>{user.name} · {user.id}</option>{/each}</SelectInput></Field>
         <Field label={t('credentials.project')} help={t('credentials.projectHelp')}><TextInput bind:value={ctrl.draft.project_id} ariaLabel={t('credentials.project')} disabled={ctrl.busy} /></Field>
         <Field label={t('credentials.type')} help={t('credentials.typeHelp')}><TextInput bind:value={ctrl.draft.type} ariaLabel={t('credentials.type')} disabled={ctrl.busy} /></Field>
         <Field label={t('credentials.blob')} help={t('credentials.blobHelp')}><TextareaInput rows={8} bind:value={ctrl.draft.blob} ariaLabel={t('credentials.blob')} disabled={ctrl.busy} /></Field>
@@ -107,7 +146,7 @@
           <div><dt class="text-ink-2">{t('form.name')}</dt><dd>{ctrl.detail.name}</dd></div>
           <div><dt class="text-ink-2">{t('form.description')}</dt><dd>{ctrl.detail.description}</dd></div>
           <div><dt class="text-ink-2">{t('credentials.roles')}</dt><dd>{ctrl.detail.roles.map(role => role.name || role.id).join(', ')}</dd></div>
-          <div><dt class="text-ink-2">{t('credentials.expiry')}</dt><dd>{ctrl.detail.expires_at ?? t('credentials.none')}</dd></div>
+          <div><dt class="text-ink-2">{t('credentials.expiry')}</dt><dd>{#if ctrl.detail.expires_at}<time datetime={ctrl.detail.expires_at} title={ctrl.detail.expires_at}>{expiryLabel(ctrl.detail.expires_at)}</time>{:else}{dt('credentials.neverExpires')}{/if}</dd></div>
           <div><dt class="text-ink-2">{t('credentials.restricted')}</dt><dd>{ctrl.detail.unrestricted ? t('credentials.no') : t('credentials.yes')}</dd></div>
         {:else}
           <div><dt class="text-ink-2">{t('credentials.type')}</dt><dd>{ctrl.detail.type}</dd></div>

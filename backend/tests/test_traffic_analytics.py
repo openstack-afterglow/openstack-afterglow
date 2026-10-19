@@ -12,11 +12,12 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
 
 from app.api.common import traffic_analytics as api
-from app.api.deps import get_token_info
+from app.api.deps import get_token_info, require_admin
 from app.middleware import traffic_analytics as middleware
 from app.models.traffic_analytics import TrafficAnalyticsSettings, TrafficEvent
 from app.services import traffic_analytics as service
 from app.services.traffic_geo import CountryLookup
+from tests.admin_gate import synthetic_verified_admin
 
 
 @pytest.fixture
@@ -175,6 +176,9 @@ async def test_middleware_streams_messages_unchanged_and_only_reads_on_demand(se
         return True
 
     monkeypatch.setattr(middleware, "record_event", record)
+    domain_record = AsyncMock(return_value=True)
+    monkeypatch.setattr(middleware, "record_domain_request", domain_record)
+
     incoming = [
         {"type": "http.request", "body": b"abc", "more_body": True},
         {"type": "http.request", "body": b"defg", "more_body": False},
@@ -191,12 +195,15 @@ async def test_middleware_streams_messages_unchanged_and_only_reads_on_demand(se
         sent.append(message)
 
     async def app(scope, receive, send):
+        scope["state"] = {"token_info": {"user_id": "selected-user", "domain_id": "tenant-a"}}
         assert await receive() is incoming[0]
         assert await receive() is incoming[1]
         for message in output:
             await send(message)
 
-    await middleware.TrafficAnalyticsMiddleware(app)(asgi_scope(), receive, send)
+    scope = asgi_scope()
+    scope["extensions"] = {"afterglow.analytics.original_peer": ("8.8.8.8", 1234)}
+    await middleware.TrafficAnalyticsMiddleware(app)(scope, receive, send)
     assert all(left is right for left, right in zip(sent, output))
     assert receive.await_count == 2
     observation, source = recorded[0]
@@ -204,11 +211,21 @@ async def test_middleware_streams_messages_unchanged_and_only_reads_on_demand(se
     assert observation.route == "/api/compute"
     assert "NEVER-RETAIN" not in observation.model_dump_json()
     assert "private-id" not in observation.model_dump_json()
+    assert observation.peer_ip == "8.8.8.8" and observation.peer_verified
+    domain_record.assert_awaited_once()
+    domain_call = domain_record.call_args
+    assert domain_call.args[0].state.token_info == {"user_id": "selected-user", "domain_id": "tenant-a"}
+    assert domain_call.kwargs == {
+        "status": 201,
+        "route_template": "/api/v1/servers/{server_id}",
+        "at": observation.at,
+    }
 
 
 async def test_middleware_does_not_consume_unread_request_and_does_not_mask_error(settings, monkeypatch):
     record = AsyncMock(return_value=True)
     monkeypatch.setattr(middleware, "record_event", record)
+
     receive = AsyncMock()
 
     async def broken(scope, receive, send):
@@ -268,6 +285,7 @@ async def test_admin_aggregate_requires_verified_system_admin(settings, monkeypa
     app = FastAPI()
     app.include_router(api.admin_router, prefix="/traffic")
     app.dependency_overrides[get_token_info] = lambda: {"is_system_admin": False, "roles": ["admin"]}
+    app.dependency_overrides[require_admin] = synthetic_verified_admin
     observed = AsyncMock(return_value={})
     monkeypatch.setattr(api, "snapshot", observed)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -297,6 +315,7 @@ async def test_snapshot_http_exposes_configured_or_null_site_country(settings, m
     app = FastAPI()
     app.include_router(api.admin_router, prefix="/traffic")
     app.dependency_overrides[get_token_info] = lambda: {"is_system_admin": True}
+    app.dependency_overrides[require_admin] = synthetic_verified_admin
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(f"/traffic?range=24h&source={source}")
     assert response.status_code == 200
@@ -426,3 +445,15 @@ async def test_sources_use_independent_exact_proxy_policies(settings, monkeypatc
     assert redis.eval.call_args.args[-1] == "internal"
     # The same UUID belongs to independent source dedupe namespaces.
     assert ":frontend:dedupe:" in repr(redis.eval.call_args.args)
+
+
+async def test_backend_proxy_trust_ignores_headers_unless_peer_trusted(settings, monkeypatch):
+    from starlette.requests import Request
+
+    from app import rate_limit
+
+    monkeypatch.setattr("app.config.get_settings", lambda: settings)
+    scope = asgi_scope(headers=[(b"x-forwarded-for", b"9.9.9.9"), (b"cf-ipcountry", b"KR")])
+    assert rate_limit._get_real_ip(Request(scope)) == "8.8.8.8"
+    settings.trusted_proxies = "8.8.8.0/24"
+    assert rate_limit._get_real_ip(Request(scope)) == "9.9.9.9"

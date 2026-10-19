@@ -183,7 +183,7 @@ GitHub Actions 워크플로 `.github/workflows/test.yml`은 `.github/workflows/d
 
 - `version-check`: architecture freshness, 태그/버전 정렬, pure Node target-runner 오케스트레이션(`test:orchestration`: workflow 계약과 `scripts/ci/*` 단위 테스트 포함) 확인. 테스트 잡의 선행 조건이 아니며, 실제 자격 증명을 쓰는 `test-live`만 이 잡을 기다린다.
 - `test-backend`: ruff와 backend unit. `test:unit:backend`는 `pytest-xdist -n 4 --dist worksteal`로 4 vCPU runner에 맞춰 실행한다(`-n auto` 금지). unit/contract 계층은 `tests/_network_guard.py` network guard(`tests/conftest.py`가 autouse로 등록)로 non-loopback connect, UDP `sendto`, localhost 이외 호스트 이름의 `socket.getaddrinfo`(DNS 조회)가 차단된다. 차단 기록에는 시도한 thread 이름이 붙는다. 앱 코드가 예외를 삼켜도 teardown이 테스트를 실패시키며, `tests/test_network_guard.py`가 plugin 모듈만 올린 별도 pytest 프로세스로 이를 검증한다. 설정 파일(`afterglow.conf`) 로딩은 격리하지 않는다.
-- `test-cloud-shell`: Cloud Shell image build와 bootstrap smoke (`test:cloud-shell:image`)
+- Cloud Shell image build/CLI/PTY bootstrap smoke는 독립 [openstack-client](https://github.com/openstack-afterglow/openstack-client) CI가 소유한다. Afterglow의 `test:cloud-shell`은 설정·인가·세션·protocol 소비자 동작만 검증한다.
 - `test-contract`: 추출 서비스 소비자 계약과 uv-backed Kolla helper 계약
 - `test-functional`: 실제 MariaDB/PostgreSQL/Redis를 쓰는 local functional (`test:functional -- --no-start`). 경로와 무관하게 항상 실행한다. service health check의 interval/timeout/retries는 `docker-compose.dev.yml` `test` profile과 같은 2s / 5s / 20이다. CI service는 tmpfs가 아니므로 CI에만 start-period 30s와 start-interval 2s를 더한다.
 - `test-frontend`: SvelteKit unit을 `shard: [1, 2]` matrix로 나눠 실행한다.
@@ -191,6 +191,6 @@ GitHub Actions 워크플로 `.github/workflows/test.yml`은 `.github/workflows/d
   - `scripts/ci/verify-vitest-shard.js`가 JSON 보고서로 각 shard가 Vitest 분할이 배정하는 정확한 파일 수(247개면 124/123)를 실행했고 실패가 없는지 검증한다.
   - `run-with-file-log` node test는 shard 1에서만 실행한다.
 - `detect-live`: `workflow_dispatch`에서 `run_live_openstack=true`로 명시한 경우에만 Keystone 토큰 POST 및 network endpoint 도달성 검사
-- `test-live`: 수동 opt-in과 사전조건을 모두 충족한 경우에만 실제 OpenStack scenario (`test:live`) 실행; push/PR 기본 CI에서는 제외. `version-check`와 모든 테스트 잡(`test-cloud-shell` 포함)이 통과한 뒤에만 시작한다.
+- `test-live`: 수동 opt-in과 사전조건을 모두 충족한 경우에만 실제 OpenStack scenario (`test:live`) 실행; push/PR 기본 CI에서는 제외. `version-check`와 Afterglow의 모든 테스트 잡이 통과한 뒤에만 시작한다. Cloud Shell live 실행은 독립 image의 게시와 pull 권한도 필요하다.
 
 `docker-build.yml`의 PR 전용 `pr-dedup` 잡이 `test-pr`(`Layered Tests (PR)`)를 건너뛰는 경우는 하나뿐이다. 같은 저장소 `dev` 브랜치에서 온 PR이고, merge tree가 head tree와 같으며, 그 head SHA의 `docker-build.yml` push 실행이 존재해야 한다(상태 무관). `test-pr`은 `github.event_name == 'pull_request'`에서만 실행되고 secrets를 받지 않는다. `changes`는 push/dispatch에서 `test`, PR에서 `test-pr` 결과만 본다. 같은 tree는 그 push 실행이 테스트한다. `paths-ignore`만 바꾼 dev push는 push 실행이 없으므로 PR이 테스트한다. fork·dependabot·diverged PR과 판단 오류는 항상 테스트한다. 판단 규칙은 `scripts/ci/pr-dedup.js`와 그 단위·실제 git 테스트(가짜 `gh`)가 소유한다. 건너뛴 PR을 병합하기 전에는 dedup notice의 실행 링크에서 그 push 실행이 green인지 확인한다. 이미지 target 감지, 발행 revision 기준, manifest 검증, stale re-run 가드는 root `ARCHITECTURE.md`의 `CI와 이미지 발행`을 참고한다.

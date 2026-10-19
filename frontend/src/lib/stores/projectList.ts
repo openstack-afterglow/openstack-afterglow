@@ -1,7 +1,7 @@
 import { browser } from '$app/environment';
 import { api } from '$lib/api/client';
 import { auth } from '$lib/stores/auth';
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 
 export interface Project {
 	id: string;
@@ -18,6 +18,7 @@ interface ProjectListState {
 interface CachedProjectList {
 	data: Project[];
 	ts: number;
+	domainId?: string | null;
 }
 
 export const BROWSER_TTL_MS = 5 * 60 * 1000;
@@ -46,6 +47,7 @@ function readCache(userId: string): CachedProjectList | null {
 		if (!raw) return null;
 		const cached = JSON.parse(raw) as Partial<CachedProjectList>;
 		if (!Array.isArray(cached.data) || typeof cached.ts !== 'number') return null;
+		if ((cached.domainId ?? null) !== get(auth).domainId) return null;
 		return cached as CachedProjectList;
 	} catch {
 		return null;
@@ -55,7 +57,7 @@ function readCache(userId: string): CachedProjectList | null {
 function writeCache(userId: string, projects: Project[]): void {
 	if (!browser) return;
 	try {
-		localStorage.setItem(storageKey(userId), JSON.stringify({ data: projects, ts: Date.now() }));
+		localStorage.setItem(storageKey(userId), JSON.stringify({ data: projects, ts: Date.now(), domainId: get(auth).domainId }));
 	} catch {
 		// localStorage가 비활성화되거나 용량을 초과해도 인메모리 목록은 계속 사용한다.
 	}
@@ -122,11 +124,14 @@ function reset(userId?: string): void {
 
 if (browser) {
 	let previousUserId: string | null = null;
+	let previousOwner = '';
 	auth.subscribe(($auth) => {
-		if (!$auth.token || $auth.userId !== previousUserId) {
+		const owner = JSON.stringify([$auth.userId, $auth.identityDomainId ?? null, $auth.domainId, $auth.sessionId ?? null]);
+		if (!$auth.token || owner !== previousOwner) {
 			reset(previousUserId ?? undefined);
 		}
 		previousUserId = $auth.userId;
+		previousOwner = owner;
 	});
 }
 

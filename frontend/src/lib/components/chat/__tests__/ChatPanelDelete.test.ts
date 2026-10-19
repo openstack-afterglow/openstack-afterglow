@@ -69,7 +69,7 @@ beforeEach(() => {
 		availableProjects: [],
 		roles: ['member'],
 		isSystemAdmin: false,
-		federated: false
+		federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false
 	});
 
 	vi.stubGlobal('matchMedia', (query: string) => ({

@@ -32,7 +32,7 @@ describe('VM create real API-client scope races', () => {
 		api.clearPrefetchCache();
 		resetWizard();
 		betaFeatures.set(DEFAULT_BETA_FEATURES);
-		auth.set({ token: 'same-token', refreshToken: null, accessExpiresAt: null, userId: 'user', username: 'user', projectId: 'project-a', projectName: 'Project A', availableProjects: [], roles: [], isSystemAdmin: false, federated: false });
+		auth.set({ token: 'same-token', refreshToken: null, accessExpiresAt: null, userId: 'user', username: 'user', projectId: 'project-a', projectName: 'Project A', availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false });
 		siteConfig.update(config => ({ ...config, runtime: { ...config.runtime, api_base: 'https://afterglow.test' }, services: { ...config.services, manila: false } }));
 	});
 

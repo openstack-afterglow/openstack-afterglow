@@ -22,8 +22,25 @@ KEY = "native-once-only-key"
 
 
 @pytest.fixture
-def transfer_provider(monkeypatch):
+def transfer_provider(monkeypatch, auth_directory, mock_conn):
     """Native-shaped provider boundary; endpoint/service/SDK wrappers stay real."""
+    auth_directory.domains["destination-domain"] = {
+        "id": "destination-domain",
+        "name": "Destination",
+        "enabled": True,
+    }
+    auth_directory.users["test-user-123"] = {
+        "id": "test-user-123",
+        "name": "recipient",
+        "domain_id": "destination-domain",
+        "enabled": True,
+    }
+    auth_directory.projects[DESTINATION]["domain_id"] = "destination-domain"
+    mock_conn._afterglow_domain_id = "destination-domain"
+    mock_conn._afterglow_identity_domain_id = "destination-domain"
+    monkeypatch.setitem(
+        app.dependency_overrides, get_token_info, lambda: make_token_info(domain_id="destination-domain")
+    )
     state = {
         "owner": SOURCE,
         "status": "awaiting-transfer",
@@ -34,7 +51,12 @@ def transfer_provider(monkeypatch):
     }
     caller = MagicMock()
     operator = MagicMock()
-    caller.session.auth.get_access.return_value = SimpleNamespace(user_id="test-user-123", project_id=DESTINATION)
+    caller.session.auth.get_access.return_value = SimpleNamespace(
+        user_id="test-user-123",
+        project_id=DESTINATION,
+        user_domain_id="destination-domain",
+        project_domain_id="destination-domain",
+    )
     caller.session.get_token.return_value = "genuinely-destination-scoped-token"
     caller.block_storage.connect_retries = 1
     caller.block_storage.status_code_retries = 1
@@ -291,7 +313,9 @@ async def test_create_issues_native_key_once_and_invalidates_source(client, tran
 @pytest.mark.asyncio
 @pytest.mark.parametrize("admin", [False, True])
 async def test_create_foreign_owner_is_refused_even_for_system_admin(client, transfer_provider, admin):
-    app.dependency_overrides[get_token_info] = lambda: make_token_info(is_system_admin=admin)
+    app.dependency_overrides[get_token_info] = lambda: make_token_info(
+        is_system_admin=admin, domain_id="destination-domain"
+    )
     response = await client.post(f"/api/v1/volumes/{VOLUME_ID}/transfer", json={})
     assert response.status_code == 404
     transfer_provider.caller.block_storage.create_transfer.assert_not_called()
@@ -314,7 +338,9 @@ async def test_own_list_static_route_is_project_scoped_and_secret_free(client, t
 
 @pytest.mark.asyncio
 async def test_own_list_refuses_provider_cross_project_leak_even_for_admin(client, transfer_provider):
-    app.dependency_overrides[get_token_info] = lambda: make_token_info(is_system_admin=True)
+    app.dependency_overrides[get_token_info] = lambda: make_token_info(
+        is_system_admin=True, domain_id="destination-domain"
+    )
     response = await client.get("/api/v1/volumes/transfers")
     assert response.status_code == 502
     assert SOURCE not in response.text and KEY not in response.text
@@ -331,7 +357,7 @@ async def test_own_list_provider_failure_does_not_return_empty_success(client, t
 @pytest.mark.asyncio
 @pytest.mark.parametrize("operation", ["create", "accept", "cancel"])
 async def test_transfer_mutations_refuse_reader_before_provider_io(client, transfer_provider, operation):
-    app.dependency_overrides[get_token_info] = lambda: make_token_info(roles=["reader"])
+    app.dependency_overrides[get_token_info] = lambda: make_token_info(roles=["reader"], domain_id="destination-domain")
     if operation == "create":
         response = await client.post(f"/api/v1/volumes/{VOLUME_ID}/transfer", json={})
     elif operation == "accept":
@@ -375,7 +401,7 @@ async def test_accept_rescopes_admin_caller_to_selected_destination_and_confirms
     client, transfer_provider, mock_conn
 ):
     p = transfer_provider
-    info = make_token_info(is_system_admin=True)
+    info = make_token_info(is_system_admin=True, domain_id="destination-domain")
     info["connection_project_id"] = "admin-home-project"
     app.dependency_overrides[get_token_info] = lambda: info
     mock_conn._afterglow_authenticated_project_id = "admin-home-project"
@@ -491,7 +517,9 @@ async def test_cancel_owned_pending_native_transfer_and_invalidates_source(clien
 @pytest.mark.asyncio
 @pytest.mark.parametrize("admin", [False, True])
 async def test_cancel_foreign_source_refuses_even_system_admin(client, transfer_provider, admin):
-    app.dependency_overrides[get_token_info] = lambda: make_token_info(is_system_admin=admin)
+    app.dependency_overrides[get_token_info] = lambda: make_token_info(
+        is_system_admin=admin, domain_id="destination-domain"
+    )
     response = await client.delete(f"/api/v1/volumes/transfer/{TRANSFER_ID}")
     assert response.status_code == 404
     transfer_provider.caller.block_storage.delete_transfer.assert_not_called()

@@ -191,7 +191,7 @@ def count_containers_all_projects(
     from app.services import keystone
 
     try:
-        projects = keystone.list_projects(admin_token)
+        projects = keystone.list_system_projects(admin_token)
     except Exception:
         _logger.warning("admin 프로젝트 목록 조회 실패", exc_info=True)
         return 0

@@ -50,7 +50,7 @@ function makeState(overrides: Partial<AuthState>): AuthState {
 		availableProjects: [],
 		roles: [],
 		isSystemAdmin: false,
-		federated: false,
+		federated: false, domainId: 'domain-1', identityDomainId: 'domain-1', domainName: 'Domain', isDomainManager: false,
 		...overrides,
 	};
 }

@@ -4,6 +4,7 @@ import asyncio
 import itertools
 import logging
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Literal
 
@@ -32,6 +33,7 @@ from app.services import (
     instance_recovery,
     library_builder,
     manila,
+    native_telemetry,
     neutron,
     nova,
     nova_hosts,
@@ -512,7 +514,9 @@ def _collect_network_block(conn) -> dict:
 
 @router.get("/monitoring/summary", dependencies=[Depends(require_admin)])
 async def get_monitoring_summary(
-    conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)
+    response: Response,
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    cm: CacheMode = Depends(cache_mode),
 ):
     """분야별 통합 모니터링 요약 — Compute/Storage/Network/Containers/Data Services/Identity.
 
@@ -610,10 +614,16 @@ async def get_monitoring_summary(
         }
         return result
 
+    response.headers["Cache-Control"] = "no-store"
     try:
-        return await cached_call(
-            "afterglow:admin:monitoring", ttl_normal(), _collect, enabled=cm.enabled, refresh=cm.refresh
+        now = int(time.time())
+        inventory, telemetry = await asyncio.gather(
+            cached_call("afterglow:admin:monitoring", ttl_normal(), _collect, enabled=cm.enabled, refresh=cm.refresh),
+            native_telemetry.system_series(conn, start_ts=now - 3600, end_ts=now, step_s=60),
         )
+        # Native policy is caller-bound; never put these measurements in the
+        # shared administrator inventory cache.
+        return {**inventory, "telemetry": telemetry}
     except Exception:
         _logger.warning("monitoring summary 조회 실패", exc_info=True)
         raise HTTPException(status_code=500, detail="모니터링 요약 조회 실패")

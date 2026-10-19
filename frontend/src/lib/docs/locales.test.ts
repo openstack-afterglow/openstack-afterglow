@@ -60,5 +60,6 @@ describe('documentation language navigation', () => {
 		url.searchParams.set('lang', value);
 		expect(docsLocaleFromUrl(url)).toBe('ko');
 		expect(docsLocaleFromUrl(url, 'vi')).toBe('vi');
+		expect(docsLocaleFromUrl(url, 'zh-CN')).toBe('zh-CN');
 	});
 });

@@ -28,7 +28,7 @@ def test_count_all_projects_sums_containers_across_projects():
     conn_p2 = _conn_with_containers("c", "d", "e")  # 3
 
     with (
-        patch("app.services.keystone.list_projects", return_value=projects),
+        patch("app.services.keystone.list_system_projects", return_value=projects),
         patch(
             "app.services.keystone.get_admin_connection_for_project",
             side_effect=[conn_p1, conn_p2],
@@ -52,7 +52,7 @@ def test_count_all_projects_skips_unauthorized_project():
         return conn_p2
 
     with (
-        patch("app.services.keystone.list_projects", return_value=projects),
+        patch("app.services.keystone.list_system_projects", return_value=projects),
         patch("app.services.keystone.get_admin_connection_for_project", side_effect=_get_conn),
     ):
         total = swift.count_containers_all_projects("admin-token")
@@ -63,7 +63,7 @@ def test_count_all_projects_skips_unauthorized_project():
 
 def test_count_all_projects_returns_zero_when_keystone_fails():
     """Keystone 프로젝트 목록 조회 실패 시 0 (silent fail)."""
-    with patch("app.services.keystone.list_projects", side_effect=Exception("keystone down")):
+    with patch("app.services.keystone.list_system_projects", side_effect=Exception("keystone down")):
         assert swift.count_containers_all_projects("admin-token") == 0
 
 
@@ -73,7 +73,7 @@ def test_count_all_projects_skips_project_without_id():
     conn_p2 = _conn_with_containers("c", "d")  # 2
 
     with (
-        patch("app.services.keystone.list_projects", return_value=projects),
+        patch("app.services.keystone.list_system_projects", return_value=projects),
         patch(
             "app.services.keystone.get_admin_connection_for_project",
             return_value=conn_p2,
@@ -114,7 +114,7 @@ def test_count_all_projects_sets_timeouts_and_passes_arguments():
     conn_p1 = _conn_with_containers("a", "b")
 
     with (
-        patch("app.services.keystone.list_projects", return_value=projects),
+        patch("app.services.keystone.list_system_projects", return_value=projects),
         patch("app.services.keystone.get_admin_connection_for_project", return_value=conn_p1),
     ):
         total = swift.count_containers_all_projects("admin-token", per_request_timeout=1.5)
@@ -143,7 +143,7 @@ def test_count_all_projects_executes_concurrently():
         return conn
 
     with (
-        patch("app.services.keystone.list_projects", return_value=projects),
+        patch("app.services.keystone.list_system_projects", return_value=projects),
         patch("app.services.keystone.get_admin_connection_for_project", side_effect=_sync_conn),
     ):
         total = swift.count_containers_all_projects("admin-token", max_workers=2)
@@ -171,7 +171,7 @@ def test_count_all_projects_returns_zero_on_total_budget_timeout():
     started = time.monotonic()
     try:
         with (
-            patch("app.services.keystone.list_projects", return_value=projects),
+            patch("app.services.keystone.list_system_projects", return_value=projects),
             patch(
                 "app.services.keystone.get_admin_connection_for_project",
                 side_effect=[conn_p1, conn_p2],
@@ -207,7 +207,7 @@ def test_count_all_projects_closes_all_connections():
             raise Unauthorized("connection failed")
 
     with (
-        patch("app.services.keystone.list_projects", return_value=projects),
+        patch("app.services.keystone.list_system_projects", return_value=projects),
         patch("app.services.keystone.get_admin_connection_for_project", side_effect=_get_conn),
     ):
         total = swift.count_containers_all_projects("admin-token")

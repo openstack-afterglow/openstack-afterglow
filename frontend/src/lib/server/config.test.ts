@@ -122,7 +122,6 @@ describe('frontend CSP branding origins', () => {
 					s3_base: s3Origin,
 					grafana_base: '',
 					librechat_base: '',
-					gitlab_base: '',
 				},
 			}),
 		}));
@@ -158,9 +157,8 @@ describe('frontend CSP branding origins', () => {
 		expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
 	});
 
-	it('includes librechat_base and gitlab_base in frame-src (LibreChat embed + its own OIDC redirect)', async () => {
+	it('includes librechat_base in frame-src for the LibreChat embed', async () => {
 		const librechatOrigin = 'https://chat.dmslab.re.kr';
-		const gitlabOrigin = 'https://git.dmslab.re.kr';
 
 		vi.resetModules();
 		vi.doMock('$lib/server/config', () => ({
@@ -178,7 +176,6 @@ describe('frontend CSP branding origins', () => {
 					s3_base: '',
 					grafana_base: '',
 					librechat_base: librechatOrigin,
-					gitlab_base: gitlabOrigin,
 				},
 			}),
 		}));
@@ -197,6 +194,5 @@ describe('frontend CSP branding origins', () => {
 		const frameSrcDirective = csp!.split(';').map((d) => d.trim()).find((d) => d.startsWith('frame-src'));
 
 		expect(frameSrcDirective).toContain(librechatOrigin);
-		expect(frameSrcDirective).toContain(gitlabOrigin);
 	});
 });

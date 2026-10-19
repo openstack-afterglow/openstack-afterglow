@@ -1,8 +1,8 @@
 """Exact native Hub browser action gates; package credentials remain native.
 
-The central browser guard supplies a current, project-bound principal. Native
-Hub still validates the original token, protected identities, ownership, key
-scope and action ceilings. No service leaf grants global builder/GC authority.
+The central browser guard supplies a current, project-bound human principal.
+Known operations admit their service leaves or a fresh exact system:all admin.
+Native Hub retains token, target, ownership and package-key scope enforcement.
 """
 
 from __future__ import annotations
@@ -74,10 +74,13 @@ def _package_principal(principal: Mapping) -> None:
 async def _verified_system_admin(principal: Mapping) -> bool:
     from app.services import keystone
 
-    # Afterglow's compatibility admin-project policy is not a native global
-    # builder/GC grant. Recheck the explicit system role for these exceptions.
+    # A browser's system flag is only a candidate, never authority. Service
+    # identities cannot acquire the human override, even with a system grant.
     return (
-        principal.get("is_system_admin") is True
+        not any(isinstance(role, str) and role.casefold() == "service" for role in principal.get("roles", ()))
+        and principal.get("is_system_admin") is True
+        and not principal.get("is_delegated")
+        and not principal.get("domain_scope")
         and bool(principal.get("user_id"))
         and await asyncio.to_thread(keystone._has_system_admin_role, principal["user_id"])
     )
@@ -96,33 +99,33 @@ async def authorize_palimpsest_request(request: Request, upstream_path: str, pri
         raise HTTPException(status_code=403, detail="Unknown Palimpsest browser operation")
     path = upstream_path[3:]
     method = request.method
-    if any(_matches(method, path, methods, pattern) for methods, pattern in _SYSTEM):
-        if not await _verified_system_admin(principal):
-            raise HTTPException(status_code=403, detail="Verified system administrator authority is required")
+    system_operation = any(_matches(method, path, methods, pattern) for methods, pattern in _SYSTEM)
+    context_operation = method == "GET" and path in {"/", "/health", "/me", "/projects/current"}
+    key_list = method == "GET" and re.fullmatch(rf"/projects/{_NAMESPACE}/keys", path) is not None
+    leaves = next(((leaf,) for methods, pattern, leaf in _LEGACY if _matches(method, path, methods, pattern)), None)
+    if leaves is None:
+        leaves = next(
+            (leaves for methods, pattern, leaves in _PACKAGE if _matches(method, path, methods, pattern)), None
+        )
+    if not (system_operation or context_operation or key_list or leaves is not None):
+        raise HTTPException(status_code=403, detail="Unknown Palimpsest browser operation")
+    if await _verified_system_admin(principal):
         return
-    for methods, pattern, leaf in _LEGACY:
-        if _matches(method, path, methods, pattern):
-            # Only the native legacy inventory/download exceptions allow verified
-            # system operators; publishing and package/key controls never do.
-            if leaf in {_INVENTORY, _DOWNLOAD} and await _verified_system_admin(principal):
-                return
-            _package_principal(principal)
-            require_service_permission(principal, leaf)
-            return
+    if system_operation:
+        raise HTTPException(status_code=403, detail="Verified system administrator authority is required")
     _package_principal(principal)
-    if method == "GET" and path in {"/", "/health", "/projects/current"}:
+    if context_operation:
         if not service_permissions(principal)["palimpsest"]:
             raise HTTPException(status_code=403, detail="Current Palimpsest service authority is required")
         return
-    if method == "GET" and re.fullmatch(rf"/projects/{_NAMESPACE}/keys", path):
+    if key_list:
         permissions = service_permissions(principal)["palimpsest"]
         if not {_KEYS_EDITOR, _KEYS_ADMIN}.intersection(permissions):
             raise HTTPException(status_code=403, detail="Key editor or admin authority is required")
         return
-    for methods, pattern, leaves in _PACKAGE:
-        if _matches(method, path, methods, pattern):
-            require_service_permission(principal, *leaves)
-            return
+    if leaves is not None:
+        require_service_permission(principal, *leaves)
+        return
     # There are no standalone native tag/manifest/publish/buildcache routes.
     # Tag publication happens on package upload finalization; cache has its own
     # resolve/archive/upload leaves. Future routes must be classified explicitly.
@@ -134,15 +137,27 @@ async def authorize_current_package_request(
 ) -> None:
     """Guard custom non-proxy browser I/O without exchanging the original token.
 
-    These paths bypass the central proxy. Re-read the existing trusted effective
-    assignment graph on every I/O; never use JWT/session roles as a downgrade
-    fallback. Original token/protected-subject ceilings remain enforced by Hub.
+    These paths bypass the central proxy. Recheck current system authority before
+    reading project leaves: a human system admin needs no tenant assignment.
+    Original token/protected-subject ceilings remain enforced by Hub.
     """
     from app.services import keystone
     from app.services.project_service import get_project_access
 
-    access = await get_project_access(info["project_id"], info["user_id"])
-    system_admin = await asyncio.to_thread(keystone._is_system_admin, info["user_id"])
-    principal = {**info, "roles": access["roles"], "is_system_admin": system_admin}
+    system_admin = await asyncio.to_thread(keystone._has_system_admin_role, info["user_id"])
+    if system_admin:
+        from app.api.deps import require_admin
+
+        # Revalidate subject/domain/token on every I/O, including when a previous
+        # preflight in this request already marked the administrator as live.
+        principal = await require_admin({**info, "is_system_admin": True})
+    else:
+        access = await get_project_access(info["project_id"], info["user_id"])
+        principal = {**info, "roles": access["roles"], "is_system_admin": False}
+        # A revoked administrator must not fall through to stale session leaves
+        # or use a previously approved cross-project transport marker.
+        info.pop("_live_system_admin", None)
     scope = {**request.scope, "method": method or request.method}
     await authorize_palimpsest_request(Request(scope), upstream_path, principal)
+    if system_admin:
+        info["_live_system_admin"] = True

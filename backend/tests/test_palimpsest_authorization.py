@@ -86,6 +86,10 @@ async def test_exact_action_leaves_not_method_or_parent_role(action_client, meth
         assert (await client.request(method, path)).status_code == 403
     principal["roles"] = ["member", "palimpsest_admin", "project_owner"]
     assert (await client.request(method, path)).status_code == 403
+    principal.update(roles=[], is_system_admin=True, verified_system_grant=True)
+    assert (await client.request(method, path)).status_code == 204
+    principal["verified_system_grant"] = False
+    assert (await client.request(method, path)).status_code == 403
 
 
 @pytest.mark.parametrize("leaf", [INVENTORY, DOWNLOAD, PUBLISH, KEYS_EDITOR, KEYS_ADMIN])
@@ -94,6 +98,39 @@ async def test_context_does_not_require_download_or_inventory(action_client, lea
     principal["roles"] = ["member", leaf]
     for path in ("/v1/", "/v1/health", "/v1/projects/current"):
         assert (await client.get(path)).status_code == 204
+
+
+@pytest.mark.parametrize("leaf", [INVENTORY, DOWNLOAD, PUBLISH, KEYS_EDITOR, KEYS_ADMIN])
+async def test_legacy_identity_requires_current_service_authority_without_native_owner(action_client, leaf):
+    client, principal = action_client
+    principal["roles"] = ["member", leaf]
+    assert (await client.get("/v1/me")).status_code == 204
+    principal["roles"] = ["member"]
+    assert (await client.get("/v1/me")).status_code == 403
+
+
+async def test_verified_system_identity_needs_no_package_leaves_for_context_and_keys(action_client):
+    client, principal = action_client
+    principal.update(roles=[], is_system_admin=True)
+    for path in ("/v1/", "/v1/health", "/v1/me", "/v1/projects/current", f"/v1/projects/{NAMESPACE}/keys"):
+        assert (await client.get(path)).status_code == 403
+        principal["verified_system_grant"] = True
+        assert (await client.get(path)).status_code == 204
+        principal["verified_system_grant"] = False
+
+
+@pytest.mark.parametrize("method", ["HEAD", "POST", "PUT", "PATCH", "DELETE"])
+async def test_legacy_identity_does_not_open_unclassified_operations(action_client, method):
+    client, principal = action_client
+    principal.update(roles=["admin", INVENTORY], is_system_admin=True, verified_system_grant=True)
+    assert (await client.request(method, "/v1/me")).status_code == 403
+
+
+async def test_package_key_cannot_read_legacy_identity(action_client):
+    client, principal = action_client
+    principal.update(roles=["admin"], is_system_admin=True, verified_system_grant=True)
+    response = await client.get("/v1/me", headers={"authorization": "Bearer ppk_v1_" + IDENTIFIER + "." + "A" * 43})
+    assert response.status_code == 403
 
 
 @pytest.mark.parametrize("leaf", [KEYS_EDITOR, KEYS_ADMIN])
@@ -117,7 +154,7 @@ async def test_owner_key_metadata_is_editor_or_admin_not_download(action_client,
         ("connection_project_id", "22222222222242228222222222222222"),
     ],
 )
-async def test_protected_principal_has_no_package_or_publish_override(action_client, field, value):
+async def test_unverified_protected_principal_has_no_package_or_publish_override(action_client, field, value):
     client, principal = action_client
     principal["roles"] = ["member", INVENTORY, DOWNLOAD, PUBLISH, KEYS_EDITOR, KEYS_ADMIN]
     principal[field] = value
@@ -151,16 +188,6 @@ async def test_global_builder_and_gc_are_verified_system_only(action_client, met
     assert (await client.request(method, path)).status_code == 204
 
 
-async def test_system_exception_is_legacy_reads_only(action_client):
-    client, principal = action_client
-    principal["roles"] = ["admin"]
-    principal["is_system_admin"] = True
-    principal["verified_system_grant"] = True
-    for method, path in [("GET", "/v1/layers"), ("GET", f"/v1/layers/{DIGEST}/blob"), ("POST", "/v1/bundles")]:
-        assert (await client.request(method, path)).status_code == 204
-    assert (await client.post("/v1/bundles/import")).status_code == 403
-
-
 @pytest.mark.parametrize(
     "method,path",
     [
@@ -185,6 +212,8 @@ async def test_unclassified_browser_route_fails_closed_even_for_system(action_cl
     for system_admin in (False, True):
         principal["is_system_admin"] = system_admin
         assert (await client.request(method, path)).status_code == 403
+    principal.update(is_system_admin=True, verified_system_grant=True, roles=[])
+    assert (await client.request(method, path)).status_code == 403
 
 
 async def test_package_bearer_never_becomes_browser_keystone_principal(action_client):
@@ -194,6 +223,48 @@ async def test_package_bearer_never_becomes_browser_keystone_principal(action_cl
         "/v1/uploads", headers={"authorization": "Bearer " + "ppk_v1_" + IDENTIFIER + "." + "A" * 43}
     )
     assert response.status_code == 403
+
+
+@pytest.mark.parametrize("path", ["/v1/uploads", f"/v1/projects/{NAMESPACE}/keys"])
+async def test_system_grant_does_not_turn_service_identity_into_human_admin(action_client, path):
+    client, principal = action_client
+    principal.update(roles=["service"], is_system_admin=True, verified_system_grant=True)
+    assert (await client.post(path)).status_code == 403
+
+
+@pytest.mark.parametrize("field", ["is_delegated", "domain_scope"])
+async def test_current_system_grant_does_not_remove_native_credential_ceilings(action_client, field):
+    client, principal = action_client
+    principal.update(roles=[], is_system_admin=True, verified_system_grant=True, system_scope=True)
+    principal[field] = True
+    assert (await client.post("/v1/uploads")).status_code == 403
+
+
+async def test_human_system_token_uses_selected_target_without_project_leaves(action_client):
+    client, principal = action_client
+    principal.update(
+        roles=["admin"],
+        is_system_admin=True,
+        verified_system_grant=True,
+        system_scope=True,
+        connection_project_id="",
+    )
+    assert (await client.post("/v1/uploads")).status_code == 204
+    principal["verified_system_grant"] = False
+    assert (await client.post("/v1/uploads")).status_code == 403
+
+
+async def test_current_system_authority_outage_propagates(action_client, monkeypatch):
+    client, principal = action_client
+    principal.update(roles=[], is_system_admin=True, verified_system_grant=True)
+
+    def unavailable(*_):
+        raise HTTPException(503, "Current system authority unavailable")
+
+    monkeypatch.setattr(keystone, "_has_system_admin_role", unavailable)
+    response = await client.post("/v1/uploads")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Current system authority unavailable"
 
 
 async def test_reader_inventory_never_gains_publish_or_download(action_client):
@@ -216,7 +287,7 @@ async def custom_client(monkeypatch):
     monkeypatch.setattr(get_settings(), "service_palimpsest_internal_url", "")
     current = {"roles": ["member", INVENTORY]}
     monkeypatch.setattr(project_service, "get_project_access", AsyncMock(side_effect=lambda *_: dict(current)))
-    monkeypatch.setattr(keystone, "_is_system_admin", lambda *_: False)
+    monkeypatch.setattr(keystone, "_has_system_admin_role", lambda *_: False)
 
     async def identity(request: Request):
         info = {
@@ -279,11 +350,3 @@ async def test_current_provider_outage_has_no_session_role_fallback(custom_clien
     response = await client.post(BASE + "/package-keys", json={"name": "ci"})
     assert response.status_code == 503
     assert response.json()["error"]["message"] == "Current authority unavailable"
-
-
-async def test_current_system_admin_cannot_issue_custom_package_key(custom_client, monkeypatch):
-    client, current = custom_client
-    current["roles"] = ["member", KEYS_EDITOR, PUBLISH]
-    monkeypatch.setattr(keystone, "_is_system_admin", lambda *_: True)
-    response = await client.post(BASE + "/package-keys", json={"name": "ci"})
-    assert response.status_code == 403

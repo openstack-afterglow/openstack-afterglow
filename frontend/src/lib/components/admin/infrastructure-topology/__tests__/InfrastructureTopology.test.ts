@@ -1,23 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { get } from 'svelte/store';
+import { tick } from 'svelte';
 import InfrastructureTopology from '../InfrastructureTopology.svelte';
 import RadialWorkspace from '../RadialWorkspace.svelte';
 import NicDetails from '../NicDetails.svelte';
 import TraceDetails from '../TraceDetails.svelte';
+import EvidenceMap from '../EvidenceMap.svelte';
+import { ApiError } from '$lib/api/errors';
+import type { InfrastructureTopologySnapshot, TopologyTrace } from '$lib/types/infrastructureTopology';
 import { buildRadialGraph } from '../radialGraph';
 import { edgeLabel } from '../presentation';
-import { makeHost, makeMeshSnapshot, makeSnapshot, makeTrace } from './fixtures';
-import { auth, authReady, projectSwitching } from '$lib/stores/auth';
+import { makeHost, makeMeshSnapshot, makeNetworkHosts, makeSnapshot, makeTrace } from './fixtures';
+import { acceptAuthVerification, auth, authReady, getAuthVerificationEpoch, projectSwitching } from '$lib/stores/auth';
 import { t } from '$lib/i18n/ns/infra-topology';
 import { t as sharedT } from '$lib/i18n/ns/shared';
 import { initLocale, intlLocale } from '$lib/i18n/runtime.svelte';
 
 const { read, submit } = vi.hoisted(() => ({ read: vi.fn(), submit: vi.fn() }));
 vi.mock('$lib/api/infrastructureTopology', () => ({ getInfrastructureTopology: read, submitInfrastructureTrace: submit }));
+function verifyAuthority() {
+	// Model root /auth/me acceptance separately from raw token/owner changes.
+	expect(acceptAuthVerification(getAuthVerificationEpoch(), {})).toBe(true);
+}
 beforeEach(() => {
 	initLocale('ko'); read.mockReset().mockImplementation(() => Promise.resolve(makeMeshSnapshot())); submit.mockReset().mockResolvedValue(makeTrace('queued'));
-	auth.set({ ...get(auth), token: 'token-a', userId: 'user-a', projectId: 'project-a', isSystemAdmin: true }); authReady.set(true); projectSwitching.set(false);
+	auth.set({ ...get(auth), token: 'token-a', userId: 'user-a', projectId: 'project-a', isSystemAdmin: true }); verifyAuthority(); projectSwitching.set(false);
 });
 afterEach(() => { cleanup(); initLocale('ko'); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 const diagram = () => screen.getByRole('region', { name: t('workspace.diagram') });
@@ -196,5 +204,201 @@ describe('retained host diagnostics and authorization lifecycle', () => {
 	it.each(['queued', 'running', 'expired', 'unsupported', 'error'] as const)('retains trace %s without fabricated hops', status => {
 		const host = makeHost(); host.traces = [makeTrace(status)]; const view = render(TraceDetails, { host, verified: true, onselectnic: vi.fn() });
 		expect(screen.getByText(t(`trace.${status}`))).toBeTruthy(); expect(view.container.querySelectorAll('[data-hop]')).toHaveLength(0);
+	});
+});
+
+describe('retained NIC evidence consumers', () => {
+	it('moves only measured host↔NIC RX and removes motion on stale or unverified rerender', async () => {
+		const host = makeHost(), view = render(EvidenceMap, { host, verified: true, selectedNic: 'eno1', onselect: vi.fn() });
+		expect(view.container.querySelectorAll('[data-flow="rx"]')).toHaveLength(1); expect(view.container.querySelectorAll('[data-flow="tx"]')).toHaveLength(0);
+		expect(view.container.querySelectorAll('[data-edge-kind="lldp"] .motion-flow')).toHaveLength(0);
+		await view.rerender({ host: { ...host, observation_state: 'stale' }, verified: true, selectedNic: 'eno1', onselect: vi.fn() }); expect(view.container.querySelectorAll('.motion-flow')).toHaveLength(0);
+		await view.rerender({ host, verified: false, selectedNic: 'eno1', onselect: vi.fn() }); expect(view.container.querySelectorAll('.motion-flow')).toHaveLength(0);
+	});
+	it.each([[0.5, 0.5, 'B'], [0, 0, 'B'], [1536, 1.5, 'KiB'], [3 * 1024 ** 3, 3, 'GiB']] as const)('formats the observed byte rate %s without invalid unit indexing', (rate, value, unit) => {
+		const host = makeHost(); host.observation!.interfaces[0].rates.rx_bytes = rate;
+		render(NicDetails, { host, name: 'eno1', verified: true });
+		const row = within(screen.getByRole('table', { name: t('counters') })).getByRole('row', { name: new RegExp(t('metric.rx_bytes')) });
+		expect(within(row).getByText(t('bytesRate', { value: value.toLocaleString(intlLocale(), { maximumFractionDigits: 2 }), unit }))).toBeTruthy();
+	});
+	it.each(['ko', 'en', 'ja', 'zh-CN'] as const)('renders separate RX/TX byte and packet quantities in %s', locale => {
+		initLocale(locale); const host = makeHost();
+		host.observation!.interfaces[0].rates = { rx_bytes: 1024, tx_bytes: 512, rx_packets: 7, tx_packets: 3 };
+		const view = render(EvidenceMap, { host, verified: true, selectedNic: 'eno1', onselect: vi.fn() });
+		const rx = view.container.querySelector('[data-rate="rx"]')!, tx = view.container.querySelector('[data-rate="tx"]')!;
+		expect(rx.textContent).toContain(t('rx')); expect(rx.textContent).toContain(t('bytesRate', { value: '1', unit: 'KiB' })); expect(rx.textContent).toContain(t('packetsRate', { value: '7' }));
+		expect(tx.textContent).toContain(t('tx')); expect(tx.textContent).toContain(t('bytesRate', { value: '512', unit: 'B' })); expect(tx.textContent).toContain(t('packetsRate', { value: '3' }));
+		expect(view.container.querySelectorAll('[data-flow]')).toHaveLength(2);
+		expect(screen.getByText(t('nicHistory', { nic: 'eno1' }))).toBeTruthy();
+	});
+	it.each(['stale', 'unmeasured', 'unverified', 'nonfinite', 'negative'] as const)('shows honest %s NIC quantities with neutral dashed edges', state => {
+		const host = makeHost();
+		if (state === 'stale') host.observation_state = 'stale';
+		if (state === 'unmeasured') host.observation!.sources.counters = 'error';
+		if (state === 'nonfinite') host.observation!.interfaces[0].rates = { rx_bytes: NaN, tx_bytes: Infinity, rx_packets: NaN, tx_packets: Infinity };
+		if (state === 'negative') host.observation!.interfaces[0].rates = { rx_bytes: -1, tx_bytes: -1, rx_packets: -1, tx_packets: -1 };
+		const view = render(EvidenceMap, { host, verified: state !== 'unverified', selectedNic: 'eno1', onselect: vi.fn() });
+		for (const label of view.container.querySelectorAll('[data-rate]')) expect(label.textContent).toContain(t('unknown'));
+		expect(view.container.querySelectorAll('.unknown')).toHaveLength(2); expect(view.container.querySelectorAll('[data-flow]')).toHaveLength(0);
+		if (state === 'unverified') expect(screen.queryByText(t('nicHistory', { nic: 'eno1' }))).toBeNull();
+	});
+	it('keeps partially unknown quantities static without hiding independently measured values', () => {
+		const host = makeHost(); host.observation!.interfaces[0].rates.rx_bytes = null;
+		const view = render(EvidenceMap, { host, verified: true, selectedNic: 'eno1', onselect: vi.fn() });
+		expect(view.container.querySelector('[data-rate="rx"]')?.textContent).toContain(t('packetsRate', { value: '2' }));
+		expect(view.container.querySelector('[data-rate="rx"]')?.textContent).toContain(t('unknown'));
+		expect(view.container.querySelector('.rx-line.unknown')).toBeTruthy(); expect(view.container.querySelector('[data-flow="rx"]')).toBeNull();
+	});
+});
+
+describe('network evidence migrated to the radial workspace', () => {
+	it.each(['ko', 'en', 'ja', 'zh-CN'] as const)('merges shared responding IPs but keeps trace-local gaps and real host selection in %s', async locale => {
+		initLocale(locale); const snapshot = makeMeshSnapshot(); snapshot.hosts = makeNetworkHosts(); read.mockResolvedValue(snapshot);
+		const view = render(InfrastructureTopology); await vi.waitFor(() => expect(diagram()).toBeTruthy());
+		await fireEvent.click(within(screen.getByRole('group', { name: t('workspace.layers') })).getByRole('button', { name: t('workspace.layer.trace') }));
+		expect(view.container.querySelectorAll('[data-node-kind="router"]')).toHaveLength(1);
+		expect(view.container.querySelectorAll('[data-node-kind="gap"]')).toHaveLength(2);
+		await fireEvent.click(within(diagram()).getByRole('button', { name: '10.0.0.1' })); expect(screen.getByText(`${t('traceNotice')} ${t('network.shared')}`)).toBeTruthy();
+		await fireEvent.click(within(diagram()).getByRole('button', { name: snapshot.hosts[1].name }));
+		expect(within(diagram()).getByRole('button', { name: snapshot.hosts[1].name }).getAttribute('aria-pressed')).toBe('true');
+		expect(screen.getByRole('table', { name: `${t('outbound')} · ${snapshot.hosts[1].traces[0].target}` })).toBeTruthy();
+	});
+	it.each(['ko', 'en', 'ja', 'zh-CN'] as const)('preserves directed TCP-only probe meaning and stale outcomes in %s', async locale => {
+		initLocale(locale); const snapshot = makeMeshSnapshot(), host = snapshot.hosts[0]; host.observation_state = 'stale';
+		host.peer_probes = [{ target_host_id: 'storage:outside', address: '10.0.0.50', port: 443, status: 'up', checked_at: 1_800_000_000, latency_ms: 2, error: null }]; read.mockResolvedValue(snapshot);
+		const view = render(InfrastructureTopology); await vi.waitFor(() => expect(diagram()).toBeTruthy());
+		await fireEvent.click(within(screen.getByRole('group', { name: t('workspace.layers') })).getByRole('button', { name: t('workspace.layer.probe') }));
+		const graph = buildRadialGraph(snapshot, true), probe = graph.edges.find(edge => edge.probe)!;
+		expect(probe.probe).toMatchObject({ source: host.id, targetInInventory: false, status: 'unknown', latency_ms: null });
+		expect(view.container.querySelectorAll('[data-edge-kind="probe"]')).toHaveLength(1); expect(view.container.querySelectorAll('[data-node-kind="peer"]')).toHaveLength(1);
+		const list = view.container.querySelector('.evidence-list') as HTMLElement; await fireEvent.click(list.querySelector('summary')!);
+		await fireEvent.click(within(list).getByRole('button', { name: edgeLabel(probe, graph, 'pps') }));
+		expect(screen.getAllByText(t('probeNotice')).length).toBeGreaterThan(0); expect(screen.getAllByText(t('probeError.probe_stale')).length).toBeGreaterThan(0);
+		expect(screen.queryByText(t('probe.up'))).toBeNull(); expect(view.container.querySelectorAll('[data-edge-kind="probe"] .motion-flow')).toHaveLength(0);
+	});
+});
+
+const authorityTransitions = ['token', 'userId', 'projectId', 'admin', 'ready', 'switching'] as const;
+type AuthorityTransition = typeof authorityTransitions[number];
+function changeAuthority(field: AuthorityTransition) {
+	if (field === 'ready') authReady.set(false);
+	else if (field === 'switching') projectSwitching.set(true);
+	else if (field === 'admin') auth.update(state => ({ ...state, isSystemAdmin: false }));
+	else auth.update(state => ({ ...state, [field]: `${field}-other` }));
+}
+function restoreAuthority() {
+	auth.set({ ...get(auth), token: 'token-a', userId: 'user-a', projectId: 'project-a', isSystemAdmin: true }); verifyAuthority(); projectSwitching.set(false);
+}
+
+describe('rendered private owner and ABA fences', () => {
+	it.each(authorityTransitions)('masks graph and inspector during %s transition and rejects an obsolete read', async field => {
+		const initial = makeMeshSnapshot(); initial.hosts[0].name = 'private-owner-a'; read.mockResolvedValueOnce(initial);
+		const view = render(InfrastructureTopology); await vi.waitFor(() => expect(diagram()).toBeTruthy());
+		expect(within(screen.getByRole('region', { name: t('workspace.inspector') })).getByRole('heading', { name: 'private-owner-a', level: 3 })).toBeTruthy();
+		const obsolete = Promise.withResolvers<InfrastructureTopologySnapshot>(), current = Promise.withResolvers<InfrastructureTopologySnapshot>();
+		read.mockImplementationOnce(() => obsolete.promise).mockImplementationOnce(() => current.promise);
+		await fireEvent.click(screen.getByRole('button', { name: t('refresh') })); const signal = read.mock.calls.at(-1)![1] as AbortSignal;
+		const oldEpoch = getAuthVerificationEpoch();
+		changeAuthority(field);
+		await vi.waitFor(() => expect(screen.queryByRole('region', { name: t('workspace.diagram') })).toBeNull());
+		expect(view.container.textContent).not.toContain('private-owner-a'); expect(screen.queryByRole('region', { name: t('workspace.inspector') })).toBeNull(); expect(signal.aborted).toBe(true);
+		const old = makeMeshSnapshot(); old.hosts[0].name = 'obsolete-private-response'; obsolete.resolve(old);
+		await obsolete.promise; await tick();
+		expect(view.container.textContent).not.toContain('obsolete-private-response');
+		expect(screen.queryByRole('region', { name: t('workspace.diagram') })).toBeNull();
+		expect(screen.queryByRole('region', { name: t('workspace.inspector') })).toBeNull();
+		if (field === 'admin' || field === 'ready' || field === 'switching') restoreAuthority();
+		else {
+			// Raw credentials cannot inherit the preceding owner's readiness.
+			expect(get(authReady)).toBe(false);
+			expect(acceptAuthVerification(oldEpoch, {})).toBe(false);
+			verifyAuthority();
+		}
+		await tick();
+		expect(screen.queryByRole('region', { name: t('workspace.diagram') })).toBeNull();
+		expect(screen.queryByRole('region', { name: t('workspace.inspector') })).toBeNull();
+		const fresh = makeMeshSnapshot(); fresh.hosts[0].name = 'current-private-owner'; current.resolve(fresh);
+		await vi.waitFor(() => expect(within(diagram()).getByRole('button', { name: 'current-private-owner' })).toBeTruthy());
+		expect(read).toHaveBeenLastCalledWith(expect.objectContaining({ token: get(auth).token, userId: get(auth).userId, projectId: get(auth).projectId, admin: true, ready: true }), expect.any(AbortSignal));
+		expect(within(screen.getByRole('region', { name: t('workspace.inspector') })).getByRole('heading', { name: 'current-private-owner', level: 3 })).toBeTruthy();
+		expect(view.container.textContent).not.toContain('private-owner-a');
+		expect(view.container.textContent).not.toContain('obsolete-private-response');
+	});
+	it.each(authorityTransitions)('does not reveal retained or late private data after same-tick %s ABA', async field => {
+		const initial = makeMeshSnapshot(); initial.hosts[0].name = 'private-before-aba'; read.mockResolvedValueOnce(initial);
+		const view = render(InfrastructureTopology); await vi.waitFor(() => expect(diagram()).toBeTruthy());
+		const obsolete = Promise.withResolvers<InfrastructureTopologySnapshot>(), current = Promise.withResolvers<InfrastructureTopologySnapshot>();
+		read.mockImplementationOnce(() => obsolete.promise).mockImplementationOnce(() => current.promise);
+		await fireEvent.click(screen.getByRole('button', { name: t('refresh') })); const signal = read.mock.calls.at(-1)![1] as AbortSignal;
+		changeAuthority(field); restoreAuthority();
+		await vi.waitFor(() => expect(screen.queryByRole('region', { name: t('workspace.diagram') })).toBeNull());
+		expect(signal.aborted).toBe(true); expect(view.container.textContent).not.toContain('private-before-aba');
+		expect(screen.queryByRole('region', { name: t('workspace.inspector') })).toBeNull();
+		const old = makeMeshSnapshot(); old.hosts[0].name = 'obsolete-after-aba'; obsolete.resolve(old);
+		await obsolete.promise; await tick();
+		expect(screen.queryByRole('region', { name: t('workspace.diagram') })).toBeNull(); expect(view.container.textContent).not.toContain('obsolete-after-aba');
+		expect(screen.queryByRole('region', { name: t('workspace.inspector') })).toBeNull();
+		const fresh = makeMeshSnapshot(); fresh.hosts[0].name = 'fresh-after-aba'; current.resolve(fresh);
+		await vi.waitFor(() => expect(within(diagram()).getByRole('button', { name: 'fresh-after-aba' })).toBeTruthy());
+		expect(read).toHaveBeenLastCalledWith(expect.objectContaining({ token: 'token-a', userId: 'user-a', projectId: 'project-a', admin: true, ready: true }), expect.any(AbortSignal));
+		expect(within(screen.getByRole('region', { name: t('workspace.inspector') })).getByRole('heading', { name: 'fresh-after-aba', level: 3 })).toBeTruthy();
+		expect(view.container.textContent).not.toContain('private-before-aba');
+		expect(view.container.textContent).not.toContain('obsolete-after-aba');
+	});
+	it.each(authorityTransitions.flatMap(field => [false, true].map(failure => ({ field, failure }))))('ignores late trace completion after $field ABA with failure=$failure', async ({ field, failure }) => {
+		render(InfrastructureTopology); await vi.waitFor(() => expect(screen.getByRole('button', { name: t('submit') })).toBeTruthy());
+		const pending = Promise.withResolvers<TopologyTrace>(), current = Promise.withResolvers<InfrastructureTopologySnapshot>();
+		submit.mockImplementationOnce(() => pending.promise); read.mockImplementationOnce(() => current.promise);
+		await fireEvent.click(screen.getByRole('button', { name: t('submit') })); const signal = submit.mock.calls[0][3] as AbortSignal;
+		changeAuthority(field); restoreAuthority();
+		await vi.waitFor(() => expect(screen.queryByRole('region', { name: t('workspace.diagram') })).toBeNull()); expect(signal.aborted).toBe(true);
+		if (failure) pending.reject(new ApiError(503, 'unavailable')); else pending.resolve(makeTrace('queued'));
+		await pending.promise.catch(() => undefined); await tick();
+		current.resolve(makeMeshSnapshot()); await vi.waitFor(() => expect(screen.getByRole('button', { name: t('submit') })).toBeTruthy());
+		expect(screen.queryByText(t('trace.queued'))).toBeNull(); expect(screen.queryByText(t('traceUnavailable'))).toBeNull(); expect(read).toHaveBeenCalledTimes(2);
+	});
+	it.each([false, true])('ignores late trace completion after host-selection ABA with failure=%s', async failure => {
+		render(InfrastructureTopology); await vi.waitFor(() => expect(screen.getByRole('button', { name: t('submit') })).toBeTruthy());
+		const pending = Promise.withResolvers<TopologyTrace>(); submit.mockImplementationOnce(() => pending.promise);
+		await fireEvent.click(screen.getByRole('button', { name: t('submit') })); const signal = submit.mock.calls[0][3] as AbortSignal;
+		await fireEvent.click(within(diagram()).getByRole('button', { name: 'node-c' })); await fireEvent.click(within(diagram()).getByRole('button', { name: 'node-a' })); expect(signal.aborted).toBe(true);
+		if (failure) pending.reject(new ApiError(503, 'unavailable')); else pending.resolve(makeTrace('queued'));
+		await pending.promise.catch(() => undefined); await tick();
+		await vi.waitFor(() => expect(screen.getByRole('button', { name: t('submit') })).toBeTruthy());
+		expect(screen.queryByText(t('trace.queued'))).toBeNull(); expect(screen.queryByText(t('traceUnavailable'))).toBeNull(); expect(read).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('radial trace states and bounded gaps', () => {
+	it.each([false, true])('renders a target-IP partial reply once without a self-edge, stale=%s', async stale => {
+		const snapshot = makeSnapshot(), host = snapshot.hosts[0]; host.traces = [makeTrace()]; host.traces[0].result!.reached = false;
+		if (stale) host.observation_state = 'stale';
+		const graph = buildRadialGraph(snapshot, true), view = render(RadialWorkspace, { graph, selection: null, onselect: vi.fn() });
+		await fireEvent.click(within(screen.getByRole('group', { name: t('workspace.layers') })).getByRole('button', { name: t('workspace.layer.trace') }));
+		expect(view.container.querySelectorAll('[data-node-id="ip:203.0.113.9"]')).toHaveLength(1);
+		const traces = [...view.container.querySelectorAll('[data-edge-kind="trace"]')]; expect(traces).toHaveLength(3);
+		expect(traces.at(-1)?.getAttribute('data-edge-state')).toBe(stale ? 'stale' : 'unconfirmed');
+		expect(traces.every(edge => edge.classList.contains('diagnostic') && edge.getAttribute('data-rate') === 'unknown')).toBe(true);
+		expect(graph.edges.filter(edge => edge.layer === 'trace').every(edge => edge.source !== edge.target)).toBe(true);
+	});
+	it('keeps a long no-reply run trace-local and an observer-less host explicitly unmeasured', async () => {
+		const snapshot = makeSnapshot(), host = snapshot.hosts[0], missing = snapshot.hosts[1]; host.traces = [makeTrace()];
+		missing.observation = null; missing.observation_state = 'unmeasured';
+		host.traces[0].result!.reached = false;
+		host.traces[0].result!.hops = [{ hop: 1, ip: '10.0.0.1', rtt_ms: 0.2 }, ...Array.from({ length: 15 }, (_, index) => ({ hop: index + 2, ip: null, rtt_ms: null }))];
+		read.mockResolvedValue(snapshot); const view = render(InfrastructureTopology); await vi.waitFor(() => expect(diagram()).toBeTruthy());
+		await fireEvent.click(within(screen.getByRole('group', { name: t('workspace.layers') })).getByRole('button', { name: t('workspace.layer.trace') }));
+		expect(view.container.querySelectorAll('[data-node-kind="gap"]')).toHaveLength(1); expect(within(diagram()).getByRole('button', { name: '* 2–16' })).toBeTruthy();
+		await fireEvent.click(within(diagram()).getByRole('button', { name: '* 2–16' })); expect(screen.getByText(`${t('traceNotice')} ${t('network.gapHelp')}`)).toBeTruthy();
+		await fireEvent.click(within(diagram()).getByRole('button', { name: missing.name }));
+		const details = screen.getByRole('region', { name: t('host') }); expect(within(details).getAllByText(t('state.unmeasured')).length).toBeGreaterThan(0); expect(within(details).getByText(t('noNics'))).toBeTruthy();
+	});
+	it.each(['queued', 'running', 'error', 'unsupported'] as const)('renders %s diagnosis as a static destination edge without intermediate nodes', async status => {
+		const snapshot = makeSnapshot(); snapshot.hosts[0].traces = [makeTrace(status)];
+		const view = render(RadialWorkspace, { graph: buildRadialGraph(snapshot, true), selection: null, onselect: vi.fn() });
+		await fireEvent.click(within(screen.getByRole('group', { name: t('workspace.layers') })).getByRole('button', { name: t('workspace.layer.trace') }));
+		expect(view.container.querySelectorAll('[data-node-kind="router"], [data-node-kind="gap"]')).toHaveLength(0);
+		const edge = view.container.querySelector('[data-edge-kind="trace"]')!;
+		expect(view.container.querySelectorAll('[data-edge-kind="trace"]')).toHaveLength(1); expect(edge.getAttribute('data-edge-state')).toBe(status); expect(edge.getAttribute('data-rate')).toBe('unknown'); expect(edge.classList.contains('diagnostic')).toBe(true);
 	});
 });

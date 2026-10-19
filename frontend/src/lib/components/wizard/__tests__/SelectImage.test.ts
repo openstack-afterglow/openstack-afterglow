@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import type { ImageInfo } from '$lib/types/compute';
+import type { FlavorOption } from '$lib/types/flavor';
 import SelectImage from '../SelectImage.svelte';
 import { t } from '$lib/i18n/ns/vm-wizard';
 import { t as imageText } from '$lib/i18n/ns/images-keys';
@@ -299,5 +300,67 @@ describe('SelectImage', () => {
 		expect(tagPanel('ubuntu')).toBeTruthy();
 		expect(tagButton('ubuntu:latest').getAttribute('aria-pressed')).toBe('false');
 		expect(onSelect).not.toHaveBeenCalled();
+	});
+
+	it('recomputes driver recommendations across flavor changes without changing the manual UUID', async () => {
+		const cpu: FlavorOption = { id: 'cpu', name: 'general', vcpus: 4, ram: 8192, disk: 40, is_public: true };
+		const gpu: FlavorOption = { ...cpu, id: 'gpu', extra_specs: { 'pci_passthrough:alias': 'RTX-3090:1' } };
+		const driver: ImageInfo = { ...images[0], gpu_vendor: 'nvidia', gpu_driver: 'nvidia', verification_status: 'verified' };
+		const onSelect = vi.fn();
+		const props = { images: [driver, images[1]], selectedId: driver.id, onSelect };
+		const { rerender } = render(SelectImage, { ...props, selectedFlavor: gpu });
+		expect(tagButton('ubuntu:22.04').getAttribute('aria-pressed')).toBe('true');
+		expect(within(tagButton('ubuntu:22.04')).getByText(t('image.recommendation.gpu', { vendor: 'nvidia' }))).toBeTruthy();
+		expect(screen.queryByText(t('image.recommendation.cpuWarningTitle'))).toBeNull();
+
+		await rerender({ ...props, selectedFlavor: cpu });
+		expect(tagButton('ubuntu:22.04').getAttribute('aria-pressed')).toBe('true');
+		expect(within(tagButton('ubuntu:22.04')).queryByText(t('image.recommendation.gpu', { vendor: 'nvidia' }))).toBeNull();
+		expect(within(tagButton('ubuntu:22.04')).getByText(t('image.recommendation.driverImage'))).toBeTruthy();
+		expect(within(tagButton('ubuntu:24.04')).getByText(t('image.recommendation.general'))).toBeTruthy();
+		expect(screen.getByText(t('image.recommendation.cpuWarningTitle'))).toBeTruthy();
+		expect(onSelect).not.toHaveBeenCalled();
+
+		await fireEvent.click(tagButton('ubuntu:24.04'));
+		expect(onSelect).toHaveBeenCalledWith(images[1].id, 'ubuntu:24.04');
+		await rerender({ ...props, selectedId: images[1].id, selectedFlavor: cpu });
+		expect(screen.queryByText(t('image.recommendation.cpuWarningTitle'))).toBeNull();
+		await rerender({ ...props, selectedId: images[1].id, selectedFlavor: gpu });
+		expect(tagButton('ubuntu:24.04').getAttribute('aria-pressed')).toBe('true');
+		expect(onSelect).toHaveBeenCalledTimes(1);
+	});
+
+	it('never recommends an obsolete GPU upload even when its old UUID remains selected', async () => {
+		const selectedFlavor: FlavorOption = { id: 'gpu', name: 'gpu', vcpus: 4, ram: 8192, disk: 40, is_public: true, extra_specs: { 'pci_passthrough:alias': 'RTX-3090:1' } };
+		const driver = { ...older, gpu_vendor: 'nvidia', gpu_driver: 'nvidia', verification_status: 'verified' as const };
+		const onSelect = vi.fn();
+		render(SelectImage, { images: [driver, { ...newer, status: 'saving' }], selectedId: older.id, onSelect, selectedFlavor });
+		expect(screen.queryByText(t('image.recommendation.repository'))).toBeNull();
+		expect(screen.queryByText(t('image.recommendation.gpu', { vendor: 'nvidia' }))).toBeNull();
+		expect(screen.getByRole('region', { name: t('image.previous.label') })).toBeTruthy();
+		expect(screen.getByRole('button', { name: t('image.unselectableLabel', { name: 'ubuntu:latest', status: 'saving' }) }).hasAttribute('disabled')).toBe(true);
+		expect(onSelect).not.toHaveBeenCalled();
+	});
+
+	it('keeps unknown-vendor GPU images manually selectable without claiming driver suitability', async () => {
+		const selectedFlavor: FlavorOption = { id: 'gpu', name: 'gpu', vcpus: 4, ram: 8192, disk: 40, is_public: true, extra_specs: { 'resources:VGPU': '1' } };
+		const driver = { ...images[0], gpu_vendor: 'nvidia', gpu_driver: 'nvidia', verification_status: 'verified' as const };
+		const onSelect = vi.fn();
+		render(SelectImage, { images: [driver], selectedId: null, onSelect, selectedFlavor });
+		expect(screen.queryByText(t('image.recommendation.repository'))).toBeNull();
+		await fireEvent.click(repositoryButton('ubuntu'));
+		await fireEvent.click(tagButton('ubuntu:22.04'));
+		expect(onSelect).toHaveBeenCalledWith(driver.id, 'ubuntu:22.04');
+	});
+
+	it('recommends and manually selects a driver image larger than the nominal flavor disk', async () => {
+		const selectedFlavor: FlavorOption = { id: 'gpu', name: 'gpu', vcpus: 4, ram: 8192, disk: 40, is_public: true, extra_specs: { 'pci_passthrough:alias': 'RTX-3090:1' } };
+		const driver: ImageInfo = { ...images[0], min_disk: 80, gpu_vendor: 'nvidia', gpu_driver: 'nvidia', verification_status: 'verified' };
+		const onSelect = vi.fn();
+		render(SelectImage, { images: [driver], selectedId: null, onSelect, selectedFlavor });
+		await fireEvent.click(repositoryButton('ubuntu'));
+		expect(within(tagButton('ubuntu:22.04')).getByText(t('image.recommendation.gpu', { vendor: 'nvidia' }))).toBeTruthy();
+		await fireEvent.click(tagButton('ubuntu:22.04'));
+		expect(onSelect).toHaveBeenCalledWith(driver.id, 'ubuntu:22.04');
 	});
 });

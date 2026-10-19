@@ -64,7 +64,7 @@ describe('consumer instance list lifecycle safety', () => {
 		rows = [instance('vm-a'), instance('vm-b')];
 		auth.update((state) => ({ ...state, token: 'token-a', projectId: 'project-a', canWrite: true }));
 		mocks.get.mockReset().mockImplementation((path: string) => Promise.resolve(
-			path.endsWith('metrics-summary-batch') ? { prometheus_available: false, instances: {} } : rows,
+			path.endsWith('metrics-summary-batch') ? { monitoring_available: false, instances: {} } : rows,
 		));
 		mocks.post.mockReset().mockResolvedValue({ results: [{ id: 'vm-a', ok: true }, { id: 'vm-b', ok: true }] });
 		mocks.delete.mockReset().mockResolvedValue(undefined);

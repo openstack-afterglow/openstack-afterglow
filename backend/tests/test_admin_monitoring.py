@@ -3,7 +3,8 @@
 Drover 카운트 버그(0 하드코딩) 수정 + 누락 리소스(스냅샷/백업/LB/SG/서브넷/이미지/DB/Identity) 통합.
 """
 
-from unittest.mock import MagicMock, patch
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -233,13 +234,45 @@ async def test_monitoring_summary_handles_per_resource_failure(admin_client, mon
 
 
 @pytest.mark.asyncio
-async def test_monitoring_summary_async_collect_works_with_cached_call(monkeypatch):
-    """_collect가 async로 변환된 후에도 cached_call이 정상 동작하는지 (간접 — iscoroutinefunction 분기)."""
-    from app.services.cache import cached_call
-
-    async def my_collect():
-        return {"ok": True}
-
-    patch_redis_cache_miss(monkeypatch)
-    result = await cached_call("test:key", 60, my_collect)
-    assert result == {"ok": True}
+async def test_shared_inventory_cache_never_replays_denied_native_host_data(admin_client, _fake_redis_global):
+    inventory = {"compute": {"running_vms": 7}}
+    await _fake_redis_global.set("afterglow:admin:monitoring", json.dumps(inventory))
+    measured = {
+        "source": "gnocchi",
+        "status": "available",
+        "error": None,
+        "truncated": False,
+        "resources": [
+            {
+                "id": "private-compute",
+                "name": "private-compute",
+                "type": "nova_compute",
+                "metrics": {
+                    "compute.node.cpu.percent": {
+                        "series": [{"ts": 100, "value": 0}],
+                        "unit": "%",
+                        "source": "gnocchi",
+                        "status": "available",
+                        "error": None,
+                    }
+                },
+            }
+        ],
+    }
+    denied = {
+        "source": "gnocchi",
+        "status": "forbidden",
+        "error": "gnocchi_forbidden",
+        "truncated": False,
+        "resources": [],
+    }
+    with patch("app.api.identity.admin.native_telemetry.system_series", AsyncMock(side_effect=[measured, denied])):
+        first = await admin_client.get("/api/v1/admin/monitoring/summary?cache=true")
+        second = await admin_client.get("/api/v1/admin/monitoring/summary?cache=true")
+    assert first.status_code == second.status_code == 200
+    assert first.json()["telemetry"]["resources"][0]["metrics"]["compute.node.cpu.percent"]["series"][0]["value"] == 0
+    assert second.json()["compute"] == inventory["compute"]
+    assert second.json()["telemetry"]["status"] == "forbidden"
+    assert second.json()["telemetry"]["resources"] == []
+    assert "private-compute" not in second.text
+    assert second.headers["cache-control"] == "no-store"

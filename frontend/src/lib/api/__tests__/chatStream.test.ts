@@ -148,7 +148,7 @@ describe('durable chat SSE framing', () => {
 			availableProjects: [],
 			roles: [],
 			isSystemAdmin: false,
-			federated: false,
+			federated: false, domainId: 'domain-1', identityDomainId: 'domain-1', domainName: 'Domain', isDomainManager: false,
 		});
 		const event = {
 			event_id: 'run-1:1',
@@ -162,7 +162,7 @@ describe('durable chat SSE framing', () => {
 		const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
 			const url = String(input);
 			if (url.endsWith('/api/v1/auth/refresh')) {
-				return Promise.resolve(new Response(JSON.stringify({ token: 'new-token', refresh_token: 'new-refresh-token' })));
+				return Promise.resolve(new Response(JSON.stringify({ token: 'new-token', refresh_token: 'new-refresh-token', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain', user_id: 'user' })));
 			}
 			if (new Headers(init?.headers).get('Authorization') === 'Bearer old-token') {
 				return Promise.resolve(new Response(null, { status: 401 }));
@@ -205,7 +205,7 @@ describe('durable chat SSE framing', () => {
 				availableProjects: [],
 				roles: [],
 				isSystemAdmin: false,
-				federated: false,
+				federated: false, domainId: 'domain-1', identityDomainId: 'domain-1', domainName: 'Domain', isDomainManager: false,
 			});
 		}
 	});

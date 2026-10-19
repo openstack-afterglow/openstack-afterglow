@@ -155,6 +155,22 @@ Dockerfile import 응답·상세의 `artifact_ids`는 `dockerfile-root`에서 �
 
 ---
 
+## Hub 아티팩트 조회 BFF (현행)
+
+`/palimpsest/packages`의 Hub 탭은 아래 `/api/v1/palimpsest/hub` 경로를 사용한다. Browser `Authorization: Bearer <access JWT>`와 선택 `X-Project-Id`는 서버의 현재 membership/service 권한을 통과해야 한다. Native package key·Keystone token을 browser 자격 대신 넣지 않는다.
+
+| 메서드·suffix | 계약 |
+|---|---|
+| `GET /me` | 현재 user/project·roles·verified system-admin flag와 inventory/download/upload/delete/build capability. 현재 service/system 권한 필요, `private, no-store` |
+| `GET /layers` | exact name·digest prefix·kind·arch·disk format 및 offset/limit 검색. 현재 UI는50+1 lookahead이고 전체 count가 아님 |
+| `GET /layers/{sha256:digest}` | 정확한 artifact metadata·JSON·ancestor summary·chain_complete |
+| `GET /layers/{sha256:digest}/ancestors` | Hub가 제공한 ancestor chain |
+| `GET /layers/{sha256:digest}/blob` | 인증된 blob stream. UI는64MiB·metadata/길이/SHA-256 검증 뒤 저장 |
+| `GET /builds` | 현재 호출자의 최근 build 관측, UI 최대20개. Build capability 별도 필요 |
+| `GET /image-exports` | 최근 export 상태·제공된 progress/error/timestamp, UI 최대20개 |
+
+성공 빈 목록은 건강 상태가 아니며403·dependency 장애·미측정 값을0으로 치환하지 않는다. Shared/public artifact는 다른 project 소유라는 이유로 숨기지 않는다. `/me` 추가는 native `/projects/*`, `/auth/me`, key/cache control을 browser catch-all에 개방하지 않는다. 네이티브 패키지의 원본 subject·namespace·owner 검사와 별도 `/api/v1/palimpsest/packages`, `/api/v1/palimpsest/package-keys` 계약은 [도메인 문서](../palimpsest.md#46-프로젝트-패키지와-내-접근-키-palimpsestpackages)를 따른다.
+
 ## 상세 — Union 레이어 (`/api/v1/union`)
 
 ### GET /api/v1/union/layers

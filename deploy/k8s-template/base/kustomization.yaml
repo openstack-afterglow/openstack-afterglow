@@ -13,5 +13,4 @@ resources:
   - redis/service.yaml
   - redis/sentinel-deployment.yaml
   - redis/sentinel-service.yaml
-  - worker/deployment.yaml
   - worker/notion-deployment.yaml

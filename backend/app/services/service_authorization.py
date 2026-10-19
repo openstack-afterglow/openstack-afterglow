@@ -24,9 +24,18 @@ async def current_service_principal(request: Request) -> dict:
     if cached is not None and cached[0] == identity:
         return cached[1]
     if identity[2]:
-        # Only the already verified system flag bypasses project action gates.
-        # Palimpsest's classifier preserves its separate protected-owner rules.
-        principal = {"user_id": user_id, "project_id": project_id, "roles": [], "is_system_admin": True}
+        from app.api.deps import require_admin
+
+        if token_info.get("_live_system_admin") is not True:
+            await require_admin(token_info)
+        # A live system grant replaces project leaves, never native credential
+        # attenuation, resource invariants or target-project isolation.
+        principal = {
+            "user_id": user_id,
+            "project_id": project_id,
+            "roles": token_info.get("roles", []),
+            "is_system_admin": True,
+        }
     else:
         access = await project_service.get_project_access(project_id, user_id)
         principal = {"user_id": user_id, "project_id": project_id, "roles": access["roles"], "is_system_admin": False}

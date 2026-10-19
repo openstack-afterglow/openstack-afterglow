@@ -27,38 +27,51 @@ Backend `uv.lock`, frontend Bun·npm lock, root CLI `uv.lock`, operator `uv.lock
 
 ## 인증·인가 모델
 
-```
-브라우저 ──[Authorization: Bearer <jwt> (+X-Project-Id)]──▶ FastAPI
-                                            │
-                                            ├─ 토큰 캐시 검증 (Redis, TTL 60s) ─[Keystone]
-                                            │  └ logout/revoke 시 invalidate
-                                            │
-                                            ├─ project-scoped Connection 생성
-                                            │  └ conn._afterglow_project_id 저장
-                                            │
-                                            └─ assert_resource_owner (defense-in-depth)
-                                               └ admin 우회 + 외부/공유 자원 면제
-```
+브라우저 access JWT는 Redis refresh family를 가리킵니다. 서버는 저장된 호출자 소유의 unscoped native 로그인 증명을 검증한 뒤 현재 도메인·프로젝트 멤버십과 역할로 요청용 project token을 교환합니다. 로그인 증명과 파생 project token을 분리하므로 프로젝트 role 회수 자체가 로그인 family 삭제를 요구하지 않습니다. SDK Connection의 실제 native scope·논리 대상 구분과 `assert_resource_owner`의 최종 소유권 검사는 그대로 유지합니다.
 
 ### 명시적 역할 연결과 프로젝트 권한 경계
 
 - 전역 역할 CRUD·inference edge 편집·프리셋 적용은 현재 검증된 시스템 관리자만 수행합니다. 프로젝트 reader나 native 역할 이름만으로 이 경계를 통과하지 않습니다.
 - 시스템 관리자가 선택한 전역 custom 하위 역할은 프리셋 목록 밖 이름이라는 이유만으로 차단하지 않습니다. 실제 Keystone DAG로 상속하며 프리셋 재적용이 이를 삭제하지 않습니다. Custom 이름은 native 서비스 정책의 안전성 증명이 아니므로 연결한 관리자가 해당 정책을 검토합니다.
 - 전체 전이 graph에서 알려진 core/project/service 등급 권한을 기존 ceiling으로 검증합니다. Custom alias로 `admin/manager`, reader의 native `member` 또는 관리형 쓰기 권한, 소유권·도메인·순환 제한을 우회할 수 없습니다. 캐시된 token 이름이나 preset의 가상 확장으로 권한을 만들지 않습니다.
-- 프로젝트 멤버 API는 같은 그래프의 기존 canonical 등급을 사용할 수 있지만 custom 역할을 독립 위임 대상으로 추가하지 않습니다. Metadata/lease 장애의 fail-closed, 직접/그룹/상속 세션 회수와 감사 lifecycle은 유지합니다.
+- 프로젝트 멤버 API는 같은 그래프의 기존 canonical 등급을 사용할 수 있지만 custom 역할을 독립 위임 대상으로 추가하지 않습니다. Metadata/lease 장애의 fail-closed, 직접·그룹·상속 변경의 현재 권위·projection 무효화와 감사 lifecycle은 유지합니다. 역할 변경만으로 로그인 family를 일괄 회수하거나 철회된 권한을 다음 로그인까지 남기지 않습니다.
 
 ### 토큰 lifecycle (Keystone)
 
-- **세션 토큰 캐시**: Redis `afterglow:cached:validate:<sha256>:<project>` (TTL 60초)
-- **logout / revoke 시**: `invalidate_token_cache(token, project_id)` 가 cache key 와
-  session key 모두 즉시 삭제 → 동일 토큰으로 다음 호출 시 Keystone 재검증 → 401
+- **로그인 증명과 현재 권한**: Redis refresh record에는 unscoped 로그인 증명을 저장합니다. 매 인증 요청은 native 증명과 현재 프로젝트 권한을 확인하며 역할을 담은 검증 결과를 요청 간 TTL cache로 재사용하지 않습니다. Legacy 검증 cache 제거는 이전 worker와의 정리를 위한 것이며 인가의 근거가 아닙니다.
+- **프로젝트 접근 상실**: 일반 리소스 작업은403으로 거부하지만 유효한 로그인·도메인 정책 아래 인증 문맥과 projectless refresh를 통한 다른 프로젝트 선택은 허용합니다. 논리 관리자 workspace는 현재 system authority·선택 대상 검사를 유지하며 원래 connection project를 잃으면 실제 native 범위만 projectless가 됩니다. 인증 조회·refresh는 grant를 재생성하지 않습니다.
+- **logout / 명시적 revoke**: Redis family 삭제와 캡처한 로그인 증명의 native revoke를 수행합니다. 계정 차단·절대 만료·진짜 native 로그인 증명 무효를 project-only403으로 낮추지 않습니다. Keystone 자체의 사용자 전체 token 회수(일부 group membership 변경 포함)는 Afterglow가 우회하지 않습니다.
 - **session 절대 timeout**: Redis refresh record의 최초 `started_at`을 access/refresh/rescope에서 보존·검사하며 만료 record는 삭제한다. Missing timestamp는 기존 marker/서명된 iat로 TTL을 유지한 채 채운다. 원자적 Lua 회전은 현재 존재·blacklist·deadline을 재검사하므로 동시 refresh 중 한 요청만 성공한다.
+- **수명 관측 경계**: 정본 격리 HTTP/Redis에서 서명 JWT·회전의 원래 시작 시각과 절대 만료를 검증하고, 공유 세션은 bounded read-only Redis와 기존 사용자 native token의 단일 GET으로만 관찰했다. Refresh/native 만료가 뒤에 있어도 absolute deadline은 유지한다. 합성 세션의 deadline 이동만으로 실제 사용자1시간 자연 경과를 수용했다고 주장하지 않는다. Source/build/runtime·브라우저 relay·VM boot의 별도 제한은 [`docs/testing.md`](testing.md)에 기록한다.
+- **원자적 family 회수**: Redis Lua는 refresh/작업 전환과 같은 직렬화 경계에서 현재 family/JTI를 제거하고 그 시점의 native token을 캡처합니다. 이전 JTI alias는 최신 family 회수 대상으로만 해석하며 이전 bearer를 되살리지 않습니다. 이후 각 captured token의 native revoke를 수행하므로 느린 native 호출 전에 Afterglow 자격은 제거됩니다. Strict recovery caller는 모든 captured token을 시도한 뒤 실패를 알리며 삭제한 family를 복원하지 않습니다.
+- **정확한 native revoke 증거**: 회수할 subject token이 reset으로 이미 무효여도 operator 인증으로 그 exact token을 revoke합니다. Native token endpoint의 정확한404 `Failed to validate token`/`Could not recognize Fernet token`만 이미 무효화로 수용합니다. 일반 proxy/endpoint/directory404, 권한/연결 오류는 성공 증거가 아닙니다. 이 회수는 Afterglow가 캡처한 세션/token 범위이며 모든 외부 IdP 세션·직접 발급 Keystone 자격·application credential 전체 회수 보장이 아닙니다.
+
+### Canonical 이메일 소유권·provider 연결·가입
+
+- Email은 normalized host 및 case-insensitive 전체 주소로 global native inventory에서 유일성을 검사합니다. 불완전/paginated/truncated inventory를 계정 부재로 해석하지 않습니다. 기존 중복 계정은409로 차단하고 exact user/home·issuer/sub·IdP/protocol tuple·grant/소유권을 검토한 명시적 이관을 요구하며 자동 merge·password reset·identity 이동/복제를 하지 않습니다.
+- 외부 identity key는 stable `issuer + sub`(GitHub는 configured API URL + numeric ID)입니다. Verified email 일치만으로 기존 계정을 연결하지 않고 browser-bound600초·1회용 암호화 link ticket과 **기존 계정 password 또는 현재 authenticated native 계정** proof를 요구합니다. Ticket 소비 후 실패는 재로그인해야 하며 다른 username/password/user/home/email proof로 우회하지 못합니다. Proof 검증과 attachment는 같은 graph lease 안에서 수행합니다. Authenticated proof는 native token과 origin refresh record의 exact user/home·blacklist·expiry·원래 absolute deadline도 재검사합니다. 직접 password proof 또는 살아 있는 password-origin authenticated 세션만 local-password marker를 확정하며 federated-origin proof로 추정하지 않습니다. 연결 PATCH는 native user의 전체 federated tuple과 stable metadata를 갱신하며 원래 password/home/name/email/default project 및 다른 연결을 보존·readback합니다.
+- 연결 완료와 로그인은 별도 경계입니다. Exact native tuple·stable metadata 저장 확인 뒤 두 link API는 연결 결과만 반환하며 native federation·프로젝트 scope·provider 검증 stamp·새 application session을 발급하지 않습니다. 기존 세션은 유지합니다. 별도 새 authorize/callback에서 canonical native user/home·provider revision·admission을 다시 검사해야 로그인할 수 있으며, 저장 확인 실패503이나 transport timeout을 성공 안내로 바꾸거나 proof를 자동 재사용하지 않습니다.
+- Home identity, working domain, provider origin을 분리합니다. Password 로그인은 도메인 selector 없이 global unique username/email 계정의 실제 home에 한 번만 credential exchange하고 최초 세션을 home에 발급합니다. 중복 native 계정을 임의 선택하거나 password를 순회하지 않습니다. Federated 최초 세션도 exact native home에 발급하되 `provider_domain_id`와 provider/revision/login_email을 저장·회전 때 보존하고 provider-origin 정책 및 작업 도메인 email 정책을 각각 확인합니다. Missing origin인 과거 세션은 재로그인하며 현재 작업 도메인으로 추정하지 않습니다. 로그인 후 chooser의 표시 선호·클라이언트 claims는 scope/권한 근거가 아니고 명시적 전환 API가 현재 native 멤버십·원래 수명을 검증합니다.
+- 공개 `/auth/login-options`는 활성 도메인의 현재 허용된 공급자 등록 metadata만 반환합니다. 등록 origin ID는 authorize handle일 뿐 계정의 home/조직 멤버십을 만들지 않습니다. Secret/client ID/endpoint·이메일/사용자 directory와 issuer discovery는 이 목록에 포함하지 않습니다. 신규 human의 필수 개인 도메인·승인/동결 quota·enrollment 완료 guard는 유지하며 기존 Default 계정·home은 자동 이동하지 않습니다.
+- Provider 노출 `allow_providers`는 admission이 아닙니다. 기존 멤버십이 없으면 provider별 configured `auto_join_email_domains`의 exact host가 필요하며 기본은 거부입니다. Domain map 생략은 default 상속, 명시 map은 전체 대체, `{}`·누락 provider·빈 host 배열은 자동 가입 없음입니다. Auto-join은 prepared Default reader만 추가하고 기존 계정 연결 proof/manager·owner 권한을 만들지 않습니다.
+- Public signup은 별도 `[auth].public_signup_enabled` opt-in과 `signup_email_domains`(빈 list는 host 제한 없음)입니다. Email-first 링크 전달 후 새 개인 home만 만들며 임의 도메인의 공개 등록 route는403 `invitation_required`입니다. 계정 존재/home 안내는 전달된 비밀 링크 조회 뒤에만 노출합니다. 기존 계정은 로그인/복구·초대 수락으로 재사용합니다. 기존 SQL signup 정책 projection은 이 공개 가입이나 domain admission 권한이 아닙니다.
+- Native mapping은 stable subject의 user-only ephemeral `user.id` mapping이어야 합니다. Mutable preferred_username/email mapping, email 덮어쓰기, groups/projects/roles provisioning은 허용하지 않으며 native exchange 전에 unsafe/unavailable mapping을503 `native_mapping_unsafe`로 거부합니다. Native full `federated` tuple PATCH 및 canonical user ID/home 발급은 별도 운영 prerequisite이고 service token impersonation fallback은 없습니다.
+
+### 이메일 소유 기반 복구·프로필 이메일 변경
+
+- Public username/password 요청은 유효한 email이면 계정 부재/중복/부적격·SMTP 비활성/실패·directory/DB/Redis 장애·주소 budget 거부에도 동일202 `{accepted:true}`입니다. Schema/invalid email422 및 IP route-limit429는 별도이며202는 실물 메일 전달 증거가 아닙니다. 주소 budget은 hashed Redis key60초로 종류/IP 사이에 공유합니다.
+- Global unique email을 가진 enabled local-password 사용자와 enabled home만 대상입니다. 사람의 system admin/manager는 이메일 소유로 복구할 수 있습니다. Configured operational `os_username`, effective `service` 역할과 external-only 사용자는 제외합니다. Federated 계정도 명시적으로 local password capability가 검증/설정되었다면 가능하며 external-only 사용자에게 복구로 password를 만들지 않습니다.
+- Migration097 `account_recoveries`는 SHA-256 token hash·exact user/home/original email·kind/status/expiry만 보존하며 password/평문 token은 저장하지 않습니다. 발급부터1시간·1회용, 전달 완료 `pending`만 redeem합니다. Username GET은 소비하며 password/email-change inspection은 소비하지 않습니다. 매번 현재 identity/email·유일 소유권·eligibility를 다시 검사합니다.
+- 본인 email 변경은 access bearer와 exact home current-password 재인증, global unique 새 주소와 현재 email 정책, 기존 주소의 token/신규 주소 없는 알림 및 신규 주소 proof 전달을 요구합니다. 일반 profile PATCH는 email 변경에409 `email_verification_required`이며 직접 소유권을 바꾸지 않습니다. Manager/system-admin의 별도 관리 경로 권한을 본인 profile 우회로 쓰지 않습니다.
+- Password/email native dispatch 전 SQL에 `dispatching`을 commit하고 다른 pending mutation proof를 supersede합니다. Native 거부·timeout·취소·crash도 replay 불가입니다. 성공/불명확 outcome 모두 captured Afterglow/native sessions 회수를 시도하며 unknown502 `recovery_outcome_unknown`/회수 실패503 `recovery_sessions_failed`를 성공으로 숨기지 않습니다. `dispatching/outcome_unknown/sessions_failed` journal을 보존해 운영자가 exact native 효과와 회수를 조사합니다. Automatic native rollback/reset/replay는 없습니다.
+- 복구 모든 응답(429 포함)은 no-store/private·no-cache·no-referrer입니다. 링크 token·password·provider bearer를 audit/log/분석에 기록하지 않습니다. API payload/error와 rate-limit의 정본은 [인증 API](api/auth.md#이메일-소유-기반-계정-복구프로필-이메일-변경),096/097 schema-before-writer·구형 writer drain은 [배포 가이드](deployment.md#canonical-계정공개-가입복구-cutover)를 따릅니다. 이 계약은 운영 rollout·real mailbox 수신·최종 실제 GitLab/native acceptance 증거가 아닙니다.
 
 ### 브라우저 access/refresh 복구
 
 - `frontend/src/lib/api/client.ts`의 `fetchWithAuth`는 명시적 access token을 붙이는 first-party 요청의 HTTP handshake를 담당한다. JSON API와 채팅/SSE·첨부·다운로드 소비자가 같은 경로를 사용하고, 진행률 XHR 업로드도 같은 인증 복구 정책을 사용한다.
 - 현재 세션의 access 만료가 120초 이내이면 요청 전 refresh를 기다린다. 진행 중 갱신에 들어온 요청도 같은 Promise를 기다리므로 background-tab timer가 늦어져도 만료 토큰으로 요청부터 보내지 않는다.
 - 첫 401은 refresh 또는 이미 회전한 live token으로 **한 번만** 재시도한다. body·project·사용자 취소 신호를 보존하며, 이미 HTTP 응답을 받아 소비 중인 SSE를 재시작하지 않는다. 취소된 요청은 갱신 뒤 재전송하지 않고 공유 refresh는 다른 요청을 위해 완료한다.
+- 진행 중 프로젝트/도메인 commit은 일반 foreground/periodic refresh와 늦은401 처리의 소유권 경계다. 첫 응답과 재시도 응답 모두 commit 반영을 기다린 뒤 실제 거부된 bearer·logical login/user/home/working/project가 여전히 현재 것인지 확인한다. 같은 scope라도 새 bearer를 과거401로 지우지 않으며, 비동기 인증 정리에는 verification epoch를 적용한다. Non-replay 변경은 자동 재전송하지 않고 세 번째 전송도 하지 않는다. 원래 `started_at`·만료·회수 정책은 그대로 유지한다.
 - root layout은 mount, window focus, document visible 복귀 시 즉시 만료를 확인하고 60초 interval도 유지한다. mockup과 logout 중에는 lifecycle 갱신을 시작하지 않는다.
 - refresh 자체의 401, 폐기/차단된 Redis 세션, 서버 session timeout, Keystone 인증 만료는 재로그인 대상이다. Keystone token authentication의 `Failed to validate token` 및 `Could not recognize Fernet token` 404는 adapter에서 Unauthorized로 정규화하며, 일반 endpoint/resource 404는 일시적 검증 실패와 구분하지 못하므로 503을 유지한다. Background refresh의 terminal 결과도 보호 요청을 기다리지 않고 로컬 인증을 지우고 로그인 화면으로 전환한다.
 - refresh 503·429·네트워크 오류는 인증 실패로 바꾸지 않고 세션을 보존하되, root shell의 닫을 수 없는 인증 복구 dialog로 작업을 중단한다. 기존 화면은 mounted 상태로 남겨 작성 내용을 유지하고, `dialogFocus`가 다른 화면·overlay를 inert 처리한다. 재시도는 기존 coalescing/cooldown 및 `Retry-After`를 따르며 성공하면 동일 화면을 복구한다. 실패 상태는 해당 access token에 묶이고 다른 로그인·회전·로그아웃 이후의 늦은 응답은 새 identity를 덮어쓰지 않는다.
@@ -116,6 +129,7 @@ Backend `uv.lock`, frontend Bun·npm lock, root CLI `uv.lock`, operator `uv.lock
 - Redis ticket에는 scoped Keystone token이 짧은 `ticket_ttl_seconds` 동안 포함됩니다. 티켓은 high-entropy opaque 값이고 목적(`cloud-shell`)이 묶이며 원자적으로 한 번만 소비됩니다. Consume 뒤 ticket key는 삭제되고 active ownership key에는 token 대신 서명된 fingerprint/session metadata만 남습니다. Redis가 불가하면 ticket/lock/heartbeat 경로는 503/4500으로 fail-closed합니다.
 - 브라우저는 Keystone token, 서비스 프로젝트 자격, Zun exec URL을 받지 않습니다. Backend가 Zun binary WebSocket에 직접 연결하고 browser에는 configured public Afterglow API relay만 노출합니다. Frontend CSP `connect-src`는 설정된 API HTTP(S) origin과 정확히 대응하는 WS(S) origin만 추가합니다. Handshake 뒤 `Origin`을 frontend/CORS allowlist와 정확히 비교하며 누락·userinfo·path/query가 있는 origin도 거부합니다.
 - Bootstrap은 PTY echo를 먼저 끈 뒤 bounded payload를 받고, token을 `/dev/shm/afterglow/secure.yaml`의 UID/GID 1000·mode 0600 파일에만 씁니다. `/dev/shm`은 컨테이너 tmpfs이고 영구 Cinder mount `/home/cloudshell`과 분리됩니다. 그 뒤 UID/GID 1000, 빈 supplementary group, `no-new-privs`, 비어 있는 inheritable/ambient/bounding capability로 `bash --login`을 exec합니다. Image layer와 persistent home에는 credential을 쓰지 않습니다.
+- Image/CLI/bootstrap source와 all-four runtime build gate는 독립 `openstack-afterglow/openstack-client` 저장소가 소유합니다. SDK에는 top-level `clouds` mapping의 public config와 별도 secure config를 명시적으로 선택하게 하며 shell 환경에는 token 값 대신 `OS_CLIENT_CONFIG_FILE`/`OS_CLIENT_SECURE_FILE` 경로만 둡니다. 비공개 image credential은 native Zun registry가 관리하고 Afterglow에는 UUID만 설정합니다. 미게시·pull·policy 오류를 다른 image/권한으로 우회하지 않으며 영구 홈은 유지합니다. Source 저장소와 초기 GHCR package는 private으로 유지하고 실제 package ACL·compute pull 권한을 별도로 검증합니다.
 - Zun 컨테이너는 비특권(요청에 `privileged`를 보내지 않아 Zun 기본값을 쓰며, Zun 기본 policy는 명시적 privileged 생성을 모두 거부), 고정 CPU/RAM, 전용 프로젝트의 default 네트워크(또는 명시적 소유 네트워크), 한 개의 managed home volume을 사용합니다. 네트워크의 subnet과 external 연결을 홈 생성 전에 확인하며 다른 프로젝트의 private network는 거부합니다. 기본 `default` security group은 전용 프로젝트 안에서 exact ID로 확정하고 기존 규칙을 유지합니다. Egress-only를 보장하지 않으므로 같은 그룹의 세션 사이 ingress도 운영 정책으로 관리해야 합니다. 세션 정리는 owner 권한의 `stop=true` 삭제를 사용하므로 service user에 force delete용 admin 권한이 필요하지 않습니다. Dedicated project service credential은 lifecycle에만 사용하고 shell 안에는 caller-scoped token만 들어갑니다.
 - 영구 홈과 컨테이너는 이름만으로 채택/삭제하지 않습니다. HMAC signature, service-project resource metadata, user/workspace/session fingerprint, expiry가 모두 맞아야 합니다. 중복·collision·metadata 불일치·조회 실패는 자동 정리 대신 fail-closed 상태로 남깁니다.
 - 사용자당 전역 singleton reservation/active key가 다른 탭과 프로젝트의 동시 세션을 막습니다. Project switch/logout은 먼저 relay를 닫고 container cleanup을 요청합니다. Idle/max expiry, browser disconnect, backend restart 뒤에는 exact managed container cleanup과 startup/interval reconciler가 보조하지만 persistent home은 명시적 reset 전까지 유지합니다.

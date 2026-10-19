@@ -7,6 +7,177 @@
 
 ## [Unreleased]
 
+### 전체 공개 source dev 통합 (local source, not deployed)
+- 오래된 공유 dev의 누적 source를 최신 `origin/dev`와 격리 병합하고, upstream 아홉 언어·socket-peer/MMDB/origin·flow/fabric·route 중복 제거·frozen npm runtime 설치와 local 개인 가입/승인/quota·home-first/SSO·IAM·native telemetry·backup/snapshot·effective 배포 설정을 함께 보존한다.
+- Domain-bound credential과 working/home identity 검증, scoped native role-ID와 현재 할당 교집합, stale-token closed-subset 위임, durable rollback·lease/journal·non-replay 및 frontend owner/ABA fence를 유지한다. Retired Afterglow Cloud Shell package/build는 복구하지 않으며 image 기본값은 독립 `openstack-client:slim`, 빈 pull policy·registry를 유지한다.
+- 새 local UI 문구를 추가 다섯 언어에도 machine-draft로 연결하며 원어민 검수 상태를 올리지 않는다. 기존 release/운영 기록은 원래 시점의 근거이고 이번 병합의 수용 증거는 `docs/testing.md`에 별도로 기록한다. 버전 bump·tag·main merge·서비스 배포·운영 migration은 하지 않는다.
+- 통합 결함인 K8s traffic TOML table 중복과 Kolla launcher proxy trust 누락을 수정했다. 다른 working domain의 프로젝트 권한 상실 뒤 반복 projectless refresh/조회는 native subject·home을 먼저 검증하며 frontend의 명시적 project 제거도 반영한다. 실제 membership/native proof 회수·scoped mismatch·old-owner/ABA 차단은 유지한다.
+- 아홉 언어의 시작 문서를 domain-free login·별도 SSO·home-first 선택 흐름에 맞추고 Nova guide 누락 번역을 보완했다. 전체 `test:gate`, Svelte/i18n 검사와 정본9image build·비특권 실행 및 격리 HTTP/compiled 로그인 화면 검증을 통과했다. 원어민 승인·실제 사용자 GitLab/Keystone 로그인·운영 migration/배포의 새 수용 증거는 아니다.
+
+### 조직 SSO 로그인 진입 분리 (local source)
+- 메인 로그인은 사용자 이름/이메일·비밀번호와 단일 `SSO로 로그인` 버튼만 표시한다. 조직별 GitLab/OIDC 공급자 목록은 명시적으로 연 SSO 선택 화면에서 제공하며 같은 이름은 등록 도메인으로 구분한다.
+- SSO loading·빈 목록·조회 오류와 비밀번호 복귀를 분리하고 방법 전환 시 비밀번호를 지운다. 키보드 focus·최소44px action·네 언어·반응형 화면을 기존 primitive로 유지한다.
+- 인증 요청 중 방법 변경과 중복 요청을 막고 기존 mounted catalog·owner/ABA·exact origin·home-first workspace 선택 경계는 보존한다. Backend API·권한·schema·가입/quota 정책은 변경하지 않았고 사용자 서비스 배포도 하지 않았다. 검증 증거와 기존 정적 검사 한계는 `docs/testing.md`에 기록한다.
+
+### 도메인 입력 없는 로그인·원 도메인 우선 진입 (local source)
+- 비밀번호 로그인은 사용자 이름 또는 고유 이메일과 비밀번호만 받는다. 전역 native 계정의 원래 home을 서버가 결정하며 중복 계정은 비밀번호 인증 전에409로 거부하고 도메인별 비밀번호 재시도를 하지 않는다.
+- 공개 공급자 목록은 서버에 등록된 정확한 origin 도메인의 안전한 표시 metadata만 제공한다. 새 password·외부 공급자 로그인은 기존 계정의 home에서 시작하고 조직 origin·정책·원래 계정 ID와 세션 수명은 별도로 보존한다.
+- 모든 새 로그인 뒤 공유 리소스 선택 화면을 연다. 도메인을 둘러보는 것만으로 세션을 바꾸지 않으며 원 도메인에서 계속하거나 접근 가능한 조직·프로젝트를 명시적으로 선택한 뒤 기존 초대·MCP 진행을 이어간다. 일반 세션 복원에는 이 단계를 다시 강제하지 않는다.
+- 구형 domain/project 입력을 보내는 login client와 새 API는 혼용하지 않는다. 새 계정의 필수 개인 도메인·승인·기본 quota 정책은 유지하고 기존 Default 계정을 자동 이전·삭제하거나 실행 중 사용자 서비스를 교체하지 않았다. 격리 검증과 미수용 경계는 `docs/testing.md`에 기록한다.
+
+### 개인 도메인 가입·관리자 승인·미래 quota 정책 (local source)
+- 새 이메일·OIDC/GitHub human 계정을 공통 enrollment journal로 개인 신원 도메인과 Default 프로젝트에 생성한다. 기존 계정 ID/home·비밀번호·조직 권한은 이동하지 않으며 조직 참여는 별도 초대·검증된 provider admission을 따른다.
+- 시스템 관리자 → 설정에 공개 이메일 가입, 자동/관리자 승인, 향후 개인 도메인 quota 편집과 승인·거절 대기열을 추가했다. 정책은 revision CAS로 SQL에 저장하며 기존 도메인 quota에 소급하지 않는다.
+- 승인 전 native 생성은 없고 password/OAuth code/session을 승인 대기열에 저장하지 않는다. 사용자와 개인 Default를 비활성으로 준비해 동결된 quota의 native 적용·readback 뒤 활성화하며 불명확한 결과는 recovery로 차단한다.
+- 승인 이메일은 새 검증 링크 또는 invitation-only 환경의 기존 초대 재조회 안내를 사용하고, provider는 승인 뒤 새 로그인을 시작한다. Callback의 복원 세션은 root-owned readiness를 기다리되 한 번만 code를 교환한다.
+- Migration098을 새 writer보다 먼저 적용하고 구형 가입 writer를 drain해야 한다. 실제 HTTP·MariaDB·최종 compiled 화면과 두 architecture 이미지의 격리 검증·전체 gate 실패 경계는 `docs/testing.md`에 기록한다. 기존 서비스 교체·운영 IAM/SMTP/IdP 수용·commit/push/deploy는 수행하지 않았다.
+
+### 관리자 권한 확인 중복·화면 재생성 제거 (local source)
+- Root와 관리자 layout에서 중복되던 `/auth/me`를 root 한 곳으로 통합했다. 전체 페이지 새로고침은 저장된 관리자 flag만 믿지 않고 서버 확인 한 번 뒤에 화면을 연다.
+- 서버가 검증한 정상 token 갱신에서는 이미 열린 관리자 화면·입력을 유지하고 background 재검증을 계속한다. 목록 새로고침·내부 탐색은 별도 관리자 확인을 추가하지 않는다.
+- Scope 전환·관리자 권한 철회·401·검증 장애의 차단과 서버 관리자 API의 live native 검증·기존 세션 수명은 유지한다. 실행 중인 사용자 서비스·운영 배포에는 반영하지 않았으며 검증 증거와 경계는 `docs/testing.md`에 기록한다.
+
+### GitLab shared mapped 재발 방지와 callback 대기
+- Native 배포 입력과 관리 reconciler를 `gitlab/mapped → afterglow_gitlab_stable_sub`의 정확한 user-only `OIDC-sub` 규칙으로 통일했다. 도메인 접두사·email·group을 다시 쓰던 진입점은 fail-closed로 퇴역시키고 legacy `openid`와 기존 권한은 보존했다. Horizon의 Default/dmslab 선택도 같은 builtin `mapped` 경로를 사용한다.
+- 별도 승인된 재생성 `jung-geun` ID만 fresh subject·zero-grant/인증 객체 검증과 graph lease 아래 삭제했다. Canonical `pieroot`의 필드·인증 객체·역할·그룹과 cloud resource 변경 금지를 유지했다.
+- Provider callback에만120초 client 대기를 사용하고 OAuth code 재전송은 금지한다. Backend source는 한 요청의 native 연결을 공유하되 정책 I/O 뒤·세션 publication 전에 권위 관측을 버린다. 사용자가 로컬 반영을 이번 장애 범위로 제한하여 frontend만 교체했고 기존 role/session 변경과 backend image는 반영하지 않았다. 실제 native·Horizon·35초 격리 callback 및 남은 real-user 수용 경계는 `docs/testing.md`에 기록한다.
+
+
+### 본인 프로젝트 역할 변경 시 로그인 유지
+- 프로젝트 role 추가·교체·회수와 그룹·상속·역할 추론 변경의 completion에서 로그인 family 일괄 삭제를 제거했다. 현재 권위·기존 검증 cache와 native 읽기 projection은 계속 무효화하며 새 요청에 변경된 권한을 즉시 적용한다.
+- Password/provider 로그인·access·refresh·scope 전환에서 unscoped native 로그인 증명과 요청용 project token을 분리했다. 프로젝트 접근을 잃으면 일반 작업은403으로 거부하되 유효한 로그인·도메인 정책 아래 projectless 갱신과 다른 프로젝트 선택을 허용한다. 현재 system authority가 남은 논리 관리자 workspace도 원래 connection project 상실로 로그인을 끊지 않는다.
+- 명시적 로그아웃·보안 회수·계정/정책 차단·실제 native 로그인 무효·원래 절대 수명은 완화하지 않는다. Keystone 자체가 사용자 전체 token을 회수한 경우는 재로그인 경계이며 운영 배포 없이 격리 HTTP와 회귀 테스트로 확인한 범위를 `docs/testing.md`에 기록한다.
+
+### 기존 계정 연결 완료와 재로그인 분리
+- Password·현재 세션 proof를 사용하는 두 provider 연결 API는 native attachment의 저장·readback을 확인한 연결 결과만 반환한다. 연결 요청에서 native federation·프로젝트 scope·새 JWT/세션 발급을 이어서 실행하지 않는다.
+- 연결 완료 화면에 선택한 도메인과 명시적 재로그인 버튼을 표시한다. 기존 세션과 초대·MCP 진행 의도는 보존하고, 새 authorize/callback에서만 canonical identity·provider 정책을 다시 검증해 로그인한다. 도메인·공급자 이름을 하드코딩하지 않으며 네 언어에 적용했다.
+- Native 저장 확인 실패는 성공 안내로 바꾸지 않는다. 실제 API·compiled 브라우저의 연결→별도 로그인 및 실패 경계, 반응형·테마, 양 아키텍처 이미지 검증 증거와 전체 gate 한계는 `docs/testing.md`에 기록한다.
+
+### GitLab 콜백 native 매핑 정합성 복구 (실제 native·로컬 설정)
+- Canonical 보호 코드와 legacy mutable-username/group mapper의 불일치로 발생한 callback503을 진단하고, 기존 Afterglow용 `gitlab/mapped`를 user-only stable-sub mapping으로 이관했다. 기존 shared `openid`는 보존하며 exact mapped route에 검증된 issuer/audience AND 조건을 적용했다. 설치되지 않은 custom auth namespace는 activation 전 load 검사에서 거부하여 원복했고 runtime shim을 추가하지 않았다.
+- 사용자 명시 승인대로 `jung-geun` duplicate만 폐기하고 확인된 dmslab Default owner/reader를 `pieroot`로 journaled 이전했다. Canonical ID·home·비밀번호·기본 프로젝트·리소스는 보존한다. 두 작업 domain의 공급자 연결과 dmslab Gmail/건국대 verified host admission은 보호된 TOML로 선택하며 source 분기를 추가하지 않는다.
+- 실제 세-controller Apache graceful reload·local backend 설정 restart, native invalid/forged proof401과 live GitLab의 기존 계정 연결 화면까지 확인했다. 기존 계정 본인 확인 뒤의 positive native token·최종 로그인은 별도 수용 단계이며 상세 증거·이전 전체 gate 한계는 `docs/testing.md`에 기록한다.
+
+### Docker 빌드 캐시·소스 레이어 최적화 (local build/runtime)
+- Backend의 ffmpeg/QEMU/Ceph 설치와 native VM의 MariaDB/Redis·amd64 kernel/initramfs 설치를 앱 소스와 독립된 runtime base로 분리했다. 앱 변경마다 실행되던 운영 이미지의 재귀 chown은 `COPY --chown`으로 대체하고 개발 venv 동기화·소유권 설정도 앱 복사 앞으로 옮겼다.
+- Backend/worker의 외부 의존성과 로컬 crypto 소스 설치를 분리하고 uv BuildKit cache를 사용한다. Frontend의 npm 운영 의존성을 compiled build/scripts 복사 전에 설치하여 소스 변경만으로 의존성을 재설치하지 않는다.
+- `.dockerignore`에서 local datastore·agent/browser 상태·graphify 산출물·frontend 로그를 제외한다. 기존 target·지원 architecture·런타임 명령·버전·인증/DB 계약은 유지하며 실측과 검증 한계는 `docs/testing.md`에 기록한다.
+
+### 초대 기반 조직 참여·단일 이메일 계정·계정 복구 (local source)
+- 기존 도메인의 public self-registration을 닫고 초대 또는 설정의 선택된 공급자+검증된 exact 이메일 host 예외로 참여를 제한한다. DMSLab GitLab의 gmail.com/konkuk.ac.kr 정책은 TOML과 K8s/Helm 생성 경로에서 설정하며 source에 도메인/issuer 예외를 고정하지 않는다. Autojoin은 준비된 Default의 reader만 부여한다.
+- 공개 가입을 이메일 인증 → 원래 사용자 이름/비밀번호·필수 개인 도메인 설정 → 개인 Default의 manager/단일 owner/reader 준비로 분리했다. 기존 이메일은 새 계정을 생성하지 않고 원래 home 계정의 인증을 거친 초대·외부 공급자 연결을 사용한다. 모든 first-party 이메일 writer가 complete native inventory와 exact user metadata로 전역 소유권을 검사하고 모호한 기존 중복을 자동 병합하지 않는다.
+- Native federation은 immutable issuer/subject와 browser-bound 단일 사용 link proof를 연결하며 전체 native tuple·원래 비밀번호·사용자 ID·home·기본 프로젝트를 보존한다. User-only stable-sub native mapping만 허용하고 mapper의 group/project/role 우회 부여를 거부한다. Home/working/provider origin은 별도로 검증한다.
+- 이메일 기반 사용자 이름 찾기·1시간 일회용 비밀번호 재설정·검증된 프로필 이메일 변경을 추가했다. 비밀 proof는 digest로만 저장하고 dispatch 이후 replay·미확정 native 변경 재실행을 금지한다. Captured Afterglow 세션과 native 토큰을 회수하며 native의 exact invalid-token404만 이미 무효화된 것으로 취급한다. 복구와 link 증명·attachment를 같은 graph lease로 직렬화하고 취소된 application session을 재사용하지 않는다.
+- `/signup`·`/recover`와 연결/검증 화면, 한국어·영어·일본어·중국어 UI를 동기화했다. Browser smoke에서 발견한 root client guard의 공개 경로 누락을 수정했다. Schema096/097, old-writer drain·native mapping 분리·검토된 기존 중복 전환이 배포 선행 조건이다. 실제 검증과 미수용 운영 경계는 `docs/testing.md`와 active OpenSpec에 기록한다.
+- 프로젝트별 대시보드 child principal에 native 검증된 계정 home을 보존해 관리자 패키지 재검증 실패를 수정했다. 실제 cross-home HTTP에서 member 목록·nonmember/회수 거부를 확인했으며 broad admin inventory나 인증 우회는 추가하지 않았다.
+
+
+### 로그인 기본 프로젝트 우선순위 복구 (local source/runtime)
+- 프로필에서 지정한 기본 프로젝트를 무시하고 도메인의 `Default`로 진입하던 회귀를 수정했다. 비밀번호·설정 기반 공급자 로그인은 명시 선택 → 현재 도메인의 활성·접근 가능한 사용자 기본 프로젝트 → 도메인 `Default` → 다른 접근 가능한 프로젝트 순서를 따른다.
+- 타 도메인·비활성·삭제·권한 회수된 기본 프로젝트는 자동 진입에서 제외하지만 저장된 선호는 보존한다. Default 준비·owner/reader/manager 정책과 최종 native scope/JWT/session 검증은 유지한다.
+
+### 도메인 로그인 자동 진입·Default 소유권 (local source/runtime)
+- 검증된 비밀번호·설정 기반 공급자 로그인에서 선택 도메인의 Default를 준비하고 실제 native 프로젝트 세션으로 바로 진입한다. 다른 접근 도메인이 있어도 선택 화면을 강제하지 않으며 Default 힌트만으로 활성 scope를 만들지 않는다.
+- Default가 없을 때 첫 authorized 사용자가 새 프로젝트의 단일 project_owner와 직접 project_reader를 받는다. 이후 참여자는 reader baseline을 받고, 기존 Default·소유권·grant는 채택하거나 변경하지 않는다. 새 도메인과 enrollment 개인 도메인의 실제 creator만 manager도 받는다.
+- Initial owner는 기존 durable ownership/enrollment journal과 disabled staging·단일 소유권·quota readback을 재사용한다. 결과가 불명확하면 native create/grant를 재전송하거나 이름으로 정리하지 않으며 실패를 projectless 로그인 성공으로 숨기지 않는다. 새 schema·공급자별 분기·자동 role seeding은 없다.
+- 실제 role editor에서 ownership-transfer flag를 일반 admin 역할 위임에 잘못 적용하던 UI를 수정했다. 서버-filtered 할당 가능 목록과 실제 is_owner를 사용하고 owner 자체는 전용 이전 경계를 유지한다. 한국어·영어·일본어·중국어 시작 가이드와 API/operator 계약을 함께 갱신했다.
+- 격리 HTTP의 첫 로그인·동시 로그인·도메인 생성/전환·owner 위임과 reader/foreign 거부, 양 architecture API/worker/frontend build·실행 및 로컬 정본 Compose API/UI 갱신을 확인했다. 실제 사용자 GitLab 인증·운영 rollout과 전체 gate 수용 여부는 `docs/testing.md`의 정확한 증거·검증 한계를 따른다.
+
+### System 관리자의 프로젝트 서비스 작업 (local source)
+- Lumen·Drover·Waygate·Palimpsest 관리 작업에 기존 project service capability 또는 현재 human `system:all` admin을 사용한다. 대상 프로젝트의 멤버십·세부 leaf가 없어도 원본 caller scope를 유지하고, 선택 도메인과 활성 target을 별도로 검증한다. Project/domain의 `admin` 이름이나 오래된 JWT flag로 승격하지 않는다.
+- Projectless/system 원본 세션의 BFF·refresh 경계와 Drover 리소스별 상세·kubeconfig target을 수정했다. 서버-derived permissions와 token/user/project/권한 회수 뒤 응답·파일 공개 fence를 유지하며 미확정 credential-cleanup intent의 nullable remote ID를 모델에 반영한다.
+- Native requester·executor·현재 role-ID graph와 reduced credential/key scope 검증은 각 서비스가 독립적으로 수행한다. Drover·Waygate의 provider 변경에는 명시적 non-admin executor와 새 native schema가 필요하며 자동 role grant·운영자 fallback은 없다. Palimpsest admin-issued key와 Lumen durable authority의 별도 제한·운영 drain 조건, 실제 검증 범위와 미검증 항목은 `docs/deployment.md`·`docs/testing.md`에 기록한다. 운영 IAM·DB·배포는 변경하지 않았다.
+
+### Flavor 우선 VM 생성·GPU 이미지 안내·부팅 볼륨 자동 보호 (local source)
+- 사용자·관리자 VM 생성을 플레이버 → 이미지/기존 부팅 볼륨 → 설정 → 검토 순서로 통일했다. 명시적 GPU 제조사·드라이버 metadata와 현재 이미지 검증 상태를 바탕으로 후보를 안내하며 CPU VM의 GPU 이미지 선택에는 불필요한 디스크·유지보수 부담을 경고한다. 수동 선택 UUID는 유지하고 GPU/호스트·드라이버 버전 호환성을 보장하지 않는다.
+- 신규 부팅 볼륨 용량 옆에 기본 off인 자동 스냅샷·자동 백업과 실행 중 볼륨의 crash-consistent 보호 동의를 추가했다. 두 정책은 독립적으로 등록하며 재사용 볼륨의 기존 정책은 바꾸지 않는다. 실제 생성 볼륨의 정책 저장이 끝나기 전에 생성 성공을 발행하지 않고 관측 가능한 실패는 요청 소유 정책·신규 자원을 보상 정리한다.
+- 기존 durable calendar engine을 별도 native snapshot namespace·journal로 확장하고 같은 볼륨의 백업/스냅샷 제출을 조율한다. 수동 사본은 보존하며 불확실한 native 변경은 재전송하지 않는다. Redis 장애·process crash와 native 자원 사이의 원자적 복구 및 실제 guest 복구·운영 배포는 별도 검증 경계다.
+
+### 도메인별 로그인 공급자 allowlist (local runtime verified; deployment qualification blocked)
+- `[auth.providers.<key>]`의 독립 인스턴스를 exact Keystone domain-ID의 `allow_providers`로 선택한다. 도메인 목록은 default를 대체하고 생략하면 상속하며, 둘 다 생략하면 활성 파일·도메인 소유 SQL 공급자를 허용한다. `[]`는 외부 공급자0개이며 명시 목록 뒤에 공통·SQL 공급자를 붙이지 않는다. 같은 kind도 별도 ID와 목록 순서를 유지하며 DMSLab GitLab OIDC 예제를 제공한다.
+- **Breaking 설정 이관:** `auth.default.providers`·`auth.domain.<ID>.providers`는 시작/생성 시 거부한다. 기존 additive selector를 단순 이름 변경하지 말고 필요한 전체 파일 registry key·SQL provider UUID 목록을 `allow_providers`로 이관해야 한다. 생략은 전체 허용, 빈 배열은 전체 거부이므로 의도한 도메인 격리를 명시한다. 새 DB schema/migration·자동 federation 설정은 없다.
+- 공개 목록·authorize·callback·refresh·verification에 같은 allowlist·도메인·활성 상태·보안 revision을 적용하고 제외된 SQL 공급자가 password 제거를 정당화하지 못하게 한다. Password/email/signup SQL 정책·native federation 경계와 K8s/Helm의 API·worker nested Secret env 분리, 모바일44px provider action은 유지한다. OIDC pin은 cache에서 관측한 binding이며 유실 뒤 재관측 위험과 Redis 내구성 한계는 그대로다.
+- 실제 로컬 HTTP·Source Chromium96조건과 양 architecture backend/worker build·module smoke를 확인했다. 추가로 정본 격리 Compose의 실제 backend·worker·MariaDB/Redis 및 installed SDK→합성 native HTTP에서 재시작 후2default mode의 목록·직접 거부를 확인했다. 필수 gate는 backend18실패로 중단돼 배포 qualification은 blocked이며 OpenSpec archive를 되돌렸다. 증거·합성/native 경계·미실행 downstream gate는 `docs/testing.md`에 기록한다. 실제 GitLab/Keystone federation·운영 rollout 수용은 아니다.
+- 현재 로컬의 구형 `[gitlab_oidc]` 설정을 기존 자격증명을 보존한 두 auth registry 인스턴스로 이관했다. Default는 기존 `openid`, dmslab은 이미 준비된 `mapped` native protocol/mapping을 선택한다. 승인된 GitLab application에 로컬 `/auth/callback`만 추가하고 기존 callback·계정·권한은 보존했다. 두 도메인의 실제 버튼→GitLab 로그인 화면을 확인했으며 사용자 인증·callback·Keystone session 완료는 미검증이다.
+- 연결 확장 계약과 예시를 보완했다. 도메인/issuer/native IdP·protocol은 기존 설정 레지스트리에서 선택하며 새 OIDC/GitHub 옵션에는 앱 source·image 변경이 필요 없다. 같은 issuer의 도메인별 독립 protocol, 설정만 추가한 세 번째 옵션, 기존 pending login/세션 revision 보존과 native mismatch 거부를 소비자 회귀·격리 HTTP/compiled UI로 확인했다. 지원하지 않는 새 wire protocol은 별도 verifier가 필요하며 실제 사용자 인증·기존 gate 차단을 해결한 것으로 처리하지 않는다.
+
+### 작업 영역 조회·전환 지연과 세션 경합 (local source, verification incomplete)
+- Domain/workspace·refresh·명시 scope 전환의 요청 소유 native 연결·권위 읽기를 재사용하고 publication 전에 fresh 권한을 다시 확인한다. Chooser의 같은 대상 중복 조회와 domain→workspace 순차 대기를 제거하며 다른 도메인 탐색은 활성 세션을 바꾸지 않는다.
+- Scope 전환 중 보조 refresh와 첫/재시도 요청의 늦은401 처리를 대기시켜 이미 교체된 토큰·세션이 지워지는 경합을 수정했다. Non-replay 변경은 재전송하지 않고 절대 세션 만료·정책 회수·기존 토큰 재사용 거부는 유지한다.
+- 고정 소스에서 정본9개 build 조건, arm64/amd64 SDK·SQL·Redis의 directory22/lifecycle38operations 및 compiled Chromium의 선택→개요·foreground/pending-scope refresh를 확인했다. 실제 공유 debug 로그의 선택 API는8.63초로 여전히 지연이 있으며 controlled 전후 측정이나 사용자 화면 timing으로 해석하지 않는다. Access15분·refresh7일과 별개의 최초 로그인1시간 절대 제한을 실측·격리 만료 시나리오로 확인했다. Native-cloud VM boot·현재 브라우저 relay·동시 WIP 통합과 전체 gate는 미수용이며 이전 실패를 보존한다. 운영 배포·세션 수명 설정 변경은 하지 않았다.
+
+### 관리자 Aodh 경보·Gnocchi 서비스 점검 (local source)
+- 관리자 모니터링에 Aodh 경보 대시보드·설정과 독립 Gnocchi 점검을 추가한다. 경보 상태·이력·페이지 조회, 생성/수정/삭제·활성화·심각도·반복·time constraints·표준 rule과 세 상태 알림 액션을 관리한다.
+- HTTP(S)/trust webhook·log·Zaqar/trust Zaqar·trust Heat의 native 방법과 운영 전제를 안내한다. Afterglow가 URL을 호출하거나 메일을 대신 발송하지 않으며 capabilities·설정 저장을 설치 plugin/실제 전달 성공으로 표시하지 않는다. Trust ID는 private 응답에서도 제거하고 불확실한 변경은 재조회 전 자동 재시도하지 않는다.
+- Gnocchi backlog/capabilities·archive 정책/rule·resource type·paged resource/metric과 실제 단위·grain의 bounded measures를 읽기 전용으로 제공한다. 서비스 없음·부분 실패·권한 거부·미측정과 실측0을 구분하고 caller/system-admin/no-store 경계를 유지한다. 운영 native 서비스·알림 전달·배포는 변경하거나 수용 검증하지 않았다.
+
+### Ceilometer·Gnocchi native 모니터링 (local source)
+- Caller-scoped Keystone catalog/session으로 Gnocchi를 자동 발견하고 instance CPU·guest RAM·disk/NIC rate·IOPS/packet·상주 RAM·disk allocation·swap 및 허용된 host/storage 실측을 기존 모니터링에 통합했다. Native 서비스가 없거나 일부 meter가 실패하면 기존 exporter를 지표별로 유지한다.
+- Source/unit/availability·실제 관측 시각·기록 이력을 표시하며 빈 값·실측 0·partial·권한 거절을 구분한다. Historical vCPU/RAM 분모, counter reset/gap, bounded archive mean resampling과 단일 최선 tier를 사용하고 partial 통계로 축소를 권하지 않는다.
+- Nova 소유권·실제 인증 프로젝트·system-admin/native policy, no-store와 private UI context fence를 적용했다. 서비스 계정 우회·raw metadata/exception 공개·전역 native cache·OpenStack 서비스 설치나 운영 배포는 추가하지 않았다. 검증 범위와 운영 미검증 사항은 `docs/testing.md`에 분리한다.
+
+### Kolla 자동 설정·K8s/Helm 단일 생성 workflow
+- Kolla globals/passwords를 매번 재생성한 native defaults로 사용하고 operator TOML에 명시한 key만 최종 override한다. False·0·빈 문자열/배열을 보존하며 API·Notion worker·bootstrap·policy seed가 같은 effective private 설정을 읽는다. Final-wins layer와 config-owned environment veto를 제거하고 upgrade도 config 재생성 뒤 초기화·seed·start하도록 통합했다.
+- 기존 setup을 정본 K8s/Helm renderer와 공통 private loader로 통합했다. Caller 디렉터리의 base 초기화·hidden 편집·확인/취소·자동 생성·override 순서·키/주석 보존과 private artifact/backup을 제공한다. GitHub SHA-pinned source bundle의 curl entrypoint는 terminal reconnect와 source cleanup을 처리하며 설치나 apply를 실행하지 않는다.
+- Namespace의 암묵적 DMSLab URL profile 적용과 존재하지 않는 `app.worker`를 실행하던 오래된 K8s/Helm Drover Deployment를 제거했다. Helm multiline private 값은 trailing newline까지 보존하고 credential-bearing DB/Redis URL은 private 입력으로 분류한다. Cloud Shell 기본 `slim`/빈 pull policy/빈 registry와 production digest·native 권한 검증은 유지한다.
+- 원격 publication·실제 cluster/운영 수용과 격리 CLI/PTY/native/image 검증의 경계는 `docs/testing.md`와 OpenSpec evidence를 따른다.
+
+
+### 독립 OpenStack client 이미지·Cloud Shell pull 설정
+- 최신 GitLab `openstack-client` 이력을 보존한 GitHub 조직 저장소로 이미지·CLI·PTY bootstrap 정본을 이전한다. Debian/Alpine amd64/arm64의 실제 build·비특권 CLI·token 비노출·영구 홈 검증 후 GHCR에 게시하도록 구성하고 Afterglow의 중복 image stage/package/version-sync/발행 경로를 제거했다.
+- 기본 image를 `ghcr.io/openstack-afterglow/openstack-client:slim`으로 바꾸고 호환 registry/image reference, optional pull policy와 native Zun registry UUID를 TOML/env·K8s·Helm·Kolla에서 선택한다. Registry 비밀번호/PAT는 Zun에서 관리하며 운영 manifest digest 고정과 기존 policy 권한 경계를 유지한다.
+- Image가 아직 없거나 pull이 거부되면 provisioning 오류와 exact-owner container 정리를 수행하고 영구 홈은 보존한다. 다른 image나 가짜 ready로 대체하지 않는다. GitHub 게시·로컬 smoke 증거와 실제 Zun/운영 미검증 경계는 OpenSpec 검증 기록과 배포 가이드를 따른다.
+
+### 로그인 중복 인증·조회 제거 (local source)
+- Password 로그인 요청 안에서 native client·권위 읽기를 재사용하고 임시 프로젝트 교환을 제거했다. 최종 프로젝트·subject·home-domain 검증을 유지하며 요청 사이 권위 cache는 추가하지 않는다.
+- Default reader와 전체 manager projection이 이미 정확하면 변경 없이 통과한다. 가입·외부 철회·누락 복구는 fresh graph lease와 기존 no-replay 경계를 유지하고 native 작업 취소 뒤 transport를 안전하게 정리한다.
+- 새 로그인 응답의 일회성 메모리 proof로 즉시 반복하던 `/auth/me` 대기를 없앴다. Reload와 unverified 상태는 검증하며 stale/ABA 응답을 차단한다. 정상 refresh/rescope는 기존 작업·미전송 draft를 유지하되 현재 token의 검증 proof를 추측하지 않는다.
+- 동일 합성 native 지연·실제 SQL/Redis와 compiled browser의 전후 비교, 정본 image/격리 배포 및 남은 검사 한계는 `docs/testing.md`에 기록한다. 운영 인증·데이터·배포는 변경하지 않았다.
+
+### 도메인·프로젝트 통합 작업 영역 (local source)
+- 좌상단 리소스 선택 창에서 접근 가능한 도메인을 고른 뒤 해당 도메인의 프로젝트를 선택한다. 도메인 탐색은 세션을 바꾸지 않고 실제 선택은 두 범위를 함께 전환한다. 도메인 생성 진입점을 이 창으로 옮기고 계정·home-domain UUID별 고정·순서·숨김·복구 설정을 추가했다.
+- 정확한 도메인의 `project_creator` 위임과 생성자 단일 `project_owner`, 명시적 소유권 이전을 구현했다. Manager는 하위 프로젝트 전체에 접근하지만 owner를 여러 명으로 만들지 않는다. 생성자 삭제는 본인이 유일한 owner인 경우에 한하며 Default·미확인/남은 자원·미종결 작업은 삭제를 막는다.
+- 신규 사용자에게 지정한 표시 이름의 개인 identity 도메인을 만들고 중복 표시 이름을 UUID와 구분한다. 가입·초대 수락은 대상 도메인의 Default reader를 즉시 부여하며 기존 사용자의 home identity를 이동하지 않는다. 같은 도메인에 참여한 외부-home 사용자도 프로젝트에 추가할 수 있지만 비밀번호·자격증명 관리는 원래 identity 경계에 남는다.
+- System admin의 도메인 배분 예산, manager의 미래 프로젝트 기본값·프로젝트 quota 편집과 IAM 도메인/프로젝트/사용자별 자원·실측·귀속 관측을 추가했다. 배분 합계와 실제 사용량,0·무제한·미지원·미확인·부분 결과를 구분하고 native 결과가 불명확한 변경은 영구 journal로 재실행을 차단한다.
+- 브라우저에서 발견한 미설정 quota 입력 바인딩 오류를 수정했다. 빈 정책에 첫 한도를 저장하고0·무제한·명시적 제거를 보존하며 변경 뒤 fresh readback 전 재편집을 막는다. Migration092–094와 mixed-version/cutover 제약은 `docs/deployment.md`, 실제 검증·남은 gate 한계는 `docs/testing.md`를 따른다.
+
+### 페이지·로그인 전후 언어 설정 통일 (local, not deployed)
+- 문서·메인·로그인·콘솔이 공통 `afterglow_locale` 쿠키를 사용하도록 수정했다. 언어 지정 없는 문서와404도 저장된 언어를 따르고 문서에서 선택한 언어가 로그인·콘솔·새로고침에 유지된다.
+- 공유 문서의 유효한 `?lang=ko|en|ja|zh-CN`은 공통 선호를 갱신한다. 한국어도 명시적으로 선택하며 기사·query·fragment·JS 없는 링크는 유지한다. 데이터 미리 읽기는 선택을 바꾸지 않고 앱 언어 변경 시 오래된 preload를 무효화한다.
+- 실제 Chromium·SSR·관련 frontend 검사와 범위 밖 type-check 한계는 `docs/testing.md`에 기록한다. 인증·API·DB·운영 배포는 변경하지 않았다.
+
+### 로컬 로그인 지연·안전한 인증 진단
+- Keystone client가 설정된 interface/region을 무시하고 public endpoint로 조회하던 경로를 수정했다. 동일 권한 확인 안에서 project/group/member/ancestor 조회를 재사용하고 home-domain membership은 관련된 enabled user/domain만 확인한다. 다음 호출의 native revoke·상속·projection 검증은 유지한다.
+- 인증 route가 직접 처리한 오류도 서버 correlation·단계·함수/줄·duration과 함께 기록한다. DEBUG 시작/완료와 WARNING 실패를 구분하며 bounded structural cause/status/errno로 실제 원인을 추적한다. 비밀번호·토큰·예외 문자열·소스·locals·HTTP wire dump는 기록하지 않는다.
+- Dev debug는 실제 `.local-services/afterglow.conf` mount와 환경 override를 확인하도록 안내한다. 루트 파일 변경만으로 기존 private snapshot을 덮어쓰거나 실행 중 설정을 자동 갱신하지 않는다. 검증 범위와 실측은 `docs/testing.md`에 기록한다.
+
+### Default 프로젝트 기반 도메인 권한·키보드 로그인 (local source)
+- 정확한 system:all 직접·그룹·실제 역할 추론 admin을 인식해 관리자 모드 진입을 복구했다. 도메인 입력과 사용자명/비밀번호 입력은 native Enter 제출을 지원하며 pending 중복·IME 조합 제출을 막는다.
+- 새 도메인은 Default를 자동 생성하고 실제 생성자에게 manager를 부여한다. 검증된 도메인 로그인 사용자는 Default project_reader 기본 접근을 받는다. Default의 유효 manager가 모든 같은-domain 프로젝트의 공통 관리 주체이며 native reader 접근을 갖고, 일반 프로젝트의 manager/manager-implying 할당과 마지막 manager 제거·Default anchor 변경을 차단한다.
+- 사용자 IAM과 왼쪽 진입점은 선택 프로젝트와 무관한 현재 Default manager 전용이다. Systemadmin-only bypass는 없고 기존 project_owner/admin/member/reader 위임 및 직접·그룹·상속·역할 추론은 유지한다.
+- 불변 계정 소속과 작업 도메인을 분리해 로그인 후 도메인 선택·명시 전환·정책 허용 생성과 외부 identity 생성자를 지원한다. 세션 원래 수명·출처·provider를 보존하고 uncertain create·이전 토큰·늦은 응답 재사용을 막는다. 기존 도메인은 creator를 추정하지 않고 명시적 관리자 bootstrap을 사용한다.
+- Manager 회수 또는 home-domain 비활성화가 native에 반영된 뒤 응답만 실패하더라도 파생 읽기 권한·세션을 정리하도록 수정했다. 실제 SDK/HTTP/Redis127조건과 compiled browser795assertions 및 qualification 경계는 `docs/testing.md`에 구분한다. 운영 IAM·데이터·배포는 변경하지 않았다.
+- 정본9개 target/architecture image build와 격리 Compose2조건·native supervisor3조건을 검증했다. 변경된 native identity 계약의 소비자 fixture를 교정해 관련342개·contract177개가 통과했지만 전체 gate는 기존 storage11실패와 별도 format/type-check 한계 때문에 green으로 보고하지 않는다.
+
+### Palimpsest Hub 조회·모니터링·로컬 사용 (local, not deployed)
+- `/palimpsest/packages`를 Hub 이미지/레이어·네이티브 패키지·로컬 사용 가이드로 분리했다. Native 보호 identity403은 해당 탭에만 표시하고 기존 owner/namespace/key/secret 정책은 유지한다. Native 검색은 로드된 항목만 대상으로 하며 공개 key UUID를 별도로 복사할 수 있다.
+- 현재 service/system 권한으로 제한한 no-store Hub `/me`를 추가했다. Exact-name/digest-prefix 검색·50+1 페이지·상세 JSON/부모 체인,64MiB stream/길이/SHA-256 검증 다운로드와 최대20개 최근 build/export 관측을 제공한다. 누락·실패·거부를0/정상으로 표시하거나 orphan layer를 VM으로 실행하지 않는다.
+- 원본 SDK/clouds.yaml의 HTTPS·프로젝트/default-user 확인,0.3.5 CLI/Python3.11 설치, foreground read-only/control web 및 별도 native UUID/prompt/helper를 네 언어로 안내한다. API base는 검증된 HTTPS authority에 명시적으로 입력하고 alias-add 실패 뒤 login하지 않는다. Browser JWT/token/key는 snippet에 넣지 않는다.
+- Hub의 offset 없는 UTC artifact/build/export 시각을 브라우저 로컬 시간으로 올바르게 변환한다. 기존 `Z`·명시적 offset·숫자형 관측 epoch는 보존하며 서울 브라우저의9시간 오차를 회귀·실제 compiled image에서 확인했다.
+- Focused/compiled Chromium·실제 SDK/Hub 조회, 정본 다중 architecture 이미지·격리 Compose와 실계정 로그인 IAM의 잔여 차단을 `docs/testing.md`에 구분했다. 발행·운영 배포·IAM/클라우드 네트워크 변경은 이 source 변경의 승인 범위가 아니다.
+
+### 도메인 격리·관리자 경계·사용자 IAM (local source)
+- 관리자 UI/API는 현재 Keystone `system:all admin`만 허용하며 project-admin 호환 설정·자동 승격 경로를 제거했다. Domain-selected 사용자/그룹/프로젝트/자격 증명과 domain inventory·자원/요청/로그인/세션 모니터링을 추가했다. 최근 session을 온라인으로 표시하지 않고 미측정·부분·실패·실측0을 구분한다.
+- 사용자 영역 IAM에서 own-domain manager/admin이 비밀번호 계정·이메일 초대·프로젝트 인원/역할·미완료 enrollment 복구를 관리한다. 기존 ID/DAG·권한 ceiling·마지막 owner/admin 보호를 유지하며 기존 계정 수락은 additive다. 불명확한 native effect는 SQL journal과 recovery 상태로 남긴다.
+- 로그인은 domain을 먼저 확인하고 해당 password/OIDC/GitHub·허용 email domain·opt-in 검증 가입 정책을 사용한다. Provider secret은 encrypted/write-only이며 실제 native login에 성공한 revision만 password 제거의 근거가 된다. Domain-bound session family·refresh/rescope·MCP/native inventory와 frontend logical-session fence를 적용했다.
+- Migration090/091은 policy/provider/enrollment 테이블을 추가한다. 기존 Default identity/data/grant는 자동 이동·승격하지 않는다. Global GitLab/old invitation API는 제거하되 과거 invitation records는 보존한다. 네 locale·API/배포 예시를 갱신했으며 실제 검증·gate 잔여 실패와 외부 IdP/SMTP/Keystone·운영 미검증 경계는 `docs/testing.md`에 기록한다.
+- 로컬 검증은 frontend3,751·contract174·실제 datastore functional159와 HTTP/SQL/Redis 복구·4locale UI, 영향받는 canonical 이미지의 선언 architecture build/run 및 격리 Compose 배포를 통과했다. 전체 gate는 기존 storage11실패(backend6,868passed), Svelte check는 범위 밖1error가 남아 release/운영 검증 성공으로 표시하지 않는다.
+
+### 운영 인프라 호스트 관측·접속 트래픽 수집 활성화 (2026-10-14 UTC, deployed settings)
+- 기존 `v1.30.16` 이미지·datastore·key·inventory를 유지한 Afterglow-only Kolla 설정 배포로 토폴로지와 backend/frontend traffic 수집을 활성화했다. 컴퓨트12·컨트롤러3·스토리지3의 전용 비특권 observer, 10초 NIC/route/neighbor 보고와 명시 directed TCP34개를 구성했다.
+- Ubuntu22.04 storage의 Python3.12 격리 runtime에서 executable stack metadata로 thread가 차단되는 문제를 실제 재현했다. 공식 CPython main을 nonexec-stack으로 빌드해 실행 파일만 교체했고 memory/namespace/seccomp/capability 제한과 시스템 Python은 보존했다.
+- 운영18fresh·NIC rate·34TCP up, 실제 HTTPS 두 source의 집계 증가, 관리자 desktop/mobile 화면과401/403 인가를 확인했다. GeoIP·frontend visitor identity·LLDP/traceroute는 미설정이며 누락은 partial로 유지한다. 별도 logout의 Keystone 회수503 때문에 combined smoke 전체 성공을 주장하지 않는다. 복구 지점·exact proof·한계는 `docs/deployment.md`를 따른다.
+
 ### 추가 언어 dev 통합 (not deployed)
 - `i18n` worktree에 미커밋 상태로 남아 있던 스와힐리어·노르웨이어 보크몰·말레이어·베트남어·벵골어의 UI/공개 가이드와 공용 언어 선호 변경을 dev에 통합한다. 기존 네 언어를 포함한 총 아홉 언어의 실제 compiled 화면·메뉴·SSR·언어 유지 검증은 `docs/testing.md`에 기록한다. 원어민 검수 전 초안 상태와 운영 배포 경계는 유지한다.
 - 병합 후 CI에서 발견한 frontend runtime npm10 `edgesOut` 설치 실패는 기존 npm lock 복사와 `npm ci --omit=dev --ignore-scripts`로 수정한다. 의존성 graph는 유지하고 lock의 두 version metadata만1.30.19로 맞춘다. 실제 amd64/arm64 image build·runtime HTTP와 전체 gate를 검증했다.

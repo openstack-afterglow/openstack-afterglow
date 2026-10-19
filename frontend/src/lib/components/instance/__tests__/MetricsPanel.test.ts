@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/svelte';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
+import { tick } from 'svelte';
+import { initLocale } from '$lib/i18n/runtime.svelte';
+import { t } from '$lib/i18n/ns/instance';
 
 vi.mock('$env/dynamic/public', () => ({ env: { PUBLIC_API_BASE: 'http://localhost:8000' } }));
 
@@ -11,7 +14,7 @@ vi.mock('$lib/api/client', () => ({
 
 
 vi.mock('$lib/stores/auth', () => ({
-	auth: writable({ token: 'test-token', projectId: 'test-project' }),
+	auth: writable({ token: 'test-token', projectId: 'test-project', userId: 'test-user' }),
 }));
 
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
@@ -23,6 +26,7 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 }));
 
 import MetricsPanel from '../MetricsPanel.svelte';
+import { auth } from '$lib/stores/auth';
 
 // Fake series data
 const FAKE_SERIES = [
@@ -32,9 +36,12 @@ const FAKE_SERIES = [
 
 const ALL_METRIC_KEYS = ['cpu', 'memory', 'network_rx', 'network_tx', 'disk_read', 'disk_write', 'gpu_util', 'gpu_mem'];
 
-function makeBatchResponse(series: { ts: number; value: number | null }[]) {
-	const metrics: Record<string, { series: { ts: number; value: number | null }[]; error: null }> = {};
-	for (const k of ALL_METRIC_KEYS) metrics[k] = { series, error: null };
+interface BatchFixture {
+	metrics: Record<string, { series: { ts: number; value: number | null }[]; error: string | null; source: string | null; unit: string; status: string; native_status: string | null }>;
+}
+function makeBatchResponse(series: { ts: number; value: number | null }[]): BatchFixture {
+	const metrics: BatchFixture['metrics'] = {};
+	for (const k of ALL_METRIC_KEYS) metrics[k] = { series, error: null, source: 'gnocchi', unit: k.startsWith('network_') || k.startsWith('disk_') ? 'B/s' : '%', status: series.length ? 'available' : 'not_collected', native_status: series.length ? 'available' : 'not_collected' };
 	return { metrics };
 }
 
@@ -44,6 +51,8 @@ function mockAllMetrics() {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	initLocale('ko');
+	auth.update((state) => ({ ...state, token: 'test-token', projectId: 'test-project', userId: 'test-user' }));
 });
 
 describe('MetricsPanel', () => {
@@ -102,7 +111,7 @@ describe('MetricsPanel', () => {
 		mockGet.mockImplementation((url: string) => {
 			if (url.includes('metrics-summary')) {
 				return Promise.resolve({
-					prometheus_available: true,
+					monitoring_available: true,
 					stats: {
 						cpu: { min: 1.0, avg: 4.5, max: 31.0 },
 						memory: { min: 10.0, avg: 15.0, max: 22.0 },
@@ -164,5 +173,77 @@ describe('MetricsPanel', () => {
 		expect(values).toEqual([
 			['1.0KB/s', '—'], ['—', '512B/s'], ['—', '—'], ['2.0KB/s', '768B/s'],
 		]);
+	});
+
+	it('distinguishes native zero, fallback, uncollected and native capacity units', async () => {
+		const batch = makeBatchResponse([{ ts: 1700000000, value: 0 }]);
+		batch.metrics.memory = { series: [], error: null, source: 'gnocchi', unit: '%', status: 'not_collected', native_status: 'not_collected' };
+		batch.metrics.disk_read = { ...batch.metrics.disk_read, source: 'libvirt', native_status: 'forbidden' };
+		batch.metrics.memory_resident = { ...batch.metrics.cpu, series: [{ ts: 1700000000, value: 512 }], unit: 'MiB' };
+		batch.metrics.disk_allocation = { ...batch.metrics.cpu, series: [{ ts: 1700000000, value: 8192 }], unit: 'B' };
+		mockGet.mockImplementation((url: string) => Promise.resolve(url.includes('metrics-summary') ? { monitoring_available: true, stats: {} } : batch));
+		render(MetricsPanel, { props: { instanceId: 'inst-1' } });
+		expect(await screen.findAllByText(/gnocchi · 사용 가능/)).not.toHaveLength(0);
+		expect(await screen.findByText(/libvirt · Exporter 대체 소스.*Gnocchi: 권한 없음/)).toBeTruthy();
+		expect(screen.getByText(/gnocchi · 미수집 · %/)).toBeTruthy();
+		expect(screen.queryByRole('group', { name: t('metrics.memoryUsage') })).toBeNull();
+		const cpu = await screen.findByRole('group', { name: t('metrics.cpuUsage') });
+		const cpuData = cpu.querySelector('details')!;
+		cpuData.open = true;
+		await fireEvent(cpuData, new Event('toggle'));
+		expect(within(cpu).getAllByText('0.0%').length).toBeGreaterThan(0);
+		await fireEvent.click(screen.getByRole('button', { name: t('metrics.nativeMeasurements') }));
+		for (const [label, value] of [[t('metrics.memoryResident'), '512.0 MiB'], [t('metrics.diskAllocation'), '8192.0 B']]) {
+			const chart = await screen.findByRole('group', { name: label });
+			const data = chart.querySelector('details')!;
+			data.open = true;
+			await fireEvent(data, new Event('toggle'));
+			expect(within(chart).getByRole('cell', { name: value })).toBeTruthy();
+		}
+		expect(screen.queryByText('8192.0 B/s')).toBeNull();
+		expect(screen.getAllByText(/Gnocchi: 미수집/).length).toBeGreaterThan(0);
+	});
+
+	it('keeps a readable empty native meter uncollected when fallback monitoring is offline', async () => {
+		const batch = makeBatchResponse([]);
+		batch.metrics.memory.error = 'prometheus_unavailable';
+		mockGet.mockResolvedValue(batch);
+		render(MetricsPanel, { props: { instanceId: 'inst-1' } });
+		expect(await screen.findAllByText(/gnocchi · 미수집/)).not.toHaveLength(0);
+		expect(screen.queryByText('prometheus_unavailable')).toBeNull();
+		expect(screen.getAllByText(t('metrics.empty')).length).toBeGreaterThan(0);
+	});
+
+	it.each(['instance', 'project', 'identity', 'token', 'projectAba', 'range'] as const)('discards late chart and summary after %s context changes', async (context) => {
+		const oldBatch = Promise.withResolvers<BatchFixture>();
+		const oldSummary = Promise.withResolvers<unknown>();
+		let previous = true;
+		const current = makeBatchResponse([{ ts: 1700000000, value: 22.7 }]);
+		current.metrics.cpu.source = 'current-source';
+		mockGet.mockImplementation((url: string) => {
+			if (previous) return url.includes('metrics-summary') ? oldSummary.promise : oldBatch.promise;
+			return Promise.resolve(url.includes('metrics-summary') ? { monitoring_available: true, stats: {} } : current);
+		});
+		const view = render(MetricsPanel, { props: { instanceId: 'inst-1' } });
+		await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+		previous = false;
+		if (context === 'instance') await view.rerender({ instanceId: 'inst-2' });
+		else if (context === 'range') await fireEvent.click(screen.getByText('6시간'));
+		else if (context === 'token') auth.update((state) => ({ ...state, token: 'new-token' }));
+		else if (context === 'projectAba') {
+			auth.update((state) => ({ ...state, projectId: 'project-b' }));
+			auth.update((state) => ({ ...state, projectId: 'test-project' }));
+		}
+		else auth.update((state) => ({ ...state, ...(context === 'project' ? { projectId: 'project-b' } : { userId: 'user-b' }) }));
+		expect(await screen.findByText(/current-source/)).toBeTruthy();
+		const stale = makeBatchResponse([{ ts: 1700000000, value: 91.3 }]);
+		stale.metrics.cpu.source = 'old-private-source';
+		oldBatch.resolve(stale);
+		oldSummary.resolve({ monitoring_available: true, stats: { cpu: { min: 91.3, avg: 91.3, max: 91.3, source: 'old-private-summary', unit: '%' } } });
+		await tick();
+		await tick();
+		expect(screen.queryByText(/old-private/)).toBeNull();
+		expect(screen.queryByText('91.3%')).toBeNull();
+		expect(screen.getByText(/current-source/)).toBeTruthy();
 	});
 });

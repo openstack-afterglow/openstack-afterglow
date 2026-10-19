@@ -22,12 +22,13 @@ from uuid import UUID
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
+from app.models.auth_settings import AuthSettings
 from app.models.infrastructure_fabric import FabricSettings
 from app.models.infrastructure_topology import HostObserverIdentity, HostPeerProbeTarget, validate_topology_settings
 from app.models.traffic_analytics import TrafficAnalyticsSettings
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
-_EMPTY_ENV_TOML_FALLBACK_KEYS = frozenset({"GITLAB_OIDC_CLIENT_SECRET", "K3S_GPU_ADMISSION_TOKEN"})
+_EMPTY_ENV_TOML_FALLBACK_KEYS = frozenset({"K3S_GPU_ADMISSION_TOKEN"})
 
 
 def is_development_loopback_http_url(value: str) -> bool:
@@ -98,6 +99,7 @@ def _load_toml() -> dict:
     flat: dict = {}
     defaults = data.get("DEFAULT", {})
     flat["debug"] = defaults.get("debug", False)
+    flat["auth"] = data.get("auth", {})
 
     ost = data.get("openstack", {})
     flat["os_auth_url"] = ost.get("auth_url", "")
@@ -190,7 +192,9 @@ def _load_toml() -> dict:
 
     cloud_shell = data.get("cloud_shell", {})
     flat["cloud_shell_service_project_id"] = cloud_shell.get("service_project_id", "")
-    flat["cloud_shell_image"] = cloud_shell.get("image", "")
+    flat["cloud_shell_image"] = cloud_shell.get("image", "ghcr.io/openstack-afterglow/openstack-client:slim")
+    flat["cloud_shell_image_pull_policy"] = cloud_shell.get("image_pull_policy", "")
+    flat["cloud_shell_registry_id"] = cloud_shell.get("registry_id", "")
     flat["cloud_shell_network_id"] = cloud_shell.get("network_id", "")
     flat["cloud_shell_security_group"] = cloud_shell.get("security_group", "default")
     flat["cloud_shell_auth_url"] = cloud_shell.get("auth_url", "")
@@ -257,7 +261,7 @@ def _load_toml() -> dict:
         (
             "AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,"
             "K3S_KUBECONFIG_ENCRYPTION_KEY,K3S_GPU_ADMISSION_TOKEN,PROMETHEUS_PASSWORD,"
-            "GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY"
+            "NOTION_CONFIG_ENCRYPTION_KEY"
         ),
     )
     flat["worker_runtime_kubernetes_namespace"] = wr_k8s.get("namespace", "afterglow")
@@ -336,20 +340,9 @@ def _load_toml() -> dict:
     flat["notion_config_encryption_key"] = notion.get("config_encryption_key", "")
 
     security = data.get("security", {})
-    flat["admin_legacy_project_policy"] = security.get("admin_legacy_project_policy", False)
     flat["login_max_attempts"] = security.get("login_max_attempts", 10)
     flat["login_lockout_seconds"] = security.get("login_lockout_seconds", 300)
     flat["login_backoff_base"] = security.get("login_backoff_base", 2)
-
-    gl = data.get("gitlab_oidc", {})
-    flat["gitlab_oidc_enabled"] = gl.get("enabled", False)
-    flat["gitlab_oidc_gitlab_url"] = gl.get("gitlab_url", "")
-    flat["gitlab_oidc_client_id"] = gl.get("client_id", "")
-    flat["gitlab_oidc_client_secret"] = gl.get("client_secret", "")
-    flat["gitlab_oidc_idp_id"] = gl.get("idp_id", "gitlab")
-    flat["gitlab_oidc_protocol_id"] = gl.get("protocol_id", "openid")
-    flat["gitlab_oidc_redirect_uri"] = gl.get("redirect_uri", "")
-    flat["gitlab_oidc_scopes"] = gl.get("scopes", "openid email profile read_user")
 
     db = data.get("database", {})
     flat["database_url"] = db.get("url", "")
@@ -462,6 +455,7 @@ class HostHealthTarget(BaseModel):
 
 class Settings(BaseSettings):
     debug: bool = False
+    auth: AuthSettings = Field(default_factory=AuthSettings)
 
     # OpenStack 인증
     os_auth_url: str = ""
@@ -617,7 +611,10 @@ class Settings(BaseSettings):
     # User tokens are separately re-scoped to the selected logical project and
     # are never used for Zun/Cinder lifecycle operations.
     cloud_shell_service_project_id: str = ""
-    cloud_shell_image: str = ""
+    cloud_shell_image: str = "ghcr.io/openstack-afterglow/openstack-client:slim"
+    # Empty delegates to Zun; an explicit pull policy is admin-only in stock Zun.
+    cloud_shell_image_pull_policy: Literal["", "always", "ifnotpresent", "never"] = ""
+    cloud_shell_registry_id: str = ""
     cloud_shell_network_id: str = ""
     cloud_shell_security_group: str = "default"
     cloud_shell_auth_url: str = ""
@@ -631,6 +628,17 @@ class Settings(BaseSettings):
     cloud_shell_ticket_ttl_seconds: int = 60
     cloud_shell_reconcile_interval_seconds: int = 60
     cloud_shell_zun_websocket_origin: str = ""
+
+    @field_validator("cloud_shell_registry_id")
+    @classmethod
+    def validate_cloud_shell_registry_id(cls, value: str) -> str:
+        if not value:
+            return ""
+        try:
+            return str(UUID(value))
+        except ValueError:
+            raise ValueError("cloud_shell.registry_id must be a UUID") from None
+
     # Generic instance health-report callback.
     instance_health_callback_base_url: str = ""
 
@@ -658,7 +666,7 @@ class Settings(BaseSettings):
     worker_runtime_docker_env_allowlist: str = (
         "AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,"
         "K3S_KUBECONFIG_ENCRYPTION_KEY,K3S_GPU_ADMISSION_TOKEN,PROMETHEUS_PASSWORD,"
-        "GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY"
+        "NOTION_CONFIG_ENCRYPTION_KEY"
     )
     worker_runtime_kubernetes_namespace: str = "afterglow"
     worker_runtime_kubernetes_service_account_token_path: str = "/var/run/secrets/kubernetes.io/serviceaccount/token"
@@ -763,11 +771,6 @@ class Settings(BaseSettings):
             raise ValueError(f"token_ip_binding_mode={v!r} 은 유효하지 않습니다. 허용값: {sorted(_VALID_MODES)}")
         return v
 
-    # 보안 정책
-    # True: system:all role OR admin project+role 모두 system admin 인정 (마이그레이션 호환 모드)
-    # False: system:all role만 system admin으로 인정 (자기복제 권한 상승 완전 차단)
-    admin_legacy_project_policy: bool = False
-
     # 로그인 브루트포스 방어
     login_max_attempts: int = 10  # 잠금 임계값 (실패 횟수)
     login_lockout_seconds: int = 300  # 기본 잠금 시간 (초, 5분)
@@ -790,16 +793,6 @@ class Settings(BaseSettings):
     database_pool_timeout: int = 10
     database_unhealthy_seconds: int = 15
     database_db_auto_backup_cron: str = "0 3 * * *"
-
-    # GitLab OIDC
-    gitlab_oidc_enabled: bool = False
-    gitlab_oidc_gitlab_url: str = ""
-    gitlab_oidc_client_id: str = ""
-    gitlab_oidc_client_secret: str = ""
-    gitlab_oidc_idp_id: str = "gitlab"
-    gitlab_oidc_protocol_id: str = "openid"
-    gitlab_oidc_redirect_uri: str = ""
-    gitlab_oidc_scopes: str = "openid email profile read_user"
 
     # SMTP 이메일 전송
     smtp_enabled: bool = False
@@ -1138,9 +1131,9 @@ def get_settings() -> Settings:
         if val.startswith("tcp://") or val.startswith("udp://"):
             del os.environ[key]
 
-    # TOML values seed missing environment settings. Secret mounts commonly
-    # materialize optional values as an empty string; that must not erase a
-    # configured GitLab client secret from a protected TOML layer.
+    # TOML seeds missing environment values; nested environment leaves override
+    # the AUTH JSON without replacing sibling provider metadata. Empty auth
+    # secrets intentionally override TOML and fail enabled-provider validation.
     toml_data = _load_toml()
     for key, value in toml_data.items():
         env_key = key.upper()

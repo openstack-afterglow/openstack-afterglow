@@ -109,42 +109,11 @@ describe('tour definitions', () => {
 		expect(tenant?.steps[1].readyElement).toBe('[data-tour="waygate-ready"]');
 	});
 
-	it('vm-create 투어는 일반 VM 단계만 안내한다', () => {
-		const tour = getTour('vm-create')!;
-		expect(tour.steps).toHaveLength(6);
-		expect(tour.steps.some((step) => /라이브러리|전략|베타|\bHA\b/.test(`${step.title} ${step.description}`))).toBe(false);
-		expect(tour.steps.filter((step) => step.wizardStep !== undefined).map((step) => step.wizardStep)).toEqual([1, 2, 5, 6]);
-	});
-
-	it('vm-create 투어는 raw 위저드 단계와 팝오버 진행 방식을 매핑한다', () => {
-		const tour = getTour('vm-create')!;
-		const expected = [
-			{ title: '이미지 선택', wizardStep: 1, advanceOn: 'wizard' },
-			{ title: '플레이버 선택', wizardStep: 2, advanceOn: 'wizard' },
-			{ title: '기본 설정 확인', wizardStep: 5, advanceOn: 'wizard' },
-			{ title: '배포', wizardStep: 6, advanceOn: 'click' },
-		] as const;
-
-		for (const mapping of expected) {
-			const step = tour.steps.find((candidate) => candidate.title === mapping.title);
-			expect(step).toMatchObject({
-				wizardStep: mapping.wizardStep,
-				advanceOn: mapping.advanceOn,
-			});
-			expect(step?.backElement).toBeUndefined();
-			expect(step?.cancelElement).toBe('[data-tour="wizard-cancel"]');
-		}
-
-		const imageStep = tour.steps.find((step) => step.title === '이미지 선택');
-		expect(imageStep?.readyElement).toBe('[data-tour="wizard-body"]');
-		const deployStep = tour.steps.find((step) => step.title === '배포');
-		expect(deployStep?.advanceElement).toBe('[data-tour="wizard-next"]');
-	});
 
 });
 
 describe('VM tour engine behavior', () => {
-	it('tracks steps 1, 2, 5, 6 in both directions and finishes after deployment', async () => {
+	it('tracks Flavor then image in both directions and finishes after deployment', async () => {
 		document.body.innerHTML = `
 			<div data-tour="wizard-panel"><div data-tour="wizard-body"></div></div>
 			<button data-tour="wizard-next">deploy</button>
@@ -155,12 +124,12 @@ describe('VM tour engine behavior', () => {
 		expect(readPersistedTour()).toEqual({ tourId: 'vm-create', stepIndex: 1 });
 
 		const sequence = [
-			[2, 2, '플레이버 선택'],
+			[1, 2, '이미지 선택'],
 			[5, 3, '기본 설정 확인'],
 			[6, 4, '배포'],
 			[5, 3, '기본 설정 확인'],
-			[2, 2, '플레이버 선택'],
-			[1, 1, '이미지 선택'],
+			[1, 2, '이미지 선택'],
+			[2, 1, '플레이버 선택'],
 			[6, 4, '배포'],
 		] as const;
 		for (const [wizardStep, stepIndex, title] of sequence) {

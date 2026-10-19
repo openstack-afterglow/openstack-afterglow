@@ -129,13 +129,23 @@ function projectTokenResponse(projectId: string, profile: MockupProfileId): Reco
 		username: admin ? 'demo-admin' : 'demo-user',
 		roles: admin ? ['admin'] : ['member'],
 		is_system_admin: admin,
+		domain_id: 'mock-domain',
+		domain_name: 'Demo',
+		is_domain_manager: false,
 	};
 }
 
-function instanceMetrics(ids: string[]): Record<string, { cpu_avg: number | null; mem_avg: number | null; underutilized: boolean }> {
-	const result: Record<string, { cpu_avg: number | null; mem_avg: number | null; underutilized: boolean }> = {};
+interface MockInstanceSummary {
+	cpu_avg: number | null;
+	mem_avg: number | null;
+	underutilized: boolean;
+	source: string;
+	native_status: string;
+}
+function instanceMetrics(ids: string[]): Record<string, MockInstanceSummary> {
+	const result: Record<string, MockInstanceSummary> = {};
 	for (const [index, id] of ids.entries()) {
-		result[id] = { cpu_avg: 8 + index * 7, mem_avg: 22 + index * 5, underutilized: index % 3 === 0 };
+		result[id] = { cpu_avg: 8 + index * 7, mem_avg: 22 + index * 5, underutilized: index % 3 === 0, source: 'gnocchi', native_status: 'partial' };
 	}
 	return result;
 }
@@ -144,15 +154,33 @@ function metricSeries(scale: number): { ts: number; value: number }[] {
 	return [0, 1, 2, 3, 4, 5].map((step) => ({ ts: 1783551600 + step * 600, value: scale + step * 3 }));
 }
 
+function mockMetric(key: string) {
+	const units: Record<string, string> = {
+		cpu: '%', memory: '%', network_rx: 'B/s', network_tx: 'B/s', disk_read: 'B/s', disk_write: 'B/s',
+		gpu_util: '%', gpu_mem: '%', disk_read_iops: 'request/s', disk_write_iops: 'request/s',
+		network_rx_packets: 'packet/s', network_tx_packets: 'packet/s', memory_resident: 'MiB',
+		disk_allocation: 'B', memory_swap_in: 'MiB/s', memory_swap_out: 'MiB/s',
+	};
+	const unit = units[key] ?? '';
+	const fallback = key === 'memory' || key.startsWith('gpu_');
+	const absent = key.startsWith('memory_swap_') || !unit;
+	return {
+		series: absent ? [] : metricSeries(key === 'disk_allocation' ? 8589934592 : key === 'memory_resident' ? 384 : key === 'memory' ? 36 : 18),
+		source: absent ? 'gnocchi' : fallback ? 'prometheus' : 'gnocchi',
+		unit, status: absent ? 'not_collected' : 'available', native_status: fallback || absent ? 'not_collected' : 'available', error: null,
+	};
+}
+
 function dashboardTrend(range: string | null, includeNetwork: boolean): Record<string, unknown> {
 	return {
-		vcpu: { data: [24, 27, 31, 29, 33, 36], points: 6, available: true },
-		memory: { data: [38, 41, 44, 43, 45, 47], points: 6, available: true },
-		storage: { data: [16, 18, 19, 20, 21, 23], points: 6, available: true },
+		vcpu: { data: [24, 27, 31, 29, 33, 36], points: 6, available: true, unit: '%', source: 'gnocchi', status: 'partial', native_status: 'partial' },
+		memory: { data: [38, 41, 44, 43, 45, 47], points: 6, available: true, unit: '%', source: 'prometheus', status: 'available', native_status: 'not_collected' },
+		storage: { data: [16, 18, 19, 20, 21, 23], points: 6, available: true, unit: '%', source: 'prometheus', status: 'available', native_status: 'not_collected' },
 		network: includeNetwork
-			? { data: [120, 150, 170, 140, 190, 210], points: 6, available: true, unit: 'KiB/s' }
-			: { data: [], points: 0, available: false, unit: 'KiB/s' },
-		prometheus_available: true,
+			? { data: [120, 150, 170, 140, 190, 210], points: 6, available: true, unit: 'KiB/s', source: 'gnocchi', status: 'partial', native_status: 'partial' }
+			: { data: [], points: 0, available: false, unit: 'KiB/s', source: null, status: 'not_collected', native_status: null },
+		monitoring_available: true,
+		scope: 'native_policy',
 		range: range ?? '14d',
 	};
 }
@@ -303,7 +331,7 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	}
 	if (method === 'GET' && pathname === '/api/v1/auth/me') {
 		const auth = buildMockAuth(profile, profile === 'admin' ? '/admin' : '/dashboard');
-		return { user_id: auth.userId, username: auth.username, project_id: auth.projectId, project_name: auth.projectName, roles: auth.roles, is_system_admin: auth.isSystemAdmin, auth_method: 'tutorial' };
+		return { user_id: auth.userId, username: auth.username, project_id: auth.projectId, project_name: auth.projectName, roles: auth.roles, is_system_admin: auth.isSystemAdmin, domain_id: auth.domainId, domain_name: auth.domainName, is_domain_manager: auth.isDomainManager, auth_method: 'tutorial' };
 	}
 	if (method === 'GET' && (pathname === '/api/v1/auth/projects/recent' || pathname === '/api/v1/auth/projects')) return state.projects;
 	if (method === 'GET' && pathname === '/api/v1/profile') return { id: 'mock-user-1', name: 'Demo User', email: 'demo@example.com', default_project_id: null };
@@ -602,11 +630,35 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	const adminContainerId = pathname.match(/^\/api\/v1\/admin\/containers\/([^/]+)$/)?.[1];
 	if (profile === 'admin' && adminContainerId) return state.admin.containerDetails[adminContainerId] ?? mockUnsupported();
 	if (profile === 'admin' && pathname === '/api/v1/admin/key-manager/project-quotas') return state.admin.keyManagerQuotas;
-	if (profile === 'admin' && pathname === '/api/v1/admin/monitoring/summary') return state.admin.monitoringSummary;
+	if (profile === 'admin' && pathname === '/api/v1/admin/monitoring/summary') return {
+		...state.admin.monitoringSummary,
+		telemetry: {
+			source: 'gnocchi', status: 'partial', error: null, truncated: false,
+			resources: [
+				{ id: 'mock-compute-1', name: 'compute-01', type: 'host', metrics: {
+					'compute.node.cpu.percent': { ...mockMetric('cpu'), unit: '%' },
+					'compute.node.memory.usage': { ...mockMetric('memory_resident'), unit: 'MiB' },
+				} },
+				{ id: 'mock-storage-1', name: 'storage-01', type: 'storage', metrics: {
+					'storage.objects.size': { ...mockMetric('disk_allocation'), unit: 'B' },
+				} },
+			],
+		},
+	};
 	if (profile === 'admin' && pathname === '/api/v1/admin/services') {
 		const category = params.get('category');
 		if (!category || !(category in state.admin.services)) mockUnsupported();
 		return { [category]: state.admin.services[category as keyof typeof state.admin.services] };
+	}
+	if (profile === 'admin' && pathname === '/api/v1/admin/domains') {
+		return { items: [{ id: 'mock-domain', name: 'Demo', enabled: true, description: '' }] };
+	}
+	if (profile === 'admin' && ['/api/v1/admin/users', '/api/v1/admin/users/activity', '/api/v1/admin/users/stats'].includes(pathname)) {
+		if (!params.get('domain_id')) throw new ApiError(422, 'Select a domain');
+		if (params.get('domain_id') !== 'mock-domain') throw new ApiError(404, 'Domain not found');
+	}
+	if (profile === 'admin' && pathname === '/api/v1/admin/users/stats') {
+		return { total: state.admin.users.length, enabled: state.admin.users.filter(user => user.enabled).length, disabled: state.admin.users.filter(user => !user.enabled).length };
 	}
 	if (profile === 'admin' && pathname === '/api/v1/admin/users/activity') return state.admin.userActivity;
 	if (profile === 'admin' && pathname === '/api/v1/admin/users') {
@@ -618,7 +670,7 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		}
 		const limit = Math.max(1, Number.parseInt(params.get('limit') ?? '100', 10) || 100);
 		const page = items.slice(0, limit);
-		return { items: page, next_marker: items.length > limit ? page.at(-1)?.id ?? null : null, count: state.admin.users.length };
+		return { items: page, next_marker: items.length > limit ? page.at(-1)?.id ?? null : null, count: page.length };
 	}
 	if (method === 'POST' && pathname === '/api/v1/auth/token/project') return projectTokenResponse(String((body as { project_id?: string } | null)?.project_id ?? state.projects[0].id), profile);
 	if (method === 'POST' && pathname === '/api/v1/networks/ensure-default') return ok204();
@@ -640,7 +692,7 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 
 	if (method === 'GET' && pathname === '/api/v1/instances') return state.instances;
 	if (method === 'GET' && pathname === '/api/v1/instances/availability-zones') return [{ name: 'nova', available: true }];
-	if (method === 'GET' && pathname === '/api/v1/instances/metrics-summary-batch') return { prometheus_available: true, instances: instanceMetrics(state.instances.map((item) => item.id)) };
+	if (method === 'GET' && pathname === '/api/v1/instances/metrics-summary-batch') return { monitoring_available: true, instances: instanceMetrics(state.instances.map((item) => item.id)) };
 	const instanceAction = pathname.match(/^\/api\/v1\/instances\/([^/]+)\/(start|stop|shelve|unshelve)$/);
 	if (method === 'POST' && instanceAction) {
 		const status = { start: 'ACTIVE', stop: 'SHUTOFF', shelve: 'SHELVED_OFFLOADED', unshelve: 'ACTIVE' }[instanceAction[2]] ?? 'ACTIVE';
@@ -662,11 +714,12 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	const instanceId = pathname.match(/^\/api\/v1\/instances\/([^/]+)$/)?.[1];
 	if (method === 'GET' && instanceId) return state.instances.find((item) => item.id === instanceId) ?? mockUnsupported();
 	const metricInstanceId = pathname.match(/^\/api\/v1\/instances\/([^/]+)\/metrics-summary$/)?.[1];
-	if (method === 'GET' && metricInstanceId) return { prometheus_available: true, stats: { cpu: { min: 4, avg: 18, max: 44 }, memory: { min: 18, avg: 36, max: 61 } }, recommendation: null };
+	if (method === 'GET' && metricInstanceId) return { monitoring_available: true, stats: { cpu: { min: 4, avg: 18, max: 44, source: 'gnocchi', unit: '%', status: 'available', native_status: 'available' }, memory: { min: 18, avg: 36, max: 61, source: 'prometheus', unit: '%', status: 'available', native_status: 'not_collected' } }, recommendation: null };
 	if (method === 'GET' && /^\/api\/v1\/instances\/[^/]+\/metrics-batch$/.test(pathname)) {
 		const keys = (params.get('metrics') ?? 'cpu,memory').split(',');
-		return { metrics: Object.fromEntries(keys.map((key, index) => [key, { series: metricSeries(10 + index * 5), error: null }])) };
+		return { metrics: Object.fromEntries(keys.map((key) => [key, mockMetric(key)])) };
 	}
+	if (method === 'GET' && /^\/api\/v1\/instances\/[^/]+\/metrics$/.test(pathname)) return { instance_id: pathname.split('/')[4], metric: params.get('metric'), range: params.get('range') ?? '1h', ...mockMetric(params.get('metric') ?? '') };
 	if (method === 'GET' && /^\/api\/v1\/instances\/[^/]+\/console$/.test(pathname)) return { url: '/mockup-console.html' };
 	if (method === 'GET' && /^\/api\/v1\/instances\/[^/]+\/log$/.test(pathname)) return { output: 'cloud-init finished\nk3s service active\nmock workload healthy\n' };
 	if (method === 'GET' && /^\/api\/v1\/instances\/[^/]+\/interfaces$/.test(pathname)) return [{ id: 'mock-port-1', name: 'primary', status: 'ACTIVE', device_owner: 'compute:nova', fixed_ips: [{ ip_address: '192.0.2.24' }], project_id: state.selectedProjectId, security_group_ids: ['mock-sg-default'], mac_address: 'fa:16:3e:00:00:01', network_id: 'mock-net-private' }];
@@ -796,7 +849,7 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		},
 	};
 	if (method === 'GET' && /^\/api\/v1\/projects\/[^/]+\/assignable-roles$/.test(pathname)) return {
-		is_owner: true, roles: [
+		is_owner: true, can_manage_owners: true, roles: [
 			{ id: 'mock-role-owner', name: 'project_owner', area: 'project', grade: 'owner', implied_role_ids: ['mock-role-member'], inherited_role_ids: ['mock-role-member', 'mock-role-reader'] },
 			{ id: 'mock-role-member', name: 'project_member', area: 'project', grade: 'member', implied_role_ids: ['mock-role-reader'], inherited_role_ids: ['mock-role-reader'] },
 			{ id: 'mock-role-reader', name: 'project_reader', area: 'project', grade: 'reader', implied_role_ids: [], inherited_role_ids: [] },
@@ -808,7 +861,6 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 			{ user_id: 'mock-user-2', username: 'sample-researcher', email: 'researcher@example.com', is_owner: false, is_manager: false, roles: ['project_member', 'project_reader', 'member'], direct_role_ids: ['mock-role-member'], effective_role_ids: ['mock-role-member', 'mock-role-reader'], external_role_ids: [], source: 'direct' },
 		] };
 	}
-	if (method === 'GET' && /^\/api\/v1\/projects\/[^/]+\/invitations$/.test(pathname)) return { items: [] };
 	if (method === 'GET' && pathname === '/api/v1/announcements') return [];
 	if (method === 'GET' && pathname === '/api/v1/announcements/unread-count') return { unread_count: 0 };
 	if (method === 'GET' && pathname === '/api/v1/chat/usage') {
@@ -832,6 +884,10 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 			top_instances: state.instances.slice(0, 5).map((item, index) => ({
 				id: item.id, name: item.name, flavor_name: item.flavor_name ?? 'cpu.4c_8g',
 				vcpus: 4, ram_mb: 8192, disk_gb: 80, status: item.status, usage_hours: 96 - index * 12,
+				cpu_pct: index === 0 ? 0 : 18 + index * 7, ram_pct: index === 0 ? null : 36 + index * 5,
+				cpu_source: 'gnocchi', ram_source: index === 0 ? null : 'prometheus',
+				cpu_status: 'available', ram_status: index === 0 ? 'not_collected' : 'available',
+				cpu_native_status: 'available', ram_native_status: 'not_collected',
 			})),
 		};
 	}

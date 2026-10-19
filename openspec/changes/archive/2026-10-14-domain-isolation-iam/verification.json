@@ -1,0 +1,110 @@
+{
+  "change": "domain-isolation-iam",
+  "local_date": "2026-10-15",
+  "implementation": "All six requested slices implemented in local dev source; no commit, push, release or production deployment performed.",
+  "qualification": "Scoped local acceptance passed. Whole-project gate remains failed on pre-existing unrelated storage tests; this is not production or live-provider acceptance.",
+  "proof_directory": "~/.local/share/afterglow-proofs/domain-isolation-20261015",
+  "source": {
+    "public_files": 2918,
+    "sha256": "43c6754e611e21b012a822320c2de4145919ff1663405b98779b90917d068bb0",
+    "current_frozen_byte_mode_parity": true,
+    "working_architecture_guard": "passed",
+    "disposable_index_staged_architecture_guard": "passed, same digest; temporary index removed",
+    "shared_index": "Not staged or modified by this task",
+    "scope": "Includes concurrent public WIP. Private configuration/data excluded; digest does not certify unrelated changes.",
+    "receipts": ["source-parity-final.json", "architecture-staged.txt"]
+  },
+  "tests": {
+    "canonical_gate": {
+      "command": "env DATABASE_URL= AFTERGLOW_DATABASE_URL= AFTERGLOW_ALLOW_INSECURE=1 AFTERGLOW_TEST_REAL_REDIS=0 UV_NO_SYNC=1 npm run test:gate",
+      "cwd": "/tmp/afterglow-domain-qa/source",
+      "exit": 1,
+      "passed_lanes": ["architecture", "JS orchestration", "Kolla contracts", "CLI install"],
+      "backend_unit": {"passed": 6868, "skipped": 91, "failed": 11, "seconds": 67.85},
+      "failures": "All 11 failures are existing tests/test_instance_storage_delete.py block-consumer tracking/database contract failures. Deletion safety was not weakened.",
+      "unreached_lanes": ["frontend", "contract", "functional", "backend lint"],
+      "receipts": ["gate-final.log", "gate-final-summary.txt"]
+    },
+    "frontend_separate": {"passed_files": 378, "passed_tests": 3751, "failed": 0, "skipped": 0, "receipt": "vitest-settled.json"},
+    "contracts_separate": {"passed": 174, "seconds": 1.83, "receipt": "contracts-final.txt"},
+    "functional_separate": {"passed": 159, "deselected": 30, "seconds": 11.43, "receipt": "functional-complete.txt"},
+    "domain_mariadb": {"passed": 5, "receipt": "domain-db-final.txt"},
+    "domain_auth_iam_fake_redis": {"passed": 117, "receipt": "domain-auth-iam-targeted.txt"},
+    "real_redis_session_races": {"passed": 7, "receipt": "session-races-real-redis.txt"},
+    "runner_isolation": "Canonical functional/contract selectors ran from an empty configuration-discovery cwd via isolated-runner.cjs using the same source and installed backend environment; original private TOML's line10,column9 parse error was not changed or disclosed.",
+    "ruff_check": "Separate whole-backend Ruff check passed; full lint lane not reached by gate.",
+    "frontend_diagnostics": "i18n 43 namespaces/10223 messages, 0 errors/warnings. Svelte retains one unrelated database PageState instanceId error and three unrelated warnings; not a passing whole-project type check."
+  },
+  "runtime": {
+    "credential_http": {
+      "cases": 6,
+      "boundary": "Real Uvicorn main app and installed OpenStack SDK against loopback synthetic Keystone, including middleware.",
+      "checks": ["missing/empty selected domain and empty owner return 422 before native lookup", "same-domain inventory excludes secrets", "foreign owner denied", "failed issuance validation plus failed cleanup exposes only credential_rollback_failed with no-store"],
+      "script": "credential_http_smoke.py"
+    },
+    "mcp_http": {"cases": 4, "boundary": "Installed Keystone SDK and loopback test-server helper; exact, foreign and missing native user/project domains", "script": "domain-mcp-smoke.py"},
+    "sql_redis_http": {
+      "boundary": "Real TCP Uvicorn, MariaDB ORM/migrations and Redis. Keystone directory/federation and SMTP adapters explicitly synthetic, external network forbidden. No pytest or test-fixture imports in the standalone domain runtime.",
+      "mariadb": "11.4.13",
+      "redis": "7.4.11",
+      "postgresql": "16.14; actual savepoint/write/rollback, remaining rows 0",
+      "manifest_entries_sha256_verified": 93,
+      "migrations": [
+        {"id": "090-domain-auth", "applications_per_schema": 2, "sha256": "820aad53b34488d802d44f68f49b91519d86464e76291cc64ebe570e890e0a84"},
+        {"id": "091-domain-iam", "applications_per_schema": 2, "sha256": "2b9b05af7da8aa9ad3961c3ef11df0841915968a7b2916f17864f6fcfdd872c4"}
+      ],
+      "schema_parity_columns": {"domain_login_policies": 9, "domain_identity_providers": 23, "domain_enrollments": 19},
+      "checks": ["policy/provider persistence, revision conflicts, duplicate and last-login-method rollback", "domain-bound encrypted/write-only provider secret and input non-disclosure", "concurrent redemption 200/410 and one durable acceptance", "verified signup without implicit project membership", "SMTP failure persists delivery_failed", "lost grant reply/failed compensation persists recovery_required; retry revokes exact additions", "final SQL commit failure compensates native effects and persists failed", "cross-domain rotation denied; stale JTI revokes a twice-rotated session family"],
+      "receipts": ["runtime-smoke.json", "runtime-smoke.txt", "sql-schema-state.txt", "postgres-rollback.txt"],
+      "built_backend_execution": "The same standalone smoke also passed inside both linux/arm64 and linux/amd64 backend images against distinct disposable schemas."
+    }
+  },
+  "browser": {
+    "current_source": "frontend-acceptance.json",
+    "dark_conditions": 144,
+    "english_light_conditions": 12,
+    "bounded_user_create_modals": 3,
+    "locales": ["ko", "en", "ja", "zh-CN"],
+    "widths": [390, 767, 768, 1023, 1024, 1440],
+    "checks": ["domain edit clears username, password and login methods", "canonical-domain password POST and provider continuation", "explicit admin domain selection, old-row clearing and selected-domain create POST", "actual OPTIONS204/GET403 native denial preserves administrator state", "delayed Slow-to-Other response race", "IAM users/membership/policy/provider/recovery and truthful monitoring unavailable/partial/zero"],
+    "boundary": "Current-source UI with synthetic APIs, native identity, cloud and providers. Not real IdP callback/email verification or production mutation.",
+    "compiled_image": "Deployed arm64 frontend at 1440/390px: domain-first form, real backend's unconfigured-domain 503 remains unavailable without password/SSO fallback; horizontal overflow 0. Separate amd64 image health and login document 200.",
+    "compiled_receipt": "compiled-compose-http.json",
+    "screenshot_asset": "frontend/static/docs/screenshots/getting-started-login.webp"
+  },
+  "images": [
+    {"target": "backend", "platforms": ["linux/arm64", "linux/amd64"], "manifest": "sha256:2777567da31ca81a3a7af725a4d4ba053dd0bf6beb0ca3893fec34339d5e05f0", "build_log": "build-backend.log"},
+    {"target": "worker", "platforms": ["linux/arm64", "linux/amd64"], "manifest": "sha256:b05037aca553bf9241a20a8e12a88c3095f0817347c6be8df326efd9c1c6911b", "build_log": "build-worker.log"},
+    {"target": "frontend", "platforms": ["linux/arm64", "linux/amd64"], "manifest": "sha256:9e2a00631d0edbedbde07eac3ffe5d33c72174035cbd07ca290b18c0281978ca", "build_log": "build-frontend.log"},
+    {"target": "native-vm", "platforms": ["linux/arm64", "linux/amd64"], "manifest": "sha256:def4411d5e59c529144b420f837ba62ac9863835c90f6eae4a11c0cc866358c8", "build_log": "build-native-vm.log"},
+    {"target": "native-cloud-vm", "platforms": ["linux/amd64"], "manifest": "sha256:e80a827a55babb180301b81d32cd45c063ed260c8c2a50eeb90a2f64bbf0b6b4", "build_log": "build-native-cloud-vm.log"}
+  ],
+  "image_execution": {
+    "canonical_build": "docker buildx build --platform <declared platforms> --target <target> --load --progress=plain -t afterglow-domain-qa/<target>:current . using root Dockerfile and frozen public source",
+    "architecture_tools": "Both backend architectures executed their native OpenTofu1.8.3 and Ceph18.2.7 binaries. Both worker architectures passed scripts/worker-image-smoke.py using installed afterglow-crypto0.1.1.",
+    "native_variants": "UID1000, cap-drop ALL, no-new-privileges, network none: API/frontend200, 3 domain tables and live Notion worker lease for native-vm arm64/amd64 and native-cloud-vm amd64. Container supervisor execution only, not VM boot.",
+    "receipt": "image-variants.json"
+  },
+  "development_deployment": {
+    "command": "docker compose -p afterglow-domain-runtime -f docker-compose.dev.yml -f ../runtime.compose.yml up -d --no-build --no-deps --wait --wait-timeout 180 backend frontend notion-worker",
+    "boundary": "Canonical development Compose with task-only image/loopback/disposable-datastore overrides, no real cloud credentials. Existing services and volumes preserved.",
+    "readiness": "Backend/frontend Docker healthy; worker has no healthcheck, verified its live Redis membership against Redis TIME.",
+    "http": "API/frontend health200; empty domain and missing-domain password input422; unauthenticated IAM401; auth/IAM no-store.",
+    "port_collision": "Occupied 18000 was preserved; task ports moved to 59106/59107.",
+    "receipts": ["compose-deploy.log", "compose-health.jsonl", "runtime.compose.yml", "compiled-compose-http.json"]
+  },
+  "cleanup": {
+    "application": "Only the three owned afterglow-domain-runtime services were stopped through the same canonical Compose files after smoke.",
+    "variants": "Only the four captured native/frontend smoke container IDs were stopped; their task-created --rm containers were removed by Docker.",
+    "browser": "Owned compiled tab released and dedicated domain-compiled-cdp-59108 service stopped; the failed-launch profile had no remaining process. Frontend agent closed its own tab/server separately.",
+    "preserved": "QA datastore containers, named volumes, source snapshots and durable receipts retained. No existing application, production state, private configuration, Git index or unrelated process was removed."
+  },
+  "remaining_limits": [
+    "Whole-project gate and Svelte type-check are not green; unrelated failures remain untouched.",
+    "No live Keystone authority/IAM mutation, external IdP callback or SMTP delivery acceptance.",
+    "No production deployment, current production schema qualification, mixed-version writer test, backup/restore or rollback qualification. Schema-before-writer and API/UI/worker cutover are required; old writers do not enforce new policies.",
+    "No native VM/cloud disk boot in this acceptance.",
+    "Browser provider/recovery writes, full admin application/group/project inventory, full four-locale light matrix and Firefox/Safari were not exercised.",
+    "gbrain executable unavailable; no search-index sync or installation performed."
+  ]
+}

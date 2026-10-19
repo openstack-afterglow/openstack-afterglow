@@ -65,6 +65,9 @@ export interface K3sClusterDetailControllerOpts {
 }
 
 export function createK3sClusterDetailController(opts: K3sClusterDetailControllerOpts) {
+  let generation = 0;
+  let workloadGeneration = 0;
+  let clusterRequest = 0;
   let cluster = $state<K3sCluster | null>(null);
   let health = $state<K3sClusterHealth | null>(null);
   let loading = $state(true);
@@ -103,15 +106,23 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
 
   async function loadCluster() {
     const id = opts.clusterId();
-    if (!id) return;
+    const projectId = opts.projectId();
+    const userId = opts.userId();
+    const epoch = generation;
+    const request = ++clusterRequest;
+    if (!id || !projectId) return;
+    const current = () => epoch === generation && request === clusterRequest && opts.clusterId() === id && opts.projectId() === projectId && opts.userId() === userId;
     try {
-      cluster = await api.get<K3sCluster>(`${apiBase}/${id}`, opts.token(), opts.projectId());
+      const value = await api.get<K3sCluster>(`${apiBase}/${id}`, opts.token(), projectId);
+      if (!current()) return;
+      cluster = value;
       if (scalingTarget === null && cluster) scalingTarget = cluster.agent_count;
       error = '';
     } catch (e) {
+      if (!current()) return;
       error = e instanceof ApiError ? t('detail.lookupFailed', { status: e.status }) : t('detail.serverError');
     } finally {
-      loading = false;
+      if (current()) loading = false;
     }
   }
 
@@ -139,10 +150,8 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     }
   }
 
-  // The system-admin route has no grade; project routes always name the requested credential grade.
-  function kubeconfigPath(id: string, grade: KubeconfigGrade) {
-    return opts.adminMode() ? `${apiBase}/${id}/kubeconfig` : `${apiBase}/${id}/kubeconfig?grade=${grade}`;
-  }
+  // Always request the explicit native grade, including on the administrator surface.
+  // The ungraded administrator endpoint returns the irrevocable stored certificate.
 
   async function checkKubeconfig() {
     const grade = get(k3sPermissions).kubeconfigGrade;
@@ -151,10 +160,11 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     if (!id || !cluster || cluster.status !== 'ACTIVE') return;
     const userId = opts.userId();
     const projectId = opts.projectId();
+    const epoch = generation;
     try {
-      const path = kubeconfigPath(id, grade);
+      const path = `/api/v1/k3s/clusters/${id}/kubeconfig?grade=${grade}`;
       const mock = await maybeMockHead(path, opts.token(), opts.projectId());
-      if (get(k3sPermissions).kubeconfigGrade !== grade || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
+      if (epoch !== generation || get(k3sPermissions).kubeconfigGrade !== grade || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
       if (mock !== symbolNoMatch) {
         kubeconfigAvailable = mock.ok;
         return;
@@ -162,7 +172,7 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
       const res = await fetchWithAuth(path, {
         method: 'HEAD',
       }, opts.token(), opts.projectId());
-      if (get(k3sPermissions).kubeconfigGrade !== grade || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
+      if (epoch !== generation || get(k3sPermissions).kubeconfigGrade !== grade || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
       kubeconfigAvailable = res.ok;
     } catch {
       kubeconfigAvailable = false;
@@ -172,23 +182,24 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
   /** `full` requests the irrevocable stored administrator certificate and needs an explicit confirmation. */
   async function downloadKubeconfig(full = false) {
     const grade: KubeconfigGrade | null = full
-      ? (get(k3sPermissions).adminCredentials && !opts.adminMode() ? 'admin' : null)
+      ? (get(k3sPermissions).adminCredentials ? 'admin' : null)
       : get(k3sPermissions).kubeconfigGrade;
     if (!grade) return;
     const id = opts.clusterId();
     if (!id || !cluster) return;
     const userId = opts.userId();
     const projectId = opts.projectId();
+    const epoch = generation;
     const name = cluster.name;
     if (full) {
       if (!(await confirmDialog(t('detail.confirmAdminKubeconfig', { name })))) return;
-      if (!get(k3sPermissions).adminCredentials || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
+      if (epoch !== generation || !get(k3sPermissions).adminCredentials || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
     }
     try {
-      const { blob } = await api.downloadBlob(kubeconfigPath(id, grade), opts.token(), projectId);
+      const { blob } = await api.downloadBlob(`/api/v1/k3s/clusters/${id}/kubeconfig?grade=${grade}`, opts.token(), projectId);
       // Recheck the requested grade as well as identity before disclosing this native-issued credential.
       const current = get(k3sPermissions);
-      if ((full ? !current.adminCredentials : grade === 'editor' ? !current.workloads : !current.credentials) || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
+      if (epoch !== generation || (full ? !current.adminCredentials : grade === 'editor' ? !current.workloads : !current.credentials) || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
       downloadBlobAs(blob, `kubeconfig-${name}.yaml`);
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) toast.warning(t('detail.kubeconfigPending'));
@@ -202,8 +213,9 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     const id = opts.clusterId();
     const userId = opts.userId();
     const projectId = opts.projectId();
+    const epoch = generation;
     if (!c || !(await confirmDialog(t('detail.confirmDelete', { name: c.name })))) return;
-    if (!get(k3sPermissions).administerClusters || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
+    if (epoch !== generation || !get(k3sPermissions).administerClusters || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
     deleting = true;
     deleteProgress = { step: '', pct: 0, msg: t('detail.preparingDelete'), error: '' };
     try {
@@ -236,8 +248,9 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     if (scalingTarget === c.agent_vm_ids.length && scalingTarget === c.agent_count) return;
     const userId = opts.userId();
     const projectId = opts.projectId();
+    const epoch = generation;
     if (!(await confirmDialog(t('detail.confirmScale', { current: c.agent_vm_ids.length, target: scalingTarget })))) return;
-    if (!get(k3sPermissions).editClusters || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
+    if (epoch !== generation || !get(k3sPermissions).editClusters || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
     scaling = true;
     scaleError = '';
     try {
@@ -317,15 +330,17 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     if (!id || namespacesLoaded) return;
     const userId = opts.userId();
     const projectId = opts.projectId();
+    const epoch = generation;
     try {
       const ns = await listNamespaces(id, opts.token(), opts.projectId());
-      if (opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
+      if (epoch !== generation || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
       namespaces = ns;
       if (!namespaces.includes(selectedNamespace)) {
         selectedNamespace = namespaces[0] ?? '';
       }
       namespacesLoaded = true;
     } catch {
+      if (epoch !== generation) return;
       namespaces = [];
       selectedNamespace = '';
     }
@@ -339,11 +354,14 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     const userId = opts.userId();
     const projectId = opts.projectId();
     const namespace = selectedNamespace;
+    const epoch = generation;
+    const workloadEpoch = workloadGeneration;
     try {
       const items = await listConfigMaps(id, namespace, opts.token(), projectId);
-      if (!get(k3sPermissions).workloads || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id || selectedNamespace !== namespace) return;
+      if (epoch !== generation || workloadEpoch !== workloadGeneration || !get(k3sPermissions).workloads || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id || selectedNamespace !== namespace) return;
       configMaps = items;
     } catch {
+      if (epoch !== generation || workloadEpoch !== workloadGeneration) return;
       configMaps = [];
     }
   }
@@ -356,74 +374,101 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     const userId = opts.userId();
     const projectId = opts.projectId();
     const namespace = selectedNamespace;
+    const epoch = generation;
+    const workloadEpoch = workloadGeneration;
     try {
       const items = await listSecrets(id, namespace, opts.token(), projectId);
-      if (!get(k3sPermissions).workloads || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id || selectedNamespace !== namespace) return;
+      if (epoch !== generation || workloadEpoch !== workloadGeneration || !get(k3sPermissions).workloads || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id || selectedNamespace !== namespace) return;
       secrets = items;
     } catch {
+      if (epoch !== generation || workloadEpoch !== workloadGeneration) return;
       secrets = [];
     }
   }
 
+  function captureWorkloadScope() {
+    const id = opts.clusterId();
+    const namespace = selectedNamespace;
+    const projectId = opts.projectId();
+    const userId = opts.userId();
+    const token = opts.token();
+    const epoch = generation;
+    const workloadEpoch = workloadGeneration;
+    if (!id || !namespace || !projectId || !userId || !token) return null;
+    return { id, namespace, projectId, token,
+      current: () => epoch === generation && workloadEpoch === workloadGeneration && opts.clusterId() === id && opts.projectId() === projectId && opts.userId() === userId && selectedNamespace === namespace,
+    };
+  }
+
   async function saveConfigMap(name: string, data: Record<string, string>, isNew: boolean) {
     if (!get(k3sPermissions).workloads) return;
-    const id = opts.clusterId();
-    if (!id || !selectedNamespace || cmActioning) return;
-    cmActioning = `${selectedNamespace}:${name}`;
+    const scope = captureWorkloadScope();
+    if (!scope || cmActioning) return;
+    cmActioning = `${scope.namespace}:${name}`;
     try {
       if (isNew) {
-        const cm = await createConfigMap(id, selectedNamespace, { name, data }, opts.token(), opts.projectId());
+        const cm = await createConfigMap(scope.id, scope.namespace, { name, data }, scope.token, scope.projectId);
+        if (!scope.current() || !get(k3sPermissions).workloads) return;
         configMaps = [...configMaps, cm];
       } else {
-        const cm = await updateConfigMap(id, selectedNamespace, name, { data }, opts.token(), opts.projectId());
+        const cm = await updateConfigMap(scope.id, scope.namespace, name, { data }, scope.token, scope.projectId);
+        if (!scope.current() || !get(k3sPermissions).workloads) return;
         configMaps = configMaps.map((c) => (c.name === name ? cm : c));
       }
     } finally {
-      cmActioning = null;
+      if (scope.current()) cmActioning = null;
     }
   }
 
   async function deleteCm(name: string) {
     if (!get(k3sPermissions).workloads) return;
-    const id = opts.clusterId();
-    if (!id || !selectedNamespace || cmActioning) return;
-    cmActioning = `${selectedNamespace}:${name}`;
+    const scope = captureWorkloadScope();
+    if (!scope || cmActioning) return;
+    if (!(await confirmDialog(t('configMaps.confirmDelete', { name })))) return;
+    if (!scope.current() || !get(k3sPermissions).workloads || cmActioning) return;
+    cmActioning = `${scope.namespace}:${name}`;
     try {
-      await deleteConfigMap(id, selectedNamespace, name, opts.token(), opts.projectId());
+      await deleteConfigMap(scope.id, scope.namespace, name, scope.token, scope.projectId);
+      if (!scope.current() || !get(k3sPermissions).workloads) return;
       configMaps = configMaps.filter((c) => c.name !== name);
     } finally {
-      cmActioning = null;
+      if (scope.current()) cmActioning = null;
     }
   }
 
   async function saveSecret(name: string, type: string, data: Record<string, string>, isNew: boolean) {
     if (!get(k3sPermissions).workloads || (type !== 'Opaque' && !get(k3sPermissions).adminCredentials)) return;
-    const id = opts.clusterId();
-    if (!id || !selectedNamespace || cmActioning) return;
-    cmActioning = `${selectedNamespace}:${name}`;
+    const scope = captureWorkloadScope();
+    if (!scope || cmActioning) return;
+    cmActioning = `${scope.namespace}:${name}`;
     try {
       if (isNew) {
-        const s = await createSecret(id, selectedNamespace, { name, type, data }, opts.token(), opts.projectId());
+        const s = await createSecret(scope.id, scope.namespace, { name, type, data }, scope.token, scope.projectId);
+        if (!scope.current() || !get(k3sPermissions).workloads || (type !== 'Opaque' && !get(k3sPermissions).adminCredentials)) return;
         secrets = [...secrets, s];
       } else {
-        const s = await updateSecret(id, selectedNamespace, name, { type, data }, opts.token(), opts.projectId());
+        const s = await updateSecret(scope.id, scope.namespace, name, { type, data }, scope.token, scope.projectId);
+        if (!scope.current() || !get(k3sPermissions).workloads || (type !== 'Opaque' && !get(k3sPermissions).adminCredentials)) return;
         secrets = secrets.map((x) => (x.name === name ? s : x));
       }
     } finally {
-      cmActioning = null;
+      if (scope.current()) cmActioning = null;
     }
   }
 
   async function deleteSecretItem(name: string) {
     if (!get(k3sPermissions).workloads) return;
-    const id = opts.clusterId();
-    if (!id || !selectedNamespace || cmActioning) return;
-    cmActioning = `${selectedNamespace}:${name}`;
+    const scope = captureWorkloadScope();
+    if (!scope || cmActioning) return;
+    if (!(await confirmDialog(t('secrets.confirmDelete', { name })))) return;
+    if (!scope.current() || !get(k3sPermissions).workloads || cmActioning) return;
+    cmActioning = `${scope.namespace}:${name}`;
     try {
-      await deleteSecret(id, selectedNamespace, name, opts.token(), opts.projectId());
+      await deleteSecret(scope.id, scope.namespace, name, scope.token, scope.projectId);
+      if (!scope.current() || !get(k3sPermissions).workloads) return;
       secrets = secrets.filter((s) => s.name !== name);
     } finally {
-      cmActioning = null;
+      if (scope.current()) cmActioning = null;
     }
   }
 
@@ -554,8 +599,15 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     if (!get(k3sPermissions).credentials) return null;
     const id = opts.clusterId();
     if (!id || !selectedNamespace) return null;
+    const epoch = generation;
+    const workloadEpoch = workloadGeneration;
+    const userId = opts.userId();
+    const projectId = opts.projectId();
+    const namespace = selectedNamespace;
     try {
-      return await getPodLog(id, selectedNamespace, name, opts2, opts.token(), opts.projectId());
+      const result = await getPodLog(id, namespace, name, opts2, opts.token(), projectId);
+      if (epoch !== generation || workloadEpoch !== workloadGeneration || !get(k3sPermissions).credentials || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id || selectedNamespace !== namespace) return null;
+      return result;
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : t('detail.podLogFailed'));
       return null;
@@ -563,6 +615,7 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
   }
 
   function reset() {
+    generation += 1;
     cluster = null;
     health = null;
     loading = true;
@@ -620,6 +673,7 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     set initialCheckDone(v: boolean) { initialCheckDone = v; },
     get apiBase() { return apiBase; },
     get adminMode() { return opts.adminMode(); },
+    get projectId() { return opts.projectId(); },
     get isActive() { return isActive; },
     get interfaces() { return interfaces; },
     get networks() { return networks; },
@@ -644,6 +698,8 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     get selectedNamespace() { return selectedNamespace; },
     set selectedNamespace(v: string) {
       if (v !== selectedNamespace) {
+        workloadGeneration += 1;
+        cmActioning = null;
         selectedNamespace = v;
         _invalidateWorkloadCaches();
         configMaps = [];

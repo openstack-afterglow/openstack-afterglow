@@ -31,7 +31,6 @@ image:
 replicaCount:
   backend: 2
   frontend: 2
-  worker: 1
   notionWorker: 1
   redis: 3
   sentinel: 3
@@ -48,11 +47,6 @@ workerRuntime:
   reconcileInterval: 30
   failClosed: true
   workers:
-    drover:
-      enabled: true
-      desiredReplicas: 1
-      maxReplicas: 1
-      module: app.worker
     notionWorker:
       enabled: true
       desiredReplicas: 1
@@ -70,7 +64,7 @@ workerRuntime:
     # 마운트합니다 (fsGroup 1000 쓰기 허용, PVC/hostPath 미사용, 파드 수명주기 종속 휘발성 스토리지).
     logsMount: /app/logs
     logsHostPath: ""
-    envAllowlist: "AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,K3S_KUBECONFIG_ENCRYPTION_KEY,PROMETHEUS_PASSWORD,GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY"
+    envAllowlist: "AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,K3S_KUBECONFIG_ENCRYPTION_KEY,PROMETHEUS_PASSWORD,NOTION_CONFIG_ENCRYPTION_KEY"
   kubernetes:
     namespace: ""
     serviceAccountName: afterglow-backend-worker-runtime
@@ -98,8 +92,10 @@ ingress:
 secrets:
   osPassword: ""
   secretKey: ""
-  gitlabOidcClientSecret: ""
   k3sKubeconfigEncryptionKey: ""
+  k3sGpuAdmissionToken: ""
+  lumenMcpServiceToken: ""
+  cephRbdKeyring: ""
   databaseUrl: ""
   prometheusPassword: ""
   monitoringSDToken: ""
@@ -109,6 +105,8 @@ secrets:
   trafficAnalyticsFrontendIngestKey: ""
   notionConfigEncryptionKey: ""
   smtpPassword: ""
+  # Nested AUTH__PROVIDERS__<KEY>__CLIENT_SECRET environment names -> secret values.
+  authProviders: {}
   # 멀티라인 PEM 키: |로 시작하는 블록 스칼라로 입력
   builderSshPrivateKey: ""
   # Grafana 관리자 비밀번호 (반드시 배포 시 --set으로 주입)
@@ -144,6 +142,16 @@ openstack:
   trashRetentionDays: 30
   # S3 (CSP frame-src용)
   s3Endpoint: "https://s3.dmslab.re.kr"
+
+# Public Ceph RBD configuration; keyring bytes belong only in secrets.cephRbdKeyring.
+ceph:
+  rbdConfContent: ""
+  rbdConfPath: ""
+  rbdKeyringPath: ""
+  rbdClientName: "client.afterglow-rbd"
+  rbdClusterFsid: ""
+  rbdCommandTimeoutSeconds: 30
+  rbdVolumePools: {}
 
 # -----------------------------------------------------------------------------
 # [app]
@@ -556,7 +564,12 @@ services:
 # -----------------------------------------------------------------------------
 cloudShell:
   serviceProjectId: ""
-  image: ""
+  # Production must override this development tag with a published manifest digest.
+  image: "ghcr.io/openstack-afterglow/openstack-client:slim"
+  # Empty uses Zun's default. Explicit policies require Zun's admin policy permission.
+  imagePullPolicy: ""
+  # Optional private-registry UUID owned by the dedicated Cloud Shell project.
+  registryId: ""
   # Containers and home volumes live in serviceProjectId, never in user projects.
   # Empty networkId uses that project's external-connected default network.
   networkId: ""
@@ -574,6 +587,11 @@ cloudShell:
   ticketTtlSeconds: 60
   reconcileIntervalSeconds: 60
   zunWebsocketOrigin: ""
+
+# File-managed login methods; generated from [auth] without client secrets.
+auth:
+  configToml: ""
+  providerKeys: []
 
 # -----------------------------------------------------------------------------
 # [mcp]
@@ -645,18 +663,6 @@ database:
 # -----------------------------------------------------------------------------
 cors:
   origins: "https://afterglow.example.com,http://localhost:3080,http://127.0.0.1:3080"
-
-# -----------------------------------------------------------------------------
-# [gitlab_oidc]
-# -----------------------------------------------------------------------------
-gitlabOidc:
-  enabled: false
-  gitlabUrl: "https://gitlab.com"
-  clientId: ""
-  idpId: "gitlab"
-  protocolId: "openid"
-  redirectUri: ""
-  scopes: "openid email profile read_user"
 
 # -----------------------------------------------------------------------------
 # [smtp]
@@ -762,7 +768,6 @@ logging: {}
 # [security]
 # -----------------------------------------------------------------------------
 security:
-  adminLegacyProjectPolicy: false
   loginMaxAttempts: 10
   loginLockoutSeconds: 300
   loginBackoffBase: 2
@@ -784,13 +789,6 @@ resources:
       cpu: "50m"
     limits:
       memory: "512Mi"
-      cpu: "300m"
-  worker:
-    requests:
-      memory: "128Mi"
-      cpu: "50m"
-    limits:
-      memory: "256Mi"
       cpu: "300m"
   notionWorker:
     requests:

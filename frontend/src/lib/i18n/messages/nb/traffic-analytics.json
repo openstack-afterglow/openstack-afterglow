@@ -66,7 +66,7 @@
 	"map.flows.failure": "Fargetone: feilandelen. Stiplet linje: flere feil enn vellykkede svar. Velg et land for nøyaktige antall.",
 	"map.flows.site": "◆ Tjenestens inngangspunkt: {country}",
 	"map.flows.sameCountry": "Forespørsler fra landet der tjenesten er plassert: {count}. Ringstørrelsen viser det relative volumet på en logaritmisk skala.",
-	"map.flows.note": "Strømmene er logiske observasjoner av klientland → tjenestested, ikke fysiske nettverksruter. Klientlandet er et frakoblet anslag basert på IP-områder, ikke en nøyaktig posisjon. Land uten kartfigur er fortsatt med i rangeringen, men har ingen forbindelsesbue.",
+	"map.flows.note": "Strømmene er logiske observasjoner av tilgang fra klientland → tjenestested, ikke fysiske nettverksruter. Klientplasseringen er et anslag basert på en frakoblet CIDR-database, ikke en nøyaktig posisjon. Land uten kartfigur er fortsatt med i rangeringen, men har ingen forbindelsesbue.",
 	"map.flows.unconfigured": "Tilgangsstrømmer tegnes ikke fordi tjenestens plassering ikke er konfigurert (traffic_analytics.site_country).",
 	"map.flows.noShape": "Tilgangsstrømmer tegnes ikke fordi det konfigurerte tjenestelandet ikke har noen figur i denne kartmålestokken.",
 	"routes.title": "Observerte tilgangskategorier / tjenester",

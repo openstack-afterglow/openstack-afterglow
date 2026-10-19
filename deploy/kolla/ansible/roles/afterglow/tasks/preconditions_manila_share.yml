@@ -24,7 +24,7 @@
   ansible.builtin.command:
     cmd: '{{ kolla_container_engine }} exec kolla_toolbox openstack --os-cloud=kolla --os-share-api-version={{
       afterglow_manila_microversion }} share create {{ share_item.value.protocol | quote }} {{ share_item.value.size_gb
-      }} --name {{ share_item.value.name | quote }} --share-type {{ afterglow_manila_share_type | quote
+      }} --name {{ share_item.value.name | quote }} --share-type {{ afterglow_effective_config.openstack.manila_share_type | quote
       }} -f value -c id'
 - name: Manila | Resolve share ID for {{ share_item.value.name }}
   ansible.builtin.set_fact:

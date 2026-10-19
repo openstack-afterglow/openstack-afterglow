@@ -68,29 +68,6 @@ def _kubernetes_launch(kind):
             for document in documents
             if document["kind"] == "ConfigMap" and document["metadata"]["name"] == "afterglow-config"
         )
-    elif kind == "setup-k8s":
-        spec = importlib.util.spec_from_file_location("proxy_scheme_setup", ROOT / "setup.py")
-        generator = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(generator)
-        import tomllib
-
-        with (ROOT / "afterglow.conf.example").open("rb") as handle:
-            dummy_cfg = tomllib.load(handle)
-        dummy_cfg.pop("DEFAULT", None)
-        dummy_cfg["manila_ceph"] = {
-            "manila_endpoint": "",
-            "manila_share_network_id": "",
-            "manila_share_type": "cephfs",
-            "manila_nfs_share_type": "nfstype",
-            "ceph_monitors": "",
-        }
-        dummy_cfg["gpu_devices"] = []
-        dummy_cfg["session"]["warning_before_seconds"] = 300
-        dummy_cfg["nova"].update(default_network_id="", default_availability_zone="nova")
-        dummy_cfg["openstack"].update(insecure=False, cacert="")
-        dummy_cfg["app"]["trusted_proxies"] = "10.50.0.0/24"
-        configmap = yaml.safe_load(generator.render_k8s_configmap(dummy_cfg))
-        deployment = yaml.safe_load((ROOT / "deploy/k8s-template/base/backend/deployment.yaml").read_text())
     else:
         spec = importlib.util.spec_from_file_location("proxy_scheme_k8s", ROOT / "generate_k8s.py")
         generator = importlib.util.module_from_spec(spec)
@@ -107,9 +84,10 @@ def _kubernetes_launch(kind):
     return container["command"], environment, "10.50.0.42", "10.51.0.42"
 
 
-@pytest.fixture(params=["kolla", "generated-k8s", "setup-k8s", "helm"])
+@pytest.fixture(params=["kolla", "generated-k8s", "helm"])
 def launch(request, monkeypatch):
     monkeypatch.delenv("FORWARDED_ALLOW_IPS", raising=False)
+    monkeypatch.syspath_prepend(str(ROOT))
     command, environment, trusted, untrusted = (
         _kolla_launch() if request.param == "kolla" else _kubernetes_launch(request.param)
     )
@@ -170,7 +148,7 @@ async def test_untrusted_peer_cannot_forge_https_or_proxy_identity(launch):
     assert response.headers["location"] == "http://cloud.example.test/api/v1/admin/version"
 
 
-async def test_proxy_cutover_requires_reauthentication_without_weakening_binding(launch, monkeypatch):
+async def test_proxy_cutover_requires_reauthentication_without_weakening_binding(launch, monkeypatch, auth_directory):
     from app.config import Settings
     from app.services import jwt_service, session_store
     from app.services.token_binding import get_origin
@@ -185,6 +163,7 @@ async def test_proxy_cutover_requires_reauthentication_without_weakening_binding
     for target in ("app.config.get_settings", "app.api.deps.get_settings", "app.services.jwt_service.get_settings"):
         monkeypatch.setattr(target, lambda: settings)
     identity = make_token_info()
+    identity["email"] = auth_directory.users[identity["user_id"]]["email"]
     monkeypatch.setattr("app.api.deps._cached_validate", AsyncMock(return_value=identity))
     monkeypatch.setattr("app.services.activity.record", AsyncMock())
     public_client = "203.0.113.42"
@@ -206,6 +185,7 @@ async def test_proxy_cutover_requires_reauthentication_without_weakening_binding
             project_id=identity["project_id"],
             user_id=identity["user_id"],
             exp=int(time.time()) + 600,
+            domain_id=identity["domain_id"],
             origin_ip=origin_ip,
             origin_fp=fingerprint,
         )

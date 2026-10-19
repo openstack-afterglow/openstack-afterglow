@@ -26,9 +26,12 @@ async def get_user_dashboard_summary(
     token = conn._afterglow_token
     user_id = conn._afterglow_user_id
     current_project_id = conn._afterglow_project_id
+    domain_id = getattr(conn, "_afterglow_domain_id", None)
+    if not isinstance(domain_id, str) or not domain_id:
+        raise HTTPException(403, "Authenticated domain is required")
     try:
         # This is Keystone's caller-membership list, not an administrative list.
-        memberships = await asyncio.to_thread(keystone.list_projects, token)
+        memberships = await asyncio.to_thread(keystone.list_projects, token, domain_id)
         projects, seen = [], set()
         if not isinstance(memberships, list):
             raise ValueError("Invalid membership collection")
@@ -38,6 +41,8 @@ async def get_user_dashboard_summary(
             project_id, name = project.get("id"), project.get("name")
             if not isinstance(project_id, str) or not project_id or not isinstance(name, str):
                 raise ValueError("Invalid membership identity")
+            if project.get("domain_id") != domain_id:
+                continue
             if project_id not in seen:
                 seen.add(project_id)
                 projects.append({"id": project_id, "name": name})
@@ -51,6 +56,7 @@ async def get_user_dashboard_summary(
     return {
         "user_id": user_id,
         "current_project_id": current_project_id,
+        "domain_id": domain_id,
         "projects": results,
         "totals": user_inventory.totals(results),
     }

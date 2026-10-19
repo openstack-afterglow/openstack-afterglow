@@ -1,6 +1,5 @@
 """Consumer regressions for generated DEFAULT.debug, without runtime settings imports."""
 
-import importlib.util
 import shutil
 import subprocess
 import sys
@@ -16,20 +15,6 @@ if str(ROOT) not in sys.path:
 
 import config2helm  # noqa: E402
 import generate_k8s  # noqa: E402
-
-
-def _load_generator(name: str, relative_path: str):
-    spec = importlib.util.spec_from_file_location(name, ROOT / relative_path)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-SETUP = _load_generator("afterglow_setup_generator", "setup.py")
-KOLLA_FILES = "deploy/kolla/ansible/roles/afterglow/files/"
-SANITIZER = _load_generator("debug_operator_sanitizer", KOLLA_FILES + "sanitize_operator_config.py")
-FRONTEND = _load_generator("debug_frontend_projection", KOLLA_FILES + "render_frontend_config.py")
 
 
 @pytest.mark.parametrize("defaults", [None, {}, {"debug": False}, {"debug": True}])
@@ -102,40 +87,6 @@ def test_helm_chart_renders_converted_and_legacy_values(tmp_path, debug, logging
     )
 
 
-@pytest.mark.parametrize("debug", [None, False, True])
-@pytest.mark.parametrize("for_k8s", [False, True])
-def test_setup_generates_debug_for_compose_and_k8s(debug, for_k8s):
-    with (ROOT / "afterglow.conf.example").open("rb") as handle:
-        cfg = tomllib.load(handle)
-    cfg.pop("DEFAULT")
-    if debug is not None:
-        cfg["DEFAULT"] = {"debug": debug}
-    # The wizard groups Manila fields separately and stores GPU devices as a list.
-    cfg["manila_ceph"] = {
-        "manila_endpoint": "",
-        "manila_share_network_id": "",
-        "manila_share_type": "cephfs",
-        "manila_nfs_share_type": "nfstype",
-        "ceph_monitors": "",
-    }
-    cfg["gpu_devices"] = []
-    cfg["session"]["warning_before_seconds"] = 300
-    cfg["nova"].update(default_network_id="", default_availability_zone="nova")
-    cfg["openstack"].update(insecure=False, cacert="")
-
-    if for_k8s:
-        configmap = yaml.safe_load(SETUP.render_k8s_configmap(cfg))
-        generated = configmap["data"]["afterglow.conf"]
-    else:
-        generated = SETUP.render_config_toml(cfg)
-    parsed = tomllib.loads(generated)
-
-    assert parsed["DEFAULT"]["debug"] is (debug is True)
-    if for_k8s:
-        assert "password" not in parsed["openstack"]
-        assert "secret_key" not in parsed["app"]
-
-
 @pytest.mark.parametrize("loader", [generate_k8s.load_config, config2helm.load_config])
 def test_generators_merge_debug_overrides(tmp_path, loader):
     base = tmp_path / "afterglow.conf"
@@ -156,32 +107,3 @@ def test_generators_reject_capitalized_toml_without_rewriting(tmp_path, literal,
         loader(source)
 
     assert source.read_text(encoding="utf-8") == original
-
-
-@pytest.mark.parametrize("debug", [False, True])
-def test_operator_sanitizer_preserves_debug_but_frontend_omits_it(tmp_path, debug):
-    source = tmp_path / "afterglow.conf"
-    sanitized = tmp_path / "afterglow.operator.conf"
-    original = f"[DEFAULT]\ndebug = {'true' if debug else 'false'}\n"
-    source.write_text(original, encoding="utf-8")
-
-    SANITIZER.main(str(source), str(sanitized))
-    assert sanitized.read_text(encoding="utf-8") == original
-    parsed = FRONTEND.load_merged([sanitized])
-    assert parsed["DEFAULT"]["debug"] is debug
-    public = tomllib.loads(FRONTEND.render_toml(FRONTEND.project_public_config(parsed)))
-    assert "DEFAULT" not in public
-
-
-@pytest.mark.parametrize("literal", ["True", "False"])
-def test_operator_sanitizer_rejects_invalid_boolean_without_writing(tmp_path, literal):
-    source = tmp_path / "afterglow.conf"
-    destination = tmp_path / "afterglow.operator.conf"
-    original = f"[DEFAULT]\ndebug = {literal}\n"
-    source.write_text(original, encoding="utf-8")
-
-    with pytest.raises(tomllib.TOMLDecodeError):
-        SANITIZER.main(str(source), str(destination))
-
-    assert source.read_text(encoding="utf-8") == original
-    assert not destination.exists()

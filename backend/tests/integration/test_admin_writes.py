@@ -1,7 +1,7 @@
 """관리자 쓰기 엔드포인트 403 권한 분리 통합 테스트.
 
 require_admin Depends가 body 파싱/리소스 조회보다 먼저 실행되므로
-가짜 ID + 빈 body로 요청해도 실제 리소스 변경 없이 403 검증 가능.
+실제 caller domain ID + 가짜 리소스 ID로 변경 없이 403 검증 가능.
 """
 
 import pytest
@@ -74,13 +74,25 @@ ADMIN_WRITE_ENDPOINTS = [
     ids=[ep[3] for ep in ADMIN_WRITE_ENDPOINTS],
 )
 @pytest.mark.asyncio(loop_scope="session")
-async def test_admin_write_forbidden_for_user(user_client, method, path, body, label):
+async def test_admin_write_forbidden_for_user(user_client, method, path, body, label, regular_user_domain_id):
     """일반 유저의 관리자 쓰기 요청은 require_admin에서 403으로 즉시 차단된다.
 
-    가짜 ID + 빈 body를 사용하므로 실제 리소스 변경은 발생하지 않는다.
+    실제 caller domain ID와 가짜 리소스 ID를 사용하므로 실제 리소스 변경은 발생하지 않는다.
     Depends(require_admin)는 body 파싱보다 먼저 실행되므로 422가 아닌 403이 반환된다.
     """
-    resp = await user_client.request(method, path, json=body)
+    scoped = path.startswith(
+        (
+            "/api/v1/admin/users",
+            "/api/v1/admin/projects",
+            "/api/v1/admin/groups",
+            "/api/v1/admin/quotas",
+            "/api/v1/admin/roles/assign",
+        )
+    )
+    creates = method == "POST" and path in {"/api/v1/admin/users", "/api/v1/admin/projects", "/api/v1/admin/groups"}
+    payload = {**(body or {}), "domain_id": regular_user_domain_id} if creates else body
+    params = {"domain_id": regular_user_domain_id} if scoped and not creates else {}
+    resp = await user_client.request(method, path, json=payload, params=params)
     assert resp.status_code == 403, (
         f"{method} {path}: expected 403 (require_admin), got {resp.status_code}: {resp.text[:200]}"
     )

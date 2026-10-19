@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Resolve selected moving image refs through Docker's distribution descriptor API.
 
-Stdin: {"refs": {"variable_name": "image_ref"}, "auth_config": optional_object}.
+Stdin: {"refs": {"variable_name": "image_ref"}, "auth_config": optional_object,
+        "force_refs": optional_list_of_variable_names}.
 Stdout: the complete variable-name/ref JSON object, only after every lookup succeeds.
 Omit auth_config to use the Docker SDK's existing registry credential configuration.
 Supplied auth_config requires username/password/serveraddress strings and is used
 only for that registry (Docker Hub aliases are equivalent); other registries use
 the SDK's configured credentials.
-Version tags, digest pins and afterglow-local source refs are returned unchanged.
+Version tags, digest pins and afterglow-local source refs are returned unchanged,
+unless a tagged ref is explicitly selected by force_refs (pins/local refs still stay).
 The returned digest identifies the registry manifest/index, not a platform image ID.
 """
 
@@ -26,9 +28,11 @@ class ResolutionError(Exception):
     """An operator-safe diagnostic that contains no registry response or credentials."""
 
 
-def moving_repository(ref: str) -> str | None:
+def moving_repository(ref: str, force: bool = False) -> str | None:
     if "@" in ref or ref.startswith("afterglow-local/"):
         return None
+    if force:
+        return ref.rsplit(":", 1)[0] if ":" in ref.rsplit("/", 1)[-1] else ref
     for suffix in (":latest", ":stable"):
         if ref.endswith(suffix):
             return ref[:-len(suffix)]
@@ -58,9 +62,17 @@ def image_registry(ref: str) -> str:
     return "docker.io"
 
 
-def resolve_refs(refs: dict[str, str], auth_config: dict | None = None) -> dict[str, str]:
+def resolve_refs(
+    refs: dict[str, str], auth_config: dict | None = None, force_refs: list[str] | None = None,
+) -> dict[str, str]:
+    if force_refs is None:
+        force_refs = []
+    if not isinstance(force_refs, list) or any(
+        not isinstance(name, str) or name not in refs for name in force_refs
+    ):
+        raise ResolutionError("force_refs must be a list of names present in refs.")
     selected = dict(refs)
-    moving = [(name, ref, moving_repository(ref)) for name, ref in refs.items()]
+    moving = [(name, ref, moving_repository(ref, name in force_refs)) for name, ref in refs.items()]
     moving = [(name, ref, repo) for name, ref, repo in moving if repo is not None]
     if not moving:
         return selected
@@ -109,9 +121,9 @@ def main() -> int:
         try:
             request = json.load(sys.stdin)
         except (ValueError, OSError):
-            raise ResolutionError("Input must be a JSON object containing refs and optional auth_config.") from None
-        if not isinstance(request, dict) or set(request) - {"refs", "auth_config"}:
-            raise ResolutionError("Input must contain only refs and optional auth_config.")
+            raise ResolutionError("Input must be a JSON object containing refs, optional auth_config and optional force_refs.") from None
+        if not isinstance(request, dict) or set(request) - {"refs", "auth_config", "force_refs"}:
+            raise ResolutionError("Input must contain only refs, optional auth_config and optional force_refs.")
         refs = request.get("refs")
         if not isinstance(refs, dict) or any(
             not isinstance(name, str) or not name or not isinstance(ref, str)
@@ -122,7 +134,7 @@ def main() -> int:
         auth_config = request.get("auth_config")
         if auth_config is not None and not isinstance(auth_config, dict):
             raise ResolutionError("auth_config must be an object when supplied.")
-        selected = resolve_refs(refs, auth_config)
+        selected = resolve_refs(refs, auth_config, request.get("force_refs"))
         result = json.dumps(selected)
     except ResolutionError as error:
         print(f"Image resolution failed: {error}", file=sys.stderr)

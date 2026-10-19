@@ -102,6 +102,22 @@ def scoped_connection(token: str, user_id: str, project_id: str):
         access = conn.session.auth.get_access(conn.session)
         if access.user_id != user_id or access.project_id != project_id:
             raise PermissionError("Scoped identity mismatch")
+        identity_domain_id = getattr(access, "user_domain_id", None)
+        domain_id = getattr(access, "project_domain_id", None)
+        if (
+            not isinstance(identity_domain_id, str)
+            or not identity_domain_id
+            or not isinstance(domain_id, str)
+            or not domain_id
+        ):
+            raise PermissionError("Scoped domain identity is unavailable")
+        from app.services.domain_projects import assert_project_membership
+        from app.services.domain_scope import domain_context
+
+        context = domain_context(user_id, domain_id)
+        if context["identity_domain_id"] != identity_domain_id:
+            raise PermissionError("Scoped identity domain mismatch")
+        assert_project_membership(user_id, project_id)
         scoped_token = conn.session.get_token()
         if not isinstance(scoped_token, str) or not scoped_token:
             raise PermissionError("Scoped credential unavailable")
@@ -110,6 +126,8 @@ def scoped_connection(token: str, user_id: str, project_id: str):
         conn._afterglow_token = scoped_token
         conn._afterglow_user_id = user_id
         conn._afterglow_project_id = project_id
+        conn._afterglow_domain_id = domain_id
+        conn._afterglow_identity_domain_id = identity_domain_id
         return conn, scoped_token
     except Exception:
         conn.close()
@@ -422,6 +440,8 @@ async def query_project(request: Request, token: str, user_id: str, project: dic
             "token": scoped_token,
             "roles": access["roles"],
             "is_system_admin": False,
+            "domain_id": conn._afterglow_domain_id,
+            "identity_domain_id": conn._afterglow_identity_domain_id,
         }
         child = child_request(request, info)
         fingerprint = hashlib.sha256(

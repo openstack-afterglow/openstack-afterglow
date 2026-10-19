@@ -25,6 +25,5 @@ export interface PublicSiteConfig {
 		s3_base: string;
 		grafana_base: string;
 		librechat_base: string;
-		gitlab_base: string;
 	};
 }

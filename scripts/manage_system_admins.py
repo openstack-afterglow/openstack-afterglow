@@ -131,56 +131,6 @@ def cmd_revoke(args: argparse.Namespace) -> None:
     print(f"OK: system admin 회수 완료 — {user.id} ({getattr(user, 'name', '')})")
 
 
-def cmd_migrate_from_project(args: argparse.Namespace) -> None:
-    """admin project 멤버 중 system admin이 아닌 사용자에게 일괄 grant."""
-    ks = _get_keystone_client(system_scope=args.os_system_scope)
-    admin_role_id = _resolve_admin_role_id(ks)
-
-    projects = ks.projects.list(name="admin")
-    if not projects:
-        print("ERROR: 'admin' 프로젝트를 Keystone에서 찾을 수 없습니다.", file=sys.stderr)
-        sys.exit(1)
-    admin_project_id = projects[0].id
-
-    sys_assignments = ks.role_assignments.list(role=admin_role_id, system="all")
-    system_admin_ids = {a.user["id"] for a in sys_assignments if hasattr(a, "user")}
-
-    proj_assignments = ks.role_assignments.list(role=admin_role_id, project=admin_project_id)
-    project_member_ids = [a.user["id"] for a in proj_assignments if hasattr(a, "user")]
-
-    if not project_member_ids:
-        print("(admin project 멤버 없음 — grant할 대상 없음)")
-        return
-
-    migrated = 0
-    skipped = 0
-    errors = 0
-    for uid in project_member_ids:
-        if uid in system_admin_ids:
-            try:
-                u = ks.users.get(uid)
-                name = getattr(u, "name", uid)
-            except Exception:
-                name = uid
-            print(f"SKIP: {name} ({uid}) already system admin")
-            skipped += 1
-        else:
-            try:
-                ks.roles.grant(role=admin_role_id, user=uid, system="all")
-                try:
-                    u = ks.users.get(uid)
-                    name = getattr(u, "name", uid)
-                except Exception:
-                    name = uid
-                print(f"OK: {name} ({uid}) granted (system admin)")
-                migrated += 1
-            except Exception as e:
-                print(f"ERROR: {uid} — {e}", file=sys.stderr)
-                errors += 1
-
-    print(f"\n완료: {migrated}명 grant, {skipped}명 skip, {errors}건 오류")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Afterglow system admin 계정 관리 CLI",
@@ -202,11 +152,6 @@ def main() -> None:
     revoke_p = sub.add_parser("revoke", help="사용자로부터 system admin 회수 (lockout 가드 없음)")
     revoke_p.add_argument("user", help="user_id 또는 username")
 
-    sub.add_parser(
-        "migrate-from-project",
-        help="admin project 멤버 전원에게 system admin 일괄 부여 (호환 모드 → strict 전환 전 사용)",
-    )
-
     args = parser.parse_args()
 
     if args.command == "list":
@@ -215,8 +160,6 @@ def main() -> None:
         cmd_grant(args)
     elif args.command == "revoke":
         cmd_revoke(args)
-    elif args.command == "migrate-from-project":
-        cmd_migrate_from_project(args)
 
 
 if __name__ == "__main__":

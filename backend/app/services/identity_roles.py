@@ -22,6 +22,7 @@ from anyio import CancelScope
 from fastapi import HTTPException
 from redis.exceptions import WatchError
 
+from app.api.common.errors import public_service_error
 from app.services import activity, keystone, session_store
 from app.services.cache import cached_call, invalidate, ttl_slow
 from app.services.service_permissions import ROLE_IMPLICATIONS, ROLE_PRESETS, normalize_role_name
@@ -76,7 +77,7 @@ def _catalog(roles, inferences):
             "name": name,
             "description": description,
             "domain_id": domain,
-            "protected": name.casefold() in CORE_NAMES or name == "project_owner",
+            "protected": name.casefold() in CORE_NAMES | {"project_owner"},
             "implied_role_ids": set(),
             "parent_role_ids": set(),
         }
@@ -217,6 +218,102 @@ def user_permissions(conn, user_id: str) -> dict:
         raise _provider_error(exc) from exc
 
 
+LAST_SYSTEM_ADMIN = "마지막 system admin은 제거하거나 비활성화할 수 없습니다"
+
+
+def enabled_system_admins() -> dict:
+    """Enabled effective system:all admins (groups and implied roles expanded).
+
+    Unreadable authority fails closed with 503; it is never treated as zero.
+    """
+    try:
+        admin_role_id = keystone._resolve_admin_role_id()
+        ks = keystone._get_admin_ks_client()
+        users = set()
+        catalog = None
+        # Keystone's effective path omits system grants; expand native group
+        # membership and role inference from raw system assignments ourselves.
+        group_members = {}
+        for row in ks.role_assignments.list(system="all"):
+            user, group = _field(row, "user"), _field(row, "group")
+            role, scope = _field(row, "role"), _field(row, "scope")
+            if not isinstance(role, Mapping) or (user is None) == (group is None):
+                raise ValueError("system assignment metadata is invalid")
+            subject = user if user is not None else group
+            if not isinstance(subject, Mapping) or not isinstance(subject.get("id"), str) or not subject["id"]:
+                raise ValueError("system assignment subject is invalid")
+            system = scope.get("system") if isinstance(scope, Mapping) else None
+            if (
+                not isinstance(scope, Mapping)
+                or set(scope) != {"system"}
+                or not isinstance(system, Mapping)
+                or set(system) != {"all"}
+                or system["all"] is not True
+            ):
+                raise ValueError("system assignment scope is invalid")
+            rid = role.get("id")
+            if not isinstance(rid, str) or not rid:
+                raise ValueError("system assignment role is invalid")
+            grants_admin = rid == admin_role_id
+            if not grants_admin:
+                # Resolve aliases from the actual catalog, never role names.
+                if catalog is None:
+                    catalog = {item["id"]: item for item in _trusted_catalog()}
+                if rid not in catalog:
+                    raise ValueError("system assignment role is unresolved")
+                if any(
+                    catalog[item].get("domain_id") is not None for item in [rid, *catalog[rid]["inherited_role_ids"]]
+                ):
+                    raise ValueError("system assignment role graph crosses its authority domain")
+                grants_admin = admin_role_id in catalog[rid]["inherited_role_ids"]
+            if grants_admin:
+                if user is not None:
+                    users.add(user["id"])
+                else:
+                    gid = group["id"]
+                    if gid not in group_members:
+                        members = set()
+                        for member in ks.users.list(group=gid):
+                            uid = _field(member, "id")
+                            if not isinstance(uid, str) or not uid:
+                                raise ValueError("system assignment group membership is unresolved")
+                            members.add(uid)
+                        group_members[gid] = members
+                    users.update(group_members[gid])
+        admins = {}
+        for uid in users:
+            account = ks.users.get(uid)
+            if _field(account, "id") != uid:
+                raise ValueError("Keystone returned a different user")
+            if _field(account, "enabled") is True:
+                admins[uid] = account
+        return admins
+    except Exception as exc:
+        raise public_service_error(503, "system_admin_authority_unavailable") from exc
+
+
+def assert_system_admin_remains(*, users=(), domain_id: str | None = None) -> dict:
+    """Refuse a mutation that would leave no enabled effective system admin.
+
+    Affected admins are the listed users and, for a domain disable, every admin
+    whose account lives in that domain. Callers hold the role-graph lease.
+    """
+    admins = enabled_system_admins()
+    affected_users = set(users)
+    affected = {
+        uid
+        for uid, account in admins.items()
+        if uid in affected_users or (domain_id is not None and _field(account, "domain_id") == domain_id)
+    }
+    if affected and not set(admins) - affected:
+        raise HTTPException(status_code=422, detail=LAST_SYSTEM_ADMIN)
+    return admins
+
+
+def _carries_system_scope(assignments) -> bool:
+    return any(isinstance(_field(row, "scope"), Mapping) and "system" in _field(row, "scope") for row in assignments)
+
+
 def _trusted_catalog():
     try:
         ks = keystone._get_admin_ks_client()
@@ -289,6 +386,8 @@ def _ancestors(catalog, role_id):
 
 def _validate_edge(catalog, prior_id, implied_id):
     prior, implied = _role(catalog, prior_id), _role(catalog, implied_id)
+    if _owner_bearing_role(catalog, implied_id):
+        raise HTTPException(status_code=409, detail="Owner-bearing implications require explicit project ownership")
     if prior_id == implied_id or prior_id in implied["inherited_role_ids"]:
         raise HTTPException(status_code=409, detail="Role implication would create a cycle")
     if implied_id in prior["implied_role_ids"]:
@@ -453,7 +552,7 @@ async def _to_completion(awaitable):
 
 
 def _complete_mutation(fn):
-    """Keep provider write, cache clearing and revocation in one shielded lifecycle."""
+    """Keep provider writes and required post-write invalidation in one shielded lifecycle."""
 
     @wraps(fn)
     async def complete(*args, **kwargs):
@@ -547,14 +646,18 @@ async def _write(lease, fn, *args, **kwargs):
 
 
 async def _finish(token_info, action, role_id, users=(), extra=None, *, status="success"):
+    from app.services.domain_scope import invalidate_authority
+
+    await invalidate_authority()
     # invalidate() fences in-flight local snapshots as well as stored cache entries.
     for key in ("afterglow:admin:roles", "afterglow:admin:identity:summary", VISIBILITY_KEY):
         await invalidate(key)
     try:
-        for uid in sorted(users):
-            await session_store.revoke_user_sessions(uid)
+        # Native validation is keyed by credential, not by user/project. Drop all
+        # cached validations, never the durable refresh family or login proof.
+        await invalidate("afterglow:session:*")
     except Exception as exc:
-        raise _unavailable("Role change applied, but required session invalidation failed") from exc
+        raise _unavailable("Role change applied, but required validation cache invalidation failed") from exc
     await activity.record(
         project_id=token_info.get("project_id", ""),
         user_id=token_info["user_id"],
@@ -567,7 +670,7 @@ async def _finish(token_info, action, role_id, users=(), extra=None, *, status="
     )
 
 
-async def _applied(conn, catalog, role_id, users, token_info, action, extra=None):
+async def _applied(conn, catalog, role_id, users, token_info, action, extra=None, *, status="success"):
     """Post-write work is uncancellable; holders are re-read to close the snapshot gap."""
 
     async def complete():
@@ -576,20 +679,21 @@ async def _applied(conn, catalog, role_id, users, token_info, action, extra=None
             try:
                 recipients |= await asyncio.to_thread(_holders, conn, catalog, role_id)
             except HTTPException as exc:
-                await _finish(token_info, action, role_id, recipients, extra)
-                raise _unavailable("Role change applied, but session recipients could not be rechecked") from exc
-        await _finish(token_info, action, role_id, recipients, extra)
+                await _finish(token_info, action, role_id, recipients, extra, status=status)
+                raise _unavailable("Role change applied, but validation recipients could not be rechecked") from exc
+        await _finish(token_info, action, role_id, recipients, extra, status=status)
 
     await _to_completion(complete())
 
 
 async def _session_ready(users):
+    """Require the store used for post-write validation invalidation before writing."""
     if users:
         try:
             redis = await session_store._get_redis()
             await redis.ping()
         except Exception as exc:
-            raise _unavailable("Required session invalidation store is unavailable") from exc
+            raise _unavailable("Required validation cache store is unavailable") from exc
 
 
 def _created_id(role):
@@ -616,6 +720,8 @@ async def update_role(conn, token_info, role_id, attrs):
         catalog = await asyncio.to_thread(load_catalog, conn)
         row = _role(catalog, role_id)
         renamed = "name" in attrs and attrs["name"] != row["name"]
+        if renamed and (_owner_bearing_role(catalog, role_id) or attrs["name"].casefold() == "project_owner"):
+            raise HTTPException(status_code=409, detail="Owner-bearing role identities cannot be renamed")
         if renamed:
             if row["protected"]:
                 raise HTTPException(status_code=409, detail="Core roles cannot be renamed")
@@ -659,16 +765,24 @@ async def change_edge(conn, token_info, prior_id, implied_id, *, remove=False):
     async with _graph_lock(conn) as lease:
         catalog = await asyncio.to_thread(load_catalog, conn)
         prior = _role(catalog, prior_id)
-        child = _role(catalog, implied_id)
-        if any(_role(catalog, rid)["name"] == "project_owner" for rid in {implied_id, *child["inherited_role_ids"]}):
+        if _owner_bearing_role(catalog, implied_id):
             raise HTTPException(status_code=409, detail="Use the project ownership workflow to change owner grants")
         if remove:
             if implied_id not in prior["implied_role_ids"]:
                 raise HTTPException(status_code=404, detail="Role implication not found")
         else:
             _validate_edge(catalog, prior_id, implied_id)
-            # Adding a lower edge grants only extra permissions: existing sessions retain no
-            # removed privilege, so do not log out every holder. Removal must revoke.
+            # Validation caches are cleared for additions as well as reductions;
+            # only reductions need a holder snapshot for the existing guards.
+        from app.services import domain_projects
+
+        affected = await asyncio.to_thread(
+            domain_projects.assert_managers_remain,
+            catalog=catalog,
+            prior_id=prior_id,
+            implied_id=implied_id,
+            remove_edge=remove,
+        )
         users = None
         if remove:
             # Snapshot before the write. The edge does not change prior's ancestors, so
@@ -676,16 +790,24 @@ async def change_edge(conn, token_info, prior_id, implied_id, *, remove=False):
             users = await asyncio.to_thread(_holders, conn, catalog, prior_id)
             await _session_ready(users)
         path = f"/roles/{quote(prior_id, safe='')}/implies/{quote(implied_id, safe='')}"
-        await _write(lease, _native_edge, conn, "delete" if remove else "put", path)
-        await _applied(
-            conn,
-            catalog,
-            prior_id,
-            users,
-            token_info,
-            "role_implication_delete" if remove else "role_implication_create",
-            {"implied_role_id": implied_id},
-        )
+        succeeded = False
+        try:
+            await _write(lease, _native_edge, conn, "delete" if remove else "put", path)
+            succeeded = True
+        finally:
+            try:
+                await _sync_domain_managers(conn, lease, affected)
+            finally:
+                await _applied(
+                    conn,
+                    catalog,
+                    prior_id,
+                    users,
+                    token_info,
+                    "role_implication_delete" if remove else "role_implication_create",
+                    {"implied_role_id": implied_id},
+                    status="success" if succeeded else "failed",
+                )
     return {"status": "deleted" if remove else "created"}
 
 
@@ -757,6 +879,17 @@ async def apply_role_presets(conn, token_info):
     return {"created_roles": created_roles, "created_implications": created_edges, "roles": fresh}
 
 
+def _manager_bearing_role(catalog, role_id):
+    """Only changes to canonical manager reachability need a domain snapshot."""
+    role_ids = {role_id, *_descendant_ids(catalog, role_id)}
+    candidates = [row for row in catalog if row["name"].casefold() == "manager"]
+    if not any(row["id"] in role_ids for row in candidates):
+        return False
+    if len(candidates) != 1 or candidates[0]["name"] != "manager" or candidates[0]["domain_id"] is not None:
+        raise _unavailable("Native manager role binding is ambiguous")
+    return True
+
+
 def _owner_bearing_role(catalog, role_id):
     by_id = {row["id"]: row for row in catalog}
     _role(catalog, role_id)
@@ -770,7 +903,7 @@ async def _assignment_invalidation(token_info, action, role_id, users, project_i
 
     try:
         for user_id in users:
-            await invalidate(keys.user_key(user_id, "projects"))
+            await invalidate(keys.user_key(user_id, "domain:*:projects"))
     finally:
         await _finish(
             token_info,
@@ -780,6 +913,17 @@ async def _assignment_invalidation(token_info, action, role_id, users, project_i
             {"target_project_id": project_id},
             status="success" if succeeded else "failed",
         )
+
+
+async def _sync_domain_managers(conn, lease, domain_ids, *, ks=None):
+    from app.services import domain_projects, keystone
+
+    if not domain_ids:
+        return
+    ks = ks or await asyncio.to_thread(keystone._get_admin_ks_client)
+    catalog = await asyncio.to_thread(load_catalog, conn)
+    for domain_id in sorted(domain_ids):
+        await domain_projects.sync_manager_access(domain_id, mutation=(lease, ks, catalog))
 
 
 @_complete_mutation
@@ -793,6 +937,36 @@ async def change_project_assignment(
             raise HTTPException(status_code=409, detail="Use the project ownership workflow for owner-bearing roles")
         if (user_id is None) == (group_id is None):
             raise HTTPException(status_code=422, detail="Supply exactly one assignment principal")
+        from app.services import domain_projects, keystone
+
+        manager_role = _manager_bearing_role(catalog, role_id)
+        required_reader = remove and _role(catalog, role_id)["name"] == "project_reader"
+        ks = None
+        if manager_role or group_id is not None or required_reader:
+            ks = await asyncio.to_thread(keystone._get_admin_ks_client)
+        if group_id is not None:
+            await asyncio.to_thread(domain_projects.assert_not_projection_group, group_id, ks=ks)
+        if not remove and manager_role:
+            await asyncio.to_thread(
+                domain_projects.assert_manager_assignment, project_id, role_id, catalog=catalog, ks=ks
+            )
+        if required_reader:
+            project = await asyncio.to_thread(ks.projects.get, project_id)
+            default = await asyncio.to_thread(domain_projects.default_project, _field(project, "domain_id"), ks=ks)
+            if default is not None and default["id"] == project_id:
+                raise HTTPException(status_code=409, detail="Required Default reader membership cannot be revoked")
+        affected = set()
+        if manager_role:
+            affected = await asyncio.to_thread(
+                domain_projects.assert_managers_remain,
+                ks=ks,
+                catalog=catalog,
+                project_id=project_id,
+                role_id=role_id,
+                user_id=user_id,
+                group_id=group_id,
+                remove_assignment=remove,
+            )
         if group_id is not None:
             members = await asyncio.to_thread(lambda: list(conn.identity.group_users(group_id)))
             users = {_field(member, "id") for member in members}
@@ -815,9 +989,17 @@ async def change_project_assignment(
             succeeded = True
         finally:
             # An uncertain provider response can still have committed the change.
-            await _assignment_invalidation(
-                token_info, "role_revoke" if remove else "role_assign", role_id, users, project_id, succeeded=succeeded
-            )
+            try:
+                await _sync_domain_managers(conn, lease, affected, ks=ks)
+            finally:
+                await _assignment_invalidation(
+                    token_info,
+                    "role_revoke" if remove else "role_assign",
+                    role_id,
+                    users,
+                    project_id,
+                    succeeded=succeeded,
+                )
     return {"status": "revoked" if remove else "assigned"}
 
 
@@ -830,6 +1012,18 @@ async def change_group_membership(conn, token_info, group_id, *, user_id=None, r
     """
     async with _graph_lock(conn) as lease:
         catalog = await asyncio.to_thread(load_catalog, conn)
+        from app.services import domain_projects, keystone
+
+        ks = await asyncio.to_thread(keystone._get_admin_ks_client)
+        await asyncio.to_thread(domain_projects.assert_not_projection_group, group_id, ks=ks)
+        affected = await asyncio.to_thread(
+            domain_projects.assert_managers_remain,
+            ks=ks,
+            catalog=catalog,
+            group_id=group_id,
+            remove_group_user_id=user_id if remove else None,
+            delete_group=delete,
+        )
         assignments = await asyncio.to_thread(lambda: list(conn.identity.role_assignments(group_id=group_id)))
         for assignment in assignments:
             if _field(_field(assignment, "group", {}), "id") != group_id:
@@ -851,16 +1045,23 @@ async def change_group_membership(conn, token_info, group_id, *, user_id=None, r
             method = conn.identity.remove_user_from_group if remove else conn.identity.add_user_to_group
             args, kwargs = (user_id, group_id), {}
         await _session_ready(users)
+        if (remove or delete) and _carries_system_scope(assignments):
+            # Losing this group's system-scope grant can remove system authority.
+            await asyncio.to_thread(assert_system_admin_remains, users=users)
+            await lease.assert_owned()
         succeeded = False
         try:
             await _write(lease, method, *args, **kwargs)
             succeeded = True
         finally:
-            await _assignment_invalidation(
-                token_info,
-                "group_delete" if delete else "group_member_remove" if remove else "group_member_add",
-                None,
-                users,
-                None,
-                succeeded=succeeded,
-            )
+            try:
+                await _sync_domain_managers(conn, lease, affected, ks=ks)
+            finally:
+                await _assignment_invalidation(
+                    token_info,
+                    "group_delete" if delete else "group_member_remove" if remove else "group_member_add",
+                    None,
+                    users,
+                    None,
+                    succeeded=succeeded,
+                )

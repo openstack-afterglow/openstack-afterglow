@@ -1,9 +1,9 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/account';
   import { t as tc } from '$lib/i18n/ns/common';
-  import { auth, logoutInProgress, setAuth } from '$lib/stores/auth';
+  import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
-  import { cloudShell } from '$lib/stores/cloudShell.svelte';
+  import ProjectSelector from '$lib/components/ProjectSelector.svelte';
   import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
   interface Project {
@@ -17,7 +17,6 @@
 
   let projects = $state<Project[]>([]);
   let loading = $state(true);
-  let switching = $state(false);
   let settingDefault = $state(false);
   let defaultProjectId = $state('');
   let error = $state('');
@@ -40,49 +39,6 @@
     }
   }
 
-  async function selectProject(proj: Project) {
-    const currentToken = $auth.token;
-    if (!currentToken || switching) return;
-    if (proj.id === $auth.projectId) return;
-
-    switching = true;
-    await cloudShell.close('project-switch', { keepDock: false });
-    try {
-      const resp = await api.post<{
-        token: string;
-        refresh_token: string;
-        expires_at: string;
-        project_id: string;
-        project_name: string;
-        user_id: string;
-        username: string;
-        roles: string[];
-        is_system_admin: boolean;
-        can_write: boolean;
-      }>('/api/v1/auth/token/project', { project_id: proj.id }, currentToken);
-
-      if ($logoutInProgress || !$auth.token) return;
-
-      setAuth({
-        token: resp.token,
-        refreshToken: resp.refresh_token,
-        accessExpiresAt: resp.expires_at
-          ? Math.floor(new Date(resp.expires_at).getTime() / 1000)
-          : null,
-        projectId: resp.project_id,
-        projectName: resp.project_name,
-        roles: resp.roles ?? [],
-        isSystemAdmin: !!resp.is_system_admin,
-        canWrite: resp.can_write,
-      });
-
-      api.post('/api/v1/networks/ensure-default', {}, resp.token, resp.project_id).catch(() => {});
-    } catch (e) {
-      error = e instanceof ApiError ? t('projects.switchError', { error: e.message }) : t('projects.switchFailed');
-    } finally {
-      switching = false;
-    }
-  }
 
   async function setDefault(proj: Project) {
     if (!token || settingDefault) return;
@@ -120,8 +76,10 @@
 </script>
 
 <div class="motion-fade bg-surface-base border border-line rounded-xl p-5">
-  <h3 class="text-sm font-semibold text-ink-0 mb-4">{t('projects.title')}</h3>
-  {#if switching}<ActivityIndicator label={tc('state.processing')} />{/if}
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <h3 class="text-sm font-semibold text-ink-0">{t('projects.title')}</h3>
+    <div class="w-48"><ProjectSelector /></div>
+  </div>
   {#if settingDefault}<ActivityIndicator label={tc('state.processing')} />{/if}
 
   {#if error}
@@ -149,16 +107,13 @@
           class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
             {isActive ? 'bg-action-warm/10 border border-action-warm/30' : 'bg-surface-sunken/50 border border-transparent'}"
         >
-          <button
-            onclick={() => selectProject(proj)}
-            disabled={switching || isActive}
-            class="flex-1 min-w-0 text-left disabled:cursor-default"
-          >
+          <div class="flex-1 min-w-0 text-left">
             <div class="text-sm font-medium truncate {isActive ? 'text-warm-text' : 'text-ink-0'}">{proj.name}</div>
+            <div class="break-all font-mono text-xs text-ink-2">{proj.id}</div>
             {#if proj.description}
               <div class="text-xs text-ink-2 truncate">{proj.description}</div>
             {/if}
-          </button>
+          </div>
 
           <div class="flex items-center gap-1.5 shrink-0">
             {#if isDefault}

@@ -1,0 +1,72 @@
+{
+  "change": "home-first-domain-free-login",
+  "qualification": "local source and isolated runtime; not deployed",
+  "evidence_root": "/Users/pieroot/.local/share/afterglow-proofs/home-first-login-20261019-oq6Kwj",
+  "architecture": {
+    "source_sha256": "6fb9ed672b0c387b69566c8402f78e16db0d9c35c00b9e5d962ab8829654df46",
+    "source_files": 3059,
+    "concurrent_wip_included_not_independently_accepted": true
+  },
+  "verification": {
+    "focused_backend_passed": 402,
+    "named_auth_backend_passed": 714,
+    "named_auth_frontend_before_two_unobservable_tests_were_removed": 401,
+    "named_access_backend_passed": 1093,
+    "named_access_frontend_passed": 172,
+    "final_frontend_files": 403,
+    "final_frontend_vitest_passed": 4446,
+    "final_frontend_node_passed": 9,
+    "final_frontend_output": "artifact://1361",
+    "contracts_passed": 163,
+    "functional_real_datastore_passed": 163,
+    "functional_deselected": 31,
+    "i18n": {"errors": 0, "warnings": 0, "namespaces": 48, "messages": 10980, "scanned_files": 1147, "hard_coded_korean": 0},
+    "canonical_image_builds": 9,
+    "runtime_receipts": ["backend-worker-image-sources.json", "frontend-native-image-runtime.json", "backend-image-http.json"],
+    "http_receipt": "http-evidence.json",
+    "browser_receipts": ["final-browser-evidence.json", "provider-browser-evidence.json", "restore-browser-evidence.json", "logout-catalog-before.json", "logout-catalog-after.json"],
+    "visual_conditions": 48,
+    "visual_surfaces": 96,
+    "visual_horizontal_overflow": 0,
+    "visual_receipt": "responsive-locale-matrix.json"
+  },
+  "observed_failures": {
+    "full_gate": {
+      "exit_code": 1,
+      "backend_failed": 12,
+      "backend_passed": 8472,
+      "backend_skipped": 91,
+      "output": "artifact://1334",
+      "storage_delete_failures": 11,
+      "additional_failure": "tests/test_layer_build_ownership.py::test_native_create_response_loss_is_observed_without_second_post[rule] captured an unexpected /exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary POST; preceding baseline/cause not established",
+      "downstream_lanes_not_claimed_as_gate_execution": true
+    },
+    "svelte_check": {"errors": 1, "warnings": 16, "path": "frontend/src/routes/dashboard/database/instances/+page.svelte:42", "reason": "PageState.instanceId", "output": "artifact://1275"},
+    "ruff_check_passed": true,
+    "whole_tree_format_check_failed_outside_scope_files": 12,
+    "gbrain_cli": "not on PATH"
+  },
+  "runtime_boundaries": [
+    "Real application routes, JWT and Redis Lua; synthetic native directory/password/token transport and graph lease; ownership SQLite",
+    "Synthetic upstream IdP and authorize boundary, not real GitLab/Keystone authentication",
+    "Visual matrix uses synthetic public duplicate-provider catalog and directory/workspace snapshots",
+    "AMD64 image execution under Docker Desktop emulation; native supervisor CLI help is not VM disk or KVM boot",
+    "Canonical arm64 API health and legacy-login validation use lifespan off and task-only configuration"
+  ],
+  "safety": {
+    "original_container_count": 19,
+    "original_container_id_image_env_mount_running_differences": 0,
+    "user_index_sha256": "55c07c33bcf2be1d17721de3cae672fda08d9c28774df972a2c8219846a77591",
+    "user_index_unchanged": true,
+    "owned_containers_stopped": 5,
+    "owned_api_stopped": true,
+    "owned_browser_closed": true,
+    "throwaway_http_scripts_removed": 2,
+    "volumes_not_deleted": true,
+    "qa_image_cache_and_receipts_retained": true,
+    "commit_push_deploy": false,
+    "existing_native_accounts_moved_or_deleted": false,
+    "receipt": "cleanup-evidence.json"
+  },
+  "cutover": "Deploy API/frontend together; legacy domain/project login fields return 422. Existing personal-enrollment schema prerequisites including 098 remain required. Existing Default accounts keep their canonical home; no automatic migration or credential replacement."
+}

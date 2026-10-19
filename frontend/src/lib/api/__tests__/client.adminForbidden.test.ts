@@ -31,7 +31,7 @@ beforeEach(async () => {
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('platform administration versus service authorization', () => {
-	it.each(['/api/v1/chat/admin/providers', '/api/v1/drover/admin/executions', '/api/v1/chat/conversations?next=/admin/overview'])('preserves a valid administrator session on service denial: %s', async path => {
+	it.each(['/api/v1/chat/admin/providers', '/api/v1/drover/admin/executions', '/api/v1/chat/conversations?next=/admin/overview', '/api/v1/admin/domains', '/api/v1/admin/domains/tenant-b/monitoring'])('preserves a valid administrator session on service or native denial: %s', async path => {
 		const { api } = await import('../client');
 		await expect(api.get(path, 'valid-first-party-session', 'project')).rejects.toMatchObject({ status: 403 });
 		await Promise.resolve();
@@ -39,9 +39,13 @@ describe('platform administration versus service authorization', () => {
 		expect(get(identity).isSystemAdmin).toBe(true);
 		expect(mocks.goto).not.toHaveBeenCalled();
 	});
-	it('still removes stale platform-administrator access on a first-party admin denial', async () => {
+	it('removes platform-administrator access only on the explicit system-admin authority denial', async () => {
+		mocks.fetch.mockImplementation(async () => Response.json(
+			{ detail: { code: 'system_admin_required', message: 'Current system:all administrator authority is required' } },
+			{ status: 403 },
+		));
 		const { api } = await import('../client');
-		await expect(api.get('/api/v1/admin/overview', 'valid-first-party-session', 'project')).rejects.toMatchObject({ status: 403 });
+		await expect(api.get('/api/v1/admin/overview', 'valid-first-party-session', 'project')).rejects.toMatchObject({ status: 403, code: 'system_admin_required' });
 		await vi.waitFor(() => expect(get(identity).isSystemAdmin).toBe(false));
 		expect(mocks.goto).toHaveBeenCalledWith('/dashboard');
 		expect(get(identity).token).toBe('valid-first-party-session');

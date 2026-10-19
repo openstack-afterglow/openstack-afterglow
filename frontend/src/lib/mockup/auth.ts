@@ -1,6 +1,14 @@
 import type { AuthState } from '$lib/stores/auth';
 import type { MockupProfileId } from '$lib/mockup/contracts';
 
+// Synthetic tutorial domain; never a real Keystone identity.
+const MOCK_DOMAIN = {
+	domainId: 'mock-domain', domainName: 'Demo',
+	identityDomainId: 'mock-domain', identityDomainName: 'Demo',
+	availableDomains: [{ id: 'mock-domain', name: 'Demo' }],
+	canCreateDomain: false, isDomainManager: false,
+};
+
 const MOCK_EXPIRES_AT = Math.floor(new Date('2026-12-31T23:59:59Z').getTime() / 1000);
 
 export function buildMockAuth(profile: MockupProfileId, pathname: string): AuthState {
@@ -17,6 +25,7 @@ export function buildMockAuth(profile: MockupProfileId, pathname: string): AuthS
 			roles: ['admin'],
 			isSystemAdmin: true,
 			federated: false,
+			...MOCK_DOMAIN,
 		};
 	}
 
@@ -33,6 +42,7 @@ export function buildMockAuth(profile: MockupProfileId, pathname: string): AuthS
 			roles: ['member'],
 			isSystemAdmin: false,
 			federated: false,
+			...MOCK_DOMAIN,
 		};
 	}
 
@@ -48,5 +58,6 @@ export function buildMockAuth(profile: MockupProfileId, pathname: string): AuthS
 		roles: ['member'],
 		isSystemAdmin: false,
 		federated: false,
+		...MOCK_DOMAIN,
 	};
 }

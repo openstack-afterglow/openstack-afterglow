@@ -2,23 +2,32 @@
 
 import pytest
 
-from .conftest import RedactedCredentials
+from .conftest import password_login_payload
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_login_success(anon_client, credentials):
-    resp = await anon_client.post("/api/v1/auth/login", json=credentials)
+    resp = await anon_client.post("/api/v1/auth/login", json=password_login_payload(credentials))
     assert resp.status_code == 200
     data = resp.json()
     assert "token" in data
     assert "project_id" in data
-    assert data["username"] == credentials["username"]
+    assert data["username"]
+    assert data["domain_id"] == data["identity_domain_id"]
+    me = await anon_client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {data['token']}"})
+    assert me.status_code == 200
+    assert (me.json()["user_id"], me.json()["domain_id"], me.json()["project_id"]) == (
+        data["user_id"],
+        data["identity_domain_id"],
+        data["project_id"],
+    )
     assert len(data["roles"]) > 0
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_login_bad_password(anon_client, credentials):
-    bad = RedactedCredentials({**credentials, "password": "wrong-password-12345"})
+    bad = password_login_payload(credentials)
+    bad["password"] = "wrong-password-12345"
     resp = await anon_client.post("/api/v1/auth/login", json=bad)
     assert resp.status_code == 401
 
@@ -51,11 +60,15 @@ async def test_no_token_returns_401(anon_client):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_gitlab_enabled(anon_client):
-    resp = await anon_client.get("/api/v1/auth/gitlab/enabled")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "enabled" in data
+async def test_fresh_login_starts_in_canonical_home(anon_client, credentials):
+    response = await anon_client.post("/api/v1/auth/login", json=password_login_payload(credentials))
+    assert response.status_code == 200
+    data = response.json()
+    assert data["domain_id"] == data["identity_domain_id"]
+    workspace = await anon_client.get("/api/v1/auth/workspaces", headers={"Authorization": f"Bearer {data['token']}"})
+    assert workspace.status_code == 200
+    assert workspace.json()["domain"]["id"] == data["identity_domain_id"]
+    assert data["project_id"] in {project["id"] for project in workspace.json()["projects"]}
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -80,7 +93,7 @@ async def test_user_login_is_not_system_admin(user_auth_data):
 
 
 # ─────────────────────────────────────────────────────────────────
-# admin_user 검증 (admin 프로젝트 admin role 보유, default project ≠ admin 가능)
+# admin_user 검증 (native system:all admin 할당 보유, default project ≠ admin 가능)
 # credentials.toml [admin_user] 또는 AFTERGLOW_TEST_ADMIN_USER_* 환경변수 필요
 # ─────────────────────────────────────────────────────────────────
 
@@ -89,13 +102,13 @@ async def test_user_login_is_not_system_admin(user_auth_data):
 async def test_admin_user_login_is_system_admin(admin_user_auth_data):
     """admin_user 로그인 응답의 is_system_admin=True 확인.
 
-    scoped token 의 project 가 admin 이 아니더라도,
-    admin 프로젝트에 admin role 이 있으면 True 여야 한다.
-    실패 시 credentials.toml [admin_user] 계정 role 확인.
+    scoped token 의 project 와 무관하게 native system:all admin 할당이 있으면 True 여야 한다.
+    project admin role 은 시스템 관리 권한의 근거가 아니다.
+    실패 시 credentials.toml [admin_user] 계정의 system:all role 할당 확인.
     """
     assert admin_user_auth_data.get("is_system_admin") is True, (
         "admin_user 가 is_system_admin=False — "
-        "credentials.toml [admin_user] 계정이 admin 프로젝트에서 admin role을 보유하는지 확인"
+        "credentials.toml [admin_user] 계정이 native system:all admin role 할당을 보유하는지 확인"
     )
 
 

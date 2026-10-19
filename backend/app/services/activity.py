@@ -398,11 +398,14 @@ async def list_user_management_events(
     *,
     limit: int = 50,
     before_id: int | None = None,
+    user_ids: list[str] | None = None,
 ) -> list[dict]:
     """관리자용. resource_type='user' 이벤트를 cross-project로 시간 역순 조회.
 
     사용자 생성·수정·삭제 변경 로그 카드에 사용.
     """
+    if user_ids == []:
+        return []
     if not is_db_available():
         return []
     factory = get_session_factory()
@@ -410,6 +413,9 @@ async def list_user_management_events(
         return []
     async with factory() as session:
         conds = [ActivityLog.resource_type == "user"]
+        if user_ids is not None:
+            # The event subject is resource_id, not the administrator actor.
+            conds.append(ActivityLog.resource_id.in_(user_ids))
         if before_id is not None:
             conds.append(ActivityLog.id < before_id)
         stmt = select(ActivityLog).where(and_(*conds)).order_by(desc(ActivityLog.id)).limit(limit)

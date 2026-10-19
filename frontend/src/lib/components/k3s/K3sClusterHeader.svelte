@@ -33,7 +33,7 @@
       <Button onclick={() => s.downloadKubeconfig()} disabled={!$k3sPermissions.credentials} size="sm">
         {t('overview.header.downloadKubeconfig')}
       </Button>
-      {#if $k3sPermissions.adminCredentials && !s.adminMode}
+      {#if $k3sPermissions.adminCredentials}
         <Button onclick={() => s.downloadKubeconfig(true)} variant="danger-outline" size="sm">
           {t('overview.header.downloadAdminKubeconfig')}
         </Button>

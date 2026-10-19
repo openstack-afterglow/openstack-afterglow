@@ -4,8 +4,29 @@
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import QuotaBar from '$lib/components/ui/QuotaBar.svelte';
 	import SummaryStatCard from './SummaryStatCard.svelte';
+	import BklitChart from '$lib/components/charts/BklitChart.svelte';
+	import type { ChartSpec } from '$lib/components/charts/types';
+	import Pill from '$lib/components/ui/Pill.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+
+	export type TelemetryStatus = 'available' | 'partial' | 'not_configured' | 'forbidden' | 'unavailable' | 'not_collected';
+	export interface NativeMeter {
+		series: { ts: number; value: number | null }[];
+		source: 'gnocchi' | null;
+		unit: string;
+		status: TelemetryStatus;
+		error: string | null;
+	}
+	export interface SystemTelemetry {
+		source: 'gnocchi' | null;
+		status: TelemetryStatus;
+		error: string | null;
+		truncated: boolean;
+		resources: { id: string; name: string; type: string; metrics: Record<string, NativeMeter> }[];
+	}
 
 	export interface MonitoringSummary {
+		telemetry?: SystemTelemetry;
 		compute: {
 			hypervisors_total: number;
 			hypervisors_up: number;
@@ -64,9 +85,42 @@
 		refreshing: boolean;
 	} = $props();
 
-	function pct(used: number, total: number) {
-		if (!total) return 0;
-		return Math.min(100, Math.round((used / total) * 100));
+	// Keep DOM/chart work bounded even when the native provider returns many resources.
+	const RESOURCE_LIMIT = 12;
+	const METER_LIMIT = 12;
+	let historyOpen = $state<Record<string, boolean>>({});
+	const telemetry = $derived(summary?.telemetry);
+	const resources = $derived((telemetry?.resources ?? []).slice(0, RESOURCE_LIMIT).map(resource => ({
+		...resource,
+		meters: Object.entries(resource.metrics).slice(0, METER_LIMIT).map(([name, meter]) => {
+			const samples = meter.series.filter(point => Number.isFinite(point.ts)).map(point => ({
+				ts: point.ts,
+				value: typeof point.value === 'number' && Number.isFinite(point.value) ? point.value : null,
+			})).sort((a, b) => a.ts - b.ts);
+			return { name, ...meter, samples, latest: samples.at(-1), hasSamples: samples.some(point => point.value !== null) };
+		}),
+	})));
+	const limited = $derived(telemetry?.truncated || (telemetry?.resources.length ?? 0) > RESOURCE_LIMIT || resources.some(resource => Object.keys(resource.metrics).length > METER_LIMIT));
+	function statusLabel(status: TelemetryStatus) {
+		const keys = {
+			available: 'monitoring.telemetry.available', partial: 'monitoring.telemetry.partial',
+			not_configured: 'monitoring.telemetry.notConfigured', forbidden: 'monitoring.telemetry.forbidden',
+			unavailable: 'monitoring.telemetry.unavailable', not_collected: 'monitoring.telemetry.notCollected',
+		} as const;
+		return t(keys[status] ?? keys.unavailable);
+	}
+	function valueWithUnit(value: number | null | undefined, unit: string) {
+		return value == null ? '—' : `${value.toLocaleString(intlLocale(), { maximumFractionDigits: 3 })} ${unit || t('monitoring.telemetry.unknownUnit')}`;
+	}
+	function time(ts: number) { return new Date(ts * 1000).toLocaleString(intlLocale()); }
+	function historySpec(name: string, meter: NativeMeter, samples: NativeMeter['series']): ChartSpec {
+		return {
+			kind: 'time-series',
+			data: samples.map(point => ({ time: point.ts * 1000, value: point.value })),
+			xKey: 'time',
+			series: [{ key: 'value', label: `${name} (${meter.unit || t('monitoring.telemetry.unknownUnit')})`, color: 'var(--color-chart-1)' }],
+			formatValue: value => valueWithUnit(value, meter.unit),
+		};
 	}
 	function gb(mb: number) { return Math.round(mb / 1024); }
 </script>
@@ -78,9 +132,55 @@
 {:else}
 	<div class="motion-stagger grid grid-cols-1 lg:grid-cols-2 gap-6" data-tour="admin-monitoring-summary">
 		<span class="sr-only" data-tour="admin-monitoring-summary-ready">{t('monitoring.summary.ready')}</span>
+		<section class="native-telemetry min-w-0 bg-surface-base border border-line rounded-xl p-5 lg:col-span-2" aria-labelledby="native-telemetry-title" aria-busy={refreshing}>
+			<div class="flex min-w-0 flex-wrap items-center justify-between gap-3 mb-3">
+				<h2 id="native-telemetry-title" class="text-sm font-semibold text-ink-0">{t('monitoring.telemetry.title')}</h2>
+				<Pill class="telemetry-status" tone={telemetry?.status === 'available' ? 'success' : 'neutral'}>{statusLabel(telemetry?.status ?? 'unavailable')}</Pill>
+			</div>
+			<p class="text-xs text-ink-2 mb-2">{t('monitoring.telemetry.description')}</p>
+			<p class="text-xs text-ink-2 mb-3">{t('monitoring.telemetry.policyCoverage')}</p>
+			<p class="text-xs text-ink-2 mb-3">{t('monitoring.telemetry.source', { source: telemetry?.source === 'gnocchi' ? 'Gnocchi' : t('monitoring.telemetry.noSource') })}</p>
+			{#if limited}<p class="text-xs text-state-warning-text mb-3" role="status">{t('monitoring.telemetry.limited')}</p>{/if}
+			{#if resources.length === 0}
+				<p class="text-sm text-ink-2" role="status">{t('monitoring.telemetry.noSamples')}</p>
+			{:else}
+				<div class="space-y-4">
+					{#each resources as resource (`${resource.type}:${resource.id}`)}
+						<section class="min-w-0 border-t border-line pt-4" aria-label={`${resource.name || resource.id} (${resource.type})`}>
+							<h3 class="text-sm font-medium text-ink-1 break-all">{resource.name || resource.id}</h3>
+							<p class="text-xs text-ink-2 break-all mb-3">{resource.type} · {resource.id}</p>
+							<div class="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-3">
+								{#each resource.meters as meter (meter.name)}
+									{@const historyKey = JSON.stringify([resource.type, resource.id, meter.name])}
+									<div class="min-w-0 rounded-lg bg-surface-sunken p-3" role="group" aria-label={meter.name}>
+										<div class="flex min-w-0 flex-wrap items-start justify-between gap-2">
+											<h4 class="text-xs font-medium text-ink-1 break-all">{meter.name}</h4>
+											<Pill class="telemetry-status" tone={meter.status === 'available' ? 'success' : 'neutral'}>{statusLabel(meter.status)}</Pill>
+										</div>
+										<p class="mt-2 text-sm text-ink-0 tabular-nums break-all">{t('monitoring.telemetry.latest')}: {valueWithUnit(meter.latest?.value, meter.unit)}</p>
+										<p class="mt-1 text-xs text-ink-2 break-words">{t('monitoring.telemetry.source', { source: meter.source === 'gnocchi' ? 'Gnocchi' : t('monitoring.telemetry.noSource') })} · {t('monitoring.telemetry.unit', { unit: meter.unit || t('monitoring.telemetry.unknownUnit') })}</p>
+										{#if meter.latest}<p class="mt-1 text-xs text-ink-2 break-words">{t('monitoring.telemetry.observedAt', { time: time(meter.latest.ts) })}</p>{/if}
+										{#if meter.hasSamples}
+											<details class="mt-2" bind:open={historyOpen[historyKey]}>
+												<summary class="min-h-11 cursor-pointer py-3 text-xs text-ink-1 focus-visible:outline focus-visible:outline-accent">{t('monitoring.telemetry.history')}</summary>
+												{#if historyOpen[historyKey]}<BklitChart spec={historySpec(meter.name, meter, meter.samples)} height={160} label={`${resource.name || resource.id} · ${meter.name} (${meter.unit})`} />{/if}
+											</details>
+										{:else}
+											<p class="mt-2 text-xs text-ink-2">{t('monitoring.telemetry.noSamples')}</p>
+										{/if}
+									</div>
+								{:else}
+									<p class="text-xs text-ink-2">{t('monitoring.telemetry.noSamples')}</p>
+								{/each}
+							</div>
+						</section>
+					{/each}
+				</div>
+			{/if}
+		</section>
 		<!-- Compute -->
 		<div class="bg-surface-base border border-line rounded-xl p-5">
-			<div class="flex items-center justify-between mb-4">
+			<div class="flex flex-wrap items-center justify-between gap-2 mb-4">
 				<h2 class="text-sm font-semibold text-ink-0">{t('monitoring.summary.compute')}</h2>
 				<span class="text-xs text-ink-2">
 					{#snippet upCount(text: string)}<span class="text-green-400">{text}</span>{/snippet}
@@ -88,14 +188,15 @@
 				</span>
 			</div>
 
+			<p class="text-xs text-ink-2 mb-3">{t('monitoring.summary.allocationNotice')}</p>
 			<div class="mb-4">
-				<QuotaBar label="vCPU" used={summary.compute.vcpus_used} limit={summary.compute.vcpus_total} size="md" />
+				<QuotaBar label={t('monitoring.summary.vcpuAllocation')} used={summary.compute.vcpus_used} limit={summary.compute.vcpus_total} size="md" />
 			</div>
 			<div class="mb-4">
-				<QuotaBar label="RAM (GB)" used={gb(summary.compute.memory_used_mb)} limit={gb(summary.compute.memory_total_mb)} size="md" />
+				<QuotaBar label={t('monitoring.summary.ramAllocation')} used={gb(summary.compute.memory_used_mb)} limit={gb(summary.compute.memory_total_mb)} size="md" />
 			</div>
 
-			<div class="mt-4 grid grid-cols-4 gap-2">
+			<div class="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
 				<SummaryStatCard value={summary.compute.instance_stats?.active ?? 0} label={t('monitoring.summary.activeStatus')} valueClass="text-green-400" size="sm" />
 				<SummaryStatCard value={summary.compute.instance_stats?.shutoff ?? 0} label={t('monitoring.summary.shutoffStatus')} valueClass="text-ink-2" size="sm" />
 				<SummaryStatCard value={summary.compute.instance_stats?.error ?? 0} label={t('monitoring.summary.errorStatus')} valueClass="text-red-400" size="sm" />
@@ -256,3 +357,13 @@
 		</div>
 	</div>
 {/if}
+
+<style>
+	.native-telemetry :global(.telemetry-status) {
+		max-width: 100%;
+		white-space: normal;
+		overflow-wrap: anywhere;
+		font-size: 0.75rem;
+		color: var(--color-ink-1);
+	}
+</style>

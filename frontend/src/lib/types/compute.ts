@@ -84,6 +84,9 @@ export interface ImageInfo {
   os_distro?: string | null;
   os_version?: string | null;
   os_type?: string | null;
+  /** Explicit Glance metadata; absent/unknown values do not establish driver suitability. */
+  gpu_vendor?: string | null;
+  gpu_driver?: string | null;
   windows_initial_password_method?: string | null;
   os_admin_user?: string | null;
   properties?: Record<string, unknown> | null;

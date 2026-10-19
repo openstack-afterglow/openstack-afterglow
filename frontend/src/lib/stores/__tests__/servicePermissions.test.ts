@@ -15,6 +15,31 @@ let stop: (() => void) | undefined;
 beforeEach(() => { vi.resetAllMocks(); auth.update(state => ({ ...state, token: 'a', projectId: 'a', userId: 'u', roles: ['member'], isSystemAdmin: false })); authReady.set(true); projectSwitching.set(false); });
 afterEach(() => { stop?.(); stop = undefined; });
 describe('API leaf service capabilities', () => {
+	it('uses server-granted leaves for a zero-role administrator in the selected project, never its cached admin flag', async () => {
+		auth.update(state => ({ ...state, projectId: 'unentitled-target', roles: [], isSystemAdmin: true }));
+		const pending = Promise.withResolvers<ProjectPermissions>();
+		mocks.get.mockReturnValueOnce(pending.promise);
+		stop = serviceCapabilities.subscribe(() => {});
+		const leaves = ['lumen-resources_admin', 'drover-clusters_admin', 'waygate-gateways_admin', 'palimpsest-keys_admin'];
+		for (const leaf of leaves) expect(get(serviceCapabilities)(leaf)).toBe(false);
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/projects/current/permissions', 'a', 'unentitled-target', { refresh: true });
+		pending.resolve({ is_owner: false, is_manager: false, can_write: true, service_permissions: {
+			lumen: [leaves[0]], drover: [leaves[1]], waygate: [leaves[2]], palimpsest: [leaves[3]],
+		} });
+		await settle();
+		for (const leaf of leaves) expect(get(serviceCapabilities)(leaf)).toBe(true);
+		authReady.set(false);
+		for (const leaf of leaves) expect(get(serviceCapabilities)(leaf)).toBe(false);
+	});
+	it('does not infer missing service leaves from a verified system administrator flag', async () => {
+		auth.update(state => ({ ...state, roles: [], isSystemAdmin: true }));
+		mocks.get.mockResolvedValue(permissions([]));
+		stop = serviceCapabilities.subscribe(() => {}); await settle();
+		for (const leaf of ['lumen-resources_admin', 'drover-clusters_admin', 'waygate-gateways_admin', 'palimpsest-keys_admin']) {
+			expect(get(serviceCapabilities)(leaf)).toBe(false);
+			expect(get(serviceDenials)(leaf)).toBe(true);
+		}
+	});
 	it('never substitutes native member writes for service permission and honors narrow leaves', async () => {
 		mocks.get.mockResolvedValue(permissions(['lumen-chat_user']));
 		stop = serviceCapabilities.subscribe(() => {});

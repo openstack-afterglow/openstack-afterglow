@@ -4,6 +4,89 @@ from __future__ import annotations
 
 import logging
 import re
+from collections import deque
+from inspect import getattr_static
+from types import TracebackType
+
+_EXCEPTION_CAUSE_LIMIT = 8
+_EXCEPTION_FRAME_LIMIT = 12
+_EXCEPTION_TRACEBACK_LIMIT = 1024
+_EXCEPTION_NAME_LIMIT = 128
+
+
+def _exception_frames(tb: TracebackType | None) -> dict:
+    frames: deque[dict] = deque(maxlen=_EXCEPTION_FRAME_LIMIT)
+    scanned = 0
+    while tb is not None and scanned < _EXCEPTION_TRACEBACK_LIMIT:
+        frames.append({"function": tb.tb_frame.f_code.co_name[:_EXCEPTION_NAME_LIMIT], "line": tb.tb_lineno})
+        tb = tb.tb_next
+        scanned += 1
+    metadata: dict = {"frames": list(frames)}
+    if scanned > _EXCEPTION_FRAME_LIMIT or tb is not None:
+        metadata["frames_truncated"] = True
+    if tb is not None:
+        metadata["traceback_truncated"] = True
+    return metadata
+
+
+def _exception_node(exc_type: type[BaseException], exc: BaseException | None, tb: TracebackType | None) -> dict:
+    metadata = {"type": type.__getattribute__(exc_type, "__name__")[:_EXCEPTION_NAME_LIMIT], **_exception_frames(tb)}
+    if exc is not None:
+        for key in ("status_code", "http_status", "status", "errno"):
+            # Static lookup never evaluates provider properties or user-defined
+            # conversions. OSError stores errno in a built-in slot, not __dict__.
+            if key == "errno" and isinstance(exc, OSError):
+                value = OSError.errno.__get__(exc)
+            else:
+                value = getattr_static(exc, key, None)
+            low, high = (-(2**31), 2**31 - 1) if key == "errno" else (100, 599)
+            if type(value) is int and low <= value <= high:
+                metadata[key] = value
+    return metadata
+
+
+def exception_metadata(exc_info: tuple[type[BaseException], BaseException | None, TracebackType | None]) -> dict:
+    """Return bounded structural diagnostics, never exception text or source.
+
+    Each node has type (at most 128 characters), frames (last 12 visited
+    {function, line} pairs), and optional plain-int status_code/http_status/status
+    (100..599) or errno (signed 32-bit). Properties and coercions are not used.
+    frames_truncated marks omitted frames; traceback_truncated means the scan
+    stopped at 1024 frames, so the innermost frame is not known.
+
+    The outer node also has causes (up to 8 subsequent nodes, outer-to-inner)
+    and root_cause (the terminal node, including itself for an unchained error).
+    Explicit __cause__ wins over __context__, even with suppressed context.
+    causes_truncated or cause_cycle makes root_cause null: no terminal root was
+    established. Per-node traceback limits also apply to causes/root_cause.
+    """
+    exc_type, current, tb = exc_info
+    metadata = _exception_node(exc_type, current, tb)
+    causes: list[dict] = []
+    metadata["causes"] = causes
+    root = {key: value for key, value in metadata.items() if key != "causes"}
+    seen = {id(current)}
+    while current is not None:
+        cause = BaseException.__cause__.__get__(current)
+        if cause is None:
+            cause = BaseException.__context__.__get__(current)
+        if cause is None:
+            break
+        if id(cause) in seen:
+            metadata["cause_cycle"] = True
+            root = None
+            break
+        if len(causes) == _EXCEPTION_CAUSE_LIMIT:
+            metadata["causes_truncated"] = True
+            root = None
+            break
+        seen.add(id(cause))
+        current = cause
+        root = _exception_node(type(current), current, BaseException.__traceback__.__get__(current))
+        causes.append(root)
+    metadata["root_cause"] = root
+    return metadata
+
 
 # 정확 매칭 대상 필드명 (소문자 + 언더스코어 정규화)
 _SENSITIVE_EXACT: frozenset[str] = frozenset(
@@ -76,6 +159,7 @@ WARNING_LOG_NAMESPACES = (
     "openstack",
     "urllib3",
     "keystoneauth1",
+    "keystoneauth",
     "httpx",
     "httpcore",
     "requests",

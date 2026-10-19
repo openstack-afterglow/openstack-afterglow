@@ -53,7 +53,7 @@
   "create.keypair": "Jozi ya funguo (si lazima)",
   "create.stampedeMode": "Hali ya Stampede",
   "create.stampedeHelp": "Huongeza/hupunguza nodi (VM) kiotomatiki vikundi vya makontena vinapowekwa. Sanidi idadi ya chini/juu kando katika kikundi cha nodi.",
-  "create.stampedeWarning": "⚠ Kipengele hiki kinaendelezwa. Kimewashwa kwa chaguomsingi na huongeza au kuondoa nodi tu ndani ya mipaka ya idadi ya chini/juu ya vikundi vya nodi ambavyo Stampede imewashwa. Nodi tendaji za awali za chaguomsingi hazipunguzwi kamwe kiotomatiki.",
+  "create.stampedeWarning": "⚠ Kipengele hiki bado kinaendelezwa. Kimewashwa kwa chaguomsingi na huongeza au kuondoa nodi ndani ya mipaka ya min/max ya vikundi vya nodi vilivyowasha Stampede pekee. Wafanyakazi chaguomsingi walioundwa mwanzoni hawapunguzwi kiotomatiki.",
   "nodegroup.role": "Jukumu",
   "nodegroup.agent": "Wakala",
   "nodegroup.server": "Seva",

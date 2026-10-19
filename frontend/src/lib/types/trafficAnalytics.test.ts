@@ -21,6 +21,7 @@ describe('traffic snapshot schema and unknown coverage', () => {
 			expect(() => parseTrafficSnapshot(input, 'backend', '24h')).toThrow();
 		}
 		expect(() => parseTrafficSnapshot({ ...observations(), coverage: { ...observations().coverage, geo_source: 'header' } }, 'backend', '24h')).toThrow();
+		expect(() => parseTrafficSnapshot({ ...observations(), coverage: { ...observations().coverage, geo_source: 'offline_cidr' } }, 'backend', '24h')).toThrow();
 	});
     it('fences origin selections and rejects forged reason/cardinality dimensions', () => {
         expect(() => parseTrafficSnapshot(observations(), 'backend', '24h', 'external')).toThrow();
@@ -32,6 +33,12 @@ describe('traffic snapshot schema and unknown coverage', () => {
         const inconsistent = observations(); inconsistent.routes[0].origins.internal++;
         expect(() => parseTrafficSnapshot(inconsistent, 'backend', '24h')).toThrow();
     });
+	it('rejects duplicate route keys and unknown reason dimensions without exposing address evidence', () => {
+		const duplicate = observations(); duplicate.routes.push(duplicate.routes[0]);
+		expect(() => parseTrafficSnapshot(duplicate, 'backend', '24h')).toThrow();
+		const invalid = observations(); Object.assign(invalid.coverage.origin_unknown_reasons, { 'raw-ip-192.0.2.10': 1 });
+		expect(() => parseTrafficSnapshot(invalid, 'backend', '24h')).toThrow();
+	});
 	it.each([-1, Infinity, NaN, 1.5, '0', undefined])('rejects invalid request counters %s', (requests) => {
 		expect(() => parseTrafficSnapshot({ ...observations(), totals: { ...metrics(), requests } }, 'backend', '24h')).toThrow();
 	});

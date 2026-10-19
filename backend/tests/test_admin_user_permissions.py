@@ -17,7 +17,7 @@ from openstack.exceptions import HttpException, ResourceNotFound
 from openstack.identity.v3.role_assignment import RoleAssignment
 from requests import Response
 
-URL = "/api/v1/admin/users/user-1/permissions"
+URL = "/api/v1/admin/users/user-1/permissions?domain_id=child"
 
 
 def graph_response(inferences=None, status=200):
@@ -39,7 +39,11 @@ def grant(role="parent", scope=None, user="user-1", **extras):
 
 @pytest.fixture
 def permissions_provider(mock_conn):
-    mock_conn.identity.get_user.return_value = SimpleNamespace(id="user-1", name="Subject")
+    mock_conn.identity.get_domain.return_value = SimpleNamespace(id="child", name="Selected domain")
+    mock_conn.identity.get_user.return_value = SimpleNamespace(id="user-1", name="Subject", domain_id="child")
+    mock_conn.identity.projects.return_value = [
+        SimpleNamespace(id=pid, name=pid, domain_id="child") for pid in ("child", "project-2")
+    ]
     mock_conn.identity.roles.return_value = [
         SimpleNamespace(id=rid, name=name, domain_id=None, description="")
         for rid, name in (
@@ -74,7 +78,9 @@ def inherited_keystone():
                 "/v3": {
                     "version": {"id": "v3.14", "status": "stable", "links": [{"rel": "self", "href": endpoint + "/"}]}
                 },
-                "/v3/users/user-1": {"user": {"id": "user-1", "name": "Subject"}},
+                "/v3/domains/child": {"domain": {"id": "child", "name": "Selected domain", "enabled": True}},
+                "/v3/users/user-1": {"user": {"id": "user-1", "name": "Subject", "domain_id": "child"}},
+                "/v3/projects": {"projects": [{"id": "child", "name": "Child project", "domain_id": "child"}]},
                 "/v3/roles": {
                     "roles": [{"id": "parent", "name": "Project grade"}, {"id": "leaf", "name": "Read leaf"}]
                 },
@@ -200,11 +206,12 @@ async def test_user_permissions_effective_groups_inheritance_dag_and_duplicate_g
         ],
         "count": 3,
     }
-    provider.get_user.assert_called_once_with("user-1")
+    assert provider.get_user.call_count == 2
+    provider.get_user.assert_called_with("user-1")
     provider.get_project.assert_not_called()
-    provider.get_domain.assert_not_called()
+    provider.get_domain.assert_called_once_with("child")
     provider.users.assert_not_called()
-    provider.projects.assert_not_called()
+    provider.projects.assert_called_once_with(domain_id="child")
     provider.groups.assert_not_called()
     provider.group_users.assert_not_called()
     provider.create_role.assert_not_called()
@@ -214,23 +221,27 @@ async def test_user_permissions_effective_groups_inheritance_dag_and_duplicate_g
 async def test_user_permissions_resolves_each_unique_scope_once(admin_client, permissions_provider):
     p = permissions_provider
     project = {"project": {"id": "project-2"}}
-    domain = {"domain": {"id": "domain-2"}}
+    domain = {"domain": {"id": "child"}}
     p.role_assignments.return_value = [
         grant(scope=project),
         grant(role="leaf", scope=project),
         grant(scope=domain),
         grant(scope=domain),
     ]
-    p.get_project.return_value = SimpleNamespace(id="project-2", name="Resolved project")
-    p.get_domain.return_value = {"id": "domain-2", "name": "Resolved domain"}
+    p.get_project.return_value = SimpleNamespace(id="project-2", name="Resolved project", domain_id="child")
+    p.get_domain.side_effect = [
+        SimpleNamespace(id="child", name="Selected domain"),
+        SimpleNamespace(id="child", name="Resolved domain"),
+    ]
     response = await admin_client.get(URL)
     assert response.status_code == 200
     assert response.json()["count"] == 2
     assert [item["scope_name"] for item in response.json()["items"]] == ["Resolved domain", "Resolved project"]
     p.get_project.assert_called_once_with("project-2")
-    p.get_domain.assert_called_once_with("domain-2")
+    assert p.get_domain.call_count == 2
+    p.get_domain.assert_called_with("child")
     p.users.assert_not_called()
-    p.projects.assert_not_called()
+    p.projects.assert_called_once_with(domain_id="child")
     p.domains.assert_not_called()
 
 
@@ -239,7 +250,8 @@ async def test_user_permissions_verified_empty_snapshot(admin_client, permission
     response = await admin_client.get(URL)
     assert response.status_code == 200
     assert response.json() == {"items": [], "count": 0}
-    permissions_provider.get_user.assert_called_once_with("user-1")
+    assert permissions_provider.get_user.call_count == 2
+    permissions_provider.get_user.assert_called_with("user-1")
     permissions_provider.get.assert_called_once_with("/role_inferences")
     permissions_provider.role_assignments.assert_called_once_with(user_id="user-1", effective=True, include_names=True)
 
@@ -298,9 +310,10 @@ async def test_user_permissions_missing_user_is_404(admin_client, permissions_pr
 
 @pytest.mark.asyncio
 async def test_user_permissions_invalid_requested_id(admin_client, permissions_provider):
-    response = await admin_client.get("/api/v1/admin/users/%20/permissions")
+    permissions_provider.get_user.return_value = SimpleNamespace(id=" ", domain_id="child")
+    response = await admin_client.get("/api/v1/admin/users/%20/permissions?domain_id=child")
     assert response.status_code == 422
-    permissions_provider.get_user.assert_not_called()
+    permissions_provider.get_user.assert_called_once_with(" ")
 
 
 @pytest.mark.asyncio
@@ -349,7 +362,10 @@ async def test_user_permissions_validates_resolved_scope_identity_and_name(
     admin_client, permissions_provider, kind, resolved
 ):
     permissions_provider.role_assignments.return_value = [grant(scope={kind: {"id": "child"}})]
-    getattr(permissions_provider, "get_" + kind).return_value = resolved
+    if kind == "domain":
+        permissions_provider.get_domain.side_effect = [SimpleNamespace(id="child", name="Selected domain"), resolved]
+    else:
+        permissions_provider.get_project.return_value = resolved
     response = await admin_client.get(URL)
     assert response.status_code == 503
 

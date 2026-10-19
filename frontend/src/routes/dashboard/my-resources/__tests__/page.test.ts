@@ -29,7 +29,7 @@ function identity(overrides: Partial<AuthState> = {}): AuthState {
 	return {
 		token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'user', username: 'User',
 		projectId: 'project', projectName: 'Project', availableProjects: [], roles: [],
-		isSystemAdmin: false, federated: false, ...overrides,
+		isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false, ...overrides,
 	};
 }
 

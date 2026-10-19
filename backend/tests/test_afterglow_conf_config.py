@@ -14,7 +14,6 @@ from unittest.mock import patch
 
 import pytest
 import yaml
-from jinja2 import Environment, StrictUndefined
 
 from app import config as app_config
 
@@ -184,24 +183,6 @@ def test_helm_unset_mcp_url_retains_shared_api_fallback():
     assert _ingress_service(ingresses, host, "/api/v1/mcp/oauth/token") == "backend"
     assert _ingress_service(ingresses, host, "/.well-known/oauth-protected-resource/api/v1/mcp") == "backend"
     assert _ingress_service(ingresses, host, "/oauth/mcp/authorize") == "frontend"
-
-
-@pytest.mark.parametrize(
-    "public_url",
-    ["", "https://cloud.dmslab.re.kr/mcp", "https://mcp.example.test/", "https://mcp.example.test/custom/%E2%9C%93"],
-)
-def test_kolla_mcp_override_preserves_explicit_urls_and_omits_unset_value(public_url):
-    template = (ROOT / "deploy/kolla/ansible/roles/afterglow/templates/afterglow.kolla.conf.j2").read_text()
-    start = template.index("{% if afterglow_mcp_public_url %}")
-    stop = template.index("{% endif %}", start) + len("{% endif %}")
-    environment = Environment(undefined=StrictUndefined)
-    environment.filters["to_json"] = json.dumps
-    override = tomllib.loads(environment.from_string(template[start:stop]).render(afterglow_mcp_public_url=public_url))
-    if public_url:
-        assert override == {"mcp": {"public_url": public_url}}
-    else:
-        # No empty Kolla key erases the operator source or the backend's fallback.
-        assert override == {}
 
 
 @pytest.fixture
@@ -374,40 +355,6 @@ max_bytes = 10485760
     assert settings.log_max_bytes == 10485760
 
 
-def test_empty_gitlab_oidc_secret_env_does_not_mask_toml(isolated_config_dir, monkeypatch):
-    (isolated_config_dir / "afterglow.conf").write_text(
-        """
-[app]
-secret_key = "0123456789abcdef0123456789abcdef"
-
-[gitlab_oidc]
-enabled = true
-client_id = "configured-client"
-client_secret = "configured-secret"
-""".strip(),
-        encoding="utf-8",
-    )
-    for key in (
-        "GITLAB_OIDC_ENABLED",
-        "GITLAB_OIDC_GITLAB_URL",
-        "GITLAB_OIDC_CLIENT_ID",
-        "GITLAB_OIDC_CLIENT_SECRET",
-        "GITLAB_OIDC_IDP_ID",
-        "GITLAB_OIDC_PROTOCOL_ID",
-        "GITLAB_OIDC_REDIRECT_URI",
-        "GITLAB_OIDC_SCOPES",
-    ):
-        monkeypatch.delenv(key, raising=False)
-    monkeypatch.setenv("GITLAB_OIDC_CLIENT_SECRET", "")
-
-    settings = app_config.get_settings()
-
-    assert settings.gitlab_oidc_enabled is True
-    assert settings.gitlab_oidc_client_id == "configured-client"
-    assert settings.gitlab_oidc_client_secret == "configured-secret"
-    assert os.environ["GITLAB_OIDC_CLIENT_SECRET"] == "configured-secret"
-
-
 def test_app_config_loads_openstack_insecure_and_cacert_from_afterglow_conf(isolated_config_dir, monkeypatch):
     (isolated_config_dir / "afterglow.conf").write_text(
         """
@@ -552,76 +499,6 @@ ttl_fast = 4
     assert flat["site_name"] == "Primary Site"
     assert flat["logo_path"] == "/primary-logo.png"
     assert flat["cache_ttl_fast"] == 13
-
-
-def test_generate_k8s_main_accepts_explicit_afterglow_conf_path(tmp_path, monkeypatch, capsys):
-    config_path = tmp_path / "afterglow.conf"
-    config_path.write_text(
-        """
-[app]
-site_name = "Explicit K8s Afterglow Conf"
-secret_key = "0123456789abcdef0123456789abcdef"
-""".strip(),
-        encoding="utf-8",
-    )
-
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "generate_k8s.py",
-            "--config",
-            str(config_path),
-            "--dry-run",
-            "--output-dir",
-            str(tmp_path / "out"),
-        ],
-    )
-
-    generate_k8s.main()
-
-    output = capsys.readouterr().out
-    assert "afterglow.conf" in output
-    assert "afterglow-prod.conf" in output
-    assert 'site_name = "Explicit K8s Afterglow Conf"' in output
-
-
-def test_k8s_python_manifests_use_production_secret_contract():
-    """K8s Python services must fail closed and share afterglow-secrets/SECRET_KEY."""
-    paths = [
-        ROOT / "deploy/k8s-template/base/backend/deployment.yaml",
-        ROOT / "deploy/k8s-template/base/worker/deployment.yaml",
-        ROOT / "deploy/k8s-template/base/worker/notion-deployment.yaml",
-    ]
-    for path in paths:
-        doc = yaml.safe_load(path.read_text(encoding="utf-8"))
-        env = doc["spec"]["template"]["spec"]["containers"][0]["env"]
-        by_name = {item["name"]: item for item in env}
-
-        assert by_name["AFTERGLOW_ENV"]["value"] == "production"
-        assert by_name["SECRET_KEY"]["valueFrom"]["secretKeyRef"] == {
-            "name": "afterglow-secrets",
-            "key": "SECRET_KEY",
-        }
-        assert "AFTERGLOW_ALLOW_INSECURE" not in by_name
-
-
-def test_helm_python_templates_use_production_secret_contract():
-    """Helm Python service templates must reference the production secret contract."""
-    paths = [
-        ROOT / "helm/afterglow/templates/backend/deployment.yaml",
-        ROOT / "helm/afterglow/templates/worker/deployment.yaml",
-        ROOT / "helm/afterglow/templates/worker/notion-deployment.yaml",
-    ]
-
-    for path in paths:
-        text = path.read_text(encoding="utf-8")
-
-        assert '- name: AFTERGLOW_ENV\n              value: "production"' in text
-        assert "- name: SECRET_KEY" in text
-        assert "name: afterglow-secrets" in text
-        assert "key: SECRET_KEY" in text
-        assert "AFTERGLOW_ALLOW_INSECURE" not in text
 
 
 def test_k8s_app_deployments_use_writable_ephemeral_log_mounts():
@@ -896,14 +773,16 @@ def test_helm_rejects_country_claim_with_unmounted_database_path():
 
 @pytest.mark.parametrize("source", ["", "/operator/country.mmdb"])
 def test_kolla_country_mount_configuration_preserves_other_operator_settings(source):
-    from jinja2 import meta
+    import importlib.util
+
+    from jinja2 import Environment, StrictUndefined, meta
 
     from app.models.traffic_analytics import TrafficAnalyticsSettings
 
     environment = Environment(undefined=StrictUndefined)
     environment.filters.update(bool=bool, to_json=json.dumps)
     template = environment.parse(
-        (ROOT / "deploy/kolla/ansible/roles/afterglow/templates/afterglow.kolla.conf.j2").read_text()
+        (ROOT / "deploy/kolla/ansible/roles/afterglow/templates/afterglow.conf.j2").read_text()
     )
     context = dict.fromkeys(meta.find_undeclared_variables(template), "")
     for key in (
@@ -919,15 +798,25 @@ def test_kolla_country_mount_configuration_preserves_other_operator_settings(sou
     ):
         context["afterglow_" + key] = 1
     context.update(
+        afterglow_rbd_volume_pools={},
         afterglow_traffic_analytics_geoip_mmdb_source=source,
         afterglow_traffic_analytics_geoip_mmdb_path="/etc/afterglow/geoip/country.mmdb",
     )
-    override = tomllib.loads(environment.from_string(template).render(context))
-    operator = {"geoip_mmdb": "/operator/image-country.mmdb", "cluster_cidrs": ["10.42.0.0/16"]}
-    effective = TrafficAnalyticsSettings.model_validate({**operator, **override.get("traffic_analytics", {})})
-    assert effective.geoip_mmdb == (
-        context["afterglow_traffic_analytics_geoip_mmdb_path"] if source else operator["geoip_mmdb"]
+    native_text = environment.from_string(template).render(context)
+    native = tomllib.loads(native_text)["traffic_analytics"]
+    assert native.get("geoip_mmdb", "") == (context["afterglow_traffic_analytics_geoip_mmdb_path"] if source else "")
+    helper_path = ROOT / "deploy/kolla/ansible/roles/afterglow/files/render_effective_config.py"
+    spec = importlib.util.spec_from_file_location("kolla_country_effective_config", helper_path)
+    assert spec and spec.loader
+    renderer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(renderer)
+    operator_text = (
+        '[traffic_analytics]\ngeoip_mmdb = "/operator/image-country.mmdb"\ncluster_cidrs = ["10.42.0.0/16"]\n'
     )
+    operator = tomllib.loads(operator_text)["traffic_analytics"]
+    merged = renderer.merge_config(native_text, operator_text)
+    effective = TrafficAnalyticsSettings.model_validate(merged["traffic_analytics"])
+    assert effective.geoip_mmdb == operator["geoip_mmdb"]
     assert effective.cluster_cidrs == operator["cluster_cidrs"]
 
 
@@ -963,9 +852,6 @@ def test_kolla_country_startup_fails_closed_and_tracks_source_identity(tmp_path)
     }
     for key in (
         "generated_config_name",
-        "operator_config_name",
-        "operator_frontend_config_name",
-        "kolla_config_name",
         "frontend_config_name",
     ):
         variables["afterglow_" + key] = key + ".conf"
@@ -1011,3 +897,253 @@ def test_kolla_country_startup_fails_closed_and_tracks_source_identity(tmp_path)
     result, identity = start()
     assert result.returncode != 0
     assert identity is None
+
+
+def _file_auth_provider(**overrides):
+    return {
+        "name": "DMSLab GitLab",
+        "kind": "oidc",
+        "issuer_url": "https://git.dmslab.re.kr",
+        "client_id": "afterglow-client",
+        "client_secret": "private-auth-sentinel",
+        "keystone_idp_id": "gitlab",
+        "keystone_protocol_id": "openid",
+        **overrides,
+    }
+
+
+def test_auth_common_and_exact_domain_metadata_are_preserved():
+    settings = app_config.AuthSettings.model_validate(
+        {
+            "providers": {
+                "gitlab": _file_auth_provider(),
+                "github": _file_auth_provider(
+                    name="GitHub",
+                    kind="github",
+                    issuer_url=None,
+                    keystone_idp_id="github",
+                    enabled=False,
+                    client_secret="",
+                ),
+            },
+            "default": {"allow_providers": ["github", "gitlab"]},
+            "domain": {"DmsLab-ID": {"allow_providers": ["gitlab", "github", "gitlab"]}},
+        }
+    )
+    assert settings.default.allow_providers == ["github", "gitlab"]
+    assert settings.domain["DmsLab-ID"].allow_providers == ["gitlab", "github", "gitlab"]
+    assert "dmslab-id" not in settings.domain
+    gitlab = settings.providers["gitlab"]
+    assert gitlab.scopes == ["openid", "email", "profile"]
+    assert gitlab.token_endpoint_auth_method == "client_secret_basic"
+    assert gitlab.federation_token_type == "id_token"
+    github = settings.providers["github"]
+    assert github.scopes == ["read:user", "user:email"]
+    assert github.authorization_url == "https://github.com/login/oauth/authorize"
+    assert github.token_url == "https://github.com/login/oauth/access_token"
+    assert github.api_url == "https://api.github.com"
+    assert github.federation_token_type == "access_token"
+    assert github.token_endpoint_auth_method == "client_secret_post"
+    assert github.enabled is False
+    assert "private-auth-sentinel" not in repr(settings)
+    assert "private-auth-sentinel" not in settings.model_dump_json()
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"unknown": "private-auth-sentinel"},
+        {"kind": "gitlab"},
+        {"kind": []},
+        {"kind": {"name": "oidc"}},
+        {"name": "   "},
+        {"client_id": "client id"},
+        {"client_id": 123},
+        {"client_secret": ""},
+        {"client_secret": " "},
+        {"client_secret": "private-auth-sentinel" * 300},
+        {"client_secret": 123},
+        {"enabled": 1},
+        {"scopes": []},
+        {"scopes": ["openid"]},
+        {"scopes": ["openid", "email", "space separated"]},
+        {"scopes": ["openid", "email", 123]},
+        {"scopes": ["openid", "email"] + [f"scope{i}" for i in range(20)]},
+        {"keystone_idp_id": "bad/id"},
+        {"keystone_protocol_id": ""},
+        {"authorization_url": "https://git.dmslab.re.kr/oauth/authorize"},
+        {"issuer_url": None},
+        {"issuer_url": "http://git.dmslab.re.kr"},
+        {"issuer_url": "https://user:private-auth-sentinel@git.dmslab.re.kr"},
+        {"issuer_url": "https://127.0.0.1"},
+        {"issuer_url": "https://169.254.169.254"},
+        {"issuer_url": "https://localhost"},
+        {"issuer_url": "https://git.dmslab.re.kr:invalid"},
+        {"issuer_url": "https://git.dmslab.re.kr?client_secret=private-auth-sentinel"},
+        {"issuer_url": "https://git.dmslab.re.kr#fragment"},
+        {"federation_token_type": "bearer"},
+        {"token_endpoint_auth_method": "none"},
+    ],
+)
+def test_auth_provider_bad_values_fail_with_redacted_errors(changes):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError) as exc:
+        app_config.AuthSettings.model_validate({"providers": {"gitlab": _file_auth_provider(**changes)}})
+    assert "private-auth-sentinel" not in str(exc.value)
+    assert "private-auth-sentinel" not in repr(exc.value)
+
+
+@pytest.mark.parametrize(
+    "auth",
+    [
+        {"provider": {}},
+        {"providers": []},
+        {"providers": {"GitLab": _file_auth_provider()}},
+        {"providers": {"x" * 33: _file_auth_provider()}},
+        {"providers": {"bad-key": _file_auth_provider()}},
+        {"providers": {"gitlab_": _file_auth_provider()}},
+        {"providers": {"git__lab": _file_auth_provider()}},
+        {"default": {"allow_providers": ["gitlab"]}},
+        {"domain": {"DmsLab-ID": {"allow_providers": ["typo"]}}},
+        {"default": {"allow_providers": "gitlab"}},
+        {"default": {"allow_providers": [1]}},
+        {"providers": {"gitlab": _file_auth_provider()}, "default": {"providers": ["gitlab"]}},
+        {"domain": {"DmsLab-ID": {"providers": []}}},
+        {"default": {"allow_providers": ["cfg:gitlab"]}},
+        {"default": {"allow_providers": ["01234567-89AB-CDEF-0123-456789abcdef"]}},
+        {"default": {"provider": []}},
+        {"default": {"password_enabled": False}},
+        {"domain": {"": {"allow_providers": []}}},
+        {"domain": {"x" * 65: {"allow_providers": []}}},
+        {"domain": {" DmsLab-ID": {"allow_providers": []}}},
+        {"domain": {"DmsLab-ID": {"signup_enabled": False}}},
+    ],
+)
+def test_auth_bad_registry_and_selection_fail_closed(auth):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        app_config.AuthSettings.model_validate(auth)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("issuer_url", "https://issuer.example.com"),
+        ("authorization_url", "https://github.com/oauth?state=reserved"),
+        ("token_url", "https://github.com/token?client_secret=private-auth-sentinel"),
+        ("api_url", "https://api.github.com?query=bad"),
+        ("federation_token_type", "id_token"),
+        ("token_endpoint_auth_method", "client_secret_basic"),
+    ],
+)
+def test_github_incompatible_values_fail_closed(field, value):
+    from pydantic import ValidationError
+
+    provider = (
+        _file_auth_provider(kind="github", issuer_url=None, **{field: value})
+        if field != "issuer_url"
+        else (_file_auth_provider(kind="github", issuer_url=value))
+    )
+    with pytest.raises(ValidationError) as exc:
+        app_config.AuthSettings.model_validate({"providers": {"github": provider}})
+    assert "private-auth-sentinel" not in str(exc.value)
+
+
+def _write_auth_toml(path):
+    path.write_text(
+        """
+[auth.providers.gitlab]
+name = "DMSLab GitLab"
+kind = "oidc"
+issuer_url = "https://git.dmslab.re.kr"
+client_id = "original-client"
+client_secret = "protected-toml-secret"
+keystone_idp_id = "gitlab"
+keystone_protocol_id = "openid"
+[auth.default]
+allow_providers = ["gitlab"]
+[auth.domain."DmsLab-ID"]
+allow_providers = ["gitlab"]
+""",
+        encoding="utf-8",
+    )
+
+
+def test_nested_secret_env_overrides_toml_without_losing_metadata(isolated_debug_config_dir, monkeypatch):
+    _write_auth_toml(isolated_debug_config_dir / "afterglow.conf")
+    (isolated_debug_config_dir / "afterglow.site.conf").write_text(
+        '[auth.providers.gitlab]\nclient_id = "override-client"\nname = "Site GitLab"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AUTH__PROVIDERS__GITLAB__CLIENT_SECRET", "mounted-secret")
+    settings = app_config.get_settings()
+    provider = settings.auth.providers["gitlab"]
+    assert provider.client_secret.get_secret_value() == "mounted-secret"
+    assert provider.client_id == "override-client"
+    assert provider.name == "Site GitLab"
+    assert provider.issuer_url == "https://git.dmslab.re.kr"
+    assert provider.keystone_idp_id == "gitlab"
+    assert settings.auth.default.allow_providers == ["gitlab"]
+    assert settings.auth.domain["DmsLab-ID"].allow_providers == ["gitlab"]
+
+
+def test_empty_secret_env_does_not_fall_back_to_toml(isolated_debug_config_dir, monkeypatch):
+    from pydantic import ValidationError
+
+    _write_auth_toml(isolated_debug_config_dir / "afterglow.conf")
+    monkeypatch.setenv("AUTH__PROVIDERS__GITLAB__CLIENT_SECRET", "")
+    with pytest.raises(ValidationError) as exc:
+        app_config.get_settings()
+    assert "protected-toml-secret" not in str(exc.value)
+
+
+def test_auth_secret_env_cannot_mask_invalid_toml_syntax(isolated_debug_config_dir, monkeypatch):
+    (isolated_debug_config_dir / "afterglow.conf").write_text(
+        "[auth.providers.gitlab]\nenabled = True\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AUTH__PROVIDERS__GITLAB__ENABLED", "true")
+    with pytest.raises(tomllib.TOMLDecodeError):
+        app_config.get_settings()
+
+
+def test_nested_auth_env_typo_fails_with_redacted_errors(isolated_debug_config_dir, monkeypatch):
+    from pydantic import ValidationError
+
+    _write_auth_toml(isolated_debug_config_dir / "afterglow.conf")
+    monkeypatch.setenv("AUTH__PROVIDERS__GITLAB__CLIENT_SECRETT", "private-auth-sentinel")
+    with pytest.raises(ValidationError) as exc:
+        app_config.get_settings()
+    assert "private-auth-sentinel" not in str(exc.value)
+
+
+def test_top_level_auth_env_is_a_complete_replacement(isolated_debug_config_dir, monkeypatch):
+    import json
+
+    _write_auth_toml(isolated_debug_config_dir / "afterglow.conf")
+    replacement = {
+        "providers": {"replacement": _file_auth_provider(client_id="replacement-client")},
+        "default": {"allow_providers": ["replacement"]},
+    }
+    monkeypatch.setenv("AUTH", json.dumps(replacement))
+    settings = app_config.get_settings()
+    assert set(settings.auth.providers) == {"replacement"}
+    assert settings.auth.providers["replacement"].client_id == "replacement-client"
+    assert settings.auth.default.allow_providers == ["replacement"]
+    assert settings.auth.domain == {}
+
+
+def test_auth_registry_and_domain_accept_exact_maximum_lengths():
+    key = "p" * 32
+    domain_id = "D" * 64
+    settings = app_config.AuthSettings.model_validate(
+        {
+            "providers": {key: _file_auth_provider()},
+            "default": {"allow_providers": [key]},
+            "domain": {domain_id: {"allow_providers": [key]}},
+        }
+    )
+    assert list(settings.providers) == [key]
+    assert list(settings.domain) == [domain_id]

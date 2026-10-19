@@ -1,4 +1,68 @@
 ---
+# Only native MariaDB is managed here. An operator-selected external URL (or
+# socket/default-file transport) must never cause writes to the native database.
+- name: DB | Resolve the effective connection's native provisioning target
+  become: false
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -c
+      - |
+        import ipaddress
+        import json
+        import re
+        import sys
+        from urllib.parse import parse_qsl, unquote, urlsplit
+
+        def host_key(value):
+            value = value.strip('[]').rstrip('.').lower()
+            try:
+                return str(ipaddress.ip_address(value))
+            except ValueError:
+                return value
+
+        try:
+            request = json.load(sys.stdin)
+            url = urlsplit(request['url'])
+            result = {'managed': False}
+            routing_keys = {'host', 'port', 'unix_socket', 'user', 'password',
+                            'db', 'database', 'read_default_file', 'read_default_group'}
+            if (url.scheme.split('+', 1)[0] in {'mysql', 'mariadb'}
+                    and url.hostname
+                    and host_key(url.hostname) == host_key(request['host'])
+                    and (url.port if url.port is not None else 3306) == int(request['port'])
+                    and not url.fragment
+                    and not any(key.lower() in routing_keys for key, _ in parse_qsl(url.query))):
+                # Decode once; '+' in a URL credential is literal, not a space.
+                database = unquote(url.path.removeprefix('/'))
+                username = unquote(url.username or '')
+                password = unquote(url.password or '')
+                if not database or not username or not password:
+                    raise ValueError
+                # mysql_user's privilege grammar has its own separators. Do not
+                # let a schema selector introduce additional privilege clauses.
+                if re.fullmatch(r'[A-Za-z0-9_$-]{1,64}', database) is None:
+                    raise ValueError
+                result = {'managed': True, 'database': database,
+                          'username': username, 'password': password}
+            print(json.dumps(result))
+        except (KeyError, TypeError, ValueError):
+            raise SystemExit('Cannot resolve effective database URL for safe native provisioning') from None
+    stdin: >-
+      {{ {'url': afterglow_effective_config.database.url,
+          'host': afterglow_database_address, 'port': afterglow_database_port} | to_json }}
+  register: afterglow_database_target_resolution
+  changed_when: false
+  check_mode: false
+  delegate_to: "{{ groups['deployment'][0] }}"
+  no_log: true
+
+- name: DB | Record the private effective provisioning target
+  ansible.builtin.set_fact:
+    afterglow_database_provisioning: "{{ afterglow_database_target_resolution.stdout | from_json }}"
+    cacheable: false
+  no_log: true
+
 - name: DB | Create afterglow database
   kolla_toolbox:
     container_engine: "{{ kolla_container_engine }}"
@@ -8,10 +72,11 @@
       login_port: "{{ afterglow_database_port }}"
       login_user: "{{ afterglow_database_admin_user }}"
       login_password: "{{ afterglow_database_admin_password }}"
-      name: "{{ afterglow_database_name }}"
+      name: "{{ afterglow_database_provisioning.database }}"
   run_once: true
   delegate_to: "{{ groups['afterglow'][0] }}"
   no_log: true
+  when: afterglow_database_provisioning.managed | bool
 
 - name: DB | Create afterglow database user
   kolla_toolbox:
@@ -22,11 +87,12 @@
       login_port: "{{ afterglow_database_port }}"
       login_user: "{{ afterglow_database_admin_user }}"
       login_password: "{{ afterglow_database_admin_password }}"
-      name: "{{ afterglow_database_user }}"
-      password: "{{ afterglow_database_password }}"
+      name: "{{ afterglow_database_provisioning.username }}"
+      password: "{{ afterglow_database_provisioning.password }}"
       host: "%"
-      priv: "{{ afterglow_database_name }}.*:ALL"
+      priv: "{{ afterglow_database_provisioning.database }}.*:ALL"
       state: present
   run_once: true
   delegate_to: "{{ groups['afterglow'][0] }}"
   no_log: true
+  when: afterglow_database_provisioning.managed | bool

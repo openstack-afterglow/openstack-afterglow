@@ -42,7 +42,15 @@ export const navIcons = {
   document: 'M5 3h10l4 4v14H5V3zM15 3v5h4M8 12h8M8 16h8',
   announcement: 'M3 10h4l12-5v14l-12-5H3v-4zM7 14l2 7h4l-2-5',
   admin: 'M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4zM12 7l1.5 3 3.5.5-2.5 2.5.5 3.5-3-1.5-3 1.5.5-3.5L7 10.5l3.5-.5L12 7z',
+  domain: 'M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M10 21v-4h4v4',
 } as const;
+
+/** Display-only capability gates; the API re-validates authority for every request. */
+export interface NavCapabilities {
+  domainManager: boolean;
+}
+
+const NO_CAPABILITIES: NavCapabilities = { domainManager: false };
 
 export interface NavItem {
   label: string;
@@ -52,6 +60,7 @@ export interface NavItem {
   service: string | null;
   beta?: keyof BetaFeatures;
   topLevel?: boolean;
+  capability?: keyof NavCapabilities;
 }
 
 export interface NavSection {
@@ -73,6 +82,7 @@ function withLabel<T extends object>(key: NavMessage, fields: T): T & { label: s
 export const documentationNavItem: NavItem = withLabel('items.documentation', {
   href: '/docs', icon: navIcons.document, service: null, topLevel: true,
 });
+
 
 export const userNavSections: NavSection[] = [
   withLabel('sections.compute', {
@@ -177,6 +187,14 @@ export const userNavSections: NavSection[] = [
       withLabel('items.audioStudio', { href: '/dashboard/chat/audio', icon: navIcons.audio, service: 'chat' })
     ],
   }),
+  withLabel('sections.domainIam', {
+    prefix: '/dashboard/iam',
+    extraPrefixes: [],
+    icon: navIcons.domain,
+    items: [
+      withLabel('items.domainIam', { href: '/dashboard/iam', icon: navIcons.users, service: null, capability: 'domainManager' as const }),
+    ],
+  }),
 ];
 
 export const adminNavSections: NavSection[] = [
@@ -259,6 +277,8 @@ export const adminNavSections: NavSection[] = [
       withLabel('items.monitoringOverview', { href: '/admin/monitoring', icon: navIcons.monitor, service: null }),
       withLabel('items.trafficAnalytics', { href: '/admin/monitoring/traffic', icon: navIcons.chart, service: null }),
       withLabel('items.loginMonitoring', { href: '/admin/monitoring/logins', icon: navIcons.users, service: null }),
+      withLabel('items.aodhAlarms', { href: '/admin/monitoring/aodh', icon: navIcons.activity, service: null }),
+      withLabel('items.gnocchi', { href: '/admin/monitoring/gnocchi', icon: navIcons.chart, service: null }),
       withLabel('items.nodes', { href: '/admin/monitoring/node', icon: navIcons.instances, service: null }),
       { label: 'MySQL', href: '/admin/monitoring/mysql', icon: navIcons.database, service: null },
       { label: 'ProxySQL', href: '/admin/monitoring/proxysql', icon: navIcons.proxy, service: null },
@@ -287,6 +307,7 @@ export const adminNavSections: NavSection[] = [
     prefix: '/admin/users',
     icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z',
     items: [
+      withLabel('items.domains', { href: '/admin/domains', icon: navIcons.domain, service: null }),
       withLabel('items.users', { href: '/admin/users', icon: navIcons.user, service: null }),
       withLabel('items.projects', { href: '/admin/projects', icon: navIcons.folder, service: null }),
       withLabel('items.quotas', { href: '/admin/quotas', icon: navIcons.quota, service: null }),
@@ -304,13 +325,17 @@ export function isNavSectionActive(section: NavSection, pathname: string): boole
   return matches(section.prefix) || section.extraPrefixes?.some(matches) === true || section.items.some((item) => matches(item.href));
 }
 
-export function allNavItems(isAdmin: boolean, betaFeatures: BetaFeatures): Array<NavItem & { section: string; sectionKey?: NavMessage }> {
+export function allNavItems(
+  isAdmin: boolean,
+  betaFeatures: BetaFeatures,
+  capabilities: NavCapabilities = NO_CAPABILITIES,
+): Array<NavItem & { section: string; sectionKey?: NavMessage }> {
   const sections = isAdmin ? adminNavSections : userNavSections;
   const overview = isAdmin ? [{ label: t('items.overview'), labelKey: 'items.overview' as const, href: '/admin', icon: navIcons.overview, service: null, section: t('sections.overview'), sectionKey: 'sections.overview' as const }] : [];
   return [...overview, { ...documentationNavItem, section: t('sections.documentation'), sectionKey: 'sections.documentation' as const }, ...sections.flatMap((section) => {
     if (section.beta && !betaFeatures[section.beta]) return [];
     return section.items
-      .filter((item) => !item.beta || betaFeatures[item.beta])
+      .filter((item) => (!item.beta || betaFeatures[item.beta]) && (!item.capability || capabilities[item.capability]))
       .map((item) => ({ ...item, service: item.service ?? section.service ?? null, section: section.label, sectionKey: section.labelKey }));
   })];
 }

@@ -35,6 +35,7 @@ Cinder 블록 스토리지 볼륨, 백업, 스냅샷을 관리합니다.
 5. [볼륨 백업](#5-볼륨-백업)
 6. [자동 백업](#6-자동-백업)
 7. [볼륨 스냅샷](#7-볼륨-스냅샷)
+8. [자동 스냅샷](#8-자동-스냅샷)
 
 ---
 
@@ -660,3 +661,20 @@ SDK3.3.0은 지원 microversion에 따라 `/os-volume-transfer` 또는3.55 이�
 | `snapshot_id` | path | string | 예 | 스냅샷 UUID |
 
 **응답**: `204 No Content`
+
+---
+
+## 8. 자동 스냅샷
+
+자동 스냅샷은 기존 calendar 자동 백업 engine을 공유하지만 별도 `afterglow:auto_snapshot` 정책·slot/journal·분산 실행 lane과 native Cinder snapshot 자원을 사용한다. 백업과 수동 스냅샷은 자동 스냅샷의 보존 삭제 대상이 아니다. 두 정책을 같은 VM에 켜도 서로의 실행 중 작업을 관측한 뒤 순서대로 제출하며, 막힌 예약을 실행한 것으로 소비하지 않는다.
+
+| 메서드 | 경로 | 설명 |
+| --- | --- | --- |
+| `POST` | `/api/v1/volume-snapshots/auto-snapshot/configs` | 현재 프로젝트의 저장 정책·원본 상태 조회(자원 변경 아님) |
+| `GET` | `/api/v1/volume-snapshots/auto-snapshot/{volume_id}` | exact-project 원본의 정책 조회 |
+| `POST` | `/api/v1/volume-snapshots/auto-snapshot/{volume_id}` | 쓰기 권한 아래 정책 생성/수정·일시 중지/재개, 성공201 |
+| `DELETE` | `/api/v1/volume-snapshots/auto-snapshot/{volume_id}` | 저장 정책만 제거, 성공204. 기존 스냅샷은 보존 |
+
+요청은 자동 백업과 같은 `max_daily`/`max_weekly`/`max_monthly`(각0–30), `enabled`, `schedule_time`(HH:mm), `timezone`(IANA), `weekly_day`(Mon0–Sun6), `monthly_day`(1–28), `force`를 사용한다. 기본은03:00 UTC·일별2·주별2·월별1, 월요일·1일, enabled=true·force=false다. 응답의 마지막 자원 ID는 `last_snapshot_id`이며 next/last/status/error 및 revision은 같은 calendar 계약이다. 새 VM의 opt-in은 명시적 별도 동의 아래force=true로 저장한다.
+
+`in-use` 원본을 활성화하려면force=true가 필요하다. Fresh 소유 프로젝트는 관리자도 우회할 수 없고403/조회 장애를 원본 없음으로 숨기지 않는다. 정책 제거 후에도 이미 접수된 작업은 관측하지만 정책을 되살리거나 기존 사본을 삭제하지 않는다. 보존 삭제는 새 완료본 확인 뒤 정확한 관리 metadata·원본·프로젝트·tier·이름·시각과 현재 revision/lease를 재검증한다. 접수됐을 수 있는 생성/삭제 요청은 응답을 잃어도 자동 재전송하지 않는다. Redis 내구성과 실제 Cinder 권한/스토리지·guest/application 복구는 운영 검증 전제다.

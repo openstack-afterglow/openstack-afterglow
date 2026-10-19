@@ -9,6 +9,7 @@
   import SecuritySection from '$lib/components/account/SecuritySection.svelte';
   import BetaFeaturesSection from '$lib/components/account/BetaFeaturesSection.svelte';
   import McpAccessSection from '$lib/components/account/McpAccessSection.svelte';
+  import ProjectSelector from '$lib/components/ProjectSelector.svelte';
 </script>
 
 <PageShell>
@@ -30,7 +31,11 @@
     </a>
   </div>
 
-  <PageHeader breadcrumb="" title={t('page.title')} />
+  <PageHeader breadcrumb="" title={t('page.title')}>
+    {#snippet actions()}
+      <div class="w-48"><ProjectSelector /></div>
+    {/snippet}
+  </PageHeader>
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
     <ProfileSection />
     <PasswordSection />

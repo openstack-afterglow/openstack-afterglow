@@ -288,6 +288,10 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 	const minBootVolumeSizeGb = $derived(minBootVolumeSizeFor(wizardState));
 	const bootVolumeSizeReady = $derived(bootVolumeSizeValid(wizardState));
+	function volumeProtectionValid(w: WizardState): boolean {
+		return w.bootSource === 'volume' || (!w.autoSnapshot && !w.autoBackup) || w.volumeProtectionForce;
+	}
+	const volumeProtectionReady = $derived(volumeProtectionValid(wizardState));
 	let previousSizeImageId: string | null = null;
 	let previousImageMinimum: number | null = null;
 	$effect(() => {
@@ -372,7 +376,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	));
 
 
-	const visibleStepIds: WizardStepId[] = [1, 2, 5, 6];
+	const visibleStepIds: WizardStepId[] = [2, 1, 5, 6];
 	const visibleStepLabels = $derived(visibleStepIds.map(step => STEP_LABELS[step]));
 	const visibleTotalSteps = $derived(visibleStepIds.length);
 	const visibleStepIndex = $derived.by(() => {
@@ -440,13 +444,13 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	);
 
 	const canNext = $derived((() => {
-		if (windowsUnsupported) return false;
+		if (windowsUnsupported && wizardState.step !== 2) return false;
 		switch (wizardState.step) {
-			case 1: return wizardState.bootSource === 'volume' ? !!wizardState.bootVolumeId : !!wizardState.imageId;
+			case 1: return flavorAdmissionReady && (wizardState.bootSource === 'volume' ? !!wizardState.bootVolumeId : !!wizardState.imageId);
 			case 2: return flavorAdmissionReady;
 			case 5:
-				return accessReady && bootVolumeSizeReady;
-			case 6: return flavorAdmissionReady && bootMetadataReady(wizardState) && bootVolumeSizeReady && (!isWindowsBoot || accessReady);
+				return accessReady && bootVolumeSizeReady && volumeProtectionReady;
+			case 6: return flavorAdmissionReady && bootMetadataReady(wizardState) && bootVolumeSizeReady && volumeProtectionReady && (!isWindowsBoot || accessReady);
 			default: return false;
 		}
 	})());
@@ -872,6 +876,10 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		flavorQuota = null;
 		wizard.update(w => ({
 			...w,
+			step: 2,
+			autoSnapshot: false,
+			autoBackup: false,
+			volumeProtectionForce: false,
 			bootVolumeId: null,
 			bootVolumeName: null,
 			flavorId: null,
@@ -940,9 +948,9 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 
 	function nearestVisibleStep(step: number): WizardStepId {
 		return (
-			visibleStepIds.find(candidate => candidate >= step) ??
+			(visibleStepIds.includes(step as WizardStepId) ? step as WizardStepId : visibleStepIds.find(candidate => candidate >= step)) ??
 			visibleStepIds[visibleStepIds.length - 1] ??
-			1
+			2
 		);
 	}
 
@@ -1014,7 +1022,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			goTo(1);
 			return;
 		}
-		if (!bootVolumeSizeValid(get(wizard))) {
+		if (!bootVolumeSizeValid(get(wizard)) || !volumeProtectionValid(get(wizard))) {
 			goTo(5);
 			return;
 		}
@@ -1065,7 +1073,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			goTo(1);
 			return;
 		}
-		if (!bootVolumeSizeValid(get(wizard))) {
+		if (!bootVolumeSizeValid(get(wizard)) || !volumeProtectionValid(get(wizard))) {
 			goTo(5);
 			return;
 		}
@@ -1104,6 +1112,9 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 					image_id: w.imageId,
 					boot_volume_size_gb: w.bootVolumeSizeGb,
 					delete_boot_volume_on_termination: w.deleteBootVolumeOnTermination,
+					auto_snapshot: w.autoSnapshot,
+					auto_backup: w.autoBackup,
+					volume_protection_force: (w.autoSnapshot || w.autoBackup) && w.volumeProtectionForce,
 				}),
 			flavor_id: w.flavorId,
 			network_id: w.networkId,
@@ -1325,6 +1336,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		get selectedImage() { return selectedImage; },
 		get minBootVolumeSizeGb() { return minBootVolumeSizeGb; },
 		get bootVolumeSizeReady() { return bootVolumeSizeReady; },
+		get volumeProtectionReady() { return volumeProtectionReady; },
 		get selectedImageIsUbuntu() { return selectedImageIsUbuntu; },
 		get githubSshEligible() { return githubSshEligible; },
 		get windowsAccount() { return windowsAccount; },

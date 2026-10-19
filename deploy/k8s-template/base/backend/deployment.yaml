@@ -74,11 +74,6 @@ spec:
                 secretKeyRef:
                   name: afterglow-secrets
                   key: SECRET_KEY
-            - name: GITLAB_OIDC_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: afterglow-secrets
-                  key: GITLAB_OIDC_CLIENT_SECRET
             - name: K3S_KUBECONFIG_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:

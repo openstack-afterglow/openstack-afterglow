@@ -1,7 +1,6 @@
 """Focused backend unit tests for service proxy layer."""
 
 import json
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -12,8 +11,6 @@ from starlette.requests import Request
 from app.api.deps import get_token_info
 from app.main import app
 from app.services.service_proxy import (
-    _get_internal_endpoint,
-    _get_service_internal_endpoint,
     get_json,
     proxy,
     proxy_passthrough,
@@ -215,98 +212,6 @@ async def test_package_transport_initialization_failure_is_safe_503(
         assert private_value not in caplog.text
 
 
-def test_get_internal_endpoint_success():
-    mock_conn = MagicMock()
-    mock_conn.session.get_endpoint.return_value = "http://10.0.0.1:8010/v1/"
-    with patch("app.services.keystone.get_openstack_connection", return_value=mock_conn) as mock_get_conn:
-        ep = _get_internal_endpoint("token-123", "proj-456", "waygate")
-        assert ep == "http://10.0.0.1:8010/v1"
-        mock_get_conn.assert_called_once_with("token-123", "proj-456")
-        mock_conn.session.get_endpoint.assert_called_once_with(service_type="waygate", interface="internal")
-        mock_conn.close.assert_called_once()
-
-
-def test_get_internal_endpoint_prefers_trusted_configured_override():
-    settings = SimpleNamespace(
-        service_waygate_internal_url="",
-        service_drover_internal_url="",
-        service_lumen_internal_url="http://lumen-api:8012",
-    )
-    with patch("app.services.service_proxy.get_settings", return_value=settings):
-        with patch("app.services.keystone.get_openstack_connection") as mock_get_conn:
-            endpoint = _get_internal_endpoint("token-123", "proj-456", "lumen")
-
-    assert endpoint == "http://lumen-api:8012"
-    mock_get_conn.assert_not_called()
-
-
-def test_get_service_internal_endpoint_prefers_trusted_configured_override():
-    settings = SimpleNamespace(
-        service_waygate_internal_url="http://waygate-api:8010",
-        service_drover_internal_url="",
-        service_lumen_internal_url="",
-    )
-    with patch("app.services.service_proxy.get_settings", return_value=settings):
-        with patch("app.services.keystone.get_admin_project_connection") as mock_get_conn:
-            endpoint = _get_service_internal_endpoint("waygate")
-
-    assert endpoint == "http://waygate-api:8010"
-    mock_get_conn.assert_not_called()
-
-
-def test_get_internal_endpoint_lumen_override_precedence_and_catalog_fallback():
-    # 1. Non-empty Lumen override skips catalog lookup and returns override directly
-    override_settings = SimpleNamespace(
-        service_waygate_internal_url="",
-        service_drover_internal_url="",
-        service_lumen_internal_url="http://lumen-api:8012",
-        service_palimpsest_internal_url="",
-    )
-    with patch("app.services.service_proxy.get_settings", return_value=override_settings):
-        with patch("app.services.keystone.get_openstack_connection") as mock_get_conn:
-            endpoint = _get_internal_endpoint("token-123", "proj-456", "lumen")
-            assert endpoint == "http://lumen-api:8012"
-            mock_get_conn.assert_not_called()
-
-    # 2. Empty Lumen override falls through to the caller-scoped Keystone internal catalog
-    empty_settings = SimpleNamespace(
-        service_waygate_internal_url="",
-        service_drover_internal_url="",
-        service_lumen_internal_url="",
-        service_palimpsest_internal_url="",
-    )
-    mock_conn = MagicMock()
-    mock_conn.session.get_endpoint.return_value = "http://10.0.0.12:8012/"
-    with patch("app.services.service_proxy.get_settings", return_value=empty_settings):
-        with patch("app.services.keystone.get_openstack_connection", return_value=mock_conn) as mock_get_conn:
-            endpoint = _get_internal_endpoint("token-123", "proj-456", "lumen")
-            assert endpoint == "http://10.0.0.12:8012"
-            mock_get_conn.assert_called_once_with("token-123", "proj-456")
-            mock_conn.session.get_endpoint.assert_called_once_with(service_type="lumen", interface="internal")
-            mock_conn.close.assert_called_once()
-
-
-def test_get_internal_endpoint_none_and_exception_closes_conn():
-    mock_conn = MagicMock()
-    mock_conn.session.get_endpoint.side_effect = Exception("Catalog lookup failed")
-    with patch("app.services.keystone.get_openstack_connection", return_value=mock_conn):
-        ep = _get_internal_endpoint("token-123", "proj-456", "drover")
-        assert ep is None
-        mock_conn.close.assert_called_once()
-
-
-def test_get_service_internal_endpoint_uses_service_account_catalog():
-    mock_conn = MagicMock()
-    mock_conn.session.get_endpoint.return_value = "http://10.0.0.2:8010/"
-    with patch("app.services.keystone.get_admin_project_connection", return_value=mock_conn) as mock_get_conn:
-        endpoint = _get_service_internal_endpoint("waygate")
-
-    assert endpoint == "http://10.0.0.2:8010"
-    mock_get_conn.assert_called_once_with()
-    mock_conn.session.get_endpoint.assert_called_once_with(service_type="waygate", interface="internal")
-    mock_conn.close.assert_called_once()
-
-
 @pytest.mark.asyncio
 async def test_lumen_proxy_separates_connection_and_logical_projects():
     req = _make_request(
@@ -336,31 +241,6 @@ async def test_lumen_proxy_separates_connection_and_logical_projects():
 
 
 @pytest.mark.asyncio
-async def test_non_lumen_proxy_preserves_logical_project_contract():
-    req = _make_request(
-        token_info={
-            "token": "home-scoped-token",
-            "project_id": "logical-project",
-            "connection_project_id": "home-project",
-        },
-    )
-    upstream_response = httpx.Response(200, stream=httpx.ByteStream(b"{}"))
-
-    with patch(
-        "app.services.service_proxy._get_internal_endpoint",
-        return_value="http://waygate.internal:8010",
-    ) as mock_endpoint:
-        with patch.object(httpx.AsyncClient, "send", return_value=upstream_response) as mock_send:
-            response = await proxy("waygate", req, "/v1/servers")
-
-    assert response.status_code == 200
-    mock_endpoint.assert_called_once_with("home-scoped-token", "logical-project", "waygate")
-    sent_request = mock_send.call_args.args[0]
-    assert sent_request.headers["x-project-id"] == "logical-project"
-    assert sent_request.headers.get("x-target-project-id") is None
-
-
-@pytest.mark.asyncio
 async def test_proxy_rejects_unvalidated_auth_headers():
     req = _make_request(
         headers={
@@ -375,27 +255,6 @@ async def test_proxy_rejects_unvalidated_auth_headers():
 
     assert exc_info.value.status_code == 401
     mock_endpoint.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_get_json_uses_caller_catalog_and_keystone_headers():
-    req = _make_request(
-        path="/api/v1/admin/resource-policies",
-        headers={"X-Project-Id": "attacker-project"},
-        token_info={"token": "ks-token-secret", "project_id": "proj-uuid-1", "is_system_admin": True},
-    )
-    upstream_response = httpx.Response(200, json=[{"key": "waygate.image"}])
-
-    with patch("app.services.service_proxy._get_internal_endpoint", return_value="http://waygate.internal:8010"):
-        with patch.object(httpx.AsyncClient, "get", return_value=upstream_response) as mock_get:
-            result = await get_json("waygate", req, "/v1/admin/resource-policies")
-
-    assert result == [{"key": "waygate.image"}]
-    url = mock_get.await_args.args[0]
-    headers = mock_get.await_args.kwargs["headers"]
-    assert url == "http://waygate.internal:8010/v1/admin/resource-policies"
-    assert headers["x-auth-token"] == "ks-token-secret"
-    assert headers["x-project-id"] == "proj-uuid-1"
 
 
 @pytest.mark.asyncio
@@ -459,45 +318,6 @@ async def test_proxy_same_project_unchanged_behavior():
             assert headers.get("x-auth-token") == "ks-token-home"
             assert headers.get("x-project-id") == "proj-home-123"
             assert headers.get("x-target-project-id") is None
-
-
-@pytest.mark.asyncio
-async def test_proxy_foreign_system_admin_header_split():
-    """System admin requesting foreign logical project sends connection project as X-Project-Id and target as X-Target-Project-Id."""
-    req = _make_request(
-        token_info={
-            "token": "admin-ks-token",
-            "project_id": "target-tenant-789",
-            "connection_project_id": "admin-home-456",
-            "is_system_admin": True,
-        },
-    )
-    upstream_response = httpx.Response(200, stream=httpx.ByteStream(b'{"status":"ok"}'))
-
-    with patch(
-        "app.services.service_proxy._get_internal_endpoint", return_value="http://lumen.internal:8000"
-    ) as mock_ep:
-        with patch.object(httpx.AsyncClient, "send", return_value=upstream_response) as mock_send:
-            resp = await proxy("lumen", req, "/v1/chat/models")
-            assert resp.status_code == 200
-            mock_ep.assert_called_once_with("admin-ks-token", "admin-home-456", "lumen")
-            sent_req = mock_send.call_args[0][0]
-            assert sent_req.headers.get("x-auth-token") == "admin-ks-token"
-            assert sent_req.headers.get("x-project-id") == "admin-home-456"
-            assert sent_req.headers.get("x-target-project-id") == "target-tenant-789"
-
-    with patch(
-        "app.services.service_proxy._get_internal_endpoint", return_value="http://lumen.internal:8000"
-    ) as mock_ep:
-        with patch.object(httpx.AsyncClient, "get", return_value=upstream_response) as mock_get:
-            mock_get.return_value = httpx.Response(200, json={"status": "ok"})
-            res = await get_json("lumen", req, "/v1/models")
-            assert res == {"status": "ok"}
-            mock_ep.assert_called_once_with("admin-ks-token", "admin-home-456", "lumen")
-            headers = mock_get.call_args[1]["headers"]
-            assert headers.get("x-auth-token") == "admin-ks-token"
-            assert headers.get("x-project-id") == "admin-home-456"
-            assert headers.get("x-target-project-id") == "target-tenant-789"
 
 
 @pytest.mark.asyncio

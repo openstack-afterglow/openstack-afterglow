@@ -23,6 +23,7 @@ from app.api import deps
 from app.api.union import layer_ops
 from app.models.db import LayerArtifact, LayerConsume, LayerProfile
 from app.services import layer_block, layer_build, layer_consume_resources
+from tests.admin_gate import synthetic_verified_admin
 from tests.test_layer_block import block_provider as block_provider
 from tests.test_layer_consume_resources import ledger as ledger
 
@@ -194,6 +195,7 @@ async def test_expected_project_mismatch_is_rejected_before_admission_and_mutati
     app = FastAPI()
     app.include_router(layer_ops.router, prefix="/api/v1/admin/libraries")
     app.dependency_overrides[deps.get_token_info] = lambda: {"is_system_admin": True}
+    app.dependency_overrides[deps.require_admin] = synthetic_verified_admin
     app.dependency_overrides[deps.get_os_conn] = lambda: conn
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
@@ -287,6 +289,7 @@ async def test_api_reports_durable_pending_id_after_unknown_create(ledger, block
     app = FastAPI()
     app.include_router(layer_ops.router, prefix="/api/v1/admin/libraries")
     app.dependency_overrides[deps.get_token_info] = lambda: {"is_system_admin": True}
+    app.dependency_overrides[deps.require_admin] = synthetic_verified_admin
     app.dependency_overrides[deps.get_os_conn] = lambda: conn
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
@@ -324,6 +327,7 @@ async def test_completed_unclaimed_admission_cleanup_needs_no_cloud_connection(l
     app = FastAPI()
     app.include_router(layer_ops.router, prefix="/api/v1/admin/libraries")
     app.dependency_overrides[deps.get_token_info] = lambda: {"is_system_admin": True}
+    app.dependency_overrides[deps.require_admin] = synthetic_verified_admin
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         first = await client.delete(f"/api/v1/admin/libraries/consumes/{consume_id}")
         repeated = await client.delete(f"/api/v1/admin/libraries/consumes/{consume_id}")

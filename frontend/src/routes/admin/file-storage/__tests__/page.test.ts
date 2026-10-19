@@ -11,7 +11,7 @@ describe('admin file-storage refresh ownership', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		api.get.mockResolvedValue([]);
-		auth.set({ token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'admin', username: 'admin', projectId: 'project', projectName: 'project', availableProjects: [], roles: ['admin'], isSystemAdmin: true, federated: false });
+		auth.set({ token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'admin', username: 'admin', projectId: 'project', projectName: 'project', availableProjects: [], roles: ['admin'], isSystemAdmin: true, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false });
 	});
 
 	it('starts the explicit list and timeseries round once', async () => {

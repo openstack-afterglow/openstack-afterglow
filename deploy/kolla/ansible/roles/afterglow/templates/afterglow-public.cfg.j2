@@ -3,6 +3,8 @@
 backend afterglow-public_back
     mode http
     http-request set-header X-Forwarded-For %[src]
+    # Application logs retain route templates; proxy request lines must not retain proofs.
+    http-request set-log-level silent if { path_beg /api/v1/auth/ /auth/callback /recover/ /registrations/ /invitations/ }
     option httpchk GET /
     http-check expect status 200
     server afterglow-public-router 127.0.0.1:{{ afterglow_public_haproxy_router_port }} check
@@ -12,6 +14,7 @@ backend afterglow-public_back
 frontend afterglow-public-router_front
     mode http
     bind 127.0.0.1:{{ afterglow_public_haproxy_router_port }}
+    http-request set-log-level silent if { path_beg /api/v1/auth/ /auth/callback /recover/ /registrations/ /invitations/ }
     use_backend afterglow-api_back if { path_beg /api/ }
     acl is_mcp path /mcp
     acl is_mcp path_beg /mcp/

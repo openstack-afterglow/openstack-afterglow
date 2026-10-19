@@ -89,6 +89,8 @@ Glance 이미지 카탈로그를 조회하고, 이미지 업로드·메타데이
 | `disk_format` | string \| null | 디스크 포맷 (`qcow2`, `raw` 등) |
 | `os_type` | string \| null | OS 타입 |
 | `os_distro` | string \| null | OS 배포판 (`ubuntu`, `centos` 등) |
+| `gpu_vendor` | string \| null | 명시적 Glance property. `nvidia`, `amd`, `intel`; 이름/OS에서 추정하지 않음 |
+| `gpu_driver` | string \| null | 명시적 사전 설치 드라이버 종류. `nvidia`, `nvidia-grid`, `nouveau`, `amdgpu`, `i915`, `xe`, `none`; 알 수 없는 값은 opaque metadata로 보존 |
 | `created_at` | string \| null | 생성 일시 (ISO 8601) |
 | `owner` | string \| null | 소유 프로젝트 UUID |
 | `visibility` | string \| null | `private` \| `public` \| `shared` \| `community` |
@@ -105,7 +107,11 @@ Glance 이미지 카탈로그를 조회하고, 이미지 업로드·메타데이
 
 Current 업로드는 검색/OS 조건을 적용하기 전의 repository·tag별 최신 `created_at`(마이크로초 포함)으로 정합니다. 비활성 최신 업로드를 과거 active UUID로 대체하지 않으며 선택은 실제 이미지 `id`를 사용합니다. 검색·카드 접기·전환은 기존 선택을 바꾸지 않고 과거/누락 UUID의 경고도 유지합니다.
 
-Glance SHA-256/512는 축약 표시와 전체 title·접근성 이름, `created_at`은 현재 언어·브라우저 시간대의 초 단위 시각과 전체 ISO title, `size`는 사람이 읽는 용량으로 표시합니다. 날짜·크기를 알 수 없으면 `-`이며 이미지 UUID는 이 선택 행에서만 숨깁니다. 기존 catalog·관리자 상세의 SHA·UUID 표시는 그대로이고 추가 API 요청이나 응답 필드는 없습니다.
+VM 생성은 Flavor를 먼저 선택한다. 선택한 GPU Flavor의 vendor/장치 요청과 `gpu_vendor`·`gpu_driver`를 대조하여 **current active이며 관리자 검증된** 사전 설치 드라이버 이미지를 추천한다. 이미지 이름에 GPU/CUDA가 있다는 이유만으로 드라이버 설치나 적합성을 주장하지 않는다. GPU 모델·버전·호스트/vGPU 및 라이선스 호환성은 별도 확인 사항이다. CPU Flavor는 GPU driver metadata가 없는 일반 이미지를 우선 안내하고, GPU driver 이미지를 명시적으로 선택하면 불필요한 오버헤드를 경고한다. 추천은 사용자 선택 UUID를 자동 변경하거나 다른 이미지를 차단하지 않는다.
+
+이미지 소유자/관리자는 기존 properties API에서 실제 게스트에 준비한 값만 설정한다. 예: `PATCH /api/v1/images/{image_id}/properties`의 `{"set":{"gpu_vendor":"nvidia","gpu_driver":"nvidia"}}`. Native Glance property 제한·소유권을 그대로 적용하며 설정 자체는 드라이버 설치·관리자 검증 승인이 아니다. 기존 검증은 이미지 UUID/owner/created_at/hash에 대한 승인이지 가변 GPU metadata의 설치·호환성 인증이 아니다. 일반 이미지는 `gpu_driver=none`으로 명시할 수 있다. RAM 최소 요구량은 선택 Flavor와 대조하지만 `min_disk`는 별도 Cinder 부팅 볼륨 크기로 충족하므로 Flavor의 nominal disk보다 크다는 이유만으로 추천에서 제외하지 않는다.
+
+Glance SHA-256/512는 축약 표시와 전체 title·접근성 이름, `created_at`은 현재 언어·브라우저 시간대의 초 단위 시각과 전체 ISO title, `size`는 사람이 읽는 용량으로 표시합니다. 날짜·크기를 알 수 없으면 `-`이며 이미지 UUID는 이 선택 행에서만 숨깁니다. 기존 catalog·관리자 상세의 SHA·UUID 표시는 그대로입니다. 태그 목록 표시는 추가 조회를 하지 않으며 Flavor 추천에는 위 `gpu_vendor`·`gpu_driver` 목록 필드를 사용합니다.
 
 VM chooser의 compact 표시는 SHA 값의 앞 8자리만 보이며 알고리즘 이름·suffix는 생략합니다. 전체 알고리즘·SHA는 기존 title·aria-label에 보존하고 태그 이름 셀 전체의 native title로 전체 태그를 확인합니다. 메타데이터 열을 좁혀 태그 이름이 남은 폭을 쓰지만 초 단위 시각·용량 내용은 유지합니다. 이는 서버 SHA 값이나 이미지 identity를 축약하는 계약이 아니며 8자리 prefix로 UUID를 비교하거나 합치지 않습니다.
 
@@ -124,6 +130,8 @@ VM chooser의 compact 표시는 SHA 값의 앞 8자리만 보이며 알고리즘
 | `disk_format` | string | 아니오 | `raw` | 허용 포맷만 가능(`raw`/`qcow2`/`vmdk` 등). 미허용 시 `400` |
 | `visibility` | string | 아니오 | `private` | `private`/`public`/`shared`/`community` |
 | `os_distro` | string | 아니오 | — | OS 배포판. 지정 시 이미지 property로 설정 |
+| `gpu_vendor` | string | 아니오 | 미지정 | 명시적 GPU 제조사: `nvidia`/`amd`/`intel` 또는 빈 문자열 |
+| `gpu_driver` | string | 아니오 | 미지정 | 사전 설치 드라이버: `nvidia`/`nvidia-grid`/`nouveau`/`amdgpu`/`i915`/`xe`/`none` 또는 빈 문자열 |
 
 > `public`/`community` 가시성은 **시스템 관리자만** 설정할 수 있습니다. 일반 사용자 요청은 `403`입니다.
 
@@ -217,6 +225,10 @@ Repository 미리보기에는 tag를 한 번만 표시합니다. 사용자 repos
 | `min_disk` | integer \| null | 최소 디스크(GB) |
 | `min_ram` | integer \| null | 최소 RAM(MB) |
 | `visibility` | string \| null | 가시성 |
+| `gpu_vendor` | string \| null | 제조사 선언. 업로드와 같은 허용 값. 생략/null은 변경하지 않음 |
+| `gpu_driver` | string \| null | 드라이버 선언. 업로드와 같은 허용 값. 생략/null은 변경하지 않음 |
+
+Typed GPU metadata를 포함한 수정은 공급한 표준 필드와 함께 단일 native Glance JSON Patch로 저장하고 재조회한다. Shared/public 이미지를 사용하는 다른 프로젝트의 목록 cache도 무효화한다. 허용하지 않은 typed 선언은 native 호출 전에422이며 임의 properties API는 기존 opaque 속성 계약을 유지한다. GPU metadata 입력은 사전 설치된 게스트 상태를 설명할 뿐 드라이버를 설치하지 않는다.
 
 **응답 (200 OK)** — 갱신된 `ImageInfo`
 

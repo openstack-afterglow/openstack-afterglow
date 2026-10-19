@@ -28,6 +28,9 @@
 		data: number[];
 		points: number;
 		available: boolean;
+		source: string | null;
+		status: string;
+		native_status: string | null;
 	}
 
 	interface TrendData {
@@ -35,7 +38,8 @@
 		memory: TrendSeries;
 		storage: TrendSeries;
 		network: TrendSeries & { unit: string };
-		prometheus_available: boolean;
+		monitoring_available: boolean;
+		scope?: 'native_policy';
 		range: Range;
 	}
 
@@ -73,6 +77,7 @@
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
+	const context = $derived(JSON.stringify([$authReady, token, $auth.userId, $auth.identityDomainId, projectId]));
 	const k3sDisabled = $derived(!($siteConfig.services?.k3s ?? false));
 	const authLoading = $derived(!$authReady);
 
@@ -87,6 +92,7 @@
 	let announcementsState = $state<ResourceState<AnnouncementUser[]>>(newResource());
 	let range = $state<Range>(savedRange && VALID_RANGES.includes(savedRange) ? savedRange : '14d');
 	let visibleProjectId = $state<string | null>(null);
+	let visibleContext = $state<string | null>(null);
 	let refreshing = $state(false);
 	let syncStatus = $state<SyncStatus>('waiting');
 	let lastSuccessfulSyncAt = $state<number | null>(null);
@@ -101,8 +107,8 @@
 
 	let projectEpoch = 0;
 	let nextBatchId = 0;
-	let initialProjectId = $state<string | null>(null);
-	const initialLoadPending = $derived(Boolean(projectId && initialProjectId !== projectId));
+	let initialContext = $state<string | null>(null);
+	const initialLoadPending = $derived(Boolean(projectId && initialContext !== context));
 	let currentBatch: BatchState | null = null;
 	let manualBatchId: number | null = null;
 
@@ -214,10 +220,14 @@
 		batchId: number | null,
 		requestProjectId: string,
 		requestEpoch: number,
+		requestContext: string,
 		requestRange?: Range,
 	): boolean {
 		return (
 			projectEpoch === requestEpoch
+			&& context === requestContext
+			&& visibleContext === requestContext
+			&& projectId === requestProjectId
 			&& visibleProjectId === requestProjectId
 			&& slot.generation === generation
 			&& slot.batchId === batchId
@@ -243,7 +253,9 @@
 		requestRange?: Range,
 	): Promise<void> {
 		const requestProjectId = projectId;
-		if (!$authReady || !requestProjectId || !token) return;
+		const requestToken = token;
+		const requestContext = context;
+		if (!$authReady || !requestProjectId || !requestToken || visibleContext !== requestContext) return;
 
 		const slot = slots[domain];
 		slot.controller?.abort();
@@ -258,21 +270,21 @@
 		state.error = null;
 
 		try {
-			const data = await api.get<T>(path, token, requestProjectId, {
+			const data = await api.get<T>(path, requestToken, requestProjectId, {
 				refresh: batch?.refresh,
 				signal: controller.signal,
 			});
-			if (!ownsRequest(slot, generation, batchId, requestProjectId, requestEpoch, requestRange)) return;
+			if (!ownsRequest(slot, generation, batchId, requestProjectId, requestEpoch, requestContext, requestRange)) return;
 			state.data = data;
 			state.error = null;
 			state.lastSuccessAt = Date.now();
 			settleDomain(batch, domain, true);
 		} catch {
-			if (!ownsRequest(slot, generation, batchId, requestProjectId, requestEpoch, requestRange)) return;
+			if (!ownsRequest(slot, generation, batchId, requestProjectId, requestEpoch, requestContext, requestRange)) return;
 			state.error = errorFor(domain);
 			settleDomain(batch, domain, false);
 		} finally {
-			if (ownsRequest(slot, generation, batchId, requestProjectId, requestEpoch, requestRange)) {
+			if (ownsRequest(slot, generation, batchId, requestProjectId, requestEpoch, requestContext, requestRange)) {
 				state.pending = false;
 				slot.controller = null;
 			}
@@ -355,6 +367,7 @@
 
 	function handleRangeChange(nextRange: Range): void {
 		range = nextRange;
+		trendState.data = null;
 		localStorage.setItem('dashboard-overview-range', nextRange);
 		if (!$authReady) return;
 		const batch = currentBatch;
@@ -374,21 +387,22 @@
 	});
 
 	$effect.pre(() => {
-		const nextProjectId = $auth.projectId ?? null;
-		if (nextProjectId === visibleProjectId) return;
+		const nextContext = context;
+		if (nextContext === visibleContext) return;
 		retireBatch(currentBatch);
 		projectEpoch += 1;
 		abortAllSlots();
 		resetResources();
-		visibleProjectId = nextProjectId;
-		initialProjectId = null;
+		visibleProjectId = projectId ?? null;
+		visibleContext = nextContext;
+		initialContext = null;
 	});
 
 	$effect(() => {
 		const ready = $authReady;
-		const nextProjectId = $auth.projectId;
-		if (!ready || !nextProjectId || nextProjectId !== visibleProjectId || initialProjectId === nextProjectId) return;
-		initialProjectId = nextProjectId;
+		const nextContext = context;
+		if (!ready || !token || !projectId || nextContext !== visibleContext || initialContext === nextContext) return;
+		initialContext = nextContext;
 		untrack(() => void fetchAll('initial'));
 	});
 
@@ -403,9 +417,24 @@
 		if (severity === 'warning') return 'var(--color-state-warning)';
 		return 'var(--color-accent)';
 	}
+
+	function telemetrySource(source: string): string {
+		if (source === 'gnocchi') return t('telemetry.native');
+		if (source === 'prometheus') return t('telemetry.fallback');
+		if (source === 'mixed') return t('telemetry.mixed');
+		return t('telemetry.source', { source });
+	}
+
+	function telemetryStatus(status: string): string {
+		if (status === 'partial') return t('telemetry.partial');
+		if (status === 'not_configured') return t('overview.metricsNotConfigured');
+		if (status === 'forbidden') return t('telemetry.forbidden');
+		if (status === 'unavailable') return t('telemetry.unavailable');
+		return t('telemetry.noData');
+	}
 </script>
 
-{#key visibleProjectId}
+{#key visibleContext}
 <PageShell class="flex flex-col gap-5">
 	<DashboardGreetingHeader
 		username={$auth.username ?? ''}
@@ -434,19 +463,22 @@
 		<p class="text-xs tracking-tight text-[var(--color-ink-2)]">{t('overview.trend')}</p>
 		<RangeToggle value={range} onchange={handleRangeChange} />
 	</div>
+	{#if trendState.data?.scope === 'native_policy'}
+		<p class="text-xs text-ink-2">{t('telemetry.nativePolicy')}</p>
+	{/if}
 	<div class="motion-stagger grid grid-cols-1 md:grid-cols-3 gap-3.5">
 		{#each [
 			{ label: t('overview.vcpu', { range }), color: 'var(--color-accent)', key: 'vcpu' as const, unit: '%' },
 			{ label: t('overview.memory', { range }), color: 'var(--color-accent-2)', key: 'memory' as const, unit: '%' },
 			{ label: t('overview.disk', { range }), color: 'var(--color-warm)', key: 'storage' as const, unit: '%' },
-		] as card (card.key)}
+		] as card (`${card.key}:${range}`)}
 			{@const currentTrend = trendState.data?.range === range ? trendState.data : null}
 			{@const series = currentTrend?.[card.key]}
-			{@const hasData = (series?.data.length ?? 0) > 0}
+			{@const hasData = Boolean(series?.available && (series.status === 'available' || series.status === 'partial') && series.data.length > 0)}
 			{@const current = hasData ? series!.data.at(-1)! : null}
 			{@const min = hasData ? Math.min(...series!.data) : null}
 			{@const max = hasData ? Math.max(...series!.data) : null}
-			<div class="bg-surface-base border border-line rounded-lg p-5 flex flex-col gap-2">
+			<div role="group" aria-label={card.label} class="bg-surface-base border border-line rounded-lg p-5 flex flex-col gap-2">
 				<div class="flex items-baseline justify-between">
 					<p class="text-xs tracking-tight text-[var(--color-ink-2)]">{card.label}</p>
 					{#if current !== null}
@@ -462,12 +494,23 @@
 						<Spark data={series!.data} color={card.color} height={72} class="w-full" />
 					{:else if trendState.error}
 						<p class="text-xs italic text-[var(--color-state-danger)]">{t('overview.metricsFailed')}</p>
-					{:else if !currentTrend || !currentTrend.prometheus_available}
-						<p class="text-xs italic text-[var(--color-ink-2)]">{t('overview.metricsNotConfigured')}</p>
+					{:else if series}
+						<p class="text-xs text-ink-2">{telemetryStatus(series.status)}</p>
+					{:else if currentTrend && !currentTrend.monitoring_available}
+						<p class="text-xs italic text-ink-2">{t('overview.metricsNotConfigured')}</p>
 					{:else}
-						<p class="text-xs text-[var(--color-ink-2)]">{t('overview.metricsWaiting')}</p>
+						<p class="text-xs text-ink-2">{t('telemetry.noData')}</p>
 					{/if}
 				</div>
+				{#if series?.source}
+					<p class="text-xs text-ink-2">{telemetrySource(series.source)}</p>
+				{/if}
+				{#if hasData && series?.status === 'partial'}
+					<p class="text-xs text-state-warning-text">{t('telemetry.partial')}</p>
+				{/if}
+				{#if series?.source && series.source !== 'gnocchi' && series.native_status && series.native_status !== 'available'}
+					<p class="text-xs text-ink-2">{t('telemetry.nativeState', { status: telemetryStatus(series.native_status) })}</p>
+				{/if}
 				{#if hasData}
 					<p class="text-xs tabular-nums text-[var(--color-ink-2)]">
 						{t('overview.minMax', { min: min!.toFixed(1), max: max!.toFixed(1), unit: card.unit })}

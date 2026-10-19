@@ -1,0 +1,573 @@
+{
+  "change": "repair-local-login-debug-diagnostics",
+  "date": "2026-10-15",
+  "boundary": "Authorized local Docker repair; native read-only diagnostics, isolated synthetic full login, and independently observed actual local login/browser session. No production deployment or agent-issued IAM mutation.",
+  "proof_directory": "/Users/pieroot/.local/share/afterglow-proofs/login-debug-20261015T055711Z",
+  "frozen_source": "/var/folders/1m/xfc726k14szbjnrlq5t68zjw0000gn/T/afterglow-login-debug-source-0ejr06bj",
+  "source_sha256": {
+    "backend/app/api/identity/auth.py": "9ea1955a6c1e14a906be27bca3c5c8270fe7a3cff75d233b6cf602a2ea3ba155",
+    "backend/app/api/identity/domain_auth.py": "bee2b27229802d9ac51a609207a09b4ee60d3116b6c34a52980ab834430e2fa6",
+    "backend/app/main.py": "f5bedf73c83d5acc99a90210030b4d5362560178131edeb255585e595ce4805e",
+    "backend/app/services/keystone.py": "e1c6d1813a3a3037d2933e5d1fd106fcf03532d6de821a3bb6756b4a8bdd9537",
+    "backend/app/services/domain_projects.py": "3e95660bb565f2d67977a5cd1ba9d566551895e42932c083cb9d40fa3765beb9",
+    "backend/app/utils/auth_diagnostics.py": "34ba63f013e6a416c6d80639e56af39d5542ce911bfbc9892f95659819783415",
+    "backend/app/utils/log.py": "1599c29f48681dc4bb983d9a6d353984950e15fe3987170ae066ab7657f837ff",
+    "backend/tests/test_auth_diagnostics.py": "e90d0854fc630d7ccc5e22c9f3bef49b94e2798de2ce92df0711eb3f96c46ceb",
+    "backend/tests/test_logging_contract.py": "ad7fdb08dda67e5e81233eafc0d4451002ed96379e359a79699e83f1d61f68dc",
+    "backend/tests/test_keystone_endpoint_selection.py": "d855f501c7b6f1b0598f7730d869ce8213b0e600422a70a1f9df69d6e33cd9e3",
+    "backend/tests/test_domain_projects.py": "875fd3012f10ca4fd1b8645dbba5a7239031a4b4a74fc014ea1016b3a76bd888",
+    "backend/tests/test_auth_domain_boundaries.py": "e2b72f95826878862963e5dc7a708e7920c064779f5de9d7a4176b14dfbd3662",
+    "backend/tests/test_domain_iam.py": "106d55411acc49525daee51577c618b98111c79ce3be648dd02bb7f0dca284a2",
+    "backend/tests/test_keystone_system_scope.py": "0df83cf424ef250df9b62c7e16396c2f3da79a0c17d5ed93ec177d691a289cfb",
+    "scripts/test-target.js": "de23962732a1cbd0baa250267c4b318585de98dbdd1f4b1b109d5799a6bda9ef"
+  },
+  "native_before_after": {
+    "before_requests": 674,
+    "after_requests": 50,
+    "before_authority_seconds": 31.76,
+    "after_authority_seconds": 5.311,
+    "boundary": "Same configured account, installed SDK and real Keystone; authentication/reads only, not full HTTP login; after probe mounted frozen app source into original runtime image."
+  },
+  "regressions": {
+    "focused_diagnostic_logging_rotation_passed": 89,
+    "endpoint_selection_passed": 3,
+    "auth_backend_passed": 371,
+    "auth_frontend_passed": 134,
+    "access_backend_passed": 637,
+    "access_frontend_passed": 135,
+    "scoped_ruff_check_and_format": "passed",
+    "full_test_gate": "not run for this change; no commit/push",
+    "initial_failures": "Obsolete unrelated-inventory expectation and fixture endpoint settings corrected; retained in auth-and-initial-access.log; final access in access-final.log"
+  },
+  "canonical_builds": [
+    {
+      "target": "backend",
+      "architecture": "arm64",
+      "tag": "afterglow-login-debug-20261015/backend:arm64",
+      "exit_code": 0,
+      "seconds": 60.38
+    },
+    {
+      "target": "backend",
+      "architecture": "amd64",
+      "tag": "afterglow-login-debug-20261015/backend:amd64",
+      "exit_code": 0,
+      "seconds": 103.1
+    },
+    {
+      "target": "worker",
+      "architecture": "arm64",
+      "tag": "afterglow-login-debug-20261015/worker:arm64",
+      "exit_code": 0,
+      "seconds": 8.92
+    },
+    {
+      "target": "worker",
+      "architecture": "amd64",
+      "tag": "afterglow-login-debug-20261015/worker:amd64",
+      "exit_code": 0,
+      "seconds": 7.31
+    },
+    {
+      "target": "native-vm",
+      "architecture": "arm64",
+      "tag": "afterglow-login-debug-20261015/native-vm:arm64",
+      "exit_code": 0,
+      "seconds": 39.73
+    },
+    {
+      "target": "native-vm",
+      "architecture": "amd64",
+      "tag": "afterglow-login-debug-20261015/native-vm:amd64",
+      "exit_code": 0,
+      "seconds": 62.75
+    },
+    {
+      "target": "native-cloud-vm",
+      "architecture": "amd64",
+      "tag": "afterglow-login-debug-20261015/native-cloud-vm:amd64",
+      "exit_code": 0,
+      "seconds": 120.56
+    }
+  ],
+  "image_runtime": {
+    "architecture_binary_runs": 7,
+    "native_tcp_failure_diagnostic_runs": 5,
+    "all_http_statuses": [
+      503,
+      503,
+      503,
+      503,
+      503
+    ],
+    "native_supervisors": [
+      {
+        "target": "native-vm",
+        "architecture": "arm64",
+        "container": "284d8e1935264bc61b5cc9a1e05c664fae57c4305a1e29899a57748a3f29205b",
+        "limit": "Supervisor container, not actual VM boot/systemd",
+        "health": [
+          200,
+          200
+        ],
+        "login_page": 200,
+        "shutdown_exit_code": 0,
+        "ephemeral_filesystem": true
+      },
+      {
+        "target": "native-vm",
+        "architecture": "amd64",
+        "container": "aea37690f527f38d60a93d5ce9e1cddd94aa7a5a1344398bcad35d4dcd3787fb",
+        "limit": "Supervisor container, not actual VM boot/systemd",
+        "health": [
+          200,
+          200
+        ],
+        "login_page": 200,
+        "shutdown_exit_code": 0,
+        "ephemeral_filesystem": true
+      },
+      {
+        "target": "native-cloud-vm",
+        "architecture": "amd64",
+        "container": "71d5c22d2ff3ba23e0917ac8cfbe1b471ae5e196290dfe1871e303f3c9e8f3ae",
+        "limit": "Supervisor container, not actual VM boot/systemd",
+        "health": [
+          200,
+          200
+        ],
+        "login_page": 200,
+        "shutdown_exit_code": 0,
+        "ephemeral_filesystem": true
+      }
+    ],
+    "source_parity": [
+      {
+        "tag": "afterglow-login-debug-20261015/backend:arm64",
+        "matched_runtime_files": 302
+      },
+      {
+        "tag": "afterglow-login-debug-20261015/backend:amd64",
+        "matched_runtime_files": 302
+      },
+      {
+        "tag": "afterglow-login-debug-20261015/worker:arm64",
+        "matched_runtime_files": 302
+      },
+      {
+        "tag": "afterglow-login-debug-20261015/worker:amd64",
+        "matched_runtime_files": 302
+      },
+      {
+        "tag": "afterglow-login-debug-20261015/native-vm:arm64",
+        "matched_runtime_files": 302
+      },
+      {
+        "tag": "afterglow-login-debug-20261015/native-vm:amd64",
+        "matched_runtime_files": 302
+      },
+      {
+        "tag": "afterglow-login-debug-20261015/native-cloud-vm:amd64",
+        "matched_runtime_files": 302
+      }
+    ],
+    "real_vm_boot": false
+  },
+  "isolated_compose": {
+    "boundary": "Canonical isolated Compose, real MariaDB/Redis/installed SDK, synthetic Keystone; no production state",
+    "project": "afterglow-login-debug-amd64",
+    "login": {
+      "debug": true,
+      "stages": [
+        {
+          "no_store": true,
+          "seconds": 0.281,
+          "stage": "domain_resolution",
+          "status": 200
+        },
+        {
+          "identity_domain_matches": true,
+          "no_store": true,
+          "project_scoped": true,
+          "seconds": 0.526,
+          "stage": "password_login",
+          "status": 200,
+          "system_admin": true
+        },
+        {
+          "no_store": true,
+          "seconds": 0.218,
+          "stage": "current_identity",
+          "status": 200
+        },
+        {
+          "domain_count": 1,
+          "no_store": true,
+          "seconds": 0.196,
+          "stage": "accessible_domains",
+          "status": 200
+        },
+        {
+          "no_store": true,
+          "seconds": 0.228,
+          "stage": "refresh",
+          "status": 200
+        },
+        {
+          "no_store": true,
+          "seconds": 0.117,
+          "stage": "logout",
+          "status": 200
+        }
+      ]
+    },
+    "worker_members": 1,
+    "health": {
+      "backend": "healthy",
+      "afterglow-mariadb": "healthy"
+    },
+    "cleanup": [
+      {
+        "service": "backend",
+        "exit_code": 0
+      },
+      {
+        "service": "notion-worker",
+        "exit_code": 0
+      },
+      {
+        "service": "redis",
+        "exit_code": 0
+      },
+      {
+        "service": "afterglow-mariadb",
+        "exit_code": 0
+      },
+      {
+        "service": "proof-keystone",
+        "exit_code": 0
+      }
+    ]
+  },
+  "local_deployment": {
+    "services": [
+      {
+        "name": "/afterglow-local-services-frontend-1",
+        "id": "8e10840a7a41e72b5eff9cfcdad3a8573bf6a62874b0507144a3f9c6cd1c7989",
+        "image": "sha256:b28974b78b58ac10f8980f9c51bd3c5f6f041f6af939580ce76520ee9a15ed5c",
+        "state": "running",
+        "health": "healthy",
+        "started_at": "2026-10-15T02:55:23.138688341Z",
+        "selected": false
+      },
+      {
+        "name": "/afterglow-local-services-backend-1",
+        "id": "35dbb6466f68ba96a04b2b07b0603703615bea7d0ffe3ffd62d458690757e5a7",
+        "image": "sha256:f2bffa970272003839dc52516fd1926f1839993163edd856123152218b5a09a5",
+        "state": "running",
+        "health": "healthy",
+        "started_at": "2026-10-15T06:42:51.996731385Z",
+        "selected": true
+      },
+      {
+        "name": "/afterglow-local-services-waygate-api-1",
+        "id": "d7dbf3b7d17d8a14850636306bc4a898e0ae0789a6402150fc253ed991e9c8d3",
+        "image": "sha256:377577d4f93343191ec992920194a14cd63631346bc910b100970e98b611676f",
+        "state": "running",
+        "health": "healthy",
+        "started_at": "2026-10-15T02:55:00.054266969Z",
+        "selected": false
+      },
+      {
+        "name": "/afterglow-local-services-palimpsest-api-1",
+        "id": "6e6be43729794b73ab5b02a4d8a69a06577122239713b1a6be6325731d25ca15",
+        "image": "sha256:bcbfc01c7ccbbf721853f5222d1251ffffb006e5eaed68f0d356df633b00e110",
+        "state": "running",
+        "health": "healthy",
+        "started_at": "2026-10-15T02:54:59.831691719Z",
+        "selected": false
+      },
+      {
+        "name": "/afterglow-local-services-drover-api-1",
+        "id": "e67dbadad1d59c7df0daf6bd156609bda2b7db3f09c33cf0bdf0e2b2cf4926e9",
+        "image": "sha256:1018d1f3224c443e429c10a122d5e1f0af72e7ce2db1eaa49157f2cc11cc2a26",
+        "state": "running",
+        "health": "healthy",
+        "started_at": "2026-10-15T02:54:59.384157594Z",
+        "selected": false
+      },
+      {
+        "name": "/afterglow-local-services-lumen-api-1",
+        "id": "5e736594dd57b65e9ec6f24da0cd2cf93120d54bab2c7c79d3ec2e368b5662d9",
+        "image": "sha256:aad2567c95351234c5b7fb4b28a08e8e40a8d7c79445409a3d4970aaebbff103",
+        "state": "running",
+        "health": "healthy",
+        "started_at": "2026-10-15T02:55:01.917554011Z",
+        "selected": false
+      },
+      {
+        "name": "/afterglow-local-services-waygate-migrate-1",
+        "id": "e2a2fdace0d79cd23e8fdc68d1f1077b7ba59d9f74d87e8ff30d2d06d19b1d26",
+        "image": "sha256:377577d4f93343191ec992920194a14cd63631346bc910b100970e98b611676f",
+        "state": "exited",
+        "health": null,
+        "started_at": "2026-10-15T02:54:57.415425676Z",
+        "selected": false
+      },
+      {
+        "name": "/afterglow-local-services-drover-migrate-1",
+        "id": "74b6ea49da3ec205bb6a0e6c6cfd06646d1a60835ba55e5afde1d3e8b2415a35",
+        "image": "sha256:1018d1f3224c443e429c10a122d5e1f0af72e7ce2db1eaa49157f2cc11cc2a26",
+        "state": "exited",
+        "health": null,
+        "started_at": "2026-10-15T02:54:57.143362759Z",
+        "selected": false
+      },
+      {
+        "name": "/afterglow-local-services-palimpsest-bootstrap-1",
+        "id": "e2370f0a3fcc88378bde19ca4a88aaf225cb4ab22be53f6c4f62c5cd48625780",
+        "image": "sha256:bcbfc01c7ccbbf721853f5222d1251ffffb006e5eaed68f0d356df633b00e110",
+        "state": "exited",
+        "health": null,
+        "started_at": "2026-10-15T02:54:57.233407009Z",
+        "selected": false
+      },
+      {
+        "name": "/afterglow-local-services-lumen-migrate-1",
+        "id": "ea3a69e61891924e0915bf7c9f25a55efb58c3a23c4e658276410b09ff983d06",
+        "image": "sha256:aad2567c95351234c5b7fb4b28a08e8e40a8d7c79445409a3d4970aaebbff103",
+        "state": "exited",
+        "health": null,
+        "started_at": "2026-10-15T02:54:57.316713384Z",
+        "selected": false
+      },
+      {
+        "name": "/afterglow-local-services-waygate-worker-1",
+        "id": "33ca0cbdbf9c3e585aad631a18e0818cd6fcb2f3786d66bf471a792df3d520d3",
+        "image": "sha256:8d89c31428d8dcb47b20d11dcaef72ba15ea3ca82a0cb056bacca72a89d79c5c",
+        "state": "running",
+        "health": null,
+        "started_at": "2026-10-15T01:59:38.105981167Z",
+        "selected": false
+      },
+      {
+        "name": "/afterglow-local-services-drover-worker-1",
+        "id": "8d717eca50f4a05a6e5ecd7e905977055676939ea486392ebe07f07b3de9d363",
+        "image": "sha256:49b028a701f839d2cfa11a5868a307209fad0d23baf5fa514a02740896eca27d",
+        "state": "running",
+        "health": null,
+        "started_at": "2026-10-15T01:59:38.102397709Z",
+        "selected": false
+      },
+      {
+        "name": "/afterglow-local-services-palimpsest-worker-1",
+        "id": "08108e21d5c5e9064c9f6757030afd0ce1067d14ccd6a2b06c692eeedceb52d6",
+        "image": "sha256:7fe7537ce2357df909033a258b19079fa2e10d738a47fdffaf83340a7ce59a72",
+        "state": "running",
+        "health": null,
+        "started_at": "2026-10-15T01:59:38.147650209Z",
+        "selected": false
+      },
+      {
+        "name": "/afterglow-local-services-lumen-worker-1",
+        "id": "9878651aabb1e9316d29decf14514767509d01846ff30d4e19506f1dea23b624",
+        "image": "sha256:6b36b188d0564ba2469202a8582e8a9d49e47ce912885255be04c86a8e228731",
+        "state": "running",
+        "health": null,
+        "started_at": "2026-10-15T01:59:38.095165084Z",
+        "selected": false
+      },
+      {
+        "name": "/afterglow-local-services-redis-1",
+        "id": "ad1ca0d46528f922eb9c1c038afd88cde28488b8bef6df85772db5dc2d48c403",
+        "image": "sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+        "state": "running",
+        "health": null,
+        "started_at": "2026-10-15T01:59:38.139922042Z",
+        "selected": false
+      },
+      {
+        "name": "/afterglow-local-services-notion-worker-1",
+        "id": "8e3074be230afa1175595607cd194f2044e24de3caf2b576e155edb2ffdbd3ec",
+        "image": "sha256:05860bc4877778558ddc4380ba2b63473e596c5b3d005b9dadd23e1ab3587f9c",
+        "state": "running",
+        "health": null,
+        "started_at": "2026-10-15T06:43:02.610269042Z",
+        "selected": true
+      },
+      {
+        "name": "/afterglow-local-services-service-mariadb-1",
+        "id": "49dcdb83ca57867920bce9893b1369e3c6cea9b8f4ea037e9cfb5ce0315ba76f",
+        "image": "sha256:1292844148b311e4ed4300022a996d39083f415a963e970cf47cad1b3b18e3a6",
+        "state": "running",
+        "health": "healthy",
+        "started_at": "2026-10-15T01:59:38.150924709Z",
+        "selected": false
+      },
+      {
+        "name": "/afterglow-local-services-afterglow-mariadb-1",
+        "id": "67652bda5fea0cb3c84913e4915cf81f115ef45794e585d35d0fda09cb58f63b",
+        "image": "sha256:1292844148b311e4ed4300022a996d39083f415a963e970cf47cad1b3b18e3a6",
+        "state": "running",
+        "health": "healthy",
+        "started_at": "2026-10-15T02:05:24.774363925Z",
+        "selected": false
+      },
+      {
+        "name": "/afterglow-local-services-lumen-postgres-1",
+        "id": "ccb000e442d5d8fe58dc73e9282dc0151441f844a421f642d55ae1b1c2202e71",
+        "image": "sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20",
+        "state": "running",
+        "health": "healthy",
+        "started_at": "2026-10-15T02:05:24.858122342Z",
+        "selected": false
+      }
+    ],
+    "unselected_containers_preserved": 17,
+    "all_mounts_preserved": true,
+    "mount_source_normalization": "Docker Desktop /host_mnt/Users/ == /Users/ host alias; initial literal comparison rejected alias only. No mount recreation performed.",
+    "selected_image_ids_match_qualified_builds": true,
+    "worker_readiness": {
+      "own_live_members": 1,
+      "lease_seconds_remaining": 41.405,
+      "redis_time_used": true
+    }
+  },
+  "local_deployment_command": "docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml --profile notion-worker up -d --no-deps --no-build --pull never --force-recreate --wait --wait-timeout 180 backend notion-worker",
+  "scripted_real_account_login": {
+    "executed": false,
+    "preflight": {
+      "read_only": true,
+      "default_project_exists": true,
+      "native_iam_noop": false,
+      "direct_default_reader_present": false,
+      "projection_synced": true,
+      "default_network_enabled": true,
+      "native_network_noop": false,
+      "persisted_network_present": true,
+      "real_stack_login_safe": false,
+      "error_type": "Unauthorized",
+      "status": null
+    },
+    "reason": "Full login can grant baseline reader/projection and provision a default network; read-only preflight did not prove no-op."
+  },
+  "observed_real_local_login": [
+    {
+      "timestamp": "2026-10-15T06:43:16.067962+00:00",
+      "level": "INFO",
+      "logger": "app.main",
+      "method": "GET",
+      "path": "/api/v1/auth/domains/resolve",
+      "status": 200,
+      "duration_ms": 564.52
+    },
+    {
+      "timestamp": "2026-10-15T06:43:40.935808+00:00",
+      "level": "INFO",
+      "logger": "app.main",
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": 200,
+      "duration_ms": 21970.92
+    },
+    {
+      "timestamp": "2026-10-15T06:43:51.981577+00:00",
+      "level": "INFO",
+      "logger": "app.main",
+      "method": "GET",
+      "path": "/api/v1/auth/projects",
+      "status": 200,
+      "duration_ms": 10975.28
+    },
+    {
+      "timestamp": "2026-10-15T06:43:52.027871+00:00",
+      "level": "INFO",
+      "logger": "app.main",
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 200,
+      "duration_ms": 11077.48
+    },
+    {
+      "timestamp": "2026-10-15T06:43:57.234430+00:00",
+      "level": "INFO",
+      "logger": "app.main",
+      "method": "GET",
+      "path": "/api/v1/auth/projects",
+      "status": 200,
+      "duration_ms": 5199.37
+    },
+    {
+      "timestamp": "2026-10-15T06:45:13.897309+00:00",
+      "level": "INFO",
+      "logger": "app.main",
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 200,
+      "duration_ms": 12946.9
+    }
+  ],
+  "browser_existing_session": {
+    "status": 200,
+    "seconds": 12.954,
+    "cachedSystemAdmin": true,
+    "systemAdmin": true,
+    "domainManager": true,
+    "homeEqualsWorking": true,
+    "projectScoped": true,
+    "noStore": true
+  },
+  "debug": {
+    "application_level": "DEBUG",
+    "root_level": "INFO",
+    "failures_log_with_debug_disabled": true,
+    "safe_failure_fields": [
+      "auth_operation",
+      "auth_correlation",
+      "auth_stage",
+      "auth_function",
+      "auth_line",
+      "duration_ms",
+      "exception.type",
+      "exception.causes",
+      "exception.root_cause",
+      "status_code",
+      "errno"
+    ],
+    "structural_cause_bound": 8,
+    "frames_per_cause_bound": 12,
+    "exception_messages_source_and_locals_logged": false,
+    "configured_password_absent_from_observed_new_logs": true,
+    "protected_wire_debug_absent": true
+  },
+  "architecture": {
+    "boundary": "Frozen public source including concurrent WIP plus final two test-only corrections; shared Git index and architecture marker untouched",
+    "root": "/var/folders/1m/xfc726k14szbjnrlq5t68zjw0000gn/T/afterglow-login-debug-source-0ejr06bj",
+    "source_overlays": [
+      "backend/tests/test_domain_iam.py",
+      "backend/tests/test_keystone_system_scope.py"
+    ],
+    "checks": [
+      "stamped working source_sha256=7a12ec7f4dc62b9b3a68a9ec203c8929a88fc557a1b0c711edc0947c191797fd files=2943",
+      "checked working source_sha256=7a12ec7f4dc62b9b3a68a9ec203c8929a88fc557a1b0c711edc0947c191797fd files=2943",
+      "checked staged source_sha256=7a12ec7f4dc62b9b3a68a9ec203c8929a88fc557a1b0c711edc0947c191797fd files=2943"
+    ],
+    "summary": "Local login/debug repair: Keystone clients honor configured interface/region; operation-local exact authority read reuse and home membership remove unrelated inventory without cross-request authorization caches. Bounded correlation/stage/cause logging preserves credential/wire suppression. No schema, API surface, dependency or deployment topology change. Seven canonical image builds/runtimes, isolated amd64 SQL/Redis/synthetic login, local arm64 health/worker lease and observed real browser login200 documented separately. Concurrent snapshot WIP is not fully qualified; shared index/review marker and production preserved."
+  },
+  "limits": [
+    "Actual observed login still took 21.971 seconds; separately observed /auth/me took 12.954 seconds. No latency SLA claimed.",
+    "Synthetic Keystone flow is not real provider/SSO coverage.",
+    "No production deployment, VM boot/systemd, full gate, commit/push or mixed-version/backup/restore qualification.",
+    "gbrain CLI unavailable; no optional search-index sync.",
+    "Frozen public source includes concurrent WIP; receipt does not qualify all unrelated changes."
+  ],
+  "cleanup": {
+    "owned_isolated_containers_and_network_removed": true,
+    "native_supervisor_containers_removed": true,
+    "inspection_browser_tab_released_without_logout": true,
+    "all_existing_mounts_preserved": true,
+    "unselected_local_containers_unchanged": 17,
+    "private_config_snapshots_and_rollback_image_tags_retained": true,
+    "production_state_mutation_by_test_scripts": false
+  }
+}

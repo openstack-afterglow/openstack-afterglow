@@ -11,9 +11,9 @@
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
-	let { member, roles, isOwner, busy, error, onSave, onClose }: {
-		member: ProjectAccessMember; roles: AssignableProjectRole[]; isOwner: boolean;
-		busy: boolean; error: string; onSave: (ids: string[]) => void; onClose: () => void;
+	let { member, roles, busy, submitDisabled = false, error, onSave, onClose }: {
+		member: ProjectAccessMember; roles: AssignableProjectRole[];
+		busy: boolean; submitDisabled?: boolean; error: string; onSave: (ids: string[]) => void; onClose: () => void;
 	} = $props();
 	let selected = $state<string[]>(untrack(() => [...(member.direct_role_ids ?? [])]));
 	let search = $state('');
@@ -60,7 +60,8 @@
 		searchArea = '';
 	}
 	function editable(role: AssignableProjectRole) {
-		return isOwner || !['project_owner', 'project_admin'].includes(role.name);
+		// Singleton ownership changes only through the explicit transfer workflow.
+		return !(role.area === 'project' && role.grade === 'owner');
 	}
 	function impliedRoleIds(directIds: string[]) {
 		const descendants = new Set<string>();
@@ -83,7 +84,7 @@
 		selected = checked ? selected.includes(role.id) ? selected : [...selected, role.id] : selected.filter(value => value !== role.id);
 	}
 	function save() {
-		if (!busy && directEditable) onSave(selected);
+		if (!busy && !submitDisabled && directEditable) onSave(selected);
 	}
 </script>
 
@@ -147,7 +148,7 @@
 		<footer class="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-line p-4">
 			{#if busy}<ActivityIndicator size="xs" label={tc('state.processing')} />{/if}
 			<Button variant="secondary" disabled={busy} onclick={onClose}>{tc('actions.cancel')}</Button>
-			<Button variant="primary" disabled={busy || !directEditable} ariaBusy={busy} onclick={save}>{t('projectMemberRoles.save')}</Button>
+			<Button variant="primary" disabled={busy || submitDisabled || !directEditable} ariaBusy={busy} onclick={save}>{t('projectMemberRoles.save')}</Button>
 		</footer>
 	</Card>
 </Modal>

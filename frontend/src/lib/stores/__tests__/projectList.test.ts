@@ -11,6 +11,7 @@ vi.mock('$lib/api/client', () => ({
 describe('projectList store', () => {
 	beforeEach(() => {
 		window.localStorage.clear();
+		window.sessionStorage.clear();
 		vi.clearAllMocks();
 		vi.resetModules();
 	});
@@ -116,5 +117,27 @@ describe('projectList store', () => {
 
 		expect(get(projectList)).toEqual({ projects: [], loading: false, loaded: false });
 		expect(window.localStorage.getItem('afterglow.projects.user-1')).toBeNull();
+	});
+
+	it('clears cached projects and fences pending publication when one account changes working domain', async () => {
+		// Each test reloads the singleton to exercise its auth-subscription boundary.
+		const { api } = await import('$lib/api/client');
+		const { auth, clearAuth, setLoginAuth, setAuth } = await import('../auth');
+		setLoginAuth({ token: 'home-token', userId: 'user-1', identityDomainId: 'home', domainId: 'home' });
+		const { projectList } = await import('../projectList');
+		const pending = Promise.withResolvers<{ id: string; name: string }[]>();
+		vi.mocked(api.get).mockReturnValueOnce(pending.promise);
+		window.localStorage.setItem('afterglow.projects.user-1', JSON.stringify({ data: [{ id: 'home-project', name: 'Home' }], ts: Date.now(), domainId: 'home' }));
+		projectList.prefetch('home-token', 'user-1');
+		expect(get(projectList).projects).toHaveLength(1);
+		setAuth({ token: 'team-token', domainId: 'team' });
+		expect(get(auth).identityDomainId).toBe('home');
+		expect(get(projectList)).toEqual({ projects: [], loading: false, loaded: false });
+		expect(window.localStorage.getItem('afterglow.projects.user-1')).toBeNull();
+		pending.resolve([{ id: 'late-home-project', name: 'Late home' }]);
+		await pending.promise;
+		await Promise.resolve();
+		expect(get(projectList).projects).toEqual([]);
+		clearAuth();
 	});
 });

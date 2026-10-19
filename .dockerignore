@@ -19,6 +19,16 @@ afterglow.*.conf
 config.toml
 config.*.toml
 .local-services/
+admin-openrc
+.omp/
+.omc/
+.codex/
+.agents/
+.playwright-mcp/
+.playwright-cli/
+graphify-out/
+mariadb_data/
+postgres_data/
 
 # ── 문서 ──────────────────────────────────────────────────────────────────────
 docs/
@@ -48,6 +58,7 @@ backend/**/*egg-info*
 frontend/node_modules/
 frontend/.svelte-kit/
 frontend/build/
+frontend/logs/
 frontend/tests/
 frontend/src/**/*.test.*
 frontend/src/**/*.spec.*

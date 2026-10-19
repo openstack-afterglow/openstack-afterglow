@@ -6,9 +6,9 @@
     project_name: afterglow
     service_ks_register_auth: "{{ openstack_auth }}"
     service_ks_register_users:
-      - project: "{{ afterglow_service_project_name }}"
-        user: "{{ afterglow_admin_keystone_user }}"
-        password: "{{ afterglow_admin_keystone_password }}"
+      - project: "{{ afterglow_effective_config.openstack.service_project_id if afterglow_effective_config.openstack.service_project_id | length > 0 else afterglow_effective_config.openstack.project_name }}"
+        user: "{{ afterglow_effective_config.openstack.username }}"
+        password: "{{ afterglow_effective_config.openstack.password }}"
         role: admin
   no_log: true
 
@@ -19,20 +19,24 @@
     module_name: openstack.cloud.project_info
     module_args:
       auth: "{{ openstack_auth }}"
-      name: "{{ afterglow_cloud_shell_project_name }}"
+      name: "{{ afterglow_effective_config.cloud_shell.service_project_id if afterglow_effective_config.cloud_shell.service_project_id | length > 0 else afterglow_cloud_shell_project_name }}"
   register: afterglow_cloud_shell_keystone_project
   changed_when: false
   no_log: true
   run_once: true
-  when: afterglow_service_cloud_shell_enabled | bool
+  when: afterglow_effective_config.services.cloud_shell | bool
 
 - name: Keystone | Require one operator-created Cloud Shell project
   ansible.builtin.assert:
     that:
       - afterglow_cloud_shell_keystone_project.projects | default([]) | length == 1
-    fail_msg: "Create exactly one project named '{{ afterglow_cloud_shell_project_name }}' before enabling Cloud Shell"
+      - afterglow_effective_config.cloud_shell.service_project_id | length == 0 or afterglow_cloud_shell_keystone_project.projects[0].id == afterglow_effective_config.cloud_shell.service_project_id
+      - afterglow_cloud_shell_keystone_project.projects[0].id != afterglow_effective_config.openstack.service_project_id
+      - afterglow_effective_config.openstack.service_project_id | length > 0 or afterglow_cloud_shell_keystone_project.projects[0].name != afterglow_effective_config.openstack.project_name
+    fail_msg: "Create exactly one dedicated Cloud Shell project matching the effective project selector, separate from the Afterglow service project"
+  no_log: true
   run_once: true
-  when: afterglow_service_cloud_shell_enabled | bool
+  when: afterglow_effective_config.services.cloud_shell | bool
 
 - name: Keystone | Grant Afterglow admin access to Cloud Shell project
   become: true
@@ -41,10 +45,10 @@
     module_name: openstack.cloud.role_assignment
     module_args:
       auth: "{{ openstack_auth }}"
-      user: "{{ afterglow_admin_keystone_user }}"
+      user: "{{ afterglow_effective_config.openstack.username }}"
       project: "{{ afterglow_cloud_shell_keystone_project.projects[0].id }}"
       role: admin
       state: present
   no_log: true
   run_once: true
-  when: afterglow_service_cloud_shell_enabled | bool
+  when: afterglow_effective_config.services.cloud_shell | bool

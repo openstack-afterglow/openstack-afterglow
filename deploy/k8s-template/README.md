@@ -41,7 +41,7 @@ minikube image load afterglow:latest
 배포 전 반드시 다음 값을 실제 환경에 맞게 수정하세요.
 
 - `configmap.yaml`: `afterglow.conf` 인라인 설정, `APP_ORIGIN`, `PUBLIC_S3_BASE`, `APP_GRAFANA_BASE`
-- `secret.yaml`: `OS_PASSWORD`, `SECRET_KEY`, `GITLAB_OIDC_CLIENT_SECRET`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL`, `PROMETHEUS_PASSWORD`, `BUILDER_SSH_PRIVATE_KEY`
+- `secret.yaml`: `OS_PASSWORD`, `SECRET_KEY`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL`, `PROMETHEUS_PASSWORD`, `BUILDER_SSH_PRIVATE_KEY`
 - `base/frontend/deployment.yaml`: `ORIGIN`, `PUBLIC_API_BASE`, `PUBLIC_S3_BASE`, `PUBLIC_GRAFANA_BASE`
 - `ingress.yaml`: `host` 값 (실제 도메인)
 
@@ -70,7 +70,6 @@ kubectl apply -f deploy/k8s-template/secret.yaml
 #   --namespace=afterglow \
 #   --from-literal=OS_PASSWORD=실제OpenStack비밀번호 \
 #   --from-literal=SECRET_KEY=$(openssl rand -hex 32) \
-#   --from-literal=GITLAB_OIDC_CLIENT_SECRET='' \
 #   --from-literal=K3S_KUBECONFIG_ENCRYPTION_KEY=$(openssl rand -hex 32) \
 #   --from-literal=DATABASE_URL='mysql+asyncmy://afterglow:실제DB비밀번호@mariadb/afterglow' \
 #   --from-literal=PROMETHEUS_PASSWORD='' \

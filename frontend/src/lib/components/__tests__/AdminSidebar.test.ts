@@ -37,7 +37,7 @@ beforeEach(() => {
 	auth.set({
 		token: 'token', refreshToken: null, accessExpiresAt: null,
 		userId: 'u-admin', username: 'admin', projectId: 'project-1', projectName: 'Project',
-		availableProjects: [], roles: ['admin'], isSystemAdmin: true, federated: false
+		availableProjects: [], roles: ['admin'], isSystemAdmin: true, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false
 	});
 });
 
@@ -128,6 +128,7 @@ describe('administrator global navigation', () => {
 			['사용자 쿼터', '/admin/chat/quotas'], ['모델 설정', '/admin/chat/models'], ['도구 설정', '/admin/chat/tools'],
 			['Palimpsest', '/admin/libraries'], ['프로젝트 쿼터', '/admin/secrets'],
 			['통합 모니터링', '/admin/monitoring'], ['노드', '/admin/monitoring/node'],
+			['Aodh 알람', '/admin/monitoring/aodh'], ['Gnocchi 서비스', '/admin/monitoring/gnocchi'],
 			['MySQL', '/admin/monitoring/mysql'], ['ProxySQL', '/admin/monitoring/proxysql'],
 			['HAProxy', '/admin/monitoring/haproxy'], ['RabbitMQ', '/admin/monitoring/rabbitmq'],
 			['Memcached', '/admin/monitoring/memcached'], ['etcd', '/admin/monitoring/etcd'],
@@ -168,6 +169,9 @@ describe('administrator contextual navigation ownership', () => {
 		['/admin/waygate/vpn-1', 'Waygate', '/admin/waygate', '네트워크'],
 		['/admin/flavors/flavor-1', 'Flavor', '/admin/flavors', '전체 인스턴스'],
 		['/admin/monitoring/proxysql', 'ProxySQL', '/admin/monitoring/proxysql', 'MySQL'],
+		['/admin/monitoring/aodh', 'Aodh 알람', '/admin/monitoring/aodh', 'Gnocchi 서비스'],
+		['/admin/monitoring/aodh/settings', 'Aodh 알람', '/admin/monitoring/aodh', 'Gnocchi 서비스'],
+		['/admin/monitoring/gnocchi', 'Gnocchi 서비스', '/admin/monitoring/gnocchi', 'Aodh 알람'],
 		['/admin/projects/project-1', '프로젝트', '/admin/projects', '사용자'],
 	])('selects the longest visible route and its siblings at %s', async (path, label, href, sibling) => {
 		initSiteConfig({ services: { zun: true, k3s: true, chat: true, waygate: true } });

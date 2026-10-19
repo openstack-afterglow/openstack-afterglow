@@ -12,6 +12,14 @@ Afterglow 사용자 셸에서 현재 프로젝트 권한으로 OpenStack CLI를 
 
 Tablet/desktop dock의 왼쪽 경계는 현재 `--app-sidebar-offset`을 따른다. 개요 화면이나 숨긴 서비스 sidebar에서는 전체 workspace 폭을 사용하고, sidebar를 다시 표시하면 기존 폭만큼 물러난다. 이 기하 변경은 열린 terminal·session을 종료하거나 다시 승인하지 않는다.
 
+## 이미지 소스와 pull 설정
+
+이미지 정본은 [openstack-afterglow/openstack-client](https://github.com/openstack-afterglow/openstack-client)이며 기본 `[cloud_shell].image`는 `ghcr.io/openstack-afterglow/openstack-client:slim`입니다. `image` 또는 `CLOUD_SHELL_IMAGE`로 호환 registry/reference를 선택하고 운영에서는 실제 게시된 multiarchitecture manifest digest를 고정합니다. 설정은 운영자 전용이며 일반 사용자가 요청별 임의 이미지를 실행하는 API가 아닙니다.
+
+`image_pull_policy`/`CLOUD_SHELL_IMAGE_PULL_POLICY`는 빈 값(Zun 기본값), `always`, `ifnotpresent`, `never`를 선택합니다. Stock Zun은 명시적 정책에 admin 권한을 요구하므로 member 전용 계정은 빈 값을 사용합니다. 비공개 registry의 credential은 전용 프로젝트 Zun에 등록하고 `registry_id`/`CLOUD_SHELL_REGISTRY_ID`에는 UUID만 지정합니다. Zun create 요청의 필드명은 `registry`이며 응답 `registry_id`와 구분합니다.
+
+image 미게시·접근 거부·pull 실패는 준비 실패이며 대체 image나 terminal ready로 숨기지 않습니다. 실패 container는 기존 signed-owner cleanup으로 정리하고 home은 유지합니다. CLI image는 `/usr/local/bin/afterglow-cloud-shell-bootstrap`과 기존 PTY/tmpfs credential 계약을 포함해야 합니다. 게시 전에는 서비스 비활성 상태로 설정을 준비합니다.
+
 ## 네트워크 기본값
 
 `[cloud_shell].interface`의 기본값은 `public`이다. 컨테이너·영구 홈·네트워크 선택은 전용 Cloud Shell 프로젝트에 묶이고, CLI의 권한은 여전히 현재 사용자의 선택 프로젝트 token이다.

@@ -1,4 +1,4 @@
-import { grantLumen, pendingLumen } from './lumenPermissionFixture';
+import { grantLumen, pendingLumen, setVerifiedLumenActor } from './lumenPermissionFixture';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
@@ -13,7 +13,7 @@ vi.mock('$lib/api/client', () => ({ api, ApiError: class ApiError extends Error 
 import ChatMcpCatalogue from '../ChatMcpCatalogue.svelte';
 import type { ApprovedMcpServer } from '../ChatMcpCatalogue.svelte';
 
-const actor = { token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'user-1', username: 'tester', projectId: 'project-1', projectName: 'Research', availableProjects: [], roles: [], isSystemAdmin: false, federated: false };
+const actor = { token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'user-1', username: 'tester', projectId: 'project-1', projectName: 'Research', availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', identityDomainId: 'domain-1', identityDomainName: 'Domain', isDomainManager: false };
 const disabled: CloudToolsCatalogue = { available: true, enabled: false, access_level: 'read', project_id: 'project-1', project_name: 'Research', source: 'lumen', allowed_projects: [], selection_name: null, tool_count: 0 };
 const approved = { id: 7, name: 'Reviewed source', url: 'https://mcp.example/mcp', auth_mode: 'none' as const, server_is_active: true, is_active: false, config_version: 4 };
 function allowManagement() {
@@ -23,7 +23,7 @@ function deferred<T>() { return Promise.withResolvers<T>(); }
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	auth.set(actor);
+	setVerifiedLumenActor(actor);
 	api.get.mockResolvedValue(disabled);
 	api.post.mockResolvedValue({});
 	api.patch.mockResolvedValue({});
@@ -91,7 +91,8 @@ describe('Approved MCP consent', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '승인하고 활성화' }));
 		await waitFor(() => expect(api.post).toHaveBeenCalled());
 		auth.set({ ...actor, projectId: 'project-2' });
-		auth.set(actor);
+		// Returning to the same values is a new verified epoch, not the old owner.
+		setVerifiedLumenActor(actor);
 		await tick();
 		old.resolve();
 		await tick();

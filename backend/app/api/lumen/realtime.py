@@ -42,7 +42,7 @@ async def create_session(
 ):
     await authorize_service_request("lumen", request, "/v1/chat/realtime/sessions")
     logical_project = principal["project_id"]
-    connection_project = principal.get("connection_project_id") or logical_project
+    connection_project = principal.get("connection_project_id", logical_project)
     endpoint = await asyncio.to_thread(
         service_proxy._get_internal_endpoint, principal["token"], connection_project, "lumen"
     )

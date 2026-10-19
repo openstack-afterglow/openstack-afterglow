@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-ops';
+	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
@@ -13,6 +15,10 @@
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
+	const authority = $derived(contextKey($auth));
+	function contextKey(state: typeof $auth) {
+		return JSON.stringify([state.sessionId, state.userId, state.identityDomainId, state.domainId, state.token, state.projectId, state.isSystemAdmin]);
+	}
 
 	let tab = $state<'summary' | 'instances'>('summary');
 	const monitoringTabs = [
@@ -23,17 +29,34 @@
 	let summary = $state<MonitoringSummary | null>(null);
 	let loading = $state(true);
 	let refreshing = $state(false);
+	let summaryContext = $state('');
+	let requestVersion = 0;
 
 	async function load() {
-		if (!summary) loading = true;
-		else refreshing = true;
-		try {
-			summary = await api.get<MonitoringSummary>('/api/v1/admin/monitoring/summary', token, projectId);
-		} catch {
+		const state = get(auth);
+		const context = contextKey(state);
+		const version = ++requestVersion;
+		const current = () => version === requestVersion && context === contextKey(get(auth));
+		if (!state.token || !state.isSystemAdmin) {
 			summary = null;
-		} finally {
 			loading = false;
 			refreshing = false;
+			return;
+		}
+		if (!summary || summaryContext !== context) loading = true;
+		else refreshing = true;
+		try {
+			const result = await api.get<MonitoringSummary>('/api/v1/admin/monitoring/summary', state.token, state.projectId ?? undefined);
+			if (!current()) return;
+			summaryContext = context;
+			summary = result;
+		} catch {
+			if (current()) summary = null;
+		} finally {
+			if (current()) {
+				loading = false;
+				refreshing = false;
+			}
 		}
 	}
 
@@ -41,11 +64,28 @@
 		storageKey: 'admin-monitoring',
 		defaultActive: true,
 		defaultInterval: 15,
-		intervalOptions: [10, 15, 30, 60]
+		intervalOptions: [10, 15, 30, 60],
+		invokeOnMount: false,
 	});
 
 	let instancesLoading = $state(false);
 	let refreshRef: (() => void) | undefined;
+
+	onMount(() => {
+		let previous = '';
+		const unsubscribe = auth.subscribe((state) => {
+			const context = contextKey(state);
+			if (context === previous) return;
+			previous = context;
+			requestVersion++;
+			summary = null;
+			summaryContext = '';
+			refreshing = false;
+			loading = !!state.token && state.isSystemAdmin;
+			void load();
+		});
+		return () => { requestVersion++; unsubscribe(); };
+	});
 </script>
 
 <PageShell>
@@ -91,14 +131,16 @@
 		tabindex="0"
 	>
 	{#if tab === 'summary'}
-		<MonitoringSummaryTab {summary} {loading} {refreshing} />
+		<MonitoringSummaryTab summary={summaryContext === authority ? summary : null} {loading} {refreshing} />
 	{:else}
+		{#key authority}
 		<InstanceMetricsTab
 			{token}
 			{projectId}
 			onReload={fn => (refreshRef = fn)}
 			bind:loadingInstances={instancesLoading}
 		/>
+		{/key}
 	{/if}
 	</div>
 

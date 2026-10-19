@@ -408,7 +408,6 @@ kubectl create secret generic afterglow-secrets \
   --namespace=afterglow \
   --from-literal=OS_PASSWORD=<openstack-password> \
   --from-literal=SECRET_KEY=$(openssl rand -hex 32) \
-  --from-literal=GITLAB_OIDC_CLIENT_SECRET='' \
   --from-literal=K3S_KUBECONFIG_ENCRYPTION_KEY=$(openssl rand -hex 32) \
   --from-literal=DATABASE_URL='mysql+asyncmy://afterglow:<db-password>@mariadb/afterglow' \
   --from-literal=PROMETHEUS_PASSWORD='' \
@@ -452,7 +451,7 @@ data:
     # password is injected from afterglow-secrets/OS_PASSWORD
 ```
 
-Do not put secret values in the ConfigMap. `OS_PASSWORD`, `SECRET_KEY`, `GITLAB_OIDC_CLIENT_SECRET`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL`, `PROMETHEUS_PASSWORD`, and `BUILDER_SSH_PRIVATE_KEY` come from `afterglow-secrets` as environment variables or a Secret volume.
+Do not put secret values in the ConfigMap. `OS_PASSWORD`, `SECRET_KEY`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL`, `PROMETHEUS_PASSWORD`, and `BUILDER_SSH_PRIVATE_KEY` come from `afterglow-secrets` as environment variables or a Secret volume. Domain login-provider client secrets are not deployment settings; domain IAM stores them encrypted in the Afterglow database.
 
 `generate_k8s.py --config ./afterglow.conf --output-dir deploy/k8s-template` writes `configmap.yaml`, `secret.yaml`, `grafana-deployment.yaml`, and `ingress.yaml`. If `[app].secret_key` is empty, `change-me-in-production`, or shorter than 32 characters, `secret.yaml` generation fails to match the Kubernetes production guard.
 
@@ -511,7 +510,7 @@ Kubernetes Python services use the production guard, unlike Docker Compose local
 
 | Deployment | Config file | Secret references |
 |---|---|---|
-| `backend` | `/app/afterglow.conf` | `OS_PASSWORD`, `SECRET_KEY`, `GITLAB_OIDC_CLIENT_SECRET`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL`, `PROMETHEUS_PASSWORD`, `BUILDER_SSH_PRIVATE_KEY` |
+| `backend` | `/app/afterglow.conf` | `OS_PASSWORD`, `SECRET_KEY`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL`, `PROMETHEUS_PASSWORD`, `BUILDER_SSH_PRIVATE_KEY` |
 | `drover` (`worker`) | `/app/afterglow.conf` | `OS_PASSWORD`, `SECRET_KEY`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL` |
 | `notion-worker` | `/app/afterglow.conf` | `OS_PASSWORD`, `SECRET_KEY`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL` |
 
@@ -524,7 +523,7 @@ The Helm chart follows the same contract. `backend`, `drover`, and `notion-worke
 Secret ownership has two supported modes.
 
 1. **ExternalSecret/ArgoCD owns `afterglow-secrets`**: leave `values.yaml` `secrets.osPassword` empty. Helm will not render the Secret and Deployments will reference the existing Secret.
-2. **Helm renders the Secret directly**: when `secrets.osPassword` is set, Helm creates `afterglow-secrets`; `secrets.secretKey`, `secrets.databaseUrl`, and `secrets.k3sKubeconfigEncryptionKey` are also required. Optional GitLab/Prometheus/Builder/Grafana secret keys are still emitted, even when their values are empty. Missing required values fail at template time.
+2. **Helm renders the Secret directly**: when `secrets.osPassword` is set, Helm creates `afterglow-secrets`; `secrets.secretKey`, `secrets.databaseUrl`, and `secrets.k3sKubeconfigEncryptionKey` are also required. Optional Prometheus/Builder/Grafana secret keys are still emitted, even when their values are empty. Missing required values fail at template time. Domain-provider secrets are encrypted IAM database values, not Helm or environment settings.
 
 ```bash
 helm template afterglow helm/afterglow --namespace afterglow \
@@ -577,7 +576,7 @@ Cloud Shell never runs a user shell in the Afterglow backend. It creates a per-u
 1. Create exactly one dedicated project and pin its UUID. The Afterglow service user needs a role there that can manage Zun, Cinder, and Neutron resources; under default policies `member` suffices because session cleanup uses an owner-scoped `stop=true` delete. Kolla's Keystone setup still grants project `admin`. User tokens never manage Zun or Cinder lifecycle resources.
 2. Leave `network_id` empty to use the dedicated project's database default, the existing automatic default-network policy, or the validated shared network policy when automatic provisioning is disabled. Require a subnet and an external network/router gateway; explicit overrides must belong to the dedicated project. The default security group is that project's `default`, with existing rules unchanged. Use an explicit project-owned group if egress-only isolation is required. The Kolla role does not create/delete project or networking resources; on explicit session approval the backend may prepare a routed default network through the existing policy.
 3. Enable Zun, Kuryr, etcd, Docker/containerd Zun integration, Cinder-backed Zun volume mounts, and at least one `zun-compute`. The backend must reach Keystone, Cinder, Zun HTTP, and the Zun exec WebSocket endpoint. The Zun API must support container microversion 1.36, and zun-compute must be able to attach Cinder volumes and format them as ext4 on first mount.
-4. Publish the `cloud-shell` image as a `linux/amd64` + `linux/arm64` manifest and configure the exact `@sha256:<manifest-digest>`. Mutable or bare tags are not a production contract.
+4. Use the image owned by [openstack-afterglow/openstack-client](https://github.com/openstack-afterglow/openstack-client), combining the updated GitLab CLI runtime with Afterglow's secure bootstrap. Development defaults to `ghcr.io/openstack-afterglow/openstack-client:slim` (Debian); `:alpine` is optional. Production must pin the exact `linux/amd64` + `linux/arm64` manifest `@sha256:<digest>`. The Afterglow monorepo no longer builds a separate Cloud Shell image.
 5. Apply Cinder volume/gigabyte and Zun container/CPU/RAM quotas to the dedicated project, not to user tenants. There is one concurrent session per user globally, but each user × logical project may retain one home volume.
 
 ```toml
@@ -587,7 +586,9 @@ cloud_shell = true
 
 [cloud_shell]
 service_project_id = "<dedicated-project-uuid>"
-image = "ghcr.io/openstack-afterglow/afterglow-cloud-shell@sha256:<64-hex-digest>"
+image = "ghcr.io/openstack-afterglow/openstack-client@sha256:<64-hex-digest>"
+image_pull_policy = "" # Zun default; or always / ifnotpresent / never
+registry_id = "" # Private registry UUID in the dedicated Cloud Shell project
 network_id = "" # dedicated project default network
 security_group = "default"
 auth_url = "https://keystone.example.com:5000/v3"
@@ -605,6 +606,15 @@ zun_websocket_origin = "wss://zun.example.com"
 
 `auth_url` and `zun_websocket_origin` are fixed trusted HTTPS/WSS backend destinations, not browser configuration. Do not add redirect or untrusted HTTP fallback. `SECRET_KEY` signs managed volume/container metadata; rotating it while homes remain intentionally prevents automatic adoption of those old resources.
 
+### Selecting the image source and pull policy
+
+`image` selects any compatible full registry reference, including the original `glcr.dmslab.re.kr/system/openstack/openstack-client`. The image must include the Afterglow bootstrap helper and PTY protocol; a generic CLI image is not a fallback. An empty `image_pull_policy` omits that POST field and preserves Zun's default. `always`, `ifnotpresent`, and `never` are explicit choices; stock Zun requires admin policy permission for an explicit pull policy, so member-only service credentials should leave it empty. Policy rejection is not retried with another policy.
+
+For private GHCR/GitLab images, register credentials with Zun in the dedicated project and set that registry's UUID as `registry_id`. Use least-privilege GHCR `read:packages` credentials. Passwords/PATs remain in Zun, not Afterglow settings or browser state. The Zun request uses `image_driver="docker"` and optional `registry=<UUID>`; `registry_id` is the response field. The host Docker credential used for Kolla manifest prechecks is separate from Zun's registry credential.
+
+`CLOUD_SHELL_IMAGE`, `CLOUD_SHELL_IMAGE_PULL_POLICY`, and `CLOUD_SHELL_REGISTRY_ID` override TOML. Kolla uses the matching `afterglow_cloud_shell_*` variables; Helm uses `cloudShell.image`, `cloudShell.imagePullPolicy`, and `cloudShell.registryId`. The latter policy controls the Zun workload, not Kubernetes backend Pod pulls. Prepare unpublished-image settings with `cloud_shell=false`; a missing/unauthorized image remains an error, without image substitution or false readiness. Existing exact-owner container cleanup and persistent-home retention remain unchanged.
+
+
 ### Kolla, Kubernetes, and Helm
 
 For Kolla, set `afterglow_service_zun_enabled`, `afterglow_service_cloud_shell_enabled`, and every required `afterglow_cloud_shell_*` value in `/etc/kolla/config/afterglow/globals.yml`. Stock Kolla must also enable `enable_zun`, `enable_kuryr`, `enable_etcd`, `docker_configure_for_zun`, `containerd_configure_for_zun`, and `zun_configure_for_cinder_ceph`.
@@ -617,14 +627,16 @@ kolla-ansible deploy -i multinode --tags afterglow
 
 The precheck fails closed on project isolation, network/security-group ownership, any ingress rule, project-scoped Zun/Cinder access, the configured volume type, and image-manifest access from every `zun-compute`. Keystone setup resolves exactly one pre-created project and only ensures the Afterglow service user's role assignment.
 
-`generate_k8s.py` renders the same `[services]` and `[cloud_shell]` contract into the ConfigMap. Helm exposes matching `services.zun`, `services.cloudShell`, and `cloudShell.*` values. Permit backend egress to Keystone/Cinder/Zun/WSS and the registry, and preserve WebSocket upgrades on the existing `/api/` ingress.
+`config2helm.py --config <directory>/afterglow.conf` also converts `[services].cloud_shell` and the complete `[cloud_shell]` runtime settings to Helm values. Selected image, pull policy, and registry UUID survive without manual values edits; do not include registry secrets in this conversion.
+
+`generate_k8s.py` renders the same `[services]` and `[cloud_shell]` contract into the ConfigMap. Helm exposes matching `services.zun`, `services.cloud_shell`, and `cloudShell.*` values. Permit backend egress to Keystone/Cinder/Zun HTTP/WSS and DNS; Zun compute performs image pulls and needs registry access. Backend Pod `imagePullSecrets` do not authenticate Zun workloads. Preserve WebSocket upgrades on the existing `/api/` ingress.
 
 ### Verification and rollback
 
 ```bash
 npm run test:cloud-shell
-npm run test:cloud-shell:image
 npm run test:kolla:contract
+# Image build, CLI and real PTY bootstrap smoke are owned by openstack-client's Actions/README.
 
 # Destructive live scenario: approve, CLI, close, home reuse, reset.
 # The identity must exactly match the disposable [user] integration credential.
@@ -639,6 +651,12 @@ To roll back, deploy `cloud_shell=false` first so no new ticket or WebSocket rou
 
 ---
 
+
+## Domain-isolation rollout prerequisites
+
+Verify the manifest checksums and schema for `090-domain-auth` (`domain_login_policies`, `domain_identity_providers`) and `091-domain-iam` (`domain_enrollments`) before switching API, UI, and workers together. Existing Default users, projects, and grants are not relocated or promoted. Prepare a real Keystone `system:all admin`, explicit domain manager/admin grants, native federation IdP/protocol policy, and SMTP through approved operator procedures. No project-admin compatibility or automatic promotion remains.
+
+Global GitLab configuration/callback and old invitation APIs are removed. Configure OIDC/GitHub in domain IAM; password can be disabled only after actual native login verifies that provider's exact revision. Frontend/API must be same-site; genuinely cross-site deployments need a first-party API proxy. Preserve signing/encryption keys and require domain-less legacy sessions to log in again. Old writers do not enforce the new policies, so mixed-version safety and image-only rollback are not guaranteed. Disposable schema tests are not production qualification without the deployed revision/ledger, restored snapshot, original keys, and backup/restore evidence. See [Auth](api/auth.md) and the canonical [IAM](../api/iam.md) contract.
 
 ## ArgoCD GitOps Deployment
 

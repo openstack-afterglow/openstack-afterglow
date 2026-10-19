@@ -5,8 +5,12 @@ import type { CredentialAuthority } from '$lib/types/adminCredential';
 /** Bypass the ordinary GET cache: even explicit sensitive details stay ephemeral.
  * Native Keystone 403 is not evidence that platform system-admin was revoked.
  */
-export async function credentialRequest<T>(path: string, authority: CredentialAuthority, method = 'GET', body?: unknown): Promise<T> {
-  const response = await fetchWithAuth(path, {
+export async function credentialRequest<T>(path: string, domainId: string, authority: CredentialAuthority, method = 'GET', body?: unknown): Promise<T> {
+  if (!domainId.trim()) throw new ApiError(403, 'credential_scope_denied', 'credential_scope_denied');
+  const [pathname, query = ''] = path.split('?');
+  const params = new URLSearchParams(query);
+  params.set('domain_id', domainId);
+  const response = await fetchWithAuth(`${pathname}?${params}`, {
     method, cache: 'no-store', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -16,7 +20,7 @@ export async function credentialRequest<T>(path: string, authority: CredentialAu
     // Do not display arbitrary upstream error payloads in a sensitive surface.
     const data = await response.json().catch(() => null);
     const code = typeof data?.detail === 'string' && /^credential_[a-z_]+$/.test(data.detail)
-      ? data.detail : response.status === 403 ? 'credential_admin_denied' : 'credential_unavailable';
+      ? data.detail : response.status === 403 ? 'credential_native_denied' : 'credential_unavailable';
     throw new ApiError(response.status, code, code);
   }
   return response.status === 204 ? undefined as T : response.json();

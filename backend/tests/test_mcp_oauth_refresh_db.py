@@ -698,12 +698,16 @@ async def oauth_consent(issued_refresh, monkeypatch):
             self._afterglow_user_id = owner
             self._afterglow_project_id = project_id
             self._afterglow_token = "caller-token"
+            self._afterglow_domain_id = "default"
+            self._afterglow_identity_domain_id = "default"
             self.closed = False
             self.identity = self
             self.session = SimpleNamespace(
                 auth=SimpleNamespace(
                     get_access=lambda session: SimpleNamespace(
                         user_id=owner,
+                        user_domain_id="default",
+                        project_domain_id="default",
                         project_id=project_id,
                         project_name="Project " + project_id,
                         role_names=memberships[project_id],
@@ -721,7 +725,10 @@ async def oauth_consent(issued_refresh, monkeypatch):
             return SimpleNamespace(
                 raise_for_status=lambda: None,
                 json=lambda: {
-                    "projects": [{"id": project_id, "name": "Project " + project_id} for project_id in memberships]
+                    "projects": [
+                        {"id": project_id, "name": "Project " + project_id, "domain_id": "default"}
+                        for project_id in memberships
+                    ]
                 },
             )
 
@@ -1052,7 +1059,7 @@ async def sdk_oauth_consent(oauth_consent, monkeypatch):
         elif request.method == "GET" and path == "/v3/auth/projects":
             payload = {
                 "projects": [
-                    {"id": target, "name": "Project " + target}
+                    {"id": target, "name": "Project " + target, "domain_id": "default"}
                     for target in consent.memberships
                     if not (state.omit_anchor and target == "A")
                 ]
@@ -1139,6 +1146,8 @@ async def sdk_oauth_consent(oauth_consent, monkeypatch):
         conn._afterglow_user_id = consent.owner
         conn._afterglow_project_id = project_id
         conn._afterglow_token = token
+        conn._afterglow_domain_id = "default"
+        conn._afterglow_identity_domain_id = "default"
         connections.append(conn)
         return conn
 

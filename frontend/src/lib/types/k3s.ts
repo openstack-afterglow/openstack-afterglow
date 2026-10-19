@@ -140,10 +140,13 @@ export interface StampedeStatus {
 
 /** Drover resource-credential reference; secrets are never returned. */
 export interface K3sClusterCredential {
-	app_credential_id: string;
+	app_credential_id: string | null;
 	purpose: string;
 	generation: number;
 	owner_user_id: string | null;
+	requester_user_id?: string | null;
+	cleanup_intent_id?: string | null;
+	credential_name?: string | null;
 	state: string;
 	state_reason?: string | null;
 	role_names?: string[];

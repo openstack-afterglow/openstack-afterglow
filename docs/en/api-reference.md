@@ -41,7 +41,7 @@ Every endpoint that requires authentication must include the following headers.
 | `Authorization` | `Bearer <access_token>` — access JWT from the `POST /api/v1/auth/login` response |
 | `X-Project-Id` | (Optional) Project UUID — defaults to the JWT's project; a different value triggers rescope |
 
-`POST /api/v1/auth/login`, `GET /api/v1/health`, and `GET /api/v1/metrics` do not require authentication.
+Public authentication entry points include `/api/v1/auth/domains/resolve`, `/api/v1/auth/login`, provider authorize/callback, and email-verified onboarding. See [Auth](api/auth.md) for exact methods, bodies, limits, and the authenticated `invitations/accept-existing` exception. `GET /api/v1/health` and `GET /api/v1/metrics` also require no user authentication. Refresh authenticates with the refresh JWT in its body.
 Prometheus SD (`/api/v1/sd/...`) and the baked paths for VM agents use a separate Bearer token (see each document).
 
 > **Optional services**: Some domains are mounted only when enabled in the `[services]` section (or the relevant section)
@@ -55,9 +55,10 @@ Prometheus SD (`/api/v1/sd/...`) and the baked paths for VM agents use a separat
 
 | Document | Base Path | Description |
 |------|-----------|------|
-| [Auth](api/auth.md) | `/api/v1/auth` | Keystone token issuance/renewal, session management, project scope switching |
+| [Auth](api/auth.md) | `/api/v1/auth` | Domain-first login, provider federation, email-verified onboarding, JWT rotation, sessions and project switching |
 | [Profile](../api/profile.md) | `/api/v1/profile` | User profile view/edit, password change, activity log |
-| [Projects & Invitations](../api/projects.md) | `/api/v1/projects`, `/api/v1/invitations` | Project self-service, member/manager/invitation management |
+| [Projects](../api/projects.md) | `/api/v1/projects` | Domain-local project creation and owner/admin member/role management |
+| [Domain IAM](../api/iam.md) | `/api/v1/iam` | Domain-manager users, members, invitations, login policy and provider CRUD |
 
 ### Admin
 

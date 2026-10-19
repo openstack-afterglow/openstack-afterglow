@@ -63,6 +63,15 @@ def _build_connection(application_credential_id: str, application_credential_sec
         access = auth.get_access(session)
         if access.user_id != principal.user_id or access.project_id != principal.project_id:
             raise McpConsumerConnectionError("MCP credential owner/project mismatch")
+        identity_domain_id = access.user_domain_id
+        domain_id = access.project_domain_id
+        if (
+            not isinstance(identity_domain_id, str)
+            or not identity_domain_id
+            or not isinstance(domain_id, str)
+            or not domain_id
+        ):
+            raise McpConsumerConnectionError("MCP credential domain identity is unavailable")
         conn = openstack.connection.Connection(
             session=session,
             region_name=settings.os_region_name,
@@ -74,6 +83,8 @@ def _build_connection(application_credential_id: str, application_credential_sec
         raise
     conn._afterglow_project_id = principal.project_id
     conn._afterglow_user_id = principal.user_id
+    conn._afterglow_domain_id = domain_id
+    conn._afterglow_identity_domain_id = identity_domain_id
     conn._afterglow_is_system_admin = False
     return conn
 

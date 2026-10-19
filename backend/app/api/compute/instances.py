@@ -17,6 +17,7 @@ import hashlib
 import ipaddress
 import json
 import logging
+import secrets
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID
@@ -75,6 +76,7 @@ from app.services.instance_password import PASSWORD_PROVISIONING_ERROR, prefligh
 from app.services.resource_policies import ResourcePolicyValidationError
 from app.services.resource_policy_store import ResourcePolicyStorageUnavailable
 from app.services.ssh_access import github_ssh_metadata
+from app.services.volume_protection import register_volume_protection, rollback_volume_protection
 
 logger = logging.getLogger(__name__)
 
@@ -520,6 +522,7 @@ async def create_instance(
     boot_volume_was_provided: bool = False  # 기존 볼륨 사용 시 rollback 에서 삭제 금지
     server_id: str | None = None
     floating_ip_id: str | None = None
+    protection_registration_id: str | None = None
 
     try:
         data_mounts_info: list[dict] = []
@@ -624,6 +627,17 @@ async def create_instance(
                     floating_ip_id = fip.id
                     await asyncio.to_thread(neutron.associate_floating_ip, conn, fip.id, server_id)
 
+        if req.auto_snapshot or req.auto_backup:
+            protection_registration_id = secrets.token_hex(24)
+            await register_volume_protection(
+                conn,
+                project_id,
+                boot_volume_id,
+                auto_snapshot=req.auto_snapshot,
+                auto_backup=req.auto_backup,
+                registration_id=protection_registration_id,
+            )
+
         if not password_plan.windows:
             await _record_cloud_init_history_best_effort(token_info, req.userdata)
         await rec(
@@ -640,7 +654,7 @@ async def create_instance(
         return server
 
     except Exception as e:
-        if isinstance(e, HTTPException) and req.admin_pass is None:
+        if isinstance(e, HTTPException) and req.admin_pass is None and not boot_volume_id and not created_access_ids:
             raise
         error_detail = str(e)
 
@@ -668,6 +682,12 @@ async def create_instance(
         if req.admin_pass is not None:
             error_detail = PASSWORD_PROVISIONING_ERROR
         logger.error("인스턴스 생성 실패, rollback 시작: %s", error_detail)
+
+        if protection_registration_id is not None:
+            try:
+                await rollback_volume_protection(project_id, boot_volume_id, protection_registration_id)
+            except Exception:
+                logger.error("Volume protection policy compensation failed")
 
         await instance_orch.rollback_instance(
             conn,
@@ -766,6 +786,8 @@ async def create_instance_async(
         boot_volume_was_provided: bool = False  # 기존 볼륨 사용 시 rollback 에서 삭제 금지
         server_id: str | None = None
         floating_ip_id: str | None = None
+        protection_registration_id: str | None = None
+        created_volume_ids: list[str] = []
         _start_time = time.monotonic()
 
         def send_progress(step: ProgressStep, progress: int, message: str, **extra):
@@ -878,6 +900,7 @@ async def create_instance_async(
                 if not nv_name:
                     continue
                 new_vol = await asyncio.to_thread(cinder.create_empty_volume, conn, nv_name, nv_size)
+                created_volume_ids.append(new_vol.id)
                 await asyncio.to_thread(
                     conn.compute.create_volume_attachment,
                     server_id,
@@ -909,10 +932,20 @@ async def create_instance_async(
                             "Floating IP 할당 완료",
                         )
 
+            if req.auto_snapshot or req.auto_backup:
+                protection_registration_id = secrets.token_hex(24)
+                await register_volume_protection(
+                    conn,
+                    conn._afterglow_project_id,
+                    boot_volume_id,
+                    auto_snapshot=req.auto_snapshot,
+                    auto_backup=req.auto_backup,
+                    registration_id=protection_registration_id,
+                )
+
             # Completed
             if not password_plan.windows:
                 await _record_cloud_init_history_best_effort(token_info, req.userdata)
-            yield send_progress(ProgressStep.COMPLETED, 100, "인스턴스 생성 완료", instance_id=server_id)
             await rec(
                 token_info,
                 conn,
@@ -925,6 +958,7 @@ async def create_instance_async(
             _pid = conn._afterglow_project_id
             await invalidate(f"afterglow:nova:{_pid}:instances")
             await cache_invalidation.invalidate_mutation_count("nova", _pid)
+            yield send_progress(ProgressStep.COMPLETED, 100, "인스턴스 생성 완료", instance_id=server_id)
 
         except Exception as e:
             error_detail = str(e)
@@ -968,6 +1002,25 @@ async def create_instance_async(
                 )
             )
 
+            if protection_registration_id is not None:
+                try:
+                    await rollback_volume_protection(
+                        conn._afterglow_project_id, boot_volume_id, protection_registration_id
+                    )
+                except Exception:
+                    logger.error("Volume protection policy compensation failed")
+            await instance_orch.rollback_instance(
+                conn,
+                server_id,
+                boot_volume_id if not boot_volume_was_provided else None,
+                None,
+                [],
+                created_access_ids,
+                floating_ip_id,
+                safe_error_message=PASSWORD_PROVISIONING_ERROR if req.admin_pass is not None else None,
+                additional_volume_ids=created_volume_ids,
+            )
+
             yield send_progress(
                 ProgressStep.FAILED,
                 0,
@@ -982,16 +1035,6 @@ async def create_instance_async(
                 status="failed",
                 resource_name=req.name,
                 error_message=error_detail[:500],
-            )
-            await instance_orch.rollback_instance(
-                conn,
-                server_id,
-                boot_volume_id if not boot_volume_was_provided else None,
-                None,
-                [],
-                created_access_ids,
-                floating_ip_id,
-                safe_error_message=PASSWORD_PROVISIONING_ERROR if req.admin_pass is not None else None,
             )
         finally:
             try:

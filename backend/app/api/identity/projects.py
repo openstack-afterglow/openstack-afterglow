@@ -1,22 +1,17 @@
 """사용자 셀프서비스 프로젝트 관리 API."""
 
 import asyncio
-from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     get_caller_project_permissions,
     get_token_info,
     require_admin,
-    require_project_manager,
 )
 from app.database import get_session
-from app.models.db import ProjectInvitation
-from app.services.identity_roles import visible_role_names
 
 router = APIRouter()
 
@@ -24,11 +19,7 @@ router = APIRouter()
 class CreateProjectRequest(BaseModel):
     name: str
     description: str = ""
-
-
-class CreateInvitationRequest(BaseModel):
-    email: str
-    keystone_role: Literal["project_member", "project_reader"] = "project_member"
+    domain_id: str | None = Field(default=None, min_length=1)
 
 
 class ReplaceMemberRolesRequest(BaseModel):
@@ -37,6 +28,21 @@ class ReplaceMemberRolesRequest(BaseModel):
 
 class MigrateLegacyManagersRequest(BaseModel):
     owner_user_id: str = Field(min_length=1)
+
+
+class TransferOwnershipRequest(BaseModel):
+    user_id: str = Field(min_length=1)
+
+
+class ProjectCreatorRequest(BaseModel):
+    domain_id: str | None = Field(default=None, min_length=1)
+    enabled: bool = Field(strict=True)
+
+
+class OwnershipReconcileRequest(BaseModel):
+    operation_id: str = Field(min_length=1)
+    domain_id: str | None = Field(default=None, min_length=1)
+    native_calls_settled: bool = Field(strict=True)
 
 
 class ProjectPermissionsResponse(BaseModel):
@@ -71,7 +77,96 @@ async def create_project(
         description=req.description,
         user_id=token_info["user_id"],
         username=token_info.get("username", ""),
+        domain_id=req.domain_id or token_info["domain_id"],
     )
+
+
+@router.get("/capabilities")
+async def project_capabilities(
+    domain_id: str | None = Query(None, min_length=1),
+    token_info: dict = Depends(get_token_info),
+):
+    from app.services.project_service import can_create_project
+
+    target = domain_id or token_info["domain_id"]
+    return {"domain_id": target, "can_create_project": await can_create_project(token_info["user_id"], target)}
+
+
+@router.get("/creators")
+async def list_project_creators(
+    domain_id: str | None = Query(None, min_length=1),
+    token_info: dict = Depends(get_token_info),
+):
+    from app.services.project_service import project_creators
+
+    return await project_creators(domain_id or token_info["domain_id"], token_info["user_id"])
+
+
+@router.put("/creators/{user_id}")
+async def delegate_project_creator(
+    user_id: str,
+    req: ProjectCreatorRequest,
+    token_info: dict = Depends(get_token_info),
+):
+    from app.services.project_service import change_project_creator
+
+    return await change_project_creator(
+        req.domain_id or token_info["domain_id"], user_id, req.enabled, token_info["user_id"]
+    )
+
+
+@router.get("/{project_id}/eligible-users")
+async def eligible_users(project_id: str, token_info: dict = Depends(get_token_info)):
+    from app.services.project_service import eligible_project_users
+
+    return await eligible_project_users(project_id, token_info)
+
+
+@router.get("/{project_id}/ownership")
+async def ownership(project_id: str, token_info: dict = Depends(get_token_info)):
+    from app.services.project_service import project_ownership
+
+    return await project_ownership(project_id, token_info)
+
+
+@router.post("/{project_id}/ownership-transfer")
+async def transfer_ownership(
+    project_id: str, req: TransferOwnershipRequest, token_info: dict = Depends(get_token_info)
+):
+    from app.services.project_service import transfer_project_ownership
+
+    return await transfer_project_ownership(project_id, req.user_id, token_info)
+
+
+@router.post("/{project_id}/ownership-transfer/reconcile", dependencies=[Depends(require_admin)])
+async def reconcile_ownership(
+    project_id: str,
+    req: OwnershipReconcileRequest,
+    token_info: dict = Depends(get_token_info),
+):
+    from app.services.project_service import reconcile_project_ownership
+
+    return await reconcile_project_ownership(
+        project_id,
+        req.operation_id,
+        req.domain_id or token_info["domain_id"],
+        token_info,
+        native_calls_settled=req.native_calls_settled,
+    )
+
+
+@router.get("/{project_id}/deletion-check")
+async def deletion_check(project_id: str, token_info: dict = Depends(get_token_info)):
+    from app.services.project_service import project_deletion_check
+
+    return await project_deletion_check(project_id, token_info)
+
+
+@router.delete("/{project_id}", status_code=204)
+async def delete_project(project_id: str, token_info: dict = Depends(get_token_info)):
+    from app.services.project_service import delete_empty_project
+
+    await delete_empty_project(project_id, token_info)
 
 
 # ─── 권한 및 역할 조회 ────────────────────────────────────────────────────────
@@ -96,6 +191,10 @@ async def get_project_permissions(
     """
     if project_id == "current":
         return await get_caller_project_permissions(token_info=token_info)
+
+    from app.services.domain_scope import assert_project_domain
+
+    await asyncio.to_thread(assert_project_domain, token_info.get("domain_id", ""), project_id)
 
     # 다른 프로젝트 조회 시 소속 여부(Keystone rescope) 검증
     if not token_info.get("is_system_admin", False) and project_id != token_info.get("project_id"):
@@ -173,113 +272,3 @@ async def migrate_project_legacy_managers(
     from app.services.project_service import migrate_legacy_managers
 
     return await migrate_legacy_managers(project_id, req.owner_user_id, token_info, session)
-
-
-# ─── 초대 ─────────────────────────────────────────────────────────────────────
-
-
-@router.post("/{project_id}/invitations", status_code=201)
-async def create_invitation(
-    req: CreateInvitationRequest,
-    project_id: str = Path(...),
-    token_info: dict = Depends(get_token_info),
-    session: AsyncSession = Depends(get_session),
-):
-    """이메일 주소로 프로젝트에 초대합니다."""
-    await require_project_manager(project_id, token_info)
-
-    project_name = await _get_project_name(project_id)
-
-    from app.services.project_service import create_invitation
-
-    return await create_invitation(
-        project_id=project_id,
-        project_name=project_name,
-        invited_email=req.email.lower().strip(),
-        invited_by=token_info["user_id"],
-        invited_by_name=token_info.get("username", ""),
-        session=session,
-        keystone_role=req.keystone_role,
-    )
-
-
-@router.get("/{project_id}/invitations")
-async def list_invitations(
-    project_id: str = Path(...),
-    token_info: dict = Depends(get_token_info),
-    session: AsyncSession = Depends(get_session),
-):
-    """프로젝트 초대 목록 조회."""
-    await require_project_manager(project_id, token_info)
-
-    result = await session.execute(
-        select(ProjectInvitation)
-        .where(ProjectInvitation.project_id == project_id)
-        .order_by(ProjectInvitation.created_at.desc())
-    )
-    invitations = result.scalars().all()
-    visible = set(
-        await visible_role_names([inv.keystone_role for inv in invitations], token_info.get("is_system_admin", False))
-    )
-    return {
-        "items": [
-            {
-                "id": inv.id,
-                "invited_email": inv.invited_email,
-                "invited_by_name": inv.invited_by_name,
-                "status": inv.status,
-                "keystone_role": inv.keystone_role,
-                "expires_at": inv.expires_at.isoformat() + "Z",
-                "accepted_at": inv.accepted_at.isoformat() + "Z" if inv.accepted_at else None,
-                "created_at": inv.created_at.isoformat() + "Z",
-            }
-            for inv in invitations
-            if inv.keystone_role in visible
-        ]
-    }
-
-
-@router.delete("/{project_id}/invitations/{invitation_id}", status_code=204)
-async def revoke_invitation(
-    project_id: str = Path(...),
-    invitation_id: int = Path(...),
-    token_info: dict = Depends(get_token_info),
-    session: AsyncSession = Depends(get_session),
-):
-    """초대 취소 (pending 상태만 가능)."""
-    await require_project_manager(project_id, token_info)
-
-    result = await session.execute(
-        select(ProjectInvitation).where(
-            ProjectInvitation.id == invitation_id,
-            ProjectInvitation.project_id == project_id,
-        )
-    )
-    inv = result.scalar_one_or_none()
-    if inv is None:
-        raise HTTPException(status_code=404, detail="초대를 찾을 수 없습니다")
-    if inv.status != "pending":
-        raise HTTPException(status_code=409, detail="취소할 수 없는 상태의 초대입니다")
-
-    inv.status = "revoked"
-    await session.commit()
-
-
-# ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
-
-
-async def _get_project_name(project_id: str) -> str:
-    from app.services import keystone
-
-    def _lookup():
-        ks = keystone._get_admin_ks_client()
-        try:
-            p = ks.projects.get(project_id)
-            return p.name or project_id
-        except Exception:
-            return project_id
-
-    try:
-        return await asyncio.to_thread(_lookup)
-    except Exception:
-        return project_id

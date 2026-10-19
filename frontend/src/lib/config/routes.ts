@@ -6,6 +6,15 @@ import { t } from '$lib/i18n/ns/nav';
 
 type NavMessage = Parameters<typeof t>[0];
 
+const PROJECT_AGNOSTIC_ROUTES = ['/', '/login', '/auth/callback', '/select-project', '/select-domain', '/oauth/claude/authorize', '/oauth/mcp/authorize'];
+
+/** Project selection is not required for domain IAM or verified system-admin routes. Authentication still is. */
+export function isProjectAgnosticPath(pathname: string, isSystemAdmin: boolean): boolean {
+  return PROJECT_AGNOSTIC_ROUTES.includes(pathname)
+    || pathname === '/dashboard/iam' || pathname.startsWith('/dashboard/iam/')
+    || (isSystemAdmin && (pathname === '/admin' || pathname.startsWith('/admin/')));
+}
+
 /** Resolve translated segments at call time to follow the active language. */
 const ROUTE_LABEL_KEYS: Record<string, NavMessage> = {
   // Top level

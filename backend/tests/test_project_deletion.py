@@ -23,11 +23,14 @@ import requests
 from keystoneauth1 import access
 from keystoneauth1 import session as ks_session
 from keystoneauth1.identity.access import AccessInfoPlugin
+from keystoneclient.v3.client import Client as KeystoneClient
 from requests import Response
 from requests.adapters import BaseAdapter
 
 from app.api.deps import get_os_conn
 from app.main import app
+from app.services import keystone
+from tests.ownership_journal import ownership_journal as ownership_journal
 
 TARGET = "target-project"
 FOREIGN = "foreign-project"
@@ -144,6 +147,7 @@ class FakeCloud(BaseAdapter):
         self.rows = {kind: [] for kind in KINDS}
         self.catalog = dict(CATALOG)
         self.extra_catalog = []
+        self.children = []
         self.failures = {}  # kind -> (predicate over the request query, HTTP status)
         self.denied = set()  # provider hosts whose policy rejects resource listing
         self.block = {}  # kind -> (started, release) threading events held inside the provider read
@@ -213,6 +217,11 @@ class FakeCloud(BaseAdapter):
                 return _response(request, 200, {"versions": [doc]})
             if path == prefix:
                 return _response(request, 200, {"version": doc})
+        if url.netloc == "keystone.test" and path == "/v3/domains/default" and request.method == "GET":
+            return _response(request, 200, {"domain": {"id": "default", "name": "Default", "enabled": True}})
+        if url.netloc == "keystone.test" and path == "/v3/projects" and request.method == "GET":
+            rows = [row for row in self.children if row["parent_id"] == query.get("parent_id")]
+            return _response(request, 200, {"projects": rows, "links": {"next": None}})
         if url.netloc == "keystone.test" and path.startswith("/v3/projects/"):
             project_id = path.rsplit("/", 1)[1]
             if request.method == "DELETE":
@@ -329,14 +338,14 @@ def assert_report(report):
 
 
 async def inspect(client):
-    response = await client.get(f"{URL}/deletion-check")
+    response = await client.get(f"{URL}/deletion-check", params={"domain_id": "default"})
     assert response.status_code == 200, response.text
     assert_report(response.json())
     return response.json()
 
 
 async def refused(client, status, code):
-    response = await client.delete(URL)
+    response = await client.delete(URL, params={"domain_id": "default"})
     assert response.status_code == status, response.text
     assert LEAK not in response.text
     detail = response.json()["detail"]
@@ -366,7 +375,7 @@ def cloud():
 
 
 @pytest.fixture
-async def native_admin(admin_client, cloud):
+async def native_admin(admin_client, cloud, monkeypatch, ownership_journal):
     async def connection():
         conn = cloud.connect()
         try:
@@ -374,8 +383,13 @@ async def native_admin(admin_client, cloud):
         finally:
             conn.close()
 
+    native = cloud.connect()
+    monkeypatch.setattr(keystone, "_get_admin_ks_client", lambda: KeystoneClient(session=native.session))
     app.dependency_overrides[get_os_conn] = connection
-    return admin_client
+    try:
+        yield admin_client
+    finally:
+        native.close()
 
 
 @pytest.mark.asyncio
@@ -388,14 +402,59 @@ async def test_verified_empty_project_ignores_foreign_resources_and_default_grou
     resources = by_kind(report)
     for name in CORE_KINDS:
         assert (resources[name]["status"], resources[name]["count"], resources[name]["samples"]) == ("ok", 0, [])
-    optional = [row for row in report["resources"] if row["kind"] not in KINDS]
+    assert resources["child_projects"]["status"] == "ok" and resources["child_projects"]["count"] == 0
+    optional = [row for row in report["resources"] if row["kind"] not in KINDS and row["kind"] != "child_projects"]
     assert all((row["status"], row["reason"]) == ("skipped", "service_not_present") for row in optional)
     before = cloud.calls.copy()
-    response = await native_admin.delete(URL)
+    response = await native_admin.delete(URL, params={"domain_id": "default"})
     assert response.status_code == 204, response.text
     assert cloud.deleted == [TARGET]
     # The delete reran every provider read server-side instead of trusting the earlier report.
     assert all(cloud.calls[name] > before[name] for name in KINDS)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["applying", "unknown", "settled"])
+async def test_unresolved_owner_operation_blocks_even_empty_project(native_admin, cloud, ownership_journal, status):
+    from app.models.project_ownership import ProjectOwnershipTransfer
+
+    seed_background(cloud)
+    async with ownership_journal() as session:
+        session.add(
+            ProjectOwnershipTransfer(
+                id="transfer",
+                project_id=TARGET,
+                domain_id="default",
+                from_user_id="old",
+                to_user_id="new",
+                status=status,
+                stage="grant",
+            )
+        )
+        await session.commit()
+
+    for method, path in (("GET", URL + "/deletion-check"), ("DELETE", URL)):
+        response = await native_admin.request(method, path, params={"domain_id": "default"})
+        assert response.status_code == 409
+        assert response.json()["detail"] == "project_ownership_native_operation_unresolved"
+    assert cloud.deleted == []
+    assert not cloud.calls
+
+
+@pytest.mark.asyncio
+async def test_native_child_project_blocks_parent_deletion(native_admin, cloud):
+    seed_background(cloud)
+    cloud.children = [
+        {"id": "child", "name": "child", "domain_id": "default", "parent_id": TARGET, "enabled": True},
+        {"id": "foreign-child", "domain_id": "default", "parent_id": FOREIGN, "enabled": True},
+    ]
+
+    check = await refused(native_admin, 409, "project_has_resources")
+
+    children = by_kind(check)["child_projects"]
+    assert children["status"] == "ok" and children["count"] == 1
+    assert [row["id"] for row in children["samples"]] == ["child"]
+    assert cloud.deleted == []
 
 
 @pytest.mark.asyncio
@@ -558,7 +617,7 @@ async def test_unverifiable_catalog_marks_optional_inventory_unknown(native_admi
     report = await inspect(native_admin)
 
     assert all(by_kind(report)[name]["count"] == 0 for name in CORE_KINDS)
-    optional = [row for row in report["resources"] if row["kind"] not in KINDS]
+    optional = [row for row in report["resources"] if row["kind"] not in KINDS and row["service"] != "identity"]
     assert optional and all(row["status"] == "unavailable" for row in optional)
     assert report["can_delete"] is False
     await refused(native_admin, 503, "project_resource_check_failed")
@@ -581,7 +640,7 @@ async def test_every_check_and_delete_reads_current_cloud_state(native_admin, cl
     assert cloud.deleted == []
 
     cloud.denied.clear()
-    response = await native_admin.delete(URL)
+    response = await native_admin.delete(URL, params={"domain_id": "default"})
     assert response.status_code == 204, response.text
     assert cloud.deleted == [TARGET]
 
@@ -624,7 +683,7 @@ async def test_cancelled_delete_settles_blocked_inventory_and_never_deletes(nati
     started, release = threading.Event(), threading.Event()
     cloud.block["instances"] = (started, release)
 
-    request = asyncio.create_task(native_admin.delete(URL))
+    request = asyncio.create_task(native_admin.delete(URL, params={"domain_id": "default"}))
     try:
         assert await asyncio.to_thread(started.wait, 5)
         request.cancel()
@@ -670,8 +729,7 @@ async def test_token_without_native_admin_context_never_proves_empty(native_admi
 
     report = await inspect(native_admin)
 
-    assert len(report["resources"]) == 28
-    assert {(row["status"], row["reason"]) for row in report["resources"]} == {
+    assert {(row["status"], row["reason"]) for row in report["resources"] if row["service"] != "identity"} == {
         ("unavailable", "admin_authority_unverified")
     }
     # A shrunken HTTP 200 list from a caller-only token is never consulted as proof of emptiness.
@@ -682,6 +740,6 @@ async def test_token_without_native_admin_context_never_proves_empty(native_admi
 
 @pytest.mark.asyncio
 async def test_non_admin_cannot_inspect_or_delete(non_admin_client, mock_conn):
-    assert (await non_admin_client.get(f"{URL}/deletion-check")).status_code == 403
-    assert (await non_admin_client.delete(URL)).status_code == 403
+    assert (await non_admin_client.get(f"{URL}/deletion-check", params={"domain_id": "default"})).status_code == 403
+    assert (await non_admin_client.delete(URL, params={"domain_id": "default"})).status_code == 403
     assert mock_conn.method_calls == []

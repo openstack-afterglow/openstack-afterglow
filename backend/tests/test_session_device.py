@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -249,6 +250,7 @@ async def test_legacy_session_no_device_fields(_fake_redis_global):
 @pytest.mark.anyio
 async def test_list_users_no_per_user_get_and_activity_bounds(admin_client, mock_conn):
     """list_users: per-user get_user() 폴백 호출 없음, first_seen/last_seen 포함."""
+    mock_conn.identity.get_domain.return_value = SimpleNamespace(id="default", name="Default")
     u = MagicMock()
     u.id = "uid-1"
     u.name = "Alice"
@@ -263,7 +265,7 @@ async def test_list_users_no_per_user_get_and_activity_bounds(admin_client, mock
         new_callable=AsyncMock,
         return_value={"uid-1": {"first_seen": "2025-01-01T00:00:00", "last_seen": "2025-06-01T00:00:00"}},
     ):
-        resp = await admin_client.get("/api/v1/admin/users?limit=20")
+        resp = await admin_client.get("/api/v1/admin/users?domain_id=default&limit=20")
 
     assert resp.status_code == 200
     data = resp.json()
@@ -280,6 +282,7 @@ async def test_list_users_no_per_user_get_and_activity_bounds(admin_client, mock
 @pytest.mark.anyio
 async def test_list_users_activity_bounds_missing_user(admin_client, mock_conn):
     """activity bounds에 없는 사용자는 first_seen/last_seen이 None이고 created_at도 None."""
+    mock_conn.identity.get_domain.return_value = SimpleNamespace(id="default", name="Default")
     u = MagicMock()
     u.id = "uid-no-activity"
     u.name = "Bob"
@@ -294,7 +297,7 @@ async def test_list_users_activity_bounds_missing_user(admin_client, mock_conn):
         new_callable=AsyncMock,
         return_value={},  # 활동 기록 없음
     ):
-        resp = await admin_client.get("/api/v1/admin/users?limit=20")
+        resp = await admin_client.get("/api/v1/admin/users?domain_id=default&limit=20")
 
     assert resp.status_code == 200
     item = resp.json()["items"][0]
@@ -311,23 +314,25 @@ async def test_list_users_activity_bounds_missing_user(admin_client, mock_conn):
 @pytest.mark.anyio
 async def test_get_users_stats_forbidden_for_non_admin(non_admin_client):
     """require_admin 게이트 — 일반 사용자는 403."""
-    resp = await non_admin_client.get("/api/v1/admin/users/stats")
+    resp = await non_admin_client.get("/api/v1/admin/users/stats?domain_id=default")
     assert resp.status_code == 403
 
 
 @pytest.mark.anyio
 async def test_get_users_stats_counts(admin_client, mock_conn):
     """통계: 전체/활성/비활성 수 정확성."""
+    mock_conn.identity.get_domain.return_value = SimpleNamespace(id="default", name="Default")
     users_mock = []
     for i, enabled in enumerate([True, True, False]):
         u = MagicMock()
         u.id = f"uid-{i}"
         u.name = f"User{i}"
         u.is_enabled = enabled
+        u.domain_id = "default"
         users_mock.append(u)
     mock_conn.identity.users.return_value = users_mock
 
-    resp = await admin_client.get("/api/v1/admin/users/stats")
+    resp = await admin_client.get("/api/v1/admin/users/stats?domain_id=default")
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 3
@@ -343,13 +348,15 @@ async def test_get_users_stats_counts(admin_client, mock_conn):
 @pytest.mark.anyio
 async def test_get_users_activity_forbidden_for_non_admin(non_admin_client):
     """require_admin 게이트 — 일반 사용자는 403."""
-    resp = await non_admin_client.get("/api/v1/admin/users/activity")
+    resp = await non_admin_client.get("/api/v1/admin/users/activity?domain_id=default")
     assert resp.status_code == 403
 
 
 @pytest.mark.anyio
-async def test_get_users_activity_returns_events(admin_client):
+async def test_get_users_activity_returns_events(admin_client, mock_conn):
     """변경 로그 카드: resource_type='user' 이벤트를 반환한다."""
+    mock_conn.identity.get_domain.return_value = SimpleNamespace(id="default", name="Default")
+    mock_conn.identity.users.return_value = [SimpleNamespace(id="uid-1", domain_id="default")]
     sample = [
         {
             "id": 1,
@@ -371,11 +378,11 @@ async def test_get_users_activity_returns_events(admin_client):
         new_callable=AsyncMock,
         return_value=sample,
     ) as mock_list:
-        resp = await admin_client.get("/api/v1/admin/users/activity?limit=10")
+        resp = await admin_client.get("/api/v1/admin/users/activity?domain_id=default&limit=10")
 
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
     assert len(data) == 1
     assert data[0]["action"] == "create_user"
-    mock_list.assert_called_once()
+    mock_list.assert_awaited_once_with(limit=10, before_id=None, user_ids=["uid-1"])

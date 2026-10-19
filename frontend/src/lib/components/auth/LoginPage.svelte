@@ -1,91 +1,186 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
+	import { derived, get } from 'svelte/store';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { auth, setLoginAuth, isLoggedIn } from '$lib/stores/auth';
+	import { auth, logoutInProgress, projectSwitching, setLoginAuth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import LoginBrandHeader from '$lib/components/auth/LoginBrandHeader.svelte';
-	import LoginForm from '$lib/components/auth/LoginForm.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
+	import Field from '$lib/components/ui/Field.svelte';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import type { LoginResponse } from '$lib/types/auth';
-	import { resolvePostLoginProject } from '$lib/utils/authFlow';
+	import TextInput from '$lib/components/ui/TextInput.svelte';
+	import type { LoginProviderOption, LoginOptions, LoginResponse } from '$lib/types/auth';
+	import { loginAuthState, sessionScopeKey, type LoginAuthMapping } from '$lib/utils/authSession';
+	import { loginDestination } from '$lib/utils/authFlow';
 	import { postAuthDestination } from '$lib/utils/mcpConsent';
+	import { isSafeAuthorizeUrl, storePendingProviderLogin } from '$lib/utils/domainLogin';
 	import { t } from '$lib/i18n/ns/public-entry';
+	import { t as td } from '$lib/i18n/ns/domain-auth';
 	import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
 
-	onMount(async () => {
-		try {
-			const res = await api.get<{ enabled: boolean }>('/api/v1/auth/gitlab/enabled');
-			gitlabEnabled = res.enabled;
-		} catch {
-			gitlabEnabled = false;
-		}
-	});
-
-	let domainName = $state('Default');
+	// Entry redirects belong only to the session present when this page was created.
+	const initialAuth = get(auth);
 	let username = $state('');
 	let password = $state('');
 	let error = $state('');
 	let loading = $state(false);
-	let gitlabEnabled = $state(false);
-	let gitlabLoading = $state(false);
-
-	$effect(() => {
-		if ($isLoggedIn) {
-			const fallback = $page.data.mockup?.active ? $page.data.mockup.homePath : ($auth.projectId ? '/dashboard' : '/select-project');
-			goto(postAuthDestination(fallback));
-		}
+	let sso = $state(false);
+	let providersLoading = $state(true);
+	let providers = $state<LoginProviderOption[]>([]);
+	let providersError = $state(false);
+	let providerLoading = $state<LoginProviderOption | null>(null);
+	let generation = 0;
+	let active = false;
+	let publishing = false;
+	const busy = $derived(loading || providerLoading !== null || $logoutInProgress || $projectSwitching);
+	const providerNameCounts = $derived.by(() => {
+		const counts = new Map<string, number>();
+		for (const provider of providers) counts.set(provider.name, (counts.get(provider.name) ?? 0) + 1);
+		return counts;
 	});
 
-	async function loginWithGitlab() {
-		gitlabLoading = true;
-		error = '';
+	function invalidate() {
+		generation++;
+		username = ''; password = ''; error = '';
+		loading = false; providerLoading = null;
+	}
+
+	onMount(() => {
+		active = true;
+		// Subscribe synchronously so A -> B -> A identity/reauth changes cannot revive a response.
+		let owner = '';
+		const unsubscribe = derived([auth, logoutInProgress, projectSwitching, page], ([state, loggingOut, switching, entry]) =>
+			JSON.stringify([sessionScopeKey(state), state.token, loggingOut, switching, entry.url.searchParams.get('reauthenticate') === '1'])
+		).subscribe(key => {
+			if (owner && key !== owner && !publishing) invalidate();
+			owner = key;
+		});
+		if (initialAuth.token && $page.url.searchParams.get('reauthenticate') !== '1') {
+			const fallback = $page.data.mockup?.active ? $page.data.mockup.homePath : loginDestination(initialAuth);
+			void goto(postAuthDestination(fallback));
+		} else {
+			void discoverProviders();
+		}
+		return () => { active = false; invalidate(); unsubscribe(); };
+	});
+
+	async function discoverProviders() {
+		// Public discovery belongs to this mounted page, not a credential/authorize attempt.
 		try {
-			const res = await api.get<{ authorize_url: string }>('/api/v1/auth/gitlab/authorize');
-			// 안전한 프로토콜인지 확인 (오픈 리다이렉트 방지)
-			const redirectUrl = new URL(res.authorize_url);
-			if (!['https:', 'http:'].includes(redirectUrl.protocol)) {
-				error = t('login.invalidGitlabUrl');
-				gitlabLoading = false;
-				return;
-			}
-			window.location.href = res.authorize_url;
-		} catch (e) {
-			error = e instanceof ApiError ? t('login.gitlabAuthError', { status: e.status }) : t('login.gitlabUrlFailed');
-			gitlabLoading = false;
+			const options = await api.get<LoginOptions>('/api/v1/auth/login-options', undefined, undefined,
+				{ cache: 'no-store', suppressAuthRedirect: true, replayOnUnauthorized: false });
+			if (!active) return;
+			providers = options.providers;
+		} catch {
+			if (active) providersError = true;
+		} finally {
+			if (active) providersLoading = false;
 		}
 	}
 
-	async function login() {
+	async function selectMethod(useSso: boolean) {
+		if (!active || busy) return;
+		password = '';
 		error = '';
-		loading = true;
-		try {
-			const data = await api.post<LoginResponse>('/api/v1/auth/login', {
-				username, password, domain_name: domainName,
-			});
-			const resolution = resolvePostLoginProject(data);
-			const scopedProjectId = data.project_id?.trim() || null;
+		sso = useSso;
+		await tick();
+		if (active && sso === useSso) document.getElementById(useSso ? 'login-sso-title' : 'login-username')?.focus();
+	}
 
-			setLoginAuth({
-				token: data.token,
-				refreshToken: data.refresh_token ?? null,
-				accessExpiresAt: data.expires_at
-					? Math.floor(new Date(data.expires_at).getTime() / 1000)
-					: null,
-				userId: data.user_id,
-				username: data.username,
-				projectId: resolution.projectId,
-				projectName: resolution.projectId === scopedProjectId ? (data.project_name || null) : null,
-				roles: data.roles ?? [],
-				isSystemAdmin: data.is_system_admin ?? false,
-				canWrite: data.can_write,
-			});
-			await goto(postAuthDestination(resolution.target));
+	function discardIssuedSession(token: string) {
+		void api.post('/api/v1/auth/logout', {}, token, undefined, { suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false }).catch(() => {});
+	}
+
+	function passwordErrorMessage(e: unknown): string {
+		if (!(e instanceof ApiError)) return td('login.password.unavailable');
+		if (e.status === 401) return td('login.password.invalid');
+		if (e.status === 403) return td('login.password.forbidden');
+		if (e.status === 429) return td('login.password.rateLimited');
+		if (e.status === 503 || e.status === 0) return td('login.password.unavailable');
+		return td('login.password.failed', { status: e.status });
+	}
+	async function login() {
+		if (!active || busy || sso || !username || !password) return;
+		const current = generation;
+		loading = true;
+		error = '';
+		let data: LoginResponse;
+		try {
+			data = await api.post<LoginResponse>(
+				'/api/v1/auth/login',
+				{ username, password },
+				undefined,
+				undefined,
+				{ suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false },
+			);
 		} catch (e) {
-			error = e instanceof ApiError ? t('login.authFailed', { status: e.status }) : t('login.serverError');
-		} finally {
+			if (!active || current !== generation) return;
 			loading = false;
+			error = passwordErrorMessage(e);
+			return;
 		}
+		if (!active || current !== generation) {
+			discardIssuedSession(data.token);
+			return;
+		}
+		let mapped: LoginAuthMapping;
+		try {
+			mapped = loginAuthState(data, { federated: false });
+		} catch {
+			discardIssuedSession(data.token);
+			loading = false;
+			error = td('login.sessionMismatch');
+			return;
+		}
+		password = '';
+		publishing = true;
+		try { setLoginAuth(mapped.state); } finally { publishing = false; }
+		await goto(mapped.target);
+	}
+
+	async function startProvider(provider: LoginProviderOption) {
+		if (!active || busy || !sso) return;
+		const current = generation;
+		providerLoading = provider;
+		error = '';
+		try {
+			const res = await api.post<{ authorize_url: string }>(
+				`/api/v1/auth/domains/${encodeURIComponent(provider.domain_id)}/providers/${encodeURIComponent(provider.id)}/authorize`,
+				{},
+				undefined,
+				undefined,
+				{ suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false },
+			);
+			if (!active || current !== generation) return;
+			if (!isSafeAuthorizeUrl(res.authorize_url)) {
+				providerLoading = null;
+				error = td('login.provider.invalidUrl');
+				return;
+			}
+			storePendingProviderLogin({ domainId: provider.domain_id, providerId: provider.id });
+			window.location.assign(res.authorize_url);
+		} catch {
+			if (!active || current !== generation) return;
+			providerLoading = null;
+			error = td('login.provider.unavailable');
+		}
+	}
+
+
+	function preventComposingSubmit(event: KeyboardEvent) {
+		// Enter commits an IME candidate, not credentials. All other Enter presses
+		// retain the browser's native implicit-submit action and the submit fences.
+		if (event.key === 'Enter' && (event.isComposing || event.keyCode === 229)) {
+			event.preventDefault();
+		}
+	}
+
+	function submit(event: SubmitEvent) {
+		event.preventDefault();
+		void login();
 	}
 </script>
 
@@ -96,17 +191,61 @@
 	<PageShell class="self-center">
 	<div class="login-shell motion-stagger">
 		<LoginBrandHeader />
-		<LoginForm
-			bind:domainName
-			bind:username
-			bind:password
-			{error}
-			{loading}
-			gitlabEnabled={gitlabEnabled}
-			gitlabLoading={gitlabLoading}
-			onSubmit={login}
-			onGitlab={loginWithGitlab}
-		/>
+		<div class="login-card">
+			{#if sso}
+				<section class="login-form" aria-labelledby="login-sso-title">
+					<div class="space-y-2">
+						<h2 id="login-sso-title" tabindex="-1" class="text-xl font-semibold">{td('login.sso.title')}</h2>
+						<p class="text-sm text-ink-2">{td('login.sso.help')}</p>
+					</div>
+					{#if error}<Alert tone="danger">{error}</Alert>{/if}
+					{#if providersLoading}
+						<ActivityIndicator label={td('login.sso.loading')} class="login-activity" />
+					{:else if providersError}
+						<Alert tone="warning">{td('login.providers.unavailable')}</Alert>
+					{:else if providers.length === 0}
+						<Alert tone="info">{td('login.sso.empty')}</Alert>
+					{:else}
+						<div class="login-providers">
+							{#each providers as provider (`${provider.domain_id}:${provider.id}`)}
+								<Button variant="secondary" size="lg" class="login-provider min-h-11" disabled={busy} onclick={() => startProvider(provider)}>
+									{td('login.provider.continue', { name: (providerNameCounts.get(provider.name) ?? 0) > 1 ? `${provider.name} · ${provider.domain_name}` : provider.name })}
+								</Button>
+							{/each}
+						</div>
+					{/if}
+					{#if providerLoading}
+						<ActivityIndicator label={td('login.provider.redirecting', { name: providerLoading.name })} class="login-activity motion-fade" />
+					{/if}
+					<Button variant="ghost" size="lg" class="login-provider min-h-11" disabled={busy} onclick={() => selectMethod(false)}>{td('login.sso.back')}</Button>
+				</section>
+			{:else}
+				<form onsubmit={submit} class="login-form" novalidate>
+					{#if error}
+						<Alert tone="danger">{error}</Alert>
+					{/if}
+
+					<Field label={t('loginForm.username')} for="login-username" help={td('login.username.help')} required>
+						<TextInput id="login-username" bind:value={username} autocomplete="username" disabled={busy} required onkeydown={preventComposingSubmit} />
+					</Field>
+					<Field label={t('loginForm.password')} for="login-password" required>
+						<TextInput id="login-password" bind:value={password} type="password" autocomplete="current-password" disabled={busy} required onkeydown={preventComposingSubmit} />
+					</Field>
+					<Button type="submit" size="lg" class="login-submit" disabled={busy || !username || !password} ariaBusy={loading}>{t('loginForm.signIn')}</Button>
+
+					<div class="login-divider" aria-hidden="true"><span>{td('login.methods.or')}</span></div>
+					<Button variant="secondary" size="lg" class="login-provider min-h-11" disabled={busy} onclick={() => selectMethod(true)}>{td('login.sso.open')}</Button>
+					{#if loading}
+						<ActivityIndicator label={t('loginForm.signingIn')} class="login-activity motion-fade" />
+					{/if}
+				</form>
+
+				<div class="login-signup flex flex-wrap justify-center gap-3">
+					<Button variant="link" size="sm" href="/signup" disabled={busy}>{td('login.signup.open')}</Button>
+					<Button variant="link" size="sm" href="/recover" disabled={busy}>{td('recovery.title')}</Button>
+				</div>
+			{/if}
+		</div>
 	</div>
 	</PageShell>
 </div>
@@ -131,5 +270,62 @@
 		max-width: 28rem;
 		margin-inline: auto;
 		align-self: center;
+	}
+
+	.login-card {
+		border: 1px solid var(--color-line-2);
+		border-radius: 0.75rem;
+		background: var(--color-surface-raised);
+		padding: 2rem;
+	}
+
+	.login-form {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.login-form :global(.login-activity) {
+		align-self: center;
+	}
+
+
+	.login-divider {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		font-size: 0.75rem;
+		color: var(--color-ink-2);
+	}
+
+	.login-divider::before,
+	.login-divider::after {
+		content: '';
+		flex: 1;
+		border-top: 1px solid var(--color-line-2);
+	}
+
+	.login-providers {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.login-card :global(.login-provider) {
+		white-space: normal;
+		overflow-wrap: anywhere;
+	}
+
+	.login-signup {
+		margin-top: 1.25rem;
+		padding-top: 1.25rem;
+		border-top: 1px solid var(--color-line);
+	}
+
+
+	@media (max-width: 479px) {
+		.login-card {
+			padding: 1.25rem;
+		}
 	}
 </style>

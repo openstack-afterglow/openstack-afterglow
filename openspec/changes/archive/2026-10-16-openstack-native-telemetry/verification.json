@@ -1,0 +1,29 @@
+{
+  "change": "openstack-native-telemetry",
+  "scope": "local source; no release, deployment, live OpenStack mutation or Afterglow push",
+  "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/native-telemetry-s53kdwnd",
+  "verification": {
+    "final_native_collector_and_api_pytest": {"passed": 173, "warnings": 5, "evidence": "artifact://322"},
+    "final_canonical_monitoring_target": {"backend_passed": 479, "frontend_passed": 388, "evidence": "artifact://333"},
+    "frontend_native_consumers": {"passed": 130, "files": 10},
+    "frontend_usage_snippet_and_accessible_chart_regressions": {"passed": 41, "files": 3},
+    "python_scope_ruff": {"check": "passed", "format_files_passed": 12},
+    "frontend_build": "passed; artifact://325",
+    "i18n_check": {"errors": 0, "warnings": 0, "namespaces": 47, "source_messages": 10663},
+    "http_smoke": "actual Uvicorn routers and collector, installed OpenStack SDK/Keystone session and Prometheus HTTP; loopback provider/Nova/identity are synthetic",
+    "http_cases": ["healthy normalization and zero", "partial per-metric fallback", "native forbidden and warm inventory cache cannot replay telemetry", "catalog absent", "meters absent", "foreign native owner", "both providers unavailable", "14d window with 300s archive and 21600s provider mean resample", "foreign project and system-admin authorization boundaries"],
+    "privacy_http": "actual main sanitizer: 502 masked body, Cache-Control no-store, arbitrary upstream secret header omitted",
+    "browser": {"surfaces": ["admin native host/storage", "native CPU recorded history", "instance graphs and additional meters", "catalog-absent exporter fallback", "usage native provenance"], "locale_theme_width_conditions": 8, "locales": ["ko", "en", "ja", "zh-CN"], "pairs": ["light/390", "dark/1440"], "horizontal_overflow_px": 0, "boundary": "actual Vite UI and real local API; synthetic provider/identity, not production"},
+    "architecture": {"mode": "isolated public snapshot working/staged; shared index/review marker preserved", "source_sha256": "09d4039f3ce02b4a7980dd0149ff9456f2bf39c7b2d14e228c0a429493b95224", "source_files": 3024}
+  },
+  "known_failures": {
+    "full_test_gate": {"backend_passed": 7582, "skipped": 91, "failed": 14, "files": {"tests/test_instance_storage_delete.py": 11, "tests/test_domain_auth.py": 3}, "evidence": "artifact://294", "later_stages": "not reached; no full-gate success claimed"},
+    "frontend_check": {"errors": 1, "warnings": 3, "outside_scope": "database/instances pushState instanceId is absent from App.PageState", "evidence": "artifact://288"},
+    "browser_ancillary": ["synthetic tutorial-status POST not implemented", "external Google font blocked"]
+  },
+  "fix_proofs": ["main sanitizer privacy header failed before and passed after", "central project adapter missing/empty/foreign actual scope: three failed before, then passed", "malformed diagnostic plus native reset could select a misleading coarse archive: failed before, then preserved measured partial fine history after"],
+  "not_verified": ["live Gnocchi/Ceilometer policy, collection and archive behavior", "production acceptance", "physical GPU telemetry", "full gate success"],
+  "preserved": ["user index", "private operator config", "running user stack", "datastore and volumes", "cloud credentials"],
+  "openspec_archive": {"schema": "rapid", "result": "archived with all tasks complete via --skip-specs --yes", "warning": "generic strict validator requires a delta; rapid schema has proposal/tasks only. Canonical archive emitted non-blocking no-delta warning and skipped spec updates; no validation success claimed."},
+  "optional_gbrain": "CLI absent from PATH; no sync or context-file edits"
+}

@@ -30,6 +30,8 @@ class UpdateImageRequest(BaseModel):
     min_disk: int | None = None
     min_ram: int | None = None
     visibility: str | None = None
+    gpu_vendor: glance.GpuVendor | None = None
+    gpu_driver: glance.GpuDriver | None = None
 
 
 class UpdatePropertiesRequest(BaseModel):
@@ -65,6 +67,8 @@ async def upload_image(
     disk_format: str = Form("raw"),
     visibility: str = Form("private"),
     os_distro: str | None = Form(None),
+    gpu_vendor: glance.GpuVendor | None = Form(None),
+    gpu_driver: glance.GpuDriver | None = Form(None),
     conn: openstack.connection.Connection = Depends(get_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
@@ -99,6 +103,10 @@ async def upload_image(
     props: dict = {}
     if os_distro:
         props["os_distro"] = os_distro
+    if gpu_vendor is not None:
+        props["gpu_vendor"] = gpu_vendor
+    if gpu_driver is not None:
+        props["gpu_driver"] = gpu_driver
 
     try:
         img = await asyncio.to_thread(
@@ -167,6 +175,8 @@ async def upload_image(
         "tag": tag,
         "status": img.status,
         "disk_format": img.disk_format,
+        "gpu_vendor": (getattr(img, "properties", None) or {}).get("gpu_vendor"),
+        "gpu_driver": (getattr(img, "properties", None) or {}).get("gpu_driver"),
         "verification_status": verification_status,
         "verified_at": verified_at,
         "verification_message": verification_message,
@@ -227,8 +237,10 @@ async def update_image(
             req.min_disk,
             req.min_ram,
             req.visibility,
+            gpu_vendor=req.gpu_vendor,
+            gpu_driver=req.gpu_driver,
         )
-        await invalidate(f"afterglow:glance:{getattr(conn, '_afterglow_project_id', None)}:images")
+        await invalidate("afterglow:glance:*:images")
         return (await image_verification.enrich([result]))[0]
     except Exception:
         raise HTTPException(status_code=500, detail="이미지 메타데이터 수정 실패")

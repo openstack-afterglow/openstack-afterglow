@@ -16,7 +16,7 @@ _PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 
 # Only established pre-package Hub families may use ordinary browser rescope.
 # Native project/key/cache control belongs to the dedicated browser BFF or ppk gateway.
-_LEGACY_ROUTE_ROOTS = frozenset({"health", "layers", "images", "image-exports", "uploads", "bundles", "builds"})
+_LEGACY_ROUTE_ROOTS = frozenset({"health", "me", "layers", "images", "image-exports", "uploads", "bundles", "builds"})
 
 
 def _require_palimpsest_enabled() -> None:
@@ -62,7 +62,10 @@ async def proxy_palimpsest_hub(path: str = "", *, request: Request) -> Response:
         return native_error(403, "ACTION_DENIED", "Native Hub routes require dedicated package credentials")
     await get_token_info(request, authorization=authorization, x_project_id=request.headers.get("x-project-id"))
     upstream_path = "/v1/" if not path else f"/v1/{path}"
-    return await proxy("palimpsest", request, upstream_path)
+    response = await proxy("palimpsest", request, upstream_path)
+    if path == "me":
+        response.headers["cache-control"] = "private, no-store"
+    return response
 
 
 _NAMESPACE = r"[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*"

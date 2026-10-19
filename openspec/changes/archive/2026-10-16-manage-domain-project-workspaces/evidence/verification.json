@@ -1,0 +1,418 @@
+{
+  "change": "manage-domain-project-workspaces",
+  "qualified_at": "2026-10-16T07:24:52.872376+00:00",
+  "status": "local_feature_qualified_with_explicit_integration_gate_failures",
+  "production_deployed": false,
+  "committed_or_pushed": false,
+  "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/domain-workspaces-native-20261016-gFHvgyek",
+  "source": {
+    "root": "/Users/pieroot/.local/share/afterglow-proofs/domain-workspaces-native-20261016-gFHvgyek/source-1792099873866087000",
+    "public_manifest_sha256": "6e16e53f36ad0de503bb335f441743b78cc7f1864d8149ad9ca190508c3657f9",
+    "public_manifest_files": 4913,
+    "runtime_source_parity": {
+      "source_root": "/Users/pieroot/.local/share/afterglow-proofs/domain-workspaces-native-20261016-gFHvgyek/source-1792099873866087000",
+      "checked_files": 2299,
+      "changes_since_build": []
+    },
+    "scope": "Frozen current public source includes concurrent WIP; not whole-WIP acceptance; shared index and private settings untouched"
+  },
+  "user_scope_decisions": {
+    "creator_deletion": "Requires exact domain project_creator plus current sole project ownership; managers retain domain-wide management; no Default/resource/unknown bypass",
+    "personal_domains": "New human users only; existing/service identities not moved; duplicate labels use distinct native UUIDs",
+    "quota": "Afterglow-enforced sum-of-native-project-limits allocation budget, not universal native live usage cap",
+    "preferences": "Browser-local, partitioned by immutable home-domain UUID and user UUID; no authorization effect"
+  },
+  "regressions": {
+    "auth": {
+      "backend_passed": 378,
+      "frontend_passed": 171
+    },
+    "access": {
+      "backend_passed": 951,
+      "frontend_passed": 162
+    },
+    "design_passed": 128,
+    "optional_project_deletion_passed": 49,
+    "quota_editor_regressions_passed": 2,
+    "frontend_full": {
+      "files": 390,
+      "vitest_passed": 3969,
+      "node_passed": 9
+    },
+    "contract_passed": 177,
+    "functional": {
+      "passed": 159,
+      "deselected": 31,
+      "boundary": "Canonical disposable MariaDB/PostgreSQL/Redis; PostgreSQL readiness/SELECT not complete checkpointer acceptance"
+    },
+    "full_gate": {
+      "exit_code": 1,
+      "backend_passed": 7303,
+      "backend_failed": 11,
+      "backend_skipped": 91,
+      "failures": "Existing tests/test_instance_storage_delete.py managed grant/rule cleanup; gate stopped before later phases"
+    },
+    "ruff": {
+      "check": "passed",
+      "format_failed_files": [
+        "app/api/compute/instances.py",
+        "app/services/mcp_control_plane/connection.py",
+        "tests/test_admin_flavor_reconcile.py",
+        "tests/test_mcp_consumer_auth.py",
+        "tests/test_palimpsest_dockerfile.py",
+        "tests/test_resource_policies.py"
+      ]
+    },
+    "svelte_check": {
+      "errors": 1,
+      "warnings": 3,
+      "outside_scope_error": "src/routes/dashboard/database/instances/+page.svelte:42 PageState.instanceId"
+    },
+    "i18n": {
+      "namespaces": 47,
+      "messages": 10623,
+      "errors": 0,
+      "warnings": 0,
+      "scanned_files": 1126,
+      "hardcoded_korean": 0
+    }
+  },
+  "builds": [
+    {
+      "target": "backend",
+      "architecture": "arm64",
+      "exit_code": 0,
+      "image_id": "sha256:4e492c5f2bb7a038f36fe197084efc4d10260621d2aa5a01435435e1d252c0c2",
+      "actual_architecture": "arm64"
+    },
+    {
+      "target": "backend",
+      "architecture": "amd64",
+      "exit_code": 0,
+      "image_id": "sha256:a97130628670a574e253cd4bb72a4fc74e8032e84803a0cd61c768625cbe4f3b",
+      "actual_architecture": "amd64"
+    },
+    {
+      "target": "frontend",
+      "architecture": "arm64",
+      "exit_code": 0,
+      "image_id": "sha256:620f0f22a0d52c3fab15742d8a2cad1583afe0681989de721571a8900dc369a6",
+      "actual_architecture": "arm64"
+    },
+    {
+      "target": "frontend",
+      "architecture": "amd64",
+      "exit_code": 0,
+      "image_id": "sha256:283672e734d7aa807de795a4c3d3a6c4afecb2ad0b43588805d825bde8e60ba5",
+      "actual_architecture": "amd64"
+    },
+    {
+      "target": "worker",
+      "architecture": "arm64",
+      "exit_code": 0,
+      "image_id": "sha256:26f751a69f5defa8e3ce6dd5461c246a7ebde2d3ec565b5e81b47d95a4a30f52",
+      "actual_architecture": "arm64"
+    },
+    {
+      "target": "worker",
+      "architecture": "amd64",
+      "exit_code": 0,
+      "image_id": "sha256:8c93bc940aaed1f588c4778deee3cb5e5165277c59659d2e44c547227216b701",
+      "actual_architecture": "amd64"
+    },
+    {
+      "target": "native-vm",
+      "architecture": "arm64",
+      "exit_code": 0,
+      "image_id": "sha256:91d319962aa4a6f021750a613990a58114a3bf714c23ad61dfc8297fd927fba3",
+      "actual_architecture": "arm64"
+    },
+    {
+      "target": "native-vm",
+      "architecture": "amd64",
+      "exit_code": 0,
+      "image_id": "sha256:0adf5dbb7f412dd50f0608e52097bfd96a48d246e700906c331193f617b203c5",
+      "actual_architecture": "amd64"
+    },
+    {
+      "target": "native-cloud-vm",
+      "architecture": "amd64",
+      "exit_code": 0,
+      "image_id": "sha256:f902f339aef3f38f97864eb4d14f9ffa4af0067b3c110428cbbd222c580a8efb",
+      "actual_architecture": "amd64"
+    }
+  ],
+  "binaries": [
+    {
+      "target": "backend",
+      "architecture": "arm64",
+      "output": "aarch64\nPython 3.12.15\nOpenTofu v1.8.3\non linux_arm64\nceph version 18.2.7 (6b0e988052ec84cf2d4a54ff9bbbc5e720b621ad) reef (stable)\nceph version 18.2.7 (6b0e988052ec84cf2d4a54ff9bbbc5e720b621ad) reef (stable)\n",
+      "source_files": 302
+    },
+    {
+      "target": "backend",
+      "architecture": "amd64",
+      "output": "x86_64\nPython 3.12.15\nOpenTofu v1.8.3\non linux_amd64\nceph version 18.2.7 (6b0e988052ec84cf2d4a54ff9bbbc5e720b621ad) reef (stable)\nceph version 18.2.7 (6b0e988052ec84cf2d4a54ff9bbbc5e720b621ad) reef (stable)\n",
+      "source_files": 302
+    },
+    {
+      "target": "frontend",
+      "architecture": "arm64",
+      "output": "aarch64\nv20.20.2\n"
+    },
+    {
+      "target": "frontend",
+      "architecture": "amd64",
+      "output": "x86_64\nv20.20.2\n"
+    },
+    {
+      "target": "worker",
+      "architecture": "arm64",
+      "output": "aarch64\nPython 3.12.15\n",
+      "source_files": 302
+    },
+    {
+      "target": "worker",
+      "architecture": "amd64",
+      "output": "x86_64\nPython 3.12.15\n",
+      "source_files": 302
+    },
+    {
+      "target": "native-vm",
+      "architecture": "arm64",
+      "output": "aarch64\nPython 3.12.15\nOpenTofu v1.8.3\non linux_arm64\nceph version 18.2.7 (6b0e988052ec84cf2d4a54ff9bbbc5e720b621ad) reef (stable)\nceph version 18.2.7 (6b0e988052ec84cf2d4a54ff9bbbc5e720b621ad) reef (stable)\nv22.23.3\n",
+      "source_files": 302
+    },
+    {
+      "target": "native-vm",
+      "architecture": "amd64",
+      "output": "x86_64\nPython 3.12.15\nOpenTofu v1.8.3\non linux_amd64\nceph version 18.2.7 (6b0e988052ec84cf2d4a54ff9bbbc5e720b621ad) reef (stable)\nceph version 18.2.7 (6b0e988052ec84cf2d4a54ff9bbbc5e720b621ad) reef (stable)\nv22.23.3\n",
+      "source_files": 302
+    },
+    {
+      "target": "native-cloud-vm",
+      "architecture": "amd64",
+      "output": "x86_64\nPython 3.12.15\nOpenTofu v1.8.3\non linux_amd64\nceph version 18.2.7 (6b0e988052ec84cf2d4a54ff9bbbc5e720b621ad) reef (stable)\nceph version 18.2.7 (6b0e988052ec84cf2d4a54ff9bbbc5e720b621ad) reef (stable)\nv22.23.3\n",
+      "source_files": 302
+    }
+  ],
+  "deployed_native": {
+    "arm64": {
+      "success": true,
+      "assertions": 477,
+      "failed_assertions": 0,
+      "scenarios": [
+        {
+          "name": "domain bootstrap and immutable exact workspace",
+          "success": true
+        },
+        {
+          "name": "native direct group implied permissions and fail-closed scope authority",
+          "success": true
+        },
+        {
+          "name": "managed new humans personal domains and duplicate display labels",
+          "success": true
+        },
+        {
+          "name": "delivered email-only invitation and signup",
+          "success": true
+        },
+        {
+          "name": "exact creator capability joined membership sole owner and transfer",
+          "success": true
+        },
+        {
+          "name": "unknown ownership fenced no replay and explicit system settlement",
+          "success": true
+        },
+        {
+          "name": "native finite budgets future defaults partial unknown and safe deletion",
+          "success": true
+        }
+      ],
+      "native_mutations": 109,
+      "unsupported_native": [],
+      "project": "afterglow-domain-workspaces-gfhvgyek-arm64-66087000-027000",
+      "api_url": "http://127.0.0.1:64572",
+      "web_url": "http://127.0.0.1:64573",
+      "worker_membership_observed": true,
+      "worker_leader_observed": true,
+      "images": {
+        "redis": "sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+        "afterglow-mariadb": "sha256:1292844148b311e4ed4300022a996d39083f415a963e970cf47cad1b3b18e3a6",
+        "proof-keystone": "sha256:4e492c5f2bb7a038f36fe197084efc4d10260621d2aa5a01435435e1d252c0c2",
+        "backend": "sha256:4e492c5f2bb7a038f36fe197084efc4d10260621d2aa5a01435435e1d252c0c2",
+        "frontend": "sha256:620f0f22a0d52c3fab15742d8a2cad1583afe0681989de721571a8900dc369a6",
+        "notion-worker": "sha256:26f751a69f5defa8e3ce6dd5461c246a7ebde2d3ec565b5e81b47d95a4a30f52"
+      }
+    },
+    "amd64": {
+      "success": true,
+      "assertions": 477,
+      "failed_assertions": 0,
+      "scenarios": [
+        {
+          "name": "domain bootstrap and immutable exact workspace",
+          "success": true
+        },
+        {
+          "name": "native direct group implied permissions and fail-closed scope authority",
+          "success": true
+        },
+        {
+          "name": "managed new humans personal domains and duplicate display labels",
+          "success": true
+        },
+        {
+          "name": "delivered email-only invitation and signup",
+          "success": true
+        },
+        {
+          "name": "exact creator capability joined membership sole owner and transfer",
+          "success": true
+        },
+        {
+          "name": "unknown ownership fenced no replay and explicit system settlement",
+          "success": true
+        },
+        {
+          "name": "native finite budgets future defaults partial unknown and safe deletion",
+          "success": true
+        }
+      ],
+      "native_mutations": 109,
+      "unsupported_native": [],
+      "project": "afterglow-domain-workspaces-gfhvgyek-amd64-66087000-605000",
+      "api_url": "http://127.0.0.1:64569",
+      "web_url": "http://127.0.0.1:64570",
+      "worker_membership_observed": true,
+      "worker_leader_observed": true,
+      "images": {
+        "redis": "sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+        "afterglow-mariadb": "sha256:1292844148b311e4ed4300022a996d39083f415a963e970cf47cad1b3b18e3a6",
+        "proof-keystone": "sha256:a97130628670a574e253cd4bb72a4fc74e8032e84803a0cd61c768625cbe4f3b",
+        "backend": "sha256:a97130628670a574e253cd4bb72a4fc74e8032e84803a0cd61c768625cbe4f3b",
+        "frontend": "sha256:283672e734d7aa807de795a4c3d3a6c4afecb2ad0b43588805d825bde8e60ba5",
+        "notion-worker": "sha256:8c93bc940aaed1f588c4778deee3cb5e5165277c59659d2e44c547227216b701"
+      }
+    }
+  },
+  "native_supervisors": [
+    {
+      "target": "native-vm",
+      "architecture": "arm64",
+      "success": true,
+      "image": "sha256:91d319962aa4a6f021750a613990a58114a3bf714c23ad61dfc8297fd927fba3",
+      "graceful_exit_code": 0
+    },
+    {
+      "target": "native-vm",
+      "architecture": "amd64",
+      "success": true,
+      "image": "sha256:0adf5dbb7f412dd50f0608e52097bfd96a48d246e700906c331193f617b203c5",
+      "graceful_exit_code": 0
+    },
+    {
+      "target": "native-cloud-vm",
+      "architecture": "amd64",
+      "success": true,
+      "image": "sha256:f902f339aef3f38f97864eb4d14f9ffa4af0067b3c110428cbbd222c580a8efb",
+      "graceful_exit_code": 0
+    }
+  ],
+  "migration": {
+    "success": true,
+    "container": "f726a2df825faa61aff735342b66cf64109abe93edfe955835d64d7081423988",
+    "schema": "workspace_migration_1792135137330316000",
+    "migration_sha256": {
+      "092_domain_quotas.sql": "964da65fb1994faa395fdd4306e0481863f138eaed7195ca74df62374027c9f6",
+      "093_personal_domains.sql": "8d0a70db90c62c7d48da6b48100fc30cbed4cfb774ff3b8bc3c963cbe53cb4ae",
+      "094_project_ownership_transfers.sql": "aab25b9d472cca76d95ac0f5fd9069c29ed1dcb36bd5f0dfe0eb845cc3c8c094"
+    },
+    "output": [
+      "11.4.13-MariaDB-ubu2404\tutf8mb4\tutf8mb4_uca1400_ai_ci\tSTRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION",
+      "before\t[]\thome\tlegacy@example.test\t0\t0",
+      "after\tSQL_NULL\thome\tlegacy@example.test\t0\t0",
+      "0\t10\t2",
+      "unknown",
+      "unknown\tgranting"
+    ],
+    "checks": [
+      "legacy row preserved; added_grants backfilled []",
+      "old SQL-column insert after upgrade remains possible with nullable added_grants",
+      "quota policy, unknown journal and ownership journal persist/read back"
+    ],
+    "limits": [
+      "Disposable MariaDB schema only, not production snapshot",
+      "SQL additive compatibility is not mixed-version writer semantic compatibility",
+      "No backup/restore or downgrade claim"
+    ]
+  },
+  "browser": {
+    "success": true,
+    "conditions": 48,
+    "surfaces": 192,
+    "locales": [
+      "ko",
+      "en",
+      "ja",
+      "zh-CN"
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "widths": [
+      390,
+      767,
+      768,
+      1023,
+      1024,
+      1440
+    ],
+    "screenshots": 64,
+    "maximum_document_overflow": 0,
+    "page_errors": {
+      "entries": [],
+      "nextSeq": 0,
+      "dropped": 0
+    },
+    "flow_receipt": "browser-final-flow.json",
+    "matrix_receipt": "postrestart/browser/matrix.json",
+    "boundary": "Real compiled production frontend + real built application, SQL, Redis and installed SDK; synthetic Keystone/resource/SMTP boundary"
+  },
+  "architecture": {
+    "root": "/Users/pieroot/.local/share/afterglow-proofs/domain-workspaces-native-20261016-gFHvgyek/gate-1792098563491947000",
+    "stamp": "stamped working source_sha256=dfdd4b5313866f70c18dcad49d29791d299c9563bf3224827a707fbed5ee10a9 files=2993\n",
+    "staged": "checked staged source_sha256=dfdd4b5313866f70c18dcad49d29791d299c9563bf3224827a707fbed5ee10a9 files=2993\n",
+    "runtime_files_match_final_images": true,
+    "shared_index_and_review_marker": "untouched",
+    "scope": "Feature review only; public snapshot includes concurrent WIP"
+  },
+  "cleanup": {
+    "success": true,
+    "removed_owned_containers": 36,
+    "removed_owned_networks": 6,
+    "persistent_volumes_removed": 0,
+    "shared_local_containers_preserved": 19,
+    "shared_healthy_containers": 9
+  },
+  "limits": [
+    "No real Keystone policy/production or live resource mutation acceptance",
+    "No external SMTP delivery or IdP callback qualification",
+    "Native supervisor is container runtime proof, not VM/systemd/KVM boot",
+    "No production database snapshot, mixed-version semantics, backup/restore or downgrade guarantee",
+    "Source schema092-094 must precede new writers; old quota/ownership/enrollment writers must drain",
+    "Known outside-scope full gate, Ruff-format and Svelte errors remain; no commit or release claim",
+    "Optional gbrain sync not run because CLI is unavailable"
+  ],
+  "docs": [
+    "ARCHITECTURE.md",
+    "DESIGN.md",
+    "docs/api/iam.md",
+    "docs/deployment.md",
+    "docs/testing.md",
+    "CHANGELOG.md"
+  ]
+}

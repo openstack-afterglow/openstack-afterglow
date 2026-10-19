@@ -48,7 +48,9 @@ Redis의 purpose-bound single-use ticket이 HTTP 승인과 WebSocket을 연결�
 
 Zun exec upstream은 binary subprotocol이고 Afterglow WebSocket은 terminal input/output을 최대 64KiB binary frame으로 relay합니다. Text는 bounded resize/ping/status/ready/error control뿐입니다. Backend가 fixed Origin allowlist를 검사하고, idle/max expiry·disconnect·project switch·logout 뒤 exact container를 삭제한 다음 lease를 해제합니다. Startup/interval reconciler는 signed managed orphan만 삭제합니다. Persistent home reset은 active reservation/lease가 없고 detached `available`인 exact managed volume만 삭제합니다.
 
-배포는 운영자가 미리 만든 dedicated project, routed network, ingress-free egress security group, Cinder-backed Zun, multi-architecture digest-pinned image와 project quota를 요구합니다. 상세 설정·precheck·rollback은 [배포 가이드](deployment.md#전역-cloud-shell-선택-배포), API/protocol은 [Cloud Shell API](api/cloud-shell.md), threat model은 [보안 모델](security.md#전역-cloud-shell-자격격리-경계)을 따릅니다.
+Image와 CLI/PTY bootstrap의 정본은 독립 [openstack-afterglow/openstack-client](https://github.com/openstack-afterglow/openstack-client) 저장소입니다. Afterglow는 중복 image build/package/version sync를 유지하지 않고 기본 `ghcr.io/openstack-afterglow/openstack-client:slim` 또는 호환 image reference를 설정으로 선택합니다. Debian/Alpine 각각 amd64/arm64의 실제 CLI·bootstrap 검증 후 그 저장소에서 GHCR로 게시합니다. 빈 `image_pull_policy`는 Zun 기본값을 따르고 명시적 `always`/`ifnotpresent`/`never`는 stock Zun 관리자 policy 권한이 필요합니다. 비공개 registry credential은 Zun이 소유하고 Afterglow에는 선택할 `registry_id` UUID만 둡니다. 미게시·인가·pull 실패는 오류이며 다른 image로 대체하거나 영구 홈을 삭제하지 않습니다.
+
+배포는 운영자가 미리 만든 dedicated project, routed network, 검증된 security group, Cinder-backed Zun, multi-architecture digest-pinned image와 project quota를 요구합니다. 기본 `default` security group은 egress-only를 보장하지 않으므로 기존 ingress 규칙도 확인합니다. 상세 설정·precheck·rollback은 [배포 가이드](deployment.md#전역-cloud-shell-선택-배포), API/protocol은 [Cloud Shell API](api/cloud-shell.md), threat model은 [보안 모델](security.md#전역-cloud-shell-자격격리-경계)을 따릅니다.
 
 ## 채팅 컨텍스트 검사와 로컬 실행 경계
 

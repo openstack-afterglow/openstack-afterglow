@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from copy import copy
 from datetime import UTC, datetime
+from functools import partial
 from typing import TYPE_CHECKING, Annotated
 
 if TYPE_CHECKING:
@@ -12,14 +13,28 @@ import asyncio
 import logging
 
 from anyio import CancelScope
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.common.errors import public_service_error
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info, require_admin
-from app.config import get_settings
-from app.services import activity, identity_roles, keystone, manila, session_store
+from app.database import get_session
+from app.services import (
+    activity,
+    domain_iam,
+    domain_projects,
+    domain_quotas,
+    identity_roles,
+    keystone,
+    project_ownership_journal,
+    project_service,
+    quota_native,
+    session_store,
+)
 from app.services import login_guard as _login_guard
 from app.services.cache import cached_call, invalidate, ttl_slow
+from app.services.domain_scope import invalidate_authority
 from app.services.project_deletion import inspect_project_resources
 from app.services.service_permissions import normalize_role_name, preset_preview
 
@@ -28,17 +43,129 @@ _logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _identity_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, HTTPException):
+        return exc
+    status = getattr(exc, "status_code", None) or getattr(exc, "http_status", None)
+    if status in (401, 403):
+        return HTTPException(403, "identity_native_denied")
+    if status == 404:
+        return HTTPException(404, "identity_not_found")
+    if status in (400, 409, 422):
+        return HTTPException(status, "identity_native_invalid")
+    return public_service_error(503, "identity_unavailable")
+
+
+def _selected_domain(conn, domain_id: str):
+    try:
+        domain = conn.identity.get_domain(domain_id)
+        if domain is None:
+            raise HTTPException(404, "identity_domain_not_found")
+        if getattr(domain, "id", None) != domain_id:
+            raise public_service_error(503, "identity_domain_unverified")
+        return domain
+    except Exception as exc:
+        raise _identity_error(exc) from exc
+
+
+def _domain_object(conn, domain_id: str, kind: str, object_id: str):
+    try:
+        obj = getattr(conn.identity, f"get_{kind}")(object_id)
+        if obj is None:
+            raise HTTPException(404, "identity_not_found")
+        if getattr(obj, "id", None) != object_id:
+            raise public_service_error(503, "identity_object_unverified")
+        if getattr(obj, "domain_id", None) != domain_id:
+            raise HTTPException(403, "identity_domain_mismatch")
+        return obj
+    except Exception as exc:
+        raise _identity_error(exc) from exc
+
+
+async def _selected_objects(
+    request: Request,
+    domain_id: str | None = Query(None, min_length=1),
+    conn=Depends(get_os_conn),
+):
+    """Fresh native boundaries before any object read, mutation or cache lookup.
+
+    Single-object credential/profile routes remain identity-domain bound.
+    Membership relations anchor the selected domain to the target project/group;
+    their exact native user/group principal may belong to another identity domain.
+    """
+    identifiers = dict(request.path_params)
+    if request.url.path.endswith(("/roles/assign", "/roles/assign-group")):
+        identifiers.update(dict(request.query_params))
+        if request.method == "POST":
+            payload = await request.json()
+            if isinstance(payload, dict):
+                identifiers.update(payload)
+    objects = {kind: identifiers.get(f"{kind}_id") for kind in ("user", "project", "group")}
+    objects = {kind: value for kind, value in objects.items() if isinstance(value, str) and value}
+    role_id = identifiers.get("role_id")
+    if domain_id is None:
+        # Removing a pre-existing cross-domain grant/membership only narrows
+        # access, so system-wide cleanup stays possible without a selection.
+        if len(objects) < 2 or request.method == "DELETE":
+            return
+        anchor_kind = "project" if "project" in objects else "group"
+        anchor = await asyncio.to_thread(_native_object, conn, anchor_kind, objects[anchor_kind])
+        domain_id = getattr(anchor, "domain_id", None)
+        if not isinstance(domain_id, str) or not domain_id:
+            raise public_service_error(503, "identity_object_unverified")
+    else:
+        await asyncio.to_thread(_selected_domain, conn, domain_id)
+    anchor_kind = "project" if "project" in objects else "group" if "group" in objects else "user"
+    for kind, object_id in objects.items():
+        if len(objects) >= 2 and kind != anchor_kind:
+            await asyncio.to_thread(_native_object, conn, kind, object_id)
+        else:
+            await asyncio.to_thread(_domain_object, conn, domain_id, kind, object_id)
+    if isinstance(role_id, str) and role_id:
+        await asyncio.to_thread(_assignable_role, conn, domain_id, role_id)
+
+
+def _native_object(conn, kind: str, object_id: str):
+    try:
+        obj = getattr(conn.identity, f"get_{kind}")(object_id)
+        if obj is None:
+            raise HTTPException(404, "identity_not_found")
+        if getattr(obj, "id", None) != object_id:
+            raise public_service_error(503, "identity_object_unverified")
+        return obj
+    except Exception as exc:
+        raise _identity_error(exc) from exc
+
+
+def _assignable_role(conn, domain_id: str, role_id: str):
+    """Global roles or roles owned by the selected domain; never another domain's role."""
+    try:
+        role = conn.identity.get_role(role_id)
+        if role is None:
+            raise HTTPException(404, "identity_not_found")
+        if getattr(role, "id", None) != role_id:
+            raise public_service_error(503, "identity_object_unverified")
+        if getattr(role, "domain_id", None) not in (None, domain_id):
+            raise HTTPException(403, "identity_domain_mismatch")
+        return role
+    except Exception as exc:
+        raise _identity_error(exc) from exc
+
+
 # ============================================================================
 # Users
 # ============================================================================
 
 
 class CreateUserRequest(BaseModel):
-    name: str
-    email: str | None = None
-    password: str | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=255)
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=12, max_length=1024)
+    personal_domain_name: str = Field(min_length=1, max_length=64)
     enabled: bool = True
-    domain_id: str | None = None
+    domain_id: str = Field(min_length=1)
 
 
 class UpdateUserRequest(BaseModel):
@@ -48,10 +175,11 @@ class UpdateUserRequest(BaseModel):
     password: str | None = None
 
 
-@router.get("/users", dependencies=[Depends(require_admin)])
+@router.get("/users", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def list_users(
     limit: int = Query(default=20, ge=1, le=100),
     marker: str | None = Query(default=None),
+    domain_id: str = Query(..., min_length=1),
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
     """사용자 목록 (페이지네이션).
@@ -61,11 +189,11 @@ async def list_users(
     """
 
     def _list():
-        kwargs: dict = {"limit": limit}
-        if marker:
-            kwargs["marker"] = marker
+
         users = []
-        for u in conn.identity.users(**kwargs):
+        for u in conn.identity.users(domain_id=domain_id):
+            if getattr(u, "domain_id", None) != domain_id:
+                continue
             users.append(
                 {
                     "id": u.id,
@@ -76,15 +204,23 @@ async def list_users(
                     "default_project_id": getattr(u, "default_project_id", None),
                 }
             )
-            if len(users) >= limit:
-                break
-        next_marker = users[-1]["id"] if len(users) == limit else None
-        return {"items": users, "next_marker": next_marker, "count": len(users)}
+        users.sort(key=lambda u: u["id"])
+        start = 0
+        if marker:
+            start = next((i + 1 for i, u in enumerate(users) if u["id"] == marker), None)
+            if start is None:
+                raise HTTPException(400, "identity_invalid_marker")
+        page = users[start : start + limit]
+        return {
+            "items": page,
+            "next_marker": page[-1]["id"] if start + limit < len(users) else None,
+            "count": len(page),
+        }
 
     try:
         result = await asyncio.to_thread(_list)
-    except Exception:
-        raise HTTPException(status_code=500, detail="사용자 목록 조회 실패")
+    except Exception as exc:
+        raise _identity_error(exc) from exc
 
     # ActivityLog 기반 최초·최근 활동일 배치 조회 (1쿼리)
     user_ids = [u["id"] for u in result["items"]]
@@ -99,15 +235,19 @@ async def list_users(
     return result
 
 
-@router.get("/users/stats", dependencies=[Depends(require_admin)])
+@router.get("/users/stats", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def get_users_stats(
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    domain_id: str = Query(..., min_length=1),
 ):
     """사용자 현황 집계 통계 (전체/활성/비활성 수). 통계 카드용."""
 
     def _stats():
+
         total = enabled = disabled = 0
-        for u in conn.identity.users():
+        for u in conn.identity.users(domain_id=domain_id):
+            if getattr(u, "domain_id", None) != domain_id:
+                continue
             total += 1
             if u.is_enabled:
                 enabled += 1
@@ -117,71 +257,74 @@ async def get_users_stats(
 
     try:
         return await asyncio.to_thread(_stats)
-    except Exception:
-        raise HTTPException(status_code=500, detail="사용자 통계 조회 실패")
+    except Exception as exc:
+        raise _identity_error(exc) from exc
 
 
-@router.get("/users/activity", dependencies=[Depends(require_admin)])
+@router.get("/users/activity", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def get_users_activity(
     limit: int = Query(50, ge=1, le=200),
     before_id: int | None = Query(None),
+    domain_id: str = Query(..., min_length=1),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
     """사용자 변경 로그 (생성·수정·삭제, 시간 역순). 변경 로그 카드용."""
-    return await activity.list_user_management_events(limit=limit, before_id=before_id)
+
+    def users():
+
+        return [u.id for u in conn.identity.users(domain_id=domain_id) if getattr(u, "domain_id", None) == domain_id]
+
+    try:
+        user_ids = await asyncio.to_thread(users)
+    except Exception as exc:
+        raise _identity_error(exc) from exc
+    return await activity.list_user_management_events(limit=limit, before_id=before_id, user_ids=user_ids)
 
 
 @router.post("/users", dependencies=[Depends(require_admin)], status_code=201)
 async def create_user(
     req: CreateUserRequest,
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    token_info: dict = Depends(get_token_info),
+    session: AsyncSession = Depends(get_session),
 ):
-    """사용자 생성."""
-
-    def _create():
-        try:
-            kwargs = {"name": req.name, "enabled": req.enabled}
-            if req.email:
-                kwargs["email"] = req.email
-            if req.password:
-                kwargs["password"] = req.password
-            if req.domain_id:
-                kwargs["domain_id"] = req.domain_id
-            u = conn.identity.create_user(**kwargs)
-            return {
-                "id": u.id,
-                "name": u.name or "",
-                "email": getattr(u, "email", "") or "",
-                "enabled": u.is_enabled,
-            }
-        except Exception as e:
-            _logger.warning("사용자 생성 실패: %s", e)
-
-            raise HTTPException(status_code=400, detail="사용자 생성 실패")
-
-    try:
-        return await asyncio.to_thread(_create)
-    except HTTPException:
-        raise
+    """Create a human identity in its personal domain and join the selected domain."""
+    await asyncio.to_thread(_selected_domain, conn, req.domain_id)
+    result = await domain_iam.create_managed_user(
+        req.model_dump(exclude={"domain_id"}), req.domain_id, token_info, session
+    )
+    await invalidate("afterglow:admin:users:*")
+    return result
 
 
-@router.patch("/users/{user_id}", dependencies=[Depends(require_admin)])
+@router.patch("/users/{user_id}", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def update_user(
     user_id: str,
     req: UpdateUserRequest,
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    token_info: dict = Depends(get_token_info),
 ):
     """사용자 수정."""
+    email = req.email
+    if email is not None:
+        from app.services.domain_auth import DomainAuthError, normalize_email
+
+        try:
+            email = normalize_email(email)
+        except DomainAuthError as exc:
+            raise HTTPException(exc.status_code, exc.detail) from exc
 
     def _update():
         kwargs: dict = {}
         if req.name is not None:
             kwargs["name"] = req.name
         if req.email is not None:
-            kwargs["email"] = req.email
+            kwargs["email"] = email
         if req.enabled is not None:
             kwargs["enabled"] = req.enabled
         if req.password is not None:
             kwargs["password"] = req.password
+            kwargs["afterglow_local_password"] = True
         try:
             u = conn.identity.update_user(user_id, **kwargs)
             return {
@@ -191,17 +334,59 @@ async def update_user(
                 "enabled": u.is_enabled,
             }
         except Exception as e:
-            _logger.warning("사용자 수정 실패: %s", e)
+            _logger.warning("User update failed (%s)", type(e).__name__)
 
-            raise HTTPException(status_code=400, detail="사용자 수정 실패")
+            raise _identity_error(e) from e
 
     try:
-        return await asyncio.to_thread(_update)
+        if req.enabled is not None or req.email is not None or req.password is not None:
+            # Account status, canonical email and credential writes share one lease.
+            async with identity_roles._graph_lock(conn) as lease:
+                if email is not None and any(
+                    identity_roles._field(user, "id") != user_id
+                    for user in await domain_iam._find_accounts(None, email=email)
+                ):
+                    raise HTTPException(409, "Email belongs to another account")
+                try:
+                    if req.enabled is False:
+                        await project_ownership_journal.assert_user_resolved(user_id)
+                        await asyncio.to_thread(identity_roles.assert_system_admin_remains, users={user_id})
+                        await asyncio.to_thread(project_service.assert_user_ownership_mutation_safe, user_id)
+                    affected = await asyncio.to_thread(
+                        domain_projects.assert_managers_remain,
+                        user_id=user_id,
+                        disabled_user_ids={user_id} if req.enabled is False else (),
+                    )
+                    await identity_roles._session_ready({user_id})
+                except Exception as exc:
+                    raise _identity_error(exc) from exc
+                succeeded = False
+                try:
+                    result = await identity_roles._write(lease, _update)
+                    succeeded = True
+                finally:
+                    try:
+                        await identity_roles._sync_domain_managers(conn, lease, affected)
+                    finally:
+                        await identity_roles._applied(
+                            None,
+                            [],
+                            None,
+                            {user_id},
+                            token_info,
+                            "admin_user_update",
+                            {"user_id": user_id},
+                            status="success" if succeeded else "failed",
+                        )
+        else:
+            result = await asyncio.to_thread(_update)
+        await invalidate_authority()
+        return result
     except HTTPException:
         raise
 
 
-@router.post("/users/{user_id}/revoke-sessions", dependencies=[Depends(require_admin)])
+@router.post("/users/{user_id}/revoke-sessions", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def revoke_user_sessions_admin(
     user_id: str,
     token_info: dict = Depends(get_token_info),
@@ -225,34 +410,59 @@ async def revoke_user_sessions_admin(
     return {"message": f"세션 {count}개가 폐기되었습니다.", "revoked_count": count}
 
 
-@router.get("/users/{user_id}/sessions", dependencies=[Depends(require_admin)])
+@router.get("/users/{user_id}/sessions", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def list_user_sessions_admin(user_id: str):
-    """관리자가 특정 사용자의 활성 세션 목록을 조회 (keystone_token 제외)."""
+    """관리자가 특정 사용자의 활성 세션 목록을 조회 (keystone_token 제외).
+
+    The user object (and selected domain, when given) is already proven; legacy
+    sessions without stored domain metadata remain visible and revocable.
+    """
     sessions = await session_store.list_user_sessions(user_id)
     return {"sessions": sessions, "count": len(sessions)}
 
 
-@router.get("/users/{user_id}/permissions", dependencies=[Depends(require_admin)])
+@router.get("/users/{user_id}/permissions", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def get_user_permissions_admin(
     user_id: str,
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    domain_id: str | None = Query(None, min_length=1),
 ):
     """관리자가 사용자별 현재 유효 역할을 실제 project/domain/system 범위로 조회한다."""
-    return await asyncio.to_thread(identity_roles.user_permissions, conn, user_id)
+
+    def fetch():
+        result = identity_roles.user_permissions(conn, user_id)
+        if domain_id is None:
+            return result
+        projects = {
+            p.id for p in conn.identity.projects(domain_id=domain_id) if getattr(p, "domain_id", None) == domain_id
+        }
+        result["items"] = [
+            row
+            for row in result["items"]
+            if row["scope_type"] == "system"
+            or (row["scope_type"] == "domain" and row["scope_id"] == domain_id)
+            or (row["scope_type"] == "project" and row["scope_id"] in projects)
+        ]
+        result["count"] = len(result["items"])
+        return result
+
+    return await asyncio.to_thread(fetch)
 
 
 class UnlockAccountRequest(BaseModel):
     username: str
-    domain: str = "Default"
+    domain_id: str = Field(min_length=1)
 
 
 @router.post("/users/unlock-account", dependencies=[Depends(require_admin)])
 async def admin_unlock_account(
     req: UnlockAccountRequest,
     token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
     """계정 로그인 잠금 강제 해제 (관리자 전용)."""
-    await _login_guard.admin_unlock(req.username, req.domain)
+    domain = await asyncio.to_thread(_selected_domain, conn, req.domain_id)
+    await _login_guard.admin_unlock(req.username, domain.id)
     await activity.record(
         project_id=token_info["project_id"],
         user_id=token_info["user_id"],
@@ -260,18 +470,20 @@ async def admin_unlock_account(
         resource_type="identity",
         action="account_unlock",
         status="success",
-        extra={"target_username": req.username, "domain": req.domain},
+        extra={"target_username": req.username, "domain_id": domain.id},
     )
-    return {"status": "unlocked", "username": req.username, "domain": req.domain}
+    return {"status": "unlocked", "username": req.username, "domain_id": domain.id}
 
 
 @router.get("/users/lock-status", dependencies=[Depends(require_admin)])
 async def admin_get_lock_status(
     username: str = Query(...),
-    domain: str = Query(default="Default"),
+    domain_id: str = Query(..., min_length=1),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
     """계정 잠금 상태 조회 (관리자 전용)."""
-    return await _login_guard.get_lock_status(username, domain)
+    domain = await asyncio.to_thread(_selected_domain, conn, domain_id)
+    return await _login_guard.get_lock_status(username, domain.id)
 
 
 # ============================================================================
@@ -282,7 +494,7 @@ async def admin_get_lock_status(
 class CreateProjectRequest(BaseModel):
     name: str
     description: str | None = None
-    domain_id: str | None = None
+    domain_id: str = Field(min_length=1)
     enabled: bool = True
 
 
@@ -292,21 +504,32 @@ class UpdateProjectRequest(BaseModel):
     enabled: bool | None = None
 
 
-@router.get("/projects/names", dependencies=[Depends(require_admin)])
+@router.get("/projects/names", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def list_project_names(
-    conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    cm: CacheMode = Depends(cache_mode),
+    domain_id: str | None = Query(None, min_length=1),
 ):
-    """모든 프로젝트의 id/name 목록 (페이지네이션 없이)."""
+    """Project id/name picker; system-wide unless a domain is selected."""
 
     def _list():
-        return [{"id": p.id, "name": p.name or ""} for p in conn.identity.projects()]
+        query = {"domain_id": domain_id} if domain_id else {}
+        return [
+            {"id": p.id, "name": p.name or ""}
+            for p in conn.identity.projects(**query)
+            if domain_id is None or getattr(p, "domain_id", None) == domain_id
+        ]
 
     try:
         return await cached_call(
-            "afterglow:admin:project_names", ttl_slow(), _list, enabled=cm.enabled, refresh=cm.refresh
+            f"afterglow:admin:project_names:{domain_id or '*all'}",
+            ttl_slow(),
+            _list,
+            enabled=cm.enabled,
+            refresh=cm.refresh,
         )
-    except Exception:
-        raise HTTPException(status_code=500, detail="프로젝트 이름 목록 조회 실패")
+    except Exception as exc:
+        raise _identity_error(exc) from exc
 
 
 def _identity_created_at(value: object) -> str | None:
@@ -339,19 +562,20 @@ async def _identity_creation_dates(items: list[dict], resource_type: str) -> lis
     return result
 
 
-@router.get("/projects", dependencies=[Depends(require_admin)])
+@router.get("/projects", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def list_projects(
     limit: int = Query(default=20, ge=1, le=100),
     marker: str | None = Query(default=None),
     search: str = Query(default=""),
     enabled: bool | None = Query(default=None),
-    domain_id: str | None = Query(default=None),
+    domain_id: str = Query(..., min_length=1),
     conn: openstack.connection.Connection = Depends(get_os_conn),
     cm: CacheMode = Depends(cache_mode),
 ):
     """Filter and sort the complete inventory before slicing a marker page."""
 
     def _list():
+
         return [
             {
                 "id": p.id,
@@ -361,15 +585,16 @@ async def list_projects(
                 "domain_id": getattr(p, "domain_id", None),
                 "created_at": _identity_created_at(getattr(p, "created_at", None)),
             }
-            for p in conn.identity.projects()
+            for p in conn.identity.projects(domain_id=domain_id)
+            if getattr(p, "domain_id", None) == domain_id
         ]
 
     try:
         inventory = await cached_call(
-            "afterglow:admin:projects", ttl_slow(), _list, enabled=cm.enabled, refresh=cm.refresh
+            f"afterglow:admin:projects:{domain_id}", ttl_slow(), _list, enabled=cm.enabled, refresh=cm.refresh
         )
-    except Exception:
-        raise HTTPException(status_code=500, detail="프로젝트 목록 조회 실패")
+    except Exception as exc:
+        raise _identity_error(exc) from exc
 
     projects = await _identity_creation_dates(inventory, "project")
     domains = sorted({p["domain_id"] for p in projects if p["domain_id"]})
@@ -397,21 +622,26 @@ async def list_projects(
 
 
 @router.post("/projects", dependencies=[Depends(require_admin)], status_code=201)
+@identity_roles._complete_mutation
 async def create_project(
     req: CreateProjectRequest,
     conn: openstack.connection.Connection = Depends(get_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
     """프로젝트 생성."""
+    await asyncio.to_thread(_selected_domain, conn, req.domain_id)
+    if req.name.casefold() == "default":
+        raise HTTPException(409, "Default is reserved for the domain authority project")
 
     def _create():
         try:
-            kwargs = {"name": req.name, "enabled": req.enabled}
+            kwargs = {"name": req.name, "enabled": False}
             if req.description:
                 kwargs["description"] = req.description
-            if req.domain_id:
-                kwargs["domain_id"] = req.domain_id
-            p = conn.identity.create_project(**kwargs)
+            kwargs["domain_id"] = req.domain_id
+            proxy = copy(conn.identity)
+            proxy.request = partial(proxy.request, connect_retries=0, status_code_retries=0)
+            p = proxy.create_project(**kwargs)
             return {
                 "id": p.id,
                 "name": p.name or "",
@@ -421,13 +651,85 @@ async def create_project(
         except Exception as e:
             _logger.warning("프로젝트 생성 실패: %s", e)
 
-            raise HTTPException(status_code=400, detail="프로젝트 생성 실패")
+            raise _identity_error(e) from e
 
     try:
         from app.config import get_settings
         from app.services import neutron
 
-        result = await asyncio.to_thread(_create)
+        async with identity_roles._graph_lock(conn) as lease:
+            ks = await asyncio.to_thread(keystone._get_admin_ks_client)
+            catalog = await asyncio.to_thread(identity_roles.load_catalog, conn)
+            authority = await asyncio.to_thread(domain_projects.managers, req.domain_id, ks=ks, catalog=catalog)
+            if authority["default_project_id"] is None:
+                raise HTTPException(409, "domain_default_bootstrap_required")
+            if not authority["items"]:
+                raise HTTPException(409, "domain_default_manager_required")
+            await domain_projects.sync_manager_access(req.domain_id, mutation=(lease, ks, catalog))
+            previous_projects = await asyncio.to_thread(lambda: list(ks.projects.list(domain=req.domain_id)))
+            existing = set()
+            for project in previous_projects:
+                pid = identity_roles._field(project, "id")
+                if not isinstance(pid, str) or not pid or identity_roles._field(project, "domain_id") != req.domain_id:
+                    raise public_service_error(503, "created_project_unverified")
+                existing.add(pid)
+            result = await identity_roles._write(lease, _create)
+            project_id = identity_roles._created_id(result)
+            if project_id in existing:
+                raise public_service_error(503, "created_project_unverified")
+            try:
+                checked = await asyncio.to_thread(_native_object, conn, "project", project_id)
+                enabled = identity_roles._field(checked, "is_enabled", identity_roles._field(checked, "enabled"))
+                if (
+                    identity_roles._field(checked, "domain_id") != req.domain_id
+                    or identity_roles._field(checked, "name") != req.name
+                    or enabled is not False
+                ):
+                    raise public_service_error(503, "created_project_unverified")
+                await project_service.initialize_system_project_owner(
+                    project_id,
+                    token_info["user_id"],
+                    req.domain_id,
+                    lease=lease,
+                    ks=ks,
+                    catalog=catalog,
+                    previous_project_ids=existing,
+                )
+                await domain_quotas.apply_project_defaults(conn, req.domain_id, project_id, lease=lease)
+                await domain_projects.sync_manager_access(req.domain_id, mutation=(lease, ks, catalog))
+                staged = await asyncio.to_thread(_native_object, conn, "project", project_id)
+                if (
+                    identity_roles._field(staged, "domain_id") != req.domain_id
+                    or identity_roles._field(staged, "is_enabled", identity_roles._field(staged, "enabled"))
+                    is not False
+                ):
+                    raise public_service_error(503, "created_project_unverified")
+                await project_service._verify_unique_owner(ks, catalog, project_id, token_info["user_id"])
+                if req.enabled:
+                    await identity_roles._write(lease, ks.projects.update, project_id, enabled=True)
+                checked = await asyncio.to_thread(ks.projects.get, project_id)
+                if identity_roles._field(checked, "enabled") is not req.enabled:
+                    raise public_service_error(503, "created_project_unverified")
+                result.update(enabled=req.enabled, domain_id=req.domain_id)
+            except Exception:
+                # Only the fresh native ID returned by this attempt is eligible
+                # for compensation; unknown creates are never retried or guessed.
+                try:
+                    staged = await asyncio.to_thread(ks.projects.get, project_id)
+                    if identity_roles._field(staged, "domain_id") != req.domain_id:
+                        raise public_service_error(503, "created_project_cleanup_unavailable")
+                    await identity_roles._write(lease, ks.projects.update, project_id, enabled=False)
+                    if (
+                        identity_roles._field(await asyncio.to_thread(ks.projects.get, project_id), "enabled")
+                        is not False
+                    ):
+                        raise public_service_error(503, "created_project_cleanup_unavailable")
+                    if not (await project_service.inspect_project_empty(project_id))["can_delete"]:
+                        raise public_service_error(503, "created_project_cleanup_unavailable")
+                    await identity_roles._write(lease, conn.identity.delete_project, project_id, ignore_missing=False)
+                except Exception as cleanup_error:
+                    raise public_service_error(503, "created_project_cleanup_unavailable") from cleanup_error
+                raise
         await activity.record(
             project_id=token_info["project_id"],
             user_id=token_info["user_id"],
@@ -438,8 +740,8 @@ async def create_project(
             resource_id=result["id"],
             resource_name=result["name"],
         )
-        await invalidate("afterglow:admin:projects")
-        await invalidate("afterglow:admin:project_names")
+        await invalidate("afterglow:admin:projects:*")
+        await invalidate("afterglow:admin:project_names:*")
         _settings = get_settings()
         if _settings.monitoring_auto_sg_enabled and _settings.monitoring_scrape_cidr:
             try:
@@ -467,7 +769,7 @@ async def create_project(
         raise
 
 
-@router.get("/projects/{project_id}", dependencies=[Depends(require_admin)])
+@router.get("/projects/{project_id}", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def get_project(
     project_id: str,
     conn: openstack.connection.Connection = Depends(get_os_conn),
@@ -488,7 +790,7 @@ async def get_project(
             }
         except Exception as e:
             _logger.warning("프로젝트 조회 실패: %s", e)
-            raise HTTPException(status_code=404, detail="프로젝트 조회 실패")
+            raise _identity_error(e) from e
 
     try:
         result = await asyncio.to_thread(_get)
@@ -497,7 +799,8 @@ async def get_project(
         raise
 
 
-@router.patch("/projects/{project_id}", dependencies=[Depends(require_admin)])
+@router.patch("/projects/{project_id}", dependencies=[Depends(require_admin), Depends(_selected_objects)])
+@identity_roles._complete_mutation
 async def update_project(
     project_id: str,
     req: UpdateProjectRequest,
@@ -524,12 +827,26 @@ async def update_project(
         except Exception as e:
             _logger.warning("프로젝트 수정 실패: %s", e)
 
-            raise HTTPException(status_code=400, detail="프로젝트 수정 실패")
+            raise _identity_error(e) from e
 
     try:
-        result = await asyncio.to_thread(_update)
-        await invalidate("afterglow:admin:projects")
-        await invalidate("afterglow:admin:project_names")
+        async with identity_roles._graph_lock(conn) as lease:
+            project = await asyncio.to_thread(_native_object, conn, "project", project_id)
+            domain_projects.assert_default_immutable(
+                project_id, attrs=req.model_dump(exclude_none=True), project=project
+            )
+            await project_ownership_journal.assert_resolved(project_id)
+            if req.enabled is True:
+                await project_service.assert_project_activation_safe(project_id)
+                await domain_quotas.assert_project_allocation(
+                    conn, identity_roles._field(project, "domain_id"), project_id, lease=lease
+                )
+            try:
+                result = await identity_roles._write(lease, _update)
+            finally:
+                await invalidate_authority()
+                await invalidate("afterglow:admin:projects:*")
+                await invalidate("afterglow:admin:project_names:*")
         return result
     except HTTPException:
         raise
@@ -558,102 +875,116 @@ async def _settled_project_deletion_call(call, *args):
         raise
 
 
-@router.get("/projects/{project_id}/deletion-check", dependencies=[Depends(require_admin)])
+def _project_deletion_inventory(conn, project_id):
+    check = inspect_project_resources(conn, project_id)
+    ks = keystone._get_admin_ks_client()
+    check["resources"].append(project_service.inspect_child_projects(ks, project_id))
+    check["can_delete"] = all(
+        row["status"] == "skipped" or (row["status"] == "ok" and row["count"] == 0) for row in check["resources"]
+    )
+    return check
+
+
+@router.get("/projects/{project_id}/deletion-check", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def get_project_deletion_check(
     project_id: str,
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
     """Fresh resource proof, never backed by cached counts or quota usage."""
-    return await _settled_project_deletion_call(inspect_project_resources, conn, project_id)
+    project = await _settled_project_deletion_call(_native_object, conn, "project", project_id)
+    domain_projects.assert_default_immutable(project_id, delete=True, project=project)
+    await project_ownership_journal.assert_resolved(project_id)
+    return await _settled_project_deletion_call(_project_deletion_inventory, conn, project_id)
 
 
-@router.delete("/projects/{project_id}", dependencies=[Depends(require_admin)], status_code=204)
+@router.delete(
+    "/projects/{project_id}", dependencies=[Depends(require_admin), Depends(_selected_objects)], status_code=204
+)
 async def delete_project(
     project_id: str,
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """Delete only after a fresh, complete, empty target-project inventory."""
-
-    check = await _settled_project_deletion_call(inspect_project_resources, conn, project_id)
-    if any(item["status"] == "unavailable" for item in check["resources"]):
-        error = HTTPException(
-            status_code=503,
-            detail={
-                "code": "project_resource_check_failed",
-                "message": "Project resource inventory could not be verified. No project was deleted.",
-                "check": check,
-            },
-        )
-        error._afterglow_safe_public_detail = True
-        raise error
-    if not check["can_delete"]:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "project_has_resources",
-                "message": "The project still owns cloud resources. No project was deleted.",
-                "check": check,
-            },
-        )
-
-    def _delete():
+    """Delete only after fresh complete resource and child-project inspection."""
+    async with identity_roles._graph_lock(conn) as lease:
+        project = await _settled_project_deletion_call(_native_object, conn, "project", project_id)
+        domain_projects.assert_default_immutable(project_id, delete=True, project=project)
+        await project_ownership_journal.assert_resolved(project_id)
+        check = await _settled_project_deletion_call(_project_deletion_inventory, conn, project_id)
+        if any(item["status"] == "unavailable" for item in check["resources"]):
+            error = HTTPException(
+                status_code=503,
+                detail={
+                    "code": "project_resource_check_failed",
+                    "message": "Project resource inventory could not be verified. No project was deleted.",
+                    "check": check,
+                },
+            )
+            error._afterglow_safe_public_detail = True
+            raise error
+        if not check["can_delete"]:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "project_has_resources",
+                    "message": "The project still owns cloud resources or child projects. No project was deleted.",
+                    "check": check,
+                },
+            )
         try:
-            conn.identity.delete_project(project_id, ignore_missing=True)
-        except Exception as e:
-            _logger.warning("프로젝트 삭제 실패: %s", e)
-
-            raise HTTPException(status_code=400, detail="프로젝트 삭제 실패")
-
-    try:
-        await _settled_project_deletion_call(_delete)
-        await invalidate("afterglow:admin:projects")
-        await invalidate("afterglow:admin:project_names")
-    except HTTPException:
-        raise
+            await identity_roles._write(lease, conn.identity.delete_project, project_id, ignore_missing=False)
+        except Exception as exc:
+            raise _identity_error(exc) from exc
+        finally:
+            await invalidate_authority()
+            await invalidate("afterglow:admin:projects:*")
+            await invalidate("afterglow:admin:project_names:*")
 
 
-@router.get("/projects/{project_id}/members", dependencies=[Depends(require_admin)])
+@router.get("/projects/{project_id}/members", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def list_project_members(
     project_id: str,
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    domain_id: str | None = Query(None, min_length=1),
 ):
     """프로젝트의 사용자-역할 할당 목록 조회."""
 
     def _list():
         try:
-            import re as _re
-
-            raw_ep = conn.session.get_endpoint(service_type="identity", interface="public").rstrip("/")
-            # /v3 또는 /v3/{project_id}를 제거 후 명시적으로 /v3 추가
-            base_ep = _re.sub(r"/v[0-9.]+(?:/[a-f0-9\-]+)?$", "", raw_ep)
-            endpoint = base_ep + "/v3"
-            resp = conn.session.get(
-                f"{endpoint}/role_assignments",
-                params={"scope.project.id": project_id, "include_names": "true"},
-            )
-            raw = resp.json().get("role_assignments", [])
+            users, groups = {}, {}
             assignments = []
-            for ra in raw:
-                user = ra.get("user", {})
-                group = ra.get("group", {})
-                role = ra.get("role", {})
+            for ra in conn.identity.role_assignments(scope_project_id=project_id, include_names=True):
+                scope = identity_roles._field(ra, "scope", {})
+                if not isinstance(scope, dict) or scope.get("project", {}).get("id") != project_id:
+                    continue
+                user = identity_roles._field(ra, "user", {}) or {}
+                group = identity_roles._field(ra, "group", {}) or {}
+                role = identity_roles._field(ra, "role", {}) or {}
+                role_fields = {"role_id": role.get("id", ""), "role_name": role.get("name", "")}
                 if user.get("id"):
+                    uid = user["id"]
+                    if uid not in users:
+                        users[uid] = _native_object(conn, "user", uid)
+                    principal = users[uid]
                     assignments.append(
                         {
-                            "user_id": user["id"],
-                            "user_name": user.get("name", ""),
-                            "role_id": role.get("id", ""),
-                            "role_name": role.get("name", ""),
+                            "user_id": uid,
+                            "user_name": principal.name or "",
+                            **role_fields,
                             "type": "user",
+                            "domain_id": principal.domain_id,
+                            "identity_read_only": domain_id is not None and principal.domain_id != domain_id,
                         }
                     )
                 elif group.get("id"):
+                    gid = group["id"]
+                    if gid not in groups:
+                        groups[gid] = _native_object(conn, "group", gid)
+                    name = groups[gid].name or ""
                     assignments.append(
                         {
                             "user_id": f"group:{group['id']}",
-                            "user_name": f"[그룹] {group.get('name', '')}",
-                            "role_id": role.get("id", ""),
-                            "role_name": role.get("name", ""),
+                            "user_name": name,
+                            **role_fields,
                             "type": "group",
                             "group_id": group["id"],
                         }
@@ -662,7 +993,7 @@ async def list_project_members(
         except Exception as e:
             _logger.warning("멤버 목록 조회 실패: %s", e)
 
-            raise HTTPException(status_code=500, detail="멤버 목록 조회 실패")
+            raise _identity_error(e) from e
 
     try:
         return await asyncio.to_thread(_list)
@@ -718,94 +1049,7 @@ class ComputePolicyUpdateRequest(ComputeQuotaRequest):
     reconcile_flavor_access: bool = True
 
 
-# Request keys are unique even where two providers use the same quota name.
-_QUOTA_FIELDS = {
-    "compute": {
-        key: key
-        for key in (
-            "instances",
-            "cores",
-            "ram",
-            "key_pairs",
-            "server_groups",
-            "server_group_members",
-            "injected_files",
-            "injected_file_content_bytes",
-            "injected_file_path_bytes",
-            "metadata_items",
-        )
-    },
-    "volume": {key: key for key in ("volumes", "snapshots", "gigabytes")},
-    "network": {
-        key: key
-        for key in ("network", "subnet", "port", "router", "floatingip", "security_group", "security_group_rule")
-    },
-    "file_storage": {
-        "shares": "shares",
-        "share_gigabytes": "gigabytes",
-        "share_snapshots": "snapshots",
-        "share_snapshot_gigabytes": "snapshot_gigabytes",
-        "share_networks": "share_networks",
-        "share_groups": "share_groups",
-        "share_group_snapshots": "share_group_snapshots",
-    },
-}
-
-
-def _quota_entries(raw: object, keys: Iterable[str]) -> dict:
-    """Keep only actual usage-bearing entries; never invent a limit or usage."""
-    if not isinstance(raw, dict):
-        raise ValueError("quota set is malformed")
-    entries = {}
-    for key in keys:
-        item = raw.get(key)
-        if item is None:
-            continue  # Some deployments do not expose every optional quota.
-        if (
-            not isinstance(item, dict)
-            or not all(
-                isinstance(item.get(field), int) and not isinstance(item[field], bool) for field in ("limit", "in_use")
-            )
-            or item["limit"] < -1
-            or item["in_use"] < 0
-        ):
-            raise ValueError("quota usage is malformed")
-        entries[key] = {"limit": item["limit"], "in_use": item["in_use"]}
-    if not entries:
-        raise ValueError("quota set has no usage")
-    return entries
-
-
-def _get_admin_quota_section(conn, project_id: str, section: str) -> dict:
-    if section in ("compute", "volume"):
-        proxy = conn.compute if section == "compute" else conn.block_storage
-        url = f"{proxy.get_endpoint()}/os-quota-sets/{project_id}"
-        if section == "compute":
-            url += "/detail"
-            params = None
-        else:
-            params = {"usage": "true"}
-        response = conn.session.get(url, params=params) if params else conn.session.get(url)
-        response.raise_for_status()
-        payload = response.json()
-        raw = payload.get("quota_set") if isinstance(payload, dict) else None
-    elif section == "network":
-        quota = conn.network.get_quota(project_id, details=True)
-        raw = quota.to_dict(original_names=True) if hasattr(quota, "to_dict") else quota
-    else:
-        payload = manila.get_client(conn).get(f"quota-sets/{project_id}/detail")
-        raw = payload.get("quota_set") if isinstance(payload, dict) else None
-
-    if section == "network" and isinstance(raw, dict):
-        # Neutron calls the measured count 'used' rather than 'in_use'.
-        raw = {
-            key: {**value, "in_use": value.get("used", value.get("in_use"))} if isinstance(value, dict) else value
-            for key, value in raw.items()
-        }
-    return _quota_entries(raw, _QUOTA_FIELDS[section].values())
-
-
-@router.put("/compute-policy/{project_id}", dependencies=[Depends(require_admin)])
+@router.put("/compute-policy/{project_id}", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def update_project_compute_policy(
     project_id: str,
     req: ComputePolicyUpdateRequest,
@@ -830,15 +1074,22 @@ async def update_project_compute_policy(
         }.items()
         if value is not None
     }
-    try:
-        if compute_kwargs:
-            await asyncio.to_thread(
-                conn.compute.update_quota_set,
-                project_id,
-                **compute_kwargs,
-            )
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Compute quota 수정 실패") from exc
+    from app.services import domain_quotas
+
+    native_quotas = None
+    if compute_kwargs:
+        native_quotas = await domain_quotas.update_project(conn, project_id, compute_kwargs)
+        if native_quotas["status"] != "updated":
+            # Native services and the GPU ledger are not one transaction. Do
+            # not continue subsequent policy effects after uncertain Nova.
+            return {
+                "project_id": project_id,
+                "status": "partial",
+                "errors": [{"code": "compute_quota_not_verified"}],
+                "native_quotas": native_quotas,
+                "access_reconcile": None,
+                "enforcement_scope": "afterglow_admissions_only",
+            }
 
     errors: list[dict] = []
     for gpu_type, limit in req.gpu_quotas.items():
@@ -865,108 +1116,31 @@ async def update_project_compute_policy(
         "status": "partial" if errors else "ok",
         "errors": errors,
         "access_reconcile": reconcile,
+        "native_quotas": native_quotas,
         "enforcement_scope": "afterglow_admissions_only",
     }
 
 
-@router.get("/quotas/{project_id}", dependencies=[Depends(require_admin)])
+@router.get("/quotas/{project_id}", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def get_project_quotas(
     project_id: str,
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
     """Read the target project's usage-bearing quota sets independently."""
-    enabled = bool(get_settings().service_manila_enabled)
-    result: dict = {
-        "project_id": project_id,
-        "compute": None,
-        "volume": None,
-        "network": None,
-        "file_storage": None,
-        "availability": {},
-        "errors": {},
-    }
-    sections = [section for section in _QUOTA_FIELDS if section != "file_storage" or enabled]
-    if not enabled:
-        result["availability"]["file_storage"] = False
-        result["errors"]["file_storage"] = "service_disabled"
-
-    # The connection belongs to this request. Settle every worker before it
-    # closes, including when the HTTP request is cancelled mid-flight.
-    calls = asyncio.gather(
-        *(asyncio.to_thread(_get_admin_quota_section, conn, project_id, section) for section in sections),
-        return_exceptions=True,
-    )
-    try:
-        values = await asyncio.shield(calls)
-    except BaseException:
-        try:
-            await asyncio.shield(calls)
-        except BaseException:
-            pass
-        raise
-
-    for section, value in zip(sections, values, strict=True):
-        if isinstance(value, BaseException):
-            _logger.warning("Admin %s quota read failed", section, exc_info=value)
-            result["availability"][section] = False
-            result["errors"][section] = "quota_unavailable"
-        else:
-            result[section] = value
-            result["availability"][section] = True
-    return result
+    return await quota_native.read_project(conn, project_id)
 
 
-@router.put("/quotas/{project_id}", dependencies=[Depends(require_admin)])
+@router.put("/quotas/{project_id}", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def update_project_quotas(
     project_id: str,
     req: QuotaUpdateRequest,
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """Apply only supplied quota sections; one provider's failure cannot hide another's success."""
+    """All first-party native quota writers share the domain allocation fence."""
+    from app.services import domain_quotas
+
     supplied = req.model_dump(exclude_unset=True)
-    if not supplied or any(value is None for value in supplied.values()):
-        raise HTTPException(status_code=422, detail="쿼터 값이 필요합니다")
-
-    updated: list[str] = []
-    errors: dict[str, str] = {}
-    for section, mapping in _QUOTA_FIELDS.items():
-        kwargs = {provider_key: supplied[key] for key, provider_key in mapping.items() if key in supplied}
-        if not kwargs:
-            continue
-        if section == "file_storage" and not get_settings().service_manila_enabled:
-            errors[section] = "service_disabled"
-            continue
-        try:
-            if section == "compute":
-                await asyncio.to_thread(conn.compute.update_quota_set, project_id, **kwargs)
-            elif section == "volume":
-                await asyncio.to_thread(conn.block_storage.update_quota_set, project_id, **kwargs)
-            elif section == "network":
-                await asyncio.to_thread(conn.network.update_quota, project_id, **kwargs)
-            else:
-                client = await asyncio.to_thread(manila.get_client, conn)
-                await asyncio.to_thread(client.put, f"quota-sets/{project_id}", {"quota_set": kwargs})
-        except Exception:
-            _logger.warning("Admin %s quota update failed", section, exc_info=True)
-            errors[section] = "update_failed"
-            continue
-
-        updated.append(section)
-    if updated:
-        # Both dashboard views combine all providers; the usage report also
-        # caches Nova/Cinder quota snapshots independently.
-        await invalidate(f"afterglow:dashboard:{project_id}:quotas")
-        await invalidate(f"afterglow:dashboard:{project_id}:quotas:overview")
-        if "compute" in updated:
-            await invalidate(f"afterglow:nova:{project_id}:quota:strict")
-        if "volume" in updated:
-            await invalidate(f"afterglow:cinder:{project_id}:quota:strict")
-    return {
-        "project_id": project_id,
-        "status": "partial" if errors else "updated",
-        "updated": updated,
-        "errors": errors,
-    }
+    return await domain_quotas.update_project(conn, project_id, supplied)
 
 
 # ============================================================================
@@ -974,13 +1148,16 @@ async def update_project_quotas(
 # ============================================================================
 
 
-@router.get("/groups", dependencies=[Depends(require_admin)])
+@router.get("/groups", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def list_groups(
-    conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    cm: CacheMode = Depends(cache_mode),
+    domain_id: str = Query(..., min_length=1),
 ):
     """전체 그룹 목록, 확인된 생성일 내림차순."""
 
     def _list():
+
         return [
             {
                 "id": g.id,
@@ -989,22 +1166,23 @@ async def list_groups(
                 "domain_id": getattr(g, "domain_id", None),
                 "created_at": _identity_created_at(getattr(g, "created_at", None)),
             }
-            for g in conn.identity.groups()
+            for g in conn.identity.groups(domain_id=domain_id)
+            if getattr(g, "domain_id", None) == domain_id
         ]
 
     try:
         inventory = await cached_call(
-            "afterglow:admin:groups", ttl_slow(), _list, enabled=cm.enabled, refresh=cm.refresh
+            f"afterglow:admin:groups:{domain_id}", ttl_slow(), _list, enabled=cm.enabled, refresh=cm.refresh
         )
         return await _identity_creation_dates(inventory, "group")
-    except Exception:
-        raise HTTPException(status_code=500, detail="그룹 목록 조회 실패")
+    except Exception as exc:
+        raise _identity_error(exc) from exc
 
 
 class CreateGroupRequest(BaseModel):
     name: str
     description: str | None = None
-    domain_id: str | None = None
+    domain_id: str = Field(min_length=1)
 
 
 class UpdateGroupRequest(BaseModel):
@@ -1019,14 +1197,15 @@ async def create_group(
     token_info: dict = Depends(get_token_info),
 ):
     """그룹 생성."""
+    domain_projects.assert_projection_attributes(req.model_dump(exclude_none=True))
+    await asyncio.to_thread(_selected_domain, conn, req.domain_id)
 
     def _create():
         try:
             kwargs = {"name": req.name}
             if req.description:
                 kwargs["description"] = req.description
-            if req.domain_id:
-                kwargs["domain_id"] = req.domain_id
+            kwargs["domain_id"] = req.domain_id
             g = conn.identity.create_group(**kwargs)
             return {
                 "id": g.id,
@@ -1037,7 +1216,7 @@ async def create_group(
         except Exception as e:
             _logger.warning("그룹 생성 실패: %s", e)
 
-            raise HTTPException(status_code=400, detail="그룹 생성 실패")
+            raise _identity_error(e) from e
 
     try:
         result = await asyncio.to_thread(_create)
@@ -1052,19 +1231,20 @@ async def create_group(
             resource_name=result["name"],
             service="keystone",
         )
-        await invalidate("afterglow:admin:groups")
+        await invalidate("afterglow:admin:groups:*")
         return result
     except HTTPException:
         raise
 
 
-@router.patch("/groups/{group_id}", dependencies=[Depends(require_admin)])
+@router.patch("/groups/{group_id}", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def update_group(
     group_id: str,
     req: UpdateGroupRequest,
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
     """그룹 수정."""
+    domain_projects.assert_projection_attributes(req.model_dump(exclude_none=True))
 
     def _update():
         kwargs: dict = {}
@@ -1082,30 +1262,34 @@ async def update_group(
         except Exception as e:
             _logger.warning("그룹 수정 실패: %s", e)
 
-            raise HTTPException(status_code=400, detail="그룹 수정 실패")
+            raise _identity_error(e) from e
 
     try:
-        result = await asyncio.to_thread(_update)
-        await invalidate("afterglow:admin:groups")
+        async with identity_roles._graph_lock(conn) as lease:
+            await asyncio.to_thread(domain_projects.assert_not_projection_group, group_id)
+            await lease.assert_owned()
+            result = await asyncio.to_thread(_update)
+        await invalidate("afterglow:admin:groups:*")
         return result
     except HTTPException:
         raise
 
 
-@router.delete("/groups/{group_id}", dependencies=[Depends(require_admin)], status_code=204)
+@router.delete("/groups/{group_id}", dependencies=[Depends(require_admin), Depends(_selected_objects)], status_code=204)
 async def delete_group(
     group_id: str,
     token_info: dict = Depends(get_token_info),
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
     await identity_roles.change_group_membership(conn, token_info, group_id, delete=True)
-    await invalidate("afterglow:admin:groups")
+    await invalidate("afterglow:admin:groups:*")
 
 
-@router.get("/groups/{group_id}/users", dependencies=[Depends(require_admin)])
+@router.get("/groups/{group_id}/users", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def list_group_users(
     group_id: str,
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    domain_id: str | None = Query(None, min_length=1),
 ):
     """그룹 멤버 목록."""
 
@@ -1118,13 +1302,15 @@ async def list_group_users(
                         "id": u.id,
                         "name": u.name or "",
                         "email": getattr(u, "email", "") or "",
+                        "domain_id": getattr(u, "domain_id", None),
+                        "identity_read_only": domain_id is not None and getattr(u, "domain_id", None) != domain_id,
                         "enabled": getattr(u, "is_enabled", True),
                     }
                 )
         except Exception as e:
             _logger.warning("그룹 멤버 조회 실패: %s", e)
 
-            raise HTTPException(status_code=500, detail="그룹 멤버 조회 실패")
+            raise _identity_error(e) from e
         return users
 
     try:
@@ -1133,7 +1319,11 @@ async def list_group_users(
         raise
 
 
-@router.put("/groups/{group_id}/users/{user_id}", dependencies=[Depends(require_admin)], status_code=204)
+@router.put(
+    "/groups/{group_id}/users/{user_id}",
+    dependencies=[Depends(require_admin), Depends(_selected_objects)],
+    status_code=204,
+)
 async def add_user_to_group(
     group_id: str,
     user_id: str,
@@ -1143,7 +1333,11 @@ async def add_user_to_group(
     await identity_roles.change_group_membership(conn, token_info, group_id, user_id=user_id)
 
 
-@router.delete("/groups/{group_id}/users/{user_id}", dependencies=[Depends(require_admin)], status_code=204)
+@router.delete(
+    "/groups/{group_id}/users/{user_id}",
+    dependencies=[Depends(require_admin), Depends(_selected_objects)],
+    status_code=204,
+)
 async def remove_user_from_group(
     group_id: str,
     user_id: str,
@@ -1184,7 +1378,7 @@ class AssignRoleRequest(BaseModel):
     role_id: str
 
 
-@router.post("/roles/assign", dependencies=[Depends(require_admin)])
+@router.post("/roles/assign", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def assign_role(
     req: AssignRoleRequest,
     token_info: dict = Depends(get_token_info),
@@ -1195,7 +1389,7 @@ async def assign_role(
     )
 
 
-@router.delete("/roles/assign", dependencies=[Depends(require_admin)])
+@router.delete("/roles/assign", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def revoke_role(
     user_id: str = Query(...),
     project_id: str = Query(...),
@@ -1214,7 +1408,7 @@ class AssignGroupRoleRequest(BaseModel):
     role_id: str
 
 
-@router.post("/roles/assign-group", dependencies=[Depends(require_admin)])
+@router.post("/roles/assign-group", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def assign_group_role(
     req: AssignGroupRoleRequest,
     token_info: dict = Depends(get_token_info),
@@ -1225,7 +1419,7 @@ async def assign_group_role(
     )
 
 
-@router.delete("/roles/assign-group", dependencies=[Depends(require_admin)])
+@router.delete("/roles/assign-group", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def revoke_group_role(
     group_id: str = Query(...),
     project_id: str = Query(...),
@@ -1332,9 +1526,7 @@ async def list_system_roles():
 
     def _list():
         try:
-            _, admin_role_id = keystone._resolve_admin_ids()
-            if not admin_role_id:
-                return []
+            admin_role_id = keystone._resolve_admin_role_id()
             ks = keystone._get_admin_ks_client()
             assignments = ks.role_assignments.list(role=admin_role_id, system="all")
             user_ids = [a.user["id"] for a in assignments if hasattr(a, "user")]
@@ -1353,6 +1545,8 @@ async def list_system_roles():
                 except Exception:
                     result.append({"user_id": uid, "name": "", "email": "", "enabled": False})
             return result
+        except HTTPException:
+            raise
         except Exception as e:
             _logger.warning("system role 목록 조회 실패: %s", e)
             raise HTTPException(status_code=500, detail="system role 목록 조회 실패")
@@ -1360,29 +1554,46 @@ async def list_system_roles():
     return await asyncio.to_thread(_list)
 
 
+async def _system_admin_change(conn, user_id: str, *, revoke: bool) -> dict:
+    # The shared native role-graph lease serializes this with every other grant,
+    # role and implication mutation, so two concurrent revokes cannot both pass.
+    async with identity_roles._graph_lock(conn) as lease:
+        try:
+            admin_role_id = await asyncio.to_thread(keystone._resolve_admin_role_id)
+            ks = await asyncio.to_thread(keystone._get_admin_ks_client)
+            if revoke:
+
+                def check():
+                    direct = list(ks.role_assignments.list(role=admin_role_id, system="all", user=user_id))
+                    if not direct:
+                        raise HTTPException(404, "system_admin_grant_not_found")
+                    identity_roles.assert_system_admin_remains(users={user_id})
+
+                await asyncio.to_thread(check)
+        except Exception as exc:
+            raise _identity_error(exc) from exc
+        await identity_roles._session_ready({user_id})
+        method = ks.roles.revoke if revoke else ks.roles.grant
+        try:
+            await identity_roles._write(lease, method, role=admin_role_id, user=user_id, system="all")
+        finally:
+            # A failed reply may follow a committed native authority change.
+            try:
+                await invalidate_authority()
+            finally:
+                await session_store.revoke_user_sessions(user_id)
+    return {"status": "revoked" if revoke else "granted"}
+
+
 @router.post("/identity/system-roles/grant", dependencies=[Depends(require_admin)])
+@identity_roles._complete_mutation
 async def grant_system_role(
     req: SystemRoleRequest,
     token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
     """사용자에게 Keystone system:all admin role 부여."""
-
-    def _grant():
-        try:
-            _, admin_role_id = keystone._resolve_admin_ids()
-            if not admin_role_id:
-                raise HTTPException(status_code=500, detail="admin role ID 조회 실패")
-            ks = keystone._get_admin_ks_client()
-            ks.roles.grant(role=admin_role_id, user=req.user_id, system="all")
-            return {"status": "granted"}
-        except HTTPException:
-            raise
-        except Exception as e:
-            _logger.warning("system role grant 실패: %s", e)
-            raise HTTPException(status_code=500, detail="system role grant 실패")
-
-    result = await asyncio.to_thread(_grant)
-    await session_store.revoke_user_sessions(req.user_id)
+    result = await _system_admin_change(conn, req.user_id, revoke=False)
     await activity.record(
         project_id=token_info["project_id"],
         user_id=token_info["user_id"],
@@ -1396,32 +1607,14 @@ async def grant_system_role(
 
 
 @router.post("/identity/system-roles/revoke", dependencies=[Depends(require_admin)])
+@identity_roles._complete_mutation
 async def revoke_system_role(
     req: SystemRoleRequest,
     token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """사용자로부터 Keystone system:all admin role 회수."""
-
-    def _revoke():
-        try:
-            _, admin_role_id = keystone._resolve_admin_ids()
-            if not admin_role_id:
-                raise HTTPException(status_code=500, detail="admin role ID 조회 실패")
-            ks = keystone._get_admin_ks_client()
-            assignments = ks.role_assignments.list(role=admin_role_id, system="all")
-            current_admins = [a.user["id"] for a in assignments if hasattr(a, "user")]
-            if len(current_admins) <= 1 and req.user_id in current_admins:
-                raise HTTPException(status_code=422, detail="마지막 system admin은 회수할 수 없습니다")
-            ks.roles.revoke(role=admin_role_id, user=req.user_id, system="all")
-            return {"status": "revoked"}
-        except HTTPException:
-            raise
-        except Exception as e:
-            _logger.warning("system role revoke 실패: %s", e)
-            raise HTTPException(status_code=500, detail="system role revoke 실패")
-
-    result = await asyncio.to_thread(_revoke)
-    await session_store.revoke_user_sessions(req.user_id)
+    """사용자로부터 Keystone system:all admin role 회수 (마지막 유효 관리자 보호)."""
+    result = await _system_admin_change(conn, req.user_id, revoke=True)
     await activity.record(
         project_id=token_info["project_id"],
         user_id=token_info["user_id"],
@@ -1436,88 +1629,8 @@ async def revoke_system_role(
 
 @router.get("/identity/security-policy", dependencies=[Depends(require_admin)])
 async def get_security_policy():
-    """호환 모드 상태 + system admin/admin project 멤버 수 반환."""
-
-    def _get():
-        from app.config import get_settings
-
-        settings = get_settings()
-        legacy_compat = settings.admin_legacy_project_policy
-        try:
-            admin_project_id, admin_role_id = keystone._resolve_admin_ids()
-            ks = keystone._get_admin_ks_client()
-            if admin_role_id:
-                sys_assignments = ks.role_assignments.list(role=admin_role_id, system="all")
-                system_admin_count = len([a for a in sys_assignments if hasattr(a, "user")])
-            else:
-                system_admin_count = 0
-            if admin_role_id and admin_project_id:
-                proj_assignments = ks.role_assignments.list(role=admin_role_id, project=admin_project_id)
-                admin_project_member_count = len([a for a in proj_assignments if hasattr(a, "user")])
-            else:
-                admin_project_member_count = 0
-        except Exception as e:
-            _logger.warning("security-policy 조회 실패: %s", e)
-            system_admin_count = 0
-            admin_project_member_count = 0
-        return {
-            "legacy_compat": legacy_compat,
-            "system_admin_count": system_admin_count,
-            "admin_project_member_count": admin_project_member_count,
-        }
-
-    return await asyncio.to_thread(_get)
-
-
-@router.post("/identity/system-roles/migrate-from-project", dependencies=[Depends(require_admin)])
-async def migrate_from_project(token_info: dict = Depends(get_token_info)):
-    """admin project 멤버 중 system admin이 아닌 사용자에게 system:all admin role 일괄 부여."""
-
-    def _migrate():
-        try:
-            admin_project_id, admin_role_id = keystone._resolve_admin_ids()
-            if not admin_role_id or not admin_project_id:
-                raise HTTPException(status_code=500, detail="admin role/project ID 조회 실패")
-            ks = keystone._get_admin_ks_client()
-            sys_assignments = ks.role_assignments.list(role=admin_role_id, system="all")
-            system_admin_ids = {a.user["id"] for a in sys_assignments if hasattr(a, "user")}
-            proj_assignments = ks.role_assignments.list(role=admin_role_id, project=admin_project_id)
-            project_member_ids = [a.user["id"] for a in proj_assignments if hasattr(a, "user")]
-            migrated = 0
-            skipped = 0
-            errors = []
-            grant_uids = []
-            for uid in project_member_ids:
-                if uid in system_admin_ids:
-                    skipped += 1
-                else:
-                    try:
-                        ks.roles.grant(role=admin_role_id, user=uid, system="all")
-                        migrated += 1
-                        grant_uids.append(uid)
-                    except Exception as e:
-                        errors.append({"user_id": uid, "reason": str(e)})
-            return {"migrated": migrated, "skipped": skipped, "errors": errors, "_grant_uids": grant_uids}
-        except HTTPException:
-            raise
-        except Exception as e:
-            _logger.warning("migrate-from-project 실패: %s", e)
-            raise HTTPException(status_code=500, detail="마이그레이션 실패")
-
-    result = await asyncio.to_thread(_migrate)
-    grant_uids = result.pop("_grant_uids", [])
-    for uid in grant_uids:
-        await session_store.revoke_user_sessions(uid)
-        await activity.record(
-            project_id=token_info["project_id"],
-            user_id=token_info["user_id"],
-            username=token_info.get("username", ""),
-            resource_type="identity",
-            action="admin_system_role_grant",
-            status="success",
-            resource_id=uid,
-        )
-    return result
+    """Only actual system:all administrator grants; provider failure is not zero."""
+    return {"system_admin_count": len(await list_system_roles())}
 
 
 # ============================================================================
@@ -1525,7 +1638,9 @@ async def migrate_from_project(token_info: dict = Depends(get_token_info)):
 # ============================================================================
 
 
-@router.post("/projects/{project_id}/sync-monitoring-sg", dependencies=[Depends(require_admin)])
+@router.post(
+    "/projects/{project_id}/sync-monitoring-sg", dependencies=[Depends(require_admin), Depends(_selected_objects)]
+)
 async def sync_monitoring_sg(
     project_id: str,
     conn: openstack.connection.Connection = Depends(get_os_conn),

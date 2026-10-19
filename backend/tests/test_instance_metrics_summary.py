@@ -43,6 +43,35 @@ _GPU_FLAVOR = FlavorInfo(id="flavor-gpu", name="gpu.small", vcpus=4, ram=8192, d
 _DEFAULT_FLAVORS = [_LARGE_FLAVOR, _SMALL_FLAVOR, _TINY_DISK_FLAVOR, _GPU_FLAVOR]
 
 
+@pytest.fixture(autouse=True)
+def native_metrics(mock_conn):
+    mock_conn._afterglow_authenticated_project_id = _PROJECT_ID
+    with (
+        patch(
+            "app.api.compute.instance_metrics.native_telemetry.instance_series",
+            new=AsyncMock(
+                return_value={
+                    metric: {"series": [], "status": "not_configured", "error": None}
+                    for metric in ("cpu", "memory", "disk_read", "disk_write")
+                }
+            ),
+        ) as instance,
+        patch(
+            "app.api.compute.instance_metrics.native_telemetry.project_series",
+            new=AsyncMock(return_value={"status": "not_configured", "instances": {}}),
+        ) as project,
+        patch(
+            "app.api.compute.instance_metrics.nova.list_servers",
+            return_value=[
+                _FAKE_INSTANCE,
+                MagicMock(id="inst-2", project_id=_PROJECT_ID, flavor_name="m1.large"),
+                _OTHER_INSTANCE,
+            ],
+        ),
+    ):
+        yield instance, project
+
+
 def _instant(value: float, instance_id: str = "inst-1"):
     """query_instant_multi 반환값 형식."""
     return [({"instance_id": instance_id}, value)]
@@ -67,7 +96,7 @@ async def test_summary_returns_stats(client):
         resp = await client.get("/api/v1/instances/inst-1/metrics-summary?range=7d")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["prometheus_available"] is True
+    assert body["monitoring_available"] is True
     assert "cpu" in body["stats"]
     assert body["stats"]["cpu"]["avg"] == 5.0
     assert body["stats"]["memory"]["avg"] == 5.0
@@ -254,7 +283,7 @@ async def test_summary_instance_not_found(client):
 
 @pytest.mark.anyio
 async def test_summary_prom_unavailable_returns_200(client):
-    """Prometheus 연결 불가 시 200 + prometheus_available=false."""
+    """No chosen measurements yields monitoring_available=false without a resize hint."""
     from app.services.prom_query import PromUnavailable
 
     with (
@@ -267,7 +296,7 @@ async def test_summary_prom_unavailable_returns_200(client):
         resp = await client.get("/api/v1/instances/inst-1/metrics-summary")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["prometheus_available"] is False
+    assert body["monitoring_available"] is False
     assert body["stats"] == {}
     assert body["recommendation"] is None
 
@@ -279,15 +308,11 @@ async def test_summary_prom_unavailable_returns_200(client):
 
 @pytest.mark.anyio
 async def test_summary_libvirt_fallback(client):
-    """node_exporter 결과가 없으면 libvirt expr로 폴백."""
-    call_order = []
+    """Exporter fallback values remain useful when node measurements are absent."""
 
     async def _side(promql: str):
-        call_order.append(promql)
-        # node_exporter 식(node_cpu_seconds_total 등)은 빈 결과 반환
-        if "node_cpu" in promql or "node_memory" in promql or "node_disk" in promql:
+        if "libvirt" not in promql:
             return []
-        # libvirt 식은 값 반환
         return _instant(8.0)
 
     with (
@@ -297,9 +322,8 @@ async def test_summary_libvirt_fallback(client):
     ):
         resp = await client.get("/api/v1/instances/inst-1/metrics-summary")
     assert resp.status_code == 200
-    # libvirt 폴백으로 값이 채워졌으면 libvirt 식이 호출됐어야 함
-    libvirt_calls = [p for p in call_order if "libvirt" in p]
-    assert len(libvirt_calls) > 0
+    assert resp.json()["stats"]["cpu"]["avg"] == 8.0
+    assert resp.json()["stats"]["memory"]["avg"] == 8.0
 
 
 # ---------------------------------------------------------------------------
@@ -328,7 +352,7 @@ async def test_batch_returns_per_instance_data(client):
         resp = await client.get("/api/v1/instances/metrics-summary-batch")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["prometheus_available"] is True
+    assert body["monitoring_available"] is True
     instances = body["instances"]
     assert "inst-1" in instances
     assert instances["inst-1"]["underutilized"] is True  # cpu<10 AND mem<20
@@ -365,7 +389,7 @@ async def test_batch_invalid_project_id_returns_empty(client):
 
 @pytest.mark.anyio
 async def test_batch_prom_unavailable_returns_200(client):
-    """batch: Prometheus 연결 불가 시 200 + prometheus_available=false."""
+    """Without usable native or exporter data monitoring remains unavailable."""
     from app.services.prom_query import PromUnavailable
 
     with patch(
@@ -375,5 +399,232 @@ async def test_batch_prom_unavailable_returns_200(client):
         resp = await client.get("/api/v1/instances/metrics-summary-batch")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["prometheus_available"] is False
+    assert body["monitoring_available"] is False
     assert body["instances"] == {}
+
+
+def _native(*values, status="available"):
+    return {
+        "series": [{"ts": 1700000000 + offset * 60, "value": value} for offset, value in enumerate(values)],
+        "source": "gnocchi",
+        "unit": "%",
+        "status": status,
+        "error": None,
+    }
+
+
+@pytest.mark.anyio
+async def test_summary_native_measurements_survive_independent_exporter_outage(client, native_metrics):
+    from app.services.prom_query import PromUnavailable
+
+    instance, _ = native_metrics
+    instance.return_value = {"cpu": _native(0.0, 2.0), "memory": _native(5.0, 10.0)}
+    with (
+        patch("app.api.compute.instance_metrics.nova.get_server", return_value=_FAKE_INSTANCE),
+        patch("app.api.compute.instance_metrics.nova.list_flavors", return_value=_DEFAULT_FLAVORS),
+        patch(
+            "app.api.compute.instance_metrics.query_instant_multi", new=AsyncMock(side_effect=PromUnavailable("down"))
+        ),
+    ):
+        response = await client.get("/api/v1/instances/inst-1/metrics-summary")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["monitoring_available"] is True
+    assert body["stats"]["cpu"]["avg"] == 1.0
+    assert body["stats"]["cpu"]["min"] == 0.0
+    assert body["stats"]["cpu"]["max"] == 2.0
+    assert body["stats"]["cpu"]["source"] == "gnocchi"
+    assert body["stats"]["disk_read"]["avg"] is None
+    assert body["recommendation"]["suggested_flavor"]["id"] == "flavor-small"
+
+
+@pytest.mark.anyio
+async def test_summary_unknown_memory_never_becomes_resize_advice(client, native_metrics):
+    instance, _ = native_metrics
+    instance.return_value = {"cpu": _native(0.0)}
+    with (
+        patch("app.api.compute.instance_metrics.nova.get_server", return_value=_FAKE_INSTANCE),
+        patch("app.api.compute.instance_metrics.query_instant_multi", new=AsyncMock(return_value=[])),
+    ):
+        response = await client.get("/api/v1/instances/inst-1/metrics-summary")
+    body = response.json()
+    assert body["monitoring_available"] is True
+    assert body["stats"]["cpu"]["avg"] == 0.0
+    assert body["stats"]["memory"]["avg"] is None
+    assert body["recommendation"] is None
+
+
+@pytest.mark.anyio
+async def test_summary_native_partial_memory_falls_back_without_discarding_cpu(client, native_metrics):
+    instance, _ = native_metrics
+    instance.return_value = {
+        "cpu": _native(30.0, 40.0, status="partial"),
+        "memory": {"status": "forbidden", "series": [], "error": "forbidden"},
+    }
+    with (
+        patch("app.api.compute.instance_metrics.nova.get_server", return_value=_FAKE_INSTANCE),
+        patch("app.api.compute.instance_metrics.query_instant_multi", new=AsyncMock(return_value=_instant(50.0))),
+    ):
+        response = await client.get("/api/v1/instances/inst-1/metrics-summary")
+    stats = response.json()["stats"]
+    assert stats["cpu"]["avg"] == 35.0
+    assert stats["cpu"]["status"] == "partial"
+    assert stats["memory"]["avg"] == 50.0
+    assert stats["memory"]["native_status"] == "forbidden"
+    assert stats["memory"]["source"] == "prometheus"
+    assert response.json()["recommendation"] is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("native_readable", [False, True])
+async def test_readable_empty_provider_is_waiting_not_offline(client, native_metrics, native_readable):
+    from app.services.prom_query import PromUnavailable
+
+    instance, project = native_metrics
+    if native_readable:
+        instance.return_value = {
+            metric: _native(status="not_collected") for metric in ("cpu", "memory", "disk_read", "disk_write")
+        }
+        project.return_value = {"status": "not_collected", "instances": {}}
+    query = AsyncMock(side_effect=PromUnavailable("down")) if native_readable else AsyncMock(return_value=[])
+    with (
+        patch("app.api.compute.instance_metrics.nova.get_server", return_value=_FAKE_INSTANCE),
+        patch("app.api.compute.instance_metrics.query_instant_multi", new=query),
+    ):
+        summary = await client.get("/api/v1/instances/inst-1/metrics-summary")
+        batch = await client.get("/api/v1/instances/metrics-summary-batch")
+    assert summary.status_code == batch.status_code == 200
+    assert summary.json()["monitoring_available"] is True
+    assert summary.json()["stats"]["cpu"]["avg"] is None
+    assert summary.json()["recommendation"] is None
+    assert batch.json()["monitoring_available"] is True
+    assert batch.json()["instances"] == {}
+
+
+@pytest.mark.anyio
+async def test_project_summary_joins_native_and_fallback_only_to_canonical_owned_inventory(client, native_metrics):
+    instance, project = native_metrics
+    project.return_value = {
+        "status": "partial",
+        "instances": {
+            "inst-1": {"cpu": _native(0.0)},
+            "inst-other": {"cpu": _native(1.0), "memory": _native(2.0)},
+            "stale-deleted-id": {"cpu": _native(1.0), "memory": _native(2.0)},
+        },
+    }
+    fallback = [
+        ({"instance_id": "inst-1"}, 50.0),
+        ({"instance_id": "inst-other"}, 1.0),
+        ({"instance_id": "stale-deleted-id"}, 1.0),
+    ]
+    with patch("app.api.compute.instance_metrics.query_instant_multi", new=AsyncMock(return_value=fallback)):
+        response = await client.get("/api/v1/instances/metrics-summary-batch")
+    assert response.status_code == 200
+    instances = response.json()["instances"]
+    assert set(instances) == {"inst-1"}
+    assert instances["inst-1"]["cpu_avg"] == 0.0
+    assert instances["inst-1"]["mem_avg"] == 50.0
+    assert instances["inst-1"]["source"] == "mixed"
+    assert instances["inst-1"]["stats"]["cpu"]["source"] == "gnocchi"
+    assert instances["inst-1"]["stats"]["memory"]["source"] == "prometheus"
+    assert "other-project" not in response.text
+    project.assert_awaited_once()
+    assert project.await_args.args[1] == _PROJECT_ID
+    instance.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_project_native_coverage_survives_exporter_outage_and_unknown_memory_is_not_idle(client, native_metrics):
+    from app.services.prom_query import PromUnavailable
+
+    _, project = native_metrics
+    project.return_value = {"status": "partial", "instances": {"inst-1": {"cpu": _native(0.0)}}}
+    with patch(
+        "app.api.compute.instance_metrics.query_instant_multi", new=AsyncMock(side_effect=PromUnavailable("down"))
+    ):
+        response = await client.get("/api/v1/instances/metrics-summary-batch")
+    assert response.json()["monitoring_available"] is True
+    row = response.json()["instances"]["inst-1"]
+    assert row["cpu_avg"] == 0.0
+    assert row["mem_avg"] is None
+    assert row["underutilized"] is False
+
+
+@pytest.mark.anyio
+async def test_project_native_policy_denial_does_not_disable_exporter_monitoring(client, native_metrics):
+    _, project = native_metrics
+    project.return_value = {"status": "forbidden", "instances": {}}
+    with patch("app.api.compute.instance_metrics.query_instant_multi", new=AsyncMock(return_value=_instant(50.0))):
+        response = await client.get("/api/v1/instances/metrics-summary-batch")
+    assert response.status_code == 200
+    assert response.json()["monitoring_available"] is True
+    row = response.json()["instances"]["inst-1"]
+    assert row["cpu_avg"] == row["mem_avg"] == 50.0
+    assert row["native_status"] == "forbidden"
+    assert row["stats"]["cpu"]["native_status"] == "forbidden"
+
+
+@pytest.mark.anyio
+async def test_project_inventory_failure_prevents_unverified_native_query(client, native_metrics):
+    _, project = native_metrics
+    with patch(
+        "app.api.compute.instance_metrics.nova.list_servers",
+        side_effect=RuntimeError("https://user:password@nova.invalid/private-token"),
+    ):
+        response = await client.get("/api/v1/instances/metrics-summary-batch")
+    assert response.status_code == 502
+    project.assert_not_awaited()
+    assert "password" not in response.text
+    assert "private-token" not in response.text
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("partial_metric", ["cpu", "memory"])
+async def test_partial_low_usage_remains_visible_without_idle_or_resize_advice(client, native_metrics, partial_metric):
+    instance, project = native_metrics
+    metrics = {"cpu": _native(1.0, 3.0), "memory": _native(5.0, 10.0)}
+    metrics[partial_metric]["status"] = "partial"
+    instance.return_value = metrics
+    project.return_value = {"status": "partial", "instances": {"inst-1": metrics}}
+    with (
+        patch("app.api.compute.instance_metrics.nova.get_server", return_value=_FAKE_INSTANCE),
+        patch("app.api.compute.instance_metrics.nova.list_flavors") as flavors,
+        patch("app.api.compute.instance_metrics.query_instant_multi", new=AsyncMock(return_value=[])),
+    ):
+        summary = await client.get("/api/v1/instances/inst-1/metrics-summary")
+        batch = await client.get("/api/v1/instances/metrics-summary-batch")
+    assert summary.status_code == batch.status_code == 200
+    body = summary.json()
+    assert body["monitoring_available"] is True
+    assert body["stats"]["cpu"]["avg"] == 2.0
+    assert body["stats"]["memory"]["avg"] == 7.5
+    assert body["stats"][partial_metric]["status"] == "partial"
+    assert body["recommendation"] is None
+    flavors.assert_not_called()
+    row = batch.json()["instances"]["inst-1"]
+    assert row["cpu_avg"] == 2.0
+    assert row["mem_avg"] == 7.5
+    assert row["stats"][partial_metric]["status"] == "partial"
+    assert row["underutilized"] is False
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("authenticated_project_id", [None, "", "foreign-project"])
+async def test_admin_selected_project_cannot_expand_actual_native_request_scope(
+    admin_client, native_metrics, mock_conn, authenticated_project_id
+):
+    _, project = native_metrics
+    mock_conn._afterglow_authenticated_project_id = authenticated_project_id
+    project.return_value = {
+        "status": "available",
+        "instances": {"inst-1": {"cpu": _native(1.0), "memory": _native(5.0)}},
+    }
+    with patch("app.api.compute.instance_metrics.query_instant_multi", new=AsyncMock(return_value=_instant(50.0))):
+        response = await admin_client.get("/api/v1/instances/metrics-summary-batch")
+    assert response.status_code == 200
+    project.assert_not_awaited()
+    assert response.json()["monitoring_available"] is True
+    row = response.json()["instances"]["inst-1"]
+    assert row["cpu_avg"] == row["mem_avg"] == 50.0
+    assert row["native_status"] == "forbidden"
+    assert row["stats"]["cpu"]["source"] == "prometheus"

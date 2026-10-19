@@ -1,7 +1,7 @@
-"""Lumen transport contracts with validated identities and synthetic current access.
+"""Lumen transport contracts with synthetic native identity and upstream I/O.
 
-Only the current project-directory boundary is synthetic; service action guards
-remain live. Admin transport cases supply an already verified system principal.
+Project service leaves are synthetic; native account/home/token/system-grant and
+service action guards remain live for administrator transport cases.
 """
 
 import asyncio
@@ -40,6 +40,22 @@ def current_access(monkeypatch):
 
 
 @pytest.fixture
+def current_system_admin(auth_directory, native_auth):
+    native_auth.user_id = "user-1"
+    native_auth.token = "caller-token"
+    auth_directory.projects["project-1"] = {
+        "id": "project-1",
+        "name": "Project",
+        "domain_id": "default",
+        "enabled": True,
+    }
+    auth_directory.assignments.append(
+        {"user": {"id": "user-1"}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}}
+    )
+    auth_directory.grants["user-1"] = ["project-1"]
+
+
+@pytest.fixture
 async def api_client():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client
@@ -52,6 +68,8 @@ async def _authenticated(request: Request) -> dict:
         "project_id": "project-1",
         "user_id": "user-1",
         "username": "user",
+        "domain_id": "default",
+        "identity_domain_id": "default",
         "roles": ["member"],
     }
     request.state.token_info = token_info
@@ -60,7 +78,7 @@ async def _authenticated(request: Request) -> dict:
 
 
 async def _authenticated_system_admin(request: Request) -> dict:
-    """Stand in for token validation's verified flag, never an action-guard bypass."""
+    """Supply the candidate flag; the real guard still revalidates native authority."""
     token_info = await _authenticated(request)
     token_info["is_system_admin"] = True
     return token_info
@@ -474,6 +492,7 @@ async def test_context_routes_preserve_post_body_and_idempotency(api_client, cur
 )
 async def test_subscription_auth_routes_preserve_method_body_response_and_no_store(
     api_client,
+    current_system_admin,
     method,
     path,
     body,
@@ -530,7 +549,9 @@ async def test_subscription_auth_routes_preserve_method_body_response_and_no_sto
         (503, "subscription_upstream_unavailable"),
     ],
 )
-async def test_subscription_auth_proxy_preserves_safe_error_and_no_store(api_client, status_code, code):
+async def test_subscription_auth_proxy_preserves_safe_error_and_no_store(
+    api_client, current_system_admin, status_code, code
+):
     app.dependency_overrides[get_token_info] = _authenticated_system_admin
     error_body = {"detail": {"code": code, "message": "구독 인증 요청을 계속할 수 없습니다"}}
 
@@ -554,7 +575,7 @@ async def test_subscription_auth_proxy_preserves_safe_error_and_no_store(api_cli
 
 
 @pytest.mark.asyncio
-async def test_provider_discovery_preserves_safe_failure_without_session_unauthorized(api_client):
+async def test_provider_discovery_preserves_safe_failure_without_session_unauthorized(api_client, current_system_admin):
     """Provider-key rejection is not a browser session 401 or a successful fallback list."""
     app.dependency_overrides[get_token_info] = _authenticated_system_admin
     body = {
@@ -641,6 +662,7 @@ _CACHE_PRICED_MODEL = {
 )
 async def test_admin_model_routes_forward_cache_price_fields_byte_exact(
     api_client,
+    current_system_admin,
     method,
     path,
     body,

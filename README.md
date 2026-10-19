@@ -29,6 +29,7 @@ Afterglow는 현재 [DMS Cloud 연구 클라우드 제공 콘솔](https://cloud.
 - **OpenStack 전체 서비스 관리** — Nova · Glance · Cinder · Neutron · Manila · Octavia를 단일 대시보드에서
 - **k3s 클러스터 프로비저닝** — Magnum 없이 VM에 k3s 직접 배포 (OCCM · Cinder/Manila CSI · Keystone Auth · Barbican KMS 플러그인)
 - **squashfs/NFS 라이브러리 레이어 (Palimpsest)** — content-addressable 불변 레이어 체인을 Manila share에 저장하고 소비 VM에서 OverlayFS로 조합
+- **Palimpsest Hub 작업 공간** — 현재 호출자의 이미지·레이어 검색/상세/검증 다운로드·최근 build/export 관측, 독립 네이티브 패키지/공개 key UUID 관리와 원본 SDK 기반 로컬 설치·웹 가이드. [가시성·권한·클라이언트 경계](docs/palimpsest.md#45-허브-레이어-레지스트리).
 - **모니터링 통합** — Grafana JWT 임베드, Prometheus HTTP SD, Monitoring 보안 그룹 자동화
 - **AI 이미지·음성 작업 공간** — Lumen의 프로젝트 소유 이미지 생성/편집, TTS/STT와 60초 one-use ticket 기반 실시간 음성 WebSocket. 제공자 키와 실행·비용 원장은 Lumen 소유이며 브라우저는 현재 프로젝트 모델·가격 readiness를 확인한 뒤 명시적으로 마이크 권한을 요청합니다. [채팅 BFF API](docs/api/chat.md#실시간-음성-browser-session) / [Lumen media API](https://github.com/openstack-afterglow/lumen/blob/dev/docs/api-reference.md#이미지유한-오디오실시간-음성).
 - **Defense-in-depth 보안** — IDOR 가드, HKDF 키 분리 암호화, kubeconfig audit log, production 부팅 가드
@@ -44,6 +45,9 @@ npm run services:up                  # docker-compose.dev.yml, http://localhost:
 ```
 
 개발 실행에는 sibling checkout `../lumen`, `../waygate`, `../drover`, `../palimpsest`와 실제 OpenStack 인증·service project 설정이 필요합니다. `services:up`은 private 로컬 설정과 키를 보존하며 현재 소스를 빌드합니다. `docker-compose.yml`은 frontend/backend만, `docker-compose.prod.yml`은 GHCR 이미지·TLS HAProxy·기본 catalog 연결을 담당합니다. 독립 서비스의 목적지는 `SERVICE_*_INTERNAL_URL` 또는 `[services]`로 선택할 수 있으며 원격 OpenStack 설정은 바꾸지 않습니다. 명령과 선행 조건은 [Compose 배포 가이드](docs/deployment.md#docker-compose-배포)를 따릅니다.
+
+K8s·Helm 설정과 배포 파일만 만들려면 설정을 둘 디렉터리에서 `python3 /path/to/checkout/setup.py`를 실행합니다(Python 3.11+). 기존 `afterglow.conf`를 보존하며 terminal menu로 편집·Kubernetes·Helm·둘 다를 선택하고 비밀은 숨겨 입력합니다. 자동 모드는 `--non-interactive --target both`, 비밀 파일은 `--set-file`입니다. 출력·curl entry point·Kolla native defaults와 sparse override 우선순위는 [설정 생성 가이드](docs/deployment.md#k8shelm-로컬-설정-편집과-생성)를 따릅니다. 생성은 cluster apply가 아닙니다.
+
 
 ### 공개 MCP/OAuth
 

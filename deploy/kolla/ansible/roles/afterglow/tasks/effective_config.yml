@@ -1,0 +1,111 @@
+---
+# Parse every operator input before changing any generated runtime file. Nothing
+# here writes operator sources, staging files, or credentials into public facts.
+- name: Effective config | Protect operator source paths
+  ansible.builtin.assert:
+    that:
+      - afterglow_operator_config_source != afterglow_operator_frontend_config_source
+      - afterglow_operator_config_source not in afterglow_owned_config_paths
+      - afterglow_operator_frontend_config_source not in afterglow_owned_config_paths
+    fail_msg: "Afterglow operator source paths must not overlap generated runtime artifacts"
+  vars:
+    afterglow_owned_config_paths:
+      - "{{ afterglow_runtime_config_dir }}/{{ afterglow_generated_config_name }}"
+      - "{{ afterglow_runtime_config_dir }}/{{ afterglow_frontend_config_name }}"
+      - "{{ afterglow_runtime_config_dir }}/afterglow.operator.generated.conf"
+      - "{{ afterglow_runtime_config_dir }}/afterglow.frontend.operator.generated.conf"
+      - "{{ afterglow_runtime_config_dir }}/afterglow.zz-kolla.generated.conf"
+
+- name: Effective config | Inspect operator sources
+  become: false
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: afterglow_operator_source_stats
+  loop:
+    - "{{ afterglow_operator_config_source }}"
+    - "{{ afterglow_operator_frontend_config_source }}"
+  delegate_to: "{{ groups['deployment'][0] }}"
+  changed_when: false
+  no_log: true
+
+- name: Effective config | Require readable regular operator sources
+  ansible.builtin.assert:
+    that:
+      - not item.stat.exists or (item.stat.isreg | default(false) and item.stat.readable | default(false))
+    fail_msg: "Afterglow operator sources must be readable regular files on the deployment host"
+  loop: "{{ afterglow_operator_source_stats.results }}"
+  no_log: true
+
+- name: Effective config | Read existing operator sources
+  become: false
+  ansible.builtin.slurp:
+    src: "{{ item.item }}"
+  loop: "{{ afterglow_operator_source_stats.results }}"
+  when: item.stat.exists
+  register: afterglow_operator_source_contents
+  delegate_to: "{{ groups['deployment'][0] }}"
+  no_log: true
+
+- name: Effective config | Merge regenerated native defaults and explicit backend keys
+  become: false
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/render_effective_config.py') }}"
+    stdin: >-
+      {{ {'base': lookup('ansible.builtin.template', 'afterglow.conf.j2'),
+          'operator': (afterglow_operator_source_contents.results[0].content | default('') | b64decode)} | to_json }}
+  register: afterglow_effective_config_merge
+  delegate_to: "{{ groups['deployment'][0] }}"
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Effective config | Record private effective backend settings
+  ansible.builtin.set_fact:
+    afterglow_effective_config: "{{ afterglow_effective_config_merge.stdout | from_json }}"
+    cacheable: false
+  no_log: true
+
+- name: Effective config | Freeze selected Cloud Shell workload image
+  ansible.builtin.include_tasks: resolve_cloud_shell_image.yml
+  when: afterglow_effective_config.services.cloud_shell | bool
+
+- name: Effective config | Serialize validated effective backend configuration
+  become: false
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/render_effective_config.py') }}"
+      - --render
+    stdin: "{{ afterglow_effective_config | to_json }}"
+  register: afterglow_effective_config_render
+  delegate_to: "{{ groups['deployment'][0] }}"
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Effective config | Project independent frontend allowlist
+  become: false
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/render_frontend_config.py') }}"
+      - --project-json
+    stdin: >-
+      {{ {'config': afterglow_effective_config,
+          'operator': (afterglow_operator_source_contents.results[1].content | default('') | b64decode)} | to_json }}
+  register: afterglow_effective_frontend_projection
+  delegate_to: "{{ groups['deployment'][0] }}"
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Effective config | Record public frontend configuration
+  ansible.builtin.set_fact:
+    afterglow_effective_frontend_config: "{{ (afterglow_effective_frontend_projection.stdout | from_json).config }}"
+    cacheable: false
+  no_log: true

@@ -12,7 +12,7 @@
 
   const s = useK3sClusterDetailController();
   const token = $derived($auth.token ?? undefined);
-  const projectId = $derived($auth.projectId ?? undefined);
+  const projectId = $derived(s.projectId);
 
   let showCertModal = $state(false);
   let downloadingCa = $state(false);

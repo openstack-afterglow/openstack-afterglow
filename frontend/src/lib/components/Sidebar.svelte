@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/shell';
 	import { t as tn } from '$lib/i18n/ns/nav';
+	import { t as tw } from '$lib/i18n/ns/workspace-selector';
 	import { page } from '$app/stores';
-	import { auth, isAdmin } from '$lib/stores/auth';
+	import { auth, canManageDomain, isAdmin } from '$lib/stores/auth';
 	import ConsoleNavigation from '$lib/components/ConsoleNavigation.svelte';
 	import ProjectSelector from '$lib/components/ProjectSelector.svelte';
 	import { siteConfig } from '$lib/config/site';
@@ -48,6 +49,7 @@
 
 	function isItemVisible(item: NavItem): boolean {
 		if (mockupProfile && !isMockupPathAllowed(mockupProfile, item.href)) return false;
+		if (item.capability === 'domainManager' && !$canManageDomain) return false;
 		if (!isBetaVisible(item.beta)) return false;
 		const svcs = $siteConfig.services as Record<string, boolean> | undefined;
 		if (!item.service) return true;
@@ -79,7 +81,7 @@
 
 	{#snippet footer()}
 		<div class="p-3 md:hidden">
-			<div class="text-[10px] text-ink-2 uppercase tracking-wide px-1 mb-1.5">{t('sidebar.project')}</div>
+			<div class="text-xs text-ink-2 px-1 mb-1.5">{tw('title')}</div>
 			<ProjectSelector />
 		</div>
 

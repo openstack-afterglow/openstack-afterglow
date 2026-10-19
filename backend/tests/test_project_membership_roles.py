@@ -1,6 +1,7 @@
 """Keystone-only membership authority and safe direct-assignment mutation."""
 
 import asyncio
+import time
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -9,12 +10,14 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
 
-from app.api.deps import get_token_info
+from app.api.deps import get_token_info, require_admin
 from app.api.identity.projects import router
 from app.database import get_session
-from app.services import identity_roles
+from app.services import cache, identity_roles, session_store
 from app.services import project_service as service
-from app.services.service_permissions import ROLE_IMPLICATIONS, ROLE_PRESETS
+from app.services.service_permissions import ROLE_IMPLICATIONS, ROLE_PRESETS, require_service_permission
+from tests.admin_gate import synthetic_verified_admin
+from tests.ownership_journal import ownership_journal as ownership_journal
 
 PROJECT = "screenshot-project"
 
@@ -46,6 +49,7 @@ def token(user_id="owner", *, system_admin=False, project_id=PROJECT):
         "username": user_id,
         "project_id": project_id,
         "is_system_admin": system_admin,
+        "domain_id": "domain",
         "roles": ["member"],
     }
 
@@ -73,26 +77,51 @@ class Membership:
         self.fail = False
         self.ks = SimpleNamespace(
             role_assignments=SimpleNamespace(list=self.assignments),
-            users=SimpleNamespace(get=lambda uid: SimpleNamespace(id=uid, name=uid, email=f"{uid}@test.invalid")),
-            groups=SimpleNamespace(get=lambda gid: SimpleNamespace(name=f"group-{gid}")),
-            roles=SimpleNamespace(grant=self.grant, revoke=self.revoke),
+            users=SimpleNamespace(
+                get=lambda uid: SimpleNamespace(
+                    id=uid, name=uid, email=f"{uid}@test.invalid", domain_id="domain", enabled=True
+                ),
+                list=lambda group=None, **kwargs: [self.ks.users.get(uid) for uid in self.groups.get(group, [])],
+            ),
+            groups=SimpleNamespace(
+                get=lambda gid: SimpleNamespace(id=gid, name=f"group-{gid}", description="", domain_id="domain"),
+                list=lambda user=None, **kwargs: [
+                    SimpleNamespace(id=gid, name=f"group-{gid}", description="", domain_id="domain")
+                    for gid, members in self.groups.items()
+                    if user is None or user in members
+                ],
+            ),
+            roles=SimpleNamespace(grant=self.grant, revoke=self.revoke, list=lambda: list(self.catalog)),
+            inference_rules=SimpleNamespace(
+                list_inference_roles=lambda: [
+                    {"prior_role": {"id": row["id"]}, "implies": [{"id": child} for child in row["implied_role_ids"]]}
+                    for row in self.catalog
+                ]
+            ),
+            projects=SimpleNamespace(
+                get=lambda pid: SimpleNamespace(id=pid, name="Tenant", domain_id="domain", enabled=True),
+                list=lambda **kwargs: [SimpleNamespace(id=PROJECT, name="Tenant", domain_id="domain", enabled=True)],
+            ),
+            domains=SimpleNamespace(get=lambda did: SimpleNamespace(id=did, name=did, enabled=True)),
         )
 
-    def assignments(self, project, effective=False):
-        assert project == PROJECT
+    def assignments(self, project=None, effective=False, user=None, **kwargs):
         if self.fail:
             raise RuntimeError("Keystone unavailable")
+        if project not in {None, PROJECT} or kwargs.get("domain") or kwargs.get("system"):
+            return []
         if not effective:
-            return list(self.direct)
-        rows = list(self.inherited)
-        for row in self.direct:
-            if "user" in row:
-                rows.append(row)
-            else:
-                gid = row["group"]["id"]
-                name = next(role["name"] for role in self.catalog if role["id"] == row["role"]["id"])
-                rows.extend(assignment(uid, name, group=gid) for uid in self.groups[gid])
-        return rows
+            rows = list(self.direct)
+        else:
+            rows = list(self.inherited)
+            for row in self.direct:
+                if "user" in row:
+                    rows.append(row)
+                else:
+                    gid = row["group"]["id"]
+                    name = next(role["name"] for role in self.catalog if role["id"] == row["role"]["id"])
+                    rows.extend(assignment(uid, name, group=gid) for uid in self.groups[gid])
+        return [row for row in rows if user is None or row.get("user", {}).get("id") == user]
 
     def grant(self, role_id, *, user, project):
         assert project == PROJECT
@@ -128,15 +157,37 @@ class Membership:
 
 
 @pytest.fixture
-def membership(monkeypatch):
+def membership(monkeypatch, ownership_journal):
     state = Membership()
     monkeypatch.setattr(service.keystone, "_get_admin_ks_client", lambda: state.ks)
     monkeypatch.setattr(identity_roles, "_trusted_catalog", lambda: state.catalog)
     monkeypatch.setattr(service, "_membership_write", state.write)
-    monkeypatch.setattr(identity_roles, "_session_ready", AsyncMock())
-    monkeypatch.setattr(identity_roles, "_applied", AsyncMock())
-    monkeypatch.setattr(service.cache, "invalidate", AsyncMock())
+    monkeypatch.setattr(identity_roles.activity, "record", AsyncMock())
+    from app.services import domain_projects
+
+    # This suite models a legacy domain without a Default project. Projection
+    # mutation behavior is covered by the Default-domain service suite.
+    monkeypatch.setattr(domain_projects, "sync_manager_access", AsyncMock())
     return state
+
+
+@pytest.fixture
+async def membership_login(membership, _fake_redis_global):
+    """Real family/native proof storage alongside the stateful directory boundary."""
+    snapshots = {}
+    for uid in ("owner", "admin", "member", "unaffected"):
+        jti = "membership-" + uid
+        await session_store.store_session(jti, "unscoped-" + uid, PROJECT, uid, int(time.time()) + 3600)
+        snapshots[uid] = await session_store.get_session(jti)
+    return snapshots
+
+
+async def assert_login_preserved(snapshots, *users):
+    redis = await session_store._get_redis()
+    for uid in users:
+        before = snapshots[uid]
+        assert await session_store.get_session("membership-" + uid) == before
+        assert await redis.get("afterglow:session-family:" + before["family_id"]) == "membership-" + uid
 
 
 @pytest.mark.asyncio
@@ -222,7 +273,7 @@ async def test_member_http_preserves_external_grants_overlapping_direct_parent(m
 
 
 @pytest.mark.asyncio
-async def test_direct_replacement_preserves_group_and_unrelated_native_grants(membership):
+async def test_direct_replacement_preserves_group_and_unrelated_native_grants(membership, membership_login):
     membership.groups["team"] = ["member"]
     membership.direct.extend(
         [
@@ -236,8 +287,50 @@ async def test_direct_replacement_preserves_group_and_unrelated_native_grants(me
     assert "lumen_reader" in updated["roles"]
     assert updated["source"] == "mixed"
     assert membership.calls == [("grant", "member", rid("project_reader")), ("revoke", "member", rid("project_member"))]
-    identity_roles._applied.assert_awaited_once()
-    assert identity_roles._applied.call_args.args[3] == {"member"}
+    assert "project_member" not in (await service.get_project_access(PROJECT, "member"))["roles"]
+    await assert_login_preserved(membership_login, "member", "unaffected")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("additive", [False, True])
+async def test_self_service_role_grant_and_reduction_preserve_login(membership, membership_login, additive):
+    async def current():
+        return await service.get_project_access(PROJECT, "admin")
+
+    async def validated():
+        return await cache.cached_call("afterglow:session:admin-proof", 300, current)
+
+    before = await validated()
+    with pytest.raises(HTTPException) as denied:
+        require_service_permission(before, "lumen-chat_user")
+    assert denied.value.status_code == 403
+    await service.replace_member_roles(
+        PROJECT,
+        "admin",
+        [rid("lumen-chat_user")] if additive else [rid("project_admin"), rid("lumen-chat_user")],
+        token("admin"),
+        additive=additive,
+    )
+    require_service_permission(await validated(), "lumen-chat_user")
+    await assert_login_preserved(membership_login, "admin", "unaffected")
+    await service.replace_member_roles(PROJECT, "admin", [rid("project_admin")], token("admin"))
+    with pytest.raises(HTTPException) as reduced:
+        require_service_permission(await validated(), "lumen-chat_user")
+    assert reduced.value.status_code == 403
+    assert (await service.get_project_access(PROJECT, "admin"))["is_manager"]
+    await assert_login_preserved(membership_login, "admin", "unaffected")
+
+
+@pytest.mark.asyncio
+async def test_member_removal_keeps_login_proof_but_denies_role_access(membership, membership_login):
+    before = await service.get_project_access(PROJECT, "member")
+    assert "project_member" in before["roles"]
+    await service.replace_member_roles(PROJECT, "member", [], token("admin"), remove=True)
+    assert await service.get_project_access(PROJECT, "member") == {"is_owner": False, "is_manager": False, "roles": []}
+    with pytest.raises(HTTPException) as denied:
+        await service.assignable_roles(PROJECT, token("member"))
+    assert denied.value.status_code == 403
+    await assert_login_preserved(membership_login, "member", "unaffected")
 
 
 @pytest.mark.asyncio
@@ -293,43 +386,42 @@ async def test_last_effective_owner_removal_blocked(membership):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("source", ["group", "domain"])
-async def test_group_or_domain_effective_owner_counts_for_last_owner(membership, source):
+async def test_group_or_domain_owner_conflict_cannot_be_silently_stripped(membership, source):
     if source == "group":
         membership.groups["owners"] = ["group-owner"]
         membership.direct.append(assignment(None, "project_owner", group="owners"))
     else:
         membership.inherited.append(assignment("domain-owner", "project_owner", inherited=True))
-    result = await service.replace_member_roles(PROJECT, "owner", [rid("project_member")], token())
-    assert not result["is_owner"]
-    assert (await service.get_project_access(PROJECT, f"{source}-owner"))["is_owner"]
+    with pytest.raises(HTTPException) as conflict:
+        await service.replace_member_roles(PROJECT, "owner", [rid("project_member")], token())
+    assert conflict.value.status_code == 409
+    assert not membership.calls
 
 
 @pytest.mark.asyncio
-async def test_same_user_group_owner_is_preserved_when_direct_owner_removed(membership):
+async def test_same_user_group_owner_cannot_hide_generic_owner_removal(membership):
     membership.groups["owners"] = ["owner"]
     membership.direct.append(assignment(None, "project_owner", group="owners"))
-    result = await service.replace_member_roles(PROJECT, "owner", [], token(), remove=True)
-    assert result["is_owner"]
-    assert result["source"] == "group"
+    with pytest.raises(HTTPException) as conflict:
+        await service.replace_member_roles(PROJECT, "owner", [], token(), remove=True)
+    assert conflict.value.status_code == 409
+    assert not membership.calls
 
 
 @pytest.mark.asyncio
 async def test_concurrent_owner_revocation_serializes_and_protects_last_owner(membership):
     membership.direct.append(assignment("second-owner", "project_owner"))
-    # Each owner can initially edit themselves. The shared lease re-reads the
-    # effective owners before each write; exactly one removal can succeed.
+    # A legacy conflict is not permission to silently choose/revoke an owner.
     results = await asyncio.gather(
         service.replace_member_roles(PROJECT, "owner", [], token(), remove=True),
         service.replace_member_roles(PROJECT, "second-owner", [], token("second-owner"), remove=True),
         return_exceptions=True,
     )
-    assert sum(isinstance(result, dict) for result in results) == 1
-    errors = [result for result in results if isinstance(result, HTTPException)]
-    assert len(errors) == 1
-    assert errors[0].status_code == 409
+    assert all(isinstance(result, HTTPException) and result.status_code == 409 for result in results)
+    assert not membership.calls
     assert membership.max_active == 1
     owners = [uid for uid in ["owner", "second-owner"] if (await service.get_project_access(PROJECT, uid))["is_owner"]]
-    assert len(owners) == 1
+    assert len(owners) == 2
 
 
 @pytest.mark.asyncio
@@ -379,6 +471,7 @@ async def test_ambiguous_or_nonglobal_owner_authority_fails_closed(membership, p
 
 @pytest.mark.asyncio
 async def test_creator_grant_uses_existing_owner_id_and_requires_safe_hierarchy(membership):
+    membership.direct = [row for row in membership.direct if row.get("user", {}).get("id") != "owner"]
     await service._grant_project_role(PROJECT, "creator", "project_owner", require_hierarchy=True)
     assert membership.calls == [("grant", "creator", rid("project_owner"))]
     owner = next(row for row in membership.catalog if row["name"] == "project_owner")
@@ -410,6 +503,7 @@ async def test_legacy_migration_requires_verified_system_admin_and_explicit_owne
 
 @pytest.mark.asyncio
 async def test_explicit_migration_verifies_members_and_deletes_only_migrated_rows(membership):
+    membership.direct = [row for row in membership.direct if row.get("user", {}).get("id") != "owner"]
     session, rows = legacy_session("admin", "member")
     result = await service.migrate_legacy_managers(PROJECT, "member", token("platform", system_admin=True), session)
     assert result == {
@@ -438,6 +532,7 @@ async def test_migration_does_not_infer_owner_from_legacy_manager_or_granted_by(
 
 @pytest.mark.asyncio
 async def test_migration_provider_partial_failure_preserves_rows_for_explicit_retry(membership):
+    membership.direct = [row for row in membership.direct if row.get("user", {}).get("id") != "owner"]
     session, _ = legacy_session("admin", "member")
     original_grant = membership.ks.roles.grant
 
@@ -533,6 +628,7 @@ async def test_membership_http_shapes_and_removed_manager_api(membership):
 
 @pytest.mark.asyncio
 async def test_migration_http_requires_owner_body_and_system_admin(membership):
+    membership.direct = [row for row in membership.direct if row.get("user", {}).get("id") != "owner"]
     app = FastAPI()
     app.include_router(router, prefix="/projects")
     session, _ = legacy_session("member")
@@ -542,6 +638,7 @@ async def test_migration_http_requires_owner_body_and_system_admin(membership):
 
     app.dependency_overrides[get_session] = db
     app.dependency_overrides[get_token_info] = lambda: token(system_admin=True)
+    app.dependency_overrides[require_admin] = synthetic_verified_admin
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         missing = await client.post(f"/projects/{PROJECT}/members/migrate-legacy-managers", json={})
         assert missing.status_code == 422
@@ -578,7 +675,7 @@ async def test_nonowner_can_preserve_existing_admin_while_editing_service_roles(
 
 
 @pytest.mark.asyncio
-async def test_partial_revoke_response_failure_still_invalidates_sessions(membership):
+async def test_partial_revoke_response_failure_still_invalidates_permissions(membership, membership_login):
     original_revoke = membership.ks.roles.revoke
 
     def uncertain_revoke(role_id, **kwargs):
@@ -589,8 +686,7 @@ async def test_partial_revoke_response_failure_still_invalidates_sessions(member
     with pytest.raises(HTTPException) as unavailable:
         await service.replace_member_roles(PROJECT, "member", [], token("admin"), remove=True)
     assert unavailable.value.status_code == 503
-    identity_roles._applied.assert_awaited_once()
-    assert identity_roles._applied.call_args.args[3] == {"member"}
+    await assert_login_preserved(membership_login, "member", "unaffected")
     assert (await service.get_project_access(PROJECT, "member"))["roles"] == []
 
 
@@ -632,25 +728,16 @@ async def test_real_membership_write_uses_shared_graph_lease_and_admin_identity_
 
 
 @pytest.mark.asyncio
-async def test_incomplete_project_hierarchy_invitation_fails_without_accepting(membership):
+async def test_incomplete_project_hierarchy_invitation_fails_without_granting(membership, monkeypatch):
+    from app.services import domain_iam, domain_scope
+
+    monkeypatch.setattr(domain_scope, "domain_context", lambda uid, did: {"is_domain_manager": True})
     member = next(row for row in membership.catalog if row["name"] == "project_member")
     member["inherited_role_ids"].remove(rid("member"))
-    from datetime import UTC, datetime, timedelta
-
-    invitation = SimpleNamespace(
-        status="pending",
-        invited_email="invitee@test.invalid",
-        expires_at=datetime.now(UTC) + timedelta(days=1),
-        keystone_role="project_member",
-        project_id=PROJECT,
-    )
-    session = AsyncMock()
-    session.execute.return_value = SimpleNamespace(scalar_one_or_none=lambda: invitation)
-    with pytest.raises(HTTPException):
-        await service.accept_invitation("token", "invitee", "invitee@test.invalid", session)
-    assert invitation.status == "pending"
+    with pytest.raises(HTTPException) as denied:
+        await domain_iam.validate_invitation_roles(PROJECT, [rid("project_member")], token())
+    assert denied.value.status_code == 409
     assert not membership.calls
-    session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -739,5 +826,36 @@ async def test_unassigned_domain_alias_does_not_disable_global_owner_or_service_
 
     assert "lumen-chat_user" in service_permissions(access)["lumen"]
     choices = await service.assignable_roles(PROJECT, token())
-    assert rid("project_owner") in {row["id"] for row in choices["roles"]}
+    assert rid("project_owner") not in {row["id"] for row in choices["roles"]}
     assert not any(row["id"].startswith("domain-") for row in choices["roles"])
+
+
+@pytest.mark.asyncio
+async def test_default_required_reader_survives_ordinary_member_removal(membership):
+    membership.ks.projects.get = lambda pid: SimpleNamespace(id=pid, name="Default", domain_id="domain", enabled=True)
+    membership.ks.projects.list = lambda **kwargs: [membership.ks.projects.get(PROJECT)]
+    membership.direct.append(assignment("owner", "manager"))
+    removed = await service.replace_member_roles(PROJECT, "member", [], token(), remove=True)
+    assert removed["roles"] == ["project_reader", "reader"]
+    assert removed["direct_role_ids"] == [rid("project_reader")]
+    assert not removed["is_manager"] and not removed["is_owner"]
+    assert ("revoke", "member", rid("project_reader")) not in membership.calls
+    assert not (await service.get_project_access(PROJECT, "member"))["is_manager"]
+
+
+@pytest.mark.asyncio
+async def test_project_owner_lists_external_group_member_without_identity_authority(membership):
+    membership.groups["external-team"] = ["external"]
+    membership.direct.append(assignment(None, "project_reader", group="external-team"))
+    get_user = membership.ks.users.get
+    membership.ks.users.get = lambda uid: (
+        SimpleNamespace(id=uid, name=uid, email="external@test.invalid", domain_id="other", enabled=True)
+        if uid == "external"
+        else get_user(uid)
+    )
+    membership.ks.groups.get = lambda gid: SimpleNamespace(id=gid, name="Other identity team", domain_id="other")
+    members = await service.list_members(PROJECT, token())
+    external = next(row for row in members["items"] if row["user_id"] == "external")
+    assert external["domain_id"] == "other" and external["identity_read_only"]
+    assert external["source"] == "group" and external["roles"] == ["project_reader", "reader"]
+    assert not external["is_manager"] and not external["is_owner"]

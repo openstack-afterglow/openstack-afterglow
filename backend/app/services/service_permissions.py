@@ -85,6 +85,13 @@ _LEAF_DESCRIPTIONS = {
 def _presets() -> tuple[dict, ...]:
     rows = [
         {
+            "name": "project_creator",
+            "description": "도메인 프로젝트 생성 위임",
+            "area": "domain",
+            "grade": "creator",
+            "parent": None,
+        },
+        {
             "name": "project_owner",
             "description": "프로젝트 소유권·관리자 위임",
             "area": "project",
@@ -187,7 +194,7 @@ def normalize_role_name(name: str) -> str:
 
 
 def service_permissions(principal: Mapping) -> dict[str, list[str]]:
-    """Project actual effective leaf grants, with native membership as a ceiling.
+    """Project current leaves or verified system administrator management authority.
 
     Parent roles work only through Keystone's CURRENT implication graph. The
     preset definition is not a second inference engine or revocation fallback.
@@ -200,9 +207,9 @@ def service_permissions(principal: Mapping) -> dict[str, list[str]]:
     result = {}
     for service, grades in SERVICE_ROLE_GRADES.items():
         allowed = set()
-        if service != "palimpsest" and system_admin:
+        if system_admin:
             allowed.update(leaf for leaves in grades.values() for leaf in leaves)
-        elif reader and not privileged and not (service == "palimpsest" and system_admin):
+        elif reader and not privileged:
             for grade in SERVICE_GRADE_ORDER:
                 if grade != "reader" and not member:
                     continue

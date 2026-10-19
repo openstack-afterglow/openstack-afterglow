@@ -14,16 +14,12 @@ from fastapi import Depends, Header, HTTPException, Query, Request
 
 from app.config import get_settings
 from app.services import keystone
-from app.services.cache import cached_call, invalidate
+from app.services.cache import invalidate
 
 if TYPE_CHECKING:
     import openstack
 
 _logger = logging.getLogger(__name__)
-
-# 토큰 검증 결과 캐시 TTL — Keystone revoke / logout 후 공격자에게 노출되는 window 를
-# 60초로 제한. 이전엔 ttl_static() (300s) 였음.
-_TOKEN_CACHE_TTL = 60
 
 
 def validate_keystone_id(value: object) -> str:
@@ -49,11 +45,11 @@ def _validate_cache_key(token_hash: str, project_id: str) -> str:
     return f"afterglow:session:{token_hash}:{project_id or 'noscope'}"
 
 
-async def _cached_validate(token: str, project_id: str) -> dict:
-    """토큰 검증 결과를 Redis에 짧게 캐시 (TTL 60s). logout/revoke 시 invalidate."""
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-    cache_key = _validate_cache_key(token_hash, project_id)
-    return await cached_call(cache_key, _TOKEN_CACHE_TTL, lambda: keystone.validate_token(token, project_id=project_id))
+async def _cached_validate(token: str, project_id: str, *, operation=None) -> dict:
+    """Read current native proof/roles; never reuse a revoked scoped credential."""
+    if operation is not None:
+        return await operation.run(keystone.validate_session, token, project_id=project_id, operation=operation)
+    return await asyncio.to_thread(keystone.validate_session, token, project_id=project_id)
 
 
 async def invalidate_token_cache(token: str, project_id: str | None) -> None:
@@ -115,10 +111,19 @@ async def _check_session_timeout(
 async def _resolve_jwt_token_info(
     request, bearer_token: str, x_project_id: str | None, *, preserve_original: bool = False
 ) -> dict:
+    from app.services.native_operation import NativeOperation
+
+    async with NativeOperation() as operation:
+        return await _resolve_jwt_session(
+            request, bearer_token, x_project_id, preserve_original=preserve_original, operation=operation
+        )
+
+
+async def _resolve_jwt_session(request, bearer_token, x_project_id, *, preserve_original, operation) -> dict:
     """Bearer access JWT 검증 → Redis 세션 조회 → token_info dict 반환.
 
     Ordinary routes retain Keystone rescope. Native package routes preserve the
-    original session subject and permit X-Project-Id only as an exact assertion.
+    original subject; only a live system administrator may select another target.
     """
     from app.services import jwt_service
     from app.services.session_store import get_session
@@ -143,6 +148,59 @@ async def _resolve_jwt_token_info(
     if sess is None:
         raise HTTPException(status_code=401, detail="세션이 만료되었습니다. 다시 로그인해 주세요.")
 
+    domain_id = sess.get("domain_id")
+    if not isinstance(domain_id, str) or not domain_id:
+        raise HTTPException(status_code=401, detail="세션의 도메인을 확인할 수 없습니다. 다시 로그인해 주세요.")
+    identity_domain_id = sess.get("identity_domain_id") or domain_id
+    if not isinstance(identity_domain_id, str) or not identity_domain_id:
+        raise HTTPException(status_code=401, detail="Session identity domain is unavailable")
+    if sess.get("user_id") != payload.get("sub") or sess.get("project_id", "") != payload.get("project_id", ""):
+        raise HTTPException(status_code=401, detail="세션 범위가 액세스 토큰과 일치하지 않습니다.")
+    if sess.get("blacklisted"):
+        raise HTTPException(status_code=401, detail="세션이 차단되었습니다.")
+    from keystoneauth1.exceptions.http import Unauthorized
+
+    # Migrate legacy scoped records before any endpoint can mutate its own roles.
+    # Invalid native login proof wins over project/domain authorization errors.
+    try:
+        root = await _cached_validate(sess["keystone_token"], "", operation=operation)
+    except Unauthorized as exc:
+        raise HTTPException(401, "Native login proof is invalid; log in again") from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(503, "Native login verification is unavailable") from exc
+    if root.get("user_id") != payload["sub"] or root.get("identity_domain_id") != identity_domain_id:
+        raise HTTPException(403, "Native login identity does not match the session")
+    from app.services.session_store import update_session_token
+
+    try:
+        persisted = await update_session_token(
+            refresh_jti, root["session_token"], expected_token=sess["keystone_token"]
+        )
+    except Exception as exc:
+        raise HTTPException(503, "Native login proof persistence is unavailable") from exc
+    if not persisted:
+        current = await get_session(refresh_jti)
+        if current is None or current.get("blacklisted"):
+            raise HTTPException(401, "Session is no longer active")
+        immutable = ("user_id", "project_id", "domain_id", "identity_domain_id", "family_id")
+        if any(current.get(key) != sess.get(key) for key in immutable):
+            raise HTTPException(401, "Session identity changed")
+        try:
+            root = await _cached_validate(current["keystone_token"], "", operation=operation)
+        except Unauthorized as exc:
+            raise HTTPException(401, "Native login proof is invalid") from exc
+        if root["user_id"] != payload["sub"] or root["identity_domain_id"] != identity_domain_id:
+            raise HTTPException(403, "Native login identity does not match the session")
+        sess = current
+    else:
+        sess["keystone_token"] = root["session_token"]
+    from app.services.domain_scope import assert_domain_resource, assert_project_domain, domain_context
+
+    # Authority observations belong only to this authentication operation.
+    context = await operation.run(domain_context, payload["sub"], domain_id, operation=operation)
+    assert_domain_resource(identity_domain_id, context.get("identity_domain_id"))
     # ── 세션 타임아웃 검증 (JWT 경로) ─────────────────────────────────────────
     # 최초 로그인 시작시간은 회전/프로젝트 전환 뒤에도 동일하다.
     _rjti_hash = hashlib.sha256(refresh_jti.encode()).hexdigest()
@@ -224,121 +282,155 @@ async def _resolve_jwt_token_info(
             status_code=503, detail="토큰 바인딩 검사를 완료할 수 없습니다. 잠시 후 다시 시도해 주세요."
         )
 
+    from app.api.identity.auth import _enforce_session_policy
+    from app.services.domain_auth import DomainAuthError
+
+    try:
+        await _enforce_session_policy(sess, {**root, **context})
+    except DomainAuthError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
     if preserve_original:
-        project_id = validate_keystone_id(payload.get("project_id"))
-        user_id = validate_keystone_id(payload.get("sub"))
-        if (
-            validate_keystone_id(sess.get("project_id")) != project_id
-            or validate_keystone_id(sess.get("user_id")) != user_id
-            or (x_project_id is not None and validate_keystone_id(x_project_id) != project_id)
-        ):
-            raise HTTPException(status_code=403, detail="Package session/project scope does not match the access JWT")
-        original_token = sess.get("keystone_token")
-        if not isinstance(original_token, str) or not original_token:
-            raise HTTPException(status_code=401, detail="Original Keystone subject is unavailable")
-        # Hub validates this original subject and fresh membership; never exchange
-        # it, use admin override, or overwrite the session on this package path.
-        return {
-            "token": original_token,
-            "user_id": user_id,
-            "username": payload.get("username", ""),
+        selected = x_project_id if x_project_id is not None else sess.get("target_project_id")
+        project_id = validate_keystone_id(payload.get("project_id", "") if selected is None else selected)
+        system_admin = await operation.run(keystone._is_system_admin, payload["sub"], operation=operation)
+        if not system_admin and project_id != payload.get("project_id", ""):
+            raise HTTPException(403, "Package session/project scope does not match the access JWT")
+        if project_id:
+            await operation.run(assert_project_domain, domain_id, project_id, operation=operation)
+        try:
+            native = await _cached_validate(root["session_token"], payload.get("project_id", ""), operation=operation)
+        except Unauthorized as exc:
+            raise HTTPException(401, "Native login proof is invalid") from exc
+        principal = {
+            **native,
+            **context,
+            "session_token": root["session_token"],
             "project_id": project_id,
-            "connection_project_id": project_id,
-            "project_name": payload.get("project_name", ""),
+            "connection_project_id": payload.get("project_id", ""),
             "refresh_jti": refresh_jti,
             "started_at": started_at,
             "auth_method": sess.get("auth_method", "password"),
+            "provider_id": sess.get("provider_id", ""),
+            "provider_revision": sess.get("provider_revision"),
+            "provider_domain_id": sess.get("provider_domain_id", ""),
+            "login_email": sess.get("login_email", ""),
         }
+        return await require_admin(principal) if system_admin else principal
 
-    jwt_project_id = payload.get("project_id", "")
-    home_project_id = jwt_project_id or sess.get("project_id", "")
+    home_project_id = payload.get("project_id", "")
+    logical_workspace = isinstance(sess.get("target_project_id"), str)
+    target_project_id = x_project_id or (sess["target_project_id"] if logical_workspace else home_project_id)
+    if x_project_id is not None:
+        validate_keystone_id(x_project_id)
+    path = getattr(getattr(request, "url", None), "path", "")
+    service_path = (
+        path.startswith(("/api/v1/chat/", "/api/v1/k3s/", "/api/v1/waygate/", "/api/v1/palimpsest/"))
+        or path == "/api/v1/projects/current/permissions"
+    )
+    context_path = path in {
+        "/api/v1/auth/me",
+        "/api/v1/auth/domains",
+        "/api/v1/auth/workspaces",
+        "/api/v1/auth/token/workspace",
+        "/api/v1/auth/token/domain",
+        "/api/v1/auth/token/project",
+        "/api/v1/auth/sessions",
+        "/api/v1/auth/projects",
+        "/api/v1/auth/projects/recent",
+        "/api/v1/auth/logout",
+        "/api/v1/auth/logout-all",
+    }
+    context_path = context_path or (
+        request.method == "DELETE" and re.fullmatch(r"/api/v1/auth/sessions/[^/]+", path) is not None
+    )
+    is_system_admin = await operation.run(keystone._is_system_admin, payload["sub"], operation=operation)
+    if logical_workspace and not is_system_admin:
+        raise HTTPException(status_code=403, detail="Current system administrator authority is required")
+    admin_context = is_system_admin and logical_workspace and context_path
+    service_admin = is_system_admin and service_path
+    if service_admin:
+        await operation.run(assert_project_domain, domain_id, target_project_id, operation=operation)
+    admin_target = bool(
+        (target_project_id != home_project_id or logical_workspace)
+        and is_system_admin
+        and (path.startswith("/api/v1/admin/") or service_path or admin_context)
+    )
+    if target_project_id and not admin_target and not service_admin:
+        await operation.run(assert_project_domain, domain_id, target_project_id, operation=operation)
+        if not context_path:
+            from app.services.domain_projects import assert_project_membership
 
+            await operation.run(assert_project_membership, payload["sub"], target_project_id, operation=operation)
     from keystoneauth1.exceptions.http import Unauthorized
 
-    is_foreign_target = bool(x_project_id and x_project_id != jwt_project_id)
-
-    if is_foreign_target:
-        # 1. foreign X-Project-Id 요청 시 JWT/session home project 검증 우선 진행
-        try:
-            home_info = await _cached_validate(sess["keystone_token"], home_project_id)
-        except HTTPException:
-            raise
-        except Exception as exc:
-            if isinstance(exc, Unauthorized):
-                raise HTTPException(status_code=401, detail="세션이 만료되었습니다. 다시 로그인해 주세요.")
-            _logger.error("Keystone validation transient error on home project: %s", exc, exc_info=True)
-            raise HTTPException(status_code=503, detail="인증 검증 서비스 일시적 오류. 잠시 후 다시 시도해 주세요.")
-
-        if home_info.get("is_system_admin", False):
-            # 2. System admin override: target rescope 생략하고 home token 및 권한 재사용, logical project_id만 target 설정
-            info = home_info
-            logical_project_id = x_project_id
-            connection_project_id = info.get("project_id", home_project_id)
-            project_name = ""
-        else:
-            # 3. Non-admin: target rescope 시도 (Unauthorized 시 403 반환)
-            try:
-                target_info = await _cached_validate(sess["keystone_token"], x_project_id)
-            except HTTPException:
-                raise
-            except Exception as exc:
-                if isinstance(exc, Unauthorized):
-                    raise HTTPException(status_code=403, detail="해당 프로젝트에 대한 접근 권한이 없습니다.")
-                _logger.error("Keystone validation transient error on target rescope: %s", exc, exc_info=True)
-                raise HTTPException(status_code=503, detail="인증 검증 서비스 일시적 오류. 잠시 후 다시 시도해 주세요.")
-
-            info = target_info
-            logical_project_id = info.get("project_id", x_project_id)
-            connection_project_id = logical_project_id
-            project_name = info.get("project_name", "")
-
-            # X-Project-Id로 실제 rescope가 발생한 비관리자 접근 기록 (fire-and-forget)
-            user_id_for_record = info.get("user_id", payload.get("sub", ""))
-            if user_id_for_record:
-                from app.services.recent_projects import record_project_access
-
-                asyncio.create_task(record_project_access(user_id_for_record, x_project_id))
-    else:
-        effective_project_id = x_project_id or home_project_id
-        try:
-            info = await _cached_validate(sess["keystone_token"], effective_project_id)
-        except HTTPException:
-            raise
-        except Exception as exc:
-            if isinstance(exc, Unauthorized):
-                raise HTTPException(status_code=401, detail="세션이 만료되었습니다. 다시 로그인해 주세요.")
-            _logger.error("Keystone validation transient error: %s", exc, exc_info=True)
-            raise HTTPException(status_code=503, detail="인증 검증 서비스 일시적 오류. 잠시 후 다시 시도해 주세요.")
-
-        logical_project_id = info.get("project_id", effective_project_id)
-        connection_project_id = logical_project_id
-        project_name = info.get("project_name", payload.get("project_name", ""))
-
-    # validate_token은 POST /v3/auth/tokens으로 새 Keystone 토큰을 발급한다.
-    # 새 토큰이 원본과 다르면 Redis 세션에 역기록해 Keystone TTL 만료 문제를 방지.
-    new_ks_token = info.get("token", "")
-    if new_ks_token and new_ks_token != sess.get("keystone_token"):
-        from app.services.session_store import update_session_token
-
-        asyncio.create_task(
-            _run_best_effort(
-                update_session_token(refresh_jti, new_ks_token),
-                "session Keystone token update",
-            )
+    validation_project_id = home_project_id if admin_target else target_project_id
+    try:
+        info = await _cached_validate(root["session_token"], validation_project_id, operation=operation)
+    except keystone.ProjectAccessDenied:
+        explicit_project_change = (
+            x_project_id is not None
+            and x_project_id != home_project_id
+            and (not logical_workspace or x_project_id != target_project_id)
         )
+        if not context_path or explicit_project_change or (admin_target and not logical_workspace):
+            raise
+        # Auth context remains usable to choose another project; no grants or
+        # stale project roles are created when only the selected project is lost.
+        info = {**root, "project_id": "", "project_name": "", "roles": []}
+        validation_project_id = ""
+        if admin_target:
+            await operation.run(assert_project_domain, domain_id, target_project_id, operation=operation)
+        else:
+            target_project_id = ""
+    except HTTPException:
+        raise
+    except Unauthorized as exc:
+        raise HTTPException(401, "Native login proof is invalid; log in again") from exc
+    except Exception:
+        _logger.error("Keystone validation unavailable", exc_info=True)
+        raise HTTPException(status_code=503, detail="인증 검증 서비스 일시적 오류. 잠시 후 다시 시도해 주세요.")
+    if info.get("user_id") != payload["sub"] or info.get("project_id", "") != validation_project_id:
+        raise HTTPException(status_code=403, detail="Keystone token subject or project does not match")
+    assert_domain_resource(identity_domain_id, info.get("identity_domain_id"))
+    if info.get("project_id"):
+        if not admin_target:
+            assert_domain_resource(domain_id, info.get("domain_id"))
+    else:
+        # Native unscoped validation derives home, not the selected workspace.
+        # Prove that home before applying independently authorized context.
+        assert_domain_resource(identity_domain_id, info.get("domain_id"))
+        info = {**info, **context}
+    from app.api.identity.auth import _enforce_session_policy
 
-    return {
+    try:
+        await _enforce_session_policy(sess, {**info, **context})
+    except DomainAuthError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
+    logical_project_id = target_project_id
+    connection_project_id = info.get("project_id", "")
+    project_name = "" if admin_target else info.get("project_name", "")
+    if admin_target and logical_workspace and target_project_id == sess["target_project_id"]:
+        project_name = sess.get("target_project_name", "")
+
+    principal = {
         "token": info["token"],
+        "session_token": root["session_token"],
         "user_id": info.get("user_id", payload.get("sub", "")),
         "username": info.get("username", payload.get("username", "")),
         "project_id": logical_project_id,
         "connection_project_id": connection_project_id,
         "project_name": project_name,
         "roles": info.get("roles", []),
-        "is_system_admin": info.get("is_system_admin", False),
+        "is_system_admin": is_system_admin,
+        **context,
         "refresh_jti": refresh_jti,
         "started_at": started_at,
         "auth_method": sess.get("auth_method", "password"),
+        "provider_id": sess.get("provider_id", ""),
+        "provider_revision": sess.get("provider_revision"),
+        "provider_domain_id": sess.get("provider_domain_id", ""),
+        "login_email": sess.get("login_email", ""),
         # 출처 필드 — switch_project 원본 운반용
         "origin_ip": sess.get("origin_ip", ""),
         "origin_fp": sess.get("origin_fp", ""),
@@ -346,6 +438,9 @@ async def _resolve_jwt_token_info(
         "device_type": sess.get("device_type", ""),
         "os": sess.get("os", ""),
     }
+    if service_admin or admin_context:
+        return await require_admin(principal)
+    return principal
 
 
 async def get_token_info(
@@ -374,10 +469,54 @@ async def get_token_info(
     raise HTTPException(status_code=401, detail="Authorization Bearer 토큰이 필요합니다")
 
 
-def require_admin(token_info: dict = Depends(get_token_info)):
-    """검증된 system-admin 권한이 없으면 403 반환 (project role 이름은 근거가 아님)."""
-    if not token_info.get("is_system_admin", False):
-        raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다")
+async def require_admin(token_info: dict = Depends(get_token_info)) -> dict:
+    """Never let a cached grant authorize a persistent administrative mutation."""
+    from keystoneauth1.exceptions.http import Unauthorized
+
+    from app.services.domain_scope import assert_token_context, domain_context
+
+    denied = {"code": "system_admin_required", "message": "Current system:all administrator authority is required"}
+    if token_info.get("is_system_admin") is not True:
+        raise HTTPException(status_code=403, detail=denied)
+    user_id, domain_id = token_info.get("user_id"), token_info.get("domain_id")
+    if not user_id or not domain_id:
+        raise HTTPException(status_code=403, detail=denied)
+    try:
+        context = await asyncio.to_thread(domain_context, user_id, domain_id)
+        project_id = token_info.get("connection_project_id", token_info.get("project_id", ""))
+        native = await asyncio.to_thread(keystone.validate_token, token_info["token"], project_id=project_id)
+        await asyncio.to_thread(
+            assert_token_context,
+            native,
+            user_id=user_id,
+            domain_id=native.get("domain_id"),
+            project_id=project_id,
+            identity_domain_id=token_info["identity_domain_id"],
+        )
+        if not await asyncio.to_thread(keystone._is_system_admin, user_id):
+            raise HTTPException(status_code=403, detail=denied)
+    except Unauthorized as exc:
+        raise HTTPException(status_code=401, detail="Native administrator session is invalid; log in again") from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Administrator authority is unavailable") from exc
+    token_info.update(context)
+    token_info["roles"] = native.get("roles", [])
+    token_info["is_system_admin"] = True
+    token_info["_live_system_admin"] = True
+    return token_info
+
+
+async def require_domain_manager(token_info: dict = Depends(get_token_info)) -> dict:
+    from app.services.domain_scope import domain_context
+
+    if not token_info.get("domain_id"):
+        raise HTTPException(status_code=403, detail="An authoritative domain context is required")
+    context = await asyncio.to_thread(domain_context, token_info["user_id"], token_info["domain_id"])
+    if not context["is_domain_manager"]:
+        raise HTTPException(status_code=403, detail="Default project manager authority is required")
+    return {**token_info, **context}
 
 
 async def require_project_manager(
@@ -385,6 +524,9 @@ async def require_project_manager(
     token_info: dict = Depends(get_token_info),
 ) -> dict:
     """Require current Keystone project management; legacy DB rows never authorize."""
+    from app.services.domain_scope import assert_project_domain
+
+    await asyncio.to_thread(assert_project_domain, token_info.get("domain_id", ""), project_id)
     if token_info.get("is_system_admin") is True:
         return token_info
     if token_info.get("project_id") != project_id:
@@ -398,8 +540,10 @@ async def require_project_manager(
 
 
 def has_project_write_permission(token_info: dict) -> bool:
-    """Compute effective write permission before public role-name filtering."""
-    if token_info.get("is_system_admin", False):
+    """Compute project authority; domain-only sessions never grant project writes."""
+    if not token_info.get("project_id"):
+        return False
+    if token_info.get("is_system_admin") is True:
         return True
     roles = {r.lower() for r in token_info.get("roles", []) if isinstance(r, str)}
     return bool(roles & {"admin", "member"})
@@ -427,13 +571,19 @@ async def get_caller_project_permissions(
 ) -> dict:
     """호출자의 특정 프로젝트(또는 현재 컨텍스트)에 대한 실효 권한과 역할을 반환."""
     effective_project_id = project_id or token_info.get("project_id") or ""
+    from app.services.domain_scope import assert_project_domain
     from app.services.project_service import get_project_access
     from app.services.service_permissions import service_permissions
+
+    if token_info.get("is_system_admin") is True and token_info.get("_live_system_admin") is not True:
+        await require_admin(token_info)
+
+    await asyncio.to_thread(assert_project_domain, token_info.get("domain_id", ""), effective_project_id)
 
     access = await get_project_access(effective_project_id, token_info["user_id"])
     roles = access["roles"]
     is_sys_admin = token_info.get("is_system_admin") is True
-    principal = {**token_info, "roles": roles}
+    principal = {**token_info, "project_id": effective_project_id, "roles": roles}
     role_set = set(roles)
 
     can_write = has_project_write_permission(principal)
@@ -458,6 +608,7 @@ async def get_caller_project_permissions(
 
 
 async def get_os_conn(
+    request: Request,
     token_info: dict = Depends(get_token_info),
 ) -> AsyncGenerator[openstack.connection.Connection, None]:
     """openstacksdk Connection 객체를 반환하는 Depends 함수.
@@ -471,14 +622,60 @@ async def get_os_conn(
     project_id = token_info["project_id"]
     connection_project_id = token_info.get("connection_project_id", project_id)
     is_system_admin = token_info.get("is_system_admin", False)
+    conn = None
     try:
-        conn = keystone.get_openstack_connection(scoped_token, connection_project_id)
+        if not connection_project_id:
+            if not request.url.path.startswith("/api/v1/admin/"):
+                raise HTTPException(status_code=403, detail="A project scope is required")
+            if token_info.get("_live_system_admin") is not True:
+                await require_admin(token_info)
+            is_system_admin = True
+            conn = await asyncio.to_thread(keystone.get_openstack_connection, scoped_token, "", system_scope=True)
+            # Force the caller-token exchange here so denials are classified at
+            # the boundary, not deferred until a later native operation.
+            access = await asyncio.to_thread(conn.session.auth.get_access, conn.session)
+            if (
+                access.system_scoped is not True
+                or access.user_id != token_info["user_id"]
+                or access.user_domain_id != token_info["identity_domain_id"]
+            ):
+                raise HTTPException(status_code=503, detail="Native system scope does not match the caller")
+            scoped_token = access.auth_token
+        else:
+            conn = keystone.get_openstack_connection(scoped_token, connection_project_id)
         conn._afterglow_token = scoped_token
         conn._afterglow_project_id = project_id
         conn._afterglow_authenticated_project_id = connection_project_id
         conn._afterglow_is_system_admin = is_system_admin
+        conn._afterglow_domain_id = token_info["domain_id"]
+        conn._afterglow_domain_name = token_info["domain_name"]
+        conn._afterglow_identity_domain_id = token_info["identity_domain_id"]
         conn._afterglow_user_id = token_info.get("user_id", "")
+    except HTTPException:
+        if conn is not None:
+            await asyncio.to_thread(conn.close)
+        raise
     except Exception as exc:
+        if conn is not None:
+            await asyncio.to_thread(conn.close)
+        from keystoneauth1.exceptions.http import Forbidden, Unauthorized
+
+        if isinstance(exc, (Forbidden, Unauthorized)):
+            if not connection_project_id:
+                try:
+                    current_admin = await asyncio.to_thread(keystone._is_system_admin, token_info["user_id"])
+                except Exception as authority_error:
+                    raise HTTPException(503, "Administrator authority is unavailable") from authority_error
+                if not current_admin:
+                    raise HTTPException(
+                        403,
+                        {
+                            "code": "system_admin_required",
+                            "message": "Current system:all administrator authority is required",
+                        },
+                    ) from exc
+            if isinstance(exc, Unauthorized):
+                raise HTTPException(status_code=401, detail="Native authentication session is invalid") from exc
         _logger.error("OpenStack connection creation failed in get_os_conn: %s", exc, exc_info=True)
         raise HTTPException(status_code=503, detail="OpenStack 연결 생성 실패. 잠시 후 다시 시도해 주세요.")
 

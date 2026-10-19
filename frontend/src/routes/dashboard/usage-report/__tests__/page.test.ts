@@ -24,7 +24,7 @@ import Page from '../+page.svelte';
 const initialAuth: AuthState = {
 	token: 'token', refreshToken: null, accessExpiresAt: null,
 	userId: 'test-user', username: 'tester', projectId: 'project', projectName: 'Project One',
-	availableProjects: [], roles: [], isSystemAdmin: false, federated: false,
+	availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false,
 };
 const trend = (overrides: Record<string, unknown> = {}) => ({
 	current_pct: 28.1,

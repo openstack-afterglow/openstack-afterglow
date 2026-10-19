@@ -535,11 +535,17 @@ class UserTutorialStatus(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 
 
+from app.models.account_recovery import AccountRecovery  # noqa: E402,F401
+
 # ActivityLog 모델을 Base.metadata 에 등록 (create_tables 자동 감지)
 from app.models.activity import ActivityLog  # noqa: E402,F401
 
 # Announcement/AnnouncementRead 모델을 Base.metadata 에 등록 (create_tables 자동 감지)
 from app.models.announcement import Announcement, AnnouncementRead  # noqa: E402,F401
+from app.models.domain_auth import DomainIdentityProvider, DomainLoginPolicy  # noqa: E402,F401
+from app.models.domain_iam import DomainEnrollment  # noqa: E402,F401
+from app.models.domain_quotas import DomainQuotaOperation, DomainQuotaPolicy  # noqa: E402,F401
+from app.models.enrollment_policy import EnrollmentPolicy, SignupRequest  # noqa: E402,F401
 
 # Afterglow owns only the MCP control-plane persistence. Lumen owns chat state.
 from app.models.mcp_authority import (  # noqa: E402,F401
@@ -554,6 +560,7 @@ from app.models.mcp_authority import (  # noqa: E402,F401
     McpPersonalToken,
     McpToolInvocation,
 )
+from app.models.project_ownership import ProjectOwnershipTransfer  # noqa: E402,F401
 
 
 class VmCloudInitSnippet(Base):

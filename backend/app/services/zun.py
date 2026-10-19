@@ -290,11 +290,14 @@ def create_cloud_shell_container(
     security_group: str,
     volume_id: str,
     labels: dict[str, str],
+    image_pull_policy: str = "",
+    registry_id: str = "",
 ) -> dict[str, Any]:
     endpoint = _get_zun_endpoint(conn)
     body = {
         "name": name,
         "image": image,
+        "image_driver": "docker",
         "cpu": cpu,
         "memory": memory_mib,
         "command": ["/bin/sh", "-lc", "trap : TERM INT; sleep infinity & wait"],
@@ -307,6 +310,11 @@ def create_cloud_shell_container(
         "mounts": [{"type": "volume", "source": volume_id, "destination": "/home/cloudshell"}],
         "labels": labels,
     }
+    if image_pull_policy:
+        body["image_pull_policy"] = image_pull_policy
+    if registry_id:
+        # Zun's create field is `registry`; `registry_id` is its response field.
+        body["registry"] = registry_id
     response = conn.session.post(
         join_version_aware_url(endpoint, "/v1/containers?run=true"),
         json=body,

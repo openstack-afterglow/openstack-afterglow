@@ -46,7 +46,6 @@ const baseSiteConfig: PublicSiteConfig = {
 		s3_base: '',
 		grafana_base: '',
 		librechat_base: '',
-		gitlab_base: '',
 	},
 };
 

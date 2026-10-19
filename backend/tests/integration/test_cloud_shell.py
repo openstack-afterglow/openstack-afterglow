@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 
 from app.main import app
+from tests.integration.conftest import password_login_payload
 
 pytestmark = pytest.mark.slow
 
@@ -55,9 +56,10 @@ def _origin(settings: Any) -> str:
 
 
 def _login(client: TestClient, credentials: dict[str, str]) -> dict[str, str]:
-    response = client.post("/api/v1/auth/login", json=dict(credentials))
+    response = client.post("/api/v1/auth/login", json=password_login_payload(credentials))
     assert response.status_code == 200
     payload = response.json()
+    assert payload["domain_id"] == payload["identity_domain_id"]
     return {
         "Authorization": f"Bearer {payload['token']}",
         "X-Project-Id": str(payload["project_id"]),

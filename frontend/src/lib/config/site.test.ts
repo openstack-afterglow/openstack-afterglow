@@ -18,7 +18,6 @@ const baseConfig: PublicSiteConfig = {
 		s3_base: '',
 		grafana_base: '',
 		librechat_base: '',
-		gitlab_base: '',
 	},
 };
 
@@ -97,7 +96,6 @@ describe('site config refresh', () => {
 				s3_base: 'https://mock-s3.example.com',
 				grafana_base: '',
 				librechat_base: '',
-				gitlab_base: '',
 			},
 		});
 
@@ -122,7 +120,6 @@ describe('site config refresh', () => {
 				s3_base: 'https://mock-s3.example.com',
 				grafana_base: '',
 				librechat_base: '',
-				gitlab_base: '',
 			},
 		});
 	});

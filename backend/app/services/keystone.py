@@ -4,21 +4,20 @@ import logging
 from typing import TYPE_CHECKING
 
 from drover_sdk.proxy import Proxy as DroverProxy
+from fastapi import HTTPException
 from keystoneauth1 import session as ks_session
 from keystoneauth1.exceptions.http import NotFound, Unauthorized
 from keystoneauth1.identity import v3
 from waygate_sdk.proxy import Proxy as WaygateProxy
 
 from app.config import get_settings
+from app.utils.auth_diagnostics import authentication_step
 
 if TYPE_CHECKING:
     import openstack
 
 _logger = logging.getLogger(__name__)
-
-# admin 프로젝트 ID / admin role ID 캐시 (서비스 admin 크리덴셜 조회 결과)
-_admin_project_id_cache: str | None = None
-_admin_role_id_cache: str | None = None
+_NATIVE_INVALID_TOKEN_MESSAGES = frozenset({"Failed to validate token", "Could not recognize Fernet token"})
 
 
 def list_all_project_ids() -> set[str]:
@@ -45,228 +44,253 @@ def _get_admin_ks_client():
         project_domain_name=settings.os_project_domain_name,
     )
     admin_sess = ks_session.Session(auth=admin_auth, timeout=15, verify=settings.ssl_verify)
-    return ks_client.Client(session=admin_sess)
+    return ks_client.Client(session=admin_sess, interface=settings.os_interface, region_name=settings.os_region_name)
 
 
-def _resolve_admin_ids() -> tuple[str | None, str | None]:
-    """admin 프로젝트 ID와 admin role ID 반환 (프로세스 수명 동안 1회 조회)."""
-    global _admin_project_id_cache, _admin_role_id_cache
-    if _admin_project_id_cache and _admin_role_id_cache:
-        return _admin_project_id_cache, _admin_role_id_cache
+def _resolve_admin_role_id() -> str:
+    """Resolve the unique canonical global admin role, independent of any project."""
+    from fastapi import HTTPException
 
-    settings = get_settings()
-    try:
-        ks = _get_admin_ks_client()
-        admin_projects = ks.projects.list(name=settings.os_project_name)
-        admin_roles = ks.roles.list(name="admin")
-        if admin_projects and admin_roles:
-            _admin_project_id_cache = admin_projects[0].id
-            _admin_role_id_cache = admin_roles[0].id
-            return _admin_project_id_cache, _admin_role_id_cache
-    except Exception:
-        _logger.warning("admin 프로젝트/role ID 조회 실패", exc_info=True)
-    return None, None
+    from app.services.identity_roles import _field
+
+    roles = list(_get_admin_ks_client().roles.list(name="admin"))
+    roles = [r for r in roles if _field(r, "domain_id") is None and _field(r, "name", "").casefold() == "admin"]
+    if len(roles) != 1 or _field(roles[0], "name") != "admin" or not _field(roles[0], "id"):
+        raise HTTPException(status_code=503, detail="Canonical system admin role is unavailable")
+    return _field(roles[0], "id")
 
 
-def _has_system_admin_role(user_id: str) -> bool:
-    """Keystone system:all scope admin role 보유 여부 확인."""
-    try:
-        _, admin_role_id = _resolve_admin_ids()
-        if not admin_role_id:
-            return False
-        ks = _get_admin_ks_client()
-        assignments = ks.role_assignments.list(
-            user=user_id,
-            role=admin_role_id,
-            system="all",
-        )
-        return len(assignments) > 0
-    except Exception:
-        _logger.warning("_has_system_admin_role 체크 실패", exc_info=True)
-        return False
+def _has_system_admin_role(user_id: str, *, operation=None) -> bool:
+    """Only a live exact system:all effective canonical admin grant authorizes."""
+    from app.services.domain_scope import has_scope_authority
+
+    return has_scope_authority(user_id, operation=operation) if operation is not None else has_scope_authority(user_id)
 
 
-def _has_admin_project_role(user_id: str) -> bool:
-    """기존 'admin project + admin role' 정책으로 admin 여부 확인 (호환 모드용)."""
-    try:
-        admin_project_id, admin_role_id = _resolve_admin_ids()
-        if not admin_project_id or not admin_role_id:
-            return False
-        ks = _get_admin_ks_client()
-        assignments = ks.role_assignments.list(
-            user=user_id,
-            project=admin_project_id,
-            role=admin_role_id,
-        )
-        return len(assignments) > 0
-    except Exception:
-        _logger.warning("_has_admin_project_role 체크 실패", exc_info=True)
-        return False
-
-
-def _is_system_admin(user_id: str, *_args, **_kwargs) -> bool:
-    """system admin 여부 판별 (dual-mode).
-
-    항상: Keystone system:all scope role 검사.
-    admin_legacy_project_policy=True 일 때만 OR: 기존 'admin project + admin role' 검사.
-    추가 인자(session, settings)는 호환성을 위해 받되 사용하지 않는다.
-    """
-    if not user_id:
-        return False
-    if _has_system_admin_role(user_id):
-        return True
-    settings = get_settings()
-    if settings.admin_legacy_project_policy:
-        return _has_admin_project_role(user_id)
-    return False
-
-
-def invalidate_admin_caches() -> None:
-    """admin_project_id / admin_role_id 프로세스 캐시 리셋.
-
-    admin project 또는 role이 운영 중 재생성될 때 system-roles 엔드포인트에서 명시 호출.
-    """
-    global _admin_project_id_cache, _admin_role_id_cache
-    _admin_project_id_cache = None
-    _admin_role_id_cache = None
-
-
-def authenticate(username: str, password: str, project_name: str, domain_name: str = "Default") -> dict:
-    """
-    Keystone 인증 후 토큰과 사용자 정보를 반환.
-
-    project_name이 지정되면 해당 프로젝트로 scoped 인증.
-    미지정 시 unscoped 인증 → 사용자의 프로젝트 목록 조회 → 첫 번째 프로젝트로 scoped 토큰 발급.
-    """
-    settings = get_settings()
-
-    if project_name:
-        # 명시적 프로젝트 지정 시 직접 scoped 인증
-        return _authenticate_scoped(
-            username,
-            password,
-            project_name,
-            domain_name,
-            settings,
-        )
-
-    # 1) unscoped 인증
-    unscoped_auth = v3.Password(
-        auth_url=settings.os_auth_url,
-        username=username,
-        password=password,
-        user_domain_name=domain_name,
-        unscoped=True,
+def _is_system_admin(user_id: str, *, operation=None) -> bool:
+    return (
+        _has_system_admin_role(user_id, operation=operation)
+        if operation is not None
+        else _has_system_admin_role(user_id)
     )
-    unscoped_sess = ks_session.Session(auth=unscoped_auth, timeout=30, verify=settings.ssl_verify)
-    unscoped_access = unscoped_auth.get_access(unscoped_sess)
-    unscoped_token = unscoped_access.auth_token
-    user_id = unscoped_access.user_id
 
-    # 2) 사용자의 프로젝트 목록 조회
-    from keystoneclient.v3 import client as ks_client
 
-    ks = ks_client.Client(session=unscoped_sess)
-    projects = ks.projects.list(user=user_id)
-    enabled_projects = [p for p in projects if p.enabled]
+def get_identity_user(user_id: str, *, operation=None) -> dict:
+    """Read the real identity domain/email, not a username-shaped email guess."""
+    from app.services.identity_roles import _field
+    from app.services.native_operation import NativeOperation
 
-    if not enabled_projects:
-        raise Exception("접근 가능한 프로젝트가 없습니다")
-
-    # 3) default_project_id가 있으면 우선, 없으면 첫 번째 프로젝트
-    default_pid = getattr(unscoped_access, "project_id", None)
-    target_project = None
-    if default_pid:
-        target_project = next((p for p in enabled_projects if p.id == default_pid), None)
-    if not target_project:
-        target_project = enabled_projects[0]
-
-    # 4) 선택된 프로젝트로 scoped 토큰 발급
-    scoped_auth = v3.Token(
-        auth_url=settings.os_auth_url,
-        token=unscoped_token,
-        project_id=target_project.id,
-    )
-    scoped_sess = ks_session.Session(auth=scoped_auth, timeout=30, verify=settings.ssl_verify)
-    scoped_access = scoped_auth.get_access(scoped_sess)
-
+    if operation is None:
+        with NativeOperation() as operation:
+            return get_identity_user(user_id, operation=operation)
+    user = operation.get("users", user_id)
+    if _field(user, "id") != user_id or _field(user, "enabled") is not True:
+        raise Unauthorized(message="User is disabled or unavailable")
+    domain_id = _field(user, "domain_id")
+    if not isinstance(domain_id, str) or not domain_id:
+        raise Unauthorized(message="User domain is unavailable")
+    email = _field(user, "email") or ""
     return {
-        "token": scoped_access.auth_token,
-        "project_id": scoped_access.project_id or "",
-        "project_name": scoped_access.project_name or "",
-        "user_id": scoped_access.user_id or "",
-        "username": scoped_access.username or username,
-        "expires_at": scoped_access.expires.isoformat() if scoped_access.expires else "",
-        "roles": list(scoped_access.role_names) if scoped_access.role_names else [],
-        "is_system_admin": _is_system_admin(scoped_access.user_id, scoped_sess, settings),
+        "id": user_id,
+        "domain_id": domain_id,
+        "email": email if isinstance(email, str) else "",
+        "default_project_id": _field(user, "default_project_id") or "",
     }
 
 
-def _authenticate_scoped(
-    username: str,
-    password: str,
-    project_name: str,
-    domain_name: str,
-    settings,
-) -> dict:
-    """지정된 프로젝트로 직접 scoped 인증."""
-    auth_plugin = v3.Password(
-        auth_url=settings.os_auth_url,
-        username=username,
-        password=password,
-        project_name=project_name,
-        user_domain_name=domain_name,
-        project_domain_name=settings.os_project_domain_name,
-    )
-    sess = ks_session.Session(auth=auth_plugin, timeout=30, verify=settings.ssl_verify)
-    access = auth_plugin.get_access(sess)
+def _access_info(access, *, operation=None) -> dict:
+    from app.services.domain_scope import assert_domain_resource, domain_context
 
+    with authentication_step("native_identity_subject"):
+        user = get_identity_user(access.user_id, operation=operation)
+        assert_domain_resource(user["domain_id"], access.user_domain_id)
+    project_id = access.project_id or ""
+    working_domain = access.project_domain_id if project_id else user["domain_id"]
+    with authentication_step("native_domain_authority"):
+        context = domain_context(access.user_id, working_domain, operation=operation)
+    if project_id:
+        from app.services.domain_projects import assert_project_membership
+
+        with authentication_step("native_project_authority"):
+            assert_project_membership(access.user_id, project_id, operation=operation)
+    with authentication_step("native_system_authority"):
+        is_system_admin = _is_system_admin(access.user_id, operation=operation)
     return {
         "token": access.auth_token,
-        "project_id": access.project_id or "",
+        "project_id": project_id,
         "project_name": access.project_name or "",
-        "user_id": access.user_id or "",
-        "username": access.username or username,
+        "user_id": access.user_id,
+        "username": access.username or "",
         "expires_at": access.expires.isoformat() if access.expires else "",
-        "roles": list(access.role_names) if access.role_names else [],
-        "is_system_admin": _is_system_admin(access.user_id, sess, settings),
+        # An unscoped subject must never inherit domain roles as project roles.
+        "roles": list(access.role_names or []) if project_id else [],
+        "is_system_admin": is_system_admin,
+        "email": user["email"],
+        "default_project_id": user["default_project_id"],
+        "project_domain_id": access.project_domain_id if project_id else "",
+        **context,
     }
 
 
-def validate_token(token: str, project_id: str = "") -> dict:
+class PasswordRejected(Unauthorized):
+    """Only the password authentication stage rejected the supplied credential."""
+
+
+def authenticate(
+    username: str, password: str, project_name: str, domain_name: str, *, operation=None, unscoped_only: bool = False
+) -> dict:
+    """Verify a password; login may defer scope selection until Default is ready.
+
+    Other callers retain the historical initial-project selection contract.
+    """
+    from app.services.domain_scope import assert_domain_resource, assert_token_context, resolve_domain
+    from app.services.native_operation import NativeOperation
+
+    if operation is None:
+        with NativeOperation() as operation:
+            return authenticate(
+                username, password, project_name, domain_name, operation=operation, unscoped_only=unscoped_only
+            )
+    with authentication_step("native_domain_resolution"):
+        domain = resolve_domain(domain_name, operation=operation)
+    settings = get_settings()
+    auth = v3.Password(
+        auth_url=settings.os_auth_url,
+        username=username,
+        password=password,
+        user_domain_id=domain["id"],
+        unscoped=True,
+    )
+    sess = operation.own_session(ks_session.Session(auth=auth, timeout=30, verify=settings.ssl_verify))
+    try:
+        with authentication_step("native_password_exchange"):
+            access = auth.get_access(sess)
+    except Unauthorized as exc:
+        raise PasswordRejected(message="Password authentication failed") from exc
+    with authentication_step("native_password_subject"):
+        user = get_identity_user(access.user_id, operation=operation)
+        assert_domain_resource(domain["id"], user["domain_id"])
+        assert_domain_resource(domain["id"], access.user_domain_id)
+        if access.project_id:
+            raise Unauthorized(message="Password authentication did not return an unscoped subject")
+    operation.subjects[access.auth_token] = (access, sess)
+    if unscoped_only:
+        return _access_info(access, operation=operation)
+    projects = list_projects(access.auth_token, domain["id"], operation=operation)
+    if project_name:
+        matches = [p for p in projects if p["name"] == project_name]
+        if len(matches) != 1:
+            raise Unauthorized(message="Project is not accessible in the chosen domain")
+        target = matches[0]
+    else:
+        target = next((p for p in projects if p["id"] == user["default_project_id"]), projects[0] if projects else None)
+    if target:
+        data = validate_token(access.auth_token, target["id"], operation=operation)
+    else:
+        data = _access_info(access, operation=operation)
+    assert_token_context(
+        data,
+        user_id=access.user_id,
+        domain_id=domain["id"],
+        identity_domain_id=user["domain_id"],
+        project_id=target["id"] if target else "",
+        operation=operation,
+    )
+    if data["default_project_id"] not in {p["id"] for p in projects}:
+        data["default_project_id"] = ""
+    return data
+
+
+def validate_token(token: str, project_id: str = "", *, operation=None) -> dict:
     """
     토큰 유효성 검증. 유효하면 토큰 정보 반환, 아니면 예외 발생.
     """
+    from app.services.native_operation import NativeOperation
+
+    if operation is None:
+        with NativeOperation() as operation:
+            return validate_token(token, project_id, operation=operation)
     settings = get_settings()
 
     kwargs = {"auth_url": settings.os_auth_url, "token": token}
     if project_id:
         kwargs["project_id"] = project_id
+    else:
+        kwargs["unscoped"] = True
 
     auth_plugin = v3.Token(**kwargs)
-    sess = ks_session.Session(auth=auth_plugin, timeout=30, verify=settings.ssl_verify)
+    sess = operation.own_session(ks_session.Session(auth=auth_plugin, timeout=30, verify=settings.ssl_verify))
     try:
-        access = auth_plugin.get_access(sess)
+        with authentication_step("native_session_exchange"):
+            access = auth_plugin.get_access(sess)
     except NotFound as exc:
         # TokenNotFound also covers unreadable/expired Fernet tokens. Do not
         # mistake an arbitrary endpoint/proxy 404 for invalid credentials.
-        if exc.message.partition(" (HTTP ")[0] in {
-            "Failed to validate token",
-            "Could not recognize Fernet token",
-        }:
+        if exc.message.partition(" (HTTP ")[0] in _NATIVE_INVALID_TOKEN_MESSAGES:
             raise Unauthorized(message="Invalid Keystone token", request_id=exc.request_id) from exc
         raise
 
-    return {
-        "token": access.auth_token,
-        "project_id": access.project_id or "",
-        "project_name": access.project_name or "",
-        "user_id": access.user_id or "",
-        "username": access.username or "",
-        "expires_at": access.expires.isoformat() if access.expires else "",
-        "roles": list(access.role_names) if access.role_names else [],
-        "is_system_admin": _is_system_admin(access.user_id, sess, settings),
-    }
+    operation.subjects[access.auth_token] = (access, sess)
+    return _access_info(access, operation=operation)
+
+
+class ProjectAccessDenied(HTTPException):
+    """The login remains valid but the requested project's authority is gone."""
+
+    def __init__(self):
+        super().__init__(403, "Native project access was rejected")
+
+
+def validate_session(token: str, project_id: str = "", *, operation=None) -> dict:
+    """Verify/renew caller-owned login proof before deriving any project token.
+
+    A scoped legacy credential is converted before its project authority can be
+    changed. Only a rejected login proof is Unauthorized; a rejected project is
+    an authorization failure and must not destroy the browser login.
+    """
+    from app.services.native_operation import NativeOperation
+
+    if operation is None:
+        with NativeOperation() as operation:
+            return validate_session(token, project_id, operation=operation)
+    subject = operation.subjects.get(token)
+    root = (
+        _access_info(subject[0], operation=operation)
+        if subject is not None and not subject[0].project_id and not getattr(subject[0], "scoped", False)
+        else validate_token(token, operation=operation)
+    )
+    root_subject = operation.subjects.get(root.get("token"))
+    if root_subject is not None and getattr(root_subject[0], "scoped", False):
+        raise Unauthorized(message="Native login proof is not unscoped")
+    if root.get("project_id") or not root.get("token") or not root.get("user_id"):
+        raise Unauthorized(message="Native login proof is not unscoped")
+    if not project_id:
+        return {**root, "session_token": root["token"]}
+    from app.services.domain_projects import assert_project_membership
+
+    try:
+        assert_project_membership(root["user_id"], project_id, operation=operation)
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            raise ProjectAccessDenied() from exc
+        raise
+    try:
+        scoped = validate_token(root["token"], project_id, operation=operation)
+    except Unauthorized as exc:
+        # A concurrent user/native-login revocation must not be downgraded to
+        # project denial merely because it reached the scoped exchange first.
+        operation.invalidate()
+        fresh = validate_session(root["token"], operation=operation)
+        if fresh["user_id"] != root["user_id"] or fresh["identity_domain_id"] != root["identity_domain_id"]:
+            raise HTTPException(403, "Native login identity changed") from exc
+        raise ProjectAccessDenied() from exc
+    if (
+        scoped.get("user_id") != root["user_id"]
+        or scoped.get("identity_domain_id") != root.get("identity_domain_id")
+        or scoped.get("project_id") != project_id
+    ):
+        raise HTTPException(403, "Keystone token subject or project does not match")
+    return {**scoped, "session_token": root["token"]}
 
 
 _OWN_SERVICE_ENDPOINT_FIELDS: dict[str, str] = {
@@ -318,7 +342,9 @@ def get_waygate_proxy(conn: openstack.connection.Connection) -> WaygateProxy:
     )
 
 
-def get_openstack_connection(token: str, project_id: str) -> openstack.connection.Connection:
+def get_openstack_connection(
+    token: str, project_id: str, *, system_scope: bool = False
+) -> openstack.connection.Connection:
     """
     검증된 토큰으로 openstacksdk Connection 객체 반환.
     load_envvars=False 로 OS_* 환경변수를 무시해 v3.Token에 불필요한 인자가
@@ -327,6 +353,13 @@ def get_openstack_connection(token: str, project_id: str) -> openstack.connectio
     import openstack
 
     settings = get_settings()
+    if system_scope and project_id:
+        raise ValueError("System scope cannot be combined with a project")
+    auth_scope = (
+        {"system_scope": "all"}
+        if system_scope
+        else {"project_id": project_id or None, "unscoped": not bool(project_id)}
+    )
 
     return openstack.connect(
         load_envvars=False,
@@ -334,7 +367,7 @@ def get_openstack_connection(token: str, project_id: str) -> openstack.connectio
         auth_url=settings.os_auth_url,
         auth_type="token",
         token=token,
-        project_id=project_id or None,
+        **auth_scope,
         region_name=settings.os_region_name,
         interface=settings.os_interface,
         api_timeout=30,
@@ -446,16 +479,22 @@ def get_service_project_connection() -> openstack.connection.Connection:
 
 
 def revoke_token(token: str) -> None:
-    """Keystone에 토큰 폐기 요청 (DELETE /v3/auth/tokens)."""
-    settings = get_settings()
-    auth_plugin = v3.Token(auth_url=settings.os_auth_url, token=token)
-    sess = ks_session.Session(auth=auth_plugin, timeout=10, verify=settings.ssl_verify)
-    sess.delete(
-        f"{settings.os_auth_url}/auth/tokens",
-        endpoint_filter=None,
-        headers={"X-Subject-Token": token},
-        authenticated=False,
-    )
+    """Revoke the exact subject token with authenticated operator authority.
+
+    Password resets may already invalidate the subject credential, so it cannot
+    authenticate its own revocation. Never substitute this admin token in a user
+    login/session. Authorization and directory failures remain visible to callers.
+    """
+    from app.services.native_operation import NativeOperation
+
+    with NativeOperation() as operation:
+        try:
+            operation.ks.tokens.revoke_token(token)
+        except NotFound as exc:
+            # Exact native TokenNotFound means reset/expiry already invalidated
+            # this captured credential. Generic proxy/directory 404 is not proof.
+            if exc.message.partition(" (HTTP ")[0] not in _NATIVE_INVALID_TOKEN_MESSAGES:
+                raise
 
 
 def get_user(conn: openstack.connection.Connection, user_id: str) -> dict:
@@ -480,7 +519,7 @@ def list_user_groups(token: str, user_id: str) -> list[dict]:
     sess = ks_session.Session(auth=auth_plugin, verify=settings.ssl_verify)
     from keystoneclient.v3 import client as ks_client
 
-    ks = ks_client.Client(session=sess)
+    ks = ks_client.Client(session=sess, interface=settings.os_interface, region_name=settings.os_region_name)
     try:
         groups = ks.groups.list(user=user_id)
     except Exception as e:
@@ -541,42 +580,85 @@ def ensure_ec2_credentials(token: str, user_id: str, project_id: str) -> dict:
     return {"access": cred["access"], "secret": cred["secret"]}
 
 
-def list_projects(token: str) -> list[dict]:
-    """
-    사용자가 접근 가능한 프로젝트 목록 반환.
-    Keystone v3 API를 사용하여 토큰의 사용자가 접근할 수 있는 모든 프로젝트를 조회.
-    """
-    settings = get_settings()
-
-    # 토큰으로 세션 생성
-    auth_plugin = v3.Token(
-        auth_url=settings.os_auth_url,
-        token=token,
-    )
-    sess = ks_session.Session(auth=auth_plugin, verify=settings.ssl_verify)
-
-    # Keystone v3 API로 프로젝트 목록 조회
+def list_projects(token: str, domain_id: str | None = None, *, operation=None) -> list[dict]:
+    """List native memberships without exchanging an already verified subject again."""
     from keystoneclient.v3 import client as ks_client
 
-    ks = ks_client.Client(session=sess)
+    from app.services.domain_scope import domain_context
+    from app.services.native_operation import NativeOperation
 
-    # 현재 사용자가 접근 가능한 프로젝트 목록
-    user_id = auth_plugin.get_access(sess).user_id
-    projects = ks.projects.list(user=user_id)
+    if operation is None:
+        with NativeOperation() as operation:
+            return list_projects(token, domain_id, operation=operation)
+    settings = get_settings()
+    subject = operation.subjects.get(token)
+    if subject is None:
+        auth_plugin = v3.Token(auth_url=settings.os_auth_url, token=token, unscoped=True)
+        sess = operation.own_session(ks_session.Session(auth=auth_plugin, timeout=30, verify=settings.ssl_verify))
+        access = auth_plugin.get_access(sess)
+        operation.subjects[token] = (access, sess)
+    else:
+        access, sess = subject
+    ks = ks_client.Client(session=sess, interface=settings.os_interface, region_name=settings.os_region_name)
+    user_id = access.user_id
+    projects = operation.read(("native_projects", token), lambda: list(ks.projects.list(user=user_id)))
+    user = get_identity_user(user_id, operation=operation)
+    from app.services.domain_scope import assert_domain_resource
 
-    try:
-        domain_map = {d.id: d.name for d in ks.domains.list()}
-    except Exception:
-        domain_map = {}
+    assert_domain_resource(user["domain_id"], access.user_domain_id)
+    selected = domain_id or (access.project_domain_id if access.project_id else user["domain_id"])
+    context = domain_context(user_id, selected, operation=operation)
+    from app.services.identity_roles import _field
 
     return [
         {
-            "id": p.id,
-            "name": p.name,
-            "description": p.description or "",
-            "domain_id": p.domain_id,
-            "domain_name": domain_map.get(p.domain_id),
-            "enabled": p.enabled,
+            "id": _field(p, "id"),
+            "name": _field(p, "name"),
+            "description": _field(p, "description") or "",
+            "domain_id": _field(p, "domain_id"),
+            "domain_name": context["domain_name"],
+            "enabled": True,
         }
         for p in projects
+        if _field(p, "enabled") is True and _field(p, "domain_id") == context["domain_id"]
     ]
+
+
+def list_system_projects(token: str) -> list[dict]:
+    """Whole-cloud inventory only from the caller's real system:all admin token.
+
+    Unlike tenant project selection this explicitly exchanges the caller's native
+    subject for system scope. Service-account impersonation is never used.
+    """
+    from fastapi import HTTPException
+    from keystoneclient.v3 import client as ks_client
+
+    settings = get_settings()
+    auth = v3.Token(auth_url=settings.os_auth_url, token=token, system_scope="all")
+    sess = ks_session.Session(auth=auth, timeout=30, verify=settings.ssl_verify)
+    access = auth.get_access(sess)
+    if access.system_scoped is not True or not access.user_id or not _is_system_admin(access.user_id):
+        raise HTTPException(status_code=403, detail="Current system:all administrator authority is required")
+    user = get_identity_user(access.user_id)
+    from app.services.domain_scope import resolve_domain
+
+    resolve_domain(user["domain_id"])
+    ks = ks_client.Client(session=sess, interface=settings.os_interface, region_name=settings.os_region_name)
+    from app.services.domain_display import display_name
+
+    domains = {d.id: display_name(d) for d in ks.domains.list()}
+    projects = []
+    for project in ks.projects.list():
+        if not project.id or not project.domain_id or project.domain_id not in domains:
+            raise HTTPException(status_code=503, detail="System project domain metadata is unavailable")
+        projects.append(
+            {
+                "id": project.id,
+                "name": project.name,
+                "description": project.description or "",
+                "domain_id": project.domain_id,
+                "domain_name": domains[project.domain_id],
+                "enabled": project.enabled,
+            }
+        )
+    return projects

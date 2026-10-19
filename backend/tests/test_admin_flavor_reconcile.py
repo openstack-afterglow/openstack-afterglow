@@ -158,6 +158,8 @@ async def test_update_project_compute_policy_coordinates_all_authorities(admin_c
     }
 
     mock_conn.compute.update_quota_set = MagicMock()
+    mock_conn.identity.get_domain.return_value = SimpleNamespace(id="default", name="Default")
+    mock_conn.identity.get_project.return_value = SimpleNamespace(id="proj-1", domain_id="default")
     with (
         patch("app.services.gpu_quota.set_project_gpu_quota", AsyncMock()) as mock_set_gpu,
         patch(
@@ -165,9 +167,13 @@ async def test_update_project_compute_policy_coordinates_all_authorities(admin_c
             AsyncMock(return_value=reconcile_result),
         ) as mock_reconcile,
         patch("app.api.identity.admin_identity.invalidate", AsyncMock()),
+        patch(
+            "app.services.domain_quotas.update_project",
+            AsyncMock(return_value={"status": "updated", "operation_id": "native-journal"}),
+        ) as native_quota,
     ):
         resp = await admin_client.put(
-            "/api/v1/admin/compute-policy/proj-1",
+            "/api/v1/admin/compute-policy/proj-1?domain_id=default",
             json={
                 "instances": 10,
                 "cores": 20,
@@ -178,6 +184,54 @@ async def test_update_project_compute_policy_coordinates_all_authorities(admin_c
         )
 
     assert resp.status_code == 200
-    mock_conn.compute.update_quota_set.assert_called_once_with("proj-1", instances=10, cores=20, ram=40960)
+    native_quota.assert_awaited_once_with(mock_conn, "proj-1", {"instances": 10, "cores": 20, "ram": 40960})
+    mock_conn.compute.update_quota_set.assert_not_called()
     mock_set_gpu.assert_awaited_once_with(mock_conn, "proj-1", "RTX3090", 2)
     mock_reconcile.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_compute_policy_stops_before_gpu_after_uncertain_native_quota(admin_client, mock_conn):
+    mock_conn.identity.get_domain.return_value = SimpleNamespace(id="default", name="Default")
+    mock_conn.identity.get_project.return_value = SimpleNamespace(id="proj-1", domain_id="default")
+    operation = {
+        "status": "unknown",
+        "operation_id": "pending-native",
+        "errors": {"compute": "native_readback_unavailable"},
+    }
+    with (
+        patch("app.services.domain_quotas.update_project", AsyncMock(return_value=operation)),
+        patch("app.services.gpu_quota.set_project_gpu_quota", AsyncMock()) as gpu,
+        patch("app.api.identity.admin_flavors.reconcile_quota_managed_flavor_access", AsyncMock()) as reconcile,
+    ):
+        response = await admin_client.put(
+            "/api/v1/admin/compute-policy/proj-1?domain_id=default",
+            json={"instances": 10, "gpu_quotas": {"RTX3090": 2}},
+        )
+    assert response.status_code == 200
+    assert response.json()["status"] == "partial"
+    assert response.json()["native_quotas"] == operation
+    gpu.assert_not_awaited()
+    reconcile.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_compute_policy_cannot_bypass_domain_budget(admin_client, mock_conn):
+    from fastapi import HTTPException
+
+    mock_conn.identity.get_domain.return_value = SimpleNamespace(id="default", name="Default")
+    mock_conn.identity.get_project.return_value = SimpleNamespace(id="proj-1", domain_id="default")
+    with (
+        patch(
+            "app.services.domain_quotas.update_project",
+            AsyncMock(side_effect=HTTPException(409, "quota_budget_exceeded:instances")),
+        ),
+        patch("app.services.gpu_quota.set_project_gpu_quota", AsyncMock()) as gpu,
+    ):
+        response = await admin_client.put(
+            "/api/v1/admin/compute-policy/proj-1?domain_id=default",
+            json={"instances": 10, "gpu_quotas": {"RTX3090": 2}},
+        )
+    assert response.status_code == 409
+    gpu.assert_not_awaited()
+    mock_conn.compute.update_quota_set.assert_not_called()

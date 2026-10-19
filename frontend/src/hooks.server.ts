@@ -16,7 +16,9 @@ import {
 } from '$lib/mockup/contracts';
 
 // 인증 없이 접근 가능한 경로
-const PUBLIC_PATHS = ['/', '/login', '/auth/gitlab/callback', '/health', '/oauth/mcp/authorize'];
+const PUBLIC_PATHS = ['/', '/login', '/signup', '/recover', '/auth/callback', '/health', '/oauth/mcp/authorize'];
+// Token-bearing links; the token is the only authority and is checked by the API.
+const PUBLIC_PREFIXES = ['/invitations/', '/registrations/', '/recover/'];
 
 // 정적 파일로 판단할 확장자 패턴
 const STATIC_EXT = /\.(js|css|svg|png|jpg|jpeg|ico|woff2?|ttf|eot|map|webp|gif)$/;
@@ -108,13 +110,10 @@ function buildImgSrc(siteConfig: PublicSiteConfig): string {
 	return [...parts].join(' ');
 }
 
-// frame-src에 Grafana/LibreChat/GitLab origin 추가 (iframe 임베드 허용).
-// GitLab은 LibreChat이 임베드된 프레임 안에서 GitLab OIDC 로그인으로 자체
-// 리다이렉트할 때 필요 — frame-src는 프레임의 최초 로드뿐 아니라 그 프레임의
-// 이후 내비게이션(리다이렉트)까지 통제하므로 목적지인 GitLab도 허용해야 한다.
+// frame-src에 Grafana/LibreChat origin 추가 (iframe 임베드 허용).
 function buildFrameSrc(siteConfig: PublicSiteConfig): string {
 	const parts = new Set(["'self'"]);
-	for (const raw of [siteConfig.runtime.grafana_base, siteConfig.runtime.librechat_base, siteConfig.runtime.gitlab_base]) {
+	for (const raw of [siteConfig.runtime.grafana_base, siteConfig.runtime.librechat_base]) {
 		addOrigin(parts, raw);
 	}
 	return [...parts].join(' ');
@@ -171,6 +170,8 @@ const securityHandle: Handle = async ({ event, resolve: resolveEvent }) => {
 	const preference = resolveLocale(event.cookies.get(LOCALE_COOKIE));
 	const isDocumentation = isDocsPath(event.url.pathname);
 	const locale = isDocumentation ? docsLocaleFromUrl(event.url, preference) : preference;
+	// Full document requests also support language selection without JavaScript.
+	// Data requests may be preloads: persist them only when the client renders the navigation.
 	if (isDocumentation && isLocale(event.url.searchParams.get('lang')) && !event.isDataRequest) {
 		event.cookies.set(LOCALE_COOKIE, locale, {
 			path: '/',
@@ -184,7 +185,13 @@ const securityHandle: Handle = async ({ event, resolve: resolveEvent }) => {
 	const resolve = (target: typeof event) =>
 		resolveEvent(target, { transformPageChunk: ({ html }) => html.replace('%afterglow.lang%', locale) });
 	const path = event.url.pathname;
-	if (path === '/oauth/mcp/authorize') securityHeaders['Referrer-Policy'] = 'no-referrer';
+	// One-use codes and onboarding tokens travel in these URLs; never leak them via Referer.
+	if (
+		path === '/oauth/mcp/authorize'
+		|| path === '/auth/callback'
+		|| path === '/signup' || path === '/recover'
+		|| PUBLIC_PREFIXES.some((prefix) => path.startsWith(prefix))
+	) securityHeaders['Referrer-Policy'] = 'no-referrer';
 
 	const requestedMockup = event.url.searchParams.get(MOCKUP_QUERY_KEY);
 	let mockup = inactiveMockupSession();
@@ -209,6 +216,7 @@ const securityHandle: Handle = async ({ event, resolve: resolveEvent }) => {
 	// 공개 경로, 정적 리소스, SvelteKit 내부 경로는 통과
 	if (
 		PUBLIC_PATHS.includes(path) ||
+		PUBLIC_PREFIXES.some((prefix) => path.startsWith(prefix) && path.length > prefix.length) ||
 		isDocsPath(path) ||
 		path.startsWith('/_app/') ||
 		path.startsWith('/favicon') ||

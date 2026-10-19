@@ -1,18 +1,12 @@
-"""엔드포인트 카탈로그 회귀 방지 테스트.
+"""공개 엔드포인트 카탈로그 회귀 방지 테스트.
 
-FastAPI app.routes를 순회해:
-1. /api/admin/ 경로에 require_admin 의존성이 반드시 있는지 검증
-2. 인증 없이 접근 가능한 Public 엔드포인트가 예상 목록을 벗어나지 않는지 검증
-3. 전체 라우트 수가 기준값 이상인지 감시 (라우트 대규모 삭제 감지)
-
-이 테스트가 실패하면:
-- 신규 admin 엔드포인트에 require_admin 누락 → 보안 이슈
-- 예상 밖 Public 엔드포인트 추가 → 인증 누락 가능성
+FastAPI route 목록에서 예상 밖 공개 API와 대규모 route 삭제를 확인한다.
+관리자 권한은 dependency 함수의 배치가 아니라 실제 HTTP 거부 결과로
+test_enrollment_policy.py 및 각 관리자 endpoint의 보안 테스트에서 검증한다.
 """
 
 from fastapi.routing import APIRoute
 
-from app.api.deps import require_admin
 from app.main import app
 
 # ---------------------------------------------------------------------------
@@ -25,15 +19,6 @@ def _iter_api_routes():
     for route in app.routes:
         if isinstance(route, APIRoute) and route.path.startswith("/api/v1/"):
             yield route
-
-
-def _get_route_dep_callables(route: APIRoute) -> set:
-    """route.dependencies (decorator 레벨) 의 callable 집합 반환."""
-    result = set()
-    for dep in route.dependencies or []:
-        if hasattr(dep, "dependency"):
-            result.add(dep.dependency)
-    return result
 
 
 def _has_any_auth_dep(route: APIRoute) -> bool:
@@ -80,9 +65,18 @@ EXPECTED_PUBLIC = frozenset(
         ("GET", "/api/v1/dashboard/config"),  # 새로고침 간격 등 UI 설정만 반환, 인증 불필요
         ("GET", "/api/v1/site-config"),  # 사이트명·서비스 플래그 — 로그인 전 UI 초기화에 필요
         ("GET", "/api/v1/site-config/assets/{slot}"),  # 로그인 전 브랜딩 이미지 제공용 public asset
-        ("GET", "/api/v1/auth/gitlab/enabled"),
-        ("GET", "/api/v1/auth/gitlab/authorize"),
-        ("POST", "/api/v1/auth/gitlab/callback"),
+        # Global provider options plus exact signup/provider context resolution.
+        ("GET", "/api/v1/auth/login-options"),
+        ("GET", "/api/v1/auth/domains/resolve"),
+        ("POST", "/api/v1/auth/domains/{domain_id}/providers/{provider_id}/authorize"),
+        ("POST", "/api/v1/auth/providers/callback"),
+        ("POST", "/api/v1/auth/providers/link"),  # Browser-bound link ticket plus original account proof.
+        ("GET", "/api/v1/auth/signup/options"),  # Public signup availability; no account lookup.
+        # Email-delivered one-use enrollment tokens authorize these onboarding requests.
+        ("GET", "/api/v1/auth/invitations/{token}"),
+        ("POST", "/api/v1/auth/invitations/accept"),
+        ("POST", "/api/v1/auth/domains/{domain_id}/registrations"),
+        ("POST", "/api/v1/auth/registrations/accept"),
         ("POST", "/api/v1/auth/login"),
         # k3s 활성 시에만 등록되는 라우트
         ("POST", "/api/v1/k3s/callback"),
@@ -120,20 +114,6 @@ EXPECTED_PUBLIC = frozenset(
 # ---------------------------------------------------------------------------
 # 테스트
 # ---------------------------------------------------------------------------
-
-
-def test_admin_prefix_routes_have_require_admin():
-    """/api/v1/admin/ 경로 라우트 전체가 require_admin 의존성을 가져야 한다."""
-    violations = []
-    for route in _iter_api_routes():
-        if not route.path.startswith("/api/v1/admin/"):
-            continue
-        dep_callables = _get_route_dep_callables(route)
-        if require_admin not in dep_callables:
-            methods = ",".join(sorted(route.methods or []))
-            violations.append(f"  {methods} {route.path} — require_admin 누락")
-
-    assert not violations, "다음 /api/admin/ 엔드포인트에 require_admin 의존성이 없습니다:\n" + "\n".join(violations)
 
 
 def test_no_unexpected_public_routes():

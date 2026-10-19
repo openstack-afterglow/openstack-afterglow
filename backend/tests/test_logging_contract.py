@@ -4,10 +4,12 @@ import io
 import json
 import logging
 import os
+import sys
+from types import TracebackType
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from httpx import ASGITransport, AsyncClient
 
 from app.main import (
@@ -217,7 +219,16 @@ def test_configured_debug_controls_actual_application_output(
     logger = logging.getLogger("app.main")
     logger.debug("consumer diagnostic", extra={"decision": "completed"})
     logging.getLogger("diagnostic_consumer").info("root consumer info")
-    for namespace in ("openstack", "keystoneauth1", "urllib3", "httpx", "httpcore", "botocore", "sqlalchemy.engine"):
+    for namespace in (
+        "openstack",
+        "keystoneauth1",
+        "keystoneauth",
+        "urllib3",
+        "httpx",
+        "httpcore",
+        "botocore",
+        "sqlalchemy.engine",
+    ):
         logging.getLogger(namespace).debug("raw-wire-secret")
 
     outputs = [stream.getvalue(), "".join(path.read_text() for path in directory.glob("backend-*.log"))]
@@ -366,6 +377,7 @@ def test_debug_credentials_are_fully_redacted_in_both_outputs(configured_logging
     [
         "openstack",
         "keystoneauth1",
+        "keystoneauth",
         "urllib3",
         "httpx",
         "httpcore",
@@ -442,27 +454,281 @@ def test_opaque_keys_and_builtin_subclasses_never_invoke_representation(configur
         assert events[-1]["message"] == "***"
 
 
-def test_exception_frames_are_bounded_without_messages_causes_or_source(configured_logging):
+def test_exception_frames_retain_innermost_failure_without_text_or_source(configured_logging):
     stream, directory = configured_logging()
     secret = "exception-cause-and-message-must-not-appear"
+
+    def innermost_failure():
+        raise ValueError(secret)
 
     def fail(depth):
         if depth:
             return fail(depth - 1)
-        try:
-            raise ValueError(secret)
-        except ValueError as cause:
-            raise RuntimeError(secret) from cause
+        return innermost_failure()
 
     try:
-        fail(20)
-    except RuntimeError:
+        fail(30)
+    except ValueError:
         logging.getLogger("app.main").debug("bounded failure", exc_info=True, stack_info=True)
 
     for output in (stream.getvalue(), "".join(path.read_text() for path in directory.glob("backend-*.log"))):
         assert secret not in output
         event = next(json.loads(line) for line in output.splitlines() if "bounded failure" in line)
-        assert set(event["exception"]) == {"type", "frames"}
-        assert event["exception"]["type"] == "RuntimeError"
-        assert len(event["exception"]["frames"]) == 12
-        assert all(set(frame) == {"function", "line"} for frame in event["exception"]["frames"])
+        metadata = event["exception"]
+        assert set(metadata) == {"type", "frames", "frames_truncated", "causes", "root_cause"}
+        assert metadata["type"] == "ValueError"
+        assert metadata["causes"] == []
+        assert len(metadata["frames"]) == 12
+        assert metadata["frames_truncated"] is True
+        assert all(set(frame) == {"function", "line"} for frame in metadata["frames"])
+        assert metadata["frames"][-1] == {
+            "function": "innermost_failure",
+            "line": innermost_failure.__code__.co_firstlineno + 1,
+        }
+        assert metadata["root_cause"] == {
+            key: value for key, value in metadata.items() if key not in {"causes", "root_cause"}
+        }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [503, 400, 500])
+async def test_main_handlers_emit_translated_root_diagnostics_to_console_and_file(configured_logging, status):
+    stream, directory = configured_logging()
+    assert any(handler.stream is sys.stderr for handler in logging.getLogger().handlers)
+    secret = "translated-provider-credential-must-not-appear"
+    api = FastAPI()
+    api.add_exception_handler(HTTPException, sanitized_http_exception_handler)
+    api.add_exception_handler(Exception, unhandled_exception_handler)
+
+    class ProviderFailure(Exception):
+        http_status = 502
+
+    failure = OSError(5, secret, secret)
+    failure.status = 504
+
+    def innermost_failure():
+        raise failure
+
+    def deep_call(depth):
+        if depth:
+            return deep_call(depth - 1)
+        return innermost_failure()
+
+    def provider_call():
+        try:
+            deep_call(30)
+        except OSError as cause:
+            translated = ProviderFailure(secret)
+            translated.status_code = 502
+            raise translated from cause
+
+    @api.get("/translated/{item_id}")
+    async def translated_request(item_id: str):
+        try:
+            provider_call()
+        except ProviderFailure:
+            if status == 500:
+                raise RuntimeError(secret) from None
+            raise HTTPException(status, detail=secret) from None
+
+    async with AsyncClient(
+        transport=ASGITransport(app=api, raise_app_exceptions=False), base_url="http://test"
+    ) as client:
+        response = await client.get(f"/translated/{secret}?api_key={secret}")
+    assert response.status_code == status
+    if status >= 500:
+        assert response.json() == {"detail": "내부 서버 오류"}
+
+    for output in (stream.getvalue(), "".join(path.read_text() for path in directory.glob("backend-*.log"))):
+        assert secret not in output
+        events = [json.loads(line) for line in output.splitlines()]
+        event = next(event for event in events if event["message"] in {"HTTP error", "Unhandled exception"})
+        assert event["level"] == ("WARNING" if status == 400 else "ERROR")
+        assert event["path"] == "/translated/{item_id}"
+        metadata = event["exception"]
+        assert metadata["type"] == ("RuntimeError" if status == 500 else "HTTPException")
+        if status != 500:
+            assert metadata["status_code"] == status
+        assert [cause["type"] for cause in metadata["causes"]] == ["ProviderFailure", "OSError"]
+        assert metadata["causes"][0]["status_code"] == 502
+        assert metadata["causes"][0]["http_status"] == 502
+        root = metadata["root_cause"]
+        assert root == metadata["causes"][-1]
+        assert root["type"] == "OSError"
+        assert root["errno"] == 5
+        assert root["status"] == 504
+        assert root["frames_truncated"] is True
+        assert len(root["frames"]) == 12
+        assert root["frames"][-1] == {
+            "function": "innermost_failure",
+            "line": innermost_failure.__code__.co_firstlineno + 1,
+        }
+        assert not ({"causes_truncated", "cause_cycle", "traceback_truncated"} & set(metadata))
+        assert not ({"message", "detail", "source", "locals", "filename", "chain"} & set(root))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [400, 503, None])
+async def test_main_handlers_capture_passed_exception_outside_except(configured_logging, status):
+    stream, directory = configured_logging()
+    failure = (
+        RuntimeError("passed-exception-secret") if status is None else HTTPException(status, "passed-exception-secret")
+    )
+
+    def passed_failure():
+        raise failure
+
+    try:
+        passed_failure()
+    except Exception as caught:
+        error = caught
+    assert sys.exc_info() == (None, None, None)
+    request = Request({"type": "http", "method": "GET", "path": "/outside"})
+    handler = unhandled_exception_handler if status is None else sanitized_http_exception_handler
+    response = await handler(request, error)
+    assert response.status_code == (500 if status is None else status)
+    for output in (stream.getvalue(), "".join(path.read_text() for path in directory.glob("backend-*.log"))):
+        assert "passed-exception-secret" not in output
+        event = next(json.loads(line) for line in output.splitlines() if '"exception":' in line)
+        assert event["exception"]["type"] == type(error).__name__
+        assert event["exception"]["frames"][-1]["function"] == "passed_failure"
+
+
+def test_exception_numeric_metadata_uses_only_bounded_plain_ints(configured_logging):
+    stream, directory = configured_logging()
+
+    class OpaqueNumber:
+        def __str__(self):
+            pytest.fail("exception metadata must not stringify values")
+
+        __repr__ = __str__
+        __int__ = __str__
+        __index__ = __str__
+
+    class CredentialNumber(int):
+        __str__ = OpaqueNumber.__str__
+        __repr__ = OpaqueNumber.__str__
+
+    class ProviderFailure(Exception):
+        def __str__(self):
+            pytest.fail("exception text must not be rendered")
+
+    keys = ("status_code", "http_status", "status", "errno")
+    cases = [
+        (100, set(keys)),
+        (599, set(keys)),
+        (0, {"errno"}),
+        (600, {"errno"}),
+        (-(2**31), {"errno"}),
+        (2**31 - 1, {"errno"}),
+        (-(2**31) - 1, set()),
+        (2**31, set()),
+        (10**100, set()),
+        (True, set()),
+        (False, set()),
+        (503.0, set()),
+        ("503", set()),
+        ("numeric-credential-must-not-appear", set()),
+        (CredentialNumber(503), set()),
+        (OpaqueNumber(), set()),
+        (None, set()),
+    ]
+    logger = logging.getLogger("app.main")
+    for index, (value, _) in enumerate(cases):
+        error = ProviderFailure("numeric-credential-must-not-appear")
+        for key in keys:
+            setattr(error, key, value)
+        logger.error("numeric failure", extra={"case": index}, exc_info=(type(error), error, None))
+
+    class PropertyFailure(Exception):
+        @property
+        def status_code(self):
+            pytest.fail("exception metadata must not evaluate provider properties")
+
+        http_status = status_code
+        status = status_code
+        errno = status_code
+
+    error = PropertyFailure()
+    logger.error("property failure", exc_info=(type(error), error, None))
+    for output in (stream.getvalue(), "".join(path.read_text() for path in directory.glob("backend-*.log"))):
+        assert "numeric-credential-must-not-appear" not in output
+        events = [json.loads(line) for line in output.splitlines()]
+        numeric_events = [event for event in events if event["message"] == "numeric failure"]
+        assert len(numeric_events) == len(cases)
+        for event in numeric_events:
+            value, expected_keys = cases[event["case"]]
+            metadata = event["exception"]
+            assert set(metadata) & set(keys) == expected_keys
+            assert all(metadata[key] == value and type(metadata[key]) is int for key in expected_keys)
+            assert metadata["root_cause"] == {
+                key: item for key, item in metadata.items() if key not in {"causes", "root_cause"}
+            }
+        property_event = next(event for event in events if event["message"] == "property failure")
+        assert not (set(property_event["exception"]) & set(keys))
+
+
+@pytest.mark.parametrize("link", ["__cause__", "__context__"])
+@pytest.mark.parametrize("length", [1, 2])
+def test_exception_cycles_are_bounded_without_claiming_a_root(configured_logging, link, length):
+    stream, directory = configured_logging()
+    errors = [RuntimeError("cycle-credential-must-not-appear") for _ in range(length)]
+    for index, error in enumerate(errors):
+        setattr(error, link, errors[(index + 1) % length])
+        error.__suppress_context__ = True
+    logging.getLogger("app.main").error("cyclic failure", exc_info=(type(errors[0]), errors[0], None))
+    for output in (stream.getvalue(), "".join(path.read_text() for path in directory.glob("backend-*.log"))):
+        assert "cycle-credential-must-not-appear" not in output
+        event = next(json.loads(line) for line in output.splitlines() if "cyclic failure" in line)
+        metadata = event["exception"]
+        assert metadata["cause_cycle"] is True
+        assert metadata["root_cause"] is None
+        assert len(metadata["causes"]) == length - 1
+        assert "causes_truncated" not in metadata
+    for error in errors:
+        setattr(error, link, None)
+
+
+@pytest.mark.parametrize("cause_count", [0, 8, 9, 100])
+def test_exception_chain_limits_and_explicit_cause_precedence(configured_logging, cause_count):
+    stream, directory = configured_logging()
+    error = RuntimeError("chain-credential-must-not-appear")
+    current = error
+    for _ in range(cause_count):
+        current.__cause__ = ValueError("chain-credential-must-not-appear")
+        current.__context__ = TypeError("ignored-context-credential-must-not-appear")
+        current = current.__cause__
+    logging.getLogger("app.main").error("long chain failure", exc_info=(type(error), error, None))
+    for output in (stream.getvalue(), "".join(path.read_text() for path in directory.glob("backend-*.log"))):
+        assert "credential-must-not-appear" not in output
+        event = next(json.loads(line) for line in output.splitlines() if "long chain failure" in line)
+        metadata = event["exception"]
+        assert len(metadata["causes"]) == min(cause_count, 8)
+        assert all(cause["type"] == "ValueError" for cause in metadata["causes"])
+        assert metadata.get("causes_truncated", False) is (cause_count > 8)
+        if cause_count > 8:
+            assert metadata["root_cause"] is None
+        else:
+            assert metadata["root_cause"]["type"] == ("ValueError" if cause_count else "RuntimeError")
+
+
+def test_exception_traceback_scan_and_names_are_bounded(configured_logging):
+    stream, directory = configured_logging()
+    error_type = type("Provider" + "x" * 1000, (Exception,), {})
+    error = error_type("traceback-credential-must-not-appear")
+    try:
+        raise error
+    except Exception as caught:
+        tb = caught.__traceback__
+    for _ in range(1024):
+        tb = TracebackType(tb, tb.tb_frame, tb.tb_lasti, tb.tb_lineno)
+    logging.getLogger("app.main").error("scan limited failure", exc_info=(type(error), error, tb))
+    for output in (stream.getvalue(), "".join(path.read_text() for path in directory.glob("backend-*.log"))):
+        assert "traceback-credential-must-not-appear" not in output
+        event = next(json.loads(line) for line in output.splitlines() if "scan limited failure" in line)
+        metadata = event["exception"]
+        assert len(metadata["type"]) == 128
+        assert len(metadata["frames"]) == 12
+        assert metadata["frames_truncated"] is True
+        assert metadata["traceback_truncated"] is True
+        assert metadata["root_cause"]["traceback_truncated"] is True

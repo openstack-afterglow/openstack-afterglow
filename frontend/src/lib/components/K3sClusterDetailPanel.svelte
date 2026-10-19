@@ -1,7 +1,8 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/drover';
-  import { untrack } from 'svelte';
-  import { auth } from '$lib/stores/auth';
+  import { onDestroy, untrack } from 'svelte';
+  import { auth, authReady, projectSwitching } from '$lib/stores/auth';
+  import { derived } from 'svelte/store';
   import { k3sPermissions } from '$lib/stores/k3sPermissions';
   import { goto } from '$app/navigation';
   import { createK3sClusterDetailController, provideK3sClusterDetailController, type ActiveTab } from '$lib/stores/k3sClusterDetailController.svelte';
@@ -22,21 +23,36 @@
     clusterId: string;
     onClose?: () => void;
     adminMode?: boolean;
+    adminProjectId?: string;
     initialTab?: ActiveTab;
     onTabChange?: (tab: ActiveTab) => void;
   }
 
-  let { clusterId, onClose, adminMode = false, initialTab = 'main', onTabChange }: Props = $props();
+  let { clusterId, onClose, adminMode = false, adminProjectId, initialTab = 'main', onTabChange }: Props = $props();
 
   const s = createK3sClusterDetailController({
     clusterId: () => clusterId,
     token: () => $auth.token ?? undefined,
-    projectId: () => $auth.projectId ?? undefined,
+    projectId: () => adminMode ? adminProjectId : $auth.projectId ?? undefined,
     userId: () => $auth.userId,
     adminMode: () => adminMode,
     onClose: () => (onClose ?? (() => goto('/dashboard/drover')))(),
   });
   provideK3sClusterDetailController(s);
+
+  // Administrative resource scope and selected session scope have separate lifetimes.
+  // Synchronous invalidation catches selected-project ABA before effects flush.
+  let authorityGeneration = $state(0);
+  let previousAuthority = '';
+  const stopAuthority = derived([auth, authReady, projectSwitching], ([identity, ready, switching]) =>
+    JSON.stringify([identity.sessionId, identity.userId, identity.domainId, identity.projectId, ready, switching])
+  ).subscribe((authority) => {
+    if (authority === previousAuthority) return;
+    previousAuthority = authority;
+    authorityGeneration += 1;
+    s.reset();
+  });
+  onDestroy(() => { stopAuthority(); s.reset(); });
 
   // Set initial tab from URL
   $effect.pre(() => {
@@ -50,6 +66,7 @@
   });
 
   createAutoRefresh(() => untrack(() => {
+    if (!$authReady || $projectSwitching) return;
     s.loadCluster();
     s.loadHealth();
   }), {
@@ -62,15 +79,17 @@
 
   // Primitive scope dependencies avoid resets when the auth store emits a refreshed token.
   const scopeUserId = $derived($auth.userId);
-  const scopeProjectId = $derived($auth.projectId);
+  const scopeProjectId = $derived(adminMode ? adminProjectId : $auth.projectId);
 
   $effect(() => {
     const userId = scopeUserId;
     const projectId = scopeProjectId;
     const id = clusterId;
+    void authorityGeneration;
+    const ready = $authReady && !$projectSwitching;
     untrack(() => {
       s.reset();
-      if (userId && projectId && id) void s.loadCluster();
+      if (ready && userId && projectId && id) void s.loadCluster();
     });
   });
 

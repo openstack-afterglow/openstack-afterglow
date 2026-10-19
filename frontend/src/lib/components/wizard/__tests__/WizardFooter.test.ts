@@ -68,7 +68,7 @@ describe('WizardFooter', () => {
 });
 
 describe('WizardFooter Windows readiness', () => {
-	it.each([1, 2, 5, 6])('blocks its action after a supported to unsupported transition on step %s', async step => {
+	it.each([1, 5, 6])('blocks its action after a supported to unsupported transition on step %s', async step => {
 		prepareWizardConsumer(step);
 		wizard.update(w => ({ ...w, imageId: 'windows-native', keyName: 'test-keypair' }));
 		let store!: VmCreateStore;
@@ -94,7 +94,7 @@ describe('WizardFooter Windows readiness', () => {
 		action.click();
 		expect(onNext).not.toHaveBeenCalled();
 		expect(onDeploy).not.toHaveBeenCalled();
-		if (step === 1 || step === 2) {
+		if (step === 1) {
 			expect(within(screen.getByTestId('windows-unsupported-footer')).getByRole('alert').textContent?.trim()).toBeTruthy();
 		} else {
 			expect(screen.queryByTestId('windows-unsupported-footer')).toBeNull();

@@ -1,226 +1,45 @@
 <script lang="ts">
-	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
-	import { get } from 'svelte/store';
-	import { auth, logoutInProgress, projectSwitching, setAuth } from '$lib/stores/auth';
-	import { api, ApiError } from '$lib/api/client';
-	import { projectList, type Project } from '$lib/stores/projectList';
-	import LoadingSpinner from './LoadingSpinner.svelte';
-	import { cloudShell } from '$lib/stores/cloudShell.svelte';
-	import CreateProjectModal from './projects/CreateProjectModal.svelte';
-	import { t } from '$lib/i18n/ns/shared';
+	import { derived } from 'svelte/store';
+	import { page } from '$app/stores';
+	import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores/auth';
+	import { sessionScopeKey } from '$lib/utils/authSession';
+	import { t } from '$lib/i18n/ns/workspace-selector';
+	import Modal from '$lib/components/ui/Modal.svelte';
+	import Card from '$lib/components/ui/Card.svelte';
+	import WorkspaceBrowser from '$lib/components/workspaces/WorkspaceBrowser.svelte';
 
-	let { direction = 'up' }: { direction?: 'up' | 'down' } = $props();
-
-	// Keep server details untouched; translate the surrounding failure at render time.
-	let switchError = $state<{ detail: string | null } | null>(null);
-	const error = $derived(
-		switchError
-			? switchError.detail !== null
-				? t('projectSelector.switchFailedDetail', { detail: switchError.detail })
-				: t('projectSelector.switchFailed')
-			: '',
-	);
-	let isOpen = $state(false);
-	let dropdownRef: HTMLDivElement | null = $state(null);
-	let triggerRef: HTMLButtonElement | null = $state(null);
-	let menuRef: HTMLDivElement | null = $state(null);
-	let menuStyle = $state('');
-
+	let open = $state(false);
+	let busy = $state(false);
 	function portal(node: HTMLElement) {
-		(triggerRef?.closest('[role="dialog"]') ?? document.body).appendChild(node);
-		queueMicrotask(positionMenu);
+		document.body.appendChild(node);
 		return { destroy: () => node.remove() };
 	}
-
-	function positionMenu() {
-		if (!triggerRef || typeof window === 'undefined') return;
-		if (window.innerWidth < 640) {
-			menuStyle = 'left:0;right:0;bottom:0;width:100%;';
-			return;
-		}
-		const rect = triggerRef.getBoundingClientRect();
-		const viewportPadding = 8;
-		const gap = 4;
-		const width = Math.min(256, window.innerWidth - viewportPadding * 2);
-		const left = Math.min(Math.max(viewportPadding, rect.left), window.innerWidth - viewportPadding - width);
-		menuStyle = direction === 'down'
-			? `left:${left}px;top:${rect.bottom + gap}px;width:${width}px;`
-			: `left:${left}px;bottom:${window.innerHeight - rect.top + gap}px;width:${width}px;`;
-	}
-	let showCreateModal = $state(false);
-	const mockupActive = $derived($page.data.mockup?.active === true);
-	const showInitialLoading = $derived(
-		$projectList.loading && !$projectList.loaded && $projectList.projects.length === 0,
-	);
-
-	async function selectProject(project: Project) {
-		const { token, userId, projectId } = $auth;
-		if (!token || $projectSwitching) return;
-		if (project.id === $auth.projectId) { isOpen = false; return; }
-
-		let abandoned = false;
-		const unsubscribe = auth.subscribe((state) => {
-			if (!state.token || state.userId !== userId || state.projectId !== projectId) abandoned = true;
-		});
-		projectSwitching.set(true);
-		try {
-			await cloudShell.close('project-switch', { keepDock: false });
-			if (abandoned || get(logoutInProgress)) return;
-			const resp = await api.post<{
-				token: string;
-				refresh_token: string;
-				expires_at: string;
-				project_id: string;
-				project_name: string;
-				user_id: string;
-				username: string;
-				roles: string[];
-				is_system_admin: boolean;
-				can_write: boolean;
-			}>('/api/v1/auth/token/project', { project_id: project.id }, token);
-
-			// The drawer can unmount this selector while the request is pending.
-			const current = get(auth);
-			if (abandoned || get(logoutInProgress) || !current.token || current.userId !== userId || current.projectId !== projectId) return;
-
-			setAuth({
-				token: resp.token,
-				refreshToken: resp.refresh_token,
-				accessExpiresAt: resp.expires_at
-					? Math.floor(new Date(resp.expires_at).getTime() / 1000)
-					: null,
-				projectId: resp.project_id,
-				projectName: resp.project_name,
-				roles: resp.roles ?? [],
-				isSystemAdmin: !!resp.is_system_admin,
-				canWrite: resp.can_write,
-			});
-
-			isOpen = false;
-
-			// Default 네트워크 확인/생성 (fire-and-forget)
-			api.post('/api/v1/networks/ensure-default', {}, resp.token, resp.project_id).catch(() => {});
-		} catch (e) {
-			switchError = { detail: e instanceof ApiError ? e.message : null };
-		} finally {
-			unsubscribe();
-			projectSwitching.set(false);
-		}
-	}
-
-	function openCreateProject() {
-		if (mockupActive) return;
-		isOpen = false;
-		showCreateModal = true;
-	}
-
-	function handleClickOutside(event: MouseEvent) {
-		const target = event.target as Node;
-		if (!dropdownRef?.contains(target) && !menuRef?.contains(target)) isOpen = false;
-	}
-
-	$effect(() => {
-		if (!isOpen || typeof window === 'undefined') return;
-		const update = () => positionMenu();
-		queueMicrotask(update);
-		window.addEventListener('resize', update);
-		window.addEventListener('scroll', update, true);
-		return () => {
-			window.removeEventListener('resize', update);
-			window.removeEventListener('scroll', update, true);
-		};
-	});
-
 	onMount(() => {
-		document.addEventListener('click', handleClickOutside);
-		return () => document.removeEventListener('click', handleClickOutside);
+		let previous = '';
+		return derived([auth, authReady, logoutInProgress], ([state, ready, loggingOut]) => ({ state, ready, loggingOut })).subscribe(({ state, ready, loggingOut }) => {
+			const key = JSON.stringify([sessionScopeKey(state), !!state.token, ready, loggingOut]);
+			if (previous && key !== previous) open = false;
+			previous = key;
+		});
 	});
 </script>
 
-<div class="relative" bind:this={dropdownRef}>
-	<button
-		bind:this={triggerRef}
-		type="button"
-		onclick={() => {
-			if ($projectSwitching) return;
-			isOpen = !isOpen;
-			if (isOpen && $auth.token && $auth.userId) {
-				void projectList.revalidate($auth.token, $auth.userId);
-			}
-		}}
-		disabled={$projectSwitching}
-		aria-haspopup="menu"
-		aria-expanded={isOpen}
-		class="flex w-full min-w-0 items-center gap-2 px-3 py-1.5 bg-surface-sunken hover:bg-surface-selected disabled:bg-surface-sunken/50 rounded-lg text-sm transition-colors"
-	>
-		{#if showInitialLoading || $projectSwitching}
-			<LoadingSpinner size="sm" color="gray" />
-		{:else}
-			<svg class="w-4 h-4 shrink-0 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-4 0H7m0 0H5m2 0v-2a2 2 0 012-2h2m4 0h2a2 2 0 012 2v2m-6-6a2 2 0 100-4 2 2 0 000 4z"></path>
-			</svg>
-		{/if}
-		<span class="min-w-0 truncate text-ink-2">{$auth.projectName || t('projectSelector.placeholder')}</span>
-		<svg class="w-4 h-4 shrink-0 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-		</svg>
-	</button>
+<button type="button" onclick={() => { open = true; }} disabled={$projectSwitching || !$authReady || $logoutInProgress || !$auth.token} aria-haspopup="dialog" aria-expanded={open} aria-label={t('openSelector', { project: $auth.projectName || t('noProject'), domain: $auth.domainName || $auth.domainId || '—' })} title={`${$auth.domainName || $auth.domainId || ''} · ${$auth.projectName || t('noProject')}`} class="flex min-h-11 w-full min-w-0 items-center gap-2 rounded-md bg-surface-sunken px-2 py-1 text-left text-sm text-ink-1 transition-colors hover:bg-surface-selected focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] disabled:opacity-50 md:min-h-8">
+	<svg class="size-4 shrink-0 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7h7l2 2h9v11H3zM3 7V4h7l2 3" /></svg>
+	<span class="min-w-0 flex-1">
+		<span class="block truncate text-xs text-ink-2">{$auth.domainName || $auth.domainId || '—'}</span>
+		<span class="block truncate">{$auth.projectName || t('noProject')}</span>
+	</span>
+	<svg class="size-3 shrink-0 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9 6 6 6-6" /></svg>
+</button>
 
-	{#if isOpen && !showInitialLoading}
-		<div use:portal bind:this={menuRef} role="menu" style={menuStyle} class="motion-pop fixed left-0 bottom-0 w-full sm:bottom-auto sm:w-64 max-h-[50vh] bg-surface-base border border-line-2 rounded-t-lg sm:rounded-lg shadow-[var(--shadow-restraint)] sm:shadow-[var(--shadow-popover)] z-[var(--z-popover)] overflow-hidden">
-			{#if error}
-				<div class="p-3 text-sm text-red-400">{error}</div>
-			{:else if $projectList.projects.length === 0}
-				<div class="p-3 text-sm text-ink-2">{t('projectSelector.empty')}</div>
-			{:else}
-				<div class="overflow-y-auto max-h-[calc(50vh-6rem)] sm:max-h-52">
-					{#each $projectList.projects as project}
-						<button
-							onclick={() => selectProject(project)}
-							disabled={$projectSwitching}
-							class="w-full text-left px-3 py-2 hover:bg-surface-sunken transition-colors disabled:opacity-50 disabled:cursor-not-allowed
-								{project.id === $auth.projectId ? 'bg-surface-selected/30 border-l-2 border-action-warm' : ''}"
-						>
-							<div class="text-sm font-medium text-ink-0">{project.name}</div>
-							{#if project.description}
-								<div class="text-xs text-ink-2 truncate">{project.description}</div>
-							{/if}
-						</button>
-					{/each}
-				</div>
-			{/if}
-			{#if !mockupActive}
-				<div class="border-t border-line">
-					<button
-						onclick={openCreateProject}
-						class="w-full text-left px-3 py-2 text-xs text-ink-2 hover:text-ink-0 hover:bg-surface-sunken transition-colors flex items-center gap-1.5"
-					>
-						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
-						{t('projectSelector.create')}
-					</button>
-					<a
-						href="/dashboard/project-settings"
-						onclick={() => { isOpen = false; }}
-						class="w-full text-left px-3 py-2 text-xs text-ink-2 hover:text-ink-0 hover:bg-surface-sunken transition-colors flex items-center gap-1.5"
-					>
-						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-						{t('projectSelector.settings')}
-					</a>
-				</div>
-			{/if}
-		</div>
-	{/if}
-</div>
-
-{#if showCreateModal && !mockupActive}
-	<CreateProjectModal
-		onClose={() => (showCreateModal = false)}
-		onSuccess={() => {
-			showCreateModal = false;
-			if ($auth.token && $auth.userId) {
-				void projectList.refresh($auth.token, $auth.userId);
-			}
-		}}
-	/>
+{#if open}
+	<div use:portal>
+		<Modal bind:open ariaLabel={t('title')} onClose={() => { open = false; }} dismissible={!busy && !$projectSwitching}>
+			<Card surface="modal" padding="none">
+				<WorkspaceBrowser bind:busy mockup={$page.data.mockup?.active === true} onSelected={() => { open = false; }} onClose={() => { if (!busy && !$projectSwitching) open = false; }} />
+			</Card>
+		</Modal>
+	</div>
 {/if}

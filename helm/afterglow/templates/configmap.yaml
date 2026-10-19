@@ -13,6 +13,8 @@ data:
   PUBLIC_API_BASE: {{ $publicApiBase | quote }}
   TRAFFIC_ANALYTICS_INGEST_URL: "http://backend:8000/api/v1/monitoring/traffic/events"
   TRAFFIC_ANALYTICS_PEER_IS_SOCKET: "true"
+  ceph.conf: |
+{{ .Values.ceph.rbdConfContent | indent 4 }}
   afterglow.conf: |
     # Afterglow 통합 설정 파일
     # 비밀 값은 secret.yaml의 환경변수로 주입됩니다.
@@ -60,6 +62,17 @@ data:
     swift_endpoint = {{ .Values.openstack.swiftEndpoint | quote }}
     swift_upload_timeout = {{ .Values.openstack.swiftUploadTimeout }}
     trash_retention_days = {{ .Values.openstack.trashRetentionDays }}
+
+    [ceph]
+    rbd_conf_path = {{ .Values.ceph.rbdConfPath | quote }}
+    rbd_keyring_path = {{ .Values.ceph.rbdKeyringPath | quote }}
+    rbd_client_name = {{ .Values.ceph.rbdClientName | quote }}
+    rbd_cluster_fsid = {{ .Values.ceph.rbdClusterFsid | quote }}
+    rbd_command_timeout_seconds = {{ .Values.ceph.rbdCommandTimeoutSeconds }}
+    [ceph.rbd_volume_pools]
+    {{- range $backend, $pool := .Values.ceph.rbdVolumePools }}
+    {{ $backend | quote }} = {{ $pool | quote }}
+    {{- end }}
 
     [app]
     backend_port = {{ .Values.app.backendPort }}
@@ -155,6 +168,8 @@ data:
     [cloud_shell]
     service_project_id = {{ .Values.cloudShell.serviceProjectId | quote }}
     image = {{ .Values.cloudShell.image | quote }}
+    image_pull_policy = {{ .Values.cloudShell.imagePullPolicy | quote }}
+    registry_id = {{ .Values.cloudShell.registryId | quote }}
     network_id = {{ .Values.cloudShell.networkId | quote }}
     security_group = {{ .Values.cloudShell.securityGroup | quote }}
     auth_url = {{ .Values.cloudShell.authUrl | quote }}
@@ -168,6 +183,11 @@ data:
     ticket_ttl_seconds = {{ .Values.cloudShell.ticketTtlSeconds }}
     reconcile_interval_seconds = {{ .Values.cloudShell.reconcileIntervalSeconds }}
     zun_websocket_origin = {{ .Values.cloudShell.zunWebsocketOrigin | quote }}
+
+    {{- with .Values.auth.configToml }}
+
+{{ . | indent 4 }}
+    {{- end }}
 
     [mcp]
     public_url = {{ .Values.mcp.publicUrl | quote }}
@@ -270,12 +290,6 @@ data:
     reconcile_interval = {{ .Values.workerRuntime.reconcileInterval }}
     fail_closed = {{ .Values.workerRuntime.failClosed }}
 
-    [worker_runtime.workers.drover]
-    enabled = {{ .Values.workerRuntime.workers.drover.enabled }}
-    desired_replicas = {{ .Values.workerRuntime.workers.drover.desiredReplicas }}
-    max_replicas = {{ .Values.workerRuntime.workers.drover.maxReplicas }}
-    module = {{ .Values.workerRuntime.workers.drover.module | quote }}
-
     [worker_runtime.workers.notion_worker]
     enabled = {{ .Values.workerRuntime.workers.notionWorker.enabled }}
     desired_replicas = {{ .Values.workerRuntime.workers.notionWorker.desiredReplicas }}
@@ -314,16 +328,6 @@ data:
 
     [cors]
     origins = {{ .Values.cors.origins | quote }}
-
-    [gitlab_oidc]
-    enabled = {{ .Values.gitlabOidc.enabled }}
-    gitlab_url = {{ .Values.gitlabOidc.gitlabUrl | quote }}
-    client_id = {{ .Values.gitlabOidc.clientId | quote }}
-    # client_secret은 secret.yaml의 GITLAB_OIDC_CLIENT_SECRET 환경변수로 주입됩니다
-    idp_id = {{ .Values.gitlabOidc.idpId | quote }}
-    protocol_id = {{ .Values.gitlabOidc.protocolId | quote }}
-    redirect_uri = {{ .Values.gitlabOidc.redirectUri | quote }}
-    scopes = {{ .Values.gitlabOidc.scopes | quote }}
 
     {{- if .Values.smtp.enabled }}
 
@@ -409,12 +413,11 @@ data:
     {{- end }}
 
     [security]
-    admin_legacy_project_policy = {{ .Values.security.adminLegacyProjectPolicy }}
     login_max_attempts = {{ .Values.security.loginMaxAttempts }}
     login_lockout_seconds = {{ .Values.security.loginLockoutSeconds }}
     login_backoff_base = {{ .Values.security.loginBackoffBase }}
   config.gpu.toml: |
-{{- if .Values.gpu.configToml }}
+{{- if hasKey .Values.gpu "configToml" }}
 {{ .Values.gpu.configToml | indent 4 }}
 {{- else }}
 {{ .Files.Get "files/config.gpu.toml" | indent 4 }}

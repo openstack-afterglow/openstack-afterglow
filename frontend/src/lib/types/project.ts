@@ -43,25 +43,41 @@ export interface AssignableProjectRole {
 export interface AssignableProjectRoles {
 	roles: AssignableProjectRole[];
 	is_owner: boolean;
+	can_manage_owners: boolean;
 }
 
-export interface ProjectInvitation {
-	id: number;
-	project_id: string;
-	invited_email: string;
-	invited_by_name: string;
-	status: string;
-	keystone_role: string;
-	expires_at: string;
-	accepted_at: string | null;
-	created_at: string;
+export interface EligibleProjectUser {
+	id: string;
+	name: string;
+	email: string;
+	domain_id: string;
+	enabled: boolean;
 }
 
-export interface InvitationInfo {
+export interface ProjectOwnershipTransfer {
+	id: string;
 	project_id: string;
-	project_name: string;
-	inviter_name: string;
-	invited_email: string;
-	status: string;
-	expires_at: string;
+	domain_id: string;
+	from_user_id: string;
+	to_user_id: string;
+	status: 'applying' | 'unknown' | 'settled' | 'completed';
+	stage: string;
 }
+
+export interface ProjectOwnership {
+	project_id: string;
+	owner_user_id: string | null;
+	status: 'unique' | 'missing' | 'conflict';
+	owners: Array<{ user_id: string; name: string; source: 'direct' | 'group_or_inherited' }>;
+	can_transfer: boolean;
+	can_delete: boolean;
+	transfer_operation: ProjectOwnershipTransfer | null;
+}
+
+export interface ProjectCreators {
+	domain_id: string;
+	role: { id: string; name: string } | null;
+	users: Array<EligibleProjectUser & { source: 'direct' | 'inherited'; direct: boolean }>;
+}
+
+

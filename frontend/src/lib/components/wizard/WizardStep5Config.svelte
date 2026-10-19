@@ -432,39 +432,53 @@ function applyCloudInitPreset(event: Event) {
 
 <!-- 루트 디스크 -->
 {#if $wizard.bootSource === 'image'}
-<div class="grid grid-cols-1 @lg/panel:grid-cols-2 gap-3.5 mb-4">
-	<div>
-		<label for="boot-volume-size" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
-			{t('config.rootDisk.label')} <span class="text-red-400">*</span>
+<div class="grid grid-cols-1 @lg/panel:grid-cols-2 gap-4 mb-4">
+	<div class="space-y-3">
+		<Field label={t('config.rootDisk.label')} for="boot-volume-size" required>
+			<div class="flex flex-wrap items-center gap-3">
+				<input
+					id="boot-volume-size"
+					bind:value={$wizard.bootVolumeSizeGb}
+					type="number"
+					min={s.minBootVolumeSizeGb}
+					max="16384"
+					step="1"
+					aria-invalid={!s.bootVolumeSizeReady}
+					aria-describedby="boot-volume-size-help"
+					class="w-24 bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm transition-colors"
+				/>
+				<span class="text-xs text-ink-2">{s.minBootVolumeSizeGb} – 16,384 GB</span>
+			</div>
+			<p id="boot-volume-size-help" class="text-xs mt-1 {s.bootVolumeSizeReady ? 'text-ink-2' : 'text-[var(--color-state-danger)]'}" aria-live="polite">
+				{t(s.bootVolumeSizeReady ? 'config.rootDisk.minimumHelp' : 'config.rootDisk.sizeInvalid', { min: s.minBootVolumeSizeGb })}
+			</p>
+		</Field>
+		<label class="flex min-h-11 items-center gap-3 text-sm text-ink-1 cursor-pointer">
+			<input type="checkbox" bind:checked={$wizard.deleteBootVolumeOnTermination} class="h-4 w-4 shrink-0" />
+			<span>{t('config.rootDisk.deleteWithVm')}</span>
 		</label>
-		<div class="flex items-center gap-3">
-			<input
-				id="boot-volume-size"
-				bind:value={$wizard.bootVolumeSizeGb}
-				type="number"
-				min={s.minBootVolumeSizeGb}
-				max="16384"
-				step="1"
-				aria-invalid={!s.bootVolumeSizeReady}
-				aria-describedby="boot-volume-size-help"
-				class="w-24 bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm transition-colors"
-			/>
-			<span class="text-xs text-ink-2">{s.minBootVolumeSizeGb} – 16,384 GB</span>
+	</div>
+	<fieldset class="min-w-0 rounded-lg border border-line p-3" aria-describedby="volume-protection-schedule">
+		<legend class="px-1 text-xs font-medium text-ink-1">{t('config.protection.title')}</legend>
+		<label class="flex min-h-11 items-center gap-3 text-sm text-ink-1 cursor-pointer">
+			<input type="checkbox" bind:checked={$wizard.autoSnapshot} class="h-4 w-4 shrink-0" />
+			<span>{t('config.protection.snapshot')}</span>
+		</label>
+		<label class="flex min-h-11 items-center gap-3 text-sm text-ink-1 cursor-pointer">
+			<input type="checkbox" bind:checked={$wizard.autoBackup} class="h-4 w-4 shrink-0" />
+			<span>{t('config.protection.backup')}</span>
+		</label>
+		<p id="volume-protection-schedule" class="text-xs leading-relaxed text-ink-2">{t('config.protection.schedule')}</p>
+	</fieldset>
+	{#if $wizard.autoSnapshot || $wizard.autoBackup}
+		<div class="@lg/panel:col-span-2 space-y-2">
+			<Alert tone="warning"><p id="volume-protection-risk">{t('config.protection.risk')}</p></Alert>
+			<label class="flex min-h-11 items-start gap-3 py-2 text-sm text-ink-1 cursor-pointer">
+				<input type="checkbox" bind:checked={$wizard.volumeProtectionForce} aria-describedby="volume-protection-risk" class="mt-0.5 h-4 w-4 shrink-0" />
+				<span>{t('config.protection.consent')}</span>
+			</label>
 		</div>
-		<p id="boot-volume-size-help" class="text-xs mt-1 {s.bootVolumeSizeReady ? 'text-ink-2' : 'text-[var(--color-state-danger)]'}" aria-live="polite">
-			{t(s.bootVolumeSizeReady ? 'config.rootDisk.minimumHelp' : 'config.rootDisk.sizeInvalid', { min: s.minBootVolumeSizeGb })}
-		</p>
-	</div>
-	<div class="flex items-end pb-1">
-		<label class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-sunken/60 border border-line-2 cursor-pointer w-full">
-			<input
-				type="checkbox"
-				bind:checked={$wizard.deleteBootVolumeOnTermination}
-				class="w-4 h-4 rounded border-line-2 bg-surface-sunken text-warm-text focus:ring-line-2 flex-shrink-0"
-			/>
-			<span class="text-sm text-ink-2">{t('config.rootDisk.deleteWithVm')}</span>
-		</label>
-	</div>
+	{/if}
 </div>
 {:else}
 <div class="mb-4 p-3 rounded-lg bg-surface-selected/20 border border-action-warm/40 text-warm-text text-xs">

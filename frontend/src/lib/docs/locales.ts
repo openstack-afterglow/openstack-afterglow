@@ -6,6 +6,7 @@ export const docsLocales = LOCALES.map((id) => ({ id, name: LOCALE_NATIVE_NAMES[
 
 export type DocsLocale = Locale;
 
+/** Explicit documentation links select a language; ordinary visits use the shared preference. */
 export function docsLocaleFromUrl(url: URL, preference: DocsLocale = DEFAULT_LOCALE): DocsLocale {
 	const requested = url.searchParams.get('lang');
 	return isLocale(requested) ? requested : preference;

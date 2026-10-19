@@ -37,6 +37,9 @@ def project_authority(monkeypatch):
         roles=SimpleNamespace(list=lambda: catalog),
         inference_rules=SimpleNamespace(list_inference_roles=lambda: []),
         role_assignments=SimpleNamespace(list=state.assignments),
+        projects=SimpleNamespace(
+            get=lambda project_id: SimpleNamespace(id=project_id, domain_id="default", enabled=True)
+        ),
     )
     monkeypatch.setattr(keystone, "_get_admin_ks_client", lambda: ks)
     return state

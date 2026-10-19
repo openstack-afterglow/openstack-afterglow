@@ -1,7 +1,8 @@
-import { grantLumen, pendingLumen } from './lumenPermissionFixture';
+import { grantLumen, pendingLumen, setVerifiedLumenActor } from './lumenPermissionFixture';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
+import { get } from 'svelte/store';
 import { auth } from '$lib/stores/auth';
 import { parseChatRunEvent } from '$lib/api/chatContracts';
 import { invalidateChatModels } from '$lib/stores/chatModels';
@@ -94,7 +95,7 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	mocks.setPageState({});
 	siteConfig.update((config) => ({ ...config, services: { ...config.services, mcp: false } }));
-	auth.set({
+	setVerifiedLumenActor({
 		token: 'token',
 		refreshToken: null,
 		accessExpiresAt: null,
@@ -105,7 +106,7 @@ beforeEach(() => {
 		availableProjects: [],
 		roles: [],
 		isSystemAdmin: false,
-		federated: false
+		federated: false, domainId: 'domain-1', domainName: 'Domain', identityDomainId: 'domain-1', identityDomainName: 'Domain', isDomainManager: false
 	});
 	vi.stubGlobal('matchMedia', (query: string) => ({
 		matches: query.includes('prefers-reduced-motion') || query.includes('max-width: 1023px'),
@@ -278,7 +279,7 @@ describe('ChatPanel', () => {
 		pending = true;
 		await fireEvent(window, new Event('focus'));
 		catalog = [{ id: 3, model_name: 'model-3', display_name: 'Other project model' }];
-		auth.update((state) => ({ ...state, projectId: 'project-2' }));
+		setVerifiedLumenActor({ ...get(auth), projectId: 'project-2' });
 		await screen.findByRole('button', { name: 'Other project model' });
 		resolveOld([{ id: 1, model_name: 'model-1', display_name: 'Old project model' }]);
 		await tick();
@@ -1194,7 +1195,8 @@ describe('ChatPanel cloud catalogue lifecycle', () => {
 		await waitFor(() => expect(requests).toBe(1));
 		const initial = field === 'token' ? 'token' : field === 'userId' ? 'user-1' : 'project-1';
 		auth.update((actor) => ({ ...actor, [field]: 'other-owner' }));
-		auth.update((actor) => ({ ...actor, [field]: initial }));
+		// The returned actor has completed verification, but the old request's epoch is gone.
+		setVerifiedLumenActor({ ...get(auth), [field]: initial });
 		await waitFor(() => expect(requests).toBe(2));
 		const oldSignal = mocks.get.mock.calls.find(([path]) => path === '/api/v1/chat/cloud-tools')![3].signal as AbortSignal;
 		expect(oldSignal.aborted).toBe(true);

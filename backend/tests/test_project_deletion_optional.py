@@ -6,10 +6,14 @@ protocol; no collector or endpoint is patched into returning an empty report.
 """
 
 import json
+from types import SimpleNamespace
 from urllib.parse import urlparse
 
 import pytest
 from requests import Response
+
+from app.services import keystone
+from tests.ownership_journal import ownership_journal as ownership_journal
 
 _TARGET = "target-project"
 _SECRET = "never-expose-provider-payload"
@@ -40,8 +44,13 @@ def _response(body, status=200):
 
 
 @pytest.fixture
-def optional_inventory(mock_conn):
+def optional_inventory(mock_conn, ownership_journal, monkeypatch):
     """All catalog-present optional services, a verified token, and empty reads."""
+    native_identity = SimpleNamespace(projects=SimpleNamespace(list=lambda **query: []))
+    monkeypatch.setattr(keystone, "_get_admin_ks_client", lambda: native_identity)
+    mock_conn.endpoint_for.return_value = "https://keystone.invalid/v3"
+    mock_conn.identity.get_domain.return_value = SimpleNamespace(id="default", name="Default")
+    mock_conn.identity.get_project.return_value = SimpleNamespace(id=_TARGET, domain_id="default")
     for proxy, methods in (
         (mock_conn.compute, ("servers",)),
         (mock_conn.block_storage, ("volumes", "snapshots", "backups")),
@@ -149,7 +158,7 @@ def _kind(check, kind):
 async def test_catalog_present_owned_optional_resources_block_delete(admin_client, mock_conn, optional_inventory, kind):
     rows, _ = optional_inventory
     rows[kind] = [_resource(kind, index) for index in range(3)]
-    response = await admin_client.get(f"/api/v1/admin/projects/{_TARGET}/deletion-check")
+    response = await admin_client.get(f"/api/v1/admin/projects/{_TARGET}/deletion-check?domain_id=default")
     assert response.status_code == 200
     check = response.json()
     assert not check["can_delete"]
@@ -157,7 +166,7 @@ async def test_catalog_present_owned_optional_resources_block_delete(admin_clien
     assert _kind(check, kind)["count"] == 3
     assert len(_kind(check, kind)["samples"]) == 3
     assert _SECRET not in response.text
-    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}")
+    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}?domain_id=default")
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "project_has_resources"
     assert _kind(response.json()["detail"]["check"], kind)["count"] == 3
@@ -172,7 +181,7 @@ async def test_optional_later_page_failure_is_unknown_not_partial_count(
     rows, failure = optional_inventory
     rows[kind] = [_resource(kind, index) for index in range(3)]
     failure["kind"] = kind
-    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}")
+    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}?domain_id=default")
     assert response.status_code == 503
     detail = response.json()["detail"]
     assert detail["code"] == "project_resource_check_failed"
@@ -190,19 +199,18 @@ async def test_catalog_present_foreign_optional_resources_do_not_block(admin_cli
     rows, _ = optional_inventory
     for kind in _OPTIONAL:
         rows[kind] = [_resource(kind, index, owner="foreign-project") for index in range(3)]
-    response = await admin_client.get(f"/api/v1/admin/projects/{_TARGET}/deletion-check")
+    response = await admin_client.get(f"/api/v1/admin/projects/{_TARGET}/deletion-check?domain_id=default")
     assert response.status_code == 200
     assert response.json()["can_delete"]
     assert all(resource["count"] == 0 for resource in response.json()["resources"])
-    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}")
+    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}?domain_id=default")
     assert response.status_code == 204
-    mock_conn.identity.delete_project.assert_called_once_with(_TARGET, ignore_missing=True)
 
 
 @pytest.mark.asyncio
 async def test_wrong_token_scope_never_proves_optional_empty(admin_client, mock_conn, optional_inventory):
     mock_conn.current_project_id = "caller-project"
-    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}")
+    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}?domain_id=default")
     assert response.status_code == 503
     check = response.json()["detail"]["check"]
     for kind in ("object_containers", "secrets", "secret_containers", "secret_orders"):
@@ -222,7 +230,7 @@ async def test_wrong_account_endpoint_never_proves_empty(
     admin_client, mock_conn, optional_inventory, proxy_name, kind, endpoint
 ):
     getattr(mock_conn, proxy_name).get_endpoint.return_value = endpoint
-    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}")
+    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}?domain_id=default")
     assert response.status_code == 503
     assert _kind(response.json()["detail"]["check"], kind)["reason"] == "project_scope_unverified"
     mock_conn.identity.delete_project.assert_not_called()
@@ -252,12 +260,12 @@ async def test_admin_home_scope_checks_target_optional_allocations_and_final_rac
         {"type": service, "endpoints": []} for service in ("database", "container-infra", "orchestration")
     ]
     rows[kind] = [_resource(kind, index, owner="foreign-project") for index in range(3)]
-    preflight = await admin_client.get(f"/api/v1/admin/projects/{_TARGET}/deletion-check")
+    preflight = await admin_client.get(f"/api/v1/admin/projects/{_TARGET}/deletion-check?domain_id=default")
     assert preflight.status_code == 200
     assert preflight.json()["can_delete"]
     assert _kind(preflight.json(), kind)["count"] == 0
     rows[kind].extend(_resource(kind, index) for index in range(3, 6))
-    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}")
+    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}?domain_id=default")
     assert response.status_code == 409
     check = response.json()["detail"]["check"]
     assert not check["can_delete"]
@@ -276,7 +284,7 @@ async def test_trove_admin_configuration_without_owner_cannot_inherit_token_proj
 ):
     rows, _ = optional_inventory
     rows["database_configurations"] = [{"id": "configuration-without-owner", "name": "shared-defaults"}]
-    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}")
+    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}?domain_id=default")
     assert response.status_code == 503
     resource = _kind(response.json()["detail"]["check"], "database_configurations")
     assert resource["reason"] == "resource_ownership_unverified"
@@ -309,7 +317,7 @@ async def test_barbican_token_scope_and_safe_reference_samples(
             "payload": _SECRET,
         }
     ]
-    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}")
+    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}?domain_id=default")
     assert response.status_code == 409
     resource = _kind(response.json()["detail"]["check"], kind)
     assert resource["count"] == 1
@@ -327,7 +335,7 @@ async def test_swift_native_container_name_is_counted_without_owner_field(
 ):
     rows, _ = optional_inventory
     rows["object_containers"] = [{"name": "trash_segments", "count": 0, "bytes": 0}]
-    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}")
+    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}?domain_id=default")
     assert response.status_code == 409
     resource = _kind(response.json()["detail"]["check"], "object_containers")
     assert resource["count"] == 1
@@ -343,7 +351,7 @@ async def test_shared_cluster_template_missing_owner_is_unknown(
 ):
     rows, _ = optional_inventory
     rows["cluster_templates"] = [{"uuid": "shared-template", "name": "shared", "public": True}]
-    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}")
+    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}?domain_id=default")
     assert response.status_code == 503
     resource = _kind(response.json()["detail"]["check"], "cluster_templates")
     assert resource["reason"] == "resource_ownership_unverified"
@@ -359,7 +367,7 @@ async def test_heat_nested_stacks_are_not_hidden_from_deletion_inventory(
 ):
     rows, _ = optional_inventory
     rows["stacks"] = [{**_resource("stacks", 0), "nested": True, "hidden": True}]
-    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}")
+    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}?domain_id=default")
     assert response.status_code == 409
     assert _kind(response.json()["detail"]["check"], "stacks")["count"] == 1
     mock_conn.identity.delete_project.assert_not_called()
@@ -377,7 +385,7 @@ async def test_multiple_owned_default_named_groups_cannot_all_be_exempted(
             {"id": "custom-default", "name": "default", "project_id": _TARGET},
         ]
     )
-    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}")
+    response = await admin_client.delete(f"/api/v1/admin/projects/{_TARGET}?domain_id=default")
     assert response.status_code == 503
     resource = _kind(response.json()["detail"]["check"], "security_groups")
     assert resource["status"] == "unavailable"

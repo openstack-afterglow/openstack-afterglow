@@ -4,7 +4,6 @@
 # 사용법:
 #   docker build --target backend -t afterglow-api .
 #   docker build --target frontend -t afterglow .
-#   docker build --target cloud-shell -t afterglow-cloud-shell .
 #
 # docker-compose에서는 build.target으로 자동 지정됩니다.
 # ===========================================================================
@@ -50,56 +49,60 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY services/afterglow-crypto/ /services/afterglow-crypto/
+COPY services/afterglow-crypto/pyproject.toml /services/afterglow-crypto/pyproject.toml
 COPY backend/pyproject.toml backend/uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project --no-install-package afterglow-crypto --link-mode=copy
+COPY services/afterglow-crypto/afterglow_crypto/ /services/afterglow-crypto/afterglow_crypto/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project --link-mode=copy
 ENV PATH="/app/.venv/bin:$PATH"
 
-# ── Backend 프로덕션 (깨끗한 slim 이미지, gcc 없음) ──────────────────────────
-FROM python:3.12-slim AS backend
+# ── Backend 공통 런타임 (애플리케이션 소스와 독립된 시스템 패키지) ───────────
+FROM python:3.12-slim AS backend-runtime
 
 WORKDIR /app
 
-# 빌더에서 컴파일된 가상환경만 복사 (gcc/libc6-dev 제외)
-COPY --from=backend-builder /app/.venv /app/.venv
-
-COPY backend/pyproject.toml backend/uv.lock ./
-COPY backend/app/ ./app/
-COPY backend/tofu/ ./tofu/
-COPY backend/scripts/ ./scripts/
-
-# .pyc 직접 사용으로 cold start 가속
-RUN python -m compileall -q app/
-
-# OpenTofu binary is selected from BuildKit's native target architecture and
-# checksum-verified in the isolated installer stage.
-COPY --from=tofu-installer /usr/local/bin/tofu /usr/local/bin/tofu
 
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg qemu-utils ceph-common \
     && rbd --version \
     && rados --version \
     && rm -rf /var/lib/apt/lists/*
 
-RUN rm -rf /tmp/* /root/.cache
-
 RUN adduser --disabled-password --gecos "" appuser \
-    && chown -R appuser:appuser /app
+    && chown appuser:appuser /app
 
 # uv 없이 직접 venv 바이너리 사용 → 시작 시간 ~300ms 단축
 ENV PATH="/app/.venv/bin:$PATH"
 
+# OpenTofu 변경도 OS 패키지 설치 캐시를 무효화하지 않는다.
+COPY --from=tofu-installer /usr/local/bin/tofu /usr/local/bin/tofu
+
+# ── Backend 프로덕션 (의존성 뒤에 소스, gcc 없음) ───────────────────────────
+FROM backend-runtime AS backend
+
+COPY --from=backend-builder --chown=appuser:appuser /app/.venv /app/.venv
+COPY --chown=appuser:appuser backend/pyproject.toml backend/uv.lock ./
+COPY --chown=appuser:appuser backend/tofu/ ./tofu/
+COPY --chown=appuser:appuser backend/scripts/ ./scripts/
+COPY --chown=appuser:appuser backend/app/ ./app/
+
 USER appuser
+# 소스 변경 시에는 앱 bytecode만 다시 생성한다.
+RUN python -m compileall -q app/
+
 
 CMD ["uvicorn", "app.middleware.traffic_address:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]
 
 # ── Backend 개발 스테이지 (docker-compose.override.yml에서 사용) ────────────
 # 소스코드를 볼륨 마운트하여 실시간 반영, reload 모드로 실행
 FROM backend-builder AS backend-dev
-COPY backend/app/ ./app/
 # dev 의존성(pytest 등) 설치
-RUN uv sync --frozen --no-install-project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --link-mode=copy
 RUN adduser --disabled-password --gecos "" appuser \
     && chown -R appuser:appuser /app
+COPY --chown=appuser:appuser backend/app/ ./app/
 USER appuser
 ENV PATH="/app/.venv/bin:$PATH"
 # named volume 캐시가 오래된 .venv를 갖고 있어도 의존성 자동 동기화
@@ -124,10 +127,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY services/afterglow-crypto/ /services/afterglow-crypto/
+COPY services/afterglow-crypto/pyproject.toml /services/afterglow-crypto/pyproject.toml
 COPY backend/pyproject.toml backend/uv.lock ./
 # worker 의존성 그룹만 설치 (fastapi/uvicorn/boto3 등 API 전용 패키지 제외)
-RUN uv sync --frozen --no-dev --no-install-project --only-group worker
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project --only-group worker \
+        --no-install-package afterglow-crypto --link-mode=copy
+COPY services/afterglow-crypto/afterglow_crypto/ /services/afterglow-crypto/afterglow_crypto/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project --only-group worker --link-mode=copy
 ENV PATH="/app/.venv/bin:$PATH"
 
 # ── Worker 프로덕션 (깨끗한 slim 이미지, OpenTofu/curl/unzip 없음) ───────────
@@ -135,85 +143,27 @@ FROM python:3.12-slim AS worker
 
 WORKDIR /app
 
-# worker-builder에서 컴파일된 경량 가상환경 복사
-COPY --from=worker-builder /app/.venv /app/.venv
+RUN adduser --disabled-password --gecos "" appuser \
+    && chown appuser:appuser /app
 
-COPY backend/pyproject.toml backend/uv.lock ./
-COPY backend/app/ ./app/
+# worker-builder에서 컴파일된 경량 가상환경 복사
+COPY --from=worker-builder --chown=appuser:appuser /app/.venv /app/.venv
+
+COPY --chown=appuser:appuser backend/pyproject.toml backend/uv.lock ./
+COPY --chown=appuser:appuser backend/app/ ./app/
 # tofu/ 디렉토리는 API 전용 (OpenTofu CLI 연동) — 워커에 불필요하여 제외
 
+USER appuser
 # .pyc 직접 사용으로 cold start 가속
 RUN python -m compileall -q app/
 
-RUN rm -rf /tmp/* /root/.cache
-
-RUN adduser --disabled-password --gecos "" appuser \
-    && chown -R appuser:appuser /app
 
 ENV PATH="/app/.venv/bin:$PATH"
 
-USER appuser
 
 # Default command for the sole remaining Afterglow integration worker.
 CMD ["python", "-m", "app.notion_worker"]
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Cloud Shell stage
-# Ephemeral Zun container with a persistent Cinder-backed home directory.
-# ─────────────────────────────────────────────────────────────────────────────
-
-FROM python:3.12-slim AS cloud-shell-builder
-
-WORKDIR /opt/cloud-shell
-
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libc6-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY cloud-shell/pyproject.toml cloud-shell/uv.lock ./
-COPY cloud-shell/src/ ./src/
-RUN UV_COMPILE_BYTECODE=1 uv sync --frozen --no-dev --no-editable \
-    && gcc -O2 -D_FORTIFY_SOURCE=3 -fstack-protector-strong -Wl,-z,relro,-z,now \
-        -o /tmp/afterglow-cloud-shell-bootstrap src/bootstrap_launcher.c
-
-FROM python:3.12-slim AS cloud-shell
-
-COPY --from=cloud-shell-builder /opt/cloud-shell/.venv /opt/cloud-shell/.venv
-COPY --from=cloud-shell-builder /tmp/afterglow-cloud-shell-bootstrap /usr/local/bin/afterglow-cloud-shell-bootstrap
-COPY cloud-shell/profile.sh /etc/profile.d/afterglow-cloud-shell.sh
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash \
-    ca-certificates \
-    curl \
-    dnsutils \
-    iproute2 \
-    iputils-ping \
-    jq \
-    less \
-    netcat-openbsd \
-    openssh-client \
-    procps \
-    util-linux \
-    && rm -rf /var/lib/apt/lists/* /tmp/* /root/.cache \
-    && groupadd --gid 1000 cloudshell \
-    && useradd --uid 1000 --gid 1000 --create-home --home-dir /home/cloudshell --shell /bin/bash cloudshell \
-    && chown root:cloudshell /usr/local/bin/afterglow-cloud-shell-bootstrap \
-    && chmod 4750 /usr/local/bin/afterglow-cloud-shell-bootstrap \
-    && chmod 0644 /etc/profile.d/afterglow-cloud-shell.sh
-
-ENV PATH="/opt/cloud-shell/.venv/bin:$PATH" \
-    HOME="/home/cloudshell" \
-    SHELL="/bin/bash"
-
-USER 1000:1000
-WORKDIR /home/cloudshell
-
-CMD ["sleep", "infinity"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Frontend 스테이지
@@ -233,14 +183,15 @@ FROM node:20-alpine AS frontend
 
 WORKDIR /app
 
-COPY --from=frontend-builder /app/build ./build
-COPY --from=frontend-builder /app/package.json /app/package-lock.json ./
-COPY --from=frontend-builder /app/scripts ./scripts
-RUN npm ci --omit=dev --ignore-scripts \
-    && adduser -D appuser \
-    && chown -R appuser:appuser /app
-
+RUN adduser -D appuser && chown appuser:appuser /app
 USER appuser
+
+COPY --chown=appuser:appuser frontend/package.json frontend/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
+
+COPY --from=frontend-builder --chown=appuser:appuser /app/build ./build
+COPY --chown=appuser:appuser frontend/scripts/ ./scripts
+
 
 # EXPOSE 3080
 ENV PORT=3080
@@ -257,9 +208,10 @@ COPY frontend/package.json frontend/bun.lock ./
 RUN bun install --production --frozen-lockfile
 
 FROM backend-builder AS native-dependencies
-RUN uv sync --frozen --no-dev --no-install-project --group worker
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project --group worker --link-mode=copy
 
-FROM backend AS native-vm
+FROM backend-runtime AS native-runtime
 USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends mariadb-server mariadb-client redis-server \
@@ -267,18 +219,24 @@ RUN apt-get update \
     && install -d -m 0700 -o appuser -g appuser /var/lib/afterglow \
     && install -d -m 0755 -o appuser -g appuser /app/logs \
     && ln -s /var/lib/afterglow/afterglow.conf /app/afterglow.conf
-COPY --from=native-dependencies /app/.venv /app/.venv
-COPY --from=native-node /usr/local/bin/node /usr/local/bin/node
-COPY --from=native-frontend-dependencies /app/frontend/node_modules /app/frontend/node_modules
-COPY --from=frontend-builder /app/build /app/frontend/build
-COPY frontend/package.json /app/frontend/package.json
-COPY frontend/scripts/ /app/frontend/scripts/
 ENV PORT=3080 HOST=0.0.0.0
+
+FROM native-runtime AS native-vm
+COPY --from=native-dependencies --chown=appuser:appuser /app/.venv /app/.venv
+COPY --from=native-node /usr/local/bin/node /usr/local/bin/node
+COPY --from=native-frontend-dependencies --chown=appuser:appuser /app/frontend/node_modules /app/frontend/node_modules
+COPY --from=frontend-builder --chown=appuser:appuser /app/build /app/frontend/build
+COPY --chown=appuser:appuser frontend/package.json /app/frontend/package.json
+COPY --chown=appuser:appuser frontend/scripts/ /app/frontend/scripts/
+COPY --from=backend --chown=appuser:appuser /app/app /app/app
+COPY --from=backend --chown=appuser:appuser /app/tofu /app/tofu
+COPY --from=backend --chown=appuser:appuser /app/scripts /app/scripts
+COPY --chown=appuser:appuser backend/pyproject.toml backend/uv.lock /app/
 USER appuser
 ENTRYPOINT ["/app/.venv/bin/python", "/app/scripts/native_vm.py"]
 CMD []
 
-# ── Native cloud VM: conventional Nova/KVM disk root derived from native-vm ───
+# ── Native cloud VM: 소스와 독립된 커널/부팅 패키지 설치 ────────────────────
 # Debian linux/amd64 only. Adds the same-distro kernel + initramfs, BIOS GRUB
 # modules, systemd as PID 1, cloud-init, sshd and afterglow-native.service
 # (the native supervisor as appuser). Still no container engine in the guest.
@@ -286,7 +244,7 @@ CMD []
 # scripts/export_native_cloud.py writes the BIOS-bootable raw disk. This is the
 # OCI root plus declared bootability additions, not the protected OCI-root
 # stage-1 path. The image ENTRYPOINT is unused when the disk boots /sbin/init.
-FROM native-vm AS native-cloud-vm
+FROM native-runtime AS native-cloud-runtime
 USER root
 ARG DEBIAN_FRONTEND=noninteractive
 RUN test "$(dpkg --print-architecture)" = amd64 \
@@ -327,6 +285,12 @@ RUN systemctl disable mariadb.service redis-server.service \
     && test -L /app/afterglow.conf \
     && test "$(readlink /app/afterglow.conf)" = /var/lib/afterglow/afterglow.conf \
     && test -z "$(ls -A /var/lib/afterglow)"
+
+FROM native-cloud-runtime AS native-cloud-vm
+COPY --from=native-node /usr/local/bin/node /usr/local/bin/node
+COPY --from=native-vm --chown=appuser:appuser /app /app
+ENTRYPOINT ["/app/.venv/bin/python", "/app/scripts/native_vm.py"]
+CMD []
 USER appuser
 
 # ── Frontend 개발 스테이지 (docker-compose.override.yml에서 사용) ────────────

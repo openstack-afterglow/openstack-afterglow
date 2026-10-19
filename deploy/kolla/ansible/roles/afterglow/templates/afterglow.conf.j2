@@ -1,42 +1,42 @@
-# Kolla base Afterglow configuration layer. Applied before the generated
-# operator and final Kolla layers; do not edit this generated file.
+# Native Kolla defaults regenerated on every configuration invocation.
+# Explicit operator TOML keys override this input before runtime serialization.
 
 # Application-only diagnostics; the operator layer may override this default.
 [DEFAULT]
 debug = false
 
 [openstack]
-auth_url = "{{ afterglow_keystone_auth_url }}"
-project_name = "{{ afterglow_service_project_name }}"
-project_domain_name = "{{ afterglow_keystone_project_domain_name }}"
-user_domain_name = "{{ afterglow_keystone_user_domain_name }}"
-region_name = "{{ afterglow_keystone_region_name }}"
-interface = "{{ afterglow_keystone_interface }}"
+auth_url = {{ afterglow_keystone_auth_url | to_json }}
+project_name = {{ afterglow_service_project_name | to_json }}
+project_domain_name = {{ afterglow_keystone_project_domain_name | to_json }}
+user_domain_name = {{ afterglow_keystone_user_domain_name | to_json }}
+region_name = {{ afterglow_keystone_region_name | to_json }}
+interface = {{ afterglow_keystone_interface | to_json }}
 insecure = {{ afterglow_openstack_insecure | bool | lower }}
-cacert = "{{ afterglow_openstack_cacert }}"
-username = "{{ afterglow_admin_keystone_user }}"
-password = "{{ afterglow_admin_keystone_password }}"
-service_project_id = "{{ afterglow_service_project_id }}"
-ceph_monitors = "{{ afterglow_ceph_monitors }}"
-manila_share_type = "{{ afterglow_manila_share_type }}"
+cacert = {{ afterglow_openstack_cacert | to_json }}
+username = {{ afterglow_admin_keystone_user | to_json }}
+password = {{ afterglow_admin_keystone_password | default('') | to_json }}
+service_project_id = {{ afterglow_service_project_id | to_json }}
+ceph_monitors = {{ afterglow_ceph_monitors | to_json }}
+manila_share_type = {{ afterglow_manila_share_type | to_json }}
 
 [ceph]
-rbd_conf_path = "{{ '/etc/ceph/ceph.conf' if afterglow_rbd_conf_source and afterglow_rbd_keyring_source else '' }}"
-rbd_keyring_path = "{{ '/etc/ceph/ceph.client.afterglow-rbd.keyring' if afterglow_rbd_conf_source and afterglow_rbd_keyring_source else '' }}"
+rbd_conf_path = {{ ('/etc/ceph/ceph.conf' if afterglow_rbd_conf_source and afterglow_rbd_keyring_source else '') | to_json }}
+rbd_keyring_path = {{ ('/etc/ceph/ceph.client.afterglow-rbd.keyring' if afterglow_rbd_conf_source and afterglow_rbd_keyring_source else '') | to_json }}
 rbd_client_name = "client.afterglow-rbd"
-rbd_cluster_fsid = "{{ afterglow_rbd_cluster_fsid }}"
+rbd_cluster_fsid = {{ afterglow_rbd_cluster_fsid | to_json }}
 rbd_command_timeout_seconds = 30
 [ceph.rbd_volume_pools]
 {% for backend, pool in afterglow_rbd_volume_pools | dictsort %}
-"{{ backend }}" = "{{ pool }}"
+{{ backend | to_json }} = {{ pool | to_json }}
 {% endfor %}
 
 [app]
 backend_port = {{ afterglow_backend_port }}
 frontend_port = {{ afterglow_frontend_port }}
-secret_key = "{{ afterglow_secret_key }}"
-public_api_base = "{{ afterglow_public_api_base }}"
-frontend_base_url = "{{ afterglow_public_endpoint_url }}"
+secret_key = {{ afterglow_secret_key | default('') | to_json }}
+public_api_base = {{ afterglow_public_api_base | to_json }}
+frontend_base_url = {{ afterglow_public_endpoint_url | to_json }}
 site_name = "Afterglow"
 site_description = "OpenStack VM + OverlayFS 배포 플랫폼"
 logo_path = "/afterglow-logo.svg"
@@ -46,10 +46,10 @@ favicon_path = "/favicon.svg"
 refresh_interval_ms = 5000
 
 [cache]
-redis_url = "{{ afterglow_redis_url }}"
+redis_url = {{ afterglow_redis_url | to_json }}
 sentinel_enabled = {{ afterglow_sentinel_enabled | bool | lower }}
-sentinel_master_name = "{{ afterglow_sentinel_master_name }}"
-sentinel_hosts = "{{ afterglow_sentinel_hosts }}"
+sentinel_master_name = {{ afterglow_sentinel_master_name | to_json }}
+sentinel_hosts = {{ afterglow_sentinel_hosts | to_json }}
 ttl_fast = 15
 ttl_normal = 30
 ttl_slow = 60
@@ -74,7 +74,7 @@ default_network_external_id = ""
 magnum = {{ afterglow_service_magnum_enabled | bool | lower }}
 manila = {{ afterglow_service_manila_enabled | bool | lower }}
 zun = {{ afterglow_service_zun_enabled | bool | lower }}
-cloud_shell = {{ (afterglow_service_cloud_shell_enabled | bool and afterglow_service_zun_enabled | bool) | lower }}
+cloud_shell = {{ afterglow_service_cloud_shell_enabled | bool | lower }}
 k3s = {{ afterglow_service_k3s_enabled | bool | lower }}
 swift = {{ afterglow_service_swift_enabled | bool | lower }}
 trove = {{ afterglow_service_trove_enabled | bool | lower }}
@@ -88,13 +88,15 @@ palimpsest_internal_url = {{ afterglow_service_palimpsest_internal_url | to_json
 {% endif %}
 
 [cloud_shell]
-service_project_id = "{{ afterglow_cloud_shell_project_id }}"
-image = "{{ afterglow_cloud_shell_image }}"
-network_id = "{{ afterglow_cloud_shell_network_id }}"
-security_group = "{{ afterglow_cloud_shell_security_group }}"
-auth_url = "{{ afterglow_cloud_shell_auth_url }}"
-interface = "{{ afterglow_cloud_shell_interface }}"
-volume_type = "{{ afterglow_cloud_shell_volume_type }}"
+service_project_id = {{ afterglow_cloud_shell_project_id | to_json }}
+image = {{ afterglow_cloud_shell_image | to_json }}
+image_pull_policy = {{ afterglow_cloud_shell_image_pull_policy | to_json }}
+registry_id = {{ afterglow_cloud_shell_registry_id | to_json }}
+network_id = {{ afterglow_cloud_shell_network_id | to_json }}
+security_group = {{ afterglow_cloud_shell_security_group | to_json }}
+auth_url = {{ afterglow_cloud_shell_auth_url | to_json }}
+interface = {{ afterglow_cloud_shell_interface | to_json }}
+volume_type = {{ afterglow_cloud_shell_volume_type | to_json }}
 home_size_gib = {{ afterglow_cloud_shell_home_size_gib }}
 cpu = {{ afterglow_cloud_shell_cpu }}
 memory_mib = {{ afterglow_cloud_shell_memory_mib }}
@@ -102,16 +104,15 @@ idle_timeout_seconds = {{ afterglow_cloud_shell_idle_timeout_seconds }}
 max_session_seconds = {{ afterglow_cloud_shell_max_session_seconds }}
 ticket_ttl_seconds = {{ afterglow_cloud_shell_ticket_ttl_seconds }}
 reconcile_interval_seconds = {{ afterglow_cloud_shell_reconcile_interval_seconds }}
-zun_websocket_origin = "{{ afterglow_cloud_shell_zun_websocket_origin }}"
+zun_websocket_origin = {{ afterglow_cloud_shell_zun_websocket_origin | to_json }}
 
 [instance_health]
-callback_base_url = "{{ afterglow_instance_health_callback_base_url }}"
+callback_base_url = {{ afterglow_instance_health_callback_base_url | to_json }}
 
 [k3s]
 # Shared legacy AES-256-GCM key; Drover owns its own kubeconfig encryption key.
-kubeconfig_encryption_key = "{{ afterglow_kubeconfig_encryption_key | default('') }}"
-# The GPU admission credential is injected through the container environment.
-gpu_admission_token = "{{ afterglow_k3s_gpu_admission_token | default('') }}"
+kubeconfig_encryption_key = {{ afterglow_kubeconfig_encryption_key | default('') | to_json }}
+gpu_admission_token = {{ afterglow_k3s_gpu_admission_token | default('') | to_json }}
 
 [builder]
 image_id = ""
@@ -119,30 +120,31 @@ flavor_id = ""
 network_id = ""
 
 [union]
-layer_store_rw_share_id = "{{ afterglow_share_layer_store_rw_id }}"
-layer_store_ro_share_id = "{{ afterglow_share_layer_store_ro_id }}"
-manifest_store_share_id = "{{ afterglow_share_manifest_store_id }}"
+layer_store_rw_share_id = {{ afterglow_share_layer_store_rw_id | to_json }}
+layer_store_ro_share_id = {{ afterglow_share_layer_store_ro_id | to_json }}
+manifest_store_share_id = {{ afterglow_share_manifest_store_id | to_json }}
+metadata_store_share_id = {{ afterglow_share_metadata_store_id | to_json }}
 
 [database]
-url = "{{ afterglow_database_url }}"
+url = {{ afterglow_database_url | to_json }}
 pool_size = 5
 max_overflow = 10
 auto_create_tables = false
 
 [cors]
-origins = "{{ afterglow_public_endpoint_url }}"
-
-[gitlab_oidc]
-enabled = false
-gitlab_url = "https://gitlab.com"
-client_id = ""
-client_secret = "{{ afterglow_oidc_client_secret | default('') }}"
-idp_id = "gitlab"
-protocol_id = "openid"
-redirect_uri = "{{ afterglow_public_endpoint_url }}/auth/gitlab/callback"
-scopes = "openid email profile read_user"
+origins = {{ afterglow_public_endpoint_url | to_json }}
 
 [logging]
 log_directory = "/var/log/kolla/afterglow_api"
 log_level = "INFO"
 max_bytes = 52428800
+
+[mcp]
+public_url = {{ afterglow_mcp_public_url | to_json }}
+lumen_service_token = {{ afterglow_lumen_mcp_service_token | to_json }}
+
+[traffic_analytics]
+frontend_ingest_key = {{ afterglow_traffic_analytics_ingest_key | to_json }}
+{% if afterglow_traffic_analytics_geoip_mmdb_source %}
+geoip_mmdb = {{ afterglow_traffic_analytics_geoip_mmdb_path | to_json }}
+{% endif %}

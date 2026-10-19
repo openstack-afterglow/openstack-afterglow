@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -9,9 +10,11 @@
 
 	let {
 		open = $bindable(false),
+		domainId,
 		onCreated,
 	}: {
 		open: boolean;
+		domainId: string;
 		onCreated: () => void;
 	} = $props();
 
@@ -21,8 +24,13 @@
 	let form = $state({ name: '', description: '', enabled: true });
 	let creating = $state(false);
 	let createError = $state('');
+	let generation = 0;
+	onDestroy(() => { generation += 1; });
 
 	$effect(() => {
+		void domainId; void token; void projectId;
+		generation += 1;
+		creating = false;
 		if (open) {
 			form = { name: '', description: '', enabled: true };
 			createError = '';
@@ -30,24 +38,31 @@
 	});
 
 	async function createProject() {
+		if (!domainId || creating) return;
+		const request = generation;
+		const requestDomain = domainId;
+		const requestToken = token;
+		const requestProject = projectId;
+		const owns = () => request === generation && open && domainId === requestDomain && token === requestToken && projectId === requestProject;
 		creating = true;
 		createError = '';
 		const namesScope = projectNames.scope(token, projectId);
 		projectNames.invalidate(namesScope);
 		try {
 			await api.post(
-				'/api/v1/admin/projects',
-				{ name: form.name, description: form.description || null, enabled: form.enabled },
-				token,
-				projectId,
+				`/api/v1/admin/projects?domain_id=${encodeURIComponent(requestDomain)}`,
+				{ name: form.name, description: form.description || null, enabled: form.enabled, domain_id: requestDomain },
+				requestToken,
+				requestProject,
 			);
 			projectNames.invalidate(namesScope);
+			if (!owns()) return;
 			open = false;
 			onCreated();
 		} catch (e) {
-			createError = e instanceof ApiError ? e.message : t('projectCreate.failed');
+			if (owns()) createError = e instanceof ApiError ? e.message : t('projectCreate.failed');
 		} finally {
-			creating = false;
+			if (owns()) creating = false;
 		}
 	}
 </script>

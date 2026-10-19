@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), p
 vi.mock('$lib/api/client', () => ({ api: mocks, ApiError: class ApiError extends Error {} }));
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable<AuthState>({ token: null, refreshToken: null, accessExpiresAt: null, userId: null, username: null,
-		projectId: null, projectName: null, availableProjects: [], roles: [], isSystemAdmin: false, federated: false }),
+		projectId: null, projectName: null, availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false }),
 	authReady: writable(true), projectSwitching: writable(false)
 }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({ createAutoRefresh: () => ({ active: false, intervalSeconds: 60, intervalOptions: [30, 60] }) }));
@@ -20,7 +20,7 @@ import Page from '../+page.svelte';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
 
 const admin: AuthState = { token: 'admin-token', refreshToken: null, accessExpiresAt: null, userId: 'admin', username: 'admin',
-	projectId: 'project-a', projectName: 'A', availableProjects: [], roles: ['admin'], isSystemAdmin: true, federated: false };
+	projectId: 'project-a', projectName: 'A', availableProjects: [], roles: ['admin'], isSystemAdmin: true, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false };
 function role(id: string, changes: Partial<ManagedRole> = {}): ManagedRole {
 	return { id, name: id, description: '', domain_id: null, protected: false, system_only: false,
 		implied_role_ids: [], inherited_role_ids: [], parent_role_ids: [], ...changes };

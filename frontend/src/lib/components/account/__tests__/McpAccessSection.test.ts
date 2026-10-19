@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { authReady, clearAuth, projectSwitching, setAuth, setProject } from '$lib/stores/auth';
+import { acceptAuthVerification, authReady, clearAuth, getAuthVerificationEpoch, projectSwitching, setAuth, setProject } from '$lib/stores/auth';
 import { siteConfig } from '$lib/config/site';
 import { t } from '$lib/i18n/ns/account';
 import { initLocale, intlLocale } from '$lib/i18n/runtime.svelte';
@@ -102,6 +102,12 @@ function deferred<T>() {
 	return Promise.withResolvers<T>();
 }
 
+function verifyAuth() {
+	// Model /auth/me acceptance for the current credentials and scope, never for an old epoch.
+	// Keep this separate from setAuth/setProject: unverified boundaries must stay unverified.
+	expect(acceptAuthVerification(getAuthVerificationEpoch(), {})).toBe(true);
+}
+
 describe('McpAccessSection', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -120,7 +126,7 @@ describe('McpAccessSection', () => {
 			accessExpiresAt: null,
 			roles: [],
 		});
-		authReady.set(true);
+		verifyAuth();
 		projectSwitching.set(false);
 		siteConfig.update((config) => ({ ...config, mcp_url: '', services: { ...config.services, mcp: true } }));
 		api.get.mockImplementation((path: string) => Promise.resolve(accountResponse(path)));
@@ -245,6 +251,26 @@ describe('McpAccessSection', () => {
 		expect(screen.queryByRole('button', { name: t('mcp.retryList') })).toBeNull();
 	});
 
+	it.each(['token', 'project'] as const)('keeps unverified %s credentials private until current verification is accepted', async (boundary) => {
+		const oldEpoch = getAuthVerificationEpoch();
+		if (boundary === 'token') setAuth({ token: 'unverified-token' });
+		else setProject('other', 'Other project');
+		// Neither stored credentials nor proof from the preceding scope makes this owner ready.
+		expect(acceptAuthVerification(oldEpoch, {})).toBe(false);
+		render(McpAccessSection);
+		await act(async () => {});
+		expect(screen.queryByRole('heading', { name: t('mcp.title') })).toBeNull();
+		expect(screen.queryByRole('button', { name: t('mcp.methodApiKey') })).toBeNull();
+		expect(api.get).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
+		expect(api.put).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+		verifyAuth();
+		await screen.findByText(t('mcp.emptyOAuth'));
+		expect(screen.getByRole('heading', { name: t('mcp.title') })).toBeTruthy();
+		expect(api.get).toHaveBeenCalledWith('/api/v1/auth/mcp-projects', boundary === 'token' ? 'unverified-token' : 'token', boundary === 'project' ? 'other' : 'project', scopedGetOptions);
+	});
+
 	it.each(['oauth', 'api'] as const)('invalidates a pending %s removal dialog on own-record refresh, project ABA, token or user change', async (selected) => {
 		for (const boundary of ['refresh', 'project', 'token', 'user'] as const) {
 			const confirmation = deferred<boolean>();
@@ -261,12 +287,14 @@ describe('McpAccessSection', () => {
 			else if (boundary === 'project') { setProject('other', 'Other project'); setProject('project', 'Project'); }
 			else if (boundary === 'token') setAuth({ token: 'fresh-token' });
 			else setAuth({ token: 'token', userId: 'fresh-user' });
+			if (boundary !== 'refresh') verifyAuth();
 			await screen.findByText('Fresh credential');
 			await act(async () => { confirmation.resolve(true); });
 			expect(api.delete).not.toHaveBeenCalled();
 			expect(screen.getByText('Fresh credential')).toBeTruthy();
 			cleanup();
 			setAuth({ token: 'token', userId: 'user', projectId: 'project' });
+			verifyAuth();
 		}
 	});
 
@@ -568,6 +596,7 @@ describe('McpAccessSection', () => {
 			view.unmount();
 			await renderApi();
 		}
+		if (boundary !== 'unmount') verifyAuth();
 		await createButton();
 		expect(oldSignal.aborted).toBe(true);
 		await act(async () => { oldProjects.resolve([{ id: 'old-id', name: 'Stale membership' }]); });
@@ -599,6 +628,7 @@ describe('McpAccessSection', () => {
 		await screen.findByText('Lumen');
 		api.get.mockImplementation((path: string) => Promise.resolve(accountResponse(path)));
 		setAuth({ token: 'fresh-token' });
+		verifyAuth();
 		await createButton();
 		await act(async () => { oldProjects.reject(new Error('Old load failed')); });
 		expect(screen.queryByText(t('mcp.projectsLoadFailed'))).toBeNull();
@@ -696,6 +726,11 @@ describe('McpAccessSection', () => {
 		await fireEvent.click(await createButton());
 		await screen.findByText('mcp-afgl-secret-value');
 		setProject('other', 'Other project');
+		verifyAuth();
+		await waitFor(() => {
+			expect(api.get).toHaveBeenCalledWith('/api/v1/auth/mcp-tokens', 'token', 'other', scopedGetOptions);
+			expect(api.get).toHaveBeenCalledWith('/api/v1/auth/mcp-oauth/grants', 'token', 'other', scopedGetOptions);
+		});
 		await waitFor(() => {
 			expect(screen.queryByText('Lumen')).toBeNull();
 			expect(screen.queryByText('mcp-afgl-secret-value')).toBeNull();
@@ -724,8 +759,11 @@ describe('McpAccessSection', () => {
 		await screen.findByText('Original A token');
 		await fireEvent.click(screen.getByRole('button', { name: t('mcp.revoke') }));
 		setProject('other', 'Other project');
+		verifyAuth();
 		await waitFor(() => expect(screen.queryByText('Original A token')).toBeNull());
+		await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/v1/auth/mcp-tokens', 'token', 'other', scopedGetOptions));
 		setProject('project', 'Project');
+		verifyAuth();
 		await screen.findByText('Fresh A token');
 		confirm.resolve(true);
 		bTokens.resolve([{ ...activeToken, name: 'Late B token' }]);
@@ -809,6 +847,8 @@ describe('McpAccessSection', () => {
 		await fireEvent.click(screen.getByRole('button', { name: t('mcp.verify') }));
 		const signal = api.post.mock.calls[0][4].signal as AbortSignal;
 		setProject('other', 'Other project');
+		// Reverify before the DOM flush so the retained input still proves the draft was cleared.
+		verifyAuth();
 		expect(signal.aborted).toBe(true);
 		await waitFor(() => expect(input.value).toBe(''));
 		await act(async () => {
@@ -818,7 +858,7 @@ describe('McpAccessSection', () => {
 		expect(screen.queryByText(t('mcp.verifying'))).toBeNull();
 	});
 
-	it.each(['user', 'token', 'project-aba', 'logout', 'unverified', 'switching', 'disabled', 'unmount'] as const)('drops one-time issuance and saved credentials on %s transition', async (transition) => {
+	it.each(['user', 'token', 'project-aba', 'logout', 'unverified', 'switching', 'disabled', 'unmount', 'unverified-token', 'unverified-project'] as const)('drops one-time issuance and saved credentials on %s transition', async (transition) => {
 		const issuance = deferred<typeof activeToken & { token: string }>();
 		api.post.mockReturnValue(issuance.promise);
 		const view = await renderApi();
@@ -834,10 +874,13 @@ describe('McpAccessSection', () => {
 				setProject('other', 'Other project');
 				setProject('project', 'Project');
 			}
+			verifyAuth();
 			await screen.findByText('New owner token');
 		} else if (transition === 'logout') clearAuth();
 		else if (transition === 'unmount') view.unmount();
 		else if (transition === 'unverified') authReady.set(false);
+		else if (transition === 'unverified-token') setAuth({ token: 'other-token' });
+		else if (transition === 'unverified-project') setProject('other', 'Other project');
 		else if (transition === 'switching') projectSwitching.set(true);
 		else siteConfig.update((config) => ({ ...config, services: { ...config.services, mcp: false } }));
 		await waitFor(() => expect(screen.queryByText('Lumen')).toBeNull());
@@ -1072,6 +1115,7 @@ describe('McpAccessSection', () => {
 				} else if (boundary === 'scope-aba') {
 					setProject('other', 'Other project');
 					setProject('project', 'Project');
+					verifyAuth();
 					await createButton();
 				} else if (source === 'issued') {
 					await fireEvent.click(screen.getByRole('button', { name: t('mcp.done') }));
@@ -1202,6 +1246,7 @@ describe('McpAccessSection', () => {
 				} else if (boundary === 'scope-aba') {
 					setProject('other', 'Other project');
 					setProject('project', 'Project');
+					verifyAuth();
 					await screen.findByRole('button', { name: t('mcp.refresh') });
 				} else {
 					siteConfig.update((config) => ({ ...config, mcp_url: 'https://changed.example.test/mcp' }));
@@ -1387,6 +1432,7 @@ describe('McpAccessSection', () => {
 		generation = 'Current';
 		setProject('other', 'Other project');
 		setProject('project', 'Project');
+		verifyAuth();
 		await screen.findByText('Current OAuth client');
 		await act(async () => { confirmation.resolve(true); });
 		expect(api.delete).not.toHaveBeenCalled();
@@ -1473,6 +1519,7 @@ describe('McpAccessSection', () => {
 		await fireEvent.input(screen.getByLabelText(t('mcp.customExpiry')), { target: { value: '2028-05-01T10:00' } });
 		await fireEvent.input(screen.getByLabelText(t('mcp.tokenLabel')), { target: { value: 'old-owner-private-key' } });
 		setAuth({ token: 'new-token' });
+		verifyAuth();
 		await createButton();
 		expect(screen.getByRole('button', { name: t('mcp.methodApiKey') }).getAttribute('aria-pressed')).toBe('true');
 		expect((screen.getByRole('textbox', { name: t('mcp.name') }) as HTMLInputElement).value).toBe('Lumen');

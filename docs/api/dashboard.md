@@ -143,6 +143,11 @@ Nova 총합 키는 `total_hours`, `total_vcpus_usage`, `total_memory_mb_usage`, 
 
 기간별 인스턴스 시간과 vCPU 시간을 반환합니다. `vcpu_hours`는 Nova SDK의 `total_vcpus_usage`에서 읽습니다.
 
+### Native 실측 추세와 인스턴스 사용률
+
+`GET /api/v1/dashboard/metrics/trend`와 `GET /api/v1/dashboard/usage-spark`는 현재 프로젝트에 속한 native instance/child resource의 CPU·guest RAM·network 실측을 우선 사용하고 지표별 Prometheus fallback을 유지합니다. 각 출력은 `source`, `unit`, `status`, `native_status`를 보존하며 부족한 시점은 null gap으로 남깁니다. Network 추세는 `KiB/s`이고 guest filesystem 사용률은 native disk allocation으로 대체하지 않습니다. `usage-stats`의 인스턴스별 실측에도 같은 출처·상태를 표시하지만 Nova instance/vCPU-hour와 quota allocation의 의미는 유지합니다. Native 응답은 전역 dashboard cache에서 재생하지 않고 no-store로 전달합니다. 연결의 실제 인증 프로젝트가 요청 범위와 맞지 않으면 native 열거하지 않습니다. Browser는 token/identity/project/instance/range 전환 즉시 이전 private 그래프를 가리고 늦은 응답을 폐기합니다.
+
+
 ### GET /api/v1/dashboard/usage-report
 
 `range=7d|14d|30d|90d`(기본 `30d`)를 사용합니다. `start`·`end`는 날짜이며, 조회 끝은 오늘 00:00 UTC입니다. `Cache-Control: private, max-age=60`을 반환합니다. 인증·프로젝트 범위와 `refresh=true` 캐시 갱신 규칙은 다른 대시보드 요청과 같습니다.

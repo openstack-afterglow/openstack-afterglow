@@ -1,7 +1,7 @@
-import { grantLumen, pendingLumen } from './lumenPermissionFixture';
+import { grantLumen, pendingLumen, refreshLumenAuth, setVerifiedLumenActor } from './lumenPermissionFixture';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { auth, authReady, projectSwitching } from '$lib/stores/auth';
+import { authReady, projectSwitching } from '$lib/stores/auth';
 import type * as RealtimeModule from '$lib/api/realtimeVoice';
 import RealtimeVoice from '../RealtimeVoice.svelte';
 import { t } from '$lib/i18n/ns/chat-studio';
@@ -18,7 +18,7 @@ const capability = (priced = true) => ({ model_id: 17, model_kind: 'realtime', m
 	available_voices: ['alloy', 'nova'], default_voice: 'alloy', input_sample_rate_hz: 24000,
 	output_sample_rate_hz: 24000, max_duration_seconds: 900 });
 const user = (projectId: string) => ({ token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'owner',
-	username: 'tester', projectId, projectName: projectId, availableProjects: [], roles: [], isSystemAdmin: false, federated: false });
+	username: 'tester', projectId, projectName: projectId, availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', identityDomainId: 'domain-1', identityDomainName: 'Domain', isDomainManager: false });
 
 class Socket {
 	static OPEN = 1;
@@ -65,7 +65,7 @@ beforeEach(() => {
 	Socket.instances = [];
 	Capture.current = null;
 	Context.current = null;
-	auth.set(user('project-1'));
+	setVerifiedLumenActor(user('project-1'));
 	calls.models.mockResolvedValue([model()]);
 	calls.capabilities.mockResolvedValue(capability());
 	calls.createSession.mockResolvedValue({ session_id: 'session-1', status: 'ready', provider_type: 'openai', ticket: 'opaque', websocket_path: '/api/v1/chat/realtime/ws' });
@@ -103,7 +103,7 @@ describe('Realtime Voice', () => {
 		const context = Context.current;
 		const capture = Capture.current;
 		pendingLumen(permissionError);
-		auth.set({ ...user('project-1'), token: 'refreshed-token' });
+		refreshLumenAuth('refreshed-token');
 		await waitFor(() => expect(track.enabled).toBe(false));
 		expect(track.stop).not.toHaveBeenCalled();
 		expect(context?.close).not.toHaveBeenCalled();
@@ -160,8 +160,8 @@ describe('Realtime Voice', () => {
 		pendingLumen();
 		await waitFor(() => expect(track.enabled).toBe(false));
 		if (transition === 'revocation') grantLumen('lumen-chat_user');
-		else if (transition === 'project') auth.set(user('project-2'));
-		else if (transition === 'user') auth.set({ ...user('project-1'), userId: 'another-user' });
+		else if (transition === 'project') setVerifiedLumenActor(user('project-2'));
+		else if (transition === 'user') setVerifiedLumenActor({ ...user('project-1'), userId: 'another-user' });
 		else if (transition === 'logout') authReady.set(false);
 		else projectSwitching.set(true);
 		await waitFor(() => expect(track.stop).toHaveBeenCalled());
@@ -287,7 +287,7 @@ describe('Realtime Voice', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '마이크 끄기' }));
 		Capture.current?.port.onmessage?.({ data: pcm.buffer } as MessageEvent<ArrayBuffer>);
 		expect(socket.sent.filter((frame) => JSON.parse(frame).type === 'audio.input.append')).toHaveLength(1);
-		auth.set(user('project-2'));
+		setVerifiedLumenActor(user('project-2'));
 		await waitFor(() => expect(stop).toHaveBeenCalled());
 		expect(Context.current?.close).toHaveBeenCalled();
 		expect(socket.closed).toBe(true);

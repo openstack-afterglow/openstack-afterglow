@@ -66,13 +66,13 @@ describe('WizardStep6Review ordinary VM', () => {
 	it('routes every ordinary review edit to the retained step IDs', async () => {
 		await renderReview();
 		const editButtons = screen.getAllByRole('button', { name: t('review.edit') });
-		expect(editButtons).toHaveLength(6);
+		expect(editButtons).toHaveLength(7);
 		const destinations = [];
 		for (const button of editButtons) {
 			await fireEvent.click(button);
 			destinations.push(get(wizard).step);
 		}
-		expect(destinations).toEqual([5, 1, 2, 5, 5, 5]);
+		expect(destinations).toEqual([5, 2, 1, 5, 5, 5, 5]);
 	});
 
 	it.each(['existing-root', null])('reviews the existing boot volume with name %s without image-only root disk settings', async volumeName => {
@@ -91,6 +91,16 @@ describe('WizardStep6Review ordinary VM', () => {
 		expect(screen.getAllByRole('button', { name: t('review.edit') })).toHaveLength(5);
 		await fireEvent.click(within(bootVolume).getByRole('button', { name: t('review.edit') }));
 		expect(get(wizard).step).toBe(1);
+	});
+
+	it('returns to configuration with independent protection choices intact', async () => {
+		wizard.update(w => ({ ...w, autoSnapshot: true, autoBackup: false, volumeProtectionForce: true }));
+		await renderReview();
+		const protection = reviewRow(t('config.protection.title'));
+		expect(within(protection).getByText(t('review.protection.snapshot', { enabled: 'yes' }))).toBeTruthy();
+		expect(within(protection).getByText(t('review.protection.backup', { enabled: 'no' }))).toBeTruthy();
+		await fireEvent.click(within(protection).getByRole('button', { name: t('review.edit') }));
+		expect(get(wizard)).toMatchObject({ step: 5, autoSnapshot: true, autoBackup: false, volumeProtectionForce: true });
 	});
 
 	it('keeps ordinary file storage mounts in review and routes their edit to config', async () => {

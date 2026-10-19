@@ -1,15 +1,21 @@
 ---
 - name: Manila | Initialize share IDs dict
   ansible.builtin.set_fact:
-    afterglow_share_ids: {}
+    afterglow_share_ids:
+      layer_store_rw: "{{ afterglow_effective_config.union.layer_store_rw_share_id | default('') }}"
+      layer_store_ro: "{{ afterglow_effective_config.union.layer_store_ro_share_id | default('') }}"
+      manifest_store: "{{ afterglow_effective_config.union.manifest_store_share_id | default('') }}"
+      metadata_store: "{{ afterglow_effective_config.union.metadata_store_share_id | default('') }}"
   run_once: true
   delegate_to: "{{ groups['afterglow'][0] }}"
+  no_log: true
 
 - name: Manila | Check/create shares and access rules
   ansible.builtin.include_tasks: preconditions_manila_share.yml
   loop: "{{ afterglow_manila_shares | dict2items }}"
   loop_control:
     loop_var: share_item
+  when: afterglow_share_ids[share_item.key] | default('') | length == 0
 
 - name: Manila | Expand share IDs to individual facts
   ansible.builtin.set_fact:
@@ -19,6 +25,7 @@
     afterglow_share_metadata_store_id: "{{ afterglow_share_ids.metadata_store | default('') }}"
   run_once: true
   delegate_to: "{{ groups['afterglow'][0] }}"
+  no_log: true
 
 - name: Manila | Verify all share IDs are populated
   ansible.builtin.assert:

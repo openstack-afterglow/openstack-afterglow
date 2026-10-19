@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { writable, type Writable } from 'svelte/store';
-import type { K3sCluster } from '$lib/types/k3s';
+import type { K3sCluster, SecretInfo } from '$lib/types/k3s';
 
 const mocks = vi.hoisted(() => ({
 	get: vi.fn(), post: vi.fn(), patch: vi.fn(), downloadBlob: vi.fn(), fetchWithAuth: vi.fn(),
@@ -43,9 +43,9 @@ const form = { name: 'demo', agent_count: 1, agent_flavor_id: '', network_id: ''
 function grant(...leaves: string[]) {
 	(serviceCapabilities as Writable<(leaf: string) => boolean>).set(leaf => leaves.includes(leaf));
 }
-function setup(adminMode = false) {
+function setup(adminMode = false, selectedProjectId = 'project-a') {
 	let token = 'token-a';
-	let projectId = 'project-a';
+	let projectId = selectedProjectId;
 	const opts = { token: () => token, projectId: () => projectId, userId: () => 'user-a' };
 	return {
 		list: createK3sClusterListController({ ...opts, progress: createK3sProgress() }),
@@ -67,6 +67,130 @@ beforeEach(() => {
 });
 
 describe('Drover handlers independently enforce current exact leaves', () => {
+	it.each([true, false].flatMap(isNew => ['reset', 'namespace-aba', 'revocation'].map(transition => ({ isNew, transition }))))('does not publish a late Secret mutation (create=$isNew) after $transition', async ({ isNew, transition }) => {
+		grant('drover-workloads_editor');
+		const { detail } = setup(true, 'resource-project');
+		await detail.loadCluster();
+		detail.selectedNamespace = 'private';
+		const before: SecretInfo = { name: 'credentials', namespace: 'private', type: 'Opaque', data: { value: 'before' }, labels: {}, annotations: {}, created_at: '' };
+		mocks.secrets.mockResolvedValue([before]);
+		await detail.loadSecrets();
+		const pending = Promise.withResolvers<SecretInfo>();
+		(isNew ? mocks.createSecret : mocks.updateSecret).mockReturnValueOnce(pending.promise);
+		const saving = detail.saveSecret('credentials', 'Opaque', { value: 'stale-private-value' }, isNew);
+		if (transition === 'reset') { detail.reset(); await detail.loadCluster(); detail.selectedNamespace = 'private'; await detail.loadSecrets(); }
+		else if (transition === 'namespace-aba') { detail.selectedNamespace = 'other'; detail.selectedNamespace = 'private'; await detail.loadSecrets(); }
+		else grant();
+		const current = [...detail.secrets];
+		pending.resolve({ ...before, data: { value: 'stale-private-value' } });
+		await saving;
+		expect(detail.secrets).toEqual(current);
+	});
+	it.each(['secret', 'configmap'].flatMap(resource => ['reset', 'namespace-aba', 'revocation', 'project'].map(transition => ({ resource, transition }))))('does not retarget a confirmed $resource deletion after $transition', async ({ resource, transition }) => {
+		grant('drover-workloads_editor');
+		const { detail, switchScope } = setup(true, 'resource-project');
+		await detail.loadCluster();
+		detail.selectedNamespace = 'private';
+		const pending = Promise.withResolvers<boolean>();
+		mocks.confirm.mockReturnValueOnce(pending.promise);
+		const deleting = resource === 'secret' ? detail.deleteSecretItem('credentials') : detail.deleteCm('settings');
+		if (transition === 'reset') { detail.reset(); await detail.loadCluster(); detail.selectedNamespace = 'private'; }
+		else if (transition === 'namespace-aba') { detail.selectedNamespace = 'other'; detail.selectedNamespace = 'private'; }
+		else if (transition === 'project') switchScope();
+		else grant();
+		pending.resolve(true);
+		await deleting;
+		expect(resource === 'secret' ? mocks.deleteSecret : mocks.deleteCm).not.toHaveBeenCalled();
+	});
+	it.each(['secret', 'configmap'])('keeps %s deletion confirmation and its exact original target in the controller', async resource => {
+		grant('drover-workloads_editor');
+		const { detail } = setup(true, 'resource-project');
+		await detail.loadCluster();
+		detail.selectedNamespace = 'private';
+		if (resource === 'secret') await detail.deleteSecretItem('credentials');
+		else await detail.deleteCm('settings');
+		expect(mocks.confirm).toHaveBeenCalledOnce();
+		expect(resource === 'secret' ? mocks.deleteSecret : mocks.deleteCm).toHaveBeenCalledWith('c', 'private', resource === 'secret' ? 'credentials' : 'settings', 'token-a', 'resource-project');
+	});
+	it('does not disclose a late private Secret after the selected session scope resets on the same resource project', async () => {
+		grant('drover-workloads_editor');
+		const { detail } = setup(true, 'resource-project');
+		await detail.loadCluster();
+		detail.selectedNamespace = 'private';
+		const old = Promise.withResolvers<SecretInfo[]>();
+		mocks.secrets.mockReturnValueOnce(old.promise);
+		const loading = detail.loadSecrets();
+		detail.reset();
+		await detail.loadCluster();
+		detail.selectedNamespace = 'private';
+		old.resolve([{ name: 'old-owner-secret', namespace: 'private', type: 'Opaque', data: { value: 'private' }, labels: {}, annotations: {}, created_at: '' }]);
+		await loading;
+		expect(detail.secrets).toEqual([]);
+	});
+	it('does not republish administrator detail after a reset even when the same resource scope is selected again', async () => {
+		const { detail } = setup(true, 'resource-project');
+		const old = Promise.withResolvers<K3sCluster>();
+		mocks.get.mockReturnValueOnce(old.promise);
+		const loading = detail.loadCluster();
+		detail.reset();
+		await detail.loadCluster();
+		old.resolve({ ...cluster, name: 'stale-owner-resource' });
+		await loading;
+		expect(detail.cluster?.name).toBe('demo');
+	});
+	it('uses the administrator resource project for secondary calls and graded credentials without impersonating its owner', async () => {
+		grant('drover-inventory_reader', 'drover-clusters_editor', 'drover-clusters_admin', 'drover-workloads_editor', 'drover-access_admin');
+		const { detail } = setup(true, 'resource-project');
+		await detail.loadCluster();
+		await detail.loadHealth();
+		await detail.triggerHealthCheck();
+		mocks.namespaces.mockResolvedValue(['private']);
+		await detail.loadNamespaces();
+		await detail.loadConfigMaps();
+		await detail.loadSecrets();
+		await detail.attachInterface('server', 'net');
+		detail.incrementScale();
+		await detail.applyScale();
+		await detail.checkKubeconfig();
+		await detail.downloadKubeconfig();
+		expect(detail.projectId).toBe('resource-project');
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/admin/k3s-clusters/c', 'token-a', 'resource-project');
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/k3s/clusters/c/health', 'token-a', 'resource-project');
+		expect(mocks.post).toHaveBeenCalledWith('/api/v1/k3s/clusters/c/health/check', {}, 'token-a', 'resource-project');
+		expect(mocks.namespaces).toHaveBeenCalledWith('c', 'token-a', 'resource-project');
+		expect(mocks.configMaps).toHaveBeenCalledWith('c', 'private', 'token-a', 'resource-project');
+		expect(mocks.secrets).toHaveBeenCalledWith('c', 'private', 'token-a', 'resource-project');
+		expect(mocks.attach).toHaveBeenCalledWith('c', 'server', 'net', 'token-a', 'resource-project');
+		expect(mocks.patch).toHaveBeenCalledWith('/api/v1/admin/k3s-clusters/c/scale', { agent_count: 2 }, 'token-a', 'resource-project');
+		expect(mocks.downloadBlob).toHaveBeenLastCalledWith('/api/v1/k3s/clusters/c/kubeconfig?grade=editor', 'token-a', 'resource-project');
+		mocks.confirm.mockClear();
+		await detail.downloadKubeconfig(true);
+		expect(mocks.confirm).toHaveBeenCalledOnce();
+		expect(mocks.downloadBlob).toHaveBeenLastCalledWith('/api/v1/k3s/clusters/c/kubeconfig?grade=admin', 'token-a', 'resource-project');
+		await detail.deleteCluster();
+		expect(mocks.stream).toHaveBeenCalledWith('/api/v1/admin/k3s-clusters/c/delete-async', { method: 'POST', token: 'token-a', projectId: 'resource-project' });
+	});
+	it('discards same-target credentials and confirmations after the panel generation is reset', async () => {
+		grant('drover-access_admin', 'drover-clusters_admin');
+		const { detail } = setup(true, 'resource-project');
+		await detail.loadCluster();
+		const pending = Promise.withResolvers<{ blob: Blob }>();
+		mocks.downloadBlob.mockReturnValueOnce(pending.promise);
+		const downloading = detail.downloadKubeconfig();
+		detail.reset();
+		await detail.loadCluster();
+		pending.resolve({ blob: new Blob(['stale-credential']) });
+		await downloading;
+		expect(mocks.download).not.toHaveBeenCalled();
+		const confirmation = Promise.withResolvers<boolean>();
+		mocks.confirm.mockReturnValueOnce(confirmation.promise);
+		const deleting = detail.deleteCluster();
+		detail.reset();
+		await detail.loadCluster();
+		confirmation.resolve(true);
+		await deleting;
+		expect(mocks.stream).not.toHaveBeenCalled();
+	});
 	it('never starts a privileged native request for a plain member without service leaves', async () => {
 		const { list, detail } = setup();
 		await detail.loadCluster();

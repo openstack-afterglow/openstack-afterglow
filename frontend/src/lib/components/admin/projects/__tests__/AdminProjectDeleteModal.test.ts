@@ -18,7 +18,7 @@ vi.mock('$lib/stores/projectNames', () => ({ projectNames: { scope: mocks.scope,
 import AdminProjectDeleteModal from '../AdminProjectDeleteModal.svelte';
 
 const initialAuth = get(auth);
-const project = { id: 'p1', name: 'demo', description: '', enabled: true, domain_id: null, created_at: null };
+const project = { id: 'p1', name: 'demo', description: '', enabled: true, domain_id: 'domain-a', created_at: null };
 const otherProject = { ...project, id: 'p2', name: 'other' };
 const emptyResource = { kind: 'instances', service: 'compute', status: 'ok', count: 0, samples: [], reason: null };
 const remainingResource = { ...emptyResource, count: 1, samples: [{ id: 'vm-1', name: 'web-1', status: 'SHUTOFF' }] };
@@ -31,7 +31,7 @@ const unknownReport = () => ({ ...emptyReport(), can_delete: false, resources: [
 const deleteButton = () => screen.getByRole('button', { name: '삭제' }) as HTMLButtonElement;
 const recheckButton = () => screen.getByRole('button', { name: '리소스 다시 확인' }) as HTMLButtonElement;
 function openModal() {
-	const props = { project, onClose: vi.fn(), onSuccess: vi.fn() };
+	const props = { project, domainId: 'domain-a', onClose: vi.fn(), onSuccess: vi.fn() };
 	return { ...render(AdminProjectDeleteModal, props), props };
 }
 async function waitUntilReady() {
@@ -63,7 +63,7 @@ describe('AdminProjectDeleteModal resource inspection', () => {
 		expect(deleteButton().disabled).toBe(true);
 		expect(recheckButton().disabled).toBe(true);
 		expect(screen.queryByText(/확인 가능한 프로젝트 리소스가 모두 비어/)).toBeNull();
-		expect(mocks.get).toHaveBeenCalledWith('/api/v1/admin/projects/p1/deletion-check', 'token', 'admin-project', {
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/admin/projects/p1/deletion-check?domain_id=domain-a', 'token', 'admin-project', {
 			refresh: true, signal: expect.any(AbortSignal),
 		});
 		await fireEvent.click(deleteButton());
@@ -242,7 +242,7 @@ describe('AdminProjectDeleteModal resource inspection', () => {
 		await fireEvent.keyDown(document, { key: 'Escape' });
 		await fireEvent.click(screen.getByRole('button', { name: '취소' }));
 		expect(mocks.delete).toHaveBeenCalledOnce();
-		expect(mocks.delete).toHaveBeenCalledWith('/api/v1/admin/projects/p1', 'token', 'admin-project');
+		expect(mocks.delete).toHaveBeenCalledWith('/api/v1/admin/projects/p1?domain_id=domain-a', 'token', 'admin-project', { replayOnUnauthorized: false });
 		expect(view.props.onClose).not.toHaveBeenCalled();
 		expect(recheckButton().disabled).toBe(true);
 		expect(mocks.scope).toHaveBeenCalledWith('token', 'admin-project');
@@ -261,7 +261,7 @@ describe('AdminProjectDeleteModal resource inspection', () => {
 		mocks.get.mockResolvedValue(emptyReport('p2'));
 		const nextClose = vi.fn();
 		const nextSuccess = vi.fn();
-		await view.rerender({ project: otherProject, onClose: nextClose, onSuccess: nextSuccess });
+		await view.rerender({ project: otherProject, domainId: 'domain-a', onClose: nextClose, onSuccess: nextSuccess });
 		await waitUntilReady();
 		deletion.resolve({ status: 'deleted' });
 		await tick();
@@ -382,6 +382,39 @@ describe('AdminProjectDeleteModal resource inspection', () => {
 		await fireEvent.click(deleteButton());
 		expect(await screen.findByText('삭제 실패')).toBeTruthy();
 		expect(screen.queryByText(/internal provider failure/)).toBeNull();
+		expect(deleteButton().disabled).toBe(true);
+	});
+
+	it('rejects absent or foreign project domain before inspection', async () => {
+		const view = openModal();
+		await waitUntilReady();
+		mocks.get.mockClear();
+		await view.rerender({ ...view.props, domainId: 'domain-b' });
+		expect(deleteButton().disabled).toBe(true);
+		expect(mocks.get).not.toHaveBeenCalled();
+		await fireEvent.click(deleteButton());
+		expect(mocks.delete).not.toHaveBeenCalled();
+	});
+
+	it('discards a late domain check even when the same project ID is reused', async () => {
+		const first = Promise.withResolvers<unknown>();
+		const second = Promise.withResolvers<unknown>();
+		mocks.get.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+		const view = openModal();
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledOnce());
+		await view.rerender({ ...view.props, domainId: 'domain-b', project: { ...project, domain_id: 'domain-b' } });
+		first.resolve(emptyReport());
+		await tick();
+		expect(deleteButton().disabled).toBe(true);
+		expect(mocks.get.mock.calls[1][0]).toContain('domain_id=domain-b');
+		second.resolve(emptyReport());
+		await waitUntilReady();
+	});
+
+	it('preserves native inspection denials as visible errors', async () => {
+		mocks.get.mockRejectedValueOnce(new ApiError(403, 'identity_domain_mismatch'));
+		openModal();
+		expect(await screen.findByText('identity_domain_mismatch')).toBeTruthy();
 		expect(deleteButton().disabled).toBe(true);
 	});
 

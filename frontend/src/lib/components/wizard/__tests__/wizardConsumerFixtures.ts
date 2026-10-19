@@ -41,7 +41,7 @@ export function wizardResource(path: string): unknown | undefined {
 export function prepareWizardConsumer(step: number) {
 	resetWizard();
 	openWizard();
-	auth.set({ token: 'test-token', refreshToken: null, accessExpiresAt: null, userId: 'user-a', username: 'user-a', projectId: 'project-a', projectName: 'Project A', availableProjects: [], roles: [], isSystemAdmin: false, federated: false });
+	auth.set({ token: 'test-token', refreshToken: null, accessExpiresAt: null, userId: 'user-a', username: 'user-a', projectId: 'project-a', projectName: 'Project A', availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false });
 	siteConfig.update(value => ({ ...value, services: { ...value.services, manila: true } }));
 	wizard.update(w => ({ ...w, step, imageId: 'image-a', imageName: 'Ubuntu 24.04', flavorId: 'flavor-a', flavorName: 'gpu.4c_8g' }));
 }

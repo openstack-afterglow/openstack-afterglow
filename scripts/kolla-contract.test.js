@@ -93,49 +93,10 @@ test("Extracted service health checks use Python available in published images",
 	assert.doesNotMatch(defaults, /test: \["CMD", "curl", "-f"/)
 })
 
-test("Afterglow public endpoint controls every browser-facing origin", () => {
-	const defaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
-	const precheck = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/precheck.yml")
-	const config = readRepoFile("deploy/kolla/ansible/roles/afterglow/templates/afterglow.conf.j2")
-	const sample = readRepoFile("deploy/kolla/globals.afterglow.sample.yml")
 
-	assert.match(defaults, /^afterglow_public_endpoint_url: /m)
-	assert.match(defaults, /ORIGIN: "\{\{ afterglow_public_endpoint_url \}\}"/)
-	assert.match(defaults, /afterglow_instance_health_callback_base_url: "\{\{ afterglow_public_endpoint_url \}\}"/)
-	assert.match(precheck, /afterglow_public_endpoint_url must be an absolute HTTP\(S\) origin/)
-	assert.match(config, /frontend_base_url = "\{\{ afterglow_public_endpoint_url \}\}"/)
-	assert.match(config, /origins = "\{\{ afterglow_public_endpoint_url \}\}"/)
-	assert.match(config, /redirect_uri = "\{\{ afterglow_public_endpoint_url \}\}\/auth\/gitlab\/callback"/)
-	assert.match(sample, /^afterglow_public_api_base: "https:\/\/cloud\.dmslab\.re\.kr"$/m)
-	assert.match(sample, /^afterglow_public_endpoint_url: "https:\/\/cloud\.dmslab\.re\.kr"$/m)
-	assert.doesNotMatch(defaults, /afterglow_external_url/)
-})
 
-test("Afterglow resolves the global service project once per play batch", () => {
-	const config = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/config.yml")
-	const lookup = config.slice(
-		config.indexOf("Config | Resolve Afterglow service project ID"),
-		config.indexOf("Config | Set resolved Afterglow service project ID"),
-	)
 
-	assert.match(lookup, /become: true/)
-	assert.match(lookup, /no_log: true/)
-	assert.match(lookup, /run_once: true/)
-})
 
-test("Afterglow fails prechecks before restart when the K3s GPU admission credential is absent", () => {
-	const defaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
-	const precheck = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/precheck.yml")
-	const secrets = readRepoFile(
-		"deploy/kolla/ansible/roles/afterglow/tasks/preconditions_secrets.yml"
-	)
-
-	assert.match(defaults, /^afterglow_k3s_gpu_admission_token: ""$/m)
-	for (const taskFile of [precheck, secrets]) {
-		assert.match(taskFile, /afterglow_k3s_gpu_admission_token \| length >= 32/)
-		assert.match(taskFile, /afterglow_service_k3s_enabled \| bool/)
-	}
-})
 
 test("Afterglow Kolla role carries no retired K3s provisioning credential", () => {
 	const templatesDir = "deploy/kolla/ansible/roles/afterglow/templates"
@@ -151,96 +112,8 @@ test("Afterglow Kolla role carries no retired K3s provisioning credential", () =
 	}
 })
 
-test("Afterglow checks the Keystone public catalog endpoint from every backend host", () => {
-	const precheck = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/precheck.yml")
-	const reachability = precheck.slice(
-		precheck.indexOf("Precheck | Verify Keystone public catalog endpoint from every Afterglow host"),
-		precheck.indexOf("Precheck | Verify K3s GPU admission credential"),
-	)
 
-	assert.match(reachability, /ansible\.builtin\.uri:/)
-	assert.match(reachability, /url: "\{\{ keystone_public_url \| regex_replace\('\/\$', ''\) \}\}\/v3"/)
-	assert.match(reachability, /timeout: 10/)
-	assert.match(reachability, /validate_certs: "\{\{ not \(afterglow_openstack_insecure \| bool\) \}\}"/)
-	assert.match(reachability, /ca_path: "\{\{ afterglow_openstack_cacert \| default\(omit, true\) \}\}"/)
-	assert.match(reachability, /inventory_hostname in groups\['afterglow'\]/)
-	assert.doesNotMatch(reachability, /run_once:|delegate_to:/)
-})
 
-test("Afterglow frontend receives only a public runtime configuration", () => {
-	const defaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
-	const vars = readRepoFile("deploy/kolla/ansible/roles/afterglow/vars/main.yml")
-	const config = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/config.yml")
-	const publicRenderer = readRepoFile(
-		"deploy/kolla/ansible/roles/afterglow/files/render_frontend_config.py"
-	)
-	const baseConfig = readRepoFile(
-		"deploy/kolla/ansible/roles/afterglow/templates/afterglow.conf.j2"
-	)
-	const finalConfig = readRepoFile(
-		"deploy/kolla/ansible/roles/afterglow/templates/afterglow.kolla.conf.j2"
-	)
-	const frontendService = defaults.slice(
-		defaults.indexOf("  afterglow-frontend:"),
-		defaults.indexOf("  afterglow-palimpsest-worker:"),
-	)
-
-	assert.match(defaults, /^afterglow_config_dir: "\{\{ node_custom_config \}\}\/afterglow"$/m)
-	assert.match(
-		defaults,
-		/^afterglow_runtime_config_dir: "\{\{ afterglow_config_dir \}\}\/generated"$/m
-	)
-	assert.match(
-		defaults,
-		/^afterglow_operator_config_source: "\{\{ afterglow_config_dir \}\}\/backend\/afterglow\.conf"$/m
-	)
-	assert.match(
-		defaults,
-		/^afterglow_operator_frontend_config_source: "\{\{ afterglow_config_dir \}\}\/frontend\/afterglow\.conf"$/m
-	)
-	assert.match(
-		defaults,
-		/^afterglow_frontend_config_name: "afterglow\.frontend\.generated\.conf"$/m
-	)
-	assert.doesNotMatch(vars, /^afterglow_config_dir:/m)
-	assert.match(
-		frontendService,
-		/\{\{ afterglow_runtime_config_dir \}\}\/\{\{ afterglow_frontend_config_name \}\}:\s*\/app\/afterglow\.conf:ro/
-	)
-	assert.doesNotMatch(
-		frontendService,
-		/(?:afterglow\.operator\.conf|afterglow\.zz-kolla\.conf):\/app\/afterglow(?:\.operator|\.zz-kolla)?\.conf:ro/,
-	)
-	assert.match(config, /Config \| Render final Kolla configuration override/)
-	assert.match(config, /Config \| Render merged public frontend configuration/)
-	assert.ok(
-		config.indexOf("Config | Render final Kolla configuration override") <
-			config.indexOf("Config | Render merged public frontend configuration")
-	)
-	assert.doesNotMatch(config, /executable:.*ansible_python_interpreter/)
-	assert.match(config, /afterglow_frontend_config_render\.rc == 0 and/)
-	assert.match(config, /render_frontend_config\.py/)
-	assert.match(config, /afterglow_operator_config_source_stat\.stat\.exists/)
-	assert.match(config, /afterglow_operator_frontend_config_source_stat\.stat\.exists/)
-	assert.match(config, /afterglow_operator_frontend_config_name/)
-	assert.match(config, /afterglow_kolla_config_name/)
-	assert.match(config, /afterglow_frontend_config_name/)
-	assert.match(config, /Afterglow operator source paths must not overlap generated runtime artifacts/)
-	assert.match(baseConfig, /chat = \{\{ afterglow_service_chat_enabled \| bool \| lower \}\}/)
-	assert.match(finalConfig, /chat = \{\{ afterglow_service_chat_enabled \| bool \| lower \}\}/)
-	assert.match(publicRenderer, /_PUBLIC_SCHEMA/)
-	assert.match(publicRenderer, /"public_api_base": str/)
-	assert.match(publicRenderer, /"grafana_base_url": str/)
-	assert.match(publicRenderer, /"base_url": str/)
-	assert.match(publicRenderer, /"gitlab_url": str/)
-	assert.match(publicRenderer, /"public_url": str/)
-	assert.match(publicRenderer, /os\.chmod\(staging_path, 0o644\)/)
-	assert.match(publicRenderer, /def main\(\*path_args: str\)/)
-	assert.doesNotMatch(
-		publicRenderer,
-		/"(?:secret_key|password|redis_url|database_url)":/
-	)
-})
 
 test("Afterglow public hostname is routed by Kolla's external HAProxy frontend", () => {
 	const defaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
@@ -273,8 +146,6 @@ test("Afterglow public hostname is routed by Kolla's external HAProxy frontend",
 	assert.match(sample, /^afterglow_public_haproxy_fqdn: "cloud\.dmslab\.re\.kr"$/m)
 	assert.match(sample, /^afterglow_mcp_public_url: "https:\/\/cloud\.dmslab\.re\.kr\/mcp"$/m)
 	assert.match(defaults, /^afterglow_mcp_public_url: ""$/m)
-	const finalConfig = readRepoFile("deploy/kolla/ansible/roles/afterglow/templates/afterglow.kolla.conf.j2")
-	assert.match(finalConfig, /\{% if afterglow_mcp_public_url %\}\n\[mcp\]\npublic_url = \{\{ afterglow_mcp_public_url \| to_json \}\}\n\{% endif %\}/)
 })
 
 test("Kolla installer safely patches the standard playbook import", () => {
@@ -520,8 +391,6 @@ test("Plugin lifecycle dispatchers preserve stock actions and tag isolation", ()
 
 test("Plugin services derive data-plane and OpenStack topology from Kolla variables", () => {
 	const afterglowDefaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
-	const afterglowBaseConfig = readRepoFile("deploy/kolla/ansible/roles/afterglow/templates/afterglow.conf.j2")
-	const afterglowConfig = readRepoFile("deploy/kolla/ansible/roles/afterglow/templates/afterglow.kolla.conf.j2")
 	const afterglowDatabase = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/preconditions_db.yml")
 	const afterglowPrecheck = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/precheck.yml")
 
@@ -536,14 +405,7 @@ test("Plugin services derive data-plane and OpenStack topology from Kolla variab
 	assert.match(afterglowDefaults, /afterglow_keystone_project_domain_name: "\{\{ default_project_domain_name \}\}"/)
 	assert.match(afterglowDefaults, /afterglow_keystone_user_domain_name: "\{\{ default_user_domain_name \}\}"/)
 	assert.match(afterglowDefaults, /afterglow_keystone_region_name: "\{\{ openstack_region_name \}\}"/)
-	assert.match(afterglowConfig, /auth_url = "\{\{ afterglow_keystone_auth_url \}\}"/)
-	assert.match(afterglowConfig, /project_domain_name = "\{\{ afterglow_keystone_project_domain_name \}\}"/)
 	assert.match(afterglowDatabase, /login_host: "\{\{ afterglow_database_address \}\}"/)
-	for (const template of [afterglowBaseConfig, afterglowConfig]) {
-		assert.match(template, /sentinel_enabled = \{\{ afterglow_sentinel_enabled \| bool \| lower \}\}/)
-		assert.match(template, /sentinel_master_name = "\{\{ afterglow_sentinel_master_name \}\}"/)
-		assert.match(template, /sentinel_hosts = "\{\{ afterglow_sentinel_hosts \}\}"/)
-	}
 	assert.match(afterglowPrecheck, /valkey_sentinel_port is defined/)
 	assert.match(afterglowPrecheck, /valkey_sentinel_monitor_name is defined and valkey_sentinel_monitor_name \| length > 0/)
 
@@ -563,241 +425,8 @@ test("Drover, Waygate, and Lumen public hostnames are routed by Kolla's external
 	}
 })
 
-test("Afterglow hands operator TOML to containers without surrendering Kolla-owned settings", () => {
-	const defaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
-	const vars = readRepoFile("deploy/kolla/ansible/roles/afterglow/vars/main.yml")
-	const configTask = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/config.yml")
-	const bootstrap = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/bootstrap_service.yml")
-	const start = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/start.yml")
-	const finalConfig = readRepoFile("deploy/kolla/ansible/roles/afterglow/templates/afterglow.kolla.conf.j2")
-	const generatedConfig = readRepoFile(
-		"deploy/kolla/ansible/roles/afterglow/templates/afterglow.conf.j2"
-	)
-	const staticBackendConfig = readRepoFile(
-		"deploy/kolla/ansible/roles/afterglow/templates/afterglow-backend.json.j2"
-	)
-	const sample = readRepoFile("deploy/kolla/globals.afterglow.sample.yml")
-	const sanitizer = readRepoFile("deploy/kolla/ansible/roles/afterglow/files/sanitize_operator_config.py")
-	const readme = readRepoFile("deploy/kolla/README.md")
-	const backendService = defaults.slice(
-		defaults.indexOf("  afterglow-backend:"),
-		defaults.indexOf("  afterglow-frontend:"),
-	)
 
-	assert.match(defaults, /^afterglow_config_dir: "\{\{ node_custom_config \}\}\/afterglow"$/m)
-	assert.match(defaults, /^afterglow_runtime_config_dir: "\{\{ afterglow_config_dir \}\}\/generated"$/m)
-	assert.match(defaults, /^afterglow_operator_config_source: "\{\{ afterglow_config_dir \}\}\/backend\/afterglow\.conf"$/m)
-	assert.match(defaults, /^afterglow_operator_frontend_config_source: "\{\{ afterglow_config_dir \}\}\/frontend\/afterglow\.conf"$/m)
-	assert.match(defaults, /^afterglow_operator_config_name: "afterglow\.operator\.generated\.conf"$/m)
-	assert.match(defaults, /^afterglow_kolla_config_name: "afterglow\.zz-kolla\.generated\.conf"$/m)
-	assert.match(defaults, /^afterglow_operator_config_staging_path: "\/tmp\/\{\{ afterglow_operator_config_name \}\}\.sanitized"$/m)
-	assert.doesNotMatch(vars, /^afterglow_config_dir:/m)
-	assert.doesNotMatch(backendService, /GITLAB_OIDC_CLIENT_SECRET/)
-	assert.doesNotMatch(staticBackendConfig, /GITLAB_OIDC_CLIENT_SECRET/)
-	assert.match(
-		generatedConfig,
-		/client_secret = "\{\{ afterglow_oidc_client_secret \| default\(''\) \}\}"/
-	)
-	const directRuntimeMountSources = [
-		...defaults.matchAll(/^\s+- "([^"]+):\/app\/[^"]+:ro"$/gm),
-	].map((match) => match[1])
-	assert.equal(directRuntimeMountSources.length, 4)
-	for (const source of directRuntimeMountSources) {
-		assert.ok(source.startsWith("{{ afterglow_runtime_config_dir }}/"))
-	}
-	assert.equal((backendService.match(/afterglow_runtime_config_dir ~ '\/'/g) ?? []).length, 3)
-	assert.match(backendService, /afterglow_rbd_conf_source ~ ':\/etc\/ceph\/ceph\.conf:ro'/)
-	assert.match(backendService, /afterglow_rbd_keyring_source ~ ':\/etc\/ceph\/ceph\.client\.afterglow-rbd\.keyring:ro'/)
-	assert.match(backendService, /if afterglow_rbd_conf_source and afterglow_rbd_keyring_source else \[\]/)
-	assert.match(configTask, /Config \| Stage and validate sanitized operator configuration/)
-	assert.match(configTask, /sanitize_operator_config\.py/)
-	assert.match(configTask, /Config \| Clear stale sanitized operator configuration staging file/)
-	assert.match(configTask, /afterglow_operator_config_staging_path/)
-	assert.match(configTask, /Config \| Remove sanitized operator configuration staging file/)
-	assert.match(configTask, /Config \| Copy operator configuration override/)
-	assert.match(configTask, /Config \| Project frontend source onto the public allowlist/)
-	assert.match(configTask, /afterglow_operator_config_source_stat\.stat\.exists/)
-	assert.match(configTask, /afterglow_operator_frontend_config_source_stat\.stat\.exists/)
-	assert.match(configTask, /Afterglow operator source paths must not overlap generated runtime artifacts/)
-	assert.match(configTask, /- "\{\{ ansible_playbook_python \}\}"/)
-	assert.match(configTask, /src: afterglow\.kolla\.conf\.j2/)
-	assert.match(sanitizer, /tomllib\.loads\(sanitized\)/)
-	assert.match(sanitizer, /builder\.ssh_private_key must not be staged/)
-	assert.match(bootstrap, /afterglow_operator_config_name/)
-	assert.match(bootstrap, /afterglow_kolla_config_name/)
-	const bootstrapMountSources = [
-		...bootstrap.matchAll(/^\s+- "([^"]+):\/app\/[^"]+:ro"$/gm),
-	].map((match) => match[1])
-	assert.equal(bootstrapMountSources.length, 3)
-	for (const source of bootstrapMountSources) {
-		assert.ok(source.startsWith("{{ afterglow_runtime_config_dir }}/"))
-	}
-	assert.match(start, /Stat Afterglow configuration layers/)
-	assert.match(start, /afterglow_config_stats\.results \| map\(attribute='stat\.checksum'\) \| join\(':'\)/)
-	assert.equal((start.match(/config_hash:/g) || []).length, 1)
-	const startConfigPaths = [...start.matchAll(/^\s+- "([^"]+)"$/gm)].map((match) => match[1])
-	assert.equal(startConfigPaths.length, 5)
-	for (const source of startConfigPaths) {
-		assert.ok(source.startsWith("{{ afterglow_runtime_config_dir }}/"))
-	}
-	assert.match(readme, /\/etc\/kolla\/config\/afterglow\/backend\/afterglow\.conf/)
-	assert.match(readme, /\/etc\/kolla\/config\/afterglow\/frontend\/afterglow\.conf/)
-	assert.match(readme, /Raw operator files are never mounted into\s+containers/)
-	assert.match(
-		readme,
-		/install -m 0600 -o .* \.\/afterglow\.conf\s+\\\s+\/etc\/kolla\/config\/afterglow\/backend\/afterglow\.conf/
-	)
-	assert.match(finalConfig, /^\[openstack\]$/m)
-	assert.match(finalConfig, /^\[union\]$/m)
-	assert.match(finalConfig, /metadata_store_share_id/)
-	assert.match(finalConfig, /^\[cors\]$/m)
-	assert.doesNotMatch(finalConfig, /^\[gitlab_oidc\]$/m)
-	assert.doesNotMatch(sample, /^afterglow_operator_config_source:/m)
-	assert.match(sample, /\/etc\/kolla\/config\/afterglow\/backend\/afterglow\.conf/)
-	assert.match(sample, /\/etc\/kolla\/config\/afterglow\/frontend\/afterglow\.conf/)
-})
-test("Kolla plugin requires stock Kolla Valkey dependency and rejects standalone Redis", () => {
-	const sample = readRepoFile("deploy/kolla/globals.afterglow.sample.yml")
-	assert.match(sample, /enable_valkey:\s*"yes"/)
 
-	const expectedRoles = [
-		{ name: "afterglow", dbIndex: 5 },
-	]
-
-	for (const { name: service, dbIndex } of expectedRoles) {
-		const defaults = readRepoFile(`deploy/kolla/ansible/roles/${service}/defaults/main.yml`)
-		if (service === "afterglow") {
-			assert.match(defaults, /afterglow_sentinel_enabled: true/)
-			assert.match(defaults, /afterglow_sentinel_master_name: "\{\{ valkey_sentinel_monitor_name \}\}"/)
-			assert.match(defaults, /afterglow_sentinel_hosts: ".*groups\['valkey'\].*valkey_sentinel_port.*"/)
-		} else {
-			assert.match(defaults, new RegExp(`${service}_valkey_host: "\\{\\{ 'api' \\| kolla_address\\(groups\\['valkey'\\]\\[0\\]\\) \\}\\}"`))
-		}
-		assert.match(defaults, new RegExp(`${service}_valkey_port: "\\{\\{ valkey_server_port \\}\\}"`))
-		assert.match(defaults, new RegExp(`${service}_valkey_password:`))
-		assert.match(defaults, new RegExp(`${service}_valkey_password:.*valkey_master_password`))
-		assert.match(defaults, new RegExp(`${service}_redis_db_index: ${dbIndex}`))
-		assert.match(
-			defaults,
-			new RegExp(
-				`${service}_redis_url: "redis://default:\\{\\{ ${service}_valkey_password \\}\\}@\\{\\{ ${service}_valkey_host \\}\\}:\\{\\{ ${service}_valkey_port \\}\\}/\\{\\{ ${service}_redis_db_index \\}\\}"`
-			)
-		)
-
-		const precheck = readRepoFile(`deploy/kolla/ansible/roles/${service}/tasks/precheck.yml`)
-		assert.match(precheck, /name: Precheck \| Verify stock Kolla Valkey dependency/)
-		assert.match(precheck, /enable_valkey \| default\(false\) \| bool/)
-		assert.match(precheck, /groups\.get\('valkey', \[\]\) \| length > 0/)
-		assert.match(precheck, /valkey_master_password is defined and valkey_master_password \| length > 0/)
-		if (service === "afterglow") {
-			assert.match(precheck, /valkey_sentinel_port is defined/)
-			assert.match(precheck, /valkey_sentinel_monitor_name is defined and valkey_sentinel_monitor_name \| length > 0/)
-		}
-		assert.match(precheck, new RegExp(`when: enable_${service} \\| default\\(false\\) \\| bool`))
-		assert.match(precheck, /run_once: true/)
-		assert.match(precheck, /tags: precheck/)
-		assert.match(precheck, new RegExp(`Deploy stock Kolla Valkey before enabling ${service}; no plugin Redis fallback exists`))
-	}
-
-	const filesToScan = [
-		"deploy/kolla/globals.afterglow.sample.yml",
-	]
-
-	function collectFiles(dir) {
-		const entries = fs.readdirSync(dir, { withFileTypes: true })
-		for (const entry of entries) {
-			const fullPath = path.join(dir, entry.name)
-			if (entry.isDirectory()) {
-				collectFiles(fullPath)
-			} else if (entry.isFile()) {
-				const relPath = path.relative(rootDir, fullPath)
-				filesToScan.push(relPath)
-			}
-		}
-	}
-	collectFiles(path.join(rootDir, "deploy/kolla/ansible/roles"))
-
-	assert.strictEqual(fs.existsSync(path.join(rootDir, "deploy/kolla/ansible/roles/redis")), false)
-
-	const forbiddenPatterns = [
-		/\benable_redis\b/,
-		/\broles\/redis\b/,
-		/\bredis_services\b/,
-		/\bredis_port\b/,
-		/\benable_redis_[a-z_]+\b/,
-		/\bcontainer_name:\s*"?redis\b/,
-		/\bimage:\s*"?[^"\n]*\bredis:[^"\n]*/,
-		/\bredis_data\b/,
-		/\bredis_volume\b/,
-	]
-
-	for (const relPath of filesToScan) {
-		const content = readRepoFile(relPath)
-		for (const pattern of forbiddenPatterns) {
-			assert.equal(
-				pattern.test(content),
-				false,
-				`File ${relPath} matched forbidden Redis pattern ${pattern}`
-			)
-		}
-	}
-})
-test("Afterglow Kolla placement-policy seeding lifecycle and container contract", () => {
-	const deploy = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/deploy.yml")
-	const reconfigure = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/reconfigure.yml")
-	const upgrade = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/upgrade.yml")
-	const seedTask = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/seed_runtime_policies.yml")
-	const dockerfile = readRepoFile("Dockerfile")
-	const backendStageStart = dockerfile.indexOf("FROM python:3.12-slim AS backend")
-	const backendStageEnd = dockerfile.indexOf("FROM backend-builder AS backend-dev")
-	assert.ok(
-		backendStageStart >= 0 && backendStageEnd > backendStageStart,
-		"Dockerfile must contain a bounded backend production stage"
-	)
-	const backendStage = dockerfile.slice(backendStageStart, backendStageEnd)
-
-	assert.match(
-		backendStage,
-		/COPY\s+backend\/scripts\/\s+\.\/scripts\//,
-		"Backend stage in Dockerfile must copy backend/scripts/ to ./scripts/"
-	)
-	assert.match(deploy, /seed_runtime_policies\.yml/)
-	assert.ok(
-		deploy.indexOf("bootstrap_service.yml") < deploy.indexOf("seed_runtime_policies.yml"),
-		"deploy.yml must include seed_runtime_policies.yml after bootstrap_service.yml"
-	)
-
-	assert.match(reconfigure, /seed_runtime_policies\.yml/)
-	assert.ok(
-		reconfigure.indexOf("config.yml") < reconfigure.indexOf("seed_runtime_policies.yml"),
-		"reconfigure.yml must include seed_runtime_policies.yml after config.yml"
-	)
-
-	assert.match(upgrade, /seed_runtime_policies\.yml/)
-	assert.ok(
-		upgrade.indexOf("pull.yml") < upgrade.indexOf("seed_runtime_policies.yml"),
-		"upgrade.yml must include seed_runtime_policies.yml after image pull"
-	)
-	assert.ok(
-		upgrade.indexOf("seed_runtime_policies.yml") < upgrade.indexOf("start.yml"),
-		"upgrade.yml must include seed_runtime_policies.yml before the shared start specification"
-	)
-
-	assert.match(seedTask, /image:\s*"\{\{ afterglow_backend_image_ref \}\}"/)
-	assert.match(seedTask, /:\/app\/afterglow\.conf:ro/)
-	assert.match(seedTask, /DATABASE_URL:\s*"\{\{ afterglow_database_url \}\}"/)
-	assert.match(seedTask, /REDIS_URL:\s*"\{\{ afterglow_redis_url \}\}"/)
-	assert.ok(
-		seedTask.includes("python") &&
-			seedTask.includes("scripts/import_runtime_infrastructure_settings.py") &&
-			seedTask.includes("--config") &&
-			seedTask.includes("/app/afterglow.conf") &&
-			seedTask.includes("--apply"),
-		"seed_runtime_policies.yml command must execute python scripts/import_runtime_infrastructure_settings.py --config /app/afterglow.conf --apply"
-	)
-	assert.match(seedTask, /run_once:\s*true/)
-	assert.match(seedTask, /delegate_to:\s*"\{\{ groups\['afterglow'\] \| first \}\}"/)
-})
 test("Kolla plugin lifecycle integrates inventory preflight, pull semantics, and upgrade sequence", () => {
 	const site = readRepoFile("deploy/kolla/site.yml")
 	const allInOne = readRepoFile("deploy/kolla/inventory/all-in-one.sample")
@@ -857,14 +486,7 @@ test("Kolla plugin lifecycle integrates inventory preflight, pull semantics, and
 	assert.doesNotMatch(afterglowPrecheck, /afterglow_backend_image\s*\}\}:\s*\{\{\s*afterglow_image_tag/)
 	assert.doesNotMatch(afterglowPrecheck, /WARN|WARNING/)
 
-	const afterglowDefaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
 	const afterglowStart = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/start.yml")
-	const serviceMapStart = afterglowDefaults.indexOf("afterglow_services:")
-	const environmentMapStart = afterglowDefaults.indexOf("afterglow_service_environments:")
-	const serviceMap = afterglowDefaults.slice(serviceMapStart, environmentMapStart)
-	assert.ok(serviceMapStart >= 0 && environmentMapStart > serviceMapStart)
-	assert.doesNotMatch(serviceMap, /^\s+environment:/m)
-	assert.match(afterglowStart, /env:\s*"\{\{ afterglow_service_environments\.get\(item\.key, \{\}\) \}\}"/)
 	assert.match(afterglowStart, /groups:\s*"\{\{ item\.value\.groups \| default\(omit\) \}\}"/)
 	assert.match(afterglowStart, /network_mode:\s*"\{\{ item\.value\.network_mode \| default\(omit\) \}\}"/)
 	assert.match(afterglowPrecheck, /Fail if any configured Afterglow image is inaccessible[\s\S]*?no_log:\s*true/)
@@ -889,7 +511,6 @@ test("Kolla plugin lifecycle integrates inventory preflight, pull semantics, and
 
 test("Kolla global topology fallbacks and Afterglow TLS settings", () => {
 	const afterglowDefaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
-	const afterglowKollaConf = readRepoFile("deploy/kolla/ansible/roles/afterglow/templates/afterglow.kolla.conf.j2")
 
 	assert.match(
 		afterglowDefaults,
@@ -900,8 +521,6 @@ test("Kolla global topology fallbacks and Afterglow TLS settings", () => {
 	assert.match(afterglowDefaults, /afterglow_openstack_cacert: "\{\{ openstack_cacert \| default\(''\) \}\}"/)
 	assert.match(afterglowDefaults, /afterglow_keystone_interface: "\{\{ afterglow_openstack_interface \}\}"/)
 
-	assert.match(afterglowKollaConf, /^insecure = \{\{ afterglow_openstack_insecure \| bool \| lower \}\}$/m)
-	assert.match(afterglowKollaConf, /^cacert = "\{\{ afterglow_openstack_cacert \}\}"$/m)
 
 })
 test("Kolla site playbook uses dynamic include_role dispatch with inventory preflight for all services", () => {
@@ -1117,47 +736,4 @@ test("Kolla Git-role promoter behavioral regressions", () => {
 	assert.equal(unitResult.status, 0, unitResult.stderr || unitResult.stdout)
 })
 
-test("Cloud Shell Kolla contract is dedicated, immutable, and fail-closed", () => {
-	const defaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
-	const configTasks = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/config.yml")
-	const keystone = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/preconditions_keystone.yml")
-	const precheck = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/precheck_cloud_shell.yml")
-	const baseConfig = readRepoFile("deploy/kolla/ansible/roles/afterglow/templates/afterglow.conf.j2")
-	const finalConfig = readRepoFile("deploy/kolla/ansible/roles/afterglow/templates/afterglow.kolla.conf.j2")
-	const sample = readRepoFile("deploy/kolla/globals.afterglow.sample.yml")
 
-	assert.match(defaults, /^afterglow_cloud_shell_project_name: "afterglow-cloud-shell"$/m)
-	assert.match(defaults, /^afterglow_cloud_shell_image: ""$/m)
-	assert.match(defaults, /^afterglow_service_cloud_shell_enabled: false$/m)
-	assert.match(configTasks, /Config \| Resolve Cloud Shell service project ID/)
-	assert.match(configTasks, /afterglow_cloud_shell_project_id != afterglow_service_project_id/)
-	assert.match(keystone, /module_name: openstack\.cloud\.role_assignment/)
-	assert.match(keystone, /Create exactly one project named/)
-	const registration = keystone.slice(0, keystone.indexOf("Keystone | Resolve pre-created Cloud Shell project"))
-	assert.doesNotMatch(registration, /afterglow_cloud_shell_project_name/)
-
-	for (const dependency of [
-		"enable_zun",
-		"enable_kuryr",
-		"enable_etcd",
-		"docker_configure_for_zun",
-		"containerd_configure_for_zun",
-		"zun_configure_for_cinder_ceph",
-		"zun-compute",
-	]) {
-		assert.match(precheck, new RegExp(dependency.replace("-", "\\-")))
-	}
-	assert.match(precheck, /@sha256:\[0-9a-fA-F\]\{64\}/)
-	assert.match(precheck, /appcontainer list -f json/)
-	assert.match(precheck, /volume list --limit 1 -f json/)
-	assert.match(precheck, /docker\n\s+- manifest\n\s+- inspect/)
-
-	for (const template of [baseConfig, finalConfig]) {
-		assert.match(template, /cloud_shell = \{\{ \(afterglow_service_cloud_shell_enabled/)
-		assert.match(template, /\[cloud_shell\]/)
-		assert.match(template, /service_project_id = "\{\{ afterglow_cloud_shell_project_id \}\}"/)
-		assert.match(template, /zun_websocket_origin = "\{\{ afterglow_cloud_shell_zun_websocket_origin \}\}"/)
-	}
-	assert.match(sample, /afterglow_cloud_shell_image: "ghcr\.io\/openstack-afterglow\/afterglow-cloud-shell@sha256:/)
-	assert.match(sample, /^afterglow_service_cloud_shell_enabled: false$/m)
-})

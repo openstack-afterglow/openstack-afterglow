@@ -9,12 +9,12 @@
       - -c
       - |
         import asyncio
-        import os
+        from app.config import get_settings
         from app.database import close_db, create_tables, init_db
 
         async def main():
             try:
-                init_db(os.environ["DATABASE_URL"])
+                init_db(get_settings().database_url)
                 await create_tables()
             finally:
                 await close_db()
@@ -27,16 +27,13 @@
     cleanup: true
     volumes:
       - "{{ afterglow_runtime_config_dir }}/{{ afterglow_generated_config_name }}:/app/afterglow.conf:ro"
-      - "{{ afterglow_runtime_config_dir }}/{{ afterglow_operator_config_name }}:/app/{{ afterglow_operator_config_name }}:ro"
-      - "{{ afterglow_runtime_config_dir }}/{{ afterglow_kolla_config_name }}:/app/{{ afterglow_kolla_config_name }}:ro"
-    env:
-      DATABASE_URL: "{{ afterglow_database_url }}"
-      REDIS_URL: "{{ afterglow_redis_url }}"
   no_log: true
   run_once: true
   delegate_to: "{{ groups['afterglow'] | first }}"
+  when: afterglow_effective_config.database.url | length > 0
 
 - name: Bootstrap | Show bootstrap output
   ansible.builtin.debug:
     msg: "Afterglow database bootstrap completed successfully"
   run_once: true
+  when: afterglow_effective_config.database.url | length > 0

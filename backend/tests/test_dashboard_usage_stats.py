@@ -30,37 +30,6 @@ def _make_flavor(name: str = "cpu.4c_8g", vcpus: int = 4, ram: int = 8192, disk:
 
 
 # ---------------------------------------------------------------------------
-# cpu_pct / ram_pct 정상 주입
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_usage_stats_includes_live_cpu_ram(client, mock_conn):
-    """query_instant_multi 결과가 top_instances 각 항목에 cpu_pct/ram_pct로 주입된다."""
-    uuid1 = "aaaa-1111"
-    cpu_results = [({"instance_id": uuid1}, 47.5)]
-    ram_results = [({"instance_id": uuid1}, 62.0)]
-
-    with (
-        patch("app.api.common.dashboard.nova.list_servers", return_value=[_make_server(uuid1)]),
-        patch("app.api.common.dashboard.nova.list_flavors", return_value=[_make_flavor()]),
-        patch("app.api.common.dashboard.nova.get_project_usage", return_value={}),
-        patch(
-            "app.api.common.dashboard.prom_query.query_instant_multi",
-            new_callable=AsyncMock,
-            side_effect=[cpu_results, ram_results],
-        ),
-    ):
-        resp = await client.get("/api/v1/dashboard/usage-stats?range=7d")
-
-    assert resp.status_code == 200
-    instances = resp.json()["top_instances"]
-    assert len(instances) == 1
-    assert instances[0]["cpu_pct"] == 47.5
-    assert instances[0]["ram_pct"] == 62.0
-
-
-# ---------------------------------------------------------------------------
 # PromUnavailable — silent fallback, 200 응답 유지
 # ---------------------------------------------------------------------------
 
@@ -143,3 +112,63 @@ async def test_usage_stats_empty_project_skips_prometheus(client, mock_conn):
     assert resp.status_code == 200
     assert resp.json()["top_instances"] == []
     assert mock_qr.call_count == 0, f"빈 프로젝트에서 PromQL 호출 불필요, 실제: {mock_qr.call_count}"
+
+
+@pytest.mark.asyncio
+async def test_native_zero_cpu_survives_missing_memory_provider(client, mock_conn):
+    from app.services.prom_query import PromUnavailable
+
+    instance_id = "native-zero"
+    native = {
+        "status": "partial",
+        "instances": {
+            instance_id: {
+                "cpu": {"series": [{"ts": 100, "value": 0}], "status": "available"},
+                "memory": {"series": [], "status": "unavailable"},
+            }
+        },
+    }
+    with (
+        patch("app.api.common.dashboard.nova.list_servers", return_value=[_make_server(instance_id)]),
+        patch("app.api.common.dashboard.nova.list_flavors", return_value=[_make_flavor()]),
+        patch("app.api.common.dashboard.nova.get_project_usage", return_value={}),
+        patch("app.api.common.dashboard.native_telemetry.project_series", AsyncMock(return_value=native)),
+        patch(
+            "app.api.common.dashboard.prom_query.query_instant_multi", AsyncMock(side_effect=PromUnavailable("offline"))
+        ),
+    ):
+        response = await client.get("/api/v1/dashboard/usage-stats")
+    instance = response.json()["top_instances"][0]
+    assert instance["cpu_pct"] == 0
+    assert instance["cpu_source"] == "gnocchi"
+    assert instance["cpu_status"] == "available"
+    assert instance["ram_pct"] is None
+    assert instance["ram_status"] == "unavailable"
+    assert instance["ram_native_status"] == "unavailable"
+
+
+@pytest.mark.asyncio
+async def test_denied_native_and_failed_cpu_do_not_discard_measured_ram(client, mock_conn):
+    from app.services.prom_query import PromUnavailable
+
+    instance_id = "fallback-partial"
+    with (
+        patch("app.api.common.dashboard.nova.list_servers", return_value=[_make_server(instance_id)]),
+        patch("app.api.common.dashboard.nova.list_flavors", return_value=[_make_flavor()]),
+        patch("app.api.common.dashboard.nova.get_project_usage", return_value={}),
+        patch(
+            "app.api.common.dashboard.native_telemetry.project_series",
+            AsyncMock(return_value={"status": "forbidden", "instances": {}}),
+        ),
+        patch(
+            "app.api.common.dashboard.prom_query.query_instant_multi",
+            AsyncMock(side_effect=[PromUnavailable("offline"), [({"instance_id": instance_id}, 0)]]),
+        ),
+    ):
+        response = await client.get("/api/v1/dashboard/usage-stats")
+    instance = response.json()["top_instances"][0]
+    assert instance["cpu_pct"] is None
+    assert instance["cpu_status"] == "unavailable"
+    assert instance["ram_pct"] == 0
+    assert instance["ram_source"] == "libvirt"
+    assert instance["ram_native_status"] == "forbidden"

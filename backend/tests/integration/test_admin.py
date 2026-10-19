@@ -138,36 +138,38 @@ async def test_admin_list_flavors(client):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_admin_list_users(client):
-    resp = await client.get("/api/v1/admin/users")
+async def test_admin_list_users(client, selected_domain_id):
+    resp = await client.get("/api/v1/admin/users", params={"domain_id": selected_domain_id})
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, (list, dict))
     items = data if isinstance(data, list) else data.get("items", data.get("users", []))
     assert len(items) > 0
+    assert all(item["domain_id"] == selected_domain_id for item in items)
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_admin_list_projects(client):
-    resp = await client.get("/api/v1/admin/projects")
+async def test_admin_list_projects(client, selected_domain_id):
+    resp = await client.get("/api/v1/admin/projects", params={"domain_id": selected_domain_id})
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, (list, dict))
     items = data if isinstance(data, list) else data.get("items", data.get("projects", []))
     assert len(items) > 0
+    assert all(item["domain_id"] == selected_domain_id for item in items)
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_admin_list_project_names(client):
-    resp = await client.get("/api/v1/admin/projects/names")
+async def test_admin_list_project_names(client, selected_domain_id):
+    resp = await client.get("/api/v1/admin/projects/names", params={"domain_id": selected_domain_id})
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_admin_list_groups(client):
-    resp = await client.get("/api/v1/admin/groups")
+async def test_admin_list_groups(client, selected_domain_id):
+    resp = await client.get("/api/v1/admin/groups", params={"domain_id": selected_domain_id})
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
 
@@ -182,11 +184,13 @@ async def test_admin_list_roles(client):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_admin_project_quotas(client, project_id):
-    resp = await client.get(f"/api/v1/admin/quotas/{project_id}")
+async def test_admin_project_quotas(client, project_id, selected_domain_id):
+    resp = await client.get(f"/api/v1/admin/quotas/{project_id}", params={"domain_id": selected_domain_id})
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, dict)
+    assert data["project_id"] == project_id
+    assert set(data["availability"]) == {"compute", "volume", "network", "file_storage"}
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -362,9 +366,12 @@ _ALL_ADMIN_GET_PATHS = _ADMIN_SIMPLE_PATHS + _ADMIN_PARAMETERIZED_PATHS + _ADMIN
 
 @pytest.mark.parametrize("path", _ALL_ADMIN_GET_PATHS)
 @pytest.mark.asyncio(loop_scope="session")
-async def test_admin_get_forbidden_for_regular_user(user_client, path):
+async def test_admin_get_forbidden_for_regular_user(user_client, path, regular_user_domain_id):
     """모든 admin GET 엔드포인트는 일반 유저에게 403을 반환해야 한다."""
-    resp = await user_client.get(path)
+    scoped = path.startswith(
+        ("/api/v1/admin/users", "/api/v1/admin/projects", "/api/v1/admin/groups", "/api/v1/admin/quotas")
+    )
+    resp = await user_client.get(path, params={"domain_id": regular_user_domain_id} if scoped else {})
     assert resp.status_code == 403, f"[{path}] Expected 403 Forbidden, got {resp.status_code}: {resp.text[:200]}"
 
 
@@ -374,8 +381,8 @@ async def test_admin_get_forbidden_for_regular_user(user_client, path):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_admin_quotas_by_project(admin_client, project_id):
-    resp = await admin_client.get(f"/api/v1/admin/quotas/{project_id}")
+async def test_admin_quotas_by_project(admin_client, project_id, selected_domain_id):
+    resp = await admin_client.get(f"/api/v1/admin/quotas/{project_id}", params={"domain_id": selected_domain_id})
     assert resp.status_code == 200
 
 
@@ -419,8 +426,10 @@ async def test_admin_network_detail(admin_client):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_admin_project_members(admin_client, project_id):
-    resp = await admin_client.get(f"/api/v1/admin/projects/{project_id}/members")
+async def test_admin_project_members(admin_client, project_id, selected_domain_id):
+    resp = await admin_client.get(
+        f"/api/v1/admin/projects/{project_id}/members", params={"domain_id": selected_domain_id}
+    )
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
 
@@ -468,18 +477,18 @@ async def test_admin_user_can_access_admin_overview(admin_user_client):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_admin_user_can_access_admin_users(admin_user_client):
+async def test_admin_user_can_access_admin_users(admin_user_client, admin_user_domain_id):
     """admin_user 가 /api/admin/users 에 접근 가능해야 한다."""
-    resp = await admin_user_client.get("/api/v1/admin/users")
+    resp = await admin_user_client.get("/api/v1/admin/users", params={"domain_id": admin_user_domain_id})
     assert resp.status_code == 200, (
         f"admin_user 가 /api/admin/users 에 접근 실패 ({resp.status_code}): {resp.text[:200]}"
     )
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_admin_user_can_access_admin_projects(admin_user_client):
+async def test_admin_user_can_access_admin_projects(admin_user_client, admin_user_domain_id):
     """admin_user 가 /api/admin/projects 에 접근 가능해야 한다."""
-    resp = await admin_user_client.get("/api/v1/admin/projects")
+    resp = await admin_user_client.get("/api/v1/admin/projects", params={"domain_id": admin_user_domain_id})
     assert resp.status_code == 200, (
         f"admin_user 가 /api/admin/projects 에 접근 실패 ({resp.status_code}): {resp.text[:200]}"
     )

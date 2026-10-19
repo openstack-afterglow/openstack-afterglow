@@ -58,7 +58,7 @@
 		}
 		openWizard();
 	}
-	const { swrGet, swrSet } = createSwr(() => $auth.projectId);
+	const { swrGet, swrSet } = createSwr(() => `${$auth.userId ?? ''}:${$auth.projectId ?? ''}:${scopeRevision}`);
 
 	async function fetchInstances(opts?: { refresh?: boolean }) {
 		const path = '/api/v1/instances';
@@ -78,6 +78,7 @@
 			const fetchedInstances = await listPromise;
 			if (
 				generation !== loadGeneration
+				|| requestRevision !== scopeRevision
 				|| ($auth.token ?? undefined) !== requestToken
 				|| ($auth.projectId ?? undefined) !== requestProjectId
 			) return;
@@ -89,6 +90,7 @@
 		} catch (e) {
 			if (
 				generation === loadGeneration
+				&& requestRevision === scopeRevision
 				&& ($auth.token ?? undefined) === requestToken
 				&& ($auth.projectId ?? undefined) === requestProjectId
 				&& !cached
@@ -96,7 +98,8 @@
 				error = e instanceof ApiError ? t('list.queryFailed', { status: e.status, message: e.message }) : t('list.serverError');
 			}
 		} finally {
-			if (generation === loadGeneration && ($auth.projectId ?? undefined) === requestProjectId) {
+			if (generation === loadGeneration && requestRevision === scopeRevision
+				&& ($auth.token ?? undefined) === requestToken && ($auth.projectId ?? undefined) === requestProjectId) {
 				loading = false;
 			}
 		}
@@ -110,23 +113,26 @@
 		opts?: { refresh?: boolean },
 	) {
 		if (!requestToken) return;
+		const requestRevision = scopeRevision;
 		try {
 			const resp = await api.get<{
-				prometheus_available: boolean;
+				monitoring_available: boolean;
 				instances: Record<string, { cpu_avg: number | null; mem_avg: number | null; underutilized: boolean }>;
 			}>('/api/v1/instances/metrics-summary-batch', requestToken, requestProjectId, opts);
 			if (
 				generation !== loadGeneration
+				|| requestRevision !== scopeRevision
 				|| ($auth.token ?? undefined) !== requestToken
 				|| ($auth.projectId ?? undefined) !== requestProjectId
 			) return;
-			if (resp.prometheus_available) {
+			if (resp.monitoring_available) {
 				const map: Record<string, boolean> = {};
 				for (const [id, data] of Object.entries(resp.instances)) map[id] = data.underutilized;
 				underutilized = map;
 			}
+			else underutilized = {};
 		} catch {
-			// Prometheus 미연결 등 — 배지 없음, 에러 미노출
+			// Monitoring unavailable: no measured recommendation badge.
 		}
 	}
 
@@ -320,9 +326,16 @@
 
 	$effect(() => {
 		const projectId = $auth.projectId;
+		const token = $auth.token;
+		void scopeRevision;
 		untrack(() => {
+			loadGeneration += 1;
 			selection.clear();
-			if (!projectId) return;
+			selectedInstanceId = null;
+			instances = [];
+			underutilized = {};
+			error = '';
+			if (!projectId || !token) { loading = false; return; }
 			loading = true;
 			void fetchInstances();
 		});
@@ -352,7 +365,7 @@
 		<Alert tone="danger">{error}</Alert>
 	{/if}
 
-	{#if loading}
+	{#if loading || (instances.length > 0 && instancesRevision !== scopeRevision)}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if instances.length === 0}
 		<EmptyState headline={t('list.emptyTitle')} description={t('list.emptyDescription')}>
@@ -385,7 +398,7 @@
 	/>
 </PageShell>
 
-{#if selectedInstanceId}
+{#if selectedInstanceId && instancesRevision === scopeRevision}
 	<SlidePanel onClose={closeInstancePanel} ariaLabel={t('list.instanceDetails')}>
 		<InstanceDetailPanel instanceId={selectedInstanceId} onClose={closeInstancePanel} />
 	</SlidePanel>

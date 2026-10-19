@@ -1,0 +1,132 @@
+{
+  "change": "default-project-domain-authority",
+  "date": "2026-10-15",
+  "status": "implemented_and_locally_qualified_with_full_gate_failures",
+  "scope": "Local source and authorized isolated development deployment; no production deployment or native production IAM mutation.",
+  "proof_root": "~/.local/share/afterglow-proofs/default-domain-authority-20261015-9ca2/",
+  "source": {
+    "frozen_root": "/var/folders/1m/xfc726k14szbjnrlq5t68zjw0000gn/T/afterglow-default-domain-source-2jt__cga",
+    "initial_gate_manifest_sha256": "1f54ba77a2488b1fc9a6ba4d570ee31fb35c61489f27540d3deca4b926f50411",
+    "initial_build_manifest_sha256": "59a0d6bb64219029967245310ca542fd05733fb1a78ed0568d677cc2e1f2d6bf",
+    "final_build_inputs_checked": 1814,
+    "frozen_build_inputs_changed": [],
+    "concurrent_working_tree_build_changes_excluded": ["frontend/src/lib/components/palimpsest/HubArtifactsPanel.svelte"],
+    "parity_receipt": "delivery-build-input-parity.json",
+    "runtime_source_changed_during_final_fixture_correction": false,
+    "user_index_modified": false
+  },
+  "acceptance": {
+    "system_admin": "Current exact system:all admin from direct/group and trusted role-ID inference; project/domain names and stale JWT flags cannot escalate.",
+    "login_keyboard": "Native Enter on domain/username/password, duplicate-request fences and IME composition/key229 protection.",
+    "default": "New domains create canonical Default and grant the actual creator manager, including external identity-domain users. Verified login provides project_reader baseline.",
+    "common_managers": "Default effective managers cover every same-domain project through native inherited reader projection; no manager/manager-implying assignment on ordinary projects. Last active effective manager and Default anchor are protected.",
+    "iam": "User left navigation and IAM API require current working-domain Default manager independently of selected project. System administration remains separate.",
+    "indirect_roles": "Direct, group, scope-inherited and actual role-inferred authority, including account/home-domain enablement, are evaluated.",
+    "cross_domain": "Immutable identity/login-policy origin is separate from working domain. Explicit selection/switch rotates sessions and preserves native user, original lifetime, origin and provider binding.",
+    "domain_creation": "Ordinary/newly verified users may create domains when their identity-domain signup policy permits; otherwise live system admin is required.",
+    "legacy_domains": "Explicit system-admin bootstrap with verified creator_id; login never invents legacy creator authority."
+  },
+  "verification": {
+    "feature_focused_backend": {"passed": 853, "deselected": 18},
+    "named_auth": {"backend_passed": 354, "frontend_passed": 134},
+    "named_access": {"backend_passed": 616, "frontend_passed": 135},
+    "post_gate_package_file": {"passed": 132, "failed": 0},
+    "post_gate_combined_affected_files": {"passed": 342, "failed": 0, "files": 7, "receipt": "post-gate-final.json"},
+    "post_gate_contracts": {"passed": 177, "failed": 0},
+    "frontend": {"vitest_passed": 3899, "files": 383, "node_passed": 9},
+    "functional": {"passed": 159, "failed": 0, "skipped": 0, "deselected": 31, "domain_enrollment_cases": 5, "genuine": ["MariaDB", "Redis"], "postgresql_limit": "Readiness and SELECT only; no checkpointer application test in the selected canonical target."},
+    "native_http": {
+      "passed": 127,
+      "failed": 0,
+      "genuine": ["installed Keystone/OpenStack SDK", "Uvicorn affected routers over TCP", "Redis Lua", "SQLite policies", "committed native write followed by real requests ReadTimeout"],
+      "synthetic": ["Keystone HTTP/state", "provider metadata"],
+      "archive": "~/.local/share/afterglow-proofs/default-domain-native-20261015-PZfCIHpL/native-proof.tar.gz",
+      "archive_sha256": "97f701a9f97cd60c35e43f4b201a79ef3dd50365a49562ccf0fe2f18c18edcf9"
+    },
+    "browser": {
+      "qualified_assertions": 795,
+      "qualified_failures": 0,
+      "screenshots": 297,
+      "superseded_harness_attempts_retained": 17,
+      "locales": ["ko", "en", "ja", "zh-CN"],
+      "themes": ["light", "dark"],
+      "widths": [390, 1440],
+      "trusted_ime_inputs": ["domain", "username", "password"],
+      "api": "synthetic",
+      "receipt": "~/.local/share/afterglow-proofs/default-domain-authority-browser-1792009012472/receipt.json",
+      "limits": ["Google Geist blocked; local Pretendard/system CJK observed", "OS-native candidate window not driven", "Original user-environment Enter failure not reproduced; current compiled native Enter passed"]
+    },
+    "images": {
+      "builds_passed": 9,
+      "arm64_and_amd64": ["backend", "frontend", "worker", "native-vm"],
+      "amd64_only": ["native-cloud-vm"],
+      "canonical_build": "Root Dockerfile target builds through Docker Buildx",
+      "canonical_deployment": "docker-compose.dev.yml with isolated task image/datastore/loopback overrides",
+      "isolated_compose_architectures": ["arm64", "amd64"],
+      "backend_frontend_mariadb_health": "healthy on both architectures",
+      "notion_worker": "Real Redis membership/leader cycle and graceful exit0 on both architectures",
+      "built_main_app": "Actual app.main, installed SDK, MariaDB and Redis with synthetic Keystone: create/Default, retained original session domain listing/switch, unchanged native user/home identity, old access/refresh401, IAM, cross-domain project403, explicit project_owner write distinct from manager-only reader access.",
+      "native_supervisor_cases_passed": 3,
+      "native_limit": "Supervisor container health/login and graceful exit0, not actual VM boot/systemd.",
+      "receipt": "final-receipt.json"
+    },
+    "lint": {"backend_ruff_check": "passed", "affected_ruff_format_files_passed": 11},
+    "i18n": {"errors": 0, "warnings": 0, "namespaces": 45, "messages": 10381, "scanned_files": 1108, "hard_coded_korean_lines": 0}
+  },
+  "full_gate": {
+    "command": "npm run test:gate",
+    "attempts": 1,
+    "status": "failed",
+    "backend_at_that_attempt": {"passed": 6966, "failed": 89, "skipped": 91},
+    "subsequently_corrected": "Palimpsest51, volume transfer27 and separately executed proxy contract4 failures were stale native identity/membership fixtures. The final affected and contract runs passed without weakening runtime authorization.",
+    "original_receipt": "gate-proof/RECEIPT.md",
+    "full_gate_rerun_after_fixture_correction": false,
+    "unresolved_backend_failures": "11 pre-existing test_instance_storage_delete.py block-consumer tracking/DB failures",
+    "unresolved_format_files": ["app/api/compute/instances.py", "app/api/identity/admin.py", "app/services/mcp_control_plane/connection.py", "tests/test_mcp_consumer_auth.py", "tests/test_palimpsest_dockerfile.py", "tests/test_resource_policies.py"],
+    "known_unresolved_typecheck": "database/instances PageState.instanceId; not rerun unchanged",
+    "powershell_installer_skipped": 36,
+    "success_claimed": false
+  },
+  "original_local_stack": {
+    "network": "afterglow-local-services_default",
+    "subnet": "10.201.0.0/24",
+    "gateway": "10.201.0.1",
+    "application_containers_healthy": 6,
+    "database_containers_healthy": 3,
+    "migration_bootstrap_exit0": 4,
+    "workers": "Running observed; not counted as readiness proof",
+    "volumes_and_private_config_preserved": true,
+    "qualified_feature_images_overwrote_this_stack": false
+  },
+  "cleanup": {
+    "owned_browser_fixture_profiles_closed": true,
+    "owned_host_ui_servers_exited": true,
+    "owned_image_and_functional_compose_projects_removed": true,
+    "images_and_evidence_retained": true,
+    "prune_or_volume_deletion": false
+  },
+  "architecture": {
+    "working_tree_stamp_sha256": "653446daff0a40737905820a780233c2b3ea57759e85e7f398184242fdd9d418",
+    "frozen_staged_check_sha256": "d9a9d538c294bf0289b4b1f912f3ea8b4e0e8a384a45bee3ac9e6cf2df05acca",
+    "source_files": 2942,
+    "frozen_staged_check_exit_code": 0,
+    "index_scope": "Only the disposable frozen repository was staged; the shared user index was untouched."
+  },
+  "documentation": ["ARCHITECTURE.md", "DESIGN.md", "CHANGELOG.md", "docs/api-reference.md", "docs/api/auth.md", "docs/api/iam.md", "docs/api/admin.md", "docs/testing.md"],
+  "openspec": {
+    "schema": "rapid",
+    "artifact_status": "proposal/tasks done, repo-local",
+    "archive_command": "openspec archive default-project-domain-authority --skip-specs --yes",
+    "archive_exit_code": 0,
+    "archive_path": "openspec/changes/archive/2026-10-15-default-project-domain-authority/",
+    "archive_warnings": ["Non-blocking no-delta proposal warning; tasks complete; specs intentionally skipped"],
+    "strict_validate": "failed: generic validator requires a spec delta; this repository explicitly uses rapid proposal/tasks and --skip-specs with no specs layer",
+    "spec_delta_added_to_bypass_validation": false
+  },
+  "gbrain_sync": {"status": "unavailable", "probe": "gbrain_local_status=no-cli; no local CLI/configuration"},
+  "remaining_operational_limits": [
+    "No production/native Keystone policy acceptance, real SMTP/OIDC callback, mixed-version, backup/restore or native VM boot qualification.",
+    "Existing domains need explicit creator bootstrap; existing native tokens and external Keystone mutations are outside the Afterglow graph lease.",
+    "Repeated native authority queries produced 40,564 HTTP calls and 2,388 service-admin password exchanges across 87 API cases plus setup/state. Remote latency impact is an inference, not a benchmark."
+  ]
+}

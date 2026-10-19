@@ -1,0 +1,90 @@
+---
+# Included after each effective-config merge, before validation/rendering. Keep
+# selection separate from raw globals: an explicit operator image owns its key.
+- name: Cloud Shell image | Freeze the enabled effective workload
+  when:
+    - enable_afterglow | bool
+    - afterglow_effective_config.services.cloud_shell | bool
+  block:
+    - name: Cloud Shell image | Record this merge's requested reference
+      ansible.builtin.set_fact:
+        afterglow_cloud_shell_requested_image: "{{ afterglow_effective_config.cloud_shell.image }}"
+        cacheable: false
+      no_log: true
+
+    # Unlike run_once, this also stays single-selection across serial batches.
+    - name: Cloud Shell image | Select on the first targeted controller
+      when: inventory_hostname == ansible_play_hosts_all[0]
+      block:
+        - name: Cloud Shell image | Retain explicitly pinned references
+          ansible.builtin.set_fact:
+            afterglow_cloud_shell_image_selection:
+              input: "{{ afterglow_cloud_shell_requested_image }}"
+              image: "{{ afterglow_cloud_shell_requested_image }}"
+            cacheable: false
+          when:
+            - afterglow_cloud_shell_requested_image != 'ghcr.io/openstack-afterglow/openstack-client:slim'
+            - not (afterglow_cloud_shell_requested_image is search('(^|/)[^/@:]+$|:(latest|stable)$'))
+          no_log: true
+
+        - name: Cloud Shell image | Resolve the selected moving workload reference
+          become: true
+          ansible.builtin.command:
+            argv:
+              - "{{ ansible_python_interpreter | default('/usr/bin/python3') }}"
+              - -c
+              - "{{ lookup('ansible.builtin.file', role_path ~ '/files/resolve_image_refs.py') }}"
+            stdin: >-
+              {{ {'refs': {'cloud_shell_image': afterglow_cloud_shell_requested_image},
+                  'force_refs': (['cloud_shell_image'] if afterglow_cloud_shell_requested_image == 'ghcr.io/openstack-afterglow/openstack-client:slim' else [])}
+                 | combine({'auth_config': {'username': docker_registry_username,
+                     'password': docker_registry_password | default(''),
+                     'serveraddress': docker_registry | default('quay.io')}}
+                   if docker_registry_username | default('') | length > 0 else {}) | to_json }}
+          delegate_to: "{{ ansible_play_hosts_all[0] }}"
+          register: afterglow_cloud_shell_image_resolution
+          changed_when: false
+          failed_when: false
+          check_mode: false
+          no_log: true
+          when: >-
+            afterglow_cloud_shell_requested_image !=
+            (afterglow_cloud_shell_image_selection | default({})).get('input', '')
+
+        - name: Cloud Shell image | Require successful registry selection
+          ansible.builtin.assert:
+            that:
+              - afterglow_cloud_shell_image_resolution.rc | default(1) == 0
+            fail_msg: >-
+              Cannot freeze the effective Cloud Shell workload image. Check the
+              controller Docker SDK/Engine, registry credentials and selected tag.
+              No stale fallback is allowed and no image layers have been pulled.
+            quiet: true
+          when: not (afterglow_cloud_shell_image_resolution.skipped | default(false))
+
+        - name: Cloud Shell image | Remember the input bound to this selection
+          ansible.builtin.set_fact:
+            afterglow_cloud_shell_image_selection:
+              input: "{{ afterglow_cloud_shell_requested_image }}"
+              image: "{{ (afterglow_cloud_shell_image_resolution.stdout | from_json).cloud_shell_image }}"
+            cacheable: false
+          when: not (afterglow_cloud_shell_image_resolution.skipped | default(false))
+          no_log: true
+
+    - name: Cloud Shell image | Require one matching selection for every consumer
+      ansible.builtin.assert:
+        that:
+          - afterglow_cloud_shell_requested_image == (hostvars[ansible_play_hosts_all[0]].afterglow_cloud_shell_image_selection | default({})).get('input', '')
+        fail_msg: >-
+          Effective Cloud Shell images differ between targeted controllers, or
+          selection did not complete. Use one image or split targets with --limit.
+        quiet: true
+      no_log: true
+
+    - name: Cloud Shell image | Reapply the matching selection after this merge
+      ansible.builtin.set_fact:
+        afterglow_effective_config: >-
+          {{ afterglow_effective_config | combine({'cloud_shell': {'image':
+               hostvars[ansible_play_hosts_all[0]].afterglow_cloud_shell_image_selection.image}}, recursive=True) }}
+        cacheable: false
+      no_log: true

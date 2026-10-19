@@ -17,7 +17,7 @@
 		>{t('boot.image')}</button>
 		<button
 			class="border-l border-[var(--color-line)] px-3 py-1.5 text-xs font-medium transition-colors {$wizard.bootSource === 'volume' ? 'bg-[var(--color-accent)] text-[var(--color-action-on-accent)]' : 'bg-[var(--color-surface-sunken)] text-[var(--color-ink-2)] hover:bg-[var(--color-surface-raised)]'}"
-			onclick={() => wizard.update(w => ({ ...w, bootSource: 'volume', imageId: null, imageName: null }))}
+			onclick={() => wizard.update(w => ({ ...w, bootSource: 'volume', imageId: null, imageName: null, autoSnapshot: false, autoBackup: false, volumeProtectionForce: false }))}
 		>{t('boot.volume')}</button>
 	</div>
 </div>
@@ -25,7 +25,7 @@
 {#if $wizard.bootSource === 'image'}
 	{#snippet imagesLink(text: string)}<a href="/dashboard/compute/images" class="text-[var(--color-accent)] hover:underline">{text}</a>{/snippet}
 	<p class="mb-4 hidden text-sm text-[var(--color-ink-2)] md:block"><RichText segments={t.rich('boot.imageHint')} tags={{ images: imagesLink }} /></p>
-	<SelectImage images={s.images} selectedId={$wizard.imageId} onSelect={s.selectImage} />
+	<SelectImage images={s.images} selectedFlavor={s.selectedFlavor} selectedId={$wizard.imageId} onSelect={s.selectImage} />
 {:else}
 	{@const bootableVols = s.volumes.filter(v => v.bootable && v.status === 'available')}
 	{#snippet availableStatus(text: string)}<span class="text-green-400">{text}</span>{/snippet}

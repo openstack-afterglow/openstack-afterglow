@@ -2,7 +2,7 @@
 	import { t } from '$lib/i18n/ns/admin-system';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api } from '$lib/api/client';
+	import { api, ApiError } from '$lib/api/client';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
@@ -62,6 +62,8 @@
 		loadController = controller;
 		const requestToken = token;
 		const requestProjectId = projectId;
+		const requestEndpoint = endpoint;
+		const owns = () => generation === loadGeneration && token === requestToken && projectId === requestProjectId && endpoint === requestEndpoint;
 		if (!requestToken || !requestProjectId) { logs = []; loading = false; refreshing = false; return; }
 		if (reset) { cursors = [null]; pageIndex = 0; expandedId = null; }
 		const size = Number(pageSize);
@@ -76,27 +78,25 @@
 		loadError = '';
 		try {
 			const data = await api.get<ActivityLog[]>(
-				`${endpoint}?${new URLSearchParams(params)}`,
+				`${requestEndpoint}${requestEndpoint.includes('?') ? '&' : '?'}${new URLSearchParams(params)}`,
 				requestToken,
 				requestProjectId,
 				{ signal: controller.signal },
 			);
-			if (generation !== loadGeneration || token !== requestToken || projectId !== requestProjectId) return;
+			if (!owns()) return;
 			logs = data.slice(0, size);
 			hasMore = data.length > size;
 		} catch (error) {
 			if (
-				generation === loadGeneration
-				&& token === requestToken
-				&& projectId === requestProjectId
+				owns()
 				&& !(error instanceof DOMException && error.name === 'AbortError')
 			) {
 				logs = [];
 				hasMore = false;
-				loadError = t('activity.loadFailed');
+				loadError = error instanceof ApiError ? error.message : t('activity.loadFailed');
 			}
 		} finally {
-			if (generation === loadGeneration && token === requestToken && projectId === requestProjectId) {
+			if (owns()) {
 				loading = false;
 				refreshing = false;
 			}
@@ -149,6 +149,7 @@
 		pageIndex = 0;
 		const timer = setTimeout(() => void load(true), 250);
 		return () => {
+			loadGeneration += 1;
 			clearTimeout(timer);
 			loadController?.abort();
 		};

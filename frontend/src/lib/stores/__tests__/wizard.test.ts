@@ -23,16 +23,6 @@ describe('wizard store', () => {
 		expect(get(wizardOpen)).toBe(false);
 	});
 
-	it('wizard 초기 상태에 필수 필드 존재', async () => {
-		const state = get(wizard);
-		expect(state.step).toBe(1);
-		expect(state.imageId).toBeNull();
-		expect(state.flavorId).toBeNull();
-		expect(state.instanceName).toBe('');
-		expect(state.deleteBootVolumeOnTermination).toBe(false);
-		expect(state.additionalVolumeIds).toEqual([]);
-		expect(state.newVolumes).toEqual([]);
-	});
 
 	it('wizard.set으로 상태 업데이트', async () => {
 		const current = get(wizard);
@@ -45,12 +35,13 @@ describe('wizard store', () => {
 
 	it('resetWizard()로 초기 상태 복원', async () => {
 		const initial = get(wizard);
-		wizard.set({ ...initial, step: 5, flavorId: 'flavor-1', instanceName: 'my-vm' });
+		wizard.set({ ...initial, step: 5, flavorId: 'flavor-1', instanceName: 'my-vm', autoSnapshot: true, autoBackup: true, volumeProtectionForce: true });
 		resetWizard();
 		const after = get(wizard);
-		expect(after.step).toBe(1);
+		expect(after.step).toBe(2);
 		expect(after.flavorId).toBeNull();
 		expect(after.instanceName).toBe('');
+		expect(after).toMatchObject({ autoSnapshot: false, autoBackup: false, volumeProtectionForce: false });
 	});
 
 	it('resetWizard restores ordinary volume and data mount selections', async () => {

@@ -76,6 +76,18 @@ def test_enabled_cloud_shell_requires_zun_and_bounded_resources():
         cloud_settings(cloud_shell_idle_timeout_seconds=1200, cloud_shell_max_session_seconds=600)
 
 
+@pytest.mark.parametrize(
+    "overrides,field",
+    [
+        ({"cloud_shell_image_pull_policy": "sometimes"}, "cloud_shell_image_pull_policy"),
+        ({"cloud_shell_registry_id": "not-a-registry-uuid"}, "cloud_shell.registry_id"),
+    ],
+)
+def test_cloud_shell_rejects_invalid_image_acquisition_settings(overrides, field):
+    with pytest.raises(ValueError, match=field):
+        cloud_settings(**overrides)
+
+
 @pytest.mark.asyncio
 async def test_ticket_reservation_is_user_global_atomic_and_single_use():
     settings = cloud_settings()
@@ -267,13 +279,15 @@ class _StockZunMemberApi(BaseAdapter):
         "privileged": (1, 21),
         "healthcheck": (1, 22),
         "exposed_ports": (1, 24),
+        "registry": (1, 31),
         "tty": (1, 36),
     }
 
-    def __init__(self):
+    def __init__(self, *, image_missing=False):
         super().__init__()
         self.created: list[dict] = []
         self.containers: dict[str, dict] = {}
+        self.image_missing = image_missing
 
     def send(self, request, **kwargs):
         service, _, number = request.headers.get("OpenStack-API-Version", "container 1.1").partition(" ")
@@ -287,12 +301,20 @@ class _StockZunMemberApi(BaseAdapter):
                 return self._reply(request, 406)
             if body.get("privileged") is not None:  # container:create:privileged is RULE_DENY_EVERYBODY
                 return self._reply(request, 403)
+            if body.get("image_pull_policy"):  # Stock Zun restricts explicit policies to admin.
+                return self._reply(request, 403)
+            if "registry_id" in body:  # Response-only field; POST schema accepts `registry`.
+                return self._reply(request, 400)
             command_needs = (1, 20) if isinstance(body.get("command"), list) else (1, 1)
             mounts_need = (1, 23) if any("type" in mount for mount in body.get("mounts") or []) else (1, 1)
             if version < max(command_needs, mounts_need):
                 return self._reply(request, 400)
             self.created.append(body)
-            self.containers["container-a"] = {"uuid": "container-a", "status": "Running", "labels": body["labels"]}
+            self.containers["container-a"] = {
+                "uuid": "container-a",
+                "status": "Error" if self.image_missing else "Running",
+                "labels": body["labels"],
+            }
             return self._reply(request, 202, {"uuid": "container-a", "status": "Creating"})
         container = self.containers.get(url.path.removeprefix("/v1/containers/").removesuffix("/stop"))
         if container is None:
@@ -365,6 +387,50 @@ def test_cloud_shell_zun_lifecycle_passes_stock_member_api_gates():
 
     assert api.containers == {}
     assert "target-token" not in json.dumps(api.created)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["unpublished", "pull-policy-denied"])
+async def test_image_acquisition_failure_never_falls_back_or_removes_home(failure):
+    import requests
+    from keystoneauth1 import session as ks_session
+    from keystoneauth1.noauth import NoAuth
+
+    api = _StockZunMemberApi(image_missing=failure == "unpublished")
+    http = requests.Session()
+    http.mount("http://zun.test/", api)
+    session = ks_session.Session(auth=NoAuth(endpoint="http://zun.test"), session=http)
+    conn = SimpleNamespace(config=None, session=session, close=http.close)
+    settings = cloud_settings(cloud_shell_image_pull_policy="always" if failure == "pull-policy-denied" else "")
+    lease = cloud_shell.CloudShellLease(
+        session_id="image-failure",
+        user_id="user-a",
+        username="alice",
+        project_id=PROJECT_ID,
+        project_name="project-a",
+        token="caller-token",
+        token_expires_at=int(time.time()) + 600,
+        user_fingerprint="user-fingerprint",
+        workspace_fingerprint="workspace-fingerprint",
+        active_value="active",
+    )
+    home = cloud_shell.WorkspaceRecord(volume_id="retained-home", status="available", size_gib=5, attachments=())
+    status = AsyncMock()
+    with (
+        patch("app.services.cloud_shell.get_settings", return_value=settings),
+        patch("app.services.cloud_shell.keystone.get_cloud_shell_project_connection", return_value=conn),
+        patch("app.services.cloud_shell._resolve_networking", new=AsyncMock(return_value=("network-a", "group-a"))),
+        patch("app.services.cloud_shell._ensure_workspace", new=AsyncMock(return_value=home)),
+        patch("app.services.cloud_shell.zun.create_exec_session") as attach,
+    ):
+        with pytest.raises(cloud_shell.CloudShellUnavailable) as error:
+            await cloud_shell.provision_session(lease, status)
+    assert error.value.code == "provision_failed"
+    assert not error.value.retain_active
+    assert api.containers == {}
+    assert len(api.created) == (1 if failure == "unpublished" else 0)
+    assert "terminal" not in [call.args[0] for call in status.await_args_list]
+    attach.assert_not_called()
 
 
 def test_container_cleanup_refuses_tampered_managed_labels():

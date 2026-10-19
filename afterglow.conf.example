@@ -6,6 +6,10 @@
 # 단, 브라우저 공개 projection인 `afterglow.frontend.conf`은 백엔드에서 제외한다.
 # GPU 디바이스 맵은 필요할 때만 `config.gpu.toml`로 분리할 수 있다.
 # 알파벳순으로 적용되어 뒤 파일이 앞을 이긴다. dict는 재귀 병합, 리스트는 덮어쓰기.
+# setup.py / generate_k8s.py / config2helm.py는 파일이 없을 때 이 예시를 사용합니다.
+# 첫 초기화만 app.secret_key를 생성하며 기존 키나 미선택 항목은 바꾸지 않습니다.
+# 생성 도구의 --namespace는 public domain을 선택하지 않습니다. 환경별 프로필은
+# --override로 명시적으로 선택합니다. 사용자 지정 파일명은 <stem>.*<suffix>를 병합합니다.
 
 [DEFAULT]
 # 애플리케이션 진단 로그만 DEBUG로 활성화합니다. 생략 시 false이며 DEBUG 환경변수가 우선합니다.
@@ -131,6 +135,157 @@ public_api_base = ""
 # FORWARDED_ALLOW_IPS 환경변수에 실제 proxy peer만 지정합니다. 바깥 proxy middleware는 금지합니다.
 trusted_proxies = "127.0.0.1/32,::1/128"
 
+# Optional file-owned login registry and provider allowlists. The default is
+# UNRESTRICTED: every enabled registry provider and eligible SQL IAM provider is
+# available, subject to native domain/IdP/protocol and SQL email/login policies.
+# Registry declaration alone makes an enabled provider available in every domain
+# unless an effective allowlist restricts it; it does not create Keystone federation.
+# Password/email policy still comes from SQL IAM; public personal signup is configured
+# separately below. File providers have public cfg:<registry-key> IDs and cannot be
+# edited with SQL IAM provider CRUD.
+#
+# Selection contract (applies equally to registry AND SQL providers):
+# - Omit auth.default.allow_providers: unrestricted, NOT an empty list.
+# - Omit a domain table or its allow_providers: inherit auth.default.
+# - Explicit allow_providers = []: deny all federated providers in that scope;
+#   this does not itself disable password login.
+# - A nonempty domain list REPLACES the default, never adds to it. List entries
+#   are bare registry keys (not cfg:<key>) or canonical lowercase hyphenated SQL
+#   provider UUIDs from IAM, not provider display names. SQL is not an exception.
+# - Explicit list order is display order, with duplicates removed at first use.
+#   Unrestricted order: registry declaration order, then SQL name/ID order.
+# - Disabled providers remain unavailable even when listed. Missing/disabled or
+#   foreign-domain SQL UUIDs do not become usable merely by appearing in a list.
+# - Selection is enforced at resolve, authorize, callback and provider-bound
+#   session refresh; hiding a button is not the only enforcement boundary.
+# BREAKING migration: old [auth.default]/[auth.domain.*] selector `providers` is
+# rejected. Replace it with allow_providers and recompute each complete intended
+# list, including SQL UUIDs: simply renaming old additive lists changes access.
+# [auth.providers.<key>] remains the registry; it is not the rejected selector.
+#
+# Domain keys are EXACT canonical Keystone domain IDs from `openstack domain show
+# <name> -f value -c id`, NOT display names. Case is significant; no ID normalization.
+# All <exact-...-domain-id> strings below are placeholders: replace with actual IDs,
+# never a name such as dmslab. A provider must return the explicitly bound canonical user.
+# Registry keys: 1-32 lowercase letters/digits, starting with a letter; only single
+# INTERNAL underscores (gitlab_com/dmslab_gitlab). Trailing '_' and '__' are invalid
+# because they collide with nested environment paths. Unknown fields/references
+# and noncanonical SQL selector UUIDs fail startup (SQL existence is checked at use).
+# OIDC endpoints are discovered from issuer_url, never manually overridden.
+# Credentials: AUTH__PROVIDERS__<UPPERCASE_REGISTRY_KEY>__CLIENT_SECRET overrides
+# client_secret from TOML without replacing sibling metadata. Empty overrides
+# invalidate enabled providers. Never commit real secrets or use secret aliases.
+# A top-level AUTH JSON environment value replaces the entire TOML auth object;
+# use nested secret keys above for partial overrides that preserve TOML metadata.
+# generate_k8s.py keeps metadata/selection in ConfigMap, credentials ONLY in Secret
+# nested env keys, and injects those keys into both API and worker workloads.
+# Preserve omitted allowlists as omitted, and explicit [] as []; regenerate and
+# apply deployment artifacts as needed, then RESTART all API and worker processes.
+# Configuration is cached at startup; changing the file alone is not a reload.
+#
+# Connection data is never selected by a known domain name or GitLab hostname.
+# Adding another OIDC/GitHub instance is configuration-only: choose a new registry
+# key, set its metadata/Secret and native IdP/protocol, then select it by domain ID.
+# One issuer/application may also have multiple instances selecting different native
+# protocols; identity home and selected working domain can differ after explicit linking.
+# OIDC-compatible issuers use kind="oidc", not a vendor-specific kind. A new wire
+# protocol needs an implemented verifier, not an arbitrary kind string.
+#
+# Existing domains require a delivered invitation or current native membership.
+# An explicitly selected trusted provider may auto-admit only its verified exact
+# email suffixes. Matching an email alone NEVER links two external/local accounts:
+# the existing canonical username/password or authenticated account proof is required.
+# The native mapper must use stable issuer subject (OIDC-sub) as user.id, not email or
+# preferred_username, and must not overwrite the canonical user's verified email.
+# Public signup below creates a PERSONAL domain only after email verification;
+# it never joins an arbitrary pre-existing domain. Empty signup_email_domains permits
+# all valid suffixes only when public_signup_enabled is explicitly true.
+# The system-admin enrollment policy persists public signup, approval mode and
+# future personal-domain quotas in SQL. Once saved, its signup flag overrides this
+# bootstrap flag; email-host restrictions and SMTP readiness still apply.
+# [auth]
+# public_signup_enabled = false
+# signup_email_domains = []
+#
+# Two INDEPENDENT GitLab OIDC application registrations, not aliases. Prepare
+# separate upstream applications/client credentials and native Keystone IdPs,
+# protocols and mappings. The IdP IDs below must match those configured in Keystone.
+# [auth.providers.gitlab_com]
+# name = "GitLab.com"
+# kind = "oidc"
+# issuer_url = "https://gitlab.com"
+# client_id = "replace-with-gitlab-com-application-id"
+# # Prefer AUTH__PROVIDERS__GITLAB_COM__CLIENT_SECRET; protected TOML also works.
+# client_secret = "replace-with-gitlab-com-application-secret"
+# scopes = ["openid", "email", "profile"]
+# keystone_idp_id = "gitlab_com"
+# keystone_protocol_id = "openid"
+# federation_token_type = "id_token"
+# token_endpoint_auth_method = "client_secret_basic"
+#
+# [auth.providers.dmslab_gitlab]
+# name = "DMSLab GitLab"
+# kind = "oidc"
+# issuer_url = "https://git.dmslab.re.kr"
+# client_id = "replace-with-dmslab-gitlab-application-id"
+# # Prefer AUTH__PROVIDERS__DMSLAB_GITLAB__CLIENT_SECRET; never reuse the other secret.
+# client_secret = "replace-with-dmslab-gitlab-application-secret"
+# scopes = ["openid", "email", "profile"]
+# keystone_idp_id = "dmslab_gitlab"
+# keystone_protocol_id = "openid"
+# federation_token_type = "id_token"
+# token_endpoint_auth_method = "client_secret_basic"
+#
+# Optional additional OIDC issuer and GitHub login; no application source changes.
+# [auth.providers.campus_sso]
+# name = "Campus SSO"
+# kind = "oidc"
+# issuer_url = "https://login.example.org/realms/campus"
+# client_id = "replace-with-campus-application-id"
+# # Supply AUTH__PROVIDERS__CAMPUS_SSO__CLIENT_SECRET separately.
+# keystone_idp_id = "campus"
+# keystone_protocol_id = "openid"
+#
+# [auth.providers.code_host]
+# name = "GitHub"
+# kind = "github"
+# client_id = "replace-with-github-application-id"
+# # Supply AUTH__PROVIDERS__CODE_HOST__CLIENT_SECRET separately.
+# keystone_idp_id = "github"
+# keystone_protocol_id = "oauth2"
+#
+# [auth.default]
+# # No allow_providers assignment: unrestricted (all enabled instances plus eligible SQL).
+# # Optional global restriction instead: uncomment the following assignment.
+# # allow_providers = ["gitlab_com", "dmslab_gitlab"]
+# # No auto_join_email_domains: no automatic admission unless explicitly inherited.
+# # A domain-level map REPLACES this default; {} denies all automatic admission.
+# # Bare registry keys or canonical SQL provider UUIDs, same selectors as allow_providers.
+# # auto_join_email_domains = {}
+#
+# # Optional restriction for ONE exact domain: only DMSLab GitLab, no SQL additions.
+# [auth.domain."<exact-restricted-domain-id>"]
+# allow_providers = ["dmslab_gitlab"]
+# auto_join_email_domains = { dmslab_gitlab = ["gmail.com", "konkuk.ac.kr"] }
+# # No wildcard/subdomain matching: evilgmail.com and sub.konkuk.ac.kr are not permitted.
+#
+# # Explicitly deny all federated providers in another exact domain.
+# [auth.domain."<exact-no-federation-domain-id>"]
+# allow_providers = []
+#
+# # Inherit the default by omitting the field (or omit this whole table).
+# [auth.domain."<exact-inheriting-domain-id>"]
+# # No allow_providers assignment; inherits unrestricted or the configured default.
+#
+# # Multiple login options in another domain, in this explicit display order.
+# [auth.domain."<exact-campus-domain-id>"]
+# allow_providers = ["campus_sso", "code_host"]
+#
+# Register <app.frontend_base_url>/auth/callback in EACH upstream application;
+# use the externally reachable frontend base URL. GitHub is also supported with
+# kind = "github": public endpoints, read:user + user:email, access_token and
+# client_secret_post defaults; HTTPS enterprise endpoints may override them.
+
 [cache]
 redis_url = "redis://redis:6379/0"
 
@@ -176,10 +331,8 @@ jwt_refresh_ttl = 604800  # refresh 토큰 (기본 7일)
 token_ip_binding_mode = "subnet"
 
 [security]
-# system:all scope 기반 admin 인증 (보안 강화 권장)
-# True: admin 프로젝트 role도 시스템 admin으로 인정 (마이그레이션 호환 모드 — 권한 자기복제 허용)
-# False: system:all scope만 인정 (권장). 변경 전 scripts/bootstrap_system_admin.py 실행 필요.
-admin_legacy_project_policy = false
+# 관리자 접근은 Keystone system:all의 admin 역할만 허용합니다.
+# 최초 관리자/잠금 복구: backend/scripts/bootstrap_system_admin.py (운영자 명시 실행)
 # 로그인 브루트포스 방어
 login_max_attempts = 10       # 연속 실패 후 계정 잠금 임계값
 login_lockout_seconds = 300   # 기본 잠금 시간 (초)
@@ -238,7 +391,13 @@ palimpsest_internal_url = ""
 # security_group을 비우거나 "default"로 두면 전용 프로젝트의 default 그룹과 기존 규칙을 사용합니다.
 # egress-only를 보장하지 않으며, 직접 지정하는 보안 그룹도 전용 프로젝트 소유여야 합니다.
 service_project_id = ""
-image = "ghcr.io/openstack-afterglow/afterglow-cloud-shell@sha256:replace-with-published-digest"
+# Image source: https://github.com/openstack-afterglow/openstack-client (slim / alpine).
+# 개발은 :slim 태그를 사용할 수 있지만 운영은 게시된 manifest @sha256:<digest>로 고정합니다.
+image = "ghcr.io/openstack-afterglow/openstack-client:slim"
+# 빈 값은 Zun 기본 정책. always / ifnotpresent / never 명시는 Zun의 admin 정책 권한이 필요합니다.
+image_pull_policy = ""
+# 비공개 GHCR/GitLab은 전용 프로젝트에 등록한 Zun registry UUID를 지정합니다. 비밀번호/토큰은 Zun에서 관리합니다.
+registry_id = ""
 network_id = ""
 security_group = "default"
 # Cloud Shell 내부 OpenStack CLI가 사용할 Keystone v3 URL. 운영은 HTTPS만 허용합니다.
@@ -330,7 +489,7 @@ gpu_config_mount = "/app/config.gpu.toml"
 gpu_config_host_path = ""         # optional host path for config.gpu.toml
 logs_mount = "/app/logs"
 logs_host_path = ""               # optional host path for worker logs
-env_allowlist = "AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,K3S_KUBECONFIG_ENCRYPTION_KEY,K3S_GPU_ADMISSION_TOKEN,PROMETHEUS_PASSWORD,GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY"
+env_allowlist = "AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,K3S_KUBECONFIG_ENCRYPTION_KEY,K3S_GPU_ADMISSION_TOKEN,PROMETHEUS_PASSWORD,NOTION_CONFIG_ENCRYPTION_KEY"
 
 [worker_runtime.kubernetes]
 namespace = "afterglow"
@@ -570,18 +729,5 @@ token_expiry_days = 7       # 초대 링크 유효 기간 (일)
 # 예: origins = "https://cloud.dmslab.re.kr,http://localhost:3080,http://127.0.0.1:3080"
 origins = "https://afterglow.example.com,http://localhost:3080,http://127.0.0.1:3080"
 
-[gitlab_oidc]
-# GitLab OIDC 로그인 활성화 여부
-enabled = false
-# GitLab 인스턴스 URL
-gitlab_url = "https://gitlab.com"
-# GitLab OAuth2 Application Client ID / Secret
-client_id = ""
-client_secret = ""
-# Keystone OS-FEDERATION에 등록된 Identity Provider ID / Protocol ID
-idp_id = "gitlab"
-protocol_id = "openid"
-# OAuth2 콜백 URL (프론트엔드 주소 + /auth/gitlab/callback)
-redirect_uri = "http://localhost:3000/auth/gitlab/callback"
-# GitLab OAuth2 scope
-scopes = "openid email profile read_user"
+# 파일 공급자: 위 [auth] 예제. SQL 공급자·이메일 제한·회원가입 정책은 도메인 IAM에서 관리합니다.
+# SQL 공급자 secret 암호화와 파일 공급자 revision/pin에 쓰이는 k3s.kubeconfig_encryption_key를 보존·복구해야 합니다.

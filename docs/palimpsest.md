@@ -227,6 +227,19 @@ GitHub context는 커밋 SHA를 고정하고 archive path traversal·link·speci
 신뢰된 `SERVICE_PALIMPSEST_INTERNAL_URL` / `[services] palimpsest_internal_url`이 필수이고 없거나 비면 503이다.
 이전 Afterglow 로컬 설정 `[palimpsest] hub_local_path`는 현행 Hub 활성화 조건이 아니다.
 
+### 대시보드의 Hub 이미지/레이어
+
+`/palimpsest/packages`의 기본 **Hub 이미지/레이어** 탭은 현재 호출자가 볼 수 있는 기존 Hub metadata를 읽는다. 별도 **네이티브 패키지** 탭의403은 그 탭에만 표시하며 **로컬 사용 가이드**도 계속 열 수 있다. 관리자 빌드·소비 스튜디오를 이 페이지의 VM 실행 기능으로 대신하지 않는다.
+
+Exact name, SHA-256 접두사4–64hex, kind·architecture·disk format으로 서버 검색한다.50개+lookahead1개 페이지이며 표시된 항목 수·offset은 전체 inventory 수가 아니다. Shared/public artifact는 다른 project 소유라도 Hub가 허용한 가시성대로 보인다. 상세에서 전체 digest·JSON·ancestor chain/완전성을 확인하고, incomplete/orphan 레이어에는 VM 실행 버튼을 제공하지 않는다.
+
+최근 build/export는 각각 최대20개이며 status·제공된 progress/error·시작/완료 시각과 마지막 성공 관측만 표시한다. 누락된 계측을0%/정상으로 바꾸지 않고, 실패·권한 거부·directory 장애·정상 빈 목록을 구별한다. 선택적30초 자동 갱신은 hidden tab에서 멈추며 요청이 겹치지 않는다.
+
+Artifact와 build/export의 UTC 시각은 브라우저 시간대와 선택 언어로 표시한다. Hub가 timezone 없는 ISO datetime을 반환해도 UTC로 읽고, 명시적 timezone과 마지막 성공 관측의 epoch가 가리키는 실제 시각은 보존한다.
+
+현재 JWT·user·project와 permission snapshot/Hub capability가 모두 유효해야 액션을 사용한다. 갱신·권한 조회 pending/error에서는 이전 데이터와 액션을 가리고, token/filter/ABA 전환의 늦은 응답은 버린다.64MiB 이하는 인증된 stream·길이·SHA-256 검증 후 저장하며 손상/크기 초과/미지원 브라우저/권한 변화에는 저장하지 않는다. 더 큰 파일의 CLI 경로는 아래 로컬 가이드의 원본 user/project 검증을 먼저 통과해야 한다.
+
+
 ### 저장 배치
 
 blob store 는 **OCI image-layout 그대로**다. 덕분에 번들이 곧 디렉터리이고, 로컬 KVM 호스트에
@@ -248,6 +261,7 @@ Afterglow는 인증된 BFF로 바이트를 스트리밍한다. Afterglow 백엔�
 
 | 메서드·경로 | 하는 일 |
 |---|---|
+| `GET /api/v1/palimpsest/hub/me` | 현재 Hub user/project·실제 legacy capabilities. Browser JWT와 현재 service/system 권한 필요, `private, no-store` |
 | `GET /api/v1/palimpsest/hub/layers` | 검색 — `digest` · `digest_prefix` · `md5` · `chain_id` · `name` · `kind` · `parent_digest` |
 | `GET /hub/images` | **베이스 cloud image 목록** — `ubuntu_base` · `arch` · `os_variant` · `disk_format` |
 | `GET /hub/layers/{digest}` | 상세 + 조상 요약 + `chain_complete` |
@@ -302,15 +316,13 @@ mediaType 은 프로젝트 고유값을 쓴다 — 표준 도구가 squashfs 를
 
 ## 4.6. 프로젝트 패키지와 내 접근 키 (`/palimpsest/packages`)
 
-사용자 Palimpsest 메뉴의 **프로젝트 패키지**는 선택한 프로젝트의 **비공개 Hub inventory**다.
-OCI 이미지와 런타임 번들을 조회하며, CLI로 게시한 패키지는 별도 승인 없이 나타난다.
-관리자 `/admin/libraries`의 Dockerfile 빌드·artifact/profile·VM 소비 파이프라인이나 기존 VM 위저드의
-library 카탈로그를 대체하지 않는다. 관리자 화면의 **프로젝트 패키지 / 접근 키** 링크도 이 페이지로 연결된다.
+사용자 Palimpsest 메뉴는 Hub·네이티브 패키지·로컬 가이드 workspace를 연다. 이 절의 **네이티브 패키지**는 선택한 프로젝트의 **비공개 inventory**이며 OCI 이미지·런타임 번들과 CLI로 게시한 패키지를 조회한다. 보호된 administrator/service identity의 native403을 우회하지 않는다. 관리자 `/admin/libraries`의 Dockerfile 빌드·artifact/profile·VM 소비 파이프라인이나 기존 VM 위저드의 library 카탈로그를 대체하지 않는다.
 
 - **목록**: `xl` 이상은 **패키지 / 유형**, **태그 / digest**, **플랫폼**,
   **검증된 크기 / 최근 게시**, **작업**의 다섯 열 표이고, 그 아래는 카드다.
   표의 태그·최근 digest는 앞 19자(`sha256:` + 앞 12자리 hex) 뒤에 `…`를 붙여 줄인다.
   title·카드·상세·복사 값은 전체 digest를 유지한다. 크기는 최신 버전의 검증된 descriptor graph 크기다.
+  검색은 이미 로드된 이름·namespace·태그·digest·플랫폼만 대상으로 하며 서버 전체 검색이 아니다. 다음 cursor가 있으면 검색 결과0건에서도 더 불러오기를 사용할 수 있다.
 - **상세 / 이력**: 버전 이력과 태그 해석, 전체 root digest·플랫폼·게시자/시각·미디어 유형,
   graph/다운로드 크기, 클라이언트 출처 정보와 검증된 descriptor graph를 보여 준다.
   이 root digest는 패키지 버전 식별자이며 위의 단일 `.sqsh` blob digest와 구별한다.
@@ -327,6 +339,7 @@ library 카탈로그를 대체하지 않는다. 관리자 화면의 **프로젝�
   UUID로만 한정하지 않는 opaque 식별자이며 정규화·소문자 변환·하이픈 제거 없이 정확히 비교한다.
 - **내 접근 키**: `/api/v1/palimpsest/package-keys`로 현재 프로젝트에서 **인증된 본인이 소유한 키만**
   발급·목록·폐기한다(프로젝트 소유자/관리자라는 이유로 다른 사용자의 키를 관리하지 않는다).
+  목록에는 secret과 별개인 공개 `key_id` UUID와 복사 동작을 표시한다. 이 값은 native CLI `--username`이며 private key 값이 아니다.
   발급은 `keys_issue`로 제한하며 정확한 패키지 이름 또는 명시적 전체 프로젝트 범위, 패키지/캐시별 읽기·쓰기,
   1–90일 만료를 선택한다. 쓰기 위임에는 `packages_write`가 필요하다. secret은 발급 응답에서 한 번만 표시하고
   브라우저 메모리에만 보관하며, 명시적 닫기·탭/페이지 이동·pagehide·프로젝트 전환·로그아웃에서 화면 상태를 폐기한다.
@@ -352,7 +365,7 @@ BFF는 JWT·세션·선택 프로젝트의 정확한 project/user ID를 대조�
 일반 ProjectSelector의 프로젝트 전환은 별도 인증 동작이며, 패키지 요청이 scope를 바꾸는 것과 구별한다.
 namespace 등록·키 소유권/위임 권한의 최종 인가는 Hub가 수행하고, Afterglow는 성공 응답의 소유권을 대조한다.
 
-일반 JWT의 `/api/v1/palimpsest/hub/...` catch-all은 기존 root/health·layers·images·image-exports·uploads·bundles·builds만 허용합니다. Native projects·keys·cache control과 `/auth/me`는 token exchange·rescope·upstream 호출 전에 403으로 거부합니다. Native browser 작업은 위 dedicated BFF를 사용하고, 기존 unauthenticated export-ticket 다운로드는 유지합니다.
+일반 JWT의 `/api/v1/palimpsest/hub/...` catch-all은 기존 root/health·layers·images·image-exports·uploads·bundles·builds와 읽기 전용 `/me`만 허용합니다. `/me`는 검증된 시스템 관리자 또는 현재 Palimpsest service 권한으로 제한됩니다. Native projects·keys·cache control과 `/auth/me`는 token exchange·rescope·upstream 호출 전에403으로 거부합니다. Native browser 작업은 위 dedicated BFF를 사용하고 기존 unauthenticated export-ticket 다운로드는 유지합니다.
 
 Native CLI key gateway는 단일 `Bearer ppk_v1_…`와 method/path allowlist를 사용합니다. 단일 `X-Project-Id`는 Hub로 그대로 전달해 key의 실제 scope와 대조하며, 같은 값의 중복 헤더도 401로 거부합니다. Browser JWT·Keystone 자격을 이 경로와 혼용하지 않습니다. 두 package transport는 명시적으로 설정된 trusted internal Hub URL만 사용하고 redirect 없이 `private, no-store`로 응답합니다. HTTPS는 `os_cacert` 또는 시스템 CA로 항상 검증하며 `os_insecure`로 비활성화하지 않습니다. CA/client 초기화나 transport 오류는 자격·내부 예외를 노출하지 않고 503으로 반환합니다.
 
@@ -362,6 +375,17 @@ Native CLI key gateway는 단일 `Bearer ppk_v1_…`와 method/path allowlist를
 `frontend/src/lib/stores/palimpsestPackagesController.svelte.ts`, `frontend/src/lib/api/palimpsestPackages.ts`,
 `backend/app/api/palimpsest/{packages,package_keys}.py`와 독립 Hub의 package registry/config.
 이 절은 현재 소스 계약을 설명하며 운영 환경의 실시간 검증 결과를 주장하지 않는다.
+
+## 4.7. 로컬 사용 가이드
+
+페이지의 가이드는 `uv tool install --python 3.11 "palimpsest-client==0.3.5"`와 version 확인, macOS Apple Silicon의 Lima/VZ·Linux KVM·Windows의 지원 경계를 설명한다. CLI 설치만으로 VM prerequisites가 설치되거나 Hub 서버를 설치하는 것은 아니다. Afterglow browser JWT, 원본 Keystone token, native package key는 다른 자격이며 URL·명령 인자·화면/공유 파일에 secret을 넣지 않는다.
+
+복사한 SDK 명령은 사용자의 private `./clouds.yaml`에서 지정 cloud를 읽고 HTTPS·`verify=True`·`insecure=False`로 원본 계정을 인증한다. 선택 프로젝트와 SDK token의 project를 비교하고 token은 출력/파일 저장하지 않고 같은 child 환경에만 넘긴다. 기존 `PALIMPSEST_PACKAGE_KEY`를 제거해 자격 도메인을 혼용하지 않는다. Legacy `image/layer ls/pull`은 `PALIMPSEST_PROJECT_ID`로 scope되지 않으므로 bounded/no-redirect Hub `/v1/me`의 default user/project도 원본 access와 대조한다. 불일치하면 실행하지 말고 project-scoped local web action을 선택한다.
+
+원격 inventory는 `palimpsest image ls --limit 20`/`palimpsest layer ls --limit 20`, 다운로드는 실제 canonical digest의 `image/layer pull`과 `--output ./downloads`다. `--output`은 디렉터리이며 handler가 digest 기반 파일명을 만든다. `palimpsest store ls --kind image`와 `palimpsest ps`는 로컬 상태다. 기본 `palimpsest web`은 foreground·read-only이고 종료 시 서버도 끝난다. 원격 다운로드 등 제어는 같은 SDK subprocess에서 명시적으로 선택한 `web --allow-control`을 사용해야 하며 Afterglow의 원격 작업 상태와 로컬 VM 상태를 동일시하지 않는다.
+
+Native package login은 검증된 `package_authority`·namespace와 **명시적으로 확인한 같은 HTTPS authority의 API base**를 요구한다. Authority만으로 `/api/v1/palimpsest/hub`나 `/v1`을 추측하지 않는다. IPv6 authority도 shell quote하며 `registry add ... && palimpsest login --registry dmslab --username <공개 key_id>`로 실행한다. 기존 alias가 있으면 add 실패 뒤 login하지 않고 설정을 확인한다. 키 값은 CLI private prompt/승인된 helper로 제공하며 snippet에 넣지 않는다. Native 보호 identity 정책과 발급자·scope·action 검사는 별도로 유지한다.
+
 
 ## 5. OverlayFS 제약 (변하지 않는 규칙)
 

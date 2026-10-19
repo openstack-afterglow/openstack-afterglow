@@ -39,7 +39,6 @@ function syncPythonProject(relativeDirectory, label) {
 }
 
 syncPythonProject("backend", "backend");
-syncPythonProject("cloud-shell", "cloud-shell");
 
 // 4) helm/afterglow/Chart.yaml — version 및 appVersion 갱신
 const chartPath = path.join(root, "helm/afterglow/Chart.yaml");

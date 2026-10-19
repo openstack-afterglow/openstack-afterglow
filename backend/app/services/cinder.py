@@ -469,16 +469,29 @@ def create_snapshot(
     name: str,
     description: str | None = None,
     force: bool = False,
+    *,
+    metadata: dict[str, str] | None = None,
 ) -> dict:
     kwargs: dict = {"volume_id": volume_id, "name": name, "is_forced": force}
     if description:
         kwargs["description"] = description
-    s = conn.block_storage.create_snapshot(**kwargs)
+    if metadata is not None:
+        kwargs["metadata"] = metadata
+    adapter = conn.block_storage
+    if isinstance(adapter, Proxy):
+        # Snapshot submissions are not idempotent after an accepted/lost response.
+        adapter = copy(adapter)
+        adapter.request = partial(adapter.request, connect_retries=0, status_code_retries=0)
+    s = adapter.create_snapshot(**kwargs)
     return _snapshot_to_dict(s)
 
 
 def delete_snapshot(conn: openstack.connection.Connection, snapshot_id: str) -> None:
-    conn.block_storage.delete_snapshot(snapshot_id, ignore_missing=True)
+    adapter = conn.block_storage
+    if isinstance(adapter, Proxy):
+        adapter = copy(adapter)
+        adapter.request = partial(adapter.request, connect_retries=0, status_code_retries=0)
+    adapter.delete_snapshot(snapshot_id, ignore_missing=True)
 
 
 def _snapshot_to_dict(s) -> dict:
@@ -491,6 +504,7 @@ def _snapshot_to_dict(s) -> dict:
         "description": getattr(s, "description", "") or "",
         "created_at": str(s.created_at) if getattr(s, "created_at", None) else None,
         "project_id": getattr(s, "project_id", None),
+        "metadata": dict(getattr(s, "metadata", None) or {}),
     }
 
 

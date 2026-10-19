@@ -22,7 +22,7 @@
 	const isLast = $derived(step === totalSteps);
 </script>
 
-{#if windowsUnsupported && step < totalSteps - 1}
+{#if windowsUnsupported && step > 1 && step < totalSteps - 1}
 	<div data-testid="windows-unsupported-footer"><Alert tone="danger">{t('config.windows.unsupported')}</Alert></div>
 {/if}
 

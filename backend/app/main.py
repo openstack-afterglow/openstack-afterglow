@@ -6,7 +6,14 @@ import logging
 import os
 from datetime import UTC, datetime
 
-from app.utils.log import WARNING_LOG_NAMESPACES, SensitiveDataFilter, is_sensitive, mask_str, sanitize_log_value
+from app.utils.log import (
+    WARNING_LOG_NAMESPACES,
+    SensitiveDataFilter,
+    exception_metadata,
+    is_sensitive,
+    mask_str,
+    sanitize_log_value,
+)
 
 _STANDARD_LOG_KEYS = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
 
@@ -25,15 +32,7 @@ class _JSONFormatter(logging.Formatter):
         if record.levelno == logging.DEBUG:
             entry["source"] = {"module": record.module, "function": record.funcName, "line": record.lineno}
         if record.exc_info and record.exc_info[0]:
-            # Exception text, source lines, locals and chained causes may contain
-            # arbitrary credentials. Keep only structural diagnostic metadata.
-            entry["exception"] = {"type": record.exc_info[0].__name__}
-            frames = []
-            tb = record.exc_info[2]
-            while tb is not None and len(frames) < 12:
-                frames.append({"function": tb.tb_frame.f_code.co_name, "line": tb.tb_lineno})
-                tb = tb.tb_next
-            entry["exception"]["frames"] = frames
+            entry["exception"] = exception_metadata(record.exc_info)
         return json.dumps(entry, ensure_ascii=False)
 
 
@@ -168,7 +167,8 @@ from app.api.common.traffic_analytics import (
 # ---------------------------------------------------------------------------
 # app.api.identity (admin, auth, sub-routers)
 # ---------------------------------------------------------------------------
-from app.api.identity import admin_router, auth_router, gitlab_auth_router, mcp_access_router
+from app.api.identity import admin_router, auth_router, mcp_access_router
+from app.api.identity.account_recovery import router as account_recovery_router
 from app.api.identity.admin_activity import router as admin_activity_router
 from app.api.identity.admin_announcements import router as admin_announcements_router
 from app.api.identity.admin_credentials import router as admin_credentials_router
@@ -185,9 +185,16 @@ from app.api.identity.admin_orphans import router as admin_orphans_router
 from app.api.identity.admin_resource_policies import router as admin_resource_policies_router
 from app.api.identity.admin_secrets import router as admin_secrets_router
 from app.api.identity.admin_services import router as admin_services_router
+from app.api.identity.admin_telemetry import router as admin_telemetry_router
 from app.api.identity.admin_worker_runtime import router as admin_worker_runtime_router
-from app.api.identity.invitations import router as invitations_router
+from app.api.identity.domain_auth import iam_router as domain_policy_router
+from app.api.identity.domain_auth import public_router as domain_auth_router
+from app.api.identity.domain_quotas import router as domain_quotas_router
+from app.api.identity.domains import router as admin_domains_router
+from app.api.identity.enrollment_policy import router as enrollment_policy_router
+from app.api.identity.iam import router as iam_router
 from app.api.identity.login_monitoring import router as login_monitoring_router
+from app.api.identity.onboarding import router as onboarding_router
 from app.api.identity.profile import router as profile_router
 from app.api.identity.profile_activity import router as profile_activity_router
 from app.api.identity.projects import router as projects_router
@@ -271,13 +278,17 @@ install_mcp_route(app)
 async def creation_validation_exception_handler(request: Request, exc: RequestValidationError):
     """Keep creation passwords and credential secrets out of validation responses."""
     path = request.url.path.rstrip("/")
+    if any(path == base or path.startswith(base + "/") for base in ("/api/v1/auth", "/api/v1/iam")):
+        return JSONResponse(
+            status_code=422, content={"detail": "identity_invalid_input"}, headers={"Cache-Control": "no-store"}
+        )
     if path.startswith("/api/v1/monitoring/host-observations/"):
         return JSONResponse(
             status_code=422, content={"detail": "observation_validation_failed"}, headers={"Cache-Control": "no-store"}
         )
     sensitive_credential = request.method in {"POST", "PUT", "PATCH"} and any(
         path == base or path.startswith(base + "/")
-        for base in ("/api/v1/admin/application-credentials", "/api/v1/admin/user-credentials")
+        for base in ("/api/v1/admin/application-credentials", "/api/v1/admin/user-credentials", "/api/v1/admin/users")
     )
     sensitive_creation = request.method == "POST" and path in {
         "/api/v1/instances",
@@ -295,20 +306,28 @@ async def creation_validation_exception_handler(request: Request, exc: RequestVa
 
 @app.exception_handler(HTTPException)
 async def sanitized_http_exception_handler(request: Request, exc: HTTPException):
-    """Return safe 5xx details; log only status and route metadata, never exception text."""
+    """Return safe 5xx details; log structural diagnostics, never exception text."""
     # Only client-visible failure detail is eligible for the audit record.
     if (exc.status_code < 500 or getattr(exc, "_afterglow_safe_public_detail", False)) and isinstance(exc.detail, str):
         request.state.audit_error = exc.detail
     if exc.status_code >= 500:
         _logger.error(
             "HTTP error",
+            exc_info=(type(exc), exc, exc.__traceback__),
             extra={"status": exc.status_code, "method": _safe_method(request.method), "path": _route_template(request)},
         )
         detail = exc.detail if getattr(exc, "_afterglow_safe_public_detail", False) else "내부 서버 오류"
-        return JSONResponse(status_code=exc.status_code, content={"detail": detail})
+        # Preserve only the route's explicit privacy policy, not arbitrary
+        # upstream/authentication headers carried by an HTTPException.
+        no_store = any(
+            name.lower() == "cache-control" and value == "no-store" for name, value in (exc.headers or {}).items()
+        )
+        headers = {"Cache-Control": "no-store"} if no_store else None
+        return JSONResponse(status_code=exc.status_code, content={"detail": detail}, headers=headers)
     if exc.status_code == 400:
         _logger.warning(
             "HTTP error",
+            exc_info=(type(exc), exc, exc.__traceback__),
             extra={"status": 400, "method": _safe_method(request.method), "path": _route_template(request)},
         )
     return await _default_http_handler(request, exc)
@@ -345,6 +364,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     """처리되지 않은 예외를 로그에 기록하고 500을 반환."""
     _logger.error(
         "Unhandled exception",
+        exc_info=(type(exc), exc, exc.__traceback__),
         extra={
             "method": _safe_method(request.method),
             "path": _route_template(request),
@@ -409,12 +429,19 @@ _AUDIT_PREFIX_MAP: list[tuple[str, str]] = [
     ("/api/v1/admin/user-credentials", "user_credential"),
     ("/api/v1/admin/users", "user"),
     ("/api/v1/admin/projects", "project"),
+    ("/api/v1/admin/domains", "domain"),
+    ("/api/v1/admin/enrollment-policy", "enrollment_policy"),
+    ("/api/v1/admin/signup-requests", "signup_request"),
+    ("/api/v1/iam/login-policy", "domain_login_policy"),
+    ("/api/v1/iam/providers", "domain_provider"),
+    ("/api/v1/iam/invitations", "invitation"),
+    ("/api/v1/iam/users", "user"),
+    ("/api/v1/iam/projects", "project"),
     ("/api/v1/waygate/servers", "waygate_server"),
     ("/api/v1/loadbalancers", "load_balancer"),
     ("/api/v1/k3s/clusters", "container_cluster"),
     ("/api/v1/file-storage", "file_storage"),
     ("/api/v1/object-storage", "object_storage"),
-    ("/api/v1/invitations", "invitation"),
     ("/api/v1/instances/cloud-init", "cloud_init_snippet"),
     ("/api/v1/instances", "instance"),
     ("/api/v1/keypairs", "keypair"),
@@ -588,7 +615,9 @@ async def activity_audit_middleware(request: Request, call_next):
             return
 
         info = getattr(request.state, "token_info", None)
-        if not info or not info.get("project_id") or not info.get("user_id"):
+        if not info or not info.get("user_id"):
+            return
+        if not info.get("project_id") and not (info.get("domain_id") and request.url.path.startswith("/api/v1/iam/")):
             return
         rtype, rid = mapped
         path_parts = request.url.path.rstrip("/").split("/")
@@ -599,7 +628,7 @@ async def activity_audit_middleware(request: Request, call_next):
         detail = getattr(request.state, "audit_error", None) if outcome == "failed" and not raised else None
         try:
             await _record_activity(
-                project_id=info["project_id"],
+                project_id=info.get("project_id", ""),
                 user_id=info["user_id"],
                 username=info.get("username", ""),
                 resource_type=rtype,
@@ -612,6 +641,7 @@ async def activity_audit_middleware(request: Request, call_next):
                 service=holder["service"],
                 page=page or None,
                 source="afterglow",
+                extra={"domain_id": info["domain_id"]} if info.get("domain_id") else None,
             )
         except Exception:
             _logger.warning("activity audit write failed", exc_info=True)
@@ -643,9 +673,17 @@ async def credential_response_cache_policy(request: Request, call_next):
     path = request.url.path.rstrip("/")
     if any(
         path == base or path.startswith(base + "/")
-        for base in ("/api/v1/admin/application-credentials", "/api/v1/admin/user-credentials")
+        for base in (
+            "/api/v1/admin/application-credentials",
+            "/api/v1/admin/user-credentials",
+            "/api/v1/admin/users",
+            "/api/v1/auth",
+            "/api/v1/iam",
+            "/api/v1/admin/domains",
+        )
     ):
-        response.headers["Cache-Control"] = "no-store"
+        if "no-store" not in response.headers.get("Cache-Control", ""):
+            response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
     return response
 
@@ -660,16 +698,23 @@ app.include_router(mcp_router, prefix="/api/v1/mcp", tags=["mcp"])
 app.include_router(mcp_lumen_router, prefix="/api/v1/mcp/lumen", tags=["mcp-lumen"])
 app.include_router(mcp_root_router, tags=["mcp"])
 app.include_router(mcp_oauth_router, prefix="/api/v1/auth", tags=["mcp-oauth"])
-# OIDC/OAuth API routes follow the project-wide /api/v1 mount rule.
-app.include_router(gitlab_auth_router, prefix="/api/v1/auth", tags=["auth-oidc"])
+app.include_router(domain_auth_router, prefix="/api/v1/auth", tags=["auth-domain"])
+app.include_router(onboarding_router, prefix="/api/v1/auth", tags=["auth-onboarding"])
+app.include_router(account_recovery_router, prefix="/api/v1/auth", tags=["auth-recovery"])
+app.include_router(domain_policy_router, prefix="/api/v1/iam", tags=["iam-login-policy"])
+app.include_router(iam_router, prefix="/api/v1/iam", tags=["iam"])
+app.include_router(domain_quotas_router, prefix="/api/v1", tags=["domain-quotas"])
 # admin_instances_router를 admin_router보다 먼저 등록 (정적 경로 /instances/async 우선 매칭)
 app.include_router(admin_instances_router, prefix="/api/v1/admin", tags=["admin-instances"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(admin_services_router, prefix="/api/v1/admin", tags=["admin-services"])
+app.include_router(admin_telemetry_router, prefix="/api/v1/admin/telemetry", tags=["admin-telemetry"])
 app.include_router(admin_worker_runtime_router, prefix="/api/v1/admin", tags=["admin-worker-runtime"])
 app.include_router(admin_flavors_router, prefix="/api/v1/admin", tags=["admin-flavors"])
 app.include_router(admin_identity_router, prefix="/api/v1/admin", tags=["admin-identity"])
+app.include_router(admin_domains_router, prefix="/api/v1/admin", tags=["admin-domains"])
 app.include_router(admin_credentials_router, prefix="/api/v1/admin", tags=["admin-credentials"])
+app.include_router(enrollment_policy_router, prefix="/api/v1/admin", tags=["admin-enrollment"])
 app.include_router(admin_host_health_router, prefix="/api/v1/admin", tags=["admin-host-health"])
 app.include_router(admin_infrastructure_topology_router, prefix="/api/v1/admin", tags=["admin-infrastructure-topology"])
 app.include_router(host_observations_router, prefix="/api/v1/monitoring", tags=["host-observations"])
@@ -688,7 +733,6 @@ app.include_router(admin_orphans_router, prefix="/api/v1/admin", tags=["admin-or
 app.include_router(admin_dashboard_router, prefix="/api/v1/admin", tags=["admin-dashboard"])
 app.include_router(admin_announcements_router, prefix="/api/v1/admin/announcements", tags=["admin-announcements"])
 app.include_router(projects_router, prefix="/api/v1/projects", tags=["projects"])
-app.include_router(invitations_router, prefix="/api/v1/invitations", tags=["invitations"])
 # Compute
 app.include_router(images_router, prefix="/api/v1/images", tags=["images"])
 app.include_router(flavors_router, prefix="/api/v1/flavors", tags=["flavors"])
@@ -1315,10 +1359,11 @@ async def start_background_workers():
         _notification_collector = await start_notification_collector(_db_cfg)
 
     from app.services.auto_backup import scheduler_loop
-
-    _start_background(scheduler_loop(), name="volume-backup-dispatch")
+    from app.services.auto_snapshot import scheduler_loop as snapshot_scheduler_loop
     from app.services.infrastructure_fabric import monitoring_loop as fabric_monitoring_loop
 
+    _start_background(scheduler_loop(), name="volume-backup-dispatch")
+    _start_background(snapshot_scheduler_loop(), name="volume-snapshot-dispatch")
     # Register empty generations too, so disabling sources fences an older replica.
     _start_background(fabric_monitoring_loop(settings=_db_cfg), name="physical-fabric-observation")
     if _db_cfg.monitoring_host_healthcheck_enabled:

@@ -27,7 +27,7 @@ describe('/dashboard/chat/settings route', () => {
 			availableProjects: [],
 			roles: [],
 			isSystemAdmin: false,
-			federated: false
+			federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false
 		});
 	});
 	it('keeps a valid section while ignoring OAuth metadata', () => {

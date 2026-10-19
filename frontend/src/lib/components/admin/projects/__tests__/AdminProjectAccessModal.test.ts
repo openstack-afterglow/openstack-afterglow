@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '$lib/stores/auth';
+import { ApiError } from '$lib/api/client';
 
 const mocks = vi.hoisted(() => ({
 	get: vi.fn(),
@@ -10,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('$lib/api/client', () => ({
 	api: mocks,
-	ApiError: class ApiError extends Error {},
+	ApiError: class ApiError extends Error { constructor(_status: number, message: string) { super(message); } },
 }));
 
 import AdminProjectAccessModal from '../AdminProjectAccessModal.svelte';
@@ -20,7 +21,7 @@ const project = {
 	name: 'agent',
 	description: '',
 	enabled: true,
-	domain_id: null,
+	domain_id: 'domain-a',
 	created_at: null,
 };
 
@@ -35,7 +36,7 @@ let members: Array<Record<string, unknown>>;
 let roles: Array<{ id: string; name: string }>;
 
 function renderModal() {
-	return render(AdminProjectAccessModal, { project, onClose: vi.fn() });
+	return render(AdminProjectAccessModal, { project, domainId: 'domain-a', onClose: vi.fn() });
 }
 
 describe('AdminProjectAccessModal', () => {
@@ -48,12 +49,12 @@ describe('AdminProjectAccessModal', () => {
 		];
 		roles = defaultRoles;
 		mocks.get.mockImplementation((url: string) => {
-			if (url === '/api/v1/admin/projects/p1/members') return Promise.resolve(members);
-			if (url === '/api/v1/admin/users?limit=100') {
-				return Promise.resolve({ items: [{ id: 'u1', name: 'dustywindow' }, { id: 'u2', name: 'pieroot' }] });
+			if (url === '/api/v1/admin/projects/p1/members?domain_id=domain-a') return Promise.resolve(members);
+			if (url === '/api/v1/admin/domains/domain-a/members') {
+				return Promise.resolve({ domain_id: 'domain-a', items: [{ id: 'u1', name: 'dustywindow', domain_id: 'personal-home' }, { id: 'u2', name: 'pieroot', domain_id: 'domain-a' }] });
 			}
-			if (url === '/api/v1/admin/roles') return Promise.resolve(roles);
-			if (url === '/api/v1/admin/groups') return Promise.resolve([{ id: 'g1', name: 'AGENT', description: '' }]);
+			if (url === '/api/v1/admin/roles?domain_id=domain-a') return Promise.resolve(roles);
+			if (url === '/api/v1/admin/groups?domain_id=domain-a') return Promise.resolve([{ id: 'g1', name: 'AGENT', description: '', domain_id: 'domain-a' }]);
 			throw new Error(`Unexpected GET ${url}`);
 		});
 		mocks.post.mockResolvedValue({ status: 'assigned' });
@@ -69,24 +70,24 @@ describe('AdminProjectAccessModal', () => {
 			availableProjects: [],
 			roles: ['admin'],
 			isSystemAdmin: true,
-			federated: false,
+			federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false,
 		});
 	});
 
-	it('adds a user as reader with one click', async () => {
+	it('adds an explicitly joined foreign-home user as reader with one click', async () => {
 		renderModal();
 		await screen.findByRole('button', { name: 'dustywindow reader로 추가' });
 
 		await fireEvent.click(screen.getByRole('button', { name: 'dustywindow reader로 추가' }));
 
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
-			'/api/v1/admin/roles/assign',
-			{ user_id: 'u1', project_id: 'p1', role_id: 'r-reader' },
+			'/api/v1/admin/roles/assign?domain_id=domain-a',
+			{ user_id: 'u1', project_id: 'p1', role_id: 'r-reader', domain_id: 'domain-a' },
 			'token',
 			'admin-project',
 		));
 		expect(screen.queryByRole('dialog', { name: /역할 선택/ })).toBeNull();
-		expect(mocks.get.mock.calls.filter(([url]) => url === '/api/v1/admin/projects/p1/members')).toHaveLength(2);
+		expect(mocks.get.mock.calls.filter(([url]) => url === '/api/v1/admin/projects/p1/members?domain_id=domain-a')).toHaveLength(2);
 	});
 
 	it('groups a principal roles into one row and marks existing users assigned', async () => {
@@ -119,14 +120,14 @@ describe('AdminProjectAccessModal', () => {
 
 		await fireEvent.click(within(dialog).getByRole('checkbox', { name: 'member' }));
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
-			'/api/v1/admin/roles/assign',
-			{ user_id: 'u2', project_id: 'p1', role_id: 'r-member' },
+			'/api/v1/admin/roles/assign?domain_id=domain-a',
+			{ user_id: 'u2', project_id: 'p1', role_id: 'r-member', domain_id: 'domain-a' },
 			'token',
 			'admin-project',
 		));
 		await fireEvent.click(within(dialog).getByRole('checkbox', { name: 'admin' }));
 		await waitFor(() => expect(mocks.delete).toHaveBeenCalledWith(
-			'/api/v1/admin/roles/assign?user_id=u2&project_id=p1&role_id=r-admin',
+			'/api/v1/admin/roles/assign?project_id=p1&role_id=r-admin&user_id=u2&domain_id=domain-a',
 			'token',
 			'admin-project',
 		));
@@ -139,8 +140,8 @@ describe('AdminProjectAccessModal', () => {
 		await fireEvent.click(screen.getByRole('checkbox', { name: 'reader' }));
 
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
-			'/api/v1/admin/roles/assign-group',
-			{ group_id: 'g1', project_id: 'p1', role_id: 'r-reader' },
+			'/api/v1/admin/roles/assign-group?domain_id=domain-a',
+			{ group_id: 'g1', project_id: 'p1', role_id: 'r-reader', domain_id: 'domain-a' },
 			'token',
 			'admin-project',
 		));
@@ -174,14 +175,54 @@ describe('AdminProjectAccessModal', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'pieroot 제거' }));
 
 		await waitFor(() => expect(mocks.delete).toHaveBeenCalledWith(
-			'/api/v1/admin/roles/assign?user_id=u2&project_id=p1&role_id=r-admin',
+			'/api/v1/admin/roles/assign?project_id=p1&role_id=r-admin&user_id=u2&domain_id=domain-a',
 			'token',
 			'admin-project',
 		));
 		expect(mocks.delete).toHaveBeenCalledWith(
-			'/api/v1/admin/roles/assign?user_id=u2&project_id=p1&role_id=r-reader',
+			'/api/v1/admin/roles/assign?project_id=p1&role_id=r-reader&user_id=u2&domain_id=domain-a',
 			'token',
 			'admin-project',
 		);
 	});
+	it('rejects a membership catalog for another working domain', async () => {
+		mocks.get.mockImplementation((url: string) => {
+			if (url === '/api/v1/admin/domains/domain-a/members') return Promise.resolve({ domain_id: 'domain-b', items: [{ id: 'foreign', name: 'Foreign user', domain_id: 'domain-b' }] });
+			if (url.includes('/roles?')) return Promise.resolve(defaultRoles);
+			return Promise.resolve([]);
+		});
+		renderModal();
+		expect(await screen.findByRole('alert')).toBeTruthy();
+		expect(screen.queryByText('Foreign user')).toBeNull();
+		expect(mocks.post).not.toHaveBeenCalled();
+	});
+
+	it('ignores a late old-domain catalog and preserves a native denial', async () => {
+		const first = Promise.withResolvers<unknown>();
+		mocks.get.mockImplementation(() => first.promise);
+		const view = renderModal();
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(4));
+		mocks.get.mockRejectedValue(new ApiError(403, 'identity_domain_mismatch'));
+		await view.rerender({ project: { ...project, domain_id: 'domain-b' }, domainId: 'domain-b', onClose: vi.fn() });
+		expect(await screen.findByText('identity_domain_mismatch')).toBeTruthy();
+		first.resolve([]);
+		await Promise.resolve();
+		expect(screen.getByText('identity_domain_mismatch')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'dustywindow reader로 추가' })).toBeNull();
+	});
+
+	it('stops a multi-role removal when its captured scope unmounts', async () => {
+		const pending = Promise.withResolvers<unknown>();
+		mocks.delete.mockReturnValueOnce(pending.promise);
+		const view = renderModal();
+		await fireEvent.click(await screen.findByRole('button', { name: 'pieroot 제거' }));
+		expect(mocks.delete).toHaveBeenCalledOnce();
+		view.unmount();
+		pending.resolve({ status: 'revoked' });
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(mocks.delete).toHaveBeenCalledOnce();
+		expect(mocks.get).toHaveBeenCalledTimes(4);
+	});
+
 });

@@ -870,12 +870,6 @@ body {
 :root.light .text-rose-300 { color: #e11d48 !important; }
 :root.light .hover\:text-rose-300:hover { color: #be123c !important; }
 
-/* GitLab 버튼 색상 유지 */
-:root.light .bg-\[\#FC6D26\] { background-color: #FC6D26 !important; }
-:root.light .hover\:bg-\[\#E24329\]:hover { background-color: #E24329 !important; }
-:root.light .bg-\[\#FC6D26\] .text-white,
-:root.light .bg-\[\#FC6D26\].text-white { color: #ffffff !important; }
-
 /* 파란 버튼 위 흰색 텍스트 복원 */
 :root.light button.bg-blue-600,
 :root.light a.bg-blue-600 { color: #ffffff !important; }

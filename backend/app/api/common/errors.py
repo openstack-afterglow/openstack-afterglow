@@ -4,6 +4,13 @@ from fastapi import HTTPException
 from openstack.exceptions import ConflictException, HttpException, NotFoundException
 
 
+def public_service_error(status_code: int, code: str) -> HTTPException:
+    """A reviewed fixed 5xx code that the central sanitizer returns verbatim to clients."""
+    error = HTTPException(status_code=status_code, detail=code)
+    error._afterglow_safe_public_detail = True
+    return error
+
+
 def openstack_error_to_http(exc: Exception, is_admin: bool = False) -> HTTPException:
     """OpenStack 예외 → HTTPException 변환 유틸리티.
 

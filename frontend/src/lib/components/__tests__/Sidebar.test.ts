@@ -188,12 +188,27 @@ describe('Sidebar global navigation', () => {
 		expect(mode.getAttribute('href')).toBe('/admin');
 		expect(mode.getAttribute('title')).toBe('관리자 모드로 전환');
 		expect(mode.textContent).toContain('사용자 모드');
-		expect(drawer.getByRole('button', { name: 'Team project' }).getAttribute('aria-haspopup')).toBe('menu');
+		expect(drawer.getByRole('button', { name: /Team project.*리소스 선택/ }).getAttribute('aria-haspopup')).toBe('dialog');
 		expect(drawer.getByText('alice')).toBeTruthy();
 
 		auth.update(current => ({ ...current, isSystemAdmin: false }));
 		await tick();
 		expect(drawer.queryByRole('link', { name: '현재 사용자 모드, 관리자 모드로 전환' })).toBeNull();
+	});
+
+	it('exposes domain selection without a project, and shows IAM only for the current Default manager', async () => {
+		auth.update(current => ({ ...current, token: 'manager-token', domainId: 'working', identityDomainId: 'home', projectId: null, isSystemAdmin: false, isDomainManager: true }));
+		render(Sidebar);
+		const drawer = await openGlobalNavigation();
+		expect(drawer.queryByRole('link', { name: '도메인 전환·생성' })).toBeNull();
+		expect(drawer.getByRole('button', { name: /리소스 선택/ }).getAttribute('aria-haspopup')).toBe('dialog');
+		expect(drawer.getByRole('link', { name: '사용자·프로젝트 관리' }).getAttribute('href')).toBe('/dashboard/iam');
+		expect(drawer.queryByRole('link', { name: '현재 사용자 모드, 관리자 모드로 전환' })).toBeNull();
+		auth.update(current => ({ ...current, isDomainManager: false, isSystemAdmin: true }));
+		await tick();
+		expect(drawer.queryByRole('link', { name: '사용자·프로젝트 관리' })).toBeNull();
+		expect(drawer.queryByRole('link', { name: '도메인 전환·생성' })).toBeNull();
+		expect(drawer.getByRole('link', { name: '현재 사용자 모드, 관리자 모드로 전환' }).getAttribute('href')).toBe('/admin');
 	});
 });
 

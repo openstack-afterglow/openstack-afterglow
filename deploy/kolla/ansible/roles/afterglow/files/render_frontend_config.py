@@ -40,7 +40,6 @@ _PUBLIC_SCHEMA: dict[str, dict[str, type]] = {
     "openstack": {"s3_endpoint": str},
     "monitoring": {"grafana_base_url": str},
     "chat": {"base_url": str},
-    "gitlab_oidc": {"enabled": bool, "gitlab_url": str},
     "mcp": {"public_url": str},
 }
 
@@ -144,9 +143,18 @@ def main(*path_args: str) -> bool:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        raise SystemExit(
-            "usage: render_frontend_config.py INPUT [INPUT ...] DESTINATION"
-        )
-    changed = main(*sys.argv[1:])
-    print(json.dumps({"changed": changed}))
+    if sys.argv[1:] == ["--project-json"]:
+        try:
+            request = json.load(sys.stdin)
+            merged = _deep_merge(request["config"], tomllib.loads(request.get("operator", "")))
+            projected = project_public_config(merged)
+            print(json.dumps({"config": projected, "toml": render_toml(projected)}))
+        except (KeyError, TypeError, ValueError, OSError):
+            raise SystemExit("Cannot project frontend configuration; check protected inputs") from None
+    else:
+        if len(sys.argv) < 3:
+            raise SystemExit(
+                "usage: render_frontend_config.py INPUT [INPUT ...] DESTINATION"
+            )
+        changed = main(*sys.argv[1:])
+        print(json.dumps({"changed": changed}))

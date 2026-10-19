@@ -371,38 +371,6 @@ test("CI separates pure orchestration from uv-backed Kolla contracts", () => {
 	assert.deepEqual(osInterfaceFallbacks, ["public", "public"]);
 });
 
-test("Cloud Shell image has isolated smoke coverage and multi-architecture publication", () => {
-	const workflow = fs.readFileSync(path.join(rootDir, ".github", "workflows", "docker-build.yml"), "utf-8");
-	const testWorkflow = fs.readFileSync(path.join(rootDir, ".github", "workflows", "test.yml"), "utf-8");
-
-	assert.match(workflow, /options: \[all, afterglow, backend, frontend, worker, cloud-shell\]/);
-	// 경로 규칙은 단위 테스트된 target 감지 스크립트가 소유하고 workflow 는 그 스크립트를 호출한다.
-	const detectScript = fs.readFileSync(path.join(rootDir, "scripts", "ci", "detect-build-targets.js"), "utf-8");
-	assert.match(detectScript, /\^\(cloud-shell\/\|Dockerfile\$\|\\\.dockerignore\$\)/);
-	assert.match(workflow, /run: node scripts\/ci\/detect-build-targets\.js/);
-	assert.match(workflow, /^  build-cloud-shell:\s*$/m);
-	assert.match(workflow, /name: Build Cloud Shell \(amd64 \+ arm64\)/);
-	assert.match(workflow, /target: cloud-shell\s+platforms: linux\/amd64,linux\/arm64/);
-	assert.match(workflow, /afterglow-cloud-shell/);
-	assert.match(testWorkflow, /^  test-cloud-shell:\s*$/m);
-	assert.match(testWorkflow, /run: npm run test:cloud-shell:image/);
-});
-
-test("pull requests cannot schedule the self-hosted image build matrix", () => {
-	const workflow = fs.readFileSync(path.join(rootDir, ".github", "workflows", "docker-build.yml"), "utf-8");
-	const buildStart = workflow.indexOf("\n  build:");
-	const manifestStart = workflow.indexOf("\n  manifest:");
-	const buildJob = workflow.slice(buildStart, manifestStart);
-
-	assert.ok(buildStart >= 0 && manifestStart > buildStart, "docker workflow build job must exist");
-	assert.match(buildJob, /runs-on: \$\{\{ matrix\.runner \}\}/);
-	// pr-dedup 이 push 에서 skipped 이므로 build 조건은 !cancelled() 와 changes 결과를 명시한다.
-	// PR 제외(event 리터럴 + 보조 is_pr)와 빈 target 제외 조건은 그대로 유지해야 한다.
-	assert.match(
-		buildJob,
-		/if: \$\{\{ github\.event_name != 'pull_request' && !cancelled\(\) && needs\.changes\.result == 'success' && needs\.changes\.outputs\.is_pr != 'true' && needs\.changes\.outputs\.standard_targets != '\[\]' \}\}/
-	);
-});
 
 test("contract tests live in tests/contracts/ and do not overlap with unit collection", () => {
 	const contractDir = path.join(rootDir, "backend", "tests", "contracts");

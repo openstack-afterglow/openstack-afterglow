@@ -7,15 +7,18 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from httpx import ASGITransport, AsyncClient
 
-from app.api.deps import get_token_info
+from app.api.deps import get_token_info, require_admin
 from app.main import app
+from tests.admin_gate import synthetic_verified_admin
 
 
 @pytest.fixture
 async def api_client():
+    app.dependency_overrides[require_admin] = synthetic_verified_admin
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client
     app.dependency_overrides.pop(get_token_info, None)
+    app.dependency_overrides.pop(require_admin, None)
 
 
 async def _member(request: Request) -> dict:
@@ -25,6 +28,7 @@ async def _member(request: Request) -> dict:
         "user_id": "user-1",
         "username": "user",
         "roles": ["member"],
+        "domain_id": "default",
         "is_system_admin": False,
     }
     request.state.token_info = token_info

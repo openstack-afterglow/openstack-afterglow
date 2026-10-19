@@ -6,7 +6,6 @@
   import { k3sPermissions } from '$lib/stores/k3sPermissions';
   import K3sResourceEditor from './K3sResourceEditor.svelte';
   import K3sYamlView from './K3sYamlView.svelte';
-  import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { toSecretReadYaml } from '$lib/utils/k8sYaml';
 
   const s = useK3sClusterDetailController();
@@ -56,7 +55,6 @@
 
   async function handleDelete(name: string) {
     if (!$k3sPermissions.workloads) return;
-    if (!(await confirmDialog(t('secrets.confirmDelete', { name })))) return;
     await s.deleteSecretItem(name);
   }
 </script>

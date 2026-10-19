@@ -44,6 +44,9 @@ npm run services:up                  # docker-compose.dev.yml, http://localhost:
 
 Development requires sibling checkouts `../lumen`, `../waygate`, `../drover`, `../palimpsest` and valid OpenStack authentication/service-project settings. `services:up` builds current source while preserving private local configuration and keys. `docker-compose.yml` runs only frontend/backend; `docker-compose.prod.yml` uses GHCR images, TLS HAProxy ingress and catalog discovery by default. Select owned-service endpoints through `SERVICE_*_INTERNAL_URL` or `[services]` without changing remote OpenStack routing. See the [Compose deployment guide](docs/en/deployment.md#docker-compose-deployment) for prerequisites and explicit mode commands.
 
+For configuration/artifact generation only, run `python3 /path/to/checkout/setup.py` from the directory that should own your settings (Python 3.11+). The terminal menu preserves existing `afterglow.conf` values and offers editing, Kubernetes, Helm, or both with hidden private input. Automation uses `--non-interactive --target both` and private input files through `--set-file`. See the [generation guide](docs/deployment.md#k8shelm-로컬-설정-편집과-생성) for outputs, the curl entrypoint, and native Kolla defaults with sparse operator overrides. Generation does not apply to a cluster.
+
+
 ### Public MCP/OAuth
 
 Public MCP is disabled by default. Enable it with `SERVICE_MCP_ENABLED=true`, `MCP_PUBLIC_URL` (the MCP resource URL), and `MCP_OAUTH_CONSENT_URL` (the Afterglow consent UI). A bare origin in `MCP_PUBLIC_URL` resolves to `/api/v1/mcp`. Configure the external OIDC login callback separately with `GITLAB_OIDC_REDIRECT_URI`; MCP client OAuth `redirect_uri` values are managed per client through DCR/CIMD.

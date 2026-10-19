@@ -1,11 +1,28 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class LoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
     username: str = Field(..., min_length=1, max_length=255)
     password: str = Field(..., min_length=1, max_length=1024)
-    project_name: str = Field("", max_length=255)
-    domain_name: str = Field("Default", max_length=255)
+
+
+class LoginProviderOption(BaseModel):
+    id: str
+    name: str
+    kind: str
+    domain_id: str
+    domain_name: str
+
+
+class LoginOptionsResponse(BaseModel):
+    providers: list[LoginProviderOption] = Field(default_factory=list)
+
+
+class DomainInfo(BaseModel):
+    id: str
+    name: str
 
 
 class TokenResponse(BaseModel):
@@ -15,6 +32,13 @@ class TokenResponse(BaseModel):
     project_name: str
     user_id: str
     username: str
+    domain_id: str
+    domain_name: str
+    is_domain_manager: bool = False
+    identity_domain_id: str
+    identity_domain_name: str
+    available_domains: list[DomainInfo] = Field(default_factory=list)
+    can_create_domain: bool = False
     expires_at: str  # access JWT 만료 ISO8601
     roles: list[str] = []
     default_project_id: str = ""
@@ -29,6 +53,13 @@ class UserInfo(BaseModel):
     project_id: str
     project_name: str
     roles: list[str]
+    domain_id: str
+    domain_name: str
+    is_domain_manager: bool = False
+    identity_domain_id: str
+    identity_domain_name: str
+    available_domains: list[DomainInfo] = Field(default_factory=list)
+    can_create_domain: bool = False
     is_system_admin: bool = False
     can_write: bool = False
     auth_method: str = "password"
@@ -44,6 +75,9 @@ class ProjectInfo(BaseModel):
     last_accessed_at: str | None = None
 
 
-class GitLabCallbackRequest(BaseModel):
-    code: str = Field(..., min_length=1, max_length=2048)
-    state: str = Field(..., min_length=1, max_length=256)
+class WorkspaceInfo(BaseModel):
+    domain: DomainInfo
+    projects: list[ProjectInfo]
+    default_project_id: str
+    is_domain_manager: bool
+    can_create_project: bool

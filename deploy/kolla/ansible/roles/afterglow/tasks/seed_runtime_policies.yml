@@ -17,16 +17,13 @@
     cleanup: true
     volumes:
       - "{{ afterglow_runtime_config_dir }}/{{ afterglow_generated_config_name }}:/app/afterglow.conf:ro"
-      - "{{ afterglow_runtime_config_dir }}/{{ afterglow_operator_config_name }}:/app/{{ afterglow_operator_config_name }}:ro"
-      - "{{ afterglow_runtime_config_dir }}/{{ afterglow_kolla_config_name }}:/app/{{ afterglow_kolla_config_name }}:ro"
-    env:
-      DATABASE_URL: "{{ afterglow_database_url }}"
-      REDIS_URL: "{{ afterglow_redis_url }}"
   no_log: true
   run_once: true
   delegate_to: "{{ groups['afterglow'] | first }}"
+  when: afterglow_effective_config.database.url | length > 0
 
 - name: Seed | Show seed output
   ansible.builtin.debug:
     msg: "Afterglow runtime placement policies seeded successfully"
   run_once: true
+  when: afterglow_effective_config.database.url | length > 0

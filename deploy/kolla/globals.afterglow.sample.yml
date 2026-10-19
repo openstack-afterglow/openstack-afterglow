@@ -47,8 +47,14 @@ waygate_image_tag: "latest"
 lumen_image_tag: "latest"
 palimpsest_image_tag: "latest"
 # Cloud Shell is a Zun workload, not a Kolla-managed long-running service.
-# Enable it only with a published multi-architecture manifest digest.
-# afterglow_cloud_shell_image: "ghcr.io/openstack-afterglow/afterglow-cloud-shell@sha256:<64-hex-digest>"
+# Default: ghcr.io/openstack-afterglow/openstack-client:slim. Enabled workloads
+# freeze the effective selection to a digest before immutable/native checks.
+# An explicit backend TOML image overrides this native default as well.
+# afterglow_cloud_shell_image: "ghcr.io/openstack-afterglow/openstack-client:slim"
+# Empty policy preserves Zun defaults; explicit always/ifnotpresent/never requires admin policy permission.
+# afterglow_cloud_shell_image_pull_policy: ""
+# Private GHCR/GitLab credentials belong in a Zun registry in the dedicated project.
+# afterglow_cloud_shell_registry_id: ""
 
 # The integration resolves moving channel tags (`latest` or `stable`) before
 # service-owned immutable-reference prechecks and shares exact digests across

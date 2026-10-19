@@ -1,69 +1,76 @@
 <script lang="ts">
-    import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
-    import { dialogFocus } from '$lib/utils/dialogFocus';
+  import { onDestroy } from 'svelte';
+  import FormModal from '$lib/components/ui/FormModal.svelte';
+  import Field from '$lib/components/ui/Field.svelte';
+  import TextInput from '$lib/components/ui/TextInput.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
+  import Alert from '$lib/components/ui/Alert.svelte';
   import { t } from '$lib/i18n/ns/admin-identity';
-
-  let {
-    open = $bindable(),
-    onCreate,
-  }: {
+  import { t as tc } from '$lib/i18n/ns/common';
+  import { t as ta } from '$lib/i18n/ns/domain-auth';
+  import type { DomainAccountResult } from '$lib/types/auth';
+  let { open = $bindable(false), domainId, domainName, onCreate }: {
     open: boolean;
-    onCreate: (form: { name: string; email: string; password: string; enabled: boolean }) => Promise<string | true>;
+    domainId: string;
+    domainName: string;
+    onCreate: (form: { name: string; email: string; password: string; personal_domain_name: string; enabled: boolean }) => Promise<string | Pick<DomainAccountResult, 'identity_domain_id' | 'identity_domain_name'>>;
   } = $props();
-
-  let form = $state({ name: '', email: '', password: '', enabled: true });
+  let form = $state({ name: '', email: '', password: '', personal_domain_name: '', enabled: true });
+  let formElement = $state<HTMLFormElement>();
+  let created = $state<Pick<DomainAccountResult, 'identity_domain_id' | 'identity_domain_name'> | null>(null);
   let creating = $state(false);
   let error = $state('');
-
+  let generation = 0;
+  let alive = true;
+  onDestroy(() => { alive = false; generation += 1; form.password = ''; });
   $effect(() => {
     if (!open) {
-      form = { name: '', email: '', password: '', enabled: true };
+      generation += 1;
+      form = { name: '', email: '', password: '', personal_domain_name: '', enabled: true };
+      created = null;
       error = '';
       creating = false;
     }
   });
-
+  const passwordError = $derived(form.password && form.password.length < 12 ? ta('onboarding.passwordTooShort') : '');
   async function submit() {
+    if (creating || created || !domainId || !form.name.trim() || !form.personal_domain_name.trim() || form.password.length < 12 || !formElement?.reportValidity()) return;
+    const request = ++generation;
     creating = true;
     error = '';
-    const result = await onCreate({ ...form });
+    const body = { ...form, name: form.name.trim(), personal_domain_name: form.personal_domain_name.trim() };
+    form.password = '';
+    const result = await onCreate(body);
+    if (!alive || request !== generation || !open) return;
     creating = false;
-    if (result === true) {
-      open = false;
-    } else {
-      error = result;
-    }
+    if (typeof result === 'string') error = result;
+    else { created = result; form = { name: '', email: '', password: '', personal_domain_name: '', enabled: true }; }
   }
 </script>
 
-{#if open}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    use:dialogFocus={{ enabled: true, onEscape: () => (open = false) }}
-    class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
-    onclick={(event) => { if (event.target === event.currentTarget) (() => { open = false; })(); }}
-    role="dialog" aria-modal="true"
-    tabindex="-1"
-  >
-    <div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]">
-      <h2 class="text-lg font-semibold text-ink-0 mb-5">{t('userCreate.title')}</h2>
-      {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
-      <div class="space-y-4">
-        <div><label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminusercreatemodal-47">{t('userCreate.name')}</label><input id="field-adminusercreatemodal-47" bind:value={form.name} type="text" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" /></div>
-        <div><label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminusercreatemodal-48">{t('userCreate.email')}</label><input id="field-adminusercreatemodal-48" bind:value={form.email} type="email" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" /></div>
-        <div><label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminusercreatemodal-49">{t('userCreate.password')}</label><input id="field-adminusercreatemodal-49" bind:value={form.password} type="password" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" /></div>
-        <div class="flex items-center gap-3">
-          <button type="button" role="switch" aria-label={t('userCreate.enabledLabel')} aria-checked={form.enabled} onclick={() => form.enabled = !form.enabled} class="relative w-11 h-6 rounded-full transition-colors {form.enabled ? 'bg-action-warm' : 'bg-surface-selected'}">
-            <span class="absolute top-0.5 left-0.5 w-5 h-5 bg-surface-base rounded-full transition-transform {form.enabled ? 'translate-x-5' : ''}"></span>
-          </button>
-          <span class="text-sm text-ink-2">{form.enabled ? t('userCreate.enabled') : t('userCreate.disabled')}</span>
-        </div>
-      </div>
-      <div class="flex justify-end gap-3 mt-6">
-        <button onclick={() => { open = false; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('userCreate.cancel')}</button>
-        <button aria-busy={creating} onclick={submit} disabled={creating || !form.name} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if creating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('userCreate.creating')}</span>{:else}{t('userCreate.create')}{/if}</button>
-      </div>
-    </div>
+<FormModal bind:open title={t('userCreate.title')} submitting={creating}>
+  <div class="space-y-4">
+    <Alert tone="info">{ta('onboarding.joinedDomainHelp', { domain: domainName })}<span class="block font-mono break-all mt-1">{domainId}</span></Alert>
+    {#if created}
+      <Alert tone="success" title={ta('onboarding.created.title')}>
+        <dl class="space-y-2 [overflow-wrap:anywhere]">
+          <div><dt>{ta('onboarding.personalDomain')}</dt><dd>{created.identity_domain_name}<code class="block text-xs">{created.identity_domain_id}</code></dd></div>
+          <div><dt>{ta('onboarding.joinedDomain')}</dt><dd>{domainName}<code class="block text-xs">{domainId}</code></dd></div>
+        </dl>
+      </Alert>
+    {:else}
+      <form bind:this={formElement} class="space-y-4" onsubmit={(event) => { event.preventDefault(); void submit(); }}>
+        {#if error}<Alert>{error}</Alert>{/if}
+        <Field for="admin-user-create-name" label={t('userCreate.name')} required><TextInput id="admin-user-create-name" bind:value={form.name} disabled={creating} required /></Field>
+        <Field for="admin-user-create-domain" label={ta('onboarding.personalDomain')} help={ta('onboarding.personalDomainHelp')} required><TextInput id="admin-user-create-domain" bind:value={form.personal_domain_name} maxlength={64} disabled={creating} required /></Field>
+        <Field for="admin-user-create-email" label={t('userCreate.email')} required><TextInput id="admin-user-create-email" type="email" bind:value={form.email} disabled={creating} required /></Field>
+        <Field for="admin-user-create-password" label={ta('onboarding.password')} help={ta('onboarding.passwordHelp')} error={passwordError} required><TextInput id="admin-user-create-password" type="password" bind:value={form.password} maxlength={1024} ariaInvalid={!!passwordError} disabled={creating} required /></Field>
+        <label class="flex items-center gap-3 text-sm text-ink-1 min-h-11"><input type="checkbox" bind:checked={form.enabled} disabled={creating} />{t('userCreate.enabledLabel')}</label>
+      </form>
+    {/if}
   </div>
-{/if}
+  {#snippet actions()}
+    <Button variant="secondary" disabled={creating} onclick={() => open = false}>{created ? tc('actions.close') : t('userCreate.cancel')}</Button>
+    {#if !created}<Button variant="primary" disabled={creating || !domainId || !form.name.trim() || !form.personal_domain_name.trim()} onclick={submit}>{creating ? t('userCreate.creating') : t('userCreate.create')}</Button>{/if}
+  {/snippet}
+</FormModal>

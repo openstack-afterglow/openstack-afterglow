@@ -75,26 +75,6 @@ jobs:
           AFTERGLOW_ALLOW_INSECURE: "1"
         run: npm run test:unit:backend
 
-  test-cloud-shell:
-    name: Cloud Shell image and bootstrap
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-
-      - name: Apply tag version (tag push only)
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          GITHUB_REF: ${{ github.ref }}
-        run: npm run version:apply-tag
-
-      - name: Image and bootstrap smoke
-        run: npm run test:cloud-shell:image
-
   test-contract:
     name: Service contract tests
     runs-on: ubuntu-latest
@@ -341,7 +321,7 @@ jobs:
   # 모든 테스트 계층이 통과한 뒤에만 실행한다. 마지막 잡이라 다른 잡의 t=0 시작에는 영향이 없다.
   test-live:
     name: Backend (live OpenStack tests)
-    needs: [version-check, test-backend, test-cloud-shell, test-contract, test-functional, test-frontend, detect-live]
+    needs: [version-check, test-backend, test-contract, test-functional, test-frontend, detect-live]
     runs-on: ubuntu-latest
     if: ${{ needs.detect-live.outputs.enabled == 'true' }}
     services:

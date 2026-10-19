@@ -1,8 +1,10 @@
 import { writable, derived, get } from 'svelte/store';
 import { MOCKUP_QUERY_KEY, MOCKUP_STORAGE_KEY, MOCKUP_SESSION_KEY, isMockupProfileId } from '$lib/mockup/contracts';
 import type { MockupProfileId } from '$lib/mockup/contracts';
+import type { AvailableDomain } from '$lib/types/auth';
+import { consumeMappedContinuation, consumeMappedLogin, sessionScopeKey } from '$lib/utils/authSession';
 
-// /api/auth/me 검증이 성공하면 true. 로그아웃/clearAuth 시 false.
+// Ready after an authoritative fresh login mapping or current /auth/me verification.
 export const authReady = writable(false);
 export const logoutInProgress = writable(false);
 // Clears project-private views before rescope starts, not after its response arrives.
@@ -33,6 +35,14 @@ export interface AuthState {
 	isSystemAdmin: boolean;
 	canWrite?: boolean;            // verified capability; role names may be hidden
 	federated: boolean;             // true = OIDC/외부 로그인 (패스워드 변경 불가)
+	domainId: string | null;        // explicit working domain, not credential namespace
+	domainName: string | null;
+	identityDomainId?: string | null; // immutable Keystone credential namespace
+	identityDomainName?: string | null;
+	availableDomains?: AvailableDomain[];
+	canCreateDomain?: boolean;
+	isDomainManager: boolean;       // server-verified manager on this domain's Default
+	sessionId?: string;             // client-side logical login session; refresh/rescope keep it
 }
 
 const initial: AuthState = {
@@ -47,6 +57,13 @@ const initial: AuthState = {
 	roles: [],
 	isSystemAdmin: false,
 	federated: false,
+	domainId: null,
+	domainName: null,
+	identityDomainId: null,
+	identityDomainName: null,
+	availableDomains: [],
+	canCreateDomain: false,
+	isDomainManager: false,
 };
 
 export type AuthPersistenceMode = 'real' | 'mock';
@@ -70,12 +87,20 @@ function discardLegacyCredentials(): void {
 	try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch { /* storage may be disabled */ }
 }
 
+function hasSessionDomain(state: Partial<AuthState>): boolean {
+	return typeof state.domainId === 'string' && state.domainId.trim().length > 0;
+}
+
 function loadPersistedAuth(): AuthState {
 	if (typeof window === 'undefined') return initial;
 	try {
 		const raw = sessionStorage.getItem(AUTH_STORAGE_KEY);
 		if (raw && sessionStorage.getItem(AUTH_LOGOUT_SEEN_KEY) === readLogoutMarker()) {
-			return { ...initial, ...JSON.parse(raw) };
+			const restored = { ...initial, ...JSON.parse(raw) } as AuthState;
+			// Pre-cutover sessions lack the immutable identity binding; authenticate again.
+			if (!restored.token || (hasSessionDomain(restored) && typeof restored.identityDomainId === 'string' && restored.identityDomainId.trim())) {
+				return { ...restored, isDomainManager: restored.isDomainManager === true };
+			}
 		}
 		sessionStorage.removeItem(AUTH_STORAGE_KEY);
 	} catch { /* unavailable storage means an in-memory session */ }
@@ -155,9 +180,51 @@ function acknowledgeLogoutMarker(marker: string | null): void {
 	} catch { /* retain the acknowledgement for the current in-memory session */ }
 }
 
+// Never persisted. The generation also fences same-token/scope A -> B -> A work.
+let verificationEpoch = 0;
+let verifiedEpoch: number | null = null;
+let verificationKey = '';
+let pendingVerifiedLogin: AuthState | null = null;
+let pendingReadyContinuation: AuthState | null = null;
+
+function invalidateVerification(preserveReadiness = false): void {
+	verificationEpoch += 1;
+	verifiedEpoch = null;
+	if (!preserveReadiness) authReady.set(false);
+	authRecovery.set(null);
+}
+
+export function getAuthVerificationEpoch(): number {
+	return verificationEpoch;
+}
+
+export function hasVerifiedAuth(): boolean {
+	return persistenceMode === 'real' && verifiedEpoch === verificationEpoch;
+}
+
+/** Publish /me metadata only while its exact logical session/token/scope is current. */
+export function acceptAuthVerification(epoch: number, verified: Partial<AuthState>): boolean {
+	if (epoch !== verificationEpoch || persistenceMode !== 'real' || !get(auth).token) return false;
+	verifiedEpoch = epoch;
+	auth.update((state) => ({ ...state, ...verified }));
+	authRecovery.set(null);
+	authReady.set(true);
+	return true;
+}
+
 export const auth = writable<AuthState>(initialContext.state);
 auth.subscribe((state) => {
-	authRecovery.update((failure) => failure?.token === state.token ? failure : null);
+	const key = JSON.stringify([persistenceMode, state.token, sessionScopeKey(state)]);
+	if (key !== verificationKey) {
+		verificationKey = key;
+		invalidateVerification(state === pendingReadyContinuation);
+	}
+	if (state === pendingReadyContinuation) pendingReadyContinuation = null;
+	if (state === pendingVerifiedLogin) {
+		pendingVerifiedLogin = null;
+		verifiedEpoch = verificationEpoch;
+		authReady.set(true);
+	}
 });
 if (initialContext.mode === 'mock' && initialContext.state.token) {
 	authReady.set(true);
@@ -199,6 +266,7 @@ if (typeof window !== 'undefined') {
 }
 
 export function enterMockAuth(snapshot: AuthState, profile?: MockupProfileId): void {
+	invalidateVerification();
 	persistenceMode = 'mock';
 	mockupProfile = profile ?? mockupProfile;
 	if (mockupProfile && typeof sessionStorage !== 'undefined') {
@@ -209,6 +277,7 @@ export function enterMockAuth(snapshot: AuthState, profile?: MockupProfileId): v
 }
 
 export function exitMockAuth(): void {
+	invalidateVerification();
 	if (typeof localStorage !== 'undefined') {
 		// Clean a legacy cross-tab snapshot left by older mockup builds.
 		localStorage.removeItem(MOCKUP_STORAGE_KEY);
@@ -233,6 +302,11 @@ export function getMockupProfile(): MockupProfileId | null {
 
 export const isLoggedIn = derived(auth, ($auth) => $auth.token !== null);
 export const isAdmin = derived(auth, ($auth) => $auth.isSystemAdmin === true);
+// Display gate only: the IAM API re-validates domain-manager authority on every request.
+export const canManageDomain = derived(
+	auth,
+	($auth) => $auth.isDomainManager === true && hasSessionDomain($auth),
+);
 export const canWrite = derived(
 	auth,
 	($auth) =>
@@ -245,19 +319,28 @@ export const isReader = derived(
 );
 
 // Use only after password/OIDC authentication succeeds, not for refresh/rescope.
+// Each login starts a new logical session; refresh and rescope keep its sessionId.
 export function setLoginAuth(data: Partial<AuthState> & { token: string }): void {
 	if (persistenceMode === 'real' && typeof window !== 'undefined') {
 		acknowledgeLogoutMarker(readLogoutMarker());
 	}
-	authReady.set(false);
-	auth.set({ ...initial, ...data });
+	invalidateVerification();
+	const mapped = consumeMappedLogin(data);
+	const state = { ...initial, ...data, sessionId: crypto.randomUUID() };
+	pendingVerifiedLogin = mapped && persistenceMode === 'real' ? state : null;
+	auth.set(state);
 }
 
 export function setAuth(data: Partial<AuthState> & { token: string }) {
-	auth.update((state) => ({
-		...state,
-		...data
-	}));
+	const previous = get(auth);
+	const continuation = consumeMappedContinuation(data, previous);
+	const state = { ...previous, ...data };
+	// Keep existing consumers through a validated native continuation. Its new
+	// token still requires /me; raw, copied or stale updates cannot retain readiness.
+	pendingReadyContinuation = continuation && persistenceMode === 'real' && get(authReady)
+		&& !!previous.token && !!data.token ? state : null;
+	invalidateVerification(pendingReadyContinuation !== null);
+	auth.set(state);
 }
 
 export function setProject(projectId: string, projectName: string) {
@@ -276,6 +359,9 @@ export function setAvailableProjects(projects: Project[]) {
 }
 
 export function clearAuth() {
+	pendingVerifiedLogin = null;
+	pendingReadyContinuation = null;
+	invalidateVerification();
 	if (persistenceMode === 'real' && typeof window !== 'undefined' && get(auth).token) {
 		try {
 			// Random event id only: no identity, access token or refresh token.

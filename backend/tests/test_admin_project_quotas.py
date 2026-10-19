@@ -1,14 +1,20 @@
 """Admin project quotas: target scope, measured usage, and independent writes."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.api.identity import admin_identity
+from app.services import quota_native
 
 TARGET = "target-project"
-PATH = f"/api/v1/admin/quotas/{TARGET}"
+PATH = f"/api/v1/admin/quotas/{TARGET}?domain_id=default"
+
+
+@pytest.fixture(autouse=True)
+def selected_domain_directory(mock_conn):
+    mock_conn.identity.get_domain.return_value = SimpleNamespace(id="default", name="Default")
+    mock_conn.identity.get_project.return_value = SimpleNamespace(id=TARGET, domain_id="default")
 
 
 def _entries(*keys, usage_key="in_use"):
@@ -50,6 +56,7 @@ def _read_sources(conn):
     )
     conn.compute.get_endpoint.return_value = "https://nova/v2"
     conn.block_storage.get_endpoint.return_value = "https://cinder/v3"
+    conn.network.get_endpoint.return_value = "https://neutron/v2.0"
 
     def fetch(url, **kwargs):
         response = MagicMock()
@@ -76,8 +83,8 @@ def _read_sources(conn):
 async def test_read_all_target_quota_sections(admin_client, mock_conn):
     nova, cinder, neutron, manila, client = _read_sources(mock_conn)
     with (
-        patch.object(admin_identity, "get_settings", return_value=SimpleNamespace(service_manila_enabled=True)),
-        patch.object(admin_identity.manila, "get_client", return_value=client) as get_client,
+        patch.object(quota_native, "get_settings", return_value=SimpleNamespace(service_manila_enabled=True)),
+        patch.object(quota_native.manila, "get_client", return_value=client) as get_client,
     ):
         response = await admin_client.get(PATH)
     assert response.status_code == 200
@@ -104,8 +111,8 @@ async def test_read_partial_failure_does_not_report_fabricated_usage(admin_clien
     mock_conn.network.get_quota.side_effect = RuntimeError("upstream unavailable")
     client.get.return_value = {"quota_set": {"shares": {"limit": 4}}}
     with (
-        patch.object(admin_identity, "get_settings", return_value=SimpleNamespace(service_manila_enabled=True)),
-        patch.object(admin_identity.manila, "get_client", return_value=client),
+        patch.object(quota_native, "get_settings", return_value=SimpleNamespace(service_manila_enabled=True)),
+        patch.object(quota_native.manila, "get_client", return_value=client),
     ):
         response = await admin_client.get(PATH)
     assert response.status_code == 200
@@ -129,7 +136,7 @@ async def test_read_rejects_unsuccessful_cinder_response(admin_client, mock_conn
         return response
 
     mock_conn.session.get.side_effect = fetch
-    with patch.object(admin_identity, "get_settings", return_value=SimpleNamespace(service_manila_enabled=False)):
+    with patch.object(quota_native, "get_settings", return_value=SimpleNamespace(service_manila_enabled=False)):
         response = await admin_client.get(PATH)
     body = response.json()
     assert body["volume"] is None
@@ -142,8 +149,8 @@ async def test_read_rejects_unsuccessful_cinder_response(admin_client, mock_conn
 async def test_manila_disabled_does_not_contact_service(admin_client, mock_conn):
     _read_sources(mock_conn)
     with (
-        patch.object(admin_identity, "get_settings", return_value=SimpleNamespace(service_manila_enabled=False)),
-        patch.object(admin_identity.manila, "get_client") as get_client,
+        patch.object(quota_native, "get_settings", return_value=SimpleNamespace(service_manila_enabled=False)),
+        patch.object(quota_native.manila, "get_client") as get_client,
     ):
         response = await admin_client.get(PATH)
     assert response.status_code == 200
@@ -162,108 +169,45 @@ async def test_admin_guard_prevents_cross_project_reads_and_writes(non_admin_cli
 
 
 @pytest.mark.asyncio
-async def test_write_maps_all_sections_and_invalidates_target_cache(admin_client, mock_conn):
-    client = MagicMock()
+async def test_every_admin_quota_section_uses_shared_budget_writer(admin_client, mock_conn):
+    from app.services import domain_quotas
+
     payload = {
-        "instances": 4,
-        "cores": 12,
-        "ram": 2048,
-        "key_pairs": 8,
-        "server_groups": 2,
-        "server_group_members": 6,
-        "injected_files": 4,
-        "injected_file_content_bytes": 1024,
-        "injected_file_path_bytes": 255,
-        "metadata_items": 128,
-        "volumes": 7,
-        "snapshots": 8,
-        "gigabytes": 100,
-        "network": 1,
-        "subnet": 2,
-        "port": 3,
-        "router": 4,
-        "floatingip": 5,
-        "security_group": 6,
-        "security_group_rule": 7,
-        "shares": 8,
-        "share_gigabytes": 200,
-        "share_snapshots": 9,
-        "share_snapshot_gigabytes": 300,
-        "share_networks": 10,
-        "share_groups": 11,
-        "share_group_snapshots": 12,
+        key: index for index, key in enumerate(key for fields in quota_native.QUOTA_FIELDS.values() for key in fields)
     }
-    with (
-        patch.object(admin_identity, "get_settings", return_value=SimpleNamespace(service_manila_enabled=True)),
-        patch.object(admin_identity.manila, "get_client", return_value=client),
-        patch.object(admin_identity, "invalidate", new_callable=AsyncMock) as invalidate,
-    ):
-        response = await admin_client.put(PATH, json=payload)
-    assert response.status_code == 200
-    assert response.json() == {
+    result = {
         "project_id": TARGET,
+        "domain_id": "default",
+        "operation_id": "journal",
         "status": "updated",
-        "updated": ["compute", "volume", "network", "file_storage"],
+        "updated": list(quota_native.QUOTA_FIELDS),
         "errors": {},
     }
-    mock_conn.compute.update_quota_set.assert_called_once_with(
-        TARGET,
-        instances=4,
-        cores=12,
-        ram=2048,
-        key_pairs=8,
-        server_groups=2,
-        server_group_members=6,
-        injected_files=4,
-        injected_file_content_bytes=1024,
-        injected_file_path_bytes=255,
-        metadata_items=128,
-    )
-    mock_conn.block_storage.update_quota_set.assert_called_once_with(
-        TARGET,
-        volumes=7,
-        snapshots=8,
-        gigabytes=100,
-    )
-    mock_conn.network.update_quota.assert_called_once_with(
-        TARGET,
-        network=1,
-        subnet=2,
-        port=3,
-        router=4,
-        floatingip=5,
-        security_group=6,
-        security_group_rule=7,
-    )
-    client.put.assert_called_once_with(
-        f"quota-sets/{TARGET}",
-        {
-            "quota_set": {
-                "shares": 8,
-                "gigabytes": 200,
-                "snapshots": 9,
-                "snapshot_gigabytes": 300,
-                "share_networks": 10,
-                "share_groups": 11,
-                "share_group_snapshots": 12,
-            }
-        },
-    )
-    assert invalidate.call_args_list.count(call(f"afterglow:dashboard:{TARGET}:quotas")) == 1
-    assert invalidate.call_args_list.count(call(f"afterglow:dashboard:{TARGET}:quotas:overview")) == 1
-    assert call(f"afterglow:nova:{TARGET}:quota:strict") in invalidate.call_args_list
-    assert call(f"afterglow:cinder:{TARGET}:quota:strict") in invalidate.call_args_list
+    with patch.object(domain_quotas, "update_project", new_callable=AsyncMock, return_value=result) as update:
+        response = await admin_client.put(PATH, json=payload)
+    assert response.status_code == 200
+    assert response.json() == result
+    update.assert_awaited_once_with(mock_conn, TARGET, payload)
+    mock_conn.compute.update_quota_set.assert_not_called()
+    mock_conn.block_storage.update_quota_set.assert_not_called()
+    mock_conn.network.update_quota.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_write_one_section_leaves_others_untouched(admin_client, mock_conn):
-    with patch.object(admin_identity, "invalidate", new_callable=AsyncMock) as invalidate:
-        response = await admin_client.put(PATH, json={"security_group_rule": -1})
-    assert response.json()["updated"] == ["network"]
-    mock_conn.network.update_quota.assert_called_once_with(TARGET, security_group_rule=-1)
+async def test_budget_conflict_is_not_suppressed_by_old_admin_writer(admin_client, mock_conn):
+    from fastapi import HTTPException
+
+    from app.services import domain_quotas
+
+    with patch.object(
+        domain_quotas,
+        "update_project",
+        new_callable=AsyncMock,
+        side_effect=HTTPException(409, "quota_budget_exceeded:instances"),
+    ):
+        response = await admin_client.put(PATH, json={"instances": 100})
+    assert response.status_code == 409
     mock_conn.compute.update_quota_set.assert_not_called()
-    mock_conn.block_storage.update_quota_set.assert_not_called()
-    assert invalidate.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -279,25 +223,19 @@ async def test_invalid_write_never_mutates(admin_client, mock_conn, payload):
 
 
 @pytest.mark.asyncio
-async def test_write_partial_failure_and_disabled_manila(admin_client, mock_conn):
-    mock_conn.compute.update_quota_set.side_effect = RuntimeError("Nova failure")
-    with (
-        patch.object(admin_identity, "get_settings", return_value=SimpleNamespace(service_manila_enabled=False)),
-        patch.object(admin_identity.manila, "get_client") as get_client,
-        patch.object(admin_identity, "invalidate", new_callable=AsyncMock) as invalidate,
-    ):
-        response = await admin_client.put(PATH, json={"instances": 1, "volumes": 2, "shares": 3})
-    assert response.status_code == 200
-    assert response.json() == {
+async def test_admin_writer_preserves_partial_native_operation_state(admin_client, mock_conn):
+    from app.services import domain_quotas
+
+    result = {
         "project_id": TARGET,
-        "status": "partial",
-        "updated": ["volume"],
-        "errors": {"compute": "update_failed", "file_storage": "service_disabled"},
+        "domain_id": "default",
+        "operation_id": "durable-operation",
+        "status": "unknown",
+        "updated": ["compute"],
+        "errors": {"volume": "native_readback_unavailable"},
     }
-    mock_conn.block_storage.update_quota_set.assert_called_once_with(TARGET, volumes=2)
-    get_client.assert_not_called()
-    assert invalidate.call_args_list == [
-        call(f"afterglow:dashboard:{TARGET}:quotas"),
-        call(f"afterglow:dashboard:{TARGET}:quotas:overview"),
-        call(f"afterglow:cinder:{TARGET}:quota:strict"),
-    ]
+    with patch.object(domain_quotas, "update_project", new_callable=AsyncMock, return_value=result):
+        response = await admin_client.put(PATH, json={"instances": 1, "volumes": 2})
+    assert response.status_code == 200
+    assert response.json() == result
+    mock_conn.compute.update_quota_set.assert_not_called()

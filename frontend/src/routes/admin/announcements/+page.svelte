@@ -1,6 +1,6 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { createAdminAnnouncementsController } from '$lib/stores/adminAnnouncementsController.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -15,6 +15,8 @@
 	import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
 	import type { AnnouncementAdmin, AnnouncementSeverity, AnnouncementTargetType } from '$lib/types/announcements';
 	import { t } from '$lib/i18n/ns/admin-system';
+	import { t as td } from '$lib/i18n/ns/domain-admin';
+	import Field from '$lib/components/ui/Field.svelte';
 
 	const FALLBACK_SEVERITIES: AnnouncementSeverity[] = ['info', 'warning', 'danger'];
 	const FALLBACK_TARGET_TYPES: AnnouncementTargetType[] = ['all', 'project', 'user'];
@@ -37,6 +39,11 @@
 		target_id: '',
 		starts_at: '',
 		ends_at: '',
+	});
+	onDestroy(ctrl.dispose);
+	$effect(() => {
+		void $auth.token; void $auth.projectId; void $auth.userId; void $auth.isSystemAdmin;
+		untrack(() => { form.target_id = ''; ctrl.selectDomain(''); void ctrl.loadDomains(); });
 	});
 	const targetOptions = $derived(
 		form.target_type === 'project'
@@ -186,6 +193,15 @@
 						{/each}
 					</select>
 				</div>
+				{#if form.target_type === 'user'}
+					<div class="min-w-0">
+						<Field for="announcement-user-domain" label={td('scope.domain')} help={td('scope.help')}>
+							<SearchSelect id="announcement-user-domain" value={ctrl.domainId} options={ctrl.domains.map(domain => ({ value: domain.id, label: domain.name, description: domain.id }))} loading={ctrl.domainsLoading} placeholder={td('scope.choose')} ariaLabel={td('scope.domain')} onchange={(value) => { form.target_id = ''; ctrl.selectDomain(value); }} />
+						</Field>
+						{#if ctrl.domainsError}<Alert class="mt-2">{ctrl.domainsError}<Button variant="ghost" size="sm" onclick={() => { form.target_id = ''; ctrl.selectDomain(''); void ctrl.loadDomains(); }}>{td('actions.refresh')}</Button></Alert>{/if}
+						{#if ctrl.usersError}<Alert class="mt-2">{ctrl.usersError}<Button variant="ghost" size="sm" onclick={ctrl.loadUsers}>{td('actions.refresh')}</Button></Alert>{/if}
+					</div>
+				{/if}
 				{#if form.target_type !== 'all'}
 					<div>
 						<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide" for="announcement-target-id">
@@ -196,6 +212,7 @@
 							value={form.target_id}
 							options={targetOptions}
 							loading={targetLoading}
+							disabled={form.target_type === 'user' && !ctrl.domainId}
 							placeholder={form.target_type === 'project' ? t('announcements.picker.projectPlaceholder') : t('announcements.picker.userPlaceholder')}
 							searchPlaceholder={form.target_type === 'project' ? t('announcements.picker.projectSearchPlaceholder') : t('announcements.picker.userSearchPlaceholder')}
 							emptyText={targetEmptyText}

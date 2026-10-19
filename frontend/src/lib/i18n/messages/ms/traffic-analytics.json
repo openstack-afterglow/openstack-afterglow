@@ -66,7 +66,7 @@
 	"map.flows.failure": "Rona: bahagian ralat; putus-putus: ralat melebihi kejayaan. Pilih negara untuk bilangan tepat.",
 	"map.flows.site": "◆ Ingress perkhidmatan: {country}",
 	"map.flows.sameCountry": "Permintaan dari negara perkhidmatan: {count}. Saiz gelang menunjukkan volum relatifnya pada skala logaritma.",
-	"map.flows.note": "Aliran ialah pemerhatian logik negara klien → lokasi perkhidmatan, bukan laluan rangkaian fizikal. Negara klien ialah anggaran julat IP luar talian, bukan kedudukan tepat. Negara tanpa bentuk peta kekal dalam kedudukan tetapi tiada lengkok.",
+	"map.flows.note": "Aliran ialah pemerhatian akses logik negara klien → lokasi perkhidmatan, bukan laluan rangkaian fizikal. Lokasi klien ialah anggaran CIDR luar talian, bukan koordinat tepat. Negara tanpa bentuk peta kekal dalam kedudukan tetapi tiada lengkok dilukis.",
 	"map.flows.unconfigured": "Aliran akses tidak dilukis kerana lokasi perkhidmatan belum dikonfigurasi (traffic_analytics.site_country).",
 	"map.flows.noShape": "Aliran akses tidak dilukis kerana negara perkhidmatan yang dikonfigurasi tiada bentuk pada skala peta ini.",
 	"routes.title": "Kategori akses / perkhidmatan yang diperhatikan",

@@ -369,10 +369,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 12,
 		tokens: ["bg-blue-900/10","bg-blue-900/50","bg-gray-800","bg-gray-800/50","border-blue-500","border-gray-500","border-gray-800","text-blue-300","text-blue-400","text-gray-200","text-gray-400","text-gray-500"],
 	},
-	"frontend/src/lib/components/admin/system-admins/MigrateModal.svelte": {
-		count: 19,
-		tokens: ["bg-amber-500","bg-amber-600","bg-gray-600","bg-gray-700","bg-gray-900","bg-red-900/30","bg-red-900/40","border-gray-700","border-red-700","text-gray-300","text-gray-400","text-gray-500","text-green-400","text-red-300"],
-	},
 	"frontend/src/lib/components/admin/system-admins/SecurityPolicyBanner.svelte": {
 		count: 18,
 		tokens: ["bg-amber-700/50","bg-amber-700/80","bg-amber-900/20","bg-green-900/20","bg-red-900/20","bg-red-900/40","border-amber-700","border-green-700","border-red-700","text-amber-200","text-amber-300","text-amber-400","text-green-300","text-green-400","text-red-300","text-red-400","text-red-500"],
@@ -484,10 +480,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 	"frontend/src/lib/components/AdminVolumeDetailPanel.svelte": {
 		count: 2,
 		tokens: ["text-gray-500","text-red-400"],
-	},
-	"frontend/src/lib/components/auth/GitLabLoginButton.svelte": {
-		count: 7,
-		tokens: ["bg-[#E24329]","bg-[#FC6D26]","bg-gray-700","bg-gray-900","border-gray-700","text-gray-500"],
 	},
 	"frontend/src/lib/components/auth/LoginBrandHeader.svelte": {
 		count: 1,
@@ -1785,10 +1777,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 6,
 		tokens: ["bg-gray-800","bg-red-900/40","border-red-700","text-gray-400","text-red-300"],
 	},
-	"frontend/src/routes/auth/gitlab/callback/+page.svelte": {
-		count: 11,
-		tokens: ["bg-gray-700","bg-gray-800","bg-gray-900","bg-gray-950","bg-red-900/40","border-gray-700","border-red-700","text-[#FC6D26]","text-gray-300","text-gray-400","text-red-300"],
-	},
 	"frontend/src/routes/dashboard/+page.svelte": {
 		count: 7,
 		tokens: ["bg-gray-800/60","bg-gray-900","border-gray-800"],
@@ -1968,10 +1956,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 	"frontend/src/routes/dashboard/volumes/snapshots/+page.svelte": {
 		count: 5,
 		tokens: ["bg-gray-600","bg-gray-700","bg-red-900/40","border-red-700","text-red-300"],
-	},
-	"frontend/src/routes/invitations/[token]/+page.svelte": {
-		count: 39,
-		tokens: ["bg-blue-600","bg-blue-600/40","bg-blue-700","bg-gray-900","bg-gray-950","bg-green-500/15","border-gray-600","border-gray-700","border-gray-800","border-green-800/50","border-red-800/50","text-gray-200","text-gray-300","text-gray-400","text-gray-500","text-gray-600","text-green-400","text-red-400"],
 	},
 	"frontend/src/routes/select-project/+page.svelte": {
 		count: 16,

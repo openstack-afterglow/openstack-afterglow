@@ -50,7 +50,7 @@ const instance = {
 } as Instance;
 const suggested = { id: 'flavor-small', name: 'm1.tiny', vcpus: 1, ram: 512, disk: 20, is_public: true };
 const summary = {
-	prometheus_available: true,
+	monitoring_available: true,
 	stats: { cpu: { avg: 1, min: 0, max: 3 }, memory: { avg: 5, min: 1, max: 10 } },
 	recommendation: { underutilized: true, reason: null, current_flavor: null, suggested_flavor: suggested },
 };

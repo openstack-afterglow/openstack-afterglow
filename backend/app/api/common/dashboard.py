@@ -18,7 +18,7 @@ from sqlalchemy import and_, func, select
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info
 from app.config import get_settings
 from app.database import get_session_factory, is_db_available
-from app.services import cinder, nova, prom_query
+from app.services import cinder, native_telemetry, nova, prom_query
 from app.services import manila as manila_svc
 from app.services import neutron as neutron_svc
 from app.services import swift as swift_svc
@@ -881,6 +881,7 @@ async def get_dashboard_overview(
 
 @router.get("/usage-stats")
 async def get_dashboard_usage_stats(
+    response: Response,
     period: str = Query("30d", alias="range", description="24h|7d|14d|30d"),
     conn: openstack.connection.Connection = Depends(get_os_conn),
     cm: CacheMode = Depends(cache_mode),
@@ -962,11 +963,26 @@ async def get_dashboard_usage_stats(
     top_instances.sort(key=lambda x: x["vcpus"], reverse=True)
     top20 = top_instances[:20]
 
-    # 인스턴스별 실 사용률 — libvirt instant query (Prometheus 미가용 시 silent fallback)
+    response.headers["Cache-Control"] = "no-store"
+    now = int(datetime.now(UTC).timestamp())
+    native = await native_telemetry.project_series(
+        conn, project_id, ["cpu", "memory"], start_ts=now - 600, end_ts=now, step_s=60
+    )
+    native_instances = native.get("instances", {})
+    native_values = {"cpu": {}, "memory": {}}
+    for inst in top20:
+        observed = native_instances.get(inst["id"], {})
+        for key in native_values:
+            measurement = observed.get(key, {})
+            if measurement.get("series"):
+                native_values[key][inst["id"]] = round(measurement["series"][-1]["value"], 1)
+
+    # Keep existing libvirt measurements only where native data is missing.
     uuids = [inst["id"] for inst in top20 if prom_query.is_safe_label_value(inst.get("id"))]
-    cpu_by_id: dict[str, float] = {}
-    ram_by_id: dict[str, float] = {}
-    if uuids:
+    cpu_by_id: dict[str, float] = dict(native_values["cpu"])
+    ram_by_id: dict[str, float] = dict(native_values["memory"])
+    fallback_status = {"cpu": "not_collected", "ram": "not_collected"}
+    if uuids and (len(cpu_by_id) < len(uuids) or len(ram_by_id) < len(uuids)):
         uuid_re = "|".join(uuids)
         cpu_expr = (
             f"sum by (instance_id) (rate(libvirt_domain_info_cpu_time_seconds_total[2m])"
@@ -979,22 +995,41 @@ async def get_dashboard_usage_stats(
             f"avg by (instance_id) (libvirt_domain_memory_stats_used_percent"
             f' * on (instance, domain) group_left(instance_id) libvirt_domain_openstack_info{{instance_id=~"{uuid_re}"}})'
         )
-        try:
-            cpu_results, ram_results = await asyncio.gather(
-                prom_query.query_instant_multi(cpu_expr),
-                prom_query.query_instant_multi(ram_expr),
+        missing = [
+            (prefix, values, expression)
+            for prefix, values, expression in (("cpu", cpu_by_id, cpu_expr), ("ram", ram_by_id, ram_expr))
+            if any(iid not in values for iid in uuids)
+        ]
+        fallback_results = await asyncio.gather(
+            *(prom_query.query_instant_multi(expression) for _, _, expression in missing), return_exceptions=True
+        )
+        for (prefix, values, _), result in zip(missing, fallback_results, strict=True):
+            if isinstance(result, Exception):
+                fallback_status[prefix] = "unavailable"
+                continue
+            values.update(
+                {
+                    labels["instance_id"]: round(value, 1)
+                    for labels, value in result
+                    if labels.get("instance_id") in uuids
+                    and labels["instance_id"] not in values
+                    and math.isfinite(value)
+                }
             )
-            cpu_by_id = {
-                lbl["instance_id"]: round(v, 1) for lbl, v in cpu_results if "instance_id" in lbl and not math.isnan(v)
-            }
-            ram_by_id = {
-                lbl["instance_id"]: round(v, 1) for lbl, v in ram_results if "instance_id" in lbl and not math.isnan(v)
-            }
-        except Exception:
-            pass
     for inst in top20:
         inst["cpu_pct"] = cpu_by_id.get(inst["id"])
         inst["ram_pct"] = ram_by_id.get(inst["id"])
+        observed = native_instances.get(inst["id"], {})
+        for prefix, key, values in (("cpu", "cpu", cpu_by_id), ("ram", "memory", ram_by_id)):
+            selected_native = inst["id"] in native_values[key]
+            measurement = observed.get(key, {})
+            inst[f"{prefix}_source"] = "gnocchi" if selected_native else ("libvirt" if inst["id"] in values else None)
+            inst[f"{prefix}_status"] = (
+                measurement.get("status", "available")
+                if selected_native
+                else ("available" if inst["id"] in values else fallback_status[prefix])
+            )
+            inst[f"{prefix}_native_status"] = measurement.get("status", native.get("status", "not_collected"))
 
     # 볼륨 타입별 집계
     vol_by_type: dict[str, int] = defaultdict(int)
@@ -1213,14 +1248,68 @@ async def get_dashboard_usage_report(
     }
 
 
+def _native_project_trends(observation: dict, *, include_network: bool) -> dict:
+    """Aggregate aligned measured samples, retaining partial native coverage."""
+    instances = observation.get("instances", {})
+    selected = {}
+    for key in ("vcpu", "memory", *(("network",) if include_network else ())):
+        buckets = defaultdict(list)
+        partial = bool(observation.get("truncated")) or observation.get("status") == "partial"
+        for metrics in instances.values():
+            names = {"vcpu": ("cpu", "vcpus"), "memory": ("memory",), "network": ("network_rx", "network_tx")}[key]
+            measurements = [metrics.get(name, {}) for name in names]
+            if any(measurement.get("status") != "available" for measurement in measurements):
+                partial = True
+            samples = [
+                {point["ts"]: point["value"] for point in measurement.get("series", [])} for measurement in measurements
+            ]
+            if not samples:
+                continue
+            for stamp in samples[0]:
+                if any(stamp not in sample for sample in samples[1:]):
+                    partial = True
+                    continue
+                values = [sample[stamp] for sample in samples]
+                if key == "vcpu":
+                    if values[1] <= 0:
+                        partial = True
+                        continue
+                    buckets[stamp].append((values[0] * values[1], values[1]))
+                elif key == "memory":
+                    buckets[stamp].append((values[0], 1))
+                else:
+                    buckets[stamp].append(((values[0] + values[1]) / 1024, 1))
+        data = []
+        for stamp in sorted(buckets):
+            contributors = buckets[stamp]
+            partial |= len(contributors) < len(instances)
+            numerator = sum(value for value, _ in contributors)
+            value = numerator if key == "network" else numerator / sum(weight for _, weight in contributors)
+            data.append(round(value, 2))
+        if data:
+            selected[key] = {
+                "data": data,
+                "points": len(data),
+                "available": True,
+                "unit": "KiB/s" if key == "network" else "%",
+                "source": "gnocchi",
+                "status": "partial" if partial else "available",
+                "native_status": "partial" if partial else "available",
+                "scope": "native_policy",
+            }
+    return selected
+
+
 @router.get("/metrics/trend")
 async def get_dashboard_metrics_trend(
+    response: Response,
+    conn=Depends(get_os_conn),
     token_info: dict = Depends(get_token_info),
     range_: str = Query("14d", alias="range", description="24h|7d|14d"),
     include_network: bool = Query(True),
     cm: CacheMode = Depends(cache_mode),
 ):
-    """Project-scoped vCPU/memory/storage/network PromQL trend."""
+    """Project measurements: native telemetry first, exporter fallback per metric."""
     if range_ not in ("24h", "7d", "14d"):
         raise HTTPException(status_code=400, detail=f"유효하지 않은 range: {range_}. 허용값: 24h, 7d, 14d")
 
@@ -1234,14 +1323,20 @@ async def get_dashboard_metrics_trend(
         "14d": {"seconds": 14 * 86400, "step": 6 * 3600, "ttl": 300},
     }
     cfg = range_cfg[range_]
-    cache_key = f"afterglow:dashboard:trend:{project_id}:{range_}"
+    response.headers["Cache-Control"] = "no-store"
+    now = int(datetime.now(UTC).timestamp())
+    start = now - cfg["seconds"]
+    step = cfg["step"]
+    keys = ["cpu", "memory", "vcpus"]
+    if include_network:
+        keys.extend(("network_rx", "network_tx"))
+    native = await native_telemetry.project_series(conn, project_id, keys, start_ts=start, end_ts=now, step_s=step)
+    native_trends = _native_project_trends(native, include_network=include_network)
+    cache_key = f"afterglow:dashboard:trend:{project_id}:{range_}:prom-only:{','.join(sorted(native_trends))}"
     if not include_network:
         cache_key += ":network-0"
 
     async def _query_all() -> dict:
-        now = int(datetime.now(UTC).timestamp())
-        start = now - cfg["seconds"]
-        step = cfg["step"]
 
         def _vals(series: list[dict]) -> list[float]:
             values: list[float] = []
@@ -1254,17 +1349,16 @@ async def get_dashboard_metrics_trend(
                     values.append(round(value, 2))
             return values
 
-        async def _safe_query(expr: str) -> dict:
+        async def _safe_query(expr: str, key: str) -> dict:
+            if key in native_trends:
+                return {"data": [], "reachable": False, "status": "not_collected"}
             try:
                 series = await prom_query.query_range(expr, start_ts=start, end_ts=now, step_s=step)
-                return {"data": _vals(series), "reachable": True}
+                return {"data": _vals(series), "reachable": True, "status": "not_collected"}
             except prom_query.PromBadQuery:
-                # A 4xx proves the Prometheus endpoint itself is reachable.
-                return {"data": [], "reachable": True}
-            except prom_query.PromUnavailable:
-                return {"data": [], "reachable": False}
+                return {"data": [], "reachable": True, "status": "unavailable"}
             except Exception:
-                return {"data": [], "reachable": False}
+                return {"data": [], "reachable": False, "status": "unavailable"}
 
         info = f'libvirt_domain_openstack_info{{project_id="{project_id}"}}'
         vcpu_expr = (
@@ -1284,9 +1378,9 @@ async def get_dashboard_metrics_trend(
             f'fstype!~"tmpfs|overlay|squashfs|devtmpfs"}})) * 100'
         )
         query_coroutines = [
-            _safe_query(vcpu_expr),
-            _safe_query(mem_expr),
-            _safe_query(storage_expr),
+            _safe_query(vcpu_expr, "vcpu"),
+            _safe_query(mem_expr, "memory"),
+            _safe_query(storage_expr, "storage"),
         ]
         if include_network:
             net_expr = (
@@ -1296,33 +1390,50 @@ async def get_dashboard_metrics_trend(
                 f" * on (instance, domain) group_left(instance_id) {info}))"
                 f" / 1024"
             )
-            query_coroutines.append(_safe_query(net_expr))
+            query_coroutines.append(_safe_query(net_expr, "network"))
 
         results = await asyncio.gather(*query_coroutines)
         vcpu_result, mem_result, storage_result = results[:3]
         if include_network:
             network_result = results[3]
         else:
-            network_result = {"data": [], "reachable": True}
+            network_result = {"data": [], "reachable": False, "status": "not_collected"}
 
-        def _series(result: dict, *, unit: str | None = None) -> dict:
+        def _series(result: dict, *, unit: str = "%", source: str = "libvirt") -> dict:
             data = result["data"]
-            payload = {"data": data, "points": len(data), "available": bool(data)}
-            if unit is not None:
-                payload["unit"] = unit
-            return payload
+            return {
+                "data": data,
+                "points": len(data),
+                "available": bool(data),
+                "unit": unit,
+                "source": source if data else None,
+                "status": "available" if data else result["status"],
+            }
 
-        enabled_results = (vcpu_result, mem_result, storage_result)
+        enabled_results = (vcpu_result, mem_result, storage_result, network_result)
         return {
             "vcpu": _series(vcpu_result),
             "memory": _series(mem_result),
-            "storage": _series(storage_result),
+            "storage": _series(storage_result, source="prometheus"),
             "network": _series(network_result, unit="KiB/s"),
-            "prometheus_available": any(result["reachable"] for result in enabled_results),
+            "monitoring_available": any(result["reachable"] for result in enabled_results),
             "range": range_,
         }
 
-    return await cached_call(cache_key, cfg["ttl"], _query_all, enabled=cm.enabled, refresh=cm.refresh)
+    fallback = await cached_call(cache_key, cfg["ttl"], _query_all, enabled=cm.enabled, refresh=cm.refresh)
+    result = {**fallback, **native_trends}
+    native_readable = native.get("status") in ("available", "partial", "not_collected")
+    result["monitoring_available"] = bool(fallback["monitoring_available"] or native_readable)
+    for key in ("vcpu", "memory", "storage", "network"):
+        if key not in native_trends:
+            native_status = native.get("status", "not_collected")
+            if native_status in ("available", "partial"):
+                native_status = "not_collected"
+            result[key] = {
+                **result[key],
+                "native_status": native_status if key != "storage" and (key != "network" or include_network) else None,
+            }
+    return result
 
 
 @router.get("/activity")

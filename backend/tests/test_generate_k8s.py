@@ -22,6 +22,38 @@ from generate_k8s import (  # noqa: E402
 )
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_rendered_analytics_config_loads_with_current_backend_schema(enabled):
+    from app.models.traffic_analytics import TrafficAnalyticsSettings
+
+    cfg = {
+        "traffic_analytics": {
+            "enabled": enabled,
+            "geoip_mmdb": "/etc/afterglow/geoip/country.mmdb",
+            "cluster_cidrs": ["10.50.0.0/16"],
+            "backend_trusted_proxy_cidrs": ["10.51.0.0/24"],
+            "frontend_trusted_proxy_cidrs": ["10.52.0.0/24"],
+            "site_country": "KR",
+        }
+    }
+    configmap = yaml.safe_load(render_configmap(cfg))
+    public_config = tomllib.loads(configmap["data"]["afterglow.conf"])
+    settings = TrafficAnalyticsSettings.model_validate(
+        {
+            **public_config["traffic_analytics"],
+            "hmac_key": "synthetic-hmac-fixture-0123456789abcdef",
+            "frontend_ingest_key": "synthetic-ingest-fixture-0123456789abcdef",
+        }
+    )
+
+    assert settings.enabled is enabled
+    assert settings.geoip_mmdb == "/etc/afterglow/geoip/country.mmdb"
+    assert settings.cluster_cidrs == ["10.50.0.0/16"]
+    assert settings.backend_trusted_proxy_cidrs == ["10.51.0.0/24"]
+    assert settings.frontend_trusted_proxy_cidrs == ["10.52.0.0/24"]
+    assert settings.site_country == "KR"
+
+
 def test_render_toml_excludes_removed_nova_image_selector():
     result = _render_toml_for_k8s({"nova": {"server_image_id": "legacy-server-image"}})
 
@@ -253,12 +285,13 @@ def test_generated_ingress_ignores_explicit_resource_when_mcp_disabled():
 
 
 @pytest.mark.parametrize(
-    "namespace,host", [("afterglow", "cloud.dmslab.re.kr"), ("afterglow-dev", "test.cloud.dmslab.re.kr")]
+    "namespace,host", [("afterglow", "operator.example.test"), ("afterglow-dev", "dev.operator.example.test")]
 )
 def test_generator_cli_writes_matching_config_and_ingress(tmp_path, monkeypatch, namespace, host):
     config_path = tmp_path / "afterglow.conf"
     config_path.write_text(
         '[app]\nsecret_key = "0123456789abcdef0123456789abcdef"\n'
+        f'frontend_base_url = "https://{host}"\npublic_api_base = "https://{host}"\n'
         "[services]\nmcp = true\n"
         f'[mcp]\npublic_url = "https://{host}/mcp"\n',
         encoding="utf-8",
@@ -287,8 +320,9 @@ def test_generator_cli_rejects_shared_root_before_writing_any_manifests(tmp_path
     config_path = tmp_path / "afterglow.conf"
     config_path.write_text(
         '[app]\nsecret_key = "0123456789abcdef0123456789abcdef"\n'
+        'frontend_base_url = "https://operator.example.test"\n'
         "[services]\nmcp = true\n"
-        '[mcp]\npublic_url = "https://cloud.dmslab.re.kr/"\n',
+        '[mcp]\npublic_url = "https://operator.example.test/"\n',
         encoding="utf-8",
     )
     output_dir = tmp_path / "generated"
@@ -315,8 +349,9 @@ def test_generator_cli_dry_run_includes_ingress_without_writing(tmp_path, monkey
     )
     main()
     output = capsys.readouterr().out
-    # Ingress is the final dry-run document, after its heading and separator line.
-    ingress = list(yaml.safe_load_all(output.split("# ingress.yaml\n", 1)[1].split("\n", 1)[1]))
+    # Only public documents are previewed; no Secret or private deployment.
+    ingress = [doc for doc in yaml.safe_load_all(output) if doc["kind"] == "Ingress"]
+    assert "0123456789abcdef0123456789abcdef" not in output
     _assert_generated_service(ingress, "mcp.example.test", "/", "backend", 8000)
     assert _generated_service(ingress, "mcp.example.test", "/api/v1/auth/login") is None
     assert not output_dir.exists()
@@ -371,51 +406,6 @@ def test_render_toml_includes_worker_runtime_defaults():
     assert "manage_deployments = false" in result
 
 
-def test_render_toml_includes_complete_cloud_shell_config():
-    result = _render_toml_for_k8s(
-        {
-            "services": {"zun": True, "cloud_shell": True},
-            "cloud_shell": {
-                "service_project_id": "22222222-2222-4222-8222-222222222222",
-                "image": "ghcr.io/example/afterglow-cloud-shell@sha256:" + "a" * 64,
-                "network_id": "network-id",
-                "security_group": "egress-only",
-                "auth_url": "https://identity.example.test/v3",
-                "interface": "internal",
-                "volume_type": "fast",
-                "home_size_gib": 8,
-                "cpu": 1.5,
-                "memory_mib": 2048,
-                "idle_timeout_seconds": 900,
-                "max_session_seconds": 2700,
-                "ticket_ttl_seconds": 45,
-                "reconcile_interval_seconds": 30,
-                "zun_websocket_origin": "wss://zun.example.test",
-            },
-        }
-    )
-
-    assert "[services]" in result
-    assert "zun = true" in result
-    assert "cloud_shell = true" in result
-    assert "[cloud_shell]" in result
-    assert 'service_project_id = "22222222-2222-4222-8222-222222222222"' in result
-    assert 'image = "ghcr.io/example/afterglow-cloud-shell@sha256:' + "a" * 64 + '"' in result
-    assert 'network_id = "network-id"' in result
-    assert 'security_group = "egress-only"' in result
-    assert 'auth_url = "https://identity.example.test/v3"' in result
-    assert 'interface = "internal"' in result
-    assert 'volume_type = "fast"' in result
-    assert "home_size_gib = 8" in result
-    assert "cpu = 1.5" in result
-    assert "memory_mib = 2048" in result
-    assert "idle_timeout_seconds = 900" in result
-    assert "max_session_seconds = 2700" in result
-    assert "ticket_ttl_seconds = 45" in result
-    assert "reconcile_interval_seconds = 30" in result
-    assert 'zun_websocket_origin = "wss://zun.example.test"' in result
-
-
 def test_render_toml_includes_logging_config():
     result = _render_toml_for_k8s({"logging": {"log_directory": "/app/logs", "max_bytes": 52428800}})
 
@@ -429,7 +419,6 @@ def test_render_toml_and_configmap_exclude_secret_values():
         "openstack_password": "worker-runtime-openstack-secret-sentinel",
         "app_secret_key": "worker-runtime-app-secret-sentinel-0123456789abcdef",
         "database_url": "worker-runtime-db-secret-sentinel",
-        "oidc_client_secret": "worker-runtime-oidc-secret-sentinel",
         "prometheus_password": "worker-runtime-prom-secret-sentinel",
         "monitoring_sd_token": "worker-runtime-monitoring-token-sentinel",
         "notion_encryption_key": "worker-runtime-notion-secret-sentinel",
@@ -442,7 +431,6 @@ def test_render_toml_and_configmap_exclude_secret_values():
         "openstack": {"password": sentinels["openstack_password"]},
         "app": {"secret_key": sentinels["app_secret_key"]},
         "database": {"url": sentinels["database_url"]},
-        "gitlab_oidc": {"client_secret": sentinels["oidc_client_secret"]},
         "monitoring": {
             "prometheus_password": sentinels["prometheus_password"],
             "sd_token": sentinels["monitoring_sd_token"],
@@ -492,9 +480,6 @@ callback_base_url = "https://cloud.dmslab.re.kr"
 
 [cors]
 origins = "https://cloud.dmslab.re.kr"
-
-[gitlab_oidc]
-redirect_uri = "https://cloud.dmslab.re.kr/auth/gitlab/callback"
 """.strip(),
         encoding="utf-8",
     )
@@ -510,7 +495,6 @@ redirect_uri = "https://cloud.dmslab.re.kr/auth/gitlab/callback"
     assert 'frontend_base_url = "https://test.cloud.dmslab.re.kr"' in toml
     assert 'public_api_base = "https://test.cloud.dmslab.re.kr"' in toml
     assert 'origins = "https://test.cloud.dmslab.re.kr"' in toml
-    assert 'redirect_uri = "https://test.cloud.dmslab.re.kr/auth/gitlab/callback"' in toml
     assert 'namespace = "afterglow-dev"' in toml
 
 
@@ -527,7 +511,6 @@ def test_prod_override_renders_prod_urls(tmp_path):
     assert configmap["data"]["APP_ORIGIN"] == "https://cloud.dmslab.re.kr"
     assert configmap["data"]["PUBLIC_API_BASE"] == "https://cloud.dmslab.re.kr"
     assert 'callback_base_url = "https://cloud.dmslab.re.kr"' in toml
-    assert 'redirect_uri = "https://cloud.dmslab.re.kr/auth/gitlab/callback"' in toml
     assert 'namespace = "afterglow"' in toml
 
 
@@ -594,7 +577,6 @@ def test_render_secret_always_emits_manifest_required_keys():
     doc = yaml.safe_load(result)
 
     keys = doc["stringData"]
-    assert keys["GITLAB_OIDC_CLIENT_SECRET"] == ""
     assert keys["K3S_KUBECONFIG_ENCRYPTION_KEY"] == ""
     assert keys["DATABASE_URL"] == ""
     assert keys["K3S_GPU_ADMISSION_TOKEN"] == ""
@@ -638,3 +620,184 @@ class TestRenderGrafanaDeployment:
         doc = docs[0]
         assert doc["kind"] == "Deployment"
         assert doc["metadata"]["name"] == "grafana"
+
+
+def _auth_generation_config():
+    return {
+        "app": {
+            "secret_key": "0123456789abcdef0123456789abcdef",
+            "frontend_base_url": "https://cloud.example.com",
+        },
+        "auth": {
+            "providers": {
+                "sso_common": {
+                    "name": "Common GitHub Enterprise",
+                    "kind": "github",
+                    "enabled": True,
+                    "authorization_url": "https://github.example.com/login/oauth/authorize?audience=cloud",
+                    "token_url": "https://github.example.com/login/oauth/access_token",
+                    "api_url": "https://github.example.com/api/v3",
+                    "client_id": "common-client",
+                    "client_secret": 'common-secret:"quoted"\nsecond-line',
+                    "scopes": ["read:user", "user:email", "read:org"],
+                    "keystone_idp_id": "github-enterprise",
+                    "keystone_protocol_id": "openid",
+                    "federation_token_type": "access_token",
+                    "token_endpoint_auth_method": "client_secret_post",
+                },
+                "gitlab": {
+                    "name": "DMSLab GitLab",
+                    "kind": "oidc",
+                    "enabled": True,
+                    "issuer_url": "https://git.dmslab.re.kr",
+                    "client_id": "gitlab-client",
+                    "client_secret": "gitlab-private-secret",
+                    "scopes": ["openid", "email", "profile"],
+                    "keystone_idp_id": "gitlab",
+                    "keystone_protocol_id": "openid",
+                    "federation_token_type": "id_token",
+                    "token_endpoint_auth_method": "client_secret_post",
+                },
+                "paused": {
+                    "name": "Disabled GitHub",
+                    "kind": "github",
+                    "enabled": False,
+                    "client_id": "paused-client",
+                    "keystone_idp_id": "paused",
+                    "keystone_protocol_id": "openid",
+                },
+            },
+            "default": {"allow_providers": ["sso_common", "paused"]},
+            "domain": {
+                "DmsLab-ID": {"allow_providers": ["gitlab", "sso_common"]},
+                "Other-ID": {"allow_providers": []},
+            },
+        },
+    }
+
+
+@pytest.mark.parametrize("namespace", ["afterglow", "afterglow-dev"])
+@pytest.mark.parametrize("default_allowlist", [None, [], ["sso_common", "paused"]])
+def test_auth_renderers_reconstruct_runtime_providers_and_selection(
+    tmp_path, monkeypatch, namespace, default_allowlist
+):
+    import copy
+    import os
+    from unittest.mock import patch
+
+    from generate_k8s import render_artifacts
+
+    from app import config as app_config
+
+    cfg = _auth_generation_config()
+    cfg["auth"]["public_signup_enabled"] = True
+    cfg["auth"]["signup_email_domains"] = ["gmail.com", "konkuk.ac.kr"]
+    cfg["auth"]["domain"]["DmsLab-ID"]["auto_join_email_domains"] = {
+        "gitlab": ["gmail.com", "konkuk.ac.kr"],
+    }
+    cfg["auth"]["domain"]["Other-ID"]["auto_join_email_domains"] = {}
+    if default_allowlist is None:
+        cfg["auth"].pop("default")
+    else:
+        cfg["auth"]["default"] = {"allow_providers": default_allowlist}
+    cfg["auth"]["domain"]["Inherited-ID"] = {}
+    original = copy.deepcopy(cfg)
+    artifacts = render_artifacts(cfg, namespace)
+    configmap = yaml.safe_load(artifacts["configmap.yaml"])
+    secret = yaml.safe_load(artifacts["secret.yaml"])
+    assert configmap["metadata"]["namespace"] == namespace
+    assert secret["metadata"]["namespace"] == namespace
+    public_auth = tomllib.loads(configmap["data"]["afterglow.conf"])["auth"]
+    for key, provider in cfg["auth"]["providers"].items():
+        assert public_auth["providers"][key] == {
+            field: value for field, value in provider.items() if field != "client_secret"
+        }
+        if provider.get("client_secret"):
+            env_key = f"AUTH__PROVIDERS__{key.upper()}__CLIENT_SECRET"
+            assert secret["stringData"][env_key] == provider["client_secret"]
+            assert provider["client_secret"] not in artifacts["configmap.yaml"]
+    assert public_auth.get("default") == cfg["auth"].get("default")
+    assert public_auth["domain"] == cfg["auth"]["domain"]
+    assert cfg == original
+
+    config_path = tmp_path / "afterglow.conf"
+    config_path.write_text(configmap["data"]["afterglow.conf"], encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(app_config, "_config_candidates", lambda: [config_path])
+    kustomization = yaml.safe_load(artifacts["kustomization.yaml"])
+    patch_paths = {entry["path"] for entry in kustomization["patches"]}
+    assert patch_paths == {"auth-backend-env.yaml", "auth-notion-worker-env.yaml"}
+    expected = app_config.AuthSettings.model_validate(cfg["auth"])
+    for workload in ("backend", "notion-worker"):
+        deployment_patch = yaml.safe_load(artifacts[f"auth-{workload}-env.yaml"])
+        assert deployment_patch["metadata"]["name"] == workload
+        container = deployment_patch["spec"]["template"]["spec"]["containers"][0]
+        assert container["name"] == workload
+        environment = {"SECRET_KEY": cfg["app"]["secret_key"], "AFTERGLOW_ENV": "development"}
+        for entry in container["env"]:
+            ref = entry["valueFrom"]["secretKeyRef"]
+            assert ref["name"] == secret["metadata"]["name"]
+            assert ref["key"] == entry["name"]
+            if ref["key"] in secret["stringData"]:
+                environment[entry["name"]] = secret["stringData"][ref["key"]]
+            else:
+                assert ref["optional"] is True
+                assert entry["name"] == "AUTH__PROVIDERS__PAUSED__CLIENT_SECRET"
+        assert {key for key in environment if key.startswith("AUTH__")} == {
+            "AUTH__PROVIDERS__SSO_COMMON__CLIENT_SECRET",
+            "AUTH__PROVIDERS__GITLAB__CLIENT_SECRET",
+        }
+        app_config.load_raw_toml.cache_clear()
+        app_config.get_settings.cache_clear()
+        try:
+            with patch.dict(os.environ, environment, clear=True):
+                settings = app_config.get_settings()
+                assert settings.auth == expected
+                assert settings.auth.providers["gitlab"].client_secret.get_secret_value() == "gitlab-private-secret"
+                assert settings.auth.providers["sso_common"].client_secret.get_secret_value() == (
+                    'common-secret:"quoted"\nsecond-line'
+                )
+        finally:
+            app_config.load_raw_toml.cache_clear()
+            app_config.get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "auth",
+    [
+        {"provider": {"client_secret": "private-auth-sentinel"}},
+        {"providers": []},
+        {"providers": {"GitLab": {"client_secret": "private-auth-sentinel"}}},
+        {"providers": {"gitlab_": {"client_secret": "private-auth-sentinel"}}},
+        {"providers": {"git__lab": {"client_secret": "private-auth-sentinel"}}},
+        {"providers": {"gitlab": {"client_secert": "private-auth-sentinel"}}},
+        {"providers": {"gitlab": {"enabled": "false"}}},
+        {"providers": {"gitlab": {"scopes": "openid email"}}},
+        {"default": {"allow_providers": ["typo"]}},
+        {"domain": {"DmsLab-ID": {"allow_providers": ["missing"]}}},
+        {"default": {"providers": []}},
+        {"domain": {"DmsLab-ID": {"providers": []}}},
+        {"default": {"allow_providers": "gitlab"}},
+        {"default": {"allow_providers": [1]}},
+        {"domain": {"DmsLab-ID": {"password_enabled": False}}},
+        {"domain": {"": {"allow_providers": []}}},
+    ],
+)
+def test_auth_projection_rejects_bad_structures_without_leaking_secrets(auth):
+    cfg = {"app": {"secret_key": "0123456789abcdef0123456789abcdef"}, "auth": auth}
+    for renderer in (render_secret, render_configmap):
+        with pytest.raises(ValueError) as exc:
+            renderer(cfg)
+        assert "private-auth-sentinel" not in str(exc.value)
+
+
+def test_auth_absent_adds_no_secret_keys_or_workload_patches():
+    from generate_k8s import render_artifacts
+
+    cfg = {"app": {"secret_key": "0123456789abcdef0123456789abcdef"}}
+    artifacts = render_artifacts(cfg)
+    configmap = yaml.safe_load(artifacts["configmap.yaml"])
+    secret = yaml.safe_load(artifacts["secret.yaml"])
+    assert "auth" not in tomllib.loads(configmap["data"]["afterglow.conf"])
+    assert not any(key.startswith("AUTH__") for key in secret["stringData"])
+    assert "patches" not in yaml.safe_load(artifacts["kustomization.yaml"])

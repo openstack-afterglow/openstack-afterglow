@@ -226,9 +226,9 @@ function seedState(): MockupState {
 
 	return {
 		projects: [
-			{ id: PROJECT_ID, name: 'sample-project-alpha', description: '튜토리얼 기본 프로젝트', domain_name: 'Sample Research Org', last_accessed_at: '2026-07-08T23:00:00Z' },
-			{ id: 'mock-project-2', name: 'sample-project-beta', description: 'GPU 워크로드 데모', domain_name: 'Sample Research Org', last_accessed_at: '2026-07-08T12:30:00Z' },
-			{ id: 'mock-project-3', name: 'sample-ci-runner', description: 'CI runner demo', domain_name: 'Sample Research Org', last_accessed_at: '2026-07-07T18:00:00Z' },
+			{ id: PROJECT_ID, name: 'sample-project-alpha', description: '튜토리얼 기본 프로젝트', domain_name: 'Demo', last_accessed_at: '2026-07-08T23:00:00Z' },
+			{ id: 'mock-project-2', name: 'sample-project-beta', description: 'GPU 워크로드 데모', domain_name: 'Demo', last_accessed_at: '2026-07-08T12:30:00Z' },
+			{ id: 'mock-project-3', name: 'sample-ci-runner', description: 'CI runner demo', domain_name: 'Demo', last_accessed_at: '2026-07-07T18:00:00Z' },
 		],
 		selectedProjectId: PROJECT_ID,
 		tutorialStatuses: {},
@@ -478,9 +478,9 @@ function seedState(): MockupState {
 				storage_pools: [{ name: 'sample-storage-a@ceph#rbd', volume_backend_name: 'ceph', driver_version: '3.0.0', storage_protocol: 'ceph', vendor_name: 'Open Source', total_capacity_gb: 16000, free_capacity_gb: 8800, allocated_capacity_gb: 7200 }],
 			},
 			users: [
-				{ id: 'mock-user-1', name: 'sample-admin', email: 'sample-admin@example.test', enabled: true, domain_id: 'default', default_project_id: PROJECT_ID, created_at: '2026-06-01T00:00:00Z', first_seen: '2026-06-01T00:00:00Z', last_seen: NOW },
-				{ id: 'mock-user-2', name: 'sample-researcher', email: 'sample-researcher@example.test', enabled: true, domain_id: 'default', default_project_id: 'mock-project-2', created_at: '2026-06-10T00:00:00Z', first_seen: '2026-06-11T00:00:00Z', last_seen: '2026-07-08T12:00:00Z' },
-				{ id: 'mock-user-3', name: 'sample-disabled', email: 'sample-disabled@example.test', enabled: false, domain_id: 'default', default_project_id: 'mock-project-3', created_at: '2026-06-20T00:00:00Z', first_seen: '2026-06-21T00:00:00Z', last_seen: '2026-06-30T00:00:00Z' },
+				{ id: 'mock-user-1', name: 'sample-admin', email: 'sample-admin@example.test', enabled: true, domain_id: 'mock-domain', default_project_id: PROJECT_ID, created_at: '2026-06-01T00:00:00Z', first_seen: '2026-06-01T00:00:00Z', last_seen: NOW },
+				{ id: 'mock-user-2', name: 'sample-researcher', email: 'sample-researcher@example.test', enabled: true, domain_id: 'mock-domain', default_project_id: 'mock-project-2', created_at: '2026-06-10T00:00:00Z', first_seen: '2026-06-11T00:00:00Z', last_seen: '2026-07-08T12:00:00Z' },
+				{ id: 'mock-user-3', name: 'sample-disabled', email: 'sample-disabled@example.test', enabled: false, domain_id: 'mock-domain', default_project_id: 'mock-project-3', created_at: '2026-06-20T00:00:00Z', first_seen: '2026-06-21T00:00:00Z', last_seen: '2026-06-30T00:00:00Z' },
 			],
 			userActivity: [
 				{ id: 1, created_at: '2026-07-08T12:00:00Z', username: 'sample-researcher', action: '사용자 수정', resource_name: 'sample-researcher', status: 'success' },

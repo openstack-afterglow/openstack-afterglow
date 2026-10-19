@@ -42,7 +42,7 @@ Afterglow 백엔드는 FastAPI로 구현된 REST API이며, 모든 OpenStack 서
 > 세션에 보관되고, 클라이언트에는 access/refresh JWT가 발급됩니다. (구 `X-Auth-Token` 헤더는 더 이상
 > 사용하지 않습니다.) 자세한 토큰 수명·회전 모델은 [인증 (Auth)](api/auth.md)를 참고하세요.
 
-`POST /api/v1/auth/login`, `GET /api/v1/health`, `GET /api/v1/metrics`는 인증이 필요하지 않습니다.
+공개 인증 진입점은 `/api/v1/auth/login-options`, 도메인 selector 없는 `/api/v1/auth/login`, provider authorize/callback 및 이메일 검증 onboarding입니다. 인증 후 계정의 원 소속 home에서 작업 도메인·프로젝트를 선택합니다. `/auth/domains/resolve`는 특정 도메인 설정 조회로 유지하지만 로그인 선행 조건은 아닙니다. 정확한 메서드·본문·제한과 인증이 필요한 `invitations/accept-existing` 예외는 [인증 API](api/auth.md)를 참고하세요. `GET /api/v1/health`, `GET /api/v1/metrics`도 사용자 인증이 필요하지 않습니다. Refresh는 본문의 refresh JWT로 인증합니다.
 Prometheus SD(`/api/v1/sd/...`)와 VM 에이전트용 baked 경로는 별도의 Bearer 토큰을 사용합니다(각 문서 참조).
 
 > **선택 서비스**: 일부 도메인은 `afterglow.conf`의 `[services]`(또는 해당 섹션)에서 활성화된 경우에만
@@ -56,9 +56,10 @@ Prometheus SD(`/api/v1/sd/...`)와 VM 에이전트용 baked 경로는 별도의 
 
 | 문서 | 기본 경로 | 설명 |
 |------|-----------|------|
-| [인증 (Auth)](api/auth.md) | `/api/v1/auth` | Keystone 토큰 발급/갱신, 세션 관리, 프로젝트 스코프 전환 |
+| [인증 (Auth)](api/auth.md) | `/api/v1/auth` | 도메인 입력 없는 원 소속 인증, provider federation, 필수 개인 home onboarding, JWT·세션, 인증 후 작업 도메인·프로젝트 선택 |
 | [프로필 (Profile)](api/profile.md) | `/api/v1/profile` | 사용자 프로필 조회/수정, 비밀번호 변경, 활동 로그 |
-| [프로젝트·초대 (Projects)](api/projects.md) | `/api/v1/projects`, `/api/v1/invitations` | 프로젝트 self-service, 멤버·매니저·초대 관리 |
+| [프로젝트 (Projects)](api/projects.md) | `/api/v1/projects` | 도메인 내 프로젝트 생성 및 owner/admin의 멤버·역할 관리 |
+| [도메인 IAM](api/iam.md) | `/api/v1/iam` | 작업 도메인 Default의 유효 manager 전용 사용자·멤버·초대 관리, 로그인 정책과 provider CRUD |
 
 ### 관리자
 

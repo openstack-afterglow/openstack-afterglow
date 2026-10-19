@@ -58,6 +58,20 @@ spec:
                 secretKeyRef:
                   name: afterglow-secrets
                   key: DATABASE_URL
+            - name: NOTION_CONFIG_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: afterglow-secrets
+                  key: NOTION_CONFIG_ENCRYPTION_KEY
+                  optional: true
+            {{- range .Values.auth.providerKeys }}
+            - name: {{ printf "AUTH__PROVIDERS__%s__CLIENT_SECRET" (upper .) }}
+              valueFrom:
+                secretKeyRef:
+                  name: afterglow-secrets
+                  key: {{ printf "AUTH__PROVIDERS__%s__CLIENT_SECRET" (upper .) }}
+                  optional: true
+            {{- end }}
           volumeMounts:
             - name: afterglow-config-volume
               mountPath: /app/afterglow.conf

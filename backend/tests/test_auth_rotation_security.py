@@ -20,33 +20,66 @@ from app.api.identity import auth
 from app.main import app
 from app.services import jwt_service, session_store
 
+pytestmark = pytest.mark.usefixtures("auth_directory")
+
 _IDENTITY = {
     "token": "synthetic-keystone-token",
     "project_id": "security-project",
     "project_name": "Security Project",
+    "default_project_id": "security-project",
     "user_id": "security-user",
     "username": "security-user",
     "roles": ["member"],
     "is_system_admin": False,
+    "domain_id": "default",
+    "domain_name": "Default",
+    "identity_domain_id": "default",
+    "identity_domain_name": "Default",
+    "is_domain_manager": False,
+    "email": "actual@example.test",
 }
 _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/124.0"
 
 
 @pytest.fixture
-async def security_client(monkeypatch):
+async def security_client(monkeypatch, auth_directory):
+    auth_directory.users["security-user"]["default_project_id"] = "security-project"
+    auth_directory.grants["security-user"].append("second-project")
+    auth_directory.projects["second-project"] = {
+        "id": "second-project",
+        "name": "Second",
+        "domain_id": "default",
+        "enabled": True,
+    }
     monkeypatch.setenv("SECRET_KEY", "synthetic-test-key-" * 4)
     monkeypatch.setenv("SESSION_TIMEOUT_SECONDS", "3600")
     monkeypatch.setenv("TOKEN_IP_BINDING_MODE", "strict")
     conn = MagicMock()
     conn.identity.get_user.return_value.default_project_id = ""
 
-    def validate(_token, project_id=""):
-        return dict(_IDENTITY, project_id=project_id or _IDENTITY["project_id"])
+    def validate(_token, project_id="", *, operation=None):
+        return dict(
+            _IDENTITY,
+            project_id=project_id,
+            project_name=_IDENTITY["project_name"] if project_id else "",
+            roles=_IDENTITY["roles"] if project_id else [],
+        )
 
     with (
-        patch.object(auth.keystone, "authenticate", return_value=dict(_IDENTITY)),
+        patch.object(
+            auth.keystone, "authenticate", return_value=dict(_IDENTITY, project_id="", project_name="", roles=[])
+        ),
         patch.object(auth.keystone, "get_openstack_connection", return_value=conn),
         patch.object(auth.keystone, "validate_token", side_effect=validate),
+        patch.object(
+            auth.keystone,
+            "list_projects",
+            side_effect=lambda _token, domain_id=None, **_: [
+                auth_directory.projects[pid]
+                for pid in auth_directory.grants["security-user"]
+                if domain_id is None or auth_directory.projects[pid]["domain_id"] == domain_id
+            ],
+        ),
         patch.object(auth, "_prewarm_dashboard", AsyncMock()),
         patch.object(auth, "record_project_access", AsyncMock()),
         patch.object(auth.activity_svc, "record", AsyncMock()),
@@ -60,7 +93,10 @@ async def security_client(monkeypatch):
 async def _login(client):
     response = await client.post(
         "/api/v1/auth/login",
-        json={"username": "security-user", "password": "synthetic-password", "project_name": "Security Project"},
+        json={
+            "username": "security-user",
+            "password": "synthetic-password",
+        },
     )
     assert response.status_code == 200
     return response.json()
@@ -155,9 +191,14 @@ async def test_same_refresh_concurrent_http_has_one_success_and_one_live_session
     old_jti, original = await _session(tokens)
     barrier = threading.Barrier(2)
 
-    def simultaneous_validation(_token, project_id=""):
+    def simultaneous_validation(_token, project_id="", *, operation=None):
         barrier.wait(timeout=5)
-        return dict(_IDENTITY)
+        return dict(
+            _IDENTITY,
+            project_id=project_id,
+            project_name=_IDENTITY["project_name"] if project_id else "",
+            roles=_IDENTITY["roles"] if project_id else [],
+        )
 
     with patch.object(auth.keystone, "validate_token", side_effect=simultaneous_validation):
         responses = await asyncio.gather(
@@ -185,10 +226,15 @@ async def test_session_revoked_during_keystone_validation_is_not_rotated(securit
     started = threading.Event()
     release = threading.Event()
 
-    def validation(_token, project_id=""):
+    def validation(_token, project_id="", *, operation=None):
         started.set()
         assert release.wait(timeout=5)
-        return dict(_IDENTITY)
+        return dict(
+            _IDENTITY,
+            project_id=project_id,
+            project_name=_IDENTITY["project_name"] if project_id else "",
+            roles=_IDENTITY["roles"] if project_id else [],
+        )
 
     with patch.object(auth.keystone, "validate_token", side_effect=validation):
         request = asyncio.create_task(
@@ -247,34 +293,6 @@ async def test_legacy_missing_origin_cannot_bypass_strict_refresh(security_clien
     response = await security_client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert response.status_code == 401
     assert (await session_store.get_session(jti))["blacklisted"] is True
-
-
-@pytest.mark.asyncio
-async def test_gitlab_callback_records_origin_and_enforces_binding(security_client, monkeypatch):
-    monkeypatch.setenv("GITLAB_OIDC_ENABLED", "true")
-    from app.config import get_settings
-
-    get_settings.cache_clear()
-    security_client.cookies.set(
-        "afterglow_gitlab_oidc_state", "security-state", domain="test.local", path=auth._GITLAB_OIDC_STATE_COOKIE_PATH
-    )
-    with patch("app.services.gitlab_oidc.exchange_code", AsyncMock(return_value=dict(_IDENTITY))):
-        callback = await security_client.post(
-            "/api/v1/auth/gitlab/callback", json={"code": "synthetic-code", "state": "security-state"}
-        )
-    assert callback.status_code == 200
-    _, session = await _session(callback.json())
-    assert session["auth_method"] == "federated"
-    assert session["origin_ip"] == "127.0.0.1"
-    assert len(session["origin_fp"]) == 32
-    assert session["device_type"] == "desktop"
-    assert session["os"] == "macOS"
-    assert "afterglow_gitlab_oidc_state" not in security_client.cookies
-    denied = await security_client.get(
-        "/api/v1/auth/me",
-        headers={"Authorization": f"Bearer {callback.json()['token']}", "User-Agent": "stolen-device"},
-    )
-    assert denied.status_code == 401
 
 
 @pytest.mark.asyncio

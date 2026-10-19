@@ -135,5 +135,12 @@
 	"accessibility.userNavigation": "Điều hướng dành cho người dùng",
 	"accessibility.search": "Tìm kiếm (⌘K)",
 	"accessibility.allServices": "Tất cả dịch vụ",
+	"items.aodhAlarms": "Cảnh báo Aodh",
+	"items.gnocchi": "Dịch vụ Gnocchi",
+	"sections.domainIam": "IAM miền",
+	"sections.domains": "Miền",
+	"items.selectDomain": "Chuyển hoặc tạo miền",
+	"items.domains": "Miền",
+	"items.domainIam": "Quản lý người dùng và dự án",
 	"actions.searchResources": "Tìm kiếm tài nguyên"
 }

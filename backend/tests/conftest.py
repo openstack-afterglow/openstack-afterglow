@@ -19,13 +19,14 @@ os.environ.setdefault("SERVICE_WAYGATE_ENABLED", "true")
 os.environ.setdefault("SERVICE_CHAT_ENABLED", "true")
 
 from contextlib import contextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.exc import ArgumentError
 
-from app.api.deps import get_os_conn, get_token_info
+from app.api.deps import get_os_conn, get_token_info, require_admin
 from app.main import app
 from app.rate_limit import limiter as _rate_limiter
 
@@ -38,6 +39,7 @@ from tests._network_guard import (  # noqa: F401 — pytest 는 conftest namespa
     _block_non_loopback_network,
     _is_loopback_target,
 )
+from tests.admin_gate import synthetic_verified_admin
 from tests.db_target_safety import (
     UnsafeDatabaseTargetError,
     assert_isolated_test_database,
@@ -83,6 +85,11 @@ def make_mock_conn(project_id: str = "test-project-123") -> MagicMock:
     conn._afterglow_token = "test-token"
     conn._afterglow_project_id = project_id
     conn._afterglow_user_id = "test-user-123"
+    conn._afterglow_domain_id = "default"
+    conn._afterglow_domain_name = "Default"
+    conn._afterglow_identity_domain_id = "default"
+    conn.session.auth.get_access.return_value.user_domain_id = "default"
+    conn.session.auth.get_access.return_value.project_domain_id = "default"
     conn.close = MagicMock()
 
     def _owned():
@@ -120,10 +127,14 @@ def make_token_info(
     project_id: str = "test-project-123",
     is_system_admin: bool = False,
     auth_method: str = "password",
+    domain_id: str = "default",
+    domain_name: str = "Default",
+    is_domain_manager: bool = False,
 ) -> dict:
     """모의 token_info 딕셔너리 생성."""
     return {
         "token": "test-token",
+        "session_token": "test-login-proof",
         "project_id": project_id,
         "project_name": "test-project",
         "user_id": "test-user-123",
@@ -132,7 +143,220 @@ def make_token_info(
         "expires_at": "2099-01-01T00:00:00Z",
         "is_system_admin": is_system_admin,
         "auth_method": auth_method,
+        "domain_id": domain_id,
+        "domain_name": domain_name,
+        "identity_domain_id": domain_id,
+        "identity_domain_name": domain_name,
+        "is_domain_manager": is_domain_manager,
     }
+
+
+@pytest.fixture
+def auth_directory(monkeypatch):
+    """Synthetic Keystone directory for browser-session transition regressions.
+
+    Canonical domain/role boundaries and Redis Lua rotation still run. Native
+    provisioning is a separate boundary exercised by test_login_native_operation;
+    this static directory keeps each session test's selected project inventory.
+    """
+    from keystoneauth1.exceptions.http import NotFound
+
+    from app.services import domain_auth, domain_projects, identity_roles, keystone
+
+    domains = {
+        "default": {"id": "default", "name": "Default", "enabled": True},
+        "tenant-a": {"id": "tenant-a", "name": "Tenant A", "enabled": True},
+        "tenant-b": {"id": "tenant-b", "name": "Tenant B", "enabled": True},
+    }
+    state = SimpleNamespace(domains=domains, users={}, projects={}, assignments=[])
+    state.users = {
+        uid: {
+            "id": uid,
+            "name": name,
+            "domain_id": "default",
+            "enabled": True,
+            "email": "actual@example.test",
+            "default_project_id": "",
+        }
+        for uid, name in (
+            ("test-user-123", "testuser"),
+            ("user-1", "alice"),
+            ("user-timeout", "bob"),
+            ("security-user", "security-user"),
+        )
+    }
+    state.projects = {
+        pid: {"id": pid, "name": name, "domain_id": "default", "enabled": True}
+        for pid, name in (
+            ("test-project-123", "test-project"),
+            ("other-project-456", "other-project"),
+            ("proj-1", "myproject"),
+            ("security-project", "Security Project"),
+        )
+    }
+    state.grants = {
+        "test-user-123": ["test-project-123", "other-project-456"],
+        "user-1": ["proj-1"],
+        "security-user": ["security-project"],
+    }
+    state.roles = [
+        {"id": name + "-role", "name": name, "domain_id": None} for name in ("admin", "manager", "member", "reader")
+    ]
+    state.inferences = []
+
+    def domain_get(did):
+        if did not in domains:
+            raise NotFound()
+        return domains[did]
+
+    def user_get(uid):
+        return state.users.setdefault(
+            uid,
+            {
+                "id": uid,
+                "name": uid,
+                "domain_id": "default",
+                "enabled": True,
+                "email": "actual@example.test",
+                "default_project_id": "",
+            },
+        )
+
+    def project_get(pid):
+        return state.projects.setdefault(pid, {"id": pid, "name": pid, "domain_id": "default", "enabled": True})
+
+    def project_list(domain=None, user=None):
+        rows = list(state.projects.values())
+        if domain is not None:
+            rows = [p for p in rows if p["domain_id"] == domain]
+        if user is not None:
+            ids = set(getattr(state, "grants", {}).get(user, []))
+            ids.update(
+                r.get("scope", {}).get("project", {}).get("id")
+                for r in state.assignments
+                if r.get("user", {}).get("id") == user
+            )
+            rows = [p for p in rows if p["id"] in ids]
+        return rows
+
+    def assignments(**query):
+        rows = list(state.assignments)
+        for uid, project_ids in getattr(state, "grants", {}).items():
+            rows.extend(
+                {"user": {"id": uid}, "role": {"id": "member-role"}, "scope": {"project": {"id": pid}}}
+                for pid in project_ids
+            )
+        for key in ("user", "group"):
+            if key in query:
+                rows = [row for row in rows if row.get(key, {}).get("id") == query[key]]
+        for key in ("project", "domain"):
+            if key in query:
+                rows = [row for row in rows if row.get("scope", {}).get(key, {}).get("id") == query[key]]
+        if "system" in query:
+            rows = [row for row in rows if "system" in row.get("scope", {})]
+        return rows
+
+    ks = SimpleNamespace(
+        domains=SimpleNamespace(
+            get=domain_get, list=lambda name=None: [d for d in domains.values() if name is None or d["name"] == name]
+        ),
+        users=SimpleNamespace(
+            get=user_get,
+            list=lambda domain=None, name=None: [
+                user
+                for user in state.users.values()
+                if (domain is None or user["domain_id"] == domain) and (name is None or user.get("name") == name)
+            ],
+        ),
+        groups=SimpleNamespace(list=lambda **kwargs: []),
+        projects=SimpleNamespace(get=project_get, list=project_list),
+        roles=SimpleNamespace(list=lambda: state.roles),
+        inference_rules=SimpleNamespace(list_inference_roles=lambda: state.inferences),
+        role_assignments=SimpleNamespace(list=assignments),
+    )
+    monkeypatch.setattr(keystone, "_get_admin_ks_client", lambda: ks)
+    monkeypatch.setattr(
+        identity_roles, "_trusted_catalog", lambda: identity_roles._catalog(state.roles, state.inferences)
+    )
+    monkeypatch.setattr(domain_auth, "require_password", AsyncMock())
+    monkeypatch.setattr(domain_auth, "require_provider", AsyncMock())
+    monkeypatch.setattr(
+        domain_auth, "get_policy", AsyncMock(side_effect=lambda did: domain_auth.LoginPolicy(domain_id=did))
+    )
+    monkeypatch.setattr(domain_projects, "ensure_login_access", AsyncMock())
+    return state
+
+
+@pytest.fixture
+def native_auth(monkeypatch, auth_directory):
+    """Synthetic Password/Token I/O; canonical identity and live admin gates run.
+
+    Like domain_client's native adapter, exchanges return the provider access
+    shape, not an asserted is_system_admin claim. Authority comes exclusively
+    from auth_directory's exact resources, role IDs and current assignments.
+    """
+    from keystoneauth1.exceptions.http import NotFound, Unauthorized
+
+    from app.services import keystone
+
+    state = SimpleNamespace(user_id="test-user-123", token="test-token", password="valid", roles=["member"])
+    ks = keystone._get_admin_ks_client()
+
+    def exact(rows, resource_id):
+        if resource_id not in rows:
+            raise NotFound()
+        return rows[resource_id]
+
+    ks.users.get = lambda uid: exact(auth_directory.users, uid)
+    ks.projects.get = lambda pid: exact(auth_directory.projects, pid)
+
+    def access(uid, pid=""):
+        user = ks.users.get(uid)
+        project = ks.projects.get(pid) if pid else None
+        return SimpleNamespace(
+            user_id=uid,
+            username=user["name"],
+            user_domain_id=user["domain_id"],
+            project_id=pid,
+            project_name=project["name"] if project else "",
+            project_domain_id=project["domain_id"] if project else "",
+            auth_token=state.token,
+            role_names=list(state.roles) if pid else [],
+            expires=None,
+        )
+
+    def password_access(**kwargs):
+        matches = ks.users.list(domain=kwargs["user_domain_id"], name=kwargs["username"])
+        if len(matches) != 1 or kwargs["password"] != state.password:
+            raise Unauthorized()
+        return access(matches[0]["id"])
+
+    def token_access(**kwargs):
+        if kwargs["token"] != state.token:
+            raise Unauthorized()
+        return access(state.user_id, kwargs.get("project_id", ""))
+
+    state.password_exchange = MagicMock(side_effect=password_access)
+    state.token_exchange = MagicMock(side_effect=token_access)
+
+    class Password:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def get_access(self, session):
+            return state.password_exchange(**self.kwargs)
+
+    class Token:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def get_access(self, session):
+            return state.token_exchange(**self.kwargs)
+
+    monkeypatch.setattr(keystone.v3, "Password", Password)
+    monkeypatch.setattr(keystone.v3, "Token", Token)
+    monkeypatch.setattr("keystoneclient.v3.client.Client", lambda **kwargs: SimpleNamespace(projects=ks.projects))
+    return state
 
 
 @pytest.fixture(autouse=True)
@@ -284,7 +508,7 @@ async def client(mock_conn):
 
 @pytest.fixture
 async def admin_client(mock_conn):
-    """admin 역할을 가진 인증 모의 객체로 오버라이드한 AsyncClient."""
+    """Synthetic verified admin for endpoint tests; real gate has dedicated regressions."""
 
     async def override_get_os_conn():
         try:
@@ -297,6 +521,7 @@ async def admin_client(mock_conn):
 
     app.dependency_overrides[get_os_conn] = override_get_os_conn
     app.dependency_overrides[get_token_info] = override_get_token_info
+    app.dependency_overrides[require_admin] = synthetic_verified_admin
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",

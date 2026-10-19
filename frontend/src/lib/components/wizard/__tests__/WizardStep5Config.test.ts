@@ -80,7 +80,7 @@ describe('WizardStep5Config ordinary root disk', () => {
 	it('shows editable size and deletion controls for image boot', async () => {
 		await renderConfig();
 
-		const size = screen.getByRole('spinbutton', { name: `${t('config.rootDisk.label')} *` }) as HTMLInputElement;
+		const size = screen.getByRole('spinbutton', { name: t('config.rootDisk.label') }) as HTMLInputElement;
 		const deleteWithVm = screen.getByRole('checkbox', { name: t('config.rootDisk.deleteWithVm') }) as HTMLInputElement;
 		expect(size.id).toBe('boot-volume-size');
 		expect(size.value).toBe('32');
@@ -92,6 +92,27 @@ describe('WizardStep5Config ordinary root disk', () => {
 		await fireEvent.click(deleteWithVm);
 		expect(get(wizard).bootVolumeSizeGb).toBe(96);
 		expect(get(wizard).deleteBootVolumeOnTermination).toBe(true);
+	});
+
+	it('requires explicit in-use consent for either protection policy and preserves independent choices', async () => {
+		wizard.update(w => ({ ...w, keyName: 'test-keypair' }));
+		await renderConfig();
+		const snapshot = screen.getByRole('checkbox', { name: t('config.protection.snapshot') });
+		const backup = screen.getByRole('checkbox', { name: t('config.protection.backup') });
+		await fireEvent.click(snapshot);
+		expect(configCanNext()).toBe(false);
+		const consent = screen.getByRole('checkbox', { name: t('config.protection.consent') });
+		await fireEvent.click(consent);
+		expect(configCanNext()).toBe(true);
+		await fireEvent.click(backup);
+		await fireEvent.click(snapshot);
+		expect(get(wizard)).toMatchObject({ autoSnapshot: false, autoBackup: true });
+		expect(configCanNext()).toBe(true);
+		await fireEvent.click(consent);
+		expect(configCanNext()).toBe(false);
+		await fireEvent.click(backup);
+		expect(configCanNext()).toBe(true);
+		expect(screen.queryByRole('checkbox', { name: t('config.protection.consent') })).toBeNull();
 	});
 
 	it.each(['existing-root', null])('shows existing volume guidance without size or deletion controls for volume name %s', async volumeName => {
@@ -127,7 +148,7 @@ describe('WizardStep5Config cloud-init library', () => {
 			availableProjects: [],
 			roles: [],
 			isSystemAdmin: false,
-			federated: false,
+			federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false,
 		});
 		mocks.apiGet.mockReset();
 		mocks.apiPost.mockReset();
@@ -191,7 +212,7 @@ describe('WizardStep5Config GitHub SSH verification', () => {
 			availableProjects: [],
 			roles: [],
 			isSystemAdmin: false,
-			federated: false,
+			federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false,
 		});
 		mocks.apiGet.mockReset();
 		mocks.apiPost.mockReset();

@@ -36,7 +36,7 @@ export interface PackageVersion {
   total_bytes: number;
   provenance: Record<string, unknown>;
   pushed_by: string;
-  pushed_key_id: string;
+  pushed_key_id: string | null;
   pushed_at: string;
 }
 export interface ScopedPage<T> { project_id: string; namespace: string; items: T[]; next_cursor: string | null }

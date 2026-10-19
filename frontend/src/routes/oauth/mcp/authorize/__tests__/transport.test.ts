@@ -40,7 +40,7 @@ import Page from '../+page.svelte';
 
 const ticket = 'A'.repeat(43);
 const otherTicket = 'B'.repeat(43);
-const actor = { token: 'token-a', userId: 'user-a', projectId: 'project-a', refreshToken: 'refresh-a', accessExpiresAt: null };
+const actor = { token: 'token-a', userId: 'user-a', projectId: 'project-a', refreshToken: 'refresh-a', accessExpiresAt: null, domainId: 'domain-1', identityDomainId: 'domain-1' };
 const mockFetch = vi.fn();
 const assign = vi.fn();
 const replace = vi.fn();
@@ -135,7 +135,7 @@ describe('MCP consent real decision transport', () => {
 			settlement = refreshSession();
 			await act(() => changeOwner(kind, rendered.unmount));
 			await act(async () => {
-				refresh.resolve(Response.json({ token: 'refreshed-token', refresh_token: 'refreshed-refresh' }));
+				refresh.resolve(Response.json({ token: 'refreshed-token', refresh_token: 'refreshed-refresh', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain', user_id: 'user-a' }));
 				await settlement;
 			});
 			expect(decisions()).toHaveLength(0);
@@ -144,7 +144,7 @@ describe('MCP consent real decision transport', () => {
 			expect(goto).not.toHaveBeenCalled();
 			expect(pendingMcpConsentTicket()).toBe(ticket);
 		} finally {
-			refresh.resolve(Response.json({ token: 'settled-token', refresh_token: 'settled-refresh' }));
+			refresh.resolve(Response.json({ token: 'settled-token', refresh_token: 'settled-refresh', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain', user_id: 'user-a' }));
 			await settlement;
 		}
 	});

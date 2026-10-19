@@ -1,0 +1,288 @@
+{
+  "change": "reduce-login-authority-roundtrips",
+  "status": "locally-qualified",
+  "production_deployed": false,
+  "scope": "Reduce repeated native auth/reads and fresh-login frontend readiness delay; preserve existing scope, enrollment, revocation and refresh boundaries.",
+  "implementation": {
+    "backend": [
+      "backend/app/services/native_operation.py",
+      "backend/app/services/keystone.py",
+      "backend/app/services/domain_scope.py",
+      "backend/app/services/domain_projects.py",
+      "backend/app/api/identity/auth.py"
+    ],
+    "frontend": [
+      "frontend/src/lib/stores/auth.ts",
+      "frontend/src/lib/utils/authSession.ts",
+      "frontend/src/lib/utils/authVerification.ts",
+      "frontend/src/routes/+layout.svelte",
+      "frontend/src/routes/admin/+layout.svelte"
+    ],
+    "contract": "Request-owned native client/read snapshot; final scope once; complete no-write projection proof or leased fresh repair; one-use fresh-login readiness; restore verification and stale-response fencing; ready continuation never becomes current-token proof."
+  },
+  "native": {
+    "boundary": "Actual built app/installed SDK TCP with isolated real MariaDB/Redis; Keystone and cloud synthetic",
+    "delay_per_http_ms": 25,
+    "before": {
+      "operations": 29,
+      "assertions": 947
+    },
+    "after": {
+      "arm64": {
+        "operations": 29,
+        "assertions": 1016
+      },
+      "amd64": {
+        "operations": 29,
+        "assertions": 1005
+      }
+    },
+    "comparison": {
+      "same_inputs": true,
+      "strict_improvement_both_architectures": true,
+      "warm_samples": "reader-ready-2/3 and manager-ready-2/3",
+      "median_ms": {
+        "before": 4908.066854462959,
+        "arm64": 592.7355620078743,
+        "amd64": 632.3471874929965
+      },
+      "identity_http": {
+        "before": [
+          168,
+          169,
+          170
+        ],
+        "after": [
+          20,
+          21
+        ]
+      },
+      "service_password_exchanges": {
+        "before": [
+          36,
+          37
+        ],
+        "after": [
+          1
+        ]
+      },
+      "attribution_limit": "Capture includes response-post prewarm and possible overlapping worker traffic; not exclusive login-call attribution"
+    },
+    "ready_resource_writes": 0,
+    "unknown_native_endpoints": 0
+  },
+  "browser": {
+    "before_ready_ms": 7228,
+    "after_ready_ms": 779.4000000953674,
+    "before_login_ms": 4901.599999904633,
+    "after_login_ms": 691.5999999046326,
+    "before_immediate_me_ms": 2296.399999856949,
+    "after_immediate_me_requests": 0,
+    "metric": "One before/after click-to-workspace-chooser-enabled sample, not complete dashboard data load or live-cloud timing",
+    "passed": [
+      "fresh login mapped response ready without /me",
+      "reload blocked until actual /me200",
+      "revoked restored session401 clears snapshot",
+      "invalid persisted token401 clears snapshot",
+      "refresh rotation keeps ready consumer node during real new /me",
+      "old /me request abort after UI logout and fresh login does not overwrite new session"
+    ],
+    "qualification": "Refresh scenario injects one dashboard summary401 only; actual backend rotation and /me. Old response transport cancellation exercised; non-cooperative same-token ABA tested by regression suite. Failed priority-release/clock-trigger harness attempts excluded.",
+    "screenshots": [
+      "browser-after-ready.webp",
+      "browser-invalid-mobile.webp",
+      "browser-mobile.webp",
+      "browser-desktop.webp"
+    ]
+  },
+  "regressions": {
+    "exact_backend": {
+      "passed": 220,
+      "artifact": "artifact://1229"
+    },
+    "auth": {
+      "backend_passed": 414,
+      "frontend_passed": 208,
+      "frontend_files": 19,
+      "artifact": "artifact://1238"
+    },
+    "access_final": {
+      "backend_passed": 1036,
+      "frontend_passed": 166,
+      "frontend_files": 15,
+      "artifact": "artifact://1244"
+    },
+    "frontend_complete": {
+      "passed": 4014,
+      "files": 392,
+      "node_runner_passed": 9,
+      "artifact": "artifact://1230"
+    },
+    "target_runner": {
+      "passed": 12,
+      "validation": "passed"
+    },
+    "scoped_ruff": {
+      "check": "passed",
+      "format_check": "passed",
+      "files": 11
+    },
+    "gate": {
+      "root": "/Users/pieroot/.local/share/afterglow-proofs/login-authority-20261016-do6d41qc/architecture-1j_52yao",
+      "command": "npm run test:gate",
+      "status": "failed",
+      "backend": {
+        "passed": 7375,
+        "failed": 11,
+        "skipped": 91
+      },
+      "failure_scope": "Existing tests/test_instance_storage_delete.py managed grant/rule block-consumer DB cases; not changed by this task",
+      "gate_not_reached": [
+        "frontend",
+        "contract",
+        "functional",
+        "lint:backend"
+      ],
+      "stdout": "full-gate.log",
+      "setup_failure": "First attempt stale architecture due root node_modules symlink created in owned snapshot; removed own symlink before final gate; no application or guard relaxation"
+    }
+  },
+  "images": {
+    "canonical_path": "Root Dockerfile and docker-compose.dev.yml with task-only isolated override",
+    "builds": 9,
+    "architectures": "backend/frontend/worker/native-vm arm64+amd64; native-cloud-vm amd64",
+    "actual_binaries": "Python, Node and applicable OpenTofu1.8.3/Ceph18.2.7",
+    "backend_source_hashes": {
+      "python_images": 7,
+      "files_each": 303
+    },
+    "compose_architectures": [
+      "arm64",
+      "amd64"
+    ],
+    "native_supervisors": {
+      "conditions": 3,
+      "passed": true,
+      "real_vm_boot": false
+    },
+    "worker": [
+      {
+        "architecture": "arm64",
+        "live_members": 1,
+        "lease_margin_seconds": 41.741262912750244,
+        "leader_present": true,
+        "graceful_exit": 0,
+        "own_membership_removed": true
+      },
+      {
+        "architecture": "amd64",
+        "live_members": 1,
+        "lease_margin_seconds": 43.759604930877686,
+        "leader_present": true,
+        "graceful_exit": 0,
+        "own_membership_removed": true
+      }
+    ]
+  },
+  "source": {
+    "login_owned_success": true,
+    "login_owned_files": 37,
+    "login_owned_paths": [
+      "backend/app/api/identity/auth.py",
+      "backend/app/services/domain_projects.py",
+      "backend/app/services/domain_scope.py",
+      "backend/app/services/keystone.py",
+      "backend/app/services/native_operation.py",
+      "backend/tests/test_auth_domain_boundaries.py",
+      "backend/tests/test_domain_iam.py",
+      "backend/tests/test_domain_projects.py",
+      "backend/tests/test_domain_scope_operation.py",
+      "backend/tests/test_keystone_endpoint_selection.py",
+      "backend/tests/test_login_native_operation.py",
+      "frontend/src/lib/components/__tests__/ProjectSelector.test.ts",
+      "frontend/src/lib/components/account/__tests__/McpAccessSection.test.ts",
+      "frontend/src/lib/components/admin/domains/DomainInventory.test.ts",
+      "frontend/src/lib/components/auth/__tests__/LoginPage.test.ts",
+      "frontend/src/lib/components/chat/__tests__/AudioStudio.test.ts",
+      "frontend/src/lib/components/chat/__tests__/ChatExtensionsManager.test.ts",
+      "frontend/src/lib/components/chat/__tests__/ChatMcpCatalogue.lifecycle.test.ts",
+      "frontend/src/lib/components/chat/__tests__/ChatMcpCatalogue.test.ts",
+      "frontend/src/lib/components/chat/__tests__/ChatPanel.test.ts",
+      "frontend/src/lib/components/chat/__tests__/ImageStudio.test.ts",
+      "frontend/src/lib/components/chat/__tests__/RealtimeVoice.test.ts",
+      "frontend/src/lib/components/chat/__tests__/lumenPermissionFixture.ts",
+      "frontend/src/lib/stores/__tests__/adminCredentialRoutes.test.ts",
+      "frontend/src/lib/stores/__tests__/workspaceController.test.ts",
+      "frontend/src/lib/stores/auth.ts",
+      "frontend/src/lib/utils/__tests__/AuthReadinessConsumer.svelte",
+      "frontend/src/lib/utils/__tests__/authVerification.test.ts",
+      "frontend/src/lib/utils/authSession.ts",
+      "frontend/src/lib/utils/authVerification.ts",
+      "frontend/src/routes/+layout.svelte",
+      "frontend/src/routes/__tests__/consoleTerminalLocale.test.ts",
+      "frontend/src/routes/admin/+layout.svelte",
+      "frontend/src/routes/admin/AdminReadiness.test.ts",
+      "frontend/src/routes/auth/callback/ProviderCallback.test.ts",
+      "frontend/src/routes/select-domain/DomainSelection.test.ts",
+      "scripts/test-target.js"
+    ],
+    "runtime_input_files_checked": 2241,
+    "concurrent_postfreeze_drift": [
+      "Dockerfile",
+      "backend/app/config.py",
+      "backend/app/services/cloud_shell.py",
+      "backend/app/services/zun.py"
+    ],
+    "frozen_source": "/Users/pieroot/.local/share/afterglow-proofs/login-authority-20261016-do6d41qc/source-1792140968268021000",
+    "manifest_sha256": "b6a7777163c5fd906fc7a51705a24365ab597a3aabb7674c3b15f2a74c90e0ed",
+    "scope": "Final images/gate qualify frozen source and all login-owned code/tests remain byte-identical. Concurrent Dockerfile/config/cloud-shell/zun edits after freeze are preserved, not built or accepted by this task; not full-current-checkout image parity."
+  },
+  "architecture": {
+    "source_sha256": "1ad840382a0bbc5a982c8c6f76e97f0f876f55963e369a28ebe6693ff2383417",
+    "files": 3000,
+    "working": "passed",
+    "staged": "passed",
+    "scope": "Owned frozen public-source dev/index; concurrent work not blanket accepted; shared index/review marker untouched."
+  },
+  "cleanup": {
+    "containers": 26,
+    "networks": 5,
+    "task_image_tags": 9,
+    "browser_profile_removed": true,
+    "named_volumes_deleted": 0,
+    "prune": false
+  },
+  "existing_stack": {
+    "containers": 19,
+    "identity_image_mount_unchanged": true,
+    "drift": [],
+    "running": 15,
+    "healthy": 9,
+    "scope": "Read-only inspect of originally recorded local stack IDs; no rollout/recreation and no assertion about unrecorded services or live cloud."
+  },
+  "limits": [
+    "No user/live-cloud latency benchmark or operating Keystone policy/SSO acceptance",
+    "No existing local stack image replacement or production rollout",
+    "Full gate remains failed on 11 existing instance-storage block-consumer cases; no commit/stage/push",
+    "Four concurrent post-freeze Dockerfile/config/cloud-shell/zun edits remain unqualified by this snapshot",
+    "Optional gbrain CLI unavailable"
+  ],
+  "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/login-authority-20261016-do6d41qc",
+  "proof_files": [
+    "comparison-arm64/comparison.json",
+    "comparison-amd64/comparison.json",
+    "native-arm64/receipt.json",
+    "native-amd64/receipt.json",
+    "browser-qualification.json",
+    "builds.json",
+    "binaries.json",
+    "native-supervisors.json",
+    "worker-readiness-shutdown.json",
+    "regression-results.json",
+    "full-gate.log",
+    "architecture-final.json",
+    "final-source-parity.json",
+    "cleanup.json",
+    "shared-after.json"
+  ]
+}

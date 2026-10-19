@@ -1,12 +1,17 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     import openstack
 
 from app.models.compute import ImageDetail, ImageInfo
 from app.services.image_refs import image_reference_fields, normalize_image_reference
+
+# Glance property values accepted by the typed upload/update API. Empty strings
+# clear a declaration; `none` explicitly declares no bundled GPU driver.
+GpuVendor = Literal["nvidia", "amd", "intel", ""]
+GpuDriver = Literal["nvidia", "nvidia-grid", "nouveau", "amdgpu", "i915", "xe", "none", ""]
 
 
 def list_images(conn: openstack.connection.Connection, project_id: str | None = None) -> list[ImageInfo]:
@@ -33,6 +38,8 @@ def list_images(conn: openstack.connection.Connection, project_id: str | None = 
                 disk_format=img.disk_format,
                 os_type=props.get("os_type", getattr(img, "os_type", None)),
                 os_distro=os_distro,
+                gpu_vendor=props.get("gpu_vendor"),
+                gpu_driver=props.get("gpu_driver"),
                 windows_initial_password_method=props.get("windows_initial_password_method"),
                 os_admin_user=props.get("os_admin_user", getattr(img, "os_admin_user", None)),
                 created_at=str(img.created_at) if img.created_at else None,
@@ -104,6 +111,8 @@ def get_image(conn: openstack.connection.Connection, image_id: str) -> ImageDeta
         disk_format=img.disk_format,
         os_type=raw_props.get("os_type"),
         os_distro=os_distro,
+        gpu_vendor=raw_props.get("gpu_vendor"),
+        gpu_driver=raw_props.get("gpu_driver"),
         windows_initial_password_method=raw_props.get("windows_initial_password_method"),
         os_admin_user=raw_props.get("os_admin_user"),
         created_at=str(img.created_at) if img.created_at else None,
@@ -127,7 +136,7 @@ _ALLOWED_DISK_FORMATS: frozenset[str] = frozenset(
 )
 
 _UPLOAD_PROPERTY_WHITELIST: frozenset[str] = frozenset(
-    {"os_distro", "os_version", "hw_disk_bus", "hw_qemu_guest_agent"}
+    {"os_distro", "os_version", "hw_disk_bus", "hw_qemu_guest_agent", "gpu_vendor", "gpu_driver"}
 )
 
 
@@ -252,6 +261,8 @@ def update_image_metadata(
     min_disk: int | None = None,
     min_ram: int | None = None,
     visibility: str | None = None,
+    gpu_vendor: str | None = None,
+    gpu_driver: str | None = None,
 ) -> ImageInfo:
     """이미지 메타데이터 업데이트 (소유한 이미지만 가능)."""
     kwargs: dict = {}
@@ -267,6 +278,21 @@ def update_image_metadata(
         kwargs["min_ram"] = min_ram
     if visibility is not None:
         kwargs["visibility"] = visibility
+    if gpu_vendor is not None:
+        kwargs["gpu_vendor"] = gpu_vendor
+    if gpu_driver is not None:
+        kwargs["gpu_driver"] = gpu_driver
+    if gpu_vendor is not None or gpu_driver is not None:
+        # SDK update_image drops unknown custom properties. A single native
+        # JSON Patch keeps mixed standard/GPU metadata updates together.
+        # RFC 6902 `add` replaces an existing object member as well as adding it.
+        conn.image.patch(
+            f"/images/{image_id}",
+            json=[{"op": "add", "path": f"/{key}", "value": value} for key, value in kwargs.items()],
+            headers={"Content-Type": "application/openstack-images-v2.1-json-patch"},
+            raise_exc=True,
+        )
+        return get_image(conn, image_id)
     img = conn.image.update_image(image_id, **kwargs)
     props = img.properties or {}
     display_name, repository, tag = image_reference_fields(getattr(img, "name", None))
@@ -283,6 +309,8 @@ def update_image_metadata(
         disk_format=img.disk_format,
         os_type=props.get("os_type", getattr(img, "os_type", None)),
         os_distro=od,
+        gpu_vendor=props.get("gpu_vendor"),
+        gpu_driver=props.get("gpu_driver"),
         windows_initial_password_method=props.get("windows_initial_password_method"),
         os_admin_user=props.get("os_admin_user", getattr(img, "os_admin_user", None)),
         created_at=str(img.created_at) if img.created_at else None,

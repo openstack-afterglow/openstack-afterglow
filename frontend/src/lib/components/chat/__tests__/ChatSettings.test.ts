@@ -19,7 +19,7 @@ describe('ChatSettings', () => {
 		auth.set({
 			token: 'browser-token', refreshToken: null, accessExpiresAt: null,
 			userId: 'user-1', username: 'tester', projectId: 'project-1', projectName: 'Project',
-			availableProjects: [], roles: [], isSystemAdmin: false, federated: false
+			availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false
 		});
 		mocks.goto.mockReset();
 		mocks.get.mockImplementation((path: string) => {

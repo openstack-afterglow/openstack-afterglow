@@ -1,0 +1,353 @@
+{
+  "change": "auto-enter-domain-default-project",
+  "status": "implemented-and-local-scenario-verified; full-project-release-qualification-blocked",
+  "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z",
+  "behavior": {
+    "selected_domain_real_project_scope_before_session": true,
+    "absent_default_first_authenticated_user_role": "project_owner",
+    "subsequent_authorized_participant_role": "project_reader",
+    "actual_new_domain_creator_role": "manager",
+    "first_login_existing_domain_does_not_grant_manager": true,
+    "existing_ownership_preserved": true,
+    "providers": "Existing configuration registry and exact-domain allowlists; no provider/domain literals added",
+    "owner_role_editor": "Uses server-filtered roles and is_owner; can_manage_owners=false remains transfer-only"
+  },
+  "boundaries": {
+    "real": [
+      "Uvicorn/FastAPI auth and role handlers",
+      "JWT/session implementation",
+      "SQLite ownership journal",
+      "canonical Compose MariaDB/PostgreSQL/Redis functional lane",
+      "compiled Chromium frontend",
+      "Docker Python/Node runtimes",
+      "read-only native role/default inventory"
+    ],
+    "synthetic": [
+      "native directory and role/provisioning effects",
+      "IdP authentication/discovery",
+      "HTTP-harness Redis",
+      "HTTP-harness quota I/O"
+    ],
+    "live_user_gitlab_code_exchange": false,
+    "live_native_iam_mutation": false,
+    "production_rollout": false,
+    "http": "http.json",
+    "browser": "browser.json",
+    "browser_http": "browser-http.json",
+    "browser_native_final": "browser-native-state.json"
+  },
+  "checks": [
+    {
+      "lane": "changed_backend_consumers",
+      "passed": 418,
+      "skipped": 5,
+      "log": "backend-final-consumers.log"
+    },
+    {
+      "lane": "personal_domain_consumer_after_count_assertion_removal",
+      "passed": 15,
+      "exact_selector_passed": 1,
+      "log": "personal-domain-consumers.log"
+    },
+    {
+      "lane": "functional_real_datastores",
+      "passed": 159,
+      "deselected": 31,
+      "log": "functional.log"
+    },
+    {
+      "lane": "frontend_focused",
+      "files": 11,
+      "passed": 183,
+      "log": "frontend-final-consumers.log"
+    },
+    {
+      "lane": "frontend_full",
+      "files": 401,
+      "passed": 4277,
+      "log": "frontend-full.log"
+    },
+    {
+      "lane": "changed_python_lint_and_format",
+      "files": 16,
+      "exit": 0,
+      "logs": [
+        "lint-final-all-changed.log",
+        "format-final-all-changed.log"
+      ]
+    },
+    {
+      "lane": "i18n",
+      "errors": 0,
+      "warnings": 0,
+      "hard_coded_korean": 0,
+      "logs": [
+        "i18n-check.log",
+        "i18n-scan.log"
+      ]
+    },
+    {
+      "lane": "auth_target_backend",
+      "passed": 458,
+      "failed": 4,
+      "errors": 4,
+      "frontend_executed": false,
+      "log": "auth-access-final.log"
+    },
+    {
+      "lane": "access_target_backend",
+      "passed": 1063,
+      "failed": 5,
+      "errors": 4,
+      "frontend_executed": false,
+      "log": "access-final.log"
+    },
+    {
+      "lane": "contracts_backend",
+      "passed": 151,
+      "failed": 13,
+      "errors": 5,
+      "log": "contracts-final.log"
+    },
+    {
+      "lane": "svelte_check",
+      "errors": 1,
+      "warnings": 16,
+      "remaining_error": "dashboard/database/instances/+page.svelte PageState.instanceId",
+      "log": "frontend-check-final.log"
+    },
+    {
+      "lane": "full_gate",
+      "exit": 1,
+      "backend_passed": 8166,
+      "backend_failed": 19,
+      "backend_skipped": 91,
+      "source_sha256_at_run": "3a52b50adba993db8db47aec92f517af21c514d643206485fcc85926647b0e69",
+      "affected_failure_repaired": "personal-domain API obsolete grant count replaced with actual owner/manager/reader and enabled Default assertions; exact/file pass",
+      "remaining_failures_not_modified": [
+        "role visibility4",
+        "identity roles1",
+        "user dashboard1",
+        "Waygate authority1",
+        "instance storage delete11"
+      ],
+      "downstream_gate_frontend_contract_functional_lint_executed": false,
+      "whole_gate_rerun_after_consumer_fix": false,
+      "log": "full-gate.log"
+    }
+  ],
+  "images": {
+    "canonical_targets": [
+      "backend",
+      "worker",
+      "frontend"
+    ],
+    "platforms": [
+      "linux/amd64",
+      "linux/arm64"
+    ],
+    "build_logs": [
+      "build-arm64-compose.log",
+      "build-amd64-backend.log",
+      "build-amd64-worker.log",
+      "build-arm64-frontend-final.log",
+      "build-amd64-frontend-final.log"
+    ],
+    "python_image_source_parity": [
+      {
+        "receipt": "image-smoke-amd64-backend.log",
+        "machine": "x86_64",
+        "uid": 1000,
+        "source_hashes_match": true
+      },
+      {
+        "receipt": "image-smoke-amd64-worker.log",
+        "machine": "x86_64",
+        "uid": 1000,
+        "source_hashes_match": true
+      },
+      {
+        "receipt": "image-smoke-arm64-backend.log",
+        "machine": "aarch64",
+        "uid": 1000,
+        "source_hashes_match": true
+      },
+      {
+        "receipt": "image-smoke-arm64-worker.log",
+        "machine": "aarch64",
+        "uid": 1000,
+        "source_hashes_match": true
+      }
+    ],
+    "runtime_source_sha256": {
+      "app/api/identity/auth.py": "faa8c73b54ea0095e8df9a479aa9b6cc109bcc646a0c9fa59a6a67408fd80e34",
+      "app/services/domain_projects.py": "281eef1532422f695cb3548c93d574d6e88ca219ed23f5efdd401462fbb938ee",
+      "app/services/domain_iam.py": "46e16e0ebd5a9c70ccc2311b9db6198a932ac46af5c9c1a144fd2a2d03d0b8d8"
+    },
+    "frontend_server_smokes": [
+      "image-http-final-amd64.log",
+      "image-http-final-arm64-resolved.log"
+    ],
+    "worker_main_or_job_executed": false,
+    "canonical_running_services": {
+      "backend": {
+        "container_id": "2eaba2244fcded9b517d36aa908926005293a0161f5310cb653256fe8c10ad6b",
+        "image_id": "sha256:8ba55870dbc730fd441f35137855dcebd05400c4dbce27180d58f2ec528df4e7",
+        "image_ref": "afterglow-local-services/backend:current",
+        "health": "healthy",
+        "health_http": 200
+      },
+      "frontend": {
+        "container_id": "7f75b2f3a0e0685ae3ce44cf8dfdd31aea424e922d414eac17d3fc3004745a1e",
+        "image_id": "sha256:e12281d47e3ceef12c0bdd9bf01e2451641a507a1ea28cdc9af42ca2fdf81778",
+        "image_ref": "afterglow-local-services/frontend:current",
+        "health": "healthy",
+        "health_http": 200
+      }
+    },
+    "notion_worker_deployed": false,
+    "reference_correction": "Initial arm64 Node smoke used a non-addressable config digest; final smoke used actual canonical Compose image tag and passed"
+  },
+  "architecture": {
+    "snapshot": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/public-architecture-snapshot",
+    "source_review": {
+      "schema_version": 1,
+      "source_sha256": "5c5ab416843a4333bd0206520e0e97c6f986a64ae73e49d9fdf5c2681c9700d9",
+      "reviewed_at": "2026-10-17T12:26:55Z",
+      "summary": "Current public working-source review: domain Default login preparation uses existing native lease, durable ownership/enrollment journals, quota staging and final native scope; new-domain-only manager, unique initial project_owner and later direct project_reader remain server verified. Existing provider registry/allowlists stay configuration-driven. Browser enters actual scoped project and role editors consume server-filtered roles/is_owner rather than transfer-only flags; all callers migrated. No new route/schema/dependency/service ownership or deployment topology. Private inputs, shared index and global review marker preserved; source checks and synthetic HTTP/compiled UI are not live GitLab/native mutation or production rollout acceptance."
+    },
+    "checks": [
+      {
+        "command": [
+          "git",
+          "add",
+          "backend/tests/test_personal_domains.py"
+        ],
+        "cwd": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/public-architecture-snapshot",
+        "exit": 0,
+        "duration_s": 0.02,
+        "log": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/architecture-final-source-stage.log"
+      },
+      {
+        "command": [
+          "python3",
+          "scripts/check_architecture.py",
+          "--stamp",
+          "--summary",
+          "Current public working-source review: domain Default login preparation uses existing native lease, durable ownership/enrollment journals, quota staging and final native scope; new-domain-only manager, unique initial project_owner and later direct project_reader remain server verified. Existing provider registry/allowlists stay configuration-driven. Browser enters actual scoped project and role editors consume server-filtered roles/is_owner rather than transfer-only flags; all callers migrated. No new route/schema/dependency/service ownership or deployment topology. Private inputs, shared index and global review marker preserved; source checks and synthetic HTTP/compiled UI are not live GitLab/native mutation or production rollout acceptance."
+        ],
+        "cwd": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/public-architecture-snapshot",
+        "exit": 0,
+        "duration_s": 0.47,
+        "log": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/architecture-final-stamp.log"
+      },
+      {
+        "command": [
+          "python3",
+          "scripts/check_architecture.py"
+        ],
+        "cwd": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/public-architecture-snapshot",
+        "exit": 0,
+        "duration_s": 0.19,
+        "log": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/architecture-final-working.log"
+      },
+      {
+        "command": [
+          "git",
+          "add",
+          "ARCHITECTURE.md"
+        ],
+        "cwd": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/public-architecture-snapshot",
+        "exit": 0,
+        "duration_s": 0.03,
+        "log": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/architecture-final-document-stage.log"
+      },
+      {
+        "command": [
+          "python3",
+          "scripts/check_architecture.py",
+          "--staged"
+        ],
+        "cwd": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/public-architecture-snapshot",
+        "exit": 0,
+        "duration_s": 0.3,
+        "log": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/architecture-final-staged.log"
+      }
+    ],
+    "global_review_marker_preserved": true,
+    "shared_index_preserved": true,
+    "private_configuration_preserved": {
+      "afterglow.conf": true,
+      ".local-services/afterglow.conf": true,
+      "afterglow.frontend.conf": true
+    },
+    "scope": "Current public source snapshot, operator private inputs excluded; not acceptance of unrelated concurrent work",
+    "documented_checks": [
+      {
+        "command": [
+          "python3",
+          "scripts/check_architecture.py",
+          "--stamp",
+          "--summary",
+          "Current public working-source review: domain Default login preparation uses existing native lease, durable ownership/enrollment journals, quota staging and final native scope; new-domain-only manager, unique initial project_owner and later direct project_reader remain server verified. Existing provider registry/allowlists stay configuration-driven. Browser enters actual scoped project and role editors consume server-filtered roles/is_owner rather than transfer-only flags; all callers migrated. No new route/schema/dependency/service ownership or deployment topology. Private inputs, shared index and global review marker preserved; source checks and synthetic HTTP/compiled UI are not live GitLab/native mutation or production rollout acceptance."
+        ],
+        "cwd": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/public-architecture-snapshot",
+        "exit": 0,
+        "duration_s": 0.19,
+        "log": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/architecture-documented-stamp.log"
+      },
+      {
+        "command": [
+          "python3",
+          "scripts/check_architecture.py"
+        ],
+        "cwd": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/public-architecture-snapshot",
+        "exit": 0,
+        "duration_s": 0.17,
+        "log": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/architecture-documented-working.log"
+      },
+      {
+        "command": [
+          "git",
+          "add",
+          "ARCHITECTURE.md"
+        ],
+        "cwd": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/public-architecture-snapshot",
+        "exit": 0,
+        "duration_s": 0.02,
+        "log": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/architecture-documented-stage.log"
+      },
+      {
+        "command": [
+          "python3",
+          "scripts/check_architecture.py",
+          "--staged"
+        ],
+        "cwd": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/public-architecture-snapshot",
+        "exit": 0,
+        "duration_s": 0.17,
+        "log": "/Users/pieroot/.local/share/afterglow-proofs/domain-default-onboarding-20261017T105822Z/architecture-documented-staged.log"
+      }
+    ]
+  },
+  "cleanup": {
+    "owned_browser_tab_closed": true,
+    "owned_synthetic_api_stopped": true,
+    "owned_qa_frontend_stopped_and_removed": true,
+    "functional_datastores_torn_down": true,
+    "runtime_script_removed": true,
+    "misleading_initial_captures_removed": true,
+    "user_volumes_and_keys_preserved": true
+  },
+  "gbrain": {
+    "cli_available": false,
+    "synced": false
+  },
+  "publication": {
+    "commit": false,
+    "push": false,
+    "tag": false,
+    "production_deploy": false
+  },
+  "archive": "openspec/changes/archive/2026-10-17-auto-enter-domain-default-project"
+}

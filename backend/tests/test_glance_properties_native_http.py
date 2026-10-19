@@ -157,3 +157,40 @@ async def test_native_provider_rejection_is_not_a_successful_unchanged_save(admi
     assert response.status_code == 400
     assert native_glance["document"] == before
     assert native_glance["patches"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prefix", ["/api/v1/images", "/api/v1/admin/images"])
+async def test_native_typed_gpu_metadata_persists_and_replaces_existing_values(admin_client, native_glance, prefix):
+    before = copy.deepcopy(native_glance["document"])
+    for driver in ["nvidia", "nvidia-grid"]:
+        response = await admin_client.patch(
+            f"{prefix}/img-native",
+            json={"name": "gpu:latest", "gpu_vendor": "nvidia", "gpu_driver": driver},
+        )
+        assert response.status_code == 200
+        assert response.json()["gpu_vendor"] == "nvidia"
+        assert response.json()["gpu_driver"] == driver
+        assert native_glance["document"]["gpu_driver"] == driver
+        reread = await admin_client.get(f"{prefix}/img-native")
+        assert reread.status_code == 200
+        assert reread.json()["properties"]["gpu_driver"] == driver
+    assert len(native_glance["patches"]) == 2
+    assert native_glance["document"]["name"] == "gpu:latest"
+    for key, value in before.items():
+        if key != "name":
+            assert native_glance["document"][key] == value
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prefix, status", [("/api/v1/images", 500), ("/api/v1/admin/images", 400)])
+async def test_native_typed_gpu_metadata_rejection_never_reports_success(admin_client, native_glance, prefix, status):
+    before = copy.deepcopy(native_glance["document"])
+    native_glance["reject"] = True
+    response = await admin_client.patch(
+        f"{prefix}/img-native",
+        json={"gpu_vendor": "nvidia", "gpu_driver": "nvidia"},
+    )
+    assert response.status_code == status
+    assert native_glance["document"] == before
+    assert native_glance["patches"] == []

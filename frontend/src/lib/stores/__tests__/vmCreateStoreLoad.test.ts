@@ -78,13 +78,13 @@ describe('VM create option loading boundaries', () => {
 		vi.clearAllMocks();
 		resetWizard();
 		betaFeatures.set(DEFAULT_BETA_FEATURES);
-		auth.set({ token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'user', username: 'user', projectId: 'project', projectName: 'project', availableProjects: [], roles: [], isSystemAdmin: false, federated: false });
+		auth.set({ token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'user', username: 'user', projectId: 'project', projectName: 'project', availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false });
 		siteConfig.update(config => ({
 			...config,
 			services: { ...config.services, manila: true },
 		}));
 	});
-	it('takes ordinary image boots through flavor, configuration and review with stale beta preferences', async () => {
+	it('takes ordinary boots through flavor, image, configuration and review with stale beta preferences', async () => {
 		localStorage.setItem('afterglow.beta.libraryConsume', 'true');
 		localStorage.setItem('afterglow.beta.haDeploy', 'true');
 		api.get.mockImplementation((path: string) => Promise.resolve(
@@ -93,9 +93,9 @@ describe('VM create option loading boundaries', () => {
 		render(VmCreateStoreLoadWrapper);
 		await fireEvent.click(screen.getByTestId('init'));
 		await vi.waitFor(() => expect(screen.getByTestId('flavor').textContent).toBe('f1'));
-		await fireEvent.click(screen.getByTestId('select-image'));
-		expect(screen.getByTestId('step').textContent).toBe('2');
 		await fireEvent.click(screen.getByTestId('select-first-flavor'));
+		expect(screen.getByTestId('step').textContent).toBe('1');
+		await fireEvent.click(screen.getByTestId('select-image'));
 		expect(screen.getByTestId('step').textContent).toBe('5');
 		wizard.update(w => ({ ...w, keyName: 'key-1' }));
 		await vi.waitFor(() => expect(screen.getByTestId('can-next').textContent).toBe('yes'));
@@ -104,44 +104,29 @@ describe('VM create option loading boundaries', () => {
 		await fireEvent.click(screen.getByTestId('previous'));
 		expect(screen.getByTestId('step').textContent).toBe('5');
 		await fireEvent.click(screen.getByTestId('previous'));
-		expect(screen.getByTestId('step').textContent).toBe('2');
+		expect(screen.getByTestId('step').textContent).toBe('1');
 		expect(api.get.mock.calls.map(([path]) => path).some(path => path.startsWith('/api/v1/libraries'))).toBe(false);
 	});
 
 
 
-	it('prefetches configuration after boot options settle without delaying step 1', async () => {
-		const images = deferred<typeof image[]>();
-		const volumes = deferred<unknown[]>();
-		const flavors = deferred<typeof flavor[]>();
-		const quota = deferred<unknown>();
-		const configuration = deferred<unknown[]>();
+	it('allows flavor selection while the image catalog is still loading', async () => {
+		const pendingImages = deferred<typeof image[]>();
 		api.get.mockImplementation((path: string) => {
-			if (path === '/api/v1/images') return images.promise;
-			if (path === '/api/v1/volumes') return volumes.promise;
-			if (path === '/api/v1/flavors?capacity=create') return flavors.promise;
-			if (path === '/api/v1/dashboard/quotas') return quota.promise;
-			if (['/api/v1/networks', '/api/v1/keypairs', '/api/v1/security-groups', '/api/v1/networks/default', '/api/v1/file-storage'].includes(path)) return configuration.promise;
+			if (path === '/api/v1/images') return pendingImages.promise;
+			if (path.includes('flavors')) return Promise.resolve([capacityFlavor('f1')]);
 			return Promise.resolve([]);
 		});
 		render(VmCreateStoreLoadWrapper);
 		await fireEvent.click(screen.getByTestId('init'));
-		expect(api.get.mock.calls.map(([path]) => path)).toEqual(expect.arrayContaining([
-			'/api/v1/images', '/api/v1/volumes', '/api/v1/flavors?capacity=create', '/api/v1/dashboard/quotas',
-		]));
-		expect(api.get.mock.calls.map(([path]) => path)).not.toEqual(expect.arrayContaining(['/api/v1/networks', '/api/v1/file-storage', '/api/v1/libraries']));
-
-		images.resolve([image]);
-		await Promise.resolve();
+		await vi.waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('ready'));
+		await fireEvent.click(screen.getByTestId('select-first-flavor'));
+		expect(screen.getByTestId('step').textContent).toBe('1');
 		expect(screen.getByTestId('loading').textContent).toBe('loading');
-		volumes.resolve([]);
-		await vi.waitFor(() => expect(api.get.mock.calls.map(([path]) => path)).toEqual(expect.arrayContaining([
-			'/api/v1/networks', '/api/v1/keypairs', '/api/v1/security-groups', '/api/v1/networks/default', '/api/v1/file-storage',
-		])));
-		expect(screen.getByTestId('loading').textContent).toBe('ready');
-		configuration.resolve([]);
-		flavors.resolve([flavor]);
-		quota.resolve({});
+		pendingImages.resolve([image]);
+		await vi.waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('ready'));
+		await fireEvent.click(screen.getByTestId('select-image'));
+		expect(screen.getByTestId('step').textContent).toBe('5');
 	});
 
 	it('starts every public configuration endpoint together at step 5 without making file storage a gate', async () => {

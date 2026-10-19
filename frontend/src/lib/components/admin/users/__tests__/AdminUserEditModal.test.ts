@@ -12,6 +12,10 @@ import zhCN from '$lib/i18n/messages/zh-CN/admin-identity.json';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ api: mocks, ApiError }));
+vi.mock('$lib/api/domains', () => ({
+	domainPath: (path: string, domainId: string) => `${path}?domain_id=${domainId}`,
+	domainsApi: { managers: async () => ({ items: [], roles: [] }) },
+}));
 
 import AdminUserEditModal from '../AdminUserEditModal.svelte';
 
@@ -51,7 +55,7 @@ function deferred<T>() {
 }
 
 function renderModal(user: User | null = alice, onUpdate = vi.fn().mockResolvedValue(true)) {
-	return { ...render(AdminUserEditModal, { user, onUpdate }), onUpdate };
+	return { ...render(AdminUserEditModal, { user, domainId: 'default', onUpdate }), onUpdate };
 }
 function permissionSection() {
 	return screen.getByRole('region', { name: '프로젝트 및 범위별 역할' });
@@ -66,11 +70,11 @@ beforeEach(() => {
 	auth.set({
 		token: 'admin-token', refreshToken: null, accessExpiresAt: null, userId: 'admin', username: 'admin',
 		projectId: 'admin-project', projectName: 'Admin', availableProjects: [], roles: ['admin'],
-		isSystemAdmin: true, federated: false,
+		isSystemAdmin: true, federated: false, domainId: 'default', domainName: 'Default', isDomainManager: false,
 	});
 	mocks.get.mockImplementation((path: string) => {
-		if (path.endsWith('/permissions')) return Promise.resolve(permissions);
-		if (path.endsWith('/sessions')) return Promise.resolve(sessionResponse);
+		if (path.includes('/permissions?domain_id=default')) return Promise.resolve(permissions);
+		if (path.includes('/sessions?domain_id=default')) return Promise.resolve(sessionResponse);
 		throw new Error(`Unexpected GET ${path}`);
 	});
 	mocks.post.mockResolvedValue({ revoked_count: 2 });
@@ -101,15 +105,31 @@ describe('AdminUserEditModal permissions and sessions', () => {
 		expect(within(sessionSection()).getByText('192.0.2.20')).toBeTruthy();
 		expect(within(sessionSection()).getAllByText('macOS · desktop')).toHaveLength(2);
 		expect(within(sessionSection()).getByText('차단')).toBeTruthy();
-		expect(mocks.get).toHaveBeenCalledWith(`/api/v1/admin/users/${alice.id}/permissions`, 'admin-token', 'admin-project');
-		expect(mocks.get).toHaveBeenCalledWith(`/api/v1/admin/users/${alice.id}/sessions`, 'admin-token', 'admin-project');
+		expect(mocks.get).toHaveBeenCalledWith(`/api/v1/admin/users/${alice.id}/permissions?domain_id=default`, 'admin-token', 'admin-project');
+		expect(mocks.get).toHaveBeenCalledWith(`/api/v1/admin/users/${alice.id}/sessions?domain_id=default`, 'admin-token', 'admin-project');
+		expect(mocks.get).toHaveBeenCalledTimes(2);
+	});
+
+	it('drops pending foreign-domain sessions and roles when the selected domain changes', async () => {
+		const oldGrants = deferred<typeof permissions>();
+		const oldSessions = deferred<typeof sessionResponse>();
+		mocks.get.mockImplementation((path: string) => path.includes('/permissions?domain_id=default') ? oldGrants.promise : oldSessions.promise);
+		const view = renderModal();
+		mocks.get.mockResolvedValue(emptyPermissions);
+		await view.rerender({ user: null, domainId: 'tenant-b', onUpdate: view.onUpdate });
+		oldGrants.resolve(permissions);
+		oldSessions.resolve(sessionResponse);
+		await tick();
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(screen.queryByText(longRole)).toBeNull();
+		expect(screen.queryByText('192.0.2.20')).toBeNull();
 		expect(mocks.get).toHaveBeenCalledTimes(2);
 	});
 
 	it('keeps each lookup loading independently without showing an empty or zero-grant result', async () => {
 		const grants = deferred<typeof permissions>();
 		const sessions = deferred<typeof sessionResponse>();
-		mocks.get.mockImplementation((path: string) => path.endsWith('/permissions') ? grants.promise : sessions.promise);
+		mocks.get.mockImplementation((path: string) => path.includes('/permissions?domain_id=default') ? grants.promise : sessions.promise);
 		renderModal();
 		expect(permissionSection().getAttribute('aria-busy')).toBe('true');
 		expect(within(permissionSection()).getByRole('status').textContent).toContain('사용자 역할을 불러오는 중...');
@@ -126,7 +146,7 @@ describe('AdminUserEditModal permissions and sessions', () => {
 	});
 
 	it('renders empty grants and sessions only after successful empty responses', async () => {
-		mocks.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/permissions') ? emptyPermissions : emptySessions));
+		mocks.get.mockImplementation((path: string) => Promise.resolve(path.includes('/permissions?domain_id=default') ? emptyPermissions : emptySessions));
 		renderModal();
 		await screen.findByText('할당된 유효 역할이 없습니다.');
 		expect(within(sessionSection()).getByText('활성 세션 없음')).toBeTruthy();
@@ -143,7 +163,7 @@ describe('AdminUserEditModal permissions and sessions', () => {
 		const retry = deferred<typeof permissions>();
 		let attempt = 0;
 		mocks.get.mockImplementation((path: string) => {
-			if (path.endsWith('/sessions')) return Promise.resolve(sessionResponse);
+			if (path.includes('/sessions?domain_id=default')) return Promise.resolve(sessionResponse);
 			return attempt++ === 0 ? Promise.reject(failure) : retry.promise;
 		});
 		renderModal();
@@ -160,20 +180,20 @@ describe('AdminUserEditModal permissions and sessions', () => {
 		retry.resolve(permissions);
 		await screen.findByText(longRole);
 		expect(name.value).toBe('Unsaved Alice');
-		expect(mocks.get.mock.calls.filter(([path]) => path.endsWith('/sessions'))).toHaveLength(1);
-		expect(mocks.get.mock.calls.filter(([path]) => path.endsWith('/permissions'))).toHaveLength(2);
+		expect(mocks.get.mock.calls.filter(([path]) => path.includes('/sessions?domain_id=default'))).toHaveLength(1);
+		expect(mocks.get.mock.calls.filter(([path]) => path.includes('/permissions?domain_id=default'))).toHaveLength(2);
 	});
 
 	it('supports permission rendering during a failed session lookup and independently retries sessions', async () => {
 		const retry = deferred<typeof sessionResponse>();
 		let attempt = 0;
 		mocks.get.mockImplementation((path: string) => {
-			if (path.endsWith('/permissions')) return Promise.resolve(permissions);
+			if (path.includes('/permissions?domain_id=default')) return Promise.resolve(permissions);
 			return attempt++ === 0 ? Promise.reject(new ApiError(403, 'Forbidden')) : retry.promise;
 		});
 		renderModal();
 		await screen.findByText(longRole);
-		expect(within(sessionSection()).getByRole('alert').textContent).toContain('세션을 조회하지 못했습니다.');
+		expect(within(sessionSection()).getByRole('alert').textContent).toContain('Forbidden');
 		expect(within(sessionSection()).queryByText('활성 세션 없음')).toBeNull();
 		expect(within(sessionSection()).queryByText('0개')).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '세션 다시 조회' }));
@@ -181,7 +201,7 @@ describe('AdminUserEditModal permissions and sessions', () => {
 		expect(within(permissionSection()).getByText(longRole)).toBeTruthy();
 		retry.resolve(sessionResponse);
 		await screen.findByText('192.0.2.20');
-		expect(mocks.get.mock.calls.filter(([path]) => path.endsWith('/permissions'))).toHaveLength(1);
+		expect(mocks.get.mock.calls.filter(([path]) => path.includes('/permissions?domain_id=default'))).toHaveLength(1);
 	});
 
 	it('clears loaded roles and sessions immediately when changing the selected user', async () => {
@@ -189,13 +209,13 @@ describe('AdminUserEditModal permissions and sessions', () => {
 		await screen.findByText(longRole);
 		const grants = deferred<typeof emptyPermissions>();
 		const sessions = deferred<typeof emptySessions>();
-		mocks.get.mockImplementation((path: string) => path.endsWith('/permissions') ? grants.promise : sessions.promise);
-		await view.rerender({ user: bob, onUpdate: view.onUpdate });
+		mocks.get.mockImplementation((path: string) => path.includes('/permissions?domain_id=default') ? grants.promise : sessions.promise);
+		await view.rerender({ user: bob, domainId: 'default', onUpdate: view.onUpdate });
 		expect(screen.queryByText(longRole)).toBeNull();
 		expect(screen.queryByText(`ID: ${projectId}`)).toBeNull();
 		expect(screen.queryByText('192.0.2.20')).toBeNull();
 		expect((screen.getByLabelText('이름') as HTMLInputElement).value).toBe('Bob');
-		expect(mocks.get).toHaveBeenCalledWith(`/api/v1/admin/users/${bob.id}/permissions`, 'admin-token', 'admin-project');
+		expect(mocks.get).toHaveBeenCalledWith(`/api/v1/admin/users/${bob.id}/permissions?domain_id=default`, 'admin-token', 'admin-project');
 		expect(permissionSection().getAttribute('aria-busy')).toBe('true');
 		expect(sessionSection().getAttribute('aria-busy')).toBe('true');
 		expect(screen.queryByText('할당된 유효 역할이 없습니다.')).toBeNull();
@@ -211,10 +231,10 @@ describe('AdminUserEditModal permissions and sessions', () => {
 		const nextSessions = deferred<typeof emptySessions>();
 		mocks.get.mockImplementation((path: string) => {
 			const old = path.includes(alice.id);
-			return path.endsWith('/permissions') ? (old ? oldGrants.promise : nextGrants.promise) : (old ? oldSessions.promise : nextSessions.promise);
+			return path.includes('/permissions?domain_id=default') ? (old ? oldGrants.promise : nextGrants.promise) : (old ? oldSessions.promise : nextSessions.promise);
 		});
 		const view = renderModal();
-		await view.rerender({ user: bob, onUpdate: view.onUpdate });
+		await view.rerender({ user: bob, domainId: 'default', onUpdate: view.onUpdate });
 		if (outcome === 'resolve') {
 			oldGrants.resolve(permissions);
 			oldSessions.resolve(sessionResponse);
@@ -238,12 +258,12 @@ describe('AdminUserEditModal permissions and sessions', () => {
 	it('ignores old replies after close and reopening the same user', async () => {
 		const oldGrants = deferred<typeof permissions>();
 		const oldSessions = deferred<typeof sessionResponse>();
-		mocks.get.mockImplementation((path: string) => path.endsWith('/permissions') ? oldGrants.promise : oldSessions.promise);
+		mocks.get.mockImplementation((path: string) => path.includes('/permissions?domain_id=default') ? oldGrants.promise : oldSessions.promise);
 		const view = renderModal();
-		await view.rerender({ user: null, onUpdate: view.onUpdate });
+		await view.rerender({ user: null, domainId: 'default', onUpdate: view.onUpdate });
 		expect(screen.queryByRole('dialog')).toBeNull();
-		mocks.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/permissions') ? emptyPermissions : emptySessions));
-		await view.rerender({ user: alice, onUpdate: view.onUpdate });
+		mocks.get.mockImplementation((path: string) => Promise.resolve(path.includes('/permissions?domain_id=default') ? emptyPermissions : emptySessions));
+		await view.rerender({ user: alice, domainId: 'default', onUpdate: view.onUpdate });
 		await screen.findByText('할당된 유효 역할이 없습니다.');
 		oldGrants.resolve(permissions);
 		oldSessions.resolve(sessionResponse);
@@ -254,14 +274,14 @@ describe('AdminUserEditModal permissions and sessions', () => {
 	});
 
 	it('keeps update and revoke controls working while permissions fail', async () => {
-		mocks.get.mockImplementation((path: string) => path.endsWith('/permissions') ? Promise.reject(new ApiError(403, 'Forbidden')) : Promise.resolve(sessionResponse));
+		mocks.get.mockImplementation((path: string) => path.includes('/permissions?domain_id=default') ? Promise.reject(new ApiError(403, 'Forbidden')) : Promise.resolve(sessionResponse));
 		const onUpdate = vi.fn().mockResolvedValue('Update refused');
 		renderModal(alice, onUpdate);
 		await screen.findByRole('alert');
 		await fireEvent.click(screen.getByRole('button', { name: '전체 세션 강제 폐기 (Keystone 직접 폐기 포함)' }));
 		await fireEvent.click(screen.getByRole('button', { name: '확인' }));
 		await screen.findByText('세션 2개가 폐기되었습니다.');
-		expect(mocks.post).toHaveBeenCalledWith(`/api/v1/admin/users/${alice.id}/revoke-sessions`, {}, 'admin-token', 'admin-project');
+		expect(mocks.post).toHaveBeenCalledWith(`/api/v1/admin/users/${alice.id}/revoke-sessions?domain_id=default`, {}, 'admin-token', 'admin-project');
 		await fireEvent.input(screen.getByLabelText('이름'), { target: { value: 'Alice updated' } });
 		await fireEvent.click(screen.getByRole('button', { name: '수정' }));
 		await screen.findByText('Update refused');
@@ -319,7 +339,7 @@ describe('AdminUserEditModal permissions and sessions', () => {
 			initLocale(locale);
 			const grants = deferred<typeof emptyPermissions>();
 			const sessions = deferred<typeof emptySessions>();
-			mocks.get.mockImplementation((path: string) => path.endsWith('/permissions') ? grants.promise : sessions.promise);
+			mocks.get.mockImplementation((path: string) => path.includes('/permissions?domain_id=default') ? grants.promise : sessions.promise);
 			renderModal();
 			expect(screen.getByText(messages['userEdit.permissionsLoading'])).toBeTruthy();
 			expect(screen.getByText(messages['userEdit.loading'])).toBeTruthy();
@@ -329,7 +349,7 @@ describe('AdminUserEditModal permissions and sessions', () => {
 			expect(screen.getByText(messages['userEdit.sessionsFailed'])).toBeTruthy();
 			expect(screen.queryByText(messages['userEdit.noPermissions'])).toBeNull();
 			expect(screen.queryByText(messages['userEdit.noSessions'])).toBeNull();
-			mocks.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/permissions') ? emptyPermissions : emptySessions));
+			mocks.get.mockImplementation((path: string) => Promise.resolve(path.includes('/permissions?domain_id=default') ? emptyPermissions : emptySessions));
 			await fireEvent.click(screen.getByRole('button', { name: messages['userEdit.retryPermissions'] }));
 			await screen.findByText(messages['userEdit.noPermissions']);
 			expect(screen.getByText(messages['userEdit.sessionsFailed'])).toBeTruthy();

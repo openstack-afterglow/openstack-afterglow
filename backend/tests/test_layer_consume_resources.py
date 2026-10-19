@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models.db import LayerConsume
 from app.services import layer_consume_resources as resources
+from tests.admin_gate import synthetic_verified_admin
 from tests.test_layer_block import block_provider as block_provider
 
 PROJECT = "d" * 32
@@ -363,6 +364,7 @@ async def test_cleanup_http_route_retains_admin_gate_and_reclaims_real_ledger(le
     app = FastAPI()
     app.include_router(layer_ops.router, prefix="/api/v1/admin/libraries")
     app.dependency_overrides[deps.get_token_info] = lambda: {"is_system_admin": admin, "project_id": PROJECT}
+    app.dependency_overrides[deps.require_admin] = synthetic_verified_admin
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         result = await client.delete(f"/api/v1/admin/libraries/consumes/{consume_id}")
     if admin:
@@ -444,6 +446,7 @@ async def test_actual_publication_http_allocates_source_identity_and_materialize
     app = FastAPI()
     app.include_router(layer_block_sources.router, prefix="/api/v1/admin/libraries")
     app.dependency_overrides[deps.get_token_info] = lambda: {"is_system_admin": True}
+    app.dependency_overrides[deps.require_admin] = synthetic_verified_admin
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         path = f"/api/v1/admin/libraries/artifacts/{entry['id']}/block-source?store_id=rbd&member_project_id=caller"
         rejected = await client.put(path, content=DATA + b"wrong")
