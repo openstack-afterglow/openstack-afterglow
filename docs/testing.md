@@ -23,6 +23,8 @@ nav_order: 8
 
 첫 통합 gate는 frontend의 docs 누락과 fresh-readiness 미설정 fixture에서 중단했고, Ruff import/format도 교정했다. 위 최종 gate와 image source 검증은 그 수정 뒤의 결과다. Browser fixture의 구형 `/login/options` 가정은 실제 `/login-options`로 바로잡았고 오래된 user relay는 재시작하지 않고 전용 Chromium을 사용했다. 운영·native 권한/계정/볼륨을 수정하거나 SQL090–098을 적용하지 않았다. Schema-before-writer·old cohort drain·실제 native federation/SMTP·migration 복구·운영 배포 수용은 별도 승인/검증이 필요하다. 이번 범위는 public source commit/push이며 version bump·tag·main PR/merge·release·서비스 배포는 하지 않는다. 선택적 GBrain CLI 부재로 sync/guidance 변경은 수행하지 않았다.
 
+Public source commit `ceba25a29695cf6debfa0b2cc8acb48ad60d7e0f`를 `origin/dev`에 정상 push하고 rapid change를 [2026-10-19-integrate-all-source-dev](../openspec/changes/archive/2026-10-19-integrate-all-source-dev/tasks.md)로 archive했다. CLI의 delta 부재 경고는 비차단이고 저장소 rapid 절차대로 spec 갱신을 생략했다. Exact staged diff의 scanner19건은 synthetic fixture6·제거된 fixture2·boolean identifier1·과거 source digest10으로 확인했으며 실제 추가 credential은 발견하지 않았다. Pattern scan과 제한된 수동 검토이지 비밀 부재의 수학적 증명은 아니며 allowlist는 추가하지 않았다. 전용 Chromium/fixture와 exact ID/image/mount를 확인한 QA container2개만 종료하고 volume/network는 제거하지 않았다(`runtime/cleanup.json`). Push의 기본 브랜치 Dependabot high1알림은 이 변경의 도입 여부/영향을 평가한 것이 아니다. 원격 CI 통과·live 로그인·운영 적용은 이 게시 완료에 포함하지 않는다.
+
 ## 조직 SSO 로그인 진입 분리 (2026-10-19, local source)
 
 `separate-organization-sso-login`은 기존 LoginPage의 비밀번호 form과 조직 SSO 선택 view만 분리한다. 메인에서는 SSO 버튼 하나만 보이고 명시 진입 뒤 기존 public catalog의 등록을 표시한다. 새 route/API·native identity·schema·개인-domain 가입/승인/quota 정책은 바꾸지 않았다. 증거 root는 `/Users/pieroot/.local/share/afterglow-proofs/sso-entry-20261019-1cAJ25/`이며 아래 중첩 suite는 합산하지 않는다.
