@@ -2,7 +2,7 @@ import type { Handle } from '@sveltejs/kit';
 import { createTrafficReporter, reporterConfig } from '$lib/server/trafficReporter';
 import { loadPublicSiteConfig } from '$lib/server/config';
 import type { PublicSiteConfig } from '$lib/types/siteConfig';
-import { LOCALE_COOKIE, resolveLocale } from '$lib/i18n/locales';
+import { LOCALE_COOKIE, LOCALE_COOKIE_MAX_AGE_SECONDS, isLocale, resolveLocale } from '$lib/i18n/locales';
 import { isDocsPath } from '$lib/docs/paths';
 import { docsLocaleFromUrl } from '$lib/docs/locales';
 import {
@@ -168,12 +168,21 @@ const securityHandle: Handle = async ({ event, resolve: resolveEvent }) => {
 	const siteConfig = loadPublicSiteConfig();
 	const securityHeaders = buildSecurityHeaders(siteConfig);
 	event.locals.siteConfig = siteConfig;
-	// Console locale follows its cookie; public documentation keeps its explicit URL language without changing that preference.
-	const locale = resolveLocale(event.cookies.get(LOCALE_COOKIE));
+	const preference = resolveLocale(event.cookies.get(LOCALE_COOKIE));
+	const isDocumentation = isDocsPath(event.url.pathname);
+	const locale = isDocumentation ? docsLocaleFromUrl(event.url, preference) : preference;
+	if (isDocumentation && isLocale(event.url.searchParams.get('lang')) && !event.isDataRequest) {
+		event.cookies.set(LOCALE_COOKIE, locale, {
+			path: '/',
+			maxAge: LOCALE_COOKIE_MAX_AGE_SECONDS,
+			sameSite: 'lax',
+			httpOnly: false,
+			secure: event.url.protocol === 'https:',
+		});
+	}
 	event.locals.locale = locale;
 	const resolve = (target: typeof event) =>
-		resolveEvent(target, { transformPageChunk: ({ html }) => html.replace('%afterglow.lang%',
-			isDocsPath(target.url.pathname) ? docsLocaleFromUrl(target.url) : locale) });
+		resolveEvent(target, { transformPageChunk: ({ html }) => html.replace('%afterglow.lang%', locale) });
 	const path = event.url.pathname;
 	if (path === '/oauth/mcp/authorize') securityHeaders['Referrer-Policy'] = 'no-referrer';
 

@@ -1,24 +1,20 @@
+import type { Locale } from '$lib/i18n/locales';
+import { DEFAULT_LOCALE, LOCALES, LOCALE_NATIVE_NAMES, isLocale } from '$lib/i18n/locales';
 import { isDocsPath } from './paths';
 
-export const docsLocales = [
-	{ id: 'ko', name: '한국어' },
-	{ id: 'en', name: 'English' },
-	{ id: 'ja', name: '日本語' },
-	{ id: 'zh-CN', name: '简体中文' },
-] as const;
+export const docsLocales = LOCALES.map((id) => ({ id, name: LOCALE_NATIVE_NAMES[id] }));
 
-export type DocsLocale = typeof docsLocales[number]['id'];
+export type DocsLocale = Locale;
 
-export function docsLocaleFromUrl(url: URL): DocsLocale {
+export function docsLocaleFromUrl(url: URL, preference: DocsLocale = DEFAULT_LOCALE): DocsLocale {
 	const requested = url.searchParams.get('lang');
-	return docsLocales.find(({ id }) => id === requested)?.id ?? 'ko';
+	return isLocale(requested) ? requested : preference;
 }
 
 /** Language changes retain the article, section and any existing reader context. */
 export function docsLanguageHref(url: URL, locale: DocsLocale): string {
 	const next = new URL(url);
-	if (locale === 'ko') next.searchParams.delete('lang');
-	else next.searchParams.set('lang', locale);
+	next.searchParams.set('lang', locale);
 	return `${next.pathname}${next.search}${next.hash}`;
 }
 
@@ -134,6 +130,121 @@ export const docsMessages: Record<DocsLocale, typeof ko> = {
 			{ id: 'start', label: '开始使用', description: '准备账户和项目，然后创建第一个资源。' },
 			{ id: 'openstack', label: 'OpenStack', description: '使用计算、网络、存储和基础云服务。' },
 			{ id: 'afterglow', label: 'Afterglow服务', description: '使用集群、VPN、AI及可复用的研究环境。' },
+		],
+	},
+	sw: {
+		userDocs: 'Nyaraka za mtumiaji', serviceDocs: 'Nyaraka za huduma', docsHome: 'Ukurasa mkuu wa nyaraka · Tafuta',
+		skip: 'Ruka hadi kwenye maudhui', home: 'Mwanzo', homeTitle: 'Nenda kwenye ukurasa mkuu', backHome: 'Rudi mwanzo',
+		navigation: 'Urambazaji wa nyaraka', menu: 'Menyu ya nyaraka', publicNote: ['Soma nyaraka bila kuingia kwenye akaunti.', 'Shughuli halisi zinahitaji ruhusa za mradi.'],
+		consoleAccess: 'Fungua konsoli', consoleReturn: 'Rudi kwenye konsoli', language: 'Chagua lugha',
+		themeSystem: 'Mandhari ya mfumo', themeDark: 'Hali ya giza', themeLight: 'Hali ya mwanga', themeChange: 'Badilisha mandhari',
+		guideTitle: 'Mwongozo wa matumizi', indexDescription: 'Kuanzia Nova, Neutron, Octavia, Cinder na Manila hadi Drover, Waygate, Lumen na Palimpsest. Andaa mradi wako na ufuate taratibu za matumizi ya kila huduma.',
+		heroTitle: ['Mazingira unayohitaji.', 'Jinsi ya kuyaandaa mwenyewe.'], heroCopy: ['Kuanzia mashine pepe moja hadi makundi ya mashine na data ya pamoja ya timu.', 'Chagua huduma, iandae na uhakikishe matokeo.'],
+		getStarted: 'Anza kutumia', searchLabel: 'Tafuta nyaraka', searchHelp: 'Andika huduma au kazi. Kwa mfano: Floating IP, nakala rudufu, kubeconfig', searchPlaceholder: 'Tafuta huduma au kazi…',
+		guideCount: (count: number) => `Miongozo ${count} ya matumizi`, resultsCount: (count: number) => `Matokeo ${count} ya utafutaji`,
+		noResultsTitle: 'Hakuna nyaraka zinazolingana', noResultsDescription: 'Jaribu jina la huduma au jina fupi zaidi la kazi.', resetSearch: 'Weka upya utafutaji',
+		availability: 'Miongozo hii inaeleza konsoli ya sasa. Huduma zilizowezeshwa, rasilimali zinazopatikana, modeli na ruhusa za mradi hutegemea mazingira ya uwekaji.',
+		prerequisites: 'Kabla ya kuanza', consoleUsage: 'Tumia katika konsoli', consoleNote: 'Ingia na uchague mradi utakaofanyia kazi. Utazamaji na mabadiliko hufuata ruhusa na usanidi wa huduma wa mradi huo.',
+		serviceUnavailable: 'Huduma hii imezimwa katika mazingira haya.', related: 'Miongozo inayohusiana', official: 'Marejeo rasmi', toc: 'Yaliyomo katika makala', inThisArticle: 'Katika makala hii', breadcrumbs: 'Njia ya urambazaji wa nyaraka',
+		copy: 'Nakili', copyLabel: (label: string) => `Nakili ${label}`, copySuccess: 'Amri imenakiliwa.', copyFailure: 'Imeshindikana kunakili. Chagua amri iliyo hapa chini na uinakili mwenyewe.',
+		screenshotOpen: 'Fungua picha asili (kichupo kipya)', screenshotOpenLabel: (alt: string) => `${alt} — Fungua picha asili (kichupo kipya)`, screenshotKoreanNote: 'Picha halisi za skrini za konsoli ya lugha ya Kikorea; taarifa binafsi na vitambulishi vya rasilimali vimefichwa.',
+		notFound: 'Nyaraka hazikupatikana', failed: 'Imeshindikana kufungua nyaraka', errorRecovery: 'Hakiki anwani au tafuta jina la huduma katika ukurasa mkuu wa nyaraka.', goHome: 'Nenda kwenye ukurasa mkuu wa nyaraka',
+		categories: [
+			{ id: 'start', label: 'Kuanza', description: 'Andaa akaunti na mradi wako, kisha unda rasilimali yako ya kwanza.' },
+			{ id: 'openstack', label: 'OpenStack', description: 'Tumia huduma za ukokotoaji, mitandao, hifadhi na huduma za msingi za wingu.' },
+			{ id: 'afterglow', label: 'Huduma za Afterglow', description: 'Fanya kazi na makundi ya mashine, VPN, AI na mazingira ya utafiti yanayoweza kutumika tena.' },
+		],
+	},
+	nb: {
+		userDocs: 'Brukerdokumentasjon', serviceDocs: 'Tjenestedokumentasjon', docsHome: 'Dokumentasjon · Søk',
+		skip: 'Hopp til innhold', home: 'Hjem', homeTitle: 'Gå til hjemmesiden', backHome: 'Tilbake til hjemmesiden',
+		navigation: 'Dokumentasjonsnavigasjon', menu: 'Dokumentasjonsmeny', publicNote: ['Les dokumentasjonen uten å logge inn.', 'Faktiske operasjoner krever prosjekttillatelser.'],
+		consoleAccess: 'Åpne konsollen', consoleReturn: 'Tilbake til konsollen', language: 'Velg språk',
+		themeSystem: 'Systemtema', themeDark: 'Mørk modus', themeLight: 'Lys modus', themeChange: 'Bytt tema',
+		guideTitle: 'Brukerveiledning', indexDescription: 'Fra Nova, Neutron, Octavia, Cinder og Manila til Drover, Waygate, Lumen og Palimpsest. Klargjør prosjektet og følg praktiske arbeidsflyter for hver tjeneste.',
+		heroTitle: ['Miljøet du trenger.', 'Slik bygger du det selv.'], heroCopy: ['Fra én virtuell maskin til klynger og delte teamdata.', 'Velg en tjeneste, klargjør den og kontroller resultatet.'],
+		getStarted: 'Kom i gang', searchLabel: 'Søk i dokumentasjonen', searchHelp: 'Skriv inn en tjeneste eller oppgave. For eksempel: flytende IP, sikkerhetskopi, kubeconfig', searchPlaceholder: 'Søk etter tjenester eller oppgaver…',
+		guideCount: (count: number) => `${count} brukerveiledninger`, resultsCount: (count: number) => `${count} søkeresultater`,
+		noResultsTitle: 'Ingen dokumentasjon samsvarer med søket', noResultsDescription: 'Prøv et tjenestenavn eller et kortere oppgavenavn.', resetSearch: 'Nullstill søket',
+		availability: 'Disse veiledningene beskriver den gjeldende konsollen. Aktiverte tjenester, tilgjengelige ressurser, modeller og prosjekttillatelser avhenger av driftsmiljøet.',
+		prerequisites: 'Før du begynner', consoleUsage: 'Bruk i konsollen', consoleNote: 'Logg inn og velg prosjektet du skal arbeide i. Lesing og endringer følger prosjektets tillatelser og tjenestekonfigurasjon.',
+		serviceUnavailable: 'Denne tjenesten er deaktivert i dette miljøet.', related: 'Relaterte veiledninger', official: 'Offisielle referanser', toc: 'Innhold i artikkelen', inThisArticle: 'I denne artikkelen', breadcrumbs: 'Dokumentasjonssti',
+		copy: 'Kopier', copyLabel: (label: string) => `Kopier ${label}`, copySuccess: 'Kommandoen er kopiert.', copyFailure: 'Kunne ikke kopiere. Merk kommandoen nedenfor og kopier den manuelt.',
+		screenshotOpen: 'Åpne originalbildet (ny fane)', screenshotOpenLabel: (alt: string) => `${alt} — Åpne originalbildet (ny fane)`, screenshotKoreanNote: 'Faktiske skjermbilder fra den koreanskspråklige konsollen. Personopplysninger og ressursidentifikatorer er skjult.',
+		notFound: 'Fant ikke dokumentasjonen', failed: 'Kunne ikke åpne dokumentasjonen', errorRecovery: 'Kontroller adressen eller søk etter tjenesten på dokumentasjonens startside.', goHome: 'Gå til dokumentasjonens startside',
+		categories: [
+			{ id: 'start', label: 'Kom i gang', description: 'Klargjør kontoen og prosjektet, og opprett deretter din første ressurs.' },
+			{ id: 'openstack', label: 'OpenStack', description: 'Bruk databehandling, nettverk, lagring og grunnleggende skytjenester.' },
+			{ id: 'afterglow', label: 'Afterglow-tjenester', description: 'Arbeid med klynger, VPN, KI og gjenbrukbare forskningsmiljøer.' },
+		],
+	},
+	ms: {
+		userDocs: 'Dokumentasi pengguna', serviceDocs: 'Dokumentasi perkhidmatan', docsHome: 'Halaman utama dokumentasi · Carian',
+		skip: 'Langkau ke kandungan', home: 'Halaman utama', homeTitle: 'Pergi ke halaman utama', backHome: 'Kembali ke halaman utama',
+		navigation: 'Navigasi dokumentasi', menu: 'Menu dokumentasi', publicNote: ['Baca dokumentasi tanpa log masuk.', 'Operasi sebenar memerlukan kebenaran projek.'],
+		consoleAccess: 'Buka konsol', consoleReturn: 'Kembali ke konsol', language: 'Pilih bahasa',
+		themeSystem: 'Tema sistem', themeDark: 'Mod gelap', themeLight: 'Mod cerah', themeChange: 'Tukar tema',
+		guideTitle: 'Panduan penggunaan', indexDescription: 'Daripada Nova, Neutron, Octavia, Cinder dan Manila hingga Drover, Waygate, Lumen dan Palimpsest. Sediakan projek anda dan ikuti aliran kerja perkhidmatan yang praktikal.',
+		heroTitle: ['Persekitaran yang anda perlukan.', 'Cara membinanya sendiri.'], heroCopy: ['Daripada sebuah mesin maya hingga kluster dan data pasukan yang dikongsi.', 'Pilih perkhidmatan, sediakannya dan sahkan hasilnya.'],
+		getStarted: 'Bermula', searchLabel: 'Cari dokumentasi', searchHelp: 'Masukkan perkhidmatan atau tugas. Contohnya: IP terapung, sandaran, kubeconfig', searchPlaceholder: 'Cari perkhidmatan atau tugas…',
+		guideCount: (count: number) => `${count} panduan penggunaan`, resultsCount: (count: number) => `${count} hasil carian`,
+		noResultsTitle: 'Tiada dokumentasi yang sepadan', noResultsDescription: 'Cuba nama perkhidmatan atau nama tugas yang lebih ringkas.', resetSearch: 'Tetapkan semula carian',
+		availability: 'Panduan ini menerangkan konsol semasa. Perkhidmatan yang diaktifkan, sumber yang tersedia, model dan kebenaran projek bergantung pada pemasangan anda.',
+		prerequisites: 'Sebelum anda bermula', consoleUsage: 'Gunakan dalam konsol', consoleNote: 'Log masuk dan pilih projek yang akan anda gunakan. Pembacaan dan perubahan tertakluk pada kebenaran serta konfigurasi perkhidmatan projek tersebut.',
+		serviceUnavailable: 'Perkhidmatan ini dinyahaktifkan dalam persekitaran ini.', related: 'Panduan berkaitan', official: 'Rujukan rasmi', toc: 'Kandungan artikel', inThisArticle: 'Dalam artikel ini', breadcrumbs: 'Jejak navigasi dokumentasi',
+		copy: 'Salin', copyLabel: (label: string) => `Salin ${label}`, copySuccess: 'Arahan telah disalin.', copyFailure: 'Tidak dapat menyalin. Pilih arahan di bawah dan salin secara manual.',
+		screenshotOpen: 'Buka imej asal (tab baharu)', screenshotOpenLabel: (alt: string) => `${alt} — Buka imej asal (tab baharu)`, screenshotKoreanNote: 'Skrin konsol sebenar dalam bahasa Korea; maklumat peribadi dan pengecam sumber disembunyikan.',
+		notFound: 'Dokumentasi tidak ditemukan', failed: 'Tidak dapat membuka dokumentasi', errorRecovery: 'Semak alamat atau cari perkhidmatan pada halaman utama dokumentasi.', goHome: 'Pergi ke halaman utama dokumentasi',
+		categories: [
+			{ id: 'start', label: 'Bermula', description: 'Sediakan akaun dan projek anda, kemudian cipta sumber pertama anda.' },
+			{ id: 'openstack', label: 'OpenStack', description: 'Gunakan pengkomputeran, rangkaian, storan dan perkhidmatan awan teras.' },
+			{ id: 'afterglow', label: 'Perkhidmatan Afterglow', description: 'Urus kluster, VPN, AI dan persekitaran penyelidikan boleh guna semula.' },
+		],
+	},
+	vi: {
+		userDocs: 'Tài liệu người dùng', serviceDocs: 'Tài liệu dịch vụ', docsHome: 'Trang tài liệu · Tìm kiếm',
+		skip: 'Chuyển đến nội dung', home: 'Trang chủ', homeTitle: 'Đi đến trang chủ', backHome: 'Quay lại trang chủ',
+		navigation: 'Điều hướng tài liệu', menu: 'Menu tài liệu', publicNote: ['Đọc tài liệu mà không cần đăng nhập.', 'Các thao tác thực tế yêu cầu quyền trong dự án.'],
+		consoleAccess: 'Mở bảng điều khiển', consoleReturn: 'Quay lại bảng điều khiển', language: 'Chọn ngôn ngữ',
+		themeSystem: 'Giao diện hệ thống', themeDark: 'Chế độ tối', themeLight: 'Chế độ sáng', themeChange: 'Đổi giao diện',
+		guideTitle: 'Hướng dẫn sử dụng', indexDescription: 'Từ Nova, Neutron, Octavia, Cinder và Manila đến Drover, Waygate, Lumen và Palimpsest. Chuẩn bị dự án và làm theo quy trình sử dụng thực tế cho từng dịch vụ.',
+		heroTitle: ['Môi trường bạn cần.', 'Cách tự xây dựng môi trường đó.'], heroCopy: ['Từ một máy ảo đến các cụm máy và dữ liệu dùng chung của nhóm.', 'Chọn dịch vụ, chuẩn bị và kiểm tra kết quả.'],
+		getStarted: 'Bắt đầu', searchLabel: 'Tìm kiếm tài liệu', searchHelp: 'Nhập tên dịch vụ hoặc tác vụ. Ví dụ: IP nổi, bản sao lưu, kubeconfig', searchPlaceholder: 'Tìm dịch vụ hoặc tác vụ…',
+		guideCount: (count: number) => `${count} hướng dẫn sử dụng`, resultsCount: (count: number) => `${count} kết quả tìm kiếm`,
+		noResultsTitle: 'Không có tài liệu phù hợp', noResultsDescription: 'Thử tìm theo tên dịch vụ hoặc tên tác vụ ngắn hơn.', resetSearch: 'Đặt lại tìm kiếm',
+		availability: 'Các hướng dẫn này mô tả bảng điều khiển hiện tại. Dịch vụ được bật, tài nguyên khả dụng, mô hình và quyền trong dự án phụ thuộc vào môi trường triển khai.',
+		prerequisites: 'Trước khi bắt đầu', consoleUsage: 'Sử dụng trong bảng điều khiển', consoleNote: 'Đăng nhập và chọn dự án sẽ sử dụng. Việc xem và thay đổi tuân theo quyền và cấu hình dịch vụ của dự án đó.',
+		serviceUnavailable: 'Dịch vụ này bị tắt trong môi trường hiện tại.', related: 'Hướng dẫn liên quan', official: 'Tài liệu tham khảo chính thức', toc: 'Mục lục bài viết', inThisArticle: 'Trong bài viết này', breadcrumbs: 'Đường dẫn tài liệu',
+		copy: 'Sao chép', copyLabel: (label: string) => `Sao chép ${label}`, copySuccess: 'Đã sao chép lệnh.', copyFailure: 'Không thể sao chép. Hãy chọn lệnh bên dưới và sao chép thủ công.',
+		screenshotOpen: 'Mở ảnh gốc (tab mới)', screenshotOpenLabel: (alt: string) => `${alt} — Mở ảnh gốc (tab mới)`, screenshotKoreanNote: 'Ảnh chụp màn hình thực tế của bảng điều khiển bằng tiếng Hàn; thông tin cá nhân và mã định danh tài nguyên đã được che.',
+		notFound: 'Không tìm thấy tài liệu', failed: 'Không thể mở tài liệu', errorRecovery: 'Kiểm tra địa chỉ hoặc tìm tên dịch vụ trên trang tài liệu.', goHome: 'Đi đến trang tài liệu',
+		categories: [
+			{ id: 'start', label: 'Bắt đầu', description: 'Chuẩn bị tài khoản và dự án, sau đó tạo tài nguyên đầu tiên.' },
+			{ id: 'openstack', label: 'OpenStack', description: 'Sử dụng dịch vụ điện toán, mạng, lưu trữ và các dịch vụ đám mây cốt lõi.' },
+			{ id: 'afterglow', label: 'Dịch vụ Afterglow', description: 'Làm việc với các cụm máy, VPN, AI và môi trường nghiên cứu có thể tái sử dụng.' },
+		],
+	},
+	bn: {
+		userDocs: 'ব্যবহারকারীর নথি', serviceDocs: 'সেবার নথি', docsHome: 'নথির মূল পাতা · অনুসন্ধান',
+		skip: 'মূল বিষয়বস্তুতে যান', home: 'মূল পাতা', homeTitle: 'মূল পাতায় যান', backHome: 'মূল পাতায় ফিরে যান',
+		navigation: 'নথিতে নেভিগেশন', menu: 'নথির মেনু', publicNote: ['লগইন ছাড়াই নথি পড়ুন।', 'প্রকৃত কাজের জন্য প্রকল্পের অনুমতি প্রয়োজন।'],
+		consoleAccess: 'কনসোল খুলুন', consoleReturn: 'কনসোলে ফিরে যান', language: 'ভাষা নির্বাচন করুন',
+		themeSystem: 'সিস্টেমের থিম', themeDark: 'ডার্ক মোড', themeLight: 'লাইট মোড', themeChange: 'থিম পরিবর্তন করুন',
+		guideTitle: 'ব্যবহার নির্দেশিকা', indexDescription: 'Nova, Neutron, Octavia, Cinder ও Manila থেকে Drover, Waygate, Lumen ও Palimpsest পর্যন্ত। প্রকল্প প্রস্তুত করুন এবং প্রতিটি সেবার ব্যবহারিক ধাপ অনুসরণ করুন।',
+		heroTitle: ['আপনার প্রয়োজনীয় পরিবেশ।', 'নিজেই তৈরি করার উপায়।'], heroCopy: ['একটি ভার্চুয়াল মেশিন থেকে ক্লাস্টার ও দলের যৌথ ডেটা পর্যন্ত।', 'সেবা বেছে নিন, প্রস্তুত করুন এবং ফলাফল যাচাই করুন।'],
+		getStarted: 'শুরু করুন', searchLabel: 'নথি অনুসন্ধান করুন', searchHelp: 'সেবা বা কাজের নাম লিখুন। যেমন: Floating IP, ব্যাকআপ, kubeconfig', searchPlaceholder: 'সেবা বা কাজ খুঁজুন…',
+		guideCount: (count: number) => `${count}টি ব্যবহার নির্দেশিকা`, resultsCount: (count: number) => `${count}টি অনুসন্ধান ফলাফল`,
+		noResultsTitle: 'মিলে যায় এমন কোনো নথি নেই', noResultsDescription: 'সেবার নাম বা আরও ছোট কাজের নাম দিয়ে খুঁজুন।', resetSearch: 'অনুসন্ধান মুছুন',
+		availability: 'এই নির্দেশিকাগুলো বর্তমান কনসোলের ব্যবহার বর্ণনা করে। সক্রিয় সেবা, উপলভ্য রিসোর্স, মডেল ও প্রকল্পের অনুমতি আপনার স্থাপনার ওপর নির্ভর করে।',
+		prerequisites: 'শুরুর আগে', consoleUsage: 'কনসোলে ব্যবহার করুন', consoleNote: 'লগইন করে যে প্রকল্পে কাজ করবেন সেটি নির্বাচন করুন। তথ্য দেখা ও পরিবর্তন সেই প্রকল্পের অনুমতি ও সেবার কনফিগারেশন অনুযায়ী হয়।',
+		serviceUnavailable: 'এই পরিবেশে সেবাটি নিষ্ক্রিয় আছে।', related: 'সংশ্লিষ্ট নির্দেশিকা', official: 'আনুষ্ঠানিক তথ্যসূত্র', toc: 'এই নিবন্ধের সূচি', inThisArticle: 'এই নিবন্ধে', breadcrumbs: 'নথির পথ',
+		copy: 'কপি করুন', copyLabel: (label: string) => `${label} কপি করুন`, copySuccess: 'কমান্ড কপি করা হয়েছে।', copyFailure: 'কপি করা যায়নি। নিচের কমান্ডটি নির্বাচন করে নিজে কপি করুন।',
+		screenshotOpen: 'মূল ছবি খুলুন (নতুন ট্যাব)', screenshotOpenLabel: (alt: string) => `${alt} — মূল ছবি খুলুন (নতুন ট্যাব)`, screenshotKoreanNote: 'কোরীয় ভাষার প্রকৃত কনসোলের স্ক্রিনশট; ব্যক্তিগত তথ্য ও রিসোর্স শনাক্তকারী আড়াল করা হয়েছে।',
+		notFound: 'নথি পাওয়া যায়নি', failed: 'নথি খোলা যায়নি', errorRecovery: 'ঠিকানা যাচাই করুন অথবা নথির মূল পাতায় সেবার নাম দিয়ে খুঁজুন।', goHome: 'নথির মূল পাতায় যান',
+		categories: [
+			{ id: 'start', label: 'শুরু করা', description: 'আপনার অ্যাকাউন্ট ও প্রকল্প প্রস্তুত করে প্রথম রিসোর্স তৈরি করুন।' },
+			{ id: 'openstack', label: 'OpenStack', description: 'কম্পিউটিং, নেটওয়ার্ক, স্টোরেজ ও মূল ক্লাউড সেবা ব্যবহার করুন।' },
+			{ id: 'afterglow', label: 'Afterglow সেবা', description: 'ক্লাস্টার, VPN, AI ও পুনর্ব্যবহারযোগ্য গবেষণার পরিবেশ নিয়ে কাজ করুন।' },
 		],
 	},
 };

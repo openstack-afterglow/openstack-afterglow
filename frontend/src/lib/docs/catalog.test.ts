@@ -7,6 +7,11 @@ const nativeSnapshotQueries: { locale: DocsLocale; query: string }[] = [
 	{ locale: 'en', query: 'Cinder snapshot' },
 	{ locale: 'ja', query: 'Cinder スナップショット' },
 	{ locale: 'zh-CN', query: 'Cinder 快照' },
+	{ locale: 'sw', query: 'Cinder nakala za muda' },
+	{ locale: 'nb', query: 'Cinder øyeblikksbilde' },
+	{ locale: 'ms', query: 'Cinder petikan' },
+	{ locale: 'vi', query: 'Cinder bản chụp nhanh' },
+	{ locale: 'bn', query: 'Cinder স্ন্যাপশট' },
 ];
 
 const nativePersonalMcpKeyQueries: { locale: DocsLocale; query: string }[] = [
@@ -14,6 +19,11 @@ const nativePersonalMcpKeyQueries: { locale: DocsLocale; query: string }[] = [
 	{ locale: 'en', query: 'personal key Authorization' },
 	{ locale: 'ja', query: '個人キー Authorization' },
 	{ locale: 'zh-CN', query: '个人密钥 Authorization' },
+	{ locale: 'sw', query: 'ufunguo binafsi Authorization' },
+	{ locale: 'nb', query: 'personlig nøkkel Authorization' },
+	{ locale: 'ms', query: 'kunci peribadi Authorization' },
+	{ locale: 'vi', query: 'khóa cá nhân Authorization' },
+	{ locale: 'bn', query: 'ব্যক্তিগত কী Authorization' },
 ];
 
 describe('localized documentation search', () => {

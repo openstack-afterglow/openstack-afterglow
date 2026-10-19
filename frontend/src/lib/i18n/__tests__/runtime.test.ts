@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { LOCALE_COOKIE, resolveLocale } from '../locales';
+import { LOCALES, LOCALE_COOKIE, resolveLocale } from '../locales';
 import { defineMessages, getLocale, initLocale, intlLocale, setLocale } from '../runtime.svelte';
 
 const source = {
@@ -33,7 +33,7 @@ afterEach(() => {
 
 describe('i18n runtime', () => {
 	it('accepts supported cookie values and falls back for missing or untrusted values', () => {
-		for (const locale of ['ko', 'en', 'ja', 'zh-CN'] as const) expect(resolveLocale(locale)).toBe(locale);
+		for (const locale of LOCALES) expect(resolveLocale(locale)).toBe(locale);
 		for (const value of [undefined, null, '', 'zh-TW', 'en-US', 'JA', '<script>']) {
 			expect(resolveLocale(value)).toBe('ko');
 		}
@@ -77,11 +77,12 @@ describe('i18n runtime', () => {
 		expect(t('rich', { name: 'db' })).toBe('Delete <strong>db</strong>');
 	});
 
-	it('persists the choice for SSR and updates the document language', () => {
-		setLocale('zh-CN');
-		expect(getLocale()).toBe('zh-CN');
-		expect(document.cookie).toContain(`${LOCALE_COOKIE}=zh-CN`);
-		expect(document.documentElement.lang).toBe('zh-CN');
-		expect(t('greeting', { name: 'Li' })).toBe('Hello, Li');
+	it.each(LOCALES.filter((locale) => locale !== 'ko' && locale !== 'en' && locale !== 'ja'))('persists %s for SSR and uses English then Korean for missing messages', (locale) => {
+		setLocale(locale);
+		expect(getLocale()).toBe(locale);
+		expect(document.cookie).toContain(`${LOCALE_COOKIE}=${locale}`);
+		expect(document.documentElement.lang).toBe(locale);
+		expect(t('greeting', { name: 'Reader' })).toBe('Hello, Reader');
+		expect(t('onlyKorean')).toBe('한국어 원문');
 	});
 });

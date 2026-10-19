@@ -1,0 +1,13 @@
+{
+  "run.reloadRequired": "kumbukumbu ya utekelezaji wa mazungumzo haipatikani tena; pakia upya mazungumzo",
+  "protocol.invalidDescriptor": "kifafanuzi cha utekelezaji wa mazungumzo si halali",
+  "http.requestFailed": "ombi la mazungumzo limeshindwa",
+  "stream.unterminatedFrame": "fremu ya SSE haijahitimishwa",
+  "stream.disconnected": "mtiririko wa matukio ya mazungumzo umekatika",
+  "stream.invalidJson": "tukio la mazungumzo haliko katika muundo halali wa JSON",
+  "stream.idMismatch": "kitambulisho cha tukio la SSE hakilingani",
+  "stream.typeMismatch": "aina ya tukio la SSE hailingani",
+  "stream.runMismatch": "utekelezaji wa tukio la SSE haulingani",
+  "protocol.sequenceGap": "pengo katika mfuatano wa matukio ya mazungumzo",
+  "reducer.runMismatch": "utekelezaji wa tukio la mazungumzo haulingani"
+}

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+	TRANSLATION_LOCALES,
 	exportCsv,
 	importCsv,
 	loadCatalogs,
@@ -20,16 +21,22 @@ import { findHardcodedText } from '../../../../scripts/i18n-scan.mjs';
 
 type Messages = Record<string, string>;
 
+const additionalLocales = TRANSLATION_LOCALES.filter((locale) => !['en', 'ja', 'zh-CN'].includes(locale));
+
+function additionalErrors(errors: string[]): string[] {
+	return additionalLocales.flatMap((locale) => errors.map((error) => error.replace(':en:', `:${locale}:`)));
+}
 function catalogs(ko: Messages, en: Messages, ja: Messages = en, zh: Messages = en): Catalogs {
 	return {
 		namespaces: ['demo'],
-		messages: { ko: { demo: ko }, en: { demo: en }, ja: { demo: ja }, 'zh-CN': { demo: zh } },
+		messages: { ko: { demo: ko }, en: { demo: en }, ja: { demo: ja }, 'zh-CN': { demo: zh },
+			...Object.fromEntries(additionalLocales.map((locale) => [locale, { demo: en }])) },
 		modules: ['demo'],
 		loadErrors: [],
 	};
 }
 
-const emptyReviews = (): ReviewManifests => ({ en: {}, ja: {}, 'zh-CN': {} });
+const emptyReviews = (): ReviewManifests => Object.fromEntries(TRANSLATION_LOCALES.map((locale) => [locale, {}]));
 
 const codes = (data: Catalogs) =>
 	validateCatalogs(data)
@@ -43,7 +50,8 @@ describe('catalog validation', () => {
 
 	it('reports missing, extra and empty translations', () => {
 		const data = catalogs({ a: '가', b: '나' }, { a: 'A', extra: 'X' }, { a: 'A', b: ' ' });
-		expect(codes(data)).toEqual(['extra-key:en:extra', 'missing-key:en:b', 'empty-message:ja:b', 'extra-key:zh-CN:extra', 'missing-key:zh-CN:b']);
+		expect(codes(data)).toEqual(['extra-key:en:extra', 'missing-key:en:b', 'empty-message:ja:b', 'extra-key:zh-CN:extra', 'missing-key:zh-CN:b',
+			...additionalErrors(['extra-key:en:extra', 'missing-key:en:b'])]);
 	});
 
 	it('rejects changed placeholders, markup, syntax errors and leftover Korean', () => {
@@ -60,6 +68,7 @@ describe('catalog validation', () => {
 			'argument-mismatch:zh-CN:greet',
 			'tag-mismatch:zh-CN:bold',
 			'syntax:zh-CN:plural',
+			...additionalErrors(['argument-mismatch:en:greet', 'tag-mismatch:en:bold', 'syntax:en:plural']),
 		]);
 	});
 
@@ -70,7 +79,8 @@ describe('catalog validation', () => {
 			{ nested: '<strong><em>Body</em></strong>', branch: '{choice, select, yes {<strong>Yes</strong>} other {No}}' },
 			{ nested: '<strong><em>Body</em></strong>', branch: '{choice, select, yes {<strong>Yes</strong>} other {No}}' },
 		);
-		expect(codes(data)).toEqual(['rich-structure:en:nested', 'rich-structure:en:branch']);
+		expect(codes(data)).toEqual(['rich-structure:en:nested', 'rich-structure:en:branch',
+			...additionalErrors(['rich-structure:en:nested', 'rich-structure:en:branch'])]);
 	});
 
 	it('preserves custom snippets, correlated selectors and literal model hints', () => {

@@ -3,8 +3,9 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import { siteConfig } from '$lib/config/site';
-	import { docsHref, docsLocaleFromUrl, docsMessages } from '$lib/docs/locales';
-	const locale = $derived(docsLocaleFromUrl($page.url));
+	import { docsHref, docsMessages } from '$lib/docs/locales';
+	import { resolveLocale } from '$lib/i18n/locales';
+	const locale = $derived(resolveLocale($page.data.docsLocale ?? $page.data.locale));
 	const messages = $derived(docsMessages[locale]);
 	const title = $derived($page.status === 404 ? messages.notFound : messages.failed);
 </script>

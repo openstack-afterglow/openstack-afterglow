@@ -1,0 +1,13 @@
+{
+	"run.reloadRequired": "nhật ký lượt chạy trò chuyện không còn khả dụng; hãy tải lại hội thoại",
+	"protocol.invalidDescriptor": "bộ mô tả lượt chạy trò chuyện không hợp lệ",
+	"http.requestFailed": "yêu cầu trò chuyện thất bại",
+	"stream.unterminatedFrame": "khung SSE chưa được kết thúc",
+	"stream.disconnected": "luồng sự kiện trò chuyện đã ngắt kết nối",
+	"stream.invalidJson": "sự kiện trò chuyện không phải là JSON hợp lệ",
+	"stream.idMismatch": "ID sự kiện SSE không khớp",
+	"stream.typeMismatch": "loại sự kiện SSE không khớp",
+	"stream.runMismatch": "lượt chạy của sự kiện SSE không khớp",
+	"protocol.sequenceGap": "có khoảng trống trong chuỗi sự kiện trò chuyện",
+	"reducer.runMismatch": "lượt chạy của sự kiện trò chuyện không khớp"
+}

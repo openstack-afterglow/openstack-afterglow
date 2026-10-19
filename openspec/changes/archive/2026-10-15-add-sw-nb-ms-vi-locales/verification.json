@@ -1,0 +1,214 @@
+{
+  "change": "add-sw-nb-ms-vi-locales",
+  "archive": {
+    "directory": "openspec/changes/archive/2026-10-15-add-sw-nb-ms-vi-locales",
+    "taskStatus": "Complete",
+    "specUpdates": "Skipped per the repository rapid/task-based workflow",
+    "nonBlockingWarning": "No delta specs found"
+  },
+  "verifiedAt": "2026-10-15T20:16:31.502Z",
+  "worktree": "/Users/pieroot/code/afterglow-i18n",
+  "branch": "i18n",
+  "initialDevSha": "08e272422cd855b30d39929c24993047ec0cd6ad",
+  "finalFetchedDevSha": "08e272422cd855b30d39929c24993047ec0cd6ad",
+  "languages": [
+    {
+      "locale": "sw",
+      "nativeName": "Kiswahili",
+      "language": "Swahili for Tanzania",
+      "intl": "sw-TZ",
+      "uiNamespaces": 40,
+      "uiMessages": 10022,
+      "guideDictionaries": 5,
+      "guideEntries": 1152,
+      "reviewed": 0,
+      "draft": 10022,
+      "missing": 0
+    },
+    {
+      "locale": "nb",
+      "nativeName": "Norsk bokmål",
+      "language": "Norwegian Bokmål",
+      "intl": "nb-NO",
+      "uiNamespaces": 40,
+      "uiMessages": 10022,
+      "guideDictionaries": 5,
+      "guideEntries": 1152,
+      "reviewed": 0,
+      "draft": 10022,
+      "missing": 0
+    },
+    {
+      "locale": "ms",
+      "nativeName": "Bahasa Melayu",
+      "language": "Malay for Malaysia",
+      "intl": "ms-MY",
+      "uiNamespaces": 40,
+      "uiMessages": 10022,
+      "guideDictionaries": 5,
+      "guideEntries": 1152,
+      "reviewed": 0,
+      "draft": 10022,
+      "missing": 0
+    },
+    {
+      "locale": "vi",
+      "nativeName": "Tiếng Việt",
+      "language": "Vietnamese",
+      "intl": "vi-VN",
+      "uiNamespaces": 40,
+      "uiMessages": 10022,
+      "guideDictionaries": 5,
+      "guideEntries": 1152,
+      "reviewed": 0,
+      "draft": 10022,
+      "missing": 0
+    }
+  ],
+  "checks": {
+    "translation": {
+      "errors": 0,
+      "warnings": 0,
+      "namespaces": 40,
+      "sourceMessages": 10022
+    },
+    "hardcodedKorean": {
+      "lines": 0,
+      "sourceFiles": 1097
+    },
+    "focusedFrontend": {
+      "files": 8,
+      "tests": 164,
+      "evidence": "focused-tests.log"
+    },
+    "fullFrontend": {
+      "vitestFiles": 370,
+      "vitestTests": 3679,
+      "nodeRunnerTests": 9,
+      "evidence": "frontend-tests-final.log"
+    },
+    "typecheck": {
+      "exitCode": 0,
+      "errors": 0,
+      "warnings": 3,
+      "warningSources": [
+        "DocCodeBlock.svelte",
+        "WizardStep5Config.svelte",
+        "ProjectUsageTable.svelte"
+      ],
+      "evidence": "frontend-check-final.log"
+    },
+    "productionBuild": {
+      "status": "passed",
+      "evidence": "artifact://222",
+      "adapter": "@sveltejs/adapter-node"
+    },
+    "architecture": {
+      "latestFetchedDev": "08e272422cd855b30d39929c24993047ec0cd6ad",
+      "merge": "Already up to date; ancestry check exit 0",
+      "workingGuard": "checked working source_sha256=f20bc41cf8e1208a35a184b3e838da48e9528b87573785be4ee117b5b00a4d06 files=3057",
+      "stagedGuard": "checked staged source_sha256=f20bc41cf8e1208a35a184b3e838da48e9528b87573785be4ee117b5b00a4d06 files=3057",
+      "realIndexSha256Before": "5647d7cf122f48a0d7e5178a781339923eb8df556b584325d52f095aae57ad7b",
+      "realIndexSha256After": "5647d7cf122f48a0d7e5178a781339923eb8df556b584325d52f095aae57ad7b",
+      "temporaryIndexRemoved": true,
+      "scope": "Current isolated i18n worktree frontend source and affected docs; no real staging, commit or push"
+    }
+  },
+  "browser": {
+    "source": {
+      "languageFlows": 4,
+      "responsiveCases": 224,
+      "locales": [
+        "sw",
+        "nb",
+        "ms",
+        "vi"
+      ],
+      "themes": [
+        "dark",
+        "light"
+      ],
+      "widths": [
+        320,
+        390,
+        767,
+        768,
+        1023,
+        1024,
+        1440
+      ],
+      "surfaces": [
+        "landing",
+        "login",
+        "docs",
+        "console"
+      ],
+      "ssrDocuments": 56,
+      "maxHorizontalOverflow": 0
+    },
+    "compiled": {
+      "responsiveConditions": 192,
+      "locales": [
+        "ko",
+        "en",
+        "ja",
+        "zh-CN",
+        "sw",
+        "nb",
+        "ms",
+        "vi"
+      ],
+      "widths": [
+        320,
+        768,
+        1024
+      ],
+      "themes": [
+        "dark",
+        "light"
+      ],
+      "ssrDocuments": 160,
+      "publicGuides": 15,
+      "maxHorizontalOverflow": 0,
+      "unhandledRuntimeEvents": 0
+    },
+    "nativeNoJavascriptSelections": 4,
+    "shortViewport": {
+      "width": 320,
+      "height": 450,
+      "lastOptionReachable": true
+    },
+    "sharedCookieAndQuery": "Login/docs/Cinder article/synthetic sign-in/reload/console-to-docs/logout retain language; explicit Korean and hydrated docs path/query/fragment verified.",
+    "evidence": "browser-verification.json",
+    "boundary": "Real source and compiled browser surface with synthetic identity/API fixtures. Backend data is deliberately unavailable and creates expected network failures; not a console-error-free, live Keystone/provider or production claim."
+  },
+  "initialEnvironmentFailure": {
+    "observed": "Stale isolated node_modules lacked locked React dependencies: two frontend import-suite failures and missing-module Svelte diagnostics.",
+    "repair": "Owned dev server stopped, then npm ci --no-audit --no-fund succeeded (437 packages). npm/Bun manifests and lock hashes remained unchanged.",
+    "evidence": [
+      "frontend-tests.log",
+      "dependency-refresh.log"
+    ]
+  },
+  "sharedPathMistake": {
+    "note": "Initial translation-worker wrong-root copies and their contemporaneous snapshot-verified cleanup are recorded separately; no further shared-root cleanup was performed during final validation.",
+    "evidence": [
+      "shared-copy-reconciliation.json",
+      "shared-ms-accidental-copies.tar"
+    ],
+    "limit": "Not a claim about all unrelated concurrent changes or unobserved historical content."
+  },
+  "optionalSearchSync": {
+    "status": "not available",
+    "gbrainCliError": "ENOENT"
+  },
+  "proofDirectory": "/Users/pieroot/.local/share/afterglow-proofs/add-sw-nb-ms-vi-20261016",
+  "notPerformed": [
+    "native-speaker translation approval",
+    "full npm run test:gate",
+    "live provider or production authentication",
+    "commit",
+    "push",
+    "deployment"
+  ]
+}

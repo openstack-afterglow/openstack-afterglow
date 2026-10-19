@@ -20,18 +20,23 @@ Afterglow의 사용자 문서 경로는 **배포된 콘솔 origin의 `/docs`**�
 
 ## 지원 언어
 
-전체 15개 가이드는 한국어, 영어, 일본어, 중국어 간체로 읽을 수 있다. 문서 헤더의 언어 메뉴에서 선택하며 본문·탐색·검색·목차·명령 복사·오류 안내가 함께 바뀐다.
+전체 15개 가이드는 한국어, 영어, 일본어, 중국어 간체, 스와힐리어(탄자니아), 노르웨이어 보크몰, 말레이어(말레이시아), 베트남어, 벵골어(방글라데시)로 읽을 수 있다. 문서 헤더의 언어 메뉴에서 선택하며 본문·탐색·검색·목차·명령 복사·오류 안내가 함께 바뀐다. 추가 언어 번역은 원어민 검수 전 초안이다.
 
 | 언어 | 문서 홈 | 예시 가이드 |
 |---|---|---|
-| 한국어 (기본) | `/docs` | `/docs/manila#mount` |
+| 한국어 (기본) | `/docs?lang=ko` | `/docs/manila?lang=ko#mount` |
 | English | `/docs?lang=en` | `/docs/manila?lang=en#mount` |
 | 日本語 | `/docs?lang=ja` | `/docs/manila?lang=ja#mount` |
 | 简体中文 | `/docs?lang=zh-CN` | `/docs/manila?lang=zh-CN#mount` |
+| Kiswahili | `/docs?lang=sw` | `/docs/manila?lang=sw#mount` |
+| Norsk bokmål | `/docs?lang=nb` | `/docs/manila?lang=nb#mount` |
+| Bahasa Melayu | `/docs?lang=ms` | `/docs/manila?lang=ms#mount` |
+| Tiếng Việt | `/docs?lang=vi` | `/docs/manila?lang=vi#mount` |
+| বাংলা | `/docs?lang=bn` | `/docs/manila?lang=bn#mount` |
 
-언어 전환은 현재 문서·목차 fragment·기존 query를 보존한다. 문서 내부 링크는 선택 언어와 튜토리얼 context를 유지한다. 지원하지 않는 `lang` 값이나 값이 없는 URL은 한국어로 표시하며 브라우저 언어에 따른 자동 redirect·계정 언어 저장은 하지 않는다. 공유할 때 `lang` query를 포함한 URL을 사용한다. 최초 SSR과 client navigation의 문서 언어를 모두 설정한다. 문서·메인·로그인·콘솔은 같은 테마형 메뉴를 사용하지만, 문서의 URL 언어는 앱의 선택 언어 쿠키를 덮어쓰지 않는다. 메뉴는 방향키·Home/End·Enter·Escape와 밖 클릭·Tab 이탈을 지원하며 앱 항목은 Space도 지원한다. 문서 선택은 JavaScript 없이도 동작한다.
+문서·메인·로그인·콘솔은 같은 테마형 메뉴와1년간 유지되는 `afterglow_locale` 쿠키를 사용한다. 유효한 명시적 `lang`은 쿠키보다 우선하고 실제 문서 탐색에서 공용 선호를 갱신한다. 언어 없는 문서·지원하지 않는 `lang`은 저장된 유효한 쿠키를 따르며, 둘 다 없으면 한국어다. Preload는 선호를 바꾸지 않는다. 브라우저 언어에 따른 자동 redirect·계정 언어 저장은 하지 않는다. 공유할 때는 한국어도 포함하여 `lang` query를 명시한다. 최초 SSR과 client navigation의 문서 언어를 모두 설정한다. 언어 링크는 JavaScript 없이도 현재 문서·기존 query를 유지하며, hydration 뒤에는 목차 fragment도 유지한다. 문서 내부 링크는 선택 언어와 튜토리얼 context를 유지한다. 메뉴는 방향키·Home/End·Enter·Escape와 밖 클릭·Tab 이탈을 지원하며 앱 항목은 Space도 지원한다.
 
-검색은 선택 언어의 전체 본문과 키워드를 대상으로 한다. 명령의 API·상태·환경변수·필드·경로와 최종 code bytes는 네 언어가 공유하며 실행 예시 placeholder와 필수 변수 진단은 중립적인 영어를 쓴다. 실제 한국어 콘솔 버튼을 찾기 위해 일부 번역 문장에서 원래 UI 이름을 번역 뒤 괄호에 함께 표시한다.
+검색은 선택 언어의 전체 본문과 키워드를 대상으로 한다. 명령의 API·상태·환경변수·필드·경로와 최종 code bytes는 모든 언어가 공유하며 실행 예시 placeholder와 필수 변수 진단은 중립적인 영어를 쓴다. 실제 한국어 콘솔 버튼을 찾기 위해 일부 번역 문장에서 원래 UI 이름을 번역 뒤 괄호에 함께 표시한다.
 
 ## 문서 경로
 
@@ -103,9 +108,9 @@ Afterglow의 사용자 문서 경로는 **배포된 콘솔 origin의 `/docs`**�
 - `locales.ts`: 지원 언어·URL context·번역된 shell/index/article/copy/error 문구와 카테고리.
 - `mcpGuide.ts`: 외부 AI의 인바운드 MCP OAuth·개인 키·연결 확인과 권한·만료·회수 경계.
 - `translate.ts`: reader-facing 필드 변환; 누락·빈 번역은 오류로 처리하고 한국어 본문으로 조용히 fallback하지 않는다.
-- `translations/{en,ja,zh-CN}/`: 언어별 guide group dictionary. source literal key를 유지하고 한국어 정본 변경 시 세 언어의 해당 항목도 함께 갱신한다. slug·section ID·link URL·service gate·related slug·실행 code는 번역 대상이 아니다.
+- `translations/{en,ja,zh-CN,sw,nb,ms,vi}/`: 언어별 guide group dictionary. source literal key를 유지하고 한국어 정본 변경 시 모든 번역 언어의 해당 항목도 함께 갱신한다. slug·section ID·link URL·service gate·related slug·실행 code는 번역 대상이 아니다.
 - `frontend/src/routes/docs/`: 공개 shell·목록·서비스 article·404 화면.
 - `frontend/src/lib/components/docs/DocScreenshot.svelte`: section/step 그림의 공통 figure·대체 텍스트·설명·원본 링크·반응형 표시.
-- `frontend/static/docs/screenshots/`: 개인정보를 제거한 공개 WebP. 한국어 정본의 `screenshots`에 연결하고 alt·caption 변경은 세 번역 dictionary에 함께 반영한다. 경로·원본 크기는 번역하지 않는다.
+- `frontend/static/docs/screenshots/`: 개인정보를 제거한 공개 WebP. 한국어 정본의 `screenshots`에 연결하고 alt·caption 변경은 모든 번역 dictionary에 함께 반영한다. 경로·원본 크기는 번역하지 않는다.
 
 본문은 Svelte text node로 escape되며 raw HTML을 주입하지 않는다. 외부 URL·내부 콘솔 링크·명령을 추가할 때 현재 route/component/API를 확인하고 실 credential, 운영 내부 주소, 개인 데이터를 예시에 넣지 않는다. 서비스의 API 계약은 [API 참고 자료](api-reference.md), 시각 계약은 [디자인 시스템](https://github.com/openstack-afterglow/openstack-afterglow/blob/dev/DESIGN.md)을 따른다. 사용자 문서 변경만으로 API 실행·데이터 플레인·운영 배포 성공을 기록하지 않는다.

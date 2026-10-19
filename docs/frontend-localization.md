@@ -6,7 +6,7 @@ nav_order: 9
 
 # 프론트엔드 번역 참여
 
-Afterglow UI는 한국어(`ko`, 기본·원문), 영어(`en`), 일본어(`ja`), 중국어 간체(`zh-CN`)를 지원합니다. 번역은 `frontend/src/lib/i18n/messages/<locale>/<namespace>.json`에서 같은 키로 대응합니다. 영어는 한국어를 읽지 못하는 번역자의 참고 언어입니다. 리소스 이름·사용자 입력·API 식별자·제품명은 번역하지 않습니다. 서버 오류, 운영자가 작성한 사이트 설명·공지, 튜토리얼의 모의 서버 데이터는 받은 내용을 유지합니다.
+Afterglow UI는 한국어(`ko`, 기본·원문), 영어(`en`), 일본어(`ja`), 중국어 간체(`zh-CN`), 스와힐리어(`sw`, 탄자니아), 노르웨이어 보크몰(`nb`), 말레이어(`ms`, 말레이시아), 베트남어(`vi`), 벵골어(`bn`, 방글라데시)를 지원합니다. 선택 메뉴에는 한국어, English, 日本語, 简体中文, Kiswahili, Norsk bokmål, Bahasa Melayu, Tiếng Việt, বাংলা를 표시합니다. 추가 언어의 숫자·날짜 지역 서식은 각각 `sw-TZ`, `nb-NO`, `ms-MY`, `vi-VN`, `bn-BD`입니다. 번역은 `frontend/src/lib/i18n/messages/<locale>/<namespace>.json`에서 같은 키로 대응합니다. 영어는 한국어를 읽지 못하는 번역자의 참고 언어입니다. 리소스 이름·사용자 입력·API 식별자·제품명은 번역하지 않습니다. 서버 오류, 운영자가 작성한 사이트 설명·공지, 튜토리얼의 모의 서버 데이터는 받은 내용을 유지합니다.
 
 [English guide](en/frontend-localization.md) · [아키텍처](../ARCHITECTURE.md) · [용어집](../frontend/src/lib/i18n/glossary.csv)
 
@@ -43,7 +43,7 @@ npm --prefix frontend run i18n:format
 npm --prefix frontend run i18n:check
 ```
 
-번역 파일과 해당 `review/<locale>.json`을 함께 PR에 포함합니다. 검수 명령은 선택한 번역의 문법·변수·태그 오류를 거부하고 검수 기록을 일부만 변경하지 않습니다. `--reviewed`는 사람이 의미·용어·맥락을 확인했다는 선언이며 자동 번역 품질 인증이 아닙니다. 초기 en/ja/zh-CN 번역은 검수 전 초안입니다.
+번역 파일과 해당 `review/<locale>.json`을 함께 PR에 포함합니다. 검수 명령은 선택한 번역의 문법·변수·태그 오류를 거부하고 검수 기록을 일부만 변경하지 않습니다. `--reviewed`는 사람이 의미·용어·맥락을 확인했다는 선언이며 자동 번역 품질 인증이 아닙니다. 초기 번역은 검수 전 초안입니다. 추가 sw/nb/ms/vi/bn는 기계 작성 초안이며 원어민 검수 전이므로 검수 manifest를 빈 상태로 둡니다.
 
 ## 검수 상태
 
@@ -69,7 +69,7 @@ npm --prefix frontend run i18n:check
 
 ## How to: 화면에서 번역 키 찾기
 
-문서·메인·로그인·콘솔 헤더는 같은 테마형 언어 메뉴를 사용합니다. 펼친 메뉴에는 각 언어의 모국어 이름을 표시하며, 좁은 헤더의 버튼은 globe와 짧은 언어 코드를 사용합니다. 방향키·Home/End로 항목을 이동하고 Enter로 선택하며 앱 항목은 Space도 지원합니다. Escape는 버튼으로 focus를 돌려주고 밖 클릭·Tab 이탈은 메뉴를 닫습니다. 앱 선택은 `afterglow_locale` 쿠키에1년간 저장되고 새로고침의 서버 HTML도 같은 언어로 렌더링됩니다. 문서는 실제 `?lang=` 링크로 현재 경로·query·fragment를 유지하고 앱 쿠키를 바꾸지 않으며 JavaScript 없이도 선택할 수 있습니다. 브라우저 언어를 자동 적용하지 않고 선택이 없으면 한국어입니다.
+문서·메인·로그인·콘솔 헤더는 같은 테마형 언어 메뉴와 `afterglow_locale` 쿠키를 사용합니다. 펼친 메뉴에는 아홉 언어의 모국어 이름을 표시하며, 좁은 헤더의 버튼은 globe와 짧은 언어 코드를 사용합니다. 방향키·Home/End로 항목을 이동하고 Enter로 선택하며 앱 항목은 Space도 지원합니다. Escape는 버튼으로 focus를 돌려주고 밖 클릭·Tab 이탈은 메뉴를 닫습니다. 선택은1년·path `/`·SameSite=Lax(HTTPS에서 Secure) 쿠키로 저장되고 새로고침의 서버 HTML도 같은 언어로 렌더링됩니다. 문서의 유효한 명시적 `?lang=`은 쿠키보다 우선하고 실제 탐색에서 공용 선호를 갱신합니다. 언어 없는 문서 링크는 쿠키를 따르며 preload는 선호를 바꾸지 않습니다. 문서의 실제 언어 링크는 JavaScript 없이도 현재 문서·reader query를 유지하며, hydration 뒤에는 fragment도 유지합니다. 브라우저 언어를 자동 적용하지 않고 유효한 선택·쿠키가 없으면 한국어입니다. 한국어를 명시적으로 공유할 때도 `?lang=ko`를 사용합니다.
 
 개발자 도구 콘솔에서 다음을 실행하고 새로고침하면 문구 대신 `namespace:key`가 표시됩니다.
 
@@ -101,11 +101,11 @@ npm --prefix frontend run i18n:check
 npm --prefix frontend run i18n:scan
 ```
 
-병합 직후 검사는 신규 누락과 작업 범위를 확인하는 기준입니다. 누락을 갱신한 뒤 검사·관련 테스트·실제 네 언어 화면 검증을 다시 완료합니다. 완료·push 직전에 다시 fetch하여 dev가 진행했으면 병합·번역·검증을 반복하고, OpenSpec과 보고에 실제 반영한 dev SHA를 기록합니다. 상세 절차는 [에이전트 개발 규정](agent-development-guide.md)의 최신 dev 기준을 따릅니다. 스프레드시트 기여자에게는 이 기준으로 유지보수자가 export한 최신 CSV를 제공합니다.
+병합 직후 검사는 신규 누락과 작업 범위를 확인하는 기준입니다. 누락을 갱신한 뒤 검사·관련 테스트·실제 지원 언어 화면 검증을 다시 완료합니다. 완료·push 직전에 다시 fetch하여 dev가 진행했으면 병합·번역·검증을 반복하고, OpenSpec과 보고에 실제 반영한 dev SHA를 기록합니다. 상세 절차는 [에이전트 개발 규정](agent-development-guide.md)의 최신 dev 기준을 따릅니다. 스프레드시트 기여자에게는 이 기준으로 유지보수자가 export한 최신 CSV를 제공합니다.
 
 ## 개발자 계약
 
-`ns/<namespace>.ts`는 한국어 JSON 키를 타입으로 쓰고 네 언어 JSON을 eager glob으로 가져옵니다. 해당 namespace를 가져온 코드의 번들에 카탈로그가 포함됩니다. `t()`는 markup, `$derived`, getter 또는 이벤트 호출 시점에 사용합니다. 모듈 최상위나 SvelteKit `load`에서는 호출하지 않습니다. 서버 locale은 루트 layout의 동기 render 시작에서 초기화하므로 render 밖에서 번역하면 요청 간 언어가 섞일 수 있습니다.
+`ns/<namespace>.ts`는 한국어 JSON 키를 타입으로 쓰고 지원하는 아홉 언어 JSON을 eager glob으로 가져옵니다. 해당 namespace를 가져온 코드의 번들에 카탈로그가 포함됩니다. fallback은 `ja/zh-CN/sw/nb/ms/vi/bn → en → ko`, `en → ko`입니다. `t()`는 markup, `$derived`, getter 또는 이벤트 호출 시점에 사용합니다. 모듈 최상위나 SvelteKit `load`에서는 호출하지 않습니다. 서버 locale은 루트 layout의 동기 render 시작에서 초기화하므로 render 밖에서 번역하면 요청 간 언어가 섞일 수 있습니다.
 
 ```svelte
 <script lang="ts">
@@ -125,7 +125,7 @@ npm --prefix frontend run i18n:scan
 npm --prefix frontend run i18n:scan
 ```
 
-의도적인 서버 데이터·파싱 정규식·운영자 설정은 `hardcoded-text-allowlist.json`에 정확한 줄과 이유를 기록합니다. 파일 전체 허용으로 UI 누락을 숨기지 않습니다. 유일한 예외는 `/docs`의 한국어 정본 가이드(`src/lib/docs/*Guides.ts`·`gettingStarted.ts`), 한국어 원문을 lookup key로 쓰는 `src/lib/docs/translations/<locale>/` 사전, 그리고 `src/lib/docs/locales.ts`의 언어별 docs UI 사전입니다. 이 파일들은 `translateDocGuide`·`docsMessages`를 거쳐 네 언어로 표시되는 데이터이므로 `"lines": "all"`로 허용합니다. 이 검사는 한글 잔존을 찾으며 하드코딩된 영어까지 자동으로 판별하지는 않습니다.
+의도적인 서버 데이터·파싱 정규식·운영자 설정은 `hardcoded-text-allowlist.json`에 정확한 줄과 이유를 기록합니다. 파일 전체 허용으로 UI 누락을 숨기지 않습니다. 유일한 예외는 `/docs`의 한국어 정본 가이드(`src/lib/docs/*Guides.ts`·`gettingStarted.ts`), 한국어 원문을 lookup key로 쓰는 `src/lib/docs/translations/<locale>/` 사전, 그리고 `src/lib/docs/locales.ts`의 언어별 docs UI 사전입니다. 이 파일들은 `translateDocGuide`·`docsMessages`를 거쳐 지원 언어로 표시되는 데이터이므로 `"lines": "all"`로 허용합니다. 이 검사는 한글 잔존을 찾으며 하드코딩된 영어까지 자동으로 판별하지는 않습니다.
 
 Typed public docs의 한국어 정본, 한국어 lookup key를 쓰는 번역 dictionary 및 typed 언어별 docs UI dictionary는 별도 `translateDocGuide`/docs locale 경로로 렌더링하므로 지정된 문서 데이터 파일만 사유를 기록해 허용한다. 이 예외를 Svelte UI·loading/접근성 label·호스트 제거 안전 문구에 확장하지 않는다.
 

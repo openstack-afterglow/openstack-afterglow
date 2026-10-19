@@ -37,7 +37,7 @@
 	import { cloudShell } from '$lib/stores/cloudShell.svelte';
 	import { t } from '$lib/i18n/ns/shell';
 	import { t as tn } from '$lib/i18n/ns/nav';
-	import { getLocale, initLocale, restoreKeyDebugMode } from '$lib/i18n/runtime.svelte';
+	import { getLocale, initLocale, restoreKeyDebugMode, setLocale } from '$lib/i18n/runtime.svelte';
 	import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
 	import { isDocsPath } from '$lib/docs/paths';
 	import { documentationNavItem } from '$lib/config/nav';
@@ -46,6 +46,7 @@
 	let { children, data } = $props();
 	// Must run before any child renders: SSR and hydration both translate with the request locale.
 	initLocale(untrack(() => data.locale));
+	$effect.pre(() => { setLocale(data.locale); });
 	const initialSiteConfig = untrack(() => data.siteConfig);
 	const initialMockup = untrack(() => data.mockup);
 	let themeReady = $state(false);

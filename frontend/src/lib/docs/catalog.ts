@@ -50,6 +50,11 @@ const translationLoaders = {
 	en: () => import('./translations/en'),
 	ja: () => import('./translations/ja'),
 	'zh-CN': () => import('./translations/zh-CN'),
+	sw: () => import('./translations/sw'),
+	nb: () => import('./translations/nb'),
+	ms: () => import('./translations/ms'),
+	vi: () => import('./translations/vi'),
+	bn: () => import('./translations/bn'),
 };
 const koreanCatalog = Promise.resolve(docGuides);
 const catalogs = new Map<DocsLocale, Promise<DocGuide[]>>();

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import { invalidate } from '$app/navigation';
 	import { LOCALES, LOCALE_NATIVE_NAMES, LOCALE_SHORT_NAMES, type Locale } from './locales';
 	import { getLocale, setLocale } from './runtime.svelte';
 	import { t } from './ns/shell';
@@ -9,7 +10,7 @@
 		id: string;
 		/** `compact` fits app chrome; `labelled` shows the native language name. */
 		variant?: 'compact' | 'labelled';
-		/** Documentation supplies URL-owned language links instead of changing the app cookie. */
+		/** Documentation supplies language links that update the shared preference on navigation. */
 		locale?: Locale;
 		label?: string;
 		href?: (locale: Locale) => string;
@@ -50,6 +51,7 @@
 			// Focus restoration is best effort; changing language must not fail.
 		}
 		setLocale(value);
+		await invalidate('afterglow:locale');
 		await tick();
 		if (trigger?.isConnected) {
 			trigger.focus();

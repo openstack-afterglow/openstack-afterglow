@@ -1,119 +1,119 @@
-ko,en,ja,zh-CN,note
-Afterglow,Afterglow,Afterglow,Afterglow,Product name. Never translate.
-OpenStack,OpenStack,OpenStack,OpenStack,Never translate. Service names Nova/Neutron/Cinder/Glance/Keystone/Manila/Swift/Trove/Magnum/Zun/Octavia/Barbican stay in Latin script.
-"Lumen, Waygate, Drover, Palimpsest",Lumen / Waygate / Drover / Palimpsest,Lumen / Waygate / Drover / Palimpsest,Lumen / Waygate / Drover / Palimpsest,Sibling service product names. Never translate.
-Cloud Shell,Cloud Shell,Cloud Shell,Cloud Shell,Feature name. Keep in Latin script.
-대시보드,Dashboard,ダッシュボード,仪表盘,
-콘솔,Console,コンソール,控制台,
-프로젝트,Project,プロジェクト,项目,Keystone project (tenant).
-도메인,Domain,ドメイン,域,Keystone domain.
-사용자,User,ユーザー,用户,
-그룹,Group,グループ,组,Keystone group.
-역할,Role,ロール,角色,
-관리자,Administrator / Admin,管理者,管理员,"Use ""Admin"" only in compact labels such as ""Admin mode""."
-시스템 관리자,System administrator,システム管理者,系统管理员,
-쿼터,Quota,クォータ,配额,
-사용량,Usage,使用量,用量,
-인스턴스,Instance,インスタンス,实例,Nova server. Prefer over VM except where the Korean says VM.
-VM,VM,VM,虚拟机,Keep VM in en/ja.
-플레이버 / Flavor,Flavor,フレーバー,实例类型,Nova flavor.
-이미지,Image,イメージ,镜像,Glance image. For generated pictures (Studio) use 画像 / 图像.
-스냅샷,Snapshot,スナップショット,快照,
-키페어,Key pair,キーペア,密钥对,
-하이퍼바이저,Hypervisor,ハイパーバイザー,虚拟机管理器,
-가용 영역,Availability zone,アベイラビリティーゾーン,可用域,
-호스트,Host,ホスト,主机,
-볼륨,Volume,ボリューム,卷,Cinder volume.
-볼륨 타입,Volume type,ボリュームタイプ,卷类型,
-백업,Backup,バックアップ,备份,
-부팅 가능,Bootable,ブート可能,可启动,
-연결 / 분리,Attach / Detach,接続 / 切断,挂载 / 卸载,Volume to instance.
-파일 스토리지,File storage,ファイルストレージ,文件存储,Manila.
-공유 (Share),Share,共有,共享,Manila share.
-Share 네트워크,Share network,共有ネットワーク,共享网络,
-오브젝트 스토리지,Object storage,オブジェクトストレージ,对象存储,Swift.
-버킷,Bucket,バケット,存储桶,Swift container shown as bucket.
-오브젝트,Object,オブジェクト,对象,
-네트워크,Network,ネットワーク,网络,
-서브넷,Subnet,サブネット,子网,
-포트,Port,ポート,端口,
-라우터,Router,ルーター,路由器,
-게이트웨이,Gateway,ゲートウェイ,网关,
-인터페이스,Interface,インターフェース,接口,
-Floating IP,Floating IP,Floating IP,浮动 IP,Keep Latin in ja.
-보안 그룹,Security group,セキュリティーグループ,安全组,
-보안 그룹 규칙,Security group rule,セキュリティーグループルール,安全组规则,
-인바운드 / 아웃바운드,Inbound / Outbound,インバウンド / アウトバウンド,入站 / 出站,
-로드밸런서,Load balancer,ロードバランサー,负载均衡器,
-리스너,Listener,リスナー,监听器,
-풀,Pool,プール,池,
-멤버,Member,メンバー,成员,
-헬스 모니터,Health monitor,ヘルスモニター,健康检查,
-토폴로지,Topology,トポロジー,拓扑,
-트래픽,Traffic,トラフィック,流量,
-컨테이너,Container,コンテナー,容器,
-클러스터,Cluster,クラスター,集群,
-노드,Node,ノード,节点,
-템플릿,Template,テンプレート,模板,
-Kubernetes / K8s / k3s,Kubernetes / K8s / k3s,Kubernetes / K8s / k3s,Kubernetes / K8s / k3s,Never translate.
-kubeconfig,kubeconfig,kubeconfig,kubeconfig,Never translate.
-데이터베이스,Database,データベース,数据库,
-DB 인스턴스,DB instance,DBインスタンス,数据库实例,Trove.
-비밀 / 시크릿,Secret,シークレット,机密,Barbican secret.
-Key Manager,Key Manager,Key Manager,密钥管理,Barbican service label.
-라이브러리,Library,ライブラリ,库,Palimpsest library.
-레이어,Layer,レイヤー,层,Palimpsest layer.
-빌드,Build,ビルド,构建,
-배포,Deployment / Deploy,デプロイ,部署,
-모니터링,Monitoring,モニタリング,监控,
-알림,Notification,通知,通知,
-공지,Announcement,お知らせ,公告,
-이벤트,Event,イベント,事件,
-활동,Activity,アクティビティ,活动,
-고아 리소스,Orphaned resource,孤立リソース,孤立资源,
-리소스,Resource,リソース,资源,
-상태,Status,状態,状态,
-설정,Settings,設定,设置,
-기본 설정,General settings,基本設定,基本设置,
-계정,Account,アカウント,账户,
-로그인 / 로그아웃,Sign in / Sign out,ログイン / ログアウト,登录 / 退出登录,
-세션,Session,セッション,会话,
-토큰,Token,トークン,令牌,
-API 키,API key,APIキー,API 密钥,
-인증,Authentication,認証,认证,
-권한,Permission,権限,权限,
-승인,Approve / Approval,承認,批准,
-초대,Invitation,招待,邀请,
-튜토리얼,Tutorial,チュートリアル,教程,
-베타,Beta,ベータ,测试版,
-채팅 / 대화,Chat / Conversation,チャット / 会話,对话,
-모델,Model,モデル,模型,
-도구,Tool,ツール,工具,
-크레딧,Credit,クレジット,额度,Lumen usage credit.
-생성,Create,作成,创建,Button verb.
-삭제,Delete,削除,删除,
-편집 / 수정,Edit,編集,编辑,
-저장,Save,保存,保存,
-취소,Cancel,キャンセル,取消,
-확인,Confirm / OK,確認 / OK,确认,
-닫기,Close,閉じる,关闭,
-새로고침,Refresh,更新,刷新,
-검색,Search,検索,搜索,
-필터,Filter,フィルター,筛选,
-정렬,Sort,並べ替え,排序,
-다시 시도,Try again,再試行,重试,
-복사,Copy,コピー,复制,
-다운로드 / 업로드,Download / Upload,ダウンロード / アップロード,下载 / 上传,
-시작 / 중지 / 재시작,Start / Stop / Restart,起動 / 停止 / 再起動,启动 / 停止 / 重启,Instance actions.
-실행 중,Running,実行中,运行中,
-대기 중,Waiting / Pending,待機中,等待中,
-오류,Error,エラー,错误,
-실패,Failed,失敗,失败,
-완료,Complete / Completed,完了,已完成,
-무제한,Unlimited,無制限,无限制,
-사용 가능,Available,利用可能,可用,
-사용 불가,Unavailable,利用不可,不可用,
-선택,Select,選択,选择,
-전체,All,すべて,全部,
-없음,None,なし,无,
-GiB / MB / vCPU,GiB / MB / vCPU,GiB / MB / vCPU,GiB / MB / vCPU,Units are never translated.
+ko,en,ja,zh-CN,sw,nb,ms,vi,bn,note
+Afterglow,Afterglow,Afterglow,Afterglow,Afterglow,Afterglow,Afterglow,Afterglow,Afterglow,Product name. Never translate.
+OpenStack,OpenStack,OpenStack,OpenStack,OpenStack,OpenStack,OpenStack,OpenStack,OpenStack,Never translate. Service names Nova/Neutron/Cinder/Glance/Keystone/Manila/Swift/Trove/Magnum/Zun/Octavia/Barbican stay in Latin script.
+"Lumen, Waygate, Drover, Palimpsest",Lumen / Waygate / Drover / Palimpsest,Lumen / Waygate / Drover / Palimpsest,Lumen / Waygate / Drover / Palimpsest,Lumen / Waygate / Drover / Palimpsest,Lumen / Waygate / Drover / Palimpsest,Lumen / Waygate / Drover / Palimpsest,Lumen / Waygate / Drover / Palimpsest,Lumen / Waygate / Drover / Palimpsest,Sibling service product names. Never translate.
+Cloud Shell,Cloud Shell,Cloud Shell,Cloud Shell,Cloud Shell,Cloud Shell,Cloud Shell,Cloud Shell,Cloud Shell,Feature name. Keep in Latin script.
+대시보드,Dashboard,ダッシュボード,仪表盘,Dashibodi,Dashbord,Papan pemuka,Bảng điều khiển,ড্যাশবোর্ড,
+콘솔,Console,コンソール,控制台,Konsoli,Konsoll,Konsol,Bảng điều khiển,কনসোল,
+프로젝트,Project,プロジェクト,项目,Mradi,Prosjekt,Projek,Dự án,প্রকল্প,Keystone project (tenant).
+도메인,Domain,ドメイン,域,Kikoa,Domene,Domain,Miền,ডোমেইন,Keystone domain.
+사용자,User,ユーザー,用户,Mtumiaji,Bruker,Pengguna,Người dùng,ব্যবহারকারী,
+그룹,Group,グループ,组,Kikundi,Gruppe,Kumpulan,Nhóm,গ্রুপ,Keystone group.
+역할,Role,ロール,角色,Jukumu,Rolle,Peranan,Vai trò,ভূমিকা,
+관리자,Administrator / Admin,管理者,管理员,Msimamizi,Administrator,Pentadbir,Quản trị viên,প্রশাসক,"Use ""Admin"" only in compact labels such as ""Admin mode""."
+시스템 관리자,System administrator,システム管理者,系统管理员,Msimamizi wa mfumo,Systemadministrator,Pentadbir sistem,Quản trị viên hệ thống,সিস্টেম প্রশাসক,
+쿼터,Quota,クォータ,配额,Kiwango cha mgao,Kvote,Kuota,Hạn ngạch,কোটা,
+사용량,Usage,使用量,用量,Matumizi,Forbruk,Penggunaan,Mức sử dụng,ব্যবহার,
+인스턴스,Instance,インスタンス,实例,Instansi,Instans,Instans,Phiên bản máy,ইনস্ট্যান্স,Nova server. Prefer over VM except where the Korean says VM.
+VM,VM,VM,虚拟机,VM,VM,VM,VM,VM,Keep VM in en/ja/sw/nb/ms/vi.
+플레이버 / Flavor,Flavor,フレーバー,实例类型,Flavor,Instanstype,Flavor,Cấu hình máy,ফ্লেভার,Nova flavor.
+이미지,Image,イメージ,镜像,Image,Avbild,Imej,Ảnh máy,ইমেজ,Glance image. For generated pictures (Studio) use localized picture terminology.
+스냅샷,Snapshot,スナップショット,快照,Nakala ya muda,Øyeblikksbilde,Petikan,Bản chụp nhanh,স্ন্যাপশট,
+키페어,Key pair,キーペア,密钥对,Jozi ya funguo,Nøkkelpar,Pasangan kunci,Cặp khóa,কী-পেয়ার,
+하이퍼바이저,Hypervisor,ハイパーバイザー,虚拟机管理器,Hypervisor,Hypervisor,Hipervisor,Trình giám sát máy ảo,হাইপারভাইজর,
+가용 영역,Availability zone,アベイラビリティーゾーン,可用域,Eneo la upatikanaji,Tilgjengelighetssone,Zon ketersediaan,Vùng sẵn sàng,অ্যাভেইলেবিলিটি জোন,
+호스트,Host,ホスト,主机,Host,Vert,Hos,Máy chủ,হোস্ট,
+볼륨,Volume,ボリューム,卷,Volumu,Volum,Volum,Ổ đĩa,ভলিউম,Cinder volume.
+볼륨 타입,Volume type,ボリュームタイプ,卷类型,Aina ya volumu,Volumtype,Jenis volum,Loại ổ đĩa,ভলিউমের ধরন,
+백업,Backup,バックアップ,备份,Nakala rudufu,Sikkerhetskopi,Sandaran,Bản sao lưu,ব্যাকআপ,
+부팅 가능,Bootable,ブート可能,可启动,Inaweza kuwashwa,Oppstartbar,Boleh but,Có thể khởi động,বুটযোগ্য,
+연결 / 분리,Attach / Detach,接続 / 切断,挂载 / 卸载,Ambatisha / Tenganisha,Koble til / Koble fra,Lampirkan / Tanggalkan,Gắn / Tháo,সংযুক্ত করুন / বিচ্ছিন্ন করুন,Volume to instance.
+파일 스토리지,File storage,ファイルストレージ,文件存储,Hifadhi ya faili,Fillagring,Storan fail,Lưu trữ tệp,ফাইল স্টোরেজ,Manila.
+공유 (Share),Share,共有,共享,Share,Deling,Perkongsian,Tài nguyên chia sẻ,শেয়ার,Manila share.
+Share 네트워크,Share network,共有ネットワーク,共享网络,Mtandao wa share,Delingsnettverk,Rangkaian perkongsian,Mạng chia sẻ,শেয়ার নেটওয়ার্ক,
+오브젝트 스토리지,Object storage,オブジェクトストレージ,对象存储,Hifadhi ya objekti,Objektlagring,Storan objek,Lưu trữ đối tượng,অবজেক্ট স্টোরেজ,Swift.
+버킷,Bucket,バケット,存储桶,Bucket,Bøtte,Baldi,Bucket,বাকেট,Swift container shown as bucket.
+오브젝트,Object,オブジェクト,对象,Objekti,Objekt,Objek,Đối tượng,অবজেক্ট,
+네트워크,Network,ネットワーク,网络,Mtandao,Nettverk,Rangkaian,Mạng,নেটওয়ার্ক,
+서브넷,Subnet,サブネット,子网,Subnet,Undernett,Subnet,Mạng con,সাবনেট,
+포트,Port,ポート,端口,Porti,Port,Port,Cổng,পোর্ট,
+라우터,Router,ルーター,路由器,Kipanga njia,Ruter,Penghala,Bộ định tuyến,রাউটার,
+게이트웨이,Gateway,ゲートウェイ,网关,Lango,Nettverksport,Get laluan,Cổng mạng,গেটওয়ে,
+인터페이스,Interface,インターフェース,接口,Kiolesura,Grensesnitt,Antara muka,Giao diện,ইন্টারফেস,
+Floating IP,Floating IP,Floating IP,浮动 IP,Floating IP,Flytende IP,IP terapung,IP nổi,Floating IP,Keep Latin in ja. Vietnamese Floating IP is not DHCP/dynamic IP.
+보안 그룹,Security group,セキュリティーグループ,安全组,Kikundi cha usalama,Sikkerhetsgruppe,Kumpulan keselamatan,Nhóm bảo mật,নিরাপত্তা গ্রুপ,
+보안 그룹 규칙,Security group rule,セキュリティーグループルール,安全组规则,Kanuni ya kikundi cha usalama,Sikkerhetsgrupperegel,Peraturan kumpulan keselamatan,Quy tắc nhóm bảo mật,নিরাপত্তা গ্রুপের নিয়ম,
+인바운드 / 아웃바운드,Inbound / Outbound,インバウンド / アウトバウンド,入站 / 出站,Inayoingia / Inayotoka,Innkommende / Utgående,Masuk / Keluar,Đến / Đi,ইনবাউন্ড / আউটবাউন্ড,
+로드밸런서,Load balancer,ロードバランサー,负载均衡器,Kisawazisha mzigo,Lastbalanserer,Pengimbang beban,Bộ cân bằng tải,লোড ব্যালান্সার,
+리스너,Listener,リスナー,监听器,Kisikilizaji,Lytter,Pendengar,Trình lắng nghe,লিসেনার,
+풀,Pool,プール,池,Pool,Utvalg,Kumpulan,Nhóm tài nguyên,পুল,
+멤버,Member,メンバー,成员,Mwanachama,Medlem,Ahli,Thành viên,সদস্য,
+헬스 모니터,Health monitor,ヘルスモニター,健康检查,Kifuatiliaji cha afya,Helseovervåker,Pemantau kesihatan,Trình giám sát tình trạng,হেলথ মনিটর,
+토폴로지,Topology,トポロジー,拓扑,Topolojia,Topologi,Topologi,Cấu trúc liên kết,টপোলজি,
+트래픽,Traffic,トラフィック,流量,Trafiki,Trafikk,Trafik,Lưu lượng,ট্রাফিক,
+컨테이너,Container,コンテナー,容器,Kontena,Container,Bekas,Vùng chứa,কনটেইনার,
+클러스터,Cluster,クラスター,集群,Kundi,Klynge,Kluster,Cụm,ক্লাস্টার,
+노드,Node,ノード,节点,Nodi,Node,Nod,Nút,নোড,
+템플릿,Template,テンプレート,模板,Kiolezo,Mal,Templat,Mẫu,টেমপ্লেট,
+Kubernetes / K8s / k3s,Kubernetes / K8s / k3s,Kubernetes / K8s / k3s,Kubernetes / K8s / k3s,Kubernetes / K8s / k3s,Kubernetes / K8s / k3s,Kubernetes / K8s / k3s,Kubernetes / K8s / k3s,Kubernetes / K8s / k3s,Never translate.
+kubeconfig,kubeconfig,kubeconfig,kubeconfig,kubeconfig,kubeconfig,kubeconfig,kubeconfig,kubeconfig,Never translate.
+데이터베이스,Database,データベース,数据库,Hifadhidata,Database,Pangkalan data,Cơ sở dữ liệu,ডেটাবেস,
+DB 인스턴스,DB instance,DBインスタンス,数据库实例,Instansi ya DB,Databaseinstans,Instans DB,Phiên bản cơ sở dữ liệu,DB ইনস্ট্যান্স,Trove.
+비밀 / 시크릿,Secret,シークレット,机密,Siri,Hemmelighet,Rahsia,Bí mật,গোপন মান / সিক্রেট,Barbican secret.
+Key Manager,Key Manager,Key Manager,密钥管理,Key Manager,Nøkkelbehandling,Pengurus kunci,Trình quản lý khóa,কী ম্যানেজার,Barbican service label.
+라이브러리,Library,ライブラリ,库,Maktaba,Bibliotek,Pustaka,Thư viện,লাইব্রেরি,Palimpsest library.
+레이어,Layer,レイヤー,层,Tabaka,Lag,Lapisan,Lớp,লেয়ার,Palimpsest layer.
+빌드,Build,ビルド,构建,Uundaji,Bygg,Binaan,Bản dựng,বিল্ড,
+배포,Deployment / Deploy,デプロイ,部署,Uwekaji,Satt i drift / Sett i drift,Atur guna,Triển khai,ডিপ্লয়মেন্ট / ডিপ্লয় করুন,
+모니터링,Monitoring,モニタリング,监控,Ufuatiliaji,Overvåking,Pemantauan,Giám sát,পর্যবেক্ষণ,
+알림,Notification,通知,通知,Arifa,Varsel,Pemberitahuan,Thông báo,বিজ্ঞপ্তি,
+공지,Announcement,お知らせ,公告,Tangazo,Kunngjøring,Pengumuman,Thông báo chung,ঘোষণা,
+이벤트,Event,イベント,事件,Tukio,Hendelse,Peristiwa,Sự kiện,ইভেন্ট,
+활동,Activity,アクティビティ,活动,Shughuli,Aktivitet,Aktiviti,Hoạt động,কার্যকলাপ,
+고아 리소스,Orphaned resource,孤立リソース,孤立资源,Rasilimali isiyo na mmiliki,Foreldreløs ressurs,Sumber yatim,Tài nguyên mồ côi,মালিকবিহীন রিসোর্স,
+리소스,Resource,リソース,资源,Rasilimali,Ressurs,Sumber,Tài nguyên,রিসোর্স,
+상태,Status,状態,状态,Hali,Status,Status,Trạng thái,অবস্থা,
+설정,Settings,設定,设置,Mipangilio,Innstillinger,Tetapan,Cài đặt,সেটিংস,
+기본 설정,General settings,基本設定,基本设置,Mipangilio ya jumla,Generelle innstillinger,Tetapan umum,Cài đặt chung,সাধারণ সেটিংস,
+계정,Account,アカウント,账户,Akaunti,Konto,Akaun,Tài khoản,অ্যাকাউন্ট,
+로그인 / 로그아웃,Sign in / Sign out,ログイン / ログアウト,登录 / 退出登录,Ingia / Ondoka,Logg inn / Logg ut,Log masuk / Log keluar,Đăng nhập / Đăng xuất,লগইন / লগআউট,
+세션,Session,セッション,会话,Kipindi,Økt,Sesi,Phiên,সেশন,
+토큰,Token,トークン,令牌,Tokeni,Token,Token,Mã thông báo,টোকেন,
+API 키,API key,APIキー,API 密钥,Ufunguo wa API,API-nøkkel,Kunci API,Khóa API,API কী,
+인증,Authentication,認証,认证,Uthibitishaji,Autentisering,Pengesahan,Xác thực,প্রমাণীকরণ,
+권한,Permission,権限,权限,Ruhusa,Tillatelse,Kebenaran,Quyền,অনুমতি,
+승인,Approve / Approval,承認,批准,Idhinisha / Idhini,Godkjenn / Godkjenning,Luluskan / Kelulusan,Phê duyệt,অনুমোদন করুন / অনুমোদন,
+초대,Invitation,招待,邀请,Mwaliko,Invitasjon,Jemputan,Lời mời,আমন্ত্রণ,
+튜토리얼,Tutorial,チュートリアル,教程,Mafunzo,Veiledning,Tutorial,Hướng dẫn,টিউটোরিয়াল,
+베타,Beta,ベータ,测试版,Beta,Beta,Beta,Beta,বেটা,
+채팅 / 대화,Chat / Conversation,チャット / 会話,对话,Mazungumzo,Chat / Samtale,Sembang / Perbualan,Trò chuyện / Hội thoại,চ্যাট / কথোপকথন,
+모델,Model,モデル,模型,Modeli,Modell,Model,Mô hình,মডেল,
+도구,Tool,ツール,工具,Zana,Verktøy,Alat,Công cụ,টুল,
+크레딧,Credit,クレジット,额度,Salio,Kreditt,Kredit,Tín dụng,ক্রেডিট,Lumen usage credit.
+생성,Create,作成,创建,Unda,Opprett,Cipta,Tạo,তৈরি করুন,Button verb.
+삭제,Delete,削除,删除,Futa,Slett,Padam,Xóa,মুছুন,
+편집 / 수정,Edit,編集,编辑,Hariri,Rediger,Sunting,Chỉnh sửa,সম্পাদনা করুন,
+저장,Save,保存,保存,Hifadhi,Lagre,Simpan,Lưu,সংরক্ষণ করুন,
+취소,Cancel,キャンセル,取消,Ghairi,Avbryt,Batal,Hủy,বাতিল করুন,
+확인,Confirm / OK,確認 / OK,确认,Thibitisha,Bekreft,Sahkan,Xác nhận,নিশ্চিত করুন / ঠিক আছে,
+닫기,Close,閉じる,关闭,Funga,Lukk,Tutup,Đóng,বন্ধ করুন,
+새로고침,Refresh,更新,刷新,Onyesha upya,Oppdater,Muat semula,Làm mới,রিফ্রেশ করুন,
+검색,Search,検索,搜索,Tafuta,Søk,Cari,Tìm kiếm,খুঁজুন,
+필터,Filter,フィルター,筛选,Chuja,Filtrer,Tapis,Lọc,ফিল্টার করুন,
+정렬,Sort,並べ替え,排序,Panga,Sorter,Isih,Sắp xếp,সাজান,
+다시 시도,Try again,再試行,重试,Jaribu tena,Prøv igjen,Cuba lagi,Thử lại,আবার চেষ্টা করুন,
+복사,Copy,コピー,复制,Nakili,Kopier,Salin,Sao chép,কপি করুন,
+다운로드 / 업로드,Download / Upload,ダウンロード / アップロード,下载 / 上传,Pakua / Pakia,Last ned / Last opp,Muat turun / Muat naik,Tải xuống / Tải lên,ডাউনলোড / আপলোড,
+시작 / 중지 / 재시작,Start / Stop / Restart,起動 / 停止 / 再起動,启动 / 停止 / 重启,Anza / Simamisha / Anzisha upya,Start / Stopp / Start på nytt,Mula / Henti / Mula semula,Khởi động / Dừng / Khởi động lại,চালু করুন / বন্ধ করুন / পুনরায় চালু করুন,Instance actions.
+실행 중,Running,実行中,运行中,Inaendeshwa,Kjører,Sedang berjalan,Đang chạy,চলছে,
+대기 중,Waiting / Pending,待機中,等待中,Inasubiri,Venter,Menunggu,Đang chờ,অপেক্ষমাণ,
+오류,Error,エラー,错误,Hitilafu,Feil,Ralat,Lỗi,ত্রুটি,
+실패,Failed,失敗,失败,Imeshindwa,Mislyktes,Gagal,Thất bại,ব্যর্থ,
+완료,Complete / Completed,完了,已完成,Imekamilika,Fullført,Selesai,Hoàn tất,সম্পন্ন,
+무제한,Unlimited,無制限,无限制,Bila kikomo,Ubegrenset,Tanpa had,Không giới hạn,সীমাহীন,
+사용 가능,Available,利用可能,可用,Inapatikana,Tilgjengelig,Tersedia,Khả dụng,উপলভ্য,
+사용 불가,Unavailable,利用不可,不可用,Haipatikani,Utilgjengelig,Tidak tersedia,Không khả dụng,অনুপলভ্য,
+선택,Select,選択,选择,Chagua,Velg,Pilih,Chọn,নির্বাচন করুন,
+전체,All,すべて,全部,Zote,Alle,Semua,Tất cả,সব,
+없음,None,なし,无,Hakuna,Ingen,Tiada,Không có,কোনোটিই নয়,
+GiB / MB / vCPU,GiB / MB / vCPU,GiB / MB / vCPU,GiB / MB / vCPU,GiB / MB / vCPU,GiB / MB / vCPU,GiB / MB / vCPU,GiB / MB / vCPU,GiB / MB / vCPU,Units are never translated.

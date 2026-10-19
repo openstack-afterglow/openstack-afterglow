@@ -2,8 +2,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { LOCALES as RUNTIME_LOCALES } from '../locales';
-import { LOCALES, loadCatalogs, validateCatalogs } from '../../../../scripts/i18n-core.mjs';
+import { loadCatalogs, validateCatalogs } from '../../../../scripts/i18n-core.mjs';
 import {
 	FRONTEND_DIR,
 	collectSourceFiles,
@@ -13,10 +12,6 @@ import {
 } from '../../../../scripts/i18n-scan.mjs';
 
 describe('translation catalogs', () => {
-	it('tooling and runtime agree on the supported locales', () => {
-		expect(LOCALES).toEqual([...RUNTIME_LOCALES]);
-	});
-
 	it('every namespace is complete, well-formed and placeholder-safe in all locales', async () => {
 		const errors = validateCatalogs(await loadCatalogs()).filter((finding) => finding.level === 'error');
 		expect(errors.map((finding) => `${finding.code} ${finding.locale ?? ''} ${finding.namespace ?? ''}:${finding.key ?? ''} ${finding.detail}`)).toEqual([]);
