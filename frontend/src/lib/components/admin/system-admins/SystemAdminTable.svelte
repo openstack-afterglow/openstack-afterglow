@@ -4,6 +4,10 @@
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
+  import Pill from '$lib/components/ui/Pill.svelte';
 
 	interface SystemAdmin {
 		user_id: string;
@@ -49,6 +53,21 @@
 	<div class="mb-3 bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{revokeError}</div>
 {/if}
 
+<ResponsiveTable>
+  {#snippet cards()}
+    {#each admins as admin (admin.user_id)}
+      <CompactResourceCard>
+        <div class="flex flex-wrap items-center justify-between gap-2"><strong class="break-words text-sm">{admin.name || '-'}</strong><Pill tone={admin.enabled ? 'success' : 'danger'}>{admin.enabled ? t('systemTable.enabled') : t('systemTable.disabled')}</Pill></div>
+        <p class="break-all text-sm text-ink-2">{admin.email || '-'}</p>
+        {#snippet actions()}
+          <Button variant="danger" size="sm" disabled={admins.length <= 1 || revoking === admin.user_id} title={admins.length <= 1 ? t('systemTable.lastAdminHelp') : undefined} onclick={() => revoke(admin)}>
+            {#if revoking === admin.user_id}<ActivityIndicator size="xs" />{t('systemTable.revoking')}{:else}{t('systemTable.revoke')}{/if}
+          </Button>
+        {/snippet}
+        {#snippet details()}<dl class="text-xs"><dt class="text-ink-2">{t('systemTable.userId')}</dt><dd class="break-all font-mono">{admin.user_id}</dd></dl>{/snippet}
+      </CompactResourceCard>
+    {/each}
+  {/snippet}
 <div class="overflow-x-auto">
 	<table class="w-full text-sm">
 		<thead>
@@ -89,3 +108,4 @@
 		</tbody>
 	</table>
 </div>
+</ResponsiveTable>

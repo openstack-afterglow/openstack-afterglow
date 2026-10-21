@@ -5,6 +5,8 @@
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
   import type { ZunContainer } from '$lib/types/zunContainer';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
   interface Props {
     containers: ZunContainer[];
@@ -45,6 +47,24 @@
     <p class="text-sm">{t('instances.empty.description')}</p>
   </div>
 {:else}
+ <ResponsiveTable>
+  {#snippet cards()}
+   <div class="responsive-card-toolbar flex flex-wrap items-center gap-2 text-sm"><SelectionCheckbox checked={allSelected} indeterminate={indeterminate} disabled={selectionDisabled} ariaLabel={t('instances.selection.allAria')} onclick={onToggleAll} /><span>{t('instances.selection.all')}</span><span aria-live="polite">{t('instances.selection.count', { count: selectedSelectableCount })}</span></div>
+   {#each containers as c (c.uuid)}
+    {@const selectable = selectableIds.has(c.uuid)}
+    <CompactResourceCard selected={selectedIds.has(c.uuid)}>
+     <div class="flex items-start gap-2"><SelectionCheckbox checked={selectedIds.has(c.uuid)} disabled={selectionDisabled || !selectable} unavailable={!selectable} ariaLabel={t('instances.selection.itemAria', { name: c.name })} title={!selectable ? t('instances.selection.unavailable') : undefined} onclick={() => onToggleSelect(c.uuid)} /><button onclick={() => onOpen(c.uuid)} class="min-w-0 break-all text-left font-medium">{c.name}</button><StatusChip status={c.status} /></div>
+     <p class="text-xs text-ink-2">{t('instances.fields.cpu')}: {c.cpu ?? '-'} · {t('instances.fields.memory')}: {c.memory ?? '-'}</p>
+     <p class="text-xs font-mono break-all">{c.image ?? '-'}</p>
+     {#snippet details()}<p class="text-xs break-all">{c.uuid}</p><p class="text-xs">{t('instances.fields.createdAt')}: {c.created_at?.slice(0, 10) ?? '-'}</p>{/snippet}
+     {#snippet actions()}
+      {#if actionTarget === c.uuid}<ActivityIndicator size="xs" label={tc('state.processing')} class="text-xs" />{/if}
+      {#if c.status === 'Running'}<button onclick={() => onStop(c.uuid)} disabled={actionTarget === c.uuid} class="containers-table__stop text-xs disabled:opacity-40">{t('instances.actions.stop')}</button>{:else if c.status === 'Stopped' || c.status === 'Created'}<button onclick={() => onStart(c.uuid)} disabled={actionTarget === c.uuid} class="containers-table__start text-xs disabled:opacity-40">{t('instances.actions.start')}</button>{/if}
+      <button onclick={() => onDelete(c.uuid, c.name)} disabled={actionTarget === c.uuid} class="containers-table__delete text-xs disabled:opacity-40">{t('instances.actions.delete')}</button>
+     {/snippet}
+    </CompactResourceCard>
+   {/each}
+  {/snippet}
   <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead>
@@ -92,6 +112,7 @@
       </tbody>
     </table>
   </div>
+ </ResponsiveTable>
 {/if}
 
 

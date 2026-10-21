@@ -23,6 +23,7 @@ interface PickerUser {
 interface PickerProject {
 	id: string;
 	name: string;
+	domain_id: string;
 }
 
 export function createAdminAnnouncementsController(opts: AdminAnnouncementsControllerOpts) {
@@ -43,8 +44,10 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 	let domainsError = $state('');
 	let domainsLoading = $state(false);
 	let usersGeneration = 0;
+	let projectsGeneration = 0;
 	let disposed = false;
 	let domainsGeneration = 0;
+	let loadGeneration = 0;
 
 	let creating = $state(false);
 	let createError = $state('');
@@ -58,17 +61,20 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 	const tok = opts.token;
 	const pid = opts.projectId;
 
-	async function load() {
+	async function load(owner?: () => boolean) {
+		const generation = ++loadGeneration, token = tok(), projectId = pid();
+		const current = () => !disposed && generation === loadGeneration && token === tok() && projectId === pid();
+		if (!current() || (owner && !owner())) return;
 		if (announcements.length === 0) loading = true;
 		else refreshing = true;
 		error = '';
 		try {
-			announcements = await api.get<AnnouncementAdmin[]>('/api/v1/admin/announcements', tok(), pid());
+			const rows = await api.get<AnnouncementAdmin[]>('/api/v1/admin/announcements', token, projectId);
+			if (current() && (!owner || owner())) announcements = rows;
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : t('announcements.error.loadFailed');
+			if (current() && (!owner || owner())) error = e instanceof ApiError ? e.message : t('announcements.error.loadFailed');
 		} finally {
-			loading = false;
-			refreshing = false;
+			if (current()) { loading = false; refreshing = false; }
 		}
 	}
 
@@ -93,12 +99,13 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 			if (!disposed && generation === domainsGeneration) domainsError = e instanceof ApiError ? e.message : td('scope.loadFailed');
 		} finally { if (!disposed && generation === domainsGeneration) domainsLoading = false; }
 	}
-	function selectDomain(value: string) {
-		usersGeneration += 1;
+	function selectDomain(value: string, target: 'user' | 'project' = 'user') {
+		usersGeneration += 1; projectsGeneration += 1;
 		domainId = domains.some(domain => domain.id === value) ? value : '';
 		allUsers = []; usersError = ''; usersLoading = false;
+		allProjects = []; projectsError = ''; projectsLoading = false;
 		creating = false; createError = '';
-		if (domainId) void loadUsers();
+		if (domainId) { if (target === 'project') void loadProjects(); else void loadUsers(); }
 	}
 	async function loadUsers() {
 		if (!domainId || usersLoading || disposed) return;
@@ -124,25 +131,28 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 			if (owns()) usersError = e instanceof ApiError ? e.message : t('announcements.error.usersLoadFailed');
 		} finally { if (owns()) usersLoading = false; }
 	}
-	function dispose() { disposed = true; usersGeneration += 1; domainsGeneration += 1; allUsers = []; }
+	function dispose() { disposed = true; usersGeneration += 1; projectsGeneration += 1; domainsGeneration += 1; allUsers = []; allProjects = []; }
 
 	async function loadProjects() {
-		if (allProjects.length > 0 || projectsLoading) return;
-		projectsLoading = true;
-		projectsError = '';
+		if (!domainId || projectsLoading || disposed) return;
+		const selectedDomain = domainId, token = tok(), projectId = pid(), generation = ++projectsGeneration;
+		const owns = () => !disposed && selectedDomain === domainId && generation === projectsGeneration && token === tok() && projectId === pid();
+		projectsLoading = true; projectsError = ''; allProjects = [];
 		try {
-			allProjects = await api.get<PickerProject[]>('/api/v1/admin/projects/names', tok(), pid());
-		} catch {
-			projectsError = t('announcements.error.projectsLoadFailed');
-		} finally {
-			projectsLoading = false;
-		}
+			const rows = await api.get<PickerProject[]>(domainPath('/api/v1/admin/projects/names', selectedDomain), token, projectId);
+			if (!owns()) return;
+			if (rows.some(project => project.domain_id !== selectedDomain)) throw new Error(td('scope.invalid'));
+			allProjects = rows;
+		} catch (error) {
+			if (owns()) projectsError = error instanceof ApiError ? error.message : t('announcements.error.projectsLoadFailed');
+		} finally { if (owns()) projectsLoading = false; }
 	}
 
 	async function create(payload: AnnouncementCreatePayload): Promise<boolean> {
-		const selectedDomain = domainId, token = tok(), projectId = pid(), generation = usersGeneration;
-		const owns = () => !disposed && token === tok() && projectId === pid() && (payload.target_type !== 'user' || (selectedDomain === domainId && generation === usersGeneration));
-		if (payload.target_type === 'user' && (!domainId || !allUsers.some(user => user.id === payload.target_id))) {
+		const selectedDomain = domainId, token = tok(), projectId = pid(), generation = usersGeneration, projectGeneration = projectsGeneration;
+		const owns = () => !disposed && token === tok() && projectId === pid() && selectedDomain === domainId && generation === usersGeneration && projectGeneration === projectsGeneration;
+		if ((payload.target_type === 'user' && (!domainId || usersLoading || usersError || !allUsers.some(user => user.id === payload.target_id)))
+			|| (payload.target_type === 'project' && (!domainId || projectsLoading || projectsError || !allProjects.some(project => project.id === payload.target_id && project.domain_id === domainId)))) {
 			createError = td('scope.required');
 			return false;
 		}
@@ -151,8 +161,8 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 		try {
 			await api.post('/api/v1/admin/announcements', payload, token, projectId);
 			if (!owns()) return false;
-			await load();
-			return true;
+			await load(owns);
+			return owns();
 		} catch (e) {
 			if (owns()) createError = e instanceof ApiError ? e.message : t('announcements.error.createFailed');
 			return false;

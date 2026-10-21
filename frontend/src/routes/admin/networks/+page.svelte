@@ -1,14 +1,17 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
-	import { untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { page } from '$app/stores';
 	import { Alert, Button, Field, ResourceToolbar, SelectInput, TextInput } from '$lib/components/ui';
 	import { projectNames } from '$lib/stores/projectNames';
 	import { filterNetworks, type NetworkFlagFilter } from '$lib/components/admin/networks/networkList';
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
-	import { api, ApiError } from '$lib/api/client';
+	import { api as baseApi, ApiError } from '$lib/api/client';
+	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
+	const api = createAdminInventoryApi(baseApi);
+	onDestroy(api.dispose);
 	import type { TsPoint } from '$lib/types/common';
 	import type { AdminNetwork } from '$lib/types/networks';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
@@ -194,6 +197,7 @@
 	<PageHeader breadcrumb={t('networksPage.breadcrumb')} title={t('networksPage.title')}>
 		{#snippet actions()}
 			<button onclick={() => { showCreate = true; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('networksPage.actions.create')}</button>
+			<Button href="/admin/subnets" variant="secondary" size="sm">{t('subnetSection.title')}</Button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -204,6 +208,7 @@
 		{/snippet}
 	</PageHeader>
 
+	{#if !api.scoped}
 	<AdminNetworkTimeseries
 		data={tsData}
 		loading={tsLoading}
@@ -212,6 +217,7 @@
 	/>
 
 	{#if tsError}<Alert tone="warning" title={t('networksPage.timeseriesWarning')}>{tsError}</Alert>{/if}
+	{/if}
 
 	<ResourceToolbar label={t('networksPage.filters.label')} class="mb-3">
 		<Field label={t('networksPage.filters.search')} for="network-search" class="w-full md:flex-1 md:min-w-64">

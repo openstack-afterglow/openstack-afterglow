@@ -114,6 +114,17 @@ describe('frontend health', () => {
 		const directives = (response.headers.get('Content-Security-Policy') ?? '').split(';').map((part) => part.trim());
 		expect(directives).toContain("media-src 'self' blob:");
 	});
+
+	it('allows only the fixed Gravatar image origin without expanding API connection authority', async () => {
+		const { handle } = await loadHandle();
+		const request = createRequest('http://frontend.example.com/login');
+		const response = await handle({ event: request.event, resolve: request.resolve });
+		const directives = (response.headers.get('Content-Security-Policy') ?? '').split(';').map(part => part.trim());
+		const images = directives.find(part => part.startsWith('img-src '))!;
+		expect(images.split(' ')).toContain('https://www.gravatar.com');
+		expect(images).not.toContain('https: ');
+		expect(directives.find(part => part.startsWith('connect-src '))).not.toContain('gravatar');
+	});
 });
 
 describe('authenticated project-independent domain surfaces', () => {

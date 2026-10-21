@@ -1,7 +1,7 @@
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, SecretStr, field_validator, model_validator
 
 
 class IpAddress(BaseModel):
@@ -147,6 +147,9 @@ class GitHubSshProfile(BaseModel):
 
 
 class InstanceInfo(BaseModel):
+    # Native server flavor snapshot is admission-only, never part of the public API/cache.
+    _flavor_snapshot: dict | None = PrivateAttr(default=None)
+
     id: str
     name: str
     status: str
@@ -170,6 +173,20 @@ class InstanceInfo(BaseModel):
     project_id: str | None = None
     fault: dict | None = None  # OpenStack 서버 fault: {"message": "...", "code": 500, "created": "..."}
     host: str | None = None  # 현재 하이퍼바이저 호스트 (관리자 스코프에서만 채워짐)
+
+
+class InstanceNameRequest(BaseModel):
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        # Preserve the draft for the authorized current-name no-op comparison.
+        # Changed names follow the existing Nova naming convention in the endpoint.
+        name = value.strip()
+        if not name:
+            raise ValueError("name must not be empty")
+        return name
 
 
 class CreateInstanceRequest(BaseModel):

@@ -192,9 +192,9 @@ async def login_boundaries(monkeypatch, auth_directory, native_auth):
     native_auth.token = _NATIVE_SECRET
     native_auth.password = _BODY_SECRET
     directory = auth.keystone._get_admin_ks_client()
-    global_users = Mock(wraps=directory.users.list)
+    account_users = Mock(wraps=directory.users.list)
     home_reads = Mock(wraps=directory.domains.get)
-    monkeypatch.setattr(directory.users, "list", global_users)
+    monkeypatch.setattr(directory.users, "list", account_users)
     monkeypatch.setattr(directory.domains, "get", home_reads)
     monkeypatch.setattr(auth.login_guard, "check_locked", AsyncMock())
     monkeypatch.setattr(auth.login_guard, "record_failure", AsyncMock())
@@ -205,7 +205,7 @@ async def login_boundaries(monkeypatch, auth_directory, native_auth):
     monkeypatch.setenv("TOKEN_IP_BINDING_MODE", "off")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield SimpleNamespace(
-            client=client, native=native_auth, directory=directory, global_users=global_users, home_reads=home_reads
+            client=client, native=native_auth, directory=directory, account_users=account_users, home_reads=home_reads
         )
 
 
@@ -226,12 +226,17 @@ async def test_real_login_success_emits_stage_durations_and_server_correlation(d
         assert response.status_code == 200
         payload = response.json()
         assert payload["user_id"] == "test-user-123"
-        assert payload["project_id"] == "test-project-123"
+        assert (payload["identity_domain_id"], payload["domain_id"], payload["project_id"]) == (
+            "accounts",
+            "personal",
+            "personal-test-user-123",
+        )
         assert payload["token"].count(".") == 2
         assert payload["refresh_token"].count(".") == 2
         _assert_no_store(response)
-    assert any(not call.args and not call.kwargs for call in login_boundaries.global_users.call_args_list)
-    assert any(call.args == ("default",) for call in login_boundaries.home_reads.call_args_list)
+    assert any(call.kwargs == {"domain": "accounts"} for call in login_boundaries.account_users.call_args_list)
+    assert all(call.kwargs.get("domain") == "accounts" for call in login_boundaries.account_users.call_args_list)
+    assert any(call.args == ("accounts",) for call in login_boundaries.home_reads.call_args_list)
     for output in outputs():
         rows = _diagnostics(_events(output))
         assert all(row["auth_operation"] == "login" for row in rows)
@@ -352,7 +357,7 @@ async def test_real_login_translated_failures_keep_stage_and_no_store(
     assert response.status_code == 503
     if boundary == "native_exchange":
         assert any(
-            call.kwargs.get("project_id") == "test-project-123"
+            call.kwargs.get("project_id") == "personal-test-user-123"
             for call in login_boundaries.native.token_exchange.call_args_list
         )
     expected_detail = {
@@ -585,12 +590,16 @@ async def test_federated_login_correlates_sibling_stages_and_handled_policy_fail
         assert response.status_code == 200
         payload = response.json()
         assert payload["user_id"] == login_boundaries.native.user_id
-        assert payload["project_id"] == "test-project-123"
+        assert (payload["identity_domain_id"], payload["domain_id"], payload["project_id"]) == (
+            "accounts",
+            "personal",
+            "personal-test-user-123",
+        )
         assert payload["token"].count(".") == 2
         claims = auth.jwt_service.verify_refresh(payload["refresh_token"])
         session = await auth.session_store.get_session(claims["jti"])
         assert session["auth_method"] == "federated"
-        assert session["provider_domain_id"] == session["identity_domain_id"] == "default"
+        assert session["provider_domain_id"] == "default" and session["identity_domain_id"] == "accounts"
         revoked.assert_not_awaited()
     for output in outputs():
         rows = _diagnostics(_events(output))

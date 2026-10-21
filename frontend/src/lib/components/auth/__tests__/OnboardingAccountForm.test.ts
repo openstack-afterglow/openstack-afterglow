@@ -6,20 +6,16 @@ import OnboardingAccountForm from '../OnboardingAccountForm.svelte';
 beforeEach(() => initLocale('en'));
 afterEach(cleanup);
 
-describe('new human personal identity domain', () => {
-	it('requires a personal domain and submits its display name with the account', async () => {
+describe('new human account credentials', () => {
+	it('submits username and password without requiring workspace naming', async () => {
 		const onSubmit = vi.fn().mockResolvedValue(undefined);
 		render(OnboardingAccountForm, { idPrefix: 'test', submitLabel: 'Create account', onSubmit });
 		await fireEvent.input(screen.getByRole('textbox', { name: 'Username' }), { target: { value: ' alice ' } });
 		await fireEvent.input(screen.getByLabelText(/^Password/), { target: { value: 'long-enough-password' } });
 		await fireEvent.input(screen.getByLabelText(/^Confirm password/), { target: { value: 'long-enough-password' } });
 		await fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
-		expect(onSubmit).not.toHaveBeenCalled();
-		expect(await screen.findByText('This field is required.')).toBeTruthy();
-		await fireEvent.input(screen.getByRole('textbox', { name: 'Personal identity domain name' }), { target: { value: ' My workspace ' } });
-		await fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
 		expect(onSubmit).toHaveBeenCalledOnce();
-		expect(onSubmit).toHaveBeenCalledWith({ name: 'alice', password: 'long-enough-password', personal_domain_name: 'My workspace' });
+		expect(onSubmit).toHaveBeenCalledWith({ name: 'alice', password: 'long-enough-password' });
 		await waitFor(() => expect((screen.getByLabelText(/^Password/) as HTMLInputElement).value).toBe(''));
 		expect((screen.getByLabelText(/^Confirm password/) as HTMLInputElement).value).toBe('');
 	});
@@ -28,7 +24,7 @@ describe('new human personal identity domain', () => {
 		const pending = Promise.withResolvers<void>();
 		const onSubmit = vi.fn().mockReturnValue(pending.promise);
 		render(OnboardingAccountForm, { idPrefix: 'test', submitLabel: 'Create account', onSubmit });
-		for (const [label, value] of [['Username', 'alice'], ['Personal identity domain name', 'Personal'], ['Password', 'long-enough-password'], ['Confirm password', 'long-enough-password']]) {
+		for (const [label, value] of [['Username', 'alice'], ['Password', 'long-enough-password'], ['Confirm password', 'long-enough-password']]) {
 			await fireEvent.input(screen.getByLabelText(new RegExp(`^${label}`)), { target: { value } });
 		}
 		const form = (screen.getByRole('textbox', { name: 'Username' }) as HTMLInputElement).form!;

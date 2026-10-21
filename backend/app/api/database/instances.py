@@ -9,8 +9,9 @@ import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
+from app.api.common.admin_resource_scope import resolve_scope
 from app.api.common.owner_check import assert_resource_owner
-from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info
+from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info, require_admin
 from app.models.database import (
     CreateBackupRequest,
     CreateDatabaseRequest,
@@ -305,18 +306,23 @@ async def list_database_instances(
     token_info: dict = Depends(get_token_info),
     all_projects: bool = Query(False, description="admin 전용: 모든 프로젝트 DB 인스턴스"),
     cm: CacheMode = Depends(cache_mode),
+    domain_id: str | None = Query(None, min_length=1),
+    project_id: str | None = Query(None, min_length=1),
 ):
     """Trove DB 인스턴스 목록. all_projects=true 는 시스템 admin 전용."""
     from app.services import trove
 
     if all_projects:
-        if not token_info.get("is_system_admin", False):
-            raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다")
+        await require_admin(token_info)
+        scope = await asyncio.to_thread(resolve_scope, conn, domain_id, project_id)
         try:
-            return await asyncio.to_thread(trove.list_instances_admin_all_projects, conn)
+            rows = await asyncio.to_thread(trove.list_instances_admin_all_projects, conn)
+            return scope.filter(rows)
         except Exception:
             _logger.exception("관리자 DB 인스턴스 전체 조회 실패")
             raise HTTPException(status_code=500, detail="DB 인스턴스 목록 조회 실패")
+    if domain_id is not None or project_id is not None:
+        raise HTTPException(403, "Administrator inventory conditions require all_projects")
 
     pid = getattr(conn, "_afterglow_project_id", "unknown")
     key = keys.project_key("trove", pid, "instances")

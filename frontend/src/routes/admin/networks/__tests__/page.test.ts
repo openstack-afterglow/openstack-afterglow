@@ -38,6 +38,7 @@ import { auth } from '$lib/stores/auth';
 import { page } from '$app/stores';
 import { projectNames } from '$lib/stores/projectNames';
 import Page from '../+page.svelte';
+import InventoryBoundary from '$lib/components/admin/domains/_AdminInventoryBoundaryHarness.svelte';
 
 const route = page as unknown as Writable<{ url: URL; params: Record<string, string> }>;
 const ownerId = 'abcd1234-0000-1111-2222-333344445555';
@@ -180,7 +181,7 @@ describe('administrator network inventory', () => {
 			if (path === '/api/v1/admin/projects/names') return oldNames.promise;
 			return path.includes('/timeseries/') ? oldHistory.promise : oldInventory.promise;
 		});
-		render(Page);
+		render(InventoryBoundary, { page: Page });
 		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(3));
 		mocks.get.mockImplementation(async (path: string) => {
 			if (path === '/api/v1/admin/projects/names') return [{ id: ownerId, name: 'Current Owner' }];
@@ -270,7 +271,7 @@ describe('administrator network inventory', () => {
 	});
 
 	it('does not let an old edit response close or overwrite a newly scoped edit dialog', async () => {
-		render(Page);
+		render(InventoryBoundary, { page: Page });
 		await screen.findByRole('button', { name: both.name });
 		const row = rows().getByRole('button', { name: both.name }).closest('tr')!;
 		await fireEvent.click(within(row).getByRole('button', { name: 'adminNetworkTable.edit' }));
@@ -279,13 +280,14 @@ describe('administrator network inventory', () => {
 		await fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'adminNetworkEditModal.save' }));
 		installInventory([internal]);
 		auth.update((state) => ({ ...state, projectId: 'new-project' }));
+		await settle();
 		await screen.findByRole('button', { name: internal.name });
 		const newRow = rows().getByRole('button', { name: internal.name }).closest('tr')!;
 		await fireEvent.click(within(newRow).getByRole('button', { name: 'adminNetworkTable.edit' }));
 		pending.resolve({});
 		await settle();
 		expect(within(screen.getByRole('dialog')).getByLabelText('adminNetworkEditModal.name')).toHaveProperty('value', internal.name);
-		expect(screen.queryByText('networksPage.error.scopeChanged')).toBeNull();
+		expect(within(screen.getByRole('dialog')).queryByRole('alert')).toBeNull();
 		expect(mocks.get.mock.calls.filter(([path, , project]) => path === '/api/v1/admin/all-networks' && project === 'new-project')).toHaveLength(1);
 	});
 });

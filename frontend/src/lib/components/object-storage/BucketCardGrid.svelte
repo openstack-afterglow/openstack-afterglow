@@ -4,6 +4,8 @@
 	import { formatStorage } from '$lib/utils/format';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import { createArrivals } from './arrivals';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	let {
 		containers,
@@ -27,6 +29,10 @@
 
 </script>
 
+<ResponsiveTable>
+ {#snippet cards()}
+  {#each containers as c (c.name)}<CompactResourceCard selected={selectedIds.has(c.name)}><div class="flex items-start gap-2"><SelectionCheckbox checked={selectedIds.has(c.name)} disabled={selectionDisabled} ariaLabel={t('views.bucketCardGrid.select', { name: c.name })} onclick={() => onToggleSelect(c.name)} /><a href="/dashboard/object-storage/buckets/{encodeURIComponent(c.name)}" class="min-w-0 text-sm font-medium break-all">{c.name}</a></div><p class="text-xs text-ink-2">{t('views.bucketCardGrid.objectCount', { count: c.count })} · {formatStorage(c.bytes / 1_000_000_000)}</p>{#snippet actions()}<a href="/dashboard/object-storage/buckets/{encodeURIComponent(c.name)}" class="text-xs text-warm-text">{t('views.bucketCardGrid.details')}</a><button onclick={() => onDelete(c.name)} disabled={deleting === c.name || selectionDisabled} class="text-xs text-state-danger-text disabled:text-ink-3">{deleting === c.name ? t('views.bucketCardGrid.deleting') : t('views.bucketCardGrid.delete')}</button>{/snippet}</CompactResourceCard>{/each}
+ {/snippet}
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
 	{#each containers as c (c.name)}
 		{@const order = arrivals.next(c.name)}
@@ -77,3 +83,4 @@
 		</article>
 	{/each}
 </div>
+</ResponsiveTable>

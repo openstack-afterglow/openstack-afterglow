@@ -192,6 +192,8 @@ services:
       WAYGATE_CALLBACK_BASE_URL: ${WAYGATE_PUBLIC_BASE_URL-}
       WAYGATE_KEY_NAME: ${WAYGATE_KEY_NAME:-}
       WAYGATE_ENCRYPTION_KEY: ${WAYGATE_ENCRYPTION_KEY:-}
+    volumes:
+      - ${WAYGATE_POLICY_DIR:-./policy/waygate}:/etc/waygate:ro
     depends_on:
       redis:
         condition: service_started
@@ -223,6 +225,8 @@ services:
       WAYGATE_CALLBACK_BASE_URL: ${WAYGATE_PUBLIC_BASE_URL-}
       WAYGATE_KEY_NAME: ${WAYGATE_KEY_NAME:-}
       WAYGATE_ENCRYPTION_KEY: ${WAYGATE_ENCRYPTION_KEY:-}
+    volumes:
+      - ${WAYGATE_POLICY_DIR:-./policy/waygate}:/etc/waygate:ro
     depends_on:
       redis:
         condition: service_started
@@ -271,6 +275,8 @@ services:
       OS_INTERFACE: ${DROVER_OS_INTERFACE:-internal}
       DROVER_CALLBACK_BASE_URL: ${DROVER_CALLBACK_BASE_URL:-}
       DROVER_KUBECONFIG_ENCRYPTION_KEY: ${DROVER_KUBECONFIG_ENCRYPTION_KEY:-}
+    volumes:
+      - ${DROVER_POLICY_DIR:-./policy/drover}:/etc/drover:ro
     depends_on:
       redis:
         condition: service_started
@@ -302,6 +308,8 @@ services:
       OS_INTERFACE: ${DROVER_OS_INTERFACE:-internal}
       DROVER_CALLBACK_BASE_URL: ${DROVER_CALLBACK_BASE_URL:-}
       DROVER_KUBECONFIG_ENCRYPTION_KEY: ${DROVER_KUBECONFIG_ENCRYPTION_KEY:-}
+    volumes:
+      - ${DROVER_POLICY_DIR:-./policy/drover}:/etc/drover:ro
     depends_on:
       redis:
         condition: service_started
@@ -353,6 +361,8 @@ services:
       LUMEN_ENCRYPTION_KEY: ${LUMEN_ENCRYPTION_KEY:-}
       MCP_CONTROL_PLANE_URL: ${LUMEN_MCP_CONTROL_PLANE_URL:-}
       LUMEN_MCP_SERVICE_TOKEN: ${LUMEN_MCP_SERVICE_TOKEN:-}
+    volumes:
+      - ${LUMEN_POLICY_DIR:-./policy/lumen}:/etc/lumen:ro
     depends_on:
       redis:
         condition: service_started
@@ -385,6 +395,8 @@ services:
       LUMEN_ENCRYPTION_KEY: ${LUMEN_ENCRYPTION_KEY:-}
       MCP_CONTROL_PLANE_URL: ${LUMEN_MCP_CONTROL_PLANE_URL:-}
       LUMEN_MCP_SERVICE_TOKEN: ${LUMEN_MCP_SERVICE_TOKEN:-}
+    volumes:
+      - ${LUMEN_POLICY_DIR:-./policy/lumen}:/etc/lumen:ro
     depends_on:
       redis:
         condition: service_started
@@ -435,6 +447,7 @@ services:
       SSL_VERIFY: ${PALIMPSEST_SSL_VERIFY:-true}
     volumes:
       - palimpsest-hub:/var/lib/palimpsest/hub
+      - ${PALIMPSEST_POLICY_DIR:-./policy/palimpsest}:/etc/palimpsest:ro
     depends_on:
       redis:
         condition: service_started
@@ -467,6 +480,7 @@ services:
       SSL_VERIFY: ${PALIMPSEST_SSL_VERIFY:-true}
     volumes:
       - palimpsest-hub:/var/lib/palimpsest/hub
+      - ${PALIMPSEST_POLICY_DIR:-./policy/palimpsest}:/etc/palimpsest:ro
     depends_on:
       redis:
         condition: service_started

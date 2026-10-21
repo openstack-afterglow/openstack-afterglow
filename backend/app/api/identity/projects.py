@@ -17,7 +17,7 @@ router = APIRouter()
 
 
 class CreateProjectRequest(BaseModel):
-    name: str
+    name: str = Field(default="", max_length=255)
     description: str = ""
     domain_id: str | None = Field(default=None, min_length=1)
 
@@ -52,6 +52,7 @@ class ProjectPermissionsResponse(BaseModel):
     is_system_admin: bool
     is_owner: bool
     service_permissions: dict[str, list[str]]
+    service_permission_errors: dict[str, str] = Field(default_factory=dict)
     is_manager: bool
     is_reader: bool
     can_read: bool
@@ -69,9 +70,6 @@ async def create_project(
     """Create a project and explicitly assign its creator project_owner."""
     from app.services.project_service import create_project_for_user
 
-    if not req.name.strip():
-        raise HTTPException(status_code=422, detail="프로젝트 이름을 입력하세요")
-
     return await create_project_for_user(
         name=req.name.strip(),
         description=req.description,
@@ -86,10 +84,16 @@ async def project_capabilities(
     domain_id: str | None = Query(None, min_length=1),
     token_info: dict = Depends(get_token_info),
 ):
+    from app.services.domain_scope import domain_context
     from app.services.project_service import can_create_project
 
     target = domain_id or token_info["domain_id"]
-    return {"domain_id": target, "can_create_project": await can_create_project(token_info["user_id"], target)}
+    context = await asyncio.to_thread(domain_context, token_info["user_id"], target)
+    return {
+        "domain_id": target,
+        "domain_kind": context.get("domain_kind", "legacy"),
+        "can_create_project": await can_create_project(token_info["user_id"], target),
+    }
 
 
 @router.get("/creators")

@@ -1,11 +1,13 @@
-"""Action gates before browser traffic reaches extracted native services.
+"""Current browser scope and native-service policy capability boundaries.
 
-Native services remain the authority for resource ownership, credential scopes,
-model-derived actions and machine tickets. Browser role claims are not a cache
-of current authority: resolve the trusted project role-ID graph for each request.
+Extracted services own action policy, including operator YAML overrides. BFF
+session/project validation never reconstructs service permissions from roles.
 """
 
 from __future__ import annotations
+
+import asyncio
+import re
 
 from fastapi import HTTPException, Request
 
@@ -28,41 +30,76 @@ async def current_service_principal(request: Request) -> dict:
 
         if token_info.get("_live_system_admin") is not True:
             await require_admin(token_info)
-        # A live system grant replaces project leaves, never native credential
-        # attenuation, resource invariants or target-project isolation.
-        principal = {
-            "user_id": user_id,
-            "project_id": project_id,
-            "roles": token_info.get("roles", []),
-            "is_system_admin": True,
-        }
+        # Verified human system authority is scoped separately from service
+        # policy, native credential ceilings and resource ownership.
+        principal = {**token_info, "user_id": user_id, "project_id": project_id, "is_system_admin": True}
     else:
         access = await project_service.get_project_access(project_id, user_id)
-        principal = {"user_id": user_id, "project_id": project_id, "roles": access["roles"], "is_system_admin": False}
+        if not access["roles"]:
+            raise HTTPException(status_code=403, detail="Current project membership is required")
+        principal = {**token_info, "roles": access["roles"], "is_system_admin": False}
     request.state.current_service_principal = (identity, principal)
     return principal
 
 
 async def authorize_service_request(service_type: str, request: Request, upstream_path: str) -> None:
-    """Authorize browser action only; never reinterpret machine credentials."""
+    """Validate current browser scope; the native action handler enforces policy."""
+    from app.services.service_permissions import SERVICE_ROLE_GRADES
+
+    if service_type not in SERVICE_ROLE_GRADES:
+        raise HTTPException(status_code=403, detail="알 수 없는 서비스 작업입니다")
     if request.method == "OPTIONS":
         return
     principal = await current_service_principal(request)
-    if service_type == "lumen":
-        from app.services.lumen_authorization import authorize_lumen_request
+    if (
+        service_type == "lumen"
+        and upstream_path.startswith("/v1/admin/")
+        and principal.get("is_system_admin") is not True
+    ):
+        raise HTTPException(status_code=403, detail="시스템 관리자 권한이 필요합니다")
+    if service_type in {"drover", "waygate"}:
+        if not upstream_path.startswith("/v1/"):
+            raise HTTPException(status_code=403, detail="Unknown native browser namespace")
+        path = upstream_path[4:].removesuffix("/")
+        parts = path.split("/") if path else []
+        if any(not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9._-]*", part) for part in parts):
+            raise HTTPException(status_code=403, detail="Unknown native browser namespace")
+        if (service_type == "drover" and parts and (parts[0] == "callback" or parts[-1] == "shell")) or (
+            service_type == "waygate" and "agent" in parts
+        ):
+            raise HTTPException(status_code=403, detail="Machine route is not a browser operation")
+        system_route = parts and (
+            parts[0] == "admin"
+            or (service_type == "drover" and parts[0] == "cluster-templates" and request.method not in {"GET", "HEAD"})
+        )
+        if system_route and principal.get("is_system_admin") is not True:
+            raise HTTPException(status_code=403, detail="시스템 관리자 권한이 필요합니다")
 
-        await authorize_lumen_request(request, upstream_path, principal)
-    elif service_type == "waygate":
-        from app.services.waygate_authorization import authorize_waygate_request
 
-        await authorize_waygate_request(request, upstream_path, principal)
-    elif service_type == "drover":
-        from app.services.drover_authorization import authorize_drover_request
+async def service_permission_snapshot(token_info: dict) -> tuple[dict[str, list[str]], dict[str, str]]:
+    """Project native decisions for UI, preserving unavailable versus denied."""
+    from app.config import get_settings
+    from app.services.service_proxy import get_policy_capabilities
 
-        await authorize_drover_request(request, upstream_path, principal)
-    elif service_type == "palimpsest":
-        from app.services.palimpsest_authorization import authorize_palimpsest_request
+    settings = get_settings()
+    enabled = {
+        "lumen": settings.service_chat_enabled,
+        "drover": settings.service_k3s_enabled,
+        "waygate": settings.service_waygate_enabled,
+        "palimpsest": settings.service_palimpsest_enabled,
+    }
 
-        await authorize_palimpsest_request(request, upstream_path, principal)
-    else:
-        raise HTTPException(status_code=403, detail="알 수 없는 서비스 작업입니다")
+    async def evaluate(service):
+        if not enabled[service]:
+            return service, [], None
+        try:
+            result = await get_policy_capabilities(service, token_info)
+        except HTTPException:
+            return service, [], "permission_check_unavailable"
+        return service, sorted(set(result["capabilities"])), None
+
+    results = await asyncio.gather(*(evaluate(service) for service in enabled))
+    return (
+        {service: leaves for service, leaves, _ in results},
+        {service: error for service, _, error in results if error is not None},
+    )

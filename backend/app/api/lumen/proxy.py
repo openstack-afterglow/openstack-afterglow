@@ -12,7 +12,7 @@ from app.config import get_settings
 from app.services.mcp_control_plane import authority, defaults, lumen, registry
 from app.services.service_authorization import current_service_principal
 from app.services.service_permissions import require_service_permission
-from app.services.service_proxy import proxy
+from app.services.service_proxy import get_policy_capabilities, proxy
 
 router = APIRouter(dependencies=[Depends(get_token_info)])
 
@@ -27,6 +27,8 @@ class ApproveCloudToolsRequest(BaseModel):
 async def _require_cloud_tools_permission(request: Request) -> None:
     try:
         principal = await current_service_principal(request)
+        native = await get_policy_capabilities("lumen", principal)
+        principal = {**principal, "service_permissions": {"lumen": native["capabilities"]}}
         require_service_permission(principal, "lumen-tools_user")
     except HTTPException as exc:
         exc.headers = {**(exc.headers or {}), **_NO_STORE}

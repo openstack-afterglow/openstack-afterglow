@@ -2,6 +2,7 @@
 	"actions.cancel": "Ghairi",
 	"actions.confirm": "Thibitisha",
 	"actions.close": "Funga",
+	"resource.details": "Maelezo",
 	"state.processing": "Inachakata...",
 	"state.loading": "Inapakia...",
 	"state.loadingNamed": "Inapakia {name}…",

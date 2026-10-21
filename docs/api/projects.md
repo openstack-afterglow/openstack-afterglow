@@ -9,7 +9,7 @@ nav_order: 12
 > 태그: `projects`
 > 기본 경로: `/api/v1/projects`
 
-현재 **working domain**의 도메인 manager와 위임받은 `project_creator`가 프로젝트를 만들고, 도메인 manager 또는 프로젝트 owner/admin이 현재 Keystone 역할 ID와 상속 그래프에 따라 멤버 권한을 관리합니다. 계정의 immutable identity domain과 작업 대상 domain은 서로 다를 수 있습니다. 이메일 초대는 현재 [도메인 IAM](iam.md), 공개 링크 수락·가입은 [인증 onboarding](auth.md#공개-이메일-검증-onboarding)을 사용합니다. 아래 계약은 현재 프로젝트 router/schema/service 기준이며 proposal의 미구현 경로를 API로 가정하지 않습니다.
+조직/legacy working domain에서는 현재 Default manager와 위임받은 project_creator가 프로젝트를 만들고 manager 또는 현재 프로젝트 owner/admin이 실제 Keystone role-ID/DAG로 권한을 관리합니다. 공유 personal에서는 검증된 자기 primary의 소유자만 추가 개인 프로젝트를 만들며 account는 identity-only라서 workspace·project target이 아닙니다. Immutable identity home과 working domain은 다를 수 있습니다. 이메일 초대는 [조직 IAM](iam.md), 공개 링크 수락·가입은 [인증 onboarding](auth.md#공개-이메일-검증-onboarding)을 사용합니다.
 
 ---
 
@@ -18,11 +18,11 @@ nav_order: 12
 - **현재 Keystone 권한** — 역할 카탈로그·직접 상속 DAG·유효 프로젝트 할당을 다시 조회합니다. 같은 이름의 도메인 역할, 오래된 JWT 역할 배열, 앱 DB의 기존 `project_roles` 행은 권한 근거가 아닙니다. 조회 실패는 `503`이며 오래된 권한으로 대체하지 않습니다.
 - **기존 프로젝트 계층 유지** — `project_owner → project_admin → project_member → project_reader`, `project_member → member`, `project_reader → reader`. 기존 역할 ID·할당을 재사용하며 서비스 권한은 이 계층에 자동 연결하지 않습니다.
 - **시스템 관리자가 확장한 하위 역할** — 전역 custom 역할(예: `project_reader → audit`)을 명시적으로 연결한 그래프에서도 기존 프로젝트 등급의 관리·멤버 할당을 유지합니다. Custom 역할의 직접 독립 위임은 허용하지 않으며 해당 등급을 통해 현재 ID 그래프대로만 상속합니다. 알려진 core/project/서비스 권한 승격·도메인 혼합·중복 역할 ID 바인딩은 계속 거부합니다.
-- **프로젝트 생성** — 대상 도메인의 현재 Default manager 또는 정확한 native domain scope에서 `project_creator`가 유효한 가입 사용자만 가능합니다. 프로젝트 owner/admin 등급이나 `system:all` admin만으로 생성 권한이 생기지 않습니다. 새 프로젝트는 disabled로 만들고 생성자 한 명의 직접 `project_owner`, manager 접근 projection, 도메인 quota defaults와 readback을 완료한 뒤 활성화합니다. 불확실한 실패를 자동 삭제하거나 재생성하지 않습니다.
+- **프로젝트 생성** — 조직/legacy는 현재 Default manager 또는 exact domain project_creator 권한과 실제 참여를 요구합니다. Personal은 본인 primary의 marker·직접 native member provenance를 검증하고 이름을 정규화 username 최대47자+하이픈+임의 소문자8자+숫자8자리로 생성합니다. Personal 요청은 name을 생략해야 하며 nonempty name은422 personal_project_name_is_generated입니다. Disabled project에 본인 직접 member 하나와 동결된 project quota를 준비·readback한 뒤 활성화하고 owner/admin/reader·domain manager/projection/allocation pool은 자동 부여하지 않습니다. 기존 owner 기반 personal grant는 보존합니다. 조직 생성의 기존 projection·quota defaults와 불명 native effect의 replay 금지는 유지합니다.
 - **유일한 명시적 소유권** — 일반 프로젝트는 정확한 `project_owner` 직접 사용자 할당 하나만 정상 소유권입니다. 복수 owner, owner를 함의하는 다른 역할, group/domain/ancestor 상속 owner는 conflict이며 자동으로 한 명을 선택하지 않습니다. `manager > owner`는 도메인 관리 우선순위이지 `manager → project_owner` inference edge가 아닙니다. Default는 별도의 도메인 권위 프로젝트이며 소유권 이전·삭제 대상이 아닙니다.
 - **멤버 관리와 소유권 분리** — owner 또는 도메인 manager는 `project_admin`을 변경할 수 있고 project admin은 그보다 낮은 허용 역할만 관리합니다. 일반 역할 편집·멤버 제거는 owner-bearing grant를 추가/제거할 수 없습니다. 소유권 변경은 전용 transfer 경로만 사용하며 `assignable-roles.can_manage_owners`는 항상 `false`입니다. 직접 역할만 교체하고 편집 불가 기존 직접 할당과 그룹·도메인 상속은 유지합니다.
 - **로그인과 권한 분리** — 본인을 포함한 프로젝트 role 추가·교체·회수는 로그인 세션을 일괄 폐기하지 않습니다. 새 요청은 현재 Keystone 권한으로 검증하므로 회수한 역할은 다음 로그인까지 유지되지 않습니다. 프로젝트 관리 권한 자체를 없애면 이후 관리 요청은 `403`입니다. 명시적 세션 폐기·계정 차단·유효하지 않은 native 로그인 증명은 기존대로 재로그인 대상입니다.
-- **서비스 권한 분리** — Waygate·Lumen·Drover·Palimpsest의 `admin/editor/user/reader` 부모와 독립 세부 권한은 실제 Keystone inference edge로만 확장합니다. 서비스 역할에 OpenStack `admin`·`manager` 권한을 연결할 수 없습니다. 프로젝트 소유권 자체도 서비스 사용 권한이 아닙니다.
+- **서비스 권한 분리** — Waygate·Lumen·Drover·Palimpsest의 grade와 세부 role을 독립 ID로 유지하고 서비스용 inference edge를 새로 만들지 않습니다. 각 native 서비스의 `oslo.policy`와 운영자 `policy.yaml`이 grade·명시적 leaf를 action으로 평가합니다. 서비스 role을 OpenStack `admin`·`manager`로 승격하거나 프로젝트 소유권을 서비스 권한으로 대체하지 않습니다.
 - **명시적 이전** — 기존 DB 관리자 기록의 이전은 시스템 관리자가 대상 소유자를 지정해 실행합니다. 조회·로그인·프로젝트 전환이 이를 자동 수행하지 않습니다.
 - 프로젝트 멤버·개인 MCP token·OAuth grant·발급 직후 secret은 현재 auth/project 경계를 사용합니다. 프로젝트 전환 뒤 이전 행·액션·feedback과 늦은 결과를 사용하지 않습니다. 도메인 IAM의 초대 inventory는 project-only 목록이 아니라 현재 working domain 전체 목록이며 동일한 user/domain 경계를 유지합니다.
 
@@ -36,13 +36,15 @@ nav_order: 12
 
 `/projects/{project_id}/permissions`는 같은 working domain의 다른 프로젝트를 조회할 때 일반 호출자의 native rescope 접근을 확인합니다. 이 조회에만 verified system admin의 rescope 예외가 있으며 도메인 경계는 그대로 적용됩니다. 도메인 관리 권한과 project `is_owner`/`is_manager`는 다릅니다. 도메인 IAM의 `/api/v1/iam/projects/...`도 같은 소유권 전용 변경 정책을 사용하며 generic owner 편집을 허용하지 않습니다.
 
+Personal의 membership/eligible-users는 본인 프로젝트·본인 사용자로 한정하며 상속 reader가 있더라도 타인의 개인 프로젝트를 노출하지 않습니다. Primary는 rename/disable/delete와 소유권 변경을 보호합니다. 조직 멤버 후보는 기존 organization-home 또는 현재 native project grant로 참여가 확인된 사용자만 포함하고 공통 account 전체를 열거하지 않습니다. Generic role/group/membership API는 새 조직 admission을 대신하지 않습니다.
+
 ### 서비스 등급과 명시적 운영 cutover
 
-일반 사용자에게 `member`만 있다는 이유로 네 서비스를 허용하지 않습니다. 시스템 관리자가 [역할 프리셋](admin.md#역할-관리-roles)을 미리보고 명시적으로 적용한 뒤, 프로젝트 owner/admin이 필요한 서비스 부모 또는 세부 역할 ID를 부여합니다. 기존 core/project ID·할당은 교체하지 않으며 GET/login/startup은 역할/edge/manager 이전을 실행하지 않습니다. Native 서비스 directory credential은 현재 enabled user/project, 전역 역할 metadata, inference graph와 유효 할당을 읽을 수 있어야 합니다. 읽기 실패 시 권한을 넓히거나 tenant `admin`/`manager`를 부여하는 fallback은 없습니다.
+기본 정책에서 `member` 또는 프로젝트 owner/admin만으로 네 서비스를 허용하지 않습니다. 프로젝트 owner/admin은 독립적인 `<service>_admin/editor/user/reader` 또는 세부 role ID를 명시적으로 부여합니다. 서비스 role 할당은 native member를 자동 부여하거나 요구하지 않으며 실제 provider 작업의 최소 native role은 서비스가 별도로 확인합니다. Native 서비스 정책을 먼저 배포한 뒤 시스템 관리자가 [역할 프리셋](admin.md#역할-관리-roles)을 미리보고 적용하면 기존 관리 서비스 상속 edge만 제거합니다. 기존 ID·직접 할당·native project/member/reader·custom edge는 보존하며 GET/login/startup은 이전을 실행하지 않습니다. Directory 장애는 권한 확대로 처리하지 않습니다.
 
 Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connect_user`는 본인에게 할당된 enabled client `.conf`/QR만 허용합니다. `waygate-clients_editor`와 `waygate-gateways_editor`는 각각 생성·편집, `waygate-clients_admin`과 `waygate-gateways_admin`은 삭제/폐기, `waygate-routing_admin`은 네트워크 연결·보안 routing 액션입니다. Export/import는 client-admin과 routing-admin을 함께 요구하며 다른 사용자의 할당된 private profiles를 export하지 않습니다. Owner가 미지정인 legacy client는 connect-only 사용자에게 공개하지 않고 editor/admin이 명시적으로 한 번 소유자를 지정합니다. 플랫폼 resource policy는 verified system-admin 전용입니다.
 
-다른 서비스의 독립 leaf·credential 경계는 [Lumen](chat.md#lumen-서비스-세부-권한), [Drover](k3s.md#drover-서비스-권한과-자격-등급), [Palimpsest](../palimpsest.md#프로젝트-package-서비스-등급)를 따릅니다. Runtime은 실제 현재 graph만 읽으므로 부모를 유지한 채 leaf edge를 제거해도 해당 권한이 회수됩니다.
+다른 서비스의 action·credential 경계는 [Lumen](chat.md#lumen-서비스-세부-권한), [Drover](k3s.md#drover-서비스-권한과-자격-등급), [Palimpsest](../palimpsest.md#프로젝트-package-서비스-등급)를 따릅니다. 정책은 현재 native role 이름을 직접 평가하므로 service grade를 유지하면서 과거 leaf edge만 제거하는 것은 더 이상 권한 회수가 아닙니다. Grade의 현재 grant를 회수하거나 해당 native action의 YAML 규칙을 변경합니다.
 
 
 
@@ -55,8 +57,8 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
 
 | 메서드 | 경로 | 인증 | 설명 |
 |--------|------|------|------|
-| `POST` | `/api/v1/projects` | 대상 도메인 manager 또는 creator | 생성자 한 명의 직접 owner를 설정하고 활성화; `201` |
-| `GET` | `/api/v1/projects/capabilities` | 대상 도메인 가입 사용자 | `?domain_id=...`; 현재 생성 가능 여부 |
+| `POST` | `/api/v1/projects` | 조직 manager/creator 또는 본인 personal primary owner | disabled staging·sole owner·quota readback 뒤 활성화; `201` |
+| `GET` | `/api/v1/projects/capabilities` | 대상 domain의 현재 가입 사용자 | `?domain_id=...`; `{domain_id,domain_kind,can_create_project}` |
 | `GET` | `/api/v1/projects/creators` | 대상 도메인 manager | `?domain_id=...`; creator 위임 목록 |
 | `PUT` | `/api/v1/projects/creators/{user_id}` | 대상 도메인 manager | `{enabled,domain_id?}`; 직접 creator grant 위임/회수 |
 | `GET` | `/api/v1/projects/current/permissions` | 필요 | 현재 프로젝트 역할 및 실효 권한 |
@@ -77,9 +79,9 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
 
 ## GET /api/v1/projects/current/permissions
 
-현재 활성 프로젝트의 `is_owner`, `is_manager`, `service_permissions`와 OpenStack 읽기·쓰기 권한을 조회합니다. UI는 현재 `service_permissions`의 정확한 세부 권한을 사용하며 `can_write`로 서비스 권한을 추측하지 않습니다. 확인 중·장애·프로젝트 전환 중에는 액션을 비활성화합니다.
+현재 활성 프로젝트의 `is_owner`, `is_manager`, native 정책에서 계산한 `service_permissions`, 조회 장애인 `service_permission_errors`와 OpenStack 읽기·쓰기 권한을 조회합니다. UI는 서비스 capability를 사용하며 `can_write`·표시용 role로 추측하지 않습니다. 확인 중·프로젝트 전환 중에는 액션을 비활성화합니다. Enabled native 서비스의 조회 장애는 `{service: "permission_check_unavailable"}`로 구분하고 해당 서비스만 비활성화하며, 빈 정상 capability를 장애로 위장하거나 core 프로젝트 권한까지 거부하지 않습니다.
 
-일반 사용자 응답의 `roles`는 표시용입니다. 시스템 전용 `admin`·`manager` 및 이들을 상속하는 사용자 정의 역할 이름을 숨기며, 분류할 수 없는 사용자 정의 이름도 노출하지 않습니다. 원래 검증된 역할로 계산한 `can_write`를 전달하므로 이름이 숨겨져도 기존 프로젝트 쓰기 권한은 사라지지 않습니다. Login·refresh·프로젝트 전환 응답과 `/auth/me`도 같은 `roles`/`can_write` 계약을 사용합니다. 서버 서비스 authorization은 이 표시용 배열이나 JWT의 과거 부모 역할이 아니라 현재 검증한 전역 역할 ID·유효 할당·DAG와 프로젝트 소유권을 사용합니다. 이 permissions 응답의 `is_manager`는 현재 프로젝트 owner/admin **또는 system admin**이며 DB manager를 의미하지 않습니다. 이 값만으로 lifecycle·membership endpoint 허용 여부를 추측하지 않습니다. 현재 프로젝트가 없으면 `403`입니다.
+일반 사용자 응답의 `roles`는 표시용입니다. 시스템 전용 `admin`·`manager` 및 이들을 상속하는 사용자 정의 역할 이름을 숨기며, 분류할 수 없는 사용자 정의 이름도 노출하지 않습니다. 원래 검증된 역할로 계산한 `can_write`를 전달하므로 이름이 숨겨져도 기존 프로젝트 쓰기 권한은 사라지지 않습니다. Login·refresh·프로젝트 전환 응답과 `/auth/me`도 같은 `roles`/`can_write` 계약을 사용합니다. 서버는 표시용 배열이나 JWT의 과거 역할을 서비스 action 권한으로 쓰지 않습니다. BFF의 현재 membership·system 경계 뒤 원래 credential을 받은 native 서비스가 현재 전역 역할 ID·유효 할당과 `oslo.policy`/운영자 YAML로 action을 평가하고 프로젝트·사용자 소유권과 credential ceiling을 별도로 검증합니다. 이 permissions 응답의 `is_manager`는 현재 프로젝트 owner/admin **또는 system admin**이며 DB manager를 의미하지 않습니다. 이 값만으로 lifecycle·membership endpoint 허용 여부를 추측하지 않습니다. 현재 프로젝트가 없으면 `403`입니다.
 
 ### 응답 (200 OK)
 
@@ -91,6 +93,7 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
   "is_system_admin": false,
   "is_owner": false,
   "service_permissions": { "waygate": [], "lumen": [], "drover": [], "palimpsest": [] },
+  "service_permission_errors": {},
   "is_manager": false,
   "is_reader": true,
   "can_read": true,
@@ -312,7 +315,7 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
 
 성공 응답은 IAM enrollment DTO(`id,domain_id,project_id,project_name,email,role_ids,kind,user_id,identity_domain_id,personal_domain_name,native_writes_settled,recovery_required,status,expires_at,created_at,accepted_at`)이며 raw token을 반환하지 않습니다. `GET /api/v1/iam/invitations`는 `{items:[...]}`, `DELETE /api/v1/iam/invitations/{invitation_id}`는 `204`입니다. Inventory는 working domain 전체입니다. 권한/정책 거부는 `403`, native 대상 부재는 `404`, lifecycle 충돌은 `409`, 본문/role 선택 오류는 `422`, rate limit은 `429`, email/native/storage 불가는 `503`입니다.
 
-수락은 `/api/v1/auth/invitations/{token}`, `/api/v1/auth/invitations/accept`, 인증된 `/api/v1/auth/invitations/accept-existing`를 사용합니다. 기존 계정 수락은 immutable identity/password를 변경하지 않고 invited working domain의 Default reader 및 선택한 프로젝트 역할을 **additive**로 부여합니다. New-human 수락의 personal domain 및 일회용 durable enrollment/recovery 계약은 IAM/auth 문서를 따릅니다. 프로젝트 owner/admin의 별도 이메일 초대는 proposal 요구이지만 현재 이 프로젝트 API의 구현 계약이 아닙니다.
+수락은 `/api/v1/auth/invitations/{token}`, `/api/v1/auth/invitations/accept`, 인증된 `/api/v1/auth/invitations/accept-existing`를 사용합니다. 기존 계정 수락은 immutable identity/password를 보존하고 invited 조직 Default reader와 선택 safe project role을 additive로 부여합니다. 신규 human은 shared account와 shared personal primary를 만들며 name/password만 입력합니다. 일회용 durable enrollment/recovery는 IAM/auth 문서를 따릅니다. 프로젝트 owner/admin의 별도 email 초대는 제공하지 않으며 manager가 조직 초대를 발행합니다.
 
 ---
 

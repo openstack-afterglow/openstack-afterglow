@@ -337,6 +337,7 @@
 	"roleValidation.protectedDeletion": "기본 역할은 삭제할 수 없습니다.",
 	"roleValidation.linkedDeletion": "직접 연결된 상위·하위 역할을 먼저 해제하세요.",
 	"userCreate.title": "사용자 생성",
+	"userCreate.accountSpacesHelp": "Accounts에는 로그인 신원만 생성합니다. 지금은 프로젝트를 만들지 않으며 첫 로그인 성공 시 Personal에 자동 이름의 프로젝트와 직접 member 역할만 준비합니다. 선택한 디렉터리 도메인은 조회용이며 계정을 생성해도 해당 도메인에 참여하거나 Default 읽기 권한을 얻지 않습니다.",
 	"userCreate.name": "이름",
 	"userCreate.email": "이메일",
 	"userCreate.password": "비밀번호",
@@ -588,10 +589,11 @@
 	"roleMetadata.domain": "도메인 ID (선택)",
 
 	"rolePresets.preview": "역할 프리셋 미리보기",
-	"rolePresets.confirm": "프로젝트 및 서비스 역할 프리셋을 적용할까요? 기존 역할 ID와 할당을 유지하며 누락된 역할과 상속 연결만 추가합니다.",
+	"rolePresets.confirm": "역할 프리셋을 적용할까요? 누락된 역할과 프로젝트 상속 연결을 추가하고, 표시된 기존 서비스 상속 연결은 제거합니다. 역할 ID와 직접 할당은 유지합니다. 먼저 새 서비스 정책을 배포해야 합니다.",
 	"rolePresets.apply": "프리셋 적용",
 	"rolePresets.applied": "프리셋을 적용했습니다. 실제 역할 그래프를 새로 불러왔습니다.",
-	"rolePresets.previewHelp": "미리보기는 클라우드를 변경하지 않습니다. 적용은 기존 이름의 역할을 재사용하며 반복 적용해도 역할을 중복 생성하지 않습니다.",
+	"rolePresets.previewHelp": "미리보기는 클라우드를 변경하지 않습니다. 서비스 권한은 각 서비스의 policy.yaml에서 평가합니다. 적용은 기존 역할을 재사용하며 아래 기존 서비스 상속 연결만 제거합니다.",
 	"rolePresets.directImplications": "추가할 직접 상속 연결",
+	"rolePresets.retiredImplications": "제거 대상 기존 서비스 상속 연결",
 	"quotaController.saveFailed": "저장 실패"
 }

@@ -352,9 +352,9 @@ mediaType 은 프로젝트 고유값을 쓴다 — 표준 도구가 squashfs 를
 
 ### 프로젝트 package 서비스 등급
 
-`palimpsest-inventory_reader`는 metadata/manifest, `palimpsest-download_user`는 package/layer/blob 내용 다운로드, `palimpsest-publish_editor`는 게시·tag·build-cache 쓰기를 허용합니다. `palimpsest-keys_editor`는 본인 키 발급, `palimpsest-keys_admin`은 본인 키 폐기를 허용합니다. 각 부모 등급은 현재 Keystone 실제 inference edge로만 확장하며 프로젝트 owner/admin 자체는 package 권한이 아닙니다. Native member/reader 기반 조건과 project/namespace/package 소유권은 별도로 유지합니다.
+Native Palimpsest의 `oslo.policy`와 운영자 `policy.yaml`이 package action을 평가합니다. `palimpsest_admin/editor/user/reader`는 독립 role로 직접 사용하며 상속 leaf 또는 native member/reader를 추가 생성·요구하지 않습니다. 기본 세부 grant에서 `palimpsest-inventory_reader`는 metadata/manifest, `palimpsest-download_user`는 package/layer/blob 다운로드, `palimpsest-publish_editor`는 게시·tag·build-cache 쓰기, `palimpsest-keys_editor`는 본인 키 발급, `palimpsest-keys_admin`은 본인 키 폐기를 허용합니다. 운영자는 action별로 override할 수 있지만 project/namespace/package·user ownership과 machine/key ceiling은 유지됩니다.
 
-키의 요청 actions는 발급자의 현재 download/publish 권한의 부분집합이어야 합니다. Publish-only 키는 download 권한을 얻지 않으며, 현재 owner 권한/graph 변경은 기존 키·다운로드 ticket 사용에도 반영됩니다. 일반 서비스 admin이나 package key로 전역 builder/GC 또는 OpenStack VM 실행 권한을 얻지 않습니다.
+키의 요청 actions는 발급자의 현재 native 정책에서 허용한 download/publish의 부분집합이어야 합니다. Publish-only 키는 download 권한을 얻지 않으며 현재 owner 권한·policy 변경은 기존 키·다운로드 ticket 사용에도 반영됩니다. Project 서비스 admin이나 package key로 verified human system-only builder/GC·삭제 경계 또는 OpenStack VM 실행 권한을 얻지 않습니다.
 
 같은 user/project의 JWT 갱신이나 permission directory 장애는 확정 회수가 아닙니다. 기존 목록·초안·일회성 secret은 메모리에 유지하고 secret은 숨긴 뒤 현재 keys/action 권한이 복구되면 다시 표시합니다. 발급/위임 leaf의 확정 회수는 secret과 진행 중 발급 epoch를 폐기하므로 권한 재부여만으로 되살아나지 않습니다. 그 외 명시적 닫기·탭/페이지 이동·scope 전환의 기존 폐기 규칙은 유지합니다.
 

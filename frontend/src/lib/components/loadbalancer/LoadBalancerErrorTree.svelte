@@ -6,6 +6,7 @@
   } from '$lib/stores/loadbalancerDetailController.svelte';
   import type { LbStatusNode } from '$lib/types/loadbalancer';
   import Self from './LoadBalancerErrorTree.svelte';
+  import { ResponsiveTable, CompactResourceCard, StatusChip } from '$lib/components/ui';
 
   interface Props {
     node?: LbStatusNode | null;
@@ -36,12 +37,16 @@
   <div class="bg-red-900/20 border border-red-800 rounded-lg p-5 mb-4">
     <h3 class="text-sm font-semibold text-red-400 mb-3">{t('lb.errorTree.title')}</h3>
     {#if node && s.lb}
+      {@const lb = s.lb}
       <div class="space-y-2 text-xs font-mono">
+        <ResponsiveTable>
+          {#snippet cards()}<CompactResourceCard><strong>{t('lb.errorTree.lbStatus')}</strong><StatusChip status={node.provisioning_status ?? lb.status} /><p class="text-xs text-ink-2">{node.operating_status ?? lb.operating_status}</p></CompactResourceCard>{/snippet}
         <div class="flex items-center gap-3">
           <span class="text-ink-2 w-28 shrink-0">{t('lb.errorTree.lbStatus')}</span>
           <span class="text-red-400">{node.provisioning_status ?? s.lb.status}</span>
           <span class="text-ink-2">{node.operating_status ?? s.lb.operating_status}</span>
         </div>
+        </ResponsiveTable>
         {#if node.listeners}
           {#each node.listeners as listener}
             <Self node={listener} depth={1} />
@@ -73,9 +78,12 @@
     {/if}
   </div>
 {:else if node}
+  <ResponsiveTable>
+    {#snippet cards()}<CompactResourceCard><p class="text-xs text-ink-2">{labelByDepth[depth]}</p><strong class="break-all">{node.name || node.id?.slice(0, 12)}</strong><StatusChip status={node.provisioning_status ?? 'unknown'} /></CompactResourceCard>{/snippet}
   <div class="{indentByDepth[depth]} flex items-center gap-3">
     <span class="text-ink-2 {labelWidthByDepth[depth]} shrink-0">{labelByDepth[depth]}</span>
     <span class="text-ink-2">{node.name || node.id?.slice(0, 12)}</span>
     <span class={provisioningColor(node.provisioning_status ?? '')}>{node.provisioning_status ?? '-'}</span>
   </div>
+  </ResponsiveTable>
 {/if}

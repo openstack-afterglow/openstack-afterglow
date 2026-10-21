@@ -337,6 +337,7 @@
 	"roleValidation.protectedDeletion": "Default roles cannot be deleted.",
 	"roleValidation.linkedDeletion": "Unlink directly connected parent and child roles first.",
 	"userCreate.title": "Create user",
+	"userCreate.accountSpacesHelp": "Accounts stores only the sign-in identity. No project is created now: the first successful sign-in creates a generated project in Personal with only the direct member role. The selected directory domain is for viewing only; account creation does not join it or grant Default reader access.",
 	"userCreate.name": "Name",
 	"userCreate.email": "Email",
 	"userCreate.password": "Password",
@@ -588,10 +589,11 @@
 	"roleMetadata.domain": "Domain ID (optional)",
 
 	"rolePresets.preview": "Preview role presets",
-	"rolePresets.confirm": "Apply project and service role presets? Existing role IDs and assignments are preserved; only missing roles and inheritance links are added.",
+	"rolePresets.confirm": "Apply role presets? Missing roles and project inheritance links will be added; the listed legacy service inheritance links will be removed. Role IDs and direct assignments are preserved. Deploy the new native service policies first.",
 	"rolePresets.apply": "Apply presets",
 	"rolePresets.applied": "Presets applied. The actual role graph has been reloaded.",
-	"rolePresets.previewHelp": "Previewing does not change the cloud. Applying presets reuses roles with existing names and does not create duplicate roles when applied repeatedly.",
+	"rolePresets.previewHelp": "Previewing does not change the cloud. Each service evaluates permissions through its policy.yaml. Applying reuses existing roles and removes only the listed legacy service inheritance links.",
 	"rolePresets.directImplications": "Direct inheritance links to add",
+	"rolePresets.retiredImplications": "Legacy service inheritance links to remove",
 	"quotaController.saveFailed": "Failed to save"
 }

@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-network';
 	import type { AdminNetwork } from '$lib/types/networks';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
+	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 
 	let {
 		networks,
@@ -19,6 +23,18 @@
 	} = $props();
 </script>
 
+<ResponsiveTable>
+	{#snippet cards()}
+		{#each networks as n (n.id)}
+			<CompactResourceCard>
+				<div class="flex items-start justify-between gap-2"><button type="button" class="min-h-11 break-all text-left font-medium text-ink-0" onclick={() => onRowClick(n.id)}>{n.name || n.id.slice(0, 8)}</button><StatusChip status={n.status} /></div>
+				<div class="space-y-1 text-xs text-ink-2"><p>{t('adminNetworkTable.owner')}: {n.project_id ? (ownerNames.get(n.project_id) ?? n.project_name ?? n.project_id.slice(0, 8)) : '-'}</p><p>{n.is_external ? t('adminNetworkTable.external') : t('adminNetworkTable.internal')}{n.is_shared ? ` · ${t('adminNetworkTable.shared')}` : ''} · {t('adminNetworkTable.subnetCount', { count: n.subnets.length })}</p></div>
+				{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => onEdit(n)}>{t('adminNetworkTable.edit')}</Button><Button variant="danger" size="sm" onclick={() => onDelete(n)}>{t('adminNetworkTable.delete')}</Button>{/snippet}
+				{#snippet details()}<div class="space-y-2 break-all font-mono text-xs text-ink-2"><p>{n.id}</p><p>{n.project_id ?? '-'}</p>{#each n.subnets as subnet}<p>{subnet}</p>{/each}</div>{/snippet}
+			</CompactResourceCard>
+		{/each}
+		{#if networks.length === 0 && emptyMessage}<p class="col-span-full py-6 text-center text-sm text-ink-2">{emptyMessage}</p>{/if}
+	{/snippet}
 <div class="overflow-x-auto">
 	<table class="w-full text-sm">
 		<thead>
@@ -72,3 +88,4 @@
 		</tbody>
 	</table>
 </div>
+</ResponsiveTable>

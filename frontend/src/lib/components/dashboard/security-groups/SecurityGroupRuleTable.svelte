@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/network-resources';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	interface SecurityGroupRule {
 		id: string;
 		direction: string;
@@ -23,6 +25,16 @@
 	{#if rules.length === 0}
 		<p class="text-xs text-ink-2 px-4 py-3 italic">{t('securityGroup.rules.empty')}</p>
 	{:else}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each rules as rule (rule.id)}
+					<CompactResourceCard>
+						<p class="font-medium">{rule.direction === 'ingress' ? t('securityGroup.rules.inbound') : t('securityGroup.rules.outbound')} · {rule.protocol?.toUpperCase() ?? t('securityGroup.rules.anyProtocol')}</p>
+						<dl><div><dt>{t('securityGroup.rules.port')}</dt><dd>{rule.port_range_min != null && rule.port_range_max != null ? rule.port_range_min === rule.port_range_max ? rule.port_range_min : `${rule.port_range_min}-${rule.port_range_max}` : '-'}</dd></div><div><dt>{t('securityGroup.rules.remoteIp')}</dt><dd>{rule.remote_ip_prefix ?? '-'}</dd></div></dl>
+						{#snippet actions()}<button class="text-state-danger-text" onclick={() => onDelete(rule.id)}>{t('network.actions.delete')}</button>{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<table class="w-full text-xs">
 			<thead>
 				<tr class="text-ink-2 uppercase tracking-wide border-b border-line-2/50">
@@ -54,5 +66,6 @@
 				{/each}
 			</tbody>
 		</table>
+		</ResponsiveTable>
 	{/if}
 </div>

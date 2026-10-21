@@ -1,5 +1,5 @@
-import { fromStore, get } from 'svelte/store';
-import { getContext, setContext } from 'svelte';
+import { fromStore, get, writable } from 'svelte/store';
+import { getContext, onDestroy, setContext, untrack } from 'svelte';
 import { auth, canWrite } from '$lib/stores/auth';
 import { api, ApiError } from '$lib/api/client';
 import { createAutoRefresh, type AutoRefreshController } from '$lib/utils/autoRefresh.svelte';
@@ -13,6 +13,12 @@ import type { FloatingIpDetail, PortInfo, NetworkInfo } from '$lib/types/network
 import type { SecurityGroup } from '$lib/types/securityGroup';
 import type { Volume as VolumeInfo } from '$lib/types/volume';
 import type { FlavorOption } from '$lib/types/flavor';
+
+// Selection setters publish synchronously: effects cannot observe same-tick A→B→A.
+const instanceDetailSelectionRevision = writable(0);
+export function invalidateInstanceDetailSelection() {
+	instanceDetailSelectionRevision.update(revision => revision + 1);
+}
 
 interface VolumeAttachment {
 	volume_id: string;
@@ -35,6 +41,7 @@ export interface InstanceDetailControllerOpts {
 	effectiveProjectId: () => string | undefined;
 	adminMode: () => boolean;
 	onDelete: () => void;
+	onUpdated?: () => void;
 }
 
 interface MigrationInfo {
@@ -92,6 +99,100 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	let consoleOpening = $state(false);
 	let consoleOpenMessage = $state('');
 	let consoleOpenError = $state('');
+
+	let renameOpen = $state(false);
+	let renameDraft = $state('');
+	let renameError = $state('');
+	let renameLoading = $state(false);
+	let renameGeneration = 0;
+	let renameAuthEpoch = 0;
+	let renameContext: { id: string; projectId: string; ownProjectId: string | undefined; adminMode: boolean; token: string; userId: string | null | undefined; epoch: number } | null = null;
+	const canRename = $derived(
+		writePermission.current && !!identity.current.token && !!instance && instance.id === opts.instanceId()
+		&& !!instance.project_id && instance.project_id === opts.effectiveProjectId()
+		&& (!opts.adminMode() || identity.current.isSystemAdmin)
+	);
+	const unsubscribeRenameAuth = auth.subscribe(() => {
+		renameAuthEpoch++;
+		if (renameContext) closeRename();
+	});
+	const unsubscribeRenamePermission = canWrite.subscribe(() => {
+		if (renameContext) closeRename();
+	});
+	const unsubscribeRenameSelection = instanceDetailSelectionRevision.subscribe(() => {
+		if (renameContext) closeRename();
+	});
+	onDestroy(() => { unsubscribeRenameAuth(); unsubscribeRenamePermission(); unsubscribeRenameSelection(); closeRename(); });
+	$effect.pre(() => {
+		const id = opts.instanceId();
+		const projectId = opts.effectiveProjectId();
+		const adminMode = opts.adminMode();
+		const allowed = canRename;
+		untrack(() => {
+			if (renameContext && (!allowed || renameContext.id !== id || renameContext.projectId !== projectId || renameContext.adminMode !== adminMode)) closeRename();
+		});
+	});
+
+	function closeRename() {
+		++renameGeneration;
+		renameContext = null;
+		renameOpen = false;
+		renameDraft = '';
+		renameError = '';
+		renameLoading = false;
+	}
+
+	function openRename() {
+		const caller = get(auth);
+		if (!canRename || !instance?.project_id || instance.project_id !== opts.effectiveProjectId() || !caller.token
+			|| (opts.adminMode() && !caller.isSystemAdmin) || mutationBusy() || renameLoading) return;
+		++renameGeneration;
+		renameContext = { id: instance.id, projectId: instance.project_id, ownProjectId: ownPid(), adminMode: opts.adminMode(), token: caller.token, userId: caller.userId, epoch: renameAuthEpoch };
+		renameDraft = instance.name;
+		renameError = '';
+		renameOpen = true;
+	}
+
+	async function submitRename() {
+		const context = renameContext;
+		const generation = renameGeneration;
+		const owns = () => !!context && renameOpen && generation === renameGeneration && context.epoch === renameAuthEpoch
+			&& canRename && instance?.id === context.id && opts.instanceId() === context.id
+			&& opts.effectiveProjectId() === context.projectId && ownPid() === context.ownProjectId
+			&& opts.adminMode() === context.adminMode && get(auth).token === context.token && get(auth).userId === context.userId;
+		if (!context || !owns() || renameLoading || mutationBusy()) return;
+		const draft = renameDraft.trim();
+		if (draft === instance?.name) { closeRename(); return; }
+		const name = draft.replace(/[^\S\r\n]+/g, '-');
+		if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$/.test(name)) {
+			renameError = t('rename.invalidName');
+			return;
+		}
+		if (name === instance?.name) { closeRename(); return; }
+		renameLoading = true;
+		renameError = '';
+		try {
+			const result = await api.put<{ id: string; name: string; project_id: string }>(
+				`/api/v1/${context.adminMode ? 'admin/' : ''}instances/${context.id}/name`, { name }, context.token,
+				context.adminMode ? context.ownProjectId : context.projectId, { replayOnUnauthorized: false },
+			);
+			if (!owns()) return;
+			if (result.id !== context.id || result.project_id !== context.projectId || result.name !== name) {
+				renameError = t('rename.failed');
+				return;
+			}
+			++fetchGeneration;
+			loading = false;
+			refreshing = false;
+			instance = { ...instance!, name: result.name };
+			closeRename();
+			opts.onUpdated?.();
+		} catch (e) {
+			if (owns()) renameError = e instanceof ApiError ? e.message : t('rename.failed');
+		} finally {
+			if (generation === renameGeneration) renameLoading = false;
+		}
+	}
 
 	// Password capability belongs to the selected instance and caller context.
 	let passwordPrecheck = $state<PasswordPrecheck | null>(null);
@@ -181,6 +282,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 	// Core fetch
 	async function fetchInstance(id: string, fetchOpts?: { silent?: boolean; refreshSecurityGroups?: boolean }) {
+		if (renameContext && (renameContext.id !== id || renameContext.projectId !== opts.effectiveProjectId() || renameContext.adminMode !== opts.adminMode())) closeRename();
 		++passwordPrecheckGeneration;
 		passwordPrecheck = null;
 		passwordPrecheckLoading = false;
@@ -751,6 +853,15 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 	return {
 		get instance() { return instance; },
+		get canRename() { return canRename; },
+		get renameOpen() { return renameOpen; },
+		get renameDraft() { return renameDraft; },
+		set renameDraft(value: string) { renameDraft = value; },
+		get renameError() { return renameError; },
+		get renameLoading() { return renameLoading; },
+		openRename,
+		closeRename,
+		submitRename,
 		get floatingIps() { return floatingIps; },
 		get interfaces() { return interfaces; },
 		get volumes() { return volumes; },
@@ -833,6 +944,14 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 export interface InstanceDetailController {
 	readonly instance: Instance | null;
+	readonly canRename: boolean;
+	readonly renameOpen: boolean;
+	renameDraft: string;
+	readonly renameError: string;
+	readonly renameLoading: boolean;
+	openRename(): void;
+	closeRename(): void;
+	submitRename(): Promise<void>;
 	readonly floatingIps: FloatingIpDetail[];
 	readonly interfaces: PortInfo[];
 	readonly volumes: VolumeAttachment[];

@@ -11,6 +11,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import OnboardingAccountForm from '$lib/components/auth/OnboardingAccountForm.svelte';
+	import AccountResultDetails from '$lib/components/auth/AccountResultDetails.svelte';
 	import type { DomainAccountResult, DomainInvitationInfo } from '$lib/types/auth';
 	import { isOnboardingToken, onboardingErrorKey, storePendingInvitation, signupApprovalState, type SignupApprovalState } from '$lib/utils/domainLogin';
 	import { t } from '$lib/i18n/ns/domain-auth';
@@ -87,7 +88,7 @@
 		}
 	}
 
-	async function createAccount(account: { name: string; password: string; personal_domain_name: string }) {
+	async function createAccount(account: { name: string; password: string }) {
 		if (!info || accountExists || approval || createAbandoned || $auth.token || $logoutInProgress || $projectSwitching) return;
 		const current = token;
 		const serial = loadSerial;
@@ -137,6 +138,7 @@
 				{ cache: 'no-store', replayOnUnauthorized: false },
 			);
 			if (!owns()) return;
+			if (result.user_id !== $auth.userId || result.identity_domain_id !== $auth.identityDomainId) throw new Error('Invitation account mismatch');
 			accepted = result;
 		} catch (e) {
 			if (!owns()) return;
@@ -188,15 +190,17 @@
 			{:else if created}
 				<div class="space-y-4">
 					<Alert tone="success" title={t('onboarding.created.title')}>
-						<RichText segments={t.rich('onboarding.created.body', { domain: created.identity_domain_name })} classes={{ strong: 'text-ink-0' }} />
+						{t('onboarding.created.body', { project: created.personal_project_name ?? '' })}
 					</Alert>
+					<AccountResultDetails result={created} admission={info ? { id: info.domain_id, name: info.domain_name } : undefined} />
 					<Button href="/login" size="lg" class="w-full">{t('onboarding.created.signIn')}</Button>
 				</div>
 			{:else if accepted}
 				<div class="space-y-4">
 					<Alert tone="success" title={t('invitation.accepted.title')}>
-						<RichText segments={t.rich('invitation.accepted.body', { domain: accepted.domain_name })} classes={{ strong: 'text-ink-0' }} />
+						<RichText segments={t.rich('invitation.accepted.body', { domain: info?.domain_name ?? '' })} classes={{ strong: 'text-ink-0' }} />
 					</Alert>
+					<AccountResultDetails result={accepted} admission={info ? { id: info.domain_id, name: info.domain_name } : undefined} />
 					<Button href="/select-domain" size="lg" class="w-full">{t('invitation.accepted.continue')}</Button>
 				</div>
 			{:else if info}

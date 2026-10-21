@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Alert, Button, Card, Field, PageHeader, SelectInput, TableShell } from '$lib/components/ui';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { adminTelemetryRequest, TelemetryError } from '$lib/api/adminTelemetry';
 	import type { AodhDetail, AodhOverview, NativeAlarm, NativePage, TelemetryStatus } from '$lib/api/adminTelemetry';
 	import { t } from '$lib/i18n/ns/admin-telemetry';
@@ -249,11 +251,22 @@
 			{:else if page}
 				<NativeStatus status={page.status} error={page.error} />
 				{#if page.items.length}
+					{@const alarmItems = page.items}
+					<ResponsiveTable>
+						{#snippet cards()}
+							{#each alarmItems as alarm (alarm.alarm_id)}
+								<CompactResourceCard selected={selectedId === alarm.alarm_id}>
+									<Button variant="link" ariaLabel={t('aodh.selectNamed', { name: alarm.name || alarm.alarm_id })} ariaPressed={selectedId === alarm.alarm_id} onclick={() => void selectAlarm(alarm.alarm_id)}>{alarm.name || alarm.alarm_id}</Button>
+									<p>{t('state')}: {stateLabel(alarm.state)} · {t('aodh.severity')}: {reported(alarm.severity)}</p>
+									{#snippet details()}<p>{t('type')}: {alarm.type}</p><p>{t('aodh.enabled')}: {reported(alarm.enabled)}</p>{/snippet}
+								</CompactResourceCard>
+							{/each}
+						{/snippet}
 					<TableShell density="compact">
 						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 						<table tabindex="0" aria-label={t('aodh.alarms')} class="focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
 							<thead><tr><th scope="col">{t('name')}</th><th scope="col">{t('state')}</th><th scope="col">{t('type')}</th><th scope="col">{t('aodh.enabled')}</th><th scope="col">{t('aodh.severity')}</th></tr></thead>
-							<tbody>{#each page.items as alarm (alarm.alarm_id)}
+							<tbody>{#each alarmItems as alarm (alarm.alarm_id)}
 								<tr data-selected={selectedId === alarm.alarm_id}>
 									<td><Button variant="link" ariaLabel={t('aodh.selectNamed', { name: alarm.name || alarm.alarm_id })} ariaPressed={selectedId === alarm.alarm_id} onclick={() => void selectAlarm(alarm.alarm_id)}>{alarm.name || alarm.alarm_id}</Button></td>
 									<td>{stateLabel(alarm.state)}</td><td class="font-mono">{alarm.type}</td><td>{reported(alarm.enabled)}</td><td>{reported(alarm.severity)}</td>
@@ -261,6 +274,7 @@
 							{/each}</tbody>
 						</table>
 					</TableShell>
+					</ResponsiveTable>
 				{:else if page.status === 'available'}<p role="status" class="text-sm text-ink-2">{t('aodh.emptyPage')}</p>{/if}
 				{#if page.truncated}<Alert tone="warning">{t('truncated')}</Alert>{/if}
 				{#if page.status !== 'available'}<Button variant="secondary" onclick={() => void loadPage()}>{t('retry')}</Button>{/if}
@@ -321,13 +335,19 @@
 						<p class="text-xs text-ink-2">{t('aodh.historyBound')}</p>
 						<NativeStatus status={detail.history.status} error={detail.history.error} />
 						{#if detail.history.items.length}
+							{@const historyEvents = detail.history.items}
+							<ResponsiveTable>
+								{#snippet cards()}
+									{#each historyEvents as event}<CompactResourceCard><p class="font-medium">{reported(event.type)}</p><p>{timestamp(event.timestamp)}</p>{#snippet details()}<dl class="space-y-2"><div><dt>{t('aodh.eventId')}</dt><dd class="font-mono break-all">{reported(event.event_id)}</dd></div><div><dt>{t('aodh.userId')}</dt><dd class="font-mono break-all">{reported(event.user_id)}</dd></div><div><dt>{t('aodh.projectId')}</dt><dd class="font-mono break-all">{reported(event.project_id)}</dd></div></dl>{/snippet}</CompactResourceCard>{/each}
+								{/snippet}
 							<TableShell density="compact">
 								<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 								<table tabindex="0" aria-label={t('history')} class="focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
 									<thead><tr><th scope="col">{t('aodh.event')}</th><th scope="col">{t('aodh.timestamp')}</th><th scope="col">{t('aodh.eventId')}</th><th scope="col">{t('aodh.userId')}</th><th scope="col">{t('aodh.projectId')}</th></tr></thead>
-									<tbody>{#each detail.history.items as event}<tr><td>{reported(event.type)}</td><td>{timestamp(event.timestamp)}</td><td class="font-mono">{reported(event.event_id)}</td><td class="font-mono">{reported(event.user_id)}</td><td class="font-mono">{reported(event.project_id)}</td></tr>{/each}</tbody>
+									<tbody>{#each historyEvents as event}<tr><td>{reported(event.type)}</td><td>{timestamp(event.timestamp)}</td><td class="font-mono">{reported(event.event_id)}</td><td class="font-mono">{reported(event.user_id)}</td><td class="font-mono">{reported(event.project_id)}</td></tr>{/each}</tbody>
 								</table>
 							</TableShell>
+							</ResponsiveTable>
 						{:else if detail.history.status === 'available'}<p class="text-sm text-ink-2">{t('aodh.historyEmpty')}</p>{/if}
 						{#if detail.history.truncated}<Alert tone="warning">{t('truncated')}</Alert>{/if}
 					</section>

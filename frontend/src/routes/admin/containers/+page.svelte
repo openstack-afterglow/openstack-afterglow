@@ -1,9 +1,15 @@
 <script lang="ts">
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import { t as scopeT } from '$lib/i18n/ns/domain-admin';
+	let inventoryError = $state('');
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/admin-system';
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api } from '$lib/api/client';
+	import { api as baseApi } from '$lib/api/client';
+	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
+	const api = createAdminInventoryApi(baseApi);
+	onDestroy(api.dispose);
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import ContainerDetailPanel from '$lib/components/ContainerDetailPanel.svelte';
@@ -12,6 +18,8 @@
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	interface AdminContainer {
 		uuid: string;
@@ -36,10 +44,11 @@
 	async function load() {
 		if (containers.length === 0) loading = true;
 		else refreshing = true;
+		inventoryError = '';
 		try {
 			containers = await api.get<AdminContainer[]>('/api/v1/admin/all-containers', token, projectId);
-		} catch {
-			containers = [];
+		} catch (reason) {
+			containers = []; inventoryError = reason instanceof Error ? reason.message : scopeT('state.unavailable');
 		} finally {
 			loading = false;
 			refreshing = false;
@@ -74,11 +83,24 @@
 	</div>
 
 	<div data-tour="admin-containers-list">
-	{#if loading}
+	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
+	{:else if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if containers.length === 0}
 		<div class="text-ink-2 text-sm" data-tour="admin-containers-ready">{t('containers.empty')}</div>
 	{:else}
+		<ResponsiveTable>
+			{#snippet cards()}
+				<div class="contents" data-tour="admin-containers-ready">
+				{#each containers as c, index (c.uuid)}
+					<CompactResourceCard selected={selectedContainerId === c.uuid}>
+						<div class="flex items-start justify-between gap-2"><button type="button" class="min-h-11 break-all text-left font-medium text-ink-0" data-tour={index === 0 ? 'admin-containers-row' : undefined} onclick={() => selectedContainerId = c.uuid}>{c.name || c.uuid.slice(0, 8)}</button><StatusChip status={c.status} /></div>
+						<div class="space-y-1 text-xs text-ink-2"><p>{t('containers.cpu')}: {c.cpu ?? '-'} · {t('containers.memory')}: {c.memory || '-'}</p><p>{t('containers.host')}: {c.host || '-'}</p></div>
+						{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p class="font-mono">{c.uuid}</p><p>{t('containers.image')}: {c.image || '-'}</p><p>{t('containers.created')}: {c.created_at?.slice(0, 10) ?? '-'}</p></div>{/snippet}
+					</CompactResourceCard>
+				{/each}
+				</div>
+			{/snippet}
 		<div class="overflow-x-auto" data-tour="admin-containers-ready">
 			<table class="w-full text-sm">
 				<thead>
@@ -114,6 +136,7 @@
 				</tbody>
 			</table>
 		</div>
+		</ResponsiveTable>
 	{/if}
 	</div>
 </PageShell>

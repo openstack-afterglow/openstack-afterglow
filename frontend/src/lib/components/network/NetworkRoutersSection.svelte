@@ -4,6 +4,8 @@
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	const s = useNetworkDetailController();
 </script>
@@ -48,6 +50,16 @@
 	{/if}
 
 	{#if s.network!.routers.length > 0}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each s.network!.routers as router (router.id)}
+					<CompactResourceCard>
+						<div class="flex items-center justify-between gap-2"><span class="font-medium">{router.name || router.id.slice(0, 8)}</span><StatusChip status={router.status} /></div>
+						{#snippet details()}<p class="font-mono">{router.id}</p>{/snippet}
+						{#snippet actions()}{#if s.canManageNetwork && router.project_id === s.network!.project_id}<button onclick={() => s.disconnectRouter(router)} class="text-state-danger-text">{t('network.actions.disconnect')}</button>{/if}{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<div class="space-y-2">
 			{#each s.network!.routers as router}
 				<div class="flex items-center justify-between py-1">
@@ -67,6 +79,7 @@
 				</div>
 			{/each}
 		</div>
+		</ResponsiveTable>
 	{:else if !s.showRouterConnect}
 		<p class="text-xs text-ink-2">{t('network.routers.empty')}</p>
 	{/if}

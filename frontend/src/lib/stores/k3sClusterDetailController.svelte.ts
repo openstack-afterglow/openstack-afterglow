@@ -5,6 +5,7 @@ import { downloadBlobAs } from '$lib/utils/downloadBlob';
 import { streamK3sProgress } from '$lib/api/k3sSseStream';
 import { maybeMockHead, symbolNoMatch } from '$lib/mockup/transport';
 import { toast } from '$lib/stores/toast';
+import { invalidateInstanceDetailSelection } from '$lib/stores/instanceDetailController.svelte';
 import type { NetworkInfo } from '$lib/types/networks';
 import type { K3sCluster, K3sClusterHealth, K3sInterfaceInfo, ConfigMapInfo, SecretInfo, PodInfo, ServiceInfo, DeploymentInfo, ReplicaSetInfo } from '$lib/types/k3s';
 import { listNodeInterfaces, attachNodeInterface, detachNodeInterface } from '$lib/api/k3s';
@@ -615,6 +616,7 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
   }
 
   function reset() {
+    invalidateInstanceDetailSelection();
     generation += 1;
     cluster = null;
     health = null;
@@ -648,10 +650,12 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
   }
 
   function setViewingInstance(id: string | null) {
+    invalidateInstanceDetailSelection();
     viewingInstanceId = id;
   }
 
   function clearViewingInstance() {
+    invalidateInstanceDetailSelection();
     viewingInstanceId = null;
   }
 

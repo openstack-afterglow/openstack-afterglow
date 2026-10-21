@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 
 const { apiGet, mockScope, revisionListeners } = vi.hoisted(() => ({
@@ -45,6 +45,7 @@ beforeEach(() => {
 	mockScope.revision = 0;
 	revisionListeners.clear();
 });
+afterEach(() => { vi.restoreAllMocks(); });
 
 describe('projectNames store', () => {
 	it('loads once per exact scope and returns a fresh map to every caller', async () => {
@@ -176,5 +177,34 @@ describe('projectNames store', () => {
 		expect(get(projectNames)).toEqual(new Map([['new', 'Current Owner']]));
 		await projectNames.loadResult('token', 'project', 'new-user');
 		expect(apiGet).toHaveBeenCalledTimes(2);
+	});
+	it('shares full project metadata with name-only readers and expires the snapshot after thirty seconds', async () => {
+		const clock = vi.spyOn(Date, 'now').mockReturnValue(1_000);
+		apiGet.mockResolvedValue([{ id: 'p1', name: 'One', domain_id: 'domain-a' }]);
+		const { projectNames } = await loadStore();
+		const [names, metadata] = await Promise.all([projectNames.load('token', 'project'), projectNames.loadMetadata('token', 'project')]);
+		expect(apiGet).toHaveBeenCalledOnce();
+		expect(names.get('p1')).toBe('One');
+		expect(metadata.projects).toEqual([{ id: 'p1', name: 'One', domain_id: 'domain-a' }]);
+		clock.mockReturnValue(30_999);
+		await projectNames.loadMetadata('token', 'project');
+		expect(apiGet).toHaveBeenCalledOnce();
+		clock.mockReturnValue(31_000);
+		await projectNames.loadMetadata('token', 'project');
+		expect(apiGet).toHaveBeenCalledTimes(2);
+	});
+
+	it('explicit refresh bypasses a pending metadata read and fences its stale publication', async () => {
+		const old = deferred<Array<ProjectName & { domain_id: string }>>();
+		apiGet.mockReturnValueOnce(old.promise).mockResolvedValueOnce([{ id: 'current', name: 'Current', domain_id: 'domain-b' }]);
+		const { projectNames } = await loadStore();
+		const pending = projectNames.loadMetadata('token', 'project');
+		const refreshed = await projectNames.loadMetadata('token', 'project', undefined, true);
+		expect(apiGet).toHaveBeenLastCalledWith('/api/v1/admin/projects/names', 'token', 'project', { refresh: true });
+		expect(refreshed.projects[0].id).toBe('current');
+		old.resolve([{ id: 'old', name: 'Old', domain_id: 'domain-a' }]);
+		await pending;
+		expect(get(projectNames)).toEqual(new Map([['current', 'Current']]));
+		expect((await projectNames.loadMetadata('token', 'project')).projects[0].id).toBe('current');
 	});
 });

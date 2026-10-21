@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { HTMLAttributes } from 'svelte/elements';
 	import { t } from '$lib/i18n/ns/shared';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 
 	interface Props extends HTMLAttributes<HTMLDivElement> {
 		/** Number of skeleton rows to display */
@@ -13,7 +14,17 @@
 </script>
 
 {#if variant === 'table'}
-	<div class="overflow-x-auto" role="status" aria-busy="true" aria-live="polite" aria-label={t('loadingSkeleton.label')} {...restProps}>
+	<div role="status" aria-busy="true" aria-live="polite" aria-label={t('loadingSkeleton.label')} {...restProps}>
+	<ResponsiveTable>
+		{#snippet cards()}
+			{#each Array(rows) as _}
+				<div class="rounded-lg border border-line bg-surface-base p-3" aria-hidden="true">
+					<div class="mb-2 h-4 w-2/3 motion-skeleton rounded"></div>
+					<div class="h-3 w-1/2 motion-skeleton rounded"></div>
+				</div>
+			{/each}
+		{/snippet}
+	<div class="overflow-x-auto">
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
@@ -40,6 +51,8 @@
 				{/each}
 			</tbody>
 		</table>
+	</div>
+	</ResponsiveTable>
 	</div>
 {:else if variant === 'card'}
 	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" role="status" aria-busy="true" aria-live="polite" aria-label={t('loadingSkeleton.label')} {...restProps}>

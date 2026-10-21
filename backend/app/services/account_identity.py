@@ -32,15 +32,16 @@ def _account_users(ks, domain_id, *, operation=None):
 
 
 def password_account(username: str, *, operation):
-    """Resolve one global canonical account and its exact enabled native home.
+    """Resolve one canonical password account inside operator-native Accounts.
 
-    Names and normalized email aliases share one candidate set. Never prefer a
-    domain-local name or probe credentials to disambiguate legacy identities.
+    Names and normalized email aliases share one domain-scoped candidate set.
+    Never probe credentials or fall back to another native identity domain.
     """
+    from app.services import account_spaces
     from app.services.domain_auth import DomainAuthConflict, normalize_email
-    from app.services.domain_scope import assert_domain_resource, resolve_domain
 
-    rows = _account_users(operation.ks, None, operation=operation)
+    home = _field(account_spaces.shared_domain("account", operation=operation), "id")
+    rows = _account_users(operation.ks, home, operation=operation)
     email = normalize_email(username).casefold() if "@" in username else ""
     matches = [row for row in rows if _field(row, "name") == username or (email and _email(row) == email)]
     if len(matches) > 1:
@@ -52,11 +53,9 @@ def password_account(username: str, *, operation):
     user = operation.get("users", uid)
     if _field(user, "id") != uid or _field(user, "enabled") is not True:
         raise Unauthorized(message="Account is unavailable")
-    name, home = _field(user, "name"), _field(user, "domain_id")
-    if not isinstance(name, str) or not name or not isinstance(home, str) or not home:
+    name = _field(user, "name")
+    if not isinstance(name, str) or not name or _field(user, "domain_id") != home:
         raise Unauthorized(message="Account is unavailable")
-    domain = resolve_domain(home, operation=operation)
-    assert_domain_resource(home, domain["id"])
     return {"id": uid, "name": name, "domain_id": home}
 
 
@@ -185,7 +184,12 @@ async def require_enrollment_complete(user):
 
 
 async def require_admission(user_id, domain_id, row, email, *, lease, ks, catalog, new=False):
+    from app.services.account_spaces import domain_kind
     from app.services.domain_auth import DomainAuthConflict, DomainAuthDenied, provider_auto_join_allowed
+
+    native_domain = await asyncio.to_thread(domain_projects._exact, ks.domains, domain_id)
+    if domain_kind(native_domain) in {"account", "personal"}:
+        raise DomainAuthDenied("Organization admission requires an organization", code="organization_domain_required")
 
     if not new:
         await require_enrollment_complete(await asyncio.to_thread(ks.users.get, user_id))
@@ -269,19 +273,24 @@ async def attach(user, row, identity, *, lease, ks, password_proven=False, expli
     return checked
 
 
-async def create_external(row, identity, *, lease, ks, catalog):
+async def create_external(row, identity, *, lease, ks, catalog, admission_domain_id=None):
     from app.services import domain_iam
     from app.services.domain_auth import DomainAuthDenied, DomainAuthUnavailable
 
     try:
-        user = await domain_iam.enroll_external(row, identity, lease=lease, ks=ks, catalog=catalog)
+        user = await domain_iam.enroll_external(
+            row, identity, lease=lease, ks=ks, catalog=catalog, admission_domain_id=admission_domain_id
+        )
     except HTTPException as exc:
         if exc.status_code == 403 and exc.detail in ("signup_approval_pending", "signup_approval_rejected"):
             raise DomainAuthDenied("New account approval is required", code=exc.detail) from None
         raise
     home = _field(user, "domain_id")
     uid = _field(user, "id")
-    if not uid or not isinstance(home, str) or not home or home == row.domain_id:
+    from app.services import account_spaces
+
+    account = await asyncio.to_thread(account_spaces.shared_domain, "account", ks=ks)
+    if not uid or not isinstance(home, str) or home != _field(account, "id"):
         raise DomainAuthUnavailable("Native external account creation was not confirmed")
     checked = await asyncio.to_thread(ks.users.get, uid)
     if (

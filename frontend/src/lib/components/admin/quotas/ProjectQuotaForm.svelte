@@ -5,6 +5,8 @@
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import type { Quotas } from '$lib/types/quotas';
 	import Alert from '$lib/components/ui/Alert.svelte';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	function formatRam(mb: number): string {
 		if (mb >= 1024) {
@@ -276,6 +278,28 @@
 				</div>
 			{/if}
 		{:else}
+      <ResponsiveTable>
+        {#snippet cards()}
+          {#each sec.fields as field (field.key)}
+            {@const quotaItem = secQuotas[field.key]}
+            {@const isSupported = quotaItem !== undefined && quotaItem !== null}
+            <CompactResourceCard>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <label for={`field-${sec.id}-${field.key}`} class="text-sm font-medium">{field.label}</label>
+                {#if !isSupported}<span class="text-xs text-ink-2">{t('quotaForm.unsupported')}</span>{:else if drafts[sec.id]?.[field.key] === -1}<span class="text-xs text-accent">{t('quotaForm.unlimited')}</span>{/if}
+              </div>
+              {#if isSupported}
+                {@const inUse = quotaItem.in_use}
+                <div class="flex flex-wrap justify-between gap-2 text-xs text-ink-2"><span>{t('quotaForm.usage', { usage: inUse == null ? '-' : field.formatUsage ? field.formatUsage(inUse) : field.unit ? `${inUse} ${field.unit}` : inUse })}</span>{#if drafts[sec.id]?.[field.key] !== baselines[sec.id]?.[field.key]}<span class="text-warm-text">{t('quotaForm.editing')}</span>{/if}</div>
+                <input id={`field-${sec.id}-${field.key}`} data-testid={`quota-${sec.id}-${field.key}`} type="number" min="-1" bind:value={drafts[sec.id][field.key]} class="min-h-11 w-full rounded-lg border border-line-2 bg-surface-sunken px-3 py-2 text-sm text-ink-0" />
+              {:else}
+                <p class="text-xs text-ink-2">{t('quotaForm.usage', { usage: '-' })}</p>
+                <input id={`field-${sec.id}-${field.key}`} data-testid={`quota-${sec.id}-${field.key}-disabled`} disabled value="" placeholder={t('quotaForm.unsupportedPlaceholder')} class="min-h-11 w-full rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink-2" />
+              {/if}
+              {#snippet details()}{#if field.help}<p class="text-xs text-ink-2">{field.help}</p>{/if}{/snippet}
+            </CompactResourceCard>
+          {/each}
+        {/snippet}
 			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
 				{#each sec.fields as field}
 					{@const quotaItem = secQuotas[field.key]}
@@ -327,6 +351,7 @@
 					</div>
 				{/each}
 			</div>
+      </ResponsiveTable>
 
 			{#if displayError}
 				<Alert tone="danger" class="mt-4">{displayError}</Alert>

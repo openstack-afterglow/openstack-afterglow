@@ -155,25 +155,28 @@ def make_token_info(
 def auth_directory(monkeypatch):
     """Synthetic Keystone directory for browser-session transition regressions.
 
-    Canonical domain/role boundaries and Redis Lua rotation still run. Native
-    provisioning is a separate boundary exercised by test_login_native_operation;
-    this static directory keeps each session test's selected project inventory.
+    Canonical domain/role boundaries, personal ownership and Redis rotation run.
+    SQL/native provisioning is isolated here and exercised separately by
+    test_personal_domains and test_login_native_operation. Legacy grants stay put.
     """
     from keystoneauth1.exceptions.http import NotFound
 
-    from app.services import domain_auth, domain_projects, identity_roles, keystone
+    from app.services import account_spaces, domain_auth, domain_projects, identity_roles, keystone
+    from app.services.service_permissions import ROLE_IMPLICATIONS, ROLE_PRESETS
 
     domains = {
         "default": {"id": "default", "name": "Default", "enabled": True},
         "tenant-a": {"id": "tenant-a", "name": "Tenant A", "enabled": True},
         "tenant-b": {"id": "tenant-b", "name": "Tenant B", "enabled": True},
+        "accounts": {"id": "accounts", "name": "Accounts", "enabled": True},
+        "personal": {"id": "personal", "name": "Personal", "enabled": True},
     }
     state = SimpleNamespace(domains=domains, users={}, projects={}, assignments=[])
     state.users = {
         uid: {
             "id": uid,
             "name": name,
-            "domain_id": "default",
+            "domain_id": "accounts",
             "enabled": True,
             "email": "actual@example.test",
             "default_project_id": "",
@@ -202,7 +205,11 @@ def auth_directory(monkeypatch):
     state.roles = [
         {"id": name + "-role", "name": name, "domain_id": None} for name in ("admin", "manager", "member", "reader")
     ]
-    state.inferences = []
+    state.roles.extend({"id": row["name"] + "-role", "name": row["name"], "domain_id": None} for row in ROLE_PRESETS)
+    state.inferences = [
+        {"prior_role": {"id": prior + "-role"}, "implies": [{"id": implied + "-role"}]}
+        for prior, implied in ROLE_IMPLICATIONS
+    ]
 
     def domain_get(did):
         if did not in domains:
@@ -215,7 +222,7 @@ def auth_directory(monkeypatch):
             {
                 "id": uid,
                 "name": uid,
-                "domain_id": "default",
+                "domain_id": "accounts",
                 "enabled": True,
                 "email": "actual@example.test",
                 "default_project_id": "",
@@ -245,6 +252,7 @@ def auth_directory(monkeypatch):
             rows.extend(
                 {"user": {"id": uid}, "role": {"id": "member-role"}, "scope": {"project": {"id": pid}}}
                 for pid in project_ids
+                if state.projects.get(pid, {}).get("afterglow_personal_primary") is not True
             )
         for key in ("user", "group"):
             if key in query:
@@ -274,12 +282,35 @@ def auth_directory(monkeypatch):
         inference_rules=SimpleNamespace(list_inference_roles=lambda: state.inferences),
         role_assignments=SimpleNamespace(list=assignments),
     )
+
+    async def ensure_personal_project(uid, *, operation=None):
+        # Static native state replaces only the provisioning boundary, not the
+        # runtime primary/marker/owner verification or identity/session logic.
+        user = user_get(uid)
+        pid = "personal-" + uid
+        if pid not in state.projects:
+            state.projects[pid] = {
+                "id": pid,
+                "name": user["name"] + "-personal",
+                "domain_id": "personal",
+                "enabled": True,
+                "afterglow_personal_user_id": uid,
+                "afterglow_personal_primary": True,
+            }
+            state.assignments.extend(
+                {"user": {"id": uid}, "role": {"id": role + "-role"}, "scope": {"project": {"id": pid}}}
+                for role in ("project_owner", "project_reader")
+            )
+            state.grants.setdefault(uid, []).append(pid)
+        return account_spaces.personal_project(uid, ks=ks)
+
+    monkeypatch.setattr(account_spaces, "ensure_personal_project", ensure_personal_project)
     monkeypatch.setattr(keystone, "_get_admin_ks_client", lambda: ks)
     monkeypatch.setattr(
         identity_roles, "_trusted_catalog", lambda: identity_roles._catalog(state.roles, state.inferences)
     )
     monkeypatch.setattr(domain_auth, "require_password", AsyncMock())
-    monkeypatch.setattr(domain_auth, "require_provider", AsyncMock())
+    monkeypatch.setattr(domain_auth, "require_provider", AsyncMock(return_value=None))
     monkeypatch.setattr(
         domain_auth, "get_policy", AsyncMock(side_effect=lambda did: domain_auth.LoginPolicy(domain_id=did))
     )

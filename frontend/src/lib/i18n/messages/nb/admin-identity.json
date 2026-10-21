@@ -337,6 +337,7 @@
 	"roleValidation.protectedDeletion": "Standardroller kan ikke slettes.",
 	"roleValidation.linkedDeletion": "Fjern først koblingene til direkte tilknyttede overordnede og underordnede roller.",
 	"userCreate.title": "Opprett bruker",
+	"userCreate.accountSpacesHelp": "Accounts oppretter bare påloggingsidentiteten. Ingen prosjekter opprettes nå; første vellykkede pålogging oppretter et automatisk navngitt prosjekt i Personal med bare den direkte rollen member. Det valgte katalogdomenet er kun for visning; opprettelse gir verken medlemskap der eller lesetilgang til Default.",
 	"userCreate.name": "Navn",
 	"userCreate.email": "E-post",
 	"userCreate.password": "Passord",
@@ -587,10 +588,11 @@
 	"roleMetadata.invalidName": "Områder og nivåer bruker latinske bokstaver, tall og bindestreker. Alle blanktegn erstattes med bindestreker.",
 	"roleMetadata.domain": "Domene-ID (valgfritt)",
 	"rolePresets.preview": "Forhåndsvis rolleforhåndsinnstillinger",
-	"rolePresets.confirm": "Vil du bruke forhåndsinnstillinger for prosjekt- og tjenesteroller? Eksisterende rolle-ID-er og tildelinger beholdes; bare manglende roller og arvelenker legges til.",
+	"rolePresets.confirm": "Vil du bruke rolleforhåndsinnstillingene? Manglende roller og prosjektarvelenker legges til; de oppførte gamle tjenestearvelenkene fjernes. Rolle-ID-er og direkte tildelinger beholdes. Rull ut de nye tjenestepolicyene først.",
 	"rolePresets.apply": "Bruk forhåndsinnstillinger",
 	"rolePresets.applied": "Forhåndsinnstillingene er tatt i bruk. Den faktiske rollegrafen er lastet på nytt.",
-	"rolePresets.previewHelp": "Forhåndsvisning endrer ikke skyen. Når forhåndsinnstillingene tas i bruk, gjenbrukes roller med eksisterende navn, og det opprettes ikke dupliserte roller ved gjentatt bruk.",
+	"rolePresets.previewHelp": "Forhåndsvisning endrer ikke skyen. Hver tjeneste vurderer tillatelser gjennom sin policy.yaml. Eksisterende roller gjenbrukes, og bare de oppførte gamle tjenestearvelenkene fjernes.",
 	"rolePresets.directImplications": "Direkte arvelenker som skal legges til",
+	"rolePresets.retiredImplications": "Gamle tjenestearvelenker som skal fjernes",
 	"quotaController.saveFailed": "Kunne ikke lagre"
 }

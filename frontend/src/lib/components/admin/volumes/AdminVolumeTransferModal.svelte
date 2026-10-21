@@ -1,7 +1,12 @@
 <script lang="ts">
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api, ApiError } from '$lib/api/client';
+	import { api as baseApi, ApiError } from '$lib/api/client';
+	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
+	import AdminProjectPicker from '$lib/components/admin/domains/AdminProjectPicker.svelte';
+	const api = createAdminInventoryApi(baseApi);
+	import { onDestroy } from 'svelte';
+	onDestroy(api.dispose);
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/admin-storage';
 	import RichText from '$lib/i18n/RichText.svelte';
@@ -29,33 +34,18 @@
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
-	let transferSearch = $state('');
+	let targetDomainId = $state('');
 	let transferProjectId = $state('');
 	let transferProjectName = $state('');
-	let showTransferDropdown = $state(false);
 	let transferring = $state(false);
 	let transferError = $state('');
-	let allProjects = $state<{ id: string; name: string }[]>([]);
-
-	let filteredTransferProjects = $derived(
-		transferSearch
-			? allProjects.filter((p) => p.name.toLowerCase().includes(transferSearch.toLowerCase()))
-			: allProjects,
-	);
 
 	$effect(() => {
 		if (volume) {
-			transferSearch = '';
+			targetDomainId = '';
 			transferProjectId = '';
 			transferProjectName = '';
 			transferError = '';
-			showTransferDropdown = false;
-			if (allProjects.length === 0) {
-				api
-					.get<{ id: string; name: string }[]>('/api/v1/admin/projects/names', token, projectId)
-					.then((r) => (allProjects = r))
-					.catch(() => (allProjects = []));
-			}
 		}
 	});
 
@@ -102,35 +92,12 @@
 			{#if transferError}
 				<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{transferError}</div>
 			{/if}
-			<div class="relative">
-				<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminvolumetransfermodal-100">{t('volumeTransfer.targetProject')}</label>
-				<input id="field-adminvolumetransfermodal-100"
-					type="text"
-					bind:value={transferSearch}
-					onfocus={() => (showTransferDropdown = true)}
-					oninput={() => {
-						showTransferDropdown = true;
-						if (!transferSearch) { transferProjectId = ''; transferProjectName = ''; }
-					}}
-					onblur={() => setTimeout(() => { showTransferDropdown = false; }, 150)}
-					placeholder={t('volumeTransfer.searchProject')}
-					class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
-				/>
-				{#if showTransferDropdown && filteredTransferProjects.length > 0}
-					<div class="absolute z-10 w-full mt-1 bg-surface-sunken border border-line-2 rounded-lg shadow-[var(--shadow-restraint)] max-h-40 overflow-y-auto">
-						{#each filteredTransferProjects as p (p.id)}
-							<button
-								type="button"
-								onmousedown={() => { transferProjectId = p.id; transferProjectName = p.name; transferSearch = p.name; showTransferDropdown = false; }}
-								class="w-full text-left px-3 py-2 text-sm text-ink-2 hover:bg-surface-selected transition-colors {transferProjectId === p.id ? 'bg-surface-selected text-ink-0' : ''}"
-							>{p.name}</button>
-						{/each}
-					</div>
-				{/if}
-				{#if transferProjectName}
-					<div class="mt-1 text-xs text-ink-2"><RichText segments={t.rich('volumeTransfer.selectedProject', { name: transferProjectName })} tags={{ name: projectName }} /></div>
-				{/if}
-			</div>
+			<AdminProjectPicker domainId={targetDomainId} projectId={transferProjectId} disabled={transferring}
+				emptyProjectLabel={t('volumeTransfer.searchProject')}
+				onchange={(domainId, projectId, name) => { targetDomainId = domainId; transferProjectId = projectId; transferProjectName = name; }} />
+			{#if transferProjectName}
+				<div class="mt-1 text-xs text-ink-2"><RichText segments={t.rich('volumeTransfer.selectedProject', { name: transferProjectName })} tags={{ name: projectName }} /></div>
+			{/if}
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('volumeTransfer.cancel')}</button>
 				<button onclick={confirmTransfer} disabled={transferring || !transferProjectId} class="px-4 py-2 bg-accent hover:bg-accent/90 text-surface-canvas text-sm font-medium rounded-lg disabled:opacity-30">{#if transferring}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('volumeTransfer.transferring')}</span></span>{:else}{t('volumeTransfer.transfer')}{/if}</button>

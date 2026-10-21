@@ -1,4 +1,12 @@
 {
+	"rename.title": "重命名",
+	"rename.name": "实例名称",
+	"rename.notice": "仅更改显示名称，不会更改客户机主机名，也无需停止实例。",
+	"rename.invalidName": "请输入以英文字母或数字开头、最多63个字符的名称。可使用英文字母、数字、连字符和下划线，空格将转换为连字符。",
+	"rename.failed": "无法更改实例名称。请先确认当前名称再重试。",
+	"rename.submit": "保存",
+	"rename.saving": "正在保存...",
+	"rename.cancel": "取消",
 	"panel.backToInstances": "← 实例",
 	"panel.lowUsage": "最近 7 天平均 CPU <cpu>{cpu}</cpu>% · RAM <memory>{memory}</memory>% — 使用率较低。",
 	"panel.suggestedResize": "建议调整为 <strong>{flavor}</strong>。",

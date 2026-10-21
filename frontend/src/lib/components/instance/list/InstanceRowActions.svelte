@@ -28,7 +28,6 @@
 	}
 </script>
 
-<td class="text-right">
 	<ActionMenu
 		{open}
 		ariaLabel={t('rowActions.instanceActions', { name: instance.name || instance.id })}
@@ -48,4 +47,3 @@
 			<Button onclick={() => act('unshelve')} disabled={acting} variant="ghost" size="sm" class="w-full justify-start">{t('rowActions.unshelve')}</Button>
 		{/if}
 	</ActionMenu>
-</td>

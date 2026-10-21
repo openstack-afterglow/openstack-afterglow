@@ -12,6 +12,8 @@
 	import { t as td } from '$lib/i18n/ns/domain-auth';
 	import { getLocale } from '$lib/i18n/runtime.svelte';
 	import { isRouteChange, playRouteEntrance } from '$lib/utils/motion';
+	import AdminInventoryScope from '$lib/components/admin/domains/AdminInventoryScope.svelte';
+	import { hasAdminInventoryScope } from '$lib/stores/adminInventoryScope';
 
 	$effect(() => {
 		if ($auth.token) void loadTutorialStatuses();
@@ -51,7 +53,13 @@
 		<AdminSidebar />
 		<main bind:this={mainEl} id="main-content" tabindex="-1" class="min-w-0 flex-1 overflow-y-auto pt-[var(--app-header-height)] focus:outline-none focus-visible:shadow-[var(--focus-ring)]">
 			{#key pageLocaleKey}
-				{@render children()}
+				{#if hasAdminInventoryScope($page.url.pathname)}
+					<AdminInventoryScope historical={['/admin/instances', '/admin/volumes', '/admin/networks', '/admin/file-storage'].includes($page.url.pathname)} traffic={$page.url.pathname === '/admin/topology'}>
+						{@render children()}
+					</AdminInventoryScope>
+				{:else}
+					{@render children()}
+				{/if}
 			{/key}
 		</main>
 	</div>

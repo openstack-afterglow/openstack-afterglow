@@ -14,12 +14,30 @@ nav_order: 10
 Provides login, JWT token issuance/rotation, session management, and project scope switching.
 Domain login policy, OIDC/GitHub provider federation and email-verified onboarding are also provided.
 
+## Identity home, personal projects, and organizations
+
+New human accounts are created in the operator-provisioned native `Accounts` domain, and personal projects in native `Personal`. The server resolves exact enabled native names, not display labels; absent management metadata is allowed, but explicit conflicting kinds and ambiguous case variants are rejected. Enrollment does not create or mutate shared domains. Accounts is identity-only, not a workspace or cross-user directory. Public password login searches only Accounts and uses its exact UUID for native authentication; it never falls back to legacy homes. Existing identities, credentials, grants and resources are not migrated. Explicit account-link proof retains the original canonical-home boundary. `identity_domain_id` identifies the home, while `domain_id` and `project_id` identify the active workspace. Administrator creation treats the selected directory domain only as observation context, never as automatic organization or Default-reader admission.
+
+Personal project creation has no name or personal-domain input. The server generates `normalized_username[:47] + "-" + 8 cryptographically random lowercase letters + 8 random decimal digits` within Keystone's 64-character limit, applies the frozen per-project quota template, and verifies exactly one direct native `member` grant to the user against raw and effective native provenance. It does not grant owner, administrator or reader roles, and rejects member implications that elevate manager or owner/admin authority. Established owner-based personal projects retain their original grants and validation; no automatic migration occurs. Personal workspaces have neither domain `manager` authority nor a shared `Default`; other users' personal projects are excluded from workspace and user-directory responses.
+
+Organizations remain separate resource domains. Explicit creation follows `organization_creation_enabled` and `max_organizations_per_user`; its creator is the initial manager. Organization admission requires acceptance of a current manager's invitation or a trusted provider admission rule. Configured OIDC organization bindings use the exact issuer and immutable external organization ID; the client ID is provenance, not organization identity. Only explicitly configured manager subjects may create the first organization. Ordinary subjects can join only an already active binding and receive reader access, not manager or owner. Sharing a provider origin alone grants no organization membership. Existing explicit email-host auto-join rules remain additive, reader-only admission to the exact configured domain.
+
+Global signup uses `POST /registrations`, followed by `/registrations/accept`; new invitation acceptances use the same account/personal provisioning path. Generic IAM account creation is unavailable. Existing-account invitation acceptance preserves the original native user and identity home. Merely browsing organizations never changes the session; workspace selection is explicit. The reserved shared domains cannot be renamed or disabled.
+
+Administrator creation commits an accepted Accounts identity and a same-token/name frozen-quota deferred personal intent; it returns `personal_project_deferred:true` and null project fields without creating a project or grant. The first successful password/provider proof prepares the personal member project. Confirmed/not-sent stages resume; dispatched operations with unknown outcomes remain fenced. `POST /api/v1/auth/personal-project/recovery` accepts the same `{username,password}` body as login, verifies a fresh Accounts password/subject and all existing login guards, then uses the same JWT publication path. A safe503 has `personal_project_retry_available`, `retryable:true`, `native_calls_settled_required:false`; the UI clears the password and requires re-entry. Unknown work instead returns `personal_project_recovery_required`, `retryable:false`, `native_calls_settled_required:true` until a system administrator confirms original native calls have ended and settles the recorded operation. Neither path resets the identity, home, password or existing resources. Drain older human/API/worker writers before rollout; mixed-version writers or downgrade with active deferred intents are not supported.
+
+Personal's one direct native member cannot be removed through generic project-role management or supplemented with service-admin roles. Four services independently derive a fresh internal personal-owner policy credential from exact enabled native domain/project/user and raw/effective member provenance. Project-local actions expand, not system/global authority; explicit policy denies, original scope and reduced/key/provider ceilings remain authoritative. Hub own-project package metadata deletion is human-only and preserves shared CAS bytes, GC and build/system boundaries.
+
+Profile-image endpoints are documented in the [canonical profile API](../../api/profile.md): Gravatar uses only the current email hash and fixed HTTPS origin; generated avatars and bounded normalized raster uploads persist in one native user extra key. A caller exact-self read plus bounded service writer preserves stock Keystone update-user policy, other metadata and session/ABA fences. Live Keystone service-writer permission/capacity and real password/OIDC acceptance remain separate deployment gates.
+
+Apply additive migrations `099_account_topology.sql` and `100_organization_bindings.sql` before enabling these readers or writers. Uncertain native writes remain fenced; do not retry or delete native objects speculatively. Fresh system administrators inspect `/api/v1/admin/account-topology/operations` or `/api/v1/admin/organization-bindings` and settle the recorded intent only after native calls have stopped. See the [canonical authentication API](../../api/auth.md) and [IAM API](../../api/iam.md) for exact settlement payloads and operator prerequisites. Source and synthetic acceptance do not authorize a shared schema or native configuration rollout.
+
 ---
 
 ## Authentication Method
 
 Afterglow uses **JWT (access + refresh) pair**-based authentication.
-On login, the server stores the Keystone token in a Redis session and issues an
+On login, the server stores the caller-owned unscoped Keystone login proof in a Redis session and issues an
 access JWT and a refresh JWT to the client. Thereafter, every request that requires
 authentication must include the headers below.
 
@@ -29,13 +47,12 @@ authentication must include the headers below.
 | `X-Project-Id` | No | Project UUID to process the request. If omitted, processed with the project embedded in the JWT. If a value different from the JWT's project is given, the server performs a Keystone rescope (project switch) |
 
 > The access JWT internally points to a refresh session (`rjti`), and on every request the server
-> validates the Keystone token in Redis (60s validation cache for ordinary requests). Authority comes from native validation and current domain/role assignments, not JWT claims. `require_admin` rechecks the native token, live `domain_context` and exact `system:all` authority without a cache.
+> validates that proof and exchanges a derived native project token using current authority. Role-bearing validation results are not reused across requests in a 60-second cache. Authority comes from current native identity/domain/membership/role assignments, not JWT claims. `require_admin` rechecks native `domain_context` and exact `system:all` authority. Derived project tokens are neither stored as the login proof nor exposed to the browser.
 
 ### Session/Token Lifetime Model
 
 - **access JWT** — Short-lived token. The expiry time is the response's `expires_at`.
-- **refresh JWT** — Corresponds to a Redis session (`session_store`). The Keystone token, project,
-  login origin IP/device fingerprint, authentication method and canonical `domain_id` are stored together. Federated sessions also retain `provider_id`, `provider_revision` and verified `login_email`. Legacy sessions without domain context require a new login.
+- **refresh JWT** — Corresponds to a Redis session (`session_store`). The unscoped login proof, active native project and logical workspace, original login IP/device fingerprint, authentication method, immutable `identity_domain_id`, and active `domain_id` are stored together. Federated sessions also retain `provider_id`, `provider_revision`, original `provider_domain_id`, and verified `login_email`. Missing required identity/working/provider-origin context requires a fresh login.
 - **Session timeout** — Independent of the Keystone token lifetime, the session start time is recorded in Redis, and
   if it exceeds `session_timeout_seconds`, it is expired with a 401.
 - **Token rotation** — `POST /refresh` immediately deletes the existing refresh session and issues a new pair.
@@ -71,7 +88,8 @@ authentication must include the headers below.
 | `GET` | `/api/v1/auth/invitations/{token}` | None | Read delivered invitation link (20/min) |
 | `POST` | `/api/v1/auth/invitations/accept` | None | Create an account from invitation (5/min) |
 | `POST` | `/api/v1/auth/invitations/accept-existing` | Required | Accept with own existing account (5/min) |
-| `POST` | `/api/v1/auth/domains/{domain_id}/registrations` | None | Request signup verification email (3/min) |
+| `POST` | `/api/v1/auth/registrations` | None | Request a global signup verification email; no domain input (3/min) |
+| `POST` | `/api/v1/auth/domains/{domain_id}/registrations` | None | Forbidden: signup cannot select an organization identity domain |
 | `POST` | `/api/v1/auth/registrations/accept` | None | Create an account from verified link (5/min) |
 
 ---
@@ -90,11 +108,13 @@ The common schema returned by login, refresh, project switch and provider callba
   "project_name": "project-name",
   "user_id": "uuid-string",
   "username": "user-name",
-  "domain_id": "domain-uuid",
-  "domain_name": "Example",
+  "identity_domain_id": "account-domain-uuid",
+  "identity_domain_name": "accounts",
+  "domain_id": "personal-domain-uuid",
+  "domain_name": "personal",
   "is_domain_manager": false,
   "expires_at": "2026-01-01T00:00:00+00:00",
-  "roles": ["member", "reader"],
+  "roles": ["member"],
   "default_project_id": "uuid-string",
   "is_system_admin": false,
   "can_write": true,

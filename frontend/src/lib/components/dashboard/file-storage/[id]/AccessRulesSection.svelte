@@ -2,6 +2,7 @@
 	import { t } from '$lib/i18n/ns/file-storage';
 	import type { AccessRule } from '$lib/types/fileStorage';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import { ResponsiveTable, CompactResourceCard, Button, StatusChip } from '$lib/components/ui';
 
 	let {
 		shareProto, accessRules, accessLoading,
@@ -51,8 +52,8 @@
 
 	{#if showAddRule}
 		<div class="bg-surface-sunken border border-line-2 rounded-lg p-4 mb-4">
-			<div class="flex gap-3 items-end">
-				<div class="flex-1">
+			<div class="flex flex-wrap gap-3 items-end">
+				<div class="min-w-0 flex-1 basis-40">
 					<label class="block text-xs text-ink-2 mb-1">{shareProto === 'NFS' ? t('accessRules.ipCidr') : t('accessRules.cephId')}
 					<input
 						bind:value={ruleForm.access_to}
@@ -90,6 +91,20 @@
 	{:else if accessRules.length === 0}
 		<p class="text-ink-2 text-sm text-center py-4">{t('accessRules.empty')}</p>
 	{:else}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each accessRules as rule (rule.id)}
+					<CompactResourceCard>
+						<div class="flex items-center gap-2"><strong class="min-w-0 flex-1 font-mono break-all">{rule.access_to ?? '-'}</strong><StatusChip status={rule.state || 'unknown'} class="text-xs" /></div>
+						<p class="text-xs text-ink-2">{t('accessRules.permission')}: {rule.access_level}</p>
+						{#snippet details()}<p class="font-mono break-all">ID: {rule.id}</p><p>{t('accessRules.accessKey')}: <span class="font-mono">{rule.access_key ? `${rule.access_key.slice(0, 16)}...` : '-'}</span></p>{/snippet}
+						{#snippet actions()}
+							{#if rule.access_key}<Button size="sm" variant="secondary" onclick={() => copyKey(rule.access_key!, rule.id)}>{copiedKey === rule.id ? t('accessRules.copied') : t('accessRules.copy')}</Button>{/if}
+							<Button size="sm" variant="danger-outline" onclick={() => onRevoke(rule.id)} disabled={revokingId === rule.id}>{#if revokingId === rule.id}<ActivityIndicator size="xs" tone="danger" />{/if}{revokingId === rule.id ? t('accessRules.deleting') : t('accessRules.delete')}</Button>
+						{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<div class="overflow-x-auto">
 			<table class="w-full text-sm">
 				<thead>
@@ -140,5 +155,6 @@
 				</tbody>
 			</table>
 		</div>
+		</ResponsiveTable>
 	{/if}
 </div>

@@ -1,12 +1,23 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-network';
 	import type { RouterInfo } from '$lib/types/networks';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	let { routers }: { routers: RouterInfo[] } = $props();
 </script>
 
 <div class="bg-surface-base border border-line rounded-lg p-6">
 	<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">{t('routerTable.title')}</h2>
+	<ResponsiveTable>
+		{#snippet cards()}
+			{#each routers as router (router.id)}
+				<CompactResourceCard>
+					<h3 class="break-all font-medium text-ink-0">{router.name || router.id.slice(0, 12)}</h3><p class="text-xs text-ink-2">{t('routerTable.subnetCount', { count: router.connected_subnet_ids.length })}</p><p class="break-all text-xs text-ink-2">{t('routerTable.externalGateway')}: {router.external_gateway_network_id?.slice(0, 12) ?? '-'}</p>
+					{#snippet details()}<div class="space-y-2 break-all font-mono text-xs text-ink-2"><p>{router.id}</p><p>{router.external_gateway_network_id ?? '-'}</p>{#each router.connected_subnet_ids as id}<p>{id}</p>{/each}</div>{/snippet}
+				</CompactResourceCard>
+			{/each}
+		{/snippet}
 	<div class="overflow-x-auto">
 	<table class="w-full text-sm">
 		<thead>
@@ -35,4 +46,5 @@
 		</tbody>
 	</table>
 	</div>
+	</ResponsiveTable>
 </div>

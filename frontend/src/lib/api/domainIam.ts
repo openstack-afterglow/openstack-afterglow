@@ -5,7 +5,7 @@ export interface IamContext { domain_id: string; domain_name: string; is_domain_
 export interface IamSession { token: () => string; domainId: string; userId: string; isCurrent: () => boolean; canSubmit: () => boolean }
 export type IamAssignableRoles = AssignableProjectRoles;
 export interface IamUser { id: string; name: string; email: string; enabled: boolean; domain_id: string; protected: boolean }
-export interface IamUserWrite { name: string; email: string; enabled: boolean; password?: string; personal_domain_name?: string; project_id?: string; role_ids?: string[] }
+export interface IamUserWrite { name: string; email: string; enabled: boolean; password?: string }
 export type IamEnrollmentStatus = 'delivery_pending' | 'pending' | 'accepted' | 'revoked' | 'expired' | 'delivery_failed' | 'account_creating' | 'granting' | 'activating' | 'recovery_required' | 'failed';
 export interface IamInvitation { id: number; domain_id: string; kind: string; user_id: string | null; recovery_required: boolean; email: string; project_id: string | null; project_name: string; role_ids: string[]; status: IamEnrollmentStatus; expires_at: string; created_at: string; accepted_at: string | null }
 export interface LoginPolicy { domain_id: string; password_enabled: boolean; allowed_email_domains: string[]; signup_enabled: boolean; signup_email_domains: string[]; revision: number; configured: boolean; smtp_configured: boolean; usable_provider_count: number }
@@ -47,7 +47,6 @@ export function domainIam(session: IamSession) {
 	return {
 		context: () => api.get<IamContext>(root + '/context', session.token(), projectId, { refresh: true }),
 		users: () => get<{ items: IamUser[] }>('/users'),
-		createUser: (body: IamUserWrite) => mutate(() => api.post<IamUser>(root + '/users', body, session.token(), projectId, { replayOnUnauthorized: false })),
 		updateUser: (userId: string, body: Partial<IamUserWrite>) => mutate(() => api.patch<IamUser>(`${root}/users/${id(userId)}`, body, session.token(), projectId, { replayOnUnauthorized: false })),
 		projects: () => get<{ items: Project[] }>('/projects'),
 		members: (project: string) => get<{ items: ProjectAccessMember[] }>(`/projects/${id(project)}/members`),

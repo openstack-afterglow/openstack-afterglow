@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { t } from '$lib/i18n/ns/dashboard-home';
 	import { onDestroy, untrack } from 'svelte';
 	import { auth, authReady } from '$lib/stores/auth';
@@ -299,6 +301,13 @@
 			{#if data.top_instances.length === 0}
 				<div class="mt-6 text-center text-sm text-ink-2 py-6">{t('usage.empty')}</div>
 			{:else}
+				<ResponsiveTable class="mt-4">{#snippet cards()}{#each data?.top_instances ?? [] as inst, i (inst.id)}
+					{@const cpuPct = usageValue(inst.cpu_pct, inst.cpu_status)}{@const ramPct = usageValue(inst.ram_pct, inst.ram_status)}
+					<CompactResourceCard><div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{i + 1}. {inst.name}</h3><StatusChip status={inst.status} /></div>
+						<p class="text-xs tabular-nums">vCPU: {inst.vcpus} · {cpuPct !== null ? `${cpuPct.toFixed(0)}%` : '—'}</p><p class="text-xs tabular-nums">RAM: {Math.round(inst.ram_mb / 1024)} GB · {ramPct !== null ? `${ramPct.toFixed(0)}%` : '—'}</p>
+						{#snippet details()}<p class="text-xs font-mono">{inst.flavor_name}</p>{#if isGpu(inst.flavor_name)}<Pill tone="accent">GPU</Pill>{/if}{@render usageTelemetry(inst.cpu_source, inst.cpu_status, inst.cpu_native_status, cpuPct !== null)}{@render usageTelemetry(inst.ram_source, inst.ram_status, inst.ram_native_status, ramPct !== null)}{/snippet}
+					</CompactResourceCard>
+				{/each}{/snippet}
 				<div class="mt-4 overflow-x-auto">
 					<table class="w-full text-xs">
 						<thead>
@@ -362,6 +371,7 @@
 						</tbody>
 					</table>
 				</div>
+				</ResponsiveTable>
 			{/if}
 		</div>
 	{:else}

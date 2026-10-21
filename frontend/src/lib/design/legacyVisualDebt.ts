@@ -381,10 +381,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 18,
 		tokens: ["bg-gray-800","bg-gray-800/30","bg-green-900/30","bg-red-900/30","bg-red-900/40","bg-red-900/60","border-gray-800","border-gray-800/50","border-red-700","text-gray-400","text-gray-500","text-gray-600","text-green-400","text-red-300","text-red-400"],
 	},
-	"frontend/src/lib/components/admin/topology/ProjectFilter.svelte": {
-		count: 12,
-		tokens: ["bg-blue-900/30","bg-gray-800","bg-gray-900","border-blue-500","border-gray-700","text-blue-400","text-gray-300","text-gray-500"],
-	},
 	"frontend/src/lib/components/admin/topology/TopologyLBPanel.svelte": {
 		count: 23,
 		tokens: ["#22c55e","#64748b","#94a3b8","#ef4444","#f59e0b","bg-gray-800","text-cyan-400","text-gray-300","text-gray-400","text-gray-500","text-yellow-600"],

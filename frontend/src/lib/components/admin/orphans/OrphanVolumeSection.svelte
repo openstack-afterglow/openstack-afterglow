@@ -25,6 +25,13 @@
 	{emptyMessage}
 	{onCleanup}
 >
+  {#snippet cardSummary(v)}
+    <div class="flex flex-wrap items-center justify-between gap-2"><strong class="break-words text-sm">{v.name ?? '-'}</strong><span class="text-xs text-state-success-text">{v.status}</span></div>
+    <dl class="flex flex-wrap gap-3 text-xs"><div><dt class="text-ink-2">{t('orphanVolume.column.sizeGb')}</dt><dd>{v.size_gb}</dd></div><div><dt class="text-ink-2">{t('orphanVolume.column.ageDays')}</dt><dd>{v.age_days}</dd></div></dl>
+  {/snippet}
+  {#snippet cardDetails(v)}
+    <dl class="space-y-2 text-xs"><div><dt class="text-ink-2">{t('orphanVolume.column.project')}</dt><dd class="break-all font-mono">{v.project_id ?? '-'}</dd></div><div><dt class="text-ink-2">{t('orphanVolume.column.createdAt')}</dt><dd>{v.created_at?.slice(0, 10) ?? '-'}</dd></div><div><dt class="text-ink-2">{t('orphanVolume.column.id')}</dt><dd class="break-all font-mono">{v.id}</dd></div></dl>
+  {/snippet}
 	{#snippet headers()}
 		<th class="text-left py-2 pr-4">{t('orphanVolume.column.name')}</th>
 		<th class="text-left py-2 pr-4">{t('orphanVolume.column.sizeGb')}</th>

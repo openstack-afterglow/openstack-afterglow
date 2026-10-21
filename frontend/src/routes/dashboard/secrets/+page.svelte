@@ -1,4 +1,7 @@
 <script lang="ts">
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { toast } from '$lib/stores/toast';
@@ -505,6 +508,12 @@
 					onToggle={() => selection.toggleAll(selectableIds('secrets'))}
 				/>
 			</div>
+			<ResponsiveTable>{#snippet cards()}{#each secrets as s (s.id)}<CompactResourceCard selected={selection.has(s.id)}>
+				<div class="flex items-start gap-2"><SelectionCheckbox checked={selection.has(s.id)} disabled={s.system_managed || selectionBusy} unavailable={s.system_managed} title={s.system_managed ? t('secrets.selection.systemManaged') : undefined} ariaLabel={t('secrets.selection.item', { name: s.name ?? s.id })} onclick={() => selection.toggle(s.id)} /><h3 class="text-sm font-medium break-all">{s.name ?? s.id}</h3><span class="ml-auto text-xs">{s.status ?? '-'}</span></div><p class="text-xs text-ink-2">{SECRET_TYPE_LABEL[s.secret_type] ?? s.secret_type}{#if s.system_managed} · {t('secrets.secret.system')}{/if}</p>
+				{#if payloadVisible[s.id] !== undefined}<code class="text-xs break-all">{payloadVisible[s.id].substring(0, 60)}{payloadVisible[s.id].length > 60 ? '...' : ''}</code>{/if}
+				{#snippet details()}<p class="text-xs break-all font-mono">{s.id}</p><p class="text-xs">{t('secrets.table.created')}: {s.created ? new Date(s.created).toLocaleDateString(intlLocale()) : '-'}</p><p class="text-xs">{t('secrets.table.expires')}: {s.expires ? new Date(s.expires).toLocaleDateString(intlLocale()) : t('secrets.secret.noExpiry')}</p>{/snippet}
+				{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => handleShowPayload(s)} disabled={payloadLoading !== null && payloadVisible[s.id] === undefined} ariaBusy={payloadLoading === s.id}>{payloadLoading === s.id ? t('secrets.actions.loading') : payloadVisible[s.id] !== undefined ? t('secrets.actions.hide') : t('secrets.actions.showValue')}</Button>{#if payloadVisible[s.id] !== undefined}<Button variant="secondary" size="sm" onclick={() => copyPayload(payloadVisible[s.id])}>{t('secrets.actions.copy')}</Button>{/if}{#if !s.system_managed}<Button variant="danger-outline" size="sm" onclick={() => handleDeleteSecret(s)} disabled={selectionBusy || deletingSecretId !== null} ariaBusy={deletingSecretId === s.id}>{t('secrets.actions.delete')}</Button>{/if}{/snippet}
+			</CompactResourceCard>{/each}{/snippet}
 			<div class="overflow-x-auto">
 				<table class="w-full text-sm">
 					<thead>
@@ -559,6 +568,7 @@
 					</tbody>
 				</table>
 			</div>
+			</ResponsiveTable>
 		{/if}
 
 	{:else if activeTab === 'containers'}
@@ -580,6 +590,11 @@
 					onToggle={() => selection.toggleAll(selectableIds('containers'))}
 				/>
 			</div>
+			<ResponsiveTable>{#snippet cards()}{#each containers as c (c.id)}<CompactResourceCard selected={selection.has(c.id)}>
+				<div class="flex items-start gap-2"><SelectionCheckbox checked={selection.has(c.id)} disabled={selectionBusy} ariaLabel={t('secrets.selection.item', { name: c.name ?? c.id })} onclick={() => selection.toggle(c.id)} /><h3 class="text-sm font-medium">{c.name ?? '-'}</h3><span class="ml-auto text-xs">{c.status ?? '-'}</span></div><p class="text-xs">{c.type} · {t('secrets.container.secretCount', { count: c.secret_refs.length })}</p>
+				{#snippet details()}<code class="text-xs break-all">{c.id}</code>{/snippet}
+				{#snippet actions()}<Button variant="danger-outline" size="sm" onclick={() => handleDeleteContainer(c.id, c.name)} disabled={selectionBusy || deletingContainerId !== null} ariaBusy={deletingContainerId === c.id}>{t('secrets.actions.delete')}</Button>{/snippet}
+			</CompactResourceCard>{/each}{/snippet}
 			<div class="overflow-x-auto">
 				<table class="w-full text-sm">
 					<thead>
@@ -606,6 +621,7 @@
 					</tbody>
 				</table>
 			</div>
+			</ResponsiveTable>
 		{/if}
 
 	{:else if activeTab === 'orders'}
@@ -616,6 +632,10 @@
 				<button onclick={() => showCreateOrder = true} class="mt-4 text-warm-text hover:text-warm-text-hover text-sm">{t('secrets.actions.createOrder')}</button>
 			</div>
 		{:else}
+			<ResponsiveTable>{#snippet cards()}{#each orders as o (o.id)}<CompactResourceCard>
+				<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{o.type}</h3><span class="text-xs">{o.status ?? '-'}</span></div><p class="text-xs">{#if o.secret_ref}{t('secrets.order.secretCreated')}{:else if o.error_reason}<span class="text-state-danger-text">{t('activity.failure')}</span>{:else}{t('secrets.order.pending')}{/if}</p>{#if o.status === 'PENDING' && !o.secret_ref && !o.error_reason}<ActivityIndicator size="xs" label={t('secrets.order.pending')} />{/if}
+				{#snippet details()}<code class="text-xs break-all">{o.id}</code><p class="text-xs">{t('secrets.table.created')}: {o.created ? new Date(o.created).toLocaleDateString(intlLocale()) : '-'}</p>{#if o.error_reason}<p class="text-xs text-state-danger-text">{o.error_reason}</p>{/if}{/snippet}
+			</CompactResourceCard>{/each}{/snippet}
 			<div class="overflow-x-auto">
 				<table class="w-full text-sm">
 					<thead>
@@ -647,6 +667,7 @@
 					</tbody>
 				</table>
 			</div>
+			</ResponsiveTable>
 		{/if}
 
 	{:else if activeTab === 'quota'}

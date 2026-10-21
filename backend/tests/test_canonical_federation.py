@@ -1,6 +1,7 @@
 """Canonical linking consumers with signed IdP wire, native directory doubles,
 real endpoints/JWT/Redis; no live native attachment capability is asserted."""
 
+import re
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -14,7 +15,6 @@ from sqlalchemy import select
 
 from app.models.auth_settings import AuthSettings
 from app.models.domain_iam import DomainEnrollment
-from app.models.domain_quotas import DomainQuotaPolicy
 from app.models.enrollment_policy import EnrollmentPolicy, SignupRequest
 from app.services import domain_auth as svc
 from app.services import jwt_service, keystone, session_store
@@ -32,12 +32,13 @@ from tests.test_domain_auth import wire as wire
 async def external_env(env, monkeypatch):
     """Real enrollment/approval SQL and native grant readback; quota wire isolated."""
     from app.services import (
+        account_spaces,
         domain_iam,
-        domain_projects,
         domain_scope,
         enrollment_policy,
         identity_roles,
         project_service,
+        quota_native,
     )
     from tests.test_project_membership_roles import Membership
 
@@ -53,6 +54,8 @@ async def external_env(env, monkeypatch):
     monkeypatch.setattr(domain_iam, "get_settings", lambda: env.settings)
     monkeypatch.setattr(enrollment_policy, "get_settings", lambda: env.settings)
     monkeypatch.setattr(enrollment_policy, "get_session_factory", lambda: env.db)
+    monkeypatch.setattr(account_spaces, "get_session_factory", lambda: env.db)
+    monkeypatch.setattr(keystone, "get_admin_project_connection", lambda: SimpleNamespace(close=lambda: None))
     monkeypatch.setattr(identity_roles, "_applied", AsyncMock())
     monkeypatch.setattr(project_service, "invalidate_project_lists", AsyncMock())
     monkeypatch.setattr(domain_scope, "invalidate_authority", AsyncMock())
@@ -76,19 +79,20 @@ async def external_env(env, monkeypatch):
         await session.commit()
 
     env.quota_applications = []
+    limits = {}
 
-    async def apply_quotas(did, pid, lease):
-        await lease.assert_owned()
-        # Verify policy seeding and fail-closed activation ordering rather than
-        # mocking the entire personal-account lifecycle or its role graph.
-        async with env.db() as session:
-            quota = await session.get(DomainQuotaPolicy, did)
-            assert quota.ceilings == quota.defaults == {"instances": 0}
+    def read_quota(conn, pid, section):
+        values = limits.setdefault((pid, section), {key: 100 for key in quota_native.QUOTA_FIELDS[section].values()})
+        return {key: {"limit": value, "in_use": 0} for key, value in values.items()}
+
+    def write_quota(conn, pid, section, values):
         assert env.keystone.projects.get(pid).enabled is False
         assert env.keystone.users.get("new-user").enabled is False
-        env.quota_applications.append((did, pid))
+        limits[(pid, section)].update(values)
+        env.quota_applications.append((pid, section, dict(values)))
 
-    monkeypatch.setattr(domain_projects, "apply_default_quotas", apply_quotas)
+    monkeypatch.setattr(quota_native, "get_section", read_quota)
+    monkeypatch.setattr(quota_native, "update_section", write_quota)
     env.wire.federation.user_id = "new-user"
     env.wire.federation.native_users = env.keystone.user_rows
     return env
@@ -147,8 +151,8 @@ async def external_callback(client, env, provider):
 
 
 @pytest.mark.parametrize("kind", ["oidc", "github"])
-async def test_external_personal_home_and_reader_only_org_survive_fresh_auth(external_env, kind):
-    from app.services import domain_projects, project_service
+async def test_external_account_home_and_personal_project_preserve_reader_only_org_grants(external_env, kind):
+    from app.services import account_spaces, domain_projects, project_service
     from tests.test_project_membership_roles import rid
 
     env = external_env
@@ -161,20 +165,27 @@ async def test_external_personal_home_and_reader_only_org_survive_fresh_auth(ext
     assert user.enabled is True and user.afterglow_local_password is False
     assert not hasattr(user, "password")
     assert all("password" not in fields for _, _, fields in env.keystone.user_writes)
-    personal = domain_projects.default_project(home, ks=env.keystone)
+    personal = account_spaces.personal_project(user.id, ks=env.keystone)
     assert personal["enabled"] is True
     assert project_service._direct_ids(env.keystone.role_assignments.list(project=personal["id"]), user.id) == {
-        rid("manager"),
-        rid("project_owner"),
-        rid("project_reader"),
+        rid("member"),
     }
     assert project_service._direct_ids(env.keystone.role_assignments.list(project="default-a"), user.id) == {
         rid("project_reader"),
     }
     domain_projects.assert_membership(user.id, "dom-a", ks=env.keystone)
-    assert domain_projects.has_manager(user.id, home, ks=env.keystone)
+    assert env.keystone.domains.get(home).name == "Accounts" and home == "dom-accounts"
+    assert personal["domain_id"] == "dom-personal" != home
+    primary = env.keystone.projects.get(personal["id"])
+    assert primary.afterglow_personal_user_id == user.id and primary.afterglow_personal_primary is True
+    assert vars(env.keystone.domains.get(personal["domain_id"])) == {
+        "id": "dom-personal",
+        "name": "Personal",
+        "enabled": True,
+    }
+    assert domain_projects.default_project(personal["domain_id"], ks=env.keystone) is None
     assert not domain_projects.has_manager(user.id, "dom-a", ks=env.keystone)
-    assert env.quota_applications == [(home, personal["id"])]
+    assert env.quota_applications == [(personal["id"], "compute", {"instances": 0})]
 
     # Approval and admission changes cannot reapprove or move an existing link.
     await set_approval_mode(env, "admin")
@@ -182,9 +193,9 @@ async def test_external_personal_home_and_reader_only_org_survive_fresh_auth(ext
     state, browser = await start(env.wire.idp, provider["id"])
     again = await svc.complete_authorization("good-code", state, browser)
     assert again.user_id == first.user_id and again.domain_id == "dom-a"
-    assert user.domain_id == home and len(env.keystone.domain_writes) == 1
+    assert user.domain_id == home and not env.keystone.domain_writes
 
-    # A personal home is not authority to enter a different organization.
+    # The account's personal workspace is not authority to enter another organization.
     other = await external_provider(env, kind, "dom-b")
     env.settings.auth.default.auto_join_email_domains.clear()
     state, browser = await start(env.wire.idp, other["id"], "dom-b")
@@ -261,19 +272,19 @@ async def test_approved_external_fresh_auth_consumes_exact_request_after_persona
         assert request.status == "consumed" and request.consumed_by_user_id == login.user_id
     state, browser = await start(env.wire.idp, provider["id"])
     again = await svc.complete_authorization("good-code", state, browser)
-    assert again.user_id == login.user_id and len(env.keystone.domain_writes) == 1
+    assert again.user_id == login.user_id and not env.keystone.domain_writes
 
 
 async def test_external_quota_uncertainty_cannot_exchange_or_issue_session(external_env, external_api, monkeypatch):
-    from app.services import domain_projects
+    from app.services import quota_native
 
     env = external_env
     provider = await external_provider(env)
 
-    async def unavailable(*args, **kwargs):
+    def unavailable(*args, **kwargs):
         raise HTTPException(503, "synthetic quota application unconfirmed")
 
-    monkeypatch.setattr(domain_projects, "apply_default_quotas", unavailable)
+    monkeypatch.setattr(quota_native, "update_section", unavailable)
     async with external_api.client as client:
         failed = await external_callback(client, env, provider)
         assert failed.status_code == 503
@@ -318,7 +329,7 @@ async def test_active_external_recovery_identity_cannot_bypass_finalization_on_f
         assert retried.json()["code"] == "external_enrollment_unconfirmed"
         assert not {"access_token", "refresh_token", "user_id"} & retried.json().keys()
         assert client.cookies.get(svc.STATE_COOKIE) is None
-    assert len(env.keystone.domain_writes) == 1
+    assert not env.keystone.domain_writes
     assert len([write for write in env.keystone.user_writes if write[0] == "create"]) == 1
     assert env.wire.federation.calls == []
     external_api.validate.assert_not_called()
@@ -493,10 +504,14 @@ async def test_link_confirms_attachment_without_login_then_fresh_callback_issues
         assert signed_in.status_code == 200, signed_in.text
         assert signed_in.json()["user_id"] == "fed-user"
         assert signed_in.json()["identity_domain_id"] == "dom-a"
-        assert signed_in.json()["domain_id"] == "dom-a" and signed_in.json()["project_id"] == "default-a"
+        assert signed_in.json()["domain_id"] == api.personal["domain_id"]
+        assert signed_in.json()["project_id"] == signed_in.json()["default_project_id"] == api.personal["id"]
+        assert user.domain_id == "dom-a" and user.default_project_id == "saved-native-preference"
         claims = jwt_service.verify_refresh(signed_in.json()["refresh_token"])
         saved = await session_store.get_session(claims["jti"])
         assert saved["provider_domain_id"] == "dom-a"
+        assert saved["domain_id"] == api.personal["domain_id"] and saved["identity_domain_id"] == "dom-a"
+        assert saved["project_id"] == api.personal["id"]
         assert (await svc.list_providers("dom-a"))[0]["verified"] is True
 
 
@@ -933,7 +948,7 @@ def test_password_selection_refuses_partial_inventory_before_native_attempt(keys
     operation._ks = keystone_admin
     with pytest.raises(svc.DomainAuthUnavailable):
         password_account("dev", operation=operation)
-    assert calls == ["/users"]
+    assert calls == ["/users?domain_id=dom-accounts"]
     assert keystone_admin.user_writes == []
 
 
@@ -988,3 +1003,71 @@ async def test_password_origin_authenticated_link_preserves_legacy_local_recover
     await svc.complete_account_link(ticket, browser, authenticated=origin)
     assert getattr(user, "afterglow_local_password", None) is True
     assert await account_recovery._eligible(user, env.keystone, [])
+
+
+@pytest.mark.parametrize("admission", [None, "dom-a"])
+async def test_external_enrollment_has_no_implicit_provider_origin_membership(external_env, admission):
+    from app.services import account_spaces, domain_iam, project_service
+    from tests.test_project_membership_roles import rid
+
+    env = external_env
+    provider = SimpleNamespace(
+        id="verified-provider", kind="oidc", domain_id="dom-a", keystone_idp_id="idp-a", keystone_protocol_id="openid"
+    )
+    identity = svc.VerifiedIdentity(
+        email="new@corp.example", bearer="verified-token", issuer=ISSUER, subject="stable-sub"
+    )
+    async with domain_iam._iam_write() as (lease, ks, catalog):
+        user = await domain_iam.enroll_external(
+            provider, identity, lease=lease, ks=ks, catalog=catalog, admission_domain_id=admission
+        )
+    assert env.keystone.domains.get(user.domain_id).name == "Accounts" and user.domain_id == "dom-accounts"
+    assert user is env.keystone.users.get(user.id)
+    assert user.enabled is True and user.afterglow_local_password is False
+    personal = account_spaces.personal_project(user.id, ks=env.keystone)
+    assert personal["enabled"] and personal["domain_id"] == "dom-personal"
+    assert env.keystone.domains.get(personal["domain_id"]).name == "Personal"
+    assert not env.keystone.domain_writes
+    assert re.fullmatch(rf"{re.escape(user.name[:47])}-[a-z]{{8}}[0-9]{{8}}", personal["name"])
+    direct = env.keystone.role_assignments.list(project=personal["id"])
+    assert project_service._direct_ids(direct, user.id) == {rid("member")}
+    assert not any(p.domain_id == user.domain_id for p in env.keystone.projects.list())
+    assert user.afterglow_external_identities == [{"issuer": ISSUER, "subject": "stable-sub"}]
+    roles_a = project_service._direct_ids(env.keystone.role_assignments.list(project="default-a"), user.id)
+    assert roles_a == ({rid("project_reader")} if admission == "dom-a" else set())
+    assert not project_service._direct_ids(env.keystone.role_assignments.list(project="default-b"), user.id)
+
+
+@pytest.mark.parametrize("kind", ["account", "personal"])
+@pytest.mark.parametrize("fault", ["missing", "disabled", "wrong_kind", "ambiguous"])
+async def test_external_enrollment_rejects_invalid_operator_domain_before_native_creation(external_env, kind, fault):
+    from app.services import domain_iam
+
+    env = external_env
+    did = "dom-accounts" if kind == "account" else "dom-personal"
+    domain = env.keystone.domain_rows[did]
+    if fault == "missing":
+        del env.keystone.domain_rows[did]
+    elif fault == "disabled":
+        domain.enabled = False
+    elif fault == "wrong_kind":
+        domain.afterglow_domain_kind = "organization"
+    else:
+        env.keystone.domain_rows["duplicate"] = SimpleNamespace(id="duplicate", name=domain.name, enabled=True)
+    original_domains = {key: vars(value).copy() for key, value in env.keystone.domain_rows.items()}
+    original_projects = {key: vars(value).copy() for key, value in env.keystone.project_rows.items()}
+    provider = SimpleNamespace(
+        id="verified-provider", kind="oidc", domain_id="dom-a", keystone_idp_id="idp-a", keystone_protocol_id="openid"
+    )
+    identity = svc.VerifiedIdentity(
+        email="new@corp.example", bearer="verified-token", issuer=ISSUER, subject="stable-sub"
+    )
+    with pytest.raises(HTTPException) as rejected:
+        async with domain_iam._iam_write() as (lease, ks, catalog):
+            await domain_iam.enroll_external(provider, identity, lease=lease, ks=ks, catalog=catalog)
+    assert rejected.value.status_code == 503
+    assert not env.keystone.user_rows and not env.keystone.user_writes
+    assert not env.keystone.domain_writes and not env.keystone.project_writes
+    assert not env.keystone.assignments and not env.quota_applications
+    assert {key: vars(value) for key, value in env.keystone.domain_rows.items()} == original_domains
+    assert {key: vars(value) for key, value in env.keystone.project_rows.items()} == original_projects

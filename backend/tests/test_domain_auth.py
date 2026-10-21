@@ -21,10 +21,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app import database
+from app.models.account_spaces import PersonalProjectIntent, SharedDomainIntent
 from app.models.domain_auth import DomainIdentityProvider, DomainLoginPolicy
 from app.models.domain_iam import DomainEnrollment
 from app.models.domain_quotas import DomainQuotaPolicy
 from app.models.enrollment_policy import EnrollmentPolicy, SignupRequest
+from app.models.organization_provisioning import OrganizationBinding
 from app.services import domain_auth as svc
 from app.services.mcp_control_plane import ssrf
 
@@ -44,6 +46,8 @@ class FakeKeystone:
             "dom-a": SimpleNamespace(id="dom-a", name="Alpha", enabled=True),
             "dom-b": SimpleNamespace(id="dom-b", name="Beta", enabled=True),
             "dom-off": SimpleNamespace(id="dom-off", name="Off", enabled=False),
+            "dom-accounts": SimpleNamespace(id="dom-accounts", name="Accounts", enabled=True),
+            "dom-personal": SimpleNamespace(id="dom-personal", name="Personal", enabled=True),
         }
         self.idps = {
             "idp-a": SimpleNamespace(id="idp-a", domain_id="dom-a", enabled=True),
@@ -76,9 +80,39 @@ class FakeKeystone:
         self.project_writes = []
         self.project_rows = {}
         self.assignments = []
+        self.group_rows = {}
+        self.group_members = {}
+        self.group_assignments = []
         self.catalog = []
         self.mapping_rules = [{"local": [{"user": {"id": "{0}", "name": "{0}"}}], "remote": [{"type": "OIDC-sub"}]}]
         outer = self
+
+        class Groups:
+            def get(self, gid):
+                if gid not in outer.group_rows:
+                    raise NotFound()
+                return outer.group_rows[gid]
+
+            def list(self, domain=None, user=None):
+                return [
+                    group
+                    for group in outer.group_rows.values()
+                    if (domain is None or group.domain_id == domain)
+                    and (user is None or user in outer.group_members.get(group.id, set()))
+                ]
+
+            def create(self, name, domain, **kwargs):
+                gid = f"group-{len(outer.group_rows)}"
+                group = SimpleNamespace(id=gid, name=name, domain_id=domain, **kwargs)
+                outer.group_rows[gid] = group
+                outer.group_members[gid] = set()
+                return group
+
+            def delete(self, gid):
+                del outer.group_rows[gid]
+                outer.group_members.pop(gid, None)
+
+        self.groups = Groups()
 
         class Domains:
             def get(self, name_or_id):
@@ -96,11 +130,13 @@ class FakeKeystone:
                 return outer.domain_rows[did]
 
             def update(self, did, **kwargs):
+                outer.domain_writes.append(("update", did, kwargs.copy()))
                 for key, value in kwargs.items():
                     setattr(outer.domain_rows[did], key, value)
                 return outer.domain_rows[did]
 
             def delete(self, did):
+                outer.domain_writes.append(("delete", did, {}))
                 del outer.domain_rows[did]
 
         class Idps:
@@ -134,6 +170,8 @@ class FakeKeystone:
                     for user in outer.user_rows.values()
                     if (domain is None or user.domain_id == domain) and (name is None or user.name == name)
                 ]
+                if kwargs.get("group") is not None:
+                    rows = [user for user in rows if user.id in outer.group_members.get(kwargs["group"], set())]
                 if "unique_id" in kwargs:
                     rows = [
                         user
@@ -161,6 +199,13 @@ class FakeKeystone:
                 user = SimpleNamespace(id="new-user", name=name, domain_id=domain, **kwargs)
                 outer.user_rows[user.id] = user
                 return user
+
+            def add_to_group(self, uid, gid):
+                self.get(uid)
+                outer.group_members[gid].add(uid)
+
+            def remove_from_group(self, uid, gid):
+                outer.group_members[gid].remove(uid)
 
             def delete(self, uid):
                 del outer.user_rows[uid]
@@ -191,18 +236,47 @@ class FakeKeystone:
             def delete(self, pid):
                 del outer.project_rows[pid]
 
-        def assignments(project=None, user=None, **kwargs):
-            return [
-                row
-                for row in outer.assignments
-                if (project is None or row["scope"]["project"]["id"] == project)
-                and (user is None or row["user"]["id"] == user)
-            ]
+        def assignments(project=None, user=None, group=None, domain=None, effective=False, system=None, **kwargs):
+            if system is not None:
+                return []
+            rows = []
+            for original in [*outer.assignments, *outer.group_assignments]:
+                subjects = [original]
+                if effective and "group" in original and group is None:
+                    subjects = [
+                        {"user": {"id": uid}, "role": original["role"], "scope": original["scope"]}
+                        for uid in outer.group_members.get(original["group"]["id"], set())
+                    ]
+                for subject in subjects:
+                    scope = subject["scope"]
+                    candidates = [subject]
+                    if effective and "domain" in scope and scope.get("OS-INHERIT:inherited_to") == "projects":
+                        candidates = [
+                            {**subject, "scope": {"project": {"id": item.id}, "OS-INHERIT:inherited_to": "projects"}}
+                            for item in outer.project_rows.values()
+                            if item.domain_id == scope["domain"]["id"]
+                        ]
+                    for row in candidates:
+                        if project is not None and row["scope"].get("project", {}).get("id") != project:
+                            continue
+                        if domain is not None and row["scope"].get("domain", {}).get("id") != domain:
+                            continue
+                        if user is not None and row.get("user", {}).get("id") != user:
+                            continue
+                        if group is not None and row.get("group", {}).get("id") != group:
+                            continue
+                        rows.append(row)
+            return rows
 
-        def grant(role_id, *, user, project):
-            row = {"user": {"id": user}, "role": {"id": role_id}, "scope": {"project": {"id": project}}}
-            if row not in outer.assignments:
-                outer.assignments.append(row)
+        def grant(role_id, *, user=None, group=None, project=None, domain=None, os_inherit_extension_inherited=False):
+            principal, subject = ("group", group) if group is not None else ("user", user)
+            scope = {"project": {"id": project}} if project is not None else {"domain": {"id": domain}}
+            if os_inherit_extension_inherited:
+                scope["OS-INHERIT:inherited_to"] = "projects"
+            row = {principal: {"id": subject}, "role": {"id": role_id}, "scope": scope}
+            target = outer.group_assignments if group is not None else outer.assignments
+            if row not in target:
+                target.append(row)
 
         def revoke(role_id, *, user, project):
             outer.assignments[:] = [
@@ -261,6 +335,8 @@ def public_dns(monkeypatch):
 
 @pytest.fixture
 async def db(monkeypatch, tmp_path):
+    from app.services import account_spaces
+
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'domain-auth.sqlite'}")
     async with engine.begin() as connection:
         await connection.run_sync(DomainLoginPolicy.__table__.create)
@@ -269,9 +345,13 @@ async def db(monkeypatch, tmp_path):
         await connection.run_sync(DomainQuotaPolicy.__table__.create)
         await connection.run_sync(EnrollmentPolicy.__table__.create)
         await connection.run_sync(SignupRequest.__table__.create)
+        await connection.run_sync(SharedDomainIntent.__table__.create)
+        await connection.run_sync(PersonalProjectIntent.__table__.create)
+        await connection.run_sync(OrganizationBinding.__table__.create)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr(database, "is_db_available", lambda: True)
     monkeypatch.setattr(database, "get_session_factory", lambda: factory)
+    monkeypatch.setattr(account_spaces, "get_session_factory", lambda: factory)
     try:
         yield factory
     finally:
@@ -957,7 +1037,8 @@ def api(env, wire, monkeypatch):
     from app.api.identity import auth
     from app.api.identity import domain_auth as routes
     from app.rate_limit import limiter
-    from app.services import activity, domain_projects, domain_scope, keystone
+    from app.services import account_spaces, activity, domain_scope, keystone, project_service
+    from tests.test_project_membership_roles import Membership, rid
 
     app = FastAPI()
     app.state.limiter = limiter
@@ -967,69 +1048,68 @@ def api(env, wire, monkeypatch):
     native_validations = []
     native_preparations = []
     default = {"id": "default-a", "name": "Default", "domain_id": "dom-a", "enabled": True}
-    reader = {"user": {"id": "fed-user"}, "role": {"id": "reader-role"}, "scope": {"project": {"id": default["id"]}}}
+    personal = {"id": "personal-fed-user", "name": "dev-personal", "domain_id": "dom-personal", "enabled": True}
+    # Keep the complete native catalog and its IDs, including implied roles.
+    # Enrollment/organization consumers share this directory double; replacing
+    # roles.list alone would make its assignment IDs unknown to native reads.
+    if not env.keystone.catalog:
+        env.keystone.catalog = Membership().catalog
+    env.keystone.project_rows[default["id"]] = SimpleNamespace(**default, parent_id=None)
+    env.keystone.roles.grant(rid("project_reader"), user="fed-user", project=default["id"])
 
-    def project_get(project_id):
-        if project_id != default["id"]:
-            raise NotFound()
-        return default.copy()
-
-    def project_list(domain=None, user=None):
-        return [default.copy()] if domain in (None, "dom-a") and user in (None, "fed-user") else []
-
-    def assignments(**query):
-        if query.get("user", "fed-user") != "fed-user" or query.get("project", default["id"]) != default["id"]:
-            return []
-        return [] if any(key in query for key in ("domain", "system", "group")) else [reader]
-
-    # Read-only native state is local to API consumers, not global role seeding.
-    # Manager exists only to prove this reader has no Default manager authority.
-    env.keystone.projects = SimpleNamespace(get=project_get, list=project_list)
-    env.keystone.roles = SimpleNamespace(
-        list=lambda: [{"id": name + "-role", "name": name, "domain_id": None} for name in ("manager", "reader")]
-    )
-    env.keystone.role_assignments = SimpleNamespace(list=assignments)
-
-    async def existing_login_access(user_id, domain_id, *, operation=None):
-        assert (user_id, domain_id) == ("fed-user", "dom-a")
-        native_preparations.append((user_id, domain_id))
-        domain_projects.assert_project_membership(user_id, default["id"], operation=operation)
+    async def existing_personal_primary(user_id, *, operation=None):
+        assert user_id == "fed-user"
+        native_preparations.append((user_id, personal["domain_id"]))
+        assert env.keystone.domain_rows[personal["domain_id"]].name == "Personal"
+        env.keystone.project_rows[personal["id"]] = SimpleNamespace(
+            **personal, parent_id=None, afterglow_personal_user_id=user_id, afterglow_personal_primary=True
+        )
+        env.keystone.roles.grant(rid("member"), user=user_id, project=personal["id"])
+        # Provisioning is isolated, not ownership or workspace authority.
+        return account_spaces.personal_project(user_id, ks=env.keystone)
 
     async def native_dashboard_prewarm(token, project_id):
-        # Dashboard reads/default-network provisioning are a separate native
-        # boundary; never open a cloud connection from these session consumers.
-        assert (token, project_id) == ("scoped-fed", default["id"])
+        # Dashboard transport is outside this session consumer's boundary.
+        assert (token, project_id) == ("scoped-fed", personal["id"])
 
     def validate_native(token, project_id="", *, operation=None):
         native_validations.append((token, project_id))
-        assert token == "unscoped-fed" and project_id in ("", default["id"])
+        assert token == "unscoped-fed" and project_id in ("", personal["id"])
         return {
             "token": "scoped-fed" if project_id else token,
             "user_id": "fed-user",
             "username": "dev",
             "project_id": project_id,
-            "project_name": default["name"] if project_id else "",
-            "domain_id": "dom-a",
-            "domain_name": "Alpha",
+            "project_name": personal["name"] if project_id else "",
+            "domain_id": personal["domain_id"] if project_id else "dom-a",
+            "domain_name": "Personal" if project_id else "Alpha",
             "identity_domain_id": "dom-a",
             "identity_domain_name": "Alpha",
             "is_domain_manager": False,
             "is_system_admin": False,
-            "roles": ["reader"] if project_id else [],
+            "roles": project_service._access(
+                env.keystone.role_assignments.list(project=project_id, effective=True), env.keystone.catalog, "fed-user"
+            )["roles"]
+            if project_id
+            else [],
             "email": "",
             "default_project_id": "",
         }
 
-    # Isolate only native provisioning/transport, like the static auth_directory
-    # fixture. OIDC/federation, scope preparation/fences, provider policy, JWTs
-    # and Redis session persistence/revocation all execute their real paths.
-    monkeypatch.setattr(domain_projects, "ensure_login_access", existing_login_access)
+    # OIDC/federation, native scope/ownership checks, provider policy, JWTs and
+    # Redis session persistence/revocation execute their real paths. Dedicated
+    # personal/enrollment tests cover journaled native provisioning itself.
+    monkeypatch.setattr(account_spaces, "ensure_personal_project", existing_personal_primary)
     monkeypatch.setattr(auth, "_prewarm_dashboard", native_dashboard_prewarm)
     monkeypatch.setattr(keystone, "validate_token", validate_native)
 
     def native_projects(token, domain_id, *, operation=None):
-        assert (token, domain_id) == ("unscoped-fed", "dom-a")
-        return project_list(domain=domain_id, user="fed-user")
+        assert (token, domain_id) == ("unscoped-fed", personal["domain_id"])
+        return [
+            {key: getattr(project, key) for key in ("id", "name", "domain_id", "enabled")}
+            for project in env.keystone.projects.list(domain=domain_id)
+            if env.keystone.role_assignments.list(user="fed-user", project=project.id)
+        ]
 
     monkeypatch.setattr(keystone, "list_projects", native_projects)
     monkeypatch.setattr(
@@ -1049,7 +1129,11 @@ def api(env, wire, monkeypatch):
         headers={"Origin": "https://cloud.example.com", "Sec-Fetch-Site": "same-site"},
     )
     return SimpleNamespace(
-        app=app, client=client, native_validations=native_validations, native_preparations=native_preparations
+        app=app,
+        client=client,
+        native_validations=native_validations,
+        native_preparations=native_preparations,
+        personal=personal,
     )
 
 
@@ -1386,7 +1470,20 @@ async def test_api_duplicate_domain_labels_require_exact_id(api, keystone_admin)
             assert resolved.json()["domain_name"] == "Shared"
 
 
-async def test_api_resolve_and_browser_bound_callback(api, wire):
+@pytest.mark.parametrize("organization_creation_enabled", [False, True])
+async def test_api_resolve_and_browser_bound_callback(api, wire, monkeypatch, organization_creation_enabled):
+    from app.api.identity import auth
+    from app.models.auth_settings import AuthSettings
+
+    # Public signup remains disabled regardless of organization creation policy.
+    configuration = auth.get_settings().model_copy(
+        update={
+            "auth": AuthSettings(
+                public_signup_enabled=False, organization_creation_enabled=organization_creation_enabled
+            )
+        }
+    )
+    monkeypatch.setattr(auth, "get_settings", lambda: configuration)
     provider = await svc.create_provider("dom-a", actor_user_id="mgr", fields=oidc_fields())
     await svc.create_provider("dom-a", actor_user_id="mgr", fields=oidc_fields(name="Hidden", enabled=False))
     async with api.client as client:
@@ -1416,18 +1513,23 @@ async def test_api_resolve_and_browser_bound_callback(api, wire):
         started = await client.post(f"/api/v1/auth/domains/dom-a/providers/{provider['id']}/authorize")
         state = wire.idp.remember(started.json()["authorize_url"])
         done = await client.post("/api/v1/auth/providers/callback", json={"code": "good-code", "state": state})
-        assert done.status_code == 200 and done.json()["domain_id"] == "dom-a"
-        assert done.json()["project_id"] == done.json()["default_project_id"] == "default-a"
-        assert done.json()["project_name"] == "Default" and done.json()["roles"] == ["reader"]
-        assert done.json()["is_domain_manager"] is False and done.json()["can_write"] is False
-        assert api.native_preparations == [("fed-user", "dom-a")]
+        assert done.status_code == 200, done.text
+        assert done.json()["domain_id"] == api.personal["domain_id"]
+        assert done.json()["identity_domain_id"] == "dom-a"
+        assert done.json()["project_id"] == done.json()["default_project_id"] == api.personal["id"]
+        assert done.json()["project_name"] == api.personal["name"]
+        assert set(done.json()["roles"]) == {"member"}
+        assert done.json()["is_domain_manager"] is False and done.json()["can_write"] is True
+        assert done.json()["can_create_domain"] is organization_creation_enabled
+        assert api.native_preparations == [("fed-user", api.personal["domain_id"])]
         from app.services import jwt_service, session_store
 
         claims = jwt_service.verify_refresh(done.json()["refresh_token"])
         session = await session_store.get_session(claims["jti"])
         assert session["provider_id"] == provider["id"] and session["login_email"] == "Dev@corp.example"
-        assert session["project_id"] == "default-a"
-        assert session["domain_id"] == session["identity_domain_id"] == "dom-a"
+        assert session["project_id"] == api.personal["id"]
+        assert session["domain_id"] == api.personal["domain_id"]
+        assert session["identity_domain_id"] == session["provider_domain_id"] == "dom-a"
         assert session["provider_revision"] == provider["revision"] and session["auth_method"] == "federated"
         assert binding and binding not in done.text
         policy = await client.put("/api/v1/iam/login-policy", json={"password_enabled": False, "signup_enabled": False})
@@ -1504,7 +1606,9 @@ async def test_revision_race_after_session_store_revokes_session_and_does_not_ve
         stored = await original(**kwargs)
         assert stored is not False
         session = await session_store.get_session(kwargs["jti"])
-        assert session["project_id"] == "default-a"
+        assert session["project_id"] == api.personal["id"]
+        assert session["domain_id"] == api.personal["domain_id"]
+        assert session["identity_domain_id"] == session["provider_domain_id"] == "dom-a"
         assert session["provider_id"] == provider["id"] and session["provider_revision"] == provider["revision"]
         saved_jtis.append(kwargs["jti"])
         await svc.update_provider("dom-a", provider["id"], actor_user_id="mgr", fields={"client_id": "new-client"})
@@ -1517,7 +1621,7 @@ async def test_revision_race_after_session_store_revokes_session_and_does_not_ve
         rejected = await client.post("/api/v1/auth/providers/callback", json={"code": "good-code", "state": state})
         assert rejected.status_code == 409 and rejected.json()["code"] == "provider_changed"
     assert saved_jtis and await session_store.get_session(saved_jtis[0]) is None
-    assert api.native_preparations == [("fed-user", "dom-a")]
+    assert api.native_preparations == [("fed-user", api.personal["domain_id"])]
     assert (await svc.list_providers("dom-a"))[0]["verified"] is False
 
 
@@ -1854,11 +1958,14 @@ async def test_file_provider_completes_native_flow_without_sql_verified_fallback
     with pytest.raises(svc.DomainAuthConflict) as sql_guard:
         await svc.delete_provider("dom-a", sql["id"])
     assert sql_guard.value.code == "last_login_method"
-    # A selected provider does not authorize admission into another workspace.
+    # A common provider can authenticate the same canonical user from another
+    # origin without that origin becoming a workspace or an admission grant.
     state, binding = await start(env.wire.idp, "cfg:corp", "dom-b")
-    with pytest.raises(svc.DomainAuthDenied) as foreign:
-        await svc.complete_authorization("good-code", state, binding)
-    assert foreign.value.code == "invitation_required" and env.keystone.revoked == []
+    other_origin = await svc.complete_authorization("good-code", state, binding)
+    assert (other_origin.user_id, other_origin.domain_id, other_origin.provider_id) == ("fed-user", "dom-b", "cfg:corp")
+    assert env.keystone.user_rows["fed-user"].domain_id == "dom-a"
+    assert env.keystone.assignments == [] and env.keystone.project_writes == []
+    assert env.keystone.revoked == []
 
 
 async def test_same_issuer_instances_keep_one_canonical_subject_across_authorized_domains(env, monkeypatch):
@@ -2079,25 +2186,30 @@ async def test_file_provider_does_not_bypass_database_or_discovery_binding_outag
         await svc.require_provider("dom-a", "cfg:corp", original.revision, "Dev@corp.example")
 
 
-async def test_api_file_login_session_revision_survives_real_rotation(api, env):
+@pytest.mark.parametrize("provider_origin", ["dom-a", "dom-b"])
+async def test_api_file_login_session_revision_survives_real_rotation(api, env, provider_origin):
     from app.services import jwt_service, session_store
 
-    configure_file_auth(env.settings, domains={"dom-a": ["corp"]})
+    configure_file_auth(env.settings, domains={provider_origin: ["corp"]})
     async with api.client as client:
-        resolved = await client.get("/api/v1/auth/domains/resolve", params={"name": "Alpha"})
+        resolved = await client.get("/api/v1/auth/domains/resolve", params={"name": provider_origin})
         assert resolved.json()["providers"] == [{"id": "cfg:corp", "name": "Corp SSO", "kind": "oidc"}]
         assert SECRET not in resolved.text
-        begun = await client.post("/api/v1/auth/domains/dom-a/providers/cfg:corp/authorize")
+        begun = await client.post(f"/api/v1/auth/domains/{provider_origin}/providers/cfg:corp/authorize")
         assert begun.status_code == 200
         state = env.wire.idp.remember(begun.json()["authorize_url"])
         done = await client.post("/api/v1/auth/providers/callback", json={"code": "good-code", "state": state})
-        assert done.status_code == 200 and done.json()["domain_id"] == "dom-a"
-        assert done.json()["project_id"] == done.json()["default_project_id"] == "default-a"
+        assert done.status_code == 200, done.text
+        assert done.json()["domain_id"] == api.personal["domain_id"]
+        assert done.json()["identity_domain_id"] == "dom-a"
+        assert done.json()["project_id"] == done.json()["default_project_id"] == api.personal["id"]
         claims = jwt_service.verify_refresh(done.json()["refresh_token"])
         original = await session_store.get_session(claims["jti"])
         assert original["provider_id"] == "cfg:corp"
-        assert original["project_id"] == "default-a"
-        assert original["domain_id"] == original["identity_domain_id"] == "dom-a"
+        assert original["project_id"] == api.personal["id"]
+        assert original["domain_id"] == api.personal["domain_id"]
+        assert original["identity_domain_id"] == "dom-a"
+        assert original["provider_domain_id"] == provider_origin
         rotated = await session_store.store_session(
             "file-provider-rotated",
             original["keystone_token"],
@@ -2113,20 +2225,22 @@ async def test_api_file_login_session_revision_survives_real_rotation(api, env):
         current = await session_store.get_session("file-provider-rotated")
         assert current["provider_revision"] == original["provider_revision"]
         assert current["provider_id"] == "cfg:corp" and current["login_email"] == "Dev@corp.example"
-        assert current["project_id"] == "default-a"
-        assert current["domain_id"] == current["identity_domain_id"] == "dom-a"
+        assert current["project_id"] == api.personal["id"]
+        assert current["domain_id"] == api.personal["domain_id"]
+        assert current["identity_domain_id"] == "dom-a"
+        assert current["provider_domain_id"] == provider_origin
         await svc.require_provider(
-            "dom-a", current["provider_id"], current["provider_revision"], current["login_email"]
+            provider_origin, current["provider_id"], current["provider_revision"], current["login_email"]
         )
-        assert api.native_preparations == [("fed-user", "dom-a")]
-        assert (await svc.policy_view("dom-a"))["usable_provider_count"] == 0
+        assert api.native_preparations == [("fed-user", api.personal["domain_id"])]
+        assert (await svc.policy_view(provider_origin))["usable_provider_count"] == 0
         configure_file_auth(
             env.settings,
             providers={"corp": oidc_fields(client_secret=SECRET + "-rotated")},
-            domains={"dom-a": ["corp"]},
+            domains={provider_origin: ["corp"]},
         )
         with pytest.raises(svc.DomainAuthDenied) as refresh:
             await svc.require_provider(
-                "dom-a", current["provider_id"], current["provider_revision"], current["login_email"]
+                provider_origin, current["provider_id"], current["provider_revision"], current["login_email"]
             )
         assert refresh.value.code == "provider_changed"

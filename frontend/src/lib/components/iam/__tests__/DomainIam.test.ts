@@ -194,11 +194,13 @@ describe('user and provider secret lifecycles', () => {
 		expect((screen.getByRole('button', { name: '사용자 및 비밀번호 편집' }) as HTMLButtonElement).disabled).toBe(true);
 		expect(api.patch).not.toHaveBeenCalled();
 	});
-	it('shows joined foreign identities but never enables their profile or credential editor', async () => {
-		api.get.mockResolvedValue({ items: [{ ...user, domain_id: 'foreign-home' }] });
+	it.each(['foreign-home', 'account'])('shows joined %s identities without creation or credential authority', async home => {
+		api.get.mockResolvedValue({ items: [{ ...user, domain_id: home }] });
 		render(IamUsers, { session, onDenied: vi.fn() });
 		await screen.findByText('Alice');
-		expect(screen.getByText('foreign-home')).toBeTruthy();
+		expect(screen.getByText(home)).toBeTruthy();
+		expect(screen.queryByRole('button', { name: '사용자 생성' })).toBeNull();
+		expect(api.post).not.toHaveBeenCalled();
 		expect((screen.getByRole('button', { name: '사용자 및 비밀번호 편집' }) as HTMLButtonElement).disabled).toBe(true);
 		expect(screen.queryByRole('dialog')).toBeNull();
 		expect(api.patch).not.toHaveBeenCalled();

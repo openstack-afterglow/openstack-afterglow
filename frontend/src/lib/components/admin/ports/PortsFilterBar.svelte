@@ -3,14 +3,8 @@
 
   let {
     search = $bindable(),
-    projectFilter = $bindable(),
-    projectOptions,
-    onProjectChange,
   }: {
     search: string;
-    projectFilter: string;
-    projectOptions: { id: string; name: string }[];
-    onProjectChange: () => void;
   } = $props();
 </script>
 
@@ -21,14 +15,4 @@
     placeholder={t('portsFilterBar.searchPlaceholder')}
     class="text-xs bg-surface-sunken border border-line-2 rounded px-3 py-1.5 text-ink-2 placeholder-ink-3 w-56"
   />
-  <select
-    bind:value={projectFilter}
-    onchange={onProjectChange}
-    class="text-xs bg-surface-sunken border border-line-2 rounded px-3 py-1.5 text-ink-2 focus:outline-none focus:border-action-warm"
-  >
-    <option value="">{t('portsFilterBar.allProjects')}</option>
-    {#each projectOptions as p (p.id)}
-      <option value={p.id}>{p.name}</option>
-    {/each}
-  </select>
 </div>

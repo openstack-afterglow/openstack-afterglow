@@ -1,7 +1,20 @@
-import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Quotas } from '$lib/types/quotas';
 import ProjectQuotaForm from '../ProjectQuotaForm.svelte';
+
+const media = vi.hoisted(() => {
+  const events = new EventTarget();
+  const query = {
+    matches: true, media: '(min-width: 1024px)', onchange: null,
+    addEventListener: events.addEventListener.bind(events),
+    removeEventListener: events.removeEventListener.bind(events),
+    dispatchEvent: events.dispatchEvent.bind(events),
+    addListener: () => undefined, removeListener: () => undefined,
+  };
+  vi.stubGlobal('matchMedia', () => query);
+  return query;
+});
 
 const sampleQuotas: Quotas = {
 	compute: {
@@ -46,6 +59,8 @@ const unusedSave = async () => ({ success: false });
 describe('ProjectQuotaForm', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+    media.matches = true;
+    media.dispatchEvent(new Event('change'));
 	});
 
 	it('renders compute, volume, network, and file storage sections with actual in_use and limits', () => {
@@ -351,4 +366,21 @@ describe('ProjectQuotaForm', () => {
 		expect(screen.getByText(/CPU 코어: -1\(무제한\) 또는 0 이상의 정수를 입력해주세요/)).not.toBeNull();
 		expect(onSaveSection).not.toHaveBeenCalled();
 	});
+  it('preserves unsaved limits and save controls across tablet and desktop transitions', async () => {
+    const onSaveSection = vi.fn().mockResolvedValue({ success: true });
+    render(ProjectQuotaForm, { quotas: sampleQuotas, projectId: 'proj-123', onSaveSection });
+    await fireEvent.input(screen.getByTestId('quota-compute-cores'), { target: { value: '31' } });
+    media.matches = false; media.dispatchEvent(new Event('change'));
+    await waitFor(() => expect(screen.getByTestId('quota-compute-cores').closest('article')).not.toBeNull());
+    expect((screen.getByTestId('quota-compute-cores') as HTMLInputElement).value).toBe('31');
+    expect(onSaveSection).not.toHaveBeenCalled();
+    media.matches = true; media.dispatchEvent(new Event('change'));
+    await waitFor(() => expect(screen.getByTestId('quota-compute-cores').closest('article')).toBeNull());
+    expect((screen.getByTestId('quota-compute-cores') as HTMLInputElement).value).toBe('31');
+    media.matches = false; media.dispatchEvent(new Event('change'));
+    await waitFor(() => expect(screen.getByTestId('quota-compute-cores').closest('article')).not.toBeNull());
+    await fireEvent.click(screen.getByTestId('save-compute-btn'));
+    expect(onSaveSection).toHaveBeenCalledTimes(1);
+    expect(onSaveSection).toHaveBeenCalledWith('compute', { cores: 31 });
+  });
 });

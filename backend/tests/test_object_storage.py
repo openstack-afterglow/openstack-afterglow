@@ -1184,6 +1184,7 @@ async def test_list_containers_all_projects_fans_out(admin_client):
     }
 
     with (
+        patch("app.api.object_storage.containers.require_admin", new_callable=AsyncMock),
         patch("app.services.keystone.list_system_projects", return_value=fake_projects),
         patch(
             "app.services.keystone.get_admin_connection_for_project",
@@ -1229,6 +1230,7 @@ async def test_list_containers_all_projects_include_quarantine_propagates(admin_
         ]
 
     with (
+        patch("app.api.object_storage.containers.require_admin", new_callable=AsyncMock),
         patch("app.services.keystone.list_system_projects", return_value=fake_projects),
         patch(
             "app.services.keystone.get_admin_connection_for_project",
@@ -1291,6 +1293,7 @@ async def test_list_containers_all_projects_runs_concurrently(admin_client):
         return [{"name": "bucket", "count": 1, "bytes": 100}]
 
     with (
+        patch("app.api.object_storage.containers.require_admin", new_callable=AsyncMock),
         patch("app.services.keystone.list_system_projects", return_value=fake_projects),
         patch(
             "app.services.keystone.get_admin_connection_for_project",
@@ -1309,8 +1312,8 @@ async def test_list_containers_all_projects_runs_concurrently(admin_client):
 
 
 @pytest.mark.asyncio
-async def test_list_containers_all_projects_skips_unauthorized(admin_client):
-    """한 프로젝트는 401 raise → 결과에서 제외 + 다른 프로젝트는 정상 포함."""
+async def test_list_containers_all_projects_rejects_incomplete_unauthorized_inventory(admin_client):
+    """A failed project read must not be reported as a successful partial inventory."""
     from keystoneauth1.exceptions.http import Unauthorized
 
     fake_projects = [
@@ -1326,6 +1329,7 @@ async def test_list_containers_all_projects_skips_unauthorized(admin_client):
         return good_conn
 
     with (
+        patch("app.api.object_storage.containers.require_admin", new_callable=AsyncMock),
         patch("app.services.keystone.list_system_projects", return_value=fake_projects),
         patch(
             "app.services.keystone.get_admin_connection_for_project",
@@ -1340,10 +1344,9 @@ async def test_list_containers_all_projects_skips_unauthorized(admin_client):
     ):
         resp = await admin_client.get("/api/v1/object-storage?all_projects=true")
 
-    assert resp.status_code == 200
-    body = resp.json()
-    project_ids = {b["project_id"] for b in body}
-    assert project_ids == {"p1"}, f"p2 should be skipped, got {project_ids}"
+    assert resp.status_code == 503
+    assert "ok-bucket" not in resp.text
+    assert "not allowed" not in resp.text
 
 
 # ---------------------------------------------------------------------------

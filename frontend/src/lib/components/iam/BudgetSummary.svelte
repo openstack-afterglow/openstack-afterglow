@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { type DomainBudgets, type QuotaField, quotaBlocked } from '$lib/api/workspaceIam';
 	import { t } from '$lib/i18n/ns/workspace-iam';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
@@ -15,11 +17,19 @@
 	<Alert tone="info">{t('allocationHelp')}</Alert>
 	{#if data.drift}<Alert tone="warning">{t('drift')}</Alert>{/if}
 	{#if quotaBlocked(data)}<Alert tone="warning">{t('durableBlocker')}{#if data.blocking_operation_id}<code class="mt-1 block text-xs [overflow-wrap:anywhere]">{data.blocking_operation_id}</code>{/if}</Alert>{/if}
+	<ResponsiveTable>
+		{#snippet cards()}
+			{#each Object.entries(data.allocations) as [key, metric]}{#if metric}<CompactResourceCard>
+				<h3 class="text-sm font-medium">{t(`field.${key as QuotaField}`)}</h3><p class="text-sm">{t('allocated')}: {amount(metric.limit)}</p><p class="text-xs">{metric.within_budget == null ? t('unknown') : metric.within_budget ? t('withinBudget') : t('overBudget')}</p>
+				{#snippet details()}<dl class="space-y-1 text-xs"><div>{t('ceiling')}: {key in data.ceilings ? amount(data.ceilings[key as QuotaField]) : t('notConfigured')}</div><div>{t('default')}: {key in data.defaults ? amount(data.defaults[key as QuotaField]) : t('notConfigured')}</div></dl><code class="text-xs">{key}</code>{#if metric.error}<code class="block text-xs">{metric.error}</code>{/if}{/snippet}
+			</CompactResourceCard>{/if}{/each}
+		{/snippet}
 	<TableShell><table><thead><tr><th>{t('metric')}</th><th>{t('ceiling')}</th><th>{t('allocated')}</th><th>{t('default')}</th><th>{t('budgetState')}</th></tr></thead><tbody>
 		{#each Object.entries(data.allocations) as [key, metric]}
 			{#if metric}<tr><td>{t(`field.${key as QuotaField}`)}<code class="block text-xs text-ink-2">{key}</code></td><td>{key in data.ceilings ? amount(data.ceilings[key as QuotaField]) : t('notConfigured')}</td><td>{amount(metric.limit)}{#if metric.error}<code class="block text-xs text-ink-2">{metric.error}</code>{/if}</td><td>{key in data.defaults ? amount(data.defaults[key as QuotaField]) : t('notConfigured')}</td><td>{metric.within_budget == null ? t('unknown') : metric.within_budget ? t('withinBudget') : t('overBudget')}</td></tr>{/if}
 		{/each}
 	</tbody></table></TableShell>
+	</ResponsiveTable>
 	<section class="space-y-2">
 		<h3 class="text-sm font-semibold text-ink-0">{t('operations')}</h3>
 		{#if !data.operations.length}<p class="text-sm text-ink-2">{t('noOperations')}</p>{/if}
@@ -27,7 +37,9 @@
 			<details class="rounded-lg border border-line p-3">
 				<summary class="cursor-pointer text-sm text-ink-1 [overflow-wrap:anywhere]">{status(operation.status)} · {operation.project_id} · {operation.id}</summary>
 				<p class="my-2 text-xs text-ink-2">{operation.created_at}</p>
+				<ResponsiveTable>{#snippet cards()}{#each Object.entries(operation.requested) as [field, value]}<CompactResourceCard><h4 class="text-sm font-medium">{t(`field.${field as QuotaField}`)}</h4><p class="text-sm">{t('requested')}: {amount(value)}</p></CompactResourceCard>{/each}{/snippet}
 				<TableShell><table><thead><tr><th>{t('metric')}</th><th>{t('requested')}</th></tr></thead><tbody>{#each Object.entries(operation.requested) as [field, value]}<tr><td>{t(`field.${field as QuotaField}`)}</td><td>{amount(value)}</td></tr>{/each}</tbody></table></TableShell>
+				</ResponsiveTable>
 				<ul class="mt-2 space-y-1 text-sm text-ink-2">{#each Object.entries(operation.sections) as [section, state]}<li>{section}: {status(state.status)}{#if state.error} · <code>{state.error}</code>{/if}{#if state.observed}<dl class="pl-4">{#each Object.entries(state.observed) as [key, value]}<div><dt class="inline">{key}: </dt><dd class="inline">{amount(value)}</dd></div>{/each}</dl>{/if}</li>{/each}</ul>
 			</details>
 		{/each}

@@ -178,17 +178,16 @@
 		name: string;
 		email: string;
 		password: string;
-		personal_domain_name: string;
 		enabled: boolean;
-	}): Promise<string | Pick<DomainAccountResult, 'identity_domain_id' | 'identity_domain_name'>> {
-		if (!alive || !creationAllowed || !form.personal_domain_name.trim()) return td('scope.invalid');
+	}): Promise<string | DomainAccountResult> {
+		if (!alive || !creationAllowed) return td('scope.invalid');
 		const boundary = creationRevision;
 		const target = domainId;
 		const owns = () => alive && creationAllowed && boundary === creationRevision && target === domainId;
 		try {
-			const result = await api.post<Pick<DomainAccountResult, 'identity_domain_id' | 'identity_domain_name'>>(
+			const result = await api.post<DomainAccountResult>(
 				'/api/v1/admin/users',
-				{ domain_id: target, name: form.name, email: form.email, password: form.password, personal_domain_name: form.personal_domain_name, enabled: form.enabled },
+				{ domain_id: target, name: form.name, email: form.email, password: form.password, enabled: form.enabled },
 				creationToken,
 				creationProject,
 				{ replayOnUnauthorized: false }
@@ -256,7 +255,7 @@
 	});
 </script>
 
-{#if creationAllowed}{#key `${creationRevision}:${domainId}`}<AdminUserCreateModal bind:open={showCreate} {domainId} {domainName} onCreate={create} />{/key}{/if}
+{#if creationAllowed}{#key `${creationRevision}:${domainId}`}<AdminUserCreateModal bind:open={showCreate} {domainId} onCreate={create} />{/key}{/if}
 <AdminUserEditModal bind:user={editUser} {domainId} onUpdate={update} />
 
 <PageShell>

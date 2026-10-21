@@ -2,6 +2,7 @@
 	"actions.cancel": "Batal",
 	"actions.confirm": "Sahkan",
 	"actions.close": "Tutup",
+	"resource.details": "Butiran",
 	"state.processing": "Sedang memproses...",
 	"state.loading": "Sedang memuatkan...",
 	"state.loadingNamed": "Sedang memuatkan {name}…",

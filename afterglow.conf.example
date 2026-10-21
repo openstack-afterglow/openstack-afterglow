@@ -197,15 +197,19 @@ trusted_proxies = "127.0.0.1/32,::1/128"
 # the existing canonical username/password or authenticated account proof is required.
 # The native mapper must use stable issuer subject (OIDC-sub) as user.id, not email or
 # preferred_username, and must not overwrite the canonical user's verified email.
-# Public signup below creates a PERSONAL domain only after email verification;
-# it never joins an arbitrary pre-existing domain. Empty signup_email_domains permits
-# all valid suffixes only when public_signup_enabled is explicitly true.
-# The system-admin enrollment policy persists public signup, approval mode and
-# future personal-domain quotas in SQL. Once saved, its signup flag overrides this
-# bootstrap flag; email-host restrictions and SMTP readiness still apply.
+# New humans are created in the identity-only account domain with an owned
+# project in shared personal. A generic common provider does NOT join its
+# provider-origin domain. Existing-organization email autojoin stays explicit.
+# Empty signup_email_domains permits all valid suffixes only when signup is enabled.
+# SQL enrollment policy overrides the signup bootstrap flag and freezes future
+# personal-project quota templates; neither setting grants organization access.
 # [auth]
 # public_signup_enabled = false
 # signup_email_domains = []
+# # Organization creation is independent of signup_enabled. System admins are
+# # exempt from the per-user count; existing memberships are never removed.
+# organization_creation_enabled = true
+# max_organizations_per_user = 10
 #
 # Two INDEPENDENT GitLab OIDC application registrations, not aliases. Prepare
 # separate upstream applications/client credentials and native Keystone IdPs,
@@ -245,6 +249,20 @@ trusted_proxies = "127.0.0.1/32,::1/128"
 # # Supply AUTH__PROVIDERS__CAMPUS_SSO__CLIENT_SECRET separately.
 # keystone_idp_id = "campus"
 # keystone_protocol_id = "openid"
+# # Optional operator-owned organization. This issuer/client MUST be tenant-bound:
+# # EVERY identity accepted by it is trusted to join this exact organization.
+# # Never use a multi-tenant/common client unless admission is upstream tenant-bound.
+# # Use immutable OIDC sub values, not email/preferred_username or arbitrary claims.
+# # Only these subjects may bootstrap a missing organization or receive manager.
+# # Ordinary subjects can join an already established organization as reader only.
+# # Issuer + id is immutable native/SQL identity; name and provider key are not.
+# # Client changes require explicit binding reconciliation, never tenant adoption.
+# [auth.providers.campus_sso.organization]
+# id = "campus-stable-organization-id"
+# name = "Campus"
+# manager_subjects = ["replace-with-immutable-manager-subject"]
+# # Migration100 is required before enabling this block. Uncertain creates are
+# # fenced for explicit operator settlement, with no automatic replay/cleanup.
 #
 # [auth.providers.code_host]
 # name = "GitHub"

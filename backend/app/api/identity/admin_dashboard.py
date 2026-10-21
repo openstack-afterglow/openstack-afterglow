@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.api.common.activity_recorder import rec
+from app.api.common.admin_resource_scope import AdminResourceScope, admin_resource_scope
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info, require_admin
 from app.services.cache import cached_call, ttl_fast, ttl_normal
 from app.services.image_refs import normalize_image_reference
@@ -209,18 +210,24 @@ def _is_gpu_flavor(flavor: dict) -> bool:
 async def get_instances_health(
     conn: openstack.connection.Connection = Depends(get_os_conn),
     cm: CacheMode = Depends(cache_mode),
+    scope: AdminResourceScope = Depends(admin_resource_scope),
 ):
     """전체 인스턴스 상태 집계 (total/active/error/with_alerts/gpu_count) + ERROR 목록."""
     try:
 
         def _collect():
-            endpoint = conn.compute.get_endpoint()
-            resp = conn.session.get(
-                f"{endpoint}/servers/detail",
-                params={"all_tenants": "1", "limit": "200"},
-                headers={"OpenStack-API-Version": "compute 2.53"},
-            )
-            servers = resp.json().get("servers", [])
+            if scope.project_ids is not None:
+                from app.services.openstack_inventory import list_servers_complete
+
+                servers = scope.filter(list_servers_complete(conn))
+            else:
+                endpoint = conn.compute.get_endpoint().rstrip("/")
+                resp = conn.session.get(
+                    f"{endpoint}/servers/detail",
+                    params={"all_tenants": "1", "limit": "200"},
+                    headers={"OpenStack-API-Version": "compute 2.53"},
+                )
+                servers = resp.json().get("servers", [])
 
             total = len(servers)
             active_count = 0
@@ -263,6 +270,9 @@ async def get_instances_health(
                 "items": error_items,
                 "count": len(error_items),
             }
+
+        if scope.project_ids is not None:
+            return await asyncio.to_thread(_collect)
 
         result = await cached_call(
             "afterglow:admin:instances_health",

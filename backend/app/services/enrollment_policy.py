@@ -17,7 +17,6 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.api.common.errors import public_service_error
 from app.config import get_settings
 from app.database import get_session_factory
-from app.models.domain_quotas import DomainQuotaPolicy
 from app.models.enrollment_policy import EnrollmentPolicy, EnrollmentPolicyUpdate, SignupRequest
 from app.services import activity, identity_roles, quota_native
 
@@ -339,14 +338,8 @@ async def review_request(conn, request_id, decision, *, token_info):
         return safe
 
 
-@identity_roles._complete_mutation
-async def initialize_personal_quotas(domain_id, quotas, *, lease):
-    """Seed once, never overwrite native-domain policy, never acquire another lease.
-
-    Disabled Manila fields remain in the enrollment snapshot but are explicitly
-    omitted from active policy. Missing native optional fields are NOT silently
-    dropped: existing quota preflight must reject them before activation.
-    """
+async def apply_personal_project_quotas(conn, project_id, quotas, *, lease):
+    """Apply frozen signup limits directly; personal has no shared quota pool."""
     values = _limits(quotas)
     omitted = (
         sorted(set(values) & set(quota_native.QUOTA_FIELDS["file_storage"]))
@@ -354,33 +347,34 @@ async def initialize_personal_quotas(domain_id, quotas, *, lease):
         else []
     )
     active = {key: value for key, value in values.items() if key not in omitted}
+    from app.services.project_service import _provider_call
+
+    sections = {}
+    # Preflight all selected fields before dispatching any quota mutation.
+    for section, fields in quota_native.QUOTA_FIELDS.items():
+        selected = {native: active[key] for key, native in fields.items() if key in active}
+        if not selected:
+            continue
+        current = await _provider_call(quota_native.get_section, conn, project_id, section)
+        if any(key not in current for key in selected):
+            raise HTTPException(503, "personal_project_quota_field_unavailable")
+        sections[section] = selected
+    for section, selected in sections.items():
+        await lease.assert_owned()
+        await identity_roles._write(lease, quota_native.update_section, conn, project_id, section, selected)
+        checked = await _provider_call(quota_native.get_section, conn, project_id, section)
+        if any(checked.get(key, {}).get("limit") != value for key, value in selected.items()):
+            raise HTTPException(503, "personal_project_quota_readback_failed")
     await lease.assert_owned()
-    async with _session() as sql:
-        row = (
-            await sql.execute(
-                select(DomainQuotaPolicy).where(DomainQuotaPolicy.domain_id == domain_id).with_for_update()
-            )
-        ).scalar_one_or_none()
-        if row is None:
-            row = DomainQuotaPolicy(domain_id=domain_id, revision=1, ceilings=active, defaults=active)
-            sql.add(row)
-            try:
-                await sql.flush()
-            except IntegrityError as exc:
-                await sql.rollback()
-                raise HTTPException(409, "personal_quota_policy_conflict") from exc
-        elif row.ceilings != active or row.defaults != active:
-            raise HTTPException(409, "personal_quota_policy_conflict")
-        await lease.assert_owned()
-        await sql.commit()
-        await sql.refresh(row)
-        await lease.assert_owned()
-        if row.ceilings != active or row.defaults != active:
-            raise HTTPException(409, "personal_quota_policy_conflict")
-        return {
-            "domain_id": domain_id,
-            "revision": row.revision,
-            "ceilings": dict(row.ceilings),
-            "defaults": dict(row.defaults),
-            "omitted_fields": omitted,
-        }
+    return {"project_id": project_id, "limits": active, "omitted_fields": omitted}
+
+
+async def initialize_personal_quotas(project_id, quotas, *, lease):
+    from app.services import keystone
+    from app.services.project_service import _provider_call
+
+    conn = await _provider_call(keystone.get_admin_project_connection)
+    try:
+        return await apply_personal_project_quotas(conn, project_id, quotas, lease=lease)
+    finally:
+        await _provider_call(conn.close)

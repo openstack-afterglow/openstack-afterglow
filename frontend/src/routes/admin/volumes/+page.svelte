@@ -1,8 +1,14 @@
 <script lang="ts">
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import { t as scopeT } from '$lib/i18n/ns/domain-admin';
+	let inventoryError = $state('');
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api } from '$lib/api/client';
+	import { api as baseApi } from '$lib/api/client';
+	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
+	const api = createAdminInventoryApi(baseApi);
+	onDestroy(api.dispose);
 	import type { PagedResponse, TsPoint } from '$lib/types/common';
 	import type { AdminVolume, AdminVolumeStatusSummary as VolumeStatusSummary } from '$lib/types/volume';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
@@ -48,8 +54,6 @@
 	let openActionMenu = $state<string | null>(null);
 	let selectedVolumeId = $state<string | null>(null);
 
-	let projectFilter = $state('');
-	let projectSearchText = $state('');
 	let statusFilter = $state('');
 	let nameSearch = $state('');
 
@@ -79,7 +83,6 @@
 	function listPath(marker?: string): string {
 		const params = new URLSearchParams({ limit: String(pageSize) });
 		if (marker) params.set('marker', marker);
-		if (projectFilter) params.set('project_id', projectFilter);
 		if (statusFilter) params.set('status', statusFilter);
 		if (nameSearch) params.set('name', nameSearch);
 		return `/api/v1/admin/all-volumes?${params}`;
@@ -164,7 +167,6 @@
 		const requestToken = $auth.token ?? undefined;
 		const requestProjectId = $auth.projectId ?? undefined;
 		const requestPageSize = pageSize;
-		const requestProjectFilter = projectFilter;
 		const requestStatusFilter = statusFilter;
 		const requestNameSearch = nameSearch;
 		const requestPath = listPath(marker);
@@ -172,7 +174,6 @@
 			&& ($auth.token ?? undefined) === requestToken
 			&& ($auth.projectId ?? undefined) === requestProjectId
 			&& pageSize === requestPageSize
-			&& projectFilter === requestProjectFilter
 			&& statusFilter === requestStatusFilter
 			&& nameSearch === requestNameSearch
 			&& listPath(marker) === requestPath;
@@ -184,6 +185,7 @@
 		}
 		if (allVolumes.length === 0) loading = true;
 		else refreshing = true;
+		inventoryError = '';
 		try {
 			const res = await api.get<PagedResponse<AdminVolume>>(requestPath, requestToken, requestProjectId);
 			if (!owns()) return;
@@ -193,9 +195,10 @@
 			const path = nextMarker ? listPath(nextMarker) : null;
 			const key = path ? JSON.stringify([path, requestToken ?? null, requestProjectId ?? null]) : null;
 			nextPrefetch.schedule(key, (signal) => path ? api.prefetch(path, requestToken, requestProjectId, { signal }) : undefined);
-		} catch {
+		} catch (reason) {
 			if (owns()) {
 				allVolumes = [];
+				inventoryError = reason instanceof Error ? reason.message : scopeT('state.unavailable');
 				selection.clear();
 			}
 		} finally {
@@ -237,6 +240,7 @@
 				loadTimeseries(tsRange, { background: true }),
 			]);
 		} catch {
+			if (!api.isCurrent()) return;
 			toast.error(t('volumeList.bulkDelete.failed'));
 		} finally {
 			bulkDeleting = false;
@@ -297,7 +301,6 @@
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading || refreshing}
 				onManualRefresh={() => {
-					projectFilter = ''; projectSearchText = '';
 					statusFilter = ''; nameSearch = '';
 					resetResultBoundary();
 					void load(undefined, { clearSelection: true });
@@ -313,6 +316,7 @@
 	</PageHeader>
 	</div>
 
+	{#if !api.scoped}
 	<div data-tour="admin-storage-timeseries">
 	<AdminVolumeTimeseries
 		data={tsData}
@@ -321,6 +325,7 @@
 		onRangeChange={(r) => { tsRange = r; loadTimeseries(r); }}
 	/>
 	</div>
+	{/if}
 
 	<div data-tour="admin-storage-status">
 	<AdminVolumeStatusSummary
@@ -333,8 +338,6 @@
 
 	<div data-tour="admin-storage-filters">
 	<AdminVolumeFilters
-		bind:projectFilter
-		bind:projectSearchText
 		bind:statusFilter
 		bind:nameSearch
 		statusOptions={statusOptions}
@@ -343,7 +346,8 @@
 	</div>
 
 	<div data-tour="admin-storage-list">
-	{#if loading}
+	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
+	{:else if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else}
 		<div data-tour="admin-storage-ready">

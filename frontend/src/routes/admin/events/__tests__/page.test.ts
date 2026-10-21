@@ -11,7 +11,8 @@ vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'admin-token', projectId: 'admin-project' }),
 }));
 import { auth } from '$lib/stores/auth';
-import Page from '../+page.svelte';
+import Page from '$lib/components/admin/AdminEventsPage.svelte';
+import { setAdminInventoryScope } from '$lib/stores/adminInventoryScope';
 
 const record = {
 	id: 42, created_at: '2026-09-28T08:30:00Z', project_id: 'tenant-1', user_id: 'actor-1',
@@ -40,6 +41,7 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+	setAdminInventoryScope('', '');
 	mockGet.mockReset();
 	mockGet.mockImplementation((path: string) => Promise.resolve(response(path)));
 	Element.prototype.animate = vi.fn().mockReturnValue({ finished: Promise.resolve(), cancel: vi.fn(), play: vi.fn() });
@@ -63,13 +65,13 @@ describe('admin event viewer', () => {
 		const now = Date.parse(first.get('to_at')!) + 60_000;
 		const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
 		try {
-			await fireEvent.input(screen.getByLabelText('프로젝트 ID'), { target: { value: 'unsaved' } });
+			await fireEvent.input(screen.getByLabelText('사용자 ID'), { target: { value: 'unsaved' } });
 			await fireEvent.click(screen.getByRole('button', { name: '새로고침' }));
 			const lastPath = mockGet.mock.calls.filter(([path]) => !path.includes('/stats')).at(-1)![0] as string;
 			const last = new URL(lastPath, 'http://localhost').searchParams;
 			expect(Date.parse(last.get('to_at')!)).toBe(now);
 			expect(Date.parse(last.get('from_at')!) - Date.parse(first.get('from_at')!)).toBe(60_000);
-			expect(last.has('project_id')).toBe(false);
+			expect(last.has('user_id')).toBe(false);
 		} finally {
 			clock.mockRestore();
 		}
@@ -79,8 +81,9 @@ describe('admin event viewer', () => {
 		render(Page);
 		await screen.findByRole('button', { name: 'instance.create 이벤트 42 상세 보기' });
 		await fireEvent.change(screen.getByLabelText('기간'), { target: { value: '1d' } });
+		setAdminInventoryScope('domain-a', 'tenant-a');
 		for (const [label, value] of [
-			['프로젝트 ID', 'tenant-a'], ['사용자 ID', 'actor-a'], ['사용자 이름', 'operator-a'], ['서비스', 'nova'],
+			['사용자 ID', 'actor-a'], ['사용자 이름', 'operator-a'], ['서비스', 'nova'],
 			['페이지 경로', '/admin/instances'], ['리소스 유형', 'instance'], ['리소스 ID', 'vm-a'], ['액션', 'instance.create'],
 		]) await fireEvent.input(screen.getByLabelText(label), { target: { value } });
 		await fireEvent.change(screen.getByLabelText('상태'), { target: { value: 'failed' } });
@@ -90,7 +93,7 @@ describe('admin event viewer', () => {
 			const paths = mockGet.mock.calls.map(([path]) => path as string);
 			const list = paths.filter((path: string) => new URL(path, 'http://localhost').pathname === '/api/v1/admin/events').at(-1)!;
 			const params = new URL(list, 'http://localhost').searchParams;
-			expect(Object.fromEntries(params)).toMatchObject({ project_id: 'tenant-a', user_id: 'actor-a', username: 'operator-a', service: 'nova', page: '/admin/instances', resource_type: 'instance', resource_id: 'vm-a', action: 'instance.create', status: 'failed', source: 'openstack' });
+			expect(Object.fromEntries(params)).toMatchObject({ domain_id: 'domain-a', project_id: 'tenant-a', user_id: 'actor-a', username: 'operator-a', service: 'nova', page: '/admin/instances', resource_type: 'instance', resource_id: 'vm-a', action: 'instance.create', status: 'failed', source: 'openstack' });
 			expect(Date.parse(params.get('to_at')!) - Date.parse(params.get('from_at')!)).toBe(86_400_000);
 			expect(paths.some((path: string) => path.startsWith('/api/v1/admin/events/stats?') && path.includes('page=%2Fadmin%2Finstances'))).toBe(true);
 		});
@@ -162,7 +165,7 @@ describe('admin event viewer', () => {
 		render(Page);
 		await fireEvent.click(await screen.findByRole('button', { name: '더 보기' }));
 		await waitFor(() => expect(mockGet.mock.calls.some(([path]) => (path as string).includes('before_id=51'))).toBe(true));
-		await fireEvent.input(screen.getByLabelText('프로젝트 ID'), { target: { value: 'tenant-b' } });
+		setAdminInventoryScope('domain-b', 'tenant-b');
 		await fireEvent.click(screen.getByRole('button', { name: '필터 적용' }));
 		await screen.findByText('newer');
 		pending.resolve([{ ...record, id: 77, resource_name: 'stale' }]);
@@ -179,7 +182,7 @@ describe('admin event viewer', () => {
 			return pending.promise;
 		});
 		render(Page);
-		await fireEvent.input(screen.getByLabelText('프로젝트 ID'), { target: { value: 'tenant-b' } });
+		setAdminInventoryScope('domain-b', 'tenant-b');
 		await fireEvent.click(screen.getByRole('button', { name: '필터 적용' }));
 		await screen.findByText('이벤트를 불러오지 못했습니다');
 		expect(screen.queryByText('조건에 맞는 이벤트가 없습니다.')).toBeNull();
@@ -187,5 +190,16 @@ describe('admin event viewer', () => {
 		auth.set({ ...get(auth), token: 'other-session' });
 		await tick();
 		expect(screen.queryByText('workload')).toBeNull();
+	});
+	it('drops a late detail response across independent scope ABA', async () => {
+		const old = deferred<typeof record>();
+		mockGet.mockImplementation((path: string) => path.endsWith('/42') ? old.promise : Promise.resolve(response(path)));
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'instance.create 이벤트 42 상세 보기' }));
+		setAdminInventoryScope('domain-b', 'tenant-b'); setAdminInventoryScope('', '');
+		await tick();
+		old.resolve({ ...record, error_message: 'obsolete private detail' }); await tick();
+		expect(screen.queryByText('obsolete private detail')).toBeNull();
+		expect(screen.queryByRole('dialog')).toBeNull();
 	});
 });

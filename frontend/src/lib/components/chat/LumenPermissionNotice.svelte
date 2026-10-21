@@ -2,6 +2,7 @@
 	import { projectPermissions, serviceCapabilities } from '$lib/stores/servicePermissions';
 	import { permissionReason } from '$lib/api/lumenPermissions';
 	import { t } from '$lib/i18n/ns/chat-settings';
+	import { t as accountT } from '$lib/i18n/ns/account';
 	let { leaves }: { leaves: readonly string[] } = $props();
 </script>
 
@@ -9,6 +10,8 @@
 	<p class="text-sm text-[var(--color-ink-2)]" role="status">{t('permissions.loading')}</p>
 {:else if $projectPermissions.error}
 	<p class="text-sm text-[var(--color-state-danger)]" role="alert">{$projectPermissions.error}</p>
+{:else if $projectPermissions.permissions?.service_permission_errors?.lumen}
+	<p class="text-sm text-[var(--color-state-danger)]" role="alert">{accountT('projectSettings.permissionsFailed')}</p>
 {:else}
 	{#each leaves as leaf (leaf)}
 		{#if !$serviceCapabilities(leaf)}

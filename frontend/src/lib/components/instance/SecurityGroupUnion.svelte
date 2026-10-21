@@ -5,6 +5,7 @@
 	import { buildSecurityGroupUnion } from '$lib/utils/securityGroupUnion';
 	import type { SecurityGroupUnionGroup, SecurityGroupUnionRow } from '$lib/utils/securityGroupUnion';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import { CompactResourceCard, ResponsiveTable } from '$lib/components/ui';
 
 	interface Props {
 		groupIds: readonly string[];
@@ -40,6 +41,16 @@
 			</Button>
 		</h4>
 		{#if expanded}
+			<ResponsiveTable>
+				{#snippet cards()}
+					{#each rows as row (row.key)}
+						{#snippet remoteDetails()}<p class="break-all font-mono text-xs">{row.remote.kind === 'group' ? row.remote.value : row.remoteLabel}</p>{/snippet}
+						<CompactResourceCard details={row.remote.kind === 'group' ? remoteDetails : undefined}>
+							<h5 class="text-sm font-medium">{row.protocolLabel} · {row.portLabel}</h5>
+							<dl class="space-y-1 text-xs"><div><dt class="text-ink-2">{t('securityGroupUnion.column.ipVersion')}</dt><dd>{row.ethertype}</dd></div><div><dt class="text-ink-2">{remoteHeading}</dt><dd class="break-all">{row.remoteLabel}</dd></div></dl>
+						</CompactResourceCard>
+					{:else}<p class="col-span-full text-xs text-ink-2">{t('securityGroupUnion.emptyDirection', { direction })}</p>{/each}
+				{/snippet}
 			<TableShell density="compact" class="motion-fade min-w-0 max-w-full">
 				<table aria-label={t('securityGroupUnion.rulesLabel', { direction })}>
 					<thead>
@@ -64,6 +75,7 @@
 					</tbody>
 				</table>
 			</TableShell>
+			</ResponsiveTable>
 		{/if}
 	</div>
 {/snippet}

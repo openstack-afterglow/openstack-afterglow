@@ -8,7 +8,7 @@
 	import { ApiError } from '$lib/api/client';
 	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
-	import { ActivityIndicator, Alert, Button, Field, PageShell, SelectInput, Tabs, TextareaInput, TextInput } from '$lib/components/ui';
+	import { ActivityIndicator, Alert, Button, CompactResourceCard, Field, PageShell, ResponsiveTable, SelectInput, Tabs, TextareaInput, TextInput } from '$lib/components/ui';
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
@@ -628,6 +628,16 @@
 						</div>
 						{#if copyStatus}<p role="status" class="muted">{copyStatus}</p>{/if}
 						{#if transcript.segments.length}
+							{@const segments = transcript.segments}
+							<ResponsiveTable>
+								{#snippet cards()}
+									{#each segments as segment, index (index)}
+										<CompactResourceCard>
+											<p class="text-xs tabular-nums text-ink-2"><time datetime={`PT${segment.start}S`}>{formatTranscriptTime(segment.start)}</time> – <time datetime={`PT${segment.end}S`}>{formatTranscriptTime(segment.end)}</time></p>
+											<p>{segment.text}</p>
+										</CompactResourceCard>
+									{/each}
+								{/snippet}
 							<div class="table-wrap">
 								<table class="segments">
 									<thead><tr><th scope="col">{t('audioStudio.timeRange')}</th><th scope="col">{t('audioStudio.convertedText')}</th></tr></thead>
@@ -638,6 +648,7 @@
 									</tbody>
 								</table>
 							</div>
+							</ResponsiveTable>
 						{:else}
 							<p class="muted">{transcriptTimed ? t('audioStudio.noSegments') : t('audioStudio.noTiming')}</p>
 							<p class="transcript">{transcript.text}</p>

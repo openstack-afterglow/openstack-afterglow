@@ -1,10 +1,32 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/images-keys';
 	import { useImageDetailController } from '$lib/stores/imageDetailController.svelte';
+	import { CompactResourceCard, ResponsiveTable } from '$lib/components/ui';
 
 	const s = useImageDetailController();
 </script>
 
+<ResponsiveTable>
+	{#snippet cards()}
+		<CompactResourceCard>
+			<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide">{t('infoSection.title')}</h3>
+			<dl class="space-y-2 text-xs">
+				<div><dt class="text-ink-2">{t('infoSection.osDistro')}</dt><dd class="text-ink-1 break-all">{s.image!.os_distro ?? '-'}</dd></div>
+				<div><dt class="text-ink-2">{t('infoSection.diskFormat')}</dt><dd class="text-ink-1 break-all">{s.image!.disk_format ?? '-'}</dd></div>
+				<div><dt class="text-ink-2">{t('infoSection.protected')}</dt><dd class="text-ink-1">{s.image!.protected ? t('infoSection.yes') : t('infoSection.no')}</dd></div>
+			</dl>
+			{#snippet details()}
+				<dl class="space-y-2 text-xs">
+					<div><dt class="text-ink-2">ID</dt><dd class="font-mono text-ink-1 break-all">{s.image!.id}</dd></div>
+					<div><dt class="text-ink-2">{t('infoSection.containerFormat')}</dt><dd class="text-ink-1 break-all">{s.image!.container_format ?? '-'}</dd></div>
+					{#if s.image!.tags.length > 0}<div><dt class="text-ink-2">{t('infoSection.tags')}</dt><dd class="text-ink-1 break-all">{s.image!.tags.join(', ')}</dd></div>{/if}
+					{#if s.isAdmin}<div><dt class="text-ink-2">{t('infoSection.owner')}</dt><dd class="font-mono text-ink-1 break-all">{s.image!.owner ?? '-'}</dd></div>{/if}
+					{#if s.image!.os_hash_algo}<div><dt class="text-ink-2">{t('infoSection.hash', { algorithm: s.image!.os_hash_algo })}</dt><dd class="font-mono text-ink-1 break-all">{s.image!.os_hash_value ?? '-'}</dd></div>{/if}
+					{#if s.isAdmin && s.image!.direct_url}<div><dt class="text-ink-2">{t('infoSection.storageLocation')}</dt><dd class="font-mono text-ink-1 break-all">{s.image!.direct_url}</dd></div>{/if}
+				</dl>
+			{/snippet}
+		</CompactResourceCard>
+	{/snippet}
 <div class="bg-surface-base border border-line rounded-lg p-5">
 	<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">{t('infoSection.title')}</h3>
 	<dl class="grid grid-cols-1 @3xl/panel:grid-cols-2 gap-x-6 gap-y-3">
@@ -54,3 +76,4 @@
 		{/if}
 	</dl>
 </div>
+</ResponsiveTable>

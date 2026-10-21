@@ -5,6 +5,9 @@
 	import ActionMenu from '$lib/components/ui/ActionMenu.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import { t } from '$lib/i18n/ns/admin-storage';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 
 	interface AdminVolume {
 		id: string;
@@ -65,6 +68,28 @@
 	const partiallySelected = $derived(selectedSelectableCount > 0 && !allSelected);
 </script>
 
+<ResponsiveTable>
+	{#snippet cards()}
+		<div class="responsive-card-toolbar min-h-11 text-xs text-ink-2"><SelectionCheckbox checked={allSelected} indeterminate={partiallySelected} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel={t('volumeList.selectPage')} />{t('volumeList.selectPage')}</div>
+		{#each volumes as v, index (v.id)}
+			<CompactResourceCard selected={selectedIds.has(v.id)}>
+				<div class="flex items-start gap-2" data-tour={index === 0 ? 'admin-storage-row' : undefined}><SelectionCheckbox checked={selectedIds.has(v.id)} disabled={selectionDisabled || !selectableIds.has(v.id)} unavailable={!selectableIds.has(v.id)} onclick={() => onToggleSelect(v.id)} ariaLabel={t('volumeList.selectVolume', { name: v.name || v.id })} /><button type="button" data-tour={index === 0 ? 'admin-storage-row-open' : undefined} class="min-h-11 min-w-0 flex-1 break-all text-left font-medium text-ink-0" onclick={() => onSelect(v.id)}>{v.name || v.id.slice(0, 8)}</button><StatusChip status={v.status} /></div>
+				<p class="text-xs text-ink-2">{formatNumber(v.size)} GB · {v.project_id ? ($projectNames.get(v.project_id) ?? v.project_id.slice(0, 8)) : '-'}</p>
+				{#snippet actions()}
+					<ActionMenu open={openActionMenu === v.id} ariaLabel={t('volumeList.volumeActions', { name: v.name || v.id })} onopen={() => onActionMenuOpen(v.id)} onclose={onActionMenuClose}>
+						<Button variant="link" onclick={() => { onActionMenuClose(); onEdit(v); }}>{t('volumeList.action.edit')}</Button>
+						<Button variant="link" onclick={() => { onActionMenuClose(); onExtend(v); }}>{t('volumeList.action.extend')}</Button>
+						{#if v.status === 'available' && v.bootable}<Button variant="link" onclick={() => { onActionMenuClose(); onBootFromVolume(v); }}>{t('volumeList.action.bootFromVolume')}</Button>{/if}
+						{#if v.status === 'available'}<Button variant="link" onclick={() => { onActionMenuClose(); onTransfer(v); }}>{t('volumeList.action.transfer')}</Button>{/if}
+						<Button variant="link" onclick={() => { onActionMenuClose(); onReset(v); }}>{t('volumeList.action.resetStatus')}</Button>
+						{#if /^(error|deleting)/i.test(v.status ?? '')}<Button variant="link" onclick={() => { onActionMenuClose(); onSelect(v.id); }}>{t('volumeList.action.recovery')}</Button><Button variant="link" onclick={() => { onActionMenuClose(); onForceDelete(v); }}>{t('volumeList.action.forceDelete')}</Button>{/if}
+						<Button variant="link" onclick={() => { onActionMenuClose(); onDelete(v); }}>{t('volumeList.action.delete')}</Button>
+					</ActionMenu>
+				{/snippet}
+				{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p class="font-mono">{v.id}</p><p>{t('volumeList.column.createdAt')}: {v.created_at?.slice(0, 10) ?? '-'}</p>{#if v.project_id}<Button variant="link" size="sm" onclick={() => onCopyProjectId(v.project_id!)}>{copiedProjectId === v.project_id ? t('volumeList.copied') : v.project_id}</Button>{/if}</div>{/snippet}
+			</CompactResourceCard>
+		{/each}
+	{/snippet}
 <div class="overflow-x-auto">
 	<table class="w-full text-sm">
 		<thead>
@@ -175,6 +200,7 @@
 		</tbody>
 	</table>
 </div>
+</ResponsiveTable>
 
 <style>
 	.volume-recovery-action {

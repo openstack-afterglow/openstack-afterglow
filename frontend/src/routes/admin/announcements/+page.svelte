@@ -1,6 +1,6 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import { onDestroy, onMount, untrack } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { createAdminAnnouncementsController } from '$lib/stores/adminAnnouncementsController.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -17,6 +17,8 @@
 	import { t } from '$lib/i18n/ns/admin-system';
 	import { t as td } from '$lib/i18n/ns/domain-admin';
 	import Field from '$lib/components/ui/Field.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	const FALLBACK_SEVERITIES: AnnouncementSeverity[] = ['info', 'warning', 'danger'];
 	const FALLBACK_TARGET_TYPES: AnnouncementTargetType[] = ['all', 'project', 'user'];
@@ -29,6 +31,13 @@
 	onMount(() => {
 		void ctrl.load();
 		void ctrl.loadOptions();
+		let key = '';
+		return auth.subscribe(state => {
+			const next = JSON.stringify(state);
+			if (key === next) return;
+			key = next; form.target_id = ''; ctrl.selectDomain('');
+			if (state.token && state.isSystemAdmin) void ctrl.loadDomains();
+		});
 	});
 
 	let form = $state({
@@ -41,10 +50,6 @@
 		ends_at: '',
 	});
 	onDestroy(ctrl.dispose);
-	$effect(() => {
-		void $auth.token; void $auth.projectId; void $auth.userId; void $auth.isSystemAdmin;
-		untrack(() => { form.target_id = ''; ctrl.selectDomain(''); void ctrl.loadDomains(); });
-	});
 	const targetOptions = $derived(
 		form.target_type === 'project'
 			? ctrl.allProjects.map((project) => ({ value: project.id, label: project.name, description: project.id }))
@@ -62,8 +67,7 @@
 
 	function onTargetTypeChange() {
 		form.target_id = '';
-		if (form.target_type === 'project') void ctrl.loadProjects();
-		if (form.target_type === 'user') void ctrl.loadUsers();
+		ctrl.selectDomain(form.target_type === 'all' ? '' : ctrl.domainId, form.target_type === 'project' ? 'project' : 'user');
 	}
 
 	async function handleCreate() {
@@ -193,13 +197,14 @@
 						{/each}
 					</select>
 				</div>
-				{#if form.target_type === 'user'}
+				{#if form.target_type !== 'all'}
 					<div class="min-w-0">
 						<Field for="announcement-user-domain" label={td('scope.domain')} help={td('scope.help')}>
-							<SearchSelect id="announcement-user-domain" value={ctrl.domainId} options={ctrl.domains.map(domain => ({ value: domain.id, label: domain.name, description: domain.id }))} loading={ctrl.domainsLoading} placeholder={td('scope.choose')} ariaLabel={td('scope.domain')} onchange={(value) => { form.target_id = ''; ctrl.selectDomain(value); }} />
+							<SearchSelect id="announcement-user-domain" value={ctrl.domainId} options={ctrl.domains.map(domain => ({ value: domain.id, label: domain.name, description: domain.id }))} loading={ctrl.domainsLoading} placeholder={td('scope.choose')} ariaLabel={td('scope.domain')} onchange={(value) => { form.target_id = ''; ctrl.selectDomain(value, form.target_type === 'project' ? 'project' : 'user'); }} />
 						</Field>
 						{#if ctrl.domainsError}<Alert class="mt-2">{ctrl.domainsError}<Button variant="ghost" size="sm" onclick={() => { form.target_id = ''; ctrl.selectDomain(''); void ctrl.loadDomains(); }}>{td('actions.refresh')}</Button></Alert>{/if}
 						{#if ctrl.usersError}<Alert class="mt-2">{ctrl.usersError}<Button variant="ghost" size="sm" onclick={ctrl.loadUsers}>{td('actions.refresh')}</Button></Alert>{/if}
+						{#if ctrl.projectsError}<Alert class="mt-2">{ctrl.projectsError}<Button variant="ghost" size="sm" onclick={ctrl.loadProjects}>{td('actions.refresh')}</Button></Alert>{/if}
 					</div>
 				{/if}
 				{#if form.target_type !== 'all'}
@@ -212,7 +217,7 @@
 							value={form.target_id}
 							options={targetOptions}
 							loading={targetLoading}
-							disabled={form.target_type === 'user' && !ctrl.domainId}
+							disabled={!ctrl.domainId || ctrl.domainsLoading || !!ctrl.domainsError}
 							placeholder={form.target_type === 'project' ? t('announcements.picker.projectPlaceholder') : t('announcements.picker.userPlaceholder')}
 							searchPlaceholder={form.target_type === 'project' ? t('announcements.picker.projectSearchPlaceholder') : t('announcements.picker.userSearchPlaceholder')}
 							emptyText={targetEmptyText}
@@ -257,6 +262,33 @@
 		{:else if ctrl.announcements.length === 0}
 			<div class="text-center text-[var(--color-ink-3)] text-sm py-8">{t('announcements.history.empty')}</div>
 		{:else}
+			<ResponsiveTable>
+				{#snippet cards()}
+					{#each ctrl.announcements as a (a.id)}
+						<CompactResourceCard>
+							<div class="flex min-w-0 items-start justify-between gap-2">
+								<span class="min-w-0 font-medium">{a.title}</span>
+								<span class="shrink-0 rounded border px-1.5 py-0.5 text-xs" style={severityStyle(a.severity)}>{severityLabel(a.severity)}</span>
+							</div>
+							<dl>
+								<div><dt>{t('announcements.history.target')}</dt><dd>{targetLabel(a)}</dd></div>
+								<div><dt>{t('announcements.history.sentAt')}</dt><dd>{formatIsoDateTime(a.created_at)}</dd></div>
+							</dl>
+							{#snippet details()}
+								<dl><div><dt>{t('announcements.history.author')}</dt><dd>{a.created_by_username}</dd></div></dl>
+							{/snippet}
+							{#snippet actions()}
+								<button
+									onclick={() => handleToggleActive(a)}
+									disabled={ctrl.togglingId === a.id}
+									class="rounded border px-3 py-2 text-xs transition-colors disabled:opacity-40"
+									style={activeStyle(a.is_active)}
+								>{a.is_active ? t('announcements.status.active') : t('announcements.status.inactive')}</button>
+								<Button variant="danger" size="sm" onclick={() => handleDelete(a)}>{t('announcements.actions.delete')}</Button>
+							{/snippet}
+						</CompactResourceCard>
+					{/each}
+				{/snippet}
 			<div class="overflow-x-auto">
 				<table class="w-full text-sm">
 					<thead>
@@ -302,6 +334,7 @@
 					</tbody>
 				</table>
 			</div>
+			</ResponsiveTable>
 		{/if}
 	</Card>
 </PageShell>

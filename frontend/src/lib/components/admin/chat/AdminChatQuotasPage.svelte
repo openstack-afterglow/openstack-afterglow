@@ -22,6 +22,8 @@
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import Pagination from '$lib/components/ui/Pagination.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
@@ -345,6 +347,17 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each rows as row (row.user.id)}
+					<CompactResourceCard>
+						<div data-user-id={row.user.id}><p class="font-medium">{row.user.name}</p>{#if row.user.email}<p class="text-xs text-ink-2">{row.user.email}</p>{/if}</div>
+						<dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminQuotas.monthlyUsage')}</dt><dd>{formatCredit(row.quota?.month_credited_cost ?? '0', '0')}</dd></div><div><dt>{t('adminQuotas.monthlyLimit')}</dt><dd>{formatCredit(monthlyLimit(row), t('adminQuotas.unlimited'))}</dd><dd><Pill tone={monthlyUsesDefault(row) ? 'neutral' : 'info'} size="xs">{t(monthlyUsesDefault(row) ? 'adminQuotas.default' : 'adminQuotas.personal')}</Pill></dd></div></dl>
+						{#snippet details()}<p class="font-mono break-all">{row.user.id}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminQuotas.weeklyUsage')}</dt><dd>{formatCredit(row.quota?.week_credited_cost ?? '0', '0')}</dd></div><div><dt>{t('adminQuotas.weeklyLimit')}</dt><dd>{weeklyLabel(row)}</dd><dd><Pill tone={weeklyUsesDefault(row) ? 'neutral' : 'info'} size="xs">{t(weeklyUsesDefault(row) ? 'adminQuotas.default' : 'adminQuotas.personal')}</Pill></dd></div></dl>{/snippet}
+						{#snippet actions()}<Button size="sm" variant="secondary" onclick={() => (usageRow = row)}>{t('adminQuotas.usage')}</Button><Button size="sm" variant="secondary" onclick={() => openEditor(row)}>{t('adminQuotas.edit')}</Button><Button size="sm" variant="ghost" disabled={!canReset(row) || resettingUserId === row.user.id} ariaBusy={resettingUserId === row.user.id} onclick={() => void resetQuota(row)}>{#if resettingUserId === row.user.id}<ActivityIndicator size="xs" tone="ink" />{/if}{resettingUserId === row.user.id ? t('adminQuotas.resetting') : t('adminQuotas.resetDefault')}</Button>{/snippet}
+					</CompactResourceCard>
+				{:else}<EmptyState headline={t('adminQuotas.empty')} class="py-4 [&_.motion-enter]:animate-none" />{/each}
+			{/snippet}
 		<TableShell>
 			<table class="quota-table">
 				<thead>
@@ -403,6 +416,7 @@
 				</tbody>
 			</table>
 		</TableShell>
+		</ResponsiveTable>
 		<Pagination
 			page={userMarkerStack.length + 1}
 			hasPrev={userMarkerStack.length > 0}
@@ -443,51 +457,3 @@
 
 <UserUsageDetailModal open={usageRow !== null} user={usageRow?.user ?? null} onClose={() => (usageRow = null)} />
 
-<style>
-	@media (max-width: 1023px) {
-		.quota-table,
-		.quota-table tbody,
-		.quota-table tr,
-		.quota-table td {
-			display: block;
-			width: 100%;
-		}
-		.quota-table thead {
-			display: none;
-		}
-		.quota-table tbody {
-			display: grid;
-			gap: 0.75rem;
-		}
-		.quota-table tr {
-			overflow: hidden;
-			border: 1px solid var(--color-line);
-			border-radius: 0.75rem;
-			background: var(--color-surface-base);
-		}
-		.quota-table td {
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			gap: 1rem;
-			border: 0;
-			border-top: 1px solid var(--color-line);
-		}
-		.quota-table td::before {
-			content: attr(data-label);
-			flex-shrink: 0;
-			color: var(--color-ink-2);
-			font-size: 0.75rem;
-			font-weight: 600;
-		}
-		.quota-table .user-cell {
-			border-top: 0;
-		}
-		.quota-table .user-cell::before {
-			display: none;
-		}
-		.quota-table .actions-cell {
-			align-items: flex-start;
-		}
-	}
-</style>

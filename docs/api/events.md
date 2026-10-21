@@ -5,7 +5,7 @@ parent: API 레퍼런스
 
 # 관리자 이벤트 조회
 
-`/api/v1/admin/events`는 `require_admin` 시스템 관리자만 사용할 수 있습니다. 사용자 개인 기록(`/api/v1/profile/activity`) 및 프로젝트별 기록(`/api/v1/admin/projects/{project_id}/activity`)과 동일한 `activity_logs` 이력을 전역으로 조회합니다. 읽기 API는 OpenStack에 실시간 요청하지 않으며, 과거에 기록되지 않은 사건을 소급 생성하지 않습니다.
+`/api/v1/admin/events`는 `require_admin` 시스템 관리자만 사용할 수 있습니다. 사용자 개인 기록(`/api/v1/profile/activity`) 및 프로젝트별 기록(`/api/v1/admin/projects/{project_id}/activity`)과 동일한 `activity_logs` 이력을 전역으로 조회합니다. 이벤트 자체는 DB에 저장된 이력이며 과거에 기록되지 않은 사건을 소급 생성하지 않습니다. 선택 `domain_id`를 지정한 조회는 현재 Keystone 도메인·소유 프로젝트를 새로 확인합니다.
 
 | 메서드 | 경로 | 결과 |
 |---|---|---|
@@ -13,7 +13,7 @@ parent: API 레퍼런스
 | `GET` | `/api/v1/admin/events/stats` | 현재 필터의 총/성공/실패/진행 중 건수와 서비스·프로젝트·페이지·액션별 `{key,total,failed}` 집계 |
 | `GET` | `/api/v1/admin/events/{id}` | 단일 이벤트 상세, 없으면 404 |
 
-목록·집계는 `project_id`, `user_id`, `username`, `resource_type`, `resource_id`, `action`, `status` (`started`, `success`, `failed`), `service`, `source` (`afterglow`, `openstack`), `request_id`, `page`, `from_at`, `to_at`을 공유합니다. 기간은 UTC 오프셋이 포함된 ISO 8601 시각으로 지정하며 페이지 커서는 집계에 적용되지 않습니다. 서비스·페이지의 실패 건수는 **기록된 행** 기준이며 운영 서비스의 실제 전체 오류 수나 고유 요청 수가 아닙니다.
+목록·집계는 `domain_id`, `project_id`, `user_id`, `username`, `resource_type`, `resource_id`, `action`, `status` (`started`, `success`, `failed`), `service`, `source` (`afterglow`, `openstack`), `request_id`, `page`, `from_at`, `to_at`을 공유합니다. 선택 domain과 project는 독립적인 AND 조건이며 교집합이 없으면 빈 목록·0집계입니다. Fresh project UUID 집합을 SQL WHERE에 넣어 `before_id`/limit 및 모든 aggregate 전에 적용합니다. Directory 장애는 전역 결과나 빈 성공으로 대체하지 않습니다. 기간은 UTC 오프셋이 포함된 ISO 8601 시각으로 지정하며 페이지 커서는 집계에 적용되지 않습니다. 서비스·페이지의 실패 건수는 **기록된 행** 기준이며 운영 서비스의 실제 전체 오류 수나 고유 요청 수가 아닙니다.
 
 각 이벤트는 `created_at`, `project_id`, `user_id`, `username`, `resource_type`, `resource_id`, `resource_name`, `action`, `status`, `error_message`, `extra`, `source`, `service`, `page`, `request_id`, `external_id`, `event_type`, `http_status`를 포함합니다. 기존 행의 `source=null`은 API에서 `afterglow`로 표시하고 같은 출처 필터에 포함합니다. 나머지 신규 컬럼은 기존 행에서 `null`입니다. `X-Request-Id`는 Afterglow가 처리한 변경 요청에서 생성하는 추적 ID이며 OpenStack이 발행한 `request_id`와 자동으로 동일하지 않습니다. 동일 자원 ID·프로젝트·시간을 함께 확인하세요.
 

@@ -138,6 +138,7 @@ async def test_domain_create_update_and_native_conflict(app, native, domain_nati
     assert created.json() == {
         "id": "created-domain",
         "name": "Lab",
+        "kind": "organization",
         "enabled": False,
         "description": "",
         "default_project_id": "created-default",
@@ -175,6 +176,9 @@ async def test_manager_list_resolves_effective_Default_authority_including_exter
 @pytest.mark.asyncio
 @pytest.mark.parametrize("role", ["admin", "reader", "alias", "missing"])
 async def test_manager_route_grants_only_canonical_manager(app, native, domain_native, role):
+    from tests.test_domain_projects import grant
+
+    domain_native.raw.append(grant("project_reader", user="other", project="default-a"))
     async with client(app) as http:
         response = await http.post(
             "/api/v1/admin/domains/tenant-a/managers", json={"user_id": "other", "role_id": role}
@@ -186,6 +190,9 @@ async def test_manager_route_grants_only_canonical_manager(app, native, domain_n
 
 @pytest.mark.asyncio
 async def test_manager_grant_and_revoke_use_Default_project_and_protect_last_manager(app, native, domain_native):
+    from tests.test_domain_projects import grant
+
+    domain_native.raw.append(grant("project_reader", user="other", project="default-a"))
     async with client(app) as http:
         last = await http.delete(
             "/api/v1/admin/domains/tenant-a/managers", params={"user_id": "creator", "role_id": "manager"}
@@ -207,6 +214,20 @@ async def test_manager_grant_and_revoke_use_Default_project_and_protect_last_man
     native.identity.assign_domain_role_to_user.assert_not_called()
     native.identity.unassign_domain_role_from_user.assert_not_called()
     assert [audit["action"] for audit in app.state.audits] == ["domain.manager.grant", "domain.manager.revoke"]
+
+
+@pytest.mark.asyncio
+async def test_manager_grant_cannot_admit_an_outsider(app, native, domain_native):
+    async with client(app) as http:
+        response = await http.post(
+            "/api/v1/admin/domains/tenant-a/managers", json={"user_id": "other", "role_id": "manager"}
+        )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "domain_membership_denied"
+    assert domain_native.calls == []
+    assert not domain_projects.has_manager("other", "tenant-a")
+    assert domain_native.user_rows["other"].domain_id == "tenant-b"
+    native.identity.assign_domain_role_to_user.assert_not_called()
 
 
 @pytest.mark.asyncio

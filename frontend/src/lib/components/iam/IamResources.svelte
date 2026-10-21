@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { onMount, onDestroy, untrack } from 'svelte';
 	import { ApiError } from '$lib/api/client';
 	import type { IamSession } from '$lib/api/domainIam';
@@ -67,7 +69,14 @@
 		<section class="space-y-2">
 			<h3 class="text-sm font-semibold text-ink-0">{t('inventory')}</h3>
 			<p class="text-sm text-ink-2">{t('inventoryHelp')}</p>
+			<ResponsiveTable>{#snippet cards()}
+				{#each inventory as row}<CompactResourceCard>
+					<div class="flex flex-wrap justify-between gap-2"><h4 class="text-sm font-medium">{row.name || '—'}</h4><span class="text-xs">{row.status ?? t('unknown')}</span></div><p class="text-xs">{resourceLabel(row.category)} · {data?.projects.find(project => project.id === row.project_id)?.name || row.project_id}</p>
+					{#snippet details()}<dl class="space-y-1 text-xs"><div>{t('nameId')}: <code>{row.id ?? t('unknown')}</code></div><div>{t('project')}: <code>{row.project_id}</code></div><div>{t('user')}: {row.user_id ? data?.users.find(user => user.id === row.user_id)?.name || row.user_id : t('unattributed')} <code>{row.user_id ?? ''}</code></div></dl>{/snippet}
+				</CompactResourceCard>{:else}<p class="text-sm text-ink-2">{t('noObservations')}</p>{/each}
+			{/snippet}
 			<TableShell><table><thead><tr><th>{t('metric')}</th><th>{t('nameId')}</th><th>{t('project')}</th><th>{t('user')}</th><th>{t('status')}</th></tr></thead><tbody>{#each inventory as row}<tr><td>{resourceLabel(row.category)}</td><td>{row.name || '—'}<code class="block text-xs text-ink-2">{row.id ?? t('unknown')}</code></td><td>{data.projects.find(project => project.id === row.project_id)?.name || row.project_id}<code class="block text-xs text-ink-2">{row.project_id}</code></td><td>{row.user_id ? data.users.find(user => user.id === row.user_id)?.name || row.user_id : t('unattributed')}<code class="block text-xs text-ink-2">{row.user_id ?? ''}</code></td><td>{row.status ?? t('unknown')}</td></tr>{:else}<tr><td colspan="5">{t('noObservations')}</td></tr>{/each}</tbody></table></TableShell>
+			</ResponsiveTable>
 		</section>
 		{#if data.coverage.notes.length}<details><summary class="cursor-pointer text-sm text-ink-1">{t('coverageNotes')}</summary><ul class="list-disc space-y-1 pl-5 text-sm text-ink-2">{#each data.coverage.notes as note}<li><code>{note}</code></li>{/each}</ul></details>{/if}
 	{/if}

@@ -7,6 +7,8 @@
 	import { SectionHeader } from '$lib/components/ui';
 	import K3sPodLogOverlay from './K3sPodLogOverlay.svelte';
 	import type { PodInfo } from '$lib/types/k3s';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	const s = useK3sClusterDetailController();
 
@@ -47,6 +49,18 @@
 	{:else if s.pods.length === 0}
 		<div class="mt-4 text-sm text-ink-2 text-center py-6">{t('pods.empty')}</div>
 	{:else}
+  <ResponsiveTable>
+   {#snippet cards()}
+    {#each s.pods as pod (pod.name)}
+     {@const actioning = s.workloadActioning === `${s.selectedNamespace}:pod:${pod.name}`}
+     <CompactResourceCard>
+      <div class="flex flex-wrap items-center gap-2"><strong class="text-sm font-mono break-all">{pod.name}</strong><span class="px-1.5 py-0.5 rounded text-xs bg-surface-sunken text-ink-1">{pod.phase || '—'}</span></div>
+      <p class="text-xs">{t('pods.ready')}: {pod.ready} · <span class={pod.restarts > 5 ? 'text-state-warning-text' : 'text-ink-2'}>{t('pods.restarts')}: {pod.restarts}</span></p>
+      {#snippet details()}<p class="text-xs font-mono break-all">{t('pods.node')}: {pod.node ?? '—'}</p>{/snippet}
+      {#snippet actions()}<button onclick={() => { viewingLogPod = pod; }} disabled={!$k3sPermissions.credentials} class="px-2 py-1 rounded text-xs bg-surface-sunken text-ink-2">{t('pods.logs')}</button><button onclick={() => s.removePod(pod.name)} disabled={!$k3sPermissions.workloads || !!s.workloadActioning} class="px-2 py-1 rounded text-xs bg-surface-sunken text-state-danger-text disabled:opacity-40">{#if actioning}<ActivityIndicator size="xs" label={t('pods.deleting')} />{:else}{t('pods.delete')}{/if}</button>{/snippet}
+     </CompactResourceCard>
+    {/each}
+   {/snippet}
 		<div class="mt-4 overflow-x-auto">
 			<table class="w-full text-xs">
 				<thead>
@@ -90,5 +104,6 @@
 				</tbody>
 			</table>
 		</div>
+  </ResponsiveTable>
 	{/if}
 </div>

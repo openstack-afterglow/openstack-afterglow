@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { t } from '$lib/i18n/ns/topology';
 	// 토폴로지 네트워크(스위치) 읽기 전용 상세. 페이지가 SlidePanel 안에 렌더링한다.
 	// 조작 컨트롤은 두지 않으며, provider 세그먼트·MTU 등 관리자 행은 showProvider 일 때만 렌더링한다.
@@ -240,6 +242,10 @@
 		<section class="space-y-2">
 			<SectionHeader title={t('resource.subnet')} meta={t('panel.count', { count: net.subnet_details.length })} />
 			{#if net.subnet_details.length}
+				<ResponsiveTable>{#snippet cards()}{#each net.subnet_details as sub (sub.id)}<CompactResourceCard>
+					<h3 class="text-sm font-medium">{sub.name || sub.id}</h3><p class="font-mono text-xs">{sub.cidr}</p>
+					{#snippet details()}<p class="text-xs">{t('panel.gateway')}: <code>{sub.gateway_ip ?? '—'}</code></p><p class="text-xs">DHCP: {sub.dhcp_enabled ? t('panel.enabled') : t('panel.disabled')}</p>{/snippet}
+				</CompactResourceCard>{/each}{/snippet}
 				<TableShell density="compact">
 					<table>
 						<thead>
@@ -257,6 +263,7 @@
 						</tbody>
 					</table>
 				</TableShell>
+				</ResponsiveTable>
 			{:else}
 				<p class="text-sm text-ink-2">{t('empty.subnets')}</p>
 			{/if}

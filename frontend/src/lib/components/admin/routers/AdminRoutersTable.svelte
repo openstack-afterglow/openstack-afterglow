@@ -1,6 +1,10 @@
 <script lang="ts">
 	import type { AdminRouter } from '$lib/types/networks';
 	import { t } from '$lib/i18n/ns/admin-network';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
+	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 
 	let {
 		routers,
@@ -13,6 +17,17 @@
 	} = $props();
 </script>
 
+<ResponsiveTable>
+	{#snippet cards()}
+		{#each routers as r (r.id)}
+			<CompactResourceCard>
+				<div class="flex items-start justify-between gap-2"><h3 class="break-all font-medium text-ink-0">{r.name || r.id.slice(0, 8)}</h3><StatusChip status={r.status} /></div>
+				<div class="space-y-1 text-xs text-ink-2"><p>{t('adminRoutersTable.subnetCount', { count: r.connected_subnet_ids.length })}</p><p>{t('adminRoutersTable.externalGateway')}: {r.external_gateway_network_id?.slice(0, 8) ?? '-'}</p><p>{t('adminRoutersTable.project')}: {r.project_id?.slice(0, 8) ?? '-'}</p></div>
+				{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => onEdit(r)}>{t('adminRoutersTable.edit')}</Button><Button variant="danger" size="sm" onclick={() => onDelete(r)}>{t('adminRoutersTable.delete')}</Button>{/snippet}
+				{#snippet details()}<div class="space-y-2 break-all font-mono text-xs text-ink-2"><p>{r.id}</p><p>{r.project_id ?? '-'}</p><p>{r.external_gateway_network_id ?? '-'}</p>{#each r.connected_subnet_ids as id}<p>{id}</p>{/each}</div>{/snippet}
+			</CompactResourceCard>
+		{/each}
+	{/snippet}
 <div class="overflow-x-auto">
 	<table class="w-full text-sm">
 		<thead>
@@ -48,3 +63,4 @@
 		</tbody>
 	</table>
 </div>
+</ResponsiveTable>

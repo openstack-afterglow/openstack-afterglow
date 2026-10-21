@@ -7,6 +7,8 @@
 	import { SectionHeader } from '$lib/components/ui';
 	import K3sScaleModal from './K3sScaleModal.svelte';
 	import type { DeploymentInfo } from '$lib/types/k3s';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	const s = useK3sClusterDetailController();
 
@@ -46,6 +48,19 @@
 	{:else if s.deployments.length === 0}
 		<div class="mt-4 text-sm text-ink-2 text-center py-6">{t('deployments.empty')}</div>
 	{:else}
+  <ResponsiveTable>
+   {#snippet cards()}
+    {#each s.deployments as dep (dep.name)}
+     {@const actioning = s.workloadActioning === `${s.selectedNamespace}:deploy:${dep.name}`}
+     <CompactResourceCard>
+      <strong class="text-sm font-mono break-all">{dep.name}</strong>
+      <p class="text-xs">{t('deployments.replicas')}: {dep.ready}/{dep.replicas} {#if dep.available < dep.replicas}<span class="text-state-warning-text">{t('deployments.available', { count: dep.available })}</span>{/if}</p>
+      <p class="text-xs text-ink-2">{t('deployments.strategy')}: {dep.strategy || '—'}</p>
+      {#snippet details()}<p class="text-xs break-all">{t('deployments.image')}: {dep.images.join(', ') || '—'}</p>{/snippet}
+      {#snippet actions()}<button onclick={() => s.rolloutRestartDeployment(dep.name)} disabled={!$k3sPermissions.workloads || !!s.workloadActioning} class="px-2 py-1 rounded text-xs bg-surface-selected/40 text-warm-text disabled:opacity-40">{#if actioning}<ActivityIndicator size="xs" label={t('deployments.actioning')} />{:else}{t('deployments.restart')}{/if}</button><button onclick={() => { scalingDeploy = dep; }} disabled={!$k3sPermissions.workloads || !!s.workloadActioning} class="px-2 py-1 rounded text-xs bg-surface-sunken text-ink-2 disabled:opacity-40">{t('deployments.scale')}</button>{/snippet}
+     </CompactResourceCard>
+    {/each}
+   {/snippet}
 		<div class="mt-4 overflow-x-auto">
 			<table class="w-full text-xs">
 				<thead>
@@ -89,6 +104,7 @@
 				</tbody>
 			</table>
 		</div>
+  </ResponsiveTable>
 	{/if}
 </div>
 
@@ -96,6 +112,17 @@
 {#if s.replicasets.length > 0}
 	<div class="bg-surface-base border border-line rounded-lg p-5 mb-4">
 		<SectionHeader title="ReplicaSet" meta={t('deployments.count', { count: s.replicasets.length })} />
+  <ResponsiveTable>
+   {#snippet cards()}
+    {#each s.replicasets as rs (rs.name)}
+     <CompactResourceCard>
+      <strong class="text-sm font-mono break-all">{rs.name}</strong>
+      <p class="text-xs">{t('deployments.replicas')}: {rs.ready}/{rs.replicas}</p>
+      <p class="text-xs break-all">{t('deployments.owner')}: {rs.owner_kind && rs.owner_name ? `${rs.owner_kind} ${rs.owner_name}` : '—'}</p>
+      {#snippet details()}<p class="text-xs break-all">{t('deployments.image')}: {rs.images.join(', ') || '—'}</p>{/snippet}
+     </CompactResourceCard>
+    {/each}
+   {/snippet}
 		<div class="mt-4 overflow-x-auto">
 			<table class="w-full text-xs">
 				<thead>
@@ -125,5 +152,6 @@
 				</tbody>
 			</table>
 		</div>
+  </ResponsiveTable>
 	</div>
 {/if}

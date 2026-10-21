@@ -53,7 +53,7 @@ Drover는 자체적으로 OpenStack 리소스를 프로비저닝하며 매 GPU �
 
 ## Drover 서비스 권한과 자격 등급
 
-Afterglow와 native Drover는 현재 Keystone 유효 할당과 실제 역할 ID inference graph를 각각 검증합니다. `can_write`, 프로젝트 owner/admin 또는 raw `admin`/`manager` 이름만으로 서비스 액션을 허용하지 않습니다. 비읽기 서비스 leaf에는 native `member` 기반 권한도 필요하며, 메타데이터에는 native `reader` 또는 `member`가 필요합니다.
+Native Drover는 현재 Keystone 권위와 자신의 `oslo.policy` action·운영자 `policy.yaml`을 검증합니다. `drover_admin/editor/user/reader`는 규칙에서 직접 평가하며 상속 leaf나 별도 native member를 서비스 인가의 필수 조건으로 삼지 않습니다. 아래 세부 role은 기본 정책의 선택적 제한 grant이자 UI capability label입니다. BFF는 action 정책을 복제하지 않습니다. 실제 Nova/Neutron/guest 실행은 보유한 최소 native provider role·제한된 Trust/application credential을 별도로 요구하며 서비스 grade가 provider role을 만들지 않습니다. 프로젝트 `admin`을 policy에서 허용해도 system-admin 전용 작업·project ownership·credential ceiling을 우회하지 못합니다.
 
 | 세부 역할 | 프로젝트 안에서 허용하는 작업 |
 |---|---|

@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
-	import { Button, Card, Pill, StatusChip, TableShell } from '$lib/components/ui';
+	import { Button, Pill, StatusChip, TableShell } from '$lib/components/ui';
 	import ImageDigest from '$lib/components/image/ImageDigest.svelte';
 	import ImageVerificationBadge from '$lib/components/image/ImageVerificationBadge.svelte';
 	import { projectNames } from '$lib/stores/projectNames';
 	import { imageReferenceParts } from '$lib/stores/imageCatalog.svelte';
 	import type { AdminImage } from '$lib/types/adminImage';
 	import { formatSize } from '$lib/utils/format';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	let {
 		images, selectedImageId, togglingId, verifyingId, currentImageIds,
@@ -28,7 +30,7 @@
 	} = $props();
 </script>
 
-{#snippet actions(img: AdminImage)}
+{#snippet imageActions(img: AdminImage)}
 	<div class="flex flex-wrap items-center gap-2" aria-label={t('images.table.manageLabel', { name: img.name, id: img.id.slice(0, 8) })}>
 		<Button variant="secondary" size="xs" onclick={() => onToggleVerification(img)}
 			disabled={verifyingId === img.id || (img.verification_status !== 'verified' && img.status !== 'active')}
@@ -51,22 +53,18 @@
 	</div>
 {/snippet}
 
-<div class="grid grid-cols-1 gap-3.5 md:grid-cols-2 lg:hidden" aria-label={t('images.table.tagCards')}>
-	{#each images as img (img.id)}
-		<Card padding="lg" class="space-y-3">
-			<button type="button" class="w-full break-all text-left font-mono text-sm font-semibold text-ink-0 hover:text-accent" aria-label={t('images.table.detailLabel', { name: img.name, id: img.id.slice(0, 8) })} onclick={() => onOpenDetail(img)}>{img.name}</button>
-			<div class="flex flex-wrap gap-2"><Pill tone={currentImageIds.has(img.id) ? 'accent' : 'neutral'} size="xs">{currentImageIds.has(img.id) ? t('images.table.current') : t('images.table.previous')}</Pill><StatusChip status={img.status} /><ImageVerificationBadge status={img.verification_status} /><Pill tone="neutral">{img.visibility === 'public' ? t('images.visibility.publicValue') : img.visibility === 'community' ? t('images.visibility.communityValue') : img.visibility === 'shared' ? t('images.visibility.sharedValue') : img.visibility === 'private' ? t('images.visibility.privateValue') : img.visibility}</Pill></div>
-			<ImageDigest image={img} />
-			<dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-				<dt class="text-ink-2">{t('images.table.project')}</dt><dd class="break-all text-ink-1">{img.owner ? ($projectNames.get(img.owner) ?? img.owner) : '-'}</dd>
-				<dt class="text-ink-2">{t('images.table.sizeFormat')}</dt><dd class="text-ink-1">{formatSize(img.size)} · {img.disk_format || '-'}</dd>
-				<dt class="text-ink-2">{t('images.table.uploadedAt')}</dt><dd class="tabular-nums text-ink-1">{img.created_at?.slice(0, 10) || '-'}</dd>
-			</dl>
-			{@render actions(img)}
-		</Card>
-	{/each}
-</div>
-<div class="hidden lg:block">
+<ResponsiveTable>
+	{#snippet cards()}
+		{#each images as img (img.id)}
+			<CompactResourceCard selected={selectedImageId === img.id}>
+				<button type="button" class="min-h-11 break-all text-left font-mono text-sm font-semibold text-ink-0" aria-label={t('images.table.detailLabel', { name: img.name, id: img.id.slice(0, 8) })} onclick={() => onOpenDetail(img)}>{img.name}</button>
+				<div class="flex flex-wrap gap-2"><StatusChip status={img.status} /><ImageVerificationBadge status={img.verification_status} /><Pill tone={currentImageIds.has(img.id) ? 'accent' : 'neutral'} size="xs">{currentImageIds.has(img.id) ? t('images.table.current') : t('images.table.previous')}</Pill></div>
+				<div class="space-y-1 text-xs text-ink-2"><p>{formatSize(img.size)} · {img.disk_format || '-'}</p><p class="break-all">{t('images.table.project')}: {img.owner ? ($projectNames.get(img.owner) ?? img.owner.slice(0, 8)) : '-'}</p></div>
+				{#snippet actions()}{@render imageActions(img)}{/snippet}
+				{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><ImageDigest image={img} /><p>{t('images.table.uploadedAt')}: {img.created_at?.slice(0, 10) || '-'}</p><p>{img.visibility === 'public' ? t('images.visibility.publicValue') : img.visibility === 'community' ? t('images.visibility.communityValue') : img.visibility === 'shared' ? t('images.visibility.sharedValue') : img.visibility === 'private' ? t('images.visibility.privateValue') : img.visibility}</p><p class="font-mono">{img.owner ?? '-'}</p></div>{/snippet}
+			</CompactResourceCard>
+		{/each}
+	{/snippet}
 	<TableShell density="compact">
 		<table>
 			<thead><tr>
@@ -88,10 +86,10 @@
 						<td class="tabular-nums">{formatSize(img.size)}</td><td>{img.disk_format || '-'}</td>
 						<td title={img.owner}>{img.owner ? ($projectNames.get(img.owner) ?? img.owner.slice(0, 8)) : '-'}</td>
 						<td class="tabular-nums">{img.created_at?.slice(0, 10) || '-'}</td>
-						<td>{@render actions(img)}</td>
+						<td>{@render imageActions(img)}</td>
 					</tr>
 				{/each}
 			</tbody>
 		</table>
 	</TableShell>
-</div>
+</ResponsiveTable>

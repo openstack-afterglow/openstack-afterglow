@@ -1,0 +1,78 @@
+{
+  "change": "personal-first-login-and-profile",
+  "status": "implemented-and-locally-qualified; original live password rejection unresolved; production Personal-kind compatibility unverified",
+  "date": "2026-10-21",
+  "proof_root": "~/.local/share/afterglow-proofs/personal-first-login-profile-20261021/",
+  "evidence_recovery": {
+    "manifest": "harness-manifest.json",
+    "executed_sources": "Six deleted original harness sources reconstructed from append-only write/edit history into harness/executed, with SHA-256 and history line provenance.",
+    "replay_sources": "harness contains portable copies plus the preserved topology_http.py dependency; only two filesystem assumptions differ from executed copies.",
+    "command_provenance": "Original command/cwd fields remain actual historical execution; replay_command/replay_cwd and preserved source/manifest references are separate.",
+    "observed_replays": "All four native HTTP harnesses and a new account interruption/recovery/profile HTTP driver passed from the durable path; see *-preserved-http-replay.stdout.log and account-profile-preserved-replay.stdout.log.",
+    "before_fix_limit": "The reconstructed-before plugin is text-sensitive; retained six failures describe its historical source, not arbitrary future revisions."
+  },
+  "personal_kind_compatibility": {
+    "status": "unverified for production; known source admission difference documented, not silently treated as compatible",
+    "afterglow": "Current shared-domain resolver accepts absent or explicit-null kind; personal-kind-admission-audit.stdout.log runs the actual function and observes both.",
+    "native_services": "Four service personal-owner predicates admit only absent or exact personal kind, rejecting explicit null.",
+    "live_evidence_limit": "native-accounts-readonly.json projects null for missing values and cannot distinguish an absent raw key from stored null. No raw-presence or actual live four-service qualification was performed.",
+    "deployment_gate": "Verify exact raw native domain key presence/type/value and real native personal-owner admission. No native metadata/role change was performed."
+  },
+  "no_commit_push_release_deployment_or_production_iam_schema_password_mutation": true,
+  "implementation": {
+    "first_login": "Accepted administrator-created Accounts identity + same-token/name frozen-quota deferred intent; first successful native proof provisions member-only personal once; fresh-password recovery resumes confirmed/not-sent stages and fences unknown native effects for administrator settlement.",
+    "native_policy": "Independent fresh exact Personal owner/direct-member provenance in Lumen, Drover, Waygate and Palimpsest; absent-or-exact personal kind; project-only actions preserve operator deny, original scope, key/reduced/provider ceilings and send-time revalidation. Hub own-project package metadata deletion is human-only; shared CAS/GC/build/system unchanged.",
+    "profile": "Current-email Gravatar default, generated seed and normalized raster upload stored in native user image extra; exact-self read plus bounded service writer; profile/header shared fenced store, accessible fallback, nine locale catalogs and fixed-origin CSP."
+  },
+  "login_diagnosis": {
+    "observed_stage": "native_password_exchange rejected with401",
+    "read_only_metadata": "Exact Accounts user enabled; password row/hash exists without reading hash/value; no expiry; failed-auth count0; lockout policy not configured at inspection.",
+    "wire_smoke": "Installed Keystone SDK sends exact Accounts UUID and requested username/password; no outside-home fallback. Synthetic credentials only.",
+    "missing_evidence": "Original submitted password and exact native internal rejection cause at failure time; current metadata cannot prove historical password correctness.",
+    "acceptance": "blocked; no password guessing, replay, reset, unlock or legacy-home fallback"
+  },
+  "verification": {
+    "backend_unit": {"passed": 8741, "skipped": 94, "log": "backend-unit-current.stdout.log", "configuration": "Same current source; external temporary cwd and public test environment avoid private config/network"},
+    "frontend_unit": {"passed": 4818, "files": 420, "log": "frontend-unit-final.stdout.log"},
+    "named_auth_access_union": {"backend_passed": 1987, "frontend_passed": 637, "logs": ["auth-access-backend-public-config.stdout.log", "auth-access-frontend.stdout.log"], "selectors": "named-target-selectors.json"},
+    "lumen": {"affected_passed": 757, "final_personal_passed": 26, "logs": ["lumen-affected-auth-policy-final.stdout.log", "lumen-personal-postlint.stdout.log", "lumen-personal-http.stdout.log"]},
+    "drover": {"affected_passed": 438, "final_personal_passed": 34, "logs": ["drover-affected.stdout.log", "drover-personal-final.stdout.log", "drover-personal-http.stdout.log"]},
+    "waygate": {"affected_passed": 1230, "affected_skipped": 2, "final_personal_passed": 33, "logs": ["waygate-affected.stdout.log", "waygate-personal-final.stdout.log", "waygate-personal-http.stdout.log"]},
+    "palimpsest_hub": {"affected_passed": 412, "logs": ["palimpsest-affected.stdout.log", "hub-personal-http.stdout.log"]},
+    "native_count_qualification": "Affected native suites precede final absent/null kind-boundary hardening; final exact personal matrices qualify that later narrow change. Counts are not added together.",
+    "regression_before_after": {"reconstructed_before_failures": 6, "final_personal_member_tests_passed": 8, "logs": ["member-guards-baseline-valid-adapter.stdout.log", "member-guards-final.stdout.log"]},
+    "http": {"admin_create": 201, "deferred_project_null": true, "bad_password_before_provisioning": 401, "safe_interruption": 503, "fresh_password_recovery": 200, "personal_projects_per_user": 1, "direct_roles": ["member"], "generated_and_uploaded_image_persistence": true, "active_svg_rejected_preserving_previous_image": 422, "receipt": "account-profile-http.json"},
+    "native_http": "Actual native Uvicorn/installed SDK loopback policy calls for three capability services; native Hub HTTP+SQLite/CAS publish/download/delete demonstrates metadata204, removed package404, other shared blob200, unchanged CAS bytes, key-delete403, delegation422 and global build/shared-layer403.",
+    "compiled_browser": {"recovery_requests": [503, 200], "password_cleared_until_fresh_entry": true, "chooser": "/select-domain", "gravatar_generated_file_upload_and_header_sync": true, "supported_locales": ["ko", "en", "ja", "zh-CN", "sw", "nb", "ms", "vi", "bn"], "themes": ["light", "dark"], "widths": [390, 767, 768, 1023, 1024, 1440], "conditions": 108, "horizontal_overflow_max": 0, "receipts": ["compiled-browser.json", "profile-responsive-matrix.json"], "screenshots": ["profile-ko-dark-1440.webp", "profile-bn-dark-390.webp", "profile-en-light-768.webp", "personal-recovery-ko-390.webp"]},
+    "production_frontend_build": "passed; frontend-build.json",
+    "svelte_check": {"errors": 0, "existing_warnings": 16, "output": "artifact://701"},
+    "i18n_check": {"errors": 0, "existing_key_order_warnings": 37},
+    "i18n_scan": {"files": 1196, "hard_coded_korean_lines": 0},
+    "lint_format": "Backend Ruff check passed;716files formatted. Four native changed-slice Ruff passed. Unrelated native repository lint baselines not claimed green.",
+    "target_registry": "node scripts/test-target.js --validate passed",
+    "spec_validation": "openspec validate personal-domain-enrollment --type spec --strict passed",
+    "planning": "rapid schema; all planning artifacts and tracked tasks complete; no delta-spec artifacts; main enrollment spec directly synchronized",
+    "working_architecture": {
+      "afterglow": {"source_sha256": "502944fc5922ef1100cf30a6109ffaa018d97c18757189f4f74473776199692d", "files": 3400},
+      "lumen": {"source_sha256": "cceb3a4a9f6b801db4cd3325753e33122de97eaac2e3ad344f2462b8a3347ffd", "files": 510},
+      "drover": {"source_sha256": "804dda2706c4a593c9f02b64efc0f734b3e5e7e20096cd26cc182afca95c84ff", "files": 241},
+      "waygate": {"source_sha256": "5799bf9820d1c3b3e8dfacff6b893953e5bce045d2f33217b81ef85b0f9598a5", "files": 131},
+      "palimpsest": {"source_sha256": "07b8d297beb704860b55547c96813ddb3d30dbb207033e710c96f4a7a30159f1", "files": 477},
+      "scope": "Integration-owned reviewed working snapshots include preserved concurrent changes; staged/index validation not performed."
+    },
+    "cleanup": "owned-cleanup.json records original stopped services/tabs/closed ports and temporary directory deletion. That cleanup incorrectly removed harness sources; evidence_recovery restores and preserves them. Only generated runtime data may be removed after replay, never proof source.",
+    "gbrain": "not run: CLI missing and no configured engine"
+  },
+  "limits": [
+    "Known Personal-kind admission difference remains: Afterglow accepts explicit null but native personal-owner predicates reject it. Production raw key presence/value and cross-service compatibility are unverified; see personal_kind_compatibility and docs/testing.md.",
+    "Local real application/SQL/JWT/SDK/compiled-browser execution uses synthetic native directory, admin proof, SMTP/quota/provider responses; no live-password/OIDC/mail or cloud resource/data-plane acceptance.",
+    "All native service HTTP smoke used production endpoints with lifespan off; it is not a canonical deployment test.",
+    "Gravatar external delivery deliberately404 for fallback; no live Gravatar availability claim.",
+    "Existing unrelated account activity/session/keypair sections include missing synthetic fixture endpoint states; not qualified here.",
+    "Browser waitForUrl glob timed out despite next observe showing correct chooser and network200; tool issue reported. Initial unsupported-locale attempt is retained separately and not counted.",
+    "Initial fixture/incidental-assertion/type/public-route-allowlist failures and lint failures retained in receipts; final corrected selectors pass without network-guard suppression.",
+    "Full test:gate, DB functional, canonical container/multi-arch builds, staged-index checks and production rollout not run for this change.",
+    "Drain old writers before deferred-intent rollout; mixed-version writers/downgrade with active deferred intents unsupported. Verify native service-writer user GET/PATCH/domain permissions and metadata capacity before deployment.",
+    "Nine-locale translations are not native-speaker approved. Existing Svelte/i18n/native deprecation warnings remain."
+  ]
+}

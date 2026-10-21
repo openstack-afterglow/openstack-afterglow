@@ -3,6 +3,8 @@
 	import { t } from '$lib/i18n/ns/infra-topology';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	let { host, verified, onselectnic }: { host: TopologyHost; verified: boolean; onselectnic: (nic: string) => void } = $props();
@@ -29,11 +31,15 @@
 						<div><dt class="text-ink-2">{t('nextHop')}</dt><dd class="font-mono break-all">{trace.result.next_hop ?? t('unknown')}</dd></div>
 					</dl>
 					{#if trace.result.hops.length}
+						{@const hops = trace.result.hops}
 						<ol class="hop-path" aria-label={t('outbound')}>
 							<li class="hop-source"><span class="font-mono">{host.name}</span><span>{trace.result.source_interface ?? t('unknown')}</span></li>
 							{#each trace.result.hops as hop (hop.hop)}<li data-hop={hop.hop}><span class="text-ink-2">{t('hop')} {hop.hop.toLocaleString(intlLocale())}</span><strong class="font-mono break-all">{#if hop.ip === null}{@render gap(t('state.down'))}{:else}{hop.ip}{/if}</strong><span>{#if hop.rtt_ms === null}{@render gap(t('unknown'))}{:else}{t('rttValue', { value: hop.rtt_ms.toLocaleString(intlLocale(), { maximumFractionDigits: 2 }) })}{/if}</span></li>{/each}
 						</ol>
-						<TableShell><table><caption class="text-left text-sm font-semibold pb-2">{t('outbound')} · {trace.target}</caption><thead><tr><th scope="col">{t('hop')}</th><th scope="col">{t('ip')}</th><th scope="col">{t('rtt')}</th></tr></thead><tbody>{#each trace.result.hops as hop (hop.hop)}<tr><th scope="row">{hop.hop.toLocaleString(intlLocale())}</th><td class="font-mono">{#if hop.ip === null}{@render gap(t('state.down'))}{:else}{hop.ip}{/if}</td><td class="tabular-nums">{#if hop.rtt_ms === null}{@render gap(t('unknown'))}{:else}{t('rttValue', { value: hop.rtt_ms.toLocaleString(intlLocale(), { maximumFractionDigits: 2 }) })}{/if}</td></tr>{/each}</tbody></table></TableShell>
+						<ResponsiveTable>
+							{#snippet cards()}{#each hops as hop (hop.hop)}<CompactResourceCard><p class="font-medium">{t('hop')} {hop.hop.toLocaleString(intlLocale())}</p><p class="font-mono">{#if hop.ip === null}{@render gap(t('state.down'))}{:else}{hop.ip}{/if}</p><p class="tabular-nums">{t('rtt')}: {#if hop.rtt_ms === null}{@render gap(t('unknown'))}{:else}{t('rttValue', { value: hop.rtt_ms.toLocaleString(intlLocale(), { maximumFractionDigits: 2 }) })}{/if}</p></CompactResourceCard>{/each}{/snippet}
+						<TableShell><table><caption class="text-left text-sm font-semibold pb-2">{t('outbound')} · {trace.target}</caption><thead><tr><th scope="col">{t('hop')}</th><th scope="col">{t('ip')}</th><th scope="col">{t('rtt')}</th></tr></thead><tbody>{#each hops as hop (hop.hop)}<tr><th scope="row">{hop.hop.toLocaleString(intlLocale())}</th><td class="font-mono">{#if hop.ip === null}{@render gap(t('state.down'))}{:else}{hop.ip}{/if}</td><td class="tabular-nums">{#if hop.rtt_ms === null}{@render gap(t('unknown'))}{:else}{t('rttValue', { value: hop.rtt_ms.toLocaleString(intlLocale(), { maximumFractionDigits: 2 }) })}{/if}</td></tr>{/each}</tbody></table></TableShell>
+						</ResponsiveTable>
 					{/if}
 				{/if}
 			</div>

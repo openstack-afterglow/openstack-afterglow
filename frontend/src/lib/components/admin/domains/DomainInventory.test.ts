@@ -36,6 +36,16 @@ describe('system domain inventory', () => {
     await waitFor(() => expect(mocks.update).toHaveBeenCalledWith('tenant-a', { name: 'Research', description: '', enabled: false }, { token: 'system-token', projectId: 'operator-project' }));
     expect(mocks.create).not.toHaveBeenCalled();
   });
+  it.each(['account', 'personal'])('preserves reserved %s name and enabled state while allowing description changes', async kind => {
+    mocks.list.mockResolvedValue({ items: [{ id: 'reserved-id', name: kind, kind, description: '', enabled: true }] });
+    render(DomainInventory); await screen.findByText(kind);
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect((screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole('checkbox', { name: 'Enable domain' }) as HTMLInputElement).disabled).toBe(true);
+    await fireEvent.input(screen.getByRole('textbox', { name: 'Description' }), { target: { value: 'Shared namespace' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith('reserved-id', { name: kind, description: 'Shared namespace', enabled: true }, { token: 'system-token', projectId: 'operator-project' }));
+  });
   it('shows native inventory denial rather than an empty successful inventory', async () => {
     mocks.list.mockRejectedValue(new ApiError(403, 'domain_native_denied'));
     render(DomainInventory);

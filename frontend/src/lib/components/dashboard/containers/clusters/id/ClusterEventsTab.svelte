@@ -3,6 +3,8 @@
   import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
   import type { StackEvent } from '$lib/types/cluster';
   import { resourceStatusColor } from '$lib/types/cluster';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
   let { events, loading, onRefresh }: { events: StackEvent[]; loading: boolean; onRefresh: () => void } = $props();
 </script>
@@ -16,6 +18,15 @@
 {:else if events.length === 0}
   <div class="text-ink-2 text-sm">{t('clusters.events.unavailable')}</div>
 {:else}
+ <ResponsiveTable>
+  {#snippet cards()}
+   {#each events as e}
+    <CompactResourceCard>
+     <strong class="text-sm break-all">{e.resource_name}</strong><span class="text-xs {resourceStatusColor(e.resource_status)}">{e.resource_status}</span><p class="text-xs text-ink-2">{e.event_time?.slice(0, 19).replace('T', ' ') ?? t('clusters.placeholder')}</p>
+     {#snippet details()}<p class="text-xs break-all">{t('clusters.events.reason')}: {e.resource_status_reason ?? t('clusters.placeholder')}</p>{/snippet}
+    </CompactResourceCard>
+   {/each}
+  {/snippet}
   <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead>
@@ -40,4 +51,5 @@
       </tbody>
     </table>
   </div>
+ </ResponsiveTable>
 {/if}

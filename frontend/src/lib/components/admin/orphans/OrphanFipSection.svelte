@@ -21,6 +21,13 @@
 	emptyMessage={t('orphanFip.empty')}
 	{onCleanup}
 >
+  {#snippet cardSummary(f)}
+    <strong class="break-all font-mono text-sm">{f.address}</strong>
+    <dl class="text-xs"><dt class="text-ink-2">{t('orphanFip.column.ageDays')}</dt><dd>{f.age_days}</dd></dl>
+  {/snippet}
+  {#snippet cardDetails(f)}
+    <dl class="space-y-2 text-xs"><div><dt class="text-ink-2">{t('orphanFip.column.project')}</dt><dd class="break-all font-mono">{f.project_id ?? '-'}</dd></div><div><dt class="text-ink-2">{t('orphanFip.column.createdAt')}</dt><dd>{f.created_at?.slice(0, 10) ?? '-'}</dd></div><div><dt class="text-ink-2">{t('orphanFip.column.id')}</dt><dd class="break-all font-mono">{f.id}</dd></div></dl>
+  {/snippet}
 	{#snippet headers()}
 		<th class="text-left py-2 pr-4">{t('orphanFip.column.address')}</th>
 		<th class="text-left py-2 pr-4">{t('orphanFip.column.project')}</th>

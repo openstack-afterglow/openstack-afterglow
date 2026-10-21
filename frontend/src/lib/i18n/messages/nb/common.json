@@ -2,6 +2,7 @@
 	"actions.cancel": "Avbryt",
 	"actions.confirm": "Bekreft",
 	"actions.close": "Lukk",
+	"resource.details": "Detaljer",
 	"state.processing": "Behandler...",
 	"state.loading": "Laster...",
 	"state.loadingNamed": "Laster {name}…",

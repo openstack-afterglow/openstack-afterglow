@@ -163,7 +163,6 @@ class CreateUserRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=12, max_length=1024)
-    personal_domain_name: str = Field(min_length=1, max_length=64)
     enabled: bool = True
     domain_id: str = Field(min_length=1)
 
@@ -288,7 +287,7 @@ async def create_user(
     token_info: dict = Depends(get_token_info),
     session: AsyncSession = Depends(get_session),
 ):
-    """Create a human identity in its personal domain and join the selected domain."""
+    """Create an accounts identity and member-only personal project, without joining the selected domain."""
     await asyncio.to_thread(_selected_domain, conn, req.domain_id)
     result = await domain_iam.create_managed_user(
         req.model_dump(exclude={"domain_id"}), req.domain_id, token_info, session
@@ -514,11 +513,16 @@ async def list_project_names(
 
     def _list():
         query = {"domain_id": domain_id} if domain_id else {}
-        return [
-            {"id": p.id, "name": p.name or ""}
-            for p in conn.identity.projects(**query)
-            if domain_id is None or getattr(p, "domain_id", None) == domain_id
-        ]
+        result = []
+        seen = set()
+        for p in conn.identity.projects(**query):
+            pid, did = getattr(p, "id", None), getattr(p, "domain_id", None)
+            if not isinstance(pid, str) or not pid or not isinstance(did, str) or not did or pid in seen:
+                raise public_service_error(503, "identity_project_metadata_unavailable")
+            seen.add(pid)
+            if domain_id is None or did == domain_id:
+                result.append({"id": pid, "name": p.name or "", "domain_id": did})
+        return result
 
     try:
         return await cached_call(
@@ -630,6 +634,17 @@ async def create_project(
 ):
     """프로젝트 생성."""
     await asyncio.to_thread(_selected_domain, conn, req.domain_id)
+    from app.services import account_spaces
+
+    native_ks = await asyncio.to_thread(keystone._get_admin_ks_client)
+    native_domain = await asyncio.to_thread(native_ks.domains.get, req.domain_id)
+    if identity_roles._field(native_domain, "id") != req.domain_id:
+        raise HTTPException(503, "Native domain identity is unavailable")
+    kind = account_spaces.domain_kind(native_domain)
+    if kind == "account":
+        raise HTTPException(403, "Identity-only domain cannot contain projects")
+    if kind == "personal":
+        raise HTTPException(403, "personal_project_user_creation_required")
     if req.name.casefold() == "default":
         raise HTTPException(409, "Default is reserved for the domain authority project")
 
@@ -1793,3 +1808,37 @@ async def get_identity_summary(
         raise HTTPException(status_code=500, detail="Identity 요약 조회 실패")
 
     return summary
+
+
+class SettleTopologyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    native_calls_settled: bool = Field(strict=True)
+
+
+@router.get("/account-topology/operations", dependencies=[Depends(require_admin)])
+async def account_topology_operations(
+    cursor: str | None = Query(None, min_length=64, max_length=64), token_info: dict = Depends(get_token_info)
+):
+    from app.services import account_spaces
+
+    return await account_spaces.topology_operations(token_info, cursor=cursor)
+
+
+@router.post("/account-topology/shared-domains/{kind}/settle", dependencies=[Depends(require_admin)])
+async def settle_shared_account_domain(
+    kind: str, req: SettleTopologyRequest, token_info: dict = Depends(get_token_info)
+):
+    from app.services import account_spaces
+
+    return await account_spaces.settle_shared_domain(kind, token_info, native_calls_settled=req.native_calls_settled)
+
+
+@router.post("/account-topology/personal-projects/{operation_id}/settle", dependencies=[Depends(require_admin)])
+async def settle_personal_account_project(
+    operation_id: str, req: SettleTopologyRequest, token_info: dict = Depends(get_token_info)
+):
+    from app.services import account_spaces
+
+    return await account_spaces.settle_personal_project(
+        operation_id, token_info, native_calls_settled=req.native_calls_settled
+    )

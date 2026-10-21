@@ -4,6 +4,9 @@
 	import type { Flavor } from '$lib/types/flavor';
 	import Pagination from '$lib/components/ui/Pagination.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 
 	let {
 		flavors,
@@ -81,6 +84,20 @@
 	});
 </script>
 
+<ResponsiveTable>
+	{#snippet cards()}
+		<div class="responsive-card-toolbar">
+			<Button variant="ghost" size="sm" onclick={() => toggleSort('name')}>{t('flavors.fields.name')} {sortIcon('name')}</Button><Button variant="ghost" size="sm" onclick={() => toggleSort('vcpus')}>{t('flavors.fields.vcpu')} {sortIcon('vcpus')}</Button><Button variant="ghost" size="sm" onclick={() => toggleSort('ram')}>{t('flavors.fields.ram')} {sortIcon('ram')}</Button><Button variant="ghost" size="sm" onclick={() => toggleSort('disk')}>{t('flavors.fields.disk')} {sortIcon('disk')}</Button><Button variant="ghost" size="sm" onclick={() => toggleSort('is_public')}>{t('flavors.fields.public')} {sortIcon('is_public')}</Button>
+		</div>
+		{#each pagedFlavors as f (f.id)}
+			<CompactResourceCard>
+				<div class="flex flex-wrap items-start justify-between gap-2"><h3 class="break-all font-medium text-ink-0">{f.name}</h3><Pill tone="neutral" size="xs">{f.is_public ? t('flavors.visibility.public') : t('flavors.visibility.private')}</Pill>{#if f.is_gpu}<Pill tone="accent" size="xs">GPU ×{f.gpu_count}</Pill>{/if}</div>
+				<p class="text-xs text-ink-2">{f.vcpus} vCPU · {formatRam(f.ram)} · {f.disk} GB</p>
+				{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => onManage(f)}>{t('flavors.manage.action')}</Button><Button variant="danger" size="sm" disabled={deletingId === f.id} onclick={() => onDelete(f.id)}>{deletingId === f.id ? t('flavors.delete.pending') : t('flavors.delete.action')}</Button>{/snippet}
+				{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p class="font-mono">{f.id}</p>{#if f.description}<p>{f.description}</p>{/if}{#if !f.is_public && f.is_gpu}<p>{isQuotaManaged(f) ? t('flavors.access.quotaPolicyTitle') : t('flavors.access.manualPolicyTitle')}</p>{/if}</div>{/snippet}
+			</CompactResourceCard>
+		{/each}
+	{/snippet}
 	<div class="overflow-x-auto">
 		<table class="w-full text-sm">
 			<thead>
@@ -168,6 +185,7 @@
 			</tbody>
 		</table>
 	</div>
+</ResponsiveTable>
 	<Pagination
 		page={currentPage + 1}
 		{totalPages}

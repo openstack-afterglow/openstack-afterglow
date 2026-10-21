@@ -5,6 +5,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from app.api.common.admin_resource_scope import AdminResourceScope, admin_resource_scope
 from app.api.deps import require_admin
 from app.models.barbican import ProjectQuotaSetRequest
 from app.rate_limit import limiter
@@ -27,10 +28,10 @@ def _barbican_error(e: Exception, detail: str) -> HTTPException:
 
 
 @router.get("/key-manager/project-quotas", dependencies=[Depends(require_admin)])
-async def list_project_quotas():
+async def list_project_quotas(scope: AdminResourceScope = Depends(admin_resource_scope)):
     conn = await asyncio.to_thread(get_admin_project_connection)
     try:
-        return await asyncio.to_thread(bsvc.list_project_quotas, conn)
+        return scope.filter(await asyncio.to_thread(bsvc.list_project_quotas, conn))
     except Exception as e:
         _logger.exception("Barbican project-quotas 조회 실패: %s", e)
         http_status = getattr(e, "http_status", None) or getattr(getattr(e, "response", None), "status_code", None)

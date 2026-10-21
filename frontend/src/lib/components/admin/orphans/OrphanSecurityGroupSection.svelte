@@ -27,6 +27,13 @@
 			<RichText segments={t.rich('orphanSecurityGroup.note')} classes={{ code: 'text-ink-2' }} />
 		</div>
 	{/snippet}
+  {#snippet cardSummary(g)}
+    <strong class="break-words text-sm">{g.name}</strong>
+    <dl class="text-xs"><dt class="text-ink-2">{t('orphanSecurityGroup.column.ageDays')}</dt><dd>{g.age_days}</dd></dl>
+  {/snippet}
+  {#snippet cardDetails(g)}
+    <dl class="space-y-2 text-xs"><div><dt class="text-ink-2">{t('orphanSecurityGroup.column.description')}</dt><dd class="whitespace-pre-wrap break-words">{g.description ?? '-'}</dd></div><div><dt class="text-ink-2">{t('orphanSecurityGroup.column.project')}</dt><dd class="break-all font-mono">{g.project_id ?? '-'}</dd></div><div><dt class="text-ink-2">{t('orphanSecurityGroup.column.createdAt')}</dt><dd>{g.created_at?.slice(0, 10) ?? '-'}</dd></div><div><dt class="text-ink-2">{t('orphanSecurityGroup.column.id')}</dt><dd class="break-all font-mono">{g.id}</dd></div></dl>
+  {/snippet}
 	{#snippet headers()}
 		<th class="text-left py-2 pr-4">{t('orphanSecurityGroup.column.name')}</th>
 		<th class="text-left py-2 pr-4">{t('orphanSecurityGroup.column.description')}</th>

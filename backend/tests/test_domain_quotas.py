@@ -545,3 +545,58 @@ async def test_enable_assertion_refuses_overbudget_unknown_and_unresolved_state(
         await service.assert_project_allocation(budget.conn, DOMAIN, "b", lease=budget.lease)
     assert unresolved.value.detail == "quota_native_operation_unresolved"
     assert not budget.writes
+
+
+@pytest.mark.asyncio
+async def test_personal_quota_update_never_consumes_another_users_budget(budget, monkeypatch):
+    for project in budget.projects.values():
+        project.domain_id = "personal"
+    monkeypatch.setattr(
+        budget.conn.identity,
+        "get_domain",
+        lambda did: SimpleNamespace(id=did, name="personal", afterglow_domain_kind="personal"),
+    )
+    # A historical shared-domain policy must not cap or mutate personal peers.
+    async with budget.factory() as session:
+        session.add(
+            DomainQuotaPolicy(domain_id="personal", revision=1, ceilings={"instances": 0}, defaults={"instances": 0})
+        )
+        await session.commit()
+    budget.limits["b"]["instances"] = -1
+    result = await service.update_project(budget.conn, "a", {"instances": 5})
+    assert result["status"] == "updated"
+    assert budget.limits["a"]["instances"] == 5
+    assert budget.limits["b"]["instances"] == -1
+    assert budget.writes == [("a", "compute", {"instances": 5})]
+    with pytest.raises(HTTPException) as denied:
+        await service.snapshot(budget.conn, "personal")
+    assert denied.value.detail == "organization_domain_required"
+
+
+@pytest.mark.asyncio
+async def test_personal_quota_uncertainty_fences_only_the_affected_project(budget, monkeypatch):
+    for project in budget.projects.values():
+        project.domain_id = "personal"
+    monkeypatch.setattr(
+        budget.conn.identity,
+        "get_domain",
+        lambda did: SimpleNamespace(id=did, name="personal", afterglow_domain_kind="personal"),
+    )
+    async with budget.factory() as session:
+        session.add(
+            DomainQuotaOperation(
+                id="a-uncertain",
+                domain_id="personal",
+                project_id="a",
+                status="unknown",
+                requested={"instances": 7},
+                sections={"compute": {"status": "unknown"}},
+            )
+        )
+        await session.commit()
+    result = await service.update_project(budget.conn, "b", {"instances": 3})
+    assert result["status"] == "updated"
+    with pytest.raises(HTTPException) as denied:
+        await service.update_project(budget.conn, "a", {"instances": 7})
+    assert denied.value.detail == "quota_native_operation_unresolved"
+    assert budget.writes == [("b", "compute", {"instances": 3})]

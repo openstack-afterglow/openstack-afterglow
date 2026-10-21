@@ -2,6 +2,10 @@
 	import { t as tr } from '$lib/i18n/ns/database';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { DbBackup } from '$lib/types/database';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
+	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 
 	let {
 		backups,
@@ -59,6 +63,16 @@
 	{#if backups.length === 0}
 		<div class="text-ink-2 text-xs">{tr('backups.empty')}</div>
 	{:else}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each backups as b (b.id)}
+					<CompactResourceCard>
+						<div class="flex items-start justify-between gap-2"><h3 class="break-all font-medium text-ink-0">{b.name}</h3><StatusChip status={b.status} /></div><p class="text-xs text-ink-2">{b.size === null || b.size === undefined ? '-' : `${b.size} GB`} · {b.created_at?.slice(0, 10) ?? '-'}</p>
+						{#snippet actions()}<Button variant="secondary" size="sm" disabled={restoringBackup === b.id} onclick={() => onRestore(b.id)}>{restoringBackup === b.id ? tr('state.restoring') : tr('actions.restore')}</Button><Button variant="danger" size="sm" disabled={deletingBackup === b.id} onclick={() => onDelete(b.id)}>{deletingBackup === b.id ? tr('state.deleting') : tr('actions.delete')}</Button>{/snippet}
+						{#snippet details()}<p class="break-all font-mono text-xs text-ink-2">{b.id}</p>{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="text-ink-2 text-xs">
@@ -92,5 +106,6 @@
 				{/each}
 			</tbody>
 		</table>
+		</ResponsiveTable>
 	{/if}
 </div>

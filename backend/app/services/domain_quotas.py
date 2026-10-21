@@ -57,6 +57,10 @@ def _directory(conn, domain_id):
             raise HTTPException(404, "domain_not_found")
         if getattr(domain, "id", None) != domain_id:
             raise public_service_error(503, "quota_domain_unverified")
+        from app.services.account_spaces import domain_kind
+
+        if domain_kind(domain) in {"account", "personal"}:
+            raise HTTPException(403, "organization_domain_required")
         projects = {}
         for project in conn.identity.projects(domain_id=domain_id):
             if getattr(project, "domain_id", None) != domain_id:
@@ -210,7 +214,7 @@ async def _operations(session, domain_id):
     return list((await session.execute(query)).scalars())
 
 
-async def _assert_settled(session, domain_id):
+async def _assert_settled(session, domain_id, *, project_id=None):
     # A transport timeout does not prove a native controller stopped working.
     # Only an explicit system-admin settlement acknowledgement plus readback
     # may release this fence; never retry the original provider mutation.
@@ -222,6 +226,8 @@ async def _assert_settled(session, domain_id):
         )
         .limit(1)
     )
+    if project_id is not None:
+        query = query.where(DomainQuotaOperation.project_id == project_id)
     if (await session.execute(query)).first() is not None:
         raise HTTPException(409, "quota_native_operation_unresolved")
 
@@ -238,16 +244,36 @@ async def _invalidate(project_id):
 
 async def _apply(conn, domain_id, project_id, values, *, lease, require_disabled=False):
     await lease.assert_owned()
-    projects = await _call(_directory, conn, domain_id)
+    from app.services.account_spaces import domain_kind
+
+    domain = await _call(conn.identity.get_domain, domain_id)
+    if identity_roles._field(domain, "id") != domain_id:
+        raise public_service_error(503, "quota_domain_unverified")
+    kind = domain_kind(domain)
+    if kind == "account":
+        raise HTTPException(403, "account_domain_is_identity_only")
+    personal = kind == "personal"
+    if personal:
+        project = await _call(conn.identity.get_project, project_id)
+        if identity_roles._field(project, "id") != project_id:
+            raise public_service_error(503, "quota_project_unverified")
+        projects = [
+            {
+                "id": project_id,
+                "enabled": identity_roles._field(project, "is_enabled", identity_roles._field(project, "enabled")),
+            }
+        ]
+    else:
+        projects = await _call(_directory, conn, domain_id)
     target = next((project for project in projects if project["id"] == project_id), None)
     if target is None or await project_domain(conn, project_id) != domain_id:
         raise HTTPException(403, "quota_project_domain_mismatch")
     if require_disabled and target["enabled"]:
         raise HTTPException(409, "quota_defaults_require_disabled_project")
     async with _session() as session:
-        policy = await _policy(session, domain_id)
+        policy = None if personal else await _policy(session, domain_id)
         ceilings = validate_limits(policy.ceilings) if policy else {}
-        await _assert_settled(session, domain_id)
+        await _assert_settled(session, domain_id, project_id=project_id if personal else None)
         await _proposal(conn, projects, ceilings, project_id, values, allow_decreasing_repair=not require_disabled)
         if not values:
             return {
@@ -370,6 +396,18 @@ async def assert_project_allocation(conn, domain_id: str, project_id: str, *, le
     Unlike creation, re-enabling must never reapply future-project defaults.
     """
     await lease.assert_owned()
+    from app.services.account_spaces import domain_kind
+
+    domain = await _call(conn.identity.get_domain, domain_id)
+    if identity_roles._field(domain, "id") != domain_id:
+        raise public_service_error(503, "quota_domain_unverified")
+    if domain_kind(domain) == "personal":
+        if await project_domain(conn, project_id) != domain_id:
+            raise HTTPException(403, "quota_project_domain_mismatch")
+        async with _session() as session:
+            await _assert_settled(session, domain_id, project_id=project_id)
+        await lease.assert_owned()
+        return {"domain_id": domain_id, "project_id": project_id, "status": "verified"}
     projects = await _call(_directory, conn, domain_id)
     if not any(project["id"] == project_id for project in projects):
         raise HTTPException(403, "quota_project_domain_mismatch")
@@ -479,7 +517,13 @@ async def reconcile_operation(conn, domain_id, operation_id):
     write or automatic replay is performed by recovery.
     """
     async with identity_roles._graph_lock(conn) as lease:
-        projects = await _call(_directory, conn, domain_id)
+        from app.services.account_spaces import domain_kind
+
+        domain = await _call(conn.identity.get_domain, domain_id)
+        if identity_roles._field(domain, "id") != domain_id:
+            raise public_service_error(503, "quota_domain_unverified")
+        personal = domain_kind(domain) == "personal"
+        projects = [] if personal else await _call(_directory, conn, domain_id)
         async with _session() as session:
             operation = (
                 await session.execute(
@@ -501,6 +545,10 @@ async def reconcile_operation(conn, domain_id, operation_id):
                 # absence; do not strand that domain's durable safety fence.
                 if any(project["id"] == operation.project_id for project in projects):
                     raise public_service_error(503, "quota_project_directory_unverified") from exc
+                if personal:
+                    remaining = await _call(lambda: list(conn.identity.projects(domain_id=domain_id)))
+                    if any(identity_roles._field(project, "id") == operation.project_id for project in remaining):
+                        raise public_service_error(503, "quota_project_directory_unverified") from exc
                 deleted = True
             else:
                 if native_domain != domain_id:
@@ -524,4 +572,12 @@ async def reconcile_operation(conn, domain_id, operation_id):
             operation.updated_at = datetime.now(UTC)
             await _commit(session, lease)
             await _invalidate(operation.project_id)
+        if personal:
+            return {
+                "domain_id": domain_id,
+                "project_id": operation.project_id,
+                "operation_id": operation.id,
+                "status": "reconciled",
+                "sections": sections,
+            }
         return await snapshot(conn, domain_id)

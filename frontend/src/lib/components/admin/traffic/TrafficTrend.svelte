@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { Card, Spark, TableShell } from '$lib/components/ui';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { t } from '$lib/i18n/ns/traffic-analytics';
 	import { metricValue, trafficTrend, type TrafficMetric, type TrafficSnapshot } from '$lib/types/trafficAnalytics';
 	import { formatTrafficValue, formatTrafficTime } from '$lib/utils/trafficFormat';
@@ -26,6 +28,10 @@
 	{/if}
 	<details class="mt-3 text-xs text-ink-2">
 		<summary class="cursor-pointer min-h-11 flex items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">{t('trend.samples')}</summary>
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each snapshot.series as bucket (bucket.at)}<CompactResourceCard><time datetime={new Date(bucket.at * 1000).toISOString()}>{formatTrafficTime(bucket.at)}</time><p class="tabular-nums">{t(`metrics.${metric}`)}: {formatTrafficValue(metricValue(bucket.metrics, metric), metric)}</p></CompactResourceCard>{/each}
+			{/snippet}
 		<TableShell>
 			<!-- TableShell scrolls horizontally on narrow screens; the table is the keyboard scroll target. -->
 			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -33,5 +39,6 @@
 				<tbody>{#each snapshot.series as bucket (bucket.at)}<tr class="border-t border-line"><td class="p-2 whitespace-nowrap">{formatTrafficTime(bucket.at)}</td><td class="p-2 text-right whitespace-nowrap">{formatTrafficValue(metricValue(bucket.metrics, metric), metric)}</td></tr>{/each}</tbody>
 			</table>
 		</TableShell>
+		</ResponsiveTable>
 	</details>
 </Card>

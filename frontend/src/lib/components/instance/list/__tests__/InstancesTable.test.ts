@@ -1,11 +1,31 @@
 import { writable } from 'svelte/store';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Instance } from '$lib/types/compute';
 import InstancesTable from '../InstancesTable.svelte';
 import { t } from '$lib/i18n/ns/instance';
 
 vi.mock('$lib/stores/auth', () => ({ canWrite: writable(true) }));
+
+const media = vi.hoisted(() => {
+	const events = new EventTarget();
+	const query = {
+		matches: true, media: '(min-width: 1024px)', onchange: null,
+		addEventListener: events.addEventListener.bind(events),
+		removeEventListener: events.removeEventListener.bind(events),
+		dispatchEvent: events.dispatchEvent.bind(events),
+		addListener: () => undefined, removeListener: () => undefined,
+	};
+	vi.stubGlobal('matchMedia', () => query);
+	return query;
+});
+beforeEach(() => { media.matches = true; });
+
+async function setDesktop(desktop: boolean) {
+	media.matches = desktop;
+	media.dispatchEvent(new Event('change'));
+	await waitFor(() => expect(screen.queryByRole('table') !== null).toBe(desktop));
+}
 
 const instances: Instance[] = [
 	{
@@ -119,5 +139,38 @@ describe('InstancesTable selection', () => {
 		expect(screen.queryByRole('button', { name: t('list.start') })).toBeNull();
 		expect(screen.queryByRole('button', { name: t('rowActions.shelve') })).toBeNull();
 		expect(screen.queryByRole('button', { name: t('rowActions.delete') })).toBeNull();
+	});
+
+	it('retains selection, unavailable rows and one action menu per compact resource', async () => {
+		const onSelect = vi.fn();
+		const onToggleAll = vi.fn();
+		renderTable({ selectedIds: new Set(['instance-1']), selectableIds: new Set(['instance-1']), onSelect, onToggleAll });
+		await setDesktop(false);
+		expect(screen.getAllByRole('article')).toHaveLength(2);
+		expect((screen.getByRole('checkbox', { name: 'first-instance 선택' }) as HTMLInputElement).checked).toBe(true);
+		expect((screen.getByRole('checkbox', { name: 'second-instance 선택' }) as HTMLInputElement).disabled).toBe(true);
+		expect(screen.getAllByRole('button', { name: 'first-instance 인스턴스 작업' })).toHaveLength(1);
+		await fireEvent.click(screen.getByRole('checkbox', { name: '전체 선택' }).closest('label')!);
+		expect(onToggleAll).toHaveBeenCalledOnce();
+		await fireEvent.click(screen.getByRole('button', { name: 'first-instance' }));
+		expect(onSelect).toHaveBeenCalledWith('instance-1');
+		await setDesktop(true);
+		expect(screen.queryByRole('article')).toBeNull();
+		expect((screen.getByRole('checkbox', { name: 'first-instance 선택' }) as HTMLInputElement).checked).toBe(true);
+	});
+
+	it('keeps pending row actions disabled through a viewport transition', async () => {
+		let resolve!: () => void;
+		const onAction = vi.fn(() => new Promise<void>((done) => { resolve = done; }));
+		renderTable({ onAction });
+		await fireEvent.click(screen.getByRole('button', { name: 'first-instance 인스턴스 작업' }));
+		await fireEvent.click(screen.getByRole('button', { name: '콘솔' }));
+		await setDesktop(false);
+		expect(screen.getByRole('status').closest('article')?.textContent).toContain('first-instance');
+		await fireEvent.click(screen.getByRole('button', { name: 'first-instance 인스턴스 작업' }));
+		expect((screen.getByRole('button', { name: '콘솔' }) as HTMLButtonElement).disabled).toBe(true);
+		expect(onAction).toHaveBeenCalledOnce();
+		resolve();
+		await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
 	});
 });

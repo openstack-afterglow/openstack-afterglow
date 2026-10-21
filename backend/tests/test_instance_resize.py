@@ -3,8 +3,10 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from openstack.compute.v2.server import Server
 
 from app.models.compute import FlavorInfo, InstanceInfo
+from app.services import nova
 
 pytest_plugins = ("tests.test_rbac_project_roles",)
 
@@ -355,3 +357,147 @@ async def test_finish_resize_nova_failure_does_not_invalidate(client, suffix, op
         resp = await client.post(f"{BASE}/{suffix}")
     assert resp.status_code == 400
     invalidate.assert_not_awaited()
+
+
+def _sdk_server(*, name="small", project_id=PROJECT, **resources):
+    return Server(
+        id="inst-1",
+        name="vm",
+        status="SHUTOFF",
+        tenant_id=project_id,
+        image={"id": "image-1"},
+        flavor={"original_name": name, "vcpus": 2, "ram": 2048, "disk": 20, "extra_specs": {}, **resources},
+        addresses={},
+        metadata={},
+    )
+
+
+def test_modern_sdk_flavor_alias_is_not_projected_as_native_id_or_public_snapshot():
+    server = _sdk_server()
+    assert server.flavor.id == "small"  # SDK synthesizes an ID absent from the Nova response.
+    info = nova._server_to_info(server)
+    assert info.flavor_id is None
+    assert info.flavor_name == "small"
+    assert info._flavor_snapshot == {"vcpus": 2, "ram": 2048, "disk": 20, "extra_specs": {}}
+    assert "_flavor_snapshot" not in info.model_dump()
+    assert "_flavor_snapshot" not in InstanceInfo.model_json_schema()["properties"]
+
+
+def test_legacy_sdk_flavor_retains_native_id():
+    server = _sdk_server()
+    server.flavor = {"id": "small", "links": []}
+    info = nova._server_to_info(server)
+    assert info.flavor_id == "small"
+    assert info.flavor_name is None
+    assert info._flavor_snapshot is None
+
+
+@pytest.fixture(params=["client", "admin_client"])
+def resize_client(request):
+    return request.param, request.getfixturevalue(request.param)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("current_name", ["small", "deleted-or-private", "old-name-before-rename"])
+async def test_modern_sdk_resize_uses_instance_snapshot_not_catalog(mock_conn, resize_client, current_name):
+    client_name, http = resize_client
+    project_id = "foreign" if client_name == "admin_client" else PROJECT
+    mock_conn.compute.get_server.return_value = _sdk_server(name=current_name, project_id=project_id)
+    flavors = _flavors()
+    # The same catalog name can now describe a different allocation.
+    flavors[0] = flavors[0].model_copy(update={"vcpus": 8, "ram": 8192})
+    with (
+        patch("app.api.compute.instances.nova.list_flavors", return_value=flavors),
+        patch("app.services.flavor_eligibility.nova.get_project_quota", return_value=_quota()) as quota,
+        patch("app.api.compute.instances.nova.resize_server") as resize,
+    ):
+        discovery = await http.get(f"{BASE}/resize-flavors")
+        assert discovery.status_code == 200
+        result = {item["id"]: item for item in discovery.json()}
+        assert result["large"]["eligibility"]["selectable"] is True
+        assert result["large"]["eligibility"]["requirements"]["cores"] == 2
+        assert result["large"]["eligibility"]["requirements"]["ram_mb"] == 2048
+        assert "disk_shrink" in [b["code"] for b in result["shrinking"]["eligibility"]["blockers"]]
+        if current_name == "small":
+            assert "same_flavor" in [b["code"] for b in result["small"]["eligibility"]["blockers"]]
+        accepted = await http.post(f"{BASE}/resize", json={"flavor_id": "large"})
+    assert accepted.status_code == 200
+    assert quota.call_args.args[1] == project_id
+    resize.assert_called_once_with(mock_conn, "inst-1", "large")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("target,blocker", [("small", "same_flavor"), ("shrinking", "disk_shrink")])
+async def test_modern_sdk_resize_rejects_same_flavor_and_disk_shrink(mock_conn, resize_client, target, blocker):
+    _, http = resize_client
+    mock_conn.compute.get_server.return_value = _sdk_server()
+    with (
+        patch("app.api.compute.instances.nova.list_flavors", return_value=_flavors()),
+        patch("app.api.compute.instances.nova.resize_server") as resize,
+    ):
+        response = await http.post(f"{BASE}/resize", json={"flavor_id": target})
+    assert response.status_code == 409
+    assert blocker in response.json()["detail"]
+    resize.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resources", [{"vcpus": 0}, {"ram": 0}, {"disk": -1}])
+async def test_modern_sdk_resize_fails_closed_on_invalid_allocation(client, mock_conn, resources):
+    mock_conn.compute.get_server.return_value = _sdk_server(**resources)
+    with (
+        patch("app.api.compute.instances.nova.list_flavors", return_value=_flavors()),
+        patch("app.api.compute.instances.nova.resize_server") as resize,
+    ):
+        discovery = await client.get(f"{BASE}/resize-flavors")
+        submission = await client.post(f"{BASE}/resize", json={"flavor_id": "large"})
+    assert discovery.status_code == submission.status_code == 409
+    resize.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_modern_sdk_resize_uses_embedded_gpu_allocation_and_rechecks_quota(client, mock_conn):
+    mock_conn.compute.get_server.return_value = _sdk_server(
+        name="removed-gpu-flavor", extra_specs={"pci_passthrough:alias": "RTX-3090:1"}
+    )
+    target = _flavors()[1].model_copy(update={"extra_specs": {"pci_passthrough:alias": "RTX-3090:2"}})
+    status = [{"gpu_type": "RTX3090", "limit": 2, "in_use": 1, "available": 1}]
+    with (
+        patch("app.api.compute.instances.nova.list_flavors", return_value=[target]),
+        patch("app.services.flavor_eligibility.nova.get_project_quota", return_value=_quota()),
+        patch(
+            "app.services.flavor_eligibility.gpu_quota.get_effective_gpu_quota_status",
+            new_callable=AsyncMock,
+            return_value=status,
+        ),
+        patch("app.api.compute.instances.nova.resize_server") as resize,
+    ):
+        discovery = await client.get(f"{BASE}/resize-flavors")
+        assert discovery.status_code == 200
+        eligibility = discovery.json()[0]["eligibility"]
+        assert eligibility["selectable"] is True
+        assert eligibility["requirements"]["gpus"] == {"RTX3090": 1}
+        status[0]["available"] = 0
+        denied = await client.post(f"{BASE}/resize", json={"flavor_id": "large"})
+    assert denied.status_code == 409
+    assert "gpu_insufficient" in denied.json()["detail"]
+    resize.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_modern_sdk_volume_backed_resize_allows_smaller_flavor_disk(client, mock_conn):
+    server = _sdk_server(name="deleted-or-private")
+    server.image = {}
+    mock_conn.compute.get_server.return_value = server
+    with (
+        patch("app.api.compute.instances.nova.list_flavors", return_value=_flavors()),
+        patch("app.services.flavor_eligibility.nova.get_project_quota", return_value=_quota()),
+        patch("app.api.compute.instances.nova.resize_server") as resize,
+    ):
+        discovery = await client.get(f"{BASE}/resize-flavors")
+        assert discovery.status_code == 200
+        target = next(item for item in discovery.json() if item["id"] == "shrinking")
+        assert target["eligibility"]["selectable"] is True
+        accepted = await client.post(f"{BASE}/resize", json={"flavor_id": "shrinking"})
+    assert accepted.status_code == 200
+    resize.assert_called_once_with(mock_conn, "inst-1", "shrinking")

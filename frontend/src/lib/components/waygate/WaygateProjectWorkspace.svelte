@@ -18,6 +18,8 @@
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import FormModal from '$lib/components/ui/FormModal.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
@@ -1098,6 +1100,18 @@
 			<p class="text-sm text-[var(--color-ink-3)] mt-2">{t('project.empty.serversHelp')}</p>
 		</div>
 	{:else}
+  <ResponsiveTable>
+   {#snippet cards()}
+    {#if can.deleteGateway}<div class="responsive-card-toolbar"><SelectionToolbar label={t('project.server.label')} ariaLabel={t('project.selection.all')} checked={allSelected} indeterminate={indeterminate} selectedCount={selectedCount} disabled={busy || selectableIds.size === 0} onToggle={() => { if (isCurrent() && can.deleteGateway) selection.toggleAll(selectableIds); }} /></div>{/if}
+    {#each servers as server (server.id)}
+     <CompactResourceCard selected={selection.has(server.id)}>
+      <div class="flex items-start gap-2">{#if can.deleteGateway}<SelectionCheckbox checked={selection.has(server.id)} disabled={busy} ariaLabel={t('project.selection.server', { name: server.name })} onclick={() => { if (isCurrent() && can.deleteGateway) selection.toggle(server.id); }} />{/if}<button onclick={() => openPanel(server.id)} class="min-w-0 break-all text-left font-medium">{server.name}</button><StatusChip status={server.status} /></div>
+      <p class="text-xs font-mono break-all">{t('project.server.endpoint')}: {server.endpoint_ip ?? '-'}</p><p class="text-xs text-ink-2">{t('project.server.tunnelCidr')}: {server.tunnel_cidr} · {t('project.server.peerCount')}: {server.peer_count ?? '-'}</p>
+      {#snippet details()}<p class="text-xs text-ink-2">{t('project.details.createdAt')}: {formatDate(server.created_at)}</p>{/snippet}
+      {#snippet actions()}{#if can.deleteGateway}<button onclick={() => deleteServer(server)} class="text-xs text-[var(--color-state-danger)]">{t('project.actions.delete')}</button>{/if}{/snippet}
+     </CompactResourceCard>
+    {/each}
+   {/snippet}
 		<TableShell>
 			<table>
 				<thead>
@@ -1157,6 +1171,7 @@
 				</tbody>
 			</table>
 		</TableShell>
+  </ResponsiveTable>
 	{/if}
 	</div>
 	</div>

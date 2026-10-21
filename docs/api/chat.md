@@ -34,7 +34,7 @@ Lumen 텍스트 채팅 상단에는 모델·에이전트 선택과 기록·출�
 
 ## Lumen 서비스 세부 권한
 
-현재 Keystone 역할 ID·유효 할당·실제 inference graph로 계산한 세부 권한을 BFF와 native Lumen이 각각 검사합니다. 프로젝트 owner/admin, `member`, 표시용 역할 배열이나 `can_write`는 Lumen 사용 권한을 대신하지 않습니다. 권한 directory 조회 실패는 오래된 token 부모 역할로 대체하지 않습니다.
+Native Lumen의 현재 Keystone 전역 role binding·유효 할당과 실제 `oslo.policy` action이 정본입니다. `lumen_admin/editor/user/reader`는 서비스 `policy.yaml`에서 직접 평가하고 token에 세부 role을 가상 추가하지 않습니다. BFF는 action 규칙을 복제하지 않으며 UI capability는 native 정책 조회 결과를 사용합니다. 프로젝트 owner/admin, `member`, 표시용 역할 배열이나 `can_write`는 기본 Lumen 사용 권한을 대신하지 않습니다. 운영자는 아래 기본 세부 역할과 독립적인 grade·action 규칙을 override할 수 있습니다.
 
 | 세부 역할 | 액션 |
 |---|---|
@@ -45,11 +45,11 @@ Lumen 텍스트 채팅 상단에는 모델·에이전트 선택과 기록·출�
 | `lumen-history_editor` | 본인 대화·memory 관리/삭제 |
 | `lumen-resources_admin` | asset·agent·설정·키의 destructive 삭제/폐기 |
 
-Native `member`는 비읽기 service leaf의 기반 조건이며 `reader`는 읽기 leaf만 허용합니다. 텍스트 전용 권한으로 호환 endpoint의 이미지·오디오·도구 옵션을 사용할 수 없습니다. Native는 소유한 실행 종류에 맞춰 취소 권한을 확인하므로 image-only/audio-only 사용자의 취소에 chat 권한을 강요하지 않습니다. Provider/model/pricing/quota의 전역 관리자 API는 verified system-admin 전용입니다.
+서비스 권한 평가 자체에는 native `member`/`reader`를 추가 요구하지 않습니다. 텍스트 전용 정책으로 호환 endpoint의 이미지·오디오·도구 옵션을 사용할 수 없으며 native는 실제 요청·실행 종류의 action을 각각 검사합니다. Image-only/audio-only 실행 취소에 chat 권한을 강요하지 않습니다. Provider/model/pricing/quota 전역 API는 YAML 허용과 별개로 verified human system-admin 경계를 유지합니다.
 
-API-key scope는 발급자의 현재 권한을 좁히는 ceiling입니다. 발급에는 keys editor와 요청 scope의 현재 권한이 필요하며, 기존 키의 사용·새 provider I/O에서도 현재 enabled owner/project·유효 역할을 재검증합니다. issuer 편집 권한만 회수해도 기존 사용 scope까지 자동 소멸하지는 않지만, 사용 leaf/실제 edge를 회수하면 해당 호출은 거부합니다. 다른 사용자/private content 접근은 별도 소유권 검사로 계속 차단합니다.
+API-key scope는 발급자의 현재 native 정책 결과를 좁히는 ceiling입니다. 발급에는 keys action과 요청 scope의 현재 권한이 필요하며, 기존 키 사용·새 provider I/O에서도 enabled owner/project·현재 role과 정책을 재검증합니다. Issuer 편집 action만 회수해도 기존 사용 scope까지 자동 소멸하지는 않지만 사용 action의 grant 또는 YAML 허용을 회수하면 해당 호출을 거부합니다. 다른 사용자/private content 소유권 검사는 별도로 유지합니다.
 
-동일 user/project의 token 갱신·권한 확인 pending/error 동안 Studio는 입력·이미 표시한 결과 Blob을 메모리에 유지하되 미리보기/다운로드·새 액션을 숨기거나 차단합니다. 현재 권한이 복구되면 같은 Blob을 다시 보여 줍니다. 확인 중 완료한 새 응답은 게시하지 않으며 같은 입력의 명시적 재요청은 기존 idempotency intent를 재사용합니다. 확정 leaf 회수와 user/project 전환은 해당 결과·요청·object URL을 폐기합니다.
+동일 user/project의 token 갱신·권한 확인 pending/error 동안 Studio는 입력·이미 표시한 결과 Blob을 메모리에 유지하되 미리보기/다운로드·새 액션을 숨기거나 차단합니다. 현재 권한이 복구되면 같은 Blob을 다시 보여 줍니다. 확인 중 완료한 새 응답은 게시하지 않으며 같은 입력의 명시적 재요청은 기존 idempotency intent를 재사용합니다. Native 사용 capability의 확정 회수와 user/project 전환은 해당 결과·요청·object URL을 폐기합니다.
 
 
 ---
@@ -107,6 +107,9 @@ Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen
 | `PUT /api/v1/chat/admin/quotas/defaults` | `/v1/admin/quotas/defaults` | 관리자: 시스템 전체 기본 월 한도 설정(`null`은 무제한) |
 | `PUT /api/v1/chat/admin/quotas/{user_id}` | `/v1/admin/quotas/{user_id}` | 관리자: 사용자 개인 월·주간 override 설정(`null`은 명시적 무제한) |
 | `DELETE /api/v1/chat/admin/quotas/{user_id}` | `/v1/admin/quotas/{user_id}` | 관리자: 개인 override를 지우고 시스템 기본값 상속으로 복원 |
+| `GET /api/v1/chat/admin/stats` | `/v1/admin/stats` | 관리자: 선택 project-domain/project의 전체·모델·월·사용자·API key 통계 |
+| `GET /api/v1/chat/admin/stats/users` | `/v1/admin/stats/users` | 관리자: 동일 교집합의 사용자 집계, limit/offset 적용 |
+| `GET /api/v1/chat/admin/stats/timeseries` | `/v1/admin/stats/timeseries` | 관리자: 동일 교집합의 버킷 시계열 |
 | `GET /api/v1/chat/admin/stats/users/{user_id}` | `/v1/admin/stats/users/{user_id}` | 관리자: 기간·모델·web/API source·timestamp/token/cost별 사용자 usage ledger |
 | `GET /api/v1/chat/admin/models` | `/v1/admin/models` | 관리자: 등록 모델과 입력·출력 가격, 모델별 프롬프트 캐시 단가 `cache_read_price_per_million`·`cache_write_price_per_million`(5분 쓰기)·`cache_write_1h_price_per_million`(decimal 문자열 또는 `null`) 조회 |
 | `POST /api/v1/chat/admin/models` | `/v1/admin/models` | 관리자: 모델 등록. 텍스트 입력·출력 단가와 캐시 단가는 모델 종류와 무관하게 항목별로 선택 저장한다. 캐시 단가의 빈 항목은 생략하고, 텍스트 단가의 빈 항목은 미설정(`null` 또는 생략)으로 전달한다 |
@@ -116,6 +119,12 @@ Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen
 | `GET /api/v1/chat/admin/providers/billing` | `/v1/admin/providers/billing` | 관리자: 모든 configured provider의 Lumen 귀속 일·주·월·누적 request/token/raw USD cost, OpenAI/Anthropic 공식 조직 report, OpenRouter/DeepSeek live 잔액/한도, 공식 console URL을 한 번에 조회 |
 | `POST /api/v1/chat/claude-gateway/authorize` | `/v1/claude-gateway/authorize` | authenticated current user/project가 8자리 Claude Code device user code를 approve/deny |
 | `GET /api/v1/chat/mcp-oauth/callback` | `/v1/mcp-oauth/callback` | MCP OAuth 브라우저 콜백 전달 |
+
+### 통계의 독립 도메인·프로젝트 조건
+
+위 네 `/admin/stats` 경로는 선택 `domain_id`와 `project_id`를 AND 조건으로 받습니다. 도메인은 **프로젝트 소유 도메인**이며 사용자 identity home이 아닙니다. Native Lumen이 fresh Keystone 프로젝트 UUID 집합을 만들고 모든 SQL aggregate·project option·사용자 offset/ledger cursor 이전에 적용합니다. 불일치 교집합은 빈 결과이고 디렉터리 실패를 전역 결과로 대체하지 않습니다. 사용자/대화 수는 도메인 전체에서 distinct이며 프로젝트별 집계의 합이 아닙니다.
+
+관리자 통계 화면은 이 독립 project-domain picker를 사용합니다. 기존 chat quota 화면의 필수 identity-domain은 사용자 관리 경계이므로 그 사용자 quota 상세의 account-wide usage를 project-domain으로 임의 축소하지 않습니다. 기존 `/admin/quotas` 정책·사용자 quota 의미와 native `require_admin`은 유지합니다. 이 계약에는 BFF뿐 아니라 대응 native Lumen source의 동시 반영이 필요하며 현재 운영 배포 수용을 의미하지 않습니다.
 
 ### 프로바이더 표시 설정·등록 모델 필터·순서
 
@@ -194,7 +203,7 @@ DeepSeek의 공식 `/user/balance`는 통화별 총 account balance, 구매 충�
 | 메서드 · 경로 | 계약 |
 |---|---|
 | `GET /api/v1/chat/cloud-tools` | 구성 가능 여부 `available`, 실제 승인 `enabled`, 접근 수준·허용 프로젝트·만료를 조회. 승인 없음은 `enabled=false`, `allowed_projects=[]`, `tool_count=0`. |
-| `POST /api/v1/chat/cloud-tools` | `{access_level:"read"|"manage"}`로 현재 사용자·프로젝트에 명시 승인. 브라우저 같은 사이트 검증과 `lumen-tools_user`를 요구하며 bearer를 반환하지 않음. |
+| `POST /api/v1/chat/cloud-tools` | `{access_level:"read"|"manage"}`로 현재 사용자·프로젝트에 명시 승인. 브라우저 같은 사이트 검증과 현재 native Lumen 정책의 도구 사용 capability를 요구하며 bearer를 반환하지 않음. 특정 leaf role 이름을 BFF에서 다시 요구하지 않음. |
 | `DELETE /api/v1/chat/cloud-tools` | 선택 해제 및 내부 위임 폐기. 뒤늦은 준비·발급이 다시 활성화하지 못하도록 owner generation을 변경. 개인 토큰 자체는 폐기하지 않음. |
 
 권한 거부는 `403`, 승인 중·상태 변경·한도 충돌은 `409`, 구성·authority 장애는 `503`이다. 응답은 no-store/no-cache다. 과거 암묵적 `source="lumen"` grant는 migration086 뒤에도 `consented_at=NULL`이며 새 승인 없이는 선택·실행하지 않는다. 사용자가 계정에서 선택한 개인 토큰은 조회·채팅에서 자동 교체하지 않는다.

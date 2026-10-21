@@ -68,7 +68,7 @@
 </script>
 
 <Modal open={true} onClose={onClose} labelledBy="instance-resize-title">
-	<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]">
+	<div class="resize-modal-frame bg-surface-base border border-line-2 rounded-xl p-6 shadow-[var(--shadow-restraint)]">
 		<h2 id="instance-resize-title" class="text-lg font-semibold text-ink-0 mb-1">{t('resize.title')}</h2>
 		<p class="text-xs text-ink-2 mb-5">{t('resize.description')}</p>
 		{#if s.resizeError}
@@ -77,7 +77,7 @@
 		<div class="space-y-4">
 			<div>
 				<label for="resize-flavor" class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('resize.newFlavor')}</label>
-				<select id="resize-flavor" bind:value={resizeFlavorId} disabled={s.resizeFlavorsLoading} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm">
+				<select id="resize-flavor" bind:value={resizeFlavorId} disabled={s.resizeFlavorsLoading} class="w-full min-w-0 max-w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm">
 					<option value="">{t('resize.selectFlavor')}</option>
 					{#each s.resizeFlavors as f}
 						{@const reason = unavailableReason(f)}
@@ -89,7 +89,7 @@
 				{#if s.resizeFlavorsLoading}<ActivityIndicator class="mt-2" label={`${t('resize.newFlavor')} · ${tc('state.loading')}`} />{/if}
 			</div>
 		</div>
-		<div class="flex justify-end gap-3 mt-6">
+		<div class="flex flex-wrap justify-end gap-3 mt-6">
 			<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('resize.cancel')}</button>
 			<button
 				onclick={handleResize}
@@ -101,3 +101,12 @@
 		</div>
 	</div>
 </Modal>
+
+<style>
+	.resize-modal-frame {
+		width: 28rem;
+		max-width: 100%;
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+</style>

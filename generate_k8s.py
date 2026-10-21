@@ -146,7 +146,7 @@ def _toml_val(v) -> str:
 _AUTH_PROVIDER_FIELDS = frozenset({
     "name", "kind", "enabled", "issuer_url", "authorization_url", "token_url", "api_url",
     "client_id", "client_secret", "scopes", "keystone_idp_id", "keystone_protocol_id",
-    "federation_token_type", "token_endpoint_auth_method",
+    "federation_token_type", "token_endpoint_auth_method", "organization",
 })
 
 
@@ -156,9 +156,15 @@ def _auth_config(cfg: dict) -> dict:
     auth = cfg.get("auth", {})
     if not isinstance(auth, dict) or set(auth) - {
         "providers", "default", "domain", "public_signup_enabled", "signup_email_domains",
+        "organization_creation_enabled", "max_organizations_per_user",
     }:
         raise invalid
     if "public_signup_enabled" in auth and not isinstance(auth["public_signup_enabled"], bool):
+        raise invalid
+    if "organization_creation_enabled" in auth and not isinstance(auth["organization_creation_enabled"], bool):
+        raise invalid
+    maximum = auth.get("max_organizations_per_user", 10)
+    if type(maximum) is not int or maximum < 0:
         raise invalid
     signup_domains = auth.get("signup_email_domains", [])
     if not isinstance(signup_domains, list) or any(not isinstance(host, str) for host in signup_domains):
@@ -178,6 +184,14 @@ def _auth_config(cfg: dict) -> dict:
                 valid = isinstance(value, bool)
             elif field == "scopes":
                 valid = isinstance(value, list) and all(isinstance(item, str) for item in value)
+            elif field == "organization":
+                valid = (
+                    provider.get("kind") == "oidc" and isinstance(value, dict)
+                    and set(value) == {"id", "name", "manager_subjects"}
+                    and all(isinstance(value.get(key), str) and value[key].strip() for key in ("id", "name"))
+                    and isinstance(value.get("manager_subjects"), list) and bool(value["manager_subjects"])
+                    and all(isinstance(subject, str) and subject.strip() for subject in value["manager_subjects"])
+                )
             else:
                 valid = isinstance(value, str)
             if not valid:
@@ -230,13 +244,19 @@ def render_auth_toml(cfg: dict) -> str:
     if not auth:
         return ""
     lines = ["[auth]"]
-    for field in ("public_signup_enabled", "signup_email_domains"):
+    for field in (
+        "public_signup_enabled", "signup_email_domains", "organization_creation_enabled", "max_organizations_per_user",
+    ):
         if field in auth:
             lines.append(f"{field} = {_toml_val(auth[field])}")
     for key, provider in auth.get("providers", {}).items():
         lines.extend(("", f"[auth.providers.{_toml_str(key)}]"))
         for field, value in provider.items():
-            if field != "client_secret":
+            if field not in {"client_secret", "organization"}:
+                lines.append(f"{field} = {_toml_val(value)}")
+        if "organization" in provider:
+            lines.extend(("", f"[auth.providers.{_toml_str(key)}.organization]"))
+            for field, value in provider["organization"].items():
                 lines.append(f"{field} = {_toml_val(value)}")
     if "default" in auth:
         lines.extend(("", "[auth.default]"))

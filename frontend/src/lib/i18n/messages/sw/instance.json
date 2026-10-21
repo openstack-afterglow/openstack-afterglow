@@ -1,4 +1,12 @@
 {
+	"rename.title": "Badilisha jina",
+	"rename.name": "Jina la instansi",
+	"rename.notice": "Hubadilisha jina la kuonyesha pekee, si jina la seva la mgeni. Huhitaji kusimamisha instansi.",
+	"rename.invalidName": "Weka hadi herufi 63 za Kiingereza, tarakimu, vistari au mistari ya chini, ukianza na herufi au tarakimu. Nafasi hubadilishwa kuwa vistari.",
+	"rename.failed": "Jina la instansi halikuweza kubadilishwa. Angalia jina la sasa kabla ya kujaribu tena.",
+	"rename.submit": "Hifadhi",
+	"rename.saving": "Inahifadhi...",
+	"rename.cancel": "Ghairi",
 	"metrics.nativeMeasurements": "Vipimo asilia vya ziada",
 	"metrics.nativeMeasurementsHelp": "Upatikanaji hutegemea mita zilizowekwa na sera asilia. RAM inayokaa si kumbukumbu iliyotumika na mgeni; mgao wa diski si matumizi ya mfumo wa faili.",
 	"metrics.diskIops": "Maombi ya diski",

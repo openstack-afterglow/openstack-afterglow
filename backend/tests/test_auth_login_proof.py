@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from urllib.parse import urlsplit
 
 import pytest
@@ -16,13 +17,27 @@ from keystoneauth1.identity.v3.token import Token as NativeToken
 from keystoneauth1.session import Session as NativeSession
 from requests.adapters import BaseAdapter
 
+from app.api.deps import get_os_conn
 from app.main import app
 from app.services import jwt_service, keystone, session_store
 from tests.ownership_journal import ownership_journal as ownership_journal
 from tests.test_domain_projects import domain_native as domain_native
 from tests.test_domain_projects import grant
-from tests.test_login_native_operation import login, provider_login
+from tests.test_login_native_operation import login as fresh_login
 from tests.test_login_native_operation import native_login as native_login
+from tests.test_login_native_operation import provider_login
+
+
+async def organization_login(client, *, method="password", monkeypatch=None):
+    """Scope-revocation proofs begin with an explicit authorized organization choice."""
+    response = await fresh_login(client) if method == "password" else await provider_login(client, monkeypatch)
+    if response.status_code != 200:
+        return response
+    return await client.post(
+        "/api/v1/auth/token/workspace",
+        json={"domain_id": "tenant-a", "project_id": "work-a"},
+        headers=headers(response.json()),
+    )
 
 
 @pytest.fixture
@@ -32,6 +47,7 @@ async def login_proof(native_login, monkeypatch, ownership_journal):
     state.revoked_users = set()
     state.issued = {"native:ordinary:": ("ordinary", "")}
     state.native_requests = []
+    state.passwords = {uid: "valid" for uid in state.user_rows}
     state.substitute = None
     state.raw.append(grant("manager", user="ordinary", project="default-a"))
     state.raw.append(grant("project_admin", user="ordinary", project="work-a"))
@@ -67,7 +83,9 @@ async def login_proof(native_login, monkeypatch, ownership_journal):
             if "password" in identity:
                 user = identity["password"]["user"]
                 uid = user.get("name") or user.get("id")
-                if user["password"] != "valid":
+                if user.get("domain", {}).get("id") != state.user_rows[uid].domain_id:
+                    return reply(request, 401, {"error": {"message": "Invalid identity domain"}})
+                if user["password"] != state.passwords[uid]:
                     return reply(request, 401, {"error": {"message": "Invalid password"}})
             else:
                 proof = identity["token"]["id"]
@@ -156,7 +174,7 @@ async def selected_domain_login_proof(login_proof):
     client, state = login_proof
     state.raw.append(grant("project_reader", user="ordinary", project="default-b"))
     state.raw.append(grant("project_admin", user="ordinary", project="work-b"))
-    response = await login(client)
+    response = await organization_login(client)
     assert response.status_code == 200, response.text
     selected = await client.post(
         "/api/v1/auth/token/workspace",
@@ -166,7 +184,7 @@ async def selected_domain_login_proof(login_proof):
     assert selected.status_code == 200, selected.text
     tokens = selected.json()
     assert (tokens["identity_domain_id"], tokens["domain_id"], tokens["project_id"]) == (
-        "tenant-a",
+        "account",
         "tenant-b",
         "work-b",
     )
@@ -186,7 +204,7 @@ async def test_repeated_projectless_refresh_preserves_selected_domain_and_home(s
         tokens = refreshed.json()
         assert (tokens["domain_id"], tokens["identity_domain_id"], tokens["project_id"]) == (
             "tenant-b",
-            "tenant-a",
+            "account",
             "",
         )
         assert tokens["roles"] == [] and tokens["can_write"] is False
@@ -196,7 +214,7 @@ async def test_repeated_projectless_refresh_preserves_selected_domain_and_home(s
         _, current = await stored(tokens)
         assert (current["domain_id"], current["identity_domain_id"], current["project_id"]) == (
             "tenant-b",
-            "tenant-a",
+            "account",
             "",
         )
         assert state.issued[current["keystone_token"]] == ("ordinary", "")
@@ -224,7 +242,7 @@ async def test_selected_domain_project_loss_allows_context_browse_and_recovery(
         assert me.status_code == 200, me.text
         assert (me.json()["domain_id"], me.json()["identity_domain_id"], me.json()["project_id"]) == (
             "tenant-b",
-            "tenant-a",
+            "account",
             "",
         )
         assert me.json()["roles"] == [] and me.json()["can_write"] is False
@@ -247,7 +265,7 @@ async def test_selected_domain_project_loss_allows_context_browse_and_recovery(
     tokens = recovered.json()
     assert (tokens["domain_id"], tokens["identity_domain_id"], tokens["project_id"]) == (
         "tenant-b",
-        "tenant-a",
+        "account",
         "default-b",
     )
     assert "project_admin" not in tokens["roles"] and tokens["can_write"] is False
@@ -282,7 +300,7 @@ async def test_projectless_selected_domain_still_requires_live_identity_and_memb
     if invalid == "membership":
         state.roles.revoke("project_reader", user="ordinary", project="default-b")
     elif invalid in {"domain", "home_domain"}:
-        state.domain_rows["tenant-b" if invalid == "domain" else "tenant-a"].enabled = False
+        state.domain_rows["tenant-b" if invalid == "domain" else "account"].enabled = False
     elif invalid == "home_changed":
         state.user_rows["ordinary"].domain_id = "home"
     elif invalid == "native_home":
@@ -326,7 +344,7 @@ async def test_selected_context_cannot_hide_native_project_mismatch(selected_dom
 @pytest.mark.parametrize("method", ["password", "provider"])
 async def test_login_publishes_unscoped_proof_not_project_token(login_proof, monkeypatch, method):
     client, state = login_proof
-    response = await login(client) if method == "password" else await provider_login(client, monkeypatch)
+    response = await organization_login(client, method=method, monkeypatch=monkeypatch)
     assert response.status_code == 200, response.text
     _, session = await stored(response.json())
     assert session["project_id"] == "work-a"
@@ -337,7 +355,7 @@ async def test_login_publishes_unscoped_proof_not_project_token(login_proof, mon
 @pytest.mark.asyncio
 async def test_own_project_role_edit_renews_current_roles_without_logout(login_proof):
     client, state = login_proof
-    response = await login(client)
+    response = await organization_login(client)
     assert response.status_code == 200, response.text
     tokens = response.json()
     jti, original = await stored(tokens)
@@ -369,7 +387,7 @@ async def test_own_project_role_edit_renews_current_roles_without_logout(login_p
 @pytest.mark.asyncio
 async def test_project_token_revocation_is_not_native_login_revocation(login_proof):
     client, state = login_proof
-    response = await login(client)
+    response = await organization_login(client)
     assert response.status_code == 200, response.text
     tokens = response.json()
     state.revoked.update(token for token, (_, pid) in state.issued.items() if pid)
@@ -387,7 +405,7 @@ async def test_project_token_revocation_is_not_native_login_revocation(login_pro
 @pytest.mark.parametrize("refresh_first", [False, True])
 async def test_project_loss_is_403_refresh_projectless_and_selection_still_works(login_proof, refresh_first):
     client, state = login_proof
-    response = await login(client)
+    response = await organization_login(client)
     assert response.status_code == 200, response.text
     tokens = response.json()
     _, original = await stored(tokens)
@@ -432,7 +450,7 @@ async def test_project_loss_is_403_refresh_projectless_and_selection_still_works
 @pytest.mark.parametrize("tamper", ["subject", "project", "identity"])
 async def test_native_project_result_cannot_substitute_session_identity(login_proof, tamper):
     client, state = login_proof
-    response = await login(client)
+    response = await organization_login(client)
     assert response.status_code == 200, response.text
     tokens = response.json()
     state.substitute = tamper
@@ -444,7 +462,7 @@ async def test_native_project_result_cannot_substitute_session_identity(login_pr
 @pytest.mark.asyncio
 async def test_broad_native_user_revocation_and_explicit_logout_are_terminal(login_proof):
     client, state = login_proof
-    response = await login(client)
+    response = await organization_login(client)
     assert response.status_code == 200, response.text
     tokens = response.json()
     state.revoked_users.add("ordinary")
@@ -461,7 +479,7 @@ async def test_broad_native_user_revocation_and_explicit_logout_are_terminal(log
 @pytest.mark.asyncio
 async def test_legacy_scoped_record_is_persisted_unscoped_before_role_write(login_proof, monkeypatch):
     client, state = login_proof
-    response = await login(client)
+    response = await organization_login(client)
     assert response.status_code == 200, response.text
     tokens = response.json()
     jti, original = await stored(tokens)
@@ -491,7 +509,7 @@ async def test_legacy_scoped_record_is_persisted_unscoped_before_role_write(logi
 @pytest.mark.asyncio
 async def test_invalid_login_proof_wins_over_lost_project_authority(login_proof):
     client, state = login_proof
-    response = await login(client)
+    response = await organization_login(client)
     assert response.status_code == 200, response.text
     tokens = response.json()
     _, session = await stored(tokens)
@@ -506,7 +524,7 @@ async def test_concurrent_proof_renewal_accepts_current_same_family(login_proof,
     import asyncio
 
     client, state = login_proof
-    response = await login(client)
+    response = await organization_login(client)
     assert response.status_code == 200, response.text
     tokens = response.json()
     jti, original = await stored(tokens)
@@ -528,3 +546,76 @@ async def test_concurrent_proof_renewal_accepts_current_same_family(login_proof,
     assert raced and current["family_id"] == original["family_id"]
     assert current["started_at"] == original["started_at"]
     assert state.issued[current["keystone_token"]] == ("ordinary", "")
+
+
+@pytest.mark.asyncio
+async def test_account_home_password_change_keeps_personal_scope_and_replaces_credential(login_proof, monkeypatch):
+    client, state = login_proof
+    state.user_rows["ordinary"].default_project_id = ""
+    signed_in = await fresh_login(client)
+    assert signed_in.status_code == 200, signed_in.text
+    original = signed_in.json()
+    assert original["identity_domain_id"] == "account" and original["domain_id"] == "personal"
+
+    def update_user(user_id, *, password):
+        state.passwords[user_id] = password
+        return state.user_rows[user_id]
+
+    async def password_connection():
+        yield SimpleNamespace(identity=SimpleNamespace(update_user=update_user))
+
+    monkeypatch.setitem(app.dependency_overrides, get_os_conn, password_connection)
+    changed = await client.post(
+        "/api/v1/profile/password",
+        json={"current_password": "valid", "new_password": "ChangedProofPass2026!"},
+        headers=headers(original),
+    )
+    assert changed.status_code == 200, changed.text
+    old = await client.post("/api/v1/auth/login", json={"username": "ordinary", "password": "valid"})
+    assert old.status_code == 401
+    replacement = await client.post(
+        "/api/v1/auth/login", json={"username": "ordinary", "password": "ChangedProofPass2026!"}
+    )
+    assert replacement.status_code == 200, replacement.text
+    assert replacement.json()["user_id"] == original["user_id"]
+    assert replacement.json()["identity_domain_id"] == "account"
+    assert replacement.json()["project_id"] == original["project_id"]
+    assert state.user_rows["ordinary"].domain_id == "account"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "rejected_proof,status", [("password", 401), ("unscoped_subject", 403), ("unscoped_identity", 403)]
+)
+async def test_personal_recovery_requires_fresh_exact_native_password_before_provisioning(
+    login_proof, rejected_proof, status
+):
+    from app.services import account_spaces
+
+    client, state = login_proof
+    original = vars(state.user_rows["ordinary"]).copy()
+    state.substitute = None if rejected_proof == "password" else rejected_proof
+    response = await client.post(
+        "/api/v1/auth/personal-project/recovery",
+        json={"username": "ordinary", "password": "incorrect" if rejected_proof == "password" else "valid"},
+    )
+    assert response.status_code == status, response.text
+    assert state.native_requests == [("POST", "/v3/auth/tokens")]
+    assert not any(p.domain_id == "personal" for p in state.project_rows.values())
+    assert vars(state.user_rows["ordinary"]) == original
+    state.substitute = None
+    recovered = await client.post(
+        "/api/v1/auth/personal-project/recovery",
+        json={"username": "ordinary", "password": "valid"},
+    )
+    assert recovered.status_code == 200, recovered.text
+    primary = account_spaces.personal_project("ordinary", ks=state)
+    assert recovered.json()["project_id"] == primary["id"]
+    assert recovered.json()["identity_domain_id"] == "account"
+    again = await client.post(
+        "/api/v1/auth/personal-project/recovery",
+        json={"username": "ordinary", "password": "valid"},
+    )
+    assert again.status_code == 200 and again.json()["project_id"] == primary["id"]
+    assert len([p for p in state.project_rows.values() if p.domain_id == "personal"]) == 1
+    assert vars(state.user_rows["ordinary"]) == original

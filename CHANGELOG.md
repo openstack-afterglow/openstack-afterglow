@@ -7,6 +7,61 @@
 
 ## [Unreleased]
 
+### 프로젝트 없는 관리자 로그인 (local source, not deployed)
+- Accounts 시스템 관리자의 프로젝트 미선택·서버 목록에 있는 작업 도메인 응답을 frontend가 잘못 거부하고 즉시 로그아웃하던 문제를 수정합니다. 일반 사용자의 personal landing 및 foreign/invisible/project-scoped 응답 거부는 유지합니다. 운영 IAM·DB·실행 이미지는 변경하지 않았습니다.
+
+### 첫 로그인 개인 프로젝트·프로필 사진 (local source, not deployed)
+- 관리자 생성은 Accounts identity만 활성화하고 개인 프로젝트는 첫 성공한 로그인에서 준비합니다. 같은 durable intent/name·동결 quota로 안전한 단계를 재개하며 비밀번호를 새로 증명하는 복구 경로를 제공합니다. 불명 create/grant/quota/activation은 자동 재전송하지 않고 기존 system-admin settlement 뒤에만 재시작합니다. 기존 계정/home/비밀번호/리소스를 초기화하지 않습니다.
+- Personal의 native `member`만 유지하고 primary/추가 프로젝트의 다른 역할 추가·필수 member 회수를 막습니다. 네 native 서비스가 fresh personal-owner provenance를 자기 oslo.policy에서 평가해 프로젝트 작업을 허용하며 operator deny·원본 scope·key/reduced/provider ceiling·시스템 권한은 유지합니다. Hub의 소유 프로젝트 package metadata 삭제와 global CAS/GC/build는 구분합니다.
+- 사용자 페이지에 이메일 기반 Gravatar 기본값·생성형 아바타·정지 이미지 업로드를 추가하고 우측 상단 ID 표시를 같은 프로필 사진으로 바꿉니다. Native image-key-only bounded writer·정규화 raster·metadata/용량 제한과 session/ABA fence를 적용하며 아홉 locale과 CSP를 동기화합니다.
+- Accounts 로그인401은 native password-exchange 단계의 거절입니다. Read-only 운영 계정/비밀번호 존재·만료/잠금 metadata 및 실제 SDK Accounts UUID 요청을 확인했으나 당시 비밀번호의 유효성은 확인할 수 없어 임의 비밀번호 변경·외부 home fallback을 하지 않았습니다. 로컬 검증과 운영 미수용 범위는 `docs/testing.md`에 기록합니다.
+
+### 운영자 생성 Accounts·Personal 사용 및 Accounts 로그인 (local source, not deployed)
+- 기본 identity/project domain은 CLI로 준비한 native `Accounts`/`Personal`을 정확한 이름으로 조회해 사용하며 shared domain을 자동 생성하지 않습니다. 관리 속성이 없는 운영자 domain도 허용하되 disabled·모호함·명시적 kind 충돌은 차단합니다. 환경별 UUID를 코드에 고정하지 않습니다.
+- 비밀번호 로그인은 Accounts 안에서만 계정을 선택하고 해당 UUID로 native 인증합니다. 다른 home의 기존 계정은 자동 이동하거나 fallback하지 않습니다. 웹 조직의 opaque native 이름·중복 가능한 표시 이름·UUID 격리는 유지합니다.
+
+### 신규 계정 accounts 전용·personal member 권한 (local source, not deployed)
+- 공개 가입·관리자 생성·OIDC/GitHub·새 초대 계정은 `accounts`에 identity만 생성하고 `personal`에 정규화 이름+하이픈+임의 소문자8자+숫자8자리 프로젝트를 만듭니다. 새 개인 프로젝트의 직접 native role은 `member` 하나이며 owner/reader·Default·domain manager는 자동 부여하지 않습니다.
+- 관리자 생성의 선택 도메인은 관측 context일 뿐 조직 가입 대상이 아닙니다. 안내·결과에서 선택 도메인 Default 읽기 참여를 제거하고 아홉 locale에 실제 생성 계약을 표시합니다. 명시 초대와 신뢰된 OIDC의 조직 Default reader는 별도 admission으로 유지합니다.
+- Primary 조회·workspace·scope·quota 활성화·불명 write recovery를 member provenance에 맞추고 필수 primary member 회수를 차단합니다. 기존 identity/password/federation tuple·owner 기반 personal grant와 singular account journal은 자동 이관하지 않습니다. 운영 Keystone/DB/배포는 변경하지 않았으며 검증 증거는 `docs/testing.md`에 기록합니다.
+
+### 태블릿·모바일 테이블의 간결한 카드 전환 (local source, not deployed)
+- 사용자·관리자 데이터 테이블과 모달/상세·wizard·chart 원본 표를 공용 `ResponsiveTable`로 viewport1024px 미만에서 compact 카드로 전환한다. Desktop은 기존 table을 유지하며 narrow sidebar/modal 자체의 폭으로 전환하지 않는다.
+- `CompactResourceCard`는 이름·상태·주요2–3정보를 우선하고 UUID·시각·추가 사양은 native 상세 disclosure/기존 상세 화면에 보존한다. 전체 선택·행 선택·작업·정렬·필터·페이지·inline 편집을 유지하며 카드 중복 mount나 breakpoint 전환 요청은 추가하지 않는다. 새 disclosure label은9locale에 제공하며 source 검증과 배포 여부는 `docs/testing.md`에 구분한다.
+
+### 서비스별 OpenStack policy.yaml 인가 (local source, not deployed)
+- Lumen·Drover·Waygate·Palimpsest의 실제 `oslo.policy.Enforcer` 등록 action과 운영자 `policy.yaml`/`policy.d`가 서비스 권한을 평가한다. 기존 grade·세부 role 이름과 ID는 유지하며 서비스 grade를 token·위임 자격 증명의 세부 role 목록으로 합성하지 않는다. 표준 sample generator와 서비스 TOML/environment·API/worker read-only policy directory 경로를 제공한다.
+- Afterglow는 원래 native credential을 전달하고 native capability를 UI·MCP·inventory에 사용한다. 정책 조회 장애와 정상 빈 권한을 구분하며 서비스 policy 변경을 role-only inventory cache가 가리지 않는다. Project/user ownership·원본 scope·key ceiling·machine/system-only·provider 실행 경계는 YAML 허용과 별개로 유지한다.
+- 관리자 preset의 명시적 미리보기·적용은 이전 preset이 만든 정확한 서비스 inference edge만 제거한다. 기존 role ID·직접 grant·프로젝트/custom edge·로그인을 보존하며 로그인/조회/startup에서 운영 IAM을 자동 변경하지 않는다. Native 정책 지원을 먼저 배포하는 cutover 순서와 기존 운영자 파일·비밀 권한 보존을 문서화한다.
+- Drover는 provider 위임에 필요한 최소 native role을 서비스 role과 분리한다. 실제 template의 Ubuntu/FCOS user-data 크기 증거와 운영 Nova/guest 수용은 구분하며, 이번 source 변경만으로 사용자 보고 VM 크기 오류의 운영 해결을 주장하지 않는다. 검증 결과와 한계는 `docs/testing.md`를 따른다.
+
+### 인스턴스 리사이즈 창 가로 넘침 수정 (local source, not deployed)
+- 공용 사용자·관리자 리사이즈 패널의 중복 좌우 margin을 제거하고 viewport 안의28rem 제한으로 맞춘다. 긴 플레이버 선택지와 오류 문구가 창 폭을 늘리지 않으며 기존 SHUTOFF UI·quota·확인/되돌리기 동작은 유지한다.
+- Nova2.47+ 내장 플레이버의 이름을 SDK 가상ID로 오인해 현재 플레이버 확인409가 발생하던 경로를 수정한다. 인스턴스에 보존된 CPU/RAM/disk/extra_specs로 resize 증분을 계산하며 삭제·비공개·이름 변경·catalog 사양 변경에도 기존 할당을 보존한다. 동일 플레이버·디스크 축소·quota 검증과 관리자 native 동작은 유지한다.
+
+### 인스턴스 이름·관리자 도메인 필터·빠른 리소스 선택 (local source, not deployed)
+- 관리자·사용자 공용 상세에서 인스턴스 표시 이름을 변경한다. 전원 상태와 무관하며 native name-only update 뒤 실제 ID/이름/소유 프로젝트를 확인하고 목록·상세 cache를 무효화한다. 사용자 경로의 실제 project ownership/write와 관리자 경로의 fresh admin을 분리하며 guest hostname은 바꾸지 않는다. 기존 SHUTOFF 전용 리사이즈는 변경하지 않는다.
+- 관리자 인스턴스·볼륨·네트워크/서브넷·DB·컨테이너·파일/오브젝트 스토리지·이미지·LB·secret quota·이벤트/통계 등에 독립적인 도메인·프로젝트 AND 조건을 적용한다. Fresh native project UUID로 pagination/aggregate 전에 제한하고 active workspace는 유지한다. Quota·flavor 접근·공지 recipients·port/volume 대상 picker도 일관되게 제한하며 기존 필수 identity-domain 경계를 보존한다.
+- 프로젝트 귀속 없는 cluster history와 topology traffic은 scoped UI에서 불가 안내로 구분한다. Lumen 통계는 별도 dev native source에서 SQL domain union을 적용해 distinct 사용자/대화 수와 paging을 보존한다. Canonical Lumen release checkout은 변경하지 않는다.
+- Workspace chooser와 관리자 project metadata의 성공 읽기를30초 메모리 cache/single-flight로 재사용한다. Explicit refresh·생성 후 갱신은 우회하며 logout/login·scope·authority ABA는 무효화한다. Display cache로 native 권한을 대체하거나 불명확한 mutation을 재전송하지 않는다. 검증 범위와 운영 미반영 경계는 `docs/testing.md`를 따른다.
+
+### Account·personal·organization 분리 (local source, not deployed)
+- 신규 이메일·초대·system-admin·외부 공급자 human을 공유 accounts identity domain에 만들고 공유 personal의 username+암호학적 임의 문자·숫자 프로젝트를 제공합니다. 기존 계정 ID/home·비밀번호·federation·조직 grant·리소스는 이동하거나 복제하지 않습니다. 기존 일반 human은 검증된 로그인에서 personal primary만 지연 준비하며 service/bootstrap은 자동 provisioning하지 않습니다.
+- Personal은 본인 직접 member·전체 native provenance·동결 project quota readback 뒤 활성화합니다. Domain manager/Default/상속 projection/aggregate budget 없이 본인 프로젝트만 열거하고 primary rename/disable/delete·foreign membership을 차단합니다. 새 프로젝트 이름은 서버가 native64자 이내로 생성합니다. 기존 owner/reader 기반 personal grant는 보존합니다.
+- 새 로그인은 원래 identity home과 별개로 personal primary에 진입하고 기존 shared chooser로 접근 가능한 조직을 명시 선택합니다. 가입의 personal_domain_name 입력과 manager 직접 계정 생성 UI/API를 제거하고 아홉 locale의 실제 개인 프로젝트 결과·자동 이름 안내를 동기화합니다.
+- 조직 생성 정책을 공개 signup과 분리하고 trusted OIDC issuer+stable organization ID binding·명시 manager-subject bootstrap·additive reader admission을 추가합니다. Provider origin만으로 조직에 참여시키지 않으며 generic role/group/membership 우회를 닫고 callback/refresh/scope에서 현재 binding·조직 membership을 재검사합니다.
+- Migration099/100과 shared/personal/org durable intent를 추가합니다. Unknown native 결과는 재전송하지 않고 exact system-admin settlement와 owned-empty 개인 project의 제한적 복구만 허용합니다. 구형 enrollment writer drain·선행 schema·기존 설정/key/native 정책 보존이 cutover 전제조건이며 운영 migration·배포·실제 mailbox/IdP/Keystone 수용을 수행하지 않았습니다.
+- Native SDK domain object의 external-account ID readback을 바로잡고, 본인 비밀번호 재인증은 identity-only account에서 unscoped 증명을 사용하도록 전환했습니다. 계정 소속·개인 프로젝트를 유지하면서 이전 비밀번호 거부와 새 비밀번호 재로그인을 검증합니다. 시작 가이드의 실제 personal-first 절차도 아홉 언어에 반영했습니다.
+
+### 상단 바 반응형 겹침 수정 (local source)
+- 검색창의 absolute 중앙 배치를 제거하고 좌측 컨텍스트·우측 컨트롤 사이의 남는 공간에서 최대24rem까지 유동 배치한다. Cloud Shell·모드·언어 버튼 너비가 검색창에 반영된다.
+- 모바일 프로젝트 선택은 전역 메뉴에서 제공하고640px 미만에서는 Docs도 메뉴로 이동한다. 상단 간격을 줄여320px에서도 유틸리티 버튼이 화면 밖으로 밀리지 않는다.
+- 실제 Chromium의15개 너비와9언어×2테마×7너비126조건에서 상단 컨트롤 겹침·화면 이탈0을 확인했다. 운영 서비스 배포는 하지 않았다.
+
+### 언어 변경 버튼 지구본 통일 (local source)
+- 공통 LocaleSelect의 compact·labelled 형식에 같은 지구본 아이콘을 표시한다. 로그인·SSO·회원가입·계정 찾기·문서·랜딩·사용자/관리자 콘솔 전체에 적용하며 언어 전환·키보드·접근성 이름은 유지한다.
+- 실제 Chromium에서7개 화면의3개 viewport·2개 theme42조건과320px의9개 언어 표시, 앱·문서 언어 전환을 확인했다. 사용자 실행 서비스·인증·운영 배포는 변경하지 않았다.
+
 ### 실제 로컬 dev 언어 지원 동기화 (2026-10-19, local only)
 - 원격 dev의 아홉 언어 병합과 별개로 남아 있던 실제 로컬 dev·불변 frontend image 차이를 해소한다. `aac6b9c5`의 미커밋 공개 작업을 보존한 격리 snapshot과 `3c9af255` 사이124개 충돌을 의미 단위로 통합하며 사용자 작업은 새 commit/push에 포함하지 않는다.
 - 새 다섯 언어에 빠진 기존 WIP namespace·문구와 엄격한 문서 dictionary를 동기화한다. 문서의 missing translation500과 incidental chart CSS selector 회귀, config-owned Kolla proxy trust 통합 오류를 실제 검증에서 찾아 수정했다. Native-speaker reviewed 상태로 승격하지 않는다.

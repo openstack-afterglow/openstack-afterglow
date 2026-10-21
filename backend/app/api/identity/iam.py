@@ -41,16 +41,6 @@ class StrictBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class CreateUser(StrictBody):
-    name: str = Field(min_length=1, max_length=255, pattern=r"^\S(?:.*\S)?$")
-    personal_domain_name: str = Field(min_length=1, max_length=64, pattern=r"^\S(?:.*\S)?$")
-    email: str = Field(min_length=3, max_length=255)
-    password: str = Field(min_length=12, max_length=1024)
-    enabled: bool = True
-    project_id: str | None = None
-    role_ids: list[str] = Field(default_factory=list, max_length=256)
-
-
 class UpdateUser(StrictBody):
     name: str | None = Field(default=None, min_length=1, max_length=255, pattern=r"^\S(?:.*\S)?$")
     email: str | None = Field(default=None, min_length=3, max_length=255)
@@ -76,17 +66,6 @@ async def get_context(token_info: dict = Depends(require_domain_manager)):
 @router.get("/users")
 async def users(token_info: dict = Depends(require_domain_manager)):
     return await domain_iam.list_resources("users", token_info)
-
-
-@router.post("/users", status_code=201)
-@limiter.limit("20/minute")
-async def create_user(
-    request: Request,
-    req: CreateUser,
-    token_info: dict = Depends(require_domain_manager),
-    session: AsyncSession = Depends(get_session),
-):
-    return await domain_iam.create_user(req.model_dump(), token_info, session)
 
 
 @router.patch("/users/{user_id}")

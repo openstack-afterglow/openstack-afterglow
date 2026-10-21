@@ -4,6 +4,9 @@
   import Button from '$lib/components/ui/Button.svelte';
   import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import { formatStorage } from '$lib/utils/format';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+  import StatusChip from '$lib/components/ui/StatusChip.svelte';
 
   const s = useVolumeDetailController();
 </script>
@@ -44,6 +47,24 @@
   {#if s.snapshots.length === 0}
     <p class="text-xs text-ink-2">{t('snapshotsSection.empty')}</p>
   {:else}
+    <ResponsiveTable>
+      {#snippet cards()}
+        {#each s.snapshots as snap (snap.id)}
+          <CompactResourceCard>
+            <div class="flex items-start justify-between gap-2 min-w-0">
+              <span class="min-w-0 font-medium break-all">{snap.name || snap.id.slice(0, 8)}</span>
+              <StatusChip status={snap.status} />
+            </div>
+            <dl><div><dt>{t('snapshotsTable.size')}</dt><dd>{formatStorage(snap.size)}</dd></div></dl>
+            {#snippet details()}<p class="font-mono break-all">{snap.id}</p>{/snippet}
+            {#snippet actions()}
+              <Button variant="danger-outline" size="sm" onclick={() => s.deleteSnapshot(snap.id, snap.name)} disabled={s.deletingSnapshot === snap.id}>
+                {#if s.deletingSnapshot === snap.id}<ActivityIndicator size="xs" tone="danger" />{t('snapshotListTable.deleting')}{:else}{t('snapshotsSection.delete')}{/if}
+              </Button>
+            {/snippet}
+          </CompactResourceCard>
+        {/each}
+      {/snippet}
     <div class="space-y-1">
       {#each s.snapshots as snap}
         <div class="bg-surface-base rounded-lg border border-line-2 px-3 py-2 flex items-center justify-between text-xs">
@@ -60,5 +81,6 @@
         </div>
       {/each}
     </div>
+    </ResponsiveTable>
   {/if}
 </div>

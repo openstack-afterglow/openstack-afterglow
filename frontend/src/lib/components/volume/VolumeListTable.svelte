@@ -7,6 +7,8 @@
 	import VolumeOperationItems from '$lib/components/volume/VolumeOperationItems.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	let {
 		volumes,
 		selectedVolumeId,
@@ -59,6 +61,66 @@
 	const selectedSelectableCount = $derived([...selectedIds].filter((id) => selectableIds.has(id)).length);
 </script>
 
+{#snippet volumeActions(vol: Volume)}
+	<ActionMenu
+		open={openActionMenu === vol.id}
+		ariaLabel={t('listTable.volumeActions', { name: vol.name || vol.id })}
+		onopen={() => onActionMenuOpen(vol.id)}
+		onclose={onActionMenuClose}
+	>
+		<button
+			onclick={() => { onActionMenuClose(); onOpenDetail(vol.id); }}
+			class="w-full text-left px-3 py-1.5 text-[13px] text-ink-2 hover:text-ink-0 hover:bg-surface-sunken transition-colors flex items-center gap-2"
+		>
+			<svg class="w-3.5 h-3.5 text-warm-text" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+			{t('listTable.attach')}
+		</button>
+		<VolumeOperationItems
+			volume={vol}
+			onclose={onActionMenuClose}
+			{onRename} {onBoot} {onExtend} {onBackup} {onSnapshot}
+			onTransfer={(v) => onTransfer(v.id, v.name)}
+			onForceDelete={(v) => onForceDelete(v.id, v.name)}
+			onDelete={(v) => onDelete(v.id, v.name)}
+			{volumeSnapshotsEnabled} {isSystemAdmin}
+			deleting={deleting === vol.id}
+			{selectionDisabled}
+		/>
+	</ActionMenu>
+{/snippet}
+
+<ResponsiveTable>
+	{#snippet cards()}
+		<div class="responsive-card-toolbar">
+			<SelectionCheckbox checked={selectableIds.size > 0 && selectedSelectableCount === selectableIds.size} indeterminate={selectedSelectableCount > 0 && selectedSelectableCount < selectableIds.size} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel={t('listTable.selectAll')} />
+			<span class="text-xs text-ink-2">{t('listTable.selectAll')}</span>
+		</div>
+		{#each volumes as vol (vol.id)}
+			<CompactResourceCard selected={selectedIds.has(vol.id)} class={selectedVolumeId === vol.id ? 'ring-1 ring-line-2' : ''}>
+				<div class="flex items-start gap-2 min-w-0">
+					<SelectionCheckbox checked={selectedIds.has(vol.id)} disabled={selectionDisabled || !selectableIds.has(vol.id)} unavailable={!selectableIds.has(vol.id)} ariaLabel={t('listTable.selectVolume', { name: vol.name || vol.id.slice(0, 8) })} title={vol.attachments.length > 0 ? t('listTable.attachedDeleteUnavailable') : undefined} onclick={() => onToggleSelect(vol.id)} />
+					<button type="button" onclick={() => onOpenDetail(vol.id)} class="min-w-0 flex-1 min-h-11 text-left font-medium text-ink-0 hover:text-warm-text-hover break-all">{vol.name || vol.id}</button>
+					<StatusChip status={vol.status} />
+				</div>
+				{#if deleting === vol.id}<span class="inline-flex items-center gap-1 text-xs text-state-danger-text"><ActivityIndicator size="xs" tone="danger" />{t('operationItems.deleting')}</span>{/if}
+				<dl>
+					<div><dt>{t('listTable.size')}</dt><dd>{formatStorage(vol.size)}</dd></div>
+					<div><dt>{t('listTable.type')}</dt><dd>{vol.volume_type ?? t('listTable.defaultType')}</dd></div>
+					<div><dt>{t('listTable.attachments')}</dt><dd>{vol.attachments.length > 0 ? t('listTable.attachmentCount', { count: vol.attachments.length }) : t('listTable.unattached')}</dd></div>
+				</dl>
+				{#snippet details()}
+					<p class="font-mono break-all">{vol.id}</p>
+					{#if vol.bootable}
+						<p>{t('listTable.boot')}{#if vol.volume_image_metadata?.os_distro} · {vol.volume_image_metadata.os_distro}{vol.volume_image_metadata.os_version ? ' ' + vol.volume_image_metadata.os_version : ''}{/if}</p>
+					{/if}
+				{/snippet}
+				{#snippet actions()}
+					<a href={`/dashboard/volumes/backups?auto-backup=${encodeURIComponent(vol.id)}`} class="inline-flex items-center min-h-11 text-xs text-warm-text hover:text-warm-text-hover">{t('autoPolicy.settings')}</a>
+					{@render volumeActions(vol)}
+				{/snippet}
+			</CompactResourceCard>
+		{/each}
+	{/snippet}
 <div class="motion-stagger bg-[#0B1220] border border-line rounded-lg overflow-hidden">
 	<div class="{volumeGridClass} px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
 		<div><SelectionCheckbox checked={selectableIds.size > 0 && selectedSelectableCount === selectableIds.size} indeterminate={selectedSelectableCount > 0 && selectedSelectableCount < selectableIds.size} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel={t('listTable.selectAll')} /></div>
@@ -143,37 +205,9 @@
 			</div>
 			<!-- 액션 드롭다운 -->
 			<div class="flex justify-end" role="none">
-				<ActionMenu
-					open={openActionMenu === vol.id}
-					ariaLabel={t('listTable.volumeActions', { name: vol.name || vol.id })}
-					onopen={() => onActionMenuOpen(vol.id)}
-					onclose={onActionMenuClose}
-				>
-					<button
-						onclick={() => { onActionMenuClose(); onOpenDetail(vol.id); }}
-						class="w-full text-left px-3 py-1.5 text-[13px] text-ink-2 hover:text-ink-0 hover:bg-surface-sunken transition-colors flex items-center gap-2"
-					>
-						<svg class="w-3.5 h-3.5 text-warm-text" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-						{t('listTable.attach')}
-					</button>
-					<VolumeOperationItems
-						volume={vol}
-						onclose={onActionMenuClose}
-						{onRename}
-						{onBoot}
-						{onExtend}
-						{onBackup}
-						{onSnapshot}
-						onTransfer={(v) => onTransfer(v.id, v.name)}
-						onForceDelete={(v) => onForceDelete(v.id, v.name)}
-						onDelete={(v) => onDelete(v.id, v.name)}
-						{volumeSnapshotsEnabled}
-						{isSystemAdmin}
-						deleting={deleting === vol.id}
-						{selectionDisabled}
-					/>
-				</ActionMenu>
+				{@render volumeActions(vol)}
 			</div>
 		</div>
 	{/each}
 </div>
+</ResponsiveTable>

@@ -63,7 +63,9 @@ def resolve_domain(name_or_id: str, *, operation=None) -> dict:
     if operation is not None:
         # Aliases have their own resolution key; only canonical IDs seed exact reads.
         operation.read((id(ks.domains), did), lambda: domain)
-    return {"id": did, "name": name, "enabled": True}
+    from app.services.account_spaces import domain_kind
+
+    return {"id": did, "name": name, "enabled": True, "kind": domain_kind(domain)}
 
 
 def assert_domain_resource(domain_id: str, resource_domain_id: str) -> None:
@@ -203,6 +205,8 @@ def domain_context(user_id: str, domain_id: str, *, operation=None) -> dict:
     domain = resolve_domain(domain_id, operation=operation)
     # Context arguments must be canonical IDs, not an alias accepted by resolve.
     assert_domain_resource(domain_id, domain["id"])
+    if domain.get("kind") == "account":
+        raise HTTPException(403, "account_domain_is_identity_only")
     try:
         user = keystone.get_identity_user(user_id, **({"operation": operation} if operation is not None else {}))
     except (Unauthorized, NotFound, ClientNotFound) as exc:
@@ -223,6 +227,7 @@ def domain_context(user_id: str, domain_id: str, *, operation=None) -> dict:
         "identity_domain_name": identity_domain["name"],
         "domain_id": domain["id"],
         "domain_name": domain["name"],
+        "domain_kind": domain.get("kind", "legacy"),
         "is_domain_manager": domain_projects.has_manager(user_id, domain["id"], **context),
     }
 

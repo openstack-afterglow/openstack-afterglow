@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from httpx import ASGITransport, AsyncClient
 
@@ -22,6 +22,10 @@ _BROWSER_HEADERS = {"Origin": "https://app.example.test", "Sec-Fetch-Site": "sam
 def cloud_app(monkeypatch):
     app = FastAPI()
     app.include_router(proxy_module.router, prefix="/api/v1/chat")
+    app.state.cloud_token_roles = ["member"]
+    current_access = AsyncMock(return_value={"roles": ["member"], "is_manager": False})
+    app.state.cloud_access = current_access
+    monkeypatch.setattr("app.services.project_service.get_project_access", current_access)
 
     async def token_info(request: Request):
         info = {
@@ -29,7 +33,7 @@ def cloud_app(monkeypatch):
             "project_id": "project-a",
             "project_name": "Project A",
             "token": "synthetic-caller-token",
-            "roles": ["member"],
+            "roles": app.state.cloud_token_roles,
         }
         request.state.token_info = info
         return info
@@ -50,9 +54,9 @@ def cloud_app(monkeypatch):
 
 @pytest.fixture
 def cloud_permission(monkeypatch):
-    current = AsyncMock(return_value={"roles": ["member", "lumen-tools_user"], "is_manager": False})
-    monkeypatch.setattr("app.services.project_service.get_project_access", current)
-    return current
+    native = AsyncMock(return_value={"service": "lumen", "capabilities": ["lumen-tools_user"], "actions": []})
+    monkeypatch.setattr(proxy_module, "get_policy_capabilities", native)
+    return native
 
 
 @pytest.fixture
@@ -112,33 +116,86 @@ def _assert_secret_free(response):
 
 
 @pytest.mark.asyncio
-async def test_cloud_catalogue_requires_current_tool_permission_not_token_member(cloud_app, monkeypatch):
-    current = AsyncMock(return_value={"roles": ["member", "lumen-chat_user"], "is_manager": False})
-    monkeypatch.setattr("app.services.project_service.get_project_access", current)
-    storage = AsyncMock()
-    monkeypatch.setattr(lumen, "selected_lumen_snapshot", storage)
+@pytest.mark.parametrize("roles", [["member"], ["lumen-user"], ["lumen-tools_user"]])
+async def test_cloud_catalogue_requires_native_tool_permission_not_token_roles(
+    cloud_app, cloud_permission, cloud_delegation, roles
+):
+    cloud_app.state.cloud_token_roles = roles
+    cloud_app.state.cloud_access.return_value = {"roles": roles, "is_manager": False}
+    cloud_permission.return_value = {"service": "lumen", "capabilities": ["lumen-chat_user"], "actions": []}
     async with AsyncClient(transport=ASGITransport(app=cloud_app), base_url="http://test") as client:
         denied = await client.get("/api/v1/chat/cloud-tools")
     assert denied.status_code == 403
-    storage.assert_not_awaited()
+    assert "lumen-tools_user" in denied.json()["detail"]
+    cloud_permission.assert_awaited_once()
+    service, principal = cloud_permission.await_args.args
+    assert service == "lumen"
+    assert principal["token"] == "synthetic-caller-token"
+    assert principal["user_id"] == "user-a"
+    assert principal["project_id"] == "project-a"
+    cloud_delegation.selected.assert_not_awaited()
+    cloud_delegation.approve.assert_not_awaited()
+    cloud_delegation.disable.assert_not_awaited()
+    cloud_delegation.create_credentials.assert_not_awaited()
     _assert_no_store(denied)
+    _assert_secret_free(denied)
 
 
 @pytest.mark.asyncio
-async def test_cloud_authority_outage_does_not_claim_available_catalogue(cloud_app, monkeypatch):
-    monkeypatch.setattr(
-        "app.services.project_service.get_project_access",
-        AsyncMock(return_value={"roles": ["member", "lumen-tools_user"], "is_manager": False}),
-    )
-    monkeypatch.setattr(
-        lumen,
-        "selected_lumen_snapshot",
-        AsyncMock(side_effect=lumen.McpLumenAuthorityError("synthetic-application-secret")),
-    )
+@pytest.mark.parametrize("method", ["GET", "POST", "DELETE"])
+async def test_cloud_tools_require_current_membership_even_when_native_policy_allows(
+    cloud_app, cloud_permission, cloud_delegation, method
+):
+    cloud_app.state.cloud_token_roles = ["member", "lumen-tools_user"]
+    cloud_app.state.cloud_access.return_value = {"roles": [], "is_manager": False}
+    async with AsyncClient(transport=ASGITransport(app=cloud_app), base_url="http://test") as client:
+        response = await client.request(
+            method, _PATH, json={"access_level": "read"} if method == "POST" else None, headers=_BROWSER_HEADERS
+        )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Current project membership is required"
+    cloud_permission.assert_not_awaited()
+    cloud_delegation.selected.assert_not_awaited()
+    cloud_delegation.approve.assert_not_awaited()
+    cloud_delegation.disable.assert_not_awaited()
+    cloud_delegation.create_credentials.assert_not_awaited()
+    _assert_no_store(response)
+    _assert_secret_free(response)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["GET", "POST", "DELETE"])
+async def test_native_policy_outage_never_falls_back_to_token_roles_or_cloud_selection(
+    cloud_app, cloud_permission, cloud_delegation, method
+):
+    cloud_app.state.cloud_token_roles = ["member", "lumen-tools_user"]
+    cloud_permission.side_effect = HTTPException(status_code=503, detail="Native service policy is unavailable")
+    async with AsyncClient(transport=ASGITransport(app=cloud_app), base_url="http://test") as client:
+        response = await client.request(
+            method, _PATH, json={"access_level": "manage"} if method == "POST" else None, headers=_BROWSER_HEADERS
+        )
+    assert response.status_code == 503
+    assert "enabled" not in response.json()
+    cloud_permission.assert_awaited_once()
+    cloud_delegation.selected.assert_not_awaited()
+    cloud_delegation.approve.assert_not_awaited()
+    cloud_delegation.disable.assert_not_awaited()
+    cloud_delegation.create_credentials.assert_not_awaited()
+    _assert_no_store(response)
+    _assert_secret_free(response)
+
+
+@pytest.mark.asyncio
+async def test_cloud_authority_outage_does_not_claim_available_catalogue(cloud_app, cloud_permission, cloud_delegation):
+    cloud_delegation.selected.side_effect = lumen.McpLumenAuthorityError("synthetic-application-secret")
     async with AsyncClient(transport=ASGITransport(app=cloud_app), base_url="http://test") as client:
         unavailable = await client.get("/api/v1/chat/cloud-tools")
     assert unavailable.status_code == 503
     assert "enabled" not in unavailable.json()
+    cloud_delegation.selected.assert_awaited_once_with(user_id="user-a", project_id="project-a")
+    cloud_delegation.approve.assert_not_awaited()
+    cloud_delegation.disable.assert_not_awaited()
+    cloud_delegation.create_credentials.assert_not_awaited()
     _assert_no_store(unavailable)
     _assert_secret_free(unavailable)
 
@@ -199,13 +256,21 @@ async def test_cloud_catalogue_rejects_selection_changed_during_discovery(
 ):
     catalogue = _selected_catalogue(monkeypatch)
     cloud_delegation.selected.return_value = catalogue.snapshot
-    monkeypatch.setattr(
-        lumen, boundary, AsyncMock(side_effect=lumen.McpLumenAuthorityError("synthetic-application-secret"))
-    )
+    changed_selection = AsyncMock(side_effect=lumen.McpLumenAuthorityError("synthetic-application-secret"))
+    monkeypatch.setattr(lumen, boundary, changed_selection)
     async with AsyncClient(transport=ASGITransport(app=cloud_app), base_url="http://test") as client:
         response = await client.get(_PATH)
     assert response.status_code == 503
     assert "enabled" not in response.json()
+    changed_selection.assert_awaited_once_with(catalogue.snapshot)
+    cloud_delegation.selected.assert_awaited_once_with(user_id="user-a", project_id="project-a")
+    if boundary == "resolve_lumen_principal":
+        catalogue.describe.assert_not_awaited()
+    else:
+        catalogue.resolve.assert_awaited_once_with(catalogue.snapshot)
+    cloud_delegation.approve.assert_not_awaited()
+    cloud_delegation.disable.assert_not_awaited()
+    cloud_delegation.create_credentials.assert_not_awaited()
     _assert_no_store(response)
     _assert_secret_free(response)
 
@@ -236,31 +301,28 @@ async def test_cloud_catalogue_reports_unavailable_without_loading_selection(
     "path",
     ["temp-completions", "conversations/conversation-a/completions", "conversations/conversation-a/regenerate"],
 )
-async def test_native_chat_never_creates_cloud_credential(cloud_app, cloud_delegation, monkeypatch, allowed, path):
-    roles = ["member", "lumen-chat_user", "lumen-history_reader"]
-    if allowed:
-        roles.append("lumen-tools_user")
-    monkeypatch.setattr(
-        "app.services.project_service.get_project_access",
-        AsyncMock(return_value={"roles": roles, "is_manager": False}),
-    )
+async def test_native_chat_preserves_native_policy_decision_without_creating_cloud_credential(
+    cloud_app, cloud_delegation, monkeypatch, allowed, path
+):
+    # The action handler, not a BFF role/route table, owns current native policy
+    # and reduced-credential ceilings. Both decisions use the same caller roles.
+    native_body = {"accepted": True} if allowed else {"detail": "Native tool policy denied"}
+    native_status = 202 if allowed else 403
     monkeypatch.setattr(service_proxy, "_get_internal_endpoint", lambda *args: "http://lumen.example.test")
-    forwarded = AsyncMock(return_value=JSONResponse({"accepted": True}, status_code=202))
+    forwarded = AsyncMock(return_value=JSONResponse(native_body, status_code=native_status))
     monkeypatch.setattr(service_proxy, "_forward", forwarded)
     async with AsyncClient(transport=ASGITransport(app=cloud_app), base_url="http://test") as client:
         response = await client.post(
             f"/api/v1/chat/{path}", json={"features": {"tool_policy": {"mode": "agent_default"}}}
         )
-    assert response.status_code == (202 if allowed else 403)
-    if allowed:
-        forwarded.assert_awaited_once()
-        args, kwargs = forwarded.await_args
-        assert args[0] == "lumen"
-        assert args[2] == f"/v1/{path}"
-        assert kwargs["headers"]["x-auth-token"] == "synthetic-caller-token"
-        assert kwargs["headers"]["x-project-id"] == "project-a"
-    else:
-        forwarded.assert_not_awaited()
+    assert response.status_code == native_status
+    assert response.json() == native_body
+    forwarded.assert_awaited_once()
+    args, kwargs = forwarded.await_args
+    assert args[0] == "lumen"
+    assert args[2] == f"/v1/{path}"
+    assert kwargs["headers"]["x-auth-token"] == "synthetic-caller-token"
+    assert kwargs["headers"]["x-project-id"] == "project-a"
     cloud_delegation.selected.assert_not_awaited()
     cloud_delegation.approve.assert_not_awaited()
     cloud_delegation.disable.assert_not_awaited()
@@ -288,6 +350,7 @@ async def test_explicit_cloud_approval_and_disable_route_shared_delegation(
         before = await client.get(_PATH)
         approved = await client.post(_PATH, json={"access_level": access_level}, headers=_BROWSER_HEADERS)
         disabled = await client.delete(_PATH, headers=_BROWSER_HEADERS)
+    assert before.status_code == 200
     assert before.json()["enabled"] is False
     assert approved.status_code == 200
     assert approved.json()["enabled"] is True
@@ -342,16 +405,18 @@ async def test_cloud_mutations_require_same_site_browser(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method", ["POST", "DELETE"])
 async def test_cloud_mutations_require_current_tool_permission(cloud_app, cloud_permission, cloud_delegation, method):
-    cloud_permission.return_value = {"roles": ["member", "lumen-chat_user"], "is_manager": False}
+    cloud_permission.return_value = {"service": "lumen", "capabilities": ["lumen-chat_user"], "actions": []}
     async with AsyncClient(transport=ASGITransport(app=cloud_app), base_url="http://test") as client:
         response = await client.request(
             method, _PATH, json={"access_level": "read"} if method == "POST" else None, headers=_BROWSER_HEADERS
         )
     assert response.status_code == 403
-    cloud_permission.assert_awaited_once_with("project-a", "user-a")
+    assert "lumen-tools_user" in response.json()["detail"]
+    cloud_permission.assert_awaited_once()
     cloud_delegation.approve.assert_not_awaited()
     cloud_delegation.disable.assert_not_awaited()
     cloud_delegation.selected.assert_not_awaited()
+    cloud_delegation.create_credentials.assert_not_awaited()
     _assert_no_store(response)
 
 
@@ -408,6 +473,14 @@ async def test_cloud_mutation_errors_are_safe_and_state_conflicts_are_409(
             method, _PATH, json={"access_level": "manage"} if method == "POST" else None, headers=_BROWSER_HEADERS
         )
     assert response.status_code == expected
+    assert (
+        response.json()["detail"]
+        == {
+            403: "Lumen cloud management is not permitted",
+            409: "Lumen cloud authority changed or is pending",
+            503: "Lumen cloud authority is unavailable",
+        }[expected]
+    )
     mutation.assert_awaited_once()
     cloud_delegation.selected.assert_not_awaited()
     cloud_delegation.create_credentials.assert_not_awaited()

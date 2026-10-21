@@ -183,6 +183,19 @@ describe('authorized workspace selector', () => {
 		expect(screen.queryByText(second.id)).toBeNull(); expect((screen.getByRole('button', { name: t('newProject') }) as HTMLButtonElement).disabled).toBe(true);
 	});
 
+	it('reopens a recent resource list without a loading gap and refreshes it explicitly', async () => {
+		render(ProjectSelector); await open();
+		await fireEvent.click(screen.getByRole('button', { name: t('close') }));
+		await waitFor(() => expect(screen.queryByRole('dialog', { name: t('title') })).toBeNull());
+		vi.mocked(api.get).mockClear().mockImplementation(async path => path === '/api/v1/auth/domains' ? [home] : { ...inventory(), projects: [first] });
+		await open();
+		expect(projectButton(second.id)).toBeTruthy();
+		expect(api.get).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: t('refresh') }));
+		await waitFor(() => expect(screen.queryByText(second.id)).toBeNull());
+		expect(projectButton(first.id)).toBeTruthy();
+	});
+
 	it('keeps keyboard focus in the bounded dialog and restores the trigger on close', async () => {
 		render(ProjectSelector); const trigger = screen.getByRole('button', { name: /select a resource/ }); trigger.focus(); await open();
 		const dialog = screen.getByRole('dialog', { name: t('title') });

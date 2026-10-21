@@ -3,6 +3,7 @@ import { api } from './client';
 export interface AdminDomain {
   id: string;
   name: string;
+  kind?: 'account' | 'personal' | 'organization' | 'legacy';
   enabled: boolean;
   description?: string | null;
 }
@@ -31,7 +32,9 @@ export function domainPath(path: string, domainId: string): string {
   return `${pathname}?${params}`;
 }
 export const domainsApi = {
-  list: ({ token, projectId }: AdminAuthority) => api.get<{ items: AdminDomain[] }>('/api/v1/admin/domains', token, projectId),
+  list: ({ token, projectId }: AdminAuthority, opts?: { refresh?: boolean }) => opts?.refresh
+    ? api.get<{ items: AdminDomain[] }>('/api/v1/admin/domains', token, projectId, { refresh: true })
+    : api.get<{ items: AdminDomain[] }>('/api/v1/admin/domains', token, projectId),
   create: (draft: DomainDraft, { token, projectId }: AdminAuthority) => api.post<AdminDomain>('/api/v1/admin/domains', draft, token, projectId),
   update: (id: string, draft: DomainDraft, { token, projectId }: AdminAuthority) => api.patch<AdminDomain>(`/api/v1/admin/domains/${encodeURIComponent(id)}`, draft, token, projectId),
   monitoring: (id: string, window: DomainWindow, { token, projectId }: AdminAuthority) => api.get<DomainMonitoring>(`/api/v1/admin/domains/${encodeURIComponent(id)}/monitoring?window=${window}`, token, projectId),

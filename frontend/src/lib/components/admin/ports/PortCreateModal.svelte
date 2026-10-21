@@ -1,7 +1,7 @@
 <script lang="ts">
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { NetworkInfo } from '$lib/types/networks';
-	import type { ProjectName } from '$lib/types/adminPort';
+	import AdminProjectPicker from '$lib/components/admin/domains/AdminProjectPicker.svelte';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/admin-network';
 	import RichText from '$lib/i18n/RichText.svelte';
@@ -9,53 +9,34 @@
 	let {
 		open = $bindable(),
 		allNetworks,
-		allProjects,
 		creating,
 		error,
 		onCreate,
 	}: {
 		open: boolean;
 		allNetworks: NetworkInfo[];
-		allProjects: ProjectName[];
 		creating: boolean;
 		error: string;
 		onCreate: (form: { network_id: string; name: string; project_id: string; fixed_ip: string }) => Promise<boolean>;
 	} = $props();
 
 	let form = $state({ network_id: '', name: '', project_id: '', fixed_ip: '' });
-	let projectSearch = $state('');
-	let showProjectDropdown = $state(false);
-	let selectedProjectName = $state('');
-
-	const filteredProjects = $derived(
-		projectSearch
-			? allProjects.filter(p => p.name.toLowerCase().includes(projectSearch.toLowerCase()))
-			: allProjects
-	);
+	let targetDomainId = $state('');
 
 	// Reset form when modal opens
 	$effect(() => {
 		if (open) {
 			form = { network_id: '', name: '', project_id: '', fixed_ip: '' };
-			projectSearch = '';
-			selectedProjectName = '';
-			showProjectDropdown = false;
+			targetDomainId = '';
 		}
 	});
 
-	function selectProject(p: ProjectName) {
-		form.project_id = p.id;
-		selectedProjectName = p.name;
-		projectSearch = p.name;
-		showProjectDropdown = false;
-	}
 
 	async function handleCreate() {
 		const success = await onCreate({ ...form });
 		if (success) {
 			form = { network_id: '', name: '', project_id: '', fixed_ip: '' };
-			projectSearch = '';
-			selectedProjectName = '';
+			targetDomainId = '';
 		}
 	}
 </script>
@@ -89,29 +70,9 @@
 					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-portcreatemodal-81">{t('portCreateModal.nameLabel')}</label>
 					<input id="field-portcreatemodal-81" bind:value={form.name} type="text" placeholder={t('portCreateModal.namePlaceholder')} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
 				</div>
-				<div class="relative">
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-portcreatemodal-85">{t('portCreateModal.projectLabel')}</label>
-					<input id="field-portcreatemodal-85"
-						type="text"
-						bind:value={projectSearch}
-						onfocus={() => showProjectDropdown = true}
-						oninput={() => { showProjectDropdown = true; if (!projectSearch) { form.project_id = ''; selectedProjectName = ''; } }}
-						onblur={() => setTimeout(() => { showProjectDropdown = false; }, 150)}
-						placeholder={t('portCreateModal.projectPlaceholder')}
-						class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
-					/>
-					{#if showProjectDropdown && filteredProjects.length > 0}
-						<div class="absolute z-10 w-full mt-1 bg-surface-sunken border border-line-2 rounded-lg shadow-[var(--shadow-restraint)] max-h-40 overflow-y-auto">
-							{#each filteredProjects as p (p.id)}
-								<button
-									type="button"
-									onmousedown={() => selectProject(p)}
-									class="w-full text-left px-3 py-2 text-sm text-ink-2 hover:bg-surface-selected transition-colors {form.project_id === p.id ? 'bg-surface-selected text-ink-0' : ''}"
-								>{p.name}</button>
-							{/each}
-						</div>
-					{/if}
-				</div>
+				<AdminProjectPicker domainId={targetDomainId} projectId={form.project_id} disabled={creating}
+					emptyProjectLabel={t('portCreateModal.projectPlaceholder')}
+					onchange={(domainId, projectId) => { targetDomainId = domainId; form.project_id = projectId; }} />
 				<div>
 					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-portcreatemodal-108"><RichText segments={t.rich('portCreateModal.fixedIpLabel')} tags={{ optional: optionalText }} /></label>
 					<input id="field-portcreatemodal-108" bind:value={form.fixed_ip} type="text" placeholder={t('portCreateModal.fixedIpPlaceholder')} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
@@ -119,7 +80,7 @@
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => { open = false; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('portCreateModal.cancel')}</button>
-				<button aria-busy={creating} onclick={handleCreate} disabled={creating || !form.network_id} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if creating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('portCreateModal.creating')}</span>{:else}{t('portCreateModal.create')}{/if}</button>
+				<button aria-busy={creating} onclick={handleCreate} disabled={creating || !form.network_id || (!!targetDomainId && !form.project_id)} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if creating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('portCreateModal.creating')}</span>{:else}{t('portCreateModal.create')}{/if}</button>
 			</div>
 		</div>
 	</div>

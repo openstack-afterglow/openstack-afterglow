@@ -15,6 +15,8 @@
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
 	import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	interface AdminK3sCluster {
 		id: string;
@@ -138,6 +140,16 @@
 	{:else if clusters.length === 0}
 		<EmptyState headline={t('cluster.empty')} />
 	{:else}
+  <ResponsiveTable>
+   {#snippet cards()}
+    {#each clusters as c (c.id)}
+     <CompactResourceCard>
+      <div class="flex flex-wrap items-start gap-2"><button onclick={() => openClusterPanel(c.id)} class="min-w-0 break-all text-left font-medium">{c.name}</button><StatusChip status={c.status} /></div>
+      <p class="text-xs text-ink-2 break-all">{t('admin.project')}: {c.project_id ? ($projectNames.get(c.project_id) ?? c.project_id.slice(0, 8)) : '-'}</p><p class="text-xs">{t('admin.nodeCount', { current: c.agent_vm_ids?.length ?? 0, total: c.agent_count })} · {c.k3s_version || '-'}</p>
+      {#snippet details()}<p class="text-xs font-mono break-all">{t('admin.serverIp')}: {c.server_ip || '-'}</p><p class="text-xs">{t('admin.created')}: {c.created_at ? c.created_at.slice(0, 10) : '-'}</p>{#if c.status_reason}<p class="text-xs break-all">{c.status_reason}</p>{/if}{/snippet}
+     </CompactResourceCard>
+    {/each}
+   {/snippet}
 		<TableShell density="compact">
 			<table class="min-w-[58rem] text-sm">
 				<thead>
@@ -182,5 +194,6 @@
 				</tbody>
 			</table>
 		</TableShell>
+  </ResponsiveTable>
 	{/if}
 </PageShell>

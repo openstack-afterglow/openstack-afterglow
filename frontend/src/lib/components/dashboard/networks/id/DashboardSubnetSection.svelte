@@ -2,6 +2,8 @@
 	import { t } from '$lib/i18n/ns/network-resources';
 	import type { SubnetDetail } from '$lib/types/networks';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	let {
 		subnets,
@@ -101,6 +103,15 @@
 	{/if}
 
 	{#if subnets.length > 0}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each subnets as subnet (subnet.id)}
+					<CompactResourceCard>
+						<p class="font-medium">{subnet.name || '-'}</p><p class="font-mono">{subnet.cidr}</p>
+						<dl><div><dt>{t('network.labels.gateway')}</dt><dd>{subnet.gateway_ip ?? '-'}</dd></div><div><dt>DHCP</dt><dd>{subnet.dhcp_enabled ? t('network.state.enabled') : t('network.state.disabled')}</dd></div></dl>
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
@@ -127,6 +138,7 @@
 				{/each}
 			</tbody>
 		</table>
+		</ResponsiveTable>
 	{:else}
 		<p class="text-sm text-ink-2">{t('network.subnets.emptyLabel')}</p>
 	{/if}

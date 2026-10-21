@@ -8,6 +8,8 @@
 	import { theme, resolvedTheme } from '$lib/stores/theme';
 	import { api, getBaseUrl, refreshSession, beginSessionRevocation, endSessionRevocation } from '$lib/api/client';
 	import ProjectSelector from '$lib/components/ProjectSelector.svelte';
+	import ProfileImage from '$lib/components/account/ProfileImage.svelte';
+	import { t as tAccount } from '$lib/i18n/ns/account';
 	import AnnouncementBellButton from '$lib/components/notifications/AnnouncementBellButton.svelte';
 	import { siteConfig, initSiteConfig, qualifyBackendAssetPaths, replaceSiteConfig } from '$lib/config/site';
 	import { resolveFaviconPath } from '$lib/config/brandAssets';
@@ -255,10 +257,6 @@
 	});
 
 
-	// User initials for avatar
-	const initials = $derived(
-		($auth.username ?? 'U').slice(0, 2).toUpperCase()
-	);
 
 	// Domain selection and IAM work without a project; admin exemption remains system-only.
 	const projectAgnostic = $derived(isProjectAgnosticPath($page.url.pathname, $isAdmin));
@@ -424,7 +422,7 @@
 		href="#main-content"
 		class="fixed left-3 top-3 z-[calc(var(--z-command)+2)] -translate-y-20 rounded-md bg-surface-raised px-3 py-2 text-sm font-medium text-ink-0 shadow-lg transition-transform focus:translate-y-0"
 	>{t('skipToContent')}</a>
-	<header class="console-header fixed top-0 left-0 right-0 z-[var(--z-header)] h-[var(--app-header-height)] flex items-center gap-3 border-b border-line px-3 md:px-6">
+	<header class="console-header fixed top-0 left-0 right-0 z-[var(--z-header)] h-[var(--app-header-height)] flex items-center gap-1 sm:gap-3 border-b border-line px-2 sm:px-3 md:px-6">
 		<div class="material-chrome pointer-events-none absolute inset-0 -z-10" aria-hidden="true"></div>
 		<div class="header-context flex min-w-0 items-center gap-2 sm:gap-3">
 			<button
@@ -441,7 +439,7 @@
 				<img src="/afterglow-symbol.svg" alt="" width="24" height="24" class="shrink-0" />
 				<span class="hidden max-w-36 truncate sm:block">{$siteConfig.site_name}</span>
 			</a>
-			<div class="min-w-0 w-28 md:w-36 xl:w-44"><ProjectSelector /></div>
+			<div class="hidden min-w-0 md:block md:w-36 xl:w-44"><ProjectSelector /></div>
 		</div>
 
 		<!-- 검색 입력 (⌘K 트리거) -->
@@ -456,7 +454,7 @@
 		</button>
 
 		<!-- 우측 컨트롤 -->
-		<div class="ml-auto flex shrink-0 items-center gap-1 md:gap-2">
+		<div class="ml-auto flex shrink-0 items-center gap-0 sm:gap-1 md:gap-2">
 			<button onclick={() => palette.open()} aria-label={t('search.label')} class="hidden size-11 shrink-0 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:flex xl:hidden">
 				<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-4.35-4.35M17 11a6 6 0 1 1-12 0 6 6 0 0 1 12 0" /></svg>
 			</button>
@@ -487,7 +485,7 @@
 			{/if}
 
 			<LocaleSelect id="app-header-locale" />
-			<a href="/docs" aria-label={tn('items.documentation')} title={tn('items.documentation')} class="flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:h-8 lg:min-w-8">
+			<a href="/docs" aria-label={tn('items.documentation')} title={tn('items.documentation')} class="hidden sm:flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:h-8 lg:min-w-8">
 				<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={documentationNavItem.icon} /></svg>
 				<span class="hidden text-xs font-medium sm:inline">Docs</span>
 			</a>
@@ -563,9 +561,10 @@
 			<!-- 유저 아바타 -->
 			<a
 				href={mockupAdminActive ? '/admin' : '/dashboard/account'}
-				class="w-[30px] h-[30px] rounded-full bg-surface-sunken border border-line-2 flex items-center justify-center text-ink-2 text-xs font-semibold hover:border-line-2 transition-colors"
+				class="flex size-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8"
 				title={$auth.domainName ? `${$auth.username ?? ''} @ ${$auth.domainName}` : $auth.username}
-			>{initials}</a>
+				aria-label={tAccount('profile.image.open')}
+			><ProfileImage name={$auth.username ?? ''} label={tAccount('profile.image.alt')} /></a>
 
 			<!-- 로그아웃 -->
 			<button
@@ -637,21 +636,13 @@
 {/if}
 
 <style>
-	@media (min-width: 64rem) {
-		.console-header {
-			--header-search-width: clamp(10rem, calc(100vw - 60rem), 24rem);
-		}
+	.header-context {
+		flex-shrink: 0;
+	}
 
-		.header-context {
-			max-width: calc(50vw - 2.25rem - var(--header-search-width) / 2);
-		}
-
-		.header-search {
-			position: absolute;
-			left: 50%;
-			top: 50%;
-			width: var(--header-search-width);
-			transform: translate(-50%, -50%);
-		}
+	.header-search {
+		flex: 1 1 0%;
+		max-width: 24rem;
+		margin-inline: auto;
 	}
 </style>

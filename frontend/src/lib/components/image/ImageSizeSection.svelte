@@ -2,10 +2,25 @@
 	import { t } from '$lib/i18n/ns/images-keys';
 	import { useImageDetailController } from '$lib/stores/imageDetailController.svelte';
 	import { formatSize } from '$lib/utils/format';
+	import { CompactResourceCard, ResponsiveTable } from '$lib/components/ui';
 
 	const s = useImageDetailController();
 </script>
 
+<ResponsiveTable>
+	{#snippet cards()}
+		<CompactResourceCard>
+			<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide">{t('sizeSection.title')}</h3>
+			<dl class="space-y-2 text-xs">
+				<div><dt class="text-ink-2">{t('sizeSection.size')}</dt><dd class="text-ink-1">{formatSize(s.image!.size)}</dd></div>
+				<div><dt class="text-ink-2">{t('sizeSection.minDisk')}</dt><dd class="text-ink-1">{s.image!.min_disk} GB</dd></div>
+				<div><dt class="text-ink-2">{t('sizeSection.minRam')}</dt><dd class="text-ink-1">{s.image!.min_ram} MB</dd></div>
+			</dl>
+			{#snippet details()}
+				<dl class="text-xs"><dt class="text-ink-2">{t('sizeSection.virtualSize')}</dt><dd class="text-ink-1">{formatSize(s.image!.virtual_size)}</dd></dl>
+			{/snippet}
+		</CompactResourceCard>
+	{/snippet}
 <div class="bg-surface-base border border-line rounded-lg p-5">
 	<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">{t('sizeSection.title')}</h3>
 	<dl class="grid grid-cols-1 @3xl/panel:grid-cols-2 gap-x-6 gap-y-3">
@@ -27,3 +42,4 @@
 		</div>
 	</dl>
 </div>
+</ResponsiveTable>

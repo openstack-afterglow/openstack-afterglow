@@ -677,12 +677,25 @@ def list_file_storages(
 
     def _fetch(params: dict) -> None:
         try:
-            data = client.get("shares/detail", params=params or None)["shares"]
-            for s in data:
-                fs = _parse_file_storage(s)
-                shares_by_id[fs.id] = fs
+            query = dict(params)
+            seen = set()
+            while True:
+                body = client.get("shares/detail", params=query or None)
+                data = body["shares"]
+                if not isinstance(data, list):
+                    raise RuntimeError("Manila inventory response is invalid")
+                for s in data:
+                    fs = _parse_file_storage(s)
+                    shares_by_id[fs.id] = fs
+                if not any(link.get("rel") == "next" for link in body.get("shares_links", [])):
+                    break
+                marker = data[-1].get("id") if data else None
+                if not marker or marker in seen:
+                    raise RuntimeError("Manila inventory pagination did not advance")
+                seen.add(marker)
+                query["marker"] = marker
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 400:
+            if e.response.status_code == 400 and not all_tenants:
                 logger.warning(f"Manila shares/detail 400 (파일 스토리지 없음으로 추정): {e}")
             else:
                 raise

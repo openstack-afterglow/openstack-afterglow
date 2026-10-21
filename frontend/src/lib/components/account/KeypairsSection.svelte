@@ -1,4 +1,7 @@
 <script lang="ts">
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
   import { t } from '$lib/i18n/ns/account';
   import { t as tc } from '$lib/i18n/ns/common';
   import { untrack } from 'svelte';
@@ -170,6 +173,11 @@
   {:else if keypairs.length === 0}
     <div class="text-ink-2 text-xs text-center py-6">{t('keypairs.empty')}</div>
   {:else}
+    <ResponsiveTable>{#snippet cards()}{#each keypairs as kp (kp.name)}<CompactResourceCard>
+      <div class="flex flex-wrap justify-between gap-2"><h4 class="text-sm font-medium">{kp.name}</h4><span class="font-mono text-xs">{kp.type}</span></div>
+      {#snippet details()}<code class="text-xs break-all">{kp.fingerprint}</code>{/snippet}
+      {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => copyFingerprint(kp.fingerprint)}>{copiedFingerprint === kp.fingerprint ? t('keypairs.copied') : t('keypairs.copy')}</Button><Button variant="danger-outline" size="sm" onclick={() => deleteKeypair(kp.name)} disabled={deleting === kp.name} ariaBusy={deleting === kp.name}>{t('keypairs.delete')}</Button>{/snippet}
+    </CompactResourceCard>{/each}{/snippet}
     <div class="bg-[#0B1220] border border-line rounded-lg overflow-hidden">
       <div class="grid grid-cols-[1fr_100px_80px] px-3 py-2 border-b border-line text-xs uppercase tracking-wider text-ink-2">
         <div>{t('keypairs.nameFingerprint')}</div>
@@ -199,5 +207,6 @@
         </div>
       {/each}
     </div>
+    </ResponsiveTable>
   {/if}
 </div>

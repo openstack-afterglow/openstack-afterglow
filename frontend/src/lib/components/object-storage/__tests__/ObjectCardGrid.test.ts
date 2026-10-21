@@ -1,3 +1,10 @@
+const media = vi.hoisted(() => {
+ const events = new EventTarget();
+ const query = { matches: true, media: '(min-width: 1024px)', onchange: null, addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events), dispatchEvent: events.dispatchEvent.bind(events), addListener: () => undefined, removeListener: () => undefined };
+ vi.stubGlobal('matchMedia', () => query);
+ return query;
+});
+
 const listing: Record<string, unknown[]> = {
 	'': [
 		{ name: 'docs/', bytes: 0, content_type: 'application/directory', last_modified: '', etag: '', is_dir: true },
@@ -40,6 +47,8 @@ const revokeObjectURL = vi.fn();
 
 beforeEach(() => {
 	vi.clearAllMocks();
+ media.matches = true;
+ media.dispatchEvent(new Event('change'));
 	vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL }));
 });
 
@@ -179,4 +188,19 @@ describe('ObjectCardGrid', () => {
 			listing[''] = rootListing;
 		}
 	});
+ it('retains selection and folder navigation when tablet cards replace the desktop grid', async () => {
+  await renderGrid();
+  await fireEvent.click(screen.getByRole('button', { name: '파일 photo.png' }));
+  media.matches = false;
+  media.dispatchEvent(new Event('change'));
+  await waitFor(() => expect(screen.queryByRole('heading', { name: '폴더' })).toBeNull());
+  await waitFor(() => expect(within(screen.getByRole('button', { name: '파일 photo.png' })).queryByRole('presentation')).toBeNull());
+  expect(screen.getByTestId('selected-names').textContent).toBe('photo.png');
+  expect(screen.getAllByRole('button', { name: '파일 photo.png' })).toHaveLength(1);
+  await fireEvent.click(screen.getByRole('checkbox', { name: '표시된 오브젝트 전체 선택' }).closest('label')!);
+  expect(screen.getByTestId('selected-names').textContent).toBe('docs/,bundle.zip,photo.png');
+  await fireEvent.keyDown(screen.getByRole('button', { name: '폴더 docs' }), { key: 'Enter' });
+  await waitFor(() => expect(screen.getByTestId('prefix').textContent).toBe('docs/'));
+  expect(await screen.findByRole('button', { name: '파일 manual.pdf' })).toBeTruthy();
+ });
 });

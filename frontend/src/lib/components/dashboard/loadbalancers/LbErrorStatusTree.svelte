@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/network-resources';
 	import type { LoadBalancerDetail, LbStatusNode } from '$lib/types/loadbalancer';
+	import { ResponsiveTable, CompactResourceCard, StatusChip } from '$lib/components/ui';
 
 	let { lb, statusTree }: { lb: LoadBalancerDetail; statusTree: LbStatusNode | null } = $props();
 </script>
@@ -11,6 +12,22 @@
 		{t('lb.errorTree.title')}
 	</h2>
 	{#if statusTree}
+		<ResponsiveTable>
+			{#snippet cards()}
+				<CompactResourceCard><strong>{t('lb.errorTree.lbStatus')}</strong><StatusChip status={statusTree.provisioning_status ?? lb.status} /><p class="text-xs text-ink-2">{statusTree.operating_status ?? lb.operating_status}</p></CompactResourceCard>
+				{#each statusTree.listeners ?? [] as listener}
+					<CompactResourceCard><p class="text-xs text-ink-2">{t('lb.errorTree.listener')}</p><strong class="break-all">{listener.name || listener.id?.slice(0, 12)}</strong><StatusChip status={listener.provisioning_status ?? 'unknown'} /></CompactResourceCard>
+					{#each listener.pools ?? [] as pool}
+						<CompactResourceCard><p class="text-xs text-ink-2">{t('lb.errorTree.listener')}: {listener.name || listener.id?.slice(0, 12)} · {t('lb.errorTree.pool')}</p><strong class="break-all">{pool.name || pool.id?.slice(0, 12)}</strong><StatusChip status={pool.provisioning_status ?? 'unknown'} /></CompactResourceCard>
+						{#each pool.members ?? [] as member}
+							<CompactResourceCard><p class="text-xs text-ink-2">{t('lb.errorTree.pool')}: {pool.name || pool.id?.slice(0, 12)} · {t('lb.errorTree.member')}</p><strong class="break-all">{member.name || member.id?.slice(0, 12)}</strong><StatusChip status={member.provisioning_status ?? 'unknown'} /></CompactResourceCard>
+						{/each}
+					{/each}
+				{/each}
+				{#if !statusTree.listeners?.length}{#each statusTree.pools ?? [] as pool}
+					<CompactResourceCard><p class="text-xs text-ink-2">{t('lb.errorTree.pool')}</p><strong class="break-all">{pool.name || pool.id?.slice(0, 12)}</strong><StatusChip status={pool.provisioning_status ?? 'unknown'} /></CompactResourceCard>
+				{/each}{/if}
+			{/snippet}
 		<div class="space-y-2 text-xs font-mono">
 			<div class="flex items-center gap-3">
 				<span class="text-ink-2 w-32 shrink-0">{t('lb.errorTree.lbStatus')}</span>
@@ -54,6 +71,7 @@
 				{/each}
 			{/if}
 		</div>
+		</ResponsiveTable>
 	{:else}
 		<p class="text-xs text-red-300">{t('lb.errorTree.unavailable')}</p>
 	{/if}

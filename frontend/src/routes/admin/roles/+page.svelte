@@ -11,6 +11,8 @@
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import FormModal from '$lib/components/ui/FormModal.svelte';
@@ -29,7 +31,7 @@
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { isNativeRole } from '$lib/components/admin/roles/naming';
 	type RolePreset = { name: string; description: string; area: string; grade: string; parent: string | null };
-	type PresetPreview = { roles: RolePreset[]; implications: { prior: string; implied: string }[]; project_roles: RolePreset[] };
+	type PresetPreview = { roles: RolePreset[]; implications: { prior: string; implied: string }[]; retired_implications: { prior: string; implied: string }[]; project_roles: RolePreset[] };
 	let preset = $state<PresetPreview | null>(null);
 	let presetLoading = $state(false);
 	let presetVersion = 0;
@@ -243,18 +245,27 @@
 			{:else if filtered.length === 0 && roles.length > 0}<EmptyState headline={t('rolePage.noResults')} description={t('rolePage.noResultsDescription')}>{#snippet cta()}<Button variant="secondary" onclick={() => { query = ''; }}>{t('rolePage.clearSearch')}</Button>{/snippet}</EmptyState>
 			{:else if view === 'tree'}<RoleTree {roles} {query} {sort} {direction} onSelect={selectRole} />
 			{:else if roles.length > 0}
-				<div class="space-y-3 md:hidden">
-					{#each filtered as role (role.id)}
-						<Card surface="base" padding="md">
-							<Button variant="link" class="max-w-full !whitespace-normal [overflow-wrap:anywhere] !text-left" ariaLabel={t('rolePage.detailLabel', { name: role.name })} onclick={() => selectRole(role)}>{role.name}</Button>
-							<RoleBadges {role} />
-							<p class="mt-2 text-xs font-mono text-ink-2 [overflow-wrap:anywhere]">{role.id}</p>
-							<p class="mt-2 text-sm text-ink-1 line-clamp-2 [overflow-wrap:anywhere]">{role.description || t('rolePage.noDescription')}</p>
-							<p class="mt-2 text-xs text-ink-2">{t('rolePage.cardCounts', { direct: role.implied_role_ids.length, inherited: role.inherited_role_ids.length, parents: role.parent_role_ids.length })}</p>
-						</Card>
-					{/each}
-				</div>
-				<div class="hidden min-w-0 md:block"><TableShell class="max-w-full">
+				<ResponsiveTable>
+					{#snippet cards()}
+						{#each filtered as role (role.id)}
+							<CompactResourceCard selected={selectedId === role.id}>
+								<div class="flex min-w-0 flex-wrap items-start justify-between gap-2">
+									<Button variant="link" class="min-h-11 max-w-full !whitespace-normal [overflow-wrap:anywhere] !text-left" ariaLabel={t('rolePage.detailLabel', { name: role.name })} onclick={() => selectRole(role)}>{role.name}</Button>
+									<RoleBadges {role} />
+								</div>
+								<dl>
+									<div><dt>{t('rolePage.columns.directChildren')}</dt><dd>{role.implied_role_ids.length}</dd></div>
+									<div><dt>{t('rolePage.columns.inherited')}</dt><dd>{role.inherited_role_ids.length}</dd></div>
+									<div><dt>{t('rolePage.columns.directParents')}</dt><dd>{role.parent_role_ids.length}</dd></div>
+								</dl>
+								{#snippet details()}
+									<dl><div><dt>ID</dt><dd class="font-mono">{role.id}</dd></div></dl>
+									<p class="mt-2">{role.description || t('rolePage.noDescription')}</p>
+								{/snippet}
+							</CompactResourceCard>
+						{/each}
+					{/snippet}
+					<TableShell class="max-w-full">
 					<table aria-label={t('projectAccess.roleListLabel')}>
 						<thead><tr>
 							<th aria-sort={ariaSort('name')}><Button variant="ghost" size="sm" onclick={() => chooseSort('name')}>{t('form.name')}{sortLabel('name')}</Button></th>
@@ -268,7 +279,8 @@
 							<td>{role.implied_role_ids.length}</td><td>{role.inherited_role_ids.length}</td><td>{role.parent_role_ids.length}</td>
 						</tr>{/each}</tbody>
 					</table>
-				</TableShell></div>
+					</TableShell>
+				</ResponsiveTable>
 			{/if}
 		</div>
 	</PageShell>
@@ -287,6 +299,8 @@
 				<ul class="space-y-2 text-sm">{#each [...preset.project_roles, ...preset.roles] as item}<li class="[overflow-wrap:anywhere]"><code>{item.name}</code><span class="text-ink-2"> — {item.description}</span></li>{/each}</ul>
 				<h3 class="text-sm font-semibold">{t('rolePresets.directImplications')}</h3>
 				<ul class="space-y-1 text-xs font-mono text-ink-2">{#each preset.implications as edge}<li class="[overflow-wrap:anywhere]">{edge.prior} → {edge.implied}</li>{/each}</ul>
+				<h3 class="text-sm font-semibold">{t('rolePresets.retiredImplications')}</h3>
+				<ul class="space-y-1 text-xs font-mono text-ink-2">{#each preset.retired_implications as edge}<li class="[overflow-wrap:anywhere]">{edge.prior} → {edge.implied}</li>{/each}</ul>
 			</div>
 			{#snippet actions()}
 				<Button variant="secondary" disabled={busy} onclick={() => { preset = null; ++presetVersion; }}>{tc('actions.cancel')}</Button>

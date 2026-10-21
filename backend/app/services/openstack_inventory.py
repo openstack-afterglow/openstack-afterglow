@@ -26,6 +26,35 @@ def _fetch_hypervisors_raw(conn: openstack.connection.Connection) -> list[dict]:
     return resp.json().get("hypervisors", [])
 
 
+def list_servers_complete(conn, filters: dict | None = None) -> list[dict]:
+    """Consume Nova's native marker pages without trusting next-link destinations."""
+    endpoint = conn.compute.get_endpoint().rstrip("/")
+    params = {**(filters or {}), "all_tenants": "1", "limit": "1000"}
+    params.pop("marker", None)
+    rows = []
+    seen = set()
+    while True:
+        response = conn.session.get(
+            f"{endpoint}/servers/detail",
+            params=dict(params),
+            headers={"OpenStack-API-Version": "compute 2.53"},
+        )
+        response.raise_for_status()
+        body = response.json()
+        batch = body.get("servers")
+        if not isinstance(batch, list):
+            raise RuntimeError("Nova inventory response is invalid")
+        rows.extend(batch)
+        has_next = any(link.get("rel") == "next" for link in body.get("servers_links", []))
+        if not has_next and len(batch) < 1000:
+            return rows
+        marker = batch[-1].get("id") if batch else None
+        if not marker or marker in seen:
+            raise RuntimeError("Nova inventory pagination did not advance")
+        seen.add(marker)
+        params["marker"] = marker
+
+
 async def collect_instance_data(
     email_to_page_id: dict[str, str] | None = None,
     host_to_page_id: dict[str, str] | None = None,

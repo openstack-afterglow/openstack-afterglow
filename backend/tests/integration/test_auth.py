@@ -13,12 +13,12 @@ async def test_login_success(anon_client, credentials):
     assert "token" in data
     assert "project_id" in data
     assert data["username"]
-    assert data["domain_id"] == data["identity_domain_id"]
+    assert data["identity_domain_name"] == "Accounts"
     me = await anon_client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {data['token']}"})
     assert me.status_code == 200
     assert (me.json()["user_id"], me.json()["domain_id"], me.json()["project_id"]) == (
         data["user_id"],
-        data["identity_domain_id"],
+        data["domain_id"],
         data["project_id"],
     )
     assert len(data["roles"]) > 0
@@ -60,15 +60,21 @@ async def test_no_token_returns_401(anon_client):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_fresh_login_starts_in_canonical_home(anon_client, credentials):
+async def test_fresh_login_uses_accounts_identity_and_personal_workspace(anon_client, credentials):
     response = await anon_client.post("/api/v1/auth/login", json=password_login_payload(credentials))
     assert response.status_code == 200
     data = response.json()
-    assert data["domain_id"] == data["identity_domain_id"]
+    assert data["identity_domain_name"] == "Accounts"
+    if not data["is_system_admin"]:
+        assert data["domain_name"] == "Personal"
+        assert data["project_id"] == data["default_project_id"]
     workspace = await anon_client.get("/api/v1/auth/workspaces", headers={"Authorization": f"Bearer {data['token']}"})
     assert workspace.status_code == 200
-    assert workspace.json()["domain"]["id"] == data["identity_domain_id"]
-    assert data["project_id"] in {project["id"] for project in workspace.json()["projects"]}
+    assert workspace.json()["domain"]["id"] == data["domain_id"]
+    if data["project_id"]:
+        assert data["project_id"] in {project["id"] for project in workspace.json()["projects"]}
+    else:
+        assert data["is_system_admin"] is True
 
 
 # ─────────────────────────────────────────────────────────────────

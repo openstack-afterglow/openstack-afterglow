@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { onMount, onDestroy, untrack } from 'svelte';
 	import { ApiError } from '$lib/api/client';
 	import { domainIam, type IamSession, type IamAssignableRoles } from '$lib/api/domainIam';
@@ -103,10 +105,19 @@
 		<Alert tone="info">{t('rolesHelp')}</Alert>
 		<div class="grid items-end gap-4 md:grid-cols-2"><Field label={t('user')} for={`${uid}-user`} help={t('eligibleUsersHelp')}><SelectInput id={`${uid}-user`} bind:value={user} disabled={busy || loading}><option value="">{t('selectUser')}</option>{#each users as row (row.id)}<option value={row.id}>{row.name} · {row.email || row.id}</option>{/each}</SelectInput></Field><div><Button variant="primary" disabled={blocked || !session.canSubmit() || busy || loading || !user} onclick={assign}>{t('assignRoles')}</Button></div></div>
 	{/if}
+	<ResponsiveTable>{#snippet cards()}
+		{#each members as member (`${member.user_id}-${member.source ?? ''}`)}<CompactResourceCard>
+			<h3 class="text-sm font-medium">{member.username || member.user_id}</h3><p class="text-xs">{member.source ? t(member.source) : '—'} · {t('roleCount', { count: member.roles.length })}</p>{#if member.is_owner && ownerCount <= 1}<p class="text-xs text-ink-2">{t('lastOwner')}</p>{/if}
+			{#snippet details()}<p class="text-xs [overflow-wrap:anywhere]">{member.roles.join(', ') || '—'}</p>{/snippet}
+			{#snippet actions()}<Button variant="secondary" size="sm" disabled={busy || !editable(member)} onclick={() => { editing = member; error = ''; }}>{t('editRoles')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || !session.canSubmit() || busy || !removable(member)} onclick={() => remove(member)}>{t('removeMember')}</Button>{/snippet}
+		</CompactResourceCard>{/each}
+		{#if !loading && !error && project && !members.length}<p class="text-sm text-ink-2">{t('emptyMembers')}</p>{/if}
+	{/snippet}
 	<TableShell><table>
 		<thead><tr><th>{t('user')}</th><th>{t('roles')}</th><th>{t('source')}</th><th>{t('actions')}</th></tr></thead>
 		<tbody>{#each members as member (`${member.user_id}-${member.source ?? ''}`)}<tr><td>{member.username || member.user_id}</td><td><details><summary class="min-h-11 cursor-pointer">{t('roleCount', { count: member.roles.length })}</summary><p class="max-w-80 whitespace-normal text-xs [overflow-wrap:anywhere]">{member.roles.join(', ') || '—'}</p></details>{#if member.is_owner && ownerCount <= 1}<span class="text-xs text-ink-2">{t('lastOwner')}</span>{/if}</td><td>{member.source ? t(member.source) : '—'}</td><td><div class="flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={busy || !editable(member)} onclick={() => { editing = member; error = ''; }}>{t('editRoles')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || !session.canSubmit() || busy || !removable(member)} onclick={() => remove(member)}>{t('removeMember')}</Button></div></td></tr>{/each}
 		{#if !loading && !error && project && !members.length}<tr><td colspan="4">{t('emptyMembers')}</td></tr>{/if}</tbody>
 	</table></TableShell>
+	</ResponsiveTable>
 </div>
 {#if editing && catalog}<ProjectMemberRolesModal member={editing} roles={catalog.roles} {busy} submitDisabled={blocked || !session.canSubmit()} {error} onSave={save} onClose={() => { editing = null; error = ''; }} />{/if}

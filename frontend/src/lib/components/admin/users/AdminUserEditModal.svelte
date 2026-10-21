@@ -13,6 +13,8 @@
   import RichText from '$lib/i18n/RichText.svelte';
   import { domainPath } from '$lib/api/domains';
   import UserDomainManagers from './UserDomainManagers.svelte';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
   let {
     user = $bindable<User | null>(),
@@ -276,6 +278,15 @@
             <Alert>{sessionsError}</Alert>
             <Button variant="secondary" size="sm" class="mt-2" onclick={() => { if (scope) void loadUserSessions(scope); }}>{t('userEdit.retrySessions')}</Button>
           {:else if sessions.length > 0}
+            <ResponsiveTable>
+              {#snippet cards()}
+                {#each sessions as sess (sess.jti)}
+                  <CompactResourceCard>
+                    <div class="flex flex-wrap items-center justify-between gap-2"><strong class="break-words text-sm">{deviceLabel(sess)}</strong><Pill tone={sess.blacklisted ? 'danger' : 'success'}>{sess.blacklisted ? t('userEdit.blocked') : t('userEdit.enabled')}</Pill></div>
+                    <dl class="space-y-1 text-xs"><div><dt class="text-ink-2">{t('userEdit.originIp')}</dt><dd class="break-all font-mono">{sess.origin_ip || '—'}</dd></div><div><dt class="text-ink-2">{t('userEdit.lastUsed')}</dt><dd>{formatSessionTime(sess.last_seen)}</dd></div></dl>
+                  </CompactResourceCard>
+                {/each}
+              {/snippet}
             <div class="overflow-x-auto">
               <table class="w-full text-xs">
                 <thead>
@@ -304,6 +315,7 @@
                 </tbody>
               </table>
             </div>
+            </ResponsiveTable>
           {:else}
             <p class="text-xs text-ink-2">{t('userEdit.noSessions')}</p>
           {/if}

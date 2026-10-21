@@ -3,6 +3,8 @@
   import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
   import type { StackResource } from '$lib/types/cluster';
   import { resourceStatusColor } from '$lib/types/cluster';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
   let { resources, loading, onRefresh }: { resources: StackResource[]; loading: boolean; onRefresh: () => void } = $props();
 </script>
@@ -16,6 +18,15 @@
 {:else if resources.length === 0}
   <div class="text-ink-2 text-sm">{t('clusters.resources.unavailable')}</div>
 {:else}
+ <ResponsiveTable>
+  {#snippet cards()}
+   {#each resources as r}
+    <CompactResourceCard>
+     <strong class="text-sm break-all">{r.resource_name}</strong><span class="text-xs {resourceStatusColor(r.resource_status)}">{r.resource_status}</span><p class="text-xs font-mono break-all">{r.resource_type}</p>
+     {#snippet details()}<p class="text-xs break-all">{t('clusters.resources.physicalId')}: {r.physical_resource_id || t('clusters.placeholder')}</p>{#if r.resource_status_reason}<p class="text-xs break-all">{r.resource_status_reason}</p>{/if}<p class="text-xs">{t('clusters.resources.createdAt')}: {r.created_at?.slice(0, 16).replace('T', ' ') ?? t('clusters.placeholder')}</p>{/snippet}
+    </CompactResourceCard>
+   {/each}
+  {/snippet}
   <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead>
@@ -45,4 +56,5 @@
       </tbody>
     </table>
   </div>
+ </ResponsiveTable>
 {/if}

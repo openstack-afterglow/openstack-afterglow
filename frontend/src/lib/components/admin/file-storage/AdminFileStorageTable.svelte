@@ -4,6 +4,9 @@
 	import { formatNumber } from '$lib/utils/format';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import { t } from '$lib/i18n/ns/admin-storage';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 
 	let {
 		storages,
@@ -29,6 +32,25 @@
 	}
 </script>
 
+<ResponsiveTable>
+	{#snippet cards()}
+		{#each storages as fs (fs.id)}
+			<CompactResourceCard selected={selectedId === fs.id}>
+				<div class="flex items-start justify-between gap-2"><button type="button" class="min-h-11 break-all text-left font-medium text-ink-0" onclick={() => onOpen(fs)}>{fs.name || fs.id.slice(0, 8)}</button><StatusChip status={fs.status} /></div>
+				<p class="text-xs text-ink-2">{formatNumber(fs.size)} GB · {fs.share_proto}</p><p class="break-all text-xs text-ink-2">{t('fileTable.column.project')}: {fs.project_id ? ($projectNames.get(fs.project_id) ?? fs.project_id.slice(0, 8)) : '-'}</p>
+				{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => onOpen(fs)}>{t('fileTable.details')}</Button>{/snippet}
+				{#snippet details()}
+					<div class="space-y-2 break-all text-xs text-ink-2">
+						<p class="font-mono">{fs.id}</p>
+						<p>{t('fileTable.column.type')}: {fs.metadata?.union_type || '-'}</p>
+						<p>{t('fileTable.column.createdAt')}: {formatDate(fs.created_at)}</p>
+						{#if fs.project_id}<p class="font-mono">{fs.project_id}</p><Button variant="link" size="sm" onclick={() => copyValue(fs.project_id!)}>{copiedId === fs.project_id ? t('fileDetail.copied') : t('fileDetail.copy')}</Button>{/if}
+						{#each fs.export_locations ?? [] as path}<p class="font-mono">{path}</p><Button variant="link" size="sm" onclick={() => copyValue(path)}>{copiedId === path ? t('fileDetail.copied') : t('fileDetail.copy')}</Button>{/each}
+					</div>
+				{/snippet}
+			</CompactResourceCard>
+		{/each}
+	{/snippet}
 <div class="overflow-x-auto">
 	<table class="w-full text-sm">
 		<thead>
@@ -102,3 +124,4 @@
 		</tbody>
 	</table>
 </div>
+</ResponsiveTable>

@@ -2,6 +2,8 @@
 	import type { Snippet } from 'svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import { t } from '$lib/i18n/ns/admin-storage';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	let {
 		title,
@@ -11,6 +13,8 @@
 		headerNote,
 		headers,
 		row,
+    cardSummary,
+    cardDetails,
 		onCleanup,
 	}: {
 		title: string;
@@ -20,6 +24,8 @@
 		headerNote?: Snippet;
 		headers: Snippet;
 		row: Snippet<[T]>;
+    cardSummary: Snippet<[T]>;
+    cardDetails: Snippet<[T]>;
 		onCleanup: () => void;
 	} = $props();
 
@@ -41,12 +47,12 @@
 </script>
 
 <section class="mb-8">
-	<div class="flex items-center justify-between mb-3">
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
 		<h2 class="text-base font-semibold text-ink-0">{t('orphanSection.title', { title, count: items.length })}</h2>
 		<button
 			onclick={onCleanup}
 			disabled={selected.size === 0}
-			class="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-ink-0 text-xs font-medium rounded-lg disabled:opacity-30"
+      class="min-h-11 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-ink-0 text-xs font-medium rounded-lg disabled:opacity-30 lg:min-h-0"
 		>
 			{t('orphanSection.cleanSelected', { count: selected.size })}
 		</button>
@@ -59,6 +65,16 @@
 			{emptyMessage}
 		</div>
 	{:else}
+    <ResponsiveTable>
+      {#snippet cards()}
+        <div class="responsive-card-toolbar flex min-h-11 items-center gap-2"><SelectionCheckbox checked={allSelected} indeterminate={partiallySelected} onclick={toggleAll} ariaLabel={t('orphanSection.selectAll', { title })} /><span class="text-xs text-ink-2">{t('orphanSection.selectAll', { title })}</span></div>
+        {#each items as item (item.id)}
+          <CompactResourceCard selected={selected.has(item.id)}>
+            <div class="flex items-start gap-2"><SelectionCheckbox checked={selected.has(item.id)} onclick={() => toggle(item.id)} ariaLabel={t('orphanSection.selectItem', { id: item.id })} /><div class="min-w-0 flex-1 space-y-2">{@render cardSummary(item)}</div></div>
+            {#snippet details()}{@render cardDetails(item)}{/snippet}
+          </CompactResourceCard>
+        {/each}
+      {/snippet}
 		<div class="overflow-x-auto">
 			<table class="selection-table w-full text-sm" class:has-selection={hasSelection}>
 				<thead>
@@ -94,6 +110,7 @@
 				</tbody>
 			</table>
 		</div>
+    </ResponsiveTable>
 	{/if}
 </section>
 

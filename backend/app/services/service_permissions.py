@@ -1,8 +1,7 @@
-"""Project service entitlements, independent of native OpenStack write authority.
+"""Role presets and native-service policy capability projections.
 
-Only exact effective global leaf roles grant an entitlement. A suffix, project
-administrator role or plain member never does. Keystone's current assignment
-and implication graph is authoritative; native services also enforce actions.
+Keystone owns identities and native project roles. Each service's oslo.policy
+owns action authorization; a grade is never expanded into token leaf roles here.
 """
 
 from __future__ import annotations
@@ -127,15 +126,14 @@ def _presets() -> tuple[dict, ...]:
         "admin": "프로젝트 내 전체 서비스 관리",
     }
     for service, grades in SERVICE_ROLE_GRADES.items():
-        for index, grade in enumerate(SERVICE_GRADE_ORDER):
-            parent = f"{service}_{SERVICE_GRADE_ORDER[index + 1]}" if index < 3 else None
+        for grade in SERVICE_GRADE_ORDER:
             rows.append(
                 {
                     "name": f"{service}_{grade}",
                     "description": titles[grade],
                     "area": service,
                     "grade": grade,
-                    "parent": parent,
+                    "parent": None,
                 }
             )
             for leaf in grades[grade]:
@@ -145,16 +143,31 @@ def _presets() -> tuple[dict, ...]:
                         "description": _LEAF_DESCRIPTIONS[leaf],
                         "area": service,
                         "grade": grade,
-                        "parent": f"{service}_{grade}",
+                        "parent": None,
                     }
                 )
     return tuple(rows)
 
 
 ROLE_PRESETS = _presets()
-ROLE_IMPLICATIONS = (
-    tuple((row["parent"], row["name"]) for row in ROLE_PRESETS if row["parent"])
-    + (("project_member", "member"), ("project_reader", "reader"))
+ROLE_IMPLICATIONS = tuple(
+    (row["parent"], row["name"]) for row in ROLE_PRESETS if row["area"] == "project" and row["parent"]
+) + (("project_member", "member"), ("project_reader", "reader"))
+
+# Exact edges emitted by the previous preset, retired only by explicit apply.
+# Native role IDs, assignments, project edges and operator custom edges survive.
+RETIRED_SERVICE_IMPLICATIONS = (
+    tuple(
+        (f"{service}_{SERVICE_GRADE_ORDER[index + 1]}", f"{service}_{grade}")
+        for service in SERVICE_ROLE_GRADES
+        for index, grade in enumerate(SERVICE_GRADE_ORDER[:-1])
+    )
+    + tuple(
+        (f"{service}_{grade}", leaf)
+        for service, grades in SERVICE_ROLE_GRADES.items()
+        for grade, leaves in grades.items()
+        for leaf in leaves
+    )
     + tuple(
         (leaf, f"{service}_reader")
         for service, grades in SERVICE_ROLE_GRADES.items()
@@ -173,6 +186,9 @@ def preset_preview() -> dict:
         "roles": [dict(row) for row in ROLE_PRESETS if row["area"] != "project"],
         "project_roles": [dict(row) for row in ROLE_PRESETS if row["area"] == "project"],
         "implications": [{"prior": prior, "implied": implied} for prior, implied in ROLE_IMPLICATIONS],
+        "retired_implications": [
+            {"prior": prior, "implied": implied} for prior, implied in RETIRED_SERVICE_IMPLICATIONS
+        ],
     }
 
 
@@ -194,29 +210,18 @@ def normalize_role_name(name: str) -> str:
 
 
 def service_permissions(principal: Mapping) -> dict[str, list[str]]:
-    """Project current leaves or verified system administrator management authority.
+    """Expose only capabilities evaluated by the native service for this caller.
 
-    Parent roles work only through Keystone's CURRENT implication graph. The
-    preset definition is not a second inference engine or revocation fallback.
+    No issuance-time token role, local preset hierarchy or system flag is an
+    authorization fallback when the service policy is unavailable.
     """
-    roles = {role for role in principal.get("roles", ()) if isinstance(role, str)}
-    system_admin = principal.get("is_system_admin") is True
-    privileged = bool(roles & {"admin", "manager"})
-    member = "member" in roles
-    reader = member or "reader" in roles
-    result = {}
-    for service, grades in SERVICE_ROLE_GRADES.items():
-        allowed = set()
-        if system_admin:
-            allowed.update(leaf for leaves in grades.values() for leaf in leaves)
-        elif reader and not privileged:
-            for grade in SERVICE_GRADE_ORDER:
-                if grade != "reader" and not member:
-                    continue
-                leaves = grades[grade]
-                allowed.update(role for role in leaves if role in roles)
-        result[service] = sorted(allowed)
-    return result
+    projected = principal.get("service_permissions", {})
+    if not isinstance(projected, Mapping):
+        projected = {}
+    return {
+        service: sorted({leaf for leaf in projected.get(service, ()) if leaf in ROLE_LEAVES})
+        for service in SERVICE_ROLE_GRADES
+    }
 
 
 def require_service_permission(principal: Mapping, *leaves: str) -> None:
@@ -226,11 +231,3 @@ def require_service_permission(principal: Mapping, *leaves: str) -> None:
         service = leaf.split("-", 1)[0].split("_", 1)[0]
         if leaf not in permissions.get(service, ()):
             raise HTTPException(status_code=403, detail=f"서비스 권한이 필요합니다: {leaf}")
-
-
-def require_any_service_permission(principal: Mapping, *leaves: str) -> None:
-    """Require one explicit action entitlement, without inferring a parent grade."""
-    permissions = service_permissions(principal)
-    allowed = {leaf for values in permissions.values() for leaf in values}
-    if not allowed.intersection(leaves):
-        raise HTTPException(status_code=403, detail=f"서비스 권한이 필요합니다: {' 또는 '.join(leaves)}")

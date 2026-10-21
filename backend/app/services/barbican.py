@@ -237,7 +237,21 @@ def list_project_quotas(conn) -> list[dict]:
     ep = _bep(conn)
     r = conn.session.get(f"{ep}/v1/project-quotas")
     r.raise_for_status()
-    return r.json().get("project_quotas", [])
+    body = r.json()
+    rows = body.get("project_quotas", [])
+    if not isinstance(rows, list):
+        raise RuntimeError("Barbican quota inventory response is invalid")
+    rows = list(rows)
+    while body.get("next"):
+        offset = len(rows)
+        r = conn.session.get(f"{ep}/v1/project-quotas", params={"offset": offset})
+        r.raise_for_status()
+        body = r.json()
+        batch = body.get("project_quotas")
+        if not isinstance(batch, list) or not batch or all(row in rows for row in batch):
+            raise RuntimeError("Barbican quota pagination did not advance")
+        rows.extend(batch)
+    return rows
 
 
 def get_project_quota(conn, project_id: str) -> dict:

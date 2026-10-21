@@ -1,5 +1,9 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-identity';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
+  import Pill from '$lib/components/ui/Pill.svelte';
 
 	interface Project {
 		id: string;
@@ -29,6 +33,30 @@
 	} = $props();
 </script>
 
+<ResponsiveTable>
+  {#snippet cards()}
+    {#each projects as p (p.id)}
+      <CompactResourceCard>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <a class="min-w-0 break-words font-medium text-ink-0" href={`/admin/projects/${encodeURIComponent(p.id)}?domain_id=${encodeURIComponent(domainId)}`}>{p.name}</a>
+          <Pill tone={p.enabled ? 'success' : 'danger'}>{p.enabled ? t('state.enabled') : t('state.disabled')}</Pill>
+        </div>
+        <p class="line-clamp-2 text-sm text-ink-2">{p.description || '-'}</p>
+        {#snippet actions()}
+          <Button variant="secondary" size="sm" onclick={() => onEdit(p)}>{t('actions.edit')}</Button>
+          <Button variant="secondary" size="sm" onclick={() => onAccess(p)}>{t('projectTable.permissions')}</Button>
+          <Button variant="danger" size="sm" onclick={() => onDelete(p)}>{t('actions.delete')}</Button>
+        {/snippet}
+        {#snippet details()}
+          <dl class="space-y-2 text-xs">
+            <div><dt class="text-ink-2">ID</dt><dd class="break-all font-mono"><Button variant="link" size="sm" onclick={() => onCopyId(p.id)}>{copiedId === p.id ? t('projectTable.copied') : p.id}</Button></dd></div>
+            <div><dt class="text-ink-2">{t('form.description')}</dt><dd class="whitespace-pre-wrap break-words">{p.description || '-'}</dd></div>
+            <div><dt class="text-ink-2">{t('projectTable.createdAt')}</dt><dd>{p.created_at?.slice(0, 10) ?? '-'}</dd></div>
+          </dl>
+        {/snippet}
+      </CompactResourceCard>
+    {/each}
+  {/snippet}
 <div class="overflow-x-auto">
 	<table class="w-full text-sm">
 		<thead>
@@ -84,3 +112,4 @@
 		</tbody>
 	</table>
 </div>
+</ResponsiveTable>

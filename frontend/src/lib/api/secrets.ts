@@ -90,13 +90,4 @@ export const secretsApi = {
 	getOrder: (id: string, token?: string, projectId?: string) =>
 		api.get<OrderInfo>(`/api/v1/secret-orders/${id}`, token, projectId),
 
-	// Admin
-	listProjectQuotas: (token?: string, projectId?: string) =>
-		api.get<object[]>('/api/v1/admin/key-manager/project-quotas', token, projectId),
-
-	setProjectQuota: (pid: string, body: object, token?: string, projectId?: string) =>
-		api.put<object>(`/api/v1/admin/key-manager/project-quotas/${pid}`, body, token, projectId),
-
-	deleteProjectQuota: (pid: string, token?: string, projectId?: string) =>
-		api.delete<void>(`/api/v1/admin/key-manager/project-quotas/${pid}`, token, projectId),
 };

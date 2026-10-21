@@ -18,6 +18,7 @@
 	import StorageAttachmentsSection from '$lib/components/instance/StorageAttachmentsSection.svelte';
 	import MigrateModal from '$lib/components/instance/MigrateModal.svelte';
 	import PasswordModal from '$lib/components/instance/PasswordModal.svelte';
+	import RenameModal from '$lib/components/instance/RenameModal.svelte';
 	import ResizeModal from '$lib/components/instance/ResizeModal.svelte';
 	import EvacuateModal from '$lib/components/admin/instances/EvacuateModal.svelte';
 	import { t } from '$lib/i18n/ns/instance';
@@ -26,16 +27,18 @@
 	interface Props {
 		instanceId: string;
 		onClose?: () => void;
+		onUpdated?: () => void;
 		adminProjectId?: string | null;
 		showHost?: boolean;
 	}
 
-	let { instanceId, onClose, adminProjectId = null, showHost = false }: Props = $props();
+	let { instanceId, onClose, onUpdated, adminProjectId = null, showHost = false }: Props = $props();
 
 	const s = createInstanceDetailController({
 		instanceId: () => instanceId,
 		effectiveProjectId: () => adminProjectId ?? ($auth.projectId ?? undefined),
 		adminMode: () => !!adminProjectId,
+		onUpdated: () => onUpdated?.(),
 		onDelete: () => {
 			if (onClose) onClose();
 			else goto('/dashboard/compute/instances');
@@ -233,6 +236,9 @@
 {/if}
 {#if showPasswordModal && s.canChangePassword}
 	<PasswordModal onClose={() => { showPasswordModal = false; }} />
+{/if}
+{#if s.renameOpen && s.canRename}
+	<RenameModal />
 {/if}
 {#if showResizeModal && canShowResize}
 	<ResizeModal preselectFlavorId={resizePreselectFlavorId} onClose={() => { showResizeModal = false; }} />

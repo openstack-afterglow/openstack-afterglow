@@ -7,6 +7,10 @@
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import type { GpuCatalogDevice } from '$lib/types/gpu';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
+	import Pill from '$lib/components/ui/Pill.svelte';
 
 	let {
 		open = $bindable(false),
@@ -196,6 +200,16 @@
 					{#if loading}
 						<div class="py-4"><ActivityIndicator size="sm" label={t('flavors.loading')} /></div>
 					{:else}
+						<ResponsiveTable>
+							{#snippet cards()}
+								{#each devices.filter((d) => !d.is_audio) as d (d.vendor_id + d.device_id)}
+									<CompactResourceCard>
+										<div class="flex items-start justify-between gap-2"><h3 class="break-all font-medium text-ink-0">{d.name}</h3><Pill tone="neutral" size="xs">{sourceLabel[d.source]}</Pill></div><p class="text-xs text-ink-2">{d.vendor_name} · <span class="font-mono">{d.vendor_id}:{d.device_id}</span></p>
+										{#snippet actions()}{#if d.source === 'db'}<Button variant="danger" size="sm" disabled={deletingDeviceId === `${d.vendor_id}:${d.device_id}`} onclick={() => deleteDevice(d)}>{deletingDeviceId === `${d.vendor_id}:${d.device_id}` ? t('flavors.delete.pending') : t('flavors.delete.action')}</Button>{/if}{/snippet}
+										{#snippet details()}<p class="break-all font-mono text-xs text-ink-2">{t('gpuCatalog.fields.aliases')}: {d.aliases.join(', ') || '-'}</p>{/snippet}
+									</CompactResourceCard>
+								{/each}
+							{/snippet}
 						<div class="border border-line rounded-lg overflow-hidden">
 							<table class="w-full text-xs">
 								<thead>
@@ -230,6 +244,7 @@
 								</tbody>
 							</table>
 						</div>
+						</ResponsiveTable>
 					{/if}
 				</div>
 

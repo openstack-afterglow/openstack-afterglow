@@ -573,7 +573,7 @@ async def get_caller_project_permissions(
     effective_project_id = project_id or token_info.get("project_id") or ""
     from app.services.domain_scope import assert_project_domain
     from app.services.project_service import get_project_access
-    from app.services.service_permissions import service_permissions
+    from app.services.service_authorization import service_permission_snapshot
 
     if token_info.get("is_system_admin") is True and token_info.get("_live_system_admin") is not True:
         await require_admin(token_info)
@@ -593,6 +593,8 @@ async def get_caller_project_permissions(
 
     from app.services.identity_roles import visible_role_names
 
+    native_permissions, permission_errors = await service_permission_snapshot(principal)
+
     return {
         "project_id": effective_project_id,
         "user_id": token_info.get("user_id", ""),
@@ -600,7 +602,8 @@ async def get_caller_project_permissions(
         "is_system_admin": is_sys_admin,
         "is_manager": is_mgr,
         "is_owner": access["is_owner"],
-        "service_permissions": service_permissions(principal),
+        "service_permissions": native_permissions,
+        "service_permission_errors": permission_errors,
         "is_reader": is_reader,
         "can_read": True,
         "can_write": can_write,

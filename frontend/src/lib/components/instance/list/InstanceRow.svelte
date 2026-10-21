@@ -6,6 +6,7 @@
 	import InstanceRowActions from './InstanceRowActions.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	const strategyKeys: Record<string, 'row.strategy.prebuilt' | 'row.strategy.dynamic'> = {
 		prebuilt: 'row.strategy.prebuilt',
@@ -18,6 +19,8 @@
 		selected = false,
 		selectable = true,
 		selectionDisabled = false,
+		compact = false,
+		acting = $bindable(false),
 		onSelect,
 		onAction,
 		onToggleSelect,
@@ -27,13 +30,36 @@
 		selected?: boolean;
 		selectable?: boolean;
 		selectionDisabled?: boolean;
+		compact?: boolean;
+		acting?: boolean;
 		onSelect: (id: string) => void;
 		onAction: (kind: 'console' | 'shelve' | 'unshelve' | 'delete' | 'start' | 'stop', instance: Instance) => Promise<void>;
 		onToggleSelect: () => void;
 	} = $props();
-	let acting = $state(false);
 </script>
 
+{#if compact}
+	<CompactResourceCard {selected}>
+		<div class="flex min-w-0 items-start gap-2">
+			<SelectionCheckbox checked={selected} disabled={!selectable || selectionDisabled} unavailable={!selectable} title={!selectable ? t('row.selectionUnavailable') : undefined} onclick={onToggleSelect} ariaLabel={t('row.select', { name: instance.name || instance.id })} />
+			<button type="button" onclick={() => onSelect(instance.id)} title={instance.name || instance.id} class="min-h-11 min-w-0 flex-1 text-left font-medium text-ink-0 hover:text-warm-text-hover"><span class="line-clamp-2 break-words">{instance.name || instance.id}</span></button>
+			<StatusChip status={instance.status} />
+		</div>
+		{#if acting}<ActivityIndicator size="xs" label={t('rowActions.processing')} />{/if}
+		<div class="line-clamp-2 text-xs text-ink-2 break-words" title={instance.image_name ?? t('row.bootFromVolume')}>{instance.image_name ?? t('row.bootFromVolume')}</div>
+		{#if instance.flavor_name}<div class="text-xs text-ink-2 break-words"><span class="line-clamp-2" title={instance.flavor_name}>{instance.flavor_name}</span>{#if isUnderutilized}<span class="text-warm-text">{t('row.resizeRecommended')}</span>{/if}</div>{/if}
+		<p class="break-all font-mono text-xs text-ink-2">{instance.ip_addresses.find((ip) => ip.type === 'floating')?.addr ?? instance.ip_addresses[0]?.addr ?? '—'}</p>
+		{#snippet actions()}<InstanceRowActions {instance} {onAction} bind:acting />{/snippet}
+		{#snippet details()}
+			<dl class="space-y-2 text-xs">
+				<div><dt class="text-ink-2">ID</dt><dd class="break-all font-mono">{instance.id}</dd></div>
+				<div><dt class="text-ink-2">IP</dt><dd class="space-y-1 break-all font-mono">{#each instance.ip_addresses as ip}<p>{ip.addr} · {ip.network_name} · {ip.type}</p>{:else}—{/each}</dd></div>
+				<div><dt class="text-ink-2">{t('table.library')}</dt><dd class="break-words">{instance.union_libraries.filter(Boolean).join(', ') || '—'}</dd></div>
+				<div><dt class="text-ink-2">{t('table.strategy')}</dt><dd>{instance.union_strategy ? (strategyKeys[instance.union_strategy] ? t(strategyKeys[instance.union_strategy]) : instance.union_strategy) : '—'}</dd></div>
+			</dl>
+		{/snippet}
+	</CompactResourceCard>
+{:else}
 <tr class="motion-fade instance-row resource-selection-surface" data-selected={selected}>
 	<td class="text-left">
 		<SelectionCheckbox
@@ -83,6 +109,7 @@
 		</div>
 	</td>
 	<td class="text-xs text-ink-2">{instance.union_strategy ? (strategyKeys[instance.union_strategy] ? t(strategyKeys[instance.union_strategy]) : instance.union_strategy) : '—'}</td>
-	<InstanceRowActions {instance} {onAction} bind:acting />
+	<td class="text-right"><InstanceRowActions {instance} {onAction} bind:acting /></td>
 </tr>
+{/if}
 

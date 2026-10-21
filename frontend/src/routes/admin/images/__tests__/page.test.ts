@@ -2,6 +2,13 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
 import type { AdminImage } from '$lib/types/adminImage';
+import type * as Reactivity from 'svelte/reactivity';
+
+const viewport = vi.hoisted(() => ({ desktop: true }));
+vi.mock('svelte/reactivity', async importOriginal => ({
+	...await importOriginal<typeof Reactivity>(),
+	MediaQuery: class { get current() { return viewport.desktop; } },
+}));
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), patch: vi.fn(), post: vi.fn(), delete: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ api: mocks, ApiError: class ApiError extends Error { status = 500; } }));
@@ -17,6 +24,7 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 }));
 import { auth } from '$lib/stores/auth';
 import Page from '../+page.svelte';
+import InventoryBoundary from '$lib/components/admin/domains/_AdminInventoryBoundaryHarness.svelte';
 
 function image(id: string, repository: string, tag: string, created_at: string, extra: Partial<AdminImage> = {}): AdminImage {
 	return { id, repository, tag, name: `${repository}:${tag}`, status: 'active', size: 1024 ** 3,
@@ -39,7 +47,8 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-describe('administrator image catalog', () => {
+describe.each([true, false])('administrator image catalog (desktop=%s)', desktop => {
+	beforeEach(() => { viewport.desktop = desktop; });
 	it('groups versions across API pages and orders repositories by their newest upload', async () => {
 		mocks.get.mockImplementation(async (path: string) => path.includes('marker=')
 			? { items: [ubuntuNew], next_marker: null }
@@ -50,7 +59,7 @@ describe('administrator image catalog', () => {
 		const debianButton = within(list).getByRole('button', { name: 'debian' });
 		expect(ubuntuButton.compareDocumentPosition(debianButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		await fireEvent.click(ubuntuButton);
-		const tags = screen.getByLabelText('이미지 tag 카드');
+		const tags = document.body;
 		expect(within(tags).getByRole('button', { name: 'ubuntu:24.04 (u-new) 상세' })).toBeTruthy();
 		expect(within(tags).getByRole('button', { name: 'ubuntu:22.04 (u-old) 상세' })).toBeTruthy();
 	});
@@ -74,11 +83,11 @@ describe('administrator image catalog', () => {
 		});
 		render(Page);
 		await fireEvent.click(await screen.findByRole('button', { name: 'ubuntu' }));
-		const tags = within(screen.getByLabelText('이미지 tag 카드'));
+		const tags = within(document.body);
 		const oldDetail = tags.getByRole('button', { name: 'ubuntu:24.04 (old-uuid) 상세' });
 		const newDetail = tags.getByRole('button', { name: 'ubuntu:24.04 (new-uuid) 상세' });
-		expect(within(oldDetail.parentElement!).getByText('이전')).toBeTruthy();
-		expect(within(newDetail.parentElement!).getByText('현재')).toBeTruthy();
+		expect(within(oldDetail.closest('tr, article')!).getByText('이전')).toBeTruthy();
+		expect(within(newDetail.closest('tr, article')!).getByText('현재')).toBeTruthy();
 		expect(tags.getAllByRole('button', { name: /ubuntu:24\.04 .* 상세/ })).toHaveLength(2);
 		expect(within(tags.getByLabelText('ubuntu:24.04 (old-uuid) 관리')).queryByRole('button', { name: '삭제' })).toBeNull();
 		expect(within(tags.getByLabelText('ubuntu:24.04 (new-uuid) 관리')).getByRole('button', { name: '삭제' })).toBeTruthy();
@@ -87,9 +96,9 @@ describe('administrator image catalog', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '패널 닫기 버튼' }));
 		await fireEvent.click(screen.getByRole('button', { name: 'Tags' }));
 		await fireEvent.change(screen.getByLabelText('공개 범위'), { target: { value: 'public' } });
-		const publicTags = within(screen.getByLabelText('이미지 tag 카드'));
+		const publicTags = within(document.body);
 		const previous = publicTags.getByRole('button', { name: 'ubuntu:24.04 (old-uuid) 상세' });
-		expect(within(previous.parentElement!).getByText('이전')).toBeTruthy();
+		expect(within(previous.closest('tr, article')!).getByText('이전')).toBeTruthy();
 		expect(publicTags.queryByRole('button', { name: 'ubuntu:24.04 (new-uuid) 상세' })).toBeNull();
 		await fireEvent.click(previous);
 		expect(await screen.findByText(old.id, { selector: 'dd' })).toBeTruthy();
@@ -97,7 +106,7 @@ describe('administrator image catalog', () => {
 		const actions = publicTags.getByLabelText('ubuntu:24.04 (old-uuid) 관리');
 		await fireEvent.click(within(actions).getByRole('button', { name: '검증 승인' }));
 		await vi.waitFor(() => expect(mocks.put).toHaveBeenCalledWith('/api/v1/admin/images/old-uuid-1234/verification', { verified: true }, 'token', 'project'));
-		expect(within(publicTags.getByRole('button', { name: 'ubuntu:24.04 (old-uuid) 상세' }).parentElement!).getByText('이전')).toBeTruthy();
+		expect(within(publicTags.getByRole('button', { name: 'ubuntu:24.04 (old-uuid) 상세' }).closest('tr, article')!).getByText('이전')).toBeTruthy();
 	});
 
 	it('approves and revokes a public tag through explicit administrator actions', async () => {
@@ -108,7 +117,7 @@ describe('administrator image catalog', () => {
 		mocks.put.mockImplementation(async (_path: string, body: { verified: boolean }) => { verified = body.verified; return {}; });
 		render(Page);
 		await fireEvent.click(await screen.findByRole('button', { name: 'ubuntu' }));
-		const tags = screen.getByLabelText('이미지 tag 카드');
+		const tags = document.body;
 		const actions = within(tags).getByLabelText('ubuntu:22.04 (u-old) 관리');
 		expect(within(actions).queryByRole('button', { name: '검증 해제' })).toBeNull();
 		await fireEvent.click(within(actions).getByRole('button', { name: '검증 승인' }));
@@ -131,14 +140,14 @@ describe('administrator image catalog', () => {
 	it('does not publish a late catalog from a previous project', async () => {
 		const oldRequest = Promise.withResolvers<{ items: AdminImage[]; next_marker: null }>();
 		mocks.get.mockReturnValueOnce(oldRequest.promise).mockResolvedValue({ items: [debian], next_marker: null });
-		render(Page);
+		render(InventoryBoundary, { page: Page });
 		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledOnce());
 		auth.update((state) => ({ ...state, token: 'token', projectId: 'new-project' }));
 		expect(await screen.findByRole('button', { name: 'debian' })).toBeTruthy();
 		oldRequest.resolve({ items: [ubuntuOld], next_marker: null });
 		await oldRequest.promise;
 		await fireEvent.click(screen.getByRole('button', { name: 'Tags' }));
-		const tags = within(screen.getByLabelText('이미지 tag 카드'));
+		const tags = within(document.body);
 		expect(tags.queryByRole('button', { name: 'ubuntu:22.04 (u-old) 상세' })).toBeNull();
 		expect(tags.getByRole('button', { name: 'debian:13 (d-new) 상세' })).toBeTruthy();
 	});

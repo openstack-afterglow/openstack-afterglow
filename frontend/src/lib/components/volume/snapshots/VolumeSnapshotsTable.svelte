@@ -6,6 +6,9 @@
   import { t } from '$lib/i18n/ns/volume';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
   import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
 
   let { snapshots, deleting, selectedIds, selectableIds, selectionDisabled, onToggleSelect, onToggleAll, onDelete }: {
     snapshots: VolumeSnapshot[]; deleting: string | null; selectedIds: ReadonlySet<string>;
@@ -16,6 +19,39 @@
   const selectedSelectableCount = $derived([...selectedIds].filter((id) => selectableIds.has(id)).length);
 </script>
 
+<ResponsiveTable>
+  {#snippet cards()}
+    <div class="responsive-card-toolbar">
+      <SelectionCheckbox checked={selectableIds.size > 0 && selectedSelectableCount === selectableIds.size} indeterminate={selectedSelectableCount > 0 && selectedSelectableCount < selectableIds.size} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel={t('snapshotsTable.selectAll')} />
+      <span class="text-xs text-ink-2">{t('snapshotsTable.selectAll')}</span>
+    </div>
+    {#each snapshots as snap (snap.id)}
+      <CompactResourceCard selected={selectedIds.has(snap.id)}>
+        <div class="flex items-start gap-2 min-w-0">
+          <SelectionCheckbox checked={selectedIds.has(snap.id)} disabled={selectionDisabled} onclick={() => onToggleSelect(snap.id)} ariaLabel={t('snapshotsTable.selectSnapshot', { name: snap.name || snap.id })} />
+          <span class="min-w-0 flex-1 font-medium break-all">{snap.name || snap.id.slice(0, 8)}</span>
+          <StatusChip status={snap.status} />
+        </div>
+        <dl>
+          <div><dt>{t('snapshotsTable.size')}</dt><dd>{formatStorage(snap.size)}</dd></div>
+          <div><dt>{t('snapshotsTable.volumeId')}</dt><dd class="font-mono break-all">{t('snapshotsTable.shortVolumeId', { id: snap.volume_id.slice(0, 8) })}</dd></div>
+        </dl>
+        {#snippet details()}
+          <p class="font-mono break-all">{snap.id}</p>
+          <dl>
+            <div><dt>{t('snapshotsTable.volumeId')}</dt><dd class="font-mono break-all">{snap.volume_id}</dd></div>
+            <div><dt>{t('snapshotsTable.createdAt')}</dt><dd>{snap.created_at ? new Date(snap.created_at).toLocaleDateString(intlLocale()) : t('snapshotsTable.missingValue')}</dd></div>
+            <div class="col-span-2"><dt>{t('snapshotsTable.description')}</dt><dd class="whitespace-pre-wrap">{snap.description || t('snapshotsTable.missingValue')}</dd></div>
+          </dl>
+        {/snippet}
+        {#snippet actions()}
+          <Button variant="danger-outline" size="sm" onclick={() => onDelete(snap.id, snap.name)} disabled={deleting === snap.id}>
+            {#if deleting === snap.id}<ActivityIndicator size="xs" tone="danger" />{/if}{deleting === snap.id ? t('snapshotsTable.deleting') : t('snapshotsTable.delete')}
+          </Button>
+        {/snippet}
+      </CompactResourceCard>
+    {/each}
+  {/snippet}
 <div class="overflow-x-auto">
   <table class="w-full text-sm">
     <thead>
@@ -54,3 +90,4 @@
     </tbody>
   </table>
 </div>
+</ResponsiveTable>

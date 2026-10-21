@@ -3,7 +3,6 @@
 	import { api } from '$lib/api/client';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import Card from '$lib/components/ui/Card.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
@@ -11,6 +10,8 @@
 	import type { HostHealthSnapshot, HostMetricKey, MonitoredHost } from '$lib/types/hostHealth';
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	const metricKeys: HostMetricKey[] = ['cpu', 'memory', 'disk', 'network_rx', 'network_tx'];
 	const scope = $derived(JSON.stringify([$auth.userId, $auth.projectId, $auth.token, $auth.isSystemAdmin, $authReady, $projectSwitching]));
@@ -125,7 +126,17 @@
 	{:else if snapshot && !snapshot.enabled}
 		<Alert tone="neutral">{t('hostHealth.disabled')}</Alert>
 	{:else if snapshot?.hosts.length}
-		<div class="hidden md:block">
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each snapshot?.hosts ?? [] as host (host.id)}
+					<CompactResourceCard>
+						<div class="flex flex-wrap items-start justify-between gap-2"><h3 class="break-all font-mono text-sm text-ink-0">{host.name}</h3><span class="text-xs text-ink-2">{t(`hostHealth.role.${host.role}`)}</span></div>
+						<div class="flex flex-wrap gap-2"><Pill dot tone={verified && host.reachability.status === 'up' ? 'success' : verified && host.reachability.status === 'down' ? 'danger' : 'neutral'}>{t(`hostHealth.connection.${verified ? host.reachability.status : 'unknown'}`)}</Pill><Pill dot tone={verified && host.heartbeat.status === 'up' ? 'success' : verified && host.heartbeat.status === 'down' ? 'danger' : 'neutral'}>{t(`hostHealth.heartbeat.${verified ? host.heartbeat.status : 'unknown'}`)}</Pill></div>
+						<div class="grid grid-cols-2 gap-2 text-xs"><div><p class="text-ink-2">{t('hostHealth.metric.cpu')}</p><HostMetricCell metric={host.metrics.cpu} verified={verified && host.reachability.status === 'up'} label={t('hostHealth.metric.cpu')} /></div><div><p class="text-ink-2">{t('hostHealth.metric.memory')}</p><HostMetricCell metric={host.metrics.memory} verified={verified && host.reachability.status === 'up'} label={t('hostHealth.metric.memory')} /></div></div>
+						{#snippet details()}<div class="space-y-3 text-xs text-ink-2"><p class="break-all font-mono">{host.address ?? '—'}</p><div><p>{t('hostHealth.probe')}</p>{@render connection(host)}</div><div><p>{t('hostHealth.service')}</p>{@render heartbeat(host)}</div>{#each metricKeys.filter((key) => key !== 'cpu' && key !== 'memory') as key}<div><p>{t(`hostHealth.metric.${key}`)}</p><HostMetricCell metric={host.metrics[key]} verified={verified && host.reachability.status === 'up'} label={t(`hostHealth.metric.${key}`)} /></div>{/each}{#if host.metrics_error}<p class="break-words">{t('hostHealth.metricsFailed')} <code>{host.metrics_error}</code></p>{/if}</div>{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 			<TableShell density="compact">
 				<table aria-label={t('hostHealth.title')}>
 					<thead><tr>
@@ -144,23 +155,7 @@
 					</tbody>
 				</table>
 			</TableShell>
-		</div>
-		<div class="space-y-3 md:hidden">
-			{#each snapshot.hosts as host (host.id)}
-				<Card surface="base" padding="sm">
-					<div class="mb-3 flex flex-wrap items-start justify-between gap-2"><span class="font-mono text-xs text-ink-0 break-all">{host.name}</span><span class="text-xs text-ink-2">{t(`hostHealth.role.${host.role}`)}</span></div>
-					<p class="mb-3 font-mono text-xs text-ink-2 break-all">{host.address ?? '—'}</p>
-					<dl class="grid grid-cols-2 gap-3 mb-3">
-						<div><dt class="text-xs text-ink-2 mb-1">{t('hostHealth.probe')}</dt><dd>{@render connection(host)}</dd></div>
-						<div><dt class="text-xs text-ink-2 mb-1">{t('hostHealth.service')}</dt><dd>{@render heartbeat(host)}</dd></div>
-					</dl>
-					<dl class="grid grid-cols-2 gap-3">
-						{#each metricKeys as key}<div><dt class="text-xs text-ink-2 mb-1">{t(`hostHealth.metric.${key}`)}</dt><dd><HostMetricCell metric={host.metrics[key]} verified={verified && host.reachability.status === 'up'} label={t(`hostHealth.metric.${key}`)} /></dd></div>{/each}
-					</dl>
-					{#if host.metrics_error}<p class="mt-3 text-xs text-ink-2 break-words">{t('hostHealth.metricsFailed')} <code>{host.metrics_error}</code></p>{/if}
-				</Card>
-			{/each}
-		</div>
+		</ResponsiveTable>
 		<p class="text-xs text-ink-2">{t('hostHealth.trendNote')}</p>
 	{:else if snapshot && !snapshot.error && verified}
 		<Alert tone="neutral">{t('hostHealth.noHosts')}</Alert>

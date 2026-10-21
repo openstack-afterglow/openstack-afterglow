@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
   import { onMount } from 'svelte';
   import { t } from '$lib/i18n/ns/palimpsest-packages';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -210,20 +212,20 @@
               {#if controller.inventory.length === 0}<Card surface="base"><p class="text-sm text-ink-2">{t('inventory.empty')}</p></Card>
               {:else if visibleInventory.length === 0}<Card surface="base"><p class="text-sm text-ink-2">{t('search.empty')}</p></Card>
               {:else}
-                <div class="hidden xl:block"><TableShell><table><thead><tr><th scope="col">{t('columns.package')}</th><th scope="col">{t('columns.tags')}</th><th scope="col">{t('columns.platforms')}</th><th scope="col">{t('columns.size')}</th><th scope="col">{t('columns.actions')}</th></tr></thead><tbody>
+                <ResponsiveTable>{#snippet cards()}{#each visibleInventory as item (item.package_id)}<CompactResourceCard>
+                  <h2 class="break-all font-mono text-sm font-medium">{item.namespace}/{item.name}</h2><p class="text-xs text-ink-2">{packageType(item.package_type)} · {t('inventory.versions', { count: item.version_count })}</p>
+                  {#if controller.latestVersions[item.package_id]?.version}<p class="text-xs tabular-nums">{size(controller.latestVersions[item.package_id].version!.total_bytes)} · {t('metadata.size')}</p>{:else}<p class="text-xs text-ink-2">{controller.latestVersions[item.package_id] ? t('metadata.unavailable') : t('metadata.loading')}</p>{/if}
+                  {#snippet details()}<div class="space-y-1 text-xs">{@render latestMetadata(item)}{#each item.tags as tag}<p class="break-all font-mono">{tag.tag} → {tag.digest}</p>{/each}{#if !item.tags.length}<p>{t('inventory.noTags')}</p>{/if}<p>{platforms(item.platforms)}</p><p class="break-all">{item.latest_pushed_by ?? t('inventory.noPublisher')} · {timestamp(item.latest_pushed_at)}</p><p>{t('context.private')}</p></div>{/snippet}
+                  {#snippet actions()}{@render packageActions(item)}{/snippet}
+                </CompactResourceCard>{/each}{/snippet}
+                <TableShell><table><thead><tr><th scope="col">{t('columns.package')}</th><th scope="col">{t('columns.tags')}</th><th scope="col">{t('columns.platforms')}</th><th scope="col">{t('columns.size')}</th><th scope="col">{t('columns.actions')}</th></tr></thead><tbody>
                   {#each visibleInventory as item (item.package_id)}<tr>
                     <td><span class="font-mono">{item.namespace}/{item.name}</span><p class="mt-1 text-xs text-ink-2">{packageType(item.package_type)} · {t('inventory.versions', { count: item.version_count })}</p></td>
                     <td>{#each item.tags as tag}<p class="font-mono text-xs" title={tag.digest}>{tag.tag} → {shortDigest(tag.digest)}</p>{/each}{#if !item.tags.length}<span class="text-ink-2">{t('inventory.noTags')}</span>{/if}</td>
                     <td class="max-w-56 whitespace-normal">{platforms(item.platforms)}</td><td>{@render latestMetadata(item, true)}<p class="max-w-56 break-all text-xs">{item.latest_pushed_by ?? t('inventory.noPublisher')}</p><p class="text-xs text-ink-2 tabular-nums">{timestamp(item.latest_pushed_at)}</p></td>
                     <td>{@render packageActions(item, true)}</td>
                   </tr>{/each}
-                </tbody></table></TableShell></div>
-                <div class="space-y-3 xl:hidden">{#each visibleInventory as item (item.package_id)}<Card surface="base">
-                  <h2 class="break-all font-mono text-sm font-medium">{item.namespace}/{item.name}</h2><p class="mt-1 text-xs text-ink-2">{packageType(item.package_type)} · {t('inventory.versions', { count: item.version_count })} · {t('context.private')}</p>
-                  <div class="my-3 space-y-1 text-xs">{#each item.tags as tag}<p class="break-all font-mono">{tag.tag} → {tag.digest}</p>{/each}{#if !item.tags.length}<p>{t('inventory.noTags')}</p>{/if}<p>{platforms(item.platforms)}</p><p class="break-all">{item.latest_pushed_by ?? t('inventory.noPublisher')} · {timestamp(item.latest_pushed_at)}</p></div>
-                  {@render latestMetadata(item)}
-                  {@render packageActions(item)}
-                </Card>{/each}</div>
+                </tbody></table></TableShell></ResponsiveTable>
               {/if}
               {#if controller.nextCursor}<Button variant="secondary" disabled={!!controller.busy.inventory} onclick={() => controller.loadInventory(true)}>{t('inventory.more')}</Button>{/if}
             {/if}
@@ -240,8 +242,12 @@
             {#if controller.errors.revoke}<Alert tone="danger">{controller.errors.revoke}</Alert>{/if}
             {#if controller.busy.keys}<p class="text-sm text-ink-2" role="status">{t('keys.loading')}</p>{:else if controller.keys !== null}
               {#if !controller.keys.length}<Card surface="base"><p class="text-sm text-ink-2">{t('keys.empty')}</p></Card>{:else}
-                <div class="hidden md:block"><TableShell><table><thead><tr><th scope="col">{t('columns.key')}</th><th scope="col">{t('columns.scope')}</th><th scope="col">{t('columns.permissions')}</th><th scope="col">{t('columns.dates')}</th><th scope="col">{t('columns.actions')}</th></tr></thead><tbody>{#each controller.keys as key (key.key_id)}<tr><td>{key.name}<div class="mt-1"><StatusChip status={keyStatus(key)} /></div></td><td class="max-w-64 break-all">{key.scope.all_packages ? t('keys.allPackages') : key.scope.packages.join(', ')}</td><td class="max-w-56 break-words font-mono text-xs">{key.actions.join(', ')}</td><td class="tabular-nums">{timestamp(key.created_at)}<p class="text-xs text-ink-2">{timestamp(key.expires_at)}</p></td><td>{@render keyRevoke(key)}</td></tr>{/each}</tbody></table></TableShell></div>
-                <div class="space-y-3 md:hidden">{#each controller.keys as key (key.key_id)}<Card surface="base"><div class="flex flex-wrap items-center justify-between gap-2"><h2 class="text-sm font-medium">{key.name}</h2><StatusChip status={keyStatus(key)} /></div><p class="my-2 break-all text-sm">{key.scope.all_packages ? t('keys.allPackages') : key.scope.packages.join(', ')}</p><p class="break-words font-mono text-xs">{key.actions.join(', ')}</p><p class="my-3 text-xs text-ink-2">{t('keys.dates', { created: timestamp(key.created_at), expires: timestamp(key.expires_at) })}</p>{@render keyRevoke(key)}</Card>{/each}</div>
+                <ResponsiveTable>{#snippet cards()}{#each controller.keys as key (key.key_id)}<CompactResourceCard>
+                  <div class="flex flex-wrap items-center justify-between gap-2"><h2 class="text-sm font-medium">{key.name}</h2><StatusChip status={keyStatus(key)} /></div><p class="break-words font-mono text-xs">{key.actions.join(', ')}</p>
+                  {#snippet details()}<p class="break-all text-xs font-mono">{t('keys.publicId')}: {key.key_id}</p><p class="break-all text-xs">{t('columns.scope')}: {key.scope.all_packages ? t('keys.allPackages') : key.scope.packages.join(', ')}</p><p class="text-xs text-ink-2">{t('keys.dates', { created: timestamp(key.created_at), expires: timestamp(key.expires_at) })}</p>{/snippet}
+                  {#snippet actions()}<Button variant="ghost" size="sm" onclick={() => copy(key.key_id)}>{t('keys.copyId')}</Button><Button variant="danger-outline" disabled={!controller.canRevoke || !!key.revoked_at || !!controller.busy.issue || !!controller.busy.revoke} onclick={() => { revokeTarget = key; }}>{t('actions.revoke')}</Button>{/snippet}
+                </CompactResourceCard>{/each}{/snippet}
+                <TableShell><table><thead><tr><th scope="col">{t('columns.key')}</th><th scope="col">{t('columns.scope')}</th><th scope="col">{t('columns.permissions')}</th><th scope="col">{t('columns.dates')}</th><th scope="col">{t('columns.actions')}</th></tr></thead><tbody>{#each controller.keys as key (key.key_id)}<tr><td>{key.name}<div class="mt-1"><StatusChip status={keyStatus(key)} /></div></td><td class="max-w-64 break-all">{key.scope.all_packages ? t('keys.allPackages') : key.scope.packages.join(', ')}</td><td class="max-w-56 break-words font-mono text-xs">{key.actions.join(', ')}</td><td class="tabular-nums">{timestamp(key.created_at)}<p class="text-xs text-ink-2">{timestamp(key.expires_at)}</p></td><td>{@render keyRevoke(key)}</td></tr>{/each}</tbody></table></TableShell></ResponsiveTable>
               {/if}
             {/if}
           </div>

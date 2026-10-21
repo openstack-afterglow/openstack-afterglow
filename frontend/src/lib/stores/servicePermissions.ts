@@ -8,6 +8,7 @@ export interface ProjectPermissions {
 	is_manager: boolean;
 	can_write: boolean;
 	service_permissions: Record<string, string[]>;
+	service_permission_errors?: Record<string, string>;
 }
 export interface PermissionState {
 	permissions: ProjectPermissions | null;
@@ -54,9 +55,10 @@ const serviceAuthority = derived(
 	([state, identity, ready, switching]) => {
 		const active = ready && !switching && !!identity.token && !!identity.projectId && !state.loading && !state.error && state.permissions !== null;
 		const leaves = new Set(Object.values(state.permissions?.service_permissions ?? {}).flat());
+		const available = (leaf: string): boolean => !state.permissions?.service_permission_errors?.[leaf.split('-', 1)[0]];
 		return {
-			can: (leaf: string): boolean => active && leaves.has(leaf),
-			denied: (leaf: string): boolean => active && !leaves.has(leaf),
+			can: (leaf: string): boolean => active && available(leaf) && leaves.has(leaf),
+			denied: (leaf: string): boolean => active && available(leaf) && !leaves.has(leaf),
 		};
 	}
 );

@@ -7,7 +7,7 @@
 	import { observeVisible } from '$lib/utils/observeVisible';
 	import type { SwiftObject } from '$lib/types/objectStorage';
 
-	let { obj, fullPath = false }: { obj: SwiftObject; fullPath?: boolean } = $props();
+	let { obj, fullPath = false, compact = false }: { obj: SwiftObject; fullPath?: boolean; compact?: boolean } = $props();
 
 	const s = useObjectBrowser();
 	const label = $derived(fullPath ? obj.name : (s.baseName(obj.name) || obj.name));
@@ -50,7 +50,7 @@
 	onclick={onCardClick}
 	ondblclick={activate}
 	onkeydown={onKeydown}
-	use:observeVisible={() => s.requestThumbnail(obj)}
+	use:observeVisible={() => { if (!compact) s.requestThumbnail(obj); }}
 >
 	<div class="flex items-center gap-2 px-3 py-2">
 		<SelectionCheckbox
@@ -107,6 +107,7 @@
 		</ActionMenu>
 	</div>
 
+ {#if !compact}
 	<div class="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-surface-sunken">
 		{#if thumb}
 			<img src={thumb} alt="" loading="lazy" decoding="async" class="h-full w-full object-cover" />
@@ -123,6 +124,7 @@
 			</div>
 		{/if}
 	</div>
+ {/if}
 
 	<div class="flex items-center justify-between gap-2 px-3 py-2 text-xs text-ink-2">
 		<span class="truncate" title={obj.content_type || t('views.fileCard.unavailable')}>{shortContentType(obj.content_type)}</span>

@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { ActivityIndicator, Alert, Button, Field, FormModal, PageHeader, SelectInput, TableShell, TextareaInput, TextInput } from '$lib/components/ui';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { adminTelemetryRequest, TelemetryError, type AlarmType, type AlarmWrite, type AodhDetail, type NativeAlarm, type NativePage } from '$lib/api/adminTelemetry';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { t } from '$lib/i18n/ns/admin-telemetry';
@@ -208,16 +210,28 @@
 	{/if}
 	{#if loading || selecting}<ActivityIndicator label={t('settings.loading')} />{/if}
 	{#if alarms}
+		{@const alarmPage = alarms}
 		<NativeStatus status={alarms.status} error={alarms.error} />
 		<div class="alarm-region" role="region" aria-label={t('settings.title')}>
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each alarmPage.items as alarm (alarm.alarm_id)}
+					<CompactResourceCard selected={selected === alarm.alarm_id}>
+						<Button variant="link" disabled={busy} ariaPressed={selected === alarm.alarm_id} onclick={() => selectAlarm(alarm.alarm_id)}>{alarm.name}</Button>
+						<p>{t('settings.state')}: {alarm.state ?? t('settings.unknown')} · {t('settings.severity')}: {alarm.severity ?? t('settings.unknown')}</p>
+						{#snippet details()}<p class="font-mono break-all">{alarm.alarm_id}</p><p>{t('settings.type')}: {alarm.type}</p>{/snippet}
+					</CompactResourceCard>
+				{:else}<p>{t(alarmPage.status === 'available' ? 'settings.empty' : 'settings.rowsUnknown')}</p>{/each}
+			{/snippet}
 		<TableShell density="compact">
 			<table tabindex="0" aria-label={t('settings.title')}>
 				<thead><tr><th>{t('settings.name')}</th><th>{t('settings.type')}</th><th>{t('settings.state')}</th><th>{t('settings.severity')}</th></tr></thead>
-				<tbody>{#each alarms.items as alarm (alarm.alarm_id)}
+				<tbody>{#each alarmPage.items as alarm (alarm.alarm_id)}
 					<tr data-selected={selected === alarm.alarm_id}><td><button class="alarm-select" disabled={busy} onclick={() => selectAlarm(alarm.alarm_id)}>{alarm.name}</button><div class="identifier">{alarm.alarm_id}</div></td><td>{alarm.type}</td><td>{alarm.state ?? t('settings.unknown')}</td><td>{alarm.severity ?? t('settings.unknown')}</td></tr>
-				{:else}<tr><td colspan="4">{t(alarms.status === 'available' ? 'settings.empty' : 'settings.rowsUnknown')}</td></tr>{/each}</tbody>
+				{:else}<tr><td colspan="4">{t(alarmPage.status === 'available' ? 'settings.empty' : 'settings.rowsUnknown')}</td></tr>{/each}</tbody>
 			</table>
 		</TableShell>
+		</ResponsiveTable>
 		</div>
 		{#if alarms.truncated}<p class="support">{t('settings.truncated')}</p>{/if}
 		<div class="paging"><Button variant="secondary" disabled={!marker || loading || busy} onclick={() => loadList(null)}>{t('settings.first')}</Button><Button variant="secondary" disabled={!alarms.next_marker || loading || busy} onclick={() => loadList(alarms?.next_marker ?? null)}>{t('settings.next')}</Button></div>

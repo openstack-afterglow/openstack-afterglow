@@ -1,7 +1,18 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SelectFlavor from '../SelectFlavor.svelte';
 import type { FlavorCapacityInfo, FlavorOption } from '$lib/types/flavor';
+
+const media = vi.hoisted(() => {
+	const events = new EventTarget();
+	const query = {
+		matches: true, media: '(min-width: 1024px)', onchange: null,
+		addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events),
+		dispatchEvent: events.dispatchEvent.bind(events), addListener: () => undefined, removeListener: () => undefined,
+	};
+	vi.stubGlobal('matchMedia', () => query);
+	return query;
+});
 
 function capacity(status: FlavorCapacityInfo['status'], overrides: Partial<FlavorCapacityInfo> = {}): FlavorCapacityInfo {
 	const available = status === 'available';
@@ -71,26 +82,34 @@ function renderFlavors(props: Partial<{ adminMode: boolean; flavors: FlavorOptio
 describe('SelectFlavor', () => {
 	beforeEach(() => {
 		localStorage.clear();
+		media.matches = true;
 	});
 
 	afterEach(() => {
 		vi.useRealTimers();
 	});
 
-	it('places quota first and exposes each narrow-panel flavor name without a wide table', () => {
-		const { container, onSelect } = renderFlavors({
-			flavors: [flavorWith('cpu-1', 'cpu.1c_1g'), flavorWith('gpu-1', 'gpu.1c_8g', { gpus: { RTX3090: 1 } })],
+	it('shows one compact flavor choice per resource and preserves selection across layouts', async () => {
+		const { onSelect } = renderFlavors({
+			flavors: [flavorWith('cpu-1', 'cpu.1c_1g'), flavorWith('gpu-1', 'gpu.1c_8g', { gpus: { RTX3090: 1 } })], selectedId: 'cpu-1',
 		});
-
-		const quotaPanel = screen.getByText('프로젝트 잔여 쿼터').closest('.order-1');
-		expect(quotaPanel).not.toBeNull();
-		const mobileCards = container.querySelector('[class~="@2xl/panel:hidden"]');
-		expect(mobileCards?.textContent).toContain('cpu.1c_1g');
-		expect(mobileCards?.textContent).toContain('gpu.1c_8g');
-		expect(container.querySelector('[class~="@2xl/panel:block"]')).not.toBeNull();
-
-		screen.getByRole('button', { name: 'cpu.1c_1g 플레이버 선택' }).click();
+		expect(screen.getByText('프로젝트 잔여 쿼터')).toBeTruthy();
+		expect(screen.queryByRole('article')).toBeNull();
+		media.matches = false;
+		media.dispatchEvent(new Event('change'));
+		await waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(2));
+		const cpu = screen.getByRole('heading', { name: 'cpu.1c_1g' }).closest('article')!;
+		expect(within(cpu).getByText('2')).toBeTruthy();
+		expect(within(cpu).getByText('4 GB')).toBeTruthy();
+		const select = screen.getByRole('button', { name: 'cpu.1c_1g 플레이버 선택' });
+		expect(select.getAttribute('aria-pressed')).toBe('true');
+		await fireEvent.click(select);
 		expect(onSelect).toHaveBeenCalledWith('cpu-1', 'cpu.1c_1g');
+		media.matches = true;
+		media.dispatchEvent(new Event('change'));
+		await waitFor(() => expect(screen.queryByRole('article')).toBeNull());
+		expect(screen.getAllByRole('button', { name: 'cpu.1c_1g 플레이버 선택' })).toHaveLength(1);
+		expect(screen.getByRole('button', { name: 'cpu.1c_1g 플레이버 선택' }).getAttribute('aria-pressed')).toBe('true');
 	});
 
 	it('separates existing and selected resource allocations', () => {
@@ -249,7 +268,7 @@ describe('SelectFlavor', () => {
 			selectedId: 'ded',
 		});
 
-		// Includes the selected panel and both responsive list variants, even their hidden DOM.
+		// Includes the selected panel and the currently mounted responsive list variant.
 		expect(container.textContent).not.toMatch(/VM당 최대|PCPU 6|RAM 24 GB|호스트 2대|NUMA|근접성|Nova|No valid host/);
 		expect(screen.getByText('프로젝트 잔여 쿼터')).toBeTruthy();
 		expect(screen.getByText('현재 대상 프로젝트 잔여 쿼터')).toBeTruthy();

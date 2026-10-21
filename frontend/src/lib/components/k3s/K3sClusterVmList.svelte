@@ -1,12 +1,20 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/drover';
   import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
   const s = useK3sClusterDetailController();
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
   <h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">{t('overview.vms.title')}</h3>
+ <ResponsiveTable>
+  {#snippet cards()}
+   {#if s.cluster!.server_vm_id}<CompactResourceCard><strong class="text-sm">{t('overview.vms.server')}</strong>{#snippet details()}<p class="text-xs font-mono break-all">{s.cluster!.server_vm_id}</p>{/snippet}{#snippet actions()}<button onclick={() => s.setViewingInstance(s.cluster!.server_vm_id)} class="text-xs text-warm-text">{t('overview.vms.viewInstance')}</button>{/snippet}</CompactResourceCard>{/if}
+   {#each s.cluster!.agent_vm_ids as vmId, i (vmId)}<CompactResourceCard><strong class="text-sm">{t('overview.vms.agent', { number: i + 1 })}</strong>{#snippet details()}<p class="text-xs font-mono break-all">{vmId}</p>{/snippet}{#snippet actions()}<button onclick={() => s.setViewingInstance(vmId)} class="text-xs text-warm-text">{t('overview.vms.viewInstance')}</button>{/snippet}</CompactResourceCard>{/each}
+   {#if !s.cluster!.server_vm_id && s.cluster!.agent_vm_ids.length === 0}<p class="text-xs text-ink-2">{t('overview.vms.empty')}</p>{/if}
+  {/snippet}
   <div class="space-y-2">
     {#if s.cluster!.server_vm_id}
       <div class="flex items-center justify-between py-2 border-b border-line">
@@ -38,4 +46,5 @@
       <p class="text-xs text-ink-2 py-2">{t('overview.vms.empty')}</p>
     {/if}
   </div>
+ </ResponsiveTable>
 </div>

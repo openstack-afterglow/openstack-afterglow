@@ -33,8 +33,8 @@ _KS_DATA = {
     "is_system_admin": False,
     "domain_id": "default",
     "domain_name": "Default",
-    "identity_domain_id": "default",
-    "identity_domain_name": "Default",
+    "identity_domain_id": "accounts",
+    "identity_domain_name": "Accounts",
     "is_domain_manager": False,
     "email": "actual@example.test",
 }
@@ -61,7 +61,11 @@ def _ks_authenticate(auth_directory, monkeypatch):
             side_effect=lambda _token, project_id="", **_: dict(
                 _KS_DATA,
                 project_id=project_id,
-                project_name=_KS_DATA["project_name"] if project_id else "",
+                project_name=auth_directory.projects[project_id]["name"] if project_id else "",
+                domain_id=auth_directory.projects[project_id]["domain_id"] if project_id else "default",
+                domain_name=auth_directory.domains[auth_directory.projects[project_id]["domain_id"]]["name"]
+                if project_id
+                else "Default",
                 roles=_KS_DATA["roles"] if project_id else [],
             ),
         ),

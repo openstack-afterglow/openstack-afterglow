@@ -4,6 +4,7 @@
 	import type { Listener } from '$lib/types/loadbalancer';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
+	import { CompactResourceCard, Button, StatusChip } from '$lib/components/ui';
 
 	let {
 		listeners,
@@ -46,7 +47,7 @@
 				{/each}
 			</select>
 			<input bind:value={listenerForm.protocol_port} type="number" min="1" max="65535" placeholder={t('lb.form.port')} class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1" />
-			<button onclick={handleCreate} disabled={saving} aria-busy={creatingListener} class="col-span-2 inline-flex items-center justify-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">{#if creatingListener}<ActivityIndicator size="xs" tone="ink" />{/if}{creatingListener ? tc('state.processing') : t('lb.actions.create')}</button>
+			<button onclick={handleCreate} disabled={saving} aria-busy={creatingListener} class="sm:col-span-2 inline-flex items-center justify-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">{#if creatingListener}<ActivityIndicator size="xs" tone="ink" />{/if}{creatingListener ? tc('state.processing') : t('lb.actions.create')}</button>
 			<button onclick={() => showAddListener = false} class="text-ink-2 hover:text-ink-1 text-sm px-2 text-center">{t('lb.actions.cancel')}</button>
 		</div>
 	{/if}
@@ -57,14 +58,12 @@
 		<div class="space-y-2">
 			{#each listeners as l}
 				{@const deletingListener = pending.isActive(`delete:${l.id}`, saving)}
-				<div class="flex items-center justify-between bg-surface-sunken/50 rounded-lg px-4 py-3">
-					<div class="text-sm">
-						<span class="text-ink-0 font-medium">{l.name || l.id.slice(0, 10)}</span>
-						<span class="ml-2 text-xs text-warm-text bg-surface-selected/30 px-1.5 py-0.5 rounded">{l.protocol}:{l.protocol_port}</span>
-						<span class="ml-2 text-xs {l.status === 'ACTIVE' ? 'text-green-400' : 'text-yellow-400'}">{l.status}</span>
-					</div>
-					<button onclick={() => pending.run(`delete:${l.id}`, () => onDelete(l.id))} disabled={saving} aria-busy={deletingListener} class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 transition-colors">{#if deletingListener}<ActivityIndicator size="xs" tone="danger" />{/if}{deletingListener ? t('network.actions.deleting') : t('lb.actions.delete')}</button>
-				</div>
+				<CompactResourceCard>
+					<div class="flex items-center gap-2"><strong class="min-w-0 flex-1 break-all">{l.name || l.id.slice(0, 10)}</strong><StatusChip status={l.status} /></div>
+					<p class="font-mono text-xs text-ink-2">{l.protocol}:{l.protocol_port}</p>
+					{#snippet details()}<p class="font-mono break-all">ID: {l.id}</p>{/snippet}
+					{#snippet actions()}<Button variant="danger-outline" size="sm" onclick={() => pending.run(`delete:${l.id}`, () => onDelete(l.id))} disabled={saving} ariaBusy={deletingListener}>{#if deletingListener}<ActivityIndicator size="xs" tone="danger" />{/if}{deletingListener ? t('network.actions.deleting') : t('lb.actions.delete')}</Button>{/snippet}
+				</CompactResourceCard>
 			{/each}
 		</div>
 	{/if}

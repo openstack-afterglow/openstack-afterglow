@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { onMount, onDestroy, untrack } from 'svelte';
 	import { ApiError } from '$lib/api/client';
 	import { domainIam, type IamSession, type IamInvitation } from '$lib/api/domainIam';
@@ -51,6 +53,15 @@
 	{#if loading || busy}<ActivityIndicator label={t('loading')} />{/if}
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if notice}<Alert tone="success">{notice}</Alert>{/if}
+	<ResponsiveTable>
+		{#snippet cards()}
+			{#each rows as row (row.id)}<CompactResourceCard>
+				<h3 class="text-sm font-medium break-all">{row.email}</h3><p class="text-xs">{enrollmentStatusLabel(row.status)} · <code>{row.kind}</code></p>
+				{#snippet details()}<p class="text-xs">{t('created')}: {new Date(row.created_at).toLocaleString(intlLocale())}</p>{/snippet}
+				{#snippet actions()}<Button variant="danger-outline" size="sm" disabled={blocked || busy || loading} onclick={() => recover(row)}>{t('recover')}</Button>{/snippet}
+			</CompactResourceCard>{/each}
+			{#if !loading && !error && !rows.length}<p class="text-sm text-ink-2">{t('emptyRecovery')}</p>{/if}
+		{/snippet}
 	<TableShell><table>
 		<thead><tr><th>{t('email')}</th><th>{t('operationKind')}</th><th>{t('status')}</th><th>{t('created')}</th><th>{t('actions')}</th></tr></thead>
 		<tbody>
@@ -58,4 +69,5 @@
 			{#if !loading && !error && !rows.length}<tr><td colspan="5">{t('emptyRecovery')}</td></tr>{/if}
 		</tbody>
 	</table></TableShell>
+	</ResponsiveTable>
 </div>

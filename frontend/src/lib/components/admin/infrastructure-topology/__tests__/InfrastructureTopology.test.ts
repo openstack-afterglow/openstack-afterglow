@@ -16,6 +16,13 @@ import { acceptAuthVerification, auth, authReady, getAuthVerificationEpoch, proj
 import { t } from '$lib/i18n/ns/infra-topology';
 import { t as sharedT } from '$lib/i18n/ns/shared';
 import { initLocale, intlLocale } from '$lib/i18n/runtime.svelte';
+import type * as SvelteReactivity from 'svelte/reactivity';
+
+const viewport = vi.hoisted(() => ({ desktop: true }));
+vi.mock('svelte/reactivity', async importOriginal => ({
+	...await importOriginal<typeof SvelteReactivity>(),
+	MediaQuery: class { get current() { return viewport.desktop; } },
+}));
 
 const { read, submit } = vi.hoisted(() => ({ read: vi.fn(), submit: vi.fn() }));
 vi.mock('$lib/api/infrastructureTopology', () => ({ getInfrastructureTopology: read, submitInfrastructureTrace: submit }));
@@ -24,6 +31,7 @@ function verifyAuthority() {
 	expect(acceptAuthVerification(getAuthVerificationEpoch(), {})).toBe(true);
 }
 beforeEach(() => {
+	viewport.desktop = true;
 	initLocale('ko'); read.mockReset().mockImplementation(() => Promise.resolve(makeMeshSnapshot())); submit.mockReset().mockResolvedValue(makeTrace('queued'));
 	auth.set({ ...get(auth), token: 'token-a', userId: 'user-a', projectId: 'project-a', isSystemAdmin: true }); verifyAuthority(); projectSwitching.set(false);
 });
@@ -31,6 +39,25 @@ afterEach(() => { cleanup(); initLocale('ko'); vi.restoreAllMocks(); vi.unstubAl
 const diagram = () => screen.getByRole('region', { name: t('workspace.diagram') });
 
 describe('one radial workspace and integrated inspector', () => {
+	it('keeps compact endpoint observations separate and switch-port selection reachable', async () => {
+		viewport.desktop = false;
+		const snapshot = makeMeshSnapshot(), graph = buildRadialGraph(snapshot, true), flow = graph.edges.find(edge => edge.flow)!;
+		read.mockResolvedValue(snapshot); const view = render(InfrastructureTopology);
+		await vi.waitFor(() => expect(diagram()).toBeTruthy());
+		const list = view.container.querySelector('.evidence-list')!;
+		await fireEvent.click(list.querySelector('summary')!);
+		await fireEvent.click(within(list as HTMLElement).getByRole('button', { name: edgeLabel(flow, graph, 'pps') }));
+		expect(screen.queryByRole('table')).toBeNull();
+		const observations = [...view.container.querySelectorAll('[data-observation-id]')].map(item => item.closest('article')!.textContent);
+		expect(observations).toHaveLength(2);
+		expect(observations.some(text => text?.includes(t('packetsRate', { value: '12' })))).toBe(true);
+		expect(observations.some(text => text?.includes(t('packetsRate', { value: '9' })))).toBe(true);
+		await fireEvent.click(within(diagram()).getByRole('button', { name: 'switch-a' }));
+		await fireEvent.click(within(screen.getByRole('region', { name: t('workspace.inspector') })).getByRole('button', { name: 'Ethernet6' }));
+		expect(screen.getByRole('region', { name: t('workspace.portRates') })).toBeTruthy();
+		expect(screen.queryByRole('table')).toBeNull();
+		expect(read).toHaveBeenCalledTimes(1);
+	});
 	it.each(['ko', 'en', 'ja', 'zh-CN'] as const)('shows real peer/port observations and localized NIC diagnostics in %s', async locale => {
 		initLocale(locale); const view = render(InfrastructureTopology);
 		await vi.waitFor(() => expect(screen.getByRole('heading', { name: `${t('details')} · eno1` })).toBeTruthy());

@@ -1,10 +1,16 @@
 <script lang="ts">
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import { t as scopeT } from '$lib/i18n/ns/domain-admin';
+	let inventoryError = $state('');
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/object-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api, ApiError } from '$lib/api/client';
+	import { api as baseApi, ApiError } from '$lib/api/client';
+	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
+	const api = createAdminInventoryApi(baseApi);
+	onDestroy(api.dispose);
 	import type { SwiftContainer } from '$lib/types/common';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import { formatStorage } from '$lib/utils/format';
@@ -43,13 +49,14 @@
 	async function load() {
 		if (containers.length === 0) loading = true;
 		else refreshing = true;
+		inventoryError = '';
 		try {
 			containers = await api.get<SwiftContainer[]>(
 				'/api/v1/object-storage?all_projects=true&include_quarantine=true&include_trash=true&include_deleted=true',
 				token, projectId
 			);
-		} catch {
-			containers = [];
+		} catch (reason) {
+			containers = []; inventoryError = reason instanceof Error ? reason.message : scopeT('state.unavailable');
 		} finally {
 			loading = false;
 			refreshing = false;
@@ -73,6 +80,7 @@
 			await api.delete(`/api/v1/object-storage/${encodeURIComponent(name)}`, token, projectId);
 			await load();
 		} catch (e) {
+			if (!api.isCurrent()) return;
 			toast.error(t('buckets.adminPage.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			deleting = null;
@@ -109,7 +117,7 @@
 		{/snippet}
 	</PageHeader>
 
-	{#if account}
+	{#if account && !inventoryError}
 		<div class="grid grid-cols-3 gap-4 mb-6">
 			<div class="bg-surface-base border border-line rounded-xl p-4">
 				<div class="text-xs text-ink-2 uppercase tracking-wide mb-1">{t('buckets.adminPage.bucketCount')}</div>
@@ -126,7 +134,8 @@
 		</div>
 	{/if}
 
-	{#if loading}
+	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
+	{:else if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if containers.length === 0}
 		<div class="text-ink-2 text-sm">{t('buckets.adminPage.empty')}</div>

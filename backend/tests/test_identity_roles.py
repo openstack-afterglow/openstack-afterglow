@@ -25,7 +25,6 @@ from app.api.deps import get_os_conn, get_token_info, require_admin
 from app.api.identity.admin_identity import router
 from app.services import cache, identity_roles, keystone, project_service, session_store
 from app.services.cache.redis_backend import RedisBackend
-from app.services.service_permissions import service_permissions
 from tests.admin_gate import synthetic_verified_admin
 
 
@@ -205,6 +204,7 @@ async def role_env(monkeypatch):
                 )
             ],
         ),
+        users=SimpleNamespace(get=provider.get_user, list=lambda group=None: list(provider.group_users(group))),
         groups=SimpleNamespace(get=provider.get_group),
         roles=SimpleNamespace(list=provider.roles),
         inference_rules=SimpleNamespace(
@@ -326,8 +326,8 @@ def add_chat_permission(provider):
     }
 
 
-def chat_allowed(access):
-    return "lumen-chat_user" in service_permissions({"roles": access["roles"]})["lumen"]
+def has_chat_role(access):
+    return "lumen-chat_user" in access["roles"]
 
 
 @pytest.mark.asyncio
@@ -561,8 +561,8 @@ async def test_edge_removal_drops_current_permissions_but_preserves_holder_login
     before = {uid: await cached_access(uid) for uid in stored}
     for uid in ("direct", "group-user"):
         assert "lumen-chat_user" in before[uid]["roles"]
-        assert chat_allowed(before[uid])
-    assert not chat_allowed(before["unaffected"])
+        assert has_chat_role(before[uid])
+    assert not has_chat_role(before["unaffected"])
 
     response = await client.delete("/api/v1/admin/roles/custom/implies/lumen-chat_user")
     assert response.status_code == 200
@@ -570,7 +570,7 @@ async def test_edge_removal_drops_current_permissions_but_preserves_holder_login
         current = await cached_access(uid)
         assert "lumen-chat_user" not in current["roles"]
         assert "custom" in current["roles"]
-        assert not chat_allowed(current)
+        assert not has_chat_role(current)
     assert await cached_access("unaffected") == before["unaffected"]
     for uid, snapshot in stored.items():
         await assert_login_survives(role_env, uid, snapshot)
@@ -584,14 +584,14 @@ async def test_adding_lower_edge_refreshes_cached_permissions_without_holder_loo
     add_chat_permission(p)
     stored = {uid: await session(role_env, uid) for uid in ("direct", "group-user", "unaffected")}
     before = {uid: await cached_access(uid) for uid in stored}
-    assert all(not chat_allowed(access) for access in before.values())
+    assert all(not has_chat_role(access) for access in before.values())
     p.assignments_error = True  # A write with any holder lookup would fail.
     assert (await client.put("/api/v1/admin/roles/custom/implies/lumen-chat_user")).status_code == 200
     p.assignments_error = False
     for uid in ("direct", "group-user"):
         current = await cached_access(uid)
         assert "lumen-chat_user" in current["roles"]
-        assert chat_allowed(current)
+        assert has_chat_role(current)
     assert await cached_access("unaffected") == before["unaffected"]
     for uid, snapshot in stored.items():
         await assert_login_survives(role_env, uid, snapshot)
@@ -608,12 +608,12 @@ async def test_rename_refreshes_permissions_preserves_login_and_unknown_recipien
     ]
     stored = await session(role_env, "holder", "p")
     before = await cached_access("holder", "p")
-    assert "lumen-chat_user" in before["roles"] and chat_allowed(before)
+    assert "lumen-chat_user" in before["roles"] and has_chat_role(before)
     assert (await client.patch("/api/v1/admin/roles/custom", json={"name": "Renamed_user"})).status_code == 200
     current = await cached_access("holder", "p")
     assert "lumen-chat_user" not in current["roles"]
     assert "renamed_user" in current["roles"]
-    assert not chat_allowed(current)
+    assert not has_chat_role(current)
     await assert_login_survives(role_env, "holder", stored)
     p.edges.add(("custom", "reader"))
     p.assignments_error = True
@@ -832,7 +832,6 @@ async def test_auth_me_succeeds_after_external_custom_role_outdates_cached_catal
     assert response.status_code == 200
     assert response.json()["roles"] == ["member", "cli-role"]
     assert response.json()["is_system_admin"] is False
-    assert response.json()["available_domains"] == [{"id": "default", "name": "Default"}]
 
 
 @pytest.mark.asyncio
@@ -842,7 +841,7 @@ async def test_cancelled_edge_removal_finishes_validation_eviction_and_preserves
     add_chat_permission(provider)
     provider.edges.add(("custom", "lumen-chat_user"))
     stored = await session(role_env, "direct")
-    assert chat_allowed(await cached_access("direct"))
+    assert has_chat_role(await cached_access("direct"))
     entered = asyncio.Event()
     release = threading.Event()
     loop = asyncio.get_running_loop()
@@ -870,7 +869,7 @@ async def test_cancelled_edge_removal_finishes_validation_eviction_and_preserves
     assert ("custom", "lumen-chat_user") not in provider.edges
     current = await cached_access("direct")
     assert "lumen-chat_user" not in current["roles"]
-    assert not chat_allowed(current)
+    assert not has_chat_role(current)
     await assert_login_survives(role_env, "direct", stored)
     assert not role_env.revoked
     assert identity_roles.VISIBILITY_KEY in role_env.cleared
@@ -883,7 +882,7 @@ async def test_post_write_holder_recheck_failure_still_evicts_validation_without
     add_chat_permission(p)
     p.edges.add(("custom", "lumen-chat_user"))
     stored = await session(role_env, "direct")
-    assert chat_allowed(await cached_access("direct"))
+    assert has_chat_role(await cached_access("direct"))
     original_delete = p.delete
 
     def delete_then_lose_metadata(path):
@@ -898,7 +897,7 @@ async def test_post_write_holder_recheck_failure_still_evicts_validation_without
     p.assignments_error = False
     current = await cached_access("direct")
     assert "lumen-chat_user" not in current["roles"]
-    assert not chat_allowed(current)
+    assert not has_chat_role(current)
     await assert_login_survives(role_env, "direct", stored)
     assert not role_env.revoked
 
@@ -928,7 +927,7 @@ async def test_generic_project_assignment_updates_current_authority_without_cros
     for uid in affected:
         before = await cached_access(uid, "tenant")
         assert role_id not in before["roles"]
-        assert not before["is_manager"] and not chat_allowed(before)
+        assert not before["is_manager"] and not has_chat_role(before)
         assert role_id in isolated[uid]["roles"]
     outsider = await cached_access("outsider", "tenant")
     subject = {"user_id": target} if principal == "user" else {"group_id": "editors"}
@@ -941,7 +940,7 @@ async def test_generic_project_assignment_updates_current_authority_without_cros
         current = await cached_access(uid, "tenant")
         assert role_id in current["roles"]
         assert current["is_manager"] is (role_id == "project_admin")
-        assert chat_allowed(current) is (role_id == "lumen-chat_user")
+        assert has_chat_role(current) is (role_id == "lumen-chat_user")
         await assert_login_survives(role_env, uid, stored[uid])
     assert await cached_access("outsider", "tenant") == outsider
     for uid in stored:
@@ -954,7 +953,7 @@ async def test_generic_project_assignment_updates_current_authority_without_cros
         current = await cached_access(uid, "tenant")
         assert role_id not in current["roles"]
         assert "member" in current["roles"]
-        assert not current["is_manager"] and not chat_allowed(current)
+        assert not current["is_manager"] and not has_chat_role(current)
         assert role_id in (await cached_access(uid, "isolated"))["roles"]
     assert await cached_access("outsider", "tenant") == outsider
     for uid, snapshot in stored.items():
@@ -975,10 +974,10 @@ async def test_explicit_revocation_still_removes_family_and_native_proof_after_r
     p.edges.add(("custom", "lumen-chat_user"))
     stored = await session(role_env, "direct")
     unrelated = await session(role_env, "unaffected")
-    assert chat_allowed(await cached_access("direct"))
+    assert has_chat_role(await cached_access("direct"))
     response = await role_env.client.delete("/api/v1/admin/roles/custom/implies/lumen-chat_user")
     assert response.status_code == 200
-    assert not chat_allowed(await cached_access("direct"))
+    assert not has_chat_role(await cached_access("direct"))
     await assert_login_survives(role_env, "direct", stored)
 
     if revoke_all:
@@ -1096,7 +1095,7 @@ async def test_role_area_grade_normalization_collision_and_legacy_metadata(role_
 async def test_preset_preview_is_read_only_and_apply_reuses_ids_assignments_and_actual_dag(role_env):
     from copy import deepcopy
 
-    from app.services.service_permissions import ROLE_IMPLICATIONS, SERVICE_ROLE_GRADES, service_permissions
+    from app.services.service_permissions import ROLE_IMPLICATIONS, SERVICE_ROLE_GRADES
 
     p, client = role_env.provider, role_env.client
     existing_project_hierarchy(p)
@@ -1106,7 +1105,7 @@ async def test_preset_preview_is_read_only_and_apply_reuses_ids_assignments_and_
     existing_rows, existing_edges, assignments = deepcopy(p.rows), set(p.edges), deepcopy(p.assignments)
     preview = await client.get("/api/v1/admin/roles/presets")
     assert preview.status_code == 200
-    assert {"prior": "waygate_admin", "implied": "waygate_editor"} in preview.json()["implications"]
+    assert {"prior": "waygate_admin", "implied": "waygate_editor"} not in preview.json()["implications"]
     assert p.rows == existing_rows and p.edges == existing_edges and p.assignments == assignments
     applied = await client.post("/api/v1/admin/roles/presets/apply")
     assert applied.status_code == 200, applied.text
@@ -1115,17 +1114,51 @@ async def test_preset_preview_is_read_only_and_apply_reuses_ids_assignments_and_
     assert p.assignments == assignments
     rows = {row["name"]: row for row in applied.json()["roles"] if row["domain_id"] is None}
     assert {(rows[prior]["id"], rows[child]["id"]) for prior, child in ROLE_IMPLICATIONS} <= p.edges
-    by_id = {row["id"]: row for row in rows.values()}
-    for service, grades in SERVICE_ROLE_GRADES.items():
-        admin = rows[service + "_admin"]
-        names = ["member", admin["name"], *(by_id[rid]["name"] for rid in admin["inherited_role_ids"])]
-        assert set(service_permissions({"roles": names})[service]) == {
-            leaf for leaves in grades.values() for leaf in leaves
-        }
+    for service in SERVICE_ROLE_GRADES:
+        assert rows[service + "_admin"]["inherited_role_ids"] == []
     repeated = await client.post("/api/v1/admin/roles/presets/apply")
     assert repeated.status_code == 200
     assert repeated.json()["created_roles"] == [] and repeated.json()["created_implications"] == []
     assert p.assignments == assignments
+
+
+@pytest.mark.asyncio
+async def test_service_preset_cutover_preserves_ids_grants_custom_edges_and_login(role_env):
+    from copy import deepcopy
+
+    p, client = role_env.provider, role_env.client
+    existing_project_hierarchy(p)
+    assert (await client.post("/api/v1/admin/roles/presets/apply")).status_code == 200
+    by_name = {row["name"]: row["id"] for row in p.rows.values()}
+    retired = {
+        (by_name["waygate_admin"], by_name["waygate_editor"]),
+        (by_name["waygate_editor"], by_name["waygate-clients_editor"]),
+        (by_name["waygate-clients_editor"], by_name["waygate_reader"]),
+        (by_name["waygate_reader"], by_name["waygate-inventory_reader"]),
+    }
+    custom = (by_name["waygate_admin"], "other")
+    p.edges.update(retired | {custom})
+    p.assignments.append(
+        {"user": {"id": "operator"}, "role": {"id": by_name["waygate_admin"]}, "scope": {"project": {"id": "tenant"}}}
+    )
+    roles, grants = deepcopy(p.rows), deepcopy(p.assignments)
+    login = await session(role_env, "operator")
+
+    response = await client.post("/api/v1/admin/roles/presets/apply")
+    assert response.status_code == 200, response.text
+    assert not p.edges.intersection(retired)
+    assert custom in p.edges
+    assert ("project_owner", "project_admin") in p.edges
+    assert p.rows == roles and p.assignments == grants
+    assert {tuple(item.values()) for item in response.json()["removed_implications"]} == {
+        ("waygate_admin", "waygate_editor"),
+        ("waygate_editor", "waygate-clients_editor"),
+        ("waygate-clients_editor", "waygate_reader"),
+        ("waygate_reader", "waygate-inventory_reader"),
+    }
+    await assert_login_survives(role_env, "operator", login)
+    again = await client.post("/api/v1/admin/roles/presets/apply")
+    assert again.status_code == 200 and again.json()["removed_implications"] == []
 
 
 @pytest.mark.asyncio
@@ -1143,6 +1176,7 @@ async def test_preset_rejects_unsafe_existing_service_role_before_any_creation(r
 async def test_preset_partial_provider_failure_reports_retained_roles_and_retry_is_additive(role_env):
     p, client = role_env.provider, role_env.client
     existing_project_hierarchy(p)
+    p.edges.discard(("project_owner", "project_admin"))
     p.write_status = 500
     failed = await client.post("/api/v1/admin/roles/presets/apply")
     assert failed.status_code == 503

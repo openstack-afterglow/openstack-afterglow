@@ -4,10 +4,10 @@
 	import { ActionMenu, FileIcon, SelectionCheckbox } from '$lib/components/ui';
 	import type { SwiftObject } from '$lib/types/objectStorage';
 
-	let { obj }: { obj: SwiftObject } = $props();
+	let { obj, fullPath = false }: { obj: SwiftObject; fullPath?: boolean } = $props();
 
 	const s = useObjectBrowser();
-	const label = $derived(s.baseName(obj.name) || obj.name);
+	const label = $derived(fullPath ? obj.name : (s.baseName(obj.name) || obj.name));
 	let menuOpen = $state(false);
 
 	function open() {

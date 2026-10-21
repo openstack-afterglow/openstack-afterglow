@@ -53,6 +53,15 @@ def get_server(conn: openstack.connection.Connection, server_id: str) -> Instanc
     return _server_to_info(s)
 
 
+def rename_server(conn: openstack.connection.Connection, server_id: str, name: str) -> InstanceInfo:
+    """Update Nova's display name only; guest hostname and power state are unchanged."""
+    conn.compute.update_server(server_id, name=name)
+    server = get_server(conn, server_id)
+    if server.id != server_id or server.name != name:
+        raise RuntimeError("Nova did not confirm the requested instance name")
+    return server
+
+
 def create_server(
     conn: openstack.connection.Connection,
     name: str,
@@ -773,10 +782,15 @@ def _server_to_info(s) -> InstanceInfo:
     image_id = s.image.get("id") if isinstance(s.image, dict) else None
     flavor_id = None
     flavor_name = None
+    flavor_snapshot = None
     if isinstance(s.flavor, dict):
         flavor_id = s.flavor.get("id")
-        # 마이크로버전 2.47+에서는 "id" 없이 "original_name"만 반환
         flavor_name = s.flavor.get("original_name")
+        if flavor_name:
+            # SDK Flavor.id aliases original_name in Nova 2.47+; that is not a native ID.
+            if flavor_id == flavor_name:
+                flavor_id = None
+            flavor_snapshot = {key: s.flavor.get(key) for key in ("vcpus", "ram", "disk", "extra_specs")}
 
     fault = None
     if s.status == "ERROR":
@@ -787,7 +801,7 @@ def _server_to_info(s) -> InstanceInfo:
     _h = getattr(s, "compute_host", None)
     host = _h if isinstance(_h, str) else None
 
-    return InstanceInfo(
+    info = InstanceInfo(
         id=s.id,
         name=s.name,
         status=s.status,
@@ -814,3 +828,5 @@ def _server_to_info(s) -> InstanceInfo:
         # 관리자 스코프에서만 채워짐 (OS-EXT-SRV-ATTR:host → compute_host)
         host=host,
     )
+    info._flavor_snapshot = flavor_snapshot
+    return info

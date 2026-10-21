@@ -1208,3 +1208,110 @@ def test_auth_registry_and_domain_accept_exact_maximum_lengths():
     )
     assert list(settings.providers) == [key]
     assert list(settings.domain) == [domain_id]
+
+
+@pytest.mark.parametrize(
+    "organization",
+    [
+        {},
+        {"id": "org", "name": "Org", "manager_subjects": []},
+        {"id": "org", "name": "Org", "manager_subjects": [""]},
+        {"id": "org", "name": "Org", "manager_subjects": [" subject"]},
+        {"id": "org", "name": "Org", "manager_subjects": [123]},
+        {"id": "org", "name": "personal", "manager_subjects": ["sub"]},
+        {"id": "org", "name": "accounts", "manager_subjects": ["sub"]},
+        {"id": "org", "name": "Org", "manager_subjects": ["sub"], "claim": "email"},
+    ],
+)
+def test_organization_config_requires_explicit_immutable_manager_subjects(organization):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        app_config.AuthSettings.model_validate({"providers": {"corp": _file_auth_provider(organization=organization)}})
+
+
+def test_organization_is_oidc_only_and_not_an_email_admission_default():
+    from pydantic import ValidationError
+
+    organization = {"id": "stable-org", "name": "Org", "manager_subjects": ["sub", "sub"]}
+    settings = app_config.AuthSettings.model_validate(
+        {"providers": {"corp": _file_auth_provider(organization=organization)}}
+    )
+    assert settings.providers["corp"].organization.manager_subjects == ["sub"]
+    assert settings.default.auto_join_email_domains is None
+    assert settings.organization_creation_enabled is True and settings.max_organizations_per_user == 10
+    with pytest.raises(ValidationError):
+        app_config.AuthSettings.model_validate(
+            {
+                "providers": {
+                    "github": _file_auth_provider(
+                        kind="github",
+                        issuer_url=None,
+                        organization=organization,
+                    )
+                }
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"max_organizations_per_user": -1},
+        {"max_organizations_per_user": True},
+        {"max_organizations_per_user": 1.5},
+        {"organization_creation_enabled": 1},
+    ],
+)
+def test_organization_creation_policy_rejects_ambiguous_values(values):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        app_config.AuthSettings.model_validate(values)
+
+
+def test_organization_auth_roundtrips_k8s_and_helm_without_credentials():
+    organization = {"id": "stable-org", "name": 'Organization "display"', "manager_subjects": ["immutable/sub"]}
+    cfg = {
+        "auth": {
+            "organization_creation_enabled": False,
+            "max_organizations_per_user": 0,
+            "providers": {"corp": _file_auth_provider(organization=organization)},
+            "default": {"auto_join_email_domains": {}},
+        }
+    }
+    rendered = generate_k8s.render_auth_toml(cfg)
+    loaded = tomllib.loads(rendered)["auth"]
+    assert loaded["providers"]["corp"]["organization"] == organization
+    assert loaded["organization_creation_enabled"] is False and loaded["max_organizations_per_user"] == 0
+    assert loaded["default"]["auto_join_email_domains"] == {}
+    assert "private-auth-sentinel" not in rendered
+    assert generate_k8s.auth_secret_env(cfg) == {"AUTH__PROVIDERS__CORP__CLIENT_SECRET": "private-auth-sentinel"}
+    helm = config2helm.convert(cfg, include_secrets=False)
+    assert tomllib.loads(helm["auth"]["configToml"])["auth"] == loaded
+    assert "private-auth-sentinel" not in json.dumps(helm)
+    k8s = tomllib.loads(generate_k8s._render_toml_for_k8s(cfg))
+    assert k8s["auth"] == loaded
+
+
+def test_nested_organization_policy_env_uses_exact_supported_types(isolated_debug_config_dir, monkeypatch):
+    monkeypatch.setenv("AUTH__ORGANIZATION_CREATION_ENABLED", "false")
+    monkeypatch.setenv("AUTH__MAX_ORGANIZATIONS_PER_USER", "3")
+    settings = app_config.get_settings()
+    assert settings.auth.organization_creation_enabled is False and settings.auth.max_organizations_per_user == 3
+
+
+def test_one_issuer_organization_cannot_have_two_manager_allowlists():
+    from pydantic import ValidationError
+
+    first = {"id": "stable-org", "name": "Org", "manager_subjects": ["sub-a"]}
+    second = {**first, "manager_subjects": ["sub-b"]}
+    with pytest.raises(ValidationError):
+        app_config.AuthSettings.model_validate(
+            {
+                "providers": {
+                    "first": _file_auth_provider(organization=first),
+                    "second": _file_auth_provider(client_id="second-client", organization=second),
+                }
+            }
+        )

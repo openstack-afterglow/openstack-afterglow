@@ -1,4 +1,12 @@
 {
+	"rename.title": "名前を変更",
+	"rename.name": "インスタンス名",
+	"rename.notice": "表示名のみを変更します。ゲストのホスト名は変わらず、インスタンスの停止も不要です。",
+	"rename.invalidName": "英数字で始まる63文字以内の名前を入力してください。英数字・ハイフン・アンダースコアを使用でき、空白はハイフンに変換されます。",
+	"rename.failed": "インスタンス名を変更できませんでした。現在の名前を確認してから再試行してください。",
+	"rename.submit": "保存",
+	"rename.saving": "保存中...",
+	"rename.cancel": "キャンセル",
 	"panel.backToInstances": "← インスタンス",
 	"panel.lowUsage": "過去7日間の平均CPU <cpu>{cpu}</cpu>% · RAM <memory>{memory}</memory>% — 使用率が低くなっています。",
 	"panel.suggestedResize": "<strong>{flavor}</strong>へのリサイズを推奨します。",

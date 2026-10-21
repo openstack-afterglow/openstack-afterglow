@@ -7,6 +7,7 @@
 	import ProgressTrack from '$lib/components/ui/ProgressTrack.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import BklitChart from '$lib/components/charts/BklitChart.svelte';
+	import { ResponsiveTable, CompactResourceCard, Button } from '$lib/components/ui';
 
 	let {
 		fs, quotaLimit, copiedExport, deleting, selected = false, selectable = true, selectionDisabled = false,
@@ -25,6 +26,24 @@
 	const progressText = $derived(fs.progress || (fs.status === 'extending' ? t('storageCard.extending') : t('actions.creating')));
 </script>
 
+<ResponsiveTable>
+	{#snippet cards()}
+		<CompactResourceCard {selected}>
+			<div class="flex items-center gap-2"><SelectionCheckbox checked={selected} disabled={!selectable || selectionDisabled} unavailable={!selectable} onclick={onToggleSelect} ariaLabel={t('storageCard.select', { name: fs.name || fs.id })} /><strong class="min-w-0 flex-1 break-all">{fs.name || fs.id.slice(0, 8)}</strong><StatusChip status={fs.status} /></div>
+			<p class="text-xs text-ink-2">{t('storageCard.allocatedSize')}: {fs.size} GB · {fs.share_proto}</p>
+			{#if progressing}<div class="flex items-center gap-2"><ProgressTrack value={progressPct} label={`${fs.name || fs.id} · ${t('info.progress')}`} valueText={progressText} active size="xs" class="min-w-0 flex-1" /><span class="text-xs text-state-warning">{progressText}</span></div>{/if}
+			{#snippet details()}
+				<p class="font-mono break-all">ID: {fs.id}</p>
+				{#if fs.library_name}<p>{fs.library_name}{fs.library_version ? ` v${fs.library_version}` : ''}</p>{/if}
+				{#if fs.created_at}<p>{formatIsoDateTime(fs.created_at)}</p>{/if}
+				{#if Number.isFinite(quotaLimit) && quotaLimit > 0}<p>{t('storageCard.allocatedSize')}: {fs.size} / {quotaLimit} GB</p>{/if}
+			{/snippet}
+			{#snippet actions()}
+				<Button variant="secondary" size="sm" onclick={() => onOpenDetail(fs.id)}>{t('storageCard.details')}</Button>
+				<Button variant="danger-outline" size="sm" onclick={() => onDelete(fs.id, fs.name)} disabled={deleting === fs.id}>{#if deleting === fs.id}<ActivityIndicator size="xs" tone="danger" />{/if}{deleting === fs.id ? t('storageCard.deleting') : t('storageCard.delete')}</Button>
+			{/snippet}
+		</CompactResourceCard>
+	{/snippet}
 <article class="resource-selection-surface bg-surface-base border border-line rounded-lg p-5" data-selected={selected}>
 	<div class="flex items-center gap-2.5 mb-3.5">
 		<SelectionCheckbox checked={selected} disabled={!selectable || selectionDisabled} unavailable={!selectable} onclick={onToggleSelect} ariaLabel={t('storageCard.select', { name: fs.name || fs.id })} />
@@ -83,3 +102,4 @@
 		>{#if deleting === fs.id}<ActivityIndicator size="xs" tone="danger" />{/if}{deleting === fs.id ? t('storageCard.deleting') : t('storageCard.delete')}</button>
 	</div>
 </article>
+</ResponsiveTable>

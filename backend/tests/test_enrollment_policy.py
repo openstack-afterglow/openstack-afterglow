@@ -349,37 +349,47 @@ async def test_cancelled_review_settles_mail_before_unlock_and_never_replays(pol
 
 
 @pytest.mark.asyncio
-async def test_quota_seed_is_exact_once_and_never_overwrites_existing_policy(policy_db, monkeypatch):
-    native_read, native_write = MagicMock(), MagicMock()
-    monkeypatch.setattr(service.quota_native, "get_section", native_read)
-    monkeypatch.setattr(service.quota_native, "update_section", native_write)
+async def test_personal_quota_updates_native_projects_without_shared_budget(policy_db, monkeypatch):
+    native, writes = {}, []
+
+    def read(conn, pid, section):
+        values = native.setdefault(pid, {"instances": 20, "cores": 40, "key_pairs": 10})
+        return {key: {"limit": value, "in_use": 0} for key, value in values.items()}
+
+    def update(conn, pid, section, values):
+        writes.append((pid, section, dict(values)))
+        native[pid].update(values)
+
+    monkeypatch.setattr(service.quota_native, "get_section", read)
+    monkeypatch.setattr(service.quota_native, "update_section", update)
     values = {"instances": 0, "cores": -1, "key_pairs": 3, "shares": 0}
-    result = await service.initialize_personal_quotas("personal", values, lease=policy_db.lease)
-    assert result["omitted_fields"] == ["shares"]
-    assert result["ceilings"] == result["defaults"] == {"instances": 0, "cores": -1, "key_pairs": 3}
-    assert await service.initialize_personal_quotas("personal", values, lease=policy_db.lease) == result
-    with pytest.raises(HTTPException) as error:
-        await service.initialize_personal_quotas("personal", {"instances": 10}, lease=policy_db.lease)
-    assert error.value.status_code == 409
+    first = await service.apply_personal_project_quotas(None, "first", values, lease=policy_db.lease)
+    second = await service.apply_personal_project_quotas(None, "second", {"instances": 5}, lease=policy_db.lease)
+    assert first["omitted_fields"] == ["shares"] and second["limits"] == {"instances": 5}
+    assert native["first"] == {"instances": 0, "cores": -1, "key_pairs": 3}
+    assert native["second"]["instances"] == 5 and len(writes) == 2
     async with policy_db.factory() as session:
-        row = await session.get(DomainQuotaPolicy, "personal")
-        assert row.ceilings == result["ceilings"] and row.revision == 1
-        row.defaults = {"instances": 7}
-        row.revision = 8
-        await session.commit()
-    with pytest.raises(HTTPException):
-        await service.initialize_personal_quotas("personal", values, lease=policy_db.lease)
-    native_read.assert_not_called()
-    native_write.assert_not_called()
+        assert not (await session.execute(select(DomainQuotaPolicy))).scalars().all()
 
 
 @pytest.mark.asyncio
-async def test_quota_seed_fails_before_write_when_lease_lost(policy_db):
-    policy_db.lease.assert_owned.side_effect = HTTPException(409, "lease lost")
+@pytest.mark.parametrize("failure", ["missing_field", "wrong_readback", "lost_lease"])
+async def test_personal_quota_cannot_activate_unverified_limits(policy_db, monkeypatch, failure):
+    writes = []
+
+    def read(conn, pid, section):
+        return {} if failure == "missing_field" else {"instances": {"limit": 99, "in_use": 0}}
+
+    def update(conn, pid, section, values):
+        writes.append(values)
+
+    monkeypatch.setattr(service.quota_native, "get_section", read)
+    monkeypatch.setattr(service.quota_native, "update_section", update)
+    if failure == "lost_lease":
+        policy_db.lease.assert_owned.side_effect = HTTPException(409, "lease lost")
     with pytest.raises(HTTPException):
-        await service.initialize_personal_quotas("personal", {"instances": 0}, lease=policy_db.lease)
-    async with policy_db.factory() as session:
-        assert await session.get(DomainQuotaPolicy, "personal") is None
+        await service.apply_personal_project_quotas(None, "first", {"instances": 0}, lease=policy_db.lease)
+    assert len(writes) == (1 if failure == "wrong_readback" else 0)
 
 
 @pytest.mark.asyncio
@@ -520,7 +530,7 @@ async def test_pending_or_rejected_request_cannot_be_consumed(policy_db):
 
 
 @pytest.mark.asyncio
-async def test_enrollment_quota_snapshot_is_durable_and_not_rewritten_by_policy(policy_db):
+async def test_enrollment_quota_snapshot_is_durable_and_not_rewritten_by_policy(policy_db, monkeypatch):
     await set_policy(quotas={"instances": 0, "cores": 0})
     async with policy_db.factory() as session:
         snapshot = (await service.read_policy(session=session))["personal_quotas"]
@@ -539,8 +549,20 @@ async def test_enrollment_quota_snapshot_is_durable_and_not_rewritten_by_policy(
     async with policy_db.factory() as session:
         row = await session.get(DomainEnrollment, enrollment_id)
         assert row.personal_quotas == {"instances": 0, "cores": 0}
-        seeded = await service.initialize_personal_quotas("personal", row.personal_quotas, lease=policy_db.lease)
-        assert seeded["ceilings"] == seeded["defaults"] == row.personal_quotas
+        native = {"instances": 99, "cores": 99}
+
+        def read(conn, pid, section):
+            return {key: {"limit": value, "in_use": 0} for key, value in native.items()}
+
+        def update(conn, pid, section, values):
+            native.update(values)
+
+        monkeypatch.setattr(service.quota_native, "get_section", read)
+        monkeypatch.setattr(service.quota_native, "update_section", update)
+        seeded = await service.apply_personal_project_quotas(
+            None, "project", row.personal_quotas, lease=policy_db.lease
+        )
+        assert seeded["limits"] == native == row.personal_quotas
 
 
 @pytest.mark.asyncio

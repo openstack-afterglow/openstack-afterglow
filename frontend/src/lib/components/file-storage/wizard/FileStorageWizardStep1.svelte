@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { useFsWizard } from '$lib/stores/fileStorageWizardStore.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
-	import { ActivityIndicator, Alert, Button, ProgressTrack } from '$lib/components/ui';
+	import { ActivityIndicator, Alert, Button, ProgressTrack, ResponsiveTable, CompactResourceCard } from '$lib/components/ui';
 
 	const s = useFsWizard();
 </script>
@@ -56,6 +56,16 @@
 			<span class="block text-xs text-ink-2 uppercase tracking-wide">{t('wizard.basic.metadata')}</span>
 			<button type="button" onclick={s.addMeta} class="text-xs text-warm-text hover:text-warm-text-hover transition-colors">{t('wizard.actions.add')}</button>
 		</div>
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each s.metaEntries as meta, i (i)}
+					<CompactResourceCard>
+						<input bind:value={meta.key} type="text" aria-label={t('wizard.basic.metadataKeyPlaceholder')} placeholder={t('wizard.basic.metadataKeyPlaceholder')} class="min-w-0 w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-xs font-mono" />
+						<input bind:value={meta.value} type="text" aria-label={t('wizard.basic.metadataValuePlaceholder')} placeholder={t('wizard.basic.metadataValuePlaceholder')} class="min-w-0 w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-xs font-mono" />
+						{#snippet actions()}<Button size="sm" variant="danger-outline" onclick={() => s.removeMeta(i)}>{t('storageCard.delete')}</Button>{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<div class="space-y-2">
 			{#each s.metaEntries as meta, i (i)}
 				<div class="flex gap-2 items-center">
@@ -68,6 +78,7 @@
 				</div>
 			{/each}
 		</div>
+		</ResponsiveTable>
 	</div>
 </div>
 {#if s.wizardError}<Alert tone="danger" class="mt-4">{s.wizardError}</Alert>{/if}

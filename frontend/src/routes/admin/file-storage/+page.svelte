@@ -1,8 +1,14 @@
 <script lang="ts">
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import { t as scopeT } from '$lib/i18n/ns/domain-admin';
+	let inventoryError = $state('');
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api } from '$lib/api/client';
+	import { api as baseApi } from '$lib/api/client';
+	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
+	const api = createAdminInventoryApi(baseApi);
+	onDestroy(api.dispose);
 	import type { TsPoint } from '$lib/types/common';
 	import type { AdminFileStorage } from '$lib/types/fileStorage';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
@@ -56,10 +62,11 @@
 		if (fileStorages.length === 0) loading = true;
 		else refreshing = true;
 		currentPage = 0;
+		inventoryError = '';
 		try {
 			fileStorages = await api.get<AdminFileStorage[]>('/api/v1/admin/all-file-storages', token, projectId, opts);
-		} catch {
-			fileStorages = [];
+		} catch (reason) {
+			fileStorages = []; inventoryError = reason instanceof Error ? reason.message : scopeT('state.unavailable');
 		} finally {
 			loading = false;
 			refreshing = false;
@@ -120,6 +127,7 @@
 		{/snippet}
 	</PageHeader>
 
+	{#if !api.scoped}
 	<div class="mb-6">
 		<AdminFileStorageTimeseries
 			data={tsData}
@@ -128,8 +136,10 @@
 			onRangeChange={(r) => { tsRange = r; loadTimeseries(r); }}
 		/>
 	</div>
+	{/if}
 
-	{#if loading}
+	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
+	{:else if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if fileStorages.length === 0}
 		<div class="text-ink-2 text-sm">{t('filePage.empty')}</div>

@@ -1,9 +1,12 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api, ApiError } from '$lib/api/client';
+	import { api as baseApi, ApiError } from '$lib/api/client';
+	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
+	const api = createAdminInventoryApi(baseApi);
+	onDestroy(api.dispose);
 	import type { LoadBalancer } from '$lib/types/loadbalancer';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
@@ -19,6 +22,10 @@
 	import { executeBulkMutations } from '$lib/utils/bulkActions';
 	import { isDroverLoadBalancer } from '$lib/utils/droverLoadBalancer';
 	import { t } from '$lib/i18n/ns/admin-network';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import StatusChip from '$lib/components/ui/StatusChip.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 	let loadbalancers = $state<LoadBalancer[]>([]);
 	let loading = $state(true);
 	let error = $state('');
@@ -40,7 +47,7 @@
 			}
 			error = '';
 		} catch (e) {
-			error = e instanceof ApiError ? t('loadbalancersPage.error.fetchFailed', { status: e.status }) : t('loadbalancersPage.error.server');
+			error = e instanceof ApiError ? e.message : t('loadbalancersPage.error.server');
 		} finally {
 			loading = false;
 		}
@@ -55,6 +62,7 @@
 		busy = true;
 		try {
 			const results = await executeBulkMutations(ids, (id) => api.delete(`/api/v1/loadbalancers/${id}`, tokenSnapshot, projectSnapshot));
+			if (!api.isCurrent()) return;
 			const succeeded = results.filter((result) => result.ok).map((result) => result.id);
 			if (projectSnapshot === ($auth.projectId ?? undefined)) selection.remove(succeeded);
 			if (succeeded.length > 0) toast.success(t('loadbalancersPage.toast.deleteRequested', { count: succeeded.length }));
@@ -111,12 +119,12 @@
 				<div class="h-12 motion-skeleton rounded-lg" aria-hidden="true"></div>
 			{/each}
 		</div>
-	{:else if loadbalancers.length === 0}
+	{:else if !error && loadbalancers.length === 0}
 		<div class="text-center py-20 text-ink-2 bg-surface-base/20 border border-line/50 rounded-lg">
 			<div class="text-5xl mb-4">{t('loadbalancersPage.emptyIcon')}</div>
 			<p class="text-lg">{t('loadbalancersPage.empty')}</p>
 		</div>
-	{:else}
+	{:else if !error}
 		<div class="flex justify-end mb-3">
 			<SelectionToolbar
 				label={t('loadbalancersPage.title')}
@@ -128,6 +136,19 @@
 				onToggle={() => selection.toggleAll(selectableIds)}
 			/>
 		</div>
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each loadbalancers as lb (lb.id)}
+					{@const isProtected = isDroverLoadBalancer(lb)}
+					<CompactResourceCard selected={selection.has(lb.id)}>
+						<div class="flex items-start gap-2"><SelectionCheckbox checked={selection.has(lb.id)} disabled={busy || isProtected} unavailable={isProtected} title={isProtected ? t('loadbalancersPage.selection.protected') : undefined} ariaLabel={t('loadbalancersPage.selection.item', { name: lb.name || lb.id.slice(0, 12) })} onclick={() => selection.toggle(lb.id)} /><button type="button" class="min-h-11 min-w-0 flex-1 break-all text-left font-medium text-ink-0" onclick={() => openLbPanel(lb.id)}>{lb.name || lb.id.slice(0, 12)}</button><StatusChip status={lb.status ?? '—'} /></div>
+						<div class="space-y-1 break-all text-xs text-ink-2"><p>{t('loadbalancersPage.table.vipAddress')}: {lb.vip_address ?? '—'}</p><p>{t('loadbalancersPage.table.operatingStatus')}: {lb.operating_status ?? '—'}</p><p>{t('loadbalancersPage.table.projectId')}: {lb.project_id?.slice(0, 8) ?? '—'}</p></div>
+						{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => openLbPanel(lb.id)}>{t('loadbalancersPage.actions.details')}</Button>{/snippet}
+						{#snippet details()}<div class="space-y-2 break-all font-mono text-xs text-ink-2"><p>{lb.id}</p><p>{lb.project_id ?? '—'}</p>{#if isProtected}<p>{t('loadbalancersPage.selection.protected')}</p>{/if}</div>{/snippet}
+					</CompactResourceCard>
+				{/each}
+				<p class="col-span-full text-xs text-ink-2">{t('loadbalancersPage.summary.total', { count: loadbalancers.length })}</p>
+			{/snippet}
 		<div class="overflow-x-auto bg-surface-base/20 border border-line/50 rounded-lg p-5">
 			<table class="w-full text-sm">
 				<thead>
@@ -197,6 +218,7 @@
 			</table>
 			<div class="mt-4 text-xs text-ink-2">{t('loadbalancersPage.summary.total', { count: loadbalancers.length })}</div>
 		</div>
+		</ResponsiveTable>
 	{/if}
 </PageShell>
 

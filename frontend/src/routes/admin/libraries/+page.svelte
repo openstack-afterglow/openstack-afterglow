@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
   import PageShell from '$lib/components/ui/PageShell.svelte';
   import { t } from '$lib/i18n/ns/palimpsest-admin';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -1294,6 +1296,11 @@
             </section>
           {/if}
           {#if importJobs.length > 0}
+            <ResponsiveTable class="mt-3">{#snippet cards()}{#each importJobs as job}<CompactResourceCard>
+              <div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">#{job.id} {job.profile_name}</h3><StatusChip status={job.status} /></div><p class="text-xs">{job.progress_step || job.status} · {job.progress_pct}%</p>
+              {#snippet details()}<p class="text-xs">{t('columns.baseImage')}: {job.base_image_name || shortId(job.base_image_id)}</p>{#if job.consumer_status || job.consume_id}<p class="text-xs">VM {job.consume_id ? `#${job.consume_id}` : ''} {job.consumer_status || ''}</p>{/if}{#if job.error_message}<p class="text-xs text-state-danger-text">{job.error_message}</p>{/if}{/snippet}
+              {#snippet actions()}<Button variant="secondary" size="sm" ariaLabel={t('history.jobDetails', { id: job.id })} onclick={() => selectedImportId = job.id}>{t('actions.details')}</Button>{/snippet}
+            </CompactResourceCard>{/each}{/snippet}
             <div class="border border-line-2 rounded-lg overflow-x-auto mt-3">
               <table class="min-w-full text-xs">
                 <thead class="bg-surface-base text-ink-2">
@@ -1316,6 +1323,7 @@
                 </tbody>
               </table>
             </div>
+            </ResponsiveTable>
           {/if}
         </div>
       </section>
@@ -1347,6 +1355,11 @@
             {#if profiles.length > 0}
               <div class="pt-3 border-t border-line-2">
                 <p class="text-xs text-ink-2 mb-2">{t('summary.profiles')}</p>
+                <ResponsiveTable>{#snippet cards()}{#each profiles as profile (profile.id)}{@const blockers = blockingConsumesForProfile(profile.name)}<CompactResourceCard>
+                  <div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{profile.name}</h3><span class="text-xs">{profile.is_published ? t('publication.public') : t('publication.private')}</span></div><p class="text-xs">{t('columns.activeConsumes')}: {blockers.length}</p>
+                  {#snippet details()}<p class="text-xs">{t('columns.layerChain')}: {profile.layers.join(' → ')}</p>{/snippet}
+                  {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => selectedProfileId = profile.id}>{t('actions.details')}</Button><Button variant="secondary" size="sm" onclick={() => setProfilePublication(profile, !profile.is_published)} disabled={publicationUpdating === `profile:${profile.name}`}>{publicationUpdating === `profile:${profile.name}` ? t('publication.changing') : (profile.is_published ? t('publication.private') : t('publication.public'))}</Button><Button variant="danger-outline" size="sm" onclick={() => deleteProfile(profile)} disabled={blockers.length > 0 || profileDeletingName === profile.name} title={blockers.length > 0 ? t('profiles.deleteBlocked') : t('profiles.delete')}>{profileDeletingName === profile.name ? t('actions.deleting') : t('actions.delete')}</Button>{/snippet}
+                </CompactResourceCard>{/each}{/snippet}
                 <div class="overflow-x-auto border border-line-2 rounded-lg">
                   <table class="w-full text-xs">
                     <thead>
@@ -1400,6 +1413,7 @@
                     </tbody>
                   </table>
                 </div>
+                </ResponsiveTable>
               </div>
             {/if}
       </section>
@@ -1415,6 +1429,11 @@
           {t('artifacts.empty')}
         </div>
       {:else}
+        <ResponsiveTable>{#snippet cards()}{#each artifacts as a (a.id)}<CompactResourceCard>
+          <div class="flex flex-wrap justify-between gap-2"><h4 class="text-sm font-medium">#{a.id} {a.name}</h4><span class="text-xs">{a.is_sealed ? t('artifacts.sealed') : t('artifacts.unsealed')}</span></div><p class="text-xs">{a.kind}{#if a.python_version} · py{a.python_version}{/if} · {a.can_delete ? t('artifacts.deletable') : t('artifacts.blocked', { count: a.delete_blockers.length })}</p>
+          {#snippet details()}<p class="text-xs">{t('labels.ubuntu', { base: ubuntuBaseLabel(a) })}</p><p class="text-xs">{t('columns.lineage')}: {artifactChainLabel(a)}</p><p class="text-xs">{t('columns.packages')}: {packageLabel(a)}</p>{/snippet}
+          {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => setArtifactPublication(a, !a.is_published)} disabled={!a.is_sealed || publicationUpdating === `artifact:${a.id}`} title={!a.is_sealed ? t('publication.sealedOnly') : (a.is_published ? t('publication.hide') : t('publication.show'))}>{publicationUpdating === `artifact:${a.id}` ? t('publication.changing') : (a.is_published ? t('publication.published') : t('publication.private'))}</Button><Button variant="danger-outline" size="sm" onclick={() => openDeletePreview(a)}>{t('artifacts.reviewDeletion')}</Button>{/snippet}
+        </CompactResourceCard>{/each}{/snippet}
         <div class="bg-surface-sunken border border-line-2 rounded-xl overflow-hidden">
           <div class="max-h-80 overflow-y-auto">
             <table class="w-full text-sm">
@@ -1472,6 +1491,7 @@
             </table>
           </div>
         </div>
+        </ResponsiveTable>
       {/if}
     </div>
 
@@ -1490,6 +1510,11 @@
           {t('builds.empty')}
         </div>
       {:else}
+        <ResponsiveTable>{#snippet cards()}{#each builds as build (build.id)}{@const isDone = TERMINAL.has(build.status)}<CompactResourceCard>
+          <div class="flex flex-wrap justify-between gap-2"><h4 class="text-sm font-medium">{build.layer_name}</h4><StatusChip status={build.status} /></div><p class="text-xs">{build.progress_step || '—'} · {build.progress_pct}%</p>
+          {#snippet details()}<p class="text-xs">{buildPackageLabel(build)}</p><p class="text-xs">{build.kind ?? 'python'} · {build.python_version ?? ''}</p><p class="text-xs">{t('labels.ubuntu', { base: ubuntuBaseLabel(build) })}</p><p class="text-xs">{t('labels.vm')}: {build.server_id || '—'}</p><p class="text-xs">{t('columns.started')}: {fmtRelative(build.started_at)}</p><ProgressTrack value={build.progress_pct} label={t('builds.progressLabel', { name: build.layer_name })} tone={jobProgressTone(build.status)} active={!isDone} size="xs" />{/snippet}
+          {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => openBuildDetail(build)}>{t('actions.details')}</Button>{/snippet}
+        </CompactResourceCard>{/each}{/snippet}
         <div class="bg-surface-sunken border border-line-2 rounded-xl overflow-hidden">
           <div class="max-h-72 overflow-y-auto">
             <table class="w-full text-sm">
@@ -1563,6 +1588,7 @@
             </table>
           </div>
         </div>
+        </ResponsiveTable>
       {/if}
     </div>
 
@@ -1576,6 +1602,11 @@
           {t('consumes.empty')}
         </div>
       {:else}
+        <ResponsiveTable>{#snippet cards()}{#each consumes as c (c.id)}<CompactResourceCard>
+          <div class="flex flex-wrap justify-between gap-2"><h4 class="text-sm font-medium">{c.server_name ?? '—'}</h4><StatusChip status={c.status} /></div><p class="text-xs">{c.profile_name}</p>
+          {#snippet details()}<p class="text-xs">{t('columns.serverId')}: <code>{c.server_id || '—'}</code></p><p class="text-xs">{t('columns.created')}: {fmtRelative(c.created_at)}</p>{/snippet}
+          {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => openConsumeDetail(c)}>{t('actions.details')}</Button>{/snippet}
+        </CompactResourceCard>{/each}{/snippet}
         <div class="bg-surface-sunken border border-line-2 rounded-xl overflow-hidden">
           <div class="max-h-72 overflow-y-auto">
             <table class="w-full text-sm">
@@ -1618,6 +1649,7 @@
             </table>
           </div>
         </div>
+        </ResponsiveTable>
       {/if}
     </div>
   {/if}

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import { t } from '$lib/i18n/ns/instance';
-	import { ActivityIndicator, Alert, Button, StatusChip } from '$lib/components/ui';
+	import { ActivityIndicator, Alert, Button, CompactResourceCard, ResponsiveTable, StatusChip } from '$lib/components/ui';
 	import { auth, canWrite } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import type { Volume } from '$lib/types/volume';
@@ -207,6 +207,22 @@
 	{#if s.volumes.length === 0}
 		<p class="text-sm text-ink-2">{t('volumes.empty')}</p>
 	{:else}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each s.volumes as vol (vol.volume_id)}
+					{@const reason = expansionReason(vol.volume_id)}
+					<CompactResourceCard>
+						<div class="flex min-w-0 flex-wrap items-start justify-between gap-2"><a class="min-h-11 min-w-0 break-all text-sm font-medium text-warm-text hover:text-warm-text-hover" title={vol.name || vol.volume_id} href="/dashboard/volumes/{vol.volume_id}"><span class="line-clamp-2">{vol.name || vol.volume_id.slice(0, 12) + '...'}</span></a>{#if vol.status}<StatusChip status={vol.status} />{/if}</div>
+						<p class="break-all text-xs text-ink-2">{#if vol.size}{vol.size}GB · {/if}{vol.device}</p>
+						{#snippet actions()}
+							<Button variant="secondary" size="sm" onclick={() => s.setDeleteOnTermination(vol.volume_id, !vol.delete_on_termination)} disabled={s.actioning === 'dot-' + vol.volume_id} title={t('volumes.toggleTitle')}>{#if s.actioning === 'dot-' + vol.volume_id}<ActivityIndicator size="xs" label={t('volumes.updating')} />{:else}{vol.delete_on_termination ? t('volumes.deleteOnTermination') : t('volumes.keep')}{/if}</Button>
+							<Button variant="secondary" size="sm" onclick={() => openExpansion(vol.volume_id)} disabled={!!reason || !!extendLoading || !!s.actioning} ariaBusy={extendLoading === vol.volume_id} title={reason ? t(reason) : t('volumes.extend')}>{#if extendLoading === vol.volume_id}<ActivityIndicator size="xs" label={t('volumes.extendLoading')} />{:else}{t('volumes.extend')}{/if}</Button>
+							<Button variant="secondary" size="sm" onclick={() => s.detachVolume(vol.volume_id)} disabled={s.actioning === 'detach-' + vol.volume_id}>{#if s.actioning === 'detach-' + vol.volume_id}<ActivityIndicator size="xs" label={t('volumes.detaching')} />{:else}{t('volumes.detach')}{/if}</Button>
+						{/snippet}
+						{#snippet details()}<p class="break-all font-mono text-xs">{vol.volume_id}</p>{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<div class="space-y-2">
 			{#each s.volumes as vol}
 				{@const reason = expansionReason(vol.volume_id)}
@@ -265,6 +281,7 @@
 				</div>
 			{/each}
 		</div>
+		</ResponsiveTable>
 		{#if s.instance?.status !== 'SHUTOFF'}
 			<p class="mt-3 text-xs text-ink-2">{t('volumes.extendOfflineRequired')}</p>
 		{/if}

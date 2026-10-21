@@ -32,18 +32,25 @@ _KS_DATA = {
     "is_system_admin": False,
     "domain_id": "default",
     "domain_name": "Default",
-    "identity_domain_id": "default",
-    "identity_domain_name": "Default",
+    "identity_domain_id": "accounts",
+    "identity_domain_name": "Accounts",
     "is_domain_manager": False,
     "email": "actual@example.test",
 }
 
 
 def _native_validation(_token, project_id="", **_):
+    from app.services import keystone
+
+    project = keystone._get_admin_ks_client().projects.get(project_id) if project_id else None
+    domain_id = project["domain_id"] if project else _KS_DATA["identity_domain_id"]
+    domain = keystone._get_admin_ks_client().domains.get(domain_id)
     return dict(
         _KS_DATA,
         project_id=project_id,
-        project_name=_KS_DATA["project_name"] if project_id else "",
+        project_name=project["name"] if project else "",
+        domain_id=domain_id,
+        domain_name=domain["name"],
         roles=_KS_DATA["roles"] if project_id else [],
     )
 
@@ -295,8 +302,8 @@ async def test_login_returns_access_and_refresh(_ks_authenticate, _ks_get_user, 
     assert body["token"].count(".") == 2
     assert body["refresh_token"].count(".") == 2
     assert body["user_id"] == _KS_DATA["user_id"]
-    assert body["project_id"] == _KS_DATA["project_id"]
-    assert body["domain_id"] == _KS_DATA["domain_id"]
+    assert body["project_id"] == "personal-user-1"
+    assert body["domain_id"] == "personal"
     assert body["identity_domain_id"] == _KS_DATA["identity_domain_id"]
 
 
@@ -701,7 +708,13 @@ async def test_same_domain_target_unauthorized_yields_403(
             json={"username": "alice", "password": "pw"},
         )
         assert login.status_code == 200
-        access = login.json()["token"]
+        selected = await ac.post(
+            "/api/v1/auth/token/domain",
+            json={"domain_id": "default"},
+            headers={"Authorization": f"Bearer {login.json()['token']}"},
+        )
+        assert selected.status_code == 200, selected.text
+        access = selected.json()["token"]
 
     auth_directory.projects["denied-target-proj-id"] = {
         "id": "denied-target-proj-id",

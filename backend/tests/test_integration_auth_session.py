@@ -68,7 +68,8 @@ async def test_integration_login_without_workspace_target_keeps_automatic_home(m
         "refresh_token": "home-refresh",
         "user_id": "native-user",
         "domain_id": "personal-home",
-        "identity_domain_id": "personal-home",
+        "identity_domain_id": "accounts",
+        "identity_domain_name": "Accounts",
         "project_id": "home-project",
     }
 
@@ -118,7 +119,8 @@ async def test_integration_selects_configured_workspace_after_home_login_or_fail
         "refresh_token": "home-refresh",
         "user_id": "native-user",
         "domain_id": "personal-home",
-        "identity_domain_id": "personal-home",
+        "identity_domain_id": "accounts",
+        "identity_domain_name": "Accounts",
         "project_id": "home-project",
     }
     selected = {

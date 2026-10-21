@@ -198,8 +198,8 @@
 		{#each Object.entries(flavor.extra_specs) as [k, v]}
 			<div class="bg-surface-base border border-line rounded-lg px-3 py-2">
 				{#if editingSpecKey === k}
-					<div class="flex items-center gap-2">
-						<span class="text-xs text-warm-text font-mono break-all shrink-0">{k}</span>
+					<div class="flex flex-wrap lg:flex-nowrap items-center gap-2">
+						<span class="max-w-full text-xs text-warm-text font-mono break-all shrink-0">{k}</span>
 						<span class="text-ink-2">=</span>
 						<input
 							bind:value={editingSpecValue}
@@ -210,20 +210,20 @@
 								if (e.key === 'Escape') cancelEditSpec();
 							}}
 						/>
-						<button onclick={saveEditSpec} disabled={specSaving} class="text-state-success-text hover:text-state-success-text/90 text-xs shrink-0">{#if specSaving}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('flavors.specs.saving')}</span></span>{:else}{tr('flavors.specs.save')}{/if}</button>
-						<button onclick={cancelEditSpec} class="text-ink-2 hover:text-ink-2 text-xs shrink-0">{tr('flavors.cancel')}</button>
+						<button onclick={saveEditSpec} disabled={specSaving} class="min-h-11 lg:min-h-0 text-state-success-text hover:text-state-success-text/90 text-xs shrink-0">{#if specSaving}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('flavors.specs.saving')}</span></span>{:else}{tr('flavors.specs.save')}{/if}</button>
+						<button onclick={cancelEditSpec} class="min-h-11 lg:min-h-0 text-ink-2 hover:text-ink-2 text-xs shrink-0">{tr('flavors.cancel')}</button>
 					</div>
 				{:else}
-					<div class="flex items-center justify-between">
+					<div class="flex flex-wrap lg:flex-nowrap items-center justify-between gap-2">
 						<button
-							class="flex-1 min-w-0 text-left cursor-pointer hover:bg-surface-sunken/50 rounded -mx-1 px-1 py-0.5 transition-colors"
+							class="min-h-11 lg:min-h-0 flex-1 min-w-0 text-left cursor-pointer hover:bg-surface-sunken/50 rounded -mx-1 px-1 py-0.5 transition-colors"
 							onclick={() => startEditSpec(k, v)}
 						>
 							<span class="text-xs text-warm-text font-mono break-all">{k}</span>
 							<span class="text-ink-2 mx-2">=</span>
 							<span class="text-xs text-ink-2 font-mono break-all">{v}</span>
 						</button>
-						<button onclick={() => deleteExtraSpec(k)} disabled={deletingSpecKey === k} class="ml-2 text-state-danger-text hover:text-state-danger-text/90 text-xs shrink-0">
+						<button onclick={() => deleteExtraSpec(k)} disabled={deletingSpecKey === k} class="min-h-11 lg:min-h-0 ml-2 text-state-danger-text hover:text-state-danger-text/90 text-xs shrink-0">
 							{#if deletingSpecKey === k}
 								<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('flavors.delete.pending')}</span></span>
 							{:else}{tr('flavors.delete.action')}{/if}

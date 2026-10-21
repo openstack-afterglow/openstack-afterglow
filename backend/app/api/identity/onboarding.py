@@ -19,7 +19,6 @@ class TokenBody(StrictBody):
 
 class AcceptAccount(TokenBody):
     name: str = Field(min_length=1, max_length=255, pattern=r"^\S(?:.*\S)?$")
-    personal_domain_name: str = Field(min_length=1, max_length=64, pattern=r"^\S(?:.*\S)?$")
     password: str = Field(min_length=12, max_length=1024)
 
 
@@ -51,7 +50,6 @@ async def accept_invitation(
         session,
         name=req.name,
         password=req.password,
-        personal_domain_name=req.personal_domain_name,
     )
 
 
@@ -117,5 +115,4 @@ async def accept_registration(
         session,
         name=req.name,
         password=req.password,
-        personal_domain_name=req.personal_domain_name,
     )

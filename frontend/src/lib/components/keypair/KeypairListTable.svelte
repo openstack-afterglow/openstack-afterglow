@@ -2,6 +2,8 @@
 	import type { Keypair } from '$lib/types/keypair';
 	import { t } from '$lib/i18n/ns/images-keys';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	let {
 		keypairs,
@@ -18,6 +20,16 @@
 	} = $props();
 </script>
 
+<ResponsiveTable>
+ {#snippet cards()}
+  {#each keypairs as kp (kp.name)}
+   <CompactResourceCard>
+    <strong class="text-sm break-all">{kp.name}</strong><p class="text-xs text-ink-2">{t('keypairTable.columns.type')}: {kp.type}</p>
+    {#snippet details()}<p class="text-xs font-mono break-all">{t('keypairTable.columns.fingerprint')}: {kp.fingerprint}</p>{/snippet}
+    {#snippet actions()}<button onclick={() => onCopy(kp.fingerprint)} class="text-xs px-2 py-1 rounded-md bg-surface-sunken text-ink-1 border border-line-2">{copiedFingerprint === kp.fingerprint ? t('keypairTable.actions.copied') : t('keypairTable.actions.copy')}</button><button onclick={() => onDelete(kp.name)} disabled={deleting === kp.name} class="text-xs px-2 py-1 rounded-md text-state-danger-text border border-line-2 disabled:text-ink-3">{#if deleting === kp.name}<ActivityIndicator size="xs" label={t('keypairTable.actions.deleting')} />{:else}{t('keypairTable.actions.delete')}{/if}</button>{/snippet}
+   </CompactResourceCard>
+  {/each}
+ {/snippet}
 <div class="bg-surface-base border border-line rounded-lg overflow-hidden">
 	<div class="grid grid-cols-[1fr_auto] md:grid-cols-[1.2fr_140px_2fr_120px] px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
 		<div>{t('keypairTable.columns.name')}</div>
@@ -51,3 +63,4 @@
 		</div>
 	{/each}
 </div>
+</ResponsiveTable>

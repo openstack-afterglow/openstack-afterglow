@@ -2,6 +2,7 @@
 	"actions.cancel": "Cancel",
 	"actions.confirm": "Confirm",
 	"actions.close": "Close",
+	"resource.details": "Details",
 	"state.processing": "Processing...",
 	"state.loading": "Loading...",
 	"state.loadingNamed": "Loading {name}…",

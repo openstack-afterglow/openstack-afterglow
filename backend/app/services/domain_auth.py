@@ -743,6 +743,8 @@ async def _load_config_provider(domain_id: str, provider_id: str) -> DomainIdent
     fields["kind"] = provider.kind
     secret = provider.client_secret.get_secret_value()
     fingerprint_fields = {**fields, "domain_id": domain_id, "id": provider_id, "client_secret": secret}
+    organization = provider.organization
+    fingerprint_fields["organization"] = organization.model_dump() if organization is not None else None
     discovery_fingerprint = None
     metadata = None
     if provider.kind == "oidc":
@@ -780,6 +782,7 @@ async def _load_config_provider(domain_id: str, provider_id: str) -> DomainIdent
         **endpoints,
     )
     row._config_discovery_fingerprint = discovery_fingerprint
+    row._organization = organization
     return row
 
 
@@ -988,7 +991,7 @@ async def _load_provider(domain_id: str, provider_id: str) -> DomainIdentityProv
     return row
 
 
-async def require_provider(domain_id: str, provider_id: str, revision: int, email: str) -> None:
+async def require_provider(domain_id: str, provider_id: str, revision: int, email: str) -> DomainIdentityProvider:
     """Session refresh authority for a provider-bound session (fail closed)."""
     domain_id = _require_domain_id(domain_id)
     row = await _load_provider(domain_id, provider_id)
@@ -997,6 +1000,7 @@ async def require_provider(domain_id: str, provider_id: str, revision: int, emai
     if not isinstance(revision, int) or int(row.revision) != revision:
         raise DomainAuthDenied("Login provider configuration changed", code="provider_changed")
     enforce_email(await get_policy(domain_id), email)
+    return row
 
 
 # ── public methods / domain resolution ──────────────────────────────────────
@@ -1759,7 +1763,7 @@ async def _consume_link_ticket(ticket: str, browser_binding: str) -> dict:
     return record
 
 
-async def _canonical_federation(row, identity, user, domain) -> FederatedLogin:
+async def _canonical_federation(row, identity, user, domain, *, ks) -> FederatedLogin:
     from app.services.identity_roles import _field
 
     canonical_email = normalize_email(_field(user, "email")).casefold()
@@ -1792,6 +1796,9 @@ async def _canonical_federation(row, identity, user, domain) -> FederatedLogin:
         if normalize_email(current["email"]).casefold() != canonical_email:
             raise DomainAuthDenied("Native mapping changed canonical email", code="canonical_email_mismatch")
         await require_provider(domain["id"], row.id, int(row.revision), identity.email)
+        from app.services import organization_provisioning
+
+        await organization_provisioning.require_current(row, ks=ks, user_id=canonical_id, subject=identity.subject)
     except BaseException:
         await _revoke_quietly(unscoped)
         raise
@@ -1806,6 +1813,36 @@ async def _canonical_federation(row, identity, user, domain) -> FederatedLogin:
         provider_kind=row.kind,
         login_email=identity.email,
     )
+
+
+async def _origin_admission_required(row, identity, ks) -> bool:
+    """SQL origin needs membership; config origin only exact existing-domain autojoin."""
+    if not row.id.startswith(_CONFIG_PROVIDER_PREFIX):
+        return True
+    if not await provider_auto_join_allowed(row.domain_id, row.id, identity.email):
+        return False
+    from app.services.account_spaces import domain_kind
+
+    origin = await asyncio.to_thread(ks.domains.get, row.domain_id)
+    return domain_kind(origin) not in {"account", "personal"}
+
+
+async def _admit_verified_identity(row, identity, user, *, lease, ks, catalog):
+    """Origin policy is not participation; configured organizations are explicit trust."""
+    from app.services import account_identity, organization_provisioning
+
+    if getattr(row, "_organization", None) is not None:
+        await organization_provisioning.admit(row, identity, user, lease=lease, ks=ks, catalog=catalog)
+    elif await _origin_admission_required(row, identity, ks):
+        await account_identity.require_admission(
+            account_identity._field(user, "id"),
+            row.domain_id,
+            row,
+            identity.email,
+            lease=lease,
+            ks=ks,
+            catalog=catalog,
+        )
 
 
 async def complete_authorization(code: str, state: str, browser_binding: str) -> FederatedLogin:
@@ -1835,22 +1872,32 @@ async def complete_authorization(code: str, state: str, browser_binding: str) ->
             ticket = await _link_ticket(row, identity, existing, browser_binding)
             raise AccountLinkRequired(ticket, domain_id)
         if bound is None:
-            await account_identity.require_admission(
-                "", domain_id, row, identity.email, lease=lease, ks=ks, catalog=catalog, new=True
+            if getattr(row, "_organization", None) is not None:
+                from app.services import organization_provisioning
+
+                await organization_provisioning.precheck(row, identity, ks=ks)
+            elif await _origin_admission_required(row, identity, ks):
+                await account_identity.require_admission(
+                    "", domain_id, row, identity.email, lease=lease, ks=ks, catalog=catalog, new=True
+                )
+            bound = await account_identity.create_external(
+                row, identity, lease=lease, ks=ks, catalog=catalog, admission_domain_id=None
             )
-            bound = await account_identity.create_external(row, identity, lease=lease, ks=ks, catalog=catalog)
+            await _admit_verified_identity(row, identity, bound, lease=lease, ks=ks, catalog=catalog)
         else:
-            await account_identity.require_admission(
-                account_identity._field(bound, "id"),
-                domain_id,
-                row,
-                identity.email,
-                lease=lease,
-                ks=ks,
-                catalog=catalog,
-            )
+            await account_identity.require_enrollment_complete(bound)
+            organization = getattr(row, "_organization", None) is not None
+            if organization:
+                from app.services import organization_provisioning
+
+                await organization_provisioning.precheck(row, identity, ks=ks)
+            else:
+                # Original ordering: admission decides before any native association write.
+                await _admit_verified_identity(row, identity, bound, lease=lease, ks=ks, catalog=catalog)
             bound = await account_identity.attach(bound, row, identity, lease=lease, ks=ks)
-        return await _canonical_federation(row, identity, bound, domain)
+            if organization:
+                await _admit_verified_identity(row, identity, bound, lease=lease, ks=ks, catalog=catalog)
+        return await _canonical_federation(row, identity, bound, domain, ks=ks)
 
 
 async def complete_account_link(
@@ -1945,9 +1992,10 @@ async def complete_account_link(
                 if expired:
                     raise DomainAuthUnauthenticated("Account session has expired", code="account_proof_invalid")
                 password_proven = origin.get("auth_method") == "password"
-            await account_identity.require_admission(
-                record["user_id"], domain["id"], row, identity.email, lease=lease, ks=ks, catalog=catalog
-            )
+            if not row.id.startswith(_CONFIG_PROVIDER_PREFIX):
+                await account_identity.require_admission(
+                    record["user_id"], domain["id"], row, identity.email, lease=lease, ks=ks, catalog=catalog
+                )
             await account_identity.attach(
                 existing, row, identity, lease=lease, ks=ks, password_proven=password_proven, explicit_proof=True
             )

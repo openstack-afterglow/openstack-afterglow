@@ -337,6 +337,7 @@
 	"roleValidation.protectedDeletion": "Không thể xóa các vai trò mặc định.",
 	"roleValidation.linkedDeletion": "Trước tiên, hãy hủy liên kết các vai trò cha và con được liên kết trực tiếp.",
 	"userCreate.title": "Tạo người dùng",
+	"userCreate.accountSpacesHelp": "Accounts chỉ tạo danh tính đăng nhập. Chưa tạo dự án lúc này; lần đăng nhập thành công đầu tiên sẽ tạo dự án có tên tự động trong Personal và chỉ cấp trực tiếp vai trò member. Miền thư mục được chọn chỉ để xem; tạo tài khoản không tham gia miền đó hay được cấp quyền đọc Default.",
 	"userCreate.name": "Tên",
 	"userCreate.email": "Email",
 	"userCreate.password": "Mật khẩu",
@@ -587,10 +588,11 @@
 	"roleMetadata.invalidName": "Phạm vi và cấp bậc sử dụng chữ cái Latinh, chữ số và dấu gạch nối. Mọi ký tự khoảng trắng đều được thay bằng dấu gạch nối.",
 	"roleMetadata.domain": "ID miền (tùy chọn)",
 	"rolePresets.preview": "Xem trước các bộ vai trò thiết lập sẵn",
-	"rolePresets.confirm": "Áp dụng các bộ vai trò thiết lập sẵn cho dự án và dịch vụ? Các ID vai trò và phép gán hiện có được giữ nguyên; chỉ bổ sung các vai trò và liên kết kế thừa còn thiếu.",
+	"rolePresets.confirm": "Áp dụng bộ vai trò? Các vai trò và liên kết kế thừa dự án còn thiếu sẽ được thêm; các liên kết kế thừa dịch vụ cũ trong danh sách sẽ bị xóa. ID vai trò và phép gán trực tiếp được giữ nguyên. Hãy triển khai chính sách dịch vụ mới trước.",
 	"rolePresets.apply": "Áp dụng các bộ thiết lập sẵn",
 	"rolePresets.applied": "Đã áp dụng các bộ thiết lập sẵn. Đồ thị vai trò thực tế đã được tải lại.",
-	"rolePresets.previewHelp": "Việc xem trước không làm thay đổi đám mây. Khi áp dụng, các vai trò có tên hiện có được tái sử dụng và không tạo vai trò trùng lặp dù áp dụng nhiều lần.",
+	"rolePresets.previewHelp": "Xem trước không thay đổi đám mây. Mỗi dịch vụ đánh giá quyền qua policy.yaml của riêng mình. Khi áp dụng, các vai trò hiện có được tái sử dụng và chỉ các liên kết kế thừa dịch vụ cũ trong danh sách bị xóa.",
 	"rolePresets.directImplications": "Các liên kết kế thừa trực tiếp sẽ thêm",
+	"rolePresets.retiredImplications": "Các liên kết kế thừa dịch vụ cũ sẽ xóa",
 	"quotaController.saveFailed": "Không thể lưu"
 }

@@ -337,6 +337,7 @@
 	"roleValidation.protectedDeletion": "デフォルトロールは削除できません。",
 	"roleValidation.linkedDeletion": "直接リンクされている上位・下位ロールを先に解除してください。",
 	"userCreate.title": "ユーザーを作成",
+	"userCreate.accountSpacesHelp": "Accounts にはログイン用の識別情報のみを作成します。今はプロジェクトを作成せず、最初のログイン成功時に Personal に自動生成名のプロジェクトと直接の member ロールのみを準備します。選択したディレクトリのドメインは閲覧用であり、そのドメインへの参加や Default の読み取り権限の付与は行いません。",
 	"userCreate.name": "名前",
 	"userCreate.email": "メールアドレス",
 	"userCreate.password": "パスワード",
@@ -588,10 +589,11 @@
 	"roleMetadata.domain": "ドメインID（任意）",
 
 	"rolePresets.preview": "ロールプリセットをプレビュー",
-	"rolePresets.confirm": "プロジェクトとサービスのロールプリセットを適用しますか？既存のロールIDと割り当てを維持し、不足しているロールと継承リンクのみ追加します。",
+	"rolePresets.confirm": "ロールプリセットを適用しますか？不足するロールとプロジェクトの継承リンクを追加し、表示された旧サービス継承リンクを削除します。ロールIDと直接の割り当ては維持します。先に新しいサービス側ポリシーを配備してください。",
 	"rolePresets.apply": "プリセットを適用",
 	"rolePresets.applied": "プリセットを適用しました。実際のロールグラフを再読み込みしました。",
-	"rolePresets.previewHelp": "プレビューはクラウドを変更しません。適用時には既存の名前のロールを再利用し、繰り返し適用してもロールは重複して作成されません。",
+	"rolePresets.previewHelp": "プレビューはクラウドを変更しません。各サービスは自身のpolicy.yamlで権限を評価します。適用時には既存ロールを再利用し、表示された旧サービス継承リンクのみ削除します。",
 	"rolePresets.directImplications": "追加する直接継承リンク",
+	"rolePresets.retiredImplications": "削除対象の旧サービス継承リンク",
 	"quotaController.saveFailed": "保存に失敗しました"
 }

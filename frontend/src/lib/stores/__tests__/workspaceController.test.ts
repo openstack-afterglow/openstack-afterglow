@@ -26,6 +26,7 @@ beforeEach(() => {
 afterEach(() => {
 	for (const dispose of disposals.splice(0)) dispose();
 	clearAuth(); logoutInProgress.set(false); projectSwitching.set(false);
+	vi.restoreAllMocks();
 });
 
 async function mount() {
@@ -61,22 +62,73 @@ describe('mounted workspace reads', () => {
 		expect(vi.mocked(api.get).mock.calls.map(call => call[0])).toEqual(['/api/v1/auth/domains', '/api/v1/auth/workspaces?domain_id=home']);
 	});
 
-	it('browses only the listed target workspace and coalesces that target without caching completed inventory', async () => {
+	it('reuses isolated domain snapshots when browsing back without changing the active scope', async () => {
 		vi.mocked(api.get).mockImplementation(async path => path === '/api/v1/auth/domains' ? [home, team] : inventory);
 		const { controller } = await mount();
-		const workspace = Promise.withResolvers<WorkspaceInventory>();
-		vi.mocked(api.get).mockClear().mockReturnValue(workspace.promise);
-		const browsing = controller.selectDomain(team.id);
-		expect(controller.selectDomain(team.id)).toBe(browsing);
-		expect(controller.inventory).toBeNull(); expect(controller.ready).toBe(false);
-		expect(controller.domains).toEqual([home, team]);
-		expect(vi.mocked(api.get).mock.calls.map(call => call[0])).toEqual(['/api/v1/auth/workspaces?domain_id=team']);
-		workspace.resolve({ ...inventory, domain: team }); await browsing;
-		expect(controller.domainId).toBe(team.id); expect(controller.inventory?.domain).toEqual(team);
-		expect(get(auth).domainId).toBe(home.id); expect(api.post).not.toHaveBeenCalled();
-		vi.mocked(api.get).mockClear().mockResolvedValue(inventory);
+		controller.inventory!.projects[0].name = 'Unsaved local display';
+		vi.mocked(api.get).mockResolvedValue({ ...inventory, domain: team });
+		await controller.selectDomain(team.id);
+		vi.mocked(api.get).mockClear();
 		await controller.selectDomain(home.id);
-		expect(vi.mocked(api.get).mock.calls.map(call => call[0])).toEqual(['/api/v1/auth/workspaces?domain_id=home']);
+		expect(controller.inventory!.projects[0].name).toBe('Project');
+		expect(controller.domainId).toBe(home.id);
+		expect(api.get).not.toHaveBeenCalled();
+		expect(get(auth).domainId).toBe(home.id);
+		expect(api.post).not.toHaveBeenCalled();
+	});
+
+	it('reuses a recent chooser snapshot across close/reopen but explicit refresh replaces removed resources', async () => {
+		const { dispose } = await mount();
+		dispose();
+		vi.mocked(api.get).mockClear();
+		const { controller } = await mount();
+		expect(controller.inventory).toEqual(inventory);
+		expect(api.get).not.toHaveBeenCalled();
+		vi.mocked(api.get).mockImplementation(async path => path === '/api/v1/auth/domains' ? [home] : { ...inventory, projects: [], can_create_project: false });
+		await controller.refresh();
+		expect(controller.inventory?.projects).toEqual([]);
+		expect(controller.inventory?.can_create_project).toBe(false);
+		expect(controller.ready).toBe(true);
+	});
+
+	it('expires completed directory reads without extending their lifetime on reuse', async () => {
+		const now = Date.now();
+		const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+		const { dispose } = await mount();
+		dispose();
+		clock.mockReturnValue(now + 29_000);
+		const cached = await mount();
+		cached.dispose();
+		clock.mockReturnValue(now + 30_001);
+		vi.mocked(api.get).mockImplementation(async path => path === '/api/v1/auth/domains' ? [home] : { ...inventory, projects: [{ id: 'fresh', name: 'Fresh project' }] });
+		const { controller } = await mount();
+		expect(controller.inventory?.projects).toEqual([{ id: 'fresh', name: 'Fresh project' }]);
+	});
+
+	it.each(['login', 'scope ABA', 'authority ABA'] as const)('discards a closed chooser snapshot after %s', async change => {
+		const { dispose } = await mount();
+		dispose();
+		const previous = get(auth);
+		if (change === 'login') setLoginAuth({ ...previous, token: previous.token! });
+		else if (change === 'scope ABA') { setAuth({ token: 'team-token', domainId: team.id }); setAuth({ ...previous, token: previous.token! }); }
+		else { auth.update(state => ({ ...state, canWrite: false })); auth.update(state => ({ ...state, canWrite: previous.canWrite })); }
+		expect(acceptAuthVerification(getAuthVerificationEpoch(), {})).toBe(true);
+		vi.mocked(api.get).mockImplementation(async path => path === '/api/v1/auth/domains' ? [home] : { ...inventory, projects: [] });
+		const { controller } = await mount();
+		expect(controller.inventory?.projects).toEqual([]);
+	});
+
+	it('can refresh a reopened cached empty directory instead of retaining a completed request', async () => {
+		vi.mocked(api.get).mockResolvedValue([]);
+		const first = createWorkspaceController(vi.fn()); disposals.push(first.mount());
+		await vi.waitFor(() => expect(first.ready).toBe(true));
+		disposals[disposals.length - 1]();
+		const second = createWorkspaceController(vi.fn()); disposals.push(second.mount());
+		expect(second.ready).toBe(true);
+		vi.mocked(api.get).mockImplementation(async path => path === '/api/v1/auth/domains' ? [home] : inventory);
+		await second.refresh();
+		expect(second.inventory).toEqual(inventory);
+		expect(second.ready).toBe(true);
 	});
 
 	it('upgrades a browse to an explicit directory refresh and discards the superseded workspace', async () => {
@@ -193,6 +245,8 @@ describe('workspace create request ownership', () => {
 		expect(await mutation).toBe(false);
 		expect(controller.busy).toBe(false); expect(controller.uncertain).toBe(true);
 		expect(await controller.createDomain('Duplicate', '')).toBe(false);
+		// An automatic TTL revalidation is browsing, not an explicit uncertain-write settlement.
+		vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 31_000);
 		await controller.selectDomain(home.id);
 		expect(controller.ready).toBe(true); expect(controller.uncertain).toBe(true);
 		expect(await controller.createDomain('Duplicate', '')).toBe(false);

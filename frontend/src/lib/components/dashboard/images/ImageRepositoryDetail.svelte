@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { AnimatedNumber, Button, Card, Pill, StatusChip } from '$lib/components/ui';
+	import { AnimatedNumber, Button, Card, CompactResourceCard, Pill, ResponsiveTable, StatusChip } from '$lib/components/ui';
 	import { imageUploadTime, imageVerificationStatus, type ImageRepositoryGroup } from '$lib/stores/imageCatalog.svelte';
 	import ImageDigest from '$lib/components/image/ImageDigest.svelte';
 	import type { ImageInfo } from '$lib/types/compute';
@@ -19,7 +19,7 @@
 
 	let expandedTags = $state<Set<string>>(new Set());
 	function formatSize(bytes: number | null | undefined): string {
-		if (!bytes) return '-';
+		if (bytes == null) return '-';
 		if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 		if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
 		return `${bytes} B`;
@@ -44,6 +44,43 @@
 	</tr>
 {/snippet}
 
+{#snippet versionCard(image: ImageInfo, tag: string, current: boolean)}
+	{@const uploaded = imageUploadTime(image)}
+	<CompactResourceCard>
+		<div class="flex flex-wrap items-center gap-2">
+			<h3 class="font-mono font-semibold text-sm text-ink-0 break-all">:{tag}</h3>
+			<StatusChip status={image.status} />
+			<Pill tone={current ? 'accent' : 'neutral'} size="xs">{current ? t('repositoryDetail.current') : t('repositoryDetail.previous')}</Pill>
+			{#if tag === 'latest'}<Pill tone="warm" size="xs">{t('repositoryDetail.default')}</Pill>{/if}
+		</div>
+		<div class="flex flex-wrap items-center gap-2 text-xs text-ink-1">
+			<ImageVerificationBadge status={imageVerificationStatus(image)} />
+			<span>{image.os_distro ? osLabel(image.os_distro) : '-'}</span>
+			<span>{formatSize(image.size)}</span>
+		</div>
+		{#snippet details()}
+			<dl class="space-y-2 text-xs">
+				<div><dt class="text-ink-2">{t('repositoryDetail.digest')}</dt><dd><ImageDigest {image} /></dd></div>
+				<div><dt class="text-ink-2">{t('repositoryDetail.uploaded')}</dt><dd class="font-mono text-ink-1">{uploaded === null ? '-' : new Date(uploaded).toISOString().slice(0, 10)}</dd></div>
+			</dl>
+		{/snippet}
+		{#snippet actions()}
+			<Button variant="link" size="xs" onclick={() => onOpenTag(image.id)}>{t('repositoryDetail.viewDetails')}</Button>
+		{/snippet}
+	</CompactResourceCard>
+{/snippet}
+
+{#snippet previousToggle(tag: string, count: number)}
+	<Button variant="ghost" size="xs" ariaLabel={expandedTags.has(tag) ? t('repositoryDetail.collapsePreviousLabel', { tag, count }) : t('repositoryDetail.showPreviousLabel', { tag, count })}
+		ariaExpanded={expandedTags.has(tag)} onclick={() => {
+			const next = new Set(expandedTags);
+			if (next.has(tag)) next.delete(tag); else next.add(tag);
+			expandedTags = next;
+		}} class="min-h-11 lg:min-h-0 max-w-full !whitespace-normal">
+		<AnimatedNumber value={count} format={(value) => expandedTags.has(tag) ? t('repositoryDetail.collapsePrevious', { count: Math.round(value) }) : t('repositoryDetail.showPrevious', { count: Math.round(value) })} />
+	</Button>
+{/snippet}
+
 <Card surface="raised" padding="none" class="motion-fade repository-detail">
 	<div class="detail-header">
 		<Button variant="ghost" size="icon" ariaLabel={t('repositoryDetail.back')} onclick={onBack}>‹</Button>
@@ -54,6 +91,22 @@
 		</div>
 	</div>
 
+	<ResponsiveTable>
+		{#snippet cards()}
+			{#each group.tags as version (version.tag)}
+				<div class="min-w-0 space-y-2 p-3">
+					{@render versionCard(version.latest, version.tag, version.latest.id === version.current.id)}
+					{#if version.images.length > 1}
+						{@render previousToggle(version.tag, version.images.length - 1)}
+						{#if expandedTags.has(version.tag)}
+							{#each version.images.filter((image) => image.id !== version.latest.id) as image (image.id)}
+								{@render versionCard(image, version.tag, false)}
+							{/each}
+						{/if}
+					{/if}
+				</div>
+			{/each}
+		{/snippet}
 	<div class="table-wrap">
 		<table>
 			<thead>
@@ -73,14 +126,7 @@
 					{@render versionRow(version.latest, version.tag, version.latest.id === version.current.id)}
 					{#if version.images.length > 1}
 						<tr><td colspan="8">
-							<Button variant="ghost" size="xs" ariaLabel={expandedTags.has(version.tag) ? t('repositoryDetail.collapsePreviousLabel', { tag: version.tag, count: version.images.length - 1 }) : t('repositoryDetail.showPreviousLabel', { tag: version.tag, count: version.images.length - 1 })}
-								ariaExpanded={expandedTags.has(version.tag)} onclick={() => {
-									const next = new Set(expandedTags);
-									if (next.has(version.tag)) next.delete(version.tag); else next.add(version.tag);
-									expandedTags = next;
-								}}>
-								<AnimatedNumber value={version.images.length - 1} format={(value) => expandedTags.has(version.tag) ? t('repositoryDetail.collapsePrevious', { count: Math.round(value) }) : t('repositoryDetail.showPrevious', { count: Math.round(value) })} />
-							</Button>
+							{@render previousToggle(version.tag, version.images.length - 1)}
 						</td></tr>
 						{#if expandedTags.has(version.tag)}
 							{#each version.images.filter((image) => image.id !== version.latest.id) as image (image.id)}
@@ -92,6 +138,7 @@
 			</tbody>
 		</table>
 	</div>
+	</ResponsiveTable>
 </Card>
 
 <style>

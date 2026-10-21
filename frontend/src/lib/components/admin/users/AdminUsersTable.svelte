@@ -3,6 +3,9 @@
   import Pagination from '$lib/components/ui/Pagination.svelte';
   import { t } from '$lib/i18n/ns/admin-identity';
   import Button from '$lib/components/ui/Button.svelte';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+  import Pill from '$lib/components/ui/Pill.svelte';
 
   let {
     users,
@@ -25,6 +28,24 @@
   } = $props();
 </script>
 
+  <ResponsiveTable>
+    {#snippet cards()}
+      {#each users as u, index (u.id)}
+        <CompactResourceCard>
+          <div data-tour={index === 0 ? 'admin-identity-row' : undefined} class="flex flex-wrap items-center justify-between gap-2">
+            <Button variant="link" size="sm" onclick={() => onEdit(u)}>{u.name}</Button>
+            <Pill tone={u.enabled ? 'success' : 'danger'}>{u.enabled ? t('userTable.enabled') : t('userTable.disabled')}</Pill>
+          </div>
+          <p class="break-all text-sm text-ink-2">{u.email || '-'}</p>
+          {#snippet details()}
+            <dl class="space-y-2 text-xs">
+              <div><dt class="text-ink-2">{t('userTable.id')}</dt><dd class="break-all font-mono">{u.id}</dd></div>
+              <div><dt class="text-ink-2">{t('userTable.firstActivity')}</dt><dd>{(u.first_seen ?? u.created_at)?.slice(0, 10) ?? '-'}</dd></div>
+            </dl>
+          {/snippet}
+        </CompactResourceCard>
+      {/each}
+    {/snippet}
   <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead>
@@ -54,6 +75,7 @@
       </tbody>
     </table>
   </div>
+  </ResponsiveTable>
   <Pagination
     {page}
     {hasPrev}

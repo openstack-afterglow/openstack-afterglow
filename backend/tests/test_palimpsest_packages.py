@@ -12,7 +12,7 @@ from app.api.palimpsest import hub, package_keys, packages
 from app.config import get_settings
 from app.models.domain_auth import DomainLoginPolicy
 from app.services import identity_roles, keystone, service_proxy
-from app.services.service_permissions import ROLE_IMPLICATIONS, ROLE_PRESETS
+from app.services.service_permissions import ROLE_PRESETS
 from tests.test_domain_auth import db as db
 
 PROJECT = "11111111111141118111111111111111"
@@ -50,12 +50,8 @@ async def package_client(monkeypatch):
     app.include_router(hub.router, prefix=BASE + "/hub")
     monkeypatch.setattr(get_settings(), "service_palimpsest_enabled", True)
     monkeypatch.setattr(get_settings(), "service_palimpsest_internal_url", "https://hub.invalid/v1")
-    names = ["admin", "manager", "member", "reader", *(row["name"] for row in ROLE_PRESETS)]
+    names = ["admin", "manager", "member", "reader", "service", *(row["name"] for row in ROLE_PRESETS)]
     rows = [{"id": "id-" + name, "name": name} for name in names]
-    edges = [
-        {"prior_role": {"id": "id-" + prior}, "implies": [{"id": "id-" + implied}]}
-        for prior, implied in ROLE_IMPLICATIONS
-    ]
 
     async def identity(request: Request):
         info = {
@@ -87,18 +83,21 @@ async def package_client(monkeypatch):
         },
         payload={"project_id": PROJECT, "namespace": NAMESPACE, "items": [], "next_cursor": None},
         status=200,
+        policy_status=200,
+        policy={"service": "palimpsest", "capabilities": [], "actions": []},
         headers={},
         downloads=0,
         paths=[],
         actors=[],
         bodies=[],
     )
-    state.grants = ["member", *PACKAGE_LEAVES]
-    state.catalog = identity_roles._catalog(rows, edges)
+    state.grants = ["palimpsest_admin"]
+    state.catalog = identity_roles._catalog(rows, [])
     state.assignment_user_id = USER
     state.project_ids = {PROJECT, FOREIGN}
     state.is_system_admin = False
     state.has_system_admin_role = False
+    state.native_credential_valid = True
 
     def assignments(**query):
         projects = state.project_ids.copy()
@@ -136,18 +135,10 @@ async def package_client(monkeypatch):
             raise NotFound()
         return {"id": domain_id, "name": "Default", "enabled": True}
 
-    # Keep native membership provenance and service role-ID/implication checks real.
+    # Native membership provenance remains real; service policy never uses a local role DAG.
     provider = SimpleNamespace(
         roles=SimpleNamespace(list=lambda: rows),
-        inference_rules=SimpleNamespace(
-            list_inference_roles=lambda: [
-                {
-                    "prior_role": {"id": role["id"]},
-                    "implies": [{"id": implied} for implied in role["implied_role_ids"]],
-                }
-                for role in state.catalog
-            ]
-        ),
+        inference_rules=SimpleNamespace(list_inference_roles=lambda: []),
         role_assignments=SimpleNamespace(list=assignments),
         users=SimpleNamespace(get=native_user),
         projects=SimpleNamespace(get=native_project, list=lambda **_: []),
@@ -164,7 +155,7 @@ async def package_client(monkeypatch):
         from keystoneauth1.exceptions.http import Unauthorized
 
         user_id = state.assignment_user_id if token == "original-subject" else issued.get(token)
-        if user_id is None:
+        if user_id is None or not state.native_credential_valid:
             raise Unauthorized()
         identity = keystone.get_identity_user(user_id, operation=operation)
         if project_id:
@@ -193,6 +184,18 @@ async def package_client(monkeypatch):
         state.paths.append(request.url.path)
         state.actors.append(dict(request.headers))
         state.bodies.append(await request.aread())
+        if not request.headers.get("authorization", "").startswith("Bearer ppk_v1_"):
+            subject = request.headers.get("x-auth-token")
+            if not state.native_credential_valid or not (subject == "original-subject" or subject in issued):
+                return httpx.Response(
+                    401, json={"error": {"code": "AUTH_REQUIRED", "message": "Native credential required"}}
+                )
+            if request.headers.get("x-project-id") not in state.project_ids:
+                return httpx.Response(
+                    403, json={"error": {"code": "PROJECT_SCOPE_MISMATCH", "message": "Invalid project"}}
+                )
+        if request.url.path == "/v1/policy/capabilities":
+            return httpx.Response(state.policy_status, json=state.policy)
         if request.url.path == "/v1/projects/current":
             return httpx.Response(200, json=state.context)
         if request.url.path.endswith("/download"):
@@ -212,6 +215,56 @@ async def package_client(monkeypatch):
     )
     async with client_type(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         yield client, state, app
+
+
+@pytest.mark.parametrize("role", ["palimpsest_editor", PUBLISH, "admin"])
+@pytest.mark.parametrize("capabilities", [[], [PUBLISH]])
+async def test_native_package_capabilities_are_not_inferred_from_caller_roles(package_client, role, capabilities):
+    _, state, _ = package_client
+    state.policy["capabilities"] = capabilities
+    result = await service_proxy.get_policy_capabilities(
+        "palimpsest",
+        {"token": "original-subject", "user_id": USER, "project_id": PROJECT, "roles": [role]},
+    )
+    assert result == state.policy
+    assert result["capabilities"] == capabilities
+    assert state.paths == ["/v1/policy/capabilities"]
+    assert state.actors[0]["x-auth-token"] == "original-subject"
+    assert state.actors[0]["x-project-id"] == PROJECT
+    assert "authorization" not in state.actors[0]
+
+
+@pytest.mark.parametrize("native_status", [401, 403, 503])
+async def test_native_package_policy_failure_has_no_role_or_system_fallback(package_client, native_status):
+    _, state, _ = package_client
+    state.policy_status = native_status
+    with pytest.raises(HTTPException) as denied:
+        await service_proxy.get_policy_capabilities(
+            "palimpsest",
+            {
+                "token": "original-subject",
+                "user_id": USER,
+                "project_id": PROJECT,
+                "roles": ["admin", *PACKAGE_LEAVES],
+                "is_system_admin": True,
+            },
+        )
+    assert denied.value.status_code == native_status
+    assert state.paths == ["/v1/policy/capabilities"]
+    assert state.downloads == 0
+
+
+@pytest.mark.parametrize("token", ["", "unknown-native-token"])
+async def test_native_package_capabilities_require_original_native_credentials(package_client, token):
+    _, state, _ = package_client
+    state.policy["capabilities"] = [PUBLISH]
+    with pytest.raises(HTTPException) as denied:
+        await service_proxy.get_policy_capabilities(
+            "palimpsest", {"token": token, "project_id": PROJECT, "roles": ["admin", *PACKAGE_LEAVES]}
+        )
+    assert denied.value.status_code == 401
+    assert state.paths == (["/v1/policy/capabilities"] if token else [])
+    assert state.downloads == 0
 
 
 async def test_foreign_context_is_never_exposed_or_followed(package_client):
@@ -380,25 +433,34 @@ async def test_custom_system_authority_outage_prevents_hub_io(package_client, mo
     assert state.paths == []
 
 
-@pytest.mark.parametrize(
-    "grants,system_flag,system_grant",
-    [
-        (["admin", *PACKAGE_LEAVES], False, False),
-        ([], True, False),
-        (["service"], True, True),
-    ],
-)
 @pytest.mark.parametrize("method,path", [("POST", "/package-keys"), ("PUT", "/packages/namespace")])
-async def test_custom_package_admin_override_excludes_unverified_and_service_principals(
-    package_client, grants, system_flag, system_grant, method, path
-):
+async def test_custom_unverified_system_flag_cannot_replace_current_membership(package_client, method, path):
     client, state, _ = package_client
-    state.grants = grants
-    state.is_system_admin = system_flag
-    state.has_system_admin_role = system_grant
+    state.grants = []
+    state.is_system_admin = True
+    state.has_system_admin_role = False
     response = await client.request(method, BASE + path, json={})
     assert response.status_code == 403
     assert state.paths == []
+
+
+@pytest.mark.parametrize("service_principal", [False, True])
+@pytest.mark.parametrize("method,path", [("POST", "/package-keys"), ("PUT", "/packages/namespace")])
+async def test_custom_admin_and_service_principals_cannot_override_native_denial(
+    package_client, service_principal, method, path
+):
+    client, state, _ = package_client
+    state.grants = ["service"] if service_principal else ["admin", *PACKAGE_LEAVES]
+    state.is_system_admin = state.has_system_admin_role = service_principal
+    state.status = 403
+    state.payload = {"error": {"code": "ACTION_DENIED", "message": "Native package policy denied the caller"}}
+    response = await client.request(method, BASE + path, json={})
+    assert response.status_code == 403
+    assert response.json() == state.payload
+    expected_path = f"/v1/projects/{NAMESPACE}/keys" if method == "POST" else f"/v1/projects/{PROJECT}/namespace"
+    assert state.paths == (["/v1/projects/current"] if method == "POST" else []) + [expected_path]
+    assert all(actor["x-auth-token"] == "original-subject" for actor in state.actors)
+    assert state.downloads == 0
 
 
 @pytest.mark.parametrize("wrong", ["project", "package", "digest"])
@@ -409,6 +471,27 @@ async def test_download_requires_matching_verified_version_metadata(package_clie
     response = await client.get(BASE + f"/packages/versions/{DIGEST}/download", params={"package": "test"})
     assert response.status_code == 503
     assert state.downloads == 0
+
+
+async def test_native_metadata_denial_prevents_protected_archive_download(package_client):
+    client, state, _ = package_client
+    state.grants = ["palimpsest_admin", *PACKAGE_LEAVES]
+    state.status = 403
+    state.payload = {"error": {"code": "ACTION_DENIED", "message": "Native version policy denied the caller"}}
+    response = await client.get(BASE + f"/packages/versions/{DIGEST}/download", params={"package": "test"})
+    assert response.status_code == 403
+    assert response.json() == state.payload
+    assert state.paths == ["/v1/projects/current", f"/v1/projects/{NAMESPACE}/versions/{DIGEST}"]
+    assert state.downloads == 0
+
+
+@pytest.mark.parametrize("method,path", [("GET", "not-a-digest/download"), ("DELETE", "not-a-key-id")])
+async def test_browser_package_identifiers_fail_before_native_action(package_client, method, path):
+    client, state, _ = package_client
+    route = "/packages/versions/" + path if method == "GET" else "/package-keys/" + path
+    response = await client.request(method, BASE + route, params={"package": "test"} if method == "GET" else None)
+    assert response.status_code == 422
+    assert state.paths == []
 
 
 async def test_download_stream_and_upstream_error_are_not_export_tickets(package_client):
@@ -633,6 +716,31 @@ async def test_blacklisted_browser_session_has_no_package_authority(package_clie
     assert state.paths == []
 
 
+@pytest.mark.parametrize("path", ["/packages/context", "/hub/images"])
+async def test_revoked_native_login_proof_cannot_use_browser_roles(package_client, browser_session, path):
+    client, state, _ = package_client
+    _, jwt = browser_session
+    state.grants = ["admin", *PACKAGE_LEAVES]
+    state.is_system_admin = state.has_system_admin_role = True
+    state.native_credential_valid = False
+    response = await client.get(BASE + path, headers={"authorization": "Bearer " + jwt})
+    assert response.status_code == 401
+    assert state.paths == []
+
+
+@pytest.mark.parametrize("path", ["/packages/context", "/hub/images"])
+async def test_current_membership_revocation_cannot_use_stale_native_token_leaves(
+    package_client, browser_session, path
+):
+    client, state, _ = package_client
+    _, jwt = browser_session
+    state.stale_native_roles = ["member", *PACKAGE_LEAVES]
+    state.grants = []
+    response = await client.get(BASE + path, headers={"authorization": "Bearer " + jwt})
+    assert response.status_code == 403
+    assert state.paths == []
+
+
 @pytest.mark.parametrize("credential", [KEY, "raw-keystone", "eyJ.not-a-signed-jwt.payload"])
 async def test_browser_package_controls_do_not_accept_data_or_raw_credentials(
     package_client,
@@ -848,7 +956,7 @@ async def test_legacy_jwt_native_routes_are_denied_before_hub(
 @pytest.fixture
 def legacy_browser_session(package_client, browser_session, monkeypatch):
     _, state, _ = package_client
-    # Stale native role leaves still cannot replace current assignments.
+    # A native token can retain issuance-time leaves after current policy denies an action.
     state.stale_native_roles = ["member", *PACKAGE_LEAVES]
     monkeypatch.setattr("app.services.recent_projects.record_project_access", AsyncMock())
     return browser_session
@@ -878,6 +986,7 @@ async def test_revoked_home_password_policy_blocks_package_and_legacy_hub(packag
 
 @pytest.mark.parametrize("method,path,leaf", LEGACY_ACTIONS)
 @pytest.mark.parametrize("asserted_project", [None, FOREIGN])
+@pytest.mark.parametrize("role_kind", ["grade", "leaf"])
 async def test_legacy_jwt_hub_surface_retains_caller_identity(
     package_client,
     legacy_browser_session,
@@ -885,10 +994,12 @@ async def test_legacy_jwt_hub_surface_retains_caller_identity(
     path,
     leaf,
     asserted_project,
+    role_kind,
 ):
     client, state, _ = package_client
     _, jwt = legacy_browser_session
-    state.grants = ["member", leaf]
+    grade = {INVENTORY: "palimpsest_reader", DOWNLOAD: "palimpsest_user", PUBLISH: "palimpsest_editor"}[leaf]
+    state.grants = [grade if role_kind == "grade" else leaf]
     headers = {"authorization": "Bearer " + jwt}
     if asserted_project is not None:
         headers["x-project-id"] = asserted_project
@@ -896,79 +1007,79 @@ async def test_legacy_jwt_hub_surface_retains_caller_identity(
     assert response.status_code == 200
     assert state.paths == ["/v1/" + path]
     assert state.actors[0]["x-project-id"] == (asserted_project or PROJECT)
+    assert state.actors[0]["x-auth-token"] == f"project-subject:{USER}:{asserted_project or PROJECT}"
     assert "authorization" not in state.actors[0]
 
 
 @pytest.mark.parametrize("method,path,leaf", LEGACY_ACTIONS)
 @pytest.mark.parametrize("asserted_project", [None, FOREIGN])
-async def test_legacy_jwt_missing_action_denies_before_hub(
+async def test_legacy_jwt_native_action_denial_is_not_replaced_by_token_leaves(
     package_client, legacy_browser_session, method, path, leaf, asserted_project
 ):
     client, state, _ = package_client
     _, jwt = legacy_browser_session
-    # Every nonreader leaf implies inventory via the current graph, so removing
-    # inventory authority means removing all service grants. For other actions,
-    # unrelated leaves must not replace the missing exact action.
-    state.grants = (
-        ["member"] if leaf == INVENTORY else ["member", *[other for other in PACKAGE_LEAVES if other != leaf]]
-    )
+    state.grants = ["palimpsest_admin", *PACKAGE_LEAVES]
+    state.status = 403
+    state.payload = {"error": {"code": "ACTION_DENIED", "message": f"Native policy denied {leaf}"}}
     headers = {"authorization": "Bearer " + jwt}
     if asserted_project is not None:
         headers["x-project-id"] = asserted_project
     response = await client.request(method, BASE + "/hub/" + path, headers=headers)
     assert response.status_code == 403
-    expected_detail = (
-        "Current Palimpsest service authority is required"
-        if path in {"", "health"}
-        else f"서비스 권한이 필요합니다: {leaf}"
-    )
-    assert response.json() == {"detail": expected_detail}
-    assert state.paths == []
+    assert response.json() == state.payload
+    assert state.paths == ["/v1/" + path]
+    assert state.actors[0]["x-auth-token"] == f"project-subject:{USER}:{asserted_project or PROJECT}"
+    assert state.actors[0]["x-project-id"] == (asserted_project or PROJECT)
+    assert "authorization" not in state.actors[0]
+    assert state.downloads == 0
 
 
-@pytest.mark.parametrize(
-    "system_flag,system_grant,expected_status",
-    [(False, False, 403), (False, True, 403), (True, False, 403), (True, True, 200)],
-)
+@pytest.mark.parametrize("system_admin,native_status", [(False, 403), (True, 403), (True, 200)])
 @pytest.mark.parametrize("asserted_project", [None, FOREIGN])
-async def test_legacy_jwt_builds_require_flag_and_current_system_grant(
-    package_client, legacy_browser_session, system_flag, system_grant, expected_status, asserted_project
+async def test_legacy_builds_preserve_native_system_and_operator_policy_decisions(
+    package_client, legacy_browser_session, system_admin, native_status, asserted_project
 ):
     client, state, _ = package_client
     _, jwt = legacy_browser_session
-    # Neither project admin nor every Palimpsest leaf confers builder authority.
+    # The native build API retains system-only checks as well as operator policy.
+    # Project admin/leaves cannot turn a native denial into permission to build.
     state.grants = ["admin", "member", *PACKAGE_LEAVES]
-    state.is_system_admin = system_flag
-    state.has_system_admin_role = system_grant
+    state.is_system_admin = state.has_system_admin_role = system_admin
+    state.status = native_status
+    state.payload = (
+        {"error": {"code": "ACTION_DENIED", "message": "Native build authority is required"}}
+        if native_status == 403
+        else {"items": []}
+    )
     headers = {"authorization": "Bearer " + jwt}
     if asserted_project is not None:
         headers["x-project-id"] = asserted_project
     response = await client.get(BASE + "/hub/builds", headers=headers)
-    assert response.status_code == expected_status
-    if expected_status == 403:
-        assert state.paths == []
-    else:
-        assert state.paths == ["/v1/builds"]
-        assert state.actors[0]["x-project-id"] == PROJECT
-        assert state.actors[0].get("x-target-project-id", state.actors[0]["x-project-id"]) == (
-            asserted_project or PROJECT
-        )
-        assert "authorization" not in state.actors[0]
+    assert response.status_code == native_status
+    assert response.json() == state.payload
+    assert state.paths == ["/v1/builds"]
+    connection_project = PROJECT if system_admin else (asserted_project or PROJECT)
+    assert state.actors[0]["x-project-id"] == connection_project
+    assert state.actors[0]["x-auth-token"] == f"project-subject:{USER}:{connection_project}"
+    assert state.actors[0].get("x-target-project-id", connection_project) == (asserted_project or PROJECT)
+    assert "authorization" not in state.actors[0]
 
 
 @pytest.mark.parametrize("method,path", [("DELETE", "image-exports/export-1"), ("PATCH", "uploads/session-1")])
-async def test_legacy_jwt_unclassified_identifiers_deny_before_hub(
+async def test_legacy_hub_preserves_native_invalid_identifier_response(
     package_client, legacy_browser_session, method, path
 ):
     client, state, _ = package_client
     _, jwt = legacy_browser_session
+    state.status = 422
+    state.payload = {"error": {"code": "INVALID_IDENTIFIER", "message": "Invalid native resource identifier"}}
     response = await client.request(method, BASE + "/hub/" + path, headers={"authorization": "Bearer " + jwt})
-    assert response.status_code == 403
-    assert response.json() == {"detail": "Unknown Palimpsest browser operation"}
-    assert state.paths == []
+    assert response.status_code == 422
+    assert response.json() == state.payload
+    assert state.paths == ["/v1/" + path]
 
 
-async def test_legacy_jwt_publish_revocation_uses_current_catalog(package_client, legacy_browser_session):
+async def test_legacy_jwt_publish_revocation_uses_current_native_policy(package_client, legacy_browser_session):
     client, state, _ = package_client
     _, jwt = legacy_browser_session
     state.grants = ["member", "palimpsest_editor"]
@@ -976,13 +1087,16 @@ async def test_legacy_jwt_publish_revocation_uses_current_catalog(package_client
     headers = {"authorization": "Bearer " + jwt}
     response = await client.patch(path, headers=headers, content=b"allowed-chunk")
     assert response.status_code == 200
-    parent = next(row for row in state.catalog if row["name"] == "palimpsest_editor")
-    parent["implied_role_ids"].remove("id-" + PUBLISH)
+    # The same session, grade and issuance-time token leaves remain unchanged.
+    # Only the native service's current operator-policy decision is revoked.
+    state.status = 403
+    state.payload = {"error": {"code": "ACTION_DENIED", "message": "Current native publish authority is required"}}
     response = await client.patch(path, headers=headers, content=b"revoked-chunk")
     assert response.status_code == 403
-    assert response.json() == {"detail": f"서비스 권한이 필요합니다: {PUBLISH}"}
-    assert state.paths == [f"/v1/uploads/{KEY_ID}"]
-    assert state.bodies == [b"allowed-chunk"]
+    assert response.json() == state.payload
+    assert state.paths == [f"/v1/uploads/{KEY_ID}", f"/v1/uploads/{KEY_ID}"]
+    assert state.bodies == [b"allowed-chunk", b"revoked-chunk"]
+    assert state.actors[0] == state.actors[1]
 
 
 async def test_browser_jwt_and_keystone_header_are_ambiguous(package_client, browser_session):

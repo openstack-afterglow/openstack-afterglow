@@ -8,6 +8,10 @@
 	import FileIcon from '$lib/components/ui/FileIcon.svelte';
 	import { formatObjectSize, formatDate, shortContentType } from '$lib/utils/format';
 	import { createArrivals } from './arrivals';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
+ import ObjectFileCard from './ObjectFileCard.svelte';
+ import ObjectFolderCard from './ObjectFolderCard.svelte';
 
 	// Rows fade in only the first time their name renders in this container (initial load, a newly
 	// entered prefix, an upload). Manual refresh, polling and filter typing remount rows that were
@@ -40,6 +44,16 @@
 		<p class="text-ink-2 text-xs mt-1">{t('views.flatTable.emptyHint')}</p>
 	</div>
 {:else}
+ <ResponsiveTable>
+  {#snippet cards()}
+   <div class="responsive-card-toolbar flex flex-wrap items-center gap-2 text-xs">
+    <SelectionCheckbox checked={s.selectedCount > 0 && s.selectedCount === s.filteredObjects.length} ariaLabel={t('views.cardGrid.selectAllVisible')} onclick={s.toggleSelectAll} />
+    <button class="min-h-11 px-2" onclick={() => s.toggleSort('name')}>{t('views.flatTable.nameSort', { icon: s.sortIcon('name') })}</button><button class="min-h-11 px-2" onclick={() => s.toggleSort('bytes')}>{t('views.flatTable.sizeSort', { icon: s.sortIcon('bytes') })}</button><button class="min-h-11 px-2" onclick={() => s.toggleSort('last_modified')}>{t('views.flatTable.modifiedSort', { icon: s.sortIcon('last_modified') })}</button>
+   </div>
+   {#each s.filteredObjects as obj (obj.name)}
+    {#if s.isDirectory(obj)}<ObjectFolderCard {obj} />{:else}<ObjectFileCard {obj} compact />{/if}
+   {/each}
+  {/snippet}
 	<div class="overflow-x-auto">
 		<table class="w-full text-sm table-fixed" bind:this={tableRef}>
 			<colgroup>
@@ -155,4 +169,5 @@
 			</tbody>
 		</table>
 	</div>
+ </ResponsiveTable>
 {/if}

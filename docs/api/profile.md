@@ -31,6 +31,9 @@ nav_order: 11
 | `PATCH` | `/api/v1/profile` | 본인 프로필 수정 (이름·이메일·설명·기본 프로젝트) |
 | `POST` | `/api/v1/profile/password` | 비밀번호 변경 (5회/분) |
 | `GET` | `/api/v1/profile/activity` | 본인 활동 로그 조회 (cross-project) |
+| `GET` | `/api/v1/profile/image` | 본인 사진 선택·표시 데이터 조회 (private, no-store) |
+| `PUT` | `/api/v1/profile/image` | Gravatar 선택 또는 새 아바타 생성·저장 |
+| `PUT` | `/api/v1/profile/image/upload` | bounded raw raster 업로드·정규화·저장 |
 
 ---
 
@@ -101,11 +104,31 @@ nav_order: 11
 | `401` | 유효하지 않거나 만료된 토큰 |
 
 ---
+## 프로필 사진
+
+`GET /api/v1/profile/image`는 `{ "kind": "gravatar|generated|upload", "url": "… 또는 null" }`을 반환한다. 저장된 선택이 없으면 현재 native 이메일을 trim → lower-case → SHA-256 처리한 [Gravatar 규격](https://docs.gravatar.com/rest/hash/)을 사용한다. 주소는 고정 `https://www.gravatar.com/avatar/<hash>?s=128&d=404`이며 이메일 원문·토큰·secret은 URL에 넣지 않는다. 이메일이 없으면 null, 외부 이미지 로딩 실패 때 브라우저는 접근성 이름이 있는 이니셜로 대체한다. 요청은 `no-referrer`이고 CSP는 정확한 Gravatar origin만 추가한다. 기본 Gravatar는 이메일 해시와 브라우저 네트워크 정보를 해당 외부 서비스에 공개하므로 UI에 이를 설명한다. 생성/업로드는 외부 fetch나 AI API를 사용하지 않는다.
+
+`PUT /api/v1/profile/image`의 strict JSON은 `{ "kind": "gravatar" }` 또는 `{ "kind": "generated" }`만 허용한다. Generated 선택마다 서버가 새 random seed로 대칭 raster를 생성하고 seed를 저장하므로 재생성도 명시적 사용자 동작이다. 요청에 `user_id`, home, URL 등을 넣을 수 없다. 두 PUT은 20회/분 제한이며 응답은 GET과 같다.
+
+`PUT /api/v1/profile/image/upload`는 multipart가 아닌 **원본 파일 bytes**를 받는다. 스트림은 2 MiB에서 차단한다. 실제 Pillow decode에 성공한 정지 PNG/JPEG/WebP/GIF만 허용하고 SVG·임의 URL·손상/잘린 raster·animation을 거부한다. 각 변 최대4096px, 총4,194,304픽셀이다. EXIF orientation을 반영해 중앙 crop한128×128 raster로 바꾸고 alpha는 중립 배경에 합성하며128색 PNG로 저장한다. 원본 filename·EXIF·ICC·XMP·text metadata는 보존하지 않는다. 업로드 이미지 응답은 정규화된 `data:image/png;base64,…`이고 별도 공개 파일 endpoint는 없다. 원본 byte 초과413, 형식/차원/animation/저장 크기 위반422, native authority 거절403, native 장애·불일치·미확정 readback503이다.
+
+### 저장과 bounded application authority
+
+선택은 기존 Keystone native user extra의 **`afterglow_profile_image` 한 키**에 저장한다. Gravatar는 kind, generated는 kind+seed, upload는 kind+정규화 PNG base64만 저장하므로 reload·logout/login·다른 프로젝트에서도 같은 native subject의 선택을 유지한다. 새 Afterglow DB/schema·의존성·public branding slot·localStorage를 추가하지 않는다. 업로드는 작은 palette PNG로 bounded하며 기존 metadata와 교체할 한 키를 합친 전체 visible user JSON을 ASCII-escape 직렬화한 byte 수가60,000을 넘으면 **쓰기 전에 거절**한다(native extra TEXT65,535byte 한계의 여유). 다른 extra·credentials·federation tuple·이메일은 PATCH하지 않는다.
+
+일반 member는 stock Keystone `identity:update_user` 정책에 따라 직접 self PATCH를 할 수 없다. 따라서 이 API는 **명시적으로 허용된 Afterglow own-profile 이미지 전용 writer**다. 먼저 호출자의 native 연결로 token의 user_id와 immutable identity_domain_id 및 enabled 상태가 같은 exact user를 읽는다. 이후 기존 configured service-admin 연결이 같은 exact enabled user와 enabled home을 다시 확인하고 `afterglow_profile_image`만 PATCH한다. exact fresh user readback에서 home/ID/enabled/선택이 일치해야 성공하며 연결은 항상 닫는다. client가 고른 subject 또는 일반 native user update 권한을 위임하지 않고 native policy를 변경하지 않는다. configured writer 자체가 거절되면403이며 다른 credential로 재시도하지 않는다. Native metadata는 Keystone 사용자 조회 권한을 가진 운영자에게 보일 수 있어 secret 저장소가 아니다.
+
+헤더와 프로필은 한 in-memory display store를 공유해 저장 성공 즉시 갱신한다. logical session·identity/home·working scope·verification/logout/switching 변경은 동기적으로 snapshot을 지우고 pending 결과를 generation으로 차단한다. 마지막 consumer unmount도 pending 결과를 폐기한다. 토큰 refresh만으로 owner가 바뀌지 않으면 snapshot을 유지한다. 불확실한 쓰기는 자동 replay하지 않고 명시적 새 조회로 현재 native 선택을 확인한다.
+
+---
+
 
 ## POST /api/v1/profile/password
 
 현재 비밀번호를 검증한 뒤 새 비밀번호로 변경합니다. Keystone 비밀번호 변경 API를
 호출합니다. 비율 제한: **5회/분**.
+
+현재 비밀번호는 작업 중인 조직·프로젝트가 아니라 변경 불가 `identity_domain_id`에서 **unscoped native 증명**으로 검증한다. Identity-only `account`를 workspace로 선택하지 않으므로 신규 공용 account 계정도 개인 프로젝트를 유지한 채 변경할 수 있다. Native 증명의 사용자 ID가 세션 사용자와 다르면403, 검증 불가 장애는503이며 어느 경우에도 비밀번호를 쓰지 않는다. 성공 후 기존 비밀번호는 거절되고 새 비밀번호로 같은 계정·개인 프로젝트에 로그인한다.
 
 > 외부(federated) 로그인 사용자는 로컬 비밀번호가 없으므로 변경할 수 없습니다(403).
 

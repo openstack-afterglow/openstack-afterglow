@@ -12,6 +12,8 @@
   import TextInput from '$lib/components/ui/TextInput.svelte';
   import SelectInput from '$lib/components/ui/SelectInput.svelte';
   import TableShell from '$lib/components/ui/TableShell.svelte';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
   import LoginCharts from './LoginCharts.svelte';
   import { t } from '$lib/i18n/ns/login-monitoring';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -102,9 +104,22 @@
     <section class="mt-6 space-y-3" aria-label={t('recent')}>
       <h2 class="text-sm font-semibold">{t('recent')}</h2><p class="text-sm text-ink-2">{t('recentNotice')}</p>
       {#if data.history.events?.length === 0}<p class="text-sm text-ink-2">{t('emptyEvents')}</p>{/if}
-      {#if data.history.events?.length}<TableShell><table><thead><tr><th>{t('timestamp')}</th><th>{t('action')}</th><th>{t('status')}</th><th>{t('project')}</th><th>{t('method')}</th></tr></thead><tbody>
-        {#each data.history.events as event}<tr><td class="tabular-nums">{date(event.at)}</td><td>{event.resource_type} · {event.action}</td><td>{event.status === 'success' ? t('success') : event.status === 'failed' ? t('failed') : event.status === 'started' ? t('startedStatus') : event.status}</td><td class="font-mono">{event.project_id}</td><td>{event.auth_method === 'password' ? t('password') : event.auth_method === 'federated' ? t('federated') : t('unknown')}</td></tr>{/each}
-      </tbody></table></TableShell>{/if}
+      {#if data.history.events?.length}
+        {@const historyEvents = data.history.events}
+        <ResponsiveTable>
+        {#snippet cards()}
+          {#each historyEvents as event}
+            <CompactResourceCard>
+              <p class="font-medium">{event.resource_type} · {event.action}</p>
+              <time datetime={event.at}>{date(event.at)}</time>
+              <p>{t('status')}: {event.status === 'success' ? t('success') : event.status === 'failed' ? t('failed') : event.status === 'started' ? t('startedStatus') : event.status}</p>
+              {#snippet details()}<dl class="space-y-2"><div><dt>{t('project')}</dt><dd class="font-mono break-all">{event.project_id}</dd></div><div><dt>{t('method')}</dt><dd>{event.auth_method === 'password' ? t('password') : event.auth_method === 'federated' ? t('federated') : t('unknown')}</dd></div></dl>{/snippet}
+            </CompactResourceCard>
+          {/each}
+        {/snippet}
+        <TableShell><table><thead><tr><th>{t('timestamp')}</th><th>{t('action')}</th><th>{t('status')}</th><th>{t('project')}</th><th>{t('method')}</th></tr></thead><tbody>
+        {#each historyEvents as event}<tr><td class="tabular-nums">{date(event.at)}</td><td>{event.resource_type} · {event.action}</td><td>{event.status === 'success' ? t('success') : event.status === 'failed' ? t('failed') : event.status === 'started' ? t('startedStatus') : event.status}</td><td class="font-mono">{event.project_id}</td><td>{event.auth_method === 'password' ? t('password') : event.auth_method === 'federated' ? t('federated') : t('unknown')}</td></tr>{/each}
+      </tbody></table></TableShell></ResponsiveTable>{/if}
     </section>
   {/if}
 </PageShell>

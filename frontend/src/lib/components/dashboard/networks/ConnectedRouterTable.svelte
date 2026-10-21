@@ -5,6 +5,8 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	let {
 		routers,
@@ -113,6 +115,24 @@
 	{/if}
 
 	{#if routers.length > 0}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each routers as router (router.id)}
+					<CompactResourceCard>
+						<p class="font-medium">{router.name || router.id.slice(0, 12)}</p>
+						<p class="text-xs text-ink-2">{t('network.routers.subnetCount', { count: router.connected_subnet_ids.length })}</p>
+						{#snippet details()}<dl><div><dt>{t('network.labels.id')}</dt><dd>{router.id}</dd></div><div><dt>{t('network.routers.externalGateway')}</dt><dd>{router.external_gateway_network_id || '-'}</dd></div><div><dt>{t('network.routers.connectedSubnets')}</dt><dd>{router.connected_subnet_ids.map((sid) => subnets.find((subnet) => subnet.id === sid)?.name || sid).join(', ') || '-'}</dd></div></dl>{/snippet}
+						{#snippet actions()}
+							{#if canManage && onDisconnect && (isSystemAdmin || (router.project_id && router.project_id === projectId))}
+								{#each router.connected_subnet_ids as sid}
+									{@const disconnecting = pending.isActive(`disconnect:${router.id}:${sid}`, connecting)}
+									<Button variant="danger-outline" size="xs" onclick={() => pending.run(`disconnect:${router.id}:${sid}`, () => onDisconnect?.(router.id, sid))} disabled={connecting} ariaBusy={disconnecting}>{#if disconnecting}<ActivityIndicator size="xs" tone="danger" />{/if}{disconnecting ? tc('state.processing') : router.connected_subnet_ids.length > 1 ? t('network.routers.disconnectNamed', { name: subnets.find((subnet) => subnet.id === sid)?.name || sid.slice(0, 6) }) : t('network.actions.disconnect')}</Button>
+								{/each}
+							{/if}
+						{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<div class="overflow-x-auto">
 		<table class="w-full text-sm">
 			<thead>
@@ -177,6 +197,7 @@
 			</tbody>
 		</table>
 		</div>
+		</ResponsiveTable>
 	{:else}
 		<p class="text-sm text-ink-2">{t('network.routers.emptySentence')}</p>
 	{/if}

@@ -3,7 +3,10 @@
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api, ApiError } from '$lib/api/client';
+	import { api as baseApi, ApiError } from '$lib/api/client';
+	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
+	const api = createAdminInventoryApi(baseApi);
+	onDestroy(api.dispose);
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import { projectNames } from '$lib/stores/projectNames';
@@ -127,7 +130,7 @@
 		try {
 			await api.delete(`/api/v1/admin/images/${img.id}`, token, projectId);
 			await load(true);
-		} catch (e) { toast.error(t('images.delete.failed', { error: e instanceof Error ? e.message : String(e) })); }
+		} catch (e) { if (api.isCurrent()) toast.error(t('images.delete.failed', { error: e instanceof Error ? e.message : String(e) })); }
 		finally { deletingId = null; }
 	}
 	async function toggleActivation(img: AdminImage) {
@@ -135,7 +138,7 @@
 		try {
 			await api.post(`/api/v1/admin/images/${img.id}/${img.status === 'active' ? 'deactivate' : 'reactivate'}`, {}, token, projectId);
 			await load(true);
-		} catch (e) { toast.error(t('images.activation.failed', { error: e instanceof Error ? e.message : String(e) })); }
+		} catch (e) { if (api.isCurrent()) toast.error(t('images.activation.failed', { error: e instanceof Error ? e.message : String(e) })); }
 		finally { togglingId = null; }
 	}
 	async function toggleVerification(img: AdminImage) {
@@ -145,7 +148,7 @@
 			await api.put(`/api/v1/admin/images/${img.id}/verification`, { verified }, token, projectId);
 			toast.success(verified ? t('images.verification.approved') : t('images.verification.revoked'));
 			await load(true);
-		} catch (e) { toast.error(t('images.verification.failed', { error: e instanceof Error ? e.message : String(e) })); }
+		} catch (e) { if (api.isCurrent()) toast.error(t('images.verification.failed', { error: e instanceof Error ? e.message : String(e) })); }
 		finally { verifyingId = null; }
 	}
 

@@ -5,6 +5,8 @@
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import DbRestoreModal from '$lib/components/database/DbRestoreModal.svelte';
 	import type { DbBackup } from '$lib/types/database';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	const s = useDbInstanceDetailController();
 
@@ -186,6 +188,20 @@
 	{#if s.backups.length === 0}
 		<div class="text-ink-2 text-xs">{tr('backups.empty')}</div>
 	{:else}
+    <ResponsiveTable>
+      {#snippet cards()}
+        {#each s.backups as b (b.id)}
+          <CompactResourceCard>
+            <div class="flex flex-wrap items-center gap-2"><strong class="min-w-0 break-all">{b.name}</strong><StatusChip status={b.status} />{#if isStuck(b)}<span class="text-xs text-state-danger-text" title={tr('backups.stuckHelp')}>{tr('backups.stuck')}</span>{/if}</div>
+            <p class="text-xs text-ink-2">{tr('labels.size')}: {b.size == null ? '-' : `${b.size} GB`}</p>
+            {#snippet details()}<p class="text-xs break-all">{b.id}</p><p class="text-xs">{tr('labels.created')}: {b.created_at ? b.created_at.slice(0, 10) : '-'}</p>{/snippet}
+            {#snippet actions()}
+              <button onclick={() => { selectedBackup = b; showRestoreModal = true; }} disabled={s.restoringBackup === b.id} class="inline-flex items-center gap-1 text-warm-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-action-warm">{#if s.restoringBackup === b.id}<ActivityIndicator size="xs" tone="ink" />{tr('state.restoring')}{:else}{tr('actions.restore')}{/if}</button>
+              <button onclick={() => s.deleteBackup(b.id)} disabled={s.deletingBackup === b.id} class="inline-flex items-center gap-1 text-state-danger-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-line-2">{#if s.deletingBackup === b.id}<ActivityIndicator size="xs" tone="danger" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
+            {/snippet}
+          </CompactResourceCard>
+        {/each}
+      {/snippet}
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="text-ink-2 text-xs">
@@ -226,5 +242,6 @@
 				{/each}
 			</tbody>
 		</table>
+    </ResponsiveTable>
 	{/if}
 </div>

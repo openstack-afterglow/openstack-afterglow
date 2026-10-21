@@ -31,8 +31,8 @@
 </script>
 
 <div class="bg-surface-base border border-line rounded-lg p-5">
-  <div class="flex items-center mb-3.5">
-    <div class="flex items-center gap-3">
+  <div class="flex flex-wrap items-center gap-2 mb-3.5">
+    <div class="flex min-w-0 flex-wrap items-center gap-3">
       <div class="text-ink-0 text-[15px] font-semibold">{t('floatingIpCard.title')}</div>
       {#if floatingIps.length > 0}
         <SelectionToolbar
@@ -50,7 +50,7 @@
       <button
         onclick={onAllocateClick}
         disabled={!hasExternalNetwork}
-        class="px-3 py-1.5 text-[13px] bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm font-medium rounded-lg transition-colors"
+        class="min-h-11 px-3 py-1.5 text-[13px] bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm font-medium rounded-lg transition-colors"
         title={!hasExternalNetwork ? t('floatingIpCard.noExternal') : t('floatingIpCard.allocate')}
       >{t('floatingIpCard.allocateButton')}</button>
     </div>
@@ -58,7 +58,7 @@
   {#if floatingIps.length === 0}
     <div class="text-center py-8 text-ink-2 text-sm">{t('floatingIpCard.empty')}</div>
   {:else}
-    <div class="motion-stagger grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+    <div class="motion-stagger grid grid-cols-1 lg:grid-cols-3 gap-2.5">
       {#each floatingIps as fip (fip.id)}
         <div
           class="resource-selection-surface bg-[#0B1220] border border-line rounded-lg p-3 flex items-center gap-3"

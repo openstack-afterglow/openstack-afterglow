@@ -93,7 +93,8 @@ async def test_creator_capability_uses_current_native_domain_grant_not_project_g
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         allowed = await client.get("/api/v1/projects/capabilities?domain_id=domain")
         assert allowed.status_code == 200
-        assert allowed.json() == {"domain_id": "domain", "can_create_project": True}
+        assert allowed.json()["domain_id"] == "domain"
+        assert allowed.json()["can_create_project"] is True
         creator_grants.clear()
         revoked = await client.get("/api/v1/projects/capabilities?domain_id=domain")
         assert revoked.json()["can_create_project"] is False

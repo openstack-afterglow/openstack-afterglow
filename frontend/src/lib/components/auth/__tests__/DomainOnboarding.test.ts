@@ -19,7 +19,7 @@ import Request from '../AccountEmailRequest.svelte';
 import Registration from '../../../../routes/registrations/[token]/+page.svelte';
 import Invitation from '../../../../routes/invitations/[token]/+page.svelte';
 
-const account = { user_id: 'new-user', domain_id: 'joined-domain', domain_name: 'Shared name', identity_domain_id: 'personal-identity-id', identity_domain_name: 'My personal domain' };
+const account = { user_id: 'new-user', domain_id: 'personal-id', domain_name: 'Personal', identity_domain_id: 'account-id', identity_domain_name: 'account', personal_project_id: 'personal-project', personal_project_name: 'alice-c8f572', personal_domain_id: 'personal-id' };
 const originalToken = 'verified_onboarding_token_1234567890';
 const tokenPage = page as unknown as Writable<{ params: { token: string } }>;
 beforeEach(() => {
@@ -34,7 +34,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 async function fillAccount() {
-	for (const [label, value] of [['Username', 'alice'], ['Personal identity domain name', 'My personal domain'], ['Password', 'long-enough-password'], ['Confirm password', 'long-enough-password']]) {
+	for (const [label, value] of [['Username', 'alice'], ['Password', 'long-enough-password'], ['Confirm password', 'long-enough-password']]) {
 		await fireEvent.input(screen.getByLabelText(new RegExp(`^${label}`)), { target: { value } });
 	}
 }
@@ -43,14 +43,17 @@ describe('onboarding immutable identity and joined workspace', () => {
 	it.each([
 		['registration', Registration, 'Create account'],
 		['invitation', Invitation, 'Create account and accept'],
-	] as const)('creates a personal identity through %s and links to home-first sign-in without a domain hint', async (kind, Component, submitLabel) => {
+	] as const)('creates a personal project through %s and separates identity, personal project and organization admission', async (kind, Component, submitLabel) => {
 		render(Component);
 		await screen.findByRole('textbox', { name: 'Username' });
 		await fillAccount();
 		await fireEvent.click(screen.getByRole('button', { name: submitLabel }));
 		const signIn = await screen.findByRole('link', { name: 'Sign in' });
 		expect(signIn.getAttribute('href')).toBe('/login');
-		expect(mocks.post).toHaveBeenCalledWith(`/api/v1/auth/${kind === 'registration' ? 'registrations' : 'invitations'}/accept`, { token: 'verified_onboarding_token_1234567890', name: 'alice', password: 'long-enough-password', personal_domain_name: 'My personal domain' }, undefined, undefined, { suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false });
+		expect(mocks.post).toHaveBeenCalledWith(`/api/v1/auth/${kind === 'registration' ? 'registrations' : 'invitations'}/accept`, { token: 'verified_onboarding_token_1234567890', name: 'alice', password: 'long-enough-password' }, undefined, undefined, { suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false });
+		for (const value of [account.identity_domain_id, account.personal_project_id, account.personal_project_name, account.personal_domain_id]) expect(screen.getByText(value)).toBeTruthy();
+		if (kind === 'invitation') expect(screen.getByText('joined-domain')).toBeTruthy();
+		else expect(screen.queryByText('joined-domain')).toBeNull();
 	});
 
 	it('shows original account sign-in and recovery, never duplicate create for a verified existing email', async () => {
@@ -73,12 +76,15 @@ describe('onboarding immutable identity and joined workspace', () => {
 	});
 
 	it('allows the original account to accept a foreign working-domain invitation without a new identity', async () => {
-		auth.set({ token: 'home-token', userId: 'existing-user', domainId: 'home-domain', username: 'alice' } as never);
+		const session = { token: 'home-token', userId: 'existing-user', domainId: 'personal-id', identityDomainId: 'original-home', username: 'alice' };
+		auth.set(session as never);
+		mocks.post.mockResolvedValueOnce({ ...account, user_id: session.userId, identity_domain_id: session.identityDomainId, identity_domain_name: 'Original home' });
 		render(Invitation);
 		await fireEvent.click(await screen.findByRole('button', { name: 'Accept as alice' }));
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledOnce());
 		expect(mocks.post).toHaveBeenCalledWith('/api/v1/auth/invitations/accept-existing', { token: 'verified_onboarding_token_1234567890' }, 'home-token', undefined, { cache: 'no-store', replayOnUnauthorized: false });
-		expect(screen.queryByLabelText('Personal identity domain name')).toBeNull();
+		expect(get(auth)).toEqual(session);
+		expect(screen.getByText(session.identityDomainId)).toBeTruthy();
 		expect((await screen.findByRole('link', { name: 'Choose working domain and project' })).getAttribute('href')).toBe('/select-domain');
 	});
 	it('publishes one-use acceptance after same-session bearer rotation', async () => {
@@ -91,8 +97,22 @@ describe('onboarding immutable identity and joined workspace', () => {
 		});
 		render(Invitation);
 		await fireEvent.click(await screen.findByRole('button', { name: 'Accept as alice' }));
-		result.resolve({ ...account, user_id: session.userId });
+		result.resolve({ ...account, user_id: session.userId, identity_domain_id: session.identityDomainId });
 		expect(await screen.findByRole('link', { name: 'Choose working domain and project' })).toBeTruthy();
+		expect(mocks.post).toHaveBeenCalledOnce();
+	});
+
+	it.each(['user', 'identity'] as const)('does not publish a successful invitation response for a foreign %s', async field => {
+		const session = { token: 'original-token', sessionId: 'session', userId: 'existing-user', identityDomainId: 'original-home', domainId: 'personal-id', username: 'alice' };
+		auth.set(session as never);
+		mocks.post.mockResolvedValueOnce({ ...account, user_id: field === 'user' ? 'other-user' : session.userId,
+			identity_domain_id: field === 'identity' ? 'other-home' : session.identityDomainId, personal_project_name: 'foreign-result' });
+		render(Invitation);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Accept as alice' }));
+		await screen.findByText(t('onboarding.unavailable'));
+		expect(screen.queryByText('foreign-result')).toBeNull();
+		expect(screen.queryByRole('link', { name: 'Choose working domain and project' })).toBeNull();
+		expect(get(auth)).toEqual(session);
 		expect(mocks.post).toHaveBeenCalledOnce();
 	});
 

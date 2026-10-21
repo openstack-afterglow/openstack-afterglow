@@ -99,7 +99,7 @@ def get_identity_user(user_id: str, *, operation=None) -> dict:
 
 
 def _access_info(access, *, operation=None) -> dict:
-    from app.services.domain_scope import assert_domain_resource, domain_context
+    from app.services.domain_scope import assert_domain_resource, domain_context, resolve_domain
 
     with authentication_step("native_identity_subject"):
         user = get_identity_user(access.user_id, operation=operation)
@@ -107,7 +107,19 @@ def _access_info(access, *, operation=None) -> dict:
     project_id = access.project_id or ""
     working_domain = access.project_domain_id if project_id else user["domain_id"]
     with authentication_step("native_domain_authority"):
-        context = domain_context(access.user_id, working_domain, operation=operation)
+        home = resolve_domain(user["domain_id"], operation=operation)
+        if not project_id and home.get("kind") == "account":
+            # An unscoped identity proof may originate in account; it is never a workspace grant.
+            context = {
+                "identity_domain_id": home["id"],
+                "identity_domain_name": home["name"],
+                "domain_id": home["id"],
+                "domain_name": home["name"],
+                "domain_kind": "account",
+                "is_domain_manager": False,
+            }
+        else:
+            context = domain_context(access.user_id, working_domain, operation=operation)
     if project_id:
         from app.services.domain_projects import assert_project_membership
 
@@ -610,18 +622,30 @@ def list_projects(token: str, domain_id: str | None = None, *, operation=None) -
     context = domain_context(user_id, selected, operation=operation)
     from app.services.identity_roles import _field
 
-    return [
-        {
-            "id": _field(p, "id"),
-            "name": _field(p, "name"),
-            "description": _field(p, "description") or "",
-            "domain_id": _field(p, "domain_id"),
-            "domain_name": context["domain_name"],
-            "enabled": True,
-        }
-        for p in projects
-        if _field(p, "enabled") is True and _field(p, "domain_id") == context["domain_id"]
-    ]
+    result = []
+    for project in projects:
+        if _field(project, "enabled") is not True or _field(project, "domain_id") != context["domain_id"]:
+            continue
+        if context.get("domain_kind") == "personal":
+            from app.services.domain_projects import assert_project_membership
+
+            try:
+                assert_project_membership(user_id, _field(project, "id"), operation=operation)
+            except HTTPException as exc:
+                if exc.status_code != 403:
+                    raise
+                continue
+        result.append(
+            {
+                "id": _field(project, "id"),
+                "name": _field(project, "name"),
+                "description": _field(project, "description") or "",
+                "domain_id": _field(project, "domain_id"),
+                "domain_name": context["domain_name"],
+                "enabled": True,
+            }
+        )
+    return result
 
 
 def list_system_projects(token: str) -> list[dict]:

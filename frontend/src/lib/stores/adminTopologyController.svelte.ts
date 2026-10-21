@@ -1,5 +1,7 @@
 import { t } from '$lib/i18n/ns/topology';
-import { api, ApiError } from '$lib/api/client';
+import { api as baseApi, ApiError } from '$lib/api/client';
+import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
+import { invalidateInstanceDetailSelection } from '$lib/stores/instanceDetailController.svelte';
 import type { TopologyData, TopologyTraffic, TopologyLoadBalancer, TopologyTrafficHistory } from '$lib/types/topology';
 
 export interface AdminTopologyControllerOpts {
@@ -8,6 +10,7 @@ export interface AdminTopologyControllerOpts {
 }
 
 export function createAdminTopologyController(opts: AdminTopologyControllerOpts) {
+  const api = createAdminInventoryApi(baseApi);
   let data = $state<TopologyData | null>(null);
   let traffic = $state<TopologyTraffic | null>(null);
   let loading = $state(true);
@@ -16,9 +19,7 @@ export function createAdminTopologyController(opts: AdminTopologyControllerOpts)
   let selectedInstanceId = $state<string | null>(null);
   let selectedRouterId = $state<string | null>(null);
   let selectedLB = $state<TopologyLoadBalancer | null>(null);
-  let projectFilter = $state<string | null>(null);
-  let projectSearchText = $state('');
-  let projectDropdownOpen = $state(false);
+  const projectFilter = api.filter.projectId || null;
 
   const topologySelectedId = $derived(
     selectedInstanceId ?? selectedRouterId ?? selectedLB?.id ?? null
@@ -43,6 +44,7 @@ export function createAdminTopologyController(opts: AdminTopologyControllerOpts)
   }
 
   async function loadTraffic() {
+    if (api.scoped) { traffic = null; return; }
     if (!opts.token()) return;
     try {
       traffic = await api.get<TopologyTraffic>(
@@ -58,6 +60,7 @@ export function createAdminTopologyController(opts: AdminTopologyControllerOpts)
    * 폴링에 얹으면 Prometheus 부하가 네트워크 수만큼 곱해진다.
    */
   async function loadNetworkHistory(networkId: string, range: string): Promise<TopologyTrafficHistory | null> {
+    if (api.scoped) return null;
     if (!opts.token()) return null;
     return api.get<TopologyTrafficHistory>(
       `/api/v1/networks/topology/traffic/history?network_id=${encodeURIComponent(networkId)}`
@@ -67,14 +70,9 @@ export function createAdminTopologyController(opts: AdminTopologyControllerOpts)
     );
   }
 
-  function handleDocumentClick(e: MouseEvent) {
-    const target = e.target as HTMLElement;
-    if (!target.closest('.project-filter-wrapper')) {
-      projectDropdownOpen = false;
-    }
-  }
 
   return {
+    dispose: api.dispose,
     loadNetworkHistory,
     get data() { return data; },
     get traffic() { return traffic; },
@@ -82,20 +80,14 @@ export function createAdminTopologyController(opts: AdminTopologyControllerOpts)
     get refreshing() { return refreshing; },
     get error() { return error; },
     get selectedInstanceId() { return selectedInstanceId; },
-    set selectedInstanceId(v: string | null) { selectedInstanceId = v; },
+    set selectedInstanceId(v: string | null) { invalidateInstanceDetailSelection(); selectedInstanceId = v; },
     get selectedRouterId() { return selectedRouterId; },
     set selectedRouterId(v: string | null) { selectedRouterId = v; },
     get selectedLB() { return selectedLB; },
     set selectedLB(v: TopologyLoadBalancer | null) { selectedLB = v; },
     get projectFilter() { return projectFilter; },
-    set projectFilter(v: string | null) { projectFilter = v; },
-    get projectSearchText() { return projectSearchText; },
-    set projectSearchText(v: string) { projectSearchText = v; },
-    get projectDropdownOpen() { return projectDropdownOpen; },
-    set projectDropdownOpen(v: boolean) { projectDropdownOpen = v; },
     get topologySelectedId() { return topologySelectedId; },
     fetchTopology,
     loadTraffic,
-    handleDocumentClick,
   };
 }

@@ -77,6 +77,18 @@ describe('API leaf service capabilities', () => {
 		expect(get(serviceCapabilities)('drover-clusters_admin')).toBe(false);
 		expect(get(serviceDenials)('drover-clusters_admin')).toBe(false);
 	});
+	it('keeps an unavailable native service distinct from denial without disabling healthy services', async () => {
+		mocks.get.mockResolvedValue({
+			is_owner: true, is_manager: true, can_write: true,
+			service_permissions: { lumen: [], drover: ['drover-inventory_reader'] },
+			service_permission_errors: { lumen: 'permission_check_unavailable' },
+		});
+		stop = serviceCapabilities.subscribe(() => {}); await settle();
+		expect(get(serviceCapabilities)('lumen-chat_user')).toBe(false);
+		expect(get(serviceDenials)('lumen-chat_user')).toBe(false);
+		expect(get(serviceCapabilities)('drover-inventory_reader')).toBe(true);
+		expect(get(serviceDenials)('drover-clusters_editor')).toBe(true);
+	});
 	it('blocks actions during same-identity token renewal without falsely reporting revocation', async () => {
 		const pending = Promise.withResolvers<ProjectPermissions>();
 		mocks.get.mockResolvedValueOnce(permissions(['lumen-audio_user'])).mockReturnValueOnce(pending.promise);

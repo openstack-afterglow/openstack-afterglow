@@ -1,0 +1,87 @@
+{
+  "status": "completed-with-verification-concerns",
+  "date": "2026-10-21",
+  "scope": "Local source correction; no production or shared-user runtime rollout",
+  "source_sha256": "aad0734700a3668fdf13a60471532b4f52ad922c0e30a0ba495c30e7650a6079",
+  "source_files": 3394,
+  "architecture": {
+    "working_guard": "passed",
+    "owned_checkout_staged_guard": "passed",
+    "user_index_modified": false
+  },
+  "behavior": {
+    "new_identity_domain": "accounts",
+    "identity_only": true,
+    "new_personal_domain": "personal",
+    "new_project_name": "normalized_username[:47] + '-' + eight random lowercase letters + eight random decimal digits",
+    "new_direct_personal_roles": ["member"],
+    "admin_observed_domain_auto_admission": false,
+    "explicit_invitation_and_trusted_oidc_organization_default_reader": "preserved as separately authorized admission",
+    "existing_identity_password_federation_and_personal_grants_migrated": false,
+    "native_mapping_or_global_role_graph_automatically_changed": false,
+    "new_schema_or_configuration_key": false
+  },
+  "verification": {
+    "actual_http": "Public registration 202/acceptance 200 and administrator creates 201 from organization and accounts observation contexts; native SDK loopback re-login 200 with same accounts identity/personal project and roles={member}; synthetic directory, SMTP and administrator gate",
+    "compiled_browser": "Actual admin page create button and loopback POST 201; resulting account/project and synthetic native direct member grant inspected",
+    "responsive_matrix": "9 locales x 2 themes x 6 widths = 108 cases, no document/frame horizontal overflow; clean ko1440/en768/bn390 screenshots",
+    "auth_target": {"backend_passed": 771, "frontend_passed": 440},
+    "access_target": {"backend_passed": 1143, "frontend_passed": 181},
+    "exact_final_consumer_regressions": {"passed": 3},
+    "exact_password_member_and_reserved_configuration_regressions": {"passed": 11},
+    "final_project_gate": {
+      "exit_code": 1,
+      "backend_passed": 8625,
+      "backend_skipped": 95,
+      "backend_failed": 1,
+      "failure": "tests/test_layer_build_ownership.py::test_native_create_response_loss_is_observed_without_second_post[port]",
+      "observed_cause": "Disposable native HTTP server received an unexpected POST /exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary; the request origin is not established",
+      "suppressed_or_excluded": false,
+      "prior_before_format_only_correction": "8626 backend passed; full gate later failed the single test file's formatting check, not a green gate"
+    },
+    "separately_completed_final_source_lanes": {
+      "frontend_passed": 4801,
+      "frontend_files": 418,
+      "contracts_passed": 159,
+      "real_datastore_functional_passed": 166,
+      "functional_deselected": 33,
+      "ruff_check": "passed",
+      "ruff_format": "714 files already formatted"
+    },
+    "frontend_build": "passed and actual compiled page exercised",
+    "svelte_check": {"errors": 0, "warnings": 16, "files_with_warnings": 5},
+    "i18n_check": {"errors": 0, "warnings": 37},
+    "i18n_scan": {"hardcoded_korean_lines": 0, "files": 1194},
+    "main_spec_strict_validation": "passed",
+    "rapid_change_status": "all planning artifacts complete; no delta-spec artifact",
+    "legacy_change_strict_validator": "Rejects rapid change without delta-specs; not claimed as passing",
+    "gbrain_sync": "Unavailable: local gbrain CLI and detector are not installed"
+  },
+  "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/accounts-personal-member-20261021-2qwxgyzv/",
+  "evidence_files": [
+    "api-smoke.json",
+    "browser-verification.json",
+    "browser-created-native-state.json",
+    "browser-create-requests.json",
+    "admin-create-responsive-matrix.json",
+    "admin-create-clean-samples.json",
+    "final-gate-results.json",
+    "final-gate-1.log",
+    "final-gate-2.log",
+    "gate-before-format-correction.log",
+    "targets-1.log",
+    "final-access.log",
+    "final-edge-regressions.log",
+    "final-consumer-fixture-regressions.log",
+    "final-remaining-lanes.json",
+    "owned-runtime-cleanup.json"
+  ],
+  "unexercised": [
+    "Production IAM/config/schema cutover or deployment",
+    "Live Keystone signup and real provider authorization-code exchange",
+    "Real mailbox receipt",
+    "Native cloud resource allocation using the new personal account",
+    "Native-speaker approval of translation drafts"
+  ],
+  "publication": "No commit, push, release or deployment"
+}

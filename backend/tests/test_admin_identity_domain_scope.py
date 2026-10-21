@@ -136,7 +136,6 @@ async def test_domain_selection_and_explicit_creation_domain_are_required(app, n
         "name": "n",
         "email": "new@test.invalid",
         "password": "Strong-password-123!",
-        "personal_domain_name": "New personal domain",
     }
     try:
         async with client(app) as http:
@@ -144,12 +143,12 @@ async def test_domain_selection_and_explicit_creation_domain_are_required(app, n
             missing_domain = await http.post("/api/v1/admin/users", json=user)
             assert missing_domain.status_code == 422
             assert [error["loc"] for error in missing_domain.json()["detail"]] == [["body", "domain_id"]]
-            missing_personal = await http.post(
+            removed_personal = await http.post(
                 "/api/v1/admin/users",
-                json={**{key: value for key, value in user.items() if key != "personal_domain_name"}, **DOMAIN},
+                json={**user, **DOMAIN, "personal_domain_name": "Not accepted"},
             )
-            assert missing_personal.status_code == 422
-            assert [error["loc"] for error in missing_personal.json()["detail"]] == [["body", "personal_domain_name"]]
+            assert removed_personal.status_code == 422
+            assert [error["loc"] for error in removed_personal.json()["detail"]] == [["body", "personal_domain_name"]]
             assert (await http.post("/api/v1/admin/projects", json={"name": "n"})).status_code == 422
             assert (await http.post("/api/v1/admin/groups", json={"name": "n"})).status_code == 422
             unknown = await http.post("/api/v1/admin/projects", json={"name": "n", "domain_id": "absent"})
@@ -380,3 +379,19 @@ async def test_group_member_listing_preserves_external_identity_read_only_bounda
     assert external["domain_id"] == "tenant-b" and external["identity_read_only"]
     native.identity.group_users.assert_called_once_with("g1")
     native.identity.users.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["account", "personal"])
+async def test_generic_admin_project_creation_rejects_reserved_native_kind(app, native, monkeypatch, kind):
+    from app.services import keystone
+
+    # SDK names need not retain metadata: inspect the exact extensible native row.
+    domain = SimpleNamespace(id="tenant-a", name="opaque", enabled=True, afterglow_domain_kind=kind)
+    monkeypatch.setattr(
+        keystone, "_get_admin_ks_client", lambda: SimpleNamespace(domains=SimpleNamespace(get=lambda did: domain))
+    )
+    async with client(app) as http:
+        response = await http.post("/api/v1/admin/projects", json={"name": "n", "domain_id": "tenant-a"})
+    assert response.status_code == 403
+    native.identity.create_project.assert_not_called()

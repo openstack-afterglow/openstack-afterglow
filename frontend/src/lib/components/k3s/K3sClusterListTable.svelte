@@ -4,6 +4,8 @@
 	import type { Cluster } from '$lib/types/cluster';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	let {
 		clusters,
@@ -32,6 +34,19 @@
 	const indeterminate = $derived(selectedSelectableCount > 0 && !allSelected);
 </script>
 
+<ResponsiveTable>
+ {#snippet cards()}
+  <div class="responsive-card-toolbar text-sm"><SelectionCheckbox checked={allSelected} indeterminate={indeterminate} disabled={selectionDisabled} ariaLabel={t('overview.table.selectAllClusters')} onclick={onToggleAll} /><span>{t('overview.table.selectAll')}</span><span aria-live="polite">{t('overview.table.selectedCount', { count: selectedSelectableCount })}</span></div>
+  {#each clusters as c (c.id)}
+   <CompactResourceCard selected={selectedIds.has(c.id)}>
+    <div class="flex items-start gap-2"><SelectionCheckbox checked={selectedIds.has(c.id)} disabled={selectionDisabled || !selectableIds.has(c.id)} ariaLabel={t('overview.table.selectCluster', { name: c.name })} onclick={() => onToggleSelect(c.id)} /><button onclick={() => onNavigate(c.id)} class="min-w-0 break-all text-left font-medium">{c.name}</button><StatusChip status={c.status} /></div>
+    <p class="text-xs text-ink-2">{t('overview.table.master')}: {c.master_count} · {t('overview.table.worker')}: {c.node_count}</p>
+    <p class="text-xs font-mono break-all">{c.api_address ?? t('overview.notAvailable')}</p>
+    {#snippet details()}<p class="text-xs break-all">{c.id}</p><p class="text-xs">{t('overview.table.createdAt')}: {c.created_at?.slice(0, 10) ?? t('overview.notAvailable')}</p>{/snippet}
+    {#snippet actions()}<button onclick={() => onDelete(c.id, c.name)} disabled={deleting === c.id || selectionDisabled} class="k3s-table__delete text-xs disabled:opacity-40">{#if deleting === c.id}<ActivityIndicator size="xs" label={t('overview.table.deleting')} />{:else}{t('overview.table.delete')}{/if}</button>{/snippet}
+   </CompactResourceCard>
+  {/each}
+ {/snippet}
 <div class="overflow-x-auto">
 	<table class="w-full text-sm">
 		<thead>
@@ -62,6 +77,7 @@
 		</tbody>
 	</table>
 </div>
+</ResponsiveTable>
 
 <style>
 	.k3s-table__head {

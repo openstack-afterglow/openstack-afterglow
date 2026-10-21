@@ -33,8 +33,8 @@ _IDENTITY = {
     "is_system_admin": False,
     "domain_id": "default",
     "domain_name": "Default",
-    "identity_domain_id": "default",
-    "identity_domain_name": "Default",
+    "identity_domain_id": "accounts",
+    "identity_domain_name": "Accounts",
     "is_domain_manager": False,
     "email": "actual@example.test",
 }
@@ -58,10 +58,14 @@ async def security_client(monkeypatch, auth_directory):
     conn.identity.get_user.return_value.default_project_id = ""
 
     def validate(_token, project_id="", *, operation=None):
+        project = auth_directory.projects.get(project_id)
+        domain = auth_directory.domains[project["domain_id"] if project else "default"]
         return dict(
             _IDENTITY,
             project_id=project_id,
-            project_name=_IDENTITY["project_name"] if project_id else "",
+            project_name=project["name"] if project else "",
+            domain_id=domain["id"],
+            domain_name=domain["name"],
             roles=_IDENTITY["roles"] if project_id else [],
         )
 
@@ -99,7 +103,19 @@ async def _login(client):
         },
     )
     assert response.status_code == 200
-    return response.json()
+    fresh = response.json()
+    assert (fresh["identity_domain_id"], fresh["domain_id"], fresh["project_id"]) == (
+        "accounts",
+        "personal",
+        "personal-security-user",
+    )
+    selected = await client.post(
+        "/api/v1/auth/token/workspace",
+        json={"domain_id": "default", "project_id": "security-project"},
+        headers={"Authorization": f"Bearer {fresh['token']}"},
+    )
+    assert selected.status_code == 200, selected.text
+    return selected.json()
 
 
 async def _session(tokens):

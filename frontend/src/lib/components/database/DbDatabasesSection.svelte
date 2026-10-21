@@ -2,6 +2,8 @@
 	import { t as tr } from '$lib/i18n/ns/database';
 	import { useDbInstanceDetailController } from '$lib/stores/dbInstanceDetailController.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	const s = useDbInstanceDetailController();
 
@@ -40,6 +42,8 @@
 	{#if s.databases.length === 0}
 		<div class="text-ink-2 text-xs">{tr('databases.empty')}</div>
 	{:else}
+  <ResponsiveTable>
+   {#snippet cards()}{#each s.databases as db (db.name)}<CompactResourceCard><strong class="text-sm break-all">{db.name}</strong>{#snippet actions()}<button onclick={() => s.deleteDb(db.name)} disabled={s.deletingDb === db.name} class="inline-flex items-center gap-1 text-state-danger-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-line-2">{#if s.deletingDb === db.name}<ActivityIndicator size="xs" tone="danger" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>{/snippet}</CompactResourceCard>{/each}{/snippet}
 		<div class="space-y-1">
 			{#each s.databases as db}
 				<div class="flex items-center justify-between py-1.5 border-b border-line/50">
@@ -51,5 +55,6 @@
 				</div>
 			{/each}
 		</div>
+  </ResponsiveTable>
 	{/if}
 </div>

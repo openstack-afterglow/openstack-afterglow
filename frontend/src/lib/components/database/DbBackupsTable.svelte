@@ -4,6 +4,8 @@
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
   import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
   let {
     backups,
@@ -60,6 +62,24 @@
   }
 </script>
 
+<ResponsiveTable>
+  {#snippet cards()}
+    <div class="responsive-card-toolbar text-sm"><SelectionCheckbox checked={allSelected} indeterminate={indeterminate} disabled={selectionDisabled} ariaLabel={tr('selection.allBackups')} onclick={onToggleAll} /><span>{tr('selection.all')}</span><span aria-live="polite">{tr('selection.count', { count: selectedSelectableCount })}</span></div>
+    {#each backups as backup (backup.id)}
+      {@const instance = findInstance(backup)}
+      {@const stuck = isStuck(backup)}
+      <CompactResourceCard selected={selectedIds.has(backup.id)}>
+        <div class="flex items-start gap-2"><SelectionCheckbox checked={selectedIds.has(backup.id)} disabled={selectionDisabled || !selectableIds.has(backup.id)} ariaLabel={tr('selection.item', { name: backup.name || backup.id.slice(0, 8) })} onclick={() => onToggleSelect(backup.id)} /><strong class="min-w-0 break-all">{backup.name || backup.id.slice(0, 8)}</strong><StatusChip status={backup.status} />{#if stuck}<span class="db-backups-table__stuck text-xs" title={tr('backups.stuckHelp')}>{tr('backups.stuck')}</span>{/if}</div>
+        <p class="text-xs text-ink-2">{datastoreLabel(backup)} · {backup.size == null ? '-' : `${backup.size} GB`}</p>
+        <p class="text-xs">{tr('backups.source')}: {#if instance}<a href="/dashboard/database/instances/{instance.id}" class="db-backups-table__link">{instance.name}</a>{:else if backup.instance_id}{tr('backups.sourceDeleted')}{:else}—{/if}</p>
+        {#snippet details()}<p class="text-xs break-all">{backup.id}</p><p class="text-xs">{tr('labels.created')}: {formatDate(backup.created_at)}</p>{/snippet}
+        {#snippet actions()}
+          <button onclick={() => onRestore(backup)} onpointerenter={onRestoreIntent} onfocus={onRestoreIntent} disabled={selectionDisabled} class="db-backups-table__action db-backups-table__restore text-xs px-2 py-1 rounded">{tr('actions.restore')}</button>
+          <button onclick={() => onDelete(backup.id, backup.name, stuck)} disabled={deleting === backup.id || selectionDisabled} class="db-backups-table__action db-backups-table__delete inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if deleting === backup.id}<ActivityIndicator size="xs" tone="danger" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
+        {/snippet}
+      </CompactResourceCard>
+    {/each}
+  {/snippet}
 <div class="db-backups-table rounded-xl overflow-hidden">
   <table class="w-full text-sm">
     <thead>
@@ -109,6 +129,7 @@
     </tbody>
   </table>
 </div>
+</ResponsiveTable>
 
 <style>
   .db-backups-table {

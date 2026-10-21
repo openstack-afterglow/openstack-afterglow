@@ -3,6 +3,9 @@
 	import type { GpuQuota } from '$lib/types/quotas';
 	import type { FlavorReconcileResponse } from '$lib/stores/adminQuotasController.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
 
 	let {
 		rows,
@@ -25,14 +28,18 @@
 	} = $props();
 
 	let savingAliases = $state<Record<string, boolean>>({});
+  let draftLimits = $state<Record<string, string>>({});
+  $effect(() => { rows; draftLimits = {}; });
 
 	async function changeLimit(alias: string, limit: number | null) {
 		savingAliases[alias] = true;
+    draftLimits[alias] = limit === null ? '' : String(limit);
 		try {
 			if (limit === null) await onClear(alias);
 			else await onSetLimit(alias, limit);
 		} finally {
 			delete savingAliases[alias];
+      delete draftLimits[alias];
 		}
 	}
 </script>
@@ -46,6 +53,24 @@
 	{:else if rows.length === 0 && !hasAnyAlias}
 		<div class="text-ink-2 text-sm">{t('gpuQuota.noAliases')}</div>
 	{:else}
+    <ResponsiveTable>
+      {#snippet cards()}
+        {#each rows as q (q.gpu_type)}
+          {@const alias = q.gpu_type}
+          {@const defLimit = defaults[alias] ?? 0}
+          {@const avail = q.limit === -1 ? -1 : q.limit - q.in_use}
+          <CompactResourceCard>
+            <strong class="break-all font-mono text-sm">{alias}</strong>
+            <dl class="flex flex-wrap gap-3 text-xs"><div><dt class="text-ink-2">{t('gpuQuota.inUse')}</dt><dd>{q.in_use}</dd></div><div><dt class="text-ink-2">{t('gpuQuota.available')}</dt><dd>{q.limit === -1 ? t('gpuQuota.unlimited') : avail}</dd></div></dl>
+            <label class="flex min-h-11 flex-wrap items-center justify-between gap-2 text-xs">{t('gpuQuota.projectLimit')}
+              <input type="number" min="-1" value={draftLimits[alias] ?? q.limit ?? ''} placeholder={String(defLimit)} disabled={savingAliases[alias]} oninput={(event) => draftLimits[alias] = event.currentTarget.value} onchange={(event) => { const value = event.currentTarget.value; changeLimit(alias, value === '' ? null : Number(value)); }} class="min-h-11 w-24 rounded border border-line-2 bg-surface-sunken px-2 text-right text-sm text-ink-0" />
+            </label>
+            {#if savingAliases[alias]}<ActivityIndicator size="xs" label={t('gpuQuota.saving')} />{/if}
+            {#snippet actions()}{#if q.limit != null}<Button variant="ghost" size="sm" disabled={savingAliases[alias]} title={t('gpuQuota.resetTitle')} onclick={() => changeLimit(alias, null)}>{t('gpuQuota.reset')}</Button>{/if}{/snippet}
+            {#snippet details()}<dl class="text-xs"><dt class="text-ink-2">{t('gpuQuota.default')}</dt><dd>{defLimit === -1 ? t('gpuQuota.unlimited') : defLimit}</dd></dl>{/snippet}
+          </CompactResourceCard>
+        {/each}
+      {/snippet}
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="text-ink-2 text-xs border-b border-line">
@@ -71,9 +96,10 @@
 							<input
 								type="number"
 								min="-1"
-								value={q?.limit ?? ''}
+                value={draftLimits[alias] ?? q.limit ?? ''}
 								placeholder={String(defLimit)}
 								disabled={savingAliases[alias]}
+                oninput={(event) => draftLimits[alias] = event.currentTarget.value}
 								onchange={(e) => {
 									const v = (e.target as HTMLInputElement).value;
 									if (v === '') {
@@ -106,6 +132,7 @@
 				{/each}
 			</tbody>
 		</table>
+    </ResponsiveTable>
 		<p class="text-xs text-ink-2 mt-2">{t('gpuQuota.limitHelp')}</p>
 
 		{#if reconcilePreview && reconcilePreview.operations.length > 0}

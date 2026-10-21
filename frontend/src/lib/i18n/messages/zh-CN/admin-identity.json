@@ -337,6 +337,7 @@
 	"roleValidation.protectedDeletion": "无法删除默认角色。",
 	"roleValidation.linkedDeletion": "请先解除直接关联的上级和下级角色。",
 	"userCreate.title": "创建用户",
+	"userCreate.accountSpacesHelp": "Accounts 仅创建登录身份。现在不创建项目；首次成功登录时，才会在 Personal 中创建自动命名的项目，并仅直接授予 member 角色。所选目录域仅用于查看；创建账户不会加入该域，也不会获得 Default 读取权限。",
 	"userCreate.name": "名称",
 	"userCreate.email": "电子邮件",
 	"userCreate.password": "密码",
@@ -588,10 +589,11 @@
 	"roleMetadata.domain": "域 ID（可选）",
 
 	"rolePresets.preview": "预览角色预设",
-	"rolePresets.confirm": "应用项目和服务角色预设吗？将保留现有角色 ID 和分配，仅添加缺少的角色和继承关联。",
+	"rolePresets.confirm": "应用角色预设吗？将添加缺少的角色和项目继承关联，并移除列出的旧服务继承关联。保留角色 ID 和直接分配。请先部署新的服务端策略。",
 	"rolePresets.apply": "应用预设",
 	"rolePresets.applied": "已应用预设，并重新加载了实际角色图。",
-	"rolePresets.previewHelp": "预览不会更改云环境。应用预设时会复用同名的现有角色，重复应用也不会创建重复角色。",
+	"rolePresets.previewHelp": "预览不会更改云环境。各服务通过自己的 policy.yaml 评估权限。应用时复用现有角色，仅移除列出的旧服务继承关联。",
 	"rolePresets.directImplications": "要添加的直接继承关联",
+	"rolePresets.retiredImplications": "要移除的旧服务继承关联",
 	"quotaController.saveFailed": "保存失败"
 }

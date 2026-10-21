@@ -18,6 +18,8 @@
   import { t } from '$lib/i18n/ns/admin-identity';
   import { t as dt } from '$lib/i18n/ns/domain-admin';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
   let { kind, domainId, domainName }: { kind: 'application' | 'user'; domainId: string; domainName: string } = $props();
   // DomainScope remounts this instance; also fence direct prop changes defensively.
   // svelte-ignore state_referenced_locally
@@ -99,6 +101,20 @@
   {:else if ctrl.allowed && !ctrl.error && kind === 'application' && !ctrl.selectedUser && !ctrl.directoryLoading && !ctrl.directoryError}<p class="text-sm text-ink-2 py-8 text-center">{dt('credentials.chooseUser')}</p>
   {:else if !ctrl.error && !ctrl.directoryLoading && !ctrl.directoryError && ctrl.allowed && filtered.length === 0}<p class="text-sm text-ink-2 py-8 text-center">{hasFilters ? t('credentials.noMatches') : t('credentials.empty')}</p>
   {:else if ctrl.allowed && filtered.length}
+    <ResponsiveTable>
+      {#snippet cards()}
+        {#each filtered as item (item.id)}
+          <CompactResourceCard>
+            <strong class="break-words text-sm">{'name' in item ? item.name : item.type}</strong>
+            <dl class="space-y-1 text-xs">
+              <div><dt class="text-ink-2">{t('credentials.project')}</dt><dd class="break-all">{item.project_id ?? t('credentials.none')}</dd></div>
+              {#if 'expires_at' in item}<div><dt class="text-ink-2">{t('credentials.expiry')}</dt><dd>{#if item.expires_at}<time datetime={item.expires_at}>{expiryLabel(item.expires_at)}</time>{:else}{dt('credentials.neverExpires')}{/if}</dd></div>{/if}
+            </dl>
+            {#snippet actions()}<Button variant="ghost" size="sm" onclick={() => ctrl.open('detail', item)}>{t('credentials.details')}</Button><Button variant="danger" size="sm" onclick={() => ctrl.open('delete', item)}>{t('actions.delete')}</Button>{/snippet}
+            {#snippet details()}<dl class="space-y-2 text-xs"><div><dt class="text-ink-2">{t('credentials.id')}</dt><dd class="break-all font-mono">{item.id}</dd></div><div><dt class="text-ink-2">{t('credentials.user')}</dt><dd class="break-all">{item.user_id}</dd></div></dl>{/snippet}
+          </CompactResourceCard>
+        {/each}
+      {/snippet}
     <TableShell><table>
       <thead><tr><th>{t(kind === 'application' ? 'form.name' : 'credentials.type')}</th><th>{t('credentials.id')}</th><th>{t('credentials.project')}</th><th>{t('credentials.user')}</th>{#if kind === 'application'}<th>{t('credentials.expiry')}</th>{/if}<th>{t('credentials.actions')}</th></tr></thead>
       <tbody>{#each filtered as item (item.id)}<tr>
@@ -107,6 +123,7 @@
         <td><div class="flex gap-2"><Button variant="ghost" size="sm" onclick={() => ctrl.open('detail', item)}>{t('credentials.details')}</Button><Button variant="danger" size="sm" onclick={() => ctrl.open('delete', item)}>{t('actions.delete')}</Button></div></td>
       </tr>{/each}</tbody>
     </table></TableShell>
+    </ResponsiveTable>
   {/if}
 </PageShell>
 

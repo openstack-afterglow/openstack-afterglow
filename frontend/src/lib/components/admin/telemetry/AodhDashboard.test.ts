@@ -4,6 +4,13 @@ import { get, writable } from 'svelte/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as AdminTelemetry from '$lib/api/adminTelemetry';
 import type { AodhDetail, AodhOverview, NativeAlarm, NativePage, TelemetryStatus } from '$lib/api/adminTelemetry';
+import type * as SvelteReactivity from 'svelte/reactivity';
+
+const viewport = vi.hoisted(() => ({ desktop: true }));
+vi.mock('svelte/reactivity', async importOriginal => ({
+	...await importOriginal<typeof SvelteReactivity>(),
+	MediaQuery: class { get current() { return viewport.desktop; } },
+}));
 
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token-a', projectId: 'project-a', userId: 'user-a', sessionId: 'session-a', domainId: 'domain-a', identityDomainId: 'home-a', isSystemAdmin: true }),
@@ -52,6 +59,7 @@ function readAlarm(name = 'CPU high') { return screen.getByRole('button', { name
 
 beforeEach(() => {
 	vi.resetAllMocks();
+	viewport.desktop = true;
 	initLocale('en');
 	auth.set({ ...initialAuth }); authReady.set(true); projectSwitching.set(false); logoutInProgress.set(false);
 	mocks.request.mockResolvedValue(overview());
@@ -59,6 +67,22 @@ beforeEach(() => {
 afterEach(() => { cleanup(); auth.set({ ...initialAuth }); authReady.set(true); projectSwitching.set(false); logoutInProgress.set(false); initLocale('ko'); });
 
 describe('rendered Aodh route', () => {
+	it('keeps compact alarm selection, history disclosure and native paging reachable', async () => {
+		viewport.desktop = false;
+		mocks.request.mockResolvedValueOnce(overview()).mockResolvedValueOnce(details()).mockResolvedValueOnce(page([alarm(secondId, 'Next alarm', 'ok')]));
+		render(AodhPage);
+		await fireEvent.click(await screen.findByRole('button', { name: t('aodh.selectNamed', { name: 'CPU high' }) }));
+		const history = screen.getByRole('region', { name: t('history') });
+		await within(history).findByText('state transition');
+		expect(screen.queryByRole('table')).toBeNull();
+		const disclosure = history.querySelector('summary');
+		expect(disclosure).toBeTruthy();
+		await fireEvent.click(disclosure!);
+		expect(within(history).getByText('event-a')).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: t('next') }));
+		await screen.findByRole('button', { name: t('aodh.selectNamed', { name: 'Next alarm' }) });
+		expect(mocks.request).toHaveBeenCalledTimes(3);
+	});
 	it('counts only verified current-page native states and opens without mutations', async () => {
 		mocks.request.mockResolvedValue(overview(page([alarm(), alarm(secondId, 'Healthy', 'ok'), alarm(thirdId, 'No sample', 'insufficient data'), alarm('44444444-4444-4444-8444-444444444444', 'Unknown', 'new-native-state')])));
 		render(AodhPage);

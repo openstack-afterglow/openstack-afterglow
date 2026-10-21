@@ -3,6 +3,8 @@
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import type { AdminSubnetDetail, SubnetPort } from '$lib/types/networks';
 	import { Alert, Card, EmptyState, Pagination, Pill, SectionHeader, StatTile, TableShell, ToggleGroup } from '$lib/components/ui';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	let { subnet, showOverview = false }: { subnet: AdminSubnetDetail; showOverview?: boolean } = $props();
 	type ResourceTab = 'allocations' | 'ports';
@@ -135,6 +137,12 @@
 				{#if subnet.allocation_pools.length === 0}
 					<EmptyState headline={t('subnetDetailPage.poolsEmpty')} description={t('subnetDetailPage.poolsEmptyDescription')} />
 				{:else}
+					<ResponsiveTable>
+						{#snippet cards()}
+							{#each subnet.allocation_pools as pool}
+								<CompactResourceCard><p class="break-all font-mono text-xs text-ink-0">{t('subnetDetailPage.startIp')}: {pool.start}</p><p class="break-all font-mono text-xs text-ink-2">{t('subnetDetailPage.endIp')}: {pool.end}</p></CompactResourceCard>
+							{/each}
+						{/snippet}
 					<TableShell density="compact">
 						<table>
 							<thead>
@@ -153,6 +161,7 @@
 							</tbody>
 						</table>
 					</TableShell>
+					</ResponsiveTable>
 				{/if}
 			</Card>
 
@@ -171,6 +180,16 @@
 				{#if subnet.dhcp_bindings.length === 0}
 					<EmptyState headline={t('subnetDetailPage.dhcpEmpty')} description={t('subnetDetailPage.dhcpEmptyDescription')} />
 				{:else}
+					<ResponsiveTable>
+						{#snippet cards()}
+							{#each subnet.dhcp_bindings as binding}
+								<CompactResourceCard>
+									<div class="flex flex-wrap items-start justify-between gap-2"><h3 class="break-all font-mono text-sm text-ink-0">{binding.host || binding.ip_addresses[0] || '-'}</h3>{#if binding.alive !== null}<Pill tone={binding.alive ? 'success' : 'danger'}>{binding.alive ? t('subnetDetailPage.healthy') : t('subnetDetailPage.stopped')}</Pill>{/if}{#if binding.admin_state_up !== null}<Pill tone={binding.admin_state_up ? 'info' : 'neutral'}>{binding.admin_state_up ? t('subnetDetailPage.up') : t('subnetDetailPage.down')}</Pill>{/if}</div>
+									<div class="space-y-1 break-all text-xs text-ink-2"><p>{t('subnetDetailPage.ipAddress')}: {binding.ip_addresses[0] ?? '-'}{binding.ip_addresses.length > 1 ? ` (+${binding.ip_addresses.length - 1})` : ''}</p><p>{t('subnetDetailPage.source')}: {binding.source === 'agent' ? t('subnetDetailPage.agent') : t('subnetDetailPage.port')}</p><p>{t('subnetDetailPage.availabilityZone')}: {binding.availability_zone || '-'}</p></div>
+									{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p>{t('subnetDetailPage.binary')}: {binding.binary || '-'}</p><p>{t('subnetDetailPage.agentId')}: {binding.agent_id || '-'}</p><p>{t('subnetDetailPage.relatedPorts')}: {binding.port_ids.join(', ') || '-'}</p><p>{binding.ip_addresses.join(', ') || '-'}</p></div>{/snippet}
+								</CompactResourceCard>
+							{/each}
+						{/snippet}
 					<TableShell density="compact">
 						<table class="subnet-table subnet-table-dhcp">
 							<thead>
@@ -226,6 +245,7 @@
 							</tbody>
 						</table>
 					</TableShell>
+					</ResponsiveTable>
 				{/if}
 			</Card>
 
@@ -253,6 +273,15 @@
 					{#if subnet.allocations.length === 0}
 						<EmptyState headline={t('subnetDetailPage.allocationsEmpty')} description={t('subnetDetailPage.allocationsEmptyDescription')} />
 					{:else}
+						<ResponsiveTable>
+							{#snippet cards()}
+								{#each visibleAllocations as alloc}
+									<CompactResourceCard>
+										<h3 class="break-all font-mono text-sm text-ink-0">{alloc.ip_address}</h3><div class="space-y-1 break-all text-xs text-ink-2"><p>{t('subnetDetailPage.portName')}: {alloc.port_name || '-'}</p><p>{t('subnetDetailPage.attachment')}: {attachmentKind(alloc.device_owner)}</p><p>{t('subnetDetailPage.actualNode')}: {alloc.binding_host_id || '-'}</p></div>
+										{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p>{t('subnetDetailPage.portId')}: {alloc.port_id || '-'}</p><p>{t('subnetDetailPage.projectId')}: {alloc.project_id || '-'}</p>{@render attachment(alloc)}</div>{/snippet}
+									</CompactResourceCard>
+								{/each}
+							{/snippet}
 						<TableShell density="compact">
 							<table class="subnet-table subnet-table-allocations">
 								<thead>
@@ -282,6 +311,7 @@
 								</tbody>
 							</table>
 						</TableShell>
+						</ResponsiveTable>
 						<Pagination
 							page={currentAllocationPage}
 							totalPages={allocationTotalPages}
@@ -302,6 +332,15 @@
 					{#if subnet.ports.length === 0}
 						<EmptyState headline={t('subnetDetailPage.portsEmpty')} description={t('subnetDetailPage.portsEmptyDescription')} />
 					{:else}
+						<ResponsiveTable>
+							{#snippet cards()}
+								{#each visiblePorts as port (port.id)}
+									<CompactResourceCard>
+										<div class="flex items-start justify-between gap-2"><h3 class="break-all font-medium text-ink-0">{port.name || port.id.slice(0, 12)}</h3><Pill tone={port.status === 'ACTIVE' ? 'success' : port.status === 'DOWN' ? 'danger' : 'neutral'}>{port.status}</Pill></div><div class="space-y-1 break-all text-xs text-ink-2"><p>{t('subnetDetailPage.subnetIp')}: {port.ip_addresses[0] ?? '-'}{port.ip_addresses.length > 1 ? ` (+${port.ip_addresses.length - 1})` : ''}</p><p>{t('subnetDetailPage.attachment')}: {attachmentKind(port.device_owner)}</p><p>{t('subnetDetailPage.actualNode')}: {port.binding_host_id || '-'}</p></div>
+										{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p class="font-mono">{port.id}</p><p>{t('subnetDetailPage.macAddress')}: {port.mac_address}</p><p>{t('subnetDetailPage.projectId')}: {port.project_id || '-'}</p><p>{port.ip_addresses.join(', ') || '-'}</p>{@render attachment(port)}</div>{/snippet}
+									</CompactResourceCard>
+								{/each}
+							{/snippet}
 						<TableShell density="compact">
 							<table class="subnet-table subnet-table-ports">
 								<thead>
@@ -339,6 +378,7 @@
 								</tbody>
 							</table>
 						</TableShell>
+						</ResponsiveTable>
 						<Pagination
 							page={currentPortPage}
 							totalPages={portTotalPages}

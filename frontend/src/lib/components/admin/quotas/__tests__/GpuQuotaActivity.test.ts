@@ -1,5 +1,20 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const media = vi.hoisted(() => {
+  const events = new EventTarget();
+  const query = {
+    matches: true, media: '(min-width: 1024px)', onchange: null,
+    addEventListener: events.addEventListener.bind(events),
+    removeEventListener: events.removeEventListener.bind(events),
+    dispatchEvent: events.dispatchEvent.bind(events),
+    addListener: () => undefined, removeListener: () => undefined,
+  };
+  vi.stubGlobal('matchMedia', () => query);
+  return query;
+});
+
+beforeEach(() => { media.matches = true; media.dispatchEvent(new Event('change')); });
 import GpuDefaultQuotaSection from '../GpuDefaultQuotaSection.svelte';
 import GpuQuotaTable from '../GpuQuotaTable.svelte';
 
@@ -80,4 +95,59 @@ describe('GPU quota request activity', () => {
 		await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
 		expect((rowFor('h100').getByRole('button', { name: '초기화' }) as HTMLButtonElement).disabled).toBe(false);
 	});
+  it('keeps alias writes and reset reachable in tablet cards without mutation on viewport changes', async () => {
+    const request = Promise.withResolvers<void>();
+    const onSetLimit = vi.fn().mockReturnValue(request.promise);
+    const onClear = vi.fn();
+    render(GpuQuotaTable, { rows, defaults: { a100: -1 }, loading: false, error: '', hasAnyAlias: true, onSetLimit, onClear });
+    media.matches = false; media.dispatchEvent(new Event('change'));
+    await waitFor(() => expect(screen.queryByRole('table')).toBeNull());
+    const card = within(screen.getByText('a100').closest('article')!);
+    await fireEvent.change(card.getByRole('spinbutton'), { target: { value: '3' } });
+    expect(onSetLimit).toHaveBeenCalledTimes(1);
+    expect(onSetLimit).toHaveBeenCalledWith('a100', 3);
+    expect((card.getByRole('button', { name: '초기화' }) as HTMLButtonElement).disabled).toBe(true);
+    media.matches = true; media.dispatchEvent(new Event('change'));
+    await waitFor(() => expect(screen.getByRole('table')).toBeTruthy());
+    expect((rowFor('a100').getByRole('spinbutton') as HTMLInputElement).disabled).toBe(true);
+    expect(onSetLimit).toHaveBeenCalledTimes(1); expect(onClear).not.toHaveBeenCalled();
+    request.resolve();
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    media.matches = false; media.dispatchEvent(new Event('change'));
+    await waitFor(() => expect(screen.queryByRole('table')).toBeNull());
+    await fireEvent.click(within(screen.getByText('a100').closest('article')!).getByRole('button', { name: '초기화' }));
+    expect(onClear).toHaveBeenCalledTimes(1);
+    expect(onClear).toHaveBeenCalledWith('a100');
+  });
+  it('retains uncommitted project limit strings across input-only viewport transitions', async () => {
+    const onSetLimit = vi.fn();
+    const onClear = vi.fn();
+    render(GpuQuotaTable, { rows, defaults: {}, loading: false, error: '', hasAnyAlias: true, onSetLimit, onClear });
+    await fireEvent.input(rowFor('a100').getByRole('spinbutton'), { target: { value: '31' } });
+    media.matches = false; media.dispatchEvent(new Event('change'));
+    await waitFor(() => expect(screen.queryByRole('table')).toBeNull());
+    const cardInput = within(screen.getByText('a100').closest('article')!).getByRole('spinbutton') as HTMLInputElement;
+    expect(cardInput.value).toBe('31');
+    await fireEvent.input(cardInput, { target: { value: '' } });
+    media.matches = true; media.dispatchEvent(new Event('change'));
+    await waitFor(() => expect(screen.getByRole('table')).toBeTruthy());
+    expect((rowFor('a100').getByRole('spinbutton') as HTMLInputElement).value).toBe('');
+    expect((rowFor('h100').getByRole('spinbutton') as HTMLInputElement).value).toBe('4');
+    expect(onSetLimit).not.toHaveBeenCalled();
+    expect(onClear).not.toHaveBeenCalled();
+  });
+
+  it('retains uncommitted default limit strings without submitting on resize', async () => {
+    const onChange = vi.fn();
+    render(GpuDefaultQuotaSection, { defaults: { a100: 2, h100: 4 }, allGpuTypes: ['a100', 'h100'], loading: false, error: '', success: '', onChange });
+    await fireEvent.input(screen.getAllByRole('spinbutton')[0], { target: { value: '9' } });
+    media.matches = false; media.dispatchEvent(new Event('change'));
+    await waitFor(() => expect(screen.getByText('a100').closest('article')).not.toBeNull());
+    expect((within(screen.getByText('a100').closest('article')!).getByRole('spinbutton') as HTMLInputElement).value).toBe('9');
+    media.matches = true; media.dispatchEvent(new Event('change'));
+    await waitFor(() => expect(screen.queryByRole('article')).toBeNull());
+    expect((screen.getAllByRole('spinbutton')[0] as HTMLInputElement).value).toBe('9');
+    expect((screen.getAllByRole('spinbutton')[1] as HTMLInputElement).value).toBe('4');
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

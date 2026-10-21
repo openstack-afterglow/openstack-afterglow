@@ -59,6 +59,7 @@ def _container_to_info(data: dict) -> ZunContainerInfo:
         created_at=data.get("created_at"),
         addresses=data.get("addresses"),
         host=data.get("host"),
+        project_id=data.get("project_id") or data.get("tenant_id"),
     )
 
 
@@ -71,11 +72,28 @@ def list_containers_admin(conn: openstack.connection.Connection) -> list[ZunCont
         status_code = getattr(resp, "status_code", None) or getattr(resp, "status", None)
         if status_code == 404:
             raise ZunServiceUnavailable("Zun 서비스 엔드포인트가 404를 반환했습니다")
-        data = resp.json() if hasattr(resp, "json") else {}
+        resp.raise_for_status()
+        data = resp.json()
         containers = data.get("containers", data) if isinstance(data, dict) else data
-        if isinstance(containers, list):
-            return [_container_to_info(c) for c in containers]
-        return []
+        if not isinstance(containers, list):
+            raise RuntimeError("Zun inventory response is invalid")
+        rows = list(containers)
+        seen = set()
+        while isinstance(data, dict) and (
+            data.get("next") or any(link.get("rel") == "next" for link in data.get("containers_links", []))
+        ):
+            marker = rows[-1].get("uuid") if rows else None
+            if not marker or marker in seen:
+                raise RuntimeError("Zun inventory pagination did not advance")
+            seen.add(marker)
+            resp = conn.session.get(url, params={"marker": marker})
+            resp.raise_for_status()
+            data = resp.json()
+            batch = data.get("containers")
+            if not isinstance(batch, list) or not batch:
+                raise RuntimeError("Zun inventory pagination is invalid")
+            rows.extend(batch)
+        return [_container_to_info(c) for c in rows]
     except ZunServiceUnavailable:
         raise
     except Exception as e:

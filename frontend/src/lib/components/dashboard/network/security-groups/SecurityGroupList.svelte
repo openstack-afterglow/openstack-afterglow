@@ -55,7 +55,7 @@
 				<button
 					type="button"
 					onclick={() => selectedSg = sg.id}
-					class="flex items-center gap-2 flex-1 min-w-0 text-left"
+					class="flex min-h-11 items-center gap-2 flex-1 min-w-0 text-left"
 				>
 				<div class="shrink-0 w-6 h-6 rounded-md {selectedSg === sg.id ? 'bg-action-warm/20 border border-action-warm/40' : 'bg-surface-sunken border border-line-2'} flex items-center justify-center">
 					<svg class="w-3 h-3 {selectedSg === sg.id ? 'text-warm-text' : 'text-ink-2'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">

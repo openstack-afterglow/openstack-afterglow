@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
@@ -555,6 +557,10 @@
 				{#if sortedFlavors.length === 0}
 					<div class="mt-6 py-6 text-center text-sm text-ink-2">{t('usageReport.noData')}</div>
 				{:else}
+					<ResponsiveTable class="mt-4">{#snippet cards()}{#each sortedFlavors as f (f.flavor)}<CompactResourceCard>
+						<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-mono">{f.flavor}</h3>{#if f.gpu_count > 0}<Pill tone="accent">{t('usageReport.flavors.gpuCount', { count: formatValue(f.gpu_count) })}</Pill>{/if}</div><p class="text-sm tabular-nums">{t('usageReport.columns.usageHours')}: {formatValue(f.usage_hours, 1)}</p><p class="text-xs">{t('usageReport.columns.vmCount')}: {formatValue(f.instance_count)}</p>
+						{#snippet details()}<p class="text-xs">vCPU: {formatValue(f.vcpus)} · RAM(GB): {formatValue(Math.round(f.ram_mb / 1024))}</p><p class="text-xs">vCPU·h: {formatValue(f.vcpu_hours, 1)}</p>{/snippet}
+					</CompactResourceCard>{/each}{/snippet}
 					<TableShell density="compact" class="mt-4">
 						<table>
 							<thead>
@@ -588,6 +594,7 @@
 							</tbody>
 						</table>
 					</TableShell>
+					</ResponsiveTable>
 				{/if}
 			</Card>
 
@@ -640,6 +647,10 @@
 			{#if data.instance_usage.length === 0}
 				<div class="mt-6 py-6 text-center text-sm text-ink-2">{t('usageReport.noData')}</div>
 			{:else}
+				<ResponsiveTable class="mt-4">{#snippet cards()}{#each data?.instance_usage ?? [] as row (row.instance_id)}<CompactResourceCard>
+					<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{row.name || t('usageReport.missingValue')}</h3><StatusChip status={row.state} /></div><p class="text-sm tabular-nums">{t('usageReport.columns.usageHours')}: {formatValue(row.hours, 1)}</p>{#if row.ended_at}<Pill tone="neutral">{t('usageReport.instances.deleted')}</Pill>{/if}
+					{#snippet details()}<p class="text-xs font-mono">{row.instance_id}</p><p class="text-xs">{t('usageReport.columns.flavor')}: {row.flavor}</p><p class="text-xs">{t('usageReport.columns.started')}: {row.started_at ? formatDate(row.started_at) : t('usageReport.missingValue')}</p><p class="text-xs">vCPU: {formatValue(row.vcpus)} · GPU: {row.gpu_count ? formatValue(row.gpu_count) : t('usageReport.missingValue')}</p>{/snippet}
+				</CompactResourceCard>{/each}{/snippet}
 				<TableShell density="compact" class="mt-4">
 					<table>
 						<thead>
@@ -678,6 +689,7 @@
 						</tbody>
 					</table>
 				</TableShell>
+				</ResponsiveTable>
 			{/if}
 		</Card>
 

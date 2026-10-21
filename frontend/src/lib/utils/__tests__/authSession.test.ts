@@ -20,7 +20,7 @@ function current() {
 }
 
 describe('identity and working-domain session binding', () => {
-	it.each([false, true])('starts every fresh password/provider session at home and the domain chooser (provider=%s)', (federated) => {
+	it.each([false, true])('preserves legacy fresh sessions and opens the workspace chooser (provider=%s)', (federated) => {
 		for (const available_domains of [[], [domains[0]], domains]) {
 			for (const project_id of ['', 'default-a']) {
 				const { state, target } = loginAuthState({ ...login, available_domains, project_id, project_name: 'Default' }, { federated });
@@ -40,9 +40,42 @@ describe('identity and working-domain session binding', () => {
 		}
 	});
 
-	it.each([false, true])('rejects a fresh working domain outside canonical home or missing home metadata (provider=%s)', (federated) => {
-		for (const data of [{ ...login, domain_id: 'tenant-b', available_domains: domains },
-			{ ...login, identity_domain_id: '' }, { ...login, domain_id: '' }, { ...login, identity_domain_name: '' }]) {
+	it.each([false, true])('rejects incomplete metadata and fresh organization scope instead of personal landing (provider=%s)', (federated) => {
+		for (const data of [{ ...login, identity_domain_id: '' }, { ...login, domain_id: '' }, { ...login, identity_domain_name: '' }, { ...login, domain_id: 'tenant-b', available_domains: domains }]) {
+			expect(() => loginAuthState(data, { federated })).toThrow(SessionDomainError);
+		}
+	});
+
+	it.each([false, true])('lands in personal with immutable account identity absent from workspace membership (provider=%s)', federated => {
+		clearAuth();
+		const personal = { id: 'personal', name: 'Personal', kind: 'personal' as const };
+		const organization = { id: 'organization', name: 'Organization', kind: 'organization' as const };
+		const result = loginAuthState({ ...login, identity_domain_id: 'account', identity_domain_name: 'account', domain_id: personal.id,
+			domain_name: personal.name, project_id: 'personal-primary', project_name: 'alice-c8f572', is_domain_manager: false,
+			available_domains: [personal, organization] }, { federated });
+		setLoginAuth(result.state);
+		expect(result.target).toBe('/select-domain');
+		expect(get(auth)).toMatchObject({ identityDomainId: 'account', domainId: personal.id, projectId: 'personal-primary', availableDomains: [personal, organization] });
+		const owner = get(auth);
+		setAuth(domainAuthState({ ...login, user_id: owner.userId!, identity_domain_id: 'account', identity_domain_name: 'account',
+			domain_id: organization.id, domain_name: organization.name, project_id: 'org-project', project_name: 'Research', available_domains: [personal, organization] }, owner, organization.id));
+		expect(get(auth)).toMatchObject({ identityDomainId: 'account', domainId: organization.id, projectId: 'org-project', sessionId: owner.sessionId });
+		clearAuth();
+	});
+
+	it.each([false, true])('opens the chooser for a visible projectless administrator without rebinding identity (provider=%s)', federated => {
+		clearAuth();
+		const result = loginAuthState({ ...login, identity_domain_id: 'accounts', identity_domain_name: 'Accounts',
+			is_system_admin: true, available_domains: domains }, { federated });
+		setLoginAuth(result.state);
+		expect(result.target).toBe('/select-domain');
+		expect(get(auth)).toMatchObject({ identityDomainId: 'accounts', domainId: 'tenant-a', projectId: null, isSystemAdmin: true, federated });
+		clearAuth();
+	});
+
+	it.each([false, true])('rejects invisible, non-admin or project-scoped foreign administrator landing (provider=%s)', federated => {
+		const response = { ...login, identity_domain_id: 'accounts', identity_domain_name: 'Accounts', is_system_admin: true, available_domains: domains };
+		for (const data of [{ ...response, available_domains: [domains[1]] }, { ...response, is_system_admin: false }, { ...response, project_id: 'foreign-project' }]) {
 			expect(() => loginAuthState(data, { federated })).toThrow(SessionDomainError);
 		}
 	});

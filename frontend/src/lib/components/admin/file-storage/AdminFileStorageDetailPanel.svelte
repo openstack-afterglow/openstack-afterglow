@@ -14,6 +14,9 @@
 	import { formatIsoDateTime, formatNumber } from '$lib/utils/format';
 	import type { AccessRule, ExportLocationDetail, FileStorage, FileStorageDeleteDiagnostic, FileStorageForceDeleteResult } from '$lib/types/fileStorage';
 	import { t } from '$lib/i18n/ns/admin-storage';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 
 	let {
 		fileStorageId,
@@ -360,6 +363,15 @@
 				<div class="bg-red-900/30 border border-red-800 text-red-300 rounded px-3 py-2 text-sm mb-3">{accessError}</div>
 			{/if}
 			{#if accessRules.length > 0}
+				<ResponsiveTable>
+					{#snippet cards()}
+						{#each accessRules as rule (rule.id)}
+							<CompactResourceCard>
+								<div class="flex items-start justify-between gap-2"><h4 class="break-all font-mono text-sm text-ink-0">{rule.access_to}</h4><StatusChip status={rule.state} /></div><p class="text-xs text-ink-2">{rule.access_type ?? '-'} · {rule.access_level}</p>
+								{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p class="font-mono">{rule.id}</p><p>{t('fileDetail.accessColumn.key')}: {rule.access_key ? shortAccessKey(rule.access_key) : '-'}</p>{#if rule.access_key}<Button variant="link" size="sm" onclick={() => copyValue(`access-key-${rule.id}`, rule.access_key)}>{copied === `access-key-${rule.id}` ? t('fileDetail.copied') : t('fileDetail.copy')}</Button>{/if}</div>{/snippet}
+							</CompactResourceCard>
+						{/each}
+					{/snippet}
 				<div class="overflow-x-auto">
 					<table class="w-full text-sm">
 						<thead>
@@ -391,6 +403,7 @@
 						</tbody>
 					</table>
 				</div>
+				</ResponsiveTable>
 			{:else if !accessLoading && !accessError}
 				<div class="text-sm text-ink-2">{t('fileDetail.noAccessRules')}</div>
 			{/if}

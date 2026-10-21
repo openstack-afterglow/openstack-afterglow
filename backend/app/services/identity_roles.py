@@ -25,7 +25,12 @@ from redis.exceptions import WatchError
 from app.api.common.errors import public_service_error
 from app.services import activity, keystone, session_store
 from app.services.cache import cached_call, invalidate, ttl_slow
-from app.services.service_permissions import ROLE_IMPLICATIONS, ROLE_PRESETS, normalize_role_name
+from app.services.service_permissions import (
+    RETIRED_SERVICE_IMPLICATIONS,
+    ROLE_IMPLICATIONS,
+    ROLE_PRESETS,
+    normalize_role_name,
+)
 
 _logger = logging.getLogger(__name__)
 _GRAPH_LOCK_TTL_SECONDS = 60
@@ -811,20 +816,54 @@ async def change_edge(conn, token_info, prior_id, implied_id, *, remove=False):
     return {"status": "deleted" if remove else "created"}
 
 
+def _without_retired_service_edges(catalog):
+    """Validate the exact post-cutover graph before the first native mutation."""
+    by_id = {row["id"]: row for row in catalog}
+    retired = set(RETIRED_SERVICE_IMPLICATIONS)
+    inferences = [
+        {
+            "prior_role": {"id": row["id"]},
+            "implies": [
+                {"id": child} for child in row["implied_role_ids"] if (row["name"], by_id[child]["name"]) not in retired
+            ],
+        }
+        for row in catalog
+    ]
+    return _catalog(catalog, inferences)
+
+
 @_complete_mutation
 async def apply_role_presets(conn, token_info):
-    """Idempotent additive application; no role/assignment is replaced or deleted."""
-    created_roles, created_edges = [], []
+    """Keep native project edges; retire only the previous managed service DAG.
+
+    Explicit administrator action only. Role identities, direct grants and
+    unrelated custom implications are never replaced or deleted.
+    """
+    created_roles, created_edges, removed_edges = [], [], []
     attempted = False
     async with _graph_lock(conn) as lease:
         catalog = await asyncio.to_thread(load_catalog, conn)
-        bindings = _validate_preset_catalog(catalog)
+        bindings = _validate_preset_catalog(_without_retired_service_edges(catalog))
         for name in ("member", "reader"):
             matches = [row for row in catalog if row["domain_id"] is None and row["name"].casefold() == name]
             if len(matches) != 1 or matches[0]["domain_id"] is not None or matches[0]["name"] != name:
                 raise HTTPException(status_code=409, detail=f"Existing global native role is required: {name}")
             bindings[name] = matches[0]
         try:
+            for prior_name, implied_name in RETIRED_SERVICE_IMPLICATIONS:
+                if prior_name not in bindings or implied_name not in bindings:
+                    continue
+                prior, child = bindings[prior_name], bindings[implied_name]
+                if child["id"] not in _role(catalog, prior["id"])["implied_role_ids"]:
+                    continue
+                path = f"/roles/{quote(prior['id'], safe='')}/implies/{quote(child['id'], safe='')}"
+                attempted = True
+                await _write(lease, _native_edge, conn, "delete", path)
+                catalog = await asyncio.to_thread(load_catalog, conn)
+                if child["id"] in _role(catalog, prior["id"])["implied_role_ids"]:
+                    raise _unavailable("Service implication removal could not be verified")
+                removed_edges.append({"prior": prior_name, "implied": implied_name})
+            _validate_preset_catalog(catalog)
             for definition in ROLE_PRESETS:
                 name = definition["name"]
                 if name not in bindings:
@@ -857,7 +896,11 @@ async def apply_role_presets(conn, token_info):
                     token_info,
                     "role_presets_partial",
                     None,
-                    extra={"created_roles": created_roles, "created_implications": created_edges},
+                    extra={
+                        "created_roles": created_roles,
+                        "created_implications": created_edges,
+                        "removed_implications": removed_edges,
+                    },
                     status="failed",
                 )
                 raise HTTPException(
@@ -866,6 +909,7 @@ async def apply_role_presets(conn, token_info):
                         "message": "Preset application may be partial; retry preserves existing roles",
                         "created_roles": created_roles,
                         "created_implications": created_edges,
+                        "removed_implications": removed_edges,
                         "cause": exc.detail,
                     },
                 ) from exc
@@ -874,9 +918,18 @@ async def apply_role_presets(conn, token_info):
             token_info,
             "role_presets_apply",
             None,
-            extra={"created_roles": created_roles, "created_implications": created_edges},
+            extra={
+                "created_roles": created_roles,
+                "created_implications": created_edges,
+                "removed_implications": removed_edges,
+            },
         )
-    return {"created_roles": created_roles, "created_implications": created_edges, "roles": fresh}
+    return {
+        "created_roles": created_roles,
+        "created_implications": created_edges,
+        "removed_implications": removed_edges,
+        "roles": fresh,
+    }
 
 
 def _manager_bearing_role(catalog, role_id):
@@ -937,13 +990,33 @@ async def change_project_assignment(
             raise HTTPException(status_code=409, detail="Use the project ownership workflow for owner-bearing roles")
         if (user_id is None) == (group_id is None):
             raise HTTPException(status_code=422, detail="Supply exactly one assignment principal")
-        from app.services import domain_projects, keystone
+        from app.services import account_spaces, domain_projects, keystone
 
         manager_role = _manager_bearing_role(catalog, role_id)
         required_reader = remove and _role(catalog, role_id)["name"] == "project_reader"
-        ks = None
-        if manager_role or group_id is not None or required_reader:
-            ks = await asyncio.to_thread(keystone._get_admin_ks_client)
+        ks = await asyncio.to_thread(keystone._get_admin_ks_client)
+        project = await asyncio.to_thread(domain_projects._exact, ks.projects, project_id)
+        project_domain = _field(project, "domain_id")
+        domain = await asyncio.to_thread(domain_projects._exact, ks.domains, project_domain)
+        kind = account_spaces.domain_kind(domain)
+        if kind == "account":
+            raise HTTPException(403, "account_domain_is_identity_only")
+        if (
+            remove
+            and kind == "personal"
+            and user_id == _field(project, "afterglow_personal_user_id")
+            and group_id is None
+            and role_id == account_spaces._personal_member_role(catalog)["id"]
+        ):
+            raise HTTPException(409, "Required personal member membership cannot be revoked")
+        if not remove:
+            if kind == "personal":
+                if group_id is not None or user_id != _field(project, "afterglow_personal_user_id"):
+                    raise HTTPException(403, "personal_project_membership_is_private")
+                if role_id != account_spaces._personal_member_role(catalog)["id"]:
+                    raise HTTPException(403, "personal_project_roles_are_fixed")
+            elif user_id is not None:
+                await asyncio.to_thread(domain_projects.assert_membership, user_id, project_domain, ks=ks)
         if group_id is not None:
             await asyncio.to_thread(domain_projects.assert_not_projection_group, group_id, ks=ks)
         if not remove and manager_role:
@@ -953,7 +1026,9 @@ async def change_project_assignment(
         if required_reader:
             project = await asyncio.to_thread(ks.projects.get, project_id)
             default = await asyncio.to_thread(domain_projects.default_project, _field(project, "domain_id"), ks=ks)
-            if default is not None and default["id"] == project_id:
+            if (default is not None and default["id"] == project_id) or _field(
+                project, "afterglow_personal_primary"
+            ) is True:
                 raise HTTPException(status_code=409, detail="Required Default reader membership cannot be revoked")
         affected = set()
         if manager_role:
@@ -972,6 +1047,9 @@ async def change_project_assignment(
             users = {_field(member, "id") for member in members}
             if any(not isinstance(uid, str) or not uid for uid in users):
                 raise _unavailable("Group assignment recipients are unavailable")
+            if not remove:
+                for uid in users:
+                    await asyncio.to_thread(domain_projects.assert_membership, uid, project_domain, ks=ks)
             method = (
                 conn.identity.unassign_project_role_from_group if remove else conn.identity.assign_project_role_to_group
             )
@@ -1016,6 +1094,10 @@ async def change_group_membership(conn, token_info, group_id, *, user_id=None, r
 
         ks = await asyncio.to_thread(keystone._get_admin_ks_client)
         await asyncio.to_thread(domain_projects.assert_not_projection_group, group_id, ks=ks)
+        if not remove and not delete:
+            group = await asyncio.to_thread(domain_projects._exact, ks.groups, group_id)
+            group_domain = _field(group, "domain_id")
+            await asyncio.to_thread(domain_projects.assert_membership, user_id, group_domain, ks=ks)
         affected = await asyncio.to_thread(
             domain_projects.assert_managers_remain,
             ks=ks,
@@ -1025,6 +1107,17 @@ async def change_group_membership(conn, token_info, group_id, *, user_id=None, r
             delete_group=delete,
         )
         assignments = await asyncio.to_thread(lambda: list(conn.identity.role_assignments(group_id=group_id)))
+        if not remove and not delete:
+            for assignment in assignments:
+                meta = domain_projects._assignment(assignment, catalog)
+                if meta["kind"] == "project":
+                    target = await asyncio.to_thread(domain_projects._exact, ks.projects, meta["scope_id"])
+                    target_domain = _field(target, "domain_id")
+                elif meta["kind"] == "domain":
+                    target_domain = meta["scope_id"]
+                else:
+                    continue
+                await asyncio.to_thread(domain_projects.assert_membership, user_id, target_domain, ks=ks)
         for assignment in assignments:
             if _field(_field(assignment, "group", {}), "id") != group_id:
                 raise _unavailable("Group assignment scope is unavailable")

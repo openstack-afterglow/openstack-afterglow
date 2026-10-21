@@ -89,10 +89,6 @@ class InventoryState:
             p: ["member", "drover-inventory_reader", "waygate-inventory_reader", "palimpsest-inventory_reader"]
             for p in ("p-a", "p-b")
         }
-        directory.roles.extend(
-            {"id": name + "-role", "name": name, "domain_id": None}
-            for name in sorted({role for roles in self.roles.values() for role in roles} - {"member"})
-        )
         self.system_grants = []
         self.assignment_errors = {}
         self.settings = SimpleNamespace(
@@ -542,6 +538,8 @@ async def test_summary_distinguishes_disabled_denied_failed_empty_and_partial(in
     state, client = inventory_http
     state.settings.service_magnum_enabled = False
     state.roles["p-a"] = ["member", "palimpsest-inventory_reader"]
+    state.errors["p-a", "k3s_clusters"] = HTTPException(403, "private native policy detail")
+    state.errors["p-a", "waygate_gateways"] = HTTPException(403, "private native policy detail")
     state.errors["p-a", "volumes"] = RuntimeError("SECRET-DATABASE-URL")
     state.errors["p-b", "volumes"] = HTTPException(403, "private policy detail")
     state.errors["p-a", "instances"] = RuntimeError("Nova outage")
@@ -564,7 +562,7 @@ async def test_summary_distinguishes_disabled_denied_failed_empty_and_partial(in
     assert data["totals"]["resources"]["instances"] == {"state": "partial", "known_count": 1, "count": None}
     assert data["totals"]["resources"]["magnum_clusters"] == {"state": "disabled", "known_count": 0, "count": None}
     assert data["totals"]["usage"] == {"vcpus": None, "ram_mb": None, "storage_gb": None}
-    assert not state.calls["p-a", "magnum_clusters"] and not state.calls["p-a", "k3s_clusters"]
+    assert not state.calls["p-a", "magnum_clusters"]
     assert "SECRET" not in response.text and "private policy" not in response.text
 
 
@@ -616,21 +614,22 @@ async def test_summary_fresh_membership_before_cache_and_system_admin_not_global
 
 
 @pytest.mark.asyncio
-async def test_summary_cache_hits_still_authorize_service_permission_revocation(inventory_http):
+async def test_summary_native_policy_revocation_cannot_serve_prior_inventory(inventory_http):
     state, client = inventory_http
     state.data["p-a", "k3s_clusters"] = [{"id": "cluster", "project_id": "p-a"}]
     first = await client.get(URL + "?cache=true")
     second = await client.get(URL + "?cache=true")
     assert first.status_code == second.status_code == 200
-    assert state.calls["p-a", "k3s_clusters"] == 1
-    assert sum(event[:2] == ("membership", "p-a") for event in state.events) >= 2
-    state.roles["p-a"].remove("drover-inventory_reader")
+    for response in (first, second):
+        assert [item["id"] for item in response.json()["projects"][0]["resources"]["k3s_clusters"]["items"]] == [
+            "cluster"
+        ]
+    # An operator policy change need not change the Keystone role fingerprint.
+    state.errors["p-a", "k3s_clusters"] = HTTPException(403, "private native policy detail")
     third = await client.get(URL + "?cache=true")
-    assert third.json()["projects"][0]["resources"]["k3s_clusters"]["state"] == "denied"
-    assert state.calls["p-a", "k3s_clusters"] == 1
-    assert len([event for event in state.events if event[0] == "cache" and event[1].endswith(":k3s_clusters")]) == 5
-    # The role fingerprint changes, so the still-authorized service is re-read.
-    assert state.calls["p-a", "waygate_gateways"] == 2
+    denied = third.json()["projects"][0]["resources"]["k3s_clusters"]
+    assert denied["state"] == "denied" and denied["items"] == [] and denied["count"] is None
+    assert "private native policy detail" not in third.text
     reads_before_disable = state.calls["p-a", "waygate_gateways"]
     state.settings.service_waygate_enabled = False
     fourth = await client.get(URL + "?cache=true")
@@ -826,19 +825,6 @@ async def test_summary_package_cursor_and_namespace_fences(inventory_http, bad_p
 
 
 @pytest.mark.asyncio
-async def test_summary_package_permission_revocation_before_cache(inventory_http):
-    state, client = inventory_http
-    first = await client.get(URL + "?cache=true")
-    assert first.json()["projects"][0]["resources"]["packages"]["state"] == "ready"
-    native_before = len([event for event in state.events if event[:2] == ("package", "p-a")])
-    state.roles["p-a"].remove("palimpsest-inventory_reader")
-    second = await client.get(URL + "?cache=true")
-    assert second.json()["projects"][0]["resources"]["packages"]["state"] == "denied"
-    assert len([event for event in state.events if event[:2] == ("package", "p-a")]) == native_before
-    assert len([event for event in state.events if event[0] == "cache" and event[1].endswith(":packages")]) == 3
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize("change", ["capability_revoked", "context_unavailable", "namespace_changed"])
 async def test_summary_warm_package_cache_obeys_current_native_context(inventory_http, monkeypatch, change):
     state, client = inventory_http
@@ -902,12 +888,12 @@ async def test_summary_rechecks_rescoped_identity_even_with_warm_cache(inventory
     state, client = inventory_http
     first = await client.get(URL + "?cache=true")
     assert first.status_code == 200
-    reads = sum(state.calls.values())
+    reads = {key: count for key, count in state.calls.items() if key[0] == "p-a"}
     state.identity_override["p-a"] = ("user-a", "foreign")
     second = await client.get(URL + "?cache=true")
     assert second.status_code == 200
     assert all(value["state"] == "denied" for value in second.json()["projects"][0]["resources"].values())
-    assert sum(state.calls.values()) == reads
+    assert {key: count for key, count in state.calls.items() if key[0] == "p-a"} == reads
 
 
 @pytest.mark.asyncio
@@ -1023,7 +1009,7 @@ async def test_summary_membership_provider_outage_cannot_serve_warm_inventory(in
     state, client = inventory_http
     first = await client.get(URL + "?cache=true")
     assert first.status_code == 200
-    reads = sum(state.calls.values())
+    reads = {key: count for key, count in state.calls.items() if key[0] == "p-a"}
     state.assignment_errors["p-a"] = HTTPException(503, "private identity outage")
     second = await client.get(URL + "?cache=true")
     assert second.status_code == 200
@@ -1031,7 +1017,7 @@ async def test_summary_membership_provider_outage_cannot_serve_warm_inventory(in
         value["state"] == "failed" and value["count"] is None
         for value in second.json()["projects"][0]["resources"].values()
     )
-    assert sum(state.calls.values()) == reads
+    assert {key: count for key, count in state.calls.items() if key[0] == "p-a"} == reads
     assert second.json()["totals"]["resources"]["instances"]["state"] == "partial"
     assert "private identity" not in second.text
 

@@ -27,7 +27,8 @@
 	let epoch = 0;
 	let request: AbortController | null = null;
 	const componentId = $props.id();
-	const canSubmit = $derived(allowed && authorizedDomain === domainId && !checking && !submitting && !uncertain && !!name.trim() && $authReady && !$logoutInProgress && !$projectSwitching);
+	let personal = $state(false);
+	const canSubmit = $derived(allowed && authorizedDomain === domainId && !checking && !submitting && !uncertain && (personal || !!name.trim()) && $authReady && !$logoutInProgress && !$projectSwitching);
 	function portal(node: HTMLElement) {
 		document.body.appendChild(node);
 		return { destroy: () => node.remove() };
@@ -40,7 +41,7 @@
 			const key = JSON.stringify([sessionScopeKey(state), !!state.token, ready, loggingOut, switching]);
 			if (key === previous) return;
 			const first = previous === ''; previous = key;
-			epoch++; request?.abort(); allowed = false; submitting = false;
+			epoch++; request?.abort(); allowed = false; personal = false; submitting = false;
 			if (!first) { onClose(); return; }
 			if (ready && state.token && !loggingOut && !switching && domainId) void checkCapability();
 			else checking = false;
@@ -51,9 +52,10 @@
 		const version = epoch; const target = domainId;
 		request = new AbortController(); const signal = request.signal;
 		try {
-			const result = await api.get<{ domain_id: string; can_create_project: boolean }>(`/api/v1/projects/capabilities?domain_id=${encodeURIComponent(target)}`, get(auth).token!, undefined, { refresh: true, suppressAuthRedirect: true, signal });
+			const result = await api.get<{ domain_id: string; domain_kind?: 'personal' | 'organization' | 'legacy'; can_create_project: boolean }>(`/api/v1/projects/capabilities?domain_id=${encodeURIComponent(target)}`, get(auth).token!, undefined, { refresh: true, suppressAuthRedirect: true, signal });
 			if (!active || version !== epoch || domainId !== target || signal.aborted) return;
 			allowed = result.domain_id === target && result.can_create_project === true;
+			personal = result.domain_id === target && result.domain_kind === 'personal';
 			authorizedDomain = target;
 		} catch { if (active && version === epoch && !signal.aborted) error = 'loadFailed'; }
 		finally { if (active && version === epoch) checking = false; }
@@ -65,7 +67,7 @@
 		request = new AbortController(); const signal = request.signal;
 		submitting = true; error = '';
 		try {
-			const result = await api.post<{ id: string; name: string }>('/api/v1/projects', { name: name.trim(), description: description.trim(), domain_id: target }, get(auth).token!, undefined, { signal, replayOnUnauthorized: false, suppressAuthRedirect: true, cache: 'no-store' });
+			const result = await api.post<{ id: string; name: string }>('/api/v1/projects', { ...(!personal && name.trim() ? { name: name.trim() } : {}), description: description.trim(), domain_id: target }, get(auth).token!, undefined, { signal, replayOnUnauthorized: false, suppressAuthRedirect: true, cache: 'no-store' });
 			if (!active || version !== epoch || domainId !== target || signal.aborted) return;
 			if (!result?.id || typeof result.name !== 'string') throw new Error('Invalid project response');
 			submitting = false;
@@ -85,7 +87,8 @@
 		<p class="break-all text-sm text-ink-2">{domainName} · {domainId}</p>
 		{#if error}<Alert tone="warning">{t(error)}</Alert>{/if}
 		{#if !checking && !allowed && !error}<Alert tone="neutral">{t('createDenied')}</Alert>{/if}
-		<Field label={t('projectName')} for={`${componentId}-name`} required><TextInput id={`${componentId}-name`} bind:value={name} required maxlength={64} disabled={submitting || uncertain || !allowed} /></Field>
+		{#if personal}<p class="text-sm text-ink-2">{t('personalProjectNameHelp')}</p>
+		{:else}<Field label={t('projectName')} for={`${componentId}-name`} required><TextInput id={`${componentId}-name`} bind:value={name} required maxlength={64} disabled={submitting || uncertain || !allowed} /></Field>{/if}
 		<Field label={t('description')} for={`${componentId}-description`}><TextInput id={`${componentId}-description`} bind:value={description} maxlength={255} disabled={submitting || uncertain || !allowed} /></Field>
 		<div class="flex flex-wrap justify-end gap-2">
 			<Button variant="secondary" onclick={onClose} disabled={submitting}>{t('cancel')}</Button>

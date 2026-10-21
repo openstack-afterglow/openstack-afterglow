@@ -62,16 +62,19 @@
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl">
-	<div class="flex items-center justify-between px-4 py-3">
-		<div class="flex items-center gap-4 min-w-0">
-			<div>
-				<div class="text-sm font-medium text-ink-0">{group.name}</div>
-				<div class="text-xs text-ink-2">{group.description || '-'}</div>
-				<div class="text-xs text-ink-2 tabular-nums mt-1">{t('groupCard.createdAt', { date: group.created_at ? new Date(group.created_at).toLocaleDateString(intlLocale(), { timeZone: 'UTC' }) : t('groupCard.unknownDate') })}</div>
-			</div>
-			<div class="text-xs text-ink-2 font-mono hidden sm:block">{group.id.slice(0, 8)}</div>
+  <div class="flex flex-wrap items-start justify-between gap-3 px-3 py-3 lg:px-4">
+    <div class="min-w-0 flex-1">
+      <div class="min-w-0">
+        <div class="break-words text-sm font-medium text-ink-0">{group.name}</div>
+        <details class="mt-1 text-xs text-ink-2">
+          <summary class="flex min-h-11 cursor-pointer items-center lg:min-h-0">{t('form.description')}</summary>
+          <p class="whitespace-pre-wrap break-words">{group.description || '-'}</p>
+          <p class="break-all font-mono mt-2">{group.id}</p>
+          <p class="tabular-nums mt-1">{t('groupCard.createdAt', { date: group.created_at ? new Date(group.created_at).toLocaleDateString(intlLocale(), { timeZone: 'UTC' }) : t('groupCard.unknownDate') })}</p>
+        </details>
+      </div>
 		</div>
-		<div class="flex items-center gap-1 ml-4 shrink-0">
+    <div class="flex flex-wrap items-center gap-1 [&_button]:min-h-11 lg:[&_button]:min-h-0">
 			<Button variant={expanded ? 'primary' : 'ghost'} size="xs" onclick={onToggleMembers}>{t('groupCard.members')}</Button>
 			<Button variant="subtle" size="xs" onclick={onEdit}>{t('actions.edit')}</Button>
 			<Button variant="danger-outline" size="xs" onclick={onDelete}>{t('actions.delete')}</Button>
@@ -91,10 +94,10 @@
 				{:else}
 					<div class="space-y-1 mb-3">
 						{#each members as m}
-							<div class="flex items-center justify-between bg-surface-sunken/50 rounded px-3 py-1.5">
-								<div>
-									<span class="text-sm text-ink-0">{m.name}</span>
-									{#if m.email}<span class="text-xs text-ink-2 ml-2">{m.email}</span>{/if}
+              <div class="flex flex-wrap items-center justify-between gap-2 bg-surface-sunken/50 rounded px-3 py-1.5">
+                <div class="min-w-0 break-words">
+                  <span class="text-sm text-ink-0">{m.name}</span>
+                  {#if m.email}<span class="block break-all text-xs text-ink-2">{m.email}</span>{/if}
 								</div>
 								<Button variant="danger-outline" size="xs" ariaBusy={removingMemberId === m.id} disabled={removingMemberId !== null} onclick={() => handleRemoveMember(m.id)}>{#if removingMemberId === m.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('state.removing')}</span>{:else}{t('actions.remove')}{/if}</Button>
 							</div>

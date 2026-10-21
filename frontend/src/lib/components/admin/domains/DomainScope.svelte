@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
+  import { get } from 'svelte/store';
   import type { Snippet } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
@@ -20,9 +21,20 @@
   let error = $state('');
   let revision = $state(0);
   let verifiedAuthority = $state('');
+  let authorityRevision = $state(0);
+  let observedAuthority = '';
+  function authorityChanged() {
+    const state = get(auth);
+    const next = JSON.stringify([state.sessionId, state.userId, state.identityDomainId, state.domainId, state.projectId, state.isDomainManager, state.isSystemAdmin, !!state.token, get(authReady), get(projectSwitching)]);
+    if (next === observedAuthority) return;
+    observedAuthority = next;
+    authorityRevision += 1;
+  }
+  const unsubscribers = [auth.subscribe(authorityChanged), authReady.subscribe(authorityChanged), projectSwitching.subscribe(authorityChanged)];
+  onDestroy(() => { for (const unsubscribe of unsubscribers) unsubscribe(); });
   const selectedId = $derived(page.url.searchParams.get('domain_id') ?? initialDomainId);
   const selected = $derived(domains.find(domain => domain.id === selectedId));
-  const authority = $derived(JSON.stringify([$auth.userId, $auth.projectId, $auth.domainId, $auth.isDomainManager, $auth.isSystemAdmin, $authReady, $projectSwitching]));
+  const authority = $derived(JSON.stringify([authorityRevision, $auth.sessionId, $auth.userId, $auth.identityDomainId, $auth.projectId, $auth.domainId, $auth.isDomainManager, $auth.isSystemAdmin, $authReady, $projectSwitching]));
   $effect(() => {
     const scope = authority;
     revision;
@@ -33,7 +45,8 @@
       untrack(() => { loading = false; error = t('scope.denied'); });
       return () => { alive = false; };
     }
-    domainsApi.list({ token, projectId }).then(response => {
+    const request = revision > 0 ? domainsApi.list({ token, projectId }, { refresh: true }) : domainsApi.list({ token, projectId });
+    request.then(response => {
       if (alive && scope === authority) { domains = response.items; verifiedAuthority = scope; }
     }).catch(reason => {
       if (alive && scope === authority) error = reason instanceof ApiError ? reason.message : t('scope.loadFailed');

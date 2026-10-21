@@ -16,7 +16,7 @@ describe('domain IAM verification leases', () => {
 		api.get.mockResolvedValue({ domain_id: 'domain', domain_name: 'Domain', is_domain_manager: true });
 		await expect(client.context()).resolves.toMatchObject({ domain_id: 'domain' });
 		await expect(client.users()).rejects.toMatchObject({ name: 'AbortError' });
-		await expect(client.createUser({ name: 'New', email: 'new@example.com', enabled: true, password: 'password' })).rejects.toMatchObject({ name: 'AbortError' });
+		await expect(client.invite('new@example.com', undefined, [])).rejects.toMatchObject({ name: 'AbortError' });
 		expect(api.get).toHaveBeenCalledTimes(1); expect(api.post).not.toHaveBeenCalled();
 	});
 	it('rejects private data received after the verification lease is invalidated', async () => {

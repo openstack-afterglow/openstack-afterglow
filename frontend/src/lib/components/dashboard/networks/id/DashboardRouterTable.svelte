@@ -1,12 +1,24 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/network-resources';
 	import type { RouterInfo } from '$lib/types/networks';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	let { routers }: { routers: RouterInfo[] } = $props();
 </script>
 
 <div class="bg-surface-base border border-line rounded-lg p-6">
 	<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">{t('network.routers.title')}</h2>
+	<ResponsiveTable>
+		{#snippet cards()}
+			{#each routers as router (router.id)}
+				<CompactResourceCard>
+					<p class="font-medium">{router.name || router.id.slice(0, 12)}</p>
+					<p class="text-xs text-ink-2">{t('network.routers.subnetCount', { count: router.connected_subnet_ids.length })}</p>
+					{#snippet details()}<dl><div><dt>{t('network.labels.id')}</dt><dd>{router.id}</dd></div><div><dt>{t('network.routers.externalGateway')}</dt><dd>{router.external_gateway_network_id || '-'}</dd></div></dl>{/snippet}
+				</CompactResourceCard>
+			{/each}
+		{/snippet}
 	<div class="overflow-x-auto">
 	<table class="w-full text-sm">
 		<thead>
@@ -35,4 +47,5 @@
 		</tbody>
 	</table>
 	</div>
+	</ResponsiveTable>
 </div>

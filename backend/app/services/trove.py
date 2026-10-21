@@ -137,6 +137,20 @@ def list_instances_admin_all_projects(conn) -> list[dict]:
     if not isinstance(items, list):
         raise RuntimeError("Trove management instances response is invalid")
 
+    items = list(items)
+    seen = set()
+    while body.get("next") or any(link.get("rel") == "next" for link in body.get("links", [])):
+        marker = items[-1].get("id") if items else None
+        if not marker or marker in seen:
+            raise RuntimeError("Trove inventory pagination did not advance")
+        seen.add(marker)
+        resp = conn.database.get("/mgmt/instances", params={"marker": marker})
+        resp.raise_for_status()
+        body = resp.json()
+        batch = body.get("instances")
+        if not isinstance(batch, list) or not batch:
+            raise RuntimeError("Trove inventory pagination is invalid")
+        items.extend(batch)
     out: list[dict] = []
     for raw in items:
         if raw.get("deleted"):

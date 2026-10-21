@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-identity';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	let {
 		defaults,
@@ -19,13 +21,17 @@
 	} = $props();
 
 	let savingAliases = $state<Record<string, boolean>>({});
+  let draftLimits = $state<Record<string, string>>({});
+  $effect(() => { defaults; draftLimits = {}; });
 
 	async function changeLimit(alias: string, limit: number) {
 		savingAliases[alias] = true;
+    draftLimits[alias] = String(limit);
 		try {
 			await onChange(alias, limit);
 		} finally {
 			delete savingAliases[alias];
+      delete draftLimits[alias];
 		}
 	}
 </script>
@@ -40,6 +46,17 @@
 	{:else if allGpuTypes.length === 0}
 		<div class="text-ink-2 text-sm">{t('gpuQuota.defaults.noAliases')}</div>
 	{:else}
+    <ResponsiveTable>
+      {#snippet cards()}
+        {#each allGpuTypes as alias (alias)}
+          <CompactResourceCard>
+            <strong class="break-all font-mono text-sm">{alias}</strong>
+            <label class="flex min-h-11 flex-wrap items-center justify-between gap-2 text-xs">{t('gpuQuota.default')}<input type="number" min="-1" value={draftLimits[alias] ?? defaults[alias] ?? 0} disabled={savingAliases[alias]} oninput={(event) => draftLimits[alias] = event.currentTarget.value} onchange={(event) => changeLimit(alias, Number(event.currentTarget.value))} class="min-h-11 w-24 rounded border border-line-2 bg-surface-sunken px-2 text-right text-sm text-ink-0" /></label>
+            {#if (defaults[alias] ?? 0) === -1}<span class="text-xs text-ink-2">{t('gpuQuota.unlimited')}</span>{/if}
+            {#if savingAliases[alias]}<ActivityIndicator size="xs" label={t('state.saving')} />{/if}
+          </CompactResourceCard>
+        {/each}
+      {/snippet}
 		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
 			{#each allGpuTypes as alias}
 				{@const currentLimit = defaults[alias] ?? 0}
@@ -48,8 +65,9 @@
 					<input
 						type="number"
 						min="-1"
-						value={currentLimit}
+            value={draftLimits[alias] ?? currentLimit}
 						disabled={savingAliases[alias]}
+            oninput={(event) => draftLimits[alias] = event.currentTarget.value}
 						onchange={(e) => changeLimit(alias, Number((e.target as HTMLInputElement).value))}
 						class="w-20 bg-surface-selected border border-line-2 rounded px-2 py-1 text-sm text-ink-0 text-right focus:outline-none focus:border-action-warm"
 					/>
@@ -59,6 +77,7 @@
 				</div>
 			{/each}
 		</div>
+    </ResponsiveTable>
 		<p class="text-xs text-ink-2 mt-2">{t('gpuQuota.defaults.limitHelp')}</p>
 	{/if}
 </div>

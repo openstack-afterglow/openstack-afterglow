@@ -78,6 +78,13 @@ Frontend visual changes must start from root `DESIGN.md`; reusable assets live i
 
 See [`../DESIGN.md`](../DESIGN.md).
 
+### Tablet and mobile resource cards
+
+Wrap application-authored table and div-grid data views in `ResponsiveTable`. Its shared viewport MediaQuery mounts only `cards` below1024px and only the desktop `children` snippet at1024px and above; a narrow desktop modal is still a table. Keep selection, pending writes, drafts, sort/filter/page state in the owning component/controller, outside the responsive branch. Breakpoint changes never fetch or mutate.
+
+Author the compact branch with `CompactResourceCard`: name/status, two or three key facts, visible wrapping actions, secondary UUID/time/specification fields in `details` or the existing detail view. Use `.responsive-card-toolbar` for select-all/sort controls above the card grid. The default layout auto-fits18rem cards inside the available width with0.5rem gaps and0.75rem padding, without fixed heights. Preserve all action/permission/unknown-state boundaries and ensure inline editors do not lose drafts on viewport transitions. User/external Markdown and graph canvases are not data-table conversions.
+
+
 ### Dashboard charts: Bklit UI
 
 All Afterglow-owned numerical visualizations use the actual [Bklit UI](https://github.com/bklit/bklit-ui) React registry components. SvelteKit remains the application framework. `src/lib/components/charts/BklitChart.svelte` owns the client-only lazy import, one React root per mounted plot, reactive data/locale updates, reduced-motion subscription, and teardown. Do not import React/vendor components from Svelte routes or create a second SVG/CSS chart implementation.

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { untrack } from 'svelte';
 	import { quotaFields, nativeQuotaKey, type QuotaMap, type ProjectQuotas, type QuotaField, type QuotaSection } from '$lib/api/workspaceIam';
 	import { t } from '$lib/i18n/ns/workspace-iam';
@@ -31,6 +33,17 @@
 		<section class="space-y-2">
 			<h3 class="text-sm font-semibold text-ink-0">{t(`service.${section as QuotaSection}`)}</h3>
 			{#if projectMode && !native?.availability[section as QuotaSection]}<Alert tone="warning">{native?.errors[section as QuotaSection] === 'service_disabled' ? t('disabledService') : t('unknownService')}</Alert>{/if}
+			<ResponsiveTable>
+				{#snippet cards()}
+					{#each fields as field}
+						{@const entry = native?.[section as QuotaSection]?.[nativeQuotaKey(field)]}
+						<CompactResourceCard>
+							<label for={`${uid}-${field}`} class="text-sm font-medium">{t(`field.${field}`)}</label>
+							{#if !projectMode || entry}<label for={`${uid}-${field}`} class="text-xs text-ink-2">{t('limit')}</label><TextInput id={`${uid}-${field}`} bind:value={draft[field]} disabled={disabled} inputmode="numeric" placeholder={t(projectMode ? 'unchanged' : 'notConfigured')} />{#if entry}<p class="text-xs text-ink-2">{t('observed')}: {entry.limit === -1 ? t('unlimited') : entry.limit}</p>{/if}{:else}<p class="text-xs">{native?.availability[section as QuotaSection] ? t('unsupported') : t('unknown')}</p>{/if}
+							{#snippet details()}<code class="text-xs">{field}</code>{#if projectMode}<p class="text-xs">{t('inUse')}: {entry?.in_use ?? t('unknown')} · {t('reserved')}: {entry?.reserved ?? t('unknown')}</p>{/if}{/snippet}
+						</CompactResourceCard>
+					{/each}
+				{/snippet}
 			<TableShell><table><thead><tr><th>{t('metric')}</th><th>{t('limit')}</th>{#if projectMode}<th>{t('inUse')}</th><th>{t('reserved')}</th>{/if}</tr></thead><tbody>
 				{#each fields as field}
 					{@const entry = native?.[section as QuotaSection]?.[nativeQuotaKey(field)]}
@@ -40,6 +53,7 @@
 					</tr>
 				{/each}
 			</tbody></table></TableShell>
+			</ResponsiveTable>
 		</section>
 	{/each}
 	<Button disabled={disabled} onclick={save}>{t('save')}</Button>

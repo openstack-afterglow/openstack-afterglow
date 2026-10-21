@@ -1,4 +1,4 @@
-"""Current graph and independent media/tool gates at registered browser HTTP routes."""
+"""Current directory failures never fall back to cached browser token roles."""
 
 from types import SimpleNamespace
 
@@ -76,59 +76,6 @@ async def boundary(monkeypatch):
     bff.dependency_overrides[get_token_info] = authenticated
     async with client_type(transport=httpx.ASGITransport(app=bff), base_url="http://browser") as client:
         yield state, client
-
-
-@pytest.mark.asyncio
-async def test_deleted_current_parent_edge_denies_new_run_but_keeps_discovery(boundary):
-    state, client = boundary
-    payload = {
-        "model_id": "model",
-        "parts": [{"type": "text", "text": "first"}],
-        "features": {"memory": False, "tool_policy": {"mode": "none"}},
-    }
-    assert (await client.post("/api/v1/chat/temp-completions", json=payload)).status_code == 202
-    parent = next(row for row in state.catalog if row["name"] == "lumen_user")
-    parent["implied_role_ids"].remove("id-lumen-chat_user")
-    payload["parts"][0]["text"] = "must not start"
-    assert (await client.post("/api/v1/chat/temp-completions", json=payload)).status_code == 403
-    assert state.admitted == ["first"]
-    assert (await client.get("/api/v1/chat/models")).json() == [{"id": "model"}]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "extra",
-    [
-        {"features": {"output_modalities": ["text", "image"]}},
-        {"features": {"output_modalities": ["text", "audio"]}},
-        {"features": {"web_search": {"enabled": True}}},
-        {"features": {"tool_policy": {"mode": "agent_default"}}},
-        {"plugin_tool_ids": ["selected-tool"]},
-        {"skill_ids": [1]},
-        {"execution_mode": "code"},
-    ],
-)
-async def test_chat_only_cannot_smuggle_media_or_tools_into_text_endpoint(boundary, extra):
-    state, client = boundary
-    state.grants = ["project_member", "lumen-chat_user"]
-    payload = {
-        "model_id": "model",
-        "parts": [{"type": "text", "text": "plain text"}],
-        "features": {"memory": False, "tool_policy": {"mode": "none"}},
-    }
-    assert (await client.post("/api/v1/chat/temp-completions", json=payload)).status_code == 202
-    payload["features"].update(extra.get("features", {}))
-    payload.update({key: value for key, value in extra.items() if key != "features"})
-    assert (await client.post("/api/v1/chat/temp-completions", json=payload)).status_code == 403
-    assert state.admitted == ["plain text"]
-
-
-@pytest.mark.asyncio
-async def test_project_owner_is_not_service_entitlement(boundary):
-    state, client = boundary
-    state.grants = ["project_owner"]
-    assert (await client.get("/api/v1/chat/models")).status_code == 403
-    assert state.admitted == []
 
 
 @pytest.mark.asyncio

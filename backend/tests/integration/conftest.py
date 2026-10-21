@@ -130,7 +130,7 @@ class IntegrationAuthSession:
             resp = await ac.post("/api/v1/auth/login", json=password_login_payload(self.credentials))
             assert resp.status_code == 200, f"{self.label} 로그인 실패 (HTTP {resp.status_code})"
             data = resp.json()
-            assert data["domain_id"] == data["identity_domain_id"], "Fresh login must start in the account home"
+            assert data["identity_domain_name"] == "Accounts", "Live human credentials must belong to native Accounts"
             # Native project/domain settings remain explicit live-test workspace
             # targets, never password-login authority or a fallback on failure.
             if self.credentials.get("project_name"):

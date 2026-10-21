@@ -26,6 +26,7 @@
 	let username = $state('');
 	let password = $state('');
 	let error = $state('');
+	let personalRecovery = $state(false);
 	let loading = $state(false);
 	let sso = $state(false);
 	let providersLoading = $state(true);
@@ -45,6 +46,7 @@
 	function invalidate() {
 		generation++;
 		username = ''; password = ''; error = '';
+		personalRecovery = false;
 		loading = false; providerLoading = null;
 	}
 
@@ -85,6 +87,7 @@
 		if (!active || busy) return;
 		password = '';
 		error = '';
+		personalRecovery = false;
 		sso = useSso;
 		await tick();
 		if (active && sso === useSso) document.getElementById(useSso ? 'login-sso-title' : 'login-username')?.focus();
@@ -96,6 +99,8 @@
 
 	function passwordErrorMessage(e: unknown): string {
 		if (!(e instanceof ApiError)) return td('login.password.unavailable');
+		if (e.code === 'personal_project_retry_available') return td('login.personalRecovery.retryHelp');
+		if (e.code === 'personal_project_recovery_required') return td('login.personalRecovery.operatorHelp');
 		if (e.status === 401) return td('login.password.invalid');
 		if (e.status === 403) return td('login.password.forbidden');
 		if (e.status === 429) return td('login.password.rateLimited');
@@ -110,7 +115,7 @@
 		let data: LoginResponse;
 		try {
 			data = await api.post<LoginResponse>(
-				'/api/v1/auth/login',
+				personalRecovery ? '/api/v1/auth/personal-project/recovery' : '/api/v1/auth/login',
 				{ username, password },
 				undefined,
 				undefined,
@@ -119,6 +124,10 @@
 		} catch (e) {
 			if (!active || current !== generation) return;
 			loading = false;
+			if (e instanceof ApiError && (e.code === 'personal_project_retry_available' || e.code === 'personal_project_recovery_required')) {
+				personalRecovery = true;
+				password = '';
+			}
 			error = passwordErrorMessage(e);
 			return;
 		}
@@ -231,7 +240,7 @@
 					<Field label={t('loginForm.password')} for="login-password" required>
 						<TextInput id="login-password" bind:value={password} type="password" autocomplete="current-password" disabled={busy} required onkeydown={preventComposingSubmit} />
 					</Field>
-					<Button type="submit" size="lg" class="login-submit" disabled={busy || !username || !password} ariaBusy={loading}>{t('loginForm.signIn')}</Button>
+					<Button type="submit" size="lg" class="login-submit" disabled={busy || !username || !password} ariaBusy={loading}>{personalRecovery ? td('login.personalRecovery.submit') : t('loginForm.signIn')}</Button>
 
 					<div class="login-divider" aria-hidden="true"><span>{td('login.methods.or')}</span></div>
 					<Button variant="secondary" size="lg" class="login-provider min-h-11" disabled={busy} onclick={() => selectMethod(true)}>{td('login.sso.open')}</Button>

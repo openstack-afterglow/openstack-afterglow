@@ -10,6 +10,7 @@
 	import type { Instance } from '$lib/types/compute';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import InstanceDetailPanel from '$lib/components/InstanceDetailPanel.svelte';
+	import { invalidateInstanceDetailSelection } from '$lib/stores/instanceDetailController.svelte';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
@@ -315,11 +316,13 @@
 	}
 
 	function openInstancePanel(id: string) {
+		invalidateInstanceDetailSelection();
 		selectedInstanceId = id;
 		history.pushState({ instanceId: id }, '', `/dashboard/compute/instances/${id}`);
 	}
 
 	function closeInstancePanel() {
+		invalidateInstanceDetailSelection();
 		selectedInstanceId = null;
 		history.pushState({}, '', '/dashboard/compute/instances');
 	}
@@ -400,6 +403,6 @@
 
 {#if selectedInstanceId && instancesRevision === scopeRevision}
 	<SlidePanel onClose={closeInstancePanel} ariaLabel={t('list.instanceDetails')}>
-		<InstanceDetailPanel instanceId={selectedInstanceId} onClose={closeInstancePanel} />
+		<InstanceDetailPanel instanceId={selectedInstanceId} onClose={closeInstancePanel} onUpdated={() => void fetchInstances({ refresh: true })} />
 	</SlidePanel>
 {/if}

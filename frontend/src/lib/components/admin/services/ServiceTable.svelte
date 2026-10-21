@@ -4,6 +4,8 @@
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import type { Service } from '$lib/types/adminServices';
 	import ServiceListControls from './ServiceListControls.svelte';
 	import ServiceSortHeader from './ServiceSortHeader.svelte';
@@ -84,6 +86,30 @@
 {:else if displayedServices.length === 0}
 	<EmptyState headline={t('services.table.noMatches')} description={t('services.list.adjustFilters')} />
 {:else}
+	<ResponsiveTable>
+		{#snippet cards()}
+			{#each displayedServices as service (service.id || service.binary + service.host)}
+				<CompactResourceCard>
+					<div class="flex flex-wrap items-start justify-between gap-2">
+						<h3 class="min-w-0 break-all font-mono text-sm font-medium text-ink-0">{service.binary}</h3>
+						<div class="flex flex-wrap gap-1">
+							{#if columns.some((column) => column.type === 'state')}<StatusChip status={service.state} />{/if}
+							{#if columns.some((column) => column.type === 'status')}<StatusChip status={service.status} />{/if}
+						</div>
+					</div>
+					<dl class="grid gap-1 text-xs text-ink-2">
+						<div class="flex flex-wrap justify-between gap-2"><dt>{t('services.columns.host')}</dt><dd class="break-all">{service.host}</dd></div>
+						{#if columns.some((column) => column.type === 'zone')}<div class="flex flex-wrap justify-between gap-2"><dt>{t('services.columns.zone')}</dt><dd class="break-all">{service.zone || '-'}</dd></div>{/if}
+					</dl>
+					{#snippet details()}
+						<dl class="grid gap-2 text-xs text-ink-2">
+							<div><dt>{t('services.columns.disabledReason')}</dt><dd class="break-words">{service.disabled_reason || '-'}</dd></div>
+							<div><dt>{t('services.columns.updated')}</dt><dd class="tabular-nums">{fmtTime(service.updated_at)}</dd></div>
+						</dl>
+					{/snippet}
+				</CompactResourceCard>
+			{/each}
+		{/snippet}
 	<TableShell density="compact">
 		<table aria-label={t('services.table.listLabel')}>
 			<thead>
@@ -120,4 +146,5 @@
 			</tbody>
 		</table>
 	</TableShell>
+	</ResponsiveTable>
 {/if}

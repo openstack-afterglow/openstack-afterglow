@@ -17,18 +17,16 @@
 		idPrefix: string;
 		submitLabel: string;
 		disabled?: boolean;
-		onSubmit: (account: { name: string; password: string; personal_domain_name: string }) => Promise<void>;
+		onSubmit: (account: { name: string; password: string }) => Promise<void>;
 	} = $props();
 
 	let name = $state('');
-	let personalDomain = $state('');
 	let password = $state('');
 	let confirm = $state('');
 	let submitting = $state(false);
 	let attempted = $state(false);
 
 	const nameError = $derived(attempted && !name.trim() ? t('onboarding.required') : '');
-	const domainError = $derived(attempted && !personalDomain.trim() ? t('onboarding.required') : '');
 	// Mirrors the onboarding API's password bounds; the server remains authoritative.
 	const PASSWORD_MIN = 12;
 	const PASSWORD_MAX = 1024;
@@ -43,9 +41,9 @@
 		event.preventDefault();
 		if (submitting || disabled) return;
 		attempted = true;
-		if (!name.trim() || !personalDomain.trim() || password.length < PASSWORD_MIN || confirm !== password) return;
+		if (!name.trim() || password.length < PASSWORD_MIN || confirm !== password) return;
 		submitting = true;
-		const account = { name: name.trim(), password, personal_domain_name: personalDomain.trim() };
+		const account = { name: name.trim(), password };
 		password = ''; confirm = ''; attempted = false;
 		try {
 			await onSubmit(account);
@@ -56,16 +54,13 @@
 			submitting = false;
 		}
 	}
-	onDestroy(() => { name = ''; personalDomain = ''; password = ''; confirm = ''; });
+	onDestroy(() => { name = ''; password = ''; confirm = ''; });
 </script>
 
 <form class="onboarding-form" novalidate onsubmit={submit}>
 	<p class="text-sm text-ink-2">{t('onboarding.personalOwnership')}</p>
 	<Field label={t('onboarding.name')} for="{idPrefix}-name" help={t('onboarding.nameHelp')} error={nameError} required>
 		<TextInput id="{idPrefix}-name" bind:value={name} autocomplete="username" disabled={submitting || disabled} required ariaInvalid={!!nameError} />
-	</Field>
-	<Field label={t('onboarding.personalDomain')} for="{idPrefix}-domain" help={t('onboarding.personalDomainHelp')} error={domainError} required>
-		<TextInput id="{idPrefix}-domain" bind:value={personalDomain} maxlength={64} autocomplete="off" disabled={submitting || disabled} required ariaInvalid={!!domainError} />
 	</Field>
 	<Field label={t('onboarding.password')} for="{idPrefix}-password" help={t('onboarding.passwordHelp')} error={passwordError} required>
 		<TextInput id="{idPrefix}-password" type="password" bind:value={password} maxlength={PASSWORD_MAX} autocomplete="new-password" disabled={submitting || disabled} required ariaInvalid={!!passwordError} />

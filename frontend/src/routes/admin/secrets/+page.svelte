@@ -12,12 +12,16 @@
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import FormModal from '$lib/components/ui/FormModal.svelte';
-	import { secretsApi } from '$lib/api/secrets';
-	import { ApiError } from '$lib/api/client';
-	import { untrack } from 'svelte';
+	import { api as baseApi, ApiError } from '$lib/api/client';
+	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
+	const api = createAdminInventoryApi(baseApi);
+	import { onDestroy, untrack } from 'svelte';
+	onDestroy(api.dispose);
 	import { betaFeatures } from '$lib/stores/betaFeatures';
 	import BetaFeatureGate from '$lib/components/ui/BetaFeatureGate.svelte';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	interface ProjectQuota {
 		project_id: string;
@@ -60,7 +64,7 @@
 			return;
 		}
 		try {
-			quotas = (await secretsApi.listProjectQuotas($auth.token ?? undefined, $auth.projectId ?? undefined)) as ProjectQuota[];
+			quotas = await api.get<ProjectQuota[]>('/api/v1/admin/key-manager/project-quotas', $auth.token ?? undefined, $auth.projectId ?? undefined);
 			error = '';
 		} catch (e) {
 			error = e instanceof ApiError ? (e.message || t('secrets.loadFailed', { status: e.status })) : t('secrets.serverError');
@@ -109,11 +113,12 @@
 		if (editOrders !== null) body.orders = editOrders;
 		if (editContainers !== null) body.containers = editContainers;
 		try {
-			await secretsApi.setProjectQuota(editProjectId, body, $auth.token ?? undefined, $auth.projectId ?? undefined);
+			await api.put(`/api/v1/admin/key-manager/project-quotas/${encodeURIComponent(editProjectId)}`, body, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			toast.success(t('secrets.setSuccess'));
 			showSetQuota = false;
 			await fetchQuotas();
 		} catch (e) {
+			if (!api.isCurrent()) return;
 			toast.error(t('secrets.setFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			submitting = false;
@@ -124,10 +129,11 @@
 		if (!keyManagerEnabled) return;
 		resettingProjects[projectId] = true;
 		try {
-			await secretsApi.deleteProjectQuota(projectId, $auth.token ?? undefined, $auth.projectId ?? undefined);
+			await api.delete(`/api/v1/admin/key-manager/project-quotas/${encodeURIComponent(projectId)}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			toast.success(t('secrets.resetSuccess'));
 			await fetchQuotas();
 		} catch (e) {
+			if (!api.isCurrent()) return;
 			toast.error(t('secrets.resetFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			delete resettingProjects[projectId];
@@ -209,7 +215,31 @@
 			<p class="text-sm">{t('secrets.empty')}</p>
 		</div>
 	{:else}
-		<div class="overflow-x-auto" data-tour="admin-key-manager-ready">
+		<div data-tour="admin-key-manager-ready">
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each quotas as q, index (q.project_id)}
+					<CompactResourceCard>
+						<div><span class="text-xs text-ink-2">{t('secrets.projectId')}</span><p class="font-mono font-medium">{q.project_id}</p></div>
+						<dl>
+							<div><dt>{t('secrets.secrets')}</dt><dd>{q.project_quotas.secrets ?? -1}</dd></div>
+							<div><dt>{t('secrets.orders')}</dt><dd>{q.project_quotas.orders ?? -1}</dd></div>
+							<div><dt>{t('secrets.containers')}</dt><dd>{q.project_quotas.containers ?? -1}</dd></div>
+						</dl>
+						{#snippet actions()}
+							<div class="flex flex-wrap gap-2" data-tour={index === 0 ? 'admin-key-manager-actions' : undefined}>
+								<Button variant="secondary" size="sm" onclick={() => openEdit(q)}>{t('secrets.configure')}</Button>
+								<Button variant="subtle" size="sm" onclick={() => handleResetQuota(q.project_id)} disabled={resettingProjects[q.project_id]}>
+									{#if resettingProjects[q.project_id]}
+										<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('secrets.resetting')}</span></span>
+									{:else}{t('secrets.reset')}{/if}
+								</Button>
+							</div>
+						{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
+			<div class="overflow-x-auto">
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="text-left text-ink-2 border-b border-line-2">
@@ -239,6 +269,8 @@
 					{/each}
 				</tbody>
 			</table>
+			</div>
+		</ResponsiveTable>
 		</div>
 	{/if}
 	</div>

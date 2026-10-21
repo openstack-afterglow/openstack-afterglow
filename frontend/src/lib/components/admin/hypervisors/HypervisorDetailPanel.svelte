@@ -11,6 +11,8 @@
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import HypervisorRemovalReview from './HypervisorRemovalReview.svelte';
 	import type { RemovalInspection, RemovalApproval, RemovalResult } from './removal';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	export interface HypervisorDetail {
 		id: string;
@@ -327,6 +329,16 @@
 			{#if detail.servers.length > 0}
 				<div class="bg-surface-base border border-line rounded-xl p-4">
 					<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">{t('hypervisors.detail.vmList', { count: detail.servers.length })}</h3>
+					<ResponsiveTable>
+						{#snippet cards()}
+							{#each detail?.servers ?? [] as s (s.id)}
+								<CompactResourceCard>
+									<div class="flex items-start justify-between gap-2"><button type="button" class="min-h-11 break-all text-left font-medium text-ink-0" onclick={() => onOpenDetail(s.id, s.project_id)}>{s.name || s.id.slice(0, 12)}</button><StatusChip status={s.status} /></div><p class="break-all text-xs text-ink-2">{projectNameMap.get(s.project_id) || s.project_id.slice(0, 8)} · {s.flavor}</p>
+									{#snippet actions()}{#if s.status === 'ACTIVE'}<Button variant="outline" size="sm" disabled={pending} onclick={() => onMigrate(s.id, s.name, 'live')}>{t('hypervisors.detail.move')}</Button>{:else if s.status === 'SHUTOFF'}<Button variant="outline" size="sm" disabled={pending} onclick={() => onMigrate(s.id, s.name, 'cold')}>{t('hypervisors.detail.move')}</Button>{/if}{/snippet}
+									{#snippet details()}<div class="space-y-2 break-all font-mono text-xs text-ink-2"><p>{s.id}</p><p>{s.project_id}</p></div>{/snippet}
+								</CompactResourceCard>
+							{/each}
+						{/snippet}
 					<div class="space-y-1.5">
 						{#each detail.servers as s}
 							<div class="flex items-center justify-between py-1.5 border-b border-line/50 last:border-0">
@@ -349,6 +361,7 @@
 							</div>
 						{/each}
 					</div>
+					</ResponsiveTable>
 				</div>
 			{/if}
 		</div>

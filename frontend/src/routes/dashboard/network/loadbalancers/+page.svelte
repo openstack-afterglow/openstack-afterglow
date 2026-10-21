@@ -19,6 +19,7 @@
   import { toast } from '$lib/stores/toast';
   import { isDroverLoadBalancer } from '$lib/utils/droverLoadBalancer';
   import { t } from '$lib/i18n/ns/network-pages';
+  import { CompactResourceCard, Button } from '$lib/components/ui';
 
 
   let selectedLbId = $state<string | null>(null);
@@ -147,41 +148,14 @@
     </div>
       {#each loadbalancers as lb (lb.id)}
         {@const isProtected = isDroverLoadBalancer(lb)}
-        <div class="resource-selection-surface bg-surface-base border border-line rounded-lg p-5" data-selected={selection.has(lb.id)}>
-          <div class="flex items-center gap-4">
-            <SelectionCheckbox
-              checked={selection.has(lb.id)}
-              disabled={busy || isProtected}
-              unavailable={isProtected}
-              title={isProtected ? t('loadBalancers.selection.protected') : undefined}
-              ariaLabel={t('loadBalancers.selection.select', { name: lb.name || lb.id.slice(0, 12) })}
-              onclick={() => selection.toggle(lb.id)}
-            />
-            <!-- Blue icon chip -->
-            <div class="shrink-0 w-10 h-10 rounded-lg bg-action-warm/15 border border-action-warm/30 flex items-center justify-center">
-              <svg class="w-5 h-5 text-warm-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="9" stroke-width="2"/>
-                <path stroke-linecap="round" stroke-width="2" d="M8 12h8M12 8v8"/>
-              </svg>
-            </div>
-            <!-- Name + subtitle -->
-            <div class="flex-1 min-w-0">
-              <div class="text-ink-0 text-[15px] font-semibold truncate">{lb.name || lb.id.slice(0, 12)}</div>
-              <div class="text-xs text-ink-2 mt-0.5 font-mono">
-                VIP {lb.vip_address ?? '—'}
-                {#if lb.operating_status}
-                  <span class="ml-2 {lb.operating_status === 'ONLINE' ? 'text-green-400' : 'text-ink-2'}">{lb.operating_status}</span>
-                {/if}
-              </div>
-            </div>
-            <!-- Status + action -->
-            <StatusChip status={lb.status} />
-            <button
-              onclick={() => openLbPanel(lb.id)}
-              class="px-3 py-1.5 text-[13px] text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 rounded-lg transition-colors shrink-0"
-            >{t('loadBalancers.actions.detail')}</button>
+        <CompactResourceCard selected={selection.has(lb.id)}>
+          <div class="flex items-center gap-2">
+            <SelectionCheckbox checked={selection.has(lb.id)} disabled={busy || isProtected} unavailable={isProtected} title={isProtected ? t('loadBalancers.selection.protected') : undefined} ariaLabel={t('loadBalancers.selection.select', { name: lb.name || lb.id.slice(0, 12) })} onclick={() => selection.toggle(lb.id)} />
+            <strong class="min-w-0 flex-1 break-all">{lb.name || lb.id.slice(0, 12)}</strong><StatusChip status={lb.status} />
           </div>
-        </div>
+          <p class="font-mono text-xs text-ink-2">VIP {lb.vip_address ?? '—'}{#if lb.operating_status} · {lb.operating_status}{/if}</p>
+          {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => openLbPanel(lb.id)}>{t('loadBalancers.actions.detail')}</Button>{/snippet}
+        </CompactResourceCard>
       {/each}
     </div>
   {/if}

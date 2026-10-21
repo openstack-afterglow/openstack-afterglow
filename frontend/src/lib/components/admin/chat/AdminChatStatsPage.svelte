@@ -1,0 +1,572 @@
+<script lang="ts">
+	import PageShell from '$lib/components/ui/PageShell.svelte';
+	import { onDestroy, untrack } from 'svelte';
+	import { get } from 'svelte/store';
+	import { auth, authReady, projectSwitching, logoutInProgress } from '$lib/stores/auth';
+	import { api, ApiError } from '$lib/api/client';
+	import { adminInventoryScope } from '$lib/stores/adminInventoryScope';
+	import { adminInventoryPath } from '$lib/api/adminInventoryScope';
+	import PageHeader from '$lib/components/ui/PageHeader.svelte';
+	import StatTile from '$lib/components/ui/StatTile.svelte';
+	import TableShell from '$lib/components/ui/TableShell.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
+	import { t } from '$lib/i18n/ns/chat-studio';
+	import RichText from '$lib/i18n/RichText.svelte';
+	import BklitChart from '$lib/components/charts/BklitChart.svelte';
+	import type { ChartDatum, ChartSpec } from '$lib/components/charts/types';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+
+	import { usageChartWindow } from '$lib/utils/chatUsageChartWindow';
+	import { adminIdentityLabel } from '$lib/utils/adminIdentityLabel';
+	interface SourceStat {
+		source: string;
+		tokens: number;
+		raw_cost: number;
+		request_count: number;
+	}
+	interface Overview {
+		prompt_tokens: number;
+		completion_tokens: number;
+		total_tokens: number;
+		credited_cost: number;
+		raw_cost: number;
+		request_count: number;
+		unpriced_requests: number;
+		active_users: number;
+		conversation_count: number;
+		by_source: SourceStat[];
+	}
+	interface ModelStat {
+		model_name: string;
+		prompt_tokens: number;
+		completion_tokens: number;
+		total_tokens: number;
+		credited_cost: number;
+		raw_cost: number;
+		request_count: number;
+		unpriced_requests: number;
+	}
+	interface UserStat {
+		user_id: string;
+		user_name?: string | null;
+		prompt_tokens: number;
+		completion_tokens: number;
+		total_tokens: number;
+		credited_cost: number;
+		raw_cost: number;
+		request_count: number;
+	}
+	interface MonthStat {
+		month: string;
+		ts: number;
+		prompt_tokens: number;
+		completion_tokens: number;
+		total_tokens: number;
+		credited_cost: number;
+		raw_cost: number;
+		request_count: number;
+	}
+	interface TimeStat {
+		bucket: string;
+		source: string;
+		prompt_tokens: number;
+		completion_tokens: number;
+		total_tokens: number;
+		credited_cost: number;
+		request_count: number;
+	}
+	interface StatsResponse {
+		range: string;
+		project_id: string | null;
+		overview: Overview;
+		by_model: ModelStat[];
+		monthly: MonthStat[];
+		timeseries: TimeStat[];
+		by_user: UserStat[];
+	}
+
+	const RANGES = [
+		{ value: '30d', get label() { return t('adminStats.range30Days'); } },
+		{ value: '90d', get label() { return t('adminStats.range90Days'); } },
+		{ value: '1y', get label() { return t('adminStats.rangeYear'); } },
+		{ value: 'all', get label() { return t('adminStats.rangeAll'); } }
+	];
+
+	let authorityRevision = $state(0);
+	let authorityKey = '';
+	let disposed = false;
+	const USER_PAGE = 20;
+
+	let range = $state('30d');
+	let selectedModel = $state('');
+	let chartRevision = $state(0);
+	let chartBucket = $state('hour');
+	let data = $state<StatsResponse | null>(null);
+	let timeSeries = $state<TimeStat[]>([]);
+	let loading = $state(false);
+	let loadingMore = $state(false);
+	let loadingTimeSeries = $state(false);
+	let timeSeriesError = $state('');
+	let error = $state('');
+	let userRows = $state<UserStat[]>([]);
+	let userOffset = $state(0);
+	let hasMoreUsers = $state(false);
+
+	let loadGeneration = 0;
+	let timeSeriesGeneration = 0;
+	const fmtInt = (n: number) => (n ?? 0).toLocaleString(intlLocale());
+	const fmtCredit = (n: number) => (n ?? 0).toLocaleString(intlLocale(), { maximumFractionDigits: 2 });
+	const fmtUsd = (n: number) => `$${(n ?? 0).toFixed(4)}`;
+	const CHART_BUCKETS = [
+		{ value: '5m', get label() { return t('adminStats.bucket5Minutes'); } },
+		{ value: '15m', get label() { return t('adminStats.bucket15Minutes'); } },
+		{ value: 'hour', get label() { return t('adminStats.bucketHour'); } },
+		{ value: 'day', get label() { return t('adminStats.bucketDay'); } },
+		{ value: 'month', get label() { return t('adminStats.bucketMonth'); } }
+	];
+	const chartGranularityLabel = $derived(CHART_BUCKETS.find((item) => item.value === chartBucket)?.label ?? t('adminStats.bucketHour'));
+	const fmtChartBucket = (bucket: string) => {
+		if (chartBucket === 'month') return bucket;
+		if (chartBucket === 'day') return bucket.slice(5);
+		return `${bucket.slice(5, 10)} ${bucket.slice(11, 16)}`;
+	};
+	const chartWindowLabel = $derived(usageChartWindow(chartBucket)?.label ?? null);
+
+	function reset() {
+		++loadGeneration;
+		++timeSeriesGeneration;
+		data = null;
+		userRows = [];
+		selectedModel = '';
+		userOffset = 0;
+		hasMoreUsers = false;
+		timeSeries = [];
+		error = '';
+		timeSeriesError = '';
+		loading = false;
+		loadingMore = false;
+		loadingTimeSeries = false;
+	}
+	function authorityChanged() {
+		const state = get(auth);
+		const next = JSON.stringify([state.sessionId, state.userId, state.identityDomainId, state.domainId,
+			state.projectId, state.token, state.isSystemAdmin, get(authReady), get(projectSwitching),
+			get(logoutInProgress), get(adminInventoryScope)]);
+		if (next === authorityKey) return;
+		authorityKey = next;
+		reset();
+		++authorityRevision;
+	}
+	const unsubscribers = [auth.subscribe(authorityChanged), authReady.subscribe(authorityChanged),
+		projectSwitching.subscribe(authorityChanged), logoutInProgress.subscribe(authorityChanged),
+		adminInventoryScope.subscribe(authorityChanged)];
+	onDestroy(() => { disposed = true; reset(); for (const unsubscribe of unsubscribers) unsubscribe(); });
+	function capture() {
+		const state = get(auth);
+		if (disposed || !state.token || !state.userId || !state.isSystemAdmin || !get(authReady)
+			|| get(projectSwitching) || get(logoutInProgress)) return null;
+		const revision = authorityRevision;
+		const generation = loadGeneration;
+		const scope = get(adminInventoryScope);
+		return { token: state.token, projectId: state.projectId ?? undefined, scope,
+			current: () => !disposed && revision === authorityRevision && generation === loadGeneration };
+	}
+	function changeRange(value: string) {
+		if (value === range) return;
+		reset();
+		range = value;
+		++authorityRevision;
+	}
+	function changeChart(kind: 'bucket' | 'model', value: string) {
+		++timeSeriesGeneration;
+		timeSeries = [];
+		timeSeriesError = '';
+		if (kind === 'bucket') chartBucket = value;
+		else selectedModel = value;
+		++chartRevision;
+	}
+	async function load() {
+		const owner = capture();
+		if (!owner) return;
+		loading = true;
+		error = '';
+		try {
+			const qs = new URLSearchParams({ range, user_limit: String(USER_PAGE), bucket: chartBucket });
+			const res = await api.get<StatsResponse>(adminInventoryPath(`/api/v1/chat/admin/stats?${qs}`, owner.scope), owner.token, owner.projectId);
+			if (!owner.current()) return;
+			data = res;
+			userRows = res.by_user ?? [];
+			userOffset = userRows.length;
+			hasMoreUsers = userRows.length >= USER_PAGE;
+		} catch (e) {
+			if (owner.current()) error = e instanceof ApiError ? e.message : t('adminStats.loadFailed');
+		} finally {
+			if (owner.current()) loading = false;
+		}
+	}
+	async function loadMoreUsers() {
+		const owner = capture();
+		if (!owner || loading || loadingMore || !hasMoreUsers) return;
+		loadingMore = true;
+		try {
+			const qs = new URLSearchParams({ range, limit: String(USER_PAGE), offset: String(userOffset) });
+			const res = await api.get<{ users: UserStat[] }>(
+				adminInventoryPath(`/api/v1/chat/admin/stats/users?${qs}`, owner.scope), owner.token, owner.projectId);
+			if (!owner.current()) return;
+			const more = res.users ?? [];
+			userRows = [...userRows, ...more];
+			userOffset += more.length;
+			hasMoreUsers = more.length >= USER_PAGE;
+		} catch (e) {
+			if (owner.current()) { hasMoreUsers = false; error = e instanceof ApiError ? e.message : t('adminStats.loadFailed'); }
+		} finally {
+			if (owner.current()) loadingMore = false;
+		}
+	}
+	async function loadTimeSeries() {
+		const owner = capture();
+		if (!owner) return;
+		const generation = ++timeSeriesGeneration;
+		const current = () => owner.current() && generation === timeSeriesGeneration;
+		timeSeries = [];
+		loadingTimeSeries = true;
+		timeSeriesError = '';
+		try {
+			const qs = new URLSearchParams({ range, bucket: chartBucket });
+			if (selectedModel) qs.set('model_name', selectedModel);
+			const res = await api.get<{ series: TimeStat[] }>(
+				adminInventoryPath(`/api/v1/chat/admin/stats/timeseries?${qs}`, owner.scope), owner.token, owner.projectId);
+			if (current()) timeSeries = res.series ?? [];
+		} catch (e) {
+			if (current()) timeSeriesError = e instanceof ApiError ? e.message : t('adminStats.timeSeriesLoadFailed');
+		} finally {
+			if (current()) loadingTimeSeries = false;
+		}
+	}
+	$effect(() => {
+		void authorityRevision;
+		void range;
+		untrack(() => { void load(); });
+	});
+	$effect(() => {
+		void authorityRevision;
+		void chartRevision;
+		void range;
+		void chartBucket;
+		void selectedModel;
+		untrack(() => { void loadTimeSeries(); });
+	});
+
+	function aggregateSeries(rows: TimeStat[]): Map<string, ChartDatum> {
+		const buckets = new Map<string, ChartDatum>();
+		for (const row of rows) {
+			const current = buckets.get(row.bucket) ?? { bucket: row.bucket, prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+			for (const key of ['prompt_tokens', 'completion_tokens', 'total_tokens'] as const) {
+				const value = row[key];
+				const previous = current[key];
+				current[key] = typeof value !== 'number' || !Number.isFinite(value) || previous === null
+					? null
+					: Number(previous) + value;
+			}
+			buckets.set(row.bucket, current);
+		}
+		return buckets;
+	}
+
+	function formatBucket(date: Date): string {
+		const iso = date.toISOString();
+		if (chartBucket === 'month') return iso.slice(0, 7);
+		if (chartBucket === 'day') return iso.slice(0, 10);
+		const minute = chartBucket === '5m' || chartBucket === '15m' ? iso.slice(14, 16) : '00';
+		return `${iso.slice(0, 10)} ${iso.slice(11, 13)}:${minute}:00`;
+	}
+
+	function advanceBucket(date: Date): void {
+		if (chartBucket === 'month') date.setUTCMonth(date.getUTCMonth() + 1);
+		else if (chartBucket === 'day') date.setUTCDate(date.getUTCDate() + 1);
+		else if (chartBucket === '5m') date.setUTCMinutes(date.getUTCMinutes() + 5);
+		else if (chartBucket === '15m') date.setUTCMinutes(date.getUTCMinutes() + 15);
+		else date.setUTCHours(date.getUTCHours() + 1);
+	}
+
+	function floorBucket(date: Date): Date {
+		const floored = new Date(date);
+		floored.setUTCSeconds(0, 0);
+		if (chartBucket === 'month') {
+			floored.setUTCDate(1);
+			floored.setUTCHours(0, 0, 0, 0);
+		} else if (chartBucket === 'day') {
+			floored.setUTCHours(0, 0, 0, 0);
+		} else if (chartBucket === 'hour') {
+			floored.setUTCMinutes(0);
+		} else {
+			const interval = chartBucket === '5m' ? 5 : 15;
+			floored.setUTCMinutes(Math.floor(floored.getUTCMinutes() / interval) * interval);
+		}
+		return floored;
+	}
+
+	function chartStart(now: Date, rows: TimeStat[]): Date {
+		const window = usageChartWindow(chartBucket);
+		if (window) return floorBucket(new Date(now.getTime() - window.milliseconds));
+		if (chartBucket !== 'month') return floorBucket(now);
+		if (range === 'all') {
+			const oldest = rows
+				.map((row) => row.bucket)
+				.filter((bucket) => /^\d{4}-\d{2}$/.test(bucket))
+				.sort()[0];
+			if (oldest) return floorBucket(new Date(`${oldest}-01T00:00:00.000Z`));
+		}
+		const days = range === '1y' ? 365 : range === '90d' ? 90 : 30;
+		return floorBucket(new Date(now.getTime() - days * 24 * 60 * 60 * 1000));
+	}
+
+	function filledSeries(rows: TimeStat[]): ChartDatum[] {
+		const aggregate = aggregateSeries(rows);
+		const end = floorBucket(new Date());
+		const points: ChartDatum[] = [];
+		for (const cursor = chartStart(end, rows); cursor <= end; advanceBucket(cursor)) {
+			const bucket = formatBucket(cursor);
+			const point = aggregate.get(bucket);
+			points.push({
+				bucket,
+				prompt_tokens: point?.prompt_tokens ?? null,
+				completion_tokens: point?.completion_tokens ?? null,
+				total_tokens: point?.total_tokens ?? null,
+			});
+		}
+		return points;
+	}
+
+	const overview = $derived(data?.overview);
+	const models = $derived(data?.by_model ?? []);
+	const users = $derived(userRows);
+	const chartPoints = $derived(filledSeries(timeSeries));
+	const maxHourlyTokens = $derived(Math.max(1, ...chartPoints.map((point) => typeof point.total_tokens === 'number' && Number.isFinite(point.total_tokens) ? point.total_tokens : 0)));
+	const tokenChart: ChartSpec = $derived({
+		kind: 'bar',
+		data: chartPoints.map((point) => ({ ...point, bucket: fmtChartBucket(String(point.bucket)) })),
+		xKey: 'bucket',
+		series: [
+			{ key: 'prompt_tokens', label: t('adminStats.inputTokens'), color: 'var(--color-accent)' },
+			{ key: 'completion_tokens', label: t('adminStats.outputTokens'), color: 'var(--color-accent-2)' },
+		],
+		stacked: true,
+		orientation: 'vertical',
+		domain: [0, maxHourlyTokens],
+		formatValue: fmtInt,
+	});
+	const maxModelTokens = $derived(Math.max(1, ...models.map((m) => m.total_tokens)));
+	const hasData = $derived((overview?.request_count ?? 0) > 0);
+
+	const cardCls = 'rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)]';
+	const selectCls =
+		'rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-base)] px-3 py-1.5 text-sm text-[var(--color-ink-1)] focus:outline-none focus:border-[var(--color-accent)]';
+</script>
+
+<PageShell>
+	<PageHeader
+		breadcrumb={t('adminStats.breadcrumb')}
+		title={t('adminStats.title')}
+		subtitle={t('adminStats.subtitle')}
+	/>
+
+	<!-- 필터 -->
+	<div class="mb-6 flex flex-wrap items-center gap-3">
+		<div class="flex gap-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-1">
+			{#each RANGES as r (r.value)}
+				<button
+					onclick={() => changeRange(r.value)}
+					class="rounded px-3 py-1 text-xs font-medium transition-colors {range === r.value
+						? 'bg-[var(--color-accent)] text-[var(--color-ink-0)]'
+						: 'text-[var(--color-ink-3)] hover:text-[var(--color-ink-1)]'}"
+				>
+					{r.label}
+				</button>
+			{/each}
+		</div>
+		{#if loading}<ActivityIndicator size="xs" label={t('adminStats.loading')} class="text-xs text-ink-2" />{/if}
+	</div>
+
+	{#if error}
+		<div
+			class="mb-6 rounded-lg border border-[var(--color-state-danger)] bg-[var(--color-state-danger)]/10 px-4 py-3 text-sm text-[var(--color-state-danger)]"
+		>
+			{error}
+		</div>
+	{/if}
+
+	{#if !loading && !error && data && !hasData}
+		<EmptyState headline={t('adminStats.emptyTitle')} description={t('adminStats.emptyDescription')} class="[&_.motion-enter]:animate-none" />
+	{:else if overview}
+		<!-- KPI 카드 -->
+		<div class="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
+			<StatTile label={t('adminStats.inputTokens')} value={fmtInt(overview.prompt_tokens)} accent="blue" />
+			<StatTile label={t('adminStats.outputTokens')} value={fmtInt(overview.completion_tokens)} accent="violet" />
+			<StatTile label={t('adminStats.totalRequests')} value={fmtInt(overview.request_count)} accent="cyan" />
+			<StatTile label={t('adminStats.activeUsers')} value={fmtInt(overview.active_users)} accent="emerald" />
+			<StatTile label={t('adminStats.deductedCredits')} value={fmtCredit(overview.credited_cost)} accent="amber" />
+			<StatTile label={t('adminStats.costUsd')} value={fmtUsd(overview.raw_cost)} accent="rose" />
+			<StatTile label={t('adminStats.unpricedBilling')} value={fmtInt(overview.unpriced_requests)} accent="rose" />
+		</div>
+
+		<section class="{cardCls} mb-8 p-5">
+			<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+				<div>
+					<h3 class="text-sm font-semibold text-[var(--color-ink-1)]">{t('adminStats.chartTitle', { granularity: chartGranularityLabel })}</h3>
+					<p class="mt-1 text-xs text-[var(--color-ink-3)]">
+						{selectedModel
+							? t('adminStats.chartModelUsage', { model: selectedModel, granularity: chartGranularityLabel, hasWindow: chartWindowLabel ? 'yes' : 'no', window: chartWindowLabel ?? '' })
+							: t('adminStats.chartAllUsage', { granularity: chartGranularityLabel, hasWindow: chartWindowLabel ? 'yes' : 'no', window: chartWindowLabel ?? '' })}
+					</p>
+				</div>
+				<div class="flex flex-wrap gap-2">
+					<select class={selectCls} value={chartBucket} onchange={(event) => changeChart('bucket', event.currentTarget.value)} aria-label={t('adminStats.selectBucket')}>
+						{#each CHART_BUCKETS as bucket (bucket.value)}
+							<option value={bucket.value}>{bucket.label}</option>
+						{/each}
+					</select>
+					<select class={selectCls} value={selectedModel} onchange={(event) => changeChart('model', event.currentTarget.value)} aria-label={t('adminStats.selectModel')}>
+						<option value="">{t('adminStats.allModels')}</option>
+						{#each models as model (model.model_name)}
+							<option value={model.model_name}>{model.model_name}</option>
+						{/each}
+					</select>
+				</div>
+			</div>
+			{#if loadingTimeSeries}
+				<ActivityIndicator label={t('adminStats.chartLoading', { granularity: chartGranularityLabel })} class="text-sm text-ink-2" />
+			{:else if timeSeriesError}
+				<p class="text-sm text-[var(--color-state-danger)]">{timeSeriesError}</p>
+			{:else if timeSeries.length === 0}
+				<EmptyState headline={t('adminStats.chartEmpty', { granularity: chartGranularityLabel })} class="py-4 [&_.motion-enter]:animate-none" />
+			{:else}
+				<BklitChart spec={tokenChart} height={192} label={t('adminStats.chartTitle', { granularity: chartGranularityLabel })} />
+				{#if chartBucket === 'month'}
+					<div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-2 tabular-nums">
+						{#each chartPoints as point (point.bucket)}
+							<span>{point.bucket}: {typeof point.total_tokens === 'number' ? fmtInt(point.total_tokens) : '—'}</span>
+						{/each}
+					</div>
+				{/if}
+				<div class="mt-4 flex items-center gap-4 text-xs text-[var(--color-ink-3)]">
+					<span class="flex items-center gap-1.5">
+						<span class="inline-block h-2 w-2 rounded-full bg-[var(--color-accent)]"></span>{t('adminStats.inputTokens')}
+					</span>
+					<span class="flex items-center gap-1.5">
+						<span class="inline-block h-2 w-2 rounded-full bg-[var(--color-accent-2)]"></span>{t('adminStats.outputTokens')}
+					</span>
+				</div>
+			{/if}
+		</section>
+
+
+		<!-- 모델별 -->
+		<section class="mb-8">
+			<h3 class="mb-3 text-sm font-semibold text-[var(--color-ink-1)]">{t('adminStats.modelUsage')}</h3>
+			{#if models.length === 0}
+				<EmptyState headline={t('adminStats.modelEmpty')} class="py-4 [&_.motion-enter]:animate-none" />
+			{:else}
+				<ResponsiveTable>
+					{#snippet cards()}
+						{#each models as m (m.model_name)}<CompactResourceCard><p class="font-medium">{m.model_name}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminStats.totalTokens')}</dt><dd>{fmtInt(m.total_tokens)}</dd></div><div><dt>{t('adminStats.credits')}</dt><dd>{fmtCredit(m.credited_cost)}</dd></div></dl>{#snippet details()}<dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminStats.input')}</dt><dd>{fmtInt(m.prompt_tokens)}</dd></div><div><dt>{t('adminStats.output')}</dt><dd>{fmtInt(m.completion_tokens)}</dd></div><div><dt>{t('adminStats.requests')}</dt><dd>{fmtInt(m.request_count)}</dd></div><div><dt>{t('adminStats.cost')}</dt><dd>{fmtUsd(m.raw_cost)}</dd></div><div><dt>{t('adminStats.unpriced')}</dt><dd>{fmtInt(m.unpriced_requests)}</dd></div></dl><div role="meter" aria-label={t('adminStats.modelShareLabel', { model: m.model_name })} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round((m.total_tokens / maxModelTokens) * 100)} aria-valuetext={t('adminStats.tokenCount', { count: fmtInt(m.total_tokens) })}><BklitChart spec={{ kind: 'gauge', value: (m.total_tokens / maxModelTokens) * 100, color: 'var(--color-accent)', track: 'var(--color-surface-sunken)' }} height={6} decorative /></div>{/snippet}</CompactResourceCard>{/each}
+					{/snippet}
+				<TableShell>
+					<table>
+						<thead>
+							<tr class="text-xs uppercase tracking-wide">
+								<th>{t('adminStats.model')}</th>
+								<th class="text-right">{t('adminStats.share')}</th>
+								<th class="text-right">{t('adminStats.input')}</th>
+								<th class="text-right">{t('adminStats.output')}</th>
+								<th class="text-right">{t('adminStats.totalTokens')}</th>
+								<th class="text-right">{t('adminStats.requests')}</th>
+								<th class="text-right">{t('adminStats.credits')}</th>
+								<th class="text-right">{t('adminStats.cost')}</th>
+								<th class="text-right">{t('adminStats.unpriced')}</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each models as m (m.model_name)}
+								<tr>
+									<td class="text-sm font-medium text-[var(--color-ink-1)]">{m.model_name}</td>
+									<td class="w-32">
+										<div role="meter" aria-label={t('adminStats.modelShareLabel', { model: m.model_name })} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round((m.total_tokens / maxModelTokens) * 100)} aria-valuetext={t('adminStats.tokenCount', { count: fmtInt(m.total_tokens) })}>
+											<BklitChart spec={{ kind: 'gauge', value: (m.total_tokens / maxModelTokens) * 100, color: 'var(--color-accent)', track: 'var(--color-surface-sunken)' }} height={6} decorative />
+										</div>
+									</td>
+									<td class="text-right text-sm text-[var(--color-ink-2)]">{fmtInt(m.prompt_tokens)}</td>
+									<td class="text-right text-sm text-[var(--color-ink-2)]">{fmtInt(m.completion_tokens)}</td>
+									<td class="text-right text-sm font-medium text-[var(--color-ink-1)]">{fmtInt(m.total_tokens)}</td>
+									<td class="text-right text-sm text-[var(--color-ink-2)]">{fmtInt(m.request_count)}</td>
+									<td class="text-right text-sm text-[var(--color-ink-2)]">{fmtCredit(m.credited_cost)}</td>
+									<td class="text-right text-sm text-[var(--color-ink-2)]">{fmtUsd(m.raw_cost)}</td>
+									<td class="text-right text-sm text-[var(--color-state-warning)]">{fmtInt(m.unpriced_requests)}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</TableShell>
+				</ResponsiveTable>
+			{/if}
+		</section>
+
+		<!-- 사용자별 -->
+		<section>
+			{#snippet userUsageNote(text: string)}<span class="text-xs font-normal text-[var(--color-ink-3)]">{text}</span>{/snippet}
+			<h3 class="mb-3 text-sm font-semibold text-[var(--color-ink-1)]">
+				<RichText segments={t.rich('adminStats.userUsageTitle')} tags={{ note: userUsageNote }} />
+			</h3>
+			{#if users.length === 0}
+				<EmptyState headline={t('adminStats.userEmpty')} class="py-4 [&_.motion-enter]:animate-none" />
+			{:else}
+				<ResponsiveTable>
+					{#snippet cards()}
+						{#each users as u (u.user_id)}<CompactResourceCard><p class="font-medium">{adminIdentityLabel(u.user_name, u.user_id)}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminStats.totalTokens')}</dt><dd>{fmtInt(u.total_tokens)}</dd></div><div><dt>{t('adminStats.credits')}</dt><dd>{fmtCredit(u.credited_cost)}</dd></div></dl>{#snippet details()}<p class="font-mono break-all">{u.user_id}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminStats.input')}</dt><dd>{fmtInt(u.prompt_tokens)}</dd></div><div><dt>{t('adminStats.output')}</dt><dd>{fmtInt(u.completion_tokens)}</dd></div><div><dt>{t('adminStats.requests')}</dt><dd>{fmtInt(u.request_count)}</dd></div><div><dt>{t('adminStats.cost')}</dt><dd>{fmtUsd(u.raw_cost)}</dd></div></dl>{/snippet}</CompactResourceCard>{/each}
+					{/snippet}
+				<TableShell>
+					<table>
+						<thead>
+							<tr class="text-xs uppercase tracking-wide">
+								<th>{t('adminStats.user')}</th>
+								<th class="text-right">{t('adminStats.input')}</th>
+								<th class="text-right">{t('adminStats.output')}</th>
+								<th class="text-right">{t('adminStats.totalTokens')}</th>
+								<th class="text-right">{t('adminStats.requests')}</th>
+								<th class="text-right">{t('adminStats.credits')}</th>
+								<th class="text-right">{t('adminStats.cost')}</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each users as u (u.user_id)}
+								<tr>
+									<td class="text-sm font-medium text-[var(--color-ink-1)]" title={u.user_id}>
+										{adminIdentityLabel(u.user_name, u.user_id)}
+									</td>
+									<td class="text-right text-sm text-[var(--color-ink-2)]">{fmtInt(u.prompt_tokens)}</td>
+									<td class="text-right text-sm text-[var(--color-ink-2)]">{fmtInt(u.completion_tokens)}</td>
+									<td class="text-right text-sm font-medium text-[var(--color-ink-1)]">{fmtInt(u.total_tokens)}</td>
+									<td class="text-right text-sm text-[var(--color-ink-2)]">{fmtInt(u.request_count)}</td>
+									<td class="text-right text-sm text-[var(--color-ink-2)]">{fmtCredit(u.credited_cost)}</td>
+									<td class="text-right text-sm text-[var(--color-ink-2)]">{fmtUsd(u.raw_cost)}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</TableShell>
+				</ResponsiveTable>
+				{#if hasMoreUsers}
+					<div class="mt-3 flex justify-center">
+						<Button variant="secondary" size="sm" onclick={loadMoreUsers} disabled={loadingMore} ariaBusy={loadingMore}>
+							{#if loadingMore}<ActivityIndicator size="xs" tone="ink" />{/if}{loadingMore ? t('adminStats.loading') : t('adminStats.loadMore')}
+						</Button>
+					</div>
+				{/if}
+			{/if}
+		</section>
+	{/if}
+</PageShell>

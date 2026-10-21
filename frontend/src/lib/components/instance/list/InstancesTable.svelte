@@ -2,7 +2,7 @@
 	import { t } from '$lib/i18n/ns/instance';
 	import type { Instance } from '$lib/types/compute';
 	import InstanceRow from './InstanceRow.svelte';
-	import { SelectionCheckbox, TableShell } from '$lib/components/ui';
+	import { ResponsiveTable, SelectionCheckbox, TableShell } from '$lib/components/ui';
 
 	let {
 		instances,
@@ -31,8 +31,25 @@
 	);
 	const hasSelection = $derived(selectedIds.size > 0);
 	const partiallySelected = $derived(hasSelection && !allSelected);
+	let actingIds = $state<ReadonlySet<string>>(new Set());
+	async function act(kind: Parameters<typeof onAction>[0], instance: Instance) {
+		if (actingIds.has(instance.id)) return;
+		actingIds = new Set([...actingIds, instance.id]);
+		try { await onAction(kind, instance); }
+		finally { actingIds = new Set([...actingIds].filter((id) => id !== instance.id)); }
+	}
 </script>
 
+<ResponsiveTable>
+	{#snippet cards()}
+		<div class="responsive-card-toolbar min-h-11 text-xs text-ink-2">
+			<SelectionCheckbox checked={allSelected} indeterminate={partiallySelected} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel={t('table.selectAll')} />
+			<span>{t('table.selectAll')}</span>
+		</div>
+		{#each instances as inst (inst.id)}
+			<InstanceRow instance={inst} compact acting={actingIds.has(inst.id)} isUnderutilized={underutilized[inst.id] ?? false} selected={selectedIds.has(inst.id)} selectable={selectableIds.has(inst.id)} {selectionDisabled} {onSelect} onAction={act} onToggleSelect={() => onToggleSelect(inst.id)} />
+		{/each}
+	{/snippet}
 <TableShell density="compact" class={hasSelection ? 'has-selection' : ''}>
 	<table class="min-w-[64rem]" aria-label={t('table.instanceList')}>
 		<colgroup>
@@ -69,16 +86,18 @@
 			{#each instances as inst (inst.id)}
 				<InstanceRow
 					instance={inst}
+					acting={actingIds.has(inst.id)}
 					isUnderutilized={underutilized[inst.id] ?? false}
 					selected={selectedIds.has(inst.id)}
 					selectable={selectableIds.has(inst.id)}
 					{selectionDisabled}
 					{onSelect}
-					{onAction}
+					onAction={act}
 					onToggleSelect={() => onToggleSelect(inst.id)}
 				/>
 			{/each}
 		</tbody>
 	</table>
 </TableShell>
+</ResponsiveTable>
 

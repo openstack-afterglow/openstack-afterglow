@@ -12,6 +12,7 @@
 	import HypervisorTable from '$lib/components/admin/hypervisors/HypervisorTable.svelte';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import InstanceDetailPanel from '$lib/components/InstanceDetailPanel.svelte';
+	import { invalidateInstanceDetailSelection } from '$lib/stores/instanceDetailController.svelte';
 	import type { HypervisorRow } from '$lib/components/admin/hypervisors/HypervisorTable.svelte';
 	import HypervisorDetailPanel from '$lib/components/admin/hypervisors/HypervisorDetailPanel.svelte';
 	import type { HypervisorDetail } from '$lib/components/admin/hypervisors/HypervisorDetailPanel.svelte';
@@ -362,8 +363,8 @@
 	let selectedInstanceId = $state<string | null>(null);
 	let selectedProjectId = $state<string | null>(null);
 
-	function openInstanceDetail(id: string, pid: string) { selectedInstanceId = id; selectedProjectId = pid; }
-	function closeInstanceDetail() { selectedInstanceId = null; selectedProjectId = null; }
+	function openInstanceDetail(id: string, pid: string) { invalidateInstanceDetailSelection(); selectedInstanceId = id; selectedProjectId = pid; }
+	function closeInstanceDetail() { invalidateInstanceDetailSelection(); selectedInstanceId = null; selectedProjectId = null; }
 
 	let showMigrateModal = $state(false);
 	let migrateContext = $state({ serverId: '', serverName: '', type: 'live' as 'live' | 'cold' });

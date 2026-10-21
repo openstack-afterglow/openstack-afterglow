@@ -114,7 +114,7 @@ async def test_palimpsest_hub_proxy_requires_auth(api_client, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_hub_identity_read_survives_native_panel_denial_but_not_service_revocation(
+async def test_hub_identity_read_survives_native_panel_denial_but_not_membership_revocation(
     api_client, monkeypatch, validated_identity, current_access
 ):
     monkeypatch.setattr(get_settings(), "service_palimpsest_enabled", True)
@@ -144,7 +144,7 @@ async def test_hub_identity_read_survives_native_panel_denial_but_not_service_re
     assert client.is_closed
     assert (await api_client.get(BASE + "/projects/current", headers=headers)).status_code == 403
 
-    current_access["roles"] = ["member"]
+    current_access["roles"] = []
     monkeypatch.setattr("app.services.service_proxy._get_internal_endpoint", _unexpected_catalog)
     assert (await api_client.get(BASE + "/me", headers=headers)).status_code == 403
 
@@ -351,7 +351,7 @@ async def test_service_proxy_resumable_upload_stream(monkeypatch, validated_iden
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure", ["missing-identity", "current-downgrade", "provider-outage"])
+@pytest.mark.parametrize("failure", ["missing-identity", "membership-revoked", "provider-outage"])
 async def test_browser_authority_fails_closed_before_discovery(
     monkeypatch, validated_identity, current_access, failure
 ):
@@ -360,8 +360,8 @@ async def test_browser_authority_fails_closed_before_discovery(
     if failure == "missing-identity":
         validated_identity.pop("user_id")
         expected = 401
-    elif failure == "current-downgrade":
-        current_access["roles"] = ["member"]
+    elif failure == "membership-revoked":
+        current_access["roles"] = []
     else:
         monkeypatch.setattr(
             "app.services.project_service.get_project_access",
@@ -378,13 +378,9 @@ async def test_browser_authority_fails_closed_before_discovery(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("protected", ["admin", "manager", "service", "system-admin"])
-async def test_protected_identities_cannot_publish(monkeypatch, validated_identity, current_access, protected):
+async def test_verified_system_identity_cannot_use_browser_publication(monkeypatch, validated_identity, current_access):
     current_access["roles"] = ["member", "palimpsest-publish_editor"]
-    if protected == "system-admin":
-        validated_identity["is_system_admin"] = True
-    else:
-        current_access["roles"].append(protected)
+    validated_identity["is_system_admin"] = True
     monkeypatch.setattr("app.services.service_proxy._get_internal_endpoint", _unexpected_catalog)
     request = _make_request(method="PATCH", path=f"/uploads/{SESSION}", token_info=validated_identity)
 

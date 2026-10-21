@@ -6,7 +6,7 @@
 	import { imageReferenceMatchesQuery } from '$lib/utils/imageReference';
 	import { formatSize } from '$lib/utils/format';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
-	import { Alert, TableShell } from '$lib/components/ui';
+	import { Alert, Button, CompactResourceCard, ResponsiveTable, StatusChip, TableShell } from '$lib/components/ui';
 	import ImageDigest from '$lib/components/image/ImageDigest.svelte';
 	import { t } from '$lib/i18n/ns/vm-wizard';
 	import RichText from '$lib/i18n/RichText.svelte';
@@ -276,6 +276,26 @@
 						class="mb-3 w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-3 py-2 text-sm text-[var(--color-ink-1)] outline-none placeholder:text-[var(--color-ink-3)] focus:border-[var(--color-line-2)]"
 					/>
 					{#if visibleTags.length > 0}
+						<ResponsiveTable>
+							{#snippet cards()}
+								{#each visibleTags as tag (tag.tag)}
+									{@const image = tag.current}
+									{@const instant = imageUploadInstant(image)}
+									<CompactResourceCard selected={selectedId === image.id}>
+										<div class="flex min-w-0 flex-wrap items-start justify-between gap-2"><h3 class="min-w-0 break-all font-mono text-sm line-clamp-2" title={tag.tag}>{tag.tag}</h3><StatusChip status={image.status} /></div>
+										<p class="text-xs text-ink-2">{t('image.columns.size')}: {formatSize(image.size ?? null)}</p>
+										{#if recommendations.get(image.id) === 'gpu'}<p class="text-xs text-accent">{t('image.recommendation.gpu', { vendor: image.gpu_vendor })}</p>{:else if recommendations.get(image.id) === 'general'}<p class="text-xs text-accent">{t('image.recommendation.general')}</p>{/if}
+										{#snippet actions()}<Button variant="secondary" size="sm" disabled={image.status !== 'active'} ariaPressed={selectedId === image.id} title={image.status === 'active' ? tag.tag : t('image.inactiveReason', { status: image.status })} onclick={() => onSelect(image.id, selectionName(image))}>{image.status === 'active' ? t('image.selectLabel', { name: referenceName(image) }) : t('image.unselectableLabel', { name: referenceName(image), status: image.status })}</Button>{/snippet}
+										{#snippet details()}
+											<div class="min-w-0 space-y-2 break-words text-xs text-ink-2">
+												<ImageDigest {image} showId={false} compact />
+												<p>{t('image.columns.uploadedAt')}: {#if instant === null}-{:else}<time datetime={image.created_at ?? undefined}>{uploadFormatter.format(Math.trunc(instant / 1000))}</time>{/if}</p>
+												{#if hasGpuImageMetadata(image)}<p>{t('image.recommendation.driverImage')}</p>{/if}
+											</div>
+										{/snippet}
+									</CompactResourceCard>
+								{/each}
+							{/snippet}
 						<TableShell density="compact">
 							<div class="min-w-[39rem]">
 								<div class="tag-row bg-[var(--color-surface-sunken)] px-3 py-2 text-xs font-medium text-[var(--color-ink-2)]" aria-hidden="true">
@@ -326,6 +346,7 @@
 								</ul>
 							</div>
 						</TableShell>
+						</ResponsiveTable>
 					{:else}
 						<p role="status" class="py-6 text-center text-sm text-[var(--color-ink-2)]">{t('image.tagSearchEmpty')}</p>
 					{/if}

@@ -1,4 +1,12 @@
 {
+	"rename.title": "Endre navn",
+	"rename.name": "Instansnavn",
+	"rename.notice": "Endrer bare visningsnavnet, ikke gjestens vertsnavn. Instansen trenger ikke å stoppes.",
+	"rename.invalidName": "Bruk opptil 63 engelske bokstaver, sifre, bindestreker eller understreker. Begynn med en bokstav eller et siffer. Mellomrom blir bindestreker.",
+	"rename.failed": "Instansnavnet kunne ikke oppdateres. Kontroller det gjeldende navnet før du prøver igjen.",
+	"rename.submit": "Lagre",
+	"rename.saving": "Lagrer...",
+	"rename.cancel": "Avbryt",
 	"metrics.nativeMeasurements": "Flere native målinger",
 	"metrics.nativeMeasurementsHelp": "Tilgjengeligheten avhenger av hvilke målere som er installert og den native tilgangspolicyen. Resident RAM er ikke gjestens brukte minne; disktildeling er ikke filsystemforbruk.",
 	"metrics.diskIops": "Diskforespørsler",

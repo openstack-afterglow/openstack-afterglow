@@ -1,0 +1,11 @@
+{
+  "date": "2026-10-22",
+  "scope": "local-source frontend projectless system administrator response acceptance",
+  "before": {"authSession": {"passed": 23, "failed": 2}, "browser": "synthetic login 200 reproduced exact Korean sessionMismatch on /login"},
+  "after": {"tests": {"passed": 135, "files": 4}, "browser": "actual Chromium login form reached /select-domain with Accounts identity, Default working domain, project null and system admin true"},
+  "architecture_staged": {"command": "python3 scripts/check_architecture.py --staged", "exit_code": 0, "source_sha256": "76768af494b3a4d6ced75ed078d475f330038a832ea5e03aba2efd4b287312d1", "files": 3400, "index": "isolated full working-source snapshot", "shared_index_preserved": true, "receipt": "~/.local/share/afterglow-proofs/projectless-admin-login-20261022/architecture-staged.json"},
+  "live_observation": "existing backend logs: password login 200 at 2026-10-21 22:36:50,22:37:04,23:39:26 KST followed by logout 200",
+  "unchanged": ["native credentials and grants", "database schema", "running containers and configuration", "ordinary personal-only landing", "server native authorization"],
+  "limits": ["synthetic browser API responses, not live credential acceptance", "chooser inventory fixture absent; no project-selection acceptance claimed", "running frontend image not rebuilt", "OIDC 409 and missing enrollment columns remain", "full test:gate not run"],
+  "proof_root": "~/.local/share/afterglow-proofs/projectless-admin-login-20261022/"
+}

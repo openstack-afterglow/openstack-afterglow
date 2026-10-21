@@ -97,7 +97,7 @@ function addOrigin(parts: Set<string>, raw: string): void {
 }
 
 function buildImgSrc(siteConfig: PublicSiteConfig): string {
-	const parts = new Set(["'self'", 'data:', 'blob:']);
+	const parts = new Set(["'self'", 'data:', 'blob:', 'https://www.gravatar.com']);
 	for (const raw of [
 		siteConfig.runtime.api_base,
 		siteConfig.logo_path,

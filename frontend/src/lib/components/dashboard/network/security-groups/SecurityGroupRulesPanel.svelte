@@ -4,6 +4,8 @@
 	import { t } from '$lib/i18n/ns/network-pages';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	let {
 		group,
@@ -97,6 +99,18 @@
 				<button type="button" onclick={onStartAdd} aria-expanded={false} disabled={addingRule} class="text-xs text-warm-text border border-action-warm rounded-md px-2 py-1.5 shrink-0">{t('securityGroupRules.add')}</button>
 			{/if}
 		</div>
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each group.rules as rule (rule.id)}
+					<CompactResourceCard>
+						<p class="font-medium">{rule.direction === 'ingress' ? t('securityGroupRules.ingress') : t('securityGroupRules.egress')} · {rule.protocol?.toUpperCase() ?? t('securityGroupRules.anyProtocol')}</p>
+						<dl><div><dt>{t('securityGroupRules.port')}</dt><dd>{rule.port_range_min != null ? rule.port_range_min + (rule.port_range_max !== rule.port_range_min ? '-' + rule.port_range_max : '') : '—'}</dd></div><div><dt>{t('securityGroupRules.sourceTarget')}</dt><dd>{#if rule.remote_group_id}<button type="button" onclick={() => onSelectGroup(rule.remote_group_id!)} title={rule.remote_group_id} class="min-h-11 text-accent text-left">{t('securityGroupRules.remoteGroup', { name: targetName(rule.remote_group_id) })}</button>{:else}{rule.remote_ip_prefix ?? (rule.ethertype === 'IPv6' ? '::/0' : '0.0.0.0/0')}{/if}</dd></div></dl>
+						{#if addRuleOpen && originalRuleId === rule.id}<AddRuleForm bind:ruleForm bind:targetType {groups} {originalRuleId} {requiresRemovalFirst} adding={addingRule} canAdd={canSaveRule} error={addError} onSubmit={onSaveRule} onCancel={onCancelAdd} />{/if}
+						{#snippet details()}<p>{t('securityGroupRules.ipVersion')}: {rule.ethertype}</p>{/snippet}
+						{#snippet actions()}<button type="button" onclick={() => onEditRule(rule)} aria-expanded={addRuleOpen && originalRuleId === rule.id} disabled={addingRule} class="text-accent">{t('securityGroupRules.edit')}</button><button type="button" onclick={() => onDeleteRule(rule.id)} disabled={addingRule} class="text-state-danger-text">{t('securityGroupRules.remove')}</button>{/snippet}
+					</CompactResourceCard>
+				{:else}<p class="p-3 text-xs text-ink-2">{t('securityGroupRules.noRules')}</p>{/each}
+			{/snippet}
 		<div class="@container/rules overflow-x-auto">
 			<div class="min-w-[42rem]">
 				<div class="grid grid-cols-[6.5rem_3.5rem_5rem_5rem_minmax(8rem,1fr)_8rem] gap-2 px-3 py-2.5 border-b border-line text-xs text-ink-2 font-medium items-center">
@@ -135,6 +149,7 @@
 				</div>
 			</div>
 		</div>
+		</ResponsiveTable>
 		{#if addRuleOpen && (!originalRuleId || !group.rules.some((rule) => rule.id === originalRuleId))}
 			<AddRuleForm bind:ruleForm bind:targetType {groups} {originalRuleId} {requiresRemovalFirst} adding={addingRule} canAdd={canSaveRule} error={addError} onSubmit={onSaveRule} onCancel={onCancelAdd} />
 		{/if}

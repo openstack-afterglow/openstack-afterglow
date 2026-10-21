@@ -20,8 +20,17 @@ from app.api.deps import (
 from app.config import get_settings
 from app.models.auth import DomainInfo, LoginRequest, ProjectInfo, TokenResponse, UserInfo, WorkspaceInfo
 from app.rate_limit import limiter
+from app.services import (
+    account_spaces,
+    cache,
+    domain_projects,
+    jwt_service,
+    keystone,
+    login_guard,
+    project_service,
+    session_store,
+)
 from app.services import activity as activity_svc
-from app.services import cache, domain_projects, jwt_service, keystone, login_guard, project_service, session_store
 from app.services.cache import cached_call, keys, ttl_fast, ttl_normal, ttl_static
 from app.services.domain_auth import DomainAuthError, domain_auth_error_response
 from app.services.domain_scope import (
@@ -83,7 +92,8 @@ def _visible_domains(user_id: str, *, operation: NativeOperation) -> list[dict]:
         for row in operation.ks.domains.list():
             if _field(row, "enabled") is True:
                 domain = resolve_domain(_field(row, "id"), operation=operation)
-                domains.append({"id": domain["id"], "name": domain["name"]})
+                if domain.get("kind") != "account":
+                    domains.append({"id": domain["id"], "name": domain["name"], "kind": domain.get("kind", "legacy")})
         if len({domain["id"] for domain in domains}) != len(domains):
             raise HTTPException(503, "Domain directory identity is unavailable")
         return sorted(domains, key=lambda domain: (domain["name"], domain["id"]))
@@ -96,7 +106,6 @@ def _visible_domains(user_id: str, *, operation: NativeOperation) -> list[dict]:
 
 
 async def _domain_metadata(user_id: str, identity_domain_id: str, is_system_admin: bool, *, operation=None) -> dict:
-    from app.services.domain_auth import get_policy
 
     if operation is None:
         async with NativeOperation() as operation:
@@ -104,7 +113,7 @@ async def _domain_metadata(user_id: str, identity_domain_id: str, is_system_admi
 
     with authentication_step("domain_metadata"):
         domains = await operation.run(_visible_domains, user_id, operation=operation)
-        can_create = is_system_admin or (await get_policy(identity_domain_id)).signup_enabled
+        can_create = is_system_admin or get_settings().auth.organization_creation_enabled
         return {"available_domains": domains, "can_create_domain": bool(can_create)}
 
 
@@ -239,7 +248,12 @@ async def _enforce_session_policy(session: dict, identity: dict) -> None:
         provider_domain_id = session.get("provider_domain_id")
         if not provider_domain_id:
             raise HTTPException(status_code=401, detail="Provider origin is unavailable; log in again")
-        await require_provider(provider_domain_id, provider_id, revision, email)
+        provider = await require_provider(provider_domain_id, provider_id, revision, email)
+        if getattr(provider, "_organization", None) is not None:
+            from app.services import organization_provisioning
+
+            ks = await asyncio.to_thread(keystone._get_admin_ks_client)
+            await organization_provisioning.require_current(provider, ks=ks, user_id=identity["user_id"])
     policy_origin = identity_domain_id if password_method else provider_domain_id
     if identity["domain_id"] != policy_origin:
         policy = await get_policy(identity["domain_id"])
@@ -259,6 +273,48 @@ async def _exchange_native_scope(token: str, project_id: str, *, operation=None)
             raise
         except Exception as exc:
             raise HTTPException(503, "Native session exchange is unavailable") from exc
+
+
+async def _prepare_initial_session(data: dict, *, operation=None) -> dict:
+    """Choose a human's project-only personal landing without changing native identity."""
+    if operation is None:
+        async with NativeOperation() as operation:
+            return await _prepare_initial_session(data, operation=operation)
+    primary = None
+    managed_pending = False
+    if data.get("is_system_admin"):
+        user = await operation.run(operation.get, "users", data["user_id"])
+        if _field(user, "id") != data["user_id"] or _field(user, "domain_id") != data["identity_domain_id"]:
+            raise HTTPException(401, "Native account subject changed")
+        managed_pending = await account_spaces.managed_personal_pending(
+            data["user_id"], data["identity_domain_id"], _field(user, "afterglow_enrollment_id")
+        )
+    if data.get("is_system_admin") and not managed_pending:
+        primary = await operation.run(account_spaces.personal_project, data["user_id"], operation=operation)
+    else:
+        try:
+            primary = await account_spaces.ensure_personal_project(data["user_id"], operation=operation)
+        except HTTPException as exc:
+            if exc.status_code == 503:
+                recovery = await account_spaces.personal_recovery_status(data["user_id"], data["identity_domain_id"])
+                if recovery is not None:
+                    raise HTTPException(503, recovery) from exc
+            if exc.status_code != 403 or exc.detail != "service_identity_personal_forbidden":
+                raise
+        operation.invalidate()
+    if primary is not None:
+        return await _prepare_domain_session(
+            data, primary["domain_id"], requested_project_id=primary["id"], operation=operation
+        )
+    home = await operation.run(resolve_domain, data["identity_domain_id"], operation=operation)
+    if home.get("kind") == "account":
+        # A projectless system administrator still cannot select identity-only account.
+        domains = await operation.run(_visible_domains, data["user_id"], operation=operation)
+        if not domains:
+            raise HTTPException(403, "working_domain_required")
+        selected = _administrator_workspace(data, domains[0]["id"], "", operation=operation)
+        return {**selected, "session_token": data.get("session_token") or data["token"]}
+    return await _prepare_domain_session(data, home["id"], operation=operation)
 
 
 async def _prepare_domain_session(
@@ -283,7 +339,10 @@ async def _prepare_domain_session(
         with authentication_step("default_project"):
             # Provisioning may have created Default or repaired membership. Read
             # the final directory for both password and provider login paths.
-            default = await run(domain_projects.default_project, domain_id, **kwargs)
+            if context.get("domain_kind") == "personal":
+                default = await run(account_spaces.personal_project, data["user_id"], **kwargs)
+            else:
+                default = await run(domain_projects.default_project, domain_id, **kwargs)
         with authentication_step("native_projects"):
             try:
                 projects = await run(keystone.list_projects, data["token"], domain_id, **kwargs)
@@ -392,6 +451,14 @@ async def login(request: Request, req: LoginRequest, background_tasks: Backgroun
         return await _login(request, req, background_tasks, operation)
 
 
+@router.post("/personal-project/recovery", response_model=TokenResponse)
+@limiter.limit("10/minute")
+async def recover_personal_project(request: Request, req: LoginRequest, background_tasks: BackgroundTasks):
+    """Fresh password/subject proof precedes safe resume; unknown calls stay fenced."""
+    async with NativeOperation() as operation:
+        return await _login(request, req, background_tasks, operation)
+
+
 async def _login(request: Request, req: LoginRequest, background_tasks: BackgroundTasks, operation: NativeOperation):
     from app.services.account_identity import authenticate_password, password_account
     from app.services.domain_auth import DomainAuthDenied, get_policy, require_password
@@ -424,7 +491,7 @@ async def _login(request: Request, req: LoginRequest, background_tasks: Backgrou
         await require_password(account["domain_id"], data["email"])
     # Policy I/O must not carry pre-proof directory authority into provisioning.
     operation.invalidate()
-    data = await _prepare_domain_session(data, account["domain_id"], operation=operation)
+    data = await _prepare_initial_session(data, operation=operation)
     default_project_id = data.get("default_project_id", "")
 
     # 로그인 출처 + 기기 정보 기록
@@ -856,7 +923,10 @@ async def browse_workspace(
             raise
         except Exception as exc:
             raise HTTPException(503, "Project directory is unavailable") from exc
-        default = await operation.run(domain_projects.default_project, target, operation=operation)
+        if context.get("domain_kind") == "personal":
+            default = await operation.run(account_spaces.personal_project, user_id, operation=operation)
+        else:
+            default = await operation.run(domain_projects.default_project, target, operation=operation)
         can_create = await project_service.can_create_project(user_id, target, operation=operation)
         # Transport may survive the inventory; authority observations must not.
         operation.invalidate()
@@ -865,7 +935,7 @@ async def browse_workspace(
         if fresh["is_domain_manager"] != context["is_domain_manager"]:
             raise HTTPException(403, "Domain authority changed; refresh the resource directory")
         return WorkspaceInfo(
-            domain=DomainInfo(id=target, name=fresh["domain_name"]),
+            domain=DomainInfo(id=target, name=fresh["domain_name"], kind=fresh.get("domain_kind", "legacy")),
             projects=[ProjectInfo(**project) for project in projects],
             default_project_id=default["id"] if default and any(p["id"] == default["id"] for p in projects) else "",
             is_domain_manager=fresh["is_domain_manager"],
@@ -875,8 +945,7 @@ async def browse_workspace(
 
 @router.post("/domains", status_code=201)
 async def create_domain(req: DomainCreateRequest, token_info: dict = Depends(get_token_info)):
-    """Creation follows the account's signup mode, not a client capability flag."""
-    from app.services.domain_auth import get_policy
+    """Create an organization using live native authority and its independent policy."""
 
     user_id = token_info["user_id"]
     try:
@@ -889,8 +958,8 @@ async def create_domain(req: DomainCreateRequest, token_info: dict = Depends(get
         raise HTTPException(503, "Identity directory is unavailable") from exc
     assert_domain_resource(token_info["identity_domain_id"], identity["domain_id"])
     admin = await asyncio.to_thread(keystone._is_system_admin, user_id)
-    if not admin and not (await get_policy(identity["domain_id"])).signup_enabled:
-        raise HTTPException(403, "Domain creation requires open signup or current system administrator authority")
+    if not admin and not get_settings().auth.organization_creation_enabled:
+        raise HTTPException(403, "organization_creation_disabled")
     result = await domain_projects.create_domain(
         name=req.name, description=req.description, enabled=True, creator_id=user_id
     )
@@ -1130,12 +1199,14 @@ async def issue_federated_login(
     provider_kind: str,
     login_email: str,
 ) -> TokenResponse:
-    """Verify provider-origin authority, then open the canonical identity home."""
+    """Verify provider-origin policy and canonical subject, then open the personal workspace."""
     async with NativeOperation() as operation:
         with authentication_step("federated_login"):
             with authentication_step("resolve"):
-                context = await operation.run(domain_context, user_id, domain_id, operation=operation)
-                if context["domain_name"] != domain_name:
+                origin = await operation.run(resolve_domain, domain_id, operation=operation)
+                identity = await operation.run(keystone.get_identity_user, user_id, operation=operation)
+                context = {"identity_domain_id": identity["domain_id"]}
+                if origin["name"] != domain_name:
                     raise HTTPException(status_code=403, detail="Federation domain does not match")
             with authentication_step("native_exchange"):
                 data = await operation.run(keystone.validate_session, unscoped_token, operation=operation)
@@ -1156,18 +1227,21 @@ async def issue_federated_login(
                 "login_email": login_email,
             }
             with authentication_step("session_policy"):
-                # Check the provider at its origin, and email policy at the home
-                # that will become the initial selected workspace.
+                # Provider origin controls authentication, not implicit tenant membership.
                 await _enforce_session_policy(
                     policy_context, {**data, **context, "domain_id": context["identity_domain_id"]}
                 )
             # Reuse the connection, not authority observed before policy I/O.
             operation.invalidate()
-            origin = await operation.run(domain_context, user_id, domain_id, operation=operation)
-            assert_domain_resource(context["identity_domain_id"], origin["identity_domain_id"])
-            if origin["domain_name"] != domain_name:
+            origin = await operation.run(resolve_domain, domain_id, operation=operation)
+            try:
+                identity = await operation.run(keystone.get_identity_user, user_id, operation=operation)
+            except Unauthorized as exc:
+                raise HTTPException(401, "Federated identity is disabled or unavailable") from exc
+            assert_domain_resource(context["identity_domain_id"], identity["domain_id"])
+            if origin["name"] != domain_name:
                 raise HTTPException(status_code=403, detail="Federation domain does not match")
-            data = await _prepare_domain_session(data, context["identity_domain_id"], operation=operation)
+            data = await _prepare_initial_session(data, operation=operation)
             default_project_id = data.get("default_project_id", "")
             from app.services.token_binding import get_origin, parse_device
 

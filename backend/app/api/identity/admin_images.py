@@ -12,6 +12,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from app.api.common.admin_resource_scope import AdminResourceScope, admin_resource_scope
 from app.api.deps import get_os_conn, get_token_info, require_admin
 from app.models.compute import ImageDetail, ImageInfo
 from app.services import glance, image_verification
@@ -77,6 +78,7 @@ async def list_admin_images(
     marker: str | None = Query(default=None),
     search: str | None = Query(default=None),
     visibility: str | None = Query(default=None),
+    scope: AdminResourceScope = Depends(admin_resource_scope),
 ):
     """전체 이미지 목록 (페이지네이션).
 
@@ -94,6 +96,8 @@ async def list_admin_images(
                 kwargs["visibility"] = visibility
             items: list[dict] = []
             for img in conn.image.images(**kwargs):
+                if not scope.includes(img, "owner"):
+                    continue
                 items.append(_serialize_image(img))
                 if len(items) >= limit:
                     break
@@ -107,6 +111,8 @@ async def list_admin_images(
             if visibility:
                 glance_kwargs["visibility"] = visibility
             for img in conn.image.images(**glance_kwargs):
+                if not scope.includes(img, "owner"):
+                    continue
                 item = _serialize_image(img)
                 name = item["name"].lower()
                 if needle and needle not in name:

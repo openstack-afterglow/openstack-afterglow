@@ -3,7 +3,7 @@
 	import { useVmCreate } from '$lib/stores/vmCreateStore.svelte';
 	import { normalizeGithubUsername, normalizeRequestedInstanceName } from '$lib/utils/instanceCreate';
 	import { t } from '$lib/i18n/ns/vm-wizard';
-	import { Alert } from '$lib/components/ui';
+	import { Alert, Button, CompactResourceCard, ResponsiveTable } from '$lib/components/ui';
 
 	const s = useVmCreate();
 	const reviewFlavor = $derived(s.flavors.find((f: any) => f.id === $wizard.flavorId));
@@ -31,6 +31,48 @@
 
 <h2 class="text-lg font-semibold text-ink-0 mb-4">{t('review.title')}</h2>
 
+<div class="mb-4"><ResponsiveTable>
+	{#snippet cards()}
+		<CompactResourceCard>
+			<h3 class="text-xs text-ink-2">{t('review.name.label')}</h3><p class="break-all text-sm font-medium">{reviewInstanceName ?? t('review.name.automatic')}</p>
+			{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => s.goTo(5)}>{t('review.edit')}</Button>{/snippet}
+		</CompactResourceCard>
+		<CompactResourceCard>
+			<h3 class="text-xs text-ink-2">{t('review.flavor')}</h3><p class="break-all text-sm font-medium">{$wizard.flavorName ?? '-'}</p>
+			{#if reviewFlavor}<p class="text-xs text-ink-2">{reviewFlavor.vcpus} vCPU · {reviewFlavor.ram >= 1024 ? Math.round(reviewFlavor.ram / 1024) + 'G' : reviewFlavor.ram + 'M'} RAM · {reviewFlavor.disk}G {t('review.disk')}</p>{/if}
+			{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => s.goTo(2)}>{t('review.edit')}</Button>{/snippet}
+			{#snippet details()}<p class="break-all text-xs">GPU: {reviewGpu || '—'}</p>{/snippet}
+		</CompactResourceCard>
+		<CompactResourceCard>
+			<h3 class="text-xs text-ink-2">{$wizard.bootSource === 'volume' ? t('review.bootVolume') : t('review.image')}</h3><p class="break-all text-sm">{$wizard.bootSource === 'volume' ? $wizard.bootVolumeName ?? $wizard.bootVolumeId ?? '-' : $wizard.imageName ?? '-'}</p>
+			{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => s.goTo(1)}>{t('review.edit')}</Button>{/snippet}
+		</CompactResourceCard>
+		<CompactResourceCard>
+			<h3 class="text-xs text-ink-2">{s.isWindowsBoot ? t('review.windows.label') : t('review.ssh.label')}</h3>
+			{#if s.windowsUnsupported}<div data-testid="windows-unsupported-review"><Alert tone="danger">{t('config.windows.unsupported')}</Alert></div>{:else if s.windowsAccount}<p class="break-all text-sm" data-testid="windows-password-review">{s.windowsAccount} · {s.passwordError ? t('review.windows.missing') : t('review.windows.provided')}</p>{:else}<p class="break-all text-sm">{reviewSshAccess}</p>{/if}
+			{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => s.goTo(5)}>{t('review.edit')}</Button>{/snippet}
+		</CompactResourceCard>
+		<CompactResourceCard>
+			<h3 class="text-xs text-ink-2">{t('review.network.label')}</h3><p class="break-all text-sm">{$wizard.networkName ?? t('review.network.default')}</p>
+			{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => s.goTo(5)}>{t('review.edit')}</Button>{/snippet}
+		</CompactResourceCard>
+		{#if $wizard.bootSource === 'image'}
+			<CompactResourceCard>
+				<h3 class="text-xs text-ink-2">{t('review.rootDisk.label')}</h3><p class="text-sm">{$wizard.bootVolumeSizeGb} GB</p><p class="text-xs text-ink-2">{t('review.rootDisk.retention', { deleteWithVm: $wizard.deleteBootVolumeOnTermination })}</p>
+				{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => s.goTo(5)}>{t('review.edit')}</Button>{/snippet}
+			</CompactResourceCard>
+			<CompactResourceCard>
+				<h3 class="text-xs text-ink-2">{t('config.protection.title')}</h3><p class="text-xs">{t('review.protection.snapshot', { enabled: $wizard.autoSnapshot ? 'yes' : 'no' })}</p><p class="text-xs">{t('review.protection.backup', { enabled: $wizard.autoBackup ? 'yes' : 'no' })}</p>
+				{#if $wizard.autoSnapshot || $wizard.autoBackup}<p class="text-xs text-ink-2">{t('config.protection.schedule')}</p>{/if}
+				{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => s.goTo(5)}>{t('review.edit')}</Button>{/snippet}
+			</CompactResourceCard>
+		{/if}
+		{#if !s.isWindowsBoot && $wizard.dataMounts.length > 0}
+			{#each $wizard.dataMounts as dm}
+				<CompactResourceCard><h3 class="text-xs text-ink-2">{t('review.mounts')}</h3><p class="break-all text-sm">{dm.fileStorageId ? (s.fileStorages.find(f => f.id === dm.fileStorageId)?.name ?? dm.fileStorageId) : '—'}</p><p class="break-all font-mono text-xs">{dm.mountPoint || '—'}{#if dm.readOnly} · ro{/if}</p>{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => s.goTo(5)}>{t('review.edit')}</Button>{/snippet}</CompactResourceCard>
+			{/each}
+		{/if}
+	{/snippet}
 <div class="rounded-xl bg-surface-base border border-line overflow-hidden mb-4">
 	<!-- 이름 -->
 	<div class="grid grid-cols-[minmax(0,5rem)_minmax(0,1fr)_auto] @lg/panel:grid-cols-[140px_minmax(0,1fr)_auto] gap-3 items-center px-4 py-3.5 border-b border-line">
@@ -136,6 +178,7 @@
 	</div>
 	{/if}
 </div>
+</ResponsiveTable></div>
 
 {#if s.windowsAccount}
 	<div class="mb-4 space-y-3">

@@ -68,10 +68,10 @@
 
 <div class="bg-surface-sunken/50 border border-line-2 rounded-lg overflow-hidden">
 	<!-- SG 헤더 -->
-	<div class="flex items-center gap-3 px-4 py-3">
+	<div class="flex flex-wrap items-center gap-3 px-3 py-3 lg:px-4">
 		<button
 			onclick={() => (expanded = !expanded)}
-			class="flex items-center gap-2 flex-1 text-left min-w-0"
+			class="flex min-h-11 items-center gap-2 basis-full lg:basis-auto flex-1 text-left min-w-0"
 		>
 			<span class="text-sm font-medium text-ink-0 truncate">{sg.name}</span>
 			{#if sg.description}
@@ -83,11 +83,11 @@
 		</button>
 		<button
 			onclick={() => { showAddRule = !showAddRule; }}
-			class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors shrink-0"
+			class="min-h-11 text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors shrink-0"
 		>{t('securityGroup.card.addRule')}</button>
 		<button
 			onclick={() => onDelete(sg.id, sg.name)}
-			class="text-xs text-red-400 hover:text-red-300 px-2 py-1 border border-red-900 hover:border-red-700 rounded transition-colors shrink-0"
+			class="min-h-11 text-xs text-red-400 hover:text-red-300 px-2 py-1 border border-red-900 hover:border-red-700 rounded transition-colors shrink-0"
 		>{t('securityGroup.actions.delete')}</button>
 	</div>
 

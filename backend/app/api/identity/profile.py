@@ -2,13 +2,14 @@
 
 import asyncio
 import logging
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import get_os_conn, get_token_info
 from app.rate_limit import limiter
-from app.services import keystone
+from app.services import keystone, profile_images
 
 _logger = logging.getLogger(__name__)
 
@@ -25,6 +26,74 @@ class UpdateProfileRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(min_length=1, max_length=1024)
     new_password: str = Field(min_length=1, max_length=1024)
+
+
+class ProfileImageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["gravatar", "generated"]
+
+
+async def _image_call(call, *args):
+    try:
+        return await asyncio.to_thread(call, *args)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        if (
+            getattr(getattr(exc, "response", None), "status_code", None) == 403
+            or getattr(exc, "status_code", None) == 403
+        ):
+            raise HTTPException(403, "profile_image_forbidden") from exc
+        raise HTTPException(503, "profile_image_unavailable") from exc
+
+
+@router.get("/image")
+async def get_profile_image(
+    response: Response,
+    token_info: dict = Depends(get_token_info),
+    conn=Depends(get_os_conn),
+):
+    response.headers["Cache-Control"] = "private, no-store"
+    return await _image_call(profile_images.get_image, conn, token_info["user_id"], token_info["identity_domain_id"])
+
+
+@router.put("/image")
+@limiter.limit("20/minute")
+async def select_profile_image(
+    request: Request,
+    response: Response,
+    req: ProfileImageRequest,
+    token_info: dict = Depends(get_token_info),
+    conn=Depends(get_os_conn),
+):
+    response.headers["Cache-Control"] = "private, no-store"
+    return await _image_call(
+        profile_images.save_image, conn, token_info["user_id"], token_info["identity_domain_id"], req.kind
+    )
+
+
+@router.put("/image/upload")
+@limiter.limit("20/minute")
+async def upload_profile_image(
+    request: Request,
+    response: Response,
+    token_info: dict = Depends(get_token_info),
+    conn=Depends(get_os_conn),
+):
+    content = bytearray()
+    async for chunk in request.stream():
+        if len(content) + len(chunk) > profile_images.MAX_UPLOAD_BYTES:
+            raise HTTPException(413, "profile_image_size")
+        content.extend(chunk)
+    response.headers["Cache-Control"] = "private, no-store"
+    return await _image_call(
+        profile_images.save_image,
+        conn,
+        token_info["user_id"],
+        token_info["identity_domain_id"],
+        "upload",
+        bytes(content),
+    )
 
 
 @router.get("")
@@ -120,7 +189,12 @@ async def change_password(
 
     try:
         current = await asyncio.to_thread(
-            keystone.authenticate, username, req.current_password, "", token_info["identity_domain_id"]
+            keystone.authenticate,
+            username,
+            req.current_password,
+            "",
+            token_info["identity_domain_id"],
+            unscoped_only=True,
         )
     except Unauthorized as exc:
         raise HTTPException(status_code=401, detail="현재 패스워드가 올바르지 않습니다") from exc

@@ -11,6 +11,8 @@
 	import type { Project, ProjectMember as Member } from '$lib/types/project';
 	import { t } from '$lib/i18n/ns/admin-identity';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	let { domainId }: { domainId: string; domainName: string } = $props();
 
@@ -143,6 +145,15 @@
 				{:else if members.length === 0}
 					<div class="text-ink-2 text-sm py-8 text-center">{t('projectDetail.noMembers')}</div>
 				{:else}
+          <ResponsiveTable>
+            {#snippet cards()}
+              {#each members as m (m.user_id + m.role_id)}
+                <CompactResourceCard>
+                  <strong class="break-words text-sm">{m.user_name}</strong>
+                  <dl class="space-y-1 text-xs"><div><dt class="text-ink-2">{t('projectDetail.role')}</dt><dd>{m.role_name}</dd></div><div><dt class="text-ink-2">{t('projectDetail.type')}</dt><dd>{m.type === 'group' ? t('projectDetail.groupType') : m.type == null || m.type === 'user' ? t('projectDetail.userType') : m.type}</dd></div></dl>
+                </CompactResourceCard>
+              {/each}
+            {/snippet}
 					<table class="w-full text-sm">
 						<thead class="bg-surface-base/60 text-ink-2 text-xs uppercase tracking-wide">
 							<tr>
@@ -161,6 +172,7 @@
 							{/each}
 						</tbody>
 					</table>
+          </ResponsiveTable>
 				{/if}
 			</div>
 		{/if}

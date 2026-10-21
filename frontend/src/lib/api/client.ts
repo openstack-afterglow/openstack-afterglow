@@ -1091,6 +1091,12 @@ export const api = {
 			request<T>(path, { method: 'PUT', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect, replayOnUnauthorized: opts?.replayOnUnauthorized })
 		);
 	},
+	putBlob: <T>(path: string, body: Blob, token?: string, projectId?: string, opts?: { signal?: AbortSignal; replayOnUnauthorized?: boolean }) => {
+		const scope = captureRequestScope(token, projectId);
+		return withMutationInvalidation(scope, () =>
+			request<T>(path, { method: 'PUT', body, headers: { 'Content-Type': body.type || 'application/octet-stream' }, signal: opts?.signal, cache: 'no-store' }, token, projectId, { baseUrl: scope.baseUrl, replayOnUnauthorized: opts?.replayOnUnauthorized })
+		);
+	},
 	patch: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean }) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>

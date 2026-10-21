@@ -14,6 +14,7 @@ from app.api.common.errors import public_service_error
 from app.api.deps import get_os_conn, get_token_info, require_admin
 from app.database import get_session
 from app.services import (
+    account_spaces,
     activity,
     domain_display,
     domain_iam,
@@ -54,6 +55,7 @@ async def _native(call, *args):
 
 def _domain(row) -> dict:
     return {
+        "kind": account_spaces.domain_kind(row),
         "id": row.id,
         "name": domain_display.display_name(row),
         "enabled": identity_roles._field(row, "enabled", identity_roles._field(row, "is_enabled")) is True,
@@ -190,7 +192,11 @@ async def update_domain(
         return _domain(checked)
 
     async with identity_roles._graph_lock(conn) as lease:
-        await _native(lambda: _exact_domain(conn, domain_id))
+        domain = await _native(lambda: _exact_domain(conn, domain_id))
+        from app.services.account_spaces import domain_kind
+
+        if domain_kind(domain) in {"account", "personal"}:
+            raise HTTPException(403, "shared_domain_is_managed")
         ks = await _native(keystone._get_admin_ks_client)
         catalog = await _native(identity_roles.load_catalog, conn)
         affected = set()

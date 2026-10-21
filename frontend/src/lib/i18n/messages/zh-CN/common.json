@@ -2,6 +2,7 @@
 	"actions.cancel": "取消",
 	"actions.confirm": "确认",
 	"actions.close": "关闭",
+	"resource.details": "详细信息",
 	"state.processing": "处理中...",
 	"state.loading": "加载中...",
 	"state.loadingNamed": "正在加载{name}…",

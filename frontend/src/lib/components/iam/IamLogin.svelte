@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { onMount, onDestroy, untrack } from 'svelte';
 	import { ApiError } from '$lib/api/client';
 	import { domainIam, type IamSession, type LoginPolicy, type IamProvider, type ProviderWrite } from '$lib/api/domainIam';
@@ -166,10 +168,19 @@
 		<Alert tone="info">{t('federationHelp')}</Alert>
 		{#if policy}<p class="my-3 text-sm text-ink-2">{t('usableProviders', { count: policy.usable_provider_count })}</p>{/if}
 		<p class="mb-3 text-sm text-ink-2">{t('verificationHelp')}</p>
+		<ResponsiveTable>{#snippet cards()}
+			{#each providers as provider (provider.id)}<CompactResourceCard>
+				<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{provider.name}</h3><span class="text-xs">{provider.enabled ? t('enabled') : t('disabled')}</span></div><p class="text-xs">{provider.kind === 'oidc' ? t('oidc') : t('github')} · {provider.verified && provider.verified_revision === provider.revision ? t('verifiedProvider') : t('unverifiedProvider')}</p>
+				{#snippet details()}<p class="text-xs">{t('secretStatus')}: {provider.client_secret_configured ? t('configured') : t('notConfigured')}</p>{/snippet}
+				{#snippet actions()}<Button variant="secondary" size="sm" disabled={busy || loading} onclick={() => edit(provider)}>{t('edit')}</Button><Button variant="secondary" size="sm" disabled={blocked || busy || loading} onclick={() => toggle(provider)}>{provider.enabled ? t('disable') : t('enable')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || busy || loading} onclick={() => remove(provider)}>{t('delete')}</Button>{/snippet}
+			</CompactResourceCard>{/each}
+			{#if !loading && !error && !providers.length}<p class="text-sm text-ink-2">{t('emptyProviders')}</p>{/if}
+		{/snippet}
 		<TableShell><table><thead><tr><th>{t('name')}</th><th>{t('kind')}</th><th>{t('status')}</th><th>{t('secretStatus')}</th><th>{t('actions')}</th></tr></thead><tbody>
 			{#each providers as provider (provider.id)}<tr><td>{provider.name}</td><td>{provider.kind === 'oidc' ? t('oidc') : t('github')}</td><td>{provider.enabled ? t('enabled') : t('disabled')}<span class="block text-xs text-ink-2">{provider.verified && provider.verified_revision === provider.revision ? t('verifiedProvider') : t('unverifiedProvider')}</span></td><td>{provider.client_secret_configured ? t('configured') : t('notConfigured')}</td><td><div class="flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={busy || loading} onclick={() => edit(provider)}>{t('edit')}</Button><Button variant="secondary" size="sm" disabled={blocked || busy || loading} onclick={() => toggle(provider)}>{provider.enabled ? t('disable') : t('enable')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || busy || loading} onclick={() => remove(provider)}>{t('delete')}</Button></div></td></tr>{/each}
 			{#if !loading && !error && !providers.length}<tr><td colspan="5">{t('emptyProviders')}</td></tr>{/if}
 		</tbody></table></TableShell>
+		</ResponsiveTable>
 	</Card>
 </div>
 {#if open}

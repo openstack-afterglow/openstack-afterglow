@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { onMount, onDestroy, untrack } from 'svelte';
 	import { ApiError } from '$lib/api/client';
 	import { domainIam, type IamSession, type IamUser } from '$lib/api/domainIam';
@@ -24,7 +26,6 @@
 	let editing = $state<IamUser | null>(null);
 	let name = $state('');
 	let email = $state('');
-	let personalDomain = $state('');
 	let enabled = $state(true);
 	let password = $state('');
 	let busy = $state(false);
@@ -41,17 +42,17 @@
 		catch (cause) { if (pending === sequence) fail(cause); }
 		finally { if (live && pending === sequence) loading = false; }
 	}
-	function close() { open = false; editing = null; name = ''; email = ''; personalDomain = ''; password = ''; enabled = true; }
-	function edit(user: IamUser | null) {
-		if (busy || blocked || loading || user?.protected || (user && user.domain_id !== session.domainId)) return;
-		editing = user; name = user?.name ?? ''; email = user?.email ?? ''; personalDomain = ''; enabled = user?.enabled ?? true; password = ''; error = ''; open = true;
+	function close() { open = false; editing = null; name = ''; email = ''; password = ''; enabled = true; }
+	function edit(user: IamUser) {
+		if (busy || blocked || loading || user.protected || user.domain_id !== session.domainId) return;
+		editing = user; name = user.name; email = user.email; enabled = user.enabled; password = ''; error = ''; open = true;
 	}
 	async function save() {
-		if (!live || !session.canSubmit() || blocked || busy || loading || editing?.protected || (editing && editing.domain_id !== session.domainId) || !form?.reportValidity() || (!editing && !personalDomain.trim())) return;
-		const body = { name: name.trim(), email: email.trim(), enabled, ...(password ? { password } : {}), ...(!editing ? { personal_domain_name: personalDomain.trim() } : {}) };
+		if (!live || !session.canSubmit() || blocked || busy || loading || !editing || editing.protected || editing.domain_id !== session.domainId || !form?.reportValidity()) return;
+		const body = { name: name.trim(), email: email.trim(), enabled, ...(password ? { password } : {}) };
 		password = ''; busy = true; error = ''; notice = '';
 		try {
-			if (editing) await client.updateUser(editing.id, body); else await client.createUser(body);
+			await client.updateUser(editing.id, body);
 			if (live) { close(); notice = t('saved'); await load(); }
 		} catch (cause) { fail(cause); }
 		finally { if (live) busy = false; }
@@ -61,10 +62,21 @@
 </script>
 
 <div class="space-y-4">
-	<div class="flex flex-wrap gap-2"><Button variant="primary" disabled={blocked || loading || busy} onclick={() => edit(null)}>{t('createUser')}</Button><Button variant="secondary" disabled={blocked || loading || busy} onclick={load}>{t('refresh')}</Button></div>
+	<div class="flex flex-wrap gap-2"><Button variant="secondary" disabled={blocked || loading || busy} onclick={load}>{t('refresh')}</Button></div>
 	{#if loading}<ActivityIndicator label={t('loading')} />{/if}
 	{#if error && !open}<Alert tone="danger">{error}</Alert>{/if}
 	{#if notice}<Alert tone="success">{notice}</Alert>{/if}
+	<ResponsiveTable>
+		{#snippet cards()}
+			{#each users as user (user.id)}<CompactResourceCard>
+				<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{user.name}</h3><span class="text-xs">{user.enabled ? t('enabled') : t('disabled')}</span></div>
+				<p class="text-sm break-all">{user.email || '—'}</p>
+				{#if user.protected}<p class="text-xs text-ink-2">{t('protected')}</p>{/if}
+				{#snippet details()}<p class="text-xs">{t('identityDomain')}: <code>{user.domain_id}</code></p>{#if user.domain_id !== session.domainId}<p class="text-xs text-ink-2">{t('foreignIdentity')}</p>{/if}{/snippet}
+				{#snippet actions()}<Button variant="secondary" size="sm" disabled={blocked || loading || busy || user.protected || user.domain_id !== session.domainId} onclick={() => edit(user)}>{t('editUser')}</Button>{/snippet}
+			</CompactResourceCard>{/each}
+			{#if !loading && !error && !users.length}<p class="text-sm text-ink-2">{t('emptyUsers')}</p>{/if}
+		{/snippet}
 	<TableShell><table>
 		<thead><tr><th>{t('name')}</th><th>{t('email')}</th><th>{t('identityDomain')}</th><th>{t('status')}</th><th>{t('actions')}</th></tr></thead>
 		<tbody>
@@ -72,15 +84,15 @@
 			{#if !loading && !error && !users.length}<tr><td colspan="5">{t('emptyUsers')}</td></tr>{/if}
 		</tbody>
 	</table></TableShell>
+	</ResponsiveTable>
 </div>
 {#if open}
-	<FormModal bind:open title={editing ? t('editUser') : t('createUser')} submitting={busy} onClose={close} onSubmit={save} submitLabel={t('save')}>
+	<FormModal bind:open title={t('editUser')} submitting={busy} onClose={close} onSubmit={save} submitLabel={t('save')}>
 		<form bind:this={form} class="space-y-4" onsubmit={(event) => { event.preventDefault(); void save(); }}>
 			{#if error}<Alert tone="danger">{error}</Alert>{/if}
 			<Field label={t('name')} for={`${uid}-name`} required><TextInput id={`${uid}-name`} bind:value={name} required disabled={busy} autocomplete="off" /></Field>
 			<Field label={t('email')} for={`${uid}-email`} required><TextInput id={`${uid}-email`} type="email" bind:value={email} required disabled={busy} autocomplete="off" /></Field>
-			{#if !editing}<Field label={t('personalDomainName')} help={t('personalDomainHelp')} for={`${uid}-domain`} required><TextInput id={`${uid}-domain`} bind:value={personalDomain} maxlength={64} required disabled={busy} autocomplete="off" /></Field>{/if}
-			<Field label={editing ? t('newPassword') : t('password')} help={t('passwordHelp')} for={`${uid}-password`} required={!editing}><TextInput id={`${uid}-password`} type="password" bind:value={password} required={!editing} disabled={busy} autocomplete="new-password" /></Field>
+			<Field label={t('newPassword')} help={t('passwordHelp')} for={`${uid}-password`}><TextInput id={`${uid}-password`} type="password" bind:value={password} disabled={busy} autocomplete="new-password" /></Field>
 			<label class="flex min-h-11 items-center gap-3 text-sm text-ink-1"><input type="checkbox" bind:checked={enabled} disabled={busy} />{t('enabled')}</label>
 		</form>
 		{#snippet actions()}

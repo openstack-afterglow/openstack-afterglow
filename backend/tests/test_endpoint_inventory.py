@@ -78,6 +78,10 @@ EXPECTED_PUBLIC = frozenset(
         ("POST", "/api/v1/auth/domains/{domain_id}/registrations"),
         ("POST", "/api/v1/auth/registrations/accept"),
         ("POST", "/api/v1/auth/login"),
+        (
+            "POST",
+            "/api/v1/auth/personal-project/recovery",
+        ),  # Fresh native password proof, same login guard/publication.
         # k3s 활성 시에만 등록되는 라우트
         ("POST", "/api/v1/k3s/callback"),
         # VM 내부 헬스 리포트 — Bearer report_token으로 자체 인증 (Keystone X-Auth-Token 불가)

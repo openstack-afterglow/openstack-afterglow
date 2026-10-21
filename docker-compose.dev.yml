@@ -176,6 +176,7 @@ services:
         required: false
     volumes:
       - ./.local-services/afterglow.conf:/etc/afterglow/afterglow.conf:ro
+      - ${WAYGATE_POLICY_DIR:-./.local-services/policy/waygate}:/etc/waygate:ro
     depends_on:
       waygate-migrate:
         condition: service_completed_successfully
@@ -200,6 +201,7 @@ services:
         required: false
     volumes:
       - ./.local-services/afterglow.conf:/etc/afterglow/afterglow.conf:ro
+      - ${WAYGATE_POLICY_DIR:-./.local-services/policy/waygate}:/etc/waygate:ro
     depends_on:
       waygate-migrate:
         condition: service_completed_successfully
@@ -241,6 +243,7 @@ services:
         required: false
     volumes:
       - ./.local-services/afterglow.conf:/etc/afterglow/afterglow.conf:ro
+      - ${DROVER_POLICY_DIR:-./.local-services/policy/drover}:/etc/drover:ro
     depends_on:
       redis:
         condition: service_started
@@ -267,6 +270,7 @@ services:
         required: false
     volumes:
       - ./.local-services/afterglow.conf:/etc/afterglow/afterglow.conf:ro
+      - ${DROVER_POLICY_DIR:-./.local-services/policy/drover}:/etc/drover:ro
     depends_on:
       redis:
         condition: service_started
@@ -306,6 +310,8 @@ services:
     env_file:
       - path: .env
         required: false
+    volumes:
+      - ${LUMEN_POLICY_DIR:-./.local-services/policy/lumen}:/etc/lumen:ro
     depends_on:
       lumen-migrate:
         condition: service_completed_successfully
@@ -327,6 +333,8 @@ services:
     env_file:
       - path: .env
         required: false
+    volumes:
+      - ${LUMEN_POLICY_DIR:-./.local-services/policy/lumen}:/etc/lumen:ro
     depends_on:
       lumen-migrate:
         condition: service_completed_successfully
@@ -366,6 +374,7 @@ services:
         required: false
     volumes:
       - palimpsest-hub:/var/lib/palimpsest/hub
+      - ${PALIMPSEST_POLICY_DIR:-./.local-services/policy/palimpsest}:/etc/palimpsest:ro
     depends_on:
       redis:
         condition: service_started
@@ -391,6 +400,7 @@ services:
         required: false
     volumes:
       - palimpsest-hub:/var/lib/palimpsest/hub
+      - ${PALIMPSEST_POLICY_DIR:-./.local-services/policy/palimpsest}:/etc/palimpsest:ro
     depends_on:
       redis:
         condition: service_started

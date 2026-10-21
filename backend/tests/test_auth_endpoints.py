@@ -1,6 +1,6 @@
 """인증 API 단위 테스트."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -25,61 +25,37 @@ def make_auth_data() -> dict:
         "is_system_admin": False,
         "domain_id": "default",
         "domain_name": "Default",
-        "identity_domain_id": "default",
-        "identity_domain_name": "Default",
+        "identity_domain_id": "accounts",
+        "identity_domain_name": "Accounts",
         "is_domain_manager": False,
         "email": "actual@example.test",
     }
-
-
-def make_user_obj() -> MagicMock:
-    u = MagicMock()
-    u.id = "test-user-123"
-    u.name = "testuser"
-    u.default_project_id = "test-project-123"
-    return u
 
 
 # ────── 로그인 ──────
 
 
 @pytest.mark.asyncio
-async def test_login_success(client, auth_directory):
+async def test_login_success(client, auth_directory, native_auth, monkeypatch):
     auth_directory.users["test-user-123"]["default_project_id"] = "test-project-123"
-    mock_conn = MagicMock()
-    mock_conn.identity.get_user.return_value = make_user_obj()
-
-    with (
-        patch(
-            "app.api.identity.auth.keystone.authenticate",
-            return_value={**make_auth_data(), "project_id": "", "project_name": "", "roles": []},
-        ),
-        patch(
-            "app.api.identity.auth.keystone.validate_token",
-            side_effect=lambda _token, project_id="", **_: dict(
-                make_auth_data(), project_id=project_id, roles=["member"] if project_id else []
-            ),
-        ),
-        patch(
-            "app.api.identity.auth.keystone.list_projects",
-            return_value=[{"id": "test-project-123", "name": "test-project", "domain_id": "default", "enabled": True}],
-        ),
-        patch("app.api.identity.auth.keystone.get_openstack_connection", return_value=mock_conn),
-    ):
-        resp = await client.post(
-            "/api/v1/auth/login",
-            json={
-                "username": "testuser",
-                "password": "password123",
-            },
-        )
+    monkeypatch.setattr("app.api.identity.auth._prewarm_dashboard", AsyncMock())
+    monkeypatch.setattr("app.api.identity.auth.record_project_access", AsyncMock())
+    monkeypatch.setattr("app.api.identity.auth.activity_svc.record", AsyncMock())
+    resp = await client.post("/api/v1/auth/login", json={"username": "testuser", "password": "valid"})
     assert resp.status_code == 200
     data = resp.json()
     from app.services import jwt_service, session_store
 
     claims = jwt_service.verify_access(data["token"])
     native_session = await session_store.get_session(claims["rjti"])
-    assert (data["user_id"], data["domain_id"], data["project_id"]) == ("test-user-123", "default", "test-project-123")
+    assert (data["user_id"], data["identity_domain_id"], data["domain_id"], data["project_id"]) == (
+        "test-user-123",
+        "accounts",
+        "personal",
+        "personal-test-user-123",
+    )
+    assert auth_directory.users["test-user-123"]["default_project_id"] == "test-project-123"
+    assert auth_directory.grants["test-user-123"] == ["test-project-123", "other-project-456", "personal-test-user-123"]
     assert (native_session["user_id"], native_session["domain_id"], native_session["project_id"]) == (
         data["user_id"],
         data["domain_id"],

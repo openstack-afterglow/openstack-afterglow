@@ -5,6 +5,8 @@
 	import ActionMenu from '$lib/components/ui/ActionMenu.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	interface Snapshot {
 		id: string;
@@ -44,11 +46,53 @@
 	const selectedSelectableCount = $derived([...selectedIds].filter((id) => selectableIds.has(id)).length);
 </script>
 
+{#snippet snapshotActions(snap: Snapshot)}
+	<ActionMenu open={openSnapshotActionMenu === snap.id} ariaLabel={t('snapshotListTable.snapshotActions', { name: snap.name || snap.id })} onopen={() => onActionMenuOpen(snap.id)} onclose={onActionMenuClose}>
+		<button onclick={() => { onActionMenuClose(); onDelete(snap.id, snap.name); }} disabled={deleting === snap.id} class="w-full text-left px-3 py-1.5 text-[13px] text-state-danger-text hover:bg-surface-sunken disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2">
+			{#if deleting === snap.id}
+				<ActivityIndicator size="xs" tone="danger" />
+			{:else}
+				<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+			{/if}
+			{deleting === snap.id ? t('snapshotListTable.deleting') : t('snapshotListTable.delete')}
+		</button>
+	</ActionMenu>
+{/snippet}
+
 {#if snapshots.length === 0}
 	<div class="text-center py-16 text-ink-2">
 		<p class="text-sm">{t('snapshotListTable.empty')}</p>
 	</div>
 {:else}
+	<ResponsiveTable>
+		{#snippet cards()}
+			<div class="responsive-card-toolbar">
+				<SelectionCheckbox checked={selectableIds.size > 0 && selectedSelectableCount === selectableIds.size} indeterminate={selectedSelectableCount > 0 && selectedSelectableCount < selectableIds.size} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel={t('snapshotListTable.selectAll')} />
+				<span class="text-xs text-ink-2">{t('snapshotListTable.selectAll')}</span>
+			</div>
+			{#each snapshots as snap (snap.id)}
+				<CompactResourceCard selected={selectedIds.has(snap.id)}>
+					<div class="flex items-start gap-2 min-w-0">
+						<SelectionCheckbox checked={selectedIds.has(snap.id)} disabled={selectionDisabled} onclick={() => onToggleSelect(snap.id)} ariaLabel={t('snapshotListTable.selectSnapshot', { name: snap.name || snap.id })} />
+						<span class="font-medium min-w-0 flex-1 break-all">{snap.name || snap.id.slice(0, 12)}</span>
+						<StatusChip status={snap.status} />
+					</div>
+					{#if deleting === snap.id}<span class="inline-flex items-center gap-1 text-xs text-state-danger-text"><ActivityIndicator size="xs" tone="danger" />{t('snapshotListTable.deleting')}</span>{/if}
+					<dl>
+						<div><dt>{t('snapshotListTable.size')}</dt><dd>{snap.size} GB</dd></div>
+						<div><dt>{t('snapshotListTable.sourceVolume')}</dt><dd class="font-mono break-all">{snap.volume_id.slice(0, 12)}…</dd></div>
+					</dl>
+					{#snippet details()}
+						<p class="font-mono break-all">{snap.id}</p>
+						<dl>
+							<div><dt>{t('snapshotListTable.sourceVolume')}</dt><dd class="font-mono break-all">{snap.volume_id}</dd></div>
+							<div><dt>{t('snapshotListTable.created')}</dt><dd>{snap.created_at ? new Date(snap.created_at).toLocaleString(intlLocale(), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</dd></div>
+						</dl>
+					{/snippet}
+					{#snippet actions()}{@render snapshotActions(snap)}{/snippet}
+				</CompactResourceCard>
+			{/each}
+		{/snippet}
 	<div class="motion-stagger bg-[#0B1220] border border-line rounded-lg overflow-hidden">
 		<div class="grid grid-cols-[32px_1.6fr_1.2fr_80px_140px_110px_56px] px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
 			<div><SelectionCheckbox checked={selectableIds.size > 0 && selectedSelectableCount === selectableIds.size} indeterminate={selectedSelectableCount > 0 && selectedSelectableCount < selectableIds.size} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel={t('snapshotListTable.selectAll')} /></div>
@@ -76,29 +120,10 @@
 					{#if deleting === snap.id}<span class="inline-flex items-center gap-1 text-xs text-state-danger-text"><ActivityIndicator size="xs" tone="danger" />{t('snapshotListTable.deleting')}</span>{/if}
 				</div>
 				<div class="flex justify-end" role="none">
-					<ActionMenu
-						open={openSnapshotActionMenu === snap.id}
-						ariaLabel={t('snapshotListTable.snapshotActions', { name: snap.name || snap.id })}
-						onopen={() => onActionMenuOpen(snap.id)}
-						onclose={onActionMenuClose}
-					>
-						<button
-							onclick={() => { onActionMenuClose(); onDelete(snap.id, snap.name); }}
-							disabled={deleting === snap.id}
-							class="w-full text-left px-3 py-1.5 text-[13px] text-state-danger-text hover:bg-surface-sunken disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-						>
-							{#if deleting === snap.id}
-								<ActivityIndicator size="xs" tone="danger" />
-							{:else}
-								<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-								</svg>
-							{/if}
-							{deleting === snap.id ? t('snapshotListTable.deleting') : t('snapshotListTable.delete')}
-						</button>
-					</ActionMenu>
+					{@render snapshotActions(snap)}
 				</div>
 			</div>
 		{/each}
 	</div>
+	</ResponsiveTable>
 {/if}

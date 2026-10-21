@@ -11,6 +11,8 @@
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import { t } from '$lib/i18n/ns/admin-chat-usage';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -158,6 +160,7 @@
 			{#if loading}
 				<div class="mt-5"><LoadingSkeleton variant="table" rows={5} /></div>
 			{:else if detail}
+				{@const usageDetail = detail}
 				<div class="mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
 					<div class="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-base)] p-3">
 						<p class="text-xs text-[var(--color-ink-3)]">{t('totalTokens')}</p>
@@ -192,12 +195,17 @@
 
 				<section class="mt-6" aria-labelledby="usage-model-title">
 					<h3 id="usage-model-title" class="mb-2 text-sm font-semibold text-[var(--color-ink-1)]">{t('modelUsage')}</h3>
-					<div class="hidden md:block">
+					<ResponsiveTable>
+						{#snippet cards()}
+							{#each usageDetail.by_model as item (`${item.provider ?? ''}:${item.model_name}`)}
+								<CompactResourceCard><p class="font-medium">{item.model_name}</p><p class="text-xs text-ink-2">{item.provider ?? t('unknown')}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('totalTokens')}</dt><dd>{formatNumber(item.total_tokens)}</dd></div><div><dt>{t('credits')}</dt><dd>{formatDecimal(item.credited_cost, 2)}</dd></div></dl>{#snippet details()}<dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('inputOutput')}</dt><dd>{formatNumber(item.prompt_tokens)} / {formatNumber(item.completion_tokens)}</dd></div><div><dt>{t('requests')}</dt><dd>{formatNumber(item.request_count)}</dd></div><div><dt>{t('cost')}</dt><dd>${formatDecimal(item.raw_cost)}</dd></div></dl>{/snippet}</CompactResourceCard>
+							{:else}<EmptyState headline={t('noRecords')} class="py-4 [&_.motion-enter]:animate-none" />{/each}
+						{/snippet}
 						<TableShell density="compact">
 							<table>
 								<thead><tr><th>{t('model')}</th><th>{t('input')}</th><th>{t('output')}</th><th>{t('total')}</th><th>{t('credits')}</th><th>{t('cost')}</th><th>{t('requests')}</th></tr></thead>
 								<tbody>
-									{#each detail.by_model as item (`${item.provider ?? ''}:${item.model_name}`)}
+									{#each usageDetail.by_model as item (`${item.provider ?? ''}:${item.model_name}`)}
 										<tr>
 											<td><div class="font-medium text-[var(--color-ink-1)]">{item.model_name}</div><div class="text-xs text-[var(--color-ink-3)]">{item.provider ?? t('unknown')}</div></td>
 											<td class="tabular-nums">{formatNumber(item.prompt_tokens)}</td>
@@ -208,38 +216,26 @@
 											<td class="tabular-nums">{formatNumber(item.request_count)}</td>
 										</tr>
 									{/each}
-									{#if detail.by_model.length === 0}<tr><td colspan="7"><EmptyState headline={t('noRecords')} class="py-4 [&_.motion-enter]:animate-none" /></td></tr>{/if}
+									{#if usageDetail.by_model.length === 0}<tr><td colspan="7"><EmptyState headline={t('noRecords')} class="py-4 [&_.motion-enter]:animate-none" /></td></tr>{/if}
 								</tbody>
 							</table>
 						</TableShell>
-					</div>
-					<div class="grid gap-2 md:hidden">
-						{#each detail.by_model as item (`mobile:${item.provider ?? ''}:${item.model_name}`)}
-							<article class="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-base)] p-3">
-								<div class="flex items-start justify-between gap-3">
-									<div class="min-w-0"><h4 class="truncate text-sm font-medium text-[var(--color-ink-1)]">{item.model_name}</h4><p class="text-xs text-[var(--color-ink-3)]">{item.provider ?? t('unknown')}</p></div>
-									<span class="shrink-0 text-sm font-semibold tabular-nums text-[var(--color-ink-1)]">{t('tokenCount', { tokens: formatNumber(item.total_tokens) })}</span>
-								</div>
-								<dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-									<div><dt class="text-[var(--color-ink-3)]">{t('inputOutput')}</dt><dd class="mt-0.5 tabular-nums text-[var(--color-ink-2)]">{formatNumber(item.prompt_tokens)} / {formatNumber(item.completion_tokens)}</dd></div>
-									<div><dt class="text-[var(--color-ink-3)]">{t('requests')}</dt><dd class="mt-0.5 tabular-nums text-[var(--color-ink-2)]">{formatNumber(item.request_count)}</dd></div>
-									<div><dt class="text-[var(--color-ink-3)]">{t('credits')}</dt><dd class="mt-0.5 tabular-nums text-[var(--color-ink-2)]">{formatDecimal(item.credited_cost, 2)}</dd></div>
-									<div><dt class="text-[var(--color-ink-3)]">{t('cost')}</dt><dd class="mt-0.5 tabular-nums text-[var(--color-ink-2)]">${formatDecimal(item.raw_cost)}</dd></div>
-								</dl>
-							</article>
-						{/each}
-						{#if detail.by_model.length === 0}<EmptyState headline={t('noRecords')} class="py-4 [&_.motion-enter]:animate-none" />{/if}
-					</div>
+					</ResponsiveTable>
 				</section>
 
 				<section class="mt-6" aria-labelledby="usage-ledger-title">
 					<h3 id="usage-ledger-title" class="mb-2 text-sm font-semibold text-[var(--color-ink-1)]">{t('ledger')}</h3>
-					<div class="hidden md:block">
+					<ResponsiveTable>
+						{#snippet cards()}
+							{#each usageDetail.records as record (record.id)}
+								<CompactResourceCard><div class="flex flex-wrap items-start justify-between gap-2"><p class="font-medium">{record.model_name}</p><Pill tone="neutral" size="xs">{sourceLabel(record.source)}</Pill></div><p>{formatDate(record.created_at)}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('totalTokens')}</dt><dd>{formatNumber(record.total_tokens)}</dd></div><div><dt>{t('credits')}</dt><dd>{formatDecimal(record.credited_cost, 2)}</dd></div></dl>{#snippet details()}<p>{record.provider ?? t('unknown')}{record.api_key_id ? t('apiKeySuffix', { id: String(record.api_key_id) }) : ''}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('inputOutput')}</dt><dd>{formatNumber(record.prompt_tokens)} / {formatNumber(record.completion_tokens)}</dd></div><div><dt>{t('cost')}</dt><dd>${formatDecimal(record.raw_cost)}</dd></div></dl>{/snippet}</CompactResourceCard>
+							{:else}<EmptyState headline={t('noRecords')} class="py-4 [&_.motion-enter]:animate-none" />{/each}
+						{/snippet}
 						<TableShell density="compact">
 							<table>
 								<thead><tr><th>{t('time')}</th><th>{t('source')}</th><th>{t('model')}</th><th>{t('input')}</th><th>{t('output')}</th><th>{t('total')}</th><th>{t('credits')}</th><th>{t('cost')}</th></tr></thead>
 								<tbody>
-									{#each detail.records as record (record.id)}
+									{#each usageDetail.records as record (record.id)}
 										<tr>
 											<td class="whitespace-nowrap">{formatDate(record.created_at)}</td>
 											<td><Pill tone="neutral" size="xs">{sourceLabel(record.source)}</Pill></td>
@@ -251,29 +247,11 @@
 											<td class="tabular-nums">${formatDecimal(record.raw_cost)}</td>
 										</tr>
 									{/each}
-									{#if detail.records.length === 0}<tr><td colspan="8"><EmptyState headline={t('noRecords')} class="py-4 [&_.motion-enter]:animate-none" /></td></tr>{/if}
+									{#if usageDetail.records.length === 0}<tr><td colspan="8"><EmptyState headline={t('noRecords')} class="py-4 [&_.motion-enter]:animate-none" /></td></tr>{/if}
 								</tbody>
 							</table>
 						</TableShell>
-					</div>
-					<div class="grid gap-2 md:hidden">
-						{#each detail.records as record (record.id)}
-							<article class="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-base)] p-3">
-								<div class="flex items-start justify-between gap-3">
-									<div class="min-w-0"><h4 class="truncate text-sm font-medium text-[var(--color-ink-1)]">{record.model_name}</h4><p class="truncate text-xs text-[var(--color-ink-3)]">{record.provider ?? t('unknown')}{record.api_key_id ? t('apiKeySuffix', { id: String(record.api_key_id) }) : ''}</p></div>
-									<Pill tone="neutral" size="xs">{sourceLabel(record.source)}</Pill>
-								</div>
-								<p class="mt-2 text-xs text-[var(--color-ink-3)]">{formatDate(record.created_at)}</p>
-								<dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-									<div><dt class="text-[var(--color-ink-3)]">{t('inputOutput')}</dt><dd class="mt-0.5 tabular-nums text-[var(--color-ink-2)]">{formatNumber(record.prompt_tokens)} / {formatNumber(record.completion_tokens)}</dd></div>
-									<div><dt class="text-[var(--color-ink-3)]">{t('totalTokens')}</dt><dd class="mt-0.5 tabular-nums text-[var(--color-ink-2)]">{formatNumber(record.total_tokens)}</dd></div>
-									<div><dt class="text-[var(--color-ink-3)]">{t('credits')}</dt><dd class="mt-0.5 tabular-nums text-[var(--color-ink-2)]">{formatDecimal(record.credited_cost, 2)}</dd></div>
-									<div><dt class="text-[var(--color-ink-3)]">{t('cost')}</dt><dd class="mt-0.5 tabular-nums text-[var(--color-ink-2)]">${formatDecimal(record.raw_cost)}</dd></div>
-								</dl>
-							</article>
-						{/each}
-						{#if detail.records.length === 0}<EmptyState headline={t('noRecords')} class="py-4 [&_.motion-enter]:animate-none" />{/if}
-					</div>
+					</ResponsiveTable>
 					{#if detail.next_before_id}
 						<div class="mt-3 flex justify-center"><Button variant="secondary" size="sm" disabled={loadingMore} ariaBusy={loadingMore} onclick={() => void load(false)}>{#if loadingMore}<ActivityIndicator size="xs" tone="ink" />{/if}{loadingMore ? t('loadingMore') : t('moreRecords')}</Button></div>
 					{/if}

@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import re
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -28,12 +29,12 @@ def enable_signup(directory, domains=()):
 
 
 def account_body(token):
-    return {"token": token, "name": "signup", "password": PASSWORD, "personal_domain_name": "My home"}
+    return {"token": token, "name": "signup", "password": PASSWORD}
 
 
 def assert_no_native_writes(directory):
     assert not directory.creates and not directory.updates and not directory.calls
-    assert not directory.personal_domains and not directory.personal_projects
+    assert not directory.domain_writes and not directory.personal_projects
 
 
 async def test_options_are_public_truthful_and_never_provision(directory, enrollment_app):
@@ -78,24 +79,26 @@ async def test_delivered_token_inspection_is_nonconsuming_and_signup_is_personal
         assert accepted.status_code == 200, accepted.text
         result = accepted.json()
         uid, home = result["user_id"], result["identity_domain_id"]
-        assert home == result["domain_id"] and home not in {"domain", "other"}
-        assert result["domain_name"] == result["identity_domain_name"] == "My home"
+        assert home != result["domain_id"] and home not in {"domain", "other"}
+        assert result["domain_name"] == "Personal" and result["identity_domain_name"] == "Accounts"
         assert directory.users[uid].afterglow_local_password is True
         assert directory.users[uid].domain_id == home and directory.users[uid].password == PASSWORD
-        assert project_service._direct_ids(directory.personal_direct, uid) == {
-            rid("manager"),
-            rid("project_owner"),
-            rid("project_reader"),
-        }
+        assert project_service._direct_ids(directory.personal_direct, uid) == {rid("member")}
+        assert re.fullmatch(r"signup-[a-z]{8}[0-9]{8}", result["personal_project_name"])
+        assert not any(p.domain_id == home for p in directory.ks.projects.list())
         assert not project_service._direct_ids(directory.default_direct, uid)
         assert not project_service._direct_ids(directory.direct, uid)
         assert (await client.get(f"/api/v1/auth/registrations/{token}")).status_code == 410
         assert (await client.post("/api/v1/auth/registrations/accept", json=account_body(token))).status_code == 410
     async with enrollments() as session:
         row = (await session.execute(select(DomainEnrollment))).scalar_one()
-        assert row.status == "accepted" and row.domain_id == row.identity_domain_id == home
-        assert all(grant["domain_id"] == home and grant["phase"] == "confirmed" for grant in row.added_grants)
-    assert len(directory.creates) == len(directory.personal_domains) == len(directory.personal_projects) == 1
+        assert row.status == "accepted" and row.domain_id is None and row.identity_domain_id == home
+        assert all(
+            grant["domain_id"] == row.personal_domain_id and grant["phase"] == "confirmed" for grant in row.added_grants
+        )
+    assert len(directory.creates) == len(directory.personal_projects) == 1 and len(directory.personal_domains) == 2
+    assert home == "operator-accounts" and result["personal_domain_id"] == "operator-personal"
+    assert not directory.domain_writes
 
 
 async def test_old_domain_signup_and_target_injection_are_rejected(directory, enrollment_app):
@@ -135,9 +138,7 @@ async def test_legacy_or_undelivered_tokens_never_admit_to_old_domain(directory,
         await session.commit()
         for operation in (
             lambda: domain_iam.registration_info(token, session),
-            lambda: domain_iam.redeem(
-                token, "registration", session, name="new", password=PASSWORD, personal_domain_name="Home"
-            ),
+            lambda: domain_iam.redeem(token, "registration", session, name="new", password=PASSWORD),
         ):
             with pytest.raises(HTTPException) as failed:
                 await operation()
@@ -194,9 +195,7 @@ async def test_global_signup_rechecks_current_policy_and_expiry(directory, enrol
         token = email_token(directory.sent[-1])
         directory.settings.auth.signup_email_domains = ["elsewhere.invalid"]
         with pytest.raises(HTTPException) as forbidden:
-            await domain_iam.redeem(
-                token, "registration", session, name="new", password=PASSWORD, personal_domain_name="Home"
-            )
+            await domain_iam.redeem(token, "registration", session, name="new", password=PASSWORD)
         assert forbidden.value.status_code == 403
         row = (await session.execute(select(DomainEnrollment))).scalar_one()
         row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
@@ -219,7 +218,7 @@ async def test_failed_delivery_cannot_be_inspected_or_redeemed(directory, enroll
     assert_no_native_writes(directory)
 
 
-@pytest.mark.parametrize("writer", ["create_account", "create_user", "create_managed_user", "update_user"])
+@pytest.mark.parametrize("writer", ["create_account", "create_managed_user", "update_user"])
 async def test_all_managed_email_writers_reject_foreign_normalized_owner_under_graph_lease(
     directory, enrollments, writer
 ):
@@ -236,15 +235,12 @@ async def test_all_managed_email_writers_reject_foreign_normalized_owner_under_g
         "email": "owner@xn--bcher-kva.example",
         "name": "unique",
         "password": PASSWORD,
-        "personal_domain_name": "Home",
         "enabled": True,
     }
     async with enrollments() as session:
         with pytest.raises(HTTPException) as conflict:
             if writer == "create_account":
                 await domain_iam.create_account("domain", "unique", attrs["email"], PASSWORD)
-            elif writer == "create_user":
-                await domain_iam.create_user(attrs, manager(), session)
             elif writer == "create_managed_user":
                 await domain_iam.create_managed_user(attrs, "domain", manager("system-admin"), session)
             else:
@@ -264,15 +260,13 @@ async def test_two_delivered_links_for_same_email_cannot_create_two_homes(direct
 
     async def accept(token):
         async with enrollments() as session:
-            return await domain_iam.redeem(
-                token, "registration", session, name="new", password=PASSWORD, personal_domain_name="Home"
-            )
+            return await domain_iam.redeem(token, "registration", session, name="new", password=PASSWORD)
 
     results = await asyncio.gather(*(accept(token) for token in tokens), return_exceptions=True)
     assert sum(isinstance(result, dict) for result in results) == 1
     failure = next(result for result in results if isinstance(result, HTTPException))
     assert failure.status_code == 409
-    assert len(directory.creates) == len(directory.personal_domains) == 1
+    assert len(directory.creates) == 1 and len(directory.personal_domains) == 2
     uid = next(result["user_id"] for result in results if isinstance(result, dict))
     assert not project_service._direct_ids(directory.default_direct, uid)
     assert not project_service._direct_ids(directory.direct, uid)
@@ -291,44 +285,48 @@ async def test_public_signup_unknown_personal_grant_is_fenced_without_old_tenant
         await domain_iam.register("new@test.invalid", session)
         token = email_token(directory.sent[-1])
         with pytest.raises(HTTPException) as failed:
-            await domain_iam.redeem(
-                token, "registration", session, name="new", password=PASSWORD, personal_domain_name="Home"
-            )
+            await domain_iam.redeem(token, "registration", session, name="new", password=PASSWORD)
         assert failed.value.status_code == 503
         row = (await session.execute(select(DomainEnrollment))).scalar_one()
-        assert row.status == "recovery_required" and row.domain_id == row.identity_domain_id
+        assert row.status == "recovery_required" and row.domain_id is None
         assert row.added_grants[-1]["phase"] == "unknown"
-        assert all(grant["domain_id"] == row.identity_domain_id for grant in row.added_grants)
+        assert all(grant["domain_id"] == row.personal_domain_id for grant in row.added_grants)
         assert directory.users[row.user_id].enabled is False
         assert not project_service._direct_ids(directory.default_direct, row.user_id)
         assert not project_service._direct_ids(directory.direct, row.user_id)
         with pytest.raises(HTTPException) as replay:
-            await domain_iam.redeem(
-                token, "registration", session, name="new", password=PASSWORD, personal_domain_name="Home"
-            )
+            await domain_iam.redeem(token, "registration", session, name="new", password=PASSWORD)
         assert replay.value.status_code == 410
     assert len(directory.creates) == 1
 
 
-async def test_unassigned_signup_failure_requires_system_operator_settlement(directory, enrollments):
+@pytest.mark.parametrize("kind", ["registration", "managed_create"])
+async def test_unassigned_creation_failure_requires_system_operator_settlement(directory, enrollments, kind):
     enable_signup(directory)
 
-    def unknown_domain_create(**attrs):
-        raise ConnectionError("Provider create outcome is unavailable")
+    def unknown_user_create(**attrs):
+        raise ConnectionError("Provider user create outcome is unavailable")
 
-    directory.ks.domains.create = unknown_domain_create
+    directory.ks.users.create = unknown_user_create
     async with enrollments() as session:
-        await domain_iam.register("new@test.invalid", session)
-        token = email_token(directory.sent[-1])
+        if kind == "registration":
+            await domain_iam.register("new@test.invalid", session)
+            token = email_token(directory.sent[-1])
         with pytest.raises(HTTPException) as failed:
-            await domain_iam.redeem(
-                token, "registration", session, name="new", password=PASSWORD, personal_domain_name="Home"
-            )
+            if kind == "registration":
+                await domain_iam.redeem(token, "registration", session, name="new", password=PASSWORD)
+            else:
+                await domain_iam.create_managed_user(
+                    {"name": "new", "email": "new@test.invalid", "password": PASSWORD},
+                    "domain",
+                    manager("system-admin"),
+                    session,
+                )
         assert failed.value.status_code == 503
         row = (await session.execute(select(DomainEnrollment))).scalar_one()
         operation_id = row.id
         assert row.domain_id is None and row.status == "recovery_required"
-        assert row.domain_creation_uncertain
+        assert row.creation_uncertain and not row.domain_creation_uncertain
         assert not (await domain_iam.list_invitations(manager(), session, operations=True))["items"]
         with pytest.raises(HTTPException) as denied:
             await domain_iam.revoke(operation_id, manager(), session, operation=True)
@@ -418,25 +416,24 @@ def include_enrollment_admin(app):
 async def test_reviewed_email_provisions_personal_home_only_after_approval_with_frozen_quota(
     directory, enrollments, enrollment_app, monkeypatch
 ):
-    from app.models.domain_quotas import DomainQuotaPolicy
     from app.models.enrollment_policy import SignupRequest
-    from app.services import domain_projects
+    from app.services import quota_native
 
     include_enrollment_admin(enrollment_app)
     quotas = {"instances": 2, "cores": 4, "ram": 4096}
     quota_observations = []
 
-    async def verify_disabled_home(domain_id, project_id, lease):
-        async with enrollments() as session:
-            policy = await session.get(DomainQuotaPolicy, domain_id)
-            assert policy.ceilings == policy.defaults == quotas
-        project = directory.personal_projects[project_id]
-        users = [u for u in directory.users.values() if u.domain_id == domain_id]
-        assert project.enabled is False
-        assert len(users) == 1 and users[0].enabled is False
-        quota_observations.append((domain_id, project_id))
+    native_update = quota_native.update_section
 
-    monkeypatch.setattr(domain_projects, "apply_default_quotas", verify_disabled_home)
+    def verify_disabled_project(conn, project_id, section, values):
+        project = directory.personal_projects[project_id]
+        assert project.enabled is False
+        assert directory.users[project.afterglow_personal_user_id].enabled is False
+        assert values == quotas and section == "compute"
+        native_update(conn, project_id, section, values)
+        quota_observations.append((project.domain_id, project_id))
+
+    monkeypatch.setattr(quota_native, "update_section", verify_disabled_project)
     async with AsyncClient(transport=ASGITransport(app=enrollment_app), base_url="http://test") as client:
         saved = await client.put(
             "/api/v1/admin/enrollment-policy",
@@ -472,14 +469,10 @@ async def test_reviewed_email_provisions_personal_home_only_after_approval_with_
         result = await client.post("/api/v1/auth/registrations/accept", json=account_body(fresh))
         assert result.status_code == 200, result.text
         uid, home = result.json()["user_id"], result.json()["identity_domain_id"]
-        assert home == result.json()["domain_id"] and home not in {"domain", "other"}
+        assert home != result.json()["domain_id"] and result.json()["domain_name"] == "Personal"
         assert directory.users[uid].enabled is True
-        assert quota_observations == [(home, next(iter(directory.personal_projects)))]
-        assert project_service._direct_ids(directory.personal_direct, uid) == {
-            rid("manager"),
-            rid("project_owner"),
-            rid("project_reader"),
-        }
+        assert quota_observations == [(result.json()["personal_domain_id"], result.json()["personal_project_id"])]
+        assert project_service._direct_ids(directory.personal_direct, uid) == {rid("member")}
         assert not project_service._direct_ids(directory.default_direct, uid)
         assert (await client.post("/api/v1/auth/registrations/accept", json=account_body(token))).status_code == 409
         assert len(directory.creates) == 1
@@ -496,8 +489,6 @@ async def test_reviewed_email_provisions_personal_home_only_after_approval_with_
     async with enrollments() as session:
         reviewed = await session.get(SignupRequest, requests[0]["id"])
         assert reviewed.status == "consumed" and reviewed.consumed_by_user_id == uid
-        policy = await session.get(DomainQuotaPolicy, home)
-        assert policy.ceilings == policy.defaults == quotas
         record = (await session.execute(select(DomainEnrollment).where(DomainEnrollment.user_id == uid))).scalar_one()
         assert record.personal_quotas == quotas and record.status == "accepted"
 
@@ -540,17 +531,10 @@ async def test_manual_signup_gate_covers_new_invite_but_not_existing_account_mem
         )
         assert existing["user_id"] == "foreign" and existing["identity_domain_id"] == "other"
         assert len((await session.execute(select(SignupRequest))).scalars().all()) == 1
-        with pytest.raises(HTTPException) as blocked:
-            await domain_iam.create_user(
-                {
-                    "name": "manager-created",
-                    "email": "unverified@test.invalid",
-                    "password": PASSWORD,
-                    "enabled": True,
-                    "personal_domain_name": "Unverified",
-                },
-                manager(),
-                session,
-            )
-        assert blocked.value.status_code == 403 and blocked.value.detail == "signup_requires_system_approval"
-        assert len(directory.creates) == 1
+    async with AsyncClient(transport=ASGITransport(app=enrollment_app), base_url="http://test") as client:
+        blocked = await client.post(
+            "/api/v1/iam/users",
+            json={"name": "manager-created", "email": "unverified@test.invalid", "password": PASSWORD, "enabled": True},
+        )
+        assert blocked.status_code == 405
+    assert len(directory.creates) == 1

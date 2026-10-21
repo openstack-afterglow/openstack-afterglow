@@ -106,12 +106,10 @@
 
 <details class="locale-select {variant} {className}" bind:this={menu} bind:open onfocusout={focusout}>
 	<summary bind:this={trigger} {id} class="locale-trigger" aria-label={`${languageLabel}: ${LOCALE_NATIVE_NAMES[current]}`} title={languageLabel} onkeydown={keydown} onclick={positionMenu}>
-		{#if variant === 'compact'}
-			<svg class="globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-				<circle cx="12" cy="12" r="9" />
-				<path stroke-linecap="round" stroke-linejoin="round" d="M3 12h18M12 3c2.5 2.7 3.75 5.7 3.75 9S14.5 18.3 12 21c-2.5-2.7-3.75-5.7-3.75-9S9.5 5.7 12 3z" />
-			</svg>
-		{/if}
+		<svg class="globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+			<circle cx="12" cy="12" r="9" />
+			<path stroke-linecap="round" stroke-linejoin="round" d="M3 12h18M12 3c2.5 2.7 3.75 5.7 3.75 9S14.5 18.3 12 21c-2.5-2.7-3.75-5.7-3.75-9S9.5 5.7 12 3z" />
+		</svg>
 		<span class="current" aria-hidden="true">{variant === 'labelled' ? LOCALE_NATIVE_NAMES[current] : LOCALE_SHORT_NAMES[current]}</span>
 		<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" /></svg>
 	</summary>

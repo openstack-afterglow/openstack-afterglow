@@ -9,6 +9,9 @@
 	import { formatObjectSize, formatDate, shortContentType } from '$lib/utils/format';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import { createArrivals } from './arrivals';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import ObjectFileCard from './ObjectFileCard.svelte';
+ import ObjectFolderCard from './ObjectFolderCard.svelte';
 
 	// Rows fade in only the first time their name renders in this container (initial load, a newly
 	// opened folder, an upload). Manual refresh, polling and filter typing remount rows that were
@@ -46,6 +49,21 @@
 		{/if}
 	</div>
 {:else}
+ <ResponsiveTable>
+  {#snippet cards()}
+   <div class="responsive-card-toolbar flex flex-wrap items-center gap-2 text-xs">
+    <SelectionCheckbox checked={s.visibleSelectedCount > 0 && s.visibleSelectedCount === s.visibleObjectCount} indeterminate={s.visibleSelectedCount > 0 && s.visibleSelectedCount < s.visibleObjectCount} disabled={s.bulkDeleting || s.bulkMoving} ariaLabel={t('views.treeTable.selectAllVisible')} onclick={s.toggleSelectAll} />
+    <button class="min-h-11 px-2" onclick={() => s.toggleSort('name')}>{t('views.treeTable.nameSort', { icon: s.sortIcon('name') })}</button><button class="min-h-11 px-2" onclick={() => s.toggleSort('bytes')}>{t('views.treeTable.sizeSort', { icon: s.sortIcon('bytes') })}</button><button class="min-h-11 px-2" onclick={() => s.toggleSort('last_modified')}>{t('views.treeTable.modifiedSort', { icon: s.sortIcon('last_modified') })}</button>
+   </div>
+   {#each s.treeRows as row (row.obj.name)}
+    <div class="min-w-0 space-y-1">
+     {#if row.isDir}
+      {#if !row.fullPath && (!s.filterText.trim() || s.searchScope === 'expanded')}<button onclick={() => s.toggleExpand(row.obj.name)} aria-busy={row.isLoading} class="min-h-11 px-2 text-xs text-ink-2">{#if row.isLoading}<ActivityIndicator size="xs" label={commonT('state.loading')} />{:else}{row.isExpanded ? t('views.treeTable.collapse') : t('views.treeTable.expand')}{/if} · {s.baseName(row.obj.name)}</button>{/if}
+      <ObjectFolderCard obj={row.obj} fullPath={row.fullPath || row.depth > 0} />
+     {:else}<ObjectFileCard obj={row.obj} fullPath={row.fullPath || row.depth > 0} compact />{/if}
+    </div>
+   {/each}
+  {/snippet}
 	<div class="overflow-x-auto">
 		<table class="w-full text-sm table-fixed" bind:this={tableRef}>
 			<colgroup>
@@ -187,4 +205,5 @@
 			</tbody>
 		</table>
 	</div>
+ </ResponsiveTable>
 {/if}

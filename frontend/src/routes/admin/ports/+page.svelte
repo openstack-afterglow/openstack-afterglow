@@ -1,9 +1,15 @@
 <script lang="ts">
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import { t as scopeT } from '$lib/i18n/ns/domain-admin';
+	let inventoryError = $state('');
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api, ApiError } from '$lib/api/client';
+	import { api as baseApi, ApiError } from '$lib/api/client';
+	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
+	const api = createAdminInventoryApi(baseApi);
+	onDestroy(api.dispose);
 	import { projectNames } from '$lib/stores/projectNames';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -15,7 +21,7 @@
 	import PortDeleteModal from '$lib/components/admin/ports/PortDeleteModal.svelte';
 	import PortsFilterBar from '$lib/components/admin/ports/PortsFilterBar.svelte';
 	import type { PortInfo, NetworkInfo } from '$lib/types/networks';
-	import type { PagedResponse, ProjectName } from '$lib/types/adminPort';
+	import type { PagedResponse } from '$lib/types/adminPort';
 	import { t } from '$lib/i18n/ns/admin-network';
 
 	let ports = $state<PortInfo[]>([]);
@@ -24,8 +30,6 @@
 	let markerStack = $state<string[]>([]);
 	let nextMarker = $state<string | null>(null);
 	let filter = $state('');
-	let projectFilter = $state('');
-	let allProjects = $state<ProjectName[]>([]);
 	let allNetworks = $state<NetworkInfo[]>([]);
 
 	let editPort = $state<PortInfo | null>(null);
@@ -43,7 +47,6 @@
 	function listPath(marker?: string): string {
 		const params = new URLSearchParams({ limit: String(pageSize) });
 		if (marker) params.set('marker', marker);
-		if (projectFilter) params.set('project_id', projectFilter);
 		return `/api/v1/admin/all-ports?${params}`;
 	}
 	function prefetchNext() {
@@ -69,16 +72,15 @@
 		const requestToken = $auth.token ?? undefined;
 		const requestProjectId = $auth.projectId ?? undefined;
 		const requestPageSize = pageSize;
-		const requestProjectFilter = projectFilter;
 		const requestPath = listPath(marker);
 		const owns = () => generation === loadGeneration
 			&& ($auth.token ?? undefined) === requestToken
 			&& ($auth.projectId ?? undefined) === requestProjectId
 			&& pageSize === requestPageSize
-			&& projectFilter === requestProjectFilter
 			&& listPath(marker) === requestPath;
 		nextPrefetch.cancel();
 		loading = true;
+		inventoryError = '';
 		try {
 			const res = await api.get<PagedResponse<PortInfo>>(requestPath, requestToken, requestProjectId);
 			if (!owns()) return;
@@ -87,22 +89,19 @@
 			const path = nextMarker ? listPath(nextMarker) : null;
 			const key = path ? JSON.stringify([path, requestToken ?? null, requestProjectId ?? null]) : null;
 			nextPrefetch.schedule(key, (signal) => path ? api.prefetch(path, requestToken, requestProjectId, { signal }) : undefined);
-		} catch {
-			if (owns()) ports = [];
+		} catch (reason) {
+			if (owns()) { ports = []; inventoryError = reason instanceof Error ? reason.message : scopeT('state.unavailable'); }
 		} finally {
 			if (owns()) loading = false;
 		}
 	}
 
-	async function loadProjects() {
-		const names = await projectNames.load(token, projectId);
-		allProjects = Array.from(names, ([id, name]) => ({ id, name }));
-	}
 
 	async function loadNetworks() {
 		try {
-			allNetworks = await api.get<NetworkInfo[]>('/api/v1/admin/all-networks', token, projectId);
-		} catch { allNetworks = []; }
+			const networks = await baseApi.get<NetworkInfo[]>('/api/v1/admin/all-networks', token, projectId);
+			if (api.isCurrent()) allNetworks = networks;
+		} catch { if (api.isCurrent()) allNetworks = []; }
 	}
 
 	async function updatePort(name: string): Promise<boolean> {
@@ -148,7 +147,7 @@
 	onMount(() => {
 		if (window.matchMedia('(max-width: 767px)').matches) pageSize = 10;
 		load();
-		loadProjects();
+		void projectNames.load(token, projectId);
 		loadNetworks();
 	});
 	onDestroy(() => { loadGeneration += 1; nextPrefetch.cancel(); });
@@ -158,7 +157,6 @@
 <PortCreateModal
 	bind:open={showCreate}
 	{allNetworks}
-	{allProjects}
 	{creating}
 	error={createError}
 	onCreate={createPort}
@@ -196,12 +194,10 @@
 
 	<PortsFilterBar
 		bind:search={filter}
-		bind:projectFilter
-		projectOptions={allProjects}
-		onProjectChange={() => { markerStack = []; nextMarker = null; load(); }}
 	/>
 
-	{#if loading}
+	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
+	{:else if loading}
 		<div class="text-ink-2 text-sm"><ActivityIndicator size="sm" label={t('portsPage.loading')} /></div>
 	{:else}
 		<PortsTable

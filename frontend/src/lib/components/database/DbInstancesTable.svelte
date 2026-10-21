@@ -4,6 +4,8 @@
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
   import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
   let {
     instances,
@@ -38,6 +40,24 @@
   const indeterminate = $derived(selectedSelectableCount > 0 && !allSelected);
 </script>
 
+<ResponsiveTable>
+  {#snippet cards()}
+    <div class="responsive-card-toolbar text-sm">
+      <SelectionCheckbox checked={allSelected} indeterminate={indeterminate} disabled={selectionDisabled} ariaLabel={tr('selection.allInstances')} onclick={onToggleAll} />
+      <span>{tr('selection.all')}</span><span aria-live="polite">{tr('selection.count', { count: selectedSelectableCount })}</span>
+    </div>
+    {#each instances as inst (inst.id)}
+      <CompactResourceCard selected={selectedIds.has(inst.id)}>
+        <div class="flex items-start gap-2"><SelectionCheckbox checked={selectedIds.has(inst.id)} disabled={selectionDisabled || !selectableIds.has(inst.id)} ariaLabel={tr('selection.item', { name: inst.name })} onclick={() => onToggleSelect(inst.id)} /><button onclick={() => onOpen(inst.id)} class="min-w-0 break-all text-left font-medium">{inst.name}</button><StatusChip status={inst.status} /></div>
+        <p class="text-xs text-ink-2">{inst.datastore?.type ?? '-'} {inst.datastore?.version ?? ''} · {tr('labels.sizeGb')}: {inst.size ?? '-'}</p>
+        {#snippet details()}<p class="text-xs break-all">{inst.id}</p><p class="text-xs">{tr('labels.created')}: {inst.created_at ? inst.created_at.slice(0, 10) : '-'}</p>{/snippet}
+        {#snippet actions()}
+          <button onclick={() => onRestart(inst.id, inst.name)} disabled={restarting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__restart inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if restarting === inst.id}<ActivityIndicator size="xs" tone="ink" />{tr('state.restarting')}{:else}{tr('actions.restart')}{/if}</button>
+          <button onclick={() => onDelete(inst.id, inst.name)} disabled={deleting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__delete inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if deleting === inst.id}<ActivityIndicator size="xs" tone="danger" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
+        {/snippet}
+      </CompactResourceCard>
+    {/each}
+  {/snippet}
 <div class="overflow-x-auto">
   <table class="w-full text-sm">
     <thead>
@@ -71,6 +91,7 @@
     </tbody>
   </table>
 </div>
+</ResponsiveTable>
 
 <style>
   .db-instances-table__head {

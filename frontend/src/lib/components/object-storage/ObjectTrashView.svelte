@@ -10,6 +10,8 @@
 	import { executeBulkMutations } from '$lib/utils/bulkActions';
 	import { t } from '$lib/i18n/ns/object-storage';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	interface TrashObject {
 		trash_key: string;
@@ -151,6 +153,16 @@
 				/>
 			</div>
 		{/if}
+  <ResponsiveTable>
+   {#snippet cards()}
+    {#each items as item (item.trash_key)}
+     <CompactResourceCard selected={selectionEnabled && selection.has(item.trash_key)}>
+      <div class="flex items-start gap-2">{#if selectionEnabled}<SelectionCheckbox checked={selection.has(item.trash_key)} disabled={busy} ariaLabel={t('dialogs.trash.selectObject', { name: item.original_name })} onclick={() => selection.toggle(item.trash_key)} />{/if}<strong class="min-w-0 text-sm font-mono break-all">{item.original_name}</strong></div>
+      <p class="text-xs text-ink-2">{t('dialogs.trash.columns.size')}: {formatStorage(item.bytes / 1_073_741_824)}</p><p class="text-xs text-ink-2">{t('dialogs.trash.columns.deletedAt')}: {item.deleted_at ? new Date(item.deleted_at * 1000).toLocaleDateString(intlLocale(), { year: 'numeric', month: '2-digit', day: '2-digit' }) : '—'}</p>
+      {#snippet actions()}<button onclick={() => restore(item.trash_key, item.original_name)} disabled={restoring === item.trash_key || busy} class="text-xs text-state-success-text disabled:text-ink-3 px-2 py-1 rounded border border-line-2">{t(restoring === item.trash_key ? 'dialogs.trash.restoring' : 'dialogs.trash.restore')}</button><button onclick={() => purge(item.trash_key, item.original_name)} disabled={purging === item.trash_key || busy} class="text-xs text-state-danger-text disabled:text-ink-3 px-2 py-1 rounded border border-line-2">{t(purging === item.trash_key ? 'dialogs.trash.purging' : 'dialogs.trash.purge')}</button>{/snippet}
+     </CompactResourceCard>
+    {/each}
+   {/snippet}
 		<table class="w-full text-xs">
 			<thead>
 				<tr class="border-b border-line text-ink-2">
@@ -195,6 +207,7 @@
 				{/each}
 			</tbody>
 		</table>
+  </ResponsiveTable>
 		<p class="mt-2 text-xs text-ink-2">{t('dialogs.trash.capacityNotice')}</p>
 		{#if selectionEnabled}
 			<BulkSelectionOverlay

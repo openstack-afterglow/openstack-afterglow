@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { onMount, onDestroy, untrack } from 'svelte';
 	import { ApiError } from '$lib/api/client';
 	import { domainIam, type IamSession, type IamInvitation, type IamAssignableRoles } from '$lib/api/domainIam';
@@ -87,8 +89,18 @@
 		<div class="flex flex-wrap items-center gap-3">{#if project}<Button type="button" variant="secondary" disabled={blocked || busy || loading || rolesLoading || !catalog} onclick={() => chooseRoles = true}>{t('selectRoles')}</Button><span class="text-sm text-ink-2">{t('roleCount', { count: roleIds.length })}</span>{/if}<Button type="submit" variant="primary" disabled={blocked || busy || loading || rolesLoading || (!!project && (!catalog || !roleIds.length))}>{t('sendInvite')}</Button></div>
 	</form></Card>
 	<div><Button variant="secondary" disabled={busy || loading} onclick={load}>{t('refresh')}</Button></div>
+	<ResponsiveTable>
+		{#snippet cards()}
+			{#each rows as row (row.id)}<CompactResourceCard>
+				<h3 class="text-sm font-medium break-all">{row.email}</h3><p class="text-xs">{enrollmentStatusLabel(row.status)}</p><p class="text-sm">{row.project_name || row.project_id || t('defaultMembership')}</p>
+				{#snippet details()}<p class="text-xs">{t('expires')}: {date(row.expires_at)}</p>{/snippet}
+				{#snippet actions()}<Button variant="danger-outline" size="sm" disabled={blocked || busy || loading || !(row.status === 'pending' || row.recovery_required)} onclick={() => revoke(row)}>{t('revoke')}</Button>{/snippet}
+			</CompactResourceCard>{/each}
+			{#if !loading && !error && !rows.length}<p class="text-sm text-ink-2">{t('emptyInvites')}</p>{/if}
+		{/snippet}
 	<TableShell><table><thead><tr><th>{t('email')}</th><th>{t('project')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('actions')}</th></tr></thead>
 		<tbody>{#each rows as row (row.id)}<tr><td>{row.email}</td><td>{row.project_name || row.project_id || t('defaultMembership')}</td><td>{enrollmentStatusLabel(row.status)}</td><td>{date(row.expires_at)}</td><td><Button variant="danger-outline" size="sm" disabled={blocked || busy || loading || !(row.status === 'pending' || row.recovery_required)} onclick={() => revoke(row)}>{t('revoke')}</Button></td></tr>{/each}{#if !loading && !error && !rows.length}<tr><td colspan="5">{t('emptyInvites')}</td></tr>{/if}</tbody>
 	</table></TableShell>
+	</ResponsiveTable>
 </div>
 {#if chooseRoles && catalog}<ProjectMemberRolesModal {member} roles={catalog.roles} busy={false} error="" onSave={(ids) => { roleIds = ids; chooseRoles = false; }} onClose={() => chooseRoles = false} />{/if}

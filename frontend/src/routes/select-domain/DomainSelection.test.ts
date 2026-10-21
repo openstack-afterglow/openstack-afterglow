@@ -16,6 +16,7 @@ import type { SessionTokenResponse } from '$lib/types/auth';
 import Page from './+page.svelte';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), goto: vi.fn(), close: vi.fn() }));
+vi.mock('$app/environment', () => ({ browser: true, dev: false, building: false, version: 'test' }));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 vi.mock('$app/stores', () => ({ page: { subscribe(run: (value: unknown) => void) { run({ data: { mockup: { active: false } } }); return () => {}; } } }));
 vi.mock('$lib/api/client', async (importOriginal) => ({ ...(await importOriginal<typeof ClientModule>()), api: { get: mocks.get, post: mocks.post }, beginSessionRevocation: vi.fn(), endSessionRevocation: vi.fn() }));
@@ -66,6 +67,25 @@ function startHomeSession() {
 }
 
 describe('home-first workspace chooser', () => {
+	it.each(['ko', 'en', 'ja', 'zh-CN', 'sw', 'nb', 'ms', 'vi', 'bn'] as const)('keeps account identity outside workspace options and starts at personal in %s', async locale => {
+		initLocale(locale);
+		const personal = { id: 'personal', name: 'Personal', kind: 'personal' as const };
+		const organization = { ...team, kind: 'organization' as const };
+		setLoginAuth(loginAuthState({ ...switchResponse, identity_domain_id: 'account-id', identity_domain_name: 'account',
+			domain_id: personal.id, domain_name: personal.name, project_id: 'personal-project', project_name: 'Personal project',
+			available_domains: [personal, organization], is_domain_manager: false }, { federated: false }).state);
+		browse([organization, personal]);
+		mocks.post.mockResolvedValueOnce({ ...switchResponse, identity_domain_id: 'account-id', identity_domain_name: 'account', available_domains: [personal, organization] });
+		render(Page);
+		await screen.findByRole('button', { name: /personal-project$/ });
+		expect((screen.getByRole('combobox', { name: t('domain') }) as HTMLSelectElement).value).toBe(personal.id);
+		expect(screen.getAllByRole('option').map(option => (option as HTMLOptionElement).value)).toEqual([personal.id, team.id]);
+		expect(screen.getByRole('option', { name: new RegExp(t('personal')) })).toBeTruthy();
+		await fireEvent.change(screen.getByRole('combobox', { name: t('domain') }), { target: { value: team.id } });
+		await fireEvent.click(await screen.findByRole('button', { name: /team-project$/ }));
+		await waitFor(() => expect(get(auth).domainId).toBe(team.id));
+		expect(get(auth)).toMatchObject({ identityDomainId: 'account-id', projectId: 'team-project' });
+	});
 	it.each(['empty', 'organization-first'] as const)('initially shows the current home with %s display preferences and no verification fetch', async preferences => {
 		startHomeSession();
 		if (preferences === 'organization-first') {
@@ -249,6 +269,33 @@ describe('explicit creation in the browsed domain', () => {
 		await fireEvent.click(screen.getByRole('button', { name: t('create') }));
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/projects', { name: 'New project', description: '', domain_id: team.id }, 'home-token', undefined, expect.objectContaining({ replayOnUnauthorized: false })));
 		expect(get(auth).domainId).toBe(home.id); expect(mocks.goto).not.toHaveBeenCalled();
+	});
+
+	it('allows an unnamed personal project but requires an organization project name', async () => {
+		const personal = { id: 'personal', name: 'Personal', kind: 'personal' as const };
+		const organization = { ...team, kind: 'organization' as const };
+		setLoginAuth(loginAuthState({ ...switchResponse, identity_domain_id: 'account-id', identity_domain_name: 'account', domain_id: personal.id,
+			domain_name: personal.name, project_id: 'personal-project', project_name: 'Personal project', available_domains: [personal, organization] }, { federated: false }).state);
+		mocks.get.mockImplementation(async path => path === '/api/v1/auth/domains' ? [personal, organization]
+			: path.startsWith('/api/v1/projects/capabilities') ? { domain_id: path.includes('personal') ? personal.id : organization.id, domain_kind: path.includes('personal') ? 'personal' : 'organization', can_create_project: true }
+			: workspace(path.includes('personal') ? personal : organization));
+		mocks.post.mockResolvedValueOnce({ id: 'extra-project', name: 'alice-e9b278' });
+		render(Page); await screen.findByRole('button', { name: /^Personal project/ });
+		await fireEvent.click(screen.getByRole('button', { name: t('newProject') }));
+		await screen.findByText(t('personalProjectNameHelp'));
+		expect(screen.queryByRole('textbox', { name: t('projectName') })).toBeNull();
+		await waitFor(() => expect((screen.getByRole('button', { name: t('create') }) as HTMLButtonElement).disabled).toBe(false));
+		await fireEvent.click(screen.getByRole('button', { name: t('create') }));
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/projects', { domain_id: personal.id, description: '' }, 'team-token', undefined, expect.objectContaining({ replayOnUnauthorized: false })));
+		await screen.findByRole('button', { name: /^Personal project/ });
+		await fireEvent.change(screen.getByRole('combobox', { name: t('domain') }), { target: { value: organization.id } });
+		await screen.findByRole('button', { name: /^Team project/ });
+		await fireEvent.click(screen.getByRole('button', { name: t('newProject') }));
+		const orgName = screen.getByRole('textbox', { name: t('projectName') }) as HTMLInputElement;
+		await waitFor(() => expect(orgName.disabled).toBe(false));
+		expect(orgName.required).toBe(true);
+		expect((screen.getByRole('button', { name: t('create') }) as HTMLButtonElement).disabled).toBe(true);
+		expect(mocks.post).toHaveBeenCalledOnce();
 	});
 
 	it.each(['domain', 'project'] as const)('blocks continuation and logout during an accepted %s create, then releases controls', async (kind) => {

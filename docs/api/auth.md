@@ -12,6 +12,8 @@ nav_order: 10
 로그인, JWT 토큰 발급·회전, 세션 관리, 작업 도메인 선택·생성 및 프로젝트 스코프 전환을 제공합니다.
 도메인별 로그인 정책과 OIDC/GitHub provider federation, 이메일 검증 onboarding도 제공합니다.
 
+현재 비밀번호 로그인은 도메인 입력 없이 **실제 native `Accounts`**를 서버에서 조회하고 그 UUID 안의 username/email만 선택해 인증합니다. 다른 domain의 동명 username/email은 로그인 후보가 아니며 외부 home으로 fallback하지 않습니다. 표시 이름이 Accounts인 다른 조직도 후보가 아닙니다. 기존 계정 이동·password/grant 복제는 없으므로 다른 home 계정은 이 로그인 경로를 사용할 수 없습니다. 신규 user와 개인 프로젝트는 운영자가 사전 생성한 native `Accounts`/`Personal`을 사용하고 shared domain 자체를 생성/수정하지 않습니다.
+
 ---
 
 ## 인증 방식
@@ -64,7 +66,8 @@ Refresh JWT의 `exp`와 Redis key의 양수 TTL은 로그인 세션의 유효성
 
 | 메서드 | 경로 | 인증 | 설명 |
 |--------|------|------|------|
-| `POST` | `/api/v1/auth/login` | 없음 | 전역 유일 계정을 원래 home에서 비밀번호 인증해 초기 JWT 발급 (10회/분) |
+| `POST` | `/api/v1/auth/login` | 없음 | native Accounts 안의 username/email로 비밀번호 인증해 초기 JWT 발급 (10회/분) |
+| `POST` | `/api/v1/auth/personal-project/recovery` | native password 증명 | 동일 Accounts 로그인 guard·정책 뒤 안전한 개인 프로젝트 단계 재개 및 JWT 발급 (10회/분) |
 | `GET` | `/api/v1/auth/me` | 필요 | 현재 토큰의 사용자/프로젝트 정보 |
 | `POST` | `/api/v1/auth/logout` | 필요 | 현재 세션 로그아웃 (refresh 세션 삭제 + Keystone revoke) |
 | `POST` | `/api/v1/auth/refresh` | refresh 토큰 | access/refresh JWT 재발급 (회전, 30회/분) |
@@ -104,6 +107,13 @@ Refresh JWT의 `exp`와 Redis key의 양수 TTL은 로그인 세션의 유효성
 | `DELETE` | `/api/v1/auth/mcp-tokens/{id}` | 필요·동일 사이트 | 본인 키 회수 |
 
 ---
+
+## 첫 로그인 개인 프로젝트 복구
+
+관리자 생성 계정의 개인 프로젝트는 첫 성공한 password/provider 로그인에서 준비합니다. `POST /api/v1/auth/personal-project/recovery`는 `/auth/login`과 같은 `{username,password}` body를 받고 Accounts의 exact native password/subject·로그인 정책을 새로 증명한 뒤 같은 세션 공개 경로를 실행합니다. 기존 refresh/JWT 없이 시작할 수 있으나 자격 증명 없이 provisioning할 수 있는 endpoint는 아닙니다. 잘못된 비밀번호는401, 변조/타 home의 native proof는401/403으로 거부하며 프로젝트를 만들지 않습니다.
+
+안전한 중단의503 `detail`은 `{code:"personal_project_retry_available",operation_id,retryable:true,native_calls_settled_required:false}`입니다. 같은 intent/name·동결 quota의 confirmed/not-sent 단계부터 재개하며 UI는 제출한 비밀번호를 지우고 다시 입력하도록 합니다. 이미 dispatch된 요청의 적용 결과가 불명하면 `personal_project_recovery_required`, `retryable:false`, `native_calls_settled_required:true`로 구분합니다. 이 경우 사용자 재로그인이나 복구 요청은 native write를 재전송하지 않으며 system-admin이 원 요청 종료를 확인하고 기존 topology settlement를 완료해야 합니다. 안전하게 비활성 empty staging을 정리한 뒤 다음 로그인에서 재시작할 수 있고 기존 user/home/password·활성 프로젝트나 자원을 초기화하지 않습니다. 성공 응답은 `TokenResponse`이며 이후에도 공유 workspace chooser를 거칩니다.
+
 
 ## 공통 스키마
 
@@ -219,11 +229,11 @@ Refresh JWT의 `exp`와 Redis key의 양수 TTL은 로그인 세션의 유효성
 
 [TokenResponse](#tokenresponse) — `auth_method`는 `password`.
 
-검증된 비밀번호·외부 공급자 로그인은 canonical 계정의 **원래 home**에서 초기 프로젝트 범위를 준비합니다. 신규 human은 이메일·OIDC/GitHub·관리자 생성 모두 기존 필수 개인-domain enrollment와 승인·quota 검증을 거칩니다. 기존 계정의 ID/home·비밀번호·권한은 이동하거나 복제하지 않습니다. Home의 `Default`가 없으면 기존 공유 mutation lease·멤버십·소유권 guard로 준비하며, 기존 도메인의 첫 로그인이라는 이유로 `manager`나 기존 프로젝트 소유권을 부여하지 않습니다. Native 최종 범위를 검증하지 못한 실패를 가짜 projectless 성공으로 대체하지 않습니다.
+검증된 일반 human 로그인은 계정의 **원래 identity home을 보존**하면서 공유 `personal`의 자기 primary project에 초기 native scope를 발급합니다. 신규 이메일·초대·관리자·OIDC/GitHub human은 공유 `accounts`에 identity만 생성하고 승인·동결 project quota·본인 직접 native `member`와 raw/effective provenance를 검증한 개인 프로젝트를 받습니다. 기존 human은 ID/home·비밀번호·federation·조직 grant·저장된 프로젝트 선호를 바꾸지 않고 개인 primary만 지연 준비합니다. 기존 owner 기반 personal grant도 재작성하지 않습니다. Service/bootstrap identity와 기존 system-admin 경로는 자동 provisioning하지 않습니다. 일반 로그인은 조직 Default를 만들거나 manager 권한을 추가하지 않으며 불명 생성 결과를 projectless 성공으로 숨기지 않습니다.
 
-Home 안의 활성·접근 가능한 사용자 `default_project_id` → canonical `Default` → 다른 접근 가능한 프로젝트 순으로 초기 프로젝트를 선택합니다. 다른 도메인·비활성·삭제·권한 회수된 선호는 사용하지 않고 저장된 선호 자체도 변경하지 않습니다. 응답·access JWT·Redis 세션은 실제 최종 native scope와 일치합니다. **새 password/provider 로그인은 항상 `/select-domain`의 공유 workspace 선택기를 엽니다.** Home이 처음 선택되며 사용자가 본인 home으로 계속하거나 접근 가능한 조직·프로젝트를 명시적으로 선택한 뒤 invitation/MCP continuation을 진행합니다. 표시 pin/order/hidden·이전 작업 도메인은 초기 인증 범위를 바꾸지 않으며 기존 세션의 일반 탐색/갱신 때 chooser를 반복 강제하지 않습니다. 로그인 본문의 `domain_name`·`project_name` 등 추가 selector는422입니다.
+일반 계정의 초기 project/default_project_id는 검증된 personal primary입니다. 공유 accounts는 identity-only라서 workspace 목록에 포함되지 않습니다. `available_domains[].kind`는 personal/organization/legacy이며 최초 identity와 working domain이 다를 수 있습니다. 응답·access JWT·Redis 세션은 실제 native scope와 일치합니다. **새 password/provider 로그인은 항상 `/select-domain`의 공유 workspace 선택기를 엽니다.** 사용자가 활성 개인 공간으로 계속하거나 이미 참여한 조직·프로젝트를 명시 선택한 뒤 invitation/MCP continuation을 진행합니다. Pin/order/hidden·이전 조직 선호는 최초 scope를 바꾸지 않으며 기존 세션의 일반 탐색/갱신 때 chooser를 반복 강제하지 않습니다. 로그인 본문의 domain_name/project_name 등 추가 selector는422입니다.
 
-로그인 내부의 native client와 directory 읽기는 요청 한 번 안에서만 공유합니다. Password 방법 정책은 credential exchange 전에 확인하며, unscoped 사용자 확인 뒤 최종 프로젝트로만 교환합니다. 이미 직접 Default reader grant와 전체 manager projection이 정확하면 native resource 변경 없이 통과합니다. 누락·철회된 projection 복구는 기존 graph lease에서 fresh 상태를 확인하고, 변경 전후 읽기 snapshot을 폐기합니다. 요청 간 권위 cache나 토큰/권한 검증 TTL은 늘리지 않습니다.
+Native client와 directory 읽기는 요청 안에서만 공유하고 credential exchange 전 password 방법 정책을 확인합니다. 새 personal primary는 exact marker와 본인 직접 member·전체 native provenance를 다시 검증하며 불명 SQL/native intent·disabled user/home/project·필수 membership 회수는 성공 세션을 만들지 못합니다. 기존 owner 기반 personal은 원래 단일-owner 검증과 grant를 보존합니다. Configured OIDC organization은 현재 binding marker와 조직 membership을 callback 최종 공개·refresh·scope 공개에서도 검사합니다. Provider origin과 immutable identity/working scope는 독립적입니다. 요청 간 authority cache나 token 검증 TTL은 늘리지 않습니다.
 
 브라우저는 완전히 매핑한 새 로그인 응답을 일회성 메모리 proof로 받아 즉시 사용할 수 있으므로 로그인 직후 `/auth/me`를 반복하지 않습니다. 저장된 자격을 새로고침으로 복원하거나 임의/복사된 상태를 주입하면 `/auth/me` 검증이 필요합니다. 서버가 검증한 exact-owner refresh/rescope 응답은 기존 준비된 화면을 유지하지만 새 token의 `/me` 검증을 생략하지 않습니다. Proof는 sessionStorage에 저장하지 않으며 이전 검증 응답·retry는 새 로그인/작업 범위를 덮어쓰지 못합니다.
 
@@ -354,7 +364,9 @@ Manager는 해당 도메인의 enabled 프로젝트 전체를, 일반 사용자�
 
 Directory 조립은 한 요청의 `NativeOperation`에서 서비스 연결·도메인/프로젝트·membership·role graph 관측을 재사용합니다. 응답 직전 별도의 fresh domain authority 확인을 위해 관측을 무효화하며 연결만 유지합니다. 요청 간 권위 cache나 TTL 증가는 없습니다. Refresh·명시적 scope 변경도 동일한 연결 소유권을 사용하되 정책 조회와 native 변경 뒤 publication 경계에서 권위를 다시 검증합니다.
 
-Chooser는 알고 있는 대상 도메인의 directory/workspace 읽기를 병행하고 같은 대상의 진행 중 읽기를 합칩니다. 이미 검증된 directory 안에서 다른 도메인을 둘러볼 때는 해당 workspace만 읽으며, 명시적 새로고침은 directory도 다시 검증합니다. 이 관측은 mounted owner에만 속하고 logout·login/scope 변경·취소·unmount 이후의 늦은 응답은 반영하지 않습니다.
+Chooser는 알고 있는 대상 도메인의 directory/workspace 읽기를 병행하고 같은 대상의 진행 중 읽기를 합칩니다. 성공한 표시 snapshot은 현재 logical session/user/home/working-domain/project 및 권한 문맥에만 묶인 브라우저 메모리에서30초 재사용하며, workspace는 최대16개 도메인으로 제한합니다. 재열기·재방문은 남은 수명만 사용하고 수명을 연장하지 않습니다. Logout·새 login·scope/권한 변경·전환 시작은 동기적으로 폐기하므로 닫힌 창 사이의 ABA도 이전 snapshot을 복원하지 않습니다. 목록·capability 표시 cache는 membership이나 mutation 권위가 아니며 실제 선택·생성 API는 기존 fresh native 검증을 수행합니다.
+
+명시적 **목록 새로고침**과 프로젝트/도메인 생성 후 재조회는 기존 snapshot을 버리고 directory/workspace를 다시 읽습니다. 실패한 조회와 늦은 old-owner/unmounted 응답은 저장하지 않습니다. TTL 만료 뒤 자동 탐색 재검증은 미확정 생성 요청의 재전송 잠금을 해제하지 않으며, 성공한 명시적 refresh만 기존 uncertain-write fence를 해제합니다. API 응답 자체의 no-store/private 계약·서버 권한 cache 정책은 바뀌지 않습니다.
 
 ### 원자적 작업 범위 선택
 
@@ -366,7 +378,7 @@ Chooser는 알고 있는 대상 도메인의 directory/workspace 읽기를 병�
 
 ### 도메인 생성
 
-`POST /api/v1/auth/domains` 본문은 `{ "name": "Example", "description": "optional" }`입니다. Name은 trim 후1–64자 표시 이름, description은최대4096자, extra field는 금지합니다. 서버는 **계정 소속 도메인**의 현재 `signup_enabled` 또는 live `system:all` admin을 확인합니다. 성공201은 `{id,name,description,enabled,default_project_id}`이며 새 도메인과 canonical Default 및 실제 호출자의 `manager`·`project_owner`·직접 `project_reader` grant가 검증됐음을 뜻합니다. Manager는 Default에 할당하는 기존 도메인 관리 권위이고 system admin이 아닙니다. 외부 home 소속 생성자도 같은 계정 ID를 사용합니다. Create는 기존 로그인 세션을 보존하며 API 자체는 새 작업 도메인으로 자동 전환하지 않습니다.
+`POST /api/v1/auth/domains` 본문은 `{ "name": "Example", "description": "optional" }`입니다. Name은 trim 후1–64자 표시 이름, description은최대4096자, extra field는 금지합니다. 서버는 현재 native identity와 live `system:all` admin 여부를 다시 확인하고, 일반 사용자는 독립 `[auth].organization_creation_enabled`와 `max_organizations_per_user`를 충족해야 합니다. 공개 signup과 원래 home의 `signup_enabled`는 조직 생성 권위가 아닙니다. 성공201은 `{id,name,description,enabled,kind:"organization",default_project_id}`이며 새 조직과 canonical Default 및 실제 호출자의 `manager`·`project_owner`·직접 `project_reader` grant가 검증됐음을 뜻합니다. Manager는 Default의 조직 관리 권위이며 system admin이 아닙니다. Creator의 원래 계정 ID/home과 로그인 세션은 보존하고 API 자체는 새 작업 조직으로 자동 전환하지 않습니다.
 
 활성 도메인 안에서 Default를 비활성 상태로 준비하고 단일 소유권·manager/reader grant·읽기 projection·quota defaults를 확인한 뒤 활성화합니다. Initial owner는 기존 ownership journal에 기록하며 결과가 applying/unknown이면 정확한 disabled 프로젝트와 intent를 보존해 운영자 settlement/reconciliation 없이 재전송·삭제하지 않습니다. 확정된 후속 실패의 보상도 이번 호출이 소유권을 확인한 정확한 신규 ID만 대상으로 합니다. 이름으로 재생성/삭제하지 않습니다. 기존 도메인의 최초 creator/manager는 추정하지 않으며 새 Default의 프로젝트 생성자와 도메인 생성자를 구분합니다.
 
@@ -519,7 +531,7 @@ Backend source의 `issue_federated_login`은 한 요청의 `NativeOperation`에�
 
 `ProviderLinkResponse={linked:true,domain_id,domain_name,provider_id}`입니다. 두 연결 API는 native federation·프로젝트 scope·provider 검증 stamp·JWT/refresh/session 발급을 하지 않습니다. 브라우저는 비밀번호·소비된 proof를 버리고 연결 완료와 `/login?reauthenticate=1` 버튼을 표시하며 초대·MCP continuation과 기존 세션은 유지합니다. 이 로그인 화면은 기존 세션이 있어도 자동 dashboard 이동을 하지 않습니다. 사용자가 시작한 **새 authorize/callback**에서 canonical native user/home·admission·현재 provider 정책을 다시 검증하고 home에 로그인한 뒤 workspace를 선택합니다. 연결 저장이 불확실하면503 `native_attachment_unconfirmed`이며 timeout·실패를 성공으로 표시하거나 소비한 요청을 자동 재전송하지 않습니다.
 
-**계정 연결과 조직 가입은 별도**입니다. 기존 native 멤버십이 없으면 provider와 verified email host의 configured `auto_join_email_domains`가 필요하며 없으면403 `invitation_required`입니다. 허용된 조직에는 준비된 Default reader만 추가하고 manager/owner는 부여하지 않습니다. Default 부재는409 `domain_default_required`입니다. 완전히 새로운 외부 human은 기존 승인·필수 개인 home/Default enrollment를 거치며 provider origin 조직에 identity를 직접 생성하지 않습니다. 기존 계정의 home은 이동하지 않고, callback의 최초 세션은 provider origin이 아니라 exact canonical home입니다.
+**계정 연결과 조직 가입은 별도**입니다. 기존 native 멤버십이 없으면 provider와 verified email host의 configured `auto_join_email_domains`가 필요하며 없으면403 `invitation_required`입니다. 허용된 조직에는 준비된 Default의 project_reader만 추가하고 manager/owner는 부여하지 않습니다. Default 부재는409 `domain_default_required`입니다. 완전히 새로운 외부 human은 승인·accounts identity-only·personal의 자동 생성 이름/direct member 프로젝트 enrollment를 거치며 provider origin 조직에 identity를 직접 생성하지 않습니다. 기존 계정의 home·password·federation tuple은 이동하지 않고, callback의 최초 native project scope는 검증된 personal primary입니다. Provider origin이나 관측 domain 자체는 조직 admission 권위가 아닙니다.
 
 Home identity, 현재 작업 도메인, provider origin은 서로 다를 수 있습니다. Provider-origin의 허용 목록/revision/검증 email 정책을 세션 회전·refresh·작업 전환 뒤에도 유지하며 현재 작업 도메인의 email 제한도 별도로 검사합니다. Password 세션은 home password 정책을 사용합니다. Provider origin이 없는 과거 federated 세션은401 재로그인이며 현재 작업 도메인을 origin으로 추정하지 않습니다.
 
@@ -621,7 +633,7 @@ allow_providers = []
 
 GitLab은 OIDC issuer의 discovery를 사용합니다. `authorization_url`, `token_url`, `api_url`을 OIDC에 직접 넣지 않습니다. GitHub는 public 기본 endpoint 또는 HTTPS enterprise endpoint를 사용하며 `read:user`/`user:email`, access-token federation과 `client_secret_post`가 기본입니다. OIDC는 `id_token`/`client_secret_basic`가 기본이며 공급자에 맞춰 `federation_token_type`, `token_endpoint_auth_method`를 명시할 수 있습니다. 기존 HTTPS/DNS-pinning·verified email·native domain/IdP/protocol 검증은 두 설정 경로에 동일하게 적용됩니다.
 
-레지스트리 선언만으로 Keystone federation이 생성되지는 않습니다. Keystone IdP/protocol/mapping과 **각** upstream application의 `<app.frontend_base_url>/auth/callback` 등록을 먼저 준비해야 합니다. Native mapping은 **stable subject를 `user.id`로 사용하는 user-only ephemeral mapping**이어야 하며 email 덮어쓰기·groups/projects/roles provisioning은 금지합니다. `preferred_username`/email/name을 identity key로 쓰지 않습니다. Callback과 link는 native exchange 전에 mapping을 검사하고 unsafe/조회 불가는503 `native_mapping_unsafe`로 거부합니다. Native Keystone은 기존 local user에 full federated tuple을 PATCH하고 그 tuple로 동일 canonical ID/home을 발급할 수 있어야 합니다. 상세 설치·cutover 전제는 [배포 가이드](../deployment.md#canonical-계정공개-가입복구-cutover)를 따릅니다.
+레지스트리 선언만으로 Keystone federation이 생성되지는 않습니다. Keystone IdP/protocol/mapping과 **각** upstream application의 `<app.frontend_base_url>/auth/callback` 등록을 먼저 준비해야 합니다. Afterglow용 native mapping은 **stable subject를 `user.id`로 사용하는 user-only ephemeral mapping**이어야 하며 email 덮어쓰기·groups/projects/roles provisioning은 금지합니다. 이는 Keystone 자체의 project auto-provisioning 기능 부재가 아니라 canonical 계정·승인·개인 quota·조직 admission을 우회하지 않게 하는 Afterglow 경계입니다. `preferred_username`/email/name을 identity key로 쓰지 않습니다. Callback과 link는 native exchange 전에 mapping을 검사하고 unsafe/조회 불가는503 `native_mapping_unsafe`로 거부합니다. Native Keystone은 기존 local user에 full federated tuple을 PATCH하고 그 tuple로 동일 canonical ID/home을 발급할 수 있어야 합니다. 상세 설치·연결 책임과 cutover 전제는 [배포 가이드](../deployment.md#native-keystone-선행-조건)를 따릅니다.
 
 구형 `[gitlab_oidc]`와 frontend의 같은 이름 플래그는 현재 공급자 레지스트리를 구성하지 않습니다. 기존 등록을 이관할 때는 client ID/secret을 보호된 `[auth.providers.<key>]`로 옮기고, `gitlab_url`은 discovery 응답과 정확히 같은 `issuer_url`로, `idp_id`/`protocol_id`는 `keystone_idp_id`/`keystone_protocol_id`로, 공백 구분 scope 문자열은 배열로 바꿉니다. 콜백은 과거 `/auth/gitlab/callback`이 아니라 `/auth/callback`입니다. Provider를 작업 도메인에 노출한다고 계정 home이 바뀌지 않습니다. 기존 mutable-username native 연결과 중복 이메일 계정은 운영자가 exact user ID·issuer/sub·IdP/protocol tuple·현재 grant/소유권을 검토해 명시적으로 이관해야 하며 자동 merge/reset하지 않습니다.
 
@@ -707,23 +719,23 @@ allow_providers = ["organization_team", "code_host"]
 | `GET /signup/options` | 없음 | 200 `{signup_enabled,smtp_configured,recovery_enabled,approval_mode}` | 20회/분 |
 | `POST /registrations` | `{email}` | 202 `{accepted:true}` | 3회/분 |
 | `GET /registrations/{token}` | 없음 | 200 `{email,account_exists,identity_domain_id?,identity_domain_name?}` | 20회/분 |
-| `POST /registrations/accept` | `{token,name,password,personal_domain_name}` | 200 EnrollmentResult | 5회/분 |
+| `POST /registrations/accept` | `{token,name,password}` | 200 EnrollmentResult | 5회/분 |
 | `POST /domains/{domain_id}/registrations` | `{email}` | **항상403** `{detail:"invitation_required"}` | 3회/분 |
 | `GET /invitations/{token}` | 없음 | 200 `{email,account_exists,identity_domain_id?,identity_domain_name?,domain_id,domain_name,expires_at,project_name}` | 20회/분 |
-| `POST /invitations/accept` | `{token,name,password,personal_domain_name}` | 200 EnrollmentResult | 5회/분 |
+| `POST /invitations/accept` | `{token,name,password}` | 200 EnrollmentResult | 5회/분 |
 | `POST /invitations/accept-existing` | `{token}` | 200 EnrollmentResult | 5회/분 |
 
 전역 signup enabled는 시스템 관리자의 persisted enrollment policy를 우선하며 최초 정책 row 부재에서만 `[auth].public_signup_enabled`(기본false)를 사용합니다. `signup_email_domains`(기본[]; 비어 있으면 host 제한 없음)는 설정의 exact host 제한입니다. 옵션의 SMTP/recovery readiness는 SMTP enabled/host/from-address와 frontend base URL의 **구성 여부**이며 실제 배달 증거가 아닙니다. Signup flag는 그 readiness와 공개 opt-in의 conjunction입니다. 요청 시 signup 비활성403 `signup_disabled`, readiness 부재503 `smtp_not_configured`, host 위반403 `email_domain_not_allowed`입니다. 수락에서도 현재 정책을 다시 확인합니다. SQL domain `signup_enabled/signup_email_domains`는 전역 signup이나 임의 작업 도메인 가입 권한을 대신하지 않습니다.
 
-Email-first 요청은 기존 계정 여부를 조회하지 않고 같은 검증 메일을 전송하며 native 계정/domain/grant를 만들지 않습니다. SMTP 실패는503이고 redeemable 링크를 발급한 성공으로 표시하지 않습니다. 계정 존재/home 안내는 **전달된 비밀 링크를 가진 조회자에게만** 반환합니다. 등록 조회는 token을 소비하지 않습니다. 중복 email 소유권은409 `account_email_ambiguous`; 기존 계정이면 로그인/복구 후 초대 수락을 사용하며 신규 계정을 만들지 않습니다. 새 가입은 전달된 주소와 새 개인 home만 사용하며 기존 작업 도메인에 가입시키지 않습니다.
+Email-first 요청은 기존 계정 여부를 조회하지 않고 같은 검증 메일을 전송하며 native account/project/grant를 만들지 않습니다. SMTP 실패는503이고 redeemable 링크를 발급한 성공으로 표시하지 않습니다. 계정 존재/home 안내는 전달된 비밀 링크를 가진 조회자에게만 반환합니다. 등록 조회는 token을 소비하지 않습니다. 중복 email 소유권은409 account_email_ambiguous이며 새 username은 전역 native username/email login alias와도 충돌할 수 없습니다. 기존 계정이면 로그인/복구 후 초대를 수락하고 신규 계정을 만들지 않습니다. 공개 가입은 accounts identity와 personal primary만 만들며 기존 조직에 직접 가입시키지 않습니다.
 
 `approval_mode=admin`이면 verified 신규 email의 링크 조회/수락과 신규 초대 계정, fresh OIDC/GitHub 가입은 native 생성 전에403 `signup_approval_pending`으로 멈춥니다. 거절은403 `signup_approval_rejected`, 이미 소비된 승인 재사용은409 `signup_approval_consumed`입니다. 대기 중 password·OAuth code·세션은 보관하거나 자동 재전송하지 않습니다. 관리자는 [가입 정책·승인 API](admin.md#가입-정책개인-도메인-quota와-승인-대기열)에서 결정합니다. 공개 email 승인은 새 검증 메일로 계속하며 공개 가입이 꺼진 초대 가입은 원래 초대의 GET 재조회 버튼으로 새 빈 입력 화면을 엽니다. Provider는 승인 후 새 로그인부터 시작합니다. 기존 계정의 초대 수락/로그인은 신규 승인 대상이 아니며 ID/home을 유지합니다.
 
-`EnrollmentResult={user_id,domain_id,domain_name,identity_domain_id,identity_domain_name}`입니다. 전역 가입은 working/home이 같은 새 개인 도메인이고 초대는 target 작업 도메인과 실제 home을 구분합니다. Token32–256자, name1–255자·앞뒤 공백 금지, 새 계정 `personal_domain_name` 필수1–64자·앞뒤 공백 금지·중복 가능한 표시 이름, password12–1024자, email3–255자입니다. Body는 extra field를 거부합니다. 등록 링크는1시간·1회용, 초대 expiry는 SMTP invitation 설정이며 SHA-256 해시만 저장합니다. 수락은 JWT를 발급하거나 기존 세션을 자동 전환하지 않습니다.
+`EnrollmentResult={user_id,domain_id,domain_name,identity_domain_id,identity_domain_name,personal_domain_id,personal_project_id,personal_project_name}`입니다. 신규 계정의 domain_id/domain_name은 personal, identity_domain_id/identity_domain_name은 accounts이고 personal_domain_id는 working domain과 같습니다. 초대 target 조직은 원래 invitation 조회/요청 문맥에 보존하며 개인 생성 결과를 target 조직으로 오해하면 안 됩니다. 기존 계정 수락은 원래 identity를 유지합니다. Token32–256자, name1–255자·앞뒤 공백 금지, password12–1024자, email3–255자이며 personal_domain_name을 포함한 extra field는422입니다. 개인 프로젝트 이름은 정규화 username 최대47자+하이픈+암호학적 임의 소문자8자+숫자8자리로 최대64자입니다. 등록 링크는1시간·1회용, 초대 expiry는 SMTP 설정이며 SHA-256 해시만 저장합니다. 수락은 JWT를 발급하거나 기존 세션을 자동 전환하지 않습니다.
 
-새 email/OIDC/GitHub human은 개인 domain에 disabled로 생성하고 personal Default의 manager·project_owner·직접 project_reader와 동결된 개인 quota의 native update/readback을 확인한 뒤 활성화합니다. Email 계정만 password를 가지며 external-only 계정에 로컬 password를 만들지 않습니다. **초대에만** target Default reader와 선택 project safe roles를 추가하며 target Default 부재는409 `domain_default_bootstrap_required`입니다. 기존 계정 accept-existing은 enabled 본인·global unique email 일치와 보호 정책을 확인하고 user ID/home/email/password를 유지합니다. 기존 service/privileged 계정의 IAM grant 보호를 우회하지 않습니다.
+신규 human은 accounts user와 personal project를 disabled로 준비한 뒤 본인 직접 native member 하나, raw/effective 사용자·scope·role-ID provenance, 동결된 project quota update/readback을 확인하고 활성화합니다. 개인 owner/admin/reader·manager·Default·공유 domain budget은 자동 생성하지 않습니다. Email 계정만 password를 가지며 external-only에 로컬 password를 만들지 않습니다. 명시적 초대에만 target 조직 Default reader와 선택 project safe role을 추가하고 target Default 부재는409 domain_default_bootstrap_required입니다. Trusted OIDC 조직 admission도 별도 정책을 통과해야 하며 provider origin만으로 가입하지 않습니다. 관리자 생성의 선택 domain은 admission이 아닙니다. 기존 계정 accept-existing은 enabled 본인·global unique email 일치와 보호 정책을 확인하고 user ID/home/email/password를 유지합니다. Service/privileged IAM 보호도 유지합니다.
 
-기타 실패는403 정책/초대자 권한 회수/계정 보호,404 링크 없음,409 기존 계정/역할·동시 변경,410 만료·회수·소비·수락 불가 상태,422 입력,429 rate limit,503 SMTP/native/storage입니다. 응답은 no-store/private·no-cache·no-referrer입니다. Native intent 이후 실패는 operation ID가 포함된503과 failed/recovery_required journal을 남기며 링크를 재사용하지 않습니다. 보상은 이번 작업의 grant 및 exact provenance로 소유권을 입증한 새 자원만 대상으로 합니다. 개인 home이 확정된 이후 enrollment operation은 해당 exact domain에 귀속됩니다. [도메인 IAM](iam.md)의 lifecycle·[관리자 복구 API](admin.md)를 사용하며 이미 존재하는 identity를 병합/이동/reset하지 않습니다.
+기타 실패는403 정책/초대자 권한 회수/계정 보호,404 링크 없음,409 계정/role·동시 변경,410 만료·회수·소비·수락 불가,422 입력,429 rate limit,503 SMTP/native/storage입니다. 응답은 no-store/private·no-cache·no-referrer입니다. Native intent 이후 실패는 operation ID와 failed/recovery_required journal을 남기며 링크·unknown native create를 replay하지 않습니다. 정리는 이번 작업의 grant와 exact provenance의 새 empty project/account에 한정하고 공유 account/personal domain이나 기존 identity를 삭제·이동·reset하지 않습니다. Enrollment와 별도 topology intent는 [관리자 복구 API](admin.md)로 명시 settlement하며 원래 native call 종료 여부를 확인해야 합니다.
 
 브라우저의 기존 계정 수락은 시작 시점의 session ID·user ID·identity domain·working domain·project ID와 invitation token/화면 generation을 캡처합니다. Auth 준비 전·logout/project 전환 중에는 수락을 차단하고, account/domain/project/session 변경 또는 화면 이탈 뒤 도착한 성공·오류·finally 결과를 폐기합니다. 중간 변경 후 같은 scope로 돌아온 ABA도 generation으로 구분합니다. 일반 refresh의 token 문자열 변경만으로는 session owner를 바꾸지 않습니다. 수락 POST는 no-store와 `replayOnUnauthorized:false`로 보내며401 뒤 자동 refresh/replay하지 않습니다. 늦은 응답을 UI에서 버렸다는 사실은 이미 시작된 서버의 durable enrollment가 취소됐다는 뜻이 아닙니다.
 

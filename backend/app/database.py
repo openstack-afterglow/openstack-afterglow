@@ -120,7 +120,9 @@ async def create_tables() -> None:
     """ORM 모델 기반으로 테이블 자동 생성 (auto_create_tables=true 시 호출)."""
     if _engine is None:
         return
+    from app.models.account_spaces import PersonalProjectIntent, SharedDomainIntent  # noqa: F401
     from app.models.db import Base as _ModelBase  # noqa: F401 — side effect: 모델 등록
+    from app.models.organization_provisioning import OrganizationBinding  # noqa: F401
 
     async with _engine.begin() as conn:
         await conn.run_sync(_ModelBase.metadata.create_all)

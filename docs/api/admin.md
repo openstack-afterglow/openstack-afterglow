@@ -22,7 +22,7 @@ nav_order: 20
 
 브라우저의 관리자 강등은 정확한 first-party `/api/v1/admin` 경로 경계의 `403`에만 적용됩니다. 이 경우 stale `isSystemAdmin`을 해제하고 관리자 화면에서 `/dashboard`로 이동하되 로그인 token은 유지합니다. `/api/v1/chat/admin/...`·Drover 같은 downstream 서비스 거부나 query 값에만 `/admin`이 있는 요청은 일반 resource 오류로 표시하며 platform-admin flag·현재 route·세션을 바꾸지 않습니다.
 
-Lumen·Drover·Waygate·Palimpsest 관리 화면의 resource 작업은 **기존 project service capability 또는 현재 human `system:all` admin**을 허용합니다. System 관리자는 선택 target의 프로젝트 멤버십·세부 service leaf가 없어도 동작하지만 target의 native enabled 상태와 선택 도메인을 검증합니다. 원본 native project/system/unscoped 인증 범위는 유지하며, BFF가 원래 connection project와 논리 target을 각각 native `X-Project-Id`·`X-Target-Project-Id`로 전달합니다. Browser가 native target 헤더를 권위 있게 주입할 수는 없습니다. 명시한 빈 target도 원본 범위로 대체하지 않습니다.
+Lumen·Drover·Waygate·Palimpsest 관리 화면의 resource 작업에서 BFF는 **현재 project membership 또는 verified human `system:all` authority**와 원래 credential을 검증하며 action 정책을 복제하지 않습니다. 최종 허용은 각 native 서비스의 현재 `oslo.policy`·운영자 `policy.yaml`이 결정하고 UI capability도 해당 결과를 사용합니다. 기본 정책의 system-admin 지원은 operator의 action 거부를 우회하지 않습니다. System 관리자는 선택 target의 프로젝트 멤버십·세부 service leaf가 없어도 native 검증을 요청할 수 있지만 target의 native enabled 상태와 선택 도메인을 검증합니다. 원본 native project/system/unscoped 인증 범위는 유지하며, BFF가 원래 connection project와 논리 target을 각각 native `X-Project-Id`·`X-Target-Project-Id`로 전달합니다. Browser가 native target 헤더를 권위 있게 주입할 수는 없습니다. 명시한 빈 target도 원본 범위로 대체하지 않습니다.
 
 Projectless 예외는 위 service BFF에 한정되며 core OpenStack project scope나 다른 사용자의 세션·개인 credential 소유권을 만들어 내지 않습니다. Native 서비스는 현재 raw user/group system grant·role-ID graph, 원본 reduced-token/API-key ceiling과 실제 provider send를 독립 검증합니다. Drover·Waygate provider 변경은 전용 non-admin executor가 필요하며, 미설정·읽기 장애는503, 권한 회수는 거부입니다. [Native 설정·schema·drain 선행 조건](../deployment.md#system-관리자-서비스-작업의-native-선행-조건)을 먼저 확인하세요.
 
@@ -362,19 +362,32 @@ Nova `DELETE /os-services/{service_uuid}`의 `204`는 접수입니다. 이후 se
 
 ## 전체 리소스 조회 (all-*)
 
-전체 프로젝트를 가로지르는 조회 엔드포인트입니다. `all-instances` / `all-volumes`는 `limit`+`marker` 페이지네이션(`project_id` 필터 지원), 나머지는 `refresh` 파라미터를 사용합니다.
+전체 프로젝트를 가로지르는 조회 엔드포인트입니다. 아래 모든 `all-*` 목록은 선택적인 non-empty `domain_id`와 `project_id`를 **독립적인 AND 조건**으로 받습니다. 생략하면 전체 범위이며 도메인만 지정하면 그 도메인 소유 프로젝트의 자원을 조회합니다. 두 조건의 교집합이 없으면 빈 결과입니다. `all-instances` / `all-volumes` / `all-ports`의 `limit`+`marker`는 소유 범위를 제한한 뒤 적용합니다. 다른 범위의 marker는400 `inventory_marker_outside_scope`입니다.
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| `GET` | `/api/v1/admin/all-instances` | 전체 인스턴스 목록 (페이지네이션, `project_id` 필터) |
-| `GET` | `/api/v1/admin/all-volumes` | 전체 볼륨 목록 (페이지네이션) |
+| `GET` | `/api/v1/admin/all-instances` | 도메인·프로젝트별 인스턴스 목록 (페이지네이션) |
+| `GET` | `/api/v1/admin/all-volumes` | 도메인·프로젝트별 볼륨 목록 (페이지네이션) |
 | `GET` | `/api/v1/admin/all-containers` | 전체 Zun 컨테이너 목록 (Zun 활성화 시) |
 | `GET` | `/api/v1/admin/all-file-storages` | 전체 Manila 파일 스토리지 목록 (Manila 활성화 시) |
 | `GET` | `/api/v1/admin/all-networks` | 전체 네트워크 목록 |
+| `GET` | `/api/v1/admin/all-subnets` | 서브넷 목록; 관리자 네트워크 화면의 서브넷 목록 진입점과 연결 |
 | `GET` | `/api/v1/admin/all-loadbalancers` | 전체 로드밸런서 목록 (Octavia 활성화 시) |
 | `GET` | `/api/v1/admin/all-floating-ips` | 전체 Floating IP 목록 |
 | `GET` | `/api/v1/admin/all-routers` | 전체 라우터 목록 |
 | `GET` | `/api/v1/admin/all-ports` | 전체 포트 목록 |
+
+같은 조건은 `/admin/file-storage`, `/admin/topology`, `/admin/images`(이미지 `owner`), `/admin/instances/health`, `/admin/volumes/status-summary`, `/admin/overview/projects`, `/admin/key-manager/project-quotas`, `/admin/events` 및 `/admin/events/stats`에도 적용됩니다. Trove는 `/database-instances?all_projects=true`, Swift는 `/object-storage?all_projects=true`를 사용하고 이 관리자 모드에서 매번 관리자 권한을 확인합니다. 사용자 모드의 기존 소유권 계약은 바꾸지 않습니다.
+
+Swift의 all-project fan-out 중 한 프로젝트의 인증/조회가 실패하면503 `object_storage_inventory_unavailable`로 반환하며 나머지만 성공한 부분 목록으로 보고하지 않습니다. 도메인/프로젝트 조건은 fan-out 대상 프로젝트를 먼저 제한합니다.
+
+도메인을 지정하면 호출자의 Keystone 연결로 도메인과 소유 프로젝트 UUID를 새로 확인한 후 complete native inventory를 제한합니다. 이름이 같은 프로젝트를 합치지 않으며 없는 도메인은404, 디렉터리 장애·불명확한 metadata는503입니다. 전역 inventory cache를 재사용하더라도 이 directory 확인을 먼저 수행하고 scoped 결과를 전역 cache에 저장하지 않습니다. Nova/Zun/Trove/Manila 및 Barbican project quota는 native 페이지를 끝까지 읽습니다. 자원에 도메인이 직접 붙어 있다고 가정하지 않습니다.
+
+관리자 화면의 공용 도메인→프로젝트 picker는 사용자 header의 active workspace와 독립적입니다. 도메인 변경은 선택 프로젝트가 새 도메인에 없으면 해제하고 목록 page/marker·선택·열린 상세를 초기화합니다. 이전 scope/auth 수명의 늦은 조회·mutation 피드백은 새 화면에 게시하지 않습니다. Quota와 flavor 접근 대상, 포트 생성·볼륨 이관의 대상 프로젝트 선택도 같은 디렉터리 조건을 사용하되 **관측 필터를 mutation 대상 허용 목록으로 오용하지 않습니다**. Shared/external network 등 생성 옵션은 원래 native 가용 범위를 유지합니다. 공지 수신 도메인의 프로젝트 목록도 해당 도메인으로 제한합니다.
+
+사용자·프로젝트·그룹·credential·chat quota의 기존 **필수 identity-domain** 경계는 유지합니다. 이 도메인은 프로젝트 소유 도메인과 다른 의미이며 검증된 사용자의 account-wide quota 상세를 임의의 project-domain으로 잘라 표시하지 않습니다. 글로벌 설정·물리 인프라·catalog 기록에 의미 없는 도메인 필터를 추가하지 않습니다.
+
+저장된 `/admin/timeseries/*`는 프로젝트 귀속 없는 cluster 집계입니다. scoped 요청은422로 거부하고 scoped UI는 명시적 안내와 함께 해당 차트를 숨깁니다. Scoped topology도 전역 과거 traffic 조회를 생략하며 그래프 자체만 소유 범위로 제한합니다. Lumen 통계는 BFF query 전달뿐 아니라 native Lumen의 네 통계 API에서 project-domain UUID 교집합을 SQL 집계·paging **전에** 적용해야 합니다. 사용자/대화 수는 도메인 전체에서 distinct 집계하며 프로젝트별 숫자를 더하지 않습니다. Native Lumen 변경은 별도 dev worktree의 source 변경이며 운영 배포 증거가 아닙니다.
 
 `GET /all-instances` 응답 예시:
 
@@ -404,6 +417,7 @@ Nova `DELETE /os-services/{service_uuid}`의 `204`는 접수입니다. 이후 se
 | `POST` | `/api/v1/admin/instances/{server_id}/cold-migrate` | 콜드 마이그레이션 (`host` 지정 시 해당 호스트로) | `host` (선택) |
 | `POST` | `/api/v1/admin/instances/{server_id}/evacuate` | 다운된 호스트에서 인스턴스 대피 | `host` (선택) |
 | `GET` | `/api/v1/admin/instances/{server_id}/migration-status` | 마이그레이션 진행 상태 조회 | - |
+| `PUT` | `/api/v1/admin/instances/{server_id}/name` | 전원 상태와 무관한 표시 이름 변경; caller 연결·fresh admin·실제 target owner 확인 | `name` (1–63자 정규화) |
 | `POST` | `/api/v1/admin/instances/{server_id}/resize` | 인스턴스 리사이즈 시작 (`VERIFY_RESIZE`로 전이) | `new_flavor` |
 | `POST` | `/api/v1/admin/instances/{server_id}/confirm-resize` | 리사이즈 확정 | - |
 | `POST` | `/api/v1/admin/instances/{server_id}/revert-resize` | 리사이즈 되돌리기 | - |
@@ -413,6 +427,8 @@ Nova `DELETE /os-services/{service_uuid}`의 `204`는 접수입니다. 이후 se
 | `POST` | `/api/v1/admin/instances/bulk-action` | 다수 인스턴스 일괄 제어 | `instance_ids[]`, `action`, `snapshot_name` (선택) |
 
 **bulk-action 제한**: `action`은 시작/정지/재부팅/스냅샷 등 허용된 값이어야 하며, 각 인스턴스별 결과가 개별 집계됩니다. 일부 실패해도 나머지는 계속 진행됩니다.
+
+이름 변경은 [공용 인스턴스 이름 변경 계약](instances.md#put-apiv1instancesinstance_idname)을 따릅니다. Native name-only update 뒤 ID·이름·소유 프로젝트를 재조회하여 일치한 경우만 성공하며 guest hostname·전원 상태는 바꾸지 않습니다. 사용자 경로의 관리자 소유권 우회를 허용하는 대신 이 명시적 관리자 경로를 사용합니다. 기존 관리자·사용자 크기 변경 화면은 `SHUTOFF`에서만 노출되며 이 작업으로 변경하지 않습니다.
 
 ### 관리자 인스턴스 생성 (대리 프로비저닝)
 
@@ -581,7 +597,7 @@ Zun 서비스 활성화 시에만 사용 가능합니다.
 | `POST /signup-requests/{request_id}/approve` | 없음 |200 확정한 request DTO |
 | `POST /signup-requests/{request_id}/reject` | 없음 |200 확정한 request DTO |
 
-정책 DTO는 `revision,public_signup_enabled,approval_mode,personal_quotas,quota_fields,defaults_future_only:true,smtp_configured`입니다. `approval_mode`는 `auto` 또는 `admin`, `personal_quotas`는 실제 지원 quota key→strict integer(-1 이상)의 sparse object입니다. Blank/키 생략은 OpenStack 기본값,0은 금지,-1은 unlimited입니다. 관리자 화면에서 service별 field를 표시하며 비활성 Manila의 기존 template entry는 보존하지만 새 active policy에서는 omitted입니다. 저장은 **이후 새 개인 domain**에만 적용하고 기존 allocation/native quota를 바꾸지 않습니다. 새 개인 Default는 사용자와 disabled로 준비하고 동결된 quota의 SQL ceilings/defaults와 native readback이 끝나야 활성화합니다.
+정책 DTO는 revision/public_signup_enabled/approval_mode/personal_quotas/quota_fields/defaults_future_only:true/smtp_configured입니다. Approval은 auto/admin, personal_quotas는 지원 key→strict integer(-1 이상)의 sparse object이며 blank는 native 기본값,0은 금지,-1은 unlimited입니다. 비활성 Manila template entry는 보존·omitted로 표시합니다. 저장은 앞으로 생성하는 각 personal project에만 적용하고 기존 프로젝트나 shared domain budget을 변경하지 않습니다. Accounts user와 personal project는 disabled staging·본인 직접 native member 하나·raw/effective provenance·동결 native quota readback 뒤 활성화합니다. 새 owner/reader·domain manager·Default는 생성하지 않으며 기존 personal grant는 보존합니다.
 
 최초 row 부재만 config의 공개 가입 opt-in·auto·core quota0으로 시작합니다. 저장 후 persisted 정책이 공개 가입 flag를 우선합니다. SMTP flag는 enabled/host/from-address/frontend URL 구성 여부이고 배달 영수증이 아닙니다. SQL 장애는503으로 차단하며 config로 우회하지 않습니다.
 
@@ -622,7 +638,22 @@ Managers의 `roles`는 canonical global `manager` 하나의 `{id,name,grantable}
 
 Default가 없는 기존 도메인의 manager 추가는409 `domain_default_bootstrap_required`이며 system admin이 provenance를 확인한 `creator_id`로 `/default`를 호출해야 합니다. 기존 native membership으로 로그인하는 경로는 보존하지만 로그인이나 조회가 임의의 첫 사용자에게 manager를 부여하지 않습니다. 모호한 Default/역할과 native/lease 확인 실패는 fail-closed입니다. Bootstrap은 활성 도메인에서 수행하며 기존 Default를 다른 ID로 바꾸거나 실패 시 기존 프로젝트를 삭제하지 않습니다. Grant/revoke는 authority·기존 세션 검증 cache와 native 읽기 projection을 함께 정리하되 Afterglow 로그인 family를 일괄 삭제하지 않습니다. Native가 group membership 변경으로 로그인 증명까지 회수하면 재로그인이 필요합니다. 관리자용 generic project/group/role 변경에서도 Default anchor, reserved projection과 마지막 manager 불변식을 우회할 수 없습니다.
 
-Enrollment operation에는 `id`, `domain_id`(가입할 working domain), `identity_domain_id`(계정의 home), `personal_domain_name`, `user_id`, `project_id`, `role_ids`, `kind`, `status`, `native_writes_settled`, `recovery_required`와 시각 metadata가 있습니다. 목록은 `account_creating/granting/activating/recovery_required/failed` 상태만 포함하며 secret 초대 token은 반환하지 않습니다. Reconcile은 새 계정·권한 생성이나 비밀번호 초기화가 아니라 운영자가 **원 요청이 더 이상 실행 중이지 않음을 확인한 뒤** 수행하는 readback입니다. 이후 DELETE도 불확실한 효과를 안전하게 보상할 수 없으면 `503`과 recovery 상태를 유지합니다. Accepted/revoked 작업 취소는 `409`입니다. 등록·초대의 one-use SQL 상태와 native uncertainty를 단순 재발급·blind retry로 우회하지 마세요.
+Enrollment operation은 원래 admission target domain_id와 실제 identity_domain_id, personal_domain_id/personal_project_id/personal_project_name, kind/status/user/project/role·native_writes_settled/recovery_required·시각 metadata를 가집니다. Historical personal_domain_name은 새 생성 입력이 아닙니다. Interrupted/failed 상태만 목록에 포함하며 token/password/native marker는 공개하지 않습니다. 기존 reconcile body는 native_writes_settled:true이고 운영자가 원 native 요청 종료를 확인한 뒤 exact readback합니다. 이후 DELETE도 이번 작업의 exact owned-empty project/account·추가 grant만 정리하며 shared account/personal domain과 기존 user는 삭제하지 않습니다. 안전하게 확정할 수 없으면503 recovery를 유지하고 accepted/revoked 취소는409입니다.
+
+### Shared topology·OIDC organization settlement
+
+아래 경로도 `/api/v1/admin` 기준이며 fresh native system-admin을 graph lease 안에서 재검증합니다. Operator는 원 native call이 더 이상 실행 중이지 않음을 별도 확인해야 하고 `native_calls_settled`는 strict boolean true여야 합니다. 다른 field는422입니다. 기존 enrollment의 native_writes_settled와 혼동하지 마세요.
+
+| 메서드·경로 | 입력 | 의미 |
+|---|---|---|
+| `GET /account-topology/operations` | 선택64-hex cursor | secret-free shared_domains/personal_projects/next_cursor |
+| `POST /account-topology/shared-domains/{kind}/settle` | `{native_calls_settled:true}` | 새 accounts/personal exact shared marker readback; historical account receipt는 별도 보존·settlement하며 absent settlement는 history 보존 후 별도 새 intent만 허용 |
+| `POST /account-topology/personal-projects/{operation_id}/settle` | `{native_calls_settled:true}` | 본인 직접 member/native-provenance/frozen-quota 프로젝트 수용 또는 exact owned-empty staged project만 정리; 과거 owner/reader intent는 실제 journal 계획 역할로 검증 |
+| `GET /organization-bindings` | 없음 | secret-free unsettled binding·native candidate ID |
+| `POST /organization-bindings/{binding_key}/settle` | `{intent_id,native_calls_settled:true}` |64-hex issuer/org binding과 exact intent/creator/native marker·활성 Default/owner/manager 재검증 |
+
+조직 candidate가 정확히 하나이고 완성된 경우만 active로 수용합니다. Candidate0이며 기록된 returned ID도 없으면 native를 건드리지 않고 SQL intent를 release할 수 있습니다. Partial/ambiguous/recorded-ID mismatch는409 organization_settlement_incomplete로 fenced 상태를 유지합니다. Native create/grant 재전송·추측 adoption·기존 계정/공유 domain 삭제는 하지 않습니다.
+
 
 ### Monitoring DTO와 수집 범위
 
@@ -659,7 +690,7 @@ IAM monitoring 응답은 `{domain,projects,users,resources,inventory,coverage}`�
 | `GET /users/lock-status` | `username` 및 non-empty domain_id query 필수 |
 | `POST /users`, `/projects`, `/groups` | non-empty body domain_id 필수 |
 | `POST /users/unlock-account` | `{username,domain_id}` 필수 |
-| `GET /projects/names` | 선택 query; 생략 시 system-wide picker |
+| `GET /projects/names` | 선택 query; 생략 시 system-wide picker, 응답 row는 `{id,name,domain_id}`; malformed native metadata는503 |
 | `PATCH /users/{user_id}`; `POST /users/{user_id}/revoke-sessions`; `GET /users/{user_id}/sessions`, `/permissions` | 선택 non-empty query; 지정하면 user의 domain을 확인 |
 | `GET/PATCH/DELETE /projects/{project_id}`; `GET /projects/{project_id}/deletion-check`, `/members`; `POST /projects/{project_id}/sync-monitoring-sg`; `GET/PUT /quotas/{project_id}`; `PUT /compute-policy/{project_id}` | 선택 non-empty query; 지정하면 project의 domain 확인 |
 | `PATCH/DELETE /groups/{group_id}`; `GET /groups/{group_id}/users`; `PUT/DELETE /groups/{group_id}/users/{user_id}` | 선택 non-empty query; 지정하면 group이 선택 domain에 속하는지 확인. 관계의 user는 정확한 native identity로 검증하며 다른 home도 허용 |
@@ -677,7 +708,7 @@ Project/group member 관계는 다른 home의 principal을 목록에서 숨기�
 | `GET` | `/api/v1/admin/users` | 선택 domain **native home** 사용자 목록 (페이지네이션; joined 외부 사용자 목록 아님) | 필수 query `domain_id` |
 | `GET` | `/api/v1/admin/users/stats` | 선택 native home domain 사용자 통계 `{total,enabled,disabled}` | 필수 query `domain_id` |
 | `GET` | `/api/v1/admin/users/activity` | 선택 native home domain 사용자 변경 로그; limit 기본50·1–200, before_id 선택 | 필수 query `domain_id` |
-| `POST` | `/api/v1/admin/users` | 새 human의 개인 home domain 생성 후 선택 working domain 가입 (`201`) | `name`, `email`, `password`, `personal_domain_name`, `domain_id` 필수; `enabled` 기본true |
+| `POST` | `/api/v1/admin/users` | Accounts identity 생성; personal member primary는 첫 성공 로그인까지 deferred, 관측 domain 자동 admission 없음 (`201`) | `name`, `email`, `password`, `domain_id` 필수; `enabled` 기본true |
 | `PATCH` | `/api/v1/admin/users/{user_id}` | 사용자 수정 | `name`, `email`, `enabled`, `password` (선택) |
 | `POST` | `/api/v1/admin/users/{user_id}/revoke-sessions` | 사용자 세션 전체 무효화 | - |
 | `GET` | `/api/v1/admin/users/{user_id}/sessions` | 사용자의 활성 세션 목록 | - |
@@ -687,7 +718,7 @@ Project/group member 관계는 다른 home의 principal을 목록에서 숨기�
 
 **주의**: `revoke-sessions`는 해당 사용자의 토큰/세션 캐시를 즉시 무효화합니다.
 
-사용자 생성 body는 extra field 금지이며 name 1–255자, email 3–255자, password 12–1024자, personal_domain_name 1–64자, domain_id non-empty입니다. 서비스는 표시 이름의 앞뒤 공백도 거부하고 대상 domain의 password/email 정책을 확인합니다. `domain_id`는 새 identity를 직접 만들 home이 아니라 **가입 대상 working domain**입니다. 새 개인 domain/Default에 본인의 manager·reader를 준비하고 가입 대상 Default에도 reader를 즉시 부여한 뒤 요청한 account enabled 상태를 readback합니다. 응답에는 `id,name,email,enabled,protected:true,user_id,domain_id,domain_name,identity_domain_id,identity_domain_name`이 포함됩니다. 기존 사용자·service account를 이동하거나 일괄 개인 domain을 만들지 않으며 기존 이메일 identity를 재생성하는 경로가 아닙니다. 중단된 작업은 위 enrollment-operations에서 복구합니다.
+생성 body는 extra field 금지이며 name1–255자, email3–255자, password12–1024자, domain_id non-empty입니다. personal_domain_name은 제거됐습니다. domain_id는 관리자 directory의 관측 context로 존재만 확인하며 identity home이나 조직 admission target이 아닙니다. 선택 domain의 password/이메일 조직 allowlist·Default 존재를 새 global 계정 생성 조건으로 사용하지 않습니다. Shared Accounts의 disabled user를 요청한 enabled 값으로 확정하고 accepted managed_create enrollment와 같은 token/name·동결 quota를 가진 deferred personal intent를 함께 commit합니다. 개인 프로젝트와 grant는 이 요청에서 만들지 않습니다. enabled:false 계정은 명시 활성화 후 성공한 password/provider 로그인을 해야 개인 준비를 시작할 수 있습니다. 첫 로그인은 shared Personal에 정규화 username 최대47자+하이픈+암호학적 임의 소문자8자+숫자8자리 프로젝트를 disabled staging으로 준비하고 본인 직접 native member 하나·동결 quota·raw/effective provenance 뒤 활성화합니다. Accounts 또는 관측 domain의 Default grant는 만들지 않습니다. 응답은 id/name/email/enabled/protected:true와 user_id, personal working domain_id/domain_name, identity_domain_id/identity_domain_name, personal_domain_id, personal_project_deferred:true, personal_project_id:null, personal_project_name:null입니다. 기존 계정·service home/credentials/grants는 이동하지 않고 global email/username alias 충돌은 새 계정으로 재생성하지 않습니다. 새 managed_create journal은 domain_id=null이며 accepted/deferred pair는 첫 login/recovery가 안전하게 소비합니다. 불명 중단 작업은 system-only global enrollment/topology recovery로 조회·settlement합니다. 조직 참여는 별도 초대/신뢰된 OIDC admission을 사용합니다.
 
 마지막 enabled effective system admin을 비활성화하는 PATCH는 공유 role-graph lease 아래 재검증해 `422`로 거부합니다. 권한 회수와 동시 비활성화도 같은 보호를 사용합니다. 현재 project owner는 먼저 소유권을 이전해야 하며 비활성화는 `409`입니다. 관련 unresolved ownership operation이 있어도 user/domain disable을 차단합니다. 이는 단순한 마지막 manager 보호와 별도입니다.
 
@@ -914,9 +945,9 @@ Snapshot은 `{domain_id,revision,ceilings,defaults,enforcement_scope,allocations
 
 새 역할 및 이름 변경은 `area_grade` 형식입니다. 영역과 등급을 각각 소문자로 바꾸고 연속 공백을 `-`로 치환합니다(경계 공백도 동일). 예: `My Area_Read Only` → `my-area_read-only`. UI는 영역/등급 입력과 전송될 정확한 이름을 미리 보여줍니다. native core 역할과 `project_owner`는 이름 변경·삭제를 보호합니다.
 
-프리셋 미리보기는 읽기 전용입니다. 적용은 기존 `project_owner/project_admin/project_member/project_reader`와 native `member/reader` ID를 보존하고, 빠진 서비스 부모·세부 역할·직접 inference edge만 추가합니다. 재실행은 이미 있는 역할/edge를 다시 만들지 않습니다. 실제 그래프가 불명확하거나 안전 경계를 넘으면 적용하지 않습니다. 중간 실패는 `created_roles`, `created_implications`와 원인을 반환하므로 현재 목록을 확인한 뒤 같은 프리셋을 재실행합니다. 계층은 런타임의 이름 기반 가상 확장이 아닙니다.
+프리셋 미리보기는 읽기 전용이며 `roles`, `project_roles`, 추가할 native project `implications`, 제거 대상인 과거 관리 서비스 `retired_implications`를 반환합니다. **Native 서비스 정책을 먼저 배포해야 합니다.** 적용은 부족한 role·native project edge만 추가하고 정확히 이전 프리셋에서 생성한 서비스 edge를 제거합니다. 기존 role ID·직접 할당·운영자 custom edge는 보존합니다. 현재 그래프와 제거 후 그래프의 전역 binding·권한 ceiling을 첫 native 변경 전에 검증하고 삭제 readback을 확인합니다. 중간 실패는 `created_roles`, `created_implications`, `removed_implications`와 원인을 반환하므로 현재 목록을 새로 확인한 뒤 재시도합니다. 이미 없는 edge를 다시 삭제하거나 role을 재생성하지 않습니다.
 
-프리셋의 서비스 부모는 `<service>_admin/editor/user/reader`, 세부 권한은 `<service>-<area>_<grade>`입니다. editor는 생성·편집만, user는 허용된 사용·다운로드만, reader는 비밀 없는 메타데이터만 허용합니다. destructive/security 액션은 별도 admin leaf입니다. 프로젝트 관리자나 서비스 admin으로 시스템 역할·전역 Drover 관리자 API·Palimpsest builder/GC 권한을 얻지 않습니다. 일반 역할 assign/assign-group API에서 소유자 계층을 우회할 수 없으며 소유권은 프로젝트 전용 워크플로를 사용합니다.
+독립적인 서비스 grade role 이름은 `<service>_admin/editor/user/reader`, 세부 role은 `<service>-<area>_<grade>`입니다. Grade는 Keystone에서 leaf로 확장하지 않고 서비스의 `policy.yaml`에서 action에 직접 대응합니다. 운영자는 기본 admin/editor/user/reader 규칙을 표준 `oslo.policy` 문법으로 override할 수 있습니다. 서비스 admin이나 프로젝트 admin 이름만으로 system-only API·builder/GC·외부 native provider 권한을 얻지 않습니다. 일반 역할 assign/assign-group API에서 owner 계층을 우회할 수 없으며 소유권은 프로젝트 전용 workflow를 사용합니다.
 
 서버는 최신 그래프와 endpoint별 Redis lease 아래 변경을 검사합니다. 자기 상속·직접/간접 순환·기본 역할의 역방향 승격·사용자 정의 역할의 `admin`/`manager` 상속은 `409`입니다. 도메인 역할은 같은 도메인 또는 전역 하위 역할만 상속할 수 있고, 전역 역할은 전역 하위 역할만 상속할 수 있습니다. 기본 네 역할은 이름 변경·삭제가 금지되며 설명과 안전한 하위 연결만 편집합니다. 역할 삭제는 사용자·그룹 할당이나 직접 상위/하위 연결이 있으면 `409`, 대상이 없으면 `404`, 그래프·잠금·변경 완료 검증이 불가능하면 `503`입니다. Native 반영 뒤 응답이나 readback이 실패할 수 있으므로 오류 이후 재시도 전에 목록을 새로 확인합니다.
 

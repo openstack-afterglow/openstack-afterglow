@@ -55,6 +55,7 @@ from app.models.compute import (
     GitHubSshProfile,
     GitHubSshUserHistory,
     InstanceInfo,
+    InstanceNameRequest,
     StorageAttachRequest,
     UpdateSecurityGroupsRequest,
     UpdateVolumeAttachmentRequest,
@@ -325,6 +326,55 @@ async def get_instance(
         raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다")
 
 
+async def _rename_instance(conn, server: InstanceInfo, name: str) -> dict:
+    if not server.project_id:
+        raise HTTPException(status_code=409, detail="인스턴스 소유 프로젝트를 확인할 수 없습니다")
+    if server.name == name:
+        return {"id": server.id, "name": server.name, "project_id": server.project_id}
+    from app.services.instance_names import normalize_requested_instance_name
+
+    try:
+        name = normalize_requested_instance_name(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if name is None:
+        raise HTTPException(status_code=422, detail="name must not be empty")
+    if server.name == name:
+        return {"id": server.id, "name": server.name, "project_id": server.project_id}
+    try:
+        updated = await asyncio.to_thread(nova.rename_server, conn, server.id, name)
+        if updated.id != server.id or updated.project_id != server.project_id or updated.name != name:
+            raise RuntimeError("Nova instance rename metadata did not match")
+    except Exception as exc:
+        logger.warning("Instance name update failed: %s", exc)
+        raise HTTPException(status_code=400, detail="인스턴스 이름 변경 실패") from exc
+    finally:
+        # An uncertain provider result may still have committed; never retain old metadata.
+        await invalidate(f"afterglow:nova:*:instance:{server.id}")
+        await invalidate(f"afterglow:nova:{server.project_id}:instances*")
+        await invalidate("afterglow:admin:instances*")
+        await invalidate("afterglow:admin:topology")
+        await cache_invalidation.invalidate_mutation_count("nova", server.project_id)
+    return {"id": updated.id, "name": updated.name, "project_id": updated.project_id}
+
+
+@router.put("/{instance_id}/name")
+async def rename_owned_instance(
+    instance_id: str,
+    req: InstanceNameRequest,
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
+):
+    try:
+        server = await asyncio.to_thread(nova.get_server, conn, instance_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다") from exc
+    # Even system administrators use the explicit admin route for foreign-project writes.
+    if not server.project_id or server.project_id != conn._afterglow_project_id:
+        raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다")
+    return await _rename_instance(conn, server, req.name)
+
+
 class InstanceResizeRequest(BaseModel):
     flavor_id: str
 
@@ -342,6 +392,28 @@ async def _owned_resize_server(conn, token_info: dict, instance_id: str):
 
 
 def _resize_current_flavor(server, flavors: list[FlavorInfo]) -> FlavorInfo:
+    snapshot = server._flavor_snapshot
+    if snapshot is not None:
+        # Nova's embedded flavor is the instance's allocation, not the mutable catalog.
+        # In particular a deleted/private/renamed flavor need not be in list_flavors.
+        resources = (snapshot.get("vcpus"), snapshot.get("ram"), snapshot.get("disk"))
+        if (
+            not server.flavor_name
+            or any(type(value) is not int for value in resources)
+            or resources[0] <= 0
+            or resources[1] <= 0
+            or resources[2] < 0
+            or not isinstance(snapshot.get("extra_specs"), dict)
+        ):
+            raise HTTPException(status_code=409, detail="현재 플레이버를 확인할 수 없습니다")
+        return FlavorInfo(
+            id=server.flavor_id or "",
+            name=server.flavor_name,
+            vcpus=resources[0],
+            ram=resources[1],
+            disk=resources[2],
+            extra_specs=snapshot["extra_specs"],
+        )
     current = next((flavor for flavor in flavors if flavor.id == server.flavor_id), None)
     if current is None and not server.flavor_id and server.flavor_name:
         matches = [flavor for flavor in flavors if flavor.name == server.flavor_name]
@@ -353,7 +425,7 @@ def _resize_current_flavor(server, flavors: list[FlavorInfo]) -> FlavorInfo:
 
 def _resize_target_blockers(target: FlavorInfo, current: FlavorInfo, *, image_backed: bool) -> list[FlavorQuotaBlocker]:
     blockers = []
-    if target.id == current.id:
+    if target.id == current.id or (not current.id and target.name == current.name):
         blockers.append(FlavorQuotaBlocker(code="same_flavor"))
     if image_backed and target.disk < current.disk:
         blockers.append(FlavorQuotaBlocker(code="disk_shrink"))

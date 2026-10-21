@@ -337,6 +337,7 @@
 	"roleValidation.protectedDeletion": "Peranan lalai tidak boleh dipadam.",
 	"roleValidation.linkedDeletion": "Nyahpautkan peranan induk dan anak yang dipautkan secara langsung terlebih dahulu.",
 	"userCreate.title": "Cipta pengguna",
+	"userCreate.accountSpacesHelp": "Accounts hanya mencipta identiti log masuk. Tiada projek dicipta sekarang; log masuk pertama yang berjaya mencipta projek bernama automatik dalam Personal dengan peranan member langsung sahaja. Domain direktori yang dipilih hanya untuk paparan; penciptaan akaun tidak menyertainya atau memberikan akses baca Default.",
 	"userCreate.name": "Nama",
 	"userCreate.email": "E-mel",
 	"userCreate.password": "Kata laluan",
@@ -587,10 +588,11 @@
 	"roleMetadata.invalidName": "Bidang dan gred menggunakan huruf Latin, nombor dan tanda sempang. Semua ruang putih digantikan dengan tanda sempang.",
 	"roleMetadata.domain": "ID domain (pilihan)",
 	"rolePresets.preview": "Pratonton pratetap peranan",
-	"rolePresets.confirm": "Terapkan pratetap peranan projek dan perkhidmatan? ID dan penetapan peranan sedia ada dikekalkan; hanya peranan dan pautan pewarisan yang belum wujud ditambahkan.",
+	"rolePresets.confirm": "Terapkan pratetap peranan? Peranan dan pautan pewarisan projek yang tiada akan ditambah; pautan pewarisan perkhidmatan lama yang disenaraikan akan dibuang. ID peranan dan penetapan langsung dikekalkan. Gunakan dasar perkhidmatan baharu dahulu.",
 	"rolePresets.apply": "Terapkan pratetap",
 	"rolePresets.applied": "Pratetap telah diterapkan. Graf peranan sebenar telah dimuat semula.",
-	"rolePresets.previewHelp": "Pratonton tidak mengubah awan. Penerapan pratetap menggunakan semula peranan dengan nama sedia ada dan tidak mencipta peranan pendua apabila diterapkan berulang kali.",
+	"rolePresets.previewHelp": "Pratonton tidak mengubah awan. Setiap perkhidmatan menilai kebenaran melalui policy.yaml sendiri. Peranan sedia ada digunakan semula dan hanya pautan pewarisan perkhidmatan lama yang disenaraikan dibuang.",
 	"rolePresets.directImplications": "Pautan pewarisan langsung untuk ditambahkan",
+	"rolePresets.retiredImplications": "Pautan pewarisan perkhidmatan lama untuk dibuang",
 	"quotaController.saveFailed": "Gagal menyimpan"
 }

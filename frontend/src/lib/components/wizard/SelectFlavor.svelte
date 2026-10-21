@@ -1,6 +1,6 @@
 <script lang="ts">
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-	import { Alert, Button, Card, Pill } from '$lib/components/ui';
+	import { Alert, Button, Card, CompactResourceCard, Pill, ResponsiveTable, TableShell } from '$lib/components/ui';
 	import BklitChart from '$lib/components/charts/BklitChart.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import {
@@ -580,85 +580,37 @@
 	</div>
 {/if}
 
-<!-- 모바일 플레이버 카드: 가로 스크롤 없이 이름과 핵심 스펙을 함께 표시한다. -->
-<div class="order-6 space-y-2 @2xl/panel:hidden">
-	{#each paginatedFlavors as flavor}
-		{@const badge = categoryBadge(flavor)}
-		{@const gpu = gpuSummary(flavor)}
-		{@const selectable = isSelectable(flavor)}
-		{@const blockers = flavorBlockerLabels(flavor)}
-		{@const hostCapacity = adminMode ? hostCapacityText(flavor) : ''}
-		{@const cellUnverified = adminMode && numaUnverified(flavor)}
-		<button
-			onclick={() => handleFlavorClick(flavor)}
-			aria-label={t('flavor.selectLabel', { name: flavor.name })}
-			disabled={!selectable || selectionLocked}
-			class="w-full rounded-xl border p-3 text-left transition-colors {selectedId === flavor.id
-				? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10 ring-1 ring-[var(--color-accent)]/30'
-				: selectable
-					? 'border-[var(--color-line)] bg-[var(--color-surface-raised)] hover:border-[var(--color-line-2)]'
-					: 'border-[var(--color-line)] bg-[var(--color-surface-sunken)]/60 opacity-60 cursor-not-allowed'}"
-		>
-			<div class="flex items-start gap-3">
-				<div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-sunken)]">
-					<svg class="h-4 w-4 text-[var(--color-ink-2)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
-					</svg>
-				</div>
-				<div class="min-w-0 flex-1">
-					<div class="break-words font-mono text-sm font-semibold text-[var(--color-ink-0)]">{flavor.name}</div>
-					<div class="mt-1 flex flex-wrap gap-1.5">
-						{#if badge}
-							<span class="rounded border px-1.5 py-0.5 text-xs {badge.class}">{badge.label}</span>
-						{/if}
-						{#if flavor.is_public}
-							<span class="rounded border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-1.5 py-0.5 text-xs text-[var(--color-ink-2)]">{t('flavor.public')}</span>
-						{/if}
-						<span class="text-xs text-[var(--color-ink-3)]">{networkBandwidth(flavor)}</span>
+<div class="order-6 min-w-0">
+<ResponsiveTable>
+	{#snippet cards()}
+		{#each paginatedFlavors as flavor (flavor.id)}
+			{@const badge = categoryBadge(flavor)}
+			{@const gpu = gpuSummary(flavor)}
+			{@const selectable = isSelectable(flavor)}
+			{@const blockers = flavorBlockerLabels(flavor)}
+			{@const hostCapacity = adminMode ? hostCapacityText(flavor) : ''}
+			{@const cellUnverified = adminMode && numaUnverified(flavor)}
+			<CompactResourceCard selected={selectedId === flavor.id}>
+				<h3 class="break-words text-sm font-medium line-clamp-2" title={flavor.name}>{flavor.name}</h3>
+				{#if badge}<span class="text-xs text-ink-2">{badge.label}</span>{/if}
+				<dl class="flex flex-wrap gap-x-4 gap-y-1 text-xs"><div><dt class="text-ink-2">vCPU</dt><dd>{flavor.vcpus}</dd></div><div><dt class="text-ink-2">RAM</dt><dd>{ramLabel(flavor.ram)}</dd></div><div><dt class="text-ink-2">{t('flavor.disk')}</dt><dd>{flavor.disk} GB</dd></div></dl>
+				{#if blockers.length > 0}<p class="break-words text-xs text-state-danger-text">{blockers.join(' · ')}</p>{/if}
+				{#snippet actions()}<Button variant="secondary" size="sm" disabled={!selectable || selectionLocked} ariaPressed={selectedId === flavor.id} onclick={() => handleFlavorClick(flavor)}>{t('flavor.selectLabel', { name: flavor.name })}</Button>{/snippet}
+				{#snippet details()}
+					<div class="space-y-1 break-words text-xs text-ink-2">
+						<p>{t('flavor.network')}: {networkBandwidth(flavor)}</p>
+						{#if flavor.is_public}<p>{t('flavor.public')}</p>{/if}
+						{#if gpu}<p>{gpu}</p>{/if}
+						{#if hostCapacity}<p>{hostCapacity}</p>{/if}
+						{#if cellUnverified}<p class="text-state-warning-text">{t('flavor.host.numaUnverifiedNote')}</p>{/if}
 					</div>
-				</div>
-			</div>
-			<dl class="mt-3 grid grid-cols-3 gap-2 border-t border-[var(--color-line)] pt-2.5 font-mono">
-				<div>
-					<dt class="text-xs uppercase tracking-wide text-[var(--color-ink-3)]">vCPU</dt>
-					<dd class="mt-0.5 text-sm text-[var(--color-ink-1)]">{flavor.vcpus}</dd>
-				</div>
-				<div>
-					<dt class="text-xs uppercase tracking-wide text-[var(--color-ink-3)]">RAM</dt>
-					<dd class="mt-0.5 text-sm text-[var(--color-ink-1)]">{ramLabel(flavor.ram)}</dd>
-				</div>
-				<div>
-					<dt class="text-xs uppercase tracking-wide text-[var(--color-ink-3)]">{t('flavor.disk')}</dt>
-					<dd class="mt-0.5 text-sm text-[var(--color-ink-1)]">{flavor.disk} GB</dd>
-				</div>
-			</dl>
-			{#if gpu}
-				<div class="mt-2 text-xs text-[var(--color-accent-2)]">{gpu}</div>
-			{/if}
-			{#if hostCapacity}
-				<div class="mt-1 text-xs text-[var(--color-ink-2)]">{hostCapacity}</div>
-			{/if}
-			{#if cellUnverified}
-				<div class="mt-0.5 text-xs text-[var(--color-state-warning-text)]">{t('flavor.host.numaUnverifiedNote')}</div>
-			{/if}
-			{#if blockers.length > 0}
-				<div class="mt-2 flex flex-wrap gap-1">
-					{#each blockers as label}
-						<span class="rounded border border-[var(--color-state-danger)]/40 bg-[var(--color-surface-sunken)] px-1.5 py-0.5 text-xs text-[var(--color-state-danger-text)] font-medium">
-							{label}
-						</span>
-					{/each}
-				</div>
-			{/if}
-		</button>
-	{/each}
-	{#if searchedFlavors.length === 0}
-		<div class="py-8 text-center text-sm text-[var(--color-ink-3)]">{t('flavor.empty')}</div>
-	{/if}
-</div>
-
-<!-- 데스크톱에서는 스펙 비교를 위한 표를 유지한다. -->
-<div class="order-6 hidden overflow-hidden rounded-xl border border-line bg-[#0B1220] @2xl/panel:block">
+				{/snippet}
+			</CompactResourceCard>
+		{/each}
+		{#if searchedFlavors.length === 0}<p class="col-span-full py-8 text-center text-sm text-ink-2">{t('flavor.empty')}</p>{/if}
+	{/snippet}
+<TableShell density="compact">
+<div class="min-w-[39rem]">
 	<div class="grid grid-cols-[2fr_80px_90px_100px_100px] border-b border-line px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-ink-2">
 		<div>{t('flavor.name')}</div>
 		<div class="text-center">VCPU</div>
@@ -676,6 +628,8 @@
 		{@const cellUnverified = adminMode && numaUnverified(flavor)}
 		<button
 			onclick={() => handleFlavorClick(flavor)}
+			aria-label={t('flavor.selectLabel', { name: flavor.name })}
+			aria-pressed={selectedId === flavor.id}
 			disabled={!selectable || selectionLocked}
 			class="grid w-full grid-cols-[2fr_80px_90px_100px_100px] border-b border-line/60 px-4 py-3 text-sm transition-all
 				{selectedId === flavor.id ? 'border-l-2 border-l-blue-500 bg-surface-selected/20' : ''}
@@ -727,6 +681,9 @@
 	{#if searchedFlavors.length === 0}
 		<div class="py-8 text-center text-sm text-ink-2">{t('flavor.empty')}</div>
 	{/if}
+</div>
+</TableShell>
+</ResponsiveTable>
 </div>
 
 <!-- 페이지네이션 -->

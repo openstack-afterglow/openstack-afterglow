@@ -1,4 +1,12 @@
 {
+	"rename.title": "Đổi tên",
+	"rename.name": "Tên phiên bản máy",
+	"rename.notice": "Chỉ thay đổi tên hiển thị, không thay đổi tên máy chủ trong hệ điều hành khách. Không cần dừng phiên bản máy.",
+	"rename.invalidName": "Nhập tối đa 63 chữ cái tiếng Anh, chữ số, dấu gạch ngang hoặc gạch dưới, bắt đầu bằng chữ cái hoặc chữ số. Dấu cách được chuyển thành dấu gạch ngang.",
+	"rename.failed": "Không thể cập nhật tên phiên bản máy. Hãy kiểm tra tên hiện tại trước khi thử lại.",
+	"rename.submit": "Lưu",
+	"rename.saving": "Đang lưu...",
+	"rename.cancel": "Hủy",
 	"panel.backToInstances": "← Phiên bản máy",
 	"panel.lowUsage": "Trung bình trong 7 ngày qua: CPU <cpu>{cpu}</cpu>% · RAM <memory>{memory}</memory>% — Mức sử dụng thấp.",
 	"panel.suggestedResize": "Khuyến nghị thay đổi kích thước sang <strong>{flavor}</strong>.",

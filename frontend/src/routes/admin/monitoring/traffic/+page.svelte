@@ -2,6 +2,8 @@
 	import { api } from '$lib/api/client';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import { ActivityIndicator, Alert, Button, Card, PageHeader, PageShell, SelectInput, TableShell } from '$lib/components/ui';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import TrafficCountryMap from '$lib/components/admin/traffic/TrafficCountryMap.svelte';
 	import TrafficTrend from '$lib/components/admin/traffic/TrafficTrend.svelte';
 	import TrafficCoverage from '$lib/components/admin/traffic/TrafficCoverage.svelte';
@@ -94,13 +96,25 @@
 				<Button variant="link" href="/admin/infrastructure-topology">{t('routes.topology')}</Button>
 				{#if snapshot.routes.length === 0}<p class="mt-2 text-xs text-ink-2">{t('noObservations')}</p>
 				{:else}
-					<TableShell class="mt-3">
+					{@const routeRows = snapshot.routes}
+					<ResponsiveTable class="mt-3">
+						{#snippet cards()}
+							{#each routeRows as row (row.route)}
+								<CompactResourceCard>
+									<p class="font-mono font-medium break-all">{row.route}</p>
+									<dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('metrics.requests')}</dt><dd>{formatTrafficValue(row.requests)}</dd></div><div><dt>{t('metrics.errors')}</dt><dd>{formatTrafficValue(row.errors)}</dd></div></dl>
+									{#snippet details()}<dl class="grid grid-cols-2 gap-2 tabular-nums">{#each trafficOrigins as value (value)}<div><dt>{t(`origins.${value}`)}</dt><dd>{formatTrafficValue(row.origins[value])}</dd></div>{/each}<div><dt>{t('metrics.response_bytes')}</dt><dd>{formatTrafficValue(row.response_bytes, 'response_bytes')}</dd></div><div><dt>{t('metrics.latency_avg')}</dt><dd>{formatTrafficValue(metricValue(row, 'latency_avg'), 'latency_avg')}</dd></div><div><dt>{t('metrics.latency_ms_max')}</dt><dd>{formatTrafficValue(row.latency_ms_max, 'latency_ms_max')}</dd></div></dl>{/snippet}
+								</CompactResourceCard>
+							{/each}
+						{/snippet}
+					<TableShell>
 						<!-- TableShell scrolls horizontally on narrow screens; the table is the keyboard scroll target. -->
 						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 						<table tabindex="0" aria-label={t('routes.title')} class="w-full text-xs tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
                         <thead><tr><th class="p-2 text-left">{t('routes.category')}</th><th class="p-2 text-right">{t('metrics.requests')}</th>{#each trafficOrigins as value (value)}<th class="p-2 text-right">{t(`origins.${value}`)}</th>{/each}<th class="p-2 text-right">{t('metrics.errors')}</th><th class="p-2 text-right">{t('metrics.response_bytes')}</th><th class="p-2 text-right">{t('metrics.latency_avg')}</th><th class="p-2 text-right">{t('metrics.latency_ms_max')}</th></tr></thead>
-                        <tbody>{#each snapshot.routes as row (row.route)}<tr class="border-t border-line"><td class="p-2 font-mono whitespace-nowrap">{row.route}</td><td class="p-2 text-right">{formatTrafficValue(row.requests)}</td>{#each trafficOrigins as value (value)}<td class="p-2 text-right">{formatTrafficValue(row.origins[value])}</td>{/each}<td class="p-2 text-right">{formatTrafficValue(row.errors)}</td><td class="p-2 text-right whitespace-nowrap">{formatTrafficValue(row.response_bytes, 'response_bytes')}</td><td class="p-2 text-right whitespace-nowrap">{formatTrafficValue(metricValue(row, 'latency_avg'), 'latency_avg')}</td><td class="p-2 text-right whitespace-nowrap">{formatTrafficValue(row.latency_ms_max, 'latency_ms_max')}</td></tr>{/each}</tbody>
+                        <tbody>{#each routeRows as row (row.route)}<tr class="border-t border-line"><td class="p-2 font-mono whitespace-nowrap">{row.route}</td><td class="p-2 text-right">{formatTrafficValue(row.requests)}</td>{#each trafficOrigins as value (value)}<td class="p-2 text-right">{formatTrafficValue(row.origins[value])}</td>{/each}<td class="p-2 text-right">{formatTrafficValue(row.errors)}</td><td class="p-2 text-right whitespace-nowrap">{formatTrafficValue(row.response_bytes, 'response_bytes')}</td><td class="p-2 text-right whitespace-nowrap">{formatTrafficValue(metricValue(row, 'latency_avg'), 'latency_avg')}</td><td class="p-2 text-right whitespace-nowrap">{formatTrafficValue(row.latency_ms_max, 'latency_ms_max')}</td></tr>{/each}</tbody>
 					</table></TableShell>
+					</ResponsiveTable>
 				{/if}
 			</Card>
 		{/if}

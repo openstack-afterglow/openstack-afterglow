@@ -1,5 +1,6 @@
 """Login behavior through real authority logic with synthetic native transport."""
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -9,7 +10,15 @@ from keystoneauth1.exceptions.http import Unauthorized
 
 from app.api.identity import auth
 from app.main import app
-from app.services import domain_auth, domain_projects, jwt_service, keystone, session_store
+from app.services import (
+    account_spaces,
+    domain_auth,
+    domain_projects,
+    enrollment_policy,
+    jwt_service,
+    keystone,
+    session_store,
+)
 from app.services.native_operation import NativeOperation
 from tests.ownership_journal import ownership_journal as ownership_journal
 from tests.test_domain_projects import domain_native as domain_native
@@ -19,15 +28,42 @@ pytestmark = pytest.mark.usefixtures("ownership_journal")
 
 
 @pytest.fixture
-async def native_login(monkeypatch, domain_native):
+async def native_login(monkeypatch, domain_native, ownership_journal):
     n = domain_native
+    from app.models.account_spaces import PersonalProjectIntent, SharedDomainIntent
+    from app.models.domain_iam import DomainEnrollment
+    from app.models.enrollment_policy import EnrollmentPolicy, SignupRequest
+
+    async with ownership_journal() as sql:
+        connection = await sql.connection()
+        for model in (PersonalProjectIntent, SharedDomainIntent, DomainEnrollment, EnrollmentPolicy, SignupRequest):
+            await connection.run_sync(model.__table__.create)
+        sql.add(
+            EnrollmentPolicy(
+                id=1,
+                revision=1,
+                public_signup_enabled=True,
+                approval_mode="auto",
+                personal_quotas={},
+                updated_by_user_id="operator",
+                updated_at=datetime.now(UTC),
+            )
+        )
+        await sql.commit()
+    monkeypatch.setattr("app.database.get_session_factory", lambda: ownership_journal)
+    monkeypatch.setattr(account_spaces, "get_session_factory", lambda: ownership_journal)
+    monkeypatch.setattr(enrollment_policy, "get_session_factory", lambda: ownership_journal)
+    for kind in ("account", "personal"):
+        n.domain_rows[kind] = row(id=kind, name="Accounts" if kind == "account" else "Personal", enabled=True)
     n.exchanges = []
+    n.password_domains = []
     n.sessions = []
     n.wrong_subject = False
     n.wrong_project = False
     n.wrong_home = False
     n.policy_enabled = True
     n.password_error = None
+    n.user_rows["ordinary"].domain_id = "account"
     n.user_rows["ordinary"].email = "actual@example.test"
     n.user_rows["ordinary"].default_project_id = "work-a"
     n.raw.append(grant("reader", user="ordinary", project="work-a"))
@@ -65,9 +101,13 @@ async def native_login(monkeypatch, domain_native):
 
         def get_access(self, session):
             n.exchanges.append(("password", ""))
+            n.password_domains.append(self.kwargs.get("user_domain_id"))
             if n.password_error:
                 raise n.password_error
-            if self.kwargs["password"] != "valid":
+            if (
+                self.kwargs["password"] != "valid"
+                or self.kwargs.get("user_domain_id") != n.user_rows[self.kwargs["username"]].domain_id
+            ):
                 raise Unauthorized()
             return access(self.kwargs["username"])
 
@@ -122,34 +162,44 @@ async def login(client, **overrides):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method", ["password", "provider"])
-async def test_saved_default_login_exchanges_only_preferred_project(native_login, monkeypatch, method):
-    client, n = native_login
-    await domain_projects.ensure_login_access("ordinary", "tenant-a")
-    n.calls.clear()
+async def test_fresh_login_uses_personal_project_not_organization_preference(native_login, monkeypatch, method):
+    client, native = native_login
     response = await login(client) if method == "password" else await provider_login(client, monkeypatch)
     assert response.status_code == 200, response.text
+    assert native.password_domains == (["account"] if method == "password" else [])
     body = response.json()
-    assert body["project_id"] == body["default_project_id"] == "work-a"
-    assert body["project_name"] == "Work"
-    assert body["can_write"] is False and body["is_domain_manager"] is False
-    assert jwt_service.verify_access(body["token"])["project_id"] == "work-a"
+    primary = account_spaces.personal_project("ordinary", ks=native)
+    assert (body["domain_id"], body["identity_domain_id"]) == ("personal", "account")
+    assert body["project_id"] == body["default_project_id"] == primary["id"]
+    assert body["project_name"].startswith("ordinary-")
+    assert body["can_write"] is True and body["is_domain_manager"] is False
+    assert native.user_rows["ordinary"].default_project_id == "work-a"
+    assert jwt_service.verify_access(body["token"])["project_id"] == primary["id"]
     claims = jwt_service.verify_refresh(body["refresh_token"])
-    assert (await session_store.get_session(claims["jti"]))["project_id"] == "work-a"
-    assert [pid for kind, pid in n.exchanges if kind == "token" and pid] == ["work-a"]
-    assert n.calls == []
-    assert all(sess.session.close.call_count == 1 for sess in n.sessions)
+    stored = await session_store.get_session(claims["jti"])
+    assert (stored["domain_id"], stored["identity_domain_id"], stored["project_id"]) == (
+        "personal",
+        "account",
+        primary["id"],
+    )
+    assert all(session.session.close.call_count == 1 for session in native.sessions)
 
 
 @pytest.mark.asyncio
-async def test_repair_login_preserves_saved_project_preference(native_login):
-    client, n = native_login
-    response = await login(client)
-    assert response.status_code == 200, response.text
-    assert response.json()["project_id"] == "work-a"
-    assert [(kind, pid) for kind, pid in n.exchanges if kind == "token" and pid] == [("token", "work-a")]
-    assert domain_projects.default_project("tenant-a")["id"] == "default-a"
-    assert "project_reader" in {r.role["id"] for r in n.assignments(project="default-a", user="ordinary")}
-    assert all(sess.session.close.call_count == 1 for sess in n.sessions)
+async def test_repeated_accounts_login_preserves_personal_identity_and_existing_grants(native_login):
+    client, native = native_login
+    before = [vars(assignment).copy() for assignment in native.raw]
+    first = await login(client)
+    assert first.status_code == 200, first.text
+    primary = first.json()["project_id"]
+    native.calls.clear()
+    again = await login(client)
+    assert again.status_code == 200, again.text
+    assert again.json()["project_id"] == primary
+    assert native.user_rows["ordinary"].domain_id == "account"
+    assert native.user_rows["ordinary"].default_project_id == "work-a"
+    assert all(assignment in [vars(row) for row in native.raw] for assignment in before)
+    assert native.calls == []
 
 
 @pytest.mark.asyncio
@@ -164,7 +214,7 @@ async def test_provider_policy_wait_cannot_publish_a_disabled_identity_or_domain
         if revoked == "user":
             n.user_rows["ordinary"].enabled = False
         else:
-            n.domain_rows["tenant-a"].enabled = False
+            n.domain_rows["account"].enabled = False
 
     monkeypatch.setattr(auth, "_enforce_session_policy", disable_after_policy)
     response = await provider_login(client, monkeypatch)
@@ -199,7 +249,7 @@ async def provider_login(client, monkeypatch, username="ordinary"):
             )
         ),
     )
-    monkeypatch.setattr(domain_auth, "require_provider", AsyncMock())
+    monkeypatch.setattr(domain_auth, "require_provider", AsyncMock(return_value=row(_organization=None)))
     monkeypatch.setattr(domain_auth, "mark_provider_verified", AsyncMock())
     monkeypatch.setattr(domain_auth, "_revoke_quietly", AsyncMock())
     return await client.post(
@@ -208,120 +258,71 @@ async def provider_login(client, monkeypatch, username="ordinary"):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("method", ["password", "provider"])
-@pytest.mark.parametrize("preference", ["unset", "foreign", "disabled", "revoked", "deleted", "missing"])
-async def test_unavailable_saved_project_falls_back_without_changing_preference(
-    native_login, monkeypatch, method, preference
-):
-    client, n = native_login
-    saved = "work-a"
-    if preference == "unset":
-        saved = ""
-    elif preference == "foreign":
-        saved = "work-b"
-        n.raw.append(grant("reader", user="ordinary", project=saved))
-    elif preference == "disabled":
-        n.project_rows[saved].enabled = False
-    elif preference in {"revoked", "deleted"}:
-        n.raw = [r for r in n.raw if r.scope.get("project", {}).get("id") != saved]
-        if preference == "deleted":
-            del n.project_rows[saved]
-    else:
-        saved = "missing-project"
-    n.user_rows["ordinary"].default_project_id = saved
-    response = await login(client) if method == "password" else await provider_login(client, monkeypatch)
-    assert response.status_code == 200, response.text
-    assert response.json()["project_id"] == response.json()["default_project_id"] == "default-a"
-    assert [pid for kind, pid in n.exchanges if kind == "token" and pid] == ["default-a"]
-    assert n.user_rows["ordinary"].default_project_id == saved
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("method", ["password", "provider"])
-async def test_initial_home_ignores_foreign_saved_project_and_provider_origin(native_login, monkeypatch, method):
-    client, n = native_login
-    n.user_rows["ordinary"].domain_id = "tenant-b"
-    response = await login(client) if method == "password" else await provider_login(client, monkeypatch)
+async def test_personal_landing_keeps_legacy_home_and_provider_origin_distinct(native_login, monkeypatch):
+    client, native = native_login
+    native.user_rows["ordinary"].domain_id = "tenant-b"
+    response = await provider_login(client, monkeypatch)
     assert response.status_code == 200, response.text
     body = response.json()
-    assert (body["domain_id"], body["identity_domain_id"], body["project_id"], body["default_project_id"]) == (
+    primary = account_spaces.personal_project("ordinary", ks=native)
+    assert (body["domain_id"], body["identity_domain_id"], body["project_id"]) == (
+        "personal",
         "tenant-b",
-        "tenant-b",
-        "default-b",
-        "default-b",
+        primary["id"],
     )
-    assert n.user_rows["ordinary"].default_project_id == "work-a"
-    assert jwt_service.verify_access(body["token"])["project_id"] == "default-b"
+    assert native.user_rows["ordinary"].default_project_id == "work-a"
     claims = jwt_service.verify_refresh(body["refresh_token"])
-    session = await session_store.get_session(claims["jti"])
-    assert (session["domain_id"], session["identity_domain_id"], session["project_id"]) == (
-        "tenant-b",
-        "tenant-b",
-        "default-b",
-    )
-    if method == "provider":
-        assert session["provider_domain_id"] == "tenant-a"
-    assert [pid for kind, pid in n.exchanges if kind == "token" and pid] == ["default-b"]
-    assert all(sess.session.close.call_count == 1 for sess in n.sessions)
+    stored = await session_store.get_session(claims["jti"])
+    assert (stored["domain_id"], stored["identity_domain_id"]) == ("personal", "tenant-b")
+    assert stored["provider_domain_id"] == "tenant-a"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method", ["password", "provider"])
-async def test_first_login_prepares_default_before_automatic_home_scope(native_login, monkeypatch, method):
-    client, n = native_login
-    del n.project_rows["default-a"]
-    n.raw = [r for r in n.raw if r.scope.get("project", {}).get("id") != "default-a"]
+async def test_personal_login_does_not_bootstrap_missing_organization_default(native_login, monkeypatch, method):
+    client, native = native_login
+    del native.project_rows["default-a"]
+    native.raw = [
+        assignment for assignment in native.raw if assignment.scope.get("project", {}).get("id") != "default-a"
+    ]
     response = await login(client) if method == "password" else await provider_login(client, monkeypatch)
     assert response.status_code == 200, response.text
-    assert response.json()["project_id"] == "work-a"
-    assert response.json()["default_project_id"] == "work-a"
-    assert [pid for kind, pid in n.exchanges if kind == "token" and pid] == ["work-a"]
-    assert any(r.role["id"] == "project_owner" for r in n.assignments(project="created-default", user="ordinary"))
+    assert response.json()["domain_id"] == "personal"
+    assert not any(
+        project.name == "Default" for project in native.project_rows.values() if project.domain_id == "tenant-a"
+    )
     assert not domain_projects.has_manager("ordinary", "tenant-a")
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method", ["password", "provider"])
-async def test_projectless_first_login_then_participant_receive_real_default_scope(native_login, monkeypatch, method):
-    client, n = native_login
-    del n.project_rows["default-a"]
-    n.raw = []
-    n.user_rows["participant"] = row(
-        id="participant", name="participant", enabled=True, domain_id="tenant-a", email="actual@example.test"
+async def test_users_in_accounts_get_distinct_private_personal_projects(native_login, monkeypatch, method):
+    client, native = native_login
+    native.user_rows["participant"] = row(
+        id="participant", name="participant", enabled=True, domain_id="account", email="participant@example.test"
     )
     first = await login(client) if method == "password" else await provider_login(client, monkeypatch)
     assert first.status_code == 200, first.text
-    creator = first.json()
-    assert creator["project_id"] == creator["default_project_id"] == "created-default"
-    assert creator["project_name"] == "Default"
-    assert "project_owner" in creator["roles"] and creator["can_write"] is True
-    assert creator["is_domain_manager"] is False
-    assert "token" in creator and "refresh_token" in creator
-    n.calls.clear()
-    joined = (
+    second = (
         await login(client, username="participant")
         if method == "password"
         else await provider_login(client, monkeypatch, "participant")
     )
-    assert joined.status_code == 200, joined.text
-    participant = joined.json()
-    assert participant["project_id"] == participant["default_project_id"] == "created-default"
-    assert participant["roles"] == ["project_reader", "reader"]
-    assert participant["can_write"] is False and participant["is_domain_manager"] is False
-    assert {p.id for p in n.project_rows.values() if p.domain_id == "tenant-a" and p.name == "Default"} == {
-        "created-default"
-    }
-    n.calls.clear()
-    again = await login(client) if method == "password" else await provider_login(client, monkeypatch)
-    assert again.status_code == 200, again.text
-    assert again.json()["project_id"] == "created-default"
-    assert n.calls == []
-    assert all(sess.session.close.call_count == 1 for sess in n.sessions)
+    assert second.status_code == 200, second.text
+    assert first.json()["project_id"] != second.json()["project_id"]
+    for response, uid in ((first, "ordinary"), (second, "participant")):
+        body = response.json()
+        assert body["domain_id"] == "personal" and body["identity_domain_id"] == "account"
+        assert set(body["roles"]) == {"member"} and body["can_write"] is True
+        assert body["is_domain_manager"] is False
+        project = native.project_rows[body["project_id"]]
+        assert project.afterglow_personal_user_id == uid
+        assert native.user_rows[uid].domain_id == "account"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method", ["password", "provider"])
-async def test_rejected_initial_owner_never_issues_a_projectless_fallback_session(native_login, monkeypatch, method):
+async def test_rejected_initial_member_never_issues_a_projectless_fallback_session(native_login, monkeypatch, method):
     from fastapi import HTTPException
 
     client, n = native_login
@@ -329,17 +330,18 @@ async def test_rejected_initial_owner_never_issues_a_projectless_fallback_sessio
     n.raw = []
     original = n.roles.grant
 
-    def reject_owner(role, **kwargs):
-        if role == "project_owner":
-            raise HTTPException(403, "Owner assignment rejected")
+    def reject_member(role, **kwargs):
+        if role == "member":
+            raise HTTPException(403, "Member assignment rejected")
         return original(role, **kwargs)
 
-    monkeypatch.setattr(n.roles, "grant", reject_owner)
+    monkeypatch.setattr(n.roles, "grant", reject_member)
     response = await login(client) if method == "password" else await provider_login(client, monkeypatch)
     assert response.status_code == 403, response.text
     assert "token" not in response.json() and "refresh_token" not in response.json()
     assert not any(pid for kind, pid in n.exchanges if kind == "token")
-    assert not any(p.name == "Default" and p.enabled for p in n.project_rows.values() if p.domain_id == "tenant-a")
+    personal = [project for project in n.project_rows.values() if project.domain_id == "personal"]
+    assert len(personal) == 1 and personal[0].enabled is False
 
 
 @pytest.mark.asyncio
@@ -383,6 +385,7 @@ async def test_only_password_rejection_counts_toward_lockout(native_login, outag
 @pytest.mark.asyncio
 async def test_authenticate_existing_caller_still_selects_requested_project(native_login):
     _, n = native_login
+    n.user_rows["ordinary"].domain_id = "tenant-a"
     data = keystone.authenticate("ordinary", "valid", "Work", "tenant-a")
     assert data["user_id"] == "ordinary"
     assert data["project_id"] == "work-a"

@@ -163,6 +163,7 @@ async def test_proxy_cutover_requires_reauthentication_without_weakening_binding
     for target in ("app.config.get_settings", "app.api.deps.get_settings", "app.services.jwt_service.get_settings"):
         monkeypatch.setattr(target, lambda: settings)
     identity = make_token_info()
+    auth_directory.users[identity["user_id"]]["domain_id"] = identity["identity_domain_id"]
     identity["email"] = auth_directory.users[identity["user_id"]]["email"]
     monkeypatch.setattr("app.api.deps._cached_validate", AsyncMock(return_value=identity))
     monkeypatch.setattr("app.services.activity.record", AsyncMock())

@@ -3,6 +3,9 @@
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import type { ProjectUsage } from '$lib/types/adminOverview';
 	import UsageBar from '$lib/components/ui/UsageBar.svelte';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
 
 	let {
 		projects,
@@ -24,6 +27,23 @@
 			{/each}
 		</div>
 	{:else if projects.length > 0}
+    <ResponsiveTable>
+      {#snippet cards()}
+        {#each projects.filter(p => p.instances.used > 0 || p.cpu.used > 0 || p.disk_gb.used > 0) as p (p.project_id)}
+          <CompactResourceCard>
+            <Button variant="link" size="sm" onclick={() => onSelectProject(p)}>{p.project_name}</Button>
+            <dl class="flex flex-wrap gap-3 text-xs">
+              <div><dt class="text-ink-2">VM</dt><dd>{p.instances.used.toLocaleString(intlLocale())}/{p.instances.quota === -1 ? '∞' : p.instances.quota.toLocaleString(intlLocale())}</dd></div>
+              <div><dt class="text-ink-2">CPU</dt><dd>{p.cpu.used.toLocaleString(intlLocale())}</dd></div>
+              <div><dt class="text-ink-2">RAM</dt><dd>{Math.round(p.ram_mb.used / 1024).toLocaleString(intlLocale())}G</dd></div>
+            </dl>
+            {#snippet details()}
+              <dl class="space-y-2 text-xs"><div><dt class="text-ink-2">{t('overview.projects.project')}</dt><dd class="break-all font-mono">{p.project_id}</dd></div><div><dt class="text-ink-2">{t('overview.projects.disk')}</dt><dd>{Math.round(p.disk_gb.used).toLocaleString(intlLocale())}G</dd></div><div><dt class="text-ink-2">GPU</dt><dd>{p.gpu_instances > 0 ? p.gpu_instances.toLocaleString(intlLocale()) : '—'}</dd></div></dl>
+              <div class="mt-2 space-y-2"><UsageBar label="CPU" value={p.cpu.used} max={p.cpu.quota} size="sm" /><UsageBar label="RAM" value={p.ram_mb.used} max={p.ram_mb.quota} size="sm" /><UsageBar label={t('overview.projects.disk')} value={p.disk_gb.used} max={p.disk_gb.quota} size="sm" /></div>
+            {/snippet}
+          </CompactResourceCard>
+        {/each}
+      {/snippet}
 		<div class="overflow-x-auto" aria-label={t('overview.projects.tableLabel')}>
 		<!-- 테이블 헤더 -->
 		<div class="grid min-w-[760px] grid-cols-[2fr_80px_120px_120px_120px_50px] gap-x-3 rounded-t-lg border border-b-0 border-line bg-surface-sunken px-3.5 py-2 text-xs font-medium tracking-tight text-ink-2">
@@ -63,6 +83,7 @@
 			{/each}
 		</div>
 		</div>
+    </ResponsiveTable>
 	{:else}
 		<div class="text-ink-2 text-sm py-6 text-center">{t('overview.projects.empty')}</div>
 	{/if}

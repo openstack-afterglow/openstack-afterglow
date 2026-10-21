@@ -10,6 +10,8 @@
 	import Pagination from '$lib/components/ui/Pagination.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	interface Props {
 		endpoint: string;
@@ -228,6 +230,35 @@
 	{:else if logs.length === 0}
 		<div class="text-ink-2 text-sm py-8 text-center">{t('activity.empty')}</div>
 	{:else}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each logs as log (log.id)}
+					{#snippet errorAction()}
+						<button onclick={() => expandedId = expandedId === log.id ? null : log.id} aria-expanded={expandedId === log.id} class="text-xs text-ink-2 underline">{expandedId === log.id ? t('activity.close') : t('activity.details')}</button>
+						{#if expandedId === log.id && log.error_message}
+							<p class="w-full rounded border border-state-danger/30 bg-state-danger/10 px-2 py-1.5 text-xs text-state-danger-text break-words">{log.error_message}</p>
+						{/if}
+					{/snippet}
+					<CompactResourceCard actions={log.status === 'failed' && log.error_message ? errorAction : undefined}>
+						<div class="flex min-w-0 items-start justify-between gap-2">
+							<span class="min-w-0 font-medium break-words">{log.resource_name || log.resource_id || log.resource_type}</span>
+							<StatusChip status={log.status} />
+						</div>
+						<dl>
+							<div><dt>{t('activity.action')}</dt><dd class="font-mono">{log.action}</dd></div>
+							<div><dt>{t('activity.time')}</dt><dd title={log.created_at}>{relativeTime(log.created_at)}</dd></div>
+							{#if showUser}<div><dt>{t('activity.user')}</dt><dd>{log.username}</dd></div>{/if}
+						</dl>
+						{#snippet details()}
+							<dl>
+								<div><dt>{t('activity.resource')}</dt><dd>{log.resource_type}</dd></div>
+								<div><dt>{t('activity.time')}</dt><dd>{log.created_at}</dd></div>
+								{#if log.resource_id}<div><dt>ID</dt><dd class="font-mono">{log.resource_id}</dd></div>{/if}
+							</dl>
+						{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<TableShell density="compact">
 			<table class="w-full text-sm">
 				<thead class="bg-surface-base text-ink-2 text-xs uppercase tracking-wide">
@@ -280,6 +311,7 @@
 				</tbody>
 			</table>
 		</TableShell>
+		</ResponsiveTable>
 
 	{/if}
 	{#if !loading && (pageIndex > 0 || logs.length > 0)}

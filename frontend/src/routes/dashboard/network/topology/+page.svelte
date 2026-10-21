@@ -8,6 +8,7 @@
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import GlobalTopology from '$lib/components/GlobalTopology.svelte';
 	import InstanceDetailPanel from '$lib/components/InstanceDetailPanel.svelte';
+	import { invalidateInstanceDetailSelection } from '$lib/stores/instanceDetailController.svelte';
 	import RouterDetailPanel from '$lib/components/RouterDetailPanel.svelte';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
@@ -90,18 +91,22 @@
 	);
 
 	function onSelectInstance(id: string) {
+		invalidateInstanceDetailSelection();
 		if (selectedInstanceId === id) { selectedInstanceId = null; }
 		else { selectedInstanceId = id; selectedRouterId = null; selectedLB = null; selectedNetworkId = null; }
 	}
 	function onSelectRouter(id: string) {
+		invalidateInstanceDetailSelection();
 		if (selectedRouterId === id) { selectedRouterId = null; }
 		else { selectedRouterId = id; selectedInstanceId = null; selectedLB = null; selectedNetworkId = null; }
 	}
 	function onSelectLoadBalancer(lb: TopologyLoadBalancer) {
+		invalidateInstanceDetailSelection();
 		if (selectedLB?.id === lb.id) { selectedLB = null; }
 		else { selectedLB = lb; selectedInstanceId = null; selectedRouterId = null; selectedNetworkId = null; }
 	}
 	function onSelectNetwork(id: string) {
+		invalidateInstanceDetailSelection();
 		if (selectedNetworkId === id) { selectedNetworkId = null; }
 		else { selectedNetworkId = id; selectedInstanceId = null; selectedRouterId = null; selectedLB = null; }
 	}
@@ -463,8 +468,8 @@
 </PageShell>
 
 {#if selectedInstanceId}
-	<SlidePanel onClose={() => selectedInstanceId = null} ariaLabel={t('topology.instanceDetailLabel')}>
-		<InstanceDetailPanel instanceId={selectedInstanceId} onClose={() => selectedInstanceId = null} />
+	<SlidePanel onClose={() => { invalidateInstanceDetailSelection(); selectedInstanceId = null; }} ariaLabel={t('topology.instanceDetailLabel')}>
+		<InstanceDetailPanel instanceId={selectedInstanceId} onClose={() => { invalidateInstanceDetailSelection(); selectedInstanceId = null; }} />
 	</SlidePanel>
 {/if}
 

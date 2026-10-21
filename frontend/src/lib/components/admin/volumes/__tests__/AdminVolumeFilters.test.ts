@@ -10,8 +10,6 @@ describe('AdminVolumeFilters status options', () => {
 	it('renders only the positive-count options supplied by the status summary', () => {
 		render(AdminVolumeFilters, {
 			props: {
-				projectFilter: '',
-				projectSearchText: '',
 				statusFilter: '',
 				nameSearch: '',
 				statusOptions: ['available', 'in-use'],

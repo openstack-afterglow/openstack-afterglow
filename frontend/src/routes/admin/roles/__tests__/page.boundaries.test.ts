@@ -136,13 +136,15 @@ describe('role dashboard authorization and stale responses', () => {
 		const fresh = role('chat-id', { name: 'lumen-chat_user' });
 		let catalogs = 0;
 		mocks.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/presets') ? {
-			roles: [{ name: fresh.name, description: 'chat', area: 'lumen-chat', grade: 'user', parent: 'lumen_user' }], project_roles: [], implications: [{ prior: 'lumen_user', implied: fresh.name }]
+			roles: [{ name: fresh.name, description: 'chat', area: 'lumen-chat', grade: 'user', parent: null }], project_roles: [], implications: [], retired_implications: [{ prior: 'lumen_user', implied: fresh.name }]
 		} : ++catalogs === 1 ? [existing] : [existing, fresh]));
 		mocks.post.mockResolvedValue({ created_roles: [fresh.name], created_implications: [], roles: [existing, fresh] });
 		render(Page);
 		await screen.findAllByRole('button', { name: 'project_owner 역할 상세' });
 		await fireEvent.click(screen.getByRole('button', { name: '역할 프리셋 미리보기' }));
 		const preview = await screen.findByRole('dialog', { name: '역할 프리셋 미리보기' });
+		expect(within(preview).getByRole('heading', { name: '제거 대상 기존 서비스 상속 연결' })).toBeTruthy();
+		expect(within(preview).getByText('lumen_user → lumen-chat_user')).toBeTruthy();
 		await fireEvent.click(within(preview).getByRole('button', { name: '프리셋 적용' }));
 		expect(mocks.post).not.toHaveBeenCalled();
 		expect(confirmDialog).toHaveBeenCalledTimes(1);

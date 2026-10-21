@@ -77,6 +77,9 @@
 	{#snippet actions()}
 		<div class="flex flex-col gap-2 items-end">
 			<div class="flex items-center gap-2 flex-wrap justify-end">
+				{#if canMutate && s.canRename}
+					<Button onclick={s.openRename} disabled={busy || s.renameLoading} variant="outline" size="sm">{t('rename.title')}</Button>
+				{/if}
 				{#if s.instance!.status === 'ACTIVE'}
 					<Button onclick={s.openConsole} disabled={s.consoleOpening} ariaBusy={s.consoleOpening} variant="outline" size="sm">
 						{#if s.consoleOpening}

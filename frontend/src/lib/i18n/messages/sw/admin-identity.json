@@ -337,6 +337,7 @@
 	"roleValidation.protectedDeletion": "Majukumu chaguomsingi hayawezi kufutwa.",
 	"roleValidation.linkedDeletion": "Tenganisha kwanza majukumu ya juu na ya chini yaliyounganishwa moja kwa moja.",
 	"userCreate.title": "Unda mtumiaji",
+	"userCreate.accountSpacesHelp": "Accounts huunda utambulisho wa kuingia pekee. Hakuna mradi unaoundwa sasa; kuingia kwa mafanikio mara ya kwanza huunda mradi wenye jina la kiotomatiki katika Personal na jukumu la moja kwa moja la member pekee. Kikoa cha saraka kilichochaguliwa ni cha kutazama tu; kuunda akaunti hakujiungi nacho wala kutoa ruhusa ya kusoma Default.",
 	"userCreate.name": "Jina",
 	"userCreate.email": "Barua pepe",
 	"userCreate.password": "Nenosiri",
@@ -587,10 +588,11 @@
 	"roleMetadata.invalidName": "Maeneo na madaraja hutumia herufi za Kilatini, tarakimu na vistari ungio. Nafasi zote hubadilishwa kuwa vistari ungio.",
 	"roleMetadata.domain": "Kitambulisho cha kikoa (si lazima)",
 	"rolePresets.preview": "Hakiki mipangilio iliyowekwa awali ya majukumu",
-	"rolePresets.confirm": "Ungependa kutumia mipangilio iliyowekwa awali ya majukumu ya mradi na huduma? Vitambulisho na ugawaji wa majukumu uliopo huhifadhiwa; huongezwa tu majukumu na viungo vya urithi vinavyokosekana.",
+	"rolePresets.confirm": "Utumie mipangilio ya majukumu? Majukumu na viungo vya urithi vya mradi vinavyokosekana vitaongezwa; viungo vya zamani vya urithi wa huduma vilivyoorodheshwa vitaondolewa. Vitambulisho na ugawaji wa moja kwa moja vitahifadhiwa. Sambaza sera mpya za huduma kwanza.",
 	"rolePresets.apply": "Tumia mipangilio iliyowekwa awali",
 	"rolePresets.applied": "Mipangilio iliyowekwa awali imetumika. Grafu halisi ya majukumu imepakiwa upya.",
-	"rolePresets.previewHelp": "Kuhakiki hakubadilishi wingu. Kutumia mipangilio iliyowekwa awali hutumia tena majukumu yenye majina yaliyopo na hakuundi majukumu yanayojirudia inapotumika mara kwa mara.",
+	"rolePresets.previewHelp": "Hakiki haibadilishi wingu. Kila huduma hutathmini ruhusa kupitia policy.yaml yake. Kutumia mipangilio hutumia tena majukumu yaliyopo na huondoa tu viungo vya zamani vya urithi wa huduma vilivyoorodheshwa.",
 	"rolePresets.directImplications": "Viungo vya urithi wa moja kwa moja vya kuongeza",
+	"rolePresets.retiredImplications": "Viungo vya zamani vya urithi wa huduma vya kuondoa",
 	"quotaController.saveFailed": "Imeshindwa kuhifadhi"
 }

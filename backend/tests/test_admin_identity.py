@@ -297,6 +297,8 @@ async def assignment_authority(mock_conn, monkeypatch):
         for rid, name in (
             (_ADMIN_ROLE_ID, "admin"),
             (_MEMBER_ROLE_ID, "member"),
+            ("manager-role-id", "manager"),
+            ("reader-role-id", "reader"),
             (_OWNER_ROLE_ID, "project_owner"),
             (_OWNER_ALIAS_ID, "owner_alias"),
         )
@@ -324,14 +326,40 @@ async def assignment_authority(mock_conn, monkeypatch):
     mock_conn.endpoint_for.return_value = "https://keystone.invalid/v3"
     mock_conn.identity.roles.side_effect = lambda: iter(roles)
     mock_conn.identity.get.side_effect = graph
-    mock_conn.identity.get_user.side_effect = lambda uid: SimpleNamespace(id=uid, domain_id="default")
-    mock_conn.identity.get_project.side_effect = lambda pid: SimpleNamespace(id=pid, domain_id="default")
-    mock_conn.identity.get_group.side_effect = lambda gid: SimpleNamespace(id=gid, domain_id="default")
+    mock_conn.identity.get_user.side_effect = lambda uid: SimpleNamespace(
+        id=uid, name=uid, domain_id="default", enabled=True
+    )
+    mock_conn.identity.get_project.side_effect = lambda pid: SimpleNamespace(
+        id=pid, name=pid, domain_id="default", enabled=True
+    )
+    mock_conn.identity.get_group.side_effect = lambda gid: SimpleNamespace(
+        id=gid, name=gid, domain_id="default", enabled=True
+    )
     mock_conn.identity.get_role.side_effect = lambda rid: SimpleNamespace(
         **next(role for role in roles if role["id"] == rid)
     )
     mock_conn.identity.assign_project_role_to_user.side_effect = assign
     mock_conn.identity.unassign_project_role_from_user.side_effect = revoke
+
+    def native_assignments(user=None, project=None, role=None, group=None, domain=None, system=None, **kwargs):
+        if group is not None or domain is not None or system is not None:
+            return []
+        return [
+            {"user": {"id": uid}, "role": {"id": rid}, "scope": {"project": {"id": pid}}}
+            for pid, uid, rid in assignments
+            if (user is None or uid == user) and (project is None or pid == project) and (role is None or rid == role)
+        ]
+
+    native = SimpleNamespace(
+        users=SimpleNamespace(get=mock_conn.identity.get_user),
+        projects=SimpleNamespace(get=mock_conn.identity.get_project),
+        domains=SimpleNamespace(get=lambda did: SimpleNamespace(id=did, name="Default", enabled=True)),
+        groups=SimpleNamespace(list=lambda **kwargs: []),
+        roles=SimpleNamespace(list=lambda: list(roles)),
+        inference_rules=SimpleNamespace(list_inference_roles=lambda: list(inferences)),
+        role_assignments=SimpleNamespace(list=native_assignments),
+    )
+    monkeypatch.setattr(keystone, "_get_admin_ks_client", lambda: native)
     redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
 
     async def get_redis():

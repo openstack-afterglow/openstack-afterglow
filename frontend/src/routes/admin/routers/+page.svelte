@@ -1,9 +1,15 @@
 <script lang="ts">
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import { t as scopeT } from '$lib/i18n/ns/domain-admin';
+	let inventoryError = $state('');
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api, ApiError } from '$lib/api/client';
+	import { api as baseApi, ApiError } from '$lib/api/client';
+	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
+	const api = createAdminInventoryApi(baseApi);
+	onDestroy(api.dispose);
 	import type { AdminRouter, AdminNetwork } from '$lib/types/networks';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -26,26 +32,28 @@
 
 	async function load() {
 		loading = true;
+		inventoryError = '';
 		try {
 			routers = await api.get<AdminRouter[]>('/api/v1/admin/all-routers', token, projectId);
-		} catch {
-			routers = [];
+		} catch (reason) {
+			routers = []; inventoryError = reason instanceof Error ? reason.message : scopeT('state.unavailable');
 		} finally {
 			loading = false;
 		}
 	}
 
 	function prefetchExternalNetworks() {
-		void api.prefetch('/api/v1/admin/all-networks', token, projectId);
+		if (api.isCurrent()) void baseApi.prefetch('/api/v1/admin/all-networks', token, projectId);
 	}
 
 	async function openCreate() {
 		showCreate = true;
 		try {
-			const nets = await api.get<AdminNetwork[]>('/api/v1/admin/all-networks', token, projectId);
+			const nets = await baseApi.get<AdminNetwork[]>('/api/v1/admin/all-networks', token, projectId);
+			if (!api.isCurrent()) return;
 			externalNets = nets.filter(n => n.is_external);
 		} catch {
-			externalNets = [];
+			if (api.isCurrent()) externalNets = [];
 		}
 	}
 
@@ -102,7 +110,8 @@
 		{/snippet}
 	</PageHeader>
 
-	{#if loading}
+	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
+	{:else if loading}
 		<div class="text-ink-2 text-sm"><ActivityIndicator size="sm" label={t('routersPage.loading')} /></div>
 	{:else}
 		<AdminRoutersTable {routers} onEdit={(r) => { editRouter = r; }} onDelete={(r) => { deleteRouter = r; }} />

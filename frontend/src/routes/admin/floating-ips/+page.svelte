@@ -1,9 +1,15 @@
 <script lang="ts">
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import { t as scopeT } from '$lib/i18n/ns/domain-admin';
+	let inventoryError = $state('');
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api, ApiError } from '$lib/api/client';
+	import { api as baseApi, ApiError } from '$lib/api/client';
+	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
+	const api = createAdminInventoryApi(baseApi);
+	onDestroy(api.dispose);
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
@@ -11,6 +17,9 @@
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import { t } from '$lib/i18n/ns/admin-network';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 
 	let fips = $state<FloatingIpInfo[]>([]);
 	let loading = $state(true);
@@ -32,27 +41,29 @@
 
 	async function load() {
 		loading = true;
+		inventoryError = '';
 		try {
 			fips = await api.get<FloatingIpInfo[]>('/api/v1/admin/all-floating-ips', token, projectId);
-		} catch {
-			fips = [];
+		} catch (reason) {
+			fips = []; inventoryError = reason instanceof Error ? reason.message : scopeT('state.unavailable');
 		} finally {
 			loading = false;
 		}
 	}
 
 	function prefetchExternalNetworks() {
-		void api.prefetch('/api/v1/admin/all-networks', token, projectId);
+		if (api.isCurrent()) void baseApi.prefetch('/api/v1/admin/all-networks', token, projectId);
 	}
 
 	async function openCreate() {
 		showCreate = true; createError = '';
 		try {
-			const nets = await api.get<NetworkInfo[]>('/api/v1/admin/all-networks', token, projectId);
+			const nets = await baseApi.get<NetworkInfo[]>('/api/v1/admin/all-networks', token, projectId);
+			if (!api.isCurrent()) return;
 			externalNets = nets.filter(n => n.is_external);
 			selectedNetId = externalNets.length > 0 ? externalNets[0].id : '';
 		} catch {
-			externalNets = [];
+			if (api.isCurrent()) externalNets = [];
 		}
 	}
 
@@ -99,9 +110,21 @@
 		{/snippet}
 	</PageHeader>
 
-	{#if loading}
+	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
+	{:else if loading}
 		<div class="text-ink-2 text-sm"><ActivityIndicator size="sm" label={t('floatingIpsPage.loading')} /></div>
 	{:else}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each fips as f (f.id)}
+					<CompactResourceCard>
+						<div class="flex flex-wrap items-start justify-between gap-2"><h3 class="break-all font-mono font-medium text-ink-0">{f.floating_ip_address}</h3><span class="text-xs text-ink-2">{f.port_id ? t('floatingIpsPage.status.assigned') : t('floatingIpsPage.status.unassigned')}</span></div>
+						<div class="space-y-1 break-all text-xs text-ink-2"><p>{t('floatingIpsPage.table.fixedIp')}: {f.fixed_ip_address ?? '-'}</p><p>{t('floatingIpsPage.table.project')}: {f.project_id?.slice(0, 8) ?? '-'}</p></div>
+						{#snippet actions()}{#if !f.port_id}<Button variant="danger" size="sm" onclick={() => { deleteFip = f; deleteError = ''; }}>{t('floatingIpsPage.actions.delete')}</Button>{/if}{/snippet}
+						{#snippet details()}<div class="space-y-2 break-all font-mono text-xs text-ink-2"><p>{f.id}</p><p>{f.project_id ?? '-'}</p></div>{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<div class="overflow-x-auto">
 			<table class="w-full text-sm">
 				<thead>
@@ -133,6 +156,7 @@
 				</tbody>
 			</table>
 		</div>
+		</ResponsiveTable>
 		<div class="mt-3 flex gap-4 text-xs text-ink-2">
 			<span>{t('floatingIpsPage.summary.total', { count: fips.length })}</span>
 			<span class="text-green-400">{t('floatingIpsPage.summary.assigned', { count: fips.filter(f => f.port_id).length })}</span>

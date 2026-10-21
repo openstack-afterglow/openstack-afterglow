@@ -37,6 +37,8 @@ async def test_public_identity_preserves_capability_without_exposing_system_role
     downgraded,
 ):
     info = make_token_info(roles=roles, is_system_admin=system_admin)
+    info["identity_domain_id"] = auth_directory.users[info["user_id"]]["domain_id"]
+    info["identity_domain_name"] = "Accounts"
     native_auth.roles = roles
     monkeypatch.setattr("app.database.get_session_factory", lambda: None)
     app.dependency_overrides[get_token_info] = lambda: dict(info)
@@ -49,6 +51,7 @@ async def test_public_identity_preserves_capability_without_exposing_system_role
     # remains hidden, but uppercase *authority* bindings are not canonical.
     current_roles = ["reader"] if downgraded else [role.lower() for role in roles]
     auth_directory.roles = [{"id": "role-" + name, "name": name} for name in ("admin", "manager", "member", "reader")]
+    auth_directory.inferences = []
     auth_directory.grants = {}
     auth_directory.projects[effective_project_id] = {
         "id": effective_project_id,

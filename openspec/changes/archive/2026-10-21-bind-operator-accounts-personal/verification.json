@@ -1,0 +1,25 @@
+{
+  "status": "implemented-locally",
+  "source_sha256": "fdcd81c2f156c1279b55907133de2b4bb940b8d4c025509447f77b2d3f767a7a",
+  "source_files": 3394,
+  "operator_domain_names": {"account": "Accounts", "personal": "Personal"},
+  "operator_supplied_ids": {"Accounts": "3b24b0e94b1d46c9941d515b8c2d397b", "Personal": "4661cc1ff17044bfa43f87ded1d8d53f"},
+  "binding": "exact enabled native names; UUIDs resolved dynamically, not hardcoded; absent kind allowed, conflicting kind rejected; no shared-domain create/update",
+  "password_login": "Accounts inventory only; exact home readback; one native credential attempt; no external-domain fallback or client domain selector",
+  "unchanged": ["web organization opaque native names and display labels", "canonical account-link proof", "legacy identities/passwords/grants/journals", "database schema", "configuration schema", "native OIDC mapping"],
+  "verification": {
+    "affected_backend": {"passed": 645},
+    "isolated_full_backend_unit": {"passed": 8697, "skipped": 94},
+    "frontend": {"passed": 4801, "files": 418},
+    "final_login_component": {"passed": 60},
+    "frontend_build": "passed",
+    "svelte_check": {"errors": 0, "warnings": 16, "files_with_warnings": 5},
+    "i18n_check": {"errors": 0, "warnings": 37},
+    "i18n_scan": {"hardcoded_korean": 0, "files": 1194},
+    "ruff": {"check": "passed", "formatted_files": 714},
+    "architecture_working": "passed",
+    "smoke": "installed Keystone SDK over synthetic loopback HTTP, exact supplied IDs, GET-only domain/user resolution, outside-only alias rejection; real Vite Chromium390/1024 no domain input or horizontal overflow"
+  },
+  "limits": ["Repo-cwd auth/access runs loaded private service configuration and network guard blocked service_proxy catalog DNS attempts; diagnosed and retained logs", "Initial repo-cwd broad backend run timed out at300s", "Full backend unit was verified from an external temporary cwd with identical source and full selectors to exclude private afterglow.conf", "Full test:gate and DB functional not run for this follow-up", "Live OpenStack/signup/mail/OIDC acceptance not exercised", "No commit/push/deployment/live IAM changes", "Gbrain CLI unavailable"],
+  "proof_root": "~/.local/share/afterglow-proofs/operator-domains-20261021/"
+}

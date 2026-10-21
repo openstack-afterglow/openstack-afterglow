@@ -4,6 +4,8 @@
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import type { NetworkAgent } from '$lib/types/adminServices';
 	import ServiceListControls from './ServiceListControls.svelte';
 	import ServiceSortHeader from './ServiceSortHeader.svelte';
@@ -62,6 +64,30 @@
 {:else if displayedAgents.length === 0}
 	<EmptyState headline={t('services.network.noMatches')} description={t('services.list.adjustFilters')} />
 {:else}
+	<ResponsiveTable>
+		{#snippet cards()}
+			{#each displayedAgents as agent (agent.id)}
+				<CompactResourceCard>
+					<div class="flex flex-wrap items-start justify-between gap-2">
+						<h3 class="min-w-0 break-words text-sm font-medium text-ink-0">{agent.agent_type}</h3>
+						<div class="flex flex-wrap gap-1">
+							<Pill tone={agent.alive === true ? 'success' : agent.alive === false ? 'danger' : 'neutral'} size="xs">{agent.alive === true ? t('services.state.alive') : agent.alive === false ? t('services.state.down') : t('services.state.unknown')}</Pill>
+							<Pill tone={agent.admin_state_up ? 'success' : 'danger'} size="xs">{agent.admin_state_up ? t('services.state.adminUp') : t('services.state.adminDown')}</Pill>
+						</div>
+					</div>
+					<dl class="grid gap-1 text-xs text-ink-2">
+						<div class="flex flex-wrap justify-between gap-2"><dt>{t('services.columns.host')}</dt><dd class="break-all">{agent.host}</dd></div>
+						<div class="flex flex-wrap justify-between gap-2"><dt>{t('services.columns.zone')}</dt><dd class="break-all">{agent.availability_zone || '-'}</dd></div>
+					</dl>
+					{#snippet details()}
+						<dl class="grid gap-2 text-xs text-ink-2">
+							<div><dt>{t('services.columns.binary')}</dt><dd class="break-all font-mono">{agent.binary}</dd></div>
+							<div><dt>{t('services.columns.updated')}</dt><dd class="tabular-nums">{fmtTime(agent.updated_at)}</dd></div>
+						</dl>
+					{/snippet}
+				</CompactResourceCard>
+			{/each}
+		{/snippet}
 	<TableShell density="compact">
 		<table aria-label={t('services.network.listLabel')}>
 			<thead>
@@ -86,4 +112,5 @@
 			</tbody>
 		</table>
 	</TableShell>
+	</ResponsiveTable>
 {/if}

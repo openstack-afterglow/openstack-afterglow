@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { t } from '$lib/i18n/ns/dashboard-home';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { untrack } from 'svelte';
@@ -169,6 +171,10 @@
 			{#if recentActions.length === 0}
 				<div class="mt-6 text-center text-sm text-[var(--color-ink-3)] py-6">{t('activity.empty')}</div>
 			{:else}
+				<ResponsiveTable class="mt-4">{#snippet cards()}{#each recentActions as action (action.id)}<CompactResourceCard>
+					<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{action.resource_name}</h3><Pill tone={action.status === 'success' ? 'success' : 'danger'}>{t(action.status === 'success' ? 'activity.success' : 'activity.failure')}</Pill></div><p class="text-xs font-mono">{action.action}</p><p class="text-xs text-ink-2">{formatHour(action.created_at)}</p>
+					{#snippet details()}<p class="text-xs">{t('activity.resource')}: {action.resource_type}</p>{/snippet}
+				</CompactResourceCard>{/each}{/snippet}
 				<div class="mt-4 overflow-x-auto">
 					<table class="w-full text-sm">
 						<thead>
@@ -207,6 +213,7 @@
 						</tbody>
 					</table>
 				</div>
+				</ResponsiveTable>
 			{/if}
 		</div>
 	{/if}

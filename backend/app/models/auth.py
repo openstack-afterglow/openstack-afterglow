@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -23,6 +25,7 @@ class LoginOptionsResponse(BaseModel):
 class DomainInfo(BaseModel):
     id: str
     name: str
+    kind: Literal["personal", "organization", "legacy"] = "legacy"
 
 
 class TokenResponse(BaseModel):

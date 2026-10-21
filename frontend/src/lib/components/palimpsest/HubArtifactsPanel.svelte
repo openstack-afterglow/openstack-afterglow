@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
   import { onMount, untrack } from 'svelte';
   import type { PackageIdentity } from '$lib/api/palimpsestPackages';
   import type { HubFilters } from '$lib/api/palimpsestHub';
@@ -152,9 +154,15 @@
         {#if hub.inventory}
           <p class="text-xs text-ink-2">{t('page', { start: hub.offset, count: hub.inventory.length })}</p>
           {#if hub.inventory.length === 0}<Alert tone="neutral">{t('empty')}</Alert>{:else}
+            <ResponsiveTable>{#snippet cards()}{#each hub.inventory as row (row.blob_digest)}<CompactResourceCard selected={hub.selected === row.blob_digest}>
+              <h3 class="text-sm font-medium">{row.name}</h3><p class="text-xs"><code>{row.kind}</code> · {bytes(row.size_bytes)}</p>
+              {#snippet details()}<p class="text-xs">{t('filter.arch')}: <code>{row.arch ?? '—'}</code></p><p class="text-xs break-all">{t('digest')}: <code>{row.blob_digest}</code></p>{/snippet}
+              {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => { copyNotice = null; void hub.openDetail(row.blob_digest); }}>{t('details')}</Button>{/snippet}
+            </CompactResourceCard>{/each}{/snippet}
             <TableShell><table><thead><tr><th>{t('name')}</th><th>{t('filter.kind')}</th><th>{t('filter.arch')}</th><th>{t('size')}</th><th>{t('digest')}</th><th>{t('details')}</th></tr></thead><tbody>
               {#each hub.inventory as row (row.blob_digest)}<tr data-selected={hub.selected === row.blob_digest}><td>{row.name}</td><td><code>{row.kind}</code></td><td><code>{row.arch ?? '—'}</code></td><td>{bytes(row.size_bytes)}</td><td><code title={row.blob_digest}>{row.blob_digest.slice(0, 19)}…</code></td><td><Button variant="secondary" size="sm" onclick={() => { copyNotice = null; void hub.openDetail(row.blob_digest); }}>{t('details')}</Button></td></tr>{/each}
             </tbody></table></TableShell>
+            </ResponsiveTable>
           {/if}
         {/if}
         <div class="flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={hub.offset === 0 || hub.busy.inventory} onclick={() => hub.page(-1)}>{t('previous')}</Button><Button variant="secondary" size="sm" disabled={!hub.hasNext || hub.busy.inventory} onclick={() => hub.page(1)}>{t('next')}</Button></div>

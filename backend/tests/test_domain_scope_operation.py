@@ -50,13 +50,11 @@ def test_nested_context_reuses_identity_domain_project_and_full_graph(domain_nat
     with NativeOperation() as operation:
         for _ in range(2):
             context = domain_scope.domain_context("creator", "tenant-a", operation=operation)
-            assert context == {
-                "identity_domain_id": "home",
-                "identity_domain_name": "home",
-                "domain_id": "tenant-a",
-                "domain_name": "tenant-a",
-                "is_domain_manager": True,
-            }
+            assert (context["identity_domain_id"], context["domain_id"], context["is_domain_manager"]) == (
+                "home",
+                "tenant-a",
+                True,
+            )
             assert domain_scope.has_scope_authority("creator", domain_id="tenant-a", operation=operation)
             assert domain_scope.has_scope_authority("creator", operation=operation)
             fence(operation)

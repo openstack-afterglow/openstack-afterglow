@@ -1,4 +1,12 @@
 {
+	"rename.title": "Tukar nama",
+	"rename.name": "Nama instans",
+	"rename.notice": "Hanya menukar nama paparan, bukan nama hos tetamu. Instans tidak perlu dihentikan.",
+	"rename.invalidName": "Masukkan sehingga 63 huruf Inggeris, digit, sempang atau garis bawah, bermula dengan huruf atau digit. Ruang ditukar kepada sempang.",
+	"rename.failed": "Nama instans tidak dapat dikemas kini. Semak nama semasa sebelum mencuba lagi.",
+	"rename.submit": "Simpan",
+	"rename.saving": "Menyimpan...",
+	"rename.cancel": "Batal",
 	"metrics.nativeMeasurements": "Pengukuran asli tambahan",
 	"metrics.nativeMeasurementsHelp": "Ketersediaan bergantung pada meter yang dipasang dan dasar asli. RAM residen bukan memori yang digunakan tetamu; peruntukan cakera bukan penggunaan sistem fail.",
 	"metrics.diskIops": "Permintaan cakera",

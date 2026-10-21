@@ -313,6 +313,66 @@ async def get_json(service_type: str, request: Request, upstream_path: str) -> A
         raise HTTPException(status_code=502, detail=f"{service_type} 응답 형식이 잘못되었습니다") from exc
 
 
+async def get_policy_capabilities(service_type: str, token_info: dict) -> dict:
+    """Read current operator-policy decisions using the original native subject.
+
+    This transport must not recurse through browser action authorization or
+    exchange a package subject token. Native services own policy evaluation.
+    """
+    from app.services.service_permissions import SERVICE_ROLE_GRADES
+
+    if service_type not in SERVICE_ROLE_GRADES:
+        raise HTTPException(status_code=403, detail="Unknown service policy")
+    token = token_info.get("token")
+    project_id = token_info.get("project_id")
+    connection_project = token_info.get("connection_project_id", project_id)
+    if not token or not project_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if connection_project != project_id and token_info.get("_live_system_admin") is not True:
+        raise HTTPException(status_code=403, detail="Original subject and target project disagree")
+    settings = get_settings()
+    if service_type == "palimpsest":
+        endpoint = _package_endpoint(_configured_internal_endpoint(service_type))
+        verify = ssl.create_default_context(cafile=settings.os_cacert or None)
+    else:
+        endpoint = await asyncio.to_thread(_get_internal_endpoint, token, connection_project, service_type)
+        verify = settings.ssl_verify
+    if not endpoint:
+        raise HTTPException(status_code=503, detail="Native service policy is unavailable")
+    try:
+        url = join_version_aware_url(endpoint, "/v1/policy/capabilities")
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail="Native service policy is unavailable") from exc
+    headers = {"x-auth-token": token, "x-project-id": connection_project, "accept": "application/json"}
+    if connection_project != project_id:
+        headers["x-target-project-id"] = project_id
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0, connect=5.0), verify=verify, follow_redirects=False
+        ) as client:
+            response = await client.get(url, headers=headers)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail="Native service policy is unavailable") from exc
+    if response.status_code != 200:
+        status = response.status_code if response.status_code in {401, 403} else 503
+        raise HTTPException(status_code=status, detail="Native service policy is unavailable")
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Invalid native policy response") from exc
+    known = {leaf for leaves in SERVICE_ROLE_GRADES[service_type].values() for leaf in leaves}
+    if (
+        not isinstance(payload, dict)
+        or payload.get("service") != service_type
+        or not isinstance(payload.get("capabilities"), list)
+        or any(not isinstance(leaf, str) or leaf not in known for leaf in payload["capabilities"])
+        or not isinstance(payload.get("actions"), list)
+        or any(not isinstance(action, str) or not action for action in payload["actions"])
+    ):
+        raise HTTPException(status_code=502, detail="Invalid native policy response")
+    return payload
+
+
 async def resolve_service_endpoint(service_type: str) -> str | None:
     """Resolve an internal catalog endpoint with Afterglow's service credentials."""
     return await asyncio.to_thread(_get_service_internal_endpoint, service_type)

@@ -13,7 +13,7 @@
 	import type { DomainAccountResult } from '$lib/types/auth';
 	import { isOnboardingToken, onboardingErrorKey, signupApprovalState, type SignupApprovalState } from '$lib/utils/domainLogin';
 	import { t } from '$lib/i18n/ns/domain-auth';
-	import RichText from '$lib/i18n/RichText.svelte';
+	import AccountResultDetails from '$lib/components/auth/AccountResultDetails.svelte';
 
 	interface RegistrationInfo { email: string; account_exists: boolean; identity_domain_id?: string; identity_domain_name?: string }
 	const token = $derived(($page.params as Record<string, string>)['token'] ?? '');
@@ -52,7 +52,7 @@
 			}
 		} finally { if (live && boundary === generation) loading = false; }
 	}
-	async function createAccount(account: { name: string; password: string; personal_domain_name: string }) {
+	async function createAccount(account: { name: string; password: string }) {
 		if (!info || info.account_exists || approval || abandoned || $auth.token || $logoutInProgress || $projectSwitching) return;
 		const current = token;
 		const boundary = generation;
@@ -91,7 +91,8 @@
 				<Button href="/signup" class="w-full">{t('signup.approval.restart')}</Button>
 				<Button variant="secondary" href="/login" class="w-full">{t('common.backToLogin')}</Button>
 			{:else if created}
-				<Alert tone="success" title={t('onboarding.created.title')}><RichText segments={t.rich('onboarding.created.body', { domain: created.identity_domain_name })} classes={{ strong: 'text-ink-0' }} /></Alert>
+				<Alert tone="success" title={t('onboarding.created.title')}>{t('onboarding.created.body', { project: created.personal_project_name ?? '' })}</Alert>
+				<AccountResultDetails result={created} />
 				<Button href="/login" class="w-full">{t('onboarding.created.signIn')}</Button>
 			{:else}
 				{#if error}<Alert tone="danger">{error}</Alert>{/if}

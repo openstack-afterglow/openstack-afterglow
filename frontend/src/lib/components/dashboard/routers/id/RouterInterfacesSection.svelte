@@ -7,6 +7,8 @@
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	let {
 		router,
@@ -96,6 +98,17 @@
 	{#if router.interfaces.length === 0}
 		<p class="text-sm text-ink-2">{t('router.interfaces.empty')}</p>
 	{:else}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each router.interfaces as iface}
+					{@const removing = pending.isActive(`remove:${iface.subnet_id}`, saving)}
+					<CompactResourceCard>
+						<p class="font-medium">{iface.subnet_name || iface.subnet_id.slice(0, 12)}</p><p class="font-mono text-xs">{iface.ip_address}</p>
+						{#snippet details()}<p class="font-mono">{iface.subnet_id}</p>{/snippet}
+						{#snippet actions()}{#if canManage}<button onclick={() => pending.run(`remove:${iface.subnet_id}`, () => onRemove(iface.subnet_id))} disabled={saving} aria-busy={removing} class="inline-flex items-center gap-1.5 text-state-danger-text">{#if removing}<ActivityIndicator size="xs" tone="danger" />{/if}{removing ? tc('state.processing') : t('router.interfaces.remove')}</button>{/if}{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<div class="space-y-2">
 			{#each router.interfaces as iface}
 				{@const removing = pending.isActive(`remove:${iface.subnet_id}`, saving)}
@@ -115,5 +128,6 @@
 				</div>
 			{/each}
 		</div>
+		</ResponsiveTable>
 	{/if}
 </section>

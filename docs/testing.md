@@ -6,6 +6,191 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 프로젝트 없는 관리자 로그인 응답 정정 (2026-10-22, local source)
+
+최신 로컬 backend 로그의 2026-10-21 22:36:50·22:37:04·23:39:26 KST password login은 native exchange부터 session publication까지 성공한 HTTP200이며 바로 logout200이 뒤따랐다. 화면의 `login.sessionMismatch`는 frontend가 Accounts identity와 visible legacy 작업 domain·빈 project를 가진 관리자 응답을 거부한 경로다. 과거 native password401과 구분한다. `loginAuthState`는 서버가 보고한 system administrator·projectless·visible exact working domain인 경우만 수용하도록 수정했다. 일반 사용자 foreign organization landing과 관리자 invisible/project-scoped foreign landing은 계속 거부한다.
+
+수정 전 authSession 회귀 2fail/23pass → 수정 후 authSession/authFlow/authVerification/LoginPage 135pass. 실제 Chromium에서 합성 login200 응답으로 동일 오류를 재현한 뒤 수정 후 `/select-domain`·Accounts identity 보존·project null을 확인했다. Chooser inventory API는 fixture 미제공으로 경고 상태이며 실제 프로젝트 선택 수용을 주장하지 않는다. 운영 비밀번호·native grant·schema·config 변경 및 container rebuild/restart/deploy는 하지 않았다. 실행 중 frontend 이미지는 이 수정 전이므로 실제 사용자 재로그인 수용은 아직 미검증이다. Proof: `~/.local/share/afterglow-proofs/projectless-admin-login-20261022/`.
+
+같은 read-only 조회에서 Accounts 사용자의 effective assignment는 이전0에서2로 바뀌었고 personal project는 없었다. 운영 `domain_enrollments`의 누락 column은 그대로이며 일반 사용자 provisioning에는 별도 schema blocker다. OIDC callback409도 지속한다. 이번 source 수정은 이 두 문제를 우회하지 않는다. 로컬 backend의 시계열 수집은 Redis 기록, trash loop는 운영 Swift 영구 삭제가 가능한 writer이며 조회된 추가 로그에서 성공 purge/delete 기록은 없었다. 이 부재는 과거 삭제가 전혀 없었다는 증거가 아니다.
+
+커밋 준비의 격리 전체 gate에서 backend unit8740pass/95skip·frontend4822pass 후 contract145pass/14fail을 관측했다. 공용 합성 directory가 Accounts home으로 이관됐지만 legacy Default transport fixture의 token/home는 Default인 불일치였다. 두 contract fixture만 legacy native home과 token home을 일치시켜 실제 identity/admin guard를 유지했고 exact 두 파일49pass를 확인했다. 제품 인증/인가나 assertion을 완화하지 않았다. 전체 gate 최종 결과는 `~/.local/share/afterglow-proofs/commit-current-20261022/`에 보존한다.
+
+
+## 첫 로그인 personal 재개·member-only native policy·프로필 사진 (2026-10-21, local source)
+
+Proof root: `~/.local/share/afterglow-proofs/personal-first-login-profile-20261021/`. 이 절은 아래 즉시 관리자 personal 생성에 대한 과거 receipt를 대체하는 후속 구현의 증거다. 기존 사용자·비밀번호·home/grant·운영 DB/schema/config·native IAM policy·배포는 변경하지 않았다. Commit/push/release도 실행하지 않았다.
+
+- 실제 API/router·SQL journal·JWT/Redis·설치 Keystone SDK의 TCP 경로에서 admin create201은 `personal_project_deferred:true`/project null과 user만 저장했다. 잘못된 password401에는 project가 없었다. 첫 native project read에 안전한 pre-dispatch 중단을 주입해503 `personal_project_retry_available`을 얻고 fresh password recovery200으로 정확히 하나의 personal project·direct member만 만들었다. 반복 login200은 같은 project였다. Native directory·admin proof·SMTP·quota endpoint는 합성이다. `account-profile-http.json`.
+- Compiled adapter-node frontend + 실제 위 API의 브라우저390px에서 첫 login503→password 공란·retry disabled→새 password 입력→`POST /auth/personal-project/recovery`200→Accounts identity/Personal active workspace chooser 및 project1개를 확인했다. `compiled-browser.json`, `personal-recovery-ko-390.webp`. `waitForUrl` glob helper는 올바른 chooser URL에도 timeout을 보고해 다음 observe와 network503/200으로 실제 결과를 확인하고 tool issue로 기록했다. 이를 제품 로그인 실패로 처리하지 않았다.
+- 같은 compiled `/dashboard/account`에서 Gravatar 선택·생성·실제 file upload200, header와 card의 같은 loaded128px PNG, reload 및 fresh login 뒤 native image persistence를 확인했다. Active SVG upload422는 이전 이미지를 보존했다. Gravatar 외부 응답은404로 고정해 fallback을 검증했으며 실제 Gravatar 서비스 가용성은 검증하지 않았다. Native exact-self read 뒤 bounded service writer의 image-key-only PATCH를 썼다. `account-profile-http.json`, `compiled-browser.json`.
+- 실제 지원 locale `ko/en/ja/zh-CN/sw/nb/ms/vi/bn`×light/dark×390/767/768/1023/1024/1440의108조건에서 실제 document locale, header/card 동기화·이미지 load·controls containment·가로 넘침0을 확인했다. `profile-responsive-matrix.json`, `profile-{ko-dark-1440,bn-dark-390,en-light-768}.webp`. 초기 unsupported-locale 시도는 별도 receipt로 보존하고 검증 count에 쓰지 않는다. 번역은 원어민 검수 전이다. 합성 harness가 제공하지 않는 기존 activity/sessions/keypair 섹션은 오류 상태였으며 그 기능 수용을 주장하지 않는다.
+- Native Lumen·Drover·Waygate의 실제 Uvicorn capability HTTP + 설치 Keystone SDK loopback으로 personal member의 프로젝트 작업 허용·ordinary member 제외·operator `!`·system ceiling·reduced credential 거부를 실행했다. `*-personal-http.stdout.log`. Palimpsest native HTTP+SQLite+CAS는 package2개 publish/download 뒤 personal human의 own metadata DELETE204→그 package404, 다른 package shared blob download200·CAS bytes 불변을 확인했다. Key DELETE403/삭제권 위임422, global build/shared-layer DELETE403도 유지했다. Directory만 합성이며 모든 서비스 lifespan off, 실제 provider VM/VPN/inference는 실행하지 않았다. `hub-personal-http.stdout.log`.
+- 최종 backend unit **8741passed/94skipped**, frontend 전체 **4818passed/420files**; 등록된 auth/access selector의 중복 제거 합집합 **1987backend/637frontend passed**. Backend는 private config를 읽지 않는 외부 cwd·public test env에서 같은 실제 source를 실행했다. Native affected Lumen757passed와 최종 personal26passed, Drover438passed와 최종 personal34passed, Waygate1230passed/2skipped와 최종 personal33passed, Hub412passed. Broad native 수치는 마지막 absent/null predicate 경계 추가 전이고 뒤 exact matrix가 그 변경을 재검증했다. `commands.json`, `*-affected*.stdout.log`, `*-personal-final.stdout.log`, `lumen-personal-postlint.stdout.log`, `backend-unit-current.*`, `frontend-unit-final.*`, `auth-access-*.stdout.log`.
+- 복구 UI/status fixture와 public endpoint inventory의 새 password-proved recovery allowlist를 이관했다. Profile deferred response의 test type을 실제 union으로 바꿨다. 초기 실패 로그는 보존했으며 source 문구·빈 token 표현·copy를 고정하는 assertion으로 성공을 만들지 않았다. 일반 role API의 personal 승격/필수 member 회수/legacy 관리자를 다루는 regression은 guard 제거한 reconstructed-before에서6fail, 최종8pass로 확인했다. `member-guards-baseline-valid-adapter.*`, `member-guards-final.*`.
+- Production frontend build·Svelte check0errors/기존16warnings·i18n0errors/기존37key-order warnings·scan1196files/하드코딩 Korean0, backend Ruff check/716files format, 네 native changed-slice Ruff 및 target registry validation 통과. 무관 경고·기존 native 전체 lint baseline은 숨기거나 재서식하지 않았다. 이번 변경의 full `test:gate`, DB functional, live password/OIDC/mail/네 서비스 deployment 수용은 미실행이다. Gbrain CLI/config가 없어 sync하지 않았다.
+- 증거 보존 정정: 초기 cleanup은 harness 원본까지 지웠다. Append-only 실행 기록에서6개 원본과 account harness의 두 후속 patch를 복원해 `harness/executed/`에 보존하고 SHA-256·기록 위치를 `harness-manifest.json`에 남겼다. `harness/`의 재실행본은 account의 base import와 launcher의 durable cwd 인식 두 경로 가정만 바꿨고 `topology_http.py` 의존성도 함께 보존했다. `commands.json`의 실제 실행 command/cwd는 변경하지 않고 `replay_command`/`replay_cwd`·manifest/source 경로를 연결했다. 보존 경로에서 네 서비스 native HTTP와 새 account 재현 driver를 실제로 다시 실행해 모두 통과했다(`*-preserved-http-replay.*`, `account-profile-preserved-replay.*`). Reconstructed-before의6fail은 당시 source에 대한 과거 증거이며 text-sensitive 원본 plugin을 미래 source에 그대로 적용해 같은 수가 나옴을 보장하지 않는다. 이후 cleanup은 source를 지우지 않는다.
+
+**Personal kind 운영 호환성 미검증:** 현재 Afterglow `account_spaces._shared_domain`은 optional kind의 키 부재와 명시적 null을 모두 수용하지만 네 native 서비스는 키 부재 또는 정확한 `personal`만 수용하고 명시적 null은 거부한다. 실제 Afterglow 함수를 호출한 `harness/personal_kind_probe.py`/`personal-kind-admission-audit.stdout.log`가 두 경우의 수용을 확인했다. `native-accounts-readonly.json`의 null은 진단 projection의 기본값이므로 운영 native JSON에 키가 없는지, 실제 null이 저장됐는지 구분하지 못한다. 따라서 운영 Personal이 네 서비스와 호환된다고 주장하지 않는다. 배포 수용 전 raw exact domain 응답의 key presence/type/value와 실제 personal-owner 권한을 별도 검증해야 하며, 이번 증거 보완에서는 native metadata나 운영 계정을 수정하지 않았다.
+
+### 보고된 Accounts password401 진단 한계
+
+기존 오류의 정확한 단계는 native password exchange 거절이다. Read-only 운영 조회에서 exact Accounts의 해당 native user enabled, password row/hash 존재·expiry 없음, failed count0·lockout policy 미설정을 확인했다. Password hash/값은 읽거나 출력하지 않았다. 설치 Keystone `authenticate`는 password 검사 전에 user/lock, 뒤에 enabled/expiry를 판단하지만 당시 제출된 비밀번호 및 exact upstream 내부 사유는 로그에 없다. 현재 metadata는 과거 실패 순간의 password 일치를 증명하지 않는다. 설치 SDK의 합성 wire smoke는 정확한 Accounts UUID/username/password body와 outside-domain fallback 없음만 증명한다. `native-{accounts-readonly,password-metadata-readonly,login-failure-window}.json`, `accounts-password-wire-smoke.log`. 비밀번호 추측·로그인 재시도·reset/unlock·다른 home fallback을 하지 않았으며 운영 로그인 복구 성공은 미확정이다.
+
+## 운영자 native Accounts·Personal 및 Accounts 로그인 (2026-10-21, local source)
+
+이전 작업의 lowercase 자동 shared-domain 생성·관리 marker 요구는 이 후속 cutover에서 대체했다. 운영자가 CLI로 만든 실제 `Accounts`/`Personal`을 사용하고 domain 자체는 생성/수정하지 않는다. 신규 identity와 개인 member project는 exact 조회 UUID를 사용하며 웹 조직의 opaque native/display 이름 분리는 유지한다. 비밀번호 로그인은 Accounts 안의 username/email만 선택하고 다른 home으로 fallback하지 않는다. 기존 계정/password/grant·과거 journal은 자동 이동하거나 재바인딩하지 않는다. 운영 DB/schema/config·Keystone mapping·배포 변경은 실행하지 않았다.
+
+Proof root: `~/.local/share/afterglow-proofs/operator-domains-20261021/`.
+- `native-sdk-smoke.log`, `accounts-login-sdk-smoke.log`: 설치된 Keystone SDK → 실제 loopback HTTP → 실제 `ensure_shared_domains`/`password_account`를 실행했다. Operator 제공 UUID 두 개와 native Accounts user inventory query를 확인했고 domain POST/PUT 없이 동작했다. 표시 이름만 Accounts인 opaque domain과 다른 domain의 동명 user를 후보로 선택하지 않으며 outside-only alias는 credential 호출 전에 거부했다. Native cloud 데이터는 합성이며 운영 도메인/인증 성공 증거가 아니다.
+- 실제 Vite 로그인 화면 Chromium390/1024px: Accounts 안내·기존 username/password·SSO/가입/복구 동선과 domain 입력 없음, document 가로 넘침0을 확인했다. `login-ko-{390,1024}.webp`. Frontend API 목적지는 격리 loopback의 닫힌 포트로 고정했고 실제 운영 로그인은 하지 않았다. 브라우저와 임시 frontend는 종료했다.
+- LoginPage60tests와 frontend 전체4801tests/418files가 통과했다. i18n check0errors/37key-order warnings, scan1194files/하드코딩 한국어0. 변경된9locale 안내는 원어민 검수 전 초안이다. 문구 자체를 고정하는 테스트 assertion은 제거하고 form/요청/수명 동작 검증만 유지한다.
+- 첫 affected backend run은634passed/11failed였다. Personal inherited grant fixture가 effective 조직 조회에도 raw domain grant를 주입한1건은 raw-only로 수정하고 exact regression1passed를 확인했다. 나머지는 Accounts 변경 전 home·native project-bound admin fixture 전제10건이며 최초 로그는 `affected-backend.log`에 보존한다.
+- 최종 affected backend645passed. Scope-bound admin의 프로젝트 native source는 실제 exchange/publication fixture로 준비하고 unscoped proof CAS 뒤에는 현재 session과 비교한다. Role-visibility/token-binding의 immutable home fixture와 live integration consumer 응답도 Accounts identity/Personal workspace 분리에 맞췄으며 기존 권한/원본 token/회수 assertions는 유지한다.
+- 최종 **backend unit8697passed/94skipped**, frontend4801passed, Ruff check 통과/714files formatted, production frontend build 통과, Svelte check0errors/16warnings5files. `backend-unit-isolated-corrected.log`, `frontend-tests.log`, `frontend-build-check.log`, `frontend-check.log` 참조. Backend는 repo의 private afterglow.conf를 로드하지 않는 외부 임시 cwd에서 같은 실제 source·전체 unit selector를 실행했다.
+- 최초 repo cwd broad unit은300초 제한에 도달했고 정본 auth/access target은 private 설정을 로드하여 service_proxy._get_internal_endpoint가 외부 Keystone DNS를 시도해 network guard로 차단됐다. Socket stack 진단 `role-network-diagnostic.log`로 원인을 확인했고 network guard를 끄거나 허용 목록을 늘리지 않았다. 격리 cwd의 metadata67tests 통과 후 전체 unit에서 live integration fixture의 새 필수 identity 이름 누락16건을 수정했으며 최종 전체가 통과했다. 실패/timeout 로그는 보존한다. 이번 후속 작업에서 full test:gate·DB functional·live OpenStack은 실행하지 않았고 green 전체 gate/운영 수용을 주장하지 않는다.
+- 새 schema/config/dependency 없이 native-domain 선택 및 공개 password-login 범위만 바꾼다. 필요한 운영 administrator도 Accounts에 있어야 하므로 production cutover 전 Accounts 계정/native system 권한과 실제 회원가입·OIDC·메일·비밀번호 로그인을 별도 수용해야 한다. Gbrain CLI는 설치되어 있지 않아 sync하지 않았다.
+
+## Accounts identity-only·personal member 신규 생성 (2026-10-21, local source)
+
+Proof root는 `~/.local/share/afterglow-proofs/accounts-personal-member-20261021-2qwxgyzv/`이다. 새 human은 native `accounts` identity-only와 `personal`의 본인 직접 `member` 프로젝트를 사용하며 관리자 관측 domain은 자동 조직 admission이 아니다. 기존 계정/home/password/federation tuple·조직 grant·과거 owner 기반 personal·singular account receipt는 자동 변경하지 않는다. 새 관리 marker 없는 기존 accounts domain은 자동 채택하지 않고 명시적 provenance 검토가 필요하다.
+
+- 실제 TCP HTTP로 공개 등록202→수락200, 조직을 관측한 관리자 생성201, accounts를 관측한 관리자 생성201을 실행했다. 각 native directory에서 identity home=accounts, personal project 이름=username+하이픈+임의 소문자8자+숫자8자리, 직접 grant=member 하나, 선택 domain/identity Default grant 없음과 disabled staging 뒤 quota/readback·활성화를 확인했다. 세 계정 모두 설치된 native SDK의 loopback token HTTP를 거쳐 재로그인200·같은 personal 프로젝트·roles={member}·`/auth/me` can_write=true를 확인했다. `api-smoke.json`.
+- 새 source의 compiled SvelteKit 관리자 `/admin/users`에서 실제 생성 버튼을 눌러 실제 loopback POST201을 얻었다. 결과에는 accounts identity와 실제 개인 프로젝트만 표시하고 관측 조직 admission을 표시하지 않았다. Native 상태도 해당 사용자 personal member 한 grant뿐이었다. `browser-verification.json`, `browser-created-native-state.json`, `browser-create-requests.json`, `admin-{create,created}-ko-light-1440.png`.
+- 실제 modal의9locale×2theme×6width(390/767/768/1023/1024/1440px)108조건에서 document/frame 가로 넘침0·계정/개인/member 안내·footer 접근을 확인했다. 정확한 tutorial `statuses` fixture로 이미 dismissed인 사용자를 모델링해 Bengali dark390·English light768·Korean light1440의 가리지 않은 modal도 확인했다. `admin-create-responsive-matrix.json`, `admin-create-clean-samples.json`, 해당 PNG. 새 번역은 원어민 검수 전 초안이다.
+- 지정 enrollment/member/foreign-authority/uncertain-write·OIDC 신규 생성·admin modal selector와 password 변경·unsafe member DAG·reserved accounts organization 설정 회귀를 실행했다. 최초 consumer fixture의 owner/reader 기대값과 native adapter의 필수 description 가정을 member/실제 optional native 계약으로 이관했고, unsafe-member 회귀는 앞선 invitation role 검증이 아닌 실제 personal guard를 통과하도록 분리하고 원인 예외도 검증했다. Wording/source-text assertion으로 변경을 검증하지 않는다.
+- Frontend build와 `check`는 성공했다(`svelte-check`:0errors/16warnings, 기존5files). `i18n:check`는0errors/37key-order warnings, `i18n:scan`은1194files/하드코딩 Korean0이다. 무관한 경고를 감추기 위해 전체 catalog/기존 UI를 재서식하지 않았다.
+- 최종 frozen source는 `aad0734700a3668fdf13a60471532b4f52ad922c0e30a0ba495c30e7650a6079`/3394files이며 working·소유 checkout의 staged architecture guard가 일치했다. Auth771backend/440frontend와 access1143/181은 통과했다. Formatting-only 마지막 정리 뒤 전체 `test:gate`는 backend8625passed/95skipped/1failed로 중단됐다. 실패는 `test_layer_build_ownership.py::test_native_create_response_loss_is_observed_without_second_post[port]`의 임시 TCP 서버에 `/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary` POST가 도착해 `unexpected` 검증이 실패한 것이다. 요청 생성 주체는 미확정이며 계정 계약 실패로 치환하거나 path를 무시하는 예외를 추가하지 않았다. 앞선 formatting 정리 전 backend8626passed 실행도 별도 보존하며 최종 full gate 성공으로 합산하지 않는다. `final-gate-{1,2}.log`, `gate-before-format-correction.log`.
+- Full gate에서 도달하지 못한 같은 최종 source의 frontend4801(418files)·contract159·실제 일회용 MariaDB/PostgreSQL/Redis functional166(33deselected)·Ruff check/714files format은 각각 실행해 모두 통과했다. `final-remaining-lanes.json`. Svelte/i18n 경고와 전역 gate의 위1실패는 남아 있으며 skip/selector narrowing/경고 suppression으로 green을 만들지 않았다.
+- `rapid` change의 planning status는 complete이고 `personal-domain-enrollment` main spec의 strict validation은 통과했다. Legacy `openspec validate --type change --strict`는 rapid change에도 delta-spec 파일을 요구해 거부하므로 이 명령의 성공을 주장하지 않는다. Main spec은 새 shared identity/personal member·관리자 관측·미래 project quota 계약으로 직접 동기화했다. Optional gbrain CLI와 detector가 설치되어 있지 않아 code index sync는 수행하지 않았다.
+
+API/router·SQLite journals·JWT/Redis 로직·native SDK token transport와 compiled browser는 실제이며, Keystone directory/issuer/provider·SMTP·quota native endpoint 및 브라우저 관리자 identity/shell metadata는 합성이다. 사용자 실행 stack·운영 DB/Keystone/IdP·기존 credentials/grants·메일함·live GitLab code exchange를 변경하거나 검증하지 않았고 commit/push/release/deploy도 하지 않았다. 사용자 index/private 설정을 건드리지 않고 별도 public-source snapshot/개발 venv·loopback tmpfs datastore에서 검증했으며 전체 gate는 위에 기록한1실패로 non-green이다.
+
+## Account·personal·organization와 서비스별 policy 검증 (2026-10-21, local source)
+
+Afterglow proof root는 `~/.local/share/afterglow-proofs/account-topology-20261020-019qotth/`이며, 네 native 서비스의 독립 receipt는 `~/.local/share/afterglow-proofs/service-policy-20261020-{lumen,drover,waygate,palimpsest}-019qotth/verification.json`이다. 실제 source/API/SQL/SDK/이미지 실행과 합성 identity/provider 경계를 구분한다. 운영 IAM·계정·schema·배포나 실제 Nova/guest 수용을 뜻하지 않는다.
+
+- 실제 Afterglow BFF가 loopback TLS native endpoint를 원래 credential로20회 읽었다. 현재 role을 바꾸지 않은 native capability 변경을 반영하고, 정상 빈 capability·한 서비스503·알 수 없는 capability를 구분하며 다른 서비스/core 권한을 유지했다. CA 검증을 켰고 identity와 upstream 정책 응답만 합성이다. `policy-bff-http.json`.
+- 정본 standalone Compose에서 빌드한 arm64 frontend를 UID1001·healthy 상태로 실행했다. 실제 관리자 역할 화면의 미리보기와 별도 확인 전에는 변경이 없고, 확인 뒤 실제 역할 API가 legacy 서비스 edge67개만 제거했다. Role ID·직접 grant·project/custom edge·fixture 로그인 증명은 보존했다. `policy-compose-frontend.json`, `policy-compiled-browser.json`, `policy-after-explicit-apply.png`.
+- 같은 compiled modal의9locale×2theme×6width(390/767/768/1023/1024/1440px)108조건에서 document/frame 가로 넘침0·viewport 안의 frame/적용 버튼·policy.yaml 안내를 확인했다. `policy-modal-responsive.json`, ko/light1440·bn/dark390 PNG. 새 번역의 원어민 승인을 주장하지 않는다.
+- 최종 source를 별도 TCP API로 재기동해 실제 router·SQLite journal·native token SDK를 실행했다. 새 계정은 account home을 유지한 personal primary에 로그인했고, domain manager의 명시적 초대201→기존 계정 수락200→조직 scope200 뒤 `member`, `reader`, `project_member`, `project_reader`, `drover_admin`만 받았다. Drover leaf는 합성하지 않았고 identity home은 그대로였다. Manager 자신의 grant 없는 resource scope403도 유지했다. Mail·Keystone·quota 공급자는 합성이다. `integrated-account-policy-http.json`.
+
+### Native 서비스별 독립 결과
+
+아래 full/focused/SQL/system/SDK selector는 겹칠 수 있으므로 합산하지 않는다. 모든 서비스가 실제 oslo.policy6.0.1과 표준 generator를 실행했으며 API·worker canonical image를 arm64/amd64로 빌드하고 실제 nonroot 정책 읽기를 검증했다.
+
+| 서비스 | 관측 결과 | 남은 경계 |
+|---|---|---|
+| Lumen | focused1036, root contract3815passed/1failed, SQL340, system31, SDK128, root/SDK Ruff 통과 | 기존 `test_v2_graph_interrupts_before_external_mutation_dispatch[expired]`는 `_v2_resume`가 denial 대신 `None`을 반환해 full contract가 non-green이다. 별도 graph 구현은 바꾸지 않았다. Nova guest 정책 파일 배포는 운영자 선행 조건이다. |
+| Drover | focused595, full1595passed/3skipped, real Uvicorn/native policy·표준 generator·4image 정책 실행 통과 | Canonical lint의 기존 `configmaps.py:37 SIM102`, `cloud_shell.py:47 UP017`을 보존했다. 실제 cloud VM 생성은 하지 않았다. |
+| Waygate | full1746passed/3skipped, parser/type/identity19, policy HTTP32, native MariaDB/Redis2,4image와 Compose API/worker 정책 실행 통과 | 기존 `tests/admin_executor_smoke.py:24,225 I001` 때문에 전체 Ruff는 non-green이다. 실제 WireGuard/cloud dataplane 수용은 아니다. |
+| Palimpsest | Hub650passed/2skipped, native MariaDB process2, Kolla41, human-system HTTP49, Docker HTTP185checks/architecture,4nonroot permission probe·lint 통과 | Docker HTTP는 명시한 SQLite/lifespan-off adapter다. 별도 실제 MariaDB process 증거와 구분하며 full production Hub lifespan·KVM/Glance build·Kolla rollout은 아니다. |
+
+Malformed native clause의 `not`/`or` 조합과 policy.d, YAML typed-value·casefold ID 충돌을 실제 engine으로 검사했다. 잘못된 파일은 반복 요청에서도503이며 수정 뒤 회복한다. Waygate의 before proof는 malformed negation6건의 잘못된200을 재현했고 after proof는503을 확인했다. Quoted empty/`@`/`!`의 표준 의미는 유지한다. Native6.x에서 제거된 `enforce_scope` override는 사용하지 않는다. Palimpsest는 root0640 비밀 TOML을 보존하고 실제 UID:GID1000:1000이 읽을 수 없는 상태에서 별도 root0644 정책 전용 TOML/YAML을 실행했다.
+
+### User-data 관측 범위
+
+Drover 실제 template의6plugin 활성화와1,004개 held role fixture에서 provider 위임은 `member`·`load-balancer_member` 두 개였고 서비스 role 문자열은 렌더링하지 않았다. 다음 값은 합성 callback/credential을 사용한 해당 fixture의 측정치이며 운영 payload나 Nova 제한 통과로 확대하지 않는다.
+
+| Payload | 렌더링 문서 bytes | Nova decode 후 bytes | Base64 bytes |
+|---|---:|---:|---:|
+| Ubuntu server/6plugins | 78293 | 16480 gzip | 21976 |
+| Ubuntu agent | 15227 | 4536 gzip | 6048 |
+| FCOS server/6plugins | 30150 | 30150 | 40200 |
+| FCOS agent | 8653 | 8653 | 11540 |
+
+Drover callback은 role JWT가 아닌 고정 입력 길이의 난수 token이며, 일반 Nova adapter는 전달받은 userdata를 그대로 보낸다. 사용자 보고의 실제 실패 payload·설정 제한을 확보하지 못했으므로 원인·운영 해결을 확정하지 않는다. 새 압축 우회나 과도한 provider 위임을 추가하지 않았다. 기존 운영 service edge는 native policy 지원 배포/수용 뒤 명시적 관리자 preset으로 전환하며 이 검증에서 운영 IAM을 변경하지 않았다.
+
+
+### Afterglow immutable image 실행
+
+`policy-final-image-builds.json`의 frontend·backend·worker6개 arm64/amd64 image는 `febe1d1f43bc38c37c7390cd99faf27e1614219638c8d937118836cf27d34569`/3393files에서 빌드했다. 이후 consumer fixture 이관 snapshot `2af2c9b9…`와 API/worker 각 image의 실제 Python app323files를 byte hash로 비교해 차이0을 확인했다(`policy-final-runtime-source-parity.json`). 이미지를 final test-only source hash에서 다시 빌드했다고 표현하지 않는다.
+
+`policy-final-image-runtime.json`은 실제 UID1000의 ASGI422/제거한 `personal_domain_name` 입력 거부와 worker의3개 topology model loading·crypto round-trip을 양 architecture에서 확인했다. ASGI는 lifespan-off·SQL sentinel 검증이며 실제 DB/native startup 수용은 아니다. `policy-final-frontend-image-runtime.json`은 stock UID1001 entrypoint에서9locale personal guide와 login SSR200을 양 architecture에서 확인했다. Compiled 관리자 modal의 이전 실제 browser proof는 앞의 별도 image/receipt 범위를 따른다.
+
+### 필수 gate와 관련 target
+
+최종 `npm run test:gate`는 source `2a563789902e6f79d136d063ad971b7dcc8840ede58f7cc268b101b5495262e1`/3393files에서 exit0이다. 기존 사용자 index·private 설정·실행 stack을 바꾸지 않고 별도 checkout/index와 lock 기반 dev venv, loopback/tmpfs MariaDB·PostgreSQL·Redis를 사용했다. Receipt는 `gate-1792526251428959000-results.json`, 원문은 `verification-gate-1792526251428959000-1.log`다.
+
+| 검증 | 관측 결과 |
+|---|---|
+| Backend unit | 8618passed,95skipped |
+| Frontend Vitest | 418files/4801passed; logger9tests도 통과 |
+| Contract | 159passed |
+| DB functional | 166passed,33deselected |
+| Backend Ruff | check 통과,713files format 통과 |
+| 관련 auth target | backend770/frontend440passed |
+| 관련 access target | backend1137/frontend181passed |
+| 관련 config target | backend507passed/1skipped,frontend12passed |
+| Native-policy consumer selector | default-domain/Lumen-cloud-tools/Palimpsest-packages258passed |
+
+Selector/target은 겹치므로 합산하지 않는다. 관련 target은 consumer fixture 이관 snapshot `2af2c9b9…`에서 실행했고, 이후 Lumen test file의 format-only 변경을 포함한 위 최종 gate가 전체 단계를 다시 통과했다. Node orchestration·Kolla·shell CLI 단계도 gate에 포함되며 PowerShell runtime 미설치36skip은 Windows 수용이 아니다. Native 네 서비스의 별도 full gate/lint 잔여 실패는 위 표와 독립이며 Afterglow exit0으로 덮지 않는다.
+
+초기 검증 harness의 test/application schema 충돌·누락한 dev extra와 과거 BFF leaf fixture 기대는 실패 log에 남겼다. 실제 DB 분리 guard·native 정책을 약화하거나 오류를 숨겨 통과시키지 않았다. 선택적 gbrain detector는 `no-cli`/config 없음이므로 sync·CLAUDE guidance 변경·upload를 하지 않았다. 운영 migration·SMTP/OIDC/Keystone·Nova/guest 수용과 기존 서비스/IAM cutover는 별도 승인·사전조건이다.
+
+두 rapid change는 일반 `openspec archive <change> --yes`로 `openspec/changes/archive/2026-10-20-separate-account-personal-organization`와 `2026-10-20-enforce-service-local-policy`에 archive했다. 두 명령 모두 task complete/exit0이며 delta spec 부재는 non-blocking warning으로 남았다. Main spec 동기화나 delta scenario 검증 통과를 주장하지 않는다. 전용 tmpfs DB3개는 정확한 project·service label과 무영속 mount를 확인한 뒤 force/volume 삭제 없이 stop/rm했으며 검증 원문·이미지는 보존했다.
+
+## 태블릿·모바일 compact resource cards (2026-10-21, local source)
+
+사용자·관리자 authored native table114files/146nodes를 Svelte AST로 대조해 `ResponsiveTable` 밖의 table0을 확인했다. 별도 div-grid 목록·wizard·modal/detail·chart 원본도 전환했다. 사용자가 작성한 Markdown의 임의 표는 애플리케이션 resource view가 아니므로 변환하지 않는다. viewport1024px 미만은 카드만, 이상은 table만 mount한다. 좁은 desktop panel 자체의 폭은 전환 조건이 아니다.
+
+- 실제 source component와 원본 CSS를 격리 Vite/Chromium에서 실행했다. 인스턴스(사용자/관리자), 백업, DB, 키페어, 쿼터, chart 원본, loading을 구성했으며 data/controller callback만 합성이다. 320/390/767/768/1023/1024/1280/1440px × light/dark16조건에서 single branch·document/card 가로 넘침0을 확인했다. Viewport 변경 직후가 아닌 두 animation frame 뒤 geometry를 측정했다.
+- 선택 상태와 quota draft23은 breakpoint 왕복 뒤 유지됐다. Native 상세 disclosure의 keyboard Enter, 인스턴스 start callback, 백업 삭제 후 해당 카드 제거, DB restart callback, quota compute `{cores:23}` submit을 확인했다. 1280px viewport의420px panel은 table을 유지했다. 긴 관리자 이름은 두 줄 clamp와 전체 accessible name/title을 유지한다. ko/en 화면을 확인했으며 locale 전체의 원어민 검수로 확대하지 않는다.
+- 전체 frontend418files/4801Vitest 및 logger9tests passed. Focused responsive/volume/topology/admin-image4files111passed는 전체와 중복이다. Svelte2722files0errors/16기존warnings. i18n48namespaces11127messages0errors/37기존 key-order warnings;1194files hardcoded Korean0. Production build 통과. jsdom navigation-not-implemented 진단은 suite 실패가 아니며 숨기지 않았다.
+- 증거 root: `~/.local/share/afterglow-proofs/tablet-resource-cards-20261021/`의 `source-table-audit.json`, `gallery-matrix.json`, `gallery-behavior.json`, `gallery-mobile-final.png`, `gallery-tablet-en-light.png`, `gallery-desktop-narrow-panel.png`. AST coverage는 모든 화면을 실제 cloud 데이터로 수용했다는 뜻이 아니며 browser smoke는 위 대표 component의 합성 상태다. Backend 변경·full `test:gate`·운영 배포·실제 provider mutation은 수행하지 않았다. 선택적 gbrain은 detect 결과 no-cli/missing-config로 sync할 수 없었다.
+- 최종 production bundle도 별도 Node runtime에서 실행했다. Runtime `PUBLIC_API_BASE`를 합성 origin으로 지정하고 root→실제 console link→`/dashboard/compute/instances` SPA 경로로 진입했다. 1280px table→768px card 전환, `Compiled-user-worker`와 overflow0을 확인했다(`compiled-browser.json`, `compiled-user-instances-tablet.png`). 초기 runtime env 누락과 잘못 추정한 `/dashboard/instances` deep link의 asset 실패는 harness 오류였으며 성공 근거로 세지 않는다.
+- Architecture working stamp는 `febe1d1f43bc38c37c7390cd99faf27e1614219638c8d937118836cf27d34569`/3393files다. `--staged`는 변경을 stage하지 않은 기존 index `3594c25d…`/3358files만 통과했으며 이번 변경의 staged qualification은 아니다. Rapid change는 [완료 archive](../openspec/changes/archive/2026-10-20-compact-tablet-resource-cards/tasks.md)로 이동했다. UTC 날짜를 사용하며 delta 없는 rapid schema 경고를 spec validation 통과로 세지 않는다. Commit/push/deploy는 수행하지 않았다.
+- Compiled 카드에서 한 행을 선택한 뒤1280px table로 전환해 checked row1개를 확인했다. Tutorial 초대 overlay는 실제 ‘나중에’ 버튼으로 닫고 작업했으며 카드 선택 guard를 우회하지 않았다. Task-owned gallery/compiled service와 browser를 종료하고 throwaway source를 제거했다. 최종 receipt는 같은 proof root의 `verification.json`이다.
+
+## 리사이즈 가로 스크롤·현재 플레이버 확인 수정 (2026-10-21, local source)
+
+실제 `ResizeModal.svelte`와 공용 `Modal`·원본 CSS utility를 격리 Vite/Chromium으로 실행했다. Controller/provider 데이터만 합성이며 운영 source 배포나 실제 VM 변경은 아니다. 기존 panel은 `w-full`에 `mx-4`를 더해 내부 scroller452px/client 대비480px/scroll을 만들었다. Caller 중복 margin을 제거하고 FormModal과 같은 viewport-bounded28rem·select 폭 제약으로 수정했으며 overflow 숨김은 쓰지 않는다.
+
+- 오류/빈 목록과 긴 flavor 선택지를9개 폭(320/390/613/677/767/768/1023/1024/1440)×2theme36조건에서 확인했다. 별도9locale×7width×2theme126조건에서 실제 선택 및 활성 submit과 가로 넘침0을 확인했다. Native option menu의 OS 표현은 브라우저 소유다.
+- 기존 ResizeModal/InstanceHeader40tests passed. UI의 SHUTOFF 진입 제한·quota·confirm/revert 동작을 변경하지 않았다. CSS layout은 jsdom으로 검증할 수 없어 permanent class/source assertion 대신 실제 browser geometry를 보존했다.
+- 증거: `~/.local/share/afterglow-proofs/resize-modal-20261021/{before.png,before.json,after.png,responsive.json,locales.json}`. Synthetic frontend fixture는 backend flavor 수정의 증거로 계산하지 않는다.
+- 현재 flavor 오류는 SDK의 `original_name`→가상ID를 실제 native ID로 오인해 catalog lookup이 실패한 것이었다. Nova embedded allocation을 내부 PrivateAttr로 유지하고 CPU/RAM/disk/extra_specs를 resize 증분 기준으로 사용한다. Legacy resolver와 same-flavor·disk/quota 차단은 유지한다. Focused backend4selectors69passed. 실제 SDK microversion2.61→합성 Nova TCP에서 사용자/관리자 각 정상·catalog부재 listing200/POST200과 project-path same/disk/quota409·action미전송을 확인했다. Admin authority는 합성이며 native admin POST는 원래 계약 그대로다.
+- `svelte-check`2714files0errors/16기존warnings. Backend Ruff check 통과; full `test:gate`·운영배포·실제 cloud credential/VM resize는 수행하지 않았다. 증거 root의 `verification.json`에 source/browser/SDK 경계를 구분한다.
+- 최종 `npm run test:target -- instances`: backend1288passed, frontend38files/601passed(앞선 focused와 중복, 합산하지 않음). 변경 backend4files Ruff check/format도 통과했다. Architecture working/staged(private index) snapshot은 `93c438ba8df3341fa45bbe4e726981d37da62ea796a1d1f36b8cf3419f0c53ef`/3385files이며 실제 Git index는 보존했다. Task 외 동시 WIP까지 새로 검증했다는 뜻은 아니다. Browser·격리 runtime은 종료했고 throwaway source는 제거했다.
+- 완료 tracker: [리사이즈 수정 rapid archive](../openspec/changes/archive/2026-10-20-fix-instance-resize-modal-overflow/tasks.md). Archive는 UTC 날짜를 사용한다. Commit/push/deploy는 수행하지 않았다.
+- 추가 classic-scrollbar 검증: 좁은 viewport에서100vw 기반 폭은 실제 scrollbar gutter를 반영하지 않아333px scroller에343px panel이 넘칠 수 있었다. 최종 panel은 `width:28rem; max-width:100%`로 Modal의 실제 content box에 제한했다. Chromium의 forced scroll/gutter에서320/375/390/449/613/677/767/768/1023/1024/1440px11조건 모두 가로 넘침0(`classic-before.json`, `classic-after.json`). 위126locale는 직전 width식의 검증이며 최종 scrollbar-safe 폭의 추가 검증과 구분한다.
+- 최종 scrollbar-safe CSS 변경 후 focused frontend40tests를 다시 통과했다. 최종 architecture working/private-staged snapshot: `a6c2d18ff8715e947055dc881fd0697db93fca3c0fc9bbde635d31118c2b0645`/3385files(`architecture-final.json`). 실제 index를 변경하지 않았다. 앞선1288/601 target·SDK 증거는 backend 및 직전 CSS 상태의 검증으로 보존한다.
+
+## 인스턴스 이름·관리자 도메인 조건·빠른 chooser 검증 (2026-10-21, local source)
+
+현재 `dev` source와 production frontend bundle을 task-owned loopback4179/4181에서 실제 Chromium으로 실행했다. 실제 Afterglow router→openstacksdk→합성 Nova/Keystone TCP를48181에 연결하고 별도 native Lumen dev worktree의 MariaDB/Redis SQL도 검증했다. Identity/admin 주장과 provider data는 합성이며 운영 인증·cloud mutation·release/deploy 수용은 아니다. 근거 root: `~/.local/share/afterglow-proofs/instance-admin-scope-20261021/`.
+
+| 검증 | 실제 관측·경계 |
+|---|---|
+| 공용 이름 변경 | 일반 사용자 source UI와 관리자 source/compiled UI에서 저장 뒤 실제 native name-only PUT 및 새 header/list를 확인했다. 관리자 대상은 active project와 다른 프로젝트이며 global workspace는 바뀌지 않았다. Provider400 뒤 modal/draft/기존 이름 유지. `final-sdk-http.json`의13checks는 scoped native paging·foreign marker400·동일 domain/project 교집합, 사용자200/관리자200/foreign-user404/reader403/non-admin403/invalid422를 포함한다. |
+| 기존 리사이즈 | ACTIVE에서 UI 미노출, SHUTOFF에서 사용자·관리자 양쪽 버튼 노출을 확인하고 기존 구현을 변경하지 않았다. 실제 resize/confirm/revert나 VM 전원 변경은 실행하지 않았다. |
+| 독립 필터 | 관리자 Teaching/Beta 선택은 목록 요청에 `domain_id=domain-b&project_id=project-b`를 전달하고 Research/Alpha active scope를 유지했다. 다른 domain 선택은 불일치 project를 지웠다. 실제 quota page에서도 해당 domain의 project만 선택되고 domain 변경 즉시 이전 quota 값/선택을 지웠다. Native quota 값은 fixture이며 quota write는 하지 않았다. |
+| Chooser cache | Source와 compiled 모두 첫 목록2reads, 즉시 다시 열기0, 이미 본 domain 재방문0, 명시 refresh2를 확인했다. Global active scope는 유지됐다. `workspace-browser.json`, `compiled-workspace-cache.json`. TTL·auth/authority ABA·closed cache invalidation과 uncertain-create 해제 금지는 controller/component51회귀에 포함한다. |
+| 반응형·locale | 공용 rename modal의9locale×light/dark×390/767/768/1023/1024/1440px108조건에서 가로 overflow0, input/dialog viewport 내부 및 Field 도움말 접근성 연결을 확인했다. `rename-responsive-locales.json`과 ko390dark/en1440light PNG. 새 번역은 원어민 승인으로 승격하지 않는다. |
+| Frontend | 전체413files/4769Vitest passed. Core scope/rename4files39passed, network/chat/flavor4files51passed는 전체 suite와 중복이므로 합산하지 않는다. Svelte2714files0errors/16warnings, i18n48namespaces11125messages0errors/37기존 key-order warnings, scan1192files0hardcoded Korean. `PUBLIC_API_BASE`를 합성 TCP origin으로 지정한 production build와 compiled rename/filter/cache smoke 통과. |
+| 관련 backend target | `instances`1271passed, `storage`887passed, DB/containers/secrets/events/IAM/scope custom131passed. 이 selector들은 중복될 수 있어 합산하지 않는다. 마지막 custom에는 stale administrator claim의 Trove/Swift all-project 거부2경계를 포함한다. Exact rename/scope 초기6selector118passed도 별도 이전 관측이며 최종 source의 전체 gate 통과로 확대하지 않는다. |
+| Native Lumen | 두 stats unit selector32passed, canonical disposable MariaDB/Redis의 stats-domain integration1passed. 별도 실제 native `/v1` Uvicorn TCP는35tokens/2distinct users/1conversation, exact project20tokens, foreign intersection0, offset/cursor와 non-admin403을 검증했다. `native-lumen-tcp.json`. Subject/admin 주장은 합성이며 canonical release checkout은 변경하지 않았다. |
+
+검증 준비 중 새 Testing Library role query의 미지원 `exact` option·화살표 버튼 이름과 metadata 오류 copy 가정, auth remount 전 old DOM을 먼저 찾는 fixture race를 교정했다. 제품의 scope/auth fence를 낮추지 않았다. Fresh conditional administrator 확인으로 기존 Trove test가 외부 native를 호출하려던 시도는 network guard가 차단했고 정확한 boundary fixture와 stale-admin denial 회귀로 격리했다. Swift의 한 프로젝트401을 성공 부분 목록으로 허용하던 기대는 complete inventory의503/no-partial 계약으로 갱신했다. 초기 raw interception/입력 선택·quota URL의 cache query 누락과 native TCP smoke discovery 실패는 harness에서 교정했다.
+
+Backend 변경21files와 추가 fixture3files의 Ruff check/format check는 통과했다. Native 변경5files Ruff check 및 직접 바꾼4files format check가 통과했으며 `lumen/services/stats.py`의 범위와 무관한 기존 uncached-token 산술식 formatting1hunk는 보존했다. 전체 `test:gate`·multi-arch image build·사용자 실행 서비스 교체·운영 DB/schema/native 자원/설정 변경은 이 작업에서 수행하지 않았다. Architecture working snapshot과 기존 index 검증은 구분하며 미커밋 사용자 변경은 stage/reset하지 않는다.
+
+최종 working architecture는 Afterglow `99f41e08f0b2428553f1836ea7d2eebc321430dd903825aaba7e4fa8c4c72772`/3388files, native dev `034728a7cff47d22150691993fe875111b566faafd0cf2fef89105f7dca00acc`/424files다. Task-owned temporary index의 `--staged`도 각 working digest와 일치했고 실제 두 Git index SHA는 전후 동일했다(`architecture-review.json`). 실제 Afterglow index의 기존 `3594c25d…` 통과는 별도 baseline이며 이번 변경을 stage/commit했다는 뜻이 아니다. 선택적 gbrain CLI가 없어 sync는 수행하지 않았다.
+
+Afterglow tracker는 delta 없는 저장소의 `rapid` schema다. `openspec status`의 두 planning artifact는 complete였으나 일반 strict validator는 delta 부재로 실패했다. 이 검사를 spec 검증 통과로 세지 않으며 rapid archive에는 저장소 절차의 `--skip-specs --yes`를 사용한다. Native change는 해당 delta와 sync한 main capability 모두 strict validate를 통과했다.
+
+완료 tracker는 [Afterglow rapid archive](../openspec/changes/archive/2026-10-20-improve-instance-and-admin-scope-controls/tasks.md)와 native dev의 `openspec/changes/archive/2026-10-20-scope-admin-stats-by-domain`이다. Native main capability는 archive 전에 sync했다. Task-owned source/compiled/SDK HTTP service3개·fixture와 browser를 종료하고 throwaway runtime harness를 제거했다. 최종 요약은 proof root의 `verification.json`에 보존하며 commit/push/deploy는 하지 않았다.
+
+## 상단 바 반응형 검증 (2026-10-20, local source)
+
+현재 working source를 별도 Vite `127.0.0.1:4188`에서 실행하고 실제 Chromium으로 검증했다. Identity·auth/me·site-config·볼륨 API는 합성 fixture이며 Cloud Shell과 시스템 관리자 모드 버튼을 함께 표시했다. 운영 인증·Cloud Shell 접속·서비스 배포 수용 증거가 아니다.
+
+- 320/375/390/639/640/767/768/1023/1024/1279/1280/1287/1373/1440/1920px의15너비에서 visible header controls의 pairwise 겹침·viewport/48px header 이탈0.
+- ko/en/ja/zh-CN/sw/nb/ms/vi/bn × light/dark × 320/390/768/1024/1280/1373/1920px의126조건에서 같은 판정 통과. 1279/1280px 검색 trigger는 정확히1개다. 모바일 검색은 drawer에서 제공한다.
+- 390px에서 drawer의 프로젝트 선택이 실제 workspace modal을 열고 drawer 검색이 command palette를 여는 것을 확인했다. Drawer Docs 링크 노출과1373px expanded search의 command palette 열림도 확인했다.
+- 근거: `~/.local/share/afterglow-proofs/responsive-header-20261020/geometry.json`, 같은 디렉터리의320/390/768/1280/1373/1920px PNG. 사용자 실행 서비스·private config·DB는 변경하지 않았다. 전체 test:gate·운영 배포는 실행하지 않았다.
+- `npm run check`를 실행했으나 도구가 반환한 background job의 완료 출력/상태가 회수되지 않아 성공 여부는 미확인이다. Architecture working stamp는 동시 locale 변경을 포함한3358source files의 `cd97ba983bc36dacf3f8c083a67c44b974460e076023a535bfdd658a73e39043`; `--staged`는 변경을 stage하지 않은 기존 index digest `3594c25d…`만 통과했으므로 이번 수정의 staged qualification으로 세지 않는다. 선택적 gbrain CLI는 없어 sync하지 않았다. Task-owned QA server/browser는 종료했다.
+
 ## 남은 실제 local dev source 통합 (2026-10-19)
 
 게시된 `c893591dc0904e46b78be84685e3b2ace6f4dbfe`와 실제 공유 `dev` HEAD `3c9af255f7047c25d5ea8bcbf3d37d357634a134`의 잔여 작업을 대조했다. 외부 proof root는 `~/.local/share/afterglow-proofs/remaining-source-20261019-8kflhybg/`다. `capture-manifest.json`·public tar·원래 index와 private 입력의 hash/mode를 보존하고 최초 capture·현재 source·게시본의 각 대안을 분류했다. 게시본의 home-first/projectless·auth owner/ABA·원래 socket peer·명시 launcher trust는 유지하며, 이전 local-sync 절의 TOML trust 대안과 오래된 domain-first 문구를 현재 계약으로 되돌리지 않는다.

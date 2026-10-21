@@ -1,6 +1,7 @@
 """Global admin activity API against persisted rows, without a live database."""
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import Integer, MetaData
@@ -197,3 +198,37 @@ async def test_record_masks_secrets_and_inherits_audit_metadata(event_db):
     assert event["extra"]["details"]["token"] == "[redacted]"
     assert "abcdefghij" not in event["extra"]["details"]["reason"]
     assert "xyz" not in event["extra"]["details"]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_events_domain_scope_filters_sql_before_cursor_and_aggregates(admin_client, event_db, mock_conn):
+    await seed_events(event_db)
+    mock_conn.identity.get_domain.return_value = SimpleNamespace(id="domain-a")
+    mock_conn.identity.projects.side_effect = lambda **_: iter(
+        [
+            SimpleNamespace(id="project-a", domain_id="domain-a"),
+            SimpleNamespace(id="project-b", domain_id="domain-b"),
+        ]
+    )
+    first = await admin_client.get("/api/v1/admin/events?domain_id=domain-a&limit=1")
+    assert first.status_code == 200
+    assert [row["id"] for row in first.json()] == [5]
+    second = await admin_client.get("/api/v1/admin/events?domain_id=domain-a&limit=1&before_id=5")
+    assert [row["id"] for row in second.json()] == [3]
+    stats = await admin_client.get("/api/v1/admin/events/stats?domain_id=domain-a")
+    assert stats.status_code == 200
+    assert stats.json()["total"] == 3
+    mismatch = await admin_client.get("/api/v1/admin/events?domain_id=domain-a&project_id=project-b")
+    assert mismatch.status_code == 200
+    assert mismatch.json() == []
+    mismatch_stats = await admin_client.get("/api/v1/admin/events/stats?domain_id=domain-a&project_id=project-b")
+    assert mismatch_stats.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_events_domain_directory_failure_is_explicit(admin_client, event_db, mock_conn):
+    mock_conn.identity.get_domain.return_value = SimpleNamespace(id="domain-a")
+    mock_conn.identity.projects.side_effect = RuntimeError("private native message")
+    result = await admin_client.get("/api/v1/admin/events?domain_id=domain-a")
+    assert result.status_code == 503
+    assert "private native message" not in result.text

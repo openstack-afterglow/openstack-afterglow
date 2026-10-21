@@ -209,9 +209,9 @@ async def test_list_db_instances_all_projects_admin(admin_client, mock_conn):
         "links": [],
         "project_id": "other-project",
     }
-    with patch(
-        "app.services.trove.list_instances_admin_all_projects",
-        new=MagicMock(return_value=[fake_instance]),
+    with (
+        patch("app.api.database.instances.require_admin", new_callable=AsyncMock),
+        patch("app.services.trove.list_instances_admin_all_projects", new=MagicMock(return_value=[fake_instance])),
     ):
         resp = await admin_client.get("/api/v1/database-instances?all_projects=true")
     assert resp.status_code == 200

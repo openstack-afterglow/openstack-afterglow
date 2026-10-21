@@ -44,7 +44,8 @@ function availableDomains(data: DomainSessionFields): AvailableDomain[] {
 		const name = nonEmpty(domain?.name);
 		if (!id || !name || seen.has(id)) throw new SessionDomainError();
 		seen.add(id);
-		return { id, name };
+		if (domain.kind !== undefined && !['personal', 'organization', 'legacy'].includes(domain.kind)) throw new SessionDomainError();
+		return { id, name, ...(domain.kind ? { kind: domain.kind } : {}) };
 	});
 }
 
@@ -115,10 +116,12 @@ export function consumeMappedContinuation(state: SessionStateUpdate, current: Au
 	return owner !== undefined && owner === continuationOwner(current);
 }
 
-/** A fresh session starts in the canonical credential home, never a provider registration's origin. */
+/** Fresh humans land in personal; projectless operators may open a visible workspace chooser. */
 export function loginAuthState(data: LoginResponse, opts: { federated: boolean }): LoginAuthMapping {
 	const domain = readSessionDomain(data, null);
-	if (domain.domainId !== domain.identityDomainId) throw new SessionDomainError();
+	const workingDomain = domain.availableDomains.find(row => row.id === domain.domainId);
+	const projectlessAdministrator = data.is_system_admin === true && !nonEmpty(data.project_id) && workingDomain !== undefined;
+	if (domain.domainId !== domain.identityDomainId && workingDomain?.kind !== 'personal' && !projectlessAdministrator) throw new SessionDomainError();
 	if (!nonEmpty(data.user_id) || !nonEmpty(data.token)) throw new SessionDomainError();
 	const resolution = resolvePostLoginProject(data);
 	const state: SessionStateUpdate = Object.freeze({

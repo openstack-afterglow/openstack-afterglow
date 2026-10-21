@@ -295,6 +295,7 @@ def _event_factory():
 def _event_conditions(
     *,
     project_id: str | None = None,
+    project_ids: frozenset[str] | None = None,
     user_id: str | None = None,
     username: str | None = None,
     resource_id: str | None = None,
@@ -310,6 +311,8 @@ def _event_conditions(
     before_id: int | None = None,
 ) -> list:
     conditions = []
+    if project_ids is not None:
+        conditions.append(ActivityLog.project_id.in_(tuple(sorted(project_ids))))
     for column, value in (
         (ActivityLog.project_id, project_id),
         (ActivityLog.user_id, user_id),

@@ -11,6 +11,8 @@
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/admin-identity';
 	import { t as domainT } from '$lib/i18n/ns/domain-admin';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	let {
 		onClose,
@@ -198,6 +200,17 @@
 			{:else if !usersError && filtered.length === 0}
 				<div class="text-ink-2 text-sm px-4 py-6 text-center">{t('systemGrant.empty')}</div>
 			{:else}
+        <ResponsiveTable>
+          {#snippet cards()}
+            {#each filtered as u (u.id)}
+              <CompactResourceCard>
+                <strong class="break-words text-sm">{u.name}</strong>
+                <p class="break-all text-xs text-ink-2">{u.email || '-'}</p>
+                {#snippet actions()}<Button variant="secondary" size="sm" disabled={granting || loadingUsers || !!usersError} onclick={() => grant(u)}>{domainT('systemGrant.grant')}</Button>{/snippet}
+                {#snippet details()}<dl class="text-xs"><dt class="text-ink-2">{t('systemTable.userId')}</dt><dd class="break-all font-mono">{u.id}</dd></dl>{/snippet}
+              </CompactResourceCard>
+            {/each}
+          {/snippet}
 				<table class="w-full text-sm">
 					<tbody>
 						{#each filtered as u (u.id)}
@@ -210,6 +223,7 @@
 						{/each}
 					</tbody>
 				</table>
+        </ResponsiveTable>
 			{/if}
 		</div>
 		{#if nextMarker}

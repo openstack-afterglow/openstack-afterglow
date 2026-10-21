@@ -1,11 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Alert, Button, Card, Field, PageHeader, PageShell, SelectInput, TableShell, TextInput } from '$lib/components/ui';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { adminTelemetryRequest, TelemetryError } from '$lib/api/adminTelemetry';
 	import type {
 		GnocchiOverview, MetricMeasures, NativeMetric, NativePage, NativeResource, NativeSection, TelemetryStatus,
 	} from '$lib/api/adminTelemetry';
 	import { t } from '$lib/i18n/ns/admin-telemetry';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import NativeStatus from './NativeStatus.svelte';
 	import { createTelemetryContext, type TelemetryContext } from './context';
 
@@ -202,11 +205,15 @@
 		{:else if diagnosticRows(section.data).length === 0}
 			<p class="text-sm text-ink-2">{t('gnocchi.emptySection')}</p>
 		{:else}
+			{@const rows = diagnosticRows(section.data)}
+			<ResponsiveTable>
+				{#snippet cards()}<CompactResourceCard><p class="font-medium">{label}</p><p>{t('gnocchi.field')}: {rows.length.toLocaleString(intlLocale())}</p>{#snippet details()}<dl class="space-y-2">{#each rows as row}<div><dt class="break-all">{row.path}</dt><dd class="tabular-nums break-all">{raw(row.value)}</dd></div>{/each}</dl>{/snippet}</CompactResourceCard>{/snippet}
 			<div role="region" aria-label={label} tabindex="0" onkeydown={scrollTable}><TableShell density="compact"><table>
 				<caption class="sr-only">{label}</caption>
 				<thead><tr><th scope="col">{t('gnocchi.field')}</th><th scope="col">{t('gnocchi.value')}</th></tr></thead>
-				<tbody>{#each diagnosticRows(section.data) as row}<tr><th scope="row" class="break-all">{row.path}</th><td class="tabular-nums break-all">{raw(row.value)}</td></tr>{/each}</tbody>
+				<tbody>{#each rows as row}<tr><th scope="row" class="break-all">{row.path}</th><td class="tabular-nums break-all">{raw(row.value)}</td></tr>{/each}</tbody>
 			</table></TableShell></div>
+			</ResponsiveTable>
 		{/if}
 	</section>
 {/snippet}
@@ -236,22 +243,30 @@
 					<h2 class="text-sm font-semibold text-ink-0">{t('gnocchi.archivePolicies')}</h2>
 					<NativeStatus status={overview.archive_policies.status} error={overview.archive_policies.error} />
 					{#if overview.archive_policies.data?.length}
+						{@const archivePolicies = overview.archive_policies.data}
+						<ResponsiveTable>
+							{#snippet cards()}{#each archivePolicies as policy}<CompactResourceCard><p class="font-medium">{policy.name}</p><p>{t('gnocchi.backWindow')}: {raw(policy.back_window)}</p><p>{t('gnocchi.aggregationMethods')}: {policy.aggregation_methods?.join(', ') ?? t('gnocchi.notReported')}</p>{#snippet details()}<p>{t('gnocchi.definition')}</p>{#each policy.definition ?? [] as tier}<div class="tabular-nums">{raw(tier.granularity)} / {raw(tier.points)} / {raw(tier.timespan)}</div>{:else}{t('gnocchi.notReported')}{/each}{/snippet}</CompactResourceCard>{/each}{/snippet}
 						<div role="region" aria-label={t('gnocchi.archivePolicies')} tabindex="0" onkeydown={scrollTable}><TableShell density="compact"><table>
 							<caption class="sr-only">{t('gnocchi.archivePolicies')}</caption>
 							<thead><tr><th scope="col">{t('name')}</th><th scope="col">{t('gnocchi.backWindow')}</th><th scope="col">{t('gnocchi.aggregationMethods')}</th><th scope="col">{t('gnocchi.definition')}</th></tr></thead>
-							<tbody>{#each overview.archive_policies.data as policy}<tr><th scope="row">{policy.name}</th><td>{raw(policy.back_window)}</td><td>{policy.aggregation_methods?.join(', ') ?? t('gnocchi.notReported')}</td><td>{#each policy.definition ?? [] as tier}<div class="tabular-nums">{raw(tier.granularity)} / {raw(tier.points)} / {raw(tier.timespan)}</div>{:else}{t('gnocchi.notReported')}{/each}</td></tr>{/each}</tbody>
+							<tbody>{#each archivePolicies as policy}<tr><th scope="row">{policy.name}</th><td>{raw(policy.back_window)}</td><td>{policy.aggregation_methods?.join(', ') ?? t('gnocchi.notReported')}</td><td>{#each policy.definition ?? [] as tier}<div class="tabular-nums">{raw(tier.granularity)} / {raw(tier.points)} / {raw(tier.timespan)}</div>{:else}{t('gnocchi.notReported')}{/each}</td></tr>{/each}</tbody>
 						</table></TableShell></div>
+						</ResponsiveTable>
 					{:else}<p class="text-sm text-ink-2">{t(overview.archive_policies.status === 'available' && overview.archive_policies.data !== null ? 'gnocchi.emptySection' : 'gnocchi.noSectionData')}</p>{/if}
 				</section>
 				<section aria-label={t('gnocchi.archivePolicyRules')} class="space-y-3">
 					<h2 class="text-sm font-semibold text-ink-0">{t('gnocchi.archivePolicyRules')}</h2>
 					<NativeStatus status={overview.archive_policy_rules.status} error={overview.archive_policy_rules.error} />
 					{#if overview.archive_policy_rules.data?.length}
+						{@const archivePolicyRules = overview.archive_policy_rules.data}
+						<ResponsiveTable>
+							{#snippet cards()}{#each archivePolicyRules as rule}<CompactResourceCard><p class="font-medium">{rule.name}</p><p>{t('gnocchi.pattern')}: {raw(rule.metric_pattern)}</p><p>{t('gnocchi.archivePolicy')}: {raw(rule.archive_policy_name)}</p></CompactResourceCard>{/each}{/snippet}
 						<div role="region" aria-label={t('gnocchi.archivePolicyRules')} tabindex="0" onkeydown={scrollTable}><TableShell density="compact"><table>
 							<caption class="sr-only">{t('gnocchi.archivePolicyRules')}</caption>
 							<thead><tr><th scope="col">{t('name')}</th><th scope="col">{t('gnocchi.pattern')}</th><th scope="col">{t('gnocchi.archivePolicy')}</th></tr></thead>
-							<tbody>{#each overview.archive_policy_rules.data as rule}<tr><th scope="row">{rule.name}</th><td>{raw(rule.metric_pattern)}</td><td>{raw(rule.archive_policy_name)}</td></tr>{/each}</tbody>
+							<tbody>{#each archivePolicyRules as rule}<tr><th scope="row">{rule.name}</th><td>{raw(rule.metric_pattern)}</td><td>{raw(rule.archive_policy_name)}</td></tr>{/each}</tbody>
 						</table></TableShell></div>
+						</ResponsiveTable>
 					{:else}<p class="text-sm text-ink-2">{t(overview.archive_policy_rules.status === 'available' && overview.archive_policy_rules.data !== null ? 'gnocchi.emptySection' : 'gnocchi.noSectionData')}</p>{/if}
 				</section>
 				<section aria-label={t('gnocchi.resourceTypes')} class="space-y-3">
@@ -274,11 +289,15 @@
 					<NativeStatus status={resources.status} error={resources.error} />
 					{#if resources.status === 'available' || (resources.status === 'partial' && resources.items.length > 0)}<p class="text-xs text-ink-2">{t('gnocchi.loadedPage', { page: resourceMarkers.length, count: resources.items.length })}</p>{/if}
 					{#if resources.items.length}
+						{@const resourceItems = resources.items}
+						<ResponsiveTable>
+							{#snippet cards()}{#each resourceItems as resource}<CompactResourceCard selected={selectedResource?.id === resource.id}><Button variant="link" ariaPressed={selectedResource?.id === resource.id} onclick={() => selectResource(resource)}>{resource.id}</Button><p>{t('type')}: {raw(resource.type)}</p>{#snippet details()}<dl class="space-y-2"><div><dt>{t('gnocchi.project')}</dt><dd class="font-mono break-all">{raw(resource.project_id)}</dd></div><div><dt>{t('gnocchi.started')}</dt><dd>{raw(resource.started_at)}</dd></div><div><dt>{t('gnocchi.ended')}</dt><dd>{raw(resource.ended_at)}</dd></div></dl>{/snippet}</CompactResourceCard>{/each}{/snippet}
 						<div role="region" aria-label={t('gnocchi.resources')} tabindex="0" onkeydown={scrollTable}><TableShell density="compact"><table>
 							<caption class="sr-only">{t('gnocchi.resources')}</caption>
 							<thead><tr><th scope="col">{t('gnocchi.id')}</th><th scope="col">{t('type')}</th><th scope="col">{t('gnocchi.project')}</th><th scope="col">{t('gnocchi.started')}</th><th scope="col">{t('gnocchi.ended')}</th></tr></thead>
-							<tbody>{#each resources.items as resource}<tr data-selected={selectedResource?.id === resource.id}><td><Button variant="link" ariaPressed={selectedResource?.id === resource.id} onclick={() => selectResource(resource)}>{resource.id}</Button></td><td>{raw(resource.type)}</td><td class="font-mono">{raw(resource.project_id)}</td><td>{raw(resource.started_at)}</td><td>{raw(resource.ended_at)}</td></tr>{/each}</tbody>
+							<tbody>{#each resourceItems as resource}<tr data-selected={selectedResource?.id === resource.id}><td><Button variant="link" ariaPressed={selectedResource?.id === resource.id} onclick={() => selectResource(resource)}>{resource.id}</Button></td><td>{raw(resource.type)}</td><td class="font-mono">{raw(resource.project_id)}</td><td>{raw(resource.started_at)}</td><td>{raw(resource.ended_at)}</td></tr>{/each}</tbody>
 						</table></TableShell></div>
+						</ResponsiveTable>
 					{:else}<p class="text-sm text-ink-2">{t(resources.status === 'available' ? 'gnocchi.emptyPage' : 'gnocchi.unverifiedPage')}</p>{/if}
 					{#if resources.truncated}<Alert tone="warning">{t('gnocchi.pageTruncated')}</Alert>{/if}
 				{/if}
@@ -301,11 +320,15 @@
 					<NativeStatus status={metrics.status} error={metrics.error} />
 					{#if metrics.status === 'available' || (metrics.status === 'partial' && metrics.items.length > 0)}<p class="text-xs text-ink-2">{t('gnocchi.loadedPage', { page: metricMarkers.length, count: metrics.items.length })}</p>{/if}
 					{#if metrics.items.length}
+						{@const metricItems = metrics.items}
+						<ResponsiveTable>
+							{#snippet cards()}{#each metricItems as metric}<CompactResourceCard selected={selectedMetric?.id === metric.id}><Button variant="link" ariaLabel={metric.name ? `${metric.name} · ${metric.id}` : metric.id} ariaPressed={selectedMetric?.id === metric.id} onclick={() => selectMetric(metric)}>{metric.name || metric.id}</Button><p>{t('unit')}: {metric.unit ?? t('gnocchi.unitUnknown')}</p>{#snippet details()}<dl class="space-y-2"><div><dt>{t('gnocchi.id')}</dt><dd class="font-mono break-all">{metric.id}</dd></div><div><dt>{t('gnocchi.resourceId')}</dt><dd class="font-mono break-all">{raw(metric.resource_id)}</dd></div><div><dt>{t('gnocchi.archivePolicy')}</dt><dd>{policyName(metric)}</dd></div></dl>{/snippet}</CompactResourceCard>{/each}{/snippet}
 						<div role="region" aria-label={t('gnocchi.metrics')} tabindex="0" onkeydown={scrollTable}><TableShell density="compact"><table>
 							<caption class="sr-only">{t('gnocchi.metrics')}</caption>
 							<thead><tr><th scope="col">{t('gnocchi.id')}</th><th scope="col">{t('name')}</th><th scope="col">{t('unit')}</th><th scope="col">{t('gnocchi.resourceId')}</th><th scope="col">{t('gnocchi.archivePolicy')}</th></tr></thead>
-							<tbody>{#each metrics.items as metric}<tr data-selected={selectedMetric?.id === metric.id}><td><Button variant="link" ariaPressed={selectedMetric?.id === metric.id} onclick={() => selectMetric(metric)}>{metric.id}</Button></td><td>{raw(metric.name)}</td><td>{metric.unit ?? t('gnocchi.unitUnknown')}</td><td class="font-mono">{raw(metric.resource_id)}</td><td>{policyName(metric)}</td></tr>{/each}</tbody>
+							<tbody>{#each metricItems as metric}<tr data-selected={selectedMetric?.id === metric.id}><td><Button variant="link" ariaPressed={selectedMetric?.id === metric.id} onclick={() => selectMetric(metric)}>{metric.id}</Button></td><td>{raw(metric.name)}</td><td>{metric.unit ?? t('gnocchi.unitUnknown')}</td><td class="font-mono">{raw(metric.resource_id)}</td><td>{policyName(metric)}</td></tr>{/each}</tbody>
 						</table></TableShell></div>
+						</ResponsiveTable>
 					{:else}<p class="text-sm text-ink-2">{t(metrics.status === 'available' ? 'gnocchi.emptyPage' : 'gnocchi.unverifiedPage')}</p>{/if}
 					{#if metrics.truncated}<Alert tone="warning">{t('gnocchi.pageTruncated')}</Alert>{/if}
 				{/if}
@@ -342,12 +365,18 @@
 							</dl>
 						{/if}
 						{#if measures.measures.length}
+							{@const samples = measures.measures}
+							{@const measureUnit = measures.metric?.unit ?? selectedMetric.unit ?? t('gnocchi.unitUnknown')}
+							{@const measuredMetricId = selectedMetric.id}
 							<p class="text-xs text-ink-2">{t('gnocchi.sampleCount', { count: measures.measures.length })}</p>
+							<ResponsiveTable>
+								{#snippet cards()}{#each samples as sample}<CompactResourceCard><time datetime={sample.timestamp}>{sample.timestamp}</time><p class="tabular-nums">{t('gnocchi.value')}: {String(sample.value)} · {measureUnit}</p><p class="tabular-nums">{t('gnocchi.nativeGrain')}: {String(sample.granularity)}</p></CompactResourceCard>{/each}{/snippet}
 							<div role="region" aria-label={t('gnocchi.measures')} tabindex="0" onkeydown={scrollTable}><TableShell density="compact"><table>
-								<caption class="sr-only">{t('gnocchi.measures')} · {selectedMetric.id}</caption>
+								<caption class="sr-only">{t('gnocchi.measures')} · {measuredMetricId}</caption>
 								<thead><tr><th scope="col">{t('gnocchi.timestamp')}</th><th scope="col">{t('gnocchi.nativeGrain')}</th><th scope="col">{t('gnocchi.value')}</th><th scope="col">{t('unit')}</th></tr></thead>
-								<tbody>{#each measures.measures as sample}<tr><td><time datetime={sample.timestamp}>{sample.timestamp}</time></td><td class="tabular-nums">{String(sample.granularity)}</td><td class="tabular-nums">{String(sample.value)}</td><td>{measures.metric?.unit ?? selectedMetric.unit ?? t('gnocchi.unitUnknown')}</td></tr>{/each}</tbody>
+								<tbody>{#each samples as sample}<tr><td><time datetime={sample.timestamp}>{sample.timestamp}</time></td><td class="tabular-nums">{String(sample.granularity)}</td><td class="tabular-nums">{String(sample.value)}</td><td>{measureUnit}</td></tr>{/each}</tbody>
 							</table></TableShell></div>
+							</ResponsiveTable>
 						{:else}<p class="text-sm text-ink-2">{t(measures.status === 'available' && !measures.truncated ? 'gnocchi.noData' : 'gnocchi.noVerifiedSamples')}</p>{/if}
 						{#if measures.truncated}<Alert tone="warning">{t('gnocchi.samplesTruncated')}</Alert>{/if}
 					{/if}

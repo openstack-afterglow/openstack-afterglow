@@ -22,6 +22,7 @@ from app.main import app
 from app.services import domain_auth, jwt_service, keystone, session_store
 from app.services.domain_auth import require_password as real_require_password
 from app.services.domain_auth import require_provider as real_require_provider
+from app.services.native_operation import NativeOperation
 
 
 @pytest.fixture
@@ -33,7 +34,7 @@ async def domain_client(monkeypatch, auth_directory):
             uid: {
                 "id": uid,
                 "name": uid,
-                "domain_id": "tenant-a",
+                "domain_id": "accounts",
                 "enabled": True,
                 "email": "real@allowed.test",
                 "default_project_id": "foreign",
@@ -45,6 +46,7 @@ async def domain_client(monkeypatch, auth_directory):
         {
             "own": {"id": "own", "name": "Own", "domain_id": "tenant-a", "enabled": True, "description": ""},
             "second": {"id": "second", "name": "Second", "domain_id": "tenant-a", "enabled": True, "description": ""},
+            "admission": {"id": "admission", "name": "Admission", "domain_id": "tenant-a", "enabled": True},
             "foreign": {
                 "id": "foreign",
                 "name": "Foreign",
@@ -57,7 +59,7 @@ async def domain_client(monkeypatch, auth_directory):
     state.assignments = [
         {"user": {"id": "manager"}, "role": {"id": "manager-role"}, "scope": {"domain": {"id": "tenant-a"}}}
     ]
-    state.grants = {"user": ["foreign", "own", "second"], "manager": [], "signup": []}
+    state.grants = {"user": ["foreign", "own", "second"], "manager": ["admission"], "signup": []}
     state.password_enabled = True
     state.policy_calls = []
 
@@ -76,7 +78,12 @@ async def domain_client(monkeypatch, auth_directory):
         keystone,
         "get_settings",
         lambda: SimpleNamespace(
-            os_auth_url="https://keystone.test/v3", ssl_verify=True, os_interface="internal", os_region_name="RegionOne"
+            os_auth_url="https://keystone.test/v3",
+            os_username="service-admin",
+            os_user_domain_name="Default",
+            ssl_verify=True,
+            os_interface="internal",
+            os_region_name="RegionOne",
         ),
     )
 
@@ -89,7 +96,7 @@ async def domain_client(monkeypatch, auth_directory):
             auth_token=f"native:{uid}:{pid}",
             expires=None,
             role_names=["member"] if pid else ["manager"],
-            user_domain_id="tenant-a",
+            user_domain_id=state.users[uid]["domain_id"],
             project_domain_id=state.projects[pid]["domain_id"] if pid else None,
         )
 
@@ -98,7 +105,7 @@ async def domain_client(monkeypatch, auth_directory):
             self.kwargs = kwargs
 
         def get_access(self, session):
-            if self.kwargs["password"] != "valid" or self.kwargs.get("user_domain_id") != "tenant-a":
+            if self.kwargs["password"] != "valid" or self.kwargs.get("user_domain_id") != "accounts":
                 raise Unauthorized()
             return access(self.kwargs["username"])
 
@@ -130,13 +137,87 @@ async def domain_client(monkeypatch, auth_directory):
         yield client, state
 
 
-async def login(client, username="user"):
+async def login(client, username="user", *, select_organization=True):
+    """Open a fresh personal session, then explicitly select legacy test scope."""
     response = await client.post(
         "/api/v1/auth/login",
         json={"username": username, "password": "valid"},
     )
     assert response.status_code == 200, response.text
-    return response.json()
+    tokens = response.json()
+    if not tokens["is_system_admin"]:
+        assert (tokens["identity_domain_id"], tokens["domain_id"], tokens["project_id"]) == (
+            "accounts",
+            "personal",
+            "personal-" + username,
+        )
+    if select_organization:
+        selected = await client.post(
+            "/api/v1/auth/token/workspace",
+            json={"domain_id": "tenant-a", "project_id": "own" if username == "user" else ""},
+            headers={"Authorization": f"Bearer {tokens['token']}"},
+        )
+        assert selected.status_code == 200, selected.text
+        return selected.json()
+    return tokens
+
+
+async def native_project_login(client, username="user", project_id="own"):
+    """Establish an actual native-project source, not an admin logical target."""
+    tokens = await login(client, username, select_organization=False)
+    assert tokens["is_system_admin"] is True
+    _, stored = await session(tokens)
+    async with NativeOperation() as operation:
+        data = await operation.run(keystone.validate_token, stored["keystone_token"], project_id, operation=operation)
+        assert (data["user_id"], data["identity_domain_id"], data["project_id"]) == (
+            username,
+            "accounts",
+            project_id,
+        )
+        return (
+            await auth._build_token_response(
+                keystone_token=data["token"],
+                project_id=data["project_id"],
+                project_name=data["project_name"],
+                user_id=data["user_id"],
+                username=data["username"],
+                roles=data["roles"],
+                is_system_admin=data["is_system_admin"],
+                domain_id=data["domain_id"],
+                domain_name=data["domain_name"],
+                is_domain_manager=data["is_domain_manager"],
+                identity_domain_id=data["identity_domain_id"],
+                identity_domain_name=data["identity_domain_name"],
+                operation=operation,
+            )
+        ).model_dump()
+
+
+async def legacy_projectless_login(client, state, username):
+    """Existing organization-home sessions remain valid through native federation."""
+    state.users[username]["domain_id"] = "tenant-a"
+    tokens = (
+        await auth.issue_federated_login(
+            boundary_request("/api/v1/auth/providers/callback"),
+            BackgroundTasks(),
+            unscoped_token=f"native:{username}:",
+            user_id=username,
+            username=username,
+            domain_id="tenant-a",
+            domain_name="Tenant A",
+            provider_id="provider",
+            provider_revision=7,
+            provider_kind="oidc",
+            login_email="real@allowed.test",
+        )
+    ).model_dump()
+    selected = await client.post(
+        "/api/v1/auth/token/workspace",
+        json={"domain_id": "tenant-a", "project_id": ""},
+        headers={"Authorization": f"Bearer {tokens['token']}"},
+    )
+    assert selected.status_code == 200, selected.text
+    return selected.json()
 
 
 async def session(tokens):
@@ -147,15 +228,18 @@ async def session(tokens):
 @pytest.mark.asyncio
 async def test_login_canonicalizes_domain_filters_foreign_default_and_reads_actual_email(domain_client):
     client, state = domain_client
-    tokens = await login(client)
+    tokens = await login(client, select_organization=False)
     assert (tokens["domain_id"], tokens["domain_name"], tokens["project_id"], tokens["default_project_id"]) == (
-        "tenant-a",
-        "Tenant A",
-        "own",
-        "",
+        "personal",
+        "Personal",
+        "personal-user",
+        "personal-user",
     )
-    assert state.policy_calls == [("tenant-a", "real@allowed.test")]
-    assert (await session(tokens))[1]["domain_id"] == "tenant-a"
+    assert tokens["identity_domain_id"] == state.users["user"]["domain_id"] == "accounts"
+    assert state.users["user"]["default_project_id"] == "foreign"
+    assert state.grants["user"] == ["foreign", "own", "second", "personal-user"]
+    assert state.policy_calls and set(state.policy_calls) == {("accounts", "real@allowed.test")}
+    assert (await session(tokens))[1]["domain_id"] == "personal"
     assert tokens["is_domain_manager"] is False
     assert tokens["can_write"] is True
     rejected = await client.post(
@@ -166,31 +250,28 @@ async def test_login_canonicalizes_domain_filters_foreign_default_and_reads_actu
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("username,manager", [("manager", False), ("signup", False)])
-async def test_no_project_users_can_login_me_and_refresh_without_project_grants(domain_client, username, manager):
+@pytest.mark.parametrize("username", ["manager", "signup"])
+async def test_users_without_organization_projects_get_personal_primary(domain_client, username):
     client, state = domain_client
-    tokens = await login(client, username)
-    assert tokens["project_id"] == ""
-    assert tokens["roles"] == []
-    assert tokens["can_write"] is False
-    assert tokens["is_domain_manager"] is manager
+    state.grants[username] = []
+    tokens = await login(client, username, select_organization=False)
+    assert tokens["project_id"] == "personal-" + username
+    assert tokens["can_write"] is True
+    assert tokens["is_domain_manager"] is False
     me = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {tokens['token']}"})
     assert me.status_code == 200
-    assert me.json()["domain_id"] == "tenant-a"
-    assert me.json()["roles"] == []
+    assert me.json()["domain_id"] == "personal"
     rotated = await client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert rotated.status_code == 200
-    assert rotated.json()["project_id"] == ""
-    assert rotated.json()["domain_id"] == "tenant-a"
-    assert rotated.json()["can_write"] is False
-    assert state.grants[username] == []
-    info = {**me.json(), "token": (await session(rotated.json()))[1]["keystone_token"]}
-    if manager:
-        assert (await deps.require_domain_manager(info))["is_domain_manager"] is True
-    else:
-        with pytest.raises(HTTPException) as exc:
-            await deps.require_domain_manager(info)
-        assert exc.value.status_code == 403
+    assert (rotated.json()["project_id"], rotated.json()["domain_id"]) == ("personal-" + username, "personal")
+    selected = await client.post(
+        "/api/v1/auth/token/workspace",
+        json={"domain_id": "tenant-a", "project_id": ""},
+        headers={"Authorization": f"Bearer {rotated.json()['token']}"},
+    )
+    assert selected.status_code == 403
+    assert state.grants[username] == ["personal-" + username]
+    assert (await session(rotated.json()))[1]["domain_id"] == "personal"
 
 
 @pytest.mark.asyncio
@@ -330,7 +411,13 @@ async def test_actual_keystone_email_not_username_controls_password_policy(domai
 async def test_provider_bound_session_rotates_canonical_context_and_obeys_revocation(domain_client, monkeypatch):
     client, state = domain_client
     provider = SimpleNamespace(
-        id="provider", enabled=True, revision=7, kind="oidc", client_id="client", client_secret_ciphertext="encrypted"
+        id="provider",
+        enabled=True,
+        revision=7,
+        kind="oidc",
+        client_id="client",
+        client_secret_ciphertext="encrypted",
+        _organization=None,
     )
 
     async def load_provider(domain_id, provider_id):
@@ -365,7 +452,7 @@ async def test_provider_bound_session_rotates_canonical_context_and_obeys_revoca
         )
     ).model_dump()
     _, original = await session(tokens)
-    assert original["domain_id"] == "tenant-a"
+    assert original["domain_id"] == "personal" and original["identity_domain_id"] == "accounts"
     assert original["provider_id"] == "provider"
     assert original["provider_revision"] == 7
     assert original["provider_domain_id"] == "tenant-a"
@@ -399,10 +486,16 @@ async def test_provider_bound_session_rotates_canonical_context_and_obeys_revoca
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("change,status", [("grant", 403), ("user", 401), ("domain", 403)])
-async def test_live_admin_gate_rejects_out_of_band_native_revocation(domain_client, change, status):
+@pytest.mark.parametrize("select_organization", [False, True], ids=["native-project", "logical-workspace"])
+async def test_live_admin_gate_rejects_out_of_band_native_revocation(
+    domain_client, change, status, select_organization
+):
     client, state = domain_client
     state.assignments.append({"user": {"id": "user"}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}})
-    tokens = await login(client)
+    # Exercise both the native admin guard and the earlier logical-workspace
+    # fence without relying on cached authority or application invalidation.
+    tokens = await login(client) if select_organization else await native_project_login(client)
+    assert tokens["is_system_admin"] is True
     protected = FastAPI()
     mutations = []
 
@@ -416,15 +509,18 @@ async def test_live_admin_gate_rejects_out_of_band_native_revocation(domain_clie
         assert (await admin.post("/api/v1/admin/privileged", headers=headers)).status_code == 200
         # Native change deliberately bypasses Afterglow invalidation/session revoke.
         if change == "grant":
-            state.assignments = []
+            state.assignments[:] = [row for row in state.assignments if "system" not in row["scope"]]
         elif change == "user":
             state.users["user"]["enabled"] = False
         else:
-            state.domains["tenant-a"]["enabled"] = False
+            state.domains["accounts"]["enabled"] = False
         denied = await admin.post("/api/v1/admin/privileged", headers=headers)
     assert denied.status_code == status
     if change == "grant":
-        assert denied.json()["detail"]["code"] == "system_admin_required"
+        if select_organization:
+            assert denied.json()["detail"] == "Current system administrator authority is required"
+        else:
+            assert denied.json()["detail"]["code"] == "system_admin_required"
     assert mutations == ["user"]
 
 
@@ -453,7 +549,7 @@ async def test_actual_password_rejection_consumes_failure_allowance(domain_clien
     monkeypatch.setattr(auth.login_guard, "record_failure", failures)
     result = await client.post("/api/v1/auth/login", json={"username": "user", "password": "incorrect"})
     assert result.status_code == 401
-    failures.assert_awaited_once_with("user", "tenant-a")
+    failures.assert_awaited_once_with("user", "accounts")
 
 
 def boundary_request(path):
@@ -480,7 +576,7 @@ async def test_projectless_admin_system_connection_is_admin_path_only(domain_cli
     created = []
     closed = []
     access = SimpleNamespace(
-        system_scoped=True, user_id="manager", user_domain_id="tenant-a", auth_token="caller-native-system-token"
+        system_scoped=True, user_id="manager", user_domain_id="accounts", auth_token="caller-native-system-token"
     )
     connection = SimpleNamespace(
         session=SimpleNamespace(auth=SimpleNamespace(get_access=lambda session: access)),
@@ -511,8 +607,8 @@ async def test_projectless_admin_system_connection_is_admin_path_only(domain_cli
 
 @pytest.mark.asyncio
 async def test_projectless_non_admin_never_receives_system_connection(domain_client, monkeypatch):
-    client, _ = domain_client
-    tokens = await login(client, "signup")
+    client, state = domain_client
+    tokens = await legacy_projectless_login(client, state, "signup")
     created = []
     monkeypatch.setattr(keystone, "get_openstack_connection", lambda *args, **kwargs: created.append(args))
     request = boundary_request("/api/v1/admin/domains")
@@ -559,8 +655,8 @@ async def test_projectless_admin_system_exchange_fails_closed(domain_client, mon
 async def test_explicit_domain_switch_preserves_identity_and_blocks_implicit_cross_domain(domain_client):
     client, state = domain_client
     tokens = await login(client)
-    assert tokens["identity_domain_id"] == "tenant-a"
-    assert {d["id"] for d in tokens["available_domains"]} == {"tenant-a", "tenant-b"}
+    assert tokens["identity_domain_id"] == "accounts"
+    assert {d["id"] for d in tokens["available_domains"]} == {"personal", "tenant-a", "tenant-b"}
     old_jti, original = await session(tokens)
     switched = await client.post(
         "/api/v1/auth/token/domain",
@@ -570,12 +666,12 @@ async def test_explicit_domain_switch_preserves_identity_and_blocks_implicit_cro
     assert switched.status_code == 200, switched.text
     replacement = switched.json()
     assert (replacement["identity_domain_id"], replacement["domain_id"], replacement["project_id"]) == (
-        "tenant-a",
+        "accounts",
         "tenant-b",
         "foreign",
     )
     _, stored = await session(replacement)
-    assert stored["identity_domain_id"] == original["identity_domain_id"] == "tenant-a"
+    assert stored["identity_domain_id"] == original["identity_domain_id"] == "accounts"
     assert stored["started_at"] == original["started_at"]
     assert await session_store.get_session(old_jti) is None
     replay = await client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
@@ -583,13 +679,13 @@ async def test_explicit_domain_switch_preserves_identity_and_blocks_implicit_cro
     headers = {"Authorization": f"Bearer {replacement['token']}"}
     me = await client.get("/api/v1/auth/me", headers=headers)
     assert me.status_code == 200
-    assert (me.json()["identity_domain_id"], me.json()["domain_id"]) == ("tenant-a", "tenant-b")
+    assert (me.json()["identity_domain_id"], me.json()["domain_id"]) == ("accounts", "tenant-b")
     implicit = await client.post("/api/v1/auth/token/project", json={"project_id": "own"}, headers=headers)
     assert implicit.status_code == 403
     rotated = await client.post("/api/v1/auth/refresh", json={"refresh_token": replacement["refresh_token"]})
     assert rotated.status_code == 200
-    assert (rotated.json()["identity_domain_id"], rotated.json()["domain_id"]) == ("tenant-a", "tenant-b")
-    assert all(did == "tenant-a" for did, _ in state.policy_calls)
+    assert (rotated.json()["identity_domain_id"], rotated.json()["domain_id"]) == ("accounts", "tenant-b")
+    assert state.policy_calls and set(state.policy_calls) == {("accounts", "real@allowed.test")}
 
 
 @pytest.mark.asyncio
@@ -607,8 +703,11 @@ async def test_domain_switch_requires_live_membership_without_consuming_session(
 
 
 @pytest.mark.asyncio
-async def test_closed_signup_mode_denies_ordinary_domain_creation(domain_client):
+async def test_disabled_organization_creation_denies_ordinary_creation(domain_client, monkeypatch):
     client, state = domain_client
+    settings = auth.get_settings().model_copy(deep=True)
+    settings.auth.organization_creation_enabled = False
+    monkeypatch.setattr(auth, "get_settings", lambda: settings)
     tokens = await login(client)
     assert tokens["can_create_domain"] is False
     before = set(state.domains)
@@ -702,7 +801,7 @@ async def test_workspace_selection_commits_exact_project_and_preserves_identity_
     assert response.status_code == 200, response.text
     result = response.json()
     assert (result["identity_domain_id"], result["domain_id"], result["project_id"]) == (
-        "tenant-a",
+        "accounts",
         "tenant-b",
         "foreign-second",
     )
@@ -737,8 +836,8 @@ async def test_workspace_selection_rejects_foreign_empty_or_revoked_project_with
 
 @pytest.mark.asyncio
 async def test_workspace_selection_can_remain_projectless_only_without_accessible_projects(domain_client):
-    client, _ = domain_client
-    tokens = await login(client, "signup")
+    client, state = domain_client
+    tokens = await legacy_projectless_login(client, state, "signup")
     response = await client.post(
         "/api/v1/auth/token/workspace",
         json={"domain_id": "tenant-a", "project_id": ""},
@@ -776,7 +875,7 @@ async def test_rotation_publication_rechecks_native_authority(domain_client, mon
         if change == "identity":
             state.users["user"] = {**state.users["user"], "enabled": False}
         else:
-            state.domains["tenant-a"] = {**state.domains["tenant-a"], "enabled": False}
+            state.domains["accounts"] = {**state.domains["accounts"], "enabled": False}
 
     if change == "project":
         monkeypatch.setattr(keystone, "validate_token", disabled_after_exchange)
@@ -812,7 +911,7 @@ async def test_service_system_admin_target_needs_no_project_membership(domain_cl
         }
     )
     state.grants["user"] = ["own"]
-    tokens = await login(client)
+    tokens = await native_project_login(client)
     info = await deps._resolve_jwt_token_info(boundary_request(path), tokens["token"], "second")
     assert (info["user_id"], info["project_id"], info["connection_project_id"]) == ("user", "second", "own")
     assert info["_live_system_admin"] is True
@@ -865,7 +964,7 @@ async def test_package_system_admin_preserves_original_caller_with_independent_t
         }
     )
     state.grants["user"] = ["own"]
-    tokens = await login(client)
+    tokens = await native_project_login(client)
     _, original = await session(tokens)
     info = await deps._resolve_jwt_token_info(
         boundary_request("/api/v1/palimpsest/packages"),
@@ -874,7 +973,8 @@ async def test_package_system_admin_preserves_original_caller_with_independent_t
         preserve_original=True,
     )
     assert info["token"] == "native:user:own"
-    assert info["session_token"] == original["keystone_token"]
+    assert info["session_token"] == (await session(tokens))[1]["keystone_token"] == "native:user:"
+    assert original["keystone_token"] == "native:user:own"
     assert (info["project_id"], info["connection_project_id"]) == ("second", "own")
     assert info["_live_system_admin"] is True
 
@@ -888,7 +988,7 @@ async def test_system_admin_workspace_preserves_native_source_through_refresh(do
     state.grants[user_id] = [native_project_id] if native_project_id else []
     grant = {"user": {"id": user_id}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}}
     state.assignments.append(grant)
-    tokens = await login(client, user_id)
+    tokens = await native_project_login(client, user_id) if source == "project" else await login(client, user_id)
     headers = {"Authorization": f"Bearer {tokens['token']}"}
     directory = await client.get("/api/v1/auth/workspaces?domain_id=tenant-b", headers=headers)
     assert directory.status_code == 200, directory.text
@@ -902,7 +1002,7 @@ async def test_system_admin_workspace_preserves_native_source_through_refresh(do
     tokens = selected.json()
     assert (tokens["domain_id"], tokens["identity_domain_id"], tokens["project_id"]) == (
         "tenant-b",
-        "tenant-a",
+        "accounts",
         "foreign",
     )
     assert jwt_service.verify_access(tokens["token"])["project_id"] == native_project_id
@@ -1053,7 +1153,7 @@ async def test_logical_admin_can_revoke_only_own_individual_sessions(domain_clie
     )
     state.grants["user"] = ["own"]
     own_other = await login(client)
-    foreign_user = await login(client, "manager")
+    foreign_user = await login(client, "manager", select_organization=False)
     own_jti, _ = await session(own_other)
     foreign_jti, _ = await session(foreign_user)
     tokens = await login(client)
@@ -1076,7 +1176,7 @@ async def test_logical_admin_can_revoke_only_own_individual_sessions(domain_clie
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("identifier", ["user", "real@allowed.test"])
-async def test_domainless_password_opens_canonical_home_once_before_workspace_selection(
+async def test_domainless_password_opens_personal_once_before_workspace_selection(
     domain_client, monkeypatch, identifier
 ):
     from unittest.mock import Mock
@@ -1091,25 +1191,25 @@ async def test_domainless_password_opens_canonical_home_once_before_workspace_se
     data = result.json()
     assert (data["user_id"], data["identity_domain_id"], data["domain_id"], data["project_id"]) == (
         "user",
-        "tenant-a",
-        "tenant-a",
-        "own",
+        "accounts",
+        "personal",
+        "personal-user",
     )
     authenticate.assert_called_once()
     assert authenticate.call_args.kwargs["username"] == "user"
-    assert authenticate.call_args.kwargs["domain_name"] == "tenant-a"
+    assert authenticate.call_args.kwargs["domain_name"] == "accounts"
     assert authenticate.call_args.kwargs["unscoped_only"] is True
-    assert (await session(data))[1]["identity_domain_id"] == "tenant-a"
+    assert (await session(data))[1]["identity_domain_id"] == "accounts"
     refreshed = await client.post("/api/v1/auth/refresh", json={"refresh_token": data["refresh_token"]})
     assert refreshed.status_code == 200
-    assert refreshed.json()["identity_domain_id"] == refreshed.json()["domain_id"] == "tenant-a"
+    assert (refreshed.json()["identity_domain_id"], refreshed.json()["domain_id"]) == ("accounts", "personal")
     selected = await client.post(
         "/api/v1/auth/token/workspace",
         json={"domain_id": "tenant-b", "project_id": "foreign"},
         headers={"Authorization": f"Bearer {refreshed.json()['token']}"},
     )
     assert selected.status_code == 200, selected.text
-    assert selected.json()["domain_id"] == "tenant-b" and selected.json()["identity_domain_id"] == "tenant-a"
+    assert selected.json()["domain_id"] == "tenant-b" and selected.json()["identity_domain_id"] == "accounts"
     assert authenticate.call_count == 1
 
 
@@ -1121,8 +1221,8 @@ async def test_foreign_membership_is_checked_only_at_explicit_workspace_selectio
     state.grants["user"] = ["own"]
     authenticate = Mock(wraps=keystone.authenticate)
     monkeypatch.setattr(keystone, "authenticate", authenticate)
-    tokens = await login(client)
-    assert tokens["domain_id"] == tokens["identity_domain_id"] == "tenant-a"
+    tokens = await login(client, select_organization=False)
+    assert (tokens["identity_domain_id"], tokens["domain_id"]) == ("accounts", "personal")
     denied = await client.post(
         "/api/v1/auth/token/workspace",
         json={"domain_id": "tenant-b", "project_id": "foreign"},
@@ -1130,13 +1230,15 @@ async def test_foreign_membership_is_checked_only_at_explicit_workspace_selectio
     )
     assert denied.status_code == 403
     authenticate.assert_called_once()
-    assert (await session(tokens))[1]["domain_id"] == "tenant-a"
+    assert (await session(tokens))[1]["domain_id"] == "personal"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("collision", ["username", "email", "email_shaped_name"])
 @pytest.mark.parametrize("enabled", [True, False])
-async def test_global_password_identity_ambiguity_never_tries_passwords(domain_client, monkeypatch, collision, enabled):
+async def test_accounts_password_identity_ambiguity_never_tries_passwords(
+    domain_client, monkeypatch, collision, enabled
+):
     client, state = domain_client
     state.users["manager"]["email"] = "manager@allowed.test"
     state.users["signup"]["email"] = "signup@allowed.test"
@@ -1144,7 +1246,7 @@ async def test_global_password_identity_ambiguity_never_tries_passwords(domain_c
     state.users["another-user"] = {
         "id": "another-user",
         "name": identifier if collision != "email" else "another-user",
-        "domain_id": "default",
+        "domain_id": "accounts",
         "enabled": enabled,
         "email": identifier if collision == "email" else "other@allowed.test",
         "default_project_id": "",
@@ -1157,9 +1259,95 @@ async def test_global_password_identity_ambiguity_never_tries_passwords(domain_c
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("collision", ["username", "email", "email_shaped_name"])
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_other_domain_duplicates_do_not_block_accounts_password_login(
+    domain_client, monkeypatch, collision, enabled
+):
+    from unittest.mock import Mock
+
+    client, state = domain_client
+    state.users["manager"]["email"] = "manager@allowed.test"
+    state.users["signup"]["email"] = "signup@allowed.test"
+    identifier = "user" if collision == "username" else "real@allowed.test"
+    state.users["legacy-duplicate"] = {
+        "id": "legacy-duplicate",
+        "name": identifier if collision != "email" else "legacy-duplicate",
+        "domain_id": "default",
+        "enabled": enabled,
+        "email": identifier if collision == "email" else "other@allowed.test",
+    }
+    users = keystone._get_admin_ks_client().users
+    inventory = Mock(wraps=users.list)
+    authenticate = Mock(wraps=keystone.authenticate)
+    monkeypatch.setattr(users, "list", inventory)
+    monkeypatch.setattr(keystone, "authenticate", authenticate)
+    response = await client.post("/api/v1/auth/login", json={"username": identifier, "password": "valid"})
+    assert response.status_code == 200, response.text
+    assert response.json()["user_id"] == "user" and response.json()["identity_domain_id"] == "accounts"
+    authenticate.assert_called_once()
+    assert authenticate.call_args.kwargs["domain_name"] == "accounts"
+    assert authenticate.call_args.kwargs["username"] == "user"
+    inventory.assert_called_once_with(domain="accounts")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("identifier", ["user", "real@allowed.test"])
+@pytest.mark.parametrize("home", ["default", "tenant-a", "tenant-b"])
+async def test_outside_accounts_password_login_never_attempts_native_credentials(
+    domain_client, monkeypatch, identifier, home
+):
+    from unittest.mock import Mock
+
+    client, state = domain_client
+    state.users["user"]["domain_id"] = home
+    state.users["manager"]["email"] = "manager@allowed.test"
+    state.users["signup"]["email"] = "signup@allowed.test"
+    authenticate, failures, guard = Mock(), AsyncMock(), AsyncMock()
+    monkeypatch.setattr(keystone, "authenticate", authenticate)
+    monkeypatch.setattr(auth.login_guard, "record_failure", failures)
+    monkeypatch.setattr(auth.login_guard, "check_locked", guard)
+    response = await client.post("/api/v1/auth/login", json={"username": identifier, "password": "valid"})
+    assert response.status_code == 401, response.text
+    assert "token" not in response.json() and "refresh_token" not in response.json()
+    authenticate.assert_not_called()
+    guard.assert_not_awaited()
+    failures.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_accounts_inventory_wrong_home_readback_never_attempts_password(domain_client, monkeypatch):
+    from unittest.mock import Mock
+
+    client, state = domain_client
+    state.users["user"]["domain_id"] = "tenant-a"
+    native = keystone._get_admin_ks_client()
+
+    def collection(url):
+        assert url == "/users?domain_id=accounts"
+        return None, {"users": [{"id": "user", "domain_id": "accounts"}], "links": {"next": None}}
+
+    monkeypatch.setattr(native.users, "client", SimpleNamespace(get=collection), raising=False)
+    authenticate = Mock()
+    monkeypatch.setattr(keystone, "authenticate", authenticate)
+    response = await client.post("/api/v1/auth/login", json={"username": "user", "password": "valid"})
+    assert response.status_code == 503, response.text
+    authenticate.assert_not_called()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "boundary,status",
-    [("user", 401), ("home", 403), ("home_alias", 403), ("method", 403), ("inventory", 503), ("policy", 503)],
+    [
+        ("user", 401),
+        ("home", 503),
+        ("home_missing", 503),
+        ("home_name", 503),
+        ("home_alias", 401),
+        ("method", 403),
+        ("inventory", 503),
+        ("policy", 503),
+    ],
 )
 async def test_domainless_password_requires_exact_enabled_home_before_native_proof(
     domain_client, monkeypatch, boundary, status
@@ -1168,9 +1356,13 @@ async def test_domainless_password_requires_exact_enabled_home_before_native_pro
     if boundary == "user":
         state.users["user"]["enabled"] = False
     elif boundary == "home":
-        state.domains["tenant-a"]["enabled"] = False
+        state.domains["accounts"]["enabled"] = False
+    elif boundary == "home_missing":
+        del state.domains["accounts"]
+    elif boundary == "home_name":
+        state.domains["accounts"]["name"] = "accounts"
     elif boundary == "home_alias":
-        state.users["user"]["domain_id"] = "Tenant A"
+        state.users["user"]["domain_id"] = "Accounts"
     elif boundary == "method":
         state.password_enabled = False
     elif boundary == "inventory":
@@ -1203,7 +1395,7 @@ async def test_password_policy_io_cannot_publish_stale_home_authority(domain_cli
     async def revoke_during_policy(*args):
         await policy(*args)
         if boundary == "home":
-            state.domains["tenant-a"] = {**state.domains["tenant-a"], "enabled": False}
+            state.domains["accounts"] = {**state.domains["accounts"], "enabled": False}
         else:
             change = {"enabled": False} if boundary == "user" else {"domain_id": "tenant-b"}
             state.users["user"] = {**state.users["user"], **change}
@@ -1220,7 +1412,13 @@ async def test_password_policy_io_cannot_publish_stale_home_authority(domain_cli
 def provider_login_env(domain_client, monkeypatch):
     client, state = domain_client
     provider = SimpleNamespace(
-        id="provider", enabled=True, revision=7, kind="oidc", client_id="client", client_secret_ciphertext="encrypted"
+        id="provider",
+        enabled=True,
+        revision=7,
+        kind="oidc",
+        client_id="client",
+        client_secret_ciphertext="encrypted",
+        _organization=None,
     )
     policy_origins = []
 
@@ -1234,8 +1432,8 @@ def provider_login_env(domain_client, monkeypatch):
     monkeypatch.setattr(domain_auth, "get_settings", lambda: settings)
     monkeypatch.setattr(domain_auth, "_load_provider", load_provider)
     monkeypatch.setattr(domain_auth, "require_provider", real_require_provider)
-    # Only the external proof is synthetic. The HTTP callback, native subject /
-    # origin admission, home preparation, policy, JWT and Redis paths are real.
+    # External proof and provisioning are synthetic. Native subject / origin,
+    # personal ownership, policy, JWT and Redis session paths remain real.
     complete = AsyncMock(
         return_value=domain_auth.FederatedLogin(
             unscoped_token="native:user:",
@@ -1273,21 +1471,21 @@ async def provider_callback(env):
 
 
 @pytest.mark.asyncio
-async def test_provider_callback_opens_home_and_preserves_origin_through_refresh_and_selection(provider_login_env):
+async def test_provider_callback_opens_personal_and_preserves_origin_through_refresh_and_selection(provider_login_env):
     env = provider_login_env
     client = env.client
     done = await provider_callback(env)
     assert done.status_code == 200, done.text
     tokens = done.json()
-    assert tokens["identity_domain_id"] == tokens["domain_id"] == "tenant-a"
-    assert tokens["project_id"] == "own" and tokens["username"] == "user"
+    assert (tokens["identity_domain_id"], tokens["domain_id"]) == ("accounts", "personal")
+    assert tokens["project_id"] == "personal-user" and tokens["username"] == "user"
     env.verified.assert_awaited_once_with("tenant-b", "provider", 7)
     env.revoked.assert_not_awaited()
     original = (await session(tokens))[1]
     assert original["provider_domain_id"] == "tenant-b"
     refreshed = await client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert refreshed.status_code == 200
-    assert refreshed.json()["domain_id"] == refreshed.json()["identity_domain_id"] == "tenant-a"
+    assert (refreshed.json()["identity_domain_id"], refreshed.json()["domain_id"]) == ("accounts", "personal")
     switched = await client.post(
         "/api/v1/auth/token/workspace",
         json={"domain_id": "tenant-b", "project_id": "foreign"},
@@ -1295,7 +1493,7 @@ async def test_provider_callback_opens_home_and_preserves_origin_through_refresh
     )
     assert switched.status_code == 200, switched.text
     saved = (await session(switched.json()))[1]
-    assert saved["identity_domain_id"] == "tenant-a" and saved["domain_id"] == "tenant-b"
+    assert saved["identity_domain_id"] == "accounts" and saved["domain_id"] == "tenant-b"
     assert saved["provider_domain_id"] == "tenant-b" and saved["started_at"] == original["started_at"]
     assert env.policy_origins and set(env.policy_origins) == {"tenant-b"}
     env.provider.enabled = False
@@ -1304,15 +1502,36 @@ async def test_provider_callback_opens_home_and_preserves_origin_through_refresh
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("boundary", ["home", "origin", "admission", "provider", "revision", "home_email"])
+async def test_common_provider_origin_does_not_require_or_grant_workspace_membership(provider_login_env):
+    env = provider_login_env
+    env.state.grants["user"] = ["own", "second"]
+    done = await provider_callback(env)
+    assert done.status_code == 200, done.text
+    tokens = done.json()
+    assert (tokens["identity_domain_id"], tokens["domain_id"], tokens["project_id"]) == (
+        "accounts",
+        "personal",
+        "personal-user",
+    )
+    assert env.state.grants["user"] == ["own", "second", "personal-user"]
+    assert (await session(tokens))[1]["provider_domain_id"] == "tenant-b"
+    denied = await env.client.post(
+        "/api/v1/auth/token/workspace",
+        json={"domain_id": "tenant-b", "project_id": "foreign"},
+        headers={"Authorization": f"Bearer {tokens['token']}"},
+    )
+    assert denied.status_code == 403
+    assert (await session(tokens))[1]["domain_id"] == "personal"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("boundary", ["home", "origin", "provider", "revision", "home_email"])
 async def test_provider_callback_refuses_invalid_home_or_origin_without_publication(
     provider_login_env, monkeypatch, boundary
 ):
     env = provider_login_env
     if boundary in {"home", "origin"}:
-        env.state.domains["tenant-a" if boundary == "home" else "tenant-b"]["enabled"] = False
-    elif boundary == "admission":
-        env.state.grants["user"] = ["own"]
+        env.state.domains["accounts" if boundary == "home" else "tenant-b"]["enabled"] = False
     elif boundary == "provider":
         env.provider.enabled = False
     elif boundary == "revision":
@@ -1321,7 +1540,7 @@ async def test_provider_callback_refuses_invalid_home_or_origin_without_publicat
 
         async def policy(did, **kwargs):
             return domain_auth.LoginPolicy(
-                domain_id=did, allowed_email_domains=("home-only.test",) if did == "tenant-a" else ("allowed.test",)
+                domain_id=did, allowed_email_domains=("home-only.test",) if did == "accounts" else ("allowed.test",)
             )
 
         monkeypatch.setattr(domain_auth, "get_policy", policy)
@@ -1336,13 +1555,13 @@ async def test_provider_callback_refuses_invalid_home_or_origin_without_publicat
 
 
 @pytest.mark.asyncio
-async def test_provider_callback_rechecks_origin_admission_after_policy_io(provider_login_env, monkeypatch):
+async def test_provider_callback_rechecks_origin_availability_after_policy_io(provider_login_env, monkeypatch):
     env = provider_login_env
     enforce = auth._enforce_session_policy
 
     async def revoke_during_policy(*args):
         await enforce(*args)
-        env.state.grants["user"] = ["own"]
+        env.state.domains["tenant-b"]["enabled"] = False
 
     monkeypatch.setattr(auth, "_enforce_session_policy", revoke_during_policy)
     publish = AsyncMock(wraps=auth._build_token_response)
@@ -1391,7 +1610,7 @@ async def test_password_aliases_share_canonical_home_account_lock(domain_client,
     locked = await client.post("/api/v1/auth/login", json={"username": "user", "password": "valid"})
     assert locked.status_code == 429 and authenticate.call_count == 2
     redis = await session_store._get_redis()
-    assert int(await redis.get(login_guard._fail_key("user", "tenant-a"))) == 2
+    assert int(await redis.get(login_guard._fail_key("user", "accounts"))) == 2
     assert await redis.get(login_guard._fail_key("real@allowed.test", "tenant-b")) is None
 
 
@@ -1403,7 +1622,7 @@ async def test_provider_switch_back_to_identity_home_enforces_destination_email_
         return domain_auth.LoginPolicy(domain_id=did, allowed_email_domains=("home-only.test",))
 
     monkeypatch.setattr(domain_auth, "get_policy", policy)
-    require_provider = AsyncMock()
+    require_provider = AsyncMock(return_value=None)
     monkeypatch.setattr(domain_auth, "require_provider", require_provider)
     with pytest.raises(domain_auth.DomainAuthDenied) as caught:
         await auth._enforce_session_policy(

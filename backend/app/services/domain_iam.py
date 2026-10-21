@@ -21,7 +21,7 @@ from sqlalchemy import func, or_, select
 from app.config import get_settings
 from app.models.domain_iam import DomainEnrollment
 from app.services import (
-    domain_display,
+    account_spaces,
     domain_projects,
     domain_scope,
     enrollment_policy,
@@ -39,6 +39,7 @@ async def context(token_info):
     did = token_info.get("domain_id")
     if not did:
         raise HTTPException(403, "An authoritative domain is required")
+    await organization_domain(did)
     result = await _provider_call(domain_scope.domain_context, token_info["user_id"], did)
     if not result["is_domain_manager"]:
         raise HTTPException(403, "Domain manager required")
@@ -48,6 +49,15 @@ async def context(token_info):
 async def domain(domain_id):
     result = await _provider_call(domain_scope.resolve_domain, domain_id)
     domain_scope.assert_domain_resource(domain_id, result["id"])
+    return result
+
+
+async def organization_domain(domain_id):
+    result = await domain(domain_id)
+    ks = await _provider_call(keystone._get_admin_ks_client)
+    native = await _provider_call(ks.domains.get, domain_id)
+    if account_spaces.domain_kind(native) in {"account", "personal"}:
+        raise HTTPException(403, "Organization IAM is unavailable in reserved domains")
     return result
 
 
@@ -123,7 +133,7 @@ def user_dto(user, protected=False):
 
 async def directory_users(domain_id, *, ks=None):
     """Fresh home/joined directory, never a foreign credential inventory."""
-    await domain(domain_id)
+    await organization_domain(domain_id)
     ks = ks or await _provider_call(keystone._get_admin_ks_client)
     catalog = await _provider_call(identity_roles._trusted_catalog)
     rows = await _provider_call(lambda: list(ks.users.list(domain=domain_id)))
@@ -297,7 +307,13 @@ async def create_account(domain_id, name, email, password, *, enabled=True, mark
         raise HTTPException(403, "Operational account name is reserved")
     mutation = project_service._using_snapshot(_mutation) if _mutation is not None else _iam_write()
     async with mutation as (lease, ks, catalog):
-        if await _find_accounts(None, email=email) or await _find_accounts(domain_id, name=name):
+        if (
+            await _find_accounts(None, email=email, name=name)
+            or await _find_accounts(None, name=email)
+            or name
+            and "@" in name
+            and await _find_accounts(None, email=name)
+        ):
             raise HTTPException(409, "Account already exists; sign in to accept an invitation")
         extra = {"afterglow_enrollment_id": marker} if marker else {}
         return await identity_roles._write(
@@ -314,70 +330,23 @@ async def create_account(domain_id, name, email, password, *, enabled=True, mark
 
 
 @identity_roles._complete_mutation
-async def create_user(attrs, token_info, session):
-    ctx = await context(token_info)
-    attrs = dict(attrs)
-    domain_display.validate_name(attrs.get("personal_domain_name"))
-    pid = attrs.pop("project_id", None)
-    roles = attrs.pop("role_ids", []) or []
-    if roles and not pid:
-        raise HTTPException(422, "Role assignments require an explicit project")
-    project_name = ""
-    if pid:
-        await validate_invitation_roles(pid, roles, token_info)
-        project_name = _field(await resource("projects", pid, ctx["domain_id"]), "name", "")
-    email = await password_policy(ctx["domain_id"], attrs["email"])
-    row = DomainEnrollment(
-        kind="managed_create",
-        domain_id=ctx["domain_id"],
-        email=email,
-        token_hash=secrets.token_hex(32),
-        project_id=pid,
-        project_name=project_name,
-        role_ids=roles,
-        invited_by=token_info["user_id"],
-        status="pending",
-        added_role_ids=[],
-        requested_enabled=attrs["enabled"],
-        expires_at=datetime.now(UTC) + timedelta(hours=1),
-        created_at=datetime.now(UTC),
-    )
-    async with _iam_write() as mutation:
-        await context(token_info)
-        session.add(row)
-        await session.commit()
-        await session.refresh(row)
-        result = await _enroll(
-            row,
-            session,
-            mutation,
-            name=attrs["name"],
-            password=attrs["password"],
-            actor=token_info,
-            personal_domain_name=attrs["personal_domain_name"],
-        )
-        return {
-            "id": result["user_id"],
-            "name": attrs["name"],
-            "email": email,
-            "enabled": attrs["enabled"],
-            "protected": True,
-            **result,
-        }
-
-
-@identity_roles._complete_mutation
 async def create_managed_user(attrs, target_domain_id, actor, session):
     """System-admin human creation; operational provisioning uses native APIs."""
     if not await _provider_call(domain_scope.has_scope_authority, actor.get("user_id")):
         raise HTTPException(403, "System administrator required")
+    from app.services.domain_auth import DomainAuthError, normalize_email
+
     attrs = dict(attrs)
-    domain_display.validate_name(attrs.get("personal_domain_name"))
+    # The selected domain is an observation context, not organization admission
+    # or the credential policy of the new global human identity.
     await domain(target_domain_id)
-    email = await password_policy(target_domain_id, attrs.get("email", ""))
+    try:
+        email = normalize_email(attrs.get("email", ""))
+    except DomainAuthError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
     row = DomainEnrollment(
         kind="managed_create",
-        domain_id=target_domain_id,
+        domain_id=None,
         email=email,
         token_hash=secrets.token_hex(32),
         status="pending",
@@ -402,7 +371,6 @@ async def create_managed_user(attrs, target_domain_id, actor, session):
             name=attrs["name"],
             password=attrs["password"],
             actor=actor,
-            personal_domain_name=attrs["personal_domain_name"],
             system_managed=True,
         )
         return {
@@ -492,12 +460,9 @@ async def validate_invitation_roles(project_id, role_ids, token_info):
     if not set(role_ids) <= safe:
         raise HTTPException(403, "Role exceeds domain IAM project authority")
     by_id = {row["id"]: row for row in catalog}
-    effective = set(role_ids)
     for rid in role_ids:
-        effective.update(by_id[rid]["inherited_role_ids"])
         if by_id[rid]["name"] in project_service._PROJECT_GRADES:
             project_service._required_project_role(catalog, by_id[rid]["name"], require_hierarchy=True)
-    project_service._validate_reader_roles(catalog, effective)
     if not any(by_id[rid]["name"] in project_service._PROJECT_GRADES for rid in role_ids):
         raise HTTPException(422, "An explicit project membership role is required")
 
@@ -526,7 +491,9 @@ def enrollment_dto(row, project_name=""):
         "kind": row.kind,
         "user_id": row.user_id,
         "identity_domain_id": row.identity_domain_id,
-        "personal_domain_name": row.personal_domain_name,
+        "personal_project_id": row.personal_project_id,
+        "personal_project_name": row.personal_project_name,
+        "personal_domain_id": row.personal_domain_id,
         "native_writes_settled": not (
             row.creation_uncertain
             or row.domain_creation_uncertain
@@ -568,6 +535,8 @@ async def _deliver(row, token, *, project_name="", inviter=""):
 async def issue_enrollment(
     session, *, kind, domain_id, email, project_id=None, role_ids=None, invited_by=None, project_name="", inviter=""
 ):
+    if kind == "invitation":
+        await organization_domain(domain_id)
     token = secrets.token_urlsafe(32)
     row = DomainEnrollment(
         kind=kind,
@@ -654,9 +623,13 @@ async def list_invitations(token_info, session, project_id=None, *, operations=F
         await _historical_project(project_id, ctx["domain_id"])
     scope = DomainEnrollment.domain_id == ctx["domain_id"]
     if operations and system_domain_id is not None:
-        # A lost personal-domain create reply may leave a global operation
-        # unassigned. Only verified system operators may inspect/settle it.
-        scope = or_(scope, (DomainEnrollment.kind == "registration") & DomainEnrollment.domain_id.is_(None))
+        # Global account creation has no organization admission. Only verified
+        # system operators may inspect and settle these unassigned operations.
+        scope = or_(
+            scope,
+            DomainEnrollment.kind.in_(("registration", "managed_create", "external"))
+            & DomainEnrollment.domain_id.is_(None),
+        )
     query = select(DomainEnrollment).where(scope)
     if operations:
         query = query.where(DomainEnrollment.status.in_(RECOVERY_STATES | {"failed"}))
@@ -687,7 +660,10 @@ async def revoke(invitation_id, token_info, session, project_id=None, *, operati
             (
                 row.domain_id != ctx["domain_id"]
                 and not (
-                    operation and system_domain_id is not None and row.kind == "registration" and row.domain_id is None
+                    operation
+                    and system_domain_id is not None
+                    and row.kind in {"registration", "managed_create", "external"}
+                    and row.domain_id is None
                 )
             )
             or (not operation and row.kind != "invitation")
@@ -726,6 +702,8 @@ def _set_recovery_metadata(row, snapshot):
         "domain_creation_uncertain",
         "personal_project_id",
         "project_creation_uncertain",
+        "personal_domain_id",
+        "personal_project_name",
         "added_grants",
     ):
         setattr(row, key, snapshot.get(key))
@@ -754,12 +732,37 @@ async def settle_enrollment_native_writes(
         lease, ks, _ = mutation
         await _operation_context(actor, domain_id)
         row = await _locked_enrollment(operation_id, session)
-        if row.domain_id != domain_id and not (row.kind == "registration" and row.domain_id is None):
+        if row.domain_id != domain_id and not (
+            row.kind in {"registration", "managed_create", "external"} and row.domain_id is None
+        ):
             raise HTTPException(404, "Enrollment operation not found")
         if row.status not in RECOVERY_STATES | {"failed"}:
             raise HTTPException(409, "Only interrupted enrollment operations may be settled")
         snapshot = _snapshot(row)
         attrs = {}
+        if row.domain_creation_uncertain and not row.identity_native_name:
+            await account_spaces.settle_shared_domains(mutation=mutation)
+            attrs["domain_creation_uncertain"] = False
+        if row.personal_domain_id:
+            shared = await _provider_call(account_spaces.shared_domain, "personal", ks=ks)
+            if _field(shared, "id") != row.personal_domain_id:
+                raise HTTPException(503, "Personal domain binding changed")
+            projects = await _provider_call(lambda: list(ks.projects.list(domain=row.personal_domain_id)))
+            marked = [p for p in projects if _field(p, "afterglow_enrollment_id") == row.token_hash]
+            if len(marked) > 1 or any(
+                _field(p, "domain_id") != row.personal_domain_id
+                or _field(p, "name") != row.personal_project_name
+                or _field(p, "afterglow_personal_user_id") != row.user_id
+                or _field(p, "afterglow_personal_primary") is not True
+                for p in marked
+            ):
+                raise HTTPException(503, "Personal project provenance is ambiguous")
+            if marked and row.personal_project_id not in {None, _field(marked[0], "id")}:
+                raise HTTPException(503, "Personal project identity changed")
+            attrs.update(
+                personal_project_id=_field(marked[0], "id") if marked else row.personal_project_id,
+                project_creation_uncertain=False,
+            )
         if row.identity_native_name:
             domains = await _provider_call(lambda: list(ks.domains.list()))
             owned = [d for d in domains if _field(d, "afterglow_enrollment_id") == row.token_hash]
@@ -902,7 +905,7 @@ async def invitation_info(token, session):
         row = await _locked_enrollment(row_id, session)
         if enrollment_status(row) != "pending":
             raise HTTPException(410, "Enrollment link is expired, revoked, or already used")
-        dom = await domain(row.domain_id)
+        dom = await organization_domain(row.domain_id)
         project = await resource("projects", row.project_id, row.domain_id) if row.project_id else None
         result = {
             **await _email_account_info(row.email),
@@ -1014,6 +1017,8 @@ def _snapshot(row):
             "identity_native_name",
             "domain_creation_uncertain",
             "personal_project_id",
+            "personal_domain_id",
+            "personal_project_name",
             "project_creation_uncertain",
             "added_grants",
             "personal_quotas",
@@ -1041,44 +1046,6 @@ async def _native_user(ks, user_id):
         if exc.status_code == 404:
             return None
         raise
-
-
-async def _create_personal_domain(row, session, snapshot, mutation, display_name):
-    lease, ks, catalog = mutation
-    domain_projects._roles(catalog)
-    native_name = domain_display.native_name()
-    await _save(
-        row,
-        session,
-        snapshot,
-        _lease=lease,
-        personal_domain_name=display_name,
-        identity_native_name=native_name,
-        domain_creation_uncertain=True,
-    )
-    snapshot["_domain_create_attempted"] = True
-    created = await identity_roles._write(
-        lease,
-        ks.domains.create,
-        name=native_name,
-        enabled=True,
-        afterglow_display_name=display_name,
-        afterglow_enrollment_id=row.token_hash,
-    )
-    did = _field(created, "id")
-    if not isinstance(did, str) or not did:
-        raise HTTPException(503, "Personal domain creation identity is unavailable")
-    checked = await _provider_call(ks.domains.get, did)
-    if (
-        _field(checked, "id") != did
-        or _field(checked, "name") != native_name
-        or _field(checked, "afterglow_enrollment_id") != row.token_hash
-        or domain_display.display_name(checked) != display_name
-        or _field(checked, "enabled") is not True
-    ):
-        raise HTTPException(503, "Personal domain creation provenance is unavailable")
-    await _save(row, session, snapshot, _lease=lease, identity_domain_id=did, domain_creation_uncertain=False)
-    await enrollment_policy.initialize_personal_quotas(did, snapshot["personal_quotas"], lease=lease)
 
 
 async def _grant_enrollment_role(row, session, snapshot, mutation, project_id, domain_id, role_id):
@@ -1122,48 +1089,42 @@ async def _grant_enrollment_role(row, session, snapshot, mutation, project_id, d
     )
 
 
-async def _create_personal_default(row, session, snapshot, mutation):
-    lease, ks, catalog = mutation
-    manager, reader = domain_projects._roles(catalog)
-    owner = project_service._required_project_role(catalog, "project_owner", require_hierarchy=True)
-    did = row.identity_domain_id
-    await _save(row, session, snapshot, _lease=lease, project_creation_uncertain=True)
+async def _create_personal_primary(row, session, snapshot, mutation):
     snapshot["_project_create_attempted"] = True
-    project = await identity_roles._write(
-        lease,
-        ks.projects.create,
-        name="Default",
-        domain=did,
-        enabled=False,
-        description="Domain default read-only landing project",
-        afterglow_enrollment_id=row.token_hash,
-    )
-    pid = _field(project, "id")
-    if not isinstance(pid, str) or not pid:
-        raise HTTPException(503, "Personal Default creation identity is unavailable")
-    checked = await _provider_call(ks.projects.get, pid)
-    if (
-        _field(checked, "id") != pid
-        or _field(checked, "domain_id") != did
-        or _field(checked, "name") != "Default"
-        or _field(checked, "enabled") is not False
-        or _field(checked, "afterglow_enrollment_id") != row.token_hash
-    ):
-        raise HTTPException(503, "Personal Default creation provenance is unavailable")
-    await _save(row, session, snapshot, _lease=lease, personal_project_id=pid, project_creation_uncertain=False)
-    for role in (manager, reader, owner):
-        await _grant_enrollment_role(row, session, snapshot, mutation, pid, did, role["id"])
-    await domain_projects.apply_default_quotas(did, pid, lease)
-    await project_service._verify_unique_owner(ks, catalog, pid, row.user_id)
-    await identity_roles._write(lease, ks.projects.update, pid, enabled=True)
-    verified = await _provider_call(domain_projects.default_project, did, ks=ks)
-    if not verified or verified["id"] != pid:
-        raise HTTPException(503, "Personal Default activation could not be verified")
+    try:
+        return await account_spaces.provision_primary(row, session, mutation)
+    finally:
+        # The shared helper commits every phase; retain its latest evidence if a
+        # later enrollment write fails. Never erase an applying/unknown request.
+        for key in ("personal_project_id", "project_creation_uncertain", "added_grants"):
+            snapshot[key] = getattr(row, key)
 
 
 async def _owned_personal_resources(snapshot, ks):
     """Resolve only exact operation markers; absence after uncertainty is not proof."""
+    if snapshot.get("personal_domain_id"):
+        did = snapshot["personal_domain_id"]
+        shared = await _provider_call(account_spaces.shared_domain, "personal", ks=ks)
+        if _field(shared, "id") != did:
+            raise HTTPException(503, "Personal domain binding changed")
+        if snapshot.get("project_creation_uncertain"):
+            raise HTTPException(503, "Personal project creation outcome is unknown")
+        pid = snapshot.get("personal_project_id")
+        if not pid:
+            return None, None
+        project = await _provider_call(ks.projects.get, pid)
+        if (
+            _field(project, "id") != pid
+            or _field(project, "domain_id") != did
+            or _field(project, "afterglow_enrollment_id") != snapshot["token_hash"]
+            or _field(project, "afterglow_personal_user_id") != snapshot["user_id"]
+            or _field(project, "afterglow_personal_primary") is not True
+        ):
+            raise HTTPException(503, "Personal project provenance changed")
+        return None, project
     if not snapshot.get("identity_native_name"):
+        if snapshot.get("domain_creation_uncertain"):
+            raise HTTPException(503, "Shared domain creation outcome is unknown")
         return None, None
     domains = await _provider_call(lambda: list(ks.domains.list()))
     owned = [d for d in domains if _field(d, "afterglow_enrollment_id") == snapshot["token_hash"]]
@@ -1314,10 +1275,15 @@ async def _compensate(snapshot, mutation, actor):
                 return False
             await identity_roles._write(lease, ks.projects.delete, pid)
             if any(
-                _field(p, "id") == pid for p in await _provider_call(lambda: list(ks.projects.list(domain=home_id)))
+                _field(p, "id") == pid
+                for p in await _provider_call(
+                    lambda: list(ks.projects.list(domain=_field(personal_project, "domain_id")))
+                )
             ):
                 return False
         if personal_domain:
+            if account_spaces.domain_kind(personal_domain) in {"account", "personal"}:
+                return False
             # Recheck complete inventory before deleting the exact marked domain.
             for manager in (ks.users, ks.groups, ks.projects):
                 if await _provider_call(lambda manager=manager: list(manager.list(domain=home_id))):
@@ -1381,7 +1347,6 @@ async def _enroll(
     password=None,
     actor=None,
     token_info=None,
-    personal_domain_name=None,
     system_managed=False,
     external_provider=None,
     external_identity=None,
@@ -1399,20 +1364,22 @@ async def _enroll(
         if row.project_id or row.role_ids:
             raise HTTPException(403, "invitation_required")
         dom = None
-    else:
-        dom = await domain(row.domain_id)
+    elif row.domain_id is not None:
+        dom = await organization_domain(row.domain_id)
         row.email = await password_policy(row.domain_id, row.email, password=token_info is None and not external)
+    else:
+        dom = None
     if actor is not None and not system_managed:
         await context(actor)
     if row.project_id:
         await resource("projects", row.project_id, row.domain_id)
         await validate_invitation_roles(row.project_id, row.role_ids, actor)
     target_default = None
-    if not public_signup:
+    if row.domain_id is not None:
         target_default = await _provider_call(domain_projects.default_project, row.domain_id, ks=ks)
         if target_default is None:
             raise HTTPException(409, "domain_default_bootstrap_required")
-    _, reader = domain_projects._roles(catalog)
+        _, reader = domain_projects._roles(catalog)
     approval_id = None
     if token_info is not None:
         if row.kind != "invitation":
@@ -1429,11 +1396,12 @@ async def _enroll(
         if await protected_user(user, row.domain_id, credentials=False):
             raise HTTPException(403, "Privileged accounts cannot receive domain IAM grants")
     else:
-        personal_domain_name = domain_display.validate_name(personal_domain_name)
         if name == get_settings().os_username:
             raise HTTPException(403, "Operational account name is reserved")
-        if await _find_accounts(None, email=row.email):
+        if await _find_accounts(None, email=row.email, name=row.email):
             raise HTTPException(409, "Account already exists; sign in to accept an invitation")
+        if await _find_accounts(None, name=name) or name and "@" in name and await _find_accounts(None, email=name):
+            raise HTTPException(409, "Username already belongs to an account")
         unresolved = (
             await session.execute(
                 select(DomainEnrollment.id)
@@ -1455,19 +1423,16 @@ async def _enroll(
                 email=row.email,
                 issuer=external_identity.issuer if external else "",
                 subject=external_identity.subject if external else "",
-                domain_id=row.domain_id if external else None,
+                domain_id=external_provider.domain_id if external else None,
                 provider_id=external_provider.id if external else None,
             )
         policy = await enrollment_policy.read_policy(session=session)
-        if row.kind == "managed_create" and not system_managed and policy["approval_mode"] == "admin":
-            # Domain authority cannot bypass the global human-enrollment gate;
-            # invite the person so they can verify email and request review.
-            raise HTTPException(403, "signup_requires_system_approval")
         if row.personal_quotas is None:
             row.personal_quotas = dict(policy["personal_quotas"])
         user = None
     snapshot = _snapshot(row)
     create_attempted = False
+    deferred_acceptance_started = False
     try:
         # Persist intent before every external write. A process crash leaves an
         # explicit non-redeemable operation, never a pending/revocable invitation.
@@ -1484,11 +1449,17 @@ async def _enroll(
             identity_domain_id=_field(user, "domain_id") if user is not None else None,
         )
         if user is None:
-            await _create_personal_domain(row, session, snapshot, mutation, personal_domain_name)
-            if public_signup:
-                # The only working domain for public signup is the new personal home.
-                await _save(row, session, snapshot, _lease=lease, domain_id=row.identity_domain_id)
-                dom = await domain(row.identity_domain_id)
+            domains = await account_spaces.ensure_shared_domains(mutation=mutation)
+            await _save(
+                row,
+                session,
+                snapshot,
+                _lease=lease,
+                domain_creation_uncertain=False,
+                identity_domain_id=_field(domains["account"], "id"),
+                personal_domain_id=_field(domains["personal"], "id"),
+                personal_project_name=account_spaces.project_name(name),
+            )
             await _save(row, session, snapshot, _lease=lease, creation_uncertain=True)
             create_attempted = True
             if external:
@@ -1534,8 +1505,9 @@ async def _enroll(
                 ):
                     raise HTTPException(503, "Native external account binding could not be verified")
         uid = _field(user, "id")
-        if row.new_user:
-            await _create_personal_default(row, session, snapshot, mutation)
+        deferred_personal = row.new_user and row.kind == "managed_create" and system_managed
+        if row.new_user and not deferred_personal:
+            await _create_personal_primary(row, session, snapshot, mutation)
         if target_default is not None:
             await _grant_enrollment_role(
                 row,
@@ -1560,6 +1532,8 @@ async def _enroll(
             if checked is None or _field(checked, "enabled") is not row.requested_enabled:
                 raise HTTPException(503, "Native account activation could not be verified")
         identity = await domain(row.identity_domain_id)
+        personal = await _provider_call(account_spaces.personal_project, uid, ks=ks)
+        working = await domain(personal["domain_id"]) if personal else dom or identity
         await project_service.invalidate_project_lists(uid, row.domain_id)
         if row.new_user:
             await project_service.invalidate_project_lists(uid, row.identity_domain_id)
@@ -1574,11 +1548,35 @@ async def _enroll(
             {"operation_id": row.id, "identity_domain_id": row.identity_domain_id},
         )
         await enrollment_policy.consume_approval(session, approval_id, user_id=uid)
+        if deferred_personal:
+            from app.models.account_spaces import PersonalProjectIntent
+
+            # Accepted identity enrollment and deferred project provenance commit
+            # together. No project/native grant is dispatched at administrator create.
+            session.add(
+                PersonalProjectIntent(
+                    token_hash=row.token_hash,
+                    user_id=uid,
+                    primary_user_id=uid,
+                    primary=True,
+                    status="deferred",
+                    identity_domain_id=row.identity_domain_id,
+                    personal_domain_id=row.personal_domain_id,
+                    personal_project_name=row.personal_project_name,
+                    personal_quotas=dict(row.personal_quotas),
+                    added_grants=[],
+                )
+            )
+            deferred_acceptance_started = True
         await _save(row, session, snapshot, _lease=lease, status="accepted", accepted_at=datetime.now(UTC))
         return {
             "user_id": uid,
-            "domain_id": row.domain_id,
-            "domain_name": dom["name"],
+            "domain_id": working["id"],
+            "domain_name": working["name"],
+            "personal_project_id": personal["id"] if personal else None,
+            "personal_project_name": personal["name"] if personal else row.personal_project_name,
+            "personal_domain_id": personal["domain_id"] if personal else row.personal_domain_id,
+            "personal_project_deferred": deferred_personal,
             "identity_domain_id": identity["id"],
             "identity_domain_name": identity["name"],
         }
@@ -1595,6 +1593,14 @@ async def _enroll(
             await session.rollback()
         except Exception:
             pass
+        if deferred_acceptance_started:
+            # The combined accepted identity/deferred intent may already have
+            # committed. Never delete that identity or rewrite an unknown commit.
+            raise HTTPException(
+                503,
+                f"Enrollment operation {snapshot['id']} acceptance outcome is unknown; "
+                "sign in again or ask a system administrator to reconcile the enrollment",
+            ) from exc
         compensated = await _compensate(snapshot, mutation, actor or token_info)
         try:
             await lease.assert_owned()
@@ -1617,7 +1623,7 @@ async def _enroll(
 
 
 @identity_roles._complete_mutation
-async def enroll_external(provider, identity, *, lease, ks, catalog):
+async def enroll_external(provider, identity, *, lease, ks, catalog, admission_domain_id=None):
     """Provision one personal home under the callback's existing graph lease."""
     from app.database import get_session_factory
 
@@ -1638,7 +1644,7 @@ async def enroll_external(provider, identity, *, lease, ks, catalog):
         digest = hashlib.sha256((identity.issuer + "\x00" + identity.subject).encode()).hexdigest()
         row = DomainEnrollment(
             kind="external",
-            domain_id=provider.domain_id,
+            domain_id=admission_domain_id,
             email=identity.email,
             token_hash=secrets.token_hex(32),
             status="pending",
@@ -1657,7 +1663,6 @@ async def enroll_external(provider, identity, *, lease, ks, catalog):
             session,
             (lease, ks, catalog),
             name="external-" + digest,
-            personal_domain_name=identity.email.split("@", 1)[0][:64],
             external_provider=provider,
             external_identity=identity,
         )
@@ -1673,7 +1678,7 @@ async def enroll_external(provider, identity, *, lease, ks, catalog):
 
 
 @identity_roles._complete_mutation
-async def redeem(token, kind, session, *, name=None, password=None, token_info=None, personal_domain_name=None):
+async def redeem(token, kind, session, *, name=None, password=None, token_info=None):
     row = await lookup_token(token, kind, session)
     row_id = row.id
     await session.rollback()
@@ -1688,5 +1693,4 @@ async def redeem(token, kind, session, *, name=None, password=None, token_info=N
             password=password,
             actor=actor,
             token_info=token_info,
-            personal_domain_name=personal_domain_name,
         )

@@ -6,6 +6,8 @@
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import type { AdminInstance } from '$lib/types/adminInstance';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	let {
 		instances,
@@ -56,6 +58,21 @@
 	}
 </script>
 
+<ResponsiveTable>
+	{#snippet cards()}
+		<div class="responsive-card-toolbar min-h-11 text-xs text-ink-2"><SelectionCheckbox checked={allSelected} indeterminate={partiallySelected} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel={t('instances.table.selectAll')} />{t('instances.table.selectAll')}</div>
+		{#each instances as s, index (s.id)}
+			<CompactResourceCard selected={selectedIds.has(s.id)}>
+				<div class="flex items-start gap-2" data-tour={index === 0 ? 'admin-compute-row' : undefined}>
+					<SelectionCheckbox checked={selectedIds.has(s.id)} disabled={selectionDisabled || !selectableIds.has(s.id)} unavailable={!selectableIds.has(s.id)} title={!selectableIds.has(s.id) ? t('instances.table.unselectable') : undefined} onclick={() => onToggleSelect(s.id)} ariaLabel={t('instances.table.select', { name: s.name || s.id })} />
+					<button type="button" data-tour={index === 0 ? 'admin-compute-row-open' : undefined} class="min-h-11 min-w-0 flex-1 line-clamp-2 break-all text-left font-medium text-ink-0" title={s.name || s.id} onclick={() => onOpen(s)}>{s.name || s.id.slice(0, 8)}</button><StatusChip status={s.status} />
+				</div>
+				<div class="space-y-1 break-all text-xs text-ink-2"><p>{t('instances.table.flavor')}: {s.flavor || '-'}</p><p>{t('instances.table.host')}: {s.host || '-'}</p><p>{t('instances.table.project')}: {s.project_id ? ($projectNames.get(s.project_id) ?? s.project_id.slice(0, 8)) : '-'}</p></div>
+				{#snippet actions()}{#if s.status === 'ERROR' && onRecover}<Button variant="secondary" size="sm" onclick={() => onRecover(s)}>{t('instances.table.recover')}</Button>{/if}{/snippet}
+				{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p class="font-mono">{s.id}</p><p>{t('instances.table.createdAt')}: {s.created_at?.slice(0, 10) ?? '-'}</p>{#if s.project_id}<Button variant="link" size="sm" onclick={() => copyProjectId(s.project_id!)}>{copiedProjectId === s.project_id ? t('instances.table.copied') : s.project_id}</Button>{/if}{#if s.fault}<p>{s.fault}</p>{/if}</div>{/snippet}
+			</CompactResourceCard>
+		{/each}
+	{/snippet}
 <div class="overflow-x-auto">
 	<table class="selection-table w-full text-sm">
 		<thead>
@@ -142,6 +159,7 @@
 		</tbody>
 	</table>
 </div>
+</ResponsiveTable>
 
 <Pagination
 	page={markerStack.length + 1}

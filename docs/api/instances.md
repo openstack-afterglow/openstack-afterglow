@@ -48,6 +48,7 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `GET` | `/api/v1/instances` | 인스턴스 목록 (단기 캐시) |
 | `GET` | `/api/v1/instances/availability-zones` | 가용 영역 목록 |
 | `GET` | `/api/v1/instances/{instance_id}` | 특정 인스턴스 상세 정보 |
+| `PUT` | `/api/v1/instances/{instance_id}/name` | 소유 프로젝트 인스턴스의 표시 이름 변경 |
 | `POST` | `/api/v1/instances` | 인스턴스 동기 생성 (5/분) |
 | `POST` | `/api/v1/instances/async` | 인스턴스 SSE 비동기 생성 |
 | `POST` | `/api/v1/instances/bulk-action` | 인스턴스 일괄 액션 (10/분) |
@@ -106,6 +107,18 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 **응답 (200 OK)** — `InstanceInfo` (위 표 참조)
 
 **오류**: `404 Not Found` — 인스턴스가 없거나 타 프로젝트 소유
+
+### PUT /api/v1/instances/{instance_id}/name
+
+관리자·사용자 공용 상세 화면의 **이름 변경**은 Nova 표시 이름만 바꿉니다. 게스트 hostname·OS 설정·전원 상태는 변경하지 않으며 실행 중인 인스턴스에도 사용할 수 있습니다. 기존 크기 변경 UI는 그대로 `SHUTOFF` 상태에서만 표시합니다.
+
+요청은 `{ "name": "worker-new" }`입니다. 앞뒤 공백을 제거하고 내부 개행 아닌 공백을 하이픈으로 바꾼 뒤, 영문자/숫자로 시작하는 영문자·숫자·하이픈·언더스코어 1–63자를 허용합니다. 빈 이름·개행·그 밖의 문자는 `422`입니다. 생성과 달리 빈 이름을 자동 생성하지 않습니다.
+
+사용자 경로는 프로젝트 쓰기 권한과 실제 Nova 서버의 effective-project 소유권을 모두 검사합니다. 시스템 관리자도 이 경로로 다른 프로젝트를 수정할 수 없으며, 해당 작업은 fresh `require_admin`이 적용된 `PUT /api/v1/admin/instances/{instance_id}/name`을 사용합니다. 관리자 경로도 요청자의 기존 SDK 연결을 사용하고 대상 소유 프로젝트를 확인합니다.
+
+성공 `200`은 `{ "id": "...", "name": "worker-new", "project_id": "..." }`입니다. 같은 이름은 인가 후 native 쓰기 없는 성공입니다. 변경은 SDK `update_server(name=...)` 뒤 fresh detail의 ID·이름·소유 프로젝트 일치를 확인하며, 오류/불일치 `400`을 성공으로 표시하지 않습니다. 쓰기 결과가 불확실해도 기존 상세·목록·관리자 topology cache를 무효화합니다. 실제 소유 프로젝트 불일치는 사용자 경로에서 `404`, 관리자 권한 부족은 `403`, 대상 소유 metadata 부재는 `409`입니다.
+
+브라우저는 이름 초안을 일반 polling 동안 유지하고 제출을 자동 재전송하지 않습니다. 닫기·다른 대상/모드·actor/session/project/권한 변경과 same-tick ABA는 이전 응답 공개를 차단하며, 현재 문맥에서 확인된 성공만 상세와 열린 목록을 갱신합니다.
 
 ### POST /api/v1/instances
 
@@ -300,6 +313,8 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 ### 소유 인스턴스 리사이즈
 
 프로젝트의 쓰기 권한을 가진 사용자는 자신이 소유한 VM의 플레이버를 변경할 수 있습니다. `GET /api/v1/instances/{instance_id}/resize-flavors`는 현재 플레이버를 기준으로 보이는 플레이버의 `FlavorInfo` 목록과 `eligibility`(선택 가능 여부와 quota blocker)를 반환합니다. 코어·RAM·GPU 쿼터는 생성 총량이 아닌 **현재 플레이버 대비 증가분**으로 평가합니다. 현재와 동일한 플레이버는 선택할 수 없으며, 이미지 기반 VM은 플레이버 디스크 축소도 선택할 수 없습니다. 볼륨 기반 VM은 플레이버 디스크 축소 제약에서 제외됩니다.
+
+Nova2.47+는 현재 플레이버를 ID 없이 `original_name`·vCPU·RAM·disk·extra_specs의 인스턴스 내장 snapshot으로 반환할 수 있습니다. SDK가 이름을 `id`처럼 노출해도 native ID로 취급하지 않습니다. 이 경우 실제 할당 snapshot으로 증분·디스크 제약을 계산하므로 기존 catalog 플레이버의 삭제·비공개·이름 변경·동명 사양 변경에도 목록을 읽을 수 있습니다. Snapshot은 내부 admission 전용이고 API·직렬화 cache에는 포함하지 않습니다. ID가 없을 때 같은 이름은 보수적으로 동일 플레이버로 차단하며, rename 뒤 숨은 native ID를 추정하지 않습니다(Nova가 최종 거부). Legacy 응답은 기존 exact-ID/유일 이름 조회를 유지하며 필수 자원값이 없거나 잘못되면409로 거부합니다.
 
 `POST /api/v1/instances/{instance_id}/resize` 요청 본문은 `{ "flavor_id": "target-flavor-id" }`입니다. 서버는 요청 시 인스턴스 소유권, 쓰기 권한, 대상 플레이버, 디스크 제약 및 최신 쿼터를 다시 검증하므로 조회 결과를 클라이언트에서 변경해도 우회할 수 없습니다. Nova cold resize는 VM 재시작을 수반합니다. 응답의 `status`는 `resizing`이며 VM이 `VERIFY_RESIZE`가 된 뒤 `POST .../confirm-resize`(`status: confirmed`) 또는 `POST .../revert-resize`(`status: reverting`) 중 하나를 선택해야 합니다. 일반 사용자 경로와 별도로 관리자 전용 `/api/v1/admin/instances/{id}/resize`, `/confirm-resize`, `/revert-resize`는 계속 유지됩니다.
 

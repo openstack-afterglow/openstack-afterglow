@@ -220,14 +220,27 @@ describe('provider home-first handoff', () => {
 
 	it.each([
 		{ ...response, identity_domain_id: undefined },
+		{ ...response, domain_id: undefined },
+		{ ...response, identity_domain_name: undefined },
 		{ ...response, domain_id: 'team', domain_name: 'Team' },
 		{ ...response, identity_domain_id: 'foreign-home' },
-	])('revokes a fresh provider response with missing home or foreign working scope $domain_id/$identity_domain_id', async result => {
+	])('revokes a fresh provider response with incomplete identity or foreign working scope $domain_id/$identity_domain_id', async result => {
 		mocks.post.mockImplementation((path: string) => Promise.resolve(path.endsWith('/providers/callback') ? result : {}));
 		render(Page);
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/auth/logout', {}, response.token, undefined,
 			expect.objectContaining({ cache: 'no-store', suppressAuthRedirect: true, replayOnUnauthorized: false })));
 		expect(get(auth).token).toBeNull(); expect(mocks.goto).not.toHaveBeenCalled();
+	});
+
+	it('publishes personal landing separate from account identity and provider organization origin', async () => {
+		const personal = { id: 'personal', name: 'Personal', kind: 'personal' };
+		mocks.post.mockResolvedValueOnce({ ...response, domain_id: personal.id, domain_name: personal.name,
+			identity_domain_id: 'account', identity_domain_name: 'account', project_id: 'personal-primary', project_name: 'alice-c8f572',
+			available_domains: [personal, { id: 'team', name: 'Team', kind: 'organization' }] });
+		render(Page);
+		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/select-domain', { replaceState: true }));
+		expect(get(auth)).toMatchObject({ identityDomainId: 'account', domainId: 'personal', projectId: 'personal-primary', federated: true });
+		expect(get(auth).availableDomains?.map(row => row.id)).toEqual(['personal', 'team']);
 	});
 
 	it.each(['login', 'aba', 'unmount'] as const)('revokes rather than publishing a late provider response after %s', async (kind) => {

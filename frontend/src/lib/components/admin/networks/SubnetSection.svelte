@@ -177,39 +177,39 @@
 						</div>
 					</div>
 				{:else}
-					<div class="min-w-0 bg-surface-sunken/50 rounded-lg p-4">
+					<div class="min-w-0 bg-surface-sunken/50 rounded-lg p-3 lg:p-4">
 						<div class="flex flex-wrap items-start justify-between gap-3 mb-3">
 							<div class="min-w-0">
 								<h3 class="text-sm font-medium text-ink-0">
 									<a
 										href="/admin/subnets/{subnet.id}"
-										class="hover:text-accent hover:underline transition-colors"
+										class="inline-flex min-h-11 lg:min-h-0 items-center break-all hover:text-accent hover:underline transition-colors"
 									>
 										{subnet.name || t('subnetSection.unnamed')}
 									</a>
 								</h3>
 								<span class="text-xs text-ink-2 font-mono break-all">{subnet.id}</span>
 							</div>
-							<div class="flex items-center gap-1">
+							<div class="flex flex-wrap items-center gap-1">
 								<button
 									onclick={() => startEditSubnet(subnet)}
-									class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors"
+									class="min-h-11 lg:min-h-0 text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors"
 								>{t('subnetSection.edit')}</button>
 								<button aria-busy={deletingSubnetId === subnet.id}
 									onclick={() => onDelete(subnet.id, subnet.name)}
 									disabled={deletingSubnetId === subnet.id}
-									class="text-xs text-[var(--color-state-danger-text)] hover:text-[var(--color-state-danger-text)] disabled:text-ink-3 px-2 py-1 border border-[var(--color-state-danger)]/30 hover:border-[var(--color-state-danger)]/30 disabled:border-line-2 rounded transition-colors"
+									class="min-h-11 lg:min-h-0 text-xs text-[var(--color-state-danger-text)] hover:text-[var(--color-state-danger-text)] disabled:text-ink-3 px-2 py-1 border border-[var(--color-state-danger)]/30 hover:border-[var(--color-state-danger)]/30 disabled:border-line-2 rounded transition-colors"
 								>{#if deletingSubnetId === subnet.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('subnetSection.deleting')}</span>{:else}{t('subnetSection.delete')}{/if}</button>
 							</div>
 						</div>
-						<dl class="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
+						<dl class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-2">
 							<div>
 								<dt class="text-xs text-ink-2 mb-0.5">CIDR</dt>
-								<dd class="text-sm text-ink-2 font-mono">{subnet.cidr}</dd>
+								<dd class="break-all text-sm text-ink-2 font-mono">{subnet.cidr} <span class="lg:hidden">· IPv{subnet.ip_version}</span></dd>
 							</div>
 							<div>
 								<dt class="text-xs text-ink-2 mb-0.5">{t('subnetSection.gateway')}</dt>
-								<dd class="text-sm text-ink-2 font-mono">{subnet.gateway_ip ?? '-'}</dd>
+								<dd class="break-all text-sm text-ink-2 font-mono">{subnet.gateway_ip ?? '-'}</dd>
 							</div>
 							<div>
 								<dt class="text-xs text-ink-2 mb-0.5">DHCP</dt>
@@ -221,7 +221,7 @@
 									{/if}
 								</dd>
 							</div>
-							<div>
+							<div class="hidden lg:block">
 								<dt class="text-xs text-ink-2 mb-0.5">{t('subnetSection.ipVersion')}</dt>
 								<dd class="text-sm text-ink-2">IPv{subnet.ip_version}</dd>
 							</div>

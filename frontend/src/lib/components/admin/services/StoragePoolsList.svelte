@@ -3,6 +3,8 @@
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import BklitChart from '$lib/components/charts/BklitChart.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import type { StoragePool } from '$lib/types/adminServices';
 	import ServiceListControls from './ServiceListControls.svelte';
 	import {
@@ -82,6 +84,29 @@
 	{:else if visiblePools.length === 0}
 		<EmptyState headline={t('services.pools.noMatches')} description={t('services.list.adjustFilters')} />
 	{:else}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each visiblePools as pool (pool.name)}
+					{@const usedGb = pool.total_capacity_gb - pool.free_capacity_gb}
+					{@const pct = pool.total_capacity_gb > 0 ? Math.min(100, (usedGb / pool.total_capacity_gb) * 100) : 0}
+					<CompactResourceCard>
+						<h3 class="break-all text-sm font-medium text-ink-0">{pool.name}</h3>
+						<dl class="grid gap-1 text-xs text-ink-2">
+							<div class="flex flex-wrap justify-between gap-2"><dt>{t('services.pools.totalCapacity')}</dt><dd class="tabular-nums">{pool.total_capacity_gb.toFixed(1)} GiB</dd></div>
+							<div class="flex flex-wrap justify-between gap-2"><dt>{t('services.pools.freeCapacity')}</dt><dd class="tabular-nums">{pool.free_capacity_gb.toFixed(1)} GiB</dd></div>
+						</dl>
+						<p class="text-xs text-ink-2">{t('services.pools.usedPercent', { percent: pct.toFixed(1) })}</p>
+						{#snippet details()}
+							<p class="text-xs text-ink-2 tabular-nums">{usedGb.toFixed(1)} / {pool.total_capacity_gb.toFixed(1)} GiB</p>
+							<dl class="grid gap-2 text-xs text-ink-2">
+								<div><dt>{t('services.pools.protocol')}</dt><dd class="break-all">{pool.storage_protocol || '-'}</dd></div>
+								<div><dt>{t('services.pools.backend')}</dt><dd class="break-all">{pool.volume_backend_name || '-'}</dd></div>
+								<div><dt>{t('services.pools.vendor')}</dt><dd class="break-all">{pool.vendor_name || '-'}</dd></div>
+							</dl>
+						{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<div class="space-y-4">
 			{#each visiblePools as pool (pool.name)}
 				{@const usedGb = pool.total_capacity_gb - pool.free_capacity_gb}
@@ -113,5 +138,6 @@
 				</article>
 			{/each}
 		</div>
+		</ResponsiveTable>
 	{/if}
 </div>

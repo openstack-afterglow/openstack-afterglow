@@ -466,7 +466,7 @@ async def test_subnet_mismatch_returns_401(native_auth):
         native_auth.user_id,
         refresh_exp,
         domain_id="default",
-        identity_domain_id="default",
+        identity_domain_id="accounts",
         origin_ip="192.168.1.1",
         origin_fp="fp_origin",
     )

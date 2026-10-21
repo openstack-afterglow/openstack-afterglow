@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import HTTPException
 
-from app.services import cache, domain_display, identity_roles, keystone
+from app.services import account_spaces, cache, domain_display, identity_roles, keystone
 
 _field = identity_roles._field
 _PROJECTION_PREFIX = "afterglow-default-managers-"
@@ -140,7 +140,10 @@ def default_project(domain_id, *, ks=None, operation=None, reads=None):
     key = ("domain_projects", "default", domain_id)
     if key in reads:
         return reads[key]
-    _exact(ks.domains, domain_id, reads=reads)
+    domain = _exact(ks.domains, domain_id, reads=reads)
+    if account_spaces.domain_kind(domain) in {"account", "personal"}:
+        reads[key] = None
+        return None
     matches = []
     list_key = ("domain_projects", "project_list", domain_id)
     if list_key not in reads:
@@ -366,6 +369,34 @@ def _sources(ks, project, catalog, raw=None, *, exclude_projection=False, reads=
     return result
 
 
+def _personal_owner(sources, catalog, user_id):
+    owner_id = _canonical(catalog, "project_owner")["id"]
+    owner_source = None
+    for source in sources:
+        if not identity_roles._owner_bearing_role(catalog, source["role_id"]):
+            continue
+        if owner_source is not None:
+            return False
+        owner_source = source
+    return bool(
+        owner_source is not None
+        and owner_source["role_id"] == owner_id
+        and owner_source["kind"] == "project"
+        and not owner_source["inherited"]
+        and not owner_source["group_id"]
+        and owner_source["user_id"] == user_id
+        and user_id in owner_source["users"]
+    )
+
+
+def _personal_member(sources, catalog, user_id, project_id):
+    member = account_spaces._personal_member_role(catalog)
+    if any(source["role_id"] == member["id"] for source in sources):
+        return account_spaces._member_sources(sources, catalog, user_id, project_id)
+    # Established owner-based projects keep their original grants and boundary.
+    return _personal_owner(sources, catalog, user_id)
+
+
 def accessible_domains(user_id, *, ks=None, operation=None):
     ks, reads = _read_context(ks, operation=operation)
     user = _active_user(ks, user_id, authenticated=True, reads=reads)
@@ -379,7 +410,10 @@ def _accessible_domains(ks, user_id, user, reads, *, operation=None):
     catalog = _catalog(ks, operation=operation)
     home_id = _field(user, "domain_id")
     home = _exact(ks.domains, home_id, reads=reads)
-    domains = {home_id: {"id": home_id, "name": domain_display.display_name(home)}}
+    home_kind = account_spaces.domain_kind(home)
+    domains = {}
+    if home_kind not in {"account", "personal"}:
+        domains[home_id] = {"id": home_id, "name": domain_display.display_name(home), "kind": home_kind}
     _raw(ks, catalog, reads=reads)
     effective_key = ("domain_projects", "effective_user", user_id, id(catalog))
     if effective_key not in reads:
@@ -397,9 +431,14 @@ def _accessible_domains(ks, user_id, user, reads, *, operation=None):
         domain = _exact(ks.domains, domain_id, reads=reads)
         if not _enabled(project) or not _enabled(domain):
             continue
-        sources = _sources(ks, project, catalog, exclude_projection=True, reads=reads)
+        kind = account_spaces.domain_kind(domain)
+        if kind == "account" or (kind == "personal" and _field(project, "afterglow_personal_user_id") != user_id):
+            continue
+        sources = _sources(ks, project, catalog, exclude_projection=kind != "personal", reads=reads)
+        if kind == "personal" and not _personal_member(sources, catalog, user_id, project_id):
+            continue
         if any(user_id in source["users"] for source in sources):
-            domains[domain_id] = {"id": domain_id, "name": domain_display.display_name(domain)}
+            domains[domain_id] = {"id": domain_id, "name": domain_display.display_name(domain), "kind": kind}
     # The effective sources above already include current Default managers.
     if any(not isinstance(d["name"], str) or not d["name"] for d in domains.values()):
         raise _unavailable()
@@ -410,9 +449,13 @@ def _accessible_domains(ks, user_id, user, reads, *, operation=None):
 def assert_membership(user_id, domain_id, *, ks=None, operation=None):
     ks, reads = _read_context(ks, operation=operation)
     user = _active_user(ks, user_id, authenticated=True, reads=reads)
-    if domain_id == _field(user, "domain_id"):
-        # Native home membership needs no unrelated project/group inventory.
-        home = _exact(ks.domains, domain_id, reads=reads)
+    target = _exact(ks.domains, domain_id, reads=reads)
+    kind = account_spaces.domain_kind(target)
+    if kind == "account":
+        raise HTTPException(403, "account_domain_is_identity_only")
+    if domain_id == _field(user, "domain_id") and kind != "personal":
+        # Legacy identity homes remain accessible; reserved account/personal do not infer membership.
+        home = target
         name = domain_display.display_name(home)
         if not isinstance(name, str) or not name:
             raise _unavailable()
@@ -429,13 +472,21 @@ def assert_project_membership(user_id, project_id, *, ks=None, operation=None):
     domain_id = _field(project, "domain_id")
     if not isinstance(domain_id, str) or not domain_id:
         raise _unavailable()
-    if not _enabled(project) or not _enabled(_exact(ks.domains, domain_id, reads=reads)):
+    domain = _exact(ks.domains, domain_id, reads=reads)
+    kind = account_spaces.domain_kind(domain)
+    if kind == "account" or (kind == "personal" and _field(project, "afterglow_personal_user_id") != user_id):
+        raise HTTPException(403, "project_membership_denied")
+    if not _enabled(project) or not _enabled(domain):
         raise HTTPException(403, "project_membership_denied")
     catalog = _catalog(ks, operation=operation)
     rows = _effective(ks, project_id, catalog, reads=reads)
     if not any(_field(_field(row, "user"), "id") == user_id for row in rows):
         raise HTTPException(403, "project_membership_denied")
-    sources = _sources(ks, project, catalog, exclude_projection=True, reads=reads)
+    sources = _sources(ks, project, catalog, exclude_projection=kind != "personal", reads=reads)
+    if kind == "personal":
+        if not _personal_member(sources, catalog, user_id, project_id):
+            raise HTTPException(403, "personal_project_member_required")
+        return
     if any(user_id in source["users"] for source in sources):
         return
     default = default_project(domain_id, ks=ks, reads=reads)
@@ -462,6 +513,12 @@ def assert_default_immutable(project_id, *, attrs=None, delete=False, ks=None, p
     elif _field(project, "id") != project_id:
         raise _unavailable()
     attrs = attrs or {}
+    if _field(project, "afterglow_personal_user_id") and "name" in attrs and attrs["name"] != _field(project, "name"):
+        raise HTTPException(422, "personal_project_name_is_generated")
+    if _field(project, "afterglow_personal_primary") is True and (
+        delete or attrs.get("enabled") is False or attrs.get("is_enabled") is False
+    ):
+        raise HTTPException(422, "personal_primary_project_is_immutable")
     name = _field(project, "name", "")
     if not isinstance(name, str):
         raise _unavailable()
@@ -618,7 +675,12 @@ def assert_managers_remain(
 
 
 @asynccontextmanager
-async def _mutation(*, ks=None):
+async def _mutation(*, ks=None, snapshot=None):
+    if snapshot is not None:
+        lease, ks, catalog = snapshot
+        await lease.assert_owned()
+        yield lease, ks, catalog
+        return
     from app.services.native_operation import NativeOperation
 
     owned = NativeOperation() if ks is None else None
@@ -651,6 +713,9 @@ async def _invalidate(domain_id, users=()):
 
 
 async def _sync(domain_id, lease, ks, catalog, *, created_groups=None, staged_project=None):
+    domain = await asyncio.to_thread(_exact, ks.domains, domain_id)
+    if account_spaces.domain_kind(domain) in {"account", "personal"}:
+        return
     if staged_project is None:
         project = await asyncio.to_thread(default_project, domain_id, ks=ks)
     else:
@@ -781,6 +846,13 @@ async def ensure_login_access(user_id, domain_id, *, operation=None):
     owned = operation is None
     operation = NativeOperation() if owned else operation
     try:
+        domain = await operation.run(operation.get, "domains", domain_id)
+        kind = account_spaces.domain_kind(domain)
+        if kind == "account":
+            raise HTTPException(403, "account_domain_is_identity_only")
+        if kind == "personal":
+            await operation.run(assert_membership, user_id, domain_id, operation=operation)
+            return
         await asyncio.to_thread(assert_membership, user_id, domain_id, operation=operation)
         project = await asyncio.to_thread(default_project, domain_id, operation=operation)
         if project is not None and await asyncio.to_thread(
@@ -952,26 +1024,44 @@ async def _bootstrap(domain_id, creator_id, lease, ks, catalog, *, grant_manager
 async def bootstrap_default(domain_id, *, creator_id):
     """Explicit system-admin route only; never called by login or read helpers."""
     async with _mutation() as (lease, ks, catalog):
-        if not _enabled(await asyncio.to_thread(_exact, ks.domains, domain_id)):
+        domain = await asyncio.to_thread(_exact, ks.domains, domain_id)
+        if not _enabled(domain):
             raise HTTPException(403, "domain_disabled")
+        if account_spaces.domain_kind(domain) in {"account", "personal"}:
+            raise HTTPException(403, "organization_domain_required")
         project = await _bootstrap(domain_id, creator_id, lease, ks, catalog, grant_manager=True)
         await _invalidate(domain_id, {creator_id})
         return {"domain_id": domain_id, "default_project_id": project["id"], "creator_id": creator_id}
 
 
 @identity_roles._complete_mutation
-async def create_domain(*, name, description, enabled, creator_id):
-    async with _mutation() as (lease, ks, catalog):
-        _roles(catalog)
-        if await asyncio.to_thread(_active_user, ks, creator_id) is None:
-            raise HTTPException(403, "domain_creator_disabled")
-        # Keystone rejects any project created under a disabled domain. Stage
-        # an empty enabled domain and a disabled Default instead. No usable
-        # project membership is activated before grant/projection readback.
-        # Unknown creation responses are never retried or deleted by name.
-        name = domain_display.validate_name(name)
-        internal_name = domain_display.native_name()
-        existing = {_field(d, "id") for d in await asyncio.to_thread(ks.domains.list)}
+async def create_domain(*, name, description, enabled, creator_id, mutation=None, metadata=None):
+    async with _mutation(snapshot=mutation) as (lease, ks, catalog):
+        try:
+            _roles(catalog)
+            if await asyncio.to_thread(_active_user, ks, creator_id) is None:
+                raise HTTPException(403, "domain_creator_disabled")
+            name = domain_display.validate_name(name)
+            internal_name = domain_display.native_name()
+            organizations = await asyncio.to_thread(account_spaces._rows, ks.domains)
+            existing = {_field(item, "id") for item in organizations}
+            if not await asyncio.to_thread(keystone._is_system_admin, creator_id):
+                from app.config import get_settings
+
+                policy = get_settings().auth
+                if not policy.organization_creation_enabled:
+                    raise HTTPException(403, "organization_creation_disabled")
+                count = sum(
+                    account_spaces.domain_kind(item) == "organization"
+                    and _field(item, "afterglow_created_by") == creator_id
+                    for item in organizations
+                )
+                if count >= policy.max_organizations_per_user:
+                    raise HTTPException(403, "organization_creation_limit_reached")
+        except HTTPException as exc:
+            exc.native_create_dispatched = False
+            raise
+        # Stage an enabled domain with disabled Default; never retry unknown creates.
         created = await identity_roles._write(
             lease,
             ks.domains.create,
@@ -979,6 +1069,9 @@ async def create_domain(*, name, description, enabled, creator_id):
             afterglow_display_name=name,
             description=description,
             enabled=True,
+            **(metadata or {}),
+            afterglow_domain_kind="organization",
+            afterglow_created_by=creator_id,
         )
         domain_id = _field(created, "id")
         if not isinstance(domain_id, str) or not domain_id or domain_id in existing:
@@ -988,6 +1081,9 @@ async def create_domain(*, name, description, enabled, creator_id):
             _field(domain, "name") != internal_name
             or domain_display.display_name(domain) != name
             or not _enabled(domain)
+            or account_spaces.domain_kind(domain) != "organization"
+            or _field(domain, "afterglow_created_by") != creator_id
+            or any(_field(domain, key) != value for key, value in (metadata or {}).items())
         ):
             raise _unavailable()
         try:
@@ -1021,6 +1117,7 @@ async def create_domain(*, name, description, enabled, creator_id):
             "name": name,
             "description": description,
             "enabled": enabled,
+            "kind": "organization",
             "default_project_id": project["id"],
         }
 
@@ -1069,6 +1166,8 @@ async def change_manager(domain_id, user_id, role_id, *, remove, actor):
             raise HTTPException(403, "domain_disabled")
         if await asyncio.to_thread(_active_user, ks, user_id) is None:
             raise HTTPException(403, "domain_user_disabled")
+        if not remove:
+            await asyncio.to_thread(assert_membership, user_id, domain_id, ks=ks)
         direct = await asyncio.to_thread(_assignment_rows, ks, project["id"])
         exists = role_id in _direct_ids(direct, user_id)
         if remove and not exists:

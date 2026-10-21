@@ -6,6 +6,13 @@ import { setLocale } from '$lib/i18n/runtime.svelte';
 import { t } from '$lib/i18n/ns/admin-telemetry';
 import type { GnocchiOverview, MetricMeasures, NativeMetric, NativePage, NativeResource, TelemetryAuthority } from '$lib/api/adminTelemetry';
 import type * as AdminTelemetryApi from '$lib/api/adminTelemetry';
+import type * as SvelteReactivity from 'svelte/reactivity';
+
+const viewport = vi.hoisted(() => ({ desktop: true }));
+vi.mock('svelte/reactivity', async importOriginal => ({
+	...await importOriginal<typeof SvelteReactivity>(),
+	MediaQuery: class { get current() { return viewport.desktop; } },
+}));
 
 type MessageKey = Parameters<typeof t>[0];
 
@@ -60,6 +67,7 @@ async function settle() { await tick(); await Promise.resolve(); await tick(); }
 async function selectFirstMetric() { await fireEvent.click(await screen.findByRole('button', { name: m1 })); }
 
 beforeEach(() => {
+	viewport.desktop = true;
 	setLocale('en');
 	auth.update(state => ({ ...state, token: 'token-a', projectId: 'project-a', userId: 'admin-a', sessionId: 'session-a', domainId: 'domain-a', identityDomainId: 'home-a', isSystemAdmin: true }));
 	authReady.set(true); projectSwitching.set(false); logoutInProgress.set(false);
@@ -68,6 +76,18 @@ beforeEach(() => {
 afterEach(() => { cleanup(); setLocale('ko'); });
 
 describe('Gnocchi route read-only service diagnostics', () => {
+	it('keeps compact metric selection and exact timestamp, grain, unit and measured zero', async () => {
+		viewport.desktop = false;
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: r1 }));
+		await fireEvent.click(sectionUI('gnocchi.resources').getByRole('button', { name: `cpu · ${m1}` }));
+		const measures = sectionUI('gnocchi.measures');
+		await measures.findByText(sampleTime, { selector: 'time' });
+		expect(measures.getByText(`${t('gnocchi.value')}: 0 · ns`)).toBeTruthy();
+		expect(measures.getByText(`${t('gnocchi.nativeGrain')}: 300`)).toBeTruthy();
+		expect(screen.queryByRole('table')).toBeNull();
+		expect(pagination('gnocchi.resources').getByRole('button', { name: t('next') })).toBeTruthy();
+	});
 	it('keeps failed and partial sections independent from processing zero, policies, rules and inventory', async () => {
 		const result = overview();
 		result.status = 'partial';

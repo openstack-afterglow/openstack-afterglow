@@ -124,6 +124,12 @@ function assertSiblingSources() {
 function prepareLocalConfiguration() {
 	mkdirSync(LOCAL_DIR, { recursive: true, mode: 0o700 });
 	chmodSync(LOCAL_DIR, 0o700);
+	for (const service of ['lumen', 'drover', 'waygate', 'palimpsest']) {
+		const directory = `${LOCAL_DIR}/policy/${service}`;
+		mkdirSync(directory, { recursive: true, mode: 0o755 });
+		const policy = `${directory}/policy.yaml`;
+		if (!existsSync(policy)) writeFileSync(policy, '{}\n', { flag: 'wx', mode: 0o644 });
+	}
 	const configPath = `${LOCAL_DIR}/afterglow.conf`;
 	if (!existsSync(configPath)) copyFileSync('afterglow.conf', configPath, constants.COPYFILE_EXCL);
 	chmodSync(configPath, 0o640);

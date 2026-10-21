@@ -3,9 +3,12 @@
 	import { t as tr } from '$lib/i18n/ns/database';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api, ApiError } from '$lib/api/client';
+	import { api as baseApi, ApiError } from '$lib/api/client';
+	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
+	const api = createAdminInventoryApi(baseApi);
+	onDestroy(api.dispose);
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
@@ -15,6 +18,9 @@
 	import DbCreatePanel from '$lib/components/database/DbCreatePanel.svelte';
 	import type { DbInstance } from '$lib/types/database';
 	import { toast } from '$lib/stores/toast';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 
 	let instances = $state<DbInstance[]>([]);
 	let loading = $state(true);
@@ -50,6 +56,7 @@
 			await api.delete(`/api/v1/database-instances/${id}`, token, projectId);
 			await load();
 		} catch (e) {
+			if (!api.isCurrent()) return;
 			toast.error(tr('errors.delete', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			deleting = null;
@@ -63,6 +70,7 @@
 			await api.post(`/api/v1/database-instances/${id}/restart`, {}, token, projectId);
 			await load();
 		} catch (e) {
+			if (!api.isCurrent()) return;
 			toast.error(tr('errors.restart', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			restarting = null;
@@ -107,6 +115,17 @@
 	{:else if instances.length === 0 && !loadError}
 		<div class="text-ink-2 text-sm">{tr('instances.empty')}</div>
 	{:else if instances.length > 0}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each instances as inst (inst.id)}
+					<CompactResourceCard>
+						<div class="flex items-start justify-between gap-2"><a class="min-h-11 break-all font-medium text-warm-text" href={`/admin/database-instances/${inst.id}`}>{inst.name || inst.id.slice(0, 8)}</a><StatusChip status={inst.status} /></div>
+						<div class="space-y-1 break-all text-xs text-ink-2"><p>{inst.datastore?.type ?? '-'} {inst.datastore?.version ?? ''} · {inst.size ?? '-'} GB</p><p>{tr('labels.project')}: {inst.project_id || '-'}</p></div>
+						{#snippet actions()}<Button variant="secondary" size="sm" disabled={restarting === inst.id} onclick={() => restartInstance(inst.id, inst.name)}>{restarting === inst.id ? tr('state.restarting') : tr('actions.restart')}</Button><Button variant="danger" size="sm" disabled={deleting === inst.id} onclick={() => deleteInstance(inst.id, inst.name)}>{deleting === inst.id ? tr('state.deleting') : tr('actions.delete')}</Button>{/snippet}
+						{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p class="font-mono">{inst.id}</p><p>{tr('labels.created')}: {inst.created_at?.slice(0, 10) ?? '-'}</p></div>{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<div class="overflow-x-auto">
 			<table class="w-full text-sm">
 				<thead>
@@ -150,6 +169,7 @@
 				</tbody>
 			</table>
 		</div>
+		</ResponsiveTable>
 	{/if}
 
 </PageShell>

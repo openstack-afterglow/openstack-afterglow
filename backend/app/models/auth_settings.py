@@ -78,6 +78,36 @@ class _AuthModel(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
 
+class AuthOrganization(_AuthModel):
+    """Operator trust boundary, never populated from arbitrary identity claims."""
+
+    id: str = Field(min_length=1, max_length=255, strict=True)
+    name: str = Field(min_length=1, max_length=64, strict=True)
+    manager_subjects: list[str] = Field(min_length=1, max_length=100, strict=True)
+
+    @field_validator("id", "name")
+    @classmethod
+    def exact_text(cls, value, info):
+        if value != value.strip() or any(ord(char) < 32 or ord(char) == 127 for char in value):
+            raise ValueError("organization identity and name must be exact nonempty text")
+        if info.field_name == "name" and value.casefold() in {"account", "accounts", "personal"}:
+            raise ValueError("reserved account spaces cannot name organizations")
+        return value
+
+    @field_validator("manager_subjects")
+    @classmethod
+    def stable_subjects(cls, values):
+        if any(
+            not isinstance(value, str)
+            or not 1 <= len(value) <= 255
+            or value != value.strip()
+            or any(ord(char) < 32 or ord(char) == 127 for char in value)
+            for value in values
+        ):
+            raise ValueError("organization managers require exact immutable OIDC subjects")
+        return sorted(set(values))
+
+
 class AuthProvider(_AuthModel):
     name: str = Field(min_length=1, max_length=64, strict=True)
     kind: Literal["oidc", "github"]
@@ -93,6 +123,7 @@ class AuthProvider(_AuthModel):
     keystone_protocol_id: KeystoneId
     federation_token_type: Literal["id_token", "access_token"] = "id_token"
     token_endpoint_auth_method: Literal["client_secret_basic", "client_secret_post"] = "client_secret_basic"
+    organization: AuthOrganization | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -159,6 +190,8 @@ class AuthProvider(_AuthModel):
                 raise ValueError("OIDC requires issuer_url")
             self.issuer_url = _public_https_url(self.issuer_url, "issuer_url")
         else:
+            if self.organization is not None:
+                raise ValueError("organization configuration requires a tenant-bound OIDC issuer/client")
             if self.issuer_url is not None:
                 raise ValueError("GitHub providers must not configure issuer_url")
             if self.federation_token_type != "access_token" or self.token_endpoint_auth_method != "client_secret_post":
@@ -217,6 +250,24 @@ class AuthSettings(_AuthModel):
     domain: dict[DomainId, AuthMethods] = Field(default_factory=dict)
     public_signup_enabled: bool = False
     signup_email_domains: list[str] = Field(default_factory=list)
+    organization_creation_enabled: bool = True
+    max_organizations_per_user: int = Field(default=10, ge=0, le=10000, strict=True)
+
+    @field_validator("organization_creation_enabled", mode="before")
+    @classmethod
+    def creation_boolean(cls, value):
+        if isinstance(value, str) and value.lower() in {"true", "false"}:
+            return value.lower() == "true"
+        if not isinstance(value, bool):
+            raise ValueError("organization_creation_enabled must be a boolean")
+        return value
+
+    @field_validator("max_organizations_per_user", mode="before")
+    @classmethod
+    def organization_limit(cls, value):
+        if isinstance(value, str) and re.fullmatch(r"[0-9]+", value):
+            return int(value)
+        return value
 
     @field_validator("signup_email_domains")
     @classmethod
@@ -228,6 +279,14 @@ class AuthSettings(_AuthModel):
         for domain_id in self.domain:
             if domain_id != domain_id.strip() or any(char.isspace() or ord(char) < 32 for char in domain_id):
                 raise ValueError("auth domain keys must be exact canonical Keystone domain IDs")
+        organizations = {}
+        for provider in self.providers.values():
+            if provider.organization is None:
+                continue
+            identity = (provider.issuer_url, provider.organization.id)
+            trust = provider.organization.model_dump()
+            if organizations.setdefault(identity, trust) != trust:
+                raise ValueError("one issuer organization requires one exact trust definition")
         for methods in (self.default, *self.domain.values()):
             for key in [*(methods.allow_providers or []), *(methods.auto_join_email_domains or {})]:
                 if key in self.providers:

@@ -2,6 +2,7 @@
 	"actions.cancel": "취소",
 	"actions.confirm": "확인",
 	"actions.close": "닫기",
+	"resource.details": "상세 정보",
 	"state.processing": "처리 중...",
 	"state.loading": "불러오는 중...",
 	"state.loadingNamed": "{name} 불러오는 중…",

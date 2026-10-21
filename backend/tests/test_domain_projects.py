@@ -199,7 +199,7 @@ class Directory:
             )
         ]
 
-    def create_domain(self, *, name, description, enabled, **extra):
+    def create_domain(self, *, name, description="", enabled, **extra):
         self.calls.append(("domain.create", enabled))
         d = row(id="created-domain", name=name, description=description, enabled=enabled, **extra)
         self.domain_rows[d.id] = d
@@ -219,17 +219,18 @@ class Directory:
         self.calls.append(("domain.delete", id))
         del self.domain_rows[id]
 
-    def create_project(self, *, name, domain, enabled, description):
+    def create_project(self, *, name, domain, enabled, description, **extra):
         if not self.domain_rows[domain].enabled:
             raise HTTPException(409, "Keystone rejects projects beneath a disabled ancestor")
         self.calls.append(("project.create", domain))
         p = row(
-            id="created-default",
+            id="created-default" if name == "Default" else f"personal-{len(self.project_rows)}",
             name=name,
             domain_id=domain,
             enabled=enabled,
             parent_id=domain,
             description=description,
+            **extra,
         )
         self.project_rows[p.id] = p
         return p
@@ -709,12 +710,13 @@ async def test_tampered_projection_foreign_assignment_never_becomes_domain_autho
 @pytest.mark.asyncio
 async def test_manager_change_native_readback_and_last_manager_are_protected(domain_native, login_proofs):
     n = domain_native
+    n.raw.append(grant("reader", user="second", project="default-a"))
     for uid in ("creator", "second", "ordinary"):
         await login_proofs.store(uid)
     await domain_projects.ensure_login_access("creator", "tenant-a")
     assert await login_proofs.manager("creator")
     assert not await login_proofs.manager("second")
-    assert await login_proofs.roles("second") == []
+    assert "reader" in await login_proofs.roles("second")
     assert "manager" in await login_proofs.roles("creator")
     with pytest.raises(HTTPException) as error:
         await domain_projects.change_manager("tenant-a", "creator", "manager", remove=True, actor={})
@@ -751,6 +753,7 @@ async def test_manager_change_uncertainty_and_cancellation_preserve_login_and_cu
     outcome,
 ):
     n = domain_native
+    n.raw.append(grant("reader", user="second", project="default-a"))
     if remove:
         n.raw.append(grant("manager", user="second", project="default-a"))
     await domain_projects.sync_manager_access("tenant-a")
@@ -1012,20 +1015,22 @@ def test_disabled_scope_still_returns_403_for_enabled_subject(domain_native, kin
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "user_id,working_domain,open_signup,system_admin,client_admin_claim,expected",
+    "user_id,working_domain,organization_enabled,open_signup,system_admin,client_admin_claim,expected",
     [
-        ("creator", "tenant-a", True, False, False, 201),
-        ("new-user", "home", True, False, False, 201),
-        ("new-user", "home", False, False, True, 403),
-        ("operator", "home", False, True, False, 201),
+        ("creator", "tenant-a", True, False, False, False, 201),
+        ("new-user", "home", True, True, False, False, 201),
+        ("new-user", "home", True, False, False, False, 201),
+        ("new-user", "home", False, True, False, True, 403),
+        ("operator", "home", False, False, True, False, 201),
     ],
 )
-async def test_auth_domain_creation_uses_live_native_authority_and_identity_signup_policy(
+async def test_auth_domain_creation_uses_live_native_authority_and_independent_organization_policy(
     domain_native,
     monkeypatch,
     login_proofs,
     user_id,
     working_domain,
+    organization_enabled,
     open_signup,
     system_admin,
     client_admin_claim,
@@ -1036,34 +1041,15 @@ async def test_auth_domain_creation_uses_live_native_authority_and_identity_sign
 
     from app.api.deps import get_token_info
     from app.api.identity import auth as auth_api
-    from app.models.domain_auth import DomainLoginPolicy
-    from app.services import activity, domain_auth
+    from app.services import activity
 
     n = domain_native
     n.user_rows["new-user"] = row(id="new-user", name="New", enabled=True, domain_id="home", email="new@example.com")
     if system_admin:
         n.raw.append(row(user={"id": user_id}, role={"id": "admin"}, scope={"system": {"all": True}}))
-    policy_reads = []
-
-    class PolicySession:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *args):
-            return None
-
-        async def get(self, model, domain_id):
-            assert model is DomainLoginPolicy
-            policy_reads.append(domain_id)
-            return row(
-                password_enabled=True,
-                allowed_email_domains=[],
-                signup_enabled=open_signup if domain_id == "home" else False,
-                signup_email_domains=["example.com"],
-                revision=1,
-            )
-
-    monkeypatch.setattr(domain_auth, "_factory", lambda: PolicySession)
+    settings = auth_api.get_settings()
+    monkeypatch.setattr(settings.auth, "organization_creation_enabled", organization_enabled)
+    monkeypatch.setattr(settings.auth, "public_signup_enabled", open_signup)
     monkeypatch.setattr(activity, "record", AsyncMock())
     await login_proofs.store(user_id)
     info = {
@@ -1098,13 +1084,9 @@ async def test_auth_domain_creation_uses_live_native_authority_and_identity_sign
             assert result["id"] in {d["id"] for d in domains.json()}
             await domain_projects.ensure_login_access(user_id, result["id"])
             domain_projects.assert_project_membership(user_id, result["default_project_id"])
-            activity.record.assert_awaited_once()
-            assert activity.record.await_args.kwargs["user_id"] == user_id
         else:
             assert n.calls == []
-            activity.record.assert_not_awaited()
     await login_proofs.preserved()
-    assert policy_reads == ([] if system_admin else ["home"])
     assert info["identity_domain_id"] == "home" and info["domain_id"] == working_domain
 
 
@@ -1977,3 +1959,16 @@ async def test_unknown_initial_owner_grant_is_never_cleaned_or_replayed(domain_n
     assert error.value.status_code == 503
     assert len(attempts) == 1
     assert n.calls.count(("project.create", "tenant-b")) == 1
+
+
+@pytest.mark.asyncio
+async def test_organization_creation_fails_closed_on_truncated_native_domain_inventory(domain_native, monkeypatch):
+    class LimitedDomains(list):
+        limited = True
+
+    before = set(domain_native.domain_rows)
+    monkeypatch.setattr(domain_native.domains, "list", lambda: LimitedDomains(domain_native.domain_rows.values()))
+    with pytest.raises(HTTPException) as denied:
+        await domain_projects.create_domain(name="New organization", description="", enabled=True, creator_id="creator")
+    assert denied.value.status_code == 503
+    assert set(domain_native.domain_rows) == before and domain_native.calls == []

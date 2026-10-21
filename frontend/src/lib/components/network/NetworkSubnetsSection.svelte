@@ -8,6 +8,8 @@
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import { useNetworkDetailController } from '$lib/stores/networkDetailController.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	const s = useNetworkDetailController();
 	let form = $state({ name: '', cidr: '', gateway: '', dhcp: true, routerId: '' });
@@ -74,6 +76,15 @@
 	{/if}
 
 	{#if s.network!.subnet_details.length > 0}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each s.network!.subnet_details as subnet (subnet.id)}
+					<CompactResourceCard>
+						<p class="font-medium">{subnet.name || subnet.id.slice(0, 8)}</p><p class="font-mono text-xs">{subnet.cidr}</p>
+						<dl><div><dt>{t('network.labels.gateway')}</dt><dd>{subnet.gateway_ip || '-'}</dd></div><div><dt>DHCP</dt><dd>{subnet.dhcp_enabled ? t('network.state.enabled') : t('network.state.disabled')}</dd></div></dl>
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<div class="space-y-3">
 			{#each s.network!.subnet_details as subnet}
 				<div class="border-b border-line/50 pb-2 last:border-0 last:pb-0">
@@ -86,6 +97,7 @@
 				</div>
 			{/each}
 		</div>
+		</ResponsiveTable>
 	{:else}
 		<p class="text-xs text-ink-2">{t('network.subnets.empty')}</p>
 	{/if}

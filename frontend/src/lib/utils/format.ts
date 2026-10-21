@@ -84,7 +84,7 @@ const MIME_SHORT: Record<string, string> = {
 
 /** 바이트를 GB/MB로 포맷 (이미지 크기 표시용) */
 export function formatSize(bytes: number | null): string {
-	if (!bytes) return '-';
+	if (bytes == null) return '-';
 	const gb = bytes / 1024 / 1024 / 1024;
 	return gb >= 1 ? `${Math.round(gb * 10) / 10} GB` : `${Math.round(bytes / 1024 / 1024)} MB`;
 }

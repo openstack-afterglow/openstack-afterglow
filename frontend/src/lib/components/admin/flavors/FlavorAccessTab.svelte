@@ -4,7 +4,10 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { toast } from '$lib/stores/toast';
-	import { ToggleGroup } from '$lib/components/ui';
+	import { ToggleGroup, Button } from '$lib/components/ui';
+	import { onDestroy, untrack } from 'svelte';
+	import { get } from 'svelte/store';
+	import AdminProjectPicker from '$lib/components/admin/domains/AdminProjectPicker.svelte';
 
 	interface Flavor {
 		id: string;
@@ -27,131 +30,134 @@
 
 	let { flavor }: { flavor: Flavor } = $props();
 
-	const token = $derived($auth.token ?? undefined);
-	const projectId = $derived($auth.projectId ?? undefined);
 
 	let accessList = $state<FlavorAccess[]>([]);
 	let accessLoading = $state(false);
 	let accessError = $state('');
 	let addingId = $state<string | null>(null);
 	let removingId = $state<string | null>(null);
-	let projectSearch = $state('');
-	let allProjects = $state<{ id: string; name: string }[]>([]);
+	let domainFilter = $state('');
+	let selectedProject = $state('');
+	let authorityRevision = $state(0);
+	let authorityKey = '';
+	let disposed = false;
+	const unsubscribe = auth.subscribe(state => {
+		const next = JSON.stringify([state.token, state.sessionId, state.userId, state.identityDomainId, state.domainId, state.projectId, state.isSystemAdmin]);
+		if (next === authorityKey) return;
+		authorityKey = next; ++authorityRevision;
+		domainFilter = ''; selectedProject = ''; accessList = [];
+	});
+	onDestroy(() => { disposed = true; ++authorityRevision; unsubscribe(); });
+	function capture() {
+		const revision = authorityRevision, target = flavor.id, state = get(auth);
+		return { token: state.token ?? undefined, projectId: state.projectId ?? undefined,
+			current: () => !disposed && revision === authorityRevision && target === flavor.id };
+	}
 	let accessMode = $state<'manual' | 'gpu_quota'>('manual');
 	let modeSaving = $state(false);
 	let frontendVisible = $state(true);
 	let visibilitySaving = $state(false);
-	const accessedProjectIds = $derived(new Set(accessList.map((a) => a.project_id)));
-	const availableProjects = $derived(allProjects.filter((p) => !accessedProjectIds.has(p.id)));
-	const searchedProjects = $derived(
-		projectSearch.trim().length > 0
-			? availableProjects
-					.filter(
-						(p) =>
-							p.name.toLowerCase().includes(projectSearch.toLowerCase()) ||
-							p.id.toLowerCase().includes(projectSearch.toLowerCase()),
-					)
-					.slice(0, 8)
-			: [],
-	);
-
+	const accessedProjectIds = $derived(accessList.map(access => access.project_id));
 	$effect(() => {
-		if (flavor.id) {
-			accessList = [];
-			accessError = '';
-			projectSearch = '';
-			loadAccess();
-			if (allProjects.length === 0) {
-				api
-					.get<{ id: string; name: string }[]>('/api/v1/admin/projects/names', token, projectId)
-					.then((r) => (allProjects = r))
-					.catch(() => (allProjects = []));
-			}
-		}
-		accessMode = flavor.extra_specs?.['afterglow:access_mode'] === 'gpu_quota' ? 'gpu_quota' : 'manual';
-		frontendVisible = flavor.frontend_visible
-			?? (flavor.extra_specs?.['afterglow:frontend_visible']?.toLowerCase() !== 'false');
+		void flavor.id; void authorityRevision;
+		untrack(() => {
+			accessList = []; accessError = ''; selectedProject = ''; domainFilter = '';
+			addingId = null; removingId = null;
+			modeSaving = false; visibilitySaving = false;
+			void loadAccess();
+			accessMode = flavor.extra_specs?.['afterglow:access_mode'] === 'gpu_quota' ? 'gpu_quota' : 'manual';
+			frontendVisible = flavor.frontend_visible ?? (flavor.extra_specs?.['afterglow:frontend_visible']?.toLowerCase() !== 'false');
+		});
 	});
 
 	async function loadAccess() {
+		const owner = capture();
 		accessLoading = true;
 		try {
-			accessList = await api.get<FlavorAccess[]>(
-				`/api/v1/admin/flavors/${flavor.id}/access`,
-				token,
-				projectId,
-			);
+			const rows = await api.get<FlavorAccess[]>(`/api/v1/admin/flavors/${flavor.id}/access`, owner.token, owner.projectId);
+			if (owner.current()) accessList = rows;
 		} catch {
-			accessList = [];
+			if (owner.current()) { accessList = []; accessError = t('flavors.access.addFailed'); }
 		} finally {
-			accessLoading = false;
+			if (owner.current()) accessLoading = false;
 		}
 	}
 
 	async function addAccess(pid: string) {
-		if (!pid || addingId === pid) return;
+		if (!pid || addingId || pid !== selectedProject || accessedProjectIds.includes(pid) || !$auth.token || !$auth.isSystemAdmin) return;
+		const owner = capture();
 		accessError = '';
 		addingId = pid;
 		try {
 			await api.post(
 				`/api/v1/admin/flavors/${flavor.id}/access`,
 				{ project_id: pid },
-				token,
-				projectId,
+				owner.token,
+				owner.projectId,
 			);
-			projectSearch = '';
+			if (!owner.current()) return;
+			selectedProject = '';
 			toast.success(t('flavors.access.added'));
 			await loadAccess();
 		} catch (e) {
+			if (!owner.current()) return;
 			const msg = e instanceof ApiError ? e.message : t('flavors.access.addFailed');
 			accessError = msg;
 			toast.error(msg);
 		} finally {
-			addingId = null;
+			if (owner.current()) addingId = null;
 		}
 	}
 
 	async function removeAccess(pid: string) {
+		if (removingId || !accessedProjectIds.includes(pid)) return;
+		const owner = capture();
 		removingId = pid;
 		try {
 			await api.delete(
 				`/api/v1/admin/flavors/${flavor.id}/access/${pid}`,
-				token,
-				projectId,
+				owner.token,
+				owner.projectId,
 			);
+			if (!owner.current()) return;
 			await loadAccess();
 		} catch {
-			accessError = t('flavors.access.removeFailed');
+			if (owner.current()) accessError = t('flavors.access.removeFailed');
 		} finally {
-			removingId = null;
+			if (owner.current()) removingId = null;
 		}
 	}
 
 	async function setMode(nextMode: 'manual' | 'gpu_quota') {
 		if (accessMode === nextMode) return;
+		const owner = capture();
 		modeSaving = true;
 		try {
-			await api.put(`/api/v1/admin/flavors/${flavor.id}/access-mode`, { mode: nextMode }, token, projectId);
+			await api.put(`/api/v1/admin/flavors/${flavor.id}/access-mode`, { mode: nextMode }, owner.token, owner.projectId);
+			if (!owner.current()) return;
 			accessMode = nextMode;
 			flavor.extra_specs = { ...flavor.extra_specs, 'afterglow:access_mode': nextMode };
 			toast.success(t('flavors.access.modeChanged'));
 		} catch (e) {
+			if (!owner.current()) return;
 			toast.error(e instanceof ApiError ? e.message : t('flavors.access.modeFailed'));
 		} finally {
-			modeSaving = false;
+			if (owner.current()) modeSaving = false;
 		}
 	}
 
 	async function setFrontendVisibility(visible: boolean) {
 		if (frontendVisible === visible) return;
+		const owner = capture();
 		visibilitySaving = true;
 		try {
 			await api.put(
 				`/api/v1/admin/flavors/${flavor.id}/frontend-visibility`,
 				{ visible },
-				token,
-				projectId,
+				owner.token,
+				owner.projectId,
 			);
+			if (!owner.current()) return;
 			frontendVisible = visible;
 			flavor.frontend_visible = visible;
 			flavor.extra_specs = {
@@ -160,9 +166,10 @@
 			};
 			toast.success(visible ? t('flavors.access.visibleNotice') : t('flavors.access.hiddenNotice'));
 		} catch (e) {
+			if (!owner.current()) return;
 			toast.error(e instanceof ApiError ? e.message : t('flavors.access.visibilityFailed'));
 		} finally {
-			visibilitySaving = false;
+			if (owner.current()) visibilitySaving = false;
 		}
 	}
 </script>
@@ -240,61 +247,29 @@
 			</p>
 		</div>
 	{/if}
-	<div class="mb-4">
-		<div class="text-sm text-ink-2 mb-2">{t('flavors.access.addProject')}</div>
-		<div class="relative">
-			<input
-				type="text"
-				placeholder={t('flavors.access.projectSearch')}
-				bind:value={projectSearch}
-				class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
-			/>
-			{#if searchedProjects.length > 0}
-				<div class="absolute z-10 left-0 right-0 mt-1 bg-surface-sunken border border-line-2 rounded-lg shadow-[var(--shadow-popover)] overflow-hidden">
-					{#each searchedProjects as p}
-						<div class="flex items-center justify-between px-3 py-2 hover:bg-surface-selected border-b border-line-2/50 last:border-0">
-							<div>
-								<span class="text-sm text-ink-0">{p.name}</span>
-								<span class="text-xs text-ink-2 ml-2 font-mono">{p.id.slice(0, 12)}</span>
-							</div>
-							<button
-								onclick={() => addAccess(p.id)}
-								disabled={addingId === p.id}
-								class="text-xs px-2 py-0.5 bg-action-warm hover:bg-action-warm-hover disabled:opacity-60 disabled:cursor-not-allowed text-action-on-warm rounded ml-2 flex items-center gap-1"
-							>
-								{#if addingId === p.id}
-									<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('flavors.access.adding')}</span></span>
-								{:else}
-									{t('flavors.access.add')}
-								{/if}
-							</button>
-						</div>
-					{/each}
-				</div>
-			{:else if projectSearch.trim().length > 0}
-				<div class="absolute z-10 left-0 right-0 mt-1 bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-xs text-ink-2">
-					{t('flavors.access.noMatchingProjects')}
-				</div>
-			{/if}
-		</div>
+	<div class="mb-4 space-y-3">
+		{#key `${authorityRevision}:${flavor.id}`}
+			<AdminProjectPicker domainId={domainFilter} projectId={selectedProject} excludedProjectIds={accessedProjectIds} emptyProjectLabel={t('flavors.access.addProject')} disabled={!!addingId || accessLoading} onchange={(domainId, projectId) => { domainFilter = domainId; selectedProject = projectId; }} />
+		{/key}
+		<Button variant="secondary" disabled={!selectedProject || !!addingId || accessLoading} onclick={() => addAccess(selectedProject)}>{addingId ? t('flavors.access.adding') : t('flavors.access.add')}</Button>
 	</div>
 
 	<div class="text-sm text-ink-2 mb-2">{t('flavors.access.projects')}</div>
 	{#if accessLoading}
 		<ActivityIndicator size="sm" label={t('flavors.loading')} />
-	{:else if accessList.length === 0}
+	{:else if accessList.length === 0 && !accessError}
 		<div class="text-ink-2 text-sm">{t('flavors.access.empty')}</div>
 	{:else}
 		<div class="space-y-2">
 			{#each accessList as a (a.project_id)}
-				<div class="flex items-center justify-between bg-surface-base border border-line rounded-lg px-3 py-2">
-					<div>
+				<div class="flex flex-wrap lg:flex-nowrap items-center justify-between gap-2 bg-surface-base border border-line rounded-lg px-3 py-2">
+					<div class="min-w-0 break-all">
 						<div class="text-xs text-ink-1">{a.project_name || a.project_id}</div>
 						{#if a.project_name}
 							<div class="text-xs text-ink-2 font-mono">{a.project_id.slice(0, 12)}</div>
 						{/if}
 					</div>
-					<button onclick={() => removeAccess(a.project_id)} disabled={removingId === a.project_id} class="text-state-danger-text hover:text-state-danger-text/90 text-xs">
+					<button onclick={() => removeAccess(a.project_id)} disabled={removingId === a.project_id} class="min-h-11 lg:min-h-0 text-state-danger-text hover:text-state-danger-text/90 text-xs">
 						{#if removingId === a.project_id}
 							<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('flavors.access.removing')}</span></span>
 						{:else}{t('flavors.access.remove')}{/if}

@@ -2,6 +2,9 @@
 	import { t as tr } from '$lib/i18n/ns/database';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { DbUser } from '$lib/types/database';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 
 	let {
 		users,
@@ -57,6 +60,16 @@
 	{#if users.length === 0}
 		<div class="text-ink-2 text-xs">{tr('users.empty')}</div>
 	{:else}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each users as u}
+					<CompactResourceCard>
+						<h3 class="break-all font-medium text-ink-0">{u.name}</h3><p class="text-xs text-ink-2">{tr('labels.databases')}: {u.databases?.length ?? 0}</p>
+						{#snippet actions()}<Button variant="danger" size="sm" disabled={deletingUser === u.name} onclick={() => onDelete(u.name)}>{deletingUser === u.name ? tr('state.deleting') : tr('actions.delete')}</Button>{/snippet}
+						{#snippet details()}<p class="break-all text-xs text-ink-2">{u.databases?.map((database) => database.name).join(', ') || '-'}</p>{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<div class="space-y-1">
 			{#each users as u}
 				<div class="flex items-center justify-between py-1.5 border-b border-line/50">
@@ -73,5 +86,6 @@
 				</div>
 			{/each}
 		</div>
+		</ResponsiveTable>
 	{/if}
 </div>

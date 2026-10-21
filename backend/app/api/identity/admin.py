@@ -14,8 +14,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.common.activity_recorder import rec
+from app.api.common.admin_resource_scope import AdminResourceScope, admin_resource_scope, page
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info, require_admin
 from app.config import get_settings
+from app.models.compute import InstanceNameRequest
 from app.models.storage import (
     AdminNetworkDetail,
     AdminSubnetDetail,
@@ -60,9 +62,12 @@ router = APIRouter()
 
 
 @router.get("/file-storage", response_model=list[FileStorageInfo], dependencies=[Depends(require_admin)])
-async def list_admin_file_storages(conn: openstack.connection.Connection = Depends(get_os_conn)):
+async def list_admin_file_storages(
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    scope: AdminResourceScope = Depends(admin_resource_scope),
+):
     """모든 Union 관련 파일 스토리지 목록 (prebuilt + dynamic)."""
-    return manila.list_file_storages(conn)
+    return scope.filter(await asyncio.to_thread(manila.list_file_storages, conn))
 
 
 @router.post("/file-storage/build", status_code=202, dependencies=[Depends(require_admin)])
@@ -1144,6 +1149,8 @@ async def list_all_instances(
     limit: int = Query(default=20, ge=1, le=100),
     marker: str | None = Query(default=None),
     project_id: str | None = Query(default=None),
+    domain_id: str | None = Query(None, min_length=1),
+    scope: AdminResourceScope = Depends(admin_resource_scope),
     host: str | None = Query(default=None),
     status: str | None = Query(default=None),
     name: str | None = Query(default=None),
@@ -1153,9 +1160,9 @@ async def list_all_instances(
     try:
 
         def _list():
-            endpoint = conn.compute.get_endpoint()
-            params: dict = {"all_tenants": "1", "limit": str(limit)}
-            if marker:
+            endpoint = conn.compute.get_endpoint().rstrip("/")
+            params: dict = {"all_tenants": "1", "limit": "1000" if domain_id else str(limit)}
+            if marker and not domain_id:
                 params["marker"] = marker
             if project_id:
                 params["tenant_id"] = project_id
@@ -1165,14 +1172,19 @@ async def list_all_instances(
                 params["status"] = status
             if name:
                 params["name"] = ".*" + re.escape(name) + ".*"
-            resp = conn.session.get(
-                f"{endpoint}/servers/detail",
-                params=params,
-                headers={"OpenStack-API-Version": "compute 2.53"},
-            )
-            servers = resp.json().get("servers", [])
+            if domain_id:
+                from app.services.openstack_inventory import list_servers_complete
+
+                servers = scope.filter(list_servers_complete(conn, params))
+            else:
+                resp = conn.session.get(
+                    f"{endpoint}/servers/detail",
+                    params=params,
+                    headers={"OpenStack-API-Version": "compute 2.53"},
+                )
+                servers = resp.json().get("servers", [])
             items = []
-            for s in servers[:limit]:
+            for s in servers if domain_id else servers[:limit]:
                 fault_info = None
                 if (s.get("status") or "").upper() == "ERROR":
                     fault = s.get("fault") or {}
@@ -1193,10 +1205,14 @@ async def list_all_instances(
                         "fault": fault_info,
                     }
                 )
+            if domain_id:
+                return page(items, limit, marker)
             next_marker = items[-1]["id"] if len(items) == limit else None
             return {"items": items, "next_marker": next_marker, "count": len(items)}
 
         return await asyncio.to_thread(_list)
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="전체 인스턴스 조회 실패")
 
@@ -1204,6 +1220,7 @@ async def list_all_instances(
 @router.get("/volumes/status-summary", dependencies=[Depends(require_admin)])
 async def get_volume_status_summary(
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    scope: AdminResourceScope = Depends(admin_resource_scope),
 ):
     """전체 프로젝트의 Cinder 볼륨 상태별 개수."""
     try:
@@ -1212,6 +1229,8 @@ async def get_volume_status_summary(
             counts: dict[str, int] = {}
             total = 0
             for volume in conn.block_storage.volumes(details=True, all_projects=True):
+                if not scope.includes(volume):
+                    continue
                 status = (getattr(volume, "status", None) or "unknown").lower()
                 counts[status] = counts.get(status, 0) + 1
                 total += 1
@@ -1234,6 +1253,8 @@ async def list_all_volumes(
     limit: int = Query(default=20, ge=1, le=100),
     marker: str | None = Query(default=None),
     project_id: str | None = Query(default=None),
+    domain_id: str | None = Query(None, min_length=1),
+    scope: AdminResourceScope = Depends(admin_resource_scope),
     status: str | None = Query(default=None),
     name: str | None = Query(default=None),
     conn: openstack.connection.Connection = Depends(get_os_conn),
@@ -1243,7 +1264,9 @@ async def list_all_volumes(
 
         def _list():
             kwargs: dict = {"details": True, "all_projects": True, "limit": limit}
-            if marker:
+            if domain_id:
+                kwargs.pop("limit")
+            if marker and not domain_id:
                 kwargs["marker"] = marker
             if project_id:
                 kwargs["project_id"] = project_id
@@ -1260,19 +1283,29 @@ async def list_all_volumes(
                     "project_id": getattr(v, "project_id", None),
                     "created_at": str(v.created_at) if getattr(v, "created_at", None) else None,
                 }
-                for v in itertools.islice(conn.block_storage.volumes(**kwargs), limit)
+                for v in (
+                    scope.filter(conn.block_storage.volumes(**kwargs))
+                    if domain_id
+                    else itertools.islice(conn.block_storage.volumes(**kwargs), limit)
+                )
             ]
+            if domain_id:
+                return page(items, limit, marker)
             next_marker = items[-1]["id"] if len(items) == limit else None
             return {"items": items, "next_marker": next_marker, "count": len(items)}
 
         return await asyncio.to_thread(_list)
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="전체 볼륨 조회 실패")
 
 
 @router.get("/all-containers", dependencies=[Depends(require_admin)])
 async def list_all_containers(
-    conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    cm: CacheMode = Depends(cache_mode),
+    scope: AdminResourceScope = Depends(admin_resource_scope),
 ):
     """전체 프로젝트의 컨테이너 목록 (Zun)."""
     if not get_settings().service_zun_enabled:
@@ -1280,13 +1313,14 @@ async def list_all_containers(
     from app.services.zun import ZunServiceUnavailable, list_containers_admin
 
     try:
-        return await cached_call(
+        result = await cached_call(
             "afterglow:admin:containers",
             ttl_normal(),
             lambda: list_containers_admin(conn),
             enabled=cm.enabled,
             refresh=cm.refresh,
         )
+        return scope.filter(result)
     except ZunServiceUnavailable:
         return []
     except Exception:
@@ -1385,19 +1419,22 @@ async def delete_admin_container(
 
 @router.get("/all-file-storages", dependencies=[Depends(require_admin)])
 async def list_all_file_storages(
-    conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    cm: CacheMode = Depends(cache_mode),
+    scope: AdminResourceScope = Depends(admin_resource_scope),
 ):
     """전체 프로젝트의 파일 스토리지 목록 (Manila)."""
     if not get_settings().service_manila_enabled:
         return []
     try:
-        return await cached_call(
+        result = await cached_call(
             "afterglow:admin:file_storages",
             ttl_normal(),
             lambda: manila.list_file_storages(conn, None, True),
             enabled=cm.enabled,
             refresh=cm.refresh,
         )
+        return scope.filter(result)
     except Exception:
         raise HTTPException(status_code=500, detail="파일 스토리지 조회 실패")
 
@@ -1499,7 +1536,9 @@ async def force_delete_file_storage(
 
 @router.get("/topology", response_model=AdminTopologyData, dependencies=[Depends(require_admin)])
 async def admin_topology(
-    conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    cm: CacheMode = Depends(cache_mode),
+    scope: AdminResourceScope = Depends(admin_resource_scope),
 ):
     """전체 프로젝트의 네트워크/라우터/인스턴스 토폴로지 (네트워크에 provider 세그먼트 메타 포함)."""
 
@@ -1561,9 +1600,30 @@ async def admin_topology(
         return topo.model_dump()
 
     try:
-        return await cached_call(
+        result = await cached_call(
             "afterglow:admin:topology", ttl_normal(), _fetch, enabled=cm.enabled, refresh=cm.refresh
         )
+        if scope.project_ids is None:
+            return result
+        scoped = {
+            key: scope.filter(result.get(key, []))
+            for key in ("networks", "routers", "instances", "floating_ips", "load_balancers")
+        }
+        subnet_ids = {
+            subnet.id
+            for subnet in await asyncio.to_thread(lambda: list(conn.network.subnets()))
+            if scope.includes(subnet)
+        }
+        scoped["networks"] = [
+            {
+                **network,
+                "subnet_details": [
+                    subnet for subnet in network.get("subnet_details", []) if subnet.get("id") in subnet_ids
+                ],
+            }
+            for network in scoped["networks"]
+        ]
+        return scoped
     except HTTPException:
         raise
     except Exception:
@@ -1575,9 +1635,14 @@ async def admin_topology(
 async def get_timeseries(
     resource_type: str,
     range: str = Query(default="7d", pattern="^(1d|2d|7d|30d)$"),
+    domain_id: str | None = Query(None, min_length=1),
+    project_id: str | None = Query(None, min_length=1),
 ):
     """리소스 유형별 시계열 스냅샷 반환."""
     from app.services import timeseries
+
+    if domain_id is not None or project_id is not None:
+        raise HTTPException(422, "inventory_timeseries_scope_unsupported")
 
     valid = {"instances", "volumes", "file_storage", "networks", "library_usage"}
     if resource_type not in valid:
@@ -1587,70 +1652,104 @@ async def get_timeseries(
 
 @router.get("/all-networks", dependencies=[Depends(require_admin)])
 async def list_all_networks(
-    conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    cm: CacheMode = Depends(cache_mode),
+    scope: AdminResourceScope = Depends(admin_resource_scope),
 ):
     """전체 프로젝트의 네트워크 목록."""
     try:
-        return await cached_call(
+        result = await cached_call(
             "afterglow:admin:networks",
             ttl_normal(),
             lambda: neutron.list_networks(conn, None),
             enabled=cm.enabled,
             refresh=cm.refresh,
         )
+        return scope.filter(result)
     except Exception:
         raise HTTPException(status_code=500, detail="네트워크 목록 조회 실패")
 
 
+@router.get("/all-subnets", dependencies=[Depends(require_admin)])
+async def list_all_subnets(
+    conn=Depends(get_os_conn),
+    scope: AdminResourceScope = Depends(admin_resource_scope),
+):
+    def _list():
+        return [
+            {
+                "id": subnet.id,
+                "name": subnet.name or "",
+                "network_id": subnet.network_id,
+                "cidr": subnet.cidr,
+                "gateway_ip": subnet.gateway_ip,
+                "project_id": getattr(subnet, "project_id", None),
+            }
+            for subnet in conn.network.subnets()
+            if scope.includes(subnet)
+        ]
+
+    return await asyncio.to_thread(_list)
+
+
 @router.get("/all-loadbalancers", dependencies=[Depends(require_admin)])
 async def list_all_loadbalancers(
-    conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    cm: CacheMode = Depends(cache_mode),
+    scope: AdminResourceScope = Depends(admin_resource_scope),
 ):
     """전체 프로젝트의 로드밸런서 목록."""
     from app.services import octavia
 
     try:
-        return await cached_call(
+        result = await cached_call(
             "afterglow:admin:loadbalancers",
             ttl_normal(),
             lambda: octavia.list_load_balancers(conn, project_id=None),
             enabled=cm.enabled,
             refresh=cm.refresh,
         )
+        return scope.filter(result)
     except Exception:
         raise HTTPException(status_code=500, detail="로드밸런서 목록 조회 실패")
 
 
 @router.get("/all-floating-ips", dependencies=[Depends(require_admin)])
 async def list_all_floating_ips(
-    conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    cm: CacheMode = Depends(cache_mode),
+    scope: AdminResourceScope = Depends(admin_resource_scope),
 ):
     """전체 프로젝트의 Floating IP 목록."""
     try:
-        return await cached_call(
+        result = await cached_call(
             "afterglow:admin:floating_ips",
             ttl_fast(),
             lambda: neutron.list_floating_ips(conn, None),
             enabled=cm.enabled,
             refresh=cm.refresh,
         )
+        return scope.filter(result)
     except Exception:
         raise HTTPException(status_code=500, detail="Floating IP 목록 조회 실패")
 
 
 @router.get("/all-routers", dependencies=[Depends(require_admin)])
 async def list_all_routers(
-    conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    cm: CacheMode = Depends(cache_mode),
+    scope: AdminResourceScope = Depends(admin_resource_scope),
 ):
     """전체 프로젝트의 라우터 목록."""
     try:
-        return await cached_call(
+        result = await cached_call(
             "afterglow:admin:routers",
             ttl_normal(),
             lambda: neutron.list_routers(conn, None),
             enabled=cm.enabled,
             refresh=cm.refresh,
         )
+        return scope.filter(result)
     except Exception:
         raise HTTPException(status_code=500, detail="라우터 목록 조회 실패")
 
@@ -1661,18 +1760,24 @@ async def list_all_ports(
     limit: int = Query(default=20, ge=1, le=100),
     marker: str | None = Query(default=None),
     project_id: str | None = Query(default=None),
+    domain_id: str | None = Query(None, min_length=1),
+    scope: AdminResourceScope = Depends(admin_resource_scope),
 ):
     """전체 프로젝트의 포트 목록 (페이지네이션)."""
     try:
 
         def _list():
             kwargs: dict = {"limit": limit}
-            if marker:
+            if domain_id:
+                kwargs.pop("limit")
+            if marker and not domain_id:
                 kwargs["marker"] = marker
             if project_id:
                 kwargs["project_id"] = project_id
             items = []
             for p in conn.network.ports(**kwargs):
+                if domain_id and not scope.includes(p):
+                    continue
                 items.append(
                     {
                         "id": p.id,
@@ -1686,12 +1791,16 @@ async def list_all_ports(
                         "project_id": getattr(p, "project_id", None),
                     }
                 )
-                if len(items) >= limit:
+                if not domain_id and len(items) >= limit:
                     break
+            if domain_id:
+                return page(items, limit, marker)
             next_marker = items[-1]["id"] if len(items) == limit else None
             return {"items": items, "next_marker": next_marker, "count": len(items)}
 
         return await asyncio.to_thread(_list)
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="포트 목록 조회 실패")
 
@@ -1741,7 +1850,9 @@ async def create_port(
 
 @router.get("/overview/projects", dependencies=[Depends(require_admin)])
 async def admin_overview_projects(
-    conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    cm: CacheMode = Depends(cache_mode),
+    scope: AdminResourceScope = Depends(admin_resource_scope),
 ):
     """프로젝트별 리소스 사용량 및 쿼터."""
     try:
@@ -1750,14 +1861,9 @@ async def admin_overview_projects(
             # 프로젝트별 GPU 인스턴스 수 집계
             gpu_by_project: dict = {}
             try:
-                endpoint = conn.compute.get_endpoint()
-                params = {"all_tenants": "1", "limit": "1000"}
-                resp = conn.session.get(
-                    f"{endpoint}/servers/detail",
-                    params=params,
-                    headers={"OpenStack-API-Version": "compute 2.53"},
-                )
-                for s in resp.json().get("servers", []):
+                from app.services.openstack_inventory import list_servers_complete
+
+                for s in list_servers_complete(conn):
                     # SHELVED/SHELVED_OFFLOADED는 실제 호스트 할당이 없으므로 제외
                     st = (s.get("status") or "").upper()
                     if st not in ("ACTIVE", "SHUTOFF", "PAUSED", "SUSPENDED", "RESIZE"):
@@ -1816,9 +1922,10 @@ async def admin_overview_projects(
                     pass
             return result
 
-        return await cached_call(
+        result = await cached_call(
             "afterglow:admin:overview_projects", ttl_slow(), _collect, enabled=cm.enabled, refresh=cm.refresh
         )
+        return scope.filter(result)
     except Exception:
         _logger.warning("프로젝트별 리소스 조회 실패", exc_info=True)
         raise HTTPException(status_code=500, detail="프로젝트별 리소스 조회 실패")
@@ -2353,6 +2460,21 @@ async def force_complete_live_migration(
     except Exception as e:
         _logger.warning("라이브 마이그레이션 강제 완료 실패: %s", e)
         raise HTTPException(status_code=400, detail=nova._extract_os_error(e))
+
+
+@router.put("/instances/{server_id}/name", dependencies=[Depends(require_admin)])
+async def rename_admin_instance(
+    server_id: str,
+    req: InstanceNameRequest,
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    from app.api.compute.instances import _rename_instance
+
+    try:
+        server = await asyncio.to_thread(nova.get_server, conn, server_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다") from exc
+    return await _rename_instance(conn, server, req.name)
 
 
 @router.post("/instances/{server_id}/confirm-resize", dependencies=[Depends(require_admin)])

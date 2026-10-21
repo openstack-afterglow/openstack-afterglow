@@ -2,6 +2,7 @@
 	"actions.cancel": "Hủy",
 	"actions.confirm": "Xác nhận",
 	"actions.close": "Đóng",
+	"resource.details": "Thông tin chi tiết",
 	"state.processing": "Đang xử lý...",
 	"state.loading": "Đang tải...",
 	"state.loadingNamed": "Đang tải {name}…",

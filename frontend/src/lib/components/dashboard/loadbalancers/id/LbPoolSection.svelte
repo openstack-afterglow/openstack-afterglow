@@ -5,6 +5,7 @@
 	import LbPoolMembersPanel from './LbPoolMembersPanel.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
+	import { CompactResourceCard, Button, StatusChip } from '$lib/components/ui';
 
 	let {
 		pools,
@@ -69,7 +70,7 @@
 					<option value={a}>{t('lb.algorithm.label', { algorithm: a })}</option>
 				{/each}
 			</select>
-			<button onclick={handleAddPool} disabled={saving} aria-busy={creatingPool} class="col-span-2 inline-flex items-center justify-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">{#if creatingPool}<ActivityIndicator size="xs" tone="ink" />{/if}{creatingPool ? tc('state.processing') : t('lb.actions.create')}</button>
+			<button onclick={handleAddPool} disabled={saving} aria-busy={creatingPool} class="sm:col-span-2 inline-flex items-center justify-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">{#if creatingPool}<ActivityIndicator size="xs" tone="ink" />{/if}{creatingPool ? tc('state.processing') : t('lb.actions.create')}</button>
 			<button onclick={() => showAddPool = false} class="text-ink-2 hover:text-ink-1 text-sm px-2 text-center">{t('lb.actions.cancel')}</button>
 		</div>
 	{/if}
@@ -81,24 +82,15 @@
 			{#each pools as pool}
 				{@const deletingPool = pending.isActive(`delete:${pool.id}`, saving)}
 				<div>
-					<div
-						onclick={() => onSelectPool(selectedPoolId === pool.id ? null : pool.id)}
-						onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && onSelectPool(selectedPoolId === pool.id ? null : pool.id)}
-						role="button"
-						tabindex="0"
-						class="flex items-center justify-between bg-surface-sunken/50 hover:bg-surface-sunken rounded-lg px-4 py-3 cursor-pointer transition-colors {selectedPoolId === pool.id ? 'border border-action-warm' : ''}"
-					>
-						<div class="text-sm">
-							<span class="text-ink-0 font-medium">{pool.name || pool.id.slice(0, 10)}</span>
-							<span class="ml-2 text-xs text-purple-300 bg-purple-900/30 px-1.5 py-0.5 rounded">{pool.protocol}</span>
-							<span class="ml-2 text-xs text-ink-2">{t('lb.algorithm.label', { algorithm: pool.lb_algorithm })}</span>
-							<span class="ml-2 text-xs {pool.status === 'ACTIVE' ? 'text-green-400' : 'text-yellow-400'}">{pool.status}</span>
-						</div>
-						<div class="flex gap-2">
-							<span class="text-xs text-ink-2">{selectedPoolId === pool.id ? t('lb.pools.collapseMembers') : t('lb.pools.showMembers')}</span>
-							<button onclick={(e) => { e.stopPropagation(); void pending.run(`delete:${pool.id}`, () => onDeletePool(pool.id)); }} disabled={saving} aria-busy={deletingPool} class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 transition-colors">{#if deletingPool}<ActivityIndicator size="xs" tone="danger" />{/if}{deletingPool ? t('network.actions.deleting') : t('lb.actions.delete')}</button>
-						</div>
-					</div>
+					<CompactResourceCard selected={selectedPoolId === pool.id}>
+						<div class="flex items-center gap-2"><strong class="min-w-0 flex-1 break-all">{pool.name || pool.id.slice(0, 10)}</strong><StatusChip status={pool.status} /></div>
+						<p class="text-xs text-ink-2">{pool.protocol} · {t('lb.algorithm.label', { algorithm: pool.lb_algorithm })}</p>
+						{#snippet details()}<p class="font-mono break-all">ID: {pool.id}</p>{/snippet}
+						{#snippet actions()}
+							<Button size="sm" variant="secondary" onclick={() => onSelectPool(selectedPoolId === pool.id ? null : pool.id)} ariaExpanded={selectedPoolId === pool.id}>{selectedPoolId === pool.id ? t('lb.pools.collapseMembers') : t('lb.pools.showMembers')}</Button>
+							<Button variant="danger-outline" size="sm" onclick={() => pending.run(`delete:${pool.id}`, () => onDeletePool(pool.id))} disabled={saving} ariaBusy={deletingPool}>{#if deletingPool}<ActivityIndicator size="xs" tone="danger" />{/if}{deletingPool ? t('network.actions.deleting') : t('lb.actions.delete')}</Button>
+						{/snippet}
+					</CompactResourceCard>
 
 					{#if selectedPoolId === pool.id}
 						<LbPoolMembersPanel

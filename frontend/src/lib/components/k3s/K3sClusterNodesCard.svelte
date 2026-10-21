@@ -6,6 +6,8 @@
   import { useK3sClusterDetailController, healthColor } from '$lib/stores/k3sClusterDetailController.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import { k3sPermissions } from '$lib/stores/k3sPermissions';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
   const s = useK3sClusterDetailController();
 </script>
@@ -26,6 +28,9 @@
   </div>
 
   {#if s.health && s.health.nodes.length > 0}
+   {@const health = s.health}
+   <ResponsiveTable>
+    {#snippet cards()}{#each health.nodes as node (node.name)}<CompactResourceCard><strong class="text-sm font-mono break-all">{node.name}</strong><p class="text-xs"><span class={node.ready ? 'text-state-success-text' : 'text-state-danger-text'}>{node.ready ? 'Ready' : 'NotReady'}</span> · {node.role}</p>{#if node.kubelet_version}<p class="text-xs text-ink-2">{node.kubelet_version}</p>{/if}</CompactResourceCard>{/each}{/snippet}
     <div class="space-y-2">
       {#each s.health.nodes as node}
         <div class="flex items-center justify-between py-1.5 border-b border-line last:border-0">
@@ -47,6 +52,7 @@
         </div>
       {/each}
     </div>
+   </ResponsiveTable>
 
     {#if s.cluster!.status === 'ACTIVE' && $k3sPermissions.editClusters}
       <div class="flex items-center gap-1.5 mt-3 pt-3 border-t border-line">

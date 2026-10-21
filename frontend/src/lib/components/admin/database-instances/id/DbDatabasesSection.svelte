@@ -2,6 +2,9 @@
 	import { t as tr } from '$lib/i18n/ns/database';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { DbDatabase } from '$lib/types/database';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 
 	let {
 		databases,
@@ -53,6 +56,15 @@
 	{#if databases.length === 0}
 		<div class="text-ink-2 text-xs">{tr('databases.empty')}</div>
 	{:else}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each databases as db}
+					<CompactResourceCard>
+						<h3 class="break-all font-medium text-ink-0">{db.name}</h3>
+						{#snippet actions()}<Button variant="danger" size="sm" disabled={deletingDb === db.name} onclick={() => onDelete(db.name)}>{deletingDb === db.name ? tr('state.deleting') : tr('actions.delete')}</Button>{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<div class="space-y-1">
 			{#each databases as db}
 				<div class="flex items-center justify-between py-1.5 border-b border-line/50">
@@ -64,5 +76,6 @@
 				</div>
 			{/each}
 		</div>
+		</ResponsiveTable>
 	{/if}
 </div>

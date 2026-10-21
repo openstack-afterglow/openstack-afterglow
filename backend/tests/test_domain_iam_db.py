@@ -10,8 +10,9 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.models.account_spaces import PersonalProjectIntent, SharedDomainIntent
 from app.models.domain_iam import DomainEnrollment
-from app.services import domain_iam, project_service
+from app.services import account_spaces, domain_iam, project_service
 from tests import test_domain_iam as scenarios
 from tests.ownership_journal import ownership_journal as ownership_journal
 from tests.test_domain_iam import PASSWORD, email_token, manager
@@ -32,16 +33,27 @@ async def enrollment_db(directory, monkeypatch):
         pytest.skip("SQLite does not implement enrollment row locks")
     from app.models.domain_quotas import DomainQuotaPolicy
     from app.models.enrollment_policy import EnrollmentPolicy, SignupRequest
+    from app.services import account_spaces
 
     async with engine.begin() as conn:
-        for model in (DomainEnrollment, EnrollmentPolicy, SignupRequest, DomainQuotaPolicy):
+        for model in (
+            DomainEnrollment,
+            EnrollmentPolicy,
+            SignupRequest,
+            DomainQuotaPolicy,
+            PersonalProjectIntent,
+            SharedDomainIntent,
+        ):
             await conn.run_sync(lambda sync, model=model: model.__table__.create(sync, checkfirst=True))
     factory = async_sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr("app.database.get_session_factory", lambda: factory)
     monkeypatch.setattr("app.services.enrollment_policy.get_session_factory", lambda: factory)
+    monkeypatch.setattr(account_spaces, "get_session_factory", lambda: factory)
     ids = []
     async with factory() as session:
         existing_policies = set((await session.execute(select(DomainQuotaPolicy.domain_id))).scalars())
+        existing_shared = set((await session.execute(select(SharedDomainIntent.marker))).scalars())
+        existing_personal = set((await session.execute(select(PersonalProjectIntent.token_hash))).scalars())
     yield factory, ids
     async with factory() as session:
         if ids:
@@ -59,6 +71,10 @@ async def enrollment_db(directory, monkeypatch):
             if homes:
                 await session.execute(delete(DomainQuotaPolicy).where(DomainQuotaPolicy.domain_id.in_(homes)))
             await session.execute(delete(DomainEnrollment).where(DomainEnrollment.id.in_(ids)))
+            await session.execute(delete(SharedDomainIntent).where(SharedDomainIntent.marker.not_in(existing_shared)))
+            await session.execute(
+                delete(PersonalProjectIntent).where(PersonalProjectIntent.token_hash.not_in(existing_personal))
+            )
             await session.commit()
     await engine.dispose()
 
@@ -90,9 +106,7 @@ async def test_competing_redemptions_create_exactly_one_account_and_grant(direct
 
     async def accept(name):
         async with factory() as session:
-            return await domain_iam.redeem(
-                token, "invitation", session, name=name, password=PASSWORD, personal_domain_name="Personal"
-            )
+            return await domain_iam.redeem(token, "invitation", session, name=name, password=PASSWORD)
 
     first = asyncio.create_task(accept("first"))
     await entered.wait()
@@ -107,24 +121,20 @@ async def test_competing_redemptions_create_exactly_one_account_and_grant(direct
         persisted = await session.get(DomainEnrollment, row_id)
         assert persisted.status == "accepted" and persisted.user_id == directory.creates[0]
         uid, did, pid = persisted.user_id, persisted.identity_domain_id, persisted.personal_project_id
-        assert set(directory.personal_domains) == {did}
+        assert set(directory.personal_domains) == {did, persisted.personal_domain_id}
         assert set(directory.personal_projects) == {pid}
         assert directory.users[uid].domain_id == did != persisted.domain_id
-        assert directory.personal_projects[pid].domain_id == did
+        assert directory.personal_projects[pid].domain_id == persisted.personal_domain_id != did
         assert directory.personal_projects[pid].enabled and directory.users[uid].enabled
-        assert project_service._direct_ids(directory.ks.role_assignments.list(project=pid), uid) == {
-            rid("project_owner"),
-            rid("manager"),
-            rid("project_reader"),
-        }
+        assert project_service._direct_ids(directory.ks.role_assignments.list(project=pid), uid) == {rid("member")}
         assert project_service._direct_ids(directory.ks.role_assignments.list(project="default-project"), uid) == {
             rid("project_reader")
         }
         assert project_service._direct_ids(directory.ks.role_assignments.list(project=PROJECT), uid) == {
             rid("project_member")
         }
-        owner = await project_service._verify_unique_owner(directory.ks, directory.catalog, pid, uid)
-        assert owner["owner_user_id"] == uid
+        personal = account_spaces.personal_project(uid, ks=directory.ks)
+        assert personal["id"] == pid and personal["domain_id"] == persisted.personal_domain_id
         assert all(grant["phase"] == "confirmed" for grant in persisted.added_grants)
 
 
@@ -144,9 +154,7 @@ async def test_revoke_cannot_race_through_locked_redemption(directory, enrollmen
 
     async def accept():
         async with factory() as session:
-            return await domain_iam.redeem(
-                token, "invitation", session, name="winner", password=PASSWORD, personal_domain_name="Personal"
-            )
+            return await domain_iam.redeem(token, "invitation", session, name="winner", password=PASSWORD)
 
     async def revoke():
         async with factory() as session:
@@ -211,17 +219,15 @@ async def test_global_signup_links_serialize_email_ownership_without_target_gran
 
     async def accept(token):
         async with factory() as session:
-            return await domain_iam.redeem(
-                token, "registration", session, name="signup", password=PASSWORD, personal_domain_name="Home"
-            )
+            return await domain_iam.redeem(token, "registration", session, name="signup", password=PASSWORD)
 
     results = await asyncio.gather(*(accept(token) for token in tokens), return_exceptions=True)
     successes = [result for result in results if isinstance(result, dict)]
     assert len(successes) == 1
     assert any(isinstance(result, HTTPException) and result.status_code == 409 for result in results)
     uid, home = successes[0]["user_id"], successes[0]["identity_domain_id"]
-    assert successes[0]["domain_id"] == home
-    assert len(directory.creates) == len(directory.personal_domains) == 1
+    assert successes[0]["domain_id"] == successes[0]["personal_domain_id"] != home
+    assert len(directory.creates) == 1 and len(directory.personal_domains) == 2
     assert directory.users[uid].afterglow_local_password is True
     assert not project_service._direct_ids(directory.default_direct, uid)
     assert not project_service._direct_ids(directory.direct, uid)
@@ -229,6 +235,6 @@ async def test_global_signup_links_serialize_email_ownership_without_target_gran
         rows = (await session.execute(select(DomainEnrollment).where(DomainEnrollment.id.in_(ids)))).scalars().all()
         accepted = next(row for row in rows if row.status == "accepted")
         pending = next(row for row in rows if row.status == "pending")
-        assert accepted.domain_id == accepted.identity_domain_id == home
-        assert all(grant["domain_id"] == home for grant in accepted.added_grants)
+        assert accepted.domain_id is None and accepted.identity_domain_id == home
+        assert all(grant["domain_id"] == accepted.personal_domain_id for grant in accepted.added_grants)
         assert pending.domain_id is None and pending.user_id is None

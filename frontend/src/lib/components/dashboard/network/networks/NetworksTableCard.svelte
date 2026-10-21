@@ -6,6 +6,8 @@
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
   import SelectionToolbar from '$lib/components/ui/SelectionToolbar.svelte';
   import type { Network } from '$lib/types/networks';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
   let {
     networks,
@@ -50,6 +52,28 @@
 
 <div class="bg-surface-base border border-line rounded-lg p-5">
   <div class="text-ink-0 text-[15px] font-semibold mb-3.5">{t('networksTable.title')}</div>
+  <ResponsiveTable>
+    {#snippet cards()}
+      <div class="responsive-card-toolbar"><SelectionToolbar label={t('networksTable.title')} ariaLabel={t('networksTable.selectAll')} checked={allSelected} {indeterminate} {selectedCount} disabled={selectionDisabled || selectableIds.size === 0} onToggle={onToggleAll} /></div>
+      {#each networks as net (net.id)}
+        <CompactResourceCard selected={selectedIds.has(net.id)}>
+          <div class="flex items-center gap-2 min-w-0" aria-busy={deleting === net.id || settingDefault === net.id}>
+            <SelectionCheckbox checked={selectedIds.has(net.id)} disabled={selectionDisabled || !selectableIds.has(net.id)} unavailable={!selectableIds.has(net.id)} title={!selectableIds.has(net.id) ? t('networksTable.onlyOwned') : undefined} ariaLabel={t('networksTable.select', { name: net.name || net.id.slice(0, 12) })} onclick={() => onToggleSelect(net.id)} />
+            <button type="button" onclick={() => onOpenPanel(net.id)} class="min-h-11 min-w-0 flex-1 text-left font-medium text-ink-0 hover:text-warm-text">{net.name || net.id.slice(0, 12)}</button>
+            <StatusChip status={net.status} />
+          </div>
+          <div class="flex flex-wrap gap-2 text-xs text-ink-2"><span>{net.is_external ? t('networksTable.external') : net.is_shared ? t('networksTable.shared') : t('networksTable.internal')}</span>{#if net.id === defaultNetworkId}<span class="text-warm-text">{t('networksTable.default')}</span>{/if}<span>{t('networksTable.subnetCount', { count: net.subnets.length })}</span></div>
+          <p class="font-mono text-xs text-ink-2">{net.cidrs?.length ? net.cidrs.join(', ') : '—'}</p>
+          {#snippet details()}<p class="font-mono">{net.id}</p><p>MTU: —</p>{/snippet}
+          {#snippet actions()}
+            {#if selectableIds.has(net.id)}
+              {#if net.id !== defaultNetworkId}<button class="text-xs text-warm-text" disabled={settingDefault === net.id} onclick={() => onSetDefault(net.id)}>{settingDefault === net.id ? t('networksTable.setting') : t('networksTable.setDefault')}</button>{/if}
+              <button class="text-xs text-state-danger-text" disabled={deleting === net.id} onclick={() => onDelete(net.id, net.name, net.is_external)}>{deleting === net.id ? t('networksTable.deleting') : t('networksTable.delete')}</button>
+            {/if}
+          {/snippet}
+        </CompactResourceCard>
+      {/each}
+    {/snippet}
   <div class="bg-[#0B1220] border border-line rounded-lg overflow-hidden">
     <!-- Header -->
     <div class="grid grid-cols-[1fr_0px_auto_0px_0px_0px_0px] sm:grid-cols-[1.4fr_1fr_100px_80px_80px_100px_56px] px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
@@ -167,4 +191,5 @@
     {/each}
     </div>
   </div>
+  </ResponsiveTable>
 </div>

@@ -2,6 +2,8 @@
   import { t } from '$lib/i18n/ns/volume';
   import { attachmentServerId, useVolumeDetailController } from '$lib/stores/volumeDetailController.svelte';
   import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
   const s = useVolumeDetailController();
 </script>
@@ -9,6 +11,28 @@
 {#if s.volume!.attachments.length > 0}
   <div class="mb-4">
     <h3 class="text-xs text-ink-2 uppercase tracking-wide mb-2">{t('attachmentsList.title')}</h3>
+    <ResponsiveTable>
+      {#snippet cards()}
+        {#each s.volume!.attachments as att}
+          {@const serverId = attachmentServerId(att)}
+          {@const instance = s.attachmentName(serverId)}
+          {@const device = typeof att.device === 'string' ? att.device : ''}
+          {#snippet attachmentDetails()}<p class="font-mono break-all">{serverId}</p>{/snippet}
+          <CompactResourceCard details={serverId && (instance.state === 'resolved' || instance.state === 'loading') ? attachmentDetails : undefined}>
+            {#if !serverId}
+              <p class="text-ink-2">{t('attachmentsList.unknownInstance')}</p>
+            {:else if instance.state === 'resolved'}
+              <a href="/dashboard/instances/{serverId}" class="inline-flex items-center min-h-11 min-w-0 font-medium break-all text-warm-text hover:text-warm-text-hover">{instance.name}</a>
+            {:else if instance.state === 'loading'}
+              <p class="inline-flex items-center gap-1.5 text-ink-2"><ActivityIndicator size="xs" tone="ink" />{t('attachmentsList.resolvingName')}</p>
+            {:else}
+              <p class="font-mono break-all">{serverId}</p>
+              <p class="text-ink-2">{t('attachmentsList.nameUnavailable')}</p>
+            {/if}
+            {#if device}<p class="font-mono text-ink-2 break-all">{device}</p>{/if}
+          </CompactResourceCard>
+        {/each}
+      {/snippet}
     <ul class="space-y-1" aria-label={t('attachmentsList.title')}>
       {#each s.volume!.attachments as att}
         {@const serverId = attachmentServerId(att)}
@@ -35,5 +59,6 @@
         </li>
       {/each}
     </ul>
+    </ResponsiveTable>
   </div>
 {/if}

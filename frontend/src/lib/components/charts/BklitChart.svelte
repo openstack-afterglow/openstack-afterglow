@@ -4,6 +4,8 @@
 	import { t } from '$lib/i18n/ns/common';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import type { ChartMount, ChartSpec } from './types';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	interface Props {
 		spec: ChartSpec;
@@ -98,6 +100,16 @@
 		<details class="mt-2 text-xs text-ink-2" bind:open={dataOpen}>
 			<summary class="w-fit cursor-pointer rounded-sm py-2 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]">{t('chart.data')}</summary>
 			{#if dataOpen}
+				<ResponsiveTable>
+					{#snippet cards()}
+						{#each seriesSpec.data as row}
+							{#snippet remainingSeries()}<dl>{#each seriesSpec.series.slice(2) as series}<div><dt>{series.label}</dt><dd>{number(row[series.key])}</dd></div>{/each}</dl>{/snippet}
+							<CompactResourceCard details={seriesSpec.series.length > 2 ? remainingSeries : undefined}>
+								<p class="font-medium text-ink-0">{category(row[seriesSpec.xKey])}</p>
+								<dl>{#each seriesSpec.series.slice(0, 2) as series}<div><dt>{series.label}</dt><dd>{number(row[series.key])}</dd></div>{/each}</dl>
+							</CompactResourceCard>
+						{/each}
+					{/snippet}
 				<!-- The overflow region remains keyboard-scrollable when the data table is wide. -->
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 				<div class="max-h-64 overflow-auto" tabindex="0" role="region" aria-label={label ?? t('chart.data')}>
@@ -106,6 +118,7 @@
 						<tbody>{#each seriesSpec.data as row}<tr class="border-t border-line"><th class="p-2 font-normal" scope="row">{category(row[seriesSpec.xKey])}</th>{#each seriesSpec.series as series}<td class="p-2">{number(row[series.key])}</td>{/each}</tr>{/each}</tbody>
 					</table>
 				</div>
+				</ResponsiveTable>
 			{/if}
 		</details>
 	{/if}

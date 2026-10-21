@@ -7,15 +7,36 @@ import { initLocale } from '$lib/i18n/runtime.svelte';
 import { t } from '$lib/i18n/ns/traffic-analytics';
 import { observations } from '$lib/components/admin/traffic/__tests__/observations';
 import type { TrafficSnapshot } from '$lib/types/trafficAnalytics';
+import type * as SvelteReactivity from 'svelte/reactivity';
+
+const viewport = vi.hoisted(() => ({ desktop: true }));
+vi.mock('svelte/reactivity', async importOriginal => ({
+	...await importOriginal<typeof SvelteReactivity>(),
+	MediaQuery: class { get current() { return viewport.desktop; } },
+}));
 
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ api: { get } }));
 vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token-a', userId: 'user-a', projectId: 'project-a', isSystemAdmin: true }), authReady: writable(true), projectSwitching: writable(false) }));
 const actor = { token: 'token-a', userId: 'user-a', projectId: 'project-a', isSystemAdmin: true };
-beforeEach(() => { get.mockReset(); initLocale('en'); auth.set(actor as never); authReady.set(true); projectSwitching.set(false); });
+beforeEach(() => { viewport.desktop = true; get.mockReset(); initLocale('en'); auth.set(actor as never); authReady.set(true); projectSwitching.set(false); });
 afterEach(() => { cleanup(); initLocale('ko'); });
 
 describe('traffic API to UI', () => {
+	it('keeps compact route diagnostics, measured values and country selection without extra reads', async () => {
+		viewport.desktop = false;
+		get.mockResolvedValue(observations()); render(Page);
+		const route = (await screen.findByText('/admin')).closest('article')!;
+		expect(within(route).getByText(t('metrics.requests'), { selector: 'dt' }).nextElementSibling?.textContent).toBe('10');
+		expect(within(route).getByText(t('metrics.errors'), { selector: 'dt' }).nextElementSibling?.textContent).toBe('2');
+		const disclosure = route.querySelector('summary');
+		expect(disclosure).toBeTruthy(); await fireEvent.click(disclosure!);
+		expect(within(route).getByText(t('origins.internal'), { selector: 'dt' }).nextElementSibling?.textContent).toBe('3');
+		expect(screen.queryByRole('table')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: /\(US\)/ }));
+		expect((screen.getByLabelText(t('map.select')) as HTMLSelectElement).value).toBe('US');
+		expect(get).toHaveBeenCalledTimes(1);
+	});
 	it('loads the admin aggregate with source/range and current credentials, and renders real observed categories', async () => {
 		get.mockResolvedValue(observations()); render(Page);
 		await screen.findByText('/admin');

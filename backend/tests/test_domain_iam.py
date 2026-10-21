@@ -22,7 +22,16 @@ from app.api.deps import get_token_info, require_domain_manager
 from app.api.identity import iam, onboarding
 from app.database import get_session
 from app.models.domain_iam import DomainEnrollment
-from app.services import domain_auth, domain_iam, domain_projects, identity_roles, keystone, project_service
+from app.services import (
+    account_spaces,
+    domain_auth,
+    domain_iam,
+    domain_projects,
+    identity_roles,
+    keystone,
+    project_service,
+    quota_native,
+)
 from tests.ownership_journal import ownership_journal as ownership_journal
 from tests.test_project_membership_roles import PROJECT, Membership, assignment, rid
 
@@ -36,7 +45,11 @@ def directory(monkeypatch):
     state = Membership()
     state.managers = {"domain-manager"}
     state.default_direct = []
-    state.personal_domains = {}
+    state.personal_domains = {
+        "operator-accounts": SimpleNamespace(id="operator-accounts", name="Accounts", enabled=True),
+        "operator-personal": SimpleNamespace(id="operator-personal", name="Personal", enabled=True),
+    }
+    state.domain_writes = []
     state.personal_projects = {}
     state.personal_direct = []
     state.system_admins = {"system-admin"}
@@ -150,6 +163,8 @@ def directory(monkeypatch):
         ]
 
     def create_project(name, domain, enabled, **extra):
+        if len(name) > 64:
+            raise HTTPException(400, "Native project names are limited to 64 characters")
         pid = f"personal-default-{len(state.personal_projects)}"
         project = SimpleNamespace(id=pid, name=name, domain_id=domain, parent_id=domain, enabled=enabled, **extra)
         state.personal_projects[pid] = project
@@ -186,14 +201,20 @@ def directory(monkeypatch):
         if any(d.name == name for d in state.personal_domains.values()):
             raise HTTPException(409, "Native domain names are globally unique")
         domain = SimpleNamespace(id=did, name=name, enabled=enabled, **extra)
+        state.domain_writes.append(("create", did, {"name": name, "enabled": enabled, **extra}))
         state.personal_domains[did] = domain
         return domain
 
     def update_domain(did, **attrs):
         domain = state.personal_domains[did]
+        state.domain_writes.append(("update", did, attrs.copy()))
         for key, value in attrs.items():
             setattr(domain, key, value)
         return domain
+
+    def delete_domain(did):
+        state.domain_writes.append(("delete", did, {}))
+        state.personal_domains.pop(did, None)
 
     state.ks.domains = SimpleNamespace(
         get=lambda did: (
@@ -210,7 +231,7 @@ def directory(monkeypatch):
         ),
         create=create_domain,
         update=update_domain,
-        delete=lambda did: state.personal_domains.pop(did, None),
+        delete=delete_domain,
     )
     native_assignments = state.assignments
 
@@ -282,6 +303,23 @@ def directory(monkeypatch):
         state.sent.append(message)
         return {}, "accepted"
 
+    state.quota_limits = {}
+    state.quota_writes = []
+
+    def quota_get(connection, pid, section):
+        limits = state.quota_limits.setdefault(
+            (pid, section), {key: 100 for key in quota_native.QUOTA_FIELDS[section].values()}
+        )
+        return {key: {"limit": value, "in_use": 0} for key, value in limits.items()}
+
+    def quota_update(connection, pid, section, values):
+        assert not state.personal_projects[pid].enabled
+        state.quota_writes.append((pid, section, dict(values)))
+        state.quota_limits[(pid, section)].update(values)
+
+    monkeypatch.setattr(quota_native, "get_section", quota_get)
+    monkeypatch.setattr(quota_native, "update_section", quota_update)
+
     monkeypatch.setattr(keystone, "_get_admin_ks_client", lambda: state.ks)
     monkeypatch.setattr(keystone, "get_admin_project_connection", lambda: conn)
     monkeypatch.setattr(keystone, "get_settings", lambda: state.settings)
@@ -311,16 +349,25 @@ def directory(monkeypatch):
 
 @pytest_asyncio.fixture
 async def enrollments(tmp_path, monkeypatch):
+    from app.models.account_spaces import PersonalProjectIntent, SharedDomainIntent
     from app.models.domain_quotas import DomainQuotaPolicy
     from app.models.enrollment_policy import EnrollmentPolicy, SignupRequest
 
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'enrollments.sqlite'}")
     async with engine.begin() as conn:
-        for model in (DomainEnrollment, EnrollmentPolicy, SignupRequest, DomainQuotaPolicy):
+        for model in (
+            DomainEnrollment,
+            EnrollmentPolicy,
+            SignupRequest,
+            DomainQuotaPolicy,
+            PersonalProjectIntent,
+            SharedDomainIntent,
+        ):
             await conn.run_sync(model.__table__.create)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr("app.database.get_session_factory", lambda: factory)
     monkeypatch.setattr("app.services.enrollment_policy.get_session_factory", lambda: factory)
+    monkeypatch.setattr(account_spaces, "get_session_factory", lambda: factory)
     yield factory
     await engine.dispose()
 
@@ -378,29 +425,21 @@ async def test_privileged_accounts_never_password_reset(directory, uid):
 
 
 @pytest.mark.asyncio
-async def test_manager_created_personal_identity_is_not_target_credential_managed(directory, enrollments):
+async def test_invited_account_credentials_cannot_be_managed_by_organization(directory, enrollments):
     async with enrollments() as session:
-        user = await domain_iam.create_user(
-            {
-                "personal_domain_name": "Personal",
-                **{
-                    "name": "created",
-                    "email": "Created@Test.Invalid",
-                    "password": PASSWORD,
-                    "enabled": True,
-                    "project_id": None,
-                    "role_ids": [],
-                },
-            },
-            manager(),
-            session,
+        await domain_iam.invite({"email": "Created@test.invalid"}, manager(), session)
+        user = await domain_iam.redeem(
+            email_token(directory.sent[-1]), "invitation", session, name="created", password=PASSWORD
         )
-    assert user["domain_id"] == "domain" and user["email"] == "Created@test.invalid"
-    assert user["identity_domain_id"] != "domain" and user["identity_domain_name"] == "Personal"
-    assert directory.users[user["id"]].domain_id == user["identity_domain_id"]
+    assert user["identity_domain_name"] == "Accounts"
+    assert user["domain_name"] == "Personal"
+    assert directory.users[user["user_id"]].domain_id == user["identity_domain_id"]
     with pytest.raises(HTTPException) as denied:
-        await domain_iam.update_user(user["id"], {"password": "different-long-password", "enabled": False}, manager())
-    assert denied.value.status_code == 403 and directory.users[user["id"]].password == PASSWORD
+        await domain_iam.update_user(
+            user["user_id"], {"password": "different-long-password", "enabled": False}, manager()
+        )
+    assert denied.value.status_code == 403
+    assert directory.users[user["user_id"]].password == PASSWORD
 
 
 @pytest.mark.asyncio
@@ -436,34 +475,32 @@ async def test_domain_authority_can_add_member_but_never_remove_last_owner(direc
 async def test_invite_delivery_new_account_membership_and_single_use(directory, enrollments, monkeypatch):
     result, token = await invite(directory, enrollments)
     native_write = identity_roles._write
-    owner_intents = []
+    member_intents = []
 
     async def journaled_write(lease, fn, *args, **attrs):
-        if fn == directory.ks.roles.grant and args[0] == rid("project_owner"):
+        if (
+            fn == directory.ks.roles.grant
+            and args[0] == rid("member")
+            and attrs["project"] in directory.personal_projects
+        ):
             async with enrollments() as observer:
                 persisted = await observer.get(DomainEnrollment, result["id"])
                 intent = persisted.added_grants[-1]
                 assert intent == {
                     "project_id": attrs["project"],
-                    "domain_id": persisted.identity_domain_id,
-                    "role_id": rid("project_owner"),
+                    "domain_id": persisted.personal_domain_id,
+                    "role_id": rid("member"),
                     "phase": "applying",
                 }
                 assert not directory.personal_projects[attrs["project"]].enabled
                 assert not directory.users[attrs["user"]].enabled
-                owner_intents.append(intent)
+                member_intents.append(intent)
         if fn == directory.ks.projects.update and attrs.get("enabled") is True:
             async with enrollments() as observer:
                 persisted = await observer.get(DomainEnrollment, result["id"])
-                assert {g["role_id"] for g in persisted.added_grants if g["phase"] == "confirmed"} == {
-                    rid("project_owner"),
-                    rid("manager"),
-                    rid("project_reader"),
-                }
-                owner = await project_service._verify_unique_owner(
-                    directory.ks, directory.catalog, args[0], persisted.user_id
-                )
-                assert owner["owner_user_id"] == persisted.user_id
+                assert {g["role_id"] for g in persisted.added_grants if g["phase"] == "confirmed"} == {rid("member")}
+                direct = directory.ks.role_assignments.list(project=args[0])
+                assert project_service._direct_ids(direct, persisted.user_id) == {rid("member")}
         return await native_write(lease, fn, *args, **attrs)
 
     monkeypatch.setattr(identity_roles, "_write", journaled_write)
@@ -474,18 +511,12 @@ async def test_invite_delivery_new_account_membership_and_single_use(directory, 
         assert row.token_hash != token and row.email == "new@test.invalid"
         public = await domain_iam.invitation_info(token, session)
         assert public["domain_id"] == "domain" and public["project_name"] == "Intended project"
-        account = await domain_iam.redeem(
-            token, "invitation", session, name="invitee", password=PASSWORD, personal_domain_name="Personal"
-        )
+        account = await domain_iam.redeem(token, "invitation", session, name="invitee", password=PASSWORD)
         assert directory.users[account["user_id"]].domain_id == account["identity_domain_id"] != "domain"
         assert directory.users[account["user_id"]].password == PASSWORD
-        assert project_service._direct_ids(directory.personal_direct, account["user_id"]) == {
-            rid("project_owner"),
-            rid("manager"),
-            rid("project_reader"),
-        }
+        assert project_service._direct_ids(directory.personal_direct, account["user_id"]) == {rid("member")}
         assert project_service._direct_ids(directory.default_direct, account["user_id"]) == {rid("project_reader")}
-        assert len(owner_intents) == 1
+        assert len(member_intents) == 1
         assert (await project_service.get_project_access(PROJECT, account["user_id"]))["roles"] == [
             "member",
             "project_member",
@@ -493,50 +524,46 @@ async def test_invite_delivery_new_account_membership_and_single_use(directory, 
             "reader",
         ]
         with pytest.raises(HTTPException) as used:
-            await domain_iam.redeem(
-                token, "invitation", session, name="different", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="different", password=PASSWORD)
         assert used.value.status_code == 410
     assert len(directory.creates) == 1
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("outcome", ["rejected", "missing_readback", "lost_reply"])
-async def test_personal_owner_failure_stays_disabled_until_exact_settlement(directory, enrollments, outcome):
+async def test_personal_member_failure_stays_disabled_until_exact_settlement(directory, enrollments, outcome):
     result, token = await invite(directory, enrollments)
     original_target = list(directory.direct)
     grant = directory.ks.roles.grant
 
-    def owner_outcome(role_id, **attrs):
-        if role_id != rid("project_owner"):
+    def member_outcome(role_id, **attrs):
+        if role_id != rid("member") or attrs["project"] not in directory.personal_projects:
             return grant(role_id, **attrs)
         assert attrs["project"] in directory.personal_projects
         assert not directory.personal_projects[attrs["project"]].enabled
         if outcome == "rejected":
-            raise HTTPException(403, "Native owner grant rejected")
+            raise HTTPException(403, "Native member grant rejected")
         if outcome == "missing_readback":
             return
         grant(role_id, **attrs)
-        raise ConnectionError("Native owner grant committed but reply lost")
+        raise ConnectionError("Native member grant committed but reply lost")
 
-    directory.ks.roles.grant = owner_outcome
+    directory.ks.roles.grant = member_outcome
     async with enrollments() as session:
         with pytest.raises(HTTPException) as failed:
-            await domain_iam.redeem(
-                token, "invitation", session, name="invitee", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="invitee", password=PASSWORD)
         assert failed.value.status_code == 503
         row = await session.get(DomainEnrollment, result["id"])
-        uid, pid, did = row.user_id, row.personal_project_id, row.identity_domain_id
+        uid, pid, did = row.user_id, row.personal_project_id, row.personal_domain_id
         assert row.status == "recovery_required" and row.accepted_at is None
         assert row.added_grants[-1] == {
             "project_id": pid,
             "domain_id": did,
-            "role_id": rid("project_owner"),
+            "role_id": rid("member"),
             "phase": "unknown",
         }
         assert not directory.personal_projects[pid].enabled and not directory.users[uid].enabled
-        assert (rid("project_owner") in project_service._direct_ids(directory.personal_direct, uid)) is (
+        assert (rid("member") in project_service._direct_ids(directory.personal_direct, uid)) is (
             outcome == "lost_reply"
         )
         assert not project_service._direct_ids(directory.default_direct, uid)
@@ -552,62 +579,60 @@ async def test_personal_owner_failure_stays_disabled_until_exact_settlement(dire
         await domain_iam.revoke(row.id, manager(), session)
         assert row.status == "revoked" and uid not in directory.users
         assert not directory.personal_direct and not directory.default_direct
-        assert not directory.personal_projects and not directory.personal_domains
+        assert not directory.personal_projects and len(directory.personal_domains) == 2
         assert directory.direct == original_target
         with pytest.raises(HTTPException) as replay:
-            await domain_iam.redeem(
-                token, "invitation", session, name="again", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="again", password=PASSWORD)
         assert replay.value.status_code == 410
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("owner_graph", ["missing_hierarchy", "manager_escalation"])
-async def test_personal_default_requires_safe_owner_without_seeding(directory, enrollments, owner_graph):
-    result, token = await invite(directory, enrollments)
+@pytest.mark.parametrize("member_graph", ["owner_escalation", "manager_escalation"])
+async def test_personal_primary_requires_safe_member_without_seeding(directory, enrollments, member_graph):
+    async with enrollments() as session:
+        result = await domain_iam.invite({"email": "new@test.invalid"}, manager(), session)
+    token = email_token(directory.sent[-1])
     roles = [{"id": row["id"], "name": row["name"], "domain_id": row["domain_id"]} for row in directory.catalog]
     edges = [
         {"prior_role": {"id": row["id"]}, "implies": [{"id": child} for child in row["implied_role_ids"]]}
         for row in directory.catalog
-        if row["id"] != rid("project_owner")
+        if row["id"] not in {rid("member"), rid("project_owner")}
     ]
-    if owner_graph == "manager_escalation":
-        edges.append({"prior_role": {"id": rid("project_owner")}, "implies": [{"id": rid("manager")}]})
+    implied = "project_owner" if member_graph == "owner_escalation" else "manager"
+    edges.append({"prior_role": {"id": rid("member")}, "implies": [{"id": rid(implied)}]})
     directory.catalog = identity_roles._catalog(roles, edges)
     original_catalog = list(directory.catalog)
     original_target = list(directory.direct)
     async with enrollments() as session:
         with pytest.raises(HTTPException) as failed:
-            await domain_iam.redeem(
-                token, "invitation", session, name="invitee", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="invitee", password=PASSWORD)
         assert failed.value.status_code == 503
+        assert isinstance(failed.value.__cause__, HTTPException)
+        assert failed.value.__cause__.detail == "Native personal member role has unsafe implications"
         row = await session.get(DomainEnrollment, result["id"])
         assert row.status == "failed" and row.accepted_at is None
         assert row.user_id not in directory.users and not row.added_grants
         assert not directory.personal_direct and not directory.default_direct
-        assert not directory.personal_projects and not directory.personal_domains
+        assert not directory.personal_projects and len(directory.personal_domains) == 2
         assert directory.direct == original_target and directory.catalog == original_catalog
 
 
 @pytest.mark.asyncio
-async def test_personal_owner_conflict_never_activates_or_deletes_unowned_grant(directory, enrollments):
+async def test_personal_foreign_member_never_activates_or_deletes_unowned_grant(directory, enrollments):
     result, token = await invite(directory, enrollments)
     grant = directory.ks.roles.grant
     foreign_grants = []
 
-    def conflicting_owner(role_id, **attrs):
+    def conflicting_member(role_id, **attrs):
         grant(role_id, **attrs)
-        if role_id == rid("project_owner"):
+        if role_id == rid("member") and attrs["project"] in directory.personal_projects:
             grant(role_id, user="member", project=attrs["project"])
             foreign_grants.extend(row for row in directory.personal_direct if row["user"]["id"] == "member")
 
-    directory.ks.roles.grant = conflicting_owner
+    directory.ks.roles.grant = conflicting_member
     async with enrollments() as session:
         with pytest.raises(HTTPException) as failed:
-            await domain_iam.redeem(
-                token, "invitation", session, name="invitee", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="invitee", password=PASSWORD)
         assert failed.value.status_code == 503
         row = await session.get(DomainEnrollment, result["id"])
         assert row.status == "recovery_required" and row.accepted_at is None
@@ -619,14 +644,12 @@ async def test_personal_owner_conflict_never_activates_or_deletes_unowned_grant(
 
 
 @pytest.mark.asyncio
-async def test_invited_password_authenticates_only_intended_domain(directory, enrollments, monkeypatch):
+async def test_invited_password_authenticates_only_intended_identity_domain(directory, enrollments, monkeypatch):
     from keystoneauth1.exceptions.http import Unauthorized
 
     result, token = await invite(directory, enrollments)
     async with enrollments() as session:
-        account = await domain_iam.redeem(
-            token, "invitation", session, name="invitee", password=PASSWORD, personal_domain_name="Personal"
-        )
+        account = await domain_iam.redeem(token, "invitation", session, name="invitee", password=PASSWORD)
 
     def access(uid, project_id=""):
         user = directory.users[uid]
@@ -680,31 +703,38 @@ async def test_invited_password_authenticates_only_intended_domain(directory, en
     monkeypatch.setattr(keystone.v3, "Token", TokenProvider)
     monkeypatch.setattr("keystoneclient.v3.client.Client", lambda **attrs: directory.ks)
     authenticated = await asyncio.to_thread(
-        keystone.authenticate, "invitee", PASSWORD, "", account["identity_domain_id"]
+        keystone.authenticate, "invitee", PASSWORD, "", account["identity_domain_id"], unscoped_only=True
     )
     assert authenticated["user_id"] == account["user_id"]
     assert authenticated["identity_domain_id"] == account["identity_domain_id"]
-    with pytest.raises(Unauthorized):
-        await asyncio.to_thread(keystone.authenticate, "invitee", PASSWORD, "", "other")
+    assert authenticated["domain_kind"] == "account" and authenticated["project_id"] == ""
+    scoped = await asyncio.to_thread(keystone.validate_token, authenticated["token"], account["personal_project_id"])
+    assert scoped["identity_domain_id"] == account["identity_domain_id"]
+    assert scoped["domain_id"] == account["personal_domain_id"] and scoped["domain_kind"] == "personal"
+    assert scoped["project_id"] == account["personal_project_id"]
+    for wrong_domain in ("other", "domain", account["personal_domain_id"]):
+        with pytest.raises(Unauthorized):
+            await asyncio.to_thread(keystone.authenticate, "invitee", PASSWORD, "", wrong_domain, unscoped_only=True)
     directory.settings.auth.public_signup_enabled = True
     directory.settings.auth.signup_email_domains = ["test.invalid"]
     async with enrollments() as session:
         await domain_iam.register("signup@test.invalid", session)
         verified = await domain_iam.redeem(
-            email_token(directory.sent[-1]),
-            "registration",
-            session,
-            name="signup",
-            password=PASSWORD,
-            personal_domain_name="Personal",
+            email_token(directory.sent[-1]), "registration", session, name="signup", password=PASSWORD
         )
-    signed_up = await asyncio.to_thread(keystone.authenticate, "signup", PASSWORD, "", verified["identity_domain_id"])
-    assert (
-        signed_up["user_id"] == verified["user_id"]
-        and signed_up["identity_domain_id"] == verified["identity_domain_id"]
+    signed_up = await asyncio.to_thread(
+        keystone.authenticate, "signup", PASSWORD, "", verified["identity_domain_id"], unscoped_only=True
     )
-    assert signed_up["project_id"] == domain_projects.default_project(verified["identity_domain_id"])["id"]
-    assert "manager" in signed_up["roles"] and "project_reader" in signed_up["roles"]
+    assert signed_up["user_id"] == verified["user_id"]
+    assert signed_up["identity_domain_id"] == verified["identity_domain_id"]
+    assert signed_up["domain_kind"] == "account" and signed_up["project_id"] == ""
+    personal = await asyncio.to_thread(keystone.validate_token, signed_up["token"], verified["personal_project_id"])
+    assert personal["identity_domain_id"] == verified["identity_domain_id"]
+    assert personal["project_id"] == verified["personal_project_id"]
+    assert personal["domain_id"] == verified["personal_domain_id"] and personal["domain_kind"] == "personal"
+    assert set(personal["roles"]) == {"member"}
+    assert directory.users[account["user_id"]].password == PASSWORD
+    assert directory.users[verified["user_id"]].password == PASSWORD
 
 
 @pytest.mark.asyncio
@@ -765,32 +795,19 @@ async def test_existing_account_not_taken_over_and_authenticated_accept(director
     result, token = await invite(directory, enrollments, "member@test.invalid")
     async with enrollments() as session:
         with pytest.raises(HTTPException) as exists:
-            await domain_iam.redeem(
-                token,
-                "invitation",
-                session,
-                name="takeover",
-                password="attacker-password",
-                personal_domain_name="Personal",
-            )
+            await domain_iam.redeem(token, "invitation", session, name="takeover", password="attacker-password")
         assert exists.value.status_code == 409
         assert directory.users["member"].password == PASSWORD
         await session.rollback()
         with pytest.raises(HTTPException) as foreign:
-            await domain_iam.redeem(
-                token, "invitation", session, token_info=manager("foreign", "other"), personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, token_info=manager("foreign", "other"))
         assert foreign.value.status_code == 403
         await session.rollback()
         with pytest.raises(HTTPException) as wrong:
-            await domain_iam.redeem(
-                token, "invitation", session, token_info=manager("owner"), personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, token_info=manager("owner"))
         assert wrong.value.status_code == 403
         await session.rollback()
-        accepted = await domain_iam.redeem(
-            token, "invitation", session, token_info=manager("member"), personal_domain_name="Personal"
-        )
+        accepted = await domain_iam.redeem(token, "invitation", session, token_info=manager("member"))
         assert accepted["user_id"] == "member"
         assert (await project_service.get_project_access(PROJECT, "member"))["roles"] == [
             "member",
@@ -810,9 +827,7 @@ async def test_invalid_enrollment_state_never_creates_account(directory, enrollm
         row.status = status
         await session.commit()
         with pytest.raises(HTTPException) as denied:
-            await domain_iam.redeem(
-                token, "invitation", session, name="invitee", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="invitee", password=PASSWORD)
         assert denied.value.status_code == 410
     assert not directory.creates
 
@@ -831,17 +846,13 @@ async def test_expiry_revocation_and_inviter_authority_change(directory, enrollm
         row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
         await session.commit()
         with pytest.raises(HTTPException) as expired:
-            await domain_iam.redeem(
-                token, "invitation", session, name="expired", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="expired", password=PASSWORD)
         assert expired.value.status_code == 410
     result, token = await invite(directory, enrollments, "revoked-manager@test.invalid")
     directory.managers.clear()
     async with enrollments() as session:
         with pytest.raises(HTTPException) as denied:
-            await domain_iam.redeem(
-                token, "invitation", session, name="revoked", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="revoked", password=PASSWORD)
         assert denied.value.status_code == 403
     assert not directory.creates
 
@@ -879,18 +890,11 @@ async def test_signup_opt_in_allowlist_verification_and_no_implicit_project(dire
         token = email_token(directory.sent[-1])
         with pytest.raises(HTTPException) as fabricated:
             await domain_iam.redeem(
-                "arbitrary-unverified-token",
-                "registration",
-                session,
-                name="attacker",
-                password=PASSWORD,
-                personal_domain_name="Personal",
+                "arbitrary-unverified-token", "registration", session, name="attacker", password=PASSWORD
             )
         assert fabricated.value.status_code == 404
-        account = await domain_iam.redeem(
-            token, "registration", session, name="signup", password=PASSWORD, personal_domain_name="Personal"
-        )
-        assert account["domain_id"] == account["identity_domain_id"] != "domain"
+        account = await domain_iam.redeem(token, "registration", session, name="signup", password=PASSWORD)
+        assert account["domain_id"] == account["personal_domain_id"] != account["identity_domain_id"]
         assert not project_service._direct_ids(directory.default_direct, account["user_id"])
         assert not (await project_service.get_project_access(PROJECT, account["user_id"]))["roles"]
 
@@ -901,9 +905,7 @@ async def test_signup_and_invites_recheck_current_login_email_policy(directory, 
     directory.policy = domain_auth.LoginPolicy(domain_id="domain", allowed_email_domains=("different.invalid",))
     async with enrollments() as session:
         with pytest.raises(HTTPException) as changed:
-            await domain_iam.redeem(
-                token, "invitation", session, name="invitee", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="invitee", password=PASSWORD)
         assert changed.value.status_code == 403
     assert not directory.creates
 
@@ -923,7 +925,7 @@ async def test_routes_reject_secret_echo_and_client_role_injection(directory, en
     app.dependency_overrides[get_session] = session_dep
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         for path, body in [
-            ("/api/v1/iam/users", {"name": "name", "email": "valid@test.invalid", "password": "secret"}),
+            ("/api/v1/auth/invitations/accept", {"token": "secret-token", "name": "name", "password": "secret"}),
             (
                 "/api/v1/auth/registrations/accept",
                 {"token": "secret-token", "name": "name", "password": PASSWORD, "role_ids": [rid("admin")]},
@@ -965,9 +967,7 @@ async def test_existing_federated_invitee_keeps_credentials_in_password_disabled
     directory.policy = domain_auth.LoginPolicy(domain_id="domain", password_enabled=False)
     result, token = await invite(directory, enrollments, "member@test.invalid")
     async with enrollments() as session:
-        accepted = await domain_iam.redeem(
-            token, "invitation", session, token_info=manager("member"), personal_domain_name="Personal"
-        )
+        accepted = await domain_iam.redeem(token, "invitation", session, token_info=manager("member"))
     assert accepted["user_id"] == "member" and directory.users["member"].password == PASSWORD
     assert not directory.creates and not directory.updates
     with pytest.raises(HTTPException) as denied:
@@ -983,14 +983,7 @@ async def test_existing_email_signup_response_is_generic_and_never_resets(direct
         assert await domain_iam.register("member@test.invalid", session) == {"accepted": True}
         token = email_token(directory.sent[-1])
         with pytest.raises(HTTPException) as exists:
-            await domain_iam.redeem(
-                token,
-                "registration",
-                session,
-                name="new-name",
-                password="attacker-password",
-                personal_domain_name="Personal",
-            )
+            await domain_iam.redeem(token, "registration", session, name="new-name", password="attacker-password")
         assert exists.value.status_code == 409
     assert directory.users["member"].password == PASSWORD and not directory.creates
 
@@ -1117,9 +1110,7 @@ async def test_existing_invitation_acceptance_preserves_admin_and_unrelated_mana
     result, token = await invite(directory, enrollments, "admin@test.invalid")
     before = project_service._direct_ids(directory.direct, "admin")
     async with enrollments() as session:
-        accepted = await domain_iam.redeem(
-            token, "invitation", session, token_info=manager("admin"), personal_domain_name="Personal"
-        )
+        accepted = await domain_iam.redeem(token, "invitation", session, token_info=manager("admin"))
     assert accepted["user_id"] == "admin"
     assert project_service._direct_ids(directory.direct, "admin") == before | {rid("project_member")}
     assert (await project_service.get_project_access(PROJECT, "admin"))["is_manager"]
@@ -1138,9 +1129,7 @@ async def test_partial_grant_failure_compensates_exact_new_account_and_grants(di
     directory.ks.roles.grant = lost_reply
     async with enrollments() as session:
         with pytest.raises(HTTPException) as failed:
-            await domain_iam.redeem(
-                token, "invitation", session, name="invitee", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="invitee", password=PASSWORD)
         assert failed.value.status_code == 503
         row = await session.get(DomainEnrollment, result["id"])
         assert row.status == "recovery_required" and row.new_user and row.added_grants[-1]["phase"] == "unknown"
@@ -1157,9 +1146,7 @@ async def test_partial_grant_failure_compensates_exact_new_account_and_grants(di
         assert row.user_id not in directory.users
         assert not project_service._direct_ids(directory.direct, row.user_id)
         with pytest.raises(HTTPException) as replay:
-            await domain_iam.redeem(
-                token, "invitation", session, name="again", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="again", password=PASSWORD)
         assert replay.value.status_code == 410
 
 
@@ -1180,13 +1167,11 @@ async def test_revoke_never_succeeds_while_native_grants_survive_and_retry_recov
     directory.ks.roles.revoke = revoke_unavailable
     async with enrollments() as session:
         with pytest.raises(HTTPException):
-            await domain_iam.redeem(
-                token, "invitation", session, name="invitee", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="invitee", password=PASSWORD)
         row = await session.get(DomainEnrollment, result["id"])
         uid = row.user_id
         assert row.status == "recovery_required" and not directory.users[uid].enabled
-        assert rid("manager") in project_service._direct_ids(directory.personal_direct, uid)
+        assert rid("member") in project_service._direct_ids(directory.personal_direct, uid)
         await domain_iam.settle_enrollment_native_writes(
             row.id,
             manager("system-admin"),
@@ -1197,7 +1182,7 @@ async def test_revoke_never_succeeds_while_native_grants_survive_and_retry_recov
         with pytest.raises(HTTPException) as still_live:
             await domain_iam.revoke(result["id"], manager(), session)
         assert still_live.value.status_code == 503
-        assert rid("manager") in project_service._direct_ids(directory.personal_direct, uid)
+        assert rid("member") in project_service._direct_ids(directory.personal_direct, uid)
         operations = await domain_iam.list_invitations(manager(), session, operations=True)
         assert next(item for item in operations["items"] if item["id"] == result["id"])["recovery_required"]
         directory.ks.roles.revoke = revoke
@@ -1225,19 +1210,17 @@ async def test_final_sql_failure_cannot_leave_active_account_with_pending_record
 
         session.commit = fail_final_commit
         with pytest.raises(HTTPException) as failed:
-            await domain_iam.redeem(
-                token, "invitation", session, name="invitee", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="invitee", password=PASSWORD)
         assert failed.value.status_code == 503
         row = await session.get(DomainEnrollment, result["id"])
         assert row.status == "failed" and row.user_id not in directory.users
         assert not project_service._direct_ids(directory.direct, row.user_id)
         assert not directory.personal_direct and not directory.default_direct
-        assert not directory.personal_projects and not directory.personal_domains
+        assert not directory.personal_projects and len(directory.personal_domains) == 2
 
 
 @pytest.mark.asyncio
-async def test_manager_create_with_project_failure_is_durably_disposed(directory, enrollments):
+async def test_system_human_first_login_failure_preserves_accepted_identity(directory, enrollments):
     grant = directory.ks.roles.grant
 
     def lost_reply(*args, **kwargs):
@@ -1246,37 +1229,36 @@ async def test_manager_create_with_project_failure_is_durably_disposed(directory
 
     directory.ks.roles.grant = lost_reply
     async with enrollments() as session:
-        with pytest.raises(HTTPException) as failed:
-            await domain_iam.create_user(
-                {
-                    "personal_domain_name": "Personal",
-                    **{
-                        "name": "managed",
-                        "email": "managed@test.invalid",
-                        "password": PASSWORD,
-                        "enabled": True,
-                        "project_id": PROJECT,
-                        "role_ids": [rid("project_member")],
-                    },
-                },
-                manager(),
-                session,
-            )
-        assert failed.value.status_code == 503
-        row = (
-            await session.execute(select(DomainEnrollment).where(DomainEnrollment.kind == "managed_create"))
-        ).scalar_one()
-        assert row.status == "recovery_required" and not directory.users[row.user_id].enabled
-        await domain_iam.settle_enrollment_native_writes(
-            row.id,
+        created = await domain_iam.create_managed_user(
+            {"name": "managed", "email": "managed@test.invalid", "password": PASSWORD, "enabled": True},
+            "domain",
             manager("system-admin"),
             session,
-            domain_id="domain",
-            native_writes_settled=True,
         )
-        await domain_iam.revoke(row.id, manager(), session, operation=True)
-        assert row.status == "revoked" and row.user_id not in directory.users
-        assert not project_service._direct_ids(directory.direct, row.user_id)
+        row = (await session.execute(select(DomainEnrollment))).scalar_one()
+        uid = row.user_id
+        assert row.status == "accepted" and directory.users[uid].enabled
+        assert created["personal_project_id"] is None and not directory.personal_projects
+        with pytest.raises(HTTPException) as failed:
+            await account_spaces.ensure_personal_project(uid)
+        assert failed.value.status_code == 503
+        assert directory.users[uid].enabled and directory.users[uid].password == PASSWORD
+        recovery = await account_spaces.personal_recovery_status(uid, created["identity_domain_id"])
+        assert recovery["native_calls_settled_required"] is True
+        with pytest.raises(HTTPException):
+            await account_spaces.ensure_personal_project(uid)
+        assert len(directory.personal_projects) == 1
+        settled = await account_spaces.settle_personal_project(
+            recovery["operation_id"],
+            manager("system-admin"),
+            native_calls_settled=True,
+        )
+        assert settled["status"] == "cancelled" and directory.users[uid].enabled
+        directory.ks.roles.grant = grant
+        primary = await account_spaces.ensure_personal_project(uid)
+        assert primary["enabled"] and directory.users[uid].password == PASSWORD
+        await session.refresh(row)
+        assert row.status == "accepted" and row.personal_project_id == primary["id"]
 
 
 @pytest.mark.asyncio
@@ -1295,24 +1277,21 @@ async def test_interrupted_native_work_has_durable_plan_and_can_be_recovered(dir
     monkeypatch.setattr(domain_iam, "_save", interrupt_before_activation)
     async with enrollments() as session:
         with pytest.raises(ProcessInterrupted):
-            await domain_iam.redeem(
-                token, "invitation", session, name="invitee", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="invitee", password=PASSWORD)
     async with enrollments() as session:
         row = await session.get(DomainEnrollment, result["id"])
         uid = row.user_id
-        assert row.status == "granting" and {g["role_id"] for g in row.added_grants} >= {
+        assert row.status == "granting" and {g["role_id"] for g in row.added_grants} == {
             rid("project_member"),
             rid("project_reader"),
-            rid("manager"),
-            rid("project_owner"),
+            rid("member"),
         }
         assert not directory.users[uid].enabled
         await domain_iam.revoke(result["id"], manager(), session)
         assert uid not in directory.users and not project_service._direct_ids(directory.direct, uid)
         assert (await session.get(DomainEnrollment, result["id"])).status == "revoked"
         assert not directory.personal_direct and not directory.default_direct
-        assert not directory.personal_projects and not directory.personal_domains
+        assert not directory.personal_projects and len(directory.personal_domains) == 2
 
 
 @pytest.mark.asyncio
@@ -1329,9 +1308,7 @@ async def test_historical_invitation_list_and_revoke_survive_disabled_or_deleted
         listed = await domain_iam.list_invitations(manager(), session)
         assert listed["items"][0]["id"] == result["id"] and listed["items"][0]["project_name"] == "Intended project"
         with pytest.raises(HTTPException) as inactive:
-            await domain_iam.redeem(
-                token, "invitation", session, name="invitee", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="invitee", password=PASSWORD)
         assert inactive.value.status_code in {403, 404}
         await domain_iam.revoke(result["id"], manager(), session)
         assert (await session.get(DomainEnrollment, result["id"])).status == "revoked"
@@ -1379,9 +1356,7 @@ async def test_failed_existing_acceptance_only_compensates_new_grants(directory,
     directory.ks.roles.grant = lost_reply
     async with enrollments() as session:
         with pytest.raises(HTTPException) as failed:
-            await domain_iam.redeem(
-                token, "invitation", session, token_info=manager("admin"), personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, token_info=manager("admin"))
         assert failed.value.status_code == 503
         row = await session.get(DomainEnrollment, result["id"])
         assert row.status == "recovery_required" and row.added_grants[-1]["phase"] == "unknown"
@@ -1411,9 +1386,7 @@ async def test_lost_create_reply_recovers_only_exact_server_marked_account(direc
     directory.ks.users.create = lost_reply
     async with enrollments() as session:
         with pytest.raises(HTTPException) as failed:
-            await domain_iam.redeem(
-                token, "invitation", session, name="invitee", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="invitee", password=PASSWORD)
         assert failed.value.status_code == 503
         row = await session.get(DomainEnrollment, result["id"])
         assert row.status == "failed" and row.user_id == directory.creates[0]
@@ -1431,9 +1404,7 @@ async def test_unknown_create_outcome_never_deletes_unowned_existing_account(dir
     directory.ks.users.create = unavailable
     async with enrollments() as session:
         with pytest.raises(HTTPException):
-            await domain_iam.redeem(
-                token, "invitation", session, name="invitee", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="invitee", password=PASSWORD)
         row = await session.get(DomainEnrollment, result["id"])
         assert row.status == "recovery_required" and row.creation_uncertain and row.user_id is None
         directory.users["external"] = SimpleNamespace(
@@ -1467,9 +1438,7 @@ async def test_recovery_routes_only_return_204_after_verified_native_disposition
     directory.ks.roles.revoke = unavailable
     async with enrollments() as session:
         with pytest.raises(HTTPException):
-            await domain_iam.redeem(
-                token, "invitation", session, name="invitee", password=PASSWORD, personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="invitee", password=PASSWORD)
     app = FastAPI()
     app.include_router(iam.router, prefix="/api/v1/iam")
     app.dependency_overrides[get_token_info] = lambda: manager()
@@ -1510,14 +1479,10 @@ async def test_external_invitee_accepts_same_account_and_home_identity_stays_rea
     original = vars(external).copy()
     async with enrollments() as session:
         with pytest.raises(HTTPException) as duplicate:
-            await domain_iam.redeem(
-                token, "invitation", session, name="duplicate", password="new-password", personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, name="duplicate", password="new-password")
         assert duplicate.value.status_code == 409
         await session.rollback()
-        accepted = await domain_iam.redeem(
-            token, "invitation", session, token_info=manager("foreign", "other"), personal_domain_name="Personal"
-        )
+        accepted = await domain_iam.redeem(token, "invitation", session, token_info=manager("foreign", "other"))
         assert accepted["user_id"] == "foreign" and accepted["domain_id"] == "domain"
         assert (await session.get(DomainEnrollment, result["id"])).new_user is False
     assert not directory.creates and not directory.updates and vars(external) == original
@@ -1581,9 +1546,7 @@ async def test_revoked_invitation_issuer_cannot_grant_external_membership(direct
     directory.managers.clear()
     async with enrollments() as session:
         with pytest.raises(HTTPException) as denied:
-            await domain_iam.redeem(
-                token, "invitation", session, token_info=manager("foreign", "other"), personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, token_info=manager("foreign", "other"))
         assert denied.value.status_code == 403
     assert not directory.calls and not directory.creates and not directory.updates
 
@@ -1592,6 +1555,8 @@ async def test_revoked_invitation_issuer_cannot_grant_external_membership(direct
 @pytest.mark.parametrize("group_id", [None, "team"])
 @pytest.mark.parametrize("alias", [False, True])
 async def test_manager_bearing_user_and_group_grants_rejected_outside_default(directory, group_id, alias):
+    directory.default_direct.append(assignment("foreign", "project_reader", project_id="default-project"))
+    directory.groups["team"] = ["foreign"]
     role_id = rid("manager")
     if alias:
         role_id = "custom-manager-alias"
@@ -1619,7 +1584,8 @@ async def test_manager_bearing_user_and_group_grants_rejected_outside_default(di
             user_id="foreign" if group_id is None else None,
             group_id=group_id,
         )
-    assert denied.value.status_code in {409, 422}
+    assert denied.value.status_code == 422
+    assert denied.value.detail == "manager_requires_default_project"
     assert not writes and not directory.calls
 
 
@@ -1823,12 +1789,39 @@ async def test_cross_identity_invitation_rejects_provider_subject_substitution(d
     )
     async with enrollments() as session:
         with pytest.raises(HTTPException) as denied:
-            await domain_iam.redeem(
-                token, "invitation", session, token_info=manager("foreign", "other"), personal_domain_name="Personal"
-            )
+            await domain_iam.redeem(token, "invitation", session, token_info=manager("foreign", "other"))
         assert denied.value.status_code == 503
         assert (await session.get(DomainEnrollment, result["id"])).status == "pending"
     assert not directory.calls and not directory.creates and not directory.updates
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("group", [False, True])
+async def test_admin_project_assignment_cannot_admit_outsiders(directory, group):
+    directory.groups["team"] = ["member", "foreign"]
+    identity_before = dict(vars(directory.users["foreign"]))
+    writes = []
+    conn = SimpleNamespace(
+        identity=SimpleNamespace(
+            assign_project_role_to_user=lambda *args: writes.append(args),
+            assign_project_role_to_group=lambda *args: writes.append(args),
+            group_users=lambda gid: [directory.ks.users.get(uid) for uid in directory.groups[gid]],
+        )
+    )
+    with pytest.raises(HTTPException) as denied:
+        await identity_roles.change_project_assignment(
+            conn,
+            {**manager("system-admin"), "is_system_admin": True},
+            PROJECT,
+            rid("project_reader"),
+            user_id=None if group else "foreign",
+            group_id="team" if group else None,
+        )
+    assert denied.value.status_code == 403
+    assert denied.value.detail == "domain_membership_denied"
+    assert not writes and not directory.calls and not directory.updates and not directory.creates
+    assert vars(directory.users["foreign"]) == identity_before
+    assert not (await project_service.get_project_access(PROJECT, "foreign"))["roles"]
 
 
 @pytest.mark.asyncio
@@ -1840,6 +1833,8 @@ async def test_admin_project_assignment_accepts_external_principal_without_ident
     from app.api.identity import admin_identity
     from tests.admin_gate import synthetic_verified_admin
 
+    directory.default_direct.append(assignment("foreign", "project_reader", project_id="default-project"))
+    identity_before = dict(vars(directory.users["foreign"]))
     directory.groups["external-team"] = ["foreign"]
     get_group = directory.ks.groups.get
     directory.ks.groups.get = lambda gid: (
@@ -1890,3 +1885,4 @@ async def test_admin_project_assignment_accepts_external_principal_without_ident
         await domain_iam.context(manager("foreign"))
     assert denied.value.status_code == 403
     assert not directory.updates and not directory.creates and directory.users["foreign"].password == PASSWORD
+    assert vars(directory.users["foreign"]) == identity_before

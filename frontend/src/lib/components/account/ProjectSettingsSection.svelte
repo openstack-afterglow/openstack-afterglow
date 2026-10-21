@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { t } from '$lib/i18n/ns/account';
 	import { t as tc } from '$lib/i18n/ns/common';
 	import { t as td } from '$lib/i18n/ns/domain-iam';
@@ -186,6 +188,13 @@
 			{:else if members.length === 0}
 				<div class="text-ink-2 text-sm text-center py-12">{t('projectSettings.noMembers')}</div>
 			{:else}
+				<ResponsiveTable>{#snippet cards()}
+					{#each members.slice().sort((a, b) => (a.source === 'group' ? 1 : 0) - (b.source === 'group' ? 1 : 0)) as m (m.user_id)}<CompactResourceCard>
+						<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{m.username || m.user_id}</h3><span class="text-xs">{m.is_owner ? 'owner' : m.is_manager ? 'admin' : 'member'}</span></div><p class="text-sm break-all">{m.email || '—'}</p>{#if m.group_name}<p class="text-xs text-ink-2">{m.group_name}</p>{/if}
+						{#snippet details()}<p class="text-xs [overflow-wrap:anywhere]">{t('projectSettings.directRoles', { roles: (m.direct_role_ids ?? []).map(id => assignable?.roles.find(role => role.id === id)?.name ?? id).join(', ') || '—' })}</p><p class="text-xs [overflow-wrap:anywhere]">{t('projectSettings.effectiveRoles', { roles: (m.roles ?? []).join(', ') || '—' })}</p>{/snippet}
+						{#snippet actions()}{#if canEdit(m)}<Button variant="secondary" size="sm" disabled={managingUserId !== null || !membersFresh} onclick={() => { editMember = m; membersError = ''; }}>{t('projectSettings.editRoles')}</Button>{#if !m.is_owner && (actorOwner || !m.is_manager)}<Button variant="danger" size="sm" disabled={managingUserId !== null || !membersFresh || !(m.direct_role_ids?.length)} onclick={() => removeMember(m)}>{t('projectSettings.removeMember')}</Button>{/if}{:else if ['group', 'inherited'].includes(m.source ?? '')}<span class="text-xs text-ink-2">{t('projectSettings.inheritedReadOnly')}</span>{/if}{/snippet}
+					</CompactResourceCard>{/each}
+				{/snippet}
 				<TableShell>
 					<table class="w-full text-sm">
 						<thead>
@@ -222,6 +231,7 @@
 						</tbody>
 					</table>
 				</TableShell>
+				</ResponsiveTable>
 			{/if}
 			{#if verifiedSystemAdmin}
 				<div class="mt-4 border border-line rounded-lg p-3 space-y-3">

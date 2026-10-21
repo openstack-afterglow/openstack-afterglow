@@ -17,7 +17,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFil
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info
+from app.api.common.admin_resource_scope import AdminResourceScope, resolve_scope
+from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info, require_admin
 from app.models.storage import (
     BulkDeleteRequest,
     CopyObjectRequest,
@@ -193,6 +194,7 @@ async def _list_all_projects_containers(
     include_quarantine: bool = False,
     include_trash: bool = False,
     include_deleted: bool = False,
+    scope: AdminResourceScope | None = None,
 ) -> list[dict]:
     """모든 프로젝트로 fan-out 해서 Swift 컨테이너 집계 (asyncio.gather 병렬).
 
@@ -206,6 +208,8 @@ async def _list_all_projects_containers(
     from app.services.swift import _is_unauthorized
 
     projects = await asyncio.to_thread(keystone.list_system_projects, admin_token)
+    if scope is not None:
+        projects = [p for p in projects if scope.project_ids is None or p.get("id") in scope.project_ids]
     semaphore = asyncio.Semaphore(8)
 
     async def _one(p: dict) -> list[dict]:
@@ -220,7 +224,7 @@ async def _list_all_projects_containers(
                     _logger.info("프로젝트 %s 권한 없음 — skip", pid)
                 else:
                     _logger.warning("프로젝트 %s connection 실패: %s", pid, e)
-                return []
+                raise HTTPException(503, "object_storage_inventory_unavailable") from e
             try:
                 containers = await asyncio.to_thread(swift.list_containers, sub_conn, include_quarantine, include_trash)
             except Exception as e:
@@ -228,7 +232,7 @@ async def _list_all_projects_containers(
                     _logger.info("프로젝트 %s 권한 없음 — skip", pid)
                 else:
                     _logger.warning("프로젝트 %s 의 Swift 컨테이너 조회 실패: %s", pid, e)
-                containers = []
+                raise HTTPException(503, "object_storage_inventory_unavailable") from e
             finally:
                 with contextlib.suppress(Exception):
                     await asyncio.to_thread(sub_conn.close)
@@ -263,6 +267,8 @@ async def list_object_storage_containers(
     include_trash: bool = Query(False, description="admin 전용: *-trash 버킷 포함"),
     include_deleted: bool = Query(False, description="소프트 삭제 버킷 포함 (복구 대기 중인 버킷)"),
     cm: CacheMode = Depends(cache_mode),
+    domain_id: str | None = Query(None, min_length=1),
+    project_id: str | None = Query(None, min_length=1),
 ):
     """Swift 오브젝트 스토리지 컨테이너 목록.
 
@@ -277,15 +283,19 @@ async def list_object_storage_containers(
         raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다")
 
     if all_projects:
-        if not is_admin:
-            raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다")
+        await require_admin(token_info)
+        scope = await asyncio.to_thread(resolve_scope, conn, domain_id, project_id)
         try:
             return await _list_all_projects_containers(
-                token_info["token"], include_quarantine, include_trash, include_deleted
+                token_info["token"], include_quarantine, include_trash, include_deleted, scope
             )
+        except HTTPException:
+            raise
         except Exception:
             _logger.exception("관리자 Swift 버킷 전체 조회 실패")
             raise HTTPException(status_code=500, detail="오브젝트 스토리지 컨테이너 목록 조회 실패")
+    if domain_id is not None or project_id is not None:
+        raise HTTPException(403, "Administrator inventory conditions require all_projects")
 
     pid = conn._afterglow_project_id
     # 파라미터 조합마다 별도 캐시 항목 사용

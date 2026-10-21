@@ -275,21 +275,48 @@ auto_join_email_domains = {}
 ```
 
 - Public signup 기본은false입니다. `signup_email_domains=[]`는 host 제한 없음이며 nonempty 목록은 exact IDNA host만 허용합니다. Signup/recovery readiness는 SMTP enabled/host/from-address와 frontend base URL 구성 여부입니다. SMTP 인증/TLS/발신 권한·실제 mailbox 수신은 별도 운영 수용이 필요합니다. 복구는 signup opt-in과 독립이며 SMTP readiness가 있어도 부적격 계정은 발급하지 않습니다.
-- Auto-join은 provider bare key 또는 canonical SQL UUID → host 배열 map입니다. 도메인 map 생략은 default 상속, 명시 map은 전체 대체, `{}`·누락 provider·빈 배열은 자동 가입 거부입니다. `allow_providers` 허용/활성·verified provider email·현재 email 정책도 필요합니다. 기본 provider 노출은 무제한일 수 있지만 **기본 auto-admission은 거부**입니다. Target Default를 사전에 정확히 준비해야 하며 이 경로는 reader만 추가하고 manager/owner/group을 provision하지 않습니다.
-- 전역 signup은 `/auth/registrations`에서 전달된 email proof로 새 개인 home만 만듭니다. `/auth/domains/{domain_id}/registrations`는403 `invitation_required`이고 기존 SQL signup opt-in/resolve projection으로 다시 열 수 없습니다. 기존 도메인 가입에는 초대 또는 위 provider별 admission이 필요합니다. Auto-join은 기존 email 계정의 password/authenticated 연결 proof를 대신하지 않습니다.
+- 전역 signup은 `/auth/registrations`의 검증 email proof 뒤 shared account user와 shared personal primary만 생성합니다. 임의 조직 등록 route는403 invitation_required이며 조직 참여는 manager 초대 수락 또는 명시 trusted-provider admission입니다. OIDC organization 설정의 stable id/name/manager_subjects는 operator trust 입력이고 exact issuer+org ID만 binding identity입니다. 첫 조직은 명시 manager subject만 만들며 mutable email/name/client/provider alias로 조직·manager를 추정하지 않습니다. Common provider origin은 조직 membership이 아닙니다.
+- 기존 조직 auto_join_email_domains는 provider bare key 또는 canonical SQL UUID→exact host 배열 map입니다. Domain map 생략은 default 상속, 명시 map은 전체 대체이고 빈 map/누락 provider/빈 host 배열은 admission을 허용하지 않습니다. Provider 허용/활성·검증 email·현재 email 정책과 준비된 target Default가 필요하며 reader만 additive로 부여합니다. 이 설정은 기존 계정 password/authenticated 연결 proof를 대신하거나 manager/owner/group을 생성하지 않습니다.
 - Config/Secret·K8s/Helm artifact를 재생성할 때 위 auth metadata와 **생략/명시 빈 map/list의 차이**를 유지합니다. Protected provider secret·암호화 키·Redis pin·SQL 정책을 보존하고 모든 API/worker를 일관된 설정으로 재시작합니다. Nested env secret leaf와 최상위 AUTH 전체 대체를 혼동하지 않습니다. Hot reload·구형 process와 혼합 집행을 가정하지 않습니다.
+- 새 writer+구 schema는099의 enrollment 컬럼과099/100 intent/binding table이 없으면 호환되지 않습니다. `create_all`이나 config fallback을 migration으로 대신하지 않습니다. 구 writer+새 additive schema도 storage 보존과 별개로 **동시 운용할 수 없습니다**. 구 login/Default bootstrap·IAM reader는 identity-only account와 공통 personal의 권한 경계를 모릅니다. Signup만 끄고 구 source로 되돌리는 것은 안전한 rollback 증거가 아니며 관련 auth/enrollment/bootstrap 소비자를 모두 drain하고 호환성이 입증된 source를 유지해야 합니다. Existing identity·grant·resource·미완료 receipt의 자동 이동/삭제·DDL DROP은 복구 방법이 아닙니다.
+- 이번 검증은 폐기 가능한 격리 schema와 합성 native/SMTP에서 수행합니다. 실제 운영 revision·migration ledger/checksum·schema/charset/sql_mode·backup 복원·암호화 키·외부 IdP mapping 및 mixed-version 수용 증거는 수집하지 않았습니다. 따라서 운영 DB 동기화·rolling upgrade·image-only downgrade의 안전성을 선언하지 않으며 별도 승인과 증거가 필요합니다.
 
 #### 가입 승인·개인 quota 정책 전환
 
 `098_enrollment_policy.sql`과 migration manifest를 **새 writer보다 먼저** 적용합니다. 기존 가입 writer를 drain하고 모든 API/worker를 함께 전환합니다. 구형 writer 혼합 운용은 승인·quota 정책을 우회할 수 있으므로 지원하지 않습니다. Migration은 `enrollment_policy`, `signup_requests`, enrollment의 nullable JSON `personal_quotas`를 추가하며 기존 사용자·home·권한·진행 중 intent를 이전하지 않습니다.
 
-시스템 관리자 → 설정의 가입 정책에서 공개 email 가입과 auto/admin 승인, 미래 개인 도메인의 sparse quota template을 저장합니다. 최초 persisted row가 없을 때만 config 공개 가입 flag·auto·core quota0을 사용하고 SQL 장애는503입니다. Row가 생기면 config flag보다 persisted flag가 우선하며 host allowlist·SMTP/provider 설정은 계속 필요합니다. 다른 배포 입력에 새 설정 키나 secret을 복제하지 않습니다.
+시스템 관리자 → 설정의 가입 정책은 공개 email 가입과 auto/admin 승인, 미래 각 personal project의 sparse quota template을 저장합니다. 최초 persisted row 부재만 config flag·auto·core quota0을 사용하며 SQL 장애는503입니다. Row가 생기면 persisted enabled가 우선하고 host allowlist·SMTP/provider 설정은 계속 필요합니다. 조직 생성은 별도 auth.organization_creation_enabled(기본true)·max_organizations_per_user(기본10)이며 config 예시·K8s·Helm 생성 경로를 함께 유지합니다.
 
-Quota blank는 OpenStack 기본값,0은 금지,-1은 unlimited입니다. Template은 새 개인 Default의 native quota와 도메인 allocation ceilings/defaults에 동결 적용하며 사용자/Default 활성화 전 readback합니다. 비활성 Manila field는 보존·omitted로 표시하고 다른 native quota 불확실성은 recovery journal을 남기고 차단합니다. 저장 뒤 기존 도메인의 quota를 일괄 변경하지 않습니다.
+Quota blank는 native 기본값,0은 금지,-1은 unlimited입니다. Template은 새 personal project에 동결 적용하고 disabled user/project 활성화 전에 native update/readback과 sole-owner/direct-reader를 검증합니다. Personal domain allocation ceilings/defaults·manager·Default·상속 projection은 만들지 않습니다. 비활성 Manila field는 보존·omitted이고 불명 native 결과는 journal에 fenced 상태로 남깁니다. 저장 뒤 기존 프로젝트의 quota를 일괄 변경하지 않습니다.
 
 승인은 native 계정이 아닌 verified request에 대한 결정입니다. Password/OAuth code/session을 저장하지 않고 OIDC/GitHub는 승인 뒤 다시 로그인합니다. Email은 공개 가입 enabled일 때 새 링크, 꺼진 invitation-only 환경에서는 기존 검증 초대 재조회 안내를 보냅니다. 승인 메일503은 **이미 확정된 승인**을 뜻할 수 있으므로 자동 승인/재전송하지 말고 현재 queue 상태를 조회합니다. 구버전 rollback 전 새 가입 writer를 중지하고 승인/journal 상태를 보존해야 하며 자동 DROP/backfill/기존 계정 이동은 하지 않습니다.
 
+#### Shared account·personal topology cutover
+
+기존 human의 native ID/home/password/federation/grant/리소스와 과거093/098 journal을 보존합니다. `099_account_topology.sql` → `100_organization_bindings.sql`을 새 writer 전에 manifest checksum대로 적용하고 구형 가입 API/worker를 drain합니다. 099는 enrollment personal-domain/project-name provenance와 shared_domain_intents/personal_project_intents를 추가하고100은 issuer/org binding을 추가합니다. 기존 계정·domain을 옮기거나 합치거나 이름 변경하는 backfill은 없습니다. New writer+old schema는 지원하지 않고 old writer+new schema도 SQL 컬럼 호환만으로 혼합 운용을 수용하지 않습니다.
+
+운영자가 미리 생성한 **실제 native 이름 `Accounts`와 `Personal`**을 사용합니다. 사용자 제공 환경의 UUID는 각각 `3b24b0e94b1d46c9941d515b8c2d397b`, `4661cc1ff17044bfa43f87ded1d8d53f`이며 source에 환경별 UUID를 고정하지 않고 정확한 native 이름으로 조회한 UUID를 사용합니다. 표시 이름은 탐색 근거가 아닙니다. 두 domain은 enabled 상태여야 하고 case-variant 중복·조회 불완전·명시적 kind 충돌은503입니다. CLI 생성 domain은 Afterglow 관리 속성 없이 사용할 수 있으며 kind가 있으면 각각 `account`(단수), `personal`이어야 합니다. 가입/로그인은 shared domain을 생성하거나 수정하지 않습니다. 과거 shared-domain 생성 journal은 원래 이름/UUID/marker로만 별도 settlement하며 새로운 domain에 재바인딩하지 않습니다. 기존 사용자·home·grant는 이동하지 않습니다. Accounts는 identity-only이며 새 Personal 프로젝트는 본인 직접 native member·quota만 사용합니다. Member가 manager/owner/admin을 함의하면 생성은 차단되고 login이 역할 graph를 seed하지 않습니다. 기존 owner 기반 personal은 원래 grant를 유지합니다.
+
+비밀번호 로그인은 서버에서 native `Accounts` UUID를 확인한 뒤 그 domain 안에서만 username/email을 선택하고 한 번 native 인증합니다. 다른 domain의 동명 계정으로 fallback하지 않으며 기존 다른 home의 human/service 계정은 이 로그인 화면을 사용할 수 없습니다. 운영 cutover 전 필요한 관리자 계정의 Accounts 로그인 및 native system 권한을 별도로 확보해야 합니다. 기존 계정의 자동 이동·비밀번호 변경·grant 복제는 없습니다. 웹 조직 생성은 opaque native 이름과 중복 가능한 표시 이름을 계속 분리합니다.
+
+관리자 생성 human의 개인 프로젝트는 첫 성공한 로그인까지 deferred 상태다. 기존099의 `personal_project_intents`와 enrollment에 같은 token/name·동결 quota를 보존하며 새 migration은 없다. **이 새 상태를 해석하지 못하는 구형 human/API/worker writer를 모두 drain한 뒤** 새 writer를 시작해야 한다. Safe confirmed/not-sent 단계만 다음 login 또는 `/auth/personal-project/recovery`의 새 password proof로 재개하고 unknown native 요청은 아래 settlement가 필요하다. Active deferred intent가 있는 동안 old writer 혼합 실행·그대로 downgrade하는 호환성을 보장하지 않는다. Rollback 전 새 생성/로그인을 fence하고 원 요청 종료·intent settlement/완료를 검증하며 계정 삭제·DB DROP·grant replay로 처리하지 않는다.
+
+Personal member의 최고 **프로젝트 작업**은 Lumen·Drover·Waygate·Palimpsest의 새 native personal-owner policy 지원이 모두 배포되어야 활성화된다. Keystone에 service admin/leaf role을 추가해 대체하지 않는다. 기존 운영자 YAML override는 registered default를 덮으므로 새 personal-owner alternative가 없는 명시 override는 계속 거부할 수 있고 `!`도 계속 authoritative하다. Global 관리·공유 artifact 삭제/GC·build와 reduced credential/key ceiling은 확대하지 않는다. Hub package metadata 삭제만 exact owned project 안의 verified personal human에 허용된다.
+
+**Known compatibility gate:** 현재 Afterglow shared-domain resolver는 kind absent와 explicit null을 모두 허용하지만 네 서비스의 Personal owner predicate는 absent 또는 정확한 `personal`만 허용하고 explicit null을 거부한다. 진단 projection의 `kind:null`만으로 운영 domain의 키 부재를 추정하지 않는다. Raw exact native domain 응답에서 key presence/type/value를 확인하고 네 서비스의 실제 personal-owner 수용까지 검증하기 전에는 운영 호환성을 승인하지 않는다. 명시 null이 저장돼 있다면 역할 추가로 우회하지 말고 별도로 승인된 metadata 정리·수용 절차가 필요하다. 이번 작업은 그 native 변경이나 운영 호환성을 검증하지 않았다.
+
+프로필 사진은 기존 Keystone user extra `afterglow_profile_image`를 사용한다. Stock `identity:get_user`는 exact self를 허용하지만 `identity:update_user`는 admin 또는 해당 domain manager만 허용하므로 서버의 configured service writer가 **본인 image key 하나만** 갱신한다. Service credential의 native user GET/PATCH·domain GET 권한과 metadata TEXT 용량, 기존 extra 보존·fresh readback을 배포 전에 검증해야 한다. Native policy 자체를 완화하거나 일반 member에게 임의 사용자 수정권을 주지 않는다. Gravatar 선택은 브라우저가 고정 `https://www.gravatar.com`에 email hash를 전송하며 생성/업로드는 외부 이미지 요청이 없다. 운영 image persistence/정책 수용은 local synthetic HTTP 성공과 별도로 확인한다.
+
+Create/activation/SQL finalize의 응답 유실은 native replay나 shared domain 삭제로 복구하지 않습니다. 원 call 종료를 확인한 system-admin이 [topology/organization settlement](api/admin.md#shared-topologyoidc-organization-settlement)의 strict native_calls_settled:true로 exact intent/native marker를 재조회합니다. 기존 enrollment recovery body는 native_writes_settled:true입니다. Partial·ambiguous·foreign marker·quota/member-provenance mismatch는 fenced 상태로 남기며 owned-empty staged personal project 외의 자원을 추측 정리하지 않습니다. 과거 owner 기반 intent는 journal의 실제 계획 role을 보존해 검증합니다.
+
+이번 source 구현과 disposable SQL·synthetic SMTP/IdP/native proof는 운영 호환성/실제 mailbox 수신·provider/native federation 또는 rollout 수용이 아닙니다. 승인된 production snapshot의 engine/schema/ledger·backup/restore·양방향 writer/rollback 평가와 정확한 native 정책·stable-sub user-only mapping을 별도 검증해야 합니다. Rollback은 새 writer를 중지하고 journal·schema·기존 identity를 보존하는 source 전환이며 DROP/자동 replay나 old mixed-writer 재개를 보장하지 않습니다.
+
+
 #### Native Keystone 선행 조건
+
+Keystone 자체의 [mapping auto-provisioning](https://docs.openstack.org/keystone/2025.2/admin/federation/mapping_combinations.html#auto-provisioning)은 기존 group 연결, project 자동 생성과 기존 role의 직접 할당을 지원합니다. Auto-provisioning의 신규 resource는 project이며 role은 미리 존재해야 합니다. 생성 project domain은 IdP domain 또는 schema2.0 이상에서 명시한 mapped domain입니다. Schema3.0의 [`projects_json`](https://docs.openstack.org/keystone/latest/admin/federation/dynamic_project_assignments.html)은 IdP가 보낸 project/role 목록도 해석할 수 있습니다. 이는 Keystone의 기능 범위이지 현재 Afterglow가 이 권한 위임을 허용한다는 뜻이 아닙니다.
+
+이번 연결은 **mapping=검증된 stable-sub identity 식별**, **Afterglow enrollment=native accounts user+personal member project**, **명시 organization admission=조직 Default project_reader**로 분리합니다. User-only mapper는 immutable tuple로 이미 준비된 canonical 계정을 재사용해야 합니다. Username+random 이름을 최초 native dispatch 전에 journal에 동결하고 승인·disabled staging·quota/readback·unknown-write recovery를 같은 경계로 보장하므로 개인 프로젝트나 조직 역할을 mapper의 projects/groups/roles에 중복 선언하지 않습니다. Native member는 미리 존재하고 owner/manager/admin으로 승격되지 않는 실제 inference graph여야 하며 login/signup이 role을 자동 seed하거나 global DAG를 바꾸지 않습니다. 별도 임의 auth-plugin alias나 매 로그인마다 재실행하는 provisioning hook은 추가하지 않습니다.
 
 Apache/upstream verifier가 검증된 bearer의 immutable subject를 전달하고, enabled IdP/protocol이 **user-only stable-sub mapping**을 가리켜야 합니다. OIDC 예시는 다음과 같으며 실제 설치가 전달하는 stable claim/header 이름과 정확히 맞춰 검토합니다:
 
@@ -297,7 +324,7 @@ Apache/upstream verifier가 검증된 bearer의 immutable subject를 전달하�
 {"rules":[{"local":[{"user":{"id":"{0}","type":"ephemeral"}}],"remote":[{"type":"OIDC-sub"}]}]}
 ```
 
-허용 subject source는 OIDC `OIDC-sub`, `OIDC_CLAIM_sub`, `HTTP_OIDC_SUB`, `HTTP_OIDC_CLAIM_SUB`, `sub`이며 GitHub는 stable numeric ID의 `HTTP_X_GITHUB_ID`, `GITHUB_ID`, `github_id`, `id`도 가능합니다. 실제 원본 header 검증 없이 이름만 바꾸지 않습니다. `user.id`는 remote index를 직접 참조해야 하며 mutable `preferred_username`/email/name을 identity key로 사용하지 않습니다. Mapping은 email을 덮어쓰거나 local groups/projects/roles를 provision할 수 없습니다. 각 rule은 user 하나만 허용하며 callback/link가 native exchange 전에 검사합니다. Unsafe·조회 불가 mapping은503 `native_mapping_unsafe`입니다. IdP의 default domain이 선택 작업 도메인과 같다는 것만으로 canonical 연결을 입증하지 못합니다.
+허용 subject source는 OIDC `OIDC-sub`, `OIDC_CLAIM_sub`, `HTTP_OIDC_SUB`, `HTTP_OIDC_CLAIM_SUB`, `sub`이며 GitHub는 stable numeric ID의 `HTTP_X_GITHUB_ID`, `GITHUB_ID`, `github_id`, `id`도 가능합니다. 실제 원본 header 검증 없이 이름만 바꾸지 않습니다. `user.id`는 remote index를 직접 참조해야 하며 mutable `preferred_username`/email/name을 identity key로 사용하지 않습니다. Afterglow용 mapping은 email을 덮어쓰거나 local groups/projects/roles를 provision하도록 설정하지 않습니다. 각 rule은 user 하나만 허용하며 callback/link가 native exchange 전에 검사합니다. Unsafe·조회 불가 mapping은503 `native_mapping_unsafe`입니다. IdP의 default domain이 선택 작업 도메인과 같다는 것만으로 canonical 연결을 입증하지 못합니다.
 
 Native protocol ID는 URL label일 뿐 아니라 설치된 Keystone이 로드할 auth-method 이름이다. 실제 `keystone.auth.<method>` entrypoint와 primary-auth 분류를 설치 버전에서 확인하고, 모든 원본 설정·현재 프로토콜/소비자·exact backup을 보존한 뒤 별도 프로세스에서 정식 config option 등록 및 `core.load_auth_methods()`를 먼저 실행해야 한다. 현재 stevedore loader는 `[auth] <새 이름> = <Python 클래스 경로>`만으로 미등록 namespace를 만들지 않으며, 이런 설정을 reload하면 기존 method 전체의 로딩도 깨질 수 있다. Builtin `mapped`가 필요한 경로는 승인된 해당 protocol/mapping을 이관하거나 정식 native plugin/image를 별도 준비하며 실행 중 컨테이너에 import/entrypoint shim을 주입하지 않는다. 실제 custom plugin을 사용하는 설치에서만 그 설치가 지원하는 `additional_primary_auth_methods`도 검토한다. 이는 token-rescope 제한을 끄라는 뜻이 아니다.
 
@@ -313,7 +340,7 @@ Horizon은 설치된 `openstack_auth`의 `WEBSSO_IDP_MAPPING`을 확인하고 De
 
 계정 proof와 native attachment는 같은 identity graph lease 안에 있습니다. Authenticated 연결은 native token 및 origin refresh record의 exact user/home·blacklist·`exp`·최초 `started_at` 절대 deadline을 다시 확인하며 만료/회수된 origin은401입니다. 직접 password proof뿐 아니라 살아 있는 **password-origin authenticated 세션**도 local-password marker를 확정할 수 있지만 federated-origin bearer만으로는 확정하지 않습니다. 이 원자적 경계와 refresh-record 보존을 구형 writer 혼합이나 legacy session origin 추정으로 우회하지 않습니다.
 
-기존 계정 연결의200은 `ProviderLinkResponse`이며 로그인 성공이 아닙니다. 연결 API는 native attachment readback에서 종료하고 frontend는 도메인 힌트 없는 `/login?reauthenticate=1`로 새 인증을 안내합니다. 새 authorize/callback에서만 native token·프로젝트 scope·application session을 발급하고 최초 세션은 provider origin이 아니라 canonical home에 둡니다. 연결 완료·세션 미발급과 별도 새 로그인 성공을 각각 확인합니다.
+기존 계정 연결의200은 `ProviderLinkResponse`이며 로그인 성공이 아닙니다. 연결 API는 native attachment readback에서 종료하고 frontend는 도메인 힌트 없는 `/login?reauthenticate=1`로 새 인증을 안내합니다. 새 authorize/callback에서만 canonical native ID/home·provider origin/admission을 검증하고 개인 primary의 native scope와 application session을 발급합니다. 최초 project scope를 provider origin이나 identity-only accounts의 Default로 바꾸지 않습니다. 연결 완료·세션 미발급과 별도 새 로그인 성공을 각각 확인합니다.
 
 도메인 입력 없는 로그인 cutover는 backend/frontend를 함께 반영해야 합니다. 새 password body는 `{username,password}`뿐이며 구형 `domain_name`/`project_name` 추가 필드는422입니다. 공개 `/auth/login-options`의 provider origin 등록은 기존 설정·정책을 재사용하고 실제 인증 뒤 home에서 workspace chooser를 엽니다. 새 schema/config key·native mapping 변경은 없지만 앞선 개인-domain 가입의098 등 prerequisite는 그대로 필요합니다. 구형 UI와 새 API를 혼용하지 않으며 rollback 시 원래 API/frontend 쌍을 함께 복원합니다. 기존 계정 home·권한·자원은 이전하거나 삭제하지 않습니다.
 
@@ -956,7 +983,7 @@ Notion worker는 SIGTERM/SIGINT에서 대기·동기화 task를 취소하고 스
 
 ## System 관리자 서비스 작업의 native 선행 조건
 
-Afterglow의 관리자 화면은 기존 service leaf **또는 현재 human `system:all` admin**으로 선택 target을 인가한다. 이것은 native 공급자 권한을 발급하거나 운영 IAM을 변경하는 기능이 아니다. 원본 caller token/source project와 명시한 target은 별개이며, native Lumen·Drover·Waygate·Palimpsest가 독립적으로 현재 권위를 검사한다. Native directory reader에는 exact user/project/domain, 현재 user-group membership, raw user/group system assignment, 전체 role catalog/inference를 읽을 권한이 필요하다. `effective=True` system 조회가 비어 있어도 raw grant와 ID graph가 권위이며 불완전한 응답·읽기 장애를 관리자 없음이나 빈 성공으로 처리하지 않는다.
+Afterglow는 현재 human system authority·선택 target 경계를 확인하고 원본 credential을 전달한다. 실제 service action은 native Lumen·Drover·Waygate·Palimpsest의 `oslo.policy`가 인가하며 BFF의 고정 service leaf-route 규칙으로 운영자 YAML을 덮어쓰지 않는다. 이것은 native 공급자 권한을 발급하거나 운영 IAM을 변경하는 기능이 아니다. Native directory reader는 exact user/project/domain, 현재 user-group membership, raw user/group system assignment, 전체 role catalog/inference를 읽어야 한다. `effective=True` system 조회가 비어 있어도 raw grant와 ID graph가 권위이며 불완전한 응답·읽기 장애를 빈 성공으로 처리하지 않는다.
 
 Drover·Waygate의 **실제 provider 변경**에는 운영자가 미리 등록한 별도 non-admin executor가 대상 프로젝트의 필요한 provider 역할을 가지고 있어야 한다. 요청자에게 프로젝트 역할을 추가하지 않는다. Native의 private TOML에서 다음 쌍을 설정한다. 빈 쌍은 미설정이며 실행은503으로 차단된다. Password는 source·frontend·public ConfigMap에 넣지 않는다.
 
@@ -977,6 +1004,33 @@ Waygate executor는 native `member`와 그 `reader` 범위만 허용한다. Drov
 새 writer 전에 native API/worker를 drain·중지하고 **Drover005 / Waygate007**을 각 서비스 정본 migrate 경로로 적용해야 한다. Palimpsest Hub offline bootstrap은 기존 key table에 nullable `admin_issuer_context`를 추가하고 upload/publication의 key audit ID를 nullable로 확장한다. 기존 key의 issuer를 human admin으로 backfill하지 않는다. Lumen은 기존 capability JSON에 원본 reduced-credential의 nonsecret source/issued-role-ID ceiling을 보존하며 새 schema는 추가하지 않는다. 과거 run에 없는 원본 provenance를 복원했다고 간주하지 말고 기존 실행·복구/settlement와 새 I/O 경계를 native 운영 지침대로 drain·분리한다.
 
 새/기존 writer의 schema·queue 호환성, backup/restore와 rollback 제한, 실제 directory RBAC 및 Nova/Neutron 등의 provider policy는 별도 운영 qualification이다. Local HTTP/SDK·SQLite·합성 공급자 smoke는 실제 cloud VM/K3s 준비 완료나 Kolla 배포의 증거가 아니다. 검증한 조건과 남은 공백은 [서비스 작업 검증 기록](testing.md#system-관리자의-서비스-작업-검증-2026-10-17-local-only)을 따른다.
+
+## 서비스별 oslo.policy 운영
+
+Lumen·Drover·Waygate·Palimpsest는 실제 OpenStack `oslo.policy`의 등록 기본 규칙과 운영자 YAML override를 사용한다. 기본 파일은 각각 `/etc/lumen/policy.yaml`, `/etc/drover/policy.yaml`, `/etc/waygate/policy.yaml`, `/etc/palimpsest/policy.yaml`이다. 각 서비스의 private TOML `[oslo_policy]`에서 `policy_file`·`policy_dirs`를 선택한다. Afterglow의 공용 TOML·ConfigMap에 네 서비스 정책이나 비밀을 혼합하지 않는다.
+
+기본 정책 sample은 해당 서비스를 설치한 환경에서 `oslopolicy-sample-generator --namespace <service> --output-file /tmp/<service>-policy.sample.yaml`로 생성한다. 코드의 등록 기본값은 유지되므로 운영 파일에는 변경할 action만 둔다. 기존 native role 이름을 그대로 쓰며 `drover_admin`을 `drover-admin`으로 rename하거나 별칭 role을 생성할 필요가 없다. 예시는 현재 Drover 등록 이름을 사용한다.
+
+```yaml
+"drover:clusters:create": "role:admin or role:drover_admin"
+"drover:clusters:delete": "role:admin or role:drover_admin"
+"drover:clusters:get": "role:admin or role:drover_admin or role:drover_reader"
+"drover:clusters:list": "role:admin or role:drover_admin or role:drover_reader"
+```
+
+표준 `role:`, `rule:`, `and`·`or`·`not`·괄호·target 비교를 사용할 수 있다. YAML은 비어 있지 않은 rule 이름에서 문자열 check expression으로 가는 mapping이어야 한다. `!`는 거부, `@`와 따옴표로 명시한 빈 문자열은 허용이다. `null`·boolean·list·object 값을 빈 허용 규칙으로 취급하지 않으며 잘못된 문서·파싱 오류는 `503`으로 닫고 수정한 파일은 다시 평가한다. `policy.d`를 사용하려면 main `policy.yaml`이 있어야 하며 override가 없으면 `{}`를 쓴다. 파일 변경은 native Enforcer가 다음 평가에서 읽으며 API와 worker에 같은 파일 집합을 mount한다. Unknown action·잘못된 정책·읽기 실패를 전권 fallback으로 처리하지 않는다. YAML 허용은 인증·project/resource/user ownership·원래 credential/key ceiling·verified human system-only 경계를 해제하지 않는다.
+
+개발 Compose는 `.local-services/policy/<service>`, 운영 Compose는 `./policy/<service>`를 기본 host directory로 mount한다. 서비스별 `LUMEN_POLICY_DIR`·`DROVER_POLICY_DIR`·`WAYGATE_POLICY_DIR`·`PALIMPSEST_POLICY_DIR`로 외부 운영자 디렉터리를 선택할 수 있다. Directory bind는 read-only이고 atomic file replacement도 반영한다. 개발 준비는 없는 디렉터리와 빈 `{}` 파일만 생성하며 기존 operator override를 덮어쓰지 않는다. 운영 파일·API/worker UID의 읽기 권한은 운영자가 준비한다. Kolla는 각 native role의 config directory와 동일 정책 파일을 사용한다.
+
+Palimpsest Kolla는 비밀 `/app/palimpsest.conf`의 root:root `0640`을 그대로 유지한다. Nonroot Hub는 읽을 수 있는 정책 전용 `/etc/palimpsest/palimpsest.conf`를 `PALIMPSEST_CONFIG`로 선택한다. 해당 TOML은 `[oslo_policy]`의 `policy_file = "/etc/palimpsest/policy.yaml"`·`policy_dirs`만 포함하며 read-only 정책 directory 안에 root:root `0644`로 둔다. 비밀 TOML을 공개하거나 runtime user/group을 높여 정책 파일 읽기를 해결하지 않는다.
+
+Lumen의 Nova managed guest에 사용자 정책을 적용하려면 운영자가 guest 내부 정책 파일 배포와 API/worker의 같은 설정을 별도로 준비·검증해야 한다. 호스트 Kolla directory mount만으로 이미 실행 중인 guest에 파일이 전달되지는 않는다.
+
+**전환 순서:** 정책 지원 native API/worker와 원본 scope·system/provider 선행 조건을 먼저 배포·검증한다. 같은 원본 caller로 `GET /v1/policy/capabilities`의 `service`, `actions`, `capabilities` 및 실제 허용/거부 API를 확인한다. 이후 Afterglow 관리자 preset 미리보기의 추가 project edge·제거 service edge와 보존 role ID/직접 할당을 검토하고 명시적으로 적용한다. 로그인·조회·startup은 기존 운영 edge를 자동 삭제하지 않는다. 구형 native 서비스가 남은 상태에서 service edge만 제거하면 접근이 끊길 수 있으므로 mixed-version cutover를 승인된 운영 절차 없이 실행하지 않는다.
+
+공급자 제약·원래 인증 scope와 현재 policy는 별개다. `drover_admin`만으로 Nova member나 tenant credential을 발급하지 않는다. Guest provider application credential은 필요한 최소 native role로 제한하며 서비스 role 목록을 VM user-data에 직접 기록하지 않는다. 실제 cloud의 크기 오류·VM/guest 수용은 해당 cloud 정책과 생성 payload를 별도로 확인한다. 이 source 변경만으로 운영 VM 문제 해결·IAM 변경·배포를 선언하지 않는다.
+
+참고: [OpenStack 등록 기본값과 generator](https://docs.openstack.org/oslo.policy/latest/user/usage.html), [policy.yaml 문법과 reload](https://docs.openstack.org/oslo.policy/latest/admin/policy-yaml-file.html), [policy_file·policy_dirs 설정](https://docs.openstack.org/oslo.policy/latest/configuration/index.html).
 
 ## kolla-ansible 배포
 

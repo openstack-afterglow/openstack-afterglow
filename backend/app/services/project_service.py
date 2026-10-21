@@ -44,6 +44,18 @@ async def create_project_for_user(
     from app.services.domain_scope import assert_domain_resource
 
     assert_domain_resource(domain_id, domain["id"])
+    from app.services import account_spaces
+
+    if domain.get("kind") == "account":
+        raise HTTPException(403, "account_domain_is_identity_only")
+    if domain.get("kind") == "personal":
+        if name:
+            raise HTTPException(422, "personal_project_name_is_generated")
+        if not await can_create_project(user_id, domain_id):
+            raise HTTPException(403, "Personal project creation requires current personal membership")
+        return await account_spaces.create_personal_project(user_id, description=description)
+    if not name:
+        raise HTTPException(422, "프로젝트 이름을 입력하세요")
     if not await can_create_project(user_id, domain["id"]):
         raise HTTPException(status_code=403, detail="Domain project creation capability required")
     if name.casefold() == "default":
@@ -331,6 +343,11 @@ async def _domain_access(project_id, token_info, domain_management=False, user_i
         if not isinstance(identity_roles._field(user, "domain_id"), str):
             raise identity_roles._unavailable("Identity domain is unavailable")
     context = await _provider_call(domain_context, token_info["user_id"], domain_id)
+    if context.get("domain_kind") == "personal":
+        if identity_roles._field(project, "afterglow_personal_user_id") != token_info["user_id"]:
+            raise HTTPException(403, "personal_project_owner_required")
+        if user_id is not None and user_id != token_info["user_id"]:
+            raise HTTPException(403, "personal_project_membership_is_private")
     if not domain_management:
         if not context["is_domain_manager"]:
             _check_scope(project_id, token_info)
@@ -549,21 +566,6 @@ async def assignable_roles(project_id, token_info, *, domain_management=False):
     }
 
 
-def _validate_reader_roles(catalog, effective_ids):
-    by_id = {row["id"]: row for row in catalog}
-    names = {by_id[rid]["name"] for rid in effective_ids}
-    write_roles = set()
-    for area, grades in SERVICE_ROLE_GRADES.items():
-        for grade in ("user", "editor", "admin"):
-            write_roles.add(f"{area}_{grade}")
-            write_roles.update(grades.get(grade, ()))
-    if names & write_roles and "member" not in names:
-        raise HTTPException(
-            status_code=409,
-            detail="Write-service roles require effective native member membership, not reader membership",
-        )
-
-
 @asynccontextmanager
 async def _using_snapshot(snapshot):
     yield snapshot
@@ -612,9 +614,18 @@ async def replace_member_roles(
         from app.services import domain_projects
 
         default = await _provider_call(domain_projects.default_project, token_info["domain_id"], ks=ks)
-        if default is not None and default["id"] == project_id:
-            # Default membership is a required read-only entitlement, not a
-            # delegated grant that the ordinary project-role form can revoke.
+        from app.services.account_spaces import domain_kind
+
+        domain = await _provider_call(ks.domains.get, token_info["domain_id"])
+        personal = domain_kind(domain) == "personal"
+        from app.services import account_spaces
+
+        legacy_personal = personal and account_spaces._personal_member_role(catalog)["id"] not in direct_ids
+        if personal and (remove or requested != {account_spaces._personal_member_role(catalog)["id"]}):
+            raise HTTPException(403, "personal_project_roles_are_fixed")
+        if (default is not None and default["id"] == project_id) or legacy_personal:
+            # Organizational Default and established owner-based personal projects
+            # retain their reader baseline. Native member grants remain untouched.
             baseline = _required_project_role(catalog, "project_reader", require_hierarchy=True)
             desired.add(baseline["id"])
         for rid in desired - current:
@@ -627,21 +638,6 @@ async def replace_member_roles(
             raise HTTPException(status_code=403, detail="Only an owner may change project owner/admin grants")
         if any(identity_roles._owner_bearing_role(catalog, rid) for rid in desired ^ current):
             raise HTTPException(status_code=409, detail="Use explicit project ownership transfer")
-        # Simulate effective grants without the direct grants being replaced. Group
-        # and inherited roles remain immutable and count toward reader restrictions.
-        remaining = []
-        for row in effective:
-            if _principal(row, "user") != user_id:
-                continue
-            if _group_ids(row) or _inherited_assignment(row):
-                remaining.append(row)
-        projected = _expanded_role_ids(remaining, catalog, user_id)
-        by_id = {row["id"]: row for row in catalog}
-        for rid in desired | (_direct_ids(direct, user_id) - set(managed)):
-            projected.add(rid)
-            projected.update(by_id[rid]["inherited_role_ids"])
-        if not remove:
-            _validate_reader_roles(catalog, projected)
         await identity_roles._session_ready({user_id} if current != desired else ())
         if _before_write is not None:
             await _before_write(sorted(desired - current))
@@ -774,6 +770,11 @@ async def can_create_project(user_id: str, domain_id: str, *, operation=None) ->
             return await can_create_project(user_id, domain_id, operation=operation)
     try:
         context = await operation.run(domain_context, user_id, domain_id, operation=operation)
+        if context.get("domain_kind") == "personal":
+            from app.services.account_spaces import personal_project
+
+            project = await operation.run(personal_project, user_id, operation=operation)
+            return project is not None and project.get("enabled") is True
         if context["is_domain_manager"]:
             return True
         ks = await operation.run(getattr, operation, "ks")
@@ -807,8 +808,13 @@ async def eligible_project_users(project_id, token_info):
     effective = await _provider_call(_assignment_rows, ks, project_id, effective=True)
     _authorize(project_id, token_info, effective, catalog, domain_authority=authority)
     from app.services.domain_iam import directory_users
+    from app.services.domain_scope import resolve_domain
 
-    users = await directory_users(token_info["domain_id"])
+    domain = await _provider_call(resolve_domain, token_info["domain_id"])
+    if domain.get("kind") == "personal":
+        users = [await _provider_call(ks.users.get, token_info["user_id"])]
+    else:
+        users = await directory_users(token_info["domain_id"])
     return [
         {
             "id": identity_roles._field(user, "id"),
@@ -822,20 +828,20 @@ async def eligible_project_users(project_id, token_info):
     ]
 
 
-async def _ownership_state(ks, catalog, project_id):
+def _ownership_state_sync(ks, catalog, project_id):
     """Reconcile raw native provenance with effective owners; never pick a winner."""
     from app.services import domain_projects
 
     owner = _required_project_role(catalog, "project_owner", require_hierarchy=True)
-    project = await _provider_call(ks.projects.get, project_id)
+    project = ks.projects.get(project_id)
     if identity_roles._field(project, "id") != project_id:
         raise identity_roles._unavailable("Project identity could not be verified")
-    raw = await _provider_call(lambda: list(ks.role_assignments.list()))
-    sources = await _provider_call(domain_projects._sources, ks, project, catalog, raw)
+    raw = list(ks.role_assignments.list())
+    sources = domain_projects._sources(ks, project, catalog, raw)
     bearing = [
         s for s in sources if owner["id"] in {s["role_id"], *identity_roles._descendant_ids(catalog, s["role_id"])}
     ]
-    effective = await _provider_call(_assignment_rows, ks, project_id, effective=True)
+    effective = _assignment_rows(ks, project_id, effective=True)
     effective_users = {
         _principal(row, "user")
         for row in effective
@@ -846,7 +852,7 @@ async def _ownership_state(ks, catalog, project_id):
         raise identity_roles._unavailable("Native project ownership provenance is inconsistent")
     owners = []
     for uid in sorted(source_users):
-        user = await _provider_call(ks.users.get, uid)
+        user = ks.users.get(uid)
         user_sources = [s for s in bearing if uid in s["users"]]
         direct = all(s["user_id"] == uid and not s["inherited"] and s["role_id"] == owner["id"] for s in user_sources)
         owners.append(
@@ -863,6 +869,10 @@ async def _ownership_state(ks, catalog, project_id):
         "status": "unique" if unique else "conflict" if bearing else "missing",
         "owners": owners,
     }
+
+
+async def _ownership_state(ks, catalog, project_id):
+    return await _provider_call(_ownership_state_sync, ks, catalog, project_id)
 
 
 async def _verify_unique_owner(ks, catalog, project_id, user_id):
@@ -889,13 +899,19 @@ async def project_ownership(project_id, token_info):
     from app.services import domain_projects
 
     default = await _provider_call(domain_projects.default_project, token_info["domain_id"], ks=ks)
-    immutable = identity_roles._field(project, "name", "").casefold() == "default" or bool(
-        default and default["id"] == project_id
+    immutable = (
+        identity_roles._field(project, "name", "").casefold() == "default"
+        or bool(default and default["id"] == project_id)
+        or identity_roles._field(project, "afterglow_personal_primary") is True
     )
+    from app.services.domain_scope import resolve_domain
+
+    personal = (await _provider_call(resolve_domain, token_info["domain_id"])).get("kind") == "personal"
     return {
         **state,
         "transfer_operation": operation,
-        "can_transfer": not immutable
+        "can_transfer": not personal
+        and not immutable
         and not blocked
         and (
             (state["status"] == "unique" and (authority or sole))
@@ -916,6 +932,11 @@ async def transfer_project_ownership(project_id, user_id, token_info):
         from app.services import project_ownership_journal as journal
 
         project = await _provider_call(ks.projects.get, project_id)
+        from app.services.account_spaces import domain_kind
+
+        domain = await _provider_call(ks.domains.get, token_info["domain_id"])
+        if domain_kind(domain) == "personal":
+            raise HTTPException(403, "personal_project_ownership_is_private")
         await _provider_call(domain_projects.assert_default_immutable, project_id, delete=True, project=project, ks=ks)
         await _eligible_user(ks, token_info["domain_id"], user_id)
         state = await _ownership_state(ks, catalog, project_id)

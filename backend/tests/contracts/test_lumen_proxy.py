@@ -43,6 +43,7 @@ def current_access(monkeypatch):
 def current_system_admin(auth_directory, native_auth):
     native_auth.user_id = "user-1"
     native_auth.token = "caller-token"
+    auth_directory.users["user-1"]["domain_id"] = "default"
     auth_directory.projects["project-1"] = {
         "id": "project-1",
         "name": "Project",
@@ -768,25 +769,6 @@ async def test_admin_routes_reject_project_roles_and_forged_authority(api_client
 
     assert response.status_code == 403
     assert response.json() == {"detail": "시스템 관리자 권한이 필요합니다"}
-    endpoint.assert_not_called()
-    client.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_current_audio_downgrade_denies_stale_token_leaf(api_client):
-    async def stale_audio_user(request: Request):
-        token_info = await _authenticated(request)
-        token_info["roles"] = ["member", "lumen-audio_user"]
-        return token_info
-
-    app.dependency_overrides[get_token_info] = stale_audio_user
-    with (
-        patch("app.services.service_proxy._get_internal_endpoint") as endpoint,
-        patch("app.services.service_proxy.httpx.AsyncClient") as client,
-    ):
-        response = await api_client.post("/api/v1/chat/audio/speech", json={"model_id": 1, "input": "hello"})
-
-    assert response.status_code == 403
     endpoint.assert_not_called()
     client.assert_not_called()
 

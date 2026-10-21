@@ -7,6 +7,7 @@ export interface Project {
 export interface AvailableDomain {
   id: string;
   name: string;
+  kind?: 'personal' | 'organization' | 'legacy';
 }
 
 export interface CreatedDomain extends AvailableDomain {
@@ -100,4 +101,8 @@ export interface DomainAccountResult {
   domain_name: string;
   identity_domain_id: string;
   identity_domain_name: string;
+  personal_project_id: string | null;
+  personal_project_name: string | null;
+  personal_domain_id: string | null;
+  personal_project_deferred?: boolean;
 }

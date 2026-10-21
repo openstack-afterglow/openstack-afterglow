@@ -2,6 +2,8 @@
 	import { t } from '$lib/i18n/ns/network-resources';
 	import type { NetworkDetail, RouterListItem } from '$lib/types/networks';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	let {
 		network,
@@ -147,6 +149,31 @@
 	{/if}
 
 	{#if network.subnet_details.length > 0}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each network.subnet_details as subnet (subnet.id)}
+					{@const connected = (network.routers || []).filter((router) => router.connected_subnet_ids.includes(subnet.id))}
+					<CompactResourceCard>
+						{#if editingSubnetId === subnet.id}
+							<label class="text-xs text-ink-2">{t('network.labels.name')}<input class="w-full mt-1 min-h-11 rounded border border-line bg-surface-sunken px-2 text-ink-0" bind:value={editSubnetForm.name} /></label>
+							<label class="text-xs text-ink-2">{t('network.labels.gateway')}<input class="w-full mt-1 min-h-11 rounded border border-line bg-surface-sunken px-2 text-ink-0" bind:value={editSubnetForm.gateway} placeholder={subnet.gateway_ip ?? t('network.state.none')} /></label>
+							<label class="flex min-h-11 items-center gap-2"><input type="checkbox" bind:checked={editSubnetForm.dhcp} />{t('network.subnets.enableDhcp')}</label>
+							{#if saveError}<p class="text-state-danger-text" role="alert">{saveError}</p>{/if}
+						{:else}
+							<p class="font-medium">{subnet.name || '-'}</p><p class="font-mono">{subnet.cidr}</p>
+							<dl><div><dt>{t('network.labels.gateway')}</dt><dd>{subnet.gateway_ip ?? '-'}</dd></div><div><dt>DHCP</dt><dd>{subnet.dhcp_enabled ? t('network.state.enabled') : t('network.state.disabled')}</dd></div></dl>
+						{/if}
+						{#snippet details()}<dl><div><dt>{t('network.labels.id')}</dt><dd>{subnet.id}</dd></div><div><dt>{t('network.routers.title')}</dt><dd>{connected.map((router) => router.name || router.id.slice(0, 8)).join(', ') || '-'}</dd></div></dl>{/snippet}
+						{#snippet actions()}
+							{#if editingSubnetId === subnet.id}
+								<button class="text-ink-2" onclick={() => { editingSubnetId = null; }}>{t('network.actions.cancel')}</button><button class="text-warm-text" disabled={savingSubnet} aria-busy={savingSubnet} onclick={handleSave}>{#if savingSubnet}<ActivityIndicator size="xs" tone="ink" />{/if}{savingSubnet ? t('network.actions.saving') : t('network.actions.save')}</button>
+							{:else if canManage}
+								<button class="text-warm-text" onclick={() => startEditSubnet(subnet)}>{t('network.actions.edit')}</button><button class="text-state-danger-text" onclick={() => onDelete(subnet.id, subnet.name)}>{t('network.actions.delete')}</button>
+							{/if}
+						{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<div class="overflow-x-auto">
 		<table class="w-full text-sm">
 			<thead>
@@ -256,6 +283,7 @@
 			</tbody>
 		</table>
 		</div>
+		</ResponsiveTable>
 	{:else}
 		<p class="text-sm text-ink-2">{t('network.subnets.emptyLabel')}</p>
 	{/if}

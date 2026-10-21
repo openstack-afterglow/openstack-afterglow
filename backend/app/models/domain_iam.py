@@ -32,6 +32,8 @@ class DomainEnrollment(Base):
     identity_native_name: Mapped[str | None] = mapped_column(VARCHAR(64), nullable=True)
     domain_creation_uncertain: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, default=False)
     personal_project_id: Mapped[str | None] = mapped_column(VARCHAR(64), nullable=True)
+    personal_domain_id: Mapped[str | None] = mapped_column(VARCHAR(64), nullable=True)
+    personal_project_name: Mapped[str | None] = mapped_column(VARCHAR(255), nullable=True)
     project_creation_uncertain: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, default=False)
     added_grants: Mapped[list | None] = mapped_column(JSON, nullable=True, default=list)
     personal_quotas: Mapped[dict | None] = mapped_column(JSON, nullable=True)

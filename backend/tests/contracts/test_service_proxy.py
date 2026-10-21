@@ -534,8 +534,8 @@ async def test_validated_identity_is_required_before_catalog_lookup(fetch):
 
 
 @pytest.mark.parametrize("fetch", [proxy, get_json])
-async def test_current_downgrade_denies_stale_leaf_before_catalog_lookup(fetch, current_access):
-    current_access["roles"] = ["member"]
+async def test_current_membership_revocation_denies_stale_token_before_catalog_lookup(fetch, current_access):
+    current_access["roles"] = []
     request = _make_request(
         token_info={
             "token": "stale-token",

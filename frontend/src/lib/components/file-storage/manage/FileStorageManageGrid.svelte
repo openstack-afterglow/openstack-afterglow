@@ -2,6 +2,7 @@
   import { t } from '$lib/i18n/ns/file-storage';
   import type { FileStorage } from '$lib/types/fileStorage';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
+  import { ResponsiveTable, CompactResourceCard } from '$lib/components/ui';
 
   let {
     fileStorages,
@@ -10,6 +11,17 @@
   } = $props();
 </script>
 
+<ResponsiveTable>
+  {#snippet cards()}
+    {#each fileStorages as fs (fs.id)}
+      <CompactResourceCard>
+        <div class="flex items-center gap-2"><strong class="min-w-0 flex-1 break-all">{fs.name || fs.id.slice(0, 8)}</strong><StatusChip status={fs.status} /></div>
+        <p class="text-xs text-ink-2">{t('manageGrid.size')}: {fs.size} GB{#if fs.metadata?.union_type} · {fs.metadata.union_type}{/if}</p>
+        {#if fs.library_name}<p class="text-xs text-ink-2">{fs.library_name}</p>{/if}
+        {#snippet details()}<p class="font-mono break-all">ID: {fs.id}</p>{#if fs.built_at}<p>{t('manageGrid.builtOn', { date: fs.built_at.split('T')[0] })}</p>{/if}{/snippet}
+      </CompactResourceCard>
+    {/each}
+  {/snippet}
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
   {#each fileStorages as fs}
     <div class="bg-surface-base border border-line rounded-lg p-5">
@@ -49,3 +61,4 @@
     </div>
   {/each}
 </div>
+</ResponsiveTable>

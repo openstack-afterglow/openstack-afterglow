@@ -157,9 +157,11 @@ async def test_admin_project_setup_compensates_only_exact_new_project_on_postcre
     native = policy_native
     before = set(native.project_rows)
     read_project = native.sdk.identity.get_project
+    observed_created = set()
 
     def unavailable(project_id):
-        if project_id == "created-default":
+        if project_id not in before:
+            observed_created.add(project_id)
             raise ConnectionError("created resource readback reply lost")
         return read_project(project_id)
 
@@ -172,10 +174,12 @@ async def test_admin_project_setup_compensates_only_exact_new_project_on_postcre
         )
     assert failed.value.status_code == 503
     assert set(native.project_rows) == before
-    assert [call for call in native.calls if call[0] == "project.delete"] == [("project.delete", "created-default")]
+    assert len(observed_created) == 1
+    created_id = observed_created.pop()
+    assert [call for call in native.calls if call[0] == "project.delete"] == [("project.delete", created_id)]
     assert native.members["projection-tenant-a"] == {"creator"}
     assert native.resource_cloud.calls and native.resource_cloud.unexpected == []
-    assert ("project.enable", "created-default", False) in native.calls
+    assert ("project.enable", created_id, False) in native.calls
 
 
 @pytest.mark.asyncio
@@ -264,9 +268,10 @@ async def test_admin_create_lost_native_reply_never_retries_or_guesses_compensat
     native = policy_native
     create = native.sdk.identity.create_project
     before = set(native.project_rows)
+    created_ids = []
 
     def create_then_timeout(**attrs):
-        create(**attrs)
+        created_ids.append(create(**attrs).id)
         raise ConnectionError("native project created but response lost")
 
     native.sdk.identity.create_project = create_then_timeout
@@ -277,18 +282,15 @@ async def test_admin_create_lost_native_reply_never_retries_or_guesses_compensat
             token_info={**actor("operator"), "is_system_admin": True},
         )
     assert failed.value.status_code == 503
-    assert set(native.project_rows) == before | {"created-default"}
+    assert len(created_ids) == 1
+    assert set(native.project_rows) == before | set(created_ids)
     assert [call for call in native.calls if call[0] == "project.create"] == [("project.create", "tenant-a")]
     assert not any(call[0] == "project.delete" for call in native.calls)
-    assert native.project_rows["created-default"].enabled is False
+    assert native.project_rows[created_ids[0]].enabled is False
     assert not any(call[0] == "grant" and call[2] == "operator" for call in native.calls)
     async with native.journal() as session:
         assert list((await session.execute(select(ProjectOwnershipTransfer))).scalars()) == []
         assert list((await session.execute(select(DomainQuotaOperation))).scalars()) == []
-    assert (await project_service.get_project_access("created-default", "creator"))["roles"] == [
-        "project_reader",
-        "reader",
-    ]
 
 
 @pytest.mark.asyncio

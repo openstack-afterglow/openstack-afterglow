@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/images-keys';
 	import { useImageDetailController } from '$lib/stores/imageDetailController.svelte';
-	import { ActivityIndicator, Alert, Button, Card, Field, Pill, TableShell, TextInput } from '$lib/components/ui';
+	import { ActivityIndicator, Alert, Button, Card, CompactResourceCard, Field, Pill, ResponsiveTable, TableShell, TextInput } from '$lib/components/ui';
 
 	const s = useImageDetailController();
 	const id = $props.id();
@@ -14,6 +14,14 @@
 		['img_config_drive', 'windowsSetup.current.configDrive'],
 	] as const;
 </script>
+
+{#snippet currentPreviewValue(value: string | undefined)}
+	<span class="block font-mono text-ink-0 break-all" data-testid="windows-setup-change-current">{value === '' ? '""' : value ?? t('windowsSetup.unset')}</span>
+{/snippet}
+
+{#snippet proposedPreviewValue(value: string)}
+	<span class="block font-mono text-ink-0 break-all" data-testid="windows-setup-change-proposed">{value}</span>
+{/snippet}
 
 <section class="min-w-0 [overflow-wrap:anywhere]" data-testid="windows-service-setup" aria-labelledby={`${id}-title`}>
 	<Card surface="base" padding="md">
@@ -29,6 +37,25 @@
 				<p>{t('windowsSetup.metadataOnly')}</p>
 			</div>
 
+			<ResponsiveTable>
+				{#snippet cards()}
+					<div data-testid="windows-setup-current" class="min-w-0">
+						<CompactResourceCard>
+							<dl class="space-y-2 text-xs">
+								{#each currentFields.slice(0, 3) as [key, label] (key)}
+									<div><dt class="text-ink-2">{t(label)}</dt><dd class="font-mono text-ink-0 break-all" data-property={key}>{s.windowsCurrentProperties[key] === '' ? '""' : s.windowsCurrentProperties[key] ?? t('windowsSetup.unset')}</dd></div>
+								{/each}
+							</dl>
+							{#snippet details()}
+								<dl class="space-y-2 text-xs">
+									{#each currentFields.slice(3) as [key, label] (key)}
+										<div><dt class="text-ink-2">{t(label)}</dt><dd class="font-mono text-ink-0 break-all" data-property={key}>{s.windowsCurrentProperties[key] === '' ? '""' : s.windowsCurrentProperties[key] ?? t('windowsSetup.unset')}</dd></div>
+									{/each}
+								</dl>
+							{/snippet}
+						</CompactResourceCard>
+					</div>
+				{/snippet}
 			<dl class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 text-xs" data-testid="windows-setup-current">
 				{#each currentFields as [key, label] (key)}
 					<div class="min-w-0">
@@ -37,6 +64,7 @@
 					</div>
 				{/each}
 			</dl>
+			</ResponsiveTable>
 
 			<div class="space-y-2 text-xs leading-relaxed text-ink-2" data-testid="windows-setup-requirements">
 				<h4 class="font-semibold text-ink-1">{t('windowsSetup.requirementsTitle')}</h4>
@@ -111,26 +139,41 @@
 							{#if s.windowsChanges.length === 0}
 								<p class="text-ink-2">{t('windowsSetup.noChanges')}</p>
 							{:else}
-								<TableShell class="min-w-0">
-								<table class="!min-w-0 block w-full table-fixed md:table">
-									<thead class="sr-only"><tr><th scope="col">{t('windowsSetup.property')}</th><th scope="col">{t('windowsSetup.currentValue')}</th><th scope="col">{t('windowsSetup.proposedValue')}</th></tr></thead>
-									<tbody class="block divide-y divide-line md:table-row-group">
+								<ResponsiveTable>
+									{#snippet cards()}
 										{#each s.windowsChanges as change (change.key)}
-											<tr class="grid grid-cols-1 gap-2 py-2 md:table-row" data-testid="windows-setup-change" data-property={change.key}>
+											<CompactResourceCard>
+												<div data-testid="windows-setup-change" data-property={change.key} class="min-w-0 space-y-2">
+													<h5 class="font-mono font-medium text-ink-1 break-all">{change.key}</h5>
+													<dl class="space-y-2">
+														<div><dt class="text-ink-2">{t('windowsSetup.currentValue')}</dt><dd>{@render currentPreviewValue(change.current)}</dd></div>
+														<div><dt class="text-ink-2">{t('windowsSetup.proposedValue')}</dt><dd>{@render proposedPreviewValue(change.proposed)}</dd></div>
+													</dl>
+												</div>
+											</CompactResourceCard>
+										{/each}
+									{/snippet}
+								<TableShell class="min-w-0">
+								<table class="!min-w-0 w-full table-fixed">
+									<thead class="sr-only"><tr><th scope="col">{t('windowsSetup.property')}</th><th scope="col">{t('windowsSetup.currentValue')}</th><th scope="col">{t('windowsSetup.proposedValue')}</th></tr></thead>
+									<tbody class="divide-y divide-line">
+										{#each s.windowsChanges as change (change.key)}
+											<tr data-testid="windows-setup-change" data-property={change.key}>
 												<td class="min-w-0 font-mono text-ink-1 break-all align-top md:py-2 md:pr-3"><span class="sr-only">{t('windowsSetup.property')}: </span>{change.key}</td>
 												<td class="min-w-0 space-y-1 align-top md:py-2 md:pr-3">
 													<span class="block text-ink-2">{t('windowsSetup.currentValue')}</span>
-													<span class="block font-mono text-ink-0 break-all" data-testid="windows-setup-change-current">{change.current === '' ? '""' : change.current ?? t('windowsSetup.unset')}</span>
+													{@render currentPreviewValue(change.current)}
 												</td>
 												<td class="min-w-0 space-y-1 align-top md:py-2">
 													<span class="block text-ink-2">{t('windowsSetup.proposedValue')}</span>
-													<span class="block font-mono text-ink-0 break-all" data-testid="windows-setup-change-proposed">{change.proposed}</span>
+													{@render proposedPreviewValue(change.proposed)}
 												</td>
 											</tr>
 										{/each}
 									</tbody>
 								</table>
 								</TableShell>
+								</ResponsiveTable>
 							{/if}
 							<p class="text-ink-2 leading-relaxed">{t('windowsSetup.preserved')}</p>
 						</div>

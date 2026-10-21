@@ -5,6 +5,8 @@
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
 	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 	import { SectionHeader } from '$lib/components/ui';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+ import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
 	const s = useK3sClusterDetailController();
 
@@ -33,6 +35,19 @@
 	{:else if s.services.length === 0}
 		<div class="mt-4 text-sm text-ink-2 text-center py-6">{t('services.empty')}</div>
 	{:else}
+  <ResponsiveTable>
+   {#snippet cards()}
+    {#each s.services as svc (svc.name)}
+     {@const actioning = s.workloadActioning === `${s.selectedNamespace}:svc:${svc.name}`}
+     <CompactResourceCard>
+      <strong class="text-sm font-mono break-all">{svc.name}</strong>
+      <p class="text-xs text-ink-2">{svc.type} · {svc.cluster_ip ?? '—'}</p>
+      <p class="text-xs break-all">{t('services.ports')}: {svc.ports.map(p => `${p.port}${p.node_port ? ':' + p.node_port : ''}/${p.protocol}`).join(', ') || '—'}</p>
+      {#snippet details()}<p class="text-xs">{t('services.createdAt')}: {svc.created_at ? svc.created_at.slice(0, 10) : '—'}</p>{/snippet}
+      {#snippet actions()}<button onclick={() => s.removeSvc(svc.name)} disabled={!$k3sPermissions.workloads || !!s.workloadActioning} class="px-2 py-1 rounded text-xs bg-surface-sunken text-state-danger-text disabled:opacity-40">{#if actioning}<ActivityIndicator size="xs" label={t('services.deleting')} />{:else}{t('services.delete')}{/if}</button>{/snippet}
+     </CompactResourceCard>
+    {/each}
+   {/snippet}
 		<div class="mt-4 overflow-x-auto">
 			<table class="w-full text-xs">
 				<thead>
@@ -70,5 +85,6 @@
 				</tbody>
 			</table>
 		</div>
+  </ResponsiveTable>
 	{/if}
 </div>

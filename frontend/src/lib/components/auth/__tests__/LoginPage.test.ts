@@ -88,13 +88,45 @@ beforeEach(() => {
 afterEach(() => { cleanup(); clearAuth(); logoutInProgress.set(false); projectSwitching.set(false); sessionStorage.clear(); initLocale('ko'); });
 
 describe('public home-first login', () => {
-	it('shows credentials, unique-email help, signup and recovery without a domain form or waiting for discovery', async () => {
+	it.each(['personal_project_retry_available', 'personal_project_recovery_required'] as const)(
+		'requires fresh password for explicit personal setup recovery: %s', async (code) => {
+		mocks.post.mockRejectedValueOnce(new ApiError(503, 'private-native-error', code));
+		render(LoginPage);
+		const inputs = await fillCredentials();
+		await fireEvent.click(inputs.button);
+		expect(inputs.password.value).toBe('');
+		const retry = await screen.findByRole('button', { name: 'Retry personal workspace setup' }) as HTMLButtonElement;
+		expect(retry.disabled).toBe(true);
+		expect(mocks.post).toHaveBeenCalledOnce();
+		expect(mocks.goto).not.toHaveBeenCalled();
+		expect(document.body.textContent).not.toContain('private-native-error');
+		mocks.post.mockResolvedValueOnce(response);
+		await fireEvent.input(inputs.password, { target: { value: 'proof-again' } });
+		await fireEvent.click(retry);
+		await waitFor(() => expect(mocks.post).toHaveBeenNthCalledWith(2, '/api/v1/auth/personal-project/recovery',
+			{ username: 'alice@example.test', password: 'proof-again' }, undefined, undefined, requestOptions));
+		await waitFor(() => expect(get(auth).token).toBe('fresh'));
+	});
+
+	it('discards personal recovery mode on same-tick identity ABA', async () => {
+		mocks.post.mockRejectedValueOnce(new ApiError(503, 'private-native-error', 'personal_project_retry_available'));
+		const view = render(LoginPage);
+		await fireEvent.click((await fillCredentials()).button);
+		expect(await screen.findByRole('button', { name: 'Retry personal workspace setup' })).toBeTruthy();
+		invalidate('identity ABA', view.unmount);
+		await tick();
+		expect(screen.queryByRole('button', { name: 'Retry personal workspace setup' })).toBeNull();
+		expect((screen.getByLabelText(/^Username or email/) as HTMLInputElement).value).toBe('');
+		expect((screen.getByLabelText(/^Password/) as HTMLInputElement).value).toBe('');
+		expect(mocks.post).toHaveBeenCalledOnce();
+	});
+
+	it('shows credentials, signup and recovery without a domain form or waiting for discovery', async () => {
 		mocks.optionsGet.mockReturnValueOnce(Promise.withResolvers<LoginOptions>().promise);
 		render(LoginPage);
 		expect(screen.getByLabelText(/^Username or email/)).toBeTruthy();
 		expect(screen.getByLabelText(/^Password/)).toBeTruthy();
 		expect(screen.queryByLabelText(/^Domain/i)).toBeNull();
-		expect(screen.getByText('Use a globally unique email address (recommended) or username. Duplicate usernames or email addresses cannot sign in.')).toBeTruthy();
 		expect(screen.getByRole('link', { name: 'Sign up with email' }).getAttribute('href')).toBe('/signup');
 		expect(screen.getByRole('link', { name: 'Recover account' }).getAttribute('href')).toBe('/recover');
 		await waitFor(() => expect(mocks.optionsGet).toHaveBeenCalledWith('/api/v1/auth/login-options', undefined, undefined, requestOptions));
@@ -370,12 +402,22 @@ describe('public home-first login', () => {
 		if (consent) expect(pendingMcpConsentTicket()).toBe('m'.repeat(32));
 	});
 
-	it('rejects and revokes a fresh password response whose working domain is not its identity home', async () => {
-		mocks.post.mockImplementation(async (path: string) => path === '/api/v1/auth/login' ? { ...response, domain_id: 'team', domain_name: 'Team' } : {});
+	it('rejects and revokes a fresh password response with missing identity metadata', async () => {
+		mocks.post.mockImplementation(async (path: string) => path === '/api/v1/auth/login' ? { ...response, identity_domain_id: '' } : {});
 		render(LoginPage);
 		const { password, button } = await fillCredentials(); password.form!.requestSubmit(button);
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/auth/logout', {}, response.token, undefined, requestOptions));
 		expect(get(auth).token).toBeNull(); expect(mocks.goto).not.toHaveBeenCalled();
+	});
+
+	it('starts in a personal project without listing the account identity as a workspace', async () => {
+		const domains = [{ id: 'personal', name: 'Personal', kind: 'personal' as const }, { id: 'team', name: 'Team', kind: 'organization' as const }];
+		mocks.post.mockResolvedValueOnce({ ...response, identity_domain_id: 'account', identity_domain_name: 'account', domain_id: 'personal', domain_name: 'Personal',
+			project_id: 'personal-primary', project_name: 'alice-c8f572', available_domains: domains });
+		render(LoginPage);
+		const { password, button } = await fillCredentials(); password.form!.requestSubmit(button);
+		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/select-domain'));
+		expect(get(auth)).toMatchObject({ identityDomainId: 'account', domainId: 'personal', projectId: 'personal-primary', availableDomains: domains });
 	});
 
 	it.each([{ domainId: '', providerId: 'provider' }, { domainId: 'team', providerId: '' }])('consumes but rejects malformed pending provider origin $domainId/$providerId', pending => {

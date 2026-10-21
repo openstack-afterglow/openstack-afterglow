@@ -1,7 +1,7 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/topology';
-	import { onMount, untrack } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { createAdminTopologyController } from '$lib/stores/adminTopologyController.svelte';
@@ -15,7 +15,6 @@
 	import { projectNames } from '$lib/stores/projectNames';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import type { TopologyLoadBalancer } from '$lib/types/topology';
-	import ProjectFilter from '$lib/components/admin/topology/ProjectFilter.svelte';
 	import TopologyLegend from '$lib/components/admin/topology/TopologyLegend.svelte';
 	import TopologyLBPanel from '$lib/components/admin/topology/TopologyLBPanel.svelte';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
@@ -39,6 +38,7 @@
 		token: () => $auth.token ?? undefined,
 		projectId: () => $auth.projectId ?? undefined,
 	});
+	onDestroy(ctrl.dispose);
 
 	// 뷰 선택(레인 | 캔버스)은 localStorage 'topology.view' 에 저장한다. 기본은 캔버스.
 	let view = $state<TopologyView>(DEFAULT_TOPOLOGY_VIEW);
@@ -104,8 +104,6 @@
 		const token = $auth.token ?? undefined;
 		const projectId = $auth.projectId ?? undefined;
 		projectNames.load(token, projectId);
-		document.addEventListener('click', ctrl.handleDocumentClick);
-		return () => document.removeEventListener('click', ctrl.handleDocumentClick);
 	});
 </script>
 
@@ -126,10 +124,6 @@
 	</PageHeader>
 	</div>
 
-	<!-- 프로젝트 필터 -->
-	<div class="flex gap-3 mb-4" data-tour="admin-network-filter">
-		<ProjectFilter bind:projectFilter={ctrl.projectFilter} bind:searchText={ctrl.projectSearchText} bind:dropdownOpen={ctrl.projectDropdownOpen} />
-	</div>
 
 	<!-- 갱신 실패는 그려진 토폴로지를 내리지 않는다(다시 마운트되면 자동 갱신이 진입 모션을 재생한다) -->
 	{#if ctrl.error}

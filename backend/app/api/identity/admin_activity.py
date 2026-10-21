@@ -7,6 +7,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.exc import InterfaceError, OperationalError
 
+from app.api.common.admin_resource_scope import AdminResourceScope, admin_resource_scope
 from app.api.deps import get_token_info, require_admin
 from app.services import activity as svc
 
@@ -48,6 +49,7 @@ def _event_filters(
     page: str | None = Query(None, max_length=255),
     from_at: datetime | None = Query(None),
     to_at: datetime | None = Query(None),
+    scope: AdminResourceScope = Depends(admin_resource_scope),
 ) -> dict:
     """Require explicit timezone offsets so date ranges have one interpretation."""
     if any(value is not None and (value.tzinfo is None or value.utcoffset() is None) for value in (from_at, to_at)):
@@ -56,6 +58,7 @@ def _event_filters(
         raise HTTPException(status_code=422, detail="from_at must not exceed to_at")
     return {
         "project_id": project_id,
+        "project_ids": scope.project_ids,
         "user_id": user_id,
         "username": username,
         "resource_id": resource_id,

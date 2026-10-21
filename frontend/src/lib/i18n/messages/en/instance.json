@@ -1,4 +1,12 @@
 {
+	"rename.title": "Rename",
+	"rename.name": "Instance name",
+	"rename.notice": "Changes the display name only, not the guest hostname. The instance does not need to be stopped.",
+	"rename.invalidName": "Enter up to 63 ASCII letters, digits, hyphens or underscores, starting with a letter or digit. Spaces become hyphens.",
+	"rename.failed": "The instance name could not be updated. Check its current name before trying again.",
+	"rename.submit": "Save",
+	"rename.saving": "Saving...",
+	"rename.cancel": "Cancel",
 	"panel.backToInstances": "← Instances",
 	"panel.lowUsage": "Average over the last 7 days: CPU <cpu>{cpu}</cpu>% · RAM <memory>{memory}</memory>% — Usage is low.",
 	"panel.suggestedResize": "Resizing to <strong>{flavor}</strong> is recommended.",

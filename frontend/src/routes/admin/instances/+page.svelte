@@ -1,14 +1,21 @@
 <script lang="ts">
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import { t as scopeT } from '$lib/i18n/ns/domain-admin';
+	let inventoryError = $state('');
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import { t as instanceT } from '$lib/i18n/ns/instance';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api } from '$lib/api/client';
+	import { api as baseApi } from '$lib/api/client';
+	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
+	const api = createAdminInventoryApi(baseApi);
+	onDestroy(api.dispose);
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import TimeSeriesChart from '$lib/components/TimeSeriesChart.svelte';
 	import InstanceDetailPanel from '$lib/components/InstanceDetailPanel.svelte';
+	import { invalidateInstanceDetailSelection } from '$lib/stores/instanceDetailController.svelte';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import { projectNames } from '$lib/stores/projectNames';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
@@ -38,8 +45,6 @@
 	let hostFilter = $state('');
 	let statusFilter = $state('');
 	let nameSearch = $state('');
-	let projectFilter = $state('');
-	let projectSearchText = $state('');
 	let tsData = $state<TsPoint[]>([]);
 	let tsRange = $state('7d');
 	let tsLoading = $state(true);
@@ -84,7 +89,6 @@
 		const params = new URLSearchParams({ limit: String(pageSize) });
 		if (marker) params.set('marker', marker);
 		if (hostFilter) params.set('host', hostFilter);
-		if (projectFilter) params.set('project_id', projectFilter);
 		if (statusFilter) params.set('status', statusFilter);
 		if (nameSearch) params.set('name', nameSearch);
 		return `/api/v1/admin/all-instances?${params}`;
@@ -102,7 +106,6 @@
 		const requestProjectId = $auth.projectId ?? undefined;
 		const requestPageSize = pageSize;
 		const requestHostFilter = hostFilter;
-		const requestProjectFilter = projectFilter;
 		const requestStatusFilter = statusFilter;
 		const requestNameSearch = nameSearch;
 		const requestPath = listPath(marker);
@@ -113,13 +116,13 @@
 			&& ($auth.projectId ?? undefined) === requestProjectId
 			&& pageSize === requestPageSize
 			&& hostFilter === requestHostFilter
-			&& projectFilter === requestProjectFilter
 			&& statusFilter === requestStatusFilter
 			&& nameSearch === requestNameSearch
 			&& listPath(marker) === requestPath;
 		nextPrefetch.cancel();
 		if (opts?.clearSelection) selection.clear();
 		allInstances.length === 0 ? (loading = true) : (refreshing = true);
+		inventoryError = '';
 		try {
 			const res = await api.get<PagedResponse<AdminInstance>>(requestPath, requestToken, requestProjectId);
 			if (!owns()) return;
@@ -131,8 +134,8 @@
 			const path = nextMarker ? listPath(nextMarker) : null;
 			const key = path ? JSON.stringify([path, requestToken ?? null, requestProjectId ?? null]) : null;
 			nextPrefetch.schedule(key, (signal) => path ? api.prefetch(path, requestToken, requestProjectId, { signal }) : undefined);
-		} catch {
-			if (owns()) allInstances = [];
+		} catch (reason) {
+			if (owns()) { allInstances = []; inventoryError = reason instanceof Error ? reason.message : scopeT('state.unavailable'); }
 		} finally {
 			if (owns()) {
 				loading = false;
@@ -161,8 +164,8 @@
 		} catch { health = null; }
 	}
 
-	function openDetail(inst: AdminInstance) { selectedInstanceId = inst.id; selectedProjectId = inst.project_id; }
-	function closeDetail() { selectedInstanceId = null; selectedProjectId = null; }
+	function openDetail(inst: AdminInstance) { invalidateInstanceDetailSelection(); selectedInstanceId = inst.id; selectedProjectId = inst.project_id; }
+	function closeDetail() { invalidateInstanceDetailSelection(); selectedInstanceId = null; selectedProjectId = null; }
 	function openRecovery(inst: AdminInstance) { recoveryInst = inst; }
 	function closeRecovery() { recoveryInst = null; }
 	function onFilterChange() {
@@ -251,6 +254,7 @@
 				void load(markerStack[markerStack.length - 1]);
 			}
 		} catch {
+			if (!api.isCurrent()) return;
 			toast.error(t('instances.bulk.failed', { action }));
 		} finally {
 			bulkActioning = false;
@@ -286,7 +290,7 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading || refreshing}
-				onManualRefresh={() => { markerStack = []; nextMarker = null; hostFilter = ''; projectFilter = ''; projectSearchText = ''; statusFilter = ''; nameSearch = ''; void load(undefined, { clearSelection: true }); void loadHosts(); }}
+				onManualRefresh={() => { markerStack = []; nextMarker = null; hostFilter = ''; statusFilter = ''; nameSearch = ''; void load(undefined, { clearSelection: true }); void loadHosts(); }}
 			/>
 			<div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">
 				{t('instances.page.display')}
@@ -317,12 +321,11 @@
 		bind:hostFilter
 		bind:statusFilter
 		bind:nameSearch
-		bind:projectFilter
-		bind:projectSearchText
 		onChange={onFilterChange}
 	/>
 	</div>
 
+	{#if !api.scoped}
 	<div class="mb-6" data-tour="admin-compute-timeseries">
 		{#if tsLoading}
 			<div class="bg-surface-base border border-line rounded-xl p-5 h-48 flex items-center justify-center">
@@ -339,10 +342,12 @@
 			/>
 		{/if}
 	</div>
+	{/if}
 
 
 	<div data-tour="admin-compute-list">
-	{#if loading}
+	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
+	{:else if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else}
 		<div data-tour="admin-compute-ready">
@@ -381,7 +386,7 @@
 
 {#if selectedInstanceId}
 	<SlidePanel onClose={closeDetail} ariaLabel={t('instances.page.detailLabel')} dataTour="admin-compute-detail">
-		<InstanceDetailPanel instanceId={selectedInstanceId} adminProjectId={selectedProjectId} onClose={closeDetail} showHost={true} />
+		<InstanceDetailPanel instanceId={selectedInstanceId} adminProjectId={selectedProjectId} onClose={closeDetail} showHost={true} onUpdated={() => void load(markerStack.at(-1))} />
 	</SlidePanel>
 {/if}
 

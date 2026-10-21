@@ -195,6 +195,7 @@ from app.api.identity.enrollment_policy import router as enrollment_policy_route
 from app.api.identity.iam import router as iam_router
 from app.api.identity.login_monitoring import router as login_monitoring_router
 from app.api.identity.onboarding import router as onboarding_router
+from app.api.identity.organization_bindings import router as organization_bindings_router
 from app.api.identity.profile import router as profile_router
 from app.api.identity.profile_activity import router as profile_activity_router
 from app.api.identity.projects import router as projects_router
@@ -712,6 +713,7 @@ app.include_router(admin_telemetry_router, prefix="/api/v1/admin/telemetry", tag
 app.include_router(admin_worker_runtime_router, prefix="/api/v1/admin", tags=["admin-worker-runtime"])
 app.include_router(admin_flavors_router, prefix="/api/v1/admin", tags=["admin-flavors"])
 app.include_router(admin_identity_router, prefix="/api/v1/admin", tags=["admin-identity"])
+app.include_router(organization_bindings_router, prefix="/api/v1/admin", tags=["organization-bindings"])
 app.include_router(admin_domains_router, prefix="/api/v1/admin", tags=["admin-domains"])
 app.include_router(admin_credentials_router, prefix="/api/v1/admin", tags=["admin-credentials"])
 app.include_router(enrollment_policy_router, prefix="/api/v1/admin", tags=["admin-enrollment"])

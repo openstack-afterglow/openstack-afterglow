@@ -3,6 +3,7 @@
 	import { useImageDetailController } from '$lib/stores/imageDetailController.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import { CompactResourceCard, ResponsiveTable } from '$lib/components/ui';
 
 	const s = useImageDetailController();
 </script>
@@ -31,6 +32,21 @@
 	{:else if s.members.length === 0}
 		<p class="text-ink-2 text-xs">{t('membersSection.empty')}</p>
 	{:else}
+		<ResponsiveTable>
+			{#snippet cards()}
+				{#each s.members as m (m.member_id)}
+					<CompactResourceCard>
+						<p class="text-xs text-ink-1 font-mono break-all">{m.member_id}</p>
+						<span class="w-fit text-xs px-1.5 py-0.5 rounded bg-surface-selected text-ink-2 break-all">{m.status}</span>
+						{#snippet actions()}
+							<button onclick={() => s.removeMember(m.member_id)} disabled={s.removingMember === m.member_id}
+								class="min-h-11 text-xs px-2 py-1 text-state-danger-text disabled:text-ink-3 transition-colors">
+								{#if s.removingMember === m.member_id}<ActivityIndicator size="xs" label={t('membersSection.deleting')} />{:else}{t('membersSection.delete')}{/if}
+							</button>
+						{/snippet}
+					</CompactResourceCard>
+				{/each}
+			{/snippet}
 		<div class="space-y-1">
 			{#each s.members as m (m.member_id)}
 				<div class="flex items-center justify-between px-3 py-2 bg-surface-sunken rounded-lg">
@@ -48,5 +64,6 @@
 				</div>
 			{/each}
 		</div>
+		</ResponsiveTable>
 	{/if}
 </div>

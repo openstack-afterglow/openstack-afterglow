@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { Button, Card, SelectInput, TableShell } from '$lib/components/ui';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { t } from '$lib/i18n/ns/traffic-analytics';
 	import BklitChart from '$lib/components/charts/BklitChart.svelte';
 	import { createTrafficMapSpec, trafficCountryAnchors, trafficGeography } from '$lib/utils/trafficMap';
@@ -73,13 +75,24 @@
 		{:else}<p class="text-xs text-ink-2">{t('map.select')}</p>{/if}
 	</section>
 	<h3 class="mt-3 text-sm font-medium">{t('map.ranking')}</h3>
-	<TableShell class="mt-2">
+	<ResponsiveTable class="mt-2">
+		{#snippet cards()}
+			{#each ranking as row (row.country)}
+				<CompactResourceCard selected={selected === row.country}>
+					<Button variant="ghost" ariaPressed={selected === row.country} onclick={() => { selected = row.country; hovered = null; }}>{trafficCountryName(row.country)} ({row.country})</Button>
+					<dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('metrics.requests')}</dt><dd>{formatTrafficValue(row.requests)}</dd></div><div><dt>{t('metrics.errors')}</dt><dd>{formatTrafficValue(row.errors)}</dd></div></dl>
+					{#snippet details()}<p>{t('metrics.unique_visitors')}: {formatTrafficValue(row.unique_visitors)}</p>{/snippet}
+				</CompactResourceCard>
+			{/each}
+		{/snippet}
+	<TableShell>
 		<!-- TableShell scrolls horizontally on narrow screens; the table is the keyboard scroll target. -->
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 		<table tabindex="0" aria-label={t('map.ranking')} class="w-full text-xs tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"><thead><tr><th class="p-2 text-left">{t('map.country')}</th><th class="p-2 text-right">{t('metrics.requests')}</th><th class="p-2 text-right">{t('metrics.errors')}</th><th class="p-2 text-right">{t('metrics.unique_visitors')}</th></tr></thead>
 			<tbody>{#each ranking as row (row.country)}<tr class="border-t border-line"><td class="p-2" onpointerleave={() => { hovered = null; }} onfocusout={() => { hovered = null; }}><Button variant="ghost" ariaPressed={selected === row.country} onclick={() => { selected = row.country; hovered = null; }} onintent={() => { hovered = row.country; }}>{trafficCountryName(row.country)} ({row.country})</Button></td><td class="p-2 text-right">{formatTrafficValue(row.requests)}</td><td class="p-2 text-right">{formatTrafficValue(row.errors)}</td><td class="p-2 text-right">{formatTrafficValue(row.unique_visitors)}</td></tr>{/each}</tbody>
 		</table>
 	</TableShell>
+	</ResponsiveTable>
 </Card>
 
 <style>

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { useFsWizard } from '$lib/stores/fileStorageWizardStore.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
-	import { ActivityIndicator, Alert, Button } from '$lib/components/ui';
+	import { ActivityIndicator, Alert, Button, ResponsiveTable, CompactResourceCard, StatusChip } from '$lib/components/ui';
 
 	const s = useFsWizard();
 </script>
@@ -30,8 +30,8 @@
 
 <div class="mb-4">
 	<p class="text-xs text-ink-2 uppercase tracking-wide mb-3">{t('wizard.access.addRule')}</p>
-	<div class="flex gap-2 items-end">
-		<div class="flex-1">
+	<div class="flex flex-wrap gap-2 items-end">
+		<div class="min-w-0 flex-1 basis-40">
 			<label class="block text-xs text-ink-2 mb-1">
 				{s.createdFs!.share_proto === 'NFS' ? 'IP / CIDR' : 'CephX ID'}
 				<input bind:value={s.ruleForm.access_to} type="text"
@@ -56,6 +56,17 @@
 </div>
 
 {#if s.accessRules.length > 0}
+	<ResponsiveTable class="mb-4">
+		{#snippet cards()}
+			{#each s.accessRules as rule (rule.id)}
+				<CompactResourceCard>
+					<div class="flex items-center gap-2"><strong class="min-w-0 flex-1 font-mono break-all">{rule.access_to}</strong><StatusChip status={rule.state || 'unknown'} /></div>
+					<p class="text-xs text-ink-2">{t('wizard.access.permission')}: {rule.access_level}</p>
+					{#if s.createdFs!.share_proto !== 'NFS'}<p class="text-xs text-ink-2">{t('wizard.access.accessKey')}: <span class="font-mono">{rule.access_key ? `${rule.access_key.slice(0, 12)}…` : t('wizard.access.pending')}</span></p>{/if}
+					{#snippet actions()}{#if s.createdFs!.share_proto !== 'NFS' && rule.access_key}<Button size="sm" variant="secondary" onclick={() => s.copyKey(rule.access_key!, rule.id)}>{s.copiedKey === rule.id ? t('wizard.actions.copied') : t('wizard.actions.copy')}</Button>{/if}{/snippet}
+				</CompactResourceCard>
+			{/each}
+		{/snippet}
 	<div class="border border-line-2 rounded-lg overflow-hidden mb-4">
 		<table class="w-full text-xs">
 			<thead>
@@ -94,6 +105,7 @@
 			</tbody>
 		</table>
 	</div>
+	</ResponsiveTable>
 {:else}
 	<p class="text-xs text-ink-2 mb-4">{t('wizard.access.empty')}</p>
 {/if}

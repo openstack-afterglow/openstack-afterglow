@@ -26,7 +26,7 @@ IAM JSON body는 알 수 없는 필드를 거부합니다. Project quota PATCH�
 |---|---|---|
 | `GET /context` | 없음 | `{domain_id,domain_name,is_domain_manager,is_system_admin}` |
 | `GET /users` | 없음 | `{items:[User]}` |
-| `POST /users` | CreateUser | 201 CreatedHuman; 20회/분 |
+| `POST /users` | 없음 | **405**; manager 직접 human 생성은 제공하지 않음 |
 | `PATCH /users/{user_id}` | UpdateUser | User; 20회/분 |
 | `GET /projects` | 없음 | `{items:[Resource]}` |
 | `GET /groups` | 없음 | `{items:[Resource]}` |
@@ -57,27 +57,11 @@ Directory 목록에는 limit/marker 계약이 없고 native 작업 domain invent
 
 `User={id,name,email,enabled,domain_id,protected}`. `domain_id`는 home 도메인이며 joined 사용자의 작업 도메인으로 덮어쓰지 않습니다. `protected`는 credential/profile 보호 판정으로 외부 home 사용자도 true입니다. Enabled-only 변경은 별도 보호 판정을 하므로 이 boolean이 모든 필드의 편집 허가를 뜻하지는 않습니다. `Resource={id,name,description,domain_id,enabled}`이고 project/group 목록에 공통 사용합니다.
 
-CreateUser:
+조직 manager는 `POST /invitations`로 이메일 초대를 발행하며 직접 human 생성은 제공하지 않습니다. Native 신규 계정은 검증된 초대 수락 또는 공개 가입/신뢰된 외부 가입에서 shared accounts에 만들고 shared personal의 자기 primary project를 준비합니다. Explicit system-admin의 새 human 생성은 [관리자 API](admin.md)를 사용하며 선택 domain의 Default에는 자동 가입하지 않습니다. 기존 identity·credentials·home을 조직으로 옮기거나 복제하지 않습니다.
 
-```json
-{
-  "name": "new-user",
-  "personal_domain_name": "개인 작업 공간",
-  "email": "new-user@example.org",
-  "password": "example-password-only",
-  "enabled": true,
-  "project_id": "project-uuid",
-  "role_ids": ["project-member-role-id"]
-}
-```
+신규 human 결과에는 `{user_id,domain_id,domain_name,identity_domain_id,identity_domain_name,personal_domain_id,personal_project_id,personal_project_name}`가 포함됩니다. Working domain은 personal, immutable identity domain은 accounts이며 초대 target 조직은 원래 invitation 문맥에 별도로 유지합니다. 개인 프로젝트 이름은 정규화 username 최대47자+하이픈+암호학적 임의 소문자8자+숫자8자리로 최대64자이고 본인 직접 native member 하나·동결 project quota·native provenance readback 뒤 활성화합니다. Owner/admin/reader·manager/Default/domain quota pool은 새 개인 공간에 자동 부여하지 않습니다. `personal_domain_name` 입력은 제거됐고 extra field는422입니다.
 
-- Name/personal_domain_name/email/password 필수. Name 1–255자·앞뒤 공백 금지, personal_domain_name 1–64자·공백만/앞뒤 공백 금지, email 3–255자·정규화 및 exact host 정책 적용, password 12–1024자.
-- Enabled는 기본true. Project는 생략/null 가능, role_ids 기본 `[]`·최대256개. Role을 요청하면 explicit project가 필요(422)합니다. Project를 지정하면 nonempty unique safe 역할과 명시적 project membership grade가 필요합니다. Owner 역할은 이 경로로 부여하지 않습니다.
-- **새 human만 개인 도메인을 만듭니다.** 새 native identity는 그 개인 도메인에 disabled로 생성하고, 개인 `Default`에 manager와 project_reader를 부여하며 quota 적용을 확인한 뒤 Default를 enable합니다. 가입 대상 작업 도메인의 canonical `Default`에도 즉시 project_reader를 부여합니다. 선택 프로젝트 역할은 여기에 추가됩니다. 마지막에 계정을 요청한 enabled 상태로 적용·검증합니다. 기존 사용자/service 계정의 자동 개인 도메인 생성·이동은 없습니다.
-- 도메인 UUID가 identity입니다. 개인 도메인은 `afterglow-<UUID hex>` native 이름과 `afterglow_display_name`을 사용합니다. 표시 이름 중복은 허용하며 기존 native 도메인은 원래 이름을 표시 fallback으로 유지합니다. 인증·scope에는 UUID를 사용하고, 같은 표시 이름 중 하나를 임의 선택하지 않습니다.
-- 생성 응답 **CreatedHuman**은 `{id,name,email,enabled,protected:true,user_id,domain_id,domain_name,identity_domain_id,identity_domain_name}`입니다. `id==user_id`, `domain_id/domain_name`은 가입한 **작업 도메인**, `identity_domain_id/identity_domain_name`은 새 **개인 home 도메인**입니다. 따라서 directory의 User와 같은 `domain_id` 의미로 해석하면 안 됩니다.
-- Password method가 꺼져 있거나 email이 login allowlist를 위반하면403. 정규화 email이 **어느 identity 도메인이든** 기존 계정과 충돌하면409이며, 기존 계정은 로그인 후 초대를 수락해야 합니다. 기존 password를 reset하거나 identity를 복제하지 않습니다.
-- Create는 개인 domain·Default·native user·필수 및 선택 grant를 durable enrollment에 기록합니다. Native/SQL은 하나의 분산 트랜잭션이 아니므로 오류 뒤 무조건 같은 create를 다시 보내지 말고 `/operations`를 확인합니다. 가입 대상 Default가 없으면 외부 변경 전409 `domain_default_bootstrap_required`입니다.
+조직 directory는 기존 organization-home 사용자와 현재 native project grant로 참여가 확인된 사용자만 표시합니다. 공유 account 전체를 목록·프로젝트 후보로 노출하지 않으며 비멤버를 role/group/membership API로 추가할 수 없습니다. 신규 조직 admission은 초대 수락 또는 명시 trusted OIDC만 허용합니다.
 
 UpdateUser는 `{name?,email?,password?,enabled?}`만 받습니다. 최소 하나의 non-null field가 필요하며 null/빈 PATCH는422입니다. Name/email/password 제한은 생성과 같습니다. Email 변경은 현재 email 정책을 검증하고 **모든 identity 도메인**의 다른 계정 email과 충돌하면409 `Email belongs to another account`입니다. Password 변경에는 password method enabled 및 email 정책 통과도 필요하며 `afterglow_local_password=true`를 확정합니다. Email-only 변경은 password method가 꺼져 있어도 가능합니다. 이 manager/home-bound 관리 경로와 본인 profile의 검증 링크 변경은 다르며 일반 `/api/v1/profile` PATCH는 email 소유권을 변경하지 않습니다. Domain 이동·개인 도메인 이름·project 이동 필드는 없습니다. `enabled:false`는 먼저 대상 사용자가 관련된 미완료 ownership journal을 검사하며409 `project_ownership_native_operation_unresolved`로 차단합니다. 이어 **home뿐 아니라 joined 작업 도메인까지 포함한 현재 native effective project ownership**을 검사하고 owner-bearing 할당이 있으면409 `Transfer project ownership before disabling or deleting this identity`로 거부합니다. 소유권 이전·미완료 작업의 적법한 정리 후 다시 요청해야 하며 마지막 활성 effective Default manager 보호도 별도로 적용합니다. 성공 후 대상 세션 회수·권한 cache 무효화를 수행합니다.
 
@@ -101,7 +85,7 @@ Default의 manager들은 같은 도메인의 모든 프로젝트에 **공통 관
 
 POST `/invitations`는 email 3–255자가 필수이고 **도메인 가입만** 초대할 수 있습니다. `{ "email": "joined@example.org" }`이면 추가 프로젝트 없이 수락 즉시 target `Default` reader가 됩니다. `project_id`는 생략/null 또는1–64자, role_ids는 기본 `[]`·최대256개입니다. Project 없이 추가 roles를 보내면422입니다. Project를 선택하면 nonempty unique exact safe IDs와 명시적인 project membership grade가 하나 이상 필요합니다. Owner는 assignable catalog에 없고 native admin/manager 승격도 허용하지 않습니다. Project admin 및 서비스 역할은 live domain authority·safe graph 검증 범위에서 추가합니다. 발행 시 email host를 login allowlist로 검증하되 password method 활성 여부는 확인하지 않습니다. **새 계정 수락 시** password method를 다시 검증하며, 기존 계정의 authenticated 수락에는 password method가 필요하지 않습니다.
 
-Enrollment DTO는 `{id,kind,domain_id,project_id,project_name,email,role_ids,user_id,identity_domain_id,personal_domain_name,native_writes_settled,recovery_required,status,expires_at,created_at,accepted_at}`입니다. Kind는 invitation/registration/managed_create, domain_id/project_id/user_id/identity_domain_id/personal_domain_name/accepted_at은 nullable입니다. **전역 registration은 domain_id=null로 시작**하고 개인 home 생성 intent를 확정한 뒤 그 exact ID를 working/home 대상으로 기록합니다. Invitation/managed_create의 domain_id는 가입 대상 작업 도메인이며 invitation target은 null일 수 없습니다. `identity_domain_id`는 새 개인 home 또는 기존 identity 도메인입니다. Project_name은 현재 이름 또는 저장된 historical 표시명이며 도메인 전용 초대에서는 빈 문자열입니다. 평문 token·native account/domain marker·grant journal·password는 반환하지 않습니다. `native_writes_settled`는 durable journal의 불확실한 native create/grant가 해소됐는지 나타내며 enrollment 성공·보상 완료를 뜻하지 않습니다. Token은 SMTP 링크에만 전달하고 SHA-256 hash로 저장합니다. Invitation expiry는 `smtp_invitation_token_expiry_days`, registration expiry는1시간입니다. 메일 실패는503이며 성공으로 표시하지 않습니다. 공개 링크 수락은 [onboarding](auth.md#공개-이메일-검증-onboarding)을 사용합니다. 현재 `/api/v1/invitations` 및 프로젝트별 invitation API는 제공하지 않으므로 project owner/admin의 멤버 추가는 이미 가입한 사용자의 project 역할 관리로 수행하고, 도메인 email 초대는 manager가 발행합니다.
+Enrollment DTO에는 기존 id/kind/domain_id/project_id/project_name/email/role_ids/user_id/identity_domain_id/status/timestamp와 personal_domain_id/personal_project_id/personal_project_name·native_writes_settled/recovery_required가 포함됩니다. 과거 personal_domain_name 컬럼은 historical provenance일 뿐 새 입력이 아닙니다. Global registration/managed_create와 조직 admission 없는 external은 domain_id=null로 시작하고 shared personal working ID를 확정하며 identity_domain_id는 accounts입니다. Invitation의 domain_id는 원래 admission target 조직이고 nullable invitation target은 허용하지 않습니다. 공개 생성 결과의 personal working ID와 이 operation target을 혼동하지 않습니다. Token/password·native correlation·grant journal은 반환하지 않으며 token은 SMTP 링크로만 전달하고 digest로 저장합니다. native_writes_settled는 불확실 native 효과의 settlement이지 accepted/cleanup 성공이 아닙니다. Owner/admin의 프로젝트 멤버 관리는 이미 조직에 참여한 사용자로 한정하고 조직 email 초대는 manager만 발행합니다.
 
 ### Lifecycle states
 
@@ -111,8 +95,8 @@ Enrollment DTO는 `{id,kind,domain_id,project_id,project_name,email,role_ids,use
 | `delivery_failed` | SMTP 전송 실패; 수락 불가 |
 | `pending` | 전달 성공·아직 사용하지 않은 링크(또는 managed-create 초기 intent); 링크 만료 전만 수락 가능 |
 | `expired` | pending의 expires_at 경과를 응답에서 계산한 상태; 수락 불가 |
-| `account_creating` | 개인 domain·native 새 계정 생성 intent를 durable commit; recovery_required=true |
-| `granting` | 개인 Default 생성·필수/선택 native 역할 추가 intent; recovery_required=true |
+| `account_creating` | shared domain/native account 생성 intent를 durable commit; recovery_required=true |
+| `granting` | personal project와 필수/선택 native grant intent; recovery_required=true |
 | `activating` | 새 계정 최종 enabled 상태 적용·검증 중; recovery_required=true |
 | `accepted` | 계정·추가 grant·activation 및 SQL accepted commit 완료; 재수락 불가 |
 | `failed` | 실행 실패 후 확인 가능한 native 효과의 보상 완료; 같은 token으로 재실행 불가 |
@@ -121,17 +105,17 @@ Enrollment DTO는 `{id,kind,domain_id,project_id,project_name,email,role_ids,use
 
 `GET /invitations`는 해당 domain의 모든 invitation 이력을 최신순으로 반환합니다. Domain-only 초대는 project가 없어도 list/revoke 가능합니다. Disabled project의 이력도 list/revoke 가능하고 삭제된 project는 저장된 project_name을 사용합니다. 현재 존재하는 project가 다른 domain이면403으로 거부합니다. Public 조회·redemption은 추가 project가 있으면 현재 enabled project를 요구하므로 historical 목록에 표시됐다는 이유로 수락 가능하지 않습니다. 수락 시 inviter의 현재 domain manager authority도 다시 검증합니다.
 
-수락·회수는 공유 graph lease → SQL row lock 순서로 직렬화합니다. 기존 계정은 authenticated 수락에서 실제 enabled user와 초대 email 일치를 확인하며 기존 home identity를 유지합니다. 새 계정 수락은 name/password/**personal_domain_name**이 필수이고 개인 home 도메인을 새로 만듭니다. 두 경로 모두 target Default reader를 **수락 중에 즉시** 부여하고 선택 project 역할은 additive로 추가하며 기존 managed direct grant·group/domain inheritance를 지우지 않습니다. 모든 추가 grant는 정확한 domain/project/role ID와 적용 phase를 native 호출 전에 durable journal에 기록하고 readback으로 확인합니다. 새 domain·Default·계정도 exact marker와 intent를 먼저 저장하며 새 계정은 disabled로 생성한 뒤 마지막에 요청한 enabled 상태를 적용·검증합니다. Password는 enrollment에 저장하지 않으며 기존 계정의 email/password를 덮어쓰거나 password reset으로 실패를 복구하지 않습니다.
+수락·회수는 graph lease → SQL row lock 순서로 직렬화합니다. 기존 계정은 authenticated 수락에서 enabled 본인과 초대 email을 확인하고 원래 identity를 유지합니다. 새 계정은 name/password만 입력하고 shared accounts user와 shared personal primary를 준비합니다. 초대 수락 두 경로는 target 조직 Default reader를 즉시 부여하고 선택 safe project role은 additive로 추가합니다. 관리자 생성·공개 signup에는 이 조직 grant를 적용하지 않습니다. 기존 direct grant·group/domain inheritance를 지우지 않습니다. Native 호출 전에 exact domain/project/role·phase·correlation을 durable 기록하고 readback하며 새 계정은 disabled 준비 뒤 마지막에 요청 enabled 상태를 검증합니다. Password는 journal에 저장하지 않고 기존 account email/password를 덮어쓰거나 reset으로 실패를 복구하지 않습니다.
 
-새 개인 도메인의 Default에는 실제 계정 생성자에게 `manager`·`project_owner`·직접 `project_reader`를 부여합니다. Owner grant도 같은 enrollment intent/phase journal을 거쳐 native 호출 전에 저장하고 단일 소유권을 읽어 확인한 뒤 프로젝트를 활성화합니다. 가입 대상 도메인의 Default에는 reader만 추가하며 개인 도메인의 owner/manager 권한을 가입 대상으로 전파하지 않습니다. Owner grant 거부·응답 유실·상속/그룹 소유권 충돌은 accepted가 아니며 기존 settlement·정확한 자원 보상 경계를 따릅니다.
+새 개인 프로젝트는 본인 직접 native member와 정확한 primary/user/enrollment marker를 사용하고 raw/effective native provenance·동결 project quota를 검증한 뒤 활성화합니다. Member의 manager/owner/admin 승격 graph나 foreign/group/inherited grant는 거부합니다. 개인 manager/Default/domain budget은 없으며 개인 권한을 초대 target 조직으로 전파하지 않습니다. Member grant 거부·응답 유실·상속/그룹 충돌은 accepted가 아니고 명시 settlement와 exact owned-empty 자원 정리만 허용합니다. Shared accounts/personal domain이나 기존 user를 보상 삭제하지 않으며 기존 owner 기반 personal grant도 자동 변경하지 않습니다.
 
 Native 변경 전에 정책/이메일/계정 충돌 등을 거부하면 해당403/409 등 오류가 반환됩니다. 외부 변경 intent 이후 실패는503 `detail="Enrollment operation <id> failed; native changes compensated"` 또는 `... recovery required`이며 row를 failed/recovery_required로 보존합니다. Process crash도 durable account_creating/granting/activating intent를 남깁니다. 이 상태의 링크 재사용은410입니다. 불확실한 create를 새 password reset이나 무조건 retry로 처리하지 않습니다.
 
 `GET /operations`는 **kind와 무관하게** account_creating/granting/activating/recovery_required/failed row만 반환합니다. 따라서 invitation도 이 목록에 포함될 수 있습니다. `DELETE /operations/{operation_id}`는 같은 live domain authority로 해당 작업의 보상을 실행합니다. `DELETE /invitations/{invitation_id}`는 invitation kind만 대상으로 회수·필요 보상을 수행합니다. Pending뿐 아니라 delivery 실패·expired·failed·recovery 상태도 회수할 수 있습니다. Accepted/revoked 회수는409(멱등 성공 아님), ID/도메인/kind 불일치는404입니다.
 
-보상은 journal에 기록된 **이번 작업의 추가 grant만** 역순 회수하고, exact marker로 소유권을 입증한 새 계정·개인 Default·개인 domain만 정리합니다. 기존 identity/domain/project·기존 grant는 삭제하지 않습니다. 새 계정의 추가 외부 권한/그룹, 개인 domain의 다른 user/group/project, Default의 리소스/자식 inventory까지 다시 검사하며 증명되지 않으면 정리하지 않습니다. 불확실한 applying/unknown grant나 native create는 현재 부재만으로 끝났다고 판정하지 않고503과 recovery_required를 유지합니다. 이 경우 system operator의 native 요청 종료 확인 및 readback settlement가 선행해야 하며 IAM에는 settlement route가 없습니다. Settlement 후에도 accepted로 바꾸지 않고 recovery_required로 남겨 이 IAM DELETE 보상을 다시 수행합니다. DELETE204는 확인된 보상·회수 완료만 뜻하며, 실제 native 효과가 남아 있을 때 성공으로 숨기지 않습니다.
+신규 shared-topology 보상은 journal에 기록된 **이번 작업의 추가 grant만** 역순 회수하고, exact marker로 소유권을 입증한 새 account 사용자와 empty personal 프로젝트만 정리합니다. 공통 account/personal domain이나 기존 identity/domain/project·기존 grant는 삭제하지 않습니다. 새 사용자의 추가 외부 권한/그룹과 프로젝트의 리소스·자식 inventory를 재검사하며 증명되지 않으면 정리하지 않습니다. 과거 private-domain receipt와 native provenance는 이전·소급 삭제하지 않습니다. 불확실한 applying/unknown grant나 native create는 현재 부재만으로 끝났다고 판정하지 않고503과 recovery_required를 유지합니다. 현재 system operator의 native 요청 종료 확인 및 exact readback settlement가 선행해야 하며 IAM에는 settlement route가 없습니다. 기존 enrollment settlement와 새 shared/personal settlement의 body·범위는 구분합니다. DELETE204는 확인된 이번 작업의 보상·회수 완료만 뜻하며 남은 native 효과를 성공으로 숨기지 않습니다.
 
-전역 signup은 `/auth/registrations`의 email-first 개인 home 생성입니다. `/auth/domains/{domain_id}/registrations`는403 `invitation_required`이며 SQL signup opt-in으로 다시 열 수 없습니다. Migration096은 pending/delivery_pending의 과거 target-domain registration만 회수하고 accepted 계정·invitation·중단된 native-write journal은 보존합니다. `/iam/operations`는 선택한 exact domain의 enrollment 보상이고 nullable global proof 목록이나 account recovery proof API가 아닙니다. 비밀번호/username/본인 email 변경은 별도 [복구 API](auth.md#이메일-소유-기반-계정-복구프로필-이메일-변경)와 migration097을 사용합니다.
+전역 signup은 `/auth/registrations`의 email-first account 계정·personal 프로젝트 생성입니다. `/auth/domains/{domain_id}/registrations`는403 `invitation_required`이며 SQL signup opt-in으로 다시 열 수 없습니다. Migration096은 pending/delivery_pending의 과거 target-domain registration만 회수하고 accepted 계정·invitation·중단된 native-write journal은 보존합니다. `/iam/operations`는 선택한 exact domain의 enrollment 보상이고 nullable global proof 목록이나 account recovery proof API가 아닙니다. 비밀번호/username/본인 email 변경은 별도 [복구 API](auth.md#이메일-소유-기반-계정-복구프로필-이메일-변경)와 migration097을 사용합니다.
 
 Canonical email 소유권·provider stable issuer/sub 연결은 global입니다. 기존 이메일이 여러 home에 있거나 legacy native tuple이 다른 user와 충돌하면 자동 merge/reset하지 않고409로 차단합니다. 운영자는 exact user/home·issuer/sub·native IdP/protocol tuple·멤버십/소유권을 검토한 명시적 이관을 준비해야 합니다. Provider 연결은 본인의 password 또는 authenticated native 계정 proof가 필요하며 manager의 email 초대나 auto-join 설정이 그 proof를 대신하지 않습니다.
 
@@ -266,7 +250,7 @@ Email host는 입력 trim·trailing dot 제거 후 최대253자이며 IDNA 정�
 
 성공 PUT은 revision을1 올립니다. Expected revision 불일치는409 `revision_conflict`; signup domain 없음은422 `signup_domains_required`, login allowlist 밖의 signup host는422 `signup_domain_not_allowed`, SMTP 미설정은409 `smtp_not_configured`. Password를 끄려면 다른 usable provider가 필요하며 없으면409 `last_login_method`입니다. 먼저 password를 유지한 상태에서 provider의 **실제 로그인**을 성공시켜야 합니다. Configuration/discovery 성공만으로 검증됐다고 취급하지 않습니다.
 
-위 SQL `signup_enabled/signup_email_domains`는 기존 정책 필드이며 `signup_enabled`는 home 계정의 작업 도메인 생성 capability에도 사용됩니다. **전역 email-first signup 설정이 아니고 per-domain selfregistration을 허용하지 않습니다.** Resolve가 기존 signup projection을 반환해도 등록 route는403입니다. 전역 signup은 operator `[auth].public_signup_enabled/signup_email_domains`, provider admission은 `[auth.default]` 또는 exact `[auth.domain."<ID>"]`의 `auto_join_email_domains`이며 이 IAM PUT의 입력 필드가 아닙니다. Auto-join map은 도메인 전체 대체/생략 상속, 기본 거부·provider별 exact host, 별도 allow_providers와 현재 email 정책을 함께 요구합니다. [정확한 설정 계약](auth.md#전역-signup과-provider별-자동-가입-설정)을 따릅니다.
+위 SQL `signup_enabled/signup_email_domains`는 기존 로그인 정책·resolve projection 필드이며 조직 생성 capability에는 사용하지 않습니다. **전역 email-first signup 설정이 아니고 per-domain selfregistration을 허용하지 않습니다.** Resolve가 기존 signup projection을 반환해도 등록 route는403입니다. 일반 조직 생성은 `[auth].organization_creation_enabled/max_organizations_per_user`를 따릅니다. 전역 signup은 operator `[auth].public_signup_enabled/signup_email_domains`, 기존 조직의 provider admission은 `[auth.default]` 또는 exact `[auth.domain."<ID>"]`의 `auto_join_email_domains`이며 이 IAM PUT의 입력 필드가 아닙니다. Auto-join map은 도메인 전체 대체/생략 상속, 기본 거부·provider별 exact host, 별도 allow_providers와 현재 email 정책을 함께 요구합니다. [정확한 설정 계약](auth.md#전역-signup과-provider별-자동-가입-설정)을 따릅니다.
 
 ## Provider CRUD 필드
 

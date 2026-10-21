@@ -7,6 +7,7 @@
 	import ObjectFileCard from './ObjectFileCard.svelte';
 	import ObjectFolderCard from './ObjectFolderCard.svelte';
 	import { createArrivals } from './arrivals';
+ import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 
 	const s = useObjectBrowser();
 	const folders = $derived(s.gridRows.filter((row) => row.isDir));
@@ -36,6 +37,11 @@
 			: t('views.cardGrid.emptyHint')}
 	/>
 {:else}
+ <ResponsiveTable>
+  {#snippet cards()}
+   <div class="responsive-card-toolbar flex flex-wrap items-center gap-2 text-xs"><SelectionCheckbox checked={s.visibleSelectedCount > 0 && s.visibleSelectedCount === s.visibleObjectCount} indeterminate={s.visibleSelectedCount > 0 && s.visibleSelectedCount < s.visibleObjectCount} disabled={s.bulkDeleting || s.bulkMoving} ariaLabel={t('views.cardGrid.selectAllVisible')} onclick={s.toggleSelectAll} /><span>{t('views.cardGrid.objectCount', { count: s.visibleObjectCount })}</span><button class="min-h-11 px-2" onclick={() => s.toggleSort('name')}>{t('views.flatTable.nameSort', { icon: s.sortIcon('name') })}</button><button class="min-h-11 px-2" onclick={() => s.toggleSort('bytes')}>{t('views.flatTable.sizeSort', { icon: s.sortIcon('bytes') })}</button><button class="min-h-11 px-2" onclick={() => s.toggleSort('last_modified')}>{t('views.flatTable.modifiedSort', { icon: s.sortIcon('last_modified') })}</button></div>
+   {#each s.gridRows as row (row.obj.name)}{#if row.isDir}<ObjectFolderCard obj={row.obj} />{:else}<ObjectFileCard obj={row.obj} fullPath={row.fullPath} compact />{/if}{/each}
+  {/snippet}
 	<div class="space-y-4">
 		<div class="flex items-center gap-2.5 border-b border-line pb-2">
 			<SelectionCheckbox
@@ -76,4 +82,5 @@
 			</section>
 		{/if}
 	</div>
+ </ResponsiveTable>
 {/if}

@@ -17,20 +17,31 @@ export interface FlavorReconcileResponse {
   enforcement_scope: string;
 }
 
+import { onDestroy } from 'svelte';
+import { auth, projectSwitching, logoutInProgress } from '$lib/stores/auth';
+import { projectNames, type AdminProjectName } from '$lib/stores/projectNames';
+import { domainsApi, type AdminDomain } from '$lib/api/domains';
+import { t as td } from '$lib/i18n/ns/domain-admin';
 import { api, ApiError } from '$lib/api/client';
-import type { Project, Quotas, QuotaUpdateResponse, GpuQuota, GpuDefaultQuota } from '$lib/types/quotas';
+import type { Quotas, QuotaUpdateResponse, GpuQuota, GpuDefaultQuota } from '$lib/types/quotas';
 import { t } from '$lib/i18n/ns/admin-identity';
 
 export interface AdminQuotasControllerOpts {
   token: () => string | undefined;
   projectId: () => string | undefined;
+  userId?: () => string | undefined;
 }
 
 export interface AdminQuotasController {
-  readonly projects: Project[];
+  readonly projects: AdminProjectName[];
+  readonly domains: AdminDomain[];
+  selectedDomainId: string;
+  readonly scopeRevision: number;
+  readonly domainsLoading: boolean;
+  readonly domainsError: string;
+  readonly projectsError: string;
+  loadDomains: () => Promise<void>;
   selectedProjectId: string;
-  selectedProjectName: string;
-  projectSearch: string;
   readonly quotas: Quotas | null;
   readonly loading: boolean;
   readonly refreshing: boolean;
@@ -69,10 +80,15 @@ export interface AdminQuotasController {
 }
 
 export function createAdminQuotasController(opts: AdminQuotasControllerOpts): AdminQuotasController {
-  let projects = $state<Project[]>([]);
+  let directory = $state<AdminProjectName[]>([]);
+  let domains = $state<AdminDomain[]>([]);
+  let selectedDomainId = $state('');
+  let scopeRevision = $state(0);
+  let domainsLoading = $state(false);
+  let domainsError = $state('');
+  let projectsError = $state('');
+  const projects = $derived(selectedDomainId ? directory.filter(project => project.domain_id === selectedDomainId) : directory);
   let selectedProjectId = $state('');
-  let selectedProjectName = $state('');
-  let projectSearch = $state('');
   let quotas = $state<Quotas | null>(null);
   let loading = $state(true);
   let refreshing = $state(false);
@@ -96,6 +112,13 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
   let saveGeneration = 0;
   let reconcilePreview = $state<FlavorReconcileResponse | null>(null);
   let reconcileLoading = $state(false);
+  let reconcileGeneration = 0;
+  let directoryGeneration = 0;
+  let domainsGeneration = 0;
+  let defaultsGeneration = 0;
+  let aliasesGeneration = 0;
+  let authorityEpoch = 0;
+  let disposed = false;
 
   const gpuQuotaMap = $derived(Object.fromEntries(gpuQuotas.map(q => [q.gpu_type, q])));
   const gpuDefaultMap = $derived(Object.fromEntries(gpuDefaults.map(q => [q.gpu_type, q.limit])));
@@ -119,57 +142,127 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
   const tok = opts.token;
   const pid = opts.projectId;
 
-  async function loadProjects() {
-    if (projects.length === 0) loading = true;
-    else refreshing = true;
+  function clearProjectResults() {
+    ++scopeRevision;
+    ++quotaGeneration; ++gpuQuotaGeneration; ++saveGeneration; ++reconcileGeneration;
+    quotas = null; quotaLoading = false;
+    saving = false; savingSection = null;
+    saveError = ''; saveSuccess = ''; sectionErrors = {}; sectionSuccesses = {};
+    gpuQuotas = []; gpuQuotaLoading = false; gpuQuotaError = '';
+    reconcilePreview = null; reconcileLoading = false;
+    gpuDefaultSuccess = '';
+  }
+
+  function captureContext(projectScoped = true) {
+    const token = tok(), projectId = pid(), epoch = authorityEpoch;
+    const revision = scopeRevision;
+    return {
+      token, projectId,
+      owns: () => !disposed && epoch === authorityEpoch && token === tok() && projectId === pid()
+        && (!projectScoped || revision === scopeRevision),
+    };
+  }
+
+  let authority: string | undefined;
+  const unsubscribeAuth = auth.subscribe(state => {
+    const next = JSON.stringify([!!state.token, state.sessionId, state.userId, state.identityDomainId, state.domainId, state.projectId, state.isSystemAdmin]);
+    if (authority === next) return;
+    const initial = authority === undefined;
+    authority = next;
+    if (!initial) resetAuthority();
+  });
+  const unsubscribeSwitching = projectSwitching.subscribe(active => { if (active) resetAuthority(); });
+  const unsubscribeLogout = logoutInProgress.subscribe(active => { if (active) resetAuthority(); });
+  function resetAuthority() {
+    ++authorityEpoch;
+    clearProjectResults();
+    directory = []; domains = []; selectedDomainId = ''; selectedProjectId = '';
+    gpuAliases = []; gpuDefaults = []; gpuDefaultError = ''; gpuDefaultLoading = false;
+    projectsError = ''; domainsError = ''; domainsLoading = false; loading = false; refreshing = false;
+  }
+  onDestroy(() => {
+    disposed = true; ++authorityEpoch;
+    unsubscribeAuth(); unsubscribeSwitching(); unsubscribeLogout();
+  });
+
+  async function loadDomains() {
+    const context = captureContext(false), generation = ++domainsGeneration;
+    const owns = () => context.owns() && generation === domainsGeneration;
+    domainsLoading = true; domainsError = '';
     try {
-      const res = await api.get<{ id: string; name: string }[]>('/api/v1/admin/projects/names', tok(), pid());
-      projects = res || [];
-    } catch { projects = []; }
-    finally { loading = false; refreshing = false; }
+      const response = await domainsApi.list(context);
+      if (owns()) domains = response.items;
+    } catch (error) {
+      if (owns()) { domains = []; domainsError = error instanceof ApiError ? error.message : td('scope.loadFailed'); }
+    } finally { if (owns()) domainsLoading = false; }
+  }
+
+  async function loadProjects() {
+    const context = captureContext(false), generation = ++directoryGeneration;
+    const owns = () => context.owns() && generation === directoryGeneration;
+    if (directory.length === 0) loading = true;
+    else refreshing = true;
+    projectsError = '';
+    try {
+      const result = await projectNames.loadMetadata(context.token, context.projectId, opts.userId?.());
+      if (!owns()) return;
+      directory = [...result.projects];
+      if (result.failed) projectsError = t('quotaPage.unavailable');
+      if (selectedProjectId && !projects.some(project => project.id === selectedProjectId)) {
+        selectedProjectId = ''; clearProjectResults();
+      }
+    } catch {
+      if (owns()) { directory = []; selectedProjectId = ''; clearProjectResults(); projectsError = t('quotaPage.unavailable'); }
+    } finally { if (owns()) { loading = false; refreshing = false; } }
   }
 
   async function loadGpuAliases() {
+    const context = captureContext(false), generation = ++aliasesGeneration;
+    const owns = () => context.owns() && generation === aliasesGeneration;
     try {
-      const res = await api.get<{ aliases: string[] }>('/api/v1/admin/gpu-aliases', tok(), pid());
-      gpuAliases = res.aliases ?? [];
+      const res = await api.get<{ aliases: string[] }>('/api/v1/admin/gpu-aliases', context.token, context.projectId);
+      if (owns()) gpuAliases = res.aliases ?? [];
     } catch {
-      gpuAliases = [];
+      if (owns()) gpuAliases = [];
     }
   }
 
   async function loadGpuDefaults(opts?: { background?: boolean }) {
+    const context = captureContext(false), generation = ++defaultsGeneration;
+    const owns = () => context.owns() && generation === defaultsGeneration;
     if (!opts?.background) { gpuDefaultLoading = true; }
     gpuDefaultError = '';
     try {
-      gpuDefaults = await api.get<GpuDefaultQuota[]>('/api/v1/admin/gpu-quotas/defaults', tok(), pid());
+      const loaded = await api.get<GpuDefaultQuota[]>('/api/v1/admin/gpu-quotas/defaults', context.token, context.projectId);
+      if (owns()) gpuDefaults = loaded;
     } catch (e) {
+      if (!owns()) return;
       gpuDefaultError = e instanceof ApiError ? e.message : t('quotaController.defaultsLoadFailed');
       gpuDefaults = [];
-    } finally { if (!opts?.background) gpuDefaultLoading = false; }
+    } finally { if (owns()) gpuDefaultLoading = false; }
   }
 
   async function setGpuDefault(gpuType: string, limit: number) {
+    const context = captureContext(false), projectContext = captureContext();
     gpuDefaultError = ''; gpuDefaultSuccess = '';
     try {
-      await api.put('/api/v1/admin/gpu-quotas/defaults', { gpu_type: gpuType, limit }, tok(), pid());
+      await api.put('/api/v1/admin/gpu-quotas/defaults', { gpu_type: gpuType, limit }, context.token, context.projectId);
+      if (!context.owns()) return;
       gpuDefaultSuccess = t('quotaController.defaultsSaved');
       await loadGpuDefaults({ background: true });
-      if (selectedProjectId) await loadGpuQuotas({ background: true });
+      if (projectContext.owns() && selectedProjectId) await loadGpuQuotas({ background: true });
     } catch (e) {
-      gpuDefaultError = e instanceof ApiError ? e.message : t('quotaController.defaultsSetFailed');
+      if (context.owns()) gpuDefaultError = e instanceof ApiError ? e.message : t('quotaController.defaultsSetFailed');
     }
   }
 
   async function loadQuotas(opts?: { preserveStatus?: boolean; background?: boolean }): Promise<boolean> {
     const targetProjectId = selectedProjectId;
+    const context = captureContext();
     const requestToken = tok();
     const requestProjectId = pid();
     const generation = ++quotaGeneration;
-    const owns = () => generation === quotaGeneration
-      && selectedProjectId === targetProjectId
-      && tok() === requestToken
-      && pid() === requestProjectId;
+    const owns = () => generation === quotaGeneration && context.owns() && selectedProjectId === targetProjectId;
     if (!targetProjectId) { quotas = null; quotaLoading = false; return false; }
     if (!opts?.background) quotaLoading = true;
     if (!opts?.preserveStatus) {
@@ -196,13 +289,11 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
 
   async function loadGpuQuotas(opts?: { background?: boolean }) {
     const targetProjectId = selectedProjectId;
+    const context = captureContext();
     const requestToken = tok();
     const requestProjectId = pid();
     const generation = ++gpuQuotaGeneration;
-    const owns = () => generation === gpuQuotaGeneration
-      && selectedProjectId === targetProjectId
-      && tok() === requestToken
-      && pid() === requestProjectId;
+    const owns = () => generation === gpuQuotaGeneration && context.owns() && selectedProjectId === targetProjectId;
     if (!targetProjectId) { gpuQuotas = []; gpuQuotaLoading = false; return; }
     if (!opts?.background) { gpuQuotaLoading = true; }
     gpuQuotaError = '';
@@ -216,32 +307,36 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
     } finally {
       if (owns()) gpuQuotaLoading = false;
     }
-    void loadReconcilePreview();
+    if (owns()) void loadReconcilePreview();
   }
 
   async function setGpuQuota(gpuType: string, limit: number) {
-    if (!selectedProjectId) return;
+    const targetProjectId = selectedProjectId, context = captureContext();
+    if (!targetProjectId) return;
     gpuQuotaError = '';
     try {
-      await api.put(`/api/v1/admin/gpu-quotas/${selectedProjectId}`, { gpu_type: gpuType, limit }, tok(), pid());
-      await loadGpuQuotas({ background: true });
+      await api.put(`/api/v1/admin/gpu-quotas/${targetProjectId}`, { gpu_type: gpuType, limit }, context.token, context.projectId);
+      if (context.owns()) await loadGpuQuotas({ background: true });
     } catch (e) {
-      gpuQuotaError = e instanceof ApiError ? e.message : t('quotaController.gpuSetFailed');
+      if (context.owns()) gpuQuotaError = e instanceof ApiError ? e.message : t('quotaController.gpuSetFailed');
     }
   }
 
   async function deleteGpuQuota(gpuType: string) {
-    if (!selectedProjectId) return;
+    const targetProjectId = selectedProjectId, context = captureContext();
+    if (!targetProjectId) return;
     try {
-      await api.delete(`/api/v1/admin/gpu-quotas/${selectedProjectId}/${encodeURIComponent(gpuType)}`, tok(), pid());
-      await loadGpuQuotas({ background: true });
+      await api.delete(`/api/v1/admin/gpu-quotas/${targetProjectId}/${encodeURIComponent(gpuType)}`, context.token, context.projectId);
+      if (context.owns()) await loadGpuQuotas({ background: true });
     } catch (e) {
-      gpuQuotaError = e instanceof ApiError ? e.message : t('quotaController.gpuDeleteFailed');
+      if (context.owns()) gpuQuotaError = e instanceof ApiError ? e.message : t('quotaController.gpuDeleteFailed');
     }
   }
 
   async function loadReconcilePreview(gpuLimits?: Record<string, number>) {
     const targetProjectId = selectedProjectId;
+    const context = captureContext(), generation = ++reconcileGeneration;
+    const owns = () => context.owns() && generation === reconcileGeneration && selectedProjectId === targetProjectId;
     if (!targetProjectId) {
       reconcilePreview = null;
       return;
@@ -251,14 +346,14 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
       const res = await api.post<FlavorReconcileResponse>(
         '/api/v1/admin/flavors/access-reconcile',
         { project_id: targetProjectId, apply: false, gpu_limits: gpuLimits },
-        tok(),
-        pid(),
+        context.token,
+        context.projectId,
       );
-      if (selectedProjectId === targetProjectId) reconcilePreview = res;
+      if (owns()) reconcilePreview = res;
     } catch {
-      if (selectedProjectId === targetProjectId) reconcilePreview = null;
+      if (owns()) reconcilePreview = null;
     } finally {
-      if (selectedProjectId === targetProjectId) reconcileLoading = false;
+      if (owns()) reconcileLoading = false;
     }
   }
 
@@ -267,14 +362,12 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
     changes: Record<string, number>,
   ): Promise<{ success: boolean; status?: string; updated?: string[]; errors?: Record<string, string>; refreshed?: boolean; refreshError?: string }> {
     const targetProjectId = selectedProjectId;
+    const context = captureContext();
     const requestToken = tok();
     const requestProjectId = pid();
     const generation = quotaGeneration;
     const saveRequest = ++saveGeneration;
-    const validContext = () => saveRequest === saveGeneration
-      && selectedProjectId === targetProjectId
-      && tok() === requestToken
-      && pid() === requestProjectId;
+    const validContext = () => saveRequest === saveGeneration && context.owns() && selectedProjectId === targetProjectId;
     const owns = () => generation === quotaGeneration && validContext();
 
     if (!targetProjectId || !owns()) {
@@ -346,26 +439,31 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
 
   return {
     get projects() { return projects; },
-    get selectedProjectId() { return selectedProjectId; },
-    set selectedProjectId(v: string) {
-      if (selectedProjectId !== v) {
-        selectedProjectId = v;
-        ++quotaGeneration;
-        ++saveGeneration;
-        quotas = null;
-        quotaLoading = !!v;
-        saving = false;
-        savingSection = null;
-        saveError = '';
-        saveSuccess = '';
-        sectionErrors = {};
-        sectionSuccesses = {};
+    get domains() { return domains; },
+    get domainsLoading() { return domainsLoading; },
+    get domainsError() { return domainsError; },
+    get projectsError() { return projectsError; },
+    get scopeRevision() { return scopeRevision; },
+    get selectedDomainId() { return selectedDomainId; },
+    set selectedDomainId(value: string) {
+      if (value === selectedDomainId) return;
+      selectedDomainId = value;
+      clearProjectResults();
+      if (!projects.some(project => project.id === selectedProjectId)) {
+        selectedProjectId = '';
       }
     },
-    get selectedProjectName() { return selectedProjectName; },
-    set selectedProjectName(v: string) { selectedProjectName = v; },
-    get projectSearch() { return projectSearch; },
-    set projectSearch(v: string) { projectSearch = v; },
+    loadDomains,
+    get selectedProjectId() { return selectedProjectId; },
+    set selectedProjectId(v: string) {
+      const next = selectedDomainId && !projects.some(project => project.id === v) ? '' : v;
+      if (selectedProjectId !== next) {
+        selectedProjectId = next;
+        clearProjectResults();
+        quotaLoading = !!next;
+        gpuQuotaLoading = !!next;
+      }
+    },
     get quotas() { return quotas; },
     get loading() { return loading; },
     get refreshing() { return refreshing; },

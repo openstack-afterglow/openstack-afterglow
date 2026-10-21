@@ -7,6 +7,7 @@
 	import { sortWorkspaceResources, type ResourceKind } from '$lib/stores/workspacePreferences';
 	import { t } from '$lib/i18n/ns/workspace-selector';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { t as ta } from '$lib/i18n/ns/domain-auth';
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
@@ -75,6 +76,7 @@
 			</div>
 		</div>
 		<div class="text-xs text-ink-2" aria-live="polite">
+			<p class="break-all">{ta('select.identityDomain')}: {$auth.identityDomainName || '—'} · {$auth.identityDomainId || '—'}</p>
 			<p class="break-all">{t('activeDomain')}: {$auth.domainName || '—'} · {$auth.domainId || '—'}</p>
 			<p class="break-all">{t('activeProject')}: {$auth.projectName || t('noProject')} · {$auth.projectId || '—'}</p>
 		</div>
@@ -88,7 +90,7 @@
 			<Field label={t('domainSearch')} for={`${componentId}-domain-search`}><TextInput id={`${componentId}-domain-search`} bind:value={domainSearch} disabled={mutationBusy} /></Field>
 			<Field label={t('domain')} for={`${componentId}-domain`}>
 				<SelectInput id={`${componentId}-domain`} value={controller.domainId} disabled={controller.loading || mutationBusy || !controller.domains.length || $projectSwitching} onchange={(event) => { search = ''; void controller.selectDomain((event.currentTarget as HTMLSelectElement).value); }}>
-					{#each matchingDomains as domain (domain.id)}<option value={domain.id}>{controller.preferences.domains[domain.id]?.pinned ? '★ ' : ''}{domain.name} · {domain.id}</option>{/each}
+					{#each matchingDomains as domain (domain.id)}<option value={domain.id}>{controller.preferences.domains[domain.id]?.pinned ? '★ ' : ''}{domain.name} · {domain.id}{domain.kind === 'personal' || domain.kind === 'organization' ? ` · ${t(domain.kind)}` : ''}</option>{/each}
 				</SelectInput>
 			</Field>
 		</div>
@@ -98,7 +100,7 @@
 			<ul class="divide-y divide-line rounded-lg border border-line">
 				{#each matchingDomains as domain, index (domain.id)}
 					<li class="flex flex-wrap items-center gap-2 p-3">
-						<div class="min-w-0 flex-1"><p class="break-all text-sm">{domain.name}</p><p class="break-all font-mono text-xs text-ink-2">{domain.id}</p></div>
+						<div class="min-w-0 flex-1"><p class="break-all text-sm">{domain.name}</p><p class="break-all font-mono text-xs text-ink-2">{domain.id}</p>{#if domain.kind === 'personal' || domain.kind === 'organization'}<p class="text-xs text-ink-2">{t(domain.kind)}</p>{/if}</div>
 						{@render controls('domains', domain.id, domain.name, matchingDomains, index)}
 					</li>
 				{/each}
@@ -142,7 +144,7 @@
 		<div class="flex flex-wrap gap-2">
 			<Button variant="secondary" onclick={() => { void controller.refresh(); }} disabled={mutationBusy || $projectSwitching}>{t('refresh')}</Button>
 			{#if $auth.canCreateDomain && !mockup}<Button variant="secondary" onclick={() => { createDomain = !createDomain; }} disabled={disabled || controller.uncertain}>{t('newDomain')}</Button>{/if}
-			{#if controller.inventory?.is_domain_manager && !mockup}<Button variant="secondary" onclick={() => controller.select(null)} disabled={disabled}>{t('useDomain')}</Button>{/if}
+			{#if controller.inventory?.is_domain_manager && controller.inventory.domain.kind !== 'personal' && !mockup}<Button variant="secondary" onclick={() => controller.select(null)} disabled={disabled}>{t('useDomain')}</Button>{/if}
 			{#if $auth.projectId}<Button variant="link" href="/dashboard/project-settings" onclick={close} disabled={mutationBusy || $projectSwitching}>{t('projectSettings')}</Button>{/if}
 		</div>
 		<Button variant="secondary" onclick={close} disabled={mutationBusy || $projectSwitching}>{t('close')}</Button>

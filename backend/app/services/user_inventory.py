@@ -20,7 +20,6 @@ from app.services import keystone, manila, project_service, service_proxy, swift
 from app.services.cache import cached_call, ttl_normal
 from app.services.palimpsest_authorization import authorize_current_package_request
 from app.services.service_authorization import authorize_service_request
-from app.services.service_permissions import require_service_permission
 
 # category: (existing consumer route, optional deployment gate)
 CATALOG = {
@@ -460,7 +459,6 @@ async def query_project(request: Request, token: str, user_id: str, project: dic
                     await authorize_service_request(service, child, path)
                 elif category == "packages":
                     await authorize_current_package_request(child, "/v1/projects/current", info)
-                    require_service_permission(info, "palimpsest-inventory_reader")
                     context = await package_context(child, info)
                     cache_fingerprint = hashlib.sha256(
                         json.dumps([fingerprint, context["namespace"]], separators=(",", ":")).encode()
@@ -483,7 +481,9 @@ async def query_project(request: Request, token: str, user_id: str, project: dic
                     f"afterglow:user-inventory:{cache_fingerprint}:{category}",
                     ttl_normal(),
                     fetch,
-                    enabled=cm.enabled,
+                    # Operator policy may change without any Keystone role change.
+                    # Re-enter the native action gate before exposing cached service resources.
+                    enabled=cm.enabled and category not in REMOTE and category != "packages",
                     refresh=cm.refresh,
                 )
                 return category, {"state": "ready", "count": len(items), "items": items}

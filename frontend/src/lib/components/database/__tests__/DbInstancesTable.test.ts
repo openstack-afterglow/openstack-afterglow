@@ -1,7 +1,15 @@
-import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import DbInstancesTable from '../DbInstancesTable.svelte';
 import type { DbInstance } from '$lib/types/database';
+
+const media = vi.hoisted(() => {
+  const events = new EventTarget();
+  const query = { matches: true, media: '(min-width: 1024px)', onchange: null, addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events), dispatchEvent: events.dispatchEvent.bind(events), addListener: () => undefined, removeListener: () => undefined };
+  vi.stubGlobal('matchMedia', () => query);
+  return query;
+});
+beforeEach(() => { media.matches = true; media.dispatchEvent(new Event('change')); });
 
 const instances: DbInstance[] = [
   {
@@ -75,5 +83,29 @@ describe('DbInstancesTable selection', () => {
     await fireEvent.click(screen.getByLabelText('primary-db 선택'));
     expect(onToggleSelect).toHaveBeenCalledWith('db-1');
     expect(onOpen).not.toHaveBeenCalled();
+  });
+  it('keeps selection, navigation and action guards in tablet cards and restores desktop rows', async () => {
+    const onOpen = vi.fn();
+    const onRestart = vi.fn();
+    const onToggleSelect = vi.fn();
+    render(DbInstancesTable, { instances, refreshing: false, restarting: 'db-1', deleting: null, selectedIds: new Set(['db-1']), selectableIds: new Set(['db-1']), onToggleSelect, onToggleAll: vi.fn(), onOpen, onRestart, onDelete: vi.fn() });
+    media.matches = false;
+    media.dispatchEvent(new Event('change'));
+    await waitFor(() => expect(screen.queryByRole('table')).toBeNull());
+    expect(screen.getAllByRole('article')).toHaveLength(2);
+    expect((screen.getByLabelText('primary-db 선택') as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText('replica-db 선택') as HTMLInputElement).disabled).toBe(true);
+    await fireEvent.click(screen.getByLabelText('primary-db 선택'));
+    expect(onToggleSelect).toHaveBeenCalledWith('db-1');
+    expect(onOpen).not.toHaveBeenCalled();
+    await fireEvent.click(screen.getByRole('button', { name: 'primary-db' }));
+    expect(onOpen).toHaveBeenCalledWith('db-1');
+    expect((screen.getByRole('button', { name: /재시작 중/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(onRestart).not.toHaveBeenCalled();
+    media.matches = true;
+    media.dispatchEvent(new Event('change'));
+    await waitFor(() => expect(screen.getByRole('table')).toBeTruthy());
+    expect((screen.getByLabelText('primary-db 선택') as HTMLInputElement).checked).toBe(true);
+    expect(screen.queryByRole('article')).toBeNull();
   });
 });

@@ -59,7 +59,8 @@ def _login(client: TestClient, credentials: dict[str, str]) -> dict[str, str]:
     response = client.post("/api/v1/auth/login", json=password_login_payload(credentials))
     assert response.status_code == 200
     payload = response.json()
-    assert payload["domain_id"] == payload["identity_domain_id"]
+    assert payload["identity_domain_name"] == "Accounts"
+    assert payload["domain_name"] == "Personal"
     return {
         "Authorization": f"Bearer {payload['token']}",
         "X-Project-Id": str(payload["project_id"]),

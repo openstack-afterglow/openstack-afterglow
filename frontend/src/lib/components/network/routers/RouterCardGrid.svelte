@@ -5,6 +5,8 @@
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
   import SelectionToolbar from '$lib/components/ui/SelectionToolbar.svelte';
   import Button from '$lib/components/ui/Button.svelte';
+  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
   let {
     routers,
@@ -41,6 +43,17 @@
     onToggle={onToggleAll}
   />
 </div>
+<ResponsiveTable>
+  {#snippet cards()}
+    {#each routers as router (router.id)}
+      <CompactResourceCard selected={selectedIds.has(router.id)}>
+        <div class="flex items-center gap-2 min-w-0"><SelectionCheckbox checked={selectedIds.has(router.id)} disabled={selectionDisabled || !selectableIds.has(router.id)} unavailable={!selectableIds.has(router.id)} title={!selectableIds.has(router.id) ? t('router.cards.unavailable') : undefined} ariaLabel={t('router.cards.select', { name: router.name || router.id.slice(0, 12) })} onclick={() => onToggleSelect(router.id)} /><button class="min-h-11 flex-1 min-w-0 text-left font-medium" onclick={() => onOpen(router.id)}>{router.name || router.id.slice(0, 12)}</button><StatusChip status={router.status} /></div>
+        <dl><div><dt>{t('router.cards.external')}</dt><dd>{router.external_gateway_network_id ? externalNetworkName(router.external_gateway_network_id) : t('router.cards.none')}</dd></div><div><dt>{t('router.cards.internal')}</dt><dd>{t('network.routers.subnetCount', { count: router.connected_subnet_ids.length })}</dd></div></dl>
+        {#snippet details()}<p class="font-mono">{router.id}</p><p>{router.external_gateway_network_id ? t('router.cards.snatEnabled') : t('router.cards.snatDisabled')}</p>{#each router.connected_subnet_ids as subnetId}<p class="font-mono">{subnetId}</p>{/each}{/snippet}
+        {#snippet actions()}<Button variant="outline" size="xs" onclick={() => onOpen(router.id)}>{t('router.cards.details')}</Button>{/snippet}
+      </CompactResourceCard>
+    {/each}
+  {/snippet}
 <div class="motion-stagger grid grid-cols-1 sm:grid-cols-2 gap-3.5">
   {#each routers as router (router.id)}
     <article
@@ -98,6 +111,7 @@
     </article>
   {/each}
 </div>
+</ResponsiveTable>
 
 <style>
   /* 같은 도메인의 다른 리소스 카드(NetworksTableCard, FileStorageCard, BucketCardGrid)와

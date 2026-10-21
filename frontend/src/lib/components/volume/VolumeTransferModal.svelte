@@ -5,6 +5,9 @@
 	import { api, ApiError } from '$lib/api/client';
 	import { t } from '$lib/i18n/ns/volume';
 	import { Alert, Button, Card, Field, Modal, TextInput } from '$lib/components/ui';
+	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
+	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 
 	interface Transfer {
 		id: string;
@@ -254,6 +257,26 @@
 					<Button type="submit" variant="outline" disabled={!!busy || !transferId.trim()}>{t('transferModal.search')}</Button>
 				</form>
 				{#if result}
+					{@const transferResult = result}
+					<ResponsiveTable>
+						{#snippet cards()}
+							<CompactResourceCard>
+								<div class="flex items-start justify-between gap-2 min-w-0"><span class="min-w-0 font-medium break-all">{transferResult.volume_name || transferResult.volume_id}</span><StatusChip status={transferResult.status} /></div>
+								<dl>
+									<div class="col-span-2"><dt>{t('transferModal.volumeInfo')}</dt><dd>{t('transferModal.size', { size: transferResult.size })} · {transferResult.volume_type || '—'}</dd></div>
+									<div><dt>{t('transferModal.sourceDomain')}</dt><dd>{transferResult.source_domain.name}</dd></div>
+									<div><dt>{t('transferModal.sourceProject')}</dt><dd>{transferResult.source_project.name}</dd></div>
+								</dl>
+								{#snippet details()}
+									<dl>
+										<div><dt>{t('transferModal.volumeLabel')}</dt><dd class="font-mono break-all">{transferResult.volume_id}</dd></div>
+										<div><dt>{t('transferModal.idLabel')}</dt><dd class="font-mono break-all">{transferResult.id}</dd></div>
+										<div><dt>{t('transferModal.sourceDomain')}</dt><dd class="font-mono break-all">{transferResult.source_domain.id}</dd></div>
+										<div><dt>{t('transferModal.sourceProject')}</dt><dd class="font-mono break-all">{transferResult.source_project.id}</dd></div>
+									</dl>
+								{/snippet}
+							</CompactResourceCard>
+						{/snippet}
 					<Card surface="sunken" padding="sm">
 						<dl class="space-y-3 text-sm">
 							<div><dt class="text-xs text-ink-2">{t('transferModal.volumeLabel')}</dt><dd class="break-words">{result.volume_name || result.volume_id}</dd><dd class="break-all font-mono text-xs text-ink-2">{result.volume_id}</dd></div>
@@ -263,6 +286,7 @@
 							<div><dt class="text-xs text-ink-2">{t('transferModal.sourceProject')}</dt><dd class="break-words">{result.source_project.name}</dd><dd class="break-all font-mono text-xs text-ink-2">{result.source_project.id}</dd></div>
 						</dl>
 					</Card>
+					</ResponsiveTable>
 					<Field label={t('transferModal.authKeyLabel')} for="transfer-key">
 						<TextInput id="transfer-key" type="password" bind:value={authKey} autocomplete="off" maxlength={255} disabled={!!busy} />
 					</Field>
@@ -270,6 +294,23 @@
 			{:else if entryMode === 'list'}
 				<p class="text-sm text-ink-2">{t('transferModal.listHelp')}</p>
 				{#if !busy && !error && transfers.length === 0}<p class="text-sm text-ink-2">{t('transferModal.empty')}</p>{/if}
+				{#if transfers.length > 0}
+				<ResponsiveTable>
+					{#snippet cards()}
+						{#each transfers as transfer (transfer.id)}
+							<CompactResourceCard>
+								<p class="font-medium break-all">{transfer.name || transfer.id}</p>
+								{#snippet details()}
+									<dl>
+										<div><dt>{t('transferModal.idLabel')}</dt><dd class="break-all font-mono">{transfer.id}</dd></div>
+										<div><dt>{t('transferModal.volumeLabel')}</dt><dd class="break-all font-mono">{transfer.volume_id}</dd></div>
+									</dl>
+								{/snippet}
+								{#snippet actions()}<Button variant="danger-outline" disabled={!!busy} onclick={() => cancel(transfer.id)} ariaLabel={t('transferModal.cancelNamed', { id: transfer.id })}>{t('transferModal.cancel')}</Button>{/snippet}
+							</CompactResourceCard>
+						{/each}
+					{/snippet}
+					<div class="space-y-4">
 				{#each transfers as transfer (transfer.id)}
 					<Card surface="sunken" padding="sm">
 						<p class="break-words text-sm">{transfer.name}</p>
@@ -280,6 +321,9 @@
 						<Button variant="danger-outline" disabled={!!busy} onclick={() => cancel(transfer.id)} ariaLabel={t('transferModal.cancelNamed', { id: transfer.id })}>{t('transferModal.cancel')}</Button>
 					</Card>
 				{/each}
+					</div>
+				</ResponsiveTable>
+				{/if}
 			{/if}
 			{#if error}<Alert>{error}</Alert>{/if}
 			{#if busy}<Alert tone="info">{t('transferModal.busy')}</Alert>{/if}
