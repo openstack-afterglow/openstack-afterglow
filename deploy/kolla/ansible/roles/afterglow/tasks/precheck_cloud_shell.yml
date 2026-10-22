@@ -194,7 +194,7 @@
   become: true
   community.docker.docker_container_exec:
     container: kolla_toolbox
-    command:
+    argv:
       - python
       - -c
       - "{{ lookup('ansible.builtin.file', role_path ~ '/files/check_cloud_shell_zun.py') }}"

@@ -6,6 +6,11 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## Cloud Shell Ansible exec correction (1.30.22, 2026-10-23)
+
+The1.30.21 canonical precheck still failed its Zun/Cinder readiness assertion although direct execution of each native query passed. Installed `ansible-doc community.docker.docker_container_exec --json` confirmed that `command` is a string and `argv` is its list-of-strings alternative. The role's Python argument array now uses `argv`. A read-only actual Ansible play executed this exact helper through the installed module in the real controller1 toolbox and required the returned project ID and native readiness; both tasks passed with changed0/failed0. No stock toolbox package/image was changed. Earlier1.30.20/1.30.21 artifacts remain immutable; rollout targets the newly qualified patch, not a locally patched released role.
+
+
 ## Cloud Shell native precheck correction and approved preparation (2026-10-23)
 
 The user chose to prepare Cloud Shell enablement and reuse the existing dedicated project. Current Keystone confirms the exact enabled `cloud_shell` project, its own Default network/subnet/router and default security group. A single approved direct admin assignment for the existing Afterglow service user was added to that project; no human grant, existing security-group rule, quota, project/network/volume/container or registry secret was changed. Protected operator input backups precede the explicit image/network/security-group/HTTPS/WSS configuration. All three controllers verified Keystone HTTPS200 and the Zun WSS origin's TLS certificate (ordinary HTTPS GET405; this is not a real exec WebSocket proof).

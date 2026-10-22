@@ -4,7 +4,7 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.30.21`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.30.22`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 **전체 source dev 통합 (2026-10-19, local source):** 공유 checkout의 `aac6b9c5` 기반 public snapshot tree `2144d2b1`과 fetched `origin/dev` `3c9af255`를 격리 local dev에서 통합했다. 공유 checkout에서 이후 발생한 upstream 갱신·동시 변경은 reset/stash하거나 덮어쓰지 않고 private 설정·다른 worktree·기존 서비스를 보존한다. 최신 dev의 아홉 언어·frozen npm runtime 설치·socket-peer/MMDB/origin·flow/fabric·route tuple dedup과 local home-first 로그인/SSO·개인 가입/승인/quota·IAM·native telemetry·backup/snapshot lane·effective deployment config를 함께 유지한다. 통합 중 K8s의 중복 traffic TOML table을 제거하고 Kolla launcher의 `FORWARDED_ALLOW_IPS`를 복구했다. 새 authority cache·권한 완화·재시도·release 버전은 추가하지 않는다. 전체 gate·아홉 image의 비특권 실행과 격리 HTTP/compiled UI 검증은 `docs/testing.md`에 별도로 기록하며, 역사적 release/feature receipt를 이번 source의 운영 qualification으로 소급하지 않는다.
 
@@ -1598,9 +1598,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "ac3b6a3752b518ce2549291c86cf94737302ac0b13eb4a2b535b96c3bf75df92",
-  "reviewed_at": "2026-10-22T15:58:33Z",
-  "summary": "Release1.30.21 deployment correction: native exact-project Zun readiness uses stock toolbox existing SDK instead of absent python-zunclient CLI; preserves TLS/catalog and rejects substituted scope/denial/invalid JSON with no secret output. Runtime routes/schema unchanged. Actual toolbox native-list smoke and offline boundaries pass; approved existing Cloud Shell resource/config preparation recorded."
+  "source_sha256": "231c2b2e95d5702be0eef2e72012d1385dd3d2a0a1cf967eca50f0733644df58",
+  "reviewed_at": "2026-10-22T16:22:17Z",
+  "summary": "Release1.30.22: use docker_container_exec.argv for Python argument array; installed module command is string-only. Actual Ansible module/toolbox/native dedicated-project smoke passed2tasks changed0 failed0. No runtime/schema or toolbox image changes; previous immutable releases preserved."
 }
 ```
 <!-- architecture-review:end -->

@@ -19,3 +19,7 @@
 - [x] stock kolla_toolbox의 appcontainer CLI 부재를 실제 출력으로 확인하고 역할 소유 기존 SDK 기반 native Zun precheck로 수정했다. 실제 toolbox에서 exact dedicated project native list가 성공했다.
 - [ ] 1.30.21 정본 gate·exact-SHA CI·불변 release 및 artifact 검증을 완료한다. 1.30.20 tag는 이동하지 않는다.
 - [ ] 새 역할로 canonical prechecks와 stopped-writer rollout·readiness·설정/키/형제 서비스 보존을 검증한다.
+
+## Actual Ansible invocation correction
+- [x]1.30.21 direct native probes passed but the real exec module rejected the `command` argument array. Installed module schema and actual Ansible smoke verified `argv`; real controller1 tasks2 passed/changed0/failed0.
+- [ ]1.30.22 exact-source gate·dev/tag CI·version/latest artifact 검증 후 canonical rollout을 완료한다. 이전 tag는 보존한다.

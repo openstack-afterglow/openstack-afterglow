@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [1.30.22] - 2026-10-23
+
+### Fixed
+- Cloud Shell native precheck의 Python 인자 배열을 `docker_container_exec.argv`로 전달합니다. 이 모듈의 `command`는 문자열만 받으므로1.30.21의 호출이 readiness를 통과하지 못했습니다. 실제 Ansible 모듈→기존 toolbox→전용 프로젝트 native Zun 조회와 assertion2개가 changed0/failed0으로 통과했습니다. 공유 toolbox image·서비스 API·schema 변경은 없습니다.
+
+
 ## [1.30.21] - 2026-10-23
 
 ### Fixed
