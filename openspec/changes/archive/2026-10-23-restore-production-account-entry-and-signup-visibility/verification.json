@@ -1,0 +1,605 @@
+{
+  "status": "implemented_released_and_deployed_with_explicit_user_acceptance_limits",
+  "version": "1.30.24",
+  "source_revision": "15d54c9b906f633142b63a82b5f66a146bce465f",
+  "source_sha256": "8aa0f09e7776e70a0d2ffcbeaad426dc42157bc08e7e8e0b39fd4ddf1a8b8b60",
+  "source_files": 3429,
+  "gates": {
+    "command": "VITEST_MAX_WORKERS=3 TZ=UTC npm run test:gate",
+    "before_release_exit": 0,
+    "after_runtime_exit": 0,
+    "backend_pass": 9008,
+    "backend_skip": 95,
+    "frontend_files": 432,
+    "frontend_tests": 4978,
+    "contracts": 181,
+    "functional_pass": 166,
+    "functional_deselected": 33,
+    "ruff_files": 722
+  },
+  "publication": {
+    "dev_ci": 39841587452,
+    "images_ci": 39842479613,
+    "helm_ci": 39842479478,
+    "all_exact_source_success": true,
+    "images": {
+      "afterglow_backend": "ghcr.io/openstack-afterglow/afterglow-api@sha256:3513629553236e0e0d4036eb878dc80008c7e9626ab2fbed34c08f34521823f8",
+      "afterglow_frontend": "ghcr.io/openstack-afterglow/afterglow@sha256:ab9b617d615128072227f0237301d52b52ed2d3b1718f092824c0f5e06a00cab",
+      "afterglow_notion_worker": "ghcr.io/openstack-afterglow/afterglow-worker@sha256:b37dadb210880ced5aa1fc5026ebbb6dc0929704e6872240ba361d020f2d4d70"
+    },
+    "version_latest_parity": true,
+    "helm_digest": "sha256:53af6b8a0f1c8328fc9077dceec3131ae9d58df0025e5e2bb3205d4269e0f22a",
+    "helm_version_app_version_match": true,
+    "arm64_executed": [
+      {
+        "role": "api",
+        "runtime": "aarch64 1.30.24",
+        "revision": "15d54c9b906f633142b63a82b5f66a146bce465f"
+      },
+      {
+        "role": "worker",
+        "runtime": "aarch64 1.30.24",
+        "revision": "15d54c9b906f633142b63a82b5f66a146bce465f"
+      },
+      {
+        "role": "frontend",
+        "runtime": "arm64 1.30.24",
+        "revision": "15d54c9b906f633142b63a82b5f66a146bce465f"
+      }
+    ]
+  },
+  "deployment": {
+    "operator_host": "172.30.0.50",
+    "cwd": "/etc/kolla",
+    "inventory": "/etc/kolla/multinode",
+    "commands": [
+      "kolla-ansible pull -i /etc/kolla/multinode --tags afterglow --skip-tags haproxy",
+      "kolla-ansible prechecks -i /etc/kolla/multinode --tags afterglow --skip-tags haproxy",
+      "kolla-ansible reconfigure -i /etc/kolla/multinode --tags afterglow --skip-tags haproxy"
+    ],
+    "limit_used": false,
+    "controller_deployment_wrappers_used": false,
+    "raw_receipt": "artifact://1836",
+    "controller_recap": {
+      "dms-controller1": {
+        "ok": 124,
+        "changed": 5,
+        "failed": 0,
+        "unreachable": 0
+      },
+      "dms-controller2": {
+        "ok": 68,
+        "changed": 2,
+        "failed": 0,
+        "unreachable": 0
+      },
+      "dms-controller3": {
+        "ok": 68,
+        "changed": 2,
+        "failed": 0,
+        "unreachable": 0
+      }
+    },
+    "runtime": {
+      "at": "2026-10-22T20:05:12.223379+00:00",
+      "version": "1.30.24",
+      "revision": "15d54c9b906f633142b63a82b5f66a146bce465f",
+      "apps": {
+        "dms-controller1": [
+          {
+            "id": "a619c898ff6331925ee5306557ff33a3a89591f97e2830ca71347f92adc618f2",
+            "name": "/afterglow_notion_worker",
+            "image_id": "sha256:24a721d9c50af16463fa2c534671cd471078455b01edee95667b9de3fb3b901d",
+            "image_ref": "ghcr.io/openstack-afterglow/afterglow-worker@sha256:b37dadb210880ced5aa1fc5026ebbb6dc0929704e6872240ba361d020f2d4d70",
+            "started": "2026-10-22T20:03:34.681830605Z",
+            "status": "running",
+            "health": null,
+            "restart": 0,
+            "revision": "15d54c9b906f633142b63a82b5f66a146bce465f"
+          },
+          {
+            "id": "ace07ab5212720b3d35414a5e4f659bd579b5f5f53467dbed2aadad64b0ce510",
+            "name": "/afterglow_frontend",
+            "image_id": "sha256:d732bb797e6493b8427961461adc5bb74e576f4080e0c82ece4072a9ae9d30ab",
+            "image_ref": "ghcr.io/openstack-afterglow/afterglow@sha256:ab9b617d615128072227f0237301d52b52ed2d3b1718f092824c0f5e06a00cab",
+            "started": "2026-10-22T20:03:30.136442072Z",
+            "status": "running",
+            "health": "healthy",
+            "restart": 0,
+            "revision": "15d54c9b906f633142b63a82b5f66a146bce465f"
+          },
+          {
+            "id": "a3a4456ee6920f220f5c0f4e5b9b7a43a2f37e8b725a06fd105b92f413fd927a",
+            "name": "/afterglow_backend",
+            "image_id": "sha256:350c556077810e5bcf4681caf36643f6d25395261529aad7304f1fe060e1a5aa",
+            "image_ref": "ghcr.io/openstack-afterglow/afterglow-api@sha256:3513629553236e0e0d4036eb878dc80008c7e9626ab2fbed34c08f34521823f8",
+            "started": "2026-10-22T20:03:26.275837642Z",
+            "status": "running",
+            "health": "healthy",
+            "restart": 0,
+            "revision": "15d54c9b906f633142b63a82b5f66a146bce465f"
+          }
+        ],
+        "dms-controller2": [
+          {
+            "id": "3433b44815c1cab4d0e181dd68c36e4a653d04465bde84da764989bbd5df1ec9",
+            "name": "/afterglow_notion_worker",
+            "image_id": "sha256:24a721d9c50af16463fa2c534671cd471078455b01edee95667b9de3fb3b901d",
+            "image_ref": "ghcr.io/openstack-afterglow/afterglow-worker@sha256:b37dadb210880ced5aa1fc5026ebbb6dc0929704e6872240ba361d020f2d4d70",
+            "started": "2026-10-22T20:03:33.507172872Z",
+            "status": "running",
+            "health": null,
+            "restart": 0,
+            "revision": "15d54c9b906f633142b63a82b5f66a146bce465f"
+          },
+          {
+            "id": "ee5a94bff962fcf0c5d4c9e13a3dff375d9a6cb9f39614bbfa577494a336c842",
+            "name": "/afterglow_frontend",
+            "image_id": "sha256:d732bb797e6493b8427961461adc5bb74e576f4080e0c82ece4072a9ae9d30ab",
+            "image_ref": "ghcr.io/openstack-afterglow/afterglow@sha256:ab9b617d615128072227f0237301d52b52ed2d3b1718f092824c0f5e06a00cab",
+            "started": "2026-10-22T20:03:29.77169975Z",
+            "status": "running",
+            "health": "healthy",
+            "restart": 0,
+            "revision": "15d54c9b906f633142b63a82b5f66a146bce465f"
+          },
+          {
+            "id": "06eb022577528e989e00a3eed320abbb0d5cd6e9384819b47befc9efe8550e16",
+            "name": "/afterglow_backend",
+            "image_id": "sha256:350c556077810e5bcf4681caf36643f6d25395261529aad7304f1fe060e1a5aa",
+            "image_ref": "ghcr.io/openstack-afterglow/afterglow-api@sha256:3513629553236e0e0d4036eb878dc80008c7e9626ab2fbed34c08f34521823f8",
+            "started": "2026-10-22T20:03:26.378063652Z",
+            "status": "running",
+            "health": "healthy",
+            "restart": 0,
+            "revision": "15d54c9b906f633142b63a82b5f66a146bce465f"
+          }
+        ],
+        "dms-controller3": [
+          {
+            "id": "c770feff03fd60620f899cf0b5fa49a95b8d7d92e3b550b3d50d84c11dfa82ab",
+            "name": "/afterglow_notion_worker",
+            "image_id": "sha256:24a721d9c50af16463fa2c534671cd471078455b01edee95667b9de3fb3b901d",
+            "image_ref": "ghcr.io/openstack-afterglow/afterglow-worker@sha256:b37dadb210880ced5aa1fc5026ebbb6dc0929704e6872240ba361d020f2d4d70",
+            "started": "2026-10-22T20:03:31.018170371Z",
+            "status": "running",
+            "health": null,
+            "restart": 0,
+            "revision": "15d54c9b906f633142b63a82b5f66a146bce465f"
+          },
+          {
+            "id": "879aa6fd41c9562b41715e12a1c2f2528c26d944b526f398bc2ca017e76cb737",
+            "name": "/afterglow_frontend",
+            "image_id": "sha256:d732bb797e6493b8427961461adc5bb74e576f4080e0c82ece4072a9ae9d30ab",
+            "image_ref": "ghcr.io/openstack-afterglow/afterglow@sha256:ab9b617d615128072227f0237301d52b52ed2d3b1718f092824c0f5e06a00cab",
+            "started": "2026-10-22T20:03:27.879261765Z",
+            "status": "running",
+            "health": "healthy",
+            "restart": 0,
+            "revision": "15d54c9b906f633142b63a82b5f66a146bce465f"
+          },
+          {
+            "id": "79c29faaf37d0596e5da4c6bbb62bb7b4f9823bc9933f2ce8fdeb0c4f0e8c2b5",
+            "name": "/afterglow_backend",
+            "image_id": "sha256:350c556077810e5bcf4681caf36643f6d25395261529aad7304f1fe060e1a5aa",
+            "image_ref": "ghcr.io/openstack-afterglow/afterglow-api@sha256:3513629553236e0e0d4036eb878dc80008c7e9626ab2fbed34c08f34521823f8",
+            "started": "2026-10-22T20:03:25.42119237Z",
+            "status": "running",
+            "health": "healthy",
+            "restart": 0,
+            "revision": "15d54c9b906f633142b63a82b5f66a146bce465f"
+          }
+        ]
+      },
+      "non_target": {
+        "dms-controller1": {
+          "count": 262,
+          "changed": 0
+        },
+        "dms-controller2": {
+          "count": 259,
+          "changed": 0
+        },
+        "dms-controller3": {
+          "count": 176,
+          "changed": 0
+        }
+      },
+      "native_and_provider_fingerprints_match": true,
+      "guard_smoke": {
+        "deployed_guard": "accepted",
+        "raw_admin_marker_present": false,
+        "sdk_admin_project": true,
+        "native_nova_read_status": 200,
+        "native_domain_sdk_first_page_read": true,
+        "caller_authorization_tested": false,
+        "resource_mutations": 0
+      }
+    },
+    "all_runtime_refs_match_published": true,
+    "native_packages": {
+      "kolla-ansible": "21.3.1.dev4",
+      "lumen": "0.6.9",
+      "drover": "0.4.15",
+      "waygate": "0.3.5",
+      "palimpsest-client": "0.3.7"
+    }
+  },
+  "migration101": {
+    "at": "2026-10-22T19:00:46.234610+00:00",
+    "manifest_file": "101_signup_button_visibility.sql",
+    "sha256": "a3a87b7b49994da90ee851120bb3210a1308c7dcfa0d33f7b91f74f69830392c",
+    "executed_statements": 1,
+    "column_shape": "tinyint(1)|NO|1",
+    "tables": 102,
+    "rows": 4776,
+    "legacy_policy_rows": 0,
+    "all_table_counts_preserved": true,
+    "legacy_policy_projection_preserved": true,
+    "new_policy_row_seeded": false,
+    "native_iam_changes": 0
+  },
+  "drained_13023_recovery": {
+    "sql": {
+      "phase": "cold",
+      "network": "none",
+      "storage": "tmpfs",
+      "production_mutations": 0,
+      "services": {
+        "afterglow": {
+          "database": "afterglow_kolla",
+          "tables": 102,
+          "rows": 4776,
+          "exact_counts_match": true,
+          "migration101": {
+            "sha256": "a3a87b7b49994da90ee851120bb3210a1308c7dcfa0d33f7b91f74f69830392c",
+            "column_shape": "tinyint(1)|NO|1",
+            "legacy_policy_projection_preserved": true,
+            "policy_rows": 0,
+            "all_table_counts_preserved": true,
+            "rerun_noop": true,
+            "new_policy_row_seeded": false
+          },
+          "orm_candidate": {
+            "orm_tables_selected": 49,
+            "writes": 0
+          },
+          "orm_previous": {
+            "orm_tables_selected": 49,
+            "writes": 0
+          }
+        }
+      },
+      "ok": true,
+      "owned_restore_container_removed": true
+    },
+    "redis": {
+      "phase": "cold",
+      "db": 5,
+      "keys": 1875,
+      "prefix_counts": {
+        "afterglow:{traffic}": 1717,
+        "afterglow:recent_projects": 16,
+        "afterglow:infra": 36,
+        "afterglow:notion": 53,
+        "afterglow:user-sessions": 7,
+        "afterglow:refresh": 23,
+        "afterglow:hypervisor-uptime": 6,
+        "afterglow:fabric": 1,
+        "afterglow:refresh-family": 4,
+        "afterglow:login_guard": 2,
+        "afterglow:ts": 5,
+        "afterglow:session-family": 1,
+        "afterglow:domain_auth": 1,
+        "afterglow:host-health": 1,
+        "afterglow:chat": 1,
+        "afterglow:db_auto_backup": 1
+      },
+      "active_auto_backup_journals": 0,
+      "encrypted_sha256": "b0de35623f173a3910cade3bc046da57fec531c81d076e9ecba9cf959553bf32",
+      "captured_keys": 1875,
+      "restored_surviving_keys": 1873,
+      "already_expired_keys_skipped": 2,
+      "ok": true,
+      "isolated": "network-none tmpfs valkey"
+    }
+  },
+  "compatible_13024_recovery": {
+    "prepared": true,
+    "sql_restore": {
+      "phase": "prepare",
+      "network": "none",
+      "storage": "tmpfs",
+      "production_mutations": 0,
+      "services": {
+        "afterglow": {
+          "database": "afterglow_kolla",
+          "tables": 102,
+          "rows": 4776
+        }
+      },
+      "ok": true,
+      "owned_restore_container_removed": true
+    },
+    "redis_restore": {
+      "phase": "prepare",
+      "db": 5,
+      "keys": 1918,
+      "prefix_counts": {
+        "afterglow:{traffic}": 1730,
+        "afterglow:recent_projects": 16,
+        "afterglow:infra": 39,
+        "afterglow:notion": 57,
+        "afterglow:user-sessions": 6,
+        "afterglow:refresh": 22,
+        "afterglow:hypervisor-uptime": 6,
+        "afterglow:background": 12,
+        "afterglow:fabric": 1,
+        "afterglow:refresh-family": 5,
+        "afterglow:auto_snapshot": 4,
+        "afterglow:auto_backup": 4,
+        "afterglow:login_guard": 2,
+        "afterglow:builds": 4,
+        "afterglow:ts": 5,
+        "afterglow:domain_auth": 1,
+        "afterglow:host-health": 2,
+        "afterglow:chat": 1,
+        "afterglow:db_auto_backup": 1
+      },
+      "active_auto_backup_journals": 0,
+      "encrypted_sha256": "1520eab884339d25455e71de4558619328826c4e1c8c743298d64739c1bd2250",
+      "captured_keys": 1918,
+      "restored_surviving_keys": 1915,
+      "already_expired_keys_skipped": 3,
+      "ok": true,
+      "isolated": "network-none tmpfs valkey"
+    },
+    "schema_changes": 0,
+    "container_actions": 0,
+    "writers_drained": false
+  },
+  "local_cutover": {
+    "version": "1.30.24",
+    "revision": "15d54c9b906f633142b63a82b5f66a146bce465f",
+    "canonical_targeted_compose": true,
+    "exact_original_definition_hashes": true,
+    "existing_database_override_in_process_only": true,
+    "private_configuration_files_changed": false,
+    "effective_native_and_provider_fields_match": true,
+    "compared_fields": 12,
+    "non_target_local_containers_unchanged": 16,
+    "apps": [
+      {
+        "name": "/afterglow-local-services-frontend-1",
+        "id": "c3ebc873c80353bf802cdcc45023dbb298283cb9871c0cf776c77164d9495cab",
+        "health": "healthy",
+        "revision": "15d54c9b906f633142b63a82b5f66a146bce465f"
+      },
+      {
+        "name": "/afterglow-local-services-backend-1",
+        "id": "6354d75626bafe67fc9d5127c6e933ab6375bb1480db96c83e499c54b710bcbd",
+        "health": "healthy",
+        "revision": "15d54c9b906f633142b63a82b5f66a146bce465f"
+      }
+    ]
+  },
+  "worker_regression": {
+    "prior_missing_module": {
+      "missing_modules": [
+        "fastapi"
+      ],
+      "application_frames": [
+        [
+          "/app/app/services/db_auto_backup.py",
+          "392",
+          "_execute_tick"
+        ],
+        [
+          "/app/app/services/db_auto_backup.py",
+          "454",
+          "_execution_loop"
+        ],
+        [
+          "/app/app/services/db_auto_backup.py",
+          "471",
+          "run_scheduler"
+        ]
+      ]
+    },
+    "after_real_arm64_idle_tick": {
+      "real_scheduler_idle_tick": "completed",
+      "registered_dispatcher_lifecycle": true,
+      "pending_before": 0,
+      "pending_after": 0,
+      "fastapi": "0.136.3",
+      "external_network": "none",
+      "real_cloud_mutations_possible": false
+    },
+    "after_published_amd64_idle_tick": {
+      "architecture": "amd64",
+      "revision": "15d54c9b906f633142b63a82b5f66a146bce465f",
+      "scheduler": {
+        "real_scheduler_idle_tick": "completed",
+        "registered_dispatcher_lifecycle": true,
+        "pending_before": 0,
+        "pending_after": 0,
+        "fastapi": "0.136.3",
+        "external_network": "none",
+        "real_cloud_mutations_possible": false
+      },
+      "owned_fixture_removed": true
+    },
+    "post_deployment_both_streams": {
+      "dms-controller1": {
+        "afterglow_notion_worker": {
+          "since": "2026-10-22T20:03:34.681830605Z",
+          "captured_stdout_and_stderr": true,
+          "tracebacks": 0,
+          "exception_types": {},
+          "selected_admin_http_statuses": {},
+          "legacy_admin_scope_error_events": 0,
+          "sql1045_events": 0,
+          "sql1054_events": 0
+        },
+        "afterglow_backend": {
+          "since": "2026-10-22T20:03:26.275837642Z",
+          "captured_stdout_and_stderr": true,
+          "tracebacks": 0,
+          "exception_types": {},
+          "selected_admin_http_statuses": {},
+          "legacy_admin_scope_error_events": 0,
+          "sql1045_events": 0,
+          "sql1054_events": 0
+        }
+      },
+      "dms-controller2": {
+        "afterglow_notion_worker": {
+          "since": "2026-10-22T20:03:33.507172872Z",
+          "captured_stdout_and_stderr": true,
+          "tracebacks": 0,
+          "exception_types": {},
+          "selected_admin_http_statuses": {},
+          "legacy_admin_scope_error_events": 0,
+          "sql1045_events": 0,
+          "sql1054_events": 0
+        },
+        "afterglow_backend": {
+          "since": "2026-10-22T20:03:26.378063652Z",
+          "captured_stdout_and_stderr": true,
+          "tracebacks": 0,
+          "exception_types": {},
+          "selected_admin_http_statuses": {},
+          "legacy_admin_scope_error_events": 0,
+          "sql1045_events": 0,
+          "sql1054_events": 0
+        }
+      },
+      "dms-controller3": {
+        "afterglow_notion_worker": {
+          "since": "2026-10-22T20:03:31.018170371Z",
+          "captured_stdout_and_stderr": true,
+          "tracebacks": 0,
+          "exception_types": {},
+          "selected_admin_http_statuses": {},
+          "legacy_admin_scope_error_events": 0,
+          "sql1045_events": 0,
+          "sql1054_events": 0
+        },
+        "afterglow_backend": {
+          "since": "2026-10-22T20:03:25.42119237Z",
+          "captured_stdout_and_stderr": true,
+          "tracebacks": 0,
+          "exception_types": {},
+          "selected_admin_http_statuses": {},
+          "legacy_admin_scope_error_events": 0,
+          "sql1045_events": 0,
+          "sql1054_events": 0
+        }
+      }
+    }
+  },
+  "public_runtime": {
+    "public": {
+      "endpoints": {
+        "/api/v1/health": {
+          "status": 200,
+          "data": {
+            "status": "ok"
+          }
+        },
+        "/api/v1/auth/signup/options": {
+          "status": 200,
+          "data": {
+            "signup_enabled": true,
+            "signup_button_visible": true,
+            "smtp_configured": true,
+            "recovery_enabled": true,
+            "approval_mode": "auto"
+          }
+        },
+        "/api/v1/auth/login-options": {
+          "status": 200,
+          "data": {
+            "providers": [
+              {
+                "id": "cfg:dmslab_gitlab_domain",
+                "name": "DMSLab GitLab",
+                "kind": "oidc",
+                "domain_id": "3de8d34d778e423ab7a92a4992378583",
+                "domain_name": "dmslab"
+              }
+            ]
+          }
+        },
+        "/api/v1/admin/overview": {
+          "status": 401
+        }
+      },
+      "overflow": 0
+    },
+    "sso": {
+      "handoff": {
+        "origin": "https://git.dmslab.re.kr",
+        "path": "/users/sign_in",
+        "interactiveLoginRequired": true
+      },
+      "actualFrontendButtonsExercised": true,
+      "credentialsEntered": false,
+      "userCallbackCompleted": false,
+      "currentAuthorizationResponseLogLostToBrowserWorkerReset": true,
+      "prior13023AuthorizationMetadata": "production-13023-real-sso-handoff.json"
+    }
+  },
+  "issuer_all_native_backends": {
+    "dms-controller1": {
+      "resolved_addresses": [
+        "117.16.137.210"
+      ],
+      "all_addresses_public": true,
+      "discovery_status": 200,
+      "tls_verified": true,
+      "normalized_issuer_matches": true,
+      "security_bypass_added": false
+    },
+    "dms-controller2": {
+      "resolved_addresses": [
+        "117.16.137.210"
+      ],
+      "all_addresses_public": true,
+      "discovery_status": 200,
+      "tls_verified": true,
+      "normalized_issuer_matches": true,
+      "security_bypass_added": false
+    },
+    "dms-controller3": {
+      "resolved_addresses": [
+        "117.16.137.210"
+      ],
+      "all_addresses_public": true,
+      "discovery_status": 200,
+      "tls_verified": true,
+      "normalized_issuer_matches": true,
+      "security_bypass_added": false
+    }
+  },
+  "explicit_limits": [
+    "No fresh real-user password login, authenticated application administrator session or final user OIDC callback/native canonical identity exchange was exercised. Direct native executor smoke bypasses FastAPI dependency injection and explicitly does not prove caller authentication.",
+    "SMTP STARTTLS/authentication succeeded; no real message was sent or mailbox receipt/redeem proven.",
+    "Compiled administrator visibility save/direct signup used explicit synthetic identity/API fixtures, not production administrator save.",
+    "Final1.30.24 real SSO buttons reached GitLab sign-in, but response logs were lost to a reported browser worker reset; exact authorize200/callback/state/S256 metadata is retained from1.30.23 with the same unchanged auth code/configuration.",
+    "Local signup remains source-config false while production is true; no persisted enrollment policy row was seeded. Private local configuration was preserved.",
+    "gbrain sync unavailable: previously observed local CLI absent; no successful indexing or CLAUDE search-guidance claim."
+  ],
+  "preservation": {
+    "additional_native_iam_writes": 0,
+    "human_identity_or_home_migrations": 0,
+    "native_resource_or_quota_mutations_by_verification_actions": 0,
+    "credential_rotation": false,
+    "private_local_config_files_changed": false,
+    "lumen_release_027_replay_or_account_promotion": false,
+    "only_live_schema_statement": "manifest-owned101 additive visibility column",
+    "explicit_invalid_native_markers_still_rejected": true,
+    "fresh_system_caller_guard_unchanged": true
+  },
+  "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/ship-compat-20261022T135044Z"
+}

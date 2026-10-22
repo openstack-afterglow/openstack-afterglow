@@ -10,5 +10,5 @@
 - [x] 실제 worker stderr의 fastapi 누락을 식별하고 worker-only dependency와 real Redis/registered dispatcher idle tick으로 수정 경로를 검증한다.
 ## Verification
 - [x] issuer discovery·native protocol/mapping·actual UI authorize200·production callback URI/state/S256와 GitLab sign-in handoff를 확인한다. Human callback/code exchange·mailbox 수신은 미검증 경계로 명시한다.
-- [ ] 정본 gate·exact-source commit/push/release 및 전체 native fleet reconfigure·설정/키 보존을 검증한다.
-- [ ] 실제 public 화면·readiness와 미검증 mailbox/user terminal/native identity 경계를 보고하고 archive한다.
+- [x] 정본 gate·exact-source commit/push/release 및 전체 native fleet reconfigure·설정/키 보존을 검증한다.
+- [x] 실제 public 화면·readiness와 미검증 mailbox/user terminal/native identity 경계를 verification.json과 문서에 명시하고 완료 change를 archive한다.

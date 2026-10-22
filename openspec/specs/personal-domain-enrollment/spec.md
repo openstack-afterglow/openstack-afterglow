@@ -2,7 +2,6 @@
 
 ## Purpose
 Define personal identity ownership for new email and external humans, independently authorized organization membership, durable administrator approval, future-only quota policy, and fail-closed provisioning and continuation boundaries while preserving existing canonical accounts.
-
 ## Requirements
 ### Requirement: New humans share an identity-only accounts home and own personal projects
 The system SHALL create every new email, administrator-created, invited, OIDC, or GitHub human through the shared durable enrollment path with an identity in the operator-provisioned native `Accounts` domain and a personal project in the operator-provisioned native `Personal` domain. Enrollment SHALL resolve exact enabled native names, accept absent management metadata but reject conflicting kinds, and SHALL NOT create or mutate shared domains. The personal project name SHALL contain the normalized username, a hyphen, eight cryptographically random lowercase letters and eight random decimal digits within the native 64-character limit, and SHALL be frozen before native dispatch. Its only newly granted direct native role SHALL be `member`; Accounts SHALL receive no Default project, domain manager or project grant. Organization participation SHALL remain separately authorized by a verified invitation or trusted provider admission, and SHALL NOT change an existing account's canonical user ID, home, password, federation tuple or unrelated bindings. Existing personal names, project IDs, owner-based grants and shared-domain journals SHALL NOT be migrated or rebound by this cutover.
@@ -107,7 +106,6 @@ Every supported human SHALL default to a verified personal primary, including sy
 - **WHEN** native administrator inventory is requested
 - **THEN** fresh system authority gates the configured fixed native admin-project executor required by project-only provider policy, while logical personal workspace/actor/home and actual execution project remain distinct; no human project grant is added, and consumer/credential/telemetry caller boundaries remain intact
 
-
 ### Requirement: Approval continuation uses fresh proof without credential replay
 The browser SHALL show localized pending and rejected states without retaining or replaying blocked credentials. Email approvals SHALL continue with a new verification link when public signup is enabled, or explicit verified-invitation reopening when it is disabled. External applicants SHALL start fresh provider authentication after approval. A restored authenticated callback SHALL wait for root-owned readiness before its sole code exchange and SHALL abandon late results after owner, scope, readiness, logout, unmount, or ABA transitions.
 
@@ -145,4 +143,41 @@ Authenticated humans SHALL receive an email-derived Gravatar default and MAY sel
 - **WHEN** normalization, exact-self bounded write and fresh readback complete, followed by reload or a fresh login
 - **THEN** profile and accessible header render the same persisted metadata-free PNG; malformed/oversized/active input is rejected without replacing the previous image, and another user's late response cannot become visible
 
+### Requirement: Signup link visibility is independent from enrollment authority
+The system SHALL persist strict boolean `public_signup_button_visible` in the revisioned system-administrator enrollment policy. Only an absent policy row MAY use `[auth].public_signup_button_visible=true`; a saved row SHALL override configuration. Public `signup_button_visible` SHALL combine this display choice with public-email admission and SMTP readiness. Hiding the link SHALL NOT disable delivered-email verification, direct signup, permitted external enrollment, or existing recovery. A domain manager SHALL NOT change this global policy. Migration101 SHALL add only the non-null true-default column before changed readers and writers, preserving existing policy fields, quotas, revision, rows, identities, grants and absent-row fallback.
+
+#### Scenario: Administrator hides the link but permits email and OIDC
+- **GIVEN** public-email signup and SMTP are ready and the current administrator saves display visibility false
+- **WHEN** an unauthenticated user opens login or directly opens signup
+- **THEN** login omits the signup link while direct email signup, permitted SSO selection and recovery remain available under their existing admission and verification guards
+
+#### Scenario: Display visibility does not enable admission
+- **GIVEN** stored display visibility true but public-email admission is disabled or SMTP is not ready
+- **WHEN** login discovers current signup options
+- **THEN** the link remains hidden and visibility does not authorize an otherwise rejected signup request
+
+### Requirement: Saved manager admission narrows new organization autojoin
+New external organization admission SHALL satisfy operator-managed provider autojoin rules and, when a domain policy row is configured, that exact domain's saved signup opt-in and email-host restrictions. A manager SHALL NOT expand operator provider trust or public account authority. Existing members SHALL NOT be rejected solely by new-member signup settings, while existing login policies and canonical identity/federation ownership remain authoritative. An absent manager row SHALL preserve the approved operator baseline rather than create a policy or imply an explicit denial.
+
+#### Scenario: A saved manager policy rejects an otherwise allowed new member
+- **GIVEN** operator provider rules allow the email but the configured organization policy disables signup or excludes its host
+- **WHEN** a nonmember completes provider authorization, including an already bound canonical subject
+- **THEN** organization admission fails before reader grants, native provisioning or final session exchange and existing accounts and federation tuples remain unchanged
+
+#### Scenario: A current member signs in after new admission closes
+- **GIVEN** a canonical user already has verified organization membership and satisfies current login policy
+- **WHEN** signup admission is disabled for new members
+- **THEN** that signup setting does not revoke the existing membership or independently block its login
+
+### Requirement: Native administrator executor honors optional legacy marker semantics
+After fresh native system-administrator caller verification, the fixed configured administrator executor SHALL require an authenticated project-scoped native token, a native project ID and admin role, and native SDK administrator-project semantics. An omitted legacy `is_admin_project` field MAY use the SDK's true default. Explicit false, null, non-boolean markers and invalid scopes SHALL fail closed. Logical workspace, actor and immutable identity home SHALL remain separate from the executor, with no human admin grant, arbitrary requested-project rescope or system-token fallback for project-only providers.
+
+#### Scenario: Valid Keystone token omits the legacy marker
+- **GIVEN** fresh caller system authority and a configured executor token with native project scope and admin role
+- **WHEN** Keystone omits the legacy marker while its native SDK meaning is true
+- **THEN** the executor is accepted and native provider policy still authorizes every downstream request
+
+#### Scenario: Native scope is explicitly invalid
+- **WHEN** the token explicitly denies administrator-project status, has malformed marker type, lacks admin role/project scope, or caller authority was revoked
+- **THEN** execution is rejected without native resource mutation or fallback authority
 

@@ -4,6 +4,16 @@
 
 Afterglow는 Docker Compose(개발/소규모), Kubernetes(프로덕션), ArgoCD(GitOps) 세 가지 배포 방식을 지원합니다.
 
+## Account-entry and signup visibility cutover (1.30.23–1.30.24)
+
+Changed enrollment readers require manifest-owned101 before startup; create_tables/bootstrap does not add a column to an existing enrollment_policy table. Qualify encrypted SQL/Redis restore with original keys/engine and drain old native/local writers before that additive schema step. Add only non-null default-true public_signup_button_visible, preserving absent policy row, admission, approval, quotas and revision. Source0.23/candidate ORM compatibility was verified;0.24 changes only the worker dependency environment and introduces no further schema operation.
+
+System administrators control global public-email admission and signup-link visibility independently. Persisted enrollment policy overrides [auth] fallback; hiding a link is not an email/OIDC admission switch. Saved domain-manager signup/host policy only narrows new organization autojoin under operator provider rules; it cannot expand trusted issuers or edit global display policy. Production enables verified-email signup while an unchanged local fallback may remain disabled until an explicit policy save.
+
+Only transfer the approved DMSLab organization provider/selectors/autojoin rules, never whole private local configuration or unrelated Default providers. Issuer DNS must resolve to public HTTPS endpoints under the unchanged SSRF/TLS checks. Public authorize/sign-in handoff and configured production callback are not completed human callback, native identity exchange or mailbox delivery proof.
+
+Worker images must include FastAPI0.136.3 because existing shared Keystone factories raise HTTPException in the real Trove scheduler. Do not disable that scheduler or swallow import errors; exercise the minimal worker image with real Redis membership and inspect Docker stdout AND stderr. Preserve fixed executor/native credentials and every non-target service, then use the complete native inventory from deployment server172.30.0.50, cwd /etc/kolla, standard Afterglow-only pull/prechecks/reconfigure without --limit. The final1.30.24 full-fleet acceptance and explicit human boundaries are in docs/testing.md.
+
 ## Lumen provider account cutover (unpublished source)
 
 Afterglow's account/credential administrator panel requires the matching Lumen native admin API, endpoint-owned account schema and private converter companion. Apply Lumen additive `027_provider_account_credentials.sql` only after closing new native/compat/media/realtime/Batch and credential/auth admission, draining HTTP/SSE/WS/durable/auxiliary work, and stopping every old API/online/batch worker/controller writer. Preserve unknown holds, provider-start intent, completed checkpoints and usage identity; never replay uncertain work through a new key or converter. Take a stopped-writer MariaDB/PostgreSQL backup and prove isolated restore with original encryption keys, engine/sql_mode and manifest/checksums. Preserve existing `.env`, private settings, DB/Redis/PG URLs, CA/trust and unrelated state.
