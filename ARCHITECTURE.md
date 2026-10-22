@@ -1596,9 +1596,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "9d65f321325018a28231ef9579b52cf3d6fc46dd7826635e979b2321d388f3d2",
-  "reviewed_at": "2026-10-22T13:51:47Z",
-  "summary": "Release 1.30.20: preserve completed account/console changes and legacy Lumen0.6.9 provider authentication; version metadata only beyond qualified compatibility source; production rollout remains evidence-gated, no native account-runtime promotion"
+  "source_sha256": "3cdb06eaa89109ccd82632fa392ea2909bd4a50855e043720250ef1acefaef43",
+  "reviewed_at": "2026-10-22T14:02:00Z",
+  "summary": "Release1.30.20 CI correction: only Hub date regression now uses actual worker timezone; changing process.env.TZ after thread startup does not affect V8 timezone. Product source/schema/authorization unchanged; exact UTC and Asia/Seoul tests and real Node worker smoke pass."
 }
 ```
 <!-- architecture-review:end -->

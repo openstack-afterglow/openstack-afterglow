@@ -43,7 +43,6 @@ it('shows the verified caller after initial permission loading and masks it duri
 });
 
 it('localizes native UTC job times without shifting explicit offsets or observation epochs', async () => {
-  vi.stubEnv('TZ', 'Asia/Seoul');
   initLocale('en');
   vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 15, 4));
   vi.spyOn(hubApi, 'exports').mockResolvedValue([{
@@ -59,7 +58,9 @@ it('localizes native UTC job times without shifting explicit offsets or observat
   render(HubArtifactsPanel, { identity: { token: 'browser-jwt', projectId: 'project-a', userId: 'user-a' } });
   const job = (await screen.findByText('Native UTC export')).closest('li')!;
   const displayed = [...job.querySelectorAll('details dd')].slice(0, 3).map(node => node.textContent);
-  const localTime = (hour: number) => new Date(Date.UTC(2026, 9, 15, hour)).toLocaleString('en-US', { timeZone: 'Asia/Seoul' });
+  // Use the worker's actual local zone: changing process.env.TZ after a
+  // worker thread starts does not change V8's timezone on Linux.
+  const localTime = (hour: number) => new Date(Date.UTC(2026, 9, 15, hour)).toLocaleString('en-US');
   expect(displayed).toEqual([localTime(0), localTime(1), localTime(3)]);
   expect(job.closest('section')!.querySelector(':scope > p')?.textContent).toContain(localTime(4));
 });

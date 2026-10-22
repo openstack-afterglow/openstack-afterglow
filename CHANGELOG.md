@@ -13,6 +13,7 @@
 - 사용자·관리자 작업공간 분리, Personal 표시 이름과 개인 기본 로그인, 검증된 이메일 가입·운영자 OIDC 계정 연결 및 도메인별 리소스·Flavor 화면의 완료 source를 함께 발행합니다. 상세 구현·로컬 검증·운영 선행 조건은 아래 작업별 기록을 유지합니다.
 - 기존 Kolla Lumen0.6.9 연결을 유지하는 공급자 단위 인증 UI와 로컬 source 고정·서비스 전용 암호화 키 전달을 포함합니다. Native 계정 런타임 승격·027 재적용은 포함하지 않습니다.
 - 이번 항목은 release 대상 source를 설명하며, CI·artifact 발행 및 실제 운영 rollout 성공은 release checklist의 관측 결과로 별도 기록합니다.
+- Linux CI worker에서 실행 중 timezone 변경이 반영된다고 가정하던 Hub 날짜 표시 회귀를 실제 worker timezone 기준으로 교정했습니다. UTC·Asia/Seoul 프로세스 모두 검증하며 제품의 날짜 처리 동작은 변경하지 않습니다.
 
 
 ### Lumen 공유 DB 하위호환 단계와 로컬 배포 (2026-10-22)
