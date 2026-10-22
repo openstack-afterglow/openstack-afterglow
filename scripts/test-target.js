@@ -52,6 +52,9 @@ function expandChatFrontendSelectors() {
 	selectors.push("src/routes/__tests__/chat-gated-surfaces.test.ts");
 	const componentTests = "src/lib/components/chat/__tests__";
 	if (fs.existsSync(path.join(frontendDir, componentTests))) selectors.push(componentTests);
+	for (const adminChatTests of ["src/lib/components/admin/chat/__tests__", "src/routes/admin/chat/__tests__"]) {
+		if (fs.existsSync(path.join(frontendDir, adminChatTests))) selectors.push(adminChatTests);
+	}
 	return selectors;
 }
 

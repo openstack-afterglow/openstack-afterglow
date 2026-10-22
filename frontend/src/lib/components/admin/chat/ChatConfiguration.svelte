@@ -24,6 +24,8 @@
 	import type { ModelCapabilities } from '$lib/api/chatContracts';
 	import ModelMediaPricingEditor from './ModelMediaPricingEditor.svelte';
 	import ProviderAccountsPanel from './ProviderAccountsPanel.svelte';
+	import LegacyProviderAuth from './LegacyProviderAuth.svelte';
+	import { supportsProviderAccounts } from './providerAccounts';
 	import { MODEL_LABELS as MEDIA_LABELS, TOKEN_FIELDS, hasMediaPrices, pricingDraft, pricingError, pricingPayload, pricingEquals, type ModelKind, type MediaPricing } from './modelPricing';
 
 	let { section = 'providers' }: { section?: 'providers' | 'models' | 'tools' } = $props();
@@ -1711,7 +1713,11 @@
 							</div>
 							<div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs sm:justify-end">
 								<Button variant="outline" size="sm" onclick={() => openProviderEditor(p)}>{t('pricing.editDisplay')}</Button>
-								<ProviderAccountsPanel bind:this={accountPanels[p.id]} provider={p} {token} {projectId} onupdated={() => { invalidateChatModels(); return load({ freshBilling: true, preserveRows: true }); }} />
+								{#if supportsProviderAccounts(p)}
+									<ProviderAccountsPanel bind:this={accountPanels[p.id]} provider={p} {token} {projectId} onupdated={() => { invalidateChatModels(); return load({ freshBilling: true, preserveRows: true }); }} />
+								{:else}
+									<LegacyProviderAuth bind:this={accountPanels[p.id]} provider={p} {token} {projectId} onupdated={() => { invalidateChatModels(); return load({ freshBilling: true, preserveRows: true }); }} />
+								{/if}
 								{#if providerAuthMode(p) === 'api_key' && supportsBillingAdminKey(p)}
 									<button class={rowActionCls} onclick={() => openBillingKeyModal(p)}>{p.has_billing_admin_key ? t('configuration.changeUsageKey') : t('configuration.setUsageKey')}</button>
 								{/if}

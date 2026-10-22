@@ -88,3 +88,86 @@ for (const source of ["dotenv", "shell"]) {
 		assert.ok(fs.readFileSync(path.join(directory, ".local-services", "secrets.json")).equals(secretsBefore), "database reselection must not rotate existing keys");
 	});
 }
+
+const crypto = require("node:crypto");
+const digest = (value) => crypto.createHash("sha256").update(value).digest("hex");
+
+function lumenProject(t, { scopedKey, lumenContext } = {}) {
+	const temp = fs.mkdtempSync(path.join(os.tmpdir(), "afterglow-config-lumen-"));
+	t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+	const directory = path.join(temp, "afterglow");
+	fs.mkdirSync(directory);
+	fs.copyFileSync(path.join(root, "docker-compose.dev.yml"), path.join(directory, "docker-compose.dev.yml"));
+	for (const owner of owners.filter((owner) => owner !== "afterglow")) fs.mkdirSync(path.join(temp, owner));
+	fs.writeFileSync(path.join(directory, "afterglow.conf"), '[openstack]\nauth_url = "https://identity.invalid/v3"\nusername = "synthetic"\npassword = "synthetic"\nservice_project_id = "synthetic-service-project"\n');
+	const dotenv = { WAYGATE_PUBLIC_BASE_URL: "https://callback.invalid" };
+	if (lumenContext) {
+		fs.mkdirSync(path.join(lumenContext, "docker"), { recursive: true });
+		fs.writeFileSync(path.join(lumenContext, "docker", "Dockerfile"), "FROM scratch\n");
+		dotenv.LUMEN_BUILD_CONTEXT = lumenContext;
+	}
+	writeEnvironment(path.join(directory, ".env"), dotenv);
+	if (scopedKey) {
+		fs.mkdirSync(path.join(directory, ".local-services"), { recursive: true, mode: 0o700 });
+		fs.writeFileSync(path.join(directory, ".local-services", "lumen.env"), `LUMEN_ENCRYPTION_KEY=${JSON.stringify(scopedKey)}\n`, { mode: 0o600 });
+	}
+	return directory;
+}
+
+function runConfig(directory) {
+	const result = spawnSync(process.execPath, [runner, "config"], { cwd: directory, env: cleanEnvironment(), encoding: "utf8", timeout: 30000, maxBuffer: 1024 * 1024 });
+	assert.ok(!result.error && result.status === 0, "services:config rejected the Lumen compatibility inputs (output withheld)");
+	return result.stdout + result.stderr;
+}
+
+function lumenKeyHashes(directory) {
+	const rendered = spawnSync("docker", ["compose", "--env-file", path.join(directory, ".local-services", "compose.env"), "-f", "docker-compose.dev.yml", "--profile", "notion-worker", "config", "--format", "json"], { cwd: directory, env: cleanEnvironment(), encoding: "utf8", timeout: 20000, maxBuffer: 4 * 1024 * 1024 });
+	assert.ok(!rendered.error && rendered.status === 0, "actual Compose render failed (output withheld)");
+	const services = JSON.parse(rendered.stdout).services;
+	return Object.fromEntries(Object.entries(services).map(([name, service]) => [name, service.environment?.LUMEN_ENCRYPTION_KEY ? digest(service.environment.LUMEN_ENCRYPTION_KEY) : null]));
+}
+
+test("an existing scoped Lumen key is preserved and reaches only the Lumen consumers", (t) => {
+	const scopedKey = "synthetic-production-lumen-key-that-must-survive";
+	const directory = lumenProject(t, { scopedKey });
+	const output = runConfig(directory);
+	assert.ok(!output.includes(scopedKey), "the scoped Lumen key must never be logged");
+	const hashes = lumenKeyHashes(directory);
+	for (const service of consumers.lumen) assert.ok(hashes[service] === digest(scopedKey), `${service} did not receive the preserved scoped key (values withheld)`);
+	const leaked = Object.entries(hashes).filter(([name, value]) => value === digest(scopedKey) && !consumers.lumen.includes(name)).map(([name]) => name);
+	assert.deepEqual(leaked, [], "the Lumen key leaked into non-Lumen services");
+	assert.ok(fs.readFileSync(path.join(directory, ".local-services", "lumen.env"), "utf8").includes(JSON.stringify(scopedKey)), "an existing scoped key file must not be rewritten");
+	runConfig(directory);
+	assert.ok(lumenKeyHashes(directory)["lumen-api"] === digest(scopedKey), "a repeated configuration run rotated the preserved key");
+});
+
+test("a missing scoped Lumen key is generated once with owner-only access and then kept", (t) => {
+	const directory = lumenProject(t);
+	runConfig(directory);
+	const file = path.join(directory, ".local-services", "lumen.env");
+	if (process.platform !== "win32") assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+	const first = fs.readFileSync(file, "utf8");
+	assert.match(first, /^LUMEN_ENCRYPTION_KEY="[a-f0-9]{64}"\n$/);
+	runConfig(directory);
+	assert.equal(fs.readFileSync(file, "utf8"), first, "a generated scoped key must not rotate on the next run");
+});
+
+test("a pinned Lumen compatibility source is the build context for every Lumen image", (t) => {
+	const pinned = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "afterglow-lumen-source-")), "lumen-pinned");
+	t.after(() => fs.rmSync(path.dirname(pinned), { recursive: true, force: true }));
+	const directory = lumenProject(t, { lumenContext: pinned });
+	runConfig(directory);
+	const rendered = spawnSync("docker", ["compose", "--env-file", path.join(directory, ".local-services", "compose.env"), "-f", "docker-compose.dev.yml", "config", "--format", "json"], { cwd: directory, env: cleanEnvironment(), encoding: "utf8", timeout: 20000, maxBuffer: 4 * 1024 * 1024 });
+	assert.ok(!rendered.error && rendered.status === 0, "actual Compose render failed (output withheld)");
+	const services = JSON.parse(rendered.stdout).services;
+	for (const service of consumers.lumen) assert.equal(fs.realpathSync(services[service].build.context), fs.realpathSync(pinned), `${service} ignored the pinned compatibility source`);
+	for (const service of ["drover-api", "waygate-api", "palimpsest-api"]) assert.ok(!String(services[service].build.context).includes("lumen-pinned"), `${service} must not follow the Lumen source selection`);
+});
+
+test("an unavailable pinned Lumen source stops before anything starts", (t) => {
+	const directory = lumenProject(t);
+	fs.appendFileSync(path.join(directory, ".env"), `LUMEN_BUILD_CONTEXT='${path.join(os.tmpdir(), "afterglow-missing-lumen-source")}'\n`);
+	const result = spawnSync(process.execPath, [runner, "up"], { cwd: directory, env: cleanEnvironment(), encoding: "utf8", timeout: 30000, maxBuffer: 1024 * 1024 });
+	assert.ok(result.status !== 0, "a missing pinned Lumen source must be rejected");
+	assert.match(result.stdout + result.stderr, /current sibling source is unavailable: Lumen/);
+});

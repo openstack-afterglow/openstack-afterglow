@@ -7,6 +7,20 @@
 
 ## [Unreleased]
 
+## [1.30.20] - 2026-10-22
+
+### Changed
+- 사용자·관리자 작업공간 분리, Personal 표시 이름과 개인 기본 로그인, 검증된 이메일 가입·운영자 OIDC 계정 연결 및 도메인별 리소스·Flavor 화면의 완료 source를 함께 발행합니다. 상세 구현·로컬 검증·운영 선행 조건은 아래 작업별 기록을 유지합니다.
+- 기존 Kolla Lumen0.6.9 연결을 유지하는 공급자 단위 인증 UI와 로컬 source 고정·서비스 전용 암호화 키 전달을 포함합니다. Native 계정 런타임 승격·027 재적용은 포함하지 않습니다.
+- 이번 항목은 release 대상 source를 설명하며, CI·artifact 발행 및 실제 운영 rollout 성공은 release checklist의 관측 결과로 별도 기록합니다.
+
+
+### Lumen 공유 DB 하위호환 단계와 로컬 배포 (2026-10-22)
+- 로컬 `docker compose up --build`가 개발 checkout의 Lumen migration `027_provider_account_credentials`를 운영 Kolla와 공유하는 `lumen_kolla`에 적용했습니다. 운영 Kolla Lumen `0.6.9`(`6ca10eed`)는 provider 행의 credential 컬럼을 읽으므로 027이 그 컬럼을 비운 뒤에는 기존 연결을 읽지 못했고 auth-attempt 기본키 변경은 옛 writer와 호환되지 않았습니다. 같은 시각 `lumen-api`는 PID 1에서 private child의 인증 readiness를 통과하지 못해 반복 재시작했습니다. 운영 Kolla Lumen에는 2026-10-14 이후 chat run이 없어 사용자 요청 실패는 관찰되지 않았습니다.
+- 승인된 호환 단계로 Kolla Lumen 6개와 로컬 2개 writer만 정지하고 drain 이후 backup을 일치하는 MariaDB에 복원해 검증한 뒤, 가드된 3개 statement만 적용했습니다. provider 행의 기존 API key ciphertext 5건을 새 credential 표의 정확한 값에서 복원하고 auth-attempt 기본키를 `provider_id`로 되돌려 `credential_id`를 nullable로 두었습니다. 새 account/credential 표·migration ledger 28행·다른 모든 표는 보존했고 Kolla 6개는 동일 컨테이너 ID/image로 재시작해 `healthy`입니다. 이는 일시적 compatibility이며 account 승격은 별도의 정지·재조정 전환입니다.
+- 로컬 Compose는 `LUMEN_BUILD_CONTEXT`로 정확한 Kolla 호환 source를 canonical Dockerfile로 빌드하고 기존 Lumen 암호화 키를 Lumen 세 서비스에만 전달합니다(`.local-services/lumen.env`, 0600). 다른 서비스의 키는 바꾸지 않으며 migration job은 다시 실행하지 않았습니다. 관리자 UI는 provider DTO의 `selection_policy`가 있을 때만 account 관리를 표시하고 옛 DTO에는 기존 provider 단위 API key·구독 인증을 사용합니다.
+- 실제 로컬 Lumen·Afterglow backend/frontend는 healthy이고 기존 provider API key 5건이 로컬과 운영 컨테이너에서 모두 복호화됩니다. 실제 provider 호출·OAuth·로그인한 관리자 화면은 시험하지 않았습니다.
+
 ### Lumen endpoint account/credential 관리자 UI (unpublished local source)
 - 기존 provider 관리자 화면에 endpoint-owned account/credential CRUD, explicit/priority/weighted policy, model-ID/operation eligibility(null 무제한/[] 모두 거부), priority/weight·quota group·expiry/cooldown, encrypted API/env source, credential별 subscription token/device auth/disconnect와 local usage panel을 연결합니다. 아홉 locale에서 같은 UI를 사용하고 submit/close/auth/project/provider lifecycle에 transient secret·device polling을 지우며 stale 응답 게시를 차단합니다.
 - 인증 BFF가 account/credential/usage/auth를 Lumen native admin API로 전달하고 provider subtree 성공·처리된 오류를 no-store로 보호하며 private URL/예외 본문을 로그에 남기지 않습니다. 선택·generation/current-authority·same-grant refresh·가격·durable unknown hold·단일 customer debit는 Lumen이 소유합니다. Lumen의 private converter-only Bifrost cutover는 stock gateway retry/rotation이나 Afterglow inference engine이 아닙니다.

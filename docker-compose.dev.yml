@@ -51,7 +51,6 @@ x-lumen-environment: &lumen-environment
   KEYSTONE_DOMAIN: ${AFTERGLOW_LOCAL_OS_USER_DOMAIN_NAME:-}
   KEYSTONE_REGION_NAME: ${AFTERGLOW_LOCAL_OS_REGION_NAME:-}
   KEYSTONE_INTERFACE: ${AFTERGLOW_LOCAL_OS_INTERFACE:-}
-  LUMEN_ENCRYPTION_KEY: ${AFTERGLOW_LOCAL_ENCRYPTION_KEY:-}
   LUMEN_MCP_SERVICE_TOKEN: ${AFTERGLOW_LOCAL_SERVICE_TOKEN:-}
   MCP_CONTROL_PLANE_URL: ${LUMEN_MCP_CONTROL_PLANE_URL-http://backend:8000}
 
@@ -280,13 +279,15 @@ services:
 
   lumen-migrate:
     build:
-      context: ../lumen
+      context: ${LUMEN_BUILD_CONTEXT:-../lumen}
       dockerfile: docker/Dockerfile
       target: lumen-api
     image: afterglow-local-services/lumen-api:current
     environment: *lumen-environment
     env_file:
       - path: .env
+        required: false
+      - path: .local-services/lumen.env
         required: false
     command: python -m lumen.scripts.migrate --apply
     depends_on:
@@ -300,7 +301,7 @@ services:
 
   lumen-api:
     build:
-      context: ../lumen
+      context: ${LUMEN_BUILD_CONTEXT:-../lumen}
       dockerfile: docker/Dockerfile
       target: lumen-api
     image: afterglow-local-services/lumen-api:current
@@ -309,6 +310,8 @@ services:
     environment: *lumen-environment
     env_file:
       - path: .env
+        required: false
+      - path: .local-services/lumen.env
         required: false
     volumes:
       - ${LUMEN_POLICY_DIR:-./.local-services/policy/lumen}:/etc/lumen:ro
@@ -325,13 +328,15 @@ services:
 
   lumen-worker:
     build:
-      context: ../lumen
+      context: ${LUMEN_BUILD_CONTEXT:-../lumen}
       dockerfile: docker/Dockerfile
       target: lumen-worker
     image: afterglow-local-services/lumen-worker:current
     environment: *lumen-environment
     env_file:
       - path: .env
+        required: false
+      - path: .local-services/lumen.env
         required: false
     volumes:
       - ${LUMEN_POLICY_DIR:-./.local-services/policy/lumen}:/etc/lumen:ro

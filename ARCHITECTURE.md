@@ -4,7 +4,7 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.30.19`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.30.20`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 **전체 source dev 통합 (2026-10-19, local source):** 공유 checkout의 `aac6b9c5` 기반 public snapshot tree `2144d2b1`과 fetched `origin/dev` `3c9af255`를 격리 local dev에서 통합했다. 공유 checkout에서 이후 발생한 upstream 갱신·동시 변경은 reset/stash하거나 덮어쓰지 않고 private 설정·다른 worktree·기존 서비스를 보존한다. 최신 dev의 아홉 언어·frozen npm runtime 설치·socket-peer/MMDB/origin·flow/fabric·route tuple dedup과 local home-first 로그인/SSO·개인 가입/승인/quota·IAM·native telemetry·backup/snapshot lane·effective deployment config를 함께 유지한다. 통합 중 K8s의 중복 traffic TOML table을 제거하고 Kolla launcher의 `FORWARDED_ALLOW_IPS`를 복구했다. 새 authority cache·권한 완화·재시도·release 버전은 추가하지 않는다. 전체 gate·아홉 image의 비특권 실행과 격리 HTTP/compiled UI 검증은 `docs/testing.md`에 별도로 기록하며, 역사적 release/feature receipt를 이번 source의 운영 qualification으로 소급하지 않는다.
 
@@ -976,6 +976,8 @@ Lumen 브라우저 BFF는 기존 `/v1/{path}` 기본 전달을 유지하되 `/ap
 
 BFF 경로 `/api/v1/chat/admin/providers/{provider_id}/accounts...`는 `backend/app/api/lumen/proxy.py`에서 기존 caller/project-scoped `/v1/admin/providers/{provider_id}/accounts...`로 전달하며 최종 native human system-admin 검사는 Lumen에 남는다. Provider subtree 성공/처리된 오류에 no-store/Pragma:no-cache를 붙이고 provider-admin transport 실패는 URL/예외/본문 없이 기록한다. API key/token/ciphertext는 metadata로 읽어오지 않는다. Panel은 입력 secret을 transient state에만 두고 submit/close/auth/session/project/provider 변경·destroy에서 지우며 epoch/read-generation으로 stale 완료와 device polling을 fence한다. Nine locale catalogs(en/ko/ja/zh-CN/bn/ms/nb/sw/vi)의 같은 관리자 UI를 사용한다. OAuth protocol 지원은 consumer subscription의 public multiuser pooling 허가가 아니다.
 
+관리자 화면은 account panel을 provider DTO의 `selection_policy`가 `priority|weighted|explicit` 중 하나일 때만 표시한다. 이 값은 인증된 native 응답의 표현 capability일 뿐 권한이나 버전 추정이 아니며, 없거나 알 수 없는 값이면 account route를 한 번도 호출하지 않고 `LegacyProviderAuth.svelte`가 기존 provider 단위 API key 교체와 `.../auth/token`, `.../auth/device`(start/poll/cancel), `DELETE .../auth` 흐름을 그대로 제공한다. 두 구성요소는 같은 session/project/provider epoch fence와 transient secret 폐기를 따른다. 이 분기는 운영 Kolla `0.6.9`와 공유 DB를 쓰는 동안 기존 연결을 유지하기 위한 호환 단계이며 account 승격 전환(정지·두 credential 사본 재조정)을 대체하지 않는다. 같은 경계를 위해 로컬 Compose는 `LUMEN_BUILD_CONTEXT`로 Lumen build source를 선택하고, Lumen 암호화 키는 `.local-services/lumen.env`(0600)로 Lumen 세 서비스에만 전달하며 다른 서비스의 키와 분리한다. 절차와 한계는 [deployment](docs/deployment.md#shared-db-compatibility-phase-2026-10-22-local-only)를 따른다.
+
 배포에는 Lumen matching native binary와 additive027의 coordinated drain/stopped-writer backup/migration-rerun/API·worker cutover가 선행한다; Python wheel만 설치해서 companion이 생기지 않는다. Afterglow는 새 account 저장소/schema나 독자 선택·refresh·추론·청구 엔진을 만들지 않는다. 현재 partial synthetic BFF/component receipt와 미완료 browser/container/system gate는 [testing](docs/testing.md#lumen-private-converter-account-ui-2026-10-22-local-only), rollback 순서는 [deployment](docs/deployment.md#lumen-provider-account-cutover-unpublished-source)를 따른다. 이 문서는 architecture stamp나 운영 배포 증거가 아니다.
 
 
@@ -1594,9 +1596,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "f1f196a10d19d7866e0672628f3163badbb7f331c4cfcba0c1e905643b886e39",
-  "reviewed_at": "2026-10-22T07:00:23Z",
-  "summary": "Final qualified console workspace and Personal label change: actual-membership user browsing/scope/remembered landing; real project-only public permissions; no administrator global chooser; native label writer/readback and immutable identities;108-condition compiled Compose UI and native HTTP; existing tests migrated to surface/one-use-credential behavior; formatting-only existing contract correction"
+  "source_sha256": "9d65f321325018a28231ef9579b52cf3d6fc46dd7826635e979b2321d388f3d2",
+  "reviewed_at": "2026-10-22T13:51:47Z",
+  "summary": "Release 1.30.20: preserve completed account/console changes and legacy Lumen0.6.9 provider authentication; version metadata only beyond qualified compatibility source; production rollout remains evidence-gated, no native account-runtime promotion"
 }
 ```
 <!-- architecture-review:end -->

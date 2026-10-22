@@ -6,6 +6,10 @@ export interface AccountProvider {
 	selection_policy?: 'priority' | 'weighted' | 'explicit';
 	selected_credential_id?: number | null;
 }
+// A presentation capability from the authenticated native DTO, never an authorization grant.
+export function supportsProviderAccounts(provider: { selection_policy?: unknown }): boolean {
+	return provider.selection_policy === 'priority' || provider.selection_policy === 'weighted' || provider.selection_policy === 'explicit';
+}
 export interface PoolEntry {
 	id: number;
 	name: string;

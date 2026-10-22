@@ -115,7 +115,8 @@ function assertLocalPrerequisites() {
 }
 
 function assertSiblingSources() {
-	const missing = SIBLING_BUILDS.filter(([name, path]) => selectedServices.includes(`${name.split(' ')[0].toLowerCase()}-api`) && !existsSync(path));
+	const builds = SIBLING_BUILDS.map(([name, source]) => [name, name === 'Lumen' && composeInputs?.LUMEN_BUILD_CONTEXT ? `${composeInputs.LUMEN_BUILD_CONTEXT}/docker/Dockerfile` : source]);
+	const missing = builds.filter(([name, source]) => selectedServices.includes(`${name.split(' ')[0].toLowerCase()}-api`) && !existsSync(source));
 	if (missing.length === 0) return;
 	const names = missing.map(([name, path]) => `${name} (${path})`).join(', ');
 	fail(`current sibling source is unavailable: ${names}. Nothing was started. Restore the source checkouts; published-image deployment belongs to docker-compose.prod.yml.`);
@@ -141,6 +142,11 @@ function prepareLocalConfiguration() {
 	let secrets;
 	try { secrets = JSON.parse(readFileSync(secretPath, 'utf8')); } catch { fail('Local secrets.json is unreadable; its contents were not printed.'); }
 	if (secretNames.some((key) => !/^[a-f0-9]{64}$/.test(secrets[key] ?? ''))) fail('Local secrets.json must contain the three generated 32-byte keys.');
+	const lumenEnvironmentPath = `${LOCAL_DIR}/lumen.env`;
+	if (!existsSync(lumenEnvironmentPath)) {
+		writeFileSync(lumenEnvironmentPath, `LUMEN_ENCRYPTION_KEY=${JSON.stringify(secrets.AFTERGLOW_LOCAL_ENCRYPTION_KEY)}\n`, { flag: 'wx', mode: 0o600 });
+	}
+	chmodSync(lumenEnvironmentPath, 0o600);
 	const python = existsSync('backend/.venv/bin/python') ? 'backend/.venv/bin/python' : 'python3';
 	const credentials = JSON.parse(run(python, ['-c', `
 import json, tomllib
@@ -237,6 +243,7 @@ function assertDevelopmentConfiguration() {
 		composeInputs[name] = config.services.backend.environment[name] ?? '';
 	}
 	composeInputs.LUMEN_MCP_CONTROL_PLANE_URL = config.services['lumen-api'].environment.MCP_CONTROL_PLANE_URL ?? '';
+	composeInputs.LUMEN_BUILD_CONTEXT = config.services['lumen-api'].build.context;
 	composeEnvironment = { ...process.env, ...composeInputs };
 	const envPath = `${LOCAL_DIR}/compose.env`;
 	const contents = Object.entries(composeInputs)

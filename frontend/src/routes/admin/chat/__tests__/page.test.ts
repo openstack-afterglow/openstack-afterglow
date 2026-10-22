@@ -91,6 +91,8 @@ const provider = {
   models_dev_provider_id: "openai",
   is_active: true,
   margin_multiplier: 1,
+  // Every account-native provider DTO carries its endpoint policy (NOT NULL, default 'priority').
+  selection_policy: "priority" as const,
 };
 
 const billingPeriods = { daily: "1", weekly: "2", monthly: "3", total: "4" };
