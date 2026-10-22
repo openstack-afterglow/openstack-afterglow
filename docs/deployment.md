@@ -1228,6 +1228,9 @@ Precheck는 전용 project 분리, network/security-group 소유권, ingress 0�
 
 비공개 image는 각 compute의 Docker client가 manifest를 검사할 credential도 준비해야 합니다. Zun registry credential과 호스트 Docker login은 별개이며 `registry_id`를 설정했다고 Kolla precheck 인증이 자동으로 이전되지 않습니다.
 
+Stock `kolla_toolbox` may omit `python-zunclient`, so `openstack appcontainer list` is not a dependable deployment prerequisite. The Afterglow role uses its packaged `check_cloud_shell_zun.py` inside the existing toolbox instead: it loads the same `kolla` cloud credentials/TLS/catalog, removes the original project/system selectors, authenticates the exact dedicated project, verifies the token project and reads native Zun1.36 containers with limit1. Any denial, substituted scope, invalid list or transport error fails the precheck without printing credentials or resource bodies. It does not install a client package or replace the shared toolbox image. Runtime service-user access and real shell provisioning remain separate acceptance checks.
+
+
 
 #### Kubernetes와 Helm
 

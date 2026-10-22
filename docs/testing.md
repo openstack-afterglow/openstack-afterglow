@@ -6,6 +6,15 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## Cloud Shell native precheck correction and approved preparation (2026-10-23)
+
+The user chose to prepare Cloud Shell enablement and reuse the existing dedicated project. Current Keystone confirms the exact enabled `cloud_shell` project, its own Default network/subnet/router and default security group. A single approved direct admin assignment for the existing Afterglow service user was added to that project; no human grant, existing security-group rule, quota, project/network/volume/container or registry secret was changed. Protected operator input backups precede the explicit image/network/security-group/HTTPS/WSS configuration. All three controllers verified Keystone HTTPS200 and the Zun WSS origin's TLS certificate (ordinary HTTPS GET405; this is not a real exec WebSocket proof).
+
+The actual stock `kolla_toolbox` returned exit2: `appcontainer list -f json` is not an OpenStack command. The role now authenticates and lists native Zun with its existing SDK/Keystone libraries, not an optional CLI plugin. Executing the exact helper in that real toolbox returned exit0 and `native_zun_list=ready` for the dedicated project. Three offline boundary regressions reject token project substitution before any Zun request, native403/503 or invalid list bodies, and credential-bearing exception publication. Runtime application behavior and schema are unchanged;1.30.21 contains the deployment-only correction and version metadata.
+
+The selected public `openstack-client:slim` resolves to manifest `sha256:e98b344bad37f41bc381f5817248702062a0181a61bb0faf80a47a432b48d7df`, containing amd64 and arm64. Both exact-digest images executed `openstack-client-check`:13 commands passed, UID1000, Python3.12.15, OpenSSL3.5.7/TLS1.3. This is image/tooling proof, not a live user's terminal or provider invocation. The original moving-reference Ansible task failure remains preserved; direct execution of the same registry resolver on controller1 succeeded, so its censored root exception is not claimed as diagnosed. Explicit digest selection is the normal immutable production path, not a disabled precheck.
+
+
 ## 1.30.20 release CI timezone correction (2026-10-22)
 
 Initial exact-SHA `e80824d6` CI run `39791276212` passed backend, contracts, functional and frontend shard1, but shard2 failed `HubArtifactsPanel.svelte.test.ts` because a test changed `process.env.TZ` after its Vitest worker thread started. The rendered worker-local UTC times were compared with explicitly Seoul-formatted expectations. The correction removes the ineffective late timezone override and compares the same UTC instants in the worker's actual local timezone; production formatting remains unchanged. The exact component tests pass when the process starts under both `TZ=UTC` and `TZ=Asia/Seoul`. The original CI failure is preserved; no check is bypassed or reclassified as success. Release publication and rollout remain gated on a successful final-SHA CI.

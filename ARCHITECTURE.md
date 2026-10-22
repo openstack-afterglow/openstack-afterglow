@@ -4,7 +4,7 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.30.20`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.30.21`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 **전체 source dev 통합 (2026-10-19, local source):** 공유 checkout의 `aac6b9c5` 기반 public snapshot tree `2144d2b1`과 fetched `origin/dev` `3c9af255`를 격리 local dev에서 통합했다. 공유 checkout에서 이후 발생한 upstream 갱신·동시 변경은 reset/stash하거나 덮어쓰지 않고 private 설정·다른 worktree·기존 서비스를 보존한다. 최신 dev의 아홉 언어·frozen npm runtime 설치·socket-peer/MMDB/origin·flow/fabric·route tuple dedup과 local home-first 로그인/SSO·개인 가입/승인/quota·IAM·native telemetry·backup/snapshot lane·effective deployment config를 함께 유지한다. 통합 중 K8s의 중복 traffic TOML table을 제거하고 Kolla launcher의 `FORWARDED_ALLOW_IPS`를 복구했다. 새 authority cache·권한 완화·재시도·release 버전은 추가하지 않는다. 전체 gate·아홉 image의 비특권 실행과 격리 HTTP/compiled UI 검증은 `docs/testing.md`에 별도로 기록하며, 역사적 release/feature receipt를 이번 source의 운영 qualification으로 소급하지 않는다.
 
@@ -701,6 +701,8 @@ Afterglow 부분 통합의 cleanup 순서는 exact managed-rule GET → 부재�
 
 관리자 `/api/v1/admin/quotas/{project_id}`는 대상 프로젝트의 Nova·Cinder·Neutron·선택적 Manila 상세 사용량을 서비스별로 독립 조회한다. `limit/in_use`가 없는 응답을 0으로 보정하지 않고 해당 서비스의 `availability=false`와 오류 코드로 돌려준다. `PUT`은 제출한 한도만 공급자별로 적용하고 부분 실패를 구분하며, 성공한 compute/volume 쿼터의 dashboard·기간 보고서 캐시를 무효화한다. 프런트엔드는 선택 프로젝트가 바뀐 뒤 도착한 이전 저장 결과를 버리고, 사용할 수 없는 서비스의 한도를 임의로 제출하지 않는다. 상세 계약은 [`docs/api/admin.md`](docs/api/admin.md#쿼터-관리)를 따른다.
 ### 전역 Cloud Shell 승인·세션
+
+Kolla의 전용 프로젝트 Zun precheck는 stock toolbox에 선택적 `python-zunclient` CLI가 설치되어 있다고 가정하지 않는다. 역할 소유 `check_cloud_shell_zun.py`가 기존 toolbox의 OpenStack config/Keystone session으로 정확한 project token을 확인하고 native container1.36 list를 읽기만 한다. 기존 operator TLS/catalog를 재사용하며 project 치환·native 거부·잘못된 응답은 readiness 실패다. Toolbox image·패키지·runtime 권한을 바꾸지 않고 credential/자원 본문을 출력하지 않는다. Runtime 세션 생성·token/bootstrap·Zun/Cinder lifecycle 경계는 그대로다.
 
 1. Root layout의 전역 trigger는 `[services].cloud_shell` public capability가 켜진 로그인 콘솔의 desktop(`lg`, ≥1024px) 상단 오른쪽 컨트롤 영역 첫 번째에 터미널 아이콘·`Cloud Shell` 레이블로 표시한다. 모드 전환 버튼이 있으면 그 왼쪽이며 기존 우측 프로젝트 선택 자리다. `ProjectSelector`는 전체 폭 header의 좌상단 브랜드 바로 오른쪽에, 검색은 sidebar 표시 상태와 무관한 전체 viewport 중앙에 둔다. Tablet/mobile에서는 Cloud Shell trigger를 숨기며 사용자·관리자 사이드바로 옮기지 않는다. 승인 대화상자를 열거나 취소할 때 backend 요청을 보내지 않는다. Viewport 변경은 기존 dock/session lifecycle을 바꾸지 않는다.
 2. 승인은 `POST /api/v1/cloud-shell/tickets`로 current user/project token을 재검증하고 Redis에 user-wide reservation과 단기 single-use ticket을 원자적으로 만든다. 다른 탭·프로젝트의 준비/활성 세션은 409로 거부한다.
@@ -1596,9 +1598,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "4949d59a4ea45274c7e4cd5042f0b8a7271d258f830160cf9d1382314837f9ca",
-  "reviewed_at": "2026-10-22T15:17:34Z",
-  "summary": "Release1.30.20 timezone regression strengthened: configure deterministic Asia/Seoul before Vitest worker startup, retain explicit zone expectations, verify naive-local mutant fails even from TZ=UTC. Test-only config/fixture changes, no product/runtime/schema structure change."
+  "source_sha256": "ac3b6a3752b518ce2549291c86cf94737302ac0b13eb4a2b535b96c3bf75df92",
+  "reviewed_at": "2026-10-22T15:58:33Z",
+  "summary": "Release1.30.21 deployment correction: native exact-project Zun readiness uses stock toolbox existing SDK instead of absent python-zunclient CLI; preserves TLS/catalog and rejects substituted scope/denial/invalid JSON with no secret output. Runtime routes/schema unchanged. Actual toolbox native-list smoke and offline boundaries pass; approved existing Cloud Shell resource/config preparation recorded."
 }
 ```
 <!-- architecture-review:end -->

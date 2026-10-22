@@ -194,9 +194,11 @@
   become: true
   community.docker.docker_container_exec:
     container: kolla_toolbox
-    command: >-
-      openstack --os-cloud=kolla --os-project-id={{ afterglow_cloud_shell_precheck_project_id }}
-      appcontainer list -f json
+    command:
+      - python
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/check_cloud_shell_zun.py') }}"
+      - "{{ afterglow_cloud_shell_precheck_project_id }}"
   register: afterglow_cloud_shell_zun_check
   failed_when: false
   changed_when: false

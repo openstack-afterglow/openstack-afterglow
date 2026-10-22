@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+## [1.30.21] - 2026-10-23
+
+### Fixed
+- Cloud Shell Kolla precheck가 stock toolbox에 없는 `appcontainer` CLI 때문에 실패하던 문제를 수정합니다. 기존 toolbox SDK와 Keystone session으로 전용 project scope·native Zun1.36 list를 확인하며 stock image나 패키지를 임의 변경하지 않습니다. Native 거부·scope 치환·응답 오류는 계속 배포를 차단합니다.
+- 기존 Cloud Shell 전용 프로젝트·network/router/default 보안 그룹을 재사용하고 검증된 공개 multiarchitecture image를 digest로 선택하는 운영 준비를 추적합니다. 이전1.30.20 tag/image는 보존하며 actual rollout 성공은 별도 운영 receipt로 기록합니다.
+
+
 ## [1.30.20] - 2026-10-22
 
 ### Changed
