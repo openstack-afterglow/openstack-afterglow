@@ -4,9 +4,11 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.30.23`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.30.24`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 가입 admission, 이메일/복구 readiness, 로그인 화면의 회원가입 링크 노출은 별도 정책이다. 기존 revisioned enrollment policy에 `public_signup_button_visible`을 추가하고 SQL101은 true column만 additive로 추가하며 기존 admission/quota/revision·row 부재 fallback을 보존한다. System admin만 전역 visibility를 저장하고, 공개 options의 `signup_button_visible`은 visibility·admission·SMTP readiness를 결합한 표시 projection이다. 숨김은 직접 email signup·검증 링크·OIDC account enrollment를 중단하지 않는다. Domain manager의 저장된 signup opt-in/이메일 host 제한은 신규 조직 자동 참여에서 operator provider auto-join ceiling을 추가로 좁히며 기존 멤버 로그인·Accounts/Personal identity topology·global visibility 권한은 바꾸지 않는다.
+
+Notion worker도 공유 work-runtime의 Trove backup scheduler를 실행하며 `_execute_tick`이 실제 Keystone factory를 지연 import한다. 이 공통 service는 기존 FastAPI HTTPException을 사용하므로 worker dependency group도 API와 같은 FastAPI0.136.3을 직접 선언한다. Uvicorn/web listener·boto3·asyncssh를 worker에 추가하거나 scheduler 예외를 숨기지 않는다. Worker의 running/restart0만으로 실행 경로 건강을 주장하지 않으며 실제 image의 scheduler tick과 Docker stdout/stderr 양쪽의 반복 오류를 함께 검증한다.
 
 **1.30.22 운영 반영 (2026-10-23):** 불변 `v1.30.22`의 source `222469e8409e352e9b92cd59ad15782f70daab54`를 배포서버172.30.0.50의 `/etc/kolla`에서 **--limit 없는 표준 `kolla-ansible reconfigure -i /etc/kolla/multinode --tags afterglow --skip-tags haproxy` 한 번**으로 전체 Afterglow 대상에 반영했다. Controller별 wrapper 실행은 사용자의 재확인에 따라 정식 배포 기준에서 제외했다. API/frontend6개 healthy·worker3개 running·restart0과 동일 release revision/digest, 비대상 container697개 무변경을 확인했다. 이전 final native overlay가 가리던 operator source의 native-owned 중복값을 정리하여 기존 DB/Redis·Keystone credential·서명키·port를 실제 실행 값 그대로 보존했고, Keystone은 같은 native origin의 명시 `/v3`를 선택했다. 승인한 기존 Cloud Shell 전용 자원 재사용·service admin 역할1건과 공개 workload digest 설정 외 native identity/resource·형제 release는 변경하지 않았다. 보호된 cold SQL/Redis restore와 실제 public 로그인 화면·인증 경계·native service read proof 및 실패/복구·미검증 범위는 `docs/testing.md`와 release OpenSpec receipt에 분리한다.
 
@@ -1602,9 +1604,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "37f6bddad77087e31fde4767ab0a3d16005d52fe83d797ed68e1f429fac6c8c1",
-  "reviewed_at": "2026-10-22T18:27:23Z",
-  "summary": "1.30.23 account-entry regression repair: native optional admin marker follows SDK semantics while scope/admin-role/caller authority stay strict; independent revisioned signup link visibility via additive101 and9locales; manager signup host/opt-in narrows new OIDC org admission only. Real native guard/Nova200 and SMTP TLS/auth proof, DMSLab exact-config fleet rollout/public authorize200 after user DNS correction; no SSRF or TLS relaxation."
+  "source_sha256": "8aa0f09e7776e70a0d2ffcbeaad426dc42157bc08e7e8e0b39fd4ddf1a8b8b60",
+  "reviewed_at": "2026-10-22T19:28:01Z",
+  "summary": "1.30.24 preserves verified 1.30.23 optional native admin marker, independent signup visibility/manager fences and qualified additive101; declares FastAPI0.136.3 in the worker group because actual shared Trove scheduler imports the Keystone factory. No listener, suppression, schema/IAM/config change. Native source/runtime and user callback/mailbox evidence remain separately bounded."
 }
 ```
 <!-- architecture-review:end -->

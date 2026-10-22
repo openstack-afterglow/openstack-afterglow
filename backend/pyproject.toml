@@ -1,6 +1,6 @@
 [project]
 name = "afterglow-api"
-version = "1.30.23"
+version = "1.30.24"
 description = "Afterglow - OpenStack VM deployment platform"
 requires-python = ">=3.12"
 dependencies = [
@@ -111,9 +111,10 @@ quote-style = "double"
 indent-style = "space"
 
 [dependency-groups]
-# 워커 전용 의존성 (fastapi/uvicorn/boto3/asyncssh 등 API 전용 패키지 제외).
+# 워커 전용 의존성 (uvicorn/boto3/asyncssh 등 API 전용 패키지 제외).
 # Dockerfile worker 스테이지에서 uv sync --only-group worker 로 설치.
 worker = [
+    "fastapi==0.136.3",  # Shared Keystone factories raise FastAPI HTTPException in scheduler execution.
     "afterglow-crypto",
     "openstacksdk==3.3.0",
     "python-keystoneclient==5.4.0",

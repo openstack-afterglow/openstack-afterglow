@@ -11,7 +11,7 @@ resolution-markers = [
 
 [[package]]
 name = "afterglow-api"
-version = "1.30.23"
+version = "1.30.24"
 source = { virtual = "." }
 dependencies = [
     { name = "afterglow-crypto" },
@@ -78,6 +78,7 @@ worker = [
     { name = "aiomysql" },
     { name = "apscheduler" },
     { name = "drover-sdk" },
+    { name = "fastapi" },
     { name = "httpx" },
     { name = "idna" },
     { name = "jinja2" },
@@ -153,6 +154,7 @@ worker = [
     { name = "aiomysql", specifier = ">=0.2.0" },
     { name = "apscheduler", specifier = ">=3.10" },
     { name = "drover-sdk", git = "https://github.com/openstack-afterglow/drover.git?subdirectory=sdk&rev=a18f207a0b297160b22747753e2657a9047e205a" },
+    { name = "fastapi", specifier = "==0.136.3" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "idna", specifier = ">=3.15" },
     { name = "jinja2", specifier = "==3.1.6" },

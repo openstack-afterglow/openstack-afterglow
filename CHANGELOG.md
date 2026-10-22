@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [1.30.24] - 2026-10-23
+
+### Fixed
+- Notion worker의 공유 Trove backup scheduler가 Keystone factory를 import할 때 `ModuleNotFoundError: fastapi`를 반복하던 worker image 의존성 누락을 수정합니다. API와 같은 FastAPI0.136.3을 worker group에 직접 선언하며 Uvicorn이나 API listener를 추가하지 않습니다. 실제19:03UTC 이후 worker별68회 traceback이 Docker stderr에서 확인되어 running 상태만으로 성공 처리하지 않고 수정합니다.
+
+
 ## [1.30.23] - 2026-10-23
 
 ### Fixed
