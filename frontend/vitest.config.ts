@@ -2,6 +2,10 @@ import { defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { fileURLToPath, URL } from 'url';
 
+// 날짜 표시 회귀가 실행 호스트의 timezone에 의존하지 않도록 worker 시작 전에 고정한다.
+// worker thread 시작 뒤 process.env.TZ를 바꾸는 방식은 Linux V8에 반영되지 않는다.
+process.env.TZ = 'Asia/Seoul';
+
 // vitest 전용 설정 — sveltekit() 대신 svelte()를 사용해 browser 모드에서 컴포넌트 테스트 가능하게 함
 // @testing-library/svelte의 mount()가 server 버전 Svelte를 로드하는 문제 방지
 export default defineConfig({

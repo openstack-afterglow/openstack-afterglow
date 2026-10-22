@@ -1596,9 +1596,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "3cdb06eaa89109ccd82632fa392ea2909bd4a50855e043720250ef1acefaef43",
-  "reviewed_at": "2026-10-22T14:02:00Z",
-  "summary": "Release1.30.20 CI correction: only Hub date regression now uses actual worker timezone; changing process.env.TZ after thread startup does not affect V8 timezone. Product source/schema/authorization unchanged; exact UTC and Asia/Seoul tests and real Node worker smoke pass."
+  "source_sha256": "4949d59a4ea45274c7e4cd5042f0b8a7271d258f830160cf9d1382314837f9ca",
+  "reviewed_at": "2026-10-22T15:17:34Z",
+  "summary": "Release1.30.20 timezone regression strengthened: configure deterministic Asia/Seoul before Vitest worker startup, retain explicit zone expectations, verify naive-local mutant fails even from TZ=UTC. Test-only config/fixture changes, no product/runtime/schema structure change."
 }
 ```
 <!-- architecture-review:end -->
