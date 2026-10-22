@@ -320,6 +320,8 @@
 	"enrollment.futureOnly": "Lagring endrer bare standardverdier for fremtidige personlige prosjekter. Se gjennom og bruk dem på eksisterende prosjekter separat nedenfor; kontoer og ressurser endres ikke automatisk.",
 	"enrollment.publicEmail": "Tillat offentlig e-postregistrering",
 	"enrollment.emailHelp": "Denne bryteren styrer bare nye offentlige e-postregistreringer, ikke eksisterende innlogging eller eksterne leverandører som ellers er tillatt. E-postbekreftelse krever også SMTP.",
+	"enrollment.signupButtonVisible": "Vis registreringslenke på innloggingssiden",
+	"enrollment.signupButtonHelp": "Å skjule lenken deaktiverer ikke e-postbekreftelse, tillatt OIDC-registrering eller registrering via direkte tilgang. Lenken vises bare når offentlig e-postregistrering og SMTP er klare. Tillatelse til registrering styres separat ovenfor.",
 	"enrollment.approvalMode": "Godkjenning av nye kontoer",
 	"enrollment.approvalHelp": "Gjelder nye identiteter fra e-post, OIDC og GitHub. Å endre modusen godkjenner ikke ventende forespørsler og gjenåpner ikke avviste forespørsler.",
 	"enrollment.mode.auto": "Automatisk godkjenning",

@@ -22,6 +22,8 @@
 	"enrollment.futureOnly": "정책 저장은 앞으로 생성되는 개인 프로젝트의 기본값만 바꿉니다. 기존 프로젝트는 아래에서 별도로 확인·적용해야 하며 계정이나 리소스는 자동 변경하지 않습니다.",
 	"enrollment.publicEmail": "공개 이메일 가입 허용",
 	"enrollment.emailHelp": "이 설정은 새 공개 이메일 가입에만 적용되며 기존 로그인이나 허용된 외부 공급자에는 영향을 주지 않습니다. 이메일 인증에는 SMTP도 필요합니다.",
+	"enrollment.signupButtonVisible": "로그인 화면에 회원가입 링크 표시",
+	"enrollment.signupButtonHelp": "링크를 숨겨도 이메일 인증, 허용된 OIDC 가입 및 직접 가입 절차는 비활성화되지 않습니다. 링크는 공개 이메일 가입과 SMTP가 준비된 경우에만 표시되며 가입 허용 여부는 위에서 별도로 설정합니다.",
 	"enrollment.approvalMode": "새 계정 승인 방식",
 	"enrollment.approvalHelp": "새 이메일, OIDC 및 GitHub 신원에 적용됩니다. 방식을 변경해도 대기 요청이 승인되거나 거절된 요청이 복원되지 않습니다.",
 	"enrollment.mode.auto": "자동 승인",

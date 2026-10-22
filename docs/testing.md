@@ -6,6 +6,18 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## Account-entry regressions and independent signup visibility (1.30.23, 2026-10-23)
+
+- 관리자 overview/domains/notifications503의 실제 stack은 `get_admin_os_conn:726`이었다. 실제 configured afterglow-service token은 project-scoped/admin role이 있지만 raw is_admin_project를 생략하며 operator admin project token도 같은 dialect였다. 기존 guard는503을 반환하지만 같은 native token의 Nova all-tenants list는200이었다. 수정된 exact function을 실제 runtime의 새 ephemeral namespace에서 실행해 guard 통과·native Nova200을 확인했으며 caller authorization은 이 smoke에서 대체하지 않고 별도 real-SDK authenticated regressions로 검증했다. False/null/string/number·wrong scope·revocation·logical workspace/transport 분리는 유지한다.
+- 실제 SMTP STARTTLS와 AUTH는 성공했고 메일은 보내지 않았다. Signup options는 smtp_configured/recovery_enabled=true지만 public_signup_enabled=false/revision0/source default였으므로 UI가 발송 전에 막혔다. 사용자가 공개 이메일 가입 활성화와 별도 signup-button visibility를 승인했다. 메일 수신/one-use verification은 실제 mailbox 증거 없이 성공으로 주장하지 않는다.
+- local에서 `dmslab_gitlab_domain` registry와 exact DMSLab domain policy(gmail.com/konkuk.ac.kr 자동 참여)만 protected operator source에 옮겼다. Default/GitLab.com registry나 다른 설정은 복사하지 않았다. 배포서버 전체 inventory에 표준 reconfigure를 실행했고 public login-options가 DMSLab provider1개, signup-options가 signup/smtp/recovery=true를 반환했다. Native gitlab/mapped→afterglow_gitlab_stable_sub user-only mapping과 enabled dmslab domain을 조회 확인했다.
+- 최초 실제 authorize는 DNS가 사설172.30.102.117로 해석되어 unsafe_url422였다. 사용자가 DNS를 외부 경로로 변경한 뒤 같은 운영 authorize가200, production `/auth/callback`, S256 PKCE/state를 반환했다. 추가 hostname pinning·사설 CIDR 허용·SSRF/TLS 완화는 적용하지 않았다. 실제 GitLab sign-in 화면으로 handoff했으나 비밀번호를 입력하거나 user code/token을 출력하지 않았으므로 완전한 사용자 로그인 수용은 별도다.
+- 새 visibility는 enrollment-policy DB 우선/row 부재 config fallback, global system-admin 수정 권한, public link projection과 direct signup/email/OIDC 독립성을 검증한다. 신규 조직 autojoin은 operator file proof와 저장된 manager signup policy를 교차하고 기존 membership early return을 유지한다. 현재 DMSLab SQL policy row는 부재/revision0이므로 승인한 file baseline을 임의로 막거나 새 manager policy를 만들지 않는다.
+- Focused backend 첫 실행549pass/1skip에서 새 allowed-path fixture에 smtp_from_address가 없어2fail을 관측했고 fixture에 실제 설정 필드를 추가했다. 이후 canonical federation/admin transport222pass, actual Vitest 네 파일154tests가 통과했다. 처음 npm test에 selector를 추가한 호출은 별도 Node runner에 selector가 전달되어 실패했으며 actual Vitest 직접 실행으로 검증했다. 정본 gate/release/DB migration/native full-fleet 반영은 완료 receipt가 붙기 전까지 별도 pending이다.
+
+Evidence: `~/.local/share/afterglow-proofs/ship-compat-20261022T135044Z/{admin-overview-investigation.json,admin-overview-real-executor-scope.json,actual-new-native-admin-guard-smoke.json,smtp-real-auth-without-send.json,email-signup-policy-cause.json,dmslab-native-federation-prerequisites.json,dmslab-manager-admission-before-rollout.json}`. 이 조사는 이전의 public health/login-page qualification을 authenticated admin/SSO/signup 수용으로 확장해서 해석하면 안 된다는 실제 회귀 기록이다.
+
+
 ## 1.30.22 native fleet reconfigure — actual production receipt (2026-10-23)
 
 - **최종 source/release:** `222469e8409e352e9b92cd59ad15782f70daab54`, architecture source digest `231c2b2e95d5702be0eef2e72012d1385dd3d2a0a1cf967eca50f0733644df58`/3428files. Dev CI39814014218·tag images39816007942·Helm39816007832가 성공했고 API/frontend/worker의 version/latest digest와 revision을 검증했다. Helm1.30.22 digest는 `9eb235c3dc9e1e1b13ce3c06cc99b3679e3d7c8f7fb8694a040f06bbb1c93fb4`다. 실제 arm64 세 image를 별도로 build/run했고 표준 발행과 controller runtime은 현재 workflow의 amd64다.

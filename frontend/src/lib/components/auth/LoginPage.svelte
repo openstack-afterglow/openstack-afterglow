@@ -13,6 +13,7 @@
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import type { LoginProviderOption, LoginOptions, LoginResponse } from '$lib/types/auth';
+	import type { SignupOptions } from '$lib/types/enrollmentPolicy';
 	import { loginAuthState, sessionScopeKey, type LoginAuthMapping } from '$lib/utils/authSession';
 	import { loginDestination } from '$lib/utils/authFlow';
 	import { freshLoginDestination, postAuthDestination } from '$lib/utils/mcpConsent';
@@ -35,6 +36,7 @@
 	let providers = $state<LoginProviderOption[]>([]);
 	let providersError = $state(false);
 	let providerLoading = $state<LoginProviderOption | null>(null);
+	let signupButtonVisible = $state(false);
 	let generation = 0;
 	let active = false;
 	let publishing = false;
@@ -67,6 +69,7 @@
 			void goto(postAuthDestination(fallback));
 		} else {
 			void discoverProviders();
+			void discoverSignup();
 		}
 		return () => { active = false; invalidate(); unsubscribe(); };
 	});
@@ -82,6 +85,18 @@
 			if (active) providersError = true;
 		} finally {
 			if (active) providersLoading = false;
+		}
+	}
+
+	async function discoverSignup() {
+		// Visibility is public page-lifetime discovery, never an enrollment permission.
+		try {
+			const options = await api.get<SignupOptions>('/api/v1/auth/signup/options', undefined, undefined,
+				{ cache: 'no-store', suppressAuthRedirect: true, replayOnUnauthorized: false });
+			if (active) signupButtonVisible = options.signup_button_visible === true
+				&& options.signup_enabled === true && options.smtp_configured === true;
+		} catch {
+			if (active) signupButtonVisible = false;
 		}
 	}
 
@@ -255,7 +270,7 @@
 				</form>
 
 				<div class="login-signup flex flex-wrap justify-center gap-3">
-					<Button variant="link" size="sm" href="/signup" disabled={busy}>{td('login.signup.open')}</Button>
+					{#if signupButtonVisible}<Button variant="link" size="sm" href="/signup" disabled={busy}>{td('login.signup.open')}</Button>{/if}
 					<Button variant="link" size="sm" href="/recover" disabled={busy}>{td('recovery.title')}</Button>
 				</div>
 			{/if}

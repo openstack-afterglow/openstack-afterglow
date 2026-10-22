@@ -204,7 +204,13 @@ async def require_enrollment_complete(user):
 
 async def require_admission(user_id, domain_id, row, email, *, lease, ks, catalog, new=False):
     from app.services.account_spaces import domain_kind
-    from app.services.domain_auth import DomainAuthConflict, DomainAuthDenied, provider_auto_join_allowed
+    from app.services.domain_auth import (
+        DomainAuthConflict,
+        DomainAuthDenied,
+        enforce_email,
+        get_policy,
+        provider_auto_join_allowed,
+    )
 
     native_domain = await asyncio.to_thread(domain_projects._exact, ks.domains, domain_id)
     if domain_kind(native_domain) in {"account", "personal"}:
@@ -220,6 +226,10 @@ async def require_admission(user_id, domain_id, row, email, *, lease, ks, catalo
                 raise
     if not await provider_auto_join_allowed(domain_id, row.id, email):
         raise DomainAuthDenied("An invitation or existing membership is required", code="invitation_required")
+    # A saved manager policy may narrow operator autojoin, never authorize it.
+    policy = await get_policy(domain_id)
+    if policy.configured:
+        enforce_email(policy, email, signup=True)
     project = await asyncio.to_thread(domain_projects.default_project, domain_id, ks=ks)
     if project is None:
         raise DomainAuthConflict(

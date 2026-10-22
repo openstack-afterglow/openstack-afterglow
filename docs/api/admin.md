@@ -385,7 +385,7 @@ Swift의 all-project fan-out 중 한 프로젝트의 인증/조회가 실패하�
 
 도메인을 지정하면 fresh system-admin guard를 통과한 configured provider 연결로 native 도메인과 소유 프로젝트 UUID를 새로 확인한 후 complete inventory를 제한합니다. 이름이 같은 프로젝트를 합치지 않으며 없는 도메인은404, 디렉터리 장애·불명확한 metadata는503입니다. 전역 inventory cache 재사용보다 directory 확인이 먼저이며 scoped 결과를 전역 cache에 저장하지 않습니다. Nova/Zun/Trove/Manila 및 Barbican project quota는 native 페이지를 끝까지 읽고 자원에 도메인이 직접 붙어 있다고 가정하지 않습니다.
 
-Interactive 관리자의 기본 workspace도 Personal/member입니다. **Nova2025.2 all-tenants server·hypervisor·flavor-access의 scope는 project**이므로 관리자 경로 전체를 system token으로 바꾸지 않습니다. Provider inventory·selected-domain resource directory·quota·Flavor CRUD/ACL은 명시적 `get_admin_os_conn`에서 fresh native system-admin caller guard 뒤 기존 configured 고정 admin project/service credential로 실행합니다. 인증 결과의 project scope·admin role·명시적 is_admin_project:true가 없거나 executor가 unavailable이면503이며 다른 scope/계정으로 자동 재시도하지 않습니다. `_afterglow_project_id`는 caller logical workspace, `_afterglow_authenticated_project_id`는 실제 executor project입니다. 사람의 Personal admin grant·기존 native grant·원 로그인 증명·header workspace는 변경하지 않습니다. Consumer, credential 관리/발급과 Aodh/Gnocchi telemetry는 caller-bound `get_os_conn`·native 정책을 유지합니다. 이는 caller impersonation이 아니라 검증된 system admin만 쓸 수 있는 명시적 configured provider 실행이며 권한 없는 caller는 executor 인증 전에 거부됩니다.
+Interactive 관리자의 기본 workspace도 Personal/member입니다. **Nova2025.2 all-tenants server·hypervisor·flavor-access의 scope는 project**이므로 관리자 경로 전체를 system token으로 바꾸지 않습니다. Provider inventory·selected-domain resource directory·quota·Flavor CRUD/ACL은 명시적 `get_admin_os_conn`에서 fresh native system-admin caller guard 뒤 기존 configured 고정 admin project/service credential로 실행합니다. 인증 결과의 project scope·admin role·SDK native is_admin_project 의미를 확인하며, Keystone이 legacy marker를 생략하는 경우 SDK 기본 true를 존중합니다. 명시 false/null/non-boolean, 잘못된 scope 또는 unavailable executor는503이고 다른 scope/계정으로 재시도하지 않습니다. `_afterglow_project_id`는 caller logical workspace, `_afterglow_authenticated_project_id`는 실제 executor project입니다. 사람의 Personal admin grant·기존 native grant·원 로그인 증명·header workspace는 변경하지 않습니다. Consumer, credential 관리/발급과 Aodh/Gnocchi telemetry는 caller-bound `get_os_conn`·native 정책을 유지합니다. 이는 caller impersonation이 아니라 검증된 system admin만 쓸 수 있는 명시적 configured provider 실행이며 권한 없는 caller는 executor 인증 전에 거부됩니다.
 
 Manila의 `/v2/{project}` URL prefix도 논리 Personal이 아닌 실제 인증 executor project를 사용합니다. Catalog가 이미 executor project를 포함하면 logical ID를 중복해서 붙이지 않습니다. 별도 quota resource의 target project는 그대로 유지하며 native transport project가 없으면 송신 전에 거부합니다.
 
@@ -602,7 +602,7 @@ Zun 서비스 활성화 시에만 사용 가능합니다.
 | 메서드·경로 | 입력 | 성공 |
 |---|---|---|
 | `GET /enrollment-policy` | 없음 |200 정책 DTO |
-| `PUT /enrollment-policy` | `{revision,public_signup_enabled,approval_mode,personal_quotas}` |200 갱신된 정책; stale revision409 |
+| `PUT /enrollment-policy` | `{revision,public_signup_enabled,public_signup_button_visible,approval_mode,personal_quotas}` |200 갱신된 정책; stale revision409 |
 | `GET /signup-requests` | `status=pending\|approved\|rejected\|all`, optional UUID `cursor` |200 `{items,next_cursor}`; 최대50개 |
 | `POST /signup-requests/{request_id}/approve` | 없음 |200 확정한 request DTO |
 | `POST /signup-requests/{request_id}/reject` | 없음 |200 확정한 request DTO |
@@ -611,6 +611,8 @@ Zun 서비스 활성화 시에만 사용 가능합니다.
 | `POST /personal-project-quotas/{project_id}/apply` | `{preview_id}`64hex |200 기존 `DomainQuotaOperation` 결과·operation_id; stale preview409 |
 
 정책 DTO는 revision/public_signup_enabled/approval_mode/personal_quotas/quota_fields/defaults_future_only:true/smtp_configured입니다. Approval은 auto/admin, personal_quotas는 지원 key→strict integer(-1 이상)의 sparse object이며 blank는 native 기본값,0은 금지,-1은 unlimited입니다. 비활성 Manila template entry는 보존·omitted로 표시합니다. 저장은 앞으로 생성하는 각 personal project에만 적용하고 기존 프로젝트나 shared domain budget을 변경하지 않습니다. Accounts user와 personal project는 disabled staging·본인 직접 native member 하나·raw/effective provenance·동결 native quota readback 뒤 활성화합니다. 새 owner/reader·domain manager·Default는 생성하지 않으며 기존 personal grant는 보존합니다.
+
+`public_signup_button_visible`은 로그인 화면의 회원가입 링크 노출만 제어하는 별도 strict boolean입니다. `public_signup_enabled` 및 SMTP readiness와 함께 public `signup_button_visible`로 투영되지만, 숨김 값 자체는 `/signup` 직접 접근·검증 링크 발급/소비·OIDC enrollment·기존 조직 admission을 막거나 허용하지 않습니다. 시스템 관리자만 이 전역 표시 정책을 저장하며 domain manager는 자기 domain의 이메일/admission 정책만 관리합니다. 최초 row 부재의 설정 fallback은 `[auth].public_signup_button_visible=true`이며 기존 row에는 additive migration101의 true만 추가합니다. 기존 signup opt-in·approval·quota·revision은 덮어쓰지 않습니다.
 
 최초 policy row 부재만 config의 공개 가입 opt-in·auto와 source 기본2 vCPU·4096MiB RAM·1024GiB Cinder, instances2·volumes10·snapshots10 및 보조 network count로 시작합니다. DTO는 `personal_quota_source:source_defaults|administrator`와 `source_default_personal_quotas`도 반환합니다. 기존 저장 template(0 포함)은 그대로 유지하므로 새 제공값을 원하면 UI의 **제공 기본값 사용**으로 draft를 채운 뒤 명시 저장합니다. SQL 장애는503이며 source default로 우회하지 않습니다. 디스크 값은 quota이지 실제 볼륨 생성이 아닙니다.
 

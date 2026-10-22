@@ -22,6 +22,8 @@
 	"enrollment.futureOnly": "保存仅更改今后创建的个人项目的默认值。请在下方单独审核并应用到现有项目；不会自动更改账户或资源。",
 	"enrollment.publicEmail": "允许公开邮箱注册",
 	"enrollment.emailHelp": "此开关仅控制新的公开邮箱注册，不影响现有登录或已获许可的外部提供方。邮箱验证还需要SMTP。",
+	"enrollment.signupButtonVisible": "在登录页显示注册链接",
+	"enrollment.signupButtonHelp": "隐藏链接不会禁用邮箱验证、获准的OIDC注册或直接访问的注册流程。仅当公开邮箱注册和SMTP就绪时才显示链接；是否允许注册由上方的独立设置控制。",
 	"enrollment.approvalMode": "新账户审批方式",
 	"enrollment.approvalHelp": "适用于新的邮箱、OIDC和GitHub身份。更改方式不会批准待处理申请，也不会恢复已拒绝的申请。",
 	"enrollment.mode.auto": "自动批准",

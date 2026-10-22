@@ -679,7 +679,7 @@ class ProjectPolicyProvider(BaseAdapter):
             valid_project = bool(project) and "system" not in token
             self.provider_operations.append((path, query, deepcopy(token)))
             if not valid_project or (
-                path.endswith("/servers/detail") and (not admin or token.get("is_admin_project") is not True)
+                path.endswith("/servers/detail") and (not admin or token.get("is_admin_project", True) is not True)
             ):
                 status, body = 403, {"forbidden": {"message": "project-scoped admin policy required"}}
             elif path == "/v2.1/servers/detail":
@@ -769,8 +769,9 @@ async def test_projectless_admin_system_connection_is_admin_path_only(domain_cli
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("omit_legacy_marker", [False, True])
 async def test_personal_admin_uses_explicit_project_executor_without_changing_workspace(
-    domain_client, monkeypatch, project_policy_provider
+    domain_client, monkeypatch, project_policy_provider, omit_legacy_marker
 ):
     client, state = domain_client
     state.assignments.append(
@@ -778,7 +779,7 @@ async def test_personal_admin_uses_explicit_project_executor_without_changing_wo
     )
     tokens = await login(client, "manager", select_organization=False)
     provider = project_policy_provider
-    executor = provider.connect()
+    executor = provider.connect(mutate=(lambda token: token.pop("is_admin_project")) if omit_legacy_marker else None)
     created = []
     monkeypatch.setattr(keystone, "get_admin_project_connection", lambda: executor)
 
@@ -886,7 +887,7 @@ def provider_admin_application():
         {"admin_project": False},
         {"admin_project": "true"},
         {"admin_project": 1},
-        {"mutate": lambda token: token.pop("is_admin_project")},
+        {"admin_project": None},
         {"mutate": lambda token: token.update(project={"id": 42})},
     ],
     ids=[
@@ -898,7 +899,7 @@ def provider_admin_application():
         "not-admin-project",
         "string-admin-flag",
         "numeric-admin-flag",
-        "missing-admin-flag",
+        "null-admin-flag",
         "malformed-project",
     ],
 )

@@ -56,7 +56,7 @@ async def policy_db(tmp_path, monkeypatch):
             await connection.run_sync(model.__table__.create)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     settings = SimpleNamespace(
-        auth=SimpleNamespace(public_signup_enabled=True),
+        auth=SimpleNamespace(public_signup_enabled=True, public_signup_button_visible=True),
         service_manila_enabled=False,
         smtp_enabled=True,
         smtp_host="smtp.example.test",
@@ -89,12 +89,13 @@ async def policy_db(tmp_path, monkeypatch):
     await engine.dispose()
 
 
-async def set_policy(revision=0, mode="admin", quotas=None, enabled=True):
+async def set_policy(revision=0, mode="admin", quotas=None, enabled=True, visible=True):
     return await service.update_policy(
         None,
         {
             "revision": revision,
             "public_signup_enabled": enabled,
+            "public_signup_button_visible": visible,
             "approval_mode": mode,
             "personal_quotas": {"instances": 0} if quotas is None else quotas,
         },
@@ -118,6 +119,7 @@ async def test_absent_policy_preserves_config_auto_and_usable_personal_defaults(
     result = await service.read_policy()
     assert result["revision"] == 0
     assert result["public_signup_enabled"] is True
+    assert result["public_signup_button_visible"] is True
     assert result["approval_mode"] == "auto"
     assert result["defaults_future_only"] is True
     assert result["smtp_configured"] is True
@@ -127,9 +129,11 @@ async def test_absent_policy_preserves_config_auto_and_usable_personal_defaults(
     assert "key_pairs" not in result["personal_quotas"]
     assert "file_storage" not in result["quota_fields"]
     policy_db.settings.auth.public_signup_enabled = False
+    policy_db.settings.auth.public_signup_button_visible = False
     policy_db.settings.service_manila_enabled = True
     result = await service.read_policy()
     assert result["public_signup_enabled"] is False
+    assert result["public_signup_button_visible"] is False
     assert result["personal_quotas"]["share_snapshots"] == 0
     assert "share_groups" not in result["personal_quotas"]
 
@@ -151,10 +155,12 @@ async def test_storage_unavailable_never_falls_back_to_auto(policy_db, monkeypat
 
 @pytest.mark.asyncio
 async def test_persisted_policy_survives_config_change_and_cas_conflicts(policy_db):
-    result = await set_policy(quotas={"instances": 0, "key_pairs": -1}, enabled=False)
+    result = await set_policy(quotas={"instances": 0, "key_pairs": -1}, enabled=False, visible=False)
     assert result["revision"] == 1
     policy_db.settings.auth.public_signup_enabled = True
+    policy_db.settings.auth.public_signup_button_visible = True
     assert (await service.read_policy())["public_signup_enabled"] is False
+    assert (await service.read_policy())["public_signup_button_visible"] is False
     for stale in (0, 2):
         with pytest.raises(HTTPException) as error:
             await set_policy(stale, mode="auto", quotas={"instances": -1})
@@ -164,12 +170,52 @@ async def test_persisted_policy_survives_config_change_and_cas_conflicts(policy_
     assert service.activity.record.await_count == 2
 
 
+@pytest.mark.asyncio
+async def test_visibility_only_save_preserves_admission_custom_quotas_and_revision_conflicts(policy_db):
+    quotas = {"instances": 0, "cores": 7}
+    first = await set_policy(mode="auto", quotas=quotas, visible=True)
+    hidden = await set_policy(first["revision"], mode="auto", quotas=quotas, visible=False)
+    assert hidden["revision"] == 2
+    assert hidden["public_signup_enabled"] is True
+    assert hidden["public_signup_button_visible"] is False
+    assert hidden["personal_quotas"] == quotas and hidden["approval_mode"] == "auto"
+    with pytest.raises(HTTPException) as conflict:
+        await set_policy(first["revision"], mode="auto", quotas=quotas, visible=True)
+    assert conflict.value.status_code == 409
+    assert await service.read_policy() == hidden
+    shown = await set_policy(hidden["revision"], mode="auto", quotas=quotas, enabled=False, visible=True)
+    assert shown["public_signup_enabled"] is False and shown["public_signup_button_visible"] is True
+    assert shown["personal_quotas"] == quotas and shown["revision"] == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("visibility", [None, 0, 1, "true", "false", [], {}])
+async def test_policy_api_rejects_nonboolean_visibility_without_saving(policy_db, visibility):
+    app = FastAPI()
+    app.include_router(api.router, prefix="/api/v1/admin")
+    app.dependency_overrides[require_admin] = lambda: ACTOR
+    app.dependency_overrides[get_os_conn] = lambda: None
+    body = {
+        "revision": 0,
+        "public_signup_enabled": True,
+        "approval_mode": "auto",
+        "personal_quotas": {},
+    }
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        assert (await client.put("/api/v1/admin/enrollment-policy", json=body)).status_code == 422
+        body["public_signup_button_visible"] = visibility
+        assert (await client.put("/api/v1/admin/enrollment-policy", json=body)).status_code == 422
+    assert (await service.read_policy())["revision"] == 0
+    service.activity.record.assert_not_awaited()
+
+
 @pytest.mark.parametrize("quotas", [{"instances": True}, {"cores": 1.0}, {"ram": -2}, {"secret": 0}])
 def test_policy_rejects_coercion_and_unknown_quota_fields(quotas):
     with pytest.raises(ValidationError):
         EnrollmentPolicyUpdate(
             revision=0,
             public_signup_enabled=True,
+            public_signup_button_visible=True,
             approval_mode="admin",
             personal_quotas=quotas,
         )
@@ -403,6 +449,7 @@ async def test_personal_quota_cannot_activate_unverified_limits(policy_db, monke
             {
                 "revision": 0,
                 "public_signup_enabled": True,
+                "public_signup_button_visible": True,
                 "approval_mode": "auto",
                 "personal_quotas": {},
             },
@@ -507,6 +554,7 @@ async def test_api_requires_fresh_admin_and_secret_free_bounded_pagination(polic
             json={
                 "revision": 0,
                 "public_signup_enabled": False,
+                "public_signup_button_visible": True,
                 "approval_mode": "admin",
                 "personal_quotas": {},
             },

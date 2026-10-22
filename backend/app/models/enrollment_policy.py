@@ -15,6 +15,7 @@ class EnrollmentPolicyUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     revision: int = Field(strict=True, ge=0)
     public_signup_enabled: bool = Field(strict=True)
+    public_signup_button_visible: bool = Field(strict=True)
     approval_mode: Literal["auto", "admin"]
     personal_quotas: QuotaMap
 
@@ -25,6 +26,7 @@ class EnrollmentPolicy(Base):
     id: Mapped[int] = mapped_column(INT, primary_key=True, autoincrement=False)
     revision: Mapped[int] = mapped_column(INT, nullable=False)
     public_signup_enabled: Mapped[bool] = mapped_column(BOOLEAN, nullable=False)
+    public_signup_button_visible: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, server_default="1")
     approval_mode: Mapped[str] = mapped_column(VARCHAR(16), nullable=False)
     personal_quotas: Mapped[dict] = mapped_column(JSON, nullable=False)
     updated_by_user_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)

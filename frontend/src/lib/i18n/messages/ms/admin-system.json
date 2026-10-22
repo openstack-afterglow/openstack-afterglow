@@ -22,6 +22,8 @@
 	"enrollment.futureOnly": "Penyimpanan hanya mengubah nilai lalai projek peribadi masa hadapan. Semak dan terapkan pada projek sedia ada secara berasingan di bawah; akaun dan sumber tidak diubah secara automatik.",
 	"enrollment.publicEmail": "Benarkan pendaftaran e-mel awam",
 	"enrollment.emailHelp": "Suis ini hanya mengawal pendaftaran e-mel awam baharu, bukan log masuk sedia ada atau pembekal luaran yang dibenarkan. Pengesahan e-mel juga memerlukan SMTP.",
+	"enrollment.signupButtonVisible": "Tunjukkan pautan pendaftaran pada halaman log masuk",
+	"enrollment.signupButtonHelp": "Menyembunyikan pautan ini tidak menyahaktifkan pengesahan e-mel, pendaftaran OIDC yang dibenarkan atau aliran pendaftaran terus. Pautan hanya muncul apabila pendaftaran e-mel awam dan SMTP tersedia; kebenaran pendaftaran dikawal secara berasingan di atas.",
 	"enrollment.approvalMode": "Kelulusan akaun baharu",
 	"enrollment.approvalHelp": "Terpakai pada identiti e-mel, OIDC dan GitHub baharu. Menukar mod tidak meluluskan permintaan tertangguh atau menghidupkan semula permintaan yang ditolak.",
 	"enrollment.mode.auto": "Kelulusan automatik",

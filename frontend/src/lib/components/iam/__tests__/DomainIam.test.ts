@@ -14,6 +14,7 @@ vi.mock('$lib/stores/auth', () => ({
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog }));
 import { auth, authReady } from '$lib/stores/auth';
 import { ApiError } from '$lib/api/client';
+import { t as ti } from '$lib/i18n/ns/domain-iam';
 import DomainIamConsole from '../DomainIamConsole.svelte';
 import IamUsers from '../IamUsers.svelte';
 import IamLogin from '../IamLogin.svelte';
@@ -236,6 +237,9 @@ describe('user and provider secret lifecycles', () => {
 	});
 	it('saves both email controls and password/signup flags with current policy revision', async () => {
 		api.put.mockResolvedValue(policy); render(IamLogin, { session, onDenied: vi.fn() }); await screen.findByText('Corporate SSO');
+		expect(screen.getByText(ti('policyHelp'))).toBeTruthy();
+		expect(screen.getByText(ti('signupDomainsHelp'))).toBeTruthy();
+		expect(screen.queryByRole('checkbox', { name: '로그인 화면에 회원가입 링크 표시' })).toBeNull();
 		await fireEvent.input(screen.getByLabelText('로그인 허용 이메일 도메인'), { target: { value: 'example.com, research.org' } });
 		await fireEvent.input(screen.getByLabelText('회원가입 허용 이메일 도메인'), { target: { value: 'research.org' } });
 		await fireEvent.click(screen.getByLabelText('이메일 인증 회원가입 허용'));

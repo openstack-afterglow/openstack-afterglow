@@ -934,6 +934,9 @@ async def signup_options(*, session=None):
     ready = recovery_enabled()
     return {
         "signup_enabled": bool(policy["public_signup_enabled"] and ready),
+        "signup_button_visible": bool(
+            policy["public_signup_button_visible"] and policy["public_signup_enabled"] and ready
+        ),
         "smtp_configured": ready,
         "recovery_enabled": ready,
         "approval_mode": policy["approval_mode"],

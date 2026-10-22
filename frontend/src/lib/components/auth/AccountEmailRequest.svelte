@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api, ApiError } from '$lib/api/client';
+	import type { SignupOptions } from '$lib/types/enrollmentPolicy';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
@@ -19,7 +20,7 @@
 	let live = true;
 	let form = $state<HTMLFormElement>();
 	onMount(() => {
-		void api.get<{ signup_enabled: boolean; smtp_configured: boolean; recovery_enabled: boolean }>('/api/v1/auth/signup/options', undefined, undefined, { refresh: true, cache: 'no-store', suppressAuthRedirect: true })
+		void api.get<SignupOptions>('/api/v1/auth/signup/options', undefined, undefined, { refresh: true, cache: 'no-store', suppressAuthRedirect: true })
 			.then(options => { if (live) ready = options.smtp_configured && (signup ? options.signup_enabled : options.recovery_enabled); })
 			.catch(() => { if (live) error = t('onboarding.unavailable'); })
 			.finally(() => { if (live) loading = false; });

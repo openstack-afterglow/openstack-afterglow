@@ -50,6 +50,7 @@ async def external_env(env, monkeypatch):
         )
     env.settings.os_username = "operational-admin"
     env.settings.service_manila_enabled = False
+    env.settings.smtp_from_address = "cloud@example.test"
     env.settings.auth = AuthSettings.model_validate({"default": {"auto_join_email_domains": {}}})
     monkeypatch.setattr(domain_iam, "get_settings", lambda: env.settings)
     monkeypatch.setattr(enrollment_policy, "get_settings", lambda: env.settings)
@@ -151,11 +152,17 @@ async def external_callback(client, env, provider):
 
 
 @pytest.mark.parametrize("kind", ["oidc", "github"])
-async def test_external_account_home_and_personal_project_preserve_reader_only_org_grants(external_env, kind):
+@pytest.mark.parametrize("visible", [True, False])
+async def test_external_account_home_and_personal_project_preserve_reader_only_org_grants(external_env, kind, visible):
     from app.services import account_spaces, domain_projects, project_service
     from tests.test_project_membership_roles import rid
 
     env = external_env
+    async with env.db() as session:
+        policy = await session.get(EnrollmentPolicy, 1)
+        policy.public_signup_button_visible = visible
+        await session.commit()
+        assert policy.public_signup_enabled is False
     provider = await external_provider(env, kind)
     state, browser = await start(env.wire.idp, provider["id"])
     first = await svc.complete_authorization("good-code", state, browser)
@@ -215,6 +222,155 @@ async def test_external_account_home_and_personal_project_preserve_reader_only_o
         assert enrollment.status == "accepted" and enrollment.identity_domain_id == home
         assert enrollment.personal_quotas == {"instances": 0}
         assert (await session.execute(select(SignupRequest))).scalars().all() == []
+
+
+@pytest.mark.parametrize("origin", ["sql", "config"])
+@pytest.mark.parametrize(
+    "admission", ["absent", "disabled", "different_signup_host", "different_login_host", "allowed"]
+)
+async def test_new_oidc_organization_admission_intersects_file_rules_and_saved_manager_policy(
+    external_env, origin, admission
+):
+    from app.services import account_spaces, project_service
+    from tests.test_domain_auth import configure_file_auth
+    from tests.test_project_membership_roles import rid
+
+    env = external_env
+    if origin == "config":
+        configure_file_auth(env.settings, default=["corp"])
+        env.settings.auth.default.auto_join_email_domains = {"corp": ["corp.example"]}
+        provider_id = "cfg:corp"
+    else:
+        provider_id = (await external_provider(env))["id"]
+    env.settings.auth.public_signup_button_visible = False
+    async with env.db() as session:
+        policy = await session.get(EnrollmentPolicy, 1)
+        policy.public_signup_button_visible = False
+        await session.commit()
+    if admission != "absent":
+        env.settings.smtp_enabled, env.settings.smtp_host = True, "smtp.example"
+        await svc.update_policy(
+            "dom-a",
+            actor_user_id="manager",
+            password_enabled=True,
+            allowed_email_domains=["other.example"] if admission == "different_login_host" else [],
+            signup_enabled=admission != "disabled",
+            signup_email_domains=["other.example"]
+            if admission in {"different_signup_host", "different_login_host"}
+            else ["corp.example"],
+            expected_revision=0,
+        )
+    state, browser = await start(env.wire.idp, provider_id)
+    if admission in {"disabled", "different_signup_host", "different_login_host"}:
+        with pytest.raises(svc.DomainAuthDenied) as denied:
+            await svc.complete_authorization("good-code", state, browser)
+        assert denied.value.code == ("signup_disabled" if admission == "disabled" else "email_domain_not_allowed")
+        assert not env.keystone.user_rows and not env.keystone.user_writes
+        assert not env.keystone.assignments and not env.keystone.project_writes
+        assert not env.wire.federation.calls and not env.quota_applications
+        return
+    first = await svc.complete_authorization("good-code", state, browser)
+    user = env.keystone.users.get(first.user_id)
+    assert user.domain_id == "dom-accounts"
+    assert account_spaces.personal_project(user.id, ks=env.keystone)["domain_id"] == "dom-personal"
+    assert project_service._direct_ids(env.keystone.role_assignments.list(project="default-a"), user.id) == {
+        rid("project_reader")
+    }
+    env.settings.smtp_enabled, env.settings.smtp_host = True, "smtp.example"
+    current = await svc.get_policy("dom-a")
+    saved = await svc.update_policy(
+        "dom-a",
+        actor_user_id="manager",
+        password_enabled=True,
+        allowed_email_domains=["corp.example"],
+        signup_enabled=False,
+        signup_email_domains=[],
+        expected_revision=current.revision,
+    )
+    writes = list(env.keystone.user_writes)
+    state, browser = await start(env.wire.idp, provider_id)
+    assert (await svc.complete_authorization("good-code", state, browser)).user_id == first.user_id
+    assert env.keystone.user_writes == writes
+    await svc.update_policy(
+        "dom-a",
+        actor_user_id="manager",
+        password_enabled=True,
+        allowed_email_domains=["other.example"],
+        signup_enabled=False,
+        signup_email_domains=[],
+        expected_revision=saved["revision"],
+    )
+    state, browser = await start(env.wire.idp, provider_id)
+    with pytest.raises(svc.DomainAuthDenied) as denied:
+        await svc.complete_authorization("good-code", state, browser)
+    assert denied.value.code == "email_domain_not_allowed"
+    assert env.keystone.user_writes == writes
+
+
+async def test_manager_signup_permission_does_not_replace_required_operator_autojoin(external_env):
+    env = external_env
+    provider = await external_provider(env)
+    env.settings.auth.default.auto_join_email_domains = {}
+    env.settings.smtp_enabled, env.settings.smtp_host = True, "smtp.example"
+    await svc.update_policy(
+        "dom-a",
+        actor_user_id="manager",
+        password_enabled=True,
+        allowed_email_domains=["corp.example"],
+        signup_enabled=True,
+        signup_email_domains=["corp.example"],
+        expected_revision=0,
+    )
+    state, browser = await start(env.wire.idp, provider["id"])
+    with pytest.raises(svc.DomainAuthDenied) as denied:
+        await svc.complete_authorization("good-code", state, browser)
+    assert denied.value.code == "invitation_required"
+    assert not env.keystone.user_rows and not env.keystone.assignments
+    assert not env.keystone.user_writes and not env.wire.federation.calls
+
+
+@pytest.mark.parametrize("origin", ["sql", "config"])
+@pytest.mark.parametrize("admission", ["disabled", "different_signup_host"])
+async def test_saved_manager_policy_blocks_bound_nonmember_readmission_without_grant(
+    external_env, monkeypatch, origin, admission
+):
+    from app.services import domain_projects
+    from tests.test_domain_auth import configure_file_auth
+    from tests.test_project_membership_roles import rid
+
+    env = external_env
+    if origin == "config":
+        configure_file_auth(env.settings, default=["corp"])
+        env.settings.auth.default.auto_join_email_domains = {"corp": ["corp.example"]}
+        provider_id = "cfg:corp"
+    else:
+        provider_id = (await external_provider(env))["id"]
+    state, browser = await start(env.wire.idp, provider_id)
+    first = await svc.complete_authorization("good-code", state, browser)
+    env.keystone.roles.revoke(rid("project_reader"), user=first.user_id, project="default-a")
+    assert env.keystone.role_assignments.list(project="default-a", user=first.user_id) == []
+    env.settings.smtp_enabled, env.settings.smtp_host = True, "smtp.example"
+    await svc.update_policy(
+        "dom-a",
+        actor_user_id="manager",
+        password_enabled=True,
+        allowed_email_domains=[],
+        signup_enabled=admission != "disabled",
+        signup_email_domains=["other.example"] if admission == "different_signup_host" else [],
+        expected_revision=0,
+    )
+    reader = AsyncMock(side_effect=AssertionError("Denied nonmember must not receive a reader grant"))
+    monkeypatch.setattr(domain_projects, "_ensure_reader", reader)
+    assignments = list(env.keystone.assignments)
+    writes = list(env.keystone.user_writes)
+    exchanges = len(env.wire.federation.calls)
+    state, browser = await start(env.wire.idp, provider_id)
+    with pytest.raises(svc.DomainAuthDenied) as denied:
+        await svc.complete_authorization("good-code", state, browser)
+    assert denied.value.code == ("signup_disabled" if admission == "disabled" else "email_domain_not_allowed")
+    reader.assert_not_awaited()
+    assert env.keystone.assignments == assignments and env.keystone.user_writes == writes
+    assert len(env.wire.federation.calls) == exchanges
 
 
 @pytest.mark.parametrize("kind", ["oidc", "github"])

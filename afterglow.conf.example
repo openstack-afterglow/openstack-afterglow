@@ -212,6 +212,8 @@ trusted_proxies = "127.0.0.1/32,::1/128"
 # normalized username/email; SMTP acceptance/client flags cannot skip verification.
 # [auth]
 # public_signup_enabled = false
+# # Hide only the login-page signup link; email verification/direct signup and OIDC admission remain independent.
+# public_signup_button_visible = true
 # signup_email_domains = []
 # # Organization creation is independent of signup_enabled. System admins are
 # # exempt from the per-user count; existing memberships are never removed.

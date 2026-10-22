@@ -28,7 +28,7 @@ const initialAuth = get(auth);
 const readOptions = { refresh: true, cache: 'no-store', replayOnUnauthorized: false };
 const writeOptions = { cache: 'no-store', replayOnUnauthorized: false };
 function policy(overrides: Partial<EnrollmentPolicy> = {}): EnrollmentPolicy {
-	return { revision: 7, public_signup_enabled: false, approval_mode: 'admin',
+	return { revision: 7, public_signup_enabled: false, public_signup_button_visible: true, approval_mode: 'admin',
 		personal_quotas: { instances: 0, cores: -1, ram: 1024 },
 		quota_fields: { compute: ['instances', 'cores', 'ram', 'future_native_key'] },
 		defaults_future_only: true, smtp_configured: false, ...overrides };
@@ -101,7 +101,7 @@ describe('AdminEnrollmentPolicyPanel consumer', () => {
 		await fireEvent.input(field('RAM (MiB)'), { target: { value: '' } });
 		await fireEvent.input(field(t('enrollment.quotaKey', { key: 'future_native_key' })), { target: { value: '42' } });
 		await submit(); await submit();
-		expect(mocks.put.mock.calls).toEqual([[policyPath, { revision: 7, public_signup_enabled: true, approval_mode: 'auto',
+		expect(mocks.put.mock.calls).toEqual([[policyPath, { revision: 7, public_signup_enabled: true, public_signup_button_visible: true, approval_mode: 'auto',
 			personal_quotas: { instances: 0, cores: -1, future_native_key: 42 } }, 'token-a', 'project-a', writeOptions]]);
 		expect(button('enrollment.saving').disabled).toBe(true);
 		expect(button('enrollment.reloadPolicy').disabled).toBe(true);
@@ -109,6 +109,31 @@ describe('AdminEnrollmentPolicyPanel consumer', () => {
 		await screen.findByText(t('enrollment.saved'));
 		expect(field('RAM (MiB)').value).toBe('');
 		await submit(); expect(mocks.put.mock.calls[1][1].revision).toBe(8);
+	});
+
+	it.each([true, false])('saves and reloads signup visibility independently while public registration is %s', async enabled => {
+		let current = policy({ public_signup_enabled: enabled });
+		mocks.get.mockImplementation((path: string) => Promise.resolve(path === policyPath ? current : page()));
+		mocks.put.mockImplementation((_path: string, body: EnrollmentPolicy) => {
+			current = policy({ ...body, revision: body.revision + 1 }); return Promise.resolve(current);
+		});
+		render(AdminEnrollmentPolicyPanel); await loaded();
+		const visibility = () => screen.getByRole('checkbox', { name: t('enrollment.signupButtonVisible') }) as HTMLInputElement;
+		const registration = () => screen.getByRole('checkbox', { name: t('enrollment.publicEmail') }) as HTMLInputElement;
+		expect(visibility().checked).toBe(true); expect(visibility().disabled).toBe(false);
+		expect(registration().checked).toBe(enabled);
+		expect(visibility().getAttribute('aria-describedby')).toBe(screen.getByText(t('enrollment.signupButtonHelp')).id);
+		await fireEvent.click(visibility());
+		expect(mocks.put).not.toHaveBeenCalled(); expect(registration().checked).toBe(enabled);
+		await submit(); await screen.findByText(t('enrollment.saved'));
+		expect(mocks.put.mock.calls[0][1]).toEqual({ revision: 7, public_signup_enabled: enabled,
+			public_signup_button_visible: false, approval_mode: 'admin', personal_quotas: current.personal_quotas });
+		await fireEvent.click(button('enrollment.reloadPolicy'));
+		await waitFor(() => expect(visibility().checked).toBe(false));
+		expect(registration().checked).toBe(enabled);
+		await fireEvent.click(visibility()); await submit();
+		await screen.findByText(t('enrollment.saved'));
+		expect(mocks.put.mock.calls[1][1]).toMatchObject({ revision: 8, public_signup_enabled: enabled, public_signup_button_visible: true });
 	});
 
 	it.each(['-2', '1.5', '1e3', 'NaN', '9007199254740992'])('does not submit invalid quota %s', async value => {

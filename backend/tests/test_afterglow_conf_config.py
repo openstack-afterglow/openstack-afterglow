@@ -300,6 +300,28 @@ redis_url = "redis://cache.example:6379/2"
     assert flat["redis_url"] == "redis://cache.example:6379/2"
 
 
+@pytest.mark.parametrize("visible", [True, False])
+def test_toml_signup_visibility_is_independent_from_email_admission(isolated_config_dir, visible):
+    (isolated_config_dir / "afterglow.conf").write_text(
+        f"[auth]\npublic_signup_enabled = true\npublic_signup_button_visible = {str(visible).lower()}\n",
+        encoding="utf-8",
+    )
+    settings = app_config.Settings(**app_config._load_toml())
+    assert settings.auth.public_signup_enabled is True
+    assert settings.auth.public_signup_button_visible is visible
+
+
+@pytest.mark.parametrize("value", ['"no"', '"yes"', "0", "1", "[]"])
+def test_toml_signup_visibility_rejects_nonboolean_configuration(isolated_config_dir, value):
+    from pydantic import ValidationError
+
+    (isolated_config_dir / "afterglow.conf").write_text(
+        f"[auth]\npublic_signup_button_visible = {value}\n", encoding="utf-8"
+    )
+    with pytest.raises(ValidationError):
+        app_config.Settings(**app_config._load_toml())
+
+
 def test_app_config_loads_login_branding_paths_from_afterglow_conf(isolated_config_dir):
     (isolated_config_dir / "afterglow.conf").write_text(
         """
@@ -1299,6 +1321,18 @@ def test_nested_organization_policy_env_uses_exact_supported_types(isolated_debu
     monkeypatch.setenv("AUTH__MAX_ORGANIZATIONS_PER_USER", "3")
     settings = app_config.get_settings()
     assert settings.auth.organization_creation_enabled is False and settings.auth.max_organizations_per_user == 3
+
+
+@pytest.mark.parametrize("visible", [True, False])
+def test_nested_signup_visibility_env_overrides_source(isolated_debug_config_dir, monkeypatch, visible):
+    (isolated_debug_config_dir / "afterglow.conf").write_text(
+        f"[auth]\npublic_signup_enabled = true\npublic_signup_button_visible = {str(not visible).lower()}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AUTH__PUBLIC_SIGNUP_BUTTON_VISIBLE", str(visible).lower())
+    settings = app_config.get_settings()
+    assert settings.auth.public_signup_button_visible is visible
+    assert settings.auth.public_signup_enabled is True
 
 
 def test_one_issuer_organization_cannot_have_two_manager_allowlists():

@@ -96,7 +96,13 @@ async def test_apply_rechecks_preview_policy_provenance_usage_and_live_admin(
     elif change == "policy":
         await enrollment_policy.update_policy(
             q.conn,
-            {"revision": 0, "public_signup_enabled": False, "approval_mode": "auto", "personal_quotas": {"cores": 1}},
+            {
+                "revision": 0,
+                "public_signup_enabled": False,
+                "public_signup_button_visible": True,
+                "approval_mode": "auto",
+                "personal_quotas": {"cores": 1},
+            },
             token_info=q.actor,
         )
     elif change == "owner":
@@ -140,6 +146,7 @@ async def test_policy_customization_is_preserved_not_overlaid_by_source_defaults
         {
             "revision": 0,
             "public_signup_enabled": False,
+            "public_signup_button_visible": True,
             "approval_mode": "auto",
             "personal_quotas": {"cores": 7, "gigabytes": 2000},
         },

@@ -89,6 +89,9 @@ def _policy_dto(row):
     return {
         "revision": row.revision if row is not None else 0,
         "public_signup_enabled": row.public_signup_enabled if row is not None else settings.auth.public_signup_enabled,
+        "public_signup_button_visible": (
+            row.public_signup_button_visible if row is not None else settings.auth.public_signup_button_visible
+        ),
         "approval_mode": row.approval_mode if row is not None else "auto",
         "personal_quotas": quotas,
         "quota_fields": _fields(),
@@ -130,6 +133,7 @@ async def update_policy(conn, attrs, *, token_info):
             values = {
                 "revision": req.revision + 1,
                 "public_signup_enabled": req.public_signup_enabled,
+                "public_signup_button_visible": req.public_signup_button_visible,
                 "approval_mode": req.approval_mode,
                 "personal_quotas": quotas,
                 "updated_by_user_id": token_info["user_id"],

@@ -709,8 +709,9 @@ async def get_admin_os_conn(
             access = await asyncio.to_thread(conn.session.auth.get_access, conn.session)
             project_id = access.project_id
             token = access.auth_token
-            # AccessInfo.is_admin_project defaults to True when omitted; the
-            # provider boundary requires an explicit native boolean instead.
+            # Keystone may omit this legacy marker (including for its admin
+            # project). AccessInfo supplies the native default True; an explicit
+            # false, null or non-boolean marker must still be rejected.
             native_token = access._data.get("token", {})
             if (
                 access.project_scoped is not True
@@ -720,7 +721,7 @@ async def get_admin_os_conn(
                 or not isinstance(token, str)
                 or not token.strip()
                 or access.is_admin_project is not True
-                or native_token.get("is_admin_project") is not True
+                or native_token.get("is_admin_project", True) is not True
                 or not any(isinstance(role, str) and role.lower() == "admin" for role in access.role_names or [])
             ):
                 raise HTTPException(status_code=503, detail="Native administrator project scope is invalid")

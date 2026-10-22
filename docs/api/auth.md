@@ -721,7 +721,7 @@ allow_providers = ["organization_team", "code_host"]
 
 | 메서드·경로 | 정확한 본문 | 성공 | 제한 |
 |---|---|---|---|
-| `GET /signup/options` | 없음 | 200 `{signup_enabled,smtp_configured,recovery_enabled,approval_mode}` | 20회/분 |
+| `GET /signup/options` | 없음 | 200 `{signup_enabled,signup_button_visible,smtp_configured,recovery_enabled,approval_mode}` | 20회/분 |
 | `POST /registrations` | `{email}` | 202 `{accepted:true}` | 3회/분 |
 | `GET /registrations/{token}` | 없음 | 200 `{email,account_exists,identity_domain_id?,identity_domain_name?}` | 20회/분 |
 | `POST /registrations/accept` | `{token,name,password}` | 200 EnrollmentResult | 5회/분 |
@@ -731,6 +731,8 @@ allow_providers = ["organization_team", "code_host"]
 | `POST /invitations/accept-existing` | `{token}` | 200 EnrollmentResult | 5회/분 |
 
 전역 signup enabled는 시스템 관리자의 persisted enrollment policy를 우선하며 최초 정책 row 부재에서만 `[auth].public_signup_enabled`(기본false)를 사용합니다. `signup_email_domains`(기본[]; 비어 있으면 host 제한 없음)는 설정의 exact host 제한입니다. 옵션의 SMTP/recovery readiness는 SMTP enabled/host/from-address와 frontend base URL의 **구성 여부**이며 실제 배달 증거가 아닙니다. Signup flag는 그 readiness와 공개 opt-in의 conjunction입니다. 요청 시 signup 비활성403 `signup_disabled`, readiness 부재503 `smtp_not_configured`, host 위반403 `email_domain_not_allowed`입니다. 수락에서도 현재 정책을 다시 확인합니다. SQL domain `signup_enabled/signup_email_domains`는 전역 signup이나 임의 작업 도메인 가입 권한을 대신하지 않습니다.
+
+`signup_button_visible`은 시스템 관리자 enrollment policy의 독립 `public_signup_button_visible`과 공개 가입/SMTP readiness를 결합한 **링크 표시 값**입니다. 숨김 자체로 직접 `/signup`·메일 검증 링크·OIDC account enrollment를 차단하지 않습니다. SQL row 부재의 source fallback은 `[auth].public_signup_button_visible=true`이며, row 생성·수정 뒤에는 저장된 값이 우선합니다. 도메인 manager의 signup_email_domains/opt-in은 기존 조직 신규 참여의 추가 제한이지 전역 버튼이나 Accounts identity 생성 권한이 아닙니다.
 
 Email-first 요청은 기존 계정 여부를 조회하지 않고 같은 검증 메일을 전송하며 native account/project/grant를 만들지 않습니다. SMTP 실패는503이고 redeemable 링크를 발급한 성공으로 표시하지 않습니다. 계정 존재/home 안내는 전달된 비밀 링크를 가진 조회자에게만 반환합니다. 등록 조회는 token을 소비하지 않습니다. 중복 email 소유권은409 account_email_ambiguous이며 새 username은 전역 native username/email login alias와도 충돌할 수 없습니다. 기존 계정이면 로그인/복구 후 초대를 수락하고 신규 계정을 만들지 않습니다. 공개 가입은 accounts identity와 personal primary만 만들며 기존 조직에 직접 가입시키지 않습니다.
 

@@ -59,7 +59,7 @@ def directory(monkeypatch):
     state.policy = domain_auth.LoginPolicy(domain_id="domain")
     state.settings = SimpleNamespace(
         os_username="operator",
-        auth=SimpleNamespace(public_signup_enabled=False, signup_email_domains=[]),
+        auth=SimpleNamespace(public_signup_enabled=False, public_signup_button_visible=True, signup_email_domains=[]),
         service_manila_enabled=False,
         smtp_enabled=True,
         smtp_host="smtp.test.invalid",

@@ -9,8 +9,9 @@ import { storePendingInvitation, storePendingProviderLogin, takePendingInvitatio
 import { siteConfig } from '$lib/config/site';
 import { createAuthVerificationController } from '$lib/utils/authVerification';
 import type { LoginOptions, LoginResponse } from '$lib/types/auth';
+import type { SignupOptions } from '$lib/types/enrollmentPolicy';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), optionsGet: vi.fn(), post: vi.fn(), goto: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), optionsGet: vi.fn(), signupGet: vi.fn(), post: vi.fn(), goto: vi.fn() }));
 
 vi.mock('$app/environment', () => ({ browser: true }));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
@@ -33,6 +34,7 @@ const options: LoginOptions = { providers: [
 	{ id: 'configured-oidc', name: 'Team SSO', kind: 'oidc', domain_id: 'team', domain_name: 'Team' },
 	{ id: 'configured-saml', name: 'Lab SAML', kind: 'saml', domain_id: 'lab', domain_name: 'Lab' },
 ] };
+const signupOptions: SignupOptions = { signup_enabled: true, signup_button_visible: true, smtp_configured: true, recovery_enabled: true };
 const response: LoginResponse = {
 	token: 'fresh', user_id: 'alice', username: 'Alice', project_id: 'home-project', project_name: 'Default', expires_at: null,
 	identity_domain_id: 'home', identity_domain_name: 'Home', domain_id: 'home', domain_name: 'Home',
@@ -74,8 +76,10 @@ function invalidate(change: Change, unmount: () => void) {
 
 beforeEach(() => {
 	mocks.optionsGet.mockReset().mockResolvedValue(options);
+	mocks.signupGet.mockReset().mockResolvedValue(signupOptions);
 	mocks.get.mockReset().mockImplementation((path: string, ...args: unknown[]) => {
 		if (path === '/api/v1/auth/login-options') return mocks.optionsGet(path, ...args);
+		if (path === '/api/v1/auth/signup/options') return mocks.signupGet(path, ...args);
 		if (path === '/api/v1/site-config') return Promise.resolve(get(siteConfig));
 		throw new Error(`Unexpected GET in login fixture: ${path}`);
 	});
@@ -121,15 +125,70 @@ describe('public home-first login', () => {
 		expect(mocks.post).toHaveBeenCalledOnce();
 	});
 
-	it('shows credentials, signup and recovery without a domain form or waiting for discovery', async () => {
+	it('shows credentials and recovery without waiting for either discovery; signup waits only for its own readiness', async () => {
 		mocks.optionsGet.mockReturnValueOnce(Promise.withResolvers<LoginOptions>().promise);
 		render(LoginPage);
 		expect(screen.getByLabelText(/^Username or email/)).toBeTruthy();
 		expect(screen.getByLabelText(/^Password/)).toBeTruthy();
 		expect(screen.queryByLabelText(/^Domain/i)).toBeNull();
-		expect(screen.getByRole('link', { name: 'Sign up with email' }).getAttribute('href')).toBe('/signup');
+		expect((await screen.findByRole('link', { name: 'Sign up with email' })).getAttribute('href')).toBe('/signup');
 		expect(screen.getByRole('link', { name: 'Recover account' }).getAttribute('href')).toBe('/recover');
 		await waitFor(() => expect(mocks.optionsGet).toHaveBeenCalledWith('/api/v1/auth/login-options', undefined, undefined, requestOptions));
+		expect(mocks.signupGet).toHaveBeenCalledExactlyOnceWith('/api/v1/auth/signup/options', undefined, undefined, requestOptions);
+	});
+
+	it.each([
+		{ signup_button_visible: false }, { signup_enabled: false }, { smtp_configured: false },
+		{ signup_button_visible: undefined }, { signup_button_visible: 'true' },
+	])('hides only the signup link for unavailable or invalid public visibility %j', async overrides => {
+		mocks.signupGet.mockResolvedValueOnce({ ...signupOptions, ...overrides });
+		mocks.post.mockResolvedValueOnce({ authorize_url: 'javascript:invalid' });
+		render(LoginPage); await waitFor(() => expect(mocks.signupGet).toHaveBeenCalledOnce()); await tick();
+		expect(screen.queryByRole('link', { name: 'Sign up with email' })).toBeNull();
+		expect(screen.getByRole('link', { name: 'Recover account' }).getAttribute('href')).toBe('/recover');
+		expect((screen.getByRole('button', { name: /^sign in$/i }) as HTMLButtonElement).disabled).toBe(false);
+		await openSso(); await fireEvent.click(await screen.findByRole('button', { name: 'Continue with Team SSO' }));
+		expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/api/v1/auth/domains/team/providers/configured-oidc/authorize', {}, undefined, undefined, requestOptions);
+	});
+
+	it('fails closed only for the signup link when signup discovery fails', async () => {
+		mocks.signupGet.mockRejectedValueOnce(new ApiError(503, 'private-signup-error'));
+		mocks.post.mockResolvedValueOnce(response);
+		render(LoginPage); await waitFor(() => expect(mocks.signupGet).toHaveBeenCalledOnce()); await tick();
+		expect(screen.queryByRole('link', { name: 'Sign up with email' })).toBeNull();
+		expect(screen.getByRole('link', { name: 'Recover account' })).toBeTruthy();
+		expect(document.body.textContent).not.toContain('private-signup-error');
+		await fireEvent.click((await fillCredentials()).button);
+		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/dashboard'));
+	});
+
+	it.each(changes.filter(change => change !== 'unmount'))('retains page-lifetime signup discovery after %s', async change => {
+		const pending = Promise.withResolvers<SignupOptions>(); mocks.signupGet.mockReturnValueOnce(pending.promise);
+		const rendered = render(LoginPage);
+		expect(screen.queryByRole('link', { name: 'Sign up with email' })).toBeNull();
+		invalidate(change, rendered.unmount); pending.resolve(signupOptions);
+		expect(await screen.findByRole('link', { name: 'Sign up with email' })).toBeTruthy();
+		expect(mocks.signupGet).toHaveBeenCalledOnce(); expect(mocks.post).not.toHaveBeenCalled();
+	});
+
+	it.each([true, false])('discards signup discovery settled after unmount: success=%s', async success => {
+		const pending = Promise.withResolvers<SignupOptions>(); mocks.signupGet.mockReturnValueOnce(pending.promise);
+		const rendered = render(LoginPage); rendered.unmount();
+		if (success) pending.resolve(signupOptions); else pending.reject(new Error('late failure'));
+		await Promise.resolve(); await tick();
+		expect(screen.queryByRole('link', { name: 'Sign up with email' })).toBeNull();
+		expect(mocks.post).not.toHaveBeenCalled(); expect(mocks.goto).not.toHaveBeenCalled();
+	});
+
+	it.each([logoutInProgress, projectSwitching])('displays signup discovery during a session lock without enabling the link until release', async flag => {
+		const pending = Promise.withResolvers<SignupOptions>(); mocks.signupGet.mockReturnValueOnce(pending.promise);
+		render(LoginPage); flag.set(true); pending.resolve(signupOptions);
+		const signup = (await screen.findByText('Sign up with email')).closest('a')!;
+		expect(signup.getAttribute('aria-disabled')).toBe('true');
+		expect(screen.getByText('Recover account').closest('a')!.getAttribute('aria-disabled')).toBe('true');
+		flag.set(false); await tick();
+		expect(signup.getAttribute('aria-disabled')).not.toBe('true');
+		expect(mocks.signupGet).toHaveBeenCalledOnce(); expect(mocks.post).not.toHaveBeenCalled();
 	});
 
 	it('keeps provider choices off the main form until SSO is explicitly opened, without selecting a domain', async () => {
@@ -409,6 +468,7 @@ describe('public home-first login', () => {
 		render(LoginPage);
 		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith(target));
 		expect(mocks.optionsGet).not.toHaveBeenCalled(); expect(mocks.post).not.toHaveBeenCalled();
+		expect(mocks.signupGet).not.toHaveBeenCalled();
 		expect(takePendingInvitationPath()).toBe(`/invitations/${'i'.repeat(32)}`);
 		if (consent) expect(pendingMcpConsentTicket()).toBe('m'.repeat(32));
 	});

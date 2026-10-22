@@ -258,7 +258,7 @@ describe('public registration approval decisions', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
 		expect((await screen.findByRole('link', { name: 'Start a new email verification' })).getAttribute('href')).toBe('/signup');
 		blocked.unmount();
-		mocks.get.mockResolvedValueOnce({ signup_enabled: true, smtp_configured: true, recovery_enabled: true });
+		mocks.get.mockResolvedValueOnce({ signup_enabled: true, signup_button_visible: false, smtp_configured: true, recovery_enabled: true });
 		const request = render(Request, { signup: true });
 		await fireEvent.input(await screen.findByLabelText(/^Email/), { target: { value: 'alice@example.com' } });
 		await fireEvent.click(screen.getByRole('button', { name: 'Send verification link' }));

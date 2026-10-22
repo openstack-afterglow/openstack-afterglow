@@ -22,6 +22,8 @@
 	"enrollment.futureOnly": "Saving changes defaults for future personal projects only. Review and apply existing projects separately below; accounts and resources are not changed automatically.",
 	"enrollment.publicEmail": "Allow public email registration",
 	"enrollment.emailHelp": "This toggle controls new public email registrations only, not existing sign-in or otherwise permitted external providers. Email verification also requires SMTP.",
+	"enrollment.signupButtonVisible": "Show signup link on the login page",
+	"enrollment.signupButtonHelp": "Hiding this link does not disable email verification, permitted OIDC enrollment or direct registration flows. The link appears only when public email registration and SMTP are ready; registration permission is controlled separately above.",
 	"enrollment.approvalMode": "New-account approval",
 	"enrollment.approvalHelp": "Applies to new email, OIDC and GitHub identities. Changing the mode does not approve pending requests or revive rejected requests.",
 	"enrollment.mode.auto": "Automatic approval",

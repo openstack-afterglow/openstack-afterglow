@@ -22,6 +22,8 @@
 	"enrollment.futureOnly": "Kuhifadhi hubadilisha chaguomsingi za miradi binafsi ya baadaye tu. Kagua na utekeleze kwa miradi iliyopo kando hapa chini; akaunti na rasilimali hazibadilishwi kiotomatiki.",
 	"enrollment.publicEmail": "Ruhusu usajili wa umma kwa barua pepe",
 	"enrollment.emailHelp": "Kigeuzi hiki hudhibiti usajili mpya wa umma kwa barua pepe pekee, si kuingia kwa akaunti zilizopo au watoa huduma wa nje wanaoruhusiwa vinginevyo. Uthibitishaji wa barua pepe pia unahitaji SMTP.",
+	"enrollment.signupButtonVisible": "Onyesha kiungo cha kujisajili kwenye ukurasa wa kuingia",
+	"enrollment.signupButtonHelp": "Kuficha kiungo hiki hakuzimi uthibitishaji wa barua pepe, usajili wa OIDC unaoruhusiwa au usajili wa moja kwa moja. Kiungo huonekana tu wakati usajili wa umma kwa barua pepe na SMTP viko tayari; ruhusa ya usajili inadhibitiwa kando hapo juu.",
 	"enrollment.approvalMode": "Uidhinishaji wa akaunti mpya",
 	"enrollment.approvalHelp": "Hutumika kwa vitambulisho vipya vya barua pepe, OIDC na GitHub. Kubadilisha hali hakuidhinishi maombi yanayosubiri wala kufufua maombi yaliyokataliwa.",
 	"enrollment.mode.auto": "Idhini ya kiotomatiki",

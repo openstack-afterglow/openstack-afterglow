@@ -7,6 +7,17 @@
 
 ## [Unreleased]
 
+## [1.30.23] - 2026-10-23
+
+### Fixed
+- 실제 Keystone이 생략하는 legacy admin-project marker를 필수로 요구해 관리자 개요·도메인 집계·알림을503으로 차단하던 회귀를 수정합니다. Native SDK 기본 의미와 project scope/admin role을 유지하고 explicit false/null/non-boolean 및 권한 회수는 계속 거부합니다. 사람의 Personal 역할·executor 계정·scope를 바꾸지 않습니다.
+- 운영 SMTP 실제 TLS/auth는 정상인데 공개 가입 opt-in이 닫혀 있었고 DMSLab provider registry가 이관되지 않았던 운영 연결 공백을 분리해 복구합니다. 사용자가 변경한 외부 DNS 경로에서 기존 SSRF/TLS를 유지하며 실제 DMSLab authorize200·production callback/PKCE를 확인했습니다. 다른 provider/default-domain 설정이나 사설 주소 우회는 추가하지 않습니다.
+
+### Added
+- 관리자 가입 정책에 독립된 회원가입 링크 표시 설정을 추가합니다. 이메일 검증/직접 가입·OIDC enrollment를 유지하면서 로그인 화면 링크만 숨길 수 있으며 아홉 언어와 public options를 동기화합니다. SQL101은 기존 정책 값·quota·revision을 보존하는 additive boolean column입니다.
+- Domain manager가 저장한 신규 참여 opt-in/이메일 host 제한을 OIDC 조직 auto-join의 추가 경계로 적용합니다. 기존 멤버 로그인, 운영자 provider trust ceiling, Accounts/Personal topology 및 전역 표시 정책 소유권을 유지합니다.
+
+
 ## [1.30.22] - 2026-10-23
 
 ### Fixed

@@ -7,7 +7,7 @@
 	import { t } from '$lib/i18n/ns/admin-system';
 	import { t as tq } from '$lib/i18n/ns/workspace-iam';
 	import { ActivityIndicator, Alert, Button, Card, Field, SelectInput, TextInput } from '$lib/components/ui';
-	import type { EnrollmentPolicy, SignupRequest, SignupRequestFilter, SignupRequestPage } from '$lib/types/enrollmentPolicy';
+	import type { EnrollmentPolicy, EnrollmentPolicyWrite, SignupRequest, SignupRequestFilter, SignupRequestPage } from '$lib/types/enrollmentPolicy';
 	import PersonalQuotaConvergence from './PersonalQuotaConvergence.svelte';
 
 	const uid = $props.id();
@@ -22,6 +22,7 @@
 	let epoch = $state(0);
 	let policy = $state<EnrollmentPolicy | null>(null);
 	let publicSignup = $state(false);
+	let signupButtonVisible = $state(false);
 	let approvalMode = $state('auto');
 	let quotas = $state<Record<string, string>>({});
 	let policyLoading = $state(false);
@@ -56,7 +57,7 @@
 	}
 
 	function clearPrivateState() {
-		policy = null; page = null; quotas = {}; publicSignup = false; approvalMode = 'auto';
+		policy = null; page = null; quotas = {}; publicSignup = false; signupButtonVisible = false; approvalMode = 'auto';
 		policyError = ''; policyNotice = ''; queueError = ''; queueNotice = '';
 		saving = false; decisionId = null; policyLoading = false; queueLoading = false;
 		reloadRequired = false; cursor = null; history = []; filter = 'pending';
@@ -91,6 +92,7 @@
 	function applyPolicy(next: EnrollmentPolicy) {
 		policy = next;
 		publicSignup = next.public_signup_enabled;
+		signupButtonVisible = next.public_signup_button_visible;
 		approvalMode = next.approval_mode;
 		quotas = Object.fromEntries(Object.values(next.quota_fields).flat().map(key => [key, next.personal_quotas[key]?.toString() ?? '']));
 	}
@@ -125,7 +127,8 @@
 			}
 			personalQuotas[key] = Number(value);
 		}
-		const body = { revision: policy.revision, public_signup_enabled: publicSignup,
+		const body: EnrollmentPolicyWrite = { revision: policy.revision, public_signup_enabled: publicSignup,
+			public_signup_button_visible: signupButtonVisible,
 			approval_mode: approvalMode as EnrollmentPolicy['approval_mode'], personal_quotas: personalQuotas };
 		saving = true; policyError = ''; policyNotice = '';
 		try {
@@ -206,6 +209,8 @@
 					<div class="controls">
 						<label class="toggle"><input id={`${uid}-public-email`} type="checkbox" bind:checked={publicSignup} />{t('enrollment.publicEmail')}</label>
 						<p>{t('enrollment.emailHelp')}</p>
+						<label class="toggle"><input id={`${uid}-signup-visible`} type="checkbox" bind:checked={signupButtonVisible} aria-describedby={`${uid}-signup-visible-help`} />{t('enrollment.signupButtonVisible')}</label>
+						<p id={`${uid}-signup-visible-help`}>{t('enrollment.signupButtonHelp')}</p>
 						<Field label={t('enrollment.approvalMode')} for={`${uid}-approval-mode`} help={t('enrollment.approvalHelp')}>
 							<SelectInput id={`${uid}-approval-mode`} bind:value={approvalMode}>
 								<option value="auto">{t('enrollment.mode.auto')}</option><option value="admin">{t('enrollment.mode.admin')}</option>

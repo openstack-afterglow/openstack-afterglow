@@ -155,11 +155,13 @@ def _auth_config(cfg: dict) -> dict:
     invalid = ValueError("Invalid auth configuration; check registry fields and selection references")
     auth = cfg.get("auth", {})
     if not isinstance(auth, dict) or set(auth) - {
-        "providers", "default", "domain", "public_signup_enabled", "signup_email_domains",
+        "providers", "default", "domain", "public_signup_enabled", "public_signup_button_visible", "signup_email_domains",
         "organization_creation_enabled", "max_organizations_per_user",
     }:
         raise invalid
     if "public_signup_enabled" in auth and not isinstance(auth["public_signup_enabled"], bool):
+        raise invalid
+    if "public_signup_button_visible" in auth and not isinstance(auth["public_signup_button_visible"], bool):
         raise invalid
     if "organization_creation_enabled" in auth and not isinstance(auth["organization_creation_enabled"], bool):
         raise invalid
@@ -245,7 +247,7 @@ def render_auth_toml(cfg: dict) -> str:
         return ""
     lines = ["[auth]"]
     for field in (
-        "public_signup_enabled", "signup_email_domains", "organization_creation_enabled", "max_organizations_per_user",
+        "public_signup_enabled", "public_signup_button_visible", "signup_email_domains", "organization_creation_enabled", "max_organizations_per_user",
     ):
         if field in auth:
             lines.append(f"{field} = {_toml_val(auth[field])}")

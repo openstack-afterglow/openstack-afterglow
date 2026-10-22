@@ -249,9 +249,19 @@ class AuthSettings(_AuthModel):
     default: AuthMethods = Field(default_factory=AuthMethods)
     domain: dict[DomainId, AuthMethods] = Field(default_factory=dict)
     public_signup_enabled: bool = False
+    public_signup_button_visible: bool = Field(default=True, strict=True)
     signup_email_domains: list[str] = Field(default_factory=list)
     organization_creation_enabled: bool = True
     max_organizations_per_user: int = Field(default=10, ge=0, le=10000, strict=True)
+
+    @field_validator("public_signup_button_visible", mode="before")
+    @classmethod
+    def signup_button_boolean(cls, value):
+        if isinstance(value, str) and value.lower() in {"true", "false"}:
+            return value.lower() == "true"
+        if not isinstance(value, bool):
+            raise ValueError("public_signup_button_visible must be a boolean")
+        return value
 
     @field_validator("organization_creation_enabled", mode="before")
     @classmethod

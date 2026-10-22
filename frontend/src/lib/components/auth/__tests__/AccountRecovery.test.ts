@@ -3,6 +3,7 @@ import { writable, type Writable } from 'svelte/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 import { ApiError } from '$lib/api/errors';
+import type { SignupOptions } from '$lib/types/enrollmentPolicy';
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('$app/stores', () => ({ page: writable({ params: { token: 'recovery_token_12345678901234567890' } }) }));
 vi.mock('$lib/api/client', () => ({ api: mocks, ApiError }));
@@ -11,7 +12,7 @@ import Request from '../AccountEmailRequest.svelte';
 import Recovery from '../../../../routes/recover/[token]/+page.svelte';
 const tokenPage = page as unknown as Writable<{ params: { token: string } }>;
 const token = 'recovery_token_12345678901234567890';
-const options = { signup_enabled: true, smtp_configured: true, recovery_enabled: true };
+const options: SignupOptions = { signup_enabled: true, signup_button_visible: true, smtp_configured: true, recovery_enabled: true };
 const requestOptions = { suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false };
 beforeEach(() => {
  vi.resetAllMocks(); initLocale('en');
@@ -21,7 +22,8 @@ beforeEach(() => {
 afterEach(() => { cleanup(); initLocale('ko'); });
 
 describe('public email-first entry', () => {
- it('posts signup email only, without any existing domain or credentials', async () => {
+ it.each([true, false])('posts signup email without domain or credentials even when signup link visibility is %s', async visible => {
+  mocks.get.mockResolvedValueOnce({ ...options, signup_button_visible: visible });
   render(Request, { signup: true });
   await fireEvent.input(await screen.findByLabelText(/^Email/), { target: { value: 'alice@example.com' } });
   await fireEvent.click(screen.getByRole('button', { name: 'Send verification link' }));
@@ -29,7 +31,8 @@ describe('public email-first entry', () => {
   expect(mocks.post).toHaveBeenCalledWith('/api/v1/auth/registrations', { email: 'alice@example.com' }, undefined, undefined, requestOptions);
   expect(screen.queryByLabelText(/^Password/)).toBeNull();
  });
- it.each(['username', 'password'])('requests %s recovery with non-enumerating confirmation', async kind => {
+ it.each(['username', 'password'])('requests %s recovery independently of signup visibility and permission', async kind => {
+  mocks.get.mockResolvedValueOnce({ ...options, signup_enabled: false, signup_button_visible: false });
   render(Request);
   await fireEvent.click(await screen.findByLabelText(kind === 'username' ? 'Find username' : 'Reset password'));
   await fireEvent.input(screen.getByLabelText(/^Email/), { target: { value: 'alice@example.com' } });

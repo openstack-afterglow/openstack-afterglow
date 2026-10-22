@@ -43,11 +43,14 @@ async def test_options_are_public_truthful_and_never_provision(directory, enroll
         response = await client.get("/api/v1/auth/signup/options")
         assert response.status_code == 200
         assert response.json()["signup_enabled"] is False
+        assert response.json()["signup_button_visible"] is False
         enable_signup(directory)
         assert (await client.get("/api/v1/auth/signup/options")).json()["signup_enabled"] is True
+        assert (await client.get("/api/v1/auth/signup/options")).json()["signup_button_visible"] is True
         directory.settings.smtp_host = ""
         response = await client.get("/api/v1/auth/signup/options")
         assert response.json()["signup_enabled"] is False
+        assert response.json()["signup_button_visible"] is False
         assert response.json()["smtp_configured"] is False
         assert response.json()["recovery_enabled"] is False
         assert "no-store" in response.headers["Cache-Control"]
@@ -55,11 +58,29 @@ async def test_options_are_public_truthful_and_never_provision(directory, enroll
     assert_no_native_writes(directory)
 
 
+@pytest.mark.parametrize("visible", [True, False])
 async def test_delivered_token_inspection_is_nonconsuming_and_signup_is_personal_only(
-    directory, enrollments, enrollment_app
+    directory, enrollments, enrollment_app, visible
 ):
     enable_signup(directory)
     async with AsyncClient(transport=ASGITransport(app=enrollment_app), base_url="http://test") as client:
+        include_enrollment_admin(enrollment_app)
+        policy = (await client.get("/api/v1/admin/enrollment-policy")).json()
+        saved = await client.put(
+            "/api/v1/admin/enrollment-policy",
+            json={
+                "revision": policy["revision"],
+                "public_signup_enabled": True,
+                "public_signup_button_visible": visible,
+                "approval_mode": "auto",
+                "personal_quotas": policy["personal_quotas"],
+            },
+        )
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["public_signup_button_visible"] is visible
+        options = (await client.get("/api/v1/auth/signup/options")).json()
+        assert options["signup_enabled"] is True and options["signup_button_visible"] is visible
+        assert options["recovery_enabled"] is True
         issued = await client.post("/api/v1/auth/registrations", json={"email": " New@BÜCHER.Example. "})
         assert issued.status_code == 202 and issued.json() == {"accepted": True}
         token = email_token(directory.sent[-1])
@@ -715,6 +736,7 @@ async def test_reviewed_email_provisions_personal_home_only_after_approval_with_
             json={
                 "revision": 0,
                 "public_signup_enabled": True,
+                "public_signup_button_visible": True,
                 "approval_mode": "admin",
                 "personal_quotas": quotas,
             },
@@ -756,6 +778,7 @@ async def test_reviewed_email_provisions_personal_home_only_after_approval_with_
             json={
                 "revision": saved.json()["revision"],
                 "public_signup_enabled": True,
+                "public_signup_button_visible": True,
                 "approval_mode": "auto",
                 "personal_quotas": {"instances": 0},
             },
@@ -780,6 +803,7 @@ async def test_manual_signup_gate_covers_new_invite_but_not_existing_account_mem
             json={
                 "revision": 0,
                 "public_signup_enabled": False,
+                "public_signup_button_visible": True,
                 "approval_mode": "admin",
                 "personal_quotas": {"instances": 0},
             },

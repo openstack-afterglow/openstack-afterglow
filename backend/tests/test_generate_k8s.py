@@ -691,6 +691,7 @@ def test_auth_renderers_reconstruct_runtime_providers_and_selection(
 
     cfg = _auth_generation_config()
     cfg["auth"]["public_signup_enabled"] = True
+    cfg["auth"]["public_signup_button_visible"] = False
     cfg["auth"]["signup_email_domains"] = ["gmail.com", "konkuk.ac.kr"]
     cfg["auth"]["domain"]["DmsLab-ID"]["auto_join_email_domains"] = {
         "gitlab": ["gmail.com", "konkuk.ac.kr"],

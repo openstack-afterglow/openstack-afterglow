@@ -22,6 +22,8 @@
 	"enrollment.futureOnly": "保存は今後作成する個人プロジェクトの既定値だけを変更します。既存プロジェクトは下で個別に確認・適用してください。アカウントやリソースは自動変更しません。",
 	"enrollment.publicEmail": "公開メール登録を許可",
 	"enrollment.emailHelp": "新規の公開メール登録のみを制御します。既存のログインや許可された外部プロバイダーには影響しません。メール認証にはSMTPも必要です。",
+	"enrollment.signupButtonVisible": "ログイン画面に新規登録リンクを表示",
+	"enrollment.signupButtonHelp": "リンクを非表示にしても、メール認証、許可されたOIDC登録や直接アクセスによる登録は無効になりません。リンクは公開メール登録とSMTPが利用可能な場合のみ表示されます。登録の許可は上で個別に設定します。",
 	"enrollment.approvalMode": "新規アカウントの承認方式",
 	"enrollment.approvalHelp": "新規のメール、OIDC、GitHubの認証情報に適用されます。方式を変更しても保留中の申請は承認されず、拒否済みの申請も復活しません。",
 	"enrollment.mode.auto": "自動承認",

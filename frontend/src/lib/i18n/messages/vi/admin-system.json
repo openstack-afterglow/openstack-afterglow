@@ -320,6 +320,8 @@
 	"enrollment.futureOnly": "Lưu chỉ thay đổi mặc định cho các dự án cá nhân tạo sau này. Hãy xem xét và áp dụng riêng cho dự án hiện có bên dưới; tài khoản và tài nguyên không tự động thay đổi.",
 	"enrollment.publicEmail": "Cho phép đăng ký email công khai",
 	"enrollment.emailHelp": "Tùy chọn này chỉ kiểm soát đăng ký email công khai mới, không ảnh hưởng đăng nhập hiện có hoặc nhà cung cấp bên ngoài được phép theo cách khác. Xác minh email cũng cần SMTP.",
+	"enrollment.signupButtonVisible": "Hiện liên kết đăng ký trên trang đăng nhập",
+	"enrollment.signupButtonHelp": "Ẩn liên kết không tắt xác minh email, đăng ký OIDC được cho phép hoặc quy trình đăng ký truy cập trực tiếp. Liên kết chỉ hiện khi đăng ký email công khai và SMTP đã sẵn sàng; quyền đăng ký được thiết lập riêng ở trên.",
 	"enrollment.approvalMode": "Phê duyệt tài khoản mới",
 	"enrollment.approvalHelp": "Áp dụng cho danh tính email, OIDC và GitHub mới. Thay đổi chế độ không phê duyệt yêu cầu đang chờ hoặc khôi phục yêu cầu đã từ chối.",
 	"enrollment.mode.auto": "Phê duyệt tự động",
