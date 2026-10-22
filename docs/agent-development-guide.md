@@ -44,6 +44,8 @@ git merge-base --is-ancestor origin/dev HEAD
 8. 필요한 Afterglow·Lumen·Waygate·Drover·Palimpsest operator package만 정확한 release로 갱신한다. 기존 Kolla와 일반 Python 의존성은 보존하고, 기존 uv 정책·승인 범위 안에서 lock을 도구로 생성한다.
 9. `https://cloud.dmslab.re.kr`에서 현재 최신 release의 실제 실행 버전·readiness·인증 경계와 사용자 화면을 확인한다. 로컬/synthetic proof와 운영 proof를 분리하고 미검증·차단 조건은 명시한다.
 
+**배포 실행 단위:** 사용자가 별도로 호스트 제한을 승인하지 않았다면, Kolla-Ansible 배포서버(`172.30.0.50`)의 `/etc/kolla`에서 승인된 서비스 tag의 **전체 inventory 대상**에 표준 `kolla-ansible reconfigure -i /etc/kolla/multinode`를 한 번 실행한다. `--limit`를 붙인 호스트별 순회나 Python/SSH controller-loop wrapper로 정식 배포를 대신하지 않는다. 기존 호스트별 진단·복구 기록은 보존하되 전체 배포 완료 증거로 삼지 않는다. Health·revision/digest·설정/키 보존 확인은 이 전체 실행 뒤 수행한다. 비대상 stock 서비스의 재시작·업그레이드를 피하기 위한 명시적 service/skip tag의 근거는 별도로 기록한다.
+
 
 ## Architecture maintenance
 

@@ -1,0 +1,175 @@
+{
+  "version": "1.30.22",
+  "revision": "222469e8409e352e9b92cd59ad15782f70daab54",
+  "status": "native_fleet_reconfigure_verified",
+  "native_command": {
+    "executor": "172.30.0.50",
+    "cwd": "/etc/kolla",
+    "command": "kolla-ansible reconfigure -i /etc/kolla/multinode --tags afterglow --skip-tags haproxy",
+    "host_limit": null,
+    "exit": 0,
+    "output": "artifact://1672",
+    "recap": {
+      "dms-controller1": {
+        "ok": 124,
+        "changed": 4,
+        "unreachable": 0,
+        "failed": 0
+      },
+      "dms-controller2": {
+        "ok": 68,
+        "changed": 1,
+        "unreachable": 0,
+        "failed": 0
+      },
+      "dms-controller3": {
+        "ok": 68,
+        "changed": 3,
+        "unreachable": 0,
+        "failed": 0
+      }
+    }
+  },
+  "credential_preservation": {
+    "dms-controller1": {
+      "database_url": true,
+      "secret_key": true,
+      "os_password": true,
+      "os_username": true,
+      "os_project_name": true,
+      "os_service_project_id": true,
+      "backend_port": true,
+      "redis_url": true
+    },
+    "dms-controller2": {
+      "database_url": true,
+      "secret_key": true,
+      "os_password": true,
+      "os_username": true,
+      "os_project_name": true,
+      "os_service_project_id": true,
+      "backend_port": true,
+      "redis_url": true
+    },
+    "dms-controller3": {
+      "database_url": true,
+      "secret_key": true,
+      "os_password": true,
+      "os_username": true,
+      "os_project_name": true,
+      "os_service_project_id": true,
+      "backend_port": true,
+      "redis_url": true
+    }
+  },
+  "public_http": [
+    {
+      "path": "/api/v1/health",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/site-config",
+      "status": 200,
+      "cloud_shell": true,
+      "chat": true
+    },
+    {
+      "path": "/login",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/admin/users",
+      "status": 401
+    },
+    {
+      "path": "/api/v1/chat/admin/providers",
+      "status": 401
+    },
+    {
+      "path": "/api/v1/cloud-shell/workspace",
+      "status": 401
+    }
+  ],
+  "native_cloud_shell_service_readiness": {
+    "configured_service_project": "c99f06f9719747c68eead4bf7578fac1",
+    "configured_service_user": "2df6494f89694be984a4e44c40f21efa",
+    "native_zun_status": 200,
+    "native_cinder": "ready",
+    "resource_mutations": 0
+  },
+  "legacy_provider_decryption": {
+    "stored_provider_keys": 5,
+    "decrypt_success": 5,
+    "decrypt_failure": 0,
+    "plaintext_emitted": false,
+    "provider_calls": 0
+  },
+  "screenshots": [
+    "production-login-13022-desktop.png",
+    "production-login-13022-mobile.png"
+  ],
+  "browser_errors": 0,
+  "horizontal_overflow": false,
+  "local_backend_original_id_restored": true,
+  "limits": [
+    "No human password login, OIDC/SMTP or authenticated administrator workflow exercised",
+    "No live human Cloud Shell ticket/terminal/home creation or reset exercised",
+    "No live provider inference call or native account-runtime promotion",
+    "Native sibling versions/images/datastores unchanged; approved Cloud Shell service admin assignment1 is the only explicit native grant addition",
+    "Previous stopped-writer attempts caused temporary API unavailability; untouched original cohorts were restored before diagnosis, then final native fleet reconfigure succeeded",
+    "A narrow ConfigParser probe accidentally included inherited credential-bearing defaults in tool output; value not repeated or committed, no infrastructure credential rotation performed"
+  ],
+  "fleet_summary": {
+    "controllers": 3,
+    "api_healthy": 3,
+    "frontend_healthy": 3,
+    "workers_running": 3,
+    "restarts": 0,
+    "non_target_changed": 0,
+    "non_target_added": 0
+  },
+  "evidence_root": "~/.local/share/afterglow-proofs/ship-compat-20261022T135044Z/",
+  "source_qualification": {
+    "command": "VITEST_MAX_WORKERS=3 TZ=UTC npm run test:gate",
+    "exit": 0,
+    "source_sha256": "231c2b2e95d5702be0eef2e72012d1385dd3d2a0a1cf967eca50f0733644df58",
+    "source_files": 3428,
+    "backend_passed": 8972,
+    "backend_skipped": 95,
+    "frontend_tests": 4958,
+    "frontend_files": 432,
+    "contracts_passed": 181,
+    "functional_passed": 166,
+    "functional_deselected": 33,
+    "ruff_files": 722
+  },
+  "publication": {
+    "dev_ci": 39814014218,
+    "tag_images_ci": 39816007942,
+    "helm_ci": 39816007832,
+    "images": {
+      "afterglow_backend": {
+        "ref": "ghcr.io/openstack-afterglow/afterglow-api@sha256:8067de59a4542011ab297e995721733801cae7ce54fa07d2eed68e7a8dd43877",
+        "digests": {
+          "v1.30.22": "sha256:8067de59a4542011ab297e995721733801cae7ce54fa07d2eed68e7a8dd43877",
+          "latest": "sha256:8067de59a4542011ab297e995721733801cae7ce54fa07d2eed68e7a8dd43877"
+        }
+      },
+      "afterglow_frontend": {
+        "ref": "ghcr.io/openstack-afterglow/afterglow@sha256:f81577f96ca34587d25532dd6cdcdaa6934b81661d1615cf9055d01b5897c83e",
+        "digests": {
+          "v1.30.22": "sha256:f81577f96ca34587d25532dd6cdcdaa6934b81661d1615cf9055d01b5897c83e",
+          "latest": "sha256:f81577f96ca34587d25532dd6cdcdaa6934b81661d1615cf9055d01b5897c83e"
+        }
+      },
+      "afterglow_notion_worker": {
+        "ref": "ghcr.io/openstack-afterglow/afterglow-worker@sha256:85f82e549802460fbfc6d40c6805055f4e8c8937a772a7b8f2da9881898c0320",
+        "digests": {
+          "v1.30.22": "sha256:85f82e549802460fbfc6d40c6805055f4e8c8937a772a7b8f2da9881898c0320",
+          "latest": "sha256:85f82e549802460fbfc6d40c6805055f4e8c8937a772a7b8f2da9881898c0320"
+        }
+      }
+    },
+    "version_latest_parity_verified": true
+  }
+}

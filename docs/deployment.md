@@ -1062,6 +1062,9 @@ Lumen의 Nova managed guest에 사용자 정책을 적용하려면 운영자가 
 ## kolla-ansible 배포
 
 Afterglow와 Lumen은 Kolla 배포 호스트에서 표준 명령으로 함께 배포합니다.
+
+정식 배포는 **배포서버172.30.0.50의 `/etc/kolla`에서 승인된 서비스 전체 inventory 대상에 `kolla-ansible reconfigure -i /etc/kolla/multinode`를 --limit 없이 실행**하는 것입니다. 별도 승인 없는 controller별 순회·wrapper 실행으로 대신하지 않습니다.1.30.22 Afterglow 반영에서는 `--tags afterglow --skip-tags haproxy`를 사용했습니다. 형제 서비스는 기존 release를 유지하고, 별도 승인 범위가 아닌 shared HAProxy/ProxySQL/keepalived의 image drift 재시작을 피하기 위한 선택입니다. 실제 전체 recap과 fleet revision/readiness는 `docs/testing.md`의1.30.22 receipt를 따릅니다.
+
 최초 한 번 [Kolla 설치·설정 가이드](../deploy/kolla/README.md)에 따라 다음을 준비합니다.
 
 - `/etc/kolla/multinode`의 `afterglow`, `lumen` 그룹과 기존 OpenStack inventory

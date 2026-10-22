@@ -11,6 +11,7 @@
 
 ### Fixed
 - Cloud Shell native precheck의 Python 인자 배열을 `docker_container_exec.argv`로 전달합니다. 이 모듈의 `command`는 문자열만 받으므로1.30.21의 호출이 readiness를 통과하지 못했습니다. 실제 Ansible 모듈→기존 toolbox→전용 프로젝트 native Zun 조회와 assertion2개가 changed0/failed0으로 통과했습니다. 공유 toolbox image·서비스 API·schema 변경은 없습니다.
+- 배포서버172.30.0.50에서 호스트 제한 없는 표준 Kolla `reconfigure`를 전체 Afterglow 대상에 실행해 controller3대의 API/frontend/worker9개를 같은1.30.22 revision/digest로 반영했습니다. 기존 서명키·DB/Redis/Keystone 연결·형제 서비스와 Lumen legacy provider key5건을 보존했습니다. Cloud Shell은 승인한 기존 전용 자원과 역할1건을 사용하며 실제 사용자 로그인·live terminal·provider inference는 별도 미검증입니다.
 
 
 ## [1.30.21] - 2026-10-23
