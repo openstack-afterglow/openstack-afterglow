@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.common.errors import public_service_error
-from app.api.deps import get_os_conn, get_token_info, require_admin
+from app.api.deps import get_admin_os_conn, get_os_conn, get_token_info, require_admin
 from app.database import get_session
 from app.services import (
     account_spaces,
@@ -116,7 +116,7 @@ async def _audit(token_info: dict, action: str, domain_id: str, **extra):
 
 
 @router.get("/domains")
-async def list_domains(conn=Depends(get_os_conn)):
+async def list_domains(conn=Depends(get_admin_os_conn)):
     def fetch():
         return {"items": sorted((_domain(d) for d in conn.identity.domains()), key=lambda d: (d["name"], d["id"]))}
 
@@ -233,7 +233,7 @@ async def update_domain(
 
 
 @router.get("/domains/{domain_id}/monitoring")
-async def domain_monitoring_snapshot(domain_id: str, window: Window = Query("24h"), conn=Depends(get_os_conn)):
+async def domain_monitoring_snapshot(domain_id: str, window: Window = Query("24h"), conn=Depends(get_admin_os_conn)):
     return await domain_monitoring.snapshot(conn, domain_id, window)
 
 

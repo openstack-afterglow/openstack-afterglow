@@ -38,13 +38,13 @@ beforeEach(() => {
 afterEach(() => { cleanup(); clearAuth(); sessionStorage.clear(); initLocale('ko'); });
 
 describe('provider home-first handoff', () => {
-	it('accepts a credential home different from the pending provider origin and preserves invitation and MCP intents', async () => {
+	it('resumes invitation before MCP after publishing an established provider session', async () => {
 		storePendingInvitation('i'.repeat(32));
 		storeMcpConsentTicket('m'.repeat(32));
 		render(Page);
-		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/select-domain', { replaceState: true }));
+		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith(`/invitations/${'i'.repeat(32)}`, { replaceState: true }));
 		expect(get(auth)).toMatchObject({ token: 'provider-token', identityDomainId: 'home', domainId: 'home', projectId: response.project_id, federated: true, availableDomains: response.available_domains });
-		expect(takePendingInvitationPath()).toBe(`/invitations/${'i'.repeat(32)}`);
+		expect(takePendingInvitationPath()).toBeNull();
 		expect(pendingMcpConsentTicket()).toBe('m'.repeat(32));
 	});
 
@@ -59,10 +59,10 @@ describe('provider home-first handoff', () => {
 			storePendingInvitation('i'.repeat(32)); storeMcpConsentTicket('m'.repeat(32));
 			mocks.goto.mockImplementation(async () => { expect(get(authReady)).toBe(true); });
 			render(Page);
-			await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/select-domain', { replaceState: true }));
+			await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith(project ? `/invitations/${'i'.repeat(32)}` : multiple ? '/select-domain' : '/select-project', { replaceState: true }));
 			expect(get(authReady)).toBe(true);
 			expect(get(auth)).toMatchObject({ projectId: project || null, projectName: project ? response.project_name : null, domainId: 'home', identityDomainId: 'home', federated: true });
-			expect(takePendingInvitationPath()).toBe(`/invitations/${'i'.repeat(32)}`);
+			expect(takePendingInvitationPath()).toBe(project ? null : `/invitations/${'i'.repeat(32)}`);
 			expect(pendingMcpConsentTicket()).toBe('m'.repeat(32));
 			expect(mocks.get).not.toHaveBeenCalled();
 		} finally { verification.dispose(); }
@@ -71,7 +71,7 @@ describe('provider home-first handoff', () => {
 	it('accepts a home-consistent fresh response when tab-local pending storage is unavailable', async () => {
 		sessionStorage.removeItem('afterglow_provider_login');
 		render(Page);
-		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/select-domain', { replaceState: true }));
+		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/dashboard', { replaceState: true }));
 		expect(get(auth)).toMatchObject({ token: response.token, domainId: 'home', identityDomainId: 'home' });
 	});
 
@@ -238,7 +238,7 @@ describe('provider home-first handoff', () => {
 			identity_domain_id: 'account', identity_domain_name: 'account', project_id: 'personal-primary', project_name: 'alice-c8f572',
 			available_domains: [personal, { id: 'team', name: 'Team', kind: 'organization' }] });
 		render(Page);
-		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/select-domain', { replaceState: true }));
+		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/dashboard', { replaceState: true }));
 		expect(get(auth)).toMatchObject({ identityDomainId: 'account', domainId: 'personal', projectId: 'personal-primary', federated: true });
 		expect(get(auth).availableDomains?.map(row => row.id)).toEqual(['personal', 'team']);
 	});
@@ -276,9 +276,9 @@ describe('restored-session provider callback readiness', () => {
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledOnce());
 		expect(mocks.post).toHaveBeenCalledWith('/api/v1/auth/providers/callback', { code: 'code', state: 'state' }, undefined, undefined, expect.objectContaining({ cache: 'no-store', suppressAuthRedirect: true, replayOnUnauthorized: false }));
 		pending.resolve(response);
-		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/select-domain', { replaceState: true }));
+		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith(`/invitations/${'i'.repeat(32)}`, { replaceState: true }));
 		expect(get(auth).token).toBe(response.token);
-		expect(takePendingInvitationPath()).toBe(`/invitations/${'i'.repeat(32)}`);
+		expect(takePendingInvitationPath()).toBeNull();
 		expect(pendingMcpConsentTicket()).toBe('m'.repeat(32));
 		expect(mocks.post).toHaveBeenCalledOnce();
 		expect(mocks.get).not.toHaveBeenCalled();
@@ -403,7 +403,7 @@ describe('provider signup approval states', () => {
 });
 
 describe('fresh provider sign-in after approval', () => {
-	it('exchanges only a new provider code and keeps preserved intents pending at the domain chooser', async () => {
+	it('exchanges only a new provider code and resumes the preserved invitation before MCP', async () => {
 		storePendingInvitation('i'.repeat(32)); storeMcpConsentTicket('m'.repeat(32));
 		mocks.post.mockRejectedValueOnce(new ApiError(403, '', 'signup_approval_pending'));
 		const blocked = render(Page); await screen.findByText('Sign-up awaiting approval');
@@ -413,11 +413,11 @@ describe('fresh provider sign-in after approval', () => {
 		callbackPage.set({ url: new URL('http://localhost/auth/callback?code=new-code&state=new-state'), data: {} });
 		mocks.post.mockResolvedValueOnce(response);
 		render(Page);
-		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/select-domain', { replaceState: true }));
+		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith(`/invitations/${'i'.repeat(32)}`, { replaceState: true }));
 		expect(mocks.post).toHaveBeenCalledTimes(2);
 		expect(mocks.post).toHaveBeenNthCalledWith(2, '/api/v1/auth/providers/callback', { code: 'new-code', state: 'new-state' }, undefined, undefined, expect.objectContaining({ cache: 'no-store', suppressAuthRedirect: true, replayOnUnauthorized: false }));
 		expect(get(auth).token).toBe(response.token);
-		expect(takePendingInvitationPath()).toBe(`/invitations/${'i'.repeat(32)}`);
+		expect(takePendingInvitationPath()).toBeNull();
 		expect(pendingMcpConsentTicket()).toBe('m'.repeat(32));
 	});
 });

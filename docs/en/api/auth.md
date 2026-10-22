@@ -18,15 +18,31 @@ Domain login policy, OIDC/GitHub provider federation and email-verified onboardi
 
 New human accounts are created in the operator-provisioned native `Accounts` domain, and personal projects in native `Personal`. The server resolves exact enabled native names, not display labels; absent management metadata is allowed, but explicit conflicting kinds and ambiguous case variants are rejected. Enrollment does not create or mutate shared domains. Accounts is identity-only, not a workspace or cross-user directory. Public password login searches only Accounts and uses its exact UUID for native authentication; it never falls back to legacy homes. Existing identities, credentials, grants and resources are not migrated. Explicit account-link proof retains the original canonical-home boundary. `identity_domain_id` identifies the home, while `domain_id` and `project_id` identify the active workspace. Administrator creation treats the selected directory domain only as observation context, never as automatic organization or Default-reader admission.
 
+Allowed configured OIDC providers automatically associate a fresh, signature-validated identity with the unique enabled Accounts user owning its normalized email. Boolean `email_verified=true`, issuer/audience/nonce/PKCE and browser state are mandatory. Global immutable issuer/subject and native IdP/protocol ownership conflicts are rejected, never transferred by email. Native attachment readback and an exact canonical user/home token exchange precede login. UUID, password, home, other federation tuples, preferences, grants and resources are preserved. Legacy non-Accounts and GitHub first links retain explicit account proof. This is the same backend invariant in production, not a development flag.
+
+Automatic email association trusts only operator-owned `[auth.providers.<key>]` registry OIDC providers (`cfg:<key>`). Tenant-managed SQL providers still require explicit canonical account proof for a first link, including users already belonging to that organization. Provider visibility or organization management is not global mailbox authority.
+
+Public signup requires a delivered, pending, unexpired one-use email verification link before creation. Final acceptance rejects normalized username/email and cross-alias collisions, including concurrent requests and unresolved native-creation identifiers. SMTP acceptance or client-supplied verification/email cannot bypass proof; public email requests remain non-enumerating. No new schema or automatic legacy identity migration is introduced.
+
 Personal project creation has no name or personal-domain input. The server generates `normalized_username[:47] + "-" + 8 cryptographically random lowercase letters + 8 random decimal digits` within Keystone's 64-character limit, applies the frozen per-project quota template, and verifies exactly one direct native `member` grant to the user against raw and effective native provenance. It does not grant owner, administrator or reader roles, and rejects member implications that elevate manager or owner/admin authority. Established owner-based personal projects retain their original grants and validation; no automatic migration occurs. Personal workspaces have neither domain `manager` authority nor a shared `Default`; other users' personal projects are excluded from workspace and user-directory responses.
 
 Organizations remain separate resource domains. Explicit creation follows `organization_creation_enabled` and `max_organizations_per_user`; its creator is the initial manager. Organization admission requires acceptance of a current manager's invitation or a trusted provider admission rule. Configured OIDC organization bindings use the exact issuer and immutable external organization ID; the client ID is provenance, not organization identity. Only explicitly configured manager subjects may create the first organization. Ordinary subjects can join only an already active binding and receive reader access, not manager or owner. Sharing a provider origin alone grants no organization membership. Existing explicit email-host auto-join rules remain additive, reader-only admission to the exact configured domain.
 
 Global signup uses `POST /registrations`, followed by `/registrations/accept`; new invitation acceptances use the same account/personal provisioning path. Generic IAM account creation is unavailable. Existing-account invitation acceptance preserves the original native user and identity home. Merely browsing organizations never changes the session; workspace selection is explicit. The reserved shared domains cannot be renamed or disabled.
 
-Administrator creation commits an accepted Accounts identity and a same-token/name frozen-quota deferred personal intent; it returns `personal_project_deferred:true` and null project fields without creating a project or grant. The first successful password/provider proof prepares the personal member project. Confirmed/not-sent stages resume; dispatched operations with unknown outcomes remain fenced. `POST /api/v1/auth/personal-project/recovery` accepts the same `{username,password}` body as login, verifies a fresh Accounts password/subject and all existing login guards, then uses the same JWT publication path. A safe503 has `personal_project_retry_available`, `retryable:true`, `native_calls_settled_required:false`; the UI clears the password and requires re-entry. Unknown work instead returns `personal_project_recovery_required`, `retryable:false`, `native_calls_settled_required:true` until a system administrator confirms original native calls have ended and settles the recorded operation. Neither path resets the identity, home, password or existing resources. Drain older human/API/worker writers before rollout; mixed-version writers or downgrade with active deferred intents are not supported.
+Administrator creation commits an accepted Accounts identity and a same-token/name frozen-quota deferred personal intent. It returns Accounts identity/domain metadata, `personal_project_deferred:true`, a null project ID and the reserved personal project name, without creating a project or grant. Fresh password/provider proof prepares the member primary; confirmed/not-sent stages resume and dispatched unknown outcomes require explicit system-admin settlement. `POST /api/v1/auth/personal-project/recovery` uses the same `{username,password}` proof and JWT publication. Safe retry clears the old password and requires fresh entry; neither path resets identity/home/password/resources. Drain older writers before rollout; active deferred intents do not support mixed-version writers or blind downgrade.
 
 Personal's one direct native member cannot be removed through generic project-role management or supplemented with service-admin roles. Four services independently derive a fresh internal personal-owner policy credential from exact enabled native domain/project/user and raw/effective member provenance. Project-local actions expand, not system/global authority; explicit policy denies, original scope and reduced/key/provider ceilings remain authoritative. Hub own-project package metadata deletion is human-only and preserves shared CAS bytes, GC and build/system boundaries.
+
+All supported interactive humans, including existing markerless Accounts system administrators, now ensure and start in their verified personal primary. Native global project/system/group `service` authority excludes automation, not a configured username. Fresh established login goes directly to the dashboard; explicit invitation/MCP/Claude intent takes precedence afterward. Projectless or unsuccessful/stale results preserve intent.
+
+`GET/PUT /api/v1/profile/login-preference` manages `{remember_last_workspace:boolean}` for the exact user and immutable identity home. It defaults to personal. Opt-in saves only the currently verified workspace; each fresh login revalidates the remembered native pair. Revocation/deletion/disable falls back to personal; directory/store failure stays an error. Redis persistence determines retention. The fresh `initial_workspace:{kind:"personal"|"remembered",domain_id,project_id}` must exactly match the returned session, and is not a refresh or authorization credential.
+
+User-console directory and scope commits require actual domain/project membership even for system administrators; a remembered nonmember target falls back to personal. Global administration remains in separate verified administrator APIs. User project/recent lists share the fresh workspace directory rather than a two-minute authorization cache. The chooser hides immutable identity-home metadata, and administrator header/drawer surfaces have no global workspace selector.
+
+GET/PUT `/api/v1/projects/{project_id}/display-name` exposes `{project_id,display_name,native_name,can_edit}`. The exact enabled Personal owner/current member may save a trimmed1–64-character label in the native `afterglow_display_name` extra; system-admin status is not an owner bypass. Generated native name/UUID, provenance, other extras, grants, quotas and resources remain unchanged. Fresh native readback precedes session/list label publication; new SQL migration is not required. See the [project API](../../api/projects.md#개인-프로젝트-표시-이름).
+
+Source defaults are2 vCPU,4096MiB RAM and1024GiB Cinder quota with supporting counts, not an automatically provisioned disk. Stored administrator policies, existing projects and frozen intents remain unchanged. Administrator settings offers explicit default draft/save and per-project preview/confirmation/apply for existing projects, preserving current usage+reservations and durable unknown-write fences. See the canonical admin API.
 
 Profile-image endpoints are documented in the [canonical profile API](../../api/profile.md): Gravatar uses only the current email hash and fixed HTTPS origin; generated avatars and bounded normalized raster uploads persist in one native user extra key. A caller exact-self read plus bounded service writer preserves stock Keystone update-user policy, other metadata and session/ABA fences. Live Keystone service-writer permission/capacity and real password/OIDC acceptance remain separate deployment gates.
 
@@ -130,14 +146,15 @@ The common schema returned by login, refresh, project switch and provider callba
 | `project_name` | string | Project name; `""` for domain-only login |
 | `user_id` | string | User UUID |
 | `username` | string | Username |
-| `domain_id`, `domain_name` | string | Server-verified user identity domain ID and display name |
+| `domain_id`, `domain_name` | string | Explicit working domain; immutable account home is `identity_domain_id/identity_domain_name` |
 | `is_domain_manager` | boolean | Current authority on the domain itself, not a project `manager` role name |
 | `expires_at` | string | access JWT expiry time (ISO 8601) |
 | `roles` | array[string] | Display-only project roles; hides `admin`, `manager`, their custom ancestors and unclassified custom names for ordinary users |
 | `default_project_id` | string | User's default project UUID (`""` if none) |
 | `is_system_admin` | boolean | Whether the user is a system admin |
-| `can_write` | boolean | Project write permission calculated from verified roles before name filtering; do not infer it from display names |
+| `can_write` | boolean | User-console write capability from verified project roles before name filtering, separate from global system administration; do not infer it from display names |
 | `auth_method` | string | `password` or `federated` |
+| `initial_workspace` | object/null | Fresh human login only: exact `{kind:"personal"\|"remembered",domain_id,project_id}`; never reusable authorization |
 
 ### UserInfo
 
@@ -179,31 +196,27 @@ The common schema returned by login, refresh, project switch and provider callba
 
 ## POST /api/v1/auth/login
 
-Resolves the explicit domain first, authenticates native credentials and issues a JWT pair. Dashboard pre-warming and recent-access recording run only when a project exists. Rate limit: **10/min**.
+Resolves exactly one enabled Accounts username or unique email, performs one native password proof and issues the verified personal or explicitly remembered workspace session. It never retries another domain or falls back to a legacy home. Rate limit: **10/min**.
 
 ### Request body
 
 ```json
 {
   "username": "string (required)",
-  "password": "string (required)",
-  "project_name": "string (optional)",
-  "domain_name": "Example (required)"
+  "password": "string (required)"
 }
 ```
 
 | Field | Type | Required | Description |
 |------|------|------|------|
-| `username` | string | Yes | OpenStack username, 1–255 characters |
+| `username` | string | Yes | Accounts username or unique email, 1–255 characters |
 | `password` | string | Yes | Password, 1–1024 characters |
-| `project_name` | string | No | Up to 255 characters, default `""`; selects accessible default/first project |
-| `domain_name` | string | Yes | Explicit domain name or ID, 1–255 characters; no implicit `Default` |
 
 ### Response (200 OK)
 
 [TokenResponse](#tokenresponse) — `auth_method` is `password`.
 
-Login succeeds even with no accessible enabled projects: `project_id` and `project_name` are `""`, `roles` is `[]`, and `can_write` is `false`. Domain managers can use IAM without a project; project-resource operations still require a real project scope. Project selection/switching stays within the user's identity domain.
+Every supported interactive human, including an existing system administrator, ensures and selects a verified personal primary by default. An explicit exact-actor preference may restore a freshly authorized last workspace; stale authority falls back to personal, while unavailable authority and uncertain provisioning remain errors. Native service automation and later access-loss recovery may remain projectless. Working scope may differ from immutable identity home, but account IDs, credentials and existing grants/resources are preserved.
 
 ### Error responses
 
@@ -212,7 +225,7 @@ Login succeeds even with no accessible enabled projects: `project_id` and `proje
 | `401` | Authentication failed (invalid credentials) |
 | `403` | Disabled domain, password-policy denial or email allowlist violation |
 | `404` | Domain not found |
-| `422` | Missing explicit domain or invalid body |
+| `422` | Invalid body or extra domain/project selector fields |
 | `503` | Directory, login-policy storage or authentication outage; not a password rejection |
 | `429` | Account lockout (repeated failures) or rate limit exceeded |
 

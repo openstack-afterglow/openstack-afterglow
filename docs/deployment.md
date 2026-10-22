@@ -4,6 +4,17 @@
 
 Afterglow는 Docker Compose(개발/소규모), Kubernetes(프로덕션), ArgoCD(GitOps) 세 가지 배포 방식을 지원합니다.
 
+## Lumen provider account cutover (unpublished source)
+
+Afterglow's account/credential administrator panel requires the matching Lumen native admin API, endpoint-owned account schema and private converter companion. Apply Lumen additive `027_provider_account_credentials.sql` only after closing new native/compat/media/realtime/Batch and credential/auth admission, draining HTTP/SSE/WS/durable/auxiliary work, and stopping every old API/online/batch worker/controller writer. Preserve unknown holds, provider-start intent, completed checkpoints and usage identity; never replay uncertain work through a new key or converter. Take a stopped-writer MariaDB/PostgreSQL backup and prove isolated restore with original encryption keys, engine/sql_mode and manifest/checksums. Preserve existing `.env`, private settings, DB/Redis/PG URLs, CA/trust and unrelated state.
+
+Run the matching Lumen migration CLI and repeat it before starting compatible API/workers/controller;027 copies legacy inline material/generation to default account/credential rows, retires endpoint inference secrets, binds credential auth attempts and adds backend/allocation identity. Billing administrator keys stay inference-separated and historical anonymous usage is not backfilled to a fictitious account. The Python wheel does not install a native Go binary: source/wheel services need the current `runtime/bifrost` Go1.27.3 build installed via `BIFROST_EXECUTABLE`/PATH; canonical Lumen runtime images include the matching pinned binary. Qualify version/platform/authenticated single-attempt readiness, worker claims and synthetic selected-key/unknown/one-debit paths before opening the BFF panel. Legacy unstarted snapshots without a full selected reference need explicit current-authority re-admission, never automatic fallback; already submitted/unknown calls are not blindly re-admitted.
+
+Do not roll old/new writers or expose a new account UI against an old Lumen API. Deploy the compatible BFF/frontend only after native account/auth routes are available; retain provider-subtree no-store and transient secret handling. Device OAuth protocol support is not permission for public multi-user consumer-subscription pooling. No Afterglow DB migration or duplicate provider secret/billing database is introduced by this UI.
+
+Rollback closes admission/drains again and uses a qualified image/schema pair or the complete stopped-writer pre-cutover MariaDB/PostgreSQL backup plus original keys/config and old service set. Old endpoint secret columns have been retired: old code on the new schema is not a safe rollback. Reconcile all post-cutover unknown/provider/ledger effects before restoring; no reverse DDL, migration-ledger deletion, volume deletion or inferred provider replay. See sibling Lumen `docs/operations.md` section “Private provider runtime and migration027 cutover” for the canonical procedure and `docs/testing.md` here for incomplete acceptance. This is a runbook, not publication/deployment/real-provider/cloud proof.
+
+
 ---
 
 ## 사전 요구사항
@@ -257,7 +268,7 @@ afterglow.openstack.conf  ← OpenStack 자격증명 오버라이드 (선택)
 
 ### Canonical 계정·공개 가입·복구 cutover
 
-현재 source는 global email 소유권, explicit account linking, email-first 개인 home 가입 및 local-password 계정 복구를 함께 집행합니다. API payload/error의 정본은 [인증 API](api/auth.md), manager 관리 경계는 [IAM API](api/iam.md)입니다. 기존 root architecture/changelog/testing의 증거 범위를 따르며 이 절은 배포 실행 기록이 아닙니다.
+현재 source는 전역 signup 식별자 유일성·필수 이메일 검증, OIDC verified-email Accounts 자동 연결, legacy 명시 연결과 local-password 복구를 함께 집행합니다. API payload/error의 정본은 [인증 API](api/auth.md), manager 경계는 [IAM API](api/iam.md)입니다. 운영 schema 적용·native 계정 이관·실제 provider/mailbox 수용이나 배포 실행 기록은 아닙니다.
 
 #### 설정과 admission
 
@@ -275,8 +286,12 @@ auto_join_email_domains = {}
 ```
 
 - Public signup 기본은false입니다. `signup_email_domains=[]`는 host 제한 없음이며 nonempty 목록은 exact IDNA host만 허용합니다. Signup/recovery readiness는 SMTP enabled/host/from-address와 frontend base URL 구성 여부입니다. SMTP 인증/TLS/발신 권한·실제 mailbox 수신은 별도 운영 수용이 필요합니다. 복구는 signup opt-in과 독립이며 SMTP readiness가 있어도 부적격 계정은 발급하지 않습니다.
+- SMTP 접수만으로 가입할 수 없습니다. 전달된 한 시간 one-use token이 pending일 때만 이메일 소유를 증명하고 최종 native 생성 전에 normalized username/email·cross-alias·미확정 journal 충돌을 재검사합니다. 공개 이메일 요청은 기존 주소도 같은202이며 소유권 안내는 비밀 링크 뒤에만 공개합니다.
+- OIDC verified-email 자동 연결은 **배포 backend의 기본 동작**입니다. Compose·K8s·Helm·Kolla에 별도 자동 연결 flag나 이메일 검증 해제 옵션을 추가하지 않습니다. 기존 TOML/SQL registry·allowlist·Secret 경로를 그대로 사용하고 configured provider의 signed issuer/subject·boolean verified email을 신뢰합니다. 정확한 enabled Accounts의 유일 email만 연결하며 global stable/native tuple이 다른 UUID에 있으면 자동 이전하지 않습니다. Native stable-sub user-only mapping·전체 federated tuple PATCH·canonical readback 권한이 필요하며 UUID를 source에 고정하거나 mapper를 mutable email key로 바꾸지 않습니다.
+- 자동 연결에 사용할 OIDC는 운영자 `[auth.providers.<key>]`에 등록합니다. Tenant-managed SQL provider는 기존 조직 멤버여도 first-link에 명시 canonical proof가 필요합니다. SQL provider를 허용 목록에 넣는 것만으로 전역 이메일 소유권 증명자로 승격되지 않습니다.
+- 기존096–100 schema를 재사용하고 새 migration/backfill은 없습니다. 운영 enrollment 컬럼 누락을 `create_all`로 해결하지 않습니다. 새 writer/기존 schema와 기존 writer/새 schema의 운영 호환성은 미검증이며 old API/worker drain·backup/restore·정확한 image cutover 승인 뒤 활성화해야 합니다. Image rollback은 이전 password-link 동작으로 돌아갈 수 있지만 저장된 tuple·credential·journal을 삭제해서는 안 됩니다.
 - 전역 signup은 `/auth/registrations`의 검증 email proof 뒤 shared account user와 shared personal primary만 생성합니다. 임의 조직 등록 route는403 invitation_required이며 조직 참여는 manager 초대 수락 또는 명시 trusted-provider admission입니다. OIDC organization 설정의 stable id/name/manager_subjects는 operator trust 입력이고 exact issuer+org ID만 binding identity입니다. 첫 조직은 명시 manager subject만 만들며 mutable email/name/client/provider alias로 조직·manager를 추정하지 않습니다. Common provider origin은 조직 membership이 아닙니다.
-- 기존 조직 auto_join_email_domains는 provider bare key 또는 canonical SQL UUID→exact host 배열 map입니다. Domain map 생략은 default 상속, 명시 map은 전체 대체이고 빈 map/누락 provider/빈 host 배열은 admission을 허용하지 않습니다. Provider 허용/활성·검증 email·현재 email 정책과 준비된 target Default가 필요하며 reader만 additive로 부여합니다. 이 설정은 기존 계정 password/authenticated 연결 proof를 대신하거나 manager/owner/group을 생성하지 않습니다.
+- 기존 조직 auto_join_email_domains는 provider bare key 또는 canonical SQL UUID→exact host 배열 map입니다. Domain map 생략은 default 상속, 명시 map은 전체 대체이고 빈 map/누락 provider/빈 host 배열은 admission을 허용하지 않습니다. Provider 허용/활성·검증 email·현재 email 정책과 준비된 target Default가 필요하며 reader만 additive로 부여합니다. Accounts OIDC 연결과 별개이고 legacy 계정 proof나 manager/owner/group 생성을 대체하지 않습니다.
 - Config/Secret·K8s/Helm artifact를 재생성할 때 위 auth metadata와 **생략/명시 빈 map/list의 차이**를 유지합니다. Protected provider secret·암호화 키·Redis pin·SQL 정책을 보존하고 모든 API/worker를 일관된 설정으로 재시작합니다. Nested env secret leaf와 최상위 AUTH 전체 대체를 혼동하지 않습니다. Hot reload·구형 process와 혼합 집행을 가정하지 않습니다.
 - 새 writer+구 schema는099의 enrollment 컬럼과099/100 intent/binding table이 없으면 호환되지 않습니다. `create_all`이나 config fallback을 migration으로 대신하지 않습니다. 구 writer+새 additive schema도 storage 보존과 별개로 **동시 운용할 수 없습니다**. 구 login/Default bootstrap·IAM reader는 identity-only account와 공통 personal의 권한 경계를 모릅니다. Signup만 끄고 구 source로 되돌리는 것은 안전한 rollback 증거가 아니며 관련 auth/enrollment/bootstrap 소비자를 모두 drain하고 호환성이 입증된 source를 유지해야 합니다. Existing identity·grant·resource·미완료 receipt의 자동 이동/삭제·DDL DROP은 복구 방법이 아닙니다.
 - 이번 검증은 폐기 가능한 격리 schema와 합성 native/SMTP에서 수행합니다. 실제 운영 revision·migration ledger/checksum·schema/charset/sql_mode·backup 복원·암호화 키·외부 IdP mapping 및 mixed-version 수용 증거는 수집하지 않았습니다. 따라서 운영 DB 동기화·rolling upgrade·image-only downgrade의 안전성을 선언하지 않으며 별도 승인과 증거가 필요합니다.
@@ -285,9 +300,9 @@ auto_join_email_domains = {}
 
 `098_enrollment_policy.sql`과 migration manifest를 **새 writer보다 먼저** 적용합니다. 기존 가입 writer를 drain하고 모든 API/worker를 함께 전환합니다. 구형 writer 혼합 운용은 승인·quota 정책을 우회할 수 있으므로 지원하지 않습니다. Migration은 `enrollment_policy`, `signup_requests`, enrollment의 nullable JSON `personal_quotas`를 추가하며 기존 사용자·home·권한·진행 중 intent를 이전하지 않습니다.
 
-시스템 관리자 → 설정의 가입 정책은 공개 email 가입과 auto/admin 승인, 미래 각 personal project의 sparse quota template을 저장합니다. 최초 persisted row 부재만 config flag·auto·core quota0을 사용하며 SQL 장애는503입니다. Row가 생기면 persisted enabled가 우선하고 host allowlist·SMTP/provider 설정은 계속 필요합니다. 조직 생성은 별도 auth.organization_creation_enabled(기본true)·max_organizations_per_user(기본10)이며 config 예시·K8s·Helm 생성 경로를 함께 유지합니다.
+시스템 관리자 → 설정의 가입 정책은 공개 email 가입·auto/admin 승인·미래 personal project의 sparse quota template을 저장합니다. 최초 row 부재만 config flag·auto와 source 기본2 vCPU/4096MiB RAM/1024GiB Cinder 및 보조 count를 사용합니다. 기존 저장 정책(0 포함)과 frozen intent는 그대로이며 새 제공값은 draft→명시 저장으로 채택합니다. SQL 장애는503입니다. Host allowlist/SMTP/provider 설정 및 별도의 조직 생성 정책은 계속 필요합니다.
 
-Quota blank는 native 기본값,0은 금지,-1은 unlimited입니다. Template은 새 personal project에 동결 적용하고 disabled user/project 활성화 전에 native update/readback과 sole-owner/direct-reader를 검증합니다. Personal domain allocation ceilings/defaults·manager·Default·상속 projection은 만들지 않습니다. 비활성 Manila field는 보존·omitted이고 불명 native 결과는 journal에 fenced 상태로 남깁니다. 저장 뒤 기존 프로젝트의 quota를 일괄 변경하지 않습니다.
+Quota blank는 native 기본값,0은 금지,-1은 unlimited입니다. 새 project는 disabled staging에서 본인 직접 native member·provenance·동결 quota readback 뒤 활성화하고 shared Personal의 Default/manager/allocation pool은 만들지 않습니다. 기존 프로젝트는 새 policy를 숨겨 적용하지 않고 paged inventory→project preview→명시 확인/apply로 usage+reservation·owner/accepted journal을 확인합니다. Native member-only 프로젝트에 owner 프리셋을 추가하지 않습니다. Unknown quota는 기존 DomainQuotaOperation settlement 전 replay하지 않으며 disk1024GiB는 한도이지 신규 볼륨이 아닙니다.
 
 승인은 native 계정이 아닌 verified request에 대한 결정입니다. Password/OAuth code/session을 저장하지 않고 OIDC/GitHub는 승인 뒤 다시 로그인합니다. Email은 공개 가입 enabled일 때 새 링크, 꺼진 invitation-only 환경에서는 기존 검증 초대 재조회 안내를 보냅니다. 승인 메일503은 **이미 확정된 승인**을 뜻할 수 있으므로 자동 승인/재전송하지 말고 현재 queue 상태를 조회합니다. 구버전 rollback 전 새 가입 writer를 중지하고 승인/journal 상태를 보존해야 하며 자동 DROP/backfill/기존 계정 이동은 하지 않습니다.
 
@@ -298,6 +313,8 @@ Quota blank는 native 기본값,0은 금지,-1은 unlimited입니다. Template�
 운영자가 미리 생성한 **실제 native 이름 `Accounts`와 `Personal`**을 사용합니다. 사용자 제공 환경의 UUID는 각각 `3b24b0e94b1d46c9941d515b8c2d397b`, `4661cc1ff17044bfa43f87ded1d8d53f`이며 source에 환경별 UUID를 고정하지 않고 정확한 native 이름으로 조회한 UUID를 사용합니다. 표시 이름은 탐색 근거가 아닙니다. 두 domain은 enabled 상태여야 하고 case-variant 중복·조회 불완전·명시적 kind 충돌은503입니다. CLI 생성 domain은 Afterglow 관리 속성 없이 사용할 수 있으며 kind가 있으면 각각 `account`(단수), `personal`이어야 합니다. 가입/로그인은 shared domain을 생성하거나 수정하지 않습니다. 과거 shared-domain 생성 journal은 원래 이름/UUID/marker로만 별도 settlement하며 새로운 domain에 재바인딩하지 않습니다. 기존 사용자·home·grant는 이동하지 않습니다. Accounts는 identity-only이며 새 Personal 프로젝트는 본인 직접 native member·quota만 사용합니다. Member가 manager/owner/admin을 함의하면 생성은 차단되고 login이 역할 graph를 seed하지 않습니다. 기존 owner 기반 personal은 원래 grant를 유지합니다.
 
 비밀번호 로그인은 서버에서 native `Accounts` UUID를 확인한 뒤 그 domain 안에서만 username/email을 선택하고 한 번 native 인증합니다. 다른 domain의 동명 계정으로 fallback하지 않으며 기존 다른 home의 human/service 계정은 이 로그인 화면을 사용할 수 없습니다. 운영 cutover 전 필요한 관리자 계정의 Accounts 로그인 및 native system 권한을 별도로 확보해야 합니다. 기존 계정의 자동 이동·비밀번호 변경·grant 복제는 없습니다. 웹 조직 생성은 opaque native 이름과 중복 가능한 표시 이름을 계속 분리합니다.
+
+관리자 human의 personal/member landing은 provider의 native admin token이 아닙니다. Stock Nova2025.2 server all-tenants·hypervisor·Flavor access는 project scope을 요구하므로 `[openstack]`의 기존 username/password/project_name/project_domain_name으로 얻는 **고정 configured admin-project executor**가 실제 project scope·admin role·명시적 is_admin_project:true를 반환해야 관리자 resource inventory/ACL/quota가 동작합니다. Fresh native system-admin caller guard 뒤에만 사용하며 workspace·native human grant는 바꾸지 않습니다. 설정 부족·잘못된 scope는503이며 system token fallback·Personal admin grant·임의 project rescope로 우회하지 않습니다. 배포 전 개인 로그인→실제 Nova inventory/hypervisor·선택 domain/project 목록→private Flavor ACL을 native scope enforcement를 켠 상태로 별도 수용해야 합니다. Credential·Aodh/Gnocchi는 기존 caller native 정책을 유지합니다.
 
 관리자 생성 human의 개인 프로젝트는 첫 성공한 로그인까지 deferred 상태다. 기존099의 `personal_project_intents`와 enrollment에 같은 token/name·동결 quota를 보존하며 새 migration은 없다. **이 새 상태를 해석하지 못하는 구형 human/API/worker writer를 모두 drain한 뒤** 새 writer를 시작해야 한다. Safe confirmed/not-sent 단계만 다음 login 또는 `/auth/personal-project/recovery`의 새 password proof로 재개하고 unknown native 요청은 아래 settlement가 필요하다. Active deferred intent가 있는 동안 old writer 혼합 실행·그대로 downgrade하는 호환성을 보장하지 않는다. Rollback 전 새 생성/로그인을 fence하고 원 요청 종료·intent settlement/완료를 검증하며 계정 삭제·DB DROP·grant replay로 처리하지 않는다.
 
@@ -342,7 +359,7 @@ Horizon은 설치된 `openstack_auth`의 `WEBSSO_IDP_MAPPING`을 확인하고 De
 
 기존 계정 연결의200은 `ProviderLinkResponse`이며 로그인 성공이 아닙니다. 연결 API는 native attachment readback에서 종료하고 frontend는 도메인 힌트 없는 `/login?reauthenticate=1`로 새 인증을 안내합니다. 새 authorize/callback에서만 canonical native ID/home·provider origin/admission을 검증하고 개인 primary의 native scope와 application session을 발급합니다. 최초 project scope를 provider origin이나 identity-only accounts의 Default로 바꾸지 않습니다. 연결 완료·세션 미발급과 별도 새 로그인 성공을 각각 확인합니다.
 
-도메인 입력 없는 로그인 cutover는 backend/frontend를 함께 반영해야 합니다. 새 password body는 `{username,password}`뿐이며 구형 `domain_name`/`project_name` 추가 필드는422입니다. 공개 `/auth/login-options`의 provider origin 등록은 기존 설정·정책을 재사용하고 실제 인증 뒤 home에서 workspace chooser를 엽니다. 새 schema/config key·native mapping 변경은 없지만 앞선 개인-domain 가입의098 등 prerequisite는 그대로 필요합니다. 구형 UI와 새 API를 혼용하지 않으며 rollback 시 원래 API/frontend 쌍을 함께 복원합니다. 기존 계정 home·권한·자원은 이전하거나 삭제하지 않습니다.
+로그인 cutover는 backend/frontend를 함께 반영합니다. Password body는 `{username,password}`뿐이며 origin discovery는 기존 provider 정책을 유지합니다. 모든 interactive human(기존 관리자 포함)은 personal primary를 지연 준비하고, 본인 opt-in 마지막 workspace만 native 권위를 새로 확인해 복원합니다. Redis persistence가 선호 보존을 결정합니다. 기존 운영 enrollment093/098–100 컬럼·intent schema와 native member graph를 먼저 검증하고 old writer를 drain하세요. `create_all`·프로젝트 없는 관리자 fallback·다른 home password retry로 미준비 schema를 우회하지 않습니다. 소스의 격리 검증은 공유 운영 migration/quota 적용 승인이 아니며 backup/호환성 검토와 별도 운영 수용이 필요합니다. 기존 계정/home/password/grant·자원은 이동/삭제하지 않습니다.
 
 #### Schema-before-writer와 rollback
 
@@ -1510,6 +1527,10 @@ docker compose --env-file /path/to/production.env -f docker-compose.prod.yml up 
 ### 데이터베이스 스키마 마이그레이션
 
 `auto_create_tables`/ORM `create_all`은 manifest 기반 schema upgrade가 아닙니다. 누락 table 생성과 일부 과거 ad-hoc DDL을 수행할 수 있어도 기존 table의 신규 column·backfill·constraint·migration ledger를 모두 적용/검증하지 않습니다. 새 writer가 참조하는 schema는 **API/UI/worker 롤아웃 전에** 승인된 SQL 마이그레이션으로 준비해야 합니다. 적용 대상·순서·SHA-256은 `backend/migrations/manifest.txt`의 논리 ID를 기준으로 판단하며 숫자 접두사나 bootstrap exit0만으로 판단하지 않습니다. `backend/scripts/baseline_migrations.py`는 일반 apply runner가 아니고 자동 pre-037 baseline도 거부합니다. 이 도구로 운영 ledger를 임의 채우지 않습니다.
+
+2026-10-22 사용자 승인 로그인 복구로 현재 공유 `afterglow_kolla`의093/098/099 enrollment10누락컬럼과096 `domain_id NULL` 선행 조건을 보완했습니다. Local API와 운영3controller API/Notion worker를 drain한 protected backup의 동일 MariaDB10.11.19 isolated restore·전체102table/4697row fingerprint 일치를 먼저 증명하고 누락된7statement만 적용했습니다. 운영VIP를 쓰는3controller와 local 실행 backend 모두 enrollment29컬럼·nullable을 확인했으며 기존 image/env/config/key/native identity/grant는 보존했습니다. 상세 운영 receipt는 [로그인 스키마 복구](testing.md#로그인-enrollment-스키마-복구-2026-10-22-shared-operational-db)에 있습니다.
+
+이 사실은 **그 대상/시점의 schema 선행 준비**이며 다른 DB에 migration을 자동 적용하거나 새 release·mixed writer/rolling 수용·사용자의 fresh-password 로그인 성공을 증명하지 않습니다. 정상 Kolla bootstrap의 table creation으로 이 SQL upgrade를 생략하지 않으며, 이후 배포는 현재 manifest/schema·protected recovery point·old writer drain·동일 effective DB/key/config와 전체 native 선행 조건을 다시 대조합니다. DDL rollback은 image downgrade만으로 수행하지 않고 기존 intent·새 nullable row·재시작 뒤 사용자 쓰기를 보존하며 복구 범위를 정합니다.
 
 도메인 격리 cutover는 `090-domain-auth`(`domain_login_policies`, `domain_identity_providers`)와 `091-domain-iam`(`domain_enrollments`)의 manifest checksum·schema를 확인한 뒤 API/UI/worker를 함께 전환합니다. 기존 Default 사용자·프로젝트·grant는 이동하지 않으며 시스템 관리자를 자동 부여하지 않습니다. 운영자가 사전에 실제 `system:all admin` 계정과 각 작업 도메인의 canonical Default에 필요한 live `manager` 할당, native federation IdP/protocol·정책 및 SMTP를 준비해야 합니다. 일반 project/domain의 `admin` 이름만으로 domain IAM authority가 되지 않습니다. `scripts/manage_system_admins.py`의 명시적 grant/list/recovery 이외에 project-admin 자동 승격은 없습니다.
 

@@ -58,7 +58,7 @@
 							<div class="text-ink-0 text-sm font-medium truncate">{proj.name}</div>
 							<div class="text-ink-2 text-xs font-mono mt-0.5 truncate">{proj.id}</div>
 						</div>
-						{#if s.adminProjectQuotas.size === 0}
+						{#if s.adminProjectQuotasLoading}
 							<div class="text-ink-2 text-xs flex-shrink-0">{t('adminProject.quotaLoading')}</div>
 						{:else if q}
 							<div class="flex flex-wrap items-center gap-1.5 flex-shrink-0 justify-end">

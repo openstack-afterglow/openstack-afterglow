@@ -125,12 +125,24 @@ def _access_info(access, *, operation=None) -> dict:
 
         with authentication_step("native_project_authority"):
             assert_project_membership(access.user_id, project_id, operation=operation)
+        from app.services.identity_roles import _field
+        from app.services.project_display import display_name
+
+        if operation is None:
+            from app.services.native_operation import NativeOperation
+
+            with NativeOperation() as directory:
+                project = directory.get("projects", project_id)
+        else:
+            project = operation.get("projects", project_id)
+        assert_domain_resource(access.project_domain_id, _field(project, "domain_id"))
+        project_label = display_name(project, operation=operation)
     with authentication_step("native_system_authority"):
         is_system_admin = _is_system_admin(access.user_id, operation=operation)
     return {
         "token": access.auth_token,
         "project_id": project_id,
-        "project_name": access.project_name or "",
+        "project_name": project_label if project_id else "",
         "user_id": access.user_id,
         "username": access.username or "",
         "expires_at": access.expires.isoformat() if access.expires else "",
@@ -190,7 +202,10 @@ def authenticate(
         return _access_info(access, operation=operation)
     projects = list_projects(access.auth_token, domain["id"], operation=operation)
     if project_name:
-        matches = [p for p in projects if p["name"] == project_name]
+        # Labels are deliberately nonunique and never native scope selectors.
+        from app.services.identity_roles import _field
+
+        matches = [p for p in projects if _field(operation.get("projects", p["id"]), "name") == project_name]
         if len(matches) != 1:
             raise Unauthorized(message="Project is not accessible in the chosen domain")
         target = matches[0]
@@ -621,6 +636,7 @@ def list_projects(token: str, domain_id: str | None = None, *, operation=None) -
     selected = domain_id or (access.project_domain_id if access.project_id else user["domain_id"])
     context = domain_context(user_id, selected, operation=operation)
     from app.services.identity_roles import _field
+    from app.services.project_display import display_name
 
     result = []
     for project in projects:
@@ -638,7 +654,7 @@ def list_projects(token: str, domain_id: str | None = None, *, operation=None) -
         result.append(
             {
                 "id": _field(project, "id"),
-                "name": _field(project, "name"),
+                "name": display_name(project, operation=operation),
                 "description": _field(project, "description") or "",
                 "domain_id": _field(project, "domain_id"),
                 "domain_name": context["domain_name"],
@@ -669,6 +685,7 @@ def list_system_projects(token: str) -> list[dict]:
     resolve_domain(user["domain_id"])
     ks = ks_client.Client(session=sess, interface=settings.os_interface, region_name=settings.os_region_name)
     from app.services.domain_display import display_name
+    from app.services.project_display import display_name as project_display_name
 
     domains = {d.id: display_name(d) for d in ks.domains.list()}
     projects = []
@@ -678,7 +695,7 @@ def list_system_projects(token: str) -> list[dict]:
         projects.append(
             {
                 "id": project.id,
-                "name": project.name,
+                "name": project_display_name(project),
                 "description": project.description or "",
                 "domain_id": project.domain_id,
                 "domain_name": domains[project.domain_id],

@@ -20,17 +20,22 @@ The system SHALL create every new email, administrator-created, invited, OIDC, o
 #### Scenario: Administrator creates a user while observing an organization
 - **GIVEN** a current system administrator observing any existing directory domain
 - **WHEN** the administrator creates a human
-- **THEN** the selected domain is observation context only, the human receives an activated Accounts identity and a same-token/name frozen-quota deferred personal intent without a project/grant; the response has `personal_project_deferred:true` and null personal project fields, and no selected-domain or Accounts Default grant is added
+- **THEN** the selected domain is observation context only, the human receives an activated Accounts identity and a same-token/name frozen-quota deferred personal intent without a project/grant; the response has `personal_project_deferred:true`, a null project ID and the reserved project name, and no selected-domain or Accounts Default grant is added
 
 #### Scenario: First successful login consumes the deferred personal intent
 - **GIVEN** an accepted administrator-created human and its exact deferred personal intent
 - **WHEN** fresh native password or provider proof succeeds and existing login policies admit the human
 - **THEN** the same intent/name/quota is prepared once as a disabled Personal project with only the human's direct member grant and verified quota/provenance before activation and token publication; disabled identities cannot bypass native login, and repeated successful logins reuse the project
 
-#### Scenario: Existing projectless operator opens the chooser
-- **GIVEN** a freshly authenticated system administrator with no personal project and no deferred managed enrollment
-- **WHEN** the server returns a projectless initial context in an exact visible non-account working domain
-- **THEN** the frontend preserves the immutable Accounts identity and opens the workspace chooser rather than discarding the session; ordinary foreign non-personal landing, invisible working domains and project-scoped foreign administrator landing remain rejected
+#### Scenario: Existing markerless human administrator starts in personal
+- **GIVEN** a freshly authenticated interactive system administrator with no personal project or deferred managed enrollment
+- **WHEN** native human qualification succeeds and no service-role automation authority applies
+- **THEN** the existing durable provisioning path creates and verifies exactly one personal member primary without changing identity/home/password or existing grants/resources, and fresh publication selects that personal project before dashboard or explicit continuation
+
+#### Scenario: Native automation retains projectless administrator recovery
+- **GIVEN** a freshly authenticated system administrator with verified native service authority
+- **WHEN** no personal project is provisioned and the server returns a projectless context in an exact visible non-account domain
+- **THEN** the frontend preserves immutable identity and opens the chooser; invisible or unverified foreign project landing remains rejected
 
 #### Scenario: User explicitly resumes safe first-login preparation
 - **GIVEN** safe confirmed or not-sent personal provisioning progress after successful native proof
@@ -43,7 +48,7 @@ The system SHALL create every new email, administrator-created, invited, OIDC, o
 - **THEN** the original identity, password, federation tuple, personal name and project ID and native grants are preserved rather than rewritten to the new enrollment shape
 
 ### Requirement: System administrators persist future enrollment policy
-The system SHALL expose revisioned public-email-signup, auto/admin approval, and sparse personal quota policy at system-admin-only APIs and a system administrator settings panel. Every request SHALL require current native system administrator authority. Updates SHALL use compare-and-swap revision checks and affect future personal-project creation only, without altering existing project quotas or shared domain budgets. Only an absent policy row MAY bootstrap from configuration, automatic approval, and conservative zero core quotas; unavailable policy storage SHALL fail closed.
+The system SHALL expose revisioned public-email-signup, auto/admin approval, and sparse personal quota policy at system-admin-only APIs and settings. Every request SHALL require current native system authority. Policy updates SHALL use compare-and-swap and affect future creation only. Only an absent row MAY use source defaults of2 vCPU,4096MiB RAM and1024GiB Cinder with supporting counts. Existing stored customization and frozen intent SHALL remain unchanged; storage failure SHALL fail closed. Existing project changes SHALL require a separate provenance/usage-checked preview and explicit apply.
 
 #### Scenario: A stale policy edit cannot replace current policy
 - **GIVEN** a persisted policy and an editor holding an older revision
@@ -85,6 +90,23 @@ The system SHALL freeze the personal quota template in the enrollment journal be
 - **GIVEN** an external human has an enrollment provenance marker but its exact user/home journal is not accepted
 - **WHEN** a fresh provider callback finds that native human
 - **THEN** it fails closed without exchanging or publishing a session or creating another account, even if activation occurred before the earlier failure
+
+### Requirement: Existing personal quota application is explicit and journaled
+The system SHALL enumerate every native Personal project with bounded cursor paging and SHALL require current system authority, exact enabled ownership/provenance, current usage plus reservations, and an unchanged policy/preview fingerprint before applying limits. Native member-only projects SHALL NOT require project-owner role presets. Historical native-owner primaries MAY retain their existing provenance. Unknown writes SHALL reuse durable quota-operation fences and settlement; frozen provisioning intent, grants and resources SHALL NOT be rewritten.
+
+#### Scenario: Existing usage exceeds proposed default
+- **GIVEN** a verified personal project whose usage plus reservations exceeds a finite proposed limit
+- **WHEN** an administrator previews or tries to apply current policy
+- **THEN** preview identifies the blocked fields and apply is rejected without deleting resources or lowering the native quota
+
+### Requirement: Remembered login workspace is opt-in and never authority
+Every supported human SHALL default to a verified personal primary, including system administrators. Only an explicit exact-user/identity-home preference MAY restore a last workspace after fresh native domain/project authority checks. Revoked/deleted/disabled targets SHALL fall back to personal; directory/store failures and substituted native proof SHALL remain errors. Fresh remembered metadata SHALL exactly match the published session. Projectless/failed/stale login SHALL preserve explicit invitation/MCP continuation intent.
+
+#### Scenario: Administrator observes global inventory while logged into personal
+- **GIVEN** a human with verified system authority and a personal project member token
+- **WHEN** native administrator inventory is requested
+- **THEN** fresh system authority gates the configured fixed native admin-project executor required by project-only provider policy, while logical personal workspace/actor/home and actual execution project remain distinct; no human project grant is added, and consumer/credential/telemetry caller boundaries remain intact
+
 
 ### Requirement: Approval continuation uses fresh proof without credential replay
 The browser SHALL show localized pending and rejected states without retaining or replaying blocked credentials. Email approvals SHALL continue with a new verification link when public signup is enabled, or explicit verified-invitation reopening when it is disabled. External applicants SHALL start fresh provider authentication after approval. A restored authenticated callback SHALL wait for root-owned readiness before its sole code exchange and SHALL abandon late results after owner, scope, readiness, logout, unmount, or ABA transitions.

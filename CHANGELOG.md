@@ -7,6 +7,37 @@
 
 ## [Unreleased]
 
+### Lumen endpoint account/credential 관리자 UI (unpublished local source)
+- 기존 provider 관리자 화면에 endpoint-owned account/credential CRUD, explicit/priority/weighted policy, model-ID/operation eligibility(null 무제한/[] 모두 거부), priority/weight·quota group·expiry/cooldown, encrypted API/env source, credential별 subscription token/device auth/disconnect와 local usage panel을 연결합니다. 아홉 locale에서 같은 UI를 사용하고 submit/close/auth/project/provider lifecycle에 transient secret·device polling을 지우며 stale 응답 게시를 차단합니다.
+- 인증 BFF가 account/credential/usage/auth를 Lumen native admin API로 전달하고 provider subtree 성공·처리된 오류를 no-store로 보호하며 private URL/예외 본문을 로그에 남기지 않습니다. 선택·generation/current-authority·same-grant refresh·가격·durable unknown hold·단일 customer debit는 Lumen이 소유합니다. Lumen의 private converter-only Bifrost cutover는 stock gateway retry/rotation이나 Afterglow inference engine이 아닙니다.
+- Local BFF56pass, account component11pass, Svelte0errors/16unrelatedwarnings와 i18n0errors/37unrelatedwarnings까지 관측했습니다. 전체 Go/source/container/system/browser acceptance는 진행 중이며 live provider/OAuth·subscription pooling permission·cloud/production 수용이나 배포는 주장하지 않습니다. Lumen matching binary와 drain·backup·migration027 coordinated cutover가 선행하며 상세 receipt/pending gates는 `docs/testing.md`에 보존합니다.
+
+
+### 사용자 작업공간·관리자 화면 분리와 개인 프로젝트 표시 이름 (local source)
+- 관리자도 사용자 콘솔에서는 실제 소속·권한 domain/project만 조회·선택하며 계정 home 정보와 관리자 전용 project-management/공유 자원 action을 노출하지 않습니다. 관리자 상단·모바일 drawer의 global workspace chooser는 제거하고 각 관리 화면의 독립 필터는 유지합니다.
+- Personal owner가 일반 native member 권한으로도 프로젝트 표시 이름을 저장할 수 있습니다. Native `afterglow_display_name`만 exact owner·membership·graph lease·readback 아래 바꾸며 generated native name/UUID/marker·grant/quota/resource는 보존합니다. 사용자 설정·header/chooser·fresh login label, 아홉 언어와 session/readiness/ABA 경계를 함께 갱신합니다. 운영 IAM/설정/DB·이미지는 이 source 작업에서 바꾸지 않습니다.
+
+### 로그인 enrollment 스키마 운영 복구 (2026-10-22)
+- Password 검증 뒤 Personal 준비의 SQL1054를 유발한 공유 DB enrollment 누락10컬럼(093/098/099)과096 nullable-domain 선행 조건을 승인된 maintenance window에서 복구했습니다. 보호된 backup·동일 MariaDB 격리 restore·기존102tables/4697rows 보존 검증 후 누락7statement만 적용했습니다.
+- Local API와 운영3controller의 API/Notion worker만 drain·동일 container/image/env/key/config로 재기동했습니다. 실제29column ORM query·운영VIP readback·복원본 canonical bootstrap과 native identity/grant 보존을 확인했으며, 신규 image 배포·사용자 비밀번호 재전송·계정/권한/리소스 이전은 하지 않았습니다.
+
+### 검증된 이메일 가입·OIDC 계정 자동 연결 (local source, not deployed)
+- 로그인 폼의 내부 Accounts 안내를 아홉 언어에서 제거합니다. 가입은 전달된 one-use 이메일 검증 링크 후에만 생성하며 기존 이름/이메일·case/IDNA/cross-alias·동시 가입과 미확정 생성의 식별자 중복을 차단합니다. 사용 중인 이름은 새 비밀번호 입력과 다른 이름으로 재시도할 수 있고 기존 계정 비밀번호를 덮어쓰지 않습니다.
+- 허용된 OIDC의 signed issuer/sub·boolean verified email이 유일한 enabled Accounts 계정과 맞으면 추가 로컬 비밀번호 없이 기존 native 계정에 연결합니다. UUID/home/password·다른 federation tuple·권한/자원은 보존하고 native canonical 발급을 검증합니다. 다른 UUID의 기존 stable/native 연결이나 Accounts 중복은 자동 이전/병합하지 않습니다.
+- 자동 연결은 운영자 registry의 OIDC에 한정합니다. 조직 관리자가 만든 SQL provider는 기존 조직 멤버의 이메일을 주장해도 first-link에 canonical account proof가 필요하며, provider 노출·조직 관리권을 전역 계정 소유권으로 승격하지 않습니다.
+- 이 경계는 배포용 backend의 기본 동작이며 local-only flag가 아닙니다. SMTP·기존 migration·정책과 native stable-sub mapping 선행 조건은 유지하고 운영 배포나 기존 native 계정 이관은 수행하지 않습니다.
+
+### 도메인 리소스·Native Flavor·개인 기본 작업공간 (local source, not deployed)
+- 관리자 개요를 native domain별 실제 VM/vCPU/RAM/GPU·볼륨/GiB 집계와 도메인 drill-down으로 전환합니다. 전체 인스턴스·볼륨은 complete inventory에 필터·UUID 정렬·marker를 적용하고 URL의 domain/project 관측 조건을 header workspace와 독립적으로 유지합니다. 볼륨은 도메인별 연결/available·전체/검색 합계와 type·용량 필터를 추가하고 하이퍼바이저 VM은 domain/project/flavor 이름·UUID를 표시합니다.
+- Public/Private·CPU/GPU Flavor에 동일 compute/GPU 잔여 quota·예약량과 생성용 fresh same-host capacity를 적용합니다. 생성 화면에는 사용 가능한 선택지만 남기고 private만 native target-project access를 추가 검사합니다. Quota가 access를 합성하던 mode/reconcile은 퇴역하고 기존 grant는 보존합니다. 도메인 선택은 명시 project 후보 필터이며 domain grant가 아닙니다.
+- 관리자 포함 interactive human은 verified personal primary에 기본 연결합니다. 계정 설정의 명시 opt-in만 마지막 authorized workspace를 새로 검증해 복원하며 철회/삭제와 directory 장애를 구분합니다. 기존 identity/home/password/grant·unknown journal과 초대/MCP continuation은 보존합니다.
+- 개인 프로젝트 source default를2 vCPU·4096MiB RAM·1024GiB Cinder로 제공합니다. 기존 저장 policy/동결 intent는 덮어쓰지 않고 제공값 draft→정책 저장→기존 프로젝트별 usage+reservation preview/확인/apply를 추가합니다. 새1TiB 볼륨을 자동 생성하지 않으며 운영 quota·schema·container는 이 변경에서 적용하지 않았습니다.
+- Personal/member 관리자의 `/admin/*` token을 일괄 system scope으로 바꾸던 검증 공백을 정정합니다. Nova2025.2 project-only 정책에 맞게 fresh caller system-admin guard 뒤 기존 configured 고정 admin-project executor를 명시 사용하며 consumer/credential/telemetry는 caller scope을 유지합니다. 실제 upstream oslo.policy scope enforcement가 system token을 거부하는 재현과 로그인→Nova inventory/hypervisor·private Flavor ACL 수용을 검증하고 기존 사람의 grant·workspace는 변경하지 않습니다.
+- Manila REST URL에 logical Personal project를 덧붙이던 경계를 수정합니다. 실제 인증 executor project 또는 SDK native scope로 URL을 만들고 quota target은 별도로 유지하며, 실제 SDK catalog→HTTP 및 관리자 route에서 project가 중복되지 않음을 검증합니다.
+
+### 로그인 Enter·자동완성 (local source, not deployed)
+- Input event 없이 채워진 아이디/비밀번호를 reactive state 공란으로 판단해 Enter 제출을 막던 경계를 수정합니다. Native submit에서 실제 입력값을 읽고 일반 로그인 버튼을 공란 state만으로 비활성화하지 않습니다. Pending 중복 요청·IME 조합·명시 개인 프로젝트 복구의 새 비밀번호 요구는 유지합니다.
+
 ### 프로젝트 없는 관리자 로그인 (local source, not deployed)
 - Accounts 시스템 관리자의 프로젝트 미선택·서버 목록에 있는 작업 도메인 응답을 frontend가 잘못 거부하고 즉시 로그아웃하던 문제를 수정합니다. 일반 사용자의 personal landing 및 foreign/invisible/project-scoped 응답 거부는 유지합니다. 운영 IAM·DB·실행 이미지는 변경하지 않았습니다.
 

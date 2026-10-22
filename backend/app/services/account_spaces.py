@@ -321,8 +321,7 @@ async def provision_primary(row, session, mutation):
 
 
 async def _human(user_id, mutation):
-    from app.config import get_settings
-    from app.services import project_service
+    from app.services import domain_projects, identity_roles, project_service
     from app.services.project_service import _provider_call
 
     _, ks, catalog = mutation
@@ -335,35 +334,32 @@ async def _human(user_id, mutation):
     home = await _provider_call(ks.domains.get, home_id)
     if _field(home, "id") != home_id or _field(home, "enabled") is not True:
         raise HTTPException(403, "Human identity home is disabled")
-    if _field(user, "name") == get_settings().os_username:
-        raise HTTPException(403, "service_identity_personal_forbidden")
     raw = await _provider_call(lambda: list(ks.role_assignments.list(user=user_id, effective=True)))
     expanded = project_service._expanded_role_ids(raw, catalog, user_id)
-    if any(r["id"] in expanded and r["name"] == "service" for r in catalog):
+    # Keystone effective assignments omit system scope. Inspect exact native
+    # user/group system sources as well; a configured operator *name* is not a
+    # service identity and must not exempt an interactive Accounts administrator.
+    if any(role["name"] == "service" and role["domain_id"] is None for role in catalog):
+        system_rows = [
+            (row, "user_id", user_id)
+            for row in await _provider_call(lambda: list(ks.role_assignments.list(user=user_id, system="all")))
+        ]
+        groups = await _provider_call(lambda: list(ks.groups.list(user=user_id)))
+        for group in groups:
+            gid = _field(group, "id")
+            if not isinstance(gid, str) or not gid:
+                raise HTTPException(503, "Human identity group membership is unavailable")
+            system_rows.extend(
+                (row, "group_id", gid)
+                for row in await _provider_call(lambda gid=gid: list(ks.role_assignments.list(group=gid, system="all")))
+            )
+        for row, principal, subject in system_rows:
+            source = domain_projects._assignment(row, catalog)
+            if source["kind"] == "system" and source[principal] == subject:
+                expanded.update({source["role_id"], *identity_roles._descendant_ids(catalog, source["role_id"])})
+    if any(r["id"] in expanded and r["name"] == "service" and r["domain_id"] is None for r in catalog):
         raise HTTPException(403, "service_identity_personal_forbidden")
     return user
-
-
-async def managed_personal_pending(user_id, identity_domain_id, marker):
-    """Do not enroll preexisting operators; require exact native managed provenance."""
-    if not isinstance(marker, str) or not marker:
-        return False
-    from app.models.domain_iam import DomainEnrollment
-
-    async with _factory()() as session:
-        row = (
-            await session.execute(select(DomainEnrollment).where(DomainEnrollment.token_hash == marker))
-        ).scalar_one_or_none()
-        if row is None or row.kind != "managed_create":
-            return False
-        if (
-            row.user_id != user_id
-            or row.identity_domain_id != identity_domain_id
-            or not row.new_user
-            or row.status != "accepted"
-        ):
-            raise HTTPException(503, "personal_project_recovery_required")
-        return row.personal_project_id is None
 
 
 async def personal_recovery_status(user_id, identity_domain_id):

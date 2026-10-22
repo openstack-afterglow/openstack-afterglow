@@ -119,7 +119,7 @@ async def test_collect_instance_data_resolves_named_server_flavor_with_detailed_
     conn = SimpleNamespace(
         compute=SimpleNamespace(
             flavors=MagicMock(return_value=[listed_flavor]),
-            get_flavor=MagicMock(return_value=detailed_flavor),
+            fetch_flavor_extra_specs=MagicMock(return_value=detailed_flavor),
             servers=MagicMock(return_value=[server]),
         ),
         identity=SimpleNamespace(

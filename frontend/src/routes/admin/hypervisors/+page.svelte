@@ -5,7 +5,6 @@
 	import { api } from '$lib/api/client';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import { formatNumber, formatStorage } from '$lib/utils/format';
-	import { projectNames } from '$lib/stores/projectNames';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
@@ -108,7 +107,6 @@
 			selectedProjectId = null;
 			showMigrateModal = false;
 			void load();
-			projectNames.load(token, projectId);
 		});
 	});
 
@@ -386,7 +384,6 @@
 
 	onMount(() => {
 		load();
-		projectNames.load(token, projectId);
 	});
 </script>
 
@@ -450,7 +447,6 @@
 		onRemove={removeHost}
 		detail={selectedDetail}
 		loading={detailLoading}
-		projectNameMap={$projectNames}
 		gpus={selectedDetail ? (gpuHostMap.get(selectedDetail.hypervisor_hostname)?.gpus ?? []) : []}
 		pending={actionPending}
 		error={actionError}

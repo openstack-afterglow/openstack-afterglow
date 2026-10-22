@@ -3,7 +3,7 @@
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
@@ -43,6 +43,29 @@ class OwnershipReconcileRequest(BaseModel):
     operation_id: str = Field(min_length=1)
     domain_id: str | None = Field(default=None, min_length=1)
     native_calls_settled: bool = Field(strict=True)
+
+
+class ProjectDisplayNameRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str = Field(strict=True)
+
+    @field_validator("display_name")
+    @classmethod
+    def valid_display_name(cls, value):
+        from app.services.project_display import validate_name
+
+        try:
+            return validate_name(value)
+        except HTTPException as exc:
+            raise ValueError("A display name of 1–64 characters without controls is required") from exc
+
+
+class ProjectDisplayNameResponse(BaseModel):
+    project_id: str
+    display_name: str
+    native_name: str
+    can_edit: bool
 
 
 class ProjectPermissionsResponse(BaseModel):
@@ -157,6 +180,22 @@ async def reconcile_ownership(
         token_info,
         native_calls_settled=req.native_calls_settled,
     )
+
+
+@router.get("/{project_id}/display-name", response_model=ProjectDisplayNameResponse)
+async def get_project_display_name(project_id: str, token_info: dict = Depends(get_token_info)):
+    from app.services.project_display import get_display_name
+
+    return await get_display_name(project_id, token_info)
+
+
+@router.put("/{project_id}/display-name", response_model=ProjectDisplayNameResponse)
+async def update_project_display_name(
+    project_id: str, req: ProjectDisplayNameRequest, token_info: dict = Depends(get_token_info)
+):
+    from app.services.project_display import save_display_name
+
+    return await save_display_name(project_id, token_info, req.display_name)
 
 
 @router.get("/{project_id}/deletion-check")

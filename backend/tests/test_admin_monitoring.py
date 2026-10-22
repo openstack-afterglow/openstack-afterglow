@@ -43,7 +43,7 @@ async def test_monitoring_summary_includes_k3s_active(admin_client, monkeypatch)
     conn = _setup_conn()
     cluster = {"id": "c1", "name": "dms-cloud", "status": "ACTIVE"}
     with (
-        patch("app.api.identity.admin.get_os_conn", return_value=conn),
+        patch("app.api.identity.admin.get_admin_os_conn", return_value=conn),
         patch("app.api.identity.admin.get_drover_proxy", return_value=_drover([cluster])),
         patch("app.api.identity.admin._fetch_hypervisors_raw", return_value=[]),
         patch(
@@ -56,17 +56,19 @@ async def test_monitoring_summary_includes_k3s_active(admin_client, monkeypatch)
         patch("app.api.identity.admin._count_identity_users_projects", return_value=(0, 0)),
     ):
         # admin_client는 의존성 오버라이드로 conn을 주입하므로, 위 patch는 직접 호출되는 함수만 감싼다.
-        from app.api.deps import get_os_conn
+        from app.api.deps import get_admin_os_conn, get_os_conn
         from app.main import app
 
         async def override():
             yield conn
 
         app.dependency_overrides[get_os_conn] = override
+        app.dependency_overrides[get_admin_os_conn] = override
         try:
             resp = await admin_client.get("/api/v1/admin/monitoring/summary")
         finally:
             app.dependency_overrides.pop(get_os_conn, None)
+            app.dependency_overrides.pop(get_admin_os_conn, None)
 
     assert resp.status_code == 200
     body = resp.json()
@@ -92,17 +94,19 @@ async def test_monitoring_summary_k3s_zero_when_empty(admin_client, monkeypatch)
         patch("app.api.identity.admin._count_database_instances_admin", return_value=0),
         patch("app.api.identity.admin._count_identity_users_projects", return_value=(0, 0)),
     ):
-        from app.api.deps import get_os_conn
+        from app.api.deps import get_admin_os_conn, get_os_conn
         from app.main import app
 
         async def override():
             yield conn
 
         app.dependency_overrides[get_os_conn] = override
+        app.dependency_overrides[get_admin_os_conn] = override
         try:
             resp = await admin_client.get("/api/v1/admin/monitoring/summary")
         finally:
             app.dependency_overrides.pop(get_os_conn, None)
+            app.dependency_overrides.pop(get_admin_os_conn, None)
     assert resp.status_code == 200
     body = resp.json()
     assert body["containers"]["k3s_count"] == 0
@@ -125,17 +129,19 @@ async def test_monitoring_summary_marks_drover_unavailable(admin_client, monkeyp
         patch("app.api.identity.admin._count_database_instances_admin", return_value=0),
         patch("app.api.identity.admin._count_identity_users_projects", return_value=(0, 0)),
     ):
-        from app.api.deps import get_os_conn
+        from app.api.deps import get_admin_os_conn, get_os_conn
         from app.main import app
 
         async def override():
             yield conn
 
         app.dependency_overrides[get_os_conn] = override
+        app.dependency_overrides[get_admin_os_conn] = override
         try:
             resp = await admin_client.get("/api/v1/admin/monitoring/summary")
         finally:
             app.dependency_overrides.pop(get_os_conn, None)
+            app.dependency_overrides.pop(get_admin_os_conn, None)
 
     assert resp.status_code == 200
     assert resp.json()["containers"] == {
@@ -163,17 +169,19 @@ async def test_monitoring_summary_includes_new_groups(admin_client, monkeypatch)
         patch("app.api.identity.admin._count_database_instances_admin", return_value=3),
         patch("app.api.identity.admin._count_identity_users_projects", return_value=(7, 2)),
     ):
-        from app.api.deps import get_os_conn
+        from app.api.deps import get_admin_os_conn, get_os_conn
         from app.main import app
 
         async def override():
             yield conn
 
         app.dependency_overrides[get_os_conn] = override
+        app.dependency_overrides[get_admin_os_conn] = override
         try:
             resp = await admin_client.get("/api/v1/admin/monitoring/summary")
         finally:
             app.dependency_overrides.pop(get_os_conn, None)
+            app.dependency_overrides.pop(get_admin_os_conn, None)
     assert resp.status_code == 200
     body = resp.json()
     assert "data_services" in body
@@ -215,17 +223,19 @@ async def test_monitoring_summary_handles_per_resource_failure(admin_client, mon
         patch("app.api.identity.admin._count_database_instances_admin", return_value=0),
         patch("app.api.identity.admin._count_identity_users_projects", return_value=(0, 0)),
     ):
-        from app.api.deps import get_os_conn
+        from app.api.deps import get_admin_os_conn, get_os_conn
         from app.main import app
 
         async def override():
             yield conn
 
         app.dependency_overrides[get_os_conn] = override
+        app.dependency_overrides[get_admin_os_conn] = override
         try:
             resp = await admin_client.get("/api/v1/admin/monitoring/summary")
         finally:
             app.dependency_overrides.pop(get_os_conn, None)
+            app.dependency_overrides.pop(get_admin_os_conn, None)
     assert resp.status_code == 200
     body = resp.json()
     assert body["network"]["subnet_count"] == 0  # fallback

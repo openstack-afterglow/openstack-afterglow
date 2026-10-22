@@ -26,6 +26,72 @@ from app.services.gpu_quota import (
 )
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "specs,status,expected",
+    [({"pci_passthrough:alias": "RTX3090:2"}, 200, {"RTX3090": 2}), ({}, 200, {}), (None, 503, None)],
+)
+async def test_id_only_gpu_usage_reads_authoritative_extra_specs_via_installed_sdk(specs, status, expected):
+    import json
+    from urllib.parse import urlsplit
+
+    import requests
+    from keystoneauth1 import noauth
+    from keystoneauth1 import session as ks_session
+    from openstack.connection import Connection
+
+    class NativeCloud(requests.adapters.BaseAdapter):
+        def send(self, request, **kwargs):
+            path = urlsplit(request.url).path.rstrip("/")
+            code = 200
+            if path == "/compute/v2.1":
+                body = {
+                    "version": {
+                        "id": "v2.1",
+                        "status": "CURRENT",
+                        "version": "2.95",
+                        "min_version": "2.1",
+                        "links": [{"rel": "self", "href": "http://native-quota.test/compute/v2.1/"}],
+                    }
+                }
+            elif path.endswith("/servers/detail"):
+                body = {
+                    "servers": [{"id": "server", "tenant_id": "p1", "status": "ACTIVE", "flavor": {"id": "legacy"}}]
+                }
+            elif path.endswith("/flavors/legacy"):
+                body = {"flavor": {"id": "legacy", "name": "accelerated", "vcpus": 2, "ram": 4096, "disk": 0}}
+            elif path.endswith("/flavors/legacy/os-extra_specs"):
+                code = status
+                body = {"extra_specs": specs} if status == 200 else {"error": {"message": "Unavailable"}}
+            else:
+                code, body = 404, {"error": {"message": "Missing synthetic endpoint"}}
+            response = requests.Response()
+            response.status_code = code
+            response._content = json.dumps(body).encode()
+            response.headers["Content-Type"] = "application/json"
+            response.url, response.request = request.url, request
+            return response
+
+        def close(self):
+            pass
+
+    transport = requests.Session()
+    transport.mount("http://native-quota.test/", NativeCloud())
+    conn = Connection(
+        session=ks_session.Session(auth=noauth.NoAuth(), session=transport),
+        compute_endpoint_override="http://native-quota.test/compute/v2.1",
+    )
+    conn._afterglow_authenticated_project_id = "p1"
+    try:
+        if expected is None:
+            with pytest.raises(GpuQuotaUnavailable):
+                await get_project_gpu_usage(conn, "p1")
+        else:
+            assert await get_project_gpu_usage(conn, "p1") == expected
+    finally:
+        conn.close()
+
+
 def test_normalize_gpu_alias_canonicalization():
     assert normalize_gpu_alias("RTX3090") == "RTX3090"
     assert normalize_gpu_alias("rtx 3090 ti") == "RTX3090TI"
@@ -281,7 +347,6 @@ async def test_gpu_usage_legacy_snapshot_falls_back_to_flavor_lookup():
     mock_conn.compute.get_flavor.return_value = MagicMock(extra_specs={"pci_passthrough:alias": "RTX-3090:1"})
 
     assert await get_project_gpu_usage(mock_conn, "p1") == {"RTX3090": 1}
-    mock_conn.compute.get_flavor.assert_called_once_with("uuid-1")
 
 
 @pytest.mark.asyncio

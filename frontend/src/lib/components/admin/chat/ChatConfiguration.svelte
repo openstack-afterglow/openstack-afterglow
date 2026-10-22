@@ -23,6 +23,7 @@
 	import ModelCapabilityBadges from '$lib/components/chat/ModelCapabilityBadges.svelte';
 	import type { ModelCapabilities } from '$lib/api/chatContracts';
 	import ModelMediaPricingEditor from './ModelMediaPricingEditor.svelte';
+	import ProviderAccountsPanel from './ProviderAccountsPanel.svelte';
 	import { MODEL_LABELS as MEDIA_LABELS, TOKEN_FIELDS, hasMediaPrices, pricingDraft, pricingError, pricingPayload, pricingEquals, type ModelKind, type MediaPricing } from './modelPricing';
 
 	let { section = 'providers' }: { section?: 'providers' | 'models' | 'tools' } = $props();
@@ -35,6 +36,8 @@
 		sort_order: number;
 		api_base: string | null;
 		auth_mode?: 'api_key' | 'chatgpt_device' | 'anthropic_subscription';
+		selection_policy?: 'priority' | 'weighted' | 'explicit';
+		selected_credential_id?: number | null;
 		has_credentials?: boolean;
 		auth_status?: 'disconnected' | 'configured' | 'reauth_required';
 		auth_expires_at?: string | null;
@@ -315,6 +318,9 @@
 	const projectId = $derived($auth.projectId ?? undefined);
 
 	let providers = $state<Provider[]>([]);
+	let accountPanels = $state<Record<number, { show: () => void } | undefined>>({});
+	let accountScopeGeneration = 0;
+	let accountScopeIdentity = '';
 	let models = $state<Model[]>([]);
 	// An empty list cannot tell the Lumen version apart, so the create form keeps its cache inputs then.
 	const cachePricingAvailable = $derived(models.length === 0 || models.some(cachePricingSupported));
@@ -362,27 +368,6 @@
 	const selectedProviderChoice = $derived(PROVIDER_TYPES.find((choice) => choice.value === pType) ?? PROVIDER_TYPES[0]!);
 	const isSubscriptionChoice = $derived(selectedProviderChoice.authMode !== 'api_key');
 
-	interface DeviceAuthAttempt {
-		attempt_id: string;
-		status: 'pending' | 'connected' | 'cancelled' | 'expired' | 'error';
-		verification_uri?: string;
-		user_code?: string;
-		expires_at: string;
-		interval_seconds: number;
-	}
-
-	let authModalOpen = $state(false);
-	let authProvider = $state<Provider | null>(null);
-	let deviceAttempt = $state<DeviceAuthAttempt | null>(null);
-	let authError = $state('');
-	let authBusy = $state(false);
-	let authCancelling = $state(false);
-	let claudeToken = $state('');
-	let claudeExpiry = $state('');
-	let authSessionGeneration = $state(0);
-	let authPollTimer = $state<ReturnType<typeof setTimeout> | null>(null);
-	let authScopeToken = $state<string | undefined>();
-	let authScopeProjectId = $state<string | undefined>();
 
 	let mProviderId = $state<number | ''>('');
 	let mName = $state('');
@@ -480,7 +465,7 @@
 		error: { code: string; message: string; retryable: boolean } | null;
 		candidates: DiscoveryCandidate[];
 		models: string[];
-		source: 'api' | 'litellm' | 'none';
+		source: 'api' | 'catalog' | 'none';
 	}
 	interface RegistrationEntry {
 		name: string;
@@ -725,7 +710,7 @@
 		}
 	}
 
-	async function load({ freshBilling = false }: { freshBilling?: boolean } = {}) {
+	async function load({ freshBilling = false, preserveRows = false }: { freshBilling?: boolean; preserveRows?: boolean } = {}) {
 		if (!token) return;
 		const generation = ++loadGeneration;
 		resetModelDrag();
@@ -734,7 +719,7 @@
 		++billingRequestGeneration;
 		billingByProvider = {};
 		billingLoading = false;
-		loading = true;
+		if (!preserveRows) loading = true;
 		try {
 			const [ps, ms] = await Promise.all([
 				api.get<Provider[]>('/api/v1/chat/admin/providers', requestToken, requestProjectId),
@@ -765,6 +750,7 @@
 		providerCreateError = '';
 		const choice = selectedProviderChoice;
 		const requestToken = token, requestProjectId = projectId;
+		const requestScope = accountScopeGeneration;
 		addingProvider = true;
 		try {
 			const body: Record<string, unknown> = {
@@ -778,13 +764,14 @@
 				body.api_base = pApiBase.trim() || null;
 				body.api_key = pApiKey.trim() || null;
 			}
+			pApiKey = '';
 			const created = await api.post<Provider>(
 				'/api/v1/chat/admin/providers',
 				body,
 				requestToken,
 				requestProjectId
 			);
-			if (requestToken !== token || requestProjectId !== projectId || destroyed) return;
+			if (requestScope !== accountScopeGeneration || requestToken !== token || requestProjectId !== projectId || destroyed) return;
 			invalidateChatModels();
 			pName = '';
 			pType = 'openai';
@@ -794,10 +781,12 @@
 			pSortOrder = '0';
 			providerCreateAttempted = false;
 			await load();
+			await tick();
+			if (requestScope !== accountScopeGeneration || requestToken !== token || requestProjectId !== projectId || destroyed) return;
+			if (choice.authMode !== 'api_key') accountPanels[created.id]?.show();
 			toast.success(t('configuration.providerAdded'));
-			if (choice.authMode !== 'api_key') openSubscriptionAuth(created);
 		} catch (e) {
-			if (requestToken === token && requestProjectId === projectId && !destroyed) providerCreateError = metadataSaveError(e);
+			if (requestScope === accountScopeGeneration && requestToken === token && requestProjectId === projectId && !destroyed) providerCreateError = metadataSaveError(e);
 		} finally {
 			addingProvider = false;
 		}
@@ -982,17 +971,6 @@
 		}
 	}
 
-	async function updateKey(p: Provider) {
-		const key = prompt(t('configuration.enterANewApiKeyForLeaveBlankTo', { v0: p.name }));
-		if (key === null) return;
-		try {
-			await api.patch(`/api/v1/chat/admin/providers/${p.id}`, { api_key: key.trim() || null }, token, projectId);
-			await load({ freshBilling: true });
-			toast.success(t('configuration.apiKeyUpdated'));
-		} catch {
-			toast.error(t('configuration.updateFailed'));
-		}
-	}
 
 	function openBillingKeyModal(provider: Provider) {
 		billingKeyProvider = provider;
@@ -1027,17 +1005,6 @@
 		}
 	}
 
-	function subscriptionStatusLabel(provider: Provider): string {
-		if (provider.auth_status === 'configured' && provider.has_credentials) return t('configuration.authenticationConfigured');
-		if (provider.auth_status === 'reauth_required') return t('configuration.reconnectRequired');
-		return t('configuration.authenticationNotConnected');
-	}
-
-	function subscriptionStatusTone(provider: Provider): 'success' | 'warning' | 'neutral' {
-		if (provider.auth_status === 'configured' && provider.has_credentials) return 'success';
-		if (provider.auth_status === 'reauth_required') return 'warning';
-		return 'neutral';
-	}
 
 	function providerAuthMode(provider: Provider): 'api_key' | 'chatgpt_device' | 'anthropic_subscription' {
 		return provider.auth_mode ?? 'api_key';
@@ -1069,237 +1036,6 @@
 		clearProviderSecrets();
 	}
 
-	function subscriptionErrorMessage(error: unknown): string {
-		if (!(error instanceof ApiError)) return t('configuration.subscriptionAuthenticationRequestFailedTryAgain');
-		if (error.status === 409) return t('configuration.completeOrCancelTheCurrentChatExecutionOrAnother');
-		if (error.status === 429) return t('configuration.authenticationRequestsAreRateLimitedCheckAgainManuallyIn');
-		if (error.status === 503) return t('configuration.couldNotConnectToTheSubscriptionAuthenticationProviderOr');
-		try {
-			const detail = JSON.parse(error.message) as { message?: unknown };
-			if (typeof detail.message === 'string') return detail.message;
-		} catch {
-			// The shared API client can also provide an already-safe plain message.
-		}
-		return error.message || t('configuration.subscriptionAuthenticationRequestFailed');
-	}
-
-	function stopAuthPolling() {
-		if (authPollTimer !== null) {
-			clearTimeout(authPollTimer);
-			authPollTimer = null;
-		}
-	}
-
-	function invalidateAuthSession() {
-		stopAuthPolling();
-		authSessionGeneration += 1;
-		authScopeToken = token;
-		authScopeProjectId = projectId;
-		authBusy = false;
-		authCancelling = false;
-	}
-
-	function openSubscriptionAuth(provider: Provider) {
-		invalidateAuthSession();
-		authProvider = provider;
-		deviceAttempt = null;
-		authError = '';
-		claudeToken = '';
-		claudeExpiry = '';
-		authModalOpen = true;
-	}
-
-	function scheduleDevicePoll(attempt: DeviceAuthAttempt, generation: number) {
-		stopAuthPolling();
-		const remainingMs = new Date(attempt.expires_at).getTime() - Date.now();
-		if (remainingMs <= 0) {
-			deviceAttempt = { ...attempt, status: 'expired' };
-			return;
-		}
-		const delayMs = Math.min(remainingMs, Math.max(1, attempt.interval_seconds) * 1000);
-		authPollTimer = setTimeout(() => void pollDeviceAuth(attempt.attempt_id, generation), delayMs);
-	}
-
-	async function startDeviceAuth() {
-		if (!authProvider || providerAuthMode(authProvider) !== 'chatgpt_device' || authBusy) return;
-		invalidateAuthSession();
-		const generation = authSessionGeneration;
-		const providerId = authProvider.id;
-		authBusy = true;
-		authError = '';
-		deviceAttempt = null;
-		try {
-			const attempt = await api.post<DeviceAuthAttempt>(
-				`/api/v1/chat/admin/providers/${providerId}/auth/device`,
-				{},
-				token,
-				projectId
-			);
-			if (generation !== authSessionGeneration || authProvider?.id !== providerId || !authModalOpen) return;
-			deviceAttempt = attempt;
-			scheduleDevicePoll(attempt, generation);
-		} catch (e) {
-			if (generation === authSessionGeneration) authError = subscriptionErrorMessage(e);
-		} finally {
-			if (generation === authSessionGeneration) authBusy = false;
-		}
-	}
-
-	async function pollDeviceAuth(attemptId: string, generation: number) {
-		if (
-			authBusy ||
-			generation !== authSessionGeneration ||
-			!authProvider ||
-			!authModalOpen ||
-			deviceAttempt?.attempt_id !== attemptId
-		) return;
-		const providerId = authProvider.id;
-		authBusy = true;
-		authPollTimer = null;
-		try {
-			const status = await api.post<DeviceAuthAttempt>(
-				`/api/v1/chat/admin/providers/${providerId}/auth/device/${encodeURIComponent(attemptId)}/poll`,
-				{},
-				token,
-				projectId
-			);
-			if (
-
-				generation !== authSessionGeneration ||
-				authProvider?.id !== providerId ||
-				deviceAttempt?.attempt_id !== attemptId ||
-				!authModalOpen
-			) return;
-			deviceAttempt = { ...deviceAttempt, ...status };
-			authError = '';
-			if (status.status === 'pending') {
-				scheduleDevicePoll(deviceAttempt, generation);
-			} else if (status.status === 'connected') {
-				await load();
-				toast.success(t('configuration.chatgptSubscriptionConnected'));
-			}
-		} catch (e) {
-			if (generation === authSessionGeneration) {
-				stopAuthPolling();
-				authError = subscriptionErrorMessage(e);
-			}
-		} finally {
-			if (generation === authSessionGeneration) authBusy = false;
-		}
-	}
-	function pollCurrentDeviceAuth() {
-		if (!deviceAttempt) return;
-		void pollDeviceAuth(deviceAttempt.attempt_id, authSessionGeneration);
-	}
-
-	async function cancelDeviceAuth() {
-		if (!authProvider || !deviceAttempt || deviceAttempt.status !== 'pending') return;
-		const providerId = authProvider.id;
-		const attemptId = deviceAttempt.attempt_id;
-		invalidateAuthSession();
-		authBusy = true;
-		authCancelling = true;
-		authError = '';
-		try {
-			await api.delete(
-				`/api/v1/chat/admin/providers/${providerId}/auth/device/${encodeURIComponent(attemptId)}`,
-				token,
-				projectId
-			);
-			if (authProvider?.id === providerId && deviceAttempt?.attempt_id === attemptId) {
-				deviceAttempt = { ...deviceAttempt, status: 'cancelled' };
-			}
-		} catch (e) {
-			authError = t('configuration.theAuthenticationRequestOnTheServerMayRemainActive', { v0: subscriptionErrorMessage(e) });
-		} finally {
-			authBusy = false;
-			authCancelling = false;
-		}
-	}
-
-	function closeSubscriptionAuth() {
-		const providerId = authProvider?.id;
-		const attemptId = deviceAttempt?.status === 'pending' ? deviceAttempt.attempt_id : null;
-		invalidateAuthSession();
-		authModalOpen = false;
-		authProvider = null;
-		deviceAttempt = null;
-		authError = '';
-		claudeToken = '';
-		claudeExpiry = '';
-		if (providerId && attemptId) {
-			void api
-				.delete(
-					`/api/v1/chat/admin/providers/${providerId}/auth/device/${encodeURIComponent(attemptId)}`,
-					token,
-					projectId
-				)
-				.catch(() => toast.error(t('configuration.couldNotConfirmAuthenticationCancellationCheckTheServersExpiration')));
-		}
-	}
-
-	async function saveClaudeSubscription() {
-		if (!authProvider || providerAuthMode(authProvider) !== 'anthropic_subscription' || authBusy) return;
-		if (!claudeToken.trim()) {
-			authError = t('configuration.enterAClaudeSetupToken');
-			return;
-		}
-		const generation = authSessionGeneration;
-		const providerId = authProvider.id;
-		authBusy = true;
-		authError = '';
-		try {
-			const updated = await api.put<Provider>(
-				`/api/v1/chat/admin/providers/${providerId}/auth/token`,
-				{
-					token: claudeToken.trim(),
-					expires_at: claudeExpiry ? new Date(claudeExpiry).toISOString() : null
-				},
-				token,
-				projectId
-			);
-			if (generation !== authSessionGeneration || authProvider?.id !== providerId || !authModalOpen) return;
-			authProvider = updated;
-			claudeToken = '';
-			await load();
-			toast.success(t('configuration.claudeSubscriptionTokenRegistered'));
-		} catch (e) {
-			if (generation === authSessionGeneration) authError = subscriptionErrorMessage(e);
-		} finally {
-			if (generation === authSessionGeneration) authBusy = false;
-		}
-	}
-
-	async function disconnectSubscription(provider: Provider) {
-		if (!(await confirmDialog(t('configuration.disconnectTheSubscriptionForRegisteredModelsWillBeKept', { v0: provider.name })))) return;
-		try {
-			await api.delete(`/api/v1/chat/admin/providers/${provider.id}/auth`, token, projectId);
-			await load();
-			toast.success(t('configuration.subscriptionDisconnected'));
-		} catch (e) {
-			toast.error(subscriptionErrorMessage(e));
-		}
-	}
-
-	function isAllowedVerificationUri(value: string | undefined): boolean {
-		if (!value) return false;
-		try {
-			const url = new URL(value);
-			return url.protocol === 'https:' && (url.hostname === 'openai.com' || url.hostname.endsWith('.openai.com') || url.hostname === 'chatgpt.com' || url.hostname.endsWith('.chatgpt.com'));
-		} catch {
-			return false;
-		}
-	}
-
-	async function copyDeviceCode() {
-		if (!deviceAttempt?.user_code) return;
-		try {
-			await navigator.clipboard.writeText(deviceAttempt.user_code);
-			toast.success(t('configuration.authenticationCodeCopied'));
-		} catch {
-			toast.error(t('configuration.couldNotCopyAuthenticationCode'));
-		}
-	}
 
 	async function addModel() {
 		if (addingModel || !mProviderId || !mName.trim()) { toast.error(t('configuration.enterAProviderAndModelName')); return; }
@@ -1817,6 +1553,14 @@
 	});
 
 	const unsubscribeAuthScope = auth.subscribe((state) => {
+		const identity = JSON.stringify([state.token, state.projectId, state.userId, state.sessionId, state.identityDomainId, state.domainId, state.isSystemAdmin, state.roles]);
+		if (identity !== accountScopeIdentity) {
+			accountScopeIdentity = identity;
+			++accountScopeGeneration;
+			++loadGeneration;
+			clearProviderSecrets();
+			closeBillingKeyModal();
+		}
 		const nextToken = state.token ?? undefined;
 		const nextProjectId = state.projectId ?? undefined;
 		if (discoveryScopeToken !== nextToken || discoveryScopeProjectId !== nextProjectId) {
@@ -1827,24 +1571,14 @@
 			registeredProviderId = '';
 			registeredKind = '';
 			editingPrice = null;
+			clearProviderSecrets();
+			closeBillingKeyModal();
 			editingProvider = null;
 			++modelOrderGeneration;
 			modelOrderSaving = false;
 			modelOrderSaveError = '';
 			modelOrderStatus = '';
 			resetModelDrag();
-		}
-		if (
-			authModalOpen &&
-			(authScopeToken !== nextToken || authScopeProjectId !== nextProjectId)
-		) {
-			invalidateAuthSession();
-			authModalOpen = false;
-			authProvider = null;
-			deviceAttempt = null;
-			authError = '';
-			claudeToken = '';
-			claudeExpiry = '';
 		}
 	});
 
@@ -1853,7 +1587,6 @@
 		++loadGeneration;
 		resetDiscovery();
 		unsubscribeAuthScope();
-		invalidateAuthSession();
 	});
 
 	const inputCls =
@@ -1914,7 +1647,7 @@
 			</div>
 			{#if isSubscriptionChoice}
 				{#snippet rich2markup1(text: string)}<a class="underline" href={selectedProviderChoice.authMode === 'chatgpt_device' ? 'https://help.openai.com/en/articles/11369540-codex-in-chatgpt' : 'https://support.anthropic.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan'} target="_blank" rel="noreferrer">{text}</a>{/snippet}
-				<Alert tone="warning" title={t('configuration.experimentalSharedByAllUsers')} class="mt-4">
+				<Alert tone="warning" title={t('configuration.experimental')} class="mt-4">
 					<RichText segments={t.rich('configuration.sharedSubscriptionPolicy')} tags={{ markup1: rich2markup1 }} />
 				</Alert>
 			{:else if selectedProviderChoice.providerType === 'perplexity'}
@@ -1925,7 +1658,7 @@
 				</Alert>
 			{:else}
 				<p class="mt-2 text-xs text-[var(--color-ink-3)]">
-					{t('configuration.theTypeIsTheInternalLitellmRelayFormatConnect')}
+					{t('configuration.providerAdapterFormat')}
 				</p>
 			{/if}
 			{#if providerCreateError}<Alert tone="danger" class="mt-3">{providerCreateError}</Alert>{/if}
@@ -1963,40 +1696,24 @@
 									<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{p.name}</span>
 									<Pill tone={p.is_active ? 'success' : 'neutral'} size="xs">{p.is_active ? t('configuration.active') : t('configuration.inactive')}</Pill>
 									{#if providerAuthMode(p) === 'api_key'}
-										<Pill tone={p.has_api_key ? 'accent' : 'warning'} size="xs">{p.has_api_key ? t('configuration.keyConfigured') : t('configuration.noKey')}</Pill>
 									{#if supportsBillingAdminKey(p)}
 										<Pill tone={p.has_billing_admin_key ? 'info' : 'neutral'} size="xs">{p.has_billing_admin_key ? t('configuration.usageKeyConfigured') : t('configuration.noUsageKey')}</Pill>
 									{/if}
 									{:else}
 										<Pill tone="warning" size="xs">{t('configuration.experimental')}</Pill>
-										<Pill tone="info" size="xs">{t('configuration.sharedByAllUsers')}</Pill>
-										<Pill tone={subscriptionStatusTone(p)} size="xs">{subscriptionStatusLabel(p)}</Pill>
 									{/if}
 									<Pill tone="neutral" size="xs">{t('pricing.connection', { type: p.provider_type })}</Pill>
 								</div>
 								<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]"><RichText segments={t.rich('pricing.providerMetadata', { provider: p.api_provider, order: formatNumber(p.sort_order ?? 0) })} /></p>
 								{#if p.api_base}
 									<div class="mt-1 truncate text-xs text-[var(--color-ink-3)]">{p.api_base}</div>
-								{:else if providerAuthMode(p) !== 'api_key' && p.auth_expires_at}
-									<div class="mt-1 text-xs text-[var(--color-ink-3)]">{t('configuration.credentialExpiry', { v0: new Date(p.auth_expires_at).toLocaleString(intlLocale()) })}</div>
 								{/if}
 							</div>
 							<div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs sm:justify-end">
 								<Button variant="outline" size="sm" onclick={() => openProviderEditor(p)}>{t('pricing.editDisplay')}</Button>
-								{#if providerAuthMode(p) === 'api_key'}
-									<button class={rowActionCls} onclick={() => updateKey(p)}>{t('configuration.changeKey')}</button>
-									{#if supportsBillingAdminKey(p)}
-										<button class={rowActionCls} onclick={() => openBillingKeyModal(p)}>{p.has_billing_admin_key ? t('configuration.changeUsageKey') : t('configuration.setUsageKey')}</button>
-									{/if}
-								{:else}
-									<button class={rowActionCls} onclick={() => openSubscriptionAuth(p)}>
-										{providerAuthMode(p) === 'chatgpt_device'
-											? p.has_credentials ? t('configuration.reconnectAlternate') : t('configuration.connect')
-											: p.has_credentials ? t('configuration.replaceToken') : t('configuration.registerToken')}
-									</button>
-									{#if p.auth_status !== 'disconnected'}
-										<button class={rowActionCls} onclick={() => disconnectSubscription(p)}>{t('configuration.disconnect')}</button>
-									{/if}
+								<ProviderAccountsPanel bind:this={accountPanels[p.id]} provider={p} {token} {projectId} onupdated={() => { invalidateChatModels(); return load({ freshBilling: true, preserveRows: true }); }} />
+								{#if providerAuthMode(p) === 'api_key' && supportsBillingAdminKey(p)}
+									<button class={rowActionCls} onclick={() => openBillingKeyModal(p)}>{p.has_billing_admin_key ? t('configuration.changeUsageKey') : t('configuration.setUsageKey')}</button>
 								{/if}
 								<button class={rowActionCls} onclick={() => toggleProvider(p)}>{p.is_active ? t('configuration.deactivate') : t('configuration.activate')}</button>
 								<button class="text-[var(--color-state-danger)] transition-opacity hover:opacity-80" onclick={() => deleteProvider(p.id)}>{t('configuration.delete')}</button>
@@ -2190,108 +1907,6 @@
 			{/snippet}
 		</FormModal>
 
-		<Modal bind:open={authModalOpen} onClose={closeSubscriptionAuth} ariaLabel={t('configuration.subscriptionAuthentication')}>
-			<div class="max-h-[calc(100vh-2rem)] w-[min(36rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-4 shadow-[var(--shadow-restraint)] sm:p-5">
-				<div class="flex items-start justify-between gap-3">
-					<div>
-						<h3 class="text-base font-semibold text-[var(--color-ink-1)]">
-							{authProvider && providerAuthMode(authProvider) === 'chatgpt_device' ? t('configuration.connectChatgptSubscription') : t('configuration.registerClaudeSubscriptionToken')}
-						</h3>
-						<p class="mt-1 text-sm text-[var(--color-ink-3)]">{authProvider?.name}</p>
-					</div>
-					<Button variant="ghost" size="sm" onclick={closeSubscriptionAuth}>{t('configuration.close')}</Button>
-				</div>
-
-				<Alert tone="warning" title={t('configuration.experimentalSharedByAllUsers')} class="mt-4">
-					{t('configuration.thisConnectionIsSharedByAllAfterglowUsersUse')}
-				</Alert>
-
-				{#if authError}
-					<Alert tone="danger" title={t('configuration.cannotContinueAuthentication')} class="mt-3">{authError}</Alert>
-				{/if}
-
-				{#if authProvider && providerAuthMode(authProvider) === 'chatgpt_device'}
-					<div class="mt-5 space-y-4">
-						{#if !deviceAttempt}
-							<p class="text-sm leading-6 text-[var(--color-ink-2)]">
-								{t('configuration.startingTheConnectionDisplaysAnOpenaiAuthenticationPageAnd')}
-							</p>
-							<div class="flex flex-wrap justify-end gap-2">
-								<Button onclick={startDeviceAuth} disabled={authBusy} ariaBusy={authBusy}>{#if authBusy}<ActivityIndicator size="xs" tone="ink" />{/if}{authBusy ? t('configuration.starting') : t('configuration.connectChatgpt')}</Button>
-							</div>
-						{:else}
-							<div class="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-4">
-								<div class="flex flex-wrap items-center justify-between gap-2">
-									<Pill
-										tone={deviceAttempt.status === 'connected'
-											? 'success'
-											: deviceAttempt.status === 'pending'
-												? 'info'
-												: 'warning'}
-										dot
-									>
-										{#if deviceAttempt.status === 'pending'}
-											<ActivityIndicator variant="dots" size="xs" label={t('configuration.awaitingAuthentication')} />
-										{:else}
-											{deviceAttempt.status === 'connected' ? t('configuration.connected') : deviceAttempt.status === 'expired' ? t('configuration.authenticationExpired') : deviceAttempt.status === 'cancelled' ? t('configuration.authenticationCanceled') : t('configuration.authenticationError')}
-										{/if}
-									</Pill>
-									<span class="text-xs text-[var(--color-ink-3)]">{t('configuration.deviceCredentialExpiry', { v0: new Date(deviceAttempt.expires_at).toLocaleString(intlLocale()) })}</span>
-								</div>
-								{#if deviceAttempt.user_code}
-									<div class="mt-4">
-										<p class="text-xs text-[var(--color-ink-3)]">{t('configuration.oneTimeAuthenticationCode')}</p>
-										<div class="mt-1 flex flex-wrap items-center gap-2">
-											<code class="rounded bg-[var(--color-surface-base)] px-3 py-2 font-mono text-lg tracking-widest text-[var(--color-ink-0)]">{deviceAttempt.user_code}</code>
-											<Button variant="secondary" size="sm" onclick={copyDeviceCode}>{t('configuration.copyCode')}</Button>
-										</div>
-									</div>
-								{/if}
-								{#if deviceAttempt.verification_uri && isAllowedVerificationUri(deviceAttempt.verification_uri)}
-									<Button class="mt-4" href={deviceAttempt.verification_uri}>{t('configuration.openOpenaiAuthenticationPage')}</Button>
-								{:else if deviceAttempt.verification_uri}
-									<Alert tone="danger" class="mt-4">{t('configuration.theAuthenticationUrlWasNotOpenedBecauseItIs')}</Alert>
-								{/if}
-							</div>
-							<div class="flex flex-wrap justify-end gap-2">
-								{#if deviceAttempt.status === 'pending'}
-									<Button variant="secondary" onclick={pollCurrentDeviceAuth} disabled={authBusy} ariaBusy={authBusy && !authCancelling}>
-										{#if authBusy && !authCancelling}<ActivityIndicator size="xs" tone="ink" />{/if}{authBusy && !authCancelling ? t('configuration.checking') : t('configuration.checkNow')}
-									</Button>
-									<Button variant="danger-outline" onclick={cancelDeviceAuth} disabled={authBusy} ariaBusy={authCancelling}>{#if authCancelling}<ActivityIndicator size="xs" tone="ink" />{/if}{authCancelling ? t('configuration.cancelling') : t('configuration.cancelAuthentication')}</Button>
-								{:else if deviceAttempt.status !== 'connected'}
-									<Button onclick={startDeviceAuth} disabled={authBusy} ariaBusy={authBusy}>{#if authBusy}<ActivityIndicator size="xs" tone="ink" />{/if}{authBusy ? t('configuration.starting') : t('configuration.reconnect')}</Button>
-								{/if}
-							</div>
-						{/if}
-					</div>
-				{:else if authProvider}
-					<div class="mt-5 space-y-4">
-						<p class="text-sm leading-6 text-[var(--color-ink-2)]">
-							{#snippet rich65markup1(text: string)}<code class="font-mono">{text}</code>{/snippet}<RichText segments={t.rich('configuration.claudeSetupTokenGuidance')} tags={{ markup1: rich65markup1 }} />
-						</p>
-						<Field label={t('configuration.claudeSetupToken')} for="claude-subscription-token" required>
-							<TextInput
-								id="claude-subscription-token"
-								type="password"
-								placeholder="setup-token"
-								bind:value={claudeToken}
-								required
-							/>
-						</Field>
-						<Field label={t('configuration.expirationTime')} for="claude-subscription-expiry" help={t('configuration.enterOnlyIfTheProviderSpecifiedAnExpirationTime')}>
-							<input id="claude-subscription-expiry" class={inputCls} type="datetime-local" bind:value={claudeExpiry} />
-						</Field>
-						<div class="flex flex-wrap justify-end gap-2">
-							<Button variant="secondary" href="https://support.anthropic.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan">{t('configuration.officialGuidance')}</Button>
-							<Button onclick={saveClaudeSubscription} disabled={authBusy || !claudeToken.trim()} ariaBusy={authBusy}>
-								{#if authBusy}<ActivityIndicator size="xs" tone="ink" />{/if}{authBusy ? t('configuration.saving') : authProvider.has_credentials ? t('configuration.replaceToken') : t('configuration.registerSubscriptionToken')}
-							</Button>
-						</div>
-					</div>
-				{/if}
-			</div>
-		</Modal>
 	{/if}
 
 	{#if section === 'models'}
@@ -2349,7 +1964,7 @@
 						<Alert tone="warning">{discoveryError}</Alert>
 					{:else if discovery}
 						<p class="mb-3 text-xs text-[var(--color-ink-2)]" data-testid="discovery-provenance">
-							{t('configuration.discoveryProvenance', { v0: discovery.source === 'api' ? t('configuration.providerApi') : discovery.source === 'litellm' ? t('configuration.litellmStaticList') : t('configuration.noListProvided'), v1: discovery.live_status === 'success' ? t('configuration.responseReceived') : discovery.live_status === 'empty' ? t('configuration.successfulEmptyResult') : discovery.live_status === 'unsupported' ? t('configuration.unsupported') : discovery.live_status === 'error' ? t('configuration.failed') : t('configuration.statusUnknown'), v2: discovery.complete === true ? t('configuration.complete') : discovery.complete === false ? t('configuration.incomplete') : t('configuration.unknown') })}
+							{t('configuration.discoveryProvenance', { v0: discovery.source === 'api' ? t('configuration.providerApi') : discovery.source === 'catalog' ? t('configuration.staticCatalog') : t('configuration.noListProvided'), v1: discovery.live_status === 'success' ? t('configuration.responseReceived') : discovery.live_status === 'empty' ? t('configuration.successfulEmptyResult') : discovery.live_status === 'unsupported' ? t('configuration.unsupported') : discovery.live_status === 'error' ? t('configuration.failed') : t('configuration.statusUnknown'), v2: discovery.complete === true ? t('configuration.complete') : discovery.complete === false ? t('configuration.incomplete') : t('configuration.unknown') })}
 							{#if discovery.fetched_at} {t('configuration.discoveryFetchedAt', { v0: new Date(discovery.fetched_at).toLocaleString(intlLocale()) })}{/if}
 							{t('configuration.discoveryModelCounts', { v0: formatNumber(discovery.models.length), v1: formatNumber(filteredAvailable.length) })}
 						</p>

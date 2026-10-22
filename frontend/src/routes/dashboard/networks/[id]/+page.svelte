@@ -22,7 +22,7 @@
 	let addingSubnet = $state(false);
 	let subnetError = $state('');
 	const canManageNetwork = $derived(
-		Boolean(network && ($auth.isSystemAdmin || (network.project_id && network.project_id === $auth.projectId)) && !network.is_external)
+		Boolean(network && network.project_id && network.project_id === $auth.projectId && !network.is_external)
 	);
 
 	$effect(() => {

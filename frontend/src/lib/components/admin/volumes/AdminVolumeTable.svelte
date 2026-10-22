@@ -9,14 +9,14 @@
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 
-	interface AdminVolume {
-		id: string;
-		name: string;
-		status: string;
-		size: number;
-		project_id: string | null;
-		created_at: string | null;
-		bootable?: boolean;
+	import type { AdminVolume } from '$lib/types/volume';
+
+	function domainLabel(volume: AdminVolume): string {
+		if (volume.owner_status && volume.owner_status !== 'known') return t(`volumeList.owner.${volume.owner_status}`);
+		return volume.domain_name || volume.domain_id || t('volumeList.owner.unknown_owner');
+	}
+	function projectLabel(volume: AdminVolume): string {
+		return volume.project_name || (volume.project_id ? ($projectNames.get(volume.project_id) ?? volume.project_id) : t('volumeList.owner.unknown_owner'));
 	}
 
 	let {
@@ -74,7 +74,8 @@
 		{#each volumes as v, index (v.id)}
 			<CompactResourceCard selected={selectedIds.has(v.id)}>
 				<div class="flex items-start gap-2" data-tour={index === 0 ? 'admin-storage-row' : undefined}><SelectionCheckbox checked={selectedIds.has(v.id)} disabled={selectionDisabled || !selectableIds.has(v.id)} unavailable={!selectableIds.has(v.id)} onclick={() => onToggleSelect(v.id)} ariaLabel={t('volumeList.selectVolume', { name: v.name || v.id })} /><button type="button" data-tour={index === 0 ? 'admin-storage-row-open' : undefined} class="min-h-11 min-w-0 flex-1 break-all text-left font-medium text-ink-0" onclick={() => onSelect(v.id)}>{v.name || v.id.slice(0, 8)}</button><StatusChip status={v.status} /></div>
-				<p class="text-xs text-ink-2">{formatNumber(v.size)} GB · {v.project_id ? ($projectNames.get(v.project_id) ?? v.project_id.slice(0, 8)) : '-'}</p>
+				<p class="break-all text-xs text-ink-2">{formatNumber(v.size)} GiB · {v.volume_type || '—'}</p>
+				<p class="break-all text-xs text-ink-2">{domainLabel(v)} · {projectLabel(v)}</p>
 				{#snippet actions()}
 					<ActionMenu open={openActionMenu === v.id} ariaLabel={t('volumeList.volumeActions', { name: v.name || v.id })} onopen={() => onActionMenuOpen(v.id)} onclose={onActionMenuClose}>
 						<Button variant="link" onclick={() => { onActionMenuClose(); onEdit(v); }}>{t('volumeList.action.edit')}</Button>
@@ -86,7 +87,7 @@
 						<Button variant="link" onclick={() => { onActionMenuClose(); onDelete(v); }}>{t('volumeList.action.delete')}</Button>
 					</ActionMenu>
 				{/snippet}
-				{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p class="font-mono">{v.id}</p><p>{t('volumeList.column.createdAt')}: {v.created_at?.slice(0, 10) ?? '-'}</p>{#if v.project_id}<Button variant="link" size="sm" onclick={() => onCopyProjectId(v.project_id!)}>{copiedProjectId === v.project_id ? t('volumeList.copied') : v.project_id}</Button>{/if}</div>{/snippet}
+				{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p class="font-mono">{v.id}</p><p>{t('volumeList.column.domain')}: {v.domain_id ?? '—'}</p><p>{t('volumeList.column.createdAt')}: {v.created_at?.slice(0, 10) ?? '-'}</p>{#if v.project_id}<Button variant="link" size="sm" onclick={() => onCopyProjectId(v.project_id!)}>{copiedProjectId === v.project_id ? t('volumeList.copied') : v.project_id}</Button>{/if}</div>{/snippet}
 			</CompactResourceCard>
 		{/each}
 	{/snippet}
@@ -106,6 +107,8 @@
 				<th class="text-left py-2 pr-4">{t('volumeList.column.name')}</th>
 				<th class="text-left py-2 pr-4">{t('volumeList.column.status')}</th>
 				<th class="text-left py-2 pr-4">{t('volumeList.column.size')}</th>
+				<th class="text-left py-2 pr-4">{t('volumeDetail.volumeType')}</th>
+				<th class="text-left py-2 pr-4">{t('volumeList.column.domain')}</th>
 				<th class="text-left py-2 pr-4">{t('volumeList.column.project')}</th>
 				<th class="text-left py-2 pr-4">{t('volumeList.column.createdAt')}</th>
 				<th class="text-left py-2">{t('volumeList.column.actions')}</th>
@@ -131,7 +134,9 @@
 						<button type="button" data-tour={index === 0 ? 'admin-storage-row-open' : undefined} onclick={() => onSelect(v.id)} class="block w-full py-2 pr-4 font-medium text-ink-0 hover:text-warm-text-hover transition-colors text-left" title={v.name || v.id}><span class="max-md:block max-md:max-w-[66vw] max-md:truncate">{v.name || v.id.slice(0, 8)}</span></button>
 					</td>
 					<td class="py-2 pr-4"><StatusChip status={v.status} /></td>
-					<td class="py-2 pr-4 text-ink-2">{formatNumber(v.size)} GB</td>
+					<td class="py-2 pr-4 text-ink-2">{formatNumber(v.size)} GiB</td>
+					<td class="py-2 pr-4 text-ink-2">{v.volume_type || '—'}</td>
+					<td class="py-2 pr-4 text-ink-2"><span title={v.domain_id ?? undefined}>{domainLabel(v)}</span></td>
 					<td class="py-2 pr-4">
 						<button
 							onclick={(e) => { e.stopPropagation(); if (v.project_id) onCopyProjectId(v.project_id); }}
@@ -141,7 +146,7 @@
 							{#if copiedProjectId === v.project_id}
 								<span class="text-green-400 text-xs">{t('volumeList.copied')}</span>
 							{:else}
-								<span class="text-xs">{v.project_id ? ($projectNames.get(v.project_id) ?? v.project_id.slice(0, 8)) : '-'}</span>
+								<span class="text-xs">{projectLabel(v)}</span>
 							{/if}
 						</button>
 					</td>

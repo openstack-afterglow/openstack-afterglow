@@ -153,6 +153,28 @@ const claudeSubscriptionProvider = {
   auth_status: "disconnected" as const,
   auth_expires_at: null,
 };
+function subscriptionAccount(endpoint: typeof chatgptProvider | typeof claudeSubscriptionProvider) {
+  return {
+    id: 11, provider_id: endpoint.id, name: "Team subscription", is_active: true,
+    priority: 0, weight: 1, allowed_model_ids: null, allowed_capabilities: null, quota_group: null,
+    credentials: [{
+      id: 17, account_id: 11, name: "Team credential", auth_mode: endpoint.auth_mode,
+      generation: 0, is_active: true, priority: 0, weight: 1,
+      api_key_configured: false, api_key_source: null, api_key_env: null,
+      subscription_status: "disconnected", subscription_expires_at: null,
+      expires_at: null, cooldown_until: null, allowed_model_ids: null, allowed_capabilities: null,
+    }],
+  };
+}
+
+function loadSubscriptionEndpoint(endpoint: typeof chatgptProvider | typeof claudeSubscriptionProvider) {
+  get.mockImplementation((path: string) => {
+    if (path === "/api/v1/chat/admin/providers") return Promise.resolve([endpoint]);
+    if (path === `/api/v1/chat/admin/providers/${endpoint.id}/accounts`) return Promise.resolve([subscriptionAccount(endpoint)]);
+    return Promise.resolve([]);
+  });
+}
+
 const models = [
   {
     id: 10,
@@ -648,173 +670,97 @@ describe("admin chat model pricing", () => {
     expect(screen.getByText("models.dev 추천 가격")).toBeTruthy();
   });
 
-  it("clears hidden API credentials and opens shared ChatGPT authentication after creation", async () => {
-    post.mockResolvedValueOnce(chatgptProvider);
+  it("clears hidden API credentials and opens account management after subscription creation", async () => {
+    let created = false;
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve(created ? [chatgptProvider] : []);
+      if (path === "/api/v1/chat/admin/providers/7/accounts") return Promise.resolve([subscriptionAccount(chatgptProvider)]);
+      return Promise.resolve([]);
+    });
+    post.mockImplementationOnce(() => { created = true; return Promise.resolve(chatgptProvider); });
     render(ProviderPage);
     await screen.findByRole("option", { name: "ChatGPT 구독 (실험)" });
-
-    await fireEvent.input(screen.getByLabelText("API Base"), {
-      target: { value: "https://private.example/v1" },
-    });
-    await fireEvent.input(screen.getByLabelText("API 키"), {
-      target: { value: "must-be-cleared" },
-    });
+    await fireEvent.input(screen.getByLabelText("API Base"), { target: { value: "https://private.example/v1" } });
+    await fireEvent.input(screen.getByLabelText("API 키"), { target: { value: "must-be-cleared" } });
     const connection = screen.getByRole("combobox");
-    await fireEvent.change(connection, {
-      target: { value: "chatgpt-subscription" },
-    });
+    await fireEvent.change(connection, { target: { value: "chatgpt-subscription" } });
     expect(screen.queryByLabelText("API 키")).toBeNull();
-
     await fireEvent.change(connection, { target: { value: "openai" } });
-    expect((screen.getByLabelText("API Base") as HTMLInputElement).value).toBe(
-      "",
-    );
-    expect((screen.getByLabelText("API 키") as HTMLInputElement).value).toBe(
-      "",
-    );
-    await fireEvent.change(connection, {
-      target: { value: "chatgpt-subscription" },
-    });
-    await fireEvent.input(screen.getByPlaceholderText("예: openai-prod"), {
-      target: { value: "shared-chatgpt" },
-    });
-    await fireEvent.input(screen.getByRole("textbox", { name: "API provider" }), {
-      target: { value: "chatgpt" },
-    });
-    await fireEvent.click(
-      screen.getByRole("button", { name: "+ 프로바이더 추가" }),
-    );
-
-    const dialog = await screen.findByRole("dialog", { name: "구독 인증" });
-    expect(within(dialog).getByText("ChatGPT 구독 연결")).toBeTruthy();
-  });
-
-  it("keeps a created Claude provider available when token registration fails safely", async () => {
-    const tokenValue = "sk-ant-oat01-test-fixture-subscription-token";
-    post.mockResolvedValueOnce(claudeSubscriptionProvider);
-    put.mockRejectedValueOnce(
-      new ApiError(
-        JSON.stringify({
-          code: "subscription_upstream_unavailable",
-          message: "구독 인증 공급자에 연결할 수 없습니다",
-        }),
-        503,
-      ),
-    );
-    render(ProviderPage);
-    await screen.findByRole("option", { name: "Claude 구독 (실험)" });
-
-    await fireEvent.change(screen.getByRole("combobox"), {
-      target: { value: "claude-subscription" },
-    });
-    await fireEvent.input(screen.getByPlaceholderText("예: openai-prod"), {
-      target: { value: "shared-claude" },
-    });
-    await fireEvent.input(screen.getByRole("textbox", { name: "API provider" }), {
-      target: { value: "anthropic" },
-    });
-    await fireEvent.click(
-      screen.getByRole("button", { name: "+ 프로바이더 추가" }),
-    );
-    await screen.findByText("Claude 구독 토큰 등록");
-    await fireEvent.input(screen.getByPlaceholderText("setup-token"), {
-      target: { value: tokenValue },
-    });
-    await fireEvent.click(
-      screen.getByRole("button", { name: "구독 토큰 등록" }),
-    );
-
-    expect(await screen.findByText(/연결할 수 없습니다/)).toBeTruthy();
+    expect((screen.getByLabelText("API Base") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("API 키") as HTMLInputElement).value).toBe("");
+    await fireEvent.change(connection, { target: { value: "chatgpt-subscription" } });
+    await fireEvent.input(screen.getByPlaceholderText("예: openai-prod"), { target: { value: "shared-chatgpt" } });
+    await fireEvent.click(screen.getByRole("button", { name: "+ 프로바이더 추가" }));
+    const dialog = await screen.findByRole("dialog", { name: "계정 및 인증 정보 관리" });
+    expect(await within(dialog).findByText("Team subscription")).toBeTruthy();
     expect(post).toHaveBeenCalledTimes(1);
-    expect(put).toHaveBeenCalledWith(
-      "/api/v1/chat/admin/providers/8/auth/token",
-      { token: tokenValue, expires_at: null },
-      "token",
-      "project",
-    );
-    expect(screen.queryByText(tokenValue)).toBeNull();
+    expect(JSON.stringify(post.mock.calls[0][1])).not.toContain("must-be-cleared");
+    expect(screen.queryByText("ABCD-EFGH")).toBeNull();
   });
 
-  it("starts ChatGPT device auth explicitly and keeps polling single-flight", async () => {
-    const { promise: pollResponse, resolve: resolvePoll } =
-      Promise.withResolvers<unknown>();
-    get.mockImplementation((path: string) => {
-      if (path === "/api/v1/chat/admin/providers")
-        return Promise.resolve([chatgptProvider]);
-      if (path === "/api/v1/chat/admin/models") return Promise.resolve([]);
-      return Promise.resolve([]);
-    });
-    post.mockImplementation((path: string) => {
-      if (path === "/api/v1/chat/admin/providers/7/auth/device") {
-        return Promise.resolve({
-          attempt_id: "attempt-opaque",
-          status: "pending",
-          verification_uri: "https://auth.openai.com/device",
-          user_code: "ABCD-EFGH",
-          expires_at: new Date(Date.now() + 600_000).toISOString(),
-          interval_seconds: 300,
-        });
-      }
-      if (path.endsWith("/poll")) return pollResponse;
-      throw new Error(`unexpected POST ${path}`);
-    });
+  it("keeps the account token editor open after rejection without retaining or echoing the token", async () => {
+    loadSubscriptionEndpoint(claudeSubscriptionProvider);
+    const tokenValue = "sk-ant-oat01-synthetic-private-token";
+    put.mockRejectedValueOnce(new ApiError(`upstream echoed ${tokenValue}`, 503));
     render(ProviderPage);
-    await screen.findByText("shared-chatgpt");
-    await fireEvent.click(screen.getByRole("button", { name: "연결" }));
-
-    expect(screen.queryByText("ABCD-EFGH")).toBeNull();
-    await fireEvent.click(screen.getByRole("button", { name: "ChatGPT 연결" }));
-    await waitFor(() =>
-      expect(post).toHaveBeenCalledWith(
-        "/api/v1/chat/admin/providers/7/auth/device",
-        {},
-        "token",
-        "project",
-      ),
+    await fireEvent.click(await screen.findByRole("button", { name: "계정 및 인증 정보 관리" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "연결" }));
+    const secret = screen.getByLabelText("Claude setup-token") as HTMLInputElement;
+    await fireEvent.input(secret, { target: { value: tokenValue } });
+    await fireEvent.click(screen.getByRole("button", { name: "토큰 등록" }));
+    expect(await screen.findByText(/요청 실패\(HTTP 503\)/)).toBeTruthy();
+    expect(put).toHaveBeenCalledWith(
+      "/api/v1/chat/admin/providers/8/accounts/11/credentials/17/auth/token",
+      { token: tokenValue, expires_at: null }, "token", "project",
     );
+    expect(secret.value).toBe("");
+    expect(screen.queryByText(tokenValue)).toBeNull();
+    expect(screen.getByRole("dialog", { name: "계정 및 인증 정보 관리" })).toBeTruthy();
+    expect(screen.getAllByText("Team credential").length).toBeGreaterThan(0);
+  });
+
+  it("starts the selected credential device flow explicitly and keeps polling single-flight", async () => {
+    loadSubscriptionEndpoint(chatgptProvider);
+    const poll = Promise.withResolvers<unknown>();
+    post.mockImplementation((path: string) => path.endsWith("/poll") ? poll.promise : Promise.resolve({
+      attempt_id: "attempt-opaque", status: "pending", verification_uri: "https://auth.openai.com/device",
+      user_code: "ABCD-EFGH", expires_at: new Date(Date.now() + 600_000).toISOString(), interval_seconds: 300,
+    }));
+    render(ProviderPage);
+    await fireEvent.click(await screen.findByRole("button", { name: "계정 및 인증 정보 관리" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "연결" }));
+    expect(post).not.toHaveBeenCalled();
+    await fireEvent.click(screen.getByRole("button", { name: "ChatGPT 연결" }));
     expect(await screen.findByText("ABCD-EFGH")).toBeTruthy();
     await fireEvent.click(screen.getByRole("button", { name: "지금 확인" }));
-    await fireEvent.click(screen.getByRole("button", { name: "확인 중…" }));
-    expect(
-      post.mock.calls.filter(([path]) => String(path).endsWith("/poll")),
-    ).toHaveLength(1);
-
-    resolvePoll({
-      attempt_id: "attempt-opaque",
-      status: "connected",
-      expires_at: new Date(Date.now() + 600_000).toISOString(),
-      interval_seconds: 300,
-    });
-    expect(await screen.findByText("연결 완료")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "지금 확인" }) as HTMLButtonElement).disabled).toBe(true);
+    await fireEvent.click(screen.getByRole("button", { name: "지금 확인" }));
+    expect(post.mock.calls.filter(([path]) => String(path).endsWith("/poll"))).toHaveLength(1);
+    expect(post).toHaveBeenCalledWith(
+      "/api/v1/chat/admin/providers/7/accounts/11/credentials/17/auth/device", {}, "token", "project",
+    );
+    poll.resolve({ attempt_id: "attempt-opaque", status: "connected", expires_at: new Date(Date.now() + 600_000).toISOString(), interval_seconds: 300 });
+    expect(await screen.findByText("연결됨", { selector: '[role="status"]' })).toBeTruthy();
+    expect(screen.queryByText("ABCD-EFGH")).toBeNull();
   });
 
-  it("ignores a late device-start response after the modal closes", async () => {
-    const { promise: startResponse, resolve: resolveStart } =
-      Promise.withResolvers<unknown>();
-    get.mockImplementation((path: string) => {
-      if (path === "/api/v1/chat/admin/providers")
-        return Promise.resolve([chatgptProvider]);
-      if (path === "/api/v1/chat/admin/models") return Promise.resolve([]);
-      return Promise.resolve([]);
-    });
-    post.mockReturnValueOnce(startResponse);
+  it.each(["close", "scope"])("discards a late credential device-start response after %s", async (reason) => {
+    loadSubscriptionEndpoint(chatgptProvider);
+    const start = Promise.withResolvers<unknown>();
+    post.mockReturnValueOnce(start.promise);
     render(ProviderPage);
-    await screen.findByText("shared-chatgpt");
-    await fireEvent.click(screen.getByRole("button", { name: "연결" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "계정 및 인증 정보 관리" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "연결" }));
     await fireEvent.click(screen.getByRole("button", { name: "ChatGPT 연결" }));
-    await fireEvent.click(screen.getByRole("button", { name: "닫기" }));
-
-    resolveStart({
-      attempt_id: "late-attempt",
-      status: "pending",
-      verification_uri: "https://auth.openai.com/device",
-      user_code: "LATE-CODE",
-      expires_at: new Date(Date.now() + 600_000).toISOString(),
-      interval_seconds: 1,
-    });
-    await Promise.resolve();
+    if (reason === "close") {
+      await fireEvent.click(within(screen.getByRole("dialog")).getAllByRole("button", { name: "닫기" })[0]);
+    } else {
+      setAuthScope("next-token", "next-project");
+    }
+    start.resolve({ attempt_id: "late-attempt", status: "pending", verification_uri: "https://auth.openai.com/device", user_code: "LATE-CODE", expires_at: new Date(Date.now() + 600_000).toISOString(), interval_seconds: 1 });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "계정 및 인증 정보 관리" })).toBeNull());
     expect(screen.queryByText("LATE-CODE")).toBeNull();
-    expect(screen.queryByText("ChatGPT 구독 연결")).toBeNull();
+    expect(post.mock.calls.filter(([path]) => String(path).endsWith("/poll"))).toHaveLength(0);
   });
 
   it("preserves opaque subscription model identifiers during registration", async () => {
@@ -826,7 +772,7 @@ describe("admin chat model pricing", () => {
       if (path === "/api/v1/chat/admin/models/title")
         return Promise.resolve({ model_id: null });
       if (path === "/api/v1/chat/admin/providers/7/available-models") {
-        return Promise.resolve(discoveryResponse(7, [{ id: opaqueModel, purpose: "unknown" }], { source: "litellm", live_status: "unsupported", complete: false }));
+        return Promise.resolve(discoveryResponse(7, [{ id: opaqueModel, purpose: "unknown" }], { source: "catalog", live_status: "unsupported", complete: false }));
       }
       return Promise.resolve([]);
     });
@@ -957,7 +903,7 @@ describe("admin chat model pricing", () => {
     expect(screen.queryByText("closed-model")).toBeNull();
     expect(screen.getByText("모델 목록을 불러오는 중…")).toBeTruthy();
     retried.resolve(discoveryResponse(1, [{ id: "static-model", display_name: "Visible Label", purpose: "unknown" }], {
-      source: "litellm", live_status: "unsupported", complete: false,
+      source: "catalog", live_status: "unsupported", complete: false,
     }));
     expect(await screen.findByText("static-model")).toBeTruthy();
     expect(screen.getByText("Visible Label")).toBeTruthy();
@@ -1079,7 +1025,7 @@ describe("admin chat model pricing", () => {
   it("requires explicit capability opt-in without copying transport-gated flags or changing prices", async () => {
     get.mockImplementation((path: string) => {
       if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider]);
-      if (path === "/api/v1/chat/admin/models") return Promise.resolve([{ ...models[0], capabilities: null, capability_source: null, effective_capability_source: "litellm", effective_capabilities: { vision: false, reasoning: false, tool_call: false, attachment: false, web_search: true, context_limit: null } }]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([{ ...models[0], capabilities: null, capability_source: null, effective_capability_source: "catalog", effective_capabilities: { vision: false, reasoning: false, tool_call: false, attachment: false, web_search: true, context_limit: null } }]);
       return Promise.resolve([]);
     });
     patch.mockResolvedValue({});
@@ -1100,7 +1046,7 @@ describe("admin chat model pricing", () => {
   it("shows a discovered input limit as an editable context draft without saving until confirmed", async () => {
     get.mockImplementation((path: string) => {
       if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider]);
-      if (path === "/api/v1/chat/admin/models") return Promise.resolve([{ ...models[0], model_name: "opaque/context-id", is_active: false, capabilities: null, effective_capabilities: { vision: false, context_limit: null }, capability_source: null, effective_capability_source: "litellm" }]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([{ ...models[0], model_name: "opaque/context-id", is_active: false, capabilities: null, effective_capabilities: { vision: false, context_limit: null }, capability_source: null, effective_capability_source: "catalog" }]);
       if (path.endsWith("/available-models")) return Promise.resolve(discoveryResponse(1, [{ id: "opaque/context-id", input_token_limit: 8192, output_token_limit: 2048, purpose: "chat" }]));
       return Promise.resolve([]);
     });
@@ -1212,7 +1158,7 @@ describe("admin chat model pricing", () => {
       await screen.findByText("결제 상태를 불러오지 못했습니다"),
     ).toBeTruthy();
     expect(screen.getByText(/결제 상태 조회 실패 \(503\)/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "키 변경" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "계정 및 인증 정보 관리" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "비활성화" })).toBeTruthy();
   });
 

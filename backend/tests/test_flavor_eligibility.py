@@ -24,6 +24,41 @@ from app.services.gpu_quota import (
 )
 
 
+@pytest.mark.parametrize("is_public", [False, True], ids=["private", "public"])
+@pytest.mark.parametrize("gpu", [False, True], ids=["cpu", "gpu"])
+@pytest.mark.parametrize("remaining,allowed", [(0, False), (1, True), (-1, True)])
+def test_public_private_cpu_gpu_quota_matrix(is_public, gpu, remaining, allowed):
+    flavor = FlavorInfo(
+        id="matrix",
+        name="gpu.matrix" if gpu else "cpu.matrix",
+        vcpus=2,
+        ram=4096,
+        disk=0,
+        is_public=is_public,
+        extra_specs={"pci_passthrough:alias": "RTX3090:1"} if gpu else {},
+    )
+    quota = {
+        "instances": {"limit": remaining, "in_use": 0},
+        "cores": {"limit": -1 if remaining < 0 else remaining * 2, "in_use": 0},
+        "ram": {"limit": -1 if remaining < 0 else remaining * 4096, "in_use": 0},
+    }
+    result = evaluate_flavor(
+        flavor, compute_quota=quota, gpu_status={"RTX3090": {"limit": remaining, "available": remaining}}
+    )
+    assert result.selectable is allowed
+    assert ("gpu_insufficient" in {block.code for block in result.blockers}) is (gpu and not allowed)
+
+
+@pytest.mark.parametrize(
+    "entry", [None, {}, {"limit": None, "in_use": 0}, {"limit": True, "in_use": 0}, {"limit": 2, "in_use": -1}]
+)
+def test_missing_or_malformed_compute_resource_is_unknown_not_unlimited(entry):
+    flavor = FlavorInfo(id="cpu", name="cpu.small", vcpus=1, ram=1024, disk=0)
+    result = evaluate_flavor(flavor, compute_quota={"instances": entry}, gpu_status={})
+    assert not result.selectable
+    assert [block.code for block in result.blockers] == ["compute_quota_unavailable"]
+
+
 def test_parse_gpu_demand_extracts_counts_and_ignores_audio():
     flavor = FlavorInfo(
         id="fl-multi",
@@ -163,3 +198,65 @@ async def test_gpu_quota_reservations_and_concurrency():
             assert res_id_2 is not None
 
     await engine.dispose()
+
+
+@pytest.mark.parametrize("public", [False, True])
+def test_public_and_private_gpu_quota_blocks_even_with_compute_headroom(public):
+    flavor = FlavorInfo(
+        id="gpu",
+        name="gpu.large",
+        vcpus=4,
+        ram=8192,
+        disk=0,
+        is_public=public,
+        extra_specs={"pci_passthrough:alias": "RTX3090:2"},
+    )
+    quota = {resource: {"limit": -1, "in_use": 0} for resource in ("instances", "cores", "ram")}
+    result = evaluate_flavor(flavor, compute_quota=quota, gpu_status={"RTX3090": {"limit": 4, "available": 1}})
+    assert not result.selectable
+    assert [block.code for block in result.blockers] == ["gpu_insufficient"]
+
+
+@pytest.mark.parametrize("public", [False, True])
+def test_native_compute_reservations_consume_remaining_quota(public):
+    flavor = FlavorInfo(id="cpu", name="cpu.small", vcpus=2, ram=4096, disk=0, is_public=public)
+    quota = {
+        "instances": {"limit": 4, "in_use": 1, "reserved": 3},
+        "cores": {"limit": 8, "in_use": 4, "reserved": 3},
+        "ram": {"limit": 8192, "in_use": 4096, "reserved": 1},
+    }
+    result = evaluate_flavor(flavor, compute_quota=quota, gpu_status={})
+    assert not result.selectable
+    assert {block.code for block in result.blockers} == {
+        "instances_insufficient",
+        "cores_insufficient",
+        "ram_insufficient",
+    }
+    assert result.remaining.model_dump() == {"instances": 0, "cores": 1, "ram_mb": 4095, "gpus": {}}
+
+
+@pytest.mark.parametrize("public", [False, True])
+@pytest.mark.parametrize("resource", ["resources:VGPU", "resources1:PGPU"])
+def test_gpu_resource_class_flavors_require_generic_gpu_quota(public, resource):
+    from types import SimpleNamespace
+
+    from app.services.gpu_quota import _get_project_gpu_usage
+
+    flavor = FlavorInfo(
+        id="vgpu", name="accelerated", vcpus=2, ram=4096, disk=0, is_public=public, extra_specs={resource: "2"}
+    )
+    quota = {key: {"limit": -1, "in_use": 0} for key in ("instances", "cores", "ram")}
+    result = evaluate_flavor(flavor, compute_quota=quota, gpu_status={"GPU": {"limit": 1, "available": 1}})
+    assert not result.selectable
+    assert result.requirements.gpus == {"GPU": 2}
+    assert flavor.is_gpu and flavor.gpu_count == 2
+    conn = MagicMock()
+    conn._afterglow_project_id = "target"
+    conn.compute.servers.return_value = [
+        SimpleNamespace(
+            project_id="target",
+            status="ACTIVE",
+            flavor={"original_name": "accelerated", "extra_specs": {resource: "2"}},
+        )
+    ]
+    assert _get_project_gpu_usage(conn, "target") == {"GPU": 2}

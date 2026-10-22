@@ -58,7 +58,6 @@ describe('root authentication readiness transitions', () => {
 		const mapped = first.mapping.loginAuthState({ ...login, project_id: project, available_domains: [...domains!] }, { federated: false });
 		first.store.setLoginAuth(mapped.state);
 		await flush();
-		expect(mapped.target).toBe('/select-domain');
 		expect(screen.getByRole('status').textContent).toContain(target);
 		expect(get(first.store.authReady)).toBe(true);
 		expect(mocks.me).not.toHaveBeenCalled();

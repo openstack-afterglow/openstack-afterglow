@@ -152,7 +152,7 @@ describe('SelectFlavor', () => {
 	});
 
 
-	it('distinguishes quota, same-host capacity, and unchecked blocks and disables each', async () => {
+	it('removes quota blocked, insufficient, unknown and unchecked flavors from create choices', async () => {
 		const { onSelect } = renderFlavors({
 			flavors: [
 				flavorWith('ok', 'cpu.2c_4g'),
@@ -165,22 +165,9 @@ describe('SelectFlavor', () => {
 			],
 		});
 
-		expect(screen.getByText('생성 가능 (1)')).toBeTruthy();
-		await fireEvent.click(screen.getByText('생성 불가 (6)'));
-
-		expect(screen.getAllByText('RTX3090 1개 부족').length).toBeGreaterThanOrEqual(1);
-		// A same-host shortage names GPU only for a flavor that asks the host for GPU devices.
-		expect(screen.getByRole('button', { name: 'gpu.host 플레이버 선택' }).textContent).toContain('한 호스트에 CPU·RAM·GPU 여유 없음');
-		const cpuShortage = screen.getByRole('button', { name: 'cpu.16c_64g 플레이버 선택' }).textContent;
-		expect(cpuShortage).toContain('한 호스트에 CPU·RAM 여유 없음');
-		expect(cpuShortage).not.toContain('GPU');
-		expect(screen.getAllByText('호스트 용량 확인 불가').length).toBeGreaterThanOrEqual(1);
-		expect(screen.getAllByText('쿼터 또는 호스트 용량 확인 불가').length).toBeGreaterThanOrEqual(2);
-
+		expect(screen.getByRole('button', { name: 'cpu.2c_4g 플레이버 선택' })).toBeTruthy();
 		for (const name of ['gpu.quota', 'gpu.host', 'cpu.16c_64g', 'gpu.unknown', 'gpu.missing', 'legacy.no_eligibility']) {
-			const button = screen.getByRole('button', { name: `${name} 플레이버 선택` });
-			expect(button.hasAttribute('disabled')).toBe(true);
-			await fireEvent.click(button);
+			expect(screen.queryByRole('button', { name: `${name} 플레이버 선택` })).toBeNull();
 		}
 		expect(onSelect).not.toHaveBeenCalled();
 	});
@@ -234,10 +221,7 @@ describe('SelectFlavor', () => {
 		});
 		expect(screen.getByText('생성 가능 (0)')).toBeTruthy();
 		expect(screen.getByText('선택한 플레이버로 지금 생성할 수 없습니다')).toBeTruthy();
-		await fireEvent.click(screen.getByText('생성 불가 (1)'));
-		const button = screen.getByRole('button', { name: 'cpu.16c_128g 플레이버 선택' });
-		expect(button.hasAttribute('disabled')).toBe(true);
-		await fireEvent.click(button);
+		expect(screen.queryByRole('button', { name: 'cpu.16c_128g 플레이버 선택' })).toBeNull();
 		expect(onSelect).not.toHaveBeenCalled();
 	});
 

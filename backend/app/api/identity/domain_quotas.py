@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.deps import get_os_conn, require_admin, require_domain_manager
+from app.api.deps import get_admin_os_conn, require_admin, require_domain_manager
 from app.api.identity.iam import IamRoute
 from app.models.domain_quotas import DefaultsUpdate, OperationReconcile, PolicyUpdate, ProjectQuotaUpdate
 from app.services import domain_monitoring, domain_quotas, quota_native
@@ -53,12 +53,12 @@ async def monitoring(token_info: dict = Depends(require_domain_manager)):
 
 
 @router.get("/admin/domains/{domain_id}/quotas", dependencies=[Depends(require_admin)])
-async def admin_domain_quotas(domain_id: str, conn=Depends(get_os_conn)):
+async def admin_domain_quotas(domain_id: str, conn=Depends(get_admin_os_conn)):
     return await domain_quotas.snapshot(conn, domain_id)
 
 
 @router.put("/admin/domains/{domain_id}/quotas", dependencies=[Depends(require_admin)])
-async def set_domain_ceiling(domain_id: str, req: PolicyUpdate, conn=Depends(get_os_conn)):
+async def set_domain_ceiling(domain_id: str, req: PolicyUpdate, conn=Depends(get_admin_os_conn)):
     return await domain_quotas.update_policy(conn, domain_id, req.revision, req.ceilings)
 
 
@@ -66,7 +66,7 @@ async def set_domain_ceiling(domain_id: str, req: PolicyUpdate, conn=Depends(get
     "/admin/domains/{domain_id}/quotas/operations/{operation_id}/reconcile", dependencies=[Depends(require_admin)]
 )
 async def reconcile_native_operation(
-    domain_id: str, operation_id: str, req: OperationReconcile, conn=Depends(get_os_conn)
+    domain_id: str, operation_id: str, req: OperationReconcile, conn=Depends(get_admin_os_conn)
 ):
     if not req.native_calls_settled:
         raise HTTPException(422, "quota_native_settlement_confirmation_required")

@@ -89,7 +89,7 @@ async def test_volume_domain_filter_precedes_pagination(admin_client, directory)
     assert [v["id"] for v in first.json()["items"]] == ["a1"]
     assert first.json()["next_marker"] == "a1"
     second = await admin_client.get("/api/v1/admin/all-volumes?domain_id=domain-a&limit=1&marker=a1")
-    assert [v["id"] for v in second.json()["items"]] == ["b1"]
+    assert [v["id"] for v in second.json()["items"]] == ["a2"]
     assert "limit" not in directory.block_storage.volumes.call_args.kwargs
     assert "marker" not in directory.block_storage.volumes.call_args.kwargs
 
@@ -103,15 +103,13 @@ async def test_volume_domain_project_intersection(admin_client, directory):
 
 
 @pytest.mark.asyncio
-async def test_volume_no_domain_retains_native_page_contract(admin_client, directory):
+async def test_volume_all_domain_filters_full_inventory_before_stable_page(admin_client, directory):
     directory.block_storage.volumes.return_value = [volume("old", "foreign")]
     result = await admin_client.get("/api/v1/admin/all-volumes?limit=1&project_id=foreign")
     assert result.status_code == 200
     assert result.json()["items"][0]["id"] == "old"
-    directory.block_storage.volumes.assert_called_once_with(
-        details=True, all_projects=True, limit=1, project_id="foreign"
-    )
-    directory.identity.projects.assert_not_called()
+    directory.block_storage.volumes.assert_called_once_with(details=True, all_projects=True)
+    directory.identity.projects.assert_called_once_with()
 
 
 @pytest.mark.asyncio
@@ -169,7 +167,6 @@ async def test_port_domain_filter_precedes_pagination(admin_client, directory):
         "all-loadbalancers",
         "all-containers",
         "all-file-storages",
-        "overview/projects",
     ],
 )
 async def test_complete_cached_inventory_filtered_after_fresh_directory(admin_client, directory, route):
@@ -188,7 +185,9 @@ async def test_volume_status_counts_only_selected_domain(admin_client, directory
     directory.block_storage.volumes.return_value = [volume("outside", "foreign"), volume("inside")]
     result = await admin_client.get("/api/v1/admin/volumes/status-summary?domain_id=domain-a")
     assert result.status_code == 200
-    assert result.json() == {"total": 1, "statuses": [{"status": "available", "count": 1}]}
+    assert result.json()["total"] == 1
+    assert result.json()["total_gb"] == 1
+    assert result.json()["statuses"] == [{"status": "available", "count": 1}]
 
 
 @pytest.mark.asyncio

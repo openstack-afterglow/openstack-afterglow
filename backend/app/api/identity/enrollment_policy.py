@@ -3,6 +3,7 @@
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Path, Query
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import get_os_conn, require_admin
 from app.api.identity.iam import IamRoute
@@ -25,6 +26,38 @@ async def update_policy(
     conn=Depends(get_os_conn),
 ):
     return await enrollment_policy.update_policy(conn, req.model_dump(), token_info=token_info)
+
+
+class PersonalQuotaApply(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    preview_id: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+@router.get("/personal-project-quotas")
+async def personal_projects(
+    cursor: str | None = Query(None, min_length=1, max_length=64),
+    token_info: dict = Depends(require_admin),
+):
+    return await enrollment_policy.personal_quota_projects(token_info, cursor=cursor)
+
+
+@router.get("/personal-project-quotas/{project_id}/preview")
+async def preview_personal_project(
+    project_id: str = Path(min_length=1, max_length=64),
+    token_info: dict = Depends(require_admin),
+    conn=Depends(get_os_conn),
+):
+    return await enrollment_policy.preview_personal_quotas(conn, project_id, token_info)
+
+
+@router.post("/personal-project-quotas/{project_id}/apply")
+async def apply_personal_project(
+    req: PersonalQuotaApply,
+    project_id: str = Path(min_length=1, max_length=64),
+    token_info: dict = Depends(require_admin),
+    conn=Depends(get_os_conn),
+):
+    return await enrollment_policy.converge_personal_quotas(conn, project_id, token_info, req.preview_id)
 
 
 @router.get("/signup-requests")

@@ -1,4 +1,4 @@
-"""Tests for quota-managed flavor access reconciliation and unified compute policy."""
+"""Native flavor visibility and quota updates are independent authorities."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -7,41 +7,15 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_set_flavor_access_mode_validations(admin_client, mock_conn):
-    public_flavor = MagicMock(id="fl-pub", is_public=True, extra_specs={})
-    non_gpu_flavor = MagicMock(id="fl-cpu", is_public=False, extra_specs={})
-    gpu_flavor = MagicMock(
-        id="fl-gpu",
-        is_public=False,
-        extra_specs={"pci_passthrough:alias": "RTX3090:1"},
+async def test_quota_access_mode_and_reconcile_routes_are_removed(admin_client, mock_conn):
+    mode = await admin_client.put("/api/v1/admin/flavors/fl-gpu/access-mode", json={"mode": "gpu_quota"})
+    reconcile = await admin_client.post(
+        "/api/v1/admin/flavors/access-reconcile", json={"project_id": "proj-1", "apply": True}
     )
-
-    # Public flavor rejects gpu_quota mode
-    mock_conn.compute.get_flavor.return_value = public_flavor
-    resp = await admin_client.put(
-        "/api/v1/admin/flavors/fl-pub/access-mode",
-        json={"mode": "gpu_quota"},
-    )
-    assert resp.status_code == 409
-    assert "Public" in resp.json()["detail"]
-
-    # Flavor without GPU specs rejects gpu_quota mode
-    mock_conn.compute.get_flavor.return_value = non_gpu_flavor
-    resp = await admin_client.put(
-        "/api/v1/admin/flavors/fl-cpu/access-mode",
-        json={"mode": "gpu_quota"},
-    )
-    assert resp.status_code == 409
-    assert "GPU" in resp.json()["detail"]
-
-    # Private GPU flavor succeeds
-    mock_conn.compute.get_flavor.return_value = gpu_flavor
-    resp = await admin_client.put(
-        "/api/v1/admin/flavors/fl-gpu/access-mode",
-        json={"mode": "gpu_quota"},
-    )
-    assert resp.status_code == 200
-    assert resp.json()["mode"] == "gpu_quota"
+    assert mode.status_code == 404
+    assert reconcile.status_code in (404, 405)
+    mock_conn.session.post.assert_not_called()
+    mock_conn.compute.create_flavor_extra_specs.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -88,84 +62,13 @@ async def test_set_flavor_frontend_visibility_and_admin_listing(admin_client, mo
 
 
 @pytest.mark.asyncio
-async def test_flavor_access_reconcile_preview_and_apply(admin_client, mock_conn):
-    managed_flavor = MagicMock(
-        id="fl-gpu-1",
-        name="gpu.3090",
-        vcpus=8,
-        ram=16384,
-        disk=40,
-        is_public=False,
-        description=None,
-        extra_specs={"afterglow:access_mode": "gpu_quota", "pci_passthrough:alias": "RTX3090:1"},
-    )
-
-    mock_conn.compute.flavors.return_value = [managed_flavor]
-    mock_conn.compute.get_endpoint.return_value = "http://nova"
-    access_resp = MagicMock()
-    access_resp.json.return_value = {"flavor_access": []}
-    access_resp.raise_for_status = MagicMock()
-    mock_conn.session.get.return_value = access_resp
-
-    # Dry-run preview: project has RTX3090 limit=2, currently has no access -> action is 'add'
-    with patch("app.services.gpu_quota.get_effective_gpu_quotas", return_value={"RTX3090": 2}):
-        resp = await admin_client.post(
-            "/api/v1/admin/flavors/access-reconcile",
-            json={"project_id": "proj-1", "apply": False},
-        )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["applied"] is False
-    assert len(data["operations"]) == 1
-    op = data["operations"][0]
-    assert op["flavor_id"] == "fl-gpu-1"
-    assert op["desired_access"] is True
-    assert op["current_access"] is False
-    assert op["action"] == "add"
-    assert data["enforcement_scope"] == "afterglow_admissions_only"
-
-    # Apply: calls Nova addTenantAccess
-    post_resp = MagicMock()
-    post_resp.raise_for_status = MagicMock()
-    mock_conn.session.post.return_value = post_resp
-
-    with (
-        patch("app.services.gpu_quota.get_effective_gpu_quotas", return_value={"RTX3090": 2}),
-        patch("app.api.identity.admin_flavors.invalidate", AsyncMock()) as mock_inv,
-    ):
-        resp = await admin_client.post(
-            "/api/v1/admin/flavors/access-reconcile",
-            json={"project_id": "proj-1", "apply": True},
-        )
-    assert resp.status_code == 200
-    assert resp.json()["applied"] is True
-    mock_conn.session.post.assert_called_once_with(
-        "http://nova/flavors/fl-gpu-1/action",
-        json={"addTenantAccess": {"tenant": "proj-1"}},
-    )
-    mock_inv.assert_awaited()
-
-
-@pytest.mark.asyncio
-async def test_update_project_compute_policy_coordinates_all_authorities(admin_client, mock_conn):
-    reconcile_result = {
-        "project_id": "proj-1",
-        "applied": True,
-        "status": "ok",
-        "operations": [],
-        "errors": [],
-        "enforcement_scope": "afterglow_admissions_only",
-    }
+async def test_update_compute_and_gpu_quotas_never_mutates_native_flavor_grants(admin_client, mock_conn):
 
     mock_conn.compute.update_quota_set = MagicMock()
     mock_conn.identity.get_domain.return_value = SimpleNamespace(id="default", name="Default")
     mock_conn.identity.get_project.return_value = SimpleNamespace(id="proj-1", domain_id="default")
     with (
         patch("app.services.gpu_quota.set_project_gpu_quota", AsyncMock()) as mock_set_gpu,
-        patch(
-            "app.api.identity.admin_flavors.reconcile_quota_managed_flavor_access",
-            AsyncMock(return_value=reconcile_result),
-        ) as mock_reconcile,
         patch("app.api.identity.admin_identity.invalidate", AsyncMock()),
         patch(
             "app.services.domain_quotas.update_project",
@@ -179,7 +82,6 @@ async def test_update_project_compute_policy_coordinates_all_authorities(admin_c
                 "cores": 20,
                 "ram": 40960,
                 "gpu_quotas": {"RTX3090": 2},
-                "reconcile_flavor_access": True,
             },
         )
 
@@ -187,7 +89,10 @@ async def test_update_project_compute_policy_coordinates_all_authorities(admin_c
     native_quota.assert_awaited_once_with(mock_conn, "proj-1", {"instances": 10, "cores": 20, "ram": 40960})
     mock_conn.compute.update_quota_set.assert_not_called()
     mock_set_gpu.assert_awaited_once_with(mock_conn, "proj-1", "RTX3090", 2)
-    mock_reconcile.assert_awaited_once()
+    mock_conn.session.post.assert_not_called()
+    mock_conn.compute.add_flavor_access.assert_not_called()
+    mock_conn.compute.remove_flavor_access.assert_not_called()
+    assert "access_reconcile" not in resp.json()
 
 
 @pytest.mark.asyncio
@@ -202,7 +107,6 @@ async def test_compute_policy_stops_before_gpu_after_uncertain_native_quota(admi
     with (
         patch("app.services.domain_quotas.update_project", AsyncMock(return_value=operation)),
         patch("app.services.gpu_quota.set_project_gpu_quota", AsyncMock()) as gpu,
-        patch("app.api.identity.admin_flavors.reconcile_quota_managed_flavor_access", AsyncMock()) as reconcile,
     ):
         response = await admin_client.put(
             "/api/v1/admin/compute-policy/proj-1?domain_id=default",
@@ -212,7 +116,7 @@ async def test_compute_policy_stops_before_gpu_after_uncertain_native_quota(admi
     assert response.json()["status"] == "partial"
     assert response.json()["native_quotas"] == operation
     gpu.assert_not_awaited()
-    reconcile.assert_not_awaited()
+    mock_conn.session.post.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -235,3 +139,47 @@ async def test_compute_policy_cannot_bypass_domain_budget(admin_client, mock_con
     assert response.status_code == 409
     gpu.assert_not_awaited()
     mock_conn.compute.update_quota_set.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_native_access_list_disambiguates_domain_and_project_uuid(admin_client, mock_conn):
+    response = MagicMock(status_code=200)
+    response.json.return_value = {
+        "flavor_access": [{"flavor_id": "fl", "tenant_id": "project-a"}, {"flavor_id": "fl", "tenant_id": "project-b"}]
+    }
+    mock_conn.session.get.return_value = response
+    mock_conn.identity.get_project.side_effect = lambda pid: SimpleNamespace(
+        id=pid, name="Same project", domain_id="domain-a" if pid == "project-a" else "domain-b"
+    )
+    mock_conn.identity.get_domain.side_effect = lambda did: SimpleNamespace(id=did, name="Same domain")
+    result = await admin_client.get("/api/v1/admin/flavors/fl/access")
+    assert result.status_code == 200
+    assert [(row["domain_id"], row["project_id"]) for row in result.json()] == [
+        ("domain-a", "project-a"),
+        ("domain-b", "project-b"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_native_access_lookup_failure_is_not_empty_success(admin_client, mock_conn):
+    mock_conn.session.get.side_effect = RuntimeError("native unavailable")
+    response = await admin_client.get("/api/v1/admin/flavors/fl/access")
+    assert response.status_code == 503
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit", [0, -1, 2])
+async def test_gpu_quota_only_update_preserves_native_access_in_both_directions(admin_client, mock_conn, limit):
+    mock_conn.identity.get_domain.return_value = SimpleNamespace(id="default", name="Default")
+    mock_conn.identity.get_project.return_value = SimpleNamespace(id="proj-1", domain_id="default")
+    with patch("app.services.gpu_quota.set_project_gpu_quota", AsyncMock()) as setter:
+        response = await admin_client.put(
+            "/api/v1/admin/compute-policy/proj-1?domain_id=default", json={"gpu_quotas": {"RTX3090": limit}}
+        )
+    assert response.status_code == 200
+    setter.assert_awaited_once_with(mock_conn, "proj-1", "RTX3090", limit)
+    mock_conn.session.post.assert_not_called()
+    mock_conn.compute.get_flavor_access.assert_not_called()
+    mock_conn.compute.flavors.assert_not_called()
+    mock_conn.compute.add_flavor_access.assert_not_called()
+    mock_conn.compute.remove_flavor_access.assert_not_called()

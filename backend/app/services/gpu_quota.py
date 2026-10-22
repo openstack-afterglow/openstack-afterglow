@@ -274,7 +274,7 @@ def _get_project_gpu_usage(conn: Any, project_id: str) -> dict[str, int]:
         "SUSPENDED",
         "VERIFY_RESIZE",
     }
-    flavor_cache: dict[str, dict[str, Any]] = {}
+    flavor_cache: dict[str, tuple[dict[str, Any], str]] = {}
 
     for s in servers:
         s_proj = getattr(s, "project_id", None) or getattr(s, "tenant_id", None)
@@ -289,54 +289,42 @@ def _get_project_gpu_usage(conn: Any, project_id: str) -> dict[str, int]:
 
         flavor_info = getattr(s, "flavor", None) or {}
         extra_specs = {}
+        flavor_name = ""
         flavor_id = None
         embedded_specs_are_authoritative = False
 
         if isinstance(flavor_info, dict):
+            flavor_name = flavor_info.get("original_name") or flavor_info.get("name") or ""
             extra_specs = flavor_info.get("extra_specs") or {}
             flavor_id = flavor_info.get("id")
-            embedded_specs_are_authoritative = "original_name" in flavor_info and "extra_specs" in flavor_info
+            # SDK Flavor mappings expose declared keys even for ID-only resources.
+            embedded_specs_are_authoritative = bool(flavor_info.get("original_name")) and isinstance(
+                flavor_info.get("extra_specs"), dict
+            )
         else:
+            flavor_name = getattr(flavor_info, "original_name", None) or getattr(flavor_info, "name", "")
             extra_specs = getattr(flavor_info, "extra_specs", None) or {}
             flavor_id = getattr(flavor_info, "id", None)
 
         if not extra_specs and flavor_id and not embedded_specs_are_authoritative:
             if flavor_id in flavor_cache:
-                extra_specs = flavor_cache[flavor_id]
+                extra_specs, flavor_name = flavor_cache[flavor_id]
             else:
                 try:
-                    fl_obj = conn.compute.get_flavor(flavor_id)
+                    fl_obj = conn.compute.get_flavor(flavor_id, get_extra_specs=True)
+                    flavor_name = getattr(fl_obj, "name", "") or flavor_name
                     fl_specs = getattr(fl_obj, "extra_specs", None) or (
                         fl_obj.get("extra_specs") if isinstance(fl_obj, dict) else {}
                     )
                     extra_specs = dict(fl_specs) if fl_specs else {}
-                    flavor_cache[flavor_id] = extra_specs
+                    flavor_cache[flavor_id] = (extra_specs, flavor_name)
                 except Exception as exc:
                     raise GpuQuotaUnavailable("GPU quota flavor metadata is unavailable") from exc
 
-        alias_str = str(extra_specs.get("pci_passthrough:alias", ""))
-        if not alias_str:
-            continue
+        from app.services.flavor_eligibility import parse_gpu_demand
 
-        for entry in alias_str.split(","):
-            entry = entry.strip()
-            if not entry:
-                continue
-            if ":" in entry:
-                alias_raw, _, count_str = entry.rpartition(":")
-                try:
-                    count = int(count_str.strip())
-                    if count <= 0:
-                        count = 1
-                except ValueError:
-                    count = 1
-            else:
-                alias_raw = entry
-                count = 1
-
-            gpu_type = normalize_gpu_alias(alias_raw)
-            if gpu_type:
-                usage[gpu_type] = usage.get(gpu_type, 0) + count
+        for gpu_type, count in parse_gpu_demand({"name": flavor_name, "extra_specs": extra_specs}).items():
+            usage[gpu_type] = usage.get(gpu_type, 0) + count
 
     return usage
 

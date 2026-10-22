@@ -109,6 +109,7 @@ async def test_admin_project_creation_requires_explicit_bootstrap_and_enabled_de
         await admin_identity.create_project(
             admin_identity.CreateProjectRequest(name="New", domain_id="tenant-a"),
             conn=native.sdk,
+            provider_conn=native.sdk,
             token_info={**actor("operator"), "is_system_admin": True},
         )
     assert denied.value.status_code == 409
@@ -122,6 +123,7 @@ async def test_admin_created_project_has_common_native_readers_and_explicit_sole
     created = await admin_identity.create_project(
         admin_identity.CreateProjectRequest(name="New", domain_id="tenant-a"),
         conn=native.sdk,
+        provider_conn=native.sdk,
         token_info={**actor("operator"), "is_system_admin": True},
     )
     assert native.members["projection-tenant-a"] == {"creator"}
@@ -170,6 +172,7 @@ async def test_admin_project_setup_compensates_only_exact_new_project_on_postcre
         await admin_identity.create_project(
             admin_identity.CreateProjectRequest(name="New", domain_id="tenant-a"),
             conn=native.sdk,
+            provider_conn=native.sdk,
             token_info={**actor("operator"), "is_system_admin": True},
         )
     assert failed.value.status_code == 503
@@ -256,6 +259,7 @@ async def test_admin_create_provider_returning_foreign_existing_project_never_co
         await admin_identity.create_project(
             admin_identity.CreateProjectRequest(name="New", domain_id="tenant-a"),
             conn=native.sdk,
+            provider_conn=native.sdk,
             token_info={**actor("operator"), "is_system_admin": True},
         )
     assert failed.value.status_code == 503
@@ -279,6 +283,7 @@ async def test_admin_create_lost_native_reply_never_retries_or_guesses_compensat
         await admin_identity.create_project(
             admin_identity.CreateProjectRequest(name="New", domain_id="tenant-a"),
             conn=native.sdk,
+            provider_conn=native.sdk,
             token_info={**actor("operator"), "is_system_admin": True},
         )
     assert failed.value.status_code == 503

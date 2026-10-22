@@ -19,12 +19,20 @@ export interface VersionInfo {
 	git: { commit: string | null; tag: string | null; branch: string | null };
 }
 
-export interface ProjectUsage {
-	project_id: string;
-	project_name: string;
-	cpu: { used: number; quota: number };
-	ram_mb: { used: number; quota: number };
-	instances: { used: number; quota: number };
-	disk_gb: { used: number; quota: number };
-	gpu_instances: number;
+export interface DomainUsage {
+	domain_id: string | null;
+	domain_name: string | null;
+	owner_status: 'known' | 'deleted_project' | 'unknown_owner' | 'deleted_domain';
+	project_ids: string[];
+	project_count: number;
+	instances: number;
+	vcpus: number | null;
+	ram_mb: number | null;
+	gpu_instances: number | null;
+	volumes: number;
+	volume_gb: number;
+	attached_volumes: number;
+	attached_gb: number;
+	available_volumes: number;
+	available_gb: number;
 }

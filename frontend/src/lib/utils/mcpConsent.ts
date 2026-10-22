@@ -1,3 +1,5 @@
+import { takePendingInvitationPath } from './domainLogin';
+
 const CONSENT_TICKET_KEY = 'afterglow_mcp_oauth_consent_ticket';
 const TICKET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 const CLAUDE_GATEWAY_AUTH_KEY = 'afterglow_claude_gateway_authorization';
@@ -53,4 +55,10 @@ export function postAuthDestination(fallback: string): string {
 	if (fallback === '/select-project' || fallback === '/select-domain') return fallback;
 	if (pendingMcpConsentTicket()) return '/oauth/mcp/authorize';
 	return hasPendingClaudeGatewayAuthorization() ? '/oauth/claude/authorize' : fallback;
+}
+
+/** Call only after publishing an exact fresh login; projectless retains intent. */
+export function freshLoginDestination(fallback: string): string {
+	if (fallback === '/select-project' || fallback === '/select-domain') return fallback;
+	return takePendingInvitationPath() ?? postAuthDestination(fallback);
 }

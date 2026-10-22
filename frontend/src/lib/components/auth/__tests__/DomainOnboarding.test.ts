@@ -33,9 +33,13 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-async function fillAccount() {
-	for (const [label, value] of [['Username', 'alice'], ['Password', 'long-enough-password'], ['Confirm password', 'long-enough-password']]) {
-		await fireEvent.input(screen.getByLabelText(new RegExp(`^${label}`)), { target: { value } });
+function accountInput(label: string): HTMLInputElement {
+	return screen.getByLabelText(text => text.replace(/\s*\*$/, '') === label) as HTMLInputElement;
+}
+
+async function fillAccount(name = 'alice', password = 'long-enough-password') {
+	for (const [label, value] of [[t('onboarding.name'), name], [t('onboarding.password'), password], [t('onboarding.passwordConfirm'), password]]) {
+		await fireEvent.input(accountInput(label), { target: { value } });
 	}
 }
 
@@ -63,6 +67,79 @@ describe('onboarding immutable identity and joined workspace', () => {
 		expect(screen.getByRole('link', { name: 'Recover account' }).getAttribute('href')).toBe('/recover');
 		expect(screen.queryByLabelText('Username')).toBeNull();
 		expect(mocks.post).not.toHaveBeenCalled();
+	});
+
+	it('allows a corrected username only with a newly entered password', async () => {
+		mocks.post.mockRejectedValueOnce(new ApiError(409, 'Username already belongs to an account'));
+		render(Registration);
+		await screen.findByRole('textbox', { name: t('onboarding.name') });
+		await fillAccount();
+		await fireEvent.click(screen.getByRole('button', { name: t('registration.submit') }));
+		await screen.findByText(t('onboarding.usernameUnavailable'));
+		expect(accountInput(t('onboarding.name')).value).toBe('alice');
+		for (const label of [t('onboarding.password'), t('onboarding.passwordConfirm')]) {
+			expect(accountInput(label).value).toBe('');
+		}
+		await fireEvent.input(accountInput(t('onboarding.name')), { target: { value: 'alice-new' } });
+		await fireEvent.click(screen.getByRole('button', { name: t('registration.submit') }));
+		expect(mocks.post).toHaveBeenCalledOnce();
+		await fillAccount('alice-new', 'fresh-long-password');
+		await fireEvent.click(screen.getByRole('button', { name: t('registration.submit') }));
+		expect((await screen.findByRole('link', { name: t('onboarding.created.signIn') })).getAttribute('href')).toBe('/login');
+		expect(mocks.post).toHaveBeenCalledTimes(2);
+		expect(mocks.post).toHaveBeenNthCalledWith(2, '/api/v1/auth/registrations/accept',
+			{ token: originalToken, name: 'alice-new', password: 'fresh-long-password' }, undefined, undefined,
+			{ suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false });
+		expect(mocks.get).toHaveBeenCalledOnce();
+		expect(get(auth).token).toBeNull();
+	});
+
+	it('replaces creation with sign-in and recovery when another account takes the verified email', async () => {
+		mocks.post.mockRejectedValueOnce(new ApiError(409, 'Account already exists; sign in to accept an invitation'));
+		render(Registration);
+		await screen.findByRole('textbox', { name: 'Username' });
+		await fillAccount();
+		const password = screen.getByLabelText(/^Password/) as HTMLInputElement;
+		await fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+		expect((await screen.findByRole('link', { name: 'Sign in' })).getAttribute('href')).toBe('/login');
+		expect(screen.getByRole('link', { name: 'Recover account' }).getAttribute('href')).toBe('/recover');
+		expect(password.value).toBe('');
+		expect(screen.queryByRole('button', { name: 'Create account' })).toBeNull();
+		expect(screen.queryByLabelText(/^Password/)).toBeNull();
+		expect(mocks.post).toHaveBeenCalledOnce();
+		expect(mocks.get).toHaveBeenCalledOnce();
+		expect(get(auth).token).toBeNull();
+	});
+
+	it('rechecks an unclassified conflict without replaying credentials or exposing server text', async () => {
+		mocks.post.mockRejectedValueOnce(new ApiError(409, 'private-directory-conflict'));
+		mocks.get.mockResolvedValueOnce({ email: 'alice@example.com', account_exists: false })
+			.mockResolvedValueOnce({ email: 'alice@example.com', account_exists: true });
+		render(Registration);
+		await screen.findByRole('textbox', { name: 'Username' }); await fillAccount();
+		await fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+		await screen.findByRole('link', { name: 'Sign in' });
+		expect(screen.getByRole('link', { name: 'Recover account' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Create account' })).toBeNull();
+		expect(document.body.textContent).not.toContain('private-directory-conflict');
+		expect(mocks.post).toHaveBeenCalledOnce();
+		expect(mocks.get).toHaveBeenCalledTimes(2);
+	});
+
+	it.each(['code', 'detail'] as const)('does not reopen creation after an uncertain enrollment %s response', async encoding => {
+		const code = 'signup_enrollment_recovery_required';
+		mocks.post.mockRejectedValueOnce(new ApiError(409, encoding === 'detail' ? code : 'private-server-message', encoding === 'code' ? code : undefined));
+		render(Registration);
+		await screen.findByRole('textbox', { name: 'Username' }); await fillAccount();
+		const password = screen.getByLabelText(/^Password/) as HTMLInputElement;
+		await fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+		await screen.findByText(t('onboarding.unavailable'));
+		expect(password.value).toBe('');
+		expect(screen.queryByRole('button', { name: 'Create account' })).toBeNull();
+		expect(screen.queryByLabelText(/^Password/)).toBeNull();
+		expect(document.body.textContent).not.toContain('private-server-message');
+		expect(mocks.post).toHaveBeenCalledOnce();
+		expect(mocks.get).toHaveBeenCalledOnce();
 	});
 
 	it('routes a verified existing invitee to home-first sign-in without presenting duplicate create', async () => {

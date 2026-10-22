@@ -26,7 +26,7 @@ export function resolvePostLoginProject(input: PostLoginProjectInput): PostLogin
 	return { projectId: null, target: '/select-project' };
 }
 
-/** Existing-session navigation only. Fresh authentication always opens the workspace chooser. */
+/** An already established authorized project needs no intermediate chooser. */
 export function loginDestination(state: { availableDomains?: AvailableDomain[]; projectId?: string | null }): PostLoginTarget {
 	if (normalizeProjectId(state.projectId)) return '/dashboard';
 	if ((state.availableDomains?.length ?? 0) > 1) return '/select-domain';

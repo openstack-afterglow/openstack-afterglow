@@ -1,22 +1,3 @@
-export interface FlavorReconcileOperation {
-  flavor_id: string;
-  flavor_name: string;
-  gpu_demand: Record<string, number>;
-  desired_access: boolean;
-  current_access: boolean;
-  action: 'add' | 'remove' | 'none';
-  applied?: boolean;
-}
-
-export interface FlavorReconcileResponse {
-  project_id: string;
-  applied: boolean;
-  status: 'ok' | 'partial';
-  operations: FlavorReconcileOperation[];
-  errors: Array<{ flavor_id?: string; flavor_name?: string; code: string; action?: string }>;
-  enforcement_scope: string;
-}
-
 import { onDestroy } from 'svelte';
 import { auth, projectSwitching, logoutInProgress } from '$lib/stores/auth';
 import { projectNames, type AdminProjectName } from '$lib/stores/projectNames';
@@ -62,9 +43,6 @@ export interface AdminQuotasController {
   readonly gpuDefaultError: string;
   readonly gpuDefaultSuccess: string;
   readonly gpuQuotas: GpuQuota[];
-  readonly reconcilePreview: FlavorReconcileResponse | null;
-  readonly reconcileLoading: boolean;
-  loadReconcilePreview: (gpuLimits?: Record<string, number>) => Promise<void>;
   loadProjects: () => Promise<void>;
   loadGpuAliases: () => Promise<void>;
   loadGpuDefaults: (opts?: { background?: boolean }) => Promise<void>;
@@ -110,9 +88,6 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
   let gpuQuotaGeneration = 0;
   let quotaGeneration = 0;
   let saveGeneration = 0;
-  let reconcilePreview = $state<FlavorReconcileResponse | null>(null);
-  let reconcileLoading = $state(false);
-  let reconcileGeneration = 0;
   let directoryGeneration = 0;
   let domainsGeneration = 0;
   let defaultsGeneration = 0;
@@ -144,12 +119,11 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
 
   function clearProjectResults() {
     ++scopeRevision;
-    ++quotaGeneration; ++gpuQuotaGeneration; ++saveGeneration; ++reconcileGeneration;
+    ++quotaGeneration; ++gpuQuotaGeneration; ++saveGeneration;
     quotas = null; quotaLoading = false;
     saving = false; savingSection = null;
     saveError = ''; saveSuccess = ''; sectionErrors = {}; sectionSuccesses = {};
     gpuQuotas = []; gpuQuotaLoading = false; gpuQuotaError = '';
-    reconcilePreview = null; reconcileLoading = false;
     gpuDefaultSuccess = '';
   }
 
@@ -277,7 +251,6 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
       const loadedQuotas = await quotaPromise;
       if (!owns()) return false;
       quotas = loadedQuotas;
-      if (!opts?.background) void loadReconcilePreview();
       return true;
     } catch {
       if (owns() && !opts?.background) quotas = null;
@@ -307,7 +280,6 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
     } finally {
       if (owns()) gpuQuotaLoading = false;
     }
-    if (owns()) void loadReconcilePreview();
   }
 
   async function setGpuQuota(gpuType: string, limit: number) {
@@ -330,30 +302,6 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
       if (context.owns()) await loadGpuQuotas({ background: true });
     } catch (e) {
       if (context.owns()) gpuQuotaError = e instanceof ApiError ? e.message : t('quotaController.gpuDeleteFailed');
-    }
-  }
-
-  async function loadReconcilePreview(gpuLimits?: Record<string, number>) {
-    const targetProjectId = selectedProjectId;
-    const context = captureContext(), generation = ++reconcileGeneration;
-    const owns = () => context.owns() && generation === reconcileGeneration && selectedProjectId === targetProjectId;
-    if (!targetProjectId) {
-      reconcilePreview = null;
-      return;
-    }
-    reconcileLoading = true;
-    try {
-      const res = await api.post<FlavorReconcileResponse>(
-        '/api/v1/admin/flavors/access-reconcile',
-        { project_id: targetProjectId, apply: false, gpu_limits: gpuLimits },
-        context.token,
-        context.projectId,
-      );
-      if (owns()) reconcilePreview = res;
-    } catch {
-      if (owns()) reconcilePreview = null;
-    } finally {
-      if (owns()) reconcileLoading = false;
     }
   }
 
@@ -484,9 +432,6 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
     get gpuDefaultError() { return gpuDefaultError; },
     get gpuDefaultSuccess() { return gpuDefaultSuccess; },
     get gpuQuotas() { return gpuQuotas; },
-    get reconcilePreview() { return reconcilePreview; },
-    get reconcileLoading() { return reconcileLoading; },
-    loadReconcilePreview,
     loadProjects,
     loadGpuAliases,
     loadGpuDefaults,

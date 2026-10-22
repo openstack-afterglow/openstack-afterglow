@@ -44,6 +44,17 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); clearAuth(); logoutInProgress.set(false); projectSwitching.set(false); initLocale('ko'); });
 
 describe('authorized workspace selector', () => {
+	it('keeps immutable account-home identity out of the administrator user resource chooser', async () => {
+		setAuth({ token: 'original-token', identityDomainId: 'private-accounts-home', identityDomainName: 'Private account identity', isSystemAdmin: true });
+		expect(acceptAuthVerification(getAuthVerificationEpoch(), { isSystemAdmin: true })).toBe(true);
+		render(ProjectSelector); await open();
+		const dialog = screen.getByRole('dialog', { name: t('title') });
+		expect(dialog.textContent).not.toContain('private-accounts-home');
+		expect(dialog.textContent).not.toContain('Private account identity');
+		expect(within(dialog).getByRole('combobox', { name: t('domain') })).toBeTruthy();
+		expect(within(dialog).getByRole('button', { name: /^Project.*project-2/ })).toBeTruthy();
+	});
+
 	it('selects a server-authorized target for a projectless zero-role administrator without a client membership check or project rescope', async () => {
 		setAuth({ token: 'original-token', projectId: null, projectName: null, roles: [], availableProjects: [], isSystemAdmin: true });
 		expect(acceptAuthVerification(getAuthVerificationEpoch(), { isSystemAdmin: true })).toBe(true);

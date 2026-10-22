@@ -39,6 +39,7 @@ export interface LoginResponse extends DomainSessionFields {
   is_system_admin?: boolean;
   can_write?: boolean;
   refresh_token?: string;
+  initial_workspace?: { kind: 'personal' | 'remembered'; domain_id: string; project_id: string } | null;
 }
 
 /** Verified provider attachment only; a fresh sign-in issues the login session. */

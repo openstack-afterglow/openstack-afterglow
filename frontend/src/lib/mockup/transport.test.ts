@@ -22,6 +22,18 @@ afterEach(() => {
 });
 
 describe('mockup transport', () => {
+	it('serves domain-owned administrator resource totals without the retired project quota monitor', async () => {
+		sessionStorage.setItem(MOCKUP_SESSION_KEY, 'admin');
+		// Module-boundary test: vi.resetModules recreates the mutable fixture singleton.
+		const { maybeMockJson } = await import('./transport');
+		const totals = await maybeMockJson('GET', '/api/v1/admin/overview/domains', undefined, 'mock-token-admin-scoped', 'mock-project-1');
+		expect(totals).toEqual([expect.objectContaining({
+			domain_id: 'mock-domain', domain_name: 'Demo', owner_status: 'known', project_count: 4,
+			instances: 49, vcpus: 228, ram_mb: 593920, gpu_instances: 8,
+			volumes: 20, volume_gb: 8950, attached_volumes: 14, attached_gb: 7200, available_volumes: 6, available_gb: 1750,
+		})]);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
 	it('serves supported JSON reads and applies local instance mutations to later GETs', async () => {
 		// Dynamic import required: transport owns mutable singleton fixture state that each test must reinitialize.
 		const { maybeMockJson } = await import('./transport');

@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.common.errors import public_service_error
-from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info, require_admin
+from app.api.deps import CacheMode, cache_mode, get_admin_os_conn, get_os_conn, get_token_info, require_admin
 from app.database import get_session
 from app.services import (
     activity,
@@ -503,13 +503,15 @@ class UpdateProjectRequest(BaseModel):
     enabled: bool | None = None
 
 
-@router.get("/projects/names", dependencies=[Depends(require_admin), Depends(_selected_objects)])
+@router.get("/projects/names", dependencies=[Depends(require_admin)])
 async def list_project_names(
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     cm: CacheMode = Depends(cache_mode),
     domain_id: str | None = Query(None, min_length=1),
 ):
     """Project id/name picker; system-wide unless a domain is selected."""
+    if domain_id is not None:
+        await asyncio.to_thread(_selected_domain, conn, domain_id)
 
     def _list():
         query = {"domain_id": domain_id} if domain_id else {}
@@ -630,6 +632,7 @@ async def list_projects(
 async def create_project(
     req: CreateProjectRequest,
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    provider_conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
     """프로젝트 생성."""
@@ -710,7 +713,7 @@ async def create_project(
                     catalog=catalog,
                     previous_project_ids=existing,
                 )
-                await domain_quotas.apply_project_defaults(conn, req.domain_id, project_id, lease=lease)
+                await domain_quotas.apply_project_defaults(provider_conn, req.domain_id, project_id, lease=lease)
                 await domain_projects.sync_manager_access(req.domain_id, mutation=(lease, ks, catalog))
                 staged = await asyncio.to_thread(_native_object, conn, "project", project_id)
                 if (
@@ -762,7 +765,7 @@ async def create_project(
             try:
                 await asyncio.to_thread(
                     neutron.ensure_node_exporter_sg,
-                    conn,
+                    provider_conn,
                     result["id"],
                     _settings.node_exporter_sg_name,
                     _settings.monitoring_scrape_cidr,
@@ -772,7 +775,7 @@ async def create_project(
             try:
                 await asyncio.to_thread(
                     neutron.ensure_dcgm_exporter_sg,
-                    conn,
+                    provider_conn,
                     result["id"],
                     _settings.dcgm_exporter_sg_name,
                     _settings.monitoring_scrape_cidr,
@@ -820,6 +823,7 @@ async def update_project(
     project_id: str,
     req: UpdateProjectRequest,
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    provider_conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """프로젝트 수정."""
 
@@ -854,7 +858,7 @@ async def update_project(
             if req.enabled is True:
                 await project_service.assert_project_activation_safe(project_id)
                 await domain_quotas.assert_project_allocation(
-                    conn, identity_roles._field(project, "domain_id"), project_id, lease=lease
+                    provider_conn, identity_roles._field(project, "domain_id"), project_id, lease=lease
                 )
             try:
                 result = await identity_roles._write(lease, _update)
@@ -904,12 +908,13 @@ def _project_deletion_inventory(conn, project_id):
 async def get_project_deletion_check(
     project_id: str,
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    provider_conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """Fresh resource proof, never backed by cached counts or quota usage."""
     project = await _settled_project_deletion_call(_native_object, conn, "project", project_id)
     domain_projects.assert_default_immutable(project_id, delete=True, project=project)
     await project_ownership_journal.assert_resolved(project_id)
-    return await _settled_project_deletion_call(_project_deletion_inventory, conn, project_id)
+    return await _settled_project_deletion_call(_project_deletion_inventory, provider_conn, project_id)
 
 
 @router.delete(
@@ -918,13 +923,14 @@ async def get_project_deletion_check(
 async def delete_project(
     project_id: str,
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    provider_conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """Delete only after fresh complete resource and child-project inspection."""
     async with identity_roles._graph_lock(conn) as lease:
         project = await _settled_project_deletion_call(_native_object, conn, "project", project_id)
         domain_projects.assert_default_immutable(project_id, delete=True, project=project)
         await project_ownership_journal.assert_resolved(project_id)
-        check = await _settled_project_deletion_call(_project_deletion_inventory, conn, project_id)
+        check = await _settled_project_deletion_call(_project_deletion_inventory, provider_conn, project_id)
         if any(item["status"] == "unavailable" for item in check["resources"]):
             error = HTTPException(
                 status_code=503,
@@ -1060,21 +1066,17 @@ class QuotaUpdateRequest(ComputeQuotaRequest):
 
 
 class ComputePolicyUpdateRequest(ComputeQuotaRequest):
+    model_config = ConfigDict(extra="forbid")
     gpu_quotas: dict[str, int | None] = Field(default_factory=dict)
-    reconcile_flavor_access: bool = True
 
 
 @router.put("/compute-policy/{project_id}", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def update_project_compute_policy(
     project_id: str,
     req: ComputePolicyUpdateRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
-    """Apply staged Nova compute and Afterglow GPU policy, then reconcile managed access."""
-    from app.api.identity.admin_flavors import (
-        FlavorAccessReconcileRequest,
-        reconcile_quota_managed_flavor_access,
-    )
+    """Apply compute and GPU quotas without changing native flavor access."""
     from app.services.gpu_quota import (
         delete_project_gpu_quota,
         set_project_gpu_quota,
@@ -1102,7 +1104,6 @@ async def update_project_compute_policy(
                 "status": "partial",
                 "errors": [{"code": "compute_quota_not_verified"}],
                 "native_quotas": native_quotas,
-                "access_reconcile": None,
                 "enforcement_scope": "afterglow_admissions_only",
             }
 
@@ -1116,21 +1117,12 @@ async def update_project_compute_policy(
         except Exception:
             errors.append({"gpu_type": gpu_type, "code": "gpu_quota_apply_failed"})
 
-    reconcile = None
-    if req.reconcile_flavor_access:
-        reconcile = await reconcile_quota_managed_flavor_access(
-            FlavorAccessReconcileRequest(project_id=project_id, apply=True),
-            conn,
-        )
-        errors.extend(reconcile.get("errors", []))
-
     await invalidate(f"afterglow:nova:{project_id}:flavors")
     await invalidate(f"afterglow:dashboard:{project_id}:quotas")
     return {
         "project_id": project_id,
         "status": "partial" if errors else "ok",
         "errors": errors,
-        "access_reconcile": reconcile,
         "native_quotas": native_quotas,
         "enforcement_scope": "afterglow_admissions_only",
     }
@@ -1139,7 +1131,7 @@ async def update_project_compute_policy(
 @router.get("/quotas/{project_id}", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def get_project_quotas(
     project_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """Read the target project's usage-bearing quota sets independently."""
     return await quota_native.read_project(conn, project_id)
@@ -1149,7 +1141,7 @@ async def get_project_quotas(
 async def update_project_quotas(
     project_id: str,
     req: QuotaUpdateRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """All first-party native quota writers share the domain allocation fence."""
     from app.services import domain_quotas

@@ -185,6 +185,7 @@ def test_disabled_manila_refuses_direct_reads_and_writes(conn, monkeypatch):
 
 
 def test_missing_manila_endpoint_propagates_discovery_failure(conn, enabled):
+    conn._afterglow_authenticated_project_id = "admin-project"
     with patch.object(quota_native.manila, "_get_manila_endpoint", side_effect=RuntimeError("missing endpoint")):
         with pytest.raises(RuntimeError, match="missing endpoint"):
             quota_native.get_section(conn, TARGET, "file_storage")

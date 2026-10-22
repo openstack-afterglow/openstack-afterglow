@@ -8,6 +8,7 @@
 	import { t as tq } from '$lib/i18n/ns/workspace-iam';
 	import { ActivityIndicator, Alert, Button, Card, Field, SelectInput, TextInput } from '$lib/components/ui';
 	import type { EnrollmentPolicy, SignupRequest, SignupRequestFilter, SignupRequestPage } from '$lib/types/enrollmentPolicy';
+	import PersonalQuotaConvergence from './PersonalQuotaConvergence.svelte';
 
 	const uid = $props.id();
 	const policyPath = '/api/v1/admin/enrollment-policy';
@@ -212,6 +213,10 @@
 						</Field>
 					</div>
 					<h3>{t('enrollment.quotas')}</h3><p id={`${uid}-quota-help`}>{t('enrollment.quotaHelp')}</p>
+					<Button variant="secondary" disabled={!policy.source_default_personal_quotas} onclick={() => {
+						if (!policy?.source_default_personal_quotas) return;
+						quotas = { ...quotas, ...Object.fromEntries(Object.entries(policy.source_default_personal_quotas).map(([key, value]) => [key, String(value)])) };
+					}}>{t('enrollment.useSourceDefaults')}</Button>
 					<div class="quota-sections">
 						{#each Object.entries(policy.quota_fields) as [section, fields] (section)}
 							<fieldset aria-label={serviceLabel(section)}><legend>{serviceLabel(section)}</legend>
@@ -227,6 +232,12 @@
 				</fieldset>
 			</form>
 		{:else if !policyLoading && !policyError}<p>{t('enrollment.authorityRequired')}</p>{/if}
+		{#if policy && authorized}
+			{@const owner = capture()}
+			{#key `${epoch}:${policy.revision}`}
+				{#if owner}<PersonalQuotaConvergence token={owner.token} projectId={owner.projectId} current={owner.current} />{/if}
+			{/key}
+		{/if}
 	</Card>
 
 	<Card padding="lg">

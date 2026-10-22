@@ -38,3 +38,5 @@
 <span data-testid="deploy-step">{store.currentStep}</span>
 <span data-testid="elapsed">{store.elapsedSeconds ?? 'none'}</span>
 <span data-testid="step-elapsed">{JSON.stringify(store.stepElapsedSeconds)}</span>
+<span data-testid="admin-quota-loading">{store.adminProjectQuotasLoading ? 'loading' : 'idle'}</span>
+<span data-testid="admin-quota-projects">{[...store.adminProjectQuotas.keys()].join(',')}</span>

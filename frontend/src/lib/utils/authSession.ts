@@ -116,12 +116,18 @@ export function consumeMappedContinuation(state: SessionStateUpdate, current: Au
 	return owner !== undefined && owner === continuationOwner(current);
 }
 
-/** Fresh humans land in personal; projectless operators may open a visible workspace chooser. */
+/** Fresh humans use personal or an exact server-verified opt-in workspace. */
 export function loginAuthState(data: LoginResponse, opts: { federated: boolean }): LoginAuthMapping {
 	const domain = readSessionDomain(data, null);
 	const workingDomain = domain.availableDomains.find(row => row.id === domain.domainId);
 	const projectlessAdministrator = data.is_system_admin === true && !nonEmpty(data.project_id) && workingDomain !== undefined;
-	if (domain.domainId !== domain.identityDomainId && workingDomain?.kind !== 'personal' && !projectlessAdministrator) throw new SessionDomainError();
+    const initial = data.initial_workspace;
+    if (initial && (!['personal', 'remembered'].includes(initial.kind)
+        || !nonEmpty(initial.project_id) || initial.project_id !== data.project_id
+        || initial.domain_id !== domain.domainId || !workingDomain
+        || (initial.kind === 'personal' && workingDomain.kind !== 'personal'))) throw new SessionDomainError();
+    if (domain.domainId !== domain.identityDomainId && workingDomain?.kind !== 'personal'
+        && !projectlessAdministrator && initial?.kind !== 'remembered') throw new SessionDomainError();
 	if (!nonEmpty(data.user_id) || !nonEmpty(data.token)) throw new SessionDomainError();
 	const resolution = resolvePostLoginProject(data);
 	const state: SessionStateUpdate = Object.freeze({
@@ -140,7 +146,7 @@ export function loginAuthState(data: LoginResponse, opts: { federated: boolean }
 	});
 	mappedLogins.add(state);
 	return {
-		target: '/select-domain',
+		target: resolution.projectId ? '/dashboard' : (domain.availableDomains.length > 1 ? '/select-domain' : '/select-project'),
 		state,
 	};
 }

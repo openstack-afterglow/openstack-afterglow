@@ -1,9 +1,11 @@
 """Authenticated proxy for browser-facing Lumen API routes."""
 
+from collections.abc import Callable
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
+from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
 from app.api.deps import get_token_info
@@ -14,10 +16,31 @@ from app.services.service_authorization import current_service_principal
 from app.services.service_permissions import require_service_permission
 from app.services.service_proxy import get_policy_capabilities, proxy
 
-router = APIRouter(dependencies=[Depends(get_token_info)])
-
 _PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 _NO_STORE = {"Cache-Control": "no-store", "Pragma": "no-cache"}
+
+
+class _PrivateProviderRoute(APIRoute):
+    def get_route_handler(self) -> Callable:
+        handler = super().get_route_handler()
+
+        async def private_response(request: Request) -> Response:
+            path = request.url.path.rstrip("/")
+            private = path == "/api/v1/chat/admin/providers" or path.startswith("/api/v1/chat/admin/providers/")
+            try:
+                response = await handler(request)
+            except HTTPException as exc:
+                if private:
+                    exc.headers = {**(exc.headers or {}), **_NO_STORE}
+                raise
+            if private:
+                response.headers.update(_NO_STORE)
+            return response
+
+        return private_response
+
+
+router = APIRouter(dependencies=[Depends(get_token_info)], route_class=_PrivateProviderRoute)
 
 
 class ApproveCloudToolsRequest(BaseModel):

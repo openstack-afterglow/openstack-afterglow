@@ -143,7 +143,7 @@ async def test_resize_rechecks_quota_at_submission_and_invalidates_on_success(cl
     with (
         patch("app.api.compute.instances.nova.get_server", return_value=_server()),
         patch("app.api.compute.instances.nova.list_flavors", return_value=_flavors()),
-        patch("app.services.flavor_eligibility.nova.get_project_quota", side_effect=lambda *_: quota),
+        patch("app.services.flavor_eligibility.nova.get_project_quota", side_effect=lambda *_, **__: quota),
         patch("app.api.compute.instances.nova.resize_server") as resize,
         patch("app.api.compute.instances.invalidate", new_callable=AsyncMock) as invalidate,
         patch("app.api.compute.instances.cache_invalidation.invalidate_mutation_count", new_callable=AsyncMock),

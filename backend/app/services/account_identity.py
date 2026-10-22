@@ -110,12 +110,26 @@ def _bindings(user):
 
 
 async def directory(ks, identity, row):
-    """Fresh global email and issuer/subject ownership, before OS-FEDERATION."""
-    from app.services.domain_auth import DomainAuthConflict
+    """Fresh canonical selection; stable/native ownership is always global.
+
+    Only an operator-registry OIDC email may select an unbound Accounts human.
+    Tenant-managed providers require account proof, never global email trust.
+    """
+    from app.services import account_spaces
+    from app.services.domain_auth import _CONFIG_PROVIDER_PREFIX, DomainAuthConflict, DomainAuthDenied
 
     rows = await asyncio.to_thread(_account_users, ks, None)
     email = identity.email.casefold()
     email_matches = [user for user in rows if _email(user) == email]
+    accounts_matches = []
+    if row.kind == "oidc" and row.id.startswith(_CONFIG_PROVIDER_PREFIX):
+        account = await asyncio.to_thread(account_spaces.shared_domain, "account", ks=ks)
+        home = _field(account, "id")
+        accounts_matches = [user for user in email_matches if _field(user, "domain_id") == home]
+        if accounts_matches:
+            # A legacy same-email human is neither selected nor merged. Its
+            # issuer/subject and native tuple still participate in conflict checks.
+            email_matches = accounts_matches
     stable = [
         user
         for user in rows
@@ -139,6 +153,11 @@ async def directory(ks, identity, row):
         raise DomainAuthConflict("Native external identity requires reconciliation", code="native_binding_conflict")
     if bound and email_matches and _field(bound, "id") != _field(email_matches[0], "id"):
         raise DomainAuthConflict("External email belongs to another account", code="account_email_conflict")
+    if accounts_matches:
+        if _field(accounts_matches[0], "enabled") is not True:
+            raise DomainAuthDenied("Account is disabled", code="account_disabled")
+        if bound is None:
+            bound = accounts_matches[0]
     return bound, email_matches[0] if email_matches else None
 
 
@@ -220,6 +239,8 @@ async def attach(user, row, identity, *, lease, ks, password_proven=False, expli
     full = await asyncio.to_thread(ks.users.get, uid)
     if _field(full, "id") != uid or _field(full, "enabled") is not True:
         raise DomainAuthConflict("Canonical account changed", code="account_changed")
+    if _email(full) != identity.email.casefold():
+        raise DomainAuthConflict("Canonical email ownership changed", code="account_changed")
     federated = copy.deepcopy(_field(full, "federated", []) or [])
     if not isinstance(federated, list):
         raise DomainAuthUnavailable("Native federation metadata is invalid")

@@ -15,7 +15,7 @@
 	import type { LoginProviderOption, LoginOptions, LoginResponse } from '$lib/types/auth';
 	import { loginAuthState, sessionScopeKey, type LoginAuthMapping } from '$lib/utils/authSession';
 	import { loginDestination } from '$lib/utils/authFlow';
-	import { postAuthDestination } from '$lib/utils/mcpConsent';
+	import { freshLoginDestination, postAuthDestination } from '$lib/utils/mcpConsent';
 	import { isSafeAuthorizeUrl, storePendingProviderLogin } from '$lib/utils/domainLogin';
 	import { t } from '$lib/i18n/ns/public-entry';
 	import { t as td } from '$lib/i18n/ns/domain-auth';
@@ -25,6 +25,8 @@
 	const initialAuth = get(auth);
 	let username = $state('');
 	let password = $state('');
+	let usernameInput = $state<HTMLInputElement | null>(null);
+	let passwordInput = $state<HTMLInputElement | null>(null);
 	let error = $state('');
 	let personalRecovery = $state(false);
 	let loading = $state(false);
@@ -147,7 +149,7 @@
 		password = '';
 		publishing = true;
 		try { setLoginAuth(mapped.state); } finally { publishing = false; }
-		await goto(mapped.target);
+		await goto(freshLoginDestination(mapped.target));
 	}
 
 	async function startProvider(provider: LoginProviderOption) {
@@ -189,6 +191,9 @@
 
 	function submit(event: SubmitEvent) {
 		event.preventDefault();
+		// Password managers can fill the controls without emitting an input event.
+		username = usernameInput?.value ?? username;
+		password = passwordInput?.value ?? password;
 		void login();
 	}
 </script>
@@ -234,13 +239,13 @@
 						<Alert tone="danger">{error}</Alert>
 					{/if}
 
-					<Field label={t('loginForm.username')} for="login-username" help={td('login.username.help')} required>
-						<TextInput id="login-username" bind:value={username} autocomplete="username" disabled={busy} required onkeydown={preventComposingSubmit} />
+					<Field label={t('loginForm.username')} for="login-username" required>
+						<TextInput id="login-username" bind:element={usernameInput} bind:value={username} autocomplete="username" disabled={busy} required onkeydown={preventComposingSubmit} />
 					</Field>
 					<Field label={t('loginForm.password')} for="login-password" required>
-						<TextInput id="login-password" bind:value={password} type="password" autocomplete="current-password" disabled={busy} required onkeydown={preventComposingSubmit} />
+						<TextInput id="login-password" bind:element={passwordInput} bind:value={password} type="password" autocomplete="current-password" disabled={busy} required onkeydown={preventComposingSubmit} />
 					</Field>
-					<Button type="submit" size="lg" class="login-submit" disabled={busy || !username || !password} ariaBusy={loading}>{personalRecovery ? td('login.personalRecovery.submit') : t('loginForm.signIn')}</Button>
+					<Button type="submit" size="lg" class="login-submit" disabled={busy || personalRecovery && !password} ariaBusy={loading}>{personalRecovery ? td('login.personalRecovery.submit') : t('loginForm.signIn')}</Button>
 
 					<div class="login-divider" aria-hidden="true"><span>{td('login.methods.or')}</span></div>
 					<Button variant="secondary" size="lg" class="login-provider min-h-11" disabled={busy} onclick={() => selectMethod(true)}>{td('login.sso.open')}</Button>

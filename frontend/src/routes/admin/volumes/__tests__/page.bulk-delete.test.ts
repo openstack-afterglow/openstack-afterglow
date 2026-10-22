@@ -26,13 +26,18 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 
 import Page from '../+page.svelte';
 
-const firstVolume = { id: 'vol-1', name: 'first-volume', status: 'available', size: 10, project_id: 'project', created_at: '2026-09-01' };
-const secondVolume = { id: 'vol-2', name: 'second-volume', status: 'in-use', size: 20, project_id: 'project', created_at: '2026-09-02' };
+const firstVolume = { id: 'vol-1', name: 'first-volume', status: 'available', size: 10, project_id: 'project', project_name: 'Project', domain_id: 'domain', domain_name: 'Domain', owner_status: 'known' as const, volume_type: 'fast', created_at: '2026-09-01' };
+const secondVolume = { ...firstVolume, id: 'vol-2', name: 'second-volume', status: 'in-use', size: 20, created_at: '2026-09-02' };
 
 function setupGet(listResponses: Array<{ items: typeof firstVolume[]; next_marker: string | null }>, summaries: Array<{ total: number; statuses: { status: string; count: number }[] }>) {
 	mocks.get.mockImplementation((path: string) => {
 		if (path.startsWith('/api/v1/admin/all-volumes')) return Promise.resolve(listResponses.shift() ?? { items: [], next_marker: null });
-		if (path === '/api/v1/admin/volumes/status-summary') return Promise.resolve(summaries.shift() ?? { total: 0, statuses: [] });
+		if (path.startsWith('/api/v1/admin/volumes/status-summary')) {
+			const summary = summaries.shift() ?? { total: 0, statuses: [] };
+			const attached = summary.statuses.find(row => row.status === 'in-use')?.count ?? 0;
+			const available = summary.statuses.find(row => row.status === 'available')?.count ?? 0;
+			return Promise.resolve({ ...summary, total_gb: summary.total * 10, attached_count: attached, attached_gb: attached * 10, available_count: available, available_gb: available * 10, domains: [], filtered_total: summary.total, filtered_gb: summary.total * 10 });
+		}
 		if (path.startsWith('/api/v1/admin/timeseries/volumes')) return Promise.resolve([]);
 		return Promise.resolve([]);
 	});
@@ -82,7 +87,7 @@ describe('admin volume bulk deletion', () => {
 	it('resets an active status filter when bulk deletion removes its final volume', async () => {
 		setupGet(
 			[{ items: [firstVolume], next_marker: null }, { items: [firstVolume], next_marker: null }, { items: [], next_marker: null }],
-			[{ total: 1, statuses: [{ status: 'available', count: 1 }] }, { total: 0, statuses: [] }],
+			[{ total: 1, statuses: [{ status: 'available', count: 1 }] }, { total: 1, statuses: [{ status: 'available', count: 1 }] }, { total: 0, statuses: [] }],
 		);
 		mocks.post.mockResolvedValue({ results: [{ id: 'vol-1', ok: true, error: null }] });
 

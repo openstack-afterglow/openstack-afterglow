@@ -42,7 +42,21 @@
 		running_vms: number;
 		cpu_info: string | null;
 		cpu_model: string | null;
-		servers: { id: string; name: string; status: string; project_id: string; flavor: string }[];
+		servers: HypervisorServer[];
+	}
+
+	export interface HypervisorServer {
+		id: string;
+		name: string;
+		status: string;
+		project_id: string;
+		project_name?: string | null;
+		domain_id?: string | null;
+		domain_name?: string | null;
+		owner_status?: 'known' | 'deleted_project' | 'unknown_owner' | 'deleted_domain';
+		flavor: string;
+		flavor_id?: string | null;
+		flavor_name?: string | null;
 	}
 
 	export interface HostRelocationItem {
@@ -80,7 +94,6 @@
 	let {
 		detail,
 		loading,
-		projectNameMap,
 		gpus = [],
 		onMigrate,
 		onOpenDetail,
@@ -99,7 +112,6 @@
 	}: {
 		detail: HypervisorDetail | null;
 		loading: boolean;
-		projectNameMap: Map<string, string>;
 		gpus?: GpuDevice[];
 		onMigrate: (serverId: string, serverName: string, type: 'live' | 'cold') => void;
 		onOpenDetail: (serverId: string, projectId: string) => void;
@@ -133,6 +145,17 @@
 		lastOperationStatus = status;
 	});
 </script>
+
+{#snippet serverIdentity(server: HypervisorServer)}
+	<dl class="space-y-1 break-all text-xs text-ink-2">
+		<div><dt class="inline">{t('hypervisors.detail.domain')}: </dt><dd class="inline">{server.domain_name || server.domain_id || t('hypervisors.detail.unknownDomain')}{#if server.domain_name && server.domain_id} <span class="font-mono">({server.domain_id})</span>{/if}</dd></div>
+		<div><dt class="inline">{t('hypervisors.detail.project')}: </dt><dd class="inline">{server.project_name || server.project_id || t('hypervisors.detail.unknownOwner')}{#if server.project_name && server.project_id} <span class="font-mono">({server.project_id})</span>{/if}</dd></div>
+		<div><dt class="inline">{t('hypervisors.detail.flavor')}: </dt><dd class="inline">{server.flavor_name || server.flavor_id || server.flavor || t('hypervisors.detail.unavailable')}{#if server.flavor_name && server.flavor_id} <span class="font-mono">({server.flavor_id})</span>{/if}</dd></div>
+	</dl>
+	{#if server.owner_status && server.owner_status !== 'known'}
+		<p class="text-xs text-ink-2">{t(server.owner_status === 'deleted_project' ? 'hypervisors.detail.deletedProject' : server.owner_status === 'deleted_domain' ? 'hypervisors.detail.deletedDomain' : 'hypervisors.detail.unknownOwner')}</p>
+	{/if}
+{/snippet}
 
 <div class="w-full min-w-0 bg-surface-canvas flex flex-col">
 	<div class="flex items-center justify-between px-4 py-3 border-b border-line">
@@ -333,22 +356,24 @@
 						{#snippet cards()}
 							{#each detail?.servers ?? [] as s (s.id)}
 								<CompactResourceCard>
-									<div class="flex items-start justify-between gap-2"><button type="button" class="min-h-11 break-all text-left font-medium text-ink-0" onclick={() => onOpenDetail(s.id, s.project_id)}>{s.name || s.id.slice(0, 12)}</button><StatusChip status={s.status} /></div><p class="break-all text-xs text-ink-2">{projectNameMap.get(s.project_id) || s.project_id.slice(0, 8)} · {s.flavor}</p>
+									<div class="flex items-start justify-between gap-2"><button type="button" class="min-h-11 break-all text-left font-medium text-ink-0" disabled={!s.project_id} onclick={() => { if (s.project_id) onOpenDetail(s.id, s.project_id); }}>{s.name || s.id}</button><StatusChip status={s.status} /></div>
+									{@render serverIdentity(s)}
 									{#snippet actions()}{#if s.status === 'ACTIVE'}<Button variant="outline" size="sm" disabled={pending} onclick={() => onMigrate(s.id, s.name, 'live')}>{t('hypervisors.detail.move')}</Button>{:else if s.status === 'SHUTOFF'}<Button variant="outline" size="sm" disabled={pending} onclick={() => onMigrate(s.id, s.name, 'cold')}>{t('hypervisors.detail.move')}</Button>{/if}{/snippet}
-									{#snippet details()}<div class="space-y-2 break-all font-mono text-xs text-ink-2"><p>{s.id}</p><p>{s.project_id}</p></div>{/snippet}
+									{#snippet details()}<p class="break-all font-mono text-xs text-ink-2">{s.id}</p>{/snippet}
 								</CompactResourceCard>
 							{/each}
 						{/snippet}
 					<div class="space-y-1.5">
 						{#each detail.servers as s}
-							<div class="flex items-center justify-between py-1.5 border-b border-line/50 last:border-0">
+							<div role="group" aria-label={`${s.name || s.id} (${s.id})`} class="flex items-start justify-between gap-2 py-1.5 border-b border-line/50 last:border-0">
 								<div class="flex-1 min-w-0">
 									<button
 										type="button"
-										onclick={() => onOpenDetail(s.id, s.project_id)}
-										class="text-xs text-ink-2 hover:text-warm-text-hover transition-colors truncate block w-full text-left"
-									>{s.name || s.id.slice(0, 12)}</button>
-									<div class="text-xs text-ink-2">{projectNameMap.get(s.project_id) || s.project_id.slice(0, 8)} · {s.flavor}</div>
+										disabled={!s.project_id}
+										onclick={() => { if (s.project_id) onOpenDetail(s.id, s.project_id); }}
+										class="min-h-11 break-all text-xs text-ink-2 hover:text-warm-text-hover transition-colors block w-full text-left"
+									>{s.name || s.id}</button>
+									{@render serverIdentity(s)}
 								</div>
 								<div class="flex items-center gap-1 ml-2 flex-shrink-0">
 									<StatusChip status={s.status} />

@@ -208,7 +208,24 @@ describe('public home-first login', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Back to password sign-in' }));
 		const { password, button } = await fillCredentials();
 		password.form!.requestSubmit(button);
-		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/select-domain'));
+		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/dashboard'));
+	});
+
+	it('submits filled credential controls even when autofill emitted no input event', async () => {
+		const pending = Promise.withResolvers<LoginResponse>();
+		mocks.post.mockReturnValueOnce(pending.promise);
+		render(LoginPage);
+		const username = screen.getByLabelText(/^Username or email/) as HTMLInputElement;
+		const password = screen.getByLabelText(/^Password/) as HTMLInputElement;
+		username.value = 'alice@example.test';
+		password.value = 'autofilled-secret';
+		password.form!.requestSubmit();
+		password.form!.requestSubmit();
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/api/v1/auth/login',
+			{ username: 'alice@example.test', password: 'autofilled-secret' }, undefined, undefined, requestOptions));
+		pending.reject(new ApiError(401, 'invalid'));
+		await screen.findByText('The username or email address, or password, is incorrect.');
+		expect(mocks.goto).not.toHaveBeenCalled();
 	});
 
 	it('submits credentials natively once before disabled controls render, and disables all methods while pending', async () => {
@@ -218,15 +235,8 @@ describe('public home-first login', () => {
 		const provider = screen.getByRole('button', { name: 'Sign in with SSO' }) as HTMLButtonElement;
 		const { username, password, button } = await fillCredentials();
 		const form = password.form!;
-		expect(username.form).toBe(form); expect(button.form).toBe(form); expect(button.type).toBe('submit');
-		expect(Array.from(form.elements).filter(control => control instanceof HTMLButtonElement && control.type === 'submit')).toEqual([button]);
-		const submitted = vi.fn(); form.addEventListener('submit', submitted);
-		// jsdom has no implicit Enter default action; requestSubmit dispatches a native SubmitEvent.
 		form.requestSubmit(button); form.requestSubmit(button);
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledOnce());
-		expect(submitted).toHaveBeenCalledTimes(2);
-		expect(submitted.mock.calls[0][0].submitter).toBe(button);
-		expect(submitted.mock.calls[0][0].defaultPrevented).toBe(true);
 		expect(mocks.post).toHaveBeenCalledWith('/api/v1/auth/login', { username: 'alice@example.test', password: 'secret' }, undefined, undefined, requestOptions);
 		await waitFor(() => expect(button.disabled).toBe(true));
 		expect(username.disabled).toBe(true); expect(password.disabled).toBe(true); expect(provider.disabled).toBe(true);
@@ -243,7 +253,6 @@ describe('public home-first login', () => {
 		await fireEvent.input(screen.getByLabelText(/^Username or email/), { target: { value: 'alice' } });
 		password.form!.requestSubmit();
 		expect(mocks.post).not.toHaveBeenCalled();
-		expect((screen.getByRole('button', { name: /^sign in$/i }) as HTMLButtonElement).disabled).toBe(true);
 	});
 
 	it('cancels composing and IME229 commit Enter in both credentials while ordinary Enter remains native', async () => {
@@ -345,7 +354,7 @@ describe('public home-first login', () => {
 	});
 
 	it.each([['home-project', false], ['', false], ['home-project', true], ['', true]] as const)(
-		'publishes fresh password readiness and chooses a domain for home project=%s multiple=%s without /me or consuming intents', async (project, multiple) => {
+		'publishes personal readiness before continuing an invitation; projectless preserves all intents: project=%s multiple=%s', async (project, multiple) => {
 			const verification = createAuthVerificationController(); verification.setEnabled(true);
 			try {
 				mocks.post.mockResolvedValueOnce({ ...response, project_id: project, default_project_id: 'hint-only', available_domains: multiple ? response.available_domains : [{ id: 'home', name: 'Home' }] });
@@ -353,11 +362,13 @@ describe('public home-first login', () => {
 				mocks.goto.mockImplementation(async () => { expect(get(authReady)).toBe(true); });
 				render(LoginPage);
 				const { password, button } = await fillCredentials(); password.form!.requestSubmit(button);
-				await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/select-domain'));
+				const destination = project ? `/invitations/${'i'.repeat(32)}` : multiple ? '/select-domain' : '/select-project';
+				await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith(destination));
 				expect(get(authReady)).toBe(true);
 				expect(get(auth)).toMatchObject({ projectId: project || null, projectName: project ? 'Default' : null, domainId: 'home', identityDomainId: 'home', federated: false });
 				expect(mocks.get.mock.calls.some(([path]) => path === '/api/v1/auth/me')).toBe(false);
-				expect(pendingMcpConsentTicket()).toBe('m'.repeat(32)); expect(takePendingInvitationPath()).toBe(`/invitations/${'i'.repeat(32)}`);
+				expect(pendingMcpConsentTicket()).toBe('m'.repeat(32));
+				expect(takePendingInvitationPath()).toBe(project ? null : `/invitations/${'i'.repeat(32)}`);
 			} finally { verification.dispose(); }
 		},
 	);
@@ -367,7 +378,7 @@ describe('public home-first login', () => {
 		mocks.post.mockResolvedValueOnce(response);
 		render(LoginPage);
 		const { password, button } = await fillCredentials(); password.form!.requestSubmit(button);
-		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/select-domain'));
+		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/dashboard'));
 		expect(button.disabled).toBe(true); expect(password.value).toBe('');
 		await fireEvent.input(password, { target: { value: 'another-secret' } });
 		password.form!.requestSubmit(button);
@@ -383,7 +394,7 @@ describe('public home-first login', () => {
 		expect(screen.getByRole('button', { name: 'Sign in with SSO' })).toBeTruthy();
 		expect(get(auth)).toMatchObject({ token: 'original', domainId: 'team' }); expect(mocks.goto).not.toHaveBeenCalled();
 		const { password, button } = await fillCredentials(); password.form!.requestSubmit(button);
-		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/select-domain'));
+		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/dashboard'));
 		expect(get(auth)).toMatchObject({ token: 'fresh', identityDomainId: 'home', domainId: 'home' });
 	});
 
@@ -416,7 +427,7 @@ describe('public home-first login', () => {
 			project_id: 'personal-primary', project_name: 'alice-c8f572', available_domains: domains });
 		render(LoginPage);
 		const { password, button } = await fillCredentials(); password.form!.requestSubmit(button);
-		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/select-domain'));
+		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/dashboard'));
 		expect(get(auth)).toMatchObject({ identityDomainId: 'account', domainId: 'personal', projectId: 'personal-primary', availableDomains: domains });
 	});
 

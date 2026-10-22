@@ -1,9 +1,9 @@
 import type { Instance } from '$lib/types/compute';
-import type { AdminVolume, AdminVolumeDetail, AdminVolumeStatusSummary, Volume, VolumeDeleteDiagnostic } from '$lib/types/volume';
+import type { AdminVolume, AdminVolumeDetail, Volume, VolumeDeleteDiagnostic } from '$lib/types/volume';
 import type { DashboardQuotas } from '$lib/types/quotas';
 import type { TopologyData, TopologyTraffic } from '$lib/types/topology';
 import type { K3sCluster } from '$lib/types/k3s';
-import type { Overview, ProjectUsage, VersionInfo } from '$lib/types/adminOverview';
+import type { Overview, DomainUsage, VersionInfo } from '$lib/types/adminOverview';
 import type { Project } from '$lib/stores/auth';
 import type { AdminInstance, TsPoint } from '$lib/types/adminInstance';
 import type { EndpointGroup, NetworkAgent, Service, StoragePool } from '$lib/types/adminServices';
@@ -52,7 +52,7 @@ interface MockupState {
 	quotas: DashboardQuotas;
 	admin: {
 		overview: Overview;
-		projects: ProjectUsage[];
+		domains: DomainUsage[];
 		version: VersionInfo;
 		notifications: { severity: string; message: string; target: string; href: string }[];
 		identitySummary: {
@@ -68,7 +68,6 @@ interface MockupState {
 		instanceTimeseries: TsPoint[];
 		hypervisors: { id: string; name: string }[];
 		volumes: AdminVolume[];
-		volumeStatusSummary: AdminVolumeStatusSummary;
 		volumeTimeseries: TsPoint[];
 		volumeDetails: Record<string, AdminVolumeDetail>;
 		volumeDeleteDiagnostics: Record<string, VolumeDeleteDiagnostic>;
@@ -179,9 +178,9 @@ function seedState(): MockupState {
 		{ id: 'mock-instance-6', name: 'sample-batch-worker', status: 'ERROR', project_id: 'mock-project-3', user_id: 'mock-user-3', flavor: 'cpu.4c_8g', host: 'sample-hypervisor-b', created_at: '2026-07-08T21:10:00Z', fault: 'Sample scheduler retry exhausted' },
 	];
 	const adminVolumes: AdminVolume[] = [
-		{ id: 'mock-admin-volume-available', name: 'sample-dataset-ready', status: 'available', size: 200, project_id: PROJECT_ID, project_name: 'sample-project-alpha', created_at: '2026-07-01T10:00:00Z', bootable: false },
-		{ id: 'mock-admin-volume-in-use', name: 'sample-notebook-root', status: 'in-use', size: 120, project_id: 'mock-project-2', project_name: 'sample-project-beta', created_at: '2026-07-03T11:30:00Z', bootable: true },
-		{ id: 'mock-admin-volume-error', name: 'sample-recovery-volume', status: 'error', size: 80, project_id: 'mock-project-3', project_name: 'sample-ci-runner', created_at: '2026-07-06T16:45:00Z', bootable: false },
+		{ id: 'mock-admin-volume-available', name: 'sample-dataset-ready', status: 'available', size: 200, project_id: PROJECT_ID, project_name: 'sample-project-alpha', domain_id: 'mock-domain', domain_name: 'Demo', owner_status: 'known', volume_type: 'ceph-ssd', created_at: '2026-07-01T10:00:00Z', bootable: false },
+		{ id: 'mock-admin-volume-in-use', name: 'sample-notebook-root', status: 'in-use', size: 120, project_id: 'mock-project-2', project_name: 'sample-project-beta', domain_id: 'mock-domain', domain_name: 'Demo', owner_status: 'known', volume_type: 'ceph-ssd', created_at: '2026-07-03T11:30:00Z', bootable: true },
+		{ id: 'mock-admin-volume-error', name: 'sample-recovery-volume', status: 'error', size: 80, project_id: 'mock-project-3', project_name: 'sample-ci-runner', domain_id: 'mock-domain', domain_name: 'Demo', owner_status: 'known', volume_type: 'ceph-ssd', created_at: '2026-07-06T16:45:00Z', bootable: false },
 	];
 	const baseImage = {
 		id: 'fixture-image-ubuntu',
@@ -327,11 +326,8 @@ function seedState(): MockupState {
 		},
 		admin: {
 			overview: { hypervisor_count: 7, running_vms: 46, gpu_instances: 8, instance_stats: { total: 58, active: 46, shutoff: 9, error: 3, other: 0 }, vcpus: { total: 768, allowed: 620, used: 312 }, ram_gb: { total: 2048, used: 890 }, disk_gb: { total: 78000, used: 31200 }, containers_count: 12, file_storage_count: 9, database_instances_count: 5, object_storage_containers_count: 18 },
-			projects: [
-				{ project_id: PROJECT_ID, project_name: 'sample-project-alpha', cpu: { used: 36, quota: 128 }, ram_mb: { used: 86016, quota: 262144 }, instances: { used: 8, quota: 30 }, disk_gb: { used: 1250, quota: 8000 }, gpu_instances: 1 },
-				{ project_id: 'mock-project-2', project_name: 'sample-project-beta', cpu: { used: 72, quota: 160 }, ram_mb: { used: 196608, quota: 393216 }, instances: { used: 14, quota: 40 }, disk_gb: { used: 2600, quota: 12000 }, gpu_instances: 4 },
-				{ project_id: 'mock-project-3', project_name: 'sample-ci-runner', cpu: { used: 24, quota: 80 }, ram_mb: { used: 49152, quota: 131072 }, instances: { used: 11, quota: 25 }, disk_gb: { used: 900, quota: 4000 }, gpu_instances: 0 },
-				{ project_id: 'mock-project-4', project_name: 'sample-visual-research', cpu: { used: 96, quota: 192 }, ram_mb: { used: 262144, quota: 524288 }, instances: { used: 16, quota: 50 }, disk_gb: { used: 4200, quota: 16000 }, gpu_instances: 3 },
+			domains: [
+				{ domain_id: 'mock-domain', domain_name: 'Demo', owner_status: 'known', project_ids: [PROJECT_ID, 'mock-project-2', 'mock-project-3', 'mock-project-4'], project_count: 4, instances: 49, vcpus: 228, ram_mb: 593920, gpu_instances: 8, volumes: 20, volume_gb: 8950, attached_volumes: 14, attached_gb: 7200, available_volumes: 6, available_gb: 1750 },
 			],
 			version: { platform: { backend_version: '0.0.0-mock' }, runtime: { python_version: '3.12.8', uptime_seconds: 864000 }, dependencies: { fastapi: '0.125.0', openstacksdk: '3.3.0' }, git: { commit: 'mockup', tag: 'v0.0.0-mock', branch: 'mockup' } },
 			notifications: [
@@ -357,14 +353,6 @@ function seedState(): MockupState {
 				{ id: 'mock-hypervisor-gpu', name: 'sample-hypervisor-gpu' },
 			],
 			volumes: adminVolumes,
-			volumeStatusSummary: {
-				total: 3,
-				statuses: [
-					{ status: 'available', count: 1 },
-					{ status: 'in-use', count: 1 },
-					{ status: 'error', count: 1 },
-				],
-			},
 			volumeTimeseries: [
 				{ ts: 1783036800, total: 28, available: 11, in_use: 16, error: 1 },
 				{ ts: 1783123200, total: 29, available: 12, in_use: 16, error: 1 },

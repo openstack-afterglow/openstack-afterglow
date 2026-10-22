@@ -277,10 +277,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 30,
 		tokens: ["bg-blue-500/15","bg-emerald-500/15","bg-gray-800","bg-gray-900","bg-violet-500/15","border-blue-500/30","border-blue-500/40","border-emerald-500/30","border-emerald-500/40","border-gray-800","border-violet-500/30","border-violet-500/40","text-blue-400","text-emerald-400","text-gray-500","text-red-400","text-violet-300","text-violet-400"],
 	},
-	"frontend/src/lib/components/admin/overview/ProjectUsageTable.svelte": {
-		count: 20,
-		tokens: ["bg-[#0B1220]","bg-gray-700","bg-gray-800","bg-gray-800/30","bg-gray-900","border-gray-800","text-gray-300","text-gray-400","text-gray-500","text-gray-600","text-gray-700","text-violet-400"],
-	},
 	"frontend/src/lib/components/admin/overview/ResourceDonutsCard.svelte": {
 		count: 8,
 		tokens: ["bg-gray-900","border-gray-800","text-gray-500"],

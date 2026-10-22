@@ -34,6 +34,15 @@ async def list_flavors(
     all_flavors = await cache.cached_call(key, cache.ttl_static(), _load, enabled=cm.enabled, refresh=cm.refresh)
     # A Redis cache hit returns JSON-decoded dicts; eligibility needs typed models.
     all_flavors = [FlavorInfo.model_validate(f) if isinstance(f, dict) else f for f in all_flavors]
+    if cm.enabled:
+        # Cache stores catalog metadata, never native authorization. In particular a
+        # public→private transition or a revoked project grant must take effect now.
+        visibility = await asyncio.to_thread(nova.project_flavor_visibility, conn)
+        all_flavors = [
+            flavor.model_copy(update={"is_public": visibility[flavor.id]})
+            for flavor in all_flavors
+            if flavor.id in visibility
+        ]
     from app.services.flavor_eligibility import evaluate_project_flavors, is_flavor_frontend_visible
 
     visible_flavors = [flavor for flavor in all_flavors if is_flavor_frontend_visible(flavor)]
@@ -45,5 +54,5 @@ async def list_flavors(
         visible_flavors,
         check_capacity=capacity == "create",
         availability_zone=availability_zone,
-        fresh_capacity=False,
+        fresh_capacity=capacity == "create",
     )

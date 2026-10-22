@@ -1071,3 +1071,158 @@ async def test_external_enrollment_rejects_invalid_operator_domain_before_native
     assert not env.keystone.assignments and not env.quota_applications
     assert {key: vars(value) for key, value in env.keystone.domain_rows.items()} == original_domains
     assert {key: vars(value) for key, value in env.keystone.project_rows.items()} == original_projects
+
+
+def accounts_human(env):
+    from tests.test_domain_auth import configure_file_auth
+
+    configure_file_auth(env.settings, default=["corp"])
+    user = unbound(env)
+    user.domain_id = "dom-accounts"
+    user.email = "DEV@CORP.EXAMPLE."
+    user.password = "unchanged-native-password"
+    user.afterglow_local_password = True
+    env.wire.federation.native_users = env.keystone.user_rows
+    return user
+
+
+@pytest.mark.parametrize("legacy_twin", [False, True])
+@pytest.mark.parametrize("local_password", [False, True])
+async def test_oidc_verified_email_automatically_connects_unique_accounts_human(env, legacy_twin, local_password):
+    import copy
+
+    user = accounts_human(env)
+    user.afterglow_local_password = local_password
+    user.federated = [{"idp_id": "other-idp", "protocols": [{"protocol_id": "openid", "unique_id": "old-sub"}]}]
+    user.afterglow_external_identities = [{"issuer": "https://other.example.com", "subject": "old-sub"}]
+    user.afterglow_profile_image = {"kind": "generated", "seed": "preserved"}
+    original = copy.deepcopy(vars(user))
+    if legacy_twin:
+        env.keystone.user_rows["legacy"] = SimpleNamespace(
+            id="legacy", name="legacy", email="dev@corp.example", domain_id="dom-b", enabled=True
+        )
+    state, browser = await start(env.wire.idp, "cfg:corp")
+    login = await svc.complete_authorization("good-code", state, browser)
+    assert (login.user_id, user.domain_id) == (user.id, "dom-accounts")
+    assert len(env.keystone.user_rows) == (2 if legacy_twin else 1)
+    assert all(
+        vars(user)[key] == value
+        for key, value in original.items()
+        if key not in {"federated", "afterglow_external_identities"}
+    )
+    assert user.federated == original["federated"] + [
+        {"idp_id": "idp-a", "protocols": [{"protocol_id": "openid", "unique_id": "subject-1"}]}
+    ]
+    assert user.afterglow_external_identities == original["afterglow_external_identities"] + [
+        {"issuer": ISSUER, "subject": "subject-1"}
+    ]
+    assert env.keystone.assignments == [] and env.keystone.project_writes == []
+    assert len(env.keystone.user_writes) == 1
+    assert set(env.keystone.user_writes[0][2]) == {"federated", "afterglow_external_identities"}
+    state, browser = await start(env.wire.idp, "cfg:corp")
+    repeated = await svc.complete_authorization("good-code", state, browser)
+    assert repeated.user_id == user.id and len(env.keystone.user_writes) == 1
+    assert len(env.wire.federation.calls) == 2
+
+
+@pytest.mark.parametrize("failure", ["duplicate", "disabled", "stable-owner", "native-owner", "different-subject"])
+async def test_oidc_accounts_email_does_not_override_conflicting_or_disabled_identity(env, failure):
+    import copy
+
+    user = accounts_human(env)
+    expected = "native_binding_conflict"
+    if failure == "disabled":
+        user.enabled = False
+        expected = "account_disabled"
+    elif failure == "different-subject":
+        user.federated = [{"idp_id": "idp-a", "protocols": [{"protocol_id": "openid", "unique_id": "old-sub"}]}]
+    else:
+        other = SimpleNamespace(id="other", name="other", domain_id="dom-b", email="other@corp.example", enabled=True)
+        env.keystone.user_rows[other.id] = other
+        if failure == "duplicate":
+            other.domain_id = "dom-accounts"
+            other.email = "dev@corp.example"
+            expected = "account_ambiguous"
+        elif failure == "stable-owner":
+            other.afterglow_external_identities = [{"issuer": ISSUER, "subject": "subject-1"}]
+            expected = "account_email_conflict"
+        else:
+            other.federated = [{"idp_id": "idp-a", "protocols": [{"protocol_id": "openid", "unique_id": "subject-1"}]}]
+    originals = {uid: copy.deepcopy(vars(value)) for uid, value in env.keystone.user_rows.items()}
+    state, browser = await start(env.wire.idp, "cfg:corp")
+    with pytest.raises(svc.DomainAuthError) as denied:
+        await svc.complete_authorization("good-code", state, browser)
+    assert denied.value.code == expected
+    assert {uid: vars(value) for uid, value in env.keystone.user_rows.items()} == originals
+    assert env.keystone.user_writes == [] and env.wire.federation.calls == []
+
+
+@pytest.mark.parametrize("verified", [False, None, "true"])
+async def test_oidc_accounts_email_requires_verified_boolean_before_auto_attachment(env, verified):
+    accounts_human(env)
+    env.wire.idp.claims["email_verified"] = verified
+    state, browser = await start(env.wire.idp, "cfg:corp")
+    with pytest.raises(svc.DomainAuthDenied) as denied:
+        await svc.complete_authorization("good-code", state, browser)
+    assert denied.value.code == "email_not_verified"
+    assert env.keystone.user_writes == [] and env.wire.federation.calls == []
+
+
+async def test_oidc_accounts_auto_attachment_must_persist_before_native_exchange(env, monkeypatch):
+    user = accounts_human(env)
+    monkeypatch.setattr(env.keystone.users, "update", lambda uid, **fields: user)
+    state, browser = await start(env.wire.idp, "cfg:corp")
+    with pytest.raises(svc.DomainAuthUnavailable) as denied:
+        await svc.complete_authorization("good-code", state, browser)
+    assert denied.value.code == "native_attachment_unconfirmed"
+    assert user.federated == [] and user.afterglow_external_identities == []
+    assert env.wire.federation.calls == []
+
+
+async def test_oidc_accounts_auto_attachment_rejects_substituted_native_token(env):
+    user = accounts_human(env)
+    env.wire.federation.user_id = "wrong-native-human"
+    state, browser = await start(env.wire.idp, "cfg:corp")
+    with pytest.raises(svc.DomainAuthDenied) as denied:
+        await svc.complete_authorization("good-code", state, browser)
+    assert denied.value.code == "canonical_subject_mismatch"
+    assert env.keystone.revoked == ["unscoped-fed"]
+    assert user.domain_id == "dom-accounts" and user.password == "unchanged-native-password"
+
+
+async def test_oidc_accounts_auto_attachment_rechecks_email_before_native_write(env, monkeypatch):
+    user = accounts_human(env)
+    get_user = env.keystone.users.get
+    reads = 0
+
+    def change_email(uid):
+        nonlocal reads
+        reads += 1
+        if reads == 2:
+            user.email = "new-owner@corp.example"
+        return get_user(uid)
+
+    monkeypatch.setattr(env.keystone.users, "get", change_email)
+    state, browser = await start(env.wire.idp, "cfg:corp")
+    with pytest.raises(svc.DomainAuthConflict) as denied:
+        await svc.complete_authorization("good-code", state, browser)
+    assert denied.value.code == "account_changed"
+    assert env.keystone.user_writes == [] and env.wire.federation.calls == []
+
+
+async def test_tenant_managed_oidc_cannot_claim_accounts_member_by_its_verified_email(env):
+    from tests.test_project_membership_roles import Membership, rid
+
+    user = accounts_human(env)
+    env.keystone.catalog = Membership().catalog
+    env.keystone.project_rows["existing-organization"] = SimpleNamespace(
+        id="existing-organization", name="Existing membership", domain_id="dom-a", enabled=True, parent_id=None
+    )
+    env.keystone.roles.grant(rid("project_reader"), user=user.id, project="existing-organization")
+    provider = await svc.create_provider("dom-a", actor_user_id="tenant-manager", fields=oidc_fields())
+    env.settings.auth.default.allow_providers.append(provider["id"])
+    state, browser = await start(env.wire.idp, provider["id"])
+    with pytest.raises(svc.AccountLinkRequired):
+        await svc.complete_authorization("good-code", state, browser)
+    assert user.federated == [] and user.afterglow_external_identities == []
+    assert env.keystone.user_writes == [] and env.wire.federation.calls == []

@@ -1,0 +1,83 @@
+{
+  "date": "2026-10-22",
+  "status": "operational_schema_recovered_fresh_user_login_unverified",
+  "source_sha256": "0251226e20520a0c39a84100611551b8f67927360402c3306a57bc7713869ec2",
+  "source_files": 3416,
+  "implementation_source_changed": false,
+  "new_image_built_or_deployed": false,
+  "database": {
+    "scheme": "mysql+aiomysql",
+    "host": "172.30.0.11",
+    "port": 3306,
+    "name": "afterglow_kolla"
+  },
+  "deployed_vip": "172.30.0.253:3306/afterglow_kolla",
+  "engine": "10.11.19-MariaDB",
+  "recovery_proof_root": "/Users/pieroot/.local/share/afterglow-proofs/login-schema-recovery-20261022T050104Z",
+  "pre_repair_failure": "Native password proof succeeded; SELECT DomainEnrollment failed1054 personal_domain_name",
+  "protected_backup": {
+    "mode": "0600",
+    "directory_mode": "0700",
+    "sha256": "3c1e852c9230bf3b18a133da2233712fa2d49f22c1e5f40ca11a5c19d417d85a",
+    "bytes": 1655154,
+    "restore_verified": true,
+    "restored_exact_tables": 102,
+    "restored_exact_rows": 4697
+  },
+  "maintenance": {
+    "started_utc": "2026-10-22T05:08:03.652813+00:00",
+    "restored_utc": "2026-10-22T05:09:58.678249+00:00",
+    "local_api_count": 1,
+    "deployed_api_worker_count": 6,
+    "original_container_image_env_config_keys_preserved": true,
+    "controller_api_frontend_healthy": 6,
+    "controller_workers_running": 3
+  },
+  "migration": {
+    "manifest_ids": [
+      "093-personal-domains",
+      "096-public-signup",
+      "098-enrollment-policy",
+      "099-account-topology"
+    ],
+    "statements": 7,
+    "new_columns": 10,
+    "domain_id_nullable": true,
+    "existing_table_row_hash_changes": [],
+    "existing_table_row_count_changes": [],
+    "update_affected_rows": 0,
+    "ledger_created_or_fabricated": false,
+    "native_credentials_identities_grants_moved": false
+  },
+  "verification": {
+    "restored_migration_exit": 0,
+    "exact_live_orm_smoke_exit": 0,
+    "policy_intent_models_selected": 6,
+    "candidate_model_tables": 49,
+    "candidate_model_columns": 586,
+    "missing_candidate_tables_columns": {},
+    "nullable_model_rejected_by_database": [],
+    "all_three_deployed_controller_enrollment_columns": 29,
+    "restored_canonical_bootstrap_exit": 0,
+    "restored_bootstrap_existing_data_changes": [],
+    "native_identity_grants_exact_same": true,
+    "native_accounts_personal_and_member_implication_checked": true,
+    "local_public_health_login_and_deployed_login_http": 200,
+    "actual_compiled_browser_provider_catalog": 200,
+    "actual_compiled_browser_error_alerts": 0,
+    "actual_compiled_browser_horizontal_overflow": false,
+    "source_architecture_exit": 0,
+    "docs_check_exit": 0
+  },
+  "fresh_user_login": {
+    "attempted": false,
+    "reason": "No fresh user-provided credentials; no password read/guess/replay or synthetic account authorization",
+    "personal_project_creation_confirmed": false
+  },
+  "full_test_gate_rerun": false,
+  "qualification_limit": "Schema-only operational recovery and docs; unchanged source current qualified baseline is not presented as real-user login or new release evidence",
+  "release_commit_push_tag_publication_performed": false,
+  "mixed_auth_writer_rolling_acceptance_claimed": false,
+  "native_service_personal_owner_production_acceptance_claimed": false,
+  "retained_harness_diagnostics": "harness-diagnostics.json"
+}

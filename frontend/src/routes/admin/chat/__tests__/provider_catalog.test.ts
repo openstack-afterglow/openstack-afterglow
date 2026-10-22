@@ -144,7 +144,7 @@ describe('provider catalog administration', () => {
 		expect((screen.getByRole('textbox', { name: '표시 이름' }) as HTMLInputElement).value).toBe('NVIDIA');
 	});
 
-	it('keeps independent creation fields and credentials after a failed create, then publishes server data on retry', async () => {
+	it('keeps public creation fields after failure but requires a fresh credential for retry', async () => {
 		render(ProviderPage);
 		await screen.findByText('NVIDIA NIM');
 		await fireEvent.input(screen.getByRole('textbox', { name: '이름' }), { target: { value: 'New NVIDIA' } });
@@ -158,8 +158,10 @@ describe('provider catalog administration', () => {
 		expect((screen.getByRole('textbox', { name: 'API provider' }) as HTMLInputElement).value).toBe('nvidia');
 		expect((screen.getByRole('textbox', { name: '프로바이더 표시 순서' }) as HTMLInputElement).value).toBe('3');
 		expect((screen.getByLabelText('API Base') as HTMLInputElement).value).toBe('https://new.example/v1');
-		expect((screen.getByLabelText('API 키') as HTMLInputElement).value).toBe('draft-secret');
+		expect((screen.getByLabelText('API 키') as HTMLInputElement).value).toBe('');
+		await fireEvent.input(screen.getByLabelText('API 키'), { target: { value: 'fresh-retry-secret' } });
 		mocks.post.mockImplementationOnce(async (_path: string, body: Record<string, unknown>) => {
+			expect(body.api_key).toBe('fresh-retry-secret');
 			const created = { ...nim, ...body, id: 12 };
 			providers.push(created);
 			return created;

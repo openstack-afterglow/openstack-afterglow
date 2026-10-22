@@ -196,7 +196,7 @@ def _discover_sync(conn, spec: PolicySpec) -> list[dict[str, Any]]:
             images = [image for image in images if image.visibility in {"public", "community"}]
         return [_option(image.id, image.name, status=image.status) for image in images]
     if spec.resource_kind == "flavor":
-        flavors = nova.list_flavors(conn)
+        flavors = nova.list_catalog_flavors(conn)
         if spec.execution_scope == "tenant":
             flavors = [flavor for flavor in flavors if flavor.is_public]
         return [_option(flavor.id, flavor.name, vcpus=flavor.vcpus, ram=flavor.ram) for flavor in flavors]

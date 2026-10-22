@@ -32,10 +32,32 @@ async def test_service_scope_discovery_closes_owned_connection(monkeypatch):
         return service_conn
 
     monkeypatch.setattr(resource_policies, "discovery_connection", service_connection)
-    monkeypatch.setattr(resource_policies.nova, "list_flavors", lambda _conn: [])
+    monkeypatch.setattr(resource_policies.nova, "list_catalog_flavors", lambda _conn: [])
 
     assert await resource_policies.discover_options(admin_conn, "builder.flavor") == []
     assert service_conn.closed is True
+
+
+def test_flavor_discovery_projects_real_catalog_without_afterglow_connection_attributes():
+    from types import SimpleNamespace
+
+    public = SimpleNamespace(
+        id="public", name="Public", vcpus=2, ram=4096, disk=0, is_public=True, extra_specs={"hw:cpu_policy": "shared"}
+    )
+    private = SimpleNamespace(
+        id="private",
+        name="Private",
+        vcpus=4,
+        ram=8192,
+        disk=0,
+        is_public=False,
+        extra_specs={"hw:cpu_policy": "shared"},
+    )
+    conn = SimpleNamespace(compute=SimpleNamespace(flavors=lambda **kwargs: [public, private]))
+    spec = resource_policies.PolicySpec("test.flavor", "flavor", "Flavor", "Test", "", execution_scope="service")
+    assert [option["id"] for option in resource_policies._discover_sync(conn, spec)] == ["public", "private"]
+    tenant = resource_policies.PolicySpec("test.flavor", "flavor", "Flavor", "Test", "", execution_scope="tenant")
+    assert [option["id"] for option in resource_policies._discover_sync(conn, tenant)] == ["public"]
 
 
 @pytest.mark.asyncio

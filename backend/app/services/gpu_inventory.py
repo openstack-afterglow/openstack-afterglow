@@ -374,7 +374,7 @@ def _collect_gpu_hosts(conn) -> dict:
         # flavor id → extra_specs 매핑 (list_flavors는 동기 호출)
         from app.services import nova as _nova_svc
 
-        flavors_by_id: dict[str, object] = {f.id: f for f in _nova_svc.list_flavors(conn)}
+        flavors_by_id: dict[str, object] = {f.id: f for f in _nova_svc.list_catalog_flavors(conn)}
 
         shelved_used: dict[str, int] = {}
         for _s in conn.compute.servers(all_projects=True, details=True):
@@ -509,7 +509,7 @@ def normalize_gpu_alias(alias: str) -> str:
     return re.sub(r"[^a-zA-Z0-9]", "", alias).upper()
 
 
-async def get_all_gpu_aliases() -> list[str]:
+async def get_all_gpu_aliases(conn) -> list[str]:
     """클러스터의 모든 GPU PCI alias 반환 (flavor extra_specs + Placement API 통합)."""
     import asyncio
 
@@ -523,57 +523,36 @@ async def get_all_gpu_aliases() -> list[str]:
         except Exception:
             _logger.warning("GPU 카탈로그 DB overlay 갱신 실패 — 기존 alias map으로 계속 진행", exc_info=True)
 
-    from app.config import get_settings
     from app.services import nova
 
     def _collect():
-        import openstack
+        from app.api.identity.admin_gpu import build_device_name_to_alias_map
 
-        s = get_settings()
-        admin_conn = openstack.connect(
-            load_envvars=False,
-            load_yaml_config=False,
-            auth_url=s.os_auth_url,
-            auth_type="password",
-            username=s.os_username,
-            password=s.os_password,
-            project_name=s.os_project_name,
-            user_domain_name=s.os_user_domain_name,
-            project_domain_name=s.os_project_domain_name,
-            region_name=s.os_region_name,
-            api_timeout=30,
-            verify=s.ssl_verify,
-        )
-        try:
-            from app.api.identity.admin_gpu import build_device_name_to_alias_map
+        aliases: set[str] = set()
 
-            aliases: set[str] = set()
+        all_flavors = nova.list_catalog_flavors(conn)
+        for f in all_flavors:
+            alias_str = (f.extra_specs or {}).get("pci_passthrough:alias", "")
+            if alias_str:
+                for entry in alias_str.split(","):
+                    entry = entry.strip()
+                    if ":" in entry:
+                        alias = entry.rpartition(":")[0].strip()
+                        norm = normalize_gpu_alias(alias)
+                        if norm:
+                            aliases.add(norm)
 
-            all_flavors = nova.list_flavors(admin_conn)
-            for f in all_flavors:
-                alias_str = (f.extra_specs or {}).get("pci_passthrough:alias", "")
-                if alias_str:
-                    for entry in alias_str.split(","):
-                        entry = entry.strip()
-                        if ":" in entry:
-                            alias = entry.rpartition(":")[0].strip()
-                            norm = normalize_gpu_alias(alias)
-                            if norm:
-                                aliases.add(norm)
+        device_to_alias = build_device_name_to_alias_map()
+        gpu_data = _collect_gpu_hosts(conn)
+        for gpu_type in gpu_data.get("gpu_types", []):
+            device_name = gpu_type["device_name"]
+            alias = device_to_alias.get(device_name)
+            if alias:
+                norm = normalize_gpu_alias(alias)
+                if norm:
+                    aliases.add(norm)
 
-            device_to_alias = build_device_name_to_alias_map()
-            gpu_data = _collect_gpu_hosts(admin_conn)
-            for gpu_type in gpu_data.get("gpu_types", []):
-                device_name = gpu_type["device_name"]
-                alias = device_to_alias.get(device_name)
-                if alias:
-                    norm = normalize_gpu_alias(alias)
-                    if norm:
-                        aliases.add(norm)
-
-            return sorted(aliases)
-        finally:
-            admin_conn.close()
+        return sorted(aliases)
 
     return await asyncio.to_thread(_collect)
 
@@ -608,6 +587,13 @@ def is_gpu_flavor(flavor: Any = None, extra_specs: dict | None = None) -> bool:
             getattr(flavor, "is_gpu", None), bool
         ):
             explicit_gpu = flavor.is_gpu
+    for key, value in specs.items():
+        if re.fullmatch(r"resources\d*:[VP]GPU", str(key)):
+            try:
+                if int(value) > 0:
+                    return True
+            except (TypeError, ValueError):
+                continue
     for entry in str(specs.get("pci_passthrough:alias", "")).split(","):
         entry = entry.strip()
         if not entry:
@@ -635,36 +621,7 @@ async def require_gpu_quota(conn: Any, flavor: Any, *, project_id: str) -> bool:
     if not is_gpu_flavor(flavor):
         return False
 
-    flavor_extra_specs = (
-        flavor.get("extra_specs") if isinstance(flavor, dict) else getattr(flavor, "extra_specs", None)
-    ) or {}
-    alias_str = flavor_extra_specs.get("pci_passthrough:alias", "")
-    requested_gpus: dict[str, int] = {}
-    if alias_str:
-        for entry in str(alias_str).split(","):
-            entry = entry.strip()
-            if not entry or "audio" in entry.lower():
-                continue
-            if not is_gpu_flavor(extra_specs={"pci_passthrough:alias": entry}):
-                continue
-            if ":" in entry:
-                alias_name, _, count_str = entry.rpartition(":")
-                alias_name = alias_name.strip()
-                try:
-                    count = int(count_str.strip())
-                    if count <= 0:
-                        count = 1
-                except ValueError:
-                    count = 1
-            else:
-                alias_name = entry
-                count = 1
-            norm = normalize_gpu_alias(alias_name)
-            if norm:
-                requested_gpus[norm] = requested_gpus.get(norm, 0) + count
+    from app.services.flavor_eligibility import parse_gpu_demand
 
-    if not requested_gpus:
-        requested_gpus = {"GPU": 1}
-
-    await gpu_quota.check_gpu_quota(conn, project_id, requested_gpus)
+    await gpu_quota.check_gpu_quota(conn, project_id, parse_gpu_demand(flavor))
     return True

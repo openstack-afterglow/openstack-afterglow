@@ -93,6 +93,15 @@ export function onboardingErrorKey(status: number | null): OnboardingErrorKey {
 	return 'onboarding.failed';
 }
 
+/** Only exact registration conflicts can authorize a username retry or identify an existing email. */
+export function registrationConflictKind(error: { status: number; code?: string; message: string }): 'username' | 'email' | 'recovery' | null {
+	if (error.status !== 409) return null;
+	if (error.code === 'signup_enrollment_recovery_required' || error.message === 'signup_enrollment_recovery_required') return 'recovery';
+	if (error.message === 'Username already belongs to an account') return 'username';
+	if (error.message === 'Account already exists; sign in to accept an invitation') return 'email';
+	return null;
+}
+
 export type SignupApprovalState = 'pending' | 'rejected';
 
 /** Only these exact forbidden responses represent an enrollment decision. Never render server text. */

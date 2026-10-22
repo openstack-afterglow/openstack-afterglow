@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-22",
+  "scope": "Correct stock Nova2025.2 project-only administrator transport while preserving human personal/member logical workspace",
+  "manila_url_coverage": "Not covered by this Nova receipt; corrected by correct-manila-execution-project-url with distinct logical/executor IDs through actual SDK catalog and unmocked Manila HTTP client.",
+  "source_sha256": "87a7c491fb776c4b0b14a863f93be51a2568b0950988b1bd7db36a49518d5a5a",
+  "source_files": 3416,
+  "supersedes_provider_authorization_claim_at_source": "fe482cd318aeef43c05a048bf39e75e9eb9e0622935b3be6758c3ee22e05e1b9",
+  "proof_root": "~/.local/share/afterglow-proofs/domain-resources-flavors-personal-login-20261022/provider-scope/",
+  "before": {"personal_login": 200, "native_system_denials": "InvalidScope for all-tenants servers, hypervisors and private flavor access", "bff_results": [500, 500, 503], "installed_sdk_regression_failed": 1},
+  "after": {"scope_enforced_native_requests": 13, "upstream_rule_controls": 5, "global_instances": 2, "personal_domain_instances": 1, "domain_and_project_selectors": "passed", "hypervisor_two_domain_ownership": "passed", "private_acl_list_add_remove_readback": "passed", "caller_native_roles_before_after": ["member"], "caller_workspace_unchanged": true, "revoked_caller_status": 403, "executor_auth_after_revocation": 0},
+  "native_boundary": "Real production auth/JWT/Redis/SQL/dependencies/routes/OpenStack SDK/Keystone HTTP, synthetic native directory/cloud data; unchanged upstream Nova2025.2 base/servers/hypervisors/flavor_access rules enforced by installed real oslo.policy6 with unconditional scope enforcement",
+  "focused": {"initial": 338, "final_selector_caller_boundaries": 332},
+  "named_targets": {"command": "node scripts/test-target.js auth access instances storage", "exit_code": 0, "backend": [869, 1280, 1369, 887], "frontend": [478, 181, 609, 166]},
+  "canonical_gate": {"command": "npm run test:gate", "exit_code": 0, "log": "test-gate-final.log", "backend_passed": 8869, "backend_skipped": 95, "frontend_passed": 4875, "frontend_files": 428, "contracts_passed": 159, "db_functional_passed": 166, "db_functional_deselected": 33, "backend_lint": "passed;720 files already formatted"},
+  "architecture": {"working": "passed", "isolated_staged": "passed", "actual_shared_index_unchanged": true, "tested_source_mismatches": []},
+  "limits": ["No operational Nova deployment or real-user acceptance", "Fixed configured executor credentials/native project admin role/explicit is_admin_project must be operator-provided, not auto-granted", "Original enrollment schema/OIDC prerequisites unchanged", "No operational config/IAM/credential/schema/quota/resource/runtime changes", "No new commit, push or deployment"]
+}

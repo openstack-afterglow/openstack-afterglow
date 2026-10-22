@@ -9,9 +9,6 @@ const { api, autoRefreshCallback } = vi.hoisted(() => ({
 }));
 vi.mock('$lib/api/client', () => ({ api }));
 vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'admin-token', projectId: 'admin-project' }), authReady: writable(true), projectSwitching: writable(false) }));
-vi.mock('$lib/stores/projectNames', () => ({
-	projectNames: { subscribe: writable(new Map([['project-1', 'Project One']])).subscribe, load: vi.fn() },
-}));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: (callback: () => Promise<unknown>) => {
 		autoRefreshCallback.current = callback;

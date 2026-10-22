@@ -197,6 +197,7 @@ async def test_expected_project_mismatch_is_rejected_before_admission_and_mutati
     app.dependency_overrides[deps.get_token_info] = lambda: {"is_system_admin": True}
     app.dependency_overrides[deps.require_admin] = synthetic_verified_admin
     app.dependency_overrides[deps.get_os_conn] = lambda: conn
+    app.dependency_overrides[deps.get_admin_os_conn] = lambda: conn
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/v1/admin/libraries/consume",
@@ -291,6 +292,7 @@ async def test_api_reports_durable_pending_id_after_unknown_create(ledger, block
     app.dependency_overrides[deps.get_token_info] = lambda: {"is_system_admin": True}
     app.dependency_overrides[deps.require_admin] = synthetic_verified_admin
     app.dependency_overrides[deps.get_os_conn] = lambda: conn
+    app.dependency_overrides[deps.get_admin_os_conn] = lambda: conn
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/v1/admin/libraries/consume",

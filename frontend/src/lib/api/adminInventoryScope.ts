@@ -9,6 +9,7 @@ const INVENTORY_PATHS: Record<string, true> = {
 	'/api/v1/admin/instances/health': true,
 	'/api/v1/admin/all-volumes': true,
 	'/api/v1/admin/volumes/status-summary': true,
+	'/api/v1/admin/overview/domains': true,
 	'/api/v1/admin/all-ports': true,
 	'/api/v1/admin/all-networks': true,
 	'/api/v1/admin/all-routers': true,

@@ -21,6 +21,7 @@ let snapshotOwner = '';
 let directorySnapshot: { rows: AvailableDomain[]; expiresAt: number } | null = null;
 const workspaceSnapshots = new Map<string, { inventory: WorkspaceInventory; expiresAt: number }>();
 function clearSnapshots() { directorySnapshot = null; workspaceSnapshots.clear(); }
+export function invalidateWorkspaceDisplaySnapshots(): void { clearSnapshots(); }
 // Display-only snapshots never replace the native checks on a scope commit or create.
 if (browser) derived([auth, authReady, logoutInProgress, projectSwitching], ([state, verified, loggingOut, switching]) =>
 	state.token && verified && !loggingOut && !switching

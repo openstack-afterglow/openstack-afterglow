@@ -154,4 +154,14 @@ describe('FlavorAccessTab frontend visibility', () => {
 		expect(current.frontend_visible).toBe(false);
 		expect(mocks.success).not.toHaveBeenCalled();
 	});
+	it('shows native grants using full domain and project UUIDs even when names collide', async () => {
+		mocks.get.mockResolvedValue([
+			{ flavor_id: 'fl-service', project_id: 'project-a-full', project_name: 'Duplicate', domain_id: 'domain-a-full', domain_name: 'Same' },
+			{ flavor_id: 'fl-service', project_id: 'project-b-full', project_name: 'Duplicate', domain_id: 'domain-b-full', domain_name: 'Same' },
+		]);
+		render(FlavorAccessTab, { flavor: { ...flavor(), is_public: false } });
+		expect(await screen.findByText('domain-a-full / project-a-full')).toBeTruthy();
+		expect(screen.getByText('domain-b-full / project-b-full')).toBeTruthy();
+		expect(mocks.post).not.toHaveBeenCalled();
+	});
 });

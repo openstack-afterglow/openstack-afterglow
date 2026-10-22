@@ -10,6 +10,8 @@ export interface EnrollmentPolicy extends EnrollmentPolicyWrite {
 	quota_fields: Record<string, string[]>;
 	defaults_future_only: true;
 	smtp_configured: boolean;
+	personal_quota_source?: 'administrator' | 'source_defaults';
+	source_default_personal_quotas?: Record<string, number>;
 }
 
 export type SignupRequestStatus = 'pending' | 'approved' | 'rejected' | 'consumed';

@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import type { Flavor } from '$lib/types/flavor';
 import AdminFlavorsTable from '../AdminFlavorsTable.svelte';
@@ -25,8 +25,9 @@ function rowFor(name: string): HTMLElement {
 	return row as HTMLElement;
 }
 
-describe('AdminFlavorsTable access-policy badges', () => {
-	it('shows the effective access mode only beside Private GPU flavors', () => {
+describe('AdminFlavorsTable native flavor management', () => {
+	it('retains explicit public/private identity and manages the exact flavor regardless of obsolete specs', async () => {
+		const onManage = vi.fn();
 		render(AdminFlavorsTable, {
 			flavors: [
 				flavor({
@@ -56,21 +57,15 @@ describe('AdminFlavorsTable access-policy badges', () => {
 			totalUnfiltered: 4,
 			pageSize: 20,
 			refreshing: false,
-			onManage: vi.fn(),
+			onManage,
 			onDelete: vi.fn().mockResolvedValue(undefined),
 		});
 
 		const quotaRow = within(rowFor('quota.gpu'));
 		expect(quotaRow.getByText('Private')).toBeTruthy();
-		expect(quotaRow.getByText('Quota 연동')).toBeTruthy();
-		expect(quotaRow.getByTitle('접근 권한 관리 정책: GPU Quota 연동')).toBeTruthy();
-
-		const manualRow = within(rowFor('manual.gpu'));
-		expect(manualRow.getByText('Private')).toBeTruthy();
-		expect(manualRow.getByText('수동')).toBeTruthy();
-		expect(manualRow.getByTitle('접근 권한 관리 정책: 수동 관리')).toBeTruthy();
-
-		expect(within(rowFor('public.gpu')).queryByText(/Quota 연동|수동/)).toBeNull();
-		expect(within(rowFor('private.cpu')).queryByText(/Quota 연동|수동/)).toBeNull();
+		await fireEvent.click(quotaRow.getByRole('button', { name: '관리' }));
+		expect(onManage.mock.calls[0][0].id).toBe('quota-gpu');
+		expect(within(rowFor('public.gpu')).getByText('Public')).toBeTruthy();
+		expect(within(rowFor('private.cpu')).getByText('Private')).toBeTruthy();
 	});
 });

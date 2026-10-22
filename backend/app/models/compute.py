@@ -110,10 +110,9 @@ class FlavorInfo(BaseModel):
 
     @property
     def gpu_count(self) -> int:
-        m = re.match(r"^gpu\.\w+?(?:x(\d+))?_", self.name)
-        if not m:
-            return 0
-        return int(m.group(1)) if m.group(1) else 1
+        from app.services.flavor_eligibility import parse_gpu_demand
+
+        return sum(parse_gpu_demand(self).values())
 
 
 class GitHubSshLookupRequest(BaseModel):

@@ -7,7 +7,7 @@ vi.mock('../auth', () => ({
 	authReady: writable(true), projectSwitching: writable(false),
 }));
 import { auth, authReady, projectSwitching } from '../auth';
-import { serviceCapabilities, serviceDenials, projectPermissions } from '../servicePermissions';
+import { serviceCapabilities, serviceDenials, projectPermissions, canManageProject } from '../servicePermissions';
 const settle = async () => { await Promise.resolve(); await Promise.resolve(); };
 import type { ProjectPermissions } from '../servicePermissions';
 const permissions = (leaves: string[]): ProjectPermissions => ({ is_owner: false, is_manager: false, can_write: true, service_permissions: { lumen: leaves } });
@@ -15,6 +15,17 @@ let stop: (() => void) | undefined;
 beforeEach(() => { vi.resetAllMocks(); auth.update(state => ({ ...state, token: 'a', projectId: 'a', userId: 'u', roles: ['member'], isSystemAdmin: false })); authReady.set(true); projectSwitching.set(false); });
 afterEach(() => { stop?.(); stop = undefined; });
 describe('API leaf service capabilities', () => {
+	it('requires current project owner or manager authority even for a system administrator in user mode', async () => {
+		auth.update(state => ({ ...state, isSystemAdmin: true }));
+		mocks.get.mockResolvedValue(permissions([]));
+		stop = canManageProject.subscribe(() => {}); await settle();
+		expect(get(canManageProject)).toBe(false);
+		mocks.get.mockResolvedValue({ ...permissions([]), is_manager: true });
+		auth.update(state => ({ ...state, projectId: 'managed-project' })); await settle();
+		expect(get(canManageProject)).toBe(true);
+		projectSwitching.set(true);
+		expect(get(canManageProject)).toBe(false);
+	});
 	it('uses server-granted leaves for a zero-role administrator in the selected project, never its cached admin flag', async () => {
 		auth.update(state => ({ ...state, projectId: 'unentitled-target', roles: [], isSystemAdmin: true }));
 		const pending = Promise.withResolvers<ProjectPermissions>();

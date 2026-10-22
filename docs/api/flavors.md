@@ -36,6 +36,8 @@ Nova 플레이버(인스턴스 스펙) 카탈로그를 조회합니다.
 
 프로젝트에서 사용 가능한 고정 Nova 플레이버 목록과 프로젝트 쿼터 적격성(`eligibility`)을 반환합니다. 새 플레이버를 만들거나 기존 vCPU/RAM/GPU 규격을 변경하지 않습니다. 같은 호스트의 CPU·RAM·GPU 용량은 VM 생성 wizard가 `capacity=create`로 요청할 때만 평가합니다. 기본 응답은 쿼터만 판정하며 `eligibility.capacity`가 `null`이고 운영자 연결이나 Placement 조회를 하지 않습니다. 이 기본 목록은 K3s 모달과 Drover 화면 prefetch도 사용합니다.
 
+Public/Private·CPU/GPU와 무관하게 같은 compute/GPU 잔여 quota를 검사합니다. Public Flavor에는 별도 프로젝트 ACL이 필요하지 않고 Private Flavor에만 native Nova 프로젝트 접근이 추가로 필요합니다. 특히 관리자 credential의 전체 private catalog를 일반 target project의 접근 목록으로 취급하지 않습니다. 캐시된 flavor payload를 읽더라도 현재 native catalog/ACL로 한 번 더 제한하므로 revoke 뒤 cached private 항목이 남지 않습니다. GPU quota 변경은 native flavor grant를 만들거나 회수하지 않습니다. 관리자 접근 화면의 domain→project 선택은 현재 실제 project UUID에 대한 명시적 grant이며 Nova에 없는 domain grant·미래 프로젝트 상속을 합성하지 않습니다.
+
 > **쿼터·호스트 용량 판정 및 적용 범위**:
 > - 기본 응답의 `eligibility.selectable`은 현재 프로젝트의 잔여 인스턴스·vCPU·RAM·GPU 쿼터만 반영합니다.
 > - `capacity=create`이면 단일 VM 생성 기준으로 확인된 같은 호스트 부족을 `host_capacity_insufficient`, 확인하지 못한 용량을 `host_capacity_unavailable` blocker로 막습니다. 미확인은 GPU 여부와 무관하게 선택할 수 없습니다. 운영자 권한·Placement 장애·시간 초과·기본 compute AZ 정책 누락 동안에는 생성 가능한 flavor가 없으며, 확인되지 않은 용량을 Nova 판단에 맡기지 않습니다.
@@ -110,7 +112,7 @@ Nova 플레이버(인스턴스 스펙) 카탈로그를 조회합니다.
 | 필드 | 타입 | 설명 |
 |------|------|------|
 | `status` | string | `available`: 하나 이상의 eligible 호스트에 수요가 함께 들어감. `insufficient`: 확인 가능한 후보에 여유 부족. `unavailable`: 권한·조회·응답·시간 초과·매핑 또는 경계를 정할 수 없는 제약 때문에 검증 불가. `available`만 생성을 허용하며 `insufficient`와 `unavailable`은 생성 불가입니다. |
-| `checked_at` | string | 해당 Placement 응답을 읽은 UTC ISO 8601 시각. 목록은 최대 10초 된 snapshot일 수 있으며 예약이나 만료 시각이 아님 |
+| `checked_at` | string | 해당 Placement 응답을 읽은 UTC ISO 8601 시각. `capacity=create`는 fresh snapshot이며 예약이나 만료 시각이 아님 |
 | `candidate_hosts` | integer | 요청 전체를 충족하는 확인된 root compute 수. GPU 장치 수가 아님 |
 | `cpu_resource_class` | string/null | 일반 `VCPU`, dedicated `PCPU`. 해석 불가 시 null |
 | `remaining_vcpus` | integer/null | 한 후보 호스트에서 VM **하나**가 받을 수 있는 최대 CPU 단위 = `min(capacity − used, max_unit)`. 호스트 전체 잔여량이 아님 |
@@ -118,6 +120,8 @@ Nova 플레이버(인스턴스 스펙) 카탈로그를 조회합니다.
 | `numa_unverified` | boolean | 단일 NUMA 셀을 요구하는 flavor(`hw:numa_nodes=1`, `hw:mem_page_size=small`/`any`, dedicated CPU)이면 true. `available`은 호스트 합계 기준이고 셀 여유와 GPU의 NUMA 근접성은 Nova가 생성 시 판단합니다. `insufficient`는 셀과 무관하게 확정입니다. |
 
 **VM wizard 표시 범위**: 소비자 화면(`/dashboard`)은 플레이버 자체의 vCPU·RAM·디스크·GPU 규격, 프로젝트 쿼터, 생성 가능/불가 및 차단 사유와 갱신 상태를 유지합니다. 호스트별 VM 최대 CPU·RAM, 후보 호스트 수, NUMA·GPU 근접성 및 Nova snapshot 설명은 관리자 VM wizard(`/admin`)에서만 표시합니다. 관리자 계정으로 소비자 모드를 사용해도 이 세부 정보는 렌더링하지 않습니다. 기존 wizard의 `adminMode`를 공유 선택기에 전달하는 표시 구분이며 API 필드 제거·추가나 권한 변경은 아닙니다. 두 화면은 동일한 capacity 판정·자동 갱신·제출 직전 검증을 사용합니다.
+
+생성 선택 화면에는 `eligibility.selectable=true`이고 capacity가 `available`인 Flavor만 표시합니다. Background refresh로 기존 선택이 막히거나 목록에서 사라지면 해당 선택은 생성 불가 경고로 남고 자동으로 다른 Flavor를 선택하지 않습니다. 생성 직전 다시 검사하고 서버도 fresh admission을 수행합니다. 부족하거나 미확인인 항목을 숨기는 것은 Nova ACL이나 quota를 변경하지 않으며 Resize에는 증분 수요의 별도 계약을 계속 사용합니다.
 
 **평가 방식**: 운영자 연결로 Nova 2.53의 hypervisor/service UUID·host 상태·AZ·aggregate·`cpu_info`와 Placement 1.36의 provider tree를 읽습니다. 그다음 flavor *shape*마다 allocation candidates를 한 번 조회합니다. shape는 CPU class, 명시적 `resources:*`, trait, PCI 장치당 numbered group으로 구성하며 CPU와 RAM은 1 단위로 요청합니다. 각 flavor의 실제 CPU/RAM은 그 응답의 `provider_summaries`(capacity·used)와 공급 provider inventory의 `max_unit`으로 **같은 후보 root**에서 맞춰 봅니다. Nova는 VCPU/PCPU/MEMORY_MB의 `min_unit`·`step_size`를 1로 보고하므로 1 단위 조회가 후보를 빠뜨리지 않습니다. disabled/down/forced-down 호스트는 제외합니다. 확인 가능한 aggregate/tenant 제약과 `capabilities:cpu_info:<field>` 단순 일치(ComputeCapabilitiesFilter)를 반영합니다. PCI alias는 GPU 카탈로그의 vendor/product resource class로 매핑합니다. alias가 등록되지 않은 GPU HDMI audio function은 정규화한 장치 이름으로 매핑합니다(`GA102 Audio` ↔ `GA102-audio`). 다른 호스트의 CPU/RAM과 GPU를 합치지 않으며 CPU와 RAM도 서로 다른 후보의 최대값을 조합하지 않습니다.
 
@@ -129,7 +133,7 @@ Placement capacity는 `(total − reserved) × allocation_ratio`입니다. VM �
 
 확인된 부족에는 `host_capacity_insufficient`, 미확인에는 flavor 종류와 무관하게 `host_capacity_unavailable` blocker를 붙입니다. 미확인은 용량 0이나 충분한 용량으로 오인하지 않으며 값을 확인할 수 없으면 null을 반환합니다. Placement에 등록되지 않은 resource class는 `unavailable`입니다. 운영 Placement는 이 경우 allocation candidates에 HTTP 400을 반환하며, 후보가 없을 때도 `/resource_classes/{rc}`로 다시 확인합니다. 등록된 class의 여유 장치가 없으면 `insufficient`입니다. 호스트 이름, provider UUID, 다른 프로젝트/VM 식별자는 응답에 포함하지 않습니다.
 
-**비용 경계**: 운영자 세션은 프로세스에서 재사용하고 snapshot 수준 오류(인증·Nova·provider tree) 뒤에 폐기합니다. 명시적 Nova/Placement 요청은 5초 timeout·재시도 없이 남은 평가 deadline 안에서 실행합니다. 내부 deadline은 15초이고, 비동기 호출자는 최대 20초(15+5) 대기 후 `unavailable`로 반환합니다. SDK 인증·endpoint discovery와 이미 실행 중인 worker thread까지 강제 종료하는 15초 endpoint SLA는 아닙니다. 목록(`capacity=create`)은 최대 10초 된 snapshot을 single-flight로 공유하며 실패한 shape도 다시 묻지 않습니다. 캐시된 shape 조회 실패는 snapshot에서 한 번만 단문으로 기록하고 재사용은 반복 traceback을 남기지 않습니다. 생성 admission은 항상 새로 읽습니다.
+**비용 경계**: 운영자 세션은 프로세스에서 재사용하고 snapshot 수준 오류 뒤에 폐기합니다. Native 요청은5초 timeout·재시도 없이 내부15초 deadline, async caller는 최대20초를 유지합니다. `capacity=create`는 요청마다 fresh 평가하며 한 평가 안의 shape·provider inventory·resource-class 조회만 공유합니다. 일반 quota-only catalog에는 Placement 조회가 없습니다. 다른 내부 advisory 호출의10초 bounded cache와 과거 cold/warm 측정은 아래 역사적 결과이며 새 생성 선택 endpoint의 warm 재사용을 뜻하지 않습니다. SDK 인증·이미 시작한 thread의 강제 중단 SLA나 실제 Nova scheduling 성공을 보장하지 않습니다.
 
 2026-10-01 운영 읽기 전용 측정: 이전 전체 79 flavor 평가 27.0초/HTTP 170회 → shape 공유 후 cold 4.4초/52회. 당시 3.5초는 **전체 카탈로그 fresh 평가**였으며 실제 단일 flavor admission 시간이 아닙니다. 실패 shape 캐시까지 반영한 후, 운영자 catalog/access 조회로 일반 프로젝트에 보일 public+허용 private flavor를 재구성해 평가한 값은 다음과 같습니다(AZ `nova`; 목록·쿼터 API 전체 지연은 제외).
 

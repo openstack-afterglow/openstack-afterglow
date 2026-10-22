@@ -7,8 +7,8 @@ vi.mock('$lib/stores/projectNames', () => ({ projectNames: writable(new Map<stri
 import AdminVolumeTable from '../AdminVolumeTable.svelte';
 
 const volumes = [
-	{ id: 'vol-1', name: 'first-volume', status: 'available', size: 10, project_id: 'project-1', created_at: '2026-09-01' },
-	{ id: 'vol-2', name: 'second-volume', status: 'in-use', size: 20, project_id: 'project-2', created_at: '2026-09-02' },
+	{ id: 'vol-1', name: 'first-volume', status: 'available', size: 10, volume_type: 'fast', project_id: 'project-1', project_name: 'Native project', domain_id: 'domain-1', domain_name: 'Research', owner_status: 'known' as const, created_at: '2026-09-01' },
+	{ id: 'vol-2', name: 'second-volume', status: 'in-use', size: 20, volume_type: null, project_id: 'project-2', project_name: null, domain_id: null, domain_name: null, owner_status: 'deleted_project' as const, created_at: '2026-09-02' },
 ];
 
 function props(selectedIds: ReadonlySet<string>, onToggleSelect = vi.fn(), onToggleAll = vi.fn()) {
@@ -51,6 +51,11 @@ describe('AdminVolumeTable selection', () => {
 		await fireEvent.click(screen.getByRole('checkbox', { name: 'first-volume 선택' }));
 		expect(onToggleAll).toHaveBeenCalledOnce();
 		expect(onToggleSelect).toHaveBeenCalledWith('vol-1');
+		expect(screen.getByText('Research')).toBeTruthy();
+		expect(screen.getByText('Native project')).toBeTruthy();
+		expect(screen.getByText('삭제된 프로젝트')).toBeTruthy();
+		expect(screen.getByText('fast')).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'first-volume' })).toBeTruthy();
 		view.unmount();
 	});
 });

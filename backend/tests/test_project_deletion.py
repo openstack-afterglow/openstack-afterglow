@@ -27,7 +27,7 @@ from keystoneclient.v3.client import Client as KeystoneClient
 from requests import Response
 from requests.adapters import BaseAdapter
 
-from app.api.deps import get_os_conn
+from app.api.deps import get_admin_os_conn, get_os_conn
 from app.main import app
 from app.services import keystone
 from tests.ownership_journal import ownership_journal as ownership_journal
@@ -386,6 +386,7 @@ async def native_admin(admin_client, cloud, monkeypatch, ownership_journal):
     native = cloud.connect()
     monkeypatch.setattr(keystone, "_get_admin_ks_client", lambda: KeystoneClient(session=native.session))
     app.dependency_overrides[get_os_conn] = connection
+    app.dependency_overrides[get_admin_os_conn] = connection
     try:
         yield admin_client
     finally:

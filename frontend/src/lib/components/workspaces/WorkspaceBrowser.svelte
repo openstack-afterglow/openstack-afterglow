@@ -7,7 +7,6 @@
 	import { sortWorkspaceResources, type ResourceKind } from '$lib/stores/workspacePreferences';
 	import { t } from '$lib/i18n/ns/workspace-selector';
 	import Button from '$lib/components/ui/Button.svelte';
-	import { t as ta } from '$lib/i18n/ns/domain-auth';
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
@@ -76,7 +75,6 @@
 			</div>
 		</div>
 		<div class="text-xs text-ink-2" aria-live="polite">
-			<p class="break-all">{ta('select.identityDomain')}: {$auth.identityDomainName || '—'} · {$auth.identityDomainId || '—'}</p>
 			<p class="break-all">{t('activeDomain')}: {$auth.domainName || '—'} · {$auth.domainId || '—'}</p>
 			<p class="break-all">{t('activeProject')}: {$auth.projectName || t('noProject')} · {$auth.projectId || '—'}</p>
 		</div>

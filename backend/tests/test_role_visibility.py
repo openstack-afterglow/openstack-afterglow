@@ -110,7 +110,7 @@ async def test_public_identity_preserves_capability_without_exposing_system_role
         assert payload["is_system_admin"] is system_admin
     assert permissions.json()["project_id"] == effective_project_id
     assert permissions.json()["roles"] == (["reader"] if downgraded else visible)
-    assert permissions.json()["can_write"] is (system_admin if downgraded else can_write)
+    assert permissions.json()["can_write"] is (False if downgraded else can_write)
     assert permissions.json()["is_system_admin"] is system_admin
     assert info["roles"] == roles
     if can_write:

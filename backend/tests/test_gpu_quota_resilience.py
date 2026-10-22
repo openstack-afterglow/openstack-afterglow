@@ -29,7 +29,7 @@ def _resolve_default_placement_policies(monkeypatch):
 
     monkeypatch.setattr(
         "app.services.nova.get_project_quota",
-        lambda *_args: {
+        lambda *_args, **_kwargs: {
             "instances": {"limit": 10, "in_use": 0},
             "cores": {"limit": 64, "in_use": 0},
             "ram": {"limit": 131072, "in_use": 0},

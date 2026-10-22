@@ -4,6 +4,7 @@
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import ProjectsSection from '$lib/components/account/ProjectsSection.svelte';
 	import ProjectSettingsSection from '$lib/components/account/ProjectSettingsSection.svelte';
+	import PersonalProjectLabelSection from '$lib/components/account/PersonalProjectLabelSection.svelte';
 </script>
 
 <PageShell>
@@ -19,6 +20,7 @@
 
 	<PageHeader breadcrumb="" title={t('projectSettings.title')} />
 	<div class="grid grid-cols-1 gap-4">
+		<PersonalProjectLabelSection />
 		<ProjectsSection />
 		<ProjectSettingsSection />
 	</div>

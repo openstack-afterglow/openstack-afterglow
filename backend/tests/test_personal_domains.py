@@ -183,7 +183,7 @@ async def test_system_human_creation_shares_identity_domain(directory, enrollmen
 async def test_admin_creation_observation_context_never_admits_new_account(
     directory, enrollments, monkeypatch, selected
 ):
-    from app.api.deps import get_os_conn, require_admin
+    from app.api.deps import get_admin_os_conn, get_os_conn, require_admin
     from app.api.identity import admin_identity
     from app.services import domain_auth
 
@@ -207,6 +207,9 @@ async def test_admin_creation_observation_context_never_admits_new_account(
     app.dependency_overrides[require_admin] = lambda: manager("system-admin")
     app.dependency_overrides[get_token_info] = lambda: manager("system-admin")
     app.dependency_overrides[get_os_conn] = lambda: SimpleNamespace(
+        identity=SimpleNamespace(get_domain=directory.ks.domains.get)
+    )
+    app.dependency_overrides[get_admin_os_conn] = lambda: SimpleNamespace(
         identity=SimpleNamespace(get_domain=directory.ks.domains.get)
     )
 
@@ -500,10 +503,11 @@ async def test_historical_creating_receipt_never_infers_quota_calls_settled_from
 
 
 @pytest.mark.asyncio
-async def test_managed_system_admin_first_login_provisions_but_unmarked_operator_stays_projectless(
-    directory, enrollments, monkeypatch
-):
+async def test_managed_and_markerless_interactive_admins_both_prepare_personal(directory, enrollments, monkeypatch):
     from app.api.identity import auth
+    from app.services import login_preferences
+
+    monkeypatch.setattr(login_preferences, "read", AsyncMock(return_value={"remember_last_workspace": False}))
 
     async with enrollments() as session:
         created = await domain_iam.create_managed_user(
@@ -517,29 +521,21 @@ async def test_managed_system_admin_first_login_provisions_but_unmarked_operator
     landing = AsyncMock(return_value={"prepared": True})
     monkeypatch.setattr(auth, "_prepare_domain_session", landing)
     data = {"user_id": uid, "identity_domain_id": created["identity_domain_id"], "is_system_admin": True}
-    assert await auth._prepare_initial_session(data) == {"prepared": True}
+    assert (await auth._prepare_initial_session(data))["prepared"] is True
     primary = account_spaces.personal_project(uid, ks=directory.ks)
     assert primary is not None and len(directory.personal_projects) == 1
     assert landing.call_args.args[1] == primary["domain_id"]
     assert landing.call_args.kwargs["requested_project_id"] == primary["id"]
-    with pytest.raises(HTTPException) as forged:
-        await account_spaces.managed_personal_pending(
-            "foreign", created["identity_domain_id"], directory.users[uid].afterglow_enrollment_id
-        )
-    assert forged.value.status_code == 503
-    assert await auth._prepare_initial_session(data) == {"prepared": True}
+    assert (await auth._prepare_initial_session(data))["prepared"] is True
     assert len(directory.personal_projects) == 1
 
-    def unavailable_storage():
-        raise AssertionError("Unmarked operator must not require a personal SQL enrollment")
-
-    monkeypatch.setattr(account_spaces, "get_session_factory", unavailable_storage)
     operator = directory.users["operator"]
     original = vars(operator).copy()
-    assert await auth._prepare_initial_session(
+    prepared = await auth._prepare_initial_session(
         {"user_id": "operator", "identity_domain_id": operator.domain_id, "is_system_admin": True}
-    ) == {"prepared": True}
-    assert vars(operator) == original and len(directory.personal_projects) == 1
+    )
+    assert prepared["prepared"] is True and prepared["initial_workspace"]["kind"] == "personal"
+    assert vars(operator) == original and len(directory.personal_projects) == 2
 
 
 @pytest.mark.asyncio
@@ -634,10 +630,13 @@ async def test_legacy_unknown_create_fences_login_and_preserves_identity(directo
 
 
 @pytest.mark.asyncio
-async def test_operator_and_reserved_directories_are_not_human_workspaces(directory, enrollments):
-    with pytest.raises(HTTPException) as denied:
-        await account_spaces.ensure_personal_project("operator")
-    assert denied.value.detail == "service_identity_personal_forbidden"
+async def test_interactive_operator_name_is_human_but_reserved_directories_stay_protected(directory, enrollments):
+    original = vars(directory.users["operator"]).copy()
+    primary = await account_spaces.ensure_personal_project("operator")
+    assert primary["enabled"] and vars(directory.users["operator"]) == original
+    assert project_service._direct_ids(directory.ks.role_assignments.list(project=primary["id"]), "operator") == {
+        rid("member")
+    }
     await account_spaces.ensure_personal_project("foreign")
     for domain in directory.personal_domains.values():
         with pytest.raises(HTTPException) as rejected:

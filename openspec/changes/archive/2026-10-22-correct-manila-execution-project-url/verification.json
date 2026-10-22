@@ -1,0 +1,15 @@
+{
+  "date": "2026-10-22",
+  "scope": "Manila URL project follows authenticated transport, independently from logical workspace and quota target",
+  "source_sha256": "10a663403843527e1385c99b293441ea933a4277d533a31be47eb0207ede1b4b",
+  "source_files": 3416,
+  "previous_source": "87a7c491fb776c4b0b14a863f93be51a2568b0950988b1bd7db36a49518d5a5a",
+  "proof_root": "~/.local/share/afterglow-proofs/domain-resources-flavors-personal-login-20261022/manila-scope/",
+  "regression": {"before_failed": 5, "after_focused_passed": 108, "get_client_mocked": false, "transport": "Actual installed OpenStack SDK catalog and native AccessInfo plus actual loopback Manila HTTP", "cases": ["project-scoped catalog with distinct logical/native IDs", "version-root catalog", "SDK current native project without metadata", "missing native project rejects before send", "explicit empty native project rejects before send", "logical quota target retained under executor URL prefix"]},
+  "actual_http_smoke": {"passed": true, "personal_login": 200, "admin_file_storage": 200, "native_path": "/v2/provider-admin-project/shares/detail", "native_requests": 1, "caller_personal_member_unchanged": true, "boundary": "Production auth/JWT/Redis/SQL/dependencies/administrator route/SDK catalog/Manila HTTP client; synthetic native directory and share"},
+  "storage_target": {"exit_code": 0, "backend_passed": 892, "frontend_passed": 166},
+  "canonical_gate": {"command": "npm run test:gate", "exit_code": 0, "log": "test-gate-qualified.log", "backend_passed": 8874, "backend_skipped": 95, "frontend_passed": 4875, "frontend_files": 428, "contracts_passed": 159, "functional_passed": 166, "functional_deselected": 33, "backend_lint": "passed;720 files already formatted"},
+  "architecture": {"working": "passed", "isolated_staged": "passed", "actual_shared_index_unchanged": true, "tested_source_mismatches": []},
+  "earlier_gate_failure": "Missing-endpoint fixture lacked authenticated scope and hit the new scope guard before discovery. Fixture now supplies native admin-project identity; production guard and error assertions unchanged. Raw failure retained.",
+  "limits": ["Not operational Manila or filesystem acceptance", "Does not broaden all-project share listing semantics", "No operational credentials/grants/config/schema/quotas/resources/runtime changes", "No commit, push or deployment"]
+}

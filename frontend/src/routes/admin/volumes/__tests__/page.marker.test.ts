@@ -38,7 +38,7 @@ describe('admin volume marker generation', () => {
 		const pending = [oldRequest, newRequest];
 		mockGet.mockImplementation((path: string) => {
 			if (path.startsWith('/api/v1/admin/all-volumes')) return pending.shift()!.promise;
-			if (path === '/api/v1/admin/volumes/status-summary') return Promise.resolve({ total: 0, by_status: {} });
+			if (path.startsWith('/api/v1/admin/volumes/status-summary')) return Promise.resolve({ total: 0, total_gb: 0, attached_count: 0, attached_gb: 0, available_count: 0, available_gb: 0, statuses: [], domains: [], filtered_total: 0, filtered_gb: 0 });
 			return Promise.resolve([]);
 		});
 

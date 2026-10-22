@@ -96,6 +96,39 @@ async def upload_profile_image(
     )
 
 
+class LoginPreferenceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    remember_last_workspace: bool = Field(strict=True)
+
+
+@router.get("/login-preference")
+async def get_login_preference(response: Response, token_info: dict = Depends(get_token_info)):
+    from app.services import login_preferences
+
+    response.headers["Cache-Control"] = "private, no-store"
+    return await login_preferences.read(token_info["user_id"], token_info["identity_domain_id"])
+
+
+@router.put("/login-preference")
+async def update_login_preference(
+    req: LoginPreferenceRequest, response: Response, token_info: dict = Depends(get_token_info)
+):
+    from app.services import domain_projects, domain_scope, login_preferences
+    from app.services.native_operation import NativeOperation
+
+    response.headers["Cache-Control"] = "private, no-store"
+    async with NativeOperation() as operation:
+        uid, home = token_info["user_id"], token_info["identity_domain_id"]
+        did, pid = token_info["domain_id"], token_info.get("project_id", "")
+        if req.remember_last_workspace:
+            context = await operation.run(domain_scope.domain_context, uid, did, operation=operation)
+            await operation.run(domain_projects.assert_membership, uid, did, operation=operation)
+            domain_scope.assert_domain_resource(home, context["identity_domain_id"])
+            await operation.run(domain_scope.assert_project_domain, did, pid, operation=operation)
+            await operation.run(domain_projects.assert_project_membership, uid, pid, operation=operation)
+        return await login_preferences.save(uid, home, req.remember_last_workspace, domain_id=did, project_id=pid)
+
+
 @router.get("")
 async def get_profile(
     token_info: dict = Depends(get_token_info),

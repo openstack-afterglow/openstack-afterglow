@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from app.api.common.activity_recorder import rec
 from app.api.common.admin_resource_scope import AdminResourceScope, admin_resource_scope
-from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info, require_admin
+from app.api.deps import CacheMode, cache_mode, get_admin_os_conn, get_os_conn, get_token_info, require_admin
 from app.services.cache import cached_call, ttl_fast, ttl_normal
 from app.services.image_refs import normalize_image_reference
 from app.services.keystone import get_drover_proxy
@@ -38,7 +38,8 @@ BulkAction = Literal["start", "stop", "reboot", "hard-reboot", "snapshot"]
 
 @router.get("/notifications", dependencies=[Depends(require_admin)])
 async def get_admin_notifications(
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
+    caller_conn: openstack.connection.Connection = Depends(get_os_conn),
     cm: CacheMode = Depends(cache_mode),
 ):
     """관리자 알림 6종 (오류 인스턴스 / 높은 CPU 호스트 / k3s 대기 등)."""
@@ -109,7 +110,7 @@ async def get_admin_notifications(
 
             async def _k3s_pending():
                 return await asyncio.to_thread(
-                    get_drover_proxy(conn).admin_clusters,
+                    get_drover_proxy(caller_conn).admin_clusters,
                     status="CREATE_IN_PROGRESS,UPDATE_IN_PROGRESS,ERROR",
                 )
 
@@ -208,7 +209,7 @@ def _is_gpu_flavor(flavor: dict) -> bool:
 
 @router.get("/instances/health", dependencies=[Depends(require_admin)])
 async def get_instances_health(
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     cm: CacheMode = Depends(cache_mode),
     scope: AdminResourceScope = Depends(admin_resource_scope),
 ):
@@ -301,7 +302,7 @@ class BulkActionRequest(BaseModel):
 @router.post("/instances/bulk-action", dependencies=[Depends(require_admin)])
 async def bulk_instance_action(
     body: BulkActionRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
     """여러 인스턴스에 동일 동작 적용. 각 동작당 ActivityLog 자동 기록."""
@@ -367,7 +368,7 @@ def _apply_action(
 
 @router.get("/floating-ips/pool-stats", dependencies=[Depends(require_admin)])
 async def get_fip_pool_stats(
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     cm: CacheMode = Depends(cache_mode),
 ):
     """Floating IP 네트워크(풀)별 in_use / total / util% 통계."""

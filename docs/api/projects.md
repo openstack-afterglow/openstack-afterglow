@@ -13,6 +13,15 @@ nav_order: 12
 
 ---
 
+## 개인 프로젝트 표시 이름
+
+`GET /api/v1/projects/{project_id}/display-name`과 `PUT /api/v1/projects/{project_id}/display-name`은 현재 프로젝트의 표시 label만 다룹니다. GET 응답은 `{project_id,display_name,native_name,can_edit}`입니다. PUT body는 `{ "display_name": "내 연구 공간" }` 하나만 허용하며 앞뒤 공백 제거 후 Unicode codepoint1–64자, 제어·format 문자는422입니다. 다른 native 속성·name·UUID·권한·quota 입력은 허용하지 않습니다.
+
+Caller/current project·immutable user/home·enabled native domain/project·실제 membership을 다시 검증합니다. Personal의 exact marker/direct-member owner와 검증된 historical unique owner만 `can_edit:true`이며 ordinary member-owner에 `project_owner`나 admin을 추가하지 않습니다. 다른 Personal은 system-admin이어도403이고 현재 조직 프로젝트 member는 이름을 읽되 `can_edit:false`입니다.
+
+PUT는 현재 권위 확인 후 bounded configured writer와 graph lease로 `afterglow_display_name` 하나만 PATCH합니다. 기존 generated native name·project ID·owner/enrollment marker·다른 extras·grant/quota/resource는 보존하고 exact native readback과 최종 membership을 확인합니다. Native 거부/응답 유실/identity·metadata 치환은 성공으로 게시하지 않으며 writer를 닫습니다. Client는 같은 사용자·scope의 PUT와 fresh GET 결과가 일치할 때만 header/chooser label을 바꾸고 display cache를 비웁니다. 실제 native writer permission·운영 persistence는 별도 배포 수용이며 새 SQL migration은 없습니다.
+
+
 ## 셀프서비스 권한 모델
 
 - **현재 Keystone 권한** — 역할 카탈로그·직접 상속 DAG·유효 프로젝트 할당을 다시 조회합니다. 같은 이름의 도메인 역할, 오래된 JWT 역할 배열, 앱 DB의 기존 `project_roles` 행은 권한 근거가 아닙니다. 조회 실패는 `503`이며 오래된 권한으로 대체하지 않습니다.

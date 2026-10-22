@@ -94,8 +94,6 @@
 		}));
 	});
 
-	type AvailabilityView = 'selectable' | 'blocked';
-	let availabilityView = $state<AvailabilityView>('selectable');
 	type FlavorCategory = 'all' | 'general' | 'cpu' | 'memory' | 'gpu';
 	let activeCategory = $state<FlavorCategory>('all');
 	let searchTerm = $state('');
@@ -120,13 +118,8 @@
 	}
 
 	const selectableCount = $derived(flavors.filter(f => isSelectable(f)).length);
-	const blockedCount = $derived(flavors.filter(f => !isSelectable(f)).length);
 
-	const baseFlavors = $derived(
-		availabilityView === 'selectable'
-			? flavors.filter(f => isSelectable(f))
-			: flavors.filter(f => !isSelectable(f))
-	);
+	const baseFlavors = $derived(flavors.filter(f => isSelectable(f)));
 
 	const counts = $derived({
 		general: baseFlavors.filter(f => categorize(f) === 'general').length,
@@ -158,7 +151,6 @@
 	);
 
 	$effect(() => {
-		availabilityView;
 		activeCategory;
 		searchTerm;
 		currentPage = 1;
@@ -339,39 +331,14 @@
 {/if}
 
 <div class="order-2 mb-3 flex flex-wrap items-center justify-between gap-2">
-	<div class="flex items-center gap-1.5">
-		<button
-			type="button"
-			onclick={() => { availabilityView = 'selectable'; }}
-			class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors {availabilityView === 'selectable'
-				? 'bg-[var(--color-accent)] text-[var(--color-surface-canvas)] shadow-sm'
-				: 'bg-[var(--color-surface-sunken)] text-[var(--color-ink-2)] hover:bg-[var(--color-surface-raised)]'}"
-		>
-			{t('flavor.availability.selectable', { count: selectableCount })}
-		</button>
-		<button
-			type="button"
-			onclick={() => { availabilityView = 'blocked'; }}
-			class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors {availabilityView === 'blocked'
-				? 'bg-[var(--color-surface-sunken)] text-[var(--color-state-danger-text)] border border-[var(--color-state-danger)]/50'
-				: 'bg-[var(--color-surface-sunken)] text-[var(--color-ink-2)] hover:bg-[var(--color-surface-raised)]'}"
-		>
-			{t('flavor.availability.blocked', { count: blockedCount })}
-		</button>
-	</div>
-	<p class="text-xs text-[var(--color-ink-2)]">
-		{#if adminMode}
-			{availabilityView === 'selectable' ? t('flavor.availability.selectableHelpAdmin') : t('flavor.availability.blockedHelpAdmin')}
-		{:else}
-			{availabilityView === 'selectable' ? t('flavor.availability.selectableHelp') : t('flavor.availability.blockedHelp')}
-		{/if}
-	</p>
+	<p class="text-xs text-ink-2">{t('flavor.availability.selectable', { count: selectableCount })}</p>
+	<p class="text-xs text-ink-2">{t(adminMode ? 'flavor.availability.selectableHelpAdmin' : 'flavor.availability.selectableHelp')}</p>
 </div>
 
 <!-- 카테고리 필터 탭 -->
 <div class="order-3 mb-4 flex flex-wrap gap-2">
 	{#each ([
-		{ key: 'all', label: t('flavor.category.all', { count: flavors.length }) },
+		{ key: 'all', label: t('flavor.category.all', { count: baseFlavors.length }) },
 		{ key: 'general', label: t('flavor.category.general', { count: counts.general }) },
 		{ key: 'cpu', label: t('flavor.category.cpu', { count: counts.cpu }) },
 		{ key: 'memory', label: t('flavor.category.memory', { count: counts.memory }) },

@@ -102,9 +102,13 @@ def _get_manila_endpoint(conn) -> str:
 
 
 def get_client(conn) -> ManilaClient:
-    # openstacksdk가 토큰을 재발급할 수 있으므로 원본 토큰/project_id 우선 사용
+    # URL scope belongs to the native token, not the independent logical workspace.
     token = getattr(conn, "_afterglow_token", None) or conn.auth_token
-    project_id = getattr(conn, "_afterglow_project_id", None) or conn.current_project_id
+    project_id = getattr(conn, "_afterglow_authenticated_project_id", None)
+    if project_id is None:
+        project_id = conn.current_project_id
+    if not isinstance(project_id, str) or not project_id.strip():
+        raise ValueError("Manila requests require an authenticated project scope")
     endpoint = _get_manila_endpoint(conn)
     logger.debug(
         f"Manila client: endpoint={endpoint}, project_id={project_id}, token_src={'original' if hasattr(conn, '_afterglow_token') else 'sdk'}"

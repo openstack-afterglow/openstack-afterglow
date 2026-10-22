@@ -626,3 +626,120 @@ def test_share_access_rules_read_native_manila_access_list_envelope():
     assert {method for method, _, _ in requests} == {"GET"}
     assert {version for _, _, version in requests} == {"2.65"}
     assert all(path == "/v2/project/share-access-rules?share_id=share-1" for _, path, _ in requests)
+
+
+@pytest.fixture
+def native_manila_transport(monkeypatch):
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from types import SimpleNamespace
+    from urllib.parse import urlsplit
+
+    import openstack.connection
+    from keystoneauth1 import access, session
+    from keystoneauth1.identity.access import AccessInfoPlugin
+
+    observed = []
+    share = {"id": "share-native", "name": "Executor share", "size": 8, "status": "available", "share_proto": "CEPHFS"}
+    quotas = {"shares": {"limit": 4, "in_use": 1}, "gigabytes": {"limit": 32, "in_use": 8}}
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_):
+            pass
+
+        def do_GET(self):
+            path = urlsplit(self.path).path
+            observed.append((path, self.headers.get("X-Auth-Token")))
+            if self.headers.get("X-Auth-Token") != "native-executor-token":
+                status, body = 401, {"error": "invalid token"}
+            elif path == "/v2/executor-project/shares/detail":
+                status, body = 200, {"shares": [share]}
+            elif path == "/v2/executor-project/quota-sets/personal-project/detail":
+                status, body = 200, {"quota_set": quotas}
+            else:
+                status, body = 404, {"error": "unknown Manila route"}
+            payload = json.dumps(body).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    connections = []
+    monkeypatch.setattr("app.config.get_settings", lambda: SimpleNamespace(os_manila_endpoint=""))
+
+    def connect(*, scoped_endpoint=True, native_project="executor-project", metadata=True):
+        endpoint = f"http://127.0.0.1:{server.server_port}/v2"
+        if scoped_endpoint:
+            endpoint += "/executor-project"
+        token = {
+            "methods": ["password"],
+            "expires_at": "2036-10-22T00:00:00Z",
+            "issued_at": "2026-10-22T00:00:00Z",
+            "user": {"id": "executor", "name": "executor", "domain": {"id": "Default"}},
+            "roles": [{"id": "admin", "name": "admin"}],
+            "catalog": [
+                {
+                    "id": "manila",
+                    "type": "sharev2",
+                    "name": "manila",
+                    "endpoints": [
+                        {"id": "share-public", "interface": "public", "region": "RegionOne", "url": endpoint}
+                    ],
+                }
+            ],
+        }
+        if native_project is not None:
+            token["project"] = {"id": native_project, "name": "Executor", "domain": {"id": "Default"}}
+        auth = AccessInfoPlugin(access.create(body={"token": token}, auth_token="native-executor-token"))
+        conn = openstack.connection.Connection(session=session.Session(auth=auth))
+        conn._afterglow_project_id = "personal-project"
+        conn._afterglow_token = "native-executor-token"
+        if metadata:
+            conn._afterglow_authenticated_project_id = native_project
+        connections.append(conn)
+        return conn
+
+    try:
+        yield SimpleNamespace(connect=connect, observed=observed, quota=quotas)
+    finally:
+        for connection in connections:
+            connection.close()
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+@pytest.mark.parametrize("scoped_endpoint,metadata", [(True, True), (False, True), (True, False)])
+def test_manila_http_uses_authenticated_project_and_preserves_logical_quota_target(
+    native_manila_transport, scoped_endpoint, metadata
+):
+    from app.services import manila
+
+    native = native_manila_transport
+    conn = native.connect(scoped_endpoint=scoped_endpoint, metadata=metadata)
+    shares = manila.list_file_storages(conn, all_tenants=True)
+    assert [(share.id, share.name, share.size, share.share_proto) for share in shares] == [
+        ("share-native", "Executor share", 8, "CEPHFS")
+    ]
+    assert manila.get_file_storage_quota(conn, strict=True) == native.quota
+    assert native.observed == [
+        ("/v2/executor-project/shares/detail", "native-executor-token"),
+        ("/v2/executor-project/quota-sets/personal-project/detail", "native-executor-token"),
+    ]
+    assert conn._afterglow_project_id == "personal-project"
+
+
+@pytest.mark.parametrize("native_project", [None, ""])
+def test_manila_without_native_project_never_uses_logical_workspace(native_manila_transport, native_project):
+    from app.services import manila
+
+    native = native_manila_transport
+    conn = native.connect(scoped_endpoint=False, native_project=native_project, metadata=native_project is not None)
+    with pytest.raises(ValueError, match="authenticated project scope"):
+        manila.list_file_storages(conn)
+    assert native.observed == []

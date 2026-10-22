@@ -255,6 +255,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	let adminProjects = $state<ProjectInfo[]>([]);
 	let adminProjectsLoading = $state(false);
 	let adminProjectQuotas = $state<Map<string, ProjectQuota>>(new Map());
+	let adminProjectQuotasLoading = $state(false);
 	let adminProjectSearch = $state('');
 	let adminSelectedProjectId = $state<string | null>(null);
 	let adminSelectedProjectName = $state<string | null>(null);
@@ -646,6 +647,9 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			if (!isCurrent()) return false;
 			flavors = value;
 			optionStatus.flavors = 'loaded';
+			// Keep the prior UUID for the explicit warning, but readiness derives from
+			// this replacement snapshot and blocks every later step and dispatch.
+			// Never silently substitute a different flavor after capacity/ACL changes.
 			delete optionErrors.flavors;
 			flavorRefreshError = null;
 			return true;
@@ -774,7 +778,6 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		if (opts.adminMode() && adminSelectedProjectId) {
 			const targetProjectId = adminSelectedProjectId;
 			const generation = loadGeneration;
-			if (adminProjectQuotasPromise) await adminProjectQuotasPromise;
 			if (!targetIsCurrent(targetProjectId, generation)) return;
 
 			const summary = adminProjectQuotas.get(targetProjectId);
@@ -824,18 +827,44 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		if (destroyed) return Promise.resolve();
 		if (adminProjectQuotasPromise) return adminProjectQuotasPromise;
 
+		adminProjectQuotasLoading = true;
 		const requestId = ++adminProjectQuotasRequestId;
 		const { token, projectId } = authScope();
+		const signal = projectLoadController.signal;
+		const owner = get(auth);
+		let authorityChanged = false;
+		const ownerKey = JSON.stringify([owner.sessionId, owner.userId, owner.identityDomainId, owner.domainId, owner.projectId, owner.isSystemAdmin, !!owner.token]);
+		const unsubscribe = auth.subscribe(state => {
+			if (JSON.stringify([state.sessionId, state.userId, state.identityDomainId, state.domainId, state.projectId, state.isSystemAdmin, !!state.token]) !== ownerKey) authorityChanged = true;
+		});
+		const generation = loadGeneration;
+		const current = () => !destroyed && !authorityChanged && !signal.aborted && generation === loadGeneration
+			&& requestId === adminProjectQuotasRequestId && get(auth).sessionId === owner.sessionId
+			&& get(auth).userId === owner.userId && get(auth).projectId === owner.projectId;
 		let promise!: Promise<void>;
 		promise = (async () => {
 			try {
-				const rows = await api.get<ProjectQuota[]>('/api/v1/admin/overview/projects', token, projectId);
-				if (requestId !== adminProjectQuotasRequestId) return;
+				const rows: ProjectQuota[] = [];
+				let nextProject = 0;
+				await Promise.all(Array.from({ length: Math.min(4, adminProjects.length) }, async () => {
+					while (current() && nextProject < adminProjects.length) {
+						const project = adminProjects[nextProject++];
+						try {
+							const quota = await api.get<QuotaResponse>(`/api/v1/admin/quotas/${encodeURIComponent(project.id)}`, token, projectId, { signal });
+							const pair = (value: { limit: number; in_use: number } | undefined) => value && Number.isFinite(value.limit) && Number.isFinite(value.in_use) ? { used: value.in_use, quota: value.limit } : undefined;
+							const instances = pair(quota.compute?.instances), cpu = pair(quota.compute?.cores), ram_mb = pair(quota.compute?.ram), disk_gb = pair(quota.volume?.gigabytes);
+							if (current() && instances && cpu && ram_mb && disk_gb) rows.push({ project_id: project.id, project_name: project.name, instances, cpu, ram_mb, disk_gb });
+						} catch { /* Unverified quota is omitted, never displayed as zero. */ }
+					}
+				}));
+				if (!current()) return;
 				adminProjectQuotas = new Map(rows.map(row => [row.project_id, row]));
 			} catch {
-				if (requestId === adminProjectQuotasRequestId) adminProjectQuotas = new Map();
+				if (current()) adminProjectQuotas = new Map();
 			} finally {
+				unsubscribe();
 				if (adminProjectQuotasPromise === promise) adminProjectQuotasPromise = null;
+				if (requestId === adminProjectQuotasRequestId) adminProjectQuotasLoading = false;
 			}
 		})();
 		adminProjectQuotasPromise = promise;
@@ -938,7 +967,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		adminSelectedProjectName = null;
 		resetTargetOptions();
 		if (opts.adminMode()) {
-			void Promise.all([loadAdminProjects(), loadAdminProjectQuotas()]);
+			void loadAdminProjects().then(loadAdminProjectQuotas);
 		} else {
 			ensureStepData(1);
 			void loadFlavorOptions();
@@ -1266,7 +1295,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				adminSelectedProjectId = targetId;
 				adminSelectedProjectName = targetId;
 				resetTargetOptions();
-				void loadAdminProjects();
+				void loadAdminProjects().then(loadAdminProjectQuotas);
 				const bootPromise = loadBootOptions();
 				preloadConfigurationAfterBoot(bootPromise, targetId);
 				void loadFlavorOptions();
@@ -1274,7 +1303,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				ensureStepData(wizardState.step as WizardStepId);
 				return;
 			}
-			void Promise.all([loadAdminProjects(), loadAdminProjectQuotas()]);
+			void loadAdminProjects().then(loadAdminProjectQuotas);
 			return;
 		}
 		const bootPromise = loadBootOptions();
@@ -1324,6 +1353,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		// Admin state
 		get adminProjects() { return adminProjects; },
 		get adminProjectsLoading() { return adminProjectsLoading; },
+		get adminProjectQuotasLoading() { return adminProjectQuotasLoading; },
 		get adminProjectQuotas() { return adminProjectQuotas; },
 		get adminProjectSearch() { return adminProjectSearch; },
 		set adminProjectSearch(v: string) { adminProjectSearch = v; },

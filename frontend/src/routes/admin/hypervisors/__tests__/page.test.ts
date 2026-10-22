@@ -1,16 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
+import type { HypervisorServer } from '$lib/components/admin/hypervisors/HypervisorDetailPanel.svelte';
+import type * as Reactivity from 'svelte/reactivity';
+
+const viewport = vi.hoisted(() => ({ desktop: true }));
+vi.mock('svelte/reactivity', async importOriginal => {
+	const original = await importOriginal<typeof Reactivity>();
+	return { ...original, MediaQuery: class { get current() { return viewport.desktop; } } };
+});
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ api }));
 vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'admin-token', projectId: 'admin-project' }), authReady: writable(true), projectSwitching: writable(false) }));
-vi.mock('$lib/stores/projectNames', () => ({ projectNames: { subscribe: writable(new Map([['project-1', 'Project One']])).subscribe, load: vi.fn() } }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({ createAutoRefresh: () => ({ active: false, intervalSeconds: 30, intervalOptions: [15, 30, 60] }) }));
 import Page from '../+page.svelte';
 
 const server = { id: 'vm-1', name: 'production-vm', status: 'ACTIVE', project_id: 'project-1', flavor: 'small' };
-function host(state = 'up', status = 'disabled', servers = [server]) {
+function host(state = 'up', status = 'disabled', servers: HypervisorServer[] = [server]) {
 	return {
 		id: 'hv-1', name: 'compute-1', hypervisor_hostname: 'compute-1', state, status, servers,
 		hypervisor_type: 'QEMU', hypervisor_version: 1, host_ip: '10.0.0.1', host_time: '', uptime: '', service_host: 'compute-1',
@@ -35,6 +42,7 @@ async function openHost() {
 
 beforeEach(() => {
 	api.get.mockReset(); api.post.mockReset(); api.put.mockReset();
+	viewport.desktop = true;
 	Element.prototype.animate = vi.fn().mockReturnValue({ finished: Promise.resolve(), cancel: vi.fn(), play: vi.fn() });
 	window.matchMedia = vi.fn().mockImplementation((query: string) => ({
 		matches: true, media: query, onchange: null,
@@ -185,5 +193,55 @@ describe('admin hypervisor host controls', () => {
 		expect((within(next).getByRole('checkbox', { name: /펜싱되어 실행되지 않음/ }) as HTMLInputElement).checked).toBe(false);
 		expect((within(next).getByRole('button', { name: '대피 요청' }) as HTMLButtonElement).disabled).toBe(true);
 		expect(api.post).not.toHaveBeenCalled();
+	});
+
+	it('shows actual domain, project and flavor names with full UUIDs even when names repeat', async () => {
+		serve(host('up', 'enabled', [
+			{ ...server, project_name: 'Repeated project', domain_id: 'domain-a', domain_name: 'Repeated domain', owner_status: 'known', flavor_id: 'flavor-a', flavor_name: 'Repeated flavor' },
+			{ ...server, id: 'vm-2', name: 'second-vm', project_id: 'project-2', project_name: 'Repeated project', domain_id: 'domain-b', domain_name: 'Repeated domain', owner_status: 'known', flavor_id: 'flavor-b', flavor_name: 'Repeated flavor' },
+		]));
+		await openHost();
+		const first = within(await screen.findByRole('group', { name: 'production-vm (vm-1)' }));
+		const second = within(screen.getByRole('group', { name: 'second-vm (vm-2)' }));
+		for (const [row, domain, project, flavor] of [[first, 'domain-a', 'project-1', 'flavor-a'], [second, 'domain-b', 'project-2', 'flavor-b']] as const) {
+			expect(row.getByText('Repeated domain', { exact: false }).textContent).toContain(domain);
+			expect(row.getByText('Repeated project', { exact: false }).textContent).toContain(project);
+			expect(row.getByText('Repeated flavor', { exact: false }).textContent).toContain(flavor);
+		}
+		expect(api.get.mock.calls.some(([path]) => path === '/api/v1/admin/projects')).toBe(false);
+	});
+
+	it('keeps deleted and unknown ownership explicit, falls back to UUIDs and does not infer a user home', async () => {
+		serve(host('up', 'enabled', [
+			{ ...server, domain_id: null, domain_name: null, project_name: null, owner_status: 'deleted_project', flavor_id: 'deleted-flavor-id', flavor_name: null },
+			{ ...server, id: 'vm-2', name: 'unknown-owner-vm', project_id: '', domain_id: null, domain_name: null, project_name: null, owner_status: 'unknown_owner', flavor_id: null, flavor_name: null, flavor: 'legacy-flavor' },
+			{ ...server, id: 'vm-3', name: 'deleted-domain-vm', domain_id: 'deleted-domain-id', domain_name: null, project_name: null, owner_status: 'deleted_domain' },
+		]));
+		await openHost();
+		const deleted = within(await screen.findByRole('group', { name: 'production-vm (vm-1)' }));
+		expect(deleted.getByText('삭제된 프로젝트')).toBeTruthy();
+		expect(deleted.getByText('project-1')).toBeTruthy();
+		expect(deleted.getByText('deleted-flavor-id')).toBeTruthy();
+		expect(deleted.queryByText('Project One')).toBeNull();
+		const unknown = within(screen.getByRole('group', { name: 'unknown-owner-vm (vm-2)' }));
+		expect(unknown.getAllByText('소유자 미확인').length).toBeGreaterThan(0);
+		expect(unknown.getByText('legacy-flavor')).toBeTruthy();
+		expect((unknown.getByRole('button', { name: 'unknown-owner-vm' }) as HTMLButtonElement).disabled).toBe(true);
+		const deletedDomain = within(screen.getByRole('group', { name: 'deleted-domain-vm (vm-3)' }));
+		expect(deletedDomain.getByText('삭제된 도메인')).toBeTruthy();
+		expect(deletedDomain.getByText('deleted-domain-id')).toBeTruthy();
+	});
+
+	it('retains domain/project/flavor UUIDs and per-instance actions in compact host cards', async () => {
+		viewport.desktop = false;
+		serve(host('up', 'disabled', [{ ...server, domain_id: 'domain-a', domain_name: 'Domain', project_name: 'Project', flavor_id: 'flavor-a', flavor_name: 'Small' }]));
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'compute-1' }));
+		const open = await screen.findByRole('button', { name: 'production-vm' });
+		const card = within(open.closest('article')!);
+		expect(card.getByText('Domain', { exact: false, selector: 'dd' }).textContent).toContain('domain-a');
+		expect(card.getByText('Project', { exact: false, selector: 'dd' }).textContent).toContain('project-1');
+		expect(card.getByText('Small', { exact: false, selector: 'dd' }).textContent).toContain('flavor-a');
+		expect(card.getByRole('button', { name: '이동' })).toBeTruthy();
 	});
 });

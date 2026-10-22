@@ -15,18 +15,50 @@ from app.services.ssh_access import GITHUB_LOGIN_METADATA_KEY, SSH_ACCESS_MODE_M
 _logger = logging.getLogger(__name__)
 
 
+def _requires_flavor_access_check(conn) -> bool:
+    native_admin = getattr(conn, "_afterglow_compute_admin", None)
+    return native_admin if type(native_admin) is bool else getattr(conn, "_afterglow_is_system_admin", False) is True
+
+
+def project_flavor_visibility(conn: openstack.connection.Connection) -> dict[str, bool]:
+    """Read current native visibility; an administrator's catalog is not target access."""
+    project_id = conn._afterglow_project_id
+    admin = _requires_flavor_access_check(conn)
+    visible: dict[str, bool] = {}
+    for flavor in conn.compute.flavors(is_public=None):
+        public = getattr(flavor, "is_public", None) is True
+        if not public and admin:
+            access = conn.compute.get_flavor_access(flavor.id)
+            if not any((entry.get("tenant_id") or entry.get("project_id")) == project_id for entry in access):
+                continue
+        visible[str(flavor.id)] = public
+    return visible
+
+
 def list_flavors(conn: openstack.connection.Connection) -> list[FlavorInfo]:
+    """Project-visible choices; native administrator catalogs require explicit target ACLs."""
+    return _list_flavors(conn, project_id=conn._afterglow_project_id)
+
+
+def list_catalog_flavors(conn: openstack.connection.Connection) -> list[FlavorInfo]:
+    """Operator inventory only; never use this global catalog for project admission."""
+    return _list_flavors(conn, project_id=None)
+
+
+def _list_flavors(conn: openstack.connection.Connection, *, project_id: str | None) -> list[FlavorInfo]:
     flavors = []
-    # is_public=None → 공개 + 접근 권한이 부여된 비공개 플레이버 모두 반환
+    admin = _requires_flavor_access_check(conn)
     for f in conn.compute.flavors(is_public=None):
+        if project_id is not None and getattr(f, "is_public", None) is not True and admin:
+            access = conn.compute.get_flavor_access(f.id)
+            if not any((entry.get("tenant_id") or entry.get("project_id")) == project_id for entry in access):
+                continue
         extra = dict(f.extra_specs) if f.extra_specs else {}
-        # List API는 extra_specs를 포함하지 않을 수 있으므로 개별 조회 fallback
+        # Older Nova microversions omit extra specs. Reuse the native metadata
+        # endpoint instead of degrading an unreadable GPU request into CPU-only.
         if not extra:
-            try:
-                detail = conn.compute.get_flavor(f.id)
-                extra = dict(detail.extra_specs) if detail.extra_specs else {}
-            except Exception:
-                pass
+            detail = conn.compute.fetch_flavor_extra_specs(f)
+            extra = dict(detail.extra_specs)
         flavors.append(
             FlavorInfo(
                 id=f.id,
@@ -220,7 +252,10 @@ def get_project_quota(conn: openstack.connection.Connection, project_id: str, *,
             or isinstance(in_use, bool)
         ):
             raise ValueError(f"Nova quota data is malformed for {key}")
-        return {"limit": limit, "in_use": in_use}
+        reserved = q.get("reserved", 0)
+        if type(reserved) is not int or reserved < 0:
+            raise ValueError(f"Nova quota reservations are malformed for {key}")
+        return {"limit": limit, "in_use": in_use, **({"reserved": reserved} if "reserved" in q else {})}
 
     def _strict_limits_entry(limits, limit_attr: str, used_attr: str, key: str) -> dict:
         limit = getattr(limits, limit_attr, None)
@@ -250,6 +285,9 @@ def get_project_quota(conn: openstack.connection.Connection, project_id: str, *,
         # failures may use that usage-bearing fallback too.
         if strict and isinstance(exc, ValueError):
             raise
+        authenticated_project = getattr(conn, "_afterglow_authenticated_project_id", None)
+        if strict and isinstance(authenticated_project, str) and authenticated_project != project_id:
+            raise ValueError("Nova target project usage is unavailable") from exc
         _logger.warning("Nova quota_set 조회 실패 — limits API로 fallback", exc_info=True)
         limits = conn.compute.get_limits()
         absolute = limits.absolute

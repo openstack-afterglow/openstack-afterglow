@@ -1,6 +1,5 @@
 """관리자 엔드포인트 필터 파라미터 단위 테스트 (volumes, instances, topology)."""
 
-import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,6 +17,8 @@ def _make_volume(vid="v1", name="test-vol", status="available", project_id="proj
     v.size = 10
     v.project_id = project_id
     v.created_at = "2026-01-01T00:00:00Z"
+    v.volume_type = ""
+    v.attachments = []
     return v
 
 
@@ -27,6 +28,9 @@ def _iter_sdk_volumes(statuses):
         volume = MagicMock()
         volume.id = f"vol-{index}"
         volume.status = status
+        volume.size = 10
+        volume.project_id = "project"
+        volume.attachments = []
         yield volume
 
 
@@ -40,56 +44,55 @@ async def test_volume_status_summary_counts_all_project_sdk_iterator(admin_clien
     resp = await admin_client.get("/api/v1/admin/volumes/status-summary")
 
     assert resp.status_code == 200
-    assert resp.json() == {
-        "total": 29,
-        "statuses": [
-            {"status": "available", "count": 26},
-            {"status": "error", "count": 1},
-            {"status": "in-use", "count": 1},
-            {"status": "unknown", "count": 1},
-        ],
-    }
+    assert resp.json()["total"] == 29
+    assert resp.json()["total_gb"] == 290
+    assert resp.json()["statuses"] == [
+        {"status": "available", "count": 26},
+        {"status": "error", "count": 1},
+        {"status": "in-use", "count": 1},
+        {"status": "unknown", "count": 1},
+    ]
     mock_conn.block_storage.volumes.assert_called_once_with(details=True, all_projects=True)
     mock_conn.session.get.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_all_volumes_status_filter(admin_client, mock_conn):
-    """status 파라미터가 Cinder SDK kwargs로 전달된다."""
+    """Filter complete inventory before applying the marker page."""
     vol = _make_volume(status="available")
     mock_conn.block_storage.volumes.return_value = [vol]
 
     resp = await admin_client.get("/api/v1/admin/all-volumes?limit=10&status=available")
     assert resp.status_code == 200
 
-    call_kwargs = mock_conn.block_storage.volumes.call_args[1]
-    assert call_kwargs.get("status") == "available"
+    assert [v["id"] for v in resp.json()["items"]] == ["v1"]
+    mock_conn.block_storage.volumes.assert_called_once_with(details=True, all_projects=True)
 
 
 @pytest.mark.asyncio
 async def test_all_volumes_project_id_filter(admin_client, mock_conn):
-    """project_id 파라미터가 Cinder SDK kwargs로 전달된다."""
+    """An independent native project condition does not rescope the caller."""
     vol = _make_volume(project_id="proj-abc")
     mock_conn.block_storage.volumes.return_value = [vol]
 
     resp = await admin_client.get("/api/v1/admin/all-volumes?limit=10&project_id=proj-abc")
     assert resp.status_code == 200
 
-    call_kwargs = mock_conn.block_storage.volumes.call_args[1]
-    assert call_kwargs.get("project_id") == "proj-abc"
+    assert [v["project_id"] for v in resp.json()["items"]] == ["proj-abc"]
+    mock_conn.block_storage.volumes.assert_called_once_with(details=True, all_projects=True)
 
 
 @pytest.mark.asyncio
 async def test_all_volumes_name_filter(admin_client, mock_conn):
-    """name 파라미터가 name~ (substring) 키로 SDK에 전달된다."""
+    """Text matches names or IDs across the complete native inventory."""
     vol = _make_volume(name="my-vol")
     mock_conn.block_storage.volumes.return_value = [vol]
 
     resp = await admin_client.get("/api/v1/admin/all-volumes?limit=10&name=my-vol")
     assert resp.status_code == 200
 
-    call_kwargs = mock_conn.block_storage.volumes.call_args[1]
-    assert call_kwargs.get("name~") == "my-vol"
+    assert [v["name"] for v in resp.json()["items"]] == ["my-vol"]
+    assert "name~" not in mock_conn.block_storage.volumes.call_args.kwargs
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -134,35 +137,29 @@ async def test_all_instances_status_filter(admin_client, mock_conn):
 
 
 @pytest.mark.asyncio
-async def test_all_instances_name_filter_wraps_in_regex(admin_client, mock_conn):
-    """name 파라미터가 .*{re.escape(input)}.* 형태의 regex로 Nova에 전달된다."""
+async def test_all_instances_name_filter_uses_literal_full_inventory(admin_client, mock_conn):
+    """Literal name/ID filtering is not delegated to Nova's name-only regex."""
     mock_conn.compute.get_endpoint.return_value = "http://nova"
     mock_conn.session.get.return_value = _make_session_response(_make_servers_response(name="test-vm"))
 
     resp = await admin_client.get("/api/v1/admin/all-instances?limit=10&name=test-vm")
     assert resp.status_code == 200
 
-    call_kwargs = mock_conn.session.get.call_args[1]
-    name_param = call_kwargs["params"].get("name")
-    assert name_param is not None
-    expected = ".*" + re.escape("test-vm") + ".*"
-    assert name_param == expected
+    assert [v["name"] for v in resp.json()["items"]] == ["test-vm"]
+    assert "name" not in mock_conn.session.get.call_args.kwargs["params"]
 
 
 @pytest.mark.asyncio
 async def test_all_instances_name_filter_escapes_metachar(admin_client, mock_conn):
-    """name 필터의 정규식 메타문자가 escape 처리된다."""
+    """Regex metacharacters remain literal search characters."""
     mock_conn.compute.get_endpoint.return_value = "http://nova"
-    mock_conn.session.get.return_value = _make_session_response({"servers": []})
+    mock_conn.session.get.return_value = _make_session_response(_make_servers_response(name="test.vm["))
 
     resp = await admin_client.get("/api/v1/admin/all-instances?limit=10&name=test.vm%5B")
     assert resp.status_code == 200
 
-    call_kwargs = mock_conn.session.get.call_args[1]
-    name_param = call_kwargs["params"].get("name")
-    assert ".*" in name_param
-    assert r"\." in name_param
-    assert r"\[" in name_param
+    assert [v["name"] for v in resp.json()["items"]] == ["test.vm["]
+    assert "name" not in mock_conn.session.get.call_args.kwargs["params"]
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

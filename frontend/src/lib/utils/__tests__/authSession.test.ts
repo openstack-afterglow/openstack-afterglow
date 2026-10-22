@@ -20,11 +20,11 @@ function current() {
 }
 
 describe('identity and working-domain session binding', () => {
-	it.each([false, true])('preserves legacy fresh sessions and opens the workspace chooser (provider=%s)', (federated) => {
+	it.each([false, true])('uses an established project or the necessary chooser (provider=%s)', (federated) => {
 		for (const available_domains of [[], [domains[0]], domains]) {
 			for (const project_id of ['', 'default-a']) {
 				const { state, target } = loginAuthState({ ...login, available_domains, project_id, project_name: 'Default' }, { federated });
-				expect(target).toBe('/select-domain');
+				expect(target).toBe(project_id ? '/dashboard' : available_domains.length > 1 ? '/select-domain' : '/select-project');
 				expect(state).toMatchObject({ domainId: 'tenant-a', identityDomainId: 'tenant-a', isDomainManager: true,
 					projectId: project_id || null, projectName: project_id ? 'Default' : null,
 					isSystemAdmin: false, canCreateDomain: false, availableDomains: available_domains, federated });
@@ -35,7 +35,7 @@ describe('identity and working-domain session binding', () => {
 	it.each([false, true])('keeps a default-project hint projectless for password/provider authentication (provider=%s)', (federated) => {
 		for (const available_domains of [[domains[0]], domains]) {
 			const mapped = loginAuthState({ ...login, available_domains, project_id: ' ', project_name: 'Default', default_project_id: 'hint-only' }, { federated });
-			expect(mapped.target).toBe('/select-domain');
+			expect(mapped.target).toBe(available_domains.length > 1 ? '/select-domain' : '/select-project');
 			expect(mapped.state).toMatchObject({ projectId: null, projectName: null, federated });
 		}
 	});
@@ -54,13 +54,25 @@ describe('identity and working-domain session binding', () => {
 			domain_name: personal.name, project_id: 'personal-primary', project_name: 'alice-c8f572', is_domain_manager: false,
 			available_domains: [personal, organization] }, { federated });
 		setLoginAuth(result.state);
-		expect(result.target).toBe('/select-domain');
+		expect(result.target).toBe('/dashboard');
 		expect(get(auth)).toMatchObject({ identityDomainId: 'account', domainId: personal.id, projectId: 'personal-primary', availableDomains: [personal, organization] });
 		const owner = get(auth);
 		setAuth(domainAuthState({ ...login, user_id: owner.userId!, identity_domain_id: 'account', identity_domain_name: 'account',
 			domain_id: organization.id, domain_name: organization.name, project_id: 'org-project', project_name: 'Research', available_domains: [personal, organization] }, owner, organization.id));
 		expect(get(auth)).toMatchObject({ identityDomainId: 'account', domainId: organization.id, projectId: 'org-project', sessionId: owner.sessionId });
 		clearAuth();
+	});
+
+	it.each([false, true])('accepts remembered organization only with exact verified metadata (provider=%s)', federated => {
+		const response: LoginResponse = { ...login, domain_id: 'tenant-b', project_id: 'saved-project', available_domains: domains,
+			initial_workspace: { kind: 'remembered', domain_id: 'tenant-b', project_id: 'saved-project' } };
+		expect(loginAuthState(response, { federated }).target).toBe('/dashboard');
+		for (const initial_workspace of [undefined, { kind: 'remembered' as const, domain_id: 'tenant-a', project_id: 'saved-project' },
+			{ kind: 'remembered' as const, domain_id: 'tenant-b', project_id: 'other-project' },
+			{ kind: 'personal' as const, domain_id: 'tenant-b', project_id: 'saved-project' }]) {
+			expect(() => loginAuthState({ ...response, initial_workspace }, { federated })).toThrow(SessionDomainError);
+		}
+		expect(() => loginAuthState({ ...response, available_domains: [domains[0]] }, { federated })).toThrow(SessionDomainError);
 	});
 
 	it.each([false, true])('opens the chooser for a visible projectless administrator without rebinding identity (provider=%s)', federated => {

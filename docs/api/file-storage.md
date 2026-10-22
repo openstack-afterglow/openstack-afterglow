@@ -28,6 +28,8 @@ Manila 공유 파일 시스템(CephFS/NFS)을 관리합니다.
 | `Authorization` | `Bearer <access_token>` (로그인 응답의 access JWT) |
 | `X-Project-Id` | (선택) 프로젝트 UUID — 생략 시 토큰의 프로젝트로 처리, 다른 값이면 rescope |
 
+Manila REST URL의 `/v2/{project_id}`는 **native token의 실제 인증 프로젝트**입니다. 별도 administrator executor를 쓰는 경로는 `_afterglow_authenticated_project_id`를 사용하고, 그 metadata가 없는 SDK 연결은 `current_project_id`를 사용합니다. Header의 논리 workspace를 catalog URL에 덧붙이지 않으며 native project가 없으면 요청 전에 거부합니다. Catalog가 이미 `/v2/{executor-project}`를 포함하면 project를 다시 추가하지 않고 `/v2` root인 경우에만 해당 executor project를 붙입니다. Quota의 `quota-sets/{target_project}`는 이 transport prefix와 별도이며 원래 명시 대상 프로젝트를 유지합니다.
+
 > **소유권 모델:** Afterglow는 share의 `metadata.union_project_id`로 소유 프로젝트를 추적합니다.
 > 단건 조회/변경 시 이 값이 호출자 프로젝트와 다르면 `404`(존재 은폐)를 반환합니다.
 > 단, 시스템 관리자와 `is_public` share는 cross-project 노출이 정상이므로 검증에서 면제됩니다.

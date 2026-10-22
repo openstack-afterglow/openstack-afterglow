@@ -3,6 +3,7 @@
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
   import PageShell from '$lib/components/ui/PageShell.svelte';
   import ProfileSection from '$lib/components/account/ProfileSection.svelte';
+  import LoginPreferenceSection from '$lib/components/account/LoginPreferenceSection.svelte';
   import PasswordSection from '$lib/components/account/PasswordSection.svelte';
   import KeypairsSection from '$lib/components/account/KeypairsSection.svelte';
   import ActivitySection from '$lib/components/account/ActivitySection.svelte';
@@ -40,6 +41,7 @@
     <ProfileSection />
     <PasswordSection />
     <SecuritySection />
+    <LoginPreferenceSection />
     <div class="lg:col-span-2">
       <BetaFeaturesSection />
     </div>

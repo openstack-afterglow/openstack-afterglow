@@ -9,7 +9,7 @@ nav_order: 20
 > 태그: `admin`, `admin-instances`, `admin-services`, `admin-worker-runtime`, `admin-flavors`, `admin-identity`, `admin-gpu`, `admin-libraries`, `admin-notion`, `admin-images`, `admin-activity`, `admin-orphans`, `admin-dashboard`, `admin-announcements`, `admin-key-manager`
 > 기본 경로: `/api/v1/admin`
 
-관리자 API는 클러스터 전체(모든 프로젝트)를 대상으로 하는 **시스템 스코프** 관리 기능입니다. 하이퍼바이저·리소스 집계, 전체 리소스 조회, VM 마이그레이션, 볼륨/네트워크 관리, 사용자·프로젝트·쿼터·역할, GPU·이미지·Notion 연동, 고아 리소스 정리, 워커 런타임, 공지, k3s 클러스터 관리 등을 포함합니다.
+관리자 API는 클러스터 전체(모든 프로젝트)를 대상으로 하는 **현재 system-admin 권위로 보호된** 관리 기능입니다. 이것이 모든 공급자에게 system-scoped token을 보낸다는 뜻은 아닙니다. Native 정책에 맞춘 provider admin-project 실행과 caller-bound credential/telemetry를 구분하며 하이퍼바이저·리소스 집계·전체 조회·VM/볼륨/네트워크·directory/quota/role·GPU/이미지/Notion·고아 정리 등을 제공합니다.
 
 ## 인증 및 권한
 
@@ -282,7 +282,7 @@ UI: [로그인 모니터링](/admin/monitoring/logins).
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | `GET` | `/api/v1/admin/overview` | 하이퍼바이저·인스턴스·vCPU/RAM/Disk 사용량·GPU 인스턴스 수 등 클러스터 개요 |
-| `GET` | `/api/v1/admin/overview/projects` | 프로젝트별 컴퓨트/스토리지 쿼터·사용량·GPU 인스턴스 수 |
+| `GET` | `/api/v1/admin/overview/domains` | 전체 native domain별 프로젝트 수·VM/vCPU/RAM/GPU·볼륨 수/GiB 집계 |
 | `GET` | `/api/v1/admin/monitoring/summary` | 서비스 상태·리소스·알림을 종합한 모니터링 요약 |
 | `GET` | `/api/v1/admin/notifications` | 관리자 알림(이상 상태·경고) 목록 |
 | `GET` | `/api/v1/admin/topology` | 전체 프로젝트 네트워크/라우터/인스턴스 토폴로지 (`AdminTopologyData`). 사용자용 `GET /api/v1/networks/topology` 응답에 더해 `networks[]`에 `provider_network_type` / `provider_segmentation_id` / `provider_physical_network`를 추가한다 (관리자 응답 전용). `instances[].is_database`는 Trove 전체 프로젝트 목록(`all_projects=True`)의 fixed IP 매칭으로 채우며 Trove 미배포 시 모두 `false` |
@@ -291,7 +291,7 @@ UI: [로그인 모니터링](/admin/monitoring/logins).
 
 `GET /monitoring/summary`는 기존 inventory·quota allocation과 별도로 `telemetry: {source, status, resources, truncated, error}`를 반환합니다. 각 resource는 공개 whitelist의 `id`, `type`, `name`, `metrics`만 포함하고 metric은 `series[{ts,value}]`, `unit`, `status`, 안전한 `error`를 갖습니다. 현재 caller의 Gnocchi 정책에 허용된 `nova_compute` CPU percent/frequency, `ipmi` 센서 및 `volume_provider`/`volume_provider_pool` 용량을 읽습니다. 이 목록은 완전한 cloud inventory가 아니며 Nova 할당량·호스트 도달성을 실측 이용률로 바꾸지 않습니다. Native 데이터는 기존 공통 inventory cache에 넣지 않고 매 요청 현재 시스템 관리자 권한과 native policy를 확인하며 응답은 no-store입니다. UI는 최대 12 resource × 12 meter와 기록 시각·단위·부분 coverage를 표시하고 이력은 펼칠 때 렌더합니다. 미수집을 0으로 채우지 않습니다.
 
-관리자 개요의 프로젝트별 리소스 표는 CPU·RAM·Disk 막대와 수치를 별도 공간에 표시합니다. 열 사이 간격을 유지하고 긴 수치는 해당 셀 안에서 줄바꿈하며, 좁은 화면에서는 표 내부를 가로 스크롤해 모든 열을 조회합니다. 프로젝트 행 선택은 기존 쿼터 패널을 열며 API 응답·쿼터 계산·저장 동작은 바뀌지 않습니다.
+관리자 개요는 프로젝트별 quota 표 대신 **도메인별 실제 할당 자원**을 표시합니다. `/overview/domains`는 native Keystone project→domain UUID join으로 전체 Nova/Cinder inventory를 합산하며 사용자 home·동일한 표시 이름으로 소유권을 추정하지 않습니다. 자원이 없는 native domain과 프로젝트도 집계 대상입니다. 각 row는 `domain_id`, `domain_name`, `project_ids`, `project_count`, `instances`, `vcpus`, `ram_mb`, `gpu_instances`, `volumes`, `volume_gb`, `attached_volumes/attached_gb`, `available_volumes/available_gb`, `owner_status`를 반환합니다. Nova의 embedded CPU/RAM 수치가 없으면 해당 합계는 null이며 확인된0과 다릅니다. 삭제된 프로젝트·도메인과 owner 누락은 `deleted_project`·`deleted_domain`·`unknown_owner`로 구분합니다. Directory 조회 장애는503이지 빈 합계가 아닙니다. 도메인 행에서 인스턴스/볼륨 목록을 열면 `domain_id` query를 독립 관측 picker에 적용하고 로그인 workspace는 바꾸지 않습니다. 퇴역한 `/overview/projects`는 제공하지 않습니다.
 
 `GET /overview` 응답 예시:
 
@@ -326,6 +326,8 @@ UI: [로그인 모니터링](/admin/monitoring/logins).
 | `POST` | `/api/v1/admin/hypervisors/{hypervisor_id}/remove` | 보고서 검토·실제 `nova-compute` 중지 확인·정확한 호스트명·제거 사유를 받은 뒤 최신 상태를 재점검하고 검증한 Nova compute service 등록만 삭제. 삭제 접수와 검증 완료를 구분 |
 
 `state`(`up/down`)는 호스트 생존 상태, `status`(`enabled/disabled`)는 새 인스턴스 스케줄링 허용 여부로 독립입니다. 비활성화는 기존 인스턴스를 자동으로 이동시키지 않습니다. 전체 이동은 `ACTIVE`의 live migration과 `SHUTOFF`의 cold migration을 별도로 요청하고, 다른 상태는 이유와 함께 건너뜁니다. `down`만으로 호스트가 펜싱되었다고 판단할 수 없으므로, 대피 전 운영자가 원본의 전원 차단·격리를 반드시 확인해야 합니다. API의 `requested`는 Nova가 비동기 작업을 접수했다는 뜻이며 **이동 완료·복구 성공이 아닙니다**. 개별 VM의 상태와 목적지, cold migration의 `VERIFY_RESIZE` 확정 여부를 후속 확인하세요.
+
+하이퍼바이저 상세의 `servers[]`는 각 VM의 `domain_id/domain_name`, `project_id/project_name`, `flavor_id/flavor_name`과 기존 `flavor`를 제공합니다. UI는 **도메인 - 프로젝트 - Flavor**로 표시하고 전체 UUID는 상세에서 확인할 수 있습니다. Native 소유 metadata가 없는 경우 확인 불가/삭제 상태를 표시하며 사용자 home이나 이름으로 보완하지 않습니다.
 
 ### 호스트 메타데이터 검토와 등록 제거
 
@@ -377,13 +379,19 @@ Nova `DELETE /os-services/{service_uuid}`의 `204`는 접수입니다. 이후 se
 | `GET` | `/api/v1/admin/all-routers` | 전체 라우터 목록 |
 | `GET` | `/api/v1/admin/all-ports` | 전체 포트 목록 |
 
-같은 조건은 `/admin/file-storage`, `/admin/topology`, `/admin/images`(이미지 `owner`), `/admin/instances/health`, `/admin/volumes/status-summary`, `/admin/overview/projects`, `/admin/key-manager/project-quotas`, `/admin/events` 및 `/admin/events/stats`에도 적용됩니다. Trove는 `/database-instances?all_projects=true`, Swift는 `/object-storage?all_projects=true`를 사용하고 이 관리자 모드에서 매번 관리자 권한을 확인합니다. 사용자 모드의 기존 소유권 계약은 바꾸지 않습니다.
+같은 조건은 `/admin/file-storage`, `/admin/topology`, `/admin/images`(이미지 `owner`), `/admin/instances/health`, `/admin/volumes/status-summary`, `/admin/overview/domains`, `/admin/key-manager/project-quotas`, `/admin/events` 및 `/admin/events/stats`에도 적용됩니다. Trove는 `/database-instances?all_projects=true`, Swift는 `/object-storage?all_projects=true`를 사용하고 이 관리자 모드에서 매번 관리자 권한을 확인합니다. 사용자 모드의 기존 소유권 계약은 바꾸지 않습니다.
 
 Swift의 all-project fan-out 중 한 프로젝트의 인증/조회가 실패하면503 `object_storage_inventory_unavailable`로 반환하며 나머지만 성공한 부분 목록으로 보고하지 않습니다. 도메인/프로젝트 조건은 fan-out 대상 프로젝트를 먼저 제한합니다.
 
-도메인을 지정하면 호출자의 Keystone 연결로 도메인과 소유 프로젝트 UUID를 새로 확인한 후 complete native inventory를 제한합니다. 이름이 같은 프로젝트를 합치지 않으며 없는 도메인은404, 디렉터리 장애·불명확한 metadata는503입니다. 전역 inventory cache를 재사용하더라도 이 directory 확인을 먼저 수행하고 scoped 결과를 전역 cache에 저장하지 않습니다. Nova/Zun/Trove/Manila 및 Barbican project quota는 native 페이지를 끝까지 읽습니다. 자원에 도메인이 직접 붙어 있다고 가정하지 않습니다.
+도메인을 지정하면 fresh system-admin guard를 통과한 configured provider 연결로 native 도메인과 소유 프로젝트 UUID를 새로 확인한 후 complete inventory를 제한합니다. 이름이 같은 프로젝트를 합치지 않으며 없는 도메인은404, 디렉터리 장애·불명확한 metadata는503입니다. 전역 inventory cache 재사용보다 directory 확인이 먼저이며 scoped 결과를 전역 cache에 저장하지 않습니다. Nova/Zun/Trove/Manila 및 Barbican project quota는 native 페이지를 끝까지 읽고 자원에 도메인이 직접 붙어 있다고 가정하지 않습니다.
+
+Interactive 관리자의 기본 workspace도 Personal/member입니다. **Nova2025.2 all-tenants server·hypervisor·flavor-access의 scope는 project**이므로 관리자 경로 전체를 system token으로 바꾸지 않습니다. Provider inventory·selected-domain resource directory·quota·Flavor CRUD/ACL은 명시적 `get_admin_os_conn`에서 fresh native system-admin caller guard 뒤 기존 configured 고정 admin project/service credential로 실행합니다. 인증 결과의 project scope·admin role·명시적 is_admin_project:true가 없거나 executor가 unavailable이면503이며 다른 scope/계정으로 자동 재시도하지 않습니다. `_afterglow_project_id`는 caller logical workspace, `_afterglow_authenticated_project_id`는 실제 executor project입니다. 사람의 Personal admin grant·기존 native grant·원 로그인 증명·header workspace는 변경하지 않습니다. Consumer, credential 관리/발급과 Aodh/Gnocchi telemetry는 caller-bound `get_os_conn`·native 정책을 유지합니다. 이는 caller impersonation이 아니라 검증된 system admin만 쓸 수 있는 명시적 configured provider 실행이며 권한 없는 caller는 executor 인증 전에 거부됩니다.
+
+Manila의 `/v2/{project}` URL prefix도 논리 Personal이 아닌 실제 인증 executor project를 사용합니다. Catalog가 이미 executor project를 포함하면 logical ID를 중복해서 붙이지 않습니다. 별도 quota resource의 target project는 그대로 유지하며 native transport project가 없으면 송신 전에 거부합니다.
 
 관리자 화면의 공용 도메인→프로젝트 picker는 사용자 header의 active workspace와 독립적입니다. 도메인 변경은 선택 프로젝트가 새 도메인에 없으면 해제하고 목록 page/marker·선택·열린 상세를 초기화합니다. 이전 scope/auth 수명의 늦은 조회·mutation 피드백은 새 화면에 게시하지 않습니다. Quota와 flavor 접근 대상, 포트 생성·볼륨 이관의 대상 프로젝트 선택도 같은 디렉터리 조건을 사용하되 **관측 필터를 mutation 대상 허용 목록으로 오용하지 않습니다**. Shared/external network 등 생성 옵션은 원래 native 가용 범위를 유지합니다. 공지 수신 도메인의 프로젝트 목록도 해당 도메인으로 제한합니다.
+
+`all-instances`는 모든 scope에서 complete Nova inventory에 `domain_id/project_id/host/status/name`을 AND로 적용한 뒤 native UUID 오름차순으로 marker page를 자릅니다. `name`은 이름 또는 전체 ID의 literal 부분 검색입니다. `all-volumes`도 complete Cinder inventory에 동일한 소유 scope와 `status`, `name`(이름/ID), `volume_type`, `min_size`, `max_size`(GiB 정수)를 적용한 뒤 같은 방식으로 페이지를 만듭니다. `min_size > max_size`는422입니다. 두 row 형식 모두 native 소유 `domain_id/domain_name/project_name/owner_status`를 포함합니다. URL의 domain/project query는 공용 관측 picker와 동기화되며 filter 변경은 열린 상세·선택·marker도 초기화합니다.
 
 사용자·프로젝트·그룹·credential·chat quota의 기존 **필수 identity-domain** 경계는 유지합니다. 이 도메인은 프로젝트 소유 도메인과 다른 의미이며 검증된 사용자의 account-wide quota 상세를 임의의 project-domain으로 잘라 표시하지 않습니다. 글로벌 설정·물리 인프라·catalog 기록에 의미 없는 도메인 필터를 추가하지 않습니다.
 
@@ -450,7 +458,7 @@ Swift의 all-project fan-out 중 한 프로젝트의 인증/조회가 실패하�
 
 | 메서드 | 경로 | 설명 | 요청 본문 |
 |--------|------|------|-----------|
-| `GET` | `/api/v1/admin/volumes/status-summary` | 상태별 볼륨 수 집계 | - |
+| `GET` | `/api/v1/admin/volumes/status-summary` | 전체 선택 scope의 상태별 개수·도메인별 개수/GiB 및 상세 필터 합계 | - |
 | `GET` | `/api/v1/admin/volumes/{volume_id}` | 볼륨 상세 조회 | - |
 | `PATCH` | `/api/v1/admin/volumes/{volume_id}` | 이름/설명 수정 | `name`, `description` (모두 선택) |
 | `DELETE` | `/api/v1/admin/volumes/{volume_id}` | 볼륨 삭제 (`204`) | - |
@@ -465,6 +473,8 @@ Swift의 all-project fan-out 중 한 프로젝트의 인증/조회가 실패하�
 **제한**: `force-delete` / `reset-status`는 Cinder의 정상 상태 전이를 우회하므로 데이터 정합성 위험이 있습니다. 오류 상태 복구 용도로만 사용하고, `extend`는 축소가 불가능합니다.
 
 `bulk-delete`는 요청 순서대로 모든 ID를 처리하며 한 볼륨의 Cinder 거부가 다음 삭제를 중단하지 않습니다. 응답은 `{ "results": [{ "id": "...", "ok": true, "error": null }] }` 형태이고, 연결·상태 경쟁으로 삭제할 수 없는 볼륨은 `ok: false`와 항목별 오류 메시지를 반환합니다. 관리자 화면의 전체 선택은 현재 marker page에만 적용되며, 필터·page size·page·project scope 변경 시 초기화됩니다. 성공한 ID만 선택에서 제거하고 실패한 ID는 재확인을 위해 유지합니다. 상태 card와 선택지는 `status-summary`에서 count가 0보다 큰 상태만 표시합니다.
+
+`status-summary`는 전체 선택 domain/project scope 기준 `total`, `total_gb`, `attached_count/attached_gb`, `available_count/available_gb`, `statuses`와 `domains`를 반환합니다. `domains`는 개요와 같은 native ownership 집계 형식이며 현재 marker page에 제한되지 않습니다. 상세 목록과 같은 `status/name/volume_type/min_size/max_size`를 보내면 `filtered_total/filtered_gb`로 그 결과도 별도 제공합니다. 상태·도메인 합계와 상세 검색 합계는 서로 다른 수치입니다. GiB는 Cinder에 할당된 논리 용량이지 게스트 파일시스템 사용량이나 backend 물리 점유량이 아닙니다.
 
 새 filter/page/project 결과를 기다릴 때 이전 행을 즉시 지워 stale 선택을 막습니다. 확인 대기 중 결과 경계나 user/project가 바뀌면 요청을 보내지 않습니다. 같은 결과의 백그라운드 새로고침은 기존 행을 유지합니다. 항목별 실패는 고정된 공개 메시지이며 upstream 응답·접속 정보·credential을 응답이나 activity에 복제하지 않습니다.
 
@@ -585,7 +595,7 @@ Zun 서비스 활성화 시에만 사용 가능합니다.
 
 ---
 
-## 가입 정책·개인 도메인 quota와 승인 대기열
+## 가입 정책·개인 프로젝트 quota와 승인 대기열
 
 시스템 관리자 → 설정에서 제어합니다. 모든 경로는 `/api/v1/admin` 기준이고 read도 fresh native `system:all` admin 검증을 요구합니다. Domain/project manager나 저장된 브라우저 flag는 권한이 아닙니다. 응답은 no-store/private입니다.
 
@@ -596,10 +606,15 @@ Zun 서비스 활성화 시에만 사용 가능합니다.
 | `GET /signup-requests` | `status=pending\|approved\|rejected\|all`, optional UUID `cursor` |200 `{items,next_cursor}`; 최대50개 |
 | `POST /signup-requests/{request_id}/approve` | 없음 |200 확정한 request DTO |
 | `POST /signup-requests/{request_id}/reject` | 없음 |200 확정한 request DTO |
+| `GET /personal-project-quotas` | 선택 `cursor` |200 `{items,next_cursor}`; exact Personal 전체 프로젝트를100개씩 조회 |
+| `GET /personal-project-quotas/{project_id}/preview` | 없음 |200 policy/current usage+reserved·owner·`preview_id`·`can_apply/blocked_fields`; native write 없음 |
+| `POST /personal-project-quotas/{project_id}/apply` | `{preview_id}`64hex |200 기존 `DomainQuotaOperation` 결과·operation_id; stale preview409 |
 
 정책 DTO는 revision/public_signup_enabled/approval_mode/personal_quotas/quota_fields/defaults_future_only:true/smtp_configured입니다. Approval은 auto/admin, personal_quotas는 지원 key→strict integer(-1 이상)의 sparse object이며 blank는 native 기본값,0은 금지,-1은 unlimited입니다. 비활성 Manila template entry는 보존·omitted로 표시합니다. 저장은 앞으로 생성하는 각 personal project에만 적용하고 기존 프로젝트나 shared domain budget을 변경하지 않습니다. Accounts user와 personal project는 disabled staging·본인 직접 native member 하나·raw/effective provenance·동결 native quota readback 뒤 활성화합니다. 새 owner/reader·domain manager·Default는 생성하지 않으며 기존 personal grant는 보존합니다.
 
-최초 row 부재만 config의 공개 가입 opt-in·auto·core quota0으로 시작합니다. 저장 후 persisted 정책이 공개 가입 flag를 우선합니다. SMTP flag는 enabled/host/from-address/frontend URL 구성 여부이고 배달 영수증이 아닙니다. SQL 장애는503으로 차단하며 config로 우회하지 않습니다.
+최초 policy row 부재만 config의 공개 가입 opt-in·auto와 source 기본2 vCPU·4096MiB RAM·1024GiB Cinder, instances2·volumes10·snapshots10 및 보조 network count로 시작합니다. DTO는 `personal_quota_source:source_defaults|administrator`와 `source_default_personal_quotas`도 반환합니다. 기존 저장 template(0 포함)은 그대로 유지하므로 새 제공값을 원하면 UI의 **제공 기본값 사용**으로 draft를 채운 뒤 명시 저장합니다. SQL 장애는503이며 source default로 우회하지 않습니다. 디스크 값은 quota이지 실제 볼륨 생성이 아닙니다.
+
+기존 프로젝트는 **개인 프로젝트 불러오기→paged 선택→현재 사용량과 정책 미리 확인→확인 checkbox→적용** 순서입니다. Fresh system authority, exact Personal·활성 user/project·소유 marker, accepted member SQL provenance 또는 검증된 legacy native-owner primary를 요구합니다. Native member-only catalog에 project_owner 프리셋을 추가하지 않습니다. 현재 in_use+reserved가 새 limit를 초과하거나 reservation을 확인하지 못하면 적용 불가입니다. Apply는 policy/사용량/소유권·preview fingerprint를 다시 검사하고 기존 native quota journal/readback을 사용합니다. 결과 unknown은 원 호출 종료·기존 domain quota settlement 전 반복 적용하지 않습니다. 원래 personal provisioning intent의 동결 quota·계정/권한/리소스는 수정하지 않습니다.
 
 대기열은 전달된 email link 또는 검증된 provider subject에서만 생성합니다. DTO는 ID/source/email/target domain/provider/status/생성·review 시각과 reviewer ID를 공개하되 identity/binding hash·password·OAuth code·bearer는 반환·저장하지 않습니다. 소비 시각과 생성 사용자 ID는 내부 SQL provenance이며 대기열 DTO에는 없습니다. 상태는 pending→approved/rejected, 성공한 새 계정 생성 뒤 approved→consumed입니다. `all`은 consumed도 포함합니다. Pending만 review할 수 있고 확정한 결정은 재승인·취소·자동 재전송하지 않습니다. Auto로 바꿔도 기존 pending/rejected/consumed 요청을 우회하지 못합니다.
 
@@ -718,7 +733,7 @@ Project/group member 관계는 다른 home의 principal을 목록에서 숨기�
 
 **주의**: `revoke-sessions`는 해당 사용자의 토큰/세션 캐시를 즉시 무효화합니다.
 
-생성 body는 extra field 금지이며 name1–255자, email3–255자, password12–1024자, domain_id non-empty입니다. personal_domain_name은 제거됐습니다. domain_id는 관리자 directory의 관측 context로 존재만 확인하며 identity home이나 조직 admission target이 아닙니다. 선택 domain의 password/이메일 조직 allowlist·Default 존재를 새 global 계정 생성 조건으로 사용하지 않습니다. Shared Accounts의 disabled user를 요청한 enabled 값으로 확정하고 accepted managed_create enrollment와 같은 token/name·동결 quota를 가진 deferred personal intent를 함께 commit합니다. 개인 프로젝트와 grant는 이 요청에서 만들지 않습니다. enabled:false 계정은 명시 활성화 후 성공한 password/provider 로그인을 해야 개인 준비를 시작할 수 있습니다. 첫 로그인은 shared Personal에 정규화 username 최대47자+하이픈+암호학적 임의 소문자8자+숫자8자리 프로젝트를 disabled staging으로 준비하고 본인 직접 native member 하나·동결 quota·raw/effective provenance 뒤 활성화합니다. Accounts 또는 관측 domain의 Default grant는 만들지 않습니다. 응답은 id/name/email/enabled/protected:true와 user_id, personal working domain_id/domain_name, identity_domain_id/identity_domain_name, personal_domain_id, personal_project_deferred:true, personal_project_id:null, personal_project_name:null입니다. 기존 계정·service home/credentials/grants는 이동하지 않고 global email/username alias 충돌은 새 계정으로 재생성하지 않습니다. 새 managed_create journal은 domain_id=null이며 accepted/deferred pair는 첫 login/recovery가 안전하게 소비합니다. 불명 중단 작업은 system-only global enrollment/topology recovery로 조회·settlement합니다. 조직 참여는 별도 초대/신뢰된 OIDC admission을 사용합니다.
+생성 body는 extra field 금지이며 name1–255자, email3–255자, password12–1024자, domain_id non-empty입니다. domain_id는 관측 context로 존재만 확인하고 home/admission target으로 사용하지 않습니다. 요청 enabled 값의 Accounts identity와 accepted managed_create enrollment·같은 token/name·동결 quota의 deferred personal intent를 함께 commit하며 이 요청은 프로젝트/grant를 만들지 않습니다. 응답은 id/name/email/enabled/protected:true·user_id, **Accounts domain_id/domain_name**과 identity_domain_id/identity_domain_name, personal_domain_id, personal_project_deferred:true, personal_project_id:null 및 **예약된 personal_project_name**입니다. enabled:false는 명시 활성화 뒤 실제 로그인 proof가 필요합니다. 첫 로그인은 Personal disabled staging에 본인 직접 member 하나·동결 quota·native provenance를 확인한 뒤 활성화합니다. 기존 ID/home/credentials/grants·리소스 및 관측 domain의 Default는 변경하지 않습니다. Journal의 관측 domain_id는null이고 unknown 작업은 system-only settlement 전 재전송하지 않습니다. 조직 참여는 별도 초대/신뢰된 OIDC admission입니다.
 
 마지막 enabled effective system admin을 비활성화하는 PATCH는 공유 role-graph lease 아래 재검증해 `422`로 거부합니다. 권한 회수와 동시 비활성화도 같은 보호를 사용합니다. 현재 project owner는 먼저 소유권을 이전해야 하며 비활성화는 `409`입니다. 관련 unresolved ownership operation이 있어도 user/domain disable을 차단합니다. 이는 단순한 마지막 manager 보호와 별도입니다.
 
@@ -1018,13 +1033,13 @@ vendor_id/device_id → 표시 이름 매핑을 관리합니다.
 | `PUT` | `/api/v1/admin/gpu-quotas/{project_id}` | 프로젝트 GPU 쿼터 수정 |
 | `DELETE` | `/api/v1/admin/gpu-quotas/{project_id}/{gpu_type}` | 프로젝트 쿼터 유형별 삭제 → 기본값 복귀 (`204`) |
 
-사용자 flavor 목록은 Redis cache hit로 payload가 일반 dict가 된 경우에도 `FlavorInfo`로 다시 해석한 뒤 frontend visibility와 GPU 쿼터를 판정합니다(캐시 payload가 `extra_specs`를 이미 보존하므로 flavor별 Nova 재조회는 하지 않습니다). GPU quota DB, Nova server inventory, 또는 legacy flavor metadata를 확인할 수 없으면 GPU flavor를 목록에서 숨기거나 `in_use=0`으로 간주하지 않습니다. 해당 flavor는 `eligibility.selectable=false`와 `gpu_quota_unavailable` blocker를 유지하고, authority 실패는 warning으로 기록됩니다.
+모든 CPU/GPU Flavor는 Public/Private와 무관하게 target project의 instances·vCPU·RAM 및 GPU 잔여 quota를 검사합니다. Redis cache hit의 dict payload는 `FlavorInfo`로 해석하지만 현재 native 가시성과 private 프로젝트 접근은 별도 fresh 조회로 제한합니다. Public Flavor에 프로젝트 ACL을 요구하지 않고 Private Flavor에만 native `addTenantAccess`가 추가로 필요합니다. GPU quota DB·native usage·metadata 장애는0사용이나 unlimited로 대체하지 않고 `eligibility.selectable=false`와 unavailable blocker로 처리합니다.
 
 GPU 사용량은 인증된 project scope와 대상 `project_id`가 다를 때만 Nova의 all-project inventory를 조회한 뒤 대상 project로 제한합니다. 같은 scope의 connection은 전역 inventory를 요청하지 않습니다. Microversion 2.47+ embedded flavor snapshot(`original_name` + `extra_specs`)은 `extra_specs`가 비어 있어도 authoritative로 취급하며 legacy snapshot만 flavor 상세를 조회합니다. 저장된 legacy alias(`RTX3090Ti` 등)는 읽기에서 canonical alias로 정규화하며 같은 alias의 중복 row는 `updated_at`이 가장 최신인 row(동률이면 `id`가 큰 row)의 limit를 사용합니다. PUT/DELETE도 같은 기준으로 survivor를 고른 뒤 중복 row를 제거합니다. Migration `079_normalize_gpu_quota_types.sql`은 동일 규칙으로 중복을 정리하고 `gpu_type`만 정규화하며 `updated_at`을 보존합니다.
 
 관리자 쿼터 화면은 `GET /api/v1/admin/gpu-aliases`의 클러스터 전체 alias(Flavor `pci_passthrough:alias` + Placement inventory), 전체 기본값, 선택 프로젝트의 effective quota/usage를 합쳐 GPU 타입 행을 구성합니다. 따라서 프로젝트에 저장된 row나 현재 사용량이 없어도 RTX3060·RTX3090 같은 클러스터 GPU 타입이 표시되며 즉시 프로젝트 limit을 설정할 수 있습니다. 별도 기본값이 없는 타입의 effective limit은 `0`입니다.
 
-Private GPU Flavor가 `extra_specs["afterglow:access_mode"] = "gpu_quota"`이면 access reconcile 대상입니다. Reconcile은 Flavor의 GPU 요구량을 effective project limit과 비교하고 Nova Flavor Access의 현재 tenant 목록을 읽어 `add`·`remove`·`none`을 계산합니다. `/api/v1/admin/flavors/access-reconcile`의 `apply=false`는 관리자 화면의 `권한 추가/회수 예정` 미리보기만 만들며 Nova 권한을 변경하지 않습니다. 실제 `addTenantAccess`/`removeTenantAccess` 호출은 `apply=true` 또는 `PUT /api/v1/admin/compute-policy/{project_id}`의 통합 정책 적용 시 수행됩니다. 관리자 Flavor 목록은 이 정책을 Private GPU 행의 `Quota 연동` 또는 `수동` 배지로 표시합니다.
+GPU quota 변경은 Flavor Access를 추가하거나 회수하지 않습니다. 기존 `afterglow:access_mode` metadata는 권한 근거가 아니며 `access-mode`·`access-reconcile` 경로와 quota 연동 UI는 퇴역했습니다. 기존 native ACL은 보존합니다. Private Flavor 접근 편집의 도메인 선택은 현재 native 프로젝트 후보를 제한하는 UI이며, 실제 변경은 선택한 정확한 project UUID에 대한 Nova `addTenantAccess`/`removeTenantAccess`입니다. Native Nova에는 domain flavor grant가 없고 미래 프로젝트로 자동 상속하지 않습니다. Public도 동일한 compute/GPU quota와 생성용 same-host capacity 검사를 받습니다.
 
 ---
 

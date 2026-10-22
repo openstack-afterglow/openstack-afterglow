@@ -4,7 +4,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { toast } from '$lib/stores/toast';
-	import { ToggleGroup, Button } from '$lib/components/ui';
+	import { Alert, ToggleGroup, Button } from '$lib/components/ui';
 	import { onDestroy, untrack } from 'svelte';
 	import { get } from 'svelte/store';
 	import AdminProjectPicker from '$lib/components/admin/domains/AdminProjectPicker.svelte';
@@ -26,6 +26,8 @@
 		flavor_id: string;
 		project_id: string;
 		project_name: string;
+		domain_id?: string;
+		domain_name?: string;
 	}
 
 	let { flavor }: { flavor: Flavor } = $props();
@@ -53,8 +55,6 @@
 		return { token: state.token ?? undefined, projectId: state.projectId ?? undefined,
 			current: () => !disposed && revision === authorityRevision && target === flavor.id };
 	}
-	let accessMode = $state<'manual' | 'gpu_quota'>('manual');
-	let modeSaving = $state(false);
 	let frontendVisible = $state(true);
 	let visibilitySaving = $state(false);
 	const accessedProjectIds = $derived(accessList.map(access => access.project_id));
@@ -63,9 +63,8 @@
 		untrack(() => {
 			accessList = []; accessError = ''; selectedProject = ''; domainFilter = '';
 			addingId = null; removingId = null;
-			modeSaving = false; visibilitySaving = false;
+			visibilitySaving = false;
 			void loadAccess();
-			accessMode = flavor.extra_specs?.['afterglow:access_mode'] === 'gpu_quota' ? 'gpu_quota' : 'manual';
 			frontendVisible = flavor.frontend_visible ?? (flavor.extra_specs?.['afterglow:frontend_visible']?.toLowerCase() !== 'false');
 		});
 	});
@@ -125,24 +124,6 @@
 			if (owner.current()) accessError = t('flavors.access.removeFailed');
 		} finally {
 			if (owner.current()) removingId = null;
-		}
-	}
-
-	async function setMode(nextMode: 'manual' | 'gpu_quota') {
-		if (accessMode === nextMode) return;
-		const owner = capture();
-		modeSaving = true;
-		try {
-			await api.put(`/api/v1/admin/flavors/${flavor.id}/access-mode`, { mode: nextMode }, owner.token, owner.projectId);
-			if (!owner.current()) return;
-			accessMode = nextMode;
-			flavor.extra_specs = { ...flavor.extra_specs, 'afterglow:access_mode': nextMode };
-			toast.success(t('flavors.access.modeChanged'));
-		} catch (e) {
-			if (!owner.current()) return;
-			toast.error(e instanceof ApiError ? e.message : t('flavors.access.modeFailed'));
-		} finally {
-			if (owner.current()) modeSaving = false;
 		}
 	}
 
@@ -209,44 +190,10 @@
 	</div>
 {:else}
 	{#if accessError}
-		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-3 py-2 text-xs mb-3">{accessError}</div>
+		<Alert tone="danger" class="mb-3">{accessError}</Alert>
 	{/if}
 
-	{#if flavor.is_gpu}
-		<div class="mb-4 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-3">
-			<div class="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-1)] mb-1.5">{t('flavors.access.policy')}</div>
-			<div class="flex gap-2">
-				<button
-					type="button"
-					disabled={modeSaving}
-					onclick={() => setMode('manual')}
-					class="px-2.5 py-1 rounded text-xs transition-colors {accessMode === 'manual'
-						? 'bg-[var(--color-accent)] text-[var(--color-surface-canvas)]'
-						: 'bg-[var(--color-surface-base)] text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]'}"
-				>
-					{t('flavors.access.manualMode')}
-				</button>
-				<button
-					type="button"
-					disabled={modeSaving}
-					onclick={() => setMode('gpu_quota')}
-					class="px-2.5 py-1 rounded text-xs transition-colors {accessMode === 'gpu_quota'
-						? 'bg-[var(--color-accent)] text-[var(--color-surface-canvas)]'
-						: 'bg-[var(--color-surface-base)] text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]'}"
-				>
-					{t('flavors.access.quotaMode')}
-				</button>
-			</div>
-			{#if modeSaving}
-				<ActivityIndicator size="xs" label={t('flavors.access.modeSaving')} class="mt-2" />
-			{/if}
-			<p class="mt-2 text-xs text-[var(--color-ink-2)] leading-normal">
-				{accessMode === 'gpu_quota'
-					? t('flavors.access.quotaHelp')
-					: t('flavors.access.manualHelp')}
-			</p>
-		</div>
-	{/if}
+	<p class="mb-3 text-xs text-ink-2">{t('flavors.access.manualHelp')}</p>
 	<div class="mb-4 space-y-3">
 		{#key `${authorityRevision}:${flavor.id}`}
 			<AdminProjectPicker domainId={domainFilter} projectId={selectedProject} excludedProjectIds={accessedProjectIds} emptyProjectLabel={t('flavors.access.addProject')} disabled={!!addingId || accessLoading} onchange={(domainId, projectId) => { domainFilter = domainId; selectedProject = projectId; }} />
@@ -264,10 +211,8 @@
 			{#each accessList as a (a.project_id)}
 				<div class="flex flex-wrap lg:flex-nowrap items-center justify-between gap-2 bg-surface-base border border-line rounded-lg px-3 py-2">
 					<div class="min-w-0 break-all">
-						<div class="text-xs text-ink-1">{a.project_name || a.project_id}</div>
-						{#if a.project_name}
-							<div class="text-xs text-ink-2 font-mono">{a.project_id.slice(0, 12)}</div>
-						{/if}
+						<div class="text-xs text-ink-1">{a.domain_name || a.domain_id || '—'} / {a.project_name || a.project_id}</div>
+						<div class="text-xs text-ink-2 font-mono">{a.domain_id || '—'} / {a.project_id}</div>
 					</div>
 					<button onclick={() => removeAccess(a.project_id)} disabled={removingId === a.project_id} class="min-h-11 lg:min-h-0 text-state-danger-text hover:text-state-danger-text/90 text-xs">
 						{#if removingId === a.project_id}

@@ -49,10 +49,6 @@
 		return `${mb} MB`;
 	}
 
-	function isQuotaManaged(flavor: Flavor): boolean {
-		return flavor.extra_specs?.['afterglow:access_mode'] === 'gpu_quota';
-	}
-
 	let sortedFlavors = $derived(
 		flavors.toSorted((a, b) => {
 			if (!sortColumn) return 0;
@@ -94,7 +90,7 @@
 				<div class="flex flex-wrap items-start justify-between gap-2"><h3 class="break-all font-medium text-ink-0">{f.name}</h3><Pill tone="neutral" size="xs">{f.is_public ? t('flavors.visibility.public') : t('flavors.visibility.private')}</Pill>{#if f.is_gpu}<Pill tone="accent" size="xs">GPU ×{f.gpu_count}</Pill>{/if}</div>
 				<p class="text-xs text-ink-2">{f.vcpus} vCPU · {formatRam(f.ram)} · {f.disk} GB</p>
 				{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => onManage(f)}>{t('flavors.manage.action')}</Button><Button variant="danger" size="sm" disabled={deletingId === f.id} onclick={() => onDelete(f.id)}>{deletingId === f.id ? t('flavors.delete.pending') : t('flavors.delete.action')}</Button>{/snippet}
-				{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p class="font-mono">{f.id}</p>{#if f.description}<p>{f.description}</p>{/if}{#if !f.is_public && f.is_gpu}<p>{isQuotaManaged(f) ? t('flavors.access.quotaPolicyTitle') : t('flavors.access.manualPolicyTitle')}</p>{/if}</div>{/snippet}
+				{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p class="font-mono">{f.id}</p>{#if f.description}<p>{f.description}</p>{/if}</div>{/snippet}
 			</CompactResourceCard>
 		{/each}
 	{/snippet}
@@ -147,13 +143,6 @@
 										? 'bg-green-900/30 text-green-400'
 										: 'bg-yellow-900/30 text-yellow-400'}"
 								>{f.is_public ? t('flavors.visibility.public') : t('flavors.visibility.private')}</span>
-								{#if !f.is_public && f.is_gpu}
-									<span title={isQuotaManaged(f) ? t('flavors.access.quotaPolicyTitle') : t('flavors.access.manualPolicyTitle')}>
-										<Pill tone={isQuotaManaged(f) ? 'accent' : 'neutral'} size="xs">
-											{isQuotaManaged(f) ? t('flavors.access.quotaLinked') : t('flavors.access.manual')}
-										</Pill>
-									</span>
-								{/if}
 							</div>
 						</td>
 						<td class="py-2 pr-4 text-ink-2">

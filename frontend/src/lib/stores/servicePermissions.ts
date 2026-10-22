@@ -69,5 +69,5 @@ export const isProjectOwner = derived(projectPermissions, (state) => !state.load
 export const canManageProject = derived(
 	[projectPermissions, auth, authReady, projectSwitching],
 	([state, identity, ready, switching]) => ready && !switching && !!identity.token && !!identity.projectId && !state.loading && !state.error && state.permissions !== null &&
-		(identity.isSystemAdmin === true || state.permissions?.is_owner === true || state.permissions?.is_manager === true)
+		(state.permissions?.is_owner === true || state.permissions?.is_manager === true)
 );

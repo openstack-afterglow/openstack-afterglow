@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { get } from 'svelte/store';
+import { get, type Writable } from 'svelte/store';
 import { tick } from 'svelte';
 import { auth } from '$lib/stores/auth';
 import { adminInventoryScope, setAdminInventoryScope } from '$lib/stores/adminInventoryScope';
@@ -8,9 +8,13 @@ import { projectNames } from '$lib/stores/projectNames';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 import { ApiError } from '$lib/api/errors';
 import Harness from './_AdminSubnetScopeHarness.svelte';
+import { page } from '$app/stores';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), prefetch: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), prefetch: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn(), goto: vi.fn() }));
 vi.mock('$lib/api/client', async () => ({ api: mocks, ...(await vi.importActual<{ ApiError: typeof ApiError }>('$lib/api/errors')) }));
+vi.mock('$app/stores', async () => ({ page: (await import('svelte/store')).writable({ url: new URL('http://localhost/admin/subnets'), data: {}, state: {} }) }));
+vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
+const route = page as unknown as Writable<{ url: URL; data: object; state: object }>;
 const initial = get(auth);
 const projects = [
 	{ id: 'project-a', name: 'Project Alpha', domain_id: 'domain-a' },
@@ -30,6 +34,7 @@ async function choose(label: 'Domain' | 'Project', name: RegExp) {
 }
 beforeEach(() => {
 	vi.resetAllMocks(); initLocale('en');
+	route.set({ url: new URL('http://localhost/admin/subnets'), data: {}, state: {} });
 	auth.set({ ...initial, token: 'operator-token', sessionId: 'operator-session', userId: 'operator', projectId: 'operator-project', domainId: 'operator-home', isSystemAdmin: true });
 	projectNames.invalidate(); setAdminInventoryScope('', '');
 	mocks.get.mockImplementation((path: string) => Promise.resolve(metadata(path) ?? [subnet('initial-row')]));
@@ -66,6 +71,7 @@ describe('administrator independent inventory scope', () => {
 		await waitFor(() => expect(screen.queryByText('late-alpha-row')).toBeNull());
 		expect(get(auth).projectId).toBe('operator-project');
 		expect(get(auth).domainId).toBe('operator-home');
+		expect(mocks.goto).toHaveBeenLastCalledWith('/admin/subnets?domain_id=domain-b', { replaceState: true, noScroll: true, keepFocus: true });
 		expect(mocks.post).not.toHaveBeenCalled();
 	});
 
@@ -111,5 +117,30 @@ describe('administrator independent inventory scope', () => {
 		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/admin/projects/names', 'operator-token', 'operator-project', { refresh: true }));
 		expect(mocks.get).toHaveBeenCalledWith('/api/v1/admin/domains', 'operator-token', 'operator-project', { refresh: true });
 		expect(get(adminInventoryScope).projectId).toBe('project-a');
+	});
+
+	it('uses exact domain/project drilldown queries before mounting any resource reader', async () => {
+		route.set({ url: new URL('http://localhost/admin/subnets?domain_id=domain-b&project_id=project-b'), data: {}, state: {} });
+		render(Harness);
+		await screen.findByText('initial-row');
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/admin/all-subnets?domain_id=domain-b&project_id=project-b', 'operator-token', 'operator-project');
+		expect(mocks.get.mock.calls.some(([path]) => path === '/api/v1/admin/all-subnets')).toBe(false);
+		expect(get(auth).projectId).toBe('operator-project');
+		expect(get(auth).domainId).toBe('operator-home');
+	});
+
+	it('remounts on query navigation and rejects the prior query response', async () => {
+		const old = Promise.withResolvers<SubnetFixture[]>();
+		mocks.get.mockImplementation((path: string) => {
+			const value = metadata(path); if (value) return Promise.resolve(value);
+			return path.includes('domain_id=domain-a') ? old.promise : Promise.resolve([subnet('new-query-row', 'project-b')]);
+		});
+		route.set({ url: new URL('http://localhost/admin/subnets?domain_id=domain-a'), data: {}, state: {} });
+		render(Harness); await tick();
+		route.set({ url: new URL('http://localhost/admin/subnets?domain_id=domain-b'), data: {}, state: {} });
+		await screen.findByText('new-query-row');
+		old.resolve([subnet('stale-query-row')]); await tick(); await tick();
+		expect(screen.queryByText('stale-query-row')).toBeNull();
+		expect(get(adminInventoryScope).domainId).toBe('domain-b');
 	});
 });

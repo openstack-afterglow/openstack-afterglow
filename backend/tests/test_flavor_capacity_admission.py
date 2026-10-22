@@ -46,7 +46,7 @@ def capacity(status="available"):
 @pytest.fixture
 def sources(monkeypatch, mock_conn):
     monkeypatch.setattr("app.services.nova.list_flavors", lambda _conn: [FLAVOR])
-    monkeypatch.setattr("app.services.nova.get_project_quota", lambda _conn, _pid: QUOTA)
+    monkeypatch.setattr("app.services.nova.get_project_quota", lambda _conn, _pid, **_kwargs: QUOTA)
     monkeypatch.setattr("app.services.gpu_quota.get_effective_gpu_quota_status", AsyncMock(return_value=GPU_STATUS))
     monkeypatch.setattr(
         "app.services.resource_policy_store.resolve_policies",
@@ -77,7 +77,7 @@ async def test_create_rechecks_changed_capacity_before_any_mutation(
     discovered = await admin_client.get(WIZARD_LIST)
     assert discovered.status_code == 200
     assert discovered.json()[0]["eligibility"]["selectable"] is True
-    assert sources.await_args.kwargs["fresh"] is False  # wizard discovery may share a short-lived snapshot
+    assert sources.await_args.kwargs["fresh"] is True  # every create chooser refresh reads current hosts
     sources.return_value = {flavor.id: capacity(status)}
     payload = {**PAYLOAD, "flavor_id": flavor.id, **({"project_id": "target-project"} if "/admin/" in endpoint else {})}
     with (
@@ -187,7 +187,7 @@ async def test_numa_unverified_host_fit_is_listed_and_admitted(client, mock_conn
 async def test_host_capacity_does_not_override_target_project_quota(admin_client, sources, monkeypatch):
     monkeypatch.setattr(
         "app.services.nova.get_project_quota",
-        lambda _conn, pid: {**QUOTA, "cores": {"limit": 16 if pid == "target-project" else 64, "in_use": 8}},
+        lambda _conn, pid, **_kwargs: {**QUOTA, "cores": {"limit": 16 if pid == "target-project" else 64, "in_use": 8}},
     )
     response = await admin_client.get(ADMIN_WIZARD_LIST)
     eligibility = response.json()[0]["eligibility"]

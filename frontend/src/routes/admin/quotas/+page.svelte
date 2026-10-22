@@ -111,7 +111,6 @@
 					hasAnyAlias={ctrl.allGpuTypes.length > 0}
 					onSetLimit={ctrl.setGpuQuota}
 					onClear={ctrl.deleteGpuQuota}
-					reconcilePreview={ctrl.reconcilePreview}
 				/>
 			{/if}
 		{/key}

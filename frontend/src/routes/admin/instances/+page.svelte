@@ -112,6 +112,7 @@
 		if (opts?.clearSelection) scopeRevision += 1;
 		const requestRevision = scopeRevision;
 		const owns = () => generation === loadGeneration
+			&& api.isCurrent() && requestRevision === scopeRevision
 			&& ($auth.token ?? undefined) === requestToken
 			&& ($auth.projectId ?? undefined) === requestProjectId
 			&& pageSize === requestPageSize
@@ -120,7 +121,12 @@
 			&& nameSearch === requestNameSearch
 			&& listPath(marker) === requestPath;
 		nextPrefetch.cancel();
-		if (opts?.clearSelection) selection.clear();
+		if (opts?.clearSelection) {
+			selection.clear();
+			allInstances = [];
+			closeDetail();
+			closeRecovery();
+		}
 		allInstances.length === 0 ? (loading = true) : (refreshing = true);
 		inventoryError = '';
 		try {
@@ -271,7 +277,7 @@
 		void loadHealth();
 		projectNames.load($auth.token ?? undefined, $auth.projectId ?? undefined);
 	});
-	onDestroy(() => { unsubscribeAuth(); scopeRevision += 1; loadGeneration += 1; nextPrefetch.cancel(); });
+	onDestroy(() => { unsubscribeAuth(); scopeRevision += 1; loadGeneration += 1; nextPrefetch.cancel(); invalidateInstanceDetailSelection(); });
 </script>
 
 <PageShell class="bulk-selection-page">

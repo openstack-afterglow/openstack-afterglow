@@ -192,9 +192,14 @@ trusted_proxies = "127.0.0.1/32,::1/128"
 # protocol needs an implemented verifier, not an arbitrary kind string.
 #
 # Existing domains require a delivered invitation or current native membership.
-# An explicitly selected trusted provider may auto-admit only its verified exact
-# email suffixes. Matching an email alone NEVER links two external/local accounts:
-# the existing canonical username/password or authenticated account proof is required.
+# Operator-owned [auth.providers.<key>] OIDC providers automatically connect a
+# verified email to the unique enabled Accounts human; signed issuer/sub and
+# boolean email_verified are mandatory. This has no dev-only/bypass flag.
+# Tenant-managed SQL providers still require explicit account proof for a first
+# link, even for an existing organization member. An allowlist is not email trust.
+# Global stable/native tuple conflicts and duplicate Accounts owners fail closed;
+# legacy non-Accounts/GitHub links still require canonical account proof.
+# Organization email auto-admission remains separate and never grants ownership.
 # The native mapper must use stable issuer subject (OIDC-sub) as user.id, not email or
 # preferred_username, and must not overwrite the canonical user's verified email.
 # New humans are created in the identity-only account domain with an owned
@@ -203,6 +208,8 @@ trusted_proxies = "127.0.0.1/32,::1/128"
 # Empty signup_email_domains permits all valid suffixes only when signup is enabled.
 # SQL enrollment policy overrides the signup bootstrap flag and freezes future
 # personal-project quota templates; neither setting grants organization access.
+# Public email signup ALWAYS requires a delivered one-use email link, then unique
+# normalized username/email; SMTP acceptance/client flags cannot skip verification.
 # [auth]
 # public_signup_enabled = false
 # signup_email_domains = []

@@ -1,7 +1,6 @@
 <script lang="ts">
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { GpuQuota } from '$lib/types/quotas';
-	import type { FlavorReconcileResponse } from '$lib/stores/adminQuotasController.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -15,7 +14,6 @@
 		hasAnyAlias,
 		onSetLimit,
 		onClear,
-		reconcilePreview,
 	}: {
 		rows: GpuQuota[];
 		defaults: Record<string, number>;
@@ -24,7 +22,6 @@
 		hasAnyAlias: boolean;
 		onSetLimit: (alias: string, limit: number) => void | Promise<void>;
 		onClear: (alias: string) => void | Promise<void>;
-		reconcilePreview?: FlavorReconcileResponse | null;
 	} = $props();
 
 	let savingAliases = $state<Record<string, boolean>>({});
@@ -134,36 +131,6 @@
 		</table>
     </ResponsiveTable>
 		<p class="text-xs text-ink-2 mt-2">{t('gpuQuota.limitHelp')}</p>
-
-		{#if reconcilePreview && reconcilePreview.operations.length > 0}
-			<div class="mt-6 border-t border-[var(--color-line)] pt-4">
-				<h3 class="text-xs font-semibold text-[var(--color-ink-1)] uppercase tracking-wide mb-1">
-					{t('gpuQuota.reconcileTitle')}
-				</h3>
-				<p class="text-xs text-[var(--color-ink-2)] mb-3">
-					{t('gpuQuota.reconcileDescription')}
-				</p>
-				<div class="space-y-1.5">
-					{#each reconcilePreview.operations as op}
-						<div class="flex items-center justify-between rounded-lg bg-[var(--color-surface-sunken)] px-3 py-2 text-xs">
-							<div class="flex items-center gap-2">
-								<span class="font-mono text-[var(--color-ink-0)]">{op.flavor_name}</span>
-								{#if op.action === 'add'}
-									<span class="rounded bg-[var(--color-surface-base)] text-[var(--color-state-success-text)] border border-[var(--color-state-success)]/40 px-1.5 py-0.5 text-xs">{t('gpuQuota.accessAdd')}</span>
-								{:else if op.action === 'remove'}
-									<span class="rounded bg-[var(--color-surface-base)] text-[var(--color-state-danger-text)] border border-[var(--color-state-danger)]/40 px-1.5 py-0.5 text-xs">{t('gpuQuota.accessRemove')}</span>
-								{:else}
-									<span class="rounded bg-[var(--color-surface-base)] text-[var(--color-ink-2)] px-1.5 py-0.5 text-xs">{t('gpuQuota.accessKeep')}</span>
-								{/if}
-							</div>
-							<span class="text-[var(--color-ink-2)] font-mono">
-								{Object.entries(op.gpu_demand).map(([k, v]) => `${k} ×${v}`).join(', ')}
-							</span>
-						</div>
-					{/each}
-				</div>
-			</div>
-		{/if}
 
 		<div class="mt-4 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-3 text-xs text-[var(--color-ink-2)] leading-relaxed">
 			<strong class="text-[var(--color-ink-1)] font-medium">{t('gpuQuota.scopeTitle')}</strong>

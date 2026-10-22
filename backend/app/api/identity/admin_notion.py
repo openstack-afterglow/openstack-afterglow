@@ -6,7 +6,7 @@ from datetime import UTC
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.api.deps import get_os_conn, require_admin
+from app.api.deps import get_admin_os_conn, require_admin
 from app.services import notion_sync
 
 # FastAPI-free 인벤토리 유틸리티로 이동된 함수들 — 하위 호환을 위해 재export.
@@ -164,7 +164,7 @@ async def delete_notion_config():
 
 
 @router.post("/notion/test", dependencies=[Depends(require_admin)])
-async def test_notion_sync(conn=Depends(get_os_conn)):
+async def test_notion_sync(conn=Depends(get_admin_os_conn)):
     """수동 Notion 동기화 1회 실행."""
     from datetime import datetime
 
@@ -387,7 +387,7 @@ async def delete_notion_target(target_id: int):
 
 
 @router.post("/notion/targets/{target_id}/test", dependencies=[Depends(require_admin)])
-async def test_notion_target_sync(target_id: int, conn=Depends(get_os_conn)):
+async def test_notion_target_sync(target_id: int, conn=Depends(get_admin_os_conn)):
     """특정 연동 대상에 대해 수동 동기화 1회 실행."""
     from datetime import datetime
 

@@ -1,21 +1,19 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
-	import { onMount } from 'svelte';
-	import { page } from '$app/stores';
+	import { onMount, untrack } from 'svelte';
+	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
-	import { auth } from '$lib/stores/auth';
+	import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
-	import ProjectQuotaPanel from '$lib/components/ProjectQuotaPanel.svelte';
-	import type { Overview, VersionInfo, ProjectUsage } from '$lib/types/adminOverview';
+	import type { Overview, VersionInfo, DomainUsage } from '$lib/types/adminOverview';
 	import KpiCardRow from '$lib/components/admin/overview/KpiCardRow.svelte';
 	import ResourceDonutsCard from '$lib/components/admin/overview/ResourceDonutsCard.svelte';
-	import ProjectUsageTable from '$lib/components/admin/overview/ProjectUsageTable.svelte';
+	import DomainUsageTable from '$lib/components/admin/overview/DomainUsageTable.svelte';
 	import ServiceCountCards from '$lib/components/admin/overview/ServiceCountCards.svelte';
 	import VersionInfoPanel from '$lib/components/admin/overview/VersionInfoPanel.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { Alert, PageHeader, PageShell, StatTile } from '$lib/components/ui';
-	import { toast } from '$lib/stores/toast';
 
 	interface Notification {
 		severity: string;
@@ -38,66 +36,79 @@
 	let overview = $state<Overview | null>(null);
 	let overviewLoading = $state(true);
 	let error = $state('');
-	let projectUsage = $state<ProjectUsage[]>([]);
-	let projectUsageLoading = $state(true);
+	let domainUsage = $state<DomainUsage[]>([]);
+	let domainUsageLoading = $state(true);
+	let domainUsageError = $state('');
 	let versionInfo = $state<VersionInfo | null>(null);
 	let versionOpen = $state(false);
-	let selectedProject = $state<ProjectUsage | null>(null);
 	let notifications = $state<Notification[]>([]);
 	let identitySummary = $state<IdentitySummary | null>(null);
 
-	const token = $derived($auth.token ?? undefined);
-	const projectId = $derived($auth.projectId ?? undefined);
-
-	const mockupAdminActive = $derived($page.data.mockup?.active === true && $page.data.mockup.profile === 'admin');
-
-	function selectProjectUsage(project: ProjectUsage) {
-		if (mockupAdminActive) {
-			toast.info(t('overview.page.mockupOnly'));
-			return;
-		}
-		selectedProject = project;
+	let mounted = $state(false);
+	let authorityRevision = $state(0);
+	let domainRequest = 0;
+	function clearPublished() {
+		authorityRevision += 1;
+		domainRequest += 1;
+		overview = null; overviewLoading = true; error = '';
+		domainUsage = []; domainUsageLoading = true; domainUsageError = '';
+		versionInfo = null; versionOpen = false; notifications = []; identitySummary = null;
 	}
-	function loadProjectUsage(opts?: { background?: boolean }) {
-		// Auto-refresh keeps the table in place; only the first load swaps in the skeleton.
-		if (!opts?.background) projectUsageLoading = true;
-		api.get<ProjectUsage[]>('/api/v1/admin/overview/projects', token, projectId)
-			.then(r => { projectUsage = r; })
-			.catch(() => {})
-			.finally(() => { projectUsageLoading = false; });
+	function capture() {
+		const state = get(auth);
+		if (!mounted || !state.token || !state.isSystemAdmin || !get(authReady) || get(logoutInProgress) || get(projectSwitching)) return null;
+		const revision = authorityRevision;
+		return { token: state.token, projectId: state.projectId ?? undefined, current: () => mounted && revision === authorityRevision };
+	}
+	function loadDomainUsage(opts?: { background?: boolean }) {
+		const owner = capture();
+		if (!owner) return;
+		const request = ++domainRequest;
+		const current = () => owner.current() && request === domainRequest;
+		if (!opts?.background) domainUsageLoading = true;
+		api.get<DomainUsage[]>('/api/v1/admin/overview/domains', owner.token, owner.projectId)
+			.then(result => { if (current()) { domainUsage = result; domainUsageError = ''; } })
+			.catch(() => { if (current()) domainUsageError = t('overview.domains.loadFailed'); })
+			.finally(() => { if (current()) domainUsageLoading = false; });
 	}
 
-	const ar = createAutoRefresh(
-		() => { loadProjectUsage({ background: true }); },
-		{ storageKey: 'admin-overview', defaultActive: true, defaultInterval: 60, invokeOnMount: false }
-	);
+	createAutoRefresh(() => { loadDomainUsage({ background: true }); },
+		{ storageKey: 'admin-overview', defaultActive: true, defaultInterval: 60, invokeOnMount: false });
+
+	function loadOverview() {
+		const owner = capture();
+		if (!owner) return;
+		api.get<Overview>('/api/v1/admin/overview', owner.token, owner.projectId)
+			.then(result => { if (owner.current()) overview = result; })
+			.catch(reason => {
+				if (!owner.current()) return;
+				if (reason instanceof ApiError && reason.status === 403) { void goto('/dashboard'); return; }
+				error = reason instanceof ApiError ? t('overview.page.queryFailed', { message: reason.message }) : t('overview.page.serverError');
+			})
+			.finally(() => { if (owner.current()) overviewLoading = false; });
+		loadDomainUsage();
+		api.get<VersionInfo>('/api/v1/admin/version', owner.token, owner.projectId)
+			.then(result => { if (owner.current()) versionInfo = result; }).catch(() => {});
+		api.get<Notification[]>('/api/v1/admin/notifications', owner.token, owner.projectId)
+			.then(result => { if (owner.current()) notifications = result; }).catch(() => {});
+		api.get<IdentitySummary>('/api/v1/admin/identity/summary', owner.token, owner.projectId)
+			.then(result => { if (owner.current()) identitySummary = result; }).catch(() => {});
+	}
 
 	onMount(() => {
-		api.get<Overview>('/api/v1/admin/overview', token, projectId)
-			.then(r => { overview = r; })
-			.catch((e) => {
-				if (e instanceof ApiError && e.status === 403) { goto('/dashboard'); return; }
-				error = e instanceof ApiError ? t('overview.page.queryFailed', { message: e.message }) : t('overview.page.serverError');
-			})
-			.finally(() => { overviewLoading = false; });
-
-		loadProjectUsage();
-
-		api.get<VersionInfo>('/api/v1/admin/version', token, projectId)
-			.then(r => { versionInfo = r; })
-			.catch(() => {});
-
-		api.get<Notification[]>('/api/v1/admin/notifications', token, projectId)
-			.then(r => { notifications = r; })
-			.catch(() => {});
-
-		api.get<IdentitySummary>('/api/v1/admin/identity/summary', token, projectId)
-			.then(r => { identitySummary = r; })
-			.catch(() => {});
+		// Synchronous subscriptions invalidate same-tick A→B→A, not just the final key.
+		const unsubscribers = [auth.subscribe(clearPublished), authReady.subscribe(clearPublished),
+			logoutInProgress.subscribe(clearPublished), projectSwitching.subscribe(clearPublished)];
+		mounted = true;
+		return () => { mounted = false; clearPublished(); unsubscribers.forEach(unsubscribe => unsubscribe()); };
+	});
+	$effect(() => {
+		if (!mounted) return;
+		authorityRevision;
+		untrack(loadOverview);
 	});
 </script>
 
-{#key $auth.projectId}
 <PageShell class="flex flex-col gap-5">
 	<PageHeader
 		breadcrumb={t('overview.page.breadcrumb')}
@@ -213,11 +224,7 @@
 		<ResourceDonutsCard {overview} />
 
 		<div class="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-3.5">
-			<ProjectUsageTable
-				projects={projectUsage}
-				loading={projectUsageLoading}
-				onSelectProject={selectProjectUsage}
-			/>
+			<DomainUsageTable domains={domainUsage} loading={domainUsageLoading} error={domainUsageError} />
 			<ServiceCountCards {overview} />
 		</div>
 
@@ -239,14 +246,3 @@
 	{/if}
 </PageShell>
 
-{#if selectedProject}
-	<ProjectQuotaPanel
-		projectId={selectedProject.project_id}
-		projectName={selectedProject.project_name}
-		{token}
-		authProjectId={projectId}
-		onClose={() => { selectedProject = null; }}
-		onUpdated={() => { loadProjectUsage(); }}
-	/>
-{/if}
-{/key}

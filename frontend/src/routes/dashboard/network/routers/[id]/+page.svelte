@@ -27,7 +27,7 @@
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 	const canManageRouter = $derived(
-		Boolean(router && ($auth.isSystemAdmin || (router.project_id && router.project_id === projectId)))
+		Boolean(router && router.project_id && router.project_id === projectId)
 	);
 	async function fetchRouter() {
 		try {

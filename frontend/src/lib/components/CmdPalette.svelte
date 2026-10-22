@@ -36,6 +36,7 @@
   let resourceItems = $state<PaletteItem[]>([]);
   const listboxId = 'command-palette-results';
   const mockupAdminActive = $derived($page.data.mockup?.active === true && $page.data.mockup.profile === 'admin');
+  const administratorSurface = $derived($page.url.pathname === '/admin' || $page.url.pathname.startsWith('/admin/'));
   const paletteBetaFeatures = $derived(mockupAdminActive ? MOCKUP_BETA_FEATURES : $betaFeatures);
 
   const ICONS: Record<PaletteItem['type'], string> = {
@@ -48,7 +49,7 @@
   };
 
   // 비활성 서비스 route는 sidebar와 동일하게 command palette에서도 숨긴다.
-  const navItems = $derived(allNavItems($isAdmin, paletteBetaFeatures, { domainManager: $canManageDomain })
+  const navItems = $derived(allNavItems($isAdmin && administratorSurface, paletteBetaFeatures, { domainManager: $canManageDomain })
     .filter((item) => !item.service || (($siteConfig.services as Record<string, boolean>)[item.service] ?? false))
     .filter((item) => !mockupAdminActive || isMockupPathAllowed('admin', item.href))
     .map((item) => ({

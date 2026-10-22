@@ -21,7 +21,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from requests import Response
 
-from app.api.deps import get_os_conn, get_token_info, require_admin
+from app.api.deps import get_admin_os_conn, get_os_conn, get_token_info, require_admin
 from app.api.identity.admin_identity import router
 from app.services import cache, identity_roles, keystone, project_service, session_store
 from app.services.cache.redis_backend import RedisBackend
@@ -245,6 +245,9 @@ async def role_env(monkeypatch):
         "is_system_admin": True,
     }
     app.dependency_overrides[get_os_conn] = lambda: SimpleNamespace(
+        identity=provider, endpoint_for=lambda service: "https://keystone.invalid/v3"
+    )
+    app.dependency_overrides[get_admin_os_conn] = lambda: SimpleNamespace(
         identity=provider, endpoint_for=lambda service: "https://keystone.invalid/v3"
     )
     app.dependency_overrides[get_token_info] = lambda: state

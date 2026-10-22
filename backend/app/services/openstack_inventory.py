@@ -87,9 +87,9 @@ async def collect_instance_data(
     try:
 
         def _collect():
-            from app.services.nova import list_flavors
+            from app.services.nova import list_catalog_flavors
 
-            flavor_infos = list_flavors(conn)
+            flavor_infos = list_catalog_flavors(conn)
             flavors_by_id = {flavor.id: flavor for flavor in flavor_infos}
             flavors_by_name = {flavor.name: flavor for flavor in flavor_infos}
 

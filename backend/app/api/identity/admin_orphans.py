@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, Query
 
 from app.api.common.activity_recorder import rec
-from app.api.deps import get_os_conn, get_token_info, require_admin
+from app.api.deps import get_admin_os_conn, get_token_info, require_admin
 from app.models.orphans import (
     OrphanCleanupRequest,
     OrphanCleanupResponse,
@@ -41,7 +41,7 @@ router = APIRouter()
 )
 async def list_orphans(
     min_age_days: int = Query(14, ge=1, le=365),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ) -> OrphanScanResponse:
     """admin 전(全) 프로젝트 범위에서 orphan 후보를 반환."""
     return OrphanScanResponse(
@@ -59,7 +59,7 @@ async def list_orphans(
 )
 async def cleanup_orphans(
     req: OrphanCleanupRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     token_info: dict = Depends(get_token_info),
 ) -> OrphanCleanupResponse:
     """주어진 ID 목록을 일괄 정리. race-safe 검증 + 각 결과를 audit log 기록."""

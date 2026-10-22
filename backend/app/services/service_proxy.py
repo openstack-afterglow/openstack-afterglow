@@ -209,7 +209,11 @@ async def _forward(
         )
         upstream_response = await client.send(outgoing, stream=True)
     except Exception as exc:
-        _logger.warning("Upstream proxy request to %s failed: %s", upstream_url, exc)
+        if service_type == "lumen" and upstream_path.startswith("/v1/admin/providers"):
+            # Private URLs and transport exception text can contain credentials.
+            _logger.warning("Upstream proxy request to lumen provider administration failed")
+        else:
+            _logger.warning("Upstream proxy request to %s failed: %s", upstream_url, exc)
         await client.aclose()
         return JSONResponse(
             status_code=503,

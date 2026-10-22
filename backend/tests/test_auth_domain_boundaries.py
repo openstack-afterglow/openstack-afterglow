@@ -7,19 +7,27 @@ from __future__ import annotations
 
 import json
 import time
+from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from urllib.parse import parse_qs, urlsplit
 
+import openstack.connection
 import pytest
+import requests
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
+from keystoneauth1 import access as ks_access
+from keystoneauth1 import session as ks_session
 from keystoneauth1.exceptions.http import Unauthorized
+from keystoneauth1.identity.access import AccessInfoPlugin
+from requests.adapters import BaseAdapter
 from starlette.requests import Request
 
 from app.api import deps
 from app.api.identity import auth
 from app.main import app
-from app.services import domain_auth, jwt_service, keystone, session_store
+from app.services import account_spaces, domain_auth, jwt_service, keystone, nova, session_store
 from app.services.domain_auth import require_password as real_require_password
 from app.services.domain_auth import require_provider as real_require_provider
 from app.services.native_operation import NativeOperation
@@ -151,7 +159,7 @@ async def login(client, username="user", *, select_organization=True):
             "personal",
             "personal-" + username,
         )
-    if select_organization:
+    if select_organization and tokens["project_id"]:
         selected = await client.post(
             "/api/v1/auth/token/workspace",
             json={"domain_id": "tenant-a", "project_id": "own" if username == "user" else ""},
@@ -191,6 +199,25 @@ async def native_project_login(client, username="user", project_id="own"):
                 operation=operation,
             )
         ).model_dump()
+
+
+def native_service_automation(monkeypatch, state, user_id):
+    """Keep a genuine service principal projectless, never exempt human admins."""
+    state.roles.append({"id": "service-role", "name": "service", "domain_id": None})
+    state.assignments.append(
+        {"user": {"id": user_id}, "role": {"id": "service-role"}, "scope": {"system": {"all": True}}}
+    )
+    provision_human = account_spaces.ensure_personal_project
+
+    async def qualified_provision(uid, *, operation=None):
+        # The shared fixture substitutes provisioning SQL only. Restore its real
+        # native identity/role qualification for this explicit automation case.
+        async with NativeOperation() as qualification:
+            catalog = await qualification.run(qualification.catalog)
+            await account_spaces._human(uid, (None, qualification.ks, catalog))
+        return await provision_human(uid, operation=operation)
+
+    monkeypatch.setattr(account_spaces, "ensure_personal_project", qualified_provision)
 
 
 async def legacy_projectless_login(client, state, username):
@@ -517,10 +544,7 @@ async def test_live_admin_gate_rejects_out_of_band_native_revocation(
         denied = await admin.post("/api/v1/admin/privileged", headers=headers)
     assert denied.status_code == status
     if change == "grant":
-        if select_organization:
-            assert denied.json()["detail"] == "Current system administrator authority is required"
-        else:
-            assert denied.json()["detail"]["code"] == "system_admin_required"
+        assert denied.json()["detail"]["code"] == "system_admin_required"
     assert mutations == ["user"]
 
 
@@ -566,12 +590,151 @@ def boundary_request(path):
     )
 
 
+class ProjectPolicyProvider(BaseAdapter):
+    """Real SDK transport with project-only Nova admin policy and private ACLs."""
+
+    def __init__(self):
+        super().__init__()
+        self.claims = {}
+        self.requests = []
+        self.provider_operations = []
+        self.authentications = []
+        self.closed = []
+
+    def connect(self, *, project="executor-project", roles=("admin",), system=False, admin_project=True, mutate=None):
+        token = {
+            "methods": ["password"],
+            "expires_at": "2036-10-22T00:00:00Z",
+            "issued_at": "2026-10-22T00:00:00Z",
+            "user": {"id": "configured-executor", "name": "executor", "domain": {"id": "Default"}},
+            "roles": [{"id": "role-" + role, "name": role} for role in roles],
+            "is_admin_project": admin_project,
+            "catalog": [
+                {
+                    "id": "compute",
+                    "name": "nova",
+                    "type": "compute",
+                    "endpoints": [
+                        {
+                            "id": "nova",
+                            "interface": "public",
+                            "region": "RegionOne",
+                            "url": "http://nova.scope.test/v2.1",
+                        }
+                    ],
+                }
+            ],
+        }
+        if project is not None:
+            token["project"] = {"id": project, "name": "executor", "domain": {"id": "Default"}}
+        if system:
+            token["system"] = {"all": True}
+        if mutate:
+            mutate(token)
+        native_token = f"native-executor-{len(self.claims)}"
+        self.claims[native_token] = deepcopy(token)
+        provider = self
+
+        class Auth(AccessInfoPlugin):
+            def get_access(self, session, **kwargs):
+                provider.authentications.append(native_token)
+                return super().get_access(session, **kwargs)
+
+        http = requests.Session()
+        http.mount("http://", self)
+        connection = openstack.connection.Connection(
+            session=ks_session.Session(
+                auth=Auth(ks_access.create(body={"token": token}, auth_token=native_token)), session=http
+            ),
+            compute_api_version="2",
+        )
+        close = connection.close
+
+        def close_once():
+            self.closed.append(native_token)
+            close()
+
+        connection.close = close_once
+        return connection
+
+    def send(self, request, **kwargs):
+        url = urlsplit(request.url)
+        path = url.path.rstrip("/")
+        query = parse_qs(url.query)
+        self.requests.append((request.method, path, query))
+        body, status = {}, 404
+        if request.method == "GET" and path in ("", "/v2.1"):
+            version = {
+                "id": "v2.1",
+                "status": "CURRENT",
+                "version": "2.96",
+                "min_version": "2.1",
+                "links": [{"rel": "self", "href": "http://nova.scope.test/v2.1/"}],
+            }
+            body, status = ({"versions": [version]} if not path else {"version": version}), 200
+        elif request.method == "GET":
+            token = self.claims.get(request.headers.get("X-Auth-Token"), {})
+            project = token.get("project", {}).get("id")
+            admin = any(role["name"].lower() == "admin" for role in token.get("roles", []))
+            valid_project = bool(project) and "system" not in token
+            self.provider_operations.append((path, query, deepcopy(token)))
+            if not valid_project or (
+                path.endswith("/servers/detail") and (not admin or token.get("is_admin_project") is not True)
+            ):
+                status, body = 403, {"forbidden": {"message": "project-scoped admin policy required"}}
+            elif path == "/v2.1/servers/detail":
+                all_tenants = query.get("all_tenants", [""])[0].lower() in {"true", "1"}
+                status, body = (
+                    200,
+                    {
+                        "servers": [{"id": "foreign-server", "name": "Foreign", "tenant_id": "other"}]
+                        if all_tenants
+                        else []
+                    },
+                )
+            elif path == "/v2.1/flavors/detail":
+                flavors = [
+                    {"id": "public", "name": "Public", "os-flavor-access:is_public": True},
+                    {"id": "personal", "name": "Personal", "os-flavor-access:is_public": False},
+                    {"id": "foreign", "name": "Foreign", "os-flavor-access:is_public": False},
+                ]
+                if not admin:
+                    flavors = [
+                        flavor
+                        for flavor in flavors
+                        if flavor["id"] == "public" or (flavor["id"] == "personal" and project == "personal-manager")
+                    ]
+                status, body = 200, {"flavors": flavors}
+            elif path.endswith("/os-flavor-access"):
+                if not admin:
+                    status, body = 403, {"forbidden": {"message": "member cannot inspect private ACLs"}}
+                else:
+                    flavor_id = path.split("/")[-2]
+                    owner = "personal-manager" if flavor_id == "personal" else "other"
+                    status, body = 200, {"flavor_access": [{"flavor_id": flavor_id, "tenant_id": owner}]}
+        response = requests.Response()
+        response.status_code = status
+        response._content = json.dumps(body).encode()
+        response.headers["Content-Type"] = "application/json"
+        response.url, response.request = request.url, request
+        return response
+
+    def close(self):
+        pass
+
+
+@pytest.fixture
+def project_policy_provider():
+    return ProjectPolicyProvider()
+
+
 @pytest.mark.asyncio
 async def test_projectless_admin_system_connection_is_admin_path_only(domain_client, monkeypatch):
     client, state = domain_client
     state.assignments.append(
         {"user": {"id": "manager"}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}}
     )
+    native_service_automation(monkeypatch, state, "manager")
     tokens = await login(client, "manager")
     created = []
     closed = []
@@ -606,6 +769,236 @@ async def test_projectless_admin_system_connection_is_admin_path_only(domain_cli
 
 
 @pytest.mark.asyncio
+async def test_personal_admin_uses_explicit_project_executor_without_changing_workspace(
+    domain_client, monkeypatch, project_policy_provider
+):
+    client, state = domain_client
+    state.assignments.append(
+        {"user": {"id": "manager"}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}}
+    )
+    tokens = await login(client, "manager", select_organization=False)
+    provider = project_policy_provider
+    executor = provider.connect()
+    created = []
+    monkeypatch.setattr(keystone, "get_admin_project_connection", lambda: executor)
+
+    def create(token, project, **kwargs):
+        created.append((token, project, kwargs))
+        return provider.connect(project=project, roles=("member",), admin_project=False)
+
+    monkeypatch.setattr(keystone, "get_openstack_connection", create)
+    request = boundary_request("/api/v1/admin/all-instances")
+    info = await deps._resolve_jwt_token_info(request, tokens["token"], None)
+    before = deepcopy(info)
+    native_before = deepcopy((state.users, state.projects, state.assignments, state.grants))
+    assert info["project_id"] == "personal-manager" and info["domain_id"] == "personal"
+    generator = deps.get_admin_os_conn(await deps.require_admin(info))
+    connection = await anext(generator)
+    assert provider.authentications  # Authenticate before the first Nova operation.
+    assert provider.provider_operations == []
+    assert connection._afterglow_authenticated_project_id == "executor-project"
+    assert connection._afterglow_project_id == info["project_id"]
+    assert connection._afterglow_user_id == "manager"
+    assert connection._afterglow_identity_domain_id == "accounts"
+    assert connection._afterglow_domain_id == "personal"
+    assert connection._afterglow_compute_admin is True
+    assert connection._afterglow_token == "native-executor-0"
+    assert [server.id for server in connection.compute.servers(all_projects=True)] == ["foreign-server"]
+    assert nova.project_flavor_visibility(connection) == {"public": True, "personal": False}
+    assert any(path.endswith("/os-flavor-access") for path, _, _ in provider.provider_operations)
+    await generator.aclose()
+    assert provider.closed == ["native-executor-0"]
+    assert created == []
+
+    for path in ("/api/v1/flavors", "/api/v1/admin/application-credentials/context", "/api/v1/admin/domains"):
+        consumer = deps.get_os_conn(boundary_request(path), info)
+        consumer_connection = await anext(consumer)
+        assert created[-1] == (info["token"], info["connection_project_id"], {})
+        assert consumer_connection._afterglow_compute_admin is False
+        assert consumer_connection._afterglow_authenticated_project_id == info["connection_project_id"]
+        acl_before = sum(path.endswith("/os-flavor-access") for path, _, _ in provider.provider_operations)
+        assert nova.project_flavor_visibility(consumer_connection) == {"public": True, "personal": False}
+        assert sum(path.endswith("/os-flavor-access") for path, _, _ in provider.provider_operations) == acl_before
+        await consumer.aclose()
+    assert len(provider.closed) == 4
+    for key in ("project_id", "connection_project_id", "domain_id", "identity_domain_id", "token", "user_id"):
+        assert info[key] == before[key]
+    assert (state.users, state.projects, state.assignments, state.grants) == native_before
+
+
+@pytest.mark.asyncio
+async def test_personal_member_transport_is_not_promoted_by_admin_path(
+    domain_client, monkeypatch, project_policy_provider
+):
+    """Also runs against the old dependency: stock project-only policy rejects its system token."""
+    client, state = domain_client
+    state.assignments.append(
+        {"user": {"id": "manager"}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}}
+    )
+    tokens = await login(client, "manager", select_organization=False)
+    provider = project_policy_provider
+
+    def create(token, project, **kwargs):
+        system = kwargs.get("system_scope", False)
+        return provider.connect(
+            project=None if system else project,
+            roles=("admin",) if system else ("member",),
+            system=system,
+            admin_project=False,
+            mutate=lambda data: data.update(user={"id": "manager", "domain": {"id": "accounts"}}),
+        )
+
+    monkeypatch.setattr(keystone, "get_openstack_connection", create)
+    request = boundary_request("/api/v1/admin/domains")
+    info = await deps._resolve_jwt_token_info(request, tokens["token"], None)
+    generator = deps.get_os_conn(request, info)
+    connection = await anext(generator)
+    try:
+        assert nova.project_flavor_visibility(connection) == {"public": True, "personal": False}
+        assert connection._afterglow_authenticated_project_id == tokens["project_id"]
+        assert connection._afterglow_compute_admin is False
+        assert not any(path.endswith("/os-flavor-access") for path, _, _ in provider.provider_operations)
+    finally:
+        await generator.aclose()
+    assert len(provider.closed) == 1
+
+
+def provider_admin_application():
+    """Do not override caller authentication or live authority in these regressions."""
+    protected = FastAPI()
+
+    @protected.get("/api/v1/admin/provider-inventory")
+    async def inventory(connection=Depends(deps.get_admin_os_conn)):
+        return {"ids": [server.id for server in connection.compute.servers(all_projects=True)]}
+
+    return protected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "native",
+    [
+        {"project": None, "system": True},
+        {"system": True},
+        {"project": None},
+        {"project": ""},
+        {"roles": ("member",)},
+        {"admin_project": False},
+        {"admin_project": "true"},
+        {"admin_project": 1},
+        {"mutate": lambda token: token.pop("is_admin_project")},
+        {"mutate": lambda token: token.update(project={"id": 42})},
+    ],
+    ids=[
+        "system",
+        "ambiguous-scopes",
+        "unscoped",
+        "empty-project",
+        "member",
+        "not-admin-project",
+        "string-admin-flag",
+        "numeric-admin-flag",
+        "missing-admin-flag",
+        "malformed-project",
+    ],
+)
+async def test_admin_provider_rejects_invalid_native_executor_before_inventory(
+    domain_client, monkeypatch, project_policy_provider, native
+):
+    client, state = domain_client
+    state.assignments.append(
+        {"user": {"id": "manager"}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}}
+    )
+    tokens = await login(client, "manager", select_organization=False)
+    provider = project_policy_provider
+    connection = provider.connect(**native)
+    monkeypatch.setattr(keystone, "get_admin_project_connection", lambda: connection)
+    async with AsyncClient(transport=ASGITransport(app=provider_admin_application()), base_url="http://test") as admin:
+        result = await admin.get(
+            "/api/v1/admin/provider-inventory", headers={"Authorization": f"Bearer {tokens['token']}"}
+        )
+    assert result.status_code == 503, result.text
+    assert result.json()["detail"] == "Native administrator project scope is invalid"
+    assert provider.authentications
+    assert provider.provider_operations == []
+    assert len(provider.closed) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["ordinary", "revoked"])
+async def test_admin_provider_requires_live_caller_authority_before_executor_auth(
+    domain_client, monkeypatch, project_policy_provider, kind
+):
+    client, state = domain_client
+    if kind == "revoked":
+        state.assignments.append(
+            {"user": {"id": "manager"}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}}
+        )
+    tokens = await login(client, "manager", select_organization=False)
+    provider = project_policy_provider
+    created = []
+
+    def executor():
+        created.append(True)
+        return provider.connect()
+
+    monkeypatch.setattr(keystone, "get_admin_project_connection", executor)
+    async with AsyncClient(transport=ASGITransport(app=provider_admin_application()), base_url="http://test") as admin:
+        headers = {"Authorization": f"Bearer {tokens['token']}"}
+        if kind == "revoked":
+            allowed = await admin.get("/api/v1/admin/provider-inventory", headers=headers)
+            assert allowed.status_code == 200, allowed.text
+            assert allowed.json() == {"ids": ["foreign-server"]}
+            state.assignments[:] = [row for row in state.assignments if "system" not in row["scope"]]
+        before = (len(created), len(provider.authentications), len(provider.provider_operations), len(provider.closed))
+        denied = await admin.get("/api/v1/admin/provider-inventory", headers=headers)
+    assert denied.status_code == 403, denied.text
+    assert (
+        len(created),
+        len(provider.authentications),
+        len(provider.provider_operations),
+        len(provider.closed),
+    ) == before
+    assert len(created) == (1 if kind == "revoked" else 0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["authentication", "operation"])
+async def test_admin_provider_closes_executor_once_on_native_failure(
+    domain_client, monkeypatch, project_policy_provider, failure
+):
+    client, state = domain_client
+    state.assignments.append(
+        {"user": {"id": "manager"}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}}
+    )
+    tokens = await login(client, "manager", select_organization=False)
+    provider = project_policy_provider
+    connection = provider.connect()
+    if failure == "authentication":
+
+        def unavailable(_session):
+            raise Unauthorized()
+
+        monkeypatch.setattr(connection.session.auth, "get_access", unavailable)
+    else:
+        # The dependency is valid; provider policy failure must still finalize it.
+        provider.claims["native-executor-0"]["roles"] = [{"id": "member", "name": "member"}]
+    monkeypatch.setattr(keystone, "get_admin_project_connection", lambda: connection)
+    transport = ASGITransport(app=provider_admin_application(), raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as admin:
+        result = await admin.get(
+            "/api/v1/admin/provider-inventory", headers={"Authorization": f"Bearer {tokens['token']}"}
+        )
+    assert result.status_code == (503 if failure == "authentication" else 500)
+    if failure == "authentication":
+        assert result.json()["detail"] == "Administrator provider connection is unavailable"
+        assert provider.provider_operations == []
+    else:
+        assert len(provider.provider_operations) == 1
+    assert provider.closed == ["native-executor-0"]
+
+
+@pytest.mark.asyncio
 async def test_projectless_non_admin_never_receives_system_connection(domain_client, monkeypatch):
     client, state = domain_client
     tokens = await legacy_projectless_login(client, state, "signup")
@@ -627,6 +1020,7 @@ async def test_projectless_admin_system_exchange_fails_closed(domain_client, mon
     state.assignments.append(
         {"user": {"id": "manager"}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}}
     )
+    native_service_automation(monkeypatch, state, "manager")
     tokens = await login(client, "manager")
     closed = []
 
@@ -981,58 +1375,35 @@ async def test_package_system_admin_preserves_original_caller_with_independent_t
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("source", ["project", "projectless"])
-async def test_system_admin_workspace_preserves_native_source_through_refresh(domain_client, source):
+async def test_system_admin_user_workspace_rejects_nonmember_targets_without_rotating_source(
+    domain_client, source, monkeypatch
+):
     client, state = domain_client
     user_id = "user" if source == "project" else "manager"
-    native_project_id = "own" if source == "project" else ""
-    state.grants[user_id] = [native_project_id] if native_project_id else []
-    grant = {"user": {"id": user_id}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}}
-    state.assignments.append(grant)
+    state.grants[user_id] = ["own"] if source == "project" else ["admission"]
+    state.assignments.append(
+        {"user": {"id": user_id}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}}
+    )
+    if source == "projectless":
+        native_service_automation(monkeypatch, state, user_id)
     tokens = await native_project_login(client, user_id) if source == "project" else await login(client, user_id)
     headers = {"Authorization": f"Bearer {tokens['token']}"}
+    _, original = await session(tokens)
     directory = await client.get("/api/v1/auth/workspaces?domain_id=tenant-b", headers=headers)
-    assert directory.status_code == 200, directory.text
-    assert [row["id"] for row in directory.json()["projects"]] == ["foreign"]
+    assert directory.status_code == 403, directory.text
     selected = await client.post(
         "/api/v1/auth/token/workspace",
         headers=headers,
         json={"domain_id": "tenant-b", "project_id": "foreign"},
     )
-    assert selected.status_code == 200, selected.text
-    tokens = selected.json()
-    assert (tokens["domain_id"], tokens["identity_domain_id"], tokens["project_id"]) == (
-        "tenant-b",
-        "accounts",
-        "foreign",
-    )
-    assert jwt_service.verify_access(tokens["token"])["project_id"] == native_project_id
-    _, stored = await session(tokens)
-    assert (stored["project_id"], stored["target_project_id"]) == (native_project_id, "foreign")
-    current = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {tokens['token']}"})
-    assert current.status_code == 200, current.text
-    assert (current.json()["project_id"], current.json()["project_name"]) == ("foreign", "Foreign")
-    info = await deps._resolve_jwt_token_info(
-        boundary_request("/api/v1/waygate/servers"),
-        tokens["token"],
-        "foreign",
-    )
-    assert (info["project_id"], info["connection_project_id"]) == ("foreign", native_project_id)
-    assert info["token"] == f"native:{user_id}:{native_project_id}"
-    with pytest.raises(HTTPException) as core_denied:
-        await deps._resolve_jwt_token_info(boundary_request("/api/v1/networks"), tokens["token"], "foreign")
-    assert core_denied.value.status_code == 403
+    assert selected.status_code == 403, selected.text
+    assert "token" not in selected.json()
+    retained = await session_store.get_session(jwt_service.verify_refresh(tokens["refresh_token"])["jti"])
+    for key in ("project_id", "target_project_id", "domain_id", "identity_domain_id", "family_id", "started_at"):
+        assert retained.get(key) == original.get(key)
     refreshed = await client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert refreshed.status_code == 200, refreshed.text
-    tokens = refreshed.json()
-    assert tokens["project_id"] == "foreign"
-    assert jwt_service.verify_access(tokens["token"])["project_id"] == native_project_id
-    state.assignments.remove(grant)
-    with pytest.raises(HTTPException) as revoked:
-        await deps._resolve_jwt_token_info(boundary_request("/api/v1/waygate/servers"), tokens["token"], "foreign")
-    assert revoked.value.status_code == 403
-    revoked_refresh = await client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
-    assert revoked_refresh.status_code == 403, revoked_refresh.text
-    assert (await session(tokens))[1]["target_project_id"] == "foreign"
+    assert refreshed.json()["project_id"] == tokens["project_id"]
 
 
 @pytest.mark.asyncio
@@ -1056,12 +1427,12 @@ async def test_system_admin_project_loss_keeps_context_and_refresh(domain_client
         headers={"Authorization": f"Bearer {tokens['token']}", "X-Project-Id": "foreign"},
     )
     assert current.status_code == 200, current.text
-    assert current.json()["project_id"] == "foreign" and current.json()["is_system_admin"] is True
+    assert current.json()["project_id"] == "" and current.json()["is_system_admin"] is True
     refreshed = await client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert refreshed.status_code == 200, refreshed.text
     tokens = refreshed.json()
     _, stored = await session(tokens)
-    assert tokens["project_id"] == stored["target_project_id"] == "foreign"
+    assert tokens["project_id"] == "" and stored.get("target_project_id") is None
     assert jwt_service.verify_access(tokens["token"])["project_id"] == stored["project_id"] == ""
     assert stored["family_id"] == original["family_id"]
     assert stored["started_at"] == original["started_at"]
@@ -1090,11 +1461,8 @@ async def test_package_admin_empty_target_never_falls_back_to_native_source(doma
     )
     tokens = await login(client)
     if stored_empty:
-        response = await client.post(
-            "/api/v1/auth/token/workspace",
-            json={"domain_id": "tenant-a", "project_id": ""},
-            headers={"Authorization": f"Bearer {tokens['token']}"},
-        )
+        state.grants["user"] = [pid for pid in state.grants["user"] if pid != tokens["project_id"]]
+        response = await client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
         assert response.status_code == 200, response.text
         tokens = response.json()
     with pytest.raises(HTTPException) as denied:
@@ -1108,7 +1476,7 @@ async def test_package_admin_empty_target_never_falls_back_to_native_source(doma
 
 
 @pytest.mark.asyncio
-async def test_logical_admin_refresh_rechecks_selected_domain_email_policy(domain_client, monkeypatch):
+async def test_admin_member_workspace_refresh_rechecks_selected_domain_email_policy(domain_client, monkeypatch):
     client, state = domain_client
     state.assignments.append(
         {
@@ -1117,7 +1485,7 @@ async def test_logical_admin_refresh_rechecks_selected_domain_email_policy(domai
             "scope": {"system": {"all": True}},
         }
     )
-    state.grants["user"] = ["own"]
+    state.grants["user"] = ["own", "foreign"]
     tokens = await login(client)
     selected = await client.post(
         "/api/v1/auth/token/workspace",
@@ -1138,11 +1506,11 @@ async def test_logical_admin_refresh_rechecks_selected_domain_email_policy(domai
     result = await client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert result.status_code == 403, result.text
     assert "token" not in result.json()
-    assert (await session(tokens))[1]["target_project_id"] == "foreign"
+    assert (await session(tokens))[1]["project_id"] == "foreign"
 
 
 @pytest.mark.asyncio
-async def test_logical_admin_can_revoke_only_own_individual_sessions(domain_client):
+async def test_admin_member_workspace_can_revoke_only_own_individual_sessions(domain_client):
     client, state = domain_client
     state.assignments.append(
         {
@@ -1151,7 +1519,7 @@ async def test_logical_admin_can_revoke_only_own_individual_sessions(domain_clie
             "scope": {"system": {"all": True}},
         }
     )
-    state.grants["user"] = ["own"]
+    state.grants["user"] = ["own", "foreign"]
     own_other = await login(client)
     foreign_user = await login(client, "manager", select_organization=False)
     own_jti, _ = await session(own_other)
@@ -1171,7 +1539,7 @@ async def test_logical_admin_can_revoke_only_own_individual_sessions(domain_clie
     denied = await client.delete(f"/api/v1/auth/sessions/{foreign_jti}", headers=headers)
     assert denied.status_code == 404, denied.text
     assert await session_store.get_session(foreign_jti) is not None
-    assert (await session(tokens))[1]["target_project_id"] == "foreign"
+    assert (await session(tokens))[1]["project_id"] == "foreign"
 
 
 @pytest.mark.asyncio

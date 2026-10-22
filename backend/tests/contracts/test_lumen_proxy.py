@@ -439,7 +439,7 @@ async def test_context_routes_preserve_post_body_and_idempotency(api_client, cur
     [
         (
             "POST",
-            "/api/v1/chat/admin/providers/7/auth/device",
+            "/api/v1/chat/admin/providers/7/accounts/11/credentials/17/auth/device",
             {},
             201,
             {
@@ -453,7 +453,7 @@ async def test_context_routes_preserve_post_body_and_idempotency(api_client, cur
         ),
         (
             "POST",
-            "/api/v1/chat/admin/providers/7/auth/device/opaque-attempt/poll",
+            "/api/v1/chat/admin/providers/7/accounts/11/credentials/17/auth/device/opaque-attempt/poll",
             {},
             200,
             {
@@ -465,14 +465,14 @@ async def test_context_routes_preserve_post_body_and_idempotency(api_client, cur
         ),
         (
             "DELETE",
-            "/api/v1/chat/admin/providers/7/auth/device/opaque-attempt",
+            "/api/v1/chat/admin/providers/7/accounts/11/credentials/17/auth/device/opaque-attempt",
             None,
             204,
             None,
         ),
         (
             "PUT",
-            "/api/v1/chat/admin/providers/8/auth/token",
+            "/api/v1/chat/admin/providers/8/accounts/12/credentials/18/auth/token",
             {"token": "sk-ant-oat01-contract-fixture-token", "expires_at": None},
             200,
             {
@@ -484,7 +484,7 @@ async def test_context_routes_preserve_post_body_and_idempotency(api_client, cur
         ),
         (
             "DELETE",
-            "/api/v1/chat/admin/providers/8/auth",
+            "/api/v1/chat/admin/providers/8/accounts/12/credentials/18/auth",
             None,
             204,
             None,
@@ -568,7 +568,9 @@ async def test_subscription_auth_proxy_preserves_safe_error_and_no_store(
         patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
         patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
     ):
-        response = await api_client.post("/api/v1/chat/admin/providers/7/auth/device", json={})
+        response = await api_client.post(
+            "/api/v1/chat/admin/providers/7/accounts/11/credentials/17/auth/device", json={}
+        )
 
     assert response.status_code == status_code
     assert response.headers["cache-control"] == "no-store"
@@ -747,7 +749,23 @@ async def test_current_access_failure_never_falls_back_to_token_roles(api_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("method", "path"),
-    [("POST", "/api/v1/chat/admin/providers/7/auth/device"), ("GET", "/api/v1/chat/admin/models")],
+    [
+        ("GET", "/api/v1/chat/admin/providers/7/accounts"),
+        ("POST", "/api/v1/chat/admin/providers/7/accounts"),
+        ("PATCH", "/api/v1/chat/admin/providers/7/accounts/11"),
+        ("DELETE", "/api/v1/chat/admin/providers/7/accounts/11"),
+        ("GET", "/api/v1/chat/admin/providers/7/accounts/11/usage"),
+        ("POST", "/api/v1/chat/admin/providers/7/accounts/11/credentials"),
+        ("PATCH", "/api/v1/chat/admin/providers/7/accounts/11/credentials/17"),
+        ("DELETE", "/api/v1/chat/admin/providers/7/accounts/11/credentials/17"),
+        ("PUT", "/api/v1/chat/admin/providers/7/accounts/11/credentials/17/auth/token"),
+        ("DELETE", "/api/v1/chat/admin/providers/7/accounts/11/credentials/17/auth"),
+        ("POST", "/api/v1/chat/admin/providers/7/accounts/11/credentials/17/auth/device"),
+        ("POST", "/api/v1/chat/admin/providers/7/accounts/11/credentials/17/auth/device/attempt/poll"),
+        ("DELETE", "/api/v1/chat/admin/providers/7/accounts/11/credentials/17/auth/device/attempt"),
+        ("PATCH", "/api/v1/chat/admin/providers/7"),
+        ("GET", "/api/v1/chat/admin/models"),
+    ],
 )
 async def test_admin_routes_reject_project_roles_and_forged_authority(api_client, current_access, method, path):
     async def project_admin(request: Request):
@@ -769,6 +787,9 @@ async def test_admin_routes_reject_project_roles_and_forged_authority(api_client
 
     assert response.status_code == 403
     assert response.json() == {"detail": "시스템 관리자 권한이 필요합니다"}
+    if "/providers/" in path:
+        assert response.headers["cache-control"] == "no-store"
+        assert response.headers["pragma"] == "no-cache"
     endpoint.assert_not_called()
     client.assert_not_called()
 
@@ -854,3 +875,116 @@ def test_afterglow_chat_boundary_has_no_ai_runtime_dependencies():
         "lumen-sdk",
     }
     assert dependency_names.isdisjoint(forbidden_deps)
+
+
+@pytest.mark.asyncio
+async def test_account_mutation_rejects_cookie_and_forged_native_auth_without_browser_bearer(api_client):
+    with patch("app.services.service_proxy._get_internal_endpoint") as endpoint:
+        response = await api_client.post(
+            "/api/v1/chat/admin/providers/7/accounts/11/credentials",
+            json={"name": "private", "api_key": "synthetic-secret-never-echo"},
+            headers={
+                "Cookie": "access_token=forged; session=forged",
+                "Origin": "https://attacker.invalid",
+                "X-Auth-Token": "forged-native-admin-token",
+                "X-Is-System-Admin": "true",
+                "X-Project-Id": "forged-project",
+            },
+        )
+    assert response.status_code == 401
+    assert response.headers["cache-control"] == "no-store"
+    assert "synthetic-secret-never-echo" not in response.text
+    endpoint.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_account_mutation_revalidates_revoked_system_grant(api_client, current_system_admin, auth_directory):
+    app.dependency_overrides[get_token_info] = _authenticated_system_admin
+    # The browser's candidate flag survives, but the current native grant does not.
+    auth_directory.assignments.clear()
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint") as endpoint,
+        patch("app.services.service_proxy.httpx.AsyncClient") as client,
+    ):
+        response = await api_client.delete("/api/v1/chat/admin/providers/7/accounts/11/credentials/17")
+    assert response.status_code == 403
+    assert response.headers["cache-control"] == "no-store"
+    endpoint.assert_not_called()
+    client.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [200, 403, 404, 409, 422, 503])
+async def test_private_account_response_is_not_cacheable_even_without_native_cache_headers(
+    api_client, current_system_admin, status_code, caplog
+):
+    app.dependency_overrides[get_token_info] = _authenticated_system_admin
+    secret = "synthetic-write-only-upstream-key"
+    result = {"api_key_configured": True} if status_code == 200 else {"detail": "Credential request rejected"}
+    received = []
+
+    async def handler(request):
+        received.append(request)
+        assert json.loads(await request.aread())["api_key"] == secret
+        return HttpxResponse(
+            status_code,
+            headers={"content-type": "application/json", "cache-control": "public, max-age=3600"},
+            stream=httpx.ByteStream(json.dumps(result).encode()),
+        )
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.patch(
+            "/api/v1/chat/admin/providers/7/accounts/11/credentials/17",
+            json={"api_key": secret},
+            headers={
+                "Authorization": "Bearer browser-jwt",
+                "X-Auth-Token": "forged-token",
+                "X-Project-Id": "forged-project",
+                "X-Target-Project-Id": "forged-target",
+                "X-User-Id": "forged-user",
+                "X-Roles": "admin",
+                "Cookie": "provider_key=private-cookie",
+            },
+        )
+    assert response.status_code == status_code
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert secret not in response.text
+    assert secret not in caplog.text
+    assert len(received) == 1
+    headers = received[0].headers
+    assert headers["x-auth-token"] == "caller-token"
+    assert headers["x-project-id"] == "project-1"
+    assert all(
+        name not in headers for name in ("authorization", "cookie", "x-target-project-id", "x-user-id", "x-roles")
+    )
+
+
+@pytest.mark.asyncio
+async def test_private_account_transport_failure_does_not_log_url_or_exception_secrets(
+    api_client, current_system_admin, caplog
+):
+    app.dependency_overrides[get_token_info] = _authenticated_system_admin
+    secret = "synthetic-private-url-and-exception-key"
+
+    def handler(request):
+        raise httpx.ConnectError(f"transport rejected {secret}", request=request)
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.post(
+            "/api/v1/chat/admin/providers/7/accounts/11/credentials",
+            json={"name": "new", "api_key": secret},
+        )
+    assert response.status_code == 503
+    assert response.headers["cache-control"] == "no-store"
+    assert secret not in response.text
+    assert secret not in caplog.text
+    assert "provider administration failed" in caplog.text

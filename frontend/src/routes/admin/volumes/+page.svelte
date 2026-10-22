@@ -7,6 +7,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { api as baseApi } from '$lib/api/client';
 	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
+	import { adminInventoryScope, setAdminInventoryScope } from '$lib/stores/adminInventoryScope';
 	const api = createAdminInventoryApi(baseApi);
 	onDestroy(api.dispose);
 	import type { PagedResponse, TsPoint } from '$lib/types/common';
@@ -31,6 +32,7 @@
 	import AdminVolumePageSizeToggle from '$lib/components/admin/volumes/AdminVolumePageSizeToggle.svelte';
 	import AdminVolumeDetailSlide from '$lib/components/admin/volumes/AdminVolumeDetailSlide.svelte';
 	import AdminVolumeStatusSummary from '$lib/components/admin/volumes/AdminVolumeStatusSummary.svelte';
+	import AdminVolumeDomainSummary from '$lib/components/admin/volumes/AdminVolumeDomainSummary.svelte';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
@@ -56,6 +58,9 @@
 
 	let statusFilter = $state('');
 	let nameSearch = $state('');
+	let volumeType = $state('');
+	let minSize = $state('');
+	let maxSize = $state('');
 
 	let editVolume = $state<AdminVolume | null>(null);
 	let deleteVolume = $state<AdminVolume | null>(null);
@@ -66,6 +71,7 @@
 	let loadGeneration = 0;
 	let resultBoundary = 0;
 	let statusSummaryGeneration = 0;
+	let timeseriesGeneration = 0;
 	let bulkDeleting = $state(false);
 	let projectEffectReady = $state(false);
 	let lastProjectId = $state<string | undefined>(undefined);
@@ -80,11 +86,23 @@
 			.map((item) => item.status),
 	);
 	const nextPrefetch = createIntentPrefetchScheduler();
+	function filterParams(): URLSearchParams {
+		const params = new URLSearchParams();
+		if (statusFilter) params.set('status', statusFilter);
+		if (nameSearch) params.set('name', nameSearch);
+		if (volumeType) params.set('volume_type', volumeType);
+		if (minSize !== '') params.set('min_size', minSize);
+		if (maxSize !== '') params.set('max_size', maxSize);
+		return params;
+	}
+	function summaryPath(): string {
+		const query = filterParams().toString();
+		return `/api/v1/admin/volumes/status-summary${query ? `?${query}` : ''}`;
+	}
 	function listPath(marker?: string): string {
 		const params = new URLSearchParams({ limit: String(pageSize) });
 		if (marker) params.set('marker', marker);
-		if (statusFilter) params.set('status', statusFilter);
-		if (nameSearch) params.set('name', nameSearch);
+		for (const [key, value] of filterParams()) params.set(key, value);
 		return `/api/v1/admin/all-volumes?${params}`;
 	}
 	function prefetchNext() {
@@ -102,13 +120,16 @@
 	}
 
 	async function loadTimeseries(range: string, opts?: { background?: boolean }) {
+		const generation = ++timeseriesGeneration;
+		const owns = () => api.isCurrent() && generation === timeseriesGeneration;
 		if (!opts?.background) tsLoading = true;
 		try {
-			tsData = await api.get<TsPoint[]>(`/api/v1/admin/timeseries/volumes?range=${range}`, token, projectId);
+			const result = await api.get<TsPoint[]>(`/api/v1/admin/timeseries/volumes?range=${range}`, token, projectId);
+			if (owns()) tsData = result;
 		} catch {
-			if (!opts?.background) tsData = [];
+			if (owns() && !opts?.background) tsData = [];
 		} finally {
-			if (!opts?.background) tsLoading = false;
+			if (owns() && !opts?.background) tsLoading = false;
 		}
 	}
 
@@ -116,12 +137,15 @@
 		const generation = ++statusSummaryGeneration;
 		const requestProjectId = $auth.projectId ?? undefined;
 		const requestToken = $auth.token ?? undefined;
-		const owns = () => generation === statusSummaryGeneration
-			&& ($auth.projectId ?? undefined) === requestProjectId;
+		const requestPath = summaryPath();
+		const owns = () => api.isCurrent() && generation === statusSummaryGeneration
+			&& ($auth.token ?? undefined) === requestToken
+			&& ($auth.projectId ?? undefined) === requestProjectId
+			&& summaryPath() === requestPath;
 		if (!opts?.background && statusSummary === null) statusSummaryLoading = true;
 		try {
 			const summary = await api.get<VolumeStatusSummary>(
-				'/api/v1/admin/volumes/status-summary',
+				requestPath,
 				requestToken,
 				requestProjectId,
 			);
@@ -130,15 +154,16 @@
 			const activeStatusDisappeared = statusFilter !== ''
 				&& !summary.statuses.some((item) => item.status === statusFilter && item.count > 0);
 			if (activeStatusDisappeared) {
+				statusSummaryLoading = false;
+				statusSummary = { ...summary, filtered_total: summary.total, filtered_gb: summary.total_gb };
 				statusFilter = '';
-				markerStack = [];
-				nextMarker = null;
-				selection.clear();
+				resetResultBoundary();
 				if (opts?.reloadOnReset !== false) void load(undefined, { clearSelection: true });
+				void loadStatusSummary({ background: true });
 			}
 			return activeStatusDisappeared;
 		} catch {
-			if (owns() && !opts?.background) statusSummary = null;
+			if (owns()) statusSummary = null;
 			return false;
 		} finally {
 			if (owns()) statusSummaryLoading = false;
@@ -146,21 +171,52 @@
 	}
 
 	function resetResultBoundary() {
+		resultBoundary += 1;
+		loadGeneration += 1;
+		nextPrefetch.cancel();
 		markerStack = [];
 		nextMarker = null;
 		selection.clear();
+		selectedVolumeId = null;
+		openActionMenu = null;
+		copiedProjectId = null;
+		editVolume = deleteVolume = extendVolume = resetVolume = forceDeleteVolume = transferVolume = null;
 	}
 
 	function applyStatusFilter(status: string) {
 		statusFilter = status;
-		resetResultBoundary();
-		void load(undefined, { clearSelection: true });
+		onFilterChange();
 	}
 
 	function onFilterChange() {
-		resetResultBoundary();
+		invalidateSearch();
 		void load(undefined, { clearSelection: true });
+		void loadStatusSummary();
 	}
+
+	function drillIntoDomain(domainId: string) {
+		if (api.filter.domainId === domainId && !api.filter.projectId) {
+			statusFilter = ''; nameSearch = ''; volumeType = ''; minSize = ''; maxSize = '';
+			onFilterChange();
+		} else setAdminInventoryScope(domainId, '');
+	}
+
+	function invalidateSearch() {
+		resetResultBoundary();
+		statusSummaryGeneration += 1;
+		statusSummary = null;
+		statusSummaryLoading = true;
+		allVolumes = [];
+		loading = true;
+	}
+
+	let scopeRevision = api.filter.revision;
+	const unsubscribeScope = adminInventoryScope.subscribe((scope) => {
+		if (scope.revision === scopeRevision) return;
+		scopeRevision = scope.revision;
+		invalidateSearch();
+	});
+	onDestroy(unsubscribeScope);
 
 	async function load(marker?: string, opts?: { clearSelection?: boolean }) {
 		const generation = ++loadGeneration;
@@ -170,7 +226,7 @@
 		const requestStatusFilter = statusFilter;
 		const requestNameSearch = nameSearch;
 		const requestPath = listPath(marker);
-		const owns = () => generation === loadGeneration
+		const owns = () => api.isCurrent() && generation === loadGeneration
 			&& ($auth.token ?? undefined) === requestToken
 			&& ($auth.projectId ?? undefined) === requestProjectId
 			&& pageSize === requestPageSize
@@ -182,6 +238,8 @@
 			resultBoundary += 1;
 			selection.clear();
 			allVolumes = [];
+			selectedVolumeId = null;
+			openActionMenu = null;
 		}
 		if (allVolumes.length === 0) loading = true;
 		else refreshing = true;
@@ -219,7 +277,7 @@
 		bulkDeleting = true;
 		try {
 			if (!await confirmDialog(t('volumeList.bulkDelete.confirm', { count: ids.length }))) return;
-			if (boundary !== resultBoundary || requestProjectId !== ($auth.projectId ?? undefined)
+			if (!api.isCurrent() || boundary !== resultBoundary || requestProjectId !== ($auth.projectId ?? undefined)
 				|| requestUserId !== $auth.userId || ids.some(id => !selection.ids.has(id))) return;
 			const requestToken = $auth.token ?? undefined;
 			const response = await api.post<{ results: { id: string; ok: boolean; error: string | null }[] }>(
@@ -228,6 +286,8 @@
 				requestToken,
 				requestProjectId,
 			);
+			if (!api.isCurrent() || boundary !== resultBoundary || requestUserId !== $auth.userId
+				|| requestProjectId !== ($auth.projectId ?? undefined)) return;
 			const successfulIds = response.results.filter((result) => result.ok).map((result) => result.id);
 			const failed = response.results.length - successfulIds.length;
 			if (successfulIds.length > 0) toast.success(t('volumeList.bulkDelete.success', { count: successfulIds.length }));
@@ -240,7 +300,8 @@
 				loadTimeseries(tsRange, { background: true }),
 			]);
 		} catch {
-			if (!api.isCurrent()) return;
+			if (!api.isCurrent() || boundary !== resultBoundary || requestUserId !== $auth.userId
+				|| requestProjectId !== ($auth.projectId ?? undefined)) return;
 			toast.error(t('volumeList.bulkDelete.failed'));
 		} finally {
 			bulkDeleting = false;
@@ -287,7 +348,7 @@
 		projectNames.load(token, projectId);
 	});
 
-	onDestroy(() => { resultBoundary += 1; loadGeneration += 1; statusSummaryGeneration += 1; nextPrefetch.cancel(); });
+	onDestroy(() => { resultBoundary += 1; loadGeneration += 1; statusSummaryGeneration += 1; timeseriesGeneration += 1; nextPrefetch.cancel(); });
 </script>
 
 <PageShell class="bulk-selection-page">
@@ -301,10 +362,8 @@
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading || refreshing}
 				onManualRefresh={() => {
-					statusFilter = ''; nameSearch = '';
-					resetResultBoundary();
-					void load(undefined, { clearSelection: true });
-					void loadStatusSummary();
+					statusFilter = ''; nameSearch = ''; volumeType = ''; minSize = ''; maxSize = '';
+					onFilterChange();
 					void loadTimeseries(tsRange);
 				}}
 			/>
@@ -335,13 +394,23 @@
 		onSelect={applyStatusFilter}
 	/>
 	</div>
+	<AdminVolumeDomainSummary
+		summary={statusSummary}
+		loading={statusSummaryLoading}
+		scoped={api.scoped}
+		onDomain={drillIntoDomain}
+	/>
 
 	<div data-tour="admin-storage-filters">
 	<AdminVolumeFilters
 		bind:statusFilter
 		bind:nameSearch
+		bind:volumeType
+		bind:minSize
+		bind:maxSize
 		statusOptions={statusOptions}
 		onChange={onFilterChange}
+		onInvalidate={invalidateSearch}
 	/>
 	</div>
 

@@ -17,7 +17,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.api.deps import get_os_conn, require_admin, require_domain_manager
+from app.api.deps import get_admin_os_conn, get_os_conn, require_admin, require_domain_manager
 from app.api.identity import domain_quotas as api
 from app.models.domain_quotas import DomainQuotaOperation, DomainQuotaPolicy, ProjectQuotaUpdate
 from app.services import domain_quotas as service
@@ -323,6 +323,7 @@ async def test_recovery_requires_explicit_admin_confirmation_and_readback(budget
     app = FastAPI()
     app.include_router(api.router, prefix="/api/v1")
     app.dependency_overrides[get_os_conn] = lambda: budget.conn
+    app.dependency_overrides[get_admin_os_conn] = lambda: budget.conn
 
     async def verified_admin():
         return {"user_id": "system-admin"}
@@ -410,6 +411,7 @@ async def test_system_admin_guard_covers_explicit_domain_policy_and_recovery(bud
 
     app.dependency_overrides[require_admin] = forbidden
     app.dependency_overrides[get_os_conn] = lambda: budget.conn
+    app.dependency_overrides[get_admin_os_conn] = lambda: budget.conn
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         for method, path, body in [
             ("GET", f"/api/v1/admin/domains/{DOMAIN}/quotas", None),

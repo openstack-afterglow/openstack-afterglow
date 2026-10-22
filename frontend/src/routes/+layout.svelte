@@ -439,7 +439,9 @@
 				<img src="/afterglow-symbol.svg" alt="" width="24" height="24" class="shrink-0" />
 				<span class="hidden max-w-36 truncate sm:block">{$siteConfig.site_name}</span>
 			</a>
-			<div class="hidden min-w-0 md:block md:w-36 xl:w-44"><ProjectSelector /></div>
+			{#if $page.url.pathname !== '/admin' && !$page.url.pathname.startsWith('/admin/')}
+				<div class="hidden min-w-0 md:block md:w-36 xl:w-44"><ProjectSelector /></div>
+			{/if}
 		</div>
 
 		<!-- 검색 입력 (⌘K 트리거) -->

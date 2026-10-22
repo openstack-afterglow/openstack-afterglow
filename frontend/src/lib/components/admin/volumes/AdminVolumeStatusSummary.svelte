@@ -64,7 +64,7 @@
 		{#if loading}
 			<span class="motion-skeleton h-5 w-8 rounded" aria-hidden="true"></span>
 		{:else}
-			<span class="status-card-count">{summary?.total ?? 0}</span>
+			<span class="status-card-count">{summary?.total ?? '—'}</span>
 		{/if}
 	</button>
 

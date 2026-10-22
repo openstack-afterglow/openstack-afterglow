@@ -35,6 +35,7 @@ def account_body(token):
 def assert_no_native_writes(directory):
     assert not directory.creates and not directory.updates and not directory.calls
     assert not directory.domain_writes and not directory.personal_projects
+    assert not directory.quota_writes
 
 
 async def test_options_are_public_truthful_and_never_provision(directory, enrollment_app):
@@ -88,8 +89,15 @@ async def test_delivered_token_inspection_is_nonconsuming_and_signup_is_personal
         assert not any(p.domain_id == home for p in directory.ks.projects.list())
         assert not project_service._direct_ids(directory.default_direct, uid)
         assert not project_service._direct_ids(directory.direct, uid)
+        native_effects = (
+            list(directory.creates),
+            list(directory.updates),
+            list(directory.calls),
+            list(directory.quota_writes),
+        )
         assert (await client.get(f"/api/v1/auth/registrations/{token}")).status_code == 410
         assert (await client.post("/api/v1/auth/registrations/accept", json=account_body(token))).status_code == 410
+        assert (directory.creates, directory.updates, directory.calls, directory.quota_writes) == native_effects
     async with enrollments() as session:
         row = (await session.execute(select(DomainEnrollment))).scalar_one()
         assert row.status == "accepted" and row.domain_id is None and row.identity_domain_id == home
@@ -167,6 +175,72 @@ async def test_existing_owner_is_revealed_only_with_token_and_never_reset(direct
     assert_no_native_writes(directory)
 
 
+@pytest.mark.parametrize(
+    ("existing_name", "existing_email", "name", "email", "detail"),
+    [
+        ("Taken", "foreign@test.invalid", "tAkEn", "new@test.invalid", "Username already belongs to an account"),
+        (
+            "Owner@BÜCHER.Example.",
+            "foreign@test.invalid",
+            "signup",
+            "owner@xn--bcher-kva.example",
+            "Account already exists; sign in to accept an invitation",
+        ),
+        (
+            "Owner@BÜCHER.Example.",
+            "foreign@test.invalid",
+            "owner@xn--bcher-kva.example",
+            "new@test.invalid",
+            "Username already belongs to an account",
+        ),
+        (
+            "foreign",
+            "Owner@BÜCHER.Example.",
+            "owner@xn--bcher-kva.example",
+            "new@test.invalid",
+            "Username already belongs to an account",
+        ),
+    ],
+)
+async def test_verified_signup_rejects_normalized_username_and_cross_alias_owners(
+    directory, enrollment_app, existing_name, existing_email, name, email, detail
+):
+    enable_signup(directory)
+    owner = directory.users["foreign"]
+    owner.name, owner.email = existing_name, existing_email
+    original = vars(owner).copy()
+    async with AsyncClient(transport=ASGITransport(app=enrollment_app), base_url="http://test") as client:
+        issued = await client.post("/api/v1/auth/registrations", json={"email": email})
+        assert issued.status_code == 202 and issued.json() == {"accepted": True}
+        token = email_token(directory.sent[-1])
+        rejected = await client.post("/api/v1/auth/registrations/accept", json={**account_body(token), "name": name})
+        assert rejected.status_code == 409 and rejected.json()["detail"] == detail
+    assert vars(owner) == original
+    assert_no_native_writes(directory)
+
+
+async def test_username_conflict_keeps_delivered_proof_for_a_fresh_unique_choice(directory, enrollment_app):
+    enable_signup(directory)
+    original = vars(directory.users["member"]).copy()
+    async with AsyncClient(transport=ASGITransport(app=enrollment_app), base_url="http://test") as client:
+        assert (await client.post("/api/v1/auth/registrations", json={"email": "new@test.invalid"})).status_code == 202
+        token = email_token(directory.sent[-1])
+        rejected = await client.post(
+            "/api/v1/auth/registrations/accept", json={**account_body(token), "name": "MEMBER"}
+        )
+        assert rejected.status_code == 409
+        assert rejected.json()["detail"] == "Username already belongs to an account"
+        assert_no_native_writes(directory)
+        accepted = await client.post(
+            "/api/v1/auth/registrations/accept",
+            json={**account_body(token), "name": "unique", "password": PASSWORD + "-fresh"},
+        )
+        assert accepted.status_code == 200, accepted.text
+        assert directory.users[accepted.json()["user_id"]].password == PASSWORD + "-fresh"
+    assert vars(directory.users["member"]) == original
+    assert len(directory.creates) == len(directory.personal_projects) == 1
+
+
 async def test_duplicate_legacy_email_is_ambiguous_not_merged_or_linked(directory, enrollments):
     enable_signup(directory)
     directory.users["foreign"].email = "MEMBER@Test.Invalid."
@@ -206,15 +280,30 @@ async def test_global_signup_rechecks_current_policy_and_expiry(directory, enrol
     assert_no_native_writes(directory)
 
 
-async def test_failed_delivery_cannot_be_inspected_or_redeemed(directory, enrollments):
+async def test_failed_delivery_cannot_be_inspected_or_redeemed(directory, enrollments, monkeypatch):
     enable_signup(directory)
     directory.deliver = False
+    tokens = []
+    deliver = domain_iam._deliver
+
+    async def capture_failed_delivery(row, token, **kwargs):
+        tokens.append(token)
+        return await deliver(row, token, **kwargs)
+
+    monkeypatch.setattr(domain_iam, "_deliver", capture_failed_delivery)
     async with enrollments() as session:
         with pytest.raises(HTTPException) as failed:
             await domain_iam.register("new@test.invalid", session)
         assert failed.value.status_code == 503
         row = (await session.execute(select(DomainEnrollment))).scalar_one()
         assert row.status == "delivery_failed" and row.domain_id is None
+        for operation in (
+            lambda: domain_iam.registration_info(tokens[0], session),
+            lambda: domain_iam.redeem(tokens[0], "registration", session, name="new", password=PASSWORD),
+        ):
+            with pytest.raises(HTTPException) as unusable:
+                await operation()
+            assert unusable.value.status_code == 410
     assert_no_native_writes(directory)
 
 
@@ -250,26 +339,202 @@ async def test_all_managed_email_writers_reject_foreign_normalized_owner_under_g
     assert_no_native_writes(directory)
 
 
-async def test_two_delivered_links_for_same_email_cannot_create_two_homes(directory, enrollments):
+@pytest.mark.parametrize(
+    "choices",
+    [
+        (("new@test.invalid", "first"), ("NEW@TEST.INVALID.", "second")),
+        (("first@test.invalid", "Same"), ("second@test.invalid", "sAME")),
+        (
+            ("first@test.invalid", "Owner@BÜCHER.Example."),
+            ("second@test.invalid", "owner@xn--bcher-kva.example"),
+        ),
+        (("first@test.invalid", "Owner@BÜCHER.Example."), ("owner@xn--bcher-kva.example", "second")),
+    ],
+)
+async def test_two_delivered_links_with_colliding_identifiers_cannot_create_two_homes(directory, enrollments, choices):
     enable_signup(directory)
     tokens = []
     async with enrollments() as session:
-        for email in ("new@test.invalid", "NEW@TEST.INVALID."):
+        for email, _ in choices:
             await domain_iam.register(email, session)
             tokens.append(email_token(directory.sent[-1]))
 
-    async def accept(token):
+    async def accept(token, name):
         async with enrollments() as session:
-            return await domain_iam.redeem(token, "registration", session, name="new", password=PASSWORD)
+            return await domain_iam.redeem(token, "registration", session, name=name, password=PASSWORD)
 
-    results = await asyncio.gather(*(accept(token) for token in tokens), return_exceptions=True)
+    results = await asyncio.gather(
+        *(accept(token, name) for token, (_, name) in zip(tokens, choices, strict=True)), return_exceptions=True
+    )
     assert sum(isinstance(result, dict) for result in results) == 1
     failure = next(result for result in results if isinstance(result, HTTPException))
     assert failure.status_code == 409
-    assert len(directory.creates) == 1 and len(directory.personal_domains) == 2
+    async with enrollments() as session:
+        rows = (await session.execute(select(DomainEnrollment))).scalars().all()
+        assert sorted(row.status for row in rows) == ["accepted", "pending"]
+    assert len(directory.creates) == len(directory.personal_projects) == 1 and len(directory.personal_domains) == 2
     uid = next(result["user_id"] for result in results if isinstance(result, dict))
     assert not project_service._direct_ids(directory.default_direct, uid)
     assert not project_service._direct_ids(directory.direct, uid)
+
+
+@pytest.mark.parametrize(
+    ("proof", "expected"),
+    [
+        ("missing", 422),
+        ("guessed", 404),
+        ("delivery_pending", 410),
+        ("delivery_failed", 410),
+        ("expired", 410),
+        ("revoked", 410),
+        ("substituted_email", 422),
+    ],
+)
+async def test_unusable_or_substituted_signup_proof_has_no_native_effects(
+    directory, enrollments, enrollment_app, proof, expected
+):
+    enable_signup(directory)
+    async with enrollments() as session:
+        await domain_iam.register("verified@test.invalid", session)
+        token = email_token(directory.sent[-1])
+        row = (await session.execute(select(DomainEnrollment))).scalar_one()
+        if proof in {"delivery_pending", "delivery_failed", "revoked"}:
+            row.status = proof
+        elif proof == "expired":
+            row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        await session.commit()
+    body = account_body(token)
+    if proof == "missing":
+        body.pop("token")
+    elif proof == "guessed":
+        body["token"] = "guessed-" + "x" * 40
+    elif proof == "substituted_email":
+        body["email"] = "unverified@test.invalid"
+    async with AsyncClient(transport=ASGITransport(app=enrollment_app), base_url="http://test") as client:
+        rejected = await client.post("/api/v1/auth/registrations/accept", json=body)
+        assert rejected.status_code == expected, rejected.text
+        if proof not in {"missing", "substituted_email"}:
+            inspected = await client.get(f"/api/v1/auth/registrations/{body['token']}")
+            assert inspected.status_code == expected
+    async with enrollments() as session:
+        row = (await session.execute(select(DomainEnrollment))).scalar_one()
+        assert row.email == "verified@test.invalid" and row.user_id is None and row.account_name is None
+    assert_no_native_writes(directory)
+
+
+async def test_smtp_success_does_not_admit_a_delivery_pending_token(directory, enrollments, monkeypatch):
+    enable_signup(directory)
+    sent, finish_delivery = asyncio.Event(), asyncio.Event()
+    deliver = domain_iam._deliver
+
+    async def paused_delivery(row, token, **kwargs):
+        delivered = await deliver(row, token, **kwargs)
+        assert delivered is True
+        sent.set()
+        await finish_delivery.wait()
+        return delivered
+
+    monkeypatch.setattr(domain_iam, "_deliver", paused_delivery)
+
+    async def issue():
+        async with enrollments() as session:
+            return await domain_iam.register("new@test.invalid", session)
+
+    issuing = asyncio.create_task(issue())
+    try:
+        await asyncio.wait_for(sent.wait(), timeout=5)
+        token = email_token(directory.sent[-1])
+        async with enrollments() as session:
+            with pytest.raises(HTTPException) as pending:
+                await domain_iam.redeem(token, "registration", session, name="new", password=PASSWORD)
+            assert pending.value.status_code == 410
+        assert_no_native_writes(directory)
+    finally:
+        finish_delivery.set()
+        await issuing
+    assert_no_native_writes(directory)
+
+
+@pytest.mark.parametrize("collision", ["username", "email"])
+@pytest.mark.parametrize("phase", ["after_inspection", "before_native_create"])
+async def test_signup_rechecks_directory_after_inspection_and_at_final_create(
+    directory, enrollments, monkeypatch, collision, phase
+):
+    from app.services import account_spaces
+
+    enable_signup(directory)
+    owner = directory.users["foreign"]
+
+    def change_directory():
+        if collision == "username":
+            owner.name = "SIGNUP"
+        else:
+            owner.email = "NEW@Test.Invalid."
+
+    ensure_domains = account_spaces.ensure_shared_domains
+
+    async def directory_changed_before_create(**kwargs):
+        domains = await ensure_domains(**kwargs)
+        change_directory()
+        return domains
+
+    async with enrollments() as session:
+        await domain_iam.register("new@test.invalid", session)
+        token = email_token(directory.sent[-1])
+        assert (await domain_iam.registration_info(token, session))["account_exists"] is False
+        assert_no_native_writes(directory)
+        if phase == "after_inspection":
+            change_directory()
+        else:
+            monkeypatch.setattr(account_spaces, "ensure_shared_domains", directory_changed_before_create)
+        with pytest.raises(HTTPException) as conflict:
+            await domain_iam.redeem(token, "registration", session, name="signup", password=PASSWORD)
+        assert conflict.value.status_code == (409 if phase == "after_inspection" else 503)
+    assert owner.name == ("SIGNUP" if collision == "username" else "foreign")
+    assert owner.email == ("NEW@Test.Invalid." if collision == "email" else "foreign@test.invalid")
+    assert owner.password == PASSWORD and owner.enabled is True
+    assert_no_native_writes(directory)
+
+
+@pytest.mark.parametrize(
+    ("first_email", "first_name", "next_email", "next_name"),
+    [
+        ("first@test.invalid", "Taken", "second@test.invalid", "tAKEN"),
+        ("first@test.invalid", "Owner@BÜCHER.Example.", "second@test.invalid", "owner@xn--bcher-kva.example"),
+        ("first@test.invalid", "Owner@BÜCHER.Example.", "owner@xn--bcher-kva.example", "second"),
+        ("owner@xn--bcher-kva.example", "first", "second@test.invalid", "Owner@BÜCHER.Example."),
+    ],
+)
+async def test_unknown_account_create_fences_username_email_and_cross_alias_redispatch(
+    directory, enrollments, first_email, first_name, next_email, next_name
+):
+    enable_signup(directory)
+    attempts = []
+
+    def unknown_create(**attrs):
+        attempts.append(attrs)
+        raise ConnectionError("Account create outcome is unknown")
+
+    directory.ks.users.create = unknown_create
+    async with enrollments() as session:
+        await domain_iam.register(first_email, session)
+        token = email_token(directory.sent[-1])
+        with pytest.raises(HTTPException) as unknown:
+            await domain_iam.redeem(token, "registration", session, name=first_name, password=PASSWORD)
+        assert unknown.value.status_code == 503
+        original = (await session.execute(select(DomainEnrollment))).scalar_one()
+        assert original.status == "recovery_required" and original.creation_uncertain and original.user_id is None
+        original_id = original.id
+        await domain_iam.register(next_email, session)
+        fresh_token = email_token(directory.sent[-1])
+        with pytest.raises(HTTPException) as fenced:
+            await domain_iam.redeem(fresh_token, "registration", session, name=next_name, password=PASSWORD)
+        assert fenced.value.status_code == 409 and fenced.value.detail == "signup_enrollment_recovery_required"
+        rows = (await session.execute(select(DomainEnrollment))).scalars().all()
+        assert next(row for row in rows if row.id == original_id).creation_uncertain
+        assert next(row for row in rows if row.id != original_id).status == "pending"
+    assert len(attempts) == 1
+    assert_no_native_writes(directory)
 
 
 async def test_public_signup_unknown_personal_grant_is_fenced_without_old_tenant_access(directory, enrollments):
@@ -346,8 +611,9 @@ async def test_unassigned_creation_failure_requires_system_operator_settlement(d
     assert_no_native_writes(directory)
 
 
+@pytest.mark.parametrize("operation", ["create_account", "public_signup"])
 @pytest.mark.parametrize("signal", ["next", "truncated", "limited", "missing_links"])
-async def test_native_collection_completeness_signals_block_account_creation(directory, signal):
+async def test_native_collection_completeness_signals_block_account_creation(directory, enrollments, signal, operation):
     body = {"users": [], "links": {"next": None}}
     if signal == "next":
         body["links"]["next"] = "https://identity.test.invalid/v3/users?marker=hidden-owner"
@@ -355,9 +621,18 @@ async def test_native_collection_completeness_signals_block_account_creation(dir
         body.pop("links")
     else:
         body[signal] = True
+    if operation == "public_signup":
+        enable_signup(directory)
+        async with enrollments() as session:
+            await domain_iam.register("new@test.invalid", session)
+        token = email_token(directory.sent[-1])
     directory.ks.users.client = SimpleNamespace(get=lambda url: (None, body))
     with pytest.raises(HTTPException) as incomplete:
-        await domain_iam.create_account("domain", "new", "new@test.invalid", PASSWORD)
+        if operation == "public_signup":
+            async with enrollments() as session:
+                await domain_iam.redeem(token, "registration", session, name="new", password=PASSWORD)
+        else:
+            await domain_iam.create_account("domain", "new", "new@test.invalid", PASSWORD)
     assert incomplete.value.status_code == 503
     assert_no_native_writes(directory)
 

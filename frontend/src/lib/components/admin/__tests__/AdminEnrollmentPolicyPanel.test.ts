@@ -81,6 +81,18 @@ describe('AdminEnrollmentPolicyPanel consumer', () => {
 		expect(screen.getByText(t('enrollment.mailUnconfirmed'))).toBeTruthy();
 	});
 
+	it('loads provided entitlements into the draft only and requires explicit policy save', async () => {
+		const defaults = { instances: 2, cores: 2, ram: 4096, volumes: 10, gigabytes: 1024 };
+		mocks.get.mockImplementation((path: string) => Promise.resolve(path === policyPath ? policy({
+			quota_fields: { compute: ['instances', 'cores', 'ram'], volume: ['volumes', 'gigabytes'] }, source_default_personal_quotas: defaults,
+		}) : page()));
+		render(AdminEnrollmentPolicyPanel); await loaded();
+		await fireEvent.click(button('enrollment.useSourceDefaults'));
+		expect(field('vCPUs').value).toBe('2'); expect(field('RAM (MiB)').value).toBe('4096');
+		expect(mocks.put).not.toHaveBeenCalled(); expect(mocks.post).not.toHaveBeenCalled();
+		await submit(); expect(mocks.put.mock.calls[0][1].personal_quotas).toEqual(defaults);
+	});
+
 	it('saves exactly one CAS revision with explicit zero, unlimited and omitted/native defaults; uses returned revision on the next edit', async () => {
 		const saving = deferred<EnrollmentPolicy>(); mocks.put.mockReturnValueOnce(saving.promise);
 		render(AdminEnrollmentPolicyPanel); await loaded();

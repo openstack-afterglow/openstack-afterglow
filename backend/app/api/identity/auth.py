@@ -10,9 +10,7 @@ from keystoneauth1.exceptions.http import Unauthorized
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import (
-    CacheMode,
     _check_session_timeout,
-    cache_mode,
     get_token_info,
     has_project_write_permission,
     invalidate_token_cache,
@@ -22,16 +20,16 @@ from app.models.auth import DomainInfo, LoginRequest, ProjectInfo, TokenResponse
 from app.rate_limit import limiter
 from app.services import (
     account_spaces,
-    cache,
     domain_projects,
     jwt_service,
     keystone,
     login_guard,
+    project_display,
     project_service,
     session_store,
 )
 from app.services import activity as activity_svc
-from app.services.cache import cached_call, keys, ttl_fast, ttl_normal, ttl_static
+from app.services.cache import cached_call, ttl_fast, ttl_normal, ttl_static
 from app.services.domain_auth import DomainAuthError, domain_auth_error_response
 from app.services.domain_scope import (
     assert_domain_resource,
@@ -46,7 +44,6 @@ from app.services.recent_projects import get_recent_project_ids, record_project_
 from app.utils.auth_diagnostics import authentication_operation, authentication_step
 
 _logger = logging.getLogger(__name__)
-_PROJECTS_TTL = 120  # 프로젝트 목록 캐시 2분
 
 
 class GroupInfo(BaseModel):
@@ -86,23 +83,20 @@ def _visible_domains(user_id: str, *, operation: NativeOperation) -> list[dict]:
     try:
         identity = keystone.get_identity_user(user_id, operation=operation)
         resolve_domain(identity["domain_id"], operation=operation)
-        if not keystone._is_system_admin(user_id, operation=operation):
-            return domain_projects.accessible_domains(user_id, operation=operation)
-        domains = []
-        for row in operation.ks.domains.list():
-            if _field(row, "enabled") is True:
-                domain = resolve_domain(_field(row, "id"), operation=operation)
-                if domain.get("kind") != "account":
-                    domains.append({"id": domain["id"], "name": domain["name"], "kind": domain.get("kind", "legacy")})
-        if len({domain["id"] for domain in domains}) != len(domains):
-            raise HTTPException(503, "Domain directory identity is unavailable")
-        return sorted(domains, key=lambda domain: (domain["name"], domain["id"]))
+        return domain_projects.accessible_domains(user_id, operation=operation)
     except (Unauthorized, NotFound, ClientNotFound) as exc:
         raise HTTPException(401, "Identity is disabled or unavailable; log in again") from exc
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(503, "Domain directory is unavailable") from exc
+
+
+def _workspace_context(user_id: str, domain_id: str, *, operation: NativeOperation) -> dict:
+    """User-console scope requires real membership, not global observation authority."""
+    context = domain_context(user_id, domain_id, operation=operation)
+    domain_projects.assert_membership(user_id, domain_id, operation=operation)
+    return context
 
 
 async def _domain_metadata(user_id: str, identity_domain_id: str, is_system_admin: bool, *, operation=None) -> dict:
@@ -113,7 +107,7 @@ async def _domain_metadata(user_id: str, identity_domain_id: str, is_system_admi
 
     with authentication_step("domain_metadata"):
         domains = await operation.run(_visible_domains, user_id, operation=operation)
-        can_create = is_system_admin or get_settings().auth.organization_creation_enabled
+        can_create = get_settings().auth.organization_creation_enabled
         return {"available_domains": domains, "can_create_domain": bool(can_create)}
 
 
@@ -145,6 +139,8 @@ async def _build_token_response(
     previous_jti: str | None = None,
     previous_domain_id: str | None = None,
     connection_project_id: str | None = None,
+    initial_workspace: dict | None = None,
+    remember_workspace: bool = False,
     operation=None,
 ) -> TokenResponse:
     """Keystone 토큰으로 JWT access+refresh 쌍을 발급하고 TokenResponse를 반환."""
@@ -163,9 +159,7 @@ async def _build_token_response(
             assert_domain_resource(identity_domain_id, fresh["identity_domain_id"])
             if project_id:
                 await asyncio.to_thread(assert_project_domain, domain_id, project_id)
-        can_write = has_project_write_permission(
-            {"project_id": project_id, "roles": roles, "is_system_admin": is_system_admin}
-        )
+        can_write = has_project_write_permission({"project_id": project_id, "roles": roles, "is_system_admin": False})
         refresh_str, r_jti, r_exp = jwt_service.sign_refresh(user_id)
         access_str, _, a_exp = jwt_service.sign_access(
             user_id=user_id,
@@ -205,6 +199,10 @@ async def _build_token_response(
             raise HTTPException(503, "Session publication is unavailable") from exc
         if stored is False:
             raise HTTPException(status_code=401, detail="세션이 만료되거나 이미 갱신되었습니다. 다시 로그인해 주세요.")
+        if remember_workspace and project_id:
+            from app.services import login_preferences
+
+            await login_preferences.record(user_id, identity_domain_id, domain_id, project_id)
         exp_dt = datetime.fromtimestamp(a_exp, tz=UTC)
         return TokenResponse(
             token=access_str,
@@ -225,6 +223,7 @@ async def _build_token_response(
             **metadata,
             can_write=can_write,
             auth_method=auth_method,
+            initial_workspace=initial_workspace,
         )
 
 
@@ -281,31 +280,49 @@ async def _prepare_initial_session(data: dict, *, operation=None) -> dict:
         async with NativeOperation() as operation:
             return await _prepare_initial_session(data, operation=operation)
     primary = None
-    managed_pending = False
-    if data.get("is_system_admin"):
-        user = await operation.run(operation.get, "users", data["user_id"])
-        if _field(user, "id") != data["user_id"] or _field(user, "domain_id") != data["identity_domain_id"]:
-            raise HTTPException(401, "Native account subject changed")
-        managed_pending = await account_spaces.managed_personal_pending(
-            data["user_id"], data["identity_domain_id"], _field(user, "afterglow_enrollment_id")
-        )
-    if data.get("is_system_admin") and not managed_pending:
-        primary = await operation.run(account_spaces.personal_project, data["user_id"], operation=operation)
-    else:
-        try:
-            primary = await account_spaces.ensure_personal_project(data["user_id"], operation=operation)
-        except HTTPException as exc:
-            if exc.status_code == 503:
-                recovery = await account_spaces.personal_recovery_status(data["user_id"], data["identity_domain_id"])
-                if recovery is not None:
-                    raise HTTPException(503, recovery) from exc
-            if exc.status_code != 403 or exc.detail != "service_identity_personal_forbidden":
-                raise
-        operation.invalidate()
+    try:
+        primary = await account_spaces.ensure_personal_project(data["user_id"], operation=operation)
+    except HTTPException as exc:
+        if exc.status_code == 503:
+            recovery = await account_spaces.personal_recovery_status(data["user_id"], data["identity_domain_id"])
+            if recovery is not None:
+                raise HTTPException(503, recovery) from exc
+        if exc.status_code != 403 or exc.detail != "service_identity_personal_forbidden":
+            raise
+    operation.invalidate()
     if primary is not None:
-        return await _prepare_domain_session(
+        from app.services import login_preferences
+
+        preference = await login_preferences.read(data["user_id"], data["identity_domain_id"])
+        if preference["remember_last_workspace"]:
+            did, pid = preference["domain_id"], preference["project_id"]
+            try:
+                await operation.run(_workspace_context, data["user_id"], did, operation=operation)
+                await operation.run(assert_project_domain, did, pid, operation=operation)
+                await operation.run(
+                    domain_projects.assert_project_membership, data["user_id"], pid, operation=operation
+                )
+            except HTTPException as exc:
+                if exc.status_code not in {403, 404}:
+                    raise
+                operation.invalidate()
+            else:
+                # Only a stale authority hint may fall back. A rejected or
+                # substituted native exchange remains a terminal login error.
+                selected = await _prepare_domain_session(
+                    data, did, requested_project_id=pid, ensure_access=False, operation=operation
+                )
+                selected["initial_workspace"] = {"kind": "remembered", "domain_id": did, "project_id": pid}
+                return selected
+        selected = await _prepare_domain_session(
             data, primary["domain_id"], requested_project_id=primary["id"], operation=operation
         )
+        selected["initial_workspace"] = {
+            "kind": "personal",
+            "domain_id": primary["domain_id"],
+            "project_id": primary["id"],
+        }
+        return selected
     home = await operation.run(resolve_domain, data["identity_domain_id"], operation=operation)
     if home.get("kind") == "account":
         # A projectless system administrator still cannot select identity-only account.
@@ -322,6 +339,7 @@ async def _prepare_domain_session(
     domain_id: str,
     *,
     requested_project_id: str | None = None,
+    ensure_access: bool = True,
     operation=None,
 ) -> dict:
     """Provision only verified membership, then exchange the caller's native token."""
@@ -334,8 +352,9 @@ async def _prepare_domain_session(
         if requested_project_id:
             await run(assert_project_domain, domain_id, requested_project_id, **kwargs)
             await run(domain_projects.assert_project_membership, data["user_id"], requested_project_id, **kwargs)
-        with authentication_step("login_access"):
-            await domain_projects.ensure_login_access(data["user_id"], domain_id, **kwargs)
+        if ensure_access:
+            with authentication_step("login_access"):
+                await domain_projects.ensure_login_access(data["user_id"], domain_id, **kwargs)
         with authentication_step("default_project"):
             # Provisioning may have created Default or repaired membership. Read
             # the final directory for both password and provider login paths.
@@ -522,6 +541,8 @@ async def _login(request: Request, req: LoginRequest, background_tasks: Backgrou
         identity_domain_id=data["identity_domain_id"],
         identity_domain_name=data["identity_domain_name"],
         default_project_id=default_project_id,
+        initial_workspace=data.get("initial_workspace"),
+        connection_project_id=data.get("connection_project_id"),
         auth_method="password",
         origin_ip=origin_ip,
         origin_fp=origin_fp,
@@ -554,7 +575,7 @@ async def me(token_info: dict = Depends(get_token_info)):
         project_name=token_info["project_name"],
         roles=await visible_role_names(token_info["roles"], token_info.get("is_system_admin", False)),
         is_system_admin=token_info.get("is_system_admin", False),
-        can_write=has_project_write_permission(token_info),
+        can_write=has_project_write_permission({**token_info, "is_system_admin": False}),
         auth_method=token_info.get("auth_method", "password"),
         domain_id=token_info["domain_id"],
         domain_name=token_info["domain_name"],
@@ -825,6 +846,7 @@ async def _scope_project(req: ProjectScopeRequest, token_info: dict, *, operatio
             os=token_info.get("os", ""),
             started_at=token_info.get("started_at"),
             previous_jti=old_rjti,
+            remember_workspace=True,
             operation=operation,
         )
     except HTTPException:
@@ -840,10 +862,10 @@ async def list_domains(token_info: dict = Depends(get_token_info)):
 
 
 def _workspace_projects(token: str, user_id: str, context: dict, *, operation: NativeOperation) -> list[dict]:
-    """Read enabled projects for a current manager or independently verified system administrator."""
+    """Read enabled projects from actual membership or current domain management."""
     domain_id = context["domain_id"]
     ks = operation.ks
-    if context["is_domain_manager"] or keystone._is_system_admin(user_id, operation=operation):
+    if context["is_domain_manager"]:
         rows = []
         projects = operation.read(
             ("domain_projects", "project_list", domain_id), lambda: list(ks.projects.list(domain=domain_id))
@@ -854,7 +876,7 @@ def _workspace_projects(token: str, user_id: str, context: dict, *, operation: N
                 rows.append(
                     {
                         "id": _field(project, "id"),
-                        "name": _field(project, "name"),
+                        "name": project_display.display_name(project, operation=operation),
                         "description": _field(project, "description", "") or "",
                         "domain_id": domain_id,
                         "domain_name": context["domain_name"],
@@ -900,7 +922,7 @@ def _administrator_workspace(
     name = ""
     if project_id:
         assert_project_domain(domain_id, project_id, operation=operation)
-        name = _field(operation.get("projects", project_id), "name")
+        name = project_display.display_name(operation.get("projects", project_id), operation=operation)
     return {**current, **context, "project_id": project_id, "project_name": name, "roles": [], "is_system_admin": True}
 
 
@@ -913,7 +935,7 @@ async def browse_workspace(
     user_id = token_info["user_id"]
     target = domain_id if domain_id is not None else token_info["domain_id"]
     async with NativeOperation() as operation:
-        context = await operation.run(domain_context, user_id, target, operation=operation)
+        context = await operation.run(_workspace_context, user_id, target, operation=operation)
         assert_domain_resource(token_info["identity_domain_id"], context["identity_domain_id"])
         try:
             projects = await operation.run(
@@ -930,10 +952,15 @@ async def browse_workspace(
         can_create = await project_service.can_create_project(user_id, target, operation=operation)
         # Transport may survive the inventory; authority observations must not.
         operation.invalidate()
-        fresh = await operation.run(domain_context, user_id, target, operation=operation)
+        fresh = await operation.run(_workspace_context, user_id, target, operation=operation)
         assert_domain_resource(token_info["identity_domain_id"], fresh["identity_domain_id"])
         if fresh["is_domain_manager"] != context["is_domain_manager"]:
             raise HTTPException(403, "Domain authority changed; refresh the resource directory")
+        if not fresh["is_domain_manager"]:
+            for project in projects:
+                await operation.run(
+                    domain_projects.assert_project_membership, user_id, project["id"], operation=operation
+                )
         return WorkspaceInfo(
             domain=DomainInfo(id=target, name=fresh["domain_name"], kind=fresh.get("domain_kind", "legacy")),
             projects=[ProjectInfo(**project) for project in projects],
@@ -987,14 +1014,13 @@ async def _switch_working_domain(
 ):
     """Explicitly switch only working scope; identity, login policy and lifetime persist."""
     user_id = token_info["user_id"]
-    context = await operation.run(domain_context, user_id, domain_id, operation=operation)
+    context = await operation.run(_workspace_context, user_id, domain_id, operation=operation)
     assert_domain_resource(token_info["identity_domain_id"], context["identity_domain_id"])
     system_admin = await operation.run(keystone._is_system_admin, user_id, operation=operation)
     connection_project_id = token_info.get("connection_project_id", token_info["project_id"])
     if project_id:
         await operation.run(assert_project_domain, domain_id, project_id, operation=operation)
-        if not system_admin:
-            await operation.run(domain_projects.assert_project_membership, user_id, project_id, operation=operation)
+        await operation.run(domain_projects.assert_project_membership, user_id, project_id, operation=operation)
     current = await _exchange_native_scope(
         token_info["session_token"], connection_project_id if system_admin else "", operation=operation
     )
@@ -1011,17 +1037,14 @@ async def _switch_working_domain(
     await _enforce_session_policy(token_info, {**current, **context})
     # Check the target again after the current-subject exchange and policy read.
     operation.invalidate()
-    if system_admin:
-        data = await operation.run(_administrator_workspace, current, domain_id, project_id, operation=operation)
-    else:
-        data = await _prepare_domain_session(current, domain_id, requested_project_id=project_id, operation=operation)
+    data = await _prepare_domain_session(current, domain_id, requested_project_id=project_id, operation=operation)
     await _enforce_session_policy(token_info, data)
     operation.invalidate()
-    final_context = await operation.run(domain_context, user_id, domain_id, operation=operation)
+    final_context = await operation.run(_workspace_context, user_id, domain_id, operation=operation)
     assert_domain_resource(token_info["identity_domain_id"], final_context["identity_domain_id"])
     if final_context["is_domain_manager"] != data["is_domain_manager"]:
         raise HTTPException(403, "Domain authority changed during workspace selection")
-    if data["project_id"] and not system_admin:
+    if data["project_id"]:
         await operation.run(domain_projects.assert_project_membership, user_id, data["project_id"], operation=operation)
     response = await _build_token_response(
         keystone_token=data["session_token"],
@@ -1049,7 +1072,7 @@ async def _switch_working_domain(
         started_at=token_info.get("started_at"),
         previous_jti=token_info["refresh_jti"],
         previous_domain_id=token_info["domain_id"],
-        connection_project_id=connection_project_id if system_admin else None,
+        remember_workspace=True,
         operation=operation,
     )
     if data["project_id"]:
@@ -1130,26 +1153,10 @@ async def list_my_groups(token_info: dict = Depends(get_token_info)):
 
 
 @router.get("/projects", response_model=list[ProjectInfo])
-async def list_projects(
-    token_info: dict = Depends(get_token_info),
-    cm: CacheMode = Depends(cache_mode),
-):
-    """사용자가 접근 가능한 프로젝트 목록 반환."""
-    user_id = token_info["user_id"]
-    key = keys.user_key(user_id, f"domain:{token_info['domain_id']}:projects")
-    try:
-        data = await cache.cached_call(
-            key,
-            _PROJECTS_TTL,
-            lambda: keystone.list_projects(token_info["token"], token_info["domain_id"]),
-            enabled=cm.enabled,
-            refresh=cm.refresh,
-        )
-        return [
-            ProjectInfo(**p) for p in data if p.get("enabled") is True and p.get("domain_id") == token_info["domain_id"]
-        ]
-    except Exception:
-        raise HTTPException(status_code=500, detail="프로젝트 목록 조회 실패")
+async def list_projects(token_info: dict = Depends(get_token_info)):
+    """Use the same live user membership directory as the resource selector."""
+    workspace = await browse_workspace(domain_id=token_info["domain_id"], token_info=token_info)
+    return workspace.projects
 
 
 @router.get("/projects/recent", response_model=list[ProjectInfo])
@@ -1159,22 +1166,18 @@ async def list_projects_recent(token_info: dict = Depends(get_token_info)):
     Redis에 기록된 접근 시각 기준으로 정렬하고, last_accessed_at 필드를 포함한다.
     Redis 기록이 없는 프로젝트는 이름순으로 뒤에 덧붙인다.
     """
-    try:
-        projects = await asyncio.to_thread(keystone.list_projects, token_info["token"], token_info["domain_id"])
-    except Exception:
-        raise HTTPException(status_code=500, detail="프로젝트 목록 조회 실패")
+    workspace = await browse_workspace(domain_id=token_info["domain_id"], token_info=token_info)
+    projects = workspace.projects
 
     user_id = token_info["user_id"]
     recent_ids = await get_recent_project_ids(user_id)
     recent_map: dict[str, int] = {pid: ts for pid, ts in recent_ids}
 
     project_infos: list[ProjectInfo] = []
-    for p in projects:
-        if p.get("enabled") is not True or p.get("domain_id") != token_info["domain_id"]:
-            continue
-        ts = recent_map.get(p["id"])
+    for project in projects:
+        ts = recent_map.get(project.id)
         last_accessed_at = datetime.fromtimestamp(ts / 1000, tz=UTC).isoformat() if ts else None
-        project_infos.append(ProjectInfo(**p, last_accessed_at=last_accessed_at))
+        project_infos.append(project.model_copy(update={"last_accessed_at": last_accessed_at}))
 
     # 최근 접근 기록 있는 것 먼저(최신순), 없는 것은 이름순
     def _sort_key(pi: ProjectInfo) -> tuple[int, str]:
@@ -1262,6 +1265,8 @@ async def issue_federated_login(
                 identity_domain_id=data["identity_domain_id"],
                 identity_domain_name=data["identity_domain_name"],
                 default_project_id=default_project_id,
+                initial_workspace=data.get("initial_workspace"),
+                connection_project_id=data.get("connection_project_id"),
                 origin_ip=origin_ip,
                 origin_fp=origin_fp,
                 device_type=device_type,

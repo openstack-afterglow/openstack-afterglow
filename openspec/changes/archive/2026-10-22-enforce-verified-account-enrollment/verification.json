@@ -1,0 +1,52 @@
+{
+  "date": "2026-10-22",
+  "status": "qualified_local_source_not_deployed",
+  "source_sha256": "0251226e20520a0c39a84100611551b8f67927360402c3306a57bc7713869ec2",
+  "source_files": 3416,
+  "proof_root": "~/.local/share/afterglow-proofs/verified-account-entry-20261022/",
+  "behavior": {
+    "login_internal_domain_help": "removed in all nine locales",
+    "signup": "delivered pending unexpired one-use email token; normalized username/email/cross-alias uniqueness; final graph-lease check; unresolved identifiers fenced",
+    "oidc": "operator-registry only, signed identity and boolean verified email automatically attach unique enabled Accounts human; tenant-managed SQL first links retain canonical account proof",
+    "preserved": "UUID/home/password/preferences/other federation metadata/grants/resources; global issuer-sub/native tuple conflicts and separate organization admission",
+    "deployment": "same backend invariant through existing Compose/K8s/Helm/Kolla paths, no local-only or verification bypass flag; existing schema reused"
+  },
+  "regressions": {
+    "signup_before": "6 failed,2 passed",
+    "oidc_before": "8 failed,6 passed",
+    "tenant_provider_before": "1 failed: previously admitted existing organization member without canonical proof",
+    "final_entry_recovery_deployment_focus_passed": 424,
+    "final_frontend_focus_passed": 107,
+    "named_auth_access_exit": 0
+  },
+  "runtime": {
+    "actual_http_exit": 0,
+    "proof": "entry-http-smoke.json",
+    "signup_without_proof": [422,404],
+    "username_email_duplicates": 409,
+    "verified_unique_signup": 200,
+    "used_proof": 410,
+    "unverified_oidc": 403,
+    "automatic_oidc_and_repeat": 200,
+    "native_attachment_patches": 1,
+    "canonical_user_home_personal_member_preserved": true,
+    "transport": "Production routers/SQL/JWT, fake Redis, real SMTP and signed IdP TCP, installed Keystone user client and OpenStack token SDK over native HTTP",
+    "compiled_browser": "Actual SSO button to signed callback/native user login in personal; actual email link duplicate-name refusal/password clearing and corrected unique signup",
+    "login_matrix": {"locales":9,"actual_themes":2,"widths":[390,768,1440],"conditions":54,"overflow":0,"internal_accounts_help":false},
+    "limits": "Synthetic issuer/mailbox/native directory, domains/grants/quota; not production provider/SMTP/Keystone or cloud resource acceptance"
+  },
+  "canonical_gate": {
+    "command": "npm run test:gate",
+    "exit_code": 0,
+    "log": "test-gate-qualified.log",
+    "backend_passed":8918,"backend_skipped":95,
+    "frontend_passed":4880,"frontend_test_files":428,
+    "contracts_passed":159,"functional_passed":166,"functional_deselected":33,
+    "backend_lint":"All checks passed;720 files already formatted"
+  },
+  "frontend_build":0,"i18n_check":0,"svelte_check":0,
+  "architecture": {"working":"passed","isolated_staged":"passed","shared_index_preserved":true,"tested_source_mismatches":[]},
+  "operational_changes":false,"committed":false,"pushed":false,"deployed":false,
+  "deployment_limits":["Existing operational enrollment schema prerequisites remain; create_all is not migration","Conflicting native issuer/sub bindings require explicit reconciliation, not automatic account transfer","SMTP delivery and actual configured native federation read/write authority require separate production acceptance"],
+  "retained_diagnostics":"harness-diagnostics.json and raw before/failure logs; no guards/assertions bypassed"
+}

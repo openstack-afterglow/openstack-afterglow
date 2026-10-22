@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
 from fastapi import HTTPException
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 
 from app.config import get_settings
 from app.models.domain_iam import DomainEnrollment
@@ -225,6 +225,14 @@ def _email_key(email):
         return None
 
 
+def _account_name_key(name):
+    if not name:
+        return None
+    # Email-shaped usernames share the same alias namespace as verified emails.
+    # Keep ordinary native names intact apart from case-insensitive comparison.
+    return _email_key(name) or name.casefold()
+
+
 def _account_rows(ks, domain_id, *, operation=None):
     """Complete inventory with exact account metadata for every identity writer."""
     transport = getattr(ks.users, "client", None)
@@ -278,11 +286,12 @@ async def _find_accounts(domain_id, *, email=None, name=None):
     # external identity must accept while authenticated, never be duplicated.
     rows = await _provider_call(_account_rows, ks, domain_id)
     email_key = _email_key(email) if email else None
+    name_key = _account_name_key(name)
     return [
         user
         for user in rows
         if (email_key and _email_key(_field(user, "email", "")) == email_key)
-        or (name and (_field(user, "name", "") or "").casefold() == name.casefold())
+        or (name_key and _account_name_key(_field(user, "name", "")) == name_key)
     ]
 
 
@@ -1404,17 +1413,18 @@ async def _enroll(
             raise HTTPException(409, "Username already belongs to an account")
         unresolved = (
             await session.execute(
-                select(DomainEnrollment.id)
-                .where(
-                    func.lower(DomainEnrollment.email) == _email_key(row.email),
+                select(DomainEnrollment.email, DomainEnrollment.account_name).where(
                     DomainEnrollment.id != row.id,
                     DomainEnrollment.new_user.is_(True),
                     DomainEnrollment.status.in_(RECOVERY_STATES),
                 )
-                .limit(1)
             )
-        ).scalar_one_or_none()
-        if unresolved is not None:
+        ).all()
+        identifiers = {_email_key(row.email), _account_name_key(name)} - {None}
+        if any(
+            identifiers & ({_email_key(email), _account_name_key(account_name)} - {None})
+            for email, account_name in unresolved
+        ):
             raise HTTPException(409, "signup_enrollment_recovery_required")
         if public_signup or external or row.kind == "invitation":
             approval_id = await enrollment_policy.require_signup_approval(

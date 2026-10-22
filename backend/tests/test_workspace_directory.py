@@ -206,3 +206,73 @@ async def test_personal_primary_cannot_be_deleted_or_renamed(personal_directory_
             domain_projects.assert_default_immutable("alice-personal", attrs=attrs, delete=delete, ks=domain_native)
         assert rejected.value.status_code == 422
     assert domain_native.calls == []
+
+
+@pytest.mark.asyncio
+async def test_system_admin_user_directory_keeps_actual_memberships_only(
+    personal_directory_client, domain_native, monkeypatch
+):
+    monkeypatch.setattr(auth.keystone, "_is_system_admin", lambda *args, **kwargs: True)
+    domains = await personal_directory_client.get("/api/v1/auth/domains")
+    assert domains.status_code == 200, domains.text
+    assert {domain["id"] for domain in domains.json()} == {"personal", "tenant-a"}
+    personal = await personal_directory_client.get("/api/v1/auth/workspaces?domain_id=personal")
+    assert personal.status_code == 200, personal.text
+    assert [project["id"] for project in personal.json()["projects"]] == ["alice-personal"]
+    foreign = await personal_directory_client.get("/api/v1/auth/workspaces?domain_id=tenant-b")
+    assert foreign.status_code == 403, foreign.text
+    assert domain_native.calls == []
+
+
+@pytest.mark.asyncio
+async def test_system_admin_cannot_keep_revoked_user_workspace_membership(
+    personal_directory_client, domain_native, monkeypatch
+):
+    monkeypatch.setattr(auth.keystone, "_is_system_admin", lambda *args, **kwargs: True)
+    before = await personal_directory_client.get("/api/v1/auth/workspaces?domain_id=personal")
+    assert before.status_code == 200, before.text
+    domain_native.raw = [
+        assignment
+        for assignment in domain_native.raw
+        if assignment.scope.get("project", {}).get("id") != "alice-personal"
+    ]
+    after = await personal_directory_client.get("/api/v1/auth/workspaces?domain_id=personal")
+    assert after.status_code == 403, after.text
+    assert domain_native.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("domain_id,project_id", [("personal", "bob-personal"), ("tenant-b", "work-b")])
+async def test_system_admin_user_workspace_selection_rejects_nonmembership_before_exchange(
+    personal_directory_client, domain_native, monkeypatch, domain_id, project_id
+):
+    monkeypatch.setattr(auth.keystone, "_is_system_admin", lambda *args, **kwargs: True)
+
+    async def forbidden_exchange(*args, **kwargs):
+        pytest.fail("User workspace without membership must be rejected before native token exchange")
+
+    monkeypatch.setattr(auth, "_exchange_native_scope", forbidden_exchange)
+    selected = await personal_directory_client.post(
+        "/api/v1/auth/token/workspace", json={"domain_id": domain_id, "project_id": project_id}
+    )
+    assert selected.status_code == 403, selected.text
+    assert domain_native.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["projects?cache=true", "projects/recent"])
+async def test_system_admin_user_project_lists_filter_foreign_and_revoked_membership(
+    personal_directory_client, domain_native, monkeypatch, endpoint
+):
+    monkeypatch.setattr(auth.keystone, "_is_system_admin", lambda *args, **kwargs: True)
+    first = await personal_directory_client.get("/api/v1/auth/" + endpoint)
+    assert first.status_code == 200, first.text
+    assert [project["id"] for project in first.json()] == ["alice-personal"]
+    domain_native.raw = [
+        assignment
+        for assignment in domain_native.raw
+        if assignment.scope.get("project", {}).get("id") != "alice-personal"
+    ]
+    revoked = await personal_directory_client.get("/api/v1/auth/" + endpoint)
+    assert revoked.status_code == 403, revoked.text
+    assert domain_native.calls == []

@@ -48,9 +48,13 @@ export interface AdminVolume {
   status: string;
   size: number;
   project_id: string | null;
+  volume_type: string | null;
+  domain_id: string | null;
+  domain_name: string | null;
+  owner_status: AdminVolumeOwnerStatus;
   created_at: string | null;
   bootable?: boolean;
-  project_name?: string;
+  project_name: string | null;
 }
 
 export interface AdminVolumeStatusCount {
@@ -58,9 +62,32 @@ export interface AdminVolumeStatusCount {
   count: number;
 }
 
+export type AdminVolumeOwnerStatus = 'known' | 'deleted_project' | 'unknown_owner' | 'deleted_domain';
+
+export interface AdminVolumeDomainSummary {
+  domain_id: string | null;
+  domain_name: string | null;
+  owner_status: AdminVolumeOwnerStatus;
+  project_ids: string[];
+  volumes: number;
+  volume_gb: number;
+  attached_volumes: number;
+  attached_gb: number;
+  available_volumes: number;
+  available_gb: number;
+}
+
 export interface AdminVolumeStatusSummary {
   total: number;
   statuses: AdminVolumeStatusCount[];
+  total_gb: number;
+  attached_count: number;
+  attached_gb: number;
+  available_count: number;
+  available_gb: number;
+  domains: AdminVolumeDomainSummary[];
+  filtered_total: number;
+  filtered_gb: number;
 }
 
 export interface AdminVolumeDetail {

@@ -6,6 +6,107 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## Lumen private converter account UI (2026-10-22, local-only)
+
+Unpublished local source: Lumen replaces runtime LiteLLM with owned Python request/metadata/child lifecycle and pinned Bifrost converters plus one-send HTTP; Afterglow supplies only the authenticated BFF and administrator account panel. Parent verification is still in progress. The current observed BFF selection is **56 passed**, administrator account component **11 passed** after fixture/matcher fixes, Svelte check **0 errors/16 unrelated warnings**, and i18n **0 errors/37 unrelated warnings**. These are synthetic/local contract/component results, not provider OAuth, real Keystone, compiled browser matrix, image/system or production qualification.
+
+The panel and `providerAccounts.ts` cover endpoint account/credential policies, explicit/priority/weighted admission, model-ID and operation restrictions, blank=null unrestricted versus `-`=[] deny-all, lifecycle secret clearing/stale-response fences, expiry/cooldown, local allocation usage and credential-specific token/device auth. BFF/native Lumen remains final authority; no browser selection can bypass generation/operation checks. Locale files are en/ko/ja/zh-CN/bn/ms/nb/sw/vi. Provider routes are no-store on success/handled errors and omit private URL/exception content in transport-failure logs. Metadata must never return stored key/token/ciphertext.
+
+Related Lumen parent wave: focused account/catalog/search/lifecycle140pass; four closed-error regressions corrected with failed-only4pass. Integrated23files initially788pass/59fail, corrected-failure retest56pass/1fail and then full-auth-ref fixture corrected; expanded28files returned **999pass/3fail**, with three over-broad fixture patches scoped and **rerun pending**. Actual targeted Go cancellation passed0.030s after consuming its POST body and Darwin binary built. Full Go exposed output-budget clamp13→16, correction ongoing: budget preservation is a constraint, not a qualified pass. These counts do not prove full canonical source/Go/image/system/browser acceptance or replace earlier unrelated receipts.
+
+- [ ] Parent final integrated source/SDK/Go and real isolated migration027/backfill/rerun/one-debit-allocation proof.
+- [ ] Matching Linux arm64/amd64 image build **and execution**, child lifecycle and canonical process-system acceptance.
+- [ ] Compiled actual account UI → authenticated BFF → Lumen HTTP CRUD/policy/usage/auth, stale/secret privacy, nine locales × themes × responsive widths and no-secret screenshots/logs.
+- [ ] Separate authorized real-provider/OAuth and provider subscription-pooling permission, vendor invoice, cloud and production rollout gates.
+
+Final portable receipt/source digests and architecture freshness work belong to parent integration; this documentation slice ran no tests/builds/lints/formatters and wrote no stamp. Sources at authoring: `local://bifrost-canonical-verification.md`, `local://bifrost-python-final-gates.md`, `local://bifrost-product-final-gates.md` and parent full-Go findings. Actual browser/native/multiarch acceptance is still running; historical LiteLLM/provider/browser passes retain their original revision boundary.
+
+
+## 사용자 작업공간·관리자 chrome 분리와 Personal 표시 이름 (2026-10-22, local source)
+
+Proof는 `~/.local/share/afterglow-proofs/console-workspaces-labels-20261022T060824Z/`다. 기존 사용자 선택기에 system-admin의 전체 native domain/project 관측이 섞이던 경로를 실제 membership directory·scope commit·remembered landing으로 분리했다. 새 회귀를 prior source에 실행한 `membership-before.log`는4fail/2pass였고, owner/native/projection·workspace·login6파일의 통합 focused 결과는253pass, 최종 native project role-only public capability·Rbac focus는225pass였다. Fresh current/remembered selector는 system-admin 관측 권한을 membership으로 삼지 않으며 관리용 provider/서비스 원본 transport 경계는 별도로 유지한다.
+
+`workspace_http.py`·`workspace_smoke.py`는 production auth/project router·SQL/JWT·fake Redis, 설치 Keystone/OpenStack token SDK와 raw project PATCH의 실제 loopback HTTP를 사용한다. Synthetic alice(system-admin)와 bob(ordinary)이 각자 Personal/member로 로그인했고 alice directory에는 본인 domain/project만, 다른 Personal 선택과 비소속 domain 조회는403이었다. Label PUT는 `afterglow_display_name` 하나만 native PATCH하고 name/UUID/전체 기존 metadata·grant/quota write를 보존했다. GET·workspace·`/me`·fresh login에 같은 label이 나타났고 foreign-owner403·invalid422를 확인했다. Native directory/users/roles/quota는 합성이며 운영 Keystone writer permission/persistence 수용은 아니다.
+
+관련 frontend6파일126behavior tests·i18n/build를 통과했다. 초기 Svelte check의 parent test 누락 token type을 고쳤고 동시 작업 ProviderAccountsPanel/catalog 상태의 일시 오류는 보존한 뒤 최종 check0errors/16기존warnings를 확인했다. 실제 브라우저 matrix는 backend public `is_manager`가 system-admin을 포함해 사용자 관리 picker를 노출하는 추가 결함도 잡았다. 실제 project manager/reader/member public capability로 수정했으며 별도 native system-admin guard·privileged API 권위는 유지한다.
+
+정본 Dockerfile의 backend/frontend 양 architecture(arm64·amd64)를 실제 build·binary/helper 실행했다. 별도 QA project에서 `docker-compose.prod.yml run --no-deps --pull never frontend`로 만든 새 image를 실행하고 actual image ID·service·loopback8952·healthy를 확인했다. Production UI와 위 실제 API/native TCP fixture의9locale×실제2theme×6width(390/767/768/1023/1024/1440)108조건에서 user chooser의 home 비노출·본인1domain/1project·project-manager control 없음, admin header/drawer selector0·모드 복귀·overflow0을 검증했다. 실제 settings form으로 label 저장→header/chooser 반영→reload persistence와 ID/home/member 보존을 확인했다. 관리자 개요의 resource data는 이 fixture에서 미구현이라 클라우드 inventory 수용으로 세지 않는다.
+
+기존 private config/공유 운영 DB·IAM·quota·실행 이미지는 건드리지 않았다. Source qualification의 canonical gate·matching architecture/staged guard·image IDs와 최종 정리는 같은 proof의 `verification.json`에 기록하며, synthetic native proof를 운영 rollout·실사용자 인증/영구 metadata write 수용으로 승격하지 않는다.
+
+최종 source `f1f196a10d19d7866e0672628f3163badbb7f331c4cfcba0c1e905643b886e39`/3424files의 변경하지 않은 `npm run test:gate`는 exit0이었다: backend8972pass/95skip·frontend4945pass/431files·contracts181pass·실제 disposable DB166pass/33deselected·Ruff check/722files format. `auth access storage` named targets도 exit0이다. 없는 `network` target을 지정했던 첫 named invocation과 architecture copy/stamp race·동시 provider 작업 중 frozen snapshot 차이는 원래 log로 남기고 실제 source parity를 회복한 뒤 검증했다.
+
+첫 substantive gate는 이전 system-admin UI write 기대2개와 native project-domain mismatch의503/403 분류1개를 잡았다. 사용자 public capability는 실제 project role을 따르도록 테스트를 이관하고 native proof mismatch는 기존403으로 유지했다. Full frontend gate의 이전 identity 기반 command-palette fixture는 실제 route surface를 명시하도록 바꿨고, 동시 ProviderAccountsPanel의 최신 localized mock 수정은 그대로 보존했다. 기존 provider-catalog retry test는 public draft 보존과 별개로 이미 구현된 one-use API key 폐기를 존중해 fresh key 재입력을 검증하도록 이관했으며 provider 구현을 되돌리지 않았다. 마지막 format gate가 지적한 existing Lumen contract 두 줄의 folding만 정리했고 assertions·network guards·test hooks·정본 gate를 완화하거나 skip하지 않았다. 모든 원래 실패·harness와 최종 receipt를 proof에 보존한다.
+
+
+## 로그인 enrollment 스키마 복구 (2026-10-22, shared operational DB)
+
+사용자가 보고한 password/native subject 성공 후 로그인500은 `domain_enrollments.personal_domain_name` 누락 SQL1054였다. 실제 local backend는 `172.30.0.11:3306/afterglow_kolla`, 운영3controller는 같은 Galera의 internalVIP `.253`을 사용했고 read-only 비교에서093의7컬럼·098의quota1컬럼·099의2컬럼과096 `domain_id NULL` 선행 조건이 없었다. 정책/intent table 존재와 health200은 기존 테이블 upgrade의 증거가 아니었다.
+
+사용자 승인 뒤 `~/.local/share/afterglow-proofs/login-schema-recovery-20261022T050104Z/`에0700 proof directory·0600 SQL backup/config 복구본을 보존했다. Original image ID·effective env·DB/key/config를 capture하고 같은 MariaDB10.11.19·utf8mb3/collation/sql_mode의 network-none/tmpfs fixture에 consistent snapshot을 restore했다. Manifest093/096와 누락098/099 ALTER만 선별한7statement rehearsal 뒤102table row/count fingerprint 변화0·exact29column login ORM query 및 policy/intent6model query를 통과했다.
+
+2026-10-22 **05:08:03–05:09:58 UTC**에 local API1개와 운영3controller의 API/Notion worker6개만 drain했다. Final protected recovery-point backup을 다시 만들고 그 backup의 격리 restore가 실제102tables/4697rows와 완전 일치함을 확인한 뒤, bounded10s metadata lock 아래 동일 DB/image/config executor로7statement를 적용했다. 새10컬럼·nullable domain·093/096 data UPDATE affected0을 확인했고 live102table data fingerprint 변화0이었다. 기존 journal·native user/home/password/federation/grant/resources·Redis/keys·sibling 서비스/datastore는 변경하지 않았고 migration ledger를 임의 생성/채우지 않았다.
+
+같은 원래7container ID/image/env/key/config로 복구했다. 운영 API/frontend6개 healthy, worker3개 running(healthcheck 없음), local API healthy; 모든 mount는 destination-keyed 비교로 같았다(Docker mount array ordering만 달라진 diagnostic은 retained). Native 대상 user metadata/direct/effective grant fingerprint와 Personal binding도 완전 동일했다. Local 실제 backend의 enrollment29컬럼·추가5model ORM SELECT/ROLLBACK, 운영3controller의 VIP readback29컬럼·nullable, native Accounts/Personal resolution·member implication 안전성·정책2vCPU/4096MiB/1024GiB read를 확인했다.
+
+같은 image의 canonical `app.bootstrap.main()`을 **복원·수리된 격리 snapshot에만** 실행해 exit0·기존 row 변화0·new table0을 확인했다. `http://localhost:3080/login` 실제 Chromium에서 username/password·provider catalog200·오류 alert 없음·가로 overflow0을 확인했고 local/deployed login GET200이었다. **Fresh 사용자 password는 읽거나 추측·재전송하지 않았고 실제 password POST200/Personal project 생성은 아직 검증하지 않았다.** 먼저 연 QA tab의127.0.0.1-only host fence가 configured localhost API OPTIONS를 막은 오류는 backend 요청0인 harness 진단으로 분리하고 올바른 origin으로 새 tab을 열었다. 초기 relay 미연결/fixture missing import, 실행 harness/원래 실패·백업·SQL·schema/row·runtime/native receipt는 삭제하지 않았다.
+
+배포 후보 backend의 실제 model module 전체를 import해 SQL reader의49tables/586columns와 live schema를 읽기 전용으로 대조했다. Missing table/column0·model이 nullable인데 DB가 거부하는 column0이었다. 이는 후보의 명시적 ORM model 저장소 선행 조건 검증이며 독립 native 서비스 schema·실제 새 사용자 인증/프로젝트 생성·모든 외부 API policy 수용을 포괄하지 않는다.
+
+이번 작업은 **현재 공유 Afterglow DB의 schema-before-writer 선행 조건 복구**이지 신규 image release/push·전체 생태계 배포 또는 old/new auth semantics의 rolling compatibility 수용이 아니다. Source/설정·버전·image contents는 바꾸지 않았으며 기존 qualified source gate를 이번 운영 로그인 성공으로 재사용하지 않는다. DDL implicit commit 뒤 image만 내리는 rollback은 보장하지 않고 보호된 recovery point·writer drain·unresolved journal/새 nullable-row 검토가 필요하다.
+
+
+## 검증된 가입·OIDC Accounts 자동 연결 (2026-10-22, local source)
+
+Proof는 `~/.local/share/afterglow-proofs/verified-account-entry-20261022/`에 보존한다. 기존 token/graph-lease 경로를 재사용하고 email형 username의 case/IDNA/trailing-dot cross-alias 및 unresolved 생성의 이름 충돌을 보완했다. 신규 회귀를 old source에 실행해 signup6fail/2pass, OIDC8fail/6pass를 확인했고 수정 source의 signup/federation/provider/organization·K8s/Helm generation389개와 정확한 frontend4파일115개를 통과했다. 최초 frontend 명령은 npm compound script에 selector를 전달해 Vitest4888개는 통과했지만 뒤 Node test가 TS selector를 받아 실패했다. 정확한 `npx vitest run`과 최종 정본 gate는 이 harness 오류와 별개로 기록한다.
+
+`entry_http.py`·`entry_smoke.py`는 production router/SQL/JWT·fake Redis, 실제 SMTP TCP, signed OIDC discovery/token/JWKS TCP, 설치된 Keystone user client와 OpenStack native-token SDK TCP를 실행한다. Proof 없는422/404·검증 전 create0·이름중복409→동일 delivered token으로 unique 가입200·token 재조회410·이메일중복409를 확인했다. OIDC unverified403→동일 Accounts 계정 자동 연결200→재로그인200, native attachment PATCH1·canonical UUID/home/personal/member 보존을 확인했다. Native domain/grant/quota·발신 mailbox·IdP 데이터는 합성이고 실제 운영 SMTP/Keystone/provider 수용이 아니다.
+
+Compiled adapter-node Chromium에서 실제 SSO 버튼→합성 IdP browser authorization→signed callback·native SDK→기존 alice의 Personal/member dashboard를 확인했다. 실제 SMTP 링크로 가입 페이지를 열어 중복 이름 안내·password/confirm 공란→다른 이름과 fresh password로 계정 생성, 신규 user native readback과 anonymous terminal state를 확인했다. 첫 QA wait의 잘못된 완료 문구/대기 timeout은 실제 관측한 terminal DOM·tab-local session과 분리해 receipt에 기록했다. Login은9locale×실제2theme×390/768/1440px의54조건에서 내부 Accounts 안내 없음·credential control 유지·overflow0이다. Build/i18n check exit0. 초기 fixture의 구 FastAPI event API·누락 SQL provider table/readiness·native POST dispatch·default origin 오류는 소유 harness에서만 수정했고 raw log를 보존했다. 운영 image/schema/IAM/credential/quota/resource는 변경하지 않았다.
+
+Tenant manager가 자기 issuer에서 기존 조직 멤버의 Accounts 이메일을 verified로 주장하는 공격 회귀는 trust 제한 전1fail(DID NOT RAISE), 운영자 registry만 자동 연결하도록 제한한 뒤 통과했다. 최종 signup/federation/provider/organization/recovery·K8s/Helm focus424pass를 확인했다. 조직 관리권·SQL provider allowlist만으로 native association이나 로그인 권위를 얻지 못하며 실제 운영자 file-provider HTTP 수용과 별개로 검증한다.
+
+아홉 locale에서 같은 username retry 경로를 반복하던 permanent test는 한 behavioral regression으로 합쳤다. Locale/theme/viewport 검증은 위 실제 Chromium54조건에 남기고 최종 gate의 frontend 개수는 이 중복 제거 후 source를 따른다.
+
+최종 source `0251226e20520a0c39a84100611551b8f67927360402c3306a57bc7713869ec2`·3416files의 변경하지 않은 `npm run test:gate` exit0: backend8918pass/95skip·frontend4880pass/428files·contracts159pass·DB functional166pass/33deselected·Ruff check/720files format. 최종 exact frontend107pass·Svelte check0errors, working/격리 staged source 일치·테스트 snapshot mismatch0·실제 shared index 불변을 확인했다. 중복 locale-unit row 제거 전 `369fb5...`의 별도 gate도 통과했지만 현재 source receipt와 구분한다.
+
+최종 canonical gate·working/격리 staged source parity·archive receipt는 같은 proof의 `verification.json`에 기록한다. 기존 과거 gate 결과를 이번 source의 수용으로 재사용하지 않는다.
+
+
+## 도메인 리소스·Flavor·개인 로그인 변경 검증 (2026-10-22, local source)
+
+작업 proof는 `~/.local/share/afterglow-proofs/domain-resources-flavors-personal-login-20261022/`에 보존한다. 기존 source와 실행 frontend 이미지에서 직접 타이핑한 Enter는 합성 로그인 POST를 보냈으므로 사용자 화면의 실패 원인을 그 관측만으로 확정하지 않는다. Input event 없이 DOM credential만 채운 경계는 disabled submit·POST0으로 재현했고, submit 시 현재 control 값을 읽도록 수정한 뒤 같은 Chromium Enter에서 POST1·합성401 표시를 확인했다. 실제 OS 비밀번호 관리자의 동작이나 운영 사용자 비밀번호 수용은 검증하지 않았다. 새 regression은 수정 전1fail, 수정 후 LoginPage64pass이며 기존 pending·IME·owner/ABA·fresh-password recovery를 포함한다.
+
+이전 source `fe482cd318aeef43c05a048bf39e75e9eb9e0622935b3be6758c3ee22e05e1b9`·3416files는 정본 gate에서 backend8854/95skip·frontend4875/428files·contracts159·DB166/33deselected·Ruff check/720files format을 통과했다(`test-gate-isolated-final.log`). 그러나 이 단계는 downstream Nova scope 정책을 집행하지 않았으므로 provider 권한 수용 증거가 아니다. 아래 native project-scope 정정 receipt가 최종 source와 downstream 수용을 대체한다. 이전 로그·실패와 실제 공유 index 보존 증거는 유지한다.
+
+- 실제 Uvicorn resource router→설치 OpenStack SDK/Keystone client→합성 native TCP에서 domain A의2VM/6vCPU/12288MiB·2vol/192GiB, B 분리, zero-domain, marker2페이지·domain/project 교집합·volume type/size·422range·native404·hypervisor ownership을 확인했다(`resource-http-smoke.json`). Directory404→503 문제를 실제 SDK 예외로 고쳤고 reviewed public503 code가 중앙 sanitizer를 통과하도록 했다.
+- 실제 flavor HTTP/router·설치 SDK·기존 same-host Placement evaluator·SQLite GPU quota에서 Public/Private parity, private native ACL 회수, quota0의 양쪽 GPU 거부·ACL 불변, max_unit와 down-host 차단을 확인했다(`flavor-http-smoke.json`). ID-only 실제 SDK Flavor의 선언 key를 wire metadata 존재로 오판하던 GPU usage는 실패2개→17pass로 수정하고 native extra-spec 조회 실패를 unknown으로 유지했다.
+- Production auth/JWT/Redis/SQL·Keystone SDK TCP에서 ordinary personal, opt-in 저장→새 로그인 remembered, markerless Accounts admin의 직접 member personal을 확인했다. `personal-admin-native-system-http.json`은 logical personal 유지와 Keystone system exchange만 증명한다. Stock Nova2025.2는 이 system token을 거부했으며 현재 provider inventory는 아래의 명시적 configured admin-project executor로 정정했다. Consumer/credential·native sibling-service caller token은 승격하지 않는다.
+- 실제 quota HTTP/production preview/apply·SQLite journal에서2/4096/1024 한도 적용·native readback·updated journal 및 usage 초과409를 확인했다(`personal-quota-http-smoke.json`). Native quota/directory는 합성이다. Frozen intent·기존 grant/리소스는 변경하지 않고 실제 운영 프로젝트에는 적용하지 않았다.
+- Chromium에서 domain drill-down/selector A→B와 header personal project 불변, 전체 volume2/192와 상세 필터1/128 분리, hypervisor domain/project/flavor, private domain→정확한 project 선택/명시 grant, profile preference 저장/reload, source-default draft/save와 existing quota preview/확인/apply를 조작했다. Vite surface의9locale×light/dark×6width×3resource routes324조건과9locale×2theme×3width×3settings routes162조건에서 overflow0을 기록했다. Production adapter-node build 후5개 actual route와 Enter POST1→admin personal `/dashboard`도 확인했다. `compiled-mobile-policy-viewport.json`은 실제390×1000·overflow0이다. UI-only write fixture, SDK-backed resource fixture와 native auth/quota proof는 구분한다.
+- `svelte-check`0errors/16warnings, i18n0errors/37key-order warnings·48namespaces/11187messages, Korean scan1199files/0lines, production frontend build와 target catalog validation을 통과했다. 번역은 원어민 검수 전이다. Initial source/fixture failures·PUBLIC_API_BASE 검증 환경 누출과 격리 venv의 관측된 package 파일 소실/복구 기록은 삭제하지 않았다. 한 authority gate에는 layer-build 임시 HTTP server로 외부 `exa.language_server ... RetrieveUserQuotaSummary` POST가 들어와 실패했으며 assertion/network guard를 바꾸지 않고 병행 도구 호출 없는 최종 동일 gate가 통과했다. 그 요청의 발신 원인은 확인하지 않았다.
+
+운영 container/config/DB/schema/native 권한·quota·실제 사용자 credential과 형제 저장소는 변경하지 않았다. 새 source의 실제 운영 login/SSO·scheduler acceptance, 기존093/098–100 schema 호환성·배포, 저장된 관리자 정책/기존 개인 프로젝트에 제공 quota를 적용하는 명시 운영 절차는 별도다. Backend 코드 변경만으로 운영 누락 column을 우회하거나 기존 quota를 덮어쓰지 않는다.
+
+### Native admin-project transport 정정
+
+이전 완료 보고의 Keystone system exchange는 Nova 인가 증거가 아니었다. `provider-scope/`의 동일 login/JWT/SDK/TCP harness에서 upstream Nova2025.2 `servers:detail:get_all_tenants`·hypervisor·flavor-access 원문 rule을 실제 oslo.policy로 집행하자 personal login200 뒤 native system token은 각각 `InvalidScope`403이고 BFF inventory500·hypervisors500·ACL503이었다(`provider-scope-before.json`). 원본 정책 파일·URL·SHA는 `upstream-policy-manifest.json`에 보존한다. 설치 oslo.policy6는 scope enforcement가 unconditional이며 scope check를 끄거나 native policy를 수정하지 않았다.
+
+정정 source의 명시적 fresh-admin-guarded configured project executor로 같은 actual HTTP 경로가 통과했다(`provider-scope-after.json`): 글로벌 VM2개·personal domain 한정1개, domain/project picker, hypervisor의 두 도메인 소유 VM, private ACL list200→add200→readback→remove204→빈 readback. 실제 native policy 통과 요청13회는 모두 configured provider-admin-project이고 사람의 native personal token은 전후 member·같은 user/home/project였다. System grant 회수 후 동일 JWT의 inventory403·추가 executor 인증0을 확인했다. 이것은 실제 route/dependency/SDK/Redis/SQL/HTTP·upstream rule 집행과 합성 Keystone/Nova directory/data의 경계이며 운영 Nova 서버 실행이나 실제 운영 계정 수용이 아니다.
+
+Permanent installed-SDK scope regression은 이전 source에서1fail이며 이후 native executor validity·ordinary/revoked caller·auth/operation failure·exactly-once close를 포함한 focused338pass를 통과했다. Auth/access/instances/storage named targets도 backend869/1280/1369/887 및 frontend478/181/609/166pass다. Selector와 mixed monitoring의 native Drover/telemetry는 configured execution credential을 넘기지 않고 original caller transport를 유지한다. 최종 source/gate/staged receipt는 `provider-scope/verification.json`과 이 change archive에 기록한다. 운영 config·native IAM·database/schema·quota·runtime 변경과 commit/push/deploy는 없다.
+
+정정 최종 source `87a7c491fb776c4b0b14a863f93be51a2568b0950988b1bd7db36a49518d5a5a`·3416files의 **변경 없는 정본 `npm run test:gate` exit0**: backend8869pass/95skip, frontend4875pass/428files, contracts159pass, DB functional166pass/33deselected, Ruff720files check/format. `provider-scope/test-gate-final.log`와 matching working/격리 staged guard·actual index 불변·tested source mismatch0 receipt를 보존한다. 최종 selector/caller-bound monitoring focus도332pass이며 runtime/SQL fixture 상태만 정리하고 실행 harness·upstream source·원 로그는 보존한다.
+
+### Manila execution-project URL 정정
+
+Nova scope 정정은 Manila 수동 client의 URI project 선택까지 검증하지 못했다. `_afterglow_token`은 executor인데 URL project가 logical Personal이면 실제 `/v2/{executor}/{personal}/shares/detail`404가 발생했다. `get_client`를 mock하지 않고 real installed SDK catalog→loopback HTTP를 쓰는5개 회귀는 수정 전 모두 실패했고 수정 후 Manila/file-storage 관련108tests가 통과했다(`manila-scope/http-regression-{before,after}.log`). Scoped `/v2/{executor}`·version-root `/v2`·metadata 없는 SDK current project를 검증하며, missing/empty native scope는 요청0으로 거부한다. 별도 quota target은 `/v2/{executor}/quota-sets/{personal}/detail`로 유지한다.
+
+Production login/JWT/Redis/SQL/dependency/router·SDK catalog·실제 Manila HTTP client를 실행해 Personal/member 로그인200→`GET /api/v1/admin/file-storage`200과 native `/v2/provider-admin-project/shares/detail` 한 번을 확인했다(`manila-scope/manila-http-smoke.json`). Caller native project/home/member는 전후 동일하다. Native directory·share는 합성이며 운영 Manila 정책/파일 시스템 수용이나 모든 프로젝트 share inventory의 의미를 확장한 검증은 아니다. 소유 fixture/runtime만 종료하고 원본 harness·raw failure·receipt는 보존한다. 최종 source·canonical gate·matching staged guard는 `manila-scope/verification.json`을 따른다.
+
+최종 source `10a663403843527e1385c99b293441ea933a4277d533a31be47eb0207ede1b4b`·3416files의 정본 `npm run test:gate` exit0: backend8874pass/95skip·frontend4875pass/428files·contracts159pass·DB functional166pass/33deselected·Ruff check/720files format. Storage target892backend/166frontend와 working·격리 staged architecture/source mismatch0·공유 index 불변도 확인했다. 첫 gate의 missing-Manila-endpoint 회귀1실패는 scope 없는 MagicMock fixture가 새 native scope guard에 먼저 걸린 것으로, explicit authenticated admin project만 제공해 원래 discovery-error assertion을 유지했고 원본 실패 log를 보존했다.
+
+
 ## 프로젝트 없는 관리자 로그인 응답 정정 (2026-10-22, local source)
 
 최신 로컬 backend 로그의 2026-10-21 22:36:50·22:37:04·23:39:26 KST password login은 native exchange부터 session publication까지 성공한 HTTP200이며 바로 logout200이 뒤따랐다. 화면의 `login.sessionMismatch`는 frontend가 Accounts identity와 visible legacy 작업 domain·빈 project를 가진 관리자 응답을 거부한 경로다. 과거 native password401과 구분한다. `loginAuthState`는 서버가 보고한 system administrator·projectless·visible exact working domain인 경우만 수용하도록 수정했다. 일반 사용자 foreign organization landing과 관리자 invisible/project-scoped foreign landing은 계속 거부한다.

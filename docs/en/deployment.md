@@ -11,6 +11,10 @@ nav_order: 1
 
 Afterglow supports three deployment modes: Docker Compose (development / small scale), Kubernetes (production), and ArgoCD (GitOps).
 
+Verified-email signup and automatic OIDC Accounts association are shared backend invariants, not local-only settings. Public signup still requires operator opt-in, SMTP readiness and a delivered one-use email token, then unique normalized username/email. Configured allowed OIDC providers must provide a signed identity and boolean `email_verified=true`; only the unique enabled Accounts email owner may be attached. Existing global issuer/subject/native tuple conflicts are rejected rather than reassigned. Compose/K8s/Helm/Kolla keep the same TOML/SQL selection and Secret paths, with no verification bypass flag. Prepare existing096–100 schema and native stable-sub user-only mapping/full tuple PATCH, drain old writers and preserve backups, keys, identities and journals before an approved rollout. This source change does not deploy or migrate operational accounts; see the [canonical cutover requirements](../deployment.md#canonical-계정공개-가입복구-cutover).
+
+Register trusted automatic-association OIDC providers in operator-owned `[auth.providers.<key>]`. Tenant-managed SQL providers require explicit account proof for first linking even for existing organization members; adding a SQL provider to an allowlist does not promote its email claims to global identity authority.
+
 ---
 
 ## Prerequisites

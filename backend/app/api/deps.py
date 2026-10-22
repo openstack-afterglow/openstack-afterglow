@@ -586,10 +586,10 @@ async def get_caller_project_permissions(
     principal = {**token_info, "project_id": effective_project_id, "roles": roles}
     role_set = set(roles)
 
-    can_write = has_project_write_permission(principal)
+    can_write = has_project_write_permission({**principal, "is_system_admin": False})
     is_reader = not can_write and ("reader" in role_set or len(role_set) == 0)
 
-    is_mgr = is_sys_admin or access["is_manager"]
+    is_mgr = access["is_manager"]
 
     from app.services.identity_roles import visible_role_names
 
@@ -650,6 +650,11 @@ async def get_os_conn(
         conn._afterglow_project_id = project_id
         conn._afterglow_authenticated_project_id = connection_project_id
         conn._afterglow_is_system_admin = is_system_admin
+        # Native Nova's admin policy can expose all private flavors even without
+        # system:all. This flag only adds a target-project ACL check; never authority.
+        conn._afterglow_compute_admin = (is_system_admin and not connection_project_id) or any(
+            isinstance(role, str) and role.lower() == "admin" for role in token_info.get("roles", [])
+        )
         conn._afterglow_domain_id = token_info["domain_id"]
         conn._afterglow_domain_name = token_info["domain_name"]
         conn._afterglow_identity_domain_id = token_info["identity_domain_id"]
@@ -686,6 +691,56 @@ async def get_os_conn(
         yield conn
     finally:
         await asyncio.to_thread(conn.close)
+
+
+async def get_admin_os_conn(
+    token_info: dict = Depends(require_admin),
+) -> AsyncGenerator[openstack.connection.Connection, None]:
+    """Execute provider administration in the configured native admin project.
+
+    Fresh caller system authority authorizes this bounded service execution;
+    neither the caller's personal token nor a request-selected project supplies
+    the provider credential. Logical workspace and actor metadata stay caller-owned.
+    """
+    conn = None
+    try:
+        try:
+            conn = await asyncio.to_thread(keystone.get_admin_project_connection)
+            access = await asyncio.to_thread(conn.session.auth.get_access, conn.session)
+            project_id = access.project_id
+            token = access.auth_token
+            # AccessInfo.is_admin_project defaults to True when omitted; the
+            # provider boundary requires an explicit native boolean instead.
+            native_token = access._data.get("token", {})
+            if (
+                access.project_scoped is not True
+                or access.system_scoped is not False
+                or not isinstance(project_id, str)
+                or not project_id.strip()
+                or not isinstance(token, str)
+                or not token.strip()
+                or access.is_admin_project is not True
+                or native_token.get("is_admin_project") is not True
+                or not any(isinstance(role, str) and role.lower() == "admin" for role in access.role_names or [])
+            ):
+                raise HTTPException(status_code=503, detail="Native administrator project scope is invalid")
+            conn._afterglow_token = token
+            conn._afterglow_project_id = token_info["project_id"]
+            conn._afterglow_authenticated_project_id = project_id
+            conn._afterglow_is_system_admin = True
+            conn._afterglow_compute_admin = True
+            conn._afterglow_domain_id = token_info["domain_id"]
+            conn._afterglow_domain_name = token_info["domain_name"]
+            conn._afterglow_identity_domain_id = token_info["identity_domain_id"]
+            conn._afterglow_user_id = token_info.get("user_id", "")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Administrator provider connection is unavailable") from exc
+        yield conn
+    finally:
+        if conn is not None:
+            await asyncio.to_thread(conn.close)
 
 
 async def get_os_conn_write(

@@ -11,7 +11,7 @@
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import OnboardingAccountForm from '$lib/components/auth/OnboardingAccountForm.svelte';
 	import type { DomainAccountResult } from '$lib/types/auth';
-	import { isOnboardingToken, onboardingErrorKey, signupApprovalState, type SignupApprovalState } from '$lib/utils/domainLogin';
+	import { isOnboardingToken, onboardingErrorKey, registrationConflictKind, signupApprovalState, type SignupApprovalState } from '$lib/utils/domainLogin';
 	import { t } from '$lib/i18n/ns/domain-auth';
 	import AccountResultDetails from '$lib/components/auth/AccountResultDetails.svelte';
 
@@ -64,6 +64,10 @@
 			if (!live || abandoned || current !== token || boundary !== generation) return;
 			approval = e instanceof ApiError ? signupApprovalState(e) : null;
 			if (approval) { info = null; created = null; return; }
+			const conflict = e instanceof ApiError ? registrationConflictKind(e) : null;
+			if (conflict === 'username') { error = t('onboarding.usernameUnavailable'); return; }
+			if (conflict === 'email' && info) { info = { ...info, account_exists: true }; return; }
+			if (conflict === 'recovery') { info = null; error = t('onboarding.unavailable'); return; }
 			// A newly detected existing email is never treated as permission to create/reset.
 			if (e instanceof ApiError && e.status === 409) {
 				await inspect(current);

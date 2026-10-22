@@ -90,6 +90,20 @@ describe('administrator contextual sidebar expansion', () => {
 });
 
 describe('administrator global navigation', () => {
+	it('keeps global workspace switching in user navigation and out of administrator navigation', async () => {
+		await navigate('/admin');
+		const rendered = render(AdminSidebar);
+		const adminDrawer = await openGlobalNavigation();
+		expect(adminDrawer.queryByRole('button', { name: /리소스 선택/ })).toBeNull();
+		expect(adminDrawer.getByRole('link', { name: '현재 관리자 모드, 사용자 모드로 전환' })).toBeTruthy();
+		rendered.unmount();
+		sidebarOpen.close();
+		await navigate('/dashboard');
+		render(Sidebar);
+		const userDrawer = await openGlobalNavigation();
+		expect(userDrawer.getByRole('button', { name: /리소스 선택/ })).toBeTruthy();
+	});
+
 	it('keeps other destinations out of the contextual panel until the global drawer opens', async () => {
 		initSiteConfig({ services: { chat: true } });
 		const authBefore = get(auth);

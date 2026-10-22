@@ -194,8 +194,8 @@ async def test_admin_project_quotas(client, project_id, selected_domain_id):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_admin_projects_overview(client):
-    resp = await client.get("/api/v1/admin/overview/projects")
+async def test_admin_domains_overview(client):
+    resp = await client.get("/api/v1/admin/overview/domains")
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -315,7 +315,7 @@ _ADMIN_SIMPLE_PATHS = [
     "/api/v1/admin/all-floating-ips",
     "/api/v1/admin/all-routers",
     "/api/v1/admin/all-ports",
-    "/api/v1/admin/overview/projects",
+    "/api/v1/admin/overview/domains",
     "/api/v1/admin/compute-hosts",
     "/api/v1/admin/version",
     "/api/v1/admin/topology",

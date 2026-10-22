@@ -23,10 +23,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import Depends
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.exc import ArgumentError
 
-from app.api.deps import get_os_conn, get_token_info, require_admin
+from app.api.deps import get_admin_os_conn, get_os_conn, get_token_info, require_admin
 from app.main import app
 from app.rate_limit import limiter as _rate_limiter
 
@@ -485,7 +486,7 @@ def patch_usage_report_deps(*, usage=None, quota=None, volume_quota=None, flavor
 
 @pytest.fixture
 def available_flavor_capacity(monkeypatch):
-    """Isolate existing VM mutation tests from the read-only cloud capacity authority."""
+    """Isolate VM mutation units from native compute quota and host capacity authorities."""
     from app.models.compute import FlavorCapacityInfo
     from app.services.resource_policy_store import resolve_policies
 
@@ -509,6 +510,12 @@ def available_flavor_capacity(monkeypatch):
 
     authority = AsyncMock(side_effect=capacity)
     monkeypatch.setattr("app.services.flavor_capacity.evaluate_flavor_capacities", authority)
+    # Mutation units using this fixture isolate both admission authorities. Tests
+    # of native quota responses or contention override this known compute snapshot.
+    monkeypatch.setattr(
+        "app.services.nova.get_project_quota",
+        lambda *_args, **_kwargs: {key: {"limit": -1, "in_use": 0} for key in ("instances", "cores", "ram")},
+    )
     monkeypatch.setattr("app.services.resource_policy_store.resolve_policies", policies)
     return authority
 
@@ -527,6 +534,11 @@ async def client(mock_conn):
         return make_token_info(roles=["member"])
 
     app.dependency_overrides[get_os_conn] = override_get_os_conn
+
+    async def override_get_admin_os_conn(_admin=Depends(require_admin)):
+        yield mock_conn
+
+    app.dependency_overrides[get_admin_os_conn] = override_get_admin_os_conn
     app.dependency_overrides[get_token_info] = override_get_token_info
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -551,6 +563,7 @@ async def admin_client(mock_conn):
         return make_token_info(roles=["admin", "member"], is_system_admin=True)
 
     app.dependency_overrides[get_os_conn] = override_get_os_conn
+    app.dependency_overrides[get_admin_os_conn] = override_get_os_conn
     app.dependency_overrides[get_token_info] = override_get_token_info
     app.dependency_overrides[require_admin] = synthetic_verified_admin
     async with AsyncClient(
@@ -576,6 +589,11 @@ async def non_admin_client(mock_conn):
         return make_token_info(roles=["member"])
 
     app.dependency_overrides[get_os_conn] = override_get_os_conn
+
+    async def override_get_admin_os_conn(_admin=Depends(require_admin)):
+        yield mock_conn
+
+    app.dependency_overrides[get_admin_os_conn] = override_get_admin_os_conn
     app.dependency_overrides[get_token_info] = override_get_token_info
     async with AsyncClient(
         transport=ASGITransport(app=app),

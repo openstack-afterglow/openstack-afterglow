@@ -31,7 +31,7 @@
 		!!network && network.project_id === $auth.projectId && !network.is_external,
 	);
 	const managedRouters = $derived(
-		routers.filter((router) => $auth.isSystemAdmin || (router.project_id && router.project_id === $auth.projectId))
+		routers.filter((router) => router.project_id && router.project_id === $auth.projectId)
 	);
 
 	async function fetchRouters() {
@@ -166,7 +166,7 @@
 		if (!canManageNetwork || !routerId || !subnetId) return false;
 		const targetRouter = network?.routers.find((r) => r.id === routerId);
 		if (!targetRouter) return false;
-		if (!($auth.isSystemAdmin || (targetRouter.project_id && targetRouter.project_id === $auth.projectId))) {
+		if (!targetRouter.project_id || targetRouter.project_id !== $auth.projectId) {
 			toast.warning(t('networkDetail.onlyOwnedDisconnect'));
 			return false;
 		}
@@ -283,7 +283,7 @@
 			canManage={canManageNetwork}
 			connecting={connectingRouter}
 			projectId={$auth.projectId}
-			isSystemAdmin={$auth.isSystemAdmin}
+			isSystemAdmin={false}
 			onConnect={connectRouter}
 			onDisconnect={disconnectRouter}
 		/>

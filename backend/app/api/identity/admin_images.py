@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.api.common.admin_resource_scope import AdminResourceScope, admin_resource_scope
-from app.api.deps import get_os_conn, get_token_info, require_admin
+from app.api.deps import get_admin_os_conn, get_token_info, require_admin
 from app.models.compute import ImageDetail, ImageInfo
 from app.services import glance, image_verification
 from app.services.cache import invalidate
@@ -73,7 +73,7 @@ def _serialize_image(img) -> dict:
 
 @router.get("/images", dependencies=[Depends(require_admin)])
 async def list_admin_images(
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     limit: int = Query(default=20, ge=1, le=100),
     marker: str | None = Query(default=None),
     search: str | None = Query(default=None),
@@ -144,7 +144,7 @@ async def list_admin_images(
 @router.get("/images/{image_id}", dependencies=[Depends(require_admin)])
 async def get_admin_image(
     image_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """이미지 상세 조회."""
     try:
@@ -158,7 +158,7 @@ async def get_admin_image(
 async def set_admin_image_verification(
     image_id: str,
     req: VerificationRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
     try:
@@ -178,7 +178,7 @@ async def set_admin_image_verification(
 async def update_admin_image(
     image_id: str,
     req: AdminUpdateImageRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """이미지 메타데이터 수정."""
     normalized_name = None
@@ -213,7 +213,7 @@ async def update_admin_image(
 async def update_admin_image_properties(
     image_id: str,
     req: AdminUpdatePropertiesRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """이미지 임의 properties 추가/수정/삭제 (관리자)."""
     try:
@@ -234,7 +234,7 @@ async def update_admin_image_properties(
 @router.delete("/images/{image_id}", dependencies=[Depends(require_admin)], status_code=204)
 async def delete_admin_image(
     image_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """이미지 삭제."""
     try:
@@ -252,7 +252,7 @@ async def delete_admin_image(
 @router.post("/images/{image_id}/deactivate", dependencies=[Depends(require_admin)], status_code=200)
 async def deactivate_admin_image(
     image_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """이미지 비활성화 (deactivated 상태)."""
     try:
@@ -267,7 +267,7 @@ async def deactivate_admin_image(
 @router.post("/images/{image_id}/reactivate", dependencies=[Depends(require_admin)], status_code=200)
 async def reactivate_admin_image(
     image_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """이미지 활성화 (active 상태)."""
     try:

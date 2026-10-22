@@ -4,9 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.api.deps import get_token_info
 from app.config import get_settings
-from app.main import app
 from app.services.keystone import PasswordRejected
 
 pytestmark = pytest.mark.usefixtures("auth_directory")
@@ -222,85 +220,14 @@ async def test_logout_invalidates_token_cache(client):
 
 
 @pytest.mark.asyncio
-async def test_list_projects(client):
+async def test_list_projects(client, auth_directory):
+    auth_directory.grants["test-user-123"] = ["proj-1"]
+    auth_directory.users["test-user-123"]["domain_id"] = "default"
     projects = [{"id": "proj-1", "name": "myproject", "description": "", "domain_id": "default", "enabled": True}]
     with patch("app.api.identity.auth.keystone.list_projects", return_value=projects):
         resp = await client.get("/api/v1/auth/projects")
     assert resp.status_code == 200
     assert resp.json()[0]["id"] == "proj-1"
-
-
-@pytest.mark.asyncio
-async def test_list_projects_cache_miss_then_hit(client):
-    projects = [{"id": "proj-1", "name": "cached-project", "description": "", "domain_id": "default", "enabled": True}]
-    with patch("app.api.identity.auth.keystone.list_projects", return_value=projects) as mock_list:
-        first = await client.get("/api/v1/auth/projects?cache=true")
-        second = await client.get("/api/v1/auth/projects?cache=true")
-
-    assert first.status_code == 200
-    assert second.status_code == 200
-    assert first.json() == second.json()
-    assert mock_list.call_count == 1
-
-
-@pytest.mark.asyncio
-async def test_list_projects_refresh_bypasses_cache(client):
-    cached_projects = [
-        {"id": "proj-old", "name": "old-project", "description": "", "domain_id": "default", "enabled": True}
-    ]
-    refreshed_projects = [
-        {"id": "proj-new", "name": "new-project", "description": "", "domain_id": "default", "enabled": True}
-    ]
-    with patch(
-        "app.api.identity.auth.keystone.list_projects",
-        side_effect=[cached_projects, refreshed_projects],
-    ) as mock_list:
-        cached = await client.get("/api/v1/auth/projects?cache=true")
-        refreshed = await client.get("/api/v1/auth/projects?refresh=true")
-
-    assert cached.status_code == 200
-    assert refreshed.status_code == 200
-    assert cached.json()[0]["id"] == "proj-old"
-    assert refreshed.json()[0]["id"] == "proj-new"
-    assert mock_list.call_count == 2
-
-
-@pytest.mark.asyncio
-async def test_list_projects_cache_is_isolated_by_user(client, _fake_redis_global):
-    token_info = {
-        "token": "token-a",
-        "project_id": "test-project-123",
-        "project_name": "test-project",
-        "user_id": "user-a",
-        "username": "testuser",
-        "roles": ["member"],
-        "is_system_admin": False,
-        "domain_id": "default",
-    }
-
-    async def override_token_info():
-        return token_info
-
-    app.dependency_overrides[get_token_info] = override_token_info
-
-    def projects_for_token(token: str, domain_id: str):
-        project_id = "project-a" if token == "token-a" else "project-b"
-        return [{"id": project_id, "name": project_id, "description": "", "domain_id": "default", "enabled": True}]
-
-    with patch("app.api.identity.auth.keystone.list_projects", side_effect=projects_for_token) as mock_list:
-        response_a = await client.get("/api/v1/auth/projects?cache=true")
-        token_info.update(token="token-b", user_id="user-b")
-        response_b = await client.get("/api/v1/auth/projects?cache=true")
-        token_info.update(token="token-a", user_id="user-a")
-        response_a_cached = await client.get("/api/v1/auth/projects?cache=true")
-
-    assert response_a.json()[0]["id"] == "project-a"
-    assert response_b.json()[0]["id"] == "project-b"
-    assert response_a_cached.json()[0]["id"] == "project-a"
-    assert response_a.status_code == response_b.status_code == response_a_cached.status_code == 200
-    assert await _fake_redis_global.exists("afterglow:user:user-a:domain:default:projects")
-    assert await _fake_redis_global.exists("afterglow:user:user-b:domain:default:projects")
-    assert mock_list.call_count == 2
 
 
 # ────── groups ──────

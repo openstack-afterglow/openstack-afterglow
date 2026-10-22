@@ -13,6 +13,7 @@
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import type { LoginResponse, ProviderLinkResponse } from '$lib/types/auth';
 	import { loginAuthState, sessionScopeKey, type LoginAuthMapping } from '$lib/utils/authSession';
+	import { freshLoginDestination } from '$lib/utils/mcpConsent';
 	import { takePendingProviderLogin, signupApprovalState, type SignupApprovalState } from '$lib/utils/domainLogin';
 	import { t } from '$lib/i18n/ns/domain-auth';
 
@@ -63,7 +64,7 @@
 		catch { discard(data.token); error = t('callback.foreignDomain'); loading = false; return; }
 		ticket = null; password = ''; username = '';
 		setLoginAuth(mapped.state);
-		await goto(mapped.target, { replaceState: true });
+		await goto(freshLoginDestination(mapped.target), { replaceState: true });
 	}
 	async function link(event: Event, authenticated = false) {
 		event.preventDefault();

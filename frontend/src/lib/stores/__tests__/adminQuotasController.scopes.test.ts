@@ -2,7 +2,7 @@ import { render } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth, logoutInProgress, projectSwitching } from '$lib/stores/auth';
-import type { AdminQuotasController, FlavorReconcileResponse } from '../adminQuotasController.svelte';
+import type { AdminQuotasController } from '../adminQuotasController.svelte';
 import type { GpuQuota, Quotas, QuotaUpdateResponse } from '$lib/types/quotas';
 import Probe from './_AdminQuotasControllerProbe.svelte';
 
@@ -20,7 +20,6 @@ const projects = [
 ];
 const quota: Quotas = { compute: { cores: { limit: 8, in_use: 2 } }, volume: null, network: null, file_storage: null };
 const gpu: GpuQuota[] = [{ gpu_type: 'gpu-a', limit: 2, in_use: 1, available: 1 }];
-const preview: FlavorReconcileResponse = { project_id: 'p-a', applied: false, status: 'ok', operations: [], errors: [], enforcement_scope: 'project' };
 const saved: QuotaUpdateResponse = { status: 'updated', updated: ['compute'], errors: {} };
 const initialAuth = get(auth);
 
@@ -46,7 +45,6 @@ describe('admin quota independent domain and project scope', () => {
 			if (path.includes('/gpu-quotas/')) return Promise.resolve(gpu);
 			return Promise.resolve(quota);
 		});
-		mocks.post.mockResolvedValue(preview);
 		mocks.put.mockResolvedValue(saved);
 		mocks.delete.mockResolvedValue(undefined);
 	});
@@ -72,22 +70,19 @@ describe('admin quota independent domain and project scope', () => {
 		expect(controller.projects).toEqual(projects);
 	});
 
-	it('clears quotas, GPU results, reconcile and save feedback synchronously on domain change even for a compatible project', async () => {
+	it('clears quotas, GPU results and save feedback synchronously on domain change even for a compatible project', async () => {
 		const { controller } = await setup();
 		controller.selectedProjectId = 'p-a';
 		await controller.loadQuotas();
 		await controller.loadGpuQuotas();
-		await controller.loadReconcilePreview();
 		await controller.saveSectionQuotas('compute', { cores: 16 });
 		expect(controller.quotas).not.toBeNull();
 		expect(controller.gpuQuotas).toHaveLength(1);
-		expect(controller.reconcilePreview).not.toBeNull();
 		expect(controller.saveSuccess).toBeTruthy();
 		controller.selectedDomainId = 'd-a';
 		expect(controller.selectedProjectId).toBe('p-a');
 		expect(controller.quotas).toBeNull();
 		expect(controller.gpuQuotas).toEqual([]);
-		expect(controller.reconcilePreview).toBeNull();
 		expect(controller.saveSuccess).toBe('');
 		expect(controller.sectionSuccesses).toEqual({});
 		expect(controller.sectionErrors).toEqual({});
@@ -105,7 +100,6 @@ describe('admin quota independent domain and project scope', () => {
 		controller.selectedProjectId = 'p-b';
 		expect(controller.quotas).toBeNull();
 		expect(controller.gpuQuotas).toEqual([]);
-		expect(controller.reconcilePreview).toBeNull();
 		const loading = controller.loadQuotas();
 		expect(controller.quotaLoading).toBe(true);
 		pending.resolve({ ...quota, project_id: 'p-b' });
@@ -113,26 +107,22 @@ describe('admin quota independent domain and project scope', () => {
 		expect(controller.quotas?.project_id).toBe('p-b');
 	});
 
-	it('rejects late quota, GPU, reconcile and save responses after project A→B→A', async () => {
+	it('rejects late quota, GPU and save responses after project A→B→A', async () => {
 		const { controller } = await setup();
 		const oldQuota = Promise.withResolvers<Quotas>();
 		const oldGpu = Promise.withResolvers<GpuQuota[]>();
-		const oldPreview = Promise.withResolvers<FlavorReconcileResponse>();
 		const oldSave = Promise.withResolvers<QuotaUpdateResponse>();
 		mocks.get.mockImplementation((path: string) => path.includes('/gpu-quotas/') ? oldGpu.promise : oldQuota.promise);
-		mocks.post.mockReturnValue(oldPreview.promise);
 		mocks.put.mockReturnValue(oldSave.promise);
 		controller.selectedProjectId = 'p-a';
 		const loading = controller.loadQuotas();
-		const reconciling = controller.loadReconcilePreview();
 		const saving = controller.saveSectionQuotas('compute', { cores: 16 });
 		controller.selectedProjectId = 'p-b';
 		controller.selectedProjectId = 'p-a';
-		oldQuota.resolve(quota); oldGpu.resolve(gpu); oldPreview.resolve(preview); oldSave.resolve(saved);
-		await Promise.all([loading, reconciling, saving]);
+		oldQuota.resolve(quota); oldGpu.resolve(gpu); oldSave.resolve(saved);
+		await Promise.all([loading, saving]);
 		expect(controller.quotas).toBeNull();
 		expect(controller.gpuQuotas).toEqual([]);
-		expect(controller.reconcilePreview).toBeNull();
 		expect(controller.saveSuccess).toBe('');
 		expect(controller.saving).toBe(false);
 	});
@@ -161,11 +151,8 @@ describe('admin quota independent domain and project scope', () => {
 		await controller.loadQuotas();
 		const oldQuota = Promise.withResolvers<Quotas>();
 		const oldGpu = Promise.withResolvers<GpuQuota[]>();
-		const oldPreview = Promise.withResolvers<FlavorReconcileResponse>();
 		mocks.get.mockImplementation((path: string) => path.includes('/gpu-quotas/') ? oldGpu.promise : oldQuota.promise);
-		mocks.post.mockReturnValue(oldPreview.promise);
 		const loading = controller.loadQuotas();
-		const reconciling = controller.loadReconcilePreview();
 		const original = get(auth);
 		auth.set({ ...original, sessionId: 'session-b', token: 'token-b' });
 		expect(controller.quotas).toBeNull();
@@ -173,11 +160,10 @@ describe('admin quota independent domain and project scope', () => {
 		expect(controller.projects).toEqual([]);
 		auth.set(original);
 		controller.selectedProjectId = 'p-a';
-		oldQuota.resolve(quota); oldGpu.resolve(gpu); oldPreview.resolve(preview);
-		await Promise.all([loading, reconciling]);
+		oldQuota.resolve(quota); oldGpu.resolve(gpu);
+		await loading;
 		expect(controller.quotas).toBeNull();
 		expect(controller.gpuQuotas).toEqual([]);
-		expect(controller.reconcilePreview).toBeNull();
 	});
 
 	it('preserves the directory, selected project and loaded quotas during same-session bearer rotation', async () => {

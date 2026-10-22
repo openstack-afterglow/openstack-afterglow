@@ -64,7 +64,6 @@ function adminApi(flavorsFor: (projectId: string | null) => Promise<unknown>) {
 		if (path === '/api/v1/admin/projects/names') {
 			return Promise.resolve([{ id: 'project-a', name: 'Project A' }, { id: 'project-b', name: 'Project B' }]);
 		}
-		if (path === '/api/v1/admin/overview/projects') return Promise.resolve([]);
 		if (isAdminFlavorPath(path)) {
 			return flavorsFor(new URL(`https://afterglow.invalid${path}`).searchParams.get('project_id'));
 		}
@@ -198,7 +197,6 @@ describe('VM create option loading boundaries', () => {
 					{ id: 'project-b', name: 'Project B' },
 				]);
 			}
-			if (path === '/api/v1/admin/overview/projects') return Promise.resolve([]);
 			if (path.includes('/api/v1/admin/instances/flavors-for-project')) {
 				const projectId = new URL(`https://afterglow.invalid${path}`).searchParams.get('project_id');
 				return Promise.resolve([{ ...flavor, id: `flavor-${projectId}`, name: `${projectId}-flavor` }]);
@@ -266,7 +264,6 @@ describe('VM create option loading boundaries', () => {
 					{ id: 'project-b', name: 'Project B' },
 				]);
 			}
-			if (path === '/api/v1/admin/overview/projects') return Promise.resolve([]);
 			if (path.includes('/api/v1/admin/instances/flavors-for-project')) {
 				const projectId = new URL(`https://afterglow.invalid${path}`).searchParams.get('project_id');
 				if (projectId === 'project-a') {
@@ -657,6 +654,24 @@ describe('VM create option loading boundaries', () => {
 		expect(screen.getByTestId('flavor-block').textContent).toBe('capacity_insufficient');
 	});
 
+	it.each([false, true])('blocks stale dispatch when a selected native grant disappears (admin=%s)', async (adminMode) => {
+		let calls = 0;
+		const snapshots = () => Promise.resolve(++calls === 1 ? [capacityFlavor('private-choice')] : []);
+		api.get.mockImplementation(adminMode ? adminApi(() => snapshots()) : (path: string) => path.includes('flavors') ? snapshots() : Promise.resolve([]));
+		if (adminMode) wizard.update(state => ({ ...state, targetProjectId: 'project-a' }));
+		render(VmCreateStoreLoadWrapper, { adminMode });
+		await fireEvent.click(screen.getByTestId('init'));
+		await vi.waitFor(() => expect(screen.getByTestId('flavor').textContent).toBe('private-choice'));
+		await fireEvent.click(screen.getByTestId('select-first-flavor'));
+		await fireEvent.click(screen.getByTestId('step-six'));
+		await fireEvent.click(screen.getByTestId('deploy'));
+		await vi.waitFor(() => expect(screen.getByTestId('step').textContent).toBe('2'));
+		expect(screen.getByTestId('selected-flavor').textContent).toBe('private-choice');
+		expect(screen.getByTestId('flavor-block').textContent).toBe('missing');
+		expect(fetchWithAuth).not.toHaveBeenCalled();
+	});
+
+
 	it('submits only after a fresh snapshot still admits the selection', async () => {
 		const submitCheck = deferred<unknown[]>();
 		const periodic = deferred<unknown[]>();
@@ -746,5 +761,26 @@ describe('VM create option loading boundaries', () => {
 		await vi.waitFor(() => expect(screen.getByTestId('flavor').textContent).toBe('b-1'));
 		await Promise.resolve();
 		expect(fetchWithAuth).not.toHaveBeenCalled();
+	});
+	it('bounds native project quota badge reads to four and rejects same-tick authority ABA', async () => {
+		const pending = Array.from({ length: 6 }, () => deferred<unknown>());
+		let quotaCalls = 0;
+		api.get.mockImplementation((path: string) => {
+			if (path === '/api/v1/admin/projects/names') return Promise.resolve(Array.from({ length: 6 }, (_, index) => ({ id: `project-${index}`, name: `Project ${index}` })));
+			if (path.startsWith('/api/v1/admin/quotas/')) return pending[quotaCalls++].promise;
+			return Promise.resolve([]);
+		});
+		const original = { token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'user', username: 'user', projectId: 'project', projectName: 'project', availableProjects: [], roles: [], isSystemAdmin: true, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false };
+		auth.set(original);
+		render(VmCreateStoreLoadWrapper, { adminMode: true });
+		await fireEvent.click(screen.getByTestId('init'));
+		await vi.waitFor(() => expect(quotaCalls).toBe(4));
+		auth.set({ ...original, userId: 'replacement' }); auth.set(original);
+		const quota = { compute: { instances: { limit: 2, in_use: 0 }, cores: { limit: 2, in_use: 0 }, ram: { limit: 4096, in_use: 0 } }, volume: { gigabytes: { limit: 1024, in_use: 0 } } };
+		pending.forEach(request => request.resolve(quota));
+		await vi.waitFor(() => expect(screen.getByTestId('admin-quota-loading').textContent).toBe('idle'));
+		expect(quotaCalls).toBe(4);
+		expect(screen.getByTestId('admin-quota-projects').textContent).toBe('');
+		expect(api.get.mock.calls.some(([path]) => path === '/api/v1/admin/overview/projects')).toBe(false);
 	});
 });

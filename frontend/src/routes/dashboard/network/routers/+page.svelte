@@ -40,7 +40,7 @@
   let showModal = $state(false);
   let selection = createResourceSelection();
   let busy = $state(false);
-  let selectableIds = $derived(new Set(routers.filter((router) => $auth.isSystemAdmin || (router.project_id && router.project_id === $auth.projectId)).map((router) => router.id)));
+  let selectableIds = $derived(new Set(routers.filter((router) => router.project_id && router.project_id === $auth.projectId).map((router) => router.id)));
 
   async function bulkDelete() {
     const ids = [...selection.ids];

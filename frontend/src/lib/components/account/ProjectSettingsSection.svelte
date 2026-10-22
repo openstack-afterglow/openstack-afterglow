@@ -23,10 +23,6 @@
 	import { authReady, projectSwitching, logoutInProgress } from '$lib/stores/auth';
 	let assignable = $state<AssignableProjectRoles | null>(null);
 	let editMember = $state<ProjectAccessMember | null>(null);
-	let migrationOwnerId = $state('');
-	let migrating = $state(false);
-	let migrationNotice = $state('');
-	const verifiedSystemAdmin = $derived($authReady && !$projectSwitching && $auth.isSystemAdmin === true);
 	const actorOwner = $derived(assignable?.is_owner === true);
 
 	let projectId = $derived($auth.projectId ?? '');
@@ -106,20 +102,6 @@
 			if (scope === context) membersError = e instanceof Error ? e.message : t('projectSettings.removeMemberFailed');
 		} finally { if (scope === context) managingUserId = null; }
 	}
-	async function migrateManagers() {
-		const context = scope;
-		const owner = migrationOwnerId.trim();
-		if (!context || !context.session.canSubmit() || !eligible.some(row => row.id === owner) || !verifiedSystemAdmin || migrating) return;
-		if (!await confirmDialog(t('projectSettings.migrationConfirm', { owner }), { confirmLabel: t('projectSettings.migrateConfirm'), confirmVariant: 'primary' })) return;
-		if (scope !== context || !context.session.canSubmit() || !eligible.some(row => row.id === owner) || !verifiedSystemAdmin || migrating) return;
-		migrating = true; membersError = '';
-		try {
-			const result = await api.post<{ migrated_user_ids: string[]; deleted_legacy_rows: number }>(`/api/v1/projects/${context.projectId}/members/migrate-legacy-managers`, { owner_user_id: owner }, context.token, context.projectId, { replayOnUnauthorized: false });
-			if (scope === context) { migrationNotice = t('projectSettings.migrationNotice', { users: result.migrated_user_ids.length, records: result.deleted_legacy_rows }); await Promise.all([loadMembers(context), refreshProjectPermissions()]); }
-		} catch (e) {
-			if (scope === context) membersError = e instanceof Error ? e.message : t('projectSettings.migrationFailed');
-		} finally { if (scope === context) migrating = false; }
-	}
 
 
 	// Observe every transition synchronously, including A → B → A before effects run.
@@ -135,7 +117,7 @@
 		membersLoading = false;
 		membersError = '';
 		managingUserId = null;
-		assignable = null; editMember = null; migrationOwnerId = ''; migrating = false; migrationNotice = '';
+		assignable = null; editMember = null;
 		eligible = []; selectedUser = ''; membersFresh = false;
 	});
 
@@ -232,13 +214,6 @@
 					</table>
 				</TableShell>
 				</ResponsiveTable>
-			{/if}
-			{#if verifiedSystemAdmin}
-				<div class="mt-4 border border-line rounded-lg p-3 space-y-3">
-					<Field label={t('projectSettings.migrationOwner')} for={`${uid}-migration-owner`} help={t('projectSettings.migrationHelp')}><SelectInput id={`${uid}-migration-owner`} bind:value={migrationOwnerId} disabled={migrating || !membersFresh}><option value="">{td('selectUser')}</option>{#each eligible as row (row.id)}<option value={row.id}>{row.name} · {row.email || row.id}</option>{/each}</SelectInput></Field>
-					<Button variant="secondary" disabled={!migrationOwnerId.trim() || migrating} ariaBusy={migrating} onclick={migrateManagers}>{t('projectSettings.migrateManagers')}</Button>
-					{#if migrationNotice}<p role="status" class="text-sm text-ink-2">{migrationNotice}</p>{/if}
-				</div>
 			{/if}
 
 	{:else if !$projectPermissions.loading && !$projectPermissions.error}

@@ -114,16 +114,16 @@ async def pending(db, **identity):
 
 
 @pytest.mark.asyncio
-async def test_absent_policy_preserves_config_auto_and_zero_core_defaults(policy_db):
+async def test_absent_policy_preserves_config_auto_and_usable_personal_defaults(policy_db):
     result = await service.read_policy()
     assert result["revision"] == 0
     assert result["public_signup_enabled"] is True
     assert result["approval_mode"] == "auto"
     assert result["defaults_future_only"] is True
     assert result["smtp_configured"] is True
-    assert result["personal_quotas"] == {
-        key: 0 for section in ("compute", "volume", "network") for key in service._CORE_FIELDS[section]
-    }
+    assert result["personal_quotas"] == service.PERSONAL_DEFAULT_QUOTAS
+    assert result["personal_quota_source"] == "source_defaults"
+    assert result["source_default_personal_quotas"] == service.PERSONAL_DEFAULT_QUOTAS
     assert "key_pairs" not in result["personal_quotas"]
     assert "file_storage" not in result["quota_fields"]
     policy_db.settings.auth.public_signup_enabled = False

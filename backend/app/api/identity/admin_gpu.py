@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field
 
-from app.api.deps import CacheMode, cache_mode, get_os_conn, require_admin
+from app.api.deps import CacheMode, cache_mode, get_admin_os_conn, require_admin
 from app.services.cache import cached_call, ttl_normal
 
 # FastAPI-free 인벤토리 유틸리티로 이동된 항목들 — 하위 호환을 위해 재export.
@@ -35,7 +35,7 @@ router = APIRouter()
 
 @router.get("/gpu-hosts", dependencies=[Depends(require_admin)])
 async def list_gpu_hosts(
-    conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn), cm: CacheMode = Depends(cache_mode)
 ):
     """Placement API에서 각 호스트별 GPU 정보 조회."""
 
@@ -52,7 +52,7 @@ async def list_gpu_hosts(
 
 @router.get("/gpu-hosts/raw", dependencies=[Depends(require_admin)])
 async def list_gpu_hosts_raw(
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """호스트별 Placement CUSTOM_PCI_* 원시 인벤토리 반환 (오디오 필터 미적용).
 

@@ -481,9 +481,6 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 			layers: { new: 3, inherited: 0, total: 3, limit: 25, by_instruction: { RUN: 1, ENV: 1, WORKDIR: 1 } },
 		};
 	}
-	if (method === 'POST' && profile === 'admin' && pathname === '/api/v1/admin/flavors/access-reconcile') {
-		return { project_id: String((body as { project_id?: string } | undefined)?.project_id ?? ''), applied: false, status: 'ok', operations: [], errors: [], enforcement_scope: 'afterglow_admissions_only' };
-	}
 	if (profile === 'admin' && method !== 'GET') {
 		const dockerfileFixture = method === 'POST' && [
 			'/api/v1/palimpsest/builds/dockerfile/fetch-url',
@@ -526,27 +523,57 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		const status = params.get('status')?.toLowerCase();
 		const project = params.get('project_id');
 		const host = params.get('host')?.toLowerCase();
-		if (name) items = items.filter((item) => item.name.toLowerCase().includes(name));
+		if (name) items = items.filter((item) => item.name.toLowerCase().includes(name) || item.id.toLowerCase().includes(name));
 		if (status) items = items.filter((item) => item.status.toLowerCase() === status);
 		if (project) items = items.filter((item) => item.project_id === project);
+		if (params.get('domain_id') && params.get('domain_id') !== 'mock-domain') items = [];
 		if (host) items = items.filter((item) => item.host?.toLowerCase() === host);
-		return { items, next_marker: null, count: items.length };
+		items.sort((a, b) => a.id.localeCompare(b.id));
+		const marker = params.get('marker');
+		const index = marker ? items.findIndex(item => item.id === marker) : -1;
+		if (marker && index < 0) throw new ApiError(400, 'inventory_marker_outside_scope');
+		const limit = Number(params.get('limit') || 20);
+		const page = items.slice(index + 1, index + 1 + limit);
+		return { items: page, next_marker: index + 1 + limit < items.length ? page.at(-1)?.id ?? null : null, count: page.length };
 	}
 	if (profile === 'admin' && pathname === '/api/v1/admin/instances/health') return state.admin.instanceHealth;
 	if (profile === 'admin' && pathname === '/api/v1/admin/timeseries/instances') return state.admin.instanceTimeseries;
 	if (profile === 'admin' && pathname === '/api/v1/admin/hypervisors') return state.admin.hypervisors;
 
-	if (profile === 'admin' && pathname === '/api/v1/admin/all-volumes') {
-		let items = [...state.admin.volumes];
+	if (profile === 'admin' && ['/api/v1/admin/all-volumes', '/api/v1/admin/volumes/status-summary'].includes(pathname)) {
+		const domain = params.get('domain_id');
+		if (domain && domain !== 'mock-domain') throw new ApiError(404, 'inventory_domain_not_found');
+		const project = params.get('project_id');
+		const scoped = state.admin.volumes.filter(item => (!domain || item.domain_id === domain) && (!project || item.project_id === project));
 		const name = params.get('name')?.toLowerCase();
 		const status = params.get('status')?.toLowerCase();
-		const project = params.get('project_id');
-		if (name) items = items.filter((item) => item.name.toLowerCase().includes(name));
-		if (status) items = items.filter((item) => item.status.toLowerCase() === status);
-		if (project) items = items.filter((item) => item.project_id === project);
-		return { items, next_marker: null, count: items.length };
+		const type = params.get('volume_type')?.toLowerCase();
+		const min = params.has('min_size') ? Number(params.get('min_size')) : 0;
+		const max = params.has('max_size') ? Number(params.get('max_size')) : Infinity;
+		if (min > max) throw new ApiError(422, 'inventory_size_range_invalid');
+		const items = scoped.filter(item => (!name || item.name.toLowerCase().includes(name) || item.id.toLowerCase().includes(name))
+			&& (!status || item.status.toLowerCase() === status) && (!type || item.volume_type?.toLowerCase() === type)
+			&& item.size >= min && item.size <= max).sort((a, b) => a.id.localeCompare(b.id));
+		if (pathname.endsWith('/status-summary')) {
+			const counts = new Map<string, number>();
+			for (const item of scoped) counts.set(item.status, (counts.get(item.status) ?? 0) + 1);
+			const total = (rows: typeof scoped) => rows.reduce((sum, item) => sum + item.size, 0);
+			const attached = scoped.filter(item => item.status === 'in-use');
+			const available = scoped.filter(item => item.status === 'available');
+			return {
+				total: scoped.length, total_gb: total(scoped), attached_count: attached.length, attached_gb: total(attached),
+				available_count: available.length, available_gb: total(available), filtered_total: items.length, filtered_gb: total(items),
+				statuses: [...counts].map(([status, count]) => ({ status, count })).sort((a, b) => b.count - a.count || a.status.localeCompare(b.status)),
+				domains: [{ domain_id: 'mock-domain', domain_name: 'Demo', owner_status: 'known', project_ids: [...new Set(scoped.map(item => item.project_id))], volumes: scoped.length, volume_gb: total(scoped), attached_volumes: attached.length, attached_gb: total(attached), available_volumes: available.length, available_gb: total(available) }],
+			};
+		}
+		const marker = params.get('marker');
+		const index = marker ? items.findIndex(item => item.id === marker) : -1;
+		if (marker && index < 0) throw new ApiError(400, 'inventory_marker_outside_scope');
+		const limit = Number(params.get('limit') || 20);
+		const page = items.slice(index + 1, index + 1 + limit);
+		return { items: page, next_marker: index + 1 + limit < items.length ? page.at(-1)?.id ?? null : null, count: page.length };
 	}
-	if (profile === 'admin' && pathname === '/api/v1/admin/volumes/status-summary') return state.admin.volumeStatusSummary;
 	if (profile === 'admin' && pathname === '/api/v1/admin/timeseries/volumes') return state.admin.volumeTimeseries;
 	const adminVolumeDiagnosticId = pathname.match(/^\/api\/v1\/admin\/volumes\/([^/]+)\/delete-diagnostics$/)?.[1];
 	if (profile === 'admin' && adminVolumeDiagnosticId) {
@@ -1177,7 +1204,7 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	}
 
 	if (method === 'GET' && profile === 'admin' && pathname === '/api/v1/admin/overview') return state.admin.overview;
-	if (method === 'GET' && profile === 'admin' && pathname === '/api/v1/admin/overview/projects') return state.admin.projects;
+	if (method === 'GET' && profile === 'admin' && pathname === '/api/v1/admin/overview/domains') return state.admin.domains;
 	if (method === 'GET' && profile === 'admin' && pathname === '/api/v1/admin/version') return state.admin.version;
 	if (method === 'GET' && profile === 'admin' && pathname === '/api/v1/admin/notifications') return state.admin.notifications;
 	if (method === 'GET' && profile === 'admin' && pathname === '/api/v1/admin/identity/summary') return state.admin.identitySummary;

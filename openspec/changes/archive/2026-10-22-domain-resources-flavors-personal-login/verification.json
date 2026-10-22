@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-22",
+  "scope": "Afterglow local-source domain resource monitoring, native flavor admission/access, keyboard login, personal/reconnect landing and explicit personal quota convergence",
+  "provider_scope_status": "Superseded by correct-provider-admin-project-scope: this receipt proved Keystone system exchange but did not enforce downstream Nova project-only policy; retain historical test results, not provider authorization acceptance.",
+  "source_sha256": "fe482cd318aeef43c05a048bf39e75e9eb9e0622935b3be6758c3ee22e05e1b9",
+  "source_files": 3416,
+  "canonical_gate": {"command": "npm run test:gate", "exit_code": 0, "log": "test-gate-isolated-final.log", "backend_passed": 8854, "backend_skipped": 95, "frontend_passed": 4875, "frontend_files": 428, "contracts_passed": 159, "functional_passed": 166, "functional_deselected": 33, "backend_lint": "All checks passed; 720 files already formatted"},
+  "frontend_build_exit": 0,
+  "svelte_check": {"errors": 0, "warnings": 16},
+  "localization": {"errors": 0, "key_order_warnings": 37, "namespaces": 48, "source_messages": 11187, "korean_scan_files": 1199, "hardcoded_korean_lines": 0, "native_speaker_review": false},
+  "browser": {"resource_requested_locale_theme_width_conditions": 324, "settings_requested_locale_theme_width_conditions": 162, "observed_horizontal_overflow": 0, "compiled_routes": 5, "compiled_admin_login": "Enter sent one POST, preserved Accounts identity, selected personal project, reached /dashboard", "exact_compiled_mobile_viewport": "390x1000", "api_boundary": "resource native SDK/TCP fixtures plus separate mutable UI-only auth/settings/flavor fixtures"},
+  "http_smoke": ["resource-http-smoke.json", "flavor-http-smoke.json", "personal-http/personal-login-http.json", "personal-http/personal-admin-native-system-http.json", "personal-quota-http-smoke.json"],
+  "proof_root": "~/.local/share/afterglow-proofs/domain-resources-flavors-personal-login-20261022/",
+  "unchanged": ["operational runtime/images/config", "operational database/schema", "native credentials and existing grants/resources", "operational project quotas", "sibling repositories"],
+  "limits": ["Synthetic native directory/Nova/Placement/quota providers, not live production acceptance", "existing configured zero/custom quota policies and frozen intents require explicit reviewed operator policy/save/apply", "no automatic 1TiB volume creation", "native flavor grants are project-scoped; domain selector does not create domain/future-project inheritance", "earlier operational enrollment schema/OIDC blockers are not bypassed", "no commit, push or deployment in this change"]
+}

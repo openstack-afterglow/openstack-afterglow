@@ -34,8 +34,14 @@ nav_order: 11
 | `GET` | `/api/v1/profile/image` | 본인 사진 선택·표시 데이터 조회 (private, no-store) |
 | `PUT` | `/api/v1/profile/image` | Gravatar 선택 또는 새 아바타 생성·저장 |
 | `PUT` | `/api/v1/profile/image/upload` | bounded raw raster 업로드·정규화·저장 |
+| `GET` | `/api/v1/profile/login-preference` | 본인 로그인 작업공간 선호 조회 (private, no-store) |
+| `PUT` | `/api/v1/profile/login-preference` | `{remember_last_workspace:boolean}` 저장; target은 현재 검증된 scope에서 서버가 결정 |
 
 ---
+## 로그인 작업공간 선호
+
+기본 `{remember_last_workspace:false}`는 관리자도 자신의 verified personal primary로 로그인합니다. PUT true는 현재 활성·접근 가능한 domain/project를 fresh native 확인한 뒤 exact user+immutable home별 Redis에 저장합니다. 임의 target/user/home 필드는422이고 프로젝트 없는 상태는409입니다. 이후 성공한 scope publication만 활성 선호의 pair를 갱신하며 opt-out을 atomic하게 보존합니다. 다음 password/provider 로그인에서 저장 pair를 다시 검증하고 철회·삭제·비활성은 personal fallback, directory/Redis 장애는503입니다. 선호는 권한이 아니며 Redis persistence/복구 정책에 따라 보존됩니다. False 저장은 선택 프로젝트 접근을 잃은 뒤에도 가능합니다.
+
 
 ## GET /api/v1/profile
 

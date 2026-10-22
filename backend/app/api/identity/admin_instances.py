@@ -51,8 +51,10 @@ def _make_admin_conn(project_id: str, user_id: str) -> openstack.connection.Conn
     """admin 크리덴셜로 특정 프로젝트에 스코프된 conn을 생성하고 afterglow 속성을 설정."""
     conn = keystone.get_admin_connection_for_project(project_id)
     conn._afterglow_project_id = project_id
+    conn._afterglow_authenticated_project_id = project_id
     conn._afterglow_token = ""
     conn._afterglow_user_id = user_id
+    conn._afterglow_is_system_admin = True
     return conn
 
 
@@ -78,7 +80,7 @@ async def list_project_flavors_for_admin(
                 count=count,
                 check_capacity=capacity == "create",
                 availability_zone=availability_zone,
-                fresh_capacity=False,
+                fresh_capacity=capacity == "create",
             )
         finally:
             await asyncio.to_thread(conn.close)

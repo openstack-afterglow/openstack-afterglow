@@ -171,19 +171,14 @@ async def test_get_gpu_aliases_empty(admin_client):
 
 
 @pytest.mark.asyncio
-async def test_get_all_gpu_aliases_refreshes_db_overlay_before_discovery():
+async def test_get_all_gpu_aliases_refreshes_db_overlay_before_discovery(mock_conn):
     """DB catalog aliases must be loaded before mapping Placement device names to quota aliases."""
-
-    class FakeConnection:
-        def close(self):
-            pass
 
     refresh = AsyncMock()
     with (
         patch("app.database.is_db_available", return_value=True),
         patch("app.services.gpu_catalog.refresh_device_map_from_db", new=refresh),
-        patch("openstack.connect", return_value=FakeConnection()),
-        patch("app.services.nova.list_flavors", return_value=[]),
+        patch("app.services.nova.list_catalog_flavors", return_value=[]),
         patch(
             "app.services.gpu_inventory._collect_gpu_hosts", return_value={"gpu_types": [{"device_name": "RTX 3090"}]}
         ),
@@ -191,10 +186,38 @@ async def test_get_all_gpu_aliases_refreshes_db_overlay_before_discovery():
     ):
         from app.services.gpu_inventory import get_all_gpu_aliases
 
-        result = await get_all_gpu_aliases()
+        result = await get_all_gpu_aliases(mock_conn)
 
     refresh.assert_awaited_once()
     assert result == ["RTX3090"]
+    mock_conn.close.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_gpu_alias_discovery_uses_real_catalog_without_afterglow_connection_attributes():
+    from types import SimpleNamespace
+
+    from app.services.gpu_inventory import get_all_gpu_aliases
+
+    native = SimpleNamespace(
+        id="private-gpu",
+        name="gpu.shape",
+        vcpus=4,
+        ram=8192,
+        disk=0,
+        is_public=False,
+        extra_specs={"pci_passthrough:alias": "RTX3090:2"},
+    )
+    compute = SimpleNamespace(flavors=lambda **kwargs: [native])
+    closed = []
+    conn = SimpleNamespace(compute=compute, close=lambda: closed.append(True))
+    with (
+        patch("app.database.is_db_available", return_value=False),
+        patch("app.services.gpu_inventory._collect_gpu_hosts", return_value={"gpu_types": []}),
+        patch("app.api.identity.admin_gpu.build_device_name_to_alias_map", return_value={}),
+    ):
+        assert await get_all_gpu_aliases(conn) == ["RTX3090"]
+    assert closed == []  # The request dependency owns this connection's lifetime.
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

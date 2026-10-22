@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -72,6 +73,13 @@ def parse_gpu_demand(flavor: Any) -> dict[str, int]:
     if not is_gpu_flavor(flavor):
         return {}
     specs = (flavor.get("extra_specs") if isinstance(flavor, dict) else getattr(flavor, "extra_specs", None)) or {}
+    resource_gpu_count = 0
+    for key, value in specs.items():
+        if re.fullmatch(r"resources\d*:[VP]GPU", str(key)):
+            try:
+                resource_gpu_count += max(int(value), 0)
+            except (TypeError, ValueError):
+                continue
     requested: dict[str, int] = {}
     for raw_entry in str(specs.get("pci_passthrough:alias", "")).split(","):
         entry = raw_entry.strip()
@@ -90,6 +98,8 @@ def parse_gpu_demand(flavor: Any) -> dict[str, int]:
         normalized = gpu_quota.normalize_gpu_alias(alias.strip())
         if normalized:
             requested[normalized] = requested.get(normalized, 0) + count
+    if resource_gpu_count:
+        requested["GPU"] = requested.get("GPU", 0) + resource_gpu_count
     return requested or {"GPU": 1}
 
 
@@ -123,12 +133,18 @@ def flavor_demand(
 
 def _remaining(entry: dict[str, Any] | None) -> int:
     if not isinstance(entry, dict):
-        return -1
-    limit = entry.get("limit")
-    in_use = entry.get("in_use")
-    int_limit = int(limit) if isinstance(limit, (int, float)) and not isinstance(limit, bool) else -1
-    int_in_use = int(in_use) if isinstance(in_use, (int, float)) and not isinstance(in_use, bool) else 0
-    return -1 if int_limit == -1 else max(int_limit - int_in_use, 0)
+        raise ValueError("missing compute quota resource")
+    limit, in_use, reserved = entry.get("limit"), entry.get("in_use"), entry.get("reserved", 0)
+    if (
+        type(limit) is not int
+        or type(in_use) is not int
+        or type(reserved) is not int
+        or limit < -1
+        or in_use < 0
+        or reserved < 0
+    ):
+        raise ValueError("invalid compute quota resource")
+    return -1 if limit == -1 else max(limit - in_use - reserved, 0)
 
 
 def _resource_blocker(code: str, resource: str, required: int, remaining: int) -> FlavorQuotaBlocker | None:
@@ -238,7 +254,7 @@ async def evaluate_project_flavors(
     compute_error = False
     gpu_error = False
     try:
-        compute_quota = await asyncio.to_thread(nova.get_project_quota, conn, project_id)
+        compute_quota = await asyncio.to_thread(nova.get_project_quota, conn, project_id, strict=True)
     except Exception:
         _logger.warning("compute quota lookup failed for project %s", project_id, exc_info=True)
         compute_error = True

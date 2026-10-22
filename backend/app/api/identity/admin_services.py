@@ -13,7 +13,7 @@ from concurrent.futures import TimeoutError as FuturesTimeoutError
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.deps import CacheMode, cache_mode, get_os_conn, require_admin
+from app.api.deps import CacheMode, cache_mode, get_admin_os_conn, require_admin
 from app.config import get_settings
 from app.services.cache import cached_call, ttl_normal
 from app.services.service_proxy import join_version_aware_url
@@ -316,7 +316,7 @@ def _make_fetch_map(conn, settings):
 
 @router.get("/services", dependencies=[Depends(require_admin)])
 async def list_services(
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     cm: CacheMode = Depends(cache_mode),
     category: str | None = Query(None),
 ):

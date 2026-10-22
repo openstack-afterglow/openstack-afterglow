@@ -12,7 +12,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import event
 
-from app.api.deps import get_os_conn, get_token_info, require_admin
+from app.api.deps import get_admin_os_conn, get_os_conn, get_token_info, require_admin
 from app.api.identity import admin_identity
 from app.database import get_session
 from app.services import activity, identity_roles, session_store
@@ -64,6 +64,7 @@ def app(native, monkeypatch):
     application = FastAPI()
     application.include_router(admin_identity.router, prefix="/api/v1/admin")
     application.dependency_overrides[get_os_conn] = lambda: native
+    application.dependency_overrides[get_admin_os_conn] = lambda: native
     application.dependency_overrides[get_token_info] = lambda: info
     application.dependency_overrides[require_admin] = synthetic_verified_admin
     monkeypatch.setattr(activity, "get_user_activity_bounds", AsyncMock(return_value={}))

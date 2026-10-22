@@ -1,0 +1,172 @@
+{
+  "date": "2026-10-22",
+  "status": "implemented_qualified_source_not_operationally_deployed",
+  "source_sha256": "f1f196a10d19d7866e0672628f3163badbb7f331c4cfcba0c1e905643b886e39",
+  "source_files": 3424,
+  "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/console-workspaces-labels-20261022T060824Z",
+  "behavior": {
+    "user_console_admin_visibility": "same real membership and project authority as ordinary users, except explicit administrator-mode entry",
+    "identity_home_in_chooser": "hidden, security session identity preserved",
+    "admin_global_workspace_selector": "removed from header and mobile drawer; page-local observation and target filters preserved",
+    "personal_display_label": "owner-only native afterglow_display_name; UUID/generated native name/markers/other extras/grants/quota/resources preserved",
+    "public_project_capabilities": "actual native project owner/manager/read/write roles; separate verified system authority preserved",
+    "organization_creation_ui": "same operator policy, not system identity override"
+  },
+  "native_api_smoke": {
+    "exit": 0,
+    "actual": "production routers/SQL/JWT, installed Keystone/OpenStack SDK and loopback project token/list/metadata PATCH HTTP",
+    "synthetic": "native directory/users/domains/grants/quota and fake Redis",
+    "workspace_foreign_denials": 403,
+    "native_label_patch": "one extra attribute only; persistent readback, me/list/fresh login agree",
+    "foreign_owner_denied": 403,
+    "invalid_name_rejected": 422,
+    "native_identity_grants_quota_preserved": true
+  },
+  "browser": {
+    "compiled_container_108_conditions": {
+      "locales": 9,
+      "actual_themes": 2,
+      "widths": [
+        390,
+        767,
+        768,
+        1023,
+        1024,
+        1440
+      ],
+      "conditions": 108,
+      "user_owned_domain_count": 1,
+      "user_owned_project_count": 1,
+      "identity_home_hidden": true,
+      "manager_controls_absent": true,
+      "admin_header_drawer_selector_count": 0,
+      "horizontal_overflow": 0
+    },
+    "actual_ui_save_reload_passed": true,
+    "final_exact_image_ui_passed": true,
+    "final_image_runtime": {
+      "container_id": "aa6f8e11cb9fa98560415d2ec89bd7f8a5e6d011e3b1af1dec3dc807498eec57",
+      "image_id": "sha256:e9e8568a8e16c0d54d39126e58cc8c3035cdb97f2c75344243185c2d63888ba4",
+      "compose_project": "afterglow-console-workspaces-qa",
+      "healthy": "healthy",
+      "final_ui_receipt": "final-image-ui-smoke.json"
+    },
+    "resource_inventory_fixture_limit": "admin inventory endpoints deliberately unimplemented; error surface not cloud acceptance",
+    "matrix_runtime_receipt": "canonical-compose-runtime.json",
+    "final_exact_image_runtime_receipt": "final-image-ui-smoke.json"
+  },
+  "verification": {
+    "named_targets": [
+      "auth",
+      "access",
+      "storage"
+    ],
+    "named_exit": 0,
+    "canonical_command": "npm run test:gate",
+    "canonical_exit": 0,
+    "canonical_log": "test-gate-all-qualified.log",
+    "backend_passed": 8972,
+    "backend_skipped": 95,
+    "frontend_passed": 4945,
+    "frontend_test_files": 431,
+    "contracts_passed": 181,
+    "functional_passed": 166,
+    "functional_deselected": 33,
+    "ruff": "All checks passed;722 files already formatted",
+    "svelte_check_exit": 0,
+    "svelte_existing_warnings": 16,
+    "i18n_exit": 0,
+    "working_architecture_exit": 0,
+    "isolated_staged_architecture_exit": 0,
+    "actual_index_preserved": true,
+    "postarchive_docs_check_exit": 0,
+    "postarchive_isolated_staged_exit": 0,
+    "post_gate_source_drift": false
+  },
+  "images": [
+    {
+      "target": "backend",
+      "arch": "arm64",
+      "image_id": "sha256:8e019c8594d1797ae438c224b18cf94d071f27e8a9a6dd7201e7c2a27809c81d",
+      "tag": "afterglow-console-workspaces/backend:20261022-arm64"
+    },
+    {
+      "target": "backend",
+      "arch": "amd64",
+      "image_id": "sha256:450dd2c6d2595ca6d4dcca37c390bfdca47a10b5c59f725e48c87bdf90964a4d",
+      "tag": "afterglow-console-workspaces/backend:20261022-amd64"
+    },
+    {
+      "target": "frontend",
+      "arch": "arm64",
+      "image_id": "sha256:e9e8568a8e16c0d54d39126e58cc8c3035cdb97f2c75344243185c2d63888ba4",
+      "tag": "afterglow-console-workspaces/frontend:20261022-arm64"
+    },
+    {
+      "target": "frontend",
+      "arch": "amd64",
+      "image_id": "sha256:599519975bed6e60c8015397d906775968e343d94c76aed739e941ece5751b74",
+      "tag": "afterglow-console-workspaces/frontend:20261022-amd64"
+    },
+    {
+      "target": "worker",
+      "arch": "arm64",
+      "image_id": "sha256:7523125e3f2d737372a5db056b787bb5e7814923abb69bc49f63a86fa9ec36e1",
+      "tag": "afterglow-console-workspaces/worker:20261022-arm64"
+    },
+    {
+      "target": "worker",
+      "arch": "amd64",
+      "image_id": "sha256:bc740fe4029503070f6e4040193d47ce393a19a1e4ea60b79719533b4a950120",
+      "tag": "afterglow-console-workspaces/worker:20261022-amd64"
+    }
+  ],
+  "image_scope": "canonical Dockerfile backend/frontend/worker arm64+amd64 built and executed; final frontend exercised via isolated canonical Compose, no shared application replacement",
+  "limits": [
+    "Operational Keystone service-writer permission and real-user label persistence remain unexercised",
+    "No operational DB/IAM/config/quota/resources/images changed",
+    "No commit/push/release tag/GHCR publication or production deployment performed",
+    "Existing concurrent provider work preserved; only obsolete retry expectation and required formatting corrected without weakening guards or assertions"
+  ],
+  "retained_diagnostics": [
+    "membership-before.log",
+    "browser-permission-projection-before.json",
+    "test-gate.log",
+    "test-gate-qualified.log",
+    "snapshot-parity-diagnostics.json",
+    "test-gate-frozen-qualified.log",
+    "test-gate-complete.log",
+    "existing-contract-format-diff.txt",
+    "workspace-smoke-delivery.log",
+    "workspace-smoke-delivery.log: explicit startup readiness missing; fixed prerequisite, qualified run0"
+  ],
+  "cleanup": {
+    "owned_runtime_stopped": true,
+    "owned_browser_closed": true,
+    "removed_generated_directories": [
+      "browser-final-profile",
+      "browser-profile",
+      "sql-e3b70e0d0b704b48986a56c4052cb641",
+      "sql-6e575ae0cbcc44069e2308ba716d4028",
+      "sql-be551c48aff2487ca345122fdeeba270",
+      "sql-4bb197c9f287404bb35806238ba9cf05",
+      "sql-0a76685134334736966a4faf33e0a77f"
+    ],
+    "owned_network_volume_removed": [
+      {
+        "type": "network",
+        "name": "afterglow-console-workspaces-qa_default",
+        "ownership_verified": true,
+        "removed": true
+      },
+      {
+        "type": "volume",
+        "name": "afterglow-console-workspaces-qa_redis-data",
+        "ownership_verified": true,
+        "removed": true
+      }
+    ],
+    "source_harnesses_failed_runs_build_logs_receipts_screenshots_retained": true,
+    "private_config_operational_data_and_shared_index_preserved": true
+  }
+}

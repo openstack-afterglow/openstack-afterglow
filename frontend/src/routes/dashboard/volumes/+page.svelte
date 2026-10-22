@@ -172,7 +172,7 @@
         selectionDisabled={bulkBusy}
         onToggleSelect={(id) => volumeSelection.toggle(id)}
         onToggleAll={() => volumeSelection.toggleAll(selectableVolumeIds)}
-        isSystemAdmin={!!$auth.isSystemAdmin}
+        isSystemAdmin={false}
         onOpenDetail={ctrl.openVolumePanel}
         onActionMenuOpen={(id) => (ctrl.openActionMenu = id)}
         onActionMenuClose={() => (ctrl.openActionMenu = null)}

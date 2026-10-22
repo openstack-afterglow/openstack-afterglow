@@ -11,7 +11,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from app.api.deps import get_os_conn, get_token_info, require_admin
+from app.api.deps import get_admin_os_conn, get_os_conn, get_token_info, require_admin
 from app.api.identity import domains as domains_api
 from app.services import (
     activity,
@@ -60,6 +60,7 @@ def app(native, monkeypatch, domain_native, ownership_journal):
     application = FastAPI()
     application.include_router(domains_api.router, prefix="/api/v1/admin")
     application.dependency_overrides[get_os_conn] = lambda: native
+    application.dependency_overrides[get_admin_os_conn] = lambda: native
     application.dependency_overrides[get_token_info] = lambda: info
     application.dependency_overrides[require_admin] = synthetic_verified_admin
     audits, revoked = [], []

@@ -28,6 +28,12 @@ class DomainInfo(BaseModel):
     kind: Literal["personal", "organization", "legacy"] = "legacy"
 
 
+class InitialWorkspace(BaseModel):
+    kind: Literal["personal", "remembered"]
+    domain_id: str
+    project_id: str
+
+
 class TokenResponse(BaseModel):
     token: str  # access JWT (신규 클라이언트) — 이전 Keystone 토큰 필드명 유지
     refresh_token: str | None = None
@@ -48,6 +54,7 @@ class TokenResponse(BaseModel):
     is_system_admin: bool = False
     can_write: bool = False
     auth_method: str = "password"
+    initial_workspace: InitialWorkspace | None = None
 
 
 class UserInfo(BaseModel):

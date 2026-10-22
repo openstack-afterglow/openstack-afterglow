@@ -6,6 +6,8 @@ import AdminVolumeStatusSummary from '../AdminVolumeStatusSummary.svelte';
 
 const mixedSummary: Summary = {
 	total: 12,
+	total_gb: 120, attached_count: 3, attached_gb: 30, available_count: 5, available_gb: 50,
+	domains: [], filtered_total: 12, filtered_gb: 120,
 	statuses: [
 		{ status: 'available', count: 5 },
 		{ status: 'in-use', count: 3 },

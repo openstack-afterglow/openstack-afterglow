@@ -842,3 +842,33 @@ async def test_boot_from_volume_ignores_flavor_disk_but_honors_explicit_disk(clo
         "VCPU:1,MEMORY_MB:1",
         "VCPU:1,MEMORY_MB:1,DISK_GB:20",
     ]
+
+
+async def test_cpu_and_ram_free_on_different_hosts_do_not_admit_one_vm(cloud):
+    cloud.add_host(ROOT_A, vcpu=(32, 0), ram=(65536, 65024))
+    cloud.add_host(ROOT_B, vcpu=(32, 31), ram=(65536, 0))
+    cloud.answers[CPU_SHAPE] = [allocation({ROOT_A: ONE}), allocation({ROOT_B: ONE})]
+    result = (await evaluate(flavor("fragmented", vcpus=8, ram=8192)))["fragmented"]
+    assert result.status == "insufficient"
+    assert result.candidate_hosts == 0
+
+
+@pytest.mark.parametrize(
+    "field,value", [("state", None), ("status", None), ("forced_down", None), ("state", "down"), ("status", "disabled")]
+)
+async def test_cpu_create_never_uses_unknown_down_or_disabled_compute(cloud, field, value):
+    cloud.add_host(ROOT_B, vcpu=(32, 0), ram=(65536, 0))
+    cloud.service(ROOT_B)[field] = value
+    cloud.answers[CPU_SHAPE] = [allocation({ROOT_B: ONE})]
+    result = (await evaluate(flavor("cpu", vcpus=2, ram=4096)))["cpu"]
+    assert result.status == ("unavailable" if value is None else "insufficient")
+    assert result.candidate_hosts == 0
+
+
+async def test_exact_single_host_cpu_ram_boundary_is_inclusive_then_freshly_exhausted(cloud):
+    cloud.add_host(ROOT_B, vcpu=(8, 4), ram=(8192, 4096))
+    cloud.answers[CPU_SHAPE] = [allocation({ROOT_B: ONE})]
+    cpu = flavor("boundary", vcpus=4, ram=4096)
+    assert (await evaluate(cpu))["boundary"].status == "available"
+    cloud.usages[ROOT_B]["MEMORY_MB"] += 1
+    assert (await evaluate(cpu))["boundary"].status == "insufficient"

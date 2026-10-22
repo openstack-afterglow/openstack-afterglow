@@ -1,10 +1,8 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/shell';
 	import { t as tn } from '$lib/i18n/ns/nav';
-	import { t as tw } from '$lib/i18n/ns/workspace-selector';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
-	import ProjectSelector from '$lib/components/ProjectSelector.svelte';
 	import { siteConfig } from '$lib/config/site';
 	import { betaFeatures } from '$lib/stores/betaFeatures';
 	import type { BetaFeatures } from '$lib/stores/betaFeatures';
@@ -39,10 +37,6 @@
 {#snippet footer()}
 	<div class="lg:hidden">
 		<div class="px-4 py-3 text-[13px] font-medium text-ink-1 truncate">{$auth.username}</div>
-		<div class="p-3 pt-0 md:hidden">
-			<div class="text-xs text-ink-2 px-1 mb-1.5">{tw('title')}</div>
-			<ProjectSelector />
-		</div>
 		{#if !mockupAdminActive}
 			<div class="p-3 pt-0">
 				<a
