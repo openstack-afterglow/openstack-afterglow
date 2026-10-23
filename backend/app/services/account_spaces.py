@@ -198,6 +198,77 @@ def personal_project(user_id, *, ks=None, operation=None):
     return matches[0] if matches else None
 
 
+async def assert_user_deletion_safe(user_id, *, ks, enrollment_id=None):
+    """Keep Personal ownership and unfinished provisioning out of account deletion.
+
+    Call under the identity graph lease. Settled empty receipts and not-yet-sent
+    deferred intents do not own a project and must not permanently block removal.
+    """
+    from app.models.domain_iam import DomainEnrollment
+    from app.services.project_service import _provider_call
+
+    def inventory():
+        domain = shared_domain("personal", ks=ks, required=False)
+        if domain is None:
+            return {}
+        did = _field(domain, "id")
+        projects = {}
+        for project in _rows(ks.projects, domain=did):
+            pid = _field(project, "id")
+            if not isinstance(pid, str) or not pid or pid in projects or _field(project, "domain_id") != did:
+                raise HTTPException(503, "personal_project_provenance_unavailable")
+            full = ks.projects.get(pid)
+            if _field(full, "id") != pid or _field(full, "domain_id") != did:
+                raise HTTPException(503, "personal_project_provenance_unavailable")
+            projects[pid] = full
+            if _field(full, "afterglow_personal_user_id") == user_id:
+                raise HTTPException(409, "Remove owned Personal projects before deleting this identity")
+        return projects
+
+    projects = await _provider_call(inventory)
+    async with _factory()() as session:
+        intents = (
+            (await session.execute(select(PersonalProjectIntent).where(PersonalProjectIntent.user_id == user_id)))
+            .scalars()
+            .all()
+        )
+        for intent in intents:
+            if intent.personal_project_id in projects:
+                raise HTTPException(409, "Remove owned Personal projects before deleting this identity")
+            if (
+                intent.project_creation_uncertain
+                or intent.status not in {"accepted", "cancelled", "deferred"}
+                or intent.status != "accepted"
+                and intent.added_grants
+            ):
+                raise HTTPException(409, "Resolve Personal project provisioning before deleting this identity")
+        enrollments = (
+            (
+                await session.execute(
+                    select(DomainEnrollment).where(
+                        (DomainEnrollment.user_id == user_id)
+                        | (DomainEnrollment.token_hash == enrollment_id if enrollment_id else False)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for enrollment in enrollments:
+            if enrollment.personal_project_id in projects:
+                raise HTTPException(409, "Remove owned Personal projects before deleting this identity")
+            if (
+                enrollment.creation_uncertain
+                or enrollment.domain_creation_uncertain
+                or enrollment.project_creation_uncertain
+                or enrollment.status
+                not in {"accepted", "revoked", "failed", "pending", "delivery_pending", "delivery_failed"}
+                or enrollment.status != "accepted"
+                and (enrollment.added_grants or enrollment.added_role_ids)
+            ):
+                raise HTTPException(409, "Resolve account enrollment before deleting this identity")
+
+
 def _factory():
     factory = get_session_factory()
     if factory is None:

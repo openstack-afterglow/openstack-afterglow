@@ -260,16 +260,24 @@ async def test_new_oidc_organization_admission_intersects_file_rules_and_saved_m
             else ["corp.example"],
             expected_revision=0,
         )
+
+    async def finish():
+        if origin == "config" and admission != "different_login_host":
+            with pytest.raises(svc.AccountEntryRequired) as proposal:
+                await svc.complete_authorization("good-code", state, browser)
+            return await svc.complete_account_entry(proposal.value.entry_token, browser, action="create")
+        return await svc.complete_authorization("good-code", state, browser)
+
     state, browser = await start(env.wire.idp, provider_id)
     if admission in {"disabled", "different_signup_host", "different_login_host"}:
         with pytest.raises(svc.DomainAuthDenied) as denied:
-            await svc.complete_authorization("good-code", state, browser)
+            await finish()
         assert denied.value.code == ("signup_disabled" if admission == "disabled" else "email_domain_not_allowed")
         assert not env.keystone.user_rows and not env.keystone.user_writes
         assert not env.keystone.assignments and not env.keystone.project_writes
         assert not env.wire.federation.calls and not env.quota_applications
         return
-    first = await svc.complete_authorization("good-code", state, browser)
+    first = await finish()
     user = env.keystone.users.get(first.user_id)
     assert user.domain_id == "dom-accounts"
     assert account_spaces.personal_project(user.id, ks=env.keystone)["domain_id"] == "dom-personal"
@@ -346,7 +354,12 @@ async def test_saved_manager_policy_blocks_bound_nonmember_readmission_without_g
     else:
         provider_id = (await external_provider(env))["id"]
     state, browser = await start(env.wire.idp, provider_id)
-    first = await svc.complete_authorization("good-code", state, browser)
+    if origin == "config":
+        with pytest.raises(svc.AccountEntryRequired) as required:
+            await svc.complete_authorization("good-code", state, browser)
+        first = await svc.complete_account_entry(required.value.entry_token, browser, action="create")
+    else:
+        first = await svc.complete_authorization("good-code", state, browser)
     env.keystone.roles.revoke(rid("project_reader"), user=first.user_id, project="default-a")
     assert env.keystone.role_assignments.list(project="default-a", user=first.user_id) == []
     env.settings.smtp_enabled, env.settings.smtp_host = True, "smtp.example"
@@ -1244,7 +1257,7 @@ def accounts_human(env):
 
 @pytest.mark.parametrize("legacy_twin", [False, True])
 @pytest.mark.parametrize("local_password", [False, True])
-async def test_oidc_verified_email_automatically_connects_unique_accounts_human(env, legacy_twin, local_password):
+async def test_oidc_verified_email_confirms_unique_accounts_human(env, legacy_twin, local_password):
     import copy
 
     user = accounts_human(env)
@@ -1258,7 +1271,14 @@ async def test_oidc_verified_email_automatically_connects_unique_accounts_human(
             id="legacy", name="legacy", email="dev@corp.example", domain_id="dom-b", enabled=True
         )
     state, browser = await start(env.wire.idp, "cfg:corp")
-    login = await svc.complete_authorization("good-code", state, browser)
+    with pytest.raises(svc.AccountEntryRequired) as required:
+        await svc.complete_authorization("good-code", state, browser)
+    assert required.value.action == "connect"
+    assert required.value.email == "dev@corp.example" and required.value.username == user.name
+    assert vars(user) == original
+    assert env.keystone.user_writes == [] and env.wire.federation.calls == []
+    assert env.keystone.assignments == [] and env.keystone.project_writes == []
+    login = await svc.complete_account_entry(required.value.entry_token, browser, action="connect")
     assert (login.user_id, user.domain_id) == (user.id, "dom-accounts")
     assert len(env.keystone.user_rows) == (2 if legacy_twin else 1)
     assert all(
@@ -1314,7 +1334,7 @@ async def test_oidc_accounts_email_does_not_override_conflicting_or_disabled_ide
 
 
 @pytest.mark.parametrize("verified", [False, None, "true"])
-async def test_oidc_accounts_email_requires_verified_boolean_before_auto_attachment(env, verified):
+async def test_oidc_accounts_email_requires_verified_boolean_before_confirmation(env, verified):
     accounts_human(env)
     env.wire.idp.claims["email_verified"] = verified
     state, browser = await start(env.wire.idp, "cfg:corp")
@@ -1324,30 +1344,37 @@ async def test_oidc_accounts_email_requires_verified_boolean_before_auto_attachm
     assert env.keystone.user_writes == [] and env.wire.federation.calls == []
 
 
-async def test_oidc_accounts_auto_attachment_must_persist_before_native_exchange(env, monkeypatch):
+async def test_oidc_accounts_confirmed_attachment_must_persist_before_native_exchange(env, monkeypatch):
     user = accounts_human(env)
     monkeypatch.setattr(env.keystone.users, "update", lambda uid, **fields: user)
     state, browser = await start(env.wire.idp, "cfg:corp")
-    with pytest.raises(svc.DomainAuthUnavailable) as denied:
+    with pytest.raises(svc.AccountEntryRequired) as required:
         await svc.complete_authorization("good-code", state, browser)
+    with pytest.raises(svc.DomainAuthUnavailable) as denied:
+        await svc.complete_account_entry(required.value.entry_token, browser, action="connect")
     assert denied.value.code == "native_attachment_unconfirmed"
     assert user.federated == [] and user.afterglow_external_identities == []
     assert env.wire.federation.calls == []
 
 
-async def test_oidc_accounts_auto_attachment_rejects_substituted_native_token(env):
+async def test_oidc_accounts_confirmed_attachment_rejects_substituted_native_token(env):
     user = accounts_human(env)
     env.wire.federation.user_id = "wrong-native-human"
     state, browser = await start(env.wire.idp, "cfg:corp")
-    with pytest.raises(svc.DomainAuthDenied) as denied:
+    with pytest.raises(svc.AccountEntryRequired) as required:
         await svc.complete_authorization("good-code", state, browser)
+    with pytest.raises(svc.DomainAuthDenied) as denied:
+        await svc.complete_account_entry(required.value.entry_token, browser, action="connect")
     assert denied.value.code == "canonical_subject_mismatch"
     assert env.keystone.revoked == ["unscoped-fed"]
     assert user.domain_id == "dom-accounts" and user.password == "unchanged-native-password"
 
 
-async def test_oidc_accounts_auto_attachment_rechecks_email_before_native_write(env, monkeypatch):
+async def test_oidc_accounts_confirmation_rechecks_email_before_native_write(env, monkeypatch):
     user = accounts_human(env)
+    state, browser = await start(env.wire.idp, "cfg:corp")
+    with pytest.raises(svc.AccountEntryRequired) as required:
+        await svc.complete_authorization("good-code", state, browser)
     get_user = env.keystone.users.get
     reads = 0
 
@@ -1359,9 +1386,8 @@ async def test_oidc_accounts_auto_attachment_rechecks_email_before_native_write(
         return get_user(uid)
 
     monkeypatch.setattr(env.keystone.users, "get", change_email)
-    state, browser = await start(env.wire.idp, "cfg:corp")
     with pytest.raises(svc.DomainAuthConflict) as denied:
-        await svc.complete_authorization("good-code", state, browser)
+        await svc.complete_account_entry(required.value.entry_token, browser, action="connect")
     assert denied.value.code == "account_changed"
     assert env.keystone.user_writes == [] and env.wire.federation.calls == []
 
@@ -1382,3 +1408,699 @@ async def test_tenant_managed_oidc_cannot_claim_accounts_member_by_its_verified_
         await svc.complete_authorization("good-code", state, browser)
     assert user.federated == [] and user.afterglow_external_identities == []
     assert env.keystone.user_writes == [] and env.wire.federation.calls == []
+
+
+async def account_entry(env):
+    state, browser = await start(env.wire.idp, "cfg:corp")
+    with pytest.raises(svc.AccountEntryRequired) as required:
+        await svc.complete_authorization("good-code", state, browser)
+    return required.value, browser
+
+
+@pytest.mark.parametrize("legacy_email", [False, True])
+async def test_oidc_entry_create_ignores_legacy_only_email_and_enrolls_accounts_personal(external_env, legacy_email):
+    from app.services import account_spaces
+    from tests.test_domain_auth import configure_file_auth
+
+    env = external_env
+    configure_file_auth(env.settings, default=["corp"])
+    legacy = SimpleNamespace(id="legacy", name="legacy", domain_id="dom-b", email="DEV@CORP.EXAMPLE.", enabled=True)
+    if legacy_email:
+        env.keystone.user_rows[legacy.id] = legacy
+    required, browser = await account_entry(env)
+    assert required.action == "create" and required.username is None
+    assert env.keystone.user_writes == [] and env.keystone.project_writes == []
+    assert env.keystone.assignments == [] and env.wire.federation.calls == []
+    async with env.db() as session:
+        assert (await session.execute(select(DomainEnrollment))).scalars().all() == []
+    login = await svc.complete_account_entry(required.entry_token, browser, action="create")
+    user = env.keystone.users.get(login.user_id)
+    assert user.id == "new-user" and user.domain_id == "dom-accounts"
+    assert account_spaces.personal_project(user.id, ks=env.keystone)["domain_id"] == "dom-personal"
+    assert user.afterglow_local_password is False
+    assert user.afterglow_external_identities == [{"issuer": ISSUER, "subject": "subject-1"}]
+    assert len(env.wire.federation.calls) == 1
+    if legacy_email:
+        assert vars(legacy) == dict(
+            id="legacy", name="legacy", domain_id="dom-b", email="DEV@CORP.EXAMPLE.", enabled=True
+        )
+
+
+@pytest.mark.parametrize("failure", ["browser", "revision", "action", "expired", "ciphertext"])
+async def test_oidc_entry_ticket_fences_before_native_write_and_is_one_use(env, failure):
+    from tests.test_domain_auth import configure_file_auth
+
+    accounts_human(env)
+    required, browser = await account_entry(env)
+    redis = await svc._redis()
+    key = "afterglow:domain_auth:entry:" + svc._digest(required.entry_token)
+    raw = await redis.get(key)
+    raw = raw.encode() if isinstance(raw, str) else raw
+    assert b"subject-1" not in raw and b"corp.example" not in raw and SECRET.encode() not in raw
+    if failure == "revision":
+        configure_file_auth(env.settings, default=["corp"], providers={"corp": oidc_fields(client_id="changed")})
+    elif failure == "expired":
+        await redis.delete(key)
+    elif failure == "ciphertext":
+        await redis.set(key, "invalid-ciphertext")
+    with pytest.raises(svc.DomainAuthError) as denied:
+        await svc.complete_account_entry(
+            required.entry_token,
+            "different-browser" if failure == "browser" else browser,
+            action="create" if failure == "action" else "connect",
+        )
+    assert denied.value.code == {"revision": "provider_changed", "action": "invalid_entry_action"}.get(
+        failure, "invalid_entry_token"
+    )
+    assert env.keystone.user_writes == [] and env.wire.federation.calls == []
+    with pytest.raises(svc.DomainAuthUnauthenticated) as replay:
+        await svc.complete_account_entry(required.entry_token, browser, action="connect")
+    assert replay.value.code == "invalid_entry_token"
+
+
+async def test_oidc_entry_success_cannot_replay(env):
+    accounts_human(env)
+    required, browser = await account_entry(env)
+    await svc.complete_account_entry(required.entry_token, browser, action="connect")
+    with pytest.raises(svc.DomainAuthUnauthenticated):
+        await svc.complete_account_entry(required.entry_token, browser, action="connect")
+    assert len(env.keystone.user_writes) == 1 and len(env.wire.federation.calls) == 1
+
+
+@pytest.mark.parametrize("race", ["email", "home", "disabled", "replaced", "duplicate", "stable", "native"])
+async def test_oidc_entry_connect_revalidates_exact_accounts_owner(env, race):
+    import copy
+
+    user = accounts_human(env)
+    required, browser = await account_entry(env)
+    expected = "account_changed"
+    if race == "email":
+        user.email = "new@corp.example"
+    elif race == "home":
+        user.domain_id = "dom-b"
+    elif race == "disabled":
+        user.enabled = False
+        expected = "account_disabled"
+    else:
+        other = SimpleNamespace(id="other", name="other", email="other@corp.example", domain_id="dom-b", enabled=True)
+        env.keystone.user_rows[other.id] = other
+        if race in {"replaced", "duplicate"}:
+            other.domain_id, other.email = "dom-accounts", "dev@corp.example"
+            if race == "replaced":
+                user.email = "new@corp.example"
+            else:
+                expected = "account_ambiguous"
+        elif race == "stable":
+            other.afterglow_external_identities = [{"issuer": ISSUER, "subject": "subject-1"}]
+            expected = "account_email_conflict"
+        else:
+            other.federated = [{"idp_id": "idp-a", "protocols": [{"protocol_id": "openid", "unique_id": "subject-1"}]}]
+            expected = "native_binding_conflict"
+    original = {uid: copy.deepcopy(vars(row)) for uid, row in env.keystone.user_rows.items()}
+    with pytest.raises(svc.DomainAuthError) as denied:
+        await svc.complete_account_entry(required.entry_token, browser, action="connect")
+    assert denied.value.code == expected
+    assert {uid: vars(row) for uid, row in env.keystone.user_rows.items()} == original
+    assert env.keystone.user_writes == [] and env.wire.federation.calls == []
+
+
+async def test_oidc_entry_create_rejects_raced_accounts_owner(env):
+    from tests.test_domain_auth import configure_file_auth
+
+    configure_file_auth(env.settings, default=["corp"])
+    unbound(env)  # Legacy-only email must propose create, not password-link.
+    required, browser = await account_entry(env)
+    assert required.action == "create"
+    env.keystone.user_rows["new-owner"] = SimpleNamespace(
+        id="new-owner", name="new-owner", email="dev@corp.example", domain_id="dom-accounts", enabled=True
+    )
+    with pytest.raises(svc.DomainAuthConflict) as denied:
+        await svc.complete_account_entry(required.entry_token, browser, action="create")
+    assert denied.value.code == "account_changed"
+    assert env.keystone.user_writes == [] and env.wire.federation.calls == []
+
+
+@pytest.mark.parametrize("binding", ["stable", "native"])
+async def test_oidc_entry_legacy_owned_subject_is_never_reassigned_to_accounts(env, binding):
+    from tests.test_domain_auth import configure_file_auth
+
+    configure_file_auth(env.settings, default=["corp"])
+    user = env.keystone.user_rows["fed-user"]
+    if binding == "native":
+        user.afterglow_external_identities = []
+        state, browser = await start(env.wire.idp, "cfg:corp")
+        with pytest.raises(svc.DomainAuthConflict) as denied:
+            await svc.complete_authorization("good-code", state, browser)
+        assert denied.value.code == "native_binding_conflict"
+        assert env.wire.federation.calls == []
+    else:
+        state, browser = await start(env.wire.idp, "cfg:corp")
+        with pytest.raises(svc.DomainAuthConflict) as denied:
+            await svc.complete_authorization("good-code", state, browser)
+        assert denied.value.code == "native_binding_conflict"
+        assert user.domain_id == "dom-a" and env.wire.federation.calls == []
+    assert env.keystone.user_writes == []
+
+
+@pytest.mark.parametrize("decision", ["pending", "rejected"])
+async def test_oidc_entry_confirmed_creation_retains_approval_boundary(external_env, decision):
+    from tests.test_domain_auth import configure_file_auth
+
+    env = external_env
+    configure_file_auth(env.settings, default=["corp"])
+    await set_approval_mode(env, "admin")
+    required, browser = await account_entry(env)
+    with pytest.raises(svc.DomainAuthDenied) as pending:
+        await svc.complete_account_entry(required.entry_token, browser, action="create")
+    assert pending.value.code == "signup_approval_pending"
+    async with env.db() as session:
+        request = (await session.execute(select(SignupRequest))).scalar_one()
+        request.status = decision
+        if decision == "rejected":
+            request.reviewed_at = datetime.now(UTC)
+            request.reviewed_by_user_id = "reviewer"
+        await session.commit()
+    required, browser = await account_entry(env)
+    with pytest.raises(svc.DomainAuthDenied) as denied:
+        await svc.complete_account_entry(required.entry_token, browser, action="create")
+    assert denied.value.code == "signup_approval_" + decision
+    assert env.keystone.user_writes == [] and env.wire.federation.calls == []
+
+
+async def test_oidc_entry_api_retains_browser_cookie_then_finishes_normal_login(api, env, monkeypatch):
+    from app.api.identity import auth
+    from app.models.auth import TokenResponse
+
+    user = accounts_human(env)
+    monkeypatch.setattr(
+        keystone,
+        "get_identity_user",
+        lambda uid: {
+            "id": uid,
+            "domain_id": "dom-accounts",
+            "email": user.email,
+        },
+    )
+    issue = AsyncMock(
+        return_value=TokenResponse(
+            token="normal-access",
+            refresh_token="normal-refresh",
+            project_id="personal-fed-user",
+            project_name="Personal",
+            user_id=user.id,
+            username=user.name,
+            domain_id="dom-personal",
+            domain_name="Personal",
+            identity_domain_id="dom-accounts",
+            identity_domain_name="Accounts",
+            expires_at="2099-01-01T00:00:00Z",
+            auth_method="oidc",
+        )
+    )
+    monkeypatch.setattr(auth, "issue_federated_login", issue)
+    async with api.client as client:
+        begun = await client.post("/api/v1/auth/domains/dom-a/providers/cfg:corp/authorize")
+        state = env.wire.idp.remember(begun.json()["authorize_url"])
+        required = await client.post("/api/v1/auth/providers/callback", json={"code": "good-code", "state": state})
+        assert required.status_code == 409
+        payload = required.json()
+        assert payload["code"] == "account_entry_required" and payload["action"] == "connect"
+        assert payload["email"] == "dev@corp.example" and payload["username"] == user.name
+        assert "no-store" in required.headers["cache-control"]
+        assert client.cookies.get(svc.STATE_COOKIE)
+        assert env.keystone.user_writes == [] and env.wire.federation.calls == []
+        issue.assert_not_called()
+        done = await client.post(
+            "/api/v1/auth/providers/entry",
+            json={
+                "entry_token": payload["entry_token"],
+                "action": "connect",
+            },
+        )
+        assert done.status_code == 200 and done.json()["token"] == "normal-access"
+        assert done.json()["identity_domain_id"] == "dom-accounts"
+        assert client.cookies.get(svc.STATE_COOKIE) is None
+        assert "no-store" in done.headers["cache-control"]
+        assert issue.await_args.kwargs["user_id"] == user.id
+        assert issue.await_args.kwargs["unscoped_token"] == "unscoped-fed"
+        replay = await client.post(
+            "/api/v1/auth/providers/entry",
+            json={
+                "entry_token": payload["entry_token"],
+                "action": "connect",
+            },
+        )
+        assert replay.status_code == 401 and replay.json()["code"] == "invalid_entry_token"
+        assert issue.await_count == 1
+
+
+async def test_oidc_entry_api_rejects_cross_site_and_credentials(api, env):
+    accounts_human(env)
+    async with api.client as client:
+        required, browser = await account_entry(env)
+        client.cookies.set(svc.STATE_COOKIE, browser, domain="api.example.com", path=svc.STATE_COOKIE_PATH)
+        invalid = await client.post(
+            "/api/v1/auth/providers/entry",
+            json={
+                "entry_token": required.entry_token,
+                "action": "connect",
+                "password": "never-accepted",
+            },
+        )
+        assert invalid.status_code == 422 and "never-accepted" not in invalid.text
+        denied = await client.post(
+            "/api/v1/auth/providers/entry",
+            json={
+                "entry_token": required.entry_token,
+                "action": "connect",
+            },
+            headers={"Origin": "https://untrusted.example", "Sec-Fetch-Site": "cross-site"},
+        )
+        assert denied.status_code == 403 and client.cookies.get(svc.STATE_COOKIE) is None
+        assert env.keystone.user_writes == [] and env.wire.federation.calls == []
+
+
+def default_transfer_pair(env):
+    import copy
+
+    target = accounts_human(env)
+    target.federated = [{"idp_id": "other", "protocols": [{"protocol_id": "oidc", "unique_id": "keep-target"}]}]
+    target.afterglow_external_identities = [{"issuer": "https://other.example", "subject": "keep-target"}]
+    source = copy.deepcopy(target)
+    source.id, source.name, source.domain_id = "legacy-default", "legacy-default", "default"
+    source.password = "legacy-password-preserved"
+    source.default_project_id = "legacy-project-preserved"
+    source.federated.append({"idp_id": "idp-a", "protocols": [{"protocol_id": "openid", "unique_id": "subject-1"}]})
+    source.afterglow_external_identities.append(
+        {"issuer": ISSUER, "subject": "subject-1", "label": "preserved-on-rollback"}
+    )
+    env.keystone.domain_rows["default"] = SimpleNamespace(id="default", name="Default", enabled=True)
+    env.keystone.user_rows[source.id] = source
+    return source, target
+
+
+async def test_oidc_entry_default_transfer_connect_preserves_both_native_accounts(env):
+    import copy
+
+    from app.models.account_spaces import AccountIdentityTransfer
+
+    source, target = default_transfer_pair(env)
+    originals = {user.id: copy.deepcopy(vars(user)) for user in (source, target)}
+    required, browser = await account_entry(env)
+    assert required.transfer_existing is True and required.action == "connect"
+    assert svc.domain_auth_error_response(required).body.find(b'"transfer_existing":true') != -1
+    assert {user.id: vars(user) for user in (source, target)} == originals
+    assert env.keystone.user_writes == [] and env.wire.federation.calls == []
+    async with env.db() as session:
+        assert (await session.execute(select(AccountIdentityTransfer))).scalars().all() == []
+    login = await svc.complete_account_entry(required.entry_token, browser, action="connect")
+    assert login.user_id == target.id and target.domain_id == "dom-accounts"
+    assert source.federated == originals[target.id]["federated"]
+    assert source.afterglow_external_identities == originals[target.id]["afterglow_external_identities"]
+    for user in (source, target):
+        assert all(
+            vars(user)[key] == value
+            for key, value in originals[user.id].items()
+            if key not in {"federated", "afterglow_external_identities"}
+        )
+    assert env.keystone.assignments == [] and env.keystone.project_writes == []
+    assert len(env.keystone.user_writes) == 2 and len(env.wire.federation.calls) == 1
+    async with env.db() as session:
+        journal = (await session.execute(select(AccountIdentityTransfer))).scalar_one()
+        assert journal.status == "committed" and journal.target_user_id == target.id
+        assert "subject-1" not in journal.snapshot_ciphertext and "legacy-password" not in journal.snapshot_ciphertext
+    state, browser = await start(env.wire.idp, "cfg:corp")
+    assert (await svc.complete_authorization("good-code", state, browser)).user_id == target.id
+    assert len(env.keystone.user_writes) == 2
+
+
+async def test_oidc_entry_default_transfer_compensates_failed_native_exchange(env):
+    import copy
+
+    from app.models.account_spaces import AccountIdentityTransfer
+
+    source, target = default_transfer_pair(env)
+    original = {user.id: copy.deepcopy(vars(user)) for user in (source, target)}
+    required, browser = await account_entry(env)
+    env.wire.federation.user_id = "wrong-user"
+    with pytest.raises(svc.DomainAuthDenied) as denied:
+        await svc.complete_account_entry(required.entry_token, browser, action="connect")
+    assert denied.value.code == "canonical_subject_mismatch"
+    assert env.keystone.revoked == ["unscoped-fed"]
+    assert {user.id: vars(user) for user in (source, target)} == original
+    async with env.db() as session:
+        journal = (await session.execute(select(AccountIdentityTransfer))).scalar_one()
+        assert journal.status == "rolled_back"
+
+
+@pytest.mark.parametrize("fault", ["detach", "attach"])
+async def test_oidc_entry_default_transfer_requires_both_native_write_readbacks(env, monkeypatch, fault):
+    import copy
+
+    from app.models.account_spaces import AccountIdentityTransfer
+    from app.services import account_identity, domain_iam
+
+    source, target = default_transfer_pair(env)
+    original = {user.id: copy.deepcopy(vars(user)) for user in (source, target)}
+    required, browser = await account_entry(env)
+    update = env.keystone.users.update
+
+    def omit_write(uid, **fields):
+        if uid == (source.id if fault == "detach" else target.id):
+            return env.keystone.user_rows[uid]
+        return update(uid, **fields)
+
+    monkeypatch.setattr(env.keystone.users, "update", omit_write)
+    with pytest.raises(svc.DomainAuthUnavailable):
+        await svc.complete_account_entry(required.entry_token, browser, action="connect")
+    assert env.wire.federation.calls == []
+    async with env.db() as session:
+        assert (await session.execute(select(AccountIdentityTransfer))).scalar_one().status == "recovery_required"
+    monkeypatch.setattr(env.keystone.users, "update", update)
+    row = await svc._load_provider("dom-a", "cfg:corp")
+    identity = svc.VerifiedIdentity("Dev@corp.example", "bearer", ISSUER, "subject-1")
+    async with domain_iam._iam_write() as (lease, ks, _):
+        await account_identity.recover_identity_transfer(row, identity, lease=lease, ks=ks, native_writes_settled=True)
+    assert {user.id: vars(user) for user in (source, target)} == original
+
+
+async def test_oidc_entry_default_transfer_crash_requires_explicit_native_settlement(env):
+    import copy
+
+    from app.models.account_spaces import AccountIdentityTransfer
+    from app.services import account_identity, domain_iam
+
+    source, target = default_transfer_pair(env)
+    original = {user.id: copy.deepcopy(vars(user)) for user in (source, target)}
+    row = await svc._load_provider("dom-a", "cfg:corp")
+    identity = svc.VerifiedIdentity("Dev@corp.example", "never-persist-this-bearer", ISSUER, "subject-1")
+    async with domain_iam._iam_write() as (lease, ks, _):
+        await account_identity.begin_identity_transfer(source, target, row, identity, lease=lease, ks=ks)
+    with pytest.raises(svc.DomainAuthUnavailable) as fenced:
+        await account_identity.directory(env.keystone, identity, row)
+    assert fenced.value.code == "identity_transfer_recovery_required"
+    async with env.db() as session:
+        journal = (await session.execute(select(AccountIdentityTransfer))).scalar_one()
+        assert journal.status == "detached" and identity.bearer not in journal.snapshot_ciphertext
+    state, browser = await start(env.wire.idp, "cfg:corp")
+    with pytest.raises(svc.DomainAuthUnavailable):
+        await svc.complete_authorization("good-code", state, browser)
+    async with domain_iam._iam_write() as (lease, ks, _):
+        await account_identity.recover_identity_transfer(row, identity, lease=lease, ks=ks, native_writes_settled=True)
+    required, _ = await account_entry(env)
+    assert required.transfer_existing is True
+    assert {user.id: vars(user) for user in (source, target)} == original
+    assert env.wire.federation.calls == []
+    async with env.db() as session:
+        assert (await session.execute(select(AccountIdentityTransfer))).scalar_one().status == "rolled_back"
+
+
+async def test_oidc_entry_default_transfer_unknown_drift_stays_fenced_until_safe_recovery(env):
+    import copy
+
+    from app.models.account_spaces import AccountIdentityTransfer
+    from app.services import account_identity, domain_iam
+
+    source, target = default_transfer_pair(env)
+    row = await svc._load_provider("dom-a", "cfg:corp")
+    identity = svc.VerifiedIdentity("Dev@corp.example", "bearer", ISSUER, "subject-1")
+    async with domain_iam._iam_write() as (lease, ks, _):
+        await account_identity.begin_identity_transfer(source, target, row, identity, lease=lease, ks=ks)
+    detached = copy.deepcopy(source.federated)
+    source.federated.append({"idp_id": "unexpected", "protocols": []})
+    state, browser = await start(env.wire.idp, "cfg:corp")
+    with pytest.raises(svc.DomainAuthUnavailable) as denied:
+        await svc.complete_authorization("good-code", state, browser)
+    assert denied.value.code == "identity_transfer_recovery_required" and env.wire.federation.calls == []
+    async with env.db() as session:
+        assert (await session.execute(select(AccountIdentityTransfer))).scalar_one().status == "recovery_required"
+    async with domain_iam._iam_write() as (lease, ks, _):
+        with pytest.raises(svc.DomainAuthUnavailable):
+            await account_identity.recover_identity_transfer(
+                row, identity, lease=lease, ks=ks, native_writes_settled=True
+            )
+    source.federated = detached  # Operator removes only the independently observed drift.
+    async with domain_iam._iam_write() as (lease, ks, _):
+        await account_identity.recover_identity_transfer(row, identity, lease=lease, ks=ks, native_writes_settled=True)
+    required, _ = await account_entry(env)
+    assert required.transfer_existing is True
+
+
+@pytest.mark.parametrize(
+    "race", ["source_home", "source_email", "source_disabled", "source_subject", "source_duplicate"]
+)
+async def test_oidc_entry_default_transfer_revalidates_both_owners_before_detach(env, race):
+    import copy
+
+    source, _ = default_transfer_pair(env)
+    required, browser = await account_entry(env)
+    if race == "source_home":
+        source.domain_id = "dom-b"
+    elif race == "source_email":
+        source.email = "different@corp.example"
+    elif race == "source_disabled":
+        source.enabled = False
+    elif race == "source_subject":
+        source.afterglow_external_identities[-1]["subject"] = "other-subject"
+    else:
+        duplicate = copy.deepcopy(source)
+        duplicate.id = "duplicate-source"
+        env.keystone.user_rows[duplicate.id] = duplicate
+    with pytest.raises(svc.DomainAuthError):
+        await svc.complete_account_entry(required.entry_token, browser, action="connect")
+    assert env.keystone.user_writes == [] and env.wire.federation.calls == []
+
+
+@pytest.mark.parametrize("approval", ["auto", "pending", "rejected"])
+async def test_oidc_entry_supported_transfer_create_respects_approval_and_preserves_other_binding(
+    external_env, approval
+):
+    import copy
+
+    from app.models.account_spaces import AccountIdentityTransfer
+    from tests.test_domain_auth import configure_file_auth
+
+    env = external_env
+    configure_file_auth(env.settings, default=["corp"])
+    env.keystone.domain_rows["default"] = SimpleNamespace(id="default", name="Default", enabled=True)
+    source = SimpleNamespace(
+        id="legacy-default",
+        domain_id="default",
+        name="legacy",
+        email="dev@corp.example",
+        enabled=True,
+        password="preserved",
+        default_project_id="legacy-project",
+        federated=[
+            {"idp_id": "idp-a", "protocols": [{"protocol_id": "openid", "unique_id": "subject-1"}]},
+            {"idp_id": "idp-b", "protocols": [{"protocol_id": "openid", "unique_id": "other-provider-sub"}]},
+        ],
+        afterglow_external_identities=[{"issuer": ISSUER, "subject": "subject-1"}],
+    )
+    env.keystone.user_rows[source.id] = source
+    original = copy.deepcopy(vars(source))
+    if approval != "auto":
+        await set_approval_mode(env, "admin")
+    required, browser = await account_entry(env)
+    assert required.action == "create" and required.transfer_existing is True
+    assert vars(source) == original and env.keystone.user_writes == []
+    if approval != "auto":
+        with pytest.raises(svc.DomainAuthDenied) as pending:
+            await svc.complete_account_entry(required.entry_token, browser, action="create")
+        assert pending.value.code == "signup_approval_pending"
+        assert vars(source) == original and env.keystone.user_writes == []
+        assert env.wire.federation.calls == [] and env.keystone.project_writes == []
+        async with env.db() as session:
+            assert (await session.execute(select(AccountIdentityTransfer))).scalars().all() == []
+            request = (await session.execute(select(SignupRequest))).scalar_one()
+            request.status = approval
+            if approval == "rejected":
+                request.reviewed_at = datetime.now(UTC)
+                request.reviewed_by_user_id = "reviewer"
+            await session.commit()
+        again, browser = await account_entry(env)
+        assert again.transfer_existing is True and again.action == "create"
+        with pytest.raises(svc.DomainAuthDenied) as denied:
+            await svc.complete_account_entry(again.entry_token, browser, action="create")
+        assert denied.value.code == "signup_approval_" + approval
+        assert vars(source) == original and env.keystone.user_writes == []
+        return
+    login = await svc.complete_account_entry(required.entry_token, browser, action="create")
+    user = env.keystone.users.get(login.user_id)
+    assert user.id == "new-user" and user.domain_id == "dom-accounts"
+    assert source.domain_id == "default" and source.password == "preserved"
+    assert source.default_project_id == "legacy-project"
+    assert source.federated == [original["federated"][1]]
+    assert source.afterglow_external_identities == []
+
+
+async def test_oidc_entry_default_transfer_never_changes_existing_grants_or_projects(env):
+    import copy
+
+    from tests.test_project_membership_roles import Membership, rid
+
+    source, target = default_transfer_pair(env)
+    env.keystone.catalog = Membership().catalog
+    env.keystone.project_rows["legacy-work"] = SimpleNamespace(
+        id="legacy-work", name="Legacy work", domain_id="default", enabled=True, parent_id=None
+    )
+    env.keystone.project_rows["personal-existing"] = SimpleNamespace(
+        id="personal-existing", name="Existing personal", domain_id="dom-personal", enabled=True, parent_id=None
+    )
+    env.keystone.roles.grant(rid("member"), user=source.id, project="legacy-work")
+    env.keystone.roles.grant(rid("member"), user=target.id, project="personal-existing")
+    assignments = copy.deepcopy(env.keystone.assignments)
+    projects = {pid: copy.deepcopy(vars(project)) for pid, project in env.keystone.project_rows.items()}
+    required, browser = await account_entry(env)
+    await svc.complete_account_entry(required.entry_token, browser, action="connect")
+    assert env.keystone.assignments == assignments
+    assert {pid: vars(project) for pid, project in env.keystone.project_rows.items()} == projects
+    assert env.keystone.project_writes == []
+
+
+async def test_oidc_entry_cannot_replace_tenant_managed_password_proof(env):
+    user = accounts_human(env)
+    provider = await svc.create_provider("dom-a", actor_user_id="tenant-manager", fields=oidc_fields())
+    env.settings.auth.default.allow_providers.append(provider["id"])
+    row = await svc._load_provider("dom-a", provider["id"])
+    identity = svc.VerifiedIdentity("Dev@corp.example", "signed-bearer", ISSUER, "subject-1")
+    browser = "browser-binding"
+    ticket = await svc._entry_ticket(row, identity, user, browser, ks=env.keystone)
+    with pytest.raises(svc.DomainAuthDenied) as denied:
+        await svc.complete_account_entry(ticket, browser, action="connect")
+    assert denied.value.code == "provider_disabled"
+    assert env.keystone.user_writes == [] and env.wire.federation.calls == []
+
+
+async def test_oidc_entry_ticket_is_not_a_legacy_password_link_ticket(env):
+    accounts_human(env)
+    required, browser = await account_entry(env)
+    with pytest.raises(svc.DomainAuthUnauthenticated) as denied:
+        await svc.complete_account_link(required.entry_token, browser, username="dev", password="unused")
+    assert denied.value.code == "invalid_link_token"
+    assert env.keystone.user_writes == []
+    await svc.complete_account_entry(required.entry_token, browser, action="connect")
+
+
+async def test_oidc_entry_default_transfer_failed_compensation_stays_durably_fenced(env, monkeypatch):
+    from app.models.account_spaces import AccountIdentityTransfer
+    from app.services import account_identity, domain_iam
+
+    source, target = default_transfer_pair(env)
+    required, browser = await account_entry(env)
+    update = env.keystone.users.update
+    source_writes = 0
+
+    def refuse_restore(uid, **fields):
+        nonlocal source_writes
+        if uid == source.id:
+            source_writes += 1
+            if source_writes > 1:
+                raise OSError("native restore unavailable")
+        return update(uid, **fields)
+
+    monkeypatch.setattr(env.keystone.users, "update", refuse_restore)
+    env.wire.federation.user_id = "wrong-user"
+    with pytest.raises(svc.DomainAuthUnavailable) as denied:
+        await svc.complete_account_entry(required.entry_token, browser, action="connect")
+    assert denied.value.code == "identity_transfer_recovery_required"
+    assert env.keystone.revoked == ["unscoped-fed"]
+    assert target.afterglow_external_identities == [{"issuer": "https://other.example", "subject": "keep-target"}]
+    async with env.db() as session:
+        assert (await session.execute(select(AccountIdentityTransfer))).scalar_one().status == "recovery_required"
+    monkeypatch.setattr(env.keystone.users, "update", update)
+    row = await svc._load_provider("dom-a", "cfg:corp")
+    identity = svc.VerifiedIdentity("Dev@corp.example", "bearer", ISSUER, "subject-1")
+    async with domain_iam._iam_write() as (lease, ks, _):
+        await account_identity.recover_identity_transfer(row, identity, lease=lease, ks=ks, native_writes_settled=True)
+    again, _ = await account_entry(env)
+    assert again.transfer_existing is True
+    async with env.db() as session:
+        assert (await session.execute(select(AccountIdentityTransfer))).scalar_one().status == "rolled_back"
+
+
+async def test_oidc_entry_default_transfer_timeout_delayed_commit_never_auto_rolls_back(env, monkeypatch):
+    from app.models.account_spaces import AccountIdentityTransfer
+    from app.services import account_identity, domain_iam
+
+    source, _ = default_transfer_pair(env)
+    required, browser = await account_entry(env)
+    update = env.keystone.users.update
+    pending = []
+
+    def timeout_before_commit(uid, **fields):
+        pending.append((uid, fields))
+        raise TimeoutError("request may still commit on native server")
+
+    monkeypatch.setattr(env.keystone.users, "update", timeout_before_commit)
+    with pytest.raises(svc.DomainAuthUnavailable) as denied:
+        await svc.complete_account_entry(required.entry_token, browser, action="connect")
+    assert denied.value.code == "identity_transfer_recovery_required"
+    assert len(pending) == 1 and env.keystone.user_writes == []
+    uid, fields = pending[0]
+    update(uid, **fields)  # The native server commits after the timeout/response.
+    assert source.afterglow_external_identities == [{"issuer": "https://other.example", "subject": "keep-target"}]
+    monkeypatch.setattr(env.keystone.users, "update", update)
+    state, browser = await start(env.wire.idp, "cfg:corp")
+    with pytest.raises(svc.DomainAuthUnavailable):
+        await svc.complete_authorization("good-code", state, browser)
+    assert len(env.keystone.user_writes) == 1 and env.wire.federation.calls == []
+    async with env.db() as session:
+        assert (await session.execute(select(AccountIdentityTransfer))).scalar_one().status == "recovery_required"
+    row = await svc._load_provider("dom-a", "cfg:corp")
+    identity = svc.VerifiedIdentity("Dev@corp.example", "fresh-proof", ISSUER, "subject-1")
+    async with domain_iam._iam_write() as (lease, ks, _):
+        await account_identity.recover_identity_transfer(row, identity, lease=lease, ks=ks, native_writes_settled=True)
+    assert source.afterglow_external_identities[-1] == {
+        "issuer": ISSUER,
+        "subject": "subject-1",
+        "label": "preserved-on-rollback",
+    }
+
+
+@pytest.mark.parametrize("action", ["connect", "create"])
+async def test_oidc_entry_single_native_tuple_requires_operator_unlink_before_any_write(env, monkeypatch, action):
+    import copy
+
+    from app.models.account_spaces import AccountIdentityTransfer
+
+    source, target = default_transfer_pair(env)
+    source.federated = [source.federated[-1]]
+    if action == "create":
+        del env.keystone.user_rows[target.id]
+    monkeypatch.setattr(svc, "_origin_admission_required", AsyncMock(return_value=True))
+    from app.services import account_identity
+
+    monkeypatch.setattr(
+        account_identity,
+        "require_admission",
+        AsyncMock(side_effect=AssertionError("No admission before unlink preflight")),
+    )
+    original = {user.id: copy.deepcopy(vars(user)) for user in (source, target)}
+    required, browser = await account_entry(env)
+    with pytest.raises(svc.DomainAuthConflict) as denied:
+        await svc.complete_account_entry(required.entry_token, browser, action=action)
+    assert denied.value.code == "native_binding_conflict"
+    assert {user.id: vars(user) for user in (source, target)} == original
+    assert env.keystone.user_writes == [] and env.wire.federation.calls == []
+    async with env.db() as session:
+        assert (await session.execute(select(AccountIdentityTransfer))).scalars().all() == []
+
+
+async def test_oidc_entry_compensation_never_clears_metadata_when_last_native_link_cannot_be_removed(env):
+    from app.models.account_spaces import AccountIdentityTransfer
+
+    source, target = default_transfer_pair(env)
+    target.federated = []
+    target.afterglow_external_identities = []
+    required, browser = await account_entry(env)
+    env.wire.federation.user_id = "wrong-user"
+    with pytest.raises(svc.DomainAuthUnavailable) as denied:
+        await svc.complete_account_entry(required.entry_token, browser, action="connect")
+    assert denied.value.code == "identity_transfer_recovery_required"
+    assert target.federated == [{"idp_id": "idp-a", "protocols": [{"protocol_id": "openid", "unique_id": "subject-1"}]}]
+    assert target.afterglow_external_identities == [{"issuer": ISSUER, "subject": "subject-1"}]
+    assert len(env.keystone.user_writes) == 2
+    assert env.keystone.revoked == ["unscoped-fed"]
+    async with env.db() as session:
+        assert (await session.execute(select(AccountIdentityTransfer))).scalar_one().status == "recovery_required"

@@ -15,7 +15,7 @@ from app.models.auth_settings import AuthSettings
 from app.models.organization_provisioning import OrganizationBinding
 from app.services import domain_auth as auth
 from app.services import domain_projects, organization_provisioning, project_service
-from tests.test_domain_auth import ISSUER, configure_file_auth, oidc_fields, start
+from tests.test_domain_auth import ISSUER, configure_file_auth, configured_accounts_identity, oidc_fields, start
 from tests.test_domain_auth import db as db
 from tests.test_domain_auth import env as env
 from tests.test_domain_auth import keystone_admin as keystone_admin
@@ -28,6 +28,7 @@ from tests.test_project_membership_roles import Membership, rid
 @pytest.fixture
 async def org_env(env, monkeypatch):
     env.keystone.catalog = Membership().catalog
+    configured_accounts_identity(env)
     env.settings.auth = AuthSettings.model_validate(
         {
             "providers": {
@@ -85,7 +86,7 @@ def ordinary_subject(env, subject="ordinary-subject"):
         id="ordinary-user",
         name="ordinary",
         email="ordinary@corp.example",
-        domain_id="dom-a",
+        domain_id="dom-accounts",
         enabled=True,
         federated=[{"idp_id": "idp-a", "protocols": [{"protocol_id": "openid", "unique_id": subject}]}],
         afterglow_external_identities=[{"issuer": ISSUER, "subject": subject}],
@@ -167,7 +168,7 @@ async def test_refresh_rechecks_configured_organization_even_outside_its_workspa
     provider = await auth._load_config_provider("dom-a", "cfg:org")
     session = {
         "auth_method": "oidc",
-        "identity_domain_id": "dom-a",
+        "identity_domain_id": "dom-accounts",
         "provider_id": provider.id,
         "provider_revision": provider.revision,
         "provider_domain_id": "dom-a",
@@ -175,8 +176,8 @@ async def test_refresh_rechecks_configured_organization_even_outside_its_workspa
     }
     identity = {
         "user_id": login.user_id,
-        "identity_domain_id": "dom-a",
-        "domain_id": "dom-a",
+        "identity_domain_id": "dom-accounts",
+        "domain_id": "dom-accounts",
         "email": login.login_email,
     }
     await auth_api._enforce_session_policy(session, identity)
@@ -236,7 +237,7 @@ async def test_member_grant_failure_never_locks_entire_organization(org_env, mon
     assert login.user_id == "ordinary-user" and len(env.org_creates) == 1
 
 
-@pytest.mark.parametrize("boundary,error", [("organization", auth.DomainAuthDenied), ("user", auth.DomainAuthConflict)])
+@pytest.mark.parametrize("boundary,error", [("organization", auth.DomainAuthDenied), ("user", auth.DomainAuthDenied)])
 async def test_current_native_enabled_boundaries_are_authoritative(org_env, boundary, error):
     env = org_env
     await callback(env)
@@ -255,6 +256,7 @@ async def test_current_native_enabled_boundaries_are_authoritative(org_env, boun
 async def test_generic_common_provider_does_not_require_or_grant_origin_membership(env, monkeypatch):
     from app.services import account_identity
 
+    configured_accounts_identity(env)
     configure_file_auth(env.settings)
     admission = AsyncMock(side_effect=AssertionError("Common provider origin is not membership authority"))
     monkeypatch.setattr(account_identity, "require_admission", admission)
@@ -314,22 +316,23 @@ async def test_org_disable_during_native_federation_revokes_unpublished_token(or
     assert org_env.keystone.revoked == ["unscoped-fed"]
 
 
-async def test_configured_organization_link_only_attaches_then_fresh_callback_provisions(org_env, monkeypatch):
+async def test_configured_organization_confirmed_entry_attaches_and_provisions_without_password(org_env, monkeypatch):
     from app.services import keystone
-    from tests.test_canonical_federation import proof, unbound
+    from tests.test_canonical_federation import unbound
 
     env = org_env
     original = unbound(env)
-    monkeypatch.setattr(keystone, "authenticate", Mock(return_value=proof()))
+    authenticate = Mock(side_effect=AssertionError("Operator OIDC entry must not request a local password"))
+    monkeypatch.setattr(keystone, "authenticate", authenticate)
     state, browser = await start(env.wire.idp, "cfg:org")
-    with pytest.raises(auth.AccountLinkRequired) as pending:
+    with pytest.raises(auth.AccountEntryRequired) as pending:
         await auth.complete_authorization("good-code", state, browser)
-    linked = await auth.complete_account_link(
-        pending.value.link_token, browser, username="dev", password="original-password"
-    )
-    assert linked == {"linked": True, "domain_id": "dom-a", "domain_name": "Alpha", "provider_id": "cfg:org"}
+    assert pending.value.action == "connect"
     assert not env.org_creates and not env.wire.federation.calls and not env.keystone.assignments
-    assert original.default_project_id == "saved-native-preference" and original.domain_id == "dom-a"
+    login = await auth.complete_account_entry(pending.value.entry_token, browser, action="connect")
+    assert login.user_id == original.id and len(env.org_creates) == 1
+    assert original.default_project_id == "saved-native-preference" and original.domain_id == "dom-accounts"
+    authenticate.assert_not_called()
     fresh = await callback(env)
     assert fresh.user_id == original.id and len(env.org_creates) == 1
 
@@ -346,8 +349,6 @@ async def test_existing_domain_configured_email_autojoin_adds_reader_only(org_en
         id="default-a", name="Default", domain_id="dom-a", enabled=True, parent_id=None
     )
     # Home membership is not autojoin: use a canonical user homed outside the origin.
-    env.keystone.domain_rows["home-x"] = SimpleNamespace(id="home-x", name="Home", enabled=True)
-    env.keystone.user_rows["fed-user"].domain_id = "home-x"
     state, browser = await start(env.wire.idp, "cfg:corp")
     login = await auth.complete_authorization("good-code", state, browser)
     roles = project_service._direct_ids(env.keystone.role_assignments.list(project="default-a"), login.user_id)

@@ -421,3 +421,147 @@ describe('fresh provider sign-in after approval', () => {
 		expect(pendingMcpConsentTicket()).toBe('m'.repeat(32));
 	});
 });
+
+describe('Accounts provider entry confirmation', () => {
+	const entry = (action: 'connect' | 'create' = 'connect') => ({ entry_token: 'private-entry-ticket', domain_id: 'team', action, email: 'alice@example.com', ...(action === 'connect' ? { username: 'canonical-alice' } : {}) });
+	const required = (action: 'connect' | 'create' = 'connect') => new ApiError(409, 'account_entry_required', 'account_entry_required', undefined, entry(action));
+	const submitLabel = (action: 'connect' | 'create') => t(action === 'connect' ? 'entry.connect' : 'entry.create');
+
+	it.each(['connect', 'create'] as const)('waits for explicit %s confirmation and publishes normal login using only the sealed ticket and action', async action => {
+		storePendingInvitation('i'.repeat(32)); storeMcpConsentTicket('m'.repeat(32));
+		mocks.post.mockRejectedValueOnce(required(action));
+		const pending = Promise.withResolvers<typeof response>(); mocks.post.mockReturnValueOnce(pending.promise);
+		render(Page);
+		const confirm = await screen.findByRole('button', { name: submitLabel(action) });
+		expect(screen.getByText('alice@example.com')).toBeTruthy();
+		if (action === 'connect') expect(screen.getByText('canonical-alice')).toBeTruthy();
+		else expect(screen.getByText(t('entry.createDescription'))).toBeTruthy();
+		expect(screen.queryByRole('textbox')).toBeNull(); expect(screen.queryByLabelText(/^Password/)).toBeNull();
+		expect(screen.queryByRole('button', { name: submitLabel(action === 'connect' ? 'create' : 'connect') })).toBeNull();
+		expect(mocks.post).toHaveBeenCalledOnce(); expect(get(auth).token).toBeNull();
+		expect(document.body.textContent).not.toContain('private-entry-ticket');
+		expect(JSON.stringify(sessionStorage)).not.toContain('private-entry-ticket');
+		expect(JSON.stringify(localStorage)).not.toContain('private-entry-ticket');
+		expect(location.href).not.toContain('private-entry-ticket');
+		await fireEvent.click(confirm); await fireEvent.click(confirm);
+		expect(mocks.post).toHaveBeenCalledTimes(2);
+		expect(mocks.post).toHaveBeenNthCalledWith(2, '/api/v1/auth/providers/entry', { entry_token: 'private-entry-ticket', action }, undefined, undefined,
+			expect.objectContaining({ cache: 'no-store', suppressAuthRedirect: true, replayOnUnauthorized: false }));
+		expect(get(auth).token).toBeNull(); expect(mocks.goto).not.toHaveBeenCalled();
+		pending.resolve(response);
+		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith(`/invitations/${'i'.repeat(32)}`, { replaceState: true }));
+		expect(get(auth)).toMatchObject({ token: response.token, userId: response.user_id, identityDomainId: 'home', federated: true });
+		expect(screen.queryByRole('button', { name: submitLabel(action) })).toBeNull();
+		expect(pendingMcpConsentTicket()).toBe('m'.repeat(32));
+	});
+
+	it.each(['connect', 'create'] as const)('cancels %s without exchanging the entry ticket or replaying the callback', async action => {
+		mocks.post.mockRejectedValueOnce(required(action));
+		const rendered = render(Page); await screen.findByRole('button', { name: submitLabel(action) });
+		await fireEvent.click(screen.getByRole('link', { name: t('common.backToLogin') }));
+		expect(screen.queryByText('alice@example.com')).toBeNull(); expect(mocks.post).toHaveBeenCalledOnce();
+		expect(get(auth).token).toBeNull();
+		rendered.unmount(); render(Page);
+		await screen.findByText(t('callback.invalidState'));
+		expect(mocks.post).toHaveBeenCalledOnce();
+	});
+
+	it.each(['replacement', 'readiness', 'logout', 'scope', 'identity-aba', 'readiness-aba', 'cancel', 'unmount'] as const)('revokes a stale entry success after %s without replacing current authority', async kind => {
+		mocks.post.mockRejectedValueOnce(required());
+		const pending = Promise.withResolvers<typeof response>(); mocks.post.mockReturnValueOnce(pending.promise);
+		const rendered = render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: submitLabel('connect') }));
+		if (kind === 'replacement') setLoginAuth({ token: 'replacement-session', userId: 'bob', identityDomainId: 'home', domainId: 'home' });
+		else if (kind === 'readiness') authReady.set(!get(authReady));
+		else if (kind === 'logout') logoutInProgress.set(true);
+		else if (kind === 'scope') projectSwitching.set(true);
+		else if (kind === 'identity-aba') { const original = get(auth); auth.set({ ...original, userId: 'bob' }); auth.set(original); }
+		else if (kind === 'readiness-aba') { const original = get(authReady); authReady.set(!original); authReady.set(original); }
+		else if (kind === 'cancel') await fireEvent.click(screen.getByRole('link', { name: t('common.backToLogin') }));
+		else rendered.unmount();
+		pending.resolve(response);
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/auth/logout', {}, response.token, undefined, expect.objectContaining({ replayOnUnauthorized: false, suppressAuthRedirect: true, cache: 'no-store' })));
+		expect(get(auth).token).toBe(kind === 'replacement' ? 'replacement-session' : null);
+		expect(screen.queryByText('alice@example.com')).toBeNull(); expect(screen.queryByText('canonical-alice')).toBeNull();
+		expect(mocks.goto).not.toHaveBeenCalled();
+	});
+
+	it('clears a waiting confirmation on owner loss without posting entry', async () => {
+		mocks.post.mockRejectedValueOnce(required()); render(Page);
+		await screen.findByRole('button', { name: submitLabel('connect') });
+		setLoginAuth({ token: 'replacement-session', userId: 'bob', identityDomainId: 'home', domainId: 'home' }); await tick();
+		expect(screen.queryByRole('button', { name: submitLabel('connect') })).toBeNull();
+		expect(screen.queryByText('alice@example.com')).toBeNull(); expect(mocks.post).toHaveBeenCalledOnce();
+	});
+
+	it.each(['connect', 'create'] as const)('does not retry an uncertain %s outcome', async action => {
+		mocks.post.mockRejectedValueOnce(required(action)); mocks.post.mockRejectedValueOnce(new ApiError(503, 'private-entry-ticket'));
+		render(Page); await fireEvent.click(await screen.findByRole('button', { name: submitLabel(action) }));
+		await screen.findByText(t('callback.unavailable'));
+		expect(screen.queryByRole('button', { name: submitLabel(action) })).toBeNull();
+		expect(mocks.post).toHaveBeenCalledTimes(2); expect(get(auth).token).toBeNull();
+		expect(document.body.textContent).not.toContain('private-entry-ticket');
+	});
+
+	it.each(['pending', 'rejected'] as const)('preserves the signup %s decision after entry confirmation', async decision => {
+		mocks.post.mockRejectedValueOnce(required('create')); mocks.post.mockRejectedValueOnce(new ApiError(403, '', `signup_approval_${decision}`));
+		render(Page); await fireEvent.click(await screen.findByRole('button', { name: submitLabel('create') }));
+		await screen.findByText(t(decision === 'pending' ? 'signup.approval.pendingTitle' : 'signup.approval.rejectedTitle'));
+		expect(screen.queryByText('alice@example.com')).toBeNull(); expect(screen.queryByRole('button', { name: submitLabel('create') })).toBeNull();
+		expect(get(auth).token).toBeNull(); expect(mocks.goto).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['native_binding_conflict', 'callback.nativeBindingConflict'], ['account_email_conflict', 'callback.accountEmailConflict'],
+		['account_changed', 'callback.accountChanged'], ['account_ambiguous', 'callback.accountAmbiguous'],
+		['account_disabled', 'callback.accountDisabled'], ['invalid_entry_action', 'callback.accountChanged'],
+	] as const)('shows the specific %s conflict, not provider settings changed', async (code, key) => {
+		mocks.post.mockRejectedValueOnce(required()); mocks.post.mockRejectedValueOnce(new ApiError(409, 'private-native-detail', code));
+		render(Page); await fireEvent.click(await screen.findByRole('button', { name: submitLabel('connect') }));
+		expect((await screen.findByRole('alert')).textContent).toContain(t(key));
+		expect(document.body.textContent).not.toContain(t('callback.providerChanged'));
+		expect(document.body.textContent).not.toContain('private-native-detail');
+		expect(screen.queryByRole('button', { name: submitLabel('connect') })).toBeNull(); expect(get(auth).token).toBeNull();
+	});
+
+	it.each(['unknown_conflict', undefined])('does not describe an unknown 409 as provider changed (%s)', async code => {
+		mocks.post.mockRejectedValueOnce(new ApiError(409, 'private-native-detail', code)); render(Page);
+		expect((await screen.findByRole('alert')).textContent).toContain(t('callback.failed', { status: 409 }));
+		expect(document.body.textContent).not.toContain(t('callback.providerChanged'));
+	});
+
+	it('rejects an entry outside the pending provider origin domain', async () => {
+		mocks.post.mockRejectedValueOnce(new ApiError(409, '', 'account_entry_required', undefined, { ...entry(), domain_id: 'foreign' }));
+		render(Page); await screen.findByText(t('callback.foreignDomain'));
+		expect(screen.queryByText('alice@example.com')).toBeNull(); expect(mocks.post).toHaveBeenCalledOnce();
+	});
+
+	it.each(['en', 'ko', 'ja', 'zh-CN', 'bn', 'ms', 'nb', 'sw', 'vi'] as const)('uses localized connect confirmation without credentials in %s', async locale => {
+		initLocale(locale); mocks.post.mockRejectedValueOnce(required()); render(Page);
+		await screen.findByRole('button', { name: submitLabel('connect') });
+		expect(screen.getByRole('heading').textContent).toContain(t('entry.connectTitle'));
+		expect(screen.getByText(t('entry.connectDescription'))).toBeTruthy();
+		expect(screen.queryByRole('textbox')).toBeNull(); expect(screen.queryByLabelText(t('onboarding.password'))).toBeNull();
+		expect(mocks.post).toHaveBeenCalledOnce();
+	});
+
+	it.each(['connect', 'create'] as const)('requires explicit %s confirmation for a disclosed legacy GitLab transfer', async action => {
+		mocks.post.mockRejectedValueOnce(new ApiError(409, '', 'account_entry_required', undefined, { ...entry(action), transfer_existing: true }));
+		mocks.post.mockResolvedValueOnce(response); render(Page);
+		const confirm = await screen.findByRole('button', { name: submitLabel(action) });
+		expect(screen.getByText(t('entry.transferExisting'))).toBeTruthy();
+		expect(mocks.post).toHaveBeenCalledOnce(); expect(screen.queryByRole('textbox')).toBeNull();
+		await fireEvent.click(confirm);
+		expect(mocks.post).toHaveBeenNthCalledWith(2, '/api/v1/auth/providers/entry', { entry_token: 'private-entry-ticket', action }, undefined, undefined,
+			expect.objectContaining({ cache: 'no-store', suppressAuthRedirect: true, replayOnUnauthorized: false }));
+		await waitFor(() => expect(get(auth).token).toBe(response.token));
+	});
+
+	it('does not transfer a legacy connection when confirmation is declined', async () => {
+		mocks.post.mockRejectedValueOnce(new ApiError(409, '', 'account_entry_required', undefined, { ...entry(), transfer_existing: true }));
+		render(Page); await screen.findByText(t('entry.transferExisting'));
+		await fireEvent.click(screen.getByRole('link', { name: t('common.backToLogin') }));
+		expect(mocks.post).toHaveBeenCalledOnce(); expect(get(auth).token).toBeNull();
+		expect(screen.queryByText(t('entry.transferExisting'))).toBeNull();
+	});
+});

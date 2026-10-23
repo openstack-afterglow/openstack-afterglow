@@ -20,6 +20,19 @@ Tablet/desktop dock의 왼쪽 경계는 현재 `--app-sidebar-offset`을 따른�
 
 image 미게시·접근 거부·pull 실패는 준비 실패이며 대체 image나 terminal ready로 숨기지 않습니다. 실패 container는 기존 signed-owner cleanup으로 정리하고 home은 유지합니다. CLI image는 `/usr/local/bin/afterglow-cloud-shell-bootstrap`과 기존 PTY/tmpfs credential 계약을 포함해야 합니다. 게시 전에는 서비스 비활성 상태로 설정을 준비합니다.
 
+### 셸 자동완성과 도움말
+
+Completion 지원 workload는 Bash를 유지하며 `openstack` 명령·하위 명령·옵션과 일반 파일 경로를 Tab으로 완성합니다. 후보가 여러 개면 Tab을 두 번 누릅니다. 설치된 plugin의 완성 데이터는 image build 때 생성하고 cloud resource 목록을 자동 조회하지 않습니다. 따라서 resource ID/name 완성이나 fish 같은 inline 설명 UI를 제공한다고 해석하지 않습니다.
+
+- `cloud-shell-help`: 지원 도구·Tab 사용과 도움말 진입 안내.
+- `openstack --help`: 명령 목록과 설명.
+- `openstack server list --help`: 특정 명령의 옵션·사용법.
+- `help`: Bash 내장 명령 설명. `ll`은 사용자 정의가 없을 때 제공하는 목록 alias입니다.
+
+초기화는 사용자 홈 밖의 system 파일을 사용해 빈 Cinder 홈과 중첩 interactive Bash에서도 동작하며 기존 `.bashrc`/`.bash_profile`/alias를 덮어쓰지 않습니다. 비대화형 shell에는 안내 banner를 출력하지 않습니다. 실제 지원 여부는 선택한 workload image에 달려 있으며, 구현 source나 로컬 smoke만으로 현재 운영 image가 바뀌었다고 보고하지 않습니다. 새 image를 게시·승인된 digest로 반영한 뒤 새 세션부터 사용하고, 기존 홈을 reset하거나 열린 세션을 강제로 종료하지 않습니다.
+
+Cloud Shell 안의 CLI는 사용자의 현재 프로젝트 token으로 실행합니다. `openstack domain list`의403처럼 native policy가 거부한 작업은 자동완성·도움말 문제와 별개이며, 편의를 위해 관리자 권한을 추가하거나 service token으로 바꾸지 않습니다.
+
 ## 네트워크 기본값
 
 `[cloud_shell].interface`의 기본값은 `public`이다. 컨테이너·영구 홈·네트워크 선택은 전용 Cloud Shell 프로젝트에 묶이고, CLI의 권한은 여전히 현재 사용자의 선택 프로젝트 token이다.

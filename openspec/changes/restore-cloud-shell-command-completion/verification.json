@@ -1,0 +1,26 @@
+{
+  "status": "implemented_locally_native_arm64_accepted_amd64_pty_pending_native_runner",
+  "workload_repository": "/Users/pieroot/code/openstack-client-shell-dev",
+  "workload_branch": "dev",
+  "workload_commit": "d9e6488",
+  "workload_base": "1ecb30cf74718768a309bc249b482710e6dccaed",
+  "pushed": false,
+  "published": false,
+  "production_image_changed": false,
+  "root_cause": [
+    "Image installed bash-completion but scripts/profile.sh only set PATH; no OpenStack completion was registered.",
+    "The mounted Cinder home hides the image skeleton, so user-home .bashrc cannot be relied upon."
+  ],
+  "defect_found_during_verification": "COPY --chmod=0644 into a new directory produced an unreadable directory; moved system rc to /etc/cloud-shell.bashrc and added a UID1000 interactive build assertion.",
+  "source_regressions": {"command": "python3 -m unittest discover -s tests -p 'test_*.py' -v", "passed": 7},
+  "negative_control": {"image": "current production digest sha256:e98b344bad37f41bc381f5817248702062a0181a61bb0faf80a47a432b48d7df", "new_smoke_result": "failed at the ll precheck; TAB cases not reached", "direct_baseline_probe": "interactive bash: `complete -p openstack` has no completion specification and /usr/share/bash-completion/completions/openstack is absent"},
+  "image_results": {
+    "slim_arm64": "native build + full real setuid PTY smoke passed",
+    "alpine_arm64": "native build + full real setuid PTY smoke passed",
+    "slim_amd64": "build passed incl. UID1000 interactive completion assertion; full PTY smoke blocked by Docker Desktop Rosetta writing .cache/rosetta into the empty-home volume",
+    "alpine_amd64": "build passed incl. UID1000 interactive completion assertion, runtime x86_64 cloud-shell-help executed; full PTY smoke blocked by the same emulation artifact"
+  },
+  "smoke_coverage": ["truly empty volume-nocopy home", "real TAB: openstack ser/server li/--lon, container lis, loadbalancer li and --provisioning-st, local file", "nested non-login interactive Bash", "custom .bashrc/.bash_profile/ll preserved byte-identical", "cloud-shell-help, offline openstack help, Bash help", "silent noninteractive shells", "credential non-echo, UID/GID1000, no-new-privs, caps0, tmpfs secure file, persistent home"],
+  "afterglow_runtime_changes": "none; documentation and OpenSpec only",
+  "remaining": ["Native amd64 PTY smoke via the workload's native CI runner", "Push/PR, publication of a new multi-arch digest and operator approval to pin afterglow_cloud_shell_image followed by the standard Kolla reconfigure", "Existing sessions keep the current image until a new session starts after rollout"]
+}

@@ -1,0 +1,54 @@
+{
+  "status": "implemented_and_locally_verified_not_deployed",
+  "source_sha256": "06810dba9d7abe35228baee36feefeff0c4d0c758e0f4debb98604a0c1049bf0",
+  "source_files": 3430,
+  "proof_root": "~/.local/share/afterglow-proofs/gitlab-accounts-entry-20261023",
+  "production_diagnostics": {
+    "changes_made": false,
+    "provider_revisions_equal_across_three_controllers": 16895922974498,
+    "stable_native_mapping": "gitlab/mapped -> afterglow_gitlab_stable_sub; user-only ephemeral OIDC-sub",
+    "idp_domain_id": "default",
+    "accounts_domain_id": "3b24b0e94b1d46c9941d515b8c2d397b",
+    "personal_domain_id": "4661cc1ff17044bfa43f87ded1d8d53f",
+    "observed_callback_status": 409,
+    "directory_reproduction": "One matching Accounts/Default email pair; Default holds exact stable issuer/sub and native mapped tuple. Mutation-free directory lookup reproduces account_email_conflict.",
+    "limit": "The human callback code itself was not logged, so the read-only reproduction is not asserted to identify that exact request's code."
+  },
+  "contract": {
+    "scope": "operator cfg OIDC only",
+    "first_login": "Accounts-only normalized verified-email match; explicit passwordless connect or create confirmation",
+    "legacy": "Explicitly disclosed same-email enabled canonical Default exact stable/native association transfer only; no user/home/password/preferences/grant/resource merge or move",
+    "entry_endpoint": "POST /api/v1/auth/providers/entry {entry_token,action}",
+    "proof": "signed issuer/audience/sub/nonce/PKCE, boolean verified email, encrypted600s one-use browser/provider-revision ticket",
+    "journal": "SQL102 encrypted bearer-free association snapshots; known-confirmed writes can compensate; uncertain writes require explicit native_writes_settled operator settlement",
+    "tenant_sql_github": "existing explicit canonical-account proof retained"
+  },
+  "checks": {
+    "focused_backend": {"passed": 277},
+    "callback_frontend": {"passed": 88},
+    "api_decoder": {"passed": 28},
+    "named_auth": {"backend_passed": 1035, "frontend_passed": 630},
+    "supplemental_overlap": {"passed": 3, "evidence": "artifact://2008", "password_email_alias": "Accounts200, same-email Default not selected, Default-only username401", "recovery": "global duplicate email username/password requests202 but no message/proof"},
+    "full_gate": {"command": "VITEST_MAX_WORKERS=3 TZ=UTC npm run test:gate", "exit_code": 0, "backend_passed": 9049, "backend_skipped": 95, "frontend_files": 432, "frontend_tests": 5029, "contracts_passed": 181, "functional_passed": 166, "functional_deselected": 33, "ruff_files": 722, "log": "test-gate-final.log"},
+    "i18n": {"errors": 0, "preexisting_key_order_warnings": 37},
+    "schema": "SQL102 apply/reapply and row roundtrip on network-none/tmpfs MariaDB10.11.19",
+    "images": "Canonical Dockerfile backend/frontend/worker built and executed on arm64 native and amd64 Docker Desktop emulation; frontend arm64 compiled browser, amd64 main server callback SSR200",
+    "http_browser": "Real Uvicorn/SQLite/JWT/installed KeystoneClient TCP + signed synthetic IdP/native users: callback409, connect confirmation200 -> dashboard/Accounts home/Personal member. No Accounts match create200 beside untouched legacy email. Replay401; no password inputs; ticket memory-only; cancellation; desktop/mobile overflow0. HTTP-smoke Redis is fakeredis, not operational Redis."
+  },
+  "verification_corrections": [
+    "Hostless synthetic cookie could not be cleared by a host-bound Set-Cookie; fixture now uses exact api.example.com.",
+    "Inherited synthetic native create adapter required a password positional argument; fixture adapter now accepts passwordless external creation.",
+    "Initial gate failed because the new self-authenticating entry endpoint was absent from the public-route allowlist. Existing security inventory guard was preserved and the endpoint explicitly classified; exact cookie/cross-site regressions and full gate pass.",
+    "Backend lint/import/format corrections were applied before final runtime/image/gate qualification."
+  ],
+  "limits": [
+    "SUPERSEDED last-tuple transfer evidence: synthetic users.update treated federated=[] as removal, unlike deployed Keystone. guard-keystone-last-federated-unlink corrects the double and rejects last-source unlink before writes; earlier HTTP last-tuple success is not native compatibility proof.",
+    "No commit/push/publication/deployment or operational SQL102/native association mutation.",
+    "Actual human production callback after this source change is unverified; production remains1.30.24.",
+    "Ordinary signup/invitation/recovery/email-update global duplicate-email fences remain and can require separate reconciliation for legacy duplicates.",
+    "SQL102 is a hard prerequisite for all provider callbacks, including already-bound Accounts users; missing table fails closed503. Validate migration and actual ORM SELECT before image cutover.",
+    "Installed Keystone mapped/shadow code creates an IdP-domain shadow user for an unknown native tuple; direct WebSSO/CLI that bypasses Afterglow pre-attachment is not covered. IdP domain change was not applied.",
+    "Image npm audit reports4 vulnerabilities including1critical in unchanged dependency graph; no dependency update included."
+  ],
+  "archive_mode": "rapid; project-required --skip-specs --yes"
+}

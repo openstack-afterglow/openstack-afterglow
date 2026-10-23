@@ -86,6 +86,12 @@ class ProviderCallbackRequest(BaseModel):
     state: str = Field(..., min_length=16, max_length=256)
 
 
+class ProviderEntryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    entry_token: str = Field(min_length=16, max_length=256)
+    action: Literal["connect", "create"]
+
+
 class ProviderLinkRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     link_token: str = Field(min_length=16, max_length=256)
@@ -266,8 +272,25 @@ async def provider_callback(
         login = await svc.complete_authorization(req.code, req.state, binding)
     except svc.DomainAuthError as exc:
         failure = svc.domain_auth_error_response(exc)
-        if not isinstance(exc, svc.AccountLinkRequired):
+        if not isinstance(exc, (svc.AccountLinkRequired, svc.AccountEntryRequired)):
             _clear_state_cookie(failure)
+        return failure
+    return await _finish_provider_login(request, background_tasks, response, login)
+
+
+@public_router.post("/providers/entry", response_model=TokenResponse)
+@limiter.limit("5/minute")
+async def provider_entry(
+    request: Request, req: ProviderEntryRequest, background_tasks: BackgroundTasks, response: Response
+):
+    try:
+        svc.require_same_site_browser(request)
+        login = await svc.complete_account_entry(
+            req.entry_token, request.cookies.get(svc.STATE_COOKIE, ""), action=req.action
+        )
+    except svc.DomainAuthError as exc:
+        failure = svc.domain_auth_error_response(exc)
+        _clear_state_cookie(failure)
         return failure
     return await _finish_provider_login(request, background_tasks, response, login)
 

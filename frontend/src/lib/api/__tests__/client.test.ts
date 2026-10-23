@@ -82,6 +82,54 @@ describe('api client', () => {
     expect(mockFetch).toHaveBeenCalledOnce();
   });
 
+  it.each([false, true])('decodes connect and create entry metadata without exposing the ticket (nested=%s)', async nested => {
+    for (const action of ['connect', 'create'] as const) {
+      const entryTicket = { entry_token: 'private-entry-ticket', domain_id: 'origin-domain', action, email: 'alice@example.com', ...(action === 'connect' ? { username: 'canonical-alice' } : {}) };
+      const payload = { code: 'account_entry_required', ...entryTicket };
+      mockFetch.mockResolvedValueOnce(new Response(JSON.stringify(nested ? { detail: payload } : payload), { status: 409 }));
+      const error = await api.post('/api/v1/auth/providers/callback', { code: 'code', state: 'state' }, undefined, undefined,
+        { suppressAuthRedirect: true, replayOnUnauthorized: false, cache: 'no-store' }).catch(error => error);
+      expect(error).toBeInstanceOf(ApiError);
+      if (!(error instanceof ApiError)) throw error;
+      expect(error).toMatchObject({ status: 409, code: 'account_entry_required', message: 'account_entry_required', entryTicket, linkTicket: undefined });
+      expect(String(error)).not.toContain('private-entry-ticket');
+      expect(error.stack).not.toContain('private-entry-ticket');
+    }
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    { action: 'delete' }, { entry_token: '' }, { entry_token: 123 }, { domain_id: '' },
+    { email: null }, { username: '' }, { username: undefined },
+  ])('rejects malformed entry metadata while redacting bearer text %j', async changes => {
+    const payload = { code: 'account_entry_required', entry_token: 'private-entry-ticket', domain_id: 'origin-domain', action: 'connect', email: 'alice@example.com', username: 'alice', ...changes };
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ detail: payload }), { status: 409 }));
+    await expect(api.post('/api/v1/auth/providers/callback', {}, undefined, undefined, { suppressAuthRedirect: true, replayOnUnauthorized: false })).rejects.toMatchObject({
+      status: 409, code: 'account_entry_required', message: 'account_entry_required', entryTicket: undefined, linkTicket: undefined,
+    });
+  });
+
+  it('sends only the chosen server entry action and ticket without replaying a conflict', async () => {
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ detail: { code: 'native_binding_conflict', message: 'private-native-message' } }), { status: 409 }));
+    await expect(api.post('/api/v1/auth/providers/entry', { entry_token: 'private-entry-ticket', action: 'connect' }, undefined, undefined,
+      { suppressAuthRedirect: true, replayOnUnauthorized: false, cache: 'no-store' })).rejects.toMatchObject({ status: 409, code: 'native_binding_conflict' });
+    expect(mockFetch).toHaveBeenCalledOnce();
+    expect(mockFetch.mock.calls[0][0]).toContain('/api/v1/auth/providers/entry');
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({ entry_token: 'private-entry-ticket', action: 'connect' });
+    expect(mockFetch.mock.calls[0][1].cache).toBe('no-store');
+  });
+
+  it.each([true, false])('preserves the explicit legacy transfer disclosure flag %s', async transfer_existing => {
+    const entryTicket = { entry_token: 'private-entry-ticket', domain_id: 'origin-domain', action: 'connect', email: 'alice@example.com', username: 'alice', transfer_existing };
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ detail: { code: 'account_entry_required', ...entryTicket } }), { status: 409 }));
+    await expect(api.post('/api/v1/auth/providers/callback', {}, undefined, undefined, { suppressAuthRedirect: true, replayOnUnauthorized: false })).rejects.toMatchObject({ entryTicket, message: 'account_entry_required' });
+  });
+
+  it('rejects a non-boolean legacy transfer flag without leaking the ticket', async () => {
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ code: 'account_entry_required', entry_token: 'private-entry-ticket', domain_id: 'origin-domain', action: 'create', email: 'alice@example.com', transfer_existing: 'true' }), { status: 409 }));
+    await expect(api.post('/api/v1/auth/providers/callback', {}, undefined, undefined, { suppressAuthRedirect: true, replayOnUnauthorized: false })).rejects.toMatchObject({ entryTicket: undefined, message: 'account_entry_required' });
+  });
+
   it.each(['signup_approval_pending', 'signup_approval_rejected'])('exposes %s from detail or typed code without a callback replay', async (code) => {
     for (const body of [{ detail: code }, { code, detail: 'Enrollment review' }, { detail: { code, message: 'Enrollment review' } }]) {
       mockFetch.mockResolvedValueOnce(new Response(JSON.stringify(body), { status: 403, headers: { 'Content-Type': 'application/json' } }));

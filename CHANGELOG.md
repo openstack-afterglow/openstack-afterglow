@@ -7,6 +7,23 @@
 
 ## [Unreleased]
 
+### Added
+- Cloud Shell workload에 빈 Cinder 홈에서도 동작하는 system Bash 자동완성(명령·하위 명령·옵션·파일 경로)과 오프라인 `cloud-shell-help`, 사용자 정의가 없을 때의 `ll` alias를 추가합니다. 완성 데이터는 build 시 설치된 CLI plugin에서 생성하며 클라우드 resource를 조회하지 않습니다. 사용자 dotfile·권한·bootstrap 경계는 바꾸지 않으며, 게시된 digest로 운영 image를 교체하기 전에는 기존 세션에 적용되지 않습니다.
+
+## [1.30.25] - 2026-10-24
+
+이번 release 항목은 발행 대상 source를 설명합니다. Exact dev SHA CI·불변 tag/image 발행·cold restore와 SQL102 선행 조건·실제 Kolla 및 로컬 rollout 수용은 별도 checklist의 관측 결과로 기록하며 아직 완료를 주장하지 않습니다. Cloud Shell workload 발행·교체와 pending native amd64 수용은 이 release 범위가 아닙니다.
+
+### Changed
+- 운영 operator 설정에 남은 무효 `[gitlab_oidc]`를 보호된 백업 뒤 정리하고 기존 exact Keystone domain-ID 기반 auth registry만 사용하도록 안내합니다. 다른 TOML 값과 실제 image의225개 effective settings는 동일하며 새 image·서비스 재시작·권한 변경은 없습니다. GitLab의 redirect URI 등록은 generic `/auth/callback`으로 별도 확인해야 하며 최종 사용자 로그인을 검증했다고 주장하지 않습니다.
+
+### Added
+- 관리자 Identity 사용자 목록의 desktop·compact card에 native 계정 삭제와 전체 UUID 입력 확인을 추가합니다. Fresh system-admin·정확한 home domain·graph lease 아래 자기 계정, executor/설정 서비스·native admin/service/system 권위, 마지막 관리자, 프로젝트/Personal 소유와 미완료 journal을 보호합니다. 세션·권위·목록을 무효화하며 불확실한 삭제를 자동 재전송하거나 프로젝트·자원을 함께 지우지 않습니다. 운영 계정 삭제·배포는 별도입니다.
+
+### Fixed
+- 운영자 GitLab/OIDC 최초 로그인에서 verified 이메일과 같은 Accounts 사용자만 찾아 비밀번호 없는 연결 확인을 제공하고, 없으면 새 Accounts 생성 확인을 제공합니다. 기존 Default stable/native 연결 충돌을 모두 “로그인 방법 설정 변경”으로 표시하던 오류를 구분합니다. 같은 이메일의 정확한 Default 연결은 명시 확인 뒤 SQL102의 암호화 journal/readback으로 로그인 연결만 이전하며 원래 계정·home·password·grant/resource와 다른 연결은 보존합니다. Native mapping은 immutable subject를 유지하고 tenant SQL provider의 이메일 trust를 확대하지 않습니다. 운영 schema·이미지·계정에 아직 적용하지 않은 source 변경입니다.
+- 설치된 Keystone이 `federated:[]` PATCH를 연결 삭제로 처리하지 않는 의미 차이를 반영합니다. 마지막 native 연결을 제거해야 하는 Default 이전은 journal/native 쓰기 전에 차단하고 operator unlink를 요구합니다. 보상에서도 native 연결을 남긴 채 stable metadata만 지우는 부분 적용을 방지하며, 합성 native update를 실제 falsy-array 동작과 일치시킨 회귀를 추가합니다. 운영 연결은 변경하지 않았습니다.
+
 ## [1.30.24] - 2026-10-23
 
 ### Fixed

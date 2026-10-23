@@ -70,6 +70,7 @@ EXPECTED_PUBLIC = frozenset(
         ("GET", "/api/v1/auth/domains/resolve"),
         ("POST", "/api/v1/auth/domains/{domain_id}/providers/{provider_id}/authorize"),
         ("POST", "/api/v1/auth/providers/callback"),
+        ("POST", "/api/v1/auth/providers/entry"),  # One-use browser-bound verified OIDC proof; no anonymous creation.
         ("POST", "/api/v1/auth/providers/link"),  # Browser-bound link ticket plus original account proof.
         ("GET", "/api/v1/auth/signup/options"),  # Public signup availability; no account lookup.
         # Email-delivered one-use enrollment tokens authorize these onboarding requests.

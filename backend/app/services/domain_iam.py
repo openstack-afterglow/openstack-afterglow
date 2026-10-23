@@ -72,7 +72,7 @@ async def resource(kind, resource_id, domain_id):
     return obj
 
 
-async def protected_user(user, domain_id, *, credentials=True):
+async def protected_user(user, domain_id, *, credentials=True, system_services=False):
     uid = _field(user, "id")
     if not isinstance(uid, str) or not uid:
         raise HTTPException(503, "Identity protection metadata is unavailable")
@@ -115,6 +115,24 @@ async def protected_user(user, domain_id, *, credentials=True):
         if "OS-INHERIT:inherited_to" in scope and scope["OS-INHERIT:inherited_to"] != "projects":
             raise HTTPException(503, "Effective inherited protection scope is unavailable")
     expanded = project_service._expanded_role_ids(assignments, catalog, uid)
+    if system_services:
+        # Deletion additionally protects service-only raw system grants, which
+        # Keystone's effective path omits. Other IAM consumers keep their reads.
+        user_system = await _provider_call(lambda: list(ks.role_assignments.list(user=uid, system="all")))
+        system_sources = [(row, "user_id", uid) for row in user_system]
+        for group in await _provider_call(lambda: list(ks.groups.list(user=uid))):
+            gid = _field(group, "id")
+            if not isinstance(gid, str) or not gid:
+                raise HTTPException(503, "Native identity group membership is unavailable")
+            system_sources.extend(
+                (row, "group_id", gid)
+                for row in await _provider_call(lambda gid=gid: list(ks.role_assignments.list(group=gid, system="all")))
+            )
+        for row, principal, subject in system_sources:
+            source = domain_projects._assignment(row, catalog)
+            if source["kind"] != "system" or source[principal] != subject:
+                raise HTTPException(503, "Native identity system protection scope is unavailable")
+            expanded.update({source["role_id"], *identity_roles._descendant_ids(catalog, source["role_id"])})
     if credentials and any(by_id[rid]["domain_id"] not in {None, domain_id} for rid in expanded):
         raise HTTPException(503, "Foreign role graph cannot authorize identity edits")
     return bool(protected & expanded) or any(by_id[rid]["name"].casefold() in protected_names for rid in expanded)
@@ -1362,6 +1380,7 @@ async def _enroll(
     system_managed=False,
     external_provider=None,
     external_identity=None,
+    confirmed_entry=False,
 ):
     if enrollment_status(row) != "pending":
         raise HTTPException(410, "Enrollment link is expired, revoked, or already used")
@@ -1370,6 +1389,11 @@ async def _enroll(
     external = row.kind == "external"
     if external != (external_provider is not None and external_identity is not None):
         raise HTTPException(403, "External enrollment proof is required")
+    account_home = None
+    if confirmed_entry:
+        if not external or external_provider.kind != "oidc" or not external_provider.id.startswith("cfg:"):
+            raise HTTPException(403, "Operator account entry proof is required")
+        account_home = _field(await _provider_call(account_spaces.shared_domain, "account", ks=ks), "id")
     if public_signup:
         _assert_public_registration(row)
         row.email = await _public_signup_email(row.email, session=session)
@@ -1410,9 +1434,14 @@ async def _enroll(
     else:
         if name == get_settings().os_username:
             raise HTTPException(403, "Operational account name is reserved")
-        if await _find_accounts(None, email=row.email, name=row.email):
+        if await _find_accounts(account_home, email=row.email, name=row.email):
             raise HTTPException(409, "Account already exists; sign in to accept an invitation")
-        if await _find_accounts(None, name=name) or name and "@" in name and await _find_accounts(None, email=name):
+        if (
+            await _find_accounts(account_home, name=name)
+            or name
+            and "@" in name
+            and await _find_accounts(account_home, email=name)
+        ):
             raise HTTPException(409, "Username already belongs to an account")
         unresolved = (
             await session.execute(
@@ -1636,7 +1665,7 @@ async def _enroll(
 
 
 @identity_roles._complete_mutation
-async def enroll_external(provider, identity, *, lease, ks, catalog, admission_domain_id=None):
+async def enroll_external(provider, identity, *, lease, ks, catalog, admission_domain_id=None, confirmed_entry=False):
     """Provision one personal home under the callback's existing graph lease."""
     from app.database import get_session_factory
 
@@ -1678,6 +1707,7 @@ async def enroll_external(provider, identity, *, lease, ks, catalog, admission_d
             name="external-" + digest,
             external_provider=provider,
             external_identity=identity,
+            confirmed_entry=confirmed_entry,
         )
         checked = await _native_user(ks, result["user_id"])
         if (

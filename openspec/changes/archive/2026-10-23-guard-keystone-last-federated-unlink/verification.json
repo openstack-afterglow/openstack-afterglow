@@ -1,0 +1,23 @@
+{
+  "status": "safety_guard_complete_operational_last_unlink_requires_separate_native_prerequisite",
+  "source_sha256": "3053ffad6f9af8c9ec99ca9df6c5caf9d9c978d0f361dd77107c5220c4f30c7f",
+  "source_files": 3430,
+  "root_cause": "Deployed Keystone treats falsy federated user PATCH as preserving native associations, but other user extras still change. Synthetic users.update incorrectly replaced [] and accepted unsupported last-tuple unlink. Native protocols schema minItems1 prevents empty-IdP workaround.",
+  "implementation": "Mirror native update semantics; reject last-source detach before admission/journal/native writes with native_binding_conflict; block unsupported empty-list compensation before stable metadata PATCH. No dummy association, user deletion, direct SQL or native config mutation.",
+  "before": "Single-tuple connect regression fails: readback mismatch then recovery_required after partial metadata write in synthetic native-faithful double.",
+  "after": "Connect/create last source tuple: zero user/project/federation/journal effects. Nonempty supported source transfer retains approval behavior and unrelated binding. Unsupported compensation preserves target stable/native metadata and recovery fence.",
+  "installed_method_smoke": "Actual installed Keystone Manager method executed with in-memory driver/shadow stubs only: [] retains original native tuple while extras change; no native datastore/network mutation.",
+  "checks": {
+    "focused_backend_passed": 280,
+    "named_auth_intermediate_guard": {"backend_passed": 1037, "frontend_passed": 630},
+    "full_gate": {"command": "VITEST_MAX_WORKERS=3 TZ=UTC npm run test:gate", "exit_code": 0, "backend_passed": 9052, "backend_skipped": 95, "frontend_files": 432, "frontend_tests": 5029, "contracts": 181, "functional": 166, "ruff_files": 722},
+    "images": "Final API/worker canonical builds and runtime on arm64 native and amd64 Docker Desktop emulation; API guard executed network-none with no store/native clients. Frontend unchanged."
+  },
+  "evidence_root": "~/.local/share/afterglow-proofs/gitlab-accounts-entry-20261023",
+  "operational_changes": false,
+  "deployed": false,
+  "prior_evidence_correction": "Earlier last-tuple synthetic HTTP transfer receipt in archived repair-gitlab-first-login-choice is superseded; it does not prove deployed-Keystone transfer compatibility.",
+  "remaining": "Last-tuple sources require a separately supported approved native unlink; no such mutation performed or guessed. Read-only actual overlapping Default source has2 associations (gitlab/openid and gitlab/mapped), both protocols exist; removing mapped retains openid, so this specific source is a supported nonempty-replacement candidate, not a last-tuple case. No production transfer performed.",
+  "live_source_followup": {"source_home":"default","accounts_email_matches":1,"native_associations":2,"protocols":["gitlab/openid","gitlab/mapped"],"remaining_after_mapped_unlink":1,"protocols_exist":true,"read_only":true,"evidence":["live-last-tuple-count.json","live-last-tuple-protocols.json"]},
+  "archive_mode": "rapid project workflow --skip-specs --yes"
+}

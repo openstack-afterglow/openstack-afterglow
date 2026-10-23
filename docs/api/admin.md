@@ -709,6 +709,7 @@ IAM monitoring 응답은 `{domain,projects,users,resources,inventory,coverage}`�
 | `POST /users/unlock-account` | `{username,domain_id}` 필수 |
 | `GET /projects/names` | 선택 query; 생략 시 system-wide picker, 응답 row는 `{id,name,domain_id}`; malformed native metadata는503 |
 | `PATCH /users/{user_id}`; `POST /users/{user_id}/revoke-sessions`; `GET /users/{user_id}/sessions`, `/permissions` | 선택 non-empty query; 지정하면 user의 domain을 확인 |
+| `DELETE /users/{user_id}` | non-empty query 필수; 정확한 native home domain과 user ID를 같은 관리자 executor로 재검증 |
 | `GET/PATCH/DELETE /projects/{project_id}`; `GET /projects/{project_id}/deletion-check`, `/members`; `POST /projects/{project_id}/sync-monitoring-sg`; `GET/PUT /quotas/{project_id}`; `PUT /compute-policy/{project_id}` | 선택 non-empty query; 지정하면 project의 domain 확인 |
 | `PATCH/DELETE /groups/{group_id}`; `GET /groups/{group_id}/users`; `PUT/DELETE /groups/{group_id}/users/{user_id}` | 선택 non-empty query; 지정하면 group이 선택 domain에 속하는지 확인. 관계의 user는 정확한 native identity로 검증하며 다른 home도 허용 |
 | `POST/DELETE /roles/assign`, `/roles/assign-group` | 선택 query; grant는 생략해도 대상 project의 native domain을 anchor로 확인. user/group principal은 다른 native home일 수 있고 role은 global 또는 anchor domain 소유여야 함 |
@@ -727,6 +728,7 @@ Project/group member 관계는 다른 home의 principal을 목록에서 숨기�
 | `GET` | `/api/v1/admin/users/activity` | 선택 native home domain 사용자 변경 로그; limit 기본50·1–200, before_id 선택 | 필수 query `domain_id` |
 | `POST` | `/api/v1/admin/users` | Accounts identity 생성; personal member primary는 첫 성공 로그인까지 deferred, 관측 domain 자동 admission 없음 (`201`) | `name`, `email`, `password`, `domain_id` 필수; `enabled` 기본true |
 | `PATCH` | `/api/v1/admin/users/{user_id}` | 사용자 수정 | `name`, `email`, `enabled`, `password` (선택) |
+| `DELETE` | `/api/v1/admin/users/{user_id}` | 단일 native 계정 영구 삭제 (`204`), 세션 폐기·inventory 무효화; 프로젝트/자원 cascade 없음 | 필수 query `domain_id` |
 | `POST` | `/api/v1/admin/users/{user_id}/revoke-sessions` | 사용자 세션 전체 무효화 | - |
 | `GET` | `/api/v1/admin/users/{user_id}/sessions` | 사용자의 활성 세션 목록 | - |
 | `GET` | `/api/v1/admin/users/{user_id}/permissions` | 사용자의 현재 유효 프로젝트·도메인·시스템 역할 | - |
@@ -738,6 +740,17 @@ Project/group member 관계는 다른 home의 principal을 목록에서 숨기�
 생성 body는 extra field 금지이며 name1–255자, email3–255자, password12–1024자, domain_id non-empty입니다. domain_id는 관측 context로 존재만 확인하고 home/admission target으로 사용하지 않습니다. 요청 enabled 값의 Accounts identity와 accepted managed_create enrollment·같은 token/name·동결 quota의 deferred personal intent를 함께 commit하며 이 요청은 프로젝트/grant를 만들지 않습니다. 응답은 id/name/email/enabled/protected:true·user_id, **Accounts domain_id/domain_name**과 identity_domain_id/identity_domain_name, personal_domain_id, personal_project_deferred:true, personal_project_id:null 및 **예약된 personal_project_name**입니다. enabled:false는 명시 활성화 뒤 실제 로그인 proof가 필요합니다. 첫 로그인은 Personal disabled staging에 본인 직접 member 하나·동결 quota·native provenance를 확인한 뒤 활성화합니다. 기존 ID/home/credentials/grants·리소스 및 관측 domain의 Default는 변경하지 않습니다. Journal의 관측 domain_id는null이고 unknown 작업은 system-only settlement 전 재전송하지 않습니다. 조직 참여는 별도 초대/신뢰된 OIDC admission입니다.
 
 마지막 enabled effective system admin을 비활성화하는 PATCH는 공유 role-graph lease 아래 재검증해 `422`로 거부합니다. 권한 회수와 동시 비활성화도 같은 보호를 사용합니다. 현재 project owner는 먼저 소유권을 이전해야 하며 비활성화는 `409`입니다. 관련 unresolved ownership operation이 있어도 user/domain disable을 차단합니다. 이는 단순한 마지막 manager 보호와 별도입니다.
+
+### 명시적 사용자 계정 삭제
+
+사용자 목록의 table·compact card에서 **삭제**를 선택하면 이름·전체 user ID·native home domain을 표시합니다. 전체 ID를 정확히 입력해야 제출할 수 있습니다. 모르는 이름·연합 계정·이메일 부재만으로 자동 삭제하지 않으며, 이 작업은 프로젝트 멤버십 제거가 아니라 계정 영구 삭제입니다. 자기 계정 버튼은 비활성화합니다. 확인을 열 때 native 목록을 새로 읽고, actor/session/home/project/권한·선택 domain의 변경과 ABA·unmount 후의 확인/응답은 폐기합니다.
+
+삭제 API는 fresh system-admin과 기존 configured native admin-project executor를 사용합니다. Graph lease 안에서 대상 home·UUID, ownership/identity-transfer journal, Personal 소유·provisioning/enrollment, 현재 system-admin/domain-manager 보존을 검사하고 dispatch 직전 요청자 권위를 다시 검증합니다. 정확한 actor/executor, 설정된 `os_username`과 같은 native 이름, native admin/service/system 권위를 가진 계정은 보호합니다. Kolla service 계정은 `service` role 없이 service project의 `admin`만 가질 수 있으므로 `admin`/`service`의 실제 role-ID DAG와 raw system user/group grant도 검사합니다. 다른 도메인의 같은 configured 이름도 보수적으로 보호합니다. Privileged 계정은 기존 보호된 권한 회수 절차를 먼저 거쳐야 하며, service 운영 계정 정리를 이 기능으로 대신하지 않습니다.
+
+현재 owned Personal primary/추가 프로젝트는 native role이 member여도 삭제를 차단합니다. 프로젝트·VM·볼륨을 함께 지우거나 소유자를 잃은 자원으로 남기지 않습니다. 먼저 별도의 프로젝트 삭제/소유권 처리와 미완료 provisioning을 정산해야 합니다. 이미 해소된 빈 accepted/cancelled/deferred intent만 있다는 이유로 계정을 영구 차단하지는 않습니다. 세션 저장소·native 권위·SQL journal 조회 실패도 fail-closed이며 새 schema/config/dependency는 추가하지 않습니다. 기존 SQL102 등 현재 source의 journal schema는 필요합니다.
+
+Native 삭제는 `ignore_missing=False`입니다. 대상 부재404를 성공으로 바꾸지 않고403/409/5xx를 표시합니다. 실제 dispatch 뒤에는 성공·응답 유실 모두 대상 세션 폐기와 권위/inventory 무효화를 수행하고 감사 기록을 남깁니다. 불확실한 응답/401/408/5xx는 브라우저에서 자동 replay하지 않으며 창을 닫고 삭제를 다시 열어 현재 디렉터리를 확인해야 새 확인을 시작할 수 있습니다. 기존 로그인 없이 남은 orphan grant, native DB 직접 정리 또는 관련 프로젝트 삭제는 이 endpoint의 범위가 아닙니다.
+
 
 ### 사용자별 프로젝트 및 유효 역할
 

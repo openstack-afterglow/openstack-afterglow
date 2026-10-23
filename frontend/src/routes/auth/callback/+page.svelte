@@ -5,6 +5,7 @@
 	import { auth, authReady, logoutInProgress, projectSwitching, setLoginAuth } from '$lib/stores/auth';
 	import { derived, get } from 'svelte/store';
 	import { api, ApiError } from '$lib/api/client';
+	import type { ProviderEntryTicket } from '$lib/api/errors';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -22,6 +23,7 @@
 	let loading = $state(true);
 	let linking = $state(false);
 	let ticket = $state<{ link_token: string; domain_id: string } | null>(null);
+	let entryTicket = $state<ProviderEntryTicket | null>(null);
 	let linked = $state<ProviderLinkResponse | null>(null);
 	let username = $state('');
 	let password = $state('');
@@ -37,13 +39,17 @@
 		email_not_verified: 'callback.emailNotVerified', email_domain_not_allowed: 'callback.emailDomainNotAllowed',
 		foreign_domain: 'callback.foreignDomain', provider_disabled: 'callback.providerDisabled',
 		provider_error: 'callback.providerError', unavailable: 'callback.unavailable',
+		native_binding_conflict: 'callback.nativeBindingConflict', account_email_conflict: 'callback.accountEmailConflict',
+		account_changed: 'callback.accountChanged', invalid_entry_action: 'callback.accountChanged',
+		account_ambiguous: 'callback.accountAmbiguous', account_disabled: 'callback.accountDisabled',
+		invalid_entry_token: 'callback.invalidState',
 	};
 	function callbackErrorMessage(e: unknown): string {
 		if (!(e instanceof ApiError)) return t('callback.unavailable');
 		const key = e.code ? CODE_MESSAGES[e.code] : undefined;
 		if (key) return t(key);
 		if (e.status === 401) return ticket ? t('login.password.invalid') : t('callback.invalidState');
-		if (e.status === 409) return t('callback.providerChanged');
+		if (e.status === 409) return t('callback.failed', { status: e.status });
 		if (e.status === 502) return t('callback.providerError');
 		if (e.status === 503 || e.status === 0) return t('callback.unavailable');
 		return t('callback.failed', { status: e.status });
@@ -51,7 +57,7 @@
 	function terminalApproval(e: unknown): boolean {
 		const decision = e instanceof ApiError ? signupApprovalState(e) : null;
 		if (!decision) return false;
-		approval = decision; ticket = null; linked = null; password = ''; username = ''; error = ''; loading = false; linking = false;
+		approval = decision; ticket = null; entryTicket = null; linked = null; password = ''; username = ''; error = ''; loading = false; linking = false;
 		return true;
 	}
 	function discard(token: string) {
@@ -62,9 +68,28 @@
 		let mapped: LoginAuthMapping;
 		try { mapped = loginAuthState(data, { federated: true }); }
 		catch { discard(data.token); error = t('callback.foreignDomain'); loading = false; return; }
-		ticket = null; password = ''; username = '';
+		ticket = null; entryTicket = null; password = ''; username = '';
 		setLoginAuth(mapped.state);
 		await goto(freshLoginDestination(mapped.target), { replaceState: true });
+	}
+	async function confirmEntry(event: Event) {
+		event.preventDefault();
+		if (!entryTicket || linking || !active || abandoned) return;
+		const body = { entry_token: entryTicket.entry_token, action: entryTicket.action };
+		linking = true; error = '';
+		try {
+			const data = await api.post<LoginResponse>('/api/v1/auth/providers/entry', body, undefined, undefined, { signal: AbortSignal.timeout(120_000), suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false });
+			await publish(data);
+		} catch (e) {
+			if (active && !abandoned) {
+				if (terminalApproval(e)) return;
+				error = callbackErrorMessage(e);
+			}
+		} finally { entryTicket = null; if (active) linking = false; }
+	}
+	function cancelEntry() {
+		if (!entryTicket) return;
+		entryTicket = null; abandoned = true; error = ''; linking = false;
 	}
 	async function link(event: Event, authenticated = false) {
 		event.preventDefault();
@@ -106,12 +131,12 @@
 			if (awaitingReadiness && get(authReady) && sessionKey() === ownerSession) {
 				owner = key; awaitingReadiness = false; settleReadiness?.(); return;
 			}
-			abandoned = true; ticket = null; linked = null; approval = null; password = ''; username = ''; error = ''; loading = false; linking = false;
+			abandoned = true; ticket = null; entryTicket = null; linked = null; approval = null; password = ''; username = ''; error = ''; loading = false; linking = false;
 			settleReadiness?.();
 		});
 		const unsubscribeAuthority = derived([authReady, logoutInProgress, projectSwitching], values => JSON.stringify(values)).subscribe(() => { authorityGeneration++; });
 		void complete();
-		return () => { active = false; settleReadiness?.(); ticket = null; approval = null; password = ''; username = ''; unsubscribe(); unsubscribeAuthority(); };
+		return () => { active = false; settleReadiness?.(); ticket = null; entryTicket = null; approval = null; password = ''; username = ''; unsubscribe(); unsubscribeAuthority(); };
 		async function complete() {
 			const params = $page.url.searchParams;
 			const code = params.get('code');
@@ -138,7 +163,10 @@
 			} catch (e) {
 				if (!active || abandoned) return;
 				if (terminalApproval(e)) return;
-				if (e instanceof ApiError && e.status === 409 && e.code === 'account_link_required' && e.linkTicket) {
+				if (e instanceof ApiError && e.status === 409 && e.code === 'account_entry_required' && e.entryTicket) {
+					if (originDomain && e.entryTicket.domain_id !== originDomain) error = t('callback.foreignDomain');
+					else entryTicket = e.entryTicket;
+				} else if (e instanceof ApiError && e.status === 409 && e.code === 'account_link_required' && e.linkTicket) {
 					if (originDomain && e.linkTicket.domain_id !== originDomain) error = t('callback.foreignDomain');
 					else { ticket = e.linkTicket; originDomain = ticket.domain_id; }
 				} else error = callbackErrorMessage(e);
@@ -166,7 +194,18 @@
 				<Alert tone="success">{t('link.complete', { domain: linked.domain_name })}</Alert>
 				<Button href={loginPath} class="w-full">{t('link.signInAgain')}</Button>
 			{:else}
-			{#if ticket}
+			{#if entryTicket}
+				<h1 class="text-xl font-semibold text-ink-0">{t(entryTicket.action === 'connect' ? 'entry.connectTitle' : 'entry.createTitle')}</h1>
+				<Alert tone="info">{t(entryTicket.action === 'connect' ? 'entry.connectDescription' : 'entry.createDescription')}</Alert>
+				{#if entryTicket.transfer_existing}<Alert tone="warning">{t('entry.transferExisting')}</Alert>{/if}
+				<dl class="space-y-2 text-sm">
+					<div><dt class="text-ink-2">{t('entry.email')}</dt><dd class="text-ink-0 break-words">{entryTicket.email}</dd></div>
+					{#if entryTicket.action === 'connect'}<div><dt class="text-ink-2">{t('entry.username')}</dt><dd class="text-ink-0 break-words">{entryTicket.username}</dd></div>{/if}
+				</dl>
+				<form onsubmit={confirmEntry}>
+					<Button type="submit" disabled={linking} ariaBusy={linking} class="w-full">{t(entryTicket.action === 'connect' ? 'entry.connect' : 'entry.create')}</Button>
+				</form>
+			{:else if ticket}
 				<h1 class="text-xl font-semibold text-ink-0">{t('link.title')}</h1>
 				<Alert tone="info">{t('link.description')}</Alert>
 				<form onsubmit={link} class="space-y-4">
@@ -180,7 +219,7 @@
 				{/if}
 				<Button variant="link" href="/recover" disabled={linking}>{t('recovery.title')}</Button>
 			{/if}
-			<Button variant="secondary" href={loginPath} disabled={linking} class="w-full">{t('common.backToLogin')}</Button>
+			<Button variant="secondary" href={loginPath} onclick={cancelEntry} disabled={linking && !entryTicket} class="w-full">{t('common.backToLogin')}</Button>
 			{/if}
 			{/if}
 		</div>{/if}

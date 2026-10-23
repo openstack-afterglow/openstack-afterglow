@@ -12,6 +12,8 @@ Public login asks for username/email and password without naming the internal Ac
 
 Role-preset preview separates native project links to add from legacy service links to retire. Confirmation states that native service policies must be deployed first and that IDs/direct grants survive. Use the existing viewport-bounded `FormModal`, wrapping code rows and semantic `Alert`; never present service-edge retirement as an additive-only action. Native policy lookup errors disable only the unavailable service and are not styled or narrated as confirmed revocation.
 
+Administrator user removal is visible in both desktop rows and compact-card actions. Existing danger Button, FormModal, Field/TextInput and warning/error Alert compose one bounded confirmation showing name, full native ID and home domain; exact full-ID entry is required. Self-removal stays disabled. Unknown outcomes offer close and fresh-directory confirmation rather than an automatic retry; account deletion never implies project/resource cascade. No new visual primitive or token is introduced.
+
 Built-in logo slots use `/afterglow-logo.svg`; favicon uses `/favicon.svg`. The wordmark is outlined from bundled Pretendard Latin (Inter-derived), so installed fonts cannot alter its width. Its actual artwork has 36-unit margins on every side in `viewBox="0 14 533.02 180"`; the supplied symbol and favicon retain their already-equal horizontal margins. Embedded dark-mode SVG styling is paired with explicit `color-scheme` on login images and theme-dependent admin previews. Responsive login sizing preserves aspect ratio and centers the entire image without stretching. These built-in SVG assets do not expand the raster-only administrator upload contract.
 
 ## Apple HIG adoption and non-goals

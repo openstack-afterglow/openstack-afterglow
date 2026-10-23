@@ -21,6 +21,8 @@ from app.api.common.errors import public_service_error
 from app.api.deps import CacheMode, cache_mode, get_admin_os_conn, get_os_conn, get_token_info, require_admin
 from app.database import get_session
 from app.services import (
+    account_identity,
+    account_spaces,
     activity,
     domain_iam,
     domain_projects,
@@ -383,6 +385,94 @@ async def update_user(
         return result
     except HTTPException:
         raise
+
+
+def _assert_user_deletion_identity(conn, user_id, actor_id):
+    """Protect exact actor and configured executor before any native deletion."""
+    if user_id == actor_id:
+        raise HTTPException(409, "identity_self_delete_forbidden")
+    access = conn.session.auth.get_access(conn.session)
+    executor_id = getattr(access, "user_id", None)
+    if not isinstance(executor_id, str) or not executor_id:
+        raise public_service_error(503, "identity_executor_unverified")
+    if user_id == executor_id:
+        raise HTTPException(409, "identity_service_delete_forbidden")
+
+
+@router.delete("/users/{user_id}", dependencies=[Depends(require_admin)], status_code=204)
+@identity_roles._complete_mutation
+async def delete_user(
+    user_id: str,
+    domain_id: str = Query(..., min_length=1),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
+    token_info: dict = Depends(get_token_info),
+):
+    """Delete one exact native account; never cascade to projects or resources."""
+    try:
+        async with identity_roles._graph_lock(conn) as lease:
+            # Do not use _selected_objects: its caller may be a Personal member.
+            await asyncio.to_thread(_selected_domain, conn, domain_id)
+            target = await asyncio.to_thread(_domain_object, conn, domain_id, "user", user_id)
+            ks = await asyncio.to_thread(keystone._get_admin_ks_client)
+            catalog = await asyncio.to_thread(identity_roles.load_catalog, conn)
+            await asyncio.to_thread(_assert_user_deletion_identity, conn, user_id, token_info["user_id"])
+            await project_ownership_journal.assert_user_resolved(user_id)
+            await account_identity.assert_user_transfer_resolved(user_id)
+            # openstacksdk User drops undeclared extras; keystoneclient keeps the marker.
+            native_target = await asyncio.to_thread(ks.users.get, user_id)
+            await account_spaces.assert_user_deletion_safe(
+                user_id, ks=ks, enrollment_id=identity_roles._field(native_target, "afterglow_enrollment_id")
+            )
+            await asyncio.to_thread(identity_roles.assert_system_admin_remains, users={user_id})
+            # Native automation may carry only admin on a service project, not
+            # a service role. Privileged identities require guarded grant removal
+            # first; never infer account safety from names or federation alone.
+            if await domain_iam.protected_user(target, domain_id, credentials=False, system_services=True):
+                raise HTTPException(409, "identity_service_delete_forbidden")
+            await asyncio.to_thread(project_service.assert_user_ownership_mutation_safe, user_id, ks=ks)
+            affected = await asyncio.to_thread(
+                domain_projects.assert_managers_remain,
+                ks=ks,
+                catalog=catalog,
+                user_id=user_id,
+                disabled_user_ids={user_id},
+            )
+            await identity_roles._session_ready({user_id})
+            await require_admin(token_info)
+
+            def native_delete():
+                try:
+                    conn.identity.delete_user(user_id, ignore_missing=False)
+                except Exception as exc:
+                    raise _identity_error(exc) from exc
+
+            succeeded = False
+            try:
+                await identity_roles._write(lease, native_delete)
+                succeeded = True
+            finally:
+                # A failed/lost response may have committed. Do not replay;
+                # revoke durable caller families and clear every identity view.
+                try:
+                    await session_store.revoke_user_sessions(user_id, revoke_keystone=True)
+                finally:
+                    try:
+                        await identity_roles._sync_domain_managers(conn, lease, affected, ks=ks)
+                    finally:
+                        await invalidate("afterglow:admin:*")
+                        await invalidate(f"afterglow:user:{user_id}:*")
+                        await identity_roles._applied(
+                            None,
+                            [],
+                            None,
+                            {user_id},
+                            token_info,
+                            "admin_user_delete",
+                            {"user_id": user_id, "domain_id": domain_id},
+                            status="success" if succeeded else "failed",
+                        )
+    except Exception as exc:
+        raise _identity_error(exc) from exc
 
 
 @router.post("/users/{user_id}/revoke-sessions", dependencies=[Depends(require_admin), Depends(_selected_objects)])

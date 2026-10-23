@@ -4,7 +4,7 @@ import { siteConfig } from '$lib/config/site';
 import { auth, authRecovery, getAuthVerificationEpoch, logoutInProgress, projectSwitching } from '$lib/stores/auth';
 import type { AuthState } from '$lib/stores/auth';
 import { refreshAuthState, sessionScopeKey, type SessionStateUpdate } from '$lib/utils/authSession';
-import { ApiError } from '$lib/api/errors';
+import { ApiError, decodeProviderCallbackError, type ProviderEntryTicket } from '$lib/api/errors';
 import { isDocsPath } from '$lib/docs/paths';
 import { t } from '$lib/i18n/ns/shared';
 import {
@@ -537,20 +537,14 @@ async function request<T>(
 		let detail = res.statusText;
 		let code: string | undefined;
 		let linkTicket: { link_token: string; domain_id: string } | undefined;
+		let entryTicket: ProviderEntryTicket | undefined;
 		try {
 			const body = await res.json();
 			detail = formatErrorDetail(body, res.statusText);
-			if (typeof body?.code === 'string') code = body.code;
-			else if (typeof body?.detail?.code === 'string') code = body.detail.code;
-			else if (res.status === 403 && (body?.detail === 'signup_approval_pending' || body?.detail === 'signup_approval_rejected')) code = body.detail;
-			if (code === 'account_link_required') {
-				const ticket = body?.detail?.code ? body.detail : body;
-				if (typeof ticket.link_token === 'string' && typeof ticket.domain_id === 'string') {
-					linkTicket = { link_token: ticket.link_token, domain_id: ticket.domain_id };
-				}
-				// Never serialize a bearer ticket into an error message or alert.
-				detail = 'account_link_required';
-			}
+			({ code, linkTicket, entryTicket } = decodeProviderCallbackError(body));
+			if (!code && res.status === 403 && (body?.detail === 'signup_approval_pending' || body?.detail === 'signup_approval_rejected')) code = body.detail;
+			// Never serialize a bearer ticket into an error message or alert, even if malformed.
+			if (code === 'account_link_required' || code === 'account_entry_required') detail = code;
 		} catch {
 			detail = await res.text().catch(() => res.statusText);
 		}
@@ -559,7 +553,7 @@ async function request<T>(
 		if (res.status === 403 && code === 'system_admin_required' && /^\/api\/v1\/admin(?:\/|$|[?#])/.test(path)) {
 			void handleAdminForbidden();
 		}
-		throw new ApiError(res.status, detail, code, linkTicket);
+		throw new ApiError(res.status, detail, code, linkTicket, entryTicket);
 	}
 
 	if (res.status === 204) return undefined as T;

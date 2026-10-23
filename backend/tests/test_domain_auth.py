@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app import database
-from app.models.account_spaces import PersonalProjectIntent, SharedDomainIntent
+from app.models.account_spaces import AccountIdentityTransfer, PersonalProjectIntent, SharedDomainIntent
 from app.models.domain_auth import DomainIdentityProvider, DomainLoginPolicy
 from app.models.domain_iam import DomainEnrollment
 from app.models.domain_quotas import DomainQuotaPolicy
@@ -191,6 +191,9 @@ class FakeKeystone:
             def update(self, uid, **kwargs):
                 outer.user_writes.append(("update", uid, kwargs))
                 for key, value in kwargs.items():
+                    # Keystone's falsy federated branch preserves existing links.
+                    if key == "federated" and not value:
+                        continue
                     setattr(outer.user_rows[uid], key, value)
                 return outer.user_rows[uid]
 
@@ -348,6 +351,7 @@ async def db(monkeypatch, tmp_path):
         await connection.run_sync(SharedDomainIntent.__table__.create)
         await connection.run_sync(PersonalProjectIntent.__table__.create)
         await connection.run_sync(OrganizationBinding.__table__.create)
+        await connection.run_sync(AccountIdentityTransfer.__table__.create)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr(database, "is_db_available", lambda: True)
     monkeypatch.setattr(database, "get_session_factory", lambda: factory)
@@ -1081,10 +1085,12 @@ def api(env, wire, monkeypatch):
             "username": "dev",
             "project_id": project_id,
             "project_name": personal["name"] if project_id else "",
-            "domain_id": personal["domain_id"] if project_id else "dom-a",
-            "domain_name": "Personal" if project_id else "Alpha",
-            "identity_domain_id": "dom-a",
-            "identity_domain_name": "Alpha",
+            "domain_id": personal["domain_id"] if project_id else env.keystone.user_rows["fed-user"].domain_id,
+            "domain_name": "Personal"
+            if project_id
+            else env.keystone.domain_rows[env.keystone.user_rows["fed-user"].domain_id].name,
+            "identity_domain_id": env.keystone.user_rows["fed-user"].domain_id,
+            "identity_domain_name": env.keystone.domain_rows[env.keystone.user_rows["fed-user"].domain_id].name,
             "is_domain_manager": False,
             "is_system_admin": False,
             "roles": project_service._access(
@@ -1117,7 +1123,7 @@ def api(env, wire, monkeypatch):
         "get_identity_user",
         lambda uid, *, operation=None: {
             "id": uid,
-            "domain_id": "dom-a",
+            "domain_id": env.keystone.user_rows[uid].domain_id,
             "email": "Dev@corp.example",
         },
     )
@@ -1907,8 +1913,15 @@ async def test_sql_allowlist_removal_denies_pending_login_refresh_and_password_f
     assert env.wire.federation.calls == []
 
 
+def configured_accounts_identity(env):
+    """Configured OIDC normal-login fixture already linked in canonical Accounts."""
+    env.keystone.user_rows["fed-user"].domain_id = "dom-accounts"
+    env.wire.federation.domain_id = "dom-accounts"
+
+
 @pytest.mark.parametrize("kind", ["oidc", "github"])
 async def test_file_provider_completes_native_flow_without_sql_verified_fallback(env, kind):
+    configured_accounts_identity(env)
     fields = oidc_fields() if kind == "oidc" else oidc_fields(kind="github", issuer_url=None)
     configure_file_auth(env.settings, providers={"corp": fields}, default=["corp"])
     await svc.update_policy(
@@ -1963,7 +1976,7 @@ async def test_file_provider_completes_native_flow_without_sql_verified_fallback
     state, binding = await start(env.wire.idp, "cfg:corp", "dom-b")
     other_origin = await svc.complete_authorization("good-code", state, binding)
     assert (other_origin.user_id, other_origin.domain_id, other_origin.provider_id) == ("fed-user", "dom-b", "cfg:corp")
-    assert env.keystone.user_rows["fed-user"].domain_id == "dom-a"
+    assert env.keystone.user_rows["fed-user"].domain_id == "dom-accounts"
     assert env.keystone.assignments == [] and env.keystone.project_writes == []
     assert env.keystone.revoked == []
 
@@ -1971,6 +1984,7 @@ async def test_file_provider_completes_native_flow_without_sql_verified_fallback
 async def test_same_issuer_instances_keep_one_canonical_subject_across_authorized_domains(env, monkeypatch):
     from app.services import domain_projects
 
+    configured_accounts_identity(env)
     monkeypatch.setattr(domain_projects, "assert_membership", lambda uid, did, **_: None)
     configure_file_auth(
         env.settings,
@@ -1990,7 +2004,7 @@ async def test_same_issuer_instances_keep_one_canonical_subject_across_authorize
         assert methods["providers"] == [{"id": f"cfg:{key}", "name": "Corp SSO", "kind": "oidc"}]
         with pytest.raises(svc.DomainAuthNotFound):
             await svc.start_authorization(domain_id, f"cfg:{denied}")
-        env.wire.federation.domain_id = "dom-a"
+        env.wire.federation.domain_id = "dom-accounts"
         env.wire.federation.protocol_id = protocol
         env.wire.federation.user_id = user_id
         state, binding = await start(env.wire.idp, f"cfg:{key}", domain_id)
@@ -2018,6 +2032,7 @@ async def test_configured_native_binding_does_not_accept_another_mapping(
 ):
     from app.services import domain_projects
 
+    configured_accounts_identity(env)
     monkeypatch.setattr(domain_projects, "assert_membership", lambda uid, did, **_: None)
     configure_file_auth(
         env.settings,
@@ -2038,6 +2053,7 @@ async def test_configured_native_binding_does_not_accept_another_mapping(
 
 
 async def test_adding_login_option_preserves_existing_pending_login_and_provider_session(env):
+    configured_accounts_identity(env)
     configure_file_auth(env.settings, default=["corp"])
     state, binding = await start(env.wire.idp, "cfg:corp")
     configure_file_auth(
@@ -2114,6 +2130,7 @@ async def test_file_membership_is_rechecked_at_every_authority_boundary(env, cha
 
 
 async def test_file_revision_is_stable_on_reload_and_label_edits_and_secret_is_domain_bound(env):
+    configured_accounts_identity(env)
     configure_file_auth(env.settings, default=["corp"])
     original = await svc._load_provider("dom-a", "cfg:corp")
     state, binding = await start(env.wire.idp, "cfg:corp")
@@ -2136,6 +2153,7 @@ async def test_file_revision_is_stable_on_reload_and_label_edits_and_secret_is_d
 
 
 async def test_file_discovery_cannot_move_credentials_even_across_domains_and_nonsecret_edits(env):
+    configured_accounts_identity(env)
     configure_file_auth(env.settings, default=["corp"])
     original = await svc._load_provider("dom-a", "cfg:corp")
     state, binding = await start(env.wire.idp, "cfg:corp")
@@ -2190,6 +2208,7 @@ async def test_file_provider_does_not_bypass_database_or_discovery_binding_outag
 async def test_api_file_login_session_revision_survives_real_rotation(api, env, provider_origin):
     from app.services import jwt_service, session_store
 
+    configured_accounts_identity(env)
     configure_file_auth(env.settings, domains={provider_origin: ["corp"]})
     async with api.client as client:
         resolved = await client.get("/api/v1/auth/domains/resolve", params={"name": provider_origin})
@@ -2201,14 +2220,14 @@ async def test_api_file_login_session_revision_survives_real_rotation(api, env, 
         done = await client.post("/api/v1/auth/providers/callback", json={"code": "good-code", "state": state})
         assert done.status_code == 200, done.text
         assert done.json()["domain_id"] == api.personal["domain_id"]
-        assert done.json()["identity_domain_id"] == "dom-a"
+        assert done.json()["identity_domain_id"] == "dom-accounts"
         assert done.json()["project_id"] == done.json()["default_project_id"] == api.personal["id"]
         claims = jwt_service.verify_refresh(done.json()["refresh_token"])
         original = await session_store.get_session(claims["jti"])
         assert original["provider_id"] == "cfg:corp"
         assert original["project_id"] == api.personal["id"]
         assert original["domain_id"] == api.personal["domain_id"]
-        assert original["identity_domain_id"] == "dom-a"
+        assert original["identity_domain_id"] == "dom-accounts"
         assert original["provider_domain_id"] == provider_origin
         rotated = await session_store.store_session(
             "file-provider-rotated",
@@ -2227,7 +2246,7 @@ async def test_api_file_login_session_revision_survives_real_rotation(api, env, 
         assert current["provider_id"] == "cfg:corp" and current["login_email"] == "Dev@corp.example"
         assert current["project_id"] == api.personal["id"]
         assert current["domain_id"] == api.personal["domain_id"]
-        assert current["identity_domain_id"] == "dom-a"
+        assert current["identity_domain_id"] == "dom-accounts"
         assert current["provider_domain_id"] == provider_origin
         await svc.require_provider(
             provider_origin, current["provider_id"], current["provider_revision"], current["login_email"]

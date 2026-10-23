@@ -150,6 +150,7 @@ const targets = {
 			selectors: [
 				"tests/test_admin_write.py",
 				"tests/test_admin_identity.py",
+				"tests/test_admin_user_deletion.py",
 				"tests/test_admin_credentials.py",
 				"tests/test_admin_identity_inventory.py",
 				"tests/test_admin_identity_domain_scope.py",
@@ -204,6 +205,8 @@ const targets = {
 				"src/lib/components/admin/users/__tests__/UserDomainManagers.test.ts",
 				"src/lib/components/admin/users/__tests__/AdminUserCreateModal.test.ts",
 				"src/lib/components/admin/users/__tests__/AdminUserEditModal.test.ts",
+				"src/lib/components/admin/users/__tests__/AdminUserDeleteModal.test.ts",
+				"src/lib/components/admin/users/__tests__/AdminUsersPage.delete.test.ts",
 				"src/routes/admin/chat/quotas/__tests__/page.test.ts",
 				"src/lib/components/admin/roles/__tests__/catalog.test.ts",
 				"src/routes/admin/roles/__tests__/page.boundaries.test.ts"

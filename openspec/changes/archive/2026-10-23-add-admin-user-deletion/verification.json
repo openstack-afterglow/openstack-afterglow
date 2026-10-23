@@ -1,0 +1,18 @@
+{
+  "status":"implemented_and_source_qualified_not_operationally_deployed",
+  "source_sha256":"e6b03e2a5a5c36d3543ace8ce7791e5ecf1801d7af08065945bd4e90f5d2c8fc",
+  "source_files":3434,
+  "feature":"DELETE /api/v1/admin/users/{user_id}?domain_id=required-native-home returns204 after exact native deletion; responsive typed-ID user confirmation",
+  "safety":["fresh system admin revalidated before dispatch under shared graph lease","exact actor/executor/configured username and actual native admin/service/system authority protected","owned Personal primary/additional projects and unresolved enrollment/provisioning/identity-transfer/ownership block deletion","no project or cloud resource cascade; confirmed settled empty receipts do not block forever","target sessions revoked, native/authority/inventory invalidated even after uncertain dispatched result","exact full native user ID confirmation with actor/home/session/project/domain ABA fences and no automatic401/timeout/5xx replay"],
+  "checks":{"backend_focused":75,"frontend_focused":46,"access_backend":1404,"access_frontend":285,"gate_exit_code":0,"gate_backend":9127,"gate_backend_skipped":95,"gate_frontend_files":434,"gate_frontend_tests":5075,"gate_contracts":181,"gate_functional":166,"ruff_files":723,"svelte_errors":0,"svelte_existing_warnings":16,"i18n_errors":0,"i18n_existing_key_order_warnings":37},
+  "actual_runtime":"Real Uvicorn TCP and installed SDK Connection/Identity proxy DELETE over loopback; SQLite actual, Redis/native directory and authority synthetic. Only final native DELETE uses actual SDK TCP, not a real human Personal-token to admin-executor exchange.403wrong-domain/409admin-only-service/204delete/404absent, native DELETE exactly1, target sessions revoked and actor/projects preserved. Fixture grant removal models native behavior; it is not proof of actual Keystone grant cleanup.",
+  "images":"Canonical Dockerfile API/frontend/worker both arm64 native and amd64 Docker Desktop emulation built/executed. API actual self-guard409, worker guard imports, both frontend HTTP200; compiled arm64 Chromium deletion against synthetic API.",
+  "browser":"Source-dev origin19130: cancellation/full-ID/success/denial/uncertain-no-retry,390/767/768/1023/1024/1440px overflow0 and nine locales. Compiled-image origin19132: actual synthetic delete1, final stable390/1440 panel bounds and dark/light captures. Named-tab aliasing was isolated with a fresh unique profile; fixture preflight failure was corrected without modifying product auth.",
+  "operational_changes":false,
+  "deployed":false,
+  "canonical_local_compose_cutover_verified":false,
+  "local_deployment_limit":"Standalone disposable image runtime checks only, not canonical Compose deployment acceptance. Shared local backend may target production schema; no authorized/preservation-qualified backend/frontend Compose cutover performed.",
+  "limits":["No production account deletion, cloud native grants or resources changed","Shared operator local backend not rebuilt/restarted against production database","Current source SQL journal schemas including102 are deployment prerequisite","Unknown native users absent from directory/orphan grants need separately reviewed cleanup; role modal candidate404 not silently swallowed","Deleting a native account does not suspend external IdP or stop future enrollment by policy"],
+  "evidence_root":"~/.local/share/afterglow-proofs/admin-user-deletion-20261023",
+  "archive":"rapid --skip-specs --yes"
+}

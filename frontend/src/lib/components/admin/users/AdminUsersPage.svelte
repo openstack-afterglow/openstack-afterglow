@@ -1,8 +1,8 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
-	import { onDestroy, onMount } from 'svelte';
-	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
+	import { onDestroy, onMount, untrack } from 'svelte';
+	import { auth, authReady, projectSwitching, logoutInProgress } from '$lib/stores/auth';
 	import { derived } from 'svelte/store';
 	import { api, ApiError } from '$lib/api/client';
 	import type { User } from '$lib/types/common';
@@ -14,6 +14,7 @@
 	import AdminUsersTable from '$lib/components/admin/users/AdminUsersTable.svelte';
 	import AdminUserCreateModal from '$lib/components/admin/users/AdminUserCreateModal.svelte';
 	import AdminUserEditModal from '$lib/components/admin/users/AdminUserEditModal.svelte';
+	import AdminUserDeleteModal from '$lib/components/admin/users/AdminUserDeleteModal.svelte';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -29,12 +30,12 @@
 	let creationToken: string | undefined;
 	let creationProject: string | undefined;
 	let creationAllowed = $state(false);
-	const unsubscribeCreation = derived([auth, authReady, projectSwitching], ([state, ready, switching]) => ({ state, ready, switching })).subscribe(({ state, ready, switching }) => {
-		const owner = JSON.stringify([state.sessionId, state.userId, state.identityDomainId, state.domainId, state.projectId, state.isSystemAdmin, ready, switching]);
+	const unsubscribeCreation = derived([auth, authReady, projectSwitching, logoutInProgress], ([state, ready, switching, loggingOut]) => ({ state, ready, switching, loggingOut })).subscribe(({ state, ready, switching, loggingOut }) => {
+		const owner = JSON.stringify([state.sessionId, state.userId, state.identityDomainId, state.domainId, state.projectId, state.isSystemAdmin, ready, switching, loggingOut]);
 		if (owner !== creationOwner) { creationOwner = owner; creationRevision++; }
 		creationToken = state.token ?? undefined;
 		creationProject = state.projectId ?? undefined;
-		creationAllowed = !!state.token && !!state.userId && state.isSystemAdmin === true && ready && !switching;
+		creationAllowed = !!state.token && !!state.userId && state.isSystemAdmin === true && ready && !switching && !loggingOut;
 	});
 	let loadError = $state('');
 	let activityError = $state('');
@@ -45,6 +46,15 @@
 	let refreshing = $state(false);
 	let showCreate = $state(false);
 	let editUser = $state<User | null>(null);
+	let deleteSelection = $state<{ user: User; revision: number; domain: string } | null>(null);
+	let preparingDelete = $state(false);
+	let deleting = $state(false);
+	let deletePreparation = 0;
+	$effect.pre(() => {
+		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
+		domainId;
+		untrack(() => { creationRevision++; deleteSelection = null; deletePreparation++; preparingDelete = false; });
+	});
 
 	// 검색·정렬·필터 (auto-refresh 갱신 시에도 유지됨)
 	let search = $state('');
@@ -118,13 +128,16 @@
 		sortDir;
 		currentPage = 1;
 	});
+	$effect(() => { if (currentPage > totalPages) currentPage = totalPages; });
 
-	async function loadAll() {
-		if (!alive) return;
+	async function loadAll(fresh = false): Promise<boolean> {
+		if (!alive) return false;
 		const generation = ++loadGeneration;
 		const requestToken = token;
 		const requestProject = projectId;
-		const owns = () => alive && generation === loadGeneration && requestToken === token && requestProject === projectId;
+		const requestDomain = domainId;
+		const boundary = creationRevision;
+		const owns = () => alive && generation === loadGeneration && requestToken === token && requestProject === projectId && requestDomain === domainId && boundary === creationRevision;
 		loadError = '';
 		if (allUsers.length === 0) loading = true;
 		else refreshing = true;
@@ -132,39 +145,46 @@
 			let marker: string | null = null;
 			const collected: User[] = [];
 			do {
-				let url = domainPath('/api/v1/admin/users?limit=100', domainId);
+				let url = domainPath('/api/v1/admin/users?limit=100', requestDomain);
 				if (marker) url += `&marker=${encodeURIComponent(marker)}`;
 				const res = await api.get<{ items: User[]; next_marker: string | null }>(
 					url,
 					requestToken,
-					requestProject
+					requestProject,
+					{ refresh: fresh }
 				);
-				if (!owns()) return;
-				if (res.items.some(user => user.domain_id !== domainId)) throw new Error(td('scope.invalid'));
+				if (!owns()) return false;
+				if (res.items.some(user => user.domain_id !== requestDomain)) throw new Error(td('scope.invalid'));
 				collected.push(...(res.items ?? []));
 				marker = res.next_marker ?? null;
 			} while (marker);
-			if (owns()) allUsers = collected;
+			if (!owns()) return false;
+			allUsers = collected;
+			return true;
 		} catch (e) {
 			if (owns()) { allUsers = []; loadError = e instanceof ApiError ? e.message : td('users.loadFailed'); }
+			return false;
 		} finally {
 			if (owns()) { loading = false; refreshing = false; }
 		}
 	}
 
-	async function loadActivity() {
+	async function loadActivity(fresh = false) {
 		if (!alive) return;
 		const generation = ++activityGeneration;
 		const requestToken = token;
 		const requestProject = projectId;
-		const owns = () => alive && generation === activityGeneration && requestToken === token && requestProject === projectId;
+		const requestDomain = domainId;
+		const boundary = creationRevision;
+		const owns = () => alive && generation === activityGeneration && requestToken === token && requestProject === projectId && requestDomain === domainId && boundary === creationRevision;
 		activityError = '';
 		loadingActivity = true;
 		try {
 			const data = await api.get<ActivityEvent[]>(
-				domainPath('/api/v1/admin/users/activity?limit=10', domainId),
+				domainPath('/api/v1/admin/users/activity?limit=10', requestDomain),
 				requestToken,
-				requestProject
+				requestProject,
+				{ refresh: fresh }
 			);
 			if (owns()) activityLog = Array.isArray(data) ? data : [];
 		} catch (e) {
@@ -224,6 +244,41 @@
 			return e instanceof ApiError ? e.message : t('userPage.updateFailed');
 		}
 	}
+	async function openDelete(user: User) {
+		if (!alive || !creationAllowed || deleting || preparingDelete || user.id === $auth.userId || user.domain_id !== domainId) return;
+		const boundary = creationRevision;
+		const targetDomain = domainId;
+		const request = ++deletePreparation;
+		preparingDelete = true;
+		// Every new confirmation rereads native inventory, including after an uncertain write.
+		const loaded = await loadAll(true);
+		if (!alive || request !== deletePreparation) return;
+		preparingDelete = false;
+		if (!loaded || !creationAllowed || boundary !== creationRevision || targetDomain !== domainId) return;
+		const target = allUsers.find(item => item.id === user.id && item.domain_id === targetDomain);
+		if (target) deleteSelection = { user: { ...target }, revision: boundary, domain: targetDomain };
+	}
+
+	async function deleteUser(id: string, confirmation: string): Promise<true | { error: string; rereadRequired: boolean }> {
+		const selected = deleteSelection;
+		const owns = () => alive && creationAllowed && selected !== null && deleteSelection === selected && selected.revision === creationRevision && selected.domain === domainId;
+		if (!owns() || !selected || deleting || confirmation !== id || selected.user.id !== id || selected.user.domain_id !== domainId || id === $auth.userId || !allUsers.some(user => user.id === id && user.domain_id === selected.domain)) {
+			return { error: td('scope.invalid'), rereadRequired: true };
+		}
+		deleting = true;
+		try {
+			await api.delete<void>(domainPath(`/api/v1/admin/users/${encodeURIComponent(id)}`, selected.domain), creationToken, creationProject, { replayOnUnauthorized: false });
+			if (!owns()) return { error: td('scope.invalid'), rereadRequired: true };
+			if (editUser?.id === id && editUser.domain_id === selected.domain) editUser = null;
+			await Promise.all([loadAll(true), loadActivity(true)]);
+			return owns() ? true : { error: td('scope.invalid'), rereadRequired: true };
+		} catch (e) {
+			if (!owns()) return { error: td('scope.invalid'), rereadRequired: true };
+			return { error: e instanceof ApiError ? e.message : t('userDelete.failed'), rereadRequired: !(e instanceof ApiError) || e.status <= 0 || e.status >= 500 || e.status === 408 || e.status === 401 };
+		} finally {
+			deleting = false;
+		}
+	}
 
 	function formatActivityTime(iso: string): string {
 		if (!iso) return '—';
@@ -257,6 +312,9 @@
 
 {#if creationAllowed}{#key `${creationRevision}:${domainId}`}<AdminUserCreateModal bind:open={showCreate} {domainId} onCreate={create} />{/key}{/if}
 <AdminUserEditModal bind:user={editUser} {domainId} onUpdate={update} />
+{#each creationAllowed && deleteSelection && deleteSelection.revision === creationRevision && deleteSelection.domain === domainId ? [deleteSelection] : [] as selected (selected)}
+	<AdminUserDeleteModal user={selected.user} domainId={selected.domain} {domainName} onDelete={deleteUser} onClose={() => { if (deleteSelection === selected) deleteSelection = null; }} />
+{/each}
 
 <PageShell>
 	<div data-tour="admin-identity-header">
@@ -378,6 +436,9 @@
 					page={currentPage}
 					hasPrev={currentPage > 1}
 					hasNext={currentPage < totalPages}
+					actorId={$auth.userId}
+					deleteDisabled={!creationAllowed || deleting || preparingDelete}
+					onDelete={openDelete}
 					onEdit={(u) => {
 						editUser = u;
 					}}

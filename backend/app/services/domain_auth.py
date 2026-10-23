@@ -143,6 +143,21 @@ class AccountLinkRequired(DomainAuthConflict):
         self.domain_id = domain_id
 
 
+class AccountEntryRequired(DomainAuthConflict):
+    code = "account_entry_required"
+
+    def __init__(self, entry_token: str, domain_id: str, identity, user=None, *, transfer_existing=False):
+        from app.services.identity_roles import _field
+
+        super().__init__("Confirm connecting this account" if user is not None else "Confirm creating an account")
+        self.entry_token = entry_token
+        self.domain_id = domain_id
+        self.action = "connect" if user is not None else "create"
+        self.email = identity.email.casefold()
+        self.username = _field(user, "name") if user is not None else None
+        self.transfer_existing = transfer_existing
+
+
 class DomainAuthInvalid(DomainAuthError):
     status_code = 422
     code = "invalid"
@@ -163,6 +178,12 @@ def domain_auth_error_response(exc: DomainAuthError) -> JSONResponse:
     payload = {"detail": exc.detail, "code": exc.code}
     if isinstance(exc, AccountLinkRequired):
         payload.update(link_token=exc.link_token, domain_id=exc.domain_id)
+    if isinstance(exc, AccountEntryRequired):
+        payload.update(entry_token=exc.entry_token, domain_id=exc.domain_id, action=exc.action, email=exc.email)
+        if exc.username is not None:
+            payload["username"] = exc.username
+        if exc.transfer_existing:
+            payload["transfer_existing"] = True
     return JSONResponse(payload, status_code=exc.status_code)
 
 
@@ -1763,6 +1784,74 @@ async def _consume_link_ticket(ticket: str, browser_binding: str) -> dict:
     return record
 
 
+async def _entry_ticket(row, identity: VerifiedIdentity, user, browser_binding: str, *, ks, transfer=None) -> str:
+    from app.services import account_identity, account_spaces
+    from app.services.identity_roles import _field
+
+    account = await asyncio.to_thread(account_spaces.shared_domain, "account", ks=ks)
+    ticket = secrets.token_urlsafe(32)
+    nonce = os.urandom(12)
+    record = {
+        "browser": _digest(browser_binding),
+        "domain_id": row.domain_id,
+        "provider_id": row.id,
+        "revision": int(row.revision),
+        "action": "connect" if user is not None else "create",
+        "user_id": _field(user, "id") if user is not None else None,
+        "identity_domain_id": _field(account, "id"),
+        "email": identity.email,
+        "issuer": identity.issuer,
+        "subject": identity.subject,
+        "bearer": identity.bearer,
+        "transfer_source": {
+            "id": _field(transfer, "id"),
+            "domain_id": _field(transfer, "domain_id"),
+            "snapshot": account_identity._identity_snapshot(transfer),
+        }
+        if transfer is not None
+        else None,
+    }
+    encrypted = AESGCM(derive_encryption_subkey(b"domain_idp_entry_ticket")).encrypt(
+        nonce, json.dumps(record).encode(), _digest(ticket).encode()
+    )
+    try:
+        stored = await (await _redis()).set(
+            "afterglow:domain_auth:entry:" + _digest(ticket),
+            base64.urlsafe_b64encode(nonce + encrypted).decode(),
+            ex=STATE_TTL_SECONDS,
+            nx=True,
+        )
+        if not stored:
+            raise RuntimeError("Entry ticket collision")
+    except Exception:
+        raise DomainAuthUnavailable("Account entry storage is unavailable") from None
+    return ticket
+
+
+async def _consume_entry_ticket(ticket: str, browser_binding: str) -> dict:
+    invalid = DomainAuthUnauthenticated("Account entry is invalid or expired", code="invalid_entry_token")
+    if not isinstance(ticket, str) or not 16 <= len(ticket) <= 256 or not browser_binding:
+        raise invalid
+    try:
+        raw = await (await _redis()).getdel("afterglow:domain_auth:entry:" + _digest(ticket))
+    except Exception:
+        raise DomainAuthUnavailable("Account entry storage is unavailable") from None
+    if not raw:
+        raise invalid
+    try:
+        sealed = base64.urlsafe_b64decode(raw)
+        record = json.loads(
+            AESGCM(derive_encryption_subkey(b"domain_idp_entry_ticket")).decrypt(
+                sealed[:12], sealed[12:], _digest(ticket).encode()
+            )
+        )
+    except (ValueError, TypeError, InvalidTag, binascii.Error):
+        raise invalid from None
+    if not isinstance(record, dict) or not hmac.compare_digest(record.get("browser", ""), _digest(browser_binding)):
+        raise invalid
+    return record
+
+
 async def _canonical_federation(row, identity, user, domain, *, ks) -> FederatedLogin:
     from app.services.identity_roles import _field
 
@@ -1867,37 +1956,181 @@ async def complete_authorization(code: str, state: str, browser_binding: str) ->
     async with domain_iam._iam_write() as (lease, ks, catalog):
         row = await _current_provider(domain_id, row.id, int(row.revision))
         await asyncio.to_thread(_require_stable_native_mapping, ks, row)
-        bound, existing = await account_identity.directory(ks, identity, row)
+        await account_identity.recover_identity_transfer(row, identity, lease=lease, ks=ks)
+        bound, existing, transfer = await account_identity.directory(ks, identity, row)
+        if bound is None and row.kind == "oidc" and row.id.startswith(_CONFIG_PROVIDER_PREFIX):
+            ticket = await _entry_ticket(row, identity, existing, browser_binding, ks=ks, transfer=transfer)
+            raise AccountEntryRequired(ticket, domain_id, identity, existing, transfer_existing=transfer is not None)
         if bound is None and existing is not None:
             ticket = await _link_ticket(row, identity, existing, browser_binding)
             raise AccountLinkRequired(ticket, domain_id)
-        if bound is None:
-            if getattr(row, "_organization", None) is not None:
-                from app.services import organization_provisioning
+        return await _login_verified_identity(row, identity, bound, domain, lease=lease, ks=ks, catalog=catalog)
 
-                await organization_provisioning.precheck(row, identity, ks=ks)
-            elif await _origin_admission_required(row, identity, ks):
-                await account_identity.require_admission(
-                    "", domain_id, row, identity.email, lease=lease, ks=ks, catalog=catalog, new=True
-                )
-            bound = await account_identity.create_external(
-                row, identity, lease=lease, ks=ks, catalog=catalog, admission_domain_id=None
+
+async def _login_verified_identity(
+    row, identity, bound, domain, *, lease, ks, catalog, confirmed_entry=False, transfer_journal=None
+):
+    from app.services import account_identity
+
+    if bound is None:
+        if getattr(row, "_organization", None) is not None:
+            from app.services import organization_provisioning
+
+            await organization_provisioning.precheck(row, identity, ks=ks)
+        elif await _origin_admission_required(row, identity, ks):
+            await account_identity.require_admission(
+                "", domain["id"], row, identity.email, lease=lease, ks=ks, catalog=catalog, new=True
             )
+        bound = await account_identity.create_external(
+            row,
+            identity,
+            lease=lease,
+            ks=ks,
+            catalog=catalog,
+            admission_domain_id=None,
+            confirmed_entry=confirmed_entry,
+        )
+        await _admit_verified_identity(row, identity, bound, lease=lease, ks=ks, catalog=catalog)
+    else:
+        await account_identity.require_enrollment_complete(bound)
+        organization = getattr(row, "_organization", None) is not None
+        if organization:
+            from app.services import organization_provisioning
+
+            await organization_provisioning.precheck(row, identity, ks=ks)
+        else:
+            # Admission decides before any native association write.
             await _admit_verified_identity(row, identity, bound, lease=lease, ks=ks, catalog=catalog)
+        bound = await account_identity.attach(bound, row, identity, lease=lease, ks=ks)
+        if organization:
+            await _admit_verified_identity(row, identity, bound, lease=lease, ks=ks, catalog=catalog)
+    if transfer_journal is not None:
+        await account_identity.confirm_identity_transfer(transfer_journal, bound, row, identity, lease=lease, ks=ks)
+    return await _canonical_federation(row, identity, bound, domain, ks=ks)
+
+
+async def complete_account_entry(ticket: str, browser_binding: str, *, action: str) -> FederatedLogin:
+    from app.services.identity_roles import _to_completion
+
+    task = asyncio.ensure_future(_complete_account_entry(ticket, browser_binding, action=action))
+    try:
+        return await _to_completion(task)
+    except asyncio.CancelledError:
+        if task.done() and not task.cancelled() and task.exception() is None:
+            await _revoke_quietly(task.result().unscoped_token)
+        raise
+
+
+async def _complete_account_entry(ticket: str, browser_binding: str, *, action: str) -> FederatedLogin:
+    """Confirm only an operator-verified Accounts proposal, with fresh native fences."""
+    from app.services import account_identity, account_spaces, domain_iam
+
+    record = await _consume_entry_ticket(ticket, browser_binding)
+    if action not in ("connect", "create") or action != record["action"]:
+        raise DomainAuthConflict("Account entry action changed; start login again", code="invalid_entry_action")
+    domain = await resolve_enabled_domain(record["domain_id"])
+    row = await _current_provider(domain["id"], record["provider_id"], record["revision"])
+    if row.kind != "oidc" or not row.id.startswith(_CONFIG_PROVIDER_PREFIX):
+        raise DomainAuthDenied("Provider cannot authorize account entry", code="provider_disabled")
+    identity = VerifiedIdentity(record["email"], record["bearer"], record["issuer"], record["subject"])
+    enforce_email(await get_policy(domain["id"]), identity.email)
+    async with domain_iam._iam_write() as (lease, ks, catalog):
+        row = await _current_provider(domain["id"], row.id, int(row.revision))
+        await asyncio.to_thread(_require_stable_native_mapping, ks, row)
+        account = await asyncio.to_thread(account_spaces.shared_domain, "account", ks=ks)
+        if account_identity._field(account, "id") != record["identity_domain_id"]:
+            raise DomainAuthConflict("Accounts identity domain changed", code="account_changed")
+        await account_identity.recover_identity_transfer(row, identity, lease=lease, ks=ks)
+        bound, existing, transfer = await account_identity.directory(ks, identity, row)
+        source = record.get("transfer_source")
+        if (source is None) != (transfer is None) or (
+            source is not None
+            and (
+                account_identity._identity_snapshot(transfer) != source["snapshot"]
+                or account_identity._field(transfer, "id") != source["id"]
+                or account_identity._field(transfer, "domain_id") != source["domain_id"]
+            )
+        ):
+            raise DomainAuthConflict("External identity owner changed", code="account_changed")
+        if bound is not None:
+            raise DomainAuthConflict("External identity changed; start login again", code="account_changed")
+        if action == "connect":
+            if (
+                existing is None
+                or account_identity._field(existing, "id") != record["user_id"]
+                or account_identity._field(existing, "domain_id") != record["identity_domain_id"]
+            ):
+                raise DomainAuthConflict("Canonical email ownership changed", code="account_changed")
+            bound = existing
+        elif existing is not None:
+            raise DomainAuthConflict("An Accounts email owner appeared; start login again", code="account_changed")
+        if transfer is None:
+            return await _login_verified_identity(
+                row, identity, bound, domain, lease=lease, ks=ks, catalog=catalog, confirmed_entry=True
+            )
+        account_identity.require_supported_identity_transfer(transfer, row, identity)
+        # Ordinary policy/approval denial must precede the first source detach.
+        # Recheck again in the normal enrollment/admission path after this gate.
+        organization = getattr(row, "_organization", None) is not None
+        if organization:
+            from app.services import organization_provisioning
+
+            await organization_provisioning.precheck(row, identity, ks=ks)
+        elif await _origin_admission_required(row, identity, ks):
+            await account_identity.require_admission(
+                account_identity._field(bound, "id") if bound is not None else "",
+                domain["id"],
+                row,
+                identity.email,
+                lease=lease,
+                ks=ks,
+                catalog=catalog,
+                new=bound is None,
+            )
+        if bound is None:
+            from app.services import enrollment_policy
+
+            try:
+                async with _factory()() as session:
+                    await enrollment_policy.require_signup_approval(
+                        session,
+                        source=row.kind,
+                        email=identity.email,
+                        issuer=identity.issuer,
+                        subject=identity.subject,
+                        domain_id=row.domain_id,
+                        provider_id=row.id,
+                    )
+            except HTTPException as exc:
+                if exc.status_code == 403 and exc.detail in ("signup_approval_pending", "signup_approval_rejected"):
+                    raise DomainAuthDenied("New account approval is required", code=exc.detail) from None
+                raise
         else:
             await account_identity.require_enrollment_complete(bound)
-            organization = getattr(row, "_organization", None) is not None
-            if organization:
-                from app.services import organization_provisioning
-
-                await organization_provisioning.precheck(row, identity, ks=ks)
-            else:
-                # Original ordering: admission decides before any native association write.
-                await _admit_verified_identity(row, identity, bound, lease=lease, ks=ks, catalog=catalog)
-            bound = await account_identity.attach(bound, row, identity, lease=lease, ks=ks)
-            if organization:
-                await _admit_verified_identity(row, identity, bound, lease=lease, ks=ks, catalog=catalog)
-        return await _canonical_federation(row, identity, bound, domain, ks=ks)
+        try:
+            journal = await account_identity.begin_identity_transfer(transfer, bound, row, identity, lease=lease, ks=ks)
+            journal.status = "attaching"
+            await account_identity._save_transfer(journal, lease=lease)
+            login = await _login_verified_identity(
+                row,
+                identity,
+                bound,
+                domain,
+                lease=lease,
+                ks=ks,
+                catalog=catalog,
+                confirmed_entry=True,
+                transfer_journal=journal,
+            )
+            try:
+                await account_identity.commit_identity_transfer(journal, login.user_id, lease=lease)
+            except BaseException:
+                await _revoke_quietly(login.unscoped_token)
+                raise
+            return login
+        except BaseException:
+            await account_identity.recover_identity_transfer(row, identity, lease=lease, ks=ks)
+            raise
 
 
 async def complete_account_link(
@@ -1964,7 +2197,9 @@ async def complete_account_link(
                 await login_guard.record_success(account["name"], account["domain_id"])
             row = await _current_provider(domain["id"], row.id, int(row.revision))
             await asyncio.to_thread(_require_stable_native_mapping, ks, row)
-            bound, existing = await account_identity.directory(ks, identity, row)
+            bound, existing, transfer = await account_identity.directory(ks, identity, row)
+            if transfer is not None:
+                raise DomainAuthConflict("Use explicit Accounts confirmation", code="account_changed")
             if existing is None or account_identity._field(existing, "id") != record["user_id"]:
                 raise DomainAuthConflict("Canonical email ownership changed", code="account_changed")
             if bound is not None and account_identity._field(bound, "id") != record["user_id"]:
