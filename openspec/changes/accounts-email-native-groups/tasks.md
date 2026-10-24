@@ -1,0 +1,5 @@
+- [x] Replace the subject-only guard with a verified-email/local-user mapping contract and conditional organization group validation.
+- [x] Cover valid email mapping, username differences, permitted groups and rejected cross-domain/unconditional grants.
+- [x] Update architecture and authentication documentation; run targeted tests and required gate. Released as 1.30.26 on top of 1.30.25 after the user confirmed email-based mapping is the intended contract.
+- [ ] Remove the auxiliary native mapping and unify both native protocols after compatible application rollout (Keystone-side, separate approval).
+- [ ] Verify deployed behavior and preserve existing Accounts IDs, passwords, Personal projects and manual groups; retire the 1.30.24 operator overlay during the 1.30.26 rollout.

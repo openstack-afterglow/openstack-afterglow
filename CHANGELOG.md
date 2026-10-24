@@ -10,6 +10,11 @@
 ### Added
 - Cloud Shell workload에 빈 Cinder 홈에서도 동작하는 system Bash 자동완성(명령·하위 명령·옵션·파일 경로)과 오프라인 `cloud-shell-help`, 사용자 정의가 없을 때의 `ll` alias를 추가합니다. 완성 데이터는 build 시 설치된 CLI plugin에서 생성하며 클라우드 resource를 조회하지 않습니다. 사용자 dotfile·권한·bootstrap 경계는 바꾸지 않으며, 게시된 digest로 운영 image를 교체하기 전에는 기존 세션에 적용되지 않습니다.
 
+## [1.30.26] - 2026-10-24
+
+### Fixed
+- 운영자 OIDC의 native mapping으로 Accounts `type: local` 이메일 매핑(`OIDC-preferred_username`/`OIDC-email`)과 로그인 조직의 기존 그룹을 서명된 group claim 조건으로만 선택하는 규칙을 허용합니다. 1.30.25까지 별도 stable-sub mapping만 요구해 의도한 이메일 기반 로그인을 `native_mapping_unsafe`로 막던 문제를 수정하며, 운영1.30.24에 임시 적용한 operator overlay를 대체합니다. Project/role·cross-domain·무조건 group 부여와 tenant SQL provider의 그룹 규칙은 계속 거부하고 canonical ID/home/email readback·issuer/sub 연결 보호는 유지합니다. 1.30.25의 관리자 사용자 삭제와 Accounts 연결 확인을 함께 포함합니다.
+
 ## [1.30.25] - 2026-10-24
 
 이번 release 항목은 발행 대상 source를 설명합니다. Exact dev SHA CI·불변 tag/image 발행·cold restore와 SQL102 선행 조건·실제 Kolla 및 로컬 rollout 수용은 별도 checklist의 관측 결과로 기록하며 아직 완료를 주장하지 않습니다. Cloud Shell workload 발행·교체와 pending native amd64 수용은 이 release 범위가 아닙니다.

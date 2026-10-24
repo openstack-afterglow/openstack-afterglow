@@ -570,7 +570,7 @@ DomainAuthError는 `{detail: "안전한 메시지", code: "안정된 코드"}`�
 | 401 | `invalid_link_token` | link ticket 만료·소비·browser 불일치 |
 | 403 | `invitation_required`, `canonical_subject_mismatch`, `canonical_email_mismatch` | admission 부재 또는 native canonical identity/email 불일치 |
 | 409 | `domain_default_required` | auto-admission 대상 Default 사전 준비 필요 |
-| 503 | `native_mapping_unsafe`, `native_attachment_unconfirmed` | unsafe/unavailable stable-sub mapping 또는 native 전체 tuple PATCH readback 불확실 |
+| 503 | `native_mapping_unsafe`, `native_attachment_unconfirmed` | unsafe/unavailable native mapping(Accounts email 또는 stable-sub) 또는 native 전체 tuple PATCH readback 불확실 |
 | 422 | `identity_invalid_input` | query/본문 validation 실패(비밀 입력을 반사하지 않음) |
 | 429 | — | resolve30·authorize20·callback10·각 link5회/분 초과 |
 | 502 | `provider_error`, `invalid_id_token` | provider 응답·code exchange·ID token 검증 실패 |
@@ -898,3 +898,9 @@ SDK 내부 cold schema-cache refresh의 `list_tools(None)`은 현재 principal�
 Login 시 최초 started_at을 기록하며 refresh/project rescope가 이 시간을 변경하지 않습니다. 만료 후 반복 요청도 401이고, 동시 refresh/rescope는 Redis 원자적 소비로 하나만 성공합니다. Provider login도 요청 origin/device를 기록하고, 출처가 없는 과거 세션은 strict/subnet에서 재로그인이 필요합니다. Logout 폐기 실패는 503이며 브라우저는 로컬 정리와 서버 폐기 확인을 구분합니다.
 
 JWT는 탭 sessionStorage에만 저장합니다. 구형 localStorage 자격은 제거하므로 적용 뒤 한 번 재로그인이 필요하고 새 탭은 독립 인증합니다. 탭 복제는 브라우저 정책에 따라 자격을 복사할 수 있습니다. CSP의 script nonce/hash 정책은 JavaScript-readable 자격을 HttpOnly로 바꾸는 것은 아닙니다.
+
+### Native Accounts email and organization groups
+
+Trusted operator OIDC providers can use a native mapping with `type: local`, `name: {0}`, `email: {1}` in Accounts, and remote `OIDC-preferred_username`/`OIDC-email`. Canonical account selection remains the unique verified email in Accounts even when the provider username differs. A separate stable-subject mapping is not required. OIDC issuer/subject ownership checks remain auxiliary association protection.
+
+Conditional `OIDC-groups_direct`/`OIDC-groups` clauses may select existing named groups only in the login organization for operator-managed providers. Project creation, role grants, cross-domain and unconditional groups are rejected. Keystone ignores mapping groups for standard local users; a deployment needing persistent group membership must synchronize module-verified claims in its native authentication driver. The native token must still return the exact canonical ID/home/email. Local password login then shares the same memberships.

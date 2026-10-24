@@ -2104,3 +2104,78 @@ async def test_oidc_entry_compensation_never_clears_metadata_when_last_native_li
     assert env.keystone.revoked == ["unscoped-fed"]
     async with env.db() as session:
         assert (await session.execute(select(AccountIdentityTransfer))).scalar_one().status == "recovery_required"
+
+
+def accounts_email_rules():
+    return [
+        {
+            "local": [{"user": {"name": "{0}", "email": "{1}", "type": "local", "domain": {"id": "dom-accounts"}}}],
+            "remote": [{"type": "OIDC-preferred_username"}, {"type": "OIDC-email"}],
+        }
+    ]
+
+
+def test_native_local_accounts_email_mapping_does_not_require_subject_mapping(env):
+    row = SimpleNamespace(
+        id="cfg:gitlab", kind="oidc", domain_id="dom-a", keystone_idp_id="idp-a", keystone_protocol_id="openid"
+    )
+    env.keystone.mapping_rules = accounts_email_rules()
+    svc._require_native_mapping(env.keystone, row)
+    assert "OIDC-sub" not in str(env.keystone.mapping_rules)
+    assert env.keystone.user_writes == []
+
+
+def test_operator_group_claim_rules_allow_existing_groups_only_in_login_organization(env):
+    row = SimpleNamespace(
+        id="cfg:gitlab", kind="oidc", domain_id="dom-a", keystone_idp_id="idp-a", keystone_protocol_id="openid"
+    )
+    env.keystone.group_rows["nlp"] = SimpleNamespace(id="nlp", name="NLP", domain_id="dom-a")
+    group_rule = {
+        "local": [{"group": {"name": "NLP", "domain": {"id": "dom-a"}}}],
+        "remote": [{"type": "OIDC-groups_direct", "any_one_of": ["(^|[,; ])nlp([,; ]|$)"], "regex": True}],
+    }
+    env.keystone.mapping_rules = accounts_email_rules() + [group_rule]
+    svc._require_native_mapping(env.keystone, row)
+    assert env.keystone.user_writes == []
+
+
+@pytest.mark.parametrize(
+    "rejection", ["foreign", "unconditional", "username_claim", "missing_group", "tenant_provider", "projects"]
+)
+def test_email_mapping_rejects_unbounded_group_and_project_grants(env, rejection):
+    row = SimpleNamespace(
+        id="cfg:gitlab", kind="oidc", domain_id="dom-a", keystone_idp_id="idp-a", keystone_protocol_id="openid"
+    )
+    env.keystone.group_rows["nlp"] = SimpleNamespace(id="nlp", name="NLP", domain_id="dom-a")
+    group_rule = {
+        "local": [{"group": {"name": "NLP", "domain": {"id": "dom-a"}}}],
+        "remote": [{"type": "OIDC-groups_direct", "any_one_of": ["nlp"]}],
+    }
+    if rejection == "foreign":
+        group_rule["local"][0]["group"]["domain"]["id"] = "dom-b"
+    elif rejection == "unconditional":
+        group_rule["remote"] = [{"type": "OIDC-groups_direct"}]
+    elif rejection == "username_claim":
+        group_rule["remote"][0]["type"] = "OIDC-preferred_username"
+    elif rejection == "missing_group":
+        env.keystone.group_rows.clear()
+    elif rejection == "tenant_provider":
+        row.id = "manager-owned"
+    elif rejection == "projects":
+        group_rule["local"] = [{"projects": [{"name": "Default", "roles": [{"name": "admin"}]}]}]
+    env.keystone.mapping_rules = accounts_email_rules() + [group_rule]
+    with pytest.raises(svc.DomainAuthUnavailable) as caught:
+        svc._require_native_mapping(env.keystone, row)
+    assert caught.value.code == "native_mapping_unsafe"
+    assert env.keystone.user_writes == [] and env.wire.federation.calls == []
+
+
+def test_tenant_sql_oidc_cannot_use_accounts_email_mapping(env):
+    row = SimpleNamespace(
+        id="manager-owned", kind="oidc", domain_id="dom-a", keystone_idp_id="idp-a", keystone_protocol_id="openid"
+    )
+    env.keystone.mapping_rules = accounts_email_rules()
+    with pytest.raises(svc.DomainAuthUnavailable) as caught:
+        svc._require_native_mapping(env.keystone, row)
+    assert caught.value.code == "native_mapping_unsafe"
+    assert env.keystone.user_writes == [] and env.wire.federation.calls == []

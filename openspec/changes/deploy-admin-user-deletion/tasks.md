@@ -3,10 +3,11 @@
 ### Source and release qualification
 
 - [x] 1.30.25 release metadata를 auto-stage/commit/tag 없이 canonical root npm bump와 `version:sync` 소유 범위에서 동기화한다. Frontend npm lock의 기존1.30.19 version drift는 script 소유 범위 밖이므로 보존한다. Architecture overview와2026-10-24 changelog에 발행/운영 대기·Cloud Shell 제외 경계를 명시한다.
-- [ ] 공유 dev/worktree/index/private state와 기존1.30.24 복구 지점을 보존한다. 관리자 삭제·Accounts 명시적 onboarding/last-unlink safety의 완료 source를 함께 검토하고 무관한 미완료 작업은 포함하지 않는다.
-- [ ] 최종 통합 source의 architecture review/stamp와 필수 `npm run test:gate`, 관련 exact selector·실제 HTTP/compiled UI·API/worker/frontend arm64/amd64 build/runtime 증거를 확보한다. 합성 identity/provider와 실제 실행·운영 proof를 구분한다.
-- [ ] 검증된 source를 dev에 정상 commit/push하고 정확한 pushed SHA와 CI 성공을 기록한다. Main·shared index/private files·기존 tag를 보존하며 보호 규칙을 우회하지 않는다.
-- [ ] 같은 CI 통과 SHA에 불변 `v1.30.25`를 발행한다. Tag workflow 성공과 API/frontend/worker version/latest revision·immutable digest, Helm version/appVersion, 실제 arm64/amd64 실행을 확인한다. Cloud Shell workload tag/image는 발행·교체하지 않는다.
+- [x] 공유 dev/worktree/index/private state와 기존1.30.24 복구 지점을 보존한다. 관리자 삭제·Accounts 명시적 onboarding/last-unlink safety의 완료 source를 함께 검토하고 무관한 미완료 작업은 포함하지 않는다.
+- [x] 최종 통합 source(`f8f8f78e…`/3434)의 architecture stamp와 `npm run test:gate` 통과(backend9127/95skip, frontend434/5075, contract181, DB166, Ruff723). 앞선 두 시도는 변경과 무관한 timing test(host observer, lumen-sh PTY) timeout으로 실패해 재실행했다. Reviewer P2(SDK User가 enrollment marker를 버림)는 keystoneclient record로 수정하고 fail-before/pass-after 확인했다.
+- [x] `6d57ab65`를 dev에 push했고 CI run40011414906 attempt2 성공(attempt1은 변경과 무관한 backend test hang으로 취소).
+- [x] `v1.30.25` 발행: Docker40020654946·Helm40020654923 성공, API/frontend/worker index digest와 latest가 같은 revision이며 Helm1.30.25. CI 발행은 amd64만이다.
+- [ ] **차단:** 배포 도중 다른 세션이 운영1.30.24에 Accounts email native mapping hotfix overlay(`globals.d/94-afterglow-email-mapping.yml`, 20:01Z 재기동)를 적용했다. 1.30.25에는 이 변경이 없어 Kolla pull guard가 정상적으로 막았다. 컨테이너 변경0으로 1.30.25 image pin·role/site link를1.30.24 값으로 되돌렸고(globals90 SHA 원복) overlay는 그대로 둔다. Hotfix를 source에 통합한 후속 release가 필요하다.
 
 ### Cold schema prerequisite before writers
 

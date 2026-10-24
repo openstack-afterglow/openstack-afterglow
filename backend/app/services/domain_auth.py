@@ -1665,8 +1665,12 @@ async def keystone_federate(row: DomainIdentityProvider, bearer: str) -> tuple[s
     return token, user
 
 
-def _require_stable_native_mapping(ks, row) -> None:
-    """Refuse mutable-name/email provisioning before native authentication."""
+def _require_native_mapping(ks, row) -> None:
+    """Validate canonical Accounts email mappings and bounded organization groups.
+
+    Subject-only mappings remain supported for unrelated existing providers.
+    They are not required for trusted OIDC email selection.
+    """
     from app.services.identity_roles import _field
 
     try:
@@ -1675,13 +1679,27 @@ def _require_stable_native_mapping(ks, row) -> None:
         mapping_id = _field(protocol, "mapping_id")
         mapping = ks.federation.mappings.get(mapping_id) if mapping_id else None
     except Exception as exc:
-        logger.warning("native stable subject mapping lookup failed: %s", type(exc).__name__)
-        raise DomainAuthUnavailable(
-            "Native stable-subject mapping is unavailable", code="native_mapping_unsafe"
-        ) from None
+        logger.warning("native mapping lookup failed: %s", type(exc).__name__)
+        raise DomainAuthUnavailable("Native mapping is unavailable", code="native_mapping_unsafe") from None
     if _field(idp, "enabled") is not True:
         raise DomainAuthDenied("Native identity provider is disabled", code="idp_disabled")
     rules = _field(mapping, "rules", [])
+    if (
+        row.kind == "oidc"
+        and row.id.startswith(_CONFIG_PROVIDER_PREFIX)
+        and isinstance(rules, list)
+        and any(
+            isinstance(rule, dict)
+            and isinstance(rule.get("local"), list)
+            and any(
+                isinstance(value, dict) and isinstance(value.get("user"), dict) and value["user"].get("type") == "local"
+                for value in rule["local"]
+            )
+            for rule in rules
+        )
+    ):
+        _require_accounts_email_mapping(ks, row, rules)
+        return
     attributes = {"OIDC-sub", "OIDC_CLAIM_sub", "HTTP_OIDC_SUB", "HTTP_OIDC_CLAIM_SUB", "sub"}
     if row.kind == "github":
         attributes |= {"HTTP_X_GITHUB_ID", "GITHUB_ID", "github_id", "id"}
@@ -1718,6 +1736,73 @@ def _require_stable_native_mapping(ks, row) -> None:
         attribute = remote[position]
         if attribute.get("type") not in attributes or set(attribute) != {"type"}:
             raise invalid
+
+
+def _require_accounts_email_mapping(ks, row, rules) -> None:
+    """Native account choice must agree with verified email/canonical readback.
+
+    Group clauses are operator-managed, conditional on signed group claims and
+    confined to existing groups in the login organization. No project/role
+    provisioning or unconditional group assignment is accepted here.
+    """
+    from app.services import account_spaces
+    from app.services.identity_roles import _field
+
+    invalid = DomainAuthUnavailable("Native Accounts email/group mapping is unsafe", code="native_mapping_unsafe")
+    account = account_spaces.shared_domain("account", ks=ks)
+    account_id = _field(account, "id")
+    user_count = 0
+    for rule in rules:
+        if not isinstance(rule, dict) or set(rule) != {"local", "remote"}:
+            raise invalid
+        local, remote = rule["local"], rule["remote"]
+        if not isinstance(local, list) or len(local) != 1 or not isinstance(local[0], dict):
+            raise invalid
+        if not isinstance(remote, list) or not remote or any(not isinstance(v, dict) for v in remote):
+            raise invalid
+        if set(local[0]) == {"user"}:
+            user = local[0]["user"]
+            if not isinstance(user, dict) or set(user) != {"name", "email", "type", "domain"}:
+                raise invalid
+            if user["type"] != "local" or user["domain"] not in ({"id": account_id}, {"name": "Accounts"}):
+                raise invalid
+            if (
+                user["name"] != "{0}"
+                or user["email"] != "{1}"
+                or remote != [{"type": "OIDC-preferred_username"}, {"type": "OIDC-email"}]
+            ):
+                raise invalid
+            user_count += 1
+            continue
+        if set(local[0]) != {"group"} or not row.id.startswith(_CONFIG_PROVIDER_PREFIX):
+            raise invalid
+        group = local[0]["group"]
+        if not isinstance(group, dict) or set(group) != {"name", "domain"}:
+            raise invalid
+        if not isinstance(group["name"], str) or not group["name"] or "{" in group["name"]:
+            raise invalid
+        if group["domain"] != {"id": row.domain_id}:
+            raise invalid
+        if len(remote) != 1 or set(remote[0]) not in ({"type", "any_one_of"}, {"type", "any_one_of", "regex"}):
+            raise invalid
+        match = remote[0]
+        if match["type"] not in {"OIDC-groups_direct", "OIDC-groups"}:
+            raise invalid
+        if (
+            not isinstance(match["any_one_of"], list)
+            or not match["any_one_of"]
+            or any(not isinstance(v, str) or not v for v in match["any_one_of"])
+            or "regex" in match
+            and not isinstance(match["regex"], bool)
+        ):
+            raise invalid
+        targets = [
+            g for g in account_spaces._rows(ks.groups, domain=row.domain_id) if _field(g, "name") == group["name"]
+        ]
+        if len(targets) != 1 or _field(ks.groups.get(_field(targets[0], "id")), "domain_id") != row.domain_id:
+            raise invalid
+    if user_count != 1:
+        raise invalid
 
 
 async def _current_provider(domain_id: str, provider_id: str, revision: int):
@@ -1955,7 +2040,7 @@ async def complete_authorization(code: str, state: str, browser_binding: str) ->
     enforce_email(await get_policy(domain_id), identity.email)
     async with domain_iam._iam_write() as (lease, ks, catalog):
         row = await _current_provider(domain_id, row.id, int(row.revision))
-        await asyncio.to_thread(_require_stable_native_mapping, ks, row)
+        await asyncio.to_thread(_require_native_mapping, ks, row)
         await account_identity.recover_identity_transfer(row, identity, lease=lease, ks=ks)
         bound, existing, transfer = await account_identity.directory(ks, identity, row)
         if bound is None and row.kind == "oidc" and row.id.startswith(_CONFIG_PROVIDER_PREFIX):
@@ -2036,7 +2121,7 @@ async def _complete_account_entry(ticket: str, browser_binding: str, *, action: 
     enforce_email(await get_policy(domain["id"]), identity.email)
     async with domain_iam._iam_write() as (lease, ks, catalog):
         row = await _current_provider(domain["id"], row.id, int(row.revision))
-        await asyncio.to_thread(_require_stable_native_mapping, ks, row)
+        await asyncio.to_thread(_require_native_mapping, ks, row)
         account = await asyncio.to_thread(account_spaces.shared_domain, "account", ks=ks)
         if account_identity._field(account, "id") != record["identity_domain_id"]:
             raise DomainAuthConflict("Accounts identity domain changed", code="account_changed")
@@ -2196,7 +2281,7 @@ async def complete_account_link(
 
                 await login_guard.record_success(account["name"], account["domain_id"])
             row = await _current_provider(domain["id"], row.id, int(row.revision))
-            await asyncio.to_thread(_require_stable_native_mapping, ks, row)
+            await asyncio.to_thread(_require_native_mapping, ks, row)
             bound, existing, transfer = await account_identity.directory(ks, identity, row)
             if transfer is not None:
                 raise DomainAuthConflict("Use explicit Accounts confirmation", code="account_changed")
