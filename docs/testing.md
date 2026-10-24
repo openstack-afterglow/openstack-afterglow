@@ -6,6 +6,17 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 1.30.26 운영 배포 (2026-10-24, 관리자 사용자 삭제 + Accounts 이메일 매핑)
+
+- **경위:** `v1.30.25`(`6d57ab65`)를 CI(run40011414906 attempt2; attempt1은 변경과 무관한 backend test hang으로 취소)·tag 발행(Docker40020654946/Helm40020654923)까지 마쳤다. 배포 중 다른 작업이 운영1.30.24에 Accounts `type: local` 이메일 native mapping 검사를 operator overlay(`globals.d/94-afterglow-email-mapping.yml`, 20:01Z 재기동)로 적용했고, 1.30.25에는 없어서 Kolla pull guard가 의도대로 막았다. 컨테이너 변경0으로 pin·role/site link를1.30.24로 되돌렸다. 사용자가 이메일 기반 매핑이 원래 의도이고 stable-sub 전용 가정이 잘못이었다고 확인했다.
+- **Source:** 준비된 port를 1.30.25 위에 통합하고 email 매핑 분기를 운영자 registry(`cfg:`) OIDC로 제한했다. Tenant SQL OIDC의 email 매핑이 503 `native_mapping_unsafe`인 회귀는 제한 전 실패/후 통과를 확인했다. 최종 source `9749323a…`/3434 gate: backend9136/95skip, frontend434/5075, contract181, DB166, Ruff723. 앞선 1.30.25 gate의 두 차례 실패는 변경과 무관한 timing test(host observer·lumen-sh PTY) timeout이었다.
+- **Release:** `25b9864c` dev CI40043006794, `v1.30.26` Docker40043597187·Helm40043597092 성공. API `c6254076…`, frontend `c80a15f9…`, worker `92eb77ac…`이며 latest가 같은 revision이고 Helm1.30.26이다. CI 발행 platform은 amd64이고 로컬 arm64는 같은 commit에서 canonical Dockerfile로 빌드했다.
+- **Schema:** 운영 DB에는 `account_identity_transfers`가 이미 있었다. 2026-10-23 12:43:39Z에 공유 local Compose를 미발행 source로 재생성한 backend가 운영 DB에서 ORM `create_all`로 만들었고(DATETIME(0), row0), 이 세션에서 만든 것이 아니다. SQL102는 `IF NOT EXISTS`라 no-op이므로 DDL을 실행하지 않았다. 새 암호화 SQL/Redis/config 복구 지점을 격리(network-none/tmpfs) 복원해103tables/4879rows와 Redis2197keys를 확인했다. Redis에 stream key가 있어 logical digest에 stream 비교를 추가했다. 복원본에서 1.30.26 ORM50tables와 journal insert/readback/delete, 1.30.24 ORM49tables가 통과하고 row 수는 변하지 않았다.
+- **Fleet:** 배포서버 `/etc/kolla`에서 overlay 파일을 보호 backup 후 제거하고(module 디렉터리 보존) pin만 바꿨다. `/etc/kolla/multinode` 전체 대상에 `genconfig→pull→prechecks→reconfigure --tags afterglow --skip-tags haproxy`를 `--limit` 없이 실행해 모두 failed0/unreachable0(reconfigure c1 ok124/changed5, c2·c3 ok68/changed2)이었다. API/frontend6 healthy·worker3 running이 모두 `25b9864c`이고 비대상 container710개는 변경0이며 native/provider fingerprint가 일치한다. 세 controller의 배포 image가 실제 운영 Keystone mapping(protocol `openid`)을 쓰기 없이 accepted로 판정했고 overlay mount는 없다. 재기동 이후 stdout/stderr traceback0, public `/`·`/api/v1/health`·login-options200이다.
+- **Local:** 같은 실행기·환경으로 canonical targeted Compose를 적용했다. Definition hash와 12개 effective field가 같고 backend/frontend만 교체했으며 16개 비대상 container를 보존했다. 이 교체로 운영 DB에 붙어 있던 미발행 local writer도 정리되었다.
+- **미검증:** 실제 사용자 GitLab 로그인·그룹 반영과 관리자 인증 후 사용자 삭제 화면은 사람 계정으로 확인하지 않았다. 운영 계정·native grant·resource는 삭제하거나 변경하지 않았다. Native protocol 통합(Keystone)은 별도 승인 사항이다. 증거: `~/.local/share/afterglow-proofs/deploy-admin-user-deletion-20261024/`, `/etc/kolla/.afterglow-rollout-backups/1.30.26/email-mapping-20261024/`.
+
+
 ## 관리자 사용자 삭제 (2026-10-23, source 검증·운영 미배포)
 
 - 사용자 목록 table/card에 삭제를 추가하고 native home·전체 user ID·이름 확인과 정확한 full-ID 입력을 요구한다. Cancel/짧은 ID/자기 계정/actor-home-session-project-domain ABA/late-response와 불확실한 응답의 no-replay를 검증했다. Name이 알 수 없거나 federated라는 이유만으로 자동 삭제하지 않으며 프로젝트 멤버십 제거와 구분한다.
