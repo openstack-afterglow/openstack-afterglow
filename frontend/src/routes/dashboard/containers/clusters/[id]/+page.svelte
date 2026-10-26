@@ -46,12 +46,12 @@
     cluster?.status?.includes('IN_PROGRESS') ?? false
   );
 
-  async function fetchCluster() {
+  async function fetchCluster(force = false) {
     const requestId = clusterId;
     const requestProjectId = projectId;
     const generation = ++clusterGeneration;
     try {
-      const value = await api.get<Cluster>(`/api/v1/clusters/${requestId}`, token, requestProjectId);
+      const value = await api.get<Cluster>(`/api/v1/clusters/${requestId}`, token, requestProjectId, { refresh: force });
       if (generation !== clusterGeneration || clusterId !== requestId || projectId !== requestProjectId) return;
       cluster = value;
       error = '';
@@ -64,13 +64,13 @@
     }
   }
 
-  async function fetchResources() {
+  async function fetchResources(force = false) {
     const requestId = clusterId;
     const requestProjectId = projectId;
     const generation = ++resourcesGeneration;
     resourcesLoading = true;
     try {
-      const value = await api.get<StackResource[]>(`/api/v1/clusters/${requestId}/stack/resources`, token, requestProjectId);
+      const value = await api.get<StackResource[]>(`/api/v1/clusters/${requestId}/stack/resources`, token, requestProjectId, { refresh: force });
       if (generation === resourcesGeneration && clusterId === requestId && projectId === requestProjectId) {
         resources = value;
         resourcesLoaded = true;
@@ -85,13 +85,13 @@
     }
   }
 
-  async function fetchEvents() {
+  async function fetchEvents(force = false) {
     const requestId = clusterId;
     const requestProjectId = projectId;
     const generation = ++eventsGeneration;
     eventsLoading = true;
     try {
-      const value = await api.get<StackEvent[]>(`/api/v1/clusters/${requestId}/stack/events`, token, requestProjectId);
+      const value = await api.get<StackEvent[]>(`/api/v1/clusters/${requestId}/stack/events`, token, requestProjectId, { refresh: force });
       if (generation === eventsGeneration && clusterId === requestId && projectId === requestProjectId) {
         events = value;
         eventsLoaded = true;
@@ -116,10 +116,10 @@
     await ensureTab(tab);
   }
 
-  async function refreshVisible() {
-    const tasks: Promise<void>[] = [fetchCluster()];
-    if (activeTab === 'resources') tasks.push(fetchResources());
-    if (activeTab === 'events') tasks.push(fetchEvents());
+  async function refreshVisible(force = false) {
+    const tasks: Promise<void>[] = [fetchCluster(force)];
+    if (activeTab === 'resources') tasks.push(fetchResources(force));
+    if (activeTab === 'events') tasks.push(fetchEvents(force));
     await Promise.allSettled(tasks);
   }
 
@@ -169,7 +169,7 @@
       {cluster}
       refreshing={loading || resourcesLoading || eventsLoading}
       {ar}
-      onManualRefresh={refreshVisible}
+      onManualRefresh={ar.refresh}
       onDelete={handleDelete}
     />
 

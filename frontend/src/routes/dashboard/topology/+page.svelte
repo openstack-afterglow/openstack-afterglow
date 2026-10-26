@@ -31,7 +31,7 @@
 		});
 	});
 
-	async function fetchTopology() {
+	async function fetchTopology(force = false) {
 		if (!data) loading = true;
 		else refreshing = true;
 		if (!data) error = '';
@@ -39,7 +39,7 @@
 			data = await api.get<TopologyData>(
 				'/api/v1/networks/topology',
 				$auth.token ?? undefined,
-				$auth.projectId ?? undefined
+				$auth.projectId ?? undefined, { refresh: force }
 			);
 			error = '';
 		} catch (e) {
@@ -64,7 +64,7 @@
 			bind:intervalSeconds={ar.intervalSeconds}
 			intervalOptions={ar.intervalOptions}
 			refreshing={loading || refreshing}
-			onManualRefresh={fetchTopology}
+			onManualRefresh={ar.refresh}
 		/>
 	</div>
 

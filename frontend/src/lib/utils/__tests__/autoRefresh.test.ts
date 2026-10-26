@@ -22,6 +22,7 @@ describe('createAutoRefresh (via component)', () => {
 	beforeEach(() => {
 		Object.keys(storage).forEach((k) => delete storage[k]);
 		Object.defineProperty(document, 'hidden', { get: () => false, configurable: true });
+		Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
 	});
 
 	afterEach(() => {
@@ -89,8 +90,74 @@ describe('createAutoRefresh (via component)', () => {
 
 		first.resolve();
 		await vi.waitFor(() => expect(fn).toHaveBeenCalledTimes(2));
+		expect(fn).toHaveBeenNthCalledWith(1, false);
+		expect(fn).toHaveBeenNthCalledWith(2, true);
 		second.resolve();
 		await tick();
 		expect(fn).toHaveBeenCalledTimes(2);
+	});
+
+	it('waits a full interval after a slow round settles instead of fixed-timer catch-up', async () => {
+		vi.useFakeTimers();
+		const pending = deferred();
+		const fn = vi.fn().mockReturnValueOnce(pending.promise);
+		render(AutoRefreshWrapper, { fn, defaultActive: true, invokeOnMount: true, defaultInterval: 10 });
+		await tick();
+		expect(fn).toHaveBeenCalledOnce();
+		await vi.advanceTimersByTimeAsync(29_000);
+		expect(fn).toHaveBeenCalledOnce();
+		pending.resolve();
+		await vi.advanceTimersByTimeAsync(0);
+		await vi.advanceTimersByTimeAsync(9_999);
+		expect(fn).toHaveBeenCalledOnce();
+		await vi.advanceTimersByTimeAsync(1);
+		expect(fn).toHaveBeenCalledTimes(2);
+	});
+
+	it('changes intervals, boost and active preference without immediate duplicate requests', async () => {
+		vi.useFakeTimers();
+		const fn = vi.fn();
+		render(AutoRefreshWrapper, { fn, defaultActive: true, invokeOnMount: true });
+		await tick();
+		expect(fn).toHaveBeenCalledOnce();
+		await fireEvent.click(screen.getByTestId('change-interval'));
+		await fireEvent.click(screen.getByTestId('boost'));
+		await fireEvent.click(screen.getByTestId('toggle-active'));
+		await fireEvent.click(screen.getByTestId('toggle-active'));
+		expect(fn).toHaveBeenCalledOnce();
+		await vi.advanceTimersByTimeAsync(4_000);
+		expect(fn).toHaveBeenCalledTimes(2);
+	});
+
+	it('pauses offline and hidden polling and coalesces simultaneous wakeups', async () => {
+		vi.useFakeTimers();
+		const pending = deferred();
+		const fn = vi.fn().mockReturnValueOnce(pending.promise);
+		Object.defineProperty(navigator, 'onLine', { get: () => false, configurable: true });
+		render(AutoRefreshWrapper, { fn, invokeOnMount: true });
+		await tick();
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(fn).not.toHaveBeenCalled();
+		Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+		window.dispatchEvent(new Event('online'));
+		document.dispatchEvent(new Event('visibilitychange'));
+		expect(fn).toHaveBeenCalledOnce();
+		Object.defineProperty(document, 'hidden', { get: () => true, configurable: true });
+		document.dispatchEvent(new Event('visibilitychange'));
+		pending.resolve();
+		await vi.advanceTimersByTimeAsync(120_000);
+		expect(fn).toHaveBeenCalledOnce();
+	});
+
+	it('does not dispatch a queued manual refresh after unmount', async () => {
+		const pending = deferred();
+		const fn = vi.fn().mockReturnValueOnce(pending.promise);
+		const mounted = render(AutoRefreshWrapper, { fn, invokeOnMount: true });
+		await tick();
+		await fireEvent.click(screen.getByTestId('force-refresh'));
+		mounted.unmount();
+		pending.resolve();
+		await tick();
+		expect(fn).toHaveBeenCalledOnce();
 	});
 });

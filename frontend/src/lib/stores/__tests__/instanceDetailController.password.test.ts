@@ -44,7 +44,7 @@ beforeEach(() => {
 	mockPost.mockResolvedValue(undefined);
 	mockGet.mockImplementation((path: string) => {
 		if (path.endsWith('/admin-password/precheck')) return Promise.resolve(supported);
-		if (/^\/api\/v1\/instances\/[^/]+$/.test(path)) return Promise.resolve(instance(path.split('/').at(-1)!));
+		if (/^\/api\/v1\/(?:admin\/)?instances\/[^/]+$/.test(path)) return Promise.resolve(instance(path.split('/').at(-1)!));
 		if (path.endsWith('/security-groups')) return Promise.resolve({ ports: [], security_groups: [] });
 		if (path.endsWith('/owner')) return Promise.resolve({ display: '' });
 		return Promise.resolve([]);

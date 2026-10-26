@@ -174,9 +174,14 @@ def extend_volume(conn: openstack.connection.Connection, volume_id: str, new_siz
     separate global admin API retains its direct SDK action and response contract.
     Provider acceptance is asynchronous: return the reread, never the desired size.
     """
+    project_id = getattr(conn, "_afterglow_project_id", None)
+    return _extend_volume_for_project(conn, volume_id, new_size, project_id)
+
+
+def _extend_volume_for_project(conn, volume_id: str, new_size: int, project_id: str) -> VolumeInfo:
+    """Shared safety checks; administrative callers must derive project from native ownership."""
     if type(new_size) is not int or not 0 < new_size <= MAX_VOLUME_SIZE:
         raise VolumeExtensionError(400, "새 크기는 1~2147483647 사이의 정수여야 합니다")
-    project_id = getattr(conn, "_afterglow_project_id", None)
     if not isinstance(project_id, str) or not project_id:
         raise VolumeExtensionError(404, "볼륨을 찾을 수 없습니다")
     _, before = _extension_volume(conn, volume_id, project_id, new_size)
@@ -554,7 +559,7 @@ def create_volume_transfer(
 ) -> dict:
     """Issue the native key once; never retry an ambiguous POST."""
     proxy = copy(conn.block_storage)
-    proxy.request = partial(proxy.request, connect_retries=0, status_code_retries=0)
+    proxy.request = partial(proxy.request, connect_retries=0, status_code_retries=0, allow_reauth=False, redirect=False)
     attrs = {"volume_id": volume_id}
     if name:
         attrs["name"] = name
@@ -566,9 +571,9 @@ def accept_volume_transfer(
     transfer_id: str,
     auth_key: str,
 ) -> dict:
-    """Let native Cinder authenticate the key, without POST retries."""
+    """Use the verified recipient credential; never reauthenticate/replay a POST."""
     proxy = copy(conn.block_storage)
-    proxy.request = partial(proxy.request, connect_retries=0, status_code_retries=0)
+    proxy.request = partial(proxy.request, connect_retries=0, status_code_retries=0, allow_reauth=False, redirect=False)
     return _transfer_result(proxy.accept_transfer(transfer_id, auth_key))
 
 

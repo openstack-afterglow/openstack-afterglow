@@ -66,13 +66,13 @@
 		const request = ++domainRequest;
 		const current = () => owner.current() && request === domainRequest;
 		if (!opts?.background) domainUsageLoading = true;
-		api.get<DomainUsage[]>('/api/v1/admin/overview/domains', owner.token, owner.projectId)
+		return api.get<DomainUsage[]>('/api/v1/admin/overview/domains', owner.token, owner.projectId)
 			.then(result => { if (current()) { domainUsage = result; domainUsageError = ''; } })
 			.catch(() => { if (current()) domainUsageError = t('overview.domains.loadFailed'); })
 			.finally(() => { if (current()) domainUsageLoading = false; });
 	}
 
-	createAutoRefresh(() => { loadDomainUsage({ background: true }); },
+	createAutoRefresh(() => loadDomainUsage({ background: true }),
 		{ storageKey: 'admin-overview', defaultActive: true, defaultInterval: 60, invokeOnMount: false });
 
 	function loadOverview() {

@@ -2,11 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, waitFor } from '@testing-library/svelte';
 import { auth } from '$lib/stores/auth';
 
-const { api, memoryCache } = vi.hoisted(() => ({
+const { api } = vi.hoisted(() => ({
 	api: { get: vi.fn(), delete: vi.fn(), post: vi.fn() },
-	memoryCache: { get: vi.fn(), set: vi.fn() },
 }));
-vi.mock('$lib/api/client', () => ({ api, memoryCache, ApiError: class ApiError extends Error {} }));
+vi.mock('$lib/api/client', () => ({ api, ApiError: class ApiError extends Error {} }));
 
 import Page from '../+page.svelte';
 

@@ -10,6 +10,7 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from openstack.exceptions import ResourceNotFound
 from pydantic import BaseModel
 
 from app.api.common.admin_resource_scope import AdminResourceScope, admin_resource_scope
@@ -40,6 +41,10 @@ class AdminUpdatePropertiesRequest(BaseModel):
 
     set: dict[str, str] | None = None
     remove: list[str] | None = None
+
+
+class AdminAddImageMemberRequest(BaseModel):
+    member: str
 
 
 class VerificationRequest(BaseModel):
@@ -141,17 +146,97 @@ async def list_admin_images(
         raise HTTPException(status_code=500, detail="이미지 목록 조회 실패")
 
 
+async def _require_admin_image(conn, image_id: str) -> ImageDetail:
+    try:
+        image = await asyncio.to_thread(glance.get_image, conn, image_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다") from exc
+    # The executor's project is not the resource owner. Bind to the exact native image.
+    if image.id != image_id or not isinstance(image.owner, str) or not image.owner.strip():
+        raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다")
+    return image
+
+
+def _image_member(member, image_id: str, member_id: str | None = None) -> dict:
+    actual_id = getattr(member, "id", None)
+    if (
+        not isinstance(actual_id, str)
+        or not actual_id.strip()
+        or getattr(member, "image_id", None) != image_id
+        or (member_id is not None and actual_id != member_id)
+    ):
+        raise HTTPException(status_code=404, detail="이미지 공유 멤버를 찾을 수 없습니다")
+    return {
+        "member_id": actual_id,
+        "status": member.status,
+        "created_at": str(member.created_at) if member.created_at else None,
+    }
+
+
 @router.get("/images/{image_id}", dependencies=[Depends(require_admin)])
 async def get_admin_image(
     image_id: str,
     conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """이미지 상세 조회."""
-    try:
-        image = await asyncio.to_thread(glance.get_image, conn, image_id)
-    except Exception:
-        raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다")
+    image = await _require_admin_image(conn, image_id)
     return (await image_verification.enrich([image]))[0]
+
+
+@router.get("/images/{image_id}/members", dependencies=[Depends(require_admin)])
+async def list_admin_image_members(
+    image_id: str,
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
+):
+    await _require_admin_image(conn, image_id)
+
+    def _list():
+        return [_image_member(member, image_id) for member in conn.image.members(image_id)]
+
+    try:
+        return await asyncio.to_thread(_list)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="멤버 목록 조회 실패") from exc
+
+
+@router.post("/images/{image_id}/members", dependencies=[Depends(require_admin)], status_code=201)
+async def add_admin_image_member(
+    image_id: str,
+    req: AdminAddImageMemberRequest,
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
+):
+    await _require_admin_image(conn, image_id)
+    member_id = req.member.strip()
+    if not member_id:
+        raise HTTPException(status_code=400, detail="공유 프로젝트 ID가 필요합니다")
+    try:
+        member = await asyncio.to_thread(conn.image.add_member, image_id, member_id=member_id)
+        return _image_member(member, image_id, member_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="멤버 추가 실패") from exc
+
+
+@router.delete("/images/{image_id}/members/{member_id}", dependencies=[Depends(require_admin)], status_code=204)
+async def remove_admin_image_member(
+    image_id: str,
+    member_id: str,
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
+):
+    await _require_admin_image(conn, image_id)
+    try:
+        member = await asyncio.to_thread(conn.image.get_member, member_id, image_id)
+        _image_member(member, image_id, member_id)
+        await asyncio.to_thread(conn.image.remove_member, member_id, image_id, ignore_missing=False)
+    except ResourceNotFound as exc:
+        raise HTTPException(status_code=404, detail="이미지 공유 멤버를 찾을 수 없습니다") from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="멤버 삭제 실패") from exc
 
 
 @router.put("/images/{image_id}/verification", response_model=ImageDetail, dependencies=[Depends(require_admin)])
@@ -243,6 +328,10 @@ async def delete_admin_image(
         _logger.warning("이미지 삭제 실패: %s", e)
 
         raise HTTPException(status_code=400, detail="이미지 삭제 실패")
+    try:
+        await invalidate("afterglow:glance:*:images")
+    except Exception:
+        _logger.warning("Deleted image %s retained a stale image-list cache", image_id, exc_info=True)
     try:
         await image_verification.remove_deleted_image(image_id)
     except image_verification.VerificationUnavailable:

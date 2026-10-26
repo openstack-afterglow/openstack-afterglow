@@ -29,8 +29,9 @@
 	});
 	provideContainerDetailController(s);
 
-	const ar = createAutoRefresh(() => s.fetchContainer(), {
+	const ar = createAutoRefresh((force) => s.fetchContainer(force), {
 		storageKey: 'container-detail-panel',
+		invokeOnMount: false,
 		defaultActive: true,
 		defaultInterval: 10,
 		intervalOptions: [10, 15, 30, 60],

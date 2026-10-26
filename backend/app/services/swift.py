@@ -15,6 +15,7 @@ import contextlib
 import logging
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 from app.services.work_dispatcher import DispatcherUnavailable, checkpoint_sync
 
@@ -76,6 +77,83 @@ def _require_swift_success(response, action: str) -> None:
         raise RuntimeError(f"Swift {action} returned HTTP {response.status_code}")
 
 
+def _container_inventory(proxy, include_quarantine: bool, include_trash: bool) -> list[dict]:
+    all_containers = list(proxy.containers())
+    seg_bytes_by_origin: dict[str, int] = {}
+    for container in all_containers:
+        name = container.name or ""
+        if name.endswith("_segments"):
+            origin = name[: -len("_segments")]
+            seg_bytes_by_origin[origin] = seg_bytes_by_origin.get(origin, 0) + (getattr(container, "bytes", 0) or 0)
+
+    result = []
+    for container in all_containers:
+        name = container.name or ""
+        if name.endswith("_segments"):
+            continue
+        quarantine, trash = name.endswith("-quarantine"), name.endswith("-trash")
+        if (quarantine and not include_quarantine) or (trash and not include_trash):
+            continue
+        entry = {
+            "name": name,
+            "count": getattr(container, "count", 0) or 0,
+            "bytes": (getattr(container, "bytes", 0) or 0) + seg_bytes_by_origin.get(name, 0),
+        }
+        if quarantine:
+            entry["is_quarantine"] = True
+        if trash:
+            entry["is_trash"] = True
+        result.append(entry)
+    return result
+
+
+def list_project_containers(
+    conn, project_id: str, include_quarantine: bool = False, include_trash: bool = False
+) -> list[dict]:
+    """Read one exact Swift account using the verified fixed admin-project credential.
+
+    Keystone project membership is not Swift account ownership: do not rescope the
+    executor into each tenant. The native Swift reseller/admin policy still decides
+    whether its token may read AUTH_<project_id>. Never mutate the shared proxy while
+    parallel account reads are running, and never turn provider denials into emptiness.
+    """
+    from openstack.object_store.v1._proxy import Proxy
+
+    authenticated_project = getattr(conn, "_afterglow_authenticated_project_id", None)
+    if not isinstance(authenticated_project, str) or not authenticated_project:
+        raise ValueError("Swift administrator project scope is unavailable")
+    if not isinstance(project_id, str) or not project_id:
+        raise ValueError("Swift target project is unavailable")
+    endpoint = _get_swift_endpoint(conn) or conn.object_store.get_endpoint()
+    if not isinstance(endpoint, str):
+        raise ValueError("Swift administrator endpoint is unavailable")
+    endpoint = endpoint.replace("%(project_id)s", authenticated_project)
+    parts = urlsplit(endpoint)
+    prefix, separator, account = parts.path.rstrip("/").rpartition("/")
+    if (
+        parts.scheme not in {"http", "https"}
+        or not parts.netloc
+        or parts.username is not None
+        or parts.password is not None
+        or parts.query
+        or parts.fragment
+        or not separator
+        or prefix.rsplit("/", 1)[-1] != "v1"
+        or any(segment.startswith("AUTH_") for segment in unquote(prefix).split("/"))
+        or account != "AUTH_" + authenticated_project
+        or any(segment in {".", ".."} for segment in unquote(parts.path).split("/"))
+    ):
+        raise ValueError("Swift administrator account endpoint is unverified")
+    target = urlunsplit(parts._replace(path=prefix + "/AUTH_" + quote(project_id, safe="")))
+    proxy = Proxy(session=conn.session, service_type="object-store", endpoint_override=target)
+    try:
+        return _container_inventory(proxy, include_quarantine, include_trash)
+    except Exception as exc:
+        if _is_account_not_found(exc):
+            return []
+        raise
+
+
 def list_containers(
     conn,
     include_quarantine: bool = False,
@@ -99,45 +177,7 @@ def list_containers(
             endpoint = "(resolve failed)"
         _logger.info("Swift list_containers: project_id=%s endpoint=%s", project_id, endpoint)
 
-        # SLO segment 컨테이너({name}_segments)는 사용자 목록에서 숨기고,
-        # 그 bytes 는 원본 컨테이너에 합산해서 표시.
-        all_containers = list(conn.object_store.containers())
-        seg_bytes_by_origin: dict[str, int] = {}
-        for c in all_containers:
-            cname = c.name or ""
-            if cname.endswith("_segments"):
-                origin = cname[: -len("_segments")]
-                seg_bytes_by_origin[origin] = seg_bytes_by_origin.get(origin, 0) + (getattr(c, "bytes", 0) or 0)
-
-        result = []
-        for c in all_containers:
-            cname = c.name or ""
-            if cname.endswith("_segments"):
-                continue
-            is_quarantine = cname.endswith("-quarantine")
-            if is_quarantine and not include_quarantine:
-                continue
-            is_trash = cname.endswith("-trash")
-            if is_trash and not include_trash:
-                continue
-            base_bytes = getattr(c, "bytes", 0) or 0
-            entry = {
-                "name": cname,
-                "count": getattr(c, "count", 0) or 0,
-                "bytes": base_bytes + seg_bytes_by_origin.get(cname, 0),
-            }
-            if is_quarantine:
-                entry["is_quarantine"] = True
-            if is_trash:
-                entry["is_trash"] = True
-            result.append(entry)
-        _logger.info(
-            "Swift 컨테이너 목록 조회: %d개 (quarantine=%s, trash=%s)",
-            len(result),
-            include_quarantine,
-            include_trash,
-        )
-        return result
+        return _container_inventory(conn.object_store, include_quarantine, include_trash)
     except Exception as exc:
         if _is_account_not_found(exc):
             _logger.info("Swift 계정 미초기화 (404) — 빈 목록 반환")

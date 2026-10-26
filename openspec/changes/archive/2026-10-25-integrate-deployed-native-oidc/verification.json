@@ -1,0 +1,60 @@
+{
+  "status": "source_integrated_local_backend_deployed_production_unchanged",
+  "source_sha256": "632a74a074357f979198871593f71d58ae39f706b8821d0d26b0a3b26823b392",
+  "source_files": 3444,
+  "gate": {
+    "backend": 9480,
+    "backend_skipped": 95,
+    "frontend": 5124,
+    "frontend_files": 439,
+    "contracts": 181,
+    "db": 166,
+    "ruff_files": 728,
+    "exit": 0
+  },
+  "focused": {
+    "passed": 655,
+    "skipped": 1
+  },
+  "tcp_callback": {
+    "transport": "actual Uvicorn TCP",
+    "native_auth": "synthetic stateful directory and signed IdP wire",
+    "success": 200,
+    "mapping_drift": 503,
+    "servers_stopped": 2
+  },
+  "native_mapping": {
+    "keystone_changed": false,
+    "source_equals_live": true,
+    "id": "sso_oidc_mapping",
+    "canonical_sha256": "f034e498c6aa89a29b26d0ef8300b86fc4ac6b22f5ec6e26d882db612d43b6ae",
+    "deployed_readonly_guard": "accepted exact config provider"
+  },
+  "local": {
+    "scope": "backend only",
+    "image": "sha256:cce0c121fc5c0abddbece50df7c0437335196882766aea7194ac174145ca9378",
+    "healthy": true,
+    "architectures_built_and_executed": [
+      "arm64",
+      "amd64"
+    ],
+    "runtime_modules_match_source": true,
+    "environment_preserved": true,
+    "mounts_preserved": "logical host sources match, Docker Desktop /host_mnt translation verified by actual mounted config SHA256",
+    "unrelated_container_ids_preserved": 13,
+    "sql_models_unchanged": true,
+    "private_changes": [
+      "auth.providers.dmslab_gitlab.enabled=false",
+      "auth.domain.default.allow_providers=[]",
+      "auth.providers.dmslab_gitlab_domain.native_mapping"
+    ],
+    "browser": "actual served local SSO chooser has only supported provider; actual GitLab signin handoff; no credentials submitted"
+  },
+  "limits": [
+    "No human GitLab callback or user token was exercised",
+    "No production Kolla rollout, shared Keystone mapping/IAM/schema mutations",
+    "No commit/push/tag",
+    "Existing dirty administrator detail and role restrictions included in approved local backend cutover, frontend unchanged"
+  ],
+  "proof_root": "/Users/pieroot/.local/share/afterglow-proofs/integrate-deployed-native-oidc-20261025"
+}

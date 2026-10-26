@@ -1,4 +1,5 @@
 import type { Handle } from '@sveltejs/kit';
+import { dev } from '$app/environment';
 import { createTrafficReporter, reporterConfig } from '$lib/server/trafficReporter';
 import { loadPublicSiteConfig } from '$lib/server/config';
 import type { PublicSiteConfig } from '$lib/types/siteConfig';
@@ -14,6 +15,8 @@ import {
 	isMockupPathAllowed,
 	isMockupProfileId,
 } from '$lib/mockup/contracts';
+
+const impeccableLiveDev = dev ? ' http://localhost:8400' : '';
 
 // 인증 없이 접근 가능한 경로
 const PUBLIC_PATHS = ['/', '/login', '/signup', '/recover', '/auth/callback', '/health', '/oauth/mcp/authorize'];
@@ -151,12 +154,12 @@ function buildSecurityHeaders(siteConfig: PublicSiteConfig): Record<string, stri
 		// Inline styles support Svelte transitions; scripts require SvelteKit-generated nonces/hashes.
 		'Content-Security-Policy':
 			`default-src 'self'; ` +
-			`script-src 'self'; ` +
+			`script-src 'self'${impeccableLiveDev}; ` +
 			`style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; ` +
 			`img-src ${buildImgSrc(siteConfig)}; ` +
 			// Audio Studio plays only browser-created object URLs (authenticated downloads, local files); no remote media.
 			`media-src 'self' blob:; ` +
-			`connect-src ${buildConnectSrc(siteConfig)}; ` +
+			`connect-src ${buildConnectSrc(siteConfig)}${impeccableLiveDev}; ` +
 			`font-src 'self' https://fonts.gstatic.com; ` +
 			`frame-src ${buildFrameSrc(siteConfig)}; ` +
 			`frame-ancestors 'none'`,

@@ -13,6 +13,8 @@
 		creating,
 		onAdd,
 		onDelete,
+		canMutate = true,
+		loadError = '',
 	}: {
 		databases: DbDatabase[];
 		deletingDb: string | null;
@@ -20,6 +22,8 @@
 		creating: boolean;
 		onAdd: (form: { name: string; character_set: string; collate: string }) => Promise<boolean>;
 		onDelete: (name: string) => Promise<void>;
+		canMutate?: boolean;
+		loadError?: string;
 	} = $props();
 
 	let showForm = $state(false);
@@ -37,12 +41,14 @@
 <div class="bg-surface-base border border-line rounded-xl p-4 mb-4">
 	<div class="flex items-center justify-between mb-3">
 		<h2 class="text-sm font-semibold text-ink-0">{tr('labels.databases')}</h2>
+		{#if canMutate}
 		<button onclick={() => { showForm = !showForm; }}
 			class="text-xs text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 px-2 py-1 rounded transition-colors">
 			{showForm ? tr('actions.cancel') : tr('actions.add')}
 		</button>
+		{/if}
 	</div>
-	{#if showForm}
+	{#if showForm && canMutate}
 		<div class="bg-surface-sunken rounded-lg p-3 mb-3 space-y-2">
 			<input type="text" bind:value={newDb.name} placeholder="database_name"
 				class="w-full bg-surface-selected border border-line-2 rounded px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm" />
@@ -53,7 +59,9 @@
 			</button>
 		</div>
 	{/if}
-	{#if databases.length === 0}
+	{#if loadError}
+		<p role="alert" class="text-state-danger-text text-sm">{loadError}</p>
+	{:else if databases.length === 0}
 		<div class="text-ink-2 text-xs">{tr('databases.empty')}</div>
 	{:else}
 		<ResponsiveTable>
@@ -61,7 +69,7 @@
 				{#each databases as db}
 					<CompactResourceCard>
 						<h3 class="break-all font-medium text-ink-0">{db.name}</h3>
-						{#snippet actions()}<Button variant="danger" size="sm" disabled={deletingDb === db.name} onclick={() => onDelete(db.name)}>{deletingDb === db.name ? tr('state.deleting') : tr('actions.delete')}</Button>{/snippet}
+						{#snippet actions()}{#if canMutate}<Button variant="danger" size="sm" disabled={deletingDb === db.name} onclick={() => onDelete(db.name)}>{deletingDb === db.name ? tr('state.deleting') : tr('actions.delete')}</Button>{/if}{/snippet}
 					</CompactResourceCard>
 				{/each}
 			{/snippet}
@@ -69,10 +77,12 @@
 			{#each databases as db}
 				<div class="flex items-center justify-between py-1.5 border-b border-line/50">
 					<span class="text-ink-0 text-sm font-medium">{db.name}</span>
+					{#if canMutate}
 					<button onclick={() => onDelete(db.name)} disabled={deletingDb === db.name}
 						class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
 						{#if deletingDb === db.name}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.deleting')}</span></span>{:else}{tr('actions.delete')}{/if}
 					</button>
+					{/if}
 				</div>
 			{/each}
 		</div>

@@ -218,6 +218,11 @@
 	}
 	async function loadRun(id: string, requestScope: ImageApiScope, generation: number) {
 		if (generation !== operation || !canPublish(requestScope) || !scope) return;
+		if (document.hidden || navigator.onLine === false) {
+			clearTimer();
+			timer = setTimeout(() => { void loadRun(id, requestScope, generation); }, 2000);
+			return;
+		}
 		requestScope = scope;
 		loadingRun = true;
 		try {

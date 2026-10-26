@@ -41,12 +41,12 @@
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
-	async function load() {
+	async function load(force = false) {
 		if (containers.length === 0) loading = true;
 		else refreshing = true;
 		inventoryError = '';
 		try {
-			containers = await api.get<AdminContainer[]>('/api/v1/admin/all-containers', token, projectId);
+			containers = await api.get<AdminContainer[]>('/api/v1/admin/all-containers', token, projectId, { refresh: force });
 		} catch (reason) {
 			containers = []; inventoryError = reason instanceof Error ? reason.message : scopeT('state.unavailable');
 		} finally {
@@ -76,7 +76,7 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading || refreshing}
-				onManualRefresh={load}
+				onManualRefresh={ar.refresh}
 			/>
 		{/snippet}
 	</PageHeader>

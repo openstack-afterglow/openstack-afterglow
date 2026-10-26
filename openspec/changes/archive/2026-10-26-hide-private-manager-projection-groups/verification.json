@@ -1,0 +1,14 @@
+{
+  "change": "hide-private-manager-projection-groups",
+  "date": "2026-10-26",
+  "status": "source-bugfix-qualified-full-integration-gate-red",
+  "proof_root": "~/.local/share/afterglow-proofs/private-manager-group-inventory-20261026/",
+  "source_snapshot": {"sha256": "90497ed0c269a0f370aee3396a2608e51a313ff94c9ee133c787d4480e99901e", "files": 3497, "scope": "Frozen public working source includes concurrent WIP; only group inventory fix reviewed. Architecture stamp and staged guard executed in disposable snapshot, not shared index or shared review marker."},
+  "change_scope": ["backend/app/api/identity/admin_identity.py:list_groups", "backend/tests/test_admin_identity_inventory.py:three new regression cases", "ARCHITECTURE.md", "docs/testing.md", "CHANGELOG.md"],
+  "before": "2 inventory regressions failed (reserved name and marker exposed in fresh/legacy cache); protected delete already passed403",
+  "passed": {"exact_backend": "186 passed across inventory/default-domain/domain-project tests", "access_target": {"backend": 1638, "frontend": "24 files / 349 passed"}, "style": "Affected2Pythonfiles Ruff check and format --check pass", "tcp_sdk_browser": "Actual Uvicorn TCP/installed Keystone and OpenStack SDK/fakeredis cache+lease and actual compiled administrator UI: legacy-warm GET200 excludes private groups; direct private DELETE403 with no write; ordinary delete204 via UI; exactly ordinary deleted, both private groups retained; unexpected provider calls0"},
+  "gate": {"command": "npm run test:gate", "exit": 1, "backend": "9711 passed /95skipped", "frontend": "447files5327passed /3files6failed", "failed_paths": ["src/routes/__tests__/chat-gated-surfaces.test.ts", "src/lib/components/__tests__/AdminSidebar.test.ts", "src/routes/admin/chat/__tests__/page.test.ts"], "observed_errors": "Lumen option/link and model-load button unavailable in these frontend tests; full failure IDs in test-gate.log", "not_reached": ["contract lane", "functional lane", "global backend lint"], "boundary": "Focused group passes do not make full integration gate green; no changes made to those failed frontend paths"},
+  "runtime_boundary": "Synthetic human/admin authority and loopback native provider; not real Keystone login or operational group deletion. Disposable same-origin QA proxy only; production CSP/auth/config/IAM/schema untouched. QA browser/proxy/Vite/Uvicorn/native fixtures stopped.",
+  "release": "No deployment, publication, commit, push, tag or operational group mutation.",
+  "optional_code_index": "gbrain CLI unavailable as already established in this session; no code indexing or CLAUDE guidance edit claimed."
+}

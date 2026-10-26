@@ -120,6 +120,14 @@ function createCacheGroup(): HTMLElement {
   return document.querySelector('[data-testid="model-create-cache-prices"]') as HTMLElement;
 }
 
+async function openManualCreation(): Promise<HTMLElement> {
+  const button = await screen.findByRole('button', { name: '+ 모델 추가' });
+  await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+  await fireEvent.click(button);
+  await fireEvent.click(screen.getByRole('button', { name: '직접 입력' }));
+  return screen.getByRole('dialog', { name: '+ 모델 추가' });
+}
+
 async function openEditor(index = 0): Promise<HTMLElement> {
   await screen.findAllByText("가격 수정");
   await fireEvent.click(screen.getAllByText("가격 수정")[index]);
@@ -155,44 +163,46 @@ describe("admin chat model prompt-cache pricing", () => {
   });
 
 
-  it("creates a model with only a cache read price, omitting blank cache keys and skipping the pair rule", async () => {
-    serve([]);
+
+  it("creates a cache-only priced model without requiring text prices and resets the successful draft", async () => {
+    const stored: unknown[] = [];
+    serve(stored);
+    post.mockImplementation(async (_path: string, changes: Record<string, unknown>) => {
+      const saved = model(5, { ...changes, display_name: "Cache-only model" });
+      stored.push(saved);
+      return saved;
+    });
     render(ModelPage);
+    await openManualCreation();
     await fireEvent.input(await screen.findByPlaceholderText("모델명 (예: gpt-4o)"), {
-      target: { value: "anthropic/claude-new" },
+      target: { value: "anthropic/claude-cache-only" },
     });
     await fireEvent.input(within(createCacheGroup()).getByLabelText("캐시 읽기"), { target: { value: " 0.3 " } });
-    await fireEvent.click(screen.getByText("+ 모델 추가"));
-
-    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
-    const [path, body] = post.mock.calls[0];
-    expect(path).toBe("/api/v1/chat/admin/models");
-    expect(body).toStrictEqual({
-      provider_id: 1,
-      model_name: "anthropic/claude-new",
-      display_name: null,
-      input_price_per_million: null,
-      output_price_per_million: null,
-      cache_read_price_per_million: "0.3",
-    });
-    expect(body).not.toHaveProperty("cache_write_price_per_million");
-    expect(body).not.toHaveProperty("cache_write_1h_price_per_million");
+    await fireEvent.click(within(screen.getByRole('dialog', { name: '+ 모델 추가' })).getByRole('button', { name: '+ 모델 추가' }));
+    await screen.findByRole("checkbox", { name: "Cache-only model 선택" });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '+ 모델 추가' })).toBeNull());
+    const cleanDraft = await openManualCreation();
+    expect((within(createCacheGroup()).getByLabelText("캐시 읽기") as HTMLInputElement).value).toBe("");
+    await fireEvent.click(within(cleanDraft).getAllByRole('button', { name: '닫기' }).at(-1)!);
+    const editor = await openEditor();
+    expect((within(editor).getByLabelText("캐시 읽기") as HTMLInputElement).value).toBe("0.3");
+    expect((within(editor).getByLabelText("캐시 쓰기 5분") as HTMLInputElement).value).toBe("");
+    expect((within(editor).getByLabelText("캐시 쓰기 1시간") as HTMLInputElement).value).toBe("");
+    expect((within(editor).getByLabelText("입력") as HTMLInputElement).value).toBe("");
+    expect((within(editor).getByLabelText("출력") as HTMLInputElement).value).toBe("");
     expect(toastError).not.toHaveBeenCalled();
-    // The form resets after a successful create.
-    await waitFor(() =>
-      expect((within(createCacheGroup()).getByLabelText("캐시 읽기") as HTMLInputElement).value).toBe(""),
-    );
   });
 
   it("omits every cache key on create when all cache prices are blank", async () => {
     serve([]);
     render(ModelPage);
+    await openManualCreation();
     await fireEvent.input(await screen.findByPlaceholderText("모델명 (예: gpt-4o)"), {
       target: { value: "anthropic/claude-plain" },
     });
     await fireEvent.input(screen.getByPlaceholderText("입력 가격 (USD / 1M tokens)"), { target: { value: "3" } });
     await fireEvent.input(screen.getByPlaceholderText("출력 가격 (USD / 1M tokens)"), { target: { value: "15" } });
-    await fireEvent.click(screen.getByText("+ 모델 추가"));
+    await fireEvent.click(within(screen.getByRole('dialog', { name: '+ 모델 추가' })).getByRole('button', { name: '+ 모델 추가' }));
 
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     const body = post.mock.calls[0][1];
@@ -203,6 +213,7 @@ describe("admin chat model prompt-cache pricing", () => {
   it("rejects invalid cache prices in the field before submitting and clears the error once corrected", async () => {
     serve([]);
     render(ModelPage);
+    await openManualCreation();
     await fireEvent.input(await screen.findByPlaceholderText("모델명 (예: gpt-4o)"), {
       target: { value: "anthropic/claude-bad" },
     });
@@ -211,7 +222,7 @@ describe("admin chat model prompt-cache pricing", () => {
     const write1h = within(group).getByLabelText("캐시 쓰기 1시간") as HTMLInputElement;
     await fireEvent.input(write5m, { target: { value: "-1" } });
     await fireEvent.input(write1h, { target: { value: "1e3" } });
-    await fireEvent.click(screen.getByText("+ 모델 추가"));
+    await fireEvent.click(within(screen.getByRole('dialog', { name: '+ 모델 추가' })).getByRole('button', { name: '+ 모델 추가' }));
 
     expect(write5m.getAttribute("aria-invalid")).toBe("true");
     expect(write5m.getAttribute("aria-describedby")).toBe("model-create-cache-write-5m-message");
@@ -222,7 +233,7 @@ describe("admin chat model prompt-cache pricing", () => {
 
     for (const bad of ["Infinity", "NaN", "0x10", "1,5"]) {
       await fireEvent.input(write1h, { target: { value: bad } });
-      await fireEvent.click(screen.getByText("+ 모델 추가"));
+      await fireEvent.click(within(screen.getByRole('dialog', { name: '+ 모델 추가' })).getByRole('button', { name: '+ 모델 추가' }));
       expect(post).not.toHaveBeenCalled();
     }
   });
@@ -343,7 +354,9 @@ describe("admin chat model prompt-cache pricing", () => {
     await screen.findByText("Claude 1");
     expect(screen.queryByText(t("configuration.cacheRatesUnsetCacheTokensAreBilledAt0"))).toBeNull();
     // Every loaded row is from the older Lumen, so the create form offers no cache inputs either.
+    const creation = await openManualCreation();
     expect(createCacheGroup()).toBeNull();
+    await fireEvent.click(within(creation).getAllByRole('button', { name: '닫기' }).at(-1)!);
     const modal = await openEditor();
     for (const label of ["캐시 읽기", "캐시 쓰기 5분", "캐시 쓰기 1시간"]) {
       expect(within(modal).queryByLabelText(label)).toBeNull();
@@ -363,6 +376,7 @@ describe("admin chat model prompt-cache pricing", () => {
     serve([legacyModel(1), model(2)]);
     render(ModelPage);
     await screen.findByText("Claude 2");
+    await openManualCreation();
     expect(createCacheGroup()).not.toBeNull();
   });
 
@@ -413,12 +427,13 @@ describe("admin media model registration", () => {
     serve([], [openai]);
     render(ModelPage);
     await screen.findByText("모델");
+    await openManualCreation();
     await fireEvent.change(screen.getByLabelText("모델 종류"), { target: { value: "image" } });
     await fireEvent.input(screen.getByPlaceholderText("모델명 (예: gpt-4o)"), { target: { value: "gpt-image-1" } });
     await fireEvent.click(screen.getByText("+ variant 추가"));
     await fireEvent.input(screen.getByLabelText("이미지 variant 이름"), { target: { value: "1024x1024:high" } });
     await fireEvent.input(screen.getByLabelText("이미지 variant 단가"), { target: { value: "0.08" } });
-    await fireEvent.click(screen.getByText("+ 모델 추가"));
+    await fireEvent.click(within(screen.getByRole('dialog', { name: '+ 모델 추가' })).getByRole('button', { name: '+ 모델 추가' }));
 
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     expect(JSON.parse(JSON.stringify(post.mock.calls[0][1]))).toStrictEqual({

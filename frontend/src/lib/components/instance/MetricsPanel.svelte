@@ -15,6 +15,7 @@
 		instanceId: string;
 		isGpu?: boolean;
 		projectId?: string;
+		adminMode?: boolean;
 	}
 
 	type RangeKey = '15m' | '1h' | '6h' | '24h' | '7d';
@@ -25,10 +26,10 @@
 		value: number | null;
 	}
 
-	let { instanceId, isGpu = false, projectId: instanceProjectId }: Props = $props();
+	let { instanceId, isGpu = false, projectId: instanceProjectId, adminMode = false }: Props = $props();
 
 	const token = $derived($auth.token ?? undefined);
-	const projectId = $derived(instanceProjectId ?? $auth.projectId ?? undefined);
+	const projectId = $derived(adminMode ? $auth.projectId ?? undefined : instanceProjectId ?? $auth.projectId ?? undefined);
 	let authEpoch = $state(0);
 	const unsubscribeAuth = auth.subscribe(() => { authEpoch += 1; });
 	let generation = 0;
@@ -38,7 +39,7 @@
 	let activeTab: TabKey = $state('chart');
 
 	let range: RangeKey = $state('1h');
-	const context = $derived(`${authEpoch}:${projectId}:${instanceId}:${range}:${isGpu}`);
+	const context = $derived(`${authEpoch}:${adminMode}:${projectId}:${instanceId}:${range}:${isGpu}`);
 	let metricsContext = $state('');
 
 	const RANGES: RangeKey[] = ['15m', '1h', '6h', '24h', '7d'];
@@ -59,21 +60,21 @@
 	let showNative = $state(false);
 
 	async function loadAll() {
-		const request = { token, projectId, instanceId, range, isGpu, epoch: authEpoch, generation: ++generation };
+		const request = { token, projectId, instanceId, range, isGpu, adminMode, epoch: authEpoch, generation: ++generation };
 		const current = () => request.generation === generation && request.token === token
 			&& request.projectId === projectId && request.instanceId === instanceId && request.range === range
-			&& request.isGpu === isGpu && request.epoch === authEpoch;
+			&& request.isGpu === isGpu && request.adminMode === adminMode && request.epoch === authEpoch;
 		if (!request.token || !request.projectId || !request.instanceId) return;
 		const keys = [...baseMetrics, ...nativeMetrics, ...(request.isGpu ? gpuMetrics : [])];
 		void api.get<{ monitoring_available: boolean; stats: Record<string, StatInfo> }>(
-			`/api/v1/instances/${request.instanceId}/metrics-summary?range=${request.range}`,
+			`/api/v1/${request.adminMode ? 'admin/' : ''}instances/${request.instanceId}/metrics-summary?range=${request.range}`,
 			request.token, request.projectId,
 		).then((resp) => {
 			if (current()) summaryStats = resp.monitoring_available ? resp.stats : {};
 		}).catch(() => { if (current()) summaryStats = {}; });
 		try {
 			const resp = await api.get<{ metrics: Record<string, MetricResponse> }>(
-				`/api/v1/instances/${request.instanceId}/metrics-batch?metrics=${keys.join(',')}&range=${request.range}`,
+				`/api/v1/${request.adminMode ? 'admin/' : ''}instances/${request.instanceId}/metrics-batch?metrics=${keys.join(',')}&range=${request.range}`,
 				request.token, request.projectId,
 			);
 			if (!current()) return;
@@ -97,7 +98,7 @@
 	});
 
 	$effect(() => {
-		void token; void projectId; void instanceId; void range; void isGpu; void authEpoch;
+		void token; void projectId; void instanceId; void range; void isGpu; void adminMode; void authEpoch;
 		untrack(() => {
 			generation += 1;
 			metrics = emptyMetrics();

@@ -354,6 +354,7 @@ describe('Windows setup consumer, real controller and metadata editors', () => {
 		server.owner = 'another-owner';
 		boundary.patch.mockResolvedValueOnce(server);
 		const { controller } = await mount({ ...initialScope, isAdmin: true });
+		expect(boundary.get).toHaveBeenCalledExactlyOnceWith('/api/v1/admin/images/image-a', 'token-a', 'project-a');
 		expect(controller.isOwner).toBe(false);
 		expect(controller.canEditMetadata).toBe(true);
 		await prepareSetup();
@@ -500,7 +501,7 @@ describe('mounted Windows setup consumer scope and generation fences', () => {
 			await waitFor(() => expect(boundary.get).toHaveBeenCalledTimes(3));
 		}
 		const currentScope = aba ? initialScope : changed;
-		expect(boundary.get).toHaveBeenLastCalledWith(`/api/v1/images/${currentScope.imageId}`, currentScope.token, currentScope.projectId);
+		expect(boundary.get).toHaveBeenLastCalledWith(`${currentScope.isAdmin ? '/api/v1/admin/images' : '/api/v1/images'}/${currentScope.imageId}`, currentScope.token, currentScope.projectId);
 		if (outcome === 'success') oldLoad.resolve(authoritativeSavedImage());
 		else oldLoad.reject(new ApiError(503, 'Late load failure'));
 		if (aba) intermediateLoad.resolve(originalImage(changed.imageId, changed.projectId));

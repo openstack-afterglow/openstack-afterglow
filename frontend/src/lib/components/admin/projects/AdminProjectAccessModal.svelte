@@ -169,6 +169,7 @@
 	async function toggleRole(role: Role, checked: boolean) {
 		const request = scope;
 		if (!request || !current(request) || !detailPrincipal || roleBusy) return;
+		if (checked && role.name.toLowerCase() === 'admin') return;
 		if (!checked && role.id === readerRole?.id) return;
 		const principal = detailPrincipal;
 		roleBusy = role.id; detailError = '';
@@ -333,7 +334,7 @@
 					{@const locked = assigned && role.id === readerRole?.id}
 					<li class="flex items-center justify-between py-2">
 						<label class="flex items-center gap-2 text-sm text-ink-1 cursor-pointer">
-							<input type="checkbox" class="rounded border-line-2 bg-surface-sunken" checked={assigned} disabled={locked || roleBusy !== null} onchange={(event) => toggleRole(role, event.currentTarget.checked)} />
+							<input type="checkbox" class="rounded border-line-2 bg-surface-sunken" checked={assigned} disabled={locked || roleBusy !== null || (!assigned && role.name.toLowerCase() === 'admin')} onchange={(event) => toggleRole(role, event.currentTarget.checked)} />
 							<span>{role.name}</span>
 						</label>
 						{#if roleBusy === role.id}<ActivityIndicator size="xs" label={t('state.saving')} />{:else if locked}<span class="text-xs text-ink-2">{t('projectAccess.defaultRole')}</span>{/if}

@@ -128,6 +128,8 @@ Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen
 
 ### 프로바이더 표시 설정·등록 모델 필터·순서
 
+관리자 Lumen의 기본 `/admin/chat` 진입은 **프로바이더 설정**입니다. `/admin/chat/models`는 등록 inventory와 `모델 추가` button을 기본 표시하고, button을 누른 뒤에만 별도 창의 provider·`프로바이더에서 찾기`/`직접 입력`·종류/가격 입력이 나타납니다. 발견한 모델은 항목별로 선택하고 같은 창의 review에서 이름·표시명·종류·독립 text/media/cache 단가를 검토해 등록합니다. 생성 창의 provider와 등록 목록 filter는 독립이고 nested review modal은 없습니다. Close/provider/method/scope 전환의 늦은 응답을 버리며 결과 불명인 등록은 같은 actor/scope에서 이름을 다시 입력하거나 창을 재열어도 자동 재전송하지 않습니다. Fresh inventory의 부재만으로 원 요청 실패를 확정하지 않습니다.
+
 관리자 `/admin/chat`의 **표시 설정 수정**은 표시 이름 `name`, 외부 요청의 `provider` 값인 `api_provider`, 프로바이더 표시 `sort_order`를 편집한다. `provider_type`은 실제 연결 방식이며 별개다. 예를 들어 NVIDIA NIM을 `name="NVIDIA"`, `api_provider="nvidia"`로 바꿔도 OpenAI-compatible `provider_type="openai"`, API Base, 인증 방식, 저장된 키 및 ID는 그대로 유지된다. 선택자를 바꾸면 이전 값은 해당 프로바이더와 더 이상 일치하지 않으므로 외부 클라이언트의 body `provider`/`X-Lumen-Provider`도 새 값으로 바꾼다. 이전 값의 alias는 만들지 않는다.
 
 `api_provider`는 소문자 영문자로 시작하는 1~40자의 영문 소문자·숫자·`_`·`-` 식별자다. 표시 이름은 공백만일 수 없으며 `sort_order`는 `0..2147483647`의 정수다. 작은 값이 먼저, 같은 프로바이더 순서는 provider ID, 같은 모델 순서는 model ID가 먼저다. 변경 실패 시 편집 draft를 유지하고, 성공 시 서버 목록을 다시 읽고 기존 credential-free 모델 무효화 신호로 사용자 선택창을 갱신한다. 진행 중인 run이 사용하는 설정은 기존 mutation fence에 따라 409를 반환할 수 있다.
@@ -135,6 +137,20 @@ Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen
 관리자 `/admin/chat/models`의 **등록 모델 프로바이더 필터**는 후보 조회·수동 등록의 프로바이더 선택과 독립이다. 필터 변경은 기존 bulk 선택을 비우며 전체 선택·선택 삭제는 현재 보이는 행만 대상으로 한다. 모델 카드는 전체 영역을 위·아래로 끌어 같은 프로바이더 안에서 순서를 조정하며, 순서 grip의 위/아래 이동 버튼으로 키보드·터치 조작도 지원한다. 순서 변경은 `POST /api/v1/chat/admin/models/reorder`로 저장되어 가격·기능·활성·제목 요약 설정을 덮어쓰지 않고 rank만 단일 트랜잭션으로 원자 변경한다. 다른 사용자의 변경이나 실행 중인 run 충돌 시 409를 반환하고 목록을 최신화한다.
 
 Lumen migration `021-provider-identity-catalog-order`를 먼저 적용한 API/worker가 필요하다. 기존 `api_provider`는 `provider_type`, 두 표시 순서는 0으로 backfill하며 기존 중복 선택자는 보존한다. `/api/v1/chat/models`는 `provider_id`, `provider_type`, `provider_sort_order`, `sort_order`와 공개 선택자를 반환하고 `(provider_sort_order, provider_id, sort_order, id)` 순으로 정렬한다. 사용자 선택창은 이 순서를 그대로 유지하고 mutable 표시 이름 대신 provider ID로 필터를 고정한다. 표시 순서로 실행 endpoint를 선택하지 않으며 한 공개 model/selector가 여러 provider에 일치하면 409로 거부한다.
+
+### 모델 종류 수정과 종류별 필터
+
+수동 등록은 `model_kind=text|image|tts|stt|realtime`를 항상 명시합니다. 후보·등록 목록의 종류 필터는 저장된 종류를 사용하며 이름·이미지 입력 단가로 재분류하지 않습니다. 등록 카드의 **모델 종류 수정**은 기존 `PATCH /api/v1/chat/admin/models/{model_id}`에 종류와 `is_active=false`를 함께 보냅니다. 모델 ID, 텍스트·공유 token 단가는 보존하고 이전 종류 전용 media 단가와 미디어에서 지원하지 않는 cache-write는 명시적으로 제거합니다. 새 종류의 가격과 실행 경로 검토 뒤 재활성화는 별도입니다. 제목 요약·메모리 지정 모델은 먼저 지정을 해제해야 미디어로 변경할 수 있으며 active-run mutation fence도 유지됩니다. 운영 데이터의 자동 일괄 재분류는 하지 않습니다.
+
+### 여러 provider 키와 명시적 연결 검사
+
+Account-capable native provider의 **계정·인증 정보 관리**에서 같은 provider account 아래 여러 키를 추가·수정·비활성화할 수 있습니다. 선택 정책·model/operation 제한과 credential generation은 Lumen이 소유합니다. 키의 저장 여부는 실제 연결 성공과 별개입니다.
+
+현재 UI는 pool 진입을 single-key legacy 화면으로 대체하지 않습니다. Native account API가 없는0.6.9 등의 runtime은 명시적인 미지원/조회 실패를 표시하며 키를 임시 local 상태로 관리하거나 provider 단일 key로 덮어쓰지 않습니다. Matching native schema/API/worker/converter cutover는 [별도 배포 선행 조건](../deployment.md#lumen-provider-account-cutover-unpublished-source)이며 이 source UI 변경은 배포 승인이 아닙니다.
+
+`POST /api/v1/chat/admin/providers/{provider_id}/accounts/{account_id}/credentials/{credential_id}/probe`는 `{model_id, generation}`을 받아 해당 키 하나로 활성 text 모델에 32-token/30초 한도의 단일 요청을 보냅니다. 지원 metadata가 명시되면 JSON `{"response":"pong"}`을 요구하고, 미지원이면 전송 전에 일반 ping을 선택해 정상 비어 있지 않은 응답을 확인합니다. 전송 뒤 format 재시도·키 fallback은 없고 raw 응답·secret도 반환하지 않습니다. 응답은 `{status,reason,mode,model_id,generation,checked_at,elapsed_ms}`이며 `reason=auth_rejected|timeout|invalid_response|provider_error|null`입니다. Stale generation/ownership/config는 `404/409`, 출력 한도 미지원은 전송 전 거부합니다. Provider 비용이 발생할 수 있으므로 사용자 버튼으로만 실행하며 결과는 검사 시점 관측이지 지속 health 보장이 아닙니다. Matching account schema/native Lumen 배포가 선행되어야 하며 legacy runtime의 미지원은 UI에서 숨기거나 단일 key 교체로 대체하지 않습니다.
+
+키별 기록은 `GET /api/v1/chat/admin/providers/{provider_id}/accounts/{account_id}/credentials/{credential_id}/relays?limit=10&before_id=<ledger-id>`로 조회합니다. `limit`은1–50, `before_id`는 선택 양수이며 정확한 provider/account/credential 소유 관계를 native에서 검증합니다. 응답은 `{provider_id,account_id,credential_id,boundary:'settled_usage',items,next_before_id}`; item은 `ledger_id,generation,settled_at,settled_model,status:'settled',dispatches`입니다. Dispatch는 `attempt_id,endpoint,model,operation,status,status_code,recorded_at` whitelist만 제공합니다. 저장된 실제 dispatch receipt가 없는 과거 row의 dispatches는 null이며 현재 provider API Base로 보충하지 않습니다. 이 목록은 정산된 usage의 기록이지 실패/미정산 send 전체나 live 연결·청구서가 아닙니다. Prompt/출력/customer identity/API key·ciphertext/auth header와 endpoint userinfo/query/fragment는 공개하지 않습니다.
 
 ### 대시보드 채팅 오류 진단
 

@@ -17,7 +17,7 @@ KEY = "afterglow_share_grant_" + hashlib.sha256(SHARE.encode()).hexdigest()
 
 
 @pytest.fixture
-def deletion(monkeypatch):
+def deletion(monkeypatch, empty_layer_consume_db):
     server = InstanceInfo(id=INSTANCE, name="mutable-name", status="SHUTOFF", project_id="test-project-123")
     grant = {"s": SHARE, "i": RULE, "t": "ip", "a": "10.0.0.5", "l": "rw", "m": True}
     server.metadata = {KEY: json.dumps(grant, separators=(",", ":"))}
@@ -31,7 +31,7 @@ def deletion(monkeypatch):
         "metadata": {"afterglow_instance_id": INSTANCE},
     }
     env = SimpleNamespace(server=server, grant=grant, rules=[rule], pending=False, deleted=False, native_events=[])
-    share = SimpleNamespace(id=SHARE, project_id="test-project-123", share_proto="NFS")
+    share = SimpleNamespace(id=SHARE, project_id="test-project-123", share_proto="NFS", share_network_id=None)
 
     def exact(_conn, share_id, rule_id):
         return next((item for item in env.rules if item["id"] == rule_id), None)
@@ -47,8 +47,6 @@ def deletion(monkeypatch):
         env.native_events.append("delete")
         env.deleted = True
 
-    # These servers have Manila grants but no block-consumer binding; ledger safety is covered separately.
-    monkeypatch.setattr("app.services.layer_consume_resources.lookup_for_server", AsyncMock(return_value=[]))
     monkeypatch.setattr("app.api.compute.instances.nova.get_server", lambda *_: server)
     monkeypatch.setattr("app.api.compute.instances.nova.delete_server", delete)
     monkeypatch.setattr("app.api.compute.instances.manila.get_file_storage", lambda *_: share)
@@ -84,6 +82,39 @@ async def test_delete_revokes_exact_managed_grant_before_erasing_server(client, 
         assert response.json()["results"][0]["ok"] is True
     assert deletion.native_events == ["revoke", "delete"]
     assert deletion.rules == [unrelated]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pending", [False, True])
+async def test_admin_delete_requires_exact_managed_grant_revocation(
+    admin_client, deletion, mock_conn, monkeypatch, pending
+):
+    deletion.pending = pending
+    mock_conn.compute.get_server.return_value = SimpleNamespace(
+        id=INSTANCE,
+        name=deletion.server.name,
+        status=deletion.server.status,
+        project_id=deletion.server.project_id,
+        metadata=deletion.server.metadata,
+        addresses={},
+        image={},
+        flavor={},
+        created_at=None,
+    )
+    mock_conn.compute.volume_attachments.return_value = []
+    mock_conn.network.ports.return_value = []
+    monkeypatch.setattr("app.api.identity.admin_instances.rec", AsyncMock())
+
+    response = await admin_client.delete(f"/api/v1/admin/instances/{INSTANCE}")
+
+    assert response.status_code == (409 if pending else 204)
+    assert deletion.native_events == (["revoke"] if pending else ["revoke", "delete"])
+    assert deletion.deleted is not pending
+    if pending:
+        assert deletion.rules[0]["state"] == "denying"
+        mock_conn.compute.delete_server_metadata.assert_not_called()
+    else:
+        assert deletion.rules == []
 
 
 @pytest.mark.asyncio

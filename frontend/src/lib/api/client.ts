@@ -148,10 +148,11 @@ async function handleUnauthorized(): Promise<void> {
  * 동시 호출은 하나의 Promise로 합산(coalescing).
  */
 type RefreshSettledFailure =
-	| { kind: 'terminal'; accessToken: string | null | undefined; refreshToken: string }
-	| { kind: 'retryable'; accessToken: string | null | undefined; refreshToken: string; error: unknown; retryAt: number };
+	| { kind: 'terminal'; accessToken: string | null | undefined; refreshToken: string; epoch: number }
+	| { kind: 'retryable'; accessToken: string | null | undefined; refreshToken: string; epoch: number; error: unknown; retryAt: number };
 
 let _refreshSettledFailure: RefreshSettledFailure | null = null;
+let nonExtendingRefresh: { token: string; refreshToken: string | null | undefined; epoch: number; expiresAt: number } | null = null;
 
 const DEFAULT_REFRESH_RETRY_COOLDOWN_MS = 5_000;
 const MAX_REFRESH_RETRY_COOLDOWN_MS = 60_000;
@@ -183,7 +184,7 @@ function computeRetryAt(retryAfterHeader: string | null | undefined, now: number
 	return now + effectiveCooldownMs;
 }
 
-async function tryRefresh({ allowDuringRevocation = false, allowDuringScopeChange = false }: { allowDuringRevocation?: boolean; allowDuringScopeChange?: boolean } = {}): Promise<string | null> {
+async function tryRefresh({ allowDuringRevocation = false, allowDuringScopeChange = false, preflight = false }: { allowDuringRevocation?: boolean; allowDuringScopeChange?: boolean; preflight?: boolean } = {}): Promise<string | null> {
 	if (_sessionRevocationInProgress && !allowDuringRevocation) return null;
 	if (_refreshPromise) return _refreshPromise;
 	if (get(projectSwitching) && !allowDuringScopeChange) {
@@ -192,19 +193,28 @@ async function tryRefresh({ allowDuringRevocation = false, allowDuringScopeChang
 		await waitForScopeChange();
 		const current = get(auth);
 		if (getAuthVerificationEpoch() !== epoch || current.token !== previous.token || current.refreshToken !== previous.refreshToken) return current.token;
-		return tryRefresh({ allowDuringRevocation });
+		return tryRefresh({ allowDuringRevocation, preflight });
 	}
 	_refreshPromise = (async () => {
 		const { get } = await import('svelte/store');
 		const { auth, setAuth } = await import('$lib/stores/auth');
 		const state = get(auth);
+		const epoch = getAuthVerificationEpoch();
+		const ownsRefresh = () => getAuthVerificationEpoch() === epoch
+			&& get(auth).token === state.token && get(auth).refreshToken === state.refreshToken;
 
 		// Each tab owns its refresh session; never import another tab's credentials.
 		const refreshToken = state.refreshToken;
 		if (!refreshToken) return null;
+		if (preflight && nonExtendingRefresh?.token === state.token
+			&& nonExtendingRefresh.refreshToken === refreshToken && nonExtendingRefresh.epoch === epoch
+			&& nonExtendingRefresh.expiresAt === state.accessExpiresAt
+			&& nonExtendingRefresh.expiresAt > Math.floor(Date.now() / 1000)) return state.token;
+		nonExtendingRefresh = null;
 
 		if (_refreshSettledFailure) {
 			if (
+				_refreshSettledFailure.epoch === epoch &&
 				_refreshSettledFailure.accessToken === state.token &&
 				_refreshSettledFailure.refreshToken === refreshToken
 			) {
@@ -227,11 +237,12 @@ async function tryRefresh({ allowDuringRevocation = false, allowDuringScopeChang
 				signal: AbortSignal.timeout(15_000),
 			});
 		} catch (err) {
-			if (get(auth).token !== state.token) return get(auth).token;
+			if (!ownsRefresh()) return get(auth).token;
 			_refreshSettledFailure = {
 				kind: 'retryable',
 				accessToken: state.token,
 				refreshToken,
+				epoch,
 				error: err,
 				retryAt: Date.now() + DEFAULT_REFRESH_RETRY_COOLDOWN_MS,
 			};
@@ -239,7 +250,7 @@ async function tryRefresh({ allowDuringRevocation = false, allowDuringScopeChang
 			throw err;
 		}
 
-		if (get(auth).token !== state.token) return get(auth).token;
+		if (!ownsRefresh()) return get(auth).token;
 
 		if (!res.ok) {
 			// 401 (invalid session) and 403 (domain login policy revoked: method, provider
@@ -250,6 +261,7 @@ async function tryRefresh({ allowDuringRevocation = false, allowDuringScopeChang
 					kind: 'terminal',
 					accessToken: state.token,
 					refreshToken,
+					epoch,
 				};
 				return null;
 			}
@@ -260,7 +272,7 @@ async function tryRefresh({ allowDuringRevocation = false, allowDuringScopeChang
 			} catch {
 				detail = await res.text().catch(() => res.statusText);
 			}
-			if (get(auth).token !== state.token) return get(auth).token;
+			if (!ownsRefresh()) return get(auth).token;
 			const err = new ApiError(res.status, detail);
 			const retryAfterHeader = res.headers?.get?.('Retry-After') ?? res.headers?.get?.('retry-after');
 			const retryAt = res.status === 429
@@ -270,6 +282,7 @@ async function tryRefresh({ allowDuringRevocation = false, allowDuringScopeChang
 				kind: 'retryable',
 				accessToken: state.token,
 				refreshToken,
+				epoch,
 				error: err,
 				retryAt,
 			};
@@ -279,7 +292,7 @@ async function tryRefresh({ allowDuringRevocation = false, allowDuringScopeChang
 
 		const data = await res.json();
 		const currentToken = get(auth).token;
-		if (currentToken !== state.token) {
+		if (!ownsRefresh()) {
 			_refreshSettledFailure = null;
 			return currentToken ?? null;
 		}
@@ -288,11 +301,18 @@ async function tryRefresh({ allowDuringRevocation = false, allowDuringScopeChang
 			update = refreshAuthState(data, state);
 		} catch {
 			// A response without this session's bound domain is never published.
-			_refreshSettledFailure = { kind: 'terminal', accessToken: state.token, refreshToken };
+			_refreshSettledFailure = { kind: 'terminal', accessToken: state.token, refreshToken, epoch };
 			return null;
 		}
 		const refreshedToken = update.token;
 		setAuth(update);
+		// Native/absolute deadlines cannot be extended. Do not rotate before
+		// every subsequent read in the final two minutes; a real 401 still
+		// forces fresh native verification, and actual expiry remains terminal.
+		nonExtendingRefresh = update.accessExpiresAt && update.accessExpiresAt === state.accessExpiresAt
+			&& update.accessExpiresAt <= Math.floor(Date.now() / 1000) + 120
+			? { token: refreshedToken, refreshToken: update.refreshToken, epoch: getAuthVerificationEpoch(), expiresAt: update.accessExpiresAt }
+			: null;
 		_refreshSettledFailure = null;
 		return refreshedToken;
 	})().finally(() => { _refreshPromise = null; });
@@ -430,7 +450,7 @@ async function withAuthRecovery<T extends { status: number }>(
 			state.token && state.refreshToken && state.accessExpiresAt
 			&& state.accessExpiresAt <= Math.floor(Date.now() / 1000) + 120
 		)) {
-			const freshToken = await waitForRefresh(tryRefresh({ allowDuringScopeChange: opts.allowDuringScopeChange }), opts.signal);
+			const freshToken = await waitForRefresh(tryRefresh({ allowDuringScopeChange: opts.allowDuringScopeChange, preflight: true }), opts.signal);
 			opts.signal?.throwIfAborted();
 			// Ownership matters even when a later login reused the same token string.
 			if (!isLiveRequestScope(scopeKey)) throw new ApiError(401, t('client.sessionExpired'));
@@ -504,6 +524,17 @@ export function fetchWithAuth(
 	);
 }
 
+let logicalReadEpoch = 0;
+let logicalReadOwner = '';
+auth.subscribe((state) => {
+	const owner = JSON.stringify([!!state.token, sessionScopeKey(state), state.isSystemAdmin,
+		state.isDomainManager, state.canWrite, [...(state.roles ?? [])].sort()]);
+	if (owner !== logicalReadOwner) {
+		logicalReadOwner = owner;
+		logicalReadEpoch += 1;
+	}
+});
+
 async function request<T>(
 	path: string,
 	options: RequestInit = {},
@@ -515,14 +546,20 @@ async function request<T>(
 	options.signal?.throwIfAborted();
 	const method = (options.method ?? 'GET').toString().toUpperCase();
 	const requestBaseUrl = reqOpts?.baseUrl ?? getBaseUrl();
+	const readEpoch = logicalReadEpoch;
+	const assertReadOwner = () => {
+		if (method === 'GET' && token && readEpoch !== logicalReadEpoch) {
+			throw new DOMException(t('client.operationAborted'), 'AbortError');
+		}
+	};
 	let requestBody: unknown = options.body;
 	if (typeof options.body === 'string') {
 		try { requestBody = JSON.parse(options.body); } catch { /* non-JSON body */ }
 	}
 	const mock = await maybeMockJson<T>(method, path, requestBody, token, projectId);
 	options.signal?.throwIfAborted();
+	assertReadOwner();
 	if (mock !== symbolNoMatch) {
-		if (method === 'GET' && options.cache !== 'no-store') memoryCache.set(path, { data: mock, timestamp: Date.now() });
 		return mock;
 	}
 
@@ -532,6 +569,7 @@ async function request<T>(
 		credentials: options.credentials ?? 'include',
 		signal: options.signal ?? AbortSignal.timeout(30_000),
 	}, token, projectId, { ...reqOpts, baseUrl: requestBaseUrl });
+	assertReadOwner();
 
 	if (!res.ok) {
 		let detail = res.statusText;
@@ -548,6 +586,7 @@ async function request<T>(
 		} catch {
 			detail = await res.text().catch(() => res.statusText);
 		}
+		assertReadOwner();
 		// Only the platform's explicit authority denial demotes the admin console; native
 		// operation or domain-boundary 403s leave verified system-admin authority intact.
 		if (res.status === 403 && code === 'system_admin_required' && /^\/api\/v1\/admin(?:\/|$|[?#])/.test(path)) {
@@ -557,11 +596,10 @@ async function request<T>(
 	}
 
 	if (res.status === 204) return undefined as T;
-	return res.json();
+	const data = await res.json();
+	assertReadOwner();
+	return data;
 }
-
-// 브라우저 세션 내 인메모리 캐시 (SWR용)
-export const memoryCache = new Map<string, { data: unknown; timestamp: number }>();
 
 export interface PrefetchOptions {
 	ttlMs?: number;
@@ -581,6 +619,7 @@ interface RequestScope {
 	projectId: string | undefined;
 	mockProfile: MockupProfileId | null;
 	mockRevision: number;
+	epoch: number;
 	key: string;
 }
 
@@ -597,6 +636,7 @@ interface WarmEntry {
 interface OrdinaryPending {
 	raw: Promise<unknown>;
 	joined: boolean;
+	valid: boolean;
 	snapshotReady: boolean;
 	snapshot: unknown;
 	cloneFailed: boolean;
@@ -609,6 +649,7 @@ const DEFAULT_PREFETCH_TTL_MS = 30_000;
 
 const warmEntries = browser ? new Map<string, WarmEntry>() : null;
 const ordinaryPending = browser ? new Map<string, OrdinaryPending>() : null;
+const forcedPending = browser ? new Map<string, OrdinaryPending>() : null;
 const sharedSpeculativePending = browser ? new Map<string, Promise<void>>() : null;
 const activeSpeculativeLeaders = browser ? new Set<Promise<void>>() : null;
 const familyEpochs = browser ? new Map<string, number>() : null;
@@ -625,7 +666,8 @@ function captureRequestScope(token?: string, projectId?: string): RequestScope {
 		projectId,
 		mockProfile,
 		mockRevision,
-		key: JSON.stringify([baseUrl, token ?? null, projectId ?? null, mockProfile, mockRevision]),
+		epoch: logicalReadEpoch,
+		key: JSON.stringify([baseUrl, token ?? null, projectId ?? null, mockProfile, mockRevision, logicalReadEpoch]),
 	};
 }
 
@@ -686,11 +728,23 @@ function trackFamilyDispatch<T>(familyKey: string, promise: Promise<T>): Promise
 	return promise.finally(() => releaseFamily(familyKey));
 }
 
-function invalidateExactScope(scope: RequestScope): void {
+function detachFamilyReads(familyKey: string): void {
+	for (const suppressAuthRedirect of [false, true]) {
+		const key = JSON.stringify([familyKey, suppressAuthRedirect]);
+		for (const pending of [ordinaryPending?.get(key), forcedPending?.get(key)]) {
+			if (pending) pending.valid = false;
+		}
+		ordinaryPending?.delete(key);
+		forcedPending?.delete(key);
+	}
+}
+
+function invalidateExactScope(scope: RequestScope, retirePending = true): void {
 	if (!familyMetadata) return;
 	for (const [familyKey, metadata] of familyMetadata) {
 		if (metadata.scope.key !== scope.key) continue;
 		warmEntries?.delete(familyKey);
+		if (retirePending) detachFamilyReads(familyKey);
 		advanceFamilyEpoch(familyKey);
 		pruneFamily(familyKey);
 	}
@@ -708,6 +762,7 @@ export function clearPrefetchCache(opts: PrefetchInvalidation = {}): void {
 		if (hasProject && metadata.scope.projectId !== opts.projectId) continue;
 		if (pathLogicalUrl !== null && metadata.logicalUrl !== pathLogicalUrl) continue;
 		warmEntries?.delete(familyKey);
+		detachFamilyReads(familyKey);
 		advanceFamilyEpoch(familyKey);
 		pruneFamily(familyKey);
 	}
@@ -774,6 +829,7 @@ function dispatchIndependentOrdinary<T>(
 
 async function resolveOrdinaryLeader<T>(entry: OrdinaryPending): Promise<T> {
 	const value = await entry.raw as T;
+	if (!entry.valid) throw new DOMException(t('client.operationAborted'), 'AbortError');
 	if (!entry.joined) return value;
 	try {
 		if (!entry.snapshotReady) {
@@ -789,6 +845,7 @@ async function resolveOrdinaryLeader<T>(entry: OrdinaryPending): Promise<T> {
 
 async function resolveOrdinaryWaiter<T>(entry: OrdinaryPending): Promise<T> {
 	const value = await entry.raw;
+	if (!entry.valid) throw new DOMException(t('client.operationAborted'), 'AbortError');
 	try {
 		if (entry.cloneFailed) throw new DOMException('Result is not cloneable', 'DataCloneError');
 		if (!entry.snapshotReady) {
@@ -814,6 +871,13 @@ function getOrdinary<T>(
 		return Promise.reject(new DOMException(t('client.operationAborted'), 'AbortError'));
 	}
 
+	const pendingKey = JSON.stringify([familyKey, suppressAuthRedirect]);
+	const forced = forcedPending?.get(pendingKey);
+	if (forced) {
+		forced.joined = true;
+		return waitForRefresh(resolveOrdinaryWaiter<T>(forced), signal);
+	}
+
 	if (browser) {
 		const warm = validWarmEntry(familyKey);
 		if (warm) {
@@ -825,7 +889,7 @@ function getOrdinary<T>(
 		}
 	}
 
-	if (!browser || signal) {
+	if (!browser) {
 		advanceFamilyEpoch(familyKey);
 		return trackFamilyDispatch(
 			familyKey,
@@ -833,11 +897,10 @@ function getOrdinary<T>(
 		);
 	}
 
-	const pendingKey = JSON.stringify([familyKey, suppressAuthRedirect]);
 	const pending = ordinaryPending?.get(pendingKey);
 	if (pending) {
 		pending.joined = true;
-		return resolveOrdinaryWaiter<T>(pending);
+		return waitForRefresh(resolveOrdinaryWaiter<T>(pending), signal);
 	}
 	const retryMetadata = familyMetadata?.get(familyKey);
 
@@ -848,6 +911,7 @@ function getOrdinary<T>(
 			dispatchJsonGet<unknown>(requestPath, baseUrl, token, projectId, undefined, suppressAuthRedirect),
 		),
 		joined: false,
+		valid: true,
 		snapshotReady: false,
 		snapshot: undefined,
 		cloneFailed: false,
@@ -867,7 +931,43 @@ function getOrdinary<T>(
 	void entry.raw.finally(() => {
 		if (ordinaryPending?.get(pendingKey) === entry) ordinaryPending.delete(pendingKey);
 	}).catch(() => undefined);
-	return resolveOrdinaryLeader<T>(entry);
+	return waitForRefresh(resolveOrdinaryLeader<T>(entry), signal);
+}
+
+function getForced<T>(
+	familyKey: string,
+	requestPath: string,
+	baseUrl: string,
+	token: string | undefined,
+	projectId: string | undefined,
+	signal: AbortSignal | undefined,
+	suppressAuthRedirect: boolean,
+): Promise<T> {
+	if (!browser) return dispatchJsonGet<T>(requestPath, baseUrl, token, projectId, signal, suppressAuthRedirect);
+	const pendingKey = JSON.stringify([familyKey, suppressAuthRedirect]);
+	const pending = forcedPending?.get(pendingKey);
+	if (pending) {
+		pending.joined = true;
+		return waitForRefresh(resolveOrdinaryWaiter<T>(pending), signal);
+	}
+	const previous = ordinaryPending?.get(pendingKey)?.raw;
+	const epoch = logicalReadEpoch;
+	warmEntries?.delete(familyKey);
+	advanceFamilyEpoch(familyKey);
+	const raw = trackFamilyDispatch(familyKey, (async () => {
+		if (previous) await previous.catch(() => undefined);
+		if (epoch !== logicalReadEpoch) throw new DOMException(t('client.operationAborted'), 'AbortError');
+		return dispatchJsonGet<unknown>(requestPath, baseUrl, token, projectId, undefined, suppressAuthRedirect);
+	})());
+	const entry: OrdinaryPending = {
+		raw, joined: false, valid: true, snapshotReady: false, snapshot: undefined, cloneFailed: false,
+		retry: () => dispatchIndependentOrdinary(familyKey, requestPath, baseUrl, token, projectId, suppressAuthRedirect),
+	};
+	forcedPending?.set(pendingKey, entry);
+	void raw.finally(() => {
+		if (forcedPending?.get(pendingKey) === entry) forcedPending.delete(pendingKey);
+	}).catch(() => undefined);
+	return waitForRefresh(resolveOrdinaryLeader<T>(entry), signal);
 }
 
 async function prefetchJson<T>(
@@ -1014,7 +1114,12 @@ if (browser) {
 	let observedProjectId: string | undefined;
 	const syncObservedScope = () => {
 		const next = captureRequestScope(observedToken, observedProjectId);
-		if (observedScope && observedScope.key !== next.key) invalidateExactScope(observedScope);
+		if (observedScope && observedScope.key !== next.key) {
+			const sameSessionRotation = observedScope.epoch === next.epoch
+				&& observedScope.baseUrl === next.baseUrl && observedScope.projectId === next.projectId
+				&& observedScope.mockProfile === next.mockProfile && observedScope.mockRevision === next.mockRevision;
+			invalidateExactScope(observedScope, !sameSessionRotation);
+		}
 		observedScope = next;
 	};
 	auth.subscribe((state) => {
@@ -1037,31 +1142,27 @@ export const api = {
 			return Promise.reject(new DOMException(t('client.operationAborted'), 'AbortError'));
 		}
 		const scope = captureRequestScope(token, projectId);
+		const publish = (pending: Promise<T>) => pending.then(value => {
+			if ((scope.token || scope.mockProfile) && (scope.epoch !== logicalReadEpoch
+				|| scope.baseUrl !== getBaseUrl() || scope.mockRevision !== getMockupRevision())) {
+				throw new DOMException(t('client.operationAborted'), 'AbortError');
+			}
+			return value;
+		});
 		// Token inspection can consume authority on GET. Do not warm, coalesce, cache or replay it.
 		if (opts?.cache === 'no-store') {
-			return request<T>(path, { method: 'GET', signal: opts.signal, cache: 'no-store' }, token, projectId, {
+			return publish(request<T>(path, { method: 'GET', signal: opts.signal, cache: 'no-store' }, token, projectId, {
 				baseUrl: scope.baseUrl, suppressAuthRedirect: opts.suppressAuthRedirect, replayOnUnauthorized: opts.replayOnUnauthorized ?? false,
-			});
+			}));
 		}
 		const normalized = normalizeGetPath(path, scope, opts?.refresh);
 		const familyKey = registerFamily(scope, normalized.logicalUrl);
 		const suppressAuthRedirect = opts?.suppressAuthRedirect ?? false;
 		if (normalized.refresh) {
-			warmEntries?.delete(familyKey);
-			advanceFamilyEpoch(familyKey);
-			return trackFamilyDispatch(
-				familyKey,
-				dispatchJsonGet(
-					normalized.requestPath,
-					scope.baseUrl,
-					token,
-					projectId,
-					opts?.signal,
-					suppressAuthRedirect,
-				),
-			);
+			return publish(getForced<T>(familyKey, normalized.requestPath, scope.baseUrl,
+				token, projectId, opts?.signal, suppressAuthRedirect));
 		}
-		return getOrdinary(
+		return publish(getOrdinary<T>(
 			familyKey,
 			normalized.requestPath,
 			scope.baseUrl,
@@ -1069,7 +1170,7 @@ export const api = {
 			projectId,
 			opts?.signal,
 			suppressAuthRedirect,
-		);
+		));
 	},
 	prefetch: prefetchJson,
 	clearPrefetchCache,

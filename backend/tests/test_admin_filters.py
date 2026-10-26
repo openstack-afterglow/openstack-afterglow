@@ -406,3 +406,91 @@ async def test_admin_topology_database_flag_fails_soft(admin_client, mock_conn):
 
     assert resp.status_code == 200
     assert resp.json()["instances"][0]["is_database"] is False
+
+
+@pytest.mark.asyncio
+async def test_admin_topology_projects_native_domain_ownership_without_network_duplication(admin_client, mock_conn):
+    projects = [
+        {"id": "project-a", "name": "A", "domain_id": "domain-a"},
+        {"id": "project-b", "name": "B", "domain_id": "domain-b"},
+        {"id": "project-deleted-domain", "name": "C", "domain_id": "deleted-domain"},
+    ]
+    mock_conn.identity.projects.return_value = projects
+    mock_conn.identity.domains.return_value = [
+        {"id": "domain-a", "name": "Research"},
+        {"id": "domain-b", "name": "Research"},
+    ]
+    networks = [
+        {
+            "id": "a",
+            "name": "same",
+            "status": "ACTIVE",
+            "project_id": "project-a",
+            "is_external": True,
+            "is_shared": True,
+        },
+        {"id": "a2", "name": "same", "status": "ACTIVE", "project_id": "project-a"},
+        {"id": "b", "name": "same", "status": "ACTIVE", "project_id": "project-b"},
+        {"id": "gone", "name": "gone", "status": "ACTIVE", "project_id": "deleted-project"},
+        {"id": "gone-domain", "name": "gone-domain", "status": "ACTIVE", "project_id": "project-deleted-domain"},
+        {"id": "unowned", "name": "unowned", "status": "ACTIVE", "project_id": None},
+    ]
+    cached = {"networks": networks, "routers": [], "instances": [], "floating_ips": [], "load_balancers": []}
+    with patch("app.api.identity.admin.cached_call", new=AsyncMock(return_value=cached)):
+        response = await admin_client.get("/api/v1/admin/topology")
+        assert response.status_code == 200
+        by_id = {row["id"]: row for row in response.json()["networks"]}
+        assert len(by_id) == 6
+        assert by_id["a"]["domain_id"] == by_id["a2"]["domain_id"] == "domain-a"
+        assert by_id["b"]["domain_id"] == "domain-b"
+        assert by_id["a"]["domain_name"] == by_id["b"]["domain_name"] == "Research"
+        assert by_id["gone"]["owner_status"] == "deleted_project"
+        assert by_id["gone"]["domain_id"] is None
+        assert by_id["gone-domain"]["owner_status"] == "deleted_domain"
+        assert by_id["gone-domain"]["domain_id"] == "deleted-domain"
+        assert by_id["unowned"]["owner_status"] == "unknown_owner"
+        # Ownership is fresh even while the structural topology cache is reused.
+        mock_conn.identity.projects.return_value = [{**row, "domain_id": "domain-b"} for row in projects]
+        response = await admin_client.get("/api/v1/admin/topology")
+        assert response.json()["networks"][0]["domain_id"] == "domain-b"
+        assert "domain_id" not in cached["networks"][0]
+
+
+@pytest.mark.asyncio
+async def test_admin_topology_domain_filter_uses_owner_not_shared_visibility(admin_client, mock_conn):
+    mock_conn.identity.get_domain.return_value = {"id": "domain-a", "name": "Research"}
+    mock_conn.identity.projects.return_value = [
+        {"id": "project-a", "name": "A", "domain_id": "domain-a"},
+        {"id": "project-b", "name": "B", "domain_id": "domain-b"},
+    ]
+    mock_conn.identity.domains.return_value = [
+        {"id": "domain-a", "name": "Research"},
+        {"id": "domain-b", "name": "Research"},
+    ]
+    mock_conn.network.subnets.return_value = []
+    cached = {
+        "networks": [
+            {"id": "own", "name": "own", "status": "ACTIVE", "project_id": "project-a"},
+            {
+                "id": "foreign-shared",
+                "name": "shared",
+                "status": "ACTIVE",
+                "project_id": "project-b",
+                "is_shared": True,
+            },
+            {"id": "unknown", "name": "unknown", "status": "ACTIVE"},
+        ]
+    }
+    with patch("app.api.identity.admin.cached_call", new=AsyncMock(return_value=cached)):
+        response = await admin_client.get("/api/v1/admin/topology?domain_id=domain-a")
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()["networks"]] == ["own"]
+
+
+@pytest.mark.asyncio
+async def test_admin_topology_directory_failure_is_not_unknown_ownership_success(admin_client, mock_conn):
+    mock_conn.identity.projects.side_effect = RuntimeError("directory unavailable")
+    with patch("app.api.identity.admin.cached_call", new=AsyncMock(return_value={"networks": []})):
+        response = await admin_client.get("/api/v1/admin/topology")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "inventory_directory_unavailable"

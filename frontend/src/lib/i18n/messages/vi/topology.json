@@ -1,4 +1,9 @@
 {
+	"domain.label": "Miền {name} · {id}",
+	"domain.deleted": "Miền đã xóa hoặc không xác minh được · {id}",
+	"domain.deletedProject": "Không rõ miền sở hữu · dự án {id}",
+	"domain.unknown": "Không rõ chủ sở hữu",
+	"domain.ownershipOnly": "Khung miền thể hiện quyền sở hữu mạng thực tế. Cùng một miền không có nghĩa là có kết nối mạng hay được phép giao tiếp.",
 	"card.noStatus": "Không có trạng thái",
 	"topology.lane": "Làn",
 	"topology.canvas": "Vùng vẽ",

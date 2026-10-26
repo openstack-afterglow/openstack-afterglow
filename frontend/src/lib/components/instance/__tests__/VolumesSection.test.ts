@@ -52,6 +52,19 @@ beforeEach(() => {
 });
 
 describe('attached volume capacity expansion', () => {
+	it('uses parent-bound administrator volume detail and extension without consumer preflights', async () => {
+		get.mockImplementation((path: string) => path === '/api/v1/admin/instances/instance-a/volumes/volume-a'
+			? Promise.resolve(volume) : Promise.reject(new Error(`Unexpected administrator GET ${path}`)));
+		setup(controller({ adminMode: true }));
+		await fireEvent.click(screen.getByRole('button', { name: 'volumes.extend' }));
+		await screen.findByRole('dialog');
+		await fireEvent.click(screen.getByRole('button', { name: 'extendModal.extend' }));
+		await waitFor(() => expect(post).toHaveBeenCalledWith(
+			'/api/v1/admin/instances/instance-a/volumes/volume-a/extend', { new_size: 50 }, 'token', 'auth-default',
+		));
+		expect(get).toHaveBeenCalledWith('/api/v1/admin/instances/instance-a/volumes/volume-a', 'token', 'auth-default', { refresh: true });
+		expect(get.mock.calls.some(([path]) => path.startsWith('/api/v1/instances/') || path.startsWith('/api/v1/volumes/'))).toBe(false);
+	});
 	it('opens the real modal with target-project Cinder details, not the attachment summary', async () => {
 		setup();
 		await fireEvent.click(screen.getByRole('button', { name: 'volumes.extend' }));

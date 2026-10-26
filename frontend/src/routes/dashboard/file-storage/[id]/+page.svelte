@@ -9,7 +9,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
-	import { createCoalescedRefresh } from '$lib/utils/coalescedRefresh';
+	import { createCoalescedRefresh, type CoalescedRefresh } from '$lib/utils/coalescedRefresh';
 	import type { FileStorage, AccessRule } from '$lib/types/fileStorage';
 	import FileStorageHeader from '$lib/components/dashboard/file-storage/[id]/FileStorageHeader.svelte';
 	import FileStorageInfoCard from '$lib/components/dashboard/file-storage/[id]/FileStorageInfoCard.svelte';
@@ -31,7 +31,7 @@
 
 	interface DetailScope { id: string; token: string | null; projectId: string | null; }
 	let activeScope = $state.raw<DetailScope | null>(null);
-	let refresh: ReturnType<typeof createCoalescedRefresh>;
+	let refresh: CoalescedRefresh;
 	const scopeCurrent = $derived(activeScope !== null && isCurrentScope(activeScope));
 
 	function isCurrentScope(scope: DetailScope): boolean {
@@ -66,7 +66,7 @@
 			refresh = createScopedRefresh(scope);
 			if (scope.id && scope.token) void refresh.run(false);
 		});
-		return () => { activeScope = null; };
+		return () => { refresh.dispose(); activeScope = null; };
 	});
 
 	async function fetchFileStorage(scope: DetailScope, opts?: { refresh?: boolean }) {

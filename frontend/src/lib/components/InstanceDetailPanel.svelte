@@ -7,7 +7,7 @@
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import { Alert, Button } from '$lib/components/ui';
-	import { createInstanceDetailController, provideInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
+	import { createInstanceDetailController, provideInstanceDetailController, type InstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import InstanceHeader from '$lib/components/instance/InstanceHeader.svelte';
 	import InfoSection from '$lib/components/instance/InfoSection.svelte';
 	import MetricsPanel from '$lib/components/instance/MetricsPanel.svelte';
@@ -29,15 +29,22 @@
 		onClose?: () => void;
 		onUpdated?: () => void;
 		adminProjectId?: string | null;
+		adminMode?: boolean;
 		showHost?: boolean;
 	}
 
-	let { instanceId, onClose, onUpdated, adminProjectId = null, showHost = false }: Props = $props();
+	let { instanceId, onClose, onUpdated, adminProjectId = null, adminMode = false, showHost = false }: Props = $props();
+	// Controller construction may synchronously read its options. Keep the owner
+	// snapshot independent of the controller until its first native detail arrives.
+	let nativeOwner = $state<{ instanceId: string; projectId: string } | null>(null);
+	const effectiveProjectId: string | undefined = $derived(adminMode
+		? adminProjectId || (nativeOwner?.instanceId === instanceId ? nativeOwner.projectId : undefined)
+		: $auth.projectId ?? undefined);
 
-	const s = createInstanceDetailController({
+	const s: InstanceDetailController = createInstanceDetailController({
 		instanceId: () => instanceId,
-		effectiveProjectId: () => adminProjectId ?? ($auth.projectId ?? undefined),
-		adminMode: () => !!adminProjectId,
+		effectiveProjectId: () => effectiveProjectId,
+		adminMode: () => adminMode,
 		onUpdated: () => onUpdated?.(),
 		onDelete: () => {
 			if (onClose) onClose();
@@ -46,6 +53,20 @@
 	});
 
 	provideInstanceDetailController(s);
+	$effect(() => {
+		const selectedId = instanceId;
+		const loadedId = s.instance?.id;
+		const loadedProjectId = s.instance?.project_id;
+		untrack(() => {
+			if (loadedId === selectedId && loadedProjectId) {
+				if (nativeOwner?.instanceId !== selectedId || nativeOwner.projectId !== loadedProjectId) {
+					nativeOwner = { instanceId: selectedId, projectId: loadedProjectId };
+				}
+			} else if (nativeOwner !== null) {
+				nativeOwner = null;
+			}
+		});
+	});
 
 	// Modal control
 	let showMigrateModal = $state(false);
@@ -56,7 +77,7 @@
 	let showEvacuateModal = $state(false);
 	const canShowResize = $derived(
 		$canWrite && !!$auth.token && !!s.instance && s.instance.id === instanceId
-		&& !!s.instance.project_id && s.instance.project_id === (adminProjectId ?? $auth.projectId)
+		&& !!s.instance.project_id && s.instance.project_id === effectiveProjectId
 		&& s.instance.status === 'SHUTOFF' && !s.loading && !s.actioning && !s.deleting
 	);
 	const canOpenResize = $derived(canShowResize && !s.resizeLoading);
@@ -85,15 +106,16 @@
 		const token = $auth.token;
 		if (!token) return;
 		const generation = ++summaryGeneration;
+		const requestAdminMode = adminMode;
 		const authEpoch = summaryAuthEpoch;
 		try {
 			const resp = await api.get<{
 				monitoring_available: boolean;
 				stats: Record<string, { min: number | null; avg: number | null; max: number | null }>;
 				recommendation: SummaryRec | null;
-			}>(`/api/v1/instances/${iid}/metrics-summary?range=7d`, token, projectId);
+			}>(`/api/v1/${requestAdminMode ? 'admin/' : ''}instances/${iid}/metrics-summary?range=7d`, token, requestAdminMode ? $auth.projectId ?? undefined : projectId);
 			if (generation !== summaryGeneration || authEpoch !== summaryAuthEpoch || instanceId !== iid || $auth.token !== token
-				|| (adminProjectId ?? $auth.projectId ?? undefined) !== projectId) return;
+				|| adminMode !== requestAdminMode || effectiveProjectId !== projectId) return;
 			if (resp.monitoring_available) {
 				summaryOwner = `${authEpoch}:${projectId}:${iid}`;
 				recommendation = resp.recommendation;
@@ -108,7 +130,8 @@
 	$effect(() => {
 		const id = instanceId;
 		const token = $auth.token;
-		const projectId = adminProjectId ?? $auth.projectId ?? undefined;
+		const projectId = effectiveProjectId;
+		void adminMode;
 		void summaryAuthEpoch;
 		showPasswordModal = false;
 		showResizeModal = false;
@@ -177,7 +200,7 @@
 	{:else if s.instance}
 		<InstanceHeader
 			canMutate={$canWrite}
-			{adminProjectId}
+			adminProjectId={adminMode ? s.instance.project_id ?? adminProjectId : null}
 			onOpenMigrateModal={openMigrateModal}
 			onOpenPasswordModal={openPasswordModal}
 			onOpenResizeModal={openResizeModal}
@@ -188,7 +211,7 @@
 			<Alert tone="warning" class="mb-4">{t('panel.stoppedQuotaWarning')}</Alert>
 		{/if}
 
-		{#if $canWrite && summaryOwner === `${summaryAuthEpoch}:${adminProjectId ?? $auth.projectId ?? undefined}:${instanceId}` && (s.instance.status === 'ACTIVE' || s.instance.status === 'SHUTOFF') && recommendation?.underutilized}
+		{#if $canWrite && summaryOwner === `${summaryAuthEpoch}:${effectiveProjectId}:${instanceId}` && (s.instance.status === 'ACTIVE' || s.instance.status === 'SHUTOFF') && recommendation?.underutilized}
 			<div class="bg-surface-selected/40 border border-action-warm text-warm-text rounded-lg px-4 py-3 text-sm mb-4 flex items-center justify-between gap-4">
 				<span>
 					{#snippet cpuUsage(text: string)}
@@ -213,12 +236,13 @@
 		{/if}
 
 		<InfoSection {showHost} />
-		{#if s.instance.id === instanceId && s.instance.project_id === (adminProjectId ?? $auth.projectId) && $auth.token}
+		{#if s.instance.id === instanceId && s.instance.project_id === effectiveProjectId && $auth.token}
 		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
 			<div class="text-ink-0 text-[15px] font-semibold mb-4">{t('panel.monitoring')}</div>
 			<MetricsPanel
 				{instanceId}
-				projectId={adminProjectId ?? $auth.projectId ?? undefined}
+				projectId={effectiveProjectId}
+				{adminMode}
 				isGpu={(s.instance.flavor_name ?? '').toLowerCase().startsWith('gpu.')}
 			/>
 		</div>

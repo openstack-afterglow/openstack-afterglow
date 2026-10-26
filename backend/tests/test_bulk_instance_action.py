@@ -158,7 +158,7 @@ async def test_bulk_reboot_ok(client):
 
 
 @pytest.mark.asyncio
-async def test_bulk_delete_ok(client):
+async def test_bulk_delete_ok(client, empty_layer_consume_db):
     """delete 일괄 처리 — 성공."""
     srv = _make_server("inst-3")
     with (

@@ -20,7 +20,7 @@
 		projectId: () => $auth.projectId ?? undefined,
 	});
 
-	const ar = createAutoRefresh(() => ctrl.fetchAll(), {
+	const ar = createAutoRefresh((force) => ctrl.fetchAll(force), {
 		storageKey: 'dashboard-network-lb-detail',
 		invokeOnMount: false,
 		defaultActive: true,
@@ -42,7 +42,7 @@
 			bind:intervalSeconds={ar.intervalSeconds}
 			intervalOptions={ar.intervalOptions}
 			refreshing={ctrl.loading}
-			onManualRefresh={() => ctrl.fetchAll()}
+			onManualRefresh={ar.refresh}
 		/>
 	</div>
 

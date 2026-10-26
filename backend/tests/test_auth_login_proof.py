@@ -49,6 +49,9 @@ async def login_proof(native_login, monkeypatch, ownership_journal):
     state.native_requests = []
     state.passwords = {uid: "valid" for uid in state.user_rows}
     state.substitute = None
+    # Keystone token exchanges retain the original root's expiry; they do not
+    # turn token authentication into a renewable password/IdP credential.
+    state.native_expires = datetime.now(UTC) + timedelta(hours=1)
     state.raw.append(grant("manager", user="ordinary", project="default-a"))
     state.raw.append(grant("project_admin", user="ordinary", project="work-a"))
 
@@ -112,7 +115,7 @@ async def login_proof(native_login, monkeypatch, ownership_journal):
             body = {
                 "methods": ["token"],
                 "issued_at": now.isoformat(),
-                "expires_at": (now + timedelta(hours=1)).isoformat(),
+                "expires_at": state.native_expires.isoformat(),
                 "user": {"id": actual_uid, "name": actual_uid, "domain": {"id": home, "name": home}},
                 "roles": roles(actual_uid, actual_pid),
                 "catalog": [],
@@ -152,7 +155,7 @@ async def login_proof(native_login, monkeypatch, ownership_journal):
     monkeypatch.setattr(state.roles, "revoke", revoke)
     monkeypatch.setattr(keystone.v3, "Password", NativePassword)
     monkeypatch.setattr(keystone.v3, "Token", NativeToken)
-    monkeypatch.setattr(keystone.ks_session, "Session", native_session)
+    monkeypatch.setattr(keystone.native_transport, "create_session", native_session)
     # Logout's directory boundary is synthetic, but browser/family invalidation
     # and the native credential rejected on future exchanges are real here.
     monkeypatch.setattr(keystone, "revoke_token", lambda token: state.revoked.add(token))
@@ -619,3 +622,56 @@ async def test_personal_recovery_requires_fresh_exact_native_password_before_pro
     assert again.status_code == 200 and again.json()["project_id"] == primary["id"]
     assert len([p for p in state.project_rows.values() if p.domain_id == "personal"]) == 1
     assert vars(state.user_rows["ordinary"]) == original
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["password", "provider"])
+async def test_day_session_refresh_preserves_native_and_absolute_deadlines(login_proof, monkeypatch, method):
+    import time
+    from unittest.mock import patch
+
+    client, state = login_proof
+    monkeypatch.setenv("SESSION_TIMEOUT_SECONDS", "86400")
+    state.native_expires = datetime.now(UTC) + timedelta(days=1)
+    response = await fresh_login(client) if method == "password" else await provider_login(client, monkeypatch)
+    assert response.status_code == 200, response.text
+    tokens = response.json()
+    old_jti, original = await stored(tokens)
+    original["started_at"] = time.time() - 23 * 3600
+    redis = await session_store._get_redis()
+    await redis.setex(session_store._key(old_jti), 86400, json.dumps(original))
+    refreshed = await client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert refreshed.status_code == 200, refreshed.text
+    tokens = refreshed.json()
+    jti, current = await stored(tokens)
+    deadline = int(original["started_at"] + 86400)
+    assert jwt_service.verify_refresh(tokens["refresh_token"])["exp"] <= deadline
+    assert jwt_service.verify_access(tokens["token"])["exp"] <= deadline
+    assert 0 < await redis.ttl(session_store._key(jti)) <= 3600
+    assert await session_store.get_session(old_jti) is None
+    for field in ("started_at", "family_id", "identity_domain_id", "auth_method"):
+        assert current[field] == original[field]
+    with patch("app.api.deps.time.time", return_value=original["started_at"] + 86400):
+        expired = await client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert expired.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_short_native_root_bounds_both_browser_credentials(login_proof, monkeypatch):
+    client, state = login_proof
+    monkeypatch.setenv("SESSION_TIMEOUT_SECONDS", "86400")
+    state.native_expires = datetime.now(UTC) + timedelta(minutes=5)
+    response = await fresh_login(client)
+    assert response.status_code == 200, response.text
+    tokens = response.json()
+    native_deadline = int(state.native_expires.timestamp())
+    assert jwt_service.verify_access(tokens["token"])["exp"] == native_deadline
+    assert jwt_service.verify_refresh(tokens["refresh_token"])["exp"] == native_deadline
+    jti, _ = await stored(tokens)
+    redis = await session_store._get_redis()
+    assert 0 < await redis.ttl(session_store._key(jti)) <= 300
+    # A genuinely revoked root is still terminal, never renewed by operator proof.
+    state.revoked_users.add("ordinary")
+    rejected = await client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert rejected.status_code == 401
+    assert await session_store.get_session(jti) is None

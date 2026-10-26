@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
-from app.api.deps import get_os_conn, get_token_info, require_admin
+from app.api.deps import get_admin_os_conn, get_token_info, require_admin
 from app.api.identity import admin_identity
 from app.models.account_spaces import SharedDomainIntent
 from app.services import account_spaces, domain_projects, identity_roles, keystone, project_service
@@ -31,7 +31,7 @@ async def test_personal_member_can_enter_only_own_workspace_and_cannot_lose_prim
     connection = keystone.get_admin_project_connection()
     app = FastAPI()
     app.include_router(admin_identity.router, prefix="/api/v1/admin")
-    app.dependency_overrides[get_os_conn] = lambda: connection
+    app.dependency_overrides[get_admin_os_conn] = lambda: connection
     app.dependency_overrides[get_token_info] = lambda: {**manager("system-admin"), "is_system_admin": True}
     app.dependency_overrides[require_admin] = synthetic_verified_admin
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -60,7 +60,7 @@ async def test_system_assignment_cannot_add_other_roles_to_personal_member(direc
     monkeypatch.setattr(identity_roles, "_assignment_invalidation", AsyncMock())
     app = FastAPI()
     app.include_router(admin_identity.router, prefix="/api/v1/admin")
-    app.dependency_overrides[get_os_conn] = lambda: connection
+    app.dependency_overrides[get_admin_os_conn] = lambda: connection
     app.dependency_overrides[get_token_info] = lambda: {**manager("system-admin"), "is_system_admin": True}
     app.dependency_overrides[require_admin] = synthetic_verified_admin
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -89,7 +89,7 @@ async def test_extra_personal_project_keeps_required_member_grant(directory, enr
     monkeypatch.setattr(identity_roles, "_assignment_invalidation", AsyncMock())
     app = FastAPI()
     app.include_router(admin_identity.router, prefix="/api/v1/admin")
-    app.dependency_overrides[get_os_conn] = lambda: connection
+    app.dependency_overrides[get_admin_os_conn] = lambda: connection
     app.dependency_overrides[get_token_info] = lambda: {**manager("system-admin"), "is_system_admin": True}
     app.dependency_overrides[require_admin] = synthetic_verified_admin
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -154,3 +154,28 @@ async def test_new_accounts_namespace_does_not_reuse_or_migrate_singular_account
     assert directory.ks.domains.get(old.id) is old
     assert directory.domain_writes == original_domain_writes
     assert not directory.creates
+
+
+@pytest.mark.asyncio
+async def test_personal_proof_reuses_reads_only_until_operation_boundary(directory, enrollments, monkeypatch):
+    from unittest.mock import Mock
+
+    from app.services.native_operation import NativeOperation
+
+    primary = await account_spaces.ensure_personal_project("foreign")
+    projects = Mock(wraps=directory.ks.projects.list)
+    assignments = Mock(wraps=directory.ks.role_assignments.list)
+    monkeypatch.setattr(directory.ks.projects, "list", projects)
+    monkeypatch.setattr(directory.ks.role_assignments, "list", assignments)
+    with NativeOperation() as operation:
+        operation._ks = directory.ks
+        assert account_spaces.personal_project("foreign", operation=operation) == primary
+        first_counts = projects.call_count, assignments.call_count
+        assert account_spaces.personal_project("foreign", operation=operation) == primary
+        assert (projects.call_count, assignments.call_count) == first_counts
+        # A mutation/fresh-request boundary discards *all* reused permission proof.
+        directory.ks.roles.revoke(rid("member"), user="foreign", project=primary["id"])
+        operation.invalidate()
+        with pytest.raises(HTTPException):
+            account_spaces.personal_project("foreign", operation=operation)
+        assert assignments.call_count > first_counts[1]

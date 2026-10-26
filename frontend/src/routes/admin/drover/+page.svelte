@@ -55,7 +55,7 @@
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
-	async function load() {
+	async function load(force = false) {
 		if (clusters.length === 0) loading = true;
 		else refreshing = true;
 		try {
@@ -69,7 +69,7 @@
 				params.set('status', 'DELETED');
 			}
 			if (params.toString()) url += `?${params.toString()}`;
-			clusters = await api.get<AdminK3sCluster[]>(url, token, projectId);
+			clusters = await api.get<AdminK3sCluster[]>(url, token, projectId, { refresh: force });
 		} catch {
 			clusters = [];
 		} finally {
@@ -112,7 +112,7 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading || refreshing}
-				onManualRefresh={load}
+				onManualRefresh={ar.refresh}
 			/>
 		{/snippet}
 	</PageHeader>

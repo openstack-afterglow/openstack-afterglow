@@ -27,8 +27,9 @@
 	});
 	provideNetworkDetailController(s);
 
-	const ar = createAutoRefresh(() => s.fetchNetwork(), {
+	const ar = createAutoRefresh((force) => s.fetchNetwork(force), {
 		storageKey: 'network-detail-panel',
+		invokeOnMount: false,
 		defaultActive: true,
 		defaultInterval: 30,
 		intervalOptions: [10, 15, 30, 60],

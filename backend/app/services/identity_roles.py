@@ -986,6 +986,8 @@ async def change_project_assignment(
     """Generic system-admin assignment cannot circumvent scoped owner protection."""
     async with _graph_lock(conn) as lease:
         catalog = await asyncio.to_thread(load_catalog, conn)
+        if not remove and _role(catalog, role_id)["name"].casefold() == "admin":
+            raise HTTPException(status_code=422, detail="Native admin project grants are removal-only")
         if _owner_bearing_role(catalog, role_id):
             raise HTTPException(status_code=409, detail="Use the project ownership workflow for owner-bearing roles")
         if (user_id is None) == (group_id is None):
@@ -1081,23 +1083,59 @@ async def change_project_assignment(
     return {"status": "revoked" if remove else "assigned"}
 
 
+def _group_identity_home(ks, group_id, domain_id, user_domain_id):
+    """Exact enabled group and identity homes, shared by explicit admin reads/writes."""
+    from app.services import account_spaces, domain_projects
+
+    reads = {}
+    group = domain_projects._exact(ks.groups, group_id, reads=reads)
+    if _field(group, "domain_id") != domain_id:
+        raise HTTPException(403, "identity_domain_mismatch")
+    target = domain_projects._exact(ks.domains, domain_id, reads=reads)
+    source = domain_projects._exact(ks.domains, user_domain_id, reads=reads)
+    if not domain_projects._enabled(target) or not domain_projects._enabled(source):
+        raise HTTPException(403, "Domain is disabled")
+    if account_spaces.domain_kind(target) in {"account", "personal"}:
+        raise HTTPException(403, "Organization IAM is unavailable in reserved domains")
+    return reads
+
+
 @_complete_mutation
-async def change_group_membership(conn, token_info, group_id, *, user_id=None, remove=False, delete=False):
+async def change_group_membership(
+    conn, token_info, group_id, *, user_id=None, remove=False, delete=False, user_domain_id=None, domain_id=None
+):
     """Owner-bearing group grants remain read-only in generic group management.
 
     There is no target-project ownership transition on a global group endpoint.
     Reject rather than silently remove the last owner of any inherited project.
     """
     async with _graph_lock(conn) as lease:
+        if user_domain_id is not None:
+            from app.api.deps import require_admin
+
+            if remove or delete or not isinstance(domain_id, str) or not domain_id:
+                raise HTTPException(422, "Explicit group admission requires a selected domain")
+            await require_admin(token_info)
         catalog = await asyncio.to_thread(load_catalog, conn)
         from app.services import domain_projects, keystone
 
         ks = await asyncio.to_thread(keystone._get_admin_ks_client)
         await asyncio.to_thread(domain_projects.assert_not_projection_group, group_id, ks=ks)
         if not remove and not delete:
-            group = await asyncio.to_thread(domain_projects._exact, ks.groups, group_id)
-            group_domain = _field(group, "domain_id")
-            await asyncio.to_thread(domain_projects.assert_membership, user_id, group_domain, ks=ks)
+            if user_domain_id is not None:
+                reads = await asyncio.to_thread(_group_identity_home, ks, group_id, domain_id, user_domain_id)
+                user = await asyncio.to_thread(domain_projects._exact, ks.users, user_id, reads=reads)
+                if _field(user, "domain_id") != user_domain_id:
+                    raise HTTPException(403, "identity_domain_mismatch")
+                active = await asyncio.to_thread(domain_projects._active_user, ks, user_id, reads=reads)
+                if active is None:
+                    # This is the target account, not the caller's login session.
+                    raise HTTPException(403, "Group membership target is disabled")
+                group_domain = domain_id
+            else:
+                group = await asyncio.to_thread(domain_projects._exact, ks.groups, group_id)
+                group_domain = _field(group, "domain_id")
+                await asyncio.to_thread(domain_projects.assert_membership, user_id, group_domain, ks=ks)
         affected = await asyncio.to_thread(
             domain_projects.assert_managers_remain,
             ks=ks,
@@ -1113,10 +1151,18 @@ async def change_group_membership(conn, token_info, group_id, *, user_id=None, r
                 if meta["kind"] == "project":
                     target = await asyncio.to_thread(domain_projects._exact, ks.projects, meta["scope_id"])
                     target_domain = _field(target, "domain_id")
+                    if user_domain_id is not None and not domain_projects._enabled(target):
+                        raise HTTPException(403, "Project is disabled")
                 elif meta["kind"] == "domain":
                     target_domain = meta["scope_id"]
                 else:
                     continue
+                if user_domain_id is not None:
+                    target_home = await asyncio.to_thread(domain_projects._exact, ks.domains, target_domain)
+                    if not domain_projects._enabled(target_home):
+                        raise HTTPException(403, "Domain is disabled")
+                    if target_domain == group_domain:
+                        continue
                 await asyncio.to_thread(domain_projects.assert_membership, user_id, target_domain, ks=ks)
         for assignment in assignments:
             if _field(_field(assignment, "group", {}), "id") != group_id:

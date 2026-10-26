@@ -147,6 +147,69 @@ describe('AdminProjectAccessModal', () => {
 		));
 	});
 
+	it.each([
+		['user', 'admin'], ['user', 'ADMIN'], ['group', 'admin'], ['group', 'ADMIN'],
+	] as const)('blocks unassigned native %s %s even on synthetic events while permitting service admin', async (type, name) => {
+		members = members.filter((member) => member.role_id !== 'r-admin');
+		roles = [...defaultRoles.map((role) => role.id === 'r-admin' ? { ...role, name } : role), { id: 'r-service-admin', name: 'lumen_admin' }];
+		renderModal();
+		const principalName = type === 'group' ? '[그룹] AGENT' : 'pieroot';
+		await fireEvent.click(await screen.findByRole('button', { name: `${principalName} 권한` }));
+		const dialog = screen.getByRole('dialog', { name: `${principalName} — 세부 권한` });
+		const admin = within(dialog).getByRole('checkbox', { name });
+		expect(admin).toMatchObject({ checked: false, disabled: true });
+		await fireEvent.click(admin);
+		await fireEvent.change(admin, { target: { checked: true } });
+		expect(mocks.post).not.toHaveBeenCalled();
+		expect(mocks.delete).not.toHaveBeenCalled();
+		const serviceAdmin = within(dialog).getByRole('checkbox', { name: 'lumen_admin' });
+		expect(serviceAdmin).toMatchObject({ checked: false, disabled: false });
+		await fireEvent.click(serviceAdmin);
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
+			`/api/v1/admin/roles/${type === 'group' ? 'assign-group' : 'assign'}?domain_id=domain-a`,
+			{ [type === 'group' ? 'group_id' : 'user_id']: type === 'group' ? 'g1' : 'u2', project_id: 'p1', role_id: 'r-service-admin', domain_id: 'domain-a' },
+			'token',
+			'admin-project',
+		));
+		expect(mocks.post).toHaveBeenCalledOnce();
+	});
+
+	it.each(['user', 'group'] as const)('revokes an existing %s admin only and disables re-grant after refresh', async (type) => {
+		const principalName = type === 'group' ? '[그룹] AGENT' : 'pieroot';
+		const principalId = type === 'group' ? 'g1' : 'u2';
+		const base = { user_id: type === 'group' ? 'group:g1' : 'u2', user_name: principalName, type, ...(type === 'group' ? { group_id: 'g1' } : {}) };
+		members = [
+			{ ...base, role_id: 'r-admin', role_name: 'admin' },
+			{ ...base, role_id: 'r-reader', role_name: 'reader' },
+			{ ...base, role_id: 'r-service-admin', role_name: 'lumen_admin' },
+			{ ...base, role_id: 'r-project-admin', role_name: 'project_admin' },
+		];
+		roles = [...defaultRoles, { id: 'r-service-admin', name: 'lumen_admin' }, { id: 'r-project-admin', name: 'project_admin' }];
+		mocks.delete.mockImplementation(async (url: string) => {
+			const roleId = new URL(url, 'http://localhost').searchParams.get('role_id');
+			members = members.filter((member) => member.role_id !== roleId);
+			return { status: 'revoked' };
+		});
+		renderModal();
+		await fireEvent.click(await screen.findByRole('button', { name: `${principalName} 권한` }));
+		const dialog = screen.getByRole('dialog', { name: `${principalName} — 세부 권한` });
+		const admin = within(dialog).getByRole('checkbox', { name: 'admin' });
+		expect(admin).toMatchObject({ checked: true, disabled: false });
+		await fireEvent.click(admin);
+		await waitFor(() => expect(admin).toMatchObject({ checked: false, disabled: true }));
+		expect(mocks.delete).toHaveBeenCalledWith(
+			`/api/v1/admin/roles/${type === 'group' ? 'assign-group' : 'assign'}?project_id=p1&role_id=r-admin&${type === 'group' ? 'group_id' : 'user_id'}=${principalId}&domain_id=domain-a`,
+			'token',
+			'admin-project',
+		);
+		expect(within(dialog).getByRole('checkbox', { name: 'reader' })).toMatchObject({ checked: true, disabled: true });
+		expect(within(dialog).getByRole('checkbox', { name: 'lumen_admin' })).toMatchObject({ checked: true, disabled: false });
+		expect(within(dialog).getByRole('checkbox', { name: 'project_admin' })).toMatchObject({ checked: true, disabled: false });
+		await fireEvent.change(admin, { target: { checked: true } });
+		expect(mocks.post).not.toHaveBeenCalled();
+		expect(mocks.delete).toHaveBeenCalledOnce();
+	});
+
 	it('announces saving the reader role on a group until the request settles', async () => {
 		const request = Promise.withResolvers<unknown>();
 		mocks.post.mockReturnValueOnce(request.promise);

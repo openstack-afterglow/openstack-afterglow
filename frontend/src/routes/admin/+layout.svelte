@@ -14,6 +14,8 @@
 	import { isRouteChange, playRouteEntrance } from '$lib/utils/motion';
 	import AdminInventoryScope from '$lib/components/admin/domains/AdminInventoryScope.svelte';
 	import { hasAdminInventoryScope } from '$lib/stores/adminInventoryScope';
+	import { createPrivateViewScope } from '$lib/utils/privateViewScope';
+	const privateViewScope = createPrivateViewScope();
 
 	$effect(() => {
 		if ($auth.token) void loadTutorialStatuses();
@@ -52,7 +54,7 @@
 	<div class="flex h-[100dvh] overflow-hidden">
 		<AdminSidebar />
 		<main bind:this={mainEl} id="main-content" tabindex="-1" class="min-w-0 flex-1 overflow-y-auto pt-[var(--app-header-height)] focus:outline-none focus-visible:shadow-[var(--focus-ring)]">
-			{#key pageLocaleKey}
+			{#key `${pageLocaleKey}:${$privateViewScope}`}
 				{#if hasAdminInventoryScope($page.url.pathname)}
 					<AdminInventoryScope historical={['/admin/instances', '/admin/volumes', '/admin/networks', '/admin/file-storage'].includes($page.url.pathname)} traffic={$page.url.pathname === '/admin/topology'}>
 						{@render children()}

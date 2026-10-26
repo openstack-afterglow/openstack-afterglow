@@ -12,7 +12,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
-	import { allowedDeviceUri, eligibility, eligibilityDraft, localTimestamp, type AccountProvider, type ProviderAccount, type ProviderCredential, type AccountUsage, type DeviceAttempt } from './providerAccounts';
+	import { allowedDeviceUri, eligibility, eligibilityDraft, localTimestamp, safeEndpoint, type RelayPage, type AccountProvider, type ProviderAccount, type ProviderCredential, type AccountUsage, type DeviceAttempt, type ProbeModel, type ProbeResult } from './providerAccounts';
 
 	let { provider, token, projectId, onupdated }: { provider: AccountProvider; token?: string; projectId?: string; onupdated?: () => void | Promise<void> } = $props();
 	let open = $state(false);
@@ -23,6 +23,10 @@
 	let policy = $state('priority');
 	let selected = $state('');
 	let usage = $state<Record<number, AccountUsage>>({});
+	let histories = $state<Record<number, RelayPage>>({});
+	let historyErrors = $state<Record<number, string>>({});
+	let historyLoading = $state<number | null>(null);
+	let listFailed = $state(false);
 	let editor = $state<{ kind: 'account' | 'credential'; accountId?: number; credentialId?: number } | null>(null);
 	let name = $state('');
 	let priority = $state('0');
@@ -39,6 +43,12 @@
 	let attempt = $state<DeviceAttempt | null>(null);
 	let tokenSecret = $state('');
 	let tokenExpiry = $state('');
+	let probeTarget = $state<{ accountId: number; credential: ProviderCredential } | null>(null);
+	let probeModels = $state<ProbeModel[]>([]);
+	let probeModel = $state('');
+	let probeResult = $state<ProbeResult | null>(null);
+	let probeResults = $state<Record<string, ProbeResult>>({});
+	let probeModelFingerprint = '';
 	let epoch = 0;
 	let readGeneration = 0;
 	let destroyed = false;
@@ -52,13 +62,15 @@
 	function stopPolling() { if (pollTimer !== undefined) clearTimeout(pollTimer); pollTimer = undefined; }
 	function clearEditor() { editor = null; secret = ''; environment = ''; name = ''; expiry = ''; cooldown = ''; }
 	function clearAuth() { stopPolling(); authTarget = null; attempt = null; tokenSecret = ''; tokenExpiry = ''; }
-	function reset() { ++epoch; ++readGeneration; open = false; accounts = []; usage = {}; loading = false; busy = false; error = ''; clearEditor(); clearAuth(); }
+	function probeKey(credential: ProviderCredential) { return `${credential.id}:${credential.generation}`; }
+	function clearProbe(invalidate = false) { probeTarget = null; probeModels = []; probeModel = ''; probeResult = null; if (invalidate) probeResults = {}; }
+	function reset() { ++epoch; ++readGeneration; open = false; accounts = []; usage = {}; histories = {}; historyErrors = {}; historyLoading = null; listFailed = false; loading = false; busy = false; error = ''; clearEditor(); clearAuth(); clearProbe(true); probeModelFingerprint = ''; }
 	const unsubscribe = auth.subscribe((state) => {
 		const identity = JSON.stringify([state.token, state.projectId, state.userId, state.sessionId, state.identityDomainId, state.domainId, state.isSystemAdmin, state.roles]);
 		if (identity !== authIdentity) { authIdentity = identity; reset(); }
 	});
 	$effect(() => {
-		const identity = JSON.stringify([provider.id, provider.auth_mode, token, projectId]);
+		const identity = JSON.stringify([provider.id, provider.auth_mode, provider.provider_type, provider.api_base, provider.is_active, token, projectId]);
 		if (identity === propScopeIdentity) return;
 		propScopeIdentity = identity;
 		untrack(reset);
@@ -77,18 +89,19 @@
 	function credentialPath(accountId: number, credentialId: number) { return `/accounts/${accountId}/credentials/${credentialId}`; }
 	async function load() {
 		const ctx = context(), request = ++readGeneration;
-		loading = true;
+		clearProbe(true); histories = {}; historyErrors = {}; historyLoading = null;
+		loading = true; listFailed = false;
 		try {
 			const result = await api.get<ProviderAccount[]>(`${ctx.base}/accounts`, ctx.token, ctx.project);
 			if (ctx.current() && request === readGeneration) accounts = result;
-		} catch (caught) { if (ctx.current() && request === readGeneration) error = failure(caught); }
+		} catch (caught) { if (ctx.current() && request === readGeneration) { error = caught instanceof ApiError && caught.status === 404 ? t('accounts.poolUnavailable') : failure(caught); listFailed = true; } }
 		finally { if (ctx.current() && request === readGeneration) loading = false; }
 	}
 	export function show() { reset(); open = true; policy = provider.selection_policy ?? 'priority'; selected = provider.selected_credential_id?.toString() ?? ''; void load(); }
 	function close() { reset(); }
 	async function mutate(action: (ctx: ReturnType<typeof context>) => Promise<unknown>, after?: () => void) {
 		if (busy || !open || !token) return;
-		const ctx = context(); busy = true; error = '';
+		const ctx = context(); busy = true; error = ''; clearProbe(true);
 		try {
 			await action(ctx);
 			if (!ctx.current()) return;
@@ -99,13 +112,13 @@
 		finally { if (ctx.current()) busy = false; }
 	}
 	function editAccount(account?: ProviderAccount) {
-		if (busy) return; clearAuth(); clearEditor(); error = '';
+		if (busy) return; clearAuth(); clearEditor(); clearProbe(true); error = '';
 		editor = { kind: 'account', accountId: account?.id };
 		name = account?.name ?? ''; priority = String(account?.priority ?? 0); weight = String(account?.weight ?? 1);
 		modelIds = eligibilityDraft(account?.allowed_model_ids ?? null); operations = eligibilityDraft(account?.allowed_capabilities ?? null); quotaGroup = account?.quota_group ?? '';
 	}
 	function editCredential(accountId: number, credential?: ProviderCredential) {
-		if (busy) return; clearAuth(); clearEditor(); error = '';
+		if (busy) return; clearAuth(); clearEditor(); clearProbe(true); error = '';
 		editor = { kind: 'credential', accountId, credentialId: credential?.id };
 		name = credential?.name ?? ''; priority = String(credential?.priority ?? 0); weight = String(credential?.weight ?? 1);
 		modelIds = eligibilityDraft(credential?.allowed_model_ids ?? null); operations = eligibilityDraft(credential?.allowed_capabilities ?? null);
@@ -154,7 +167,52 @@
 		} catch (caught) { if (ctx.current()) error = failure(caught); }
 		finally { if (ctx.current()) busy = false; }
 	}
-	function authenticate(accountId: number, credential: ProviderCredential) { if (busy) return; clearEditor(); clearAuth(); error = ''; authTarget = { accountId, credential }; }
+	async function loadHistory(accountId: number, credential: ProviderCredential, more = false) {
+		if (busy || historyLoading !== null) return;
+		const ctx = context(), request = readGeneration, generation = credential.generation;
+		const before = more ? histories[credential.id]?.next_before_id : null;
+		historyLoading = credential.id; historyErrors = { ...historyErrors, [credential.id]: '' };
+		try {
+			const result = await api.get<RelayPage>(`${ctx.base}${credentialPath(accountId, credential.id)}/relays?limit=10${before ? `&before_id=${before}` : ''}`, ctx.token, ctx.project);
+			if (ctx.current() && request === readGeneration && accounts.some((account) => account.id === accountId && account.credentials.some((key) => key.id === credential.id && key.generation === generation))) {
+				if (result.provider_id !== provider.id || result.account_id !== accountId || result.credential_id !== credential.id || result.boundary !== 'settled_usage') throw new Error('relay ownership');
+				histories = { ...histories, [credential.id]: { ...result, items: more ? [...histories[credential.id].items, ...result.items] : result.items } };
+			}
+		} catch (caught) { if (ctx.current() && request === readGeneration) historyErrors = { ...historyErrors, [credential.id]: failure(caught) }; }
+		finally { if (ctx.current() && request === readGeneration) historyLoading = null; }
+	}
+	async function prepareProbe(accountId: number, credential: ProviderCredential) {
+		if (busy) return;
+		clearEditor(); clearAuth(); clearProbe(); error = '';
+		const ctx = context();
+		probeTarget = { accountId, credential };
+		const target = probeTarget; busy = true;
+		try {
+			const models = await api.get<ProbeModel[]>('/api/v1/chat/admin/models', ctx.token, ctx.project);
+			if (ctx.current() && probeTarget === target) {
+				probeModels = models.filter((model) => model.provider_id === provider.id && model.is_active && (model.model_kind ?? 'text') === 'text');
+				const fingerprint = JSON.stringify(models.filter((model) => model.provider_id === provider.id));
+				if (probeModelFingerprint && fingerprint !== probeModelFingerprint) probeResults = {};
+				probeModelFingerprint = fingerprint;
+			}
+		} catch (caught) { if (ctx.current() && probeTarget === target) { probeResults = {}; error = failure(caught); } }
+		finally { if (ctx.current() && probeTarget === target) busy = false; }
+	}
+	async function runProbe() {
+		if (busy || !probeTarget || !probeModels.some((model) => String(model.id) === probeModel)) return;
+		const ctx = context(), target = probeTarget, modelId = Number(probeModel);
+		busy = true; error = ''; probeResult = null;
+		delete probeResults[probeKey(target.credential)];
+		try {
+			const result = await api.post<ProbeResult>(`${ctx.base}${credentialPath(target.accountId, target.credential.id)}/probe`, { model_id: modelId, generation: target.credential.generation }, ctx.token, ctx.project);
+			if (ctx.current() && probeTarget === target && probeModel === String(modelId) && result.generation === target.credential.generation && result.model_id === modelId) {
+				probeResult = result;
+				probeResults = { ...probeResults, [probeKey(target.credential)]: result };
+			}
+		} catch (caught) { if (ctx.current() && probeTarget === target) { probeResults = {}; error = failure(caught); } }
+		finally { if (ctx.current() && probeTarget === target) busy = false; }
+	}
+	function authenticate(accountId: number, credential: ProviderCredential) { if (busy) return; clearEditor(); clearAuth(); clearProbe(true); error = ''; authTarget = { accountId, credential }; }
 	async function saveToken(event: SubmitEvent) {
 		event.preventDefault(); if (!authTarget || !tokenSecret.trim()) return;
 		let body: { token: string; expires_at: string | null };
@@ -196,17 +254,18 @@
 
 <Button variant="outline" size="sm" onclick={show}>{t('accounts.manage')}</Button>
 <Modal bind:open onClose={close} ariaLabel={t('accounts.manage')}>
-	<div class="max-h-[calc(100dvh-2rem)] w-[min(58rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-4 sm:p-6">
+	<div class="max-h-[calc(100dvh-2rem)] w-[min(58rem,calc(100vw-2rem))] max-w-full overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-4 sm:p-6">
 		<div class="flex items-start justify-between gap-3"><div><h3 class="text-base font-semibold text-[var(--color-ink-0)]">{t('accounts.manage')}</h3><p class="mt-1 break-all text-sm text-[var(--color-ink-2)]">{provider.name}</p></div><Button variant="ghost" onclick={close}>{t('configuration.close')}</Button></div>
 		<p class="mt-3 text-sm text-[var(--color-ink-2)]">{t('accounts.scopeNotice')}</p>
 		{#if mode !== 'api_key'}<Alert tone="warning" class="mt-3">{t('accounts.subscriptionPolicy')}</Alert>{/if}
+		<p class="mt-3 text-sm text-[var(--color-ink-2)]">{t('accounts.multiKeyHelp')}</p>
 		{#if error}<Alert tone="danger" class="mt-3">{error}</Alert>{/if}
 		<div class="mt-4 grid gap-3 sm:grid-cols-2">
 			<Field label={t('accounts.selectionPolicy')} for="pool-policy"><SelectInput id="pool-policy" bind:value={policy} disabled={busy}><option value="priority">{t('accounts.priorityPolicy')}</option><option value="weighted">{t('accounts.weightedPolicy')}</option><option value="explicit">{t('accounts.explicitPolicy')}</option></SelectInput></Field>
 			{#if policy === 'explicit'}<Field label={t('accounts.selectedCredential')} for="pool-credential"><SelectInput id="pool-credential" bind:value={selected} disabled={busy}><option value="">{t('accounts.selectCredential')}</option>{#each credentials as item (item.credential.id)}<option value={String(item.credential.id)}>{item.account.name} / {item.credential.name} (#{item.credential.id})</option>{/each}</SelectInput></Field>{/if}
 		</div>
 		<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('accounts.policyHelp')}</p>
-		<div class="mt-3 flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={busy || loading} onclick={savePolicy}>{t('accounts.savePolicy')}</Button><Button size="sm" disabled={busy} onclick={() => editAccount()}>{t('accounts.addAccount')}</Button><Button variant="ghost" size="sm" disabled={busy || loading} onclick={() => { error = ''; void load(); }}>{t('configuration.refreshAll')}</Button></div>
+		<div class="mt-3 flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={busy || loading || listFailed} onclick={savePolicy}>{t('accounts.savePolicy')}</Button><Button size="sm" disabled={busy || loading || listFailed} onclick={() => editAccount()}>{t('accounts.addAccount')}</Button><Button variant="ghost" size="sm" disabled={busy || loading} onclick={() => { error = ''; void load(); }}>{t('configuration.refreshAll')}</Button></div>
 		{#if editor}
 			<form class="mt-4 space-y-3 rounded-lg border border-[var(--color-line)] p-4" onsubmit={saveEntry} aria-label={t(editor.kind === 'account' ? 'accounts.accountEditor' : 'accounts.credentialEditor')}>
 				<h4 class="font-medium text-[var(--color-ink-0)]">{t(editor.kind === 'account' ? 'accounts.accountEditor' : 'accounts.credentialEditor')}</h4>
@@ -256,8 +315,18 @@
 				{/if}
 			</section>
 		{/if}
+		{#if probeTarget}
+			<section class="mt-4 space-y-3 rounded-lg border border-[var(--color-line)] p-4" aria-label={t('accounts.probeTitle')}>
+				<div class="flex flex-wrap items-center justify-between gap-2"><h4 class="break-all font-medium text-[var(--color-ink-0)]">{probeTarget.credential.name} (#{probeTarget.credential.id})</h4><Button variant="ghost" size="sm" disabled={busy} onclick={() => clearProbe()}>{t('configuration.close')}</Button></div>
+				<Alert tone="warning">{t('accounts.probeCost')}</Alert>
+				<Field label={t('accounts.probeModel')} for="probe-model"><SelectInput id="probe-model" bind:value={probeModel} disabled={busy} onchange={() => { probeResult = null; }}><option value="">{t('accounts.probeSelectModel')}</option>{#each probeModels as model (model.id)}<option value={String(model.id)}>{model.display_name || model.model_name} (#{model.id})</option>{/each}</SelectInput></Field>
+				{#if !busy && !probeModels.length}<p class="text-sm text-[var(--color-ink-2)]">{t('accounts.probeNoModels')}</p>{/if}
+				<Button variant="secondary" disabled={busy || !probeModel} ariaBusy={busy} onclick={runProbe}>{t('accounts.probeRun')}</Button>
+				{#if probeResult}<Alert tone={probeResult.status === 'connected' ? 'success' : 'danger'}><p>{t(probeResult.status === 'connected' ? 'accounts.probeConnected' : 'accounts.probeFailed')}</p>{#if probeResult.reason}<p>{t(`accounts.probeReason.${probeResult.reason}`)}</p>{/if}<p>{t('accounts.probeDetails', { mode: t(`accounts.probeMode.${probeResult.mode}`), model: probeResult.model_id, generation: probeResult.generation, ms: probeResult.elapsed_ms, time: displayTime(probeResult.checked_at) })}</p></Alert>{/if}
+			</section>
+		{/if}
 		{#if loading}<p class="mt-4 text-sm text-[var(--color-ink-2)]" role="status">{t('accounts.loading')}</p>{/if}
-		{#if !loading && accounts.length === 0}<p class="mt-4 text-sm text-[var(--color-ink-2)]">{t('accounts.empty')}</p>{/if}
+		{#if !loading && !listFailed && accounts.length === 0}<p class="mt-4 text-sm text-[var(--color-ink-2)]">{t('accounts.empty')}</p>{/if}
 		<div class="mt-4 space-y-4">
 			{#each accounts as account (account.id)}
 				<section class="rounded-lg border border-[var(--color-line)] p-3 sm:p-4" aria-label={account.name}>
@@ -269,11 +338,40 @@
 						<div class="mt-3 space-y-2 text-xs text-[var(--color-ink-2)]" aria-label={t('accounts.usage')}><p>{t('accounts.usageNotice')}</p>{#each usage[account.id].credentials as row}<p class="break-all">{t('accounts.usageRow', { id: row.credential_id ?? '-', requests: row.requests, input: row.prompt_tokens, output: row.completion_tokens, cost: row.raw_cost })}</p>{:else}<p>{t('accounts.noUsage')}</p>{/each}</div>
 					{/if}
 					{#each account.credentials as credential (credential.id)}
+						{@const observedProbe = probeResults[probeKey(credential)]}
 						<div class="mt-3 border-t border-[var(--color-line)] pt-3" data-credential-id={credential.id}>
 							<div class="flex flex-wrap items-center gap-2"><span class="break-all text-sm font-medium text-[var(--color-ink-0)]">{credential.name} (#{credential.id})</span><Pill size="xs" tone={credential.is_active ? 'success' : 'neutral'}>{credential.is_active ? t('configuration.active') : t('configuration.inactive')}</Pill><Pill size="xs" tone={credential.auth_mode === 'api_key' ? credential.api_key_configured ? 'success' : 'warning' : credential.subscription_status === 'configured' ? 'success' : 'warning'}>{credential.auth_mode === 'api_key' ? credential.api_key_configured ? t('configuration.keyConfigured') : t('configuration.noKey') : credential.subscription_status === 'configured' ? t('configuration.connected') : credential.subscription_status === 'reauth_required' ? t('configuration.reconnectRequired') : t('configuration.authenticationNotConnected')}</Pill></div>
+							<h5 class="mt-2 text-xs font-medium text-[var(--color-ink-1)]">{t('accounts.currentConnection')}</h5>
+							<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]">{t('accounts.connectionIdentity', { provider: provider.id, account: account.id, credential: credential.id })}</p>
+							<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]">{t('accounts.currentEndpoint')}: {safeEndpoint(provider.api_base) ?? t('accounts.providerDefaultEndpoint')}</p>
+							<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('accounts.eligibilityNotice')}</p>
 							<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]">{t('accounts.poolSummary', { priority: credential.priority, weight: credential.weight })} · {t('accounts.generation', { generation: credential.generation })}{credential.api_key_env ? ` · ${credential.api_key_env}` : ''}</p>
 							<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]">{t('accounts.modelIds')}: {eligibilityDraft(credential.allowed_model_ids) || t('accounts.unrestricted')} · {t('accounts.operations')}: {eligibilityDraft(credential.allowed_capabilities) || t('accounts.unrestricted')}</p>
 							<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]">{t('configuration.expirationTime')}: {displayTime(credential.expires_at)} · {t('accounts.cooldown')}: {displayTime(credential.cooldown_until)}{credential.subscription_expires_at ? ` · ${t('configuration.credentialExpiry', { v0: displayTime(credential.subscription_expires_at) })}` : ''}</p>
+							{#if observedProbe}
+								<div class="mt-2 space-y-1" data-probe-status={observedProbe.status}><Pill size="xs" tone={observedProbe.status === 'connected' ? 'success' : 'danger'}>{t(observedProbe.status === 'connected' ? 'accounts.probeConnected' : 'accounts.probeFailed')}</Pill><p class="break-all text-xs text-[var(--color-ink-2)]">{t('accounts.probeModel')}: #{observedProbe.model_id} · {displayTime(observedProbe.checked_at)}</p></div>
+							{:else}<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('accounts.probeUntested')}</p>{/if}
+							<div class="mt-2"><Button variant="secondary" size="sm" disabled={busy || !account.is_active || !credential.is_active} onclick={() => prepareProbe(account.id, credential)}>{t('accounts.probeTitle')}</Button></div>
+							<section class="mt-3 space-y-2 rounded-lg bg-[var(--color-surface-sunken)] p-3" aria-label={t('accounts.relayHistory')}>
+								<h5 class="text-sm font-medium text-[var(--color-ink-0)]">{t('accounts.relayHistory')}</h5>
+								<p class="text-xs text-[var(--color-ink-2)]">{t('accounts.relayBoundary')}</p>
+								<Button variant="ghost" size="sm" disabled={busy || historyLoading !== null} onclick={() => loadHistory(account.id, credential)}>{t('accounts.loadRelays')}</Button>
+								{#if historyLoading === credential.id}<p role="status" class="text-xs text-[var(--color-ink-2)]">{t('accounts.loading')}</p>{/if}
+								{#if historyErrors[credential.id]}<Alert tone="danger">{historyErrors[credential.id]}</Alert>{/if}
+								{#if histories[credential.id]}
+									{#each histories[credential.id].items as row (row.ledger_id)}
+										<div class="space-y-1 border-t border-[var(--color-line)] pt-2 text-xs text-[var(--color-ink-2)]">
+											<p class="break-all">{t('accounts.relaySettlement', { id: row.ledger_id, model: row.settled_model, generation: row.generation, time: displayTime(row.settled_at) })}</p>
+											{#if row.dispatches?.length}{#each row.dispatches as dispatch (dispatch.attempt_id)}
+												<p class="break-all">{t('accounts.recordedDestination')}: {safeEndpoint(dispatch.endpoint) ?? t('accounts.unknownDispatch')}</p>
+												<p class="break-all">{dispatch.model ?? t('accounts.unset')} · {dispatch.operation} · {t(`accounts.relayStatus.${dispatch.status}`)} {dispatch.status_code ?? ''} · {displayTime(dispatch.recorded_at)}</p>
+												<p class="break-all font-mono">{t('accounts.attemptId')}: {dispatch.attempt_id}</p>
+											{/each}{:else}<p>{t('accounts.unknownDispatch')}</p>{/if}
+										</div>
+									{:else}<p class="text-xs text-[var(--color-ink-2)]">{t('accounts.noSettledRelays')}</p>{/each}
+									{#if histories[credential.id].next_before_id}<Button variant="ghost" size="sm" disabled={busy || historyLoading !== null} onclick={() => loadHistory(account.id, credential, true)}>{t('accounts.olderRelays')}</Button>{/if}
+								{/if}
+							</section>
 							<div class="mt-2 flex flex-wrap gap-2"><Button variant="ghost" size="sm" disabled={busy} onclick={() => editCredential(account.id, credential)}>{t('accounts.editCredential')}</Button><Button variant="ghost" size="sm" disabled={busy} onclick={() => mutate((ctx) => api.patch(`${ctx.base}${credentialPath(account.id, credential.id)}`, { is_active: !credential.is_active }, ctx.token, ctx.project))}>{credential.is_active ? t('configuration.deactivate') : t('configuration.activate')}</Button>{#if credential.auth_mode !== 'api_key'}<Button variant="secondary" size="sm" disabled={busy} onclick={() => authenticate(account.id, credential)}>{t('configuration.connect')}</Button><Button variant="ghost" size="sm" disabled={busy} onclick={() => disconnect(account.id, credential)}>{t('configuration.disconnect')}</Button>{/if}<Button variant="danger-outline" size="sm" disabled={busy} onclick={() => remove(account, credential)}>{t('configuration.delete')}</Button></div>
 						</div>
 					{/each}

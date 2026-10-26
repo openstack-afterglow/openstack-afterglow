@@ -134,15 +134,19 @@ def _member_sources(sources, catalog, user_id, project_id):
     )
 
 
-def _verify_personal_member(ks, catalog, project, user_id):
+def _verify_personal_member(ks, catalog, project, user_id, *, operation=None):
     from app.services import domain_projects, identity_roles, project_service
 
     pid = _field(project, "id")
-    sources = domain_projects._sources(ks, project, catalog)
+    sources = domain_projects._sources(ks, project, catalog, operation=operation)
     if not _member_sources(sources, catalog, user_id, pid):
         raise HTTPException(503, "Personal project contains unexpected native authority")
     member = _personal_member_role(catalog)
-    rows = project_service._assignment_rows(ks, pid, effective=True)
+    rows = (
+        domain_projects._effective(ks, pid, catalog, operation=operation)
+        if operation is not None
+        else project_service._assignment_rows(ks, pid, effective=True)
+    )
     expected = {member["id"], *identity_roles._descendant_ids(catalog, member["id"])}
     if any(project_service._principal(row, "user") != user_id for row in rows) or (
         project_service._expanded_role_ids(rows, catalog, user_id) != expected
@@ -150,7 +154,7 @@ def _verify_personal_member(ks, catalog, project, user_id):
         raise HTTPException(503, "Personal project native member could not be verified")
 
 
-def personal_project(user_id, *, ks=None, operation=None):
+def personal_project(user_id, *, ks=None, operation=None, native_mapping=None, mapped_username=None):
     from app.services import identity_roles, keystone, project_service
 
     ks = operation.ks if operation is not None else ks or keystone._get_admin_ks_client()
@@ -159,7 +163,12 @@ def personal_project(user_id, *, ks=None, operation=None):
         return None
     did = _field(domain, "id")
     matches = []
-    for row in _rows(ks.projects, domain=did):
+    projects = (
+        operation.read(("personal_project", "inventory", did), _rows, ks.projects, domain=did)
+        if operation is not None
+        else _rows(ks.projects, domain=did)
+    )
+    for row in projects:
         if _field(row, "domain_id") != did:
             raise HTTPException(503, "Personal project inventory has foreign scope")
         if (
@@ -182,11 +191,11 @@ def personal_project(user_id, *, ks=None, operation=None):
         catalog = operation.catalog() if operation is not None else identity_roles._trusted_catalog()
         from app.services import domain_projects
 
-        sources = domain_projects._sources(ks, full, catalog)
+        sources = domain_projects._sources(ks, full, catalog, operation=operation)
         if not domain_projects._personal_member(sources, catalog, user_id, pid):
             raise HTTPException(503, "Personal primary membership could not be verified")
         if any(source["role_id"] == _personal_member_role(catalog)["id"] for source in sources):
-            _verify_personal_member(ks, catalog, full, user_id)
+            _verify_personal_member(ks, catalog, full, user_id, operation=operation)
         else:
             # Preserve established owner-based projects without regranting or migrating them.
             ownership = project_service._ownership_state_sync(ks, catalog, pid)
@@ -195,7 +204,17 @@ def personal_project(user_id, *, ks=None, operation=None):
         matches.append({key: _field(full, key) for key in ("id", "name", "domain_id", "enabled")})
     if len(matches) > 1:
         raise HTTPException(503, "Personal primary project is ambiguous")
-    return matches[0] if matches else None
+    if matches:
+        return matches[0]
+    from app.services import native_oidc
+
+    if native_mapping is not None:
+        # Only the verified native exchange supplies a signed mapping username.
+        return native_oidc._mapped_personal_project(
+            user_id, mapped_username, ks=ks, operation=operation, descriptor=native_mapping
+        )
+
+    return native_oidc.personal_project(user_id, ks=ks, operation=operation)
 
 
 async def assert_user_deletion_safe(user_id, *, ks, enrollment_id=None):
@@ -548,6 +567,13 @@ async def ensure_personal_project(user_id, *, operation=None):
                 if intent.status != "accepted":
                     await provision_primary(intent, session, mutation)
             existing = await _provider_call(personal_project, user_id, ks=ks)
+            if intent is not None and existing is not None and not expected and not deferred:
+                from app.services import native_oidc
+
+                if await native_oidc.retire_deleted_primary_intent(
+                    intent, existing, ks=ks, lease=mutation[0], session=session
+                ):
+                    intent = None
             if (
                 len(expected) > 1
                 or expected

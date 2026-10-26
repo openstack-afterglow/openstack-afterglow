@@ -9,6 +9,10 @@
 	import AdminVolumeAttachmentsSection from '$lib/components/admin-volume/AdminVolumeAttachmentsSection.svelte';
 	import AdminVolumeMetadataSection from '$lib/components/admin-volume/AdminVolumeMetadataSection.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
+	import AdminVolumeTransferModal from '$lib/components/admin/volumes/AdminVolumeTransferModal.svelte';
+	import type { AdminVolumeDetail } from '$lib/types/volume';
+	let transferVolume = $state<Pick<AdminVolumeDetail, 'id' | 'name' | 'status'> | null>(null);
 
 	interface Props {
 		volumeId: string;
@@ -41,6 +45,9 @@
 		{:else if s.volume}
 			<div class="motion-stagger space-y-4">
 				<AdminVolumeStatusBar />
+				{#if (s.volume.status === 'available' && s.volume.attachments.length === 0) || s.volume.status === 'awaiting-transfer'}
+					<Button variant="outline" onclick={() => { transferVolume = { id: s.volume!.id, name: s.volume!.name, status: s.volume!.status }; }}>{t('volumeList.action.transfer')}</Button>
+				{/if}
 				{#if s.deleteDiagnostic || s.diagnosticLoading || s.diagnosticError || s.recoveryResult}
 					<AdminVolumeDeleteDiagnosticSection />
 				{/if}
@@ -56,3 +63,9 @@
 		{/if}
 	</div>
 </div>
+
+{#if transferVolume}
+	{#key transferVolume.id}
+		<AdminVolumeTransferModal volume={transferVolume} onClose={() => { transferVolume = null; }} onSuccess={() => { void s.fetchVolume(); onRefresh?.(); }} />
+	{/key}
+{/if}

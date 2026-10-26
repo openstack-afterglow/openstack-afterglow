@@ -78,6 +78,7 @@ async function loadHandle(reporting = false) {
 afterEach(() => {
 	vi.resetModules();
 	vi.doUnmock('$lib/server/config');
+	vi.doUnmock('$app/environment');
 	vi.unstubAllEnvs();
 	vi.unstubAllGlobals();
 });
@@ -473,6 +474,31 @@ describe('hooks.server SPA fallback', () => {
 	});
 });
 
+
+describe('development live picker CSP boundary', () => {
+	it.each([false, true])('preserves runtime origins and gates the picker when dev=%s', async (development) => {
+		vi.doMock('$app/environment', () => ({ dev: development }));
+		const { handle } = await loadHandle();
+		const request = createRequest('http://frontend.example.com/login');
+		const response = await handle({ event: request.event, resolve: request.resolve });
+		const policy = response.headers.get('Content-Security-Policy')!;
+		const directives = new Map(policy.split(';').map((part) => {
+			const [name, ...sources] = part.trim().split(/\s+/);
+			return [name, sources];
+		}));
+		for (const name of ['script-src', 'connect-src']) {
+			expect(directives.get(name)!.includes('http://localhost:8400')).toBe(development);
+			expect(directives.get(name)).not.toContain('*');
+			expect(directives.get(name)).not.toContain("'unsafe-inline'");
+		}
+		expect(directives.get('connect-src')).toEqual([
+			"'self'", 'https://api.example.com', 'wss://api.example.com',
+			...(development ? ['http://localhost:8400'] : []),
+		]);
+		expect(directives.get('img-src')).not.toContain('http://localhost:8400');
+		expect(directives.get('frame-src')).not.toContain('http://localhost:8400');
+	});
+});
 
 describe('generated CSP preservation', () => {
 	it.each(["'nonce-rendered-page'", "'sha256-rendered-page'"])(

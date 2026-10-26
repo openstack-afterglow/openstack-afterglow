@@ -7,6 +7,8 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 import yaml
@@ -447,3 +449,67 @@ def test_configured_public_origins_select_chart_hosts(app, cors, expected):
 
 def test_absent_public_origins_do_not_invent_chart_domain():
     assert "ingress" not in config2helm.convert({}, False)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("override", [None, 600])
+async def test_rendered_session_accepts_until_original_deadline_and_preserves_shorter_override(
+    tmp_path, monkeypatch, override
+):
+    from fastapi import HTTPException
+
+    from app.api import deps
+
+    helm = shutil.which("helm")
+    if helm is None:
+        pytest.skip("Helm is required to exercise the rendered session policy")
+    cfg = {} if override is None else {"session": {"timeout_seconds": override}}
+    values_path = tmp_path / "values.yaml"
+    values_path.write_text(config2helm.render_values(cfg, False), encoding="utf-8")
+    rendered = subprocess.run(
+        [
+            helm,
+            "template",
+            "afterglow",
+            str(ROOT / "helm/afterglow"),
+            "--show-only",
+            "templates/configmap.yaml",
+            "-f",
+            str(values_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    session = tomllib.loads(yaml.safe_load(rendered.stdout)["data"]["afterglow.conf"])["session"]
+    monkeypatch.setattr(
+        deps, "get_settings", lambda: SimpleNamespace(session_timeout_seconds=session["timeout_seconds"])
+    )
+    deleted = AsyncMock()
+    monkeypatch.setattr("app.services.session_store.delete_session", deleted)
+    original_start = 1_000_000.0
+    expected_limit = 86400 if override is None else override
+    clock = original_start + expected_limit - 1
+    monkeypatch.setattr(deps.time, "time", lambda: clock)
+    assert (
+        await deps._check_session_timeout(
+            token_hash="rendered-token",
+            session={"started_at": original_start},
+            refresh_jti="rendered-session",
+            project_id="project",
+            issued_at=original_start,
+        )
+        == original_start
+    )
+    deleted.assert_not_awaited()
+    clock += 1
+    with pytest.raises(HTTPException) as error:
+        await deps._check_session_timeout(
+            token_hash="rendered-token",
+            session={"started_at": original_start},
+            refresh_jti="rendered-session",
+            project_id="project",
+            issued_at=original_start,
+        )
+    assert error.value.status_code == 401
+    deleted.assert_awaited_once_with("rendered-session")

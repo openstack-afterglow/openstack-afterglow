@@ -359,6 +359,7 @@ async def _run_target_worker() -> None:
 async def main() -> None:
     from app.config import get_settings
     from app.database import close_db, init_db, is_db_available
+    from app.services import native_transport
     from app.services.db_auto_backup import run_scheduler
 
     settings = get_settings()
@@ -384,16 +385,21 @@ async def main() -> None:
         try:
             await _drain(tasks)
         finally:
-            closing = asyncio.create_task(close_db())
-            cancelled = False
-            while not closing.done():
-                try:
-                    await asyncio.shield(closing)
-                except asyncio.CancelledError:
-                    cancelled = True
-            closing.result()
-            if cancelled:
-                raise asyncio.CancelledError
+            try:
+                closing = asyncio.create_task(close_db())
+                cancelled = False
+                while not closing.done():
+                    try:
+                        await asyncio.shield(closing)
+                    except asyncio.CancelledError:
+                        cancelled = True
+                closing.result()
+                if cancelled:
+                    raise asyncio.CancelledError
+            finally:
+                # _drain waits for owned SDK threads even when cancellation repeats.
+                if all(task.done() for task in tasks):
+                    native_transport.close_pools()
 
 
 async def _main_async() -> None:

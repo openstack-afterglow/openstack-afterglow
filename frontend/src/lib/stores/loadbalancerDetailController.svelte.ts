@@ -14,6 +14,7 @@ export interface LoadbalancerDetailControllerOpts {
   lbId: () => string;
   token: () => string | undefined;
   projectId: () => string | undefined;
+  adminMode?: () => boolean;
   onDeleted?: () => void;
   onClose?: () => void;
 }
@@ -27,6 +28,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
   let selectedPoolId = $state<string | null>(null);
   let loading = $state(true);
   let error = $state('');
+  let membersError = $state('');
   let saving = $state(false);
 
   let showAddListener = $state(false);
@@ -40,45 +42,50 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
     !!lb && (lb.status === 'ERROR' || lb.status?.includes('ERROR')),
   );
   const isProtected = $derived(isDroverLoadBalancer(lb));
+  const canMutate = $derived(!opts.adminMode?.() || (lb?.id === opts.lbId() && !!lb?.project_id && lb.project_id === opts.projectId()));
+  const readBase = () => opts.adminMode?.() ? '/api/v1/admin/loadbalancers' : '/api/v1/loadbalancers';
   // selectedPoolId 변화 시 멤버 fetch (token/projectId는 untrack)
   $effect(() => {
     const poolId = selectedPoolId;
     if (!poolId) {
       selectedPoolMembers = [];
+      membersError = '';
       return;
     }
     const t = untrack(() => opts.token());
     const pid = untrack(() => opts.projectId());
+    membersError = '';
     api
-      .get<Member[]>(`/api/v1/loadbalancers/${opts.lbId()}/pools/${poolId}/members`, t, pid)
+      .get<Member[]>(`${readBase()}/${opts.lbId()}/pools/${poolId}/members`, t, pid)
       .then((m) => {
         selectedPoolMembers = m;
       })
-      .catch(() => {});
+      .catch(e => { selectedPoolMembers = []; membersError = e instanceof ApiError ? e.message : tr('lb.errors.loadFailed'); });
   });
 
-  async function fetchAll() {
+  async function fetchAll(force = false) {
     const id = opts.lbId();
     const t = opts.token();
     const pid = opts.projectId();
     loading = true;
     try {
       const [lbData, listenersData, poolsData] = await Promise.all([
-        api.get<LoadBalancerDetail>(`/api/v1/loadbalancers/${id}`, t, pid),
-        api.get<Listener[]>(`/api/v1/loadbalancers/${id}/listeners`, t, pid),
-        api.get<Pool[]>(`/api/v1/loadbalancers/${id}/pools`, t, pid),
+        api.get<LoadBalancerDetail>(`${readBase()}/${id}`, t, pid, { refresh: force }),
+        api.get<Listener[]>(`${readBase()}/${id}/listeners`, t, pid, { refresh: force }),
+        api.get<Pool[]>(`${readBase()}/${id}/pools`, t, pid, { refresh: force }),
       ]);
       lb = lbData;
       listeners = listenersData;
       pools = poolsData;
       error = '';
+      statusTree = null;
       if (lbData.status === 'ERROR') {
-        api
-          .get<LbStatusNode>(`/api/v1/loadbalancers/${id}/status`, t, pid)
+        await api
+          .get<LbStatusNode>(`${readBase()}/${id}/status`, t, pid, { refresh: force })
           .then((tree) => {
             statusTree = tree;
           })
-          .catch(() => {});
+          .catch(() => { statusTree = null; });
       }
     } catch (e) {
       error = e instanceof ApiError ? e.message : tr('lb.errors.loadFailed');
@@ -88,6 +95,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
   }
 
   async function createListener(form?: { protocol: string; protocol_port: number; name: string }): Promise<boolean> {
+    if (!canMutate) return false;
     if (form) listenerForm = { ...form };
     saving = true;
     try {
@@ -110,6 +118,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
   }
 
   async function deleteListener(listenerId: string) {
+    if (!canMutate) return;
     if (!(await confirmDialog(tr('lb.confirm.deleteListener')))) return;
     saving = true;
     try {
@@ -127,10 +136,12 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
   }
 
   function toggleAddListener() {
+    if (!canMutate) return;
     showAddListener = !showAddListener;
   }
 
   async function createPool(form?: { protocol: string; lb_algorithm: string; name: string }): Promise<boolean> {
+    if (!canMutate) return false;
     if (form) poolForm = { ...form };
     saving = true;
     try {
@@ -153,6 +164,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
   }
 
   async function deletePool(poolId: string) {
+    if (!canMutate) return;
     if (!(await confirmDialog(tr('lb.confirm.deletePool')))) return;
     saving = true;
     try {
@@ -175,10 +187,12 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
   }
 
   function toggleAddPool() {
+    if (!canMutate) return;
     showAddPool = !showAddPool;
   }
 
   async function addMember(form?: { address: string; protocol_port: number; weight: number; name: string }): Promise<boolean> {
+    if (!canMutate) return false;
     if (!selectedPoolId) return false;
     if (form) memberForm = { ...form };
     saving = true;
@@ -192,7 +206,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
       showAddMember = false;
       memberForm = { address: '', protocol_port: 80, weight: 1, name: '' };
       selectedPoolMembers = await api.get<Member[]>(
-        `/api/v1/loadbalancers/${opts.lbId()}/pools/${selectedPoolId}/members`,
+        `${readBase()}/${opts.lbId()}/pools/${selectedPoolId}/members`,
         opts.token(),
         opts.projectId(),
       );
@@ -206,6 +220,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
   }
 
   async function removeMember(memberId: string) {
+    if (!canMutate) return;
     if (!selectedPoolId || !(await confirmDialog(tr('lb.confirm.removeMember')))) return;
     saving = true;
     try {
@@ -223,10 +238,12 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
   }
 
   function toggleAddMember() {
+    if (!canMutate) return;
     showAddMember = !showAddMember;
   }
 
   async function deleteLb() {
+    if (!canMutate) return;
     const id = opts.lbId();
     const message = loadBalancerDeleteConfirmation(lb, id);
     if (!(await confirmDialog(message)))
@@ -251,6 +268,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
     get selectedPoolId() { return selectedPoolId; },
     get loading() { return loading; },
     get error() { return error; },
+    get membersError() { return membersError; },
     get saving() { return saving; },
     // Form state (mutable via bind:)
     get showAddListener() { return showAddListener; },
@@ -265,6 +283,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
     // Derived
     get isErrored() { return isErrored; },
     get isProtected() { return isProtected; },
+    get canMutate() { return canMutate; },
     fetchAll,
     createListener,
     deleteListener,

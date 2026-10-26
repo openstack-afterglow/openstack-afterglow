@@ -72,7 +72,7 @@ async def resource(kind, resource_id, domain_id):
     return obj
 
 
-async def protected_user(user, domain_id, *, credentials=True, system_services=False):
+async def protected_user(user, domain_id, *, credentials=True, system_services=False, membership_project_id=None):
     uid = _field(user, "id")
     if not isinstance(uid, str) or not uid:
         raise HTTPException(503, "Identity protection metadata is unavailable")
@@ -114,6 +114,17 @@ async def protected_user(user, domain_id, *, credentials=True, system_services=F
             raise HTTPException(503, "Effective scoped protection identity is unavailable")
         if "OS-INHERIT:inherited_to" in scope and scope["OS-INHERIT:inherited_to"] != "projects":
             raise HTTPException(503, "Effective inherited protection scope is unavailable")
+    # Membership edits may remove the target project's native admin grant, but
+    # never gain identity/system authority or edit other privileged bindings.
+    if membership_project_id is not None and not credentials:
+        assignments = [
+            row
+            for row in assignments
+            if not (
+                _field(_field(_field(row, "scope", {}), "project", {}), "id") == membership_project_id
+                and by_id.get(project_service._principal(row, "role"), {}).get("name", "").casefold() == "admin"
+            )
+        ]
     expanded = project_service._expanded_role_ids(assignments, catalog, uid)
     if system_services:
         # Deletion additionally protects service-only raw system grants, which
@@ -149,8 +160,8 @@ def user_dto(user, protected=False):
     }
 
 
-async def directory_users(domain_id, *, ks=None):
-    """Fresh home/joined directory, never a foreign credential inventory."""
+async def directory_users(domain_id, *, ks=None, skip_missing=False):
+    """Fresh home/joined directory; only display callers may omit absent users."""
     await organization_domain(domain_id)
     ks = ks or await _provider_call(keystone._get_admin_ks_client)
     catalog = await _provider_call(identity_roles._trusted_catalog)
@@ -174,12 +185,20 @@ async def directory_users(domain_id, *, ks=None):
         raise HTTPException(503, "Domain directory identity is unavailable")
     result = []
     for uid in sorted(ids):
+        reads = {}
+        try:
+            user = await _provider_call(domain_projects._exact, ks.users, uid, reads=reads)
+        except HTTPException as exc:
+            # A dangling role assignment or a concurrently deleted list result
+            # is not a candidate. Never soften home-domain or authority reads.
+            if not skip_missing or exc.status_code != 404:
+                raise
+            continue
         if uid in home_ids:
-            user = await _provider_call(domain_projects._exact, ks.users, uid)
             domain_scope.assert_domain_resource(domain_id, _field(user, "domain_id"))
             domain_projects._enabled(user)
         else:
-            user = await _provider_call(domain_projects._active_user, ks, uid)
+            user = await _provider_call(domain_projects._active_user, ks, uid, reads=reads)
         if user is not None:
             result.append(user)
     return result
@@ -483,7 +502,7 @@ async def validate_invitation_roles(project_id, role_ids, token_info):
         raise HTTPException(422, "Choose unique project role IDs")
     allowed = await project_service.assignable_roles(project_id, token_info, domain_management=True)
     catalog = await _provider_call(identity_roles._trusted_catalog)
-    safe = {row["id"] for row in allowed["roles"]}
+    safe = {row["id"] for row in allowed["roles"] if row["name"].casefold() != "admin"}
     if not set(role_ids) <= safe:
         raise HTTPException(403, "Role exceeds domain IAM project authority")
     by_id = {row["id"]: row for row in catalog}

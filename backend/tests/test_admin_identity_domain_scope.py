@@ -9,13 +9,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from sqlalchemy import event
 
 from app.api.deps import get_admin_os_conn, get_os_conn, get_token_info, require_admin
 from app.api.identity import admin_identity
 from app.database import get_session
-from app.services import activity, identity_roles, session_store
+from app.services import activity, domain_scope, identity_roles, keystone, session_store
+from app.services.native_operation import NativeOperation
 from tests.admin_gate import synthetic_verified_admin
 from tests.test_domain_iam import directory as directory
 from tests.test_domain_iam import enrollments as enrollments
@@ -60,17 +61,91 @@ def native():
 
 @pytest.fixture
 def app(native, monkeypatch):
-    info = {"user_id": "operator", "username": "operator", "project_id": "admin", "is_system_admin": True}
+    info = {
+        "token": "personal-member-token",
+        "user_id": "operator",
+        "username": "operator",
+        "project_id": "personal-project",
+        "connection_project_id": "personal-project",
+        "domain_id": "personal",
+        "domain_name": "Personal",
+        "identity_domain_id": "accounts",
+        "roles": ["member"],
+        "is_system_admin": True,
+    }
+    native.session.auth.get_access.return_value = SimpleNamespace(
+        project_id="configured-executor-project",
+        auth_token="executor-admin-token",
+        project_scoped=True,
+        system_scoped=False,
+        is_admin_project=True,
+        role_names=["admin"],
+        _data={"token": {}},
+    )
+    monkeypatch.setattr(keystone, "get_admin_project_connection", MagicMock(return_value=native))
+
+    def personal_member_transport():
+        raise AssertionError("Administrator directory must not resolve the caller's member transport")
+
+    async def executor(_admin=Depends(require_admin)):
+        yield native
+
     application = FastAPI()
     application.include_router(admin_identity.router, prefix="/api/v1/admin")
-    application.dependency_overrides[get_os_conn] = lambda: native
-    application.dependency_overrides[get_admin_os_conn] = lambda: native
+    application.dependency_overrides[get_os_conn] = personal_member_transport
+    application.dependency_overrides[get_admin_os_conn] = executor
     application.dependency_overrides[get_token_info] = lambda: info
     application.dependency_overrides[require_admin] = synthetic_verified_admin
+    application.state.actor = info
     monkeypatch.setattr(activity, "get_user_activity_bounds", AsyncMock(return_value={}))
     monkeypatch.setattr(activity, "get_resource_creation_times", AsyncMock(return_value={}))
     monkeypatch.setattr(activity, "record", AsyncMock())
     return application
+
+
+@pytest.fixture
+def executor_boundary(app, native, monkeypatch):
+    """Exercise real authorization and executor dependencies, stubbing native I/O only."""
+    app.dependency_overrides.pop(require_admin)
+    app.dependency_overrides.pop(get_admin_os_conn)
+    actor = app.state.actor
+    monkeypatch.setattr(
+        domain_scope,
+        "domain_context",
+        MagicMock(
+            return_value={
+                "domain_id": "personal",
+                "domain_name": "Personal",
+                "identity_domain_id": "accounts",
+                "identity_domain_name": "Accounts",
+                "is_domain_manager": False,
+            }
+        ),
+    )
+    monkeypatch.setattr(domain_scope, "assert_project_domain", MagicMock())
+    monkeypatch.setattr(
+        keystone,
+        "validate_token",
+        MagicMock(
+            return_value={
+                "user_id": "operator",
+                "project_id": "personal-project",
+                "domain_id": "personal",
+                "identity_domain_id": "accounts",
+                "roles": ["member"],
+            }
+        ),
+    )
+    monkeypatch.setattr(keystone, "_is_system_admin", MagicMock(return_value=True))
+    monkeypatch.setattr(activity, "list_user_management_events", AsyncMock(return_value=[]))
+    monkeypatch.setattr(session_store, "list_user_sessions", AsyncMock(return_value=[]))
+    native.identity.roles.side_effect = lambda: iter(
+        [{"id": "global", "name": "member", "domain_id": None, "description": ""}]
+    )
+    native.identity.get.return_value.json.return_value = {"role_inferences": []}
+    native.identity.role_assignments.side_effect = lambda **kwargs: iter(())
+    native.identity.group_users.side_effect = lambda group_id: iter(())
+    return app, actor
 
 
 def client(app):
@@ -383,6 +458,51 @@ async def test_group_member_listing_preserves_external_identity_read_only_bounda
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status", [403, 404, 503])
+@pytest.mark.parametrize("partial", [False, True])
+async def test_group_member_listing_provider_failure_never_returns_empty_or_partial_success(
+    app, native, status, partial
+):
+    def members(group_id):
+        if partial:
+            yield obj("u1")
+        raise NativeError(status)
+
+    native.identity.group_users.side_effect = members
+    async with client(app) as http:
+        response = await http.get("/api/v1/admin/groups/g1/users", params=DOMAIN)
+    assert response.status_code == status
+    assert "detail" in response.json()
+    assert "native-secret-detail" not in response.text
+    native.identity.users.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_group_member_listing_preserves_same_name_uuid_email_and_home_domain(app, native):
+    home_id = "adfe08c4-f0ba-4735-a31b-14a2c48921a1"
+    external_id = "6a1c1b95-c3cf-41dc-8e6a-e1e67cacfd54"
+    members = [obj(home_id), obj(external_id, "tenant-b")]
+    for user in members:
+        user.name = "pieroot"
+        user.email = f"{user.domain_id}@example.test"
+    native.identity.group_users.return_value = members
+    async with client(app) as http:
+        response = await http.get("/api/v1/admin/groups/g1/users", params=DOMAIN)
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": uid,
+            "name": "pieroot",
+            "email": f"{home}@example.test",
+            "domain_id": home,
+            "identity_read_only": read_only,
+            "enabled": True,
+        }
+        for uid, home, read_only in ((home_id, "tenant-a", False), (external_id, "tenant-b", True))
+    ]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("kind", ["account", "personal"])
 async def test_generic_admin_project_creation_rejects_reserved_native_kind(app, native, monkeypatch, kind):
     from app.services import keystone
@@ -396,3 +516,218 @@ async def test_generic_admin_project_creation_rejects_reserved_native_kind(app, 
         response = await http.post("/api/v1/admin/projects", json={"name": "n", "domain_id": "tenant-a"})
     assert response.status_code == 403
     native.identity.create_project.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/users",
+        "/users/stats",
+        "/users/activity",
+        "/users/u1/sessions",
+        "/users/u1/permissions",
+        "/projects",
+        "/projects/names",
+        "/projects/p1",
+        "/projects/p1/members",
+        "/groups",
+        "/groups/g1/users",
+        "/roles",
+    ],
+)
+async def test_personal_member_admin_reads_use_independent_verified_executor(executor_boundary, native, path):
+    app, actor = executor_boundary
+    async with client(app) as http:
+        response = await http.get("/api/v1/admin" + path, params=DOMAIN)
+    assert response.status_code == 200, response.text
+    operation = keystone.validate_token.call_args.kwargs["operation"]
+    assert isinstance(operation, NativeOperation)
+    keystone.validate_token.assert_called_once_with(
+        "personal-member-token", project_id="personal-project", operation=operation
+    )
+    keystone._is_system_admin.assert_called_once_with("operator", operation=operation)
+    assert domain_scope.domain_context.call_args.kwargs["operation"] is operation
+    assert operation.reads == {} and operation.subjects == {}
+    keystone.get_admin_project_connection.assert_called_once_with()
+    native.close.assert_called_once_with()
+    assert actor["roles"] == ["member"]
+    assert actor["connection_project_id"] == "personal-project"
+    assert native._afterglow_token == "executor-admin-token"
+    assert native._afterglow_authenticated_project_id == "configured-executor-project"
+    assert native._afterglow_project_id == "personal-project"
+    assert native._afterglow_user_id == "operator"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("claimed_admin,fresh_admin", [(False, True), (True, False)])
+@pytest.mark.parametrize("path", ["/users", "/projects/p1", "/groups/g1/users", "/roles"])
+async def test_unverified_admin_never_acquires_executor(executor_boundary, native, path, claimed_admin, fresh_admin):
+    app, actor = executor_boundary
+    actor["is_system_admin"] = claimed_admin
+    keystone._is_system_admin.return_value = fresh_admin
+    async with client(app) as http:
+        response = await http.get("/api/v1/admin" + path, params=DOMAIN)
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "system_admin_required"
+    keystone.get_admin_project_connection.assert_not_called()
+    native.identity.get_domain.assert_not_called()
+    native.identity.users.assert_not_called()
+    native.identity.get_project.assert_not_called()
+    native.identity.group_users.assert_not_called()
+    native.identity.roles.assert_not_called()
+    native.close.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,domain,status,detail",
+    [
+        ("/users", "absent", 404, "identity_domain_not_found"),
+        ("/users/x1/sessions", "tenant-a", 403, "identity_domain_mismatch"),
+        ("/users/absent/sessions", "tenant-a", 404, "identity_not_found"),
+        ("/projects/px", "tenant-a", 403, "identity_domain_mismatch"),
+        ("/projects/absent", "tenant-a", 404, "identity_not_found"),
+        ("/groups/gx/users", "tenant-a", 403, "identity_domain_mismatch"),
+        ("/groups/absent/users", "tenant-a", 404, "identity_not_found"),
+    ],
+)
+async def test_verified_executor_preserves_selected_domain_and_object_rejections(
+    executor_boundary, native, path, domain, status, detail
+):
+    app, _ = executor_boundary
+    async with client(app) as http:
+        response = await http.get("/api/v1/admin" + path, params={"domain_id": domain})
+    assert response.status_code == status
+    assert response.json()["detail"] == detail
+    keystone.get_admin_project_connection.assert_called_once_with()
+    native.close.assert_called_once_with()
+    native.identity.users.assert_not_called()
+    native.identity.group_users.assert_not_called()
+    session_store.list_user_sessions.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kind,path",
+    [("user", "/users/u1/sessions"), ("project", "/projects/p1"), ("group", "/groups/g1/users")],
+)
+async def test_executor_rejects_native_object_id_substitution(executor_boundary, native, kind, path):
+    app, _ = executor_boundary
+    getattr(native.identity, f"get_{kind}").side_effect = lambda _: obj("different-native-id")
+    async with client(app) as http:
+        response = await http.get("/api/v1/admin" + path, params=DOMAIN)
+    assert response.status_code == 503
+    assert response.json()["detail"] == "identity_object_unverified"
+    native.close.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "field,value", [("project_scoped", False), ("role_names", ["member"]), ("is_admin_project", False)]
+)
+async def test_invalid_executor_native_scope_prevents_directory_access(executor_boundary, native, field, value):
+    app, _ = executor_boundary
+    setattr(native.session.auth.get_access.return_value, field, value)
+    async with client(app) as http:
+        response = await http.get("/api/v1/admin/users", params=DOMAIN)
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Native administrator project scope is invalid"
+    native.identity.get_domain.assert_not_called()
+    native.identity.users.assert_not_called()
+    native.close.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_admin_creation_and_profile_update_use_executor_without_elevating_caller(executor_boundary, native):
+    app, actor = executor_boundary
+    native.identity.create_group.side_effect = lambda **kwargs: obj("created-group", kwargs["domain_id"])
+    native.identity.update_user.side_effect = lambda user_id, **kwargs: obj(user_id)
+    async with client(app) as http:
+        created = await http.post("/api/v1/admin/groups", json={"name": "team", "domain_id": "tenant-a"})
+        updated = await http.patch("/api/v1/admin/users/u1", params=DOMAIN, json={"name": "renamed"})
+    assert created.status_code == 201
+    assert updated.status_code == 200
+    native.identity.create_group.assert_called_once_with(name="team", domain_id="tenant-a")
+    native.identity.update_user.assert_called_once_with("u1", name="renamed")
+    assert keystone.get_admin_project_connection.call_count == 2
+    assert native.close.call_count == 2
+    assert actor["roles"] == ["member"]
+    assert actor["project_id"] == "personal-project"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method,path,body,service,args,kwargs",
+    [
+        ("PUT", "/groups/g1/users/x1", None, "change_group_membership", ("g1",), {"user_id": "x1"}),
+        (
+            "DELETE",
+            "/groups/g1/users/x1",
+            None,
+            "change_group_membership",
+            ("g1",),
+            {"user_id": "x1", "remove": True},
+        ),
+        (
+            "POST",
+            "/roles/assign",
+            {"project_id": "p1", "user_id": "x1", "role_id": "global"},
+            "change_project_assignment",
+            ("p1", "global"),
+            {"user_id": "x1"},
+        ),
+        (
+            "POST",
+            "/roles/assign-group",
+            {"project_id": "p1", "group_id": "gx", "role_id": "global"},
+            "change_project_assignment",
+            ("p1", "global"),
+            {"group_id": "gx"},
+        ),
+    ],
+)
+async def test_cross_identity_membership_writes_use_executor_and_target_domain_anchor(
+    executor_boundary, native, monkeypatch, method, path, body, service, args, kwargs
+):
+    app, actor = executor_boundary
+    change = AsyncMock(return_value={"status": "assigned"})
+    monkeypatch.setattr(identity_roles, service, change)
+    async with client(app) as http:
+        response = await http.request(method, "/api/v1/admin" + path, params=DOMAIN, json=body)
+    assert response.status_code == (204 if path.startswith("/groups/") else 200), response.text
+    change.assert_awaited_once_with(native, actor, *args, **kwargs)
+    keystone.get_admin_project_connection.assert_called_once_with()
+    native.close.assert_called_once_with()
+    assert native._afterglow_authenticated_project_id == "configured-executor-project"
+    assert actor["roles"] == ["member"]
+
+
+@pytest.mark.asyncio
+async def test_selected_project_quota_uses_same_verified_executor_for_boundary_and_read(
+    executor_boundary, native, monkeypatch
+):
+    app, _ = executor_boundary
+    read = AsyncMock(return_value={"project_id": "p1"})
+    monkeypatch.setattr(admin_identity.quota_native, "read_project", read)
+    async with client(app) as http:
+        response = await http.get("/api/v1/admin/quotas/p1", params=DOMAIN)
+    assert response.status_code == 200
+    read.assert_awaited_once_with(native, "p1")
+    native.identity.get_project.assert_called_once_with("p1")
+    keystone.get_admin_project_connection.assert_called_once_with()
+    native.close.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_executor_rejects_unowned_selected_project_before_quota_read(executor_boundary, native, monkeypatch):
+    app, _ = executor_boundary
+    native.identity.get_project.side_effect = lambda project_id: obj(project_id, domain_id=None)
+    read = AsyncMock()
+    monkeypatch.setattr(admin_identity.quota_native, "read_project", read)
+    async with client(app) as http:
+        response = await http.get("/api/v1/admin/quotas/p1", params=DOMAIN)
+    assert response.status_code == 403
+    assert response.json()["detail"] == "identity_domain_mismatch"
+    read.assert_not_called()
+    native.close.assert_called_once_with()

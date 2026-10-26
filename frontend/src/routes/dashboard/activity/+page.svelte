@@ -47,12 +47,12 @@
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
-	async function fetchData() {
+	async function fetchData(force = false) {
 		if (!token || !projectId) return;
 		loading = !data;
 		error = null;
 		try {
-			const res = await api.get<ActivityData>(`/api/v1/dashboard/activity?range=${period}`, token, projectId);
+			const res = await api.get<ActivityData>(`/api/v1/dashboard/activity?range=${period}`, token, projectId, { refresh: force });
 			data = res;
 		} catch (e) {
 			error = e instanceof Error ? e.message : t('activity.loadFailed');

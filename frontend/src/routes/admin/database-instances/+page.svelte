@@ -35,12 +35,12 @@
 	const projectId = $derived($auth.projectId ?? undefined);
 
 
-	async function load() {
+	async function load(force = false) {
 		if (instances.length === 0) loading = true;
 		else refreshing = true;
 		loadError = null;
 		try {
-			instances = await api.get<DbInstance[]>('/api/v1/database-instances?all_projects=true', token, projectId);
+			instances = await api.get<DbInstance[]>('/api/v1/admin/database-instances', token, projectId, { refresh: force });
 		} catch (error) {
 			loadError = error instanceof ApiError ? error.message : tr('instances.listFailed');
 		} finally {
@@ -50,6 +50,7 @@
 	}
 
 	async function deleteInstance(id: string, name: string) {
+		if (!instances.some(inst => inst.id === id && !!inst.project_id && inst.project_id === projectId)) return;
 		if (!await confirmDialog(tr('instances.deleteConfirm', { name: name || id.slice(0, 8) }))) return;
 		deleting = id;
 		try {
@@ -64,6 +65,7 @@
 	}
 
 	async function restartInstance(id: string, name: string) {
+		if (!instances.some(inst => inst.id === id && !!inst.project_id && inst.project_id === projectId)) return;
 		if (!await confirmDialog(tr('instances.restartConfirm', { name: name || id.slice(0, 8) }))) return;
 		restarting = id;
 		try {
@@ -100,7 +102,7 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading || refreshing}
-				onManualRefresh={load}
+				onManualRefresh={ar.refresh}
 			/>
 		{/snippet}
 	</PageHeader>
@@ -121,7 +123,7 @@
 					<CompactResourceCard>
 						<div class="flex items-start justify-between gap-2"><a class="min-h-11 break-all font-medium text-warm-text" href={`/admin/database-instances/${inst.id}`}>{inst.name || inst.id.slice(0, 8)}</a><StatusChip status={inst.status} /></div>
 						<div class="space-y-1 break-all text-xs text-ink-2"><p>{inst.datastore?.type ?? '-'} {inst.datastore?.version ?? ''} · {inst.size ?? '-'} GB</p><p>{tr('labels.project')}: {inst.project_id || '-'}</p></div>
-						{#snippet actions()}<Button variant="secondary" size="sm" disabled={restarting === inst.id} onclick={() => restartInstance(inst.id, inst.name)}>{restarting === inst.id ? tr('state.restarting') : tr('actions.restart')}</Button><Button variant="danger" size="sm" disabled={deleting === inst.id} onclick={() => deleteInstance(inst.id, inst.name)}>{deleting === inst.id ? tr('state.deleting') : tr('actions.delete')}</Button>{/snippet}
+						{#snippet actions()}{#if inst.project_id && inst.project_id === projectId}<Button variant="secondary" size="sm" disabled={restarting === inst.id} onclick={() => restartInstance(inst.id, inst.name)}>{restarting === inst.id ? tr('state.restarting') : tr('actions.restart')}</Button><Button variant="danger" size="sm" disabled={deleting === inst.id} onclick={() => deleteInstance(inst.id, inst.name)}>{deleting === inst.id ? tr('state.deleting') : tr('actions.delete')}</Button>{/if}{/snippet}
 						{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p class="font-mono">{inst.id}</p><p>{tr('labels.created')}: {inst.created_at?.slice(0, 10) ?? '-'}</p></div>{/snippet}
 					</CompactResourceCard>
 				{/each}
@@ -153,6 +155,7 @@
 							<td class="py-3 px-4 text-ink-2 font-mono text-xs">{inst.id.slice(0, 8)}…</td>
 							<td class="py-3 px-4 text-ink-2 text-xs">{inst.created_at ? inst.created_at.slice(0, 10) : '-'}</td>
 							<td class="py-3 px-4 text-right">
+								{#if inst.project_id && inst.project_id === projectId}
 								<div class="flex justify-end gap-1">
 									<button onclick={() => restartInstance(inst.id, inst.name)} disabled={restarting === inst.id}
 										class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm disabled:border-line-2 transition-colors">
@@ -163,6 +166,7 @@
 										{#if deleting === inst.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.deleting')}</span></span>{:else}{tr('actions.delete')}{/if}
 									</button>
 								</div>
+								{/if}
 							</td>
 						</tr>
 					{/each}

@@ -84,8 +84,7 @@ const announcements: unknown[] = [];
 const authContext = { token: 'token-a', userId: 'user-a', identityDomainId: 'domain-a', username: 'tester', projectId: 'project-a', projectName: 'Project A' };
 
 function resolveOverview(path: string, metrics: unknown = trend): unknown {
-	if (path.includes('/summary')) return summary;
-	if (path.includes('/quotas')) return quotas;
+	if (path.includes('/snapshot')) return { summary: { data: summary, error: null }, quotas: { data: quotas, error: null } };
 	if (path.includes('/k3s-stats')) return { total: 1, active: 1, available: true };
 	if (path.includes('/announcements')) return announcements;
 	return metrics;
@@ -103,7 +102,7 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('dashboard overview loading', () => {
-	it('starts five independent overview requests and renders the summary before slow domains settle', async () => {
+	it('starts four reads sharing native summary/quota proof and renders before slow independent domains settle', async () => {
 		const requests = new Map<string, Deferred<unknown>>();
 		mocks.apiGet.mockImplementation((path: string) => {
 			const pending = deferred<unknown>();
@@ -114,11 +113,10 @@ describe('dashboard overview loading', () => {
 		const rendered = render(Page);
 		expect(screen.queryByText('인스턴스가 없습니다')).toBeNull();
 		expect(screen.queryByText('메트릭 수집 미설정')).toBeNull();
-		await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledTimes(5));
+		await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledTimes(4));
 		const paths = mocks.apiGet.mock.calls.map(([path]) => path);
 		expect(paths).toEqual(expect.arrayContaining([
-			'/api/v1/dashboard/summary?view=overview&recent_limit=12',
-			'/api/v1/dashboard/quotas?view=overview',
+			'/api/v1/dashboard/snapshot?recent_limit=12',
 			'/api/v1/dashboard/k3s-stats',
 			'/api/v1/dashboard/metrics/trend?range=14d&include_network=false',
 			'/api/v1/announcements',
@@ -127,11 +125,10 @@ describe('dashboard overview loading', () => {
 		expect(paths.join(' ')).not.toContain('/api/v1/dashboard/notifications');
 		expect(paths.join(' ')).not.toContain('/api/v1/k3s/clusters');
 
-		requests.get('/api/v1/dashboard/summary?view=overview&recent_limit=12')!.resolve(summary);
+		requests.get('/api/v1/dashboard/snapshot?recent_limit=12')!.resolve(resolveOverview('/snapshot'));
 		await screen.findByText('newest');
 		expect(screen.getByText('일부 동기화', { exact: false })).toBeTruthy();
 
-		requests.get('/api/v1/dashboard/quotas?view=overview')!.resolve(quotas);
 		requests.get('/api/v1/dashboard/k3s-stats')!.resolve({ total: 1, active: 1, available: true });
 		requests.get('/api/v1/dashboard/metrics/trend?range=14d&include_network=false')!.resolve(trend);
 		requests.get('/api/v1/announcements')!.resolve(announcements);
@@ -141,17 +138,27 @@ describe('dashboard overview loading', () => {
 		rendered.unmount();
 	});
 
-	it('skips K3s when disabled and requests exactly four domains', async () => {
+	it('publishes readable snapshot summary while quotas fail without inventing empty usage', async () => {
+		mocks.apiGet.mockImplementation((path: string) => Promise.resolve(path.includes('/snapshot')
+			? { summary: { data: summary, error: null }, quotas: { data: null, error: 'quotas_unavailable' } }
+			: resolveOverview(path)));
+		render(Page);
+		await screen.findByText('newest');
+		await screen.findByText('일부 동기화', { exact: false });
+		expect(mocks.apiGet.mock.calls.filter(([path]) => path.includes('/snapshot'))).toHaveLength(1);
+		expect(screen.queryByText('/ 0')).toBeNull();
+	});
+
+	it('skips K3s when disabled and requests exactly three reads', async () => {
 		mocks.siteConfig.set({ services: { k3s: false } });
 		mocks.apiGet.mockImplementation((path: string) => {
-			if (path.includes('/summary')) return Promise.resolve(summary);
-			if (path.includes('/quotas')) return Promise.resolve(quotas);
+			if (path.includes('/snapshot')) return Promise.resolve(resolveOverview(path));
 			if (path.includes('/announcements')) return Promise.resolve(announcements);
 			return Promise.resolve(trend);
 		});
 
 		render(Page);
-		await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledTimes(4));
+		await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledTimes(3));
 		expect(mocks.apiGet.mock.calls.map(([path]) => path)).not.toContain('/api/v1/dashboard/k3s-stats');
 		expect(screen.getByText('N/A')).toBeTruthy();
 	});
@@ -159,8 +166,7 @@ describe('dashboard overview loading', () => {
 	it('keeps terminal states hidden and makes no request until auth hydration completes', async () => {
 		mocks.authReady.set(false);
 		mocks.apiGet.mockImplementation((path: string) => {
-			if (path.includes('/summary')) return Promise.resolve(summary);
-			if (path.includes('/quotas')) return Promise.resolve(quotas);
+			if (path.includes('/snapshot')) return Promise.resolve(resolveOverview(path));
 			if (path.includes('/k3s-stats')) return Promise.resolve({ total: 1, active: 1, available: true });
 			if (path.includes('/announcements')) return Promise.resolve(announcements);
 			return Promise.resolve(trend);
@@ -173,7 +179,7 @@ describe('dashboard overview loading', () => {
 		expect(screen.queryByText('메트릭 수집 미설정')).toBeNull();
 
 		mocks.authReady.set(true);
-		await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledTimes(5));
+		await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledTimes(4));
 		await screen.findByText('newest');
 	});
 
@@ -197,26 +203,25 @@ describe('dashboard overview loading', () => {
 		});
 
 		render(Page);
-		await waitFor(() => expect(requests).toHaveLength(5));
+		await waitFor(() => expect(requests).toHaveLength(4));
 		const oldRequests = [...requests];
 		mocks.auth.set({ ...authContext, token: 'token-b', projectId: 'project-b', projectName: 'Project B' });
-		await waitFor(() => expect(requests).toHaveLength(10));
+		await waitFor(() => expect(requests).toHaveLength(8));
 		expect(oldRequests.every((request) => request.signal?.aborted)).toBe(true);
-		expect(requests.slice(5).every((request) => request.projectId === 'project-b')).toBe(true);
+		expect(requests.slice(4).every((request) => request.projectId === 'project-b')).toBe(true);
 
-		oldRequests.find((request) => request.path.includes('/summary'))!.pending.resolve({
-			...summary,
-			recent_instances: [{ ...summary.recent_instances[0], name: 'old-project-instance' }],
+		oldRequests.find((request) => request.path.includes('/snapshot'))!.pending.resolve({
+			summary: { data: { ...summary, recent_instances: [{ ...summary.recent_instances[0], name: 'old-project-instance' }] }, error: null },
+			quotas: { data: quotas, error: null },
 		});
 		await Promise.resolve();
 		expect(screen.queryByText('old-project-instance')).toBeNull();
 
-		for (const request of requests.slice(5)) {
-			if (request.path.includes('/summary')) request.pending.resolve({
-				...summary,
-				recent_instances: [{ ...summary.recent_instances[0], name: 'new-project-instance' }],
+		for (const request of requests.slice(4)) {
+			if (request.path.includes('/snapshot')) request.pending.resolve({
+				summary: { data: { ...summary, recent_instances: [{ ...summary.recent_instances[0], name: 'new-project-instance' }] }, error: null },
+				quotas: { data: quotas, error: null },
 			});
-			else if (request.path.includes('/quotas')) request.pending.resolve(quotas);
 			else if (request.path.includes('/k3s-stats')) request.pending.resolve({ total: 1, active: 1, available: true });
 			else if (request.path.includes('/announcements')) request.pending.resolve(announcements);
 			else request.pending.resolve(trend);
@@ -230,9 +235,8 @@ describe('dashboard overview loading', () => {
 		let callCount = 0;
 		mocks.apiGet.mockImplementation((path: string, _token: string | undefined, _project: string | undefined, options: Request['options']) => {
 			callCount += 1;
-			if (callCount <= 5) {
-				if (path.includes('/summary')) return Promise.resolve(summary);
-				if (path.includes('/quotas')) return Promise.resolve(quotas);
+			if (callCount <= 4) {
+				if (path.includes('/snapshot')) return Promise.resolve(resolveOverview(path));
 				if (path.includes('/k3s-stats')) return Promise.resolve({ total: 1, active: 1, available: true });
 				if (path.includes('/announcements')) return Promise.resolve(announcements);
 				return Promise.resolve(trend);
@@ -243,16 +247,16 @@ describe('dashboard overview loading', () => {
 		});
 
 		render(Page);
-		await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledTimes(5));
+		await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledTimes(4));
 		await screen.findByText('최근 동기화', { exact: false });
 		await fireEvent.click(screen.getByTitle('지금 새로고침'));
-		await waitFor(() => expect(manualRequests).toHaveLength(5));
+		await waitFor(() => expect(manualRequests).toHaveLength(4));
 		expect(manualRequests.every((request) => request.options.refresh === true)).toBe(true);
 		expect(screen.getByTitle('로딩 중…')).toBeTruthy();
 
 		const originalTrend = manualRequests.find((request) => request.path.includes('/metrics/trend'))!;
 		await fireEvent.click(screen.getByRole('button', { name: '24h' }));
-		await waitFor(() => expect(manualRequests).toHaveLength(6));
+		await waitFor(() => expect(manualRequests).toHaveLength(5));
 		const replacementTrend = manualRequests.at(-1)!;
 		expect(originalTrend.options.signal?.aborted).toBe(true);
 		expect(replacementTrend.path).toContain('range=24h');
@@ -264,11 +268,10 @@ describe('dashboard overview loading', () => {
 
 		const auto = mocks.autoCallback!();
 		await Promise.resolve();
-		expect(manualRequests).toHaveLength(6);
+		expect(manualRequests).toHaveLength(5);
 		for (const request of manualRequests) {
 			if (request === originalTrend) continue;
-			if (request.path.includes('/summary')) request.pending.resolve(summary);
-			else if (request.path.includes('/quotas')) request.pending.resolve(quotas);
+			if (request.path.includes('/snapshot')) request.pending.resolve(resolveOverview(request.path));
 			else if (request.path.includes('/k3s-stats')) request.pending.resolve({ total: 1, active: 1, available: true });
 			else if (request.path.includes('/announcements')) request.pending.resolve(announcements);
 			else request.pending.resolve({ ...trend, range: '24h' });
@@ -293,15 +296,14 @@ describe('dashboard overview loading', () => {
 		});
 
 		render(Page);
-		await waitFor(() => expect(requests).toHaveLength(5));
+		await waitFor(() => expect(requests).toHaveLength(4));
 		const originalTrend = requests.find((request) => request.path.includes('/metrics/trend'))!;
 		await fireEvent.click(screen.getByRole('button', { name: '24h' }));
-		await waitFor(() => expect(requests).toHaveLength(6));
+		await waitFor(() => expect(requests).toHaveLength(5));
 		expect(originalTrend.signal?.aborted).toBe(true);
-		for (const request of requests.slice(0, 5)) {
+		for (const request of requests.slice(0, 4)) {
 			if (request === originalTrend) continue;
-			if (request.path.includes('/summary')) request.pending.resolve(summary);
-			else if (request.path.includes('/quotas')) request.pending.resolve(quotas);
+			if (request.path.includes('/snapshot')) request.pending.resolve(resolveOverview(request.path));
 			else if (request.path.includes('/announcements')) request.pending.resolve(announcements);
 			else request.pending.resolve({ total: 1, active: 1, available: true });
 		}
@@ -312,9 +314,8 @@ describe('dashboard overview loading', () => {
 		let callCount = 0;
 		mocks.apiGet.mockImplementation((path: string) => {
 			callCount += 1;
-			if (callCount > 5) return Promise.reject(new Error(`failed ${path}`));
-			if (path.includes('/summary')) return Promise.resolve(summary);
-			if (path.includes('/quotas')) return Promise.resolve(quotas);
+			if (callCount > 4) return Promise.reject(new Error(`failed ${path}`));
+			if (path.includes('/snapshot')) return Promise.resolve(resolveOverview(path));
 			if (path.includes('/k3s-stats')) return Promise.resolve({ total: 1, active: 1, available: true });
 			if (path.includes('/announcements')) return Promise.resolve(announcements);
 			return Promise.resolve(trend);
@@ -324,7 +325,7 @@ describe('dashboard overview loading', () => {
 		await screen.findByText('newest');
 		await screen.findByText('최근 동기화', { exact: false });
 		await fireEvent.click(screen.getByTitle('지금 새로고침'));
-		await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledTimes(10));
+		await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledTimes(8));
 		expect(screen.getByText('newest')).toBeTruthy();
 		expect(screen.getByText('최근 동기화', { exact: false })).toBeTruthy();
 		await waitFor(() => expect(screen.getByTitle('지금 새로고침')).toBeTruthy());
@@ -332,8 +333,7 @@ describe('dashboard overview loading', () => {
 
 	it('renders exact Korean unavailable text when K3s stats return available false', async () => {
 		mocks.apiGet.mockImplementation((path: string) => {
-			if (path.includes('/summary')) return Promise.resolve(summary);
-			if (path.includes('/quotas')) return Promise.resolve(quotas);
+			if (path.includes('/snapshot')) return Promise.resolve(resolveOverview(path));
 			if (path.includes('/k3s-stats')) return Promise.resolve({ total: 0, active: 0, available: false });
 			if (path.includes('/announcements')) return Promise.resolve(announcements);
 			return Promise.resolve(trend);
@@ -357,7 +357,7 @@ describe('dashboard overview loading', () => {
 		});
 
 		const rendered = render(Page);
-		await waitFor(() => expect(requests).toHaveLength(5));
+		await waitFor(() => expect(requests).toHaveLength(4));
 		rendered.unmount();
 		expect(requests.every((request) => request.signal?.aborted)).toBe(true);
 	});
@@ -406,7 +406,7 @@ describe('dashboard overview loading', () => {
 			const requests: Array<{ path: string; signal: AbortSignal; pending: Deferred<unknown> }> = [];
 			let calls = 0;
 			mocks.apiGet.mockImplementation((path: string, _token: string, _project: string, options: { signal: AbortSignal }) => {
-				if (++calls <= 5) return Promise.resolve(resolveOverview(path));
+				if (++calls <= 4) return Promise.resolve(resolveOverview(path));
 				const pending = deferred<unknown>();
 				requests.push({ path, signal: options.signal, pending });
 				return pending.promise;
@@ -414,17 +414,17 @@ describe('dashboard overview loading', () => {
 			render(Page);
 			await screen.findByText('10.0');
 			void mocks.autoCallback!();
-			await waitFor(() => expect(requests).toHaveLength(5));
+			await waitFor(() => expect(requests).toHaveLength(4));
 			const stale = [...requests];
 			mocks.auth.set({ ...authContext, [field]: 'changed-context' });
-			await waitFor(() => expect(requests).toHaveLength(10));
+			await waitFor(() => expect(requests).toHaveLength(8));
 			expect(screen.queryByText('10.0')).toBeNull();
 			expect(screen.queryByText('newest')).toBeNull();
 			expect(stale.every(({ signal }) => signal.aborted)).toBe(true);
 			for (const request of stale) {
 				request.pending.resolve(resolveOverview(request.path, { ...trend, vcpu: { ...trend.vcpu, data: [91] } }));
 			}
-			for (const request of requests.slice(5)) {
+			for (const request of requests.slice(4)) {
 				request.pending.resolve(resolveOverview(request.path, { ...trend, vcpu: { ...trend.vcpu, data: [7] } }));
 			}
 			await screen.findByText('7.0');
@@ -435,16 +435,16 @@ describe('dashboard overview loading', () => {
 	it('clears loaded trends when the session is removed and ignores a pending refresh', async () => {
 		const pending = deferred<unknown>();
 		let calls = 0;
-		mocks.apiGet.mockImplementation((path: string) => ++calls <= 5 ? Promise.resolve(resolveOverview(path)) : pending.promise);
+		mocks.apiGet.mockImplementation((path: string) => ++calls <= 4 ? Promise.resolve(resolveOverview(path)) : pending.promise);
 		render(Page);
 		await screen.findByText('10.0');
 		void mocks.autoCallback!();
-		await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledTimes(10));
+		await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledTimes(8));
 		mocks.auth.set({ ...authContext, token: null });
 		await waitFor(() => expect(screen.queryByText('10.0')).toBeNull());
 		pending.resolve(trend);
 		await Promise.resolve();
 		expect(screen.queryByText('10.0')).toBeNull();
-		expect(mocks.apiGet).toHaveBeenCalledTimes(10);
+		expect(mocks.apiGet).toHaveBeenCalledTimes(8);
 	});
 });

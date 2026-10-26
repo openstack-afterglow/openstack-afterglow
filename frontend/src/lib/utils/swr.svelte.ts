@@ -1,12 +1,20 @@
-import { memoryCache } from '$lib/api/client';
-
-export function createSwr(getProjectId: () => string | null | undefined) {
+/** Display-only retention within one mounted, scope-owned controller. */
+export function createSwr(getScope: () => string | null | undefined) {
+  const entries = new Map<string, { data: unknown; expiresAt: number }>();
+  let scope = getScope();
+  function synchronizeScope() {
+    const next = getScope();
+    if (next !== scope) { entries.clear(); scope = next; }
+  }
   function swrGet<T>(path: string): T | null {
-    const c = memoryCache.get(`${path}:${getProjectId()}`);
-    return c ? (c.data as T) : null;
+    synchronizeScope();
+    const entry = entries.get(path);
+    if (!entry || entry.expiresAt <= Date.now()) { entries.delete(path); return null; }
+    return entry.data as T;
   }
   function swrSet(path: string, data: unknown) {
-    memoryCache.set(`${path}:${getProjectId()}`, { data, timestamp: Date.now() });
+    synchronizeScope();
+    entries.set(path, { data, expiresAt: Date.now() + 30_000 });
   }
   return { swrGet, swrSet };
 }

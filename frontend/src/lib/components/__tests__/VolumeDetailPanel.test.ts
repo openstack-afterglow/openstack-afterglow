@@ -212,7 +212,7 @@ describe('VolumeDetailPanel', () => {
 		expect(link.getAttribute('href')).toBe('/dashboard/volumes/backups?auto-backup=vol%20%2F%ED%95%9C%3F%26%3D%23');
 		const url = new URL(link.getAttribute('href')!, 'http://localhost');
 		expect([...url.searchParams.entries()]).toEqual([['auto-backup', volume.id]]);
-		expect(mocks.get).toHaveBeenCalledWith(`/api/v1/volumes/${volume.id}`, 'token', 'project-a');
+		expect(mocks.get).toHaveBeenCalledWith(`/api/v1/volumes/${volume.id}`, 'token', 'project-a', expect.any(Object));
 		link.addEventListener('click', (event) => event.preventDefault(), { once: true });
 		await fireEvent.click(link);
 		expect(screen.queryByRole('group', { name: 'data-disk 볼륨 작업 옵션' })).toBeNull();

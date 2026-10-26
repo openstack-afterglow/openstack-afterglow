@@ -99,7 +99,7 @@ Prometheus SD(`/api/v1/sd/...`)와 VM 에이전트용 baked 경로는 별도의 
 
 | 문서 | 기본 경로 | 설명 |
 |------|-----------|------|
-| [Palimpsest 레이어](api/union.md) | `/api/v1/palimpsest`, `/api/v1/admin/libraries` | 프로젝트 패키지와 관리자 레이어 빌드·소비, digest 검색·부모 체인. 공개 `/api/v1/libraries/squashfs`와 구 `/api/v1/union`은 제거됨 — [palimpsest.md](palimpsest.md) |
+| [Palimpsest 레이어·에셋](api/union.md) | `/api/v1/palimpsest`, `/api/v1/palimpsest/catalog`, `/api/v1/admin/palimpsest/catalog`, `/api/v1/admin/libraries` | 이름·태그 기반 공개/공유 번들·프로젝트 패키지 검색, 게시 환경의 caller-project 생성·작업 조회·정리, 관리자 기록 출처·부모/자식 인벤토리와 기존 빌드 스튜디오. 공개 `/api/v1/libraries/squashfs`와 구 `/api/v1/union`은 제거됨 — [palimpsest.md](palimpsest.md) |
 
 ### 컨테이너 · Kubernetes
 

@@ -114,9 +114,13 @@ async def _resolve_jwt_token_info(
     from app.services.native_operation import NativeOperation
 
     async with NativeOperation() as operation:
-        return await _resolve_jwt_session(
+        principal = await _resolve_jwt_session(
             request, bearer_token, x_project_id, preserve_original=preserve_original, operation=operation
         )
+        subject = operation.subjects.get(principal.get("token"))
+        if subject is not None:
+            request.state._afterglow_native_access = subject[0]
+        return principal
 
 
 async def _resolve_jwt_session(request, bearer_token, x_project_id, *, preserve_original, operation) -> dict:
@@ -292,8 +296,19 @@ async def _resolve_jwt_session(request, bearer_token, x_project_id, *, preserve_
 
     if preserve_original:
         selected = x_project_id if x_project_id is not None else sess.get("target_project_id")
-        project_id = validate_keystone_id(payload.get("project_id", "") if selected is None else selected)
+        requested_project = payload.get("project_id", "") if selected is None else selected
         system_admin = await operation.run(keystone._is_system_admin, payload["sub"], operation=operation)
+        path = getattr(getattr(request, "url", None), "path", "")
+        projectless_catalog = (
+            requested_project == ""
+            and getattr(request, "method", "") == "GET"
+            and re.fullmatch(r"/api/v1/admin/palimpsest/catalog(?:/(?:[1-9][0-9]*|sha256:[0-9a-f]{64}))?", path)
+            is not None
+        )
+        # Only these global read handlers may carry an empty logical target.
+        # Fresh require_admin below still verifies the original human/native
+        # authority; package and all consumer routes retain mandatory IDs.
+        project_id = "" if projectless_catalog and system_admin else validate_keystone_id(requested_project)
         if not system_admin and project_id != payload.get("project_id", ""):
             raise HTTPException(403, "Package session/project scope does not match the access JWT")
         if project_id:
@@ -482,19 +497,27 @@ async def require_admin(token_info: dict = Depends(get_token_info)) -> dict:
     if not user_id or not domain_id:
         raise HTTPException(status_code=403, detail=denied)
     try:
-        context = await asyncio.to_thread(domain_context, user_id, domain_id)
-        project_id = token_info.get("connection_project_id", token_info.get("project_id", ""))
-        native = await asyncio.to_thread(keystone.validate_token, token_info["token"], project_id=project_id)
-        await asyncio.to_thread(
-            assert_token_context,
-            native,
-            user_id=user_id,
-            domain_id=native.get("domain_id"),
-            project_id=project_id,
-            identity_domain_id=token_info["identity_domain_id"],
-        )
-        if not await asyncio.to_thread(keystone._is_system_admin, user_id):
-            raise HTTPException(status_code=403, detail=denied)
+        from app.services.native_operation import NativeOperation
+
+        # A new guard gets fresh native authority; only its own duplicate reads
+        # and service authentication share the short-lived operation.
+        async with NativeOperation() as operation:
+            context = await operation.run(domain_context, user_id, domain_id, operation=operation)
+            project_id = token_info.get("connection_project_id", token_info.get("project_id", ""))
+            native = await operation.run(
+                keystone.validate_token, token_info["token"], project_id=project_id, operation=operation
+            )
+            await operation.run(
+                assert_token_context,
+                native,
+                user_id=user_id,
+                domain_id=native.get("domain_id"),
+                project_id=project_id,
+                identity_domain_id=token_info["identity_domain_id"],
+                operation=operation,
+            )
+            if not await operation.run(keystone._is_system_admin, user_id, operation=operation):
+                raise HTTPException(status_code=403, detail=denied)
     except Unauthorized as exc:
         raise HTTPException(status_code=401, detail="Native administrator session is invalid; log in again") from exc
     except HTTPException:
@@ -645,7 +668,18 @@ async def get_os_conn(
                 raise HTTPException(status_code=503, detail="Native system scope does not match the caller")
             scoped_token = access.auth_token
         else:
-            conn = keystone.get_openstack_connection(scoped_token, connection_project_id)
+            native_access = getattr(request.state, "_afterglow_native_access", None)
+            if native_access is None:
+                conn = keystone.get_openstack_connection(scoped_token, connection_project_id)
+            else:
+                if (
+                    native_access.user_id != token_info["user_id"]
+                    or native_access.user_domain_id != token_info["identity_domain_id"]
+                ):
+                    raise HTTPException(status_code=503, detail="Native connection identity does not match the caller")
+                conn = keystone.get_openstack_connection(
+                    scoped_token, connection_project_id, native_access=native_access
+                )
         conn._afterglow_token = scoped_token
         conn._afterglow_project_id = project_id
         conn._afterglow_authenticated_project_id = connection_project_id

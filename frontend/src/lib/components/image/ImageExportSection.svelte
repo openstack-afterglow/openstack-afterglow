@@ -62,6 +62,10 @@
 		clearPoll();
 		pollTimer = setTimeout(async () => {
 			if (!canInventory || gen !== generation || imageId !== s.image?.id) return;
+			if (document.hidden || navigator.onLine === false) {
+				schedulePoll(jobId, imageId, token, projectId, gen);
+				return;
+			}
 			try {
 				const updated = await api.get<ImageExportJob>(
 					`/api/v1/palimpsest/hub/image-exports/${jobId}`,

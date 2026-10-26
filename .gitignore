@@ -267,3 +267,10 @@ test.ipynb
 .codex/
 .playwright-mcp/
 .playwright-cli/
+
+# Impeccable developer consent and runtime state (shared configs remain trackable)
+**/.impeccable/config.local.json
+**/.impeccable/hook.cache.json
+**/.impeccable/live/sessions/
+**/.impeccable/live/roots.json
+**/.impeccable/live/inject-journal.json

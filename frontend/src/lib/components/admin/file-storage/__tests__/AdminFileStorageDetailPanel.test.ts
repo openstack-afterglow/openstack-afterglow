@@ -71,7 +71,7 @@ const fileStorage: FileStorage = {
 	share_proto: 'CEPHFS',
 	export_locations: ['10.0.0.10:/volumes/share-one'],
 	metadata: { union_type: 'dynamic' },
-	project_id: 'project-1',
+	project_id: 'test-project',
 	created_at: '2026-06-01T00:00:00Z',
 	is_public: false,
 	library_name: null,
@@ -128,8 +128,8 @@ const errorDeletingFileStorage: FileStorage = {
 
 function mockSuccessfulGets(storage: FileStorage = fileStorage, diagnostic: FileStorageDeleteDiagnostic = deleteDiagnostic) {
 	mocks.apiGet.mockImplementation((path: string) => {
-		if (path === '/api/v1/file-storage/share-1') return Promise.resolve(storage);
-		if (path === '/api/v1/file-storage/share-1/access-rules') return Promise.resolve([accessRule]);
+		if (path === '/api/v1/admin/file-storage/share-1') return Promise.resolve(storage);
+		if (path === '/api/v1/admin/file-storage/share-1/access-rules') return Promise.resolve([accessRule]);
 		if (path === '/api/v1/admin/file-storage/share-1/delete-diagnostics') return Promise.resolve(diagnostic);
 		return Promise.reject(new Error(`Unexpected path: ${path}`));
 	});
@@ -162,8 +162,8 @@ describe('AdminFileStorageDetailPanel', () => {
 		renderPanel();
 
 		await waitFor(() => {
-			expect(mocks.apiGet).toHaveBeenCalledWith('/api/v1/file-storage/share-1', 'test-token', 'test-project', undefined);
-			expect(mocks.apiGet).toHaveBeenCalledWith('/api/v1/file-storage/share-1/access-rules', 'test-token', 'test-project', undefined);
+			expect(mocks.apiGet).toHaveBeenCalledWith('/api/v1/admin/file-storage/share-1', 'test-token', 'test-project', undefined);
+			expect(mocks.apiGet).toHaveBeenCalledWith('/api/v1/admin/file-storage/share-1/access-rules', 'test-token', 'test-project', undefined);
 		});
 
 		expect(await screen.findByText('host@backend#pool')).toBeTruthy();
@@ -178,6 +178,15 @@ describe('AdminFileStorageDetailPanel', () => {
 		expect(screen.getByText('접근 규칙 (읽기 전용)')).toBeTruthy();
 		expect(screen.getByText('내부 데이터')).toBeTruthy();
 		expect(screen.queryByText('+ 추가')).toBeNull();
+	});
+
+	it('reads foreign-project storage without offering caller-owned delete', async () => {
+		mockSuccessfulGets({ ...fileStorage, project_id: 'foreign-project' });
+		renderPanel();
+		expect(await screen.findByText('host@backend#pool')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: '파일 스토리지 삭제' })).toBeNull();
+		expect(mocks.apiGet.mock.calls.every(call => String(call[0]).startsWith('/api/v1/admin/'))).toBe(true);
+		expect(mocks.apiDelete).not.toHaveBeenCalled();
 	});
 
 	it('copies raw internal JSON', async () => {
@@ -215,8 +224,8 @@ describe('AdminFileStorageDetailPanel', () => {
 
 		await waitFor(() => {
 			expect(mocks.apiGet.mock.calls.map((call) => call[0])).toEqual([
-				'/api/v1/file-storage/share-1',
-				'/api/v1/file-storage/share-1/access-rules',
+				'/api/v1/admin/file-storage/share-1',
+				'/api/v1/admin/file-storage/share-1/access-rules',
 				'/api/v1/admin/file-storage/share-1/delete-diagnostics',
 			]);
 		});
@@ -255,8 +264,8 @@ describe('AdminFileStorageDetailPanel', () => {
 		renderPanel();
 
 		await waitFor(() => {
-			expect(mocks.apiGet).toHaveBeenCalledWith('/api/v1/file-storage/share-1', 'test-token', 'test-project', undefined);
-			expect(mocks.apiGet).toHaveBeenCalledWith('/api/v1/file-storage/share-1/access-rules', 'test-token', 'test-project', undefined);
+			expect(mocks.apiGet).toHaveBeenCalledWith('/api/v1/admin/file-storage/share-1', 'test-token', 'test-project', undefined);
+			expect(mocks.apiGet).toHaveBeenCalledWith('/api/v1/admin/file-storage/share-1/access-rules', 'test-token', 'test-project', undefined);
 		});
 
 		expect(mocks.apiGet.mock.calls.map((call) => call[0])).not.toContain('/api/v1/admin/file-storage/share-1/delete-diagnostics');

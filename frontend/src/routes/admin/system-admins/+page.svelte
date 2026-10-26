@@ -35,7 +35,7 @@
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
-	async function load() {
+	async function load(force = false) {
 		const requestToken = token;
 		const requestProjectId = projectId;
 		const generation = ++loadGeneration;
@@ -44,8 +44,8 @@
 		policyLoading = true;
 		adminsError = '';
 		policyError = '';
-		const adminsPromise = api.get<SystemAdmin[]>('/api/v1/admin/identity/system-roles', requestToken, requestProjectId);
-		const policyPromise = api.get<AdminSecurityPolicy>('/api/v1/admin/identity/security-policy', requestToken, requestProjectId)
+		const adminsPromise = api.get<SystemAdmin[]>('/api/v1/admin/identity/system-roles', requestToken, requestProjectId, { refresh: force });
+		const policyPromise = api.get<AdminSecurityPolicy>('/api/v1/admin/identity/security-policy', requestToken, requestProjectId, { refresh: force })
 			.then((value) => {
 				if (generation === loadGeneration && token === requestToken && projectId === requestProjectId) policy = value;
 				if (generation === loadGeneration && token === requestToken && projectId === requestProjectId) policyError = '';
@@ -101,7 +101,7 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading || refreshing}
-				onManualRefresh={load}
+				onManualRefresh={ar.refresh}
 			/>
 		{/snippet}
 	</PageHeader>

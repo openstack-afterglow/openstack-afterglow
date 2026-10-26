@@ -455,6 +455,153 @@ async def test_service_alias_transitively_implying_native_admin_is_not_delegable
 
 
 @pytest.mark.asyncio
+async def test_assignable_catalog_exposes_native_admin_as_removal_only(membership):
+    choices = (await service.assignable_roles(PROJECT, token()))["roles"]
+    native = next(row for row in choices if row["name"] == "admin")
+    assert native == {
+        **next(row for row in membership.catalog if row["name"] == "admin"),
+        "area": "legacy",
+        "grade": "admin",
+    }
+    assert native["id"] == rid("admin")
+    assert {rid("project_admin"), rid("lumen_admin"), rid("lumen-chat_user")} <= {row["id"] for row in choices}
+    assert rid("admin") not in service._managed_roles(membership.catalog)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("additive", [False, True])
+async def test_mixed_native_admin_request_is_rejected_before_any_membership_write(membership, additive):
+    with pytest.raises(HTTPException) as denied:
+        await service.replace_member_roles(
+            PROJECT, "member", [rid("lumen_user"), rid("admin")], token(), additive=additive
+        )
+    assert denied.value.status_code == 422
+    assert "removal-only" in denied.value.detail
+    assert membership.calls == []
+    assert service._direct_ids(membership.direct, "member") == {rid("project_member")}
+
+
+@pytest.mark.asyncio
+async def test_existing_native_admin_can_be_preserved_revoked_but_not_readded(membership):
+    membership.direct.extend(assignment("member", name) for name in ("admin", "reader", "unrelated"))
+    kept = await service.replace_member_roles(
+        PROJECT, "member", [rid("project_member"), rid("admin"), rid("lumen_user")], token()
+    )
+    assert rid("admin") in kept["direct_role_ids"]
+    assert membership.calls == [("grant", "member", rid("lumen_user"))]
+    membership.calls.clear()
+    removed = await service.replace_member_roles(PROJECT, "member", [rid("project_member"), rid("lumen_user")], token())
+    assert set(removed["direct_role_ids"]) == {
+        rid("project_member"),
+        rid("lumen_user"),
+        rid("reader"),
+        rid("unrelated"),
+    }
+    assert membership.calls == [("revoke", "member", rid("admin"))]
+    membership.calls.clear()
+    with pytest.raises(HTTPException) as denied:
+        await service.replace_member_roles(
+            PROJECT, "member", [rid("project_member"), rid("admin"), rid("lumen_user")], token()
+        )
+    assert denied.value.status_code == 422
+    assert membership.calls == []
+
+
+@pytest.mark.asyncio
+async def test_additive_membership_keeps_existing_native_admin_until_explicit_removal(membership):
+    membership.direct.append(assignment("member", "admin"))
+    kept = await service.replace_member_roles(PROJECT, "member", [rid("lumen_user")], token(), additive=True)
+    assert {rid("admin"), rid("project_member"), rid("lumen_user")} == set(kept["direct_role_ids"])
+    assert membership.calls == [("grant", "member", rid("lumen_user"))]
+    membership.calls.clear()
+    removed = await service.replace_member_roles(PROJECT, "member", [], token(), remove=True)
+    assert removed["direct_role_ids"] == []
+    assert {role_id for action, _, role_id in membership.calls if action == "revoke"} == {
+        rid("admin"),
+        rid("project_member"),
+        rid("lumen_user"),
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("origin", ["group", "inherited"])
+async def test_external_admin_is_not_revoked_or_preserved_as_a_direct_user_grant(membership, origin):
+    if origin == "group":
+        membership.groups["operators"] = ["member"]
+        membership.direct.append(assignment(None, "admin", group="operators"))
+    else:
+        membership.inherited.append(assignment("member", "admin", inherited=True))
+    with pytest.raises(HTTPException) as denied:
+        await service.replace_member_roles(PROJECT, "member", [rid("admin")], token())
+    assert denied.value.status_code == 422
+    assert membership.calls == []
+    removed = await service.replace_member_roles(PROJECT, "member", [], token(), remove=True)
+    assert removed["direct_role_ids"] == []
+    assert rid("admin") in removed["external_role_ids"]
+    assert "admin" in removed["roles"]
+    assert membership.calls == [("revoke", "member", rid("project_member"))]
+
+
+@pytest.mark.parametrize("origin", ["group", "inherited-marker", "inherited-link"])
+def test_direct_role_ids_do_not_treat_external_user_rows_as_direct(origin):
+    row = assignment("member", "admin", group="operators" if origin == "group" else None)
+    if origin == "inherited-marker":
+        row["scope"]["OS-INHERIT:inherited_to"] = "projects"
+    elif origin == "inherited-link":
+        row["links"] = {"assignment": "https://identity/v3/OS-INHERIT/domains/domain/users/member/roles/admin"}
+    assert service._direct_ids([row], "member") == set()
+
+
+@pytest.mark.asyncio
+async def test_membership_http_rejects_new_admin_and_allows_existing_direct_revoke(membership):
+    app = FastAPI()
+    app.include_router(router, prefix="/projects")
+    app.dependency_overrides[get_token_info] = lambda: token()
+    path = f"/projects/{PROJECT}/members/member/roles"
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        denied = await client.put(path, json={"role_ids": [rid("admin"), rid("lumen_user")]})
+        assert denied.status_code == 422
+        assert membership.calls == []
+        membership.direct.append(assignment("member", "admin"))
+        kept = await client.put(path, json={"role_ids": [rid("admin"), rid("project_member")]})
+        assert kept.status_code == 200
+        assert membership.calls == []
+        revoked = await client.put(path, json={"role_ids": [rid("project_member")]})
+        assert revoked.status_code == 200
+        assert membership.calls == [("revoke", "member", rid("admin"))]
+        denied_again = await client.put(path, json={"role_ids": [rid("admin"), rid("project_member")]})
+        assert denied_again.status_code == 422
+        assert membership.calls == [("revoke", "member", rid("admin"))]
+
+
+@pytest.mark.asyncio
+async def test_native_admin_replacement_preserves_actual_default_last_manager_guard(membership):
+    membership.catalog = identity_roles._catalog(
+        membership.catalog,
+        [
+            {"prior_role": {"id": row["id"]}, "implies": [{"id": child} for child in row["implied_role_ids"]]}
+            for row in membership.catalog
+        ]
+        + [{"prior_role": {"id": rid("admin")}, "implies": [{"id": rid("manager")}]}],
+    )
+    membership.ks.projects.get = lambda pid: SimpleNamespace(id=pid, name="Default", domain_id="domain", enabled=True)
+    membership.ks.projects.list = lambda **kwargs: [membership.ks.projects.get(PROJECT)]
+    membership.ks.domains.list = lambda: [membership.ks.domains.get("domain")]
+    membership.direct.append(assignment("member", "admin"))
+    with pytest.raises(HTTPException) as denied:
+        await service.replace_member_roles(PROJECT, "member", [rid("lumen_user")], token())
+    assert denied.value.status_code == 409
+    assert denied.value.detail == "last_domain_manager"
+    assert membership.calls == []
+    membership.direct.append(assignment("second-manager", "manager"))
+    removed = await service.replace_member_roles(PROJECT, "member", [rid("lumen_user")], token())
+    assert rid("admin") not in removed["direct_role_ids"]
+    assert rid("project_reader") in removed["direct_role_ids"]
+    assert ("revoke", "member", rid("admin")) in membership.calls
+    assert ("revoke", "second-manager", rid("manager")) not in membership.calls
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("problem", ["duplicate-global", "assigned-domain"])
 async def test_ambiguous_or_nonglobal_owner_authority_fails_closed(membership, problem):
     original = next(row for row in membership.catalog if row["name"] == "project_owner")

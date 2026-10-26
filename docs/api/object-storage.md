@@ -55,6 +55,7 @@ OpenStack Swift(Ceph RGW) 기반의 오브젝트 스토리지를 관리합니다
 |--------|------|------|
 | `GET` | `/api/v1/object-storage/account` | 계정 사용량 메타데이터 |
 | `GET` | `/api/v1/object-storage` | 컨테이너 목록 |
+| `GET` | `/api/v1/admin/object-storage` | 시스템 관리자 전체 계정 inventory·도메인/프로젝트 필터 |
 | `POST` | `/api/v1/object-storage` | 컨테이너 생성 |
 | `GET` | `/api/v1/object-storage/{container}` | 컨테이너 메타데이터 |
 | `DELETE` | `/api/v1/object-storage/{container}` | 컨테이너 삭제(소프트/영구) |
@@ -94,12 +95,22 @@ OpenStack Swift(Ceph RGW) 기반의 오브젝트 스토리지를 관리합니다
 
 | 파라미터 | 위치 | 타입 | 기본값 | 설명 |
 |----------|------|------|--------|------|
-| `all_projects` | query | boolean | `false` | **admin 전용.** 모든 프로젝트의 버킷을 병렬 집계 |
+| `all_projects` | query | - | - | 소비자 경로에서는 거부(`403`). 전체 목록은 `/api/v1/admin/object-storage` 사용 |
 | `include_quarantine` | query | boolean | `false` | **admin 전용.** `*-quarantine` 버킷 포함 |
 | `include_trash` | query | boolean | `false` | **admin 전용.** `*-trash` 버킷 포함 |
 | `include_deleted` | query | boolean | `false` | 소프트 삭제 대기 버킷을 `is_deleted`/`deleted_at` 필드와 함께 포함(모든 사용자) |
 
-> `all_projects`/`include_quarantine`/`include_trash`는 시스템 admin이 아니면 `403`을 반환합니다. `include_deleted`는 인증된 모든 사용자가 자신의 삭제 대기 버킷을 조회할 때 사용합니다.
+> 소비자 경로의 `all_projects`·`domain_id`·`project_id` 조건은 값과 관계없이 `403`입니다. `include_quarantine`/`include_trash`는 시스템 admin만 사용할 수 있고, `include_deleted`는 자신의 삭제 대기 버킷을 조회할 때 사용합니다.
+
+### GET /api/v1/admin/object-storage
+
+Fresh system-admin 권위를 확인한 뒤 고정 native admin-project executor로 프로젝트별 Swift `AUTH_<project_id>` 계정을 조회합니다. `domain_id`와 `project_id`는 native 소유권 기준 AND 조건입니다. 응답은 `{items, project_count, partial, unavailable_projects}`이며 `items`는 기존 버킷 필드와 `project_id`·`project_name`, `unavailable_projects[]`는 `{project_id, project_name, reason:"denied"|"failed"}`입니다. `(project_id, name)`이 버킷 식별자입니다. `include_quarantine`·`include_trash`·`include_deleted` 의미는 유지됩니다.
+
+Native account404만 빈 계정으로 인정합니다. 401/403과 native 서버/전송 실패는 해당 프로젝트의 `denied/failed`로 명시하고 다른 readable 계정의 버킷을 유지합니다. 이 경우 `partial=true`이며 UI는 전체 합계를 숨기고 미조회 프로젝트를 펼쳐 보여 줍니다. 전부 조회 불가여도 정상 빈 목록으로 표시하지 않습니다. Directory/대상 endpoint 검증 오류는 전체503입니다. 검증된 executor endpoint의 account suffix만 치환하며 토큰 scope·공유 endpoint를 변경하지 않습니다. 생성·삭제는 실제 현재 프로젝트에 한정합니다.
+
+운영 선행 조건은 account-in-URL을 지원하는 native RGW와 `.../v1/AUTH_<executor>` 카탈로그/override, 허용된 계정에 대한 실제 native 권한입니다. Kolla `ceph_rgw_swift_account_in_url=yes`만으로 모든 계정 조회 권한이 생기지 않습니다. 현재 환경에서 endpoint 형태와 flag는 확인했지만57개 enabled 계정 HEAD 중 executor1개·foreign29개가204, foreign27개는403이었습니다. 403을 존재하지 않는 계정이나 빈 버킷으로 추정하지 않으며 native 정책·role·RGW 설정을 자동 변경하지 않습니다.
+
+
 
 ### POST /api/v1/object-storage
 

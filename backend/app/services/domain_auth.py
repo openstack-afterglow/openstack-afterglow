@@ -766,6 +766,9 @@ async def _load_config_provider(domain_id: str, provider_id: str) -> DomainIdent
     fingerprint_fields = {**fields, "domain_id": domain_id, "id": provider_id, "client_secret": secret}
     organization = provider.organization
     fingerprint_fields["organization"] = organization.model_dump() if organization is not None else None
+    native_mapping = getattr(provider, "native_mapping", None)
+    if native_mapping is not None:
+        fingerprint_fields["native_mapping"] = native_mapping.model_dump()
     discovery_fingerprint = None
     metadata = None
     if provider.kind == "oidc":
@@ -804,6 +807,7 @@ async def _load_config_provider(domain_id: str, provider_id: str) -> DomainIdent
     )
     row._config_discovery_fingerprint = discovery_fingerprint
     row._organization = organization
+    row._native_mapping = native_mapping
     return row
 
 
@@ -1445,6 +1449,7 @@ class VerifiedIdentity:
     bearer: str  # token presented to Keystone OS-FEDERATION (ID token or OAuth access token)
     issuer: str
     subject: str
+    username: str = ""
 
 
 async def _exchange_code(
@@ -1567,7 +1572,13 @@ async def _oidc_identity(
     if not email or not _verified_flag(verified):
         raise DomainAuthDenied("The identity provider did not verify this email", code="email_not_verified")
     bearer = tokens["access_token"] if forward_access else tokens["id_token"]
-    return VerifiedIdentity(email=normalize_email(email), bearer=bearer, issuer=metadata.issuer, subject=claims["sub"])
+    return VerifiedIdentity(
+        email=normalize_email(email),
+        bearer=bearer,
+        issuer=metadata.issuer,
+        subject=claims["sub"],
+        username=claims.get("preferred_username", ""),
+    )
 
 
 async def _github_identity(
@@ -1665,7 +1676,7 @@ async def keystone_federate(row: DomainIdentityProvider, bearer: str) -> tuple[s
     return token, user
 
 
-def _require_native_mapping(ks, row) -> None:
+def _require_native_mapping(ks, row):
     """Validate canonical Accounts email mappings and bounded organization groups.
 
     Subject-only mappings remain supported for unrelated existing providers.
@@ -1681,6 +1692,16 @@ def _require_native_mapping(ks, row) -> None:
     except Exception as exc:
         logger.warning("native mapping lookup failed: %s", type(exc).__name__)
         raise DomainAuthUnavailable("Native mapping is unavailable", code="native_mapping_unsafe") from None
+    from app.services import native_oidc
+
+    if getattr(row, "_native_mapping", None) is not None:
+        try:
+            return native_oidc.accepts(ks, row, idp, protocol, mapping)
+        except DomainAuthError:
+            raise
+        except Exception as exc:
+            logger.warning("native mapping validation failed: %s", type(exc).__name__)
+            raise DomainAuthUnavailable("Native mapping is unavailable", code="native_mapping_unsafe") from None
     if _field(idp, "enabled") is not True:
         raise DomainAuthDenied("Native identity provider is disabled", code="idp_disabled")
     rules = _field(mapping, "rules", [])
@@ -2040,7 +2061,13 @@ async def complete_authorization(code: str, state: str, browser_binding: str) ->
     enforce_email(await get_policy(domain_id), identity.email)
     async with domain_iam._iam_write() as (lease, ks, catalog):
         row = await _current_provider(domain_id, row.id, int(row.revision))
-        await asyncio.to_thread(_require_native_mapping, ks, row)
+        mode = await asyncio.to_thread(_require_native_mapping, ks, row)
+        if mode is not None:
+            from app.services import native_oidc
+
+            return await native_oidc.federate(
+                row, identity, domain, ks=ks, lease=lease, catalog=catalog, descriptor=mode
+            )
         await account_identity.recover_identity_transfer(row, identity, lease=lease, ks=ks)
         bound, existing, transfer = await account_identity.directory(ks, identity, row)
         if bound is None and row.kind == "oidc" and row.id.startswith(_CONFIG_PROVIDER_PREFIX):
@@ -2121,7 +2148,8 @@ async def _complete_account_entry(ticket: str, browser_binding: str, *, action: 
     enforce_email(await get_policy(domain["id"]), identity.email)
     async with domain_iam._iam_write() as (lease, ks, catalog):
         row = await _current_provider(domain["id"], row.id, int(row.revision))
-        await asyncio.to_thread(_require_native_mapping, ks, row)
+        if await asyncio.to_thread(_require_native_mapping, ks, row) is not None:
+            raise DomainAuthConflict("Native mapping changed; start login again", code="account_changed")
         account = await asyncio.to_thread(account_spaces.shared_domain, "account", ks=ks)
         if account_identity._field(account, "id") != record["identity_domain_id"]:
             raise DomainAuthConflict("Accounts identity domain changed", code="account_changed")
@@ -2281,7 +2309,8 @@ async def complete_account_link(
 
                 await login_guard.record_success(account["name"], account["domain_id"])
             row = await _current_provider(domain["id"], row.id, int(row.revision))
-            await asyncio.to_thread(_require_native_mapping, ks, row)
+            if await asyncio.to_thread(_require_native_mapping, ks, row) is not None:
+                raise DomainAuthConflict("Native mapping changed; start login again", code="account_changed")
             bound, existing, transfer = await account_identity.directory(ks, identity, row)
             if transfer is not None:
                 raise DomainAuthConflict("Use explicit Accounts confirmation", code="account_changed")

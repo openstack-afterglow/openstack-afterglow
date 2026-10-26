@@ -45,11 +45,11 @@
 
 
 
-	async function fetchBackups() {
+	async function fetchBackups(force = false) {
 		const tokenSnapshot = $auth.token ?? undefined;
 		const projectSnapshot = $auth.projectId ?? undefined;
 		try {
-			const nextBackups = await api.get<DbBackup[]>('/api/v1/database-instances/backups', tokenSnapshot, projectSnapshot);
+			const nextBackups = await api.get<DbBackup[]>('/api/v1/database-instances/backups', tokenSnapshot, projectSnapshot, { refresh: force });
 			if ($auth.projectId !== projectSnapshot) return;
 			backups = nextBackups;
 			selection.retain(nextBackups.map((backup) => backup.id));
@@ -124,7 +124,7 @@
 	async function forceRefresh() {
 		refreshing = true;
 		try {
-			await fetchBackups();
+			await fetchBackups(true);
 		} finally {
 			refreshing = false;
 		}

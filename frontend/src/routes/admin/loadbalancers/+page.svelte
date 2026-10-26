@@ -32,7 +32,7 @@
 	let selectedLbId = $state<string | null>(null);
 	let selection = createResourceSelection();
 	let busy = $state(false);
-	let selectableIds = $derived(new Set(loadbalancers.filter((lb) => !isDroverLoadBalancer(lb)).map((lb) => lb.id)));
+	let selectableIds = $derived(new Set(loadbalancers.filter((lb) => !isDroverLoadBalancer(lb) && !!lb.project_id && lb.project_id === $auth.projectId).map((lb) => lb.id)));
 	const selectedCount = $derived([...selectableIds].filter((id) => selection.ids.has(id)).length);
 	const allSelected = $derived(selectableIds.size > 0 && selectedCount === selectableIds.size);
 	const indeterminate = $derived(selectedCount > 0 && !allSelected);
@@ -43,7 +43,7 @@
 		try {
 			loadbalancers = await api.get<LoadBalancer[]>('/api/v1/admin/all-loadbalancers', token, projectId, opts);
 			if (selection.count > 0) {
-				selection.retain(loadbalancers.filter((lb) => !isDroverLoadBalancer(lb)).map((lb) => lb.id));
+				selection.retain(loadbalancers.filter((lb) => !isDroverLoadBalancer(lb) && !!lb.project_id && lb.project_id === $auth.projectId).map((lb) => lb.id));
 			}
 			error = '';
 		} catch (e) {
@@ -141,7 +141,7 @@
 				{#each loadbalancers as lb (lb.id)}
 					{@const isProtected = isDroverLoadBalancer(lb)}
 					<CompactResourceCard selected={selection.has(lb.id)}>
-						<div class="flex items-start gap-2"><SelectionCheckbox checked={selection.has(lb.id)} disabled={busy || isProtected} unavailable={isProtected} title={isProtected ? t('loadbalancersPage.selection.protected') : undefined} ariaLabel={t('loadbalancersPage.selection.item', { name: lb.name || lb.id.slice(0, 12) })} onclick={() => selection.toggle(lb.id)} /><button type="button" class="min-h-11 min-w-0 flex-1 break-all text-left font-medium text-ink-0" onclick={() => openLbPanel(lb.id)}>{lb.name || lb.id.slice(0, 12)}</button><StatusChip status={lb.status ?? '—'} /></div>
+						<div class="flex items-start gap-2"><SelectionCheckbox checked={selection.has(lb.id)} disabled={busy || !selectableIds.has(lb.id)} unavailable={!selectableIds.has(lb.id)} title={isProtected ? t('loadbalancersPage.selection.protected') : undefined} ariaLabel={t('loadbalancersPage.selection.item', { name: lb.name || lb.id.slice(0, 12) })} onclick={() => selection.toggle(lb.id)} /><button type="button" class="min-h-11 min-w-0 flex-1 break-all text-left font-medium text-ink-0" onclick={() => openLbPanel(lb.id)}>{lb.name || lb.id.slice(0, 12)}</button><StatusChip status={lb.status ?? '—'} /></div>
 						<div class="space-y-1 break-all text-xs text-ink-2"><p>{t('loadbalancersPage.table.vipAddress')}: {lb.vip_address ?? '—'}</p><p>{t('loadbalancersPage.table.operatingStatus')}: {lb.operating_status ?? '—'}</p><p>{t('loadbalancersPage.table.projectId')}: {lb.project_id?.slice(0, 8) ?? '—'}</p></div>
 						{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => openLbPanel(lb.id)}>{t('loadbalancersPage.actions.details')}</Button>{/snippet}
 						{#snippet details()}<div class="space-y-2 break-all font-mono text-xs text-ink-2"><p>{lb.id}</p><p>{lb.project_id ?? '—'}</p>{#if isProtected}<p>{t('loadbalancersPage.selection.protected')}</p>{/if}</div>{/snippet}
@@ -169,8 +169,8 @@
 							<td class="py-3 pr-3 text-left" onclick={(e) => e.stopPropagation()}>
 								<SelectionCheckbox
 									checked={selection.has(lb.id)}
-									disabled={busy || isProtected}
-									unavailable={isProtected}
+									disabled={busy || !selectableIds.has(lb.id)}
+									unavailable={!selectableIds.has(lb.id)}
 									title={isProtected ? t('loadbalancersPage.selection.protected') : undefined}
 									ariaLabel={t('loadbalancersPage.selection.item', { name: lb.name || lb.id.slice(0, 12) })}
 									onclick={() => selection.toggle(lb.id)}
@@ -234,6 +234,7 @@
 	<SlidePanel onClose={closeLbPanel} ariaLabel={t('loadbalancersPage.detailPanel.title')}>
 		<LoadBalancerDetailPanel
 			lbId={selectedLbId}
+			isAdmin
 			onClose={closeLbPanel}
 			onDeleted={() => { fetchLoadbalancers({ refresh: true }); closeLbPanel(); }}
 		/>

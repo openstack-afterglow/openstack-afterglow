@@ -150,8 +150,9 @@ async def test_start_instance_other_project_returns_404(client, mock_conn):
 
 
 @pytest.mark.asyncio
-async def test_delete_instance(client, mock_conn):
+async def test_delete_instance(client, mock_conn, empty_layer_consume_db):
     inst = make_instance()
+    inst.project_id = "test-project-123"
     inst.metadata = {}
     with (
         patch("app.api.compute.instances.nova.get_server", return_value=inst),
@@ -163,7 +164,7 @@ async def test_delete_instance(client, mock_conn):
 
 
 @pytest.mark.asyncio
-async def test_delete_instance_cleans_nfs_access_rules(client, mock_conn):
+async def test_delete_instance_cleans_nfs_access_rules(client, mock_conn, empty_layer_consume_db):
     """prebuilt strategy VM 삭제 시 해당 VM의 cephx access rule이 svc_conn으로 revoke된다.
 
     NFS CIDR rule은 프로젝트 수준 grant이므로 VM 삭제 시 회수하지 않는다 (lifecycle A).
@@ -171,6 +172,7 @@ async def test_delete_instance_cleans_nfs_access_rules(client, mock_conn):
     from unittest.mock import MagicMock
 
     inst = make_instance()  # name="test-vm"
+    inst.project_id = "test-project-123"
     inst.union_strategy = "prebuilt"
     inst.union_share_ids = ["share-1"]
 
@@ -197,11 +199,12 @@ async def test_delete_instance_cleans_nfs_access_rules(client, mock_conn):
 
 
 @pytest.mark.asyncio
-async def test_delete_instance_nfs_cleanup_failure_continues(client, mock_conn):
+async def test_delete_instance_nfs_cleanup_failure_continues(client, mock_conn, empty_layer_consume_db):
     """prebuilt access rule 정리 실패해도 VM 삭제는 계속된다."""
     from unittest.mock import MagicMock
 
     inst = make_instance()
+    inst.project_id = "test-project-123"
     inst.union_strategy = "prebuilt"
     inst.union_share_ids = ["share-1"]
 
@@ -221,9 +224,10 @@ async def test_delete_instance_nfs_cleanup_failure_continues(client, mock_conn):
 
 
 @pytest.mark.asyncio
-async def test_delete_instance_dynamic_skips_nfs_rule_cleanup(client, mock_conn):
+async def test_delete_instance_dynamic_skips_nfs_rule_cleanup(client, mock_conn, empty_layer_consume_db):
     """dynamic strategy 삭제 시 NFS access rule 조회를 건너뛴다."""
     inst = make_instance()
+    inst.project_id = "test-project-123"
     inst.union_strategy = "dynamic"
     inst.union_share_ids = ["share-1"]
 
@@ -518,9 +522,10 @@ async def test_release_floating_ip_no_ports_does_nothing(client, mock_conn):
 
 
 @pytest.mark.asyncio
-async def test_delete_instance_only_cleans_own_fips(client, mock_conn):
+async def test_delete_instance_only_cleans_own_fips(client, mock_conn, empty_layer_consume_db):
     """인스턴스 삭제 시에도 해당 인스턴스 FIP만 정리된다 (다른 FIP 무사)."""
     inst = make_instance()
+    inst.project_id = "test-project-123"
     inst.metadata = {}
     mock_conn.network.ports.return_value = [_make_port("p-inst")]
     mock_conn.network.ips.return_value = [

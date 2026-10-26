@@ -136,6 +136,7 @@ async def _build_token_response(
     device_type: str = "",
     os: str = "",
     started_at: float | None = None,
+    native_expires_at: str = "",
     previous_jti: str | None = None,
     previous_domain_id: str | None = None,
     connection_project_id: str | None = None,
@@ -160,13 +161,26 @@ async def _build_token_response(
             if project_id:
                 await asyncio.to_thread(assert_project_domain, domain_id, project_id)
         can_write = has_project_write_permission({"project_id": project_id, "roles": roles, "is_system_admin": False})
-        refresh_str, r_jti, r_exp = jwt_service.sign_refresh(user_id)
+        now = datetime.now(UTC).timestamp()
+        deadline = int((now if started_at is None else started_at) + get_settings().session_timeout_seconds)
+        if native_expires_at:
+            try:
+                native_expiry = datetime.fromisoformat(native_expires_at)
+                if native_expiry.tzinfo is None:
+                    raise ValueError("Native expiry must include its timezone")
+                deadline = min(deadline, int(native_expiry.timestamp()))
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise HTTPException(503, "Native session lifetime is unavailable") from exc
+        if deadline <= now:
+            raise HTTPException(401, "Native or browser session has expired")
+        refresh_str, r_jti, r_exp = jwt_service.sign_refresh(user_id, expires_at=deadline)
         access_str, _, a_exp = jwt_service.sign_access(
             user_id=user_id,
             username=username,
             project_id=native_project_id,
             project_name=project_name if connection_project_id is None else "",
             refresh_jti=r_jti,
+            expires_at=deadline,
         )
         try:
             stored = await session_store.store_session(
@@ -363,12 +377,23 @@ async def _prepare_domain_session(
             else:
                 default = await run(domain_projects.default_project, domain_id, **kwargs)
         with authentication_step("native_projects"):
-            try:
-                projects = await run(keystone.list_projects, data["token"], domain_id, **kwargs)
-            except HTTPException:
-                raise
-            except Exception as exc:
-                raise HTTPException(503, "Native project membership is unavailable") from exc
+            if (
+                context.get("domain_kind") == "personal"
+                and default is not None
+                and requested_project_id == default["id"]
+            ):
+                # The exact primary already passed canonical provenance and live
+                # membership checks. Enumerating every native membership cannot
+                # strengthen this explicit target; the scoped exchange below
+                # still independently proves native access and subject identity.
+                projects = [default]
+            else:
+                try:
+                    projects = await run(keystone.list_projects, data["token"], domain_id, **kwargs)
+                except HTTPException:
+                    raise
+                except Exception as exc:
+                    raise HTTPException(503, "Native project membership is unavailable") from exc
         # A saved user preference wins only within the enabled, accessible
         # projects of this domain. Canonical Default is the onboarding fallback.
         default_id = next(
@@ -534,6 +559,7 @@ async def _login(request: Request, req: LoginRequest, background_tasks: Backgrou
         user_id=data["user_id"],
         username=data["username"],
         roles=data.get("roles", []),
+        native_expires_at=data.get("session_expires_at") or data.get("expires_at", ""),
         is_system_admin=data.get("is_system_admin", False),
         domain_id=data["domain_id"],
         domain_name=data["domain_name"],
@@ -776,6 +802,7 @@ async def _refresh_token(request: Request, req: RefreshRequest, *, operation: Na
             device_type=device_type,
             os=os_name,
             started_at=started_at,
+            native_expires_at=kc_info.get("session_expires_at", ""),
             previous_jti=r_jti,
             connection_project_id=connection_project_id if logical_workspace else None,
             operation=operation,
@@ -846,6 +873,7 @@ async def _scope_project(req: ProjectScopeRequest, token_info: dict, *, operatio
             os=token_info.get("os", ""),
             started_at=token_info.get("started_at"),
             previous_jti=old_rjti,
+            native_expires_at=kc_info.get("session_expires_at", ""),
             remember_workspace=True,
             operation=operation,
         )
@@ -1048,6 +1076,7 @@ async def _switch_working_domain(
         await operation.run(domain_projects.assert_project_membership, user_id, data["project_id"], operation=operation)
     response = await _build_token_response(
         keystone_token=data["session_token"],
+        native_expires_at=data.get("session_expires_at") or data.get("expires_at", ""),
         project_id=data["project_id"],
         project_name=data["project_name"],
         user_id=user_id,
@@ -1253,6 +1282,7 @@ async def issue_federated_login(
             operation.invalidate()
             response = await _build_token_response(
                 keystone_token=data["session_token"],
+                native_expires_at=data.get("session_expires_at") or data.get("expires_at", ""),
                 project_id=data["project_id"],
                 project_name=data["project_name"],
                 user_id=data["user_id"],

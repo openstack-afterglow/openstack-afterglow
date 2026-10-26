@@ -270,7 +270,7 @@ def test_list_user_groups_converts_exception_to_permission_error():
     with (
         patch("app.services.keystone.get_settings") as mock_cfg,
         patch("app.services.keystone.v3.Token"),
-        patch("app.services.keystone.ks_session.Session"),
+        patch("app.services.keystone.native_transport.create_session"),
         patch("keystoneclient.v3.client.Client", return_value=mock_ks),
     ):
         mock_cfg.return_value.os_auth_url = "http://keystone:5000/v3"

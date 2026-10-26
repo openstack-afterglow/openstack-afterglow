@@ -146,7 +146,7 @@ def _toml_val(v) -> str:
 _AUTH_PROVIDER_FIELDS = frozenset({
     "name", "kind", "enabled", "issuer_url", "authorization_url", "token_url", "api_url",
     "client_id", "client_secret", "scopes", "keystone_idp_id", "keystone_protocol_id",
-    "federation_token_type", "token_endpoint_auth_method", "organization",
+    "federation_token_type", "token_endpoint_auth_method", "organization", "native_mapping",
 })
 
 
@@ -193,6 +193,23 @@ def _auth_config(cfg: dict) -> dict:
                     and all(isinstance(value.get(key), str) and value[key].strip() for key in ("id", "name"))
                     and isinstance(value.get("manager_subjects"), list) and bool(value["manager_subjects"])
                     and all(isinstance(subject, str) and subject.strip() for subject in value["manager_subjects"])
+                )
+            elif field == "native_mapping":
+                valid = (
+                    provider.get("kind") == "oidc"
+                    and provider.get("federation_token_type", "id_token") == "id_token"
+                    and "organization" not in provider
+                    and isinstance(value, dict)
+                    and set(value) == {"mode", "mapping_id", "sha256", "account_domain_id", "personal_domain_id"}
+                    and value.get("mode") == "ephemeral"
+                    and all(
+                        isinstance(value.get(key), str)
+                        and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", value[key]) is not None
+                        for key in ("mapping_id", "account_domain_id", "personal_domain_id")
+                    )
+                    and isinstance(value.get("sha256"), str)
+                    and re.fullmatch(r"[0-9a-f]{64}", value["sha256"]) is not None
+                    and value["account_domain_id"] != value["personal_domain_id"]
                 )
             else:
                 valid = isinstance(value, str)
@@ -254,12 +271,13 @@ def render_auth_toml(cfg: dict) -> str:
     for key, provider in auth.get("providers", {}).items():
         lines.extend(("", f"[auth.providers.{_toml_str(key)}]"))
         for field, value in provider.items():
-            if field not in {"client_secret", "organization"}:
+            if field not in {"client_secret", "organization", "native_mapping"}:
                 lines.append(f"{field} = {_toml_val(value)}")
-        if "organization" in provider:
-            lines.extend(("", f"[auth.providers.{_toml_str(key)}.organization]"))
-            for field, value in provider["organization"].items():
-                lines.append(f"{field} = {_toml_val(value)}")
+        for nested in ("organization", "native_mapping"):
+            if nested in provider:
+                lines.extend(("", f"[auth.providers.{_toml_str(key)}.{nested}]"))
+                for field, value in provider[nested].items():
+                    lines.append(f"{field} = {_toml_val(value)}")
     if "default" in auth:
         lines.extend(("", "[auth.default]"))
         if "allow_providers" in auth["default"]:
@@ -636,7 +654,7 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
 
     # [session]
     lines.append("[session]")
-    lines.append(f"timeout_seconds = {sess.get('timeout_seconds', 3600)}")
+    lines.append(f"timeout_seconds = {sess.get('timeout_seconds', 86400)}")
     lines.append(f"jwt_access_ttl = {sess.get('jwt_access_ttl', 900)}")
     lines.append(f"jwt_refresh_ttl = {sess.get('jwt_refresh_ttl', 604800)}")
     lines.append(f"token_ip_binding_mode = {_toml_str(sess.get('token_ip_binding_mode', 'subnet'))}")

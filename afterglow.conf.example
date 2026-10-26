@@ -249,6 +249,34 @@ trusted_proxies = "127.0.0.1/32,::1/128"
 # federation_token_type = "id_token"
 # token_endpoint_auth_method = "client_secret_basic"
 #
+# Optional per-registry-provider native ephemeral mapping, NOT a SQL IAM provider
+# option. Omit native_mapping to keep ordinary Accounts linking unchanged. Enable
+# only for an existing reviewed Keystone schema 2.0 mapping; this does NOT rewrite
+# native mappings, users or grants. Keystone owns user selection/project grants.
+# Requires kind = "oidc", federation_token_type = "id_token", and no organization
+# block. Keep the provider issuer/client/IdP/protocol pins exact, with the native
+# IdP remote_ids matching issuer_url and protocol referencing mapping_id.
+# [auth.providers.native_sso]
+# name = "Native SSO"
+# kind = "oidc"
+# issuer_url = "https://sso.example.org"
+# client_id = "replace-with-native-sso-application-id"
+# # Supply AUTH__PROVIDERS__NATIVE_SSO__CLIENT_SECRET separately.
+# keystone_idp_id = "native_sso"
+# keystone_protocol_id = "openid"
+# federation_token_type = "id_token"
+# [auth.providers.native_sso.native_mapping]
+# mode = "ephemeral"
+# mapping_id = "reviewed-native-mapping"
+# # Replace with the lowercase SHA256 of the ENTIRE normalized native mapping:
+# # hashlib.sha256(json.dumps({"schema_version": mapping["schema_version"],
+# # "rules": mapping["rules"]}, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+# # Do not hash CLI formatting, response wrappers, selected rules or the raw file.
+# sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+# # Exact existing canonical Keystone domain IDs, not their display names; distinct.
+# account_domain_id = "accounts-domain-id"
+# personal_domain_id = "personal-domain-id"
+#
 # Optional additional OIDC issuer and GitHub login; no application source changes.
 # [auth.providers.campus_sso]
 # name = "Campus SSO"
@@ -344,9 +372,9 @@ ttl_admin_overview = 60      # admin 토폴로지, 하이퍼바이저 (60초)
 ttl_auth_token = 60          # Keystone 토큰 검증 결과 (60초)
 
 [session]
-# 세션 유지 시간 (초). 이 시간이 지나면 재로그인 필요.
-# Keystone 토큰 만료 시간보다 짧게 설정 권장 (Keystone 기본값: 3600초)
-timeout_seconds = 3600
+# 최초 로그인부터의 절대 세션 수명 (기본 1일). refresh·프로젝트 전환으로 연장하지 않습니다.
+# Native Keystone 증명의 만료/회수와 명시한 더 짧은 운영자 정책도 계속 적용됩니다.
+timeout_seconds = 86400
 # JWT access/refresh 토큰 수명 (초)
 jwt_access_ttl = 900      # access 토큰 (기본 15분)
 jwt_refresh_ttl = 604800  # refresh 토큰 (기본 7일)

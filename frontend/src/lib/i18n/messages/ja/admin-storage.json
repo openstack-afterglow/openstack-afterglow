@@ -1,4 +1,10 @@
 {
+	"volumeTransfer.scopeHelp": "受信先のドメインとプロジェクトを選択してください。受信には現在の管理者の実際の対象プロジェクトトークンを使用します。システム管理権限でプロジェクトロールは付与されません。認証が拒否された場合は、発行されたIDとキーを受信権限のある相手に渡してください。",
+	"volumeTransfer.mode": "転送方法",
+	"volumeTransfer.recover": "このボリュームの保留中の転送を確認",
+	"volumeTransfer.recoveryHelp": "キーは再取得できません。紛失した場合は、確認した保留中の転送を明示的に取り消してから再作成してください。自動取消や再送信は行いません。",
+	"volumeTransfer.uncertain": "リクエストの結果は不明です。再送信や自動取消は行いません。表示されたIDとキーを安全に保存し、この画面を閉じてから両プロジェクトのボリュームと保留中の転送を再確認してください。",
+	"volumeTransfer.denied": "ネイティブポリシーまたは対象プロジェクトの認証で拒否されました。システム管理権限は受信権限を保証しません。発行されたIDとキーをコピーして受信権限のある相手に渡せます。",
 	"volumeList.filters.nameOrId": "名前またはID",
 	"volumeList.filters.minSize": "最小容量 (GiB)",
 	"volumeList.filters.maxSize": "最大容量 (GiB)",

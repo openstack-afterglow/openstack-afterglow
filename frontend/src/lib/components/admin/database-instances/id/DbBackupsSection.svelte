@@ -16,6 +16,8 @@
 		onAdd,
 		onDelete,
 		onRestore,
+		canMutate = true,
+		loadError = '',
 	}: {
 		backups: DbBackup[];
 		deletingBackup: string | null;
@@ -25,6 +27,8 @@
 		onAdd: (form: { name: string; description: string }) => Promise<boolean>;
 		onDelete: (id: string) => Promise<void>;
 		onRestore: (id: string) => Promise<void>;
+		canMutate?: boolean;
+		loadError?: string;
 	} = $props();
 
 	let showForm = $state(false);
@@ -42,12 +46,14 @@
 <div class="bg-surface-base border border-line rounded-xl p-4">
 	<div class="flex items-center justify-between mb-3">
 		<h2 class="text-sm font-semibold text-ink-0">{tr('labels.backups')}</h2>
+		{#if canMutate}
 		<button onclick={() => { showForm = !showForm; }}
 			class="text-xs text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 px-2 py-1 rounded transition-colors">
 			{showForm ? tr('actions.cancel') : tr('actions.createBackup')}
 		</button>
+		{/if}
 	</div>
-	{#if showForm}
+	{#if showForm && canMutate}
 		<div class="bg-surface-sunken rounded-lg p-3 mb-3 space-y-2">
 			<input type="text" bind:value={newBackup.name} placeholder="backup-name"
 				class="w-full bg-surface-selected border border-line-2 rounded px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm" />
@@ -60,7 +66,9 @@
 			</button>
 		</div>
 	{/if}
-	{#if backups.length === 0}
+	{#if loadError}
+		<p role="alert" class="text-state-danger-text text-sm">{loadError}</p>
+	{:else if backups.length === 0}
 		<div class="text-ink-2 text-xs">{tr('backups.empty')}</div>
 	{:else}
 		<ResponsiveTable>
@@ -68,7 +76,7 @@
 				{#each backups as b (b.id)}
 					<CompactResourceCard>
 						<div class="flex items-start justify-between gap-2"><h3 class="break-all font-medium text-ink-0">{b.name}</h3><StatusChip status={b.status} /></div><p class="text-xs text-ink-2">{b.size === null || b.size === undefined ? '-' : `${b.size} GB`} · {b.created_at?.slice(0, 10) ?? '-'}</p>
-						{#snippet actions()}<Button variant="secondary" size="sm" disabled={restoringBackup === b.id} onclick={() => onRestore(b.id)}>{restoringBackup === b.id ? tr('state.restoring') : tr('actions.restore')}</Button><Button variant="danger" size="sm" disabled={deletingBackup === b.id} onclick={() => onDelete(b.id)}>{deletingBackup === b.id ? tr('state.deleting') : tr('actions.delete')}</Button>{/snippet}
+						{#snippet actions()}{#if canMutate}<Button variant="secondary" size="sm" disabled={restoringBackup === b.id} onclick={() => onRestore(b.id)}>{restoringBackup === b.id ? tr('state.restoring') : tr('actions.restore')}</Button><Button variant="danger" size="sm" disabled={deletingBackup === b.id} onclick={() => onDelete(b.id)}>{deletingBackup === b.id ? tr('state.deleting') : tr('actions.delete')}</Button>{/if}{/snippet}
 						{#snippet details()}<p class="break-all font-mono text-xs text-ink-2">{b.id}</p>{/snippet}
 					</CompactResourceCard>
 				{/each}
@@ -91,6 +99,7 @@
 						<td class="py-2 text-ink-2 text-xs">{b.size ? `${b.size} GB` : '-'}</td>
 						<td class="py-2 text-ink-2 text-xs">{b.created_at ? b.created_at.slice(0, 10) : '-'}</td>
 						<td class="py-2 text-right">
+							{#if canMutate}
 							<div class="flex justify-end gap-1">
 								<button onclick={() => onRestore(b.id)} disabled={restoringBackup === b.id}
 									class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
@@ -101,6 +110,7 @@
 									{#if deletingBackup === b.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.deleting')}</span></span>{:else}{tr('actions.delete')}{/if}
 								</button>
 							</div>
+							{/if}
 						</td>
 					</tr>
 				{/each}

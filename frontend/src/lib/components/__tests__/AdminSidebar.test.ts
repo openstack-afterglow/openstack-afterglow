@@ -138,7 +138,7 @@ describe('administrator global navigation', () => {
 			['로드밸런서', '/admin/loadbalancers'], ['포트', '/admin/ports'], ['Waygate', '/admin/waygate'],
 			['전체 컨테이너', '/admin/containers'], ['Drover', '/admin/drover'],
 			['클러스터 템플릿', '/admin/drover/templates'],
-			['Lumen', '/admin/chat'], ['채팅 통계', '/admin/chat/stats'],
+			['프로바이더 설정', '/admin/chat'], ['채팅 통계', '/admin/chat/stats'],
 			['사용자 쿼터', '/admin/chat/quotas'], ['모델 설정', '/admin/chat/models'], ['도구 설정', '/admin/chat/tools'],
 			['Palimpsest', '/admin/libraries'], ['프로젝트 쿼터', '/admin/secrets'],
 			['통합 모니터링', '/admin/monitoring'], ['노드', '/admin/monitoring/node'],
@@ -175,7 +175,7 @@ describe('administrator contextual navigation ownership', () => {
 	it.each([
 		['/admin/drover', 'Drover', '/admin/drover', '클러스터 템플릿'],
 		['/admin/drover/templates/template-1', '클러스터 템플릿', '/admin/drover/templates', 'Drover'],
-		['/admin/chat', 'Lumen', '/admin/chat', '채팅 통계'],
+		['/admin/chat', '프로바이더 설정', '/admin/chat', '채팅 통계'],
 		['/admin/chat/stats', '채팅 통계', '/admin/chat/stats', '사용자 쿼터'],
 		['/admin/chat/quotas/user-1', '사용자 쿼터', '/admin/chat/quotas', '채팅 통계'],
 		['/admin/chat/models/model-1', '모델 설정', '/admin/chat/models', '도구 설정'],
@@ -219,7 +219,7 @@ describe('administrator contextual navigation ownership', () => {
 		await navigate('/admin/chatty');
 		render(AdminSidebar);
 		await tick();
-		expect(screen.queryByRole('link', { name: 'Lumen' })).toBeNull();
+		expect(screen.queryByRole('link', { name: '프로바이더 설정' })).toBeNull();
 		const drawer = await openGlobalNavigation();
 		expect(drawer.getAllByRole('link').filter(link => link.getAttribute('aria-current') === 'page')).toEqual([]);
 	});
@@ -251,7 +251,7 @@ describe('administrator navigation visibility gates', () => {
 		expect(screen.getByRole('link', { name: '네트워크' }).getAttribute('aria-current')).toBe('page');
 		expect(screen.queryByRole('link', { name: 'Waygate' })).toBeNull();
 		const drawer = await openGlobalNavigation('스토리지', '네트워크');
-		for (const label of ['전체 컨테이너', 'Drover', '클러스터 템플릿', 'Lumen', '채팅 통계', '사용자 쿼터', '모델 설정', '도구 설정', 'Waygate', '파일 스토리지', 'DB 인스턴스', 'Object Storage']) {
+		for (const label of ['전체 컨테이너', 'Drover', '클러스터 템플릿', '프로바이더 설정', '채팅 통계', '사용자 쿼터', '모델 설정', '도구 설정', 'Waygate', '파일 스토리지', 'DB 인스턴스', 'Object Storage']) {
 			expect(drawer.queryByRole('link', { name: label })).toBeNull();
 		}
 		expect(drawer.queryByRole('button', { name: 'Lumen' })).toBeNull();
@@ -285,7 +285,7 @@ describe('administrator navigation visibility gates', () => {
 		const drawer = await openGlobalNavigation('컨테이너', '네트워크', '모니터링', 'Identity');
 		expect(drawer.getByRole('link', { name: '전체 컨테이너' }).getAttribute('href')).toBe('/admin/containers');
 		expect(drawer.getByRole('link', { name: '프로젝트 쿼터' }).getAttribute('href')).toBe('/admin/secrets');
-		for (const label of ['Drover', '클러스터 템플릿', 'Lumen', '모델 설정', 'Waygate', 'ProxySQL', '프로젝트']) {
+		for (const label of ['Drover', '클러스터 템플릿', '프로바이더 설정', '모델 설정', 'Waygate', 'ProxySQL', '프로젝트']) {
 			expect(drawer.queryByRole('link', { name: label })).toBeNull();
 		}
 		expect(drawer.queryByRole('button', { name: 'Lumen' })).toBeNull();

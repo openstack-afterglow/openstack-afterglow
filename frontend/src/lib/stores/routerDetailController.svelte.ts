@@ -55,11 +55,11 @@ function createRouterDetailController(opts: Options) {
 			.catch(() => {});
 	});
 
-	async function fetchRouter() {
+	async function fetchRouter(force = false) {
 		loading = true;
 		error = '';
 		try {
-			router = await api.get<RouterDetail>(`/api/v1/routers/${opts.routerId()}`, opts.token(), opts.projectId());
+			router = await api.get<RouterDetail>(`/api/v1/routers/${opts.routerId()}`, opts.token(), opts.projectId(), { refresh: force });
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : t('router.error.load');
 		} finally {

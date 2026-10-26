@@ -25,11 +25,11 @@ function createContainerDetailController(opts: Options) {
 
 	const apiBase = $derived(opts.adminMode() ? '/api/v1/admin/containers' : '/api/v1/containers');
 
-	async function fetchContainer() {
+	async function fetchContainer(force = false) {
 		loading = true;
 		error = '';
 		try {
-			container = await api.get<ZunContainerDetail>(`${apiBase}/${opts.containerId()}`, opts.token(), opts.projectId());
+			container = await api.get<ZunContainerDetail>(`${apiBase}/${opts.containerId()}`, opts.token(), opts.projectId(), { refresh: force });
 		} catch (e) {
 			error = e instanceof ApiError ? t('container.fetchFailedDetail', { message: e.message }) : t('container.serverError');
 		} finally {

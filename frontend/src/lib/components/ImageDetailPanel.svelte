@@ -58,13 +58,13 @@
 			<ImageSizeSection />
 			<ImageMetadataSection />
 			<ImageWindowsSetupSection />
-			{#if $auth.token && s.image.status === 'active'}
+			{#if $auth.token && s.image.status === 'active' && s.canExport}
 				<ImageExportSection />
 			{/if}
-			{#if s.isOwner}<ImageVisibilitySection />{/if}
-			{#if s.image.visibility === 'shared' && s.isOwner}<ImageMembersSection />{/if}
+			{#if s.canManageImage}<ImageVisibilitySection />{/if}
+			{#if s.image.visibility === 'shared' && s.canManageImage}<ImageMembersSection />{/if}
 			{#if Object.keys(s.image.properties).length > 0 || s.canEditMetadata}<ImagePropertiesSection />{/if}
-			{#if s.isOwner}<ImageDeleteAction />{/if}
+			{#if s.canManageImage}<ImageDeleteAction />{/if}
 		{/if}
 	</div>
 </div>

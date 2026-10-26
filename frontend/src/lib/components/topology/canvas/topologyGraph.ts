@@ -26,10 +26,12 @@ import type {
 	RouterPort,
 	VmNode,
 } from './types';
+import { groupNetworksByDomain } from '../domainGroups';
 
 export interface BuildGraphOpts {
 	projectId: string | null;
 	showAll: boolean;
+	adminView?: boolean;
 }
 
 export const switchId = (netId: string): string => `sw:${netId}`;
@@ -274,7 +276,8 @@ export function buildGraph(data: TopologyData, opts: BuildGraphOpts): CanvasGrap
 		push(e.from, e);
 		push(e.to, e);
 	}
-	return { nets, netById, nodes, edges, edgesByNode, subnetNet, subnetById, fipByAddr };
+	const domainGroups = opts.adminView ? groupNetworksByDomain(nets.map((n) => n.raw)) : undefined;
+	return { nets, netById, nodes, edges, edgesByNode, subnetNet, subnetById, fipByAddr, domainGroups };
 }
 
 /** tenant 존 순서에 따라 내부 네트워크 색을 두 톤으로 교차 배정한다(인접 존 구분용). */
@@ -321,13 +324,14 @@ export function matchesQuery(graph: CanvasGraph, raw: string): QueryMatch | null
 	const macQ = normalizeMac(q);
 	const isMac = !isIpish && macQ.length >= 4 && /^[0-9a-f:.\-]+$/.test(q);
 	for (const n of graph.nets) {
-		const hit = isCidr
+		const ownerHit = !isCidr && !isIpish && !isMac && (graph.domainGroups?.some((group) => group.netIds.includes(n.id) && [group.name, group.domainId, n.project_id, n.raw.project_name].some((value) => value?.toLowerCase().includes(q))) ?? false);
+		const hit = ownerHit || (isCidr
 			? n.cidrs.some((c) => c === q || _ipv4InCidr(c.split('/')[0], q))
 			: isIpish
 				? n.cidrs.some((c) => c.includes(q))
 				: isMac
 					? false
-					: n.name.toLowerCase().includes(q) || n.cidrs.some((c) => c.includes(q));
+					: n.name.toLowerCase().includes(q) || n.cidrs.some((c) => c.includes(q)));
 		if (hit) {
 			nets.add(n.id);
 			nodes.add(switchId(n.id));

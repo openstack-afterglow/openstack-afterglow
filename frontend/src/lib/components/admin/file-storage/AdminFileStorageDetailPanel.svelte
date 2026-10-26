@@ -62,7 +62,7 @@
 		if (fileStorage === null) loading = true;
 		error = '';
 		try {
-			fileStorage = await api.get<FileStorage>(`/api/v1/file-storage/${fileStorageId}`, args.token, args.projectId, opts);
+			fileStorage = await api.get<FileStorage>(`/api/v1/admin/file-storage/${fileStorageId}`, args.token, args.projectId, opts);
 			if (diagnosticStatuses.has(fileStorage.status)) {
 				await fetchDeleteDiagnostic({ refresh: opts?.refresh });
 			} else {
@@ -84,7 +84,7 @@
 		if (accessRules.length === 0) accessLoading = true;
 		accessError = '';
 		try {
-			accessRules = await api.get<AccessRule[]>(`/api/v1/file-storage/${fileStorageId}/access-rules`, args.token, args.projectId, opts);
+			accessRules = await api.get<AccessRule[]>(`/api/v1/admin/file-storage/${fileStorageId}/access-rules`, args.token, args.projectId, opts);
 		} catch (e) {
 			accessRules = [];
 			accessError = e instanceof ApiError
@@ -124,6 +124,7 @@
 	const refresh = createCoalescedRefresh((force) =>
 		untrack(() => fetchAll(force ? { refresh: true } : undefined))
 	);
+	$effect(() => () => refresh.dispose());
 	const ar = createAutoRefresh(() => refresh.run(false), {
 		storageKey: 'admin-file-storage-detail',
 		defaultActive: true,
@@ -137,7 +138,7 @@
 	});
 
 	async function deleteFileStorage() {
-		if (!fileStorage) return;
+		if (!fileStorage || !fileStorage.project_id || fileStorage.project_id !== $auth.projectId) return;
 		const args = authArgs();
 		if (!args) return;
 		const confirmed = await confirmDialog(
@@ -227,6 +228,7 @@
 				<span class="px-1.5 py-0.5 bg-purple-900/40 text-purple-300 rounded text-xs">{fileStorage!.share_proto}</span>
 			{/snippet}
 			{#snippet actions()}
+			{#if fileStorage?.project_id && fileStorage.project_id === $auth.projectId}
 				<button
 					type="button"
 					onclick={deleteFileStorage}
@@ -235,6 +237,7 @@
 				>
 					{#if deleting}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('fileDetail.deleting')}</span></span>{:else}{t('fileDetail.delete')}{/if}
 				</button>
+			{/if}
 			{/snippet}
 		</DetailHeader>
 

@@ -247,7 +247,7 @@ export const adminNavSections: NavSection[] = [
     prefix: '/admin/chat',
     icon: 'M8 10h8M8 14h5M21 12a9 9 0 01-9 9H3l2.4-4.8A9 9 0 1121 12z',
     items: [
-      { label: 'Lumen', href: '/admin/chat', icon: navIcons.chat, service: 'chat' },
+      withLabel('items.providerSettings', { href: '/admin/chat', icon: navIcons.chat, service: 'chat' }),
       withLabel('items.chatStats', { href: '/admin/chat/stats', icon: navIcons.chart, service: 'chat' }),
       withLabel('items.userQuotas', { href: '/admin/chat/quotas', icon: navIcons.quota, service: 'chat' }),
       withLabel('items.modelSettings', { href: '/admin/chat/models', icon: navIcons.sliders, service: 'chat' }),

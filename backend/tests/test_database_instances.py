@@ -92,7 +92,7 @@ async def test_list_database_instances_error_handling(client, mock_conn):
 
 
 # ---------------------------------------------------------------------------
-# admin all_projects 테스트
+# Administrator inventory uses its explicit administrator endpoint.
 # ---------------------------------------------------------------------------
 
 
@@ -191,8 +191,8 @@ def test_create_database_raises_on_trove_4xx():
 
 
 @pytest.mark.asyncio
-async def test_list_db_instances_all_projects_admin(admin_client, mock_conn):
-    """admin + all_projects=true → list_instances_admin_all_projects 호출 + project_id 반환."""
+async def test_list_db_instances_admin_executor_inventory(admin_client, mock_conn):
+    """The administrator route returns foreign-project inventory, not the consumer list."""
     from unittest.mock import MagicMock, patch
 
     fake_instance = {
@@ -210,10 +210,9 @@ async def test_list_db_instances_all_projects_admin(admin_client, mock_conn):
         "project_id": "other-project",
     }
     with (
-        patch("app.api.database.instances.require_admin", new_callable=AsyncMock),
         patch("app.services.trove.list_instances_admin_all_projects", new=MagicMock(return_value=[fake_instance])),
     ):
-        resp = await admin_client.get("/api/v1/database-instances?all_projects=true")
+        resp = await admin_client.get("/api/v1/admin/database-instances")
     assert resp.status_code == 200
     body = resp.json()
     assert len(body) == 1

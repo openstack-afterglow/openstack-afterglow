@@ -1156,95 +1156,62 @@ async def test_download_with_valid_token():
 
 
 # ---------------------------------------------------------------------------
-# admin all_projects 테스트
+# Administrator account inventory
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_list_containers_all_projects_requires_admin(non_admin_client):
-    """all_projects=true + is_system_admin=False → 403."""
-    resp = await non_admin_client.get("/api/v1/object-storage?all_projects=true")
+    resp = await non_admin_client.get("/api/v1/admin/object-storage")
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
-async def test_list_containers_all_projects_fans_out(admin_client):
-    """admin + all_projects=true → 프로젝트별 fan-out, project_id 포함 결과."""
-    from unittest.mock import MagicMock, patch
+async def test_list_containers_all_projects_fans_out(admin_client, mock_conn):
+    from types import SimpleNamespace
 
-    fake_projects = [{"id": "p1", "name": "alpha"}, {"id": "p2", "name": "beta"}]
-    sub_conn_p1 = MagicMock()
-    sub_conn_p1.close = MagicMock()
-    sub_conn_p2 = MagicMock()
-    sub_conn_p2.close = MagicMock()
-    conns = {"p1": sub_conn_p1, "p2": sub_conn_p2}
-    containers_by_conn_id = {
-        id(sub_conn_p1): [{"name": "bucket-a", "count": 3, "bytes": 1024}],
-        id(sub_conn_p2): [{"name": "bucket-b", "count": 5, "bytes": 2048}],
-    }
-
+    projects = {"p1": {"id": "p1", "name": "alpha"}, "p2": {"id": "p2", "name": "beta"}}
     with (
-        patch("app.api.object_storage.containers.require_admin", new_callable=AsyncMock),
-        patch("app.services.keystone.list_system_projects", return_value=fake_projects),
+        patch("app.api.object_storage.containers.inventory_directory", return_value=SimpleNamespace(projects=projects)),
+        patch("app.services.keystone.get_admin_connection_for_project") as rescope,
         patch(
-            "app.services.keystone.get_admin_connection_for_project",
-            side_effect=lambda pid: conns[pid],
-        ),
-        patch(
-            "app.services.swift.list_containers",
-            side_effect=lambda conn, include_quarantine=False, include_trash=False: containers_by_conn_id[id(conn)],
-        ),
+            "app.services.swift.list_project_containers", return_value=[{"name": "bucket", "count": 1, "bytes": 2}]
+        ) as listing,
+        patch("app.api.object_storage.containers._get_deleted_containers", AsyncMock(return_value={})),
     ):
-        resp = await admin_client.get("/api/v1/object-storage?all_projects=true")
+        resp = await admin_client.get("/api/v1/admin/object-storage")
     assert resp.status_code == 200
-    body = resp.json()
-    assert len(body) == 2
-    assert {b["project_id"] for b in body} == {"p1", "p2"}
-    sub_conn_p1.close.assert_called_once()
-    sub_conn_p2.close.assert_called_once()
+    assert {row["project_id"] for row in resp.json()["items"]} == {"p1", "p2"}
+    assert {call.args[1] for call in listing.call_args_list} == {"p1", "p2"}
+    assert all(call.args[0] is mock_conn for call in listing.call_args_list)
+    rescope.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_list_containers_include_quarantine_requires_admin(non_admin_client):
-    """include_quarantine=true + non-admin → 403."""
     resp = await non_admin_client.get("/api/v1/object-storage?include_quarantine=true")
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_list_containers_all_projects_include_quarantine_propagates(admin_client):
-    """admin all_projects + include_quarantine 가 list_containers 까지 전달된다."""
-    from unittest.mock import MagicMock, patch
-
-    fake_projects = [{"id": "p1", "name": "alpha"}]
-    sub_conn = MagicMock()
-    sub_conn.close = MagicMock()
-
-    captured: dict = {}
-
-    def _list(conn, include_quarantine=False, include_trash=False):
-        captured["include_quarantine"] = include_quarantine
-        return [
-            {"name": "test", "count": 4, "bytes": 1024},
-            {"name": "test-quarantine", "count": 17, "bytes": 512, "is_quarantine": True},
-        ]
+    from types import SimpleNamespace
 
     with (
-        patch("app.api.object_storage.containers.require_admin", new_callable=AsyncMock),
-        patch("app.services.keystone.list_system_projects", return_value=fake_projects),
         patch(
-            "app.services.keystone.get_admin_connection_for_project",
-            return_value=sub_conn,
+            "app.api.object_storage.containers.inventory_directory",
+            return_value=SimpleNamespace(projects={"p1": {"id": "p1", "name": "alpha"}}),
         ),
-        patch("app.services.swift.list_containers", side_effect=_list),
+        patch(
+            "app.services.swift.list_project_containers",
+            return_value=[{"name": "test-quarantine", "is_quarantine": True}],
+        ) as listing,
+        patch("app.api.object_storage.containers._get_deleted_containers", AsyncMock(return_value={})),
     ):
-        resp = await admin_client.get("/api/v1/object-storage?all_projects=true&include_quarantine=true")
+        resp = await admin_client.get("/api/v1/admin/object-storage?include_quarantine=true&include_trash=true")
     assert resp.status_code == 200
-    assert captured["include_quarantine"] is True
-    body = resp.json()
-    quarantine_entries = [b for b in body if b.get("is_quarantine")]
-    assert len(quarantine_entries) == 1
-    assert quarantine_entries[0]["name"] == "test-quarantine"
+    assert listing.call_args.args[2:] == (True, True)
+    assert resp.json()["items"][0]["is_quarantine"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -1280,73 +1247,60 @@ async def test_create_container_accepts_valid_name(client, mock_conn):
 
 @pytest.mark.asyncio
 async def test_list_containers_all_projects_runs_concurrently(admin_client):
-    """asyncio.gather 병렬화: 3 프로젝트 × 0.3s sleep → 전체 < 0.5s (sequential 이면 0.9s+)."""
     import time
+    from types import SimpleNamespace
 
-    fake_projects = [{"id": f"p{i}", "name": f"proj{i}"} for i in range(1, 4)]
-    sub_conns = {pid["id"]: MagicMock() for pid in fake_projects}
-    for c in sub_conns.values():
-        c.close = MagicMock()
+    projects = {f"p{i}": {"id": f"p{i}", "name": f"proj{i}"} for i in range(3)}
 
-    def _slow_list(conn, include_quarantine=False, include_trash=False):
+    def slow_list(*_args):
         time.sleep(0.3)
         return [{"name": "bucket", "count": 1, "bytes": 100}]
 
     with (
-        patch("app.api.object_storage.containers.require_admin", new_callable=AsyncMock),
-        patch("app.services.keystone.list_system_projects", return_value=fake_projects),
-        patch(
-            "app.services.keystone.get_admin_connection_for_project",
-            side_effect=lambda pid: sub_conns[pid],
-        ),
-        patch("app.services.swift.list_containers", side_effect=_slow_list),
+        patch("app.api.object_storage.containers.inventory_directory", return_value=SimpleNamespace(projects=projects)),
+        patch("app.services.swift.list_project_containers", side_effect=slow_list),
+        patch("app.api.object_storage.containers._get_deleted_containers", AsyncMock(return_value={})),
     ):
         start = time.monotonic()
-        resp = await admin_client.get("/api/v1/object-storage?all_projects=true")
+        resp = await admin_client.get("/api/v1/admin/object-storage")
         elapsed = time.monotonic() - start
-
     assert resp.status_code == 200
-    assert len(resp.json()) == 3
-    # sequential 이면 ~0.9s, parallel 이면 ~0.3s. 0.6s 이하면 병렬 동작 확인.
+    assert len(resp.json()["items"]) == 3
     assert elapsed < 0.6, f"expected parallel <0.6s, got {elapsed:.2f}s"
 
 
 @pytest.mark.asyncio
-async def test_list_containers_all_projects_rejects_incomplete_unauthorized_inventory(admin_client):
-    """A failed project read must not be reported as a successful partial inventory."""
-    from keystoneauth1.exceptions.http import Unauthorized
+@pytest.mark.parametrize("status", [401, 403, 500, 503])
+async def test_list_containers_all_projects_preserves_readable_rows_and_reports_unavailable_account(
+    admin_client, status
+):
+    from types import SimpleNamespace
 
-    fake_projects = [
-        {"id": "p1", "name": "good"},
-        {"id": "p2", "name": "denied"},
-    ]
-    good_conn = MagicMock()
-    good_conn.close = MagicMock()
+    from openstack.exceptions import HttpException
 
-    def _get_conn(pid: str):
+    def listing(_conn, pid, *_flags):
         if pid == "p2":
-            raise Unauthorized("not allowed")
-        return good_conn
+            raise HttpException("private provider error", http_status=status)
+        return [{"name": "ok-bucket", "count": 1, "bytes": 100}]
 
     with (
-        patch("app.api.object_storage.containers.require_admin", new_callable=AsyncMock),
-        patch("app.services.keystone.list_system_projects", return_value=fake_projects),
         patch(
-            "app.services.keystone.get_admin_connection_for_project",
-            side_effect=_get_conn,
+            "app.api.object_storage.containers.inventory_directory",
+            return_value=SimpleNamespace(projects={pid: {"id": pid, "name": pid} for pid in ("p1", "p2")}),
         ),
-        patch(
-            "app.services.swift.list_containers",
-            side_effect=lambda conn, include_quarantine=False, include_trash=False: [
-                {"name": "ok-bucket", "count": 1, "bytes": 100}
-            ],
-        ),
+        patch("app.services.swift.list_project_containers", side_effect=listing),
+        patch("app.api.object_storage.containers._get_deleted_containers", AsyncMock(return_value={})),
     ):
-        resp = await admin_client.get("/api/v1/object-storage?all_projects=true")
-
-    assert resp.status_code == 503
-    assert "ok-bucket" not in resp.text
-    assert "not allowed" not in resp.text
+        resp = await admin_client.get("/api/v1/admin/object-storage")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["items"] == [{"name": "ok-bucket", "count": 1, "bytes": 100, "project_id": "p1", "project_name": "p1"}]
+    assert body["partial"] is True
+    assert body["project_count"] == 2
+    assert body["unavailable_projects"] == [
+        {"project_id": "p2", "project_name": "p2", "reason": "denied" if status in {401, 403} else "failed"}
+    ]
+    assert "private provider error" not in resp.text
 
 
 # ---------------------------------------------------------------------------

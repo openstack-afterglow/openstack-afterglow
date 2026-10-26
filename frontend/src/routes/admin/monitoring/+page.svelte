@@ -32,7 +32,7 @@
 	let summaryContext = $state('');
 	let requestVersion = 0;
 
-	async function load() {
+	async function load(force = false) {
 		const state = get(auth);
 		const context = contextKey(state);
 		const version = ++requestVersion;
@@ -46,7 +46,7 @@
 		if (!summary || summaryContext !== context) loading = true;
 		else refreshing = true;
 		try {
-			const result = await api.get<MonitoringSummary>('/api/v1/admin/monitoring/summary', state.token, state.projectId ?? undefined);
+			const result = await api.get<MonitoringSummary>('/api/v1/admin/monitoring/summary', state.token, state.projectId ?? undefined, { refresh: force });
 			if (!current()) return;
 			summaryContext = context;
 			summary = result;
@@ -99,7 +99,7 @@
 					bind:intervalSeconds={ar.intervalSeconds}
 					intervalOptions={ar.intervalOptions}
 					refreshing={loading || refreshing}
-					onManualRefresh={load}
+					onManualRefresh={ar.refresh}
 				/>
 			{:else}
 				<button

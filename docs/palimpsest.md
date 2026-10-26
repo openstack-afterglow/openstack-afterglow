@@ -314,6 +314,43 @@ mediaType 은 프로젝트 고유값을 쓴다 — 표준 도구가 squashfs 를
   (로컬에서 빌드해 올리는 경로는 `scripts/palimpsest.py` 로 이미 가능하다.)
 - Swift/S3 드라이버, 레이어 서명(cosign 등), `/v2/` OCI Distribution 호환 레지스트리.
 
+## 4.6a. 이름 기반 에셋 탐색과 관리자 계보 (2026-10-25 source)
+
+Palimpsest는 하나의 저장소가 아니다. Afterglow가 관리하는 Manila layer/profile/build 기록, 독립 Hub의 digest 레이어·전체 번들, 현재 프로젝트의 native OCI/runtime package는 서로 다른 정본·권한·배포 경계를 가진다. `/palimpsest/packages`의 첫 탭 **에셋 찾기**는 이름 검색을 각 정본 API에 병렬 전송하고 **공개·공유 묶음 / 프로젝트 패키지 / 클라우드 환경** 결과와 오류·빈 페이지를 독립적으로 표시한다. Torch·TensorFlow 같은 패키지 이름과 태그를 private registry 전체에서 서버 검색하며 현재 namespace·key/action ceiling 밖은 조회하지 않는다. Docker Hub 연합 검색은 포함하지 않으므로 외부 registry latency를 내부 검색에 합치지 않는다. 기존 Hub 상세·package/access-key·로컬 안내 탭도 유지한다.
+
+### 실제 조회·사용 API
+
+| Afterglow 경로 | 정본과 계약 |
+| --- | --- |
+| `GET /api/v1/admin/palimpsest/catalog?source=managed\|hub&q=&limit=&offset=` | Managed는 side-effect-free local SQL, Hub는 원본 human subject의 새 native `/v1/admin/catalog/layers`; 시스템 관리자 목록·상세만 전체 비공개 레이어 조회 허용 |
+| `GET /api/v1/admin/palimpsest/catalog/{id}?source=...` | 실제 부모·루트→직계부모 ancestors·direct children·묶음 참조와 recorded/unrecorded origin. Managed ID와 Hub digest는 별개 namespace |
+| `GET /api/v1/palimpsest/catalog/assets?q=&limit=&offset=` | Native `/v1/catalog/assets`: 현재 native policy로 허용된 공개/site/project/shared leaf의 complete chain. 숨겨진 자식으로 공개 부모를 숨기거나 private 부모를 유출하지 않음 |
+| `GET /api/v1/palimpsest/packages?q=&cursor=` | Native 현재-project package inventory의 이름·태그 substring 검색, namespace·scope·query에 묶인 cursor |
+| `GET /api/v1/palimpsest/catalog/environments?q=&limit=&offset=` | 공개·봉인된 managed profile을 exact artifact snapshot/revision으로 투영. 최신 sealed private artifact 뒤의 이전 public 버전으로 fallback하지 않음 |
+| `POST /api/v1/palimpsest/catalog/environments/{id}/consume` | 명시한 revision·flavor·network·SSH 설정으로 **현재 caller 프로젝트**에 생성; quota·fresh authority·공개 전체 chain을 다시 검증. `202/ready=false`는 준비 성공이 아님 |
+| `GET /api/v1/palimpsest/catalog/environments/consumes/{id}` | 현재 프로젝트의 실제 SQL/journal 상태만 읽으며 provisioning을 시작하거나 재전송하지 않음 |
+| `DELETE /api/v1/palimpsest/catalog/environments/consumes/{id}` | 명시적 정리 요청. Exact owner/marker와 journal 증거로 VM·RO grants·port·upper·FIP의 제거를 관측한 뒤에만 `deleted`. 불명 CREATE는 반복하지 않음 |
+
+검색은 literal 대소문자 무시 부분 일치이고 wildcard를 escape한다. `q`는128자, page limit은100이하다. Native asset pagination은 **SQL candidate leaf 페이지**다. Private/missing/cyclic chain을 제외한 결과가0개여도 `has_more/next_offset`이 있으면 다음 페이지를 열 수 있다. 각 요청은 그 candidate page만 검증하고 depth64 초과를 명시적으로 거부하며 이전 페이지부터 전체 inventory를 재스캔하지 않는다. 표시된 수는 페이지 결과 수이지 전체 수가 아니다.
+
+### 출처는 증거 수준을 보존한다
+
+관리자 route는 catalog를 Dockerfile studio보다 먼저 보여 준다. Managed artifact의 own `build_id`와 exact import artifact/build receipt, Hub의 완료 build output 또는 image-export result가 연결되어야 **빌드 기록 있음 / 이미지 내보내기**로 표시한다. Cached artifact를 참조한 나중 작업은 생성 출처가 아니다. Upload/import가 생성 origin을 보존하지 않은 기존 행은 **출처 미확인·unrecorded**이며, 단지 build link가 없다는 이유로 가져온 레이어라고 단정하지 않는다. Raw recipe·Dockerfile 본문·내부 경로·credential은 catalog DTO에 포함하지 않는다. 관리자 전체 visibility는 현재 작업 프로젝트에 따라 바뀌지 않는 public/site/shared/private 값이다.
+
+### 로컬과 클라우드의 사용 가능성은 별개다
+
+- Hub의 `chain_complete`는 부모 관계가 완전하다는 뜻이며 부팅 가능성은 아니다. `local_supported/local_reason`은 visible raw/qcow2 base와 알려진 일치 architecture를 확인한 metadata eligibility다. 실제 bytes 검증·설치된 host/backend·VM readiness는 별도다. `size_bytes`는 포함할 base와 layer의 콘텐츠 합계이며 tar/config/index framing은 포함하지 않는다.
+- Hub 전체 번들은 original SDK의 `palimpsest bundle pull <선택 digest> --include-base --output ./palimpsest-bundle` → `palimpsest run ./palimpsest-bundle --name palimpsest-app`로 이어진다. 사용자가 레이어 digest를 직접 고를 필요는 없으며 UI가 선택한 opaque identity를 명령에 넣는다. 원본 Hub 연결과 로컬 인증은 먼저 설정한다.
+- Private native package는 namespace/이름/선택 버전의 불변 참조로 `palimpsest pull ...@sha256:... --output ./palimpsest-runtime.oci.tar` → **새 native CLI** `palimpsest bundle unpack ./palimpsest-runtime.oci.tar --output ./palimpsest-bundle` → `palimpsest run ...`을 사용한다. Unpack은 standard directory markers만 허용하고 graph/digest를 안전하게 검증·원자적으로 추출한다. `uv tool` 환경과 무관한 system Python import를 안내하지 않는다. 이 명령을 포함한 클라이언트 발행/검증된 source 설치는 별도 선행 조건이며 기존 안내의0.3.5 wheel에 있다고 주장하지 않는다. UI는 `bundle unpack --help` 확인을 명시적으로 요구한다.
+- OCI-image package는 cloud-image/runtime-bundle과 다르며 `oci-root`의 Linux amd64/KVM 제한을 명시한다. Apple Silicon 호환이나 native Hub VM API를 가정하지 않는다. 모호한 multi-root package와 호환되지 않는 base/architecture는 기존 SDK가 거부하며 임의 root를 선택하지 않는다.
+- 브라우저 다운로드는 streaming reader로64MiB 상한과 actor/session/permission body fence를 지킨다. 큰 ML 환경은 CLI 전송으로 안내하고 raw secret을 URL·명령·storage에 넣지 않는다. 임의 resource name은 shell/path로 삽입하지 않는다.
+- 클라우드 생성은 호환되는 published managed 환경만 기존 caller compute/service Manila 분리 runner로 실행한다. Hub/private package를 자동으로 관리형 profile이나 provider 이미지로 위장하지 않는다. Native Hub 등록만으로 Nova materialization이 완료되는 것은 아니며, 동일한 전체 content의 cloud preparation은 운영자 작업이다.
+- Accepted cloud receipt·unknown-outcome lock은 정상 JWT refresh·일시적 권한 확인 장애와 workspace 탭 변경에서 유지하고 권한이 미확인일 때만 숨긴다. Project/user/session 변경은 늦은 결과를 폐기한다. 원래 key issuance/once-only secret은 기존 마스킹·폐기 경계를 유지한다.
+
+Caller NFS consume은 기존 SQL `LayerConsume`과 Redis work journal을 사용하고 assignment/lease를 유지한다. 일반·bulk·admin·MCP VM 삭제와 외부 삭제 사후 정리는 exact captured share/rule/IP 및 caller resource ID·owner/marker를 확인한다. SDK 호출이 drain되기 전에 connection/lease를 해제하지 않는다. Unknown CREATE는 fresh exact 관측으로 존재/부재를 판정하고 재생하지 않으며, 새 명시적 정리 요청의 idempotent DELETE도 같은 exact 자원을 다시 관측한 뒤에만 재제출한다. GET에서는 migration/bootstrap·cloud/SQL 상태 갱신을 하지 않는다. 새 SQL model/schema·운영 IAM 변경은 없다.
+
+**배포 경계:** Afterglow BFF/UI와 matching Palimpsest Hub/client source가 함께 검증되어야 한다. 이 source 변경만으로 이미 실행 중인 Hub API/worker/client가 갱신되었다고 판단하지 않는다. 실제 서비스·DB·SDK/TCP·합성 cloud/browser와 운영 VM/사용자 수용의 범위는 `docs/testing.md`에 분리한다.
+
 ## 4.6. 프로젝트 패키지와 내 접근 키 (`/palimpsest/packages`)
 
 사용자 Palimpsest 메뉴는 Hub·네이티브 패키지·로컬 가이드 workspace를 연다. 이 절의 **네이티브 패키지**는 선택한 프로젝트의 **비공개 inventory**이며 OCI 이미지·런타임 번들과 CLI로 게시한 패키지를 조회한다. 보호된 administrator/service identity의 native403을 우회하지 않는다. 관리자 `/admin/libraries`의 Dockerfile 빌드·artifact/profile·VM 소비 파이프라인이나 기존 VM 위저드의 library 카탈로그를 대체하지 않는다.

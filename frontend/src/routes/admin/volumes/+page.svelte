@@ -1,5 +1,7 @@
 <script lang="ts">
 	import Alert from '$lib/components/ui/Alert.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
+	import { t as volumeT } from '$lib/i18n/ns/volume';
 	import { t as scopeT } from '$lib/i18n/ns/domain-admin';
 	let inventoryError = $state('');
 	import PageShell from '$lib/components/ui/PageShell.svelte';
@@ -68,6 +70,7 @@
 	let resetVolume = $state<AdminVolume | null>(null);
 	let forceDeleteVolume = $state<AdminVolume | null>(null);
 	let transferVolume = $state<AdminVolume | null>(null);
+	let receiveTransfer = $state(false);
 	let loadGeneration = 0;
 	let resultBoundary = 0;
 	let statusSummaryGeneration = 0;
@@ -180,7 +183,7 @@
 		selectedVolumeId = null;
 		openActionMenu = null;
 		copiedProjectId = null;
-		editVolume = deleteVolume = extendVolume = resetVolume = forceDeleteVolume = transferVolume = null;
+		editVolume = deleteVolume = extendVolume = resetVolume = forceDeleteVolume = null;
 	}
 
 	function applyStatusFilter(status: string) {
@@ -218,7 +221,7 @@
 	});
 	onDestroy(unsubscribeScope);
 
-	async function load(marker?: string, opts?: { clearSelection?: boolean }) {
+	async function load(marker?: string, opts?: { clearSelection?: boolean; refresh?: boolean }) {
 		const generation = ++loadGeneration;
 		const requestToken = $auth.token ?? undefined;
 		const requestProjectId = $auth.projectId ?? undefined;
@@ -245,7 +248,7 @@
 		else refreshing = true;
 		inventoryError = '';
 		try {
-			const res = await api.get<PagedResponse<AdminVolume>>(requestPath, requestToken, requestProjectId);
+			const res = await api.get<PagedResponse<AdminVolume>>(requestPath, requestToken, requestProjectId, opts?.refresh ? { refresh: true } : undefined);
 			if (!owns()) return;
 			allVolumes = res.items;
 			nextMarker = res.next_marker;
@@ -319,7 +322,7 @@
 	}
 
 	const ar = createAutoRefresh(
-		() => { load(markerStack[markerStack.length - 1]); loadTimeseries(tsRange, { background: true }); loadStatusSummary({ background: true }); },
+		async () => { await Promise.allSettled([load(markerStack[markerStack.length - 1]), loadTimeseries(tsRange, { background: true }), loadStatusSummary({ background: true })]); },
 		{ storageKey: 'admin-volumes', defaultActive: true, defaultInterval: 30, intervalOptions: [15, 30, 60], invokeOnMount: false },
 	);
 
@@ -355,6 +358,7 @@
 	<div data-tour="admin-storage-header">
 	<PageHeader breadcrumb={t('volumeList.breadcrumb')} title={t('volumeList.title')}>
 		{#snippet actions()}
+			<Button variant="outline" onclick={() => { receiveTransfer = true; }}>{volumeT('transferModal.receiveTitle')}</Button>
 			<TutorialStartButton tour="admin-storage" compactOnMobile />
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -363,7 +367,7 @@
 				refreshing={loading || refreshing}
 				onManualRefresh={() => {
 					statusFilter = ''; nameSearch = ''; volumeType = ''; minSize = ''; maxSize = '';
-					onFilterChange();
+					resetResultBoundary(); void load(undefined, { clearSelection: true, refresh: true });
 					void loadTimeseries(tsRange);
 				}}
 			/>
@@ -493,4 +497,8 @@
 <AdminVolumeExtendModal volume={extendVolume} onClose={() => (extendVolume = null)} onSuccess={refreshCurrentVolumeState} />
 <AdminVolumeResetStatusModal volume={resetVolume} onClose={() => (resetVolume = null)} onSuccess={refreshCurrentVolumeState} />
 <AdminVolumeForceDeleteModal volume={forceDeleteVolume} onClose={() => (forceDeleteVolume = null)} onSuccess={refreshCurrentVolumeState} />
-<AdminVolumeTransferModal volume={transferVolume} onClose={() => (transferVolume = null)} onSuccess={refreshCurrentVolumeState} />
+{#if transferVolume || receiveTransfer}
+	{#key transferVolume?.id ?? 'receive'}
+		<AdminVolumeTransferModal volume={transferVolume} initialMode={receiveTransfer ? 'receive' : 'create'} onClose={() => { transferVolume = null; receiveTransfer = false; }} onSuccess={refreshCurrentVolumeState} />
+	{/key}
+{/if}

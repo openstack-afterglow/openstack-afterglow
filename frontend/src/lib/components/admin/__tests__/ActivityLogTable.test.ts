@@ -16,9 +16,6 @@ vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'test-token', projectId: 'test-project' }),
 }));
 
-vi.mock('$lib/utils/autoRefresh.svelte', () => ({
-	createAutoRefresh: () => ({ active: false, intervalSeconds: 30, intervalOptions: [15, 30, 60] }),
-}));
 
 import ActivityLogTable from '../ActivityLogTable.svelte';
 import { auth } from '$lib/stores/auth';
@@ -198,6 +195,7 @@ describe('ActivityLogTable', () => {
 		emptyLaterPage = true;
 		await fireEvent.click(screen.getByRole('button', { name: /새로고침/ }));
 		await screen.findByText(t('activity.empty'));
+		expect(mockGet.mock.calls.at(-1)?.[3]).toEqual(expect.objectContaining({ refresh: true }));
 		expect(new URL(mockGet.mock.calls.at(-1)![0], 'http://localhost').searchParams.get('before_id')).toBe('3');
 		await fireEvent.click(screen.getByRole('button', { name: tc('pagination.previous') }));
 		await screen.findByText('log-12');

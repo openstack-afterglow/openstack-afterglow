@@ -44,8 +44,8 @@ export interface QuotaInfo {
 }
 
 export const secretsApi = {
-	listSecrets: (token?: string, projectId?: string) =>
-		api.get<SecretInfo[]>('/api/v1/secrets', token, projectId),
+	listSecrets: (token?: string, projectId?: string, refresh = false) =>
+		api.get<SecretInfo[]>('/api/v1/secrets', token, projectId, { refresh }),
 
 	createSecret: (body: object, token?: string, projectId?: string) =>
 		api.post<SecretInfo>('/api/v1/secrets', body, token, projectId),
@@ -69,11 +69,11 @@ export const secretsApi = {
 	listConsumers: (id: string, token?: string, projectId?: string) =>
 		api.get<object[]>(`/api/v1/secrets/${id}/consumers`, token, projectId),
 
-	getEffectiveQuota: (token?: string, projectId?: string) =>
-		api.get<QuotaInfo>('/api/v1/secrets/quota/effective', token, projectId),
+	getEffectiveQuota: (token?: string, projectId?: string, refresh = false) =>
+		api.get<QuotaInfo>('/api/v1/secrets/quota/effective', token, projectId, { refresh }),
 
-	listContainers: (token?: string, projectId?: string) =>
-		api.get<ContainerInfo[]>('/api/v1/secret-containers', token, projectId),
+	listContainers: (token?: string, projectId?: string, refresh = false) =>
+		api.get<ContainerInfo[]>('/api/v1/secret-containers', token, projectId, { refresh }),
 
 	createContainer: (body: object, token?: string, projectId?: string) =>
 		api.post<ContainerInfo>('/api/v1/secret-containers', body, token, projectId),
@@ -81,8 +81,8 @@ export const secretsApi = {
 	deleteContainer: (id: string, token?: string, projectId?: string) =>
 		api.delete<void>(`/api/v1/secret-containers/${id}`, token, projectId),
 
-	listOrders: (token?: string, projectId?: string) =>
-		api.get<OrderInfo[]>('/api/v1/secret-orders', token, projectId),
+	listOrders: (token?: string, projectId?: string, refresh = false) =>
+		api.get<OrderInfo[]>('/api/v1/secret-orders', token, projectId, { refresh }),
 
 	createOrder: (body: object, token?: string, projectId?: string) =>
 		api.post<OrderInfo>('/api/v1/secret-orders', body, token, projectId),

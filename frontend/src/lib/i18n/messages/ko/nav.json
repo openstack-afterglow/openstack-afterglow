@@ -65,6 +65,7 @@
 	"items.chatStats": "채팅 통계",
 	"items.userQuotas": "사용자 쿼터",
 	"items.modelSettings": "모델 설정",
+	"items.providerSettings": "프로바이더 설정",
 	"items.toolSettings": "도구 설정",
 	"items.projectQuotas": "프로젝트 쿼터",
 	"items.monitoringOverview": "통합 모니터링",

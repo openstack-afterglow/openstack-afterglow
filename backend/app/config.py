@@ -277,7 +277,7 @@ def _load_toml() -> dict:
     flat["gpu_available_visible"] = gpu.get("available_visible", False)
 
     sess = data.get("session", {})
-    flat["session_timeout_seconds"] = sess.get("timeout_seconds", 3600)
+    flat["session_timeout_seconds"] = sess.get("timeout_seconds", 86400)
     flat["jwt_access_ttl"] = sess.get("jwt_access_ttl", 900)
     flat["jwt_refresh_ttl"] = sess.get("jwt_refresh_ttl", 604800)
     flat["token_ip_binding_mode"] = sess.get("token_ip_binding_mode", "subnet")
@@ -764,7 +764,7 @@ class Settings(BaseSettings):
     gpu_available_visible: bool = False  # true 시 사용자에게 GPU 가용량 API 노출
 
     # 세션 관리
-    session_timeout_seconds: int = 3600
+    session_timeout_seconds: int = 86400
     jwt_access_ttl: int = 900  # access JWT 수명 (초), 기본 15분
     jwt_refresh_ttl: int = 604800  # refresh JWT 수명 (초), 기본 7일
     token_ip_binding_mode: str = "subnet"  # off | log | subnet | strict

@@ -66,14 +66,14 @@
   }
 
 
-  async function fetchSnapshots() {
+  async function fetchSnapshots(force = false) {
     if (!volumeSnapshotsEnabled) {
       clearSnapshotsState();
       loading = false;
       return;
     }
     try {
-      snapshots = await api.get<VolumeSnapshot[]>('/api/v1/volume-snapshots', $auth.token ?? undefined, $auth.projectId ?? undefined);
+      snapshots = await api.get<VolumeSnapshot[]>('/api/v1/volume-snapshots', $auth.token ?? undefined, $auth.projectId ?? undefined, { refresh: force });
       error = '';
     } catch (e) {
       error = e instanceof ApiError ? t('snapshotsPage.fetchFailed', { status: e.status }) : t('snapshotsPage.serverError');
@@ -130,7 +130,7 @@
 
   async function forceRefresh() {
     refreshing = true;
-    try { await fetchSnapshots(); } finally { refreshing = false; }
+    try { await fetchSnapshots(true); } finally { refreshing = false; }
   }
 
   const ar = createAutoRefresh(() => fetchSnapshots(), {

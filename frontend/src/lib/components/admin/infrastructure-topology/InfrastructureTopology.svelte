@@ -26,7 +26,7 @@
 		if (nic && ctrl.snapshot?.hosts.find(host => host.id === hostId)?.observation?.interfaces.some(item => item.name === nic)) ctrl.selectedNic = nic;
 	}
 	onMount(() => {
-		const visibility = () => ctrl.setVisible(document.visibilityState !== 'hidden');
+		const visibility = () => ctrl.setVisible(document.visibilityState !== 'hidden' && navigator.onLine !== false);
 		visibility();
 		const sync = () => {
 			const state = get(auth);
@@ -37,7 +37,9 @@
 		const mq = typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 767px)') : null;
 		const resize = () => { mobile = mq?.matches ?? false; }; resize(); mq?.addEventListener('change', resize);
 		document.addEventListener('visibilitychange', visibility);
-		return () => { subscriptions.forEach(unsubscribe => unsubscribe()); mq?.removeEventListener('change', resize); document.removeEventListener('visibilitychange', visibility); ctrl.dispose(); };
+		window.addEventListener('online', visibility);
+		window.addEventListener('offline', visibility);
+		return () => { subscriptions.forEach(unsubscribe => unsubscribe()); mq?.removeEventListener('change', resize); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('online', visibility); window.removeEventListener('offline', visibility); ctrl.dispose(); };
 	});
 </script>
 

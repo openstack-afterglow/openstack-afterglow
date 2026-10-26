@@ -17,6 +17,7 @@
 	import type { AnnouncementUser, UnreadCountResponse } from '$lib/types/announcements';
 	import { formatIsoDateTime } from '$lib/utils/format';
 	import { startSessionRefreshLifecycle } from '$lib/utils/sessionRefreshLifecycle';
+	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { sidebarOpen } from '$lib/stores/sidebar';
 	import Toast from '$lib/components/ui/Toast.svelte';
 	import UploadDock from '$lib/components/UploadDock.svelte';
@@ -179,6 +180,9 @@
 			return;
 		}
 		untrack(() => void refreshUnreadAnnouncementCount(token, projectId));
+	});
+	createAutoRefresh(() => refreshUnreadAnnouncementCount(), {
+		storageKey: 'announcement-unread-count', defaultInterval: 60, invokeOnMount: false,
 	});
 
 	$effect(() => {
@@ -348,12 +352,9 @@
 			refreshSession,
 		});
 
-		// 로그인/프로젝트 전환 직후에는 reactive effect가 갱신하고, 이후 60초마다 보조 폴링한다.
-		const announcementInterval = setInterval(() => void refreshUnreadAnnouncementCount(), 60_000);
 
 		return () => {
 			stopSessionRefresh();
-			clearInterval(announcementInterval);
 		};
 	});
 

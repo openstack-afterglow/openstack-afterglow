@@ -1,0 +1,1075 @@
+{
+  "change": "refine-admin-lumen-provider-and-model-workflows",
+  "date": "2026-10-26",
+  "scope": "source-only; no shared or production service replacement",
+  "runtimeCapability": {
+    "scope": "read-only installed local lumen-api module metadata",
+    "version": "0.6.9",
+    "providerPoolDto": false,
+    "accountRoutes": [],
+    "probeRoutes": [],
+    "nativeSourceWorktree": "/Users/pieroot/code/lumen-admin-fixes",
+    "sourceVersion": "0.6.5 unpublished account/converter cutover",
+    "deploymentPrerequisites": [
+      "Reconcile provider-account migration027 with published kubernetes migration027 on latestdev",
+      "Repaired sharedDB cannot run new account source as mixed legacy writers",
+      "Drain/cold backup/restore/qualified matching API+workers+converter required before authorized cutover"
+    ],
+    "taskDeployed": false
+  },
+  "native": {
+    "focused": {
+      "passed": 233,
+      "files": 9
+    },
+    "lifecycleConsumers": {
+      "passed": 322,
+      "files": 7
+    },
+    "go": {
+      "passed": true,
+      "command": "docker run --rm --network none lumen-qa/provider-relay-builder-20261026:arm64 go test ./..."
+    },
+    "actualImages": {
+      "arm64": {
+        "boundary": "disposable SQLite/native TCP/real new Go converter; synthetic admin/upstream; settled history only",
+        "sends": 2,
+        "history": [
+          {
+            "credential_id": 100,
+            "status": 200,
+            "dispatch": {
+              "attempt_id": "9f068d35-967f-4346-90d4-473fbc33971d",
+              "endpoint": "http://127.0.0.1:46401/v1/chat/completions",
+              "model": "account-model",
+              "operation": "chat",
+              "status": "response_received",
+              "status_code": 200,
+              "recorded_at": "2026-10-26T07:44:20.743896Z"
+            }
+          },
+          {
+            "credential_id": 101,
+            "status": 200,
+            "dispatch": {
+              "attempt_id": "dc42f6aa-4ebb-4a82-a16f-aa53e684645d",
+              "endpoint": "http://127.0.0.1:46401/v1/chat/completions",
+              "model": "account-model",
+              "operation": "chat",
+              "status": "response_received",
+              "status_code": 200,
+              "recorded_at": "2026-10-26T07:44:20.839397Z"
+            }
+          }
+        ],
+        "old_missing_receipt": null,
+        "ownership_member": 403,
+        "ownership_mismatch": 404,
+        "stale_generation": 409
+      },
+      "amd64": {
+        "boundary": "disposable SQLite/native TCP/real new Go converter; synthetic admin/upstream; settled history only",
+        "sends": 2,
+        "history": [
+          {
+            "credential_id": 100,
+            "status": 200,
+            "dispatch": {
+              "attempt_id": "da097af7-4e34-4832-a85c-6e2168f0f70e",
+              "endpoint": "http://127.0.0.1:34533/v1/chat/completions",
+              "model": "account-model",
+              "operation": "chat",
+              "status": "response_received",
+              "status_code": 200,
+              "recorded_at": "2026-10-26T07:44:24.413179Z"
+            }
+          },
+          {
+            "credential_id": 101,
+            "status": 200,
+            "dispatch": {
+              "attempt_id": "df05cab1-686b-440c-ad6e-4d5139d946e7",
+              "endpoint": "http://127.0.0.1:34533/v1/chat/completions",
+              "model": "account-model",
+              "operation": "chat",
+              "status": "response_received",
+              "status_code": 200,
+              "recorded_at": "2026-10-26T07:44:24.518606Z"
+            }
+          }
+        ],
+        "old_missing_receipt": null,
+        "ownership_member": 403,
+        "ownership_mismatch": 404,
+        "stale_generation": 409
+      }
+    },
+    "boundary": "actualUvicorn+SQLite+newGoconverter+HTTPupstream fixture; syntheticadmin/providerdata",
+    "archive": "/Users/pieroot/code/lumen-admin-fixes/openspec/changes/archive/2026-10-26-provider-key-relay-history"
+  },
+  "browser": {
+    "pool": {
+      "providerLanding": true,
+      "multipleKeysPreserved": true,
+      "keyPostCount": 1,
+      "historicalDestinationSeparate": true,
+      "unknownOldReceipt": true,
+      "selectedPoolPolicy": "explicit",
+      "selectedCredential": 102,
+      "snapshot": {
+        "section": "providers",
+        "calls": [
+          {
+            "path": "/api/v1/chat/admin/providers",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/models",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/billing",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/1/accounts",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/1/accounts/11/credentials",
+            "method": "POST",
+            "query": {}
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/1/accounts",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/models",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/billing",
+            "method": "GET",
+            "query": {
+              "refresh": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/1/accounts/11/credentials/102/relays",
+            "method": "GET",
+            "query": {
+              "limit": "10",
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/1/accounts/11/credentials/102/relays",
+            "method": "GET",
+            "query": {
+              "limit": "10",
+              "before_id": "99",
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/1",
+            "method": "PATCH",
+            "query": {}
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/1/accounts",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/models",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/billing",
+            "method": "GET",
+            "query": {
+              "refresh": "true"
+            }
+          }
+        ],
+        "models": [
+          {
+            "id": 10,
+            "provider_id": 1,
+            "model_name": "registered-base",
+            "api_model_name": "registered-base",
+            "api_provider": "fixture",
+            "display_name": "Registered model",
+            "sort_order": 0,
+            "is_active": true,
+            "model_kind": "text",
+            "media_pricing": null,
+            "is_title_model": false,
+            "is_memory_model": false,
+            "input_price_per_million": "1",
+            "output_price_per_million": "2",
+            "effective_input_price_per_million": "1",
+            "effective_output_price_per_million": "2",
+            "effective_price_source": "manual",
+            "cache_read_price_per_million": null,
+            "cache_write_price_per_million": null,
+            "cache_write_1h_price_per_million": null,
+            "models_dev_model_id": null,
+            "price_source": "manual",
+            "capabilities": null,
+            "effective_capabilities": null
+          }
+        ],
+        "accounts": [
+          {
+            "id": 11,
+            "provider_id": 1,
+            "name": "Production account",
+            "is_active": true,
+            "priority": 0,
+            "weight": 1,
+            "allowed_model_ids": null,
+            "allowed_capabilities": null,
+            "quota_group": null,
+            "credentials": [
+              {
+                "id": 101,
+                "account_id": 11,
+                "name": "Key A",
+                "auth_mode": "api_key",
+                "generation": 0,
+                "is_active": true,
+                "priority": 0,
+                "weight": 1,
+                "api_key_configured": true,
+                "api_key_source": "database",
+                "api_key_env": null,
+                "subscription_status": "disconnected",
+                "subscription_expires_at": null,
+                "allowed_model_ids": null,
+                "allowed_capabilities": null,
+                "expires_at": null,
+                "cooldown_until": null
+              },
+              {
+                "id": 102,
+                "account_id": 11,
+                "name": "Key B",
+                "auth_mode": "api_key",
+                "generation": 0,
+                "is_active": true,
+                "priority": 0,
+                "weight": 1,
+                "api_key_configured": true,
+                "api_key_source": "database",
+                "api_key_env": null,
+                "subscription_status": "disconnected",
+                "subscription_expires_at": null,
+                "allowed_model_ids": null,
+                "allowed_capabilities": null,
+                "expires_at": null,
+                "cooldown_until": null
+              }
+            ]
+          }
+        ],
+        "scenario": "success"
+      },
+      "exactKeyProbe": true,
+      "probeSnapshot": {
+        "section": "providers",
+        "calls": [
+          {
+            "path": "/api/v1/chat/admin/providers",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/models",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/billing",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/1/accounts",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/1/accounts/11/credentials",
+            "method": "POST",
+            "query": {}
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/1/accounts",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/models",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/billing",
+            "method": "GET",
+            "query": {
+              "refresh": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/1/accounts/11/credentials/102/relays",
+            "method": "GET",
+            "query": {
+              "limit": "10",
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/1/accounts/11/credentials/102/relays",
+            "method": "GET",
+            "query": {
+              "limit": "10",
+              "before_id": "99",
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/1",
+            "method": "PATCH",
+            "query": {}
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/1/accounts",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/models",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/billing",
+            "method": "GET",
+            "query": {
+              "refresh": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/models",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/1/accounts/11/credentials/102/probe",
+            "method": "POST",
+            "query": {}
+          }
+        ],
+        "models": [
+          {
+            "id": 10,
+            "provider_id": 1,
+            "model_name": "registered-base",
+            "api_model_name": "registered-base",
+            "api_provider": "fixture",
+            "display_name": "Registered model",
+            "sort_order": 0,
+            "is_active": true,
+            "model_kind": "text",
+            "media_pricing": null,
+            "is_title_model": false,
+            "is_memory_model": false,
+            "input_price_per_million": "1",
+            "output_price_per_million": "2",
+            "effective_input_price_per_million": "1",
+            "effective_output_price_per_million": "2",
+            "effective_price_source": "manual",
+            "cache_read_price_per_million": null,
+            "cache_write_price_per_million": null,
+            "cache_write_1h_price_per_million": null,
+            "models_dev_model_id": null,
+            "price_source": "manual",
+            "capabilities": null,
+            "effective_capabilities": null
+          }
+        ],
+        "accounts": [
+          {
+            "id": 11,
+            "provider_id": 1,
+            "name": "Production account",
+            "is_active": true,
+            "priority": 0,
+            "weight": 1,
+            "allowed_model_ids": null,
+            "allowed_capabilities": null,
+            "quota_group": null,
+            "credentials": [
+              {
+                "id": 101,
+                "account_id": 11,
+                "name": "Key A",
+                "auth_mode": "api_key",
+                "generation": 0,
+                "is_active": true,
+                "priority": 0,
+                "weight": 1,
+                "api_key_configured": true,
+                "api_key_source": "database",
+                "api_key_env": null,
+                "subscription_status": "disconnected",
+                "subscription_expires_at": null,
+                "allowed_model_ids": null,
+                "allowed_capabilities": null,
+                "expires_at": null,
+                "cooldown_until": null
+              },
+              {
+                "id": 102,
+                "account_id": 11,
+                "name": "Key B",
+                "auth_mode": "api_key",
+                "generation": 0,
+                "is_active": true,
+                "priority": 0,
+                "weight": 1,
+                "api_key_configured": true,
+                "api_key_source": "database",
+                "api_key_env": null,
+                "subscription_status": "disconnected",
+                "subscription_expires_at": null,
+                "allowed_model_ids": null,
+                "allowed_capabilities": null,
+                "expires_at": null,
+                "cooldown_until": null
+              }
+            ]
+          }
+        ],
+        "scenario": "success"
+      },
+      "missingNativeExplicitUnavailable": true
+    },
+    "models": {
+      "initialCreateAbsent": {
+        "createAbsent": true,
+        "manualAbsent": true,
+        "dialogCount": 0
+      },
+      "manual": {
+        "path": "/api/v1/chat/admin/models",
+        "method": "POST",
+        "query": {},
+        "body": {
+          "provider_id": 1,
+          "model_name": "manual-new-model",
+          "display_name": null,
+          "model_kind": "text",
+          "input_price_per_million": "1.25",
+          "output_price_per_million": "5",
+          "cache_read_price_per_million": "0"
+        }
+      },
+      "discovered": {
+        "path": "/api/v1/chat/admin/models",
+        "method": "POST",
+        "query": {},
+        "body": {
+          "provider_id": 2,
+          "model_name": "remote-second-custom-id",
+          "model_kind": "text",
+          "display_name": "Remote second",
+          "input_price_per_million": "2",
+          "output_price_per_million": "8",
+          "is_active": true
+        }
+      },
+      "onlySelectedCandidateCreated": true,
+      "singleModal": true,
+      "snapshot": {
+        "section": "models",
+        "calls": [
+          {
+            "path": "/api/v1/chat/admin/providers",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/models",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/billing",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/models",
+            "method": "POST",
+            "query": {},
+            "body": {
+              "provider_id": 1,
+              "model_name": "manual-new-model",
+              "display_name": null,
+              "model_kind": "text",
+              "input_price_per_million": "1.25",
+              "output_price_per_million": "5",
+              "cache_read_price_per_million": "0"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/models",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/billing",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/2/available-models",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/models",
+            "method": "POST",
+            "query": {},
+            "body": {
+              "provider_id": 2,
+              "model_name": "remote-second-custom-id",
+              "model_kind": "text",
+              "display_name": "Remote second",
+              "input_price_per_million": "2",
+              "output_price_per_million": "8",
+              "is_active": true
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/models",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          },
+          {
+            "path": "/api/v1/chat/admin/providers/billing",
+            "method": "GET",
+            "query": {
+              "cache": "true"
+            }
+          }
+        ],
+        "models": [
+          {
+            "id": 10,
+            "provider_id": 1,
+            "model_name": "registered-base",
+            "api_model_name": "registered-base",
+            "api_provider": "fixture",
+            "display_name": "Registered model",
+            "sort_order": 0,
+            "is_active": true,
+            "model_kind": "text",
+            "media_pricing": null,
+            "is_title_model": false,
+            "is_memory_model": false,
+            "input_price_per_million": "1",
+            "output_price_per_million": "2",
+            "effective_input_price_per_million": "1",
+            "effective_output_price_per_million": "2",
+            "effective_price_source": "manual",
+            "cache_read_price_per_million": null,
+            "cache_write_price_per_million": null,
+            "cache_write_1h_price_per_million": null,
+            "models_dev_model_id": null,
+            "price_source": "manual",
+            "capabilities": null,
+            "effective_capabilities": null
+          },
+          {
+            "id": 100,
+            "provider_id": 1,
+            "model_name": "manual-new-model",
+            "api_model_name": "registered-base",
+            "api_provider": "fixture",
+            "display_name": null,
+            "sort_order": 0,
+            "is_active": true,
+            "model_kind": "text",
+            "media_pricing": null,
+            "is_title_model": false,
+            "is_memory_model": false,
+            "input_price_per_million": "1.25",
+            "output_price_per_million": "5",
+            "effective_input_price_per_million": "1.25",
+            "effective_output_price_per_million": "5",
+            "effective_price_source": "manual",
+            "cache_read_price_per_million": "0",
+            "cache_write_price_per_million": null,
+            "cache_write_1h_price_per_million": null,
+            "models_dev_model_id": null,
+            "price_source": "manual",
+            "capabilities": null,
+            "effective_capabilities": null
+          },
+          {
+            "id": 101,
+            "provider_id": 2,
+            "model_name": "remote-second-custom-id",
+            "api_model_name": "registered-base",
+            "api_provider": "fixture",
+            "display_name": "Remote second",
+            "sort_order": 0,
+            "is_active": true,
+            "model_kind": "text",
+            "media_pricing": null,
+            "is_title_model": false,
+            "is_memory_model": false,
+            "input_price_per_million": "2",
+            "output_price_per_million": "8",
+            "effective_input_price_per_million": "2",
+            "effective_output_price_per_million": "8",
+            "effective_price_source": "manual",
+            "cache_read_price_per_million": null,
+            "cache_write_price_per_million": null,
+            "cache_write_1h_price_per_million": null,
+            "models_dev_model_id": null,
+            "price_source": "manual",
+            "capabilities": null,
+            "effective_capabilities": null
+          }
+        ],
+        "accounts": [
+          {
+            "id": 11,
+            "provider_id": 1,
+            "name": "Production account",
+            "is_active": true,
+            "priority": 0,
+            "weight": 1,
+            "allowed_model_ids": null,
+            "allowed_capabilities": null,
+            "quota_group": null,
+            "credentials": [
+              {
+                "id": 101,
+                "account_id": 11,
+                "name": "Key A",
+                "auth_mode": "api_key",
+                "generation": 0,
+                "is_active": true,
+                "priority": 0,
+                "weight": 1,
+                "api_key_configured": true,
+                "api_key_source": "database",
+                "api_key_env": null,
+                "subscription_status": "disconnected",
+                "subscription_expires_at": null,
+                "allowed_model_ids": null,
+                "allowed_capabilities": null,
+                "expires_at": null,
+                "cooldown_until": null
+              }
+            ]
+          }
+        ],
+        "scenario": "success"
+      },
+      "unknownWriteReopenBlocked": true
+    },
+    "responsive": {
+      "conditions": 378,
+      "failures": 0,
+      "widths": [
+        390,
+        767,
+        768,
+        820,
+        1023,
+        1024,
+        1440
+      ],
+      "locales": [
+        "ko",
+        "en",
+        "ja",
+        "zh-CN",
+        "sw",
+        "nb",
+        "ms",
+        "vi",
+        "bn"
+      ],
+      "themes": [
+        "dark",
+        "light"
+      ],
+      "stages": [
+        "manual",
+        "discovered-review",
+        "provider-key-history"
+      ]
+    }
+  },
+  "checks": {
+    "focusedFrontend": {
+      "passed": 157,
+      "files": 7
+    },
+    "bffContracts": 58,
+    "namedLumenPassed": true,
+    "svelte": {
+      "errors": 0,
+      "warnings": 16,
+      "files": 2779,
+      "artifact": "artifact://632"
+    },
+    "locale": {
+      "errors": 0,
+      "warnings": 37,
+      "namespaces": 50,
+      "messages": 11512,
+      "hardCodedKorean": 0,
+      "files": 1216
+    },
+    "detector": [],
+    "frontendRuntime": {
+      "canonicalCompose": true,
+      "arm64": {
+        "processArch": "arm64",
+        "health": 200,
+        "login": 200
+      },
+      "amd64": {
+        "processArch": "x64",
+        "health": 200,
+        "login": 200
+      },
+      "privateConfigMounts": 0,
+      "ownedContainersRemoved": true,
+      "boundary": "Actual built Node HTTP; modified authenticated UI flows qualified separately by source-compiled synthetic browser."
+    },
+    "nativeImagesExecuted": {
+      "arm64": {
+        "uname": "aarch64",
+        "converter": "linux/arm64",
+        "apiAndWorker": true
+      },
+      "amd64": {
+        "uname": "x86_64",
+        "converter": "linux/amd64",
+        "apiAndWorker": true
+      }
+    },
+    "nativeFullContract": {
+      "passed": false,
+      "actualCanonicalRunner": true,
+      "boundary": "Container contract run; root suite stopped before SDK/lint",
+      "passedCases": 4024,
+      "failedCases": 4,
+      "errors": 12,
+      "deselected": 384,
+      "artifact": "artifact://685",
+      "failures": [
+        "test_chat_graph_v2.py::test_v2_graph_interrupts_before_external_mutation_dispatch[expired] (preexisting failing boundary)",
+        "container lacks git/uv/lumen.conf.example required by root repository tooling tests; no native history/transport regression failed"
+      ],
+      "note": "Not a green full-service gate. Task-focused233+consumer322 and actual newGo API receipts passed.",
+      "exactFailedSelectors": [
+        "tests/test_architecture_guard.py::test_digest_is_independent_of_commit_metadata_and_checkout_location",
+        "tests/test_chat_graph_v2.py::test_v2_graph_interrupts_before_external_mutation_dispatch[expired]",
+        "tests/test_config_deployment.py::test_shipped_toml_example_preserves_disabled_runtime_and_settings_sections",
+        "tests/test_kolla_assets.py::test_root_wheel_contains_kolla_shared_data"
+      ],
+      "errorsScope": "12 tests/test_architecture_guard.py errors; missing container Git"
+    },
+    "afterglowGateInitial": {
+      "passed": false,
+      "sourceSha256": "353191b037ca6e5c17696db805c8c410735ee6ba8bce2a8b033f9e5a2283fefe",
+      "sourceFiles": 3500,
+      "backend": {
+        "passed": 9850,
+        "skipped": 95,
+        "failed": 1
+      },
+      "failure": "tests/test_native_vm.py::test_real_signal_stops_graceful_and_stubborn_children[2] subprocess.TimeoutExpired",
+      "artifact": "artifact://675",
+      "note": "Unrelated existing native supervisor; no timeout/test assertions changed to hide it."
+    },
+    "afterglowSupervisorFocusedAfter": {
+      "passed": 2,
+      "artifact": "artifact://693",
+      "note": "No supervisor source/test changes. Initial SIGINT timeout remains an intermittent verification risk; do not call it fixed."
+    },
+    "nativeSdk": {
+      "passed": 143,
+      "ruffPassed": true
+    },
+    "finalAfterglowGate": {
+      "passed": true,
+      "backend": {
+        "passed": 9851,
+        "skipped": 95
+      },
+      "frontend": {
+        "files": 450,
+        "passed": 5334
+      },
+      "contracts": 183,
+      "functional": {
+        "passed": 167,
+        "deselected": 33
+      },
+      "ruffFiles": 739,
+      "artifact": "artifact://697",
+      "note": "Initial unrelated supervisor SIGINT timeout and migrated stale nav labels retained as historical failures; final clean gate passed without weakening supervisor assertions."
+    }
+  },
+  "preservation": {
+    "sharedGitIndex": "untouched/staged0",
+    "nativeOriginalCheckout": "untouched /Users/pieroot/code/lumen",
+    "nativeTaskCheckout": "/Users/pieroot/code/lumen-admin-fixes dev",
+    "sharedConfigDbIamWrites": 0,
+    "commitPushDeploy": false,
+    "peerWork": "Preserved concurrent isolated OIDC diagnostic and private manager-projection filter; source integration snapshot includes those peers",
+    "ownedQaResourcesCleaned": true,
+    "finalSharedStatus": {
+      "branch": "dev...origin/dev",
+      "staged": 0,
+      "unstaged": 348,
+      "untracked": 88,
+      "note": "Includes concurrent/user work; counts are not task attribution."
+    },
+    "finalNativeStatus": {
+      "branch": "dev",
+      "staged": 0,
+      "unstaged": 21,
+      "untracked": 9
+    },
+    "snapshotParity": {
+      "knownPublicInputs": 5683,
+      "postFreezeDifferences": [
+        {
+          "path": "ARCHITECTURE.md",
+          "kind": "bytes"
+        },
+        {
+          "path": "CHANGELOG.md",
+          "kind": "bytes"
+        },
+        {
+          "path": "backend/app/api/common/dashboard.py",
+          "kind": "bytes"
+        },
+        {
+          "path": "backend/app/main.py",
+          "kind": "bytes"
+        },
+        {
+          "path": "backend/app/notion_worker.py",
+          "kind": "bytes"
+        },
+        {
+          "path": "backend/app/services/cinder.py",
+          "kind": "bytes"
+        },
+        {
+          "path": "backend/app/services/keystone.py",
+          "kind": "bytes"
+        },
+        {
+          "path": "backend/app/services/mcp_control_plane/connection.py",
+          "kind": "bytes"
+        },
+        {
+          "path": "backend/app/services/openstack_inventory.py",
+          "kind": "bytes"
+        },
+        {
+          "path": "backend/tests/test_auth_endpoints.py",
+          "kind": "bytes"
+        },
+        {
+          "path": "backend/tests/test_auth_login_proof.py",
+          "kind": "bytes"
+        },
+        {
+          "path": "backend/tests/test_login_native_operation.py",
+          "kind": "bytes"
+        },
+        {
+          "path": "backend/tests/test_notion.py",
+          "kind": "bytes"
+        },
+        {
+          "path": "backend/tests/test_notion_worker.py",
+          "kind": "bytes"
+        },
+        {
+          "path": "backend/tests/test_openstack_inventory.py",
+          "kind": "bytes"
+        },
+        {
+          "path": "docs/api/auth.md",
+          "kind": "bytes"
+        },
+        {
+          "path": "docs/api/volumes.md",
+          "kind": "bytes"
+        },
+        {
+          "path": "docs/testing.md",
+          "kind": "bytes"
+        },
+        {
+          "path": "scripts/test-target.js",
+          "kind": "bytes"
+        }
+      ],
+      "note": "Lumen and cross-home Groups implementation inputs match the qualified frozen snapshot; later unrelated OpenStack/auth/notion/test-target changes are preserved and NOT claimed qualified by this gate."
+    }
+  },
+  "limits": [
+    "Settled usage history, not all failed/unsettled sends or live connection monitoring",
+    "Historical missing receipts remain null; no current-config attribution",
+    "Current installed local Lumen0.6.9 has no account/probe routes; coordinated reconciled native release+schema+API/worker/converter cutover still required",
+    "Native account027 clashes with published Kubernetes027; no appliedSQL/checksum changes or migration replay",
+    "Actual paid provider/OAuth/human-cloud and fullworker lifecycle not exercised",
+    "Arbitrary operatorconfigured endpoint path must not contain secrets; userinfo/query/fragment stripped",
+    "PowerShell runtime absent; code index unavailable"
+  ],
+  "images": {
+    "frontend": {
+      "arm64": "sha256:fd9250f807cffe7f6a701a6be4ea15b1b6841dbf6717569c4a93e23309866af7",
+      "amd64": "sha256:3144efcf872a7532ca2d9976b543a605fbdf1c9b9041066005e03965040cf533"
+    },
+    "nativeApi": {
+      "arm64": "sha256:c6cfa6b688060b43ddc883d7edc19144818cc454000c1fdc4089d6649d28894e",
+      "amd64": "sha256:2cf4988e806964e7c29ed51dd402ef1ac00a217b800ffceabd671f3f63862222"
+    },
+    "nativeWorker": {
+      "arm64": "sha256:e5ed12d87f7d72a828528cb37c146f88070d7817f33758e5eac841ef897b66e3",
+      "amd64": "sha256:39003730428c961ef92c54b4bcba499ef3a50202e085f899fef9ac056fa30546"
+    },
+    "nativeTest": {
+      "arm64": "sha256:f91e49566ce1b1805f06b2d9f047bb2cc224448095efec690e980900ae50191c",
+      "amd64": "sha256:e98921c1c40e8802fc45a2294f944c433ee4ed903e59499f6f727bf4d7b39f21"
+    },
+    "note": "Observed immutable image IDs via docker image inspect; test images include dev fixtures, API/worker do not."
+  },
+  "architecture": {
+    "sourceSha256": "e416c676c9dfa65190da0474841a1f2d96b73828d6963ad2b5f52b3b4ae19bd6",
+    "sourceFiles": 3500,
+    "isolatedSnapshot": "/tmp/afterglow-latency-gate-20261026",
+    "workingGuardPassed": true,
+    "stagedGuardPassed": true,
+    "guardsScope": "Isolated Git snapshot only; shared indexes/review markers untouched"
+  },
+  "archive": "openspec/changes/archive/2026-10-26-refine-admin-lumen-provider-and-model-workflows"
+}

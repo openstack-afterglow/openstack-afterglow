@@ -12,12 +12,14 @@
 		deletingId,
 		refreshing,
 		onDelete,
+		canDelete,
 		arrivals = createArrivals(),
 	}: {
 		containers: SwiftContainer[];
 		deletingId: string | null;
 		refreshing: boolean;
-		onDelete: (name: string) => Promise<void>;
+		onDelete: (container: SwiftContainer) => Promise<void>;
+		canDelete: (container: SwiftContainer) => boolean;
 		arrivals?: ReturnType<typeof createArrivals>;
 	} = $props();
 
@@ -25,12 +27,12 @@
 
 <ResponsiveTable>
  {#snippet cards()}
-  {#each containers as c (c.name)}
+  {#each containers as c (`${c.project_id ?? ''}/${c.name}`)}
    <CompactResourceCard>
     <a href="/admin/object-storage/{encodeURIComponent(c.name)}{c.project_id ? `?project_id=${encodeURIComponent(c.project_id)}` : ''}" class="text-sm font-medium break-all">{c.name}</a>
     <div class="flex flex-wrap gap-2 text-xs">{#if c.is_quarantine}<span class="text-state-warning-text" title={t('buckets.row.quarantineHelp')}>{t('buckets.row.quarantine')}</span>{/if}{#if c.is_trash}<span class="text-ink-2" title={t('buckets.row.trashHelp')}>{t('buckets.row.trash')}</span>{/if}{#if c.is_deleted}<span class="text-state-danger-text" title={t('buckets.row.deletedHelp')}>{t('buckets.row.deleted')}</span>{/if}</div>
     <p class="text-xs text-ink-2 break-all">{t('buckets.table.project')}: {c.project_name || c.project_id?.slice(0, 8) || '—'}</p><p class="text-xs text-ink-2">{t('buckets.table.objectCount')}: {c.count} · {t('buckets.table.capacity')}: {formatStorage(Math.round(c.bytes / 1073741824))}</p>
-    {#snippet actions()}<button onclick={() => onDelete(c.name)} disabled={deletingId === c.name} class="text-xs text-state-danger-text disabled:text-ink-3">{deletingId === c.name ? t('buckets.row.deleting') : t('buckets.row.delete')}</button>{/snippet}
+    {#snippet actions()}<button onclick={() => { if (canDelete(c)) onDelete(c); }} disabled={!canDelete(c) || deletingId === `${c.project_id ?? ''}/${c.name}`} class="text-xs text-state-danger-text disabled:text-ink-3">{deletingId === `${c.project_id ?? ''}/${c.name}` ? t('buckets.row.deleting') : t('buckets.row.delete')}</button>{/snippet}
    </CompactResourceCard>
   {/each}
  {/snippet}
@@ -46,9 +48,9 @@
 			</tr>
 		</thead>
 		<tbody>
-			{#each containers as c (c.name)}
-				{@const entrance = arrivals.next(c.name)}
-				<BucketRow container={c} {deletingId} {onDelete} {entrance} />
+			{#each containers as c (`${c.project_id ?? ''}/${c.name}`)}
+				{@const entrance = arrivals.next(`${c.project_id ?? ''}/${c.name}`)}
+				<BucketRow container={c} {deletingId} {onDelete} {canDelete} {entrance} />
 			{/each}
 		</tbody>
 	</table>

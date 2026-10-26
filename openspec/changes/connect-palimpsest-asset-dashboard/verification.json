@@ -1,0 +1,46 @@
+{
+  "change": "connect-palimpsest-asset-dashboard",
+  "status": "implemented-awaiting-shared-integration-gate",
+  "verified_at": "2026-10-26",
+  "openspec_validation": "openspec validate connect-palimpsest-asset-dashboard --strict --no-interactive passed after adding the missing normative delta; archive remains blocked by the shared integration gate.",
+  "scope": "Local source/API/dashboard integration. No deployment, publication, commit, push, tag, operational schema or IAM change.",
+  "proof_root": "~/.local/share/afterglow-proofs/palimpsest-asset-dashboard-20261025/",
+  "final_frozen_source": {
+    "source_sha256": "a2d22e411b513e35fd21036335b862958a911aa2426f23d008e5041ba062eed3",
+    "files": 3497,
+    "boundary": "Public working-source snapshot; includes preexisting and concurrent WIP. Shared source outside Palimpsest was not certified by this task. No isolated diagnostic change was applied to either shared checkout."
+  },
+  "passed": {
+    "complete_palimpsest_target": {"backend": "512 passed", "frontend": "10 files / 260 passed", "log": "palimpsest-expanded-target-final.log", "coverage": "Includes src/routes/admin/libraries/__tests__ in addition to native/admin/consumer panels, API and controllers; target-manifest validation passed. Only the selector script was copied into the frozen snapshot for this final expanded run."},
+    "mariadb_functional_target": {"result": "167 passed / 33 deselected", "catalog_test": "test_publication_withdrawal_wins_before_locked_consume_snapshot PASSED", "log": "functional-mariadb-full-db-target.log", "isolation": "afterglow-palimpsest-asset-final-db; tmpfs MariaDB11.4/PostgreSQL16/Redis7; three containers and network removed by canonical runner"},
+    "backend_contracts": {"result": "182 passed", "log": "backend-contracts-frozen.log"},
+    "owned_python_lint_format": {"result": "25 affected files clean", "log": "final-owned-python-lint-format.log"},
+    "post_format_regression": {"result": "209 passed", "log": "catalog-post-lint-regressions.log"},
+    "actual_http": {"result": "POST 202 creating -> GET active -> DELETE 200 -> GET deleted; server absent, exact server/port/volume deletion receipts, rules/ports/volumes empty", "log": "caller-cloud-http-post-lint.log", "earlier_explicit_server_receipt": "caller-cloud-http-server-deleted.log", "boundary": "Actual Uvicorn TCP/SQL/fakeredis journal/installed SDK/provider HTTP; synthetic identity/policy/quota/provider, not a real cloud VM"},
+    "browser": "Compiled Chromium admin/consumer; dark/light and mobile/tablet/desktop; document overflow0; evidence-only provenance/ancestors, exact-digest CLI capability gate, one cloud POST, pending receipt across tabs, independent failures and continued empty candidate pages.",
+    "locale": "0 errors / 37 preexisting key-order warnings / 11465 messages",
+    "ui_detector": "exit0, four changed UI paths; no automatic hook execution claimed",
+    "native_hub": {"result": "710 passed / 2 skipped", "log": "native-hub-final.log"},
+    "native_cli": {"original_core_result": "2046 passed / 2 skipped / 27 failed (ansible executable PATH)", "original_log": "native-core-cli-root-env.log", "missing_cases_rerun": "27 passed by subagent with real existing ansible-playbook", "rerun_log": "native-kolla-missing-27-real-ansible.log", "native_receipt": "../palimpsest/openspec/changes/archive/2026-10-25-add-dashboard-asset-catalog/verification.md"},
+    "environment_restoration": "uv sync --frozen --extra dev completed; afterglow-crypto direct_url points to canonical /Users/pieroot/code/afterglow/services/afterglow-crypto; pytest and ruff importable",
+    "shared_index_preservation": "Afterglow5589tracked/0staged-delta. Native505tracked/6preexisting-staged-delta: CHANGELOG.md, oci_image.py, oci_source.py, registry_intake.py, test_oci_source.py, test_registry_intake.py. No shared index reset/add performed."
+  },
+  "integration_blocker": {
+    "final_gate": "112 failed / 9514 passed / 95 skipped; gate-final-frozen.log",
+    "failed_backend_files": {"test_admin_user_deletion.py": 66, "test_admin_resource_details.py": 27, "test_admin_identity_domain_scope.py": 12, "test_enrollment_policy.py": 6, "test_admin_volume_transfer.py": 1},
+    "authority_bisect": "Removing only this task's projectless exception leaves representative enrollment tests5failed. Keeping the exception and restoring only the independently changed require_admin guard makes them5passed. Across all five failing files the diagnostic guard restoration yields252passed/1failed; remaining test_admin_volume_transfer::test_native_palimpsest_marker_is_conservative_blocker returns201 vs409. Diagnostic copy only; shared guard and transfer code were not changed.",
+    "bisect_receipts": ["authority-bisect-without-palimpsest-exception.log", "authority-bisect-original-guard-with-palimpsest.log", "authority-bisect-five-failing-files.log"],
+    "all_failed_ids": "final-external-gate-failures.json",
+    "full_frontend": "frontend-full-frozen.log:40failed/5232passed,5failed files/442passed files,1unhandled error. Failures in client.authRecovery,WaygateWorkspacePolling,vmCreateStoreRealClient,AdminReadiness,hypervisors/removal; complete Palimpsest selector passes.",
+    "attribution_limit": "Full-frontend failures other than the separately reproduced Waygate cases remain unattributed, not proven unrelated. The remaining volume-transfer marker201vs409 diagnostic failure is also an unresolved integration interaction, not claimed unrelated to Palimpsest.",
+    "global_lint": "final-format-check.log:preexisting/concurrent tests/test_admin_volume_transfer.py F811; affected25files pass scoped lint/format.",
+    "archive": "Not archived while the shared integration gate is failing."
+  },
+  "runtime_limits": [
+    "Matching Hub/BFF/client release and deployment required; bundle unpack is not claimed available in published0.3.5.",
+    "All VM-delete routes require initialized readable LayerConsume ownership receipts; unavailable503, known marker mismatch409, foreign owner404.",
+    "No human Keystone login, actual hypervisor/guest boot or live OpenStack resource allocation.",
+    "Docker Hub federated search deferred.",
+    "One earlier unit-lane hang was not reproduced; its cause remains unknown."
+  ]
+}

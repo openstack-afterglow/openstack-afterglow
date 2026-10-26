@@ -1,6 +1,8 @@
 import adapter from '@sveltejs/adapter-node';
 import { relative, sep } from 'node:path';
 
+const impeccableLiveDev = process.env.NODE_ENV === 'development' ? ['http://localhost:8400'] : [];
+
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
 	compilerOptions: {
@@ -19,7 +21,7 @@ const config = {
 			config: (config) => { config.include.push('../src/**/*.tsx'); }
 		},
 		// SvelteKit stamps its generated scripts with a per-response nonce (hashes when prerendered).
-		csp: { mode: 'auto', directives: { 'script-src': ['self'] } }
+		csp: { mode: 'auto', directives: { 'script-src': ['self', ...impeccableLiveDev] } }
 	}
 };
 

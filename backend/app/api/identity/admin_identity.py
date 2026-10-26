@@ -13,12 +13,12 @@ import asyncio
 import logging
 
 from anyio import CancelScope
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.common.errors import public_service_error
-from app.api.deps import CacheMode, cache_mode, get_admin_os_conn, get_os_conn, get_token_info, require_admin
+from app.api.deps import CacheMode, cache_mode, get_admin_os_conn, get_token_info, require_admin
 from app.database import get_session
 from app.services import (
     account_identity,
@@ -87,9 +87,12 @@ def _domain_object(conn, domain_id: str, kind: str, object_id: str):
 async def _selected_objects(
     request: Request,
     domain_id: str | None = Query(None, min_length=1),
-    conn=Depends(get_os_conn),
+    conn=Depends(get_admin_os_conn),
 ):
     """Fresh native boundaries before any object read, mutation or cache lookup.
+
+    Both these checks and the handler use the verified fixed admin-project
+    executor; the caller's Personal member transport cannot read this directory.
 
     Single-object credential/profile routes remain identity-domain bound.
     Membership relations anchor the selected domain to the target project/group;
@@ -181,7 +184,7 @@ async def list_users(
     limit: int = Query(default=20, ge=1, le=100),
     marker: str | None = Query(default=None),
     domain_id: str = Query(..., min_length=1),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """사용자 목록 (페이지네이션).
 
@@ -238,7 +241,7 @@ async def list_users(
 
 @router.get("/users/stats", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def get_users_stats(
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     domain_id: str = Query(..., min_length=1),
 ):
     """사용자 현황 집계 통계 (전체/활성/비활성 수). 통계 카드용."""
@@ -267,7 +270,7 @@ async def get_users_activity(
     limit: int = Query(50, ge=1, le=200),
     before_id: int | None = Query(None),
     domain_id: str = Query(..., min_length=1),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """사용자 변경 로그 (생성·수정·삭제, 시간 역순). 변경 로그 카드용."""
 
@@ -285,7 +288,7 @@ async def get_users_activity(
 @router.post("/users", dependencies=[Depends(require_admin)], status_code=201)
 async def create_user(
     req: CreateUserRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     token_info: dict = Depends(get_token_info),
     session: AsyncSession = Depends(get_session),
 ):
@@ -302,7 +305,7 @@ async def create_user(
 async def update_user(
     user_id: str,
     req: UpdateUserRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
     """사용자 수정."""
@@ -410,7 +413,7 @@ async def delete_user(
     """Delete one exact native account; never cascade to projects or resources."""
     try:
         async with identity_roles._graph_lock(conn) as lease:
-            # Do not use _selected_objects: its caller may be a Personal member.
+            # Keep exact-home proof inside the mutation lease for deletion.
             await asyncio.to_thread(_selected_domain, conn, domain_id)
             target = await asyncio.to_thread(_domain_object, conn, domain_id, "user", user_id)
             ks = await asyncio.to_thread(keystone._get_admin_ks_client)
@@ -513,7 +516,7 @@ async def list_user_sessions_admin(user_id: str):
 @router.get("/users/{user_id}/permissions", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def get_user_permissions_admin(
     user_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     domain_id: str | None = Query(None, min_length=1),
 ):
     """관리자가 사용자별 현재 유효 역할을 실제 project/domain/system 범위로 조회한다."""
@@ -547,7 +550,7 @@ class UnlockAccountRequest(BaseModel):
 async def admin_unlock_account(
     req: UnlockAccountRequest,
     token_info: dict = Depends(get_token_info),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """계정 로그인 잠금 강제 해제 (관리자 전용)."""
     domain = await asyncio.to_thread(_selected_domain, conn, req.domain_id)
@@ -568,7 +571,7 @@ async def admin_unlock_account(
 async def admin_get_lock_status(
     username: str = Query(...),
     domain_id: str = Query(..., min_length=1),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """계정 잠금 상태 조회 (관리자 전용)."""
     domain = await asyncio.to_thread(_selected_domain, conn, domain_id)
@@ -665,7 +668,7 @@ async def list_projects(
     search: str = Query(default=""),
     enabled: bool | None = Query(default=None),
     domain_id: str = Query(..., min_length=1),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     cm: CacheMode = Depends(cache_mode),
 ):
     """Filter and sort the complete inventory before slicing a marker page."""
@@ -721,7 +724,7 @@ async def list_projects(
 @identity_roles._complete_mutation
 async def create_project(
     req: CreateProjectRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     provider_conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
@@ -880,7 +883,7 @@ async def create_project(
 @router.get("/projects/{project_id}", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def get_project(
     project_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """프로젝트 상세 조회."""
 
@@ -912,7 +915,7 @@ async def get_project(
 async def update_project(
     project_id: str,
     req: UpdateProjectRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     provider_conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """프로젝트 수정."""
@@ -962,7 +965,7 @@ async def update_project(
 
 
 async def _settled_project_deletion_call(call, *args):
-    # get_os_conn closes the request connection in finally. Let read-only
+    # get_admin_os_conn closes the request connection in finally. Let read-only
     # workers settle before cancellation unwinds that dependency. In DELETE,
     # cancellation during inspection must never schedule a Keystone mutation.
     worker = asyncio.create_task(asyncio.to_thread(call, *args))
@@ -997,7 +1000,7 @@ def _project_deletion_inventory(conn, project_id):
 @router.get("/projects/{project_id}/deletion-check", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def get_project_deletion_check(
     project_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     provider_conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """Fresh resource proof, never backed by cached counts or quota usage."""
@@ -1012,7 +1015,7 @@ async def get_project_deletion_check(
 )
 async def delete_project(
     project_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     provider_conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """Delete only after fresh complete resource and child-project inspection."""
@@ -1054,7 +1057,7 @@ async def delete_project(
 @router.get("/projects/{project_id}/members", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def list_project_members(
     project_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     domain_id: str | None = Query(None, min_length=1),
 ):
     """프로젝트의 사용자-역할 할당 목록 조회."""
@@ -1247,11 +1250,11 @@ async def update_project_quotas(
 
 @router.get("/groups", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def list_groups(
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     cm: CacheMode = Depends(cache_mode),
     domain_id: str = Query(..., min_length=1),
 ):
-    """전체 그룹 목록, 확인된 생성일 내림차순."""
+    """일반 관리 그룹 목록, 확인된 생성일 내림차순. 내부 manager projection 제외."""
 
     def _list():
 
@@ -1271,6 +1274,8 @@ async def list_groups(
         inventory = await cached_call(
             f"afterglow:admin:groups:{domain_id}", ttl_slow(), _list, enabled=cm.enabled, refresh=cm.refresh
         )
+        # Filter after cache reads too: pre-fix snapshots may contain private groups.
+        inventory = [group for group in inventory if not domain_projects._is_projection_group(group)]
         return await _identity_creation_dates(inventory, "group")
     except Exception as exc:
         raise _identity_error(exc) from exc
@@ -1290,7 +1295,7 @@ class UpdateGroupRequest(BaseModel):
 @router.post("/groups", dependencies=[Depends(require_admin)], status_code=201)
 async def create_group(
     req: CreateGroupRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
     """그룹 생성."""
@@ -1338,7 +1343,7 @@ async def create_group(
 async def update_group(
     group_id: str,
     req: UpdateGroupRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """그룹 수정."""
     domain_projects.assert_projection_attributes(req.model_dump(exclude_none=True))
@@ -1376,7 +1381,7 @@ async def update_group(
 async def delete_group(
     group_id: str,
     token_info: dict = Depends(get_token_info),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     await identity_roles.change_group_membership(conn, token_info, group_id, delete=True)
     await invalidate("afterglow:admin:groups:*")
@@ -1385,7 +1390,7 @@ async def delete_group(
 @router.get("/groups/{group_id}/users", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def list_group_users(
     group_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     domain_id: str | None = Query(None, min_length=1),
 ):
     """그룹 멤버 목록."""
@@ -1416,6 +1421,44 @@ async def list_group_users(
         raise
 
 
+@router.get("/groups/{group_id}/candidates", dependencies=[Depends(require_admin), Depends(_selected_objects)])
+async def list_group_candidates(
+    group_id: str,
+    response: Response,
+    domain_id: str = Query(..., min_length=1),
+    user_domain_id: str = Query(..., min_length=1),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
+):
+    """List-time identity-home candidates; admission revalidates under the graph lease."""
+    response.headers["Cache-Control"] = "no-store, private"
+
+    def _list():
+        ks = keystone._get_admin_ks_client()
+        identity_roles._group_identity_home(ks, group_id, domain_id, user_domain_id)
+        ids = set()
+        items = []
+        for user in ks.users.list(domain=user_domain_id):
+            uid = identity_roles._field(user, "id")
+            if not isinstance(uid, str) or not uid or uid in ids:
+                raise public_service_error(503, "identity_object_unverified")
+            if identity_roles._field(user, "domain_id") != user_domain_id:
+                raise public_service_error(503, "identity_object_unverified")
+            ids.add(uid)
+            if not domain_projects._enabled(user):
+                continue
+            name, email = identity_roles._field(user, "name"), identity_roles._field(user, "email", "")
+            if not isinstance(name, str) or (email is not None and not isinstance(email, str)):
+                raise public_service_error(503, "identity_object_unverified")
+            items.append({"id": uid, "name": name, "email": email or "", "enabled": True, "domain_id": user_domain_id})
+        items.sort(key=lambda item: item["id"])
+        return {"domain_id": domain_id, "user_domain_id": user_domain_id, "items": items}
+
+    try:
+        return await asyncio.to_thread(_list)
+    except Exception as exc:
+        raise _identity_error(exc) from exc
+
+
 @router.put(
     "/groups/{group_id}/users/{user_id}",
     dependencies=[Depends(require_admin), Depends(_selected_objects)],
@@ -1425,9 +1468,18 @@ async def add_user_to_group(
     group_id: str,
     user_id: str,
     token_info: dict = Depends(get_token_info),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
+    user_domain_id: str | None = Query(None, min_length=1),
+    domain_id: str | None = Query(None, min_length=1),
 ):
-    await identity_roles.change_group_membership(conn, token_info, group_id, user_id=user_id)
+    if user_domain_id is not None:
+        if domain_id is None:
+            raise HTTPException(422, "Explicit group admission requires a selected domain")
+        await identity_roles.change_group_membership(
+            conn, token_info, group_id, user_id=user_id, user_domain_id=user_domain_id, domain_id=domain_id
+        )
+    else:
+        await identity_roles.change_group_membership(conn, token_info, group_id, user_id=user_id)
 
 
 @router.delete(
@@ -1439,7 +1491,7 @@ async def remove_user_from_group(
     group_id: str,
     user_id: str,
     token_info: dict = Depends(get_token_info),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     await identity_roles.change_group_membership(conn, token_info, group_id, user_id=user_id, remove=True)
 
@@ -1450,7 +1502,7 @@ async def remove_user_from_group(
 
 
 @router.get("/roles", dependencies=[Depends(require_admin)])
-async def list_roles(conn: openstack.connection.Connection = Depends(get_os_conn)):
+async def list_roles(conn: openstack.connection.Connection = Depends(get_admin_os_conn)):
     """Fresh real implication graph; provider failures must never become an empty list."""
     return await asyncio.to_thread(identity_roles.load_catalog, conn)
 
@@ -1464,7 +1516,7 @@ async def role_presets():
 @router.post("/roles/presets/apply", dependencies=[Depends(require_admin)])
 async def apply_role_presets(
     token_info: dict = Depends(get_token_info),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     return await identity_roles.apply_role_presets(conn, token_info)
 
@@ -1479,7 +1531,7 @@ class AssignRoleRequest(BaseModel):
 async def assign_role(
     req: AssignRoleRequest,
     token_info: dict = Depends(get_token_info),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     return await identity_roles.change_project_assignment(
         conn, token_info, req.project_id, req.role_id, user_id=req.user_id
@@ -1492,7 +1544,7 @@ async def revoke_role(
     project_id: str = Query(...),
     role_id: str = Query(...),
     token_info: dict = Depends(get_token_info),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     return await identity_roles.change_project_assignment(
         conn, token_info, project_id, role_id, user_id=user_id, remove=True
@@ -1509,7 +1561,7 @@ class AssignGroupRoleRequest(BaseModel):
 async def assign_group_role(
     req: AssignGroupRoleRequest,
     token_info: dict = Depends(get_token_info),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     return await identity_roles.change_project_assignment(
         conn, token_info, req.project_id, req.role_id, group_id=req.group_id
@@ -1522,7 +1574,7 @@ async def revoke_group_role(
     project_id: str = Query(...),
     role_id: str = Query(...),
     token_info: dict = Depends(get_token_info),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     return await identity_roles.change_project_assignment(
         conn, token_info, project_id, role_id, group_id=group_id, remove=True
@@ -1560,7 +1612,7 @@ class UpdateRoleRequest(BaseModel):
 async def create_identity_role(
     req: CreateRoleRequest,
     token_info: dict = Depends(get_token_info),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     return await identity_roles.create_role(conn, token_info, req.model_dump(exclude_none=True))
 
@@ -1571,7 +1623,7 @@ async def update_identity_role(
     role_id: str,
     req: UpdateRoleRequest,
     token_info: dict = Depends(get_token_info),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     attrs = req.model_dump(exclude_unset=True)
     if not attrs or any(value is None for value in attrs.values()):
@@ -1583,7 +1635,7 @@ async def update_identity_role(
 async def delete_identity_role(
     role_id: str,
     token_info: dict = Depends(get_token_info),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     return await identity_roles.delete_role(conn, token_info, role_id)
 
@@ -1593,7 +1645,7 @@ async def create_role_implication(
     prior_role_id: str,
     implied_role_id: str,
     token_info: dict = Depends(get_token_info),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     return await identity_roles.change_edge(conn, token_info, prior_role_id, implied_role_id)
 
@@ -1603,7 +1655,7 @@ async def delete_role_implication(
     prior_role_id: str,
     implied_role_id: str,
     token_info: dict = Depends(get_token_info),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     return await identity_roles.change_edge(conn, token_info, prior_role_id, implied_role_id, remove=True)
 
@@ -1687,7 +1739,7 @@ async def _system_admin_change(conn, user_id: str, *, revoke: bool) -> dict:
 async def grant_system_role(
     req: SystemRoleRequest,
     token_info: dict = Depends(get_token_info),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """사용자에게 Keystone system:all admin role 부여."""
     result = await _system_admin_change(conn, req.user_id, revoke=False)
@@ -1708,7 +1760,7 @@ async def grant_system_role(
 async def revoke_system_role(
     req: SystemRoleRequest,
     token_info: dict = Depends(get_token_info),
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """사용자로부터 Keystone system:all admin role 회수 (마지막 유효 관리자 보호)."""
     result = await _system_admin_change(conn, req.user_id, revoke=True)
@@ -1740,7 +1792,7 @@ async def get_security_policy():
 )
 async def sync_monitoring_sg(
     project_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """프로젝트에 Monitoring ingress SG를 idempotent하게 동기화한다. 관리자 전용."""
     from app.config import get_settings
@@ -1781,7 +1833,7 @@ async def sync_monitoring_sg(
 
 @router.get("/identity/summary", dependencies=[Depends(require_admin)])
 async def get_identity_summary(
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """users / projects / roles / groups / domains 카운트 + 최근 변경 요약."""
 

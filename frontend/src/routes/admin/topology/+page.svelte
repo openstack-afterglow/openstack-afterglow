@@ -118,7 +118,7 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				refreshing={ctrl.loading || ctrl.refreshing}
-				onManualRefresh={ctrl.fetchTopology}
+				onManualRefresh={ar.refresh}
 			/>
 		{/snippet}
 	</PageHeader>
@@ -138,6 +138,7 @@
 	{:else if ctrl.data}
 		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4" data-tour="admin-network-canvas">
 			<div data-tour="admin-network-ready">
+			<p class="mb-3 text-xs text-ink-2">{t('domain.ownershipOnly')}</p>
 			{#if view === 'canvas'}
 				<TopologyCanvas
 					data={ctrl.data}
@@ -161,6 +162,7 @@
 					showAll={ctrl.projectFilter == null}
 					arrivalScope="admin"
 					selectedId={topologySelectedId}
+					adminView={true}
 					{onSelectInstance}
 					{onSelectRouter}
 					{onSelectLoadBalancer}
@@ -190,7 +192,7 @@
 
 {#if ctrl.selectedInstanceId}
 	<SlidePanel onClose={() => ctrl.selectedInstanceId = null} ariaLabel={t('topology.instanceDetailLabel')}>
-		<InstanceDetailPanel instanceId={ctrl.selectedInstanceId} adminProjectId={ctrl.data?.instances.find((instance) => instance.id === ctrl.selectedInstanceId)?.project_id ?? null} onClose={() => ctrl.selectedInstanceId = null} showHost={true} />
+		<InstanceDetailPanel instanceId={ctrl.selectedInstanceId} adminMode={true} adminProjectId={ctrl.data?.instances.find((instance) => instance.id === ctrl.selectedInstanceId)?.project_id ?? null} onClose={() => ctrl.selectedInstanceId = null} showHost={true} />
 	</SlidePanel>
 {/if}
 

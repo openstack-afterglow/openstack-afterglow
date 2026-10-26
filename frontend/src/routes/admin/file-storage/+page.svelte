@@ -94,6 +94,7 @@
 		]);
 	});
 
+	$effect(() => () => refresh.dispose());
 	const ar = createAutoRefresh(
 		() => refresh.run(false),
 		{ storageKey: 'admin-file-storage', defaultInterval: 30, intervalOptions: [15, 30, 60], invokeOnMount: false }

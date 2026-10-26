@@ -27,6 +27,15 @@ describe('scoped administrator requests', () => {
 		expect(get(auth).projectId).toBe('workspace');
 	});
 
+	it('filters administrator Swift accounts without applying inventory scope to the consumer list', async () => {
+		setAdminInventoryScope('domain-a', 'project-a');
+		const scoped = createAdminInventoryApi();
+		await scoped.get('/api/v1/admin/object-storage?include_quarantine=true&include_trash=true&include_deleted=true', 'token', undefined);
+		await scoped.get('/api/v1/object-storage', 'token', 'workspace');
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/admin/object-storage?include_quarantine=true&include_trash=true&include_deleted=true&domain_id=domain-a&project_id=project-a', 'token', undefined);
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/object-storage', 'token', 'workspace');
+	});
+
 	it('leaves exact details, directory IAM and mutation targets untouched', async () => {
 		setAdminInventoryScope('domain-a', 'project-a');
 		const scoped = createAdminInventoryApi();

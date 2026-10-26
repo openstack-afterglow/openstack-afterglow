@@ -1,4 +1,10 @@
 {
+	"volumeTransfer.scopeHelp": "Pilih domain dan projek destinasi. Penerimaan menggunakan token projek sasaran anda yang sebenar; pentadbiran sistem tidak memberikan peranan projek. Jika pengesahan ditolak, serahkan ID dan kunci yang dikeluarkan kepada penerima yang dibenarkan.",
+	"volumeTransfer.mode": "Kaedah pemindahan",
+	"volumeTransfer.recover": "Semak pemindahan tertunda volum ini",
+	"volumeTransfer.recoveryHelp": "Kunci tidak boleh diperoleh semula. Jika hilang, batalkan pemindahan tertunda yang disahkan secara jelas sebelum mencipta yang baharu. Tiada pembatalan atau penghantaran semula automatik.",
+	"volumeTransfer.uncertain": "Hasil permintaan tidak diketahui. Ia tidak akan dihantar semula atau dibatalkan secara automatik. Simpan ID dan kunci yang dipaparkan dengan selamat, tutup tetingkap ini, kemudian muat semula volum dan pemindahan tertunda kedua-dua projek.",
+	"volumeTransfer.denied": "Dasar natif atau pengesahan projek sasaran menolak tindakan ini. Pentadbiran sistem tidak menjamin kebenaran menerima. Salin ID dan kunci yang dikeluarkan untuk penerima yang dibenarkan.",
 	"volumeList.filters.nameOrId": "Nama atau ID",
 	"volumeList.filters.minSize": "Saiz minimum (GiB)",
 	"volumeList.filters.maxSize": "Saiz maksimum (GiB)",

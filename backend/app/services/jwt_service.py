@@ -27,18 +27,22 @@ def sign_access(
     project_id: str,
     project_name: str,
     refresh_jti: str,
+    *,
+    expires_at: int | None = None,
 ) -> tuple[str, str, int]:
     """Access JWT 발급.
 
     권한 정보(roles, is_system_admin)는 payload에 포함하지 않는다.
-    매 요청 Keystone live 검증(60s 캐시)으로 결정한다.
+    매 요청 Keystone live 검증으로 결정하며 요청 간 권한 proof를 재사용하지 않는다.
 
+    expires_at bounds issuance by the original browser/native session deadline;
+    it never extends the configured access lifetime.
     Returns:
         (token_str, access_jti, exp_unix_timestamp)
     """
     settings = get_settings()
     now = int(datetime.now(UTC).timestamp())
-    exp = now + settings.jwt_access_ttl
+    exp = min(now + settings.jwt_access_ttl, expires_at) if expires_at is not None else now + settings.jwt_access_ttl
     jti = str(uuid.uuid4())
     payload: dict[str, Any] = {
         "sub": user_id,
@@ -64,15 +68,17 @@ def verify_access(token: str) -> dict:
     return jwt.decode(token, _secret(), algorithms=["HS256"])
 
 
-def sign_refresh(user_id: str) -> tuple[str, str, int]:
+def sign_refresh(user_id: str, *, expires_at: int | None = None) -> tuple[str, str, int]:
     """Refresh JWT 발급.
+
+    expires_at keeps rotation inside the original browser/native session window.
 
     Returns:
         (token_str, refresh_jti, exp_unix_timestamp)
     """
     settings = get_settings()
     now = int(datetime.now(UTC).timestamp())
-    exp = now + settings.jwt_refresh_ttl
+    exp = min(now + settings.jwt_refresh_ttl, expires_at) if expires_at is not None else now + settings.jwt_refresh_ttl
     jti = str(uuid.uuid4())
     payload: dict[str, Any] = {
         "sub": user_id,

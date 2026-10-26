@@ -326,7 +326,9 @@ def _check_scope(project_id, token_info):
         raise HTTPException(status_code=403, detail="Membership changes require the current project")
 
 
-async def _domain_access(project_id, token_info, domain_management=False, user_id=None):
+async def _domain_access(
+    project_id, token_info, domain_management=False, user_id=None, *, _allow_native_admin_removal=False
+):
     """Resolve object boundaries and explicit live domain authority, never token claims."""
     from app.services.domain_scope import assert_domain_resource, domain_context
 
@@ -357,7 +359,12 @@ async def _domain_access(project_id, token_info, domain_management=False, user_i
     if user_id:
         from app.services.domain_iam import protected_user
 
-        if await protected_user(user, domain_id, credentials=False):
+        if await protected_user(
+            user,
+            domain_id,
+            credentials=False,
+            membership_project_id=project_id if _allow_native_admin_removal else None,
+        ):
             raise HTTPException(status_code=403, detail="Privileged accounts are read-only in domain IAM")
     return True
 
@@ -375,8 +382,7 @@ def _direct_ids(rows, user_id):
     return {
         _principal(row, "role")
         for row in rows
-        if _principal(row, "user") == user_id
-        and not identity_roles._field(identity_roles._field(row, "scope", {}), "OS-INHERIT:inherited_to")
+        if _principal(row, "user") == user_id and not _group_ids(row) and not _inherited_assignment(row)
     }
 
 
@@ -554,7 +560,10 @@ async def assignable_roles(project_id, token_info, *, domain_management=False):
     catalog = await _provider_call(identity_roles._trusted_catalog)
     effective = await _provider_call(_assignment_rows, ks, project_id, effective=True)
     access = _authorize(project_id, token_info, effective, catalog, domain_authority=authority)
-    roles = _managed_roles(catalog).values()
+    roles = [
+        *_managed_roles(catalog).values(),
+        *({**row, "area": "legacy", "grade": "admin"} for row in catalog if row["name"].casefold() == "admin"),
+    ]
     return {
         "roles": [
             row
@@ -584,10 +593,12 @@ async def replace_member_roles(
     _mutation=None,
     _before_write=None,
 ):
-    authority = await _domain_access(project_id, token_info, domain_management, user_id)
+    authority = await _domain_access(project_id, token_info, domain_management, None if domain_management else user_id)
     mutation = _using_snapshot(_mutation) if _mutation is not None else _membership_write(project_id)
     async with mutation as (lease, ks, catalog, effective, direct):
-        authority = await _domain_access(project_id, token_info, domain_management, user_id)
+        authority = await _domain_access(
+            project_id, token_info, domain_management, None if domain_management else user_id
+        )
         access = _authorize(project_id, token_info, effective, catalog, domain_authority=authority)
         target = _access(effective, catalog, user_id)
         if not target["roles"] and remove:
@@ -600,15 +611,19 @@ async def replace_member_roles(
         direct_ids = _direct_ids(direct, user_id)
         if not direct_ids <= {row["id"] for row in catalog}:
             raise identity_roles._unavailable("Direct assignment role is absent from the current catalog")
-        current = direct_ids & set(managed)
+        native_admin_ids = {row["id"] for row in catalog if row["name"].casefold() == "admin"}
+        removable = set(managed) | native_admin_ids
+        current = direct_ids & removable
         requested = set(role_ids)
+        if requested & native_admin_ids - direct_ids:
+            raise HTTPException(status_code=422, detail="Native admin project grants are removal-only")
         if len(role_ids) != len(requested) or not requested <= set(managed) | direct_ids:
             raise HTTPException(
                 status_code=422, detail="Select unique safe assignable role IDs; unrelated grants are read-only"
             )
-        # The full direct selection may include immutable existing native/custom
-        # grants. They are neither added nor removed by this managed replacement.
-        desired = requested & set(managed)
+        # Existing direct admin is removal-only; unrelated native/custom grants
+        # remain immutable even when included in the full direct selection.
+        desired = requested & removable
         if additive:
             desired |= current
         from app.services import domain_projects
@@ -628,10 +643,34 @@ async def replace_member_roles(
             # retain their reader baseline. Native member grants remain untouched.
             baseline = _required_project_role(catalog, "project_reader", require_hierarchy=True)
             desired.add(baseline["id"])
+        if domain_management:
+            # Native-admin holders remain protected except for a locked,
+            # exact admin-only revocation with every other grant unchanged.
+            admin_only_removal = (
+                bool(current - desired) and (current - desired) <= native_admin_ids and not (desired - current)
+            )
+            await _domain_access(
+                project_id,
+                token_info,
+                domain_management,
+                user_id,
+                _allow_native_admin_removal=admin_only_removal,
+            )
         for rid in desired - current:
             await _provider_call(domain_projects.assert_manager_assignment, project_id, rid, catalog=catalog, ks=ks)
+        for rid in current - desired:
+            if rid in native_admin_ids and identity_roles._manager_bearing_role(catalog, rid):
+                await _provider_call(
+                    domain_projects.assert_managers_remain,
+                    ks=ks,
+                    catalog=catalog,
+                    project_id=project_id,
+                    role_id=rid,
+                    user_id=user_id,
+                    remove_assignment=True,
+                )
         for rid in desired:
-            if managed[rid]["name"] in _PROJECT_GRADES:
+            if rid in managed and managed[rid]["name"] in _PROJECT_GRADES:
                 _required_project_role(catalog, managed[rid]["name"], require_hierarchy=True)
         protected = {rid for rid, row in managed.items() if row["name"] in {"project_owner", "project_admin"}}
         if not access["is_owner"] and not authority and (desired ^ current) & protected:

@@ -94,7 +94,6 @@
 				&& requestRevision === scopeRevision
 				&& ($auth.token ?? undefined) === requestToken
 				&& ($auth.projectId ?? undefined) === requestProjectId
-				&& !cached
 			) {
 				error = e instanceof ApiError ? t('list.queryFailed', { status: e.status, message: e.message }) : t('list.serverError');
 			}

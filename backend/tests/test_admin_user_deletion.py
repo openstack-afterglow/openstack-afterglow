@@ -119,7 +119,7 @@ def deletion(deletion_store, monkeypatch):
     monkeypatch.setattr(keystone, "_resolve_admin_role_id", lambda: "admin")
     current_admin = MagicMock(return_value=True)
     monkeypatch.setattr(keystone, "_is_system_admin", current_admin)
-    monkeypatch.setattr(domain_scope, "domain_context", lambda *args: {"is_system_admin": True})
+    monkeypatch.setattr(domain_scope, "domain_context", lambda *args, **kwargs: {"is_system_admin": True})
     monkeypatch.setattr(
         keystone,
         "validate_token",

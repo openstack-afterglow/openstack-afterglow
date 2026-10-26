@@ -128,7 +128,7 @@ async def list_domain_members(domain_id: str, response: Response):
     """Membership candidates only; never widen home-domain credential administration."""
     response.headers["Cache-Control"] = "no-store, private"
     try:
-        users = await domain_iam.directory_users(domain_id)
+        users = await domain_iam.directory_users(domain_id, skip_missing=True)
         return {
             "domain_id": domain_id,
             "items": [

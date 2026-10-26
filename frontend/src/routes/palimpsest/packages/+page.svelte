@@ -1,7 +1,7 @@
 <script lang="ts">
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { t } from '$lib/i18n/ns/palimpsest-packages';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
   import { beforeNavigate } from '$app/navigation';
@@ -28,13 +28,18 @@
   import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import HubArtifactsPanel from '$lib/components/palimpsest/HubArtifactsPanel.svelte';
   import PalimpsestLocalGuide from '$lib/components/palimpsest/PalimpsestLocalGuide.svelte';
+  import AssetSearchPanel from '$lib/components/palimpsest/AssetSearchPanel.svelte';
+  import { t as assetText } from '$lib/i18n/ns/palimpsest-assets';
+  import type { AssetIdentity } from '$lib/api/palimpsestAssets';
 
   const selectedIdentity = derived([auth, authReady, projectSwitching, logoutInProgress], ([$auth, ready, switching, loggingOut]): PackageIdentity | null =>
     ready && !switching && !loggingOut && $auth.token && $auth.projectId && $auth.userId
       ? { token: $auth.token, projectId: $auth.projectId, userId: $auth.userId } : null);
-  const controller = createPalimpsestPackagesController(() => get(selectedIdentity), undefined, (leaf) => $serviceCapabilities(leaf), (leaf) => $serviceDenials(leaf));
+  const assetIdentity = $derived<AssetIdentity | null>($auth.token && $auth.projectId && $auth.userId
+    ? { token: $auth.token, projectId: $auth.projectId, userId: $auth.userId, sessionId: $auth.sessionId } : null);
+  let workspace = $state(get(page).url.searchParams.get('package') ? 'packages' : 'assets');
+  const controller = createPalimpsestPackagesController(() => workspace === 'packages' ? get(selectedIdentity) : null, undefined, (leaf) => $serviceCapabilities(leaf), (leaf) => $serviceDenials(leaf));
   let tab = $state('inventory');
-  let workspace = $state(get(page).url.searchParams.get('package') ? 'packages' : 'hub');
   let search = $state('');
   const visibleInventory = $derived.by(() => {
     const query = search.trim().toLowerCase();
@@ -79,6 +84,7 @@
     return () => { stop(); window.removeEventListener('pagehide', leave); controller.dispose(); };
   });
   beforeNavigate(() => { resetForm(); controller.discardSecret(); });
+  $effect(() => { workspace; $selectedIdentity; untrack(() => controller.bindIdentity()); });
   $effect(() => {
     controller.syncCapabilities();
     if (controller.issueDenied) resetForm();
@@ -160,11 +166,14 @@
   function shortDigest(digest: string) { return digest.length > 19 ? `${digest.slice(0, 19)}…` : digest; }
 </script>
 
-<svelte:head><title>{t('page.title')}</title></svelte:head>
+<svelte:head><title>{assetText('heading')} · Palimpsest</title></svelte:head>
 <PageShell>
-  <PageHeader breadcrumb="Palimpsest" title={t('page.heading')} subtitle={t('page.subtitle')} />
+  <PageHeader breadcrumb="Palimpsest" title={assetText('heading')} subtitle={assetText('description')} />
   <div class="space-y-4">
-    <Tabs id="palimpsest-workspace-tabs" value={workspace} ariaLabel={t('workspace.label')} items={[{ value: 'hub', label: t('workspace.hub'), panelId: 'palimpsest-hub' }, { value: 'packages', label: t('workspace.packages'), panelId: 'palimpsest-native' }, { value: 'local', label: t('workspace.local'), panelId: 'palimpsest-local' }]} onchange={changeWorkspace} />
+    <Tabs id="palimpsest-workspace-tabs" value={workspace} ariaLabel={t('workspace.label')} items={[{ value: 'assets', label: assetText('heading'), panelId: 'palimpsest-assets' }, { value: 'hub', label: t('workspace.hub'), panelId: 'palimpsest-hub' }, { value: 'packages', label: t('workspace.packages'), panelId: 'palimpsest-native' }, { value: 'local', label: t('workspace.local'), panelId: 'palimpsest-local' }]} onchange={changeWorkspace} />
+      <div id="palimpsest-assets" role="tabpanel" aria-labelledby="palimpsest-workspace-tabs-assets" tabindex="0" hidden={workspace !== 'assets'} inert={workspace !== 'assets'}>
+        <AssetSearchPanel identity={assetIdentity} onGuide={() => changeWorkspace('local')} />
+      </div>
     {#if workspace === 'hub'}
       <div id="palimpsest-hub" role="tabpanel" aria-labelledby="palimpsest-workspace-tabs-hub" tabindex="0">
         <HubArtifactsPanel identity={$selectedIdentity} />
@@ -173,7 +182,7 @@
       <div id="palimpsest-local" role="tabpanel" aria-labelledby="palimpsest-workspace-tabs-local" tabindex="0">
         <PalimpsestLocalGuide projectId={$selectedIdentity?.projectId} packageAuthority={controller.context?.package_authority} namespace={controller.context?.namespace} />
       </div>
-    {:else}
+    {:else if workspace === 'packages'}
       <div id="palimpsest-native" role="tabpanel" aria-labelledby="palimpsest-workspace-tabs-packages" tabindex="0" class="space-y-4">
         <div class="flex flex-wrap justify-end gap-2"><Button variant="secondary" disabled={!$selectedIdentity || !!controller.busy.context || !!controller.busy.issue || !!controller.busy.revoke || !!controller.busy.register} onclick={() => { void controller.loadContext(); if (tab === 'keys') void controller.loadKeys(); }}>{t('actions.refresh')}</Button></div>
     {#if controller.errors.context}

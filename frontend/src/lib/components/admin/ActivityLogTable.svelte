@@ -57,7 +57,7 @@
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
-	async function load(reset = false) {
+	async function load(reset = false, force = false) {
 		const generation = ++loadGeneration;
 		loadController?.abort();
 		const controller = new AbortController();
@@ -83,7 +83,7 @@
 				`${requestEndpoint}${requestEndpoint.includes('?') ? '&' : '?'}${new URLSearchParams(params)}`,
 				requestToken,
 				requestProjectId,
-				{ signal: controller.signal },
+				{ signal: controller.signal, refresh: force },
 			);
 			if (!owns()) return;
 			logs = data.slice(0, size);
@@ -124,7 +124,7 @@
 		void load();
 	}
 
-	const ar = createAutoRefresh(() => load(false), {
+	const ar = createAutoRefresh((force) => load(false, force), {
 		storageKey: untrack(() => storageKey),
 		defaultActive: true,
 		defaultInterval: 30,
@@ -210,7 +210,7 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				{refreshing}
-				onManualRefresh={() => load(false)}
+				onManualRefresh={ar.refresh}
 			/>
 		</div>
 	</div>

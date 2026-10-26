@@ -56,7 +56,7 @@ describe('administrator monitoring summary authority', () => {
 		await tick();
 		expect(screen.queryByText('late-private-host')).toBeNull();
 		expect(screen.getByText('new-host')).toBeTruthy();
-		expect(mocks.get).toHaveBeenLastCalledWith('/api/v1/admin/monitoring/summary', 'token-b', 'project-b');
+		expect(mocks.get).toHaveBeenLastCalledWith('/api/v1/admin/monitoring/summary', 'token-b', 'project-b', expect.any(Object));
 	});
 
 	it('does not publish a pending summary after system-admin authority is revoked', async () => {

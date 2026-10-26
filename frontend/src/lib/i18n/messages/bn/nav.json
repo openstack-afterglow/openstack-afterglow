@@ -67,6 +67,7 @@
 	"items.chatStats": "চ্যাট পরিসংখ্যান",
 	"items.userQuotas": "ব্যবহারকারী কোটা",
 	"items.modelSettings": "মডেল সেটিংস",
+	"items.providerSettings": "প্রদানকারী সেটিংস",
 	"items.toolSettings": "টুল সেটিংস",
 	"items.projectQuotas": "প্রকল্প কোটা",
 	"items.monitoringOverview": "সমন্বিত মনিটরিং",

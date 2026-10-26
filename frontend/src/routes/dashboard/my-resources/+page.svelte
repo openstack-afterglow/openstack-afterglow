@@ -96,7 +96,7 @@
 		unsubscribeSwitch?.();
 	});
 
-	const ar = createAutoRefresh(() => load(), {
+	const ar = createAutoRefresh((force) => load(force ? { refresh: true } : undefined), {
 		storageKey: 'dashboard-my-resources', invokeOnMount: false,
 		defaultActive: true, defaultInterval: 30, intervalOptions: [10, 15, 30, 60],
 	});
@@ -109,7 +109,7 @@
 	</div>
 	<PageHeader breadcrumb="" title={t('myResources.title')}>
 		{#snippet actions()}
-			<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} {refreshing} onManualRefresh={() => load({ refresh: true })} />
+			<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} {refreshing} onManualRefresh={ar.refresh} />
 		{/snippet}
 	</PageHeader>
 

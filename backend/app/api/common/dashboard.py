@@ -628,6 +628,32 @@ async def get_project_quotas(
     }
 
 
+@router.get("/snapshot")
+async def get_dashboard_snapshot(
+    response: Response,
+    recent_limit: int = Query(12, ge=5, le=12),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    cm: CacheMode = Depends(cache_mode),
+):
+    """Share one current native proof across the overview's core read sections."""
+    from app.services.identity_roles import _to_completion
+
+    response.headers["Cache-Control"] = "private, no-store"
+    results = await _to_completion(
+        asyncio.gather(
+            get_dashboard_summary(view="overview", recent_limit=recent_limit, conn=conn, cm=cm),
+            get_project_quotas(view="overview", conn=conn, cm=cm),
+            return_exceptions=True,
+        )
+    )
+    return {
+        name: {"data": None, "error": f"{name}_unavailable"}
+        if isinstance(result, BaseException)
+        else {"data": result, "error": None}
+        for name, result in zip(("summary", "quotas"), results, strict=True)
+    }
+
+
 @router.get("/gpu-available")
 async def get_gpu_available(
     conn: openstack.connection.Connection = Depends(get_os_conn),
@@ -642,13 +668,12 @@ async def get_gpu_available(
         raise HTTPException(status_code=404, detail="GPU 가용량 조회가 비활성화되어 있습니다")
 
     def _collect():
-        import openstack
-
+        from app.services import native_transport
         from app.services.gpu_inventory import _collect_gpu_hosts
 
         # get_admin_connection_for_project()는 project_id(UUID)를 기대하므로
         # admin project는 project_name으로 직접 연결 생성 (gpu_quota.py와 동일 패턴)
-        admin_conn = openstack.connect(
+        admin_conn = native_transport.connect(
             load_envvars=False,
             load_yaml_config=False,
             auth_url=s.os_auth_url,

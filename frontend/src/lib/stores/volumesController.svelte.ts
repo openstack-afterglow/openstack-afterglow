@@ -71,7 +71,7 @@ export function createVolumesController(opts: VolumesControllerOpts) {
       error = '';
     } catch (e) {
       if (seq !== volumesRequestSeq) return;
-      if (!cached) error = e instanceof ApiError ? t('listController.fetchFailed', { status: e.status }) : t('listController.serverError');
+      error = e instanceof ApiError ? t('listController.fetchFailed', { status: e.status }) : t('listController.serverError');
     } finally {
       if (seq === volumesRequestSeq) {
         loading = false;
@@ -80,24 +80,24 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     }
   }
 
-  async function fetchSnapshots() {
+  async function fetchSnapshots(manual = false) {
     if (!volumeSnapshotsOn()) {
       snapshots = [];
       return;
     }
     try {
-      snapshots = await api.get<Snapshot[]>('/api/v1/volume-snapshots', opts.token(), opts.projectId());
+      snapshots = await api.get<Snapshot[]>('/api/v1/volume-snapshots', opts.token(), opts.projectId(), manual ? { refresh: true } : undefined);
     } catch { /* 오류 무시 */ }
   }
 
-  async function fetchQuotas() {
+  async function fetchQuotas(manual = false) {
     try {
-      quotas = await api.get<VolumeQuotas>('/api/v1/dashboard/quotas', opts.token(), opts.projectId());
+      quotas = await api.get<VolumeQuotas>('/api/v1/dashboard/quotas', opts.token(), opts.projectId(), manual ? { refresh: true } : undefined);
     } catch { /* 오류 무시 */ }
   }
 
-  async function fetchAll() {
-    await Promise.all([fetchVolumes(), fetchSnapshots(), fetchQuotas()]);
+  async function fetchAll(manual = false) {
+    await Promise.allSettled([fetchVolumes(manual), fetchSnapshots(manual), fetchQuotas(manual)]);
   }
 
   function openVolumePanel(id: string) {

@@ -65,6 +65,7 @@
 	"items.chatStats": "对话统计",
 	"items.userQuotas": "用户配额",
 	"items.modelSettings": "模型设置",
+	"items.providerSettings": "提供商设置",
 	"items.toolSettings": "工具设置",
 	"items.projectQuotas": "项目配额",
 	"items.monitoringOverview": "综合监控",

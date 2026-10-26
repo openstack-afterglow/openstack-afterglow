@@ -3,9 +3,10 @@
   import { useVolumeDetailController } from '$lib/stores/volumeDetailController.svelte';
   import DetailHeader from '$lib/components/ui/DetailHeader.svelte';
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
+  import type { AutoRefreshController } from '$lib/utils/autoRefresh.svelte';
 
   interface Props {
-    ar: { active: boolean; intervalSeconds: number; intervalOptions: number[] };
+    ar: AutoRefreshController;
   }
   let { ar = $bindable() }: Props = $props();
 
@@ -23,7 +24,7 @@
       bind:intervalSeconds={ar.intervalSeconds}
       intervalOptions={ar.intervalOptions}
       refreshing={s.loading}
-      onManualRefresh={() => s.loadAll()}
+      onManualRefresh={ar.refresh}
     />
     <!-- 닫기는 SlidePanel(`[data-slide-panel-close]`) 또는 전체 화면 라우트의 목록 링크가 제공한다 -->
   {/snippet}

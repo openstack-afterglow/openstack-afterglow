@@ -1020,6 +1020,7 @@ def test_auth_common_and_exact_domain_metadata_are_preserved():
     assert gitlab.scopes == ["openid", "email", "profile"]
     assert gitlab.token_endpoint_auth_method == "client_secret_basic"
     assert gitlab.federation_token_type == "id_token"
+    assert gitlab.native_mapping is None
     github = settings.providers["github"]
     assert github.scopes == ["read:user", "user:email"]
     assert github.authorization_url == "https://github.com/login/oauth/authorize"
@@ -1030,6 +1031,88 @@ def test_auth_common_and_exact_domain_metadata_are_preserved():
     assert github.enabled is False
     assert "private-auth-sentinel" not in repr(settings)
     assert "private-auth-sentinel" not in settings.model_dump_json()
+
+
+def _native_mapping_pins(**overrides):
+    return {
+        "mode": "ephemeral",
+        "mapping_id": "reviewed-native-mapping",
+        "sha256": "0123456789abcdef" * 4,
+        "account_domain_id": "Accounts-ID",
+        "personal_domain_id": "Personal-ID",
+        **overrides,
+    }
+
+
+def test_native_mapping_preserves_exact_operator_pins_and_maximum_ids():
+    pins = _native_mapping_pins(mapping_id="m" * 64, account_domain_id="A" * 64, personal_domain_id="P" * 64)
+    provider = app_config.AuthSettings.model_validate(
+        {"providers": {"native_sso": _file_auth_provider(native_mapping=pins)}}
+    ).providers["native_sso"]
+    assert provider.native_mapping.model_dump() == pins
+    assert "private-auth-sentinel" not in provider.model_dump_json()
+    assert "private-auth-sentinel" not in repr(provider)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("mode", "local"),
+        ("mode", "Ephemeral"),
+        ("mode", None),
+        ("sha256", "a" * 63),
+        ("sha256", "a" * 65),
+        ("sha256", "A" * 64),
+        ("sha256", "g" * 64),
+        ("sha256", "a" * 63 + "\n"),
+        ("sha256", 123),
+        ("sha256", b"a" * 64),
+        ("unknown", "private-auth-sentinel"),
+        *[
+            (field, value)
+            for field in ("mapping_id", "account_domain_id", "personal_domain_id")
+            for value in ("", "a" * 65, " leading", "trailing ", "bad/id", "bad\nid", "도메인", 123)
+        ],
+        ("personal_domain_id", "Accounts-ID"),
+    ],
+)
+def test_native_mapping_invalid_pins_fail_with_redacted_errors(field, value):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError) as exc:
+        app_config.AuthSettings.model_validate(
+            {"providers": {"native_sso": _file_auth_provider(native_mapping=_native_mapping_pins(**{field: value}))}}
+        )
+    assert "private-auth-sentinel" not in str(exc.value)
+    assert "private-auth-sentinel" not in repr(exc.value)
+
+
+@pytest.mark.parametrize("missing", ["mode", "mapping_id", "sha256", "account_domain_id", "personal_domain_id"])
+def test_native_mapping_requires_every_explicit_pin(missing):
+    from pydantic import ValidationError
+
+    pins = _native_mapping_pins()
+    del pins[missing]
+    with pytest.raises(ValidationError):
+        app_config.AuthSettings.model_validate({"providers": {"native_sso": _file_auth_provider(native_mapping=pins)}})
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"kind": "github", "issuer_url": None},
+        {"federation_token_type": "access_token"},
+        {"organization": {"id": "org", "name": "Org", "manager_subjects": ["immutable-subject"]}},
+    ],
+)
+def test_native_mapping_rejects_incompatible_provider_contracts(overrides):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError) as exc:
+        app_config.AuthSettings.model_validate(
+            {"providers": {"native_sso": _file_auth_provider(native_mapping=_native_mapping_pins(), **overrides)}}
+        )
+    assert "private-auth-sentinel" not in str(exc.value)
 
 
 @pytest.mark.parametrize(
@@ -1170,6 +1253,22 @@ def test_nested_secret_env_overrides_toml_without_losing_metadata(isolated_debug
     assert provider.keystone_idp_id == "gitlab"
     assert settings.auth.default.allow_providers == ["gitlab"]
     assert settings.auth.domain["DmsLab-ID"].allow_providers == ["gitlab"]
+
+
+def test_native_mapping_toml_load_retains_pins_with_nested_secret_override(isolated_debug_config_dir, monkeypatch):
+    path = isolated_debug_config_dir / "afterglow.conf"
+    _write_auth_toml(path)
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write("\n[auth.providers.gitlab.native_mapping]\n")
+        for field, value in _native_mapping_pins().items():
+            stream.write(f'{field} = "{value}"\n')
+    monkeypatch.setenv("AUTH__PROVIDERS__GITLAB__CLIENT_SECRET", "mounted-secret")
+    provider = app_config.get_settings().auth.providers["gitlab"]
+    assert provider.native_mapping.model_dump() == _native_mapping_pins()
+    assert provider.client_secret.get_secret_value() == "mounted-secret"
+    assert provider.issuer_url == "https://git.dmslab.re.kr"
+    assert provider.keystone_idp_id == "gitlab"
+    assert "mounted-secret" not in provider.model_dump_json()
 
 
 def test_empty_secret_env_does_not_fall_back_to_toml(isolated_debug_config_dir, monkeypatch):

@@ -8,7 +8,33 @@
 ## [Unreleased]
 
 ### Added
+- 새 GitLab client로 ID-token `groups_direct`와 UserInfo `groups`·역할별 그룹을 비교하는 독립 loopback 콜백 진단 도구를 추가합니다. PKCE·서명·브라우저/subject를 검증하고 token/secret 없는 private 보고서와 명시 source의 offline mapping 후보만 생성하며 기존 로그인·Keystone mapping/IAM·운영 설정은 변경하지 않습니다.
+- GitLab 연동 문서에 현재 환경의 `groups`·`groups_direct` 소문자 전달 확인과, 자동 매핑 대상 Afterglow 그룹도 소문자 전체 경로로 정확히 일치시켜야 한다는 운영 조건을 명시합니다. 기존 그룹·claim·매핑 동작은 변경하지 않습니다.
+- 관리자 Lumen 기본 진입을 프로바이더 설정으로 명시하고 다중 account/key pool 관리·현재 연결/검사 상태·키별 정산 relay 기록을 분리합니다. 실제 dispatch receipt의 당시 endpoint/model/operation/time만 반환하며 과거 미기록 경로를 현재 설정으로 추정하거나 secret/prompt를 공개하지 않습니다. Native account/receipt API와 matching converter 및 별도 안전 cutover가 선행 조건이며 기존0.6.9에 기능이 있다고 주장하지 않습니다.
+- 모델 설정의 긴 생성 form을 기본 화면에서 제거하고 `모델 추가` 뒤 단일 bounded dialog에서 provider 선택·provider 모델 발견/직접 입력·항목별 이름/종류/text/media/cache 가격 검토와 등록을 제공합니다. 기존 등록 목록 filter/order/edit와 models.dev import를 보존하고 결과 불명인 쓰기는 창을 다시 열어도 같은 actor/scope에서 자동 재전송하지 않습니다.
+- 관리자 그룹에서 기본 home/joined 사용자 조회를 유지하면서 Accounts 등 특정 다른 계정 소속 도메인을 명시적으로 선택해 이름·이메일·전체 UUID로 조회하고 추가할 수 있습니다. Fresh system-admin과 graph lease 아래 정확한 사용자/home·group/domain을 검증하며 group 자체 domain에만 명시 admission을 허용합니다. 다른 domain grant·owner/projection·마지막 관리자 보호와 일반 IAM/credential 권한은 유지하고 계정 이동·별도 role grant·운영 변경은 하지 않습니다.
+- 관리자 볼륨의 native 이전 ID/키 발급·선택한 도메인/프로젝트 수신·외부 키 수신과 대기 ID 복구/명시 취소를 제공합니다. 실제 human target scope·Cinder policy/quota·owner readback과 Palimpsest 원장을 검증하고 헤더 가장·자동 role grant·POST 재전송은 하지 않습니다.
+- Palimpsest 관리자를 inventory-first 레이어 목록·기록된 빌드/출처 미확인 구분·실제 부모/자식 계보와 묶음 참조로 연결합니다. 사용자 에셋 검색은 공개·공유 Hub 묶음, 현재 프로젝트의 이름·태그 서버 검색, 공개 클라우드 환경을 독립적으로 조회하고 실제 로컬 transfer/run 또는 caller-project VM 생성·추적·명시적 자원 정리로 연결합니다. Native Hub read/search와 클라이언트 `bundle unpack` source를 함께 확장하며 기존 권한·비공개 범위·불변 digest/graph를 보존합니다. Matching Hub/client 배포·발행은 별도이며 Docker Hub 연합 검색은 포함하지 않습니다.
+- 관리자 토폴로지에 native 소유 도메인 UUID별 상위 상자를 추가합니다. 동명·삭제/미확인 소유자와 shared/external 네트워크를 구분하며 도메인 그룹을 통신 허용으로 해석하지 않습니다.
+- Lumen account별 다중 키 관리에 키별 명시적 연결 검사를 추가합니다. 지원 metadata에 따른 JSON ping/pong 또는 일반 ping, 안전한 결과·모델·검사 시각을 표시하고 자동 실행·키 fallback·원본 응답 공개는 하지 않습니다. Matching native Lumen/account027 cutover가 선행 조건입니다.
+- Impeccable 초기 제품 맥락(`PRODUCT.md`)과 사용자 선택 image-first 랜딩·쇼케이스 제작 기본값을 기록합니다. 기존 `DESIGN.md`·UI는 유지하며 Live 편집기용 `localhost:8400` script/connect 허용은 승인된 개발 환경에만 한정합니다. Production CSP·기존 API/WebSocket origin과 nonce/hash 권한은 보존하며 Live injection이나 배포는 실행하지 않습니다.
 - Cloud Shell workload에 빈 Cinder 홈에서도 동작하는 system Bash 자동완성(명령·하위 명령·옵션·파일 경로)과 오프라인 `cloud-shell-help`, 사용자 정의가 없을 때의 `ll` alias를 추가합니다. 완성 데이터는 build 시 설치된 CLI plugin에서 생성하며 클라우드 resource를 조회하지 않습니다. 사용자 dotfile·권한·bootstrap 경계는 바꾸지 않으며, 게시된 digest로 운영 image를 교체하기 전에는 기존 세션에 적용되지 않습니다.
+
+### Fixed
+- 관리자 그룹의 Accounts 등 명시 source-home 후보를 조회할 때 사용자마다 순차 native GET을 반복하던 N+1 병목을 제거합니다. Native domain LIST의 scope·ID·활성/메타데이터를 엄격히 확인하며 실제 추가의 graph-locked fresh 사용자/권위 재검증과 기본 home/joined directory는 유지합니다.
+- 관리자 볼륨 이전의 목적지 자동 인증·실제 owner readback을 native SDK/HTTP로 검증하고, Cinder401 재인증과307/308 redirect 뒤 create/accept POST를 재전송하던 경로를 각각 차단합니다. Redirect Location에 native token·transfer auth key를 전달하지 않으며 대상 역할 부재를 서비스 프로젝트 수신으로 대체하지 않습니다. 운영 반영과 기존 오이전 볼륨 복구는 별도입니다.
+- Backend native Keystone·SDK·MCP와 background inventory가 요청별 인증·쿠키·헤더·권위 격리를 유지한 채 HTTP socket pool을 재사용합니다. TLS/CA/proxy·timeout/retry와 fresh native 권한 검사를 보존하며 작업 drain 뒤 pool을 정리합니다. 브라우저 세션 수명·운영 설정·배포는 변경하지 않습니다.
+- 관리자 그룹 목록에서 도메인 관리자 reader 권한을 동기화하는 내부 `afterglow-default-managers-*` 그룹이 일반 삭제 대상으로 표시되던 오류를 수정합니다. 기존 캐시에도 즉시 목록 필터를 적용하며 실제 보호 그룹 삭제 금지와 일반 그룹 삭제·권한 검증은 유지합니다.
+- 관리자 그룹의 membership 후보 조회에서 삭제 계정의 native user404 하나가 전체 목록을 막던 오류를 수정합니다. 권위·provider 오류는 숨기지 않고 실제 mutation guard를 유지합니다. 멤버/후보에 이름·이메일·전체 UUID·계정 소속 도메인 ID를 표시하고 해당 필드 검색·UUID 선택·조회 상태 구분·명시 재조회와 전체 일치 후보 접근을 제공합니다.
+- Backend의 fresh 관리자 guard 안에서 중복 native directory/catalog/authentication을 재사용하고 같은 요청의 검증된 SDK AccessInfo를 사용해 불필요한 재교환을 제거합니다. 권한 proof를 요청 간 캐시하지 않으며 숫자 Server-Timing과 compact summary/quota snapshot으로 응답 경계를 구분합니다.
+- Dashboard/admin 목록의 공통 polling을 완료 후 간격·숨김/offline pause·한 manual 후행 요청으로 바꾸고 AbortSignal별 대기를 분리해 중복 GET/force refresh를 합칩니다. 논리 scope/권한/ABA와 mutation은 이전 결과를 폐기하고 정상 bearer 갱신은 draft를 보존합니다. 표시용 SWR은 controller-local30초이며 provider 오류를 숨기지 않습니다.
+- 세션 source 기본 절대 수명을 하루로 맞추고 JWT/Redis TTL을 원래 로그인 deadline·native root 만료로 제한합니다. Password/SSO Personal 선택의 불필요한 전체 membership 재열거와 resume/pageshow/online 갱신 누락을 수정하며 terminal-deadline 직전 매 API의 반복 갱신을 방지합니다. 기존 명시 timeout·실제 회수/만료·운영 설정은 보존하고 운영 반영은 별도입니다.
+- Helm/Kolla 및 개발 values의 세션 기본값도 하루로 맞추고 backend consumer가 없는 별도 absolute timeout 필드를 제거합니다. 관리자 볼륨 수신은 현재 project-scoped token 대신 검증된 unscoped session root에서 대상 자격을 교환하여 scoped-token rescope 비활성 cloud에서도 동작하며, root 부재는 fallback 없이 거부합니다.
+- 관리자 Object Storage를 fixed-executor 전용 API로 분리하고 실제 RGW의 일부 계정403이 전체 목록을 가리지 않도록 readable items와 per-project unavailable metadata를 분리합니다. 부분 조회에서는 전체 합계를 숨기고 미조회 프로젝트/사유를 표시하며403을 빈 계정으로 숨기지 않습니다. 동명 버킷·현재 프로젝트 mutation 경계를 유지하고 native 권한·RGW 설정을 확대하지 않습니다.
+- 모델 생성·종류 필터의 binding과 명시적 `model_kind`를 일치시키고 등록 모델의 종류 수정 기능을 추가합니다. 같은 ID·텍스트/공유 token 가격을 보존하고 비활성화·종류 전용 가격 제거를 안내한 뒤 저장합니다. 기존 모델을 자동 재분류하지 않습니다.
+- 관리자 Identity 목록·선택 도메인 검사와 인스턴스·이미지·파일 스토리지·로드밸런서·DB 상세의 native transport 불일치로 발생하던 403/404를 수정합니다. Fresh system-admin과 고정 executor에서 실제 부모/하위 자원 소유권을 검증하고 사용자 경로의 격리를 유지합니다. 기존 VM 상세 작업·콘솔·로그를 관리자 경로에 연결하고 telemetry/export의 caller credential 경계는 보존합니다. Trove 관리자 목록은 `/api/v1/admin/database-instances`로 이전하고 조회 실패를 빈 목록으로 숨기지 않습니다. Monitoring SG는 명시한 대상 프로젝트에 생성하고 관리자 이미지 삭제 후 프로젝트 이미지 캐시를 무효화합니다. Source 수정이며 운영 반영은 별도입니다.
+- 사용자·관리자 프로젝트 역할 편집에서 native Keystone `admin` 신규 할당을 UI와 API 양쪽에서 차단하고 기존 직접 할당은 회수할 수 있게 합니다. 그룹·상속과 unrelated grant는 보존하고, 도메인 관리자의 privileged-account 예외는 다른 변경 없는 정확한 admin 회수로 한정합니다. `system:all` 전용 시스템 관리자 추가·해제와 마지막 관리자 보호, `project_admin`·서비스별 `*_admin` 정책은 유지하며 기존 운영 역할을 자동 변경하지 않습니다.
+- 기존 Kolla native ephemeral OIDC 어댑터의 동작을 공급자별 TOML/Pydantic 설정 기반으로 소스에 통합합니다. Keystone mapping은 유지하며 complete schema/rules digest·native identity·Personal sole-member/primary를 검증합니다. 기존 Personal 재사용과 삭제된 receipt fence 정리·패스워드 shadow 구분을 보존하고 미설정 공급자나 tenant SQL provider로 native trust를 확대하지 않습니다.
 
 ## [1.30.26] - 2026-10-24
 

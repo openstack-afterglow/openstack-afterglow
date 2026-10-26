@@ -27,24 +27,24 @@ export function createNetworkLoadbalancerDetailController(opts: NetworkLbDetailO
   const tok = opts.token;
   const pid = opts.projectId;
 
-  async function fetchAll() {
+  async function fetchAll(force = false) {
     loading = true;
     error = '';
     await Promise.allSettled([
-      api.get<LoadBalancerDetail>(`/api/v1/loadbalancers/${id()}`, tok(), pid())
-        .then(v => {
+      api.get<LoadBalancerDetail>(`/api/v1/loadbalancers/${id()}`, tok(), pid(), { refresh: force })
+        .then(async v => {
           lb = v;
           loading = false;
           if (v.status === 'ERROR') {
-            api.get<LbStatusNode>(`/api/v1/loadbalancers/${id()}/status`, tok(), pid())
+            await api.get<LbStatusNode>(`/api/v1/loadbalancers/${id()}/status`, tok(), pid(), { refresh: force })
               .then(tree => { statusTree = tree; })
               .catch(() => {});
           }
         })
         .catch(e => { error = e instanceof ApiError ? e.message : tr('lb.errors.loadFailed'); loading = false; }),
-      api.get<Listener[]>(`/api/v1/loadbalancers/${id()}/listeners`, tok(), pid())
+      api.get<Listener[]>(`/api/v1/loadbalancers/${id()}/listeners`, tok(), pid(), { refresh: force })
         .then(v => { listeners = v; }).catch(() => {}),
-      api.get<Pool[]>(`/api/v1/loadbalancers/${id()}/pools`, tok(), pid())
+      api.get<Pool[]>(`/api/v1/loadbalancers/${id()}/pools`, tok(), pid(), { refresh: force })
         .then(v => { pools = v; }).catch(() => {}),
     ]);
     loading = false;

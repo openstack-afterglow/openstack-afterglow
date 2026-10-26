@@ -1,4 +1,10 @@
 {
+	"volumeTransfer.scopeHelp": "Chọn miền và dự án đích. Việc nhận sử dụng token thực sự của bạn trong dự án đích; quyền quản trị hệ thống không cấp vai trò dự án. Nếu xác thực bị từ chối, hãy giao ID và khóa đã cấp cho người nhận có quyền.",
+	"volumeTransfer.mode": "Cách chuyển",
+	"volumeTransfer.recover": "Kiểm tra yêu cầu chuyển đang chờ của ổ đĩa này",
+	"volumeTransfer.recoveryHelp": "Không thể lấy lại khóa. Nếu mất, hãy chủ động hủy yêu cầu chuyển đang chờ đã xác nhận trước khi tạo yêu cầu mới. Không tự động hủy hoặc gửi lại.",
+	"volumeTransfer.uncertain": "Chưa biết kết quả yêu cầu. Yêu cầu sẽ không được gửi lại hoặc tự động hủy. Lưu an toàn ID và khóa đang hiển thị, đóng cửa sổ này rồi làm mới ổ đĩa và yêu cầu chuyển đang chờ của cả hai dự án.",
+	"volumeTransfer.denied": "Chính sách gốc hoặc xác thực dự án đích đã từ chối thao tác. Quyền quản trị hệ thống không đảm bảo quyền nhận. Hãy sao chép ID và khóa đã cấp cho người nhận có quyền.",
 	"volumeList.filters.nameOrId": "Tên hoặc ID",
 	"volumeList.filters.minSize": "Dung lượng tối thiểu (GiB)",
 	"volumeList.filters.maxSize": "Dung lượng tối đa (GiB)",

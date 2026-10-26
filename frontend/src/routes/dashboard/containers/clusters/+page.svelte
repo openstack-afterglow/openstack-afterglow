@@ -30,9 +30,9 @@
   const selection = createResourceSelection();
   let bulkBusy = $state(false);
   const selectableIds = $derived(new Set(clusters.map((cluster) => cluster.id)));
-  async function fetchClusters() {
+  async function fetchClusters(force = false) {
     try {
-      clusters = await api.get<Cluster[]>('/api/v1/clusters', $auth.token ?? undefined, $auth.projectId ?? undefined);
+      clusters = await api.get<Cluster[]>('/api/v1/clusters', $auth.token ?? undefined, $auth.projectId ?? undefined, { refresh: force });
       selection.retain(clusters.map((cluster) => cluster.id));
       error = '';
       serviceUnavailable = false;
@@ -127,7 +127,7 @@
     { key: 'delete', label: t('clusters.actions.delete'), tone: 'danger', disabled: !$canWrite, onAction: runBulkDelete },
   ]);
 
-  const ar = createAutoRefresh(() => fetchClusters(), {
+  const ar = createAutoRefresh(fetchClusters, {
     storageKey: 'dashboard-k3s-clusters',
     invokeOnMount: false,
     defaultActive: true,
@@ -152,7 +152,7 @@
         bind:intervalSeconds={ar.intervalSeconds}
         intervalOptions={ar.intervalOptions}
         refreshing={loading}
-        onManualRefresh={() => fetchClusters()}
+        onManualRefresh={ar.refresh}
       />
       <button disabled={!$canWrite} onclick={openCreate} onpointerenter={prefetchTemplates} onfocus={prefetchTemplates} class="bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('clusters.actions.create')}</button>
     {/snippet}

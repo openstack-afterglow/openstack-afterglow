@@ -335,7 +335,7 @@ async def test_collect_instance_data_resolves_normalized_gpu_alias_for_notion_re
     )
 
     with (
-        patch("openstack.connect", return_value=conn),
+        patch("app.services.native_transport.connect", return_value=conn),
         patch("app.config.get_settings", return_value=settings),
         patch(
             "app.services.gpu_inventory.build_alias_to_device_name_map",

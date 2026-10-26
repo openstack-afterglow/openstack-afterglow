@@ -251,6 +251,7 @@
 		path: string,
 		batch: BatchState | null,
 		requestRange?: Range,
+		read?: (signal: AbortSignal) => Promise<T>,
 	): Promise<void> {
 		const requestProjectId = projectId;
 		const requestToken = token;
@@ -270,7 +271,7 @@
 		state.error = null;
 
 		try {
-			const data = await api.get<T>(path, requestToken, requestProjectId, {
+			const data = read ? await read(controller.signal) : await api.get<T>(path, requestToken, requestProjectId, {
 				refresh: batch?.refresh,
 				signal: controller.signal,
 			});
@@ -291,22 +292,26 @@
 		}
 	}
 
-	async function loadSummary(batch: BatchState | null): Promise<void> {
-		await loadResource(
-			'summary',
-			summaryState,
-			'/api/v1/dashboard/summary?view=overview&recent_limit=12',
-			batch,
-		);
-	}
-
-	async function loadQuotas(batch: BatchState | null): Promise<void> {
-		await loadResource(
-			'quotas',
-			quotasState,
-			'/api/v1/dashboard/quotas?view=overview',
-			batch,
-		);
+	async function loadSnapshot(batch: BatchState): Promise<void> {
+		type Section<T> = { data: T | null; error: string | null };
+		type Snapshot = { summary: Section<DashboardOverviewSummary>; quotas: Section<DashboardOverviewQuotas> };
+		const path = '/api/v1/dashboard/snapshot?recent_limit=12';
+		let pending: Promise<Snapshot> | null = null;
+		const read = (signal: AbortSignal) => pending ??= api.get<Snapshot>(path, token, projectId, {
+			refresh: batch.refresh, signal,
+		});
+		await Promise.all([
+			loadResource('summary', summaryState, path, batch, undefined, async (signal) => {
+				const section = (await read(signal)).summary;
+				if (section.error || !section.data) throw new Error('summary_unavailable');
+				return section.data;
+			}),
+			loadResource('quotas', quotasState, path, batch, undefined, async (signal) => {
+				const section = (await read(signal)).quotas;
+				if (section.error || !section.data) throw new Error('quotas_unavailable');
+				return section.data;
+			}),
+		]);
 	}
 
 	async function loadK3s(batch: BatchState | null): Promise<void> {
@@ -352,8 +357,7 @@
 		}
 		if (!lastSuccessfulSyncAt) syncStatus = 'waiting';
 
-		void loadSummary(batch);
-		void loadQuotas(batch);
+		void loadSnapshot(batch);
 		if (!k3sDisabled) void loadK3s(batch);
 		else k3sState.disabled = true;
 		void loadTrend(batch);

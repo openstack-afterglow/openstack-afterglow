@@ -72,6 +72,7 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 	const lbs = all.filter((n): n is LbNode => n.kind === 'lb');
 	const providerNets = graph.nets.filter((n) => n.tier === 'provider');
 	const tenantNets = graph.nets.filter((n) => n.tier === 'tenant');
+	const domainOf = new Map(graph.domainGroups?.flatMap((group) => group.netIds.map((id) => [id, group.id] as const)) ?? []);
 	const setPos = (id: string, x: number, y: number) => {
 		const node = graph.nodes.get(id);
 		if (!node) return;
@@ -203,7 +204,10 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 	 */
 	const adjPairs: Array<[string, string]> = [];
 	for (const s of rowSpecs) {
-		for (let i = 0; i < s.nets.length - 1; i++) adjPairs.push([s.nets[i].id, s.nets[i + 1].id]);
+		for (let i = 0; i < s.nets.length - 1; i++) {
+			const a = s.nets[i].id, b = s.nets[i + 1].id;
+			if (!graph.domainGroups || domainOf.get(a) === domainOf.get(b)) adjPairs.push([a, b]);
+		}
 	}
 
 	// 2. home 존: 인접 쌍 중 가장 무거운 쌍(경계 배치) 또는 첫 tenant 존, tenant 가 없으면 첫 provider 존(측면 VM)
@@ -466,7 +470,7 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 		BOTTOM_Y = Math.max(BOTTOM_Y, zr.y + zr.h);
 		RIGHT_X = Math.max(RIGHT_X, zr.x + zr.w);
 	}
-	return {
+	const result: LayoutResult = {
 		pos,
 		order: {
 			provider: providerNets.map((n) => n.id),
@@ -490,6 +494,63 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 			ROUTER_Y, LOWER_Y, SOLO_ROUTER_Y, SOLO_Y, BOTTOM_Y, RIGHT_X, totalW,
 		},
 	};
+	packDomainGroups(graph, result);
+	if (graph.domainGroups?.length) {
+		const geometry = computeGeometry(graph, result);
+		const bounds = contentBounds(geometry.zones, result.pos, geometry.domains);
+		result.bands.RIGHT_X = bounds.x + bounds.w;
+		result.bands.BOTTOM_Y = bounds.y + bounds.h;
+	}
+	return result;
+}
+
+/** Domain padding reserves a separate label row above the unchanged network zones. */
+export function domainRects(graph: CanvasGraph, zones: ReadonlyMap<string, Rect>): Map<string, Rect> {
+	const result = new Map<string, Rect>();
+	for (const group of graph.domainGroups ?? []) {
+		const bounds = rectUnion(group.netIds.map((id) => zones.get(id)).filter((r): r is Rect => Boolean(r)));
+		if (bounds) result.set(group.id, { x: bounds.x - 28, y: bounds.y - 96, w: bounds.w + 56, h: bounds.h + 124 });
+	}
+	return result;
+}
+
+/** Move ownership groups as rigid units. Cross-domain NICs remain real edges, never shared membership. */
+export function packDomainGroups(graph: CanvasGraph, layout: Pick<LayoutResult, 'pos' | 'zoneMembers'>, initial = true): void {
+	if (!graph.domainGroups?.length) return;
+	const zones = new Map<string, Rect>();
+	for (const [id, members] of layout.zoneMembers) {
+		const rect = zoneRectFrom(layout.pos, members);
+		if (rect) zones.set(id, rect);
+	}
+	const boxes = domainRects(graph, zones);
+	const placed: Rect[] = [];
+	const grouped = new Set<string>();
+	let right = 0;
+	for (const group of graph.domainGroups) {
+		const box = boxes.get(group.id);
+		if (!box) continue;
+		const target = { ...box };
+		if (initial) { target.x = right; target.y = 0; }
+		else {
+			for (const previous of placed) {
+				if (target.x < previous.x + previous.w + L.ZONE_GAP && target.x + target.w + L.ZONE_GAP > previous.x && target.y < previous.y + previous.h && target.y + target.h > previous.y) target.x = previous.x + previous.w + L.ZONE_GAP;
+			}
+		}
+		const ids = new Set(group.netIds.flatMap((id) => layout.zoneMembers.get(id) ?? []));
+		for (const id of ids) {
+			const rect = layout.pos.get(id);
+			if (rect) layout.pos.set(id, { ...rect, x: rect.x + target.x - box.x, y: rect.y + target.y - box.y });
+			grouped.add(id);
+		}
+		placed.push(target);
+		right = Math.max(right, target.x + target.w + L.ZONE_GAP);
+	}
+	// Unconnected resources and routers without a tenant home stay outside every domain box.
+	const outside = [...layout.pos].filter(([id]) => !grouped.has(id));
+	if (outside.length && outside.some(([, rect]) => placed.some((box) => rect.x < box.x + box.w && rect.x + rect.w > box.x && rect.y < box.y + box.h && rect.y + rect.h > box.y))) {
+		const left = Math.min(...outside.map(([, rect]) => rect.x));
+		for (const [id, rect] of outside) layout.pos.set(id, { ...rect, x: rect.x + right - left });
+	}
 }
 
 /**
@@ -767,11 +828,11 @@ export function computeGeometry(
 		if (!a || !b) continue;
 		geom.set(e.key, cubic(a, sd.sa, b, sd.sb));
 	}
-	return { geom, slotOrder, zones };
+	return { geom, slotOrder, zones, domains: domainRects(graph, zones) };
 }
 
-export function contentBounds(zones: ReadonlyMap<string, Rect>, pos: ReadonlyMap<string, Rect>): Rect {
-	return rectUnion([...zones.values(), ...pos.values()]) ?? { x: 0, y: 0, w: 100, h: 100 };
+export function contentBounds(zones: ReadonlyMap<string, Rect>, pos: ReadonlyMap<string, Rect>, domains?: ReadonlyMap<string, Rect>): Rect {
+	return rectUnion([...zones.values(), ...pos.values(), ...(domains?.values() ?? [])]) ?? { x: 0, y: 0, w: 100, h: 100 };
 }
 
 /** bounds 를 뷰포트에 맞추는 변환. k 는 [kMin, kMax] 로 클램프. */

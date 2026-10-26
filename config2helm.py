@@ -199,7 +199,7 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
 
     # ── session ────────────────────────────────────────────────────────────
     sess_out: dict = {}
-    for k in ("timeout_seconds", "warning_before_seconds", "absolute_timeout",
+    for k in ("timeout_seconds", "warning_before_seconds",
               "jwt_access_ttl", "jwt_refresh_ttl", "token_ip_binding_mode"):
         if k in sess:
             sess_out[_s(k)] = sess[k]

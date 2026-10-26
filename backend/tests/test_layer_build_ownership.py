@@ -73,6 +73,7 @@ def layer_provider(monkeypatch):
         "servers": {},
         "rules": {},
         "volumes": {},
+        "floatingips": {},
         "creates": [],
         "deletes": [],
         "connections": [],
@@ -98,6 +99,14 @@ def layer_provider(monkeypatch):
             self.end_headers()
             if payload:
                 self.wfile.write(payload)
+
+        def unexpected(self, method, path):
+            # A developer machine can run unrelated local software that probes any loopback port
+            # (e.g. editor language servers). Only requests under this fixture's own service roots
+            # count as an unexpected provider call; foreign probes are still answered 404.
+            if path.startswith(("/nova", "/neutron", "/cinder", "/glance", "/manila", "/v2", "/v3")):
+                state["unexpected"].append((method, path))
+            self.reply(404, {"itemNotFound": {}})
 
         def lost(self, kind):
             if state["lose"] != kind:
@@ -205,6 +214,7 @@ def layer_provider(monkeypatch):
                 ("servers", f"/nova/v2.1/{PROJECT}/servers", "server"),
                 ("shares", f"/manila/v2/{PROJECT}/shares", "share"),
                 ("volumes", f"/cinder/v3/{PROJECT}/volumes", "volume"),
+                ("floatingips", "/neutron/v2.0/floatingips", "floatingip"),
             ):
                 if path in {root, root + "/detail"}:
                     self.reply(200, {kind: list(state[kind].values())})
@@ -213,8 +223,7 @@ def layer_provider(monkeypatch):
                     resource = state[kind].get(path.rsplit("/", 1)[-1])
                     self.reply(200 if resource else 404, {envelope: resource} if resource else {"itemNotFound": {}})
                     return
-            state["unexpected"].append(("GET", path))
-            self.reply(404, {"itemNotFound": {}})
+            self.unexpected("GET", path)
 
         def do_POST(self):
             path = urlsplit(self.path).path.rstrip("/")
@@ -282,8 +291,7 @@ def layer_provider(monkeypatch):
                     "multiattach": False,
                 }
             else:
-                state["unexpected"].append(("POST", path))
-                self.reply(404, {"itemNotFound": {}})
+                self.unexpected("POST", path)
                 return
             with lock:
                 resource_id = str(
@@ -308,6 +316,8 @@ def layer_provider(monkeypatch):
                 ("server", f"/nova/v2.1/{PROJECT}/servers"),
                 ("port", "/neutron/v2.0/ports"),
                 ("share", f"/manila/v2/{PROJECT}/shares"),
+                ("volume", f"/cinder/v3/{PROJECT}/volumes"),
+                ("floatingip", "/neutron/v2.0/floatingips"),
             ):
                 if path.startswith(root + "/"):
                     resource_id = path.rsplit("/", 1)[-1]
@@ -323,8 +333,7 @@ def layer_provider(monkeypatch):
                     state["deletes"].append((kind, resource_id))
                     self.reply(204)
                     return
-            state["unexpected"].append(("DELETE", path))
-            self.reply(404, {"itemNotFound": {}})
+            self.unexpected("DELETE", path)
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     endpoint = f"http://127.0.0.1:{server.server_port}"

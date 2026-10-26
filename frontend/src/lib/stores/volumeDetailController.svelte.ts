@@ -103,17 +103,17 @@ export function createVolumeDetailController(opts: VolumeDetailOpts) {
     return attachmentNames[serverId] ?? { state: 'loading' };
   }
 
-  async function loadAll() {
+  async function loadAll(force = false) {
     const id = opts.volumeId();
     const tok = opts.token();
     const proj = opts.projectId();
     const gen = ++generation;
     try {
       const snapshotRequest = volumeSnapshotsOn()
-        ? api.get<VolumeSnapshot[]>(`/api/v1/volume-snapshots?volume_id=${id}`, tok, proj).catch(() => [] as VolumeSnapshot[])
+        ? api.get<VolumeSnapshot[]>(`/api/v1/volume-snapshots?volume_id=${id}`, tok, proj, { refresh: force }).catch(() => [] as VolumeSnapshot[])
         : Promise.resolve([] as VolumeSnapshot[]);
       const [vol, snaps] = await Promise.all([
-        api.get<Volume>(`/api/v1/volumes/${id}`, tok, proj),
+        api.get<Volume>(`/api/v1/volumes/${id}`, tok, proj, { refresh: force }),
         snapshotRequest,
       ]);
       if (gen !== generation || opts.volumeId() !== id || opts.projectId() !== proj) return;

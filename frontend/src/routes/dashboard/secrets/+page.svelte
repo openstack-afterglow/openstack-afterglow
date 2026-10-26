@@ -90,7 +90,7 @@
 	}
 
 
-	async function fetchAll() {
+	async function fetchAll(force = false) {
 		const requestToken = $auth.token ?? undefined;
 		const requestProject = $auth.projectId ?? undefined;
 		if (!keyManagerEnabled) {
@@ -100,10 +100,10 @@
 		}
 		try {
 			const [s, c, o, q] = await Promise.allSettled([
-				secretsApi.listSecrets(requestToken, requestProject),
-				secretsApi.listContainers(requestToken, requestProject),
-				secretsApi.listOrders(requestToken, requestProject),
-				secretsApi.getEffectiveQuota(requestToken, requestProject),
+				secretsApi.listSecrets(requestToken, requestProject, force),
+				secretsApi.listContainers(requestToken, requestProject, force),
+				secretsApi.listOrders(requestToken, requestProject, force),
+				secretsApi.getEffectiveQuota(requestToken, requestProject, force),
 			]);
 			if ($auth.projectId !== requestProject || !keyManagerEnabled) return;
 			if (s.status === 'fulfilled') secrets = s.value;
@@ -111,7 +111,7 @@
 			if (o.status === 'fulfilled') orders = o.value;
 			if (q.status === 'fulfilled') quota = q.value;
 			selection.retain(selectableIds());
-			error = '';
+			error = [s, c, o, q].some(result => result.status === 'rejected') ? t('secrets.error.server') : '';
 		} catch (e) {
 			if ($auth.projectId === requestProject && keyManagerEnabled) {
 				error = e instanceof ApiError ? t('secrets.error.loadFailed', { status: e.status }) : t('secrets.error.server');
@@ -123,11 +123,11 @@
 
 	async function forceRefresh() {
 		refreshing = true;
-		try { await fetchAll(); }
+		try { await fetchAll(true); }
 		finally { refreshing = false; }
 	}
 
-	const ar = createAutoRefresh(() => fetchAll(), {
+	const ar = createAutoRefresh(fetchAll, {
 		storageKey: 'dashboard-secrets',
 		invokeOnMount: false,
 		defaultActive: true,

@@ -39,6 +39,8 @@ async def ledger(monkeypatch):
         await connection.run_sync(lambda sync: LayerConsume.__table__.create(sync))
     factory = async_sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr(resources, "get_session_factory", lambda: factory)
+    # Catalog exclusion and block cleanup share the application's receipt store.
+    monkeypatch.setattr("app.services.palimpsest_catalog.get_session_factory", lambda: factory)
     async with factory() as session:
         row = LayerConsume(
             profile_name="proof",

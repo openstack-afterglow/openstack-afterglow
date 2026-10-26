@@ -1,4 +1,9 @@
 {
+	"domain.label": "Domain {name} · {id}",
+	"domain.deleted": "Domain dipadam atau tidak tersedia · {id}",
+	"domain.deletedProject": "Domain pemilik tidak diketahui · projek {id}",
+	"domain.unknown": "Pemilik tidak diketahui",
+	"domain.ownershipOnly": "Kotak domain menunjukkan pemilikan rangkaian sebenar. Berada dalam domain yang sama tidak bermakna ada sambungan rangkaian atau kebenaran untuk berkomunikasi.",
 	"card.noStatus": "Tiada status",
 	"topology.lane": "Lorong",
 	"topology.canvas": "Kanvas",

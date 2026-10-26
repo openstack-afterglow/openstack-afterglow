@@ -37,13 +37,13 @@
 	const selection = createResourceSelection();
 	const selectableIds = $derived(new Set(backups.map((backup) => backup.id)));
 
-	async function fetchBackups() {
+	async function fetchBackups(force = false) {
 		const token = $auth.token ?? undefined;
 		const projectId = $auth.projectId;
 		const requestGeneration = generation;
 		if (!projectId || !token || $projectSwitching) return;
 		try {
-			const next = await api.get<VolumeBackup[]>('/api/v1/volumes/backups', token, projectId);
+			const next = await api.get<VolumeBackup[]>('/api/v1/volumes/backups', token, projectId, { refresh: force });
 			if ($auth.projectId !== projectId || $auth.token !== token || generation !== requestGeneration) return;
 			backups = next;
 			error = '';
@@ -110,7 +110,7 @@
 	}
 
 	const bulkActions = $derived<BulkSelectionAction[]>([{ key: 'delete', label: t('backupsPage.delete'), tone: 'danger', onAction: runBulkDelete }]);
-	async function forceRefresh() { refreshing = true; try { await Promise.all([fetchBackups(), policies.refresh()]); } finally { refreshing = false; } }
+	async function forceRefresh() { refreshing = true; try { await Promise.all([fetchBackups(true), policies.refresh()]); } finally { refreshing = false; } }
 	const ar = createAutoRefresh(async () => { await Promise.all([fetchBackups(), policies.refresh()]); }, { storageKey: 'dashboard-volume-backups', defaultActive: true, defaultInterval: 15, intervalOptions: [10, 15, 30, 60], invokeOnMount: false });
 
 	$effect(() => {

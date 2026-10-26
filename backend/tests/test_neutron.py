@@ -1296,3 +1296,53 @@ def test_list_floating_ips_looks_up_only_attached_ports_and_names():
     assert by_id["fip-1"].instance_id == "vm-1"
     assert by_id["fip-1"].instance_name == "web-01"
     assert by_id["fip-2"].instance_id is None
+
+
+def test_monitoring_sync_keeps_target_ownership_with_distinct_executor():
+    from openstack.network.v2.security_group import SecurityGroup
+    from openstack.network.v2.security_group_rule import SecurityGroupRule
+
+    from app.services.neutron import ensure_node_exporter_sg
+
+    groups = []
+    rules = []
+
+    def create_group(**attrs):
+        group = SecurityGroup(
+            id="monitoring",
+            project_id=attrs.get("project_id", "executor"),
+            name=attrs["name"],
+            description=attrs["description"],
+            security_group_rules=[],
+        )
+        groups.append(group)
+        return group
+
+    def create_rule(**attrs):
+        rule = SecurityGroupRule(id="ingress", **attrs)
+        rules.append(rule)
+        groups[0].security_group_rules = [{"id": rule.id, **attrs}]
+        return rule
+
+    conn = MagicMock()
+    conn.network.security_groups.side_effect = lambda **kw: [g for g in groups if g.project_id == kw["project_id"]]
+    conn.network.create_security_group.side_effect = create_group
+    conn.network.create_security_group_rule.side_effect = create_rule
+    for _ in range(2):
+        ensure_node_exporter_sg(conn, "target-project", scrape_cidr="192.0.2.0/24")
+    assert [(g.id, g.project_id) for g in groups] == [("monitoring", "target-project")]
+    assert [(r.security_group_id, r.project_id) for r in rules] == [("monitoring", "target-project")]
+
+
+def test_monitoring_group_substituted_owner_blocks_rule_creation():
+    import pytest
+    from openstack.network.v2.security_group import SecurityGroup
+
+    from app.services.neutron import ensure_node_exporter_sg
+
+    conn = MagicMock()
+    conn.network.security_groups.return_value = []
+    conn.network.create_security_group.return_value = SecurityGroup(id="wrong", project_id="executor")
+    with pytest.raises(ValueError, match="unexpected project"):
+        ensure_node_exporter_sg(conn, "target-project", scrape_cidr="192.0.2.0/24")
+    conn.network.create_security_group_rule.assert_not_called()

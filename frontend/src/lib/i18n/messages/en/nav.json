@@ -65,6 +65,7 @@
 	"items.chatStats": "Chat statistics",
 	"items.userQuotas": "User quotas",
 	"items.modelSettings": "Model settings",
+	"items.providerSettings": "Provider settings",
 	"items.toolSettings": "Tool settings",
 	"items.projectQuotas": "Project quotas",
 	"items.monitoringOverview": "Monitoring overview",

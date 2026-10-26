@@ -40,6 +40,7 @@ let status = 'SHUTOFF';
 let flavorRequest: string;
 
 async function setup(adminMode = false, source = { id: 'vm', projectId: 'target-project', adminMode }): Promise<Controller> {
+	if (adminMode) auth.update(state => ({ ...state, isSystemAdmin: true }));
 	let controller: Controller | undefined;
 	render(Probe, {
 		source,
@@ -57,11 +58,11 @@ beforeEach(() => {
 	auth.update(state => ({ ...state, token: 'token', userId: 'user', projectId: 'own-project', roles: ['member'], isSystemAdmin: false }));
 	confirmDialog.mockResolvedValue(true);
 	mockGet.mockImplementation((path: string) => {
-		if (path === '/api/v1/instances/vm') return Promise.resolve({
+		if (/^\/api\/v1\/(?:admin\/)?instances\/vm$/.test(path)) return Promise.resolve({
 			id: 'vm', name: 'vm', status, flavor_id: 'current', flavor_name: 'current', image_name: null,
 			ip_addresses: [], created_at: null, union_libraries: [], union_strategy: null,
 		} satisfies Instance);
-		if (path === '/api/v1/instances/vm/resize-flavors') {
+		if (/^\/api\/v1\/(?:admin\/)?instances\/vm\/resize-flavors$/.test(path)) {
 			flavorRequest = path;
 			return Promise.resolve(flavors);
 		}
@@ -75,7 +76,7 @@ beforeEach(() => {
 describe('instance detail resize routing', () => {
 	it.each([
 		[false, '/api/v1/instances/vm/resize-flavors', '/api/v1/instances/vm', 'target-project'],
-		[true, '/api/v1/instances/vm/resize-flavors', '/api/v1/admin/instances/vm', 'own-project'],
+		[true, '/api/v1/admin/instances/vm/resize-flavors', '/api/v1/admin/instances/vm', 'own-project'],
 	] as const)('loads eligible flavors and performs resize/confirm/revert for adminMode=%s', async (adminMode, getPath, actionBase, projectId) => {
 		const s = await setup(adminMode);
 		await s.loadResizeFlavors();

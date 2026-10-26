@@ -42,7 +42,7 @@ beforeEach(() => {
 	mockPost.mockResolvedValue({});
 	mockDelete.mockResolvedValue({});
 	mockGet.mockImplementation((path: string) => {
-		if (/^\/api\/v1\/instances\/[^/]+$/.test(path)) return Promise.resolve({
+		if (/^\/api\/v1\/(?:admin\/)?instances\/[^/]+$/.test(path)) return Promise.resolve({
 			id: path.split('/').at(-1)!, name: 'vm', status, flavor_id: 'current', flavor_name: 'current', image_name: null,
 			ip_addresses: [], created_at: null, union_libraries: [], union_strategy: null,
 		} satisfies Instance);
@@ -54,6 +54,7 @@ beforeEach(() => {
 
 describe('instance lifecycle action admission', () => {
 	it.each([false, true])('blocks live archive and deletion, then permits SHUTOFF in adminMode=%s', async (adminMode) => {
+		auth.update(state => ({ ...state, isSystemAdmin: adminMode }));
 		const s = await setup({ id: 'vm', projectId: 'target-project', adminMode });
 		await s.performAction('shelve');
 		await s.deleteInstance();
@@ -64,8 +65,8 @@ describe('instance lifecycle action admission', () => {
 		await s.fetchInstance('vm');
 		await s.performAction('shelve');
 		await s.deleteInstance();
-		expect(mockPost).toHaveBeenCalledWith('/api/v1/instances/vm/shelve', {}, 'token', 'own-project');
-		expect(mockDelete).toHaveBeenCalledWith('/api/v1/instances/vm', 'token', 'own-project');
+		expect(mockPost).toHaveBeenCalledWith(`/api/v1/${adminMode ? 'admin/' : ''}instances/vm/shelve`, {}, 'token', 'own-project');
+		expect(mockDelete).toHaveBeenCalledWith(`/api/v1/${adminMode ? 'admin/' : ''}instances/vm`, 'token', 'own-project');
 	});
 
 	it.each(['STOPPED', 'SHELVED', 'SHELVED_OFFLOADED', 'ERROR', 'VERIFY_RESIZE'])('does not treat %s as SHUTOFF for archive/delete', async (nextStatus) => {

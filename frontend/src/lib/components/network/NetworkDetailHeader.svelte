@@ -1,10 +1,11 @@
 <script lang="ts">
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import { useNetworkDetailController } from '$lib/stores/networkDetailController.svelte';
+	import type { AutoRefreshController } from '$lib/utils/autoRefresh.svelte';
 
 	interface Props {
 		onClose?: () => void;
-		ar: { active: boolean; intervalSeconds: number; intervalOptions: number[] };
+		ar: AutoRefreshController;
 	}
 
 	let { onClose, ar }: Props = $props();
@@ -19,7 +20,7 @@
 			bind:intervalSeconds={ar.intervalSeconds}
 			intervalOptions={ar.intervalOptions}
 			refreshing={s.loading}
-			onManualRefresh={() => s.fetchNetwork()}
+			onManualRefresh={ar.refresh}
 		/>
 		<!-- 닫기 버튼은 SlidePanel 이 제공한다(`[data-slide-panel-close]`) -->
 	</div>

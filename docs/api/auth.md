@@ -14,6 +14,8 @@ nav_order: 10
 
 현재 비밀번호 로그인은 도메인 입력 없이 **실제 native `Accounts`**를 서버에서 조회하고 그 UUID 안의 username/email만 선택해 인증합니다. 다른 domain의 동명 username/email은 로그인 후보가 아니며 외부 home으로 fallback하지 않습니다. 표시 이름이 Accounts인 다른 조직도 후보가 아닙니다. 기존 계정 이동·password/grant 복제는 없으므로 다른 home 계정은 이 로그인 경로를 사용할 수 없습니다. 신규 user와 개인 프로젝트는 운영자가 사전 생성한 native `Accounts`/`Personal`을 사용하고 shared domain 자체를 생성/수정하지 않습니다.
 
+운영자가 이미 사용하는 native ephemeral mapping은 `[auth.providers.<key>.native_mapping]`의 명시 opt-in으로 연결합니다. `mode="ephemeral"`, exact `mapping_id`, `sha256`, `account_domain_id`, `personal_domain_id`가 필요합니다. Digest는 `{"schema_version": ..., "rules": ...}`를 키 정렬·공백 없는 JSON으로 직렬화한 SHA-256이며 native mapping 전체를 고정합니다. 이는 tenant SQL provider의 자동 email 신뢰나 임의 project grant 허용이 아닙니다. 기존 서명/nonce/PKCE/email 검증 뒤 Keystone가 native identity·project·role을 선택하고 Afterglow는 반환 identity와 Personal 소유권을 readback합니다. Mapping drift는503 `native_mapping_unsafe`, stale entry/link confirmation은409이며 자동 retry/정책 fallback은 없습니다. 기존 primary 우선, native mapping으로 재생성된 project의 sole-member 증명과 삭제된 accepted receipt fence 정리는 배포 어댑터의 기존 계약을 유지합니다. Native opt-in 없는 공급자는 기존 user-only/local-email mapping 검사와 account-entry/link 흐름을 유지합니다.
+
 ---
 
 ## 인증 방식
@@ -35,6 +37,12 @@ JWT 검증의 algorithm allow-list는 access/refresh 모두 `HS256` 하나이며
 
 OIDC·서비스 HTTP client의 TLS verify/설정 CA·hostname 검증은 유지한다. Backend는 [IDNA 2003 hostname confusion](https://github.com/agronholm/anyio/security/advisories/GHSA-82r6-8w77-94w6)이 수정된 AnyIO `>=4.14.2`를 요구한다. 이 의존성 갱신은 인증 방식·endpoint·계정 잠금/세션 정책을 변경하거나 인증서 검증을 끄지 않는다.
 
+### OpenStack HTTP 연결 재사용
+
+Backend의 `services/native_transport.py`는 별도 API 요청 사이에도 native HTTP socket pool을 재사용합니다. Keystone 사용자/서비스 인증, project/system scope 교환과 fresh 관리자·membership 검증은 그대로 실행합니다. 요청별 requests/Keystoneauth Session·auth plugin·헤더·쿠키·catalog/discovery·SDK Connection은 공유하지 않으며, 브라우저 로그인 수명이나 토큰 만료를 늘리지 않습니다.
+
+공유 범위는 설치된 Requests의 TLS/CA/client-certificate/proxy별 연결 풀뿐입니다. Keystoneauth TCP keepalive, 기존 timeout·redirect·retry 설정을 보존하며 mutation 자동 재전송을 추가하지 않습니다. 한 작업에서 session을 닫아도 다른 작업의 pool은 유지되고 API/독립 Notion worker의 작업 drain 뒤 및 process exit에서 닫습니다. 유휴 pool/connection 보관량은 library 기본 제한을 사용하며 pool 초과 동시 연결을 새 전역 대기열로 막지 않습니다. 실제 cloud 응답시간 개선량은 운영 전후 측정이 필요하며 합성 loopback의 연결 감소를 운영 SLA로 해석하지 않습니다.
+
 ### 세션·토큰 수명 모델
 
 - **access JWT** — 단기 토큰. 만료 시각은 응답의 `expires_at`.
@@ -49,9 +57,12 @@ OIDC·서비스 HTTP client의 TLS verify/설정 CA·hostname 검증은 유지�
 - **선택 프로젝트 접근 상실** — 로그인과 작업 도메인 정책이 여전히 유효하면 인증 문맥·다른 프로젝트 선택은 사용할 수 있고 refresh는 실제 native 범위를 projectless로 회전할 수 있습니다. 관리자 논리 작업 대상도 현재 `system:all`과 대상 도메인·프로젝트를 다시 검증한 경우에만 유지합니다. Refresh·인증 조회·`/token/project` 복구는 철회된 grant를 자동 복원하지 않습니다. 검증된 신규 로그인과 명시 domain/workspace 전환의 기존 onboarding은 그대로입니다.
 - **다른 도메인에서 projectless 복구** — 서버는 실제 native subject와 변경 불가 home을 먼저 검증한 뒤 현재 membership으로 선택 working domain을 적용합니다. 따라서 프로젝트 회수 후 반복 refresh·`/me`·workspace 탐색은 home과 working domain이 달라도 사용할 수 있습니다. Scoped native token의 프로젝트/도메인 불일치, 계정·home 비활성, working membership 상실이나 원 native 로그인 증명 회수는 허용하지 않습니다. Frontend는 refresh·`/me`의 명시적 null/빈 `project_id`에서 ID와 이름을 함께 지우며, 필드 생략은 기존 값을 유지합니다. 예상치 못한 다른 nonempty project를 scope 전환으로 받아들이지 않습니다.
 
-Refresh JWT의 `exp`와 Redis key의 양수 TTL은 로그인 세션의 유효성을 보장하지 않습니다. 기본값은 access900초·refresh604800초·절대 세션3600초이며 실제 실행 설정이 우선합니다. 절대 만료는 최초 `started_at + session_timeout_seconds`이고 refresh·프로젝트/도메인 전환으로 연장되지 않습니다. 유효하지 않은 native 로그인 증명·명시적 회수·절대 만료는 기존대로401이며, 계정·도메인·로그인 정책도 우회하지 않습니다. Keystone 자체가 group membership 변경으로 사용자의 unscoped 증명까지 회수한 경우에는 재로그인이 필요합니다. JWT `exp−iat`, 현재 설정, 원래 `started_at`과 native 만료를 각각 관찰해야 하며 설정 기본값을 실측 수명으로 보고하지 않습니다.
+Refresh JWT의 `exp`와 Redis key의 양수 TTL은 로그인 세션의 유효성을 보장하지 않습니다. Source 기본값은 access900초·refresh604800초·절대 세션86400초이며 명시한 실제 실행 설정이 우선합니다. 발급되는 두 JWT와 Redis TTL은 각 configured TTL, 최초 `started_at + session_timeout_seconds`, native unscoped root 만료 중 가장 이른 시각으로 제한합니다. Refresh·프로젝트/도메인 전환은 이 deadline을 연장하지 않습니다. Keystone token exchange는 원래 root의 만료를 늘리지 않으므로 native 증명이 하루보다 먼저 만료되거나 회수되면 재로그인이 필요합니다. 명시한 더 짧은 운영자 timeout·계정·도메인·로그인 정책도 우회하지 않습니다. Source default 변경만으로 기존 private TOML의3600초나 실행 중인 세션을 변경하지 않으며 운영 반영은 별도입니다.
+기본 배포 값도 Helm `session.timeoutSeconds`·Kolla bundled template·K8s generator까지86400초로 일치시킵니다. 유효한 private 설정은 `[session] timeout_seconds = 86400`이며 Helm override는 `session.timeoutSeconds: 86400`입니다. 이전 `absolute_timeout`/`absoluteTimeout`은 backend consumer가 없는 죽은 배포 필드였으므로 제거했으며 별도4시간 cap이 아닙니다. 기존 운영자의 명시3600초는 자동으로 바꾸지 않습니다.
 
 2026-10-16의 새 격리 정본 실행에서는 실제 서명 JWT 수명과 회전 전후의 동일 `started_at`, 양 JWT/Redis TTL이 남은 절대 만료의401을 확인했습니다. 공유 debug 세션도 read-only Redis/native-token 관찰로 native 만료와 별개의 최초 로그인 deadline을 확인했습니다. 합성 deadline 이동·실제 사용자 세션·현재 브라우저 JWT 관측의 제한은 [검증 기록](../testing.md#작업-영역-지연조기-로그아웃-조사-2026-10-16-frozen-local-qualification-일부-수용-차단)에서 구분합니다. 만료나 회수 정책을 느슨하게 바꾼 것은 아닙니다.
+
+브라우저는 만료 전 공유 refresh 한 건을 실행하고 focus·visibility 복귀·pageshow·online에서 갱신을 재검사합니다. 성공/오류가 늦게 도착해도 기존 token·refreshToken·검증 epoch가 바뀌었다면 현재 세션에 공개하지 않습니다.503/429/네트워크 오류는 cooldown 뒤 재시도 가능한 복구 상태로 유지하며 실제401·provider/도메인 정책 회수는 종료합니다. 새 fresh 관리자 guard는 자기 `NativeOperation` 안에서만 directory/catalog/service session 중복을 재사용하고 다음 guard는 다시 native 권위를 읽습니다.
 
 ### 보안 제한 (참고)
 
@@ -899,8 +910,16 @@ Login 시 최초 started_at을 기록하며 refresh/project rescope가 이 시�
 
 JWT는 탭 sessionStorage에만 저장합니다. 구형 localStorage 자격은 제거하므로 적용 뒤 한 번 재로그인이 필요하고 새 탭은 독립 인증합니다. 탭 복제는 브라우저 정책에 따라 자격을 복사할 수 있습니다. CSP의 script nonce/hash 정책은 JavaScript-readable 자격을 HttpOnly로 바꾸는 것은 아닙니다.
 
-### Native Accounts email and organization groups
+### Native Accounts email and organization groups (native_mapping 미설정 공급자)
 
 Trusted operator OIDC providers can use a native mapping with `type: local`, `name: {0}`, `email: {1}` in Accounts, and remote `OIDC-preferred_username`/`OIDC-email`. Canonical account selection remains the unique verified email in Accounts even when the provider username differs. A separate stable-subject mapping is not required. OIDC issuer/subject ownership checks remain auxiliary association protection.
 
 Conditional `OIDC-groups_direct`/`OIDC-groups` clauses may select existing named groups only in the login organization for operator-managed providers. Project creation, role grants, cross-domain and unconditional groups are rejected. Keystone ignores mapping groups for standard local users; a deployment needing persistent group membership must synchronize module-verified claims in its native authentication driver. The native token must still return the exact canonical ID/home/email. Local password login then shares the same memberships.
+
+명시적 `native_mapping` opt-in은 위 legacy 제한과 구분합니다. 검토된 전체 mapping digest로 native ephemeral identity·project/role/group 정책을 고정하고, Keystone가 그 정책을 실행하도록 한 뒤 native user·Personal authority를 검증합니다. 설정된 mapping의 정책을 앱에서 다른 규칙으로 바꾸거나 임의 claim으로 확장하지 않습니다.
+
+### OIDC 그룹 전달 진단
+
+운영 로그인이나 native 매핑을 변경하기 전에 별도 새 client로 `scripts/oidc_group_probe.py`를 실행할 수 있습니다. Loopback 콜백에서 검증한 ID token의 `groups_direct`와 동일 subject UserInfo의 `groups`·역할별 그룹을 분리하여 private 파일에 기록합니다. Token·secret은 저장하지 않으며 실제 Keystone HTTP/WSGI 전달을 관측한 결과는 아닙니다. 등록 URI·최소 scope·검사와 offline mapping 입력 방법은 [OIDC 그룹 진단](../oidc-group-diagnostics.md)을 따릅니다.
+
+현재 GitLab 환경에서는 관리자 페이지의 소문자 정규화로 `groups`와 `groups_direct`의 그룹 값이 모두 소문자로 전달됨을 사용자가 확인했습니다. **GitLab과 연동할 이 시스템의 그룹 이름도 소문자로 지정하고, 매핑 대상 도메인에서 실제 claim의 전체 경로와 정확히 일치시켜야 자동 매핑됩니다.** 예를 들어 `research/ml-team`은 `Research/ML-Team` 또는 `ml-team`과 다릅니다. 진단 도구가 원문 claim이나 기존 그룹 이름을 자동 변환하는 것은 아닙니다.

@@ -22,6 +22,10 @@ nav_order: 30
 
 관리자 레이어 API는 봉인된 SquashFS를 VM의 OverlayFS lower로 소비한다. 빌드/봉인은 Manila NFS share를 유지하며 소비는 기본 NFS 또는 명시적인 protected Glance RBD source와 VM별 readonly Cinder volume을 사용한다. 실제 provider·membership·quota·RO 준비 조건을 통과하지 못한 block 요청을 NFS로 대체하지 않는다.
 
+### 현재 catalog·사용자 환경 경로 (2026-10-25 source)
+
+새 `/api/v1/admin/palimpsest/catalog` 목록·상세는 managed SQL와 native Hub를 명시적으로 분리하고 기록된 생성 출처·부모/자식·묶음 참조를 side-effect-free로 반환한다. `/api/v1/palimpsest/catalog/assets`는 native visible bundle, `/environments`는 공개·봉인된 관리형 환경, `/api/v1/palimpsest/packages?q=`는 현재 프로젝트의 이름·태그 서버 검색이다. 사용자 생성은 새 `/catalog/environments/{id}/consume`의 revision-bound caller-project 경로이며 위의 관리자-only `/admin/libraries/consume`를 재사용해 권한을 확장하지 않는다. 작업 추적/명시적 자원 정리는 `GET/DELETE /catalog/environments/consumes/{id}`다. 요청·응답·권한·paging·local CLI 선행 조건은 [현재 계약](../palimpsest.md#46a-이름-기반-에셋-탐색과-관리자-계보-2026-10-25-source)을 따른다. 기존 일반 wizard squashfs 경로는 계속 제거 상태다.
+
 이 API는 **경로 접두사가 다른 두 서브시스템**으로 구성됩니다. 두 시스템은 데이터 모델이 다르므로 혼동하지 않도록 주의합니다.
 
 | 서브시스템 | 접두사 | 소스 | 레이어 식별자 | 저장소 | 설명 |

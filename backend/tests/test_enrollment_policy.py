@@ -467,10 +467,10 @@ async def test_admin_enrollment_routes_reject_nonadmin_and_revoked_authority(
     app = FastAPI()
     app.include_router(api.router, prefix="/api/v1/admin")
     app.dependency_overrides[get_os_conn] = lambda: None
-    monkeypatch.setattr(domain_scope, "domain_context", lambda *args: {})
+    monkeypatch.setattr(domain_scope, "domain_context", lambda *args, **kwargs: {})
     monkeypatch.setattr(domain_scope, "assert_token_context", lambda *args, **kwargs: None)
     monkeypatch.setattr(keystone, "validate_token", lambda *args, **kwargs: {"domain_id": "personal"})
-    monkeypatch.setattr(keystone, "_is_system_admin", lambda *args: False)
+    monkeypatch.setattr(keystone, "_is_system_admin", lambda *args, **kwargs: False)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         for cached_admin in (False, True):
             app.dependency_overrides[get_token_info] = lambda: {
@@ -508,7 +508,7 @@ async def test_api_requires_fresh_admin_and_secret_free_bounded_pagination(polic
         }
         from app.services import domain_scope, keystone
 
-        monkeypatch.setattr(domain_scope, "domain_context", lambda *args: {})
+        monkeypatch.setattr(domain_scope, "domain_context", lambda *args, **kwargs: {})
         monkeypatch.setattr(domain_scope, "assert_token_context", lambda *args, **kwargs: None)
         monkeypatch.setattr(keystone, "validate_token", lambda *args, **kwargs: {"domain_id": "personal"})
         fresh = MagicMock(return_value=False)

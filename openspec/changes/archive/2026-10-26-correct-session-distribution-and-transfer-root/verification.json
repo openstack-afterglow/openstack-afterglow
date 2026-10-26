@@ -1,0 +1,116 @@
+{
+  "change": "correct-session-distribution-and-transfer-root",
+  "sourceOnly": true,
+  "date": "2026-10-26",
+  "supersedesSource": "c92bd5f4bc30c0ac705348f226a6afae7acf00b475c5c763d7d902f34621b81d",
+  "changes": {
+    "session": {
+      "defaultSeconds": 86400,
+      "paths": [
+        "helm/afterglow/values.yaml",
+        "helm/afterglow/templates/configmap.yaml",
+        "deploy/values-dev-example.yaml",
+        "deploy/kolla/ansible/roles/afterglow/templates/afterglow.conf.j2",
+        "config2helm.py"
+      ],
+      "removedUnused": [
+        "absolute_timeout",
+        "absoluteTimeout"
+      ],
+      "privateOverride": "preserved; actual running3600 remains unchanged"
+    },
+    "destination": {
+      "source": "verified fresh principal.session_token unscoped root",
+      "oldFailure": "scoped-rescope-disabled regression returned403 before fix",
+      "after": "selected-project acceptance200, native exact human/project/home/domain proof unchanged",
+      "missingRoot": "403; no scoped or executor fallback"
+    }
+  },
+  "checks": {
+    "focusedBackend": {
+      "passed": 179,
+      "artifact": "artifact://425"
+    },
+    "helmLint": {
+      "charts": 1,
+      "failed": 0,
+      "artifact": "bg_122"
+    },
+    "finalI18n": {
+      "errors": 0,
+      "warnings": 37,
+      "hardcodedKorean": 0,
+      "files": 1217,
+      "artifact": "artifact://412"
+    },
+    "nativeHttp": {
+      "create": 201,
+      "scopeDenial": 403,
+      "nativeDenial": 403,
+      "accept": 200,
+      "validation": 422,
+      "ambiguous": 502,
+      "recovery": 200,
+      "creates": 1,
+      "accepts": 3,
+      "exchanges": 4,
+      "liveMutations": 0,
+      "artifact": "bg_118"
+    }
+  },
+  "limits": [
+    "14.03s historical real GitLab callback remains unresolved; no real human callback after-change trace",
+    "Matched synthetic Personal controls saved4directory reads but showed no measurable login-latency improvement",
+    "15–20s administrator route overall after-change latency not measured; guard/SDK measurements only",
+    "Target-project role remains required; real human target-role coverage not measured",
+    "Private timeout3600 unchanged; operator [session] timeout_seconds=86400 or Helm session.timeoutSeconds=86400 plus authorized rollout/new login required",
+    "No production/shared local service replacement, IAM/config/DB schema changes, commit, push or release"
+  ],
+  "proofRoot": "/Users/pieroot/.local/share/afterglow-proofs/dashboard-latency-session-transfer-20261026",
+  "images": {
+    "buildCommand": "docker buildx build --builder desktop-linux --platform linux/<arch> --target backend --tag afterglow-qa/session-transfer-root-20261026:<arch> --load .",
+    "canonicalDockerfile": "Dockerfile target backend",
+    "arm64": {
+      "image": "sha256:da3f1b9fda6406f04e719197042df413038679abf685648f527c4975457f3f34",
+      "runtimeMachine": "aarch64",
+      "buildArtifact": "artifact://421",
+      "composeSmoke": "bg_127",
+      "status": "passed"
+    },
+    "amd64": {
+      "image": "sha256:2e25e5fc148b86ff3f7fedde8d6c72d59aa0d225fd5d709e7a1e5ac7346ccc9c",
+      "runtimeMachine": "x86_64",
+      "buildArtifact": "artifact://422",
+      "composeSmoke": "bg_128",
+      "status": "passed"
+    },
+    "execution": "canonical docker-compose.dev.yml backend + isolated override; --rm --no-deps, network none, only synthetic loopback native provider; no private configuration/data mounts",
+    "limit": "One-off actual image execution, not shared-service replacement or Kubernetes/production rollout"
+  },
+  "architecture": {
+    "sourceSha256": "42ae393e1669a85c4c7c33ee01c07dc5383c1ba4853b589bf1a6b753259cd3f0",
+    "sourceFiles": 3498,
+    "isolated": "/tmp/afterglow-latency-gate-20261026"
+  },
+  "canonicalGate": {
+    "command": "AFTERGLOW_TEST_PROJECT_NAME=afterglow-root-correction-20261026 npm run test:gate",
+    "status": "passed",
+    "backend": {
+      "passed": 9632,
+      "skipped": 95
+    },
+    "frontend": {
+      "files": 450,
+      "passed": 5303
+    },
+    "contracts": 182,
+    "functional": {
+      "passed": 167,
+      "deselected": 33
+    },
+    "ruffFiles": 737,
+    "artifact": "artifact://429",
+    "cleanup": "owned datastore/network removed, no remaining owned volumes/containers"
+  },
+  "archive": "openspec/changes/archive/2026-10-26-correct-session-distribution-and-transfer-root"
+}

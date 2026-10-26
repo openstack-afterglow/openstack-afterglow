@@ -66,15 +66,13 @@ async def collect_instance_data(
     host_to_page_id: Hypervisor DB의 {호스트명 → page_id} 맵 (openstack resource relation 설정용)
     gpu_name_to_page_id: GPU Spec DB의 {GPU정식이름 → page_id} 맵 (GPU spec relation 설정용)
     """
-    import openstack
-
     from app.config import get_settings
-    from app.services import notion_sync
+    from app.services import native_transport, notion_sync
     from app.services.gpu_inventory import build_alias_to_device_name_map, resolve_alias_to_device_name
 
     settings = get_settings()
     alias_to_device_name = build_alias_to_device_name_map()
-    conn = openstack.connect(
+    conn = native_transport.connect(
         auth_url=settings.os_auth_url,
         username=settings.os_username,
         password=settings.os_password,
@@ -225,14 +223,13 @@ async def collect_hypervisor_data(gpu_name_to_page_id: dict[str, str] | None = N
     gpu_name_to_page_id: GPU Spec DB의 {GPU정식이름 → page_id} 맵.
                          제공 시 각 하이퍼바이저의 GPU relation page_id 목록을 설정한다.
     """
-    import openstack
-
     from app.config import get_settings
+    from app.services import native_transport
     from app.services.gpu_inventory import _collect_gpu_hosts
     from app.services.openstack_inventory import _fetch_hypervisors_raw
 
     settings = get_settings()
-    conn = openstack.connect(
+    conn = native_transport.connect(
         auth_url=settings.os_auth_url,
         username=settings.os_username,
         password=settings.os_password,

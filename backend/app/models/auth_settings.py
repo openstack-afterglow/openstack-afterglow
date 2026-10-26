@@ -108,6 +108,22 @@ class AuthOrganization(_AuthModel):
         return sorted(set(values))
 
 
+class AuthNativeMapping(_AuthModel):
+    """Exact operator pin for Keystone-owned ephemeral identity and project mapping."""
+
+    mode: Literal["ephemeral"]
+    mapping_id: KeystoneId
+    sha256: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$", strict=True)
+    account_domain_id: KeystoneId
+    personal_domain_id: KeystoneId
+
+    @model_validator(mode="after")
+    def distinct_account_spaces(self):
+        if self.account_domain_id == self.personal_domain_id:
+            raise ValueError("native mapping account and personal domains must be distinct")
+        return self
+
+
 class AuthProvider(_AuthModel):
     name: str = Field(min_length=1, max_length=64, strict=True)
     kind: Literal["oidc", "github"]
@@ -124,6 +140,7 @@ class AuthProvider(_AuthModel):
     federation_token_type: Literal["id_token", "access_token"] = "id_token"
     token_endpoint_auth_method: Literal["client_secret_basic", "client_secret_post"] = "client_secret_basic"
     organization: AuthOrganization | None = None
+    native_mapping: AuthNativeMapping | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -173,6 +190,11 @@ class AuthProvider(_AuthModel):
 
     @model_validator(mode="after")
     def validate_provider(self):
+        if self.native_mapping is not None:
+            if self.kind != "oidc" or self.federation_token_type != "id_token":
+                raise ValueError("native mapping requires OIDC id_token federation")
+            if self.organization is not None:
+                raise ValueError("native mapping owns organization grants and cannot configure organization")
         if self.enabled and not self.client_secret.get_secret_value().strip():
             raise ValueError("enabled providers require a client secret")
         if not 1 <= len(self.scopes) <= 20 or any(

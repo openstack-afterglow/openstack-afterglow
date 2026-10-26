@@ -1,4 +1,10 @@
 {
+	"volumeTransfer.scopeHelp": "Choose the destination domain and project. Acceptance uses your actual target-project token; system administration does not grant project roles. If authentication is denied, pass the issued ID and key to an authorized recipient.",
+	"volumeTransfer.mode": "Transfer method",
+	"volumeTransfer.recover": "Check this volume’s pending transfer",
+	"volumeTransfer.recoveryHelp": "A key cannot be retrieved again. If lost, explicitly cancel the confirmed pending transfer before creating another. Nothing is cancelled or resent automatically.",
+	"volumeTransfer.uncertain": "The request outcome is unknown. It will not be resent or automatically cancelled. Save any displayed ID and key securely, close this window, then refresh both projects’ volumes and pending transfers.",
+	"volumeTransfer.denied": "Native policy or target-project authentication denied this action. System administration does not guarantee acceptance permission. Copy any issued ID and key for an authorized recipient.",
 	"volumeList.filters.nameOrId": "Name or ID",
 	"volumeList.filters.minSize": "Minimum size (GiB)",
 	"volumeList.filters.maxSize": "Maximum size (GiB)",

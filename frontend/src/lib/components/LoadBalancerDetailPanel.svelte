@@ -13,30 +13,33 @@
 
   interface Props {
     lbId: string;
+    isAdmin?: boolean;
     onClose?: () => void;
     onDeleted?: () => void;
   }
 
-  let { lbId, onClose, onDeleted }: Props = $props();
+  let { lbId, isAdmin = false, onClose, onDeleted }: Props = $props();
 
   const s = createLoadbalancerDetailController({
     lbId: () => lbId,
     token: () => $auth.token ?? undefined,
     projectId: () => $auth.projectId ?? undefined,
+    adminMode: () => isAdmin,
     onDeleted: () => onDeleted?.(),
     onClose: () => onClose?.(),
   });
   provideLoadbalancerDetailController(s);
 
-  const ar = createAutoRefresh(() => s.fetchAll(), {
+  const ar = createAutoRefresh((force) => s.fetchAll(force), {
     storageKey: 'lb-detail-panel',
+    invokeOnMount: false,
     defaultActive: true,
     defaultInterval: 15,
     intervalOptions: [10, 15, 30, 60],
   });
 
   $effect(() => {
-    if (lbId && $auth.projectId) s.fetchAll();
+    if (lbId && $auth.token && (isAdmin || $auth.projectId)) s.fetchAll();
   });
 </script>
 

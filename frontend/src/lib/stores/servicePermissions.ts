@@ -1,4 +1,4 @@
-import { derived, readable } from 'svelte/store';
+import { derived, readable, readonly, writable } from 'svelte/store';
 import { auth, authReady, projectSwitching } from './auth';
 import { t } from '$lib/i18n/ns/account';
 import { api } from '$lib/api/client';
@@ -16,10 +16,18 @@ export interface PermissionState {
 	error: string;
 }
 const empty: PermissionState = { permissions: null, loading: false, error: '' };
+// Display-lifetime observers must not start a native authority request merely
+// by mounting a layout. Only existing permission consumers drive the loader.
+const permissionObservation = writable<PermissionState>(empty);
+export const observedProjectPermissions = readonly(permissionObservation);
 let refresh: (() => Promise<void>) | null = null;
 
 // Never hydrate service authority from local storage or projected role names.
-export const projectPermissions = readable<PermissionState>(empty, (set) => {
+export const projectPermissions = readable<PermissionState>(empty, (publish) => {
+	const set = (state: PermissionState) => {
+		permissionObservation.set(state);
+		publish(state);
+	};
 	let generation = 0;
 	let current: { token: string; projectId: string; userId: string | null } | null = null;
 	async function load() {
@@ -45,7 +53,7 @@ export const projectPermissions = readable<PermissionState>(empty, (set) => {
 		set(empty);
 		if (scope) void load();
 	});
-	return () => { current = null; ++generation; refresh = null; unsubscribe(); };
+	return () => { current = null; ++generation; refresh = null; unsubscribe(); permissionObservation.set(empty); };
 });
 
 export async function refreshProjectPermissions(): Promise<void> { await refresh?.(); }

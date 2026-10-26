@@ -73,7 +73,7 @@ describe.each([true, false])('administrator image catalog (desktop=%s)', desktop
 		});
 		const alias = image('alias-uuid', 'ubuntu', 'latest', '2026-08-01T00:00:00Z');
 		mocks.get.mockImplementation(async (path: string) => {
-			if (path.startsWith('/api/v1/images/')) return {
+			if (path.startsWith('/api/v1/admin/images/')) return {
 				...(path.endsWith(alias.id) ? alias : old), properties: {}, tags: [],
 				virtual_size: 0, container_format: 'bare', checksum: null,
 			};

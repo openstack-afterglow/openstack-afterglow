@@ -463,7 +463,7 @@
 
 {#if selectedInstanceId}
 	<SlidePanel onClose={closeInstanceDetail} ariaLabel={t('hypervisors.page.instanceDetailLabel')}>
-		<InstanceDetailPanel instanceId={selectedInstanceId} adminProjectId={selectedProjectId} onClose={closeInstanceDetail} showHost={true} />
+		<InstanceDetailPanel instanceId={selectedInstanceId} adminMode={true} adminProjectId={selectedProjectId} onClose={closeInstanceDetail} showHost={true} />
 	</SlidePanel>
 {/if}
 

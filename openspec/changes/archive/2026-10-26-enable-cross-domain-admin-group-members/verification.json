@@ -1,0 +1,324 @@
+{
+  "change": "enable-cross-domain-admin-group-members",
+  "date": "2026-10-26",
+  "scope": "source-only; group UI/native contract, no shared service or IAM mutation",
+  "preservation": {
+    "branch": "dev...origin/dev",
+    "staged": 0,
+    "unstaged": 328,
+    "untracked": 74,
+    "statusArtifact": "artifact://504",
+    "runtimeObservation": {
+      "backend": "657f9863dc75ee636d7faeb7591d78a1d8ced5973cfd9f93d34ddb638e348ae3 running healthy",
+      "lumen": "14931178d6643a2fed2fe6dac44a5b635e53c572170bc99b2e491dc7a68186a5 running healthy",
+      "note": "Current read-only observation; other concurrent sessions replaced an earlier backend ID. This task did not replace services."
+    }
+  },
+  "http": {
+    "actual_uvicorn": true,
+    "installed_keystoneclient_sdk": true,
+    "installed_openstacksdk": true,
+    "actual_graph_lease": true,
+    "synthetic_authority_native": true,
+    "statuses": {
+      "default_home_only": 200,
+      "accounts_candidates": 200,
+      "unjoined_default_denial": 403,
+      "source_mismatch": 403,
+      "wrong_group_domain": 403,
+      "home404": 404,
+      "user403": 403,
+      "user503": 503,
+      "mismatch": 503,
+      "wrong-home": 503,
+      "third_domain_grant_denial": 403,
+      "system_admin_required": 403,
+      "explicit_admission": 204,
+      "members_after": 200
+    },
+    "native_gets": 130,
+    "synthetic_native_membership_writes": [
+      {
+        "method": "PUT",
+        "user_id": "22222222-2222-4222-8222-222222222222",
+        "group_id": "group"
+      }
+    ],
+    "extra_role_writes": 0,
+    "live_native_mutations": 0,
+    "audit": [
+      {
+        "action": "group_member_add",
+        "status": "success"
+      }
+    ]
+  },
+  "browser": {
+    "defaultNoForeignFetch": true,
+    "nameEmailUuidSearch": true,
+    "sourceChoiceIsExplicit": true,
+    "exactSinglePut": {
+      "path": "/api/v1/admin/groups/group-one/users/22222222-2222-4222-8222-222222222222",
+      "method": "PUT",
+      "query": {
+        "domain_id": "default",
+        "user_domain_id": "accounts"
+      }
+    },
+    "sameNameDifferentHome": true,
+    "membersPreservedAcrossSourceSwitch": true,
+    "workspaceUnchanged": {
+      "domainId": "default",
+      "projectId": "home-project"
+    },
+    "defaultSnapshot": {
+      "calls": [
+        {
+          "path": "/api/v1/admin/groups",
+          "method": "GET",
+          "query": {
+            "domain_id": "default",
+            "cache": "true"
+          }
+        },
+        {
+          "path": "/api/v1/admin/groups/group-one/users",
+          "method": "GET",
+          "query": {
+            "domain_id": "default",
+            "cache": "true"
+          }
+        },
+        {
+          "path": "/api/v1/admin/domains/default/members",
+          "method": "GET",
+          "query": {
+            "refresh": "true"
+          }
+        },
+        {
+          "path": "/api/v1/admin/domains",
+          "method": "GET",
+          "query": {
+            "cache": "true"
+          }
+        }
+      ],
+      "members": [
+        {
+          "id": "11111111-1111-4111-8111-111111111111",
+          "name": "pieroot",
+          "email": "legacy@default.invalid",
+          "domain_id": "default",
+          "enabled": true
+        }
+      ],
+      "scenario": "success",
+      "ids": {
+        "member": "11111111-1111-4111-8111-111111111111",
+        "account": "22222222-2222-4222-8222-222222222222",
+        "other": "33333333-3333-4333-8333-333333333333"
+      },
+      "actor": {
+        "domainId": "default",
+        "projectId": "home-project"
+      }
+    },
+    "admissionSnapshot": {
+      "calls": [
+        {
+          "path": "/api/v1/admin/groups",
+          "method": "GET",
+          "query": {
+            "domain_id": "default",
+            "cache": "true"
+          }
+        },
+        {
+          "path": "/api/v1/admin/groups/group-one/users",
+          "method": "GET",
+          "query": {
+            "domain_id": "default",
+            "cache": "true"
+          }
+        },
+        {
+          "path": "/api/v1/admin/domains/default/members",
+          "method": "GET",
+          "query": {
+            "refresh": "true"
+          }
+        },
+        {
+          "path": "/api/v1/admin/domains",
+          "method": "GET",
+          "query": {
+            "cache": "true"
+          }
+        },
+        {
+          "path": "/api/v1/admin/groups/group-one/candidates",
+          "method": "GET",
+          "query": {
+            "domain_id": "default",
+            "user_domain_id": "accounts",
+            "refresh": "true"
+          }
+        },
+        {
+          "path": "/api/v1/admin/groups/group-one/users/22222222-2222-4222-8222-222222222222",
+          "method": "PUT",
+          "query": {
+            "domain_id": "default",
+            "user_domain_id": "accounts"
+          }
+        },
+        {
+          "path": "/api/v1/admin/groups/group-one/users",
+          "method": "GET",
+          "query": {
+            "domain_id": "default",
+            "cache": "true"
+          }
+        }
+      ],
+      "members": [
+        {
+          "id": "11111111-1111-4111-8111-111111111111",
+          "name": "pieroot",
+          "email": "legacy@default.invalid",
+          "domain_id": "default",
+          "enabled": true
+        },
+        {
+          "id": "22222222-2222-4222-8222-222222222222",
+          "name": "pieroot",
+          "email": "canonical@accounts.invalid",
+          "domain_id": "accounts",
+          "enabled": true
+        }
+      ],
+      "scenario": "success",
+      "ids": {
+        "member": "11111111-1111-4111-8111-111111111111",
+        "account": "22222222-2222-4222-8222-222222222222",
+        "other": "33333333-3333-4333-8333-333333333333"
+      },
+      "actor": {
+        "domainId": "default",
+        "projectId": "home-project"
+      }
+    },
+    "pendingNotEmpty": {
+      "noEmpty": true,
+      "noCandidates": true,
+      "member": true
+    },
+    "sourceABA": {
+      "errorKept": true,
+      "noEmpty": true,
+      "noCandidates": true,
+      "member": true
+    },
+    "explicitSourceRetryRecovers": true,
+    "domainCatalogFailureKeepsDefault": true,
+    "domainCatalogRetry": true
+  },
+  "responsive": {
+    "conditions": 126,
+    "failures": 0,
+    "widths": [
+      390,
+      767,
+      768,
+      820,
+      1023,
+      1024,
+      1440
+    ],
+    "locales": [
+      "ko",
+      "en",
+      "ja",
+      "zh-CN",
+      "sw",
+      "nb",
+      "ms",
+      "vi",
+      "bn"
+    ],
+    "themes": [
+      "dark",
+      "light"
+    ]
+  },
+  "checks": {
+    "focusedBackend": {
+      "passed": 207,
+      "files": 3,
+      "artifact": "artifact://536"
+    },
+    "focusedFrontend": {
+      "passed": 28,
+      "files": 3
+    },
+    "realClientRegression": {
+      "beforeFailed": true,
+      "beforeArtifact": "artifact://554",
+      "afterPassed": true
+    },
+    "accessInitial": {
+      "backend": 1635,
+      "frontend": 321,
+      "files": 21,
+      "artifact": "artifact://540",
+      "note": "Before adding groups selectors; final gate covers new selectors."
+    },
+    "i18n": {
+      "errors": 0,
+      "warnings": 37,
+      "messages": 11487
+    },
+    "scan": {
+      "koreanLines": 0,
+      "files": 1217
+    },
+    "svelte": {
+      "errors": 0,
+      "warnings": 16,
+      "files": 2780,
+      "artifact": "artifact://545"
+    },
+    "detectorFindings": 0,
+    "canonicalGate": {
+      "passed": true,
+      "backend": {
+        "passed": 9708,
+        "skipped": 95
+      },
+      "frontend": {
+        "files": 451,
+        "passed": 5326
+      },
+      "contracts": 182,
+      "functional": {
+        "passed": 167,
+        "deselected": 33
+      },
+      "ruffFiles": 738,
+      "artifact": "artifact://575",
+      "note": "Frozen group-only source; later Lumen change has not been integrated into this qualification."
+    }
+  },
+  "limits": [
+    "Synthetic authority/native/API; no live group writes",
+    "Cross-home group admission only; generic manager/project/credential routes unchanged",
+    "Initial Vite fixture navigation was refreshed by sync/HMR; final standalone document persisted its fixture module",
+    "Code index unavailable (gbrain absent at prior prerequisite check)"
+  ],
+  "architecture": {
+    "sourceSha256": "9baddc551f712e253c4d91ff8aa5ff04fefe50292afb5ac32f127808710610dc",
+    "sourceFiles": 3500,
+    "isolatedSnapshot": "/tmp/afterglow-latency-gate-20261026"
+  }
+}

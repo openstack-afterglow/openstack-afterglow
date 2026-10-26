@@ -25,11 +25,11 @@
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
-	async function load() {
+	async function load(force = false) {
 		if (templates.length === 0) loading = true;
 		else refreshing = true;
 		try {
-			templates = await api.get<K3sClusterTemplate[]>('/api/v1/admin/k3s-cluster-templates', token, projectId);
+			templates = await api.get<K3sClusterTemplate[]>('/api/v1/admin/k3s-cluster-templates', token, projectId, { refresh: force });
 		} catch {
 			templates = [];
 		} finally {
@@ -75,7 +75,7 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading || refreshing}
-				onManualRefresh={load}
+				onManualRefresh={ar.refresh}
 			/>
 		{/snippet}
 	</PageHeader>

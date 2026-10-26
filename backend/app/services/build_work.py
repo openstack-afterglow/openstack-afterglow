@@ -62,7 +62,7 @@ async def assert_current() -> None:
     if factory is None:
         raise DispatcherUnavailable("build database is unavailable")
     kind, identity = binding.member.split(":", 1)
-    model = {"library": LibraryBuild, "import": LayerImportJob, "layer": LayerBuild}[kind]
+    model = {"library": LibraryBuild, "import": LayerImportJob, "layer": LayerBuild, "consume": LayerConsume}[kind]
     try:
         async with factory() as session:
             row = await session.get(model, int(identity))
@@ -78,11 +78,21 @@ async def assert_current() -> None:
                 and not (binding.allow_complete and row.status == "complete")
             ):
                 raise DispatcherUnavailable("build is no longer runnable")
+            if kind == "consume" and (
+                row.status != "creating"
+                or not row.project_id
+                or not (row.resource_snapshot or {}).get("catalog_revision")
+                or (row.resource_snapshot or {}).get("consumer_project", {}).get("id") != row.project_id
+            ):
+                raise DispatcherUnavailable("catalog consumer is no longer runnable")
             if binding.cancel_cleanup and not cancellation_cleanup:
                 raise DispatcherUnavailable("cancellation cleanup authority changed")
             if binding.consumer_id is not None:
-                if kind != "import" or row.consume_id != binding.consumer_id:
-                    raise DispatcherUnavailable("consumer is outside its import authority")
+                if not (
+                    (kind == "import" and row.consume_id == binding.consumer_id)
+                    or (kind == "consume" and row.id == binding.consumer_id)
+                ):
+                    raise DispatcherUnavailable("consumer is outside its durable authority")
                 consumer = await session.get(LayerConsume, binding.consumer_id)
                 if consumer is None or consumer.status in {"active", "error", "deleted", "cancelled"}:
                     raise DispatcherUnavailable("consumer is no longer runnable")

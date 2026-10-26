@@ -29,9 +29,9 @@
 	const canManageRouter = $derived(
 		Boolean(router && router.project_id && router.project_id === projectId)
 	);
-	async function fetchRouter() {
+	async function fetchRouter(force = false) {
 		try {
-			router = await api.get<RouterDetail>(`/api/v1/routers/${id}`, token, projectId);
+			router = await api.get<RouterDetail>(`/api/v1/routers/${id}`, token, projectId, { refresh: force });
 			error = '';
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : t('routerDetail.loadFailed');
@@ -50,7 +50,7 @@
 		}
 	}
 
-	const ar = createAutoRefresh(() => fetchRouter(), {
+	const ar = createAutoRefresh(fetchRouter, {
 		storageKey: 'dashboard-network-router-detail',
 		invokeOnMount: false,
 		defaultActive: true,
@@ -148,7 +148,7 @@
 			{router}
 			{saving}
 			{ar}
-			onManualRefresh={() => fetchRouter()}
+			onManualRefresh={ar.refresh}
 			canManage={canManageRouter}
 			onDelete={deleteRouter}
 			onBack={() => goto('/dashboard/network/routers')}

@@ -105,6 +105,7 @@
 
 	const bulkActions = $derived<BulkSelectionAction[]>([{ key: 'delete', label: t('actions.delete'), tone: 'danger', onAction: runBulkDelete }]);
 	const refresh = createCoalescedRefresh((force) => fetchNetworks(force ? { refresh: true } : undefined));
+	$effect(() => () => refresh.dispose());
 	async function forceRefresh() {
 		refreshing = true;
 		try {

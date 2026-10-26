@@ -25,7 +25,7 @@ export function createAdminTopologyController(opts: AdminTopologyControllerOpts)
     selectedInstanceId ?? selectedRouterId ?? selectedLB?.id ?? null
   );
 
-  async function fetchTopology() {
+  async function fetchTopology(force = false) {
     if (!data) loading = true;
     else refreshing = true;
     error = '';
@@ -34,6 +34,7 @@ export function createAdminTopologyController(opts: AdminTopologyControllerOpts)
         '/api/v1/admin/topology',
         opts.token(),
         opts.projectId(),
+        { refresh: force },
       );
     } catch (e) {
       error = e instanceof ApiError ? t('topology.loadFailed', { status: e.status, message: e.message }) : t('topology.serverError');

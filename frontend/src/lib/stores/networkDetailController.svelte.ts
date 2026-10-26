@@ -46,9 +46,9 @@ function createNetworkDetailController(opts: Options) {
 		fetchNetwork();
 	});
 
-	async function fetchNetwork() {
+	async function fetchNetwork(force = false) {
 		try {
-			network = await api.get<NetworkDetail>(`${opts.apiBase()}/${opts.networkId()}`, opts.token(), opts.projectId());
+			network = await api.get<NetworkDetail>(`${opts.apiBase()}/${opts.networkId()}`, opts.token(), opts.projectId(), { refresh: force });
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : t('network.errors.load');
 		} finally {

@@ -74,6 +74,7 @@ class _Flight:
     task: asyncio.Task[Any] | None = None
     io: asyncio.Task[Any] | None = None
     valid: bool = True
+    refreshing: bool = False
 
 
 _inflight: dict[tuple[int, str], _Flight] = {}
@@ -150,7 +151,7 @@ async def _load_and_store(
 
     if flight.valid:
         try:
-            payload = json.dumps(_make_serializable(result))
+            payload = json.dumps(_make_serializable(result), ensure_ascii=False, separators=(",", ":"))
             flight.io = asyncio.create_task(backend.set(key, payload, ttl))
             await flight.io
         except Exception as e:
@@ -213,7 +214,7 @@ async def cached_call(
 
     fn 이 동기 함수인 경우 asyncio.to_thread 로 실행한다.
     Redis 연결 실패 시 캐시 없이 fn 을 직접 실행한다 (silent fail).
-    refresh=True 이면 진행 중인 동일 key 작업 뒤에 fn 을 강제 실행하고 새 값을 최종 저장한다.
+    refresh=True 는 이전 일반 miss 뒤 한 번 강제 재조회하며 동시 refresh는 그 작업을 공유한다.
     enabled=False 이면 캐시 read/write 를 모두 건너뛰고 fn 만 실행한다
     (인프라 캐시 — 토큰 검증, prewarm 등은 enabled 를 생략해 기본 True 유지).
     """
@@ -228,7 +229,12 @@ async def cached_call(
     flight_key = (id(loop), key)
 
     if refresh:
-        flight = _inflight.get(flight_key) or _Flight(backend, key)
+        flight = _inflight.get(flight_key)
+        if flight is not None and flight.refreshing and flight.task is not None and not flight.task.done():
+            metrics.increment("cache.coalesced")
+            return await asyncio.shield(flight.task)
+        flight = flight or _Flight(backend, key)
+        flight.refreshing = True
         task = loop.create_task(_refresh_after(backend, key, ttl, fn, flight.task, flight))
         _track_flight(flight_key, flight, task)
         return await asyncio.shield(task)
@@ -328,7 +334,7 @@ async def write_through(key: str, ttl: int, value: Any) -> None:
     """
     backend = _get_backend()
     try:
-        payload = json.dumps(_make_serializable(value))
+        payload = json.dumps(_make_serializable(value), ensure_ascii=False, separators=(",", ":"))
         await backend.set(key, payload, ttl)
         metrics.increment("cache.write_through")
     except Exception as e:
@@ -390,7 +396,7 @@ async def patch_list(
                 serialized = _make_serializable(update)
                 items = [serialized if matcher(item) else item for item in items]
 
-        payload = json.dumps(items)
+        payload = json.dumps(items, ensure_ascii=False, separators=(",", ":"))
         await backend.set(key, payload, ttl)
         metrics.increment("cache.patch_list")
     except Exception as e:

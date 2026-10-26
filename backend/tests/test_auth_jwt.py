@@ -82,7 +82,6 @@ def patch_settings(monkeypatch):
         jwt_refresh_ttl=604800,
         session_timeout_seconds=3600,
         session_warning_before_seconds=300,
-        session_absolute_timeout=14400,
     )
     monkeypatch.setattr("app.config.get_settings", lambda: s)
     monkeypatch.setattr("app.services.jwt_service.get_settings", lambda: s)
@@ -135,6 +134,24 @@ class TestJwtService:
         assert payload["sub"] == "u1"
         assert payload["jti"] == jti
         assert payload["type"] == "refresh"
+
+    def test_browser_tokens_cannot_outlive_native_or_absolute_deadline(self):
+        from app.services.jwt_service import sign_access, sign_refresh, verify_access, verify_refresh
+
+        deadline = int(time.time()) + 180
+        access, _, access_exp = sign_access("u1", "alice", "p1", "project", "refresh", expires_at=deadline)
+        refresh, _, refresh_exp = sign_refresh("u1", expires_at=deadline)
+        assert access_exp == verify_access(access)["exp"] == deadline
+        assert refresh_exp == verify_refresh(refresh)["exp"] == deadline
+
+    def test_deadline_does_not_extend_configured_token_lifetimes(self):
+        from app.services.jwt_service import sign_access, sign_refresh
+
+        now = int(time.time())
+        _, _, access_exp = sign_access("u1", "alice", "p1", "project", "refresh", expires_at=now + 900000)
+        _, _, refresh_exp = sign_refresh("u1", expires_at=now + 900000)
+        assert access_exp <= now + 901
+        assert refresh_exp <= now + 604801
 
     def test_verify_access_expired(self, monkeypatch):
         import jwt

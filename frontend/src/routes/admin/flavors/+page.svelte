@@ -55,7 +55,7 @@
 		}
 	});
 
-	async function load() {
+	async function load(force = false) {
 		if (flavors.length === 0) loading = true;
 		else refreshing = true;
 		error = '';
@@ -64,6 +64,7 @@
 				'/api/v1/admin/flavors?limit=999',
 				token,
 				projectId,
+				{ refresh: force },
 			);
 			flavors = res.items;
 		} catch (e) {
@@ -124,7 +125,7 @@
 					ramFilter = '';
 					diskFilter = '';
 					gpuFilter = '';
-					load();
+					load(true);
 				}}
 			/>
 			<div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">

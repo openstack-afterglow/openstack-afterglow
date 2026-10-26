@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
+	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
@@ -22,7 +23,7 @@
 	let loadFailed = $state(false);
 	let receivedAt = $state(0);
 	let now = $state(Date.now());
-	let refresh = async () => {};
+	let refresh = async (_fresh = true) => {};
 	const snapshot = $derived(owner === scope && $auth.isSystemAdmin && $authReady && !$projectSwitching ? stored : null);
 	const age = $derived(snapshot?.collected_at ? now - Date.parse(snapshot.collected_at) : Number.POSITIVE_INFINITY);
 	const verified = $derived(Boolean(snapshot?.enabled && !snapshot.stale && !loadFailed && age >= -5_000 && age < 30_000 && now - receivedAt < 30_000));
@@ -31,6 +32,7 @@
 		if (!value || !Number.isFinite(Date.parse(value))) return t('hostHealth.unmeasured');
 		return new Date(value).toLocaleString(intlLocale(), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 	}
+	createAutoRefresh(() => refresh(false), { storageKey: 'admin-host-health', defaultInterval: 10, invokeOnMount: false });
 
 	$effect(() => {
 		const context = scope;
@@ -45,12 +47,12 @@
 		if (!token || !allowed) return;
 		let active = true;
 		let running = false;
-		const load = async () => {
+		const load = async (fresh = true) => {
 			if (!active || running) return;
 			running = true;
 			refreshing = true;
 			try {
-				const next = await api.get<HostHealthSnapshot>('/api/v1/admin/host-health', token, projectId, { refresh: true });
+				const next = await api.get<HostHealthSnapshot>('/api/v1/admin/host-health', token, projectId, { refresh: fresh });
 				if (!active || context !== scope) return;
 				stored = next;
 				owner = context;
@@ -65,21 +67,11 @@
 			}
 		};
 		refresh = load;
-		let timer: ReturnType<typeof setInterval> | undefined;
-		const visibility = () => {
-			if (timer !== undefined) clearInterval(timer);
-			timer = undefined;
-			now = Date.now();
-			if (!document.hidden) { void load(); timer = setInterval(() => { void load(); }, 10_000); }
-		};
 		const clock = setInterval(() => { now = Date.now(); }, 5_000);
-		document.addEventListener('visibilitychange', visibility);
-		visibility();
+		void load(false);
 		return () => {
 			active = false;
-			if (timer !== undefined) clearInterval(timer);
 			clearInterval(clock);
-			document.removeEventListener('visibilitychange', visibility);
 		};
 	});
 </script>

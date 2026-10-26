@@ -100,7 +100,7 @@
 		nextPrefetch.intent(key, (signal) => api.prefetch(path, token, projectId, { signal }));
 	}
 
-	async function load(marker?: string, opts?: { clearSelection?: boolean }) {
+	async function load(marker?: string, opts?: { clearSelection?: boolean; refresh?: boolean }) {
 		const generation = ++loadGeneration;
 		const requestToken = $auth.token ?? undefined;
 		const requestProjectId = $auth.projectId ?? undefined;
@@ -130,7 +130,7 @@
 		allInstances.length === 0 ? (loading = true) : (refreshing = true);
 		inventoryError = '';
 		try {
-			const res = await api.get<PagedResponse<AdminInstance>>(requestPath, requestToken, requestProjectId);
+			const res = await api.get<PagedResponse<AdminInstance>>(requestPath, requestToken, requestProjectId, opts?.refresh ? { refresh: true } : undefined);
 			if (!owns()) return;
 			allInstances = res.items;
 			instancesRevision = requestRevision;
@@ -191,7 +191,7 @@
 	}
 
 	const ar = createAutoRefresh(
-		() => { load(markerStack[markerStack.length - 1]); loadTimeseries(tsRange, { background: true }); },
+		async () => { await Promise.allSettled([load(markerStack[markerStack.length - 1]), loadTimeseries(tsRange, { background: true })]); },
 		{ storageKey: 'admin-instances', defaultActive: true, defaultInterval: 15, intervalOptions: [10, 15, 30, 60], invokeOnMount: false }
 	);
 
@@ -296,7 +296,7 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading || refreshing}
-				onManualRefresh={() => { markerStack = []; nextMarker = null; hostFilter = ''; statusFilter = ''; nameSearch = ''; void load(undefined, { clearSelection: true }); void loadHosts(); }}
+				onManualRefresh={() => { markerStack = []; nextMarker = null; hostFilter = ''; statusFilter = ''; nameSearch = ''; void load(undefined, { clearSelection: true, refresh: true }); void loadHosts(); }}
 			/>
 			<div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">
 				{t('instances.page.display')}
@@ -392,7 +392,7 @@
 
 {#if selectedInstanceId}
 	<SlidePanel onClose={closeDetail} ariaLabel={t('instances.page.detailLabel')} dataTour="admin-compute-detail">
-		<InstanceDetailPanel instanceId={selectedInstanceId} adminProjectId={selectedProjectId} onClose={closeDetail} showHost={true} onUpdated={() => void load(markerStack.at(-1))} />
+		<InstanceDetailPanel instanceId={selectedInstanceId} adminMode={true} adminProjectId={selectedProjectId} onClose={closeDetail} showHost={true} onUpdated={() => void load(markerStack.at(-1))} />
 	</SlidePanel>
 {/if}
 

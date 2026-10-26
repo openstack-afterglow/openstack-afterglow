@@ -1,6 +1,7 @@
 export interface CoalescedRefresh {
 	run(force?: boolean): Promise<void>;
 	invalidate(): Promise<void>;
+	dispose(): void;
 }
 
 /**
@@ -26,6 +27,7 @@ export function createCoalescedRefresh(task: (force: boolean) => Promise<void>):
 	let queuedForce: Cycle | null = null;
 	let mutationEpoch = 0;
 	let invalidationWaiters: InvalidationWaiter[] = [];
+	let disposed = false;
 
 	function createCycle(force: boolean): Cycle {
 		let resolve!: () => void;
@@ -91,6 +93,7 @@ export function createCoalescedRefresh(task: (force: boolean) => Promise<void>):
 	}
 
 	function run(force = false): Promise<void> {
+		if (disposed) return Promise.resolve();
 		if (!active) {
 			const cycle = createCycle(force);
 			start(cycle);
@@ -104,6 +107,7 @@ export function createCoalescedRefresh(task: (force: boolean) => Promise<void>):
 	}
 
 	function invalidate(): Promise<void> {
+		if (disposed) return Promise.resolve();
 		const epoch = ++mutationEpoch;
 		const promise = new Promise<void>((resolve, reject) => {
 			invalidationWaiters.push({ epoch, resolve, reject });
@@ -119,5 +123,13 @@ export function createCoalescedRefresh(task: (force: boolean) => Promise<void>):
 		return promise;
 	}
 
-	return { run, invalidate };
+	function dispose() {
+		disposed = true;
+		queuedForce?.resolve();
+		queuedForce = null;
+		for (const waiter of invalidationWaiters) waiter.resolve();
+		invalidationWaiters = [];
+	}
+
+	return { run, invalidate, dispose };
 }

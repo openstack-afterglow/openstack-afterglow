@@ -17,9 +17,9 @@ vi.mock('$lib/stores/auth', async () => {
 });
 vi.mock('$lib/api/client', () => ({ api: { get: mocks.apiGet }, ApiError: class extends Error {} }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
-	createAutoRefresh: (callback: () => void | Promise<void>) => {
+	createAutoRefresh: (callback: (force?: boolean) => void | Promise<void>) => {
 		mocks.refresh = callback;
-		return { active: false, intervalSeconds: 30, intervalOptions: [10, 30, 60] };
+		return { active: false, intervalSeconds: 30, intervalOptions: [10, 30, 60], refresh: () => callback(true) };
 	},
 }));
 
@@ -272,7 +272,7 @@ describe('my resources inventory consumer', () => {
 		const pending = deferred();
 		mocks.apiGet.mockReturnValueOnce(pending.promise);
 		await fireEvent.click(screen.getByRole('button', { name: shared('autoRefresh.refresh') }));
-		expect(mocks.apiGet).toHaveBeenLastCalledWith('/api/v1/user-dashboard/summary', 'token', 'project', { refresh: true });
+		expect(mocks.apiGet).toHaveBeenLastCalledWith('/api/v1/user-dashboard/summary', 'token', 'project', expect.objectContaining({ refresh: true }));
 		expect(container.querySelector('[data-resource-snapshot]')).not.toBeNull();
 		pending.reject(new Error('offline'));
 		await waitFor(() => expect(container.querySelector('[data-resource-error]')).not.toBeNull());

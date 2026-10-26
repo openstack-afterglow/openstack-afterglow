@@ -17,6 +17,7 @@ from app.services.mcp_control_plane.compute import (
     request_project_server_create,
     request_project_server_delete,
 )
+from tests.test_palimpsest_catalog import catalog_db as catalog_db
 
 
 @pytest.mark.asyncio
@@ -182,7 +183,7 @@ async def test_cloud_overview_counts_only_exact_project_provider_records():
 
 
 @pytest.mark.asyncio
-async def test_vm_delete_previews_and_deletes_only_owned_server_without_force():
+async def test_vm_delete_previews_and_deletes_only_owned_server_without_force(catalog_db):
     calls: list[tuple[str, object]] = []
 
     class Compute:

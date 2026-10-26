@@ -1282,8 +1282,15 @@ def list_security_groups(conn: openstack.connection.Connection, project_id: str 
     return [_sg_to_dict(sg) for sg in conn.network.security_groups(**kwargs)]
 
 
-def create_security_group(conn: openstack.connection.Connection, name: str, description: str = "") -> dict:
-    sg = conn.network.create_security_group(name=name, description=description)
+def create_security_group(
+    conn: openstack.connection.Connection, name: str, description: str = "", *, project_id: str | None = None
+) -> dict:
+    attrs = {"name": name, "description": description}
+    if project_id is not None:
+        attrs["project_id"] = project_id
+    sg = conn.network.create_security_group(**attrs)
+    if project_id is not None and sg.project_id != project_id:
+        raise ValueError("Created security group has an unexpected project")
     return _sg_to_dict(sg)
 
 
@@ -1301,6 +1308,8 @@ def create_security_group_rule(
     remote_ip_prefix: str | None = None,
     ethertype: str = "IPv4",
     remote_group_id: str | None = None,
+    *,
+    project_id: str | None = None,
 ) -> dict:
     kwargs: dict = {
         "security_group_id": sg_id,
@@ -1317,6 +1326,8 @@ def create_security_group_rule(
         kwargs["remote_ip_prefix"] = remote_ip_prefix
     if remote_group_id:
         kwargs["remote_group_id"] = remote_group_id
+    if project_id is not None:
+        kwargs["project_id"] = project_id
     rule = conn.network.create_security_group_rule(**kwargs)
     return {
         "id": rule.id,
@@ -1429,7 +1440,7 @@ def _ensure_single_port_ingress_sg(
     existing = next((sg for sg in sgs if sg["name"] == sg_name), None)
 
     if existing is None:
-        sg = create_security_group(conn, sg_name, description)
+        sg = create_security_group(conn, sg_name, description, project_id=project_id)
         sg_id = sg["id"]
         existing_rules: list[dict] = []
     else:
@@ -1451,6 +1462,7 @@ def _ensure_single_port_ingress_sg(
             port_range_min=port,
             port_range_max=port,
             remote_ip_prefix=scrape_cidr,
+            project_id=project_id,
         )
 
     return sg_name

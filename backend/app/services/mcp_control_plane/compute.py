@@ -120,8 +120,7 @@ def _action_server(conn: Any, *, project_id: str, server_id: str, action: str) -
     return safe_server
 
 
-def _prepare_server_delete(conn: Any, *, project_id: str, server_id: str) -> dict[str, str | None]:
-    server = conn.compute.get_server(server_id)
+def _checked_server_delete(server: Any, *, project_id: str) -> dict[str, str | None]:
     if server is None:
         raise McpComputeError("Nova server was not found")
     safe_server = _safe_server(server, project_id=project_id)
@@ -130,8 +129,12 @@ def _prepare_server_delete(conn: Any, *, project_id: str, server_id: str) -> dic
     return {**safe_server, "requested_action": "delete"}
 
 
-def _delete_server(conn: Any, *, project_id: str, server_id: str) -> dict[str, str | None]:
-    safe_server = _prepare_server_delete(conn, project_id=project_id, server_id=server_id)
+def _prepare_server_delete(conn: Any, *, project_id: str, server_id: str) -> dict[str, str | None]:
+    return _checked_server_delete(conn.compute.get_server(server_id), project_id=project_id)
+
+
+def _delete_server(conn: Any, server: Any, *, project_id: str, server_id: str) -> dict[str, str | None]:
+    safe_server = _checked_server_delete(server, project_id=project_id)
     check_mutation_dispatch()
     conn.compute.delete_server(server_id, ignore_missing=False, force=False)
     return safe_server
@@ -289,10 +292,23 @@ async def preview_project_server_delete(conn: Any, *, project_id: str, server_id
 async def request_project_server_delete(conn: Any, *, project_id: str, server_id: str) -> dict[str, str | None]:
     """Delete one exact-project Nova server without force or missing-resource suppression."""
     try:
-        return await run_sdk(_delete_server, conn, project_id=project_id, server_id=server_id)
+        server = await run_sdk(conn.compute.get_server, server_id)
+        safe_server = _checked_server_delete(server, project_id=project_id)
+        from app.services.palimpsest_catalog_cleanup import McpCleanupAuthority, cleanup_consume, lookup_catalog_consume
+
+        authority = McpCleanupAuthority(conn, getattr(conn, "_afterglow_user_id", ""), project_id)
+        consume_id = await lookup_catalog_consume(server_id, server, authority)
+        if consume_id is not None:
+            await cleanup_consume(conn, consume_id, authority)
+            return safe_server
+        return await run_sdk(_delete_server, conn, server, project_id=project_id, server_id=server_id)
     except McpComputeError:
         raise
     except Exception as exc:
+        from fastapi import HTTPException
+
+        if isinstance(exc, HTTPException):
+            raise McpComputeError(str(exc.detail)) from exc
         raise McpComputeError("Nova server deletion is unavailable") from exc
 
 

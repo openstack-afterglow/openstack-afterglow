@@ -50,6 +50,12 @@ async def test_palimpsest_routes_are_mounted_under_v1_only():
     assert paths == {
         "/api/v1/palimpsest/layers",
         "/api/v1/palimpsest/layers/{artifact_id}/ancestors",
+        "/api/v1/palimpsest/catalog/assets",
+        "/api/v1/palimpsest/catalog/environments",
+        "/api/v1/palimpsest/catalog/environments/consumes/{consume_id}",
+        "/api/v1/palimpsest/catalog/environments/{profile_id}/consume",
+        "/api/v1/admin/palimpsest/catalog",
+        "/api/v1/admin/palimpsest/catalog/{identity}",
         "/api/v1/admin/palimpsest/artifacts",
         "/api/v1/admin/palimpsest/artifacts/backfill-digest",
         "/api/v1/admin/palimpsest/digest-status",

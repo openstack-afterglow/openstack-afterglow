@@ -14,10 +14,12 @@
 		instance,
 		deleting,
 		onDelete,
+		canMutate = true,
 	}: {
 		instance: DbInstance;
 		deleting: boolean;
 		onDelete: () => void;
+		canMutate?: boolean;
 	} = $props();
 </script>
 
@@ -26,8 +28,10 @@
 		<h1 class="text-2xl font-bold text-ink-0">{instance.name}</h1>
 		<span class="text-xs font-medium {statusColor[instance.status] ?? 'text-ink-2'}">{instance.status}</span>
 	</div>
+	{#if canMutate}
 	<button onclick={onDelete} disabled={deleting}
 		class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 transition-colors">
 		{#if deleting}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.deleting')}</span></span>{:else}{tr('actions.deleteInstance')}{/if}
 	</button>
+	{/if}
 </div>

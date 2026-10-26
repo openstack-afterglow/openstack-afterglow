@@ -333,6 +333,26 @@ Auth key는 이 응답에서만 발급됩니다. 생성 화면에서 ID와 키�
 
 현재 프로젝트 소유의 미연결 대기 전송만 해당 사용자의 scoped credential로 취소합니다. 이미 수락되거나 취소된 전송은 `404`; 다른 출발 프로젝트의 전송은 native policy에 따라 `403` 또는 소유권 재검사에서 `404`입니다. **응답: `204 No Content`**.
 
+### 관리자 생성·선택 대상 수신·복구
+
+관리자 볼륨 목록과 공용 관리자 상세의 **이전**은 같은 native transfer core를 사용합니다. `available`·미연결 볼륨만 생성하며 `awaiting-transfer` 행에서는 대기 ID 복구와 명시 취소를 사용할 수 있습니다. 목록 상단 **볼륨 수신**은 기존 볼륨이 없는 대상에도 공급받은 전체 ID/키로 접근할 수 있습니다.
+
+| Method | Endpoint | 계약 |
+|---|---|---|
+| `POST` | `/api/v1/admin/volumes/{volume_id}/transfer` | 선택적 `{name}`으로 생성. `201`의 ID/키는 한 번만 공개 |
+| `GET` | `/api/v1/admin/volumes/{volume_id}/transfers` | 정확한 볼륨의 대기 ID만 복구. 키 반환 없음 |
+| `POST` | `/api/v1/admin/volumes/transfer/{transfer_id}/accept` | `{auth_key,target_domain_id,target_project_id}`로 실제 대상 프로젝트에 수신 |
+| `DELETE` | `/api/v1/admin/volumes/transfer/{transfer_id}` | 확인한 대기 이전의 명시 취소. `204` |
+
+모든 endpoint는 현재 human `system:all` 관리자 권한을 다시 검증합니다. 고정 verified executor는 foreign source의 실제 Cinder owner/state·연결·Palimpsest SQL allocation/cleanup ledger를 확인하고 native create를 요청합니다. Palimpsest 관리 marker·등록된 upper/layer·결과 미확정 할당 및 원장 장애는 이전을 막습니다. 대상은 fresh Keystone의 활성 domain/project와 그 소속을 검증하며, 원래 관리자의 native token으로 대상 프로젝트 credential을 실제 발급하고 user/project/domain/identity-domain을 확인한 뒤 **그 credential**로 native accept합니다. 같은 token에 `X-Project-Id`만 바꾸거나 executor의 home 프로젝트로 수신하지 않습니다.
+대상 exchange의 입력은 fresh principal의 **unscoped `session_token` root**이며 현재 작업의 project-scoped `token`이 아닙니다. Keystone의 scoped-token rescope가 꺼진 경우에도 root에서 정상 발급하고, root가 없으면 scoped/executor credential로 fallback하지 않고 거부합니다. 발급 후 동일 human/home·정확한 target project/domain 검증은 그대로입니다.
+
+**시스템 관리자 권한만으로 대상 프로젝트 역할이 생기지 않습니다.** Keystone의 대상 scope 발급 거부 또는 Cinder policy/key 거부는 `403`으로 남고 쿼터도 native 정책을 따릅니다. 자동 role grant/서비스 계정 대상 재인증은 없습니다. 관리자가 실제 target-project scope를 발급받을 수 없다면 발급 ID/키를 해당 프로젝트의 권한 있는 수신자에게 전달해야 합니다. 생성만 성공한 상태는 소유권 이전 완료가 아닙니다.
+
+성공은 정확한 transfer/volume ID 및 수신 후 실제 target owner·`available`·미연결 readback까지 확인한 경우뿐입니다. POST는 SDK/브라우저 auth-refresh 재전송·재시도 경로를 사용하지 않습니다. 생성 응답 유실 시 exact-volume 대기 ID를 읽고, 키 분실은 운영자가 명시 취소한 후 새로 생성합니다. Accept 응답 유실/readback 실패는 source/destination volume·snapshot·quota cache를 무효화하지만 자동 취소하지 않습니다. 불명확한 결과 화면은 재수락을 잠그고 표시된 키를 유지하여 안전한 보관·새 상태 확인을 안내합니다. 서버/브라우저는 키를 cache/영속화/오류 본문에 저장하지 않고 성공/오류·입력 검증 응답 모두 `no-store, private`입니다. 기존 consumer owner fences는 그대로 유지합니다.
+Native SDK 호출에도 `allow_reauth=False`를 적용합니다. Cinder의 `401` 뒤 Keystone 토큰을 자동 재발급해 create/accept POST를 다시 보내지 않으며, 확인된 인증 거부를 반환합니다. 연결/상태 재시도 비활성화만으로는 이401 재인증 replay가 차단되지 않으므로 별도로 막습니다. 이 source 수정은 이미 잘못 이전된 볼륨을 자동 복구하거나 운영 v1.30.26 코드를 교체하지 않습니다.
+Create/accept에는 `redirect=False`도 별도로 적용합니다. Native307/308 등 redirect 응답의 `Location`으로 동일 POST·인증 token·수신 auth key를 전달하지 않습니다. Redirect 응답은 이전 완료로 인정하지 않고502로 처리하며 자동 재수락/취소는 없습니다. 올바른 native endpoint 설정이 필요하며401 재인증 차단만으로 redirect 재전송까지 막히지는 않습니다.
+
 ### 오류
 
 | 상태 | 원인 |

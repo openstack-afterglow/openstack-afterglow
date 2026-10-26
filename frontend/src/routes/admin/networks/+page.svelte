@@ -95,7 +95,7 @@
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
-	async function loadNetworks() {
+	async function loadNetworks(force = false) {
 		if (!token || $page.url.pathname !== '/admin/networks') return;
 		const generation = ++requestGeneration;
 		const scope = scopeKey();
@@ -105,7 +105,7 @@
 		loading = true;
 		error = '';
 		try {
-			const rows = await api.get<AdminNetwork[]>('/api/v1/admin/all-networks', tok, project);
+			const rows = await api.get<AdminNetwork[]>('/api/v1/admin/all-networks', tok, project, { refresh: force });
 			if (!owns()) return;
 			networks = rows;
 			hasInventory = true;
@@ -187,7 +187,7 @@
 	}
 
 	const ar = createAutoRefresh(
-		() => { loadNetworks(); loadTimeseries(tsRange, { background: true }); },
+		async () => { await Promise.allSettled([loadNetworks(), loadTimeseries(tsRange, { background: true })]); },
 		{ storageKey: 'admin-networks', defaultInterval: 30, intervalOptions: [15, 30, 60], invokeOnMount: false }
 	);
 
@@ -203,7 +203,7 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading}
-				onManualRefresh={loadNetworks}
+				onManualRefresh={() => loadNetworks(true)}
 			/>
 		{/snippet}
 	</PageHeader>
@@ -257,7 +257,7 @@
 	{#if error}
 		<Alert tone="danger" title={t('networksPage.error.loadTitle')}>
 			{error}
-			{#snippet actions()}<Button variant="secondary" size="sm" onclick={loadNetworks}>{t('networksPage.retry')}</Button>{/snippet}
+			{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => loadNetworks(true)}>{t('networksPage.retry')}</Button>{/snippet}
 		</Alert>
 	{/if}
 	{#if ownerWarning}<Alert tone="warning" title={t('networksPage.ownerWarning')}>{t('networksPage.ownerWarningBody')}</Alert>{/if}

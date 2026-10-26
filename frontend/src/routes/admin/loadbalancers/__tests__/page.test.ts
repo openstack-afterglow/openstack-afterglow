@@ -3,8 +3,9 @@ vi.mock('$lib/api/client', () => ({
     get: vi.fn(async (path: string) => {
       if (path === '/api/v1/admin/all-loadbalancers') {
         return [
-          { id: 'lb-1', name: 'user-lb', status: 'ACTIVE', operating_status: 'ONLINE', vip_address: '192.0.2.10', project_id: 'proj-1', tags: [] },
-          { id: 'lb-2', name: 'drover-lb', status: 'ACTIVE', operating_status: 'ONLINE', vip_address: '192.0.2.11', project_id: 'proj-1', tags: ['drover.managed=true', 'drover.resource_type=load_balancer'] },
+          { id: 'lb-1', name: 'user-lb', status: 'ACTIVE', operating_status: 'ONLINE', vip_address: '192.0.2.10', project_id: 'admin-proj', tags: [] },
+          { id: 'lb-2', name: 'drover-lb', status: 'ACTIVE', operating_status: 'ONLINE', vip_address: '192.0.2.11', project_id: 'admin-proj', tags: ['drover.managed=true', 'drover.resource_type=load_balancer'] },
+          { id: 'lb-foreign', name: 'foreign-lb', status: 'ACTIVE', operating_status: 'ONLINE', vip_address: '192.0.2.12', project_id: 'other-project', tags: [] },
         ];
       }
       if (path === '/api/v1/loadbalancers/lb-2') {
@@ -80,10 +81,13 @@ describe('Admin LoadBalancer Page and Protection', () => {
 
     const droverLbCheckbox = screen.getByRole('checkbox', { name: 'drover-lb 선택' });
     expect((droverLbCheckbox as HTMLInputElement).disabled).toBe(true);
+    const foreignLbCheckbox = screen.getByRole('checkbox', { name: 'foreign-lb 선택' });
+    expect((foreignLbCheckbox as HTMLInputElement).disabled).toBe(true);
 
     await fireEvent.click(screen.getByRole('checkbox', { name: '전체 로드밸런서 선택' }).closest('label')!);
     expect((userLbCheckbox as HTMLInputElement).checked).toBe(true);
     expect((droverLbCheckbox as HTMLInputElement).checked).toBe(false);
+    expect((foreignLbCheckbox as HTMLInputElement).checked).toBe(false);
     expect(await screen.findByRole('region', { name: '선택한 로드밸런서 일괄 작업' })).toBeTruthy();
   });
 

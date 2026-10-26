@@ -1,4 +1,10 @@
 {
+	"volumeTransfer.scopeHelp": "请选择目标域和项目。接收使用当前管理员真正属于目标项目的令牌；系统管理员权限不会自动授予项目角色。如果认证被拒绝，请将已生成的 ID 和密钥交给有接收权限的人。",
+	"volumeTransfer.mode": "转移方式",
+	"volumeTransfer.recover": "检查此卷待处理的转移",
+	"volumeTransfer.recoveryHelp": "密钥无法再次获取。如已丢失，请明确取消已确认的待处理转移，再重新创建。系统不会自动取消或重发。",
+	"volumeTransfer.uncertain": "请求结果尚不确定。系统不会重发或自动取消。请安全保存显示的 ID 和密钥，关闭此窗口，然后刷新源项目和目标项目的卷及待处理转移。",
+	"volumeTransfer.denied": "原生策略或目标项目认证拒绝了此操作。系统管理员权限不保证接收权限。您可以复制已生成的 ID 和密钥并交给有权限的接收方。",
 	"volumeList.filters.nameOrId": "名称或 ID",
 	"volumeList.filters.minSize": "最小容量 (GiB)",
 	"volumeList.filters.maxSize": "最大容量 (GiB)",

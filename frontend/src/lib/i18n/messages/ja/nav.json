@@ -65,6 +65,7 @@
 	"items.chatStats": "チャット統計",
 	"items.userQuotas": "ユーザークォータ",
 	"items.modelSettings": "モデル設定",
+	"items.providerSettings": "プロバイダー設定",
 	"items.toolSettings": "ツール設定",
 	"items.projectQuotas": "プロジェクトクォータ",
 	"items.monitoringOverview": "統合モニタリング",

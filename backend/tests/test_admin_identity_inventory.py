@@ -282,6 +282,59 @@ async def test_groups_use_native_dates_then_creation_events_without_mutating_cac
         assert response.json()[2]["created_at"] is None
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy_cache", [False, True])
+async def test_groups_omit_private_manager_projections_even_from_existing_cache(
+    admin_client, mock_conn, creation_db, legacy_cache
+):
+    from app.services import cache
+
+    rows = [
+        resource("ordinary", name="Research team"),
+        resource("reserved-name", name="afterglow-default-managers-default"),
+        resource("reserved-marker", description="afterglow:default-manager-reader:v1:default"),
+    ]
+    mock_conn.identity.groups.side_effect = lambda **kwargs: iter(rows)
+    if legacy_cache:
+        await cache._get_backend().set(
+            "afterglow:admin:groups:default",
+            json.dumps(
+                [
+                    {
+                        "id": row.id,
+                        "name": row.name,
+                        "description": row.description,
+                        "domain_id": row.domain_id,
+                        "created_at": None,
+                    }
+                    for row in rows
+                ]
+            ),
+            60,
+        )
+    for _ in range(2):
+        response = await admin_client.get("/api/v1/admin/groups?domain_id=default&cache=true")
+        assert response.status_code == 200
+        assert [item["id"] for item in response.json()] == ["ordinary"]
+    assert mock_conn.identity.groups.call_count == (0 if legacy_cache else 1)
+
+
+@pytest.mark.asyncio
+async def test_private_manager_projection_delete_stays_forbidden(admin_client, mock_conn, group_authority):
+    native = keystone._get_admin_ks_client()
+    projection = resource("private", name="afterglow-default-managers-default")
+    native.groups.get = lambda gid: projection
+    mock_conn.identity.get_group.side_effect = lambda gid: projection
+
+    response = await admin_client.delete("/api/v1/admin/groups/private?domain_id=default")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "domain_manager_projection_is_private"
+    mock_conn.identity.delete_group.assert_not_called()
+    mock_conn.identity.group_users.assert_not_called()
+    group_authority.revoke_token.assert_not_called()
+
+
 @pytest.mark.parametrize("kind", ["project", "group"])
 @pytest.mark.asyncio
 async def test_creation_edit_and_delete_refresh_cached_inventory_preserving_creation_date(

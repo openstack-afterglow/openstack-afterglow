@@ -109,6 +109,17 @@ describe('startSessionRefreshLifecycle', () => {
 		expect(refreshSession).not.toHaveBeenCalled();
 	});
 
+	it.each(['pageshow', 'online'])('refreshes the current session after %s without a focus event', (event) => {
+		const refreshSession = vi.fn().mockResolvedValue('refreshed-token');
+		let session = realSession(Math.floor(NOW.getTime() / 1000) + 900);
+		stop = startSessionRefreshLifecycle({ getSession: () => session, refreshSession });
+		// No interval ran while the browser was suspended for most of the day.
+		vi.setSystemTime(new Date(NOW.getTime() + 23 * 60 * 60 * 1000));
+		session = { ...session, token: 'current-access', refreshToken: 'current-refresh' };
+		window.dispatchEvent(new Event(event));
+		expect(refreshSession).toHaveBeenCalledOnce();
+	});
+
 	it('removes resume listeners and the fallback timer on disposal', () => {
 		const refreshSession = vi.fn().mockResolvedValue('refreshed-token');
 		const session = realSession(Math.floor(NOW.getTime() / 1000) + 1);
@@ -118,6 +129,8 @@ describe('startSessionRefreshLifecycle', () => {
 		stop();
 		stop = undefined;
 		window.dispatchEvent(new Event('focus'));
+		window.dispatchEvent(new Event('pageshow'));
+		window.dispatchEvent(new Event('online'));
 		document.dispatchEvent(new Event('visibilitychange'));
 		vi.advanceTimersByTime(60_000);
 

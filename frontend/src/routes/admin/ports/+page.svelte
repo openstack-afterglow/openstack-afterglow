@@ -67,7 +67,7 @@
 			: ports
 	);
 
-	async function load(marker?: string) {
+	async function load(marker?: string, force = false) {
 		const generation = ++loadGeneration;
 		const requestToken = $auth.token ?? undefined;
 		const requestProjectId = $auth.projectId ?? undefined;
@@ -82,7 +82,7 @@
 		loading = true;
 		inventoryError = '';
 		try {
-			const res = await api.get<PagedResponse<PortInfo>>(requestPath, requestToken, requestProjectId);
+			const res = await api.get<PagedResponse<PortInfo>>(requestPath, requestToken, requestProjectId, force ? { refresh: true } : undefined);
 			if (!owns()) return;
 			ports = res.items || [];
 			nextMarker = res.next_marker;
@@ -140,7 +140,7 @@
 	}
 
 	const ar = createAutoRefresh(
-		() => { load(markerStack[markerStack.length - 1]); },
+		() => load(markerStack[markerStack.length - 1]),
 		{ storageKey: 'admin-ports', defaultInterval: 30, intervalOptions: [15, 30, 60], invokeOnMount: false }
 	);
 
@@ -178,7 +178,7 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading}
-				onManualRefresh={() => { markerStack = []; nextMarker = null; load(); }}
+				onManualRefresh={() => { markerStack = []; nextMarker = null; return load(undefined, true); }}
 			/>
 			<div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">
 				{t('portsPage.pageSize')}

@@ -27,8 +27,9 @@
 	});
 	provideRouterDetailController(s);
 
-	const ar = createAutoRefresh(() => s.fetchRouter(), {
+	const ar = createAutoRefresh((force) => s.fetchRouter(force), {
 		storageKey: 'router-detail-panel',
+		invokeOnMount: false,
 		defaultActive: true,
 		defaultInterval: 30,
 		intervalOptions: [10, 15, 30, 60],

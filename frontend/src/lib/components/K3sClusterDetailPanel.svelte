@@ -65,10 +65,9 @@
     untrack(() => onTabChange?.(tab));
   });
 
-  createAutoRefresh(() => untrack(() => {
+  createAutoRefresh(() => untrack(async () => {
     if (!$authReady || $projectSwitching) return;
-    s.loadCluster();
-    s.loadHealth();
+    await Promise.allSettled([s.loadCluster(), s.loadHealth()]);
   }), {
     storageKey: 'k3s-cluster-events',
     invokeOnMount: false,

@@ -1,4 +1,10 @@
 {
+	"volumeTransfer.scopeHelp": "Velg måldomene og -prosjekt. Mottak bruker ditt faktiske token for målprosjektet; systemadministrasjon gir ikke prosjektroller. Hvis autentisering avvises, gi utstedt ID og nøkkel til en autorisert mottaker.",
+	"volumeTransfer.mode": "Overføringsmetode",
+	"volumeTransfer.recover": "Kontroller volumets ventende overføring",
+	"volumeTransfer.recoveryHelp": "Nøkkelen kan ikke hentes på nytt. Ved tap må du uttrykkelig avbryte den bekreftede ventende overføringen før du oppretter en ny. Ingenting avbrytes eller sendes på nytt automatisk.",
+	"volumeTransfer.uncertain": "Utfallet av forespørselen er ukjent. Den sendes ikke på nytt eller avbrytes automatisk. Lagre eventuell vist ID og nøkkel sikkert, lukk vinduet og oppdater begge prosjektenes volumer og ventende overføringer.",
+	"volumeTransfer.denied": "Innebygd policy eller autentisering i målprosjektet avviste handlingen. Systemadministrasjon garanterer ikke mottakstillatelse. Kopier utstedt ID og nøkkel til en autorisert mottaker.",
 	"volumeList.filters.nameOrId": "Navn eller ID",
 	"volumeList.filters.minSize": "Minste størrelse (GiB)",
 	"volumeList.filters.maxSize": "Største størrelse (GiB)",

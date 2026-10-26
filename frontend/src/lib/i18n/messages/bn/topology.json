@@ -1,4 +1,9 @@
 {
+	"domain.label": "ডোমেইন {name} · {id}",
+	"domain.deleted": "মুছে ফেলা বা অনুপলব্ধ ডোমেইন · {id}",
+	"domain.deletedProject": "মালিকের ডোমেইন অজানা · প্রকল্প {id}",
+	"domain.unknown": "অজানা মালিক",
+	"domain.ownershipOnly": "ডোমেইন বাক্স নেটওয়ার্কের প্রকৃত মালিকানা দেখায়। একই ডোমেইনে থাকা মানে নেটওয়ার্ক সংযোগ বা যোগাযোগের অনুমতি থাকা নয়।",
 	"card.noStatus": "কোনো অবস্থা নেই",
 	"topology.lane": "লেন",
 	"topology.canvas": "ক্যানভাস",

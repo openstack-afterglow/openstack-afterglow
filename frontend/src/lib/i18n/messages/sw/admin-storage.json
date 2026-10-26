@@ -1,4 +1,10 @@
 {
+	"volumeTransfer.scopeHelp": "Chagua kikoa na mradi lengwa. Kupokea kunatumia tokeni yako halisi ya mradi lengwa; usimamizi wa mfumo hautoi majukumu ya mradi. Uthibitishaji ukikataliwa, mpe mpokeaji aliyeidhinishwa ID na ufunguo uliotolewa.",
+	"volumeTransfer.mode": "Njia ya uhamisho",
+	"volumeTransfer.recover": "Angalia uhamisho wa diski hii unaosubiri",
+	"volumeTransfer.recoveryHelp": "Ufunguo hauwezi kupatikana tena. Ukipotea, ghairi wazi uhamisho uliothibitishwa unaosubiri kabla ya kuunda mwingine. Hakuna kughairi au kutuma tena kiotomatiki.",
+	"volumeTransfer.uncertain": "Matokeo ya ombi hayajulikani. Halitatumwa tena wala kughairiwa kiotomatiki. Hifadhi ID na ufunguo unaoonyeshwa salama, funga dirisha hili, kisha onyesha upya diski na uhamisho unaosubiri wa miradi yote miwili.",
+	"volumeTransfer.denied": "Sera asili au uthibitishaji wa mradi lengwa umekataa kitendo hiki. Usimamizi wa mfumo hauhakikishi ruhusa ya kupokea. Nakili ID na ufunguo uliotolewa kwa mpokeaji aliyeidhinishwa.",
 	"volumeList.filters.nameOrId": "Jina au kitambulisho",
 	"volumeList.filters.minSize": "Ukubwa wa chini (GiB)",
 	"volumeList.filters.maxSize": "Ukubwa wa juu (GiB)",

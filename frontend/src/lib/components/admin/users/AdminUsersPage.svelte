@@ -291,10 +291,7 @@
 	}
 
 	const ar = createAutoRefresh(
-		() => {
-			loadAll();
-			loadActivity();
-		},
+		async () => { await Promise.allSettled([loadAll(), loadActivity()]); },
 		{
 			storageKey: 'admin-users',
 			invokeOnMount: false,

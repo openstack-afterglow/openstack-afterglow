@@ -14,10 +14,12 @@
 <section class="bg-surface-base border border-line rounded-lg p-5 mb-4">
   <div class="flex items-center justify-between mb-4">
     <h3 class="font-semibold text-ink-0 text-sm">{t('lb.pools.title', { count: s.pools.length })}</h3>
+    {#if s.canMutate}
     <button
       onclick={() => s.toggleAddPool()}
       class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
     >{t('lb.actions.addWithPlus')}</button>
+    {/if}
   </div>
 
   <PoolAddForm />
@@ -35,7 +37,9 @@
             {#snippet details()}<p class="font-mono break-all">ID: {pool.id}</p>{/snippet}
             {#snippet actions()}
               <Button size="sm" variant="secondary" onclick={() => s.togglePool(pool.id)} ariaExpanded={s.selectedPoolId === pool.id}>{s.selectedPoolId === pool.id ? t('lb.pools.collapse') : t('lb.pools.members')}</Button>
+              {#if s.canMutate}
               <Button variant="danger-outline" size="sm" onclick={() => pending.run(`delete:${pool.id}`, () => s.deletePool(pool.id))} disabled={s.saving} ariaBusy={deletingPool}>{#if deletingPool}<ActivityIndicator size="xs" tone="danger" />{/if}{deletingPool ? t('lb.actions.deleting') : t('lb.actions.delete')}</Button>
+              {/if}
             {/snippet}
           </CompactResourceCard>
           {#if s.selectedPoolId === pool.id}

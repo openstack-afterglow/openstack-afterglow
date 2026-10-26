@@ -37,10 +37,10 @@
     }
   }
 
-  async function fetchLogs() {
+  async function fetchLogs(force = false) {
     logsLoading = true;
     try {
-      const result = await api.get<{ logs: string }>(`/api/v1/containers/${containerId}/logs`, $auth.token ?? undefined, $auth.projectId ?? undefined);
+      const result = await api.get<{ logs: string }>(`/api/v1/containers/${containerId}/logs`, $auth.token ?? undefined, $auth.projectId ?? undefined, { refresh: force });
       logs = result.logs;
     } catch {
       logs = t('instances.logs.loadFailed');
@@ -116,7 +116,7 @@
       {logs}
       {logsLoading}
       {ar}
-      onManualRefresh={fetchLogs}
+      onManualRefresh={ar.refresh}
     />
   {/if}
 </PageShell>

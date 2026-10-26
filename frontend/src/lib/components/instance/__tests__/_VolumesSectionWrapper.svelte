@@ -7,6 +7,7 @@
 		get instance() { return source.instance; },
 		get instanceId() { return source.instanceId; },
 		get effectiveProjectId() { return source.effectiveProjectId; },
+		get adminMode() { return source.adminMode; },
 		get volumes() { return source.volumes; },
 		get availableVolumes() { return source.availableVolumes; },
 		get actioning() { return source.actioning; },

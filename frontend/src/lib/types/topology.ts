@@ -15,6 +15,10 @@ export interface TopologyNetwork {
 	provider_network_type?: string | null;
 	provider_segmentation_id?: number | null;
 	provider_physical_network?: string | null;
+	project_name?: string | null;
+	domain_id?: string | null;
+	domain_name?: string | null;
+	owner_status?: 'known' | 'unknown_owner' | 'deleted_project' | 'deleted_domain';
 }
 export interface TopologyRouterRoute {
 	destination: string;

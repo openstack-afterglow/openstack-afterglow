@@ -182,6 +182,7 @@ from app.api.identity.admin_infrastructure_topology import router as admin_infra
 from app.api.identity.admin_instances import router as admin_instances_router
 from app.api.identity.admin_notion import router as admin_notion_router
 from app.api.identity.admin_orphans import router as admin_orphans_router
+from app.api.identity.admin_resource_details import router as admin_resource_details_router
 from app.api.identity.admin_resource_policies import router as admin_resource_policies_router
 from app.api.identity.admin_secrets import router as admin_secrets_router
 from app.api.identity.admin_services import router as admin_services_router
@@ -421,6 +422,9 @@ _AUDIT_PREFIX_MAP: list[tuple[str, str]] = [
     ("/api/v1/palimpsest", "palimpsest_layer"),
     ("/api/v1/admin/images", "image"),
     ("/api/v1/admin/instances", "instance"),
+    ("/api/v1/admin/file-storage", "file_storage"),
+    ("/api/v1/admin/loadbalancers", "load_balancer"),
+    ("/api/v1/admin/database-instances", "database"),
     ("/api/v1/admin/hypervisors", "hypervisor"),
     ("/api/v1/admin/volumes", "volume"),
     ("/api/v1/admin/networks", "network"),
@@ -513,6 +517,8 @@ async def request_logging_middleware(request: Request, call_next):
     try:
         response = await call_next(request)
         status = response.status_code
+        # Numeric server work only: no URL, identity, token, query or cache key.
+        response.headers["Server-Timing"] = f"app;dur={(time.perf_counter() - start) * 1000:.2f}"
         return response
     finally:
         duration_ms = (time.perf_counter() - start) * 1000
@@ -579,7 +585,7 @@ async def cors_middleware(request: Request, call_next):
         response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Access-Control-Allow-Methods"] = _CORS_ALLOW_METHODS
         response.headers["Access-Control-Allow-Headers"] = _CORS_ALLOW_HEADERS
-        response.headers["Access-Control-Expose-Headers"] = "X-Request-Id"
+        response.headers["Access-Control-Expose-Headers"] = "X-Request-Id, Server-Timing"
         response.headers["Vary"] = "Origin"
     return response
 
@@ -705,9 +711,11 @@ app.include_router(account_recovery_router, prefix="/api/v1/auth", tags=["auth-r
 app.include_router(domain_policy_router, prefix="/api/v1/iam", tags=["iam-login-policy"])
 app.include_router(iam_router, prefix="/api/v1/iam", tags=["iam"])
 app.include_router(domain_quotas_router, prefix="/api/v1", tags=["domain-quotas"])
-# admin_instances_router를 admin_router보다 먼저 등록 (정적 경로 /instances/async 우선 매칭)
+app.include_router(admin_dashboard_router, prefix="/api/v1/admin", tags=["admin-dashboard"])
+# Static /instances/health must precede the instance-ID route; async precedes the legacy admin router.
 app.include_router(admin_instances_router, prefix="/api/v1/admin", tags=["admin-instances"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
+app.include_router(admin_resource_details_router, prefix="/api/v1/admin", tags=["admin-resource-details"])
 app.include_router(admin_services_router, prefix="/api/v1/admin", tags=["admin-services"])
 app.include_router(admin_telemetry_router, prefix="/api/v1/admin/telemetry", tags=["admin-telemetry"])
 app.include_router(admin_worker_runtime_router, prefix="/api/v1/admin", tags=["admin-worker-runtime"])
@@ -732,7 +740,6 @@ app.include_router(profile_router, prefix="/api/v1/profile", tags=["profile"])
 app.include_router(profile_activity_router, prefix="/api/v1/profile/activity", tags=["profile-activity"])
 app.include_router(admin_activity_router, prefix="/api/v1/admin", tags=["admin-activity"])
 app.include_router(admin_orphans_router, prefix="/api/v1/admin", tags=["admin-orphans"])
-app.include_router(admin_dashboard_router, prefix="/api/v1/admin", tags=["admin-dashboard"])
 app.include_router(admin_announcements_router, prefix="/api/v1/admin/announcements", tags=["admin-announcements"])
 app.include_router(projects_router, prefix="/api/v1/projects", tags=["projects"])
 # Compute
@@ -804,6 +811,13 @@ from app.api.palimpsest import (  # noqa: E402
     palimpsest_package_keys_router,
     palimpsest_packages_router,
 )
+from app.api.palimpsest.catalog import admin_router as palimpsest_catalog_admin_router  # noqa: E402
+from app.api.palimpsest.catalog import router as palimpsest_catalog_router  # noqa: E402
+
+app.include_router(
+    palimpsest_catalog_admin_router, prefix="/api/v1/admin/palimpsest/catalog", tags=["palimpsest-catalog"]
+)
+app.include_router(palimpsest_catalog_router, prefix="/api/v1/palimpsest/catalog", tags=["palimpsest-catalog"])
 
 app.include_router(palimpsest_layers_router, prefix="/api/v1/palimpsest", tags=["palimpsest"])
 app.include_router(palimpsest_hub_router, prefix="/api/v1/palimpsest/hub", tags=["palimpsest-hub"])
@@ -818,11 +832,13 @@ if _svc_cfg.service_trove_enabled:
 
     app.include_router(trove_router, prefix="/api/v1/database-instances", tags=["database"])
 if _svc_cfg.service_swift_enabled:
+    from app.api.object_storage.containers import inventory_router as swift_inventory_router
     from app.api.object_storage.containers import router as swift_router
     from app.api.object_storage.thumbnails import router as swift_thumbnail_router
     from app.api.object_storage.upload import router as swift_upload_router
 
     app.include_router(swift_router, prefix="/api/v1/object-storage", tags=["object-storage"])
+    app.include_router(swift_inventory_router, prefix="/api/v1/admin/object-storage", tags=["admin-object-storage"])
     app.include_router(swift_thumbnail_router, prefix="/api/v1/object-storage", tags=["object-storage"])
     app.include_router(swift_upload_router, prefix="/api/v1/object-storage", tags=["object-storage-upload"])
 if _svc_cfg.service_barbican_enabled:
@@ -912,10 +928,10 @@ async def _collect_snapshot() -> None:
 
     settings = get_settings()
     try:
-        import openstack
+        from app.services import native_transport
 
         conn = await _open_background_connection(
-            openstack.connect,
+            native_transport.connect,
             auth_url=settings.os_auth_url,
             username=settings.os_username,
             password=settings.os_password,
@@ -1402,7 +1418,7 @@ async def start_background_workers():
 async def shutdown_event():
     global _notification_collector
     from app.database import close_db
-    from app.services import prom_query
+    from app.services import native_transport, prom_query
 
     tasks = tuple(_background_tasks)
     for task in tasks:
@@ -1421,3 +1437,6 @@ async def shutdown_event():
     await stop_mcp_transport()
     await close_db()
     await prom_query.aclose_client()
+    # Only after all existing owners have drained. Failed shutdown falls back
+    # to process-exit cleanup rather than closing another owner's live pools.
+    native_transport.close_pools()

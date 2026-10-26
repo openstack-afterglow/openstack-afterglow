@@ -86,6 +86,19 @@ export function makeFixture(): TopologyData {
 	return { networks, routers, instances, floating_ips, load_balancers };
 }
 
+/** Synthetic ownership fixture for source-component/browser QA; no provider writes. */
+export function makeDomainFixture(): TopologyData {
+	const data = makeFixture();
+	for (const network of data.networks) {
+		Object.assign(network, { domain_id: 'domain-a', domain_name: 'Research', owner_status: 'known', project_name: 'Project A' });
+		if (network.project_id === OTHER) Object.assign(network, { domain_id: 'domain-b', domain_name: 'Research', project_name: 'Project B' });
+		if (network.id === 'net-lab') Object.assign(network, { domain_id: null, domain_name: null, owner_status: 'deleted_project', project_id: 'deleted-project' });
+		if (network.id === 'net-mgmt') Object.assign(network, { domain_id: 'deleted-domain', domain_name: null, owner_status: 'deleted_domain' });
+	}
+	data.networks.push(mkNet('net-unknown', 'unknown-owner', '10.99.0.0/24', '10.99.0.1'));
+	return data;
+}
+
 export function makeTraffic(): TopologyTraffic {
 	const interfaces: NonNullable<TopologyTraffic['interfaces']> = {
 		'port-web-01-eth0': { instance_id: 'vm-web-01', network_id: 'net-web', mac_address: 'fa:16:3e:a1:00:11', rx_bps: 3.2e6, tx_bps: 1.1e6 },

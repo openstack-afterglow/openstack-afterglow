@@ -134,7 +134,7 @@ async def native_login(monkeypatch, domain_native, ownership_journal):
 
     monkeypatch.setattr(keystone.v3, "Password", Password)
     monkeypatch.setattr(keystone.v3, "Token", Token)
-    monkeypatch.setattr(keystone.ks_session, "Session", session)
+    monkeypatch.setattr(keystone.native_transport, "create_session", session)
     monkeypatch.setattr("keystoneclient.v3.client.Client", lambda **_: row(projects=row(list=projects)))
 
     async def policy(did, **kwargs):
@@ -473,3 +473,26 @@ async def test_async_cleanup_preserves_operation_error_and_closes_all_sessions()
             raise ValueError("operation failed")
     first.session.close.assert_called_once()
     second.session.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["password", "provider"])
+async def test_exact_personal_landing_does_not_enumerate_native_memberships(native_login, monkeypatch, method):
+    client, native = native_login
+    # Identity, Personal provenance, role graph and exact native scope exchange
+    # remain real. The unrelated user-membership listing is no longer on the
+    # password or completed-provider login critical path.
+    listing = Mock(side_effect=AssertionError("Unnecessary membership enumeration"))
+    monkeypatch.setattr(keystone, "list_projects", listing)
+    response = await login(client) if method == "password" else await provider_login(client, monkeypatch)
+    assert response.status_code == 200, response.text
+    listing.assert_not_called()
+    primary = response.json()["project_id"]
+    assert any(kind == "token" and project == primary for kind, project in native.exchanges)
+    native.roles.revoke("member", user="ordinary", project=primary)
+    refreshed = await client.post("/api/v1/auth/refresh", json={"refresh_token": response.json()["refresh_token"]})
+    # Revoking the only Personal membership removes working-domain authority
+    # before project scope fallback is considered (unlike an organization that
+    # still has its independent Default membership).
+    assert refreshed.status_code == 403
+    assert "token" not in refreshed.json()

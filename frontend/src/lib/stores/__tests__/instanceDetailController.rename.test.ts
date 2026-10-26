@@ -47,7 +47,7 @@ beforeEach(() => {
 	permission.set(true);
 	mockPut.mockImplementation((_path: string, body: { name: string }) => Promise.resolve({ id: 'vm', name: body.name, project_id: 'project' }));
 	mockGet.mockImplementation((path: string) => {
-		if (/^\/api\/v1\/instances\/[^/]+$/.test(path)) return Promise.resolve(instance(path.split('/').at(-1)!));
+		if (/^\/api\/v1\/(?:admin\/)?instances\/[^/]+$/.test(path)) return Promise.resolve(instance(path.split('/').at(-1)!));
 		if (path.endsWith('/security-groups')) return Promise.resolve({ ports: [], security_groups: [] });
 		if (path.endsWith('/owner')) return Promise.resolve({ display: '' });
 		return Promise.resolve([]);

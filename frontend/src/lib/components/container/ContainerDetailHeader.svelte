@@ -1,11 +1,12 @@
 <script lang="ts">
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import { useContainerDetailController } from '$lib/stores/containerDetailController.svelte';
+	import type { AutoRefreshController } from '$lib/utils/autoRefresh.svelte';
 
 	interface Props {
 		containerId: string;
 		onClose?: () => void;
-		ar: { active: boolean; intervalSeconds: number; intervalOptions: number[] };
+		ar: AutoRefreshController;
 	}
 
 	let { containerId, onClose, ar }: Props = $props();
@@ -24,7 +25,7 @@
 			bind:intervalSeconds={ar.intervalSeconds}
 			intervalOptions={ar.intervalOptions}
 			refreshing={s.loading}
-			onManualRefresh={() => s.fetchContainer()}
+			onManualRefresh={ar.refresh}
 		/>
 	</div>
 </div>

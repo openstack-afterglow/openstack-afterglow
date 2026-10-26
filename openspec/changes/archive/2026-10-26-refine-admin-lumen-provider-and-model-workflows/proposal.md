@@ -1,0 +1,13 @@
+# Administrator Lumen provider pools and explicit model onboarding
+
+## Why
+The administrator Lumen landing is labeled chat settings and the visible deployed screen exposes legacy single-key actions rather than an obvious provider credential pool. Operators need provider-focused administration, multiple independently managed keys, and actual per-key connection/relay attribution. Model settings currently exposes a long creation form before the user chooses to add a model.
+
+## What Changes
+- Make `/admin/chat` explicitly provider settings in heading, navigation and localized descriptions; preserve its provider-management route and independent model/tools/stats/quotas destinations.
+- Expose the existing native provider -> account -> credential pool as the current administration path rather than silently falling back to legacy single-key replacement. Add/manage multiple keys, priority/weight/explicit selection, eligibility, expiry/cooldown and exact-key connection check using the real native pool contracts. No new duplicate credential table, secret readback, automatic probe or paid retry.
+- Show safe per-key current connection metadata and bounded recorded relay/usage information from the actual native ledger. Distinguish configured current destination from historical evidence; unknown historical metadata remains unknown. Never expose prompts, response bodies, auth headers, key ciphertext/plaintext or secret-bearing URLs. Extend the existing native provenance path only where required to record future dispatch attribution.
+- Hide discovery/manual model creation until an explicit Add model action opens one viewport-bounded dialog. Select a provider, then choose its `/models` discovery or manual model name and pricing. Support item-level selection/review and real registration, preserving kind/media/cache pricing, unknown/disabled state, duplicate IDs, independent list filters and all scope/ABA/non-replay fences. Avoid nested creation/review dialogs.
+
+## Verification and preservation
+Use existing Afterglow source and `/Users/pieroot/code/lumen-admin-fixes` local dev (contains earlier uncommitted exact-key probe) without switching/modifying `/Users/pieroot/code/lumen`. Preserve all user/concurrent changes, private configuration, shared services, native resources, DB data and indexes; no commit/push/release/deploy/live provider call. Add meaningful regressions, run focused + named targets and final isolated Afterglow gate; execute actual Lumen API/dispatch logic with disposable SQL/Redis and loopback provider, and actual compiled UI for provider pools/routing/model dialog across locales/themes/responsive bounds. A source/native fixture qualification is not a deployed capability claim.

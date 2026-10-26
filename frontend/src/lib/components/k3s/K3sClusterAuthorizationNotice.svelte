@@ -14,6 +14,7 @@
 	import { toast } from '$lib/stores/toast';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
 	import type { K3sClusterAuthorization } from '$lib/types/k3s';
+	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 
 	const POLL_INTERVAL_MS = 5000;
 	// Drover bounds a guest rollout by guest_rollout_timeout_seconds (default 600s).
@@ -75,19 +76,13 @@
 		return () => controller.abort();
 	});
 
-	$effect(() => {
-		if (!enabled || !rolling) return;
-		const fence = scopeGeneration;
-		let polls = 0;
-		const timer = setInterval(() => {
-			if (fence !== scopeGeneration || ++polls > MAX_POLLS) {
-				clearInterval(timer);
-				return;
-			}
-			if (typeof document === 'undefined' || !document.hidden) void load(fence);
-		}, POLL_INTERVAL_MS);
-		return () => clearInterval(timer);
-	});
+	let polls = 0;
+	$effect(() => { void [enabled, rolling, clusterId, token, projectId]; polls = 0; });
+	createAutoRefresh(async () => {
+		if (!enabled || !rolling || polls >= MAX_POLLS) return;
+		polls += 1;
+		await load(scopeGeneration);
+	}, { storageKey: 'k3s-authorization-rollout', defaultInterval: POLL_INTERVAL_MS / 1000, invokeOnMount: false });
 
 	async function reauthorize() {
 		if (busy || !$k3sPermissions.administerClusters || !isActive || !clusterId) return;

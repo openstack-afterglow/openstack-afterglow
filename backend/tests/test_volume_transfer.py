@@ -22,7 +22,7 @@ KEY = "native-once-only-key"
 
 
 @pytest.fixture
-def transfer_provider(monkeypatch, auth_directory, mock_conn):
+def transfer_provider(monkeypatch, auth_directory, mock_conn, client):
     """Native-shaped provider boundary; endpoint/service/SDK wrappers stay real."""
     auth_directory.domains["destination-domain"] = {
         "id": "destination-domain",
@@ -38,9 +38,10 @@ def transfer_provider(monkeypatch, auth_directory, mock_conn):
     auth_directory.projects[DESTINATION]["domain_id"] = "destination-domain"
     mock_conn._afterglow_domain_id = "destination-domain"
     mock_conn._afterglow_identity_domain_id = "destination-domain"
-    monkeypatch.setitem(
-        app.dependency_overrides, get_token_info, lambda: make_token_info(domain_id="destination-domain")
-    )
+    # The shared client owns this dictionary's per-test clear. Do not register
+    # these entries with the longer-lived monkeypatch fixture: its undo runs
+    # after client teardown and would resurrect the cleared client overrides.
+    app.dependency_overrides[get_token_info] = lambda: make_token_info(domain_id="destination-domain")
     state = {
         "owner": SOURCE,
         "status": "awaiting-transfer",
@@ -420,6 +421,8 @@ async def test_accept_rescopes_admin_caller_to_selected_destination_and_confirms
     assert {call.args[0] for call in p.invalidate.await_args_list} == {
         f"afterglow:cinder:{SOURCE}:*",
         f"afterglow:cinder:{DESTINATION}:*",
+        f"afterglow:dashboard:{SOURCE}:quotas*",
+        f"afterglow:dashboard:{DESTINATION}:quotas*",
     }
     assert KEY not in response.text and KEY not in str(p.record.call_args)
 
@@ -485,6 +488,8 @@ async def test_accept_ambiguous_post_is_not_retried_and_invalidates_both_project
     assert {call.args[0] for call in p.invalidate.await_args_list} == {
         f"afterglow:cinder:{SOURCE}:*",
         f"afterglow:cinder:{DESTINATION}:*",
+        f"afterglow:dashboard:{SOURCE}:quotas*",
+        f"afterglow:dashboard:{DESTINATION}:quotas*",
     }
     p.operator.close.assert_called_once()
 
@@ -499,7 +504,7 @@ async def test_accept_success_without_native_destination_owner_is_not_success(cl
     assert p.state["owner"] == SOURCE
     p.caller.block_storage.accept_transfer.assert_called_once()
     p.record.assert_not_awaited()
-    assert p.invalidate.await_count == 2
+    assert p.invalidate.await_count == 4
 
 
 @pytest.mark.asyncio

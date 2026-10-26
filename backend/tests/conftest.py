@@ -521,6 +521,25 @@ def available_flavor_capacity(monkeypatch):
 
 
 @pytest.fixture
+async def empty_layer_consume_db(tmp_path, monkeypatch):
+    """Readable empty ownership authority for legacy VM deletion scenarios."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.models.db import LayerConsume
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'layer-consume.sqlite'}")
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(LayerConsume.__table__.create)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        for module in ("app.services.palimpsest_catalog", "app.services.layer_consume_resources"):
+            monkeypatch.setattr(f"{module}.get_session_factory", lambda: factory)
+        yield factory
+    finally:
+        await engine.dispose()
+
+
+@pytest.fixture
 async def client(mock_conn):
     """인증 의존성을 모의 객체로 오버라이드한 AsyncClient (일반 사용자)."""
 

@@ -41,6 +41,12 @@ async def test_public_identity_preserves_capability_without_exposing_system_role
     info["identity_domain_name"] = "Accounts"
     native_auth.roles = roles
     monkeypatch.setattr("app.database.get_session_factory", lambda: None)
+    # This suite exercises current core role presentation/authorization, not
+    # sibling-service discovery. Keep that native transport boundary synthetic
+    # instead of swallowing a forbidden real Keystone discovery as unavailable.
+    monkeypatch.setattr(
+        "app.services.service_proxy.get_policy_capabilities", AsyncMock(return_value={"capabilities": []})
+    )
     app.dependency_overrides[get_token_info] = lambda: dict(info)
     effective_project_id = info["project_id"] if permissions_project == "current" else permissions_project
     validate = AsyncMock(return_value={**info, "project_id": effective_project_id})
@@ -109,6 +115,8 @@ async def test_public_identity_preserves_capability_without_exposing_system_role
         assert payload["can_write"] is can_write
         assert payload["is_system_admin"] is system_admin
     assert permissions.json()["project_id"] == effective_project_id
+    assert all(not leaves for leaves in permissions.json()["service_permissions"].values())
+    assert permissions.json()["service_permission_errors"] == {}
     assert permissions.json()["roles"] == (["reader"] if downgraded else visible)
     assert permissions.json()["can_write"] is (False if downgraded else can_write)
     assert permissions.json()["is_system_admin"] is system_admin

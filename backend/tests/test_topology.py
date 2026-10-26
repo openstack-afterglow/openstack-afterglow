@@ -399,6 +399,10 @@ async def test_topology_user_response_strips_provider_keys_from_admin_models(cli
         provider_network_type="vlan",
         provider_segmentation_id=100,
         provider_physical_network="physnet1",
+        domain_id="domain-a",
+        domain_name="Research",
+        project_name="Project A",
+        owner_status="known",
     )
     topo = AdminTopologyData(networks=[admin_net])
     patches = _apply(_patch_topology_deps(topo, []))
@@ -413,6 +417,8 @@ async def test_topology_user_response_strips_provider_keys_from_admin_models(cli
     assert "provider_segmentation_id" not in network
     assert "provider_network_type" not in network
     assert "provider_physical_network" not in network
+    for key in ("domain_id", "domain_name", "project_name", "owner_status"):
+        assert key not in network
 
 
 @pytest.mark.asyncio

@@ -244,9 +244,11 @@ async def role_env(monkeypatch):
         "roles": ["admin", "manager"],
         "is_system_admin": True,
     }
-    app.dependency_overrides[get_os_conn] = lambda: SimpleNamespace(
-        identity=provider, endpoint_for=lambda service: "https://keystone.invalid/v3"
-    )
+
+    def personal_member_transport():
+        raise AssertionError("Administrator role operations must not resolve caller-native transport")
+
+    app.dependency_overrides[get_os_conn] = personal_member_transport
     app.dependency_overrides[get_admin_os_conn] = lambda: SimpleNamespace(
         identity=provider, endpoint_for=lambda service: "https://keystone.invalid/v3"
     )
@@ -966,6 +968,44 @@ async def test_generic_project_assignment_updates_current_authority_without_cros
     for uid in affected:
         assert f"afterglow:user:{uid}:domain:*:projects" in role_env.cleared
     assert not role_env.revoked
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("principal", ["user", "group"])
+@pytest.mark.parametrize("native_name", ["admin", "AdMiN"])
+async def test_native_admin_project_http_is_removal_only_by_catalog_id(role_env, monkeypatch, principal, native_name):
+    from unittest.mock import MagicMock
+
+    provider = role_env.provider
+    admin_id = "opaque-native-admin-id"
+    provider.rows[admin_id] = {**provider.rows.pop("admin"), "id": admin_id, "name": native_name}
+    provider.edges = {(admin_id if prior == "admin" else prior, child) for prior, child in provider.edges}
+    provider.groups["operators"] = ["target"]
+    native_write = provider._project_assignment
+    writes = MagicMock(wraps=native_write)
+    monkeypatch.setattr(provider, "_project_assignment", writes)
+    subject = {"user_id": "target"} if principal == "user" else {"group_id": "operators"}
+    payload = {**subject, "project_id": "tenant", "role_id": admin_id}
+    path = "/api/v1/admin/roles/assign" + ("-group" if principal == "group" else "")
+    denied = await role_env.client.post(path, params={"domain_id": "default"}, json=payload)
+    assert denied.status_code == 422
+    assert "removal-only" in denied.json()["detail"]
+    writes.assert_not_called()
+    assert provider.assignments == []
+    assert role_env.events == []
+
+    native_write("tenant", principal, "target" if principal == "user" else "operators", admin_id)
+    revoked = await role_env.client.delete(path, params={"domain_id": "default", **payload})
+    assert revoked.status_code == 200, revoked.text
+    assert revoked.json() == {"status": "revoked"}
+    writes.assert_called_once_with(
+        "tenant", principal, "target" if principal == "user" else "operators", admin_id, remove=True
+    )
+    assert provider.assignments == []
+    denied_again = await role_env.client.post(path, params={"domain_id": "default"}, json=payload)
+    assert denied_again.status_code == 422
+    assert writes.call_count == 1
+    assert [event["action"] for event in role_env.events] == ["role_revoke"]
 
 
 @pytest.mark.asyncio

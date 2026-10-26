@@ -1,0 +1,80 @@
+{
+  "date": "2026-10-25",
+  "sourceOnly": true,
+  "nativeReadOnly": true,
+  "sourceBehavior": {
+    "response": "{items,project_count,partial,unavailable_projects}",
+    "nativePermissionChanges": false,
+    "readableRowsPreserved": true,
+    "globalTotalsHiddenWhenPartial": true,
+    "allUnavailableNotSuccessEmpty": true
+  },
+  "native": {
+    "catalog": "verified /swift/v1/AUTH_<executor>",
+    "kollaAccountInUrl": "yes",
+    "enabledAccountsHead": {
+      "total": 57,
+      "own204": 1,
+      "foreign204": 29,
+      "foreign403": 27
+    },
+    "currentSourceGet": {
+      "current_source": true,
+      "native_read_only": true,
+      "project_count": 57,
+      "partial": true,
+      "readable_project_count": 30,
+      "unavailable_project_count": 27,
+      "unavailable_reasons": {
+        "denied": 27
+      },
+      "visible_bucket_count": 8,
+      "verified_fixed_project_unchanged": true
+    },
+    "effectiveRgwAdminRoles": "unverified: storage-hop host-key validation refused; not bypassed",
+    "currentSourceExecution": "Process-local current-source AST functions with installed container settings/SDK, fixed-project token verified; actual running API files/config untouched."
+  },
+  "verification": {
+    "focusedBackend": 158,
+    "relatedFrontend": 52,
+    "combinedFeatureFrontend": 320,
+    "namedStorage": {
+      "backend": 916,
+      "frontend": 177
+    },
+    "productionFrontendBuild": "passed",
+    "i18n": {
+      "errors": 0,
+      "warnings": 37,
+      "hardcodedLines": 0
+    },
+    "compiledPartialUi": {
+      "rows": [
+        "visible-bucket"
+      ],
+      "totalPanel": false,
+      "unavailable": "조회하지 못한 프로젝트\nDenied project · denied-project · 네이티브 접근 거부",
+      "expanded": true,
+      "warning": "프로젝트 2개 중 1개 계정을 조회하지 못했습니다. 아래는 조회 가능한 버킷만 표시하며 전체 합계는 제공하지 않습니다.",
+      "overflow": 0
+    },
+    "fullGate": "prior unrelated failures not green"
+  },
+  "preserved": [
+    "Original shared index/review marker",
+    "Original Lumen release checkout",
+    "All shared service/config/keys/IAM/schema"
+  ],
+  "proofRoot": "/Users/pieroot/.local/share/afterglow-proofs/admin-storage-topology-lumen-20261025",
+  "architecture": {
+    "isolatedStagedSha256": "0cba686820e81fcd00821c49123519d3be6dd01bc72aa48ea34049a613e839e5",
+    "files": 7616,
+    "sharedIndexAndReviewMarker": "preserved"
+  },
+  "cleanup": {
+    "qaTab": "closed",
+    "fixtureServer": "stopped",
+    "compiledServer": "stopped",
+    "temporarySmoke": "removed; retained proof copy exists"
+  }
+}

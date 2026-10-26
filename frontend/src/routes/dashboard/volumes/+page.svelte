@@ -82,7 +82,7 @@
     { key: 'delete', label: t('page.delete'), tone: 'danger', disabled: [...snapshotSelection.ids].every((id) => !selectableSnapshotIds.has(id)), onAction: () => runBulkDelete('snapshot') },
   ]);
 
-  const ar = createAutoRefresh(() => ctrl.fetchAll(), {
+  const ar = createAutoRefresh((force) => ctrl.fetchAll(force), {
     storageKey: 'dashboard-volumes',
     invokeOnMount: false,
     defaultActive: true,
@@ -145,7 +145,7 @@
         bind:intervalSeconds={ar.intervalSeconds}
         intervalOptions={ar.intervalOptions}
         refreshing={ctrl.refreshing}
-        onManualRefresh={() => ctrl.fetchAll()}
+        onManualRefresh={ar.refresh}
       />
     {/snippet}
   </ResourceToolbar>

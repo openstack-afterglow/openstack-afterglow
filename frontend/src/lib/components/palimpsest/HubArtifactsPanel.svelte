@@ -6,6 +6,7 @@
   import type { HubFilters } from '$lib/api/palimpsestHub';
   import { MAX_HUB_DOWNLOAD_BYTES, hubDownloadCommand, sameHubIdentity } from '$lib/api/palimpsestHub';
   import { createPalimpsestHubController } from '$lib/stores/palimpsestHubController.svelte';
+  import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import { projectPermissions, serviceCapabilities } from '$lib/stores/servicePermissions';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
   import { t } from '$lib/i18n/ns/palimpsest-hub';
@@ -23,7 +24,6 @@
   let name = $state(''), prefix = $state(''), kind = $state(''), arch = $state(''), diskFormat = $state('');
   let autoRefresh = $state(false);
   let copyNotice = $state<'copied' | 'copyFailed' | null>(null);
-  let visible = $state(true);
   const permissionReady = $derived(!!$projectPermissions.permissions && !$projectPermissions.loading && !$projectPermissions.error);
   const verifiedActor = $derived(permissionReady ? hub.me : null);
   const anyBusy = $derived(Object.values(hub.busy).some(Boolean));
@@ -41,15 +41,12 @@
     $projectPermissions; $serviceCapabilities;
     untrack(() => hub.syncCapabilities());
   });
+  createAutoRefresh(async () => { if (autoRefresh) await hub.refresh(true); }, {
+    storageKey: 'palimpsest-hub-artifacts', defaultInterval: 30, invokeOnMount: false,
+  });
   onMount(() => {
-    const updateVisibility = () => { visible = !document.hidden; };
-    updateVisibility();
-    document.addEventListener('visibilitychange', updateVisibility);
-    const timer = setInterval(() => {
-      if (autoRefresh && visible) void hub.refresh(true);
-    }, 30_000);
     return () => {
-      clearInterval(timer); document.removeEventListener('visibilitychange', updateVisibility);
+      // The shared scheduler owns visibility/offline listeners and its timer.
       hub.dispose();
       for (const url of urls) URL.revokeObjectURL(url);
     };
@@ -112,7 +109,7 @@
         <p class="text-sm text-ink-2">{t('description')}</p>
         {#if verifiedActor}<p class="text-xs text-ink-2 break-all">{verifiedActor.project_name} · <code>{verifiedActor.project_id}</code> · <code>{verifiedActor.user_id}</code></p>{/if}
       </div>
-      <Button variant="secondary" size="sm" disabled={!identity || !permissionReady || anyBusy} onclick={() => hub.refresh(visible)}>{t('refresh')}</Button>
+      <Button variant="secondary" size="sm" disabled={!identity || !permissionReady || anyBusy} onclick={() => hub.refresh(true)}>{t('refresh')}</Button>
     </div>
     <label class="mt-4 flex items-center gap-2 text-xs text-ink-2">
       <input type="checkbox" bind:checked={autoRefresh} disabled={!identity || !permissionReady} />{t('autoRefresh')}
@@ -126,7 +123,7 @@
     <Alert tone="info">{t('permissions.pending')}</Alert>
   {:else if hub.errors.me}
     <Alert>{hub.errors.me}</Alert>
-    <Button variant="secondary" size="sm" disabled={anyBusy} onclick={() => hub.refresh(visible)}>{t('retry')}</Button>
+    <Button variant="secondary" size="sm" disabled={anyBusy} onclick={() => hub.refresh(true)}>{t('retry')}</Button>
   {:else if hub.busy.me || !hub.me}
     <p role="status" class="text-sm text-ink-2">{t('loading')}</p>
   {:else}

@@ -303,15 +303,26 @@ async def get_instance_metrics_batch(
     token_info: dict = Depends(get_token_info),
 ) -> dict:
     """Resolve/authorize once; choose a single provider independently per metric."""
+    keys = _metric_keys(metrics)
+    server = _resolve_server(conn, instance_id)
+    _authorize(server, token_info)
+    return await instance_metrics_batch(server, keys, range, conn)
+
+
+def _metric_keys(metrics: str) -> list[str]:
     keys = list(dict.fromkeys(k.strip() for k in metrics.split(",") if k.strip()))
     if not keys:
         raise HTTPException(status_code=422, detail="metrics 파라미터가 비어있습니다")
     invalid = [k for k in keys if k not in _VALID_METRICS]
     if invalid:
         raise HTTPException(status_code=422, detail=f"알 수 없는 메트릭: {invalid}")
+    return keys
 
-    server = _resolve_server(conn, instance_id)
-    _authorize(server, token_info)
+
+async def instance_metrics_batch(server, keys: list[str], range: str, conn) -> dict:
+    """Read telemetry with caller-native credentials for an already authorized server."""
+    instance_id = server.id
+
     metric_instance_id = _metric_instance_id(server)
 
     # GPU 메트릭은 GPU 인스턴스만 — batch 에서는 422 대신 silent skip
@@ -577,6 +588,12 @@ async def get_instance_metrics_summary(
     """
     server = _resolve_server(conn, instance_id)
     _authorize(server, token_info)
+    return await instance_metrics_summary(server, range, conn)
+
+
+async def instance_metrics_summary(server, range: str, conn, *, flavor_conn=None) -> dict:
+    """Keep Gnocchi caller-native even when Nova resolution used an admin executor."""
+    instance_id = server.id
     metric_instance_id = _metric_instance_id(server)
 
     range_s = _RANGE_SECONDS[range]
@@ -615,7 +632,11 @@ async def get_instance_metrics_summary(
                 if mem_avg is not None and mem_avg < 20:
                     reason_parts.append("mem_avg<20")
 
-                all_flavors = nova.list_flavors(conn)
+                all_flavors = (
+                    nova._list_flavors(flavor_conn, project_id=server.project_id)
+                    if flavor_conn is not None
+                    else nova.list_flavors(conn)
+                )
                 cur_flavor = next((f for f in all_flavors if f.id == server.flavor_id), None)
 
                 current_flavor_info = None

@@ -1,0 +1,110 @@
+{
+  "scope": "source-only; installed Keystoneauth 5.13.1 against synthetic loopback HTTP",
+  "smoke": {
+    "scenario": "two independent auth plugins and sessions, each closed after its resource GET",
+    "before": {"auth_post": 2, "resource_get": 2, "tcp_connections": 2},
+    "after": {"auth_post": 2, "resource_get": 2, "tcp_connections": 1},
+    "meaning": "transport reuse without caching authentication across operations"
+  },
+  "sdk_http_smoke": {
+    "factory": "keystone.get_openstack_connection -> native_transport.connect; installed openstacksdk",
+    "callers": ["alice/project-a", "bob/project-b"],
+    "auth_post": 2,
+    "tcp_connections": 1,
+    "distinct_exact_scoped_tokens": true,
+    "cross_caller_cookie": false,
+    "shutdown_socket_eof": true
+  },
+  "mcp_lifecycle_smoke": {
+    "real_anyio_session_manager_cycles": 2,
+    "actual_api_shutdown_same_task": true,
+    "external_database_and_client_cleanup": "synthetic",
+    "initial_attempt": "synthetic MCP settings missing absolute URLs; corrected only subprocess environment and passed"
+  },
+  "worker_lifecycle_smoke": {
+    "actual_notion_worker_main_cancellation": true,
+    "idle_socket_open_until_child_drained": true,
+    "socket_eof_after_cleanup": true,
+    "database_and_scheduler": "synthetic"
+  },
+  "architecture": {
+    "source_sha256": "8dcf9faf93b9551124605702a7f7052577806e7a5374a5c4305d9b4ad3fcb096",
+    "source_files": 3504,
+    "working_stamp_and_staged_guard": "passed in isolated public-source snapshot",
+    "shared_index_and_review_marker": "preserved",
+    "review_boundary": "native transport ownership only; unrelated captured WIP not individually reviewed"
+  },
+  "style": {"ruff_check": "passed", "ruff_format_check": "passed", "files": 14},
+  "regressions": {
+    "transport_auth_sdk_mcp_exact": {"passed": 202, "artifact": "artifact://34"},
+    "inventory_notion_worker_exact": {"passed": 50},
+    "transport_cases_included": 13,
+    "task_source_matches_snapshot": {"files": 15, "equal": true},
+    "initial_full_gate": "9871 passed/95 skipped/4 failed: three old openstack.connect SimpleNamespace seams and worker inventory seam. Migrated those mocks to native_transport.connect; behavior assertions retained.",
+    "initial_shared_exact": "Incomplete: the tool's 300s wall-clock job deadline terminated the serial run during a worker-coordination test after the transport cases passed. No test failure was observed before termination. No cause, including private configuration or worker failure, was established; later isolated qualification passed.",
+    "superseded_named_run": "cancelled after initial gate exposed missing inventory test seam migration"
+  },
+  "full_backend_unit": {"passed": 9875, "skipped": 95, "artifact": "artifact://41"},
+  "full_gate_attempt": "After corrected inventory mocks, backend passed; frontend stopped before test collection because frozen snapshot lacked generated .svelte-kit/tsconfig.json. Ran existing svelte-kit sync in snapshot frontend only, then ran remaining lanes separately. No application source/config workaround.",
+  "named_backend_targets": {
+    "auth_passed": 1145,
+    "access_passed": 1638,
+    "workers_passed": 140,
+    "mcp_passed": 532,
+    "mcp_db_deselected": 125,
+    "artifact": "artifact://47",
+    "frontend_boundary": "named run started before snapshot svelte-kit sync and failed startup; prepared full frontend suite is separate evidence"
+  },
+  "remaining_gate_lanes": {
+    "frontend": {"passed": 5334, "files": 450, "node_log_runner_passed": 9, "artifact": "artifact://49"},
+    "contracts": {"passed": 183},
+    "functional": {"passed": 167, "deselected": 33, "datastores": "canonical disposable MariaDB/PostgreSQL/Redis, cleaned up"},
+    "full_backend_lint": {"passed": true, "formatted_files": 742},
+    "contract_functional_lint_artifact": "artifact://46"
+  },
+  "final_canonical_gate": {
+    "command": "UV_NO_SYNC=1 npm run test:gate",
+    "result": "passed in prepared isolated public-source snapshot",
+    "source_sha256": "8dcf9faf93b9551124605702a7f7052577806e7a5374a5c4305d9b4ad3fcb096",
+    "backend_passed": 9875,
+    "backend_skipped": 95,
+    "frontend_passed": 5334,
+    "frontend_files": 450,
+    "frontend_node_runner_passed": 9,
+    "contracts_passed": 183,
+    "functional_passed": 167,
+    "functional_deselected": 33,
+    "ruff_files": 742,
+    "artifact": "artifact://50"
+  },
+  "openspec_validation": "Generic validate requires delta specs, but repository rapid workflow explicitly uses docs instead; archived with --skip-specs per agent-development-guide.",
+  "production_latency": "not measured",
+  "deployment": "not performed",
+  "config_iam_db_changes": "none",
+  "remaining_risks": [
+    "Architecture stamp and full gate qualify the isolated snapshot, not the shared checkout's pre-existing global review block; shared docs:check was not claimed.",
+    "Default retention of 10 endpoint pools and 10 idle sockets per pool has not been qualified under production concurrency or the complete live service catalog. Excess concurrency remains nonblocking and may reduce reuse."
+  ],
+  "changed_files": [
+    "backend/app/services/native_transport.py",
+    "backend/app/services/keystone.py",
+    "backend/app/main.py",
+    "backend/app/notion_worker.py",
+    "backend/app/services/mcp_control_plane/connection.py",
+    "backend/app/services/openstack_inventory.py",
+    "backend/app/api/common/dashboard.py",
+    "backend/tests/test_native_transport.py",
+    "backend/tests/test_auth_endpoints.py",
+    "backend/tests/test_auth_login_proof.py",
+    "backend/tests/test_login_native_operation.py",
+    "backend/tests/test_openstack_inventory.py",
+    "backend/tests/test_notion.py",
+    "backend/tests/test_notion_worker.py",
+    "scripts/test-target.js",
+    "ARCHITECTURE.md",
+    "docs/api/auth.md",
+    "docs/testing.md",
+    "CHANGELOG.md"
+  ],
+  "code_index": "gstack-gbrain-detect executable unavailable (exit127); no index or agent guidance mutation"
+}

@@ -1,0 +1,135 @@
+{
+  "change": "remove-group-candidate-native-n-plus-one",
+  "date": "2026-10-26",
+  "scope": "Source-only; no runtime/config/schema/IAM deployment changes",
+  "before": {
+    "phase": "before",
+    "actual_uvicorn": true,
+    "actual_native_tcp_sdk": true,
+    "synthetic_authority_native": true,
+    "per_user_delay_ms": 2,
+    "results": {
+      "directory": {
+        "status": 200,
+        "accounts": 500,
+        "elapsed_ms": 1828.42,
+        "native_gets": 507,
+        "candidate_user_gets": 500,
+        "lists": 1
+      }
+    },
+    "native_writes": [],
+    "live_mutations": 0
+  },
+  "after": {
+    "phase": "after",
+    "actual_uvicorn": true,
+    "actual_native_tcp_sdk": true,
+    "synthetic_authority_native": true,
+    "per_user_delay_ms": 2,
+    "results": {
+      "directory": {
+        "status": 200,
+        "accounts": 500,
+        "elapsed_ms": 14.68,
+        "native_gets": 7,
+        "candidate_user_gets": 0,
+        "lists": 1
+      },
+      "list_denied": 403,
+      "list_failed": 503,
+      "list_home": 503,
+      "list_duplicate": 503,
+      "list_enabled": 503,
+      "list_email": 503,
+      "fresh_user-disabled": 403,
+      "fresh_wrong-home": 403,
+      "fresh_user403": 403,
+      "fresh_user503": 503,
+      "fresh_mismatch": 503,
+      "fresh_deleted": 404,
+      "third_domain_membership_required": 403,
+      "nonadmin": 403,
+      "fresh_admission": 204
+    },
+    "native_writes": [
+      {
+        "method": "PUT",
+        "user_id": "22222222-2222-4222-8222-222222222222",
+        "group_id": "group"
+      }
+    ],
+    "live_mutations": 0
+  },
+  "regressions": {
+    "failingBefore": {
+      "selector": "tests/test_admin_group_identity_home.py::test_accounts_directory_does_not_reread_each_candidate",
+      "candidateSpecificGets": 501,
+      "artifact": "artifact://730"
+    },
+    "focused": {
+      "files": 3,
+      "passed": 176
+    },
+    "sharedAccess": {
+      "passed": 1641,
+      "teardownErrors": 6,
+      "passedCommand": false,
+      "artifact": "artifact://736",
+      "observed": "network guard blocked non-loopback Keystone DNS from background asyncio threads; cause not established; private-free snapshot qualification separate"
+    },
+    "style": {
+      "ruffCheckPassed": true,
+      "ownedTestFormatPassed": true
+    },
+    "isolatedAccess": {
+      "backendPassed": 1641,
+      "frontendPassed": 349,
+      "frontendFiles": 24,
+      "passed": true
+    },
+    "isolatedGate": {
+      "passed": true,
+      "sourceSha256": "ded94deb0490a35a6236bc0c3d561b01bedc92d43806d251c96d538c095db11c",
+      "sourceFiles": 3500,
+      "backend": {
+        "passed": 9854,
+        "skipped": 95
+      },
+      "frontend": {
+        "passed": 5334,
+        "files": 450
+      },
+      "contracts": 183,
+      "functional": {
+        "passed": 167,
+        "deselected": 33
+      },
+      "ruffFiles": 739,
+      "artifact": "artifact://740",
+      "logFile": "isolated-access-and-gate.log"
+    }
+  },
+  "snapshot": {
+    "qualifiedBase": "e416c676c9dfa65190da0474841a1f2d96b73828d6963ad2b5f52b3b4ae19bd6",
+    "preservedBaseTree": "2d94055b59a08380a9b420049b8d4d30f4399fcd",
+    "scope": "Previously qualified frozen Lumen/Groups baseline plus this follow-up source/test only; current shared Access and real SDK smoke are separate. Concurrent unrelated shared code is not overwritten or claimed fully qualified.",
+    "workingAndStagedGuardsPassed": true,
+    "guardScope": "Isolated Git only; shared index and review marker unchanged"
+  },
+  "preservation": {
+    "sharedIndexUntouched": true,
+    "configDbIamWrites": 0,
+    "paidCalls": 0,
+    "commitPushDeploy": false,
+    "changedSourceByteIdenticalToSnapshot": true,
+    "ownedFunctionalResourcesRemoved": true
+  },
+  "limits": [
+    "Native/provider/authority content in HTTP smoke is synthetic",
+    "Latency is one sequential loopback sample with an injected 2ms user-GET delay; not production performance",
+    "Candidate list is point-in-time; stale listed users are not authorizable without fresh exact PUT proof",
+    "Full source-home LIST is retained, not a server-side search/cap/pagination redesign",
+    "Unrelated concurrent source changes are not overwritten or covered by the frozen-baseline gate"
+  ]
+}

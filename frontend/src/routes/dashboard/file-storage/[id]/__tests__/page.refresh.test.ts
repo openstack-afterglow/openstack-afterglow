@@ -17,7 +17,7 @@ vi.mock('$lib/api/client', () => {
 	class ApiError extends Error {
 		status = 500;
 	}
-	return { ApiError, api: { get: mocks.get, post: mocks.post, delete: mocks.delete }, memoryCache: new Map() };
+	return { ApiError, api: { get: mocks.get, post: mocks.post, delete: mocks.delete } };
 });
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token', projectId: 'project-a' }),

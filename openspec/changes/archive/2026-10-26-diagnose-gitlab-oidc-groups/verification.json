@@ -1,0 +1,13 @@
+{
+  "date": "2026-10-26",
+  "scope": "standalone local diagnostic delivery; no production auth, native mapping, IAM, config, schema or deployment mutation",
+  "focused_tests": {"command": "npm run test:target -- backend:tests/test_oidc_group_probe.py", "passed": 140},
+  "adjacent_auth_target": {"backend_passed": 1119, "frontend_passed": 634, "frontend_failed": 2, "failures": "Unchanged AdminSidebar.test.ts expects Lumen link in current concurrent navigation; not modified by this task"},
+  "ruff": "task-owned script and pytest check/format passed",
+  "smoke": {"entry": "actual main() and loopback HTTP callback", "provider": "synthetic loopback HTTPS with scratch trusted CA and RSA signed JWT", "browser": "isolated Chromium start, consent and callback HTTP200 complete text observed", "assertions": ["provider PKCE verifier and redirect match", "real token/JWKS/UserInfo HTTP", "exact source group arrays and set difference", "report0600", "no client secret/access token in report"], "cleanup": "owned listeners, browser tab, scratch certificate/key/secret/results and smoke scaffold removed"},
+  "read_only_environment": ["actual issuer public discovery", "SSH operator guide and schema2.0 JSON remote OIDC-groups_direct"],
+  "architecture": {"boundary": "isolated HEAD plus task-owned source and related docs; shared index/global marker preserved", "source_sha256": "19db252433d88ac30a4bc6504c9ed39911374021547b8f933fe8697fd7c4f6b3", "files": 3436, "working_stamp": "passed", "staged_guard": "passed"},
+  "not_exercised": ["new actual GitLab client registration/secret", "human GitLab callback", "installed Keystone mapping_engine", "live Keystone Apache/WSGI claims", "native federation or provisioning", "full test:gate", "release/deploy"],
+  "semantic_index": "gbrain CLI unavailable; no index or agent-guidance mutation",
+  "commit_push_deploy": false
+}

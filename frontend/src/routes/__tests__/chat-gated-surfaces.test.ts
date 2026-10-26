@@ -43,7 +43,7 @@ afterEach(() => {
 describe('command palette service visibility', () => {
 	it.each([
 		[false, 'chat', 'Lumen', '/dashboard/chat'],
-		[true, 'chat', 'Lumen', '/admin/chat'],
+		[true, 'chat', '프로바이더 설정', '/admin/chat'],
 		[false, 'waygate', 'Waygate', '/dashboard/network/waygate'],
 		[true, 'waygate', 'Waygate', '/admin/waygate'],
 	] as const)('updates %s mode %s destinations when capability changes', async (admin, service, label, href) => {

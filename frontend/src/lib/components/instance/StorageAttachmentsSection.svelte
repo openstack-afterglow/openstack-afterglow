@@ -37,6 +37,8 @@
 		instanceId: string;
 		projectId: string;
 		token: string | null;
+		adminMode: boolean;
+		transportProjectId: string | undefined;
 	}
 
 	let attachments = $state<StorageAuthorization[]>([]);
@@ -64,6 +66,8 @@
 	let observedProjectId: string | null | undefined;
 	let observedToken: string | null | undefined;
 	let observedWritePermission: boolean | undefined;
+	let observedAdminMode: boolean | undefined;
+	let observedTransportProjectId: string | undefined;
 
 	const targetIsCurrent = $derived(!!s.instanceId && s.instance?.id === s.instanceId);
 	const fixedIps = $derived(targetIsCurrent
@@ -85,17 +89,22 @@
 		const instanceId = s.instanceId;
 		const projectId = s.effectiveProjectId;
 		if (!instanceId || !projectId || s.instance?.id !== instanceId) return null;
-		return { instanceId, projectId, token: get(auth).token };
+		return { instanceId, projectId, token: get(auth).token, adminMode: !!s.adminMode,
+			transportProjectId: s.adminMode ? get(auth).projectId ?? undefined : projectId };
 	}
 	function isCurrentAttachment(scope: StorageScope, generation: number, requestId: number) {
 		return attachmentScopeGeneration === generation && attachmentRequestId === requestId
 			&& s.instanceId === scope.instanceId && s.effectiveProjectId === scope.projectId
-			&& get(auth).token === scope.token;
+			&& get(auth).token === scope.token
+			&& !!s.adminMode === scope.adminMode
+			&& (s.adminMode ? get(auth).projectId ?? undefined : s.effectiveProjectId) === scope.transportProjectId;
 	}
 	function isCurrentMutation(scope: StorageScope, generation: number, mutation: number) {
 		return get(canWrite) && mutationGeneration === mutation && attachmentScopeGeneration === generation
 			&& s.instanceId === scope.instanceId && s.instance?.id === scope.instanceId
-			&& s.effectiveProjectId === scope.projectId && get(auth).token === scope.token;
+			&& s.effectiveProjectId === scope.projectId && get(auth).token === scope.token
+			&& !!s.adminMode === scope.adminMode
+			&& (s.adminMode ? get(auth).projectId ?? undefined : s.effectiveProjectId) === scope.transportProjectId;
 	}
 	function isCurrentCatalog(projectId: string, generation: number) {
 		return catalogGeneration === generation && s.effectiveProjectId === projectId;
@@ -111,14 +120,15 @@
 	}
 
 	async function loadAttachments(instanceId: string, projectId: string, scopeGeneration: number) {
-		const scope = { instanceId, projectId, token: get(auth).token };
+		const scope = { instanceId, projectId, token: get(auth).token, adminMode: !!s.adminMode,
+			transportProjectId: s.adminMode ? get(auth).projectId ?? undefined : projectId };
 		const requestId = ++attachmentRequestId;
 		if (isCurrentAttachment(scope, scopeGeneration, requestId)) {
 			loading = true;
 			attachmentError = '';
 		}
 		try {
-			const data = await api.get<StorageAuthorization[]>(`/api/v1/instances/${instanceId}/storage-attachments`, scope.token ?? undefined, projectId);
+			const data = await api.get<StorageAuthorization[]>(`/api/v1/${scope.adminMode ? 'admin/' : ''}instances/${instanceId}/storage-attachments`, scope.token ?? undefined, scope.transportProjectId);
 			if (isCurrentAttachment(scope, scopeGeneration, requestId)) attachments = data;
 		} catch (error) {
 			if (isCurrentAttachment(scope, scopeGeneration, requestId)) {
@@ -140,7 +150,7 @@
 		catalogError = '';
 		const promise = (async () => {
 			try {
-				const data = await api.get<FileStorage[]>('/api/v1/file-storage', tok(), projectId);
+				const data = await api.get<FileStorage[]>(s.adminMode ? `/api/v1/admin/instances/${s.instanceId}/file-storage` : '/api/v1/file-storage', tok(), s.adminMode ? get(auth).projectId ?? undefined : projectId);
 				if (isCurrentCatalog(projectId, generation)) {
 					fileStorages = data;
 					catalogStatus = 'loaded';
@@ -182,7 +192,7 @@
 		clearDisclosure();
 		const disclosure = disclosureGeneration;
 		try {
-			const result = await api.post<ConnectionResponse>(`/api/v1/instances/${scope.instanceId}/storage-attachments`, body, scope.token ?? undefined, scope.projectId);
+			const result = await api.post<ConnectionResponse>(`/api/v1/${scope.adminMode ? 'admin/' : ''}instances/${scope.instanceId}/storage-attachments`, body, scope.token ?? undefined, scope.transportProjectId);
 			if (!isCurrentMutation(scope, generation, mutation)) return;
 			if (disclosureGeneration === disclosure) {
 				lastConnection = result;
@@ -206,7 +216,7 @@
 		revoking = fileStorageId;
 		clearDisclosure();
 		try {
-			await api.delete(`/api/v1/instances/${scope.instanceId}/storage-attachments/${fileStorageId}`, scope.token ?? undefined, scope.projectId);
+			await api.delete(`/api/v1/${scope.adminMode ? 'admin/' : ''}instances/${scope.instanceId}/storage-attachments/${fileStorageId}`, scope.token ?? undefined, scope.transportProjectId);
 			if (!isCurrentMutation(scope, generation, mutation)) return;
 			await loadAttachments(scope.instanceId, scope.projectId, generation);
 		} catch (error) {
@@ -229,7 +239,7 @@
 		clearDisclosure();
 		const disclosure = disclosureGeneration;
 		try {
-			const result = await api.post<ConnectionResponse>(`/api/v1/instances/${scope.instanceId}/storage-attachments/${fileStorageId}/connection-info`, {}, scope.token ?? undefined, scope.projectId);
+			const result = await api.post<ConnectionResponse>(`/api/v1/${scope.adminMode ? 'admin/' : ''}instances/${scope.instanceId}/storage-attachments/${fileStorageId}/connection-info`, {}, scope.token ?? undefined, scope.transportProjectId);
 			if (isCurrentMutation(scope, generation, mutation) && disclosureGeneration === disclosure) lastConnection = result;
 		} catch (error) {
 			if (isCurrentMutation(scope, generation, mutation) && disclosureGeneration === disclosure) {
@@ -247,8 +257,14 @@
 		const instanceId = s.instanceId ?? null;
 		const projectId = s.effectiveProjectId ?? null;
 		const token = $auth.token;
-		if (instanceId === observedInstanceId && projectId === observedProjectId && token === observedToken) return;
-		const projectChanged = projectId !== observedProjectId || token !== observedToken;
+		const adminMode = !!s.adminMode;
+		const transportProjectId = adminMode ? $auth.projectId ?? undefined : projectId ?? undefined;
+		if (instanceId === observedInstanceId && projectId === observedProjectId && token === observedToken
+			&& adminMode === observedAdminMode && transportProjectId === observedTransportProjectId) return;
+		const projectChanged = projectId !== observedProjectId || token !== observedToken
+			|| adminMode !== observedAdminMode || transportProjectId !== observedTransportProjectId;
+		observedAdminMode = adminMode;
+		observedTransportProjectId = transportProjectId;
 		observedInstanceId = instanceId;
 		observedProjectId = projectId;
 		observedToken = token;

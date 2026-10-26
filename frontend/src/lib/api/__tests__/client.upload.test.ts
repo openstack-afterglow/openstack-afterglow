@@ -456,18 +456,38 @@ describe('api.postSse', () => {
 		expect(opts.headers['X-Project-Id']).toBe('my-proj');
 		expect(opts.headers['Accept']).toBe('text/event-stream');
 	});
-	it('invalidates warm data before and after POST SSE streams', async () => {
-		mockFetch
-			.mockResolvedValueOnce(jsonResponse({ source: 'warm' }))
-			.mockResolvedValueOnce(makeStreamResponse(['']))
-			.mockResolvedValueOnce(jsonResponse({ source: 'visible' }));
+
+	it.each(['completed', 'failed'] as const)('retires pre-stream and in-stream cached inventory when an SSE mutation is %s', async (outcome) => {
+		let revision = 'before';
+		let inventoryReads = 0;
+		let streamController!: ReadableStreamDefaultController<Uint8Array>;
+		const stream = new ReadableStream<Uint8Array>({
+			start(controller) { streamController = controller; },
+		});
+		mockFetch.mockImplementation(async (_url: string, options?: RequestInit) => {
+			if (options?.method === 'POST') {
+				return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } });
+			}
+			inventoryReads += 1;
+			return jsonResponse({ revision });
+		});
 		const { api } = await import('../client');
 		await api.prefetch('/api/v1/items', 'token', 'project');
-
-		api.postSse('/api/v1/stream', {}, 'token', 'project');
-
-		await expect(api.get('/api/v1/items', 'token', 'project')).resolves.toEqual({ source: 'visible' });
-		expect(mockFetch).toHaveBeenCalledTimes(3);
+		revision = 'in-progress';
+		const onError = vi.fn();
+		api.postSse('/api/v1/sse', {}, 'token', 'project', undefined, onError);
+		await api.prefetch('/api/v1/items', 'token', 'project');
+		await expect(api.get('/api/v1/items', 'token', 'project')).resolves.toEqual({ revision: 'in-progress' });
+		expect(inventoryReads).toBe(2);
+		expect(stream.locked).toBe(true);
+		revision = 'committed';
+		if (outcome === 'completed') streamController.close();
+		else streamController.error(new Error('Provider stream disconnected after mutation'));
+		await vi.waitFor(async () => {
+			await expect(api.get('/api/v1/items', 'token', 'project')).resolves.toEqual({ revision: 'committed' });
+		});
+		expect(inventoryReads).toBe(3);
+		expect(onError).toHaveBeenCalledTimes(outcome === 'failed' ? 1 : 0);
 	});
 
 });
@@ -493,9 +513,3 @@ describe('getBaseUrl', () => {
 	});
 });
 
-describe('memoryCache', () => {
-	it('Map 인스턴스 export', async () => {
-		const { memoryCache } = await import('../client');
-		expect(memoryCache).toBeInstanceOf(Map);
-	});
-});

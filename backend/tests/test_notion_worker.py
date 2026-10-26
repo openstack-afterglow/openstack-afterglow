@@ -398,7 +398,7 @@ async def test_native_inventory_thread_finishes_before_connection_and_lease_clos
     import threading
     from types import SimpleNamespace
 
-    import openstack
+    from app.services import native_transport
 
     redis, prefix = coordination
     started = asyncio.Event()
@@ -418,7 +418,7 @@ async def test_native_inventory_thread_finishes_before_connection_and_lease_clos
         identity=SimpleNamespace(projects=lambda: [], users=lambda: []),
         close=lambda: order.append("connection-closed"),
     )
-    monkeypatch.setattr(openstack, "connect", lambda **_: conn)
+    monkeypatch.setattr(native_transport, "connect", lambda **_: conn)
     monkeypatch.setattr("app.services.nova.list_catalog_flavors", lambda _: [])
     monkeypatch.setattr("app.database.is_db_available", lambda: False)
     monkeypatch.setattr(ns, "get_notion_target", AsyncMock(return_value=target()))

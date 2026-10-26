@@ -81,6 +81,7 @@ const targets = {
 				"tests/test_auth_diagnostics.py",
 				"tests/test_domain_auth.py",
 				"tests/test_canonical_federation.py",
+				"tests/test_native_oidc.py",
 				"tests/test_organization_provisioning.py",
 				"tests/test_account_recovery.py",
 				"tests/test_public_signup.py",
@@ -105,6 +106,8 @@ const targets = {
 				"tests/test_workspace_directory.py",
 				"tests/test_project_display.py",
 				"tests/test_keystone_endpoint_selection.py",
+				"tests/test_native_transport.py",
+				"tests/test_keystone_service_connection_regression.py",
 				"tests/test_keystone_system_scope.py"
 			]
 		},
@@ -154,9 +157,12 @@ const targets = {
 				"tests/test_admin_credentials.py",
 				"tests/test_admin_identity_inventory.py",
 				"tests/test_admin_identity_domain_scope.py",
+				"tests/test_admin_group_identity_home.py",
 				"tests/test_admin_domains.py",
 				"tests/test_admin_domain_resources.py",
 				"tests/test_admin_resource_scope.py",
+				"tests/test_admin_resource_details.py",
+				"tests/test_admin_images.py",
 				"tests/test_admin_filters.py",
 				"tests/test_domain_iam.py",
 				"tests/test_domain_projects.py",
@@ -197,12 +203,17 @@ const targets = {
 				"src/lib/api/__tests__/domainIam.test.ts",
 				"src/lib/api/__tests__/workspaceIam.test.ts",
 				"src/lib/components/account/__tests__/ProjectLifecycleSection.test.ts",
+				"src/lib/components/account/__tests__/ProjectMemberRolesModal.test.ts",
+				"src/lib/components/admin/projects/__tests__/AdminProjectAccessModal.test.ts",
 				"src/lib/components/account/__tests__/PersonalProjectLabelSection.test.ts",
 				"src/lib/stores/__tests__/servicePermissions.test.ts",
 				"src/lib/components/iam/__tests__/DomainIam.test.ts",
 				"src/lib/components/admin/domains/DomainMonitoring.test.ts",
 				"src/lib/components/admin/domains/DomainInventory.test.ts",
 				"src/lib/components/admin/users/__tests__/UserDomainManagers.test.ts",
+				"src/lib/components/admin/groups/__tests__/GroupCard.test.ts",
+				"src/lib/components/admin/groups/__tests__/AdminGroupsPage.test.ts",
+				"src/lib/components/admin/groups/__tests__/AdminGroupsPage.transport.test.ts",
 				"src/lib/components/admin/users/__tests__/AdminUserCreateModal.test.ts",
 				"src/lib/components/admin/users/__tests__/AdminUserEditModal.test.ts",
 				"src/lib/components/admin/users/__tests__/AdminUserDeleteModal.test.ts",
@@ -345,6 +356,7 @@ const targets = {
 		backend: {
 			selectors: [
 				"tests/test_instances.py",
+				"tests/test_admin_instance_details.py",
 				"tests/test_instance_volume_protection.py",
 				"tests/test_image_gpu_metadata.py",
 				"tests/test_glance_properties_native_http.py",
@@ -433,6 +445,8 @@ const targets = {
 				"tests/test_volume_owner_check.py",
 				"tests/test_volume_snapshots.py",
 				"tests/test_volume_transfer.py",
+				"tests/test_admin_volume_transfer.py",
+				"tests/test_admin_volume_transfer_native_http.py",
 				"tests/test_admin_volume_delete.py",
 				"tests/test_file_storage.py",
 				"tests/test_file_storage_owner_check.py",
@@ -449,6 +463,7 @@ const targets = {
 				"tests/test_create_access_rule_metadata.py",
 				"tests/test_cinder_pools.py",
 				"tests/test_swift_count_all_projects.py",
+				"tests/test_admin_swift_inventory.py",
 				"tests/test_swift_owner_metadata.py"
 			]
 		},
@@ -466,6 +481,7 @@ const targets = {
 				"src/routes/dashboard/volumes/__tests__/volumeRenameParity.test.ts",
 				"src/routes/dashboard/volumes/__tests__/volumeTransferLifecycle.test.ts",
 				"src/routes/dashboard/volumes/backups/__tests__",
+				"src/routes/admin/object-storage/page.inventory-boundary.test.ts",
 				"src/lib/mockup/transport.test.ts",
 				"src/lib/api/__tests__/client.upload.test.ts"
 			]
@@ -568,7 +584,7 @@ const targets = {
 		}
 	},
 	palimpsest: {
-		description: "Palimpsest BFF proxy, layer management, and digest tests",
+		description: "Palimpsest native catalog, caller environments, packages, proxy and layer management",
 		liveServices: "none",
 		backend: {
 			selectors: [
@@ -576,7 +592,27 @@ const targets = {
 				"tests/test_palimpsest_api.py",
 				"tests/test_palimpsest_kvm.py",
 				"tests/test_palimpsest_dockerfile.py",
-				"tests/test_palimpsest_digest.py"
+				"tests/test_palimpsest_digest.py",
+				"tests/test_palimpsest_catalog.py",
+				"tests/test_palimpsest_catalog_cleanup.py",
+				"tests/test_palimpsest_packages.py",
+				"tests/test_palimpsest_authorization.py",
+				"tests/test_build_work.py",
+				"tests/test_layer_build_ownership.py"
+			]
+		},
+		frontend: {
+			selectors: [
+				"src/lib/api/__tests__/palimpsestCatalog.test.ts",
+				"src/lib/api/__tests__/palimpsestAssets.test.ts",
+				"src/lib/api/__tests__/palimpsestHub.test.ts",
+				"src/lib/stores/palimpsestAssetsController.svelte.test.ts",
+				"src/lib/stores/palimpsestHubController.svelte.test.ts",
+				"src/lib/stores/palimpsestPackagesController.svelte.test.ts",
+				"src/lib/components/admin/libraries/__tests__/PalimpsestCatalogPanel.test.ts",
+				"src/lib/components/palimpsest/AssetSearchPanel.svelte.test.ts",
+				"src/routes/admin/libraries/__tests__",
+				"src/routes/palimpsest/packages/__tests__"
 			]
 		}
 	},

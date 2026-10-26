@@ -60,7 +60,10 @@ Trove 기반 관리형 데이터베이스(DBaaS)를 프로비저닝하고 관리
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| `GET` | `/api/v1/database-instances` | 인스턴스 목록 (`all_projects` 는 admin 전용) |
+| `GET` | `/api/v1/database-instances` | 현재 프로젝트의 사용자 목록; 관리자 query는403 |
+| `GET` | `/api/v1/admin/database-instances` | 관리자 전체 목록과 독립 domain/project 필터 |
+| `GET` | `/api/v1/admin/database-instances/{instance_id}` | 관리 API의 정확한 owner를 확인한 관리자 상세 |
+| `GET` | `/api/v1/admin/database-instances/{instance_id}/{databases,users,backups}` | 부모에 묶인 관리자 하위 목록 |
 | `POST` | `/api/v1/database-instances` | 인스턴스 생성 (201) |
 | `GET` | `/api/v1/database-instances/{instance_id}` | 인스턴스 상세 |
 | `DELETE` | `/api/v1/database-instances/{instance_id}` | 인스턴스 삭제 (204) |
@@ -71,11 +74,9 @@ Trove 기반 관리형 데이터베이스(DBaaS)를 프로비저닝하고 관리
 
 프로젝트의 DB 인스턴스 목록을 반환합니다.
 
-| 파라미터 | 위치 | 타입 | 필수 | 설명 |
-|----------|------|------|------|------|
-| `all_projects` | query | boolean | 아니오 | `true` 면 전체 프로젝트 조회. **시스템 admin 전용**(아니면 `403`) |
+소비자 목록의 `all_projects/domain_id/project_id` query는 더 이상 지원하지 않으며 존재하면403입니다. 관리자 화면은 `GET /api/v1/admin/database-instances?domain_id=...&project_id=...`를 사용하고 fresh system-admin 권위 및 고정 admin-project executor를 검증합니다. 논리 Personal workspace와 native authenticated project는 별도이며 대상 tenant로 재인증하지 않습니다.
 
-시스템 admin의 `all_projects=true` 요청은 Trove 관리 API `/mgmt/instances`를 사용하며, 응답의 `tenant_id`를 `project_id`로 정규화합니다. 이 목록은 사용자가 Trove로 생성한 관리형 DB 인스턴스만 반환합니다. OpenStack control-plane MariaDB/MySQL이나 `mysqld_exporter` 대상은 포함하지 않습니다. 관리 API 조회가 실패하거나 응답 형식이 잘못된 경우 빈 배열이 아니라 `500`을 반환하므로, 관리 화면은 실제 0건과 조회 실패를 구분합니다.
+Trove 관리 API `/mgmt/instances`와 `/mgmt/instances/{id}`의 `tenant_id`를 `project_id`로 정규화합니다. 이는 tenant-created Trove 인스턴스이며 control-plane MySQL을 포함하지 않습니다. Databases/users는 검증한 부모 URI로만 조회하고 backups는 각 `instance_id`도 대조합니다. Native next-link는 원격 host/path를 따르지 않고 marker 하나만 추출하므로 사용자 `name@host` 경계를 보존합니다. 목록·하위 조회 실패는 오류로 표시하며 빈 목록 성공으로 숨기지 않습니다. 관리자 foreign-project mutation을 새로 제공하지 않으며 기존 caller-owned 작업만 유지합니다.
 
 ### POST /api/v1/database-instances
 

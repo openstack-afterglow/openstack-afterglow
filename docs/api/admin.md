@@ -289,6 +289,9 @@ UI: [로그인 모니터링](/admin/monitoring/logins).
 | `GET` | `/api/v1/admin/timeseries/{resource_type}` | 리소스 유형별 시계열 스냅샷 (1시간 간격) |
 | `GET` | `/api/v1/admin/version` | 백엔드/배포 버전 정보 |
 
+관리자 토폴로지 `networks[]`는 fresh native 소유권의 `project_name`, `domain_id`, `domain_name`, `owner_status`(`known/deleted_project/deleted_domain/unknown_owner`)도 반환합니다. 도메인·프로젝트 조건은 네트워크 소유권으로 적용하며 공유 사용자의 도메인을 소유자로 대체하지 않습니다. Directory 실패는503입니다. 관리자 캔버스/레인은 domain UUID별 상위 그룹을 만들고 동일한 표시 이름에는 UUID를 함께 표시하지만, 그 상자는 통신 허용·연결을 의미하지 않습니다. 실제 연결선과 소비자 응답은 유지됩니다. Swift 전체 inventory는 별도 `GET /api/v1/admin/object-storage`를 사용합니다([Object Storage API](object-storage.md#get-apiv1adminobject-storage)).
+
+
 `GET /monitoring/summary`는 기존 inventory·quota allocation과 별도로 `telemetry: {source, status, resources, truncated, error}`를 반환합니다. 각 resource는 공개 whitelist의 `id`, `type`, `name`, `metrics`만 포함하고 metric은 `series[{ts,value}]`, `unit`, `status`, 안전한 `error`를 갖습니다. 현재 caller의 Gnocchi 정책에 허용된 `nova_compute` CPU percent/frequency, `ipmi` 센서 및 `volume_provider`/`volume_provider_pool` 용량을 읽습니다. 이 목록은 완전한 cloud inventory가 아니며 Nova 할당량·호스트 도달성을 실측 이용률로 바꾸지 않습니다. Native 데이터는 기존 공통 inventory cache에 넣지 않고 매 요청 현재 시스템 관리자 권한과 native policy를 확인하며 응답은 no-store입니다. UI는 최대 12 resource × 12 meter와 기록 시각·단위·부분 coverage를 표시하고 이력은 펼칠 때 렌더합니다. 미수집을 0으로 채우지 않습니다.
 
 관리자 개요는 프로젝트별 quota 표 대신 **도메인별 실제 할당 자원**을 표시합니다. `/overview/domains`는 native Keystone project→domain UUID join으로 전체 Nova/Cinder inventory를 합산하며 사용자 home·동일한 표시 이름으로 소유권을 추정하지 않습니다. 자원이 없는 native domain과 프로젝트도 집계 대상입니다. 각 row는 `domain_id`, `domain_name`, `project_ids`, `project_count`, `instances`, `vcpus`, `ram_mb`, `gpu_instances`, `volumes`, `volume_gb`, `attached_volumes/attached_gb`, `available_volumes/available_gb`, `owner_status`를 반환합니다. Nova의 embedded CPU/RAM 수치가 없으면 해당 합계는 null이며 확인된0과 다릅니다. 삭제된 프로젝트·도메인과 owner 누락은 `deleted_project`·`deleted_domain`·`unknown_owner`로 구분합니다. Directory 조회 장애는503이지 빈 합계가 아닙니다. 도메인 행에서 인스턴스/볼륨 목록을 열면 `domain_id` query를 독립 관측 picker에 적용하고 로그인 workspace는 바꾸지 않습니다. 퇴역한 `/overview/projects`는 제공하지 않습니다.
@@ -379,7 +382,7 @@ Nova `DELETE /os-services/{service_uuid}`의 `204`는 접수입니다. 이후 se
 | `GET` | `/api/v1/admin/all-routers` | 전체 라우터 목록 |
 | `GET` | `/api/v1/admin/all-ports` | 전체 포트 목록 |
 
-같은 조건은 `/admin/file-storage`, `/admin/topology`, `/admin/images`(이미지 `owner`), `/admin/instances/health`, `/admin/volumes/status-summary`, `/admin/overview/domains`, `/admin/key-manager/project-quotas`, `/admin/events` 및 `/admin/events/stats`에도 적용됩니다. Trove는 `/database-instances?all_projects=true`, Swift는 `/object-storage?all_projects=true`를 사용하고 이 관리자 모드에서 매번 관리자 권한을 확인합니다. 사용자 모드의 기존 소유권 계약은 바꾸지 않습니다.
+같은 조건은 `/admin/file-storage`, `/admin/topology`, `/admin/images`(이미지 `owner`), `/admin/instances/health`, `/admin/volumes/status-summary`, `/admin/overview/domains`, `/admin/key-manager/project-quotas`, `/admin/events` 및 `/admin/events/stats`에도 적용됩니다. Trove는 명시적인 `/admin/database-instances`, Swift는 `/object-storage?all_projects=true`를 사용하고 매번 fresh 관리자 권한을 확인합니다. 소비자 Trove 목록의 이전 `all_projects` query는403이며 사용자 소유권 계약은 유지합니다.
 
 Swift의 all-project fan-out 중 한 프로젝트의 인증/조회가 실패하면503 `object_storage_inventory_unavailable`로 반환하며 나머지만 성공한 부분 목록으로 보고하지 않습니다. 도메인/프로젝트 조건은 fan-out 대상 프로젝트를 먼저 제한합니다.
 
@@ -388,6 +391,24 @@ Swift의 all-project fan-out 중 한 프로젝트의 인증/조회가 실패하�
 Interactive 관리자의 기본 workspace도 Personal/member입니다. **Nova2025.2 all-tenants server·hypervisor·flavor-access의 scope는 project**이므로 관리자 경로 전체를 system token으로 바꾸지 않습니다. Provider inventory·selected-domain resource directory·quota·Flavor CRUD/ACL은 명시적 `get_admin_os_conn`에서 fresh native system-admin caller guard 뒤 기존 configured 고정 admin project/service credential로 실행합니다. 인증 결과의 project scope·admin role·SDK native is_admin_project 의미를 확인하며, Keystone이 legacy marker를 생략하는 경우 SDK 기본 true를 존중합니다. 명시 false/null/non-boolean, 잘못된 scope 또는 unavailable executor는503이고 다른 scope/계정으로 재시도하지 않습니다. `_afterglow_project_id`는 caller logical workspace, `_afterglow_authenticated_project_id`는 실제 executor project입니다. 사람의 Personal admin grant·기존 native grant·원 로그인 증명·header workspace는 변경하지 않습니다. Consumer, credential 관리/발급과 Aodh/Gnocchi telemetry는 caller-bound `get_os_conn`·native 정책을 유지합니다. 이는 caller impersonation이 아니라 검증된 system admin만 쓸 수 있는 명시적 configured provider 실행이며 권한 없는 caller는 executor 인증 전에 거부됩니다.
 
 Manila의 `/v2/{project}` URL prefix도 논리 Personal이 아닌 실제 인증 executor project를 사용합니다. Catalog가 이미 executor project를 포함하면 logical ID를 중복해서 붙이지 않습니다. 별도 quota resource의 target project는 그대로 유지하며 native transport project가 없으면 송신 전에 거부합니다.
+
+#### 관리자 상세 transport
+
+관리자 사용자·프로젝트·그룹·역할의 디렉터리 및 `_selected_objects` domain/object 검증은 모두 같은 검증된 `get_admin_os_conn`을 사용합니다. 사람의 Personal member token으로 native 디렉터리를 읽지 않으며, domain mismatch·native ID 대체·권위 철회는 계속 거부합니다. Monitoring SG 생성에는 대상 `project_id`를 native group/rule 요청에 명시하므로 executor project에 잘못 생성하지 않습니다.
+
+| 경로 (`/api/v1/admin` 기준) | 계약 |
+| --- | --- |
+| `GET /instances/{id}` 및 `/interfaces`, `/volumes`, `/available-volumes`, `/security-groups`, `/floating-ips`, `/networks`, `/owner` | 실제 Nova owner와 port/volume/SG/FIP 연결을 native metadata로 대조합니다. Browser project hint는 권한 근거가 아닙니다. |
+| `GET /instances/{id}/console`, `/log`, `/resize-flavors`, `/admin-password/precheck` | 기존 상세 기능을 관리자 경로로 복구합니다. `/instances/health`는 dynamic ID보다 먼저 등록합니다. |
+| `GET /instances/{id}/metrics-batch`, `/metrics-summary` | 서버 식별은 executor, Gnocchi credential은 caller-native를 유지하며 오류에도 no-store입니다. |
+| `GET /images/{id}` 및 `GET/POST /images/{id}/members`, `DELETE /images/{id}/members/{member}` | exact native image/owner 및 member/image 연결을 검증합니다. UI의 상세·공개 범위·삭제·properties도 관리자 URL을 사용하고 삭제 후 모든 프로젝트 이미지 목록 cache를 무효화합니다. |
+| `GET /file-storage/{id}`, `/access-rules` | canonical share owner를 먼저 검증하고 exact access-rule share ID를 재확인합니다. |
+| `GET /loadbalancers/{id}` 및 `/listeners`, `/pools`, `/pools/{pool}/members`, `/status` | LB owner와 모든 child/부모 연결을 확인합니다. SDK Pool/Listener의 다른 native field 이름을 구분합니다. |
+| `GET /database-instances` 및 `/{id}`, `/{id}/databases`, `/{id}/users`, `/{id}/backups` | Trove management parent tenant_id와 parent URI/backup instance_id를 검증하고 next-link marker만 읽습니다. |
+
+인스턴스 상세의 기존 lifecycle·비밀번호·volume/interface·SG/FIP·storage 연결 작업도 exact native parent/child와 fresh 관리자 경계 아래 명시적 관리자 경로를 사용하며 성공·실패의 actor와 native target project를 구분해 기록합니다. Fixed executor로 target 소유를 보장할 수 없는 새 볼륨 생성은 관리자 상세에서 숨기며 caller-bound block-ledger 삭제는 native mutation 전에409입니다. LB/DB/파일 스토리지의 기존 일반 mutation은 실제 부모가 현재 caller project 소유일 때만 노출합니다. Palimpsest foreign-private export와 K3s 서비스 credential을 executor로 승격하지 않습니다.
+
+관리자 인스턴스 storage 접근 허용 및 connection-info와 관리자 share access-rule 목록 응답에는 `secret`/`access_key`를 포함하지 않습니다. Native 규칙의 상태·대상·내보내기 위치만 보여주며, CephX key의 기존 caller-owned 명시 조회 계약을 관리자 executor로 확대하지 않습니다.
 
 관리자 화면의 공용 도메인→프로젝트 picker는 사용자 header의 active workspace와 독립적입니다. 도메인 변경은 선택 프로젝트가 새 도메인에 없으면 해제하고 목록 page/marker·선택·열린 상세를 초기화합니다. 이전 scope/auth 수명의 늦은 조회·mutation 피드백은 새 화면에 게시하지 않습니다. Quota와 flavor 접근 대상, 포트 생성·볼륨 이관의 대상 프로젝트 선택도 같은 디렉터리 조건을 사용하되 **관측 필터를 mutation 대상 허용 목록으로 오용하지 않습니다**. Shared/external network 등 생성 옵션은 원래 native 가용 범위를 유지합니다. 공지 수신 도메인의 프로젝트 목록도 해당 도메인으로 제한합니다.
 
@@ -466,7 +487,10 @@ Manila의 `/v2/{project}` URL prefix도 논리 Personal이 아닌 실제 인증 
 | `POST` | `/api/v1/admin/volumes/{volume_id}/force-delete` | 강제 삭제 (`204`) | - |
 | `POST` | `/api/v1/admin/volumes/{volume_id}/extend` | 용량 확장 | `new_size` (현재보다 커야 함) |
 | `POST` | `/api/v1/admin/volumes/{volume_id}/reset-status` | 상태 강제 초기화 | `status` (기본 `available`) |
-| `POST` | `/api/v1/admin/volumes/{volume_id}/transfer` | 다른 프로젝트로 볼륨 이관 | 대상 프로젝트 지정 |
+| `POST` | `/api/v1/admin/volumes/{volume_id}/transfer` | native 대기 전송 생성·once-only ID/키 발급 | 선택적 `{name}`, `201` |
+| `POST` | `/api/v1/admin/volumes/transfer/{transfer_id}/accept` | 실제 대상 프로젝트 자격으로 수신 | `{auth_key,target_domain_id,target_project_id}` |
+| `GET` | `/api/v1/admin/volumes/{volume_id}/transfers` | 정확한 볼륨의 대기 ID 복구(키 없음) | native all_tenants 목록과 볼륨 상태 대조 |
+| `DELETE` | `/api/v1/admin/volumes/transfer/{transfer_id}` | 관리자 명시 취소 | 자동 취소/재전송 없음 |
 | `GET` | `/api/v1/admin/volumes/{volume_id}/delete-diagnostics` | 삭제 실패 원인 진단 | - |
 | `POST` | `/api/v1/admin/volumes/{volume_id}/recover-delete` | 삭제 실패 복구 시도 | - |
 
@@ -646,6 +670,8 @@ Email 승인은 공개 가입 enabled이면 **새 검증 메일**, invitation-on
 | `DELETE /api/v1/admin/domains/{domain_id}/enrollment-operations/{operation_id}` | 없음 | 204; 검증된 해당 작업의 추가 효과만 보상하고 취소 |
 
 `GET /domains/{domain_id}/members`는 verified system admin용 membership 후보 directory이며 `Cache-Control: no-store, private`입니다. 공통 `domain_iam.directory_users`의 fresh native home/joined 목록에서 enabled 사용자만 반환하고 pagination/query 필터는 없습니다. 최상위 `domain_id`는 선택한 working domain, 각 item의 `domain_id`는 계정의 immutable native home입니다. `protected` 필드·credential metadata·blob·secret은 반환하지 않습니다. 이 목록은 project/group 역할·membership 후보를 위한 것이며 `/admin/users?domain_id=...`의 home-only profile 관리나 credential owner/project 검증을 확장하지 않습니다. 단순 후보 응답은 실제 mutation 인가를 대신하지 않습니다.
+
+이 candidate endpoint만 exact native **user GET404**로 확인한 부재 계정을 생략합니다. 삭제 사용자 ID가 남은 역할 할당과 목록/개별 조회 사이의 삭제가 해당되며, 사용자403/5xx·home-domain404·ID 불일치·불명 역할 graph를 빈 후보나 부분 성공으로 바꾸지 않습니다. 다른 directory 소비자와 실제 membership/manager mutation은 기존 strict 권위 검사를 유지합니다. Group 사용자 목록은 `{id,name,email,domain_id,identity_read_only,enabled}`를 유지하고 조회 중 provider 오류는 빈/부분200이 아닙니다. UI의 멤버·후보는 이름/이메일/전체 UUID/home-domain ID를 표시하고 이름·이메일·UUID·home ID로 검색하며, 같은 이름도 별도 UUID로 선택합니다. Candidate 조회 실패는 성공한 멤버 목록과 독립 표시하고 명시적으로 재조회합니다.
 
 Create/PATCH body는 extra field 금지·문자열 앞뒤 공백 제거. Name 1–64자, description 최대4096·기본 `""`, enabled 기본true입니다. PATCH의 null/생략은 unchanged, 실제 변경 없음은 `422 domain_invalid_input`. Native 실패는 403 `domain_native_denied`, 404 `domain_not_found`, 409 `domain_conflict`, 400/422 `domain_native_invalid`, 503 `domain_unavailable`입니다. 도메인 삭제 API는 없습니다.
 
@@ -936,10 +962,15 @@ Snapshot은 `{domain_id,revision,ceilings,defaults,enforcement_scope,allocations
 | `PATCH` | `/api/v1/admin/groups/{group_id}` | 그룹 수정 | `name`, `description` (선택) |
 | `DELETE` | `/api/v1/admin/groups/{group_id}` | 그룹 삭제 (`204`) | - |
 | `GET` | `/api/v1/admin/groups/{group_id}/users` | 그룹 멤버 목록 | - |
-| `PUT` | `/api/v1/admin/groups/{group_id}/users/{user_id}` | 그룹에 사용자 추가 (`204`) | - |
+| `GET` | `/api/v1/admin/groups/{group_id}/candidates` | 명시한 계정 소속 도메인의 활성 사용자 후보 | 필수 query `domain_id`, `user_domain_id` |
+| `PUT` | `/api/v1/admin/groups/{group_id}/users/{user_id}` | 그룹에 사용자 추가 (`204`) | 선택 query `user_domain_id`; 명시 시 `domain_id` 필수 |
 | `DELETE` | `/api/v1/admin/groups/{group_id}/users/{user_id}` | 그룹에서 사용자 제거 (`204`) | - |
 
 그룹 응답은 배열이며 nullable `created_at`을 포함합니다. 필수 domain_id는 서버에서 native inventory를 제한합니다. 이름·ID·설명 검색은 그 inventory에서 브라우저가 수행합니다. 조회·갱신 후 조건을 유지하며 mutation은 inventory cache를 무효화합니다. Native 실패는 `identity_native_denied`403 / `identity_not_found`404 / `identity_unavailable`503 등으로 반환하며 부분 성공 목록으로 바꾸지 않습니다.
+
+기본 검색은 기존 `/domains/{domain_id}/members`의 home/joined 후보를 사용합니다. 특정 다른 계정 소속 도메인을 선택하면 `/groups/{group_id}/candidates?domain_id=<group-domain>&user_domain_id=<identity-home>`에서 `{domain_id,user_domain_id,items:[{id,name,email,enabled,domain_id}]}`를 받습니다. 최상위 두 ID는 각각 group 소유 domain과 선택한 identity home이며 item domain은 후자와 정확히 일치합니다. Accounts도 조회할 수 있지만 전역/all-domain 목록이나 조직 manager 권한으로 노출하지 않습니다. 응답은 `Cache-Control: no-store, private`; exact enabled group/두 domain 확인 뒤 native source-domain LIST의 고유 ID·정확한 home·boolean enabled·name/email 형식을 검증해 활성 후보를 구성합니다. 사용자별 GET은 하지 않으며 LIST/provider403/5xx·home404·불명/중복/잘못된 metadata는 부분 성공으로 숨기지 않습니다. 목록은 조회 시점 후보이지 추가 권한 proof가 아니므로 이후 삭제·비활성·home 변경은 다음 명시 PUT의 fresh exact 검증에서 거부됩니다.
+
+명시 `user_domain_id` PUT은 graph lease 안에서 native system-admin을 다시 검증하고 group anchor·활성 source/target domain·정확한 활성 사용자 UUID/home을 재조회합니다. Group 자신의 domain에 아직 가입하지 않은 Accounts 사용자도 이 명시 작업으로 추가할 수 있고 기존 group 역할이 적용됩니다. Group의 다른 domain project/domain grant에는 기존 membership을 계속 요구합니다. Source ID를 생략한 기존 PUT·일반 조직 IAM/credential/role API는 바뀌지 않습니다. Owner-bearing group409·projection group403·마지막 manager/system-admin·권위/lease/native 실패 보호를 유지하며 별도 역할을 자동 부여하거나 계정을 이동하지 않습니다. Browser source 선택은 관리 domain/workspace를 변경하지 않고 늦은 source 응답과 ABA를 폐기합니다.
 
 **주의**: 멤버십 변경 시 Keystone이 관련 토큰을 revoke할 수 있어 관련 세션 캐시가 함께 삭제됩니다.
 
@@ -970,6 +1001,8 @@ Snapshot은 `{domain_id,revision,ceilings,defaults,enforcement_scope,allocations
 | `GET` | `/api/v1/admin/identity/summary` | identity 도메인 요약(사용자·프로젝트·역할 수) | - |
 
 역할 CRUD·상속·프리셋 적용은 verified system admin 전용입니다. 프로젝트 `admin` 이름이나 DB manager는 권한이 아닙니다. 프로젝트 owner/admin은 [프로젝트 API](projects.md), 도메인 관리자는 [도메인 IAM](iam.md)의 현재 safe role ID를 사용합니다. 일반 identity 응답은 표시용 이름·OpenStack can_write·서비스별 service_permissions를 구분합니다. 초대 role_ids도 IAM의 safe catalog로 검증합니다.
+
+프로젝트 `POST /roles/assign`·`/roles/assign-group`는 native 이름이 `admin`인 실제 role ID의 새 할당을422 `Native admin project grants are removal-only`로 거부합니다. 기존 user/group direct admin은 해당 DELETE로 회수할 수 있고 관리자 UI도 이미 체크된 admin만 해제할 수 있습니다. 미할당 admin은 비활성이고 해제 뒤 재선택할 수 없습니다. 사용자/도메인 IAM replacement·초대에도 신규 admin grant가 허용되지 않으며 `project_admin`·서비스 `*_admin`의 기존 정책은 유지합니다. 예외는 전용 `/identity/system-roles/grant`·`/revoke`의 canonical `system:all` admin이며 기존 마지막 유효 관리자 보호·세션 회수 계약을 그대로 따릅니다.
 
 목록 항목은 `id`, `name`, `description`, `domain_id`, `protected`, `system_only`, `implied_role_ids`(직접 하위), `inherited_role_ids`(전체 하위), `parent_role_ids`(직접 상위)를 반환합니다. `A → B`는 A 보유자가 B 권한을 얻는다는 뜻입니다. 화면의 `admin → manager → member → reader`는 실제 Keystone에 저장된 연결을 표시하며, 목록 조회로 기본 계층을 자동 생성하지 않습니다. 이름·ID·상속 수 정렬, 이름/ID/설명 검색, 다중 부모·공유 역할을 표시하는 상속 트리를 제공합니다.
 

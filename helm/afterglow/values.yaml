@@ -192,9 +192,8 @@ cache:
 # [session]
 # -----------------------------------------------------------------------------
 session:
-  timeoutSeconds: 3600
+  timeoutSeconds: 86400
   warningBeforeSeconds: 300
-  absoluteTimeout: 14400
   jwtAccessTtl: 900
   jwtRefreshTtl: 604800
   tokenIpBindingMode: "subnet"

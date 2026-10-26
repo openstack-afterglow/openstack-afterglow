@@ -8,11 +8,13 @@
 		rootInfo,
 		enablingRoot,
 		onEnableRoot,
+		canMutate = true,
 	}: {
 		instance: DbInstance;
 		rootInfo: { name: string; password: string } | null;
 		enablingRoot: boolean;
 		onEnableRoot: () => Promise<void>;
+		canMutate?: boolean;
 	} = $props();
 
 	const dsType = $derived(instance?.datastore?.type ?? '');
@@ -51,7 +53,7 @@
 				<div class="text-warm-text text-xs font-medium mb-1">{tr('connection.rootAccount')}</div>
 				<div class="font-mono text-xs text-ink-0">{tr('connection.credentials', { name: rootInfo.name, password: rootInfo.password })}</div>
 			</div>
-		{:else}
+		{:else if canMutate}
 			<button onclick={onEnableRoot} disabled={enablingRoot}
 				class="text-xs text-warm-text border border-action-warm hover:border-action-warm px-3 py-1.5 rounded transition-colors">
 				{#if enablingRoot}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.enablingRoot')}</span></span>{:else}{tr('actions.enableRoot')}{/if}

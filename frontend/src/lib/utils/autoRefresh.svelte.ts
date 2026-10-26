@@ -1,4 +1,5 @@
 import { untrack } from 'svelte';
+import { createCoalescedRefresh } from './coalescedRefresh';
 
 interface AutoRefreshOptions {
 	storageKey: string;
@@ -17,7 +18,7 @@ export interface AutoRefreshController {
 }
 
 export function createAutoRefresh(
-	fn: () => void | Promise<void>,
+	fn: (force?: boolean) => void | Promise<void>,
 	options: AutoRefreshOptions,
 ): AutoRefreshController {
 	const {
@@ -38,49 +39,25 @@ export function createAutoRefresh(
 	let _boost = $state<number | null>(null);
 	function setBoost(seconds: number | null) { _boost = seconds; }
 
-	// 자동 라운드는 겹치지 않고, 실행 중 요청된 강제 새로고침은 한 번만 후행 실행한다.
-	let _running = false;
-	let _forceQueued = false;
-	let _queuedForce: {
-		promise: Promise<void>;
-		resolve: () => void;
-		reject: (reason: unknown) => void;
-	} | null = null;
-
+	// One queue owns timer and manual rounds. A manual refresh arriving during an
+	// automatic round gets one subsequent round; timer ticks only join active work.
+	const refresh = createCoalescedRefresh(async (force) => { await fn(force); });
+	let disposed = false;
+	let schedule: (() => void) | null = null;
+	let pause: (() => void) | null = null;
 	async function tick(force = false): Promise<void> {
-		if (_running) {
-			if (!force) return;
-			_forceQueued = true;
-			if (!_queuedForce) {
-				let resolve!: () => void;
-				let reject!: (reason: unknown) => void;
-				const promise = new Promise<void>((done, fail) => {
-					resolve = done;
-					reject = fail;
-				});
-				_queuedForce = { promise, resolve, reject };
-			}
-			return _queuedForce.promise;
-		}
-
-		_running = true;
+		pause?.();
 		try {
-			await fn();
+			await refresh.run(force);
 		} finally {
-			_running = false;
-			if (_forceQueued && _queuedForce) {
-				_forceQueued = false;
-				const queued = _queuedForce;
-				_queuedForce = null;
-				try {
-					await tick();
-					queued.resolve();
-				} catch (error) {
-					queued.reject(error);
-				}
-			}
+			if (!disposed) schedule?.();
 		}
 	}
+	$effect(() => () => {
+		disposed = true;
+		pause?.();
+		refresh.dispose();
+	});
 
 	// Restore saved preferences from localStorage (client-only via $effect)
 	$effect(() => {
@@ -99,47 +76,48 @@ export function createAutoRefresh(
 		localStorage.setItem(`autoRefresh.${storageKey}.interval`, String(state.intervalSeconds));
 	});
 
-	// Timer management + Page Visibility API
+	// Delay from completion, not from dispatch. Slow providers cannot create a
+	// back-to-back round at the next fixed wall-clock tick. Preference/boost
+	// changes re-arm the timer without repeating the initial load.
+	let initialized = false;
 	$effect(() => {
-		if (!state.active) return;
-		// _boost를 여기서 읽어야 reactive dependency로 등록됨 (boost 변화 시 timer 재시작)
+		const active = state.active;
 		const effectiveMs = (_boost ?? state.intervalSeconds) * 1000;
-
-		let timerId: ReturnType<typeof setInterval> | null = null;
-
-		function start() {
-			timerId = setInterval(() => {
-				tick();
-			}, effectiveMs);
-		}
-
+		const initial = !initialized;
+		initialized = true;
+		let stopped = false;
+		let timerId: number | undefined;
+		const available = () => active && !stopped && !document.hidden && navigator.onLine !== false;
 		function stop() {
-			if (timerId !== null) {
-				clearInterval(timerId);
-				timerId = null;
-			}
+			window.clearTimeout(timerId);
+			timerId = undefined;
 		}
-
-		function onVisibility() {
-			if (document.hidden) {
-				stop();
-			} else {
-				stop();
-				tick();
-				start();
-			}
-		}
-
-		if (!document.hidden) {
-			if (invokeOnMount) untrack(() => tick());
-			start();
-		}
-
-		document.addEventListener('visibilitychange', onVisibility);
-
-		return () => {
+		function start() {
 			stop();
-			document.removeEventListener('visibilitychange', onVisibility);
+			if (available()) timerId = window.setTimeout(run, effectiveMs);
+		}
+		function run() {
+			if (available()) void untrack(() => tick()).catch(() => {});
+		}
+		function onAvailability() {
+			stop();
+			if (available()) run();
+		}
+		schedule = start;
+		pause = stop;
+		if (available() && initial && invokeOnMount) run();
+		else start();
+		document.addEventListener('visibilitychange', onAvailability);
+		window.addEventListener('online', onAvailability);
+		window.addEventListener('offline', onAvailability);
+		return () => {
+			stopped = true;
+			stop();
+			if (schedule === start) schedule = null;
+			if (pause === stop) pause = null;
+			document.removeEventListener('visibilitychange', onAvailability);
+			window.removeEventListener('online', onAvailability);
+			window.removeEventListener('offline', onAvailability);
 		};
 	});
 

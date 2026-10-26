@@ -43,7 +43,15 @@ def password_account(username: str, *, operation):
     home = _field(account_spaces.shared_domain("account", operation=operation), "id")
     rows = _account_users(operation.ks, home, operation=operation)
     email = normalize_email(username).casefold() if "@" in username else ""
-    matches = [row for row in rows if _field(row, "name") == username or (email and _email(row) == email)]
+    from app.services import native_oidc
+
+    # Federation-only shadows must not compete with credential-backed accounts.
+    candidates = [
+        row
+        for row in rows
+        if _field(row, "afterglow_local_password") is True or not native_oidc._native_user(row, ks=operation.ks)
+    ]
+    matches = [row for row in candidates if _field(row, "name") == username or (email and _email(row) == email)]
     if len(matches) > 1:
         raise DomainAuthConflict("Account identity is ambiguous", code="account_ambiguous")
     if not matches:

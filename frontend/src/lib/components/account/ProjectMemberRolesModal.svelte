@@ -76,12 +76,19 @@
 	function inherited(id: string) {
 		return implied.has(id) || externalInherited.has(id);
 	}
-	function disabled(role: AssignableProjectRole) {
-		return busy || !directEditable || !editable(role) || inherited(role.id);
+	function nativeAdmin(role: AssignableProjectRole) {
+		return role.name.toLowerCase() === 'admin';
 	}
-	function toggle(role: AssignableProjectRole, checked: boolean) {
-		if (disabled(role)) return;
-		selected = checked ? selected.includes(role.id) ? selected : [...selected, role.id] : selected.filter(value => value !== role.id);
+	function disabled(role: AssignableProjectRole) {
+		return busy || !directEditable || !editable(role) || (nativeAdmin(role) ? !selected.includes(role.id) : inherited(role.id));
+	}
+	function toggle(role: AssignableProjectRole, input: HTMLInputElement) {
+		const checked = input.checked;
+		if (!disabled(role) && !(checked && nativeAdmin(role))) {
+			selected = checked ? selected.includes(role.id) ? selected : [...selected, role.id] : selected.filter(value => value !== role.id);
+		}
+		// A removed direct grant can remain effectively checked through inheritance.
+		input.checked = selected.includes(role.id) || inherited(role.id);
 	}
 	function save() {
 		if (!busy && !submitDisabled && directEditable) onSave(selected);
@@ -137,7 +144,7 @@
 						</legend>
 						{#each activeRoles as role (role.id)}
 							<label class="flex min-h-11 items-start gap-3 rounded-md border border-line p-3 text-sm text-ink-1">
-								<input class="mt-1 shrink-0" type="checkbox" checked={selected.includes(role.id) || inherited(role.id)} disabled={disabled(role)} onchange={(event) => toggle(role, event.currentTarget.checked)} />
+								<input class="mt-1 shrink-0" type="checkbox" checked={selected.includes(role.id) || inherited(role.id)} disabled={disabled(role)} onchange={(event) => toggle(role, event.currentTarget)} />
 								<span class="min-w-0 [overflow-wrap:anywhere]"><code>{role.name}</code> <span class="text-xs text-ink-2">{role.grade ?? ''} · {role.name === `${role.area}_${role.grade}` ? t('projectMemberRoles.grade') : t('projectMemberRoles.permission')}{inherited(role.id) ? t('projectMemberRoles.inheritedReadOnly') : ''}</span>{#if role.description}<span class="block text-xs text-ink-2">{role.description}</span>{/if}</span>
 							</label>
 						{/each}

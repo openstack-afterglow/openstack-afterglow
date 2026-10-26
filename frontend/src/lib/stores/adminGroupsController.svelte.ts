@@ -1,6 +1,7 @@
 import { untrack } from 'svelte';
 import { api, ApiError } from '$lib/api/client';
-import type { Group, GroupMember, User } from '$lib/types/adminGroup';
+import type { Group, GroupCandidates, GroupMember, User } from '$lib/types/adminGroup';
+import { domainsApi, type AdminDomain } from '$lib/api/domains';
 import { t } from '$lib/i18n/ns/admin-identity';
 import { t as td } from '$lib/i18n/ns/domain-admin';
 
@@ -8,6 +9,7 @@ export interface AdminGroupsControllerOpts {
   token: () => string | undefined;
   projectId: () => string | undefined;
   domainId: () => string;
+  actorId?: () => string | undefined;
 }
 
 export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
@@ -29,9 +31,18 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
   let membersLoading = $state<Record<string, boolean>>({});
   let membersError = $state<Record<string, string>>({});
   let allUsers = $state<User[]>([]);
+  let usersLoading = $state(false);
+  let usersOwns: (() => boolean) | null = null;
   let usersError = $state('');
   let addMemberError = $state<Record<string, string>>({});
   let addMemberSaving = $state<Record<string, boolean>>({});
+  let userDomainId = $state('');
+  let sourceDomains = $state<AdminDomain[]>([]);
+  let sourceDomainsLoading = $state(false);
+  let sourceDomainsError = $state('');
+  let sourceDomainsLoaded = false;
+  let sourceDomainsGeneration = 0;
+  let sourceGeneration = 0;
   let epoch = 0;
   let listGeneration = 0;
   let usersGeneration = 0;
@@ -42,10 +53,11 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
     const token = opts.token();
     const projectId = opts.projectId();
     const domainId = opts.domainId();
+    const actorId = opts.actorId?.();
     return {
       token, projectId, domainId,
       owns: () => generation === epoch && !!domainId && opts.domainId() === domainId
-        && opts.token() === token && opts.projectId() === projectId,
+        && opts.token() === token && opts.projectId() === projectId && opts.actorId?.() === actorId,
       path: (path: string) => `${path}${path.includes('?') ? '&' : '?'}domain_id=${encodeURIComponent(domainId)}`,
     };
   }
@@ -53,11 +65,15 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
   const ownsGroup = (id: string) => groups.some((group) => group.id === id && group.domain_id === opts.domainId());
 
   $effect(() => {
-    void opts.token(); void opts.projectId(); void opts.domainId();
+    void opts.token(); void opts.projectId(); void opts.domainId(); void opts.actorId?.();
     untrack(() => {
       epoch += 1;
       groups = []; allUsers = []; groupMembers = {}; membersLoading = {}; membersError = {};
       addMemberError = {}; addMemberSaving = {}; usersError = ''; error = '';
+      usersLoading = false; usersOwns = null;
+      sourceGeneration += 1; sourceDomainsGeneration += 1;
+      userDomainId = ''; sourceDomains = []; sourceDomainsLoading = false;
+      sourceDomainsError = ''; sourceDomainsLoaded = false;
       showCreate = false; editGroup = null; deleteGroup = null; expandedGroup = null;
       creating = false; updating = false; deleting = false;
       createError = ''; editError = ''; deleteError = '';
@@ -84,20 +100,65 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
     } finally { if (owns()) { loading = false; refreshing = false; } }
   }
 
+  function clearCandidates() {
+    sourceGeneration += 1;
+    allUsers = []; usersOwns = null; usersError = ''; usersLoading = false;
+  }
+
+  async function loadSourceDomains(refresh = false) {
+    const scope = capture();
+    if (!scope.owns() || sourceDomainsLoading || (sourceDomainsLoaded && !refresh)) return;
+    const generation = ++sourceDomainsGeneration;
+    const owns = () => scope.owns() && generation === sourceDomainsGeneration;
+    sourceDomainsLoading = true; sourceDomainsError = '';
+    try {
+      const res = await domainsApi.list(scope, { refresh });
+      if (!owns()) return;
+      sourceDomains = res.items.filter((domain) => domain.enabled === true && domain.id !== scope.domainId);
+      sourceDomainsLoaded = true;
+    } catch (e) {
+      if (owns()) {
+        sourceDomains = []; sourceDomainsLoaded = false;
+        sourceDomainsError = message(e, 'groupCard.sourceDomainsFailed');
+      }
+    } finally { if (owns()) sourceDomainsLoading = false; }
+  }
+
+  async function selectUserDomain(value: string) {
+    if (!expandedGroup || addMemberSaving[expandedGroup] || value === userDomainId
+      || (value !== '' && !sourceDomains.some((domain) => domain.id === value))) return;
+    userDomainId = value;
+    clearCandidates();
+    await loadUsers();
+  }
+
   async function loadUsers() {
     const scope = capture();
-    if (!scope.owns()) return;
+    const groupId = expandedGroup;
+    if (!scope.owns() || !groupId || !ownsGroup(groupId)) return;
+    const sourceId = userDomainId;
+    const source = sourceGeneration;
     const generation = ++usersGeneration;
-    const owns = () => scope.owns() && generation === usersGeneration;
+    const owns = () => scope.owns() && generation === usersGeneration && source === sourceGeneration
+      && expandedGroup === groupId && userDomainId === sourceId && ownsGroup(groupId);
+    usersLoading = true;
+    usersOwns = null;
     usersError = '';
     allUsers = [];
     try {
-      const res = await api.get<{ domain_id: string; items: User[] }>(`/api/v1/admin/domains/${encodeURIComponent(scope.domainId)}/members`, scope.token, scope.projectId, { refresh: true });
-      if (res.domain_id !== scope.domainId) throw new Error('foreign domain');
-      if (owns()) allUsers = res.items;
+      const res = sourceId
+        ? await api.get<GroupCandidates>(`${scope.path(`/api/v1/admin/groups/${encodeURIComponent(groupId)}/candidates`)}&user_domain_id=${encodeURIComponent(sourceId)}`, scope.token, scope.projectId, { cache: 'no-store' })
+        : await api.get<{ domain_id: string; items: User[] }>(`/api/v1/admin/domains/${encodeURIComponent(scope.domainId)}/members`, scope.token, scope.projectId, { refresh: true });
+      if (!owns()) return;
+      if (res.domain_id !== scope.domainId || (sourceId && (!('user_domain_id' in res)
+        || res.user_domain_id !== sourceId || res.items.some((user) => user.domain_id !== sourceId)))) throw new Error('foreign domain');
+      allUsers = res.items; usersOwns = owns;
     } catch (e) {
-      if (owns()) usersError = e instanceof ApiError ? e.message : td('groups.usersFailed');
-    }
+      if (owns()) {
+        allUsers = []; usersOwns = null;
+        usersError = e instanceof ApiError ? e.message : td('groups.usersFailed');
+      }
+    } finally { if (owns()) usersLoading = false; }
   }
 
   async function createGroup(name: string, description: string): Promise<boolean> {
@@ -162,23 +223,32 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
 
   async function toggleMembers(g: Group) {
     if (!ownsGroup(g.id)) return;
+    clearCandidates();
+    userDomainId = '';
     if (expandedGroup === g.id) { expandedGroup = null; return; }
     expandedGroup = g.id;
-    await Promise.all([loadGroupMembers(g.id), loadUsers()]);
+    await Promise.all([loadGroupMembers(g.id), loadUsers(), loadSourceDomains()]);
   }
 
   async function addMember(groupId: string, userId: string): Promise<boolean> {
     const scope = capture();
-    if (!scope.owns() || !ownsGroup(groupId) || !allUsers.some((user) => user.id === userId) || addMemberSaving[groupId]) return false;
+    const source = sourceGeneration;
+    const sourceId = userDomainId;
+    const owns = () => scope.owns() && source === sourceGeneration && userDomainId === sourceId && expandedGroup === groupId;
+    if (!owns() || !ownsGroup(groupId) || !usersOwns?.() || usersLoading || usersError
+      || membersLoading[groupId] || membersError[groupId]
+      || !allUsers.some((user) => user.id === userId && user.enabled)
+      || groupMembers[groupId]?.some((user) => user.id === userId) || addMemberSaving[groupId]) return false;
     addMemberSaving = { ...addMemberSaving, [groupId]: true };
     addMemberError = { ...addMemberError, [groupId]: '' };
     try {
-      await api.put(scope.path(`/api/v1/admin/groups/${encodeURIComponent(groupId)}/users/${encodeURIComponent(userId)}`), {}, scope.token, scope.projectId);
-      if (!scope.owns()) return false;
+      const path = scope.path(`/api/v1/admin/groups/${encodeURIComponent(groupId)}/users/${encodeURIComponent(userId)}`);
+      await api.put(sourceId ? `${path}&user_domain_id=${encodeURIComponent(sourceId)}` : path, {}, scope.token, scope.projectId);
+      if (!owns()) return false;
       await loadGroupMembers(groupId);
-      return scope.owns();
+      return owns();
     } catch (e) {
-      if (scope.owns()) addMemberError = { ...addMemberError, [groupId]: message(e, 'groupController.addFailed') };
+      if (owns()) addMemberError = { ...addMemberError, [groupId]: message(e, 'groupController.addFailed') };
       return false;
     } finally { if (scope.owns()) addMemberSaving = { ...addMemberSaving, [groupId]: false }; }
   }
@@ -204,8 +274,12 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
     get deleteGroup() { return deleteGroup; }, set deleteGroup(v: Group | null) { deleteGroup = v; },
     get deleting() { return deleting; }, get deleteError() { return deleteError; }, set deleteError(v: string) { deleteError = v; },
     get expandedGroup() { return expandedGroup; }, get groupMembers() { return groupMembers; }, get membersLoading() { return membersLoading; },
-    get membersError() { return membersError; }, get usersError() { return usersError; }, get allUsers() { return allUsers; },
+    get membersError() { return membersError; }, get usersError() { return usersError; }, get usersLoading() { return usersLoading; }, get allUsers() { return allUsers; },
     get addMemberError() { return addMemberError; }, get addMemberSaving() { return addMemberSaving; },
+    get userDomainId() { return userDomainId; }, get sourceGeneration() { return sourceGeneration; },
+    get sourceDomains() { return sourceDomains; }, get sourceDomainsLoading() { return sourceDomainsLoading; },
+    get sourceDomainsError() { return sourceDomainsError; },
+    loadSourceDomains, selectUserDomain,
     load, loadUsers, createGroup, updateGroup, confirmDelete, toggleMembers, loadGroupMembers, addMember, removeMember,
   };
 }

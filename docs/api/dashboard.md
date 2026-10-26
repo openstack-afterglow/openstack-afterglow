@@ -44,6 +44,7 @@ nav_order: 70
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | `GET` | `/api/v1/dashboard/summary` | 인스턴스 수, 컴퓨트/스토리지 한도, GPU 사용량 |
+| `GET` | `/api/v1/dashboard/snapshot` | 메인 화면의 summary·quotas를 한 번의 현재 인증 검증으로 조회 |
 | `GET` | `/api/v1/dashboard/config` | 프론트엔드 설정 (새로고침 간격 등) |
 | `GET` | `/api/v1/dashboard/quotas` | 프로젝트 쿼터 조회 |
 | `GET` | `/api/v1/dashboard/gpu-available` | GPU 가용량 조회 |
@@ -84,6 +85,12 @@ nav_order: 70
 | `compute` | object | Nova 컴퓨트 쿼터 및 사용량 |
 | `storage` | object | Cinder 스토리지 쿼터 및 사용량 |
 | `gpu_used` | integer | 사용 중인 GPU 인스턴스 수 |
+
+### GET /api/v1/dashboard/snapshot
+
+메인 화면은 summary와 quota의 공통 권위를 한 HTTP 요청 안에서 검증합니다. `recent_limit`은5–12(기본12)이고 `cache=true`·`refresh=true`는 기존 Redis source cache 의미를 유지합니다. 응답은 `{summary:{data,error},quotas:{data,error}}`이며 `data`는 각 `view=overview` 계약과 같습니다. 한 source가 실패해도 다른 section은 유지하고 실패 section만 `data:null,error:"summary_unavailable"|"quotas_unavailable"`로 반환합니다. 빈/0으로 보정하거나 private native 오류를 공개하지 않습니다. 인증 실패는 여전히 요청 전체401/403/503입니다.
+
+브라우저 응답은 `private, no-store`이며 K3s·telemetry·announcements는 독립적으로 표시합니다. Core 두 section은 느린 쪽이 정리된 뒤 함께 도착하는 대신 중복 native authentication graph를 제거합니다. Telemetry의 기존 no-store·partial 출처 계약은 유지합니다. API의 숫자 `Server-Timing: app;dur=<ms>`는 헤더 생성 전 backend 처리 시간이며 브라우저 TTFB/전송/렌더 시간과 다릅니다. 스트림 전체 실행 시간이나 OpenStack 단독 latency로 해석하지 않습니다.
 
 ### GET /api/v1/dashboard/config
 

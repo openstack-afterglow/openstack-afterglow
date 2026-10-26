@@ -24,6 +24,7 @@
 		token: () => $auth.token ?? undefined,
 		projectId: () => $auth.projectId ?? undefined,
 		domainId: () => domainId,
+		actorId: () => $auth.userId ?? undefined,
 	});
 
 	let search = $state('');
@@ -90,7 +91,15 @@
 						membersLoading={ctrl.membersLoading[g.id] ?? false}
 						membersError={ctrl.membersError[g.id] ?? ''}
 						usersError={ctrl.usersError}
+						usersLoading={ctrl.usersLoading}
 						allUsers={ctrl.allUsers}
+						userDomainId={ctrl.userDomainId}
+						sourceGeneration={ctrl.sourceGeneration}
+						sourceDomains={ctrl.sourceDomains}
+						sourceDomainsLoading={ctrl.sourceDomainsLoading}
+						sourceDomainsError={ctrl.sourceDomainsError}
+						onSelectUserDomain={ctrl.selectUserDomain}
+						onRetrySourceDomains={() => ctrl.loadSourceDomains(true)}
 						addError={ctrl.addMemberError[g.id] ?? ''}
 						addSaving={ctrl.addMemberSaving[g.id] ?? false}
 						onToggleMembers={() => ctrl.toggleMembers(g)}
@@ -98,6 +107,7 @@
 						onDelete={() => { ctrl.deleteGroup = g; ctrl.deleteError = ''; }}
 						onAddMember={(userId) => ctrl.addMember(g.id, userId)}
 						onRemoveMember={(userId) => ctrl.removeMember(g.id, userId)}
+						onRetryUsers={ctrl.loadUsers}
 					/>
 				{/each}
 			</div>

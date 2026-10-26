@@ -29,6 +29,33 @@ describe('authentication recovery state', () => {
 		expect(get(s.authRecovery)).toBeNull();
 		expect(get(s.auth).token).toBe('old-access');
 	});
+	it('does not repeatedly rotate a non-extendable session deadline and still honors native revocation', async () => {
+		const s = await session();
+		const deadline = Math.floor(Date.now() / 1000) + 90;
+		s.setAuth({ token: 'old-access', accessExpiresAt: deadline });
+		let revoked = false;
+		let renewals = 0;
+		mockFetch.mockImplementation(async (url: string) => {
+			if (url.includes('/auth/refresh')) {
+				renewals += 1;
+				return revoked ? Response.json({ detail: 'Native proof revoked' }, { status: 401 })
+					: Response.json({ token: 'fresh-access', refresh_token: 'fresh-refresh', domain_id: 'domain-1',
+						identity_domain_id: 'domain-1', identity_domain_name: 'Domain', expires_at: new Date(deadline * 1000).toISOString() });
+			}
+			return revoked ? Response.json({ detail: 'Native proof revoked' }, { status: 401 }) : Response.json({ state: 'visible' });
+		});
+		await expect(s.refreshSession()).resolves.toBe('fresh-access');
+		for (let index = 0; index < 4; index++) {
+			await expect(s.api.get(`/api/v1/volumes?marker=${index}`, 'fresh-access')).resolves.toEqual({ state: 'visible' });
+		}
+		expect(renewals).toBe(1);
+		await expect(s.refreshSession()).resolves.toBe('fresh-access');
+		expect(renewals).toBe(2);
+		revoked = true;
+		await expect(s.api.get('/api/v1/volumes', 'fresh-access')).rejects.toMatchObject({ status: 401 });
+		expect(renewals).toBe(3);
+	});
+
 	it('exposes an outage, honors retry cooldown, and clears recovery after successful rotation', async () => {
 
 		const s = await session();
@@ -58,6 +85,44 @@ describe('authentication recovery state', () => {
 		await expect(refreshing).resolves.toBe('different-user');
 		expect(get(s.authRecovery)).toBeNull();
 		expect(get(s.auth).token).toBe('different-user');
+	});
+
+	it.each([200, 401, 503])('does not publish a late refresh status %s into a replacement login with identical bearer strings', async status => {
+		const s = await session();
+		const identity = { token: 'same-access', refreshToken: 'same-refresh', accessExpiresAt: 1,
+			userId: 'alice', projectId: 'p1', domainId: 'domain-1', identityDomainId: 'domain-1' };
+		s.setLoginAuth(identity);
+		const response = Promise.withResolvers<Response>();
+		mockFetch.mockReturnValueOnce(response.promise);
+		const refreshing = s.refreshSession();
+		await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+		s.setLoginAuth({ ...identity, token: 'other-access', refreshToken: 'other-refresh' });
+		s.setLoginAuth(identity);
+		const replacement = get(s.auth).sessionId;
+		response.resolve(Response.json(status === 200 ? { token: 'stale-rotated', refresh_token: 'stale-refresh',
+			domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain' } : { detail: 'unavailable' }, { status }));
+		await expect(refreshing).resolves.toBe('same-access');
+		expect(get(s.auth)).toMatchObject({ token: 'same-access', refreshToken: 'same-refresh', sessionId: replacement });
+		expect(get(s.authRecovery)).toBeNull();
+	});
+
+	it.each([false, true])('discards a completed private list across a project ABA change, warm=%s', async warm => {
+		const s = await session();
+		const identity = { token: 'a-access', refreshToken: 'a-refresh', accessExpiresAt: Math.floor(Date.now() / 1000) + 900,
+			userId: 'alice', projectId: 'first', domainId: 'domain-1', identityDomainId: 'domain-1' };
+		s.setLoginAuth(identity);
+		const response = Promise.withResolvers<Response>();
+		mockFetch.mockReturnValueOnce(warm ? Promise.resolve(Response.json({ rows: ['private-a'] })) : response.promise);
+		if (warm) await s.api.prefetch('/api/v1/volumes', 'a-access', 'first');
+		const pending = s.api.get('/api/v1/volumes', 'a-access', 'first');
+		const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+		if (!warm) await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+		s.setAuth({ token: 'b-access', projectId: 'second' });
+		s.setAuth({ token: 'a-access', projectId: 'first' });
+		if (!warm) response.resolve(Response.json({ rows: ['private-a'] }));
+		await rejected;
+		expect(get(s.auth).projectId).toBe('first');
+		expect(get(s.auth).token).toBe('a-access');
 	});
 
 	it('publishes network failure without deleting the session and removes recovery on explicit logout', async () => {
@@ -346,7 +411,7 @@ describe('authentication recovery state', () => {
 			.mockImplementationOnce(() => { retried.resolve(); return reply.promise; });
 		let settled = false;
 		const pending = s.api.get('/api/v1/volumes', 'old-access', 'first');
-		const rejected = expect(pending).rejects.toMatchObject({ status: 401 });
+		const rejected = expect(pending).rejects.toMatchObject(projectId === 'second' ? { name: 'AbortError' } : { status: 401 });
 		void pending.then(() => { settled = true; }, () => { settled = true; });
 		await retried.promise;
 		vi.useFakeTimers();

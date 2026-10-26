@@ -2,7 +2,7 @@
 	import { t } from '$lib/i18n/ns/file-storage';
 	import { auth } from '$lib/stores/auth';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
-	import { createCoalescedRefresh } from '$lib/utils/coalescedRefresh';
+	import { createCoalescedRefresh, type CoalescedRefresh } from '$lib/utils/coalescedRefresh';
 	import { createFileStorageDetailController, provideFileStorageDetailController } from '$lib/stores/fileStorageDetailController.svelte';
 	import DetailHeader from '$lib/components/ui/DetailHeader.svelte';
 	import FileStorageDetailHeader from '$lib/components/file-storage/FileStorageDetailHeader.svelte';
@@ -20,7 +20,7 @@
 
 	let { fileStorageId, onClose, onDeleted }: Props = $props();
 
-	let refresh!: ReturnType<typeof createCoalescedRefresh>;
+	let refresh!: CoalescedRefresh;
 	let refreshing = $state(false);
 	const s = createFileStorageDetailController({
 		fileStorageId: () => fileStorageId,
@@ -38,6 +38,7 @@
 			refreshing = false;
 		}
 	});
+	$effect(() => () => refresh.dispose());
 	provideFileStorageDetailController(s);
 
 	const ar = createAutoRefresh(() => refresh.run(false), {

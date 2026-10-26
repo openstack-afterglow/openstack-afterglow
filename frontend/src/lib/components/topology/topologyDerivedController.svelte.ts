@@ -1,5 +1,6 @@
 import type { TopologyData, TopologyTraffic, TopologyNetwork, ItemRow, LBItem, Anchor } from './types.ts';
 import { EXT_COLORS, SHR_COLORS, INT_COLORS, LANE_W, LANE_GAP, LANE_PAD, SIDEBAR_W, _ipv4InCidr, edgeIntensity, NO_TELEMETRY_STYLE } from './topologyHelpers.ts';
+import { groupNetworksByDomain } from './domainGroups';
 
 export interface ConnectionSpec {
 	key: string; netId: string; color: string; opacity: number; width: number;
@@ -23,6 +24,7 @@ export interface TopologyDerivedControllerOpts {
 	anchors: () => Map<string, Anchor>;
 	sidebarHeight: () => number;
 	searchTerm: () => string;
+	adminView?: () => boolean;
 }
 
 export function createTopologyDerivedController(opts: TopologyDerivedControllerOpts) {
@@ -34,11 +36,16 @@ export function createTopologyDerivedController(opts: TopologyDerivedControllerO
 			)
 	);
 
-	const orderedNetworks: TopologyNetwork[] = $derived([
+	const networkOrder: TopologyNetwork[] = $derived([
 		...visibleNetworks.filter(n => n.is_external).sort((a, b) => a.name.localeCompare(b.name)),
 		...visibleNetworks.filter(n => n.is_shared && !n.is_external).sort((a, b) => a.name.localeCompare(b.name)),
 		...visibleNetworks.filter(n => !n.is_external && !n.is_shared).sort((a, b) => a.name.localeCompare(b.name)),
 	]);
+	const orderedNetworks = $derived.by(() => {
+		if (!opts.adminView?.()) return networkOrder;
+		const index = new Map(networkOrder.map((network) => [network.id, network]));
+		return groupNetworksByDomain(networkOrder).flatMap((group) => group.netIds.map((id) => index.get(id)!));
+	});
 
 	const netColors = $derived.by(() => {
 		const m = new Map<string, string>();

@@ -135,6 +135,15 @@ export interface CanvasEdge {
 	fip?: CanvasFip;
 }
 
+export interface CanvasDomainGroup {
+	/** Ownership identity, never a display-name key or a connectivity edge. */
+	id: string;
+	domainId: string | null;
+	name: string | null;
+	status: NonNullable<TopologyNetwork['owner_status']>;
+	netIds: string[];
+}
+
 export interface CanvasGraph {
 	nets: CanvasNet[];
 	netById: Map<string, CanvasNet>;
@@ -144,6 +153,7 @@ export interface CanvasGraph {
 	subnetNet: Map<string, string>;
 	subnetById: Map<string, SubnetDetail & { netId: string }>;
 	fipByAddr: Map<string, FloatingIpInfo>;
+	domainGroups?: CanvasDomainGroup[];
 }
 
 /** 배치된 tenant 행 하나. provider 행은 order.provider / L.PROV_Y 로 따로 표현한다. */
@@ -210,6 +220,7 @@ export interface GeometryResult {
 	geom: Map<string, EdgeGeometry>;
 	slotOrder: Map<string, string[]>;
 	zones: Map<string, Rect>;
+	domains: Map<string, Rect>;
 }
 
 export interface ViewState {

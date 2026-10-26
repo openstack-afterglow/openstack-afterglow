@@ -572,6 +572,10 @@ class AdminTopologyNetwork(TopologyNetwork):
     provider_network_type: str | None = None
     provider_segmentation_id: int | None = None
     provider_physical_network: str | None = None
+    project_name: str | None = None
+    domain_id: str | None = None
+    domain_name: str | None = None
+    owner_status: str = "unknown_owner"
 
 
 class TopologyLBMember(BaseModel):

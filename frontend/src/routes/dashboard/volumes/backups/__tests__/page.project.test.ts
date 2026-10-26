@@ -39,14 +39,16 @@ describe('volume backup project isolation', () => {
   it('ignores a late response from the previous project and clears rows when no project is selected', async () => {
     let resolveOld!: (rows: VolumeBackup[]) => void;
     const oldResponse = new Promise<VolumeBackup[]>((resolve) => { resolveOld = resolve; });
+		const oldStarted = Promise.withResolvers<void>();
     mockGet.mockImplementation((path: string, _token: string, projectId: string) => {
       if (path === '/api/v1/volumes') return Promise.resolve([]);
       expect(path).toBe('/api/v1/volumes/backups');
-      return projectId === 'old' ? oldResponse : Promise.resolve([backup('current-backup')]);
+			if (projectId === 'old') { oldStarted.resolve(); return oldResponse; }
+			return Promise.resolve([backup('current-backup')]);
     });
 
     render(Page);
-    await vi.waitFor(() => expect(mockGet).toHaveBeenCalledWith('/api/v1/volumes/backups', 'token', 'old'));
+		await oldStarted.promise;
     projectAuth.set({ token: 'token', projectId: 'current' });
     expect(await screen.findByText('current-backup')).toBeTruthy();
 

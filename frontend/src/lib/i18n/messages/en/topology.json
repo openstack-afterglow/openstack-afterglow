@@ -1,4 +1,9 @@
 {
+	"domain.label": "Domain {name} · {id}",
+	"domain.deleted": "Deleted or unavailable domain · {id}",
+	"domain.deletedProject": "Unknown owner domain · project {id}",
+	"domain.unknown": "Unknown owner",
+	"domain.ownershipOnly": "Domain boxes show native network ownership. Belonging to the same domain does not imply a network connection or permission to communicate.",
 	"card.noStatus": "No status",
 	"topology.lane": "Lane",
 	"topology.canvas": "Canvas",

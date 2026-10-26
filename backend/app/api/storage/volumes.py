@@ -54,6 +54,10 @@ class VolumeTransferRoute(APIRoute):
                 if exc.status_code < 500:
                     request.state.audit_error = exc.detail
                 response = JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
+            except Exception:
+                # A transfer POST may already have committed. Never reflect
+                # provider bodies/keys or lose no-store on unexpected failures.
+                response = JSONResponse({"detail": "볼륨 이전 요청 결과를 확인할 수 없습니다"}, status_code=502)
             response.headers.update({"Cache-Control": "no-store, private", "Pragma": "no-cache"})
             return response
 
@@ -344,6 +348,7 @@ class AcceptVolumeTransferRequest(BaseModel):
 async def _invalidate_transfer_accept(project_id: str):
     # Native acceptance also moves snapshots and changes both projects' quotas.
     await invalidate_project(project_id, "cinder")
+    await invalidate(f"afterglow:dashboard:{project_id}:quotas*")
     await invalidation.invalidate_mutation_count("cinder", project_id)
 
 

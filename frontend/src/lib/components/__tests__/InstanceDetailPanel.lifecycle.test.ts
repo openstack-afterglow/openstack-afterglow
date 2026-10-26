@@ -10,6 +10,7 @@ import { t } from '$lib/i18n/ns/instance';
 
 const mocks = vi.hoisted(() => ({
 	controller: undefined as unknown,
+	createController: vi.fn(),
 	get: vi.fn(),
 	fetchInstance: vi.fn(),
 	loadResizeFlavors: vi.fn(),
@@ -22,7 +23,7 @@ vi.mock('$lib/stores/auth', () => ({
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ api: { get: mocks.get } }));
 vi.mock('$lib/stores/instanceDetailController.svelte', () => ({
-	createInstanceDetailController: () => mocks.controller,
+	createInstanceDetailController: (...args: unknown[]) => { mocks.createController(...args); return mocks.controller; },
 	provideInstanceDetailController: vi.fn(),
 	useInstanceDetailController: () => mocks.controller,
 }));
@@ -101,8 +102,15 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('Instance detail stopped lifecycle presentation', () => {
+	it('keeps administrator mode with a missing list-project hint instead of requesting consumer metrics', async () => {
+		identity.update(s => ({ ...s, isSystemAdmin: true }));
+		render(InstanceDetailPanel, { instanceId: instance.id, adminProjectId: null, adminMode: true });
+		expect(mocks.createController.mock.calls.at(-1)?.[0].adminMode()).toBe(true);
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(`/api/v1/admin/instances/${instance.id}/metrics-summary?range=7d`, 'token-a', 'project-a'));
+		expect(mocks.get.mock.calls.some(([path]) => path.startsWith('/api/v1/instances/'))).toBe(false);
+	});
 	it.each([null, 'project-a'])('gates header and recommendation resize across ACTIVE → SHUTOFF in %s mode', async adminProjectId => {
-		render(InstanceDetailPanel, { instanceId: instance.id, adminProjectId });
+		render(InstanceDetailPanel, { instanceId: instance.id, adminProjectId, adminMode: !!adminProjectId });
 		await waitFor(() => expect(mocks.get).toHaveBeenCalled());
 		await tick();
 		expect(resizeButtons()).toHaveLength(0);
@@ -129,7 +137,7 @@ describe('Instance detail stopped lifecycle presentation', () => {
 	it.each([null, 'project-a'])('retains stopped quota information and hides mutations for a Windows reader in %s mode', async adminProjectId => {
 		permission.set(false);
 		setup({ instance: { ...instance, status: 'SHUTOFF', os_type: ' WINDOWS ', image_id: null, image_name: null, ssh_access_mode: 'github', github_login: 'OctoCat' } });
-		render(InstanceDetailPanel, { instanceId: instance.id, adminProjectId });
+		render(InstanceDetailPanel, { instanceId: instance.id, adminProjectId, adminMode: !!adminProjectId });
 		await tick();
 		expect(screen.getByText(t('panel.stoppedQuotaWarning'))).toBeTruthy();
 		expect(resizeButtons()).toHaveLength(0);
@@ -206,9 +214,9 @@ describe('Instance detail stopped lifecycle presentation', () => {
 	it('uses the administrator target scope rather than the caller project for stopped resize', async () => {
 		identity.update(s => ({ ...s, isSystemAdmin: true }));
 		setup({ instance: { ...instance, status: 'SHUTOFF', project_id: 'project-other' } });
-		render(InstanceDetailPanel, { instanceId: instance.id, adminProjectId: 'project-other' });
+		render(InstanceDetailPanel, { instanceId: instance.id, adminProjectId: 'project-other', adminMode: true });
 		await waitFor(() => expect(resizeButtons()).toHaveLength(2));
-		expect(mocks.get).toHaveBeenCalledWith(`/api/v1/instances/${instance.id}/metrics-summary?range=7d`, 'token-a', 'project-other');
+		expect(mocks.get).toHaveBeenCalledWith(`/api/v1/admin/instances/${instance.id}/metrics-summary?range=7d`, 'token-a', 'project-a');
 		await openHeaderResize();
 		expect(mocks.loadResizeFlavors).toHaveBeenCalledTimes(1);
 		expect(resizeDialog()).not.toBeNull();
@@ -216,9 +224,9 @@ describe('Instance detail stopped lifecycle presentation', () => {
 
 	it('closes an admin-target modal when the target project changes despite unchanged caller auth', async () => {
 		setup({ instance: { ...instance, status: 'SHUTOFF' } });
-		const view = render(InstanceDetailPanel, { instanceId: instance.id, adminProjectId: 'project-a' });
+		const view = render(InstanceDetailPanel, { instanceId: instance.id, adminProjectId: 'project-a', adminMode: true });
 		await openHeaderResize();
-		await view.rerender({ instanceId: instance.id, adminProjectId: 'project-b' });
+		await view.rerender({ instanceId: instance.id, adminProjectId: 'project-b', adminMode: true });
 		expect(resizeDialog()).toBeNull();
 		expect(mocks.doResize).not.toHaveBeenCalled();
 	});

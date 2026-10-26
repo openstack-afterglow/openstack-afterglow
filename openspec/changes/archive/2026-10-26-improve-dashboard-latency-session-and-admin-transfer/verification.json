@@ -1,0 +1,420 @@
+{
+  "change": "improve-dashboard-latency-session-and-admin-transfer",
+  "date": "2026-10-26",
+  "sourceOnly": true,
+  "architecture": {
+    "sourceSha256": "c92bd5f4bc30c0ac705348f226a6afae7acf00b475c5c763d7d902f34621b81d",
+    "sourceFiles": 3498,
+    "location": "/tmp/afterglow-latency-gate-20261026",
+    "workingGuard": "passed",
+    "stagedGuard": "passed",
+    "scope": "Frozen current public source including concurrent work, private inputs excluded; original shared index/review marker untouched"
+  },
+  "canonicalGate": {
+    "command": "AFTERGLOW_TEST_PROJECT_NAME=afterglow-latency-final-20261026 npm run test:gate",
+    "status": "passed",
+    "backend": {
+      "passed": 9628,
+      "skipped": 95
+    },
+    "frontend": {
+      "files": 450,
+      "passed": 5303,
+      "nodeRunner": 9
+    },
+    "contracts": 182,
+    "functional": {
+      "passed": 167,
+      "deselected": 33,
+      "real": [
+        "MariaDB",
+        "PostgreSQL",
+        "Redis"
+      ],
+      "cleanup": "owned3containers/defaultnetwork removed; no remaining owned volumes/containers"
+    },
+    "ruff": {
+      "status": "passed",
+      "formattedFiles": 737
+    },
+    "js": {
+      "orchestration": 170,
+      "kolla": 18,
+      "install": {
+        "passed": 20,
+        "skippedPowerShell": 36
+      }
+    },
+    "artifact": "artifact://390"
+  },
+  "otherChecks": {
+    "svelte": {
+      "errors": 0,
+      "warnings": 16
+    },
+    "i18n": {
+      "errors": 0,
+      "warnings": 37,
+      "hardcodedKorean": 0
+    },
+    "productionFrontendBuild": "passed",
+    "reviews": "Concrete auth deadline/issued-key/destination/guard-fixture issues fixed and exercised, no authority cache or native impersonation",
+    "sseBoundaryRegression": {
+      "tests": 31,
+      "realStreamCompletionAndFailure": true,
+      "preAndInStreamCacheRetirement": true,
+      "source": "frontend/src/lib/api/__tests__/client.upload.test.ts",
+      "artifact": "bg_109"
+    }
+  },
+  "nativeMeasurements": {
+    "adminGuard": [
+      {
+        "path": "prior_fresh_guard",
+        "status": 200,
+        "elapsed_ms": 3724.53,
+        "requests": 46,
+        "token_exchanges": 6
+      },
+      {
+        "path": "current_operation_local_guard",
+        "status": 200,
+        "elapsed_ms": 1260.92,
+        "requests": 21,
+        "token_exchanges": 2
+      }
+    ],
+    "requestLocalAccess": [
+      {
+        "path": "prior_token_reexchange",
+        "elapsed_ms": 514.16,
+        "visible_rows": 2,
+        "requests": [
+          {
+            "method": "GET",
+            "kind": "discovery",
+            "ms": 26.04
+          },
+          {
+            "method": "POST",
+            "kind": "identity",
+            "ms": 54.96
+          },
+          {
+            "method": "GET",
+            "kind": "provider",
+            "ms": 27.05
+          },
+          {
+            "method": "GET",
+            "kind": "provider",
+            "ms": 392.18
+          }
+        ]
+      },
+      {
+        "path": "current_request_local_access",
+        "elapsed_ms": 363.48,
+        "visible_rows": 2,
+        "requests": [
+          {
+            "method": "GET",
+            "kind": "provider",
+            "ms": 30.22
+          },
+          {
+            "method": "GET",
+            "kind": "provider",
+            "ms": 324.25
+          }
+        ]
+      }
+    ],
+    "limit": "Single sequential sample comparisons, not production-wide percentile speedup"
+  },
+  "runtime": {
+    "snapshot": {
+      "real": "Uvicorn TCP, current routes, installed SDK, actual HTTP services, cache machinery",
+      "synthetic": "authority and native cloud content; in-memory cache",
+      "observations": [
+        {
+          "mode": "cold",
+          "status": 200,
+          "ttfb_plus_body_ms": 15.78,
+          "server_timing": "app;dur=14.07",
+          "authority_dependency_calls": 1,
+          "provider_requests": 6,
+          "bytes": 548,
+          "partial": false
+        },
+        {
+          "mode": "warm",
+          "status": 200,
+          "ttfb_plus_body_ms": 4.42,
+          "server_timing": "app;dur=3.07",
+          "authority_dependency_calls": 1,
+          "provider_requests": 0,
+          "bytes": 548,
+          "partial": false
+        },
+        {
+          "mode": "force",
+          "status": 200,
+          "ttfb_plus_body_ms": 13.05,
+          "server_timing": "app;dur=11.56",
+          "authority_dependency_calls": 1,
+          "provider_requests": 6,
+          "bytes": 548,
+          "partial": false
+        },
+        {
+          "mode": "partial",
+          "status": 200,
+          "ttfb_plus_body_ms": 12.85,
+          "server_timing": "app;dur=11.37",
+          "authority_dependency_calls": 1,
+          "provider_requests": 6,
+          "bytes": 290,
+          "partial": true
+        }
+      ],
+      "provider_paths": [
+        "/compute/v2.1/os-quota-sets/p1/detail",
+        "/volume/v3/p1/os-quota-sets/p1",
+        "/compute/v2.1",
+        "/network/v2.0/quotas/p1/details",
+        "/compute/v2.1",
+        "/compute/v2.1/servers/detail",
+        "/network/v2.0/quotas/p1/details",
+        "/compute/v2.1/os-quota-sets/p1/detail",
+        "/volume/v3/p1/os-quota-sets/p1",
+        "/compute/v2.1",
+        "/compute/v2.1",
+        "/compute/v2.1/servers/detail",
+        "/compute/v2.1",
+        "/compute/v2.1/os-quota-sets/p1/detail",
+        "/volume/v3/p1/os-quota-sets/p1",
+        "/network/v2.0/quotas/p1/details",
+        "/compute/v2.1",
+        "/compute/v2.1/servers/detail"
+      ]
+    },
+    "auth": {
+      "boundary": "actual Uvicorn TCP routes; synthetic native directory/v3 HTTP adapter; in-memory SQLite/fakeredis Lua",
+      "scenarios": [
+        {
+          "method": "password",
+          "login_status": 200,
+          "login_ms": 63.23,
+          "login_native_token_exchanges": 3,
+          "login_directory_reads": 33,
+          "refresh_ms": 14.79,
+          "refresh_native_token_exchanges": 2,
+          "refresh_directory_reads": 23,
+          "refresh_at_23h": 200,
+          "replay": 401,
+          "absolute_expiry": 401
+        },
+        {
+          "method": "provider",
+          "login_status": 200,
+          "login_ms": 26.41,
+          "login_native_token_exchanges": 3,
+          "login_directory_reads": 37,
+          "refresh_ms": 14.72,
+          "refresh_native_token_exchanges": 2,
+          "refresh_directory_reads": 23,
+          "refresh_at_23h": 200,
+          "replay": 401,
+          "absolute_expiry": 401
+        }
+      ],
+      "short_native_expiry_bounded": true,
+      "native_revocation_status": 401
+    },
+    "nativeTransfer": {
+      "real": "Uvicorn, installed SDK and native HTTP requests",
+      "synthetic": "human system authority, SQL ledger and loopback Keystone/Cinder",
+      "create": 201,
+      "scope_denial": 403,
+      "native_denial": 403,
+      "accept": 200,
+      "validation": 422,
+      "ambiguous": 502,
+      "recovery": 200,
+      "create_posts": 1,
+      "accept_posts": 3,
+      "keystone_exchanges": 4,
+      "live_mutations": 0
+    },
+    "polling": {
+      "status": "passed",
+      "source": "actual Vite-compiled _AutoRefreshWrapper + createAutoRefresh/coalescedRefresh",
+      "assertions": [
+        "slow180ms round spans3intervals without multiplying",
+        "completion does not instantly double fetch",
+        "next round starts only after full50ms completion delay",
+        "changing refresh preference does not invoke another initial load",
+        "repeated manual requests queue behind one active round",
+        "unmount cancels queued manual dispatch and timer",
+        "offline mount does not dispatch",
+        "online resumes automatic refresh",
+        "hidden tab pauses request timer"
+      ]
+    },
+    "terminalDeadline": {
+      "source": "actual Vite compiled client/auth store in main realm; synthetic HTTP only",
+      "deadline_seconds": 90,
+      "refresh_requests": 1,
+      "resource_requests": 6,
+      "repeated_preflight_rotation": false
+    },
+    "compiledTransfer": {
+      "real": "production-built SvelteKit/Node app and actual admin list/modal/picker, raw HTTP transfer client",
+      "synthetic": "built-in admin tutorial identity/inventory plus isolated loopback transfer provider",
+      "before": {
+        "target": true,
+        "overflow": 0
+      },
+      "counters": {
+        "create": 1,
+        "accept": 1
+      },
+      "calls": [
+        {
+          "method": "POST",
+          "path": "/api/v1/admin/volumes/mock-admin-volume-available/transfer"
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/volumes/transfer/11111111-1111-4111-8111-111111111111"
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/admin/volumes/transfer/11111111-1111-4111-8111-111111111111/accept"
+        }
+      ]
+    },
+    "compiledSuppliedKey": {
+      "real": "final production-built page receive entry, form, project picker and raw HTTP client",
+      "synthetic": "built-in tutorial identity/directory, loopback transfer provider",
+      "create": 0,
+      "accept": 1,
+      "target": "mock-project-3",
+      "domain": "mock-domain"
+    },
+    "responsive": {
+      "conditions": 54,
+      "failures": 0,
+      "locales": 9,
+      "themes": 2,
+      "widths": [
+        390,
+        820,
+        1440
+      ],
+      "source": "actual Vite compiled modal/primitives, synthetic authority/provider data"
+    },
+    "coverage": {
+      "routes": 130,
+      "autoRefreshCallsites": 90,
+      "timerHelperFiles": 127,
+      "boundary": "source survey, not130live-cloud browser acceptances"
+    },
+    "personalReadControl": {
+      "boundary": "Current actual Uvicorn auth routes/JWT/SQL/Lua with synthetic native directory/v3 transport; process-local exact prior Personal read algorithm control only, NOT old full source or human GitLab callback",
+      "before": {
+        "boundary": "actual Uvicorn TCP routes; synthetic native directory/v3 HTTP adapter; in-memory SQLite/fakeredis Lua",
+        "scenarios": [
+          {
+            "method": "password",
+            "login_status": 200,
+            "login_ms": 130.6,
+            "login_native_token_exchanges": 3,
+            "login_directory_reads": 37,
+            "refresh_ms": 18.83,
+            "refresh_native_token_exchanges": 2,
+            "refresh_directory_reads": 23,
+            "refresh_at_23h": 200,
+            "replay": 401,
+            "absolute_expiry": 401
+          },
+          {
+            "method": "provider",
+            "login_status": 200,
+            "login_ms": 41.21,
+            "login_native_token_exchanges": 3,
+            "login_directory_reads": 41,
+            "refresh_ms": 20.43,
+            "refresh_native_token_exchanges": 2,
+            "refresh_directory_reads": 23,
+            "refresh_at_23h": 200,
+            "replay": 401,
+            "absolute_expiry": 401
+          }
+        ],
+        "mode": "original_personal_read_algorithms",
+        "short_native_expiry_bounded": true,
+        "native_revocation_status": 401
+      },
+      "after": {
+        "boundary": "actual Uvicorn TCP routes; synthetic native directory/v3 HTTP adapter; in-memory SQLite/fakeredis Lua",
+        "scenarios": [
+          {
+            "method": "password",
+            "login_status": 200,
+            "login_ms": 130.93,
+            "login_native_token_exchanges": 3,
+            "login_directory_reads": 33,
+            "refresh_ms": 19.34,
+            "refresh_native_token_exchanges": 2,
+            "refresh_directory_reads": 23,
+            "refresh_at_23h": 200,
+            "replay": 401,
+            "absolute_expiry": 401
+          },
+          {
+            "method": "provider",
+            "login_status": 200,
+            "login_ms": 40.47,
+            "login_native_token_exchanges": 3,
+            "login_directory_reads": 37,
+            "refresh_ms": 20.64,
+            "refresh_native_token_exchanges": 2,
+            "refresh_directory_reads": 23,
+            "refresh_at_23h": 200,
+            "replay": 401,
+            "absolute_expiry": 401
+          }
+        ],
+        "mode": "current_personal_read_algorithms",
+        "short_native_expiry_bounded": true,
+        "native_revocation_status": 401
+      },
+      "interpretation": "Password directory reads37→33; provider41→37. Exchanges remain3 at login/2refresh. Runs concurrent with gate/each other; timings are observations, not claimed latency improvement."
+    }
+  },
+  "limits": [
+    "Existing running/private absolute session timeout3600 is preserved; new source default86400 needs authorized rollout/config review and fresh login",
+    "Native unscoped token expiry/revocation always bounds renewal; token exchange does not extend it",
+    "Human GitLab callback not performed; real authorize/sign-in handoff observed separately",
+    "Target-project Keystone/Cinder authority remains required; no implicit role grants",
+    "No live volume/IAM/RGW/config/SQL schema mutation, commit, push, release or deployment",
+    "No local gbrain CLI; indexing not run"
+  ],
+  "proofRoot": "/Users/pieroot/.local/share/afterglow-proofs/dashboard-latency-session-transfer-20261026",
+  "cleanup": {
+    "ownedTabs": "released",
+    "qaHttp": "stopped",
+    "qaSourceAndCompiledServers": "stopped",
+    "temporarySourceScaffolds": "removed; reproducible copies retained"
+  },
+  "sharedCheckoutObserved": {
+    "branch": "dev",
+    "staged": 0,
+    "unstaged": 305,
+    "untracked": 72,
+    "boundary": "Includes preexisting and concurrent work; not an attribution count. Observed before archive."
+  },
+  "archive": "openspec/changes/archive/2026-10-26-improve-dashboard-latency-session-and-admin-transfer"
+}

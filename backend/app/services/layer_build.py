@@ -836,11 +836,14 @@ async def _update_consume_db(
         if binding is not None:
             await build_work.checkpoint()
             kind, identity = binding.member.split(":", 1)
-            if kind != "import" or binding.consumer_id != consume_id:
-                raise DispatcherUnavailable("consumer is outside its import authority")
-            parent = await session.get(LayerImportJob, int(identity), with_for_update=True)
-            if parent is None or parent.consume_id != consume_id or parent.status in build_work.TERMINAL:
-                raise DispatcherUnavailable("consumer import authority changed")
+            if binding.consumer_id != consume_id:
+                raise DispatcherUnavailable("consumer is outside its durable authority")
+            if kind == "import":
+                parent = await session.get(LayerImportJob, int(identity), with_for_update=True)
+                if parent is None or parent.consume_id != consume_id or parent.status in build_work.TERMINAL:
+                    raise DispatcherUnavailable("consumer import authority changed")
+            elif kind != "consume" or int(identity) != consume_id:
+                raise DispatcherUnavailable("consumer is outside its durable authority")
         row = (
             await session.execute(select(LayerConsume).where(LayerConsume.id == consume_id).with_for_update())
         ).scalar_one_or_none()
@@ -1488,7 +1491,7 @@ def _layer_resource(conn, kind, resource_id, *, name, project_id, marker, allow_
     return exact[0]
 
 
-def _layer_rule(conn, share_id, access_to, access_level, resource_id):
+def _layer_rule(conn, share_id, access_to, access_level, resource_id, *, allow_absent=False):
     from app.services import build_work
 
     rules = manila.list_access_rules(conn, share_id, strict=True)
@@ -1500,6 +1503,8 @@ def _layer_rule(conn, share_id, access_to, access_level, resource_id):
         and rule.get("access_to") == access_to
         and rule.get("access_level") == access_level
     ]
+    if not matches and allow_absent:
+        return None
     if len(matches) != 1:
         raise build_work.SubmissionUnknown("NFS rule is not authoritatively observed")
     return matches[0]
@@ -2453,11 +2458,19 @@ async def run_layer_consume(
         network_proxy = await _consume_sdk(lambda: owned_compute_conn.network)
         compute_proxy = await _consume_sdk(lambda: owned_compute_conn.compute)
         if shared_nfs:
-            project_id = await _consume_sdk(
-                layer_block.project_id, owned_compute_conn, expected=service_project_snapshot["id"]
+            catalog_consume = binding.member.startswith("consume:")
+            expected_project = (
+                (resource_snapshot.get("consumer_project") or {}).get("id")
+                if catalog_consume
+                else service_project_snapshot["id"]
             )
+            if catalog_consume and (not expected_project or compute_conn is None or share_conn is None):
+                raise DispatcherUnavailable("catalog consume requires explicit caller compute and service share scope")
+            project_id = await _consume_sdk(layer_block.project_id, owned_compute_conn, expected=expected_project)
             run_metadata = {
-                "afterglow_import_id": binding.member.split(":", 1)[1],
+                "afterglow_catalog_consume_id" if catalog_consume else "afterglow_import_id": binding.member.split(
+                    ":", 1
+                )[1],
                 "afterglow_consume_id": str(consume_db_id),
                 "afterglow_consume_token": consumer_state["token"],
                 "afterglow_owner_project_id": project_id,

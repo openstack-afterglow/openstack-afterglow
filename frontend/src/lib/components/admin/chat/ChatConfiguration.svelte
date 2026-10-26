@@ -14,6 +14,7 @@
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import ChatExtensionsManager from '$lib/components/chat/ChatExtensionsManager.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
+	import Card from '$lib/components/ui/Card.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
@@ -23,9 +24,8 @@
 	import ModelCapabilityBadges from '$lib/components/chat/ModelCapabilityBadges.svelte';
 	import type { ModelCapabilities } from '$lib/api/chatContracts';
 	import ModelMediaPricingEditor from './ModelMediaPricingEditor.svelte';
+	import ModelKindEditor from './ModelKindEditor.svelte';
 	import ProviderAccountsPanel from './ProviderAccountsPanel.svelte';
-	import LegacyProviderAuth from './LegacyProviderAuth.svelte';
-	import { supportsProviderAccounts } from './providerAccounts';
 	import { MODEL_LABELS as MEDIA_LABELS, TOKEN_FIELDS, hasMediaPrices, pricingDraft, pricingError, pricingPayload, pricingEquals, type ModelKind, type MediaPricing } from './modelPricing';
 
 	let { section = 'providers' }: { section?: 'providers' | 'models' | 'tools' } = $props();
@@ -182,6 +182,7 @@
 		model_kind?: ModelKind;
 		media_pricing?: MediaPricing | null;
 		is_title_model?: boolean;
+		is_memory_model?: boolean;
 		input_price_per_million: string | null;
 		output_price_per_million: string | null;
 		effective_input_price_per_million: string | null;
@@ -381,6 +382,58 @@
 	let mCachePrices = $state<CachePriceInputs>(emptyCachePriceInputs());
 	let mCacheErrors = $state<CachePriceErrors>({});
 	let addingModel = $state(false);
+	let creationOpen = $state(false);
+	let creationMethod = $state<'discover' | 'manual'>('discover');
+	let creationGeneration = 0;
+	let manualOutcomeUnknown = $state(false);
+	let catalogProviderId = $state<number | ''>('');
+	let uncertainRegistrations = $state<Record<string, boolean>>({});
+	function registrationUncertain(providerId: number | '', name: string): boolean {
+		return Boolean(uncertainRegistrations[JSON.stringify([providerId, name.trim()])]);
+	}
+
+	function resetManualDraft() {
+		++creationGeneration;
+		mName = ''; mDisplay = ''; mKind = 'text'; mInputPrice = ''; mOutputPrice = '';
+		mPricing = pricingDraft(); mCachePrices = emptyCachePriceInputs(); mCacheErrors = {};
+		manualOutcomeUnknown = false;
+		addingModel = false;
+	}
+
+	function resetCreation() {
+		creationOpen = false;
+		creationMethod = 'discover';
+		mProviderId = '';
+		resetManualDraft();
+		resetDiscovery();
+	}
+
+	async function openCreation() {
+		resetCreation();
+		const generation = creationGeneration;
+		const scope = accountScopeGeneration;
+		// Reopening after an uncertain write reconciles only confirmed rows; absence never permits replay.
+		if (Object.keys(uncertainRegistrations).length) await load();
+		if (destroyed || generation !== creationGeneration || scope !== accountScopeGeneration || error) return;
+		mProviderId = providers.length === 1 ? providers[0].id : '';
+		creationOpen = true;
+	}
+
+	function closeCreation() {
+		if (!creationBusy) resetCreation();
+	}
+
+	function changeCreationProvider() {
+		resetManualDraft();
+		resetDiscovery();
+	}
+
+	function changeCreationMethod(method: 'discover' | 'manual') {
+		if (creationBusy || creationMethod === method) return;
+		resetManualDraft();
+		resetDiscovery();
+		creationMethod = method;
+	}
 
 	let editingPrice = $state<Model | null>(null);
 	let editInputPrice = $state('');
@@ -392,6 +445,7 @@
 	let priceScopeToken: string | undefined;
 	let priceScopeProjectId: string | undefined;
 	let editingCapabilities = $state<Model | null>(null);
+	let editingKind = $state<Model | null>(null);
 	let capVision = $state(false);
 	let capReasoning = $state(false);
 	let capToolCall = $state(false);
@@ -471,6 +525,7 @@
 	}
 	interface RegistrationEntry {
 		name: string;
+		modelName: string;
 		displayName: string;
 		kind: ModelKind | '';
 		inputPrice: string;
@@ -478,6 +533,8 @@
 		inputTokenLimit: number | null;
 		outputTokenLimit: number | null;
 		purpose: 'chat' | 'non_chat' | 'unknown';
+		mediaPricing: ReturnType<typeof pricingDraft>;
+		cachePrices: CachePriceInputs;
 	}
 	interface RegistrationReview {
 		providerId: number;
@@ -494,8 +551,9 @@
 	let selectedAvail = $state<Record<string, boolean>>({});
 	let discovering = $state(false);
 	let registeringBulk = $state(false);
+	const creationBusy = $derived(addingModel || registeringBulk);
 	let registrationReview = $state<RegistrationReview | null>(null);
-	let registrationOutcomes = $state<Record<string, 'success' | 'failed'>>({});
+	let registrationOutcomes = $state<Record<string, 'pending' | 'success' | 'failed' | 'unknown'>>({});
 	let registrationMode = $state<'inactive' | 'active' | null>(null);
 	let discoveryGeneration = 0;
 	let registrationGeneration = 0;
@@ -520,11 +578,11 @@
 	}
 
 	function discoveryIsCurrent(generation: number, providerId: number, requestToken: string | undefined, requestProjectId: string | undefined) {
-		return !destroyed && generation === discoveryGeneration && discoverId === providerId && mProviderId === providerId && token === requestToken && projectId === requestProjectId;
+		return !destroyed && creationOpen && creationMethod === 'discover' && generation === discoveryGeneration && discoverId === providerId && mProviderId === providerId && token === requestToken && projectId === requestProjectId;
 	}
 
 	function registrationIsCurrent(generation: number, review: RegistrationReview) {
-		return !destroyed && generation === registrationGeneration && discoverId === review.providerId && mProviderId === review.providerId && token === review.token && projectId === review.projectId;
+		return !destroyed && creationOpen && creationMethod === 'discover' && generation === registrationGeneration && discoverId === review.providerId && mProviderId === review.providerId && token === review.token && projectId === review.projectId;
 	}
 
 	function cleanShortModelName(name: string): string {
@@ -580,11 +638,16 @@
 		const filter = availFilter.toLocaleLowerCase();
 		const candidates = discovery.candidates;
 		return candidates.filter((candidate) =>
-			!reg.has(candidate.id) && registrationOutcomes[candidate.id] !== 'success' && (availKind === '' || (candidate.model_kind ?? (candidate.purpose === 'chat' ? 'text' : 'unknown')) === availKind) && `${candidate.id} ${candidate.display_name ?? ''}`.toLocaleLowerCase().includes(filter)
+			!reg.has(candidate.id) && !registrationUncertain(discoverId ?? '', candidate.id) && !['success', 'unknown'].includes(registrationOutcomes[candidate.id]) && (availKind === '' || (candidate.model_kind ?? (candidate.purpose === 'chat' ? 'text' : 'unknown')) === availKind) && `${candidate.id} ${candidate.display_name ?? ''}`.toLocaleLowerCase().includes(filter)
 		);
 	});
 
 	function reviewPriceError(entry: RegistrationEntry): string | undefined {
+		if (registrationUncertain(registrationReview?.providerId ?? '', entry.modelName)) return t('configuration.registrationOutcomeUnknown');
+		if (!entry.modelName.trim()) return t('configuration.enterAProviderAndModelName');
+		const mediaError = pricingError(entry.kind || 'text', entry.mediaPricing);
+		if (mediaError) return mediaError;
+		if (Object.keys(parseCachePrices(entry.cachePrices).errors).length) return CACHE_PRICE_ERROR;
 		if (!entry.kind) return t('pricing.kindRequired');
 		if (entry.kind !== 'text' && !mediaProviderSupported(registrationReview?.providerId ?? '')) return t('pricing.directProviderRequired');
 		const input = entry.inputPrice.trim();
@@ -595,7 +658,7 @@
 	}
 
 	function reviewCanActivate(review: RegistrationReview): boolean {
-		return review.entries.filter((entry) => registrationOutcomes[entry.name] !== 'success')
+		return review.entries.filter((entry) => registrationOutcomes[entry.name] !== 'success' && registrationOutcomes[entry.name] !== 'unknown')
 			.every((entry) => entry.kind === 'text' && entry.inputPrice.trim() !== '' && entry.outputPrice.trim() !== '' && !reviewPriceError(entry));
 	}
 
@@ -734,6 +797,10 @@
 			models = [...ms].sort((a, b) =>
 				(providerRanks.get(a.provider_id) ?? 0) - (providerRanks.get(b.provider_id) ?? 0)
 				|| a.provider_id - b.provider_id || (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id - b.id);
+			uncertainRegistrations = Object.fromEntries(Object.entries(uncertainRegistrations).filter(([key]) => {
+				const [providerId, modelName] = JSON.parse(key) as [number, string];
+				return !registeredNames(providerId).has(modelName);
+			}));
 			if (registeredProviderId && !ps.some((provider) => provider.id === Number(registeredProviderId))) registeredProviderId = '';
 			selectedModelIds = Object.fromEntries(visibleModels.filter((model) => selectedModelIds[model.id]).map((model) => [model.id, true]));
 			void loadProviderBilling({ fresh: freshBilling });
@@ -1040,10 +1107,12 @@
 
 
 	async function addModel() {
-		if (addingModel || !mProviderId || !mName.trim()) { toast.error(t('configuration.enterAProviderAndModelName')); return; }
+		if (!creationOpen || creationMethod !== 'manual' || manualOutcomeUnknown || addingModel || !mProviderId || !mName.trim()) { toast.error(t('configuration.enterAProviderAndModelName')); return; }
+		if (registrationUncertain(mProviderId, mName)) { manualOutcomeUnknown = true; return; }
 		if (mKind !== 'text' && !mediaProviderSupported(mProviderId)) { toast.error(t('pricing.mediaProviderRequired')); return; }
 		if (!cachePricingAvailable) { mCachePrices = emptyCachePriceInputs(); mCacheErrors = {}; }
 		const cache = parseCachePrices(mCachePrices);
+		if ([mInputPrice, mOutputPrice].some((value) => value.trim() && !CACHE_PRICE_PATTERN.test(value.trim()))) { toast.error(t('pricing.reviewRateError')); return; }
 		mCacheErrors = cache.errors;
 		const prices = pricePayload(mInputPrice, mOutputPrice);
 		const message = pricingError(mKind, mPricing);
@@ -1051,9 +1120,11 @@
 		if (Object.keys(cache.errors).length || message) return;
 		const pricing = pricingPayload(mPricing);
 		const requestToken = token, requestProjectId = projectId, providerId = mProviderId;
+		const generation = ++creationGeneration;
+		const isCurrent = () => !destroyed && creationOpen && creationMethod === 'manual' && generation === creationGeneration && token === requestToken && projectId === requestProjectId && mProviderId === providerId;
 		const body = {
 			provider_id: providerId, model_name: mName.trim(), display_name: mDisplay.trim() || null,
-			...(mKind !== 'text' ? { model_kind: mKind } : {}),
+			model_kind: mKind,
 			...(mKind === 'text' ? prices : Object.fromEntries(Object.entries(prices).filter(([, value]) => value !== null))), ...presentCachePrices(cache.values),
 			...(pricing ? { media_pricing: pricing } : {})
 		};
@@ -1061,15 +1132,19 @@
 		try {
 			await api.post('/api/v1/chat/admin/models', body, requestToken, requestProjectId);
 			invalidateChatModels();
-			if (destroyed || token !== requestToken || projectId !== requestProjectId || mProviderId !== providerId) return;
+			if (!isCurrent()) return;
 			mName = ''; mDisplay = ''; mInputPrice = ''; mOutputPrice = '';
 			mCachePrices = emptyCachePriceInputs(); mCacheErrors = {}; mPricing = pricingDraft();
 			await load();
-			if (!destroyed && token === requestToken && projectId === requestProjectId) toast.success(t('configuration.modelAdded'));
+			if (isCurrent()) { toast.success(t('configuration.modelAdded')); addingModel = false; resetCreation(); }
 		} catch (e) {
-			if (!destroyed && token === requestToken && projectId === requestProjectId && mProviderId === providerId) toast.error(e instanceof ApiError ? e.message : t('configuration.addFailed'));
+			if (isCurrent()) {
+				manualOutcomeUnknown = !knownRegistrationFailure(e);
+				if (manualOutcomeUnknown) uncertainRegistrations = { ...uncertainRegistrations, [JSON.stringify([providerId, body.model_name])]: true };
+				toast.error(manualOutcomeUnknown ? t('configuration.registrationOutcomeUnknown') : t('configuration.addFailed'));
+			}
 		} finally {
-			addingModel = false;
+			if (isCurrent()) addingModel = false;
 		}
 	}
 
@@ -1347,7 +1422,6 @@
 		discovery = null;
 		selectedAvail = {};
 		registrationReview = null;
-		registrationOutcomes = {};
 		try {
 			const result = await api.get<DiscoveryResult>(
 				`/api/v1/chat/admin/providers/${providerId}/available-models`,
@@ -1375,29 +1449,36 @@
 		if (discoverId === null || !discovery || discovery.live_status === 'error' || registeringBulk) return;
 		const registered = registeredNames(discoverId);
 		const candidates = discovery.candidates
-			.filter((candidate) => selectedAvail[candidate.id] && !registered.has(candidate.id) && registrationOutcomes[candidate.id] !== 'success');
+			.filter((candidate) => selectedAvail[candidate.id] && !registered.has(candidate.id) && !registrationUncertain(discoverId ?? '', candidate.id) && !['success', 'unknown'].includes(registrationOutcomes[candidate.id]));
 		if (candidates.length === 0) {
 			toast.error(t('pricing.registrationRequired'));
 			return;
 		}
-		registrationOutcomes = {};
+		// Retain known outcomes when returning to selection; successful/uncertain writes are never replayed.
 		registrationMode = null;
 		registrationReview = {
 			providerId: discoverId,
 			providerName: providerName(discoverId),
 			entries: candidates.map((candidate) => ({
 				name: candidate.id,
+				modelName: candidate.id,
 				displayName: candidate.display_name ?? '',
 				kind: candidate.model_kind ?? (candidate.purpose === 'chat' ? 'text' : ''),
 				inputPrice: '',
 				outputPrice: '',
 				inputTokenLimit: candidate.input_token_limit ?? null,
 				outputTokenLimit: candidate.output_token_limit ?? null,
-				purpose: candidate.purpose ?? 'unknown'
+				purpose: candidate.purpose ?? 'unknown',
+				mediaPricing: pricingDraft(),
+				cachePrices: emptyCachePriceInputs(),
 			})),
 			token,
 			projectId
 		};
+	}
+
+	function knownRegistrationFailure(error: unknown): boolean {
+		return error instanceof ApiError && [400, 401, 403, 404, 409, 422, 429].includes(error.status);
 	}
 
 	async function registerSelected(activate: boolean) {
@@ -1406,7 +1487,7 @@
 			...registrationReview,
 			entries: registrationReview.entries.map((entry) => ({ ...entry }))
 		};
-		const pending = review.entries.filter((entry) => registrationOutcomes[entry.name] !== 'success');
+		const pending = review.entries.filter((entry) => registrationOutcomes[entry.name] !== 'success' && registrationOutcomes[entry.name] !== 'unknown');
 		if (pending.some((entry) => reviewPriceError(entry)) || (activate && !reviewCanActivate(review))) {
 			toast.error(t('configuration.toActivateEnterBothExactInputAndOutputRates'));
 			return;
@@ -1420,6 +1501,13 @@
 		try {
 			for (const entry of pending) {
 				if (!registrationIsCurrent(generation, review)) break;
+				// Earlier items may have targeted this edited name and left its write uncertain.
+				if (registrationUncertain(review.providerId, entry.modelName)) {
+					failed.push(entry.name);
+					registrationOutcomes = { ...registrationOutcomes, [entry.name]: 'unknown' };
+					continue;
+				}
+				registrationOutcomes = { ...registrationOutcomes, [entry.name]: 'pending' };
 				const inputPrice = entry.inputPrice.trim();
 				const outputPrice = entry.outputPrice.trim();
 				try {
@@ -1427,11 +1515,13 @@
 						'/api/v1/chat/admin/models',
 						{
 							provider_id: review.providerId,
-							model_name: entry.name,
+							model_name: entry.modelName.trim(),
 							model_kind: entry.kind,
 							...(entry.displayName.trim() ? { display_name: entry.displayName.trim() } : {}),
 							...(inputPrice ? { input_price_per_million: inputPrice } : {}),
 							...(outputPrice ? { output_price_per_million: outputPrice } : {}),
+							...presentCachePrices(parseCachePrices(entry.cachePrices).values),
+							...(pricingPayload(entry.mediaPricing) ? { media_pricing: pricingPayload(entry.mediaPricing) } : {}),
 							is_active: activate
 						},
 						review.token,
@@ -1440,21 +1530,31 @@
 					ok++;
 					invalidateChatModels();
 					if (registrationIsCurrent(generation, review)) registrationOutcomes = { ...registrationOutcomes, [entry.name]: 'success' };
-				} catch {
+				} catch (error) {
 					failed.push(entry.name);
-					if (registrationIsCurrent(generation, review)) registrationOutcomes = { ...registrationOutcomes, [entry.name]: 'failed' };
+					if (registrationIsCurrent(generation, review)) {
+						const outcome = knownRegistrationFailure(error) ? 'failed' : 'unknown';
+						registrationOutcomes = { ...registrationOutcomes, [entry.name]: outcome };
+						if (outcome === 'unknown') uncertainRegistrations = { ...uncertainRegistrations, [JSON.stringify([review.providerId, entry.modelName.trim()])]: true };
+					}
 				}
 			}
 			if (!registrationIsCurrent(generation, review)) return;
 			if (ok > 0) await load();
 			if (!registrationIsCurrent(generation, review)) return;
 			if (ok > 0) toast.success(t('configuration.modelsAlternate', { v0: formatNumber(ok), v1: activate ? t('configuration.registeredAndActivated') : t('configuration.savedAsInactive') }));
-			if (failed.length > 0) toast.error(t('configuration.modelsFailedToRegisterYouCanRetryOnlyThe', { v0: formatNumber(failed.length) }));
-			selectedAvail = Object.fromEntries(failed.map((name) => [name, true]));
-			if (failed.length === 0) registrationReview = null;
+			if (review.entries.some((entry) => registrationOutcomes[entry.name] === 'unknown')) toast.error(t('configuration.registrationOutcomeUnknown'));
+			else if (failed.length > 0) toast.error(t('configuration.modelsFailedToRegisterYouCanRetryOnlyThe', { v0: formatNumber(failed.length) }));
+			selectedAvail = Object.fromEntries(failed.filter((name) => registrationOutcomes[name] === 'failed').map((name) => [name, true]));
+			if (failed.length === 0 && !review.entries.some((entry) => registrationOutcomes[entry.name] === 'unknown')) closeCreationAfterRegistration();
 		} finally {
 			if (registrationIsCurrent(generation, review)) registeringBulk = false;
 		}
+	}
+
+	function closeCreationAfterRegistration() {
+		registeringBulk = false;
+		resetCreation();
 	}
 
 	function toggleAllFiltered(checked: boolean) {
@@ -1560,6 +1660,10 @@
 			accountScopeIdentity = identity;
 			++accountScopeGeneration;
 			++loadGeneration;
+			uncertainRegistrations = {};
+			resetCreation();
+			catalogProviderId = '';
+			editingKind = null;
 			clearProviderSecrets();
 			closeBillingKeyModal();
 		}
@@ -1587,7 +1691,7 @@
 	onDestroy(() => {
 		destroyed = true;
 		++loadGeneration;
-		resetDiscovery();
+		resetCreation();
 		unsubscribeAuthScope();
 	});
 
@@ -1599,13 +1703,13 @@
 
 <div class="min-w-0">
 	<PageHeader
-		breadcrumb={section === 'models' ? t('configuration.aiChatModelSettings') : section === 'tools' ? t('configuration.aiChatToolSettings') : t('configuration.aiChatSettings')}
-		title={section === 'models' ? t('configuration.modelSettings') : section === 'tools' ? t('configuration.toolSettings') : t('configuration.chatSettings')}
+		breadcrumb={section === 'models' ? t('configuration.aiChatModelSettings') : section === 'tools' ? t('configuration.aiChatToolSettings') : t('configuration.aiProviderSettings')}
+		title={section === 'models' ? t('configuration.modelSettings') : section === 'tools' ? t('configuration.toolSettings') : t('configuration.providerSettings')}
 		subtitle={section === 'models'
 			? t('configuration.manageProviderModelsPricingAndTheConversationTitleModel')
 			: section === 'tools'
 				? t('configuration.manageMcpServersSkillsAndCustomHttpTools')
-				: t('configuration.manageLlmProvidersAndConnectionsApiKeysAreStored')}
+				: t('configuration.providerSettingsDescription')}
 	/>
 
 	{#if error}
@@ -1713,11 +1817,7 @@
 							</div>
 							<div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs sm:justify-end">
 								<Button variant="outline" size="sm" onclick={() => openProviderEditor(p)}>{t('pricing.editDisplay')}</Button>
-								{#if supportsProviderAccounts(p)}
-									<ProviderAccountsPanel bind:this={accountPanels[p.id]} provider={p} {token} {projectId} onupdated={() => { invalidateChatModels(); return load({ freshBilling: true, preserveRows: true }); }} />
-								{:else}
-									<LegacyProviderAuth bind:this={accountPanels[p.id]} provider={p} {token} {projectId} onupdated={() => { invalidateChatModels(); return load({ freshBilling: true, preserveRows: true }); }} />
-								{/if}
+								<ProviderAccountsPanel bind:this={accountPanels[p.id]} provider={p} {token} {projectId} onupdated={() => { invalidateChatModels(); return load({ freshBilling: true, preserveRows: true }); }} />
 								{#if providerAuthMode(p) === 'api_key' && supportsBillingAdminKey(p)}
 									<button class={rowActionCls} onclick={() => openBillingKeyModal(p)}>{p.has_billing_admin_key ? t('configuration.changeUsageKey') : t('configuration.setUsageKey')}</button>
 								{/if}
@@ -1919,167 +2019,17 @@
 	<!-- 모델 -->
 	<section>
 		<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('configuration.models')}</h3>
-		<p class="mb-3 text-xs text-[var(--color-ink-3)]">
+		<p class="mb-3 text-xs text-[var(--color-ink-2)]">
 			{t('configuration.apiModelIdsAreUsedForExternalOpenaiAnd')}
 		</p>
-		<div class="{cardCls} mb-4 p-5">
-			<div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-				<select class={inputCls} aria-label={t('configuration.discoveryProvider')} bind:value={mProviderId} onchange={resetDiscovery}>
-					<option value="">{t('configuration.selectProvider')}</option>
-					{#each providers as p (p.id)}
-						<option value={p.id}>{p.name}</option>
-					{/each}
+		<div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+			<Button onclick={openCreation} disabled={loading || providers.length === 0 || modelOrderBusy}>{t('configuration.addModel')}</Button>
+			<div class="flex flex-wrap items-center gap-2">
+				<select class={inputCls} aria-label={t('configuration.modelsDevPricing')} bind:value={catalogProviderId}>
+					<option value="">{providers.length === 1 ? providers[0].name : t('configuration.selectProvider')}</option>
+					{#each providers as provider (provider.id)}<option value={provider.id}>{provider.name}</option>{/each}
 				</select>
-				<div class="flex shrink-0 gap-2">
-					<Button
-						variant="secondary"
-						onclick={() => {
-							if (!mProviderId) return toast.error(t('configuration.selectAProvider'));
-							void discover(mProviderId);
-						}}
-						disabled={!mProviderId || discovering}
-						ariaBusy={discovering}
-					>
-						{#if discovering}<ActivityIndicator size="xs" tone="ink" />{/if}{discovering ? t('configuration.fetching') : t('configuration.loadModels')}
-					</Button>
-					<Button
-						variant="secondary"
-						onclick={() => {
-							const provider = providers.find((p) => p.id === mProviderId);
-							if (provider) void openModelsDev(provider);
-						}}
-						disabled={!mProviderId}
-					>
-						{t('configuration.modelsDevPricing')}
-					</Button>
-				</div>
-			</div>
-			<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('pricing.discoveryGuidance')}</p>
-			{#if discoverId === mProviderId && discoverId !== null}
-				<div class="mt-4 border-t border-[var(--color-line)] pt-4" data-testid="model-discovery">
-					<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-						<p class="text-sm font-semibold text-[var(--color-ink-1)]">{t('configuration.discoveredCandidates', { v0: providerName(discoverId) })}</p>
-						<div class="flex gap-2">
-							<Button variant="secondary" size="sm" onclick={retryDiscovery} disabled={discovering || registeringBulk} ariaBusy={discovering}>{#if discovering}<ActivityIndicator size="xs" tone="ink" />{/if}{discovering ? t('configuration.fetching') : t('configuration.fetchAgain')}</Button>
-							<Button variant="ghost" size="sm" onclick={resetDiscovery}>{t('configuration.closeDiscovery')}</Button>
-						</div>
-					</div>
-					{#if discovering}
-						<ActivityIndicator label={t('configuration.loadingModelList')} class="text-sm text-ink-2" />
-					{:else if discoveryError}
-						<Alert tone="warning">{discoveryError}</Alert>
-					{:else if discovery}
-						<p class="mb-3 text-xs text-[var(--color-ink-2)]" data-testid="discovery-provenance">
-							{t('configuration.discoveryProvenance', { v0: discovery.source === 'api' ? t('configuration.providerApi') : discovery.source === 'catalog' ? t('configuration.staticCatalog') : t('configuration.noListProvided'), v1: discovery.live_status === 'success' ? t('configuration.responseReceived') : discovery.live_status === 'empty' ? t('configuration.successfulEmptyResult') : discovery.live_status === 'unsupported' ? t('configuration.unsupported') : discovery.live_status === 'error' ? t('configuration.failed') : t('configuration.statusUnknown'), v2: discovery.complete === true ? t('configuration.complete') : discovery.complete === false ? t('configuration.incomplete') : t('configuration.unknown') })}
-							{#if discovery.fetched_at} {t('configuration.discoveryFetchedAt', { v0: new Date(discovery.fetched_at).toLocaleString(intlLocale()) })}{/if}
-							{t('configuration.discoveryModelCounts', { v0: formatNumber(discovery.models.length), v1: formatNumber(filteredAvailable.length) })}
-						</p>
-						{#if discovery.error}
-							<Alert tone="warning" class="mb-3">{discovery.error.message} {discovery.error.retryable ? t('configuration.youCanFetchAgain') : t('configuration.checkTheConnectionSettings')}</Alert>
-						{/if}
-						{#if discovery.live_status === 'error' && !discovery.error}
-							<Alert tone="warning" class="mb-3">{t('configuration.liveModelLookupFailedCheckTheConnectionAndFetch')}</Alert>
-						{/if}
-						{#if discovery.live_status === 'empty' && discovery.models.length === 0}
-							<Alert tone="info">{t('configuration.theLookupSucceededButReturnedNoModelsAddThem')}</Alert>
-						{:else if discovery.live_status === 'unsupported' && discovery.models.length === 0}
-							<Alert tone="info">{t('configuration.thisProviderDoesNotSupportModelLookupYouCan')}</Alert>
-						{:else if discovery.models.length === 0 && !discovery.error && discovery.live_status !== 'error'}
-							<Alert tone="info">{t('configuration.noCandidatesProvidedCheckTheLookupStatusOrAdd')}</Alert>
-						{/if}
-						{#if discovery.models.length > 0 && discovery.live_status !== 'error'}
-							<Alert tone="info" class="mb-3">{t('configuration.discoveryCandidatesDoNotVerifyPricingOrExecutionSupport')}</Alert>
-							{#if isSubscriptionProviderId(mProviderId)}
-								<Alert tone="info" class="mb-3">{t('configuration.theseAreSubscriptionCatalogCandidatesAvailabilityUnderYourCurrent')}</Alert>
-							{/if}
-							<div class="mb-3 flex flex-wrap gap-3 text-xs">
-								<Button variant="ghost" size="xs" onclick={() => toggleAllFiltered(true)}>{t('configuration.selectAll')}</Button>
-								<Button variant="ghost" size="xs" onclick={() => toggleAllFiltered(false)}>{t('configuration.clearSelection')}</Button>
-							</div>
-							<div class="mb-3">
-								<Field label={t('configuration.filterCandidateModels')} for="discovery-candidate-filter">
-									<TextInput id="discovery-candidate-filter" type="search" placeholder={t('configuration.searchModelIdOrDisplayName')} bind:value={availFilter} oninput={() => (selectedAvail = {})} disabled={registeringBulk} />
-								</Field>
-								<Field label={t('pricing.candidateKindFilter')} for="discovery-kind-filter">
-									<SelectInput id="discovery-kind-filter" value={availKind} disabled={registeringBulk} onchange={(event) => { availKind = (event.target as HTMLSelectElement).value as typeof availKind; selectedAvail = {}; }}>
-										<option value="">{t('pricing.allKinds')}</option>
-										{#each Object.entries(MEDIA_LABELS) as [kind, label]}<option value={kind}>{label}</option>{/each}
-										<option value="unknown">{t('pricing.unknownKind')}</option>
-									</SelectInput>
-								</Field>
-							</div>
-							<div class="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-base)] p-2">
-								{#each filteredAvailable as candidate (candidate.id)}
-									<label class="flex items-start gap-2 rounded-md px-2 py-2 text-sm text-[var(--color-ink-1)] hover:bg-[var(--color-surface-selected)]">
-										<input class="mt-1" type="checkbox" aria-label={candidate.id} disabled={registeringBulk} bind:checked={selectedAvail[candidate.id]} />
-										<span class="min-w-0 break-all"><span class="block font-mono">{candidate.id}</span>
-											{#if candidate.display_name}<span class="block text-xs text-[var(--color-ink-2)]">{candidate.display_name}</span>{/if}
-											<span class="block text-xs text-[var(--color-ink-2)]">{t('pricing.candidateReadiness', { kind: candidate.model_kind ? MEDIA_LABELS[candidate.model_kind] : candidate.purpose === 'chat' ? t('pricing.textCandidate') : t('pricing.unknownKind') })}</span>
-										</span>
-									</label>
-								{:else}
-									<EmptyState headline={t('configuration.noUnregisteredModelsMatchTheFilters')} class="py-4 [&_.motion-enter]:animate-none" />
-								{/each}
-							</div>
-							<div class="mt-3 flex justify-end">
-								<Button onclick={reviewSelected} disabled={registeringBulk}>{t('configuration.reviewSelectedModels')}</Button>
-							</div>
-						{/if}
-					{/if}
-				</div>
-			{/if}
-		</div>
-		<div class="{cardCls} mb-4 p-5">
-			<div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-				<select class={inputCls} aria-label={t('configuration.providerForManualRegistration')} bind:value={mProviderId} onchange={resetDiscovery}>
-					<option value="">{t('configuration.selectProvider')}</option>
-					{#each providers as p (p.id)}
-						<option value={p.id}>{p.name}</option>
-					{/each}
-				</select>
-				<select class={inputCls} aria-label={t('configuration.modelType')} value={mKind} onchange={(event) => (mKind = event.currentTarget.value as ModelKind)}>
-					{#each Object.entries(MEDIA_LABELS) as [kind, label]}
-						<option value={kind}>{label}</option>
-					{/each}
-				</select>
-				<input class={inputCls} placeholder={t('configuration.modelNameEGGpt4o')} bind:value={mName} />
-				<input class={inputCls} placeholder={t('configuration.displayNameOptional')} bind:value={mDisplay} />
-			</div>
-			<p class="mt-3 text-sm font-semibold text-[var(--color-ink-1)]">{t('pricing.textTokenRates')}</p>
-			<div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-				<input class={inputCls} inputmode="decimal" placeholder={t('configuration.inputPriceUsd1mTokens')} bind:value={mInputPrice} />
-				<input class={inputCls} inputmode="decimal" placeholder={t('configuration.outputPriceUsd1mTokens')} bind:value={mOutputPrice} />
-			</div>
-			{#if mKind !== 'text' && mProviderId && !mediaProviderSupported(mProviderId)}
-				<Alert tone="warning" class="mt-3">{t('configuration.mediaModelsCanOnlyBeRegisteredWithDirectlyConnected')}</Alert>
-			{/if}
-			<ModelMediaPricingEditor kind={mKind} bind:draft={mPricing} prefix="model-create" disabled={addingModel} />
-			{#if cachePricingAvailable}
-			<div class="mt-4 border-t border-[var(--color-line)] pt-4" role="group" aria-labelledby="model-create-cache-heading" data-testid="model-create-cache-prices">
-				<p id="model-create-cache-heading" class="text-xs font-semibold text-[var(--color-ink-1)]">{t('configuration.promptCacheRatesOptional')}</p>
-				<p class="mt-1 text-xs leading-relaxed text-[var(--color-ink-2)]">
-					{mKind === 'text' ? t('configuration.eachRateIsSavedSeparatelyFromInputAndOutput') : t('pricing.mediaCacheCreateHelp')}
-				</p>
-				<div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-					{#each CACHE_PRICE_FIELDS as field (field.key)}
-						<Field label={field.label} for="model-create-cache-{field.slug}" help={t('configuration.usd1mTokens')} error={mCacheErrors[field.key]}>
-							<TextInput
-								id="model-create-cache-{field.slug}"
-								inputmode="decimal"
-								placeholder={t('configuration.eG03')}
-								bind:value={mCachePrices[field.key]}
-								ariaInvalid={Boolean(mCacheErrors[field.key])}
-								oninput={(event) => (mCacheErrors = recheckCachePrice(mCacheErrors, field.key, (event.currentTarget as HTMLInputElement).value))}
-							/>
-						</Field>
-					{/each}
-				</div>
-			</div>
-			{/if}
-			<div class="mt-3 flex justify-end">
-				<Button onclick={addModel} disabled={addingModel || providers.length === 0 || (mKind !== 'text' && !!mProviderId && !mediaProviderSupported(mProviderId))} ariaBusy={addingModel}>
-					{#if addingModel}<ActivityIndicator size="xs" tone="ink" />{/if}{addingModel ? t('configuration.adding') : t('configuration.addModel')}
-				</Button>
+				<Button variant="secondary" onclick={() => { const provider = providers.find((candidate) => candidate.id === catalogProviderId) ?? (providers.length === 1 ? providers[0] : null); if (provider) void openModelsDev(provider); }} disabled={!catalogProviderId && providers.length !== 1}>{t('configuration.modelsDevPricing')}</Button>
 			</div>
 		</div>
 
@@ -2091,7 +2041,7 @@
 				</SelectInput>
 			</Field>
 			<Field label={t('pricing.registeredKindFilter')} for="registered-model-kind">
-				<SelectInput id="registered-model-kind" value={registeredKind} disabled={deletingBulk || modelOrderSaving} onchange={(event) => { registeredKind = (event.target as HTMLSelectElement).value as typeof registeredKind; selectedModelIds = {}; resetModelDrag(); }}>
+				<SelectInput id="registered-model-kind" bind:value={registeredKind} disabled={deletingBulk || modelOrderSaving} onchange={() => { selectedModelIds = {}; resetModelDrag(); }}>
 					<option value="">{t('pricing.allKinds')}</option>
 					{#each Object.entries(MEDIA_LABELS) as [kind, label]}<option value={kind}>{label}</option>{/each}
 				</SelectInput>
@@ -2104,7 +2054,7 @@
 		{#if loading}
 			<div class="{cardCls} h-20 motion-skeleton" role="status" aria-busy="true" aria-label={t('configuration.loadingModels')}><span class="sr-only">{t('configuration.loadingModels')}</span></div>
 		{:else if visibleModels.length === 0}
-			<EmptyState headline={registeredProviderId ? t('pricing.providerEmpty') : t('configuration.noModelsRegistered')} class="py-4 [&_.motion-enter]:animate-none" />
+			<EmptyState headline={registeredProviderId || registeredKind ? t('pricing.filteredEmpty') : t('configuration.noModelsRegistered')} class="py-4 [&_.motion-enter]:animate-none" />
 		{:else}
 			<div class="mb-2 flex items-center justify-between gap-3 px-1">
 				<label class="flex cursor-pointer items-center gap-2 text-xs text-[var(--color-ink-2)]">
@@ -2150,7 +2100,7 @@
 							</div>
 							<input class="mt-0.5 shrink-0" type="checkbox" disabled={deletingBulk || modelOrderSaving} bind:checked={selectedModelIds[m.id]} aria-label={t('configuration.selectModel', { v0: m.display_name || publicModelName(m) })} />
 							<div class="min-w-0 flex-1">
-							<div class="flex flex-wrap items-center gap-2">
+							<div class="flex flex-wrap items-center gap-2 [&_.pill]:max-w-full [&_.pill]:!whitespace-normal [&_.pill]:!break-words">
 								<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{displayModelTitle(m)}</span>
 							<Pill tone={m.is_active ? 'success' : 'neutral'} size="xs">{(m.model_kind ?? 'text') === 'text' ? (m.is_active ? t('configuration.activeSaved') : t('configuration.inactiveSaved')) : (m.is_active ? t('configuration.adminEnabledExecutionSeparate') : t('configuration.adminDisabledSaved'))}</Pill>
 							<Pill tone="neutral" size="xs">{MEDIA_LABELS[m.model_kind ?? 'text']}</Pill>
@@ -2210,6 +2160,7 @@
 								</button>
 							{/if}
 							<button class={rowActionCls} disabled={modelOrderSaving} onclick={() => openPriceEditor(m)}>{t('configuration.editPricing')}</button>
+							<Button variant="ghost" size="xs" disabled={modelOrderSaving} onclick={() => (editingKind = m)}>{t('pricing.editKind')}</Button>
 							{#if (m.model_kind ?? 'text') === 'text'}<Button variant="ghost" size="xs" disabled={modelOrderSaving} onclick={() => openCapabilityEditor(m)}>{t('configuration.editCapabilities')}</Button>{/if}
 							<button class={rowActionCls} disabled={modelOrderSaving} onclick={() => toggleModel(m)}>{m.is_active ? t('configuration.deactivate') : t('configuration.activate')}</button>
 							<button class="text-[var(--color-state-danger)] transition-opacity hover:opacity-80" disabled={modelOrderSaving} onclick={() => deleteModel(m.id)}>{t('configuration.delete')}</button>
@@ -2222,54 +2173,209 @@
 	{/if}
 
 	{#if section === 'models'}
-	<Modal open={registrationReview !== null} onClose={() => { if (!registeringBulk) registrationReview = null; }} dismissible={!registeringBulk} ariaLabel={t('configuration.reviewModelRegistration')}>
-		<div class="max-h-[calc(100vh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]" data-testid="model-registration-review">
-			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">{t('configuration.reviewModelRegistration')}</h3>
-			{#if registrationReview}
-				<p class="mt-2 text-sm text-[var(--color-ink-2)]">{t('configuration.registrationReviewProviderCount', { v0: registrationReview.providerName, v1: formatNumber(registrationReview.entries.length) })}</p>
-				<Alert tone="warning" class="mt-3">{t('pricing.registrationGuidance')}</Alert>
-				<div class="mt-4 max-h-[min(50vh,28rem)] space-y-3 overflow-y-auto">
-					{#each registrationReview.entries as entry, index (entry.name)}
-						<div class="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-base)] p-3" data-testid="registration-entry">
-							<p class="break-all font-mono text-sm text-[var(--color-ink-1)]">{entry.name}</p>
-							<p class="mt-1 text-xs text-[var(--color-ink-2)]">
-								{t('configuration.registrationReportedLimits', { v0: entry.purpose === 'unknown' ? t('pricing.candidateReadiness', { kind: t('pricing.unknownPurpose') }) : entry.purpose === 'non_chat' ? t('pricing.candidateReadiness', { kind: t('pricing.nonChatPurpose') }) : t('configuration.reviewChatCandidate'), v1: entry.inputTokenLimit == null ? t('configuration.unknown') : formatNumber(entry.inputTokenLimit), v2: entry.outputTokenLimit == null ? t('configuration.unknown') : formatNumber(entry.outputTokenLimit) })}
-							</p>
-							{#if registrationOutcomes[entry.name] === 'success'}
-								<Pill tone="success" size="sm">{t('configuration.registeredNoRepeatRequest')}</Pill>
-							{:else}
-								{#if registrationOutcomes[entry.name] === 'failed'}<Pill tone="warning" size="sm">{t('configuration.registrationFailedRetryThisModelOnly')}</Pill>{/if}
-								<div class="mt-3 grid gap-3 sm:grid-cols-2">
-									<div class="sm:col-span-2">
-										<Field label={t('configuration.reviewDisplayName', { v0: entry.name })} for="review-display-{index}">
-											<TextInput id="review-display-{index}" placeholder={t('configuration.optional')} bind:value={entry.displayName} disabled={registeringBulk} />
-										</Field>
-									</div>
-									<Field label={t('pricing.reviewKind', { name: entry.name })} for="review-kind-{index}" error={reviewPriceError(entry)}>
-										<SelectInput id="review-kind-{index}" bind:value={entry.kind} disabled={registeringBulk}>
-											<option value="">{t('pricing.selectKind')}</option>
-											{#each Object.entries(MEDIA_LABELS) as [kind, label]}<option value={kind}>{label}</option>{/each}
-										</SelectInput>
-									</Field>
-									<Field label={t('configuration.reviewInputPrice', { v0: entry.name })} for="review-input-{index}" help={t('configuration.usd1mTokens')} error={reviewPriceError(entry)}>
-										<TextInput id="review-input-{index}" inputmode="decimal" placeholder={t('configuration.eG2')} bind:value={entry.inputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} />
-									</Field>
-									<Field label={t('configuration.reviewOutputPrice', { v0: entry.name })} for="review-output-{index}" help={t('configuration.usd1mTokens')} error={reviewPriceError(entry)}>
-										<TextInput id="review-output-{index}" inputmode="decimal" placeholder={t('configuration.eG8')} bind:value={entry.outputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} />
-									</Field>
-								</div>
-							{/if}
-						</div>
-					{/each}
+	{#if creationOpen}
+	<Modal open={creationOpen} onClose={closeCreation} dismissible={!creationBusy} ariaLabel={t('configuration.addModel')}>
+		<Card surface="modal" padding="none" class="flex max-h-[calc(100dvh-2rem)] w-[min(48rem,calc(100vw-2rem))] max-w-full flex-col">
+			<header class="shrink-0 border-b border-line p-5">
+				<h3 class="text-base font-semibold text-ink-1">{registrationReview ? t('configuration.reviewModelRegistration') : t('configuration.addModel')}</h3>
+			</header>
+			<div class="min-h-0 flex-1 overflow-y-auto p-5" data-testid="model-creation-body">
+				<Field label={t('configuration.discoveryProvider')} for="model-creation-provider">
+					<SelectInput id="model-creation-provider" value={String(mProviderId)} onchange={(event) => { const value = (event.currentTarget as HTMLSelectElement).value; mProviderId = value ? Number(value) : ''; changeCreationProvider(); }} disabled={creationBusy}>
+						<option value="">{t('configuration.selectProvider')}</option>
+						{#each providers as provider (provider.id)}<option value={String(provider.id)}>{provider.name}</option>{/each}
+					</SelectInput>
+				</Field>
+				<div class="my-4 flex flex-wrap gap-2" role="group" aria-label={t('configuration.modelRegistrationMethod')}>
+					<Button variant={creationMethod === 'discover' ? 'secondary' : 'ghost'} onclick={() => changeCreationMethod('discover')} disabled={creationBusy} ariaPressed={creationMethod === 'discover'}>{t('configuration.discoverModelsMethod')}</Button>
+					<Button variant={creationMethod === 'manual' ? 'secondary' : 'ghost'} onclick={() => changeCreationMethod('manual')} disabled={creationBusy} ariaPressed={creationMethod === 'manual'}>{t('configuration.manualModelMethod')}</Button>
 				</div>
-				<div class="mt-5 flex flex-wrap justify-end gap-2">
-					<Button variant="secondary" onclick={() => (registrationReview = null)} disabled={registeringBulk}>{t('configuration.cancel')}</Button>
-					<Button onclick={() => registerSelected(false)} disabled={registeringBulk || registrationMode === 'active' || registrationReview.entries.some((entry) => registrationOutcomes[entry.name] !== 'success' && Boolean(reviewPriceError(entry)))} ariaBusy={registeringBulk && registrationMode === 'inactive'}>{#if registeringBulk && registrationMode === 'inactive'}<ActivityIndicator size="xs" tone="ink" />{/if}{registeringBulk && registrationMode === 'inactive' ? t('configuration.registering') : t('configuration.saveAsInactive')}</Button>
-					<Button variant="accent" onclick={() => registerSelected(true)} disabled={registeringBulk || registrationMode === 'inactive' || !reviewCanActivate(registrationReview)} ariaBusy={registeringBulk && registrationMode === 'active'}>{#if registeringBulk && registrationMode === 'active'}<ActivityIndicator size="xs" tone="ink" />{/if}{registeringBulk && registrationMode === 'active' ? t('configuration.registeringAndActivating') : t('configuration.confirmPricingRegisterAndActivate')}</Button>
+				{#if !registrationReview && creationMethod === 'discover' && Object.keys(uncertainRegistrations).length}
+					<Alert tone="warning" class="mb-3">{t('configuration.registrationOutcomeUnknown')}</Alert>
+				{/if}
+				{#if registrationReview}
+					<div data-testid="model-registration-review">
+						<p class="text-sm text-ink-2">{t('configuration.registrationReviewProviderCount', { v0: registrationReview.providerName, v1: formatNumber(registrationReview.entries.length) })}</p>
+						<Alert tone="warning" class="mt-3">{t('pricing.registrationGuidance')}</Alert>
+						<div class="mt-4 space-y-4">
+							{#each registrationReview.entries as entry, index (entry.name)}
+								<div class="border-t border-line pt-4" data-testid="registration-entry">
+									<p class="break-all font-mono text-sm text-ink-1">{entry.name}</p>
+									<p class="mt-1 text-xs text-ink-2">{t('configuration.registrationReportedLimits', { v0: entry.purpose === 'unknown' ? t('pricing.candidateReadiness', { kind: t('pricing.unknownPurpose') }) : entry.purpose === 'non_chat' ? t('pricing.candidateReadiness', { kind: t('pricing.nonChatPurpose') }) : t('configuration.reviewChatCandidate'), v1: entry.inputTokenLimit == null ? t('configuration.unknown') : formatNumber(entry.inputTokenLimit), v2: entry.outputTokenLimit == null ? t('configuration.unknown') : formatNumber(entry.outputTokenLimit) })}</p>
+									{#if registrationOutcomes[entry.name] === 'success'}
+										<Pill tone="success" size="sm">{t('configuration.registeredNoRepeatRequest')}</Pill>
+									{:else if registrationOutcomes[entry.name] === 'unknown'}
+										<Alert tone="warning">{t('configuration.registrationOutcomeUnknown')}</Alert>
+									{:else}
+										{#if registrationOutcomes[entry.name] === 'pending'}<Pill tone="info" size="sm">{t('configuration.registering')}</Pill>{/if}
+										{#if registrationOutcomes[entry.name] === 'failed'}<Pill tone="warning" size="sm">{t('configuration.registrationFailedRetryThisModelOnly')}</Pill>{/if}
+										<div class="mt-3 grid gap-3 sm:grid-cols-2">
+											<Field label={t('configuration.modelNameEGGpt4o')} for="review-name-{index}"><TextInput id="review-name-{index}" bind:value={entry.modelName} disabled={registeringBulk} /></Field>
+											<Field label={t('configuration.reviewDisplayName', { v0: entry.name })} for="review-display-{index}"><TextInput id="review-display-{index}" placeholder={t('configuration.optional')} bind:value={entry.displayName} disabled={registeringBulk} /></Field>
+											<Field label={t('pricing.reviewKind', { name: entry.name })} for="review-kind-{index}" error={reviewPriceError(entry)}>
+												<SelectInput id="review-kind-{index}" bind:value={entry.kind} disabled={registeringBulk}><option value="">{t('pricing.selectKind')}</option>{#each Object.entries(MEDIA_LABELS) as [kind, label]}<option value={kind}>{label}</option>{/each}</SelectInput>
+											</Field>
+											<Field label={t('configuration.reviewInputPrice', { v0: entry.name })} for="review-input-{index}" help={t('configuration.usd1mTokens')} error={reviewPriceError(entry)}><TextInput id="review-input-{index}" inputmode="decimal" placeholder={t('configuration.eG2')} bind:value={entry.inputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} /></Field>
+											<Field label={t('configuration.reviewOutputPrice', { v0: entry.name })} for="review-output-{index}" help={t('configuration.usd1mTokens')} error={reviewPriceError(entry)}><TextInput id="review-output-{index}" inputmode="decimal" placeholder={t('configuration.eG8')} bind:value={entry.outputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} /></Field>
+										</div>
+										<ModelMediaPricingEditor kind={entry.kind || 'text'} bind:draft={entry.mediaPricing} prefix="review-media-{index}" disabled={registeringBulk} />
+										{#if cachePricingAvailable}
+											<div class="mt-3 grid gap-3 sm:grid-cols-3">
+												{#each CACHE_PRICE_FIELDS as field (field.key)}<Field label={field.label} for="review-cache-{index}-{field.slug}" help={t('configuration.usd1mTokens')} error={cachePriceError(entry.cachePrices[field.key])}><TextInput id="review-cache-{index}-{field.slug}" bind:value={entry.cachePrices[field.key]} inputmode="decimal" disabled={registeringBulk} /></Field>{/each}
+											</div>
+										{/if}
+									{/if}
+								</div>
+							{/each}
+						</div>
+					</div>
+				{:else if creationMethod === 'discover'}
+		<div>
+					<Button
+						variant="secondary"
+						onclick={() => {
+							if (!mProviderId) return toast.error(t('configuration.selectAProvider'));
+							void discover(mProviderId);
+						}}
+						disabled={!mProviderId || discovering || creationBusy}
+						ariaBusy={discovering}
+					>
+						{#if discovering}<ActivityIndicator size="xs" tone="ink" />{/if}{discovering ? t('configuration.fetching') : t('configuration.loadModels')}
+					</Button>
+			<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('pricing.discoveryGuidance')}</p>
+			{#if discoverId === mProviderId && discoverId !== null}
+				<div class="mt-4 border-t border-[var(--color-line)] pt-4" data-testid="model-discovery">
+					<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+						<p class="text-sm font-semibold text-[var(--color-ink-1)]">{t('configuration.discoveredCandidates', { v0: providerName(discoverId) })}</p>
+						<div class="flex gap-2">
+							<Button variant="secondary" size="sm" onclick={retryDiscovery} disabled={discovering || registeringBulk} ariaBusy={discovering}>{#if discovering}<ActivityIndicator size="xs" tone="ink" />{/if}{discovering ? t('configuration.fetching') : t('configuration.fetchAgain')}</Button>
+							<Button variant="ghost" size="sm" onclick={resetDiscovery}>{t('configuration.closeDiscovery')}</Button>
+						</div>
+					</div>
+					{#if discovering}
+						<ActivityIndicator label={t('configuration.loadingModelList')} class="text-sm text-ink-2" />
+					{:else if discoveryError}
+						<Alert tone="warning">{discoveryError}</Alert>
+					{:else if discovery}
+						<p class="mb-3 text-xs text-[var(--color-ink-2)]" data-testid="discovery-provenance">
+							{t('configuration.discoveryProvenance', { v0: discovery.source === 'api' ? t('configuration.providerApi') : discovery.source === 'catalog' ? t('configuration.staticCatalog') : t('configuration.noListProvided'), v1: discovery.live_status === 'success' ? t('configuration.responseReceived') : discovery.live_status === 'empty' ? t('configuration.successfulEmptyResult') : discovery.live_status === 'unsupported' ? t('configuration.unsupported') : discovery.live_status === 'error' ? t('configuration.failed') : t('configuration.statusUnknown'), v2: discovery.complete === true ? t('configuration.complete') : discovery.complete === false ? t('configuration.incomplete') : t('configuration.unknown') })}
+							{#if discovery.fetched_at} {t('configuration.discoveryFetchedAt', { v0: new Date(discovery.fetched_at).toLocaleString(intlLocale()) })}{/if}
+							{t('configuration.discoveryModelCounts', { v0: formatNumber(discovery.models.length), v1: formatNumber(filteredAvailable.length) })}
+						</p>
+						{#if discovery.error}
+							<Alert tone="warning" class="mb-3">{discovery.error.message} {discovery.error.retryable ? t('configuration.youCanFetchAgain') : t('configuration.checkTheConnectionSettings')}</Alert>
+						{/if}
+						{#if discovery.live_status === 'error' && !discovery.error}
+							<Alert tone="warning" class="mb-3">{t('configuration.liveModelLookupFailedCheckTheConnectionAndFetch')}</Alert>
+						{/if}
+						{#if discovery.live_status === 'empty' && discovery.models.length === 0}
+							<Alert tone="info">{t('configuration.theLookupSucceededButReturnedNoModelsAddThem')}</Alert>
+						{:else if discovery.live_status === 'unsupported' && discovery.models.length === 0}
+							<Alert tone="info">{t('configuration.thisProviderDoesNotSupportModelLookupYouCan')}</Alert>
+						{:else if discovery.models.length === 0 && !discovery.error && discovery.live_status !== 'error'}
+							<Alert tone="info">{t('configuration.noCandidatesProvidedCheckTheLookupStatusOrAdd')}</Alert>
+						{/if}
+						{#if discovery.models.length > 0 && discovery.live_status !== 'error'}
+							<Alert tone="info" class="mb-3">{t('configuration.discoveryCandidatesDoNotVerifyPricingOrExecutionSupport')}</Alert>
+							{#if isSubscriptionProviderId(mProviderId)}
+								<Alert tone="info" class="mb-3">{t('configuration.theseAreSubscriptionCatalogCandidatesAvailabilityUnderYourCurrent')}</Alert>
+							{/if}
+							<div class="mb-3 flex flex-wrap gap-3 text-xs">
+								<Button variant="ghost" size="xs" onclick={() => toggleAllFiltered(true)}>{t('configuration.selectAll')}</Button>
+								<Button variant="ghost" size="xs" onclick={() => toggleAllFiltered(false)}>{t('configuration.clearSelection')}</Button>
+							</div>
+							<div class="mb-3">
+								<Field label={t('configuration.filterCandidateModels')} for="discovery-candidate-filter">
+									<TextInput id="discovery-candidate-filter" type="search" placeholder={t('configuration.searchModelIdOrDisplayName')} bind:value={availFilter} oninput={() => (selectedAvail = {})} disabled={registeringBulk} />
+								</Field>
+								<Field label={t('pricing.candidateKindFilter')} for="discovery-kind-filter">
+									<SelectInput id="discovery-kind-filter" bind:value={availKind} disabled={registeringBulk} onchange={() => { selectedAvail = {}; }}>
+										<option value="">{t('pricing.allKinds')}</option>
+										{#each Object.entries(MEDIA_LABELS) as [kind, label]}<option value={kind}>{label}</option>{/each}
+										<option value="unknown">{t('pricing.unknownKind')}</option>
+									</SelectInput>
+								</Field>
+							</div>
+							<div class="space-y-1 rounded-lg border border-line p-2">
+								{#each filteredAvailable as candidate (candidate.id)}
+									<label class="flex items-start gap-2 rounded-md px-2 py-2 text-sm text-[var(--color-ink-1)] hover:bg-[var(--color-surface-selected)]">
+										<input class="mt-1" type="checkbox" aria-label={candidate.id} disabled={registeringBulk} bind:checked={selectedAvail[candidate.id]} />
+										<span class="min-w-0 break-all"><span class="block font-mono">{candidate.id}</span>
+											{#if candidate.display_name}<span class="block text-xs text-[var(--color-ink-2)]">{candidate.display_name}</span>{/if}
+											<span class="block text-xs text-[var(--color-ink-2)]">{t('pricing.candidateReadiness', { kind: candidate.model_kind ? MEDIA_LABELS[candidate.model_kind] : candidate.purpose === 'chat' ? t('pricing.textCandidate') : t('pricing.unknownKind') })}</span>
+										</span>
+									</label>
+								{:else}
+									<EmptyState headline={t('configuration.noUnregisteredModelsMatchTheFilters')} class="py-4 [&_.motion-enter]:animate-none" />
+								{/each}
+							</div>
+						{/if}
+					{/if}
 				</div>
 			{/if}
 		</div>
+				{:else}
+		<div>
+			<div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+				<select class={inputCls} aria-label={t('configuration.modelType')} bind:value={mKind} disabled={addingModel}>
+					{#each Object.entries(MEDIA_LABELS) as [kind, label]}
+						<option value={kind}>{label}</option>
+					{/each}
+				</select>
+				<input class={inputCls} placeholder={t('configuration.modelNameEGGpt4o')} bind:value={mName} disabled={addingModel} />
+				<input class={inputCls} placeholder={t('configuration.displayNameOptional')} bind:value={mDisplay} disabled={addingModel} />
+			</div>
+			<p class="mt-3 text-sm font-semibold text-[var(--color-ink-1)]">{t('pricing.textTokenRates')}</p>
+			<div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+				<input class={inputCls} inputmode="decimal" placeholder={t('configuration.inputPriceUsd1mTokens')} bind:value={mInputPrice} disabled={addingModel} />
+				<input class={inputCls} inputmode="decimal" placeholder={t('configuration.outputPriceUsd1mTokens')} bind:value={mOutputPrice} disabled={addingModel} />
+			</div>
+			{#if mKind !== 'text' && mProviderId && !mediaProviderSupported(mProviderId)}
+				<Alert tone="warning" class="mt-3">{t('configuration.mediaModelsCanOnlyBeRegisteredWithDirectlyConnected')}</Alert>
+			{/if}
+			<ModelMediaPricingEditor kind={mKind} bind:draft={mPricing} prefix="model-create" disabled={addingModel} />
+			{#if cachePricingAvailable}
+			<div class="mt-4 border-t border-[var(--color-line)] pt-4" role="group" aria-labelledby="model-create-cache-heading" data-testid="model-create-cache-prices">
+				<p id="model-create-cache-heading" class="text-xs font-semibold text-[var(--color-ink-1)]">{t('configuration.promptCacheRatesOptional')}</p>
+				<p class="mt-1 text-xs leading-relaxed text-[var(--color-ink-2)]">
+					{mKind === 'text' ? t('configuration.eachRateIsSavedSeparatelyFromInputAndOutput') : t('pricing.mediaCacheCreateHelp')}
+				</p>
+				<div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+					{#each CACHE_PRICE_FIELDS as field (field.key)}
+						<Field label={field.label} for="model-create-cache-{field.slug}" help={t('configuration.usd1mTokens')} error={mCacheErrors[field.key]}>
+							<TextInput
+								id="model-create-cache-{field.slug}"
+								inputmode="decimal"
+								placeholder={t('configuration.eG03')}
+								bind:value={mCachePrices[field.key]}
+								disabled={addingModel}
+								ariaInvalid={Boolean(mCacheErrors[field.key])}
+								oninput={(event) => (mCacheErrors = recheckCachePrice(mCacheErrors, field.key, (event.currentTarget as HTMLInputElement).value))}
+							/>
+						</Field>
+					{/each}
+				</div>
+			</div>
+			{/if}
+			{#if manualOutcomeUnknown || registrationUncertain(mProviderId, mName)}<Alert tone="warning" class="mt-3">{t('configuration.registrationOutcomeUnknown')}</Alert>{/if}
+		</div>
+				{/if}
+			</div>
+			<footer class="flex shrink-0 flex-wrap justify-end gap-2 border-t border-line p-5">
+				<Button variant="secondary" onclick={closeCreation} disabled={creationBusy}>{t('configuration.close')}</Button>
+				{#if registrationReview}
+					<Button variant="secondary" onclick={() => (registrationReview = null)} disabled={registeringBulk}>{t('configuration.cancel')}</Button>
+					<Button onclick={() => registerSelected(false)} disabled={registeringBulk || registrationMode === 'active' || !registrationReview.entries.some((entry) => !['success', 'unknown'].includes(registrationOutcomes[entry.name])) || registrationReview.entries.some((entry) => !['success', 'unknown'].includes(registrationOutcomes[entry.name]) && Boolean(reviewPriceError(entry)))} ariaBusy={registeringBulk && registrationMode === 'inactive'}>{registeringBulk && registrationMode === 'inactive' ? t('configuration.registering') : t('configuration.saveAsInactive')}</Button>
+					<Button variant="accent" onclick={() => registerSelected(true)} disabled={registeringBulk || registrationMode === 'inactive' || !registrationReview.entries.some((entry) => !['success', 'unknown'].includes(registrationOutcomes[entry.name])) || !reviewCanActivate(registrationReview)} ariaBusy={registeringBulk && registrationMode === 'active'}>{registeringBulk && registrationMode === 'active' ? t('configuration.registeringAndActivating') : t('configuration.confirmPricingRegisterAndActivate')}</Button>
+				{:else if creationMethod === 'manual'}
+					<Button onclick={addModel} disabled={addingModel || manualOutcomeUnknown || registrationUncertain(mProviderId, mName) || !mProviderId || !mName.trim() || (mKind !== 'text' && !mediaProviderSupported(mProviderId))} ariaBusy={addingModel}>{addingModel ? t('configuration.adding') : t('configuration.addModel')}</Button>
+				{:else if discovery && discovery.live_status !== 'error'}
+					<Button onclick={reviewSelected} disabled={!Object.values(selectedAvail).some(Boolean)}>{t('configuration.reviewSelectedModels')}</Button>
+				{/if}
+			</footer>
+		</Card>
 	</Modal>
+	{/if}
 
 	<Modal open={editingPrice !== null} onClose={() => { if (!priceSaving) editingPrice = null; }} dismissible={!priceSaving} ariaLabel={t('configuration.editModelPricing')}>
 		<div class="max-h-[calc(100vh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">
@@ -2317,6 +2423,10 @@
 			</div>
 		</div>
 	</Modal>
+
+	{#if editingKind}
+		<ModelKindEditor model={editingKind} mediaSupported={mediaProviderSupported(editingKind.provider_id)} {token} {projectId} onclose={() => (editingKind = null)} onsaved={async () => { selectedModelIds = {}; resetModelDrag(); await load(); }} />
+	{/if}
 
 	<Modal open={editingCapabilities !== null} onClose={() => { if (!capSaving) editingCapabilities = null; }} dismissible={!capSaving} ariaLabel={t('configuration.editModelCapabilities')}>
 		<div class="max-h-[calc(100vh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">

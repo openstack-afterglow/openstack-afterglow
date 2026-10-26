@@ -73,7 +73,7 @@
       if (activeDomain === 'networks') selection.retain(networks.map((network) => network.id));
       error = '';
     } catch (e) {
-      if (!cached) error = e instanceof ApiError ? t('networks.loadFailed', { status: e.status }) : t('networks.serverError');
+      error = e instanceof ApiError ? t('networks.loadFailed', { status: e.status }) : t('networks.serverError');
     } finally { loading = false; }
   }
 
@@ -190,7 +190,7 @@
     history.pushState({}, '', '/dashboard/network/networks');
   }
 
-  const ar = createAutoRefresh(() => { fetchNetworks(); fetchFloatingIps(); }, {
+  const ar = createAutoRefresh(async () => { await Promise.allSettled([fetchNetworks(), fetchFloatingIps()]); }, {
     storageKey: 'dashboard-network-networks',
     defaultActive: true, defaultInterval: 30, intervalOptions: [10, 15, 30, 60], invokeOnMount: false,
   });

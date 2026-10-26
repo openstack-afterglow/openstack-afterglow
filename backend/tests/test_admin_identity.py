@@ -388,17 +388,23 @@ async def _assert_assignment_sessions(sessions):
 
 
 @pytest.mark.asyncio
-async def test_assign_admin_role_preserves_login(admin_client, mock_conn, assignment_authority):
-    """A project admin grant changes authority without deleting login families."""
+async def test_assign_admin_role_is_denied_without_native_writes_or_logout(
+    admin_client, mock_conn, assignment_authority
+):
+    """A denied native admin project grant must not mutate IAM or login families."""
     sessions = await _assignment_sessions("target-user-1")
     resp = await admin_client.post(
         "/api/v1/admin/roles/assign?domain_id=default",
         json={"user_id": "target-user-1", "project_id": "admin-proj", "role_id": _ADMIN_ROLE_ID},
     )
 
-    assert resp.status_code == 200
-    assert resp.json() == {"status": "assigned"}
-    assert assignment_authority.assignments == {("admin-proj", "target-user-1", _ADMIN_ROLE_ID)}
+    assert resp.status_code == 422
+    assert "removal-only" in resp.json()["detail"]
+    assert assignment_authority.assignments == set()
+    mock_conn.identity.assign_project_role_to_user.assert_not_called()
+    mock_conn.identity.unassign_project_role_from_user.assert_not_called()
+    assignment_authority.revoke_token.assert_not_called()
+    assignment_authority.record.assert_not_awaited()
     await _assert_assignment_sessions(sessions)
 
 
@@ -615,6 +621,35 @@ async def test_revoke_system_role_revokes_sessions(admin_client, system_keystone
     assert ks.calls == [("revoke", "target-user-sys")]
     mock_revoke.assert_awaited_once_with("target-user-sys")
     assert mock_record.call_args.kwargs["action"] == "admin_system_role_revoke"
+
+
+@pytest.mark.asyncio
+async def test_native_admin_project_restriction_does_not_block_dedicated_system_admin_lifecycle(
+    admin_client, system_keystone, monkeypatch
+):
+    ks = system_keystone(_SystemKeystone({"admin-1"}))
+    project_assignment = AsyncMock(side_effect=AssertionError("System scope must not use project assignment"))
+    monkeypatch.setattr(identity_roles, "change_project_assignment", project_assignment)
+    with (
+        patch("app.api.identity.admin_identity.session_store.revoke_user_sessions", new=AsyncMock(return_value=1)),
+        patch("app.api.identity.admin_identity.activity.record", new=AsyncMock()),
+    ):
+        granted = await admin_client.post(
+            "/api/v1/admin/identity/system-roles/grant", json={"user_id": "target-user-sys"}
+        )
+        assert granted.status_code == 200
+        assert ks.direct == {"admin-1", "target-user-sys"}
+        revoked = await admin_client.post("/api/v1/admin/identity/system-roles/revoke", json={"user_id": "admin-1"})
+        assert revoked.status_code == 200
+        assert ks.direct == {"target-user-sys"}
+        protected = await admin_client.post(
+            "/api/v1/admin/identity/system-roles/revoke", json={"user_id": "target-user-sys"}
+        )
+    assert protected.status_code == 422
+    assert "마지막" in protected.json()["detail"]
+    assert ks.direct == {"target-user-sys"}
+    assert ks.calls == [("grant", "target-user-sys"), ("revoke", "admin-1")]
+    project_assignment.assert_not_awaited()
 
 
 @pytest.mark.asyncio

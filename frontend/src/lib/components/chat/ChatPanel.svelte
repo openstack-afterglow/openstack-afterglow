@@ -701,7 +701,7 @@
 	let titlePollTimer: ReturnType<typeof setInterval> | null = null;
 
 	function checkAndStartPendingTitlePolling() {
-		if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+		if (navigator.onLine === false || (typeof document !== 'undefined' && document.visibilityState !== 'visible')) {
 			stopTitlePolling();
 			return;
 		}
@@ -749,7 +749,7 @@
 			stopTitlePolling();
 			return;
 		}
-		if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+		if (navigator.onLine === false || (typeof document !== 'undefined' && document.visibilityState !== 'visible')) {
 			stopTitlePolling();
 			return;
 		}
@@ -798,7 +798,10 @@
 			if (generation === titlePollingGeneration) {
 				activeTitlePollRequests = Math.max(0, activeTitlePollRequests - 1);
 				const tracker = pendingTitleTrackers.get(convId);
-				if (tracker) tracker.inFlight = false;
+				if (tracker) {
+					tracker.inFlight = false;
+					tracker.nextPollAt = Date.now() + (Date.now() - tracker.startedAt >= 30_000 ? 15_000 : 1_000);
+				}
 			}
 		}
 	}

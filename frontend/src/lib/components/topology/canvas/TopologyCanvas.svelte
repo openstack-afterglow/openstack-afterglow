@@ -15,6 +15,8 @@
 	import CanvasNodeCard from './CanvasNodeCard.svelte';
 	import CanvasToolbar from './CanvasToolbar.svelte';
 	import CanvasZoneLayer, { type ZoneRenderItem } from './CanvasZoneLayer.svelte';
+	import CanvasDomainLayer from './CanvasDomainLayer.svelte';
+	import { domainGroupLabel } from '../domainGroups';
 	import { clearManualPositions, layoutStorageKey, loadManualPositions, saveManualPositions, type LayoutScope } from './layoutStorage';
 	import {
 		assignTenantColors,
@@ -32,7 +34,7 @@
 		switchId,
 		trunkNetIds,
 	} from './topologyGraph';
-	import { FIT_K_MAX, K_MAX, K_MIN, applyManualPositions, autoLayout, center, computeGeometry, contentBounds, cubic, fitTransform, nodeBounds, resolveManualOverlap, sideFor, zoomAt as zoomAtPure } from './topologyLayout';
+	import { FIT_K_MAX, K_MAX, K_MIN, applyManualPositions, autoLayout, center, computeGeometry, contentBounds, cubic, fitTransform, nodeBounds, packDomainGroups, resolveManualOverlap, sideFor, zoomAt as zoomAtPure } from './topologyLayout';
 	import type { CanvasEdge, CanvasNet, EdgeStyle, ManualPositions, Pt, Rect, ViewState } from './types';
 	import { createViewport, easeEmphasized, interpolateView } from './viewport.svelte';
 	import { createFirstArrival, enterStep } from '../firstArrival.svelte';
@@ -101,7 +103,7 @@
 
 	// ───────── 그래프·자동 배치(구조 변경에만 반응, traffic 은 읽지 않는다)
 	const built = $derived.by(() => {
-		const graph = buildGraph(data, { projectId, showAll });
+		const graph = buildGraph(data, { projectId, showAll, adminView });
 		const layout = autoLayout(graph);
 		assignTenantColors(graph, [...layout.order.lower, ...layout.order.solo]);
 		return { graph, layout };
@@ -169,6 +171,7 @@
 			lastStorageKey = key;
 			autoPos = new Map([...fresh.pos].map(([id, r]) => [id, { x: r.x, y: r.y }]));
 			const pruned = applyManualPositions(fresh, source);
+			packDomainGroups(graph, fresh, false);
 			manual = pruned;
 			persistManual(key, pruned);
 			slotOrderCache = undefined;
@@ -203,8 +206,6 @@
 	const worldTransform = $derived(`translate(${vp.panX}px, ${vp.panY}px) scale(${vp.k})`);
 	const gridSize = $derived(`${120 * vp.k}px ${120 * vp.k}px, ${120 * vp.k}px ${120 * vp.k}px, ${24 * vp.k}px ${24 * vp.k}px, ${24 * vp.k}px ${24 * vp.k}px`);
 	const gridPosition = $derived(`${vp.panX}px ${vp.panY}px`);
-	const svgW = $derived(Math.max(layout.bands.RIGHT_X + 800, 1600));
-	const svgH = $derived(Math.max(layout.bands.BOTTOM_Y + 1200, 1600));
 
 	function measure(): { w: number; h: number } {
 		return { w: viewportEl?.clientWidth ?? 0, h: viewportEl?.clientHeight ?? 0 };
@@ -351,6 +352,9 @@
 		slotOrderCache = res.slotOrder;
 		return res;
 	});
+	const canvasBounds = $derived(contentBounds(geometry.zones, pos, geometry.domains));
+	const svgW = $derived(Math.max(canvasBounds.x + canvasBounds.w + 800, 1600));
+	const svgH = $derived(Math.max(canvasBounds.y + canvasBounds.h + 1200, 1600));
 	const baseStyles = $derived.by(() => {
 		const m = new Map<string, EdgeStyle>();
 		for (const e of allEdges) m.set(e.key, edgeStyle(e, traffic, graph));
@@ -437,7 +441,7 @@
 				const n = graph.netById.get(nid);
 				if (!z || !n) continue;
 				let lx = z.x + 12;
-				if (prev && prev.x + prev.w > z.x) lx = prev.x + prev.w + 12;
+				if (!adminView && prev && prev.x + prev.w > z.x) lx = prev.x + prev.w + 12;
 				const sx = lx * k + panX, sy = z.y * k + panY;
 				const avail = Math.max(56, (z.x + z.w) * k + panX - sx - 8);
 				const adminPills: string[] = [];
@@ -512,7 +516,7 @@
 
 	const offscreen = $derived.by(() => {
 		if (vw <= 0 || vh <= 0) return false;
-		const b = contentBounds(geometry.zones, pos);
+		const b = contentBounds(geometry.zones, pos, geometry.domains);
 		const { panX, panY, k } = vp;
 		const x1 = b.x * k + panX, y1 = b.y * k + panY, x2 = x1 + b.w * k, y2 = y1 + b.h * k;
 		return x2 < 0 || y2 < 0 || x1 > vw || y1 > vh;
@@ -572,7 +576,7 @@
 	// ───────── 뷰 조작
 	function fitAll(animate = true) {
 		const { w, h } = measure();
-		const target = fitTransform(contentBounds(geometry.zones, pos), w, h, 40, K_MIN, FIT_K_MAX);
+		const target = fitTransform(contentBounds(geometry.zones, pos, geometry.domains), w, h, 40, K_MIN, FIT_K_MAX);
 		if (animate) moveCamera(target, MOTION_DURATION_MS.data);
 		else { cancelCamera(); pendingView = null; vp.set(target); }
 	}
@@ -619,6 +623,7 @@
 			pos.set(id, { ...pos.get(id)!, ...moved[id] });
 			announce(t('canvas.moved', { name: graph.nodes.get(id)?.name ?? t('canvas.node') }));
 		}
+		packDomainGroups(graph, { pos, zoneMembers: layout.zoneMembers }, false);
 		const auto = autoPos.get(id);
 		if (auto && auto.x === r.x && auto.y === r.y) {
 			// 자동 배치 좌표와 같으면 핀을 만들지 않는다(이미 있던 핀은 해제)
@@ -1207,6 +1212,7 @@
 			style:background-position={gridPosition}
 		>
 			<div class="world topology-world" class:is-gesturing={gesturing} data-lod={lod} style:transform={worldTransform} data-linking={link ? 'true' : undefined}>
+				<CanvasDomainLayer groups={graph.domainGroups ?? []} rects={geometry.domains} {query} {domainGroupLabel} panX={vp.panX} panY={vp.panY} k={vp.k} world={true} />
 				<CanvasZoneLayer zones={zoneRender} width={svgW} height={svgH} />
 				<CanvasEdgeLayer edges={edgeRender} width={svgW} height={svgH} />
 				<svg class="layer-link" aria-hidden="true" width={svgW} height={svgH}>
@@ -1244,6 +1250,7 @@
 					{/each}
 				</div>
 			</div>
+			<CanvasDomainLayer groups={graph.domainGroups ?? []} rects={geometry.domains} {query} {domainGroupLabel} panX={vp.panX} panY={vp.panY} k={vp.k} />
 			<CanvasHud labels={hudLabels} badges={hudBadges} {badgesHidden} {selectedNetId} onselectnet={selectNetwork} entering={arrival.active} />
 
 			<div class="corner" data-hud-control>

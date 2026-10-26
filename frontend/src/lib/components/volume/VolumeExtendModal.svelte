@@ -7,9 +7,10 @@
 	import { Alert, Button, Field, FormModal, TextInput } from '$lib/components/ui';
 	import { toast } from '$lib/stores/toast';
 
-	let { volume, projectId, onclose, onsuccess }: {
+	let { volume, projectId, adminInstanceId, onclose, onsuccess }: {
 		volume: Volume | null;
 		projectId: string | undefined;
+		adminInstanceId?: string;
 		onclose: () => void;
 		onsuccess: () => void;
 	} = $props();
@@ -20,7 +21,7 @@
 	let extending = $state(false);
 	let error = $state('');
 	let invalidated = $state(false);
-	let session = $state<{ id: string; projectId: string; token: string } | null>(null);
+	let session = $state<{ id: string; projectId: string; token: string; adminInstanceId: string | undefined; transportProjectId: string | undefined } | null>(null);
 	let targetId: string | null = null;
 	let generation = 0;
 
@@ -30,6 +31,8 @@
 		const token = $auth.token;
 		const scope = projectId;
 		const writable = $canWrite;
+		const parentId = adminInstanceId;
+		const transportProjectId = parentId ? $auth.projectId ?? undefined : scope;
 		untrack(() => {
 			if (id !== targetId) {
 				targetId = id;
@@ -37,9 +40,10 @@
 				newSize = String(Math.min((size ?? 0) + 10, maxSize));
 				error = '';
 				extending = false;
-				session = id && token && scope ? { id, projectId: scope, token } : null;
+				session = id && token && scope ? { id, projectId: scope, token, adminInstanceId: parentId, transportProjectId } : null;
 				invalidated = !session || !writable;
-			} else if (!writable || !session || session.token !== token || session.projectId !== scope) {
+			} else if (!writable || !session || session.token !== token || session.projectId !== scope
+				|| session.adminInstanceId !== parentId || session.transportProjectId !== transportProjectId) {
 				generation++;
 				invalidated = true;
 			}
@@ -55,12 +59,14 @@
 	const sizeValid = $derived(!!volume && Number.isSafeInteger(Number(newSize))
 		&& Number(newSize) > volume.size && Number(newSize) <= maxSize);
 	const ready = $derived(!invalidated && !!session && $canWrite && !!$auth.token
-		&& session.token === $auth.token && session.projectId === projectId && eligible(volume));
+		&& session.token === $auth.token && session.projectId === projectId && session.adminInstanceId === adminInstanceId && eligible(volume));
 
 	function close() { if (!extending) onclose(); }
 	function ownsRequest(scope: NonNullable<typeof session>, requestGeneration: number) {
 		return requestGeneration === generation && !invalidated && $canWrite
-			&& volume?.id === scope.id && projectId === scope.projectId && $auth.token === scope.token;
+			&& volume?.id === scope.id && projectId === scope.projectId && $auth.token === scope.token
+			&& adminInstanceId === scope.adminInstanceId
+			&& (scope.adminInstanceId ? $auth.projectId ?? undefined : projectId) === scope.transportProjectId;
 	}
 
 	async function confirmExtend() {
@@ -76,13 +82,16 @@
 		extending = true;
 		error = '';
 		try {
-			const current = await api.get<Volume>(`/api/v1/volumes/${encodeURIComponent(scope.id)}`, scope.token, scope.projectId, { refresh: true });
+			const volumePath = scope.adminInstanceId
+				? `/api/v1/admin/instances/${encodeURIComponent(scope.adminInstanceId)}/volumes/${encodeURIComponent(scope.id)}`
+				: `/api/v1/volumes/${encodeURIComponent(scope.id)}`;
+			const current = await api.get<Volume>(volumePath, scope.token, scope.transportProjectId, { refresh: true });
 			if (!ownsRequest(scope, requestGeneration)) return;
 			if (current.id !== scope.id || !eligible(current) || current.size !== target.size) {
 				error = t('extendModal.targetUnavailable');
 				return;
 			}
-			for (const attachment of current.attachments) {
+			for (const attachment of scope.adminInstanceId ? [] : current.attachments) {
 				const serverId = attachment.server_id;
 				if (typeof serverId !== 'string' || !serverId) {
 					error = t('extendModal.offlineRequired');
@@ -99,8 +108,8 @@
 			}
 			if (!ownsRequest(scope, requestGeneration) || !eligible(volume) || volume.size !== current.size) return;
 			const accepted = await api.post<Volume>(
-				`/api/v1/volumes/${encodeURIComponent(scope.id)}/extend`,
-				{ new_size: requestedSize }, scope.token, scope.projectId,
+				`${volumePath}/extend`,
+				{ new_size: requestedSize }, scope.token, scope.transportProjectId,
 			);
 			if (!ownsRequest(scope, requestGeneration)) return;
 			toast.info(t('extendModal.accepted', { size: accepted.size, status: accepted.status }));

@@ -55,6 +55,9 @@ export function createImageDetailController(opts: ImageDetailControllerOpts): Im
 	function isCurrent(scope: ImageDetailScope): boolean {
 		return sameContext(scope) && scope.generation === generation;
 	}
+	function imageEndpoint(scope: ImageDetailScope): string {
+		return `${scope.isAdmin ? '/api/v1/admin/images' : '/api/v1/images'}/${scope.imageId}`;
+	}
 	// Domain state
 	let image = $state<ImageDetail | null>(null);
 	let members = $state<ImageMember[]>([]);
@@ -96,7 +99,13 @@ export function createImageDetailController(opts: ImageDetailControllerOpts): Im
 
 	// Derived
 	const isOwner = $derived(sameContext(loadedScope) && !!image && !!opts.projectId() && image.owner === opts.projectId());
-	const canEditMetadata = $derived(sameContext(loadedScope) && !!image && !!opts.token() && (isOwner || opts.isAdmin()));
+	const canManageImage = $derived(sameContext(loadedScope) && !!image && !!opts.token() && (isOwner || opts.isAdmin()));
+	const canEditMetadata = $derived(canManageImage);
+	// Palimpsest exports retain the caller's project token/trust, never the admin executor.
+	const canExport = $derived(sameContext(loadedScope) && !!image && (!opts.isAdmin() || isOwner
+		|| image.visibility === 'public' || image.visibility === 'community'
+		|| (image.visibility === 'shared' && !loadingMembers
+			&& members.some(member => member.member_id === opts.projectId() && member.status === 'accepted'))));
 	const windowsCurrentProperties = $derived(image && sameContext(loadedScope) ? windowsSetupProperties(image) : {});
 	const windowsStatus = $derived(windowsSetupStatus(windowsCurrentProperties));
 	const windowsAccountValid = $derived(isWindowsSetupAccountValid(windowsAccount));
@@ -118,9 +127,10 @@ export function createImageDetailController(opts: ImageDetailControllerOpts): Im
 		loading = true;
 		error = '';
 		image = null;
+		members = [];
 		loadedScope = null;
 		try {
-			const loadedImage = await api.get<ImageDetail>(`/api/v1/images/${scope.imageId}`, scope.token, scope.projectId);
+			const loadedImage = await api.get<ImageDetail>(imageEndpoint(scope), scope.token, scope.projectId);
 			if (!isCurrent(scope)) return;
 			visibilityValue = loadedImage.visibility ?? '';
 			image = loadedImage;
@@ -140,7 +150,7 @@ export function createImageDetailController(opts: ImageDetailControllerOpts): Im
 		loadingMembers = true;
 		memberError = '';
 		try {
-			const loaded = await api.get<ImageMember[]>(`/api/v1/images/${scope.imageId}/members`, scope.token, scope.projectId);
+			const loaded = await api.get<ImageMember[]>(`${imageEndpoint(scope)}/members`, scope.token, scope.projectId);
 			if (isCurrent(scope)) members = loaded;
 		} catch {
 			if (isCurrent(scope)) members = [];
@@ -184,7 +194,7 @@ export function createImageDetailController(opts: ImageDetailControllerOpts): Im
 	}
 
 	async function saveVisibility() {
-		if (!image || !isOwner || savingVisibility || editingProps || windowsEditing || savingProps || windowsSaving
+		if (!image || !canManageImage || savingVisibility || editingProps || windowsEditing || savingProps || windowsSaving
 			|| visibilityValue === image.visibility) return;
 		const scope = captureScope();
 		savingVisibility = true;
@@ -192,7 +202,7 @@ export function createImageDetailController(opts: ImageDetailControllerOpts): Im
 		visibilitySuccess = false;
 		try {
 			const updated = await api.patch<ImageInfo>(
-				`/api/v1/images/${scope.imageId}`, { visibility: visibilityValue }, scope.token, scope.projectId
+				imageEndpoint(scope), { visibility: visibilityValue }, scope.token, scope.projectId
 			);
 			if (!isCurrent(scope) || !image) return;
 			// This endpoint returns ImageInfo, unlike the full properties PATCH projection.
@@ -209,12 +219,12 @@ export function createImageDetailController(opts: ImageDetailControllerOpts): Im
 	}
 
 	async function addMember() {
-		if (!image || !isOwner || addingMember || !newMemberId.trim()) return;
+		if (!image || !canManageImage || addingMember || !newMemberId.trim()) return;
 		const scope = captureScope();
 		addingMember = true;
 		memberError = '';
 		try {
-			await api.post(`/api/v1/images/${scope.imageId}/members`, { member: newMemberId.trim() }, scope.token, scope.projectId);
+			await api.post(`${imageEndpoint(scope)}/members`, { member: newMemberId.trim() }, scope.token, scope.projectId);
 			if (!isCurrent(scope)) return;
 			newMemberId = '';
 			await loadMembers();
@@ -226,12 +236,12 @@ export function createImageDetailController(opts: ImageDetailControllerOpts): Im
 	}
 
 	async function removeMember(memberId: string) {
-		if (!image || !isOwner || removingMember) return;
+		if (!image || !canManageImage || removingMember) return;
 		const scope = captureScope();
 		removingMember = memberId;
 		memberError = '';
 		try {
-			await api.delete(`/api/v1/images/${scope.imageId}/members/${memberId}`, scope.token, scope.projectId);
+			await api.delete(`${imageEndpoint(scope)}/members/${memberId}`, scope.token, scope.projectId);
 			if (isCurrent(scope)) await loadMembers();
 		} catch (e) {
 			if (isCurrent(scope)) memberError = e instanceof ApiError ? e.message : t('detailController.members.deleteFailed');
@@ -327,8 +337,7 @@ export function createImageDetailController(opts: ImageDetailControllerOpts): Im
 
 	// The existing API returns get_image's full authoritative projection after JSON-Patch.
 	function patchProperties(scope: ImageDetailScope, set: Record<string, string>, remove: string[]) {
-		const endpoint = scope.isAdmin ? '/api/v1/admin/images' : '/api/v1/images';
-		return api.patch<ImageDetail>(`${endpoint}/${scope.imageId}/properties`, { set, remove }, scope.token, scope.projectId);
+		return api.patch<ImageDetail>(`${imageEndpoint(scope)}/properties`, { set, remove }, scope.token, scope.projectId);
 	}
 
 	function startWindowsSetup() {
@@ -376,12 +385,12 @@ export function createImageDetailController(opts: ImageDetailControllerOpts): Im
 	}
 
 	async function deleteImage() {
-		if (!image || !isOwner || deleting || savingProps || windowsSaving) return;
+		if (!image || !canManageImage || deleting || savingProps || windowsSaving) return;
 		const scope = captureScope();
 		if (!(await confirmDialog(t('detailController.deleteConfirm', { name: image.name }))) || !isCurrent(scope)) return;
 		deleting = true;
 		try {
-			await api.delete(`/api/v1/images/${scope.imageId}`, scope.token, scope.projectId);
+			await api.delete(imageEndpoint(scope), scope.token, scope.projectId);
 			if (!isCurrent(scope)) return;
 			opts.onDelete?.(scope.imageId);
 			opts.onClose?.();
@@ -395,7 +404,7 @@ export function createImageDetailController(opts: ImageDetailControllerOpts): Im
 	return {
 		// State getters
 		get image() { return sameContext(loadedScope) ? image : null; },
-		get members() { return members; },
+		get members() { return sameContext(loadedScope) ? members : []; },
 		get loading() { return loading; },
 		get error() { return error; },
 		get deleting() { return deleting; },
@@ -438,6 +447,8 @@ export function createImageDetailController(opts: ImageDetailControllerOpts): Im
 		get canSaveWindowsSetup() { return canSaveWindowsSetup; },
 		// Derived getters
 		get isOwner() { return isOwner; },
+		get canManageImage() { return canManageImage; },
+		get canExport() { return canExport; },
 		get canEditMetadata() { return canEditMetadata; },
 		get isAdmin() { return opts.isAdmin(); },
 		// Handlers
@@ -495,6 +506,8 @@ export interface ImageDetailController {
 	readonly windowsChanges: WindowsSetupChange[];
 	readonly canSaveWindowsSetup: boolean;
 	readonly isOwner: boolean;
+	readonly canManageImage: boolean;
+	readonly canExport: boolean;
 	readonly canEditMetadata: boolean;
 	readonly isAdmin: boolean;
 	loadImage(): Promise<void>;

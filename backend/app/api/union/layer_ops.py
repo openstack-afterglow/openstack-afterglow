@@ -1472,6 +1472,10 @@ def _profile_layers(row) -> list[str]:
 
 
 def _is_blocking_consume(row) -> bool:
+    if (getattr(row, "resource_snapshot", None) or {}).get("catalog_revision"):
+        # Caller-project work is not observable through default service Nova.
+        # Unknown journal outcomes remain blockers, never absence-by-age proof.
+        return str(getattr(row, "status", "")).lower() in {*_CONSUME_BLOCKING_STATUSES, "indeterminate"}
     if getattr(row, "transport", "nfs") == "block":
         return (bool(getattr(row, "run_id", None)) and getattr(row, "cleanup_state", None) != "complete") or getattr(
             row, "status", None
@@ -1531,6 +1535,8 @@ def _freshest_timestamp(row, *names: str) -> datetime | None:
 
 
 def _should_terminalize_no_server_consume(row, now: datetime) -> bool:
+    if (getattr(row, "resource_snapshot", None) or {}).get("catalog_revision"):
+        return False
     if getattr(row, "server_id", None) or not _is_blocking_consume(row):
         return False
     status = str(getattr(row, "status", "") or "").lower()
@@ -1545,7 +1551,12 @@ def _should_terminalize_no_server_consume(row, now: datetime) -> bool:
 async def _sync_consume_rows_with_nova(session, rows: list[object]) -> None:
     # The durable owner/run reconciler owns block disposition; Nova absence is
     # not proof that volumes and uncertain allocation intents were reclaimed.
-    rows = [row for row in rows if getattr(row, "transport", "nfs") != "block"]
+    rows = [
+        row
+        for row in rows
+        if getattr(row, "transport", "nfs") != "block"
+        and not (getattr(row, "resource_snapshot", None) or {}).get("catalog_revision")
+    ]
     now = datetime.now(UTC)
     changed = False
     for row in rows:

@@ -84,9 +84,9 @@ const originalAnimate = Object.getOwnPropertyDescriptor(Element.prototype, 'anim
 
 beforeEach(() => {
 	vi.resetAllMocks();
-	// Leave timeout/RAF real for Svelte transitions and Testing Library; only the
-	// production interval clock and Date are advanced by these tests.
-	vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+	// The production scheduler advances from request completion via setTimeout.
+	// RAF stays real for transitions; both request timer primitives share fake time.
+	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
 	vi.setSystemTime(new Date('2026-09-20T00:00:00Z'));
 	localStorage.clear();
 	hidden = false;
@@ -385,6 +385,8 @@ describe('Waygate visible detail polling', () => {
 		expect(panel().getByText('네트워크 이름 확인 불가')).toBeTruthy();
 		expect(panel().getByText('new-network')).toBeTruthy();
 		await advance(13_000);
+		for (const path of [detailPath, attachmentsPath]) expect(calls(path)).toBe(1);
+		await advance(2_000);
 		for (const path of [detailPath, attachmentsPath]) expect(calls(path)).toBe(2);
 		expect(calls(catalogPath)).toBe(0);
 	});

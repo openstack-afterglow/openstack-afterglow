@@ -2007,3 +2007,99 @@ async def test_provider_switch_back_to_identity_home_enforces_destination_email_
         )
     assert caught.value.code == "email_domain_not_allowed"
     require_provider.assert_awaited_once_with("tenant-b", "provider", 7, "real@allowed.test")
+
+
+@pytest.mark.asyncio
+async def test_projectless_human_admin_catalog_uses_real_jwt_session_without_fabricated_target(
+    domain_client, monkeypatch
+):
+    from fastapi.responses import JSONResponse
+
+    from app.api.palimpsest import catalog
+    from app.config import get_settings
+    from app.services import service_proxy
+
+    client, state = domain_client
+    tokens = await legacy_projectless_login(client, state, "signup")
+    assert tokens["project_id"] == ""
+    grant = {"user": {"id": "signup"}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}}
+    state.assignments.append(grant)
+    before = deepcopy((state.projects, state.grants))
+    monkeypatch.setattr(
+        catalog.service,
+        "managed_layers",
+        AsyncMock(return_value={"source": "managed", "items": [], "offset": 0, "has_more": False, "next_offset": None}),
+    )
+    request_headers = {"Authorization": f"Bearer {tokens['token']}"}
+    monkeypatch.setattr(get_settings(), "service_palimpsest_enabled", False)
+    managed = await client.get("/api/v1/admin/palimpsest/catalog", headers=request_headers)
+    assert managed.status_code == 200, managed.text
+    assert managed.json()["source"] == "managed"
+    captured = []
+
+    async def native_read(request, path, **kwargs):
+        captured.append((path, kwargs["headers"]))
+        return JSONResponse({"source": "hub", "items": [], "offset": 0, "has_more": False, "next_offset": None})
+
+    monkeypatch.setattr(get_settings(), "service_palimpsest_enabled", True)
+    monkeypatch.setattr(service_proxy, "_configured_internal_endpoint", lambda service: "https://catalog.example/v1")
+    monkeypatch.setattr(service_proxy, "_package_request", native_read)
+    hub = await client.get("/api/v1/admin/palimpsest/catalog?source=hub", headers=request_headers)
+    assert hub.status_code == 200, hub.text
+    assert captured == [("/v1/admin/catalog/layers", {"x-auth-token": "native:signup:", "accept": "application/json"})]
+    principal = await deps._resolve_jwt_token_info(
+        boundary_request("/api/v1/admin/palimpsest/catalog"), tokens["token"], None, preserve_original=True
+    )
+    assert principal["project_id"] == ""
+    stored = (await session(tokens))[1]
+    assert stored["project_id"] == "" and stored.get("target_project_id") is None
+    assert deepcopy((state.projects, state.grants)) == before
+    state.assignments.remove(grant)
+    revoked = await client.get("/api/v1/admin/palimpsest/catalog", headers=request_headers)
+    assert revoked.status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/v1/palimpsest/packages",
+        "/api/v1/palimpsest/catalog/assets",
+        "/api/v1/admin/palimpsest/catalogue",
+        "/api/v1/admin/palimpsest/catalog/1/extra",
+    ],
+)
+async def test_projectless_catalog_exception_never_broadens_package_or_neighbor_routes(domain_client, path):
+    client, state = domain_client
+    tokens = await legacy_projectless_login(client, state, "signup")
+    state.assignments.append(
+        {"user": {"id": "signup"}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}}
+    )
+    with pytest.raises(HTTPException) as denied:
+        await deps._resolve_jwt_token_info(boundary_request(path), tokens["token"], "", preserve_original=True)
+    assert denied.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_projectless_nonadmin_catalog_is_denied_by_real_dependency(domain_client):
+    client, state = domain_client
+    tokens = await legacy_projectless_login(client, state, "signup")
+    with pytest.raises(HTTPException) as denied:
+        await deps._resolve_jwt_token_info(
+            boundary_request("/api/v1/admin/palimpsest/catalog"), tokens["token"], "", preserve_original=True
+        )
+    assert denied.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_projectless_catalog_exception_is_read_only(domain_client):
+    client, state = domain_client
+    tokens = await legacy_projectless_login(client, state, "signup")
+    state.assignments.append(
+        {"user": {"id": "signup"}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}}
+    )
+    request = boundary_request("/api/v1/admin/palimpsest/catalog")
+    request.scope["method"] = "POST"
+    with pytest.raises(HTTPException) as denied:
+        await deps._resolve_jwt_token_info(request, tokens["token"], "", preserve_original=True)
+    assert denied.value.status_code == 403

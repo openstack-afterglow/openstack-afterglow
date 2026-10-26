@@ -195,3 +195,33 @@ async def test_invalidation_discards_supplied_operation_authority_reads(domain_n
         assert not operation.reads
         assert not domain_scope.has_scope_authority("creator", domain_id="tenant-a", operation=operation)
     assert invalidate.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_fresh_administrator_guard_reuses_only_its_reads_and_observes_next_guard_revocation(
+    domain_native, monkeypatch
+):
+    from app.api.deps import require_admin
+
+    n = domain_native
+    system_grant = row(role={"id": "admin"}, user={"id": "creator"}, scope={"system": {"all": True}})
+    n.raw.append(system_grant)
+    principal = {
+        "token": "native-creator",
+        "user_id": "creator",
+        "identity_domain_id": "home",
+        "domain_id": "tenant-a",
+        "project_id": "default-a",
+        "is_system_admin": True,
+    }
+
+    def validated(token, project_id="", *, operation=None):
+        assert token == "native-creator"
+        return {**principal, "project_id": project_id, "domain_id": "tenant-a", "roles": ["member"]}
+
+    monkeypatch.setattr(keystone, "validate_token", validated)
+    assert (await require_admin(dict(principal)))["_live_system_admin"] is True
+    n.raw = [grant for grant in n.raw if grant is not system_grant]
+    with pytest.raises(HTTPException) as denied:
+        await require_admin(dict(principal))
+    assert denied.value.status_code == 403

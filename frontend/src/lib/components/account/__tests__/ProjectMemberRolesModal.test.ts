@@ -96,6 +96,65 @@ describe('project member direct and inherited roles', () => {
 	});
 });
 
+describe('native admin removal-only selection', () => {
+	const nativeRole: AssignableProjectRole = { id: 'native-admin-id', name: 'admin', area: 'legacy', grade: 'admin', implied_role_ids: ['chat'], inherited_role_ids: ['chat'] };
+	const serviceAdmin: AssignableProjectRole = { id: 'service-admin-id', name: 'lumen_admin', area: 'lumen', grade: 'admin', implied_role_ids: [], inherited_role_ids: [] };
+	const checkbox = () => screen.getByRole('checkbox', { name: /^admin\b/i }) as HTMLInputElement;
+	it.each(['admin', 'ADMIN'])('blocks new %s grants even on synthetic changes without blocking project/service admin roles', async (name) => {
+		const onSave = vi.fn();
+		render(ProjectMemberRolesModal, { member: { ...member, direct_role_ids: ['user', 'legacy-id'] }, roles: [{ ...nativeRole, name }, ...roles, serviceAdmin], busy: false, error: '', onSave, onClose: vi.fn() });
+		expect(checkbox()).toMatchObject({ checked: false, disabled: true });
+		await fireEvent.change(checkbox(), { target: { checked: true } });
+		await chooseArea('project');
+		const projectAdmin = screen.getByRole('checkbox', { name: /^project_admin/ }) as HTMLInputElement;
+		expect(projectAdmin.disabled).toBe(false);
+		await fireEvent.click(projectAdmin);
+		await chooseArea('lumen');
+		const lumenAdmin = screen.getByRole('checkbox', { name: /^lumen_admin/ }) as HTMLInputElement;
+		expect(lumenAdmin.disabled).toBe(false);
+		await fireEvent.click(lumenAdmin);
+		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
+		expect(onSave).toHaveBeenCalledWith(['user', 'legacy-id', 'admin', 'service-admin-id']);
+	});
+	it('preserves an unchanged direct admin, then removes it without permitting re-add in the same draft', async () => {
+		const onSave = vi.fn();
+		const direct = ['native-admin-id', 'admin', 'legacy-id'];
+		render(ProjectMemberRolesModal, { member: { ...member, direct_role_ids: direct }, roles: [nativeRole, ...roles], busy: false, error: '', onSave, onClose: vi.fn() });
+		expect(checkbox()).toMatchObject({ checked: true, disabled: false });
+		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
+		expect(onSave).toHaveBeenLastCalledWith(direct);
+		await fireEvent.click(checkbox());
+		expect(checkbox()).toMatchObject({ checked: false, disabled: true });
+		await fireEvent.change(checkbox(), { target: { checked: true } });
+		await chooseArea('lumen');
+		expect(screen.getByRole('checkbox', { name: /^lumen-chat_user/ })).toMatchObject({ checked: false, disabled: false });
+		await chooseArea('legacy');
+		expect(checkbox()).toMatchObject({ checked: false, disabled: true });
+		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
+		expect(onSave).toHaveBeenLastCalledWith(['admin', 'legacy-id']);
+	});
+	it.each(['group', 'inherited', 'mixed'] as const)('does not turn %s external admin into a direct grant or revoke', async (source) => {
+		const onSave = vi.fn();
+		const direct = source === 'mixed' ? ['user'] : [];
+		render(ProjectMemberRolesModal, { member: { ...member, source, direct_role_ids: direct, external_role_ids: ['native-admin-id'] }, roles: [nativeRole, ...roles], busy: false, error: '', onSave, onClose: vi.fn() });
+		expect(checkbox()).toMatchObject({ checked: true, disabled: true });
+		await fireEvent.change(checkbox(), { target: { checked: false } });
+		await fireEvent.change(checkbox(), { target: { checked: true } });
+		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
+		if (source === 'mixed') expect(onSave).toHaveBeenCalledWith(direct);
+		else expect(onSave).not.toHaveBeenCalled();
+	});
+	it('removes the direct admin assignment while keeping overlapping external inheritance visible', async () => {
+		const onSave = vi.fn();
+		render(ProjectMemberRolesModal, { member: { ...member, source: 'mixed', direct_role_ids: ['native-admin-id', 'user'], external_role_ids: ['native-admin-id'] }, roles: [nativeRole, ...roles], busy: false, error: '', onSave, onClose: vi.fn() });
+		expect(checkbox()).toMatchObject({ checked: true, disabled: false });
+		await fireEvent.click(checkbox());
+		expect(checkbox()).toMatchObject({ checked: true, disabled: true });
+		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
+		expect(onSave).toHaveBeenCalledWith(['user']);
+	});
+});
+
 describe('server-provided transitive and shared descendants', () => {
 	const graphRoles: AssignableProjectRole[] = [
 		{ id: 'parent-a', name: 'lumen_admin', area: 'lumen', grade: 'admin', implied_role_ids: ['middle'], inherited_role_ids: ['middle', 'leaf'] },

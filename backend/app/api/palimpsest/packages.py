@@ -171,6 +171,8 @@ def read_query(request: Request, allowed: set[str], *, package_required: bool = 
         raise HTTPException(status_code=422, detail="Limit must be between 1 and 100")
     if "package_type" in query and query["package_type"] not in {"oci-image", "runtime-bundle"}:
         raise HTTPException(status_code=422, detail="Invalid package type")
+    if "q" in query and len(query["q"]) > 128:
+        raise HTTPException(status_code=422, detail="Search must not exceed 128 characters")
     return query
 
 
@@ -231,7 +233,7 @@ async def scoped_read(request: Request, info: dict, suffix: str, query: dict[str
 
 @router.get("")
 async def inventory(request: Request, info: dict = Depends(package_browser_identity)) -> Response:
-    return await scoped_read(request, info, "packages", read_query(request, {"limit", "cursor", "package_type"}))
+    return await scoped_read(request, info, "packages", read_query(request, {"limit", "cursor", "package_type", "q"}))
 
 
 @router.get("/detail")

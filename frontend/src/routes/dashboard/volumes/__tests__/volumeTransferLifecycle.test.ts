@@ -7,7 +7,7 @@ import { initLocale } from '$lib/i18n/runtime.svelte';
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn(), prefetch: vi.fn() }));
 vi.mock('$lib/api/client', () => {
 	class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
-	return { api: mocks, ApiError, memoryCache: new Map() };
+	return { api: mocks, ApiError };
 });
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'caller-token', userId: 'user-a', projectId: 'destination', projectName: 'Destination project', canWrite: true, isSystemAdmin: false }),
@@ -19,7 +19,6 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 vi.mock('$app/stores', () => ({
 	page: writable({ params: { id: 'disk-a' }, url: new URL('http://localhost/dashboard/volumes/disk-a'), data: {} }),
 }));
-import { memoryCache } from '$lib/api/client';
 import ListPage from '../+page.svelte';
 import DetailRoute from '../[id]/+page.svelte';
 
@@ -35,7 +34,6 @@ beforeAll(() => {
 });
 beforeEach(() => {
 	vi.clearAllMocks();
-	memoryCache.clear();
 	initLocale('ko');
 	inventory = [];
 	pending = [];

@@ -1,4 +1,9 @@
 {
+	"domain.label": "Domene {name} · {id}",
+	"domain.deleted": "Slettet eller utilgjengelig domene · {id}",
+	"domain.deletedProject": "Ukjent eierdomene · prosjekt {id}",
+	"domain.unknown": "Ukjent eier",
+	"domain.ownershipOnly": "Domeneboksene viser nettverkenes faktiske eierskap. Samme domene innebærer verken en nettverksforbindelse eller tillatelse til å kommunisere.",
 	"card.noStatus": "Ingen status",
 	"topology.lane": "Bane",
 	"topology.canvas": "Lerret",

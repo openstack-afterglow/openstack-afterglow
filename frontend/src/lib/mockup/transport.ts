@@ -491,7 +491,7 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	}
 
 	if (profile === 'admin' && pathname === '/api/v1/admin/projects/names') {
-		return state.projects.map(({ id, name }) => ({ id, name }));
+		return state.projects.map(({ id, name }) => ({ id, name, domain_id: 'mock-domain' }));
 	}
 	if (profile === 'admin' && pathname === '/api/v1/admin/gpu-aliases') return { aliases: [] };
 	if (profile === 'admin' && pathname === '/api/v1/admin/gpu-quotas/defaults') return [];
@@ -650,6 +650,13 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 
 	if (profile === 'admin' && pathname === '/api/v1/admin/topology') return state.topology;
 	if (profile === 'admin' && pathname === '/api/v1/admin/all-containers') return state.admin.containers;
+	if (method === 'GET' && profile === 'admin' && pathname === '/api/v1/admin/object-storage') {
+		const domain = params.get('domain_id');
+		if (domain && domain !== 'mock-domain') throw new ApiError(404, 'inventory_domain_not_found');
+		const project = params.get('project_id');
+		const items = project && project !== state.selectedProjectId ? [] : [{ name: 'sample-artifacts', count: 12, bytes: 734003200, project_id: state.selectedProjectId, project_name: state.projects.find(item => item.id === state.selectedProjectId)?.name ?? '' }];
+		return { items, project_count: items.length ? 1 : 0, partial: false, unavailable_projects: [] };
+	}
 	const adminContainerLogsId = pathname.match(/^\/api\/v1\/admin\/containers\/([^/]+)\/logs$/)?.[1];
 	if (profile === 'admin' && adminContainerLogsId) {
 		return { logs: state.admin.containerLogs[adminContainerLogsId] ?? '' };
@@ -702,6 +709,12 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (method === 'POST' && pathname === '/api/v1/auth/token/project') return projectTokenResponse(String((body as { project_id?: string } | null)?.project_id ?? state.projects[0].id), profile);
 	if (method === 'POST' && pathname === '/api/v1/networks/ensure-default') return ok204();
 
+	if (method === 'GET' && pathname === '/api/v1/dashboard/snapshot') {
+		return {
+			summary: { data: dashboardOverviewSummary(params.get('recent_limit')), error: null },
+			quotas: { data: dashboardOverviewQuotas(), error: null },
+		};
+	}
 	if (method === 'GET' && pathname === '/api/v1/dashboard/summary') {
 		if (params.get('view') === 'overview') return dashboardOverviewSummary(params.get('recent_limit'));
 		return { instances: { total: state.instances.length, active: state.instances.filter((item) => item.status === 'ACTIVE').length, shutoff: state.instances.filter((item) => item.status === 'SHUTOFF').length, error: state.instances.filter((item) => item.status === 'ERROR').length }, gpu_used: state.instances.filter((item) => item.flavor_name?.startsWith('gpu.')).length };
@@ -837,14 +850,14 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (method === 'GET' && pathname === '/api/v1/clusters') return [];
 	if (method === 'GET' && pathname === '/api/v1/clusters/templates') return [];
 	if (method === 'GET' && pathname === '/api/v1/containers') return [];
-	if (method === 'GET' && pathname === '/api/v1/database-instances') {
+	if (method === 'GET' && ['/api/v1/database-instances', '/api/v1/admin/database-instances'].includes(pathname)) {
 		return [{
 			id: 'mock-trove-instance-1', name: 'sample-customer-mysql', status: 'ACTIVE',
 			datastore: { type: 'mysql', version: '8.0' }, flavor_id: 'db.small',
 			flavor_ram: 2048, flavor_vcpus: 2, size: 20, created_at: NOW_ISO,
 			hostname: 'sample-customer-mysql.internal', ip: '192.0.2.41', ips: ['192.0.2.41'],
 			address_map: { private: ['192.0.2.41'] }, volume_used: 4.25,
-			...(params.get('all_projects') === 'true' ? { project_id: state.selectedProjectId } : {}),
+			...(pathname === '/api/v1/admin/database-instances' ? { project_id: state.selectedProjectId } : {}),
 		}];
 	}
 	if (method === 'GET' && pathname === '/api/v1/database-instances/backups') return [];

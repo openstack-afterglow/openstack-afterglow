@@ -5,7 +5,12 @@ import type { DockerfileLintResponse } from '$lib/components/admin/libraries/Doc
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ api: mocks, ApiError: class ApiError extends Error { status = 500; } }));
-vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project' }) }));
+vi.mock('$lib/stores/auth', () => ({
+	auth: writable({ token: 'token', projectId: 'project' }),
+	authReady: writable(false),
+	logoutInProgress: writable(false),
+	projectSwitching: writable(false),
+}));
 import Page from '../+page.svelte';
 
 const lintPath = '/api/v1/palimpsest/builds/dockerfile/lint';

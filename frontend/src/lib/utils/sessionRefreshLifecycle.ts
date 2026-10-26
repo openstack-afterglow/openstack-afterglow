@@ -47,11 +47,16 @@ export function startSessionRefreshLifecycle({
 
 	refreshIfExpiring();
 	window.addEventListener('focus', refreshIfExpiring);
+	// BFCache restores do not remount the app, and reconnects need not focus it.
+	window.addEventListener('pageshow', refreshIfExpiring);
+	window.addEventListener('online', refreshIfExpiring);
 	document.addEventListener('visibilitychange', onVisibilityChange);
 	const interval = window.setInterval(refreshIfExpiring, REFRESH_INTERVAL_MS);
 
 	return () => {
 		window.removeEventListener('focus', refreshIfExpiring);
+		window.removeEventListener('pageshow', refreshIfExpiring);
+		window.removeEventListener('online', refreshIfExpiring);
 		document.removeEventListener('visibilitychange', onVisibilityChange);
 		window.clearInterval(interval);
 	};

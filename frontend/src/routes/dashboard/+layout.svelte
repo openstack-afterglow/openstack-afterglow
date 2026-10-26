@@ -4,12 +4,14 @@
 	import { isRouteChange, playRouteEntrance } from '$lib/utils/motion';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import VmCreatePanel from '$lib/components/VmCreatePanel.svelte';
-	import { auth } from '$lib/stores/auth';
+	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
+	import { createPrivateViewScope } from '$lib/utils/privateViewScope';
 	import { projectList } from '$lib/stores/projectList';
 	import { wizardOpen } from '$lib/stores/wizard';
 	import { loadTutorialStatuses } from '$lib/tutorial/status';
 	import { getLocale } from '$lib/i18n/runtime.svelte';
 	let { children } = $props();
+	const privateViewScope = createPrivateViewScope();
 	// Terminal routes own live sockets and scrollback; language is display state, not their lifetime.
 	const pageLocaleKey = $derived(
 		$page.route.id === '/dashboard/containers/instances/[id]'
@@ -40,9 +42,11 @@
 <div class="flex h-[100dvh] overflow-hidden">
 	<Sidebar />
 	<main bind:this={mainEl} id="main-content" tabindex="-1" class="min-w-0 flex-1 overflow-y-auto pt-[var(--app-header-height)] focus:outline-none focus-visible:shadow-[var(--focus-ring)]">
-		{#key pageLocaleKey}
-			{@render children()}
-		{/key}
+		<div class={$authReady && !$projectSwitching ? 'contents' : 'hidden'} inert={!$authReady || $projectSwitching}>
+			{#key `${pageLocaleKey}:${$privateViewScope}`}
+				{#if !$projectSwitching}{@render children()}{/if}
+			{/key}
+		</div>
 	</main>
 </div>
 

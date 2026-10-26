@@ -61,14 +61,14 @@
 		security_group: (v) => (selectedSGs = v),
 	};
 
-	async function load() {
+	async function load(force = false) {
 		loading = true;
 		scanError = '';
 		try {
 			const data = await api.get<OrphanScanResponse>(
 				`/api/v1/admin/orphans?min_age_days=${minAgeDays}`,
 				token,
-				projectId
+				projectId, { refresh: force }
 			);
 			fips = data.floating_ips;
 			volumes = data.volumes;
@@ -147,7 +147,7 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading}
-				onManualRefresh={load}
+				onManualRefresh={ar.refresh}
 			/>
 		{/snippet}
 	</PageHeader>
@@ -161,7 +161,7 @@
 				min="1"
 				max="365"
 				bind:value={minAgeDays}
-				onchange={load}
+				onchange={() => load()}
 				class="w-20 bg-surface-sunken border border-line-2 rounded-md px-2 py-1 text-ink-0 text-sm focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
 			/>
 		</div>

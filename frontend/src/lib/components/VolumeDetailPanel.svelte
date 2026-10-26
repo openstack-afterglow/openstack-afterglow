@@ -53,8 +53,9 @@
 	});
 	provideVolumeDetailController(s);
 
-	const ar = createAutoRefresh(() => s.loadAll(), {
+	const ar = createAutoRefresh((force) => s.loadAll(force), {
 		storageKey: 'volume-detail-panel',
+		invokeOnMount: false,
 		defaultActive: true,
 		defaultInterval: 15,
 		intervalOptions: [10, 15, 30, 60],

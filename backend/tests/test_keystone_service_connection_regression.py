@@ -203,3 +203,46 @@ def _token_body(*, project_id, catalog_service=None):
             "catalog": catalog,
         }
     }
+
+
+@pytest.mark.parametrize("native_status", [200, 401, 403])
+def test_fresh_native_access_preserves_catalog_and_denial_without_reexchange(monkeypatch, native_status):
+    from keystoneauth1.exceptions.http import HttpError
+
+    calls = []
+
+    def request(_session, method, url, **kwargs):
+        calls.append((method, url, kwargs["headers"].get("X-Auth-Token")))
+        response = requests.Response()
+        response.url = url
+        response.status_code = native_status
+        response._content = json.dumps(
+            {"clusters": [{"id": "visible-cluster"}]} if native_status == 200 else {}
+        ).encode()
+        return response
+
+    monkeypatch.setattr(requests.sessions.Session, "request", request)
+    native = access.create(
+        body=_token_body(project_id="caller-project", catalog_service=("drover", "https://drover.catalog.test/v1")),
+        auth_token="freshly-verified-caller",
+    )
+    with patch("app.services.keystone.get_settings", return_value=_settings(service_drover_internal_url="")):
+        conn = keystone.get_openstack_connection("freshly-verified-caller", "caller-project", native_access=native)
+    try:
+        if native_status == 200:
+            assert keystone.get_drover_proxy(conn).clusters() == {"clusters": [{"id": "visible-cluster"}]}
+        else:
+            with pytest.raises(HttpError) as denied:
+                keystone.get_drover_proxy(conn).clusters()
+            assert denied.value.http_status == native_status
+    finally:
+        conn.close()
+    assert calls == [("GET", "https://drover.catalog.test/v1/clusters", "freshly-verified-caller")]
+
+
+@pytest.mark.parametrize("token,project", [("different-token", "caller-project"), ("verified", "foreign-project")])
+def test_verified_access_cannot_be_reused_for_another_credential_or_project(token, project):
+    native = access.create(body=_token_body(project_id="caller-project"), auth_token="verified")
+    with patch("app.services.keystone.get_settings", return_value=_settings()):
+        with pytest.raises(ValueError):
+            keystone.get_openstack_connection(token, project, native_access=native)

@@ -42,9 +42,9 @@
 		}
 	}
 
-	async function refreshCurrentNetwork() {
+	async function refreshCurrentNetwork(force = false) {
 		const id = $page.params.id;
-		if (id) await fetchNetwork(id);
+		if (id) await fetchNetwork(id, force);
 	}
 
 	const ar = createAutoRefresh(refreshCurrentNetwork, {
@@ -63,14 +63,14 @@
 			fetchRouters();
 		});
 	});
-	async function fetchNetwork(id: string) {
+	async function fetchNetwork(id: string, force = false) {
 		loading = true;
 		error = '';
 		try {
 			network = await api.get<NetworkDetail>(
 				`/api/v1/networks/${id}`,
 				$auth.token ?? undefined,
-				$auth.projectId ?? undefined
+				$auth.projectId ?? undefined, { refresh: force }
 			);
 		} catch (e) {
 			error = e instanceof ApiError ? t('networkDetail.loadFailed', { status: e.status, error: e.message }) : t('networkDetail.serverError');
@@ -249,7 +249,7 @@
 			bind:arActive={ar.active}
 			bind:arInterval={ar.intervalSeconds}
 			arIntervalOptions={ar.intervalOptions}
-			onManualRefresh={refreshCurrentNetwork}
+			onManualRefresh={ar.refresh}
 			canManage={canManageNetwork}
 			onDelete={deleteNetwork}
 		/>

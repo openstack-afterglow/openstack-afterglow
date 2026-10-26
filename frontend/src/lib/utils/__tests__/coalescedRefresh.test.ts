@@ -115,4 +115,17 @@ describe('createCoalescedRefresh', () => {
 		await expect(refresh.run()).resolves.toBeUndefined();
 		expect(task).toHaveBeenNthCalledWith(2, false);
 	});
+
+	it('disposes queued force and mutation waiters without replaying departed work', async () => {
+		const pending = deferred<void>();
+		const task = vi.fn(() => pending.promise);
+		const refresh = createCoalescedRefresh(task);
+		const active = refresh.run();
+		const forced = refresh.run(true);
+		const invalidated = refresh.invalidate();
+		refresh.dispose();
+		pending.resolve();
+		await Promise.all([active, forced, invalidated, refresh.run(), refresh.invalidate()]);
+		expect(task).toHaveBeenCalledOnce();
+	});
 });

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/topology';
+	import { domainGroupLabel, groupNetworksByDomain } from './topology/domainGroups';
 	import { onMount, untrack, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import NetworkLane from './topology/NetworkLane.svelte';
@@ -18,6 +19,7 @@
 		projectId = null,
 		showAll = false,
 		arrivalScope = projectId ?? '',
+		adminView = false,
 		fitWidth: _fitWidth = false,
 		traffic = null,
 		selectedId: selectedIdProp = undefined as string | null | undefined,
@@ -32,6 +34,7 @@
 		projectId?: string | null;
 		showAll?: boolean;
 		arrivalScope?: string;
+		adminView?: boolean;
 		fitWidth?: boolean;
 		traffic?: TopologyTraffic | null;
 		selectedId?: string | null;
@@ -64,6 +67,7 @@
 		data: () => data,
 		projectId: () => projectId,
 		showAll: () => showAll,
+		adminView: () => adminView,
 		traffic: () => traffic,
 		selectedId: () => selectedId,
 		hoveredId: () => hoveredId,
@@ -165,6 +169,7 @@
 	}
 </script>
 
+
 <div class="w-full" bind:this={containerEl}>
 	<TopologyHeader
 		bind:searchTerm
@@ -179,6 +184,13 @@
 			<div class="flex" style="width: max-content; transform: translateX({-scrollLeft}px); will-change: transform">
 				<div style="width: {SIDEBAR_W + 24}px; flex-shrink: 0"></div>
 				<div class="flex-shrink-0" style="width: {ctrl.canvasContentW}px">
+					{#if adminView}
+						<div class="flex text-xs text-ink-1" style="gap: {LANE_GAP}px; padding: 0 {LANE_PAD}px">
+							{#each groupNetworksByDomain(ctrl.orderedNetworks) as group (group.id)}
+								<div class="truncate rounded border border-line-2 px-2 py-2" data-lane-domain={group.id} style="width: {group.netIds.length * (LANE_W + LANE_GAP) - LANE_GAP}px" title="{domainGroupLabel(group)} — {t('domain.ownershipOnly')}">{domainGroupLabel(group)}</div>
+							{/each}
+						</div>
+					{/if}
 					<div class="flex py-2" style="gap: {LANE_GAP}px; padding-left: {LANE_PAD}px; padding-right: {LANE_PAD}px">
 						{#each ctrl.orderedNetworks as net, i (net.id)}
 							<div style="width: {LANE_W}px; flex-shrink: 0">

@@ -45,6 +45,7 @@ def directory(monkeypatch):
     state = Membership()
     state.managers = {"domain-manager"}
     state.default_direct = []
+    state.domain_direct = []
     state.personal_domains = {
         "operator-accounts": SimpleNamespace(id="operator-accounts", name="Accounts", enabled=True),
         "operator-personal": SimpleNamespace(id="operator-personal", name="Personal", enabled=True),
@@ -237,7 +238,11 @@ def directory(monkeypatch):
 
     def assignments(project=None, effective=False, user=None, domain=None, system=None, group=None):
         if domain:
-            return []
+            return [
+                row
+                for row in state.domain_direct
+                if row["scope"]["domain"]["id"] == domain and (user is None or row["user"]["id"] == user)
+            ]
         if system:
             if group is not None:
                 return []
@@ -247,6 +252,8 @@ def directory(monkeypatch):
                 if user is None or user == uid
             ]
         rows = []
+        if project is None:
+            rows.extend(state.domain_direct)
         if project in {None, PROJECT}:
             rows.extend(native_assignments(PROJECT, effective))
         if project in {None, "default-project"}:
@@ -449,6 +456,133 @@ async def test_native_system_role_and_foreign_project_denied(directory):
             await domain_iam.validate_invitation_roles(pid, roles, manager())
         assert denied.value.status_code == 403
     assert not directory.calls
+
+
+@pytest.mark.asyncio
+async def test_mixed_native_admin_invitation_is_denied_despite_removal_only_catalog(directory):
+    choices = await project_service.assignable_roles(PROJECT, manager(), domain_management=True)
+    assert rid("admin") in {row["id"] for row in choices["roles"]}
+    with pytest.raises(HTTPException) as denied:
+        await domain_iam.validate_invitation_roles(PROJECT, [rid("project_member"), rid("admin")], manager())
+    assert denied.value.status_code == 403
+    assert not directory.calls and not directory.creates and not directory.updates
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("additive", [False, True])
+async def test_domain_replacement_rejects_new_native_admin_before_mixed_grants(directory, additive):
+    with pytest.raises(HTTPException) as denied:
+        await project_service.replace_member_roles(
+            PROJECT,
+            "member",
+            [rid("lumen_user"), rid("admin")],
+            manager(),
+            domain_management=True,
+            additive=additive,
+        )
+    assert denied.value.status_code == 422
+    assert directory.calls == []
+    assert project_service._direct_ids(directory.direct, "member") == {rid("project_member")}
+
+
+@pytest.mark.asyncio
+async def test_domain_replacement_only_removes_existing_direct_native_admin(directory):
+    directory.direct.extend(assignment("member", name) for name in ("admin", "reader", "unrelated"))
+    with pytest.raises(HTTPException) as protected:
+        await project_service.replace_member_roles(
+            PROJECT, "member", [rid("project_member"), rid("admin")], manager(), domain_management=True
+        )
+    assert protected.value.status_code == 403
+    assert directory.calls == []
+    removed = await project_service.replace_member_roles(
+        PROJECT, "member", [rid("project_member")], manager(), domain_management=True
+    )
+    assert set(removed["direct_role_ids"]) == {rid("project_member"), rid("reader"), rid("unrelated")}
+    assert directory.calls == [("revoke", "member", rid("admin"))]
+    with pytest.raises(HTTPException) as denied:
+        await project_service.replace_member_roles(
+            PROJECT, "member", [rid("project_member"), rid("admin")], manager(), domain_management=True
+        )
+    assert denied.value.status_code == 422
+    assert directory.calls == [("revoke", "member", rid("admin"))]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "desired",
+    [
+        [],
+        ["project_member", "lumen_user"],
+        ["project_member", "admin", "lumen_user"],
+        ["admin"],
+    ],
+    ids=["admin-plus-other-removal", "admin-removal-plus-add", "retain-admin-plus-add", "retain-admin-plus-removal"],
+)
+async def test_domain_native_admin_cleanup_exception_does_not_allow_other_membership_deltas(directory, desired):
+    directory.direct.append(assignment("member", "admin"))
+    with pytest.raises(HTTPException) as denied:
+        await project_service.replace_member_roles(
+            PROJECT, "member", [rid(name) for name in desired], manager(), domain_management=True
+        )
+    assert denied.value.status_code == 403
+    assert directory.calls == []
+    assert project_service._direct_ids(directory.direct, "member") == {rid("project_member"), rid("admin")}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("origin", ["group", "inherited"])
+async def test_domain_member_removal_leaves_external_native_admin_read_only(directory, origin):
+    directory.direct.append(assignment("member", "admin"))
+    if origin == "group":
+        directory.groups["operators"] = ["member"]
+        directory.direct.append(assignment(None, "admin", group="operators"))
+    else:
+        directory.inherited.append(assignment("member", "admin", inherited=True))
+    removed = await project_service.replace_member_roles(
+        PROJECT, "member", [rid("project_member")], manager(), domain_management=True
+    )
+    assert rid("admin") in removed["external_role_ids"]
+    assert removed["direct_role_ids"] == [rid("project_member")]
+    assert directory.calls == [("revoke", "member", rid("admin"))]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("privilege", ["system-admin", "domain-admin", "other-project-admin", "service", "operator"])
+async def test_native_admin_removal_exception_preserves_other_privileged_identity_guards(directory, privilege):
+    directory.direct.append(assignment("member", "admin"))
+    if privilege == "system-admin":
+        directory.system_admins.add("member")
+    elif privilege == "domain-admin":
+        directory.domain_direct.append(
+            {"user": {"id": "member"}, "role": {"id": rid("admin")}, "scope": {"domain": {"id": "domain"}}}
+        )
+    elif privilege == "other-project-admin":
+        directory.default_direct.append(assignment("member", "admin", project_id="default-project"))
+    elif privilege == "service":
+        prototype = next(row for row in directory.catalog if row["name"] == "reader")
+        directory.catalog.append({**prototype, "id": rid("service"), "name": "service"})
+        directory.direct.append(assignment("member", "service"))
+    else:
+        directory.users["member"].name = "operator"
+    with pytest.raises(HTTPException) as denied:
+        await project_service.replace_member_roles(
+            PROJECT, "member", [rid("project_member")], manager(), domain_management=True
+        )
+    assert denied.value.status_code == 403
+    assert directory.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("inherited", [False, True])
+async def test_project_admin_removal_exception_does_not_authorize_identity_credential_edits(directory, inherited):
+    directory.direct.append(assignment("member", "admin"))
+    if inherited:
+        directory.inherited.append(assignment("member", "admin", inherited=True))
+    assert await domain_iam.protected_user(directory.users["member"], "domain")
+    with pytest.raises(HTTPException) as denied:
+        await domain_iam.update_user("member", {"password": "replacement-long-password"}, manager())
+    assert denied.value.status_code == 403
+    assert not directory.updates
 
 
 @pytest.mark.asyncio
@@ -1829,7 +1963,7 @@ async def test_admin_project_assignment_cannot_admit_outsiders(directory, group)
 async def test_admin_project_assignment_accepts_external_principal_without_identity_write(
     directory, monkeypatch, group
 ):
-    from app.api.deps import get_os_conn, require_admin
+    from app.api.deps import get_admin_os_conn, require_admin
     from app.api.identity import admin_identity
     from tests.admin_gate import synthetic_verified_admin
 
@@ -1862,7 +1996,7 @@ async def test_admin_project_assignment_accepts_external_principal_without_ident
     )
     app = FastAPI()
     app.include_router(admin_identity.router, prefix="/api/v1/admin")
-    app.dependency_overrides[get_os_conn] = lambda: SimpleNamespace(identity=identity)
+    app.dependency_overrides[get_admin_os_conn] = lambda: SimpleNamespace(identity=identity)
     app.dependency_overrides[get_token_info] = lambda: {**manager("system-admin"), "is_system_admin": True}
     app.dependency_overrides[require_admin] = synthetic_verified_admin
     monkeypatch.setattr(identity_roles, "_assignment_invalidation", AsyncMock())

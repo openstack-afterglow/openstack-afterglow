@@ -449,7 +449,7 @@ describe('mockup transport', () => {
 		});
 
 		const databases = await maybeMockJson<Array<{ id: string; name: string; project_id: string }>>(
-			'GET', '/api/v1/database-instances?all_projects=true',
+			'GET', '/api/v1/admin/database-instances',
 		);
 		expect(databases).toEqual([
 			expect.objectContaining({ id: 'mock-trove-instance-1', name: 'sample-customer-mysql', project_id: 'mock-project-1' }),
@@ -457,6 +457,8 @@ describe('mockup transport', () => {
 
 		expect(await maybeMockJson('GET', '/api/v1/admin/topology')).toMatchObject({ routers: expect.any(Array) });
 		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/all-containers')).toHaveLength(2);
+		expect(await maybeMockJson('GET', '/api/v1/admin/object-storage')).toMatchObject({ items: [expect.objectContaining({ name: 'sample-artifacts', project_id: 'mock-project-1' })], partial: false, unavailable_projects: [] });
+		expect(await maybeMockJson('GET', '/api/v1/admin/object-storage?domain_id=mock-domain&project_id=foreign')).toEqual({ items: [], project_count: 0, partial: false, unavailable_projects: [] });
 		expect(await maybeMockJson('GET', '/api/v1/admin/containers/mock-container-1')).toMatchObject({ status: 'Running' });
 		expect(await maybeMockJson('GET', '/api/v1/admin/containers/mock-container-1/logs')).toMatchObject({ logs: expect.stringContaining('ready') });
 		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/key-manager/project-quotas')).toHaveLength(2);
@@ -598,6 +600,8 @@ describe('mockup transport', () => {
 			'mock-project-1',
 		)) as { network: { unit: string; data: unknown[] } };
 
+		const snapshot = await maybeMockJson('GET', '/api/v1/dashboard/snapshot?recent_limit=12', undefined, 'mock-token-tutorial-scoped', 'mock-project-1');
+		expect(snapshot).toEqual({ summary: { data: overviewSummary, error: null }, quotas: { data: overviewQuotas, error: null } });
 		expect(fullSummary).toMatchObject({ gpu_used: expect.any(Number) });
 		expect(overviewSummary).toMatchObject({ recent_instances: expect.any(Array) });
 		expect(overviewSummary.recent_instances).toHaveLength(8);

@@ -9,14 +9,16 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from app.api.deps import get_admin_os_conn, get_os_conn, get_token_info, require_admin
 from app.api.identity import domains as domains_api
 from app.services import (
     activity,
+    domain_iam,
     domain_monitoring,
     domain_projects,
+    identity_roles,
     login_monitoring,
     session_store,
     traffic_analytics,
@@ -124,6 +126,178 @@ async def test_membership_directory_tracks_joined_home_identity_without_credenti
         domain_native.raw.remove(joined)
         refreshed = await http.get("/api/v1/admin/domains/tenant-a/members")
         assert "second" not in {row["id"] for row in refreshed.json()["items"]}
+
+
+@pytest.fixture
+def candidate_directory(domain_native):
+    from tests.test_domain_projects import grant
+
+    home_id = "adfe08c4-f0ba-4735-a31b-14a2c48921a1"
+    joined_id = "6a1c1b95-c3cf-41dc-8e6a-e1e67cacfd54"
+    for uid, home in ((home_id, "tenant-a"), (joined_id, "home")):
+        domain_native.user_rows[uid] = SimpleNamespace(
+            id=uid, name="pieroot", email=f"{home}@example.test", enabled=True, domain_id=home
+        )
+    domain_native.raw.extend(
+        [
+            grant("project_reader", user=joined_id, project="work-a"),
+            grant("reader", user="deleted-user", project="default-a"),
+        ]
+    )
+    get_user = domain_native.users.get
+
+    def exact_user(uid):
+        if uid not in domain_native.user_rows:
+            raise NativeError(404)
+        return get_user(uid)
+
+    domain_native.users.get = exact_user
+    return SimpleNamespace(native=domain_native, home_id=home_id, joined_id=joined_id)
+
+
+@pytest.mark.asyncio
+async def test_candidate_directory_omits_confirmed_absent_user_not_valid_same_name_identities(app, candidate_directory):
+    directory = candidate_directory
+    async with client(app) as http:
+        response = await http.get("/api/v1/admin/domains/tenant-a/members")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store, private"
+    users = {item["id"]: item for item in response.json()["items"]}
+    assert set(users) == {"creator", "ordinary", directory.home_id, directory.joined_id}
+    for uid, home in ((directory.home_id, "tenant-a"), (directory.joined_id, "home")):
+        assert users[uid] == {
+            "id": uid,
+            "name": "pieroot",
+            "email": f"{home}@example.test",
+            "enabled": True,
+            "domain_id": home,
+        }
+    assert not any(call[0] == "users.list" and call[2] is None for call in directory.native.read_calls)
+    assert not directory.native.calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failure", "status"),
+    [
+        ("user_denied", 403),
+        ("user_unavailable", 503),
+        ("home_absent", 404),
+        ("user_mismatch", 503),
+        ("home_unknown", 503),
+        ("graph_malformed", 503),
+        ("graph_absent", 404),
+    ],
+)
+async def test_candidate_directory_preserves_provider_and_native_graph_failures(
+    app, candidate_directory, failure, status
+):
+    from tests.test_domain_projects import grant
+
+    directory = candidate_directory.native
+    joined_id = candidate_directory.joined_id
+    get_user = directory.users.get
+    get_domain = directory.domains.get
+
+    if failure in {"user_denied", "user_unavailable"}:
+
+        def unavailable_user(uid):
+            if uid == joined_id:
+                raise NativeError(403 if failure == "user_denied" else 503)
+            return get_user(uid)
+
+        directory.users.get = unavailable_user
+    elif failure == "home_absent":
+
+        def absent_home(did):
+            if did == "home":
+                raise NativeError(404)
+            return get_domain(did)
+
+        directory.domains.get = absent_home
+    elif failure == "user_mismatch":
+        directory.users.get = lambda uid: get_user("ordinary" if uid == joined_id else uid)
+    elif failure == "home_unknown":
+        directory.user_rows[joined_id].domain_id = None
+    elif failure == "graph_malformed":
+        directory.raw.append(grant("unknown-role", user="deleted-user", project="default-a"))
+    else:
+
+        def absent_graph(**kwargs):
+            raise NativeError(404)
+
+        directory.role_assignments.list = absent_graph
+    async with client(app) as http:
+        response = await http.get("/api/v1/admin/domains/tenant-a/members")
+    assert response.status_code == status
+    assert "items" not in response.json()
+    assert "native-secret-detail" not in response.text
+    assert not directory.calls
+
+
+@pytest.mark.asyncio
+async def test_candidate_directory_omits_deleted_home_list_result_only_after_exact_404(app, domain_native):
+    get_user = domain_native.users.get
+
+    def deleted_after_list(uid):
+        if uid == "ordinary":
+            raise NativeError(404)
+        return get_user(uid)
+
+    domain_native.users.get = deleted_after_list
+    async with client(app) as http:
+        response = await http.get("/api/v1/admin/domains/tenant-a/members")
+    assert response.status_code == 200
+    assert {item["id"] for item in response.json()["items"]} == {"creator"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("disabled", ["home_user", "joined_user", "joined_home_domain"])
+async def test_candidate_directory_missing_user_tolerance_does_not_include_disabled_identities(
+    app, candidate_directory, disabled
+):
+    directory = candidate_directory
+    expected = {"creator", "ordinary", directory.home_id, directory.joined_id}
+    if disabled == "home_user":
+        directory.native.user_rows[directory.home_id].enabled = False
+        expected.remove(directory.home_id)
+    elif disabled == "joined_user":
+        directory.native.user_rows[directory.joined_id].enabled = False
+        expected.remove(directory.joined_id)
+    else:
+        directory.native.domain_rows["home"].enabled = False
+        expected.difference_update({"creator", directory.joined_id})
+    async with client(app) as http:
+        response = await http.get("/api/v1/admin/domains/tenant-a/members")
+    assert response.status_code == 200
+    assert {item["id"] for item in response.json()["items"]} == expected
+
+
+@pytest.mark.asyncio
+async def test_candidate_directory_tolerance_never_grants_missing_identity_authority(candidate_directory):
+    from tests.test_domain_projects import grant
+
+    directory = candidate_directory.native
+    for read in (
+        domain_iam.directory_users("tenant-a", ks=directory),
+        domain_iam.assert_joined_user("tenant-a", "deleted-user", ks=directory),
+    ):
+        with pytest.raises(HTTPException) as missing:
+            await read
+        assert missing.value.status_code == 404
+    directory.group_rows["team"] = SimpleNamespace(id="team", name="team", domain_id="tenant-a", description="")
+    writes = []
+    conn = SimpleNamespace(identity=SimpleNamespace(add_user_to_group=lambda *args: writes.append(args)))
+    with pytest.raises(HTTPException) as missing:
+        await identity_roles.change_group_membership(
+            conn, {"user_id": "operator", "domain_id": "tenant-a"}, "team", user_id="deleted-user"
+        )
+    assert missing.value.status_code == 404
+    directory.raw.append(grant("manager", user="deleted-user", project="default-a"))
+    with pytest.raises(HTTPException) as unknown_manager:
+        domain_projects.has_manager("creator", "tenant-a", ks=directory)
+    assert unknown_manager.value.status_code == 404
+    assert not writes and not directory.calls
 
 
 @pytest.mark.asyncio

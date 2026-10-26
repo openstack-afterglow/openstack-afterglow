@@ -7,11 +7,13 @@
 		container,
 		deletingId,
 		onDelete,
+		canDelete,
 		entrance = null,
 	}: {
 		container: SwiftContainer;
 		deletingId: string | null;
-		onDelete: (name: string) => Promise<void>;
+		onDelete: (container: SwiftContainer) => Promise<void>;
+		canDelete: (container: SwiftContainer) => boolean;
 		/** Cascade slot when this row arrives for the first time; null renders it in place. */
 		entrance?: number | null;
 	} = $props();
@@ -60,9 +62,9 @@
 	<td class="py-3 px-4 text-ink-2">{formatStorage(Math.round(container.bytes / 1073741824))}</td>
 	<td class="py-3 px-4 text-right">
 		<button
-			onclick={(e) => { e.stopPropagation(); onDelete(container.name); }}
-			disabled={deletingId === container.name}
+			onclick={(e) => { e.stopPropagation(); if (canDelete(container)) onDelete(container); }}
+			disabled={!canDelete(container) || deletingId === `${container.project_id ?? ''}/${container.name}`}
 			class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
-		>{deletingId === container.name ? t('buckets.row.deleting') : t('buckets.row.delete')}</button>
+		>{deletingId === `${container.project_id ?? ''}/${container.name}` ? t('buckets.row.deleting') : t('buckets.row.delete')}</button>
 	</td>
 </tr>

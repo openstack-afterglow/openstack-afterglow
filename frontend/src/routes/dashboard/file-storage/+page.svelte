@@ -66,7 +66,7 @@
       swrSet(path, fileStorages);
       error = '';
     } catch (e) {
-      if (!cached) error = e instanceof ApiError ? t('errors.loadWithStatus', { status: e.status }) : t('errors.server');
+      error = e instanceof ApiError ? t('errors.loadWithStatus', { status: e.status }) : t('errors.server');
     } finally {
       loading = false;
     }
@@ -126,6 +126,7 @@
       fetchQuota(),
     ]);
   });
+  $effect(() => () => refresh.dispose());
 
   const ar = createAutoRefresh(() => refresh.run(false), {
     storageKey: 'dashboard-file-storage-list',

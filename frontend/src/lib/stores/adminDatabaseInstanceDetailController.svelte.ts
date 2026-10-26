@@ -17,6 +17,10 @@ export function createAdminDatabaseInstanceDetailController(opts: AdminDbInstanc
   let users = $state<DbUser[]>([]);
   let backups = $state<DbBackup[]>([]);
   let loading = $state(true);
+  let loadError = $state('');
+  let databasesReadError = $state('');
+  let usersReadError = $state('');
+  let backupsReadError = $state('');
   let rootInfo = $state<{ name: string; password: string } | null>(null);
   let enablingRoot = $state(false);
   let creatingDb = $state(false);
@@ -35,27 +39,29 @@ export function createAdminDatabaseInstanceDetailController(opts: AdminDbInstanc
   const tok = opts.token;
   const pid = opts.projectId;
 
+  const canMutate = $derived(instance?.id === id() && !!instance?.project_id && instance.project_id === pid());
 
   async function loadAll() {
     loading = true;
     await Promise.allSettled([
-      api.get<DbInstance>(`/api/v1/database-instances/${id()}`, tok(), pid())
-        .then(v => { instance = v; loading = false; })
-        .catch(() => { instance = null; loading = false; }),
-      api.get<DbDatabase[]>(`/api/v1/database-instances/${id()}/databases`, tok(), pid())
-        .then(v => { databases = v; })
-        .catch(() => {}),
-      api.get<DbUser[]>(`/api/v1/database-instances/${id()}/users`, tok(), pid())
-        .then(v => { users = v; })
-        .catch(() => {}),
-      api.get<DbBackup[]>(`/api/v1/database-instances/${id()}/backups`, tok(), pid())
-        .then(v => { backups = v; })
-        .catch(() => {}),
+      api.get<DbInstance>(`/api/v1/admin/database-instances/${id()}`, tok(), pid())
+        .then(v => { instance = v; loadError = ''; })
+        .catch(e => { instance = null; loadError = e instanceof ApiError ? e.message : tr('errors.failed'); }),
+      api.get<DbDatabase[]>(`/api/v1/admin/database-instances/${id()}/databases`, tok(), pid())
+        .then(v => { databases = v; databasesReadError = ''; })
+        .catch(e => { databases = []; databasesReadError = e instanceof ApiError ? e.message : tr('errors.failed'); }),
+      api.get<DbUser[]>(`/api/v1/admin/database-instances/${id()}/users`, tok(), pid())
+        .then(v => { users = v; usersReadError = ''; })
+        .catch(e => { users = []; usersReadError = e instanceof ApiError ? e.message : tr('errors.failed'); }),
+      api.get<DbBackup[]>(`/api/v1/admin/database-instances/${id()}/backups`, tok(), pid())
+        .then(v => { backups = v; backupsReadError = ''; })
+        .catch(e => { backups = []; backupsReadError = e instanceof ApiError ? e.message : tr('errors.failed'); }),
     ]);
     loading = false;
   }
 
   async function deleteInstance() {
+    if (!canMutate) return;
     if (!await confirmDialog(tr('instances.deleteConfirm', { name: String(instance?.name) }))) return;
     deleting = true;
     try {
@@ -68,6 +74,7 @@ export function createAdminDatabaseInstanceDetailController(opts: AdminDbInstanc
   }
 
   async function enableRoot() {
+    if (!canMutate) return;
     enablingRoot = true;
     try {
       rootInfo = await api.post<{ name: string; password: string }>(`/api/v1/database-instances/${id()}/root`, {}, tok(), pid());
@@ -77,16 +84,18 @@ export function createAdminDatabaseInstanceDetailController(opts: AdminDbInstanc
   }
 
   async function createDb(form: { name: string; character_set: string; collate: string }): Promise<boolean> {
+    if (!canMutate) return false;
     creatingDb = true; dbError = '';
     try {
       await api.post(`/api/v1/database-instances/${id()}/databases`, form, tok(), pid());
-      databases = await api.get<DbDatabase[]>(`/api/v1/database-instances/${id()}/databases`, tok(), pid());
+      databases = await api.get<DbDatabase[]>(`/api/v1/admin/database-instances/${id()}/databases`, tok(), pid());
       return true;
     } catch (e) { dbError = e instanceof ApiError ? e.message : tr('errors.failed'); return false; }
     finally { creatingDb = false; }
   }
 
   async function deleteDb(name: string) {
+    if (!canMutate) return;
     if (!await confirmDialog(tr('databases.deleteConfirm', { name: name }))) return;
     deletingDb = name;
     try {
@@ -97,17 +106,19 @@ export function createAdminDatabaseInstanceDetailController(opts: AdminDbInstanc
   }
 
   async function createUser(form: { name: string; password: string; databases: string }): Promise<boolean> {
+    if (!canMutate) return false;
     creatingUser = true; userError = '';
     try {
       const dbs = form.databases.split(',').map(s => s.trim()).filter(Boolean);
       await api.post(`/api/v1/database-instances/${id()}/users`, { ...form, databases: dbs }, tok(), pid());
-      users = await api.get<DbUser[]>(`/api/v1/database-instances/${id()}/users`, tok(), pid());
+      users = await api.get<DbUser[]>(`/api/v1/admin/database-instances/${id()}/users`, tok(), pid());
       return true;
     } catch (e) { userError = e instanceof ApiError ? e.message : tr('errors.failed'); return false; }
     finally { creatingUser = false; }
   }
 
   async function deleteUser(name: string) {
+    if (!canMutate) return;
     if (!await confirmDialog(tr('users.deleteConfirm', { name: name }))) return;
     deletingUser = name;
     try {
@@ -118,16 +129,18 @@ export function createAdminDatabaseInstanceDetailController(opts: AdminDbInstanc
   }
 
   async function createBackup(form: { name: string; description: string }): Promise<boolean> {
+    if (!canMutate) return false;
     creatingBackup = true; backupError = '';
     try {
       await api.post(`/api/v1/database-instances/${id()}/backups`, form, tok(), pid());
-      backups = await api.get<DbBackup[]>(`/api/v1/database-instances/${id()}/backups`, tok(), pid());
+      backups = await api.get<DbBackup[]>(`/api/v1/admin/database-instances/${id()}/backups`, tok(), pid());
       return true;
     } catch (e) { backupError = e instanceof ApiError ? e.message : tr('errors.failed'); return false; }
     finally { creatingBackup = false; }
   }
 
   async function deleteBackup(backupId: string) {
+    if (!canMutate) return;
     if (!await confirmDialog(tr('backups.deleteConfirm'))) return;
     deletingBackup = backupId;
     try {
@@ -138,6 +151,7 @@ export function createAdminDatabaseInstanceDetailController(opts: AdminDbInstanc
   }
 
   async function restoreBackup(backupId: string) {
+    if (!canMutate) return;
     const name = prompt(tr('restore.namePrompt'));
     if (!name) return;
     restoringBackup = backupId;
@@ -159,6 +173,11 @@ export function createAdminDatabaseInstanceDetailController(opts: AdminDbInstanc
     get users() { return users; },
     get backups() { return backups; },
     get loading() { return loading; },
+    get loadError() { return loadError; },
+    get databasesReadError() { return databasesReadError; },
+    get usersReadError() { return usersReadError; },
+    get backupsReadError() { return backupsReadError; },
+    get canMutate() { return canMutate; },
     get rootInfo() { return rootInfo; },
     get enablingRoot() { return enablingRoot; },
     get creatingDb() { return creatingDb; },

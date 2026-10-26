@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page } from '$app/stores';
 import { initLocale, setLocale } from '$lib/i18n/runtime.svelte';
 import Harness from './_ConsoleTerminalLocaleHarness.svelte';
+import { auth, projectSwitching } from '$lib/stores/auth';
 
 // Mock factories run before imports; their terminal/socket state must exist at that boundary.
 const { TestTerminal, TestSocket, terminals, sockets } = vi.hoisted(() => {
@@ -111,6 +112,8 @@ describe('console terminal lifetime across language changes', () => {
 		initLocale('ko');
 		terminals.length = 0;
 		sockets.length = 0;
+		projectSwitching.set(false);
+		auth.update(state => ({ ...state, token: 'synthetic-token', projectId: 'project', userId: 'user', domainId: 'domain-1', roles: ['admin'], isSystemAdmin: true }));
 		vi.stubGlobal('WebSocket', TestSocket);
 		vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
 	});
@@ -152,5 +155,35 @@ describe('console terminal lifetime across language changes', () => {
 		await tick();
 		expect(socket.readyState).toBe(TestSocket.CLOSED);
 		expect(terminal.disposed).toBe(true);
+	});
+
+	it.each(['/dashboard/containers/instances/[id]', '/admin/drover'])('retires old private state on logical scope ABA at %s', async route => {
+		const { terminal, socket } = await mountTerminal(route, 'container');
+		auth.update(state => ({ ...state, projectId: 'other-project' }));
+		auth.update(state => ({ ...state, projectId: 'project' }));
+		await tick();
+		expect(terminal.disposed).toBe(true);
+		expect(socket.readyState).toBe(TestSocket.CLOSED);
+	});
+
+	it.each(['/dashboard/containers/instances/[id]', '/admin/drover'])('keeps the workspace mounted across ordinary bearer rotation at %s', async route => {
+		const { terminal } = await mountTerminal(route, 'container');
+		auth.update(state => ({ ...state, token: 'rotated-synthetic-token' }));
+		await tick();
+		// The terminal transport may renew, but the mounted terminal/input survives.
+		expect(terminal.disposed).toBe(false);
+	});
+
+	it('does not mount an outgoing private page during a pending project switch', async () => {
+		await mountTerminal('/dashboard/containers/instances/[id]', 'container');
+		projectSwitching.set(true);
+		await tick();
+		const duringSwitch = sockets.length;
+		auth.update(state => ({ ...state, projectId: 'other-project' }));
+		auth.update(state => ({ ...state, projectId: 'project' }));
+		await new Promise(resolve => setTimeout(resolve, 150));
+		expect(sockets).toHaveLength(duringSwitch);
+		projectSwitching.set(false);
+		await waitFor(() => expect(sockets).toHaveLength(duringSwitch + 1));
 	});
 });

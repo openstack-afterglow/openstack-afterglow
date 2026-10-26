@@ -21,6 +21,13 @@ from app.api.common.admin_resource_scope import (
     page,
 )
 from app.api.deps import CacheMode, cache_mode, get_admin_os_conn, get_os_conn, get_token_info, require_admin
+from app.api.storage.volumes import (
+    AcceptVolumeTransferRequest,
+    CreateVolumeTransferRequest,
+    VolumeTransferRoute,
+    _invalidate_transfer_accept,
+    _transfer_call,
+)
 from app.config import get_settings
 from app.models.compute import InstanceNameRequest
 from app.models.storage import (
@@ -46,6 +53,7 @@ from app.services import (
     nova_hosts,
     trove,
     volume_delete_recovery,
+    volume_transfers,
 )
 from app.services import libraries as lib_svc
 from app.services.cache import _get_redis, cached_call, invalidate, ttl_fast, ttl_normal
@@ -1643,6 +1651,11 @@ async def admin_topology(
         result = await cached_call(
             "afterglow:admin:topology", ttl_normal(), _fetch, enabled=cm.enabled, refresh=cm.refresh
         )
+        directory = await asyncio.to_thread(inventory_directory, conn)
+        result = {
+            **result,
+            "networks": [{**network, **directory.owner(network)} for network in result.get("networks", [])],
+        }
         if scope.project_ids is None:
             return result
         scoped = {
@@ -2569,47 +2582,121 @@ async def recover_instance(
     return result
 
 
-class VolumeTransferRequest(BaseModel):
-    target_project_id: str
+_volume_transfer_router = APIRouter(route_class=VolumeTransferRoute)
 
 
-@router.post("/volumes/{volume_id}/transfer", dependencies=[Depends(require_admin)])
+class AdminCreateVolumeTransferRequest(CreateVolumeTransferRequest):
+    model_config = {"extra": "forbid"}
+
+
+class AdminAcceptVolumeTransferRequest(AcceptVolumeTransferRequest):
+    model_config = {"extra": "forbid"}
+
+    target_domain_id: str = Field(..., min_length=1, max_length=64)
+    target_project_id: str = Field(..., min_length=1, max_length=64)
+
+
+async def _admin_transfer_source(conn, volume_id: str):
+    volume = await _transfer_call(conn.block_storage.get_volume, volume_id)
+    await _transfer_call(volume_transfers.required_id, volume, "id", volume_id)
+    owner = await _transfer_call(volume_transfers.volume_owner, volume)
+    try:
+        await volume_transfers.assert_unmanaged(volume, owner)
+    except volume_transfers.TransferError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from None
+    return owner
+
+
+async def _record_admin_transfer(admin, conn, action: str, resource_id: str):
+    # Audit availability must not discard an already-issued once-only key.
+    try:
+        await rec(admin, conn, resource_type="volume", action=action, status="success", resource_id=resource_id)
+    except Exception:
+        _logger.warning("Administrator volume transfer audit recording unavailable")
+
+
+@_volume_transfer_router.post("/volumes/{volume_id}/transfer", status_code=201)
 async def transfer_volume(
     volume_id: str,
-    req: VolumeTransferRequest,
+    req: AdminCreateVolumeTransferRequest | None = None,
     conn: openstack.connection.Connection = Depends(get_admin_os_conn),
+    _admin: dict = Depends(require_admin),
 ):
-    """볼륨을 다른 프로젝트로 이전 (관리자 전용)."""
+    """Issue a native source-owner transfer; expose its key only once, privately."""
+    owner = await _admin_transfer_source(conn, volume_id)
     try:
+        result = await _transfer_call(
+            volume_transfers.create_on_connection, conn, volume_id, owner, req.name if req else None
+        )
+        await _record_admin_transfer(_admin, conn, "volume.transfer_create", volume_id)
+        return result
+    finally:
+        # An unobserved create may already have locked the source volume.
+        await _invalidate_transfer_accept(owner)
+        await _invalidate_volume_recovery_caches(owner)
 
-        def _transfer():
-            bs_endpoint = conn.block_storage.get_endpoint()
-            # 1. 이전 생성
-            create_resp = conn.session.post(
-                f"{bs_endpoint}/os-volume-transfer",
-                json={"transfer": {"name": f"admin-transfer-{volume_id[:8]}", "volume_id": volume_id}},
-            )
-            transfer = create_resp.json().get("transfer", {})
-            transfer_id = transfer.get("id")
-            auth_key = transfer.get("auth_key")
-            if not transfer_id or not auth_key:
-                raise Exception("이전 생성 실패: transfer_id 또는 auth_key를 받지 못했습니다")
-            # 2. 대상 프로젝트 범위로 이전 수락
-            accept_resp = conn.session.post(
-                f"{bs_endpoint}/os-volume-transfer/{transfer_id}/accept",
-                json={"accept": {"auth_key": auth_key}},
-                endpoint_override=None,
-                headers={"X-Project-Id": req.target_project_id},
-            )
-            result = accept_resp.json().get("transfer", {})
-            return {"status": "transferred", "volume_id": result.get("volume_id", volume_id)}
 
-        return await asyncio.to_thread(_transfer)
-    except Exception as e:
-        _logger.warning("볼륨 이전 실패", exc_info=True)
-        _logger.warning("볼륨 이전 실패: %s", e)
+@_volume_transfer_router.post("/volumes/transfer/{transfer_id}/accept")
+async def accept_admin_volume_transfer(
+    transfer_id: str,
+    req: AdminAcceptVolumeTransferRequest,
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
+    admin: dict = Depends(require_admin),
+):
+    """Accept with the original human's verified target-project credential."""
+    await _transfer_call(volume_transfers.exact_transfer_id, transfer_id)
+    _, volume, source = await _transfer_call(volume_transfers.pending, conn, transfer_id)
+    await _admin_transfer_source(conn, volume_transfers.required_id(volume, "id"))
+    target = await _transfer_call(
+        volume_transfers.admin_destination, conn, admin, req.target_domain_id, req.target_project_id
+    )
+    try:
+        result, source = await _transfer_call(
+            volume_transfers.accept_on_connection,
+            target,
+            conn,
+            req.target_project_id,
+            transfer_id,
+            req.auth_key,
+            accepting=True,
+        )
+    finally:
+        await asyncio.to_thread(target.close)
+        await _invalidate_volume_recovery_caches(source)
+        await _invalidate_volume_recovery_caches(req.target_project_id)
+    await _invalidate_transfer_accept(source)
+    await _invalidate_transfer_accept(req.target_project_id)
+    await _record_admin_transfer(admin, conn, "volume.transfer_accept", transfer_id)
+    return result
 
-        raise HTTPException(status_code=400, detail="볼륨 이전 실패")
+
+@_volume_transfer_router.get("/volumes/{volume_id}/transfers")
+async def recover_admin_volume_transfer(
+    volume_id: str,
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
+    _admin: dict = Depends(require_admin),
+):
+    return await _transfer_call(volume_transfers.admin_pending_for_volume, conn, volume_id)
+
+
+@_volume_transfer_router.delete("/volumes/transfer/{transfer_id}", status_code=204)
+async def cancel_admin_volume_transfer(
+    transfer_id: str,
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
+    _admin: dict = Depends(require_admin),
+):
+    await _transfer_call(volume_transfers.exact_transfer_id, transfer_id)
+    _, volume, owner = await _transfer_call(volume_transfers.pending, conn, transfer_id)
+    await _admin_transfer_source(conn, volume_transfers.required_id(volume, "id"))
+    try:
+        await _transfer_call(volume_transfers.admin_cancel, conn, transfer_id, owner)
+        await _record_admin_transfer(_admin, conn, "volume.transfer_cancel", transfer_id)
+    finally:
+        await _invalidate_transfer_accept(owner)
+        await _invalidate_volume_recovery_caches(owner)
+
+
+router.include_router(_volume_transfer_router)
 
 
 # ===========================================================================

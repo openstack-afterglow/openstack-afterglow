@@ -111,7 +111,6 @@ data:
     [session]
     timeout_seconds = {{ .Values.session.timeoutSeconds }}
     warning_before_seconds = {{ .Values.session.warningBeforeSeconds }}
-    absolute_timeout = {{ .Values.session.absoluteTimeout }}
     jwt_access_ttl = {{ .Values.session.jwtAccessTtl }}
     jwt_refresh_ttl = {{ .Values.session.jwtRefreshTtl }}
     token_ip_binding_mode = {{ .Values.session.tokenIpBindingMode | quote }}

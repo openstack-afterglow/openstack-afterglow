@@ -99,6 +99,8 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	let consoleOpening = $state(false);
 	let consoleOpenMessage = $state('');
 	let consoleOpenError = $state('');
+	let logGeneration = 0;
+	let consoleGeneration = 0;
 
 	let renameOpen = $state(false);
 	let renameDraft = $state('');
@@ -260,6 +262,25 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	// Token/projectId helpers (read at call time — not reactive)
 	function tok() { return get(auth).token ?? undefined; }
 	function ownPid() { return get(auth).projectId ?? undefined; }
+	function instancePath(id: string, adminMode = opts.adminMode()) {
+		return `/api/v1/${adminMode ? 'admin/' : ''}instances/${id}`;
+	}
+	function detailProjectId() { return opts.adminMode() ? ownPid() : opts.effectiveProjectId(); }
+	function captureReadContext() {
+		const id = opts.instanceId();
+		const token = tok();
+		const adminMode = opts.adminMode();
+		const projectId = opts.effectiveProjectId();
+		const transportProjectId = detailProjectId();
+		const ownProjectId = ownPid();
+		const epoch = renameAuthEpoch;
+		const selection = get(instanceDetailSelectionRevision);
+		return { id, token, adminMode, transportProjectId, ownProjectId, current: () => opts.instanceId() === id
+			&& tok() === token && opts.adminMode() === adminMode && opts.effectiveProjectId() === projectId
+			&& detailProjectId() === transportProjectId && renameAuthEpoch === epoch
+			&& ownPid() === ownProjectId
+			&& get(instanceDetailSelectionRevision) === selection };
+	}
 
 	// Utility functions
 	function sgNameById(id: string): string {
@@ -300,27 +321,34 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (fetchOpts?.refreshSecurityGroups) securityGroupsLoading = true;
 		const requestToken = tok();
 		const requestProjectId = opts.effectiveProjectId();
+		const requestAdminMode = opts.adminMode();
+		const transportProjectId = detailProjectId();
+		const base = instancePath(id, requestAdminMode);
+		const readContext = captureReadContext();
 		const generation = ++fetchGeneration;
 		const ownsRequest = () => (
 			generation === fetchGeneration
 			&& opts.instanceId() === id
 			&& opts.effectiveProjectId() === requestProjectId
 			&& tok() === requestToken
+			&& opts.adminMode() === requestAdminMode
+			&& detailProjectId() === transportProjectId
+			&& readContext.current()
 		);
 
-		const instancePromise = api.get<Instance>(`/api/v1/instances/${id}`, requestToken, requestProjectId);
-		const fipsPromise = api.get<FloatingIpDetail[]>('/api/v1/networks/floating-ips', requestToken, requestProjectId).catch(() => []);
-		const interfacesPromise = api.get<PortInfo[]>(`/api/v1/instances/${id}/interfaces`, requestToken, requestProjectId).catch(() => []);
-		const volumesPromise = api.get<VolumeAttachment[]>(`/api/v1/instances/${id}/volumes`, requestToken, requestProjectId).catch(() => []);
+		const instancePromise = api.get<Instance>(base, requestToken, transportProjectId);
+		const fipsPromise = api.get<FloatingIpDetail[]>(requestAdminMode ? `${base}/floating-ips` : '/api/v1/networks/floating-ips', requestToken, transportProjectId).catch(() => []);
+		const interfacesPromise = api.get<PortInfo[]>(`${base}/interfaces`, requestToken, transportProjectId).catch(() => []);
+		const volumesPromise = api.get<VolumeAttachment[]>(`${base}/volumes`, requestToken, transportProjectId).catch(() => []);
 		const securityGroupsPromise = api.get<{ ports: PortInfo[]; security_groups: SecurityGroup[] }>(
-			`/api/v1/instances/${id}/security-groups`,
+			`${base}/security-groups`,
 			requestToken,
-			requestProjectId,
+			transportProjectId,
 			fetchOpts?.refreshSecurityGroups ? { refresh: true } : undefined,
 		);
-		const allVolumesPromise = api.get<VolumeInfo[]>('/api/v1/volumes', requestToken, requestProjectId).catch(() => []);
-		const networksPromise = api.get<NetworkInfo[]>('/api/v1/networks', requestToken, requestProjectId).catch(() => []);
-		const ownerPromise = api.get<{ display: string }>(`/api/v1/instances/${id}/owner`, requestToken, requestProjectId).catch(() => ({ display: '' }));
+		const allVolumesPromise = api.get<VolumeInfo[]>(requestAdminMode ? `${base}/available-volumes` : '/api/v1/volumes', requestToken, transportProjectId).catch(() => []);
+		const networksPromise = api.get<NetworkInfo[]>(requestAdminMode ? `${base}/networks` : '/api/v1/networks', requestToken, transportProjectId).catch(() => []);
+		const ownerPromise = api.get<{ display: string }>(`${base}/owner`, requestToken, transportProjectId).catch(() => ({ display: '' }));
 
 		void interfacesPromise.then((value) => { if (ownsRequest()) interfaces = value; });
 		void volumesPromise.then((value) => { if (ownsRequest()) volumes = value; });
@@ -380,20 +408,20 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	async function loadConsoleLog(full = false) {
-		if (!instance) return;
+		if (!instance || instance.id !== opts.instanceId()) return;
+		const context = captureReadContext();
+		const generation = ++logGeneration;
 		logLoading = true;
 		const length = full ? 0 : 200;
 		try {
 			const data = await api.get<{ output: string }>(
-				`/api/v1/instances/${instance.id}/log?length=${length}`,
-				tok(),
-				ownPid()
+				`${instancePath(context.id, context.adminMode)}/log?length=${length}`, context.token, context.ownProjectId,
 			);
-			consoleLog = data.output || t('controller.console.noLog');
+			if (context.current() && generation === logGeneration) consoleLog = data.output || t('controller.console.noLog');
 		} catch {
-			consoleLog = t('controller.console.logFailed');
+			if (context.current() && generation === logGeneration) consoleLog = t('controller.console.logFailed');
 		} finally {
-			logLoading = false;
+			if (generation === logGeneration) logLoading = false;
 		}
 	}
 
@@ -403,13 +431,15 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	async function openConsole() {
-		if (!instance || consoleOpening) return;
-		const instanceId = instance.id;
+		if (!instance || instance.id !== opts.instanceId() || consoleOpening) return;
+		const context = captureReadContext();
+		const generation = ++consoleGeneration;
 		consoleOpening = true;
 		consoleOpenError = '';
 		consoleOpenMessage = t('controller.console.requestingUrl');
 		try {
-			const data = await api.get<{ url: string }>(`/api/v1/instances/${instanceId}/console`, tok(), ownPid());
+			const data = await api.get<{ url: string }>(`${instancePath(context.id, context.adminMode)}/console`, context.token, context.ownProjectId);
+			if (!context.current() || generation !== consoleGeneration) return;
 			const url = data.url?.trim();
 			if (!url) {
 				consoleOpenError = t('controller.console.emptyUrl');
@@ -419,17 +449,21 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			consoleOpenMessage = t('controller.console.opening');
 			window.open(url, '_blank', 'noopener,noreferrer');
 		} catch {
+			if (!context.current() || generation !== consoleGeneration) return;
 			consoleOpenError = t('controller.console.urlFailed');
 			toast.error(consoleOpenError);
 		} finally {
-			consoleOpening = false;
-			consoleOpenMessage = '';
+			if (generation === consoleGeneration) {
+				consoleOpening = false;
+				consoleOpenMessage = '';
+			}
 		}
 	}
 
 	function captureMutationContext(): InstanceMutationContext | null {
 		const caller = get(auth);
-		if (!instance || instance.id !== opts.instanceId() || !caller.token || !get(canWrite)) return null;
+		if (!instance || instance.id !== opts.instanceId() || !caller.token || !get(canWrite)
+			|| (opts.adminMode() && !caller.isSystemAdmin)) return null;
 		return {
 			id: instance.id,
 			status: instance.status,
@@ -470,7 +504,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!ownsMutationContext(context) || mutationBusy()) return;
 		actioning = action;
 		try {
-			await api.post(`/api/v1/instances/${context.id}/${action}`, {}, context.token, context.ownProjectId);
+			await api.post(`${instancePath(context.id, context.adminMode)}/${action}`, {}, context.token, context.ownProjectId);
 			if (ownsMutationContext(context, false)) await fetchInstance(context.id, { silent: true });
 		} catch (e) {
 			if (ownsMutationContext(context, false)) toast.error(t('controller.action.failed', { action, message: e instanceof ApiError ? e.message : String(e) }));
@@ -492,7 +526,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!ownsMutationContext(context) || mutationBusy()) return;
 		deleting = true;
 		try {
-			await api.delete(`/api/v1/instances/${context.id}`, context.token, context.ownProjectId);
+			await api.delete(instancePath(context.id, context.adminMode), context.token, context.ownProjectId);
 			if (ownsMutationContext(context, false)) opts.onDelete();
 		} catch (e) {
 			if (ownsMutationContext(context, false)) toast.error(t('controller.delete.failed', { message: e instanceof ApiError ? e.message : String(e) }));
@@ -505,7 +539,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!instance) return;
 		actioning = 'fip-assign-' + portId;
 		try {
-			await api.post(`/api/v1/instances/${instance.id}/floating-ip?port_id=${portId}`, {}, tok(), ownPid());
+			await api.post(`${instancePath(instance.id)}/floating-ip?port_id=${portId}`, {}, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
 			toast.error(t('controller.floatingIp.assignFailed', { message: e instanceof ApiError ? e.message : String(e) }));
@@ -519,8 +553,12 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!(await confirmDialog(t('controller.floatingIp.releaseConfirm')))) return;
 		actioning = 'fip-release-' + fipId;
 		try {
-			await api.post(`/api/v1/networks/floating-ips/${fipId}/disassociate`, {}, tok(), ownPid());
-			await api.delete(`/api/v1/networks/floating-ips/${fipId}`, tok(), ownPid());
+			if (opts.adminMode()) {
+				await api.delete(`${instancePath(instance.id)}/floating-ips/${fipId}`, tok(), ownPid());
+			} else {
+				await api.post(`/api/v1/networks/floating-ips/${fipId}/disassociate`, {}, tok(), ownPid());
+				await api.delete(`/api/v1/networks/floating-ips/${fipId}`, tok(), ownPid());
+			}
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
 			toast.error(t('controller.floatingIp.releaseFailed', { message: e instanceof ApiError ? e.message : String(e) }));
@@ -533,7 +571,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!instance) return;
 		actioning = 'attach-vol';
 		try {
-			await api.post(`/api/v1/instances/${instance.id}/volumes`, { volume_id: volumeId }, tok(), ownPid());
+			await api.post(`${instancePath(instance.id)}/volumes`, { volume_id: volumeId }, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
 			toast.error(t('controller.volume.attachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
@@ -543,11 +581,11 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	async function createAndAttachVolume(name: string, sizeGb: number) {
-		if (!instance) return;
+		if (!instance || opts.adminMode()) return;
 		actioning = 'create-vol';
 		try {
 			const vol = await api.post<VolumeInfo>('/api/v1/volumes', { name, size_gb: sizeGb }, tok(), ownPid());
-			await api.post(`/api/v1/instances/${instance.id}/volumes`, { volume_id: vol.id }, tok(), ownPid());
+			await api.post(`${instancePath(instance.id)}/volumes`, { volume_id: vol.id }, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
 			toast.error(t('controller.volume.createAttachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
@@ -561,7 +599,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!(await confirmDialog(t('controller.volume.detachConfirm')))) return;
 		actioning = 'detach-' + volumeId;
 		try {
-			await api.delete(`/api/v1/instances/${instance.id}/volumes/${volumeId}`, tok(), ownPid());
+			await api.delete(`${instancePath(instance.id)}/volumes/${volumeId}`, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
 			toast.error(t('controller.volume.detachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
@@ -575,7 +613,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!(await confirmDialog(t('controller.volume.autoDeleteConfirm', { state: next ? 'enabled' : 'disabled' })))) return;
 		actioning = 'dot-' + volumeId;
 		try {
-			await api.patch(`/api/v1/instances/${instance.id}/volumes/${volumeId}`, { delete_on_termination: next }, tok(), ownPid());
+			await api.patch(`${instancePath(instance.id)}/volumes/${volumeId}`, { delete_on_termination: next }, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
 			toast.error(t('controller.volume.changeFailed', { message: e instanceof ApiError ? e.message : String(e) }));
@@ -588,7 +626,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!instance) return;
 		actioning = 'attach-iface';
 		try {
-			await api.post(`/api/v1/instances/${instance.id}/interfaces`, { net_id: netId }, tok(), ownPid());
+			await api.post(`${instancePath(instance.id)}/interfaces`, { net_id: netId }, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
 			toast.error(t('controller.interface.attachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
@@ -602,7 +640,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!(await confirmDialog(t('controller.interface.detachConfirm')))) return;
 		actioning = 'detach-iface-' + portId;
 		try {
-			await api.delete(`/api/v1/instances/${instance.id}/interfaces/${portId}`, tok(), ownPid());
+			await api.delete(`${instancePath(instance.id)}/interfaces/${portId}`, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
 			toast.error(t('controller.interface.detachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
@@ -616,7 +654,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		actioning = 'sg-' + portId;
 		try {
 			await api.post(
-				`/api/v1/instances/${instance.id}/ports/${portId}/security-groups`,
+				`${instancePath(instance.id)}/ports/${portId}/security-groups`,
 				{ security_group_ids: sgIds },
 				tok(),
 				ownPid()
@@ -652,7 +690,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		resizeFlavorsLoading = true;
 		try {
 			const flavors = await api.get<FlavorOption[]>(
-				`/api/v1/instances/${context.id}/resize-flavors`, context.token, resizeProjectId(context)
+				`${instancePath(context.id, context.adminMode)}/resize-flavors`, context.token, resizeProjectId(context)
 			);
 			if (generation === resizeFlavorGeneration && ownsMutationContext(context)) {
 				resizeFlavors = flavors;
@@ -732,13 +770,14 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!canChangePassword || instance?.id !== serverId) return;
 		const requestToken = tok();
 		const requestProjectId = opts.effectiveProjectId();
+		const context = captureReadContext();
 		const ownsRequest = () => generation === passwordPrecheckGeneration
 			&& opts.instanceId() === serverId && opts.effectiveProjectId() === requestProjectId
-			&& tok() === requestToken && canChangePassword;
+			&& tok() === requestToken && canChangePassword && context.current();
 		passwordPrecheckLoading = true;
 		try {
 			const result = await api.get<PasswordPrecheck>(
-				`/api/v1/instances/${serverId}/admin-password/precheck`, requestToken, requestProjectId
+				`${instancePath(serverId, context.adminMode)}/admin-password/precheck`, requestToken, context.transportProjectId
 			);
 			if (ownsRequest()) passwordPrecheck = result;
 		} catch (e) {
@@ -759,7 +798,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		const requestToken = tok();
 		const requestProjectId = opts.effectiveProjectId();
 		try {
-			await api.post(`/api/v1/instances/${serverId}/admin-password`, { new_password: password }, requestToken, requestProjectId);
+			await api.post(`${instancePath(serverId)}/admin-password`, { new_password: password }, requestToken, detailProjectId());
 			if (opts.instanceId() === serverId && opts.effectiveProjectId() === requestProjectId && tok() === requestToken) {
 				toast.info(t('controller.password.requestSent'), 8000);
 			}
@@ -885,6 +924,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		set logFull(v: boolean) { logFull = v; },
 		get instanceId() { return opts.instanceId(); },
 		get effectiveProjectId() { return opts.effectiveProjectId(); },
+		get adminMode() { return opts.adminMode(); },
 		get fixedIpsList() { return fixedIpsList; },
 		get floatingIpsList() { return floatingIpsList; },
 		get assignedPortIds() { return assignedPortIds; },
@@ -974,6 +1014,7 @@ export interface InstanceDetailController {
 	readonly consoleOpenError: string;
 	readonly instanceId: string;
 	readonly effectiveProjectId: string | undefined;
+	readonly adminMode: boolean;
 	readonly fixedIpsList: Instance['ip_addresses'];
 	readonly floatingIpsList: Instance['ip_addresses'];
 	readonly assignedPortIds: Set<string>;

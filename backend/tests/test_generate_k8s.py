@@ -676,10 +676,22 @@ def _auth_generation_config():
     }
 
 
+def _native_mapping_generation_pins(**overrides):
+    return {
+        "mode": "ephemeral",
+        "mapping_id": "reviewed-native-mapping",
+        "sha256": "0123456789abcdef" * 4,
+        "account_domain_id": "Accounts-ID",
+        "personal_domain_id": "Personal-ID",
+        **overrides,
+    }
+
+
+@pytest.mark.parametrize("native_mapping", [False, True])
 @pytest.mark.parametrize("namespace", ["afterglow", "afterglow-dev"])
 @pytest.mark.parametrize("default_allowlist", [None, [], ["sso_common", "paused"]])
 def test_auth_renderers_reconstruct_runtime_providers_and_selection(
-    tmp_path, monkeypatch, namespace, default_allowlist
+    tmp_path, monkeypatch, namespace, default_allowlist, native_mapping
 ):
     import copy
     import os
@@ -690,6 +702,8 @@ def test_auth_renderers_reconstruct_runtime_providers_and_selection(
     from app import config as app_config
 
     cfg = _auth_generation_config()
+    if native_mapping:
+        cfg["auth"]["providers"]["gitlab"]["native_mapping"] = _native_mapping_generation_pins()
     cfg["auth"]["public_signup_enabled"] = True
     cfg["auth"]["public_signup_button_visible"] = False
     cfg["auth"]["signup_email_domains"] = ["gmail.com", "konkuk.ac.kr"]
@@ -754,6 +768,11 @@ def test_auth_renderers_reconstruct_runtime_providers_and_selection(
             with patch.dict(os.environ, environment, clear=True):
                 settings = app_config.get_settings()
                 assert settings.auth == expected
+                pins = settings.auth.providers["gitlab"].native_mapping
+                if native_mapping:
+                    assert pins.model_dump() == _native_mapping_generation_pins()
+                else:
+                    assert pins is None
                 assert settings.auth.providers["gitlab"].client_secret.get_secret_value() == "gitlab-private-secret"
                 assert settings.auth.providers["sso_common"].client_secret.get_secret_value() == (
                     'common-secret:"quoted"\nsecond-line'
@@ -790,6 +809,55 @@ def test_auth_projection_rejects_bad_structures_without_leaking_secrets(auth):
         with pytest.raises(ValueError) as exc:
             renderer(cfg)
         assert "private-auth-sentinel" not in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    "pins",
+    [
+        None,
+        [],
+        {},
+        _native_mapping_generation_pins(mode="local"),
+        _native_mapping_generation_pins(sha256="A" * 64),
+        _native_mapping_generation_pins(sha256="a" * 63),
+        _native_mapping_generation_pins(sha256="g" * 64),
+        _native_mapping_generation_pins(sha256=123),
+        _native_mapping_generation_pins(mapping_id="bad/id"),
+        _native_mapping_generation_pins(account_domain_id="A" * 65),
+        _native_mapping_generation_pins(personal_domain_id=" Personal-ID"),
+        _native_mapping_generation_pins(personal_domain_id="Accounts-ID"),
+        _native_mapping_generation_pins(unknown="private-auth-sentinel"),
+        *[
+            {key: value for key, value in _native_mapping_generation_pins().items() if key != missing}
+            for missing in ("mode", "mapping_id", "sha256", "account_domain_id", "personal_domain_id")
+        ],
+    ],
+)
+def test_native_mapping_projection_rejects_invalid_pins_without_leaking_secrets(pins):
+    cfg = _auth_generation_config()
+    cfg["auth"]["providers"]["gitlab"]["native_mapping"] = pins
+    for renderer in (render_secret, render_configmap):
+        with pytest.raises(ValueError) as exc:
+            renderer(cfg)
+        assert "private-auth-sentinel" not in str(exc.value)
+        assert "gitlab-private-secret" not in str(exc.value)
+
+
+@pytest.mark.parametrize("incompatible", ["github", "access_token", "organization"])
+def test_native_mapping_projection_rejects_incompatible_providers(incompatible):
+    cfg = _auth_generation_config()
+    provider = cfg["auth"]["providers"]["gitlab"]
+    provider["native_mapping"] = _native_mapping_generation_pins()
+    if incompatible == "github":
+        provider["kind"] = "github"
+    elif incompatible == "access_token":
+        provider["federation_token_type"] = "access_token"
+    else:
+        provider["organization"] = {"id": "org", "name": "Org", "manager_subjects": ["immutable-subject"]}
+    for renderer in (render_secret, render_configmap):
+        with pytest.raises(ValueError) as exc:
+            renderer(cfg)
+        assert "gitlab-private-secret" not in str(exc.value)
 
 
 def test_auth_absent_adds_no_secret_keys_or_workload_patches():

@@ -5,12 +5,12 @@ from typing import TYPE_CHECKING
 
 from drover_sdk.proxy import Proxy as DroverProxy
 from fastapi import HTTPException
-from keystoneauth1 import session as ks_session
 from keystoneauth1.exceptions.http import NotFound, Unauthorized
 from keystoneauth1.identity import v3
 from waygate_sdk.proxy import Proxy as WaygateProxy
 
 from app.config import get_settings
+from app.services import native_transport
 from app.utils.auth_diagnostics import authentication_step
 
 if TYPE_CHECKING:
@@ -43,7 +43,7 @@ def _get_admin_ks_client():
         user_domain_name=settings.os_user_domain_name,
         project_domain_name=settings.os_project_domain_name,
     )
-    admin_sess = ks_session.Session(auth=admin_auth, timeout=15, verify=settings.ssl_verify)
+    admin_sess = native_transport.create_session(auth=admin_auth, timeout=15, verify=settings.ssl_verify)
     return ks_client.Client(session=admin_sess, interface=settings.os_interface, region_name=settings.os_region_name)
 
 
@@ -185,7 +185,7 @@ def authenticate(
         user_domain_id=domain["id"],
         unscoped=True,
     )
-    sess = operation.own_session(ks_session.Session(auth=auth, timeout=30, verify=settings.ssl_verify))
+    sess = operation.own_session(native_transport.create_session(auth=auth, timeout=30, verify=settings.ssl_verify))
     try:
         with authentication_step("native_password_exchange"):
             access = auth.get_access(sess)
@@ -246,7 +246,9 @@ def validate_token(token: str, project_id: str = "", *, operation=None) -> dict:
         kwargs["unscoped"] = True
 
     auth_plugin = v3.Token(**kwargs)
-    sess = operation.own_session(ks_session.Session(auth=auth_plugin, timeout=30, verify=settings.ssl_verify))
+    sess = operation.own_session(
+        native_transport.create_session(auth=auth_plugin, timeout=30, verify=settings.ssl_verify)
+    )
     try:
         with authentication_step("native_session_exchange"):
             access = auth_plugin.get_access(sess)
@@ -292,7 +294,7 @@ def validate_session(token: str, project_id: str = "", *, operation=None) -> dic
     if root.get("project_id") or not root.get("token") or not root.get("user_id"):
         raise Unauthorized(message="Native login proof is not unscoped")
     if not project_id:
-        return {**root, "session_token": root["token"]}
+        return {**root, "session_token": root["token"], "session_expires_at": root.get("expires_at", "")}
     from app.services.domain_projects import assert_project_membership
 
     try:
@@ -317,7 +319,7 @@ def validate_session(token: str, project_id: str = "", *, operation=None) -> dic
         or scoped.get("project_id") != project_id
     ):
         raise HTTPException(403, "Keystone token subject or project does not match")
-    return {**scoped, "session_token": root["token"]}
+    return {**scoped, "session_token": root["token"], "session_expires_at": root.get("expires_at", "")}
 
 
 _OWN_SERVICE_ENDPOINT_FIELDS: dict[str, str] = {
@@ -370,7 +372,7 @@ def get_waygate_proxy(conn: openstack.connection.Connection) -> WaygateProxy:
 
 
 def get_openstack_connection(
-    token: str, project_id: str, *, system_scope: bool = False
+    token: str, project_id: str, *, system_scope: bool = False, native_access=None
 ) -> openstack.connection.Connection:
     """
     검증된 토큰으로 openstacksdk Connection 객체 반환.
@@ -382,13 +384,45 @@ def get_openstack_connection(
     settings = get_settings()
     if system_scope and project_id:
         raise ValueError("System scope cannot be combined with a project")
+    if native_access is not None:
+        from keystoneauth1.identity.access import AccessInfoPlugin
+
+        if (
+            system_scope
+            or not project_id
+            or native_access.auth_token != token
+            or native_access.project_id != project_id
+            or native_access.project_scoped is not True
+            or native_access.system_scoped is not False
+        ):
+            raise ValueError("Verified native access does not match the requested project token")
+        # The caller supplies proof from this request's live validation only.
+        # Own new auth/session state; only sockets are shared. Never reauthenticate
+        # an already scoped token merely to recover its identical service catalog.
+        session = native_transport.create_session(
+            auth=AccessInfoPlugin(native_access, auth_url=settings.os_auth_url),
+            timeout=30,
+            verify=settings.ssl_verify,
+        )
+        try:
+            return openstack.connection.Connection(
+                session=session,
+                region_name=settings.os_region_name,
+                interface=settings.os_interface,
+                api_timeout=30,
+                verify=settings.ssl_verify,
+                **_owned_service_connection_options(settings),
+            )
+        except BaseException:
+            session.session.close()
+            raise
     auth_scope = (
         {"system_scope": "all"}
         if system_scope
         else {"project_id": project_id or None, "unscoped": not bool(project_id)}
     )
 
-    return openstack.connect(
+    return native_transport.connect(
         load_envvars=False,
         load_yaml_config=False,
         auth_url=settings.os_auth_url,
@@ -408,10 +442,8 @@ def get_admin_connection_for_project(project_id: str) -> openstack.connection.Co
 
     콜백 등 사용자 토큰이 없는 상황에서 프로젝트 리소스를 조작할 때 사용.
     """
-    import openstack
-
     settings = get_settings()
-    return openstack.connect(
+    return native_transport.connect(
         load_envvars=False,
         load_yaml_config=False,
         auth_url=settings.os_auth_url,
@@ -436,13 +468,11 @@ def get_cloud_shell_project_connection() -> openstack.connection.Connection:
     scope is deployment configuration, not request input, so tenant data cannot
     redirect service credentials into an arbitrary project.
     """
-    import openstack
-
     settings = get_settings()
     project_id = settings.cloud_shell_service_project_id.strip()
     if not project_id:
         raise RuntimeError("Cloud Shell service project is not configured")
-    conn = openstack.connect(
+    conn = native_transport.connect(
         load_envvars=False,
         load_yaml_config=False,
         auth_url=settings.cloud_shell_auth_url,
@@ -469,10 +499,8 @@ def get_admin_project_connection() -> openstack.connection.Connection:
     Barbican project-quotas 등 admin 프로젝트 스코프가 필요한 cross-project 관리 API에 사용.
     사용자의 현재 프로젝트 선택과 무관하게 항상 admin 프로젝트로 스코프됨.
     """
-    import openstack
-
     settings = get_settings()
-    return openstack.connect(
+    return native_transport.connect(
         load_envvars=False,
         load_yaml_config=False,
         auth_url=settings.os_auth_url,
@@ -543,7 +571,7 @@ def list_user_groups(token: str, user_id: str) -> list[dict]:
     """
     settings = get_settings()
     auth_plugin = v3.Token(auth_url=settings.os_auth_url, token=token)
-    sess = ks_session.Session(auth=auth_plugin, verify=settings.ssl_verify)
+    sess = native_transport.create_session(auth=auth_plugin, verify=settings.ssl_verify)
     from keystoneclient.v3 import client as ks_client
 
     ks = ks_client.Client(session=sess, interface=settings.os_interface, region_name=settings.os_region_name)
@@ -621,7 +649,9 @@ def list_projects(token: str, domain_id: str | None = None, *, operation=None) -
     subject = operation.subjects.get(token)
     if subject is None:
         auth_plugin = v3.Token(auth_url=settings.os_auth_url, token=token, unscoped=True)
-        sess = operation.own_session(ks_session.Session(auth=auth_plugin, timeout=30, verify=settings.ssl_verify))
+        sess = operation.own_session(
+            native_transport.create_session(auth=auth_plugin, timeout=30, verify=settings.ssl_verify)
+        )
         access = auth_plugin.get_access(sess)
         operation.subjects[token] = (access, sess)
     else:
@@ -675,7 +705,7 @@ def list_system_projects(token: str) -> list[dict]:
 
     settings = get_settings()
     auth = v3.Token(auth_url=settings.os_auth_url, token=token, system_scope="all")
-    sess = ks_session.Session(auth=auth, timeout=30, verify=settings.ssl_verify)
+    sess = native_transport.create_session(auth=auth, timeout=30, verify=settings.ssl_verify)
     access = auth.get_access(sess)
     if access.system_scoped is not True or not access.user_id or not _is_system_admin(access.user_id):
         raise HTTPException(status_code=403, detail="Current system:all administrator authority is required")

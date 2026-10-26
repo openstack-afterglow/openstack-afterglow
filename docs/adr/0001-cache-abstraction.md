@@ -14,7 +14,7 @@ We also need to enforce the **write-through forbidden** invariant. Nova `create_
 - Keep the `backend/app/services/cache/__init__.py` re-export surface identical to the legacy `cache.py` so all ~85 call sites continue to work unchanged.
 - The ABC docstring records the **write-through forbidden** invariant for `set()`: it is for read-through cache misses only, never after a mutation response.
 - All invalidation flows through `delete(*keys)` or `invalidate_tag(tag)`. Pattern-based `invalidate(pattern)` continues to work via `RedisBackend._scan()` but is not on the ABC — Memcached v2 implementers will lose only that one wrapper, not the 85 call sites.
-- `cached_call()` coalesces concurrent misses for the same key within one process and event loop. `asyncio.shield()` prevents a cancelled waiter from cancelling the shared origin load. Explicit refresh calls form an ordered chain behind the current same-key load, always execute their own loader, and write last so an older load cannot overwrite refreshed data.
+- `cached_call()` coalesces concurrent misses for the same key within one process and event loop. `asyncio.shield()` prevents a cancelled waiter from cancelling the shared origin load. An explicit refresh queues one fresh pass behind an ordinary in-flight read; overlapping refresh callers share that fresh pass instead of forming an unbounded serial reload chain. A later refresh after completion still runs its loader. Invalidation detaches old flights so a post-mutation refresh never joins pre-mutation work.
 - Self-implemented — no `aiocache` / `cashews` dependency.
 
 ## Alternatives Considered

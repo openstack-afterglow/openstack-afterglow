@@ -4,11 +4,12 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import { goto } from '$app/navigation';
 	import { useRouterDetailController } from '$lib/stores/routerDetailController.svelte';
+	import type { AutoRefreshController } from '$lib/utils/autoRefresh.svelte';
 
 	interface Props {
 		onClose?: () => void;
 		routerId: string;
-		ar: { active: boolean; intervalSeconds: number; intervalOptions: number[] };
+		ar: AutoRefreshController;
 	}
 
 	let { onClose, routerId, ar }: Props = $props();
@@ -23,7 +24,7 @@
 			bind:intervalSeconds={ar.intervalSeconds}
 			intervalOptions={ar.intervalOptions}
 			refreshing={s.loading}
-			onManualRefresh={() => s.fetchRouter()}
+			onManualRefresh={ar.refresh}
 		/>
 		<Button variant="outline" size="xs" onclick={() => goto(`/dashboard/network/routers/${routerId}`)}>{t('router.header.fullView')}</Button>
 	</div>

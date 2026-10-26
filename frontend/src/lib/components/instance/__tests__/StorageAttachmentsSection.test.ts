@@ -28,9 +28,9 @@ function deferred<T>() {
 	const promise = new Promise<T>(res => { resolve = res; });
 	return { promise, resolve };
 }
-function renderSection(instanceId?: string, projectId?: string, fixedAddresses = ['10.0.0.7', '10.0.0.8']) {
+function renderSection(instanceId?: string, projectId?: string, fixedAddresses = ['10.0.0.7', '10.0.0.8'], adminMode = false) {
 	controllerRef.current = {
-		instanceId, effectiveProjectId: projectId,
+		instanceId, effectiveProjectId: projectId, adminMode,
 		instance: instanceId ? { id: instanceId, name: 'mutable-server-name', os_type: 'windows' } : null,
 		fixedIpsList: fixedAddresses.map(addr => ({ addr, type: 'fixed' })),
 		floatingIpsList: [{ addr: '203.0.113.7', type: 'floating' }],
@@ -48,6 +48,15 @@ async function selectNfs() {
 }
 
 describe('StorageAttachmentsSection authorization boundaries', () => {
+	it('reads administrator authorizations and catalog through the exact instance route', async () => {
+		auth.update(state => ({ ...state, token: 'admin-token', projectId: 'personal', isSystemAdmin: true }));
+		get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/file-storage') ? [nfs, ceph] : []));
+		renderSection('instance-a', 'foreign-project', undefined, true);
+		await waitFor(() => expect(get).toHaveBeenCalledWith('/api/v1/admin/instances/instance-a/storage-attachments', 'admin-token', 'personal'));
+		await openStorage();
+		expect(get).toHaveBeenCalledWith('/api/v1/admin/instances/instance-a/file-storage', 'admin-token', 'personal');
+		expect(get.mock.calls.some(([path]) => path === '/api/v1/file-storage' || path.startsWith('/api/v1/instances/'))).toBe(false);
+	});
 	beforeEach(() => {
 		vi.resetAllMocks();
 		auth.update(state => ({ ...state, token: null, canWrite: true, isSystemAdmin: false, roles: ['member'] }));

@@ -7,8 +7,8 @@
 	import { Alert, Button, Field, SearchSelect } from '$lib/components/ui';
 	import { t } from '$lib/i18n/ns/domain-admin';
 
-	let { domainId = '', projectId = '', emptyProjectLabel, disabled = false, excludedProjectIds = [], onchange }: {
-		domainId?: string; projectId?: string; emptyProjectLabel?: string; disabled?: boolean; excludedProjectIds?: readonly string[];
+	let { domainId = '', projectId = '', emptyProjectLabel, disabled = false, excludedProjectIds = [], selectProjectDomain = false, onchange }: {
+		domainId?: string; projectId?: string; emptyProjectLabel?: string; disabled?: boolean; excludedProjectIds?: readonly string[]; selectProjectDomain?: boolean;
 		onchange: (domainId: string, projectId: string, projectName: string) => void;
 	} = $props();
 	const id = $props.id();
@@ -59,7 +59,7 @@
 		<SearchSelect id={`${id}-project`} value={projectId}
 			options={[{ value: '', label: emptyProjectLabel ?? t('scope.allProjects') }, ...visibleProjects.map(project => ({ value: project.id, label: project.name, description: project.id }))]}
 			{loading} disabled={disabled || loading || !!projectError} placeholder={projectId || emptyProjectLabel || t('scope.allProjects')} ariaLabel={t('scope.project')}
-			onchange={(value) => onchange(domainId, value, projects.find(project => project.id === value)?.name ?? '')} />
+			onchange={(value) => { const project = projects.find(project => project.id === value); onchange(domainId || (selectProjectDomain ? project?.domain_id ?? '' : ''), value, project?.name ?? ''); }} />
 	</Field>
 	<Button variant="secondary" size="sm" disabled={disabled || loading} onclick={() => refreshRevision += 1}>{t('actions.refresh')}</Button>
 </div>

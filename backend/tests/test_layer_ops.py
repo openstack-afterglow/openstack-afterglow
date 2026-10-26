@@ -50,6 +50,7 @@ def _row(**attrs):
     row.transport = "nfs"
     row.run_id = None
     row.resources = None
+    row.resource_snapshot = None
     row.cleanup_state = None
     row.block_source = None
     for key, value in attrs.items():

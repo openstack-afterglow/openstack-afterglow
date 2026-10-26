@@ -235,9 +235,8 @@ async def test_project_quota_inventory_filters_by_domain(admin_client, directory
 
 
 @pytest.mark.asyncio
-async def test_trove_all_projects_requires_fresh_authority_and_intersection(admin_client, directory):
+async def test_trove_admin_inventory_respects_project_intersection(admin_client, directory):
     with (
-        patch("app.api.database.instances.require_admin", AsyncMock()) as guard,
         patch(
             "app.services.trove.list_instances_admin_all_projects",
             return_value=[
@@ -246,10 +245,9 @@ async def test_trove_all_projects_requires_fresh_authority_and_intersection(admi
             ],
         ),
     ):
-        result = await admin_client.get("/api/v1/database-instances?all_projects=true&domain_id=domain-a")
+        result = await admin_client.get("/api/v1/admin/database-instances?domain_id=domain-a")
     assert result.status_code == 200
     assert result.json() == [{"id": "inside", "project_id": "a"}]
-    guard.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -264,23 +262,20 @@ async def test_swift_fanout_selects_only_domain_projects(admin_client, directory
     from app.api.object_storage import containers
 
     with (
-        patch.object(containers, "require_admin", AsyncMock()) as guard,
-        patch(
-            "app.services.keystone.list_system_projects",
-            return_value=[
-                {"id": "a", "name": "A"},
-                {"id": "foreign", "name": "F"},
-            ],
-        ),
-        patch("app.services.keystone.get_admin_connection_for_project", return_value=MagicMock()) as connection,
-        patch("app.services.swift.list_containers", return_value=[{"name": "bucket"}]),
+        patch("app.services.keystone.get_admin_connection_for_project") as rescope,
+        patch("app.services.swift.list_project_containers", return_value=[{"name": "bucket"}]) as listing,
         patch.object(containers, "_get_deleted_containers", AsyncMock(return_value={})),
     ):
-        result = await admin_client.get("/api/v1/object-storage?all_projects=true&domain_id=domain-a")
+        result = await admin_client.get("/api/v1/admin/object-storage?domain_id=domain-a&project_id=a")
     assert result.status_code == 200
-    assert result.json() == [{"name": "bucket", "project_id": "a", "project_name": "A"}]
-    connection.assert_called_once_with("a")
-    guard.assert_awaited_once()
+    assert result.json() == {
+        "items": [{"name": "bucket", "project_id": "a", "project_name": "duplicate-name"}],
+        "project_count": 1,
+        "partial": False,
+        "unavailable_projects": [],
+    }
+    listing.assert_called_once_with(directory, "a", False, False)
+    rescope.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -399,18 +394,15 @@ def test_manila_native_pages_are_complete(directory):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "route,module,provider",
-    [
-        ("database-instances", "app.api.database.instances", "app.services.trove.list_instances_admin_all_projects"),
-        ("object-storage", "app.api.object_storage.containers", "app.services.keystone.list_system_projects"),
-    ],
-)
-async def test_stale_admin_claim_cannot_read_all_project_resources(admin_client, route, module, provider):
-    with (
-        patch(f"{module}.require_admin", AsyncMock(side_effect=HTTPException(403, "native_authority_revoked"))),
-        patch(provider) as inventory,
-    ):
-        result = await admin_client.get(f"/api/v1/{route}?all_projects=true")
+async def test_stale_admin_claim_cannot_read_all_project_resources(admin_client):
+    from app.api.deps import get_admin_os_conn
+    from app.main import app
+
+    async def revoked():
+        raise HTTPException(403, "native_authority_revoked")
+
+    app.dependency_overrides[get_admin_os_conn] = revoked
+    with patch("app.api.object_storage.containers.inventory_directory") as inventory:
+        result = await admin_client.get("/api/v1/admin/object-storage")
     assert result.status_code == 403
     inventory.assert_not_called()

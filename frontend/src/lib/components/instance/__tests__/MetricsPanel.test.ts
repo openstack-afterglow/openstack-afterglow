@@ -56,6 +56,13 @@ beforeEach(() => {
 });
 
 describe('MetricsPanel', () => {
+	it('uses explicit admin metrics paths while preserving caller-native telemetry project', async () => {
+		mockAllMetrics();
+		render(MetricsPanel, { instanceId: 'foreign-vm', projectId: 'foreign-project', adminMode: true });
+		await waitFor(() => expect(mockGet.mock.calls.some(([path]) => path.startsWith('/api/v1/admin/instances/foreign-vm/metrics-batch?'))).toBe(true));
+		expect(mockGet).toHaveBeenCalledWith('/api/v1/admin/instances/foreign-vm/metrics-summary?range=1h', 'test-token', 'test-project');
+		expect(mockGet.mock.calls.every(([path, , project]) => path.startsWith('/api/v1/admin/') && project === 'test-project')).toBe(true);
+	});
 	it('renders 4 base charts for non-GPU instance', async () => {
 		mockAllMetrics();
 

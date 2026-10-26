@@ -27,6 +27,7 @@ vi.mock('$lib/stores/servicePermissions', async () => {
 });
 vi.mock('$lib/components/palimpsest/HubArtifactsPanel.svelte', async () => ({ default: (await import('./WorkspacePanelFixture.svelte')).default }));
 vi.mock('$lib/components/palimpsest/PalimpsestLocalGuide.svelte', async () => ({ default: (await import('./WorkspacePanelFixture.svelte')).default }));
+vi.mock('$lib/components/palimpsest/AssetSearchPanel.svelte', () => ({ default: () => {} }));
 vi.mock('$lib/api/palimpsestPackages', async (importOriginal) => {
   const original = await importOriginal<typeof PackageModule>();
   return {
@@ -215,8 +216,6 @@ describe('persistent Palimpsest workspace', () => {
     initLocale(locale);
     mocks.context.mockRejectedValue(new ApiError(403, 'Administrative or service identities cannot authorize package access'));
     render(Page);
-    expect(screen.getByRole('tab', { name: t('workspace.hub') }).getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByTestId('hub-panel').getAttribute('data-project-id')).toBe('project-a');
     await selectNative();
     await screen.findByText(t('context.unavailable'));
     expect(screen.getByText(t('context.accessHelp'))).toBeTruthy();
@@ -238,7 +237,6 @@ describe('persistent Palimpsest workspace', () => {
     if (state === 'no-namespace') mocks.context.mockResolvedValue({ ...nativeContext, namespace: null });
     if (state === 'no-identity') auth.set({ ...get(auth), token: '' });
     render(Page);
-    expect(screen.getByTestId('hub-panel')).toBeTruthy();
     await fireEvent.click(screen.getByRole('tab', { name: t('workspace.local') }));
     expect(screen.getByTestId('local-guide')).toBeTruthy();
     await selectNative();

@@ -1,4 +1,9 @@
 {
+	"domain.label": "ドメイン {name} · {id}",
+	"domain.deleted": "削除済みまたは確認できないドメイン · {id}",
+	"domain.deletedProject": "所有ドメイン不明 · プロジェクト {id}",
+	"domain.unknown": "所有者不明",
+	"domain.ownershipOnly": "ドメイン枠はネットワークの実際の所有関係を示します。同じドメインに属していても、ネットワーク接続や通信の許可を意味しません。",
 	"card.noStatus": "ステータスなし",
 	"topology.lane": "レーン",
 	"topology.canvas": "キャンバス",

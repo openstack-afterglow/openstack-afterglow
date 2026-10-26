@@ -98,12 +98,10 @@ describe('VM create real API-client scope races', () => {
 		const firstA = deferred<Response>();
 		const secondA = deferred<Response>();
 		let aFlavorCalls = 0;
-		const observedSignals: AbortSignal[] = [];
 		vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
 			const url = new URL(String(input));
 			const projectId = new Headers(init?.headers).get('X-Project-Id');
 			const signal = init?.signal;
-			if (signal) observedSignals.push(signal);
 			if (url.pathname === '/api/v1/flavors' && projectId === 'project-a') {
 				aFlavorCalls += 1;
 				const pending = aFlavorCalls === 1 ? firstA : secondA;
@@ -128,6 +126,8 @@ describe('VM create real API-client scope races', () => {
 		await vi.waitFor(() => expect(aFlavorCalls).toBe(2));
 		secondA.resolve(jsonResponse([{ id: 'flavor-a-new', name: 'project-a-new-flavor', vcpus: 2, ram: 2048, disk: 20 }]));
 		await vi.waitFor(() => expect(screen.getByTestId('flavor').textContent).toBe('project-a-new-flavor'));
-		expect(observedSignals.some(signal => signal.aborted)).toBe(true);
+		firstA.resolve(jsonResponse([{ id: 'flavor-a-old', name: 'obsolete-project-a-flavor', vcpus: 1, ram: 1024, disk: 20 }]));
+		await Promise.resolve(); await Promise.resolve();
+		expect(screen.getByTestId('flavor').textContent).toBe('project-a-new-flavor');
 	});
 });

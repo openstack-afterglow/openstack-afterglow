@@ -8,6 +8,7 @@
   import { untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
+  import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import type { Keypair } from '$lib/types/keypair';
   import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
@@ -20,6 +21,7 @@
   import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
   import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
   import DockerfileLintPanel, { type DockerfileLintResponse } from '$lib/components/admin/libraries/DockerfileLintPanel.svelte';
+  import PalimpsestCatalogPanel from '$lib/components/admin/libraries/PalimpsestCatalogPanel.svelte';
 
   // ---------------------------------------------------------------------------
   // 타입
@@ -461,18 +463,18 @@
     loading = false;
   }
 
-  // 활성 빌드/Import job이 있으면 10초, 없으면 30초 폴링
+  // Reuse the completion/visibility/offline-aware scheduler. Automatic reads
+  // use the normal cache family; only explicit actions force provider reloads.
+  const jobsRefresh = createAutoRefresh(async () => {
+    if (!token) return;
+    const active = activeImportJobs.length > 0 || activeBuilds.length > 0;
+    await Promise.allSettled([
+      loadBuilds(), loadImportJobs(false),
+      ...(active ? [loadArtifacts(), loadProfiles(), loadConsumes()] : []),
+    ]);
+  }, { storageKey: 'admin-library-jobs', defaultInterval: 30, invokeOnMount: false });
   $effect(() => {
-    const interval = setInterval(() => {
-      void loadBuilds(true);
-      void loadImportJobs();
-      if (activeImportJobs.length > 0 || activeBuilds.length > 0) {
-        void loadArtifacts(true);
-        void loadProfiles(true);
-        void loadConsumes(true);
-      }
-    }, activeBuilds.length > 0 || activeImportJobs.length > 0 ? 10_000 : 30_000);
-    return () => clearInterval(interval);
+    jobsRefresh.setBoost(activeBuilds.length > 0 || activeImportJobs.length > 0 ? 10 : null);
   });
 
   $effect(() => {
@@ -740,7 +742,7 @@
     detailCancelError = '';
   }
 
-  async function loadBuildDetail() {
+  async function loadBuildDetail(refresh = true) {
     if (!selectedBuildId) return;
     detailLoading = true;
     try {
@@ -748,7 +750,7 @@
         `/api/v1/admin/libraries/builds/${selectedBuildId}`,
         token,
         projectId,
-        { refresh: true },
+        { refresh },
       );
     } catch { /* 이전 값 유지 */ } finally {
       detailLoading = false;
@@ -777,13 +779,9 @@
     }
   });
 
-  $effect(() => {
-    if (!detailOpen || !selectedBuildId) return;
-    const interval = setInterval(() => {
-      if (detailIsActive) loadBuildDetail();
-    }, 10_000);
-    return () => clearInterval(interval);
-  });
+  createAutoRefresh(async () => {
+    if (detailOpen && selectedBuildId && detailIsActive) await loadBuildDetail(false);
+  }, { storageKey: 'admin-library-build-detail', defaultInterval: 10, invokeOnMount: false });
 
   // ---------------------------------------------------------------------------
   // 소비 상세 모달
@@ -974,6 +972,7 @@
       {/snippet}
     </PageHeader>
   </div>
+  <PalimpsestCatalogPanel onbundle={(name) => { selectedProfileId = profiles.find(profile => profile.name === name)?.id ?? null; }} />
   <div class="mb-5 grid grid-cols-2 md:grid-cols-4 border-y border-line py-3" aria-label={t('summary.label')}>
     <div class="px-3 first:pl-0 md:border-r md:border-line">
       <p class="text-xs text-ink-2">{t('summary.sealed')}</p>
@@ -1334,7 +1333,7 @@
     <!-- 프로필 구성 카드                                                        -->
     <!-- ---------------------------------------------------------------------- -->
     <div class="mb-8">
-      <section class="bg-surface-sunken border border-line-2 rounded-xl p-5" data-tour="admin-library-profile">
+      <section id="palimpsest-managed-profiles" class="bg-surface-sunken border border-line-2 rounded-xl p-5" data-tour="admin-library-profile">
         <h2 class="text-sm font-semibold text-ink-0 mb-1">{t('profiles.title')}</h2>
         <p class="text-xs text-ink-2 mb-4">
           {t('profiles.help')}
@@ -1769,7 +1768,7 @@
             </p>
             {#if detailIsActive}
               <button
-                onclick={loadBuildDetail}
+                onclick={() => loadBuildDetail()}
                 class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
               >{t('actions.refresh')}</button>
             {/if}

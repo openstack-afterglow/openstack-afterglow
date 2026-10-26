@@ -1,4 +1,9 @@
 {
+	"domain.label": "域 {name} · {id}",
+	"domain.deleted": "已删除或无法确认的域 · {id}",
+	"domain.deletedProject": "所属域未知 · 项目 {id}",
+	"domain.unknown": "所有者未知",
+	"domain.ownershipOnly": "域框表示网络的实际归属。同属一个域并不意味着网络相连或允许通信。",
 	"card.noStatus": "无状态",
 	"topology.lane": "泳道",
 	"topology.canvas": "画布",

@@ -211,6 +211,66 @@ async def test_cached_call_refresh_waits_for_older_load_and_keeps_fresh_cache(ba
     assert json.loads(await backend.get(key)) == {"value": "fresh"}
 
 
+async def test_simultaneous_refreshes_share_fresh_result_after_ordinary_load(backend):
+    key = "afterglow:test:refresh-burst"
+    old_started = asyncio.Event()
+    release_old = asyncio.Event()
+    fresh_started = asyncio.Event()
+    release_fresh = asyncio.Event()
+    calls = []
+
+    async def old_origin():
+        old_started.set()
+        await release_old.wait()
+        return {"revision": "old"}
+
+    async def fresh_origin():
+        calls.append("fresh")
+        fresh_started.set()
+        await release_fresh.wait()
+        return {"revision": "current"}
+
+    old = asyncio.create_task(cached_call(key, 60, old_origin))
+    await old_started.wait()
+    refreshed = [asyncio.create_task(cached_call(key, 60, fresh_origin, refresh=True)) for _ in range(8)]
+    try:
+        await asyncio.sleep(0)
+        assert not fresh_started.is_set()
+        release_old.set()
+        await asyncio.wait_for(fresh_started.wait(), 1)
+        release_fresh.set()
+        assert await old == {"revision": "old"}
+        assert await asyncio.gather(*refreshed) == [{"revision": "current"}] * 8
+        assert calls == ["fresh"]
+        assert json.loads(await backend.get(key)) == {"revision": "current"}
+    finally:
+        release_old.set()
+        release_fresh.set()
+        await asyncio.gather(old, *refreshed, return_exceptions=True)
+
+
+async def test_cancelled_refresh_waiter_cannot_cancel_shared_refresh_or_poison_next_read(backend):
+    key = "afterglow:test:refresh-cancel"
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def fresh_origin():
+        started.set()
+        await release.wait()
+        return {"revision": "current"}
+
+    cancelled = asyncio.create_task(cached_call(key, 60, fresh_origin, refresh=True))
+    await started.wait()
+    survivor = asyncio.create_task(cached_call(key, 60, fresh_origin, refresh=True))
+    await asyncio.sleep(0)
+    cancelled.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled
+    release.set()
+    assert await survivor == {"revision": "current"}
+    assert await cached_call(key, 60, lambda: {"revision": "wrong"}) == {"revision": "current"}
+
+
 async def test_cached_call_refresh(backend: RedisBackend) -> None:
     calls = {"n": 0}
 

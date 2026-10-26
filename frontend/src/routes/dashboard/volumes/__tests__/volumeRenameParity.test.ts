@@ -13,7 +13,7 @@ vi.mock('$lib/api/client', () => {
 			this.status = status;
 		}
 	}
-	return { ApiError, api: mocks, memoryCache: new Map() };
+	return { ApiError, api: mocks };
 });
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token', projectId: 'project-a', isSystemAdmin: false }),
@@ -164,7 +164,7 @@ describe('volume detail parity and list rename', () => {
 		await screen.findByRole('button', { name: 'data-disk 볼륨 작업' });
 		expect(screen.getByRole('link', { name: '자동 백업 설정' }).getAttribute('href')).toBe('/dashboard/volumes/backups?auto-backup=vol-1');
 		expect(mocks.get).toHaveBeenCalledWith('/api/v1/volumes', 'token', 'project-a', undefined);
-		expect(mocks.get).toHaveBeenCalledWith('/api/v1/dashboard/quotas', 'token', 'project-a');
+		expect(mocks.get.mock.calls.map(call => call.slice(0, 3))).toContainEqual(['/api/v1/dashboard/quotas', 'token', 'project-a']);
 		expect(mocks.post).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByRole('button', { name: 'data-disk 볼륨 작업' }));
 		const menu = screen.getByRole('group', { name: 'data-disk 볼륨 작업 옵션' });

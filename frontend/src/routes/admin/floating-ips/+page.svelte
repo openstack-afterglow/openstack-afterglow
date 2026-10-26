@@ -39,11 +39,11 @@
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
-	async function load() {
+	async function load(force = false) {
 		loading = true;
 		inventoryError = '';
 		try {
-			fips = await api.get<FloatingIpInfo[]>('/api/v1/admin/all-floating-ips', token, projectId);
+			fips = await api.get<FloatingIpInfo[]>('/api/v1/admin/all-floating-ips', token, projectId, { refresh: force });
 		} catch (reason) {
 			fips = []; inventoryError = reason instanceof Error ? reason.message : scopeT('state.unavailable');
 		} finally {
@@ -105,7 +105,7 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading}
-				onManualRefresh={load}
+				onManualRefresh={ar.refresh}
 			/>
 		{/snippet}
 	</PageHeader>

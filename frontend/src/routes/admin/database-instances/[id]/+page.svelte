@@ -31,17 +31,21 @@
 
 	{#if ctrl.loading}
 		<LoadingSkeleton variant="detail" rows={8} />
+	{:else if ctrl.loadError}
+		<div role="alert" class="text-state-danger-text text-sm">{ctrl.loadError}</div>
 	{:else if !ctrl.instance}
 		<div class="text-ink-2 text-sm">{tr('instance.notFound')}</div>
 	{:else}
-		<DbInstanceHeader instance={ctrl.instance} deleting={ctrl.deleting} onDelete={ctrl.deleteInstance} />
+		<DbInstanceHeader instance={ctrl.instance} deleting={ctrl.deleting} canMutate={ctrl.canMutate} onDelete={ctrl.deleteInstance} />
 
 		<DbInstanceMetaGrid instance={ctrl.instance} />
 
-		<DbConnectionInfoCard instance={ctrl.instance} rootInfo={ctrl.rootInfo} enablingRoot={ctrl.enablingRoot} onEnableRoot={ctrl.enableRoot} />
+		<DbConnectionInfoCard instance={ctrl.instance} rootInfo={ctrl.rootInfo} enablingRoot={ctrl.enablingRoot} canMutate={ctrl.canMutate} onEnableRoot={ctrl.enableRoot} />
 
 		<DbDatabasesSection
 			databases={ctrl.databases}
+			canMutate={ctrl.canMutate}
+			loadError={ctrl.databasesReadError}
 			deletingDb={ctrl.deletingDb}
 			addError={ctrl.dbError}
 			creating={ctrl.creatingDb}
@@ -51,6 +55,8 @@
 
 		<DbUsersSection
 			users={ctrl.users}
+			canMutate={ctrl.canMutate}
+			loadError={ctrl.usersReadError}
 			deletingUser={ctrl.deletingUser}
 			addError={ctrl.userError}
 			creating={ctrl.creatingUser}
@@ -60,6 +66,8 @@
 
 		<DbBackupsSection
 			backups={ctrl.backups}
+			canMutate={ctrl.canMutate}
+			loadError={ctrl.backupsReadError}
 			deletingBackup={ctrl.deletingBackup}
 			restoringBackup={ctrl.restoringBackup}
 			addError={ctrl.backupError}

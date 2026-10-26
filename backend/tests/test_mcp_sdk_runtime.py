@@ -314,7 +314,7 @@ async def test_tools_metadata_marks_deletions_and_lifecycle_changes_destructive(
     ("module_name", "prepare_name", "request_name", "resource_argument", "action"),
     [
         ("compute", "_prepare_server_action", "request_project_server_action", "server_id", "stop"),
-        ("compute", "_prepare_server_delete", "request_project_server_delete", "server_id", None),
+        ("compute", "_checked_server_delete", "request_project_server_delete", "server_id", None),
         ("storage", "_prepare_volume_delete", "request_project_volume_delete", "volume_id", None),
         ("storage", "_prepare_snapshot_delete", "request_project_snapshot_delete", "snapshot_id", None),
         ("storage", "_prepare_backup_delete", "request_project_backup_delete", "backup_id", None),
@@ -327,7 +327,7 @@ async def test_tools_metadata_marks_deletions_and_lifecycle_changes_destructive(
     ],
 )
 async def test_every_mutation_adapter_fences_after_slow_final_validation(
-    monkeypatch, module_name, prepare_name, request_name, resource_argument, action
+    monkeypatch, empty_layer_consume_db, module_name, prepare_name, request_name, resource_argument, action
 ):
     import importlib
 
@@ -335,8 +335,15 @@ async def test_every_mutation_adapter_fences_after_slow_final_validation(
     started = threading.Event()
     finish_validation = threading.Event()
     mutations = []
+    original_validation = getattr(module, prepare_name)
+    validation_calls = 0
 
     def validate_owner_and_state(*_args, **_kwargs):
+        nonlocal validation_calls
+        validation_calls += 1
+        if prepare_name == "_checked_server_delete" and validation_calls == 1:
+            # Initial owner proof precedes SQL exclusion; stall the final SDK check.
+            return original_validation(*_args, **_kwargs)
         started.set()
         assert finish_validation.wait(2)
         return {"status": "ACTIVE", "requested_action": action or "delete"}
@@ -349,6 +356,9 @@ async def test_every_mutation_adapter_fences_after_slow_final_validation(
     if module_name == "container":
         monkeypatch.setattr(module, "_endpoint", lambda _conn: "https://synthetic.invalid")
     proxy = SimpleNamespace(
+        get_server=lambda server_id: SimpleNamespace(
+            id=server_id, name="vm-a", status="ACTIVE", project_id="project-a", metadata={}
+        ),
         stop_server=provider_mutation,
         delete_server=provider_mutation,
         delete_volume=provider_mutation,
@@ -363,6 +373,12 @@ async def test_every_mutation_adapter_fences_after_slow_final_validation(
     arguments = {"project_id": "project-a", resource_argument: "resource-a"}
     if action is not None:
         arguments["action"] = action
+    if prepare_name == "_checked_server_delete":
+        from app.services.palimpsest_catalog_cleanup import McpCleanupAuthority, lookup_catalog_consume
+
+        # Exclude cold SQL setup from the short final-validation deadline.
+        authority = McpCleanupAuthority(conn, "", arguments["project_id"])
+        assert await lookup_catalog_consume("resource-a", proxy.get_server("resource-a"), authority) is None
 
     async def invoke():
         with sdk_deadline(0.02):

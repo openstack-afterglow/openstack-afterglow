@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
 
 const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }));
@@ -16,10 +16,11 @@ vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'admin-token', userId: 'admin-user', projectId: 'admin-project' }),
 }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
-	createAutoRefresh: () => ({
+	createAutoRefresh: (callback: (force?: boolean) => Promise<void>) => ({
 		active: false,
 		intervalSeconds: 15,
 		intervalOptions: [10, 15, 30, 60],
+		refresh: () => callback(true),
 	}),
 }));
 
@@ -47,10 +48,13 @@ describe('admin database instances', () => {
 
 		expect(await screen.findByRole('link', { name: 'customer-mysql' })).toBeTruthy();
 		expect(screen.getByRole('cell', { name: 'tenant-project-a' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: '재시작' })).toBeNull();
+		expect(screen.queryByRole('button', { name: '삭제' })).toBeNull();
 		expect(mockGet).toHaveBeenCalledWith(
-			'/api/v1/database-instances?all_projects=true',
+			'/api/v1/admin/database-instances',
 			'admin-token',
 			'admin-project',
+			{ refresh: false },
 		);
 		expect(document.querySelector('iframe')).toBeNull();
 		expect(screen.queryByText(/mysqld_exporter/i)).toBeNull();
@@ -63,5 +67,13 @@ describe('admin database instances', () => {
 
 		await screen.findByRole('alert');
 		expect(screen.queryByText('DB 인스턴스가 없습니다')).toBeNull();
+	});
+
+	it('forces native freshness when the operator explicitly refreshes', async () => {
+		mockGet.mockResolvedValue([]);
+		render(Page);
+		await waitFor(() => expect(mockGet).toHaveBeenCalled());
+		await fireEvent.click(screen.getByTitle('지금 새로고침'));
+		await waitFor(() => expect(mockGet).toHaveBeenLastCalledWith('/api/v1/admin/database-instances', 'admin-token', 'admin-project', { refresh: true }));
 	});
 });

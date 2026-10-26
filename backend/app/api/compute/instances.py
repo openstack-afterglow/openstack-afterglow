@@ -1191,6 +1191,10 @@ async def delete_instance(
     try:
         server = await asyncio.to_thread(nova.get_server, conn, instance_id)
     except Exception:
+        from app.services.palimpsest_catalog_cleanup import recover_missing_instance
+
+        if await recover_missing_instance(conn, instance_id, token_info):
+            return
         raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다")
     assert_instance_owner(server, conn, token_info)
     from app.services.layer_consume_resources import cleanup, lookup_for_server
@@ -1225,8 +1229,15 @@ async def delete_instance(
             logger.warning("헬스 토큰 폐기 실패 (instance=%s)", instance_id)
 
     # Nova 서버 삭제
-    if not block_cleaned:
+    from app.services.palimpsest_catalog_cleanup import submit_instance_delete
+
+    catalog_delete = await submit_instance_delete(conn, instance_id, server, token_info)
+    if not block_cleaned and not catalog_delete:
         await asyncio.to_thread(nova.delete_server, conn, instance_id)
+    from app.services.palimpsest_catalog_cleanup import finish_instance_delete
+
+    await finish_instance_delete(conn, instance_id, server, token_info)
+    block_cleaned = block_cleaned or catalog_delete
     await invalidate(f"afterglow:nova:{pid}:instances")
     await invalidate(f"afterglow:nova:{pid}:instance:{instance_id}")
     await invalidate(f"afterglow:neutron:{pid}:port_mac_map")
@@ -1704,8 +1715,15 @@ async def _bulk_delete_one(
         except Exception:
             pass
 
-    if not block_cleaned:
+    from app.services.palimpsest_catalog_cleanup import submit_instance_delete
+
+    catalog_delete = await submit_instance_delete(conn, instance_id, server, token_info)
+    if not block_cleaned and not catalog_delete:
         await asyncio.to_thread(nova.delete_server, conn, instance_id)
+    from app.services.palimpsest_catalog_cleanup import finish_instance_delete
+
+    await finish_instance_delete(conn, instance_id, server, token_info)
+    block_cleaned = block_cleaned or catalog_delete
     await invalidate(f"afterglow:nova:{pid}:instances")
     await invalidate(f"afterglow:nova:{pid}:instance:{instance_id}")
     await invalidate(f"afterglow:neutron:{pid}:port_mac_map")
@@ -2508,6 +2526,16 @@ async def storage_connection_info(
 
 
 async def _revoke_instance_storage_grants(conn, instance_id: str, server, token_info: dict) -> None:
+    from app.services.palimpsest_catalog_cleanup import revoke_before_instance_delete
+
+    try:
+        await revoke_before_instance_delete(conn, instance_id, server, token_info)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            409, "Catalog grant cleanup could not be confirmed; instance deletion was not submitted"
+        ) from exc
     for share_id, grant in _storage_grants(server).items():
         if grant["m"]:
             await _revoke_storage_grant(conn, instance_id, share_id, grant, token_info)

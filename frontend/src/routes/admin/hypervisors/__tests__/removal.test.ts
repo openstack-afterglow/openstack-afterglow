@@ -10,8 +10,9 @@ const { api, autoRefreshCallback } = vi.hoisted(() => ({
 vi.mock('$lib/api/client', () => ({ api }));
 vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'admin-token', projectId: 'admin-project' }), authReady: writable(true), projectSwitching: writable(false) }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
-	createAutoRefresh: (callback: () => Promise<unknown>) => {
-		autoRefreshCallback.current = callback;
+	createAutoRefresh: (callback: () => Promise<unknown>, options: { storageKey: string }) => {
+		// The child host-health panel has an independent observational poller.
+		if (options.storageKey === 'admin-hypervisors') autoRefreshCallback.current = callback;
 		return { active: false, intervalSeconds: 30, intervalOptions: [15, 30, 60] };
 	},
 }));

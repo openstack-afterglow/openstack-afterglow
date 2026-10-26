@@ -62,7 +62,7 @@ async def test_collect_instance_data_clears_gpu_map_for_shelved_offloaded():
     )
 
     with (
-        patch("openstack.connect", return_value=conn),
+        patch("app.services.native_transport.connect", return_value=conn),
         patch("app.config.get_settings", return_value=settings),
         patch(
             "app.services.gpu_inventory.build_alias_to_device_name_map",
@@ -139,7 +139,7 @@ async def test_collect_instance_data_resolves_named_server_flavor_with_detailed_
     )
 
     with (
-        patch("openstack.connect", return_value=conn),
+        patch("app.services.native_transport.connect", return_value=conn),
         patch("app.config.get_settings", return_value=settings),
         patch(
             "app.services.gpu_inventory.build_alias_to_device_name_map",

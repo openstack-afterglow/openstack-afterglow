@@ -1,4 +1,9 @@
 {
+  "domain.label": "Kikoa {name} · {id}",
+  "domain.deleted": "Kikoa kilichofutwa au kisichopatikana · {id}",
+  "domain.deletedProject": "Kikoa cha mmiliki hakijulikani · mradi {id}",
+  "domain.unknown": "Mmiliki hajulikani",
+  "domain.ownershipOnly": "Visanduku vya vikoa vinaonyesha umiliki halisi wa mitandao. Kuwa katika kikoa kimoja hakumaanishi muunganisho wa mtandao au ruhusa ya mawasiliano.",
   "card.noStatus": "Hakuna hali",
   "topology.lane": "Njia",
   "topology.canvas": "Eneo la kuchorea",

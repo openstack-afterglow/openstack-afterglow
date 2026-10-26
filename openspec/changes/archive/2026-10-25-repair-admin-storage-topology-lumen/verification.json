@@ -1,0 +1,158 @@
+{
+  "date": "2026-10-25",
+  "sourceOnly": true,
+  "productionChanged": false,
+  "afterglowRoot": "/Users/pieroot/code/afterglow",
+  "nativeRoot": "/Users/pieroot/code/lumen-admin-fixes",
+  "nativeBase": "a26dec0cc46fed82661a06efcb9b575a8039bfc5",
+  "checks": {
+    "focusedFrontend": {
+      "files": 17,
+      "passed": 320
+    },
+    "nativeFocused": 197,
+    "nativeSdk": 143,
+    "consumerContracts": 182,
+    "functional": {
+      "passed": 167,
+      "deselected": 33
+    },
+    "productionFrontendBuild": "passed",
+    "i18n": {
+      "errors": 0,
+      "warnings": 37,
+      "hardcodedLines": 0
+    },
+    "svelteCheck": {
+      "errors": 2,
+      "warnings": 17,
+      "errorsScope": "pre-existing AdminFileStorageDetailPanel nullability"
+    },
+    "fullRootGate": {
+      "passedBackend": 9537,
+      "skippedBackend": 95,
+      "failedBackend": 8,
+      "errorBackend": 8,
+      "failureScope": "preserved concurrent Palimpsest work",
+      "artifact": "artifact://109"
+    },
+    "fullNativeContract": {
+      "passed": 4013,
+      "failed": 7,
+      "deselected": 384,
+      "limits": [
+        "existing expired approval graph case",
+        "matching Bifrost executable unavailable",
+        "Python3.13 guest TLS fixture validation"
+      ],
+      "artifact": "artifact://102"
+    },
+    "fullFrontend": {
+      "passedFiles": 443,
+      "failedFiles": 3,
+      "failedTests": 20,
+      "failureScope": "Palimpsest AssetSearchPanel, admin libraries authReady mock, packages panel duplicates",
+      "artifact": "artifact://140"
+    },
+    "scopedPythonLint": "passed; main.py unrelated Palimpsest formatting remains"
+  },
+  "runtime": {
+    "swift": {
+      "catalog": "verified /swift/v1/AUTH_<executor>",
+      "kollaAccountInUrl": "yes",
+      "enabledAccountsHead": {
+        "total": 57,
+        "own204": 1,
+        "foreign204": 29,
+        "foreign403": 27
+      },
+      "currentSourceGet": {
+        "current_source": true,
+        "native_read_only": true,
+        "project_count": 57,
+        "partial": true,
+        "readable_project_count": 30,
+        "unavailable_project_count": 27,
+        "unavailable_reasons": {
+          "denied": 27
+        },
+        "visible_bucket_count": 8,
+        "verified_fixed_project_unchanged": true
+      },
+      "effectiveRgwAdminRoles": "unverified: storage-hop host-key validation refused; not bypassed",
+      "sourceBehavior": {
+        "response": "{items,project_count,partial,unavailable_projects}",
+        "nativePermissionChanges": false,
+        "readableRowsPreserved": true,
+        "globalTotalsHiddenWhenPartial": true,
+        "allUnavailableNotSuccessEmpty": true
+      },
+      "actual500RootTraceConfirmed": false,
+      "partialStatus": "200 with explicit unavailable projects, not complete success"
+    },
+    "probe": {
+      "sends": 3,
+      "authorityChecks": 6,
+      "structuredA": "connected",
+      "plainB": "connected",
+      "authRejectedA": "failed",
+      "staleGenerationStatus": 409,
+      "identityAndConverterAndProvider": "synthetic",
+      "real": [
+        "native TCP",
+        "SQLite",
+        "repository",
+        "credential resolution",
+        "Python provider_client"
+      ]
+    },
+    "topology": {
+      "parents": 4,
+      "zones": 7,
+      "geometry": "contained, non-overlapping",
+      "lanes": 4,
+      "consumerParents": 0
+    },
+    "browser": {
+      "compiled": true,
+      "modelTypes": [
+        "text",
+        "image",
+        "tts",
+        "stt",
+        "realtime"
+      ],
+      "duplicateBucketOwners": true,
+      "perKeyStates": true,
+      "viewports": [
+        390,
+        767,
+        768,
+        1023,
+        1024,
+        1440
+      ],
+      "overflow": 0,
+      "modelLocaleCount": 9
+    }
+  },
+  "limits": [
+    "No commit/push/release/deployment.",
+    "No shared config/key/database/IAM mutations.",
+    "Native pre-existing 027 migration/version reconciliation blockers remain; not deployable on legacy runtime without separately qualified cutover.",
+    "Full gates are not green."
+  ],
+  "architecture": {
+    "native": "763bf1db262e834d83eb5772e081daef1b0b05d8fc0bbd4bc0b347e133c690ca",
+    "scope": "Native isolated dev; shared Afterglow index/review marker preserved",
+    "afterglowIsolatedStaged": "0cba686820e81fcd00821c49123519d3be6dd01bc72aa48ea34049a613e839e5"
+  },
+  "cleanup": {
+    "browsers": "owned tabs closed",
+    "servers": "owned frontend/native/fixture listeners stopped",
+    "datastores": "owned functional stack removed",
+    "sharedRuntime": "untouched",
+    "temporaryScripts": "removed; executable evidence retained in proof directory"
+  },
+  "followup": "openspec/changes/archive/2026-10-25-handle-partial-admin-swift-inventory/verification.json"
+}

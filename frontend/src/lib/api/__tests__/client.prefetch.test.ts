@@ -140,16 +140,60 @@ describe('scoped GET transport', () => {
 		expect(b.rows).toEqual([1]);
 	});
 
-	it('does not join signal-owned ordinary requests', async () => {
-		mockFetch.mockResolvedValue(jsonResponse({ ok: true }));
+	it.each(['leader', 'waiter'])('cancels only the %s while another reader receives an independent snapshot', async cancelledReader => {
+		const response = deferred<MockJsonResponse<{ rows: number[] }>>();
+		mockFetch.mockReturnValueOnce(response.promise);
 		const { api } = await loadClient();
+		const leader = new AbortController();
+		const waiter = new AbortController();
+		const first = api.get<{ rows: number[] }>('/api/v1/items', 'token', 'project', { signal: leader.signal });
+		const second = api.get<{ rows: number[] }>('/api/v1/items', 'token', 'project', { signal: waiter.signal });
+		const rejected = expect(cancelledReader === 'leader' ? first : second).rejects.toMatchObject({ name: 'AbortError' });
+		await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+		(cancelledReader === 'leader' ? leader : waiter).abort();
+		await rejected;
+		response.resolve(jsonResponse({ rows: [1, 2] }));
+		await expect(cancelledReader === 'leader' ? second : first).resolves.toEqual({ rows: [1, 2] });
+		expect(mockFetch).toHaveBeenCalledOnce();
+	});
 
-		await Promise.all([
-			api.get('/api/v1/items', undefined, undefined, { signal: new AbortController().signal }),
-			api.get('/api/v1/items'),
-		]);
-
+	it('queues one forced refresh after an ordinary read and isolates cancelled force subscribers', async () => {
+		const old = deferred<MockJsonResponse<{ revision: string }>>();
+		const fresh = deferred<MockJsonResponse<{ revision: string }>>();
+		mockFetch.mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise);
+		const { api } = await loadClient();
+		const ordinary = api.get('/api/v1/items', 'token', 'project');
+		await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+		const cancelled = new AbortController();
+		const first = api.get('/api/v1/items', 'token', 'project', { refresh: true, signal: cancelled.signal });
+		const rejected = expect(first).rejects.toMatchObject({ name: 'AbortError' });
+		const refreshed = Array.from({ length: 8 }, () => api.get('/api/v1/items', 'token', 'project', { refresh: true }));
+		const joined = api.get('/api/v1/items', 'token', 'project');
+		cancelled.abort();
+		await rejected;
+		expect(mockFetch).toHaveBeenCalledOnce();
+		old.resolve(jsonResponse({ revision: 'old' }));
+		await expect(ordinary).resolves.toEqual({ revision: 'old' });
+		await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+		fresh.resolve(jsonResponse({ revision: 'current' }));
+		for (const result of await Promise.all([...refreshed, joined])) expect(result).toEqual({ revision: 'current' });
 		expect(mockFetch).toHaveBeenCalledTimes(2);
+	});
+
+	it('detaches pre-mutation pending reads before a post-mutation read', async () => {
+		const old = deferred<MockJsonResponse<{ revision: string }>>();
+		mockFetch.mockReturnValueOnce(old.promise)
+			.mockResolvedValueOnce(jsonResponse({ updated: true }))
+			.mockResolvedValueOnce(jsonResponse({ revision: 'current' }));
+		const { api } = await loadClient();
+		const pending = api.get('/api/v1/items', 'token', 'project');
+		const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+		await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+		await api.post('/api/v1/items', { update: true }, 'token', 'project');
+		await expect(api.get('/api/v1/items', 'token', 'project')).resolves.toEqual({ revision: 'current' });
+		old.resolve(jsonResponse({ revision: 'old' }));
+		await rejected;
+		expect(mockFetch).toHaveBeenCalledTimes(3);
 	});
 
 	it('rejects an already-aborted visible caller before warm consumption', async () => {

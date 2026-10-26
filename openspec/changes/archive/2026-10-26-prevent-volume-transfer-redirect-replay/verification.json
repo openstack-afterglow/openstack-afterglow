@@ -1,0 +1,76 @@
+{
+  "change": "prevent-volume-transfer-redirect-replay",
+  "date": "2026-10-26",
+  "status": "source-complete",
+  "sourceOnly": true,
+  "supersedesReplayClaim": "Prior enforce-volume-transfer-authentication evidence covers401 reauthentication only, not redirects; its earlier failed gate remains a historical failed result.",
+  "implementation": {
+    "source": "backend/app/services/cinder.py",
+    "functions": ["create_volume_transfer", "accept_volume_transfer"],
+    "requestOptions": {"connect_retries": 0, "status_code_retries": 0, "allow_reauth": false, "redirect": false},
+    "scope": "invocation-local copied SDK proxy; original human target authentication and exact native owner readback preserved"
+  },
+  "before": {
+    "nativeSdkCases": ["create307", "accept307", "create308", "accept308"],
+    "failed": 4,
+    "sinkPostsEach": 1,
+    "forwardedNativeTokens": true,
+    "forwardedAcceptAuthKeys": true,
+    "artifact": "artifact://50"
+  },
+  "after": {
+    "focusedBackendPassed": 108,
+    "storageBackendPassed": 963,
+    "storageFrontendPassed": 177,
+    "ruff": "passed",
+    "artifacts": ["artifact://53", "artifact://56"]
+  },
+  "runtimeSmoke": {
+    "uvicornTcp": true,
+    "installedSdk": true,
+    "syntheticBoundaries": ["human system-admin authority", "SQL ledger contents", "native Keystone/Cinder", "separate-origin redirect sink"],
+    "cases": ["create307", "accept307", "create308", "accept308"],
+    "originalNativePostsEach": 1,
+    "sinkPosts": 0,
+    "forwardedNativeTokens": 0,
+    "forwardedAuthKeys": 0,
+    "observedRedirectApiStatus": 502,
+    "originalOwnerAndPendingPreserved": true,
+    "normalTargetAcceptStatus": 200,
+    "liveCloudMutations": 0,
+    "artifact": "artifact://55",
+    "temporarySmokeScripts": "removed after evidence capture"
+  },
+  "finalSnapshot": {
+    "path": "/var/folders/1m/xfc726k14szbjnrlq5t68zjw0000gn/T/afterglow-transfer-redirect-gate-20261026-bhfk5zz1",
+    "sourceSha256": "3d1151ea9e0443720d9eeed6e6235116c3b509de8cdc1947f459023598d9d628",
+    "sourceFiles": 3503,
+    "architectureWorkingStamp": "passed",
+    "architectureStagedGuard": "passed",
+    "scope": "captured concurrent public WIP; review limited to transfer; private inputs excluded; original shared index/global review marker preserved"
+  },
+  "canonicalGate": {
+    "command": "UV_NO_SYNC=1 AFTERGLOW_TEST_PROJECT_NAME=afterglow-transfer-redirect-20261026 VITEST_MAX_WORKERS=3 TZ=UTC npm run test:gate",
+    "status": "passed",
+    "backendPassed": 9879,
+    "backendSkipped": 95,
+    "frontendFiles": 450,
+    "frontendTests": 5334,
+    "frontendLogRunnerTests": 9,
+    "contracts": 183,
+    "functionalPassed": 167,
+    "functionalDeselected": 33,
+    "functionalDatastores": "actual disposable MariaDB/PostgreSQL/Redis; owned3containers/network removed by runner",
+    "ruffFiles": 742,
+    "artifact": "artifact://62",
+    "note": "Newer frozen source includes concurrent inventory/Notion test corrections authored elsewhere; old failed snapshot remains failed. No unrelated source edits by this transfer task."
+  },
+  "limits": [
+    "No production deployment, runtime/code/config replacement, commit, push or release",
+    "No IAM/role grants, database/schema changes or real volume mutation/recovery, including reported volume",
+    "Actual native target-project role and Cinder policy/quota still required",
+    "Synthetic provider/authority proof is not real human target-role or production acceptance",
+    "Local gbrain CLI unavailable; no index synchronization"
+  ],
+  "proofRoot": "/Users/pieroot/.local/share/afterglow-proofs/transfer-auth-20261026"
+}

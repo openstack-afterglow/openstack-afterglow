@@ -70,6 +70,7 @@
   }
 
   const refresh = createCoalescedRefresh((force) => loadData(force ? { refresh: true } : undefined));
+  $effect(() => () => refresh.dispose());
 
   $effect(() => {
     if (!$auth.projectId) return;

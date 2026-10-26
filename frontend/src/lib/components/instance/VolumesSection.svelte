@@ -18,7 +18,7 @@
 	let extendTarget = $state<Volume | null>(null);
 	let extendLoading = $state<string | null>(null);
 	let extendError = $state('');
-	let extendScope = $state<{ instanceId: string; projectId: string; token: string } | null>(null);
+	let extendScope = $state<{ instanceId: string; projectId: string; token: string; adminMode: boolean; transportProjectId: string | undefined } | null>(null);
 	let extendGeneration = 0;
 
 	function expansionReason(volumeId: string): 'volumes.extendReadOnly' | 'volumes.extendScopeUnavailable'
@@ -37,7 +37,8 @@
 	function ownsExpansion(scope: NonNullable<typeof extendScope>, generation: number) {
 		return extendGeneration === generation && s.instanceId === scope.instanceId
 			&& s.effectiveProjectId === scope.projectId && $auth.token === scope.token
-			&& s.instance?.status === 'SHUTOFF' && $canWrite;
+			&& s.instance?.status === 'SHUTOFF' && $canWrite && !!s.adminMode === scope.adminMode
+			&& (s.adminMode ? $auth.projectId ?? undefined : s.effectiveProjectId) === scope.transportProjectId;
 	}
 
 	// Project scalar identity/state: a fresh server object alone is not a scope transition.
@@ -47,6 +48,8 @@
 	const expansionStatus = $derived(s.instance?.status);
 	const expansionToken = $derived($auth.token);
 	const expansionWritable = $derived($canWrite);
+	const expansionAdminMode = $derived(s.adminMode);
+	const expansionTransportProject = $derived($auth.projectId);
 
 	$effect(() => {
 		// A target or credential transition invalidates outstanding detail reads, including ABA switches.
@@ -56,6 +59,8 @@
 		expansionStatus;
 		expansionToken;
 		expansionWritable;
+		expansionAdminMode;
+		expansionTransportProject;
 		extendGeneration++;
 		extendTarget = null;
 		extendScope = null;
@@ -69,12 +74,16 @@
 
 	async function openExpansion(volumeId: string) {
 		if (expansionReason(volumeId) || extendLoading || s.actioning) return;
-		const scope = { instanceId: s.instanceId, projectId: s.effectiveProjectId!, token: $auth.token! };
+		const scope = { instanceId: s.instanceId, projectId: s.effectiveProjectId!, token: $auth.token!,
+			adminMode: !!s.adminMode, transportProjectId: s.adminMode ? $auth.projectId ?? undefined : s.effectiveProjectId };
 		const generation = ++extendGeneration;
 		extendLoading = volumeId;
 		extendError = '';
 		try {
-			const volume = await api.get<Volume>(`/api/v1/volumes/${encodeURIComponent(volumeId)}`, scope.token, scope.projectId, { refresh: true });
+			const path = scope.adminMode
+				? `/api/v1/admin/instances/${encodeURIComponent(scope.instanceId)}/volumes/${encodeURIComponent(volumeId)}`
+				: `/api/v1/volumes/${encodeURIComponent(volumeId)}`;
+			const volume = await api.get<Volume>(path, scope.token, scope.transportProjectId, { refresh: true });
 			if (!ownsExpansion(scope, generation) || expansionReason(volumeId)) return;
 			if (volume.id !== volumeId || volume.status !== 'in-use'
 				|| !Number.isSafeInteger(volume.size) || volume.size < 1 || volume.size >= 2147483647
@@ -144,15 +153,17 @@
 				>
 					{t('volumes.existingVolume')}
 				</button>
+				{#if !s.adminMode}
 				<button
 					onclick={() => { attachMode = 'new'; }}
 					class="text-xs px-2 py-1 rounded border transition-colors {attachMode === 'new' ? 'text-warm-text border-action-warm bg-surface-selected/20' : 'text-ink-2 border-line-2 hover:text-ink-1'}"
 				>
 					{t('volumes.createVolume')}
 				</button>
+				{/if}
 			</div>
 
-			{#if attachMode === 'existing'}
+			{#if attachMode === 'existing' || s.adminMode}
 				{#if s.availableVolumes.length === 0}
 					<p class="text-sm text-ink-2">{t('volumes.noAvailableVolumes')}</p>
 				{:else}
@@ -292,6 +303,7 @@
 <VolumeExtendModal
 	volume={visibleExtendTarget}
 	projectId={s.effectiveProjectId}
+	adminInstanceId={s.adminMode ? s.instanceId : undefined}
 	onclose={closeExpansion}
 	onsuccess={onExpanded}
 />

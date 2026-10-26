@@ -525,3 +525,66 @@ async def test_get_dashboard_quotas_gpu_drover_error_returns_empty_gpu(client):
 
     assert resp.status_code == 200
     assert resp.json()["gpu"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [None, "summary", "quotas"])
+async def test_compact_snapshot_preserves_verified_sections_without_fabricating_failed_zero(client, failure):
+    from types import SimpleNamespace
+
+    sources = {
+        "compute": {
+            "instances": {"limit": 2, "in_use": 1},
+            "cores": {"limit": 4, "in_use": 2},
+            "ram": {"limit": 4096, "in_use": 1024},
+        },
+        "storage": {"volumes": {"limit": 10, "in_use": 2}, "gigabytes": {"limit": 100, "in_use": 20}},
+        "network": {"floatingip": {"limit": 5, "in_use": 1}},
+    }
+
+    async def through_cache(_key, _ttl, loader, **_kwargs):
+        return await loader() if asyncio.iscoroutinefunction(loader) else loader()
+
+    servers = [{"id": "recent", "name": "Newest", "status": "ACTIVE", "created_at": "2026-10-26T00:00:00Z"}]
+    with (
+        patch("app.api.common.dashboard.get_settings", return_value=SimpleNamespace(service_manila_enabled=False)),
+        patch("app.api.common.dashboard.cached_call", new=AsyncMock(side_effect=through_cache)),
+        patch(
+            "app.api.common.dashboard._list_servers_as_dicts",
+            side_effect=RuntimeError("private native endpoint") if failure == "summary" else None,
+            return_value=servers,
+        ),
+        patch(
+            "app.api.common.dashboard.nova.get_project_quota",
+            side_effect=RuntimeError("private quota detail") if failure == "quotas" else None,
+            return_value=sources["compute"],
+        ),
+        patch("app.api.common.dashboard.cinder.get_volume_quota", return_value=sources["storage"]),
+        patch("app.api.common.dashboard.neutron_svc.get_network_quota", return_value=sources["network"]),
+    ):
+        response = await client.get("/api/v1/dashboard/snapshot?recent_limit=12")
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "private, no-store"
+    result = response.json()
+    if failure == "summary":
+        assert result["summary"] == {"data": None, "error": "summary_unavailable"}
+    else:
+        assert result["summary"]["data"]["instances"] == {"total": 1, "active": 1, "shutoff": 0, "error": 0}
+        assert result["summary"]["data"]["recent_instances"][0]["id"] == "recent"
+    if failure == "quotas":
+        assert result["quotas"] == {"data": None, "error": "quotas_unavailable"}
+    else:
+        assert result["quotas"]["data"]["compute"] == sources["compute"]
+        assert result["quotas"]["data"]["storage"] == sources["storage"]
+    assert "private native endpoint" not in response.text and "private quota detail" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_compact_snapshot_rejects_unbounded_recent_limit(client):
+    assert (await client.get("/api/v1/dashboard/snapshot?recent_limit=13")).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_compact_snapshot_requires_authentication():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as anonymous:
+        assert (await anonymous.get("/api/v1/dashboard/snapshot")).status_code == 401

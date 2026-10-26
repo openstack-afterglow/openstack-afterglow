@@ -1,0 +1,92 @@
+{
+  "change": "enforce-volume-transfer-authentication",
+  "date": "2026-10-26",
+  "status": "source-complete-with-verification-concerns",
+  "sourceOnly": true,
+  "operationalSourceRead": {
+    "host": "172.30.0.50",
+    "path": "/etc/kolla/plugins/openstack-afterglow-v1.30.26/backend/app/api/identity/admin.py",
+    "lines": "2572-2612",
+    "behavior": "Same configured service-project token for create/accept; target only in X-Project-Id; no owner readback",
+    "mutation": false
+  },
+  "existingLocalCorrectionPreserved": {
+    "authentication": "verified unscoped human principal.session_token automatically exchanged for exact target-project credential",
+    "scopeChecks": ["human user", "immutable identity domain", "selected project UUID", "selected domain UUID", "enabled native project/domain"],
+    "completion": "exact volume/transfer IDs and native target owner, available status and no attachments",
+    "noFallback": "No service-project token substitution or automatic role grant"
+  },
+  "newCorrection": {
+    "source": "backend/app/services/cinder.py",
+    "behavior": "allow_reauth=False on invocation-local create/accept proxy requests, in addition to connect/status retries0",
+    "reason": "Keystoneauth default401 reauthentication was independently replaying POSTs",
+    "before": {"nativeHttpPassed": 9, "nativeHttpFailed": 2, "nativePostsEach401": 2, "artifact": "artifact://15"},
+    "after": {"nativePostsEach401": 1, "automaticTargetReexchanges": 0}
+  },
+  "regressions": {
+    "focusedBackend": {"passed": 104, "artifact": "artifact://17"},
+    "storage": {"backendPassed": 959, "frontendPassed": 177, "artifact": "artifact://20"},
+    "administratorTransferFrontend": {"passed": 20, "files": 2},
+    "targetOrchestration": {"passed": 10, "catalogValidation": "passed"},
+    "sharedCheckoutAccess": {
+      "assertionsPassed": 1638,
+      "teardownErrors": 6,
+      "frontendRun": false,
+      "reason": "Existing RBAC tests attempted private-config Keystone DNS; non-loopback network guard blocked it",
+      "artifact": "artifact://24"
+    }
+  },
+  "runtimeSmoke": {
+    "transport": "actual Uvicorn TCP and installed openstacksdk/keystoneauth",
+    "synthetic": ["human administrator authority", "SQL ledger contents", "loopback Keystone/Cinder provider"],
+    "observed": {"create": 201, "targetScopeDenial": 403, "nativeCinderDenial": 403, "accept": 200, "validation": 422, "ambiguousReply": 502, "exactPendingRecovery": 200},
+    "additional401Scenario": {"native401ReturnedAs": 403, "nativeAcceptPosts": 1, "targetExchanges": 1, "subsequentExplicitAccept": 200, "wrongServiceProjectOwner": 502},
+    "liveCloudMutations": 0
+  },
+  "isolatedPublicSnapshot": {
+    "path": "/var/folders/1m/xfc726k14szbjnrlq5t68zjw0000gn/T/afterglow-transfer-auth-gate-20261026-9amrhs9g",
+    "sourceSha256": "6fedd4444ac96210c4828704110890901f8aa653a9433534e33bac94003e71bb",
+    "sourceFiles": 3503,
+    "architectureWorkingStamp": "passed",
+    "architectureStagedGuard": "passed",
+    "scope": "Captured concurrent public WIP; scoped transfer review only. Original shared index/global review marker preserved. Private configuration not copied."
+  },
+  "canonicalGate": {
+    "command": "AFTERGLOW_TEST_PROJECT_NAME=afterglow-transfer-auth-20261026 VITEST_MAX_WORKERS=3 TZ=UTC npm run test:gate",
+    "status": "failed",
+    "backendPassed": 9871,
+    "backendSkipped": 95,
+    "backendFailed": 4,
+    "failures": [
+      "test_openstack_inventory.py::test_collect_instance_data_clears_gpu_map_for_shelved_offloaded: synthetic connection missing config",
+      "test_openstack_inventory.py::test_collect_instance_data_resolves_named_server_flavor_with_detailed_extra_specs: synthetic connection missing config",
+      "test_notion.py::test_collect_instance_data_resolves_normalized_gpu_alias_for_notion_relation: synthetic connection missing config",
+      "test_notion_worker.py::test_native_inventory_thread_finishes_before_connection_and_lease_close: timeout"
+    ],
+    "artifact": "artifact://38",
+    "unrelatedSourceChanged": false,
+    "commitPush": false
+  },
+  "remainingLayersExecutedSeparately": {
+    "status": "passed",
+    "frontendFiles": 450,
+    "frontendTests": 5334,
+    "frontendLogRunnerTests": 9,
+    "contracts": 183,
+    "functionalPassed": 167,
+    "functionalDeselected": 33,
+    "functionalDatastores": "actual disposable MariaDB/PostgreSQL/Redis; task-owned3containers/network removed by runner",
+    "ruffFiles": 742,
+    "artifact": "artifact://42",
+    "doesNotOverrideFailedGate": true
+  },
+  "limits": [
+    "No production rollout, runtime/code/config replacement, commit, push or release",
+    "No native IAM/role grants, database/schema changes or real volume mutation/recovery, including reported volume",
+    "Native target-project role and Cinder policy/quota remain required",
+    "No real human target-role coverage or production acceptance proof",
+    "No new visual UI changes; frontend regressions were run, new browser visual acceptance was not needed or claimed",
+    "Local gbrain CLI unavailable; no code-index synchronization"
+  ],
+  "proofRoot": "/Users/pieroot/.local/share/afterglow-proofs/transfer-auth-20261026"
+}

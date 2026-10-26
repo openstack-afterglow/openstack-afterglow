@@ -5,13 +5,13 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from keystoneauth1 import session as ks_session
 from keystoneauth1.identity import v3
 from sqlalchemy import select
 
 from app.config import get_settings
 from app.database import get_session_factory
 from app.models.mcp_authority import McpProjectCredential
+from app.services import native_transport
 from app.services.mcp_control_plane.authentication import McpPrincipal, lock_principal_grant
 from app.services.mcp_control_plane.authority import McpGrantStateError, decrypt_grant_secret
 from app.services.mcp_control_plane.sdk import run_sdk
@@ -58,7 +58,7 @@ def _build_connection(application_credential_id: str, application_credential_sec
         application_credential_id=application_credential_id,
         application_credential_secret=application_credential_secret,
     )
-    session = ks_session.Session(auth=auth, timeout=30, verify=settings.ssl_verify)
+    session = native_transport.create_session(auth=auth, timeout=30, verify=settings.ssl_verify)
     try:
         access = auth.get_access(session)
         if access.user_id != principal.user_id or access.project_id != principal.project_id:
