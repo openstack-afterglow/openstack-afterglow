@@ -52,6 +52,12 @@ async def monitoring(token_info: dict = Depends(require_domain_manager)):
         return await domain_monitoring.manager_workspace(conn, domain_id)
 
 
+@router.get("/iam/monitoring/forecast")
+async def monitoring_forecast(token_info: dict = Depends(require_domain_manager)):
+    async with domain_quotas.manager_connection(token_info) as (conn, domain_id):
+        return await domain_monitoring.manager_forecast(conn, domain_id)
+
+
 @router.get("/admin/domains/{domain_id}/quotas", dependencies=[Depends(require_admin)])
 async def admin_domain_quotas(domain_id: str, conn=Depends(get_admin_os_conn)):
     return await domain_quotas.snapshot(conn, domain_id)

@@ -52,10 +52,14 @@ class MemberRoles(StrictBody):
     role_ids: list[str] = Field(max_length=256)
 
 
+class InvitationProject(StrictBody):
+    project_id: str = Field(min_length=1, max_length=64)
+    role_ids: list[str] = Field(min_length=1, max_length=256)
+
+
 class Invite(StrictBody):
     email: str = Field(min_length=3, max_length=255)
-    project_id: str | None = Field(default=None, min_length=1, max_length=64)
-    role_ids: list[str] = Field(default_factory=list, max_length=256)
+    projects: list[InvitationProject] = Field(default_factory=list, max_length=256)
 
 
 @router.get("/context")
@@ -77,6 +81,14 @@ async def update_user(
     if not attrs or any(value is None for value in attrs.values()):
         raise HTTPException(422, "Supply non-null user fields")
     return await domain_iam.update_user(user_id, attrs, token_info)
+
+
+@router.delete("/users/{user_id}")
+@limiter.limit("20/minute")
+async def remove_domain_user(request: Request, user_id: str, token_info: dict = Depends(require_domain_manager)):
+    from app.services.domain_membership import remove_user
+
+    return await remove_user(user_id, token_info)
 
 
 @router.get("/projects")

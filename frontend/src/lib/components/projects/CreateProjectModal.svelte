@@ -11,9 +11,10 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 
-	let { domainId = $auth.domainId ?? '', domainName = $auth.domainName ?? '', submitting = $bindable(false), onClose, onSuccess }: {
-		domainId?: string; domainName?: string; submitting?: boolean; onClose: () => void;
-		onSuccess: (project: { id: string; name: string }) => void;
+	let { domainId = $auth.domainId ?? '', domainName = $auth.domainName ?? '', submitting = $bindable(false), submitDisabled = false, onCreate, onClose, onSuccess }: {
+		domainId?: string; domainName?: string; submitting?: boolean; submitDisabled?: boolean;
+		onCreate?: (name: string, description: string) => Promise<{ id: string; name: string }>;
+		onClose: () => void; onSuccess: (project: { id: string; name: string }) => void;
 	} = $props();
 	let open = $state(true);
 	let name = $state('');
@@ -28,7 +29,7 @@
 	let request: AbortController | null = null;
 	const componentId = $props.id();
 	let personal = $state(false);
-	const canSubmit = $derived(allowed && authorizedDomain === domainId && !checking && !submitting && !uncertain && (personal || !!name.trim()) && $authReady && !$logoutInProgress && !$projectSwitching);
+	const canSubmit = $derived(!submitDisabled && allowed && authorizedDomain === domainId && !checking && !submitting && !uncertain && (personal || !!name.trim()) && $authReady && !$logoutInProgress && !$projectSwitching);
 	function portal(node: HTMLElement) {
 		document.body.appendChild(node);
 		return { destroy: () => node.remove() };
@@ -67,7 +68,9 @@
 		request = new AbortController(); const signal = request.signal;
 		submitting = true; error = '';
 		try {
-			const result = await api.post<{ id: string; name: string }>('/api/v1/projects', { ...(!personal && name.trim() ? { name: name.trim() } : {}), description: description.trim(), domain_id: target }, get(auth).token!, undefined, { signal, replayOnUnauthorized: false, suppressAuthRedirect: true, cache: 'no-store' });
+			const result = onCreate
+				? await onCreate(name.trim(), description.trim())
+				: await api.post<{ id: string; name: string }>('/api/v1/projects', { ...(!personal && name.trim() ? { name: name.trim() } : {}), description: description.trim(), domain_id: target }, get(auth).token!, undefined, { signal, replayOnUnauthorized: false, suppressAuthRedirect: true, cache: 'no-store' });
 			if (!active || version !== epoch || domainId !== target || signal.aborted) return;
 			if (!result?.id || typeof result.name !== 'string') throw new Error('Invalid project response');
 			submitting = false;

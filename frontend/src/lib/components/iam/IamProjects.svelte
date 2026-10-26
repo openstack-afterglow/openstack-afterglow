@@ -7,6 +7,7 @@
 	import { projectAuthority } from '$lib/api/projectAuthority';
 	import type { Project, ProjectAccessMember, EligibleProjectUser } from '$lib/types/project';
 	import { t } from '$lib/i18n/ns/domain-iam';
+	import { t as workspaceT } from '$lib/i18n/ns/workspace-selector';
 	import { iamErrorMessage } from './iamError';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -18,6 +19,7 @@
 	import ProjectMemberRolesModal from '$lib/components/account/ProjectMemberRolesModal.svelte';
 	import ProjectLifecycleSection from '$lib/components/account/ProjectLifecycleSection.svelte';
 	import IamProjectCreators from './IamProjectCreators.svelte';
+	import CreateProjectModal from '$lib/components/projects/CreateProjectModal.svelte';
 	let { session, blocked = false, onDenied }: { session: IamSession; blocked?: boolean; onDenied: () => void } = $props();
 	const client = untrack(() => domainIam(session));
 	const authority = untrack(() => projectAuthority(session));
@@ -33,6 +35,8 @@
 	let editing = $state<ProjectAccessMember | null>(null);
 	let loading = $state(true);
 	let busy = $state(false);
+	let showCreate = $state(false);
+	let creating = $state(false);
 	let error = $state('');
 	const ownerCount = $derived(new Set(members.filter(member => member.is_owner).map(member => member.user_id)).size);
 	function fail(cause: unknown) {
@@ -50,12 +54,22 @@
 		} catch (cause) { if (pending === revision) fail(cause); }
 		finally { if (live && pending === revision) loading = false; }
 	}
-	async function initialize() {
+	async function initialize(preferred = project) {
+		const pending = ++revision;
 		loading = true; error = '';
 		try {
 			const p = await client.projects();
-			if (live && session.isCurrent()) { projects = p.items; project = projects[0]?.id ?? ''; await load(); }
-		} catch (cause) { fail(cause); if (live) loading = false; }
+			if (live && session.isCurrent() && pending === revision) {
+				projects = p.items;
+				project = projects.some(row => row.id === preferred) ? preferred : projects[0]?.id ?? '';
+				await load();
+			}
+		} catch (cause) { if (pending === revision) { fail(cause); if (live) loading = false; } }
+	}
+	function created(result: { id: string; name: string }) {
+		if (!live || !session.isCurrent()) return;
+		showCreate = false;
+		void initialize(result.id);
 	}
 	function editable(member: ProjectAccessMember) { return !loading && !!catalog && !['group', 'inherited'].includes(member.source ?? '') && (catalog.can_manage_owners || !member.is_owner); }
 	function removable(member: ProjectAccessMember) { return editable(member) && !member.is_owner && (!member.is_manager || catalog?.can_manage_owners); }
@@ -90,10 +104,11 @@
 </script>
 
 <div class="space-y-4">
+	<div class="flex flex-wrap justify-end gap-2"><Button variant="accent" disabled={blocked || !session.canSubmit() || busy || creating} onclick={() => { showCreate = true; }}>{workspaceT('newProject')}</Button></div>
 	<IamProjectCreators {session} {blocked} {onDenied} />
 	<div class="grid gap-4 md:grid-cols-2">
 		<Field label={t('project')} for={`${uid}-project`}><SelectInput id={`${uid}-project`} bind:value={project} disabled={busy || !projects.length} onchange={() => { user = ''; void load(); }}><option value="">{t('selectProject')}</option>{#each projects as row (row.id)}<option value={row.id}>{row.name}</option>{/each}</SelectInput></Field>
-		<div class="flex items-end"><Button variant="secondary" disabled={busy || loading} onclick={projects.length ? load : initialize}>{t('refresh')}</Button></div>
+		<div class="flex items-end"><Button variant="secondary" disabled={busy || loading} onclick={() => { void (projects.length ? load() : initialize()); }}>{t('refresh')}</Button></div>
 	</div>
 	{#if loading}<ActivityIndicator label={t('loading')} />{/if}
 	{#if error && !editing}<Alert tone="danger">{error}</Alert>{/if}
@@ -121,3 +136,4 @@
 	</ResponsiveTable>
 </div>
 {#if editing && catalog}<ProjectMemberRolesModal member={editing} roles={catalog.roles} {busy} submitDisabled={blocked || !session.canSubmit()} {error} onSave={save} onClose={() => { editing = null; error = ''; }} />{/if}
+{#if showCreate}<CreateProjectModal domainId={session.domainId} domainName="" bind:submitting={creating} submitDisabled={blocked || !session.canSubmit()} onCreate={authority.create} onClose={() => { showCreate = false; }} onSuccess={created} />{/if}

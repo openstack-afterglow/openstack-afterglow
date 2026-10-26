@@ -17,6 +17,8 @@ class DomainEnrollment(Base):
     email: Mapped[str] = mapped_column(VARCHAR(255), nullable=False)
     token_hash: Mapped[str] = mapped_column(VARCHAR(64), nullable=False, unique=True)
     project_id: Mapped[str | None] = mapped_column(VARCHAR(64), nullable=True)
+    # invitation: legacy role ID list for project_id; invitation_multi: exact
+    # {project_id, role_ids, project_name} plan. The kind fences older writers.
     role_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     invited_by: Mapped[str | None] = mapped_column(VARCHAR(64), nullable=True)
     status: Mapped[str] = mapped_column(VARCHAR(24), nullable=False, default="pending")

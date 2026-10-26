@@ -457,12 +457,19 @@ async def _settle(task: asyncio.Task) -> bool:
     """Wait for actual completion; return whether this caller was cancelled meanwhile."""
     current = asyncio.current_task()
     requests = current.cancelling() if current is not None else 0
+    interrupted = False
     while not task.done():
-        with suppress(asyncio.CancelledError, Exception):
+        try:
             await asyncio.shield(task)
+        except asyncio.CancelledError:
+            # A request made just before entry is delivered here with the same
+            # count. A cancelled child alone must not cancel its owner.
+            interrupted = interrupted or (current is not None and current.cancelling() > 0)
+        except Exception:
+            pass
     if not task.cancelled():
         task.exception()  # Retrieved: the owner reports or intentionally discards it.
-    return current is not None and current.cancelling() > requests
+    return interrupted or (current is not None and current.cancelling() > requests)
 
 
 class WorkLease:

@@ -26,6 +26,12 @@ from app.services import trove as trove_svc
 from app.services.cache import cached_call, ttl_fast, ttl_normal, ttl_static
 from app.services.flavor_eligibility import parse_gpu_demand
 from app.services.keystone import get_drover_proxy
+from app.services.quota_forecast import (
+    _FORECAST_HORIZON_DAYS,
+    _FORECAST_WINDOW_DAYS,
+    _allocation_series,
+    _linear_forecast,
+)
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -162,73 +168,6 @@ def _gpu_count_from_flavor(name: str, extra_specs: dict) -> int:
     if m:
         return int(m.group(1)) if m.group(1) else 1
     return 0
-
-
-_FORECAST_WINDOW_DAYS = 7
-_FORECAST_HORIZON_DAYS = 30
-
-
-def _quota_pct(in_use: float, limit: float) -> float | None:
-    """Return a bounded quota percentage, or ``None`` for unlimited/unknown limits."""
-    if limit > 0:
-        return min(100.0, round(in_use / limit * 100, 1))
-    return None
-
-
-def _allocation_series(
-    rows: list[dict],
-    sample_times: list[datetime],
-    weight: Callable[[dict], float],
-) -> list[float]:
-    """Sum the allocation weight of usage rows alive at each sample time."""
-    series: list[float] = []
-    for sample in sample_times:
-        total = 0.0
-        for row in rows:
-            started = row["started"]
-            ended = row["ended"]
-            if started is not None and started <= sample and (ended is None or ended > sample):
-                total += weight(row)
-        series.append(round(total, 2))
-    return series
-
-
-def _linear_forecast(
-    series: list[float],
-    *,
-    in_use: float,
-    limit: float,
-    has_rows: bool,
-    window_days: int = _FORECAST_WINDOW_DAYS,
-    horizon_days: int = _FORECAST_HORIZON_DAYS,
-) -> dict:
-    """Extend the least-squares daily slope of the recent allocation window."""
-    points = series[-window_days:]
-    trend_available = has_rows and len(points) >= 2
-    slope: float | None = None
-    if trend_available:
-        count = len(points)
-        x_mean = (count - 1) / 2
-        y_mean = sum(points) / count
-        denominator = sum((x - x_mean) ** 2 for x in range(count))
-        slope = round(sum((x - x_mean) * (y - y_mean) for x, y in enumerate(points)) / denominator, 2)
-
-    projected_pct: float | None = None
-    days_to_limit: int | None = None
-    if limit > 0 and slope is not None:
-        projected_pct = max(0.0, min(100.0, round((in_use + slope * horizon_days) / limit * 100, 1)))
-        if in_use >= limit:
-            days_to_limit = 0
-        elif slope > 0:
-            days_to_limit = math.ceil((limit - in_use) / slope)
-    return {
-        "current_pct": _quota_pct(in_use, limit),
-        "slope_per_day": slope,
-        "projected_pct": projected_pct,
-        "days_to_limit": days_to_limit,
-        "trend_available": trend_available,
-        "series": series,
-    }
 
 
 def _usage_quota_entry(source: object, key: str) -> dict:

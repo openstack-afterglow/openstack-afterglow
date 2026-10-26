@@ -7,7 +7,13 @@
 
 ## [Unreleased]
 
+## [1.30.27] - 2026-10-26
+
+현재 완료된 dashboard/native integration 변경의 release 후보입니다. Exact-SHA CI·불변 tag/image 발행·보호된 backup/restore·필요한 Lumen/Palimpsest native release와 전체 inventory cutover가 완료되기 전까지 운영 반영을 뜻하지 않습니다. 과거 source-only 검증 경계는 유지합니다.
+
 ### Added
+- 도메인 manager IAM에 계정·리소스·다른 도메인 권한을 보존하는 `도메인에서 내보내기`, `project_creator` 없이 가능한 직접 프로젝트 생성 진입점, 이메일 입력 뒤 다중 프로젝트·각 역할을 선택하는 단일 초대 흐름을 추가합니다. Native owner/manager·shared source·불명 변경은 보호하며 기존 초대 수락/부분 실패 journal을 유지합니다.
+- 할당량·귀속을 `모니터링 및 배분`으로 통합하고 도메인 전체 관측·귀속·Nova 이력 기반 할당 추세·배분 편집을 독립 조회합니다. 미지원 서비스 예측은 명시 unavailable이며 권위 재검증 중 진입한 탭의 최초 조회가 빠져 계속 loading이던 경로를 수정합니다. 새 multi-project invitation kind는 구형 cohort와 혼용하지 않는 coordinated rollout이 필요하며 운영 변경은 포함하지 않습니다.
 - 새 GitLab client로 ID-token `groups_direct`와 UserInfo `groups`·역할별 그룹을 비교하는 독립 loopback 콜백 진단 도구를 추가합니다. PKCE·서명·브라우저/subject를 검증하고 token/secret 없는 private 보고서와 명시 source의 offline mapping 후보만 생성하며 기존 로그인·Keystone mapping/IAM·운영 설정은 변경하지 않습니다.
 - GitLab 연동 문서에 현재 환경의 `groups`·`groups_direct` 소문자 전달 확인과, 자동 매핑 대상 Afterglow 그룹도 소문자 전체 경로로 정확히 일치시켜야 한다는 운영 조건을 명시합니다. 기존 그룹·claim·매핑 동작은 변경하지 않습니다.
 - 관리자 Lumen 기본 진입을 프로바이더 설정으로 명시하고 다중 account/key pool 관리·현재 연결/검사 상태·키별 정산 relay 기록을 분리합니다. 실제 dispatch receipt의 당시 endpoint/model/operation/time만 반환하며 과거 미기록 경로를 현재 설정으로 추정하거나 secret/prompt를 공개하지 않습니다. Native account/receipt API와 matching converter 및 별도 안전 cutover가 선행 조건이며 기존0.6.9에 기능이 있다고 주장하지 않습니다.
@@ -21,6 +27,8 @@
 - Cloud Shell workload에 빈 Cinder 홈에서도 동작하는 system Bash 자동완성(명령·하위 명령·옵션·파일 경로)과 오프라인 `cloud-shell-help`, 사용자 정의가 없을 때의 `ll` alias를 추가합니다. 완성 데이터는 build 시 설치된 CLI plugin에서 생성하며 클라우드 resource를 조회하지 않습니다. 사용자 dotfile·권한·bootstrap 경계는 바꾸지 않으며, 게시된 digest로 운영 image를 교체하기 전에는 기존 세션에 적용되지 않습니다.
 
 ### Fixed
+- Notion worker 종료가 Redis의 내부 timeout 취소와 겹칠 때 scanner를 취소하지 않고 무한 drain하던 경로를 수정합니다. 종료 소유자의 취소를 항상 요청하고 lease cleanup 진입 직전의 pending 취소도 보존하며 실제 HTTP/SDK 완료 전 target/output lease를 해제하지 않습니다.
+- 도메인 전체 예측이 Keystone HTTP200의 잘린 project 목록을 완전한 집합으로 오인하던 오류를 수정합니다. 원본 collection metadata·exact-domain unique ID를 확인한 뒤에만 quota/usage를 합산하고 truncation·continuation·불완전 응답은 unavailable로 반환합니다. 기존 manager 권위·비활성 project 포함·100project 한계와 전역 directory 동작은 유지합니다.
 - 관리자 그룹의 Accounts 등 명시 source-home 후보를 조회할 때 사용자마다 순차 native GET을 반복하던 N+1 병목을 제거합니다. Native domain LIST의 scope·ID·활성/메타데이터를 엄격히 확인하며 실제 추가의 graph-locked fresh 사용자/권위 재검증과 기본 home/joined directory는 유지합니다.
 - 관리자 볼륨 이전의 목적지 자동 인증·실제 owner readback을 native SDK/HTTP로 검증하고, Cinder401 재인증과307/308 redirect 뒤 create/accept POST를 재전송하던 경로를 각각 차단합니다. Redirect Location에 native token·transfer auth key를 전달하지 않으며 대상 역할 부재를 서비스 프로젝트 수신으로 대체하지 않습니다. 운영 반영과 기존 오이전 볼륨 복구는 별도입니다.
 - Backend native Keystone·SDK·MCP와 background inventory가 요청별 인증·쿠키·헤더·권위 격리를 유지한 채 HTTP socket pool을 재사용합니다. TLS/CA/proxy·timeout/retry와 fresh native 권한 검사를 보존하며 작업 drain 뒤 pool을 정리합니다. 브라우저 세션 수명·운영 설정·배포는 변경하지 않습니다.

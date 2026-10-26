@@ -11,7 +11,8 @@ limits) and utilization (resources actually provisioned) are separate kinds.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from urllib.parse import quote
 
 from fastapi import HTTPException
 
@@ -28,6 +29,13 @@ from app.services import (
     traffic_analytics,
     user_inventory,
     zun,
+)
+from app.services.nova import parse_nova_timestamp
+from app.services.quota_forecast import (
+    _FORECAST_HORIZON_DAYS,
+    _FORECAST_WINDOW_DAYS,
+    _allocation_series,
+    _linear_forecast,
 )
 
 QUOTA_PROJECT_LIMIT = 100
@@ -502,4 +510,169 @@ async def manager_workspace(conn, domain_id: str) -> dict:
         "resources": resources,
         "inventory": inventory,
         "coverage": {"observed_at": datetime.now(UTC).isoformat(), "partial": partial, "notes": notes},
+    }
+
+
+def _forecast_projects(conn, domain_id):
+    """Keep native collection metadata that the SDK project iterator discards."""
+    domain = conn.identity.get_domain(domain_id)
+    if domain is None or getattr(domain, "id", None) != domain_id:
+        raise ValueError("Forecast domain is not verified")
+    response = conn.identity.get("/projects", params={"domain_id": domain_id})
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict) or not isinstance(payload.get("projects"), list):
+        raise ValueError("Project inventory is malformed")
+    links = payload.get("links")
+    if (
+        not isinstance(links, dict)
+        or "next" not in links
+        or links["next"] is not None
+        or links.get("previous") is not None
+        or any(key in payload and payload[key] is not False for key in ("truncated", "limited"))
+        or payload.get("next") is not None
+        or "next" in response.links
+    ):
+        raise ValueError("Project inventory is incomplete")
+    projects = set()
+    for row in payload["projects"]:
+        if not isinstance(row, dict):
+            raise ValueError("Project inventory is malformed")
+        pid = row.get("id")
+        if not isinstance(pid, str) or not pid.strip() or pid in projects or row.get("domain_id") != domain_id:
+            raise ValueError("Project inventory is not attributable")
+        # Disabled projects still contribute native usage and quota limits.
+        projects.add(pid)
+    return sorted(projects)
+
+
+def _forecast_project(conn, project_id, start, end):
+    """Read exact-project history without Nova's display-only empty fallback."""
+    # 2.40+ paginates individual instances. Read the unpaged representation
+    # explicitly; SDK fetch also hides Nova's authoritative empty object.
+    response = conn.compute.get(
+        f"/os-simple-tenant-usage/{quote(project_id, safe='')}",
+        params={"start": start.replace(tzinfo=None).isoformat(), "end": end.replace(tzinfo=None).isoformat()},
+        microversion="2.39",
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict) or "tenant_usage" not in payload or payload.get("tenant_usage_links"):
+        raise ValueError("Usage history is unavailable")
+    usage = payload["tenant_usage"]
+    if not isinstance(usage, dict):
+        raise ValueError("Usage history is malformed")
+    if usage == {}:
+        return [], quota_native.get_section(conn, project_id, "compute")
+    if usage.get("tenant_id") != project_id:
+        raise ValueError("Usage project is not verified")
+    if parse_nova_timestamp(usage.get("start")) != start or parse_nova_timestamp(usage.get("stop")) != end:
+        raise ValueError("Usage history window is incomplete")
+    source = usage.get("server_usages")
+    if not isinstance(source, list):
+        raise ValueError("Usage history is unavailable")
+    rows = []
+    for row in source:
+        if not isinstance(row, dict) or row.get("tenant_id", project_id) != project_id:
+            raise ValueError("Usage row belongs to another project")
+        started = parse_nova_timestamp(row.get("started_at"))
+        ended_raw = row.get("ended_at")
+        ended = parse_nova_timestamp(ended_raw) if ended_raw else None
+        vcpus = user_inventory.number(row.get("vcpus"))
+        ram = user_inventory.number(row.get("memory_mb"))
+        if started is None or (ended_raw and ended is None) or vcpus is None or ram is None:
+            raise ValueError("Usage history is malformed")
+        if ended is not None and ended < started:
+            raise ValueError("Usage history interval is malformed")
+        rows.append({"started": started, "ended": ended, "instances": 1, "vcpus": vcpus, "ram_mb": ram})
+    quotas = quota_native.get_section(conn, project_id, "compute")
+    return rows, quotas
+
+
+async def manager_forecast(conn, domain_id: str) -> dict:
+    """Whole-domain trend, only when every exact project's history is readable.
+
+    No selected-project report, system traffic/session data, or zero-on-error
+    helper is used. Storage and other services have no allocation history here.
+    """
+    projects, failure, inventory_failed = [], None, False
+    try:
+        projects = await _native_call(_forecast_projects, conn, domain_id)
+    except Exception as exc:
+        failure, inventory_failed = exc, True
+    end = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = end - timedelta(days=_FORECAST_WINDOW_DAYS)
+    results = []
+    gate = asyncio.Semaphore(QUOTA_CONCURRENCY)
+
+    async def read(project_id):
+        async with gate:
+            return await _native_call(_forecast_project, conn, project_id, start, end)
+
+    if failure is None:
+        if len(projects) > QUOTA_PROJECT_LIMIT:
+            failure = ValueError("project_limit_exceeded")
+        else:
+            results = await asyncio.gather(*(read(pid) for pid in projects), return_exceptions=True)
+            failure = next((result for result in results if isinstance(result, Exception)), None)
+    samples = [end - timedelta(days=_FORECAST_WINDOW_DAYS - 1 - i) for i in range(_FORECAST_WINDOW_DAYS)]
+    rows = [] if failure is not None else [row for history, _ in results for row in history]
+    entries = []
+    for metric, key, unit in (
+        ("instances", "instances", "count"),
+        ("vcpus", "cores", "vcpu"),
+        ("ram_mb", "ram", "MiB"),
+    ):
+        entry = {
+            "metric": metric,
+            "unit": unit,
+            "status": "unavailable",
+            "error": "history_unavailable",
+            "current": None,
+            "limit": None,
+            "trend": None,
+        }
+        if failure is not None:
+            entry["status"], entry["error"] = _failure(failure)
+            if inventory_failed and entry["status"] == "unavailable":
+                entry["error"] = "project_inventory_unavailable"
+            if len(projects) > QUOTA_PROJECT_LIMIT:
+                entry["error"] = "project_limit_exceeded"
+        else:
+            quotas = [quota.get(key) for _, quota in results]
+            if all(isinstance(quota, dict) for quota in quotas):
+                current = sum(quota["in_use"] for quota in quotas)
+                limit = -1 if any(quota["limit"] == -1 for quota in quotas) else sum(quota["limit"] for quota in quotas)
+                trend = _linear_forecast(
+                    _allocation_series(rows, samples, lambda row, metric=metric: row[metric]),
+                    in_use=current,
+                    limit=limit,
+                    has_rows=bool(rows),
+                )
+                entry.update(
+                    current=current,
+                    limit=limit,
+                    trend=trend,
+                    status="ready" if trend["trend_available"] else "unavailable",
+                    error=None if trend["trend_available"] else "history_unavailable",
+                )
+        entries.append(entry)
+    entries.append(
+        {
+            "metric": "volume_gb",
+            "unit": "GiB",
+            "status": "unavailable",
+            "error": "history_unsupported",
+            "current": None,
+            "limit": None,
+            "trend": None,
+        }
+    )
+    return {
+        "domain_id": domain_id,
+        "observed_at": datetime.now(UTC).isoformat(),
+        "window_days": _FORECAST_WINDOW_DAYS,
+        "horizon_days": _FORECAST_HORIZON_DAYS,
+        "source": "nova_simple_tenant_usage",
+        "entries": entries,
     }

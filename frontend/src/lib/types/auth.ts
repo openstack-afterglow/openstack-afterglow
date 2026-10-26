@@ -93,6 +93,7 @@ export interface DomainInvitationInfo {
   identity_domain_name?: string;
   expires_at: string;
   project_name: string | null;
+  projects?: { project_id: string; project_name: string; role_ids: string[] }[];
 }
 
 /** Invitation/registration acceptance result. */

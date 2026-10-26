@@ -4,6 +4,12 @@
 
 Afterglow는 Docker Compose(개발/소규모), Kubernetes(프로덕션), ArgoCD(GitOps) 세 가지 배포 방식을 지원합니다.
 
+## Domain manager workspace cutover (source only)
+
+다중 프로젝트 invitation은 새 요청 `{email,projects:[{project_id,role_ids}]}`와 `kind=invitation_multi`의 기존 JSON column을 사용한다. DDL/migration은 없고 기존 `invitation` row·grant journal은 보존하지만 구형 exact-kind reader는 새 링크를 처리하지 못한다. Old/new API·worker·frontend를 섞은 rollout을 호환 완료로 간주하지 않는다. 승인된 배포에서는 먼저 현재 cohort/source·schema·원래 key와 SQL/Redis 복구 지점을 확인하고 old writers를 drain한 뒤 matching reader/frontend를 함께 전환한다. 운영 snapshot 기반 양방향 writer/복구 qualification은 이 로컬 source 검증에서 수행하지 않았다. 기존 row를 새 kind로 일괄 backfill하거나 old writer에 새 JSON을 읽히도록 marker를 제거하지 않는다.
+
+새 domain eviction은 native 계정·리소스를 삭제하지 않으며 owner/manager·current-home·다른 scope 공유 group은 차단한다. 운영 IAM·provider policy를 자동 갱신하지 않는다. Domain forecast에는 operator 연결의 exact-project Nova simple-tenant-usage2.39 조회 권한과 완전한 과거 window가 필요하다. 미지원·거부·관측 불명은 화면에 그대로 남으며 조회 성공만으로 운영 capacity prediction을 보장하지 않는다.
+
 ## 관리자 Swift inventory 선행 조건
 
 관리자 전체 계정 조회에는 RGW의 account-in-URL 지원과 `/swift/v1/AUTH_<executor-project>` 형태의 실제 object-store endpoint가 필요하다. Kolla의 `ceph_rgw_swift_account_in_url`은 Ceph-side `rgw_swift_account_in_url`과 일치해야 한다. Bare `/swift/v1` endpoint에 임의로 account suffix를 붙이거나401/403을 빈 계정으로 추정하지 않는다. Executor의 Keystone `admin` 역할·system-admin UI 권위가 RGW의 모든 프로젝트 읽기 권한을 보장하지 않는다. 실제 native 정책/허용 role과 계정별 GET/HEAD를 별도로 확인하고, 권한 확대나 RGW 설정 변경은 별도 승인한다.

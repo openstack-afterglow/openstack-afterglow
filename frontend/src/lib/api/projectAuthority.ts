@@ -17,6 +17,10 @@ export function projectAuthority(session: IamSession, callerProject?: string) {
 	};
 	const root = (project: string) => `/api/v1/projects/${encodeURIComponent(project)}`;
 	return {
+		create: (name: string, description: string) => {
+			if (!session.canSubmit()) return Promise.reject<{ id: string; name: string }>(new DOMException('', 'AbortError'));
+			return dispatch(() => api.post<{ id: string; name: string }>('/api/v1/projects', { name, description, domain_id: session.domainId }, session.token(), callerProject, { replayOnUnauthorized: false, suppressAuthRedirect: true, cache: 'no-store' }));
+		},
 		eligibleUsers: (project: string) => dispatch(() => api.get<EligibleProjectUser[]>(`${root(project)}/eligible-users`, session.token(), callerProject, { refresh: true })),
 		ownership: (project: string) => dispatch(() => api.get<ProjectOwnership>(`${root(project)}/ownership`, session.token(), callerProject, { refresh: true })),
 		creators: () => dispatch(() => api.get<ProjectCreators>(`/api/v1/projects/creators?domain_id=${encodeURIComponent(session.domainId)}`, session.token(), callerProject, { refresh: true })),

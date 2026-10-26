@@ -301,6 +301,91 @@ async def test_slow_leader_execution_does_not_block_scan_or_heartbeat(coordinati
 
 
 @pytest.mark.asyncio
+async def test_shutdown_cancels_scanner_during_dependency_timeout(monkeypatch):
+    entered = asyncio.Event()
+    resumed = asyncio.Event()
+
+    class Dispatcher:
+        async def is_leader(self):
+            entered.set()
+            try:
+                # Redis socket readiness uses this same transient cancellation:
+                # timeout owns one request and removes it when handling expiry.
+                async with asyncio.timeout(0):
+                    await asyncio.Future()
+            except TimeoutError:
+                pass
+            resumed.set()
+            return False
+
+    monkeypatch.setattr(nw, "_CHECK_INTERVAL", 60)
+    scanner = asyncio.create_task(nw._scan(Dispatcher()))
+    await entered.wait()
+    draining = asyncio.create_task(nw._drain([scanner]))
+    try:
+        done, _ = await asyncio.wait([draining], timeout=2)
+        assert draining in done
+        assert scanner.cancelled()
+        assert not resumed.is_set()
+    finally:
+        scanner.cancel()
+        await draining
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_before_cleanup", [True, False])
+async def test_lease_cleanup_cancellation_exits_consumer_after_exact_release(
+    coordination, monkeypatch, cancel_before_cleanup
+):
+    redis, prefix = coordination
+    releasing = asyncio.Event()
+    allow_release = asyncio.Event()
+    continued = asyncio.Event()
+    original_eval = redis.eval
+
+    async def eval_with_blocked_release(script, *args):
+        if script == wd._LEASE_RELEASE:
+            releasing.set()
+            await allow_release.wait()
+        return await original_eval(script, *args)
+
+    monkeypatch.setattr(redis, "eval", eval_with_blocked_release)
+    async with wd.WorkDispatcher(redis, prefix) as worker:
+        await worker.publish(["1"])
+        member, owner = await worker.claim(90)
+
+        async def consume():
+            async with wd.work_lease(worker, member, owner):
+                if cancel_before_cleanup:
+                    # The request exists before _settle's first await, but the
+                    # exception has not yet been delivered to this consumer.
+                    asyncio.current_task().cancel()
+            continued.set()
+
+        execution = asyncio.create_task(consume())
+        try:
+            await asyncio.wait_for(releasing.wait(), 2)
+            if not cancel_before_cleanup:
+                execution.cancel()
+            await asyncio.sleep(0)
+            assert not execution.done()
+            assert not continued.is_set()
+            assert await redis.get(f"{prefix}:lease:1") == owner
+            assert owner in worker._work_tokens
+            allow_release.set()
+            done, _ = await asyncio.wait([execution], timeout=2)
+            assert execution in done
+            with pytest.raises(asyncio.CancelledError):
+                await execution
+            assert not continued.is_set()
+            assert not await redis.exists(f"{prefix}:lease:1")
+            assert owner not in worker._work_tokens
+        finally:
+            allow_release.set()
+            await nw._drain([execution])
+
+
+@pytest.mark.asyncio
 async def test_shutdown_drains_http_children_before_database_close(monkeypatch):
     import app.database as db
     import app.services.db_auto_backup as dab
@@ -365,17 +450,27 @@ async def test_cancellation_keeps_target_and_output_owned_until_http_drain(coord
     monkeypatch.setattr(nw, "_run_notion_target_sync", sync)
     async with wd.WorkDispatcher(redis, prefix) as worker:
         await worker.publish(["1"])
-        execution = asyncio.create_task(nw._execute_target(worker, *await worker.claim(90)))
+        claim = await worker.claim(90)
+        execution = asyncio.create_task(nw._execute_target(worker, *claim))
+        shutdown = None
         try:
             await asyncio.wait_for(started.wait(), 2)
+            output_owner = await redis.get(f"{prefix}:output:output-1")
+            assert output_owner is not None
             execution.cancel()
             await asyncio.wait_for(draining.wait(), 2)
-            assert await redis.exists(f"{prefix}:lease:1")
-            assert await redis.exists(f"{prefix}:output:output-1")
+            shutdown = asyncio.create_task(nw._drain([execution]))
+            await asyncio.sleep(0)
+            assert await redis.get(f"{prefix}:lease:1") == claim[1]
+            assert await redis.get(f"{prefix}:output:output-1") == output_owner
             assert not execution.done()
+            assert not shutdown.done()
         finally:
             release.set()
-            await nw._drain([execution])
+            if shutdown is not None:
+                await shutdown
+            else:
+                await nw._drain([execution])
         assert not await redis.exists(f"{prefix}:lease:1", f"{prefix}:output:output-1")
 
 

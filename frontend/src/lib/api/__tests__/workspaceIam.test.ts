@@ -26,6 +26,15 @@ describe('workspace quota API authority and mutation contracts', () => {
 			await expect(read).rejects.toMatchObject({ name: 'AbortError' });
 		}
 	});
+	it('fences forecast responses after authority changes', async () => {
+		let current = true;
+		const pending = Promise.withResolvers<unknown>();
+		api.get.mockReturnValue(pending.promise);
+		const read = workspaceIam(session({ isCurrent: () => current })).forecast();
+		current = false;
+		pending.resolve({ domain_id: 'domain', entries: [] });
+		await expect(read).rejects.toMatchObject({ name: 'AbortError' });
+	});
 	it('does not dispatch an admin action after the selected domain or authority changes', async () => {
 		const client = adminDomainBudgets('domain', { token: () => 'token', projectId: () => undefined, isCurrent: () => false });
 		await expect(client.load()).rejects.toMatchObject({ name: 'AbortError' });

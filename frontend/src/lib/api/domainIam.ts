@@ -7,7 +7,8 @@ export type IamAssignableRoles = AssignableProjectRoles;
 export interface IamUser { id: string; name: string; email: string; enabled: boolean; domain_id: string; protected: boolean }
 export interface IamUserWrite { name: string; email: string; enabled: boolean; password?: string }
 export type IamEnrollmentStatus = 'delivery_pending' | 'pending' | 'accepted' | 'revoked' | 'expired' | 'delivery_failed' | 'account_creating' | 'granting' | 'activating' | 'recovery_required' | 'failed';
-export interface IamInvitation { id: number; domain_id: string; kind: string; user_id: string | null; recovery_required: boolean; email: string; project_id: string | null; project_name: string; role_ids: string[]; status: IamEnrollmentStatus; expires_at: string; created_at: string; accepted_at: string | null }
+export interface IamInvitationProject { project_id: string; role_ids: string[]; project_name?: string }
+export interface IamInvitation { id: number; domain_id: string; kind: string; user_id: string | null; recovery_required: boolean; email: string; project_id: string | null; project_name: string; role_ids: string[]; projects: IamInvitationProject[]; status: IamEnrollmentStatus; expires_at: string; created_at: string; accepted_at: string | null }
 export interface LoginPolicy { domain_id: string; password_enabled: boolean; allowed_email_domains: string[]; signup_enabled: boolean; signup_email_domains: string[]; revision: number; configured: boolean; smtp_configured: boolean; usable_provider_count: number }
 export type LoginPolicyWrite = Pick<LoginPolicy, 'password_enabled' | 'allowed_email_domains' | 'signup_enabled' | 'signup_email_domains' | 'revision'>;
 export interface IamProvider {
@@ -48,13 +49,14 @@ export function domainIam(session: IamSession) {
 		context: () => api.get<IamContext>(root + '/context', session.token(), projectId, { refresh: true }),
 		users: () => get<{ items: IamUser[] }>('/users'),
 		updateUser: (userId: string, body: Partial<IamUserWrite>) => mutate(() => api.patch<IamUser>(`${root}/users/${id(userId)}`, body, session.token(), projectId, { replayOnUnauthorized: false })),
+		removeUser: (userId: string) => mutate(() => api.delete(`${root}/users/${id(userId)}`, session.token(), projectId, { replayOnUnauthorized: false })),
 		projects: () => get<{ items: Project[] }>('/projects'),
 		members: (project: string) => get<{ items: ProjectAccessMember[] }>(`/projects/${id(project)}/members`),
 		roles: (project: string) => get<IamAssignableRoles>(`/projects/${id(project)}/assignable-roles`),
 		assignRoles: (project: string, user: string, roleIds: string[]) => mutate(() => api.put(`${root}/projects/${id(project)}/members/${id(user)}/roles`, { role_ids: roleIds }, session.token(), projectId, { replayOnUnauthorized: false })),
 		removeMember: (project: string, user: string) => mutate(() => api.delete(`${root}/projects/${id(project)}/members/${id(user)}`, session.token(), projectId, { replayOnUnauthorized: false })),
 		invitations: () => get<{ items: IamInvitation[] }>('/invitations'),
-		invite: (email: string, project: string | undefined, roleIds: string[]) => mutate(() => api.post<IamInvitation>(root + '/invitations', { email, ...(project ? { project_id: project, role_ids: roleIds } : {}) }, session.token(), projectId, { replayOnUnauthorized: false })),
+		invite: (email: string, projects: IamInvitationProject[]) => mutate(() => api.post<IamInvitation>(root + '/invitations', { email, projects: projects.map(({ project_id, role_ids }) => ({ project_id, role_ids })) }, session.token(), projectId, { replayOnUnauthorized: false })),
 		revoke: (invitation: number) => mutate(() => api.delete(`${root}/invitations/${id(String(invitation))}`, session.token(), projectId, { replayOnUnauthorized: false })),
 		operations: () => get<{ items: IamInvitation[] }>('/operations'),
 		recoverOperation: (operation: number) => mutate(() => api.delete(`${root}/operations/${id(String(operation))}`, session.token(), projectId, { replayOnUnauthorized: false })),

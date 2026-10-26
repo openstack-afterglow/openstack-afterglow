@@ -1,11 +1,13 @@
 """Legacy project routes share the domain IAM boundary, never Default fallback."""
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
+from keystoneauth1.exceptions.http import Forbidden, ServiceUnavailable
 
 from app.api.deps import get_token_info
 from app.api.identity.iam import router as iam_router
@@ -39,7 +41,10 @@ async def test_project_create_and_invite_deny_ordinary_project_roles(directory, 
             ("/api/v1/projects", {"name": "project"}),
             (
                 "/api/v1/iam/invitations",
-                {"email": "new@test.invalid", "project_id": PROJECT, "role_ids": [rid("project_member")]},
+                {
+                    "email": "new@test.invalid",
+                    "projects": [{"project_id": PROJECT, "role_ids": [rid("project_member")]}],
+                },
             ),
         ]:
             response = await client.post(path, json=body)
@@ -48,12 +53,16 @@ async def test_project_create_and_invite_deny_ordinary_project_roles(directory, 
 
 
 @pytest.mark.asyncio
-async def test_project_create_explicit_domain_and_real_creator_owner(directory, monkeypatch):
+@pytest.mark.parametrize("creator_preset", [True, False])
+async def test_project_create_explicit_domain_and_real_creator_owner(directory, monkeypatch, creator_preset):
     created_attrs = []
     from app.services import domain_quotas
 
     directory.direct = []
     directory.project = None
+    if not creator_preset:
+        directory.catalog = [role for role in directory.catalog if role["name"] != "project_creator"]
+    assert directory.domain_direct == []  # The manager has no creator grant.
 
     async def quota_defaults(conn, domain_id, project_id, *, lease):
         assert directory.project.enabled is False
@@ -83,9 +92,18 @@ async def test_project_create_explicit_domain_and_real_creator_owner(directory, 
         return project
 
     directory.ks.projects.create = create_project
-    result = await project_service.create_project_for_user(
-        "new-project", "description", "domain-manager", "manager", "domain"
-    )
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1/projects")
+    app.dependency_overrides[get_token_info] = lambda: manager()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        capability = await client.get("/api/v1/projects/capabilities?domain_id=domain")
+        assert capability.status_code == 200
+        assert capability.json()["can_create_project"] is True
+        response = await client.post(
+            "/api/v1/projects", json={"name": "new-project", "description": "description", "domain_id": "domain"}
+        )
+    assert response.status_code == 201
+    result = response.json()
     assert created_attrs == [
         {"name": "new-project", "domain": "domain", "enabled": False, "description": "description"}
     ]
@@ -104,6 +122,63 @@ async def test_manager_cannot_create_project_in_other_domain(directory):
 
 
 @pytest.mark.asyncio
+async def test_manager_project_creation_rechecks_authority_inside_graph_lock(directory, monkeypatch):
+    from app.services import identity_roles
+
+    graph_lock = identity_roles._graph_lock
+
+    @asynccontextmanager
+    async def revoked_lock(conn):
+        async with graph_lock(conn) as lease:
+            directory.managers.clear()
+            yield lease
+
+    monkeypatch.setattr(identity_roles, "_graph_lock", revoked_lock)
+    with pytest.raises(HTTPException) as denied:
+        await project_service.create_project_for_user("project", "", "domain-manager", "manager", "domain")
+    assert denied.value.status_code == 403
+    assert not directory.calls and not directory.personal_projects
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("native_error", "native_status", "detail"),
+    [
+        (Forbidden, 403, "Keystone role operation rejected"),
+        (ServiceUnavailable, 503, "Keystone role operation is unavailable"),
+    ],
+)
+async def test_manager_project_creation_propagates_native_rejection_without_success(
+    directory, native_error, native_status, detail
+):
+    native_calls = []
+
+    def reject_create(**attrs):
+        native_calls.append(attrs)
+        raise native_error()
+
+    directory.ks.projects.create = reject_create
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1/projects")
+    app.dependency_overrides[get_token_info] = lambda: manager()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/v1/projects", json={"name": "project", "domain_id": "domain"})
+    assert response.status_code == native_status
+    assert response.json()["detail"] == detail
+    assert len(native_calls) == 1
+    assert not directory.calls and not directory.personal_projects
+    assert not directory.quota_writes
+
+
+@pytest.mark.asyncio
+async def test_manager_project_creation_keeps_default_name_reserved(directory):
+    with pytest.raises(HTTPException) as denied:
+        await project_service.create_project_for_user("Default", "", "domain-manager", "manager", "domain")
+    assert denied.value.status_code == 409
+    assert not directory.calls and not directory.personal_projects
+
+
+@pytest.mark.asyncio
 async def test_iam_invitation_rejects_foreign_domain(directory, enrollments):
     app = FastAPI()
     app.include_router(iam_router, prefix="/api/v1/iam")
@@ -117,7 +192,10 @@ async def test_iam_invitation_rejects_foreign_domain(directory, enrollments):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/v1/iam/invitations",
-            json={"email": "new@test.invalid", "project_id": "foreign-project", "role_ids": [rid("project_member")]},
+            json={
+                "email": "new@test.invalid",
+                "projects": [{"project_id": "foreign-project", "role_ids": [rid("project_member")]}],
+            },
         )
         assert response.status_code == 403
     assert not directory.sent

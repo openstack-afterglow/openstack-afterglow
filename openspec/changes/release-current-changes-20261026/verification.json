@@ -1,0 +1,29 @@
+{
+  "status": "in_progress",
+  "afterglow_candidate_version": "1.30.27",
+  "starting_local_checkpoint": "a7cae667d029c8ae65763659498a513a6cb9c4b9",
+  "initial_release_source": {"sha256": "25b2a51b444a5310f5a6a5b3254e8c9ab14a293fb9b5f470d9ea6bc9a79f50fd", "files": 3512, "snapshot": "/var/folders/1m/xfc726k14szbjnrlq5t68zjw0000gn/T/afterglow-release-13027-_ltkuae9/source"},
+  "forecast_completeness_fix": {
+    "focused_passed": 46,
+    "before": "Reconstructed original SDK directory boundary plus valid display metadata attempted usage for truncated default-only subset; new regression failed at unexpected usage call. Earlier reconstruction attempts failed at missing synthetic display directory instead and are not defect proof.",
+    "after": "Actual Uvicorn HTTP plus installed SDK loopback Keystone: complete inventory aggregates default+disabled projects; native HTTP200 truncated inventory returns unavailable/null totals with zero usage reads. Principal/manager/Nova/quota synthetic; no live mutation.",
+    "http_smoke_artifact": "artifact://251"
+  },
+  "initial_gate": {"result": "incomplete: 900s tool wall-clock deadline", "artifact": "artifact://221", "unfinished_selector": "tests/test_notion_worker.py::test_three_workers_execute_disjoint_targets_without_worker_registry_scans", "focused_selector": "passed in 0.22s; does not explain full-suite hang"},
+  "final_afterglow_gate": {"command": "UV_NO_SYNC=1 npm run test:gate", "source_sha256": "b8f3e1df5140c7af713b2861ec1aad0283e124e05e3f7d25a287ae6ef3e7422a", "source_files": 3512, "passed": true, "backend_passed": 9959, "backend_skipped": 95, "frontend_files": 454, "frontend_passed": 5367, "contracts_passed": 183, "functional_passed": 167, "functional_deselected": 33, "ruff_files": 746, "artifact": "artifact://360"},
+  "worker_cancellation_fix": {"focused_passed": 77, "proven_reproduction": "dependency asyncio.timeout(0) can temporarily cancel/uncancel a scanner, so cancelling-count is not a shutdown request; pending caller cancel before cleanup also must propagate", "before_artifact": "artifact://324", "after_artifact": "artifact://331", "SDK_HTTP_lease_drain_preserved": true, "boundary": "original gate stack unavailable; independently reproduced matching hang, not attribution by assumption"},
+  "concurrent_work_excluded": "project-deletion cleanup/navigation started after request capture and is still unfinished; preserve shared working bytes/index history rather than sweeping into this release",
+  "native_migration_independent_review": "LumenMigrationSafetyReview reported no additional blocking finding after both027/028 receipt and exact-state safeguards; read-only review, not runtime/deployment approval",
+  "frontend_check": {"errors": 0, "warnings": 16, "artifact": "artifact://223"},
+  "arm64_initial_images": {"targets": ["backend", "worker", "frontend"], "built": true, "actual_platform_and_version": "aarch64/arm64; 1.30.27", "worker_fastapi": "0.136.3", "boundary": "initial candidate before any subsequent worker cancellation fix; final artifact must be rebuilt"},
+  "operator_preflight": {"host": "wireguardserver", "inventory": "/etc/kolla/multinode", "all_five_service_controller_targets": ["dms-controller1", "dms-controller2", "dms-controller3"], "kolla": "21.3.1.dev4", "lumen": "0.6.9", "drover": "0.4.15", "waygate": "0.3.5", "palimpsest_client": "0.3.7", "ssh": "established pieroot identity with become; root SSH identity failed host verification and was not bypassed"},
+  "hot_recovery": {"backup_root": "/etc/kolla/.afterglow-rollout-backups/1.30.27/release-current-changes-20261026", "encrypted_sql_config_census": true, "isolated_mariadb": "10.11.19, network none, tmpfs", "restored": {"afterglow": {"tables": 103, "rows": 5130}, "lumen": {"tables": 66, "rows": 6602}, "palimpsest": {"tables": 15, "rows": 15}}, "production_writes": 0, "cold_recovery": "not yet performed"},
+  "native_oidc": {"mapping": "sso_oidc_mapping", "canonical_sha256": "f034e498c6aa89a29b26d0ef8300b86fc4ac6b22f5ec6e26d882db612d43b6ae", "actual_readonly_native_tuple": "enabled IdP, openid/mapped with HTTP_OIDC_ISS, enabled Accounts/Personal domains", "candidate_only": "protected input adds exact native_mapping opt-in; all other parsed settings including explicit3600 timeout unchanged; active inputs/overlay not changed"},
+  "explicit_lumen_cutover_authorization": "user selected Lumen 전환까지 포함; separately reviewed forward migration and stopped-writer restore rehearsal required before live schema mutation",
+  "live_lumen_schema_projection": "protected local proof lumen-live-readonly-schema.json and lumen-live-readonly-relationships.json: both027 ledger rows, exact legacy/default credentials parity across6pairs; no provider calls/writes",
+  "publication_secret_scan": "2.67MB unpublished public changes; one generic-api-key false positive in ordinary credential-management proposal prose, reviewed, no credential value",
+  "production_browser_baseline": "isolated Chromium public landing captured; user Chrome relay extension unavailable, not installed or modified",
+  "push": "not yet performed",
+  "tag": "not yet created",
+  "deployment": "not yet performed"
+}

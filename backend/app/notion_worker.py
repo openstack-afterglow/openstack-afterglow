@@ -102,8 +102,9 @@ async def _current_target(member: str) -> dict | None:
 async def _drain(tasks) -> None:
     tasks = list(tasks)
     for task in tasks:
-        if not task.cancelling():
-            task.cancel()
+        # A dependency's timeout may have temporarily cancelled the task and
+        # will uncancel it again. Shutdown must issue its own request regardless.
+        task.cancel()
     drained = asyncio.gather(*tasks, return_exceptions=True)
     cancelled = False
     while not drained.done():

@@ -28,6 +28,7 @@ IAM JSON body는 알 수 없는 필드를 거부합니다. Project quota PATCH�
 | `GET /users` | 없음 | `{items:[User]}` |
 | `POST /users` | 없음 | **405**; manager 직접 human 생성은 제공하지 않음 |
 | `PATCH /users/{user_id}` | UpdateUser | User; 20회/분 |
+| `DELETE /users/{user_id}` | 없음 | `{status:"removed",domain_id,user_id}`; 현재 도메인에서만 내보내기, 20회/분 |
 | `GET /projects` | 없음 | `{items:[Resource]}` |
 | `GET /groups` | 없음 | `{items:[Resource]}` |
 | `GET /projects/{project_id}/members` | 없음 | `{items:[Member]}` |
@@ -35,7 +36,7 @@ IAM JSON body는 알 수 없는 필드를 거부합니다. Project quota PATCH�
 | `PUT /projects/{project_id}/members/{user_id}/roles` | `{role_ids:["exact-role-id"]}` | 갱신된 Member |
 | `DELETE /projects/{project_id}/members/{user_id}` | 없음 | `{status:"removed",member:Member}`; **204 아님** |
 | `GET /invitations` | 없음 | `{items:[Enrollment]}` |
-| `POST /invitations` | `{email,project_id?,role_ids?}` | 201 Enrollment; 10회/분 |
+| `POST /invitations` | `{email,projects:[{project_id,role_ids}]}` | 201 Enrollment; projects 생략/빈 배열은 Default만, 10회/분 |
 | `DELETE /invitations/{invitation_id}` | 없음, int ID | 204 |
 | `GET /operations` | 없음 | `{items:[Enrollment]}`; kind와 무관하게 failed 및 recovery 상태 작업만 |
 | `DELETE /operations/{operation_id}` | 없음, int ID | 204; 부분 실패 보상 |
@@ -50,6 +51,11 @@ IAM JSON body는 알 수 없는 필드를 거부합니다. Project quota PATCH�
 | `GET /projects/{project_id}/quotas` | 없음 | ProjectQuota; 같은 작업 도메인의 정확한 프로젝트 |
 | `PUT /projects/{project_id}/quotas` | flat nonempty QuotaMap | QuotaWrite; HTTP200이어도 partial/unknown 가능 |
 | `GET /monitoring` | 없음 | ManagerMonitoring; query/window/pagination 계약 없음 |
+| `GET /monitoring/forecast` | 없음 | 도메인 전체 Nova 할당 추세; 서비스별 미지원/불명 상태 유지 |
+
+`GET /monitoring/forecast`는 현재 도메인의 비활성 프로젝트도 포함한 전체 프로젝트를 조회하고 각각 Nova simple-tenant-usage를 명시 microversion2.39의 unpaged GET으로 읽는다. 반환 project/window와 모든 instance usage row를 검증한 경우에만 최근7일 allocation의 선형 추세와30일 후 비율·한도 도달 예상 일수를 계산한다. 분모는 전체 project quota 배분 합계이고 실제 CPU/RAM 이용률·미래 수요나 예약 보장이 아니다. 한 프로젝트라도 history가 불명/거부이면 aggregate 예측을 공개하지 않는다. Storage/GPU/다른 서비스의 도메인 전체 이력은 지원하지 않으며0으로 꾸미지 않는다. 응답은 `{domain_id,observed_at,window_days,horizon_days,source,entries:[{metric,unit,status,error,current,limit,trend}]}`다.
+
+사용자 IAM은 **모니터링 및 배분** 한 탭에서 도메인 전체 resource 관측·project/user 귀속 상세·예측·quota 예산/기본값/개별 project 배분을 제공한다. 세 요청/오류는 독립적이며 하나의 native 장애가 나머지 관측을 숨기지 않는다. Context 재검증 중 탭을 열어도 권위 확인이 끝난 뒤 최초 조회를 시작한다.
 
 Directory 목록에는 limit/marker 계약이 없고 native 작업 domain inventory를 검증해 반환합니다. `/context`의 `is_domain_manager=true`는 해당 Default의 현재 유효 manager를 뜻합니다. `is_system_admin`은 별도 현재 system authority이며 이 값만으로 IAM에 진입할 수 없습니다.
 
@@ -64,6 +70,14 @@ Directory 목록에는 limit/marker 계약이 없고 native 작업 domain invent
 조직 directory는 기존 organization-home 사용자와 현재 native project grant로 참여가 확인된 사용자만 표시합니다. 공유 account 전체를 목록·프로젝트 후보로 노출하지 않으며 비멤버를 role/group/membership API로 추가할 수 없습니다. 신규 조직 admission은 초대 수락 또는 명시 trusted OIDC만 허용합니다.
 
 UpdateUser는 `{name?,email?,password?,enabled?}`만 받습니다. 최소 하나의 non-null field가 필요하며 null/빈 PATCH는422입니다. Name/email/password 제한은 생성과 같습니다. Email 변경은 현재 email 정책을 검증하고 **모든 identity 도메인**의 다른 계정 email과 충돌하면409 `Email belongs to another account`입니다. Password 변경에는 password method enabled 및 email 정책 통과도 필요하며 `afterglow_local_password=true`를 확정합니다. Email-only 변경은 password method가 꺼져 있어도 가능합니다. 이 manager/home-bound 관리 경로와 본인 profile의 검증 링크 변경은 다르며 일반 `/api/v1/profile` PATCH는 email 소유권을 변경하지 않습니다. Domain 이동·개인 도메인 이름·project 이동 필드는 없습니다. `enabled:false`는 먼저 대상 사용자가 관련된 미완료 ownership journal을 검사하며409 `project_ownership_native_operation_unresolved`로 차단합니다. 이어 **home뿐 아니라 joined 작업 도메인까지 포함한 현재 native effective project ownership**을 검사하고 owner-bearing 할당이 있으면409 `Transfer project ownership before disabling or deleting this identity`로 거부합니다. 소유권 이전·미완료 작업의 적법한 정리 후 다시 요청해야 하며 마지막 활성 effective Default manager 보호도 별도로 적용합니다. 성공 후 대상 세션 회수·권한 cache 무효화를 수행합니다.
+
+### 현재 도메인에서 사용자 내보내기
+
+`DELETE /users/{user_id}`는 계정 삭제가 아니다. Fresh manager와 graph lease 아래 현재 도메인의 직접 project/domain 역할 및 안전한 domain-local group membership만 회수하고 native membership 부재를 readback한다. 사용자·비밀번호·enabled·리소스와 다른 도메인 할당은 변경하지 않는다. 자기 자신403, 계정 홈이 현재 domain인 경우409(`domain_eviction_identity_home`), owner/manager-bearing source409, privileged/service identity403이다. 소유권과 관리 권위는 먼저 전용 절차로 이전해야 한다. 다른 범위에 grant가 있는 공유 group·외부 domain group·내부 manager projection은409로 차단하여 다른 도메인 접근을 손상시키지 않는다. 미완료 ownership journal도 차단한다.
+
+변경 직전 전체 native source를 검증하며 변경 후 native 실패·readback 불명은503 `domain_eviction_uncertain`이다. 일부 권한이 이미 회수되었을 수 있으므로 자동 rollback/retry하지 않는다. 목록/권위/세션 검증 cache를 무효화하며 로그인 family는 보존한다. UI는 명시 confirmation 뒤 한 번 제출하고 불명 결과에서는 새 조회 전 재제출을 막는다. `User.protected`는 credential 보호 표시이지 외부 계정의 domain eviction을 일괄 금지하는 flag가 아니다.
+
+사용자 결정(2026-10-26): 이 작업의 내보내기는 잘못 연결된 외부-home 계정의 **현재 접근만 회수**하는 기능이며 영구 가입 금지/계정 연결 이전이 아니다. SSO auto-join 정책과 기존 pending 초대를 유지한다. 따라서 다음 SSO 로그인에서 기존 trusted auto-join 규칙을 통과하거나 기존 초대를 수락하면 다시 가입할 수 있다. 확인창·사용자 도움말도 이 한계를 명시하며 enrollment revoke/tombstone/identity merge를 부수 효과로 수행하지 않는다.
 
 ## 멤버·역할과 `can_manage_owners`
 
@@ -83,11 +97,15 @@ Default의 manager들은 같은 도메인의 모든 프로젝트에 **공통 관
 
 현재 domain manager 또는 해당 도메인에 실제 native 역할 ID 그래프로 위임받은 `project_creator`가 프로젝트를 만들 수 있습니다. Creator capability는 project membership grade나 system-admin 권한이 아니며 login/startup에서 role/grant를 자동 seed하지 않습니다. Manager의 위임에는 사전 명시적 preset setup과 enabled joined 사용자가 필요합니다. 일반 사용자의 삭제에는 현재 creator capability와 sole ownership이 모두 필요하고 manager는 domain authority를 사용합니다. 어느 경우든 Default·리소스/자식 프로젝트가 있는 프로젝트·삭제 확인 불가 상태는 삭제할 수 없으며 force/teardown은 없습니다. 이 흐름은 `/api/v1/projects`의 capabilities·creators·eligible-users·ownership·ownership-transfer·deletion-check API를 사용하며 `/iam`에 별도 creator/ownership route는 없습니다.
 
+IAM 프로젝트 접근 화면의 **새 프로젝트**도 같은 `/api/v1/projects` 경로와 fresh capability를 사용한다. Manager는 `project_creator` 할당이나 프리셋 존재와 무관하게 생성하며 위임 경고는 생성 차단이 아니다. 실제 생성 UUID를 목록에 다시 읽고 선택한다. 생성 불명은 재전송하지 않는다.
+
 ## 초대 요청과 링크
 
-POST `/invitations`는 email 3–255자가 필수이고 **도메인 가입만** 초대할 수 있습니다. `{ "email": "joined@example.org" }`이면 추가 프로젝트 없이 수락 즉시 target `Default` reader가 됩니다. `project_id`는 생략/null 또는1–64자, role_ids는 기본 `[]`·최대256개입니다. Project 없이 추가 roles를 보내면422입니다. Project를 선택하면 nonempty unique exact safe IDs와 명시적인 project membership grade가 하나 이상 필요합니다. Owner는 assignable catalog에 없고 native admin/manager 승격도 허용하지 않습니다. Project admin 및 서비스 역할은 live domain authority·safe graph 검증 범위에서 추가합니다. 발행 시 email host를 login allowlist로 검증하되 password method 활성 여부는 확인하지 않습니다. **새 계정 수락 시** password method를 다시 검증하며, 기존 계정의 authenticated 수락에는 password method가 필요하지 않습니다.
+POST `/invitations`는 email 3–255자와 `projects` 배열(생략 시 `[]`, 최대256개)을 받는다. 각 항목은 `{project_id,role_ids}`이며 project ID는1–64자, 역할은1–256개의 unique exact safe IDs다. 같은 project 중복·과거 top-level `project_id`/`role_ids`는422다. `{ "email": "joined@example.org", "projects": [] }`는 target `Default` reader만 부여한다. 각 선택 프로젝트에는 명시적인 project membership grade가 하나 이상 필요하고 owner/native admin/manager 승격은 금지한다. Project admin 및 서비스 역할은 live domain authority·safe graph 검증 범위에서 추가한다. UI는 이메일 입력 후 **초대 이메일 발송**에서 여러 프로젝트·각 역할 선택 창을 열고 최종 확인에서 이메일 한 통과 enrollment 한 건만 발행한다. 취소는 발행하지 않는다. 발행 시 email host를 login allowlist로 검증하되 password method 활성 여부는 확인하지 않는다. 새 계정 수락 시 password method를 다시 검증하고 기존 계정의 authenticated 수락에는 password method가 필요하지 않다.
 
 Enrollment DTO에는 기존 id/kind/domain_id/project_id/project_name/email/role_ids/user_id/identity_domain_id/status/timestamp와 personal_domain_id/personal_project_id/personal_project_name·native_writes_settled/recovery_required가 포함됩니다. 과거 personal_domain_name 컬럼은 historical provenance일 뿐 새 입력이 아닙니다. Global registration/managed_create와 조직 admission 없는 external은 domain_id=null로 시작하고 shared personal working ID를 확정하며 identity_domain_id는 accounts입니다. Invitation의 domain_id는 원래 admission target 조직이고 nullable invitation target은 허용하지 않습니다. 공개 생성 결과의 personal working ID와 이 operation target을 혼동하지 않습니다. Token/password·native correlation·grant journal은 반환하지 않으며 token은 SMTP 링크로만 전달하고 digest로 저장합니다. native_writes_settled는 불확실 native 효과의 settlement이지 accepted/cleanup 성공이 아닙니다. Owner/admin의 프로젝트 멤버 관리는 이미 조직에 참여한 사용자로 한정하고 조직 email 초대는 manager만 발행합니다.
+
+Enrollment와 public invitation 응답의 `projects`는 `[{project_id,project_name,role_ids}]` 전체 계획이다. 새 영속 row는 `kind="invitation_multi"`, `project_id=null`, 기존 `role_ids` JSON에 이 계획을 저장하며 schema 변경은 없다. 기존 `kind="invitation"` single-project row는 계속 읽고 수락한다. 새 요청/새 row를 구형 reader와 섞어 서비스하지 않는다. 구형 exact-kind reader는 새 링크를 처리하지 못하므로 API·worker/frontend의 coordinated cutover가 필요하며, 이 source 검증은 운영 mixed-version qualification이 아니다. 기존 `added_grants`/personal quota journal은 덮어쓰지 않는다.
 
 ### Lifecycle states
 
@@ -105,7 +123,7 @@ Enrollment DTO에는 기존 id/kind/domain_id/project_id/project_name/email/role
 | `recovery_required` | native 결과가 불명확하거나 보상 미완료; 같은 token으로 재실행 불가 |
 | `revoked` | 링크 회수 및 필요한 보상 완료; 재수락 불가 |
 
-`GET /invitations`는 해당 domain의 모든 invitation 이력을 최신순으로 반환합니다. Domain-only 초대는 project가 없어도 list/revoke 가능합니다. Disabled project의 이력도 list/revoke 가능하고 삭제된 project는 저장된 project_name을 사용합니다. 현재 존재하는 project가 다른 domain이면403으로 거부합니다. Public 조회·redemption은 추가 project가 있으면 현재 enabled project를 요구하므로 historical 목록에 표시됐다는 이유로 수락 가능하지 않습니다. 수락 시 inviter의 현재 domain manager authority도 다시 검증합니다.
+`GET /invitations`는 해당 domain의 두 invitation kind 이력을 최신순으로 반환한다. 추가 project 없는 초대도 list/revoke 가능하다. 모든 선택 project의 native ID/domain을 확인하며 disabled 이력은 허용하고 삭제된 project는 저장된 이름을 쓴다. 현재 존재하는 project가 다른 domain이면403이다. Public 조회·redemption은 모든 선택 project가 현재 enabled여야 한다. 수락 시 inviter의 현재 domain manager authority와 모든 project/role 계획을 첫 native write 전에 재검증한다.
 
 수락·회수는 graph lease → SQL row lock 순서로 직렬화합니다. 기존 계정은 authenticated 수락에서 enabled 본인과 초대 email을 확인하고 원래 identity를 유지합니다. 새 계정은 name/password만 입력하고 shared accounts user와 shared personal primary를 준비합니다. 초대 수락 두 경로는 target 조직 Default reader를 즉시 부여하고 선택 safe project role은 additive로 추가합니다. 관리자 생성·공개 signup에는 이 조직 grant를 적용하지 않습니다. 기존 direct grant·group/domain inheritance를 지우지 않습니다. Native 호출 전에 exact domain/project/role·phase·correlation을 durable 기록하고 readback하며 새 계정은 disabled 준비 뒤 마지막에 요청 enabled 상태를 검증합니다. Password는 journal에 저장하지 않고 기존 account email/password를 덮어쓰거나 reset으로 실패를 복구하지 않습니다.
 

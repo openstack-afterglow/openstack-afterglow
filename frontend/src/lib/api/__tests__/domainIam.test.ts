@@ -16,7 +16,7 @@ describe('domain IAM verification leases', () => {
 		api.get.mockResolvedValue({ domain_id: 'domain', domain_name: 'Domain', is_domain_manager: true });
 		await expect(client.context()).resolves.toMatchObject({ domain_id: 'domain' });
 		await expect(client.users()).rejects.toMatchObject({ name: 'AbortError' });
-		await expect(client.invite('new@example.com', undefined, [])).rejects.toMatchObject({ name: 'AbortError' });
+		await expect(client.invite('new@example.com', [])).rejects.toMatchObject({ name: 'AbortError' });
 		expect(api.get).toHaveBeenCalledTimes(1); expect(api.post).not.toHaveBeenCalled();
 	});
 	it('rejects private data received after the verification lease is invalidated', async () => {
@@ -45,7 +45,7 @@ describe('domain IAM verification leases', () => {
 	});
 	it('blocks mutations while the same session is awaiting authority revalidation', async () => {
 		const client = domainIam({ token: () => 'token', domainId: 'domain', userId: 'user', isCurrent: () => true, canSubmit: () => false });
-		await expect(client.invite('joined@example.com', undefined, [])).rejects.toMatchObject({ name: 'AbortError' });
+		await expect(client.invite('joined@example.com', [])).rejects.toMatchObject({ name: 'AbortError' });
 		expect(api.post).not.toHaveBeenCalled();
 	});
 });

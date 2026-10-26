@@ -1,7 +1,7 @@
 <script lang="ts">
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
-	import { onMount, onDestroy, untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { ApiError } from '$lib/api/client';
 	import type { IamSession } from '$lib/api/domainIam';
 	import { workspaceIam, type IamResourceWorkspace } from '$lib/api/workspaceIam';
@@ -17,6 +17,7 @@
 	const client = untrack(() => workspaceIam(session));
 	let live = true;
 	let generation = 0;
+	let started = false;
 	let data = $state<IamResourceWorkspace | null>(null);
 	let loading = $state(true);
 	let error = $state('');
@@ -44,17 +45,20 @@
 			if (cause instanceof ApiError && cause.status === 403) onDenied();
 		} finally { if (live && pending === generation) loading = false; }
 	}
-	onMount(() => { void load(); });
+	$effect(() => { if (!blocked) untrack(() => { if (!started && session.isCurrent()) { started = true; void load(); } }); });
 	onDestroy(() => { live = false; generation++; data = null; projectId = ''; userId = ''; });
 </script>
 
 <div class="space-y-4">
-	<div class="flex flex-wrap items-center gap-2"><h2 class="mr-auto text-lg font-semibold text-ink-0">{t('resources')}</h2><Button variant="secondary" disabled={loading || blocked} onclick={load}>{t('reload')}</Button></div>
+	<div class="flex flex-wrap items-center gap-2"><h2 class="mr-auto text-lg font-semibold text-ink-0">{t('monitoringOverview')}</h2><Button variant="secondary" disabled={loading || blocked} onclick={load}>{t('reload')}</Button></div>
 	<Alert tone="info">{t('attributionHelp')}</Alert>
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if loading}<ActivityIndicator label={t('loading')} />{/if}
 	{#if data}
 		<Alert tone={data.coverage.partial ? 'warning' : 'info'}>{t('coverage')}: {t(data.coverage.partial ? 'state.partial' : 'state.ready')} · {t('observedAt')}: {data.coverage.observed_at}</Alert>
+		{#if view === 'domain'}
+			<ResourceMetricTable metrics={data.resources.filter(row => ['instances', 'vcpus', 'ram_mb', 'volumes', 'volume_gb'].includes(row.metric))} />
+		{/if}
 		<div class="flex flex-wrap gap-2" role="group" aria-label={t('attributionScope')}>
 			{#each ['domain', 'project', 'user'] as scope}<Button variant={view === scope ? 'secondary' : 'ghost'} ariaPressed={view === scope} onclick={() => view = scope as typeof view}>{t(`scope.${scope as typeof view}`)}</Button>{/each}
 		</div>
@@ -65,9 +69,9 @@
 			<Alert tone="info">{t('userQuotaHelp')}</Alert>
 			{#if user}<div class="rounded-lg border border-line p-3 text-sm text-ink-1 [overflow-wrap:anywhere]"><p>{t('identityDomain')}: <code>{user.domain_id}</code></p><p>{t('memberships')}: {observationLabel(user.membership_state)}</p><ul>{#each user.project_ids as id}<li>{data.projects.find(row => row.id === id)?.name || id} · <code>{id}</code></li>{:else}<li>{user.membership_state === 'ready' ? t('noMemberships') : t('unknown')}</li>{/each}</ul></div>{/if}
 		{/if}
-		{#if metrics}<ResourceMetricTable {metrics} />{:else}<p class="text-sm text-ink-2">{t('chooseScope')}</p>{/if}
-		<section class="space-y-2">
-			<h3 class="text-sm font-semibold text-ink-0">{t('inventory')}</h3>
+		{#if metrics}<details open={view !== 'domain'}><summary class="mb-3 cursor-pointer text-sm font-semibold text-ink-0">{t('monitoringAllMetrics')}</summary><ResourceMetricTable {metrics} /></details>{:else}<p class="text-sm text-ink-2">{t('chooseScope')}</p>{/if}
+		<details class="space-y-2">
+			<summary class="cursor-pointer text-sm font-semibold text-ink-0">{t('inventory')}</summary>
 			<p class="text-sm text-ink-2">{t('inventoryHelp')}</p>
 			<ResponsiveTable>{#snippet cards()}
 				{#each inventory as row}<CompactResourceCard>
@@ -77,7 +81,7 @@
 			{/snippet}
 			<TableShell><table><thead><tr><th>{t('metric')}</th><th>{t('nameId')}</th><th>{t('project')}</th><th>{t('user')}</th><th>{t('status')}</th></tr></thead><tbody>{#each inventory as row}<tr><td>{resourceLabel(row.category)}</td><td>{row.name || '—'}<code class="block text-xs text-ink-2">{row.id ?? t('unknown')}</code></td><td>{data.projects.find(project => project.id === row.project_id)?.name || row.project_id}<code class="block text-xs text-ink-2">{row.project_id}</code></td><td>{row.user_id ? data.users.find(user => user.id === row.user_id)?.name || row.user_id : t('unattributed')}<code class="block text-xs text-ink-2">{row.user_id ?? ''}</code></td><td>{row.status ?? t('unknown')}</td></tr>{:else}<tr><td colspan="5">{t('noObservations')}</td></tr>{/each}</tbody></table></TableShell>
 			</ResponsiveTable>
-		</section>
+		</details>
 		{#if data.coverage.notes.length}<details><summary class="cursor-pointer text-sm text-ink-1">{t('coverageNotes')}</summary><ul class="list-disc space-y-1 pl-5 text-sm text-ink-2">{#each data.coverage.notes as note}<li><code>{note}</code></li>{/each}</ul></details>{/if}
 	{/if}
 </div>

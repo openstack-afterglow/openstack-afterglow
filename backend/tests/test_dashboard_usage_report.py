@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from app.api.common.dashboard import _allocation_series, _linear_forecast
 from app.services import cinder, nova
+from app.services.quota_forecast import _allocation_series, _linear_forecast
 from tests.conftest import patch_redis_cache_miss, patch_usage_report_deps
 
 NOW = datetime.now(UTC)

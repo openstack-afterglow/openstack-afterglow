@@ -4,7 +4,9 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.30.26`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.30.27`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+
+Notion worker 종료는 dependency timeout의 일시적 `Task.cancelling()` 상태를 shutdown 요청으로 간주하지 않는다. 각 drain이 자기 취소를 한 번 요청하고 실제 HTTP/SDK 완료까지 shield한 뒤 target/output lease를 해제한다. 공통 dispatcher cleanup은 진입 전 pending 취소와 cleanup 중 취소를 모두 호출자에게 전달하되 자식만 취소된 경우와 구분한다. 이 수정은 새 background role/schema·토큰 권위 cache·운영 설정을 추가하지 않는다.
 
 `PRODUCT.md`는 사용자 확인을 거친 범용 클라우드 소비자 우선·클라우드/AI 통합 workspace라는 제품 맥락을 기록하며 구현 정본이나 `DESIGN.md`의 시각 권위를 대체하지 않는다. `.impeccable/config.json`은 랜딩·쇼케이스의 image-first 제작 기본값만, `frontend/.impeccable/live/config.json`은 SvelteKit live entry만 소유한다. Live injection은 init에서 실행하지 않는다. 승인된 개발 CSP 예외는 정확히 `http://localhost:8400`이다. `svelte.config.js`의 development-only script source와 `hooks.server.ts`의 `$app/environment.dev` script/connect source에만 추가하고 nonce/hash·기존 runtime API/WebSocket origins와 production CSP는 보존한다. Backend/API·권한·DB/schema·배포 topology에는 영향이 없다.
 
@@ -13,6 +15,8 @@ Palimpsest dashboard의 source 계약은 [catalog·이름 기반 사용](docs/pa
 가입 admission, 이메일/복구 readiness, 로그인 화면의 회원가입 링크 노출은 별도 정책이다. 기존 revisioned enrollment policy에 `public_signup_button_visible`을 추가하고 SQL101은 true column만 additive로 추가하며 기존 admission/quota/revision·row 부재 fallback을 보존한다. System admin만 전역 visibility를 저장하고, 공개 options의 `signup_button_visible`은 visibility·admission·SMTP readiness를 결합한 표시 projection이다. 숨김은 직접 email signup·검증 링크·OIDC account enrollment를 중단하지 않는다. Domain manager의 저장된 signup opt-in/이메일 host 제한은 신규 조직 자동 참여에서 operator provider auto-join ceiling을 추가로 좁히며 기존 멤버 로그인·Accounts/Personal identity topology·global visibility 권한은 바꾸지 않는다.
 
 Notion worker도 공유 work-runtime의 Trove backup scheduler를 실행하며 `_execute_tick`이 실제 Keystone factory를 지연 import한다. 이 공통 service는 기존 FastAPI HTTPException을 사용하므로 worker dependency group도 API와 같은 FastAPI0.136.3을 직접 선언한다. Uvicorn/web listener·boto3·asyncssh를 worker에 추가하거나 scheduler 예외를 숨기지 않는다. Worker의 running/restart0만으로 실행 경로 건강을 주장하지 않으며 실제 image의 scheduler tick과 Docker stdout/stderr 양쪽의 반복 오류를 함께 검증한다.
+
+**1.30.27 release 준비 (2026-10-26):** 현재 완료된 native OIDC/IAM·관리자 상세/그룹/스토리지/볼륨 이전·Lumen/Palimpsest 화면·dashboard/session/transport와 domain-manager workspace를 release 후보로 통합한다. 새 multi-project invitation reader는 구형 cohort와 혼용하지 않고 Afterglow API/worker를 함께 drain·전환한다. Lumen account/receipt 및 Palimpsest catalog/unpack은 matching native release가 선행하며 Lumen027 충돌을 검증 없이 재실행하지 않는다. 운영 데이터·설정/키 보존, cold restore와 전체 `/etc/kolla/multinode` 표준 Kolla 실행을 완료하기 전까지 준비 상태이며 배포 증거는 별도 기록한다.
 
 **1.30.26 운영 반영 (2026-10-24):** `v1.30.25`(`6d57ab65`)는 CI·불변 tag·image 발행까지 완료했으나 운영에는 반영하지 않았다. 배포 중 운영1.30.24에 operator overlay로 Accounts `type: local` 이메일 native mapping 검사가 적용되었고, 사용자가 이 이메일 기반 매핑이 의도한 계약임을 확인했다. 1.30.26(`25b9864c`)은 이 검사(`_require_native_mapping`/`_require_accounts_email_mapping`)를 source로 옮겨 overlay를 대체하며, 운영자 registry(`cfg:`) OIDC만 이 매핑과 로그인 조직 기존 그룹의 서명된 group claim 조건 규칙을 사용할 수 있다. Project/role·cross-domain·무조건 group과 tenant SQL provider의 email/group 규칙은 거부한다. Email 매핑을 쓰지 않는 공급자는 기존 user-only stable-sub 검사를 유지한다. 아래 stable-sub 서술 중 DMSLab GitLab에 대한 것은 과거 운영 기록이다. 운영 DB의 ORM-created 빈 `account_identity_transfers`를 복원본 old/new writer로 검증해 DDL 없이 사용했고, 배포서버 전체 inventory 표준 reconfigure와 local targeted Compose로 반영했다(증거: [testing](docs/testing.md#1-30-26-운영-배포-2026-10-24-관리자-사용자-삭제--accounts-이메일-매핑)).
 
@@ -64,6 +68,15 @@ Bundled Helm/Kolla·개발 values의 유효 session timeout도86400초로 통일
 프로젝트 역할은 기존 `project_owner → project_admin → project_member → project_reader`와 native `member`/`reader` 연결을 재사용한다. 소유권은 새 프로젝트 생성 또는 검토된 명시적 이전에서만 부여하며 마지막 유효 소유자를 보호한다. 역할 프리셋 적용은 현재 시스템 관리자의 명시적 API에서만 수행하며 조회·로그인은 seeding하지 않는다. 네 서비스의 grade·세부 role은 독립적인 전역 ID로 유지하고 서비스용 inference edge를 새로 만들지 않는다. 기존 프리셋이 만든 정확한 서비스 edge만 명시적 적용에서 제거하고 role ID·직접 할당·프로젝트 edge·custom edge를 보존한다. 서비스 grade를 세부 token role로 확장하는 대신 각 native 서비스의 실제 `oslo.policy` 등록 action과 운영자 `policy.yaml`이 인가한다.
 
 사용자·도메인 IAM·관리자 프로젝트 역할 할당은 native `admin`의 신규 user/group grant를 금지한다. 사용자 replacement는 기존 direct admin의 보존 또는 해제만 허용하고 group/상속을 direct로 복사하지 않는다. Removal-only admin을 편집 catalog에 노출하더라도 초대/additive grant 허용 목록에는 넣지 않는다. 도메인 관리자의 protected-user 예외는 graph lease 안에서 실제 delta가 해당 프로젝트의 native admin 회수만이고 다른 추가/회수가 없을 때에만 적용하며 identity/credential/system·다른 scope 권한은 보호한다. `project_admin`과 서비스 `*_admin`은 기존 계약을 유지하고 `system:all` canonical admin의 전용 grant/revoke 및 마지막 유효 관리자·Default manager 보호는 바꾸지 않는다. 기존 운영 grant를 자동 회수하거나 role/DAG를 변경하지 않는다.
+
+도메인 manager IAM은 `services/domain_membership.py`의 graph-locked current-domain eviction을 별도 identity deletion과 분리한다. 모든 직접 domain/project grant와 domain-local group source를 먼저 검증하며 owner/manager·current-home intrinsic membership·다른 범위의 shared grant·미완료 ownership을 차단한다. 계정/리소스/다른 도메인은 보존하고 native 부재 readback 뒤에만 removed를 반환한다. Partial/unknown은503과 fresh 확인이며 요청 자동 replay/rollback은 없다. 프로젝트 생성 UI는 기존 fresh manager capability를 직접 노출할 뿐 project_creator를 합성하지 않는다.
+
+사용자 확인에 따라 eviction은 잘못 연결된 외부-home 사용자의 현재 접근 정리이며 SSO 자동 재가입 정책·기존 pending invitation을 유지한다. 영구 ban/tombstone·invitation revoke·identity relink/merge를 추가하지 않는다. 다음 trusted SSO 또는 기존 invitation acceptance의 재가입 가능성을 confirmation/help에 명시한다.
+
+다중 프로젝트 초대는 새 API `{email,projects:[{project_id,role_ids}]}`와 기존 enrollment JSON을 사용한다. 새 `invitation_multi` kind가 `role_ids`에 exact project/role/name 계획을 저장하고 기존 single-project `invitation` row는 계속 수락한다. Fresh 모든 project/role/issuer 검증은 첫 write 전에 끝나며 추가 grant의 기존 phase journal/settlement/보상을 공유한다. 새 schema/config/dependency는 없지만 구형 reader가 새 kind를 처리하지 못하므로 배포 시 cohort/frontend 동시 cutover가 필요하다. 이 source 변경은 운영 호환성 qualification이나 배포가 아니다.
+
+도메인 monitoring은 기존 전체 service coverage/귀속·quota 경계를 보존한 채 한 UI에 통합한다. 예측은 `services/quota_forecast.py`의 기존 pure 계산을 project dashboard와 공유하고, 별도 manager endpoint가 exact domain의 모든 project에 대해 unpaged Nova2.39 usage/window를 검증해 allocation 추세만 반환한다. 불완전 history·미지원 storage/GPU는 unavailable이다. Resource/forecast/budget의 최초 조회·오류는 독립적이고 권위 revalidation 중 진입도 해제 뒤 시작한다. 새 collector/DB/runtime topology는 없다.
+도메인 예측의 project 집합은 SDK iterator가 아닌 native `GET /projects?domain_id=...`의 원본 collection metadata로 먼저 증명한다. `links.next` 부재·next/previous continuation·truncated/limited·malformed/중복/타-domain ID는 전체 예측을 unavailable로 만들며 부분 quota/usage 합계를 반환하지 않는다. 비활성 프로젝트를 포함하고 기존100project bound·fresh manager guard를 유지한다. 전역 directory·IAM 정책·cache·runtime 구조는 변경하지 않는다.
 
 관리자 서비스 작업도 native 정책을 통과해야 하며 프로젝트 `admin`과 현재 검증한 human `system:all` admin은 다르다. `api/deps.py`는 원래 native caller scope와 명시한 논리 target을 분리하고 활성 target·선택 도메인·현재 system authority를 검증한다. Projectless system/unscoped 관리자는 원래 connection project를 빈 값으로 보존한다. BFF는 원래 native credential을 전달하고 서비스별 고정 leaf-route 정책을 복제하지 않는다. UI의 `service_permissions`는 native `GET /v1/policy/capabilities` 결과이며 `service_permission_errors`는 조회 장애를 확정 거부와 구분한다. Disabled 서비스는 빈 capability, 장애 서비스는 액션 비활성 상태이며 core 프로젝트 관리 권한과 다른 정상 서비스는 유지한다.
 
@@ -1670,9 +1683,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "63dd84fc9ec933ff3f84d52e4cd21e5bd3b6f5c4f9978deab5e4bcedfd324673",
-  "reviewed_at": "2026-10-26T10:15:04Z",
-  "summary": "Authorized local dev checkpoint of existing OIDC/IAM, administrator detail/group/storage/volume transfer, Palimpsest/Lumen UI, dashboard/session and native transport work. Independent source reviews found no commit blocker; canonical isolated test:gate passed on matching source63dd84fc/3503files. Preserve private inputs, unfinished acceptance and deployment boundaries; no new runtime topology, release or deployment."
+  "source_sha256": "b8f3e1df5140c7af713b2861ec1aad0283e124e05e3f7d25a287ae6ef3e7422a",
+  "reviewed_at": "2026-10-26T12:59:04Z",
+  "summary": "Release1.30.27 includes completed domain-manager/native integration and evidence-backed forecast completeness plus worker cancellation fixes. Full source frozen apart from later concurrent project-cleanup WIP. Fresh authority, exact leases and HTTP/SDK drain preserved; no new topology/DDL. Production activation requires native releases, exact mapping opt-in and protected cold restore."
 }
 ```
 <!-- architecture-review:end -->

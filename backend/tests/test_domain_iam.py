@@ -46,6 +46,8 @@ def directory(monkeypatch):
     state.managers = {"domain-manager"}
     state.default_direct = []
     state.domain_direct = []
+    state.extra_projects = {}
+    state.extra_direct = []
     state.personal_domains = {
         "operator-accounts": SimpleNamespace(id="operator-accounts", name="Accounts", enabled=True),
         "operator-personal": SimpleNamespace(id="operator-personal", name="Personal", enabled=True),
@@ -126,6 +128,8 @@ def directory(monkeypatch):
             if state.project is None:
                 raise HTTPException(404, "Project not found")
             return state.project
+        if pid in state.extra_projects:
+            return state.extra_projects[pid]
         if pid in state.personal_projects:
             return state.personal_projects[pid]
         return SimpleNamespace(id=pid, domain_id="other", enabled=True)
@@ -152,6 +156,7 @@ def directory(monkeypatch):
             else [get_project("default-project")]
         )
         rows.extend(state.personal_projects.values())
+        rows.extend(state.extra_projects.values())
         return [
             p
             for p in rows
@@ -263,6 +268,7 @@ def directory(monkeypatch):
                 for uid in state.managers
             )
         rows.extend(r for r in state.personal_direct if project is None or r["scope"]["project"]["id"] == project)
+        rows.extend(r for r in state.extra_direct if project is None or r["scope"]["project"]["id"] == project)
         if user is not None:
             rows = [row for row in rows if row.get("user", {}).get("id") == user]
         return rows
@@ -272,8 +278,14 @@ def directory(monkeypatch):
     def grant(role_id, *, user, project):
         if project == PROJECT:
             return state.grant(role_id, user=user, project=project)
-        target = state.default_direct if project == "default-project" else state.personal_direct
-        assert project == "default-project" or project in state.personal_projects
+        target = (
+            state.default_direct
+            if project == "default-project"
+            else state.extra_direct
+            if project in state.extra_projects
+            else state.personal_direct
+        )
+        assert project == "default-project" or project in state.personal_projects or project in state.extra_projects
         state.calls.append(("grant", user, role_id))
         scoped = [r for r in target if r["scope"]["project"]["id"] == project]
         if role_id not in project_service._direct_ids(scoped, user):
@@ -282,8 +294,14 @@ def directory(monkeypatch):
     def revoke(role_id, *, user, project):
         if project == PROJECT:
             return state.revoke(role_id, user=user, project=project)
-        target = state.default_direct if project == "default-project" else state.personal_direct
-        assert project == "default-project" or project in state.personal_projects
+        target = (
+            state.default_direct
+            if project == "default-project"
+            else state.extra_direct
+            if project in state.extra_projects
+            else state.personal_direct
+        )
+        assert project == "default-project" or project in state.personal_projects or project in state.extra_projects
         state.calls.append(("revoke", user, role_id))
         target[:] = [
             r
@@ -393,7 +411,9 @@ def email_token(message):
 async def invite(directory, factory, email="new@test.invalid"):
     async with factory() as session:
         result = await domain_iam.invite(
-            {"email": email, "project_id": PROJECT, "role_ids": [rid("project_member")]}, manager(), session
+            {"email": email, "projects": [{"project_id": PROJECT, "role_ids": [rid("project_member")]}]},
+            manager(),
+            session,
         )
     return result, email_token(directory.sent[-1])
 
@@ -997,7 +1017,10 @@ async def test_smtp_failure_never_reports_invitation_success(directory, enrollme
     async with enrollments() as session:
         with pytest.raises(HTTPException) as failed:
             await domain_iam.invite(
-                {"email": "new@test.invalid", "project_id": PROJECT, "role_ids": [rid("project_member")]},
+                {
+                    "email": "new@test.invalid",
+                    "projects": [{"project_id": PROJECT, "role_ids": [rid("project_member")]}],
+                },
                 manager(),
                 session,
             )

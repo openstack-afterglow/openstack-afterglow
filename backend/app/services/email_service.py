@@ -52,6 +52,8 @@ async def send_invitation_email(
     inviter_name: str,
     accept_url: str,
     expires_at: datetime,
+    *,
+    projects: list[dict] | None = None,
 ) -> bool:
     """프로젝트 초대 이메일 전송."""
     from app.config import get_settings
@@ -63,11 +65,25 @@ async def send_invitation_email(
     safe_inviter = html.escape(inviter_name)
     safe_project = html.escape(project_name)
     safe_url = html.escape(accept_url)
+    project_text = ""
+    project_html = ""
+    if projects is not None:
+        entries = [
+            f"{project['project_name']} ({project['project_id']}): {', '.join(project['role_ids'])}"
+            for project in projects
+        ]
+        project_text = "Default: project_reader\n" + "\n".join(entries) + "\n\n"
+        project_html = (
+            "<p>Default: project_reader</p><ul>"
+            + "".join(f"<li>{html.escape(entry)}</li>" for entry in entries)
+            + "</ul>"
+        )
 
     subject = f"[{site_name}] {project_name} 프로젝트 초대"
 
     text_body = (
         f"{inviter_name}님이 {site_name}의 '{project_name}' 프로젝트에 초대했습니다.\n\n"
+        f"{project_text}"
         f"아래 링크를 클릭하여 초대를 수락하세요:\n{accept_url}\n\n"
         f"초대 링크는 {expires_str}까지 유효합니다.\n\n"
         f"이 이메일을 예상하지 못했다면 무시하세요."
@@ -81,6 +97,7 @@ async def send_invitation_email(
   <p style="color: #555; margin-bottom: 24px;">
     <strong>{safe_inviter}</strong>님이 <strong>{safe_project}</strong> 프로젝트에 초대했습니다.
   </p>
+  {project_html}
   <a href="{safe_url}"
      style="display: inline-block; background: #3b82f6; color: #fff; text-decoration: none;
             padding: 12px 24px; border-radius: 6px; font-weight: 600;">

@@ -13,6 +13,7 @@
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import FormModal from '$lib/components/ui/FormModal.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
 	let { session, blocked = false, onDenied }: { session: IamSession; blocked?: boolean; onDenied: () => void } = $props();
 	const client = untrack(() => domainIam(session));
@@ -29,6 +30,7 @@
 	let enabled = $state(true);
 	let password = $state('');
 	let busy = $state(false);
+	let evictionUncertain = $state(false);
 	let form = $state<HTMLFormElement>();
 	const uid = $props.id();
 	function fail(cause: unknown) {
@@ -38,7 +40,7 @@
 	}
 	async function load() {
 		const pending = ++sequence; loading = true; error = '';
-		try { const result = await client.users(); if (live && pending === sequence) users = result.items; }
+		try { const result = await client.users(); if (live && pending === sequence) { users = result.items; evictionUncertain = false; } }
 		catch (cause) { if (pending === sequence) fail(cause); }
 		finally { if (live && pending === sequence) loading = false; }
 	}
@@ -57,12 +59,30 @@
 		} catch (cause) { fail(cause); }
 		finally { if (live) busy = false; }
 	}
+	async function remove(user: IamUser) {
+		if (!live || !session.isCurrent() || !session.canSubmit() || blocked || busy || loading || evictionUncertain || user.id === session.userId || user.domain_id === session.domainId) return;
+		const pending = sequence;
+		if (!await confirmDialog(`${t('evictionConfirm', { user: user.name, id: user.id })}\n\n${t('evictionReadmission')}`, { confirmLabel: t('evictionAction') })) return;
+		if (!live || !session.isCurrent() || !session.canSubmit() || blocked || busy || loading || sequence !== pending || !users.includes(user)) return;
+		busy = true; error = ''; notice = '';
+		try { await client.removeUser(user.id); if (live && session.isCurrent()) { notice = t('evictionRemoved'); await load(); } }
+		catch (cause) {
+			if (!live || !session.isCurrent()) return;
+			if (cause instanceof ApiError && cause.status === 403 && !cause.message.startsWith('domain_eviction_')) { onDenied(); return; }
+			evictionUncertain = !(cause instanceof ApiError) || cause.status >= 500;
+			error = cause instanceof ApiError && cause.message.startsWith('domain_eviction_')
+				? t(cause.message === 'domain_eviction_uncertain' ? 'evictionUncertain' : 'evictionBlocked')
+				: iamErrorMessage(cause, t('saveFailed'));
+		}
+		finally { if (live) busy = false; }
+	}
 	onMount(() => { void load(); });
 	onDestroy(() => { live = false; sequence++; password = ''; users = []; });
 </script>
 
 <div class="space-y-4">
 	<div class="flex flex-wrap gap-2"><Button variant="secondary" disabled={blocked || loading || busy} onclick={load}>{t('refresh')}</Button></div>
+	<Alert tone="info">{t('evictionHelp')}<p class="mt-2">{t('evictionReadmission')}</p></Alert>
 	{#if loading}<ActivityIndicator label={t('loading')} />{/if}
 	{#if error && !open}<Alert tone="danger">{error}</Alert>{/if}
 	{#if notice}<Alert tone="success">{notice}</Alert>{/if}
@@ -73,14 +93,14 @@
 				<p class="text-sm break-all">{user.email || '—'}</p>
 				{#if user.protected}<p class="text-xs text-ink-2">{t('protected')}</p>{/if}
 				{#snippet details()}<p class="text-xs">{t('identityDomain')}: <code>{user.domain_id}</code></p>{#if user.domain_id !== session.domainId}<p class="text-xs text-ink-2">{t('foreignIdentity')}</p>{/if}{/snippet}
-				{#snippet actions()}<Button variant="secondary" size="sm" disabled={blocked || loading || busy || user.protected || user.domain_id !== session.domainId} onclick={() => edit(user)}>{t('editUser')}</Button>{/snippet}
+				{#snippet actions()}<Button variant="secondary" size="sm" disabled={blocked || loading || busy || user.protected || user.domain_id !== session.domainId} onclick={() => edit(user)}>{t('editUser')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || loading || busy || evictionUncertain || user.id === session.userId || user.domain_id === session.domainId} onclick={() => remove(user)}>{t('evictionAction')}</Button>{/snippet}
 			</CompactResourceCard>{/each}
 			{#if !loading && !error && !users.length}<p class="text-sm text-ink-2">{t('emptyUsers')}</p>{/if}
 		{/snippet}
 	<TableShell><table>
 		<thead><tr><th>{t('name')}</th><th>{t('email')}</th><th>{t('identityDomain')}</th><th>{t('status')}</th><th>{t('actions')}</th></tr></thead>
 		<tbody>
-			{#each users as user (user.id)}<tr><td>{user.name}</td><td>{user.email || '—'}</td><td><code>{user.domain_id}</code>{#if user.domain_id !== session.domainId}<span class="block text-xs text-ink-2">{t('foreignIdentity')}</span>{/if}</td><td>{user.enabled ? t('enabled') : t('disabled')}{#if user.protected}<span class="block text-xs text-ink-2">{t('protected')}</span>{/if}</td><td><Button variant="secondary" size="sm" disabled={blocked || loading || busy || user.protected || user.domain_id !== session.domainId} onclick={() => edit(user)}>{t('editUser')}</Button></td></tr>{/each}
+			{#each users as user (user.id)}<tr><td>{user.name}</td><td>{user.email || '—'}</td><td><code>{user.domain_id}</code>{#if user.domain_id !== session.domainId}<span class="block text-xs text-ink-2">{t('foreignIdentity')}</span>{/if}</td><td>{user.enabled ? t('enabled') : t('disabled')}{#if user.protected}<span class="block text-xs text-ink-2">{t('protected')}</span>{/if}</td><td><div class="flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={blocked || loading || busy || user.protected || user.domain_id !== session.domainId} onclick={() => edit(user)}>{t('editUser')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || loading || busy || evictionUncertain || user.id === session.userId || user.domain_id === session.domainId} onclick={() => remove(user)}>{t('evictionAction')}</Button></div></td></tr>{/each}
 			{#if !loading && !error && !users.length}<tr><td colspan="5">{t('emptyUsers')}</td></tr>{/if}
 		</tbody>
 	</table></TableShell>

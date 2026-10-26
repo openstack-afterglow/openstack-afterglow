@@ -9,7 +9,7 @@ const { api, confirmDialog } = vi.hoisted(() => ({
 vi.mock('$lib/api/client', () => ({ api, ApiError: class ApiError extends Error { constructor(public status: number, message: string) { super(message); } } }));
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token', userId: 'actor', domainId: 'domain-a', domainName: 'Domain A', isDomainManager: true, isSystemAdmin: false }),
-	authReady: writable(true), projectSwitching: writable(false)
+	authReady: writable(true), projectSwitching: writable(false), logoutInProgress: writable(false)
 }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog }));
 import { auth, authReady } from '$lib/stores/auth';
@@ -282,27 +282,49 @@ describe('project grant and invitation boundaries', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
 		expect(api.put).toHaveBeenCalledWith('/api/v1/iam/projects/project-a/members/user-a/roles', { role_ids: ['role-a'] }, 'token', undefined, { replayOnUnauthorized: false });
 	});
-	it('sends selected invitation role IDs and publishes email delivery failures without success', async () => {
+	it('opens project selection before sending and publishes email delivery failure without success', async () => {
 		api.post.mockRejectedValue(new Error('smtp delivery failed'));
+		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/assignable-roles') ? { ...catalog, roles: [{ ...catalog.roles[0], name: 'project_reader', area: 'project', grade: 'reader' }] } : fixture(path)));
 		render(IamInvitations, { session, onDenied: vi.fn() }); await screen.findByText('invitee@example.com');
+		expect(screen.queryByRole('checkbox')).toBeNull();
 		await fireEvent.input(screen.getByLabelText(/^이메일/), { target: { value: 'new@example.com' } });
-		await fireEvent.change(screen.getByLabelText('추가 프로젝트 (선택)'), { target: { value: 'project-a' } });
-		await waitFor(() => expect((screen.getByRole('button', { name: '초대 역할 선택' }) as HTMLButtonElement).disabled).toBe(false));
-		await fireEvent.click(screen.getByRole('button', { name: '초대 역할 선택' }));
-		await fireEvent.click(screen.getByRole('checkbox', { name: /custom_reader/ }));
-		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
 		await fireEvent.click(screen.getByRole('button', { name: '초대 이메일 발송' }));
+		expect(api.post).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('checkbox', { name: /Project A/ }));
+		await fireEvent.click(await screen.findByRole('checkbox', { name: 'project_reader' }));
+		await fireEvent.click(screen.getByRole('button', { name: ti('inviteProjectsSend') }));
 		await screen.findByText('smtp delivery failed'); expect(screen.queryByText('초대 이메일을 발송했습니다.')).toBeNull();
-		expect(api.post).toHaveBeenCalledWith('/api/v1/iam/invitations', { email: 'new@example.com', project_id: 'project-a', role_ids: ['role-a'] }, 'token', undefined, { replayOnUnauthorized: false });
+		expect(api.post).toHaveBeenCalledExactlyOnceWith('/api/v1/iam/invitations', { email: 'new@example.com', projects: [{ project_id: 'project-a', role_ids: ['role-a'] }] }, 'token', undefined, { replayOnUnauthorized: false });
+		expect(screen.queryByRole('dialog')).toBeNull();
 	});
-	it('sends domain membership invitations without requiring an additional project or role catalog', async () => {
+	it('sends Default-only invitations only after modal confirmation without fetching a role catalog', async () => {
 		api.post.mockResolvedValue(invitation);
 		render(IamInvitations, { session, onDenied: vi.fn() }); await screen.findByText('invitee@example.com');
-		expect(screen.queryByRole('button', { name: '초대 역할 선택' })).toBeNull();
 		await fireEvent.input(screen.getByLabelText(/^이메일/), { target: { value: 'joined@example.com' } });
 		await fireEvent.click(screen.getByRole('button', { name: '초대 이메일 발송' }));
-		expect(api.post).toHaveBeenCalledWith('/api/v1/iam/invitations', { email: 'joined@example.com' }, 'token', undefined, { replayOnUnauthorized: false });
+		expect(api.post).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: ti('inviteProjectsSend') }));
+		expect(api.post).toHaveBeenCalledExactlyOnceWith('/api/v1/iam/invitations', { email: 'joined@example.com', projects: [] }, 'token', undefined, { replayOnUnauthorized: false });
 		expect(api.get.mock.calls.some(([path]) => String(path).endsWith('/assignable-roles'))).toBe(false);
+	});
+	it('disposes the open invitation draft on an actual console domain switch', async () => {
+		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/assignable-roles') ? { ...catalog, roles: [{ ...catalog.roles[0], name: 'project_reader', area: 'project', grade: 'reader' }] } : fixture(path)));
+		render(DomainIamConsole); await screen.findByText('Alice');
+		await fireEvent.click(screen.getByRole('button', { name: ti('invitations') }));
+		await screen.findByText('invitee@example.com');
+		await fireEvent.input(screen.getByLabelText(/^이메일/), { target: { value: 'scope-private@example.com' } });
+		await fireEvent.click(screen.getByRole('button', { name: ti('sendInvite') }));
+		const modal = within(screen.getByRole('dialog'));
+		await fireEvent.click(modal.getByRole('checkbox', { name: /Project A/ }));
+		await fireEvent.click(await modal.findByRole('checkbox', { name: 'project_reader' }));
+		auth.update(state => ({ ...state, domainId: 'domain-b' }));
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		expect(screen.queryByDisplayValue('scope-private@example.com')).toBeNull();
+		expect(api.post).not.toHaveBeenCalled();
+		auth.update(state => ({ ...state, domainId: 'domain-a' }));
+		await screen.findByRole('button', { name: ti('sendInvite') });
+		expect((screen.getByLabelText(/^이메일/) as HTMLInputElement).value).toBe('');
+		expect(screen.queryByRole('dialog')).toBeNull();
 	});
 	it('makes only pending invitations revocable and fences confirmation after unmount', async () => {
 		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/invitations') ? { items: [invitation, { ...invitation, id: 5, email: 'done@example.com', status: 'accepted' }] } : fixture(path)));
@@ -343,5 +365,36 @@ describe('partial enrollment recovery and localized refusals', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '비활성화' }));
 		await screen.findByText('사용 가능한 마지막 로그인 방법입니다. 먼저 비밀번호 로그인을 켜거나 다른 검증된 제공자를 준비하세요.');
 		expect(screen.queryByText("This is the domain's last usable login method")).toBeNull();
+	});
+});
+
+describe('domain eviction boundary', () => {
+	beforeEach(() => {
+		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/users') ? { items: [{ ...user, domain_id: 'accounts', protected: true }] } : fixture(path)));
+	});
+	it('retires private user rows on a definitive manager denial', async () => {
+		api.delete.mockRejectedValue(new ApiError(403, 'Domain manager required'));
+		render(DomainIamConsole); await screen.findByText('Alice');
+		await fireEvent.click(screen.getByRole('button', { name: ti('evictionAction') }));
+		await waitFor(() => expect(screen.queryByText('Alice')).toBeNull());
+		expect(screen.queryByRole('button', { name: ti('evictionAction') })).toBeNull();
+	});
+	it('keeps target-specific protection local rather than revoking manager context', async () => {
+		api.delete.mockRejectedValue(new ApiError(403, 'domain_eviction_protected'));
+		render(DomainIamConsole); await screen.findByText('Alice');
+		await fireEvent.click(screen.getByRole('button', { name: ti('evictionAction') }));
+		await screen.findByText(ti('evictionBlocked'));
+		expect(screen.getByText('Alice')).toBeTruthy();
+		expect((screen.getByRole('button', { name: ti('evictionAction') }) as HTMLButtonElement).disabled).toBe(false);
+	});
+	it('prevents another eviction after uncertain native writes until a fresh directory read', async () => {
+		api.delete.mockRejectedValue(new ApiError(503, 'domain_eviction_uncertain'));
+		render(IamUsers, { session, onDenied: vi.fn() }); await screen.findByText('Alice');
+		await fireEvent.click(screen.getByRole('button', { name: ti('evictionAction') }));
+		await screen.findByText(ti('evictionUncertain'));
+		expect((screen.getByRole('button', { name: ti('evictionAction') }) as HTMLButtonElement).disabled).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: ti('refresh') }));
+		await waitFor(() => expect((screen.getByRole('button', { name: ti('evictionAction') }) as HTMLButtonElement).disabled).toBe(false));
+		expect(api.delete).toHaveBeenCalledTimes(1);
 	});
 });

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy, untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { ApiError } from '$lib/api/client';
 	import type { IamSession } from '$lib/api/domainIam';
 	import { workspaceIam, quotaBlocked, quotaFields, nativeQuotaKey, type DomainBudgets, type ProjectQuotas, type QuotaMap, type QuotaSection } from '$lib/api/workspaceIam';
@@ -14,6 +14,7 @@
 	const client = untrack(() => workspaceIam(session));
 	let live = true;
 	let generation = 0;
+	let started = false;
 	let data = $state<DomainBudgets | null>(null);
 	let native = $state<ProjectQuotas | null>(null);
 	let loading = $state(true);
@@ -47,6 +48,7 @@
 		finally { if (live && pending === generation) loading = false; }
 	}
 	async function loadProject() {
+		if (blocked || busy || !session.isCurrent()) return;
 		const target = project; const pending = ++generation;
 		native = null; loading = true; error = '';
 		try {
@@ -83,12 +85,12 @@
 		} catch (cause) { fail(cause); outcome = t('unknownOutcome'); }
 		finally { if (live) { busy = false; reloadRequired = true; native = null; editorRevision++; } }
 	}
-	onMount(() => { void load(); });
+	$effect(() => { if (!blocked) untrack(() => { if (!started && session.isCurrent()) { started = true; void load(); } }); });
 	onDestroy(() => { live = false; generation++; data = null; native = null; });
 </script>
 
 <div class="space-y-4">
-	<div class="flex flex-wrap items-center gap-2"><h2 class="mr-auto text-lg font-semibold text-ink-0">{t('quotas')}</h2><Button variant="secondary" disabled={blocked || loading || busy} onclick={load}>{t('reload')}</Button></div>
+	<div class="flex flex-wrap items-center gap-2"><h2 class="mr-auto text-lg font-semibold text-ink-0">{t('monitoringAllocation')}</h2><Button variant="secondary" disabled={blocked || loading || busy} onclick={load}>{t('reload')}</Button></div>
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if outcome}<Alert tone={reloadRequired ? 'warning' : 'info'}>{outcome}</Alert>{/if}
 	{#if reloadRequired}<Alert tone="warning">{t('reloadRequired')}</Alert>{/if}

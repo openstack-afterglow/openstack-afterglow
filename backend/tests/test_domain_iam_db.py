@@ -84,7 +84,9 @@ async def issue(directory, enrollment_db):
     email = f"race-{uuid4().hex}@test.invalid"
     async with factory() as session:
         row = await domain_iam.invite(
-            {"email": email, "project_id": PROJECT, "role_ids": [rid("project_member")]}, manager(), session
+            {"email": email, "projects": [{"project_id": PROJECT, "role_ids": [rid("project_member")]}]},
+            manager(),
+            session,
         )
         ids.append(row["id"])
     return row["id"], email_token(directory.sent[-1])

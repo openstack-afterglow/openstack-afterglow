@@ -43,6 +43,13 @@ export interface IamResourceWorkspace {
 	inventory: Array<{ category: string; id: string | null; name: string; project_id: string; user_id: string | null; status: string | null }>;
 	coverage: { observed_at: string; partial: boolean; notes: string[] };
 }
+export interface DomainForecast {
+	domain_id: string; observed_at: string; window_days: number; horizon_days: number; source: string;
+	entries: Array<{
+		metric: string; unit: string; status: string; error: string | null; current: number | null; limit: number | null;
+		trend: { current_pct: number | null; slope_per_day: number | null; projected_pct: number | null; days_to_limit: number | null; trend_available: boolean; series: number[] } | null;
+	}>;
+}
 export const quotaBlocked = (snapshot: DomainBudgets) => snapshot.allocation_blocked || snapshot.operations.some(operation => ['applying', 'unknown'].includes(operation.status));
 export function nativeQuotaKey(field: QuotaField): string {
 	return ({ share_gigabytes: 'gigabytes', share_snapshots: 'snapshots', share_snapshot_gigabytes: 'snapshot_gigabytes' } as Partial<Record<QuotaField, string>>)[field] ?? field;
@@ -63,10 +70,11 @@ export function workspaceIam(session: IamSession) {
 	};
 	const root = '/api/v1/iam';
 	return {
-		budgets: () => dispatch(() => api.get<DomainBudgets>(root + '/quotas', session.token(), undefined, { refresh: true })),
-		resources: () => dispatch(() => api.get<IamResourceWorkspace>(root + '/monitoring', session.token(), undefined, { refresh: true })),
+		budgets: () => dispatch(() => api.get<DomainBudgets>(root + '/quotas', session.token(), undefined, { cache: 'no-store' })),
+		resources: () => dispatch(() => api.get<IamResourceWorkspace>(root + '/monitoring', session.token(), undefined, { cache: 'no-store' })),
+		forecast: () => dispatch(() => api.get<DomainForecast>(root + '/monitoring/forecast', session.token(), undefined, { cache: 'no-store' })),
 		defaults: (revision: number, defaults: QuotaMap) => dispatch(() => api.put<DomainBudgets>(root + '/quotas/defaults', { revision, defaults }, session.token(), undefined, { replayOnUnauthorized: false }), true),
-		project: (projectId: string) => dispatch(() => api.get<ProjectQuotas>(`${root}/projects/${encodeURIComponent(projectId)}/quotas`, session.token(), undefined, { refresh: true })),
+		project: (projectId: string) => dispatch(() => api.get<ProjectQuotas>(`${root}/projects/${encodeURIComponent(projectId)}/quotas`, session.token(), undefined, { cache: 'no-store' })),
 		saveProject: (projectId: string, limits: QuotaMap) => dispatch(() => api.put<QuotaResult>(`${root}/projects/${encodeURIComponent(projectId)}/quotas`, limits, session.token(), undefined, { replayOnUnauthorized: false }), true)
 	};
 }

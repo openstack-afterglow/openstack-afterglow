@@ -502,7 +502,11 @@ async def validate_invitation_roles(project_id, role_ids, token_info):
         raise HTTPException(422, "Choose unique project role IDs")
     allowed = await project_service.assignable_roles(project_id, token_info, domain_management=True)
     catalog = await _provider_call(identity_roles._trusted_catalog)
-    safe = {row["id"] for row in allowed["roles"] if row["name"].casefold() != "admin"}
+    safe = {
+        row["id"]
+        for row in allowed["roles"]
+        if row["name"].casefold() != "admin" and not identity_roles._owner_bearing_role(catalog, row["id"])
+    }
     if not set(role_ids) <= safe:
         raise HTTPException(403, "Role exceeds domain IAM project authority")
     by_id = {row["id"]: row for row in catalog}
@@ -511,6 +515,38 @@ async def validate_invitation_roles(project_id, role_ids, token_info):
             project_service._required_project_role(catalog, by_id[rid]["name"], require_hierarchy=True)
     if not any(by_id[rid]["name"] in project_service._PROJECT_GRADES for rid in role_ids):
         raise HTTPException(422, "An explicit project membership role is required")
+
+
+# A distinct persisted kind fences old writers: they cannot redeem a plan they
+# do not understand as a legacy single-project invitation. No schema change.
+INVITATION_KINDS = frozenset({"invitation", "invitation_multi"})
+
+
+def invitation_projects(row):
+    if row.kind == "invitation_multi":
+        if row.project_id is not None or not isinstance(row.role_ids, list):
+            raise HTTPException(503, "Invitation project plan is unavailable")
+        projects = row.role_ids
+        seen = set()
+        for project in projects:
+            if (
+                not isinstance(project, dict)
+                or set(project) != {"project_id", "role_ids", "project_name"}
+                or not isinstance(project["project_id"], str)
+                or not project["project_id"]
+                or project["project_id"] in seen
+                or not isinstance(project["project_name"], str)
+                or not isinstance(project["role_ids"], list)
+                or not project["role_ids"]
+                or any(not isinstance(role, str) or not role for role in project["role_ids"])
+                or len(project["role_ids"]) != len(set(project["role_ids"]))
+            ):
+                raise HTTPException(503, "Invitation project plan is unavailable")
+            seen.add(project["project_id"])
+        return projects
+    if row.project_id:
+        return [{"project_id": row.project_id, "role_ids": row.role_ids, "project_name": row.project_name}]
+    return []
 
 
 def _utc(value):
@@ -533,7 +569,8 @@ def enrollment_dto(row, project_name=""):
         "project_id": row.project_id,
         "project_name": project_name or row.project_name,
         "email": row.email,
-        "role_ids": row.role_ids,
+        "role_ids": row.role_ids if row.kind != "invitation_multi" else [],
+        "projects": invitation_projects(row),
         "kind": row.kind,
         "user_id": row.user_id,
         "identity_domain_id": row.identity_domain_id,
@@ -563,9 +600,14 @@ async def _deliver(row, token, *, project_name="", inviter=""):
 
     settings = get_settings()
     base = settings.frontend_base_url.rstrip("/")
-    if row.kind == "invitation":
+    if row.kind in INVITATION_KINDS:
         delivered = await send_invitation_email(
-            row.email, project_name, inviter, f"{base}/invitations/{token}", row.expires_at
+            row.email,
+            project_name,
+            inviter,
+            f"{base}/invitations/{token}",
+            row.expires_at,
+            projects=invitation_projects(row) if row.kind == "invitation_multi" else None,
         )
     else:
         link = f"{base}/registrations/{token}"
@@ -581,7 +623,7 @@ async def _deliver(row, token, *, project_name="", inviter=""):
 async def issue_enrollment(
     session, *, kind, domain_id, email, project_id=None, role_ids=None, invited_by=None, project_name="", inviter=""
 ):
-    if kind == "invitation":
+    if kind in INVITATION_KINDS:
         await organization_domain(domain_id)
     token = secrets.token_urlsafe(32)
     row = DomainEnrollment(
@@ -598,7 +640,7 @@ async def issue_enrollment(
         expires_at=datetime.now(UTC)
         + (
             timedelta(days=get_settings().smtp_invitation_token_expiry_days)
-            if kind == "invitation"
+            if kind in INVITATION_KINDS
             else timedelta(hours=1)
         ),
         created_at=datetime.now(UTC),
@@ -616,24 +658,26 @@ async def issue_enrollment(
 
 async def invite(attrs, token_info, session):
     ctx = await context(token_info)
-    pid = attrs.get("project_id")
-    roles = attrs.get("role_ids") or []
-    project = None
-    if pid:
+    requested = attrs.get("projects") or []
+    if "project_id" in attrs or "role_ids" in attrs:
+        raise HTTPException(422, "Use the projects invitation plan")
+    if len(requested) != len({project["project_id"] for project in requested}):
+        raise HTTPException(422, "Choose unique project IDs")
+    projects = []
+    for selected in requested:
+        pid, roles = selected["project_id"], selected["role_ids"]
         await validate_invitation_roles(pid, roles, token_info)
         project = await resource("projects", pid, ctx["domain_id"])
-    elif roles:
-        raise HTTPException(422, "Additional roles require a project")
+        projects.append({"project_id": pid, "role_ids": list(roles), "project_name": _field(project, "name", "")})
     email = await password_policy(ctx["domain_id"], attrs["email"], password=False)
     return await issue_enrollment(
         session,
-        kind="invitation",
+        kind="invitation_multi",
         domain_id=ctx["domain_id"],
         email=email,
-        project_id=pid,
-        role_ids=roles,
+        role_ids=projects,
         invited_by=token_info["user_id"],
-        project_name=_field(project, "name", ""),
+        project_name=", ".join(project["project_name"] for project in projects)[:255],
         inviter=token_info.get("username", ""),
     )
 
@@ -680,16 +724,24 @@ async def list_invitations(token_info, session, project_id=None, *, operations=F
     if operations:
         query = query.where(DomainEnrollment.status.in_(RECOVERY_STATES | {"failed"}))
     else:
-        query = query.where(DomainEnrollment.kind == "invitation")
-    if project_id:
-        query = query.where(DomainEnrollment.project_id == project_id)
+        query = query.where(DomainEnrollment.kind.in_(INVITATION_KINDS))
     rows = (await session.execute(query.order_by(DomainEnrollment.created_at.desc()))).scalars().all()
     items = []
     for row in rows:
+        if project_id and project_id not in {project["project_id"] for project in invitation_projects(row)}:
+            continue
         if row.domain_id is not None:
             domain_scope.assert_domain_resource(ctx["domain_id"], row.domain_id)
-        project = await _historical_project(row.project_id, row.domain_id)
-        items.append(enrollment_dto(row, _field(project, "name", "")))
+        projects = []
+        for selected in invitation_projects(row):
+            project = await _historical_project(selected["project_id"], row.domain_id)
+            projects.append({**selected, "project_name": _field(project, "name", "") or selected["project_name"]})
+        items.append(
+            {
+                **enrollment_dto(row, ", ".join(project["project_name"] for project in projects)),
+                "projects": projects,
+            }
+        )
     return {"items": items}
 
 
@@ -712,11 +764,12 @@ async def revoke(invitation_id, token_info, session, project_id=None, *, operati
                     and row.domain_id is None
                 )
             )
-            or (not operation and row.kind != "invitation")
-            or (project_id and row.project_id != project_id)
+            or (not operation and row.kind not in INVITATION_KINDS)
+            or (project_id and project_id not in {project["project_id"] for project in invitation_projects(row)})
         ):
             raise HTTPException(404, "Invitation or operation not found")
-        await _historical_project(row.project_id, row.domain_id)
+        for selected in invitation_projects(row):
+            await _historical_project(selected["project_id"], row.domain_id)
         if row.status in {"accepted", "revoked"}:
             raise HTTPException(409, "Accepted or revoked enrollment cannot be cancelled")
         snapshot = _snapshot(row)
@@ -919,7 +972,8 @@ async def settle_enrollment_native_writes(
 
 async def lookup_token(token, kind, session, *, lock=False):
     query = select(DomainEnrollment).where(
-        DomainEnrollment.token_hash == hashlib.sha256(token.encode()).hexdigest(), DomainEnrollment.kind == kind
+        DomainEnrollment.token_hash == hashlib.sha256(token.encode()).hexdigest(),
+        DomainEnrollment.kind.in_(INVITATION_KINDS) if kind == "invitation" else DomainEnrollment.kind == kind,
     )
     query = query.with_for_update() if lock else query
     row = (await session.execute(query.execution_options(populate_existing=True))).scalar_one_or_none()
@@ -952,13 +1006,17 @@ async def invitation_info(token, session):
         if enrollment_status(row) != "pending":
             raise HTTPException(410, "Enrollment link is expired, revoked, or already used")
         dom = await organization_domain(row.domain_id)
-        project = await resource("projects", row.project_id, row.domain_id) if row.project_id else None
+        projects = []
+        for selected in invitation_projects(row):
+            project = await resource("projects", selected["project_id"], row.domain_id)
+            projects.append({**selected, "project_name": _field(project, "name", "")})
         result = {
             **await _email_account_info(row.email),
             "domain_id": row.domain_id,
             "domain_name": dom["name"],
             "expires_at": _utc(row.expires_at).isoformat(),
-            "project_name": _field(project, "name", ""),
+            "project_name": ", ".join(project["project_name"] for project in projects),
+            "projects": projects,
         }
         await session.rollback()
         return result
@@ -1426,9 +1484,10 @@ async def _enroll(
         dom = None
     if actor is not None and not system_managed:
         await context(actor)
-    if row.project_id:
-        await resource("projects", row.project_id, row.domain_id)
-        await validate_invitation_roles(row.project_id, row.role_ids, actor)
+    projects = invitation_projects(row)
+    for selected in projects:
+        await resource("projects", selected["project_id"], row.domain_id)
+        await validate_invitation_roles(selected["project_id"], selected["role_ids"], actor)
     target_default = None
     if row.domain_id is not None:
         target_default = await _provider_call(domain_projects.default_project, row.domain_id, ks=ks)
@@ -1437,7 +1496,7 @@ async def _enroll(
         _, reader = domain_projects._roles(catalog)
     approval_id = None
     if token_info is not None:
-        if row.kind != "invitation":
+        if row.kind not in INVITATION_KINDS:
             raise HTTPException(403, "Authenticated acceptance is only for invitations")
         user = await _provider_call(ks.users.get, token_info["user_id"])
         if _field(user, "id") != token_info["user_id"]:
@@ -1477,7 +1536,7 @@ async def _enroll(
             for email, account_name in unresolved
         ):
             raise HTTPException(409, "signup_enrollment_recovery_required")
-        if public_signup or external or row.kind == "invitation":
+        if public_signup or external or row.kind in INVITATION_KINDS:
             approval_id = await enrollment_policy.require_signup_approval(
                 session,
                 source=external_provider.kind if external else "email",
@@ -1579,13 +1638,15 @@ async def _enroll(
                 row.domain_id,
                 reader["id"],
             )
-        if row.project_id:
-            # Requested roles were reauthorized against the fresh manager and
-            # trusted graph above; ownership remains an explicit separate flow.
-            for rid in row.role_ids:
+        for selected in projects:
+            # Each exact project and its role ceiling were freshly authorized
+            # under this graph lease before any native effects above.
+            for rid in selected["role_ids"]:
                 if identity_roles._owner_bearing_role(catalog, rid):
                     raise HTTPException(409, "Use explicit project ownership transfer")
-                await _grant_enrollment_role(row, session, snapshot, mutation, row.project_id, row.domain_id, rid)
+                await _grant_enrollment_role(
+                    row, session, snapshot, mutation, selected["project_id"], row.domain_id, rid
+                )
         if row.new_user:
             await _save(row, session, snapshot, _lease=lease, status="activating")
             await identity_roles._write(lease, ks.users.update, uid, enabled=row.requested_enabled)
@@ -1746,7 +1807,7 @@ async def redeem(token, kind, session, *, name=None, password=None, token_info=N
     await session.rollback()
     async with _iam_write() as mutation:
         row = await _locked_enrollment(row_id, session)
-        actor = {"user_id": row.invited_by, "domain_id": row.domain_id} if row.kind == "invitation" else None
+        actor = {"user_id": row.invited_by, "domain_id": row.domain_id} if row.kind in INVITATION_KINDS else None
         return await _enroll(
             row,
             session,

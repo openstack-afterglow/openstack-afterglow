@@ -207,7 +207,7 @@
 				<dl class="invitation-details">
 					<div><dt>{t('invitation.domain')}</dt><dd>{info.domain_name}</dd></div>
 					<div><dt>{t('invitation.email')}</dt><dd>{info.email}</dd></div>
-					<div><dt>{t('invitation.project')}</dt><dd>{info.project_name || t('invitation.noProject')}</dd></div>
+					<div><dt>{t('invitation.project')}</dt><dd>{#if info.projects?.length}<ul class="space-y-2">{#each info.projects as project (project.project_id)}<li class="[overflow-wrap:anywhere]">{project.project_name}<span class="block text-xs text-ink-2">{project.project_id}</span><span class="block text-xs text-ink-2">{project.role_ids.join(', ')}</span></li>{/each}</ul>{:else}{info.project_name || t('invitation.noProject')}{/if}</dd></div>
 					<div><dt>{t('invitation.expiresAt')}</dt><dd>{fmtDate(info.expires_at)}</dd></div>
 				</dl>
 

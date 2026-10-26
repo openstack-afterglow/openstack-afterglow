@@ -18,12 +18,13 @@
 	import IamRecovery from './IamRecovery.svelte';
 	import IamQuotas from './IamQuotas.svelte';
 	import IamResources from './IamResources.svelte';
+	import IamForecast from './IamForecast.svelte';
 	let session = $state.raw<IamSession | null>(null);
 	let verifiedSession = $state.raw<IamSession | null>(null);
 	let context = $state<IamContext | null>(null);
 	let checking = $state(false);
 	let error = $state('');
-	let tab = $state<'users' | 'projects' | 'invitations' | 'login' | 'recovery' | 'quotas' | 'resources'>('users');
+	let tab = $state<'users' | 'projects' | 'invitations' | 'login' | 'recovery' | 'monitoring'>('users');
 	let revision = $state(0);
 	let request = 0;
 	let verification = 0;
@@ -87,16 +88,25 @@
 			{#each ['users', 'projects', 'invitations', 'login', 'recovery'] as section}
 				<Button variant={tab === section ? 'secondary' : 'ghost'} ariaPressed={tab === section} onclick={() => tab = section as typeof tab}>{t(section as 'users' | 'projects' | 'invitations' | 'login' | 'recovery')}</Button>
 			{/each}
-			<Button variant={tab === 'quotas' ? 'secondary' : 'ghost'} ariaPressed={tab === 'quotas'} onclick={() => tab = 'quotas'}>{workspaceT('quotas')}</Button>
-			<Button variant={tab === 'resources' ? 'secondary' : 'ghost'} ariaPressed={tab === 'resources'} onclick={() => tab = 'resources'}>{workspaceT('resources')}</Button>
+			<Button variant={tab === 'monitoring' ? 'secondary' : 'ghost'} ariaPressed={tab === 'monitoring'} onclick={() => tab = 'monitoring'}>{workspaceT('monitoringTitle')}</Button>
 		</nav>
 		{#key revision}
 			{#if tab === 'users'}<IamUsers session={verifiedSession} blocked={checking || !!error} onDenied={() => revoked()} />
 			{:else if tab === 'projects'}<IamProjects session={verifiedSession} blocked={checking || !!error} onDenied={() => revoked()} />
 			{:else if tab === 'invitations'}<IamInvitations session={verifiedSession} blocked={checking || !!error} onDenied={() => revoked()} />
 			{:else if tab === 'login'}<IamLogin session={verifiedSession} blocked={checking || !!error} onDenied={() => revoked()} />
-			{:else if tab === 'quotas'}<IamQuotas session={verifiedSession} blocked={checking || !!error} onDenied={() => revoked()} />
-			{:else if tab === 'resources'}<IamResources session={verifiedSession} blocked={checking || !!error} onDenied={() => revoked()} />
+			{:else if tab === 'monitoring'}
+				<div class="space-y-8">
+					<p class="text-sm text-ink-2">{workspaceT('monitoringHelp')}</p>
+					<nav class="flex flex-wrap gap-2" aria-label={workspaceT('monitoringSections')}>
+						<Button variant="ghost" href="#iam-monitoring-overview">{workspaceT('monitoringOverview')}</Button>
+						<Button variant="ghost" href="#iam-monitoring-forecast">{workspaceT('monitoringForecast')}</Button>
+						<Button variant="ghost" href="#iam-monitoring-allocation">{workspaceT('monitoringAllocation')}</Button>
+					</nav>
+					<section id="iam-monitoring-overview" class="scroll-mt-20"><IamResources session={verifiedSession} blocked={checking || !!error} onDenied={focus} /></section>
+					<section id="iam-monitoring-forecast" class="scroll-mt-20"><IamForecast session={verifiedSession} blocked={checking || !!error} onDenied={focus} /></section>
+					<section id="iam-monitoring-allocation" class="scroll-mt-20"><IamQuotas session={verifiedSession} blocked={checking || !!error} onDenied={focus} /></section>
+				</div>
 			{:else}<IamRecovery session={verifiedSession} blocked={checking || !!error} onDenied={() => revoked()} />{/if}
 		{/key}
 	{/if}
