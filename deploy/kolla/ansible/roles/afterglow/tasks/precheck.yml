@@ -67,6 +67,13 @@
     - afterglow_public_haproxy_enabled | bool
 
 
+- name: Precheck | Prepare toolbox CLI authentication
+  ansible.builtin.include_tasks: toolbox_cli_auth.yml
+  when:
+    - enable_afterglow | bool
+    - afterglow_effective_config.services.cloud_shell | bool or afterglow_effective_config.services.manila | bool
+  tags: precheck
+
 - name: Precheck | Verify Cloud Shell deployment contract
   ansible.builtin.include_tasks: precheck_cloud_shell.yml
   when:

@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+## [1.31.2] - 2026-10-28
+
+### Fixed
+- Kolla Cloud Shell 검사가 새 toolbox에서 Manila의 선행 실행에 의존하지 않도록 공통 CLI 인증을 먼저 준비합니다.
+
 ## [1.31.1] - 2026-10-27
 
 ### Fixed

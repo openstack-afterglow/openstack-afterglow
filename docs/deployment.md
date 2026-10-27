@@ -4,6 +4,8 @@
 
 Afterglow는 Docker Compose(개발/소규모), Kubernetes(프로덕션), ArgoCD(GitOps) 세 가지 배포 방식을 지원합니다.
 
+Kolla 표준 `reconfigure`는 Cloud Shell 또는 Manila 활성 시 toolbox CLI의 인증 설정을 각 검사보다 먼저 준비한다. 애플리케이션 이미지의 `latest` 자동 선택은 명시적 `*_image_ref`와 버전 pin이 없는 경우에만 적용되며, datastore pin과 migration 전 복구 검증은 별도로 유지한다.
+
 ## Domain manager workspace cutover (source only)
 
 다중 프로젝트 invitation은 새 요청 `{email,projects:[{project_id,role_ids}]}`와 `kind=invitation_multi`의 기존 JSON column을 사용한다. DDL/migration은 없고 기존 `invitation` row·grant journal은 보존하지만 구형 exact-kind reader는 새 링크를 처리하지 못한다. Old/new API·worker·frontend를 섞은 rollout을 호환 완료로 간주하지 않는다. 승인된 배포에서는 먼저 현재 cohort/source·schema·원래 key와 SQL/Redis 복구 지점을 확인하고 old writers를 drain한 뒤 matching reader/frontend를 함께 전환한다. 운영 snapshot 기반 양방향 writer/복구 qualification은 이 로컬 source 검증에서 수행하지 않았다. 기존 row를 새 kind로 일괄 backfill하거나 old writer에 새 JSON을 읽히도록 marker를 제거하지 않는다.
