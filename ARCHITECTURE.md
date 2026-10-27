@@ -1692,9 +1692,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "6b7c80f8b5aa941fc71e382048e0413beb21d3efb3e2c57dacc5ce37e07ebf43",
-  "reviewed_at": "2026-10-27T16:04:13Z",
-  "summary": "Prepare shared toolbox cloud credentials safely before Cloud Shell checks during standard Kolla reconfigure."
+  "source_sha256": "45950d3eee8ac12fdcd08ee04fca0780462f9e4597f909ec6ccce3f8de1c18b7",
+  "reviewed_at": "2026-10-27T16:09:02Z",
+  "summary": "Align Helm release metadata with the Kolla toolbox patch."
 }
 ```
 <!-- architecture-review:end -->
