@@ -191,7 +191,7 @@ jobs:
         arch: [amd64]
         include:
           - arch: amd64
-            runner: [self-hosted, linux, x64]
+            runner: afterglow-arc
             platform: linux/amd64
           # - arch: arm64
           #   runner: [self-hosted, linux, arm64]
