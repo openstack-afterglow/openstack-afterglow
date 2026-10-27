@@ -1689,9 +1689,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "63dd84fc9ec933ff3f84d52e4cd21e5bd3b6f5c4f9978deab5e4bcedfd324673",
-  "reviewed_at": "2026-10-26T10:15:04Z",
-  "summary": "Authorized local dev checkpoint of existing OIDC/IAM, administrator detail/group/storage/volume transfer, Palimpsest/Lumen UI, dashboard/session and native transport work. Independent source reviews found no commit blocker; canonical isolated test:gate passed on matching source63dd84fc/3503files. Preserve private inputs, unfinished acceptance and deployment boundaries; no new runtime topology, release or deployment."
+  "source_sha256": "6cb5acdc9180ee25bf6948be86685c3e8177c936adef5e11a7256ca650deea7a",
+  "reviewed_at": "2026-10-27T09:14:07Z",
+  "summary": "Review checkpoint: project cleanup safeguards, domain project authority and navigation, topology presentation, and documented integration boundaries; no production rollout performed."
 }
 ```
 <!-- architecture-review:end -->
