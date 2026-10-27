@@ -38,9 +38,9 @@
               {{ {'refs': {'cloud_shell_image': afterglow_cloud_shell_requested_image},
                   'force_refs': (['cloud_shell_image'] if afterglow_cloud_shell_requested_image == 'ghcr.io/openstack-afterglow/openstack-client:slim' else [])}
                  | combine({'auth_config': {'username': docker_registry_username,
-                     'password': docker_registry_password | default(''),
-                     'serveraddress': docker_registry | default('quay.io')}}
-                   if docker_registry_username | default('') | length > 0 else {}) | to_json }}
+                     'password': docker_registry_password | default('', true),
+                     'serveraddress': docker_registry | default('quay.io', true)}}
+                   if docker_registry_username | default('', true) | length > 0 else {}) | to_json }}
           delegate_to: "{{ ansible_play_hosts_all[0] }}"
           register: afterglow_cloud_shell_image_resolution
           changed_when: false

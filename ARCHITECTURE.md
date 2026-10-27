@@ -1390,6 +1390,8 @@ Afterglow 1.28.0 준비 작업트리의 operator는 Lumen root role만 `v0.3.1` 
 
 Kolla 2025.2 환경에서 Afterglow, Drover, Waygate, Lumen, Palimpsest의 application image는 `*_image_tag: "latest"`(또는 게시된 `stable`) 채널을 따르고, `precheck`·`pull`·`deploy`·`reconfigure`·`upgrade` 실행 시 첫 번째 대상 컨트롤러(`ansible_play_hosts_all[0]`)에서 Docker descriptor API(`resolve_image_refs.py`)를 통해 레지스트리 manifest/index sha256 다이제스트를 1회 해석해 모든 serial batch에 동일하게 공유한다. 레이어 다운로드는 `pull` 단계로 분리하며, 특정 릴리즈 고정 또는 롤백은 명시적인 `*_image_ref`(예: `afterglow_backend_image_ref: "ghcr.io/openstack-afterglow/afterglow-api@sha256:<digest>"`)로 동적 해석을 건너뛴다. stock Kolla 및 datastore(MariaDB, Valkey, PostgreSQL) 버전 고정은 유지된다.
 
+Kolla 기본값처럼 registry 사용자명이 null 또는 빈 문자열이면 일반 이미지와 Cloud Shell 이미지 모두 익명으로 descriptor를 해석한다. 명시적 사용자명이 있을 때만 자격증명을 전달한다.
+
 Kolla Afterglow precheck는 Cloud Shell 또는 Manila가 활성화되면 공유 toolbox CLI 인증 설정을 먼저 준비한다. Cloud Shell 단독 배포도 이전 Manila 실행이나 기존 toolbox 파일에 의존하지 않으며, Manila client 설치는 Manila 활성화 시에만 수행한다.
 
 태그를 생략한 image ref도 implicit `latest`이며 registry port는 tag로 취급하지 않는다. Native Kolla globals/CLI extra-vars는 `set_fact`보다 우선하므로 해석한 digest를 덮어쓰는 mutable/bare `*_image_ref`는 역할 실행 전에 차단한다. 채널 선택은 `*_image_tag`로 하고 명시적인 version/digest rollback pin은 그대로 유지한다.
@@ -1692,9 +1694,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "45950d3eee8ac12fdcd08ee04fca0780462f9e4597f909ec6ccce3f8de1c18b7",
-  "reviewed_at": "2026-10-27T16:09:02Z",
-  "summary": "Align Helm release metadata with the Kolla toolbox patch."
+  "source_sha256": "b968b0e34742e0686544be9bca0ca9e357f9dc1a42ba43b5201c2baa2d0fa62b",
+  "reviewed_at": "2026-10-27T18:00:24Z",
+  "summary": "Handle null default registry credentials in both Kolla image resolvers."
 }
 ```
 <!-- architecture-review:end -->

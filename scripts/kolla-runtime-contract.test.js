@@ -62,6 +62,7 @@ class ActionModule(ActionBase):
                     'config': task_vars.get('runtime_config_marker'),
                     'action': task_vars.get('kolla_action'),
                     'host': task_vars['inventory_hostname'],
+                    'cloud_image': task_vars.get('afterglow_effective_config', {}).get('cloud_shell', {}).get('image'),
                     'refs': {name: task_vars[name] for name in json.loads(os.environ['RUNTIME_REF_NAMES']) if name in task_vars}}
         with open(os.environ['RUNTIME_EVIDENCE'], 'a') as output:
             output.write(json.dumps(evidence) + '\\n')
@@ -81,7 +82,7 @@ class ActionModule(ActionBase):
 
 function runFixture({ enabled = services, tags, tagOption = "--tags", lifecycle = "deploy", negative = false, standalone = false,
 	hostVars = {}, targets = targetHosts,
-	serial = false, globals = {}, extraVars = {}, registry = {}, moveDigest, invocations = 1, productionDefaults = false } = {}) {
+	serial = false, globals = {}, extraVars = {}, registry = {}, moveDigest, invocations = 1, productionDefaults = false, cloudShell = false } = {}) {
 	for (const binary of ["python", "ansible-playbook", "kolla-ansible"]) {
 		assert.ok(fs.existsSync(path.join(runtime, binary)),
 			`Missing operator runtime ${binary}; install deploy/kolla/operator requirements before test:kolla:runtime (no backend Ansible dependency).`)
@@ -125,10 +126,10 @@ function runFixture({ enabled = services, tags, tagOption = "--tags", lifecycle 
 		const probe = (label, delegated = false) => `- name: Probe ${label}\n  runtime_probe:\n    label: ${label}\n    expected_become: ${!serial}\n${delegated ? "  delegate_to: delegate\n" : ""}`
 		for (const name of enabled) {
 			write(`ansible/roles/${name}/tasks/main.yml`, "- ansible.builtin.import_tasks: deploy.yml\n")
-			write(`ansible/roles/${name}/tasks/deploy.yml`, probe(`${name}:deploy`) + probe(`${name}:delegated`, true))
+			write(`ansible/roles/${name}/tasks/deploy.yml`, (name === "afterglow" && cloudShell ? "- ansible.builtin.import_tasks: resolve_cloud_shell_image.yml\n" : "") + probe(`${name}:deploy`) + probe(`${name}:delegated`, true))
 			write(`ansible/roles/${name}/tasks/loadbalancer.yml`, probe(`${name}:haproxy`))
 		}
-		for (const file of ["tasks/resolve_image_refs.yml", "files/resolve_image_refs.py"]) {
+		for (const file of ["tasks/resolve_image_refs.yml", "tasks/resolve_cloud_shell_image.yml", "files/resolve_image_refs.py"]) {
 			write(`ansible/roles/afterglow/${file}`, fs.readFileSync(path.join(root, `deploy/kolla/ansible/roles/afterglow/${file}`), "utf8"))
 		}
 		if (productionDefaults) {
@@ -315,6 +316,27 @@ function expectConsumers(result, service, refs) {
 function expectSelection(result, refs) {
 	assert.deepEqual(result.registryEvidence, [{ event: "selection" }, ...refs.map(ref => ({ event: "lookup", ref }))], result.output)
 }
+
+test("null registry credentials allow public latest images to resolve for every controller", () => {
+	const prefixes = ["afterglow_backend", "afterglow_frontend"]
+	const result = runFixture({ enabled: ["afterglow"], tags: "afterglow", serial: true,
+		globals: { afterglow_image_tag: "latest", docker_registry_username: null, docker_registry_password: null, docker_registry: null } })
+	expectConsumers(result, "afterglow", selectedRefs(prefixes))
+	expectSelection(result, prefixes.map(prefix => `fixture.invalid/${prefix}:latest`))
+})
+
+test("Cloud Shell moving image resolves with null registry credentials", () => {
+	const result = runFixture({ enabled: ["afterglow"], tags: "afterglow", serial: true, cloudShell: true,
+		globals: { docker_registry_username: null, docker_registry_password: null, docker_registry: null },
+		hostVars: Object.fromEntries(targetHosts.map(host => [host, {
+			afterglow_backend_image_ref: "fixture.invalid/backend:1.2.3", afterglow_frontend_image_ref: "fixture.invalid/frontend:1.2.3",
+			afterglow_effective_config: { services: { cloud_shell: true }, cloud_shell: { image: "fixture.invalid/shell:latest" } },
+		}])) })
+	assert.equal(result.status, 0, result.output)
+	const rows = result.evidence.filter(row => row.label === "afterglow:deploy")
+	assert.deepEqual(rows.map(row => row.cloud_image), targetHosts.map(() => `fixture.invalid/shell@${digestA}`), result.output)
+	expectSelection(result, ["fixture.invalid/shell:latest"])
+})
 
 for (const channel of ["latest", "stable"]) {
 	test(`serial consumers freeze ${channel} after registry movement and select fresh on the next native invocation`, () => {
