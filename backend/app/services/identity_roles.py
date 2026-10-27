@@ -1025,6 +1025,10 @@ async def change_project_assignment(
             await asyncio.to_thread(
                 domain_projects.assert_manager_assignment, project_id, role_id, catalog=catalog, ks=ks
             )
+        if not remove and kind != "personal":
+            await asyncio.to_thread(
+                domain_projects.assert_creator_assignment, project_id, role_id, catalog=catalog, ks=ks
+            )
         if required_reader:
             project = await asyncio.to_thread(ks.projects.get, project_id)
             default = await asyncio.to_thread(domain_projects.default_project, _field(project, "domain_id"), ks=ks)

@@ -6,8 +6,6 @@
 		name: string;
 		cidrText: string;
 		kindLabel: string;
-		/** 외부(프로바이더) 네트워크 — 인터넷 경계임을 구름 아이콘과 배지로 표시한다 */
-		isInternet: boolean;
 		isolated: boolean;
 		/** ACTIVE 가 아닐 때만 채움 */
 		statusText: string | null;
@@ -76,15 +74,10 @@
 			style:--avail="{l.avail}px"
 			onclick={() => onselectnet(l.netId)}
 		>
-			{#if l.isInternet}
-				<span class="zone-cloud" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.6 10.6a2.4 2.4 0 0 1 .3-4.78 3.3 3.3 0 0 1 6.32-.6A2.6 2.6 0 0 1 11.6 10.6z" /><path d="M8 10.6v2.2M4.4 12.8h7.2" /></svg></span>
-			{:else}
-				<span class="zone-swatch" aria-hidden="true"></span>
-			{/if}
+			<span class="zone-swatch" aria-hidden="true"></span>
 			<span class="zone-name">{l.name}</span>
 			<span class="zone-cidr">{l.cidrText}</span>
 			<span class="zone-pills">
-				{#if l.isInternet}<Pill tone="warm" size="xs">{t('hud.internet')}</Pill>{/if}
 				<Pill tone="neutral" size="xs">{l.kindLabel}</Pill>
 				{#if l.isolated}<Pill tone="neutral" size="xs">{t('hud.isolated')}</Pill>{/if}
 				{#if l.statusText}<Pill tone="neutral" size="xs">{l.statusText}</Pill>{/if}
@@ -148,8 +141,6 @@
 	.zone-label:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 	.zone-label.is-active { border-color: var(--net); }
 	.zone-label.is-dim { opacity: 0.35; }
-	.zone-cloud { display: inline-flex; color: var(--net); flex-shrink: 0; }
-	.zone-cloud svg { width: 14px; height: 14px; }
 	.zone-swatch { width: 8px; height: 8px; border-radius: 999px; background: var(--net); flex-shrink: 0; }
 	.zone-name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 	.zone-cidr { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 400; color: var(--color-ink-2); }

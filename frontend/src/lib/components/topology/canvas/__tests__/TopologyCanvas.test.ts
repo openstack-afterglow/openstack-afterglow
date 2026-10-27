@@ -6,7 +6,7 @@ import TopologyCanvas from '../TopologyCanvas.svelte';
 import { buildGraph, edgeStyle } from '../topologyGraph';
 import { edgeIntensity, NO_TELEMETRY_STYLE } from '../canvasHelpers';
 import { layoutStorageKey } from '../layoutStorage';
-import { K_MIN } from '../topologyLayout';
+import { K_MIN, autoLayout, computeGeometry } from '../topologyLayout';
 import { TOPOLOGY_ENTRANCE_MS } from '../../firstArrival.svelte';
 import { MOTION_DURATION_MS, REDUCED_MOTION_QUERY } from '$lib/design/tokens';
 import { P, makeFixture, makeTraffic } from './fixtures';
@@ -111,6 +111,57 @@ describe('TopologyCanvas', () => {
 		expect(onSelectNetwork).toHaveBeenCalledWith('net-app');
 		await fireEvent.click(cardOf('rtr-edge')!);
 		expect(onSelectRouter).toHaveBeenCalledWith('rtr-edge');
+	});
+
+	it('인터넷은 외부 스위치 위 독립 cloud 노드이며 네트워크 선택만 하고 상태·트래픽·연결 핸들을 표시하지 않는다', async () => {
+		const { onSelectNetwork } = renderCanvas({ onConnect: vi.fn(), editable: true });
+		const internet = cardOf('internet:net-pub')!;
+		const providerSwitch = cardOf('sw:net-pub')!;
+		expect(internet).not.toBeNull();
+		expect(internet.classList.contains('node-internet')).toBe(true);
+		expect(internet.querySelector('.internet-cloud')).not.toBeNull();
+		expect(internet.textContent?.trim()).toBe('인터넷');
+		expect(internet.getAttribute('aria-label')).not.toMatch(/ACTIVE|DOWN|ERROR|▼|▲/);
+		expect(internet.querySelector('[data-link-handle], .node-sub')).toBeNull();
+		expect(providerSwitch.querySelector('.node-glyph rect')).not.toBeNull();
+		expect(providerSwitch.querySelector('.internet-cloud')).toBeNull();
+		expect(providerSwitch.textContent).not.toContain('인터넷');
+		const zoneLabel = document.querySelector('[data-zone-label="net-pub"]')!;
+		expect(zoneLabel.textContent).not.toContain('인터넷');
+		await fireEvent.click(internet);
+		expect(onSelectNetwork).toHaveBeenCalledWith('net-pub');
+		expect(internet.getAttribute('aria-pressed')).toBe('true');
+		await fireEvent.keyDown(internet, { key: 'Escape' });
+		expect(onSelectNetwork).toHaveBeenCalledTimes(2);
+		expect(internet.getAttribute('aria-pressed')).toBe('false');
+	});
+
+	it('외부 네트워크 이름 검색은 Internet 노드와 실제 스위치를 모두 찾는다', async () => {
+		renderCanvas();
+		await fireEvent.input(screen.getByRole('searchbox', { name: '토폴로지 검색' }), { target: { value: 'public' } });
+		expect(cardOf('internet:net-pub')!.classList.contains('is-dim')).toBe(false);
+		expect(cardOf('sw:net-pub')!.classList.contains('is-dim')).toBe(false);
+		expect(cardOf('sw:net-app')!.classList.contains('is-dim')).toBe(true);
+	});
+
+	it('모든 실제 케이블은 직각 경로와 geometry의 양 끝 포트 점을 렌더링한다', () => {
+		renderCanvas();
+		const graph = buildGraph(makeFixture(), { projectId: P, showAll: false });
+		const layout = autoLayout(graph);
+		const geometry = computeGeometry(graph, layout);
+		for (const edge of graph.edges) {
+			const path = document.querySelector<SVGPathElement>(`path.edge[data-key="${edge.key}"]`)!;
+			expect(path, edge.key).not.toBeNull();
+			expect(path.getAttribute('d')).not.toMatch(/[CQAST]/i);
+			const points = geometry.geom.get(edge.key)!;
+			for (const [end, point] of [['from', points.a], ['to', points.b]] as const) {
+				const port = document.querySelector<SVGCircleElement>(`circle[data-edge-port="${edge.key}"][data-port-end="${end}"]`)!;
+				expect(port, `${edge.key}:${end}`).not.toBeNull();
+				expect(Number(port.getAttribute('cx'))).toBe(Math.round(point.x * 10) / 10);
+				expect(Number(port.getAttribute('cy'))).toBe(Math.round(point.y * 10) / 10);
+			}
+		}
+		expect(document.querySelectorAll('.port-dot')).toHaveLength(graph.edges.length * 2);
 	});
 
 	it('LB 카드 클릭은 raw TopologyLoadBalancer 를 넘기고 비제어 모드에서 눌린 상태가 된다', async () => {
@@ -678,6 +729,8 @@ describe('TopologyCanvas', () => {
 		// 포인터 다운: 드래그 시작
 		firePointer('pointerdown', handle, { pointerId: 1, clientX: 10, clientY: 10 });
 		expect(document.querySelector('.layer-link .edge-link')).not.toBeNull();
+		expect(document.querySelector('.edge-link')!.getAttribute('d')).not.toMatch(/[CQAST]/i);
+		expect(document.querySelector('.link-endpoint')).not.toBeNull();
 		expect(cardOf('sw:net-app')!.classList.contains('is-link-target')).toBe(true);
 		expect(cardOf('rtr-edge')!.classList.contains('is-faded')).toBe(true);
 
@@ -685,6 +738,7 @@ describe('TopologyCanvas', () => {
 		const swCard = cardOf('sw:net-app')!;
 		fireEvent(swCard, pointerMove({ pointerId: 1, clientX: 300, clientY: 300 }));
 		expect(document.querySelector('.edge-link.is-snapped')).not.toBeNull();
+		expect(document.querySelector('.edge-link.is-snapped')!.getAttribute('d')).not.toMatch(/[CQAST]/i);
 
 		// 포인터 업: 연결 요청 완료
 		firePointer('pointerup', swCard, { pointerId: 1, clientX: 300, clientY: 300 });
@@ -741,6 +795,7 @@ describe('TopologyCanvas', () => {
 			},
 		});
 		expect(document.querySelectorAll('.layer-link .edge-pending')).toHaveLength(1);
+		expect(document.querySelector('.edge-pending')!.getAttribute('d')).not.toMatch(/[CQAST]/i);
 	});
 
 	it('onCreate 전달 시 툴바에 리소스 생성 버튼이 노출되고 클릭 시 컨텍스트와 함께 호출된다', async () => {

@@ -48,9 +48,10 @@ export const navIcons = {
 /** Display-only capability gates; the API re-validates authority for every request. */
 export interface NavCapabilities {
   domainManager: boolean;
+  projectManagement: boolean;
 }
 
-const NO_CAPABILITIES: NavCapabilities = { domainManager: false };
+const NO_CAPABILITIES: NavCapabilities = { domainManager: false, projectManagement: false };
 
 export interface NavItem {
   label: string;
@@ -192,7 +193,8 @@ export const userNavSections: NavSection[] = [
     extraPrefixes: [],
     icon: navIcons.domain,
     items: [
-      withLabel('items.domainIam', { href: '/dashboard/iam', icon: navIcons.users, service: null, capability: 'domainManager' as const }),
+      withLabel('items.iamUsers', { href: '/dashboard/iam/users', icon: navIcons.users, service: null, capability: 'domainManager' as const }),
+      withLabel('items.iamProjects', { href: '/dashboard/iam/projects', icon: navIcons.folder, service: null, capability: 'projectManagement' as const }),
     ],
   }),
 ];

@@ -1,0 +1,92 @@
+{
+  "change": "align-default-project-creation-and-split-iam",
+  "date": "2026-10-27",
+  "status": "source-only complete",
+  "snapshot": "/Users/pieroot/.local/share/afterglow-proofs/default-project-iam-20261027/verification-v9e7nvme",
+  "source_sha256": "23b8706184d306f77c4c0fe1d047ed54f4a252ab867afcc00023c676f2fe3e4a",
+  "source_entries": 3526,
+  "source_manifest_note": "3525 public files plus snapshot-only root node_modules symlink",
+  "gate": {
+    "exit": 0,
+    "artifact": "artifact://274",
+    "backend_passed": 10206,
+    "backend_skipped": 95,
+    "frontend_files": 457,
+    "frontend_passed": 5434,
+    "contracts_passed": 183,
+    "db_passed": 167,
+    "db_deselected": 33,
+    "ruff_formatted_files": 750,
+    "working_and_staged_architecture": "passed in isolated snapshot"
+  },
+  "access": {
+    "backend_passed": 1962,
+    "frontend_files": 33,
+    "frontend_passed": 474
+  },
+  "focused": {
+    "backend": 267,
+    "frontend_initial_files": 11,
+    "frontend_initial_passed": 170,
+    "final_entry_fence_files": 2,
+    "final_entry_fence_passed": 25,
+    "prewarmed_cache_files": 8,
+    "prewarmed_cache_passed": 108
+  },
+  "post_gate_test_only": {
+    "file": "frontend/src/lib/components/__tests__/ProjectSelector.test.ts",
+    "change": "Remove unsupported exact:true ByRoleOptions flag, no application changes",
+    "focused_passed": 26,
+    "svelte_errors": 0,
+    "svelte_existing_warnings": 16,
+    "gate_digest_includes_this_change": false
+  },
+  "i18n": {
+    "errors": 0,
+    "existing_key_order_warnings": 45,
+    "hardcoded_korean": 0
+  },
+  "browser": {
+    "surface": "Real SvelteKit routes, mutable synthetic HTTP identity/resource API fixtures",
+    "responsive_conditions": 108,
+    "page_overflow": 0,
+    "project_creates": 4,
+    "workspace_switches": 1,
+    "creator_directory_reads": 0,
+    "entry_fence_final_route_verified": true,
+    "fresh_revocation_workspace_removed": true,
+    "prewarmed_chooser_before_fix_new_uuid_visible": false,
+    "prewarmed_chooser_after_fix_new_uuid_visible": true
+  },
+  "runtime_smoke": {
+    "surface": "Real Uvicorn TCP/application services/SQLite ownership journal; synthetic human principal/Keystone/quota",
+    "before": "Default creator capability false assertion failed against retained pre-change snapshot",
+    "after": [
+      "Default creator allowed",
+      "creator delegation 403",
+      "legacy direct domain creator denied",
+      "project create201/activated/sole owner readback",
+      "revoked creator create403",
+      "manager without creator preset allowed"
+    ]
+  },
+  "preserved": [
+    "shared index and architecture review marker",
+    "private configs and data/services",
+    "current-project owner/admin management guard",
+    "Default/owner journal/graph lease/deletion guards"
+  ],
+  "not_performed": [
+    "deployment",
+    "commit",
+    "push",
+    "live IAM/grants/resource mutations",
+    "SQL/config/schema/dependency changes",
+    "gbrain sync (CLI absent)"
+  ],
+  "cleanup": [
+    "owned browser and fixture server stopped",
+    "owned frontend preview stopped",
+    "disposable DB services removed by runner"
+  ]
+}

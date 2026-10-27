@@ -6,6 +6,7 @@
   import { api } from '$lib/api/client';
   import { allNavItems } from '$lib/config/nav';
   import { canManageDomain, isAdmin } from '$lib/stores/auth';
+  import { canManageOrganizationProjects } from '$lib/stores/projectManagement';
   import { betaFeatures, type BetaFeatures } from '$lib/stores/betaFeatures';
   import { siteConfig } from '$lib/config/site';
   import { isMockupPathAllowed } from '$lib/mockup/contracts';
@@ -49,7 +50,7 @@
   };
 
   // 비활성 서비스 route는 sidebar와 동일하게 command palette에서도 숨긴다.
-  const navItems = $derived(allNavItems($isAdmin && administratorSurface, paletteBetaFeatures, { domainManager: $canManageDomain })
+  const navItems = $derived(allNavItems($isAdmin && administratorSurface, paletteBetaFeatures, { domainManager: $canManageDomain, projectManagement: $canManageOrganizationProjects })
     .filter((item) => !item.service || (($siteConfig.services as Record<string, boolean>)[item.service] ?? false))
     .filter((item) => !mockupAdminActive || isMockupPathAllowed('admin', item.href))
     .map((item) => ({

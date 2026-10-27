@@ -30,7 +30,7 @@
 	const mutationBusy = $derived(controller.busy || projectSubmitting);
 	const disabled = $derived(!controller.ready || controller.loading || mutationBusy || $projectSwitching);
 	$effect(() => { busy = mutationBusy; });
-	const orderedDomains = $derived(sortWorkspaceResources(controller.domains, controller.preferences.domains));
+	const orderedDomains = $derived(sortWorkspaceResources(controller.domains, controller.preferences.domains, false, row => row.kind === 'personal' ? -1 : 0));
 	const matchingDomains = $derived(orderedDomains.filter(row => (settings || !controller.preferences.domains[row.id]?.hidden || row.id === controller.domainId || row.id === $auth.domainId) && `${row.name} ${row.id}`.toLocaleLowerCase().includes(domainSearch.toLocaleLowerCase())));
 	const orderedProjects = $derived(sortWorkspaceResources(controller.inventory?.projects ?? [], controller.preferences.projects, view === 'recent' && !settings));
 	const views = ['recent', 'pinned', 'all'] as const;
@@ -71,7 +71,6 @@
 			<h2 class="text-lg font-semibold text-ink-0">{t('title')}</h2>
 			<div class="flex flex-wrap gap-2">
 				<Button variant="secondary" onclick={() => { settings = !settings; createDomain = false; }} ariaPressed={settings} disabled={mutationBusy}>{t('displaySettings')}</Button>
-				<Button onclick={() => { createProject = true; }} disabled={disabled || mockup || !controller.inventory?.can_create_project}>{t('newProject')}</Button>
 			</div>
 		</div>
 		<div class="text-xs text-ink-2" aria-live="polite">
@@ -142,8 +141,8 @@
 		<div class="flex flex-wrap gap-2">
 			<Button variant="secondary" onclick={() => { void controller.refresh(); }} disabled={mutationBusy || $projectSwitching}>{t('refresh')}</Button>
 			{#if $auth.canCreateDomain && !mockup}<Button variant="secondary" onclick={() => { createDomain = !createDomain; }} disabled={disabled || controller.uncertain}>{t('newDomain')}</Button>{/if}
-			{#if controller.inventory?.is_domain_manager && controller.inventory.domain.kind !== 'personal' && !mockup}<Button variant="secondary" onclick={() => controller.select(null)} disabled={disabled}>{t('useDomain')}</Button>{/if}
-			{#if $auth.projectId}<Button variant="link" href="/dashboard/project-settings" onclick={close} disabled={mutationBusy || $projectSwitching}>{t('projectSettings')}</Button>{/if}
+			{#if controller.inventory?.can_create_project && !mockup}<Button onclick={() => { createProject = true; }} disabled={disabled}>{t('newProject')}</Button>{/if}
+			{#if controller.domainId === $auth.domainId && controller.inventory?.can_create_project && controller.inventory.domain.kind !== 'personal' && !mockup}<Button variant="link" href="/dashboard/iam/projects" onclick={close} disabled={disabled}>{t('manageProjects')}</Button>{/if}
 		</div>
 		<Button variant="secondary" onclick={close} disabled={mutationBusy || $projectSwitching}>{t('close')}</Button>
 	</footer>

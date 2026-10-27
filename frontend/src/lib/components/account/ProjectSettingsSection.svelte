@@ -142,7 +142,7 @@
 			<p class="text-xs text-ink-2 mt-0.5">{projectId}</p>
 		{/if}
 	</div>
-	{#if $canManageDomain}<div class="mb-4"><Button href="/dashboard/iam" variant="secondary" size="sm">{td('invitations')}</Button></div>{/if}
+	{#if $canManageDomain}<div class="mb-4"><Button href="/dashboard/iam/users" variant="secondary" size="sm">{td('invitations')}</Button></div>{/if}
 	{#if $projectPermissions.loading}<ActivityIndicator label={t('projectSettings.checkingPermissions')} />{/if}
 	{#if $projectPermissions.error}<p role="alert" class="text-sm text-state-danger-text">{$projectPermissions.error}</p><Button variant="secondary" size="sm" onclick={() => { void refreshProjectPermissions(); }}>{t('projectSettings.recheckPermissions')}</Button>{/if}
 

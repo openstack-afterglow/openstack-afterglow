@@ -5,7 +5,7 @@ import { MOTION_DURATION_MS, MOTION_STAGGER_LIMIT } from '$lib/design/tokens';
 import { prefersReducedMotion } from '$lib/utils/motion';
 
 /**
- * 진입 창 길이: 상한까지 쌓인 cascade 지연 뒤 data 길이 draw-in, 그 뒤에 두 단계 늦게 시작하는 LB 곡선의
+ * 진입 창 길이: 상한까지 쌓인 cascade 지연 뒤 data 길이 draw-in, 그 뒤에 두 단계 늦게 시작하는 LB 경로의
  * panel 길이 페이드까지 끝나는 시간. 창 안에서 새로 마운트되는 항목(측정 뒤에 생기는 연결선 등)도 같은 진입에 속한다.
  */
 export const TOPOLOGY_ENTRANCE_MS =

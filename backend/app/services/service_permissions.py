@@ -85,7 +85,7 @@ def _presets() -> tuple[dict, ...]:
     rows = [
         {
             "name": "project_creator",
-            "description": "도메인 프로젝트 생성 위임",
+            "description": "Default 프로젝트 역할로 위임하는 도메인 프로젝트 생성 권한",
             "area": "domain",
             "grade": "creator",
             "parent": None,

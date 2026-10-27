@@ -88,6 +88,11 @@
 	function serviceLabel(service: string) {
 		return Object.hasOwn(serviceKeys, service) ? t(serviceKeys[service as keyof typeof serviceKeys]) : t('projectDelete.services.other');
 	}
+	function cleanupHref(kind: string) {
+		if (session || !scope || !current(scope) || !(kind === 'child_projects' || Object.hasOwn(resourceKeys, kind))) return undefined;
+		const query = new URLSearchParams({ domain_id: scope.domainId, kind });
+		return `/admin/projects/${encodeURIComponent(scope.target)}/resources?${query}`;
+	}
 	function isRecord(value: unknown): value is Record<string, unknown> {
 		return !!value && typeof value === 'object' && !Array.isArray(value);
 	}
@@ -270,12 +275,22 @@
 				{:else}
 					<Alert tone="warning">{t('projectDelete.unavailable')}</Alert>
 				{/if}
+				{#if !session}<p class="text-xs text-ink-2">{t('projectDelete.cleanupHelp')}</p>{/if}
 				<ul class="max-h-[40dvh] overflow-y-auto divide-y divide-line text-sm" aria-label={t('projectDelete.reportLabel')}>
 					{#each report.resources as row}
 						<li class="py-2 min-w-0">
 							<div class="flex flex-wrap justify-between gap-x-3 gap-y-1">
 								<span class="text-ink-0 font-medium">{resourceLabel(row.kind)}</span>
-								<span class="text-ink-2">{#if row.count !== null && row.count > 0}{t('projectDelete.count', { count: row.count })}{:else if absent(row)}{t('projectDelete.notPresent')}{:else if unknown(row)}{t('projectDelete.unknown')}{:else}{t('projectDelete.count', { count: 0 })}{/if}</span>
+								<div class="flex flex-wrap items-center justify-end gap-2">
+									<span class="text-ink-2">{#if row.count !== null && row.count > 0}{t('projectDelete.count', { count: row.count })}{:else if absent(row)}{t('projectDelete.notPresent')}{:else if unknown(row)}{t('projectDelete.unknown')}{:else}{t('projectDelete.count', { count: 0 })}{/if}</span>
+									{#if !session}
+										<Button variant="outline" size="sm" class="min-h-11 md:min-h-0" href={cleanupHref(row.kind)}
+											disabled={deleting || absent(row) || row.count === 0 || !cleanupHref(row.kind)}
+											ariaLabel={t('projectDelete.cleanupLabel', { resource: resourceLabel(row.kind) })}>
+											{t('projectDelete.cleanup')}
+										</Button>
+									{/if}
+									</div>
 							</div>
 							<p class="text-xs text-ink-2">{serviceLabel(row.service)}{#if unknown(row)} · {reasonLabel(row.reason)}{/if}</p>
 							{#if row.samples.length && row.count !== 0}

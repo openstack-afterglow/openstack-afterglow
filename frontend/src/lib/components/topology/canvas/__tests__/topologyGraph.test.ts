@@ -5,7 +5,7 @@ import { edgeIntensity, flowDotCount } from '../canvasHelpers';
 import { NO_TELEMETRY_STYLE } from '../canvasHelpers';
 import { autoLayout } from '../topologyLayout';
 import type { RouterNode, VmNode } from '../types';
-import { makeFixture, makeTraffic, mkInst, mkLb, OTHER, P } from './fixtures';
+import { makeFixture, makeTraffic, mkInst, mkLb, mkNet, OTHER, P } from './fixtures';
 
 const vm = (g: ReturnType<typeof buildGraph>, id: string): VmNode => {
 	const n = g.nodes.get(id);
@@ -33,13 +33,29 @@ describe('buildGraph 가시성 규칙(레인 뷰 컨트롤러와 동일)', () =>
 		expect(g.nodes.has('sw:net-other')).toBe(true);
 		expect(g.nodes.has('rtr-other')).toBe(true);
 		expect(g.nodes.has('vm-other-01')).toBe(true);
-		// 외부망 자체가 인터넷 경계를 나타내므로 상위 L3 코어 노드는 두지 않는다
+		// Each external network now has its own Internet uplink, never a shared synthetic L3 core.
 		expect(g.nodes.has('core')).toBe(false);
 		expect([...g.nodes.values()].map((n) => n.kind)).not.toContain('core');
 		// FIP 선은 코어가 아니라 외부망 스위치로 향한다
 		const fipTargets = new Set(g.edges.filter((e) => e.kind === 'fip').map((e) => e.to));
 		expect(fipTargets.size).toBeGreaterThan(0);
 		for (const t of fipTargets) expect(g.nodes.get(t)?.kind).toBe('switch');
+	});
+
+	it('creates exactly one distinct Internet and uplink for each external network, never for shared-only networks', () => {
+		const data = makeFixture();
+		data.networks.push(mkNet('net-public-2', 'public', '198.18.0.0/24', '198.18.0.1', { external: true }));
+		const graph = buildGraph(data, { projectId: P, showAll: false });
+		expect([...graph.nodes.values()].filter((node) => node.kind === 'internet').map((node) => node.id).sort()).toEqual(['internet:net-pub', 'internet:net-public-2']);
+		for (const netId of ['net-pub', 'net-public-2']) {
+			expect(graph.nodes.get('internet:' + netId)).toMatchObject({ kind: 'internet', netId, netIds: [netId] });
+			const edge = graph.edges.find((edge) => edge.kind === 'uplink' && edge.netId === netId)!;
+			expect(edge).toMatchObject({ from: 'internet:' + netId, to: 'sw:' + netId });
+			expect(edgeRate(edge, makeTraffic(), graph)).toBeNull();
+		}
+		expect(graph.nodes.has('internet:net-transit')).toBe(false);
+		for (const id of ['internet:net-pub', 'internet:net-public-2', 'sw:net-pub', 'sw:net-public-2']) expect(matchesQuery(graph, 'public')?.nodes.has(id)).toBe(true);
+		expect(matchesQuery(graph, '203.0.113.0/24')?.nodes.has('internet:net-pub')).toBe(true);
 	});
 
 	it('외부 네트워크가 없으면 FIP 엣지를 만들지 않는다', () => {
@@ -77,6 +93,10 @@ describe('buildGraph NIC 그룹화와 FIP', () => {
 		expect(node.nics[1]).toMatchObject({ label: 'eth1', portId: 'port-multi-b', rowIdx: 1 });
 		expect(node.rows).toBe(2);
 		expect(g.edges.filter((e) => e.kind === 'cable' && e.from === 'vm-multi')).toHaveLength(2);
+		const beforeKeys = new Map(node.nics.map((nic) => [nic.portId, nic.key]));
+		data.instances.find((inst) => inst.id === 'vm-multi')!.ip_addresses.reverse();
+		const reversed = vm(buildGraph(data, { projectId: P, showAll: false }), 'vm-multi');
+		for (const nic of reversed.nics) expect(nic.key).toBe(beforeKeys.get(nic.portId));
 	});
 
 	it('port_id 가 없으면 네트워크 단위로 묶고 network_id 가 없으면 이름+CIDR 로 해석한다', () => {
@@ -214,7 +234,7 @@ describe('matchesQuery', () => {
 		expect(m.nodes.has('sw:net-web')).toBe(true);
 		expect(m.nets.has('net-web')).toBe(true);
 		expect(matchesQuery(g, 'edge')!.nodes).toEqual(new Set(['rtr-edge']));
-		expect(matchesQuery(g, 'vSwitch-public')!.nodes).toEqual(new Set(['sw:net-pub']));
+		expect(matchesQuery(g, 'vSwitch-public')!.nodes).toEqual(new Set(['sw:net-pub', 'internet:net-pub']));
 	});
 });
 
@@ -236,6 +256,17 @@ describe('edgeRate / edgeStyle', () => {
 		expect(edgeRate(trunk, t, g)).toEqual(t.networks['net-web']);
 		expect(edgeRate(g.edges.find((e) => e.kind === 'fip')!, t, g)).toBeNull();
 		expect(edgeRate(g.edges.find((e) => e.kind === 'lbvip')!, t, g)).toEqual({ rx_bps: 2.9e6, tx_bps: 2.7e6 });
+	});
+
+	it('never duplicates a measured sibling NIC rate onto an unobserved native port', () => {
+		const data = makeFixture();
+		data.instances.push(mkInst('vm-two-ports', 'two-ports', 'ACTIVE', [['net-web', '10.10.1.80', '00:00:80'], ['net-web', '10.10.1.81', '00:00:81']]));
+		const graph = buildGraph(data, { projectId: P, showAll: false });
+		const traffic = makeTraffic();
+		traffic.interfaces!['port-two-ports-eth0'] = { instance_id: 'vm-two-ports', network_id: 'net-web', mac_address: 'fa:16:3e:00:00:80', rx_bps: 12, tx_bps: 34 };
+		const cables = graph.edges.filter((edge) => edge.kind === 'cable' && edge.from === 'vm-two-ports');
+		expect(edgeRate(cables.find((edge) => edge.portId === 'port-two-ports-eth0')!, traffic, graph)).toMatchObject({ rx_bps: 12, tx_bps: 34 });
+		expect(edgeRate(cables.find((edge) => edge.portId === 'port-two-ports-eth1')!, traffic, graph)).toBeNull();
 	});
 
 	it('provider 트렁크는 provider 전체값을 복제하지 않고 라우터별 하위 네트워크만 합산한다', () => {

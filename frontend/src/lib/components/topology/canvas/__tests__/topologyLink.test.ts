@@ -85,6 +85,16 @@ describe('topologyLink 연결 규칙', () => {
 		expect(resolveLink(g, 'lb-web', 'sw:net-web', P)).toBeNull();
 	});
 
+	it('인터넷 노드는 연결 시작·대상이 아니며 네트워크 mutation으로 해석되지 않는다', () => {
+		const g = buildGraph(makeFixture(), { projectId: P, showAll: false });
+		expect(g.nodes.has('internet:net-pub')).toBe(true);
+		expect(canStartLink(g, 'internet:net-pub', P)).toBe(false);
+		expect(linkTargets(g, 'internet:net-pub', P).size).toBe(0);
+		expect(linkTargets(g, 'rtr-transit', P).has('internet:net-pub')).toBe(false);
+		expect(resolveLink(g, 'internet:net-pub', 'rtr-transit', P)).toBeNull();
+		expect(resolveLink(g, 'rtr-transit', 'internet:net-pub', P)).toBeNull();
+	});
+
 	it('projectId 불일치 시 null을 반환한다', () => {
 		const g = buildGraph(makeFixture(), { projectId: P, showAll: false });
 		expect(resolveLink(g, 'vm-web-01', 'sw:net-app', 'other-project')).toBeNull();

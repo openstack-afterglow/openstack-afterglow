@@ -277,7 +277,7 @@ describe('account controls follow real pending work', () => {
 		(canManageDomain as Writable<boolean>).set(true);
 		api.get.mockImplementation((path: string) => Promise.resolve(authorityFixture(path) ?? (path.endsWith('/assignable-roles') ? { roles: [], is_owner: false, can_manage_owners: false } : { items: [] })));
 		render(ProjectSettingsSection);
-		expect(screen.getByRole('link', { name: '이메일 초대' }).getAttribute('href')).toBe('/dashboard/iam');
+		expect(screen.getByRole('link', { name: '이메일 초대' }).getAttribute('href')).toBe('/dashboard/iam/users');
 		await waitFor(() => expect(api.get).toHaveBeenCalledTimes(5));
 		expect(screen.queryByPlaceholderText('user@example.com')).toBeNull();
 	});

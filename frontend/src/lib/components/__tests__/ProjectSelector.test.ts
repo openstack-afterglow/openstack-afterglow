@@ -5,6 +5,7 @@ import { ApiError } from '$lib/api/errors';
 import type * as ClientModule from '$lib/api/client';
 import ProjectSelector from '../ProjectSelector.svelte';
 import CreateProjectModal from '../projects/CreateProjectModal.svelte';
+import IamProjects from '../iam/IamProjects.svelte';
 import { api } from '$lib/api/client';
 import { acceptAuthVerification, auth, authReady, clearAuth, getAuthVerificationEpoch, logoutInProgress, projectSwitching, setAuth, setLoginAuth } from '$lib/stores/auth';
 import { cloudShell } from '$lib/stores/cloudShell.svelte';
@@ -44,6 +45,95 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); clearAuth(); logoutInProgress.set(false); projectSwitching.set(false); initLocale('ko'); });
 
 describe('authorized workspace selector', () => {
+	it.each([false, true])('prefers classified Personal by default while preserving explicit display order (%s)', async savedOrder => {
+		const personal = { id: 'personal', name: 'Z personal', kind: 'personal' as const };
+		vi.mocked(api.get).mockImplementation(async path => path === '/api/v1/auth/domains' ? [team, personal, home] : inventory());
+		if (savedOrder) localStorage.setItem(workspacePreferenceKey(home.id, 'alice'), JSON.stringify({ domains: { home: { order: 0 }, team: { order: 1 }, personal: { order: 2 } }, projects: {} }));
+		render(ProjectSelector); await open();
+		const domain = screen.getByRole('combobox', { name: t('domain') }) as HTMLSelectElement;
+		expect(Array.from(domain.options, option => option.value)).toEqual(savedOrder ? ['home', 'team', 'personal'] : ['personal', 'home', 'team']);
+		expect(domain.value).toBe(home.id);
+		expect(get(auth).domainId).toBe(home.id);
+		expect(api.post).not.toHaveBeenCalled();
+	});
+
+	it('offers footer creation without domain-only continuation or active-project settings, and never promotes a creator to domain creation', async () => {
+		setAuth({ token: 'original-token', canCreateDomain: false });
+		expect(acceptAuthVerification(getAuthVerificationEpoch(), {})).toBe(true);
+		vi.mocked(api.get).mockImplementation(async path => path === '/api/v1/auth/domains' ? [home, team] : { ...inventory(), is_domain_manager: false });
+		render(ProjectSelector); await open();
+		const dialog = screen.getByRole('dialog', { name: t('title') });
+		const create = within(dialog).getByRole('button', { name: t('newProject') });
+		expect(create.closest('footer')).not.toBeNull();
+		expect(within(dialog).queryByRole('button', { name: t('newDomain') })).toBeNull();
+		expect(dialog.querySelector('a[href="/dashboard/project-settings"]')).toBeNull();
+		expect(within(dialog).queryByRole('button', { name: 'Continue with domain' })).toBeNull();
+		await fireEvent.click(create);
+		await screen.findByRole('textbox', { name: t('projectName') });
+		expect(api.post).not.toHaveBeenCalled();
+	});
+	it('refreshes a prewarmed chooser after IAM creates a project, allowing explicit scope selection without a TTL wait', async () => {
+		const projects = [first, second];
+		const created = { id: 'created-project', name: 'Created project' };
+		vi.mocked(api.get).mockImplementation(async path => {
+			if (path === '/api/v1/auth/domains') return [home, team];
+			if (path.includes('/auth/workspaces')) return { ...inventory(), projects: [...projects], is_domain_manager: false };
+			if (path.startsWith('/api/v1/projects/capabilities')) return { domain_id: home.id, can_create_project: true };
+			if (path.startsWith('/api/v1/projects?')) return { items: [...projects] };
+			if (path.endsWith('/members')) return { items: [] };
+			if (path.endsWith('/assignable-roles')) return { roles: [], is_owner: false, can_manage_owners: false };
+			if (path.endsWith('/eligible-users')) return [];
+			if (path.endsWith('/ownership')) return { project_id: first.id, status: 'missing', owners: [], owner_user_id: null, can_transfer: false, can_delete: false, transfer_operation: null };
+			throw new Error(`Unexpected fixture path: ${path}`);
+		});
+		vi.mocked(api.post).mockImplementation(async path => {
+			if (path === '/api/v1/projects') { projects.push(created); return created; }
+			return { ...response(), project_id: created.id, project_name: created.name };
+		});
+		render(ProjectSelector); await open();
+		await fireEvent.click(screen.getByRole('button', { name: t('close') }));
+		render(IamProjects, { session: { token: () => 'original-token', userId: 'alice', domainId: home.id, isCurrent: () => true, canSubmit: () => true }, domainManager: false, onDenied: vi.fn() });
+		await screen.findByRole('combobox', { name: 'Project' });
+		await fireEvent.click(screen.getByRole('button', { name: t('newProject') }));
+		const input = screen.getByRole('textbox', { name: t('projectName') });
+		await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false));
+		await fireEvent.input(input, { target: { value: created.name } });
+		await fireEvent.click(screen.getByRole('button', { name: t('create') }));
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		await fireEvent.click(screen.getAllByRole('button', { name: /select a resource/ })[0]);
+		await fireEvent.click(await screen.findByRole('button', { name: /^Created project.*created-project/ }));
+		await waitFor(() => expect(get(auth).projectId).toBe(created.id));
+		expect(get(auth).domainId).toBe(home.id);
+	});
+
+	it('exposes creation and management for an authorized creator without manager authority, but never for another browsed domain', async () => {
+		vi.mocked(api.get).mockImplementation(async path => path === '/api/v1/auth/domains' ? [home, team]
+			: path.startsWith('/api/v1/projects/capabilities') ? { domain_id: home.id, can_create_project: true }
+			: { ...inventory(path.includes('domain_id=team') ? team : home), is_domain_manager: false });
+		render(ProjectSelector); await open();
+		expect(screen.getByRole('link', { name: t('manageProjects') })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: t('newProject') }));
+		await screen.findByRole('textbox', { name: t('projectName') });
+		await fireEvent.click(screen.getByRole('button', { name: t('cancel') }));
+		await fireEvent.change(screen.getByRole('combobox', { name: t('domain') }), { target: { value: team.id } });
+		await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/v1/auth/workspaces?domain_id=team', 'original-token', undefined, expect.anything()));
+		await screen.findByRole('button', { name: /^Project.*project-2/ });
+		expect(screen.queryByRole('link', { name: t('manageProjects') })).toBeNull();
+		expect(get(auth).domainId).toBe(home.id);
+		expect(api.post).not.toHaveBeenCalled();
+	});
+
+	it('removes project creation and management when fresh domain capability is revoked', async () => {
+		render(ProjectSelector); await open();
+		expect(screen.getByRole('link', { name: t('manageProjects') })).toBeTruthy();
+		vi.mocked(api.get).mockImplementation(async path => path === '/api/v1/auth/domains' ? [home, team]
+			: { ...inventory(), can_create_project: false, is_domain_manager: false });
+		await fireEvent.click(screen.getByRole('button', { name: t('refresh') }));
+		await waitFor(() => expect(screen.queryByRole('link', { name: t('manageProjects') })).toBeNull());
+		expect(screen.queryByRole('button', { name: t('newProject') })).toBeNull();
+		expect(api.post).not.toHaveBeenCalled();
+	});
+
 	it('keeps immutable account-home identity out of the administrator user resource chooser', async () => {
 		setAuth({ token: 'original-token', identityDomainId: 'private-accounts-home', identityDomainName: 'Private account identity', isSystemAdmin: true });
 		expect(acceptAuthVerification(getAuthVerificationEpoch(), { isSystemAdmin: true })).toBe(true);
@@ -92,7 +182,7 @@ describe('authorized workspace selector', () => {
 		render(ProjectSelector);
 		await fireEvent.click(screen.getByRole('button', { name: /select a resource/ }));
 		expect(screen.queryByText(second.id)).toBeNull();
-		expect((screen.getByRole('button', { name: t('newProject') }) as HTMLButtonElement).disabled).toBe(true);
+		expect(screen.queryByRole('button', { name: t('newProject') })).toBeNull();
 		expect(api.post).not.toHaveBeenCalled();
 	});
 
@@ -107,7 +197,7 @@ describe('authorized workspace selector', () => {
 		expect(vi.mocked(api.get).mock.calls.map(call => call[0])).toEqual(['/api/v1/auth/domains', '/api/v1/auth/workspaces?domain_id=home']);
 		workspace.resolve(inventory()); await workspace.promise;
 		expect(screen.queryByText(second.id)).toBeNull();
-		expect((screen.getByRole('button', { name: t('newProject') }) as HTMLButtonElement).disabled).toBe(true);
+		expect(screen.queryByRole('button', { name: t('newProject') })).toBeNull();
 		directory.resolve([home, team]);
 		await screen.findByRole('button', { name: /^Project.*project-2/ });
 		expect((screen.getByRole('button', { name: t('newProject') }) as HTMLButtonElement).disabled).toBe(false);
@@ -125,8 +215,7 @@ describe('authorized workspace selector', () => {
 		if (outcome === 'failed') { directory.reject(new Error('directory unavailable')); await screen.findByText(t('loadFailed')); }
 		else { directory.resolve([]); await screen.findByText(t('empty')); }
 		expect(screen.queryByText(second.id)).toBeNull();
-		expect(screen.queryByRole('button', { name: t('useDomain') })).toBeNull();
-		expect((screen.getByRole('button', { name: t('newProject') }) as HTMLButtonElement).disabled).toBe(true);
+		expect(screen.queryByRole('button', { name: t('newProject') })).toBeNull();
 		expect((screen.getByRole('combobox', { name: t('domain') }) as HTMLSelectElement).disabled).toBe(true);
 		expect(api.post).not.toHaveBeenCalled();
 	});
@@ -191,7 +280,7 @@ describe('authorized workspace selector', () => {
 		expect(projectButton(second.id)).toBeTruthy();
 		vi.mocked(api.get).mockRejectedValue(new Error('unavailable'));
 		await fireEvent.click(screen.getByRole('button', { name: t('refresh') })); await screen.findByText(t('loadFailed'));
-		expect(screen.queryByText(second.id)).toBeNull(); expect((screen.getByRole('button', { name: t('newProject') }) as HTMLButtonElement).disabled).toBe(true);
+		expect(screen.queryByText(second.id)).toBeNull(); expect(screen.queryByRole('button', { name: t('newProject') })).toBeNull();
 	});
 
 	it('reopens a recent resource list without a loading gap and refreshes it explicitly', async () => {
@@ -228,12 +317,12 @@ describe('authorized workspace selector', () => {
 		await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/v1/auth/domains', { name: 'New domain' }, 'original-token', undefined, expect.objectContaining({ replayOnUnauthorized: false, cache: 'no-store', signal: expect.any(AbortSignal) })));
 		const signal = vi.mocked(api.post).mock.calls[0][4]!.signal!;
 		const backdrop = dialog.firstElementChild as HTMLButtonElement;
-		const settings = screen.getByText(t('projectSettings')).closest('a')!;
+		const management = screen.getByText(t('manageProjects')).closest('a')!;
 		await waitFor(() => expect(backdrop.disabled).toBe(true));
-		expect(settings.getAttribute('href')).toBeNull();
+		expect(management.getAttribute('href')).toBeNull();
 		if (action === 'escape') await fireEvent.keyDown(document, { key: 'Escape' });
 		else if (action === 'backdrop') await fireEvent.click(backdrop);
-		else expect(await fireEvent.click(settings)).toBe(false);
+		else expect(await fireEvent.click(management)).toBe(false);
 		(screen.getByRole('button', { name: t('close') }) as HTMLButtonElement).click();
 		(screen.getByRole('button', { name: t('cancel') }) as HTMLButtonElement).click();
 		expect(screen.getByRole('dialog', { name: t('title') })).toBe(dialog);
@@ -291,10 +380,9 @@ describe('authorized workspace selector', () => {
 		vi.mocked(api.get).mockImplementation(async path => path === '/api/v1/auth/domains' ? [home, team] : fresh.promise);
 		await fireEvent.click(within(inner).getByRole('button', { name: t('cancel') }));
 		await waitFor(() => expect(inner.isConnected).toBe(false));
-		const create = screen.getByRole('button', { name: t('newProject') }) as HTMLButtonElement;
-		expect(create.disabled).toBe(true);
+		expect(screen.queryByRole('button', { name: t('newProject') })).toBeNull();
 		fresh.resolve(inventory());
-		await waitFor(() => expect(create.disabled).toBe(false));
+		await waitFor(() => expect((screen.getByRole('button', { name: t('newProject') }) as HTMLButtonElement).disabled).toBe(false));
 		await fireEvent.click(screen.getByRole('button', { name: t('close') }));
 		await waitFor(() => expect(outer.isConnected).toBe(false));
 	});

@@ -158,7 +158,7 @@ describe('home-first workspace chooser', () => {
 	});
 
 	it.each([
-		[false, false, '/select-project'], [true, false, '/dashboard/iam'], [false, true, '/admin'],
+		[false, false, '/select-project'], [true, false, '/dashboard/iam/users'], [false, true, '/admin'],
 	] as const)('preserves projectless navigation for manager=%s system-admin=%s', async (isDomainManager, isSystemAdmin, destination) => {
 		setAuth({ token: 'home-token', isDomainManager, isSystemAdmin });
 		expect(acceptAuthVerification(getAuthVerificationEpoch(), {})).toBe(true);
@@ -203,11 +203,6 @@ describe('shared domain and project continuation', () => {
 		expect(get(auth)).toMatchObject({ identityDomainId: home.id, projectId: 'team-project', federated: true, sessionId });
 		expect(mocks.post).toHaveBeenCalledWith('/api/v1/auth/token/workspace', { domain_id: team.id, project_id: 'team-project' }, 'home-token', undefined, expect.objectContaining({ replayOnUnauthorized: false, cache: 'no-store' }));
 		expect(mocks.goto).toHaveBeenCalledWith('/dashboard');
-	});
-	it('allows a manager to explicitly continue through the domain endpoint', async () => {
-		render(Page); await chooseTeam(); await fireEvent.click(screen.getByRole('button', { name: t('useDomain') }));
-		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/dashboard'));
-		expect(mocks.post.mock.calls[0][0]).toBe('/api/v1/auth/token/domain');
 	});
 	it.each(['subject', 'identity', 'target', 'project'] as const)('rejects a response with a foreign %s', async (kind) => {
 		mocks.post.mockResolvedValueOnce({ ...switchResponse, ...(kind === 'subject' ? { user_id: 'other' } : kind === 'identity' ? { identity_domain_id: team.id } : kind === 'target' ? { domain_id: home.id } : { project_id: 'foreign' }) });

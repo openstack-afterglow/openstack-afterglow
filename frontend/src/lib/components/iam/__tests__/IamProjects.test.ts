@@ -36,7 +36,7 @@ function fixture(path: string) {
 	if (path.endsWith('/users')) return { items: [user, joined] };
 	if (path.endsWith('/eligible-users')) return [user, joined];
 	if (path.endsWith('/ownership')) return { project_id: path.split('/').at(-2), owner_user_id: 'actor', status: 'unique', owners: [{ user_id: 'actor', name: 'Owner', source: 'direct' }], can_transfer: false, can_delete: false, transfer_operation: null };
-	if (path.endsWith('/projects')) return { items: rows };
+	if (path.endsWith('/projects') || path.includes('/projects?domain_id=')) return { items: rows };
 	if (path.endsWith('/assignable-roles')) return catalog;
 	if (path.endsWith('/members')) return { items: members };
 	throw new Error(`Unexpected path: ${path}`);
@@ -132,5 +132,19 @@ describe('manager project creation and access', () => {
 		await fireEvent.click(within(dialog).getByRole('button', { name: '역할 저장' }));
 		expect(api.put).toHaveBeenCalledExactlyOnceWith('/api/v1/iam/projects/project-a/members/user-a/roles', { role_ids: ['member-role'] }, 'token', undefined, { replayOnUnauthorized: false });
 		expect(api.delete).not.toHaveBeenCalled();
+	});
+	it('uses only generic current-project membership and ownership APIs for a creator-only project owner', async () => {
+		auth.update(state => ({ ...state, projectId: project.id, isDomainManager: false }));
+		api.put.mockResolvedValue({});
+		render(IamProjects, { session, domainManager: false, onDenied: vi.fn() });
+		await screen.findByText('Alice');
+		expect(api.get.mock.calls.some(([path]) => path.startsWith('/api/v1/iam/') || path.includes('/creators'))).toBe(false);
+		expect(screen.queryByText('프로젝트 생성 권한 위임')).toBeNull();
+		await fireEvent.change(screen.getByLabelText('사용자'), { target: { value: joined.id } });
+		await fireEvent.click(screen.getByRole('button', { name: '사용자 역할 할당' }));
+		const dialog = screen.getByRole('dialog');
+		await fireEvent.click(within(dialog).getByRole('checkbox', { name: /project_member/ }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: '역할 저장' }));
+		expect(api.put).toHaveBeenCalledExactlyOnceWith('/api/v1/projects/project-a/members/user-b/roles', { role_ids: ['member-role'] }, 'token', undefined, { replayOnUnauthorized: false });
 	});
 });

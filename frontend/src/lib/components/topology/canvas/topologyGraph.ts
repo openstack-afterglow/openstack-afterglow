@@ -35,6 +35,7 @@ export interface BuildGraphOpts {
 }
 
 export const switchId = (netId: string): string => `sw:${netId}`;
+export const internetId = (netId: string): string => `internet:${netId}`;
 
 function netColor(kind: CanvasNet['kind']): string {
 	if (kind === 'external') return 'var(--color-topology-external)';
@@ -123,6 +124,11 @@ export function buildGraph(data: TopologyData, opts: BuildGraphOpts): CanvasGrap
 			status: n.status,
 			netIds: [n.id],
 		});
+		if (n.kind === 'external') {
+			const upstreamId = internetId(n.id);
+			nodes.set(upstreamId, { id: upstreamId, kind: 'internet', netId: n.id, netIds: [n.id], name: 'Internet', status: n.status });
+			addEdge({ kind: 'uplink', from: upstreamId, to: id, netId: n.id });
+		}
 	}
 
 	for (const r of routersRaw) {
@@ -193,7 +199,7 @@ export function buildGraph(data: TopologyData, opts: BuildGraphOpts): CanvasGrap
 		}
 		const nics: CanvasNic[] = [...groups.values()]
 			.sort((a, b) => cmpArr(rankNet(a.netId), rankNet(b.netId)) || a.ips[0].localeCompare(b.ips[0]))
-			.map((g, idx) => ({ ...g, idx, rowIdx: 0, label: `eth${idx}`, ip: g.ips[0], key: `${inst.id}|${g.netId}|${idx}` }));
+			.map((g, idx) => ({ ...g, idx, rowIdx: 0, label: `eth${idx}`, ip: g.ips[0], key: `${inst.id}|${g.netId}|${g.portId ?? 'legacy'}` }));
 		for (const a of inst.ip_addresses) {
 			if (a.type !== 'floating') continue;
 			const f = fipByAddr.get(a.addr);
@@ -227,8 +233,7 @@ export function buildGraph(data: TopologyData, opts: BuildGraphOpts): CanvasGrap
 		nodes.set(node.id, node);
 		for (const nic of nics) {
 			addEdge({ kind: 'cable', from: inst.id, to: switchId(nic.netId), netId: nic.netId, nic, portId: nic.portId, instanceId: inst.id }, nic.key);
-			// Floating IP 선은 그 IP 가 속한 외부 네트워크의 가상 스위치로 직접 잇는다
-			// (합성 코어 노드를 없앤 뒤로 외부망 자체가 인터넷 경계를 나타낸다).
+			// Floating IP remains attached to its native external network switch, not the illustrative Internet uplink.
 			for (const f of nic.fips) {
 				const target = f.netId && netById.has(f.netId) ? f.netId : null;
 				if (!target) continue;
@@ -294,7 +299,7 @@ export function colorOfNet(graph: CanvasGraph | null | undefined, netId: string 
 	return (netId && graph?.netById.get(netId)?.color) || 'var(--color-state-neutral)';
 }
 
-/** LB 활성화 시 지연 생성하는 멤버 곡선. VIP 네트워크의 NIC 에 앵커하고 없으면 첫 NIC 을 쓴다. */
+/** Lazy LB member links anchor to the VIP network NIC, falling back to the first NIC. */
 export function buildMemberEdges(graph: CanvasGraph, lbId: string, pos?: ReadonlyMap<string, Rect>): CanvasEdge[] {
 	const lb = graph.nodes.get(lbId);
 	if (!lb || lb.kind !== 'lb') return [];
@@ -335,6 +340,7 @@ export function matchesQuery(graph: CanvasGraph, raw: string): QueryMatch | null
 		if (hit) {
 			nets.add(n.id);
 			nodes.add(switchId(n.id));
+			if (n.kind === 'external') nodes.add(internetId(n.id));
 		}
 	}
 	for (const node of graph.nodes.values()) {
@@ -360,7 +366,7 @@ export function matchesQuery(graph: CanvasGraph, raw: string): QueryMatch | null
 					: isMac
 						? false
 						: node.name.toLowerCase().includes(q);
-		} else if (node.kind === 'switch') {
+		} else if (node.kind === 'switch' || node.kind === 'internet') {
 			if (!isCidr && !isIpish && !isMac && node.name.toLowerCase().includes(q)) {
 				hit = true;
 				nets.add(node.netId);
@@ -368,7 +374,10 @@ export function matchesQuery(graph: CanvasGraph, raw: string): QueryMatch | null
 		}
 		if (hit) nodes.add(node.id);
 	}
-	for (const nid of nets) nodes.add(switchId(nid));
+	for (const nid of nets) {
+		nodes.add(switchId(nid));
+		if (graph.netById.get(nid)?.kind === 'external') nodes.add(internetId(nid));
+	}
 	return { nodes, nets };
 }
 
@@ -391,7 +400,7 @@ export function edgeRate(
 	if (!t) return null;
 	switch (e.kind) {
 		case 'cable': {
-			if (e.portId && t.interfaces?.[e.portId]) return t.interfaces[e.portId];
+			if (e.portId) return t.interfaces?.[e.portId] ?? null;
 			let acc: TrafficRate | null = null;
 			for (const v of Object.values(t.interfaces ?? {})) {
 				if (v.instance_id === e.instanceId && v.network_id === e.netId) {

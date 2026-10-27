@@ -1,6 +1,6 @@
 import { api } from './client';
 import type { IamSession } from './domainIam';
-import type { EligibleProjectUser, ProjectOwnership, ProjectCreators } from '$lib/types/project';
+import type { EligibleProjectUser, ProjectOwnership, ProjectCreators, Project, ProjectAccessMember, AssignableProjectRoles } from '$lib/types/project';
 
 // Native lifecycle writes must never be replayed after an uncertain response or 401.
 export function projectAuthority(session: IamSession, callerProject?: string) {
@@ -17,6 +17,17 @@ export function projectAuthority(session: IamSession, callerProject?: string) {
 	};
 	const root = (project: string) => `/api/v1/projects/${encodeURIComponent(project)}`;
 	return {
+		projects: () => dispatch(() => api.get<{ items: Project[] }>(`/api/v1/projects?domain_id=${encodeURIComponent(session.domainId)}`, session.token(), callerProject, { cache: 'no-store' })),
+		members: (project: string) => dispatch(() => api.get<{ items: ProjectAccessMember[] }>(`${root(project)}/members`, session.token(), callerProject, { cache: 'no-store' })),
+		roles: (project: string) => dispatch(() => api.get<AssignableProjectRoles>(`${root(project)}/assignable-roles`, session.token(), callerProject, { cache: 'no-store' })),
+		assignRoles: (project: string, user: string, roleIds: string[]) => {
+			if (!session.canSubmit()) return Promise.reject(new DOMException('', 'AbortError'));
+			return dispatch(() => api.put(`${root(project)}/members/${encodeURIComponent(user)}/roles`, { role_ids: roleIds }, session.token(), callerProject, { replayOnUnauthorized: false }));
+		},
+		removeMember: (project: string, user: string) => {
+			if (!session.canSubmit()) return Promise.reject(new DOMException('', 'AbortError'));
+			return dispatch(() => api.delete(`${root(project)}/members/${encodeURIComponent(user)}`, session.token(), callerProject, { replayOnUnauthorized: false }));
+		},
 		create: (name: string, description: string) => {
 			if (!session.canSubmit()) return Promise.reject<{ id: string; name: string }>(new DOMException('', 'AbortError'));
 			return dispatch(() => api.post<{ id: string; name: string }>('/api/v1/projects', { name, description, domain_id: session.domainId }, session.token(), callerProject, { replayOnUnauthorized: false, suppressAuthRedirect: true, cache: 'no-store' }));

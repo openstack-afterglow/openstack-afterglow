@@ -89,6 +89,54 @@ describe('AdminProjectDeleteModal resource inspection', () => {
 		expect(deleteButton().disabled).toBe(true);
 	});
 
+	it('links each remaining kind to the exact target monitor without issuing mutations', async () => {
+		mocks.get.mockResolvedValue({ ...blockedReport(), resources: [
+			remainingResource,
+			{ ...remainingResource, kind: 'security_groups', service: 'network' },
+			{ ...remainingResource, kind: 'secret_orders', service: 'key_manager' },
+			{ ...remainingResource, kind: 'child_projects', service: 'identity' },
+		] });
+		openModal();
+		const links = await screen.findAllByRole('link', { name: /제거 화면으로 이동/ });
+		expect(links.map(link => link.getAttribute('href'))).toEqual([
+			'/admin/projects/p1/resources?domain_id=domain-a&kind=instances',
+			'/admin/projects/p1/resources?domain_id=domain-a&kind=security_groups',
+			'/admin/projects/p1/resources?domain_id=domain-a&kind=secret_orders',
+			'/admin/projects/p1/resources?domain_id=domain-a&kind=child_projects',
+		]);
+		// Browser navigation is exercised in the compiled UI smoke. jsdom only
+		// verifies that activation does not accidentally dispatch a mutation.
+		links[0].addEventListener('click', event => event.preventDefault());
+		await fireEvent.click(links[0]);
+		expect(mocks.delete).not.toHaveBeenCalled();
+		expect(deleteButton().disabled).toBe(true);
+	});
+
+	it('keeps unknown inventory actionable but disables empty, absent and unknown-kind cleanup', async () => {
+		mocks.get.mockResolvedValue({ ...unknownReport(), resources: [
+			unavailableResource,
+			{ ...emptyResource, kind: 'networks', service: 'network' },
+			{ ...unavailableResource, kind: 'shares', service: 'share', status: 'skipped', reason: 'service_not_present' },
+			{ ...remainingResource, kind: 'future_kind' },
+		] });
+		openModal();
+		expect((await screen.findByRole('link', { name: '인스턴스 제거 화면으로 이동' })).getAttribute('href')).toContain('kind=instances');
+		for (const label of ['네트워크', '공유 파일 시스템', '기타 리소스']) {
+			const control = screen.getByLabelText(`${label} 제거 화면으로 이동`);
+			expect(control.getAttribute('href')).toBeNull();
+			expect(control.getAttribute('aria-disabled') === 'true' || (control as HTMLButtonElement).disabled).toBe(true);
+		}
+		expect(mocks.delete).not.toHaveBeenCalled();
+	});
+
+	it('does not expose administrator cleanup navigation in the shared IAM modal', async () => {
+		mocks.get.mockResolvedValue(blockedReport());
+		render(AdminProjectDeleteModal, { project, domainId: 'domain-a', onClose: vi.fn(), onSuccess: vi.fn(),
+			session: { token: () => 'token', isCurrent: () => true, canSubmit: () => true } as never });
+		await screen.findByText('vm-1');
+		expect(screen.queryByRole('link', { name: /제거 화면으로 이동/ })).toBeNull();
+	});
+
 	it('does not render secret contents or names from an inventory sample', async () => {
 		mocks.get.mockResolvedValue({ ...blockedReport(), resources: [{ ...remainingResource, kind: 'secrets', service: 'key_manager',
 			samples: [{ id: 'secret-uuid', name: 'sensitive-name', payload: 'secret-value' }] }] });

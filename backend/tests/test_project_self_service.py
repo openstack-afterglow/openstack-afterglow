@@ -18,7 +18,7 @@ from tests.ownership_journal import ownership_journal as ownership_journal
 from tests.test_domain_iam import directory as directory
 from tests.test_domain_iam import enrollments as enrollments
 from tests.test_domain_iam import manager
-from tests.test_project_membership_roles import PROJECT, rid
+from tests.test_project_membership_roles import PROJECT, assignment, rid
 
 pytestmark = pytest.mark.usefixtures("ownership_journal")
 
@@ -53,8 +53,18 @@ async def test_project_create_and_invite_deny_ordinary_project_roles(directory, 
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("creator_preset", [True, False])
-async def test_project_create_explicit_domain_and_real_creator_owner(directory, monkeypatch, creator_preset):
+@pytest.mark.parametrize(
+    "actor,creator_preset,revoke_before_activation",
+    [
+        ("domain-manager", True, False),
+        ("domain-manager", False, False),
+        ("member", True, False),
+        ("member", True, True),
+    ],
+)
+async def test_project_create_explicit_domain_and_real_creator_owner(
+    directory, monkeypatch, actor, creator_preset, revoke_before_activation
+):
     created_attrs = []
     from app.services import domain_quotas
 
@@ -62,11 +72,15 @@ async def test_project_create_explicit_domain_and_real_creator_owner(directory, 
     directory.project = None
     if not creator_preset:
         directory.catalog = [role for role in directory.catalog if role["name"] != "project_creator"]
+    if actor == "member":
+        directory.default_direct.append(assignment(actor, "project_creator", project_id="default-project"))
     assert directory.domain_direct == []  # The manager has no creator grant.
 
     async def quota_defaults(conn, domain_id, project_id, *, lease):
         assert directory.project.enabled is False
         assert domain_id == "domain" and project_id == PROJECT
+        if revoke_before_activation:
+            directory.default_direct.clear()
 
     quota = AsyncMock(side_effect=quota_defaults)
     monkeypatch.setattr(domain_quotas, "apply_project_defaults", quota)
@@ -94,7 +108,7 @@ async def test_project_create_explicit_domain_and_real_creator_owner(directory, 
     directory.ks.projects.create = create_project
     app = FastAPI()
     app.include_router(router, prefix="/api/v1/projects")
-    app.dependency_overrides[get_token_info] = lambda: manager()
+    app.dependency_overrides[get_token_info] = lambda: manager(actor)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         capability = await client.get("/api/v1/projects/capabilities?domain_id=domain")
         assert capability.status_code == 200
@@ -102,6 +116,12 @@ async def test_project_create_explicit_domain_and_real_creator_owner(directory, 
         response = await client.post(
             "/api/v1/projects", json={"name": "new-project", "description": "description", "domain_id": "domain"}
         )
+    if revoke_before_activation:
+        assert response.status_code == 403
+        assert directory.project.enabled is False
+        assert (await project_service.get_project_access(PROJECT, actor))["is_owner"]
+        quota.assert_awaited_once()
+        return
     assert response.status_code == 201
     result = response.json()
     assert created_attrs == [
@@ -110,7 +130,7 @@ async def test_project_create_explicit_domain_and_real_creator_owner(directory, 
     quota.assert_awaited_once()
     assert directory.project.enabled is True
     assert result["id"] == PROJECT
-    assert (await project_service.get_project_access(PROJECT, "domain-manager"))["is_owner"]
+    assert (await project_service.get_project_access(PROJECT, actor))["is_owner"]
 
 
 @pytest.mark.asyncio
@@ -122,20 +142,24 @@ async def test_manager_cannot_create_project_in_other_domain(directory):
 
 
 @pytest.mark.asyncio
-async def test_manager_project_creation_rechecks_authority_inside_graph_lock(directory, monkeypatch):
+@pytest.mark.parametrize("actor", ["domain-manager", "member"])
+async def test_project_creation_rechecks_authority_inside_graph_lock(directory, monkeypatch, actor):
     from app.services import identity_roles
 
+    if actor == "member":
+        directory.default_direct.append(assignment(actor, "project_creator", project_id="default-project"))
     graph_lock = identity_roles._graph_lock
 
     @asynccontextmanager
     async def revoked_lock(conn):
         async with graph_lock(conn) as lease:
             directory.managers.clear()
+            directory.default_direct.clear()
             yield lease
 
     monkeypatch.setattr(identity_roles, "_graph_lock", revoked_lock)
     with pytest.raises(HTTPException) as denied:
-        await project_service.create_project_for_user("project", "", "domain-manager", "manager", "domain")
+        await project_service.create_project_for_user("project", "", actor, actor, "domain")
     assert denied.value.status_code == 403
     assert not directory.calls and not directory.personal_projects
 

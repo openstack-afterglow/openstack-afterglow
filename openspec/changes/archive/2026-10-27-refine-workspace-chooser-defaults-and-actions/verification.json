@@ -1,0 +1,80 @@
+{
+  "change": "refine-workspace-chooser-defaults-and-actions",
+  "date": "2026-10-27",
+  "scope": "frontend presentation/navigation only; no API/auth/schema/config changes",
+  "snapshot": "/Users/pieroot/.local/share/afterglow-proofs/workspace-chooser-refinement-20261027/verification-9u558o5q",
+  "source_sha256": "f9cdf9a2610e5e6dae82973a7429b305f6d2f4d3910a061b56d82bcadcb9b40a",
+  "source_entries": 3526,
+  "manifest_note": "3525 shared public source files plus isolated root node_modules dependency symlink",
+  "shared_source_parity": true,
+  "gate": {
+    "artifact": "artifact://315",
+    "exit": 0,
+    "backend_passed": 10206,
+    "backend_skipped": 95,
+    "frontend_files": 457,
+    "frontend_passed": 5436,
+    "contracts_passed": 183,
+    "db_passed": 167,
+    "db_deselected": 33,
+    "ruff_files": 750,
+    "working_and_staged_architecture": "passed only in isolated snapshot"
+  },
+  "focused": {
+    "ProjectSelector": 29,
+    "DomainSelection": 41,
+    "workspaceController": 29,
+    "failed_before": 2
+  },
+  "frontend_check": {
+    "errors": 0,
+    "existing_warnings": 16
+  },
+  "i18n": {
+    "errors": 0,
+    "existing_warnings": 45,
+    "hardcoded_korean": 0
+  },
+  "browser": {
+    "surface": "real SvelteKit route and Chromium; synthetic mutable identity/directory HTTP fixture",
+    "conditions": 108,
+    "languages": 9,
+    "themes": 2,
+    "widths": [
+      390,
+      767,
+      768,
+      1023,
+      1024,
+      1440
+    ],
+    "page_and_chooser_overflow": 0,
+    "footer_controls_fit": true,
+    "default_personal_first": true,
+    "explicit_reorder_persists_on_reopen": true,
+    "active_domain_unchanged": true,
+    "domain_and_project_forms_opened": true,
+    "manager_removed_actions_absent": true,
+    "synthetic_post_calls": 0,
+    "stable_screenshots": [
+      "dark-1440.png",
+      "light-390.png"
+    ],
+    "non_acceptance_capture": "personal-first-settings.png captured mid-fade; DOM order separately verified"
+  },
+  "authorization": "browsed-domain project creation capability; domain creation retains independent canCreateDomain policy; no role-name inference or new grants",
+  "not_performed": [
+    "deployment",
+    "commit",
+    "push",
+    "live cloud/IAM writes",
+    "gbrain sync (CLI unavailable)"
+  ],
+  "preserved": [
+    "shared staging",
+    "shared architecture marker",
+    "private config",
+    "unrelated services and data"
+  ],
+  "cleanup": "owned browser/fixture/preview stopped; disposable DB resources removed by runner"
+}

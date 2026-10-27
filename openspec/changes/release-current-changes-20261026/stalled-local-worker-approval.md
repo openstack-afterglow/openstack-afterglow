@@ -1,0 +1,9 @@
+# Explicit exact failed local Lumen worker disposition
+
+The user selected `증거 보존 후 한정 격리 종료` after the existing local Lumen0.6.9 worker failed its genuine, non-escalating graceful stop (1800-second client deadline). Scope is ONLY container `4180c4628fd721b8acec2d8e4a61302a375333b0128432241c33b2b4abb73a2a` in the retained local Compose cohort.
+
+Only if additional actual observations establish no business work or external I/O, and exact software/configuration/recovery evidence is protected, may Main exceptionally force this single process/container to exit. If any uncertainty remains, do not terminate it. Do not describe the exit as a normal/acknowledged drain. Preserve its original SQL registration, auxiliary counters, all data/history and failed-generation receipts unchanged; never reset counters or replay work to satisfy readiness. This does not authorize forced termination of any native controller, another local worker, the separately quarantined Palimpsest build worker, or a database connection, nor injection into the running process.
+
+Source-bound non-injecting diagnostics observed the actual old main coroutine waiting in `stop_auxiliary` for a title loop with one consumed cancellation, still sleeping. This establishes the current shutdown blocker, not the cause of the older initial application failure. Main's exact-ABI read-only decoder and owned fixture are diagnostic evidence, not alone a full no-work or cold-recovery proof. A source fix/new immutable patch must be separately qualified; source changes do not patch this already-running old process.
+
+All native/local cold recovery, migration028, canonical deployment and post-cutover acceptance remain unperformed. This authorization is a narrow exceptional disposition prerequisite, not a cold-success or deployment approval receipt.

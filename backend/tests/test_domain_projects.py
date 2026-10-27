@@ -675,6 +675,163 @@ async def test_canonical_role_and_native_reader_hierarchy_validated_before_any_w
     assert error.value.status_code == 503
 
 
+@pytest.fixture
+def creator_native(domain_native):
+    domain_native.role_rows.append(row(id="project_creator", name="project_creator", domain_id=None))
+    domain_native.raw.append(grant("project_creator", user="ordinary", project="default-a"))
+    return domain_native
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source", ["direct", "group", "implication", "domain-inherited", "ancestor-inherited"])
+async def test_creator_capability_proves_current_effective_default_sources(creator_native, source):
+    n = creator_native
+    n.raw = [r for r in n.raw if r.role["id"] != "project_creator"]
+    if source == "group":
+        n.group_rows["creators"] = row(id="creators", name="Creators", domain_id="tenant-a")
+        n.members["creators"] = {"ordinary"}
+        n.raw.append(grant("project_creator", group="creators", project="default-a"))
+    elif source == "implication":
+        n.role_rows.append(row(id="creator-alias", name="creator-alias", domain_id=None))
+        n.edges.append({"prior_role": {"id": "creator-alias"}, "implies": [{"id": "project_creator"}]})
+        n.raw.append(grant("creator-alias", user="ordinary", project="default-a"))
+    elif source == "domain-inherited":
+        n.raw.append(grant("project_creator", user="ordinary", domain="tenant-a", inherited=True))
+    elif source == "ancestor-inherited":
+        n.project_rows["default-a"].parent_id = "work-a"
+        n.raw.append(grant("project_creator", user="ordinary", project="work-a", inherited=True))
+    else:
+        n.raw.append(grant("project_creator", user="ordinary", project="default-a"))
+    assert await project_service.can_create_project("ordinary", "tenant-a")
+    assert not domain_projects.has_manager("ordinary", "tenant-a")
+    n.raw = [r for r in n.raw if r.role["id"] not in {"project_creator", "creator-alias"}]
+    assert not await project_service.can_create_project("ordinary", "tenant-a")
+    assert n.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scope", ["legacy-domain", "ordinary-project", "other-default", "missing-default"])
+async def test_creator_wrong_scope_never_authorizes_creation(creator_native, scope):
+    n = creator_native
+    n.raw = []
+    if scope == "legacy-domain":
+        n.raw.append(grant("project_creator", user="ordinary", domain="tenant-a"))
+    elif scope == "ordinary-project":
+        n.raw.append(grant("project_creator", user="ordinary", project="work-a"))
+    elif scope == "other-default":
+        n.raw.append(grant("project_creator", user="ordinary", project="default-b"))
+    else:
+        del n.project_rows["default-a"]
+    assert not await project_service.can_create_project("ordinary", "tenant-a")
+    assert n.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "disabled-default",
+        "duplicate-default",
+        "lookalike-default",
+        "duplicate-role",
+        "lookalike-role",
+        "disabled-user",
+        "disabled-home",
+        "missing-provenance",
+        "wrong-effective-scope",
+    ],
+)
+async def test_creator_native_authority_faults_fail_closed(creator_native, fault):
+    n = creator_native
+    if fault == "disabled-default":
+        n.project_rows["default-a"].enabled = False
+    elif fault == "duplicate-default":
+        n.project_rows["duplicate"] = row(id="duplicate", name="Default", domain_id="tenant-a", enabled=True)
+    elif fault == "lookalike-default":
+        n.project_rows["default-a"].name = "default"
+    elif fault == "duplicate-role":
+        n.role_rows.append(row(id="duplicate-role", name="Project_Creator", domain_id=None))
+    elif fault == "lookalike-role":
+        n.role_rows[-1].name = "Project_Creator"
+    elif fault == "disabled-user":
+        n.user_rows["ordinary"].enabled = False
+    elif fault == "disabled-home":
+        n.domain_rows["tenant-a"].enabled = False
+    else:
+        original = n.role_assignments.list
+
+        def broken(**kwargs):
+            if fault == "missing-provenance" and not kwargs:
+                return [r for r in n.raw if r.role["id"] != "project_creator"]
+            rows = original(**kwargs)
+            if fault == "wrong-effective-scope" and kwargs.get("project") == "default-a" and kwargs.get("effective"):
+                rows.append(grant("project_creator", user="ordinary", project="work-a"))
+            return rows
+
+        n.role_assignments.list = broken
+    with pytest.raises(HTTPException) as denied:
+        await project_service.can_create_project("ordinary", "tenant-a")
+    assert denied.value.status_code in {401, 403, 503}
+    assert n.calls == []
+
+
+def test_creator_project_assignment_targets_only_canonical_default(creator_native):
+    n = creator_native
+    domain_projects.assert_creator_assignment("default-a", "project_creator")
+    with pytest.raises(HTTPException) as denied:
+        domain_projects.assert_creator_assignment("work-a", "project_creator")
+    assert denied.value.detail == "project_creator_requires_default_project"
+    n.role_rows.append(row(id="creator-alias", name="creator-alias", domain_id=None))
+    n.edges.append({"prior_role": {"id": "creator-alias"}, "implies": [{"id": "project_creator"}]})
+    with pytest.raises(HTTPException) as denied:
+        domain_projects.assert_creator_assignment("work-a", "creator-alias")
+    assert denied.value.status_code == 422
+    assert n.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source", ["group", "implication", "domain-inherited"])
+async def test_creator_delegation_preserves_non_direct_effective_grants(creator_native, source):
+    n = creator_native
+    n.raw = [r for r in n.raw if r.role["id"] != "project_creator"]
+    if source == "group":
+        n.group_rows["creators"] = row(id="creators", name="Creators", domain_id="tenant-a")
+        n.members["creators"] = {"ordinary"}
+        n.raw.append(grant("project_creator", group="creators", project="default-a"))
+    elif source == "implication":
+        n.role_rows.append(row(id="creator-alias", name="creator-alias", domain_id=None))
+        n.edges.append({"prior_role": {"id": "creator-alias"}, "implies": [{"id": "project_creator"}]})
+        n.raw.append(grant("creator-alias", user="ordinary", project="default-a"))
+    else:
+        n.raw.append(grant("project_creator", user="ordinary", domain="tenant-a", inherited=True))
+    listed = await project_service.project_creators("tenant-a", "creator")
+    assert listed["users"][0]["id"] == "ordinary"
+    assert listed["users"][0]["direct"] is False and listed["users"][0]["source"] == "inherited"
+    unchanged = await project_service.change_project_creator("tenant-a", "ordinary", False, "creator")
+    assert unchanged["users"] == listed["users"]
+    assert await project_service.can_create_project("ordinary", "tenant-a")
+    assert n.calls == []
+
+
+@pytest.mark.asyncio
+async def test_creator_listing_reuses_one_effective_default_assignment_read_for_500_users(creator_native):
+    n = creator_native
+    n.raw = [source for source in n.raw if source.role["id"] != "project_creator"]
+    expected = {f"scale-creator-{index:03d}" for index in range(500)}
+    for uid in sorted(expected):
+        n.user_rows[uid] = row(id=uid, name=uid, enabled=True, domain_id="tenant-a")
+        n.raw.append(grant("project_creator", user=uid, project="default-a"))
+    n.read_calls.clear()
+    listed = await project_service.project_creators("tenant-a", "creator")
+    assert {user["id"] for user in listed["users"]} == expected
+    assignment_reads = [call for call in n.read_calls if call[0] == "assignments.list"]
+    assert sum(call[1] == "default-a" and call[4] is True for call in assignment_reads) == 1
+    assert sum(call[1] == "default-a" and call[4] is False for call in assignment_reads) == 1
+    assert not any(call[2] in expected for call in assignment_reads)
+    assert all(user["direct"] is True and user["source"] == "direct" for user in listed["users"])
+    assert n.calls == []
+
+
 @pytest.mark.parametrize("kind", ["ambiguous", "disabled", "case", "foreign"])
 def test_Default_lookup_fails_closed_on_provider_or_identity_uncertainty(domain_native, kind):
     n = domain_native

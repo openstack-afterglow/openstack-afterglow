@@ -1,0 +1,29 @@
+{
+  "scope": "Source-only unified exact-project resource monitor; no deployment or live resource mutation",
+  "source_sha256": "5cf98f3e92d1a14f6cf4763052ef7cfbbb15e81df5f278f4dea41c631fe9624b",
+  "source_files": 3520,
+  "owned_source_files_matching_snapshot": 21,
+  "focused_backend_passed": 385,
+  "focused_frontend_passed": 83,
+  "post_gate_test_followup": { "focused_frontend_passed": 84, "application_source_changed": false, "description": "Added real setAuth(refreshAuthState(...)) continuation regression; frozen gate predates this one additional test." },
+  "gate": {
+    "command": "UV_NO_SYNC=1 npm run test:gate",
+    "exit_code": 0,
+    "backend_passed": 10178,
+    "backend_skipped": 95,
+    "frontend_passed": 5393,
+    "frontend_files": 455,
+    "contracts_passed": 183,
+    "functional_db_passed": 167,
+    "ruff_files": 750
+  },
+  "frontend_check": { "errors": 0, "existing_warnings": 16 },
+  "browser": { "surface_conditions": 216, "confirmation_conditions": 54, "kinds": 29, "overflow": 0, "fixture_only": true },
+  "native_smoke": "Real Uvicorn TCP + installed OpenStack SDK + loopback native provider TCP. GET writes0, foreign DELETE403 writes0, provider denial unavailable/null, exact DELETE204 writes1, readback ok0 with foreign sentinel preserved.",
+  "native_limits": ["Trove admin configuration responses without owner remain unavailable", "Native permissions, managed-resource lifecycles and required microversions remain enforced"],
+  "proof_directory": "~/.local/share/afterglow-proofs/project-cleanup-20261026/",
+  "architecture_guard": "Frozen working and staged source; shared index/review marker preserved",
+  "deployment": false,
+  "commit": false,
+  "push": false
+}

@@ -2,6 +2,9 @@
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { onMount, onDestroy, untrack } from 'svelte';
+	import { auth } from '$lib/stores/auth';
+	import ProjectSelector from '$lib/components/ProjectSelector.svelte';
+	import { invalidateWorkspaceDisplaySnapshots } from '$lib/stores/workspaceController.svelte';
 	import { ApiError } from '$lib/api/client';
 	import { domainIam, type IamSession, type IamAssignableRoles } from '$lib/api/domainIam';
 	import { projectAuthority } from '$lib/api/projectAuthority';
@@ -20,9 +23,9 @@
 	import ProjectLifecycleSection from '$lib/components/account/ProjectLifecycleSection.svelte';
 	import IamProjectCreators from './IamProjectCreators.svelte';
 	import CreateProjectModal from '$lib/components/projects/CreateProjectModal.svelte';
-	let { session, blocked = false, onDenied }: { session: IamSession; blocked?: boolean; onDenied: () => void } = $props();
-	const client = untrack(() => domainIam(session));
+	let { session, domainManager = true, canCreate = true, blocked = false, onDenied }: { session: IamSession; domainManager?: boolean; canCreate?: boolean; blocked?: boolean; onDenied: () => void } = $props();
 	const authority = untrack(() => projectAuthority(session));
+	const client = untrack(() => domainManager ? domainIam(session) : authority);
 	const uid = $props.id();
 	let live = true;
 	let revision = 0;
@@ -39,6 +42,7 @@
 	let creating = $state(false);
 	let error = $state('');
 	const ownerCount = $derived(new Set(members.filter(member => member.is_owner).map(member => member.user_id)).size);
+	const selectedCurrent = $derived(domainManager || project === $auth.projectId);
 	function fail(cause: unknown) {
 		if (!live || !session.isCurrent()) return;
 		error = iamErrorMessage(cause, t('loadFailed'));
@@ -47,14 +51,14 @@
 	async function load() {
 		const pending = ++revision; const target = project;
 		loading = true; error = ''; catalog = null; editing = null; members = []; users = []; user = '';
-		if (!target) { loading = false; return; }
+		if (!target || !selectedCurrent) { loading = false; return; }
 		try {
 			const [rows, roles, eligible] = await Promise.all([client.members(target), client.roles(target), authority.eligibleUsers(target)]);
 			if (live && session.isCurrent() && pending === revision) { members = rows.items; catalog = roles; users = eligible.filter(row => row.enabled); }
 		} catch (cause) { if (pending === revision) fail(cause); }
 		finally { if (live && pending === revision) loading = false; }
 	}
-	async function initialize(preferred = project) {
+	async function initialize(preferred = project || (!domainManager ? $auth.projectId ?? '' : '')) {
 		const pending = ++revision;
 		loading = true; error = '';
 		try {
@@ -68,6 +72,7 @@
 	}
 	function created(result: { id: string; name: string }) {
 		if (!live || !session.isCurrent()) return;
+		invalidateWorkspaceDisplaySnapshots();
 		showCreate = false;
 		void initialize(result.id);
 	}
@@ -104,8 +109,8 @@
 </script>
 
 <div class="space-y-4">
-	<div class="flex flex-wrap justify-end gap-2"><Button variant="accent" disabled={blocked || !session.canSubmit() || busy || creating} onclick={() => { showCreate = true; }}>{workspaceT('newProject')}</Button></div>
-	<IamProjectCreators {session} {blocked} {onDenied} />
+	{#if canCreate}<div class="flex flex-wrap justify-end gap-2"><Button variant="accent" disabled={blocked || !session.canSubmit() || busy || creating} onclick={() => { showCreate = true; }}>{workspaceT('newProject')}</Button></div>{/if}
+	{#if domainManager}<IamProjectCreators {session} {blocked} {onDenied} />{/if}
 	<div class="grid gap-4 md:grid-cols-2">
 		<Field label={t('project')} for={`${uid}-project`}><SelectInput id={`${uid}-project`} bind:value={project} disabled={busy || !projects.length} onchange={() => { user = ''; void load(); }}><option value="">{t('selectProject')}</option>{#each projects as row (row.id)}<option value={row.id}>{row.name}</option>{/each}</SelectInput></Field>
 		<div class="flex items-end"><Button variant="secondary" disabled={busy || loading} onclick={() => { void (projects.length ? load() : initialize()); }}>{t('refresh')}</Button></div>
@@ -113,13 +118,15 @@
 	{#if loading}<ActivityIndicator label={t('loading')} />{/if}
 	{#if error && !editing}<Alert tone="danger">{error}</Alert>{/if}
 	{#if !loading && !error && !projects.length}<Alert tone="info">{t('emptyProjects')}</Alert>{/if}
-	{#if project && projects.some(row => row.id === project)}
+	{#if project && !selectedCurrent}<Alert tone="info">{t('switchProjectHelp')}</Alert><ProjectSelector />{/if}
+	{#if project && selectedCurrent && projects.some(row => row.id === project)}
 		{#key project}<ProjectLifecycleSection {session} project={projects.find(row => row.id === project)!} {blocked} {onDenied} onChanged={() => { void load(); }} onDeleted={() => { void initialize(); }} />{/key}
 	{/if}
 	{#if catalog}
 		<Alert tone="info">{t('rolesHelp')}</Alert>
 		<div class="grid items-end gap-4 md:grid-cols-2"><Field label={t('user')} for={`${uid}-user`} help={t('eligibleUsersHelp')}><SelectInput id={`${uid}-user`} bind:value={user} disabled={busy || loading}><option value="">{t('selectUser')}</option>{#each users as row (row.id)}<option value={row.id}>{row.name} · {row.email || row.id}</option>{/each}</SelectInput></Field><div><Button variant="primary" disabled={blocked || !session.canSubmit() || busy || loading || !user} onclick={assign}>{t('assignRoles')}</Button></div></div>
 	{/if}
+	{#if selectedCurrent}
 	<ResponsiveTable>{#snippet cards()}
 		{#each members as member (`${member.user_id}-${member.source ?? ''}`)}<CompactResourceCard>
 			<h3 class="text-sm font-medium">{member.username || member.user_id}</h3><p class="text-xs">{member.source ? t(member.source) : '—'} · {t('roleCount', { count: member.roles.length })}</p>{#if member.is_owner && ownerCount <= 1}<p class="text-xs text-ink-2">{t('lastOwner')}</p>{/if}
@@ -134,6 +141,7 @@
 		{#if !loading && !error && project && !members.length}<tr><td colspan="4">{t('emptyMembers')}</td></tr>{/if}</tbody>
 	</table></TableShell>
 	</ResponsiveTable>
+	{/if}
 </div>
 {#if editing && catalog}<ProjectMemberRolesModal member={editing} roles={catalog.roles} {busy} submitDisabled={blocked || !session.canSubmit()} {error} onSave={save} onClose={() => { editing = null; error = ''; }} />{/if}
-{#if showCreate}<CreateProjectModal domainId={session.domainId} domainName="" bind:submitting={creating} submitDisabled={blocked || !session.canSubmit()} onCreate={authority.create} onClose={() => { showCreate = false; }} onSuccess={created} />{/if}
+{#if showCreate && canCreate}<CreateProjectModal domainId={session.domainId} domainName="" bind:submitting={creating} submitDisabled={blocked || !session.canSubmit()} onCreate={authority.create} onClose={() => { showCreate = false; }} onSuccess={created} />{/if}

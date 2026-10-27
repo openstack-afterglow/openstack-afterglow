@@ -9,7 +9,7 @@ const { api } = vi.hoisted(() => ({ api: { get: vi.fn(), put: vi.fn() } }));
 vi.mock('$lib/api/client', () => ({ api, ApiError: class ApiError extends Error { constructor(public status: number, message: string) { super(message); } } }));
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token', userId: 'actor', domainId: 'domain-a', isDomainManager: true }),
-	authReady: writable(true), projectSwitching: writable(false)
+	authReady: writable(true), projectSwitching: writable(false), logoutInProgress: writable(false)
 }));
 import { auth } from '$lib/stores/auth';
 import { ApiError } from '$lib/api/client';

@@ -10,10 +10,16 @@ vi.mock('$app/stores', async () => {
 	const { writable } = await import('svelte/store');
 	return { page: writable({ url: new URL('http://localhost/dashboard'), data: {} }) };
 });
+vi.mock('$lib/stores/projectManagement', async () => {
+	// Vitest hoists this factory before static imports initialize.
+	const { writable } = await import('svelte/store');
+	return { canManageOrganizationProjects: writable(false) };
+});
 
 import { page } from '$app/stores';
 import { initSiteConfig, siteConfig } from '$lib/config/site';
 import { auth } from '$lib/stores/auth';
+import { canManageOrganizationProjects } from '$lib/stores/projectManagement';
 import { betaFeatures, DEFAULT_BETA_FEATURES } from '$lib/stores/betaFeatures';
 import { sidebarExpanded, sidebarOpen } from '$lib/stores/sidebar';
 import { wizardOpen } from '$lib/stores/wizard';
@@ -54,6 +60,7 @@ beforeEach(async () => {
 	sidebarExpanded.open();
 	wizardOpen.set(false);
 	auth.set({ ...initialAuth, isSystemAdmin: false });
+	(canManageOrganizationProjects as Writable<boolean>).set(false);
 	betaFeatures.set({ ...DEFAULT_BETA_FEATURES });
 	initSiteConfig({ services: {
 		magnum: false, zun: false, k3s: false, manila: false,
@@ -196,17 +203,23 @@ describe('Sidebar global navigation', () => {
 		expect(drawer.queryByRole('link', { name: '현재 사용자 모드, 관리자 모드로 전환' })).toBeNull();
 	});
 
-	it('exposes domain selection without a project, and shows IAM only for the current Default manager', async () => {
+	it('separates manager users from server-authorized project management without requiring a selected project', async () => {
 		auth.update(current => ({ ...current, token: 'manager-token', domainId: 'working', identityDomainId: 'home', projectId: null, isSystemAdmin: false, isDomainManager: true }));
+		(canManageOrganizationProjects as Writable<boolean>).set(true);
 		render(Sidebar);
 		const drawer = await openGlobalNavigation();
 		expect(drawer.queryByRole('link', { name: '도메인 전환·생성' })).toBeNull();
 		expect(drawer.getByRole('button', { name: /리소스 선택/ }).getAttribute('aria-haspopup')).toBe('dialog');
-		expect(drawer.getByRole('link', { name: '사용자·프로젝트 관리' }).getAttribute('href')).toBe('/dashboard/iam');
+		expect(drawer.getByRole('link', { name: '사용자 관리' }).getAttribute('href')).toBe('/dashboard/iam/users');
+		expect(drawer.getByRole('link', { name: '프로젝트 관리' }).getAttribute('href')).toBe('/dashboard/iam/projects');
 		expect(drawer.queryByRole('link', { name: '현재 사용자 모드, 관리자 모드로 전환' })).toBeNull();
 		auth.update(current => ({ ...current, isDomainManager: false, isSystemAdmin: true }));
 		await tick();
-		expect(drawer.queryByRole('link', { name: '사용자·프로젝트 관리' })).toBeNull();
+		expect(drawer.queryByRole('link', { name: '사용자 관리' })).toBeNull();
+		expect(drawer.getByRole('link', { name: '프로젝트 관리' }).getAttribute('href')).toBe('/dashboard/iam/projects');
+		(canManageOrganizationProjects as Writable<boolean>).set(false);
+		await tick();
+		expect(drawer.queryByRole('link', { name: '프로젝트 관리' })).toBeNull();
 		expect(drawer.queryByRole('link', { name: '도메인 전환·생성' })).toBeNull();
 		expect(drawer.getByRole('link', { name: '현재 사용자 모드, 관리자 모드로 전환' }).getAttribute('href')).toBe('/admin');
 	});

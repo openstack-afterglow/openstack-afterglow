@@ -30,6 +30,15 @@ describe('topology canvas links', () => {
 		expect(canLink(value, 'rtr-edge', 'rtr-edge', P)).toBe(false);
 	});
 
+	it('never converts the Internet representation into a mutation endpoint', () => {
+		const value = graph();
+		expect(value.nodes.has('internet:net-pub')).toBe(true);
+		expect(canLink(value, 'rtr-transit', 'internet:net-pub', P)).toBe(false);
+		expect(linkRequest(value, 'rtr-transit', 'internet:net-pub', P)).toBeNull();
+		expect(canLink(value, 'internet:net-pub', switchId('net-app'), P)).toBe(false);
+		expect(linkRequest(value, 'internet:net-pub', switchId('net-app'), P)).toBeNull();
+	});
+
 	it('requires an existing subnet before creating a router interface request', () => {
 		const data = makeFixture();
 		data.networks.find((network) => network.id === 'net-lab')!.subnet_details = [];

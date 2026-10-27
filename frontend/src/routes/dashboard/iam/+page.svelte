@@ -1,5 +1,1 @@
-<script lang="ts">
-	import DomainIamConsole from '$lib/components/iam/DomainIamConsole.svelte';
-</script>
-
-<DomainIamConsole />
+<!-- +page.ts redirects existing IAM bookmarks to the canonical user-management route. -->

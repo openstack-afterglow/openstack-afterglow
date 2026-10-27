@@ -1,0 +1,48 @@
+{
+  "scope": "Frontend canvas source only; synthetic topology, no cloud mutations or deployment",
+  "snapshot": "/Users/pieroot/.local/share/afterglow-proofs/topology-hierarchy-20261026/verification-t8e2wpt3",
+  "source_sha256": "cc0e8e23e32fa0d5c681eed039b2e82f956ac05d96e88b200cb75e516d585eb8",
+  "source_files": 3519,
+  "focused": {
+    "files": 12,
+    "tests": 227
+  },
+  "typecheck": {
+    "errors": 0,
+    "existing_warnings": 16
+  },
+  "i18n": {
+    "errors": 0,
+    "key_order_warnings": 45,
+    "hardcoded_lines": 0
+  },
+  "browser": {
+    "conditions": 108,
+    "overflow": 0,
+    "curves": 0,
+    "ports_per_edge": 2,
+    "real_component": true,
+    "synthetic_data": true,
+    "selection_search_and_switch_drag": true
+  },
+  "deployment": false,
+  "commit": false,
+  "push": false,
+  "gate": {
+    "exit": 0,
+    "backend_passed": 10178,
+    "backend_skipped": 95,
+    "frontend_files": 455,
+    "frontend_passed": 5405,
+    "contracts_passed": 183,
+    "db_passed": 167,
+    "ruff_files": 750,
+    "working_and_staged_architecture": "passed in isolated snapshot only",
+    "artifact": "artifact://143"
+  },
+  "source_parity_files": 37,
+  "limits": [
+    "Synthetic component fixtures, not live API/cloud acceptance",
+    "200% CSS-zoom smoke is not actual browser-zoom proof; observed control clipping not classified as accessibility pass"
+  ]
+}

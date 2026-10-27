@@ -64,12 +64,10 @@
 		onblurnode,
 	}: Props = $props();
 
-	// 외부(프로바이더) 네트워크의 가상 스위치는 인터넷 경계이므로 구름 글리프로 표시한다
-	const isExternal = $derived(node.kind === 'switch' && graph.netById.get(node.netId)?.kind === 'external');
-
 	const netColor = $derived.by(() => {
 		switch (node.kind) {
 			case 'vm': return node.nics[0] ? colorOfNet(graph, node.nics[0].netId) : 'var(--color-state-neutral)';
+			case 'internet':
 			case 'switch': return colorOfNet(graph, node.netId);
 			case 'lb': return node.vipNetId ? colorOfNet(graph, node.vipNetId) : 'var(--color-state-neutral)';
 			default: return 'var(--color-topology-gateway)';
@@ -77,6 +75,7 @@
 	});
 
 	const ariaLabel = $derived.by(() => {
+		if (node.kind === 'internet') return `${t('hud.internet')} · ${graph.netById.get(node.netId)?.name ?? node.name}`;
 		let ips = '';
 		if (node.kind === 'vm') ips = node.nics.map((n) => n.ip).join(', ');
 		else if (node.kind === 'router') ips = node.ports.map((p) => p.ip).filter(Boolean).join(', ');
@@ -124,17 +123,24 @@
 	onfocus={() => onfocusnode?.(node.id)}
 	onblur={() => onblurnode?.(node.id)}
 >
-	{#if linkable || (linkEnabled && (node.kind === 'vm' || node.kind === 'router'))}
+	{#if node.kind !== 'internet' && (linkable || (linkEnabled && (node.kind === 'vm' || node.kind === 'router')))}
 		<span class="link-handle" data-link-handle={node.id} data-link-source title={t('card.dragConnect')} aria-hidden="true"></span>
 	{/if}
+	{#if node.kind === 'internet'}
+		<svg class="internet-cloud" viewBox="0 0 240 96" preserveAspectRatio="none" aria-hidden="true">
+			<path d="M48 95C22 95 1 82 1 62C1 45 14 32 33 30C36 14 52 4 73 4C90 4 104 11 112 22C121 9 137 1 156 1C184 1 206 18 209 40C227 42 239 52 239 67C239 83 223 95 201 95Z" />
+		</svg>
+		<span class="internet-label">
+			<svg class="internet-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9" /><ellipse cx="12" cy="12" rx="4" ry="9" /><path d="M3 12h18M5 6.5h14M5 17.5h14" /></svg>
+			<span>{t('hud.internet')}</span>
+		</span>
+	{:else}
 	<span class="node-head">
 		<span class="node-glyph" aria-hidden="true">
 			{#if node.kind === 'vm' && node.isDatabase}
 				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><ellipse cx="8" cy="4" rx="5" ry="2" /><path d="M3 4v8a5 2 0 0 0 10 0V4M3 8a5 2 0 0 0 10 0" /></svg>
 			{:else if node.kind === 'vm'}
 				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><ellipse cx="8" cy="5" rx="5" ry="2" /><path d="M3 5v6M13 5v6M3 11a5 2 0 0 0 10 0" /></svg>
-			{:else if node.kind === 'switch' && isExternal}
-				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.6 10.6a2.4 2.4 0 0 1 .3-4.78 3.3 3.3 0 0 1 6.32-.6A2.6 2.6 0 0 1 11.6 10.6z" /><path d="M8 10.6v2.2M4.4 12.8h7.2" /></svg>
 			{:else if node.kind === 'switch'}
 				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="12" height="6" rx="1" /><path d="M5 8h1M8 8h1M11 8h1" /></svg>
 			{:else if node.kind === 'router'}
@@ -153,7 +159,7 @@
 			{#if switchNet && switchNet.status !== 'ACTIVE'}<StatusChip status={switchNet.status} />{/if}
 		{:else if node.kind === 'router'}
 			<StatusChip status={node.status} />
-		{:else}
+		{:else if node.kind === 'lb'}
 			<StatusChip status={node.status} />
 			<StatusChip status={node.operating} />
 		{/if}
@@ -195,12 +201,13 @@
 			{/each}
 			<span class="rate">{t('card.ports', { count: node.ports.length })}</span>
 		</span>
-	{:else}
+	{:else if node.kind === 'lb'}
 		<span class="node-sub">
 			<span class="mono">VIP {node.vip ?? '—'}</span>
 			<span>{t('card.listeners', { count: node.listeners.length })}</span>
 			<span class="rate mono">{rateText ?? '▼ —  ▲ —'}</span>
 		</span>
+	{/if}
 	{/if}
 </button>
 
@@ -236,6 +243,13 @@
 	.node.is-dim { opacity: 0.15; }
 	.node.is-faded { opacity: 0.45; }
 	.node.is-error { border-color: color-mix(in oklab, var(--color-state-danger) 60%, var(--color-line)); }
+	.node-internet { border: 0; background: transparent; align-items: center; justify-content: center; }
+	.internet-cloud { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+	.internet-cloud path { fill: var(--color-surface-raised); stroke: var(--color-line-2); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+	.node-internet:hover .internet-cloud path,
+	.node-internet.is-selected .internet-cloud path { stroke: var(--net); }
+	.internet-label { position: relative; display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 1rem 1rem 0; color: var(--color-ink-0); font-size: 0.8125rem; font-weight: 600; }
+	.internet-globe { width: 24px; height: 24px; color: var(--net); flex-shrink: 0; }
 	.node-head {
 		display: flex;
 		align-items: center;
@@ -322,6 +336,7 @@
 		position: absolute;
 		inset: -8px;
 	}
+	.node-switch .link-handle { right: auto; left: 50%; top: auto; bottom: -6px; margin-top: 0; transform: translateX(-50%); }
 	.node:hover .link-handle,
 	.node:focus-visible .link-handle,
 	.node.is-selected .link-handle,
@@ -336,6 +351,7 @@
 			margin-top: -8px;
 			right: -8px;
 		}
+		.node-switch .link-handle { bottom: -8px; }
 	}
 	.link-port {
 		position: absolute;

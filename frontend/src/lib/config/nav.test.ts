@@ -88,13 +88,32 @@ describe('allNavItems service inheritance', () => {
     }
   });
 
-  it('lists domain IAM only for a domain-manager capability and domains only for administrators', () => {
-    expect(allNavItems(false, DEFAULT_BETA_FEATURES).some(item => item.href === '/dashboard/iam')).toBe(false);
-    expect(allNavItems(false, DEFAULT_BETA_FEATURES, { domainManager: true }).find(item => item.href === '/dashboard/iam'))
-      .toMatchObject({ sectionKey: 'sections.domainIam', capability: 'domainManager' });
+  it('separates manager-only user navigation from fresh project-management navigation', () => {
+    expect(allNavItems(false, DEFAULT_BETA_FEATURES).some(item => item.href.startsWith('/dashboard/iam'))).toBe(false);
+    const manager = allNavItems(false, DEFAULT_BETA_FEATURES, { domainManager: true, projectManagement: true });
+    expect(manager.find(item => item.href === '/dashboard/iam/users')).toMatchObject({ labelKey: 'items.iamUsers', capability: 'domainManager' });
+    expect(manager.find(item => item.href === '/dashboard/iam/projects')).toMatchObject({ labelKey: 'items.iamProjects', capability: 'projectManagement' });
+    const creator = allNavItems(false, DEFAULT_BETA_FEATURES, { domainManager: false, projectManagement: true });
+    expect(creator.some(item => item.href === '/dashboard/iam/users')).toBe(false);
+    expect(creator.some(item => item.href === '/dashboard/iam/projects')).toBe(true);
+    expect(creator.some(item => item.href.startsWith('/admin'))).toBe(false);
     expect(allNavItems(true, DEFAULT_BETA_FEATURES).find(item => item.href === '/admin/domains')).toMatchObject({ sectionKey: 'sections.identity' });
-    expect(allNavItems(false, DEFAULT_BETA_FEATURES, { domainManager: true }).some(item => item.href === '/admin/domains')).toBe(false);
   });
+
+	it('localizes both IAM sibling destinations across all supported locales', () => {
+		for (const [locale, users, projects] of [
+			['ko', '사용자 관리', '프로젝트 관리'], ['en', 'User management', 'Project management'],
+			['ja', 'ユーザー管理', 'プロジェクト管理'], ['zh-CN', '用户管理', '项目管理'],
+			['bn', 'ব্যবহারকারী পরিচালনা', 'প্রকল্প পরিচালনা'], ['ms', 'Pengurusan pengguna', 'Pengurusan projek'],
+			['nb', 'Brukeradministrasjon', 'Prosjektadministrasjon'], ['sw', 'Usimamizi wa watumiaji', 'Usimamizi wa miradi'],
+			['vi', 'Quản lý người dùng', 'Quản lý dự án'],
+		] as const) {
+			initLocale(locale);
+			const items = allNavItems(false, DEFAULT_BETA_FEATURES, { domainManager: true, projectManagement: true });
+			expect(items.find(item => item.href === '/dashboard/iam/users')?.label).toBe(users);
+			expect(items.find(item => item.href === '/dashboard/iam/projects')?.label).toBe(projects);
+		}
+	});
 
 	it('keeps domain selection in the resource dialog rather than the navigation catalog', () => {
 		const items = allNavItems(false, DEFAULT_BETA_FEATURES);
@@ -118,7 +137,7 @@ describe('allNavItems service inheritance', () => {
 });
 
 describe('project-independent authenticated routes', () => {
-	it.each(['/select-domain', '/select-project', '/dashboard/iam', '/dashboard/iam/users'])('does not require a selected project for %s', (path) => {
+	it.each(['/select-domain', '/select-project', '/dashboard/iam', '/dashboard/iam/users', '/dashboard/iam/projects'])('does not require a selected project for %s', (path) => {
 		expect(isProjectAgnosticPath(path, false)).toBe(true);
 	});
 	it.each(['/admin', '/admin/domains'])('keeps the project exemption on %s system-admin-only', (path) => {

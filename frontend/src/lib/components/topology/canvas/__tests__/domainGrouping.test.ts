@@ -39,6 +39,11 @@ describe('native administrator domain ownership', () => {
 		for (const group of graph.domainGroups!) {
 			const box = geometry.domains.get(group.id)!;
 			for (const id of group.netIds) expect(contains(box, geometry.zones.get(id)!)).toBe(true);
+			for (const netId of group.netIds) {
+				expect(contains(box, layout.pos.get('sw:' + netId)!)).toBe(true);
+				const internet = layout.pos.get('internet:' + netId);
+				if (internet) expect(contains(box, internet)).toBe(true);
+			}
 		}
 		for (let i = 0; i < boxes.length; i++) for (const box of boxes.slice(i + 1)) expect(intersects(boxes[i], box)).toBe(false);
 		const bounds = contentBounds(geometry.zones, layout.pos, geometry.domains);
@@ -102,8 +107,11 @@ describe('native administrator domain ownership', () => {
 		const graph = buildGraph(data, { projectId: null, showAll: true, adminView: true });
 		const layout = autoLayout(graph);
 		const geometry = computeGeometry(graph, layout);
-		const groups = graph.domainGroups!.filter((group) => group.netIds.some((id) => layout.zoneMembers.get(id)?.includes(router.id)));
-		expect(groups).toHaveLength(1);
+		const groups = graph.domainGroups!.filter((group) => {
+			const box = geometry.domains.get(group.id)!;
+			return contains(box, layout.pos.get(router.id)!);
+		});
+		expect(groups.map((group) => group.id)).toEqual(['domain:domain-a']);
 		expect(graph.edges.some((edge) => edge.from === router.id && edge.to === 'sw:net-other')).toBe(true);
 		const boxes = [...geometry.domains.values()];
 		for (let i = 0; i < boxes.length; i++) for (const box of boxes.slice(i + 1)) expect(intersects(boxes[i], box)).toBe(false);

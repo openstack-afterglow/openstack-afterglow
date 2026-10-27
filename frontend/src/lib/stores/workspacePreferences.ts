@@ -29,8 +29,8 @@ export function readWorkspacePreferences(key: string): WorkspacePreferences {
 export function saveWorkspacePreferences(key: string, preferences: WorkspacePreferences): boolean {
 	try { localStorage.setItem(key, JSON.stringify(preferences)); return true; } catch { return false; }
 }
-export function sortWorkspaceResources<T extends { id: string; name: string }>(rows: T[], preferences: Record<string, ResourcePreference>, recent = false): T[] {
+export function sortWorkspaceResources<T extends { id: string; name: string }>(rows: T[], preferences: Record<string, ResourcePreference>, recent = false, defaultOrder?: (row: T) => number): T[] {
 	return [...rows].sort((a, b) => recent
 		? (preferences[b.id]?.visited ?? 0) - (preferences[a.id]?.visited ?? 0)
-		: (preferences[a.id]?.order ?? Number.MAX_SAFE_INTEGER) - (preferences[b.id]?.order ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+		: (preferences[a.id]?.order ?? Number.MAX_SAFE_INTEGER) - (preferences[b.id]?.order ?? Number.MAX_SAFE_INTEGER) || (defaultOrder ? defaultOrder(a) - defaultOrder(b) : 0) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }

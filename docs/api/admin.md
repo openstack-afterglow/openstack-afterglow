@@ -822,7 +822,7 @@ Native 삭제는 `ignore_missing=False`입니다. 대상 부재404를 성공으�
 
 `POST /admin/projects`는 대상 domain의 canonical Default와 활성 manager가 없으면 `409 domain_default_bootstrap_required` / `domain_default_manager_required`입니다. `Default`(case-insensitive) 이름은 예약됩니다. 공유 role-graph lease 아래 새 프로젝트를 **disabled**로 만들고 정확한 새 ID/domain/name을 확인한 뒤 실제 생성자를 단일 직접 `project_owner`로 초기화합니다. 이 privileged 생성은 verified system admin이 아직 가입하지 않은 대상 domain에도 새 프로젝트의 owner membership을 설정할 수 있지만 기존 project의 owner를 덮어쓰는 API는 아닙니다. Manager 읽기 projection과 domain quota defaults/budget를 검증하고 요청 `enabled`(기본true)를 마지막에 반영합니다. 응답은 `{id,name,description,enabled,domain_id}`입니다. 실패 보상은 이번 시도의 정확한 새 ID만 disable·readback·빈 프로젝트 검사 후 삭제하며 불확실하면 `503 created_project_cleanup_unavailable`로 남깁니다.
 
-셀프서비스 `POST /api/v1/projects`는 현재 joined domain의 live manager 또는 domain-scoped `project_creator` capability가 필요하고 동일하게 owner/default quota 확인 후 활성화합니다. 이 경로의 불확실한 생성은 blind retry/삭제하지 않고 관리자에게 보이는 disabled 프로젝트로 남을 수 있습니다. `PATCH /admin/projects/{id}`의 재활성화도 unresolved owner journal, managed project의 unique owner, 현재 domain allocation을 검사하지만 **미래-project defaults를 기존 project에 재적용하지 않습니다**. Default의 rename/disable/delete는 `422 domain_default_is_immutable`입니다.
+셀프서비스 `POST /api/v1/projects`는 현재 joined domain의 enabled canonical Default 프로젝트에서 effective `manager` 또는 `project_creator` capability가 필요하고 동일하게 owner/default quota 확인 후 활성화합니다. Direct legacy domain-scoped creator는 생성 권위가 아니며 기존 grant를 자동 이전하지 않습니다. 이 경로의 불확실한 생성은 blind retry/삭제하지 않고 관리자에게 보이는 disabled 프로젝트로 남을 수 있습니다. `PATCH /admin/projects/{id}`의 재활성화도 unresolved owner journal, managed project의 unique owner, 현재 domain allocation을 검사하지만 **미래-project defaults를 기존 project에 재적용하지 않습니다**. Default의 rename/disable/delete는 `422 domain_default_is_immutable`입니다.
 
 Owner는 한 명의 직접 canonical `project_owner`여야 합니다. admin/member/reader는 여러 명일 수 있으나 `manager > owner`는 domain 관리 우선순위이지 manager→project_owner 전역 inference가 아닙니다. 기존 group/inherited/multiple owner 충돌에서 임의 owner를 고르거나 자동 revoke하지 않습니다. Generic admin role assign/revoke·group mutation·owner-bearing implication은 이 workflow를 우회할 수 없습니다.
 
@@ -892,6 +892,18 @@ DELETE는 GET 결과의 시각이나 UI 확인 여부에 의존하지 않고 같
 관리자 `GET /projects/{id}/deletion-check`와 DELETE는 모두 resource/child 검사 전에 정확한 native 프로젝트, Default 불변식과 unresolved owner journal을 확인합니다. Default는 `422 domain_default_is_immutable`, 미해결 ownership operation은 `409 project_ownership_native_operation_unresolved`로 차단합니다. Preflight는 조회 시점의 결과이지 이후 삭제를 예약하거나 허가하는 token이 아니므로 최종 DELETE에서 모든 검사를 다시 수행합니다. Scoped 셀프서비스 삭제는 domain manager 또는 `project_creator` capability를 가진 현재 sole owner만 가능하며, 그 경로도 새 inventory와 직전 live authority를 다시 확인합니다. System-admin DELETE에 creator/sole-owner 조건을 추가 적용하는 것은 아닙니다.
 
 **한계:** 자원 자동 정리·force 옵션·cloud-wide freeze는 없습니다. 최종 재검사는 이전 확인 결과의 stale race를 줄이지만 독립 서비스 간 분산 트랜잭션이 아니므로 마지막 조회 뒤 새 자원이 생성되는 경쟁까지 제거하지 않습니다.
+
+#### 삭제 전 유형별 리소스 모니터
+
+삭제 보고서의 **제거** 링크는 즉시 삭제하지 않고 `/admin/projects/{project_id}/resources?domain_id=<domain>&kind=<type>`로 이동합니다. 목록은 해당 프로젝트·리소스 유형에 고정되며 인증 workspace를 바꾸지 않습니다. 확인된0개·미설치 서비스에는 제거를 실행할 대상이 없고, 미확인 상태는 모니터에서 다시 확인할 수 있습니다. 모니터에서 개별 리소스의 이름·전체ID를 확인하고 **제거**를 명시적으로 승인해야 실제 삭제를 요청합니다. 자동 일괄 정리·force bypass는 없으며 정리 후 프로젝트 목록으로 돌아가 삭제 검사를 다시 실행합니다.
+
+- `GET /api/v1/admin/projects/{project_id}/resources?domain_id=<domain>&kind=<type>`:28종과 `child_projects` 중 한 유형의 complete 목록을 반환합니다. `{project_id,kind,status,reason,resources,count}`에서 status는 `ok`·`unavailable`·`skipped`이며 미확인 count는 null입니다. 이름/ID/상태 외 provider payload·secret 내용은 반환하지 않습니다.
+- `DELETE /api/v1/admin/projects/{project_id}/resources/{kind}/{resource_id}?domain_id=<domain>`:정확한 native 소유권을 새로 검증하고 개별 일반 삭제만 요청합니다. Native 권한·상태·종속 자원·managed resource 보호는 그대로 적용되며, 하위 프로젝트에는 기존 최종 전체 자원 검사를 적용합니다. `204`는 비동기 서비스에서 접수일 수 있어 새 목록에서 부재가 확인되어야 정리 완료입니다. 응답 불명은 자동 재전송하지 않습니다.
+- Afterglow가 별도 종속 자원 삭제 요청을 일괄 실행하지 않는다는 뜻이지 native 서비스의 삭제 의미를 바꾸는 것은 아닙니다. Heat stack 하위 자원이나 Nova의 `delete_on_termination` 볼륨은 서비스의 기본 lifecycle에 따라 함께 삭제될 수 있으며 개별 확인창에서 이를 경고합니다.
+- 인스턴스의 관리형 Manila 접근 grant와 Cloud Shell home volume·Palimpsest/Drover 등 관리 자원은 기존 lifecycle/원장을 우회하여 일반 삭제하지 않습니다. 명시적인 native 거부와 전송/응답 불명은 UI에서 구분하며, 어느 경우에도 자동 재전송하지 않습니다.
+- Swift/Barbican처럼 실제 target credential이 필요한 서비스는 검증된 인간 세션 root와 기존 target-project scope 교환을 사용합니다. System admin만으로 대상 membership이 생기지 않으며 service password·역할 자동 부여·header scope 가장은 없습니다.
+- Trove 표준 관리자 구성 응답이 소유 project/tenant를 제공하지 않으면 정확한 detail 조회 이후에도 `resource_ownership_unverified`로 차단합니다. Target URL만으로 owner를 추정하지 않습니다. Manila owner/managed metadata에 필요한 native microversion 미지원 역시 unavailable이며 보안 검사를 우회하지 않습니다.
+
 
 ---
 
@@ -979,6 +991,8 @@ Snapshot은 `{domain_id,revision,ceilings,defaults,enforcement_scope,allocations
 ## 역할·시스템 역할 관리
 
 프로젝트 스코프 역할(assign/assign-group)과 시스템 스코프 역할(system-roles)을 구분해 관리합니다.
+
+Canonical `project_creator` 또는 이를 함의하는 역할을 native project scope로 부여할 때에는 그 도메인의 enabled canonical `Default`만 허용합니다. 다른 프로젝트는422 `project_creator_requires_default_project`이며 grant를 보내지 않습니다. Creator의 preset 분류 `area=domain`은 일반 project-member 역할 picker에 노출하지 않기 위한 위임 ceiling이고, 생성 권위와 전용 creator 위임은 Default project의 실제 effective/direct grant를 사용합니다. 기존 unrelated grant를 자동 회수하거나 domain-scope grant를 이동하지 않습니다.
 
 | 메서드 | 경로 | 설명 | 파라미터/본문 |
 |--------|------|------|---------------|

@@ -15,8 +15,8 @@
 		forced: boolean;
 		/** trunk 의 호버·클릭용 투명 히트 경로와 툴팁 */
 		hitTitle: string | null;
-		/** 스위치 쪽 포트 점(cable/lbvip) */
-		port: { x: number; y: number } | null;
+		/** Geometry-owned connection points, including every NIC and both switch faces. */
+		ports: readonly { x: number; y: number; end: 'from' | 'to' }[];
 		/**
 		 * 첫 도착 진입 cascade 단계. null 이면 진입 모션 없음.
 		 * 실선은 pathLength=1 로 그려지고(이때 width 는 월드 단위), 점선은 이미 대시가 있으므로 페이드한다.
@@ -41,7 +41,7 @@
 	const mainEdges = $derived(edges.filter((e) => e.kind !== 'fip' && e.kind !== 'lbmember'));
 	const memberEdges = $derived(edges.filter((e) => e.kind === 'lbmember'));
 	const hitEdges = $derived(edges.filter((e) => e.hitTitle != null));
-	const ports = $derived(edges.filter((e) => e.port != null));
+	const ports = $derived(edges.filter((e) => e.ports.length > 0));
 </script>
 
 {#snippet edgePath(e: EdgeRenderItem, kindClass: string)}
@@ -76,15 +76,20 @@
 	</g>
 	<g>
 		{#each ports as e (e.key)}
-			<circle
-				class="port-dot"
-				class:motion-fade={e.enter !== null}
-				r="2.5"
-				cx={r1(e.port?.x ?? 0)}
-				cy={r1(e.port?.y ?? 0)}
-				style:--net={e.color}
-				style:--motion-index={e.enter ?? undefined}
-			/>
+			{#each e.ports as port (port.end)}
+				<circle
+					class="port-dot"
+					class:motion-fade={e.enter !== null}
+					data-edge-port={e.key}
+					data-port-end={port.end}
+					r="3.5"
+					cx={r1(port.x)}
+					cy={r1(port.y)}
+					style:--net={e.color}
+					style:opacity={e.opacity}
+					style:--motion-index={e.enter ?? undefined}
+				/>
+			{/each}
 		{/each}
 	</g>
 	<g>

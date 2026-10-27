@@ -102,21 +102,34 @@ async def create_project(
     )
 
 
+@router.get("")
+async def management_projects(
+    domain_id: str | None = Query(None, min_length=1),
+    token_info: dict = Depends(get_token_info),
+):
+    from app.services.project_service import management_projects
+
+    return await management_projects(token_info["user_id"], domain_id or token_info["domain_id"])
+
+
 @router.get("/capabilities")
 async def project_capabilities(
     domain_id: str | None = Query(None, min_length=1),
     token_info: dict = Depends(get_token_info),
 ):
     from app.services.domain_scope import domain_context
+    from app.services.native_operation import NativeOperation
     from app.services.project_service import can_create_project
 
     target = domain_id or token_info["domain_id"]
-    context = await asyncio.to_thread(domain_context, token_info["user_id"], target)
-    return {
-        "domain_id": target,
-        "domain_kind": context.get("domain_kind", "legacy"),
-        "can_create_project": await can_create_project(token_info["user_id"], target),
-    }
+    async with NativeOperation() as operation:
+        context = await operation.run(domain_context, token_info["user_id"], target, operation=operation)
+        return {
+            "domain_id": target,
+            "domain_kind": context.get("domain_kind", "legacy"),
+            "is_domain_manager": context["is_domain_manager"],
+            "can_create_project": await can_create_project(token_info["user_id"], target, operation=operation),
+        }
 
 
 @router.get("/creators")

@@ -55,6 +55,12 @@ beforeEach(() => {
 });
 
 describe('server-verified IAM identity boundary', () => {
+	it('keeps user administration separate from project management and creation delegation', async () => {
+		render(DomainIamConsole); await screen.findByText('Alice');
+		expect(screen.getByRole('heading', { name: ti('usersTitle') })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: ti('projects') })).toBeNull();
+		expect(api.get.mock.calls.some(([path]) => path.includes('/projects'))).toBe(false);
+	});
 	it('does not fetch private rows before the server verifies the manager', async () => {
 		const pending = deferred<unknown>(); api.get.mockReturnValue(pending.promise);
 		render(DomainIamConsole);

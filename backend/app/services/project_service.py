@@ -799,6 +799,54 @@ async def migrate_legacy_managers(project_id, owner_user_id, token_info, session
         }
 
 
+async def management_projects(user_id, domain_id):
+    """Expose domain inventory only to managers; others see authorized projects."""
+    from app.services import domain_projects
+    from app.services.domain_scope import domain_context
+    from app.services.native_operation import NativeOperation
+
+    async with NativeOperation() as operation:
+        context = await operation.run(domain_context, user_id, domain_id, operation=operation)
+        if context["domain_kind"] in {"account", "personal"}:
+            raise HTTPException(403, "Organization project management is unavailable in reserved domains")
+        ks = await operation.run(domain_projects._call, getattr, operation, "ks")
+        catalog = await operation.run(domain_projects._call, operation.catalog)
+        rows = await operation.run(domain_projects._call, lambda: list(ks.projects.list(domain=domain_id)))
+        items, seen = [], set()
+        for row in rows:
+            pid = identity_roles._field(row, "id")
+            name = identity_roles._field(row, "name")
+            if (
+                not isinstance(pid, str)
+                or not pid
+                or pid in seen
+                or identity_roles._field(row, "domain_id") != domain_id
+                or not isinstance(name, str)
+            ):
+                raise identity_roles._unavailable("Project management inventory is unavailable")
+            seen.add(pid)
+            enabled = domain_projects._enabled(row)
+            if not context["is_domain_manager"]:
+                if not enabled:
+                    continue
+                effective = await operation.run(
+                    domain_projects._call, _assignment_rows, ks, pid, effective=True, user_id=user_id
+                )
+                if not _access(effective, catalog, user_id)["is_manager"]:
+                    continue
+                await operation.run(domain_projects.assert_project_membership, user_id, pid, operation=operation)
+            items.append(
+                {
+                    "id": pid,
+                    "name": name,
+                    "description": identity_roles._field(row, "description", "") or "",
+                    "domain_id": domain_id,
+                    "enabled": enabled,
+                }
+            )
+        return {"items": sorted(items, key=lambda item: (item["name"], item["id"]))}
+
+
 async def can_create_project(user_id: str, domain_id: str, *, operation=None) -> bool:
     """Exact native capability; callers may share only their current read phase."""
     from app.services.domain_scope import domain_context
@@ -823,9 +871,13 @@ async def can_create_project(user_id: str, domain_id: str, *, operation=None) ->
             return False
         if len(matches) != 1 or matches[0]["name"] != "project_creator":
             raise identity_roles._unavailable("Project creator role is ambiguous")
-        creator = matches[0]["id"]
-        exact = await operation.run(_creator_assignments, ks, catalog, domain_id, effective=True, user_id=user_id)
-        return creator in _expanded_role_ids(exact, catalog, user_id)
+        from app.services import domain_projects
+
+        default = await operation.run(domain_projects.default_project, domain_id, operation=operation)
+        if default is None:
+            return False
+        users = await operation.run(domain_projects._creator_users, ks, default, catalog, operation=operation)
+        return user_id in users
     except Exception as exc:
         raise identity_roles._provider_error(exc) from exc
 
@@ -1165,41 +1217,51 @@ async def initialize_system_project_owner(project_id, user_id, domain_id, *, lea
 
 
 async def project_creators(domain_id, user_id):
+    from app.services import domain_projects
     from app.services.domain_scope import domain_context
+    from app.services.native_operation import NativeOperation
 
-    context = await _provider_call(domain_context, user_id, domain_id)
-    if not context["is_domain_manager"]:
-        raise HTTPException(403, "Domain manager required to delegate project creation")
-    ks = await _provider_call(keystone._get_admin_ks_client)
-    catalog = await _provider_call(identity_roles._trusted_catalog)
-    bindings = identity_roles._validate_preset_catalog(catalog)
-    role = bindings.get("project_creator")
-    result = {"domain_id": domain_id, "role": {"id": role["id"], "name": role["name"]} if role else None, "users": []}
-    if role is None:
+    async with NativeOperation() as operation:
+        context = await operation.run(domain_context, user_id, domain_id, operation=operation)
+        if not context["is_domain_manager"]:
+            raise HTTPException(403, "Domain manager required to delegate project creation")
+        ks = await operation.run(domain_projects._call, getattr, operation, "ks")
+        catalog = await operation.run(domain_projects._call, operation.catalog)
+        role = identity_roles._validate_preset_catalog(catalog).get("project_creator")
+        default = await operation.run(domain_projects.default_project, domain_id, operation=operation)
+        if default is None:
+            raise identity_roles._unavailable("Project creator Default is unavailable")
+        result = {
+            "domain_id": domain_id,
+            "role": {"id": role["id"], "name": role["name"]} if role else None,
+            "users": [],
+        }
+        if role is None:
+            return result
+        users = await operation.run(domain_projects._creator_users, ks, default, catalog, operation=operation)
+        direct = await operation.run(domain_projects._call, _creator_assignments, ks, catalog, default["id"])
+        for uid in sorted(users):
+            user = await operation.run(domain_projects._active_user, ks, uid, operation=operation)
+            if user is None:
+                continue
+            explicit = role["id"] in _direct_ids(direct, uid)
+            result["users"].append(
+                {
+                    "id": uid,
+                    "name": identity_roles._field(user, "name") or uid,
+                    "email": identity_roles._field(user, "email") or "",
+                    "domain_id": identity_roles._field(user, "domain_id"),
+                    "enabled": True,
+                    "source": "direct" if explicit else "inherited",
+                    "direct": explicit,
+                }
+            )
         return result
-    effective = await _provider_call(_creator_assignments, ks, catalog, domain_id, effective=True)
-    direct = await _provider_call(_creator_assignments, ks, catalog, domain_id)
-    for uid in sorted({_principal(row, "user") for row in effective}):
-        if role["id"] not in _expanded_role_ids(effective, catalog, uid):
-            continue
-        user = await _eligible_user(ks, domain_id, uid)
-        explicit = role["id"] in _direct_ids(direct, uid)
-        result["users"].append(
-            {
-                "id": uid,
-                "name": identity_roles._field(user, "name") or uid,
-                "email": identity_roles._field(user, "email") or "",
-                "domain_id": identity_roles._field(user, "domain_id"),
-                "enabled": True,
-                "source": "direct" if explicit else "inherited",
-                "direct": explicit,
-            }
-        )
-    return result
 
 
 @identity_roles._complete_mutation
 async def change_project_creator(domain_id, user_id, enabled, actor_id):
+    from app.services import domain_projects
     from app.services.domain_scope import domain_context
 
     conn = await _provider_call(keystone.get_admin_project_connection)
@@ -1213,16 +1275,19 @@ async def change_project_creator(domain_id, user_id, enabled, actor_id):
             role = identity_roles._validate_preset_catalog(catalog).get("project_creator")
             if role is None:
                 raise HTTPException(409, "Explicit administrator project_creator preset setup required")
+            default = await _provider_call(domain_projects.default_project, domain_id, ks=ks)
+            if default is None:
+                raise identity_roles._unavailable("Project creator Default is unavailable")
             await _eligible_user(ks, domain_id, user_id)
-            direct = await _provider_call(_creator_assignments, ks, catalog, domain_id)
+            direct = await _provider_call(_creator_assignments, ks, catalog, default["id"])
             present = role["id"] in _direct_ids(direct, user_id)
             if present != enabled:
                 await identity_roles._session_ready({user_id})
                 succeeded = False
                 try:
                     method = ks.roles.grant if enabled else ks.roles.revoke
-                    await identity_roles._write(lease, method, role["id"], user=user_id, domain=domain_id)
-                    checked = await _provider_call(_creator_assignments, ks, catalog, domain_id)
+                    await identity_roles._write(lease, method, role["id"], user=user_id, project=default["id"])
+                    checked = await _provider_call(_creator_assignments, ks, catalog, default["id"])
                     if (role["id"] in _direct_ids(checked, user_id)) != enabled:
                         raise identity_roles._unavailable("Project creator delegation could not be verified")
                     succeeded = True
@@ -1235,7 +1300,12 @@ async def change_project_creator(domain_id, user_id, enabled, actor_id):
                         {user_id},
                         {"user_id": actor_id, "domain_id": domain_id},
                         "project_creator_grant" if enabled else "project_creator_revoke",
-                        {"target_domain_id": domain_id, "target_user_id": user_id, "role_id": role["id"]},
+                        {
+                            "target_domain_id": domain_id,
+                            "target_project_id": default["id"],
+                            "target_user_id": user_id,
+                            "role_id": role["id"],
+                        },
                         status="success" if succeeded else "failed",
                     )
     finally:
@@ -1243,24 +1313,15 @@ async def change_project_creator(domain_id, user_id, enabled, actor_id):
     return await project_creators(domain_id, actor_id)
 
 
-def _creator_assignments(ks, catalog, domain_id, *, effective=False, user_id=None):
+def _creator_assignments(ks, catalog, project_id):
     from app.services import domain_projects
 
-    query = {"domain": domain_id}
-    if effective:
-        query["effective"] = True
-    if user_id is not None:
-        query["user"] = user_id
     result = []
-    for row in ks.role_assignments.list(**query):
-        meta = domain_projects._assignment(row, catalog, effective=effective)
-        if (
-            meta["kind"] != "domain"
-            or meta["scope_id"] != domain_id
-            or (user_id is not None and meta["user_id"] != user_id)
-        ):
+    for row in ks.role_assignments.list(project=project_id):
+        meta = domain_projects._assignment(row, catalog)
+        if meta["kind"] != "project" or meta["scope_id"] != project_id:
             raise identity_roles._unavailable("Project creator scope is unavailable")
-        if not meta["inherited"]:
+        if not _inherited_assignment(row):
             result.append(row)
     return result
 

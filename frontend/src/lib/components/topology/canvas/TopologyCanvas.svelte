@@ -34,8 +34,8 @@
 		switchId,
 		trunkNetIds,
 	} from './topologyGraph';
-	import { FIT_K_MAX, K_MAX, K_MIN, applyManualPositions, autoLayout, center, computeGeometry, contentBounds, cubic, fitTransform, nodeBounds, packDomainGroups, resolveManualOverlap, sideFor, zoomAt as zoomAtPure } from './topologyLayout';
-	import type { CanvasEdge, CanvasNet, EdgeStyle, ManualPositions, Pt, Rect, ViewState } from './types';
+	import { FIT_K_MAX, K_MAX, K_MIN, applyManualPositions, autoLayout, center, computeGeometry, contentBounds, orthogonal, fitTransform, nodeBounds, packDomainGroups, resolveManualOverlap, sideFor, slotAnchor, zoomAt as zoomAtPure } from './topologyLayout';
+	import type { CanvasEdge, CanvasNet, EdgeStyle, ManualPositions, Pt, Rect, Side, ViewState } from './types';
 	import { createViewport, easeEmphasized, interpolateView } from './viewport.svelte';
 	import { createFirstArrival, enterStep } from '../firstArrival.svelte';
 	import { canLink, linkRequest, type TopologyLinkRequest } from './link-types';
@@ -220,14 +220,24 @@
 	let liveText = $state('');
 	let liveTimer: ReturnType<typeof setTimeout> | null = null;
 	let link = $state<{ sourceId: string; pt: Pt; targets: Set<string>; hoverId: string | null } | null>(null);
+	function connectionSide(id: string, peerId: string, rect: Rect, peer: Rect): Side {
+		const node = graph.nodes.get(id), other = graph.nodes.get(peerId);
+		if (node?.kind === 'switch') {
+			return other?.kind === 'router' && graph.netById.get(node.netId)?.tier !== 'provider' ? 'TOP' : 'BOTTOM';
+		}
+		const a = center(rect), b = center(peer);
+		return sideFor(b.x - a.x, b.y - a.y);
+	}
 	const linkPath = $derived.by(() => {
 		if (!link) return null;
 		const p = pos.get(link.sourceId);
 		if (!p) return null;
-		const a = { x: p.x + p.w, y: p.y + p.h / 2 };
+		const sa: Side = graph.nodes.get(link.sourceId)?.kind === 'switch' ? 'BOTTOM' : 'RIGHT';
+		const a = slotAnchor(p, sa, 0, 1);
 		const tp = link.hoverId ? pos.get(link.hoverId) : null;
-		const b = tp ? center(tp) : link.pt;
-		return { d: cubic(a, 'RIGHT', b, sideFor(a.x - b.x, a.y - b.y)).d, snapped: Boolean(tp) };
+		const sb = tp && link.hoverId ? connectionSide(link.hoverId, link.sourceId, tp, p) : sideFor(a.x - link.pt.x, a.y - link.pt.y);
+		const b = tp ? slotAnchor(tp, sb, 0, 1) : link.pt;
+		return { ...orthogonal(a, sa, b, sb), snapped: Boolean(tp) };
 	});
 	const pendingPath = $derived.by(() => {
 		if (!pendingLink) return null;
@@ -238,10 +248,8 @@
 		const pa = pos.get(aId),
 			pb = pos.get(bId);
 		if (!pa || !pb) return null;
-		const ca = center(pa),
-			cb = center(pb);
-		const sa = sideFor(cb.x - ca.x, cb.y - ca.y);
-		return cubic(ca, sa, cb, sideFor(ca.x - cb.x, ca.y - cb.y)).d;
+		const sa = connectionSide(aId, bId, pa, pb), sb = connectionSide(bId, aId, pb, pa);
+		return orthogonal(slotAnchor(pa, sa, 0, 1), sa, slotAnchor(pb, sb, 0, 1), sb);
 	});
 	const linkFrom = $derived(link?.sourceId ?? null);
 	const linkTargetIds = $derived(link ? link.targets : new Set<string>());
@@ -301,7 +309,7 @@
 		if (node.kind === 'vm') onSelectInstance?.(node.id);
 		else if (node.kind === 'router') onSelectRouter?.(node.id);
 		else if (node.kind === 'lb') onSelectLoadBalancer?.(node.raw);
-		else if (node.kind === 'switch') onSelectNetwork?.(node.netId);
+		else if (node.kind === 'switch' || node.kind === 'internet') onSelectNetwork?.(node.netId);
 	}
 
 	function selectNetwork(netId: string) {
@@ -318,7 +326,7 @@
 		if (node.kind === 'vm') onSelectInstance?.(node.id);
 		else if (node.kind === 'router') onSelectRouter?.(node.id);
 		else if (node.kind === 'lb') onSelectLoadBalancer?.(node.raw);
-		else if (node.kind === 'switch') onSelectNetwork?.(node.netId);
+		else if (node.kind === 'switch' || node.kind === 'internet') onSelectNetwork?.(node.netId);
 	}
 	function fireIntent(id: string) {
 		const node = graph.nodes.get(id);
@@ -381,7 +389,6 @@
 			if (active) op = incident ? Math.min(1, op * 1.4) : selectedId ? 0.12 : 0.2;
 			else if (q && !(q.nodes.has(e.from) || q.nodes.has(e.to))) op = 0.15;
 			if (hovered) { op = 1; w = base.width + 0.5; }
-			const toNode = graph.nodes.get(e.to);
 			const net = graph.netById.get(e.netId);
 			out.push({
 				key: e.key,
@@ -397,7 +404,7 @@
 				hitTitle: e.kind === 'trunk'
 					? t(isUplinkTrunk(e, graph) ? 'canvas.trunkUplink' : 'canvas.trunkConnected', { name: net?.name ?? '' })
 					: null,
-				port: toNode?.kind === 'switch' && (e.kind === 'cable' || e.kind === 'lbvip') ? g.b : null,
+				ports: [{ ...g.a, end: 'from' }, { ...g.b, end: 'to' }],
 				// 위쪽 끝 노드가 들어오는 단계에서 함께 그려진다
 				enter: bands ? Math.min(bands.get(e.from) ?? 0, bands.get(e.to) ?? 0) : null,
 			});
@@ -457,7 +464,6 @@
 					name: n.name,
 					cidrText: n.cidrs.length > 1 ? t('canvas.moreCidrs', { cidr: n.cidrs[0], count: n.cidrs.length - 1 }) : (n.cidrs[0] ?? ''),
 					kindLabel: NET_KIND_LABEL[n.kind],
-					isInternet: n.kind === 'external',
 					isolated: n.isolated,
 					statusText: n.status !== 'ACTIVE' ? n.status : null,
 					adminPills,
@@ -1216,8 +1222,11 @@
 				<CanvasZoneLayer zones={zoneRender} width={svgW} height={svgH} />
 				<CanvasEdgeLayer edges={edgeRender} width={svgW} height={svgH} />
 				<svg class="layer-link" aria-hidden="true" width={svgW} height={svgH}>
-					{#if pendingPath}<path class="edge-pending" d={pendingPath} />{/if}
-					{#if linkPath}<path class="edge-link" class:is-snapped={linkPath.snapped} d={linkPath.d} />{/if}
+					{#if pendingPath}<path class="edge-pending" d={pendingPath.d} />{/if}
+					{#if linkPath}
+						<path class="edge-link" class:is-snapped={linkPath.snapped} d={linkPath.d} />
+						<circle class="link-endpoint" cx={linkPath.b.x} cy={linkPath.b.y} r="3" />
+					{/if}
 				</svg>
 				<svg class="layer-flow" class:is-entering={arrival.active} aria-hidden="true" width={svgW} height={svgH}><g bind:this={flowGroupEl}></g></svg>
 				<div class="layer-nodes">
@@ -1317,6 +1326,7 @@
 	.edge-link { fill: none; stroke: var(--color-accent); stroke-width: 2; stroke-dasharray: 6 4; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 	.edge-link.is-snapped { stroke-dasharray: none; stroke-width: 2.5; }
 	.edge-pending { fill: none; stroke: var(--color-topology-link); stroke-width: 2; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
+	.link-endpoint { fill: var(--color-accent); stroke: var(--color-surface-base); stroke-width: 1; }
 	/* 내부 통신(라우터 없는 망) 점은 테두리를 없애 게이트웨이 방향 점과 구분한다 — 색만으로 구분하지 않도록 범례에 설명이 있다 */
 	.layer-flow :global(.flow-dot.is-internal) { stroke: none; }
 	.layer-nodes { position: absolute; left: 0; top: 0; width: 0; height: 0; }

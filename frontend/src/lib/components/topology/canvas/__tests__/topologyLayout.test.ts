@@ -11,6 +11,7 @@ import {
 	contentBounds,
 	fitTransform,
 	nodeBounds,
+	orthogonal,
 	rectUnion,
 	resolveManualOverlap,
 	stableOrder,
@@ -63,9 +64,8 @@ describe('autoLayout 결정론', () => {
 		const { graph, layout } = build();
 		expect([...layout.pos.keys()].sort()).toEqual([...graph.nodes.keys()].sort());
 		expect([...layout.domOrder].sort()).toEqual([...graph.nodes.keys()].sort());
-		// 합성 코어 노드를 없앤 뒤로 domOrder 는 provider 스위치부터 시작한다
 		expect(layout.domOrder).not.toContain('core');
-		expect(layout.domOrder[0]).toBe(`sw:${layout.order.provider[0]}`);
+		expect(layout.domOrder[0]).toBe(`internet:${layout.order.provider[0]}`);
 	});
 });
 
@@ -112,28 +112,26 @@ describe('autoLayout 존 순서와 home', () => {
 		expect(layout.zoneMembers.get('net-mgmt')).not.toContain('vm-db-01');
 		expect(layout.zoneMembers.get('net-app')).toContain('vm-app-01');
 		expect(layout.zoneMembers.get('net-mgmt')).not.toContain('vm-app-01');
-		expect(layout.zoneMembers.get('net-web')).toEqual(expect.arrayContaining(['sw:net-web', 'lb-web', 'vm-web-01', 'vm-bastion-01']));
+		expect(layout.zoneMembers.get('net-web')).toEqual(expect.arrayContaining(['lb-web', 'vm-web-01', 'vm-bastion-01']));
 	});
 
-	it('라우터는 GW 인 tenant 네트워크의 존에 속하고 provider 존에는 속하지 않는다', () => {
+	it('network zones contain only downstream resources, never Internet, switches or upstream routers', () => {
 		const { graph, layout } = build();
-		// rtr-edge: net-pub(외부 uplink) + net-web·net-app 게이트웨이 / rtr-transit: net-transit(공유 uplink) + net-app
-		expect(layout.zoneMembers.get('net-web')).toContain('rtr-edge');
-		expect(layout.zoneMembers.get('net-app')).toEqual(expect.arrayContaining(['rtr-edge', 'rtr-transit']));
-		// uplink 네트워크(외부·공유)에는 라우터가 들어가지 않는다 → provider 존이 라우터 밴드로 내려오지 않는다
-		expect(layout.zoneMembers.get('net-pub')).not.toContain('rtr-edge');
-		expect(layout.zoneMembers.get('net-transit')).not.toContain('rtr-transit');
-
 		const { zones } = computeGeometry(graph, layout);
-		const edge = layout.pos.get('rtr-edge')!;
-		// GW 인 두 존 모두가 라우터를 감싼다 → 라우터가 두 네트워크의 경계에 놓인다
-		expect(inside(edge, zones.get('net-web')!)).toBe(true);
-		expect(inside(edge, zones.get('net-app')!)).toBe(true);
-		expect(inside(edge, zones.get('net-pub')!)).toBe(false);
-		// provider 존은 라우터 위에서 끝난다
-		expect(zones.get('net-pub')!.y + zones.get('net-pub')!.h).toBeLessThan(edge.y);
-		// tenant 존은 라우터까지 위로 확장된다(스위치 행보다 위에서 시작)
-		expect(zones.get('net-web')!.y).toBeLessThan(layout.pos.get('sw:net-web')!.y);
+		for (const [netId, members] of layout.zoneMembers) {
+			expect(members.every((id) => ['vm', 'lb'].includes(graph.nodes.get(id)!.kind))).toBe(true);
+			const zone = zones.get(netId)!;
+			const sw = layout.pos.get('sw:' + netId)!;
+			expect(zone.y).toBeGreaterThanOrEqual(sw.y + sw.h);
+			for (const node of graph.nodes.values()) {
+				if (node.kind === 'vm' || node.kind === 'lb') continue;
+				expect(inside(layout.pos.get(node.id)!, zone), `${node.id} in ${netId}`).toBe(false);
+			}
+		}
+		const internet = layout.pos.get('internet:net-pub')!;
+		const provider = layout.pos.get('sw:net-pub')!;
+		expect(internet.y + internet.h).toBeLessThan(provider.y);
+		expect(internet.x + internet.w / 2).toBe(provider.x + provider.w / 2);
 	});
 
 	it('서로 공유 VM 이 없는 존은 겹치지 않는다', () => {
@@ -183,16 +181,16 @@ describe('autoLayout 존 겹침 불변식', () => {
 		return { networks, routers, instances, floating_ips: [], load_balancers: [] };
 	}
 
-	it('망마다 자기 외부 GW 라우터가 있어도 소속 존 밖으로 밀리지 않는다', () => {
+	it('each upstream router stays outside downstream zones even with a shared provider', () => {
 		const graph = buildGraph(perNetRouterData(10), { projectId: 'p', showAll: false });
 		const layout = autoLayout(graph);
 		expect(falseOverlaps(graph, layout)).toEqual([]);
-		// 각 라우터는 자기 home 존에만 둘러싸인다(남의 존에 갇히지 않는다)
+		// Routers remain in their upstream lane, outside every downstream zone.
 		const { zones } = computeGeometry(graph, layout);
 		for (let i = 0; i < 10; i++) {
 			const r = layout.pos.get(`rtr-${i}`)!;
 			const enclosing = [...zones.entries()].filter(([, z]) => inside(r, z)).map(([n]) => n);
-			expect(enclosing).toEqual(['net-t' + i]);
+			expect(enclosing).toEqual([]);
 		}
 	});
 
@@ -264,12 +262,12 @@ describe('autoLayout 계층 순서', () => {
 				if (colOf(d) === colOf(v) && y(d) < bottom(v)) bad.push(`${nid}: DB 가 같은 컬럼의 인스턴스 위`);
 			}
 		}
-		// 라우터는 자신이 속한 존의 스위치보다 위
-		for (const node of graph.nodes.values()) {
-			if (node.kind !== 'router') continue;
-			for (const [nid, members] of layout.zoneMembers) {
-				if (!members.includes(node.id)) continue;
-				if (bottom(node.id) > y('sw:' + nid)) bad.push(`${nid}: 라우터가 스위치 아래`);
+		// Each router precedes its connected switches in the same downstream depth band.
+		for (const row of layout.bands.rows) for (const id of row.routerIds) {
+			const node = graph.nodes.get(id);
+			if (node?.kind !== 'router') continue;
+			for (const netId of row.netIds) {
+				if (node.netIds.includes(netId) && bottom(id) > y('sw:' + netId)) bad.push(`${netId}: router below downstream switch`);
 			}
 		}
 		return [...new Set(bad)];
@@ -324,7 +322,7 @@ describe('autoLayout 밴드와 주차', () => {
 		const [a, b] = rs.sort((p, q) => p.x - q.x);
 		expect(b.x - (a.x + a.w)).toBeGreaterThanOrEqual(L.RT_GAP);
 		expect(layout.pos.get('sw:net-web')!.y).toBe(LOWER_Y);
-		expect(layout.pos.get('sw:net-pub')!.y).toBe(L.PROV_Y);
+		expect(layout.pos.get('sw:net-pub')!.y).toBe(L.PROV_Y + L.INTERNET_H + L.INTERNET_GAP);
 	});
 
 	it('콘텐츠가 y=0 위로 넘치지 않고 bands.BOTTOM_Y 가 실제 바닥을 덮는다', () => {
@@ -351,8 +349,8 @@ describe('autoLayout 밴드와 주차', () => {
 		expect(w1.y).toBeGreaterThanOrEqual(sw.y + sw.h);
 	});
 
-	it('존 내부는 라우터 > 스위치 > LB > 인스턴스 > DB 순으로 아래로 쌓인다', () => {
-		// net-web: 라우터(rtr-edge) · 스위치 · LB(web-lb) · 일반 VM · DB VM 이 모두 있는 존을 만든다
+	it('upstream routers and switches precede downstream LB, VM and database tiers', () => {
+		// Native hierarchy stays intact although upstream devices are no longer zone members.
 		const data = makeFixture();
 		const dbVm = data.instances.find((i) => i.id === 'vm-web-02')!;
 		dbVm.is_database = true;
@@ -398,25 +396,28 @@ describe('applyManualPositions', () => {
 		expect(applyManualPositions(layout, null)).toEqual({});
 	});
 
-	it('드래그로 옮긴 VM 을 따라 존 rect 가 늘어난다(멤버십은 유지)', () => {
+	it('dragging one downstream member expands its zone while retaining the other members', () => {
 		const { graph, layout } = build();
-		const zBefore = computeGeometry(graph, layout).zones.get('net-lab')!;
-		applyManualPositions(layout, { 'vm-lab-01': { x: zBefore.x + zBefore.w + 500, y: zBefore.y } });
-		const zAfter = computeGeometry(graph, layout).zones.get('net-lab')!;
+		const zBefore = computeGeometry(graph, layout).zones.get('net-web')!;
+		applyManualPositions(layout, { 'vm-web-01': { x: zBefore.x + zBefore.w + 500, y: zBefore.y } });
+		const zAfter = computeGeometry(graph, layout).zones.get('net-web')!;
 		expect(zAfter.w).toBeGreaterThan(zBefore.w + 400);
-		expect(layout.zoneMembers.get('net-lab')).toContain('vm-lab-01');
+		expect(layout.zoneMembers.get('net-web')).toContain('vm-web-01');
+		expect(layout.zoneMembers.get('net-web')).toContain('vm-web-02');
 	});
 });
 
 describe('computeGeometry', () => {
-	it('모든 엣지(+extraEdges)에 베지어 path 와 중점이 생기고 슬롯 순서는 재계산해도 안정적이다', () => {
+	it('all edges and lazy member links are orthogonal and retain stable slots', () => {
 		const { graph, layout } = build();
 		const extra = buildMemberEdges(graph, 'lb-web', layout.pos);
 		const g1 = computeGeometry(graph, layout, extra);
 		expect(g1.geom.size).toBe(graph.edges.length + extra.length);
 		for (const [, g] of g1.geom) {
 			expect(g.d.startsWith('M')).toBe(true);
-			expect(g.d).toContain(' C');
+			const points = [...g.d.matchAll(/[ML](-?[\d.]+) (-?[\d.]+)/g)].map((match) => ({ x: Number(match[1]), y: Number(match[2]) }));
+			expect(g.d).not.toMatch(/[CQAST]/i);
+			for (let i = 1; i < points.length; i++) expect(points[i].x === points[i - 1].x || points[i].y === points[i - 1].y).toBe(true);
 			expect(Number.isFinite(g.mid.x) && Number.isFinite(g.mid.y)).toBe(true);
 		}
 		const g2 = computeGeometry(graph, layout, extra, g1.slotOrder);
@@ -424,22 +425,87 @@ describe('computeGeometry', () => {
 		expect([...g2.geom.entries()]).toEqual([...g1.geom.entries()]);
 	});
 
-	it('VM 케이블은 NIC 행 높이에서 출발하고 스위치 슬롯은 폭 안에 균등 분배된다', () => {
+	it('VM ingress is on top and switch egress is on the bottom, independent of horizontal separation', () => {
 		const { graph, layout } = build();
 		const { geom } = computeGeometry(graph, layout);
 		const db = layout.pos.get('vm-db-01')!;
 		const cables = graph.edges.filter((e) => e.kind === 'cable' && e.from === 'vm-db-01');
 		for (const e of cables) {
 			const g = geom.get(e.key)!;
-			if (g.sa === 'LEFT' || g.sa === 'RIGHT') {
-				expect(g.a.y).toBeCloseTo(db.y + L.VM_HEAD + e.nic!.rowIdx * L.NIC_ROW + L.NIC_ROW / 2);
-			} else {
-				expect(g.a.y === db.y || g.a.y === db.y + db.h).toBe(true);
-			}
+			expect(g.sa).toBe('TOP');
+			expect(g.sb).toBe('BOTTOM');
+			expect(g.a.y).toBe(db.y);
 			const sw = layout.pos.get(e.to)!;
 			expect(g.b.x).toBeGreaterThanOrEqual(sw.x);
 			expect(g.b.x).toBeLessThanOrEqual(sw.x + sw.w);
 		}
+	});
+
+	it('same-network native NICs and multiple links have distinct endpoint slots', () => {
+		const data = makeFixture();
+		data.instances.push(mkInst('vm-dual', 'dual', 'ACTIVE', [['net-web', '10.10.1.80', '00:00:80'], ['net-web', '10.10.1.81', '00:00:81']]));
+		const { graph, layout } = build(data);
+		const geometry = computeGeometry(graph, layout, buildMemberEdges(graph, 'lb-web'));
+		const cables = graph.edges.filter((edge) => edge.kind === 'cable' && edge.from === 'vm-dual');
+		expect(cables).toHaveLength(2);
+		const anchors = cables.map((edge) => geometry.geom.get(edge.key)!);
+		expect(anchors[0].a).not.toEqual(anchors[1].a);
+		expect(anchors[0].b).not.toEqual(anchors[1].b);
+		const webLinks = [...graph.edges, ...buildMemberEdges(graph, 'lb-web')].filter((edge) => edge.from === 'vm-web-01' || edge.to === 'vm-web-01');
+		const webAnchors = webLinks.map((edge) => {
+			const route = geometry.geom.get(edge.key)!;
+			const point = edge.from === 'vm-web-01' ? route.a : route.b;
+			return `${point.x},${point.y}`;
+		});
+		expect(new Set(webAnchors).size).toBe(webAnchors.length);
+	});
+
+	it('dense provider-grid cables use row and column gutters instead of unrelated cards', () => {
+		const data = makeFixture();
+		for (let i = 0; i < 24; i++) data.instances.push(mkInst(`vm-dense-${i}`, `dense-${String(i).padStart(2, '0')}`, 'ACTIVE', [['net-pub', `203.0.113.${20 + i}`, `00:01:${i}`]]));
+		const { graph, layout } = build(data);
+		const geometry = computeGeometry(graph, layout);
+		for (const edge of graph.edges.filter((edge) => edge.from.startsWith('vm-dense-'))) {
+			const route = geometry.geom.get(edge.key)!;
+			const points = [...route.d.matchAll(/[ML](-?[\d.]+) (-?[\d.]+)/g)].map((match) => ({ x: Number(match[1]), y: Number(match[2]) }));
+			for (const [id, rect] of layout.pos) {
+				if (id === edge.from || id === edge.to) continue;
+				for (let i = 1; i < points.length; i++) {
+					const a = points[i - 1], b = points[i];
+					const intersects = a.x === b.x
+						? a.x > rect.x && a.x < rect.x + rect.w && Math.max(a.y, b.y) > rect.y && Math.min(a.y, b.y) < rect.y + rect.h
+						: a.y > rect.y && a.y < rect.y + rect.h && Math.max(a.x, b.x) > rect.x && Math.min(a.x, b.x) < rect.x + rect.w;
+					expect(intersects, `${edge.key} through ${id}`).toBe(false);
+				}
+			}
+		}
+	});
+
+	it('moved nodes retain semantic top/bottom ports and route around endpoint bounds', () => {
+		const { graph, layout } = build();
+		const sw = layout.pos.get('sw:net-transit')!;
+		applyManualPositions(layout, { 'vm-worker-01': { x: sw.x - 400, y: sw.y - 160 } });
+		const edge = graph.edges.find((edge) => edge.kind === 'cable' && edge.from === 'vm-worker-01')!;
+		const route = computeGeometry(graph, layout).geom.get(edge.key)!;
+		expect(route.sa).toBe('TOP');
+		expect(route.sb).toBe('BOTTOM');
+		expect(route.a.y).toBe(layout.pos.get(edge.from)!.y);
+		expect(route.b.y).toBe(sw.y + sw.h);
+		const direct = orthogonal({ x: 50, y: 100 }, 'TOP', { x: 50, y: 300 }, 'BOTTOM', { x: 0, y: 100, w: 100, h: 200 });
+		expect(direct.d).toMatch(/L(?:-24|124) /);
+		expect(direct.d).not.toMatch(/[CQAST]/i);
+	});
+
+	it('empty networks retain a downstream selectable zone without upstream members', () => {
+		const data: TopologyData = { networks: [mkNet('net-empty', 'empty', '10.20.0.0/24', '10.20.0.1', { project: P })], instances: [], routers: [], floating_ips: [], load_balancers: [] };
+		const { graph, layout } = build(data);
+		const zone = computeGeometry(graph, layout).zones.get('net-empty')!;
+		const sw = layout.pos.get('sw:net-empty')!;
+		expect(layout.zoneMembers.get('net-empty')).toEqual([]);
+		expect(zone.y).toBeGreaterThan(sw.y + sw.h);
+		expect(zone.w).toBeGreaterThanOrEqual(sw.w);
+		expect(zone.h).toBeGreaterThan(0);
+		expect(zone.y + zone.h).toBeLessThanOrEqual(layout.bands.BOTTOM_Y);
 	});
 
 	it('stableOrder 는 8 단위 이내 교차에서는 이전 순서를 유지하고 그 이상이면 교환한다', () => {
@@ -886,15 +952,11 @@ describe('깊이 계층(provider 로부터의 라우터 홉)', () => {
 		}
 	});
 
-	it('라우터는 자기 행 존의 멤버만 된다 — 다른 행 존을 끌어내리지 않는다', () => {
-		const { layout } = buildDepth();
-		// rtr-h2 는 net-d1(깊이 1)도 물지만 자기 행은 2 이므로 net-d1 존의 멤버가 아니다
-		expect(layout.zoneMembers.get('net-d1')).toEqual(expect.arrayContaining(['rtr-edge', 'rtr-lat1']));
-		expect(layout.zoneMembers.get('net-d1')).not.toContain('rtr-h2');
-		expect(layout.zoneMembers.get('net-d2')).toEqual(expect.arrayContaining(['rtr-h2', 'rtr-lat2']));
-		expect(layout.zoneMembers.get('net-d2')).not.toContain('rtr-h3');
-		expect(layout.zoneMembers.get('net-d3')).toContain('rtr-h3');
-		expect(layout.zoneMembers.get('net-i1')).toContain('rtr-isl');
+	it('upstream router lanes never become downstream zone members at any depth', () => {
+		const { graph, layout } = buildDepth();
+		for (const members of layout.zoneMembers.values()) {
+			expect(members.every((id) => ['vm', 'lb'].includes(graph.nodes.get(id)!.kind))).toBe(true);
+		}
 	});
 
 	it('행끼리 세로로 겹치지 않고 기하·계층 불변식이 유지된다', () => {
@@ -989,7 +1051,7 @@ describe('깊이 계층(provider 로부터의 라우터 홉)', () => {
 		expect(layout.order.solo).toEqual([]);
 		// 가시 망이 없는 rtr-a 때문에 빈 행이 생기지 않는다
 		expect(layout.bands.rows.every((r) => r.netIds.length || r.routerIds.length)).toBe(true);
-		expect(layout.zoneMembers.get('net-tgt')).toContain('rtr-b');
+		expect(layout.zoneMembers.get('net-tgt')).not.toContain('rtr-b');
 	});
 });
 

@@ -387,14 +387,6 @@ async def assert_unmanaged(volume, owner: str):
     Native markers are conservative blockers, not ownership proof. Removing a
     marker must not bypass SQL/CREATE journals, including unknown native IDs.
     """
-    import json
-
-    from sqlalchemy import select
-
-    from app.database import get_session_factory
-    from app.models.db import LayerConsume
-    from app.services.cache import _get_redis
-
     metadata = field(volume, "metadata")
     if metadata is not None and not isinstance(metadata, Mapping):
         raise TransferError(502, "볼륨 관리 메타데이터를 확인할 수 없습니다")
@@ -403,10 +395,23 @@ async def assert_unmanaged(volume, owner: str):
         for key in metadata or {}
     ):
         raise TransferError(409, "Palimpsest 관리 볼륨은 소유권을 이전할 수 없습니다")
+    await assert_unmanaged_id(required_id(volume, "id"), owner)
+
+
+async def assert_unmanaged_id(volume_id: str, owner: str):
+    """Keep durable volume receipts authoritative even after native volume deletion."""
+    import json
+
+    from sqlalchemy import select
+
+    from app.database import get_session_factory
+    from app.models.db import LayerConsume
+    from app.services.cache import _get_redis
+
+    required_id({"id": volume_id}, "id")
     factory = get_session_factory()
     if factory is None:
         raise TransferError(503, "Palimpsest 볼륨 소유권 원장을 확인할 수 없습니다")
-    volume_id = required_id(volume, "id")
     try:
         async with factory() as session:
             rows = (

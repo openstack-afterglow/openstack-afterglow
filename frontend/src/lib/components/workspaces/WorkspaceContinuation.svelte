@@ -26,7 +26,7 @@
 	function continueAfterSelection() {
 		if (!get(authReady) || !get(auth).token || get(logoutInProgress)) return;
 		const state = get(auth);
-		const fallback = state.projectId ? '/dashboard' : state.isDomainManager ? '/dashboard/iam' : state.isSystemAdmin ? '/admin' : '/select-project';
+		const fallback = state.projectId ? '/dashboard' : state.isDomainManager ? '/dashboard/iam/users' : state.isSystemAdmin ? '/admin' : '/select-project';
 		void goto(takePendingInvitationPath() ?? postAuthDestination(fallback));
 	}
 	onMount(() => auth.subscribe(state => { if (!state.token && !loggingOut) void goto('/login', { replaceState: true }); }));

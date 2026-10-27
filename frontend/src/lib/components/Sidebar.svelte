@@ -4,6 +4,7 @@
 	import { t as tw } from '$lib/i18n/ns/workspace-selector';
 	import { page } from '$app/stores';
 	import { auth, canManageDomain, isAdmin } from '$lib/stores/auth';
+	import { canManageOrganizationProjects } from '$lib/stores/projectManagement';
 	import ConsoleNavigation from '$lib/components/ConsoleNavigation.svelte';
 	import ProjectSelector from '$lib/components/ProjectSelector.svelte';
 	import { siteConfig } from '$lib/config/site';
@@ -50,6 +51,7 @@
 	function isItemVisible(item: NavItem): boolean {
 		if (mockupProfile && !isMockupPathAllowed(mockupProfile, item.href)) return false;
 		if (item.capability === 'domainManager' && !$canManageDomain) return false;
+		if (item.capability === 'projectManagement' && !$canManageOrganizationProjects) return false;
 		if (!isBetaVisible(item.beta)) return false;
 		const svcs = $siteConfig.services as Record<string, boolean> | undefined;
 		if (!item.service) return true;

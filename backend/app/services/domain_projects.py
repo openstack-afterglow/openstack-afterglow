@@ -251,6 +251,46 @@ def _manager_users(ks, project, catalog, *, reads=None, raw=None, operation=None
     return effective
 
 
+def _creator_users(ks, project, catalog, *, operation=None):
+    """Prove all current Default creator grants in one operation-local read phase."""
+    from app.services.project_service import _expanded_role_ids
+
+    ks, reads = _read_context(ks, operation=operation)
+    key = ("domain_projects", "creators", project["id"], id(catalog))
+    if key in reads:
+        return reads[key]
+    creator = _canonical(catalog, "project_creator")["id"]
+    native = _exact(ks.projects, project["id"], reads=reads)
+    if (
+        _field(native, "domain_id") != project["domain_id"]
+        or _field(native, "name") != "Default"
+        or not _enabled(native)
+    ):
+        raise _unavailable()
+    rows = _effective(ks, project["id"], catalog, reads=reads)
+    by_user = {}
+    for assignment in rows:
+        uid = _field(_field(assignment, "user"), "id")
+        by_user.setdefault(uid, []).append(assignment)
+    effective = {
+        uid for uid, assignments in by_user.items() if creator in _expanded_role_ids(assignments, catalog, uid)
+    }
+    sources = _sources(ks, native, catalog, exclude_projection=True, reads=reads)
+    legitimate = {
+        uid
+        for source in sources
+        if creator in {source["role_id"]} | identity_roles._descendant_ids(catalog, source["role_id"])
+        for uid in source["users"]
+    }
+    active = {uid for uid in effective | legitimate if _active_user(ks, uid, reads=reads)}
+    effective &= active
+    legitimate &= active
+    if effective != legitimate:
+        raise _unavailable()
+    reads[key] = effective
+    return effective
+
+
 def has_manager(user_id, domain_id, *, ks=None, catalog=None, operation=None):
     ks, reads = _read_context(ks, operation=operation)
     if not _active_user(ks, user_id, reads=reads) or not _enabled(_exact(ks.domains, domain_id, reads=reads)):
@@ -504,6 +544,22 @@ def assert_manager_assignment(project_id, role_id, *, catalog=None, ks=None):
     default = default_project(_field(project, "domain_id"), ks=ks)
     if default is None or default["id"] != project_id:
         raise HTTPException(422, "manager_requires_default_project")
+
+
+def assert_creator_assignment(project_id, role_id, *, catalog=None, ks=None):
+    """Creator-bearing native project grants belong on the canonical Default."""
+    ks = _client(ks)
+    catalog = catalog if catalog is not None else _catalog(ks)
+    matches = [r for r in catalog if r["domain_id"] is None and r["name"].casefold() == "project_creator"]
+    if not matches:
+        return
+    creator = _canonical(catalog, "project_creator")["id"]
+    if creator not in {role_id} | identity_roles._descendant_ids(catalog, role_id):
+        return
+    project = _exact(ks.projects, project_id)
+    default = default_project(_field(project, "domain_id"), ks=ks)
+    if default is None or default["id"] != project_id:
+        raise HTTPException(422, "project_creator_requires_default_project")
 
 
 def assert_default_immutable(project_id, *, attrs=None, delete=False, ks=None, project=None):

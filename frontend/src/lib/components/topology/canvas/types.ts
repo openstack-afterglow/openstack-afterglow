@@ -10,10 +10,10 @@ import type {
 	TopologyRouter,
 } from '$lib/types/topology';
 
-export type CanvasNodeKind = 'switch' | 'router' | 'vm' | 'lb';
+export type CanvasNodeKind = 'internet' | 'switch' | 'router' | 'vm' | 'lb';
 export type CanvasNetKind = 'external' | 'shared' | 'internal';
 export type CanvasNetTier = 'provider' | 'tenant';
-export type CanvasEdgeKind = 'cable' | 'trunk' | 'fip' | 'lbvip' | 'lbmember';
+export type CanvasEdgeKind = 'uplink' | 'cable' | 'trunk' | 'fip' | 'lbvip' | 'lbmember';
 
 export interface Pt { x: number; y: number; }
 export interface Rect { x: number; y: number; w: number; h: number; }
@@ -43,7 +43,7 @@ export interface CanvasFip {
 }
 
 export interface CanvasNic {
-	/** `${instanceId}|${netId}|${idx}` */
+	/** Stable instance/network/native-port identity; legacy payloads have one NIC per network. */
 	key: string;
 	idx: number;
 	/** 카드 내부 행 인덱스(FIP 행 포함 누적) */
@@ -75,6 +75,11 @@ interface CanvasNodeBase {
 	name: string;
 	status: string;
 	netIds: string[];
+}
+
+export interface InternetNode extends CanvasNodeBase {
+	kind: 'internet';
+	netId: string;
 }
 
 export interface SwitchNode extends CanvasNodeBase {
@@ -116,7 +121,7 @@ export interface LbNode extends CanvasNodeBase {
 	raw: TopologyLoadBalancer;
 }
 
-export type CanvasNode = SwitchNode | RouterNode | VmNode | LbNode;
+export type CanvasNode = InternetNode | SwitchNode | RouterNode | VmNode | LbNode;
 
 export interface CanvasEdge {
 	key: string;
@@ -200,7 +205,7 @@ export interface LayoutResult {
 	order: { provider: string[]; lower: string[]; solo: string[] };
 	/** vmId → home 존 netId 목록(0, 1, 2개) */
 	home: Map<string, string[]>;
-	/** netId → 존 멤버 노드 id(스위치 포함) */
+	/** netId → downstream zone members (VM/LB only); upstream devices stay outside. */
 	zoneMembers: Map<string, string[]>;
 	parked: Set<string>;
 	domOrder: string[];

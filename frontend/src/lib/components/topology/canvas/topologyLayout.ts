@@ -1,4 +1,4 @@
-// 순수·결정론 자동 배치와 기하(앵커·슬롯·베지어). 동일 입력 → 동일 출력. DOM 을 읽지 않는다.
+// Pure deterministic layout and orthogonal cable geometry; no DOM reads.
 import { byName, clamp, mean, r1 } from './canvasHelpers';
 import type {
 	CanvasEdge,
@@ -23,11 +23,12 @@ import type {
 export const L = {
 	VM_W: 232, VM_HEAD: 40, NIC_ROW: 20, VM_PAD_B: 6,
 	SW_W: 232, SW_H: 48,
+	INTERNET_W: 232, INTERNET_H: 64, INTERNET_GAP: 48,
 	RT_W: 200, RT_H: 68,
 	LB_W: 264, LB_H: 68,
 	COL_GAP: 24, ROW_GAP: 24, SW_TO_ROW: 48,
 	PAD_X: 28, PAD_T: 36, PAD_B: 24, ZONE_GAP: 56, RT_GAP: 40,
-	/** provider 티어 y. PAD_T 와 같은 값이라 최상단 존 rect 가 y=0 에서 시작한다(SVG 레이어는 원점이 0,0 이라 음수 y 는 잘린다) */
+	/** Internet starts at PROV_Y; provider switches reserve an upstream Internet row when needed. */
 	PROV_Y: 36, ROUTER_GAP: 80, LOWER_GAP: 96,
 } as const;
 
@@ -40,6 +41,7 @@ export const vmH = (rows: number): number => L.VM_HEAD + L.NIC_ROW * Math.max(1,
 export function nodeSize(node: CanvasNode): { w: number; h: number } {
 	switch (node.kind) {
 		case 'vm': return { w: L.VM_W, h: vmH(node.rows) };
+		case 'internet': return { w: L.INTERNET_W, h: L.INTERNET_H };
 		case 'switch': return { w: L.SW_W, h: L.SW_H };
 		case 'router': return { w: L.RT_W, h: L.RT_H };
 		case 'lb': return { w: L.LB_W, h: L.LB_H };
@@ -61,6 +63,14 @@ export function zoneRectFrom(pos: ReadonlyMap<string, Rect>, memberIds: readonly
 	const u = rectUnion(memberIds.map((id) => pos.get(id)).filter((r): r is Rect => Boolean(r)));
 	if (!u) return null;
 	return { x: u.x - L.PAD_X, y: u.y - L.PAD_T, w: u.w + 2 * L.PAD_X, h: u.h + L.PAD_T + L.PAD_B };
+}
+
+/** Empty networks retain a selectable downstream area without making the switch a zone member. */
+export function networkZoneRect(pos: ReadonlyMap<string, Rect>, netId: string, members: readonly string[] | undefined): Rect | null {
+	const occupied = zoneRectFrom(pos, members);
+	if (occupied) return occupied;
+	const sw = pos.get('sw:' + netId);
+	return sw ? { x: sw.x - L.PAD_X, y: sw.y + sw.h + L.SW_TO_ROW - L.PAD_T, w: sw.w + 2 * L.PAD_X, h: L.PAD_T + L.PAD_B } : null;
 }
 
 export function autoLayout(graph: CanvasGraph): LayoutResult {
@@ -143,8 +153,7 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 		if (!Number.isFinite(m)) { routerBand.set(r.id, 1); continue; }
 		const hasDeeper = visible.some((id) => depth.get(id) === m + 1);
 		// 게이트웨이 라우터는 자기가 더 깊게 만든 망의 행(m+1)에, 모든 망이 같은 깊이인 lateral 라우터는 그 깊이 행(m)에.
-		// m === 0 만 예외로 행 1 — provider 행에는 라우터 레인이 없고, provider 망을 home 에 넣으면
-		// provider 존이 라우터 밴드까지 내려와 아래 존들과 전면 겹친다.
+		// Provider bands have no router lane, so provider-only/lateral routers start in tenant row 1.
 		routerBand.set(r.id, hasDeeper ? m + 1 : Math.max(m, 1));
 	}
 	let maxBand = 0;
@@ -236,24 +245,19 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 		home.set(vm.id, homePair(lower));
 	}
 	for (const lb of lbs) if (lb.parked) parked.push(lb.id);
-	const zoneMembers = new Map<string, string[]>(graph.nets.map((n) => [n.id, ['sw:' + n.id]]));
+	const zoneMembers = new Map<string, string[]>(graph.nets.map((n) => [n.id, []]));
 	for (const lb of lbs) if (lb.vipNetId && zoneMembers.has(lb.vipNetId)) zoneMembers.get(lb.vipNetId)?.push(lb.id);
 	for (const vm of vms) for (const nid of home.get(vm.id) ?? []) zoneMembers.get(nid)?.push(vm.id);
-	// 라우터는 자신이 게이트웨이인 네트워크(연결된 tenant 네트워크)의 존에 소속된다 → 존 rect 가 라우터까지 확장되어
-	// 라우터가 그 네트워크들의 경계에 놓인다. 외부·공유(provider) 네트워크는 라우터의 상위 연결이므로 제외한다
-	// (포함하면 provider 존이 라우터 밴드까지 내려와 아래 존들과 전면 겹친다).
+	// Router home guides placement only: routers and switches are upstream of downstream network zones.
 	const routerHome = new Map<string, string[]>();
 	for (const r of routers) {
 		const band = routerBand.get(r.id) ?? null; // null = 독립 행
-		// **자기 행 깊이의 tenant 망만** home 후보다. 이 필터가 "행 d 라우터는 행 d 존의 멤버" 를 구조적으로 보장한다 —
-		// 존 rect 는 멤버 라우터까지 위로 늘어나므로, 라우터가 다른 행 존의 멤버가 되면 그 존이 행 경계를 넘어 겹친다.
-		// 독립 행 라우터는 band === null 이고 자기 solo 망도 depth 가 없어 (depth ?? null) === null 로 통과한다.
+		// Restrict placement homes to this router's depth band, including the independent band.
 		const gwNets = r.intNetIds
 			.filter((id) => orderIdx.has(id) && (depth.get(id) ?? null) === band)
 			.sort((a, b) => (orderIdx.get(a) ?? 0) - (orderIdx.get(b) ?? 0));
 		const zonesOf = gwNets.length ? homePair(gwNets) : [];
 		routerHome.set(r.id, zonesOf);
-		for (const nid of zonesOf) zoneMembers.get(nid)?.push(r.id);
 	}
 	const isHome = (vm: VmNode, ids: readonly string[]) => {
 		const hm = home.get(vm.id) ?? [];
@@ -262,8 +266,7 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 	const gridCols = (n: number) => (n <= 1 ? 1 : clamp(Math.ceil(Math.sqrt(n * 1.5)), 1, 6));
 	const gridWidth = (n: number) => (n ? gridCols(n) * L.VM_W + (gridCols(n) - 1) * L.COL_GAP : 0);
 	/**
-	 * 존 내부는 항상 위에서 아래로 스위치 → 로드밸런서 → 인스턴스 → 데이터베이스 계층이다
-	 * (라우터는 그 위 밴드에 놓인다). 각 계층은 자기 행 묶음을 차지하고 서로 섞이지 않는다.
+	 * Switches sit above downstream zones; each zone stacks LB → instance → database tiers.
 	 */
 	/** 네트워크별 인스턴스 계층 시작 y — 경계 컬럼도 이 아래에서 시작해야 LB 보다 위로 올라가지 않는다 */
 	const vmTierY = new Map<string, number>();
@@ -319,20 +322,27 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 	// 예전에는 직접 VM 을 스위치 양측에 flank 했지만, 평면도에서 계층이 위→아래로 읽히지 않아 제거했다.
 	const providerIds: string[] = [];
 	let x = 0;
+	const providerY = L.PROV_Y + (providerNets.some((n) => n.kind === 'external') ? L.INTERNET_H + L.INTERNET_GAP : 0);
 	for (const net of providerNets) {
 		const direct = vms.filter((v) => isHome(v, [net.id])).sort(byName);
 		const netLbs = lbs.filter((lb) => lb.vipNetId === net.id).sort(byName);
-		x = placeGrid(net, direct, netLbs, x, L.PROV_Y, providerIds) + 2 * L.PAD_X + L.ZONE_GAP;
+		x = placeGrid(net, direct, netLbs, x, providerY, providerIds) + 2 * L.PAD_X + L.ZONE_GAP;
+		if (net.kind === 'external') {
+			const sw = pos.get('sw:' + net.id)!;
+			const id = 'internet:' + net.id;
+			setPos(id, sw.x + (sw.w - L.INTERNET_W) / 2, L.PROV_Y);
+			domOrder.splice(domOrder.indexOf('sw:' + net.id), 0, id);
+			providerIds.push(id);
+		}
 	}
 	const providerW = providerNets.length ? x - L.ZONE_GAP - 2 * L.PAD_X : 0;
 	/**
-	 * 밴드 바닥 = 그 밴드 존들의 rect 아래끝. 라우터는 아직 위치가 없어 zoneRectFrom 이 건너뛰므로
-	 * 결과가 라우터 x 계산에 의존하지 않는다(순환 없음). 이 밴드에 늦게 배치되는 멤버가 생기면 이 계산부터 깨진다.
+	 * Band bottom includes downstream zones, including empty-network placeholders.
 	 */
 	const bandBottom = (nets: readonly CanvasNet[], fallback: number): number => {
 		let b = fallback;
 		for (const net of nets) {
-			const zr = zoneRectFrom(pos, zoneMembers.get(net.id));
+			const zr = networkZoneRect(pos, net.id, zoneMembers.get(net.id));
 			if (zr) b = Math.max(b, zr.y + zr.h);
 		}
 		return b;
@@ -340,7 +350,7 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 
 	// 4~5. 위에서 아래로 커서를 한 번만 전진시키며 행을 쌓는다: [행 d 라우터 레인 + 행 d 존] 을 d = 1..maxBand, 마지막에 독립 행.
 	// 멤버가 하나도 없는 행은 자리를 차지하지 않으므로 깊이 1 뿐인 토폴로지는 예전과 같은 모양이 된다.
-	// ROUTER_GAP(80) > PAD_T(36) 이어야 라우터를 품은 존의 rect 상단이 위 행 바닥을 침범하지 않는다.
+	// ROUTER_GAP separates each preceding downstream zone from the next upstream router lane.
 	const nameOf = (id: string) => graph.nodes.get(id)?.name ?? id;
 	const placeTenantBand = (bandOrder: readonly CanvasNet[], sink: string[], topY: number): number => {
 		let bx0 = 0;
@@ -377,7 +387,7 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 
 	interface Band { key: number | null; nets: readonly CanvasNet[]; bandRouters: RouterNode[]; ids: string[]; routerY: number; tenantY: number; width: number }
 	const bands: Band[] = [];
-	let cursor = providerNets.length ? bandBottom(providerNets, L.PROV_Y) : L.PROV_Y;
+	let cursor = providerNets.length ? bandBottom(providerNets, providerY) : L.PROV_Y;
 	for (const spec of rowSpecs) {
 		const { nets, routers: bandRouters } = spec;
 		const routerY = cursor + L.ROUTER_GAP;
@@ -390,7 +400,7 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 	}
 	const first = bands[0] ?? null;
 	const last = bands[bands.length - 1] ?? null;
-	const fallbackRouterY = (providerNets.length ? bandBottom(providerNets, L.PROV_Y) : L.PROV_Y) + L.ROUTER_GAP;
+	const fallbackRouterY = (providerNets.length ? bandBottom(providerNets, providerY) : L.PROV_Y) + L.ROUTER_GAP;
 	const ROUTER_Y = first?.routerY ?? fallbackRouterY;
 	const LOWER_Y = first?.tenantY ?? ROUTER_Y;
 	const SOLO_ROUTER_Y = last?.routerY ?? ROUTER_Y;
@@ -410,9 +420,8 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 		const p = pos.get('sw:' + nid);
 		return p ? p.x + p.w / 2 : null;
 	};
-	// 소속 존이 있으면 그 스위치들만으로 x 를 잡는다. 상위(외부망) 중심과 평균하면 같은 외부망을 쓰는 라우터들이
-	// 모두 화면 중앙으로 끌려가고, 라우터가 존 멤버이므로 소속 존 rect 가 그 위치까지 늘어나 남의 존을 덮는다.
-	// 소속 존이 없는 라우터(provider 망만 연결)는 그 밴드 tenant 존 오른쪽 바깥 레인에 두어 남의 존에 갇히지 않게 한다.
+	// Placement homes align routers with their downstream switches, without expanding network zones.
+	// Routers without a tenant home use a separate lane beside the tenant band.
 	// 1-D 분리와 lift 보정은 밴드마다 따로 돌린다 — y 가 다른 라우터끼리 옆으로 밀어낼 이유가 없고,
 	// lift 를 공유하면 한쪽 밴드가 목표 x 에서 통째로 밀려난다.
 	for (const b of bands) {
@@ -465,7 +474,7 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 		RIGHT_X = Math.max(RIGHT_X, p.x + p.w);
 	}
 	for (const net of graph.nets) {
-		const zr = zoneRectFrom(pos, zoneMembers.get(net.id));
+		const zr = networkZoneRect(pos, net.id, zoneMembers.get(net.id));
 		if (!zr) continue;
 		BOTTOM_Y = Math.max(BOTTOM_Y, zr.y + zr.h);
 		RIGHT_X = Math.max(RIGHT_X, zr.x + zr.w);
@@ -504,11 +513,26 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 	return result;
 }
 
-/** Domain padding reserves a separate label row above the unchanged network zones. */
-export function domainRects(graph: CanvasGraph, zones: ReadonlyMap<string, Rect>): Map<string, Rect> {
+/** Ownership groups include their upstream devices, but network zones never do. */
+function domainNodeIds(graph: CanvasGraph, netIds: readonly string[], zoneMembers: ReadonlyMap<string, string[]>): Set<string> {
+	const ids = new Set(netIds.flatMap((id) => ['sw:' + id, 'internet:' + id, ...(zoneMembers.get(id) ?? [])]));
+	for (const node of graph.nodes.values()) {
+		if (node.kind !== 'router') continue;
+		const connected = graph.nets.filter((net) => node.netIds.includes(net.id));
+		const owned = connected.filter((net) => Boolean(node.raw.project_id) && net.project_id === node.raw.project_id);
+		const candidates = owned.length ? owned : connected;
+		const home = candidates.find((net) => net.tier === 'tenant') ?? candidates[0];
+		if (home && netIds.includes(home.id)) ids.add(node.id);
+	}
+	return ids;
+}
+
+/** Domain padding reserves a separate label row above all owned network content. */
+export function domainRects(graph: CanvasGraph, zones: ReadonlyMap<string, Rect>, pos?: ReadonlyMap<string, Rect>, zoneMembers: ReadonlyMap<string, string[]> = new Map()): Map<string, Rect> {
 	const result = new Map<string, Rect>();
 	for (const group of graph.domainGroups ?? []) {
-		const bounds = rectUnion(group.netIds.map((id) => zones.get(id)).filter((r): r is Rect => Boolean(r)));
+		const upstream = pos ? [...domainNodeIds(graph, group.netIds, zoneMembers)].map((id) => pos.get(id)) : [];
+		const bounds = rectUnion([...group.netIds.map((id) => zones.get(id)), ...upstream].filter((r): r is Rect => Boolean(r)));
 		if (bounds) result.set(group.id, { x: bounds.x - 28, y: bounds.y - 96, w: bounds.w + 56, h: bounds.h + 124 });
 	}
 	return result;
@@ -519,10 +543,10 @@ export function packDomainGroups(graph: CanvasGraph, layout: Pick<LayoutResult, 
 	if (!graph.domainGroups?.length) return;
 	const zones = new Map<string, Rect>();
 	for (const [id, members] of layout.zoneMembers) {
-		const rect = zoneRectFrom(layout.pos, members);
+		const rect = networkZoneRect(layout.pos, id, members);
 		if (rect) zones.set(id, rect);
 	}
-	const boxes = domainRects(graph, zones);
+	const boxes = domainRects(graph, zones, layout.pos, layout.zoneMembers);
 	const placed: Rect[] = [];
 	const grouped = new Set<string>();
 	let right = 0;
@@ -536,7 +560,7 @@ export function packDomainGroups(graph: CanvasGraph, layout: Pick<LayoutResult, 
 				if (target.x < previous.x + previous.w + L.ZONE_GAP && target.x + target.w + L.ZONE_GAP > previous.x && target.y < previous.y + previous.h && target.y + target.h > previous.y) target.x = previous.x + previous.w + L.ZONE_GAP;
 			}
 		}
-		const ids = new Set(group.netIds.flatMap((id) => layout.zoneMembers.get(id) ?? []));
+		const ids = domainNodeIds(graph, group.netIds, layout.zoneMembers);
 		for (const id of ids) {
 			const rect = layout.pos.get(id);
 			if (rect) layout.pos.set(id, { ...rect, x: rect.x + target.x - box.x, y: rect.y + target.y - box.y });
@@ -700,7 +724,6 @@ export function applyManualPositions(layout: LayoutResult, manual: ManualPositio
 }
 
 // ───────── 기하
-const OPP: Record<Side, Side> = { TOP: 'BOTTOM', BOTTOM: 'TOP', LEFT: 'RIGHT', RIGHT: 'LEFT' };
 const TAN: Record<Side, [number, number]> = { TOP: [0, -1], BOTTOM: [0, 1], LEFT: [-1, 0], RIGHT: [1, 0] };
 export const center = (p: Rect): Pt => ({ x: p.x + p.w / 2, y: p.y + p.h / 2 });
 
@@ -759,20 +782,90 @@ export function stableOrder<T>(prevKeys: readonly string[] | undefined, items: r
 	return arr;
 }
 
-export function cubic(a: Pt, sa: Side, b: Pt, sb: Side): EdgeGeometry {
-	const d = clamp(Math.hypot(b.x - a.x, b.y - a.y) * 0.4, 24, 140);
-	const c1 = { x: a.x + TAN[sa][0] * d, y: a.y + TAN[sa][1] * d };
-	const c2 = { x: b.x + TAN[sb][0] * d, y: b.y + TAN[sb][1] * d };
-	return {
-		d: `M${r1(a.x)} ${r1(a.y)} C${r1(c1.x)} ${r1(c1.y)} ${r1(c2.x)} ${r1(c2.y)} ${r1(b.x)} ${r1(b.y)}`,
-		mid: { x: (a.x + 3 * c1.x + 3 * c2.x + b.x) / 8, y: (a.y + 3 * c1.y + 3 * c2.y + b.y) / 8 },
-		a, b, sa, sb,
-	};
+/** Right-angle route with outward endpoint stubs. Reversed/moved nodes detour outside their bounds. */
+export function orthogonal(a: Pt, sa: Side, b: Pt, sb: Side, endpointBounds?: Rect, obstacles: readonly Rect[] = []): EdgeGeometry {
+	const verticalA = sa === 'TOP' || sa === 'BOTTOM';
+	const verticalB = sb === 'TOP' || sb === 'BOTTOM';
+	const gap = verticalA === verticalB ? Math.abs(verticalA ? b.y - a.y : b.x - a.x) : 48;
+	const stub = Math.min(12, Math.max(8, gap / 3));
+	const p = { x: a.x + TAN[sa][0] * stub, y: a.y + TAN[sa][1] * stub };
+	const q = { x: b.x + TAN[sb][0] * stub, y: b.y + TAN[sb][1] * stub };
+	const points: Pt[] = [a, p];
+	if (verticalA && verticalB) {
+		if (sa !== sb && (q.y - p.y) * TAN[sa][1] >= 0) {
+			const y = (p.y + q.y) / 2;
+			points.push({ x: p.x, y }, { x: q.x, y });
+		} else if (sa === sb) {
+			const y = sa === 'TOP' ? Math.min(p.y, q.y) : Math.max(p.y, q.y);
+			points.push({ x: p.x, y }, { x: q.x, y });
+		} else {
+			const left = endpointBounds?.x ?? Math.min(a.x, b.x);
+			const right = endpointBounds ? endpointBounds.x + endpointBounds.w : Math.max(a.x, b.x);
+			const x = a.x + b.x < left + right ? left - 24 : right + 24;
+			points.push({ x, y: p.y }, { x, y: q.y });
+		}
+	} else if (!verticalA && !verticalB) {
+		if (sa !== sb && (q.x - p.x) * TAN[sa][0] >= 0) {
+			const x = (p.x + q.x) / 2;
+			points.push({ x, y: p.y }, { x, y: q.y });
+		} else if (sa === sb) {
+			const x = sa === 'LEFT' ? Math.min(p.x, q.x) : Math.max(p.x, q.x);
+			points.push({ x, y: p.y }, { x, y: q.y });
+		} else {
+			const y = (endpointBounds?.y ?? Math.min(a.y, b.y)) - 24;
+			points.push({ x: p.x, y }, { x: q.x, y });
+		}
+	} else {
+		points.push(verticalA ? { x: p.x, y: q.y } : { x: q.x, y: p.y });
+	}
+	points.push(q, b);
+	// Dense grids reserve their row/column gaps for cables, not unrelated card faces.
+	const blocked = (candidate: readonly Pt[]): boolean => candidate.slice(1).some((end, i) => {
+		const start = candidate[i];
+		return obstacles.some((rect) => start.x === end.x
+			? start.x > rect.x && start.x < rect.x + rect.w && Math.max(start.y, end.y) > rect.y && Math.min(start.y, end.y) < rect.y + rect.h
+			: start.y > rect.y && start.y < rect.y + rect.h && Math.max(start.x, end.x) > rect.x && Math.min(start.x, end.x) < rect.x + rect.w);
+	});
+	if (obstacles.length && blocked(points)) {
+		let shortest: Pt[] | null = null;
+		let bestLength = Infinity;
+		const xs = new Set(obstacles.flatMap((rect) => [rect.x - 12, rect.x + rect.w + 12]));
+		const ys = new Set(obstacles.flatMap((rect) => [rect.y - 12, rect.y + rect.h + 12]));
+		for (const axis of ['x', 'y'] as const) for (const value of axis === 'x' ? xs : ys) {
+			const candidate = axis === 'x'
+				? [a, p, { x: value, y: p.y }, { x: value, y: q.y }, q, b]
+				: [a, p, { x: p.x, y: value }, { x: q.x, y: value }, q, b];
+			const length = candidate.slice(1).reduce((sum, end, i) => sum + Math.abs(end.x - candidate[i].x) + Math.abs(end.y - candidate[i].y), 0);
+			if (length >= bestLength || blocked(candidate)) continue;
+			shortest = candidate; bestLength = length;
+		}
+		if (shortest) points.splice(0, points.length, ...shortest);
+	}
+	const route: Pt[] = [];
+	for (const point of points) {
+		const last = route.at(-1);
+		if (last?.x === point.x && last.y === point.y) continue;
+		const previous = route.at(-2);
+		if (previous && last && ((previous.x === last.x && last.x === point.x) || (previous.y === last.y && last.y === point.y))) route.pop();
+		route.push(point);
+	}
+	const lengths = route.slice(1).map((point, i) => Math.abs(point.x - route[i].x) + Math.abs(point.y - route[i].y));
+	let remaining = lengths.reduce((total, length) => total + length, 0) / 2;
+	let mid = a;
+	for (let i = 0; i < lengths.length; i++) {
+		if (remaining <= lengths[i]) {
+			const fraction = lengths[i] ? remaining / lengths[i] : 0;
+			mid = { x: route[i].x + (route[i + 1].x - route[i].x) * fraction, y: route[i].y + (route[i + 1].y - route[i].y) * fraction };
+			break;
+		}
+		remaining -= lengths[i];
+	}
+	return { d: route.map((point, i) => `${i ? 'L' : 'M'}${r1(point.x)} ${r1(point.y)}`).join(' '), a, b, mid, sa, sb };
 }
 
 /**
  * 존 rect, 엣지 path, 슬롯 순서를 한 번에 계산한다. 노드 위치가 바뀔 때마다 호출한다.
- * extraEdges 는 활성 LB 의 멤버 곡선처럼 그래프 밖에서 지연 생성한 엣지, prevSlotOrder 는 직전 결과의 slotOrder(히스테리시스용).
+ * extraEdges contains lazily generated LB member links; prevSlotOrder preserves drag hysteresis.
  */
 export function computeGeometry(
 	graph: CanvasGraph,
@@ -783,7 +876,7 @@ export function computeGeometry(
 	const pos = layout.pos;
 	const zones = new Map<string, Rect>();
 	for (const net of graph.nets) {
-		const r = zoneRectFrom(pos, layout.zoneMembers.get(net.id));
+		const r = networkZoneRect(pos, net.id, layout.zoneMembers.get(net.id));
 		if (r) zones.set(net.id, r);
 	}
 	const edges = [...graph.edges, ...extraEdges];
@@ -799,11 +892,12 @@ export function computeGeometry(
 		const pa = pos.get(e.from), pb = pos.get(e.to);
 		if (!pa || !pb) continue;
 		const ca = center(pa), cb = center(pb);
-		const sa = sideFor(cb.x - ca.x, cb.y - ca.y), sb = OPP[sa];
+		let sa: Side = 'TOP', sb: Side = 'BOTTOM';
+		if (e.kind === 'uplink' || e.kind === 'lbmember') { sa = 'BOTTOM'; sb = 'TOP'; }
+		else if (e.kind === 'trunk' && cb.y >= ca.y) { sa = 'BOTTOM'; sb = 'TOP'; }
 		sides.set(e.key, { sa, sb });
-		const na = graph.nodes.get(e.from), nb = graph.nodes.get(e.to);
-		if (na && na.kind !== 'vm') push(`${e.from}|${sa}`, { edge: e, end: 'from', key: sa === 'TOP' || sa === 'BOTTOM' ? cb.x : cb.y });
-		if (nb && nb.kind !== 'vm') push(`${e.to}|${sb}`, { edge: e, end: 'to', key: sb === 'TOP' || sb === 'BOTTOM' ? ca.x : ca.y });
+		push(`${e.from}|${sa}`, { edge: e, end: 'from', key: sa === 'TOP' || sa === 'BOTTOM' ? cb.x : cb.y });
+		push(`${e.to}|${sb}`, { edge: e, end: 'to', key: sb === 'TOP' || sb === 'BOTTOM' ? ca.x : ca.y });
 	}
 	const slotOrder = new Map<string, string[]>();
 	const slotPt = new Map<string, Pt>();
@@ -814,21 +908,34 @@ export function computeGeometry(
 		if (!p) continue;
 		const ordered = stableOrder(prevSlotOrder?.get(nk), items, (it) => it.edge.key, (it) => it.key);
 		slotOrder.set(nk, ordered.map((it) => it.edge.key));
-		ordered.forEach((it, k) => slotPt.set(`${it.edge.key}|${it.end}`, slotAnchor(p, side, k, ordered.length)));
+		const node = graph.nodes.get(nodeId);
+		if (node?.kind === 'vm') {
+			const groups = new Map<string, SlotItem[]>();
+			for (const item of ordered) {
+				const key = (item.end === 'from' ? item.edge.nic : item.edge.toNic)?.key ?? '';
+				const group = groups.get(key) ?? [];
+				group.push(item); groups.set(key, group);
+			}
+			for (const group of groups.values()) group.forEach((it, k) => {
+				const base = vmAnchor(node, p, it.end === 'from' ? it.edge.nic : it.edge.toNic, side);
+				const delta = group.length > 1 ? ((k + 1) / (group.length + 1) - 0.5) * 16 : 0;
+				const point = side === 'TOP' || side === 'BOTTOM' ? { x: base.x + delta, y: base.y } : { x: base.x, y: base.y + delta };
+				slotPt.set(`${it.edge.key}|${it.end}`, point);
+			});
+		} else ordered.forEach((it, k) => slotPt.set(`${it.edge.key}|${it.end}`, slotAnchor(p, side, k, ordered.length)));
 	}
+	const obstacles = [...pos.values()];
 	const geom = new Map<string, EdgeGeometry>();
 	for (const e of edges) {
 		const pa = pos.get(e.from), pb = pos.get(e.to);
 		const sd = sides.get(e.key);
 		if (!pa || !pb || !sd) continue;
-		const na = graph.nodes.get(e.from), nb = graph.nodes.get(e.to);
-		if (!na || !nb) continue;
-		const a = na.kind === 'vm' ? vmAnchor(na, pa, e.nic, sd.sa) : slotPt.get(`${e.key}|from`);
-		const b = nb.kind === 'vm' ? vmAnchor(nb, pb, e.toNic, sd.sb) : slotPt.get(`${e.key}|to`);
+		const a = slotPt.get(`${e.key}|from`);
+		const b = slotPt.get(`${e.key}|to`);
 		if (!a || !b) continue;
-		geom.set(e.key, cubic(a, sd.sa, b, sd.sb));
+		geom.set(e.key, orthogonal(a, sd.sa, b, sd.sb, rectUnion([pa, pb]) ?? undefined, obstacles));
 	}
-	return { geom, slotOrder, zones, domains: domainRects(graph, zones) };
+	return { geom, slotOrder, zones, domains: domainRects(graph, zones, pos, layout.zoneMembers) };
 }
 
 export function contentBounds(zones: ReadonlyMap<string, Rect>, pos: ReadonlyMap<string, Rect>, domains?: ReadonlyMap<string, Rect>): Rect {

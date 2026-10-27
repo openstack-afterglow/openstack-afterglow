@@ -29,6 +29,7 @@ from app.services import (
     domain_quotas,
     identity_roles,
     keystone,
+    project_cleanup,
     project_ownership_journal,
     project_service,
     quota_native,
@@ -997,6 +998,124 @@ def _project_deletion_inventory(conn, project_id):
     return check
 
 
+@router.get("/projects/{project_id}/resources", dependencies=[Depends(require_admin), Depends(_selected_objects)])
+async def list_project_cleanup_resources(
+    project_id: str,
+    response: Response,
+    domain_id: str = Query(..., min_length=1),
+    kind: str = Query(..., min_length=1),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
+    token_info: dict = Depends(get_token_info),
+):
+    """Complete exact-project metadata; never submit resource cleanup on GET."""
+    response.headers["Cache-Control"] = "no-store, private"
+    project_cleanup.require_kind(kind)
+    target = None
+    try:
+        if project_cleanup.requires_project_scope(kind):
+            from app.services.volume_transfers import admin_destination
+
+            target = await _settled_project_deletion_call(admin_destination, conn, token_info, domain_id, project_id)
+        return await _settled_project_deletion_call(project_cleanup.list_resources, target or conn, project_id, kind)
+    except Exception as exc:
+        raise project_cleanup._error(exc) from None
+    finally:
+        if target is not None:
+            await _settled_project_deletion_call(target.close)
+
+
+@router.delete(
+    "/projects/{project_id}/resources/{kind}/{resource_id}",
+    dependencies=[Depends(require_admin), Depends(_selected_objects)],
+    status_code=204,
+)
+@identity_roles._complete_mutation
+async def delete_project_cleanup_resource(
+    project_id: str,
+    kind: str,
+    resource_id: str,
+    response: Response,
+    domain_id: str = Query(..., min_length=1),
+    conn: openstack.connection.Connection = Depends(get_admin_os_conn),
+    token_info: dict = Depends(get_token_info),
+):
+    """Accept one normal deletion; asynchronous provider completion is not implied."""
+    response.headers["Cache-Control"] = "no-store, private"
+    project_cleanup.require_kind(kind)
+    if kind == "child_projects":
+        project_cleanup.identifier(resource_id)
+        async with identity_roles._graph_lock(conn) as lease:
+            parent = await _settled_project_deletion_call(_domain_object, conn, domain_id, "project", project_id)
+            child = await _settled_project_deletion_call(_domain_object, conn, domain_id, "project", resource_id)
+            if resource_id == project_id or identity_roles._field(child, "parent_id") != project_id:
+                raise HTTPException(403, "project_resource_parent_mismatch")
+            if identity_roles._field(parent, "id") != project_id:
+                raise HTTPException(503, "project_resource_parent_unverified")
+            await _delete_project_under_lease(
+                conn, conn, resource_id, lease, expected_parent=project_id, expected_domain=domain_id
+            )
+        return
+    target = None
+    try:
+        if project_cleanup.requires_project_scope(kind):
+            from app.services.volume_transfers import admin_destination
+
+            target = await _settled_project_deletion_call(admin_destination, conn, token_info, domain_id, project_id)
+        provider = target or conn
+        await project_cleanup.assert_deletion_safe(provider, project_id, kind, resource_id)
+        await _settled_project_deletion_call(project_cleanup.delete_resource, provider, project_id, kind, resource_id)
+    except Exception as exc:
+        raise project_cleanup._error(exc) from None
+    finally:
+        if target is not None:
+            await _settled_project_deletion_call(target.close)
+
+
+async def _delete_project_under_lease(
+    conn, provider_conn, project_id, lease, *, expected_parent=None, expected_domain=None
+):
+    project = await _settled_project_deletion_call(_native_object, conn, "project", project_id)
+    if expected_parent is not None and (
+        identity_roles._field(project, "parent_id") != expected_parent
+        or identity_roles._field(project, "domain_id") != expected_domain
+    ):
+        raise HTTPException(403, "project_resource_parent_mismatch")
+    domain_projects.assert_default_immutable(project_id, delete=True, project=project)
+    await project_ownership_journal.assert_resolved(project_id)
+    check = await _settled_project_deletion_call(_project_deletion_inventory, provider_conn, project_id)
+    if any(item["status"] == "unavailable" for item in check["resources"]):
+        error = HTTPException(
+            status_code=503,
+            detail={
+                "code": "project_resource_check_failed",
+                "message": "Project resource inventory could not be verified. No project was deleted.",
+                "check": check,
+            },
+        )
+        error._afterglow_safe_public_detail = True
+        raise error
+    if not check["can_delete"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "project_has_resources",
+                "message": "The project still owns cloud resources or child projects. No project was deleted.",
+                "check": check,
+            },
+        )
+    try:
+        if expected_parent is None:
+            await identity_roles._write(lease, conn.identity.delete_project, project_id, ignore_missing=False)
+        else:
+            await identity_roles._write(lease, project_cleanup.delete_project_native, conn.identity, project_id)
+    except Exception as exc:
+        raise (project_cleanup._error(exc) if expected_parent is not None else _identity_error(exc)) from exc
+    finally:
+        await invalidate_authority()
+        await invalidate("afterglow:admin:projects:*")
+        await invalidate("afterglow:admin:project_names:*")
+
+
 @router.get("/projects/{project_id}/deletion-check", dependencies=[Depends(require_admin), Depends(_selected_objects)])
 async def get_project_deletion_check(
     project_id: str,
@@ -1020,38 +1139,7 @@ async def delete_project(
 ):
     """Delete only after fresh complete resource and child-project inspection."""
     async with identity_roles._graph_lock(conn) as lease:
-        project = await _settled_project_deletion_call(_native_object, conn, "project", project_id)
-        domain_projects.assert_default_immutable(project_id, delete=True, project=project)
-        await project_ownership_journal.assert_resolved(project_id)
-        check = await _settled_project_deletion_call(_project_deletion_inventory, provider_conn, project_id)
-        if any(item["status"] == "unavailable" for item in check["resources"]):
-            error = HTTPException(
-                status_code=503,
-                detail={
-                    "code": "project_resource_check_failed",
-                    "message": "Project resource inventory could not be verified. No project was deleted.",
-                    "check": check,
-                },
-            )
-            error._afterglow_safe_public_detail = True
-            raise error
-        if not check["can_delete"]:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "project_has_resources",
-                    "message": "The project still owns cloud resources or child projects. No project was deleted.",
-                    "check": check,
-                },
-            )
-        try:
-            await identity_roles._write(lease, conn.identity.delete_project, project_id, ignore_missing=False)
-        except Exception as exc:
-            raise _identity_error(exc) from exc
-        finally:
-            await invalidate_authority()
-            await invalidate("afterglow:admin:projects:*")
-            await invalidate("afterglow:admin:project_names:*")
+        await _delete_project_under_lease(conn, provider_conn, project_id, lease)
 
 
 @router.get("/projects/{project_id}/members", dependencies=[Depends(require_admin), Depends(_selected_objects)])

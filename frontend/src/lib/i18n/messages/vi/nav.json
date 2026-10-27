@@ -142,6 +142,7 @@
 	"sections.domains": "Miền",
 	"items.selectDomain": "Chuyển hoặc tạo miền",
 	"items.domains": "Miền",
-	"items.domainIam": "Người dùng và dự án",
+	"items.iamUsers": "Quản lý người dùng",
+	"items.iamProjects": "Quản lý dự án",
 	"actions.searchResources": "Tìm kiếm tài nguyên"
 }

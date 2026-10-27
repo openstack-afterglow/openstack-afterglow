@@ -45,6 +45,7 @@ export const fmtRateShort = (r: TrafficRate | null | undefined): string =>
 	r ? `↓${formatBps(r.rx_bps)} ↑${formatBps(r.tx_bps)}` : '—';
 
 export const KIND_LABEL: Record<CanvasNodeKind, string> = {
+	get internet() { return t('hud.internet'); },
 	get vm() { return t('resource.instance'); },
 	get router() { return t('resource.router'); },
 	get switch() { return t('resource.networkSwitch'); },
