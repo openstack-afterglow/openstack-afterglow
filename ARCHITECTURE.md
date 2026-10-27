@@ -4,7 +4,7 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.30.27`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.31.1`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 Notion worker 종료는 dependency timeout의 일시적 `Task.cancelling()` 상태를 shutdown 요청으로 간주하지 않는다. 각 drain이 자기 취소를 한 번 요청하고 실제 HTTP/SDK 완료까지 shield한 뒤 target/output lease를 해제한다. 공통 dispatcher cleanup은 진입 전 pending 취소와 cleanup 중 취소를 모두 호출자에게 전달하되 자식만 취소된 경우와 구분한다. 이 수정은 새 background role/schema·토큰 권위 cache·운영 설정을 추가하지 않는다.
 
@@ -1690,9 +1690,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "a821a70317dbf87d3e672dc41e690c07069c248a30b44e35f90df06db1902fea",
-  "reviewed_at": "2026-10-27T10:31:27Z",
-  "summary": "GitHub amd64 image builds use afterglow-arc; PR checks remain on hosted runners and no application architecture changes."
+  "source_sha256": "86f2be25663395bc14a16ef0e04225763f3ab57792080eab5efae9d95333ba93",
+  "reviewed_at": "2026-10-27T10:47:05Z",
+  "summary": "Patch release aligns version metadata; frontend ARC image import smoke passed, published patch and deployment remain to be verified."
 }
 ```
 <!-- architecture-review:end -->

@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+## [1.31.1] - 2026-10-27
+
+### Fixed
+- 1.31.0 frontend 이미지의 누락된 런타임 패키지로 인한 기동 실패를 재빌드로 복구합니다. 발행 이미지의 실제 기동과 운영 전환 검증은 별도로 확인합니다.
+
 ### Changed
 - GitHub 이미지 빌드의 amd64 self-hosted runner를 `afterglow-arc`로 전환합니다. PR 검증은 기존 hosted runner를 유지합니다.
 

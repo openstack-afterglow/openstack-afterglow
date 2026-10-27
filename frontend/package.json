@@ -1,7 +1,7 @@
 {
 	"name": "frontend",
 	"private": true,
-	"version": "1.30.27",
+	"version": "1.31.1",
 	"type": "module",
 	"scripts": {
 		"dev": "node scripts/run-with-file-log.mjs vite dev",
