@@ -37,6 +37,7 @@ Afterglow는 현재 [DMS Cloud 연구 클라우드 제공 콘솔](https://cloud.
 | 문서 | 설명 |
 |---|---|
 | [사용자 서비스 가이드](user-guide.md) | 콘솔 `/docs`의 공개 사용자 문서와 서비스별 사용법 |
+| [서비스별 사용자 IAM](user-guide.md#서비스별-사용자-iam) | manager·프로젝트 역할과 Waygate·Drover·Lumen·Palimpsest의 기능별 필요 권한 |
 | [사용자 가이드 화면·시각 점검](user-guide-visual-review.md) | 실제 콘솔 캡처 범위, 발견한 시각 문제와 검증·개인정보 경계 |
 | [시작하기](deployment.md) | Docker Compose / Kubernetes 배포 |
 | [kolla-ansible 배포](deployment.md#kolla-ansible-배포) | OpenStack 환경 내 단일 플레이북 배포 |

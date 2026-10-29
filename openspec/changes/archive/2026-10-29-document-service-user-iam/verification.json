@@ -1,0 +1,117 @@
+{
+  "scope": "Public user IAM documentation only; source-default authorization descriptions, not live access qualification",
+  "guide": "/docs/iam",
+  "sections": 12,
+  "service_grades": 16,
+  "service_leaves": 30,
+  "locales": [
+    "ko",
+    "en",
+    "ja",
+    "zh-CN",
+    "sw",
+    "nb",
+    "ms",
+    "vi",
+    "bn"
+  ],
+  "source_strings": 155,
+  "checks": {
+    "existing_docs_tests": {
+      "files": 3,
+      "passed": 84,
+      "final_rerun": "Passed after final translation conjunction and exact allowlist changes"
+    },
+    "new_guide_translation_types": "passed",
+    "catalog_smoke": "passed: exact keys, nonempty translations, role identifiers, 46-role search, related slugs, new-data scanner",
+    "i18n_check": {
+      "errors": 0,
+      "warnings": 45,
+      "warning_kind": "key ordering outside this documentation change"
+    },
+    "i18n_scan": {
+      "status": "failed outside this change",
+      "remaining": 1,
+      "location": "frontend/src/lib/components/admin/chat/AdminChatStatsPage.svelte:383",
+      "new_guide_findings": 0,
+      "provenance": "Concurrent uncommitted addition, confirmed by focused git diff HEAD"
+    },
+    "catalog_guard_tests": {
+      "passed": 2,
+      "failed": 1,
+      "failure": "same concurrent AdminChatStatsPage.svelte:383 finding; no IAM documentation findings",
+      "passed_checks": ["catalog completeness", "all exact allowlist lines exist"]
+    },
+    "browser": {
+      "locale_viewport_cases": 27,
+      "light_theme_cases": 3,
+      "widths": [
+        390,
+        834,
+        1440
+      ],
+      "overflow": 0,
+      "page_exceptions": 0,
+      "search": "Korean role query resolves one IAM guide",
+      "mobile_outline": "Drover anchor reached",
+      "service_backlinks": [
+        "waygate",
+        "drover",
+        "lumen",
+        "palimpsest"
+      ]
+    },
+    "architecture": {
+      "root": "/var/folders/1m/xfc726k14szbjnrlq5t68zjw0000gn/T/afterglow-iam-architecture-uzr4h03t",
+      "stamp": "stamped staged source_sha256=d75b1ae74d867af7f899339c7753d7180d79f033cf05bc0d016769763ce09285 files=3536",
+      "check": "checked staged source_sha256=d75b1ae74d867af7f899339c7753d7180d79f033cf05bc0d016769763ce09285 files=3536",
+      "scope": "HEAD plus 21 current documentation-source/scan files; isolated index only"
+    }
+  },
+  "limits": [
+    "No native authorization or cloud-resource calls",
+    "No production deployment, policy/role grants, secrets or DB changes",
+    "No full frontend build or test:gate",
+    "Translations are not native-speaker reviewed",
+    "External font requests blocked; local public site-config backend unavailable",
+    "Shared checkout has concurrent changes; shared index and architecture review marker preserved",
+    "Gbrain unavailable: no-cli/no-config"
+  ],
+  "sources": {
+    "project": "backend/app/services/service_permissions.py; backend/app/services/project_service.py; backend/app/api/deps.py",
+    "waygate": "../waygate/waygate/policy.py; ../waygate/waygate/api/clients.py; ../waygate/waygate/services/execution.py",
+    "drover": "../drover/drover/policy.py; ../drover/drover/api/clusters.py; ../drover/drover/api/certificates.py",
+    "lumen": "../lumen/lumen/policy.py; ../lumen/lumen/service_authority.py; ../lumen/lumen/services/assets.py; ../lumen/lumen/api/extensions.py; ../lumen/lumen/api/compat/{images,audio}.py",
+    "palimpsest": "../palimpsest/hub/src/palimpsest_hub/policy.py; ../palimpsest/hub/src/palimpsest_hub/services/image_exports.py; backend/app/services/palimpsest_catalog_consume.py"
+  },
+  "source_sha256": {
+    "frontend/src/lib/docs/iamGuide.ts": "93587d1fb42704258e93ac3b51be5138d5d43dc81bcfc43c19f8abeaadacf6ff",
+    "frontend/src/lib/docs/catalog.ts": "ab0f7801c99740dfd9cdde9860d44bcc0f3019f1d811e645620abf5fefc4293f",
+    "frontend/src/lib/docs/gettingStarted.ts": "4144c8cb3d2c57d1f30f72a53eddfecdf8acc493fe535b000fd60612fe797bc5",
+    "frontend/src/lib/docs/platformGuides.ts": "bf31564135b3b396be8d8f8baf377dea3ab35c458c713821a39561105f372825",
+    "frontend/src/lib/docs/translations/en/iamGuide.ts": "2df8d2ff1e536875f3179cee17695c9ef83df694ac9b1be533f2b17cc5c60557",
+    "frontend/src/lib/docs/translations/en/index.ts": "2833539a72bc2c611653cbc20baa21609e87acc754bb3bdfcab729d71d0f4ce0",
+    "frontend/src/lib/docs/translations/ja/iamGuide.ts": "317832afa913052eaadec92cf2ad6946eea1773ae622b3fd1b6f7c2c6aaf4f73",
+    "frontend/src/lib/docs/translations/ja/index.ts": "efff3e4a6bb8e2dd34f9a1863b478179604df098275e7e8cdacd2abe5ad6553e",
+    "frontend/src/lib/docs/translations/zh-CN/iamGuide.ts": "23af51133454be318fc5c9abd724587cb2537b0c4c30ff35db854b1be1a9c16a",
+    "frontend/src/lib/docs/translations/zh-CN/index.ts": "00630d110ed45e50b111fe8f1de773e5a018cdc6312f15b07a3e2bcbd0a84169",
+    "frontend/src/lib/docs/translations/sw/iamGuide.ts": "bfbd81e55e618187ae19784662328ef5defa2996919b3c4d9b61036dddcacb02",
+    "frontend/src/lib/docs/translations/sw/index.ts": "2833539a72bc2c611653cbc20baa21609e87acc754bb3bdfcab729d71d0f4ce0",
+    "frontend/src/lib/docs/translations/nb/iamGuide.ts": "d80b3632815deca00642b57538681a3fca7122a8e6fc9a37e08323165695cec9",
+    "frontend/src/lib/docs/translations/nb/index.ts": "2833539a72bc2c611653cbc20baa21609e87acc754bb3bdfcab729d71d0f4ce0",
+    "frontend/src/lib/docs/translations/ms/iamGuide.ts": "0c4e7203d722d323802448148ec2954ef7d0e3b0a757d77d48e391f7a8470363",
+    "frontend/src/lib/docs/translations/ms/index.ts": "2833539a72bc2c611653cbc20baa21609e87acc754bb3bdfcab729d71d0f4ce0",
+    "frontend/src/lib/docs/translations/vi/iamGuide.ts": "8a4ae8e18dcf19a927ec91940df583016e19f0b6928f57fa765fb0c38b335382",
+    "frontend/src/lib/docs/translations/vi/index.ts": "2833539a72bc2c611653cbc20baa21609e87acc754bb3bdfcab729d71d0f4ce0",
+    "frontend/src/lib/docs/translations/bn/iamGuide.ts": "3487d78d8933ed5e7b50ba4c0b1c14968bd876f80f11352c676c317e46b83e2d",
+    "frontend/src/lib/docs/translations/bn/index.ts": "2833539a72bc2c611653cbc20baa21609e87acc754bb3bdfcab729d71d0f4ce0",
+    "frontend/src/lib/i18n/hardcoded-text-allowlist.json": "296bc65e5eafd2150ae52ea3b7cdd02983156d3cb02f6aa3eff4a80f0921cfd2"
+  },
+  "proof_directory": "/Users/pieroot/.local/share/afterglow-proofs/service-user-iam-20261030",
+  "screenshots": [
+    "mobile-drover-dark.webp",
+    "bengali-desktop-dark.webp",
+    "english-desktop-light.webp",
+    "korean-mobile-search.webp"
+  ]
+}

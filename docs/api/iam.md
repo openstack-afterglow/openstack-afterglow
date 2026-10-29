@@ -10,6 +10,8 @@ nav_order: 13
 
 현재 선택한 canonical **작업 도메인** 안에서 사용자·프로젝트 멤버·초대·로그인 방법·할당 예산과 관측을 관리합니다. 계정 소속 **identity/home 도메인**과 작업 도메인은 다르며, 다른 도메인 가입으로 기존 identity가 이동하지 않습니다. 시스템 전체 domain inventory 및 Default manager bootstrap은 [관리자 API](admin.md#도메인-관리와-관측), 공개 로그인·링크 수락과 작업 도메인 전환은 [인증 API](auth.md)를 사용합니다.
 
+사용자에게 어떤 프로젝트·서비스 역할이 필요한지는 [서비스별 사용자 IAM 안내](../user-guide.md#서비스별-사용자-iam)와 콘솔 `/docs/iam`을 참고하세요. 이 API 문서는 요청·응답 계약, 공개 가이드는 manager와 프로젝트·서비스별 관리 등급까지의 기능 조건·권한 조합을 설명합니다.
+
 ## 인증과 도메인 경계
 
 모든 route는 access bearer와 `require_domain_manager`를 요구합니다. 서버는 작업 도메인의 canonical `Default` 프로젝트에서 현재 유효한 `manager`를 확인합니다. 직접·그룹·범위 상속·실제 역할 ID 추론을 포함하되 다른 프로젝트의 manager/admin 이름이나 JWT의 과거 flag는 권한 근거가 아닙니다. **System admin만으로는 사용자 IAM을 우회할 수 없습니다.** 선택 프로젝트와 무관하므로 읽기 전용 일반 프로젝트 또는 프로젝트 미선택 상태에서도 해당 Default manager는 접근합니다. Body/query 또는 `X-Project-Id`로 작업 도메인을 바꾸지 못하며, 인증 API의 명시적 도메인 전환을 먼저 수행해야 합니다.

@@ -10,6 +10,12 @@ Afterglow의 사용자 문서 경로는 **배포된 콘솔 origin의 `/docs`**�
 
 문서를 읽는 데 로그인이나 프로젝트 선택은 필요하지 않다. 실제 콘솔 작업에는 인증, 현재 프로젝트의 권한·쿼터와 해당 서비스 활성화가 필요하다. 문서가 있다는 사실은 특정 배포의 서비스 설치·가용성 또는 자원 생성 성공을 뜻하지 않는다.
 
+## 서비스별 사용자 IAM
+
+콘솔 **Docs → 시작하기 → IAM · 서비스별 권한** 또는 `/docs/iam`에서 사용자별 역할과 기능 조건을 확인합니다. 조직 `manager`, 프로젝트의 조회·쓰기·멤버 관리와 네 서비스의16개 등급·30개 세부 역할을 구분합니다. 서비스별 조회·사용·생성·편집·삭제·자격 발급/회수, 여러 권한을 함께 요구하는 작업과 사용자별 구성 예시를 설명합니다. 전역 관리 역할의 설명·설정 절차는 이 가이드에 포함하지 않습니다.
+
+상세 정본은 [`iamGuide.ts`](../frontend/src/lib/docs/iamGuide.ts)이며, 각 서비스 사용 가이드의 첫 범위 절과 함께 읽기에서도 해당 IAM 절로 이동합니다. 기본 클라우드 서비스·개인 프로젝트 예외·MCP와 API 키의 권한 제한·권한 거부/조회 실패 확인 순서도 같은 가이드에 있습니다. 현재 source 기본 정책 설명이며 운영 정책·역할 할당·서비스 배포 완료를 뜻하지 않습니다.
+
 ## 계정·개인 공간·조직
 
 로그인은 사용자 이름 또는 이메일과 비밀번호만 입력하면 됩니다. 회원가입은 이메일로 받은 인증 링크를 연 뒤 사용자 이름과 비밀번호를 정하며, 이미 사용 중인 이름이나 이메일로 새 계정을 만들 수 없습니다. SSO 제공자가 이메일 인증을 확인하고 그 주소가 기존 계정과 일치하면 같은 계정으로 자동 로그인합니다. 확인되지 않은 이메일이나 기존 연결의 충돌은 자동 병합하지 않으며 관리자 확인이 필요합니다. 새 계정은 본인만 사용할 수 있는 개인 프로젝트에서 시작하고 기존 계정의 비밀번호·권한·자원을 초기화하지 않습니다. 개인 프로젝트 이름은 자동 생성되므로 내부 도메인 이름이나 프로젝트 이름을 지정할 필요가 없습니다.
@@ -47,7 +53,7 @@ Afterglow의 사용자 문서 경로는 **배포된 콘솔 origin의 `/docs`**�
 
 ## 지원 언어
 
-전체 15개 가이드는 한국어, 영어, 일본어, 중국어 간체, 스와힐리어(탄자니아), 노르웨이어 보크몰, 말레이어(말레이시아), 베트남어, 벵골어(방글라데시)로 읽을 수 있다. 문서 헤더의 언어 메뉴에서 선택하며 본문·탐색·검색·목차·명령 복사·오류 안내가 함께 바뀐다. 추가 언어 번역은 원어민 검수 전 초안이다.
+전체 가이드는 한국어, 영어, 일본어, 중국어 간체, 스와힐리어(탄자니아), 노르웨이어 보크몰, 말레이어(말레이시아), 베트남어, 벵골어(방글라데시)로 읽을 수 있다. 문서 헤더의 언어 메뉴에서 선택하며 본문·탐색·검색·목차·명령 복사·오류 안내가 함께 바뀐다. 추가 언어 번역은 원어민 검수 전 초안이다.
 
 | 언어 | 문서 홈 | 예시 가이드 |
 |---|---|---|
@@ -71,6 +77,7 @@ Afterglow의 사용자 문서 경로는 **배포된 콘솔 origin의 `/docs`**�
 |---|---|
 | `/docs` | 서비스 및 본문 검색, 전체 가이드 목록 |
 | `/docs/getting-started` | 로그인·프로젝트·권한·쿼터와 첫 VM 준비 |
+| `/docs/iam` | manager·프로젝트 역할·서비스별 등급/세부 역할과 기능 조건·사용자별 권한 조합 |
 | `/docs/nova` | 인스턴스 생성·접속·상태·수명주기 |
 | `/docs/neutron` | 네트워크·서브넷·라우터·Floating IP·보안 그룹 |
 | `/docs/octavia` | VIP·리스너·풀·멤버와 헬스 확인 |
@@ -131,6 +138,7 @@ Afterglow의 사용자 문서 경로는 **배포된 콘솔 origin의 `/docs`**�
 
 - `types.ts`: guide·section·step·command·link와 `DocScreenshot` (`src`, `alt`, `caption`, `width`, `height`) 계약.
 - `gettingStarted.ts`: 프로젝트 시작 절차.
+- `iamGuide.ts`: 사용자별 IAM·manager·프로젝트 및 서비스 역할의 상세 정본.
 - `coreGuides.ts`: Nova·Neutron·Octavia·Cinder·Manila.
 - `additionalGuides.ts`: Glance·Object Storage·Trove·Barbican.
 - `platformGuides.ts`: Drover·Waygate·Lumen·Palimpsest.
@@ -139,7 +147,7 @@ Afterglow의 사용자 문서 경로는 **배포된 콘솔 origin의 `/docs`**�
 - `locales.ts`: 지원 언어·URL context·번역된 shell/index/article/copy/error 문구와 카테고리.
 - `mcpGuide.ts`: 외부 AI의 인바운드 MCP OAuth·개인 키·연결 확인과 권한·만료·회수 경계.
 - `translate.ts`: reader-facing 필드 변환; 누락·빈 번역은 오류로 처리하고 한국어 본문으로 조용히 fallback하지 않는다.
-- `translations/{en,ja,zh-CN,sw,nb,ms,vi}/`: 언어별 guide group dictionary. source literal key를 유지하고 한국어 정본 변경 시 모든 번역 언어의 해당 항목도 함께 갱신한다. slug·section ID·link URL·service gate·related slug·실행 code는 번역 대상이 아니다.
+- `translations/{en,ja,zh-CN,sw,nb,ms,vi,bn}/`: 언어별 guide group dictionary. source literal key를 유지하고 한국어 정본 변경 시 모든 번역 언어의 해당 항목도 함께 갱신한다. slug·section ID·link URL·service gate·related slug·실행 code는 번역 대상이 아니다.
 - `frontend/src/routes/docs/`: 공개 shell·목록·서비스 article·404 화면.
 - `frontend/src/lib/components/docs/DocScreenshot.svelte`: section/step 그림의 공통 figure·대체 텍스트·설명·원본 링크·반응형 표시.
 - `frontend/static/docs/screenshots/`: 개인정보를 제거한 공개 WebP. 한국어 정본의 `screenshots`에 연결하고 alt·caption 변경은 모든 번역 dictionary에 함께 반영한다. 경로·원본 크기는 번역하지 않는다.

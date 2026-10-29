@@ -63,7 +63,7 @@ export const gettingStarted: DocGuide = {
 			],
 		},
 	],
-	related: ['nova', 'neutron', 'cinder', 'manila', 'drover', 'lumen'],
+	related: ['iam', 'nova', 'neutron', 'cinder', 'manila', 'drover', 'lumen'],
 	consoleLinks: [{ label: '프로젝트 개요', href: '/dashboard' }, { label: '사용량 확인', href: '/dashboard/usage' }],
 	externalLinks: [{ label: 'OpenStack 공식 인스턴스 시작 가이드', href: 'https://docs.openstack.org/install-guide/launch-instance-selfservice.html', description: '네트워크·이미지·Flavor·키페어를 조합하는 공식 CLI 절차입니다. Afterglow 화면의 명칭과는 다를 수 있습니다.' }],
 };

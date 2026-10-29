@@ -6,6 +6,17 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 서비스별 사용자 IAM 문서 (2026-10-30, local only)
+
+- 공개 `/docs/iam`의12개 절에 조직 manager·프로젝트 역할과 Waygate/Drover/Lumen/Palimpsest의16개 등급·30개 세부 역할을 기록했다. 현재 Afterglow 및 형제 서비스의 실제 action/handler를 대조했고 전역 관리 역할 설명은 제외했다. 별도 native 정책·소유권·자격 범위·개인 프로젝트 예외를 구분하며 정책·할당·서비스 실행 코드는 변경하지 않았다.
+- 기존 문서 `catalog.test.ts`, `locales.test.ts`, `routes.test.ts`: 번역 conjunction·exact allowlist 최종 수정 뒤 재실행에서3files84tests 통과. 추가 guide 및8개 dictionary의 TypeScript no-emit 검사 통과. Throwaway native catalog smoke는9언어 각각155개 exact key·비어 있지 않은 번역·역할 식별자 보존·46역할 검색·관련 slug와 신규 문서 데이터 scan0건을 확인했다. 본문 복사/wiring을 고정하는 새 permanent test는 추가하지 않았다.
+- `i18n:check`:0errors/45key-orderwarnings. 전체 `i18n:scan`과 최종 `i18n/__tests__/catalogs.test.ts`의 하드코딩 guard는 무관한 **동시 미커밋 변경** `AdminChatStatsPage.svelte:383`의 native 오류 문자열 비교1건 때문에 실패했다(`git diff HEAD -- <해당 파일>`로 신규 추가 줄임을 확인). Catalog 검증 및 allowlist의 모든 exact line 존재 검사2개는 통과했다. 신규 typed 문서9파일의 잔여 finding은0건이며 해당 UI 코드·오류 비교를 수정하거나 추가 allowlist로 숨기지 않았다.
+- 실제 Vite/SvelteKit·Chromium의9언어×390/834/1440px27조건에서 본문/목차·15개 article section·서비스 역할·fragment 대상·page overflow0을 확인했다. Light 테마를 실제 메뉴에서 선택한390/834/1440px3조건도 overflow0이었다. 한국어 역할명 검색→단일 IAM 결과→본문→모바일 Drover 목차 이동,4개 서비스 영어 가이드 첫 절→언어 유지된 IAM anchor 이동을 실행했다. Page exception0. 초기 공유 worktree HMR이 입력/탐색을 초기화한 결과는 성공 증거에서 제외하고 watcher를 끈 별도 loopback 서버에서 재검증했다.
+- 외부 font 요청은 browser allowlist로 차단했고 public site-config backend는 로컬에서 제공하지 않았다. 인증·실제 OpenStack/형제 서비스 호출·자원 생성·권한 부여는 실행하지 않았으며 runtime 배포·전체 build/`test:gate`·commit/push도 하지 않았다. 추가 번역은 원어민 검수 전 초안이다.
+- Architecture guard는 HEAD+21개 해당 source/allowlist 파일만 반영한 별도 index에서 `--staged --stamp` 및 `--staged` 성공, digest `d75b1ae74d867af7f899339c7753d7180d79f033cf05bc0d016769763ce09285`/3536files다. 공유 index/global review marker와 동시 사용자 변경은 보존하며 전체 작업 트리 검증으로 확대하지 않는다. JSON/시각 증거는 `~/.local/share/afterglow-proofs/service-user-iam-20261030/`, source 근거와 검증 요약은 완료 OpenSpec `document-service-user-iam`에 기록한다. Gbrain은 CLI/config가 없어 동기화하지 않았다.
+- 커밋 준비 검증: 기준 `2baaaeadd87127e88567c587f87ccd0237f9465d`에 이번 IAM 문서 hunks만 담은 격리 스냅샷에서 `npm run test:gate`가 통과했다. Backend10206passed/95skipped, frontend457files5436passed, contracts183passed, 실제 disposable DB167passed, Ruff750files를 확인했다. Architecture digest는 `cb0c0a1b8140f857c35c033def8fd01888a1288519d463a87e2dcf94ea3bb044`/3536files다. 초기 scratch HOME의 Docker Compose plugin 누락만 검증 환경에서 교정했고 제품 코드/검사는 바꾸지 않았다. 기존 공유 UI의 scan 실패는 포함하지 않은 변경이므로 이 결과는 전체 공유 worktree 검증이 아니다. 전용 test project는 runner가 정상 정리했고 운영 접근·push·배포는 하지 않았다.
+
+
 ## 리소스 선택 기본 순서·생성 작업 정리 (2026-10-27, source only)
 
 - 서버 `kind=personal`인 도메인을 기본 목록 첫 순서로 표시한다. 표시명에 의존하지 않고 명시 저장한 order·숨김·고정·현재 scope는 보존한다. 프로젝트 만들기를 footer로 옮기고 도메인 만들기와 함께 표시하며 둘러보는 domain의 `can_create_project`가 false/불명일 때 숨긴다. 도메인 생성은 독립 `canCreateDomain` 정책을 유지한다. Domain-only continuation·active-project settings는 chooser에서 제거했고 사용하지 않는 번역키와 obsolete continuation test도 제거했다.

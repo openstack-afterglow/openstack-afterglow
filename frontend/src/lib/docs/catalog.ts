@@ -6,8 +6,9 @@ import { coreGuides } from './coreGuides';
 import { platformGuides } from './platformGuides';
 import { additionalGuides } from './additionalGuides';
 import { mcpGuide } from './mcpGuide';
+import { iamGuide } from './iamGuide';
 
-export const docGuides: DocGuide[] = [gettingStarted, ...coreGuides, ...additionalGuides, ...platformGuides, mcpGuide];
+export const docGuides: DocGuide[] = [gettingStarted, iamGuide, ...coreGuides, ...additionalGuides, ...platformGuides, mcpGuide];
 
 export interface DocSearchIndex {
 	guides: DocGuide[];

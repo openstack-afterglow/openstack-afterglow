@@ -602,6 +602,12 @@ Hero는 `LandingMotionGraphic kind="hero"`의 네 workload 탑이 하나의 기�
 
 `frontend/src/routes/docs/`는 공개 `/docs` 허브와 `/docs/[slug]` 서비스 가이드를 SSR 및 client navigation으로 렌더링한다. `frontend/src/lib/docs/types.ts`의 typed static content와 `catalog.ts`가 시작하기·OpenStack core/추가 서비스·Afterglow 서비스의 단일 정본이며, 검색은 이름·키워드·준비 사항·본문·명령을 NFC/case-normalized AND 검색한다. 본문은 Svelte text node로 escape하고 별도 Markdown/HTML runtime·DB·문서 API를 만들지 않는다. 미등록 slug는 SvelteKit 404와 docs 전용 안내를 반환한다.
 
+`iamGuide.ts`를 같은 catalog에 등록하여 공개 `/docs/iam`에서 조직 manager·프로젝트 역할·기본 클라우드 정책과 Waygate/Drover/Lumen/Palimpsest의16개 서비스 등급·30개 세부 역할을 설명한다. 전역 관리 역할 설명은 제외하고 native 기본 정책·현재 프로젝트/소유권·제한 자격·여러 action 조합을 구분한다. 시작하기와 네 서비스 가이드가 IAM을 관련 문서로 연결하고 서비스 범위 절에서도 해당 anchor로 이동한다. 한국어 정본과8개 locale dictionary를 기존 renderer/search에서 읽으며 새 권한 추론·API·schema·설정·서비스 정책·시각 primitive는 추가하지 않는다. 이는 사용자 문서 추가이며 현재 운영 권한이나 native 서비스 배포 검증이 아니다.
+
+IAM 문서 추가의 scoped review는 HEAD+21개 문서 source/정확한 번역 데이터 allowlist를 별도 index에 담아 guard `--staged --stamp`와 `--staged`를 통과했다(`d75b1ae74d867af7f899339c7753d7180d79f033cf05bc0d016769763ce09285`,3536files). 공유 index와 전역 review marker·동시 작업은 보존했다. 최종 문서84tests·155개 문구/9언어/46역할 검사와 실제 로컬 Chromium30개 locale/viewport/theme 조건·검색·서비스 anchor 이동을 확인했다. 서비스 인가 정책 자체·backend·운영 변경은 없으며 전체 source gate 및 운영 native 접근 검증은 수행하지 않았다. 무관한 동시 미커밋 UI 변경의 i18n scan/catalog guard1건과 통과한 exact allowlist 검사는 `docs/testing.md`에 구분한다.
+
+커밋 준비에서는 기준 `2baaaeadd87127e88567c587f87ccd0237f9465d`에 IAM 문서 hunks만 적용한 격리 스냅샷의 전체 `npm run test:gate`를 통과했다. Exact source digest는 `cb0c0a1b8140f857c35c033def8fd01888a1288519d463a87e2dcf94ea3bb044`/3536files이며 초기 overlay 검증과 달리 allowlist의 동시 변경도 제외했다. 공유 작업 트리·운영 인가 검증으로 확대하지 않는다.
+
 문서 언어는 공용 쿠키와 명시적 `?lang=ko|en|ja|zh-CN|sw|nb|ms|vi|bn`으로 선택하며 유효한 선호가 없으면 `ko`다. `locales.ts`가 URL·번역된 UI/카테고리·navigation context를 소유하고, `translations/<locale>/`의 guide group dictionary를 `catalog.ts`가 on-demand import/cache한다. `translate.ts`는 reader-facing text만 변환하며 slug·section anchor·URL·related slug·service gate·최종 executable code는 정본 그대로 유지하고 누락·빈 번역에는 조용한 한국어 fallback 대신 오류를 낸다. 정본의 한국어 code placeholder/필수 변수 진단 네 곳은 공통 영어로 정규화하여 모든 언어가 동일한 명령을 사용한다. `docs/+layout.ts`가 locale별 navigation, index/article load가 필요한 본문을 제공하며 검색은 선택 언어의 본문 전체를 사용한다. Server hooks는 docs 응답의 HTML 언어를 SSR에 설정하고 docs shell은 client 이동에서도 갱신한다. 문서를 떠나 메인·로그인·콘솔로 이동할 때도 같은 공용 쿠키 선호를 유지한다. 언어 전환은 path/query/fragment를 보존하고 일반 docs 링크는 선택 언어·튜토리얼 context를 유지한다. 기존 공개/auth/404/service-gate 경계와 backend·DB·deployment ownership은 바뀌지 않는다.
 
 `DocSection`·`DocStep`의 선택적 `screenshots`는 `DocScreenshot`의 공개 local `src`·필수 `alt`/`caption`·원본 `width`/`height`를 갖는다. `translateDocGuide`는 설명만 번역하고 경로·크기를 유지하며 검색은 그림 설명도 포함한다. 서비스 article이 공통 `DocScreenshot.svelte`로 figure·설명·한국어 화면/개인정보 가림 안내·안전한 새 탭 원본 링크를 렌더링한다. `frontend/static/docs/screenshots/`의 실제 캡처 42장은 15개 가이드의 세부 절차에 연결된다. 개인정보 제거는 공개 WebP 픽셀에 적용하고, 인증 세션·자원/API·DB·배포 경계는 바꾸지 않는다. 실제 조회/폼 캡처와 로컬 문서 렌더링 검증은 자원 생성·유료 호출·운영 배포 증거와 분리한다. 촬영 중 시각 문제와 한계는 [`docs/user-guide-visual-review.md`](docs/user-guide-visual-review.md)에 기록한다.
@@ -1692,9 +1698,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "45950d3eee8ac12fdcd08ee04fca0780462f9e4597f909ec6ccce3f8de1c18b7",
-  "reviewed_at": "2026-10-27T16:09:02Z",
-  "summary": "Align Helm release metadata with the Kolla toolbox patch."
+  "source_sha256": "cb0c0a1b8140f857c35c033def8fd01888a1288519d463a87e2dcf94ea3bb044",
+  "reviewed_at": "2026-10-29T16:09:24Z",
+  "summary": "Public IAM guide and eight dictionaries; existing docs catalog/search/link integration; exact documentation-data scan exceptions only. No authorization, backend, schema, configuration or deployment behavior changes. Isolated HEAD plus owned IAM hunks; concurrent work excluded."
 }
 ```
 <!-- architecture-review:end -->
