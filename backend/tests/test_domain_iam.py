@@ -479,9 +479,7 @@ async def test_native_system_role_and_foreign_project_denied(directory):
 
 
 @pytest.mark.asyncio
-async def test_mixed_native_admin_invitation_is_denied_despite_removal_only_catalog(directory):
-    choices = await project_service.assignable_roles(PROJECT, manager(), domain_management=True)
-    assert rid("admin") in {row["id"] for row in choices["roles"]}
+async def test_mixed_native_admin_invitation_is_denied(directory):
     with pytest.raises(HTTPException) as denied:
         await domain_iam.validate_invitation_roles(PROJECT, [rid("project_member"), rid("admin")], manager())
     assert denied.value.status_code == 403

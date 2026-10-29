@@ -454,6 +454,11 @@ async def _member(ks, user_id, catalog, effective, direct, domain_id):
         "source": source,
         **access,
         "direct_role_ids": sorted(direct_ids),
+        "direct_roles": [
+            {"id": role["id"], "name": role["name"], "inherited_role_ids": role["inherited_role_ids"]}
+            for role in catalog
+            if role["id"] in direct_ids
+        ],
         "effective_role_ids": sorted(effective_ids),
         "external_role_ids": sorted(_expanded_role_ids(external, catalog, user_id)),
     }
@@ -560,14 +565,10 @@ async def assignable_roles(project_id, token_info, *, domain_management=False):
     catalog = await _provider_call(identity_roles._trusted_catalog)
     effective = await _provider_call(_assignment_rows, ks, project_id, effective=True)
     access = _authorize(project_id, token_info, effective, catalog, domain_authority=authority)
-    roles = [
-        *_managed_roles(catalog).values(),
-        *({**row, "area": "legacy", "grade": "admin"} for row in catalog if row["name"].casefold() == "admin"),
-    ]
     return {
         "roles": [
             row
-            for row in roles
+            for row in _managed_roles(catalog).values()
             if row["name"] != "project_owner" and (authority or access["is_owner"] or row["name"] != "project_admin")
         ],
         "is_owner": access["is_owner"],

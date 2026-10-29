@@ -19,7 +19,7 @@ const project = { id: 'project-a', name: 'Project A', enabled: true, domain_id: 
 const created = { ...project, id: 'project-new', name: 'New project' };
 const user = { id: 'user-a', name: 'Alice', email: 'alice@example.com', enabled: true, domain_id: 'domain-a', protected: false };
 const joined = { ...user, id: 'user-b', name: 'Bob' };
-const member: ProjectAccessMember = { user_id: user.id, username: user.name, email: user.email, is_owner: false, is_manager: false, roles: ['project_reader'], direct_role_ids: ['reader-role'], effective_role_ids: ['reader-role'], external_role_ids: [], source: 'direct' };
+const member: ProjectAccessMember = { user_id: user.id, username: user.name, email: user.email, is_owner: false, is_manager: false, roles: ['project_reader'], direct_role_ids: ['reader-role'], direct_roles: [{ id: 'reader-role', name: 'project_reader', inherited_role_ids: [] }], effective_role_ids: ['reader-role'], external_role_ids: [], source: 'direct' };
 const catalog = { is_owner: false, can_manage_owners: false, roles: [
 	{ id: 'reader-role', name: 'project_reader', area: 'project', grade: 'reader', implied_role_ids: [], inherited_role_ids: [] },
 	{ id: 'member-role', name: 'project_member', area: 'project', grade: 'member', implied_role_ids: [], inherited_role_ids: [] },
@@ -107,20 +107,20 @@ describe('manager project creation and access', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '사용자 역할 할당' }));
 		const dialog = screen.getByRole('dialog');
 		await fireEvent.click(within(dialog).getByRole('checkbox', { name: /project_member/ }));
-		await fireEvent.click(within(dialog).getByRole('button', { name: /^legacy/ }));
-		expect((within(dialog).getByRole('checkbox', { name: /^admin/ }) as HTMLInputElement).disabled).toBe(true);
+		expect(within(dialog).queryByRole('button', { name: /^legacy/ })).toBeNull();
+		expect(within(dialog).queryByRole('checkbox', { name: /^admin\b/i })).toBeNull();
 		await fireEvent.click(within(dialog).getByRole('button', { name: '역할 저장' }));
 		expect(api.put).toHaveBeenCalledExactlyOnceWith('/api/v1/iam/projects/project-a/members/user-b/roles', { role_ids: ['member-role'] }, 'token', undefined, { replayOnUnauthorized: false });
 	});
 	it.each(['group', 'inherited'] as const)('never exposes %s authority as a directly removable member', async source => {
-		members = [{ ...member, source, direct_role_ids: [], external_role_ids: ['reader-role'] }];
+		members = [{ ...member, source, direct_role_ids: [], direct_roles: [], external_role_ids: ['reader-role'] }];
 		render(IamProjects, { session, onDenied: vi.fn() }); await screen.findByText('Alice');
 		expect((screen.getByRole('button', { name: '역할 편집' }) as HTMLButtonElement).disabled).toBe(true);
 		expect((screen.getByRole('button', { name: '멤버 제거' }) as HTMLButtonElement).disabled).toBe(true);
 		expect(api.delete).not.toHaveBeenCalled();
 	});
 	it('adds a direct grant beside group access without editing or removing the inherited role', async () => {
-		members = [{ ...member, source: 'group', direct_role_ids: [], external_role_ids: ['reader-role'] }];
+		members = [{ ...member, source: 'group', direct_role_ids: [], direct_roles: [], external_role_ids: ['reader-role'] }];
 		api.put.mockResolvedValue({});
 		render(IamProjects, { session, onDenied: vi.fn() }); await screen.findByText('Alice');
 		await fireEvent.change(screen.getByLabelText('사용자'), { target: { value: user.id } });

@@ -17,22 +17,23 @@
 	} = $props();
 	let selected = $state<string[]>(untrack(() => [...(member.direct_role_ids ?? [])]));
 	let search = $state('');
-	let selectedArea = $state(untrack(() => roles[0]?.area ?? 'legacy'));
+	const selectableRoles = $derived(roles.filter(role => role.name.toLowerCase() !== 'admin'));
+	let selectedArea = $state(untrack(() => selectableRoles[0]?.area ?? 'legacy'));
 	let searchArea = $state('');
 	const componentId = $props.id();
 	const titleId = `${componentId}-title`;
 	const searchId = `${componentId}-search`;
 	const areaId = `${componentId}-area`;
-	const roleById = $derived(new Map(roles.map(role => [role.id, role])));
+	const roleById = $derived(new Map([...member.direct_roles, ...roles].map(role => [role.id, role])));
 	const implied = $derived(impliedRoleIds(selected));
 	const externalInherited = $derived(new Set(member.external_role_ids));
 	const directEditable = $derived(!['group', 'inherited'].includes(member.source ?? ''));
 	const query = $derived(search.trim().toLowerCase());
-	const visibleRoles = $derived(roles.filter(role => !query || [role.name, role.id, role.description ?? ''].some(value => value.toLowerCase().includes(query))));
+	const visibleRoles = $derived(selectableRoles.filter(role => !query || [role.name, role.id, role.description ?? ''].some(value => value.toLowerCase().includes(query))));
 	const areas = $derived.by(() => {
 		const groups = new Map<string, { name: string; directCount: number; inheritedCount: number }>();
 		const directIds = new Set(selected);
-		for (const role of roles) {
+		for (const role of selectableRoles) {
 			const name = role.area ?? 'legacy';
 			let group = groups.get(name);
 			if (!group) {
@@ -76,18 +77,15 @@
 	function inherited(id: string) {
 		return implied.has(id) || externalInherited.has(id);
 	}
-	function nativeAdmin(role: AssignableProjectRole) {
-		return role.name.toLowerCase() === 'admin';
-	}
 	function disabled(role: AssignableProjectRole) {
-		return busy || !directEditable || !editable(role) || (nativeAdmin(role) ? !selected.includes(role.id) : inherited(role.id));
+		return busy || !directEditable || !editable(role) || inherited(role.id);
 	}
 	function toggle(role: AssignableProjectRole, input: HTMLInputElement) {
 		const checked = input.checked;
-		if (!disabled(role) && !(checked && nativeAdmin(role))) {
+		if (!disabled(role) && role.name.toLowerCase() !== 'admin') {
 			selected = checked ? selected.includes(role.id) ? selected : [...selected, role.id] : selected.filter(value => value !== role.id);
 		}
-		// A removed direct grant can remain effectively checked through inheritance.
+		// Direct and external inheritance remain independent of the visible choices.
 		input.checked = selected.includes(role.id) || inherited(role.id);
 	}
 	function save() {

@@ -455,17 +455,71 @@ async def test_service_alias_transitively_implying_native_admin_is_not_delegable
 
 
 @pytest.mark.asyncio
-async def test_assignable_catalog_exposes_native_admin_as_removal_only(membership):
-    choices = (await service.assignable_roles(PROJECT, token()))["roles"]
-    native = next(row for row in choices if row["name"] == "admin")
-    assert native == {
-        **next(row for row in membership.catalog if row["name"] == "admin"),
-        "area": "legacy",
-        "grade": "admin",
-    }
-    assert native["id"] == rid("admin")
+@pytest.mark.parametrize("native_name", ["admin", "AdMiN"])
+@pytest.mark.parametrize("domain_management", [False, True])
+async def test_assignable_catalog_omits_native_admin(membership, monkeypatch, native_name, domain_management):
+    next(row for row in membership.catalog if row["id"] == rid("admin"))["name"] = native_name
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1/projects")
+    app.dependency_overrides[get_token_info] = lambda: token()
+    if domain_management:
+        from app.api.deps import require_domain_manager
+        from app.api.identity.iam import router as iam_router
+        from app.services import domain_scope
+
+        monkeypatch.setattr(
+            domain_scope,
+            "domain_context",
+            lambda *args, **kwargs: {"domain_id": "domain", "is_domain_manager": True},
+        )
+        app.dependency_overrides[require_domain_manager] = lambda: token()
+        app.include_router(iam_router, prefix="/api/v1/iam")
+    root = "/api/v1/iam" if domain_management else "/api/v1/projects"
+    path = f"{root}/projects/{PROJECT}/assignable-roles" if domain_management else f"{root}/{PROJECT}/assignable-roles"
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(path)
+    assert response.status_code == 200, response.text
+    choices = response.json()["roles"]
+    assert not any(row["name"].casefold() == "admin" for row in choices)
     assert {rid("project_admin"), rid("lumen_admin"), rid("lumen-chat_user")} <= {row["id"] for row in choices}
-    assert rid("admin") not in service._managed_roles(membership.catalog)
+
+
+@pytest.mark.asyncio
+async def test_hidden_direct_admin_metadata_preserves_external_provenance(membership):
+    membership.catalog = identity_roles._catalog(
+        membership.catalog,
+        [
+            {"prior_role": {"id": row["id"]}, "implies": [{"id": child} for child in row["implied_role_ids"]]}
+            for row in membership.catalog
+        ]
+        + [
+            {"prior_role": {"id": rid("admin")}, "implies": [{"id": rid("lumen_user")}]},
+            {"prior_role": {"id": rid("lumen_user")}, "implies": [{"id": rid("lumen-chat_user")}]},
+        ],
+    )
+    membership.direct.extend(assignment("member", name) for name in ("admin", "lumen_user"))
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1/projects")
+    app.dependency_overrides[get_token_info] = lambda: token()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(f"/api/v1/projects/{PROJECT}/members")
+        assert response.status_code == 200, response.text
+        before = next(row for row in response.json()["items"] if row["user_id"] == "member")
+        metadata = next(row for row in before["direct_roles"] if row["id"] == rid("admin"))
+        assert metadata["name"] == "admin"
+        assert {rid("lumen_user"), rid("lumen-chat_user")} <= set(metadata["inherited_role_ids"])
+        assert before["external_role_ids"] == [] and before["source"] == "direct"
+        updated = await client.put(
+            f"/api/v1/projects/{PROJECT}/members/member/roles",
+            json={"role_ids": [rid("admin"), rid("project_member")]},
+        )
+    assert updated.status_code == 200, updated.text
+    result = updated.json()
+    assert rid("lumen_user") not in result["direct_role_ids"]
+    assert metadata in result["direct_roles"]
+    assert result["external_role_ids"] == [] and result["source"] == "direct"
+    assert {"admin", "lumen_user", "lumen-chat_user"} <= set(result["roles"])
+    assert membership.calls == [("revoke", "member", rid("lumen_user"))]
 
 
 @pytest.mark.asyncio

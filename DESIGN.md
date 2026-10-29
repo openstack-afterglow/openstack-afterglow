@@ -12,7 +12,7 @@ Public login asks for username/email and password without naming the internal Ac
 
 Role-preset preview separates native project links to add from legacy service links to retire. Confirmation states that native service policies must be deployed first and that IDs/direct grants survive. Use the existing viewport-bounded `FormModal`, wrapping code rows and semantic `Alert`; never present service-edge retirement as an additive-only action. Native policy lookup errors disable only the unavailable service and are not styled or narrated as confirmed revocation.
 
-Native Keystone `admin` 선택은 프로젝트 역할 편집에서 해제 전용이다. 사용자·관리자 편집기는 미할당 admin을 비활성으로 표시하고 기존 direct admin은 해제하되 같은 draft에서 재선택하지 못한다. Group/상속이 겹치면 direct 해제 뒤 effective 체크 표시를 유지하며 해당 행은 비활성이다. `project_admin`·서비스별 admin 등급과 전용 system-admin 관리 UI는 기존 동작을 유지한다.
+Native Keystone `admin`은 사용자·도메인 IAM·관리자 사용자/그룹 역할 선택 목록과 검색에서 완전히 제외한다. 비활성·해제 전용 checkbox도 렌더링하지 않는다. 기존 direct admin은 다른 역할 저장 시 보존하며 group/상속 권한을 direct로 복사하지 않는다. 읽기 전용 직접 역할 이름·descendant는 `direct_roles` 관측을 사용하여 UUID fallback이나 외부 상속 provenance 혼합을 피한다. 기존 할당의 읽기 전용 표시·명시적 회수 API와 `project_admin`·서비스별 admin 등급 및 전용 system-admin 관리 UI는 유지한다.
 
 Administrator user removal is visible in both desktop rows and compact-card actions. Existing danger Button, FormModal, Field/TextInput and warning/error Alert compose one bounded confirmation showing name, full native ID and home domain; exact full-ID entry is required. Self-removal stays disabled. Unknown outcomes offer close and fresh-directory confirmation rather than an automatic retry; account deletion never implies project/resource cascade. No new visual primitive or token is introduced.
 

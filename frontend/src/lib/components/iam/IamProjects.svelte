@@ -83,7 +83,7 @@
 		const selected = users.find(row => row.id === user); if (!selected) return;
 		const current = members.find(row => row.user_id === user);
 		if (current?.is_owner && !catalog.can_manage_owners) return;
-		editing = current ? { ...current, source: current.direct_role_ids.length ? current.source : 'mixed' } : { user_id: selected.id, username: selected.name, email: selected.email, is_owner: false, is_manager: false, source: 'direct', roles: [], direct_role_ids: [], effective_role_ids: [], external_role_ids: [] };
+		editing = current ? { ...current, source: current.direct_role_ids.length ? current.source : 'mixed' } : { user_id: selected.id, username: selected.name, email: selected.email, is_owner: false, is_manager: false, source: 'direct', roles: [], direct_role_ids: [], direct_roles: [], effective_role_ids: [], external_role_ids: [] };
 		error = '';
 	}
 	async function save(roleIds: string[]) {

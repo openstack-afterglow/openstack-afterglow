@@ -30,7 +30,7 @@ PUT는 현재 권위 확인 후 bounded configured writer와 graph lease로 `aft
 - **프로젝트 생성** — 조직/legacy는 현재 enabled canonical Default 프로젝트의 effective `manager` 또는 `project_creator`와 실제 참여를 요구합니다. 다른 프로젝트나 legacy domain scope의 동명 grant, JWT flag는 생성 권위가 아닙니다. Manager는 creator preset 존재와 무관합니다. Personal은 본인 primary의 marker·직접 native member provenance를 검증하고 이름을 정규화 username 최대47자+하이픈+임의 소문자8자+숫자8자리로 생성합니다. Personal 요청은 name을 생략해야 하며 nonempty name은422 personal_project_name_is_generated입니다. Disabled project에 본인 직접 member 하나와 동결된 project quota를 준비·readback한 뒤 활성화하고 owner/admin/reader·domain manager/projection/allocation pool은 자동 부여하지 않습니다. 기존 owner 기반 personal grant는 보존합니다. 조직 생성의 기존 projection·quota defaults와 불명 native effect의 replay 금지는 유지합니다.
 - **유일한 명시적 소유권** — 일반 프로젝트는 정확한 `project_owner` 직접 사용자 할당 하나만 정상 소유권입니다. 복수 owner, owner를 함의하는 다른 역할, group/domain/ancestor 상속 owner는 conflict이며 자동으로 한 명을 선택하지 않습니다. `manager > owner`는 도메인 관리 우선순위이지 `manager → project_owner` inference edge가 아닙니다. Default는 별도의 도메인 권위 프로젝트이며 소유권 이전·삭제 대상이 아닙니다.
 - **멤버 관리와 소유권 분리** — owner 또는 도메인 manager는 `project_admin`을 변경할 수 있고 project admin은 그보다 낮은 허용 역할만 관리합니다. 일반 역할 편집·멤버 제거는 owner-bearing grant를 추가/제거할 수 없습니다. 소유권 변경은 전용 transfer 경로만 사용하며 `assignable-roles.can_manage_owners`는 항상 `false`입니다. 직접 역할만 교체하고 편집 불가 기존 직접 할당과 그룹·도메인 상속은 유지합니다.
-- **Native admin은 해제 전용** — literal Keystone `admin`(현재 catalog의 실제 ID, 이름 대소문자 무시)은 신규 선택/API grant를422로 거부합니다. `assignable-roles`는 기존 direct admin 정리를 위해 `area=legacy`, `grade=admin` 항목을 포함하지만 추가 가능한 권한이라는 뜻은 아닙니다. Full replacement에 기존 admin을 그대로 포함하면 보존하고 제외하면 해당 direct grant를 회수합니다. Additive 요청의 생략은 회수가 아닙니다. Group/상속 admin은 유지하며 direct로 바꾸지 않습니다. `project_admin`·서비스 `*_admin`은 이 제한의 대상이 아니고 기존 위임 ceiling을 따릅니다.
+- **Native admin은 일반 선택지에서 제외** — literal Keystone `admin`(현재 catalog의 실제 ID, 이름 대소문자 무시)은 사용자·IAM assignable catalog와 관리자 user/group 역할 선택·검색에 표시하지 않습니다. 비활성 checkbox도 없으며 새 API grant는422로 거부합니다. 브라우저는 기존 direct admin을 숨긴 채 다른 역할 저장 시 보존합니다. 명시적 API full replacement에 기존 admin을 그대로 포함하면 보존하고 제외하면 해당 direct grant를 회수하는 계약과 additive 생략=보존은 유지합니다. Group/상속 admin을 direct로 바꾸지 않습니다. `project_admin`·서비스 `*_admin`의 기존 ceiling과 관리자 페이지의 전용 `system:all` grant/revoke 경로는 바꾸지 않습니다.
 - **로그인과 권한 분리** — 본인을 포함한 프로젝트 role 추가·교체·회수는 로그인 세션을 일괄 폐기하지 않습니다. 새 요청은 현재 Keystone 권한으로 검증하므로 회수한 역할은 다음 로그인까지 유지되지 않습니다. 프로젝트 관리 권한 자체를 없애면 이후 관리 요청은 `403`입니다. 명시적 세션 폐기·계정 차단·유효하지 않은 native 로그인 증명은 기존대로 재로그인 대상입니다.
 - **서비스 권한 분리** — Waygate·Lumen·Drover·Palimpsest의 grade와 세부 role을 독립 ID로 유지하고 서비스용 inference edge를 새로 만들지 않습니다. 각 native 서비스의 `oslo.policy`와 운영자 `policy.yaml`이 grade·명시적 leaf를 action으로 평가합니다. 서비스 role을 OpenStack `admin`·`manager`로 승격하거나 프로젝트 소유권을 서비스 권한으로 대체하지 않습니다.
 - **명시적 이전** — 기존 DB 관리자 기록의 이전은 시스템 관리자가 대상 소유자를 지정해 실행합니다. 조회·로그인·프로젝트 전환이 이를 자동 수행하지 않습니다.
@@ -186,6 +186,7 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
       "is_owner": false,
       "roles": ["project_admin", "project_member", "member", "project_reader", "reader"],
       "direct_role_ids": ["project-admin-role-id"],
+      "direct_roles": [{"id": "project-admin-role-id", "name": "project_admin", "inherited_role_ids": ["project-member-role-id", "native-member-role-id", "project-reader-role-id", "native-reader-role-id"]}],
       "effective_role_ids": ["project-admin-role-id", "project-member-role-id", "native-member-role-id", "project-reader-role-id", "native-reader-role-id"],
       "external_role_ids": [],
       "source": "direct"
@@ -200,6 +201,7 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
       "is_owner": false,
       "roles": ["project_reader", "reader"],
       "direct_role_ids": [],
+      "direct_roles": [],
       "effective_role_ids": ["project-reader-role-id", "native-reader-role-id"],
       "external_role_ids": ["project-reader-role-id", "native-reader-role-id"],
       "source": "group",
@@ -215,6 +217,7 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
 | `is_owner`, `is_manager` | 현재 유효 `project_owner`, owner/admin 여부 |
 | `roles`, `effective_role_ids` | 현재 유효 이름·ID; 직접 할당과 구분 |
 | `direct_role_ids` | 사용자의 직접 프로젝트 할당 ID |
+| `direct_roles` | 읽기 전용 직접 역할 metadata `{id,name,inherited_role_ids}`; 선택 catalog에서 제외된 admin/custom 역할도 실제 이름과 전체 descendant를 보존하며 새 grant 허용 목록이 아님 |
 | `external_role_ids` | 그룹·도메인 상속 할당만 현재 ID 그래프로 확장한 역할 ID; 직접 부모를 제거해도 남는 외부 상속을 별도로 표시 |
 | `group_name` | 그룹 경유 할당의 그룹 표시명 |
 | `domain_id`, `identity_read_only` | native home identity domain과 working domain 불일치 여부; 가입자의 원래 identity를 변경하지 않음 |
@@ -238,7 +241,7 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
 
 `DELETE /members/{user_id}`는 같은 정책으로 관리 가능한 직접 역할만 제거하고 `200 {"status":"removed","member":{...}}`를 반환합니다. 유효 멤버가 아니면 `404`이고, 직접 제거할 수 없는 group/inherited grant는 유지됩니다. Default의 필수 직접 `project_reader` baseline도 유지되므로 성공이 모든 유효 멤버십 제거를 뜻하지 않습니다. Native 경계·provider 오류는 `403/404/409/422/503`으로 전파될 수 있습니다.
 
-멤버 응답은 `direct_role_ids`(현재 직접 할당), `effective_role_ids`(모든 유효 할당의 현재 ID 그래프 확장), `external_role_ids`(group/domain inherited 할당만 같은 그래프로 확장)를 분리합니다. `external_role_ids`는 merged effective 목록에서 직접 부모의 descendant를 빼서 추정하지 않습니다. 같은 하위 역할이 직접 부모와 그룹·도메인 양쪽에서 부여된 경우에도 부모 제거 후 외부 상속은 남아 checked/read-only로 표시됩니다. 이 provenance projection은 조회 응답만 보완하며 실제 Keystone 할당·인가·DB schema를 변경하지 않습니다.
+멤버 응답은 `direct_role_ids`(현재 직접 할당), `direct_roles`(직접 역할별 실제 이름·전체 descendant), `effective_role_ids`(모든 유효 할당의 현재 ID 그래프 확장), `external_role_ids`(group/domain inherited 할당만 같은 그래프로 확장)를 분리합니다. Direct metadata는 assignable 목록과 독립적인 읽기 전용 관측이며 admin을 선택지에 되돌리지 않습니다. `external_role_ids`는 merged effective 목록에서 직접 부모의 descendant를 빼서 추정하지 않습니다. 공유 descendant는 편집 가능한 직접 부모를 해제해도 다른 직접 부모 또는 group/domain 상속이 남으면 checked/read-only로 유지합니다. 이 projection은 실제 Keystone 할당·인가·DB schema를 변경하지 않습니다.
 
 `assignable-roles`의 각 role은 `implied_role_ids`(직접 연결)와 `inherited_role_ids`(검증된 현재 ID 그래프의 전체 descendant)를 제공합니다. 브라우저는 직접 선택한 부모의 descendant를 자동으로 체크·비활성화하고 선택을 해제하면 다시 계산합니다. 공유 부모의 상속, 기존 명시적 direct child, 편집 범위 밖의 group/domain inheritance는 유지합니다. 이름·ID·설명의 대소문자 무관 검색은 숨겨진 선택을 지우지 않으며 저장 요청에는 direct ID만 포함합니다. 이 UI projection은 새로운 Keystone grant를 만들거나 기존 direct child를 자동 삭제하지 않습니다.
 

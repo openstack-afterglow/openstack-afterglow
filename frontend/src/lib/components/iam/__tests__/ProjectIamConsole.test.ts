@@ -18,7 +18,7 @@ import { projectManagement } from '$lib/stores/projectManagement';
 
 const project = { id: 'project-a', name: 'Project A', domain_id: 'domain-a', description: '', enabled: true };
 const user = { id: 'user-a', name: 'Alice', email: 'alice@example.com', enabled: true, domain_id: 'domain-a', protected: false };
-const member = { user_id: user.id, username: user.name, email: user.email, is_owner: false, is_manager: false, roles: ['project_reader'], direct_role_ids: ['reader'], effective_role_ids: ['reader'], external_role_ids: [], source: 'direct' };
+const member = { user_id: user.id, username: user.name, email: user.email, is_owner: false, is_manager: false, roles: ['project_reader'], direct_role_ids: ['reader'], direct_roles: [{ id: 'reader', name: 'project_reader', inherited_role_ids: [] }], effective_role_ids: ['reader'], external_role_ids: [], source: 'direct' };
 const capability = { domain_id: 'domain-a', domain_kind: 'organization', is_domain_manager: false, can_create_project: true };
 let caps = { ...capability };
 let projects = [project];

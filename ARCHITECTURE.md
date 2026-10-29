@@ -67,7 +67,7 @@ Bundled Helm/Kolla·개발 values의 유효 session timeout도86400초로 통일
 
 프로젝트 역할은 기존 `project_owner → project_admin → project_member → project_reader`와 native `member`/`reader` 연결을 재사용한다. 소유권은 새 프로젝트 생성 또는 검토된 명시적 이전에서만 부여하며 마지막 유효 소유자를 보호한다. 역할 프리셋 적용은 현재 시스템 관리자의 명시적 API에서만 수행하며 조회·로그인은 seeding하지 않는다. 네 서비스의 grade·세부 role은 독립적인 전역 ID로 유지하고 서비스용 inference edge를 새로 만들지 않는다. 기존 프리셋이 만든 정확한 서비스 edge만 명시적 적용에서 제거하고 role ID·직접 할당·프로젝트 edge·custom edge를 보존한다. 서비스 grade를 세부 token role로 확장하는 대신 각 native 서비스의 실제 `oslo.policy` 등록 action과 운영자 `policy.yaml`이 인가한다.
 
-사용자·도메인 IAM·관리자 프로젝트 역할 할당은 native `admin`의 신규 user/group grant를 금지한다. 사용자 replacement는 기존 direct admin의 보존 또는 해제만 허용하고 group/상속을 direct로 복사하지 않는다. Removal-only admin을 편집 catalog에 노출하더라도 초대/additive grant 허용 목록에는 넣지 않는다. 도메인 관리자의 protected-user 예외는 graph lease 안에서 실제 delta가 해당 프로젝트의 native admin 회수만이고 다른 추가/회수가 없을 때에만 적용하며 identity/credential/system·다른 scope 권한은 보호한다. `project_admin`과 서비스 `*_admin`은 기존 계약을 유지하고 `system:all` canonical admin의 전용 grant/revoke 및 마지막 유효 관리자·Default manager 보호는 바꾸지 않는다. 기존 운영 grant를 자동 회수하거나 role/DAG를 변경하지 않는다.
+사용자·도메인 IAM·관리자 프로젝트 역할 할당은 native `admin`의 신규 user/group grant를 금지하며 assignable catalog와 모든 일반 역할 선택·검색에서 해당 이름을 대소문자와 무관하게 제외한다. 비활성 또는 해제 전용 선택지를 남기지 않는다. 사용자 replacement는 기존 direct admin을 보존하며 명시적 회수 API도 유지하고 group/상속을 direct로 복사하지 않는다. 멤버 응답의 별도 읽기 전용 `direct_roles`(실제 id/name/inherited_role_ids)가 assignable 밖의 기존 역할 이름과 descendant를 보존하고 UI 선택지를 확장하지 않는다. `external_role_ids`는 기존대로 group/domain 상속만 나타낸다. 도메인 관리자의 protected-user 예외는 graph lease 안에서 실제 delta가 해당 프로젝트의 native admin 회수만이고 다른 추가/회수가 없을 때에만 적용하며 identity/credential/system·다른 scope 권한은 보호한다. `project_admin`과 서비스 `*_admin`은 기존 계약을 유지하고 `system:all` canonical admin의 전용 grant/revoke 및 마지막 유효 관리자·Default manager 보호는 바꾸지 않는다. 기존 운영 grant를 자동 회수하거나 role/DAG를 변경하지 않는다.
 
 도메인 manager IAM은 `services/domain_membership.py`의 graph-locked current-domain eviction을 별도 identity deletion과 분리한다. 모든 직접 domain/project grant와 domain-local group source를 먼저 검증하며 owner/manager·current-home intrinsic membership·다른 범위의 shared grant·미완료 ownership을 차단한다. 계정/리소스/다른 도메인은 보존하고 native 부재 readback 뒤에만 removed를 반환한다. Partial/unknown은503과 fresh 확인이며 요청 자동 replay/rollback은 없다. 프로젝트 생성 UI는 기존 fresh manager capability를 직접 노출할 뿐 project_creator를 합성하지 않는다.
 
@@ -1698,9 +1698,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "cb0c0a1b8140f857c35c033def8fd01888a1288519d463a87e2dcf94ea3bb044",
-  "reviewed_at": "2026-10-29T16:09:24Z",
-  "summary": "Public IAM guide and eight dictionaries; existing docs catalog/search/link integration; exact documentation-data scan exceptions only. No authorization, backend, schema, configuration or deployment behavior changes. Isolated HEAD plus owned IAM hunks; concurrent work excluded."
+  "source_sha256": "571fd31d7463dccae1d76f86962d81cd8f84d49c207e981ac3c0c05694add88c",
+  "reviewed_at": "2026-10-29T16:25:37Z",
+  "summary": "Scoped native-admin assignment-choice and direct_roles metadata fix, preserving the concurrent user-IAM documentation commit 44b5c387. No schema/config/runtime topology changes; unrelated shared work excluded."
 }
 ```
 <!-- architecture-review:end -->

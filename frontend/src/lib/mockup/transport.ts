@@ -897,8 +897,8 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	};
 	if (method === 'GET' && /^\/api\/v1\/projects\/[^/]+\/members$/.test(pathname)) {
 		return { items: [
-			{ user_id: 'mock-user-1', username: 'demo-user', email: 'demo@example.com', is_owner: true, is_manager: true, roles: ['project_owner', 'project_member', 'project_reader', 'member'], direct_role_ids: ['mock-role-owner'], effective_role_ids: ['mock-role-owner', 'mock-role-member', 'mock-role-reader'], external_role_ids: [], source: 'direct' },
-			{ user_id: 'mock-user-2', username: 'sample-researcher', email: 'researcher@example.com', is_owner: false, is_manager: false, roles: ['project_member', 'project_reader', 'member'], direct_role_ids: ['mock-role-member'], effective_role_ids: ['mock-role-member', 'mock-role-reader'], external_role_ids: [], source: 'direct' },
+			{ user_id: 'mock-user-1', username: 'demo-user', email: 'demo@example.com', is_owner: true, is_manager: true, roles: ['project_owner', 'project_member', 'project_reader', 'member'], direct_role_ids: ['mock-role-owner'], direct_roles: [{ id: 'mock-role-owner', name: 'project_owner', inherited_role_ids: ['mock-role-member', 'mock-role-reader'] }], effective_role_ids: ['mock-role-owner', 'mock-role-member', 'mock-role-reader'], external_role_ids: [], source: 'direct' },
+			{ user_id: 'mock-user-2', username: 'sample-researcher', email: 'researcher@example.com', is_owner: false, is_manager: false, roles: ['project_member', 'project_reader', 'member'], direct_role_ids: ['mock-role-member'], direct_roles: [{ id: 'mock-role-member', name: 'project_member', inherited_role_ids: ['mock-role-reader'] }], effective_role_ids: ['mock-role-member', 'mock-role-reader'], external_role_ids: [], source: 'direct' },
 		] };
 	}
 	if (method === 'GET' && pathname === '/api/v1/announcements') return [];

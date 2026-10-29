@@ -73,7 +73,7 @@
 		if (existing?.is_owner && !actorOwner) return;
 		editMember = existing ? { ...existing, source: existing.direct_role_ids.length ? existing.source : 'mixed' } : {
 			user_id: user.id, username: user.name, email: user.email, source: 'direct', is_owner: false, is_manager: false,
-			roles: [], direct_role_ids: [], effective_role_ids: [], external_role_ids: []
+			roles: [], direct_role_ids: [], direct_roles: [], effective_role_ids: [], external_role_ids: []
 		};
 		membersError = '';
 	}
@@ -173,7 +173,7 @@
 				<ResponsiveTable>{#snippet cards()}
 					{#each members.slice().sort((a, b) => (a.source === 'group' ? 1 : 0) - (b.source === 'group' ? 1 : 0)) as m (m.user_id)}<CompactResourceCard>
 						<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{m.username || m.user_id}</h3><span class="text-xs">{m.is_owner ? 'owner' : m.is_manager ? 'admin' : 'member'}</span></div><p class="text-sm break-all">{m.email || '—'}</p>{#if m.group_name}<p class="text-xs text-ink-2">{m.group_name}</p>{/if}
-						{#snippet details()}<p class="text-xs [overflow-wrap:anywhere]">{t('projectSettings.directRoles', { roles: (m.direct_role_ids ?? []).map(id => assignable?.roles.find(role => role.id === id)?.name ?? id).join(', ') || '—' })}</p><p class="text-xs [overflow-wrap:anywhere]">{t('projectSettings.effectiveRoles', { roles: (m.roles ?? []).join(', ') || '—' })}</p>{/snippet}
+						{#snippet details()}<p class="text-xs [overflow-wrap:anywhere]">{t('projectSettings.directRoles', { roles: m.direct_roles.map(role => role.name).join(', ') || '—' })}</p><p class="text-xs [overflow-wrap:anywhere]">{t('projectSettings.effectiveRoles', { roles: (m.roles ?? []).join(', ') || '—' })}</p>{/snippet}
 						{#snippet actions()}{#if canEdit(m)}<Button variant="secondary" size="sm" disabled={managingUserId !== null || !membersFresh} onclick={() => { editMember = m; membersError = ''; }}>{t('projectSettings.editRoles')}</Button>{#if !m.is_owner && (actorOwner || !m.is_manager)}<Button variant="danger" size="sm" disabled={managingUserId !== null || !membersFresh || !(m.direct_role_ids?.length)} onclick={() => removeMember(m)}>{t('projectSettings.removeMember')}</Button>{/if}{:else if ['group', 'inherited'].includes(m.source ?? '')}<span class="text-xs text-ink-2">{t('projectSettings.inheritedReadOnly')}</span>{/if}{/snippet}
 					</CompactResourceCard>{/each}
 				{/snippet}
@@ -195,7 +195,7 @@
 									<td class="px-4 py-3 text-ink-2">{m.email || '—'}</td>
 									<td class="px-4 py-3">
 										<span class="text-xs text-ink-2">{m.is_owner ? 'owner' : m.is_manager ? 'admin' : 'member'}</span>
-										<details class="mt-1 text-xs text-ink-2"><summary>{t('projectSettings.directEffectiveRoles')}</summary><p class="[overflow-wrap:anywhere]">{t('projectSettings.directRoles', { roles: (m.direct_role_ids ?? []).map(id => assignable?.roles.find(role => role.id === id)?.name ?? id).join(', ') || '—' })}</p><p class="[overflow-wrap:anywhere]">{t('projectSettings.effectiveRoles', { roles: (m.roles ?? []).join(', ') || '—' })}</p></details>
+										<details class="mt-1 text-xs text-ink-2"><summary>{t('projectSettings.directEffectiveRoles')}</summary><p class="[overflow-wrap:anywhere]">{t('projectSettings.directRoles', { roles: m.direct_roles.map(role => role.name).join(', ') || '—' })}</p><p class="[overflow-wrap:anywhere]">{t('projectSettings.effectiveRoles', { roles: (m.roles ?? []).join(', ') || '—' })}</p></details>
 									</td>
 									<td class="px-4 py-3">
 										{#if m.group_name}

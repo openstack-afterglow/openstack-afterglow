@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import ProjectMemberRolesModal from '../ProjectMemberRolesModal.svelte';
 import type { AssignableProjectRole, ProjectAccessMember } from '$lib/types/project';
-const member: ProjectAccessMember = { user_id: 'u', username: 'User', email: '', source: 'direct', is_owner: false, is_manager: true, roles: ['project_admin', 'lumen_user', 'lumen-chat_user'], direct_role_ids: ['admin', 'user'], effective_role_ids: ['admin', 'user', 'chat'], external_role_ids: [] };
+const member: ProjectAccessMember = { user_id: 'u', username: 'User', email: '', source: 'direct', is_owner: false, is_manager: true, roles: ['project_admin', 'lumen_user', 'lumen-chat_user'], direct_role_ids: ['admin', 'user'], direct_roles: [], effective_role_ids: ['admin', 'user', 'chat'], external_role_ids: [] };
 const roles: AssignableProjectRole[] = [
 	{ id: 'admin', name: 'project_admin', area: 'project', grade: 'admin', implied_role_ids: [], inherited_role_ids: [] },
 	{ id: 'user', name: 'lumen_user', area: 'lumen', grade: 'user', implied_role_ids: ['chat'], inherited_role_ids: ['chat'] },
@@ -96,62 +96,51 @@ describe('project member direct and inherited roles', () => {
 	});
 });
 
-describe('native admin removal-only selection', () => {
+describe('native admin excluded from role choices', () => {
 	const nativeRole: AssignableProjectRole = { id: 'native-admin-id', name: 'admin', area: 'legacy', grade: 'admin', implied_role_ids: ['chat'], inherited_role_ids: ['chat'] };
 	const serviceAdmin: AssignableProjectRole = { id: 'service-admin-id', name: 'lumen_admin', area: 'lumen', grade: 'admin', implied_role_ids: [], inherited_role_ids: [] };
-	const checkbox = () => screen.getByRole('checkbox', { name: /^admin\b/i }) as HTMLInputElement;
-	it.each(['admin', 'ADMIN'])('blocks new %s grants even on synthetic changes without blocking project/service admin roles', async (name) => {
+	it.each(['admin', 'ADMIN'])('omits %s from choices and search without blocking project/service admin', async (name) => {
 		const onSave = vi.fn();
 		render(ProjectMemberRolesModal, { member: { ...member, direct_role_ids: ['user', 'legacy-id'] }, roles: [{ ...nativeRole, name }, ...roles, serviceAdmin], busy: false, error: '', onSave, onClose: vi.fn() });
-		expect(checkbox()).toMatchObject({ checked: false, disabled: true });
-		await fireEvent.change(checkbox(), { target: { checked: true } });
+		expect(screen.queryByRole('checkbox', { name: /^admin\b/i })).toBeNull();
+		expect(screen.queryByRole('option', { name: /^legacy/ })).toBeNull();
+		await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'admin' } });
+		expect(screen.queryByRole('checkbox', { name: /^admin\b/i })).toBeNull();
+		await fireEvent.input(screen.getByRole('searchbox'), { target: { value: '' } });
 		await chooseArea('project');
-		const projectAdmin = screen.getByRole('checkbox', { name: /^project_admin/ }) as HTMLInputElement;
-		expect(projectAdmin.disabled).toBe(false);
-		await fireEvent.click(projectAdmin);
+		await fireEvent.click(screen.getByRole('checkbox', { name: /^project_admin/ }));
 		await chooseArea('lumen');
-		const lumenAdmin = screen.getByRole('checkbox', { name: /^lumen_admin/ }) as HTMLInputElement;
-		expect(lumenAdmin.disabled).toBe(false);
-		await fireEvent.click(lumenAdmin);
+		await fireEvent.click(screen.getByRole('checkbox', { name: /^lumen_admin/ }));
 		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
 		expect(onSave).toHaveBeenCalledWith(['user', 'legacy-id', 'admin', 'service-admin-id']);
 	});
-	it('preserves an unchanged direct admin, then removes it without permitting re-add in the same draft', async () => {
+	it.each([true, false])('preserves an existing hidden direct admin while editing other roles (catalog includes admin: %s)', async (includeAdmin) => {
 		const onSave = vi.fn();
 		const direct = ['native-admin-id', 'admin', 'legacy-id'];
-		render(ProjectMemberRolesModal, { member: { ...member, direct_role_ids: direct }, roles: [nativeRole, ...roles], busy: false, error: '', onSave, onClose: vi.fn() });
-		expect(checkbox()).toMatchObject({ checked: true, disabled: false });
-		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
-		expect(onSave).toHaveBeenLastCalledWith(direct);
-		await fireEvent.click(checkbox());
-		expect(checkbox()).toMatchObject({ checked: false, disabled: true });
-		await fireEvent.change(checkbox(), { target: { checked: true } });
+		render(ProjectMemberRolesModal, { member: { ...member, direct_role_ids: direct }, roles: [...(includeAdmin ? [nativeRole] : []), ...roles], busy: false, error: '', onSave, onClose: vi.fn() });
+		expect(screen.queryByRole('checkbox', { name: /^admin\b/i })).toBeNull();
 		await chooseArea('lumen');
-		expect(screen.getByRole('checkbox', { name: /^lumen-chat_user/ })).toMatchObject({ checked: false, disabled: false });
-		await chooseArea('legacy');
-		expect(checkbox()).toMatchObject({ checked: false, disabled: true });
+		await fireEvent.click(screen.getByRole('checkbox', { name: /^lumen-images_user/ }));
 		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
-		expect(onSave).toHaveBeenLastCalledWith(['admin', 'legacy-id']);
+		expect(onSave).toHaveBeenCalledWith([...direct, 'images']);
 	});
-	it.each(['group', 'inherited', 'mixed'] as const)('does not turn %s external admin into a direct grant or revoke', async (source) => {
+	it('keeps hidden admin descendants checked after removing an overlapping editable parent', async () => {
+		const onSave = vi.fn();
+		render(ProjectMemberRolesModal, { member: { ...member, direct_role_ids: ['native-admin-id', 'user'], direct_roles: [{ id: 'native-admin-id', name: 'admin', inherited_role_ids: ['chat'] }], external_role_ids: [] }, roles, busy: false, error: '', onSave, onClose: vi.fn() });
+		await chooseArea('lumen');
+		await fireEvent.click(screen.getByRole('checkbox', { name: /^lumen_user/ }));
+		expect(screen.getByRole('checkbox', { name: /^lumen-chat_user/ })).toMatchObject({ checked: true, disabled: true });
+		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
+		expect(onSave).toHaveBeenCalledWith(['native-admin-id']);
+	});
+	it.each(['group', 'inherited', 'mixed'] as const)('never copies %s external admin into direct grants', async (source) => {
 		const onSave = vi.fn();
 		const direct = source === 'mixed' ? ['user'] : [];
 		render(ProjectMemberRolesModal, { member: { ...member, source, direct_role_ids: direct, external_role_ids: ['native-admin-id'] }, roles: [nativeRole, ...roles], busy: false, error: '', onSave, onClose: vi.fn() });
-		expect(checkbox()).toMatchObject({ checked: true, disabled: true });
-		await fireEvent.change(checkbox(), { target: { checked: false } });
-		await fireEvent.change(checkbox(), { target: { checked: true } });
+		expect(screen.queryByRole('checkbox', { name: /^admin\b/i })).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
 		if (source === 'mixed') expect(onSave).toHaveBeenCalledWith(direct);
 		else expect(onSave).not.toHaveBeenCalled();
-	});
-	it('removes the direct admin assignment while keeping overlapping external inheritance visible', async () => {
-		const onSave = vi.fn();
-		render(ProjectMemberRolesModal, { member: { ...member, source: 'mixed', direct_role_ids: ['native-admin-id', 'user'], external_role_ids: ['native-admin-id'] }, roles: [nativeRole, ...roles], busy: false, error: '', onSave, onClose: vi.fn() });
-		expect(checkbox()).toMatchObject({ checked: true, disabled: false });
-		await fireEvent.click(checkbox());
-		expect(checkbox()).toMatchObject({ checked: true, disabled: true });
-		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
-		expect(onSave).toHaveBeenCalledWith(['user']);
 	});
 });
 

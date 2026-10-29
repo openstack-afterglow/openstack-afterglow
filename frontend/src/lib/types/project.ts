@@ -24,6 +24,7 @@ export interface ProjectAccessMember {
 	is_manager: boolean;
 	roles: string[];
 	direct_role_ids: string[];
+	direct_roles: { id: string; name: string; inherited_role_ids: string[] }[];
 	effective_role_ids: string[];
 	external_role_ids: string[];
 	source?: 'direct' | 'group' | 'mixed' | 'inherited';
