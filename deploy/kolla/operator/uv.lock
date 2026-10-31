@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 
 [[package]]
@@ -17,12 +17,12 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "drover", git = "https://github.com/openstack-afterglow/drover.git?tag=v0.2.25" },
+    { name = "drover", git = "https://github.com/openstack-afterglow/drover.git?tag=v0.4.15" },
     { name = "kolla-ansible", git = "https://opendev.org/openstack/kolla-ansible.git?rev=34daacfbf2d5987f543787f57535b2bebe7dee19" },
-    { name = "lumen", git = "https://github.com/openstack-afterglow/lumen.git?tag=v0.3.1" },
-    { name = "palimpsest-client", git = "https://github.com/openstack-afterglow/palimpsest.git?tag=v0.2.3" },
+    { name = "lumen", git = "https://github.com/openstack-afterglow/lumen.git?tag=v0.6.12" },
+    { name = "palimpsest-client", git = "https://github.com/openstack-afterglow/palimpsest.git?tag=v0.3.10" },
     { name = "urllib3", specifier = ">=2.8.0" },
-    { name = "waygate", git = "https://github.com/openstack-afterglow/waygate.git?tag=v0.2.0" },
+    { name = "waygate", git = "https://github.com/openstack-afterglow/waygate.git?tag=v0.3.5" },
 ]
 
 [[package]]
@@ -447,8 +447,8 @@ wheels = [
 
 [[package]]
 name = "drover"
-version = "0.2.25"
-source = { git = "https://github.com/openstack-afterglow/drover.git?tag=v0.2.25#a18f207a0b297160b22747753e2657a9047e205a" }
+version = "0.4.15"
+source = { git = "https://github.com/openstack-afterglow/drover.git?tag=v0.4.15#977a1cad411cc0eafb5a92090bdced272de0611a" }
 
 [[package]]
 name = "hvac"
@@ -520,8 +520,8 @@ dependencies = [
 
 [[package]]
 name = "lumen"
-version = "0.3.1"
-source = { git = "https://github.com/openstack-afterglow/lumen.git?tag=v0.3.1#9eed5d170bc3fad3dae658e6119cb80e5831052e" }
+version = "0.6.12"
+source = { git = "https://github.com/openstack-afterglow/lumen.git?tag=v0.6.12#9d94d0b51f2dcee9d47fdb05004de4c7558fa661" }
 
 [[package]]
 name = "markdown-it-py"
@@ -686,8 +686,8 @@ wheels = [
 
 [[package]]
 name = "palimpsest-client"
-version = "0.2.3"
-source = { git = "https://github.com/openstack-afterglow/palimpsest.git?tag=v0.2.3#fc729e3bb33ed9a4a860ad0d8c1c79b192891331" }
+version = "0.3.10"
+source = { git = "https://github.com/openstack-afterglow/palimpsest.git?tag=v0.3.10#c63d9507b774220164babd1bb6e7eb450a693c26" }
 
 [[package]]
 name = "passlib"
@@ -945,8 +945,8 @@ wheels = [
 
 [[package]]
 name = "waygate"
-version = "0.2.0"
-source = { git = "https://github.com/openstack-afterglow/waygate.git?tag=v0.2.0#572393905d50ef4cd7c90232bba43bb0cf40efbd" }
+version = "0.3.5"
+source = { git = "https://github.com/openstack-afterglow/waygate.git?tag=v0.3.5#1886a8ed7e7af4ac812a8579901fe18f31c8b034" }
 
 [[package]]
 name = "wcwidth"
