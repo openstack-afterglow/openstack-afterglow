@@ -6,7 +6,7 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 
 이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.32.0`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
-**1.32.0 GitHub minor publication (2026-11-02):** 사용자의 현재 변경 전체 게시 요청으로 resize composer·IAM 자기 역할 편집/FIFO 대기·인증 장애 복구·상세 새로고침과 capability 표시 개선을 통합한다. 새로운 DB migration·native 정책·배포 topology는 추가하지 않는다. Exact-SHA gate/CI와 불변 tag/image/release 수용은 release checklist로 추적하며, controller1 장애로 보류한 운영 native/schema/service cutover와 혼동하지 않는다.
+**1.32.0 GitHub minor publication 완료 (2026-11-02):** 현재 변경77files를 source `a8e993911f9793ef0b6b73aad0dba9a1f5adcbe2`로 dev에 게시했다. 전체 gate와 실제 compiled resize/auth smoke, exact-SHA CI41332584500 뒤 불변 `v1.32.0`을 생성했고 tagimage41333266068·Helm41333266023이 성공했다. API/frontend/worker의 linux/amd64 release/latest digest·revision 일치와 network-none 이미지3개의 실제1.32.0 metadata/API resize helper를 확인했다. Resize composer·IAM 자기 역할 편집/FIFO 대기·인증 장애 복구·상세 새로고침과 capability 표시 개선이며 새 migration/native 정책/topology는 없다. [완료 기록](openspec/changes/archive/2026-11-02-release-afterglow-1-32-0/tasks.md)은 GitHub 발행만 포함하고 controller1 장애로 보류한 운영 native/schema/service cutover는 수행하지 않았다.
 
 Notion worker 종료는 dependency timeout의 일시적 `Task.cancelling()` 상태를 shutdown 요청으로 간주하지 않는다. 각 drain이 자기 취소를 한 번 요청하고 실제 HTTP/SDK 완료까지 shield한 뒤 target/output lease를 해제한다. 공통 dispatcher cleanup은 진입 전 pending 취소와 cleanup 중 취소를 모두 호출자에게 전달하되 자식만 취소된 경우와 구분한다. 이 수정은 새 background role/schema·토큰 권위 cache·운영 설정을 추가하지 않는다.
 

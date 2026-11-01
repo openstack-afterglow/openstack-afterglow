@@ -13,6 +13,7 @@ nav_order: 8
 - 실제 compiled Node/Chromium에서 ACTIVE 인스턴스의 resize composer·재시작 경고·catalog 선택을 확인했다. 사용자 확인 후 resize POST1회 접수 시 창이 닫히고, 후속 detail503에도 기존 VM과 refresh warning을 보존했다.390px/1440px page overflow0. 별도 실제 HTTP503 `/auth/me`3회 뒤 local token 제거·공유 logout marker 무변경을 확인했다. 모든 identity/API는 synthetic이며 native VM 변경·실계정 인증·운영 접근은 아니다.
 - 증거 `~/.local/share/afterglow-proofs/release-1.32.0-20261102/{browser-proof.json,auth-outage-proof.json,resize-mobile.png,resize-desktop.png,accepted-refresh-warning.png}`. 초기 fixture의 CORS/누락 union metadata/중첩 request interception 문제는 fixture만 바로잡았다. Application source를 smoke를 위해 완화하지 않았다.
 - 범위는 dev commit/push, exact-SHA CI, 불변tag·앱 이미지·Helm·GitHub notes 발행이다. 기존 controller1 incident와 native/schema/shared-writer/cold-backup 선행 조건은 보류 상태를 유지하며 이번 요청에서 운영 cutover나 main merge를 수행하지 않는다.
+- 발행 완료: source `a8e993911f9793ef0b6b73aad0dba9a1f5adcbe2`, devCI41332584500/tagimage41333266068/Helm41333266023 모두success, GitHub latest release `v1.32.0`. Anonymous registry의 API `5c7b3313773f…`, frontend `153eb657ff9f…`, worker `a73668e72250…` indexdigest가 각각release/latest에서 같고 revision이 정확한source였다. 세linux/amd64 image를 local network-none으로 실행해1.32.0 metadata를 확인했고 API의 ACTIVE/SHUTOFF 허용·image disk-shrink 차단·volume-backed 보존도 관찰했다. `image-publication.json`과 image smoke artifacts1486/1488/1489. 이 local artifact proof는 운영 서비스 실행 버전의 증거가 아니다.
 
 ## 1.31.4 release qualification (2026-11-01, local gate)
 
