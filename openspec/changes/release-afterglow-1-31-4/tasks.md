@@ -1,7 +1,7 @@
 ## 1. Publish
 - [x] 1.1 Review current source and patch metadata1.31.4.
-- [ ] 1.2 Full gate/runtime proof, commit and push dev.
-- [ ] 1.3 Exact-SHA CI, tag, images/release/latest verification.
+- [x] 1.2 Full gate/runtime proof, commit e12f7569222d026837509f8455e3ae6e4913f4e3 and push dev.
+- [x] 1.3 Exact-SHA devCI41319039876/tagCI41319735960/Helm41319735963 success, immutablev1.31.4 and GitHubrelease published; all3release/latest digests and revision match.
 - Full gate PASS: backend12365/94skip, frontend6395/501files, contracts183, functional167; Ruff818files. Evidence artifact1070. Build successful. Earlier gate failures fixed as semantic authority tests/native-Uvicorn fixture isolation/deterministic MCP deadline event tests, no production policy weakening.
 
 ## 2. Deploy
@@ -9,3 +9,9 @@
 - [ ] 2.2 Whole compute then control prescribed rollout.
 - [ ] 2.3 Runtime/readiness/public/authenticated acceptance and receipt.
 - User explicitly approved widening scope to Keystone first-password-galera-v2 verification/deployment. Current native caps404 and old recovery lacks this dependency; preserve enabled recovery via qualified native cutover, not silent disabling. Afterglow schema gaps103/104 require protected restore before DDL.
+- User explicitly accepted separate external-SSO local-password login policy (IdP MFA/disablement independent); no silent feature disabling.
+- Native artifact publication: fa9763eb2ca3c8a762f53043fa6cd13b022161bd8692e34067db5a9e2bc9c0e1 / configcff27763b6ee34831a0ddf297ab47d7db817df4c3bd3324583cbe3c841229f06, CI41326506175 success. Exact-registry isolated128suite, TCP first-create/reset/auth, retry0 initialization/no-init rejection, fresh disabled-extension rollback and protected actual-row DDL rehearsal passed. Superseded wrong-Config.User b581 artifact was never published and its temporaryreleaseasset withdrawn.
+- BLOCKED production: controller1 172.30.0.11 no SSH banner (operator/workstation; Ansible kex reset), API18020 and node-exporter9100 time out. Controller2 SQL confirms Galera2members/conf98, Primary/Synced/readyON, incoming .12/.13 only. Remaining Keystone endpoints/VIP and public Afterglow health/landing200. Cause unproven; no DDL/config replacement/service restart/credential mutation executed by this session. C1 prior actions were read-only inspection/backups,3Afterglowimage prefetch and network-none import/version commands. No further C1 probes or unattributed-process kills; no reboot attempted.
+- Protected HOT Afterglow103tables/1003rows and native49tables/818rows restored under exact10.11.19; original-key decrypt checks passed.12Afterglow+18native encrypted archives retained off-host with separate0600 keys; all30authenticated and SQLgzip verified inRAM. Final stopped-window backup still required; these are not root-compromise-resistant backups.
+- Required5tag sibling preservation remains unqualified: all8runtime siblingrefs differ from stale/missing effectivepins; Lumen reconfigure invokes migration--apply/providerseed. No sibling image/config/schema was changed. Do not substitute afterglow-only or2-member native cutover without explicit reviewed scope decision. Resume only after controller1 recovery,3Synced members, complete effective runtime baseline, current sibling qualification and final cold backups.
+- Durable receipt root: ~/.local/share/afterglow-proofs/release-1.31.4-20261101/. Operator protected preparation: /etc/kolla/.afterglow-rollout-backups/1.31.4/. Change remains OPEN, not archived or claimed deployed.
