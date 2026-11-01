@@ -1899,9 +1899,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "72c0739d47b7a7e6fca367456a8ea178898cd9e8e33c32bcdedc11f701fae711",
-  "reviewed_at": "2026-11-01T16:07:43Z",
-  "summary": "Corrected native artifact preserves exact Kolla Config.User and runtime fields; publisher validates baseline config, export checksum/imageID/build manifest. PTY CI signal isolation included."
+  "source_sha256": "cc6ee45aea7d49557199d9fd30f05fbadac4517a320d5acda11a35499fc84d4b",
+  "reviewed_at": "2026-11-01T16:24:04Z",
+  "summary": "Native publication retains exact baseline and corrected candidate in checksum-pinned paired export; no moving/pruned base registry dependency; baseline layer/runtime invariants preserved."
 }
 ```
 <!-- architecture-review:end -->

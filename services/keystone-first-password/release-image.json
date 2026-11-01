@@ -1,11 +1,12 @@
 {
   "release": "v1.31.4",
   "tag": "v1.31.4-native-v2",
-  "asset": "native-v2-kolla-user-build2-amd64.tar.gz",
-  "sha256": "63ad64513736fe530af8961580eefcef1c2d60f437b588a5ba43810321abd84f",
+  "asset": "native-v2-paired-build2-amd64.tar.gz",
+  "sha256": "0a1f3e204abd7f94ec8d3bd526e542c70aa86bd0f2fc93e5ac52e7d2e70beaa5",
   "image_id": "sha256:cff27763b6ee34831a0ddf297ab47d7db817df4c3bd3324583cbe3c841229f06",
   "source_revision": "e12f7569222d026837509f8455e3ae6e4913f4e3",
   "base": "quay.io/openstack.kolla/keystone@sha256:bf718bebda1acceb272c219ecddeed9c5e3f5e66a889622d190d6611da840282",
+  "base_image_id": "sha256:954238eac80680fc6bfdf90db982f4f85810c996db45372f2eda7d741a8d24a5",
   "keystone_version": "28.1.0",
   "wheel_sha256": "4477a975a341faea86c7888a3f08c16f882af7fd3323444c42c3e89e16e5a1b0"
 }

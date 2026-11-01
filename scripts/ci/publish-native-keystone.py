@@ -54,16 +54,23 @@ def main():
             or image["Os"] != "linux"
         ):
             raise SystemExit("Native image identity/platform mismatch")
-        run("docker", "pull", manifest["base"])
+        # The checksum-pinned export retains both exact images even if the old upstream
+        # registry manifest has been garbage-collected. Never substitute the moving tag.
         baseline = run(
             "docker",
             "image",
             "inspect",
-            manifest["base"],
+            manifest["base_image_id"],
             capture_output=True,
             text=True,
         )
-        base_config = json.loads(baseline.stdout)[0]["Config"]
+        base_image = json.loads(baseline.stdout)[0]
+        if base_image["Id"] != manifest["base_image_id"]:
+            raise SystemExit("Retained native base identity mismatch")
+        base_layers = base_image["RootFS"]["Layers"]
+        if image["RootFS"]["Layers"][: len(base_layers)] != base_layers:
+            raise SystemExit("Native image no longer derives from retained base layers")
+        base_config = base_image["Config"]
         for field in (
             "User",
             "Entrypoint",
