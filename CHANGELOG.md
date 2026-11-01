@@ -73,6 +73,10 @@
 - 그룹 목록 새로고침과 멤버 변경이 겹쳐 정상 GET이 클라이언트 cache fence에서 무효화될 때 한 번 최신 목록을 다시 조회해 잘못된 조회 실패를 방지합니다. 실제 재조회 오류는 표시합니다.
 - 기본 사용자 대시보드 추세에 공용 Bklit 툴팁과 접근 가능한 수치 펼치기를 제공하고, 중복된 사용자 사이드바 Docs를 제거합니다. 상단 Docs는 모바일에서도 유지하며 관측 시각 없는 데이터에 가짜 시각을 부여하지 않습니다.
 - 표준 API-only cutover로 미배포 Nova pool hook/qualification 코드를 제거합니다. 과거 native ABA/pause 회귀는 해당 source의 역사적 검증이며 현재 Afterglow가 native allocation을 직접 변경하거나 외부 요청을 가로챈다는 의미가 아닙니다. Unknown managed create는 persisted dispatch claim과 fresh readback으로 조정하고 blind replay하지 않습니다.
+## [1.31.3] - 2026-10-28
+
+### Fixed
+- Kolla의 일반 이미지와 Cloud Shell 이미지 선택이 기본 registry 자격증명의 null 값을 공개 레지스트리 익명 접근으로 처리합니다.
 
 ## [1.31.2] - 2026-10-28
 

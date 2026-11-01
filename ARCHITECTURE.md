@@ -4,7 +4,7 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.31.1`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.31.3`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 Notion worker 종료는 dependency timeout의 일시적 `Task.cancelling()` 상태를 shutdown 요청으로 간주하지 않는다. 각 drain이 자기 취소를 한 번 요청하고 실제 HTTP/SDK 완료까지 shield한 뒤 target/output lease를 해제한다. 공통 dispatcher cleanup은 진입 전 pending 취소와 cleanup 중 취소를 모두 호출자에게 전달하되 자식만 취소된 경우와 구분한다. 이 수정은 새 background role/schema·토큰 권위 cache·운영 설정을 추가하지 않는다.
 
@@ -1569,6 +1569,8 @@ Afterglow 1.28.0 준비 작업트리의 operator는 Lumen root role만 `v0.3.1` 
 
 Kolla 2025.2 환경에서 Afterglow, Drover, Waygate, Lumen, Palimpsest의 application image는 `*_image_tag: "latest"`(또는 게시된 `stable`) 채널을 따르고, `precheck`·`pull`·`deploy`·`reconfigure`·`upgrade` 실행 시 첫 번째 대상 컨트롤러(`ansible_play_hosts_all[0]`)에서 Docker descriptor API(`resolve_image_refs.py`)를 통해 레지스트리 manifest/index sha256 다이제스트를 1회 해석해 모든 serial batch에 동일하게 공유한다. 레이어 다운로드는 `pull` 단계로 분리하며, 특정 릴리즈 고정 또는 롤백은 명시적인 `*_image_ref`(예: `afterglow_backend_image_ref: "ghcr.io/openstack-afterglow/afterglow-api@sha256:<digest>"`)로 동적 해석을 건너뛴다. stock Kolla 및 datastore(MariaDB, Valkey, PostgreSQL) 버전 고정은 유지된다.
 
+Kolla 기본값처럼 registry 사용자명이 null 또는 빈 문자열이면 일반 이미지와 Cloud Shell 이미지 모두 익명으로 descriptor를 해석한다. 명시적 사용자명이 있을 때만 자격증명을 전달한다.
+
 Kolla Afterglow precheck는 Cloud Shell 또는 Manila가 활성화되면 공유 toolbox CLI 인증 설정을 먼저 준비한다. Cloud Shell 단독 배포도 이전 Manila 실행이나 기존 toolbox 파일에 의존하지 않으며, Manila client 설치는 Manila 활성화 시에만 수행한다.
 
 태그를 생략한 image ref도 implicit `latest`이며 registry port는 tag로 취급하지 않는다. Native Kolla globals/CLI extra-vars는 `set_fact`보다 우선하므로 해석한 digest를 덮어쓰는 mutable/bare `*_image_ref`는 역할 실행 전에 차단한다. 채널 선택은 `*_image_tag`로 하고 명시적인 version/digest rollback pin은 그대로 유지한다.
@@ -1893,9 +1895,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "df3f911ecb1bcb8ff984c7e002fc589cbba1061d688ef9b5472e4c869b1452b1",
-  "reviewed_at": "2026-11-01T12:47:46Z",
-  "summary": "ARCHITECTURE landing status row updated for gateway/MCP scenes; removed dead LandingChatDemo link."
+  "source_sha256": "d60a2c73500f40876e90893721cf7ab078ffee582373232165fea4c9460b9905",
+  "reviewed_at": "2026-11-01T13:12:13Z",
+  "summary": "Integrate local feature checkpoints and landing gateway/MCP scenes with origin/dev 89419909 Kolla null-registry fix and deployment evidence; retain both histories and upstream 1.31.3 metadata without new runtime topology or deployment."
 }
 ```
 <!-- architecture-review:end -->

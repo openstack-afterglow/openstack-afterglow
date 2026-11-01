@@ -135,8 +135,8 @@
             stdin: >-
               {{
                 {'refs': afterglow_requested_image_refs} | combine(
-                  {'auth_config': {'username': docker_registry_username, 'password': docker_registry_password | default(''), 'serveraddress': docker_registry | default('quay.io')}}
-                  if (docker_registry_username | default('') | length > 0) else {}
+                  {'auth_config': {'username': docker_registry_username, 'password': docker_registry_password | default('', true), 'serveraddress': docker_registry | default('quay.io', true)}}
+                  if (docker_registry_username | default('', true) | length > 0) else {}
                 ) | to_json
               }}
           become: true
