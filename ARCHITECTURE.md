@@ -1899,9 +1899,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "d406183fd2d0f8350c1dc538266ab5fe38743383db830e0373f27a53216c0cfb",
-  "reviewed_at": "2026-11-01T15:45:24Z",
-  "summary": "Manual-only native Keystone artifact publisher: compressed SHA256, immutable imageID/platform/build manifest gates; full local gate PASS. No production native mutation."
+  "source_sha256": "74c42160e0c83ad535c1113820b243ff82779eba27a1fe32b67b9a18fb81b095",
+  "reviewed_at": "2026-11-01T15:55:34Z",
+  "summary": "Native publication CI fix: foreground PTY child resets inherited ignored/blocked SIGINT; production code unchanged."
 }
 ```
 <!-- architecture-review:end -->

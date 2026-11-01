@@ -211,6 +211,10 @@ def test_k8s_sources_exclude_unreferenced_private_files(tmp_path):
 def test_real_pty_edit_hidden_secret_and_generate_or_cancel(tmp_path, finish):
     pid, terminal = pty.fork()
     if pid == 0:
+        # Model a foreground interactive shell, not the CI/pytest worker's inherited signal state.
+        # Ignored or blocked SIGINT survives exec and would turn Ctrl-C into a false timeout.
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
         os.chdir(tmp_path)
         os.execv(sys.executable, [sys.executable, str(ROOT / "setup.py")])
     transcript = bytearray()
