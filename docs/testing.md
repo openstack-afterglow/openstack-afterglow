@@ -6,6 +6,12 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 메인 페이지 Lumen LLM 게이트웨이·Afterglow MCP 장면 (2026-11-01, source/isolated)
+
+- 사용자 요청: Lumen을 채팅 사이트가 아니라 LLM 게이트웨이로 소개하고(여러 provider 연결, 연구원별 API 키, Claude Code·Codex 같은 코딩 에이전트에서 사용), Afterglow MCP(에이전트가 클라우드 리소스를 조회·관리)도 다른 섹션처럼 모션 그래픽으로 보여 준다. 채팅 데모 `LandingChatDemo`/`LandingSolid`와 `landing.story.chat.*`를 삭제했다. 대신 `#workflow` LLM 게이트웨이 장면과 새 `#mcp` 장면을 추가했다. nav 항목은 "LLM 게이트웨이" 하나이고 MCP 구간도 이 항목이 강조된다. Meta description의 'AI 채팅'은 'LLM 게이트웨이'로 바꿨다(9개 언어).
+- 게이트웨이 장면: provider(OpenAI·Anthropic·Gemini·OpenRouter·DeepSeek, docs/api/chat.md의 configured provider) → Lumen(`/v1/messages`=Claude Code, `/v1/responses`=Codex, `lumen/<provider>/<model>` route, 연구원별 키, 사용량) → 연구원의 Claude Code·Codex 명령 타이핑. MCP 장면: Claude Code 대화 → 실제 MCP 도구 이름(`afterglow_vm_list`, `afterglow_quota_get`, `afterglow_cloud_overview_get` 조회 / `afterglow_vm_action`, `afterglow_volume_create` 관리) 중 호출되는 도구가 강조됨 → 연구 클라우드 VM 중 research-02가 중지됨에서 실행 중으로 바뀜. 값은 예시다.
+- Chromium 1440/390, dark/light: overflow·panel 내부 넘침 없음, 두 장면 모두 재생 후 static, nav 5항목 확인. 증거 `~/.local/share/afterglow-proofs/gateway-mcp-20261101/`. 배포 없음.
+
 ## 문자 회전 상태 표시와 정적 완료 기호 (2026-11-01, source/isolated)
 
 - 사용자 요청: theme `motion.html`의 status strip은 문자 회전으로, 상태는 `[ + ] 처리 완료 / [ ! ] 요청 실패 / [ / ] 권한 확인 필요 / [ - ] 취소됨` 기호로 보여 준다. `characterFormats.statusSignal('spinner')`은 이제 정적 기호와 같은 폭인 `[ | ]→[ / ]→[ - ]→[ \ ]`이다. 공유 ticker의 첫 정지 step(14)은 `[ | ]`라서 동작 줄이기에서 멈춰도 완료 기호와 겹치지 않는다. `LoadingState` `inline`/`control`의 기본 indicator는 `spinner`다. 새 `settledSignal(success|failed|blocked|canceled|info)`가 정적 기호를 만든다.

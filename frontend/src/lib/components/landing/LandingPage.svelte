@@ -6,7 +6,6 @@
 	import { t } from '$lib/i18n/ns/public-entry';
 	import LandingScene from './LandingScene.svelte';
 	import LandingMotionGraphic from './LandingMotionGraphic.svelte';
-	import LandingChatDemo from './LandingChatDemo.svelte';
 
 	interface Props {
 		siteName: string;
@@ -18,7 +17,7 @@
 	const email = 'pieroot@konkuk.ac.kr';
 	const navLinks = $derived([
 		{ label: t('landing.story.nav.compute'), href: '#capabilities' },
-		{ label: t('landing.story.nav.chat'), href: '#workflow' },
+		{ label: t('landing.story.nav.gateway'), href: '#workflow' },
 		{ label: t('landing.story.nav.kubernetes'), href: '#work' },
 		{ label: t('landing.story.nav.onprem'), href: '#contact' },
 		{ label: t('landing.nav.docs'), href: '/docs' },
@@ -141,19 +140,32 @@
 			</div>
 		</section>
 
-		<section id="workflow" class="feature chat-feature">
-			<div class="container chat-layout">
-				<div class="feature-copy chat-heading">
-					<span class="service-name">Lumen · {t('landing.story.chat.label')}</span>
-					<h2>{t('landing.story.chat.title')}</h2>
-					<p>{t('landing.story.chat.body')}</p>
-					<Button variant="link" href="/docs/lumen" ariaLabel={t('landing.story.guideAria', { service: t('landing.story.chat.label') })}>{t('landing.story.guide')}<span aria-hidden="true">↗</span></Button>
+		<section id="workflow" class="feature gateway-feature">
+			<div class="container">
+				<div class="feature-copy centered-copy">
+					<span class="service-name">Lumen · {t('landing.story.gateway.label')}</span>
+					<h2>{t('landing.story.gateway.title')}</h2>
+					<p>{t('landing.story.gateway.body')}</p>
+					<Button variant="link" href="/docs/lumen" ariaLabel={t('landing.story.guideAria', { service: t('landing.story.gateway.label') })}>{t('landing.story.guide')}<span aria-hidden="true">↗</span></Button>
 				</div>
-				<LandingScene kind="chat" label={t('landing.story.chat.label')}>
-					{#snippet children(state)}
-						<LandingChatDemo {state} />
-					{/snippet}
-				</LandingScene>
+				<div class="wide-scene"><LandingScene kind="gateway" label={t('landing.story.gateway.label')}>
+					{#snippet children(state)}<LandingMotionGraphic kind="gateway" {state} />{/snippet}
+				</LandingScene></div>
+			</div>
+		</section>
+
+		<!-- MCP는 Lumen 이야기의 연장이라 별도 nav 항목 없이 #workflow 아래에서 강조된다. -->
+		<section id="mcp" class="feature mcp-feature">
+			<div class="container">
+				<div class="feature-copy centered-copy">
+					<span class="service-name">{siteName} · {t('landing.story.mcp.label')}</span>
+					<h2>{t('landing.story.mcp.title')}</h2>
+					<p>{t('landing.story.mcp.body')}</p>
+					<Button variant="link" href="/docs/mcp" ariaLabel={t('landing.story.guideAria', { service: t('landing.story.mcp.label') })}>{t('landing.story.guide')}<span aria-hidden="true">↗</span></Button>
+				</div>
+				<div class="wide-scene"><LandingScene kind="mcp" label={t('landing.story.mcp.label')}>
+					{#snippet children(state)}<LandingMotionGraphic kind="mcp" {state} />{/snippet}
+				</LandingScene></div>
 			</div>
 		</section>
 
@@ -253,15 +265,11 @@
 	h2 { max-width: 62rem; font-size: clamp(2rem, 4.4vw, 4rem); line-height: 1.2; }
 	.feature-copy p { max-width: 34rem; margin-top: 1.25rem; color: var(--color-ink-1); font-size: 1rem; line-height: 1.8; word-break: var(--landing-word-break, keep-all); text-wrap: pretty; }
 	.feature-copy :global(.btn-link) { min-height: 2.75rem; margin-top: 0.75rem; padding-inline: 0; color: var(--color-warm-text); }
-	.server-feature, .chat-feature, .onprem-feature { background: var(--color-surface-base); }
+	.server-feature, .gateway-feature, .kubernetes-feature { background: var(--color-surface-base); }
 	.centered-copy { text-align: center; margin-inline: auto; }
 	.centered-copy h2, .centered-copy p { margin-inline: auto; }
 	.centered-copy p { max-width: 48rem; }
 	.wide-scene { max-width: 60rem; margin: 1rem auto 0; }
-	.chat-layout { max-width: 64rem; }
-	.chat-heading { margin-bottom: 1.25rem; }
-	.chat-heading h2 { font-size: clamp(2rem, 3.4vw, 3rem); }
-	.chat-heading p { max-width: 48rem; }
 	.onprem-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 2rem; }
 	.onprem-copy .availability, .onprem-copy .concept-note { max-width: 34rem; margin: 1.25rem 0 0; color: var(--color-ink-2); font-size: 0.75rem; line-height: 1.65; }
 	.onprem-copy .concept-note { margin-top: 0.5rem; }
@@ -274,8 +282,7 @@
 	@media (min-width: 768px) {
 		.landing-page { --landing-gutter: 1.5rem; }
 		.feature { padding-block: 6rem; }
-		.gpu-feature { padding-block: 3rem; }
-		.chat-feature { padding-block: 2.5rem; }
+		.gpu-feature, .gateway-feature, .mcp-feature { padding-block: 3rem; }
 		.footer-layout { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
 	}
 	@media (min-width: 1024px) {

@@ -36,7 +36,7 @@ describe('LandingPage navigation', () => {
 	});
 
 	it('tracks the visible service while GPU remains part of server navigation', async () => {
-		const tops: Record<string, number> = { overview: 72, capabilities: 400, gpu: 800, workflow: 1200, work: 1600, contact: 2000 };
+		const tops: Record<string, number> = { overview: 72, capabilities: 400, gpu: 800, workflow: 1200, mcp: 1400, work: 1600, contact: 2000 };
 		vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
 			const top = this.classList.contains('top-strip') ? 0 : tops[this.id] ?? 9999;
 			const height = this.classList.contains('top-strip') ? 64 : 300;
@@ -45,7 +45,7 @@ describe('LandingPage navigation', () => {
 		const { container } = renderLanding();
 		const observer = TestIntersectionObserver.instances.find((entry) => entry.observed.some((node) => node.id === 'capabilities'))!;
 		const navigation = screen.getByRole('navigation');
-		for (const [section, href] of [['capabilities', '#capabilities'], ['gpu', '#capabilities'], ['workflow', '#workflow'], ['work', '#work'], ['contact', '#contact']]) {
+		for (const [section, href] of [['capabilities', '#capabilities'], ['gpu', '#capabilities'], ['workflow', '#workflow'], ['mcp', '#workflow'], ['work', '#work'], ['contact', '#contact']]) {
 			const delta = 80 - tops[section];
 			for (const id of Object.keys(tops)) tops[id] += delta;
 			observer.trigger(container.querySelector(`#${section}`)!);

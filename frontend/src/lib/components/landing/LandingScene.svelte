@@ -5,7 +5,7 @@
 	import { createSceneMotion, type SceneMotionController, type SceneMotionState } from './sceneMotion';
 
 	interface Props {
-		kind: 'server' | 'gpu' | 'chat' | 'kubernetes' | 'onprem';
+		kind: 'server' | 'gpu' | 'gateway' | 'mcp' | 'kubernetes' | 'onprem';
 		label: string;
 		replay?: boolean;
 		class?: string;

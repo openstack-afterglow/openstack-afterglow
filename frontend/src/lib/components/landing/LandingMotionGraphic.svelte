@@ -1,6 +1,6 @@
 <script module lang="ts">
-	type GraphicKind = 'server' | 'gpu' | 'kubernetes' | 'onprem';
-	type Icon = 'cpu' | 'memory' | 'disk' | 'network' | 'vm' | 'data' | 'gpu' | 'model' | 'container' | 'node' | 'cloud' | 'team';
+	type GraphicKind = 'server' | 'gpu' | 'gateway' | 'mcp' | 'kubernetes' | 'onprem';
+	type Icon = 'cpu' | 'memory' | 'disk' | 'network' | 'vm' | 'data' | 'gpu' | 'model' | 'container' | 'node' | 'cloud' | 'team' | 'hub' | 'terminal' | 'plug';
 
 	const paths: Record<Icon, string> = {
 		cpu: 'M8 8h8v8H8z M5 10h3 M5 14h3 M16 10h3 M16 14h3 M10 5v3 M14 5v3 M10 16v3 M14 16v3',
@@ -15,6 +15,9 @@
 		node: 'M4 4h16v6H4z M4 14h16v6H4z M7 7h.01 M7 17h.01 M11 7h6 M11 17h6',
 		cloud: 'M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1-1 9z',
 		team: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M3 20a6 6 0 0 1 12 0 M16 5a3 3 0 0 1 0 6 M18 20a6 6 0 0 0-3-5.2',
+		hub: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z M12 3v6 M12 15v6 M3 12h6 M15 12h6',
+		terminal: 'M4 5h16v14H4z M7 9l3 3-3 3 M12 15h5',
+		plug: 'M9 3v5 M15 3v5 M6 8h12v3a6 6 0 0 1-12 0z M12 17v4',
 	};
 
 	// Illustrative values: product units, not live measurements.
@@ -29,6 +32,12 @@
 	const nodes = [['web', 'api'], ['api', 'worker'], ['web', 'worker']];
 	const rack: Icon[] = ['cpu', 'gpu', 'disk', 'network'];
 	const teams = [{ name: 'A', cpu: 0.6, gpu: 0.4 }, { name: 'B', cpu: 0.35, gpu: 0.75 }, { name: 'C', cpu: 0.5, gpu: 0.2 }];
+	// Lumen gateway: configured provider families and the two agent wire protocols (docs/api/chat.md).
+	const providers = ['OpenAI', 'Anthropic', 'Gemini', 'OpenRouter', 'DeepSeek'];
+	const agents = [{ name: 'Claude Code', route: '/v1/messages', command: '$ claude' }, { name: 'Codex', route: '/v1/responses', command: '$ codex' }];
+	// Real Afterglow MCP tool names; `hit` marks the calls the example agent makes.
+	const monitorTools = [{ name: 'afterglow_vm_list', hit: 3.4 }, { name: 'afterglow_quota_get' }, { name: 'afterglow_cloud_overview_get' }];
+	const manageTools = [{ name: 'afterglow_vm_action', hit: 6.8 }, { name: 'afterglow_volume_create' }];
 </script>
 
 <script lang="ts">
@@ -116,6 +125,58 @@
 				<div class="cluster-foot enter" style:--d={6}>
 					{@render status(6.4, t('landing.story.visual.preparing'), t('landing.story.visual.containersRunning', { count: nodes.flat().length }))}
 				</div>
+			{:else if kind === 'gateway'}
+				<div class="panel column enter" style:--d={0}>
+					<div class="panel-head">{@render glyph('cloud')}<strong>{t('landing.story.visual.providers')}</strong></div>
+					{#each providers as name, index}
+						<span class="row-item"><span>{name}</span><i class="led" style:--d={0.4 + index * 0.3}></i></span>
+					{/each}
+				</div>
+				{@render link(2.2)}
+				<div class="panel column enter" style:--d={3}>
+					<div class="panel-head">{@render glyph('hub')}<strong>Lumen</strong></div>
+					{#each agents as agent}
+						<span class="row-item"><span class="mono">{agent.route}</span><span class="muted">{agent.name}</span></span>
+					{/each}
+					<span class="field"><span class="muted">{t('landing.story.visual.routing')}</span><span class="mono">lumen/anthropic/sonnet</span></span>
+					<span class="field"><span class="muted">{t('landing.story.visual.researcherKeys')}</span><span class="mono">sk-lumen-••••</span></span>
+					<span class="field"><span class="muted">{t('landing.story.visual.usage')}</span><span class="meter"><span class="fill warm" style:--v={0.46} style:--d={4.4}></span></span></span>
+				</div>
+				{@render link(6)}
+				<div class="panel column framed enter" style:--d={6.8}>
+					<span class="frame-label">{t('landing.story.visual.agents')}</span>
+					{#each agents as agent, index}
+						<div class="agent">
+							<div class="panel-head">{@render glyph('terminal')}<strong>{agent.name}</strong></div>
+							<code class="terminal"><span class="type" style:--d={7.6 + index * 1.6} style:--chars={agent.command.length}>{agent.command}</span></code>
+						</div>
+					{/each}
+				</div>
+			{:else if kind === 'mcp'}
+				<div class="panel column enter" style:--d={0}>
+					<div class="panel-head">{@render glyph('terminal')}<strong>Claude Code</strong></div>
+					<code class="terminal transcript">
+						<span class="enter" style:--d={0.6}>› {t('landing.story.mcp.prompt')}</span>
+						<span class="call enter" style:--d={2.4}>⏺ afterglow_vm_list</span>
+						<span class="call enter" style:--d={5.8}>⏺ afterglow_vm_action</span>
+						<span class="reply enter" style:--d={9.2}>{t('landing.story.mcp.reply')}</span>
+					</code>
+				</div>
+				{@render link(2.4)}
+				<div class="panel column enter" style:--d={1.2}>
+					<div class="panel-head">{@render glyph('plug')}<strong>MCP</strong></div>
+					<span class="tool-group muted">{t('landing.story.visual.monitor')}</span>
+					{#each monitorTools as tool}<span class="tool mono" class:hit={tool.hit} style:--d={tool.hit}>{tool.name}</span>{/each}
+					<span class="tool-group muted">{t('landing.story.visual.manage')}</span>
+					{#each manageTools as tool}<span class="tool mono" class:hit={tool.hit} style:--d={tool.hit}>{tool.name}</span>{/each}
+				</div>
+				{@render link(6.6)}
+				<div class="panel column framed enter" style:--d={2}>
+					<span class="frame-label">{t('landing.story.diagram.platform')}</span>
+					<span class="vm-row">{@render glyph('vm')}<span class="mono">research-01</span><span class="muted">GPU</span><span class="status"><span class="badge"><i></i>{t('landing.story.visual.running')}</span></span></span>
+					<span class="vm-row">{@render glyph('vm')}<span class="mono">research-02</span><span class="muted">GPU</span>{@render status(8, t('landing.story.visual.stopped'), t('landing.story.visual.running'))}</span>
+					<span class="vm-row">{@render glyph('vm')}<span class="mono">research-03</span><span class="muted">CPU</span><span class="status"><span class="badge"><i></i>{t('landing.story.visual.running')}</span></span></span>
+				</div>
 			{:else}
 				<div class="panel column enter" style:--d={0}>
 					<div class="rack">
@@ -188,7 +249,7 @@
 	.status > span { grid-area: 1 / 1; display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.25rem 0.625rem; border-radius: 999px; white-space: nowrap; }
 	.status i { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: currentColor; }
 	.was { color: var(--color-state-warning-text); background: color-mix(in oklab, var(--color-state-warning) 14%, transparent); opacity: 0; }
-	.now { color: var(--color-state-success-text); background: color-mix(in oklab, var(--color-state-success) 14%, transparent); }
+	.now, .badge { color: var(--color-state-success-text); background: color-mix(in oklab, var(--color-state-success) 14%, transparent); }
 
 	.file { display: grid; grid-template-columns: 5.5rem minmax(2rem, 1fr); align-items: center; gap: 0.5rem; }
 	.gpu-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; }
@@ -220,6 +281,22 @@
 	.quota { display: grid; grid-template-columns: 2.25rem 1fr; align-items: center; gap: 0.5rem; }
 	.quota .mono { font-size: 0.6875rem; color: var(--color-ink-2); }
 
+	.row-item { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0.75rem; border: 1px solid var(--color-line); border-radius: var(--radius-md, 0.5rem); background: var(--color-surface-sunken); min-width: 0; }
+	.row-item .led { flex: none; }
+	.field { display: grid; gap: 0.25rem; min-width: 0; overflow-wrap: anywhere; }
+	.agent { display: grid; gap: 0.5rem; }
+	.agent + .agent { padding-top: 0.75rem; border-top: 1px solid var(--color-line); }
+	.transcript { display: grid; gap: 0.5rem; white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
+	.transcript .call { color: var(--color-warm-text); }
+	.transcript .reply { color: var(--color-ink-0); }
+	.tool-group { margin-top: 0.25rem; font-size: 0.75rem; }
+	.tool { padding: 0.375rem 0.625rem; border: 1px solid var(--color-line); border-radius: var(--radius-md, 0.5rem); color: var(--color-ink-1); font-size: 0.75rem; overflow-wrap: anywhere; }
+	.tool.hit { border-color: var(--color-warm); background: color-mix(in oklab, var(--color-warm) 12%, transparent); color: var(--color-warm-text); }
+	.vm-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.25rem 0.5rem; padding-block: 0.5rem; }
+	.vm-row + .vm-row { border-top: 1px solid var(--color-line); }
+	.vm-row .glyph { color: var(--color-warm); }
+	.vm-row .status { grid-column: 2 / 4; }
+
 	.link { position: relative; flex: none; align-self: center; width: clamp(1.75rem, 5cqi, 3.5rem); height: 2px; background: var(--color-line-2); transform-origin: left; }
 	.link::after { content: ''; position: absolute; right: 0; top: 50%; width: 0.5rem; height: 0.5rem; border-top: 2px solid var(--color-line-2); border-right: 2px solid var(--color-line-2); transform: translate(0, -50%) rotate(45deg); }
 	.pulse { position: absolute; top: 50%; left: 0; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--color-warm); box-shadow: 0 0 0.75rem var(--color-warm); translate: -50% -50%; opacity: 0; }
@@ -234,7 +311,7 @@
 
 	@container (max-width: 28rem) { .cluster { grid-template-columns: minmax(0, 1fr); } }
 	/* Motion: finite, unit-staggered, paused with the scene. */
-	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) :is(.enter, .drop, .fill, .level, .curve, .type, .led, .was, .now, .link, .pulse) {
+	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) :is(.enter, .drop, .fill, .level, .curve, .type, .led, .was, .now, .link, .pulse, .hit) {
 		animation-delay: calc(var(--d, 0) * var(--unit));
 		animation-timing-function: var(--motion-ease-emphasized, ease-out);
 		animation-fill-mode: backwards;
@@ -250,6 +327,7 @@
 	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .was { animation-name: graphic-was; animation-fill-mode: both; animation-delay: 0s; animation-duration: calc((var(--d) + 1) * var(--unit)); animation-timing-function: linear; }
 	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .now { animation-name: graphic-now; animation-delay: 0s; animation-duration: calc((var(--d) + 1) * var(--unit)); animation-timing-function: linear; }
 	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .link { animation-name: graphic-link; }
+	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .hit { animation-name: graphic-hit; animation-duration: 0.5s; }
 	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .pulse { animation-name: graphic-pulse; animation-duration: 1s; animation-iteration-count: 2; animation-delay: calc((var(--d) + 1) * var(--unit)); animation-timing-function: ease-in-out; }
 	.landing-motion-graphic[data-motion='paused'] * { animation-play-state: paused; }
 
@@ -270,6 +348,7 @@
 	@keyframes graphic-blink { 50% { opacity: 0.2; } }
 	@keyframes graphic-was { 0%, 90% { opacity: 1; } 100% { opacity: 0; } }
 	@keyframes graphic-now { 0%, 90% { opacity: 0; } 100% { opacity: 1; } }
+	@keyframes graphic-hit { from { border-color: var(--color-line); background: transparent; color: var(--color-ink-1); } }
 
 	@media (forced-colors: active) {
 		.glyph, .tile { color: CanvasText; }

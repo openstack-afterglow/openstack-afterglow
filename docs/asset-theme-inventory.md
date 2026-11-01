@@ -18,7 +18,7 @@
 |전체 오류·404|`frontend/src/routes/+error.svelte`, `frontend/src/routes/docs/+error.svelte`|정적 문자 오류 마크를 쓰되 실제 HTTP status와 복귀 링크, docs locale을 유지한다. 오류를 loading으로 장식하지 않는다.|
 |로그아웃|`frontend/src/routes/logout/+page.svelte`|실제 정리 작업별 상태·warning/danger/재시도 의미를 유지한다. 완료 뒤 가짜 애니메이션을 계속하지 않는다.|
 |작업 dock/modal|`frontend/src/lib/components/UploadDock.svelte`, `frontend/src/lib/components/wizard/VmDeployProgress.svelte`, `frontend/src/lib/components/dashboard/drover/K3sProgressModal.svelte`, `frontend/src/lib/components/k3s/K3sDeleteProgress.svelte`, `frontend/src/lib/components/k3s/K3sRotateProgressModal.svelte`, `frontend/src/lib/components/dashboard/containers/clusters/id/ClusterProgressBar.svelte`|ProgressTrack/StepProgress/LoadingState 경계에서 통일. backend 단계·업로드 bytes·실패/unknown은 변경하지 않는다.|
-|랜딩의 장식 그래픽|`frontend/src/lib/components/landing/LandingMotionGraphic.svelte`, `frontend/src/lib/components/landing/LandingPage.svelte`, `frontend/src/lib/components/landing/LandingChatDemo.svelte`|문자 illustration 후보. 실제 링크·카피·접근성 설명은 보존하고 UI mock/demo를 운영 수치로 제시하지 않는다.|
+|랜딩의 장식 그래픽|`frontend/src/lib/components/landing/LandingMotionGraphic.svelte`, `frontend/src/lib/components/landing/LandingPage.svelte`|문자 illustration 후보. 실제 링크·카피·접근성 설명은 보존하고 UI mock/demo를 운영 수치로 제시하지 않는다.|
 |로그인 브랜드|`frontend/src/lib/components/auth/LoginBrandHeader.svelte`, `frontend/src/lib/components/admin/AdminLoginBrandingPanel.svelte`, `frontend/src/lib/config/site.ts`|operator logo_path/logo_dark_path/logo_light_path/favicon_path 우선순위를 보존한다. 브랜드 주변 배경/placeholder만 theme 후보이며 업로드 로고를 문자로 덮어쓰지 않는다.|
 
 ## 의미·콘텐츠 보존 대상
@@ -598,7 +598,6 @@
 - `frontend/src/lib/components/file-storage/wizard/FileStorageWizardStep3.svelte`
 - `frontend/src/lib/components/instance/SecurityGroupUnion.svelte`
 - `frontend/src/lib/components/keypair/KeypairListTable.svelte`
-- `frontend/src/lib/components/landing/LandingChatDemo.svelte`
 - `frontend/src/lib/components/landing/LandingMotionGraphic.svelte`
 - `frontend/src/lib/components/landing/LandingPage.svelte`
 - `frontend/src/lib/components/monitoring/GrafanaEmbed.svelte`

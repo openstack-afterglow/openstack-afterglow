@@ -5,7 +5,7 @@ import LandingMotionGraphic from '../LandingMotionGraphic.svelte';
 afterEach(cleanup);
 
 describe('landing service scenes', () => {
-  it.each(['server', 'gpu', 'kubernetes', 'onprem'] as const)('%s names the concept and renders fully localized decorative copy', (kind) => {
+  it.each(['server', 'gpu', 'gateway', 'mcp', 'kubernetes', 'onprem'] as const)('%s names the concept and renders fully localized decorative copy', (kind) => {
     const view = render(LandingMotionGraphic, { kind, state: 'static' });
     const graphic = screen.getByRole('img');
     expect(graphic.getAttribute('aria-label')).toBeTruthy();
