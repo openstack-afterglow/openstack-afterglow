@@ -1899,9 +1899,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "74c42160e0c83ad535c1113820b243ff82779eba27a1fe32b67b9a18fb81b095",
-  "reviewed_at": "2026-11-01T15:55:34Z",
-  "summary": "Native publication CI fix: foreground PTY child resets inherited ignored/blocked SIGINT; production code unchanged."
+  "source_sha256": "72c0739d47b7a7e6fca367456a8ea178898cd9e8e33c32bcdedc11f701fae711",
+  "reviewed_at": "2026-11-01T16:07:43Z",
+  "summary": "Corrected native artifact preserves exact Kolla Config.User and runtime fields; publisher validates baseline config, export checksum/imageID/build manifest. PTY CI signal isolation included."
 }
 ```
 <!-- architecture-review:end -->

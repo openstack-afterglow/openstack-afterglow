@@ -54,6 +54,32 @@ def main():
             or image["Os"] != "linux"
         ):
             raise SystemExit("Native image identity/platform mismatch")
+        run("docker", "pull", manifest["base"])
+        baseline = run(
+            "docker",
+            "image",
+            "inspect",
+            manifest["base"],
+            capture_output=True,
+            text=True,
+        )
+        base_config = json.loads(baseline.stdout)[0]["Config"]
+        for field in (
+            "User",
+            "Entrypoint",
+            "Cmd",
+            "Env",
+            "Labels",
+            "WorkingDir",
+            "ExposedPorts",
+            "Volumes",
+            "StopSignal",
+            "Healthcheck",
+            "Shell",
+            "ArgsEscaped",
+        ):
+            if image["Config"].get(field) != base_config.get(field):
+                raise SystemExit(f"Native Kolla runtime configuration changed: {field}")
         run(
             "docker",
             "run",

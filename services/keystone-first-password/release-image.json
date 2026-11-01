@@ -1,9 +1,9 @@
 {
   "release": "v1.31.4",
   "tag": "v1.31.4-native-v2",
-  "asset": "afterglow-keystone-native-1.31.4-v2-amd64.tar.gz",
-  "sha256": "2f95bc3567be73d291b3ba4e069d214baf12d5002fc24fb818c3bfa61dce28c6",
-  "image_id": "sha256:b5810c58999cfaf9177af62c88af9330e06686b7b3b8cdb6896ba65a7b9765cf",
+  "asset": "native-v2-kolla-user-build2-amd64.tar.gz",
+  "sha256": "63ad64513736fe530af8961580eefcef1c2d60f437b588a5ba43810321abd84f",
+  "image_id": "sha256:cff27763b6ee34831a0ddf297ab47d7db817df4c3bd3324583cbe3c841229f06",
   "source_revision": "e12f7569222d026837509f8455e3ae6e4913f4e3",
   "base": "quay.io/openstack.kolla/keystone@sha256:bf718bebda1acceb272c219ecddeed9c5e3f5e66a889622d190d6611da840282",
   "keystone_version": "28.1.0",
