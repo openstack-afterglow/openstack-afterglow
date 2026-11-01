@@ -24,6 +24,11 @@ on:
         required: false
         default: false
         type: boolean
+      publish_native_keystone:
+        description: 'Publish the reviewed, checksum-pinned native Keystone release artifact'
+        required: false
+        default: false
+        type: boolean
 
 env:
   REGISTRY: ${{ secrets.REGISTRY_URL || 'ghcr.io' }}
@@ -462,3 +467,21 @@ jobs:
           if [ -n "${EXTRA}" ]; then
             docker buildx imagetools create -t "${EXTRA}" "${SOURCES[@]}"
           fi
+
+  publish-native-keystone:
+    name: Publish qualified native Keystone artifact
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_native_keystone
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Verify and publish exact native image
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_IMAGE_OWNER: ${{ github.repository_owner }}
+        run: python3 scripts/ci/publish-native-keystone.py

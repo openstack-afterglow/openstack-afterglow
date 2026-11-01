@@ -65,6 +65,8 @@ Notion worker도 공유 work-runtime의 Trove backup scheduler를 실행하며 `
 
 `GET /api/v1/dashboard/snapshot`은 summary·quota overview 두 section을 한 fresh caller proof로 읽고 `{data,error}`를 독립 반환한다. K3s·실측 telemetry·announcements는 별도 요청을 유지한다. Redis의 같은 key 동시 force refresh는 진행 중 일반 read 뒤 한 번의 fresh pass를 공유하며 mutation invalidation은 이전 flight를 분리한다. JSON cache는 compact UTF-8을 사용한다. 브라우저 GET도 기존 family registry에서 AbortSignal별 취소를 분리하고 force queue를 공유한다. Scope/mutation/ABA 뒤 pending snapshot을 폐기하고 정상 bearer rotation은 기존 logical view를 유지한다. 목록 polling은 완료 후 간격·visibility/offline pause·한 후행 manual round를 공통 helper로 적용하며 표시용 SWR은 mounted scope-owned controller의30초 snapshot만 남긴다.
 
+Native Keystone 발행은 기존 Docker workflow의 수동 `publish_native_keystone` opt-in만 수행한다. `services/keystone-first-password/release-image.json`의 secret-free release asset SHA256·loaded image ID·linux/amd64와 실제28.1.0/installer build manifest를 검증한 뒤 독립 `keystone-first-password` repository에만 push하며 일반 app target/latest를 바꾸지 않는다. Package-write 자격은 해당 CI job GITHUB_TOKEN에만 부여하고 release asset에 credential/config/key를 넣지 않는다. 발행 성공은 multi-member native 안전 검증이나 운영 schema/cold cutover 완료 증거가 아니다.
+
 Access JWT 기본 수명은3600초, refresh JWT와 원래 로그인 기준 절대 수명은최대604800초다. 더 짧은 명시 TOML/환경 정책을 보존하고 절대 수명을7일보다 크게 설정하면7일로 제한한다. 발급 JWT/Redis TTL은 configured TTL·원래 로그인 deadline·native root 만료의 최소값이며 refresh는 이전 refresh 만료도 넘지 않는다. Token exchange로 native 만료를 연장하거나 비밀번호·서비스 impersonation으로 재발급하지 않는다. 브라우저는 focus/visibility/pageshow/online에서 공유 갱신을 재검사하고 늦은 성공/실패는 token/refreshToken/epoch로 차단한다. Password·OIDC Personal 선택의 provenance·membership·scope readback과 mutation guard invalidate 경계는 유지한다.
 완전한 refresh 응답은 같은 검증된 source 객체·논리 owner·verification epoch에 묶인 one-use mapping만 추가 `/me` 없이 검증된 continuation으로 적용한다. Roles/domain 배열은 복사·동결하며 raw/restored/copied/reused/stale·부분 DTO와 rescope/domain switch는 별도 `/me` 검증을 유지한다. 갱신이 원래/native deadline과 같은 짧은 access 만료를 반환하면 request preflight와 proactive lifecycle만 같은 token/refreshToken/epoch/expiry의 무익한 반복 회전을 건너뛴다. 명시적 recovery·실제 만료/401은 fresh 갱신을 유지한다. Tutorial/project/unread 표시 조회는 bearer 문자열 대신 논리 세션·home/domain/project/readiness에 소유되며 project prefetch는 기존5분 TTL·실패 재시도·manual freshness를 유지한다. 실제 servicePermissions는 계속 fresh 조회하고 capability observation은 기존 실제 consumer의 passive `observedProjectPermissions`만 읽는다.
 Bundled Helm/Kolla·개발 values도 access3600/refresh604800/session604800초를 사용하며 backend가 읽지 않는 `absolute_timeout`/`absoluteTimeout` 필드는 없다. 기존 운영3600초 override는 자동 덮어쓰지 않는다. 실제7일 유지는 native Keystone 수명과 Fernet 키 보존을 함께 바꾸고 새로 로그인해야 한다([배포 선행 조건](docs/deployment.md#브라우저-세션의-7일-유지-선행-조건)). 관리자의 볼륨 target credential은 fresh principal의 검증된 unscoped `session_token`으로만 교환하며 executor impersonation을 하지 않는다.
@@ -855,7 +857,9 @@ Windows GPU 비밀번호 생성 회귀는 일정 metadata가 있어도 GitHub SS
 
 ### 인스턴스 생명주기·스토리지 연결 의미
 
-공용 사용자·scoped-admin 상세/목록/bulk는 exact SHUTOFF의 보관·삭제·리사이즈만 노출한다. Confirmation 뒤 최초 target/status/token/actor/project/mode/permission과 resize-choice generation을 재검사한다. 자기 resize의 busy/error와 같은 scope의 volume-extension draft는 polling 중 유지한다. 관리자 recovery/migration와 native Nova endpoint는 유지된다. Stop은 compute allocation/quota를 유지하며 host compute는 offload 완료 또는 delete 뒤 반환한다. 보관 후 instance/retained-volume과 Placement/legacy CPU/RAM quota 집계는 별도다.
+공용 사용자·scoped-admin 상세/목록/bulk는 exact SHUTOFF의 보관·삭제만 노출하고, 리사이즈는 `RESIZABLE_STATUSES`(ACTIVE·SHUTOFF, backend `services/instance_resize.py`와 동일)에서 노출한다. 실행 중 리사이즈는 guest 재시작을 modal·확인 창에서 안내한다. Confirmation 뒤 최초 target/status/token/actor/project/mode/permission과 resize-choice generation을 재검사한다. 자기 resize의 busy/error와 같은 scope의 volume-extension draft는 polling 중 유지한다. 관리자 recovery/migration와 native Nova endpoint는 유지된다. Stop은 compute allocation/quota를 유지하며 host compute는 offload 완료 또는 delete 뒤 반환한다. 보관 후 instance/retained-volume과 Placement/legacy CPU/RAM quota 집계는 별도다.
+
+리사이즈 modal은 VM wizard와 같은 `FlavorComposer`(직접 구성·저장 구성·카탈로그)를 `createFlavorComposer(..., { resizeInstanceId })`로 사용한다. Resize composer는 wizard의 localStorage draft·active key·reset broadcast를 쓰지 않는다. Composer options/history/save/operation readback은 선택적 `instance_id`를 받아 `instance_resize.ResizeTarget`(Nova embedded 현재 할당·image-backed 여부)로 평가한다: 인스턴스 수 증분0, CPU/RAM/GPU는 현재 할당 반환분을 quota에서 credit하고, 동일 shape(저장 전409 `flavor_composition_same_as_current`, native write 없음)와 image-backed root disk 축소를 차단한다. Host 범위는 현재 VM 할당을 반환하지 않은 free-host region이라 보수적 advisory이며 Nova가 최종 배치한다. 카탈로그는 기존 instance-scoped `resize-flavors`를 같은 advisory capacity와 함께 쓴다. 관리자 composer route는 대상 프로젝트로 재scope하지 않고 검증된 admin-project executor(`_admin_read_conn`)에 target을 logical scope로 둔다. 서비스 계정이 tenant member가 아니면 Keystone이 per-project rescope를401로 거부하기 때문이며, `instance_id`는 선택한 프로젝트 소유일 때만 허용한다.
 
 상세 InstanceInfo.os_type은 actual Glance/boot Cinder metadata의 정규화 projection이며 root_device_name 또는 유일 bootable volume만 root 근거다. Unavailable/ambiguous는 null이고 이름은 근거가 아니다. Password-precheck 권한과 무관하게 reader/다른 creator에도 projection하여 Windows SSH/keypair를 감춘다. Windows 최초 초기화는 네 locale·공개 가이드에서 약20–30분으로 안내하고 ACTIVE와 login/RDP readiness를 구분한다.
 
@@ -1895,9 +1899,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "bfa7ef8ff83ac8fded8360708db83917502e4e43b971bafcfd1d973b1d28b116",
-  "reviewed_at": "2026-11-01T15:00:56Z",
-  "summary": "Release1.31.4 verified full gate and runtime smoke; current source/cache/backup/default/instance changes. Production native/schema qualification ongoing separately."
+  "source_sha256": "d406183fd2d0f8350c1dc538266ab5fe38743383db830e0373f27a53216c0cfb",
+  "reviewed_at": "2026-11-01T15:45:24Z",
+  "summary": "Manual-only native Keystone artifact publisher: compressed SHA256, immutable imageID/platform/build manifest gates; full local gate PASS. No production native mutation."
 }
 ```
 <!-- architecture-review:end -->
